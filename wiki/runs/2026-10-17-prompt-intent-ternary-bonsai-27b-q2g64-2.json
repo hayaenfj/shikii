@@ -1,0 +1,79 @@
+{
+  "spec": "prompt-intent",
+  "spec_path": "decisions/prompt-intent-v2.yaml",
+  "spec_hash": "df1367887c4970a7",
+  "version": 2,
+  "model": "ternary-bonsai-27b-q2g64+state-last",
+  "truths": 62,
+  "at": "2026-10-17T22:50:38+09:00",
+  "run": "2026-10-17-prompt-intent-ternary-bonsai-27b-q2g64-2",
+  "run_page": "wiki/runs/2026-10-17-prompt-intent-ternary-bonsai-27b-q2g64-2.md",
+  "candidates": [
+    {
+      "name": "current",
+      "top1": 0.967741935483871,
+      "brier": 0.013618127926471565,
+      "prec_at_act": 1,
+      "rec_at_act": 0.9833333333333333,
+      "change": "(as is)"
+    },
+    {
+      "name": "shorter-question",
+      "top1": 0.967741935483871,
+      "brier": 0.012143776068980384,
+      "prec_at_act": 1,
+      "rec_at_act": 0.9833333333333333,
+      "change": "question: The state is a message a user sent to a coding assistant. Wh…"
+    },
+    {
+      "name": "other-tight",
+      "top1": 0.9838709677419355,
+      "brier": 0.015733739539406016,
+      "prec_at_act": 1,
+      "rec_at_act": 0.9672131147540983,
+      "change": "other: Not a request at all - greetings, thanks…"
+    },
+    {
+      "name": "tighten-review-vs-operation",
+      "top1": 1,
+      "brier": 0.012591763945699445,
+      "prec_at_act": 1,
+      "rec_at_act": 0.9516129032258065,
+      "change": "question: The state is a message a user sent to a coding assistant. Wh…; review: Evaluate changes or code that already ex…"
+    },
+    {
+      "name": "clarify-review-purpose",
+      "top1": 0.9838709677419355,
+      "brier": 0.009454708811754548,
+      "prec_at_act": 1,
+      "rec_at_act": 0.9672131147540983,
+      "change": "question: The state is a message a user sent to a coding assistant. Wh…; review: Evaluate changes or code that already ex…"
+    },
+    {
+      "name": "add-review-example",
+      "top1": 0.9838709677419355,
+      "brier": 0.008507282445272843,
+      "prec_at_act": 1,
+      "rec_at_act": 0.9836065573770492,
+      "change": "question: The state is a message a user sent to a coding assistant. Wh…; review: Evaluate changes or code that already ex…"
+    }
+  ],
+  "holdout": 0.967741935483871,
+  "have_holdout": true,
+  "winner": "current",
+  "adoptable": false,
+  "decision": "kept current (holdout does not beat it)",
+  "lesson": "tighten-review-vs-operation wins on the full bank (1.000 vs 0.968) but the holdout 0.968 does not beat keeping current 0.968: within noise on 62 truths; more truths will settle it",
+  "current_wording": {
+    "question": "The state is a message a user sent to a coding assistant. What is the user asking the assistant to do?\nShort messages like \"fix it\" or \"why?\" are still requests; pick the closest request type.\n",
+    "options": {
+      "change_request": "Change something in the repository - edit, fix, add, remove, rename, refactor, write tests or docs. Includes terse commands like \"fix the typo\" or \"直して\".",
+      "operation": "Run or operate something without editing code - run tests, build, commit, push, deploy, restart, install, show logs.",
+      "other": "Not a request at all - greetings, thanks, acknowledgements (\"ok\", \"了解\"), small talk, or ending the session.",
+      "question": "Explain, investigate, compare or give an opinion, without changing anything. Includes \"why\", \"what does this do\", \"where is\", \"調べて\".",
+      "review": "Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality."
+    },
+    "template": "{{ message }}\n"
+  },
+  "adopted": false
+}

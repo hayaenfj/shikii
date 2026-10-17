@@ -15,3 +15,4 @@
 
 ## Runs
 - [2026-10-17 ternary-bonsai-27b-q2g64](../runs/2026-10-17-prompt-intent-ternary-bonsai-27b-q2g64.md) — kept current (holdout does not beat it). Lesson: tighten-review-vs-operation wins on the full bank (1.000 vs 0.968) but the holdout 0.968 does not beat keeping current 0.968: within noise on 62 truths; more truths will settle it
+- [2026-10-17 ternary-bonsai-27b-q2g64](../runs/2026-10-17-prompt-intent-ternary-bonsai-27b-q2g64-2.md) — kept current (holdout does not beat it). Lesson: tighten-review-vs-operation wins on the full bank (1.000 vs 0.968) but the holdout 0.968 does not beat keeping current 0.968: within noise on 62 truths; more truths will settle it

@@ -2,293 +2,194 @@
 
 <p align="center"><img src="../assets/gen-mark.png" alt="shikii" width="112"></p>
 
-# shikii: AI の「たぶん」を、動いていい「はい」に変える
+# shikii: 人は意図と正解だけを出す。聞き方も信頼も機械が育てる
 
-### AI が返す確率を、記録して、答え合わせして、信用できる線を引く。その一式。
+### 決定モデル（AI に「はい/いいえ」「どれ？」を確率で答えさせる仕組み）を、人の手間を増やさずに業務で使い続けるための道具。
 
-**AI は「たぶん 0.9」と言う。shikii は「その 0.9 で動いていいか」を答える。**
+**AI は「たぶん 0.9」と言う。shikii は「その 0.9 で動いていいか」を答え、聞き方を自分で良くしていく。**
 
 [![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/github/actions/workflow/status/hayaenfj/shikii/test.yml?style=flat-square&label=tests)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
-**[なぜ作ったか](../why-shikii.ja.md) · [設計の記録](../decision-ops-framework.md) · [運用メモ](../operations.md) · [モデル比較](../model-comparison.md) · [詳しい使い方](../guide.ja.md)**
+**[なぜ作ったか](../why-shikii.ja.md) · [聞き方の wiki](../../wiki/index.md) · [設計の記録](../decision-ops-framework.md) · [運用メモ](../operations.md) · [モデル比較](../model-comparison.md) · [詳しい使い方](../guide.ja.md)**
 
-[まず動かす](#まず動かす) · [何をしてくれるのか](#何をしてくれるのか) · [どの-ai-が使えるか](#どの-ai-が使えるか) · [実際に測った結果](#実際に測った結果) · [よくある質問](#よくある質問) · [もっと読む](#もっと読む)
+[目指すもの](#目指すもの) · [人がすること](#人がすること) · [10-分で一周](#10-分で一周) · [機械が育てるもの](#機械が育てるもの) · [どの-ai-が使えるか](#どの-ai-が使えるか) · [実際に測った結果](#実際に測った結果) · [よくある質問](#よくある質問) · [もっと読む](#もっと読む)
 
 <p align="center"><img src="../assets/shikii-hero.svg" alt="shikii" width="100%"></p>
 
 `scripts/demo.sh`
 
 > [!IMPORTANT]
-> shikii は推論そのものは行いません（`shikii up` は llama-server を代わりに起こすだけ）。手元にある AI に質問を送り、答えを記録し、答え合わせが済むまで「自動で動いてよい」とは言いません。
-> 「動いてよい」の根拠になる数字は shikii が計算して書き込むもので、人が手で書くものではありません。
+> shikii は推論そのものは行いません。手元やホスト版の決定モデルに質問を送り、答えを記録し、答え合わせが済むまで「自動で動いてよい」とは言いません。
+> 「動いてよい」の根拠の数字も、聞き方の候補も、機械が作って書き込むもので、人が手で書くものではありません。
 
 ---
-
-## どういう話か
-
-最近の AI には、文章を書くのではなく、**選ぶ**ことに特化したものがあります。「この依頼は、ファイルを書き換える依頼ですか？」と聞くと、文章ではなく「はい 0.92、いいえ 0.08」のような確率で答えます。速くて安く、迷いが数字で見えるので、プログラムの中で「0.9 を超えたら自動で進める」のように使えます。
-
-ところがその 0.92 は、そのまま信用していい数字ではありません。AI が変われば同じ 0.92 の意味が変わり、質問の文言を少し変えても変わります。作っている会社も「あなたのデータで確かめてから使ってください」と注意書きを付けています。確かめる道具は、誰も出荷していません。
-
-shikii はその「確かめて、線を引いて、守り続ける」部分だけをやります。
-
-1. 質問を 1 枚の設定ファイルに書く（質問文、選択肢、どこまでなら自動で動いてよいかの線）
-2. AI に聞く。返ってくるのは生の確率ではなく、**自動で動く / 人に聞く / 捨てる** の三択
-3. あとで「本当はどうだったか」を教える（正解を 1 行付ける）
-4. 正解が溜まったら、確率がどれくらい当てになるか測り、「この線から上は自動で動いてよい」を決めて設定ファイルに書き戻す
-5. 質問の文言か AI が変わったら、その許可は自動で消える。古い根拠で勝手に動くことはない。ただし人が付けた正解は残るので、もう一度 4 を回せば（AI に聞き直すだけで）線は戻る
-
-付属の小さなプログラム `shikii-readout` を使うと、普通のチャット用の AI モデル（GGUF ファイル）もこの仕組みに乗せられます。手元の計測では、普通の 27B モデルがこの経路で、専用に学習された決定モデルと同じ精度に、1 問 0.6 秒で届きました。
-
-> 名前は「閾」（しきい）。確率に引く線のことです。コマンドの名前も `shikii`。
 
 ## 目指すもの
 
 **人が出すのは意図と正解だけ。聞き方も、信頼も、段階も機械が育て、育った知識は人のあいだで共有される。**
 
-- *聞き方*: 質問文・選択肢の説明・本文の並べ方を、溜まった正解で測って、新しい正解なしに良くする（`tune`）。「この型の質問には、このモデルの系統には、こう聞くと通る」という学びは、人が直せる共有の wiki に溜まる
-- *信頼*: (質問, モデル) ごとの較正、生の数字ではなく帯、証拠の無い `act` は出さない、変われば失効、変わったら聞き直し、劣化の監視、監査の抜き取り
-- *段階*: モデルは 1 つで、聞き方に段を作る。まず最小の質問、迷えば文脈を足すか質問を分解し、最後に人。上の段の答えは下の段の正解になるので、一番安い聞き方がどこまで通用するかが広がっていく。進み具合は「1000 判定あたりの人の判断の数」で、精度を保ったままこれが減れば良くなっている
+最近の AI には、文章を書くのではなく**選ぶ**ことに特化したもの（決定モデル）があります。「この依頼はファイルを書き換える依頼ですか？」と聞くと、「はい 0.92、いいえ 0.08」のように確率で答える。速くて安く、迷いが数字で見えます。
 
-これは**仮説**で、まだ主張ではありません: 型の付いた判定なら、測った聞き方 + 較正は、同じ土台のモデルで、微調整（LoRA）よりずっと少ない例で使える精度に届き、検索で文脈を足す方法（RAG）より確率が正直かもしれない。確かめ方は単純で、公開します: 同じ課題、同じ正解、同じモデルで 3 つの方法を並べ、正解率と Brier を比べる。
+ところがその 0.92 はそのまま信用できません。AI が変われば意味が変わり、質問の文言を少し変えても変わる。作っている会社も「あなたのデータで確かめてから使ってください」と書いています。そして、確かめるには人が正解を付け、良い聞き方を人が考え、線を人が引き直す必要がある、というのが今の普通です。
 
-## まず動かす
+shikii はそこを逆にします。人が持つべきものは 2 つだけ、**意図**（決めたいこと）と**正解**（起きた事実）。それ以外の、質問の文言、選択肢の説明、本文の並べ方、閾値、較正、劣化の監視、文言やモデルが変わった時の引き直しは**技術**で、技術は機械の仕事です。そして「この型の質問には、このモデルにはこう聞くと通る」という学びは、1 人の経験ではなく、証拠付きの共有の wiki に溜まります。
 
-Go 1.24 以上があれば、それ以外は要りません。AI も API の鍵も無しで一周できます。
+名前は「閾」（しきい）。確率に引く線のこと。コマンドの名前も `shikii`。
 
-### 2 分で全部見る
+## 人がすること
 
-```sh
-git clone https://github.com/hayaenfj/shikii && cd shikii
-scripts/demo.sh                 # 偽の AI で: 聞く → 正解を付ける → 線を引く → 検査 → 劣化の監視 → 掃除
-scripts/demo.sh --overconfident # 確率が鋭すぎる偽 AI。生と補正後の混同表を見比べる
-```
-
-### 本物の AI に向ける
-
-```sh
-make build                                        # bin/shikii, bin/shikii-readout, bin/fake-systemone
-
-# a) 手元のパソコンで動かす(初回は Kev-4B というモデル約 2.5GB を取得)
-bin/shikii up                                     # llama-server を探して Kev-4B を :8080 に起こし、応答するまで待つ(make server でも可)
-bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8080 -i message='README の誤字を直して'
-
-# b) TypeSafe 社のホスト版 Jev。鍵は環境変数で渡す(ファイルには置かない)
-export TYPESAFE_API_KEY=...
-bin/shikii decide examples/prompt-intent.yaml -i message='README の誤字を直して'
-
-# c) OpenRouter 経由
-export DECISIONS_API_KEY=...
-bin/shikii decide examples/prompt-intent.yaml --hosted https://openrouter.ai/api/alpha/decisions -i message='…'
-```
-
-返ってくるのは三択の答え（`act` = 自動で動く、`ask` = 人に聞く、`discard` = 捨てる）と、追跡用の番号（trace id）と、確率です。
-答え合わせがまだ済んでいない AI では、答えは高くても `ask` 止まりです。
-
-### 答え合わせをして、線を引く
-
-```sh
-bin/shikii label <trace_id> change_request          # さっきの判定に正解を付ける。または label --last --spec-id prompt-intent change_request
-bin/shikii calibrate examples/prompt-intent.yaml --model <答えに入っていた AI の名前> --write   # 正解が溜まったら線を引いて書き込む
-bin/shikii check examples/prompt-intent.yaml        # 文言が変わっていないか、線がまだ正しいか。だめなら exit 1(CI 向け)
-```
-
-### または、プログラムと人のための 1 プロセスを立てる
-
-```sh
-bin/shikii serve --specs decisions --local http://127.0.0.1:8080        # http://127.0.0.1:8095/
-curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message":"誤字を直して"}}'
-```
-
-プログラムはどの言語からでも `POST /v1/decide` と `POST /v1/label` を叩くだけ。人はブラウザで画面を開くと、答え合わせ待ちの判定が `ask` から順に並び、選択肢ごとにボタンがあります。押せば正解が記録され、`eval.min_n` に届いた spec はサーバーが自分で線を引いて書き込みます。trace id を打つ人はいません。画面は外部の読み込み無しの HTML 1 枚なので、ネットの無い社内のノート PC でも開けます。言語の切替があり、spec に `display:`（言語ごとの題名・質問・選択肢や段階の名前）を書けば、その言語で判定が表示されます。`display` は AI には送らず、線の鍵にも入りません。
-
-画面には spec ごとに「聞き方」の欄もあります。最新の `tune` の結果、勝った候補の文言と今の文言の並び、そして「意味は同じ → 採用」「意味が違う → 却下」の 2 つのボタン。数字は機械の仕事、言い換えてもまだ同じことを聞いているかは人の仕事です。`serve` を `--proposer http://127.0.0.1:8087` 付きで起こすと、画面からチャット用モデルに候補を作らせて裏で採点できます。
-
-同じものをエージェントの道具としても出せます。`shikii mcp` は stdio の MCP サーバーで、`shikii_specs` / `shikii_decide` / `shikii_label` / `shikii_status` / `shikii_tune` を出します。採用の道具はわざと出していません。エージェントは候補を作って測れますが、採用できるのは人だけです。Claude Code はリポジトリの `.mcp.json` から拾います。手順は [`integrations/mcp.md`](../../integrations/mcp.md)。
-
-### 普通のチャット用モデルを使う
-
-```sh
-make server-gguf GGUF=/path/to/model.gguf ALIAS=my-model   # 本家 llama.cpp の llama-server、:8086
-make readout                                               # その前に立つ変換役、:8090
-bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8090 -i message='…'
-```
-
-### 答えだけでなく、聞き方を良くする
-
-```sh
-# spec に候補を書く:
-# variants:
-#   - name: other-tight
-#     options:
-#       other: Not a request at all - greetings, thanks, small talk. Anything that asks for work is never other.
-bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080          # 候補を全部、溜まった正解で採点
-bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --write  # 勝った候補を v+1 として書き、その場で線を引く
-```
-
-正解率を動かすのは補正より文言です（手元の数字で 0.68 → 0.90。本文の置き場所だけで 27B のモデルが 5 ポイント）。人が付けた正解は文言に依らないので、聞き方の候補をいくつ作っても新しい正解なしで全部採点できます: 正解率、確率の質、`act` での精度と再現率、それに「候補を選ぶこと自体がまぐれでないか」を見る k 分割の holdout。採用するのは holdout が「今の文言のまま」を上回るときだけで、62 件中 1 件多く当てた程度では通りません（実際にそうなりました: 貯金全体で 0.984、holdout で 0.952、現状の 0.968 が残った）。同点なら今の文言を残します。勝った候補は新しい版のファイルになり（元は残る）、線は聞き直しでその場で引かれます。
-
-候補を自分で書く必要はありません:
-
-```sh
-bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --propose 3 --proposer http://127.0.0.1:8087
-```
-
-`--propose` は、チャット用モデルに今の聞き方・混同表・外した実例・[wiki](../../wiki/index.md) の該当ページ（この型の聞き方、このモデルの系統の癖、確認済みのパターン、この判定の決まり）を渡して候補を作らせます。候補は spec の `variants:` に残るので人が読め、他の候補と同じに採点され、結果は数字・採否・一行の学びと一緒に `wiki/runs/` に書き戻されます。wiki は「どう聞くと通るか」の知識が溜まり、人が直し、次の提案が読む場所です。`pii: true` の spec の本文は、手元の提案役にしか渡しません。
-
-### 入れる・更新する
-
-```sh
-make install          # bin/shikii と bin/shikii-readout を ~/.local/bin に置く
-git pull && make install
-shikii doctor         # 何が動いていて何が足りないか、直すコマンドまで 1 画面で
-shikii new my-decision --type choice   # 質問にいくつか答えると spec ができる。試す打ち方も出る
-```
-
-## 何をしてくれるのか
-
-### 質問は 1 枚のファイル
-
-```yaml
-id: prompt-intent
-type: choice                       # 選択肢から選ぶ質問。ほかに はい/いいえ(noul)と段階(score)がある
-question: What is the user asking the assistant to do?
-options:
-  - id: change_request
-    description: Change something in the repository - edit, fix, add, remove, rename...
-  - id: question
-    description: Explain, investigate, compare or give an opinion, without changing anything.
-state:
-  template: "{{ message }}"        # AI に見せる本文。ここに依頼文が入る
-  required: [message]              # 本文が無ければ AI に聞かずに「判定なし」
-policy:
-  send_to: [hosted, local]         # 外の AI に送ってよいか、手元だけか
-  pii: true                        # 本文に個人情報が入り得る → 外の AI(hosted)には送らない
-thresholds:
-  act: 0.75                        # ここから上は自動で動く。ただし答え合わせが済んでから
-  ask: 0.60                        # ここから上は人に聞く。それ未満は捨てる
-```
-
-### 一周の流れ
-
-<p align="center"><img src="../assets/shikii-lifecycle.svg" alt="define, decide, record, label, calibrate, check, drift" width="100%"></p>
-
-### 「線」はどう決まり、いつ消えるか
-
-線を引くときの材料は、**質問文・選択肢・本文の型のハッシュ**と、**AI が名乗った名前**の組み合わせです。
-質問を一語でも変えると、あるいは AI の版が上がると、この組み合わせが変わるので、前に引いた線は使われなくなります。
-答えは `ask`（人に聞く）に戻るだけで、古い線で勝手に動くことはありません。
-線を戻すのは機械の仕事です。正解は入力ごとに、文言にも AI にも依らない形で本文と一緒に残っているので、`calibrate` が新しい組み合わせで全部聞き直します。
-
-`shikii-readout` を使うときは、AI に見せる文の並べ方まで名前に含めます（`…+state-last` のように）。
-同じモデルでも、本文を選択肢の前に置くか後ろに置くかで正解率が 5 ポイント動いたからです。
-
-### 補正は要るのか、要らないのか
-
-`calibrate` は 3 つのやり方を比べて、一番よかったものを書き込みます。比べ方は、正解を 5 つに分けて「4 つで学び、残り 1 つで試す」を 5 回繰り返す、ごく普通の交差検証です。
-
-| やり方 | 中身 | いつ選ばれるか |
+| いつ | すること | どれくらい |
 |---|---|---|
-| `identity` | 補正しない。「この AI の数字はそのまま信用できる」と記すだけ | 生の確率で、線の上の正答率が十分なとき。学習済みの決定モデルはだいたいこれ |
-| `platt` | はい/いいえ の確率を、傾きとずれの 2 つの数で補正 | 普通のチャット用モデルを読んだときなど、確率が強すぎる・弱すぎるとき |
-| `vector` | 選択肢ごとに「この選択肢に逃げやすい」などの癖を補正 | 選択肢の質問で、特定の選択肢に偏るとき |
+| 最初 | 決めたいことを質問に書く（`shikii new` が質問に答えるだけで作る） | 1 回、数分 |
+| 日々 | 「本当はどうだったか」を答える。画面のボタン 1 つ。結果から自動で拾える場合は 0 | 1 件につき 1 回 |
+| たまに | 機械が提案した言い換えが「まだ同じことを聞いているか」を見る。ボタン 1 つ | 提案が出た時だけ |
 
-正解は「それではなかった」という部分的な形（`!option`）でも付けられます。間違いの数には入りますが、補正の学習には使いません。
+それ以外はありません。線を引く、引き直す、候補を作る、測る、劣化を見張る、記録を掃除する、は全部コマンドかサーバーが勝手にやります。
 
-### 壊してから直す、を全部に
+## 10 分で一周
 
-「自動で動いてよい」に関わる分岐（外に送らない判断、答え合わせ前は動かない、文言が変わったら線を消す、正解の形の検査、確率の逆転の検出、掃除の表示だけモード、…）には、
-**わざと壊してテストが落ちるのを見てから直した**記録があります。Go のテストは 8 パッケージ 105 本。2 分のデモも CI で毎回回ります。
+Go 1.24 以上があれば、AI も API の鍵も無しで一周できます。
+
+```sh
+git clone https://github.com/hayaenfj/shikii && cd shikii && make build
+scripts/demo.sh                 # 偽の AI で: 聞く → 正解を付ける → 線を引く → 検査 → 文言を変えて線が消える → 聞き直して戻る → 掃除
+```
+
+本物に向けるなら、この順です。
+
+```sh
+bin/shikii up                                   # 手元に Kev-4B を起こす(llama-server を探し、初回は約 2.5GB を取得、応答まで待つ)
+bin/shikii new my-decision --type choice        # 質問にいくつか答えると decisions/my-decision.yaml ができる
+bin/shikii serve --specs decisions --local http://127.0.0.1:8080 --proposer http://127.0.0.1:8087   # http://127.0.0.1:8095/
+```
+
+あとはプログラムが `POST /v1/decide` を叩き（どの言語からでも）、人は画面で答え合わせをするだけ。
+
+- 答えは `act`（自動で動く）/ `ask`（人に聞く）/ `discard`（捨てる）/ `abstain`（判定していない）の 4 つ。生の確率はプログラムに渡さない
+- 答え合わせが `eval.min_n` 件に届くと、サーバーが自分で線を引いて spec に書く。以後 `act` が出る
+- 画面の「聞き方」の欄で「AI に候補を作らせて測る」を押すと、裏で候補が作られ、溜まった正解で全部採点される。勝った候補が出たら「意味は同じ → 採用」を押す。これで新しい版と線が同時にできる
+
+エージェント（Claude Code など）からは MCP で同じことができます（`.mcp.json` が同梱）。
+
+```sh
+bin/shikii doctor         # 何が動いていて何が足りないか、直すコマンドまで 1 画面で
+```
+
+## 機械が育てるもの
+
+### 聞き方
+
+正解率を動かすのは補正より文言です。手元の数字で、選択肢の説明を書き直しただけで 0.68 → 0.90、本文を答えの直前に置き換えただけで 27B のモデルが 0.919 → 0.968。
+
+人が付けた正解は文言に依らないので、聞き方の候補をいくつ作っても**新しい正解なしで全部採点できます**。`shikii tune` は候補ごとに正解率・確率の質・`act` での精度と再現率を出し、さらに「候補を選ぶこと自体がまぐれでないか」を k 分割の holdout で測ります。採用するのは holdout が「今の文言のまま」を上回る時だけ。62 件中 1 件多く当てた程度では通りません（実際にそうなりました）。
+
+候補は人が書いてもよく、チャット用の AI に作らせることもできます（`--propose`）。AI には今の聞き方・どこで間違えているか・外した実例・そして [wiki](../../wiki/index.md) の該当ページ（この型の聞き方、このモデルの系統の癖、確認済みのパターン、この判定の決まり）を渡します。結果は wiki の `runs/` に数字と採否と一行の学びとして書き戻され、次の提案がそれを読みます。
+
+ただし**意味は機械には確かめられません**。言い換えが「まだ同じことを聞いているか」は人が画面で確認し、「違う」と言えばそれも記録されます。数字は機械、意味は人。
+
+### 信頼
+
+- 線（較正）の鍵は「質問文・選択肢・本文の型のハッシュ」と「AI が名乗った名前」。どちらかが変われば線は消え、答えは `ask` に落ちる。古い根拠で勝手に動くことはない
+- 消えた線を戻すのは機械の仕事。正解は本文と一緒に残っているので、`calibrate` が新しい組み合わせで全部聞き直す。人は要らない
+- 補正の方法（そのまま / Platt / vector）は交差検証で比べて選ぶ。「較正済み」と謳うモデルでも数字で決める
+- `check` は CI で、文言が変わった線・手書きの線・精度が足りない線を落とす。`drift` は最近の正解で劣化を見る
+- 安全に関わる分岐は全部、**わざと壊してテストが落ちるのを見てから直した**記録があります。Go のテストは 8 パッケージ 105 本
+
+### 段階（これから）
+
+モデルを増やすのではなく、聞き方に段を作ります。まず最小の質問、迷えば文脈を足すか質問を分解し、最後に人。上の段の答えは下の段の正解になるので、一番安い聞き方が通用する範囲が広がっていく。進み具合は「1000 判定あたりの人の判断の数」で見ます。
 
 ## どの AI が使えるか
 
-shikii は「決定モデル」向けの共通の呼び方（`POST /v1/systemone`）で話します。それを喋るものなら何でもつながり、喋らないものは変換役を間に置きます。
+決定モデル向けの共通の呼び方（`POST /v1/systemone`）を話すものなら何でも。話さない普通のチャット用モデルは、付属の変換役 `shikii-readout` を前に置きます（本家 llama.cpp だけで動く。改造も学習も要らない）。
 
-| つなげる先 | 何が返るか | 要るもの・手順 |
-|---|---|---|
-| **TypeSafe Jev**（ホスト版） | 選択肢・段階・はい/いいえ の確率と、`jev-1.13.0` のような名前 | 環境変数 `TYPESAFE_API_KEY`。`--hosted` の既定 |
-| **llama.cpp の決定モデル**（Kev-4B、OpenJev、Clef、…） | 同じものを手元で。名前は `/v1/models` から | `llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M`（`make server`）。llama.cpp 0.6.0 以上 |
-| **OpenRouter Decisions API** | 同じものを OpenRouter 経由で | `DECISIONS_API_KEY`、`--hosted https://openrouter.ai/api/alpha/decisions` |
-| **普通のチャット用モデル**（GGUF）を `shikii-readout` で | 選択肢の文字の出やすさを確率にしたもの。補正は持たない | 後ろに本家 `llama-server` 0.7.0。[`integrations/readout.md`](../../integrations/readout.md) |
-| **PrismML Bonsai** を [BonJev](https://github.com/ChezRD/bonjev) で | 同じ。BonJev 独自の聞き方と補正付き | Rust のビルドと Prism 版の llama.cpp。[`integrations/bonjev.md`](../../integrations/bonjev.md) |
-| **偽の AI**（`bin/fake-systemone`） | 決まった確率。デモとテスト用 | 何も要らない。`make fake` |
-| **Claude Code の hook**（claude-jev） | 依頼ごとに種類を判定し、作業の終わりに結果から正解を付ける | [`integrations/claude-code.md`](../../integrations/claude-code.md) |
+| つなげる先 | 要るもの |
+|---|---|
+| **手元の決定モデル**（Kev-4B、OpenJev、Clef、…）を llama.cpp で | `shikii up`（または `llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M`）。llama.cpp 0.6.0 以上 |
+| **普通のチャット用モデル**（GGUF）を `shikii-readout` で | `shikii up --gguf <file>` が自動で変換役を前に立てる。本家 llama.cpp 0.7.0 |
+| **TypeSafe Jev**（ホスト版） | 環境変数 `TYPESAFE_API_KEY` |
+| **OpenRouter Decisions API** | `DECISIONS_API_KEY`、`--hosted https://openrouter.ai/api/alpha/decisions` |
+| **PrismML Bonsai** を [BonJev](https://github.com/ChezRD/bonjev) で | Rust のビルドと Prism 版の llama.cpp。[`integrations/bonjev.md`](../../integrations/bonjev.md) |
+| **偽の AI**（`bin/fake-systemone`） | 何も要らない。デモとテスト用 |
+| **Claude Code の hook**（claude-jev） | [`integrations/claude-code.md`](../../integrations/claude-code.md) |
 
-本番のデータに触った作業中なら `--tainted` を付けます（hook が付けてもよい）。すると外の AI には送らず、手元の AI が無ければ「判定なし」になります。
+本文を外に出してよいかは、あなたが決めます。spec の `pii: true` は「本文に個人情報が入り得る → `send_to` に何が書いてあっても外の AI には送らない」。`pii: false` は `send_to` のとおり。既定は無く、必ずどちらかを書きます。本番のデータに触った作業中は `--tainted` で、その本文は後の聞き直しでも外に出ません。
 
 ## 実際に測った結果
 
-同じ質問、同じ正解で、4 つの AI を比べました。題材は全部作り物で、依頼文の種類あて（英語 39 件・日本語 23 件）、不具合報告の重複判定（日本語 32 組）、問い合わせの同一判定（日本語 32 組）です。全表は [`docs/model-comparison.md`](../model-comparison.md)。
+同じ質問、同じ正解で 4 つの AI を比べました。題材は全部作り物: 依頼文の種類あて（英語 39 件・日本語 23 件）、不具合報告の重複判定（日本語 32 組）、問い合わせの同一判定（日本語 32 組）。全表は [`docs/model-comparison.md`](../model-comparison.md)。
 
-| AI | ライセンス | 正解率（全体 / 日本語） | はい/いいえ の確率の質、生 → 補正後（不具合報告 / 問い合わせ。小さいほど良い） | 1 問の秒数 |
+| AI | ライセンス | 正解率（全体 / 日本語） | はい/いいえ の確率の質、生 → 補正後（小さいほど良い） | 1 問の秒数 |
 |---|---|---|---|---|
-| Kev-4B（専用に学習された決定モデル） | Apache 2.0 | 0.919 / 0.913 | 0.038 → 0.035 platt / 0.030 → 0.020 platt | 0.25 |
-| OpenJev 27B（同） | CC BY-NC 4.0 | **0.984 / 1.000** | **0.007** 補正なし / 0.037 補正なし | 3.8 |
-| Bonsai 2 27B を BonJev で | Apache 2.0 | 0.968 / 1.000 | 0.049 → **0.019** platt / 0.084 → 0.028 platt | 2.5 |
-| **Ternary-Bonsai-27B を `shikii-readout` + 本家 llama.cpp で** | Apache 2.0 | 0.968 / 1.000 | 0.048 → 0.024 platt / 0.033 → 0.020 platt | **0.58** |
+| Kev-4B（専用に学習された決定モデル） | Apache 2.0 | 0.919 / 0.913 | 0.038 → 0.035 / 0.030 → 0.020 | 0.25 |
+| OpenJev 27B（同） | CC BY-NC 4.0 | **0.984 / 1.000** | **0.007** / 0.037（補正なし） | 3.8 |
+| Bonsai 2 27B を BonJev で | Apache 2.0 | 0.968 / 1.000 | 0.049 → **0.019** / 0.084 → 0.028 | 2.5 |
+| **Ternary-Bonsai-27B を `shikii-readout` + 本家 llama.cpp で** | Apache 2.0 | 0.968 / 1.000 | 0.048 → 0.024 / 0.033 → 0.020 | **0.58** |
 
-分かったことを 3 つだけ。
+分かったことを 3 つ。
 
-**文言のほうが補正より効く。** 依頼文の種類あてでは、間違い 21 件のうち 19 件が「その他」に落ちていました。選択肢の説明を書き直しただけで正解率が 0.68 から 0.90 に上がり、補正はまだ何もしていません。補正が効くのは「順番は合っているが自信が足りない」ときだけで、どちらなのかは `calibrate` が出す表で分かります。
+**文言のほうが補正より効く。** 間違い 21 件のうち 19 件が「その他」に落ちていた質問は、選択肢の説明を書き直しただけで 0.68 → 0.90。補正はその後の「順番は合っているが自信が足りない」にだけ効きます。
 
-**補正が要るかどうかは、触れ込みではなく数字で決まりました。** はい/いいえ の 2 セットで、OpenJev は生の確率で足りて 2 回とも「補正なし」、Kev-4B は補正でわずかに良くなり、普通のチャット用モデルは 2〜4 倍良くなりました。10 通り（5 つの口 × 2 セット。Bonsai 2 は BonJev と readout を別に数えて）全部で正と負はきれいに分かれていて、違いは確率の正直さだけです。`calibrate` が（質問, AI）ごとに交差検証で比べて、勝った方を書き込みます。
+**補正が要るかどうかは、触れ込みではなく数字で決まる。** OpenJev は生の確率で足りて 2 回とも「補正なし」、Kev-4B はわずかに補正が勝ち、普通のチャット用モデルは 2〜4 倍良くなった。10 通り全部で正と負はきれいに分かれていて、違いは確率の正直さだけ。
 
-**普通のモデルが、専用モデルの隣に並んだ。** 27B のチャット用モデル、本家 llama.cpp、小さな変換役が 1 つ。改造版も再学習も要りません。Apache ライセンスの専用モデルの中で一番良いものと同じ正解率、日本語は全問正解、1 問 0.58 秒。本文を選択肢の前から答えの直前に動かしただけで 0.919 から 0.968 に上がったので、並べ方も「線」の材料に入れてあります。
+**普通のモデルが、専用モデルの隣に並んだ。** 27B のチャット用モデル、本家 llama.cpp、変換役が 1 つ。改造も再学習も Rust も要らず、Apache ライセンスの専用モデルで最良のものと同じ正解率、日本語は全問正解、1 問 0.58 秒。
+
+これは**仮説**で、まだ主張ではありません: 型の付いた判定なら、測った聞き方 + 較正は、同じ土台のモデルで、微調整（LoRA）よりずっと少ない例で使える精度に届き、検索で文脈を足す方法（RAG）より確率が正直かもしれない。確かめ方は公開します: 同じ課題、同じ正解、同じモデルで 3 つの方法を並べ、正解率と確率の質を比べる。
 
 ## よくある質問
 
-**shikii は AI を動かすのですか。** 推論はしません（`shikii up` は llama-server を起こして待つだけの便利機能です）。自分で立てるか借りた AI に質問を送り、答えの後に起きることを全部引き受けます。`shikii-readout` だけは少し違って、チャット用モデルの出力を決定モデルと同じ形に変換しますが、計算しているのはやはり llama.cpp です。
+**結局、人は何をするのですか。** 最初に決めたいことを書く。日々は画面のボタンで「本当はこうだった」を答える（結果から拾える判定なら 0 回）。機械が言い換えを提案したら「意味は同じ」か「違う」を押す。それだけです。
 
-**なぜいつまでも「自動で動く」にならないのですか。** その質問とその AI の組み合わせで、まだ線が引かれていないからです。正解を付けて（`label`、またはファイルで `--labeled`）、`calibrate --write` を回すと、`status` に `calibrated: …` と出ます。線の上の正答率が確かめられていない判定は、自動で動けません。それがこの道具の要点です。
+**なぜ `act` にならないのですか。** その質問とその AI の組み合わせで、まだ線が引かれていないからです。正解が `eval.min_n` 件に届けばサーバーが自分で引きます。`shikii status` か画面に「集めている n/50」と出ます。
 
-**質問を一語変えたら線が消えました。** 正しい動きで、かかるのは数分の計算であって、人の手間ではありません。線は古い文言に対して引いたものなので信用しませんが、人が決めた正解（この依頼は変更依頼だった、この 2 件は同じ不具合だった）は文言にも AI にも依りません。もう一度 `calibrate --write` を回すと、残っている正解を新しい文言と今の AI に全部聞き直して、線を引き直して書き込みます。人は要りません。そのために、判定の本文は常に手元の記録に残しています。本文の無い古い正解があれば、`calibrate` が「何件が聞き直せなかったか」を言います。
+**質問を変えたら線が消えました。** 正しい動きで、かかるのは数分の計算です。もう一度 `calibrate --write` を回すか、画面で候補を採用すれば、残っている正解を新しい文言で聞き直して線が戻ります。
 
-**どの AI を使えばいいですか。** ライセンス・速さ・言語で決まることで、shikii は決めません。上の表と [`docs/model-comparison.md`](../model-comparison.md) が答えで、同じ質問と同じ正解なら、補正の要否まで含めて数字で選べます。新しい AI は `scripts/eval-model.sh <url> <name>` で同じ表が作れます。
+**AI に聞き方を変えさせて大丈夫ですか。** 採用は 3 重の門をくぐります。溜まった正解での数字、k 分割の holdout が「今のまま」を上回ること、そして人の「意味は同じ」。どれか一つでも欠けたら今の文言のままです。却下した理由も残り、次の提案が読みます。
 
-**日本語でも使えますか。** 使えます。差が出るのはむしろ日本語です。Kev-4B は日本語の依頼で 0.913、27B のモデルは全問正解。日本語の はい/いいえ 2 セット（不具合報告の重複、問い合わせの同一判定）は、試したどの AI でも正と負がきれいに分かれ、補正は確率を鋭くしただけでした。
+**データはどこに送られますか。** AI に見せる本文だけが `send_to` に書いた先へ行きます。何が個人情報かを shikii は推測せず、`pii: true/false` をあなたが書きます（`true` なら外には送らない）。判定の本文は常に手元の記録に残るので、人が答えられ、聞き直しもできます。鍵は環境変数からだけ読み、キーチェーンには触りません。
 
-**データはどこに送られますか。** AI に見せる本文だけが、設定の `send_to` に書いた先へ行きます。どこへ送ってよいかを決めるのはあなたで、shikii は何が個人情報かを推測しません。spec には `pii: true`（本文に個人情報が入り得る → `send_to` に何が書いてあっても外の AI には送らない）か `pii: false` を必ず書きます。既定はありません。判定の本文は常に手元の記録に残るので、人が画面で答えられ、文言や AI を変えた後の聞き直しもできます。`--tainted` ならどの設定でも何も外に出ません。鍵は環境変数 `DECISIONS_API_KEY` か `TYPESAFE_API_KEY` からだけ読みます。
+**どのモデルを使えばいいですか。** ライセンス・速さ・言語で決まることで、shikii は決めません。上の表と `scripts/eval-model.sh <url> <name>` で、新しい AI でも同じ表が作れます。
 
-**記録が増え続けます。** `shikii gc` が、30 日より古くて正解の付かなかった記録を消します。正解付きの記録と正解そのものは、線を引く材料なのでずっと残ります。`--apply` を付けるまでは数えるだけです。
-
-**選択肢の順番で答えが変わりませんか。** 直す前に測ります。`shikii bias <spec> --permutations 100` が選択肢を並べ替えて、答えが入れ替わった回数と確率のずれを出します。Kev-4B は 100 回で入れ替わり 0、ずれ 0.024 以下でした。チャット用モデルは違うかもしれないので、このコマンドがあります。
+**記録が増え続けます。** `shikii gc` が、30 日より古くて正解の付かなかった記録を消します。正解付きの記録と正解は線の材料なので残ります。`--apply` を付けるまでは数えるだけ。
 
 ## もっと読む
 
-- [`docs/guide.ja.md`](../guide.ja.md): 全コマンドと、実機で一周した例を載せた日本語の長い手引き。
-- [`docs/why-shikii.ja.md`](../why-shikii.ja.md): なぜ作ったか、何を決めたか。初めて読む人向けの読み物版。
-- [`docs/decision-ops-framework.md`](../decision-ops-framework.md): 設計の記録。数字と出典まで入った、作った本人向けの書き方。
-- [`docs/operations.md`](../operations.md): 動いているものの止め方・戻し方、おかしいときの見分け方、まだ無いもの。
-- [`docs/model-comparison.md`](../model-comparison.md): 比較表と、同じ表を作る手順。
-- [`integrations/readout.md`](../../integrations/readout.md)、[`integrations/bonjev.md`](../../integrations/bonjev.md)、[`integrations/claude-code.md`](../../integrations/claude-code.md)、[`integrations/mcp.md`](../../integrations/mcp.md): 実際に動かしているつなぎ方。
-- [`examples/`](../../examples/) と [`testdata/`](../../testdata/README.md): 線を引く前の設定ファイルの例と、テストに使う作り物の正解データ。
+- [`docs/why-shikii.ja.md`](../why-shikii.ja.md): なぜ作ったか、何を決めたか。初めて読む人向け
+- [`wiki/`](../../wiki/index.md): 聞き方の知識。型ごと・モデルの系統ごとの癖、証拠付きのパターン、判定ごとの決まりと run
+- [`docs/guide.ja.md`](../guide.ja.md): 全コマンドと、実機で一周した例を載せた長い手引き
+- [`docs/operations.md`](../operations.md): 動いているものの止め方・戻し方、おかしいときの見分け方、まだ無いもの
+- [`docs/model-comparison.md`](../model-comparison.md): 比較表と再現の手順
+- [`docs/decision-ops-framework.md`](../decision-ops-framework.md): 設計の記録（数字と出典まで）
+- [`integrations/`](../../integrations/mcp.md): MCP、readout、BonJev、Claude Code の hook のつなぎ方
+- [`examples/`](../../examples/README.md): ビジネス・法律・ドローンの spec の見本
 
 コマンド一覧:
 
 ```
-shikii decide    <spec> -i k=v ... [--hosted URL] [--local URL] [--tainted] [--store DIR] [--json]   # 聞く
-shikii label     <trace_id> <truth> | --last --spec-id ID <truth>   [--weight W] [--source ask|outcome|manual]   # 正解を付ける
-shikii calibrate <spec> [--labeled file] [--model M] [--store DIR] [--write] [--force]   # 線を引く
-shikii check     <spec>...  [--store DIR]                 # 線がまだ正しいか(CI 向け。だめなら exit 1)
-shikii drift     <spec> --model M [--window N]            # 最近の正解で、線を引いたときより悪くなっていないか
-shikii bias      <spec> [--rows K] [--permutations N]     # 選択肢の順番で答えが変わるか
-shikii status    [spec...] [--store DIR]                  # 記録・正解・線の溜まり具合
+shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--from spec.yaml]   # 質問に答えて spec を作る
+shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # 手元のモデルを起こす。普通の GGUF なら変換役を前に
+shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--proposer URL] [--wiki DIR]   # HTTP の口 + 答え合わせと聞き方の画面
+shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--proposer URL]   # 同じものを MCP の道具として(採用の道具は無い)
+shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # 何が動いていて何が足りないか
+shikii decide    <spec> -i k=v ... [--hosted URL] [--local URL] [--tainted] [--json]   # 聞く(プログラム向け)
+shikii label     <trace_id> <truth> | --last --spec-id ID <truth>   # 正解を付ける(端末から)
+shikii calibrate <spec> [--labeled file] [--model M] [--write]   # 線を引く。古い正解は新しい文言で聞き直す
+shikii tune      <spec> [--propose N --proposer URL] [--write] [--wiki DIR]   # 聞き方の候補を採点し、holdout が勝てば新しい版に
+shikii check     <spec>... [--store DIR]   # CI: 文言が変わった線、手書きの線、精度不足の線を落とす
+shikii drift     <spec> --model M [--window N]   # 最近の正解で劣化を見る
+shikii bias      <spec> [--rows K] [--permutations N]   # 選択肢の順番で答えが変わるか
+shikii status    [spec...] [--store DIR]   # 記録・正解・線の溜まり具合
 shikii gc        [spec...] [--older-than 30d] [--apply]   # 古くて正解の無い記録を消す(既定は数えるだけ)
 shikii hash      <spec>
-shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # HTTP の口 + 答え合わせの画面。自動で線を引く
-shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # 同じものを stdio の MCP の道具として
-shikii new       <id> [--type ...] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--from spec.yaml]   # 質問に答えるだけで spec を作る
-shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # 手元のモデルを起こす。普通の GGUF なら shikii-readout を前に立てる
-shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # 何が動いていて何が足りないか、直し方
 ```
 
 ## 手伝ってくれる人へ
 
-issue と pull request を歓迎します。決まりは一つだけ。動きを守るテストは、まず落ちる所を見せてください。わざと壊して、テストを走らせ、どう落ちたかを書き、直して通ることを書く。docs には分岐ごとにその記録が並んでいます。この一覧を正直に保ってください。
+issue と pull request を歓迎します。決まりは 2 つ。動きを守るテストは、まず落ちる所を見せてください（わざと壊して、落ちたことを書き、直して通ることを書く）。wiki のパターンの状態（confirmed / tentative / rejected）を変えるのは人だけで、証拠の run を付けてください。
 
 ## ライセンス
 
-[Apache 2.0](../../LICENSE)。AI モデルのライセンスは別です。Kev-4B と Bonsai 系は Apache 2.0、OpenJev は CC BY-NC 4.0（商用不可）、ホスト版 Jev は TypeSafe 社のサービス。shikii が持つのはあなたの確率と正解だけで、モデルのものは何も持ちません。
+[Apache 2.0](../../LICENSE)。AI モデルのライセンスは別です。Kev-4B と Bonsai 系は Apache 2.0、OpenJev は CC BY-NC 4.0（商用不可）、ホスト版 Jev は TypeSafe 社のサービス。shikii が持つのはあなたの確率と正解と聞き方だけで、モデルのものは何も持ちません。
