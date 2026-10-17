@@ -144,6 +144,9 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 	}
 	d.Endpoint = ep.Kind
 
+	if len(sp.Steps) > 0 {
+		return decideBySteps(ctx, sp, d, state, ep)
+	}
 	resp, err := ep.Client.Ask(ctx, state, map[string]systemone.Question{questionKey: BuildQuestion(sp)})
 	if err != nil {
 		return nil, err
@@ -179,6 +182,69 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 			d.P = MassAtOrAbove(d.Calibrated, sp.Thresholds.Level)
 		}
 	}
+	d.Band = band(sp.Thresholds, d.P, d.IsCalibrated)
+	return d, nil
+}
+
+// StepQuestions は分解の全段を 1 回の呼び出しに載せる質問の集まり(鍵は step-0, step-1, …)。
+func StepQuestions(sp *spec.Spec) map[string]systemone.Question {
+	qs := make(map[string]systemone.Question, len(sp.Steps))
+	for i, st := range sp.Steps {
+		qs[stepKey(i)] = systemone.Question{Type: string(spec.Noul), Instructions: st.Ask}
+	}
+	return qs
+}
+
+func stepKey(i int) string { return fmt.Sprintf("step-%d", i) }
+
+// StepDistribution は各段の P(yes) から元の選択肢の分布を作る: 枝の確率の積。
+// 途中の段で確定する選択肢は「そこまでの残り × その枝」、残りは次の段へ。
+func StepDistribution(sp *spec.Spec, pYes []float64) map[string]float64 {
+	dist := make(map[string]float64, len(sp.Options))
+	for _, o := range sp.Options {
+		dist[o.ID] = 0
+	}
+	mass := 1.0
+	for i, st := range sp.Steps {
+		p := pYes[i]
+		switch {
+		case st.Yes != "" && st.No != "":
+			dist[st.Yes] += mass * p
+			dist[st.No] += mass * (1 - p)
+			mass = 0
+		case st.Yes != "":
+			dist[st.Yes] += mass * p
+			mass *= 1 - p
+		default:
+			dist[st.No] += mass * (1 - p)
+			mass *= p
+		}
+	}
+	return dist
+}
+
+// decideBySteps は分解した choice を 1 回の呼び出しで聞き、積の分布を多択の答えと同じ形にする(較正・帯・記録は共通)。
+func decideBySteps(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *Endpoint) (*Decision, error) {
+	resp, err := ep.Client.Ask(ctx, state, StepQuestions(sp))
+	if err != nil {
+		return nil, err
+	}
+	pYes := make([]float64, len(sp.Steps))
+	for i := range sp.Steps {
+		ans, ok := resp.Answers[stepKey(i)]
+		if !ok {
+			return nil, fmt.Errorf("response has no answer for %q", stepKey(i))
+		}
+		pYes[i] = ans.Noul
+	}
+	d.Model = resp.Model
+	if d.Model == "" {
+		d.Model = ep.Client.Model
+	}
+	d.Raw = StepDistribution(sp, pYes)
+	d.Calibrated, d.IsCalibrated = applyCalibration(sp, d.Model, d.Raw)
+	d.Top, d.P = argmax(d.Calibrated)
+	d.Confidence = abs(2*d.P - 1)
 	d.Band = band(sp.Thresholds, d.P, d.IsCalibrated)
 	return d, nil
 }

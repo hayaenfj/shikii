@@ -641,7 +641,7 @@ function wordingBlock(sp) {
     if (latest.adoptable && !latest.adopted && latest.winner_wording) {
       const w = latest.winner_wording, cur = latest.current_wording || {};
       body += '<div class="diff"><div><div class="k">' + esc(t('current')) + '</div><div class="text">' + esc(cur.question || '') + '</div>' + optionsHTML(cur.options) + '</div>';
-      body += '<div><div class="k">' + esc(latest.winner) + '</div><div class="text">' + esc(w.question || '') + '</div>' + optionsHTML(w.options, cur.options) + '</div></div>';
+      body += '<div><div class="k">' + esc(latest.winner) + '</div><div class="text">' + esc(w.question || '') + '</div>' + optionsHTML(w.options, cur.options) + stepsHTML(w.steps) + '</div></div>';
       body += '<div class="k">' + esc(t('checkHint')) + '</div>';
       body += '<div class="btns"><button class="top" data-act="adopt">' + esc(t('sameMeaning')) + '</button><button class="weak" data-act="reject">' + esc(t('changedMeaning')) + '</button></div>';
     }
@@ -668,6 +668,10 @@ function wordingBlock(sp) {
     } catch (e) { toast(t('error')(e.message)); }
   });
   return el;
+}
+function stepsHTML(steps) {
+  if (!steps || !steps.length) return '';
+  return '<div class="opts">' + steps.map((s, i) => '<div class="changed"><span class="k">' + (i + 1) + '.</span> ' + esc(s.ask) + (s.yes ? ' <span class="k">yes→</span>' + esc(s.yes) : '') + (s.no ? ' <span class="k">no→</span>' + esc(s.no) : '') + '</div>').join('') + '</div>';
 }
 function optionsHTML(opts, base) {
   if (!opts) return '';

@@ -93,6 +93,7 @@ type Spec struct {
 	Display map[string]Display `yaml:"display,omitempty"`
 	// Variants は聞き方の候補(`shikii tune` が正解の貯金で採点する)。鍵には入らない。採用されたものは新しい版として別ファイルになる。
 	Variants []Variant `yaml:"variants,omitempty"`
+	Steps    []Step    `yaml:"steps,omitempty"` // choice の分解: はい/いいえ の列。あれば多択を 1 つ聞く代わりに全段を 1 回で聞き、枝の積で分布を作る
 
 	path string
 }
@@ -104,6 +105,74 @@ type Variant struct {
 	Options  map[string]string `yaml:"options,omitempty"`  // choice: id → 説明の言い換え
 	Levels   []string          `yaml:"levels,omitempty"`   // score: 段階の言い換え(数は同じ)
 	Template string            `yaml:"template,omitempty"` // state の並べ方
+	Steps    []Step            `yaml:"steps,omitempty"`    // choice: 多択を はい/いいえ の列に分解する(空なら今のまま)
+}
+
+// Step は分解の 1 段: はい/いいえ の質問と、どちらの答えでどの選択肢に確定するか。
+// 途中の段は yes か no の片方だけで確定し(もう一方は次の段へ)、最後の段は両方で確定する。
+// 各選択肢はちょうど 1 つの葉に現れる。分解は聞き方なので鍵(hash)に入る。
+type Step struct {
+	Ask string `yaml:"ask"`
+	Yes string `yaml:"yes,omitempty"`
+	No  string `yaml:"no,omitempty"`
+}
+
+// validateSteps は分解の形を確かめる。
+func validateSteps(typ Type, options []Option, steps []Step) error {
+	if len(steps) == 0 {
+		return nil
+	}
+	if typ != Choice {
+		return fmt.Errorf("steps: only a choice question can be decomposed into yes/no steps")
+	}
+	known := map[string]bool{}
+	for _, o := range options {
+		known[o.ID] = true
+	}
+	seen := map[string]int{}
+	leaf := func(i int, id string) error {
+		if !known[id] {
+			return fmt.Errorf("steps[%d]: %q is not an option of this spec", i, id)
+		}
+		seen[id]++
+		return nil
+	}
+	for i, st := range steps {
+		if strings.TrimSpace(st.Ask) == "" {
+			return fmt.Errorf("steps[%d]: ask is required", i)
+		}
+		last := i == len(steps)-1
+		switch {
+		case st.Yes != "" && st.No != "":
+			if !last {
+				return fmt.Errorf("steps[%d]: only the last step may settle both yes and no; a middle step settles one and passes the other on", i)
+			}
+		case st.Yes == "" && st.No == "":
+			return fmt.Errorf("steps[%d]: a step must settle yes, no or (last step) both", i)
+		case last:
+			return fmt.Errorf("steps[%d]: the last step must settle both yes and no", i)
+		}
+		for _, id := range []string{st.Yes, st.No} {
+			if id != "" {
+				if err := leaf(i, id); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, o := range options {
+		if seen[o.ID] != 1 {
+			return fmt.Errorf("steps: option %q must appear exactly once as a leaf, appears %d times", o.ID, seen[o.ID])
+		}
+	}
+	return nil
+}
+
+func copySteps(in []Step) []Step {
+	if len(in) == 0 {
+		return nil
+	}
+	return append([]Step(nil), in...)
 }
 
 // WithVariant は候補を当てた写し(path は無し。鍵は変わる)。
@@ -129,6 +198,11 @@ func (s *Spec) WithVariant(v Variant) *Spec {
 	}
 	if len(v.Levels) > 0 {
 		c.Levels = append([]string(nil), v.Levels...)
+	}
+	if len(v.Steps) > 0 {
+		c.Steps = copySteps(v.Steps)
+	} else {
+		c.Steps = copySteps(s.Steps)
 	}
 	return &c
 }
@@ -184,6 +258,9 @@ func (s *Spec) Validate() error {
 	default:
 		return fmt.Errorf("unknown type %q", s.Type)
 	}
+	if err := validateSteps(s.Type, s.Options, s.Steps); err != nil {
+		return err
+	}
 	if strings.TrimSpace(s.State.Template) == "" {
 		return fmt.Errorf("state.template is required")
 	}
@@ -228,8 +305,11 @@ func (s *Spec) Validate() error {
 			return fmt.Errorf("variants[%d]: name must be unique, non-empty and not \"current\"", i)
 		}
 		names[v.Name] = true
-		if v.Question == "" && len(v.Options) == 0 && len(v.Levels) == 0 && v.Template == "" {
+		if v.Question == "" && len(v.Options) == 0 && len(v.Levels) == 0 && v.Template == "" && len(v.Steps) == 0 {
 			return fmt.Errorf("variants[%d] (%s): changes nothing", i, v.Name)
+		}
+		if err := validateSteps(s.Type, s.Options, v.Steps); err != nil {
+			return fmt.Errorf("variants[%d] (%s).%w", i, v.Name, err)
 		}
 		for id := range v.Options {
 			if s.Type != Choice || !s.hasTruthID(id) {
@@ -285,6 +365,9 @@ func (s *Spec) Hash() string {
 	}
 	for _, l := range s.Levels {
 		w(l)
+	}
+	for _, st := range s.Steps { // 分解は聞き方。無い spec の鍵は変わらない
+		w("step", st.Ask, st.Yes, st.No)
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

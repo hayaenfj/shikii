@@ -35,6 +35,7 @@ type proposal struct {
 	Options   map[string]string `json:"options,omitempty"`
 	Levels    []string          `json:"levels,omitempty"`
 	Template  string            `json:"template,omitempty"`
+	Steps     []spec.Step       `json:"steps,omitempty"` // choice を はい/いいえ の列に分解する提案
 	Rationale string            `json:"rationale,omitempty"`
 }
 
@@ -126,6 +127,12 @@ func buildProposerPrompt(sp *spec.Spec, cur candScore, bank []bankRow, wikiText 
 		"You will propose alternative wordings. Keep the meaning of the question and the identity of every option; change only how it is phrased, " +
 		"how options are described, or how the input text is laid out. Prefer changes that address the errors shown. " +
 		"Answer with a JSON array only, no prose around it."
+	if sp.Type == spec.Choice {
+		system += " You may also propose a decomposition instead of a rewording: \"steps\", a list of yes/no questions asked all at once, " +
+			"[{\"ask\": \"…?\", \"no\": \"<option settled when the answer is no>\"}, …, {\"ask\": \"…?\", \"yes\": \"<option>\", \"no\": \"<option>\"}]. " +
+			"A middle step settles exactly one option (yes or no) and passes the rest on; the last step settles both; every option appears exactly once. " +
+			"Branch probabilities are multiplied into the original options, so this suits models that answer yes/no better than a multi-way choice."
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Current spec (id %s, type %s)\nquestion: %s\n", sp.ID, sp.Type, strings.TrimSpace(sp.Question))
 	for _, o := range sp.Options {
@@ -291,7 +298,7 @@ func adoptProposals(sp *spec.Spec, props []proposal) (added, skipped int, notes 
 		for i := 2; names[name]; i++ {
 			name = fmt.Sprintf("%s-%d", base, i)
 		}
-		v := spec.Variant{Name: name, Question: strings.TrimSpace(p.Question), Options: p.Options, Levels: p.Levels, Template: p.Template}
+		v := spec.Variant{Name: name, Question: strings.TrimSpace(p.Question), Options: p.Options, Levels: p.Levels, Template: p.Template, Steps: p.Steps}
 		trial := *sp
 		trial.Variants = append(append([]spec.Variant(nil), sp.Variants...), v)
 		if err := trial.Validate(); err != nil {

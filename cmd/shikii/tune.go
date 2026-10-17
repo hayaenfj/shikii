@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -130,6 +131,7 @@ type wording struct {
 	Options  map[string]string `json:"options,omitempty"`
 	Levels   []string          `json:"levels,omitempty"`
 	Template string            `json:"template"`
+	Steps    []spec.Step       `json:"steps,omitempty"`
 }
 
 type meaningCheck struct {
@@ -140,7 +142,7 @@ type meaningCheck struct {
 }
 
 func wordingOf(sp *spec.Spec) *wording {
-	w := &wording{Question: sp.Question, Template: sp.State.Template, Levels: sp.Levels}
+	w := &wording{Question: sp.Question, Template: sp.State.Template, Levels: sp.Levels, Steps: sp.Steps}
 	if len(sp.Options) > 0 {
 		w.Options = map[string]string{}
 		for _, o := range sp.Options {
@@ -731,6 +733,13 @@ func describeVariant(base, c *spec.Spec) string {
 	for i := range c.Levels {
 		if i < len(base.Levels) && c.Levels[i] != base.Levels[i] {
 			parts = append(parts, fmt.Sprintf("level %d: %s", i, trim(c.Levels[i], 40)))
+		}
+	}
+	if !reflect.DeepEqual(c.Steps, base.Steps) {
+		if len(c.Steps) == 0 {
+			parts = append(parts, "asked as one choice again (no steps)")
+		} else {
+			parts = append(parts, fmt.Sprintf("decomposed into %d yes/no steps: %s", len(c.Steps), trim(c.Steps[0].Ask, 50)))
 		}
 	}
 	return strings.Join(parts, "; ")
