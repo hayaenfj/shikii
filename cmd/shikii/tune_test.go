@@ -65,7 +65,7 @@ func TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir})
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--wiki", filepath.Join(storeDir, "wiki")})
 	})
 	for _, must := range []string{"current", "strict", "worse", "top-1", "holdout", "winner: strict"} {
 		if !strings.Contains(out, must) {
@@ -76,7 +76,7 @@ func TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner(t *testing.T) {
 		t.Fatal("without --write nothing may be written")
 	}
 	capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write", "--wiki", filepath.Join(storeDir, "wiki")})
 	})
 	v2Path := filepath.Join(dir, "intent-v2.yaml")
 	v2, err := spec.Load(v2Path)
@@ -113,7 +113,7 @@ func TestTuneKeepsCurrentWhenNothingBeatsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write", "--wiki", filepath.Join(storeDir, "wiki")})
 	})
 	if !strings.Contains(out, "winner: current") {
 		t.Fatalf("ties must keep the current wording:\n%s", out)
@@ -135,7 +135,7 @@ func TestTuneRefusesWithoutEnoughTruths(t *testing.T) {
 	var buf bytes.Buffer
 	old := stdout
 	stdout = &buf
-	err := cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii")})
+	err := cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii"), "--wiki", filepath.Join(dir, "wiki")})
 	stdout = old
 	if err == nil || !strings.Contains(err.Error(), "min_n") {
 		t.Fatalf("tune must refuse below min_n, got %v", err)
@@ -179,7 +179,7 @@ func TestTuneDoesNotAdoptAWinByNoise(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write", "--wiki", filepath.Join(storeDir, "wiki")})
 	})
 	if !strings.Contains(out, "winner: current") || !strings.Contains(out, "holdout") {
 		t.Fatalf("a win that the holdout does not support must not be adopted:\n%s", out)
