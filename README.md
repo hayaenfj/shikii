@@ -93,7 +93,9 @@ curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message"
 
 Programs call `POST /v1/decide` and `POST /v1/label` from any language. People open the page: the decisions still waiting for an answer are listed (newest 30 per spec), `ask` first, with one button per option. Press the button, the truth is stored, and when a spec reaches `eval.min_n` the server calibrates and writes the spec by itself. Nobody types a trace id. The page is a single HTML file with no external loads, so it works on a laptop with no internet. It has a language switch; add a `display:` block to a spec (per language: title, question, option or level names) and the page shows the decision in that language too. `display` is never sent to the model and is not part of the calibration key.
 
-The same thing as MCP tools for an agent: `shikii mcp` speaks the Model Context Protocol over stdio and exposes `shikii_specs`, `shikii_decide`, `shikii_label` and `shikii_status`. Claude Code picks it up from the repo's `.mcp.json`. See [`integrations/mcp.md`](integrations/mcp.md).
+The page also has a *wording* section per spec: the latest `tune` result, the winner's wording next to the current one, and two buttons, **same meaning → adopt** and **meaning changed → reject**. Numbers are the machine's job; whether a rewording still asks what you meant is a person's. Start `serve` with `--proposer http://127.0.0.1:8087` and the page can also ask a chat model for new candidates and score them in the background.
+
+The same thing as MCP tools for an agent: `shikii mcp` speaks the Model Context Protocol over stdio and exposes `shikii_specs`, `shikii_decide`, `shikii_label`, `shikii_status` and `shikii_tune`. There is deliberately no adopt tool: an agent can propose and measure wordings, only a person can adopt one. Claude Code picks it up from the repo's `.mcp.json`. See [`integrations/mcp.md`](integrations/mcp.md).
 
 ### Use any GGUF as a decision model
 
@@ -164,7 +166,7 @@ thresholds:
 
 `calibrate` compares three methods under 5-fold cross-validation and writes the winner. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Every safety-relevant branch (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, …) has a recorded mutation that made a test fail before the fix was accepted. There are 102 Go tests across 8 packages; the demo runs in CI.
+Every safety-relevant branch (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, …) has a recorded mutation that made a test fail before the fix was accepted. There are 105 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 

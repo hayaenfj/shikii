@@ -31,6 +31,9 @@ func cmdMCP(args []string) error {
 	fs.StringVar(&o.specsDir, "specs", "decisions", "spec(*.yaml)のフォルダ")
 	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
+	fs.StringVar(&o.wikiDir, "wiki", "wiki", "聞き方の wiki(tune の結果の置き場)")
+	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL")
+	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -89,6 +92,18 @@ var mcpTools = []map[string]any{
 				"source":   map[string]any{"type": "string", "description": "where the truth came from, e.g. outcome, ask, manual"},
 			},
 			"required": []string{"trace_id", "truth"},
+		},
+	},
+	{
+		"name":        "shikii_tune",
+		"description": "Score the candidate wordings of a spec (its variants:, plus N proposed by the configured chat model when propose > 0) on the stored truths. Returns per-candidate top-1, Brier, precision/recall at act, the holdout, and whether a winner may be adopted. Adoption itself is not a tool: a person must confirm on the page that the new wording still asks the same thing.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"spec":    map[string]any{"type": "string"},
+				"propose": map[string]any{"type": "integer", "description": "how many candidates the proposer should add (0 = only the spec's own variants)"},
+			},
+			"required": []string{"spec"},
 		},
 	},
 	{
@@ -191,6 +206,8 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 		method, path = http.MethodPost, "/v1/label"
 	case "shikii_status":
 		method, path = http.MethodGet, "/v1/status"
+	case "shikii_tune":
+		method, path = http.MethodPost, "/v1/tune/sync"
 	default:
 		return 0, nil, fmt.Errorf("unknown tool %q", name)
 	}

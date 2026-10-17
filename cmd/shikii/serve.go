@@ -39,6 +39,9 @@ type serveOpts struct {
 	storeDir      string
 	ef            endpointFlags
 	autoCalibrate bool
+	wikiDir       string // 聞き方の wiki。tune の結果を置き、画面と MCP が読む
+	proposer      string // 候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけ
+	proposerModel string
 }
 
 func cmdServe(args []string) error {
@@ -49,6 +52,9 @@ func cmdServe(args []string) error {
 	fs.StringVar(&o.specsDir, "specs", "decisions", "spec(*.yaml)のフォルダ")
 	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
+	fs.StringVar(&o.wikiDir, "wiki", "wiki", "聞き方の wiki(tune の結果の置き場。画面の「聞き方」の欄が読む)")
+	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけを測る")
+	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -63,13 +69,15 @@ func cmdServe(args []string) error {
 type server struct {
 	o       serveOpts
 	st      store.Store
-	calibMu sync.Mutex        // calibrate は stdout を差し替えて報告を捕まえるので 1 つずつ
+	calibMu sync.Mutex        // calibrate / tune は stdout を差し替えて報告を捕まえるので 1 つずつ
 	lastCal map[string]string // spec id → 最後の自動較正の報告
 	mu      sync.Mutex
+	tuning  map[string]bool   // spec id → 裏で tune が走っている
+	tuneErr map[string]string // spec id → 最後の tune の失敗
 }
 
 func newServer(o serveOpts) http.Handler {
-	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]string{}}
+	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]string{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleUI)
 	mux.HandleFunc("/v1/specs", s.handleSpecs)
@@ -77,6 +85,10 @@ func newServer(o serveOpts) http.Handler {
 	mux.HandleFunc("/v1/label", s.handleLabel)
 	mux.HandleFunc("/v1/queue", s.handleQueue)
 	mux.HandleFunc("/v1/status", s.handleStatus)
+	mux.HandleFunc("/v1/tune", s.handleTuneGet)
+	mux.HandleFunc("/v1/tune/run", s.handleTuneRun)
+	mux.HandleFunc("/v1/tune/sync", s.handleTuneSync)
+	mux.HandleFunc("/v1/tune/adopt", s.handleTuneAdopt)
 	return mux
 }
 
@@ -515,6 +527,13 @@ const uiHTML = `<!doctype html>
   .empty { color: var(--muted); padding: 10px 0; }
   pre { font-size: 12px; color: var(--muted); white-space: pre-wrap; margin: 6px 0 0; }
   #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; display: none; max-width: 90vw; white-space: pre-wrap; }
+  details.wording { border: 1px dashed var(--line); border-radius: 10px; padding: 8px 14px; margin: 12px 0; }
+  details.wording summary { cursor: pointer; }
+  .wbody { margin-top: 8px; } .wbody .k { color: var(--muted); font-size: 12px; margin: 4px 0; }
+  table.cands { border-collapse: collapse; font-size: 13px; margin: 6px 0; } table.cands th, table.cands td { text-align: left; padding: 2px 10px 2px 0; border-bottom: 1px solid var(--line); }
+  table.cands tr.win td { color: var(--amber); }
+  .diff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; } @media (max-width: 700px) { .diff { grid-template-columns: 1fr; } }
+  .opts div { font-size: 13px; margin: 2px 0; } .opts div.changed { background: var(--amberbg); border-radius: 4px; padding: 1px 4px; }
 </style>
 <header>
   <h1>shikii <small id="tagline"></small></h1>
@@ -528,11 +547,19 @@ const T = {
   en: { tagline: 'answer what was true; the line draws itself', loading: 'loading…', noSpecs: 'no specs', empty: 'nothing waiting for an answer',
         records: n => n + ' records', answered: n => n + ' answered', calibrated: m => 'calibrated (' + m + ')', stale: 'stale wording', collecting: (n, m) => 'collecting ' + n + '/' + m, ready: (n, m) => 'ready ' + n + '/' + m,
         noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
-        done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration' },
+        done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration',
+        wording: 'Wording', current: 'current', noRun: 'no tune run yet', running: 'measuring candidates…', runTune: 'measure the candidates', runPropose: n => 'ask the model for ' + n + ' candidates and measure',
+        holdoutLine: (h, c) => 'holdout ' + h + ' vs keeping current ' + c, winnerLine: w => 'candidate ' + w + ' may be adopted', keptLine: 'current wording kept',
+        adoptedLine: p => 'adopted as ' + p, sameMeaning: 'same meaning → adopt', changedMeaning: 'meaning changed → reject', notePrompt: 'What changed in the meaning? (optional)',
+        checkHint: 'Does the new wording still ask what you mean? Numbers are checked by the machine; the meaning is yours to check.', rejected: 'recorded: meaning changed, not adopted', adoptedToast: p => 'adopted: ' + p },
   ja: { tagline: '本当はどうだったかを答える。線は自分で引かれる', loading: '読み込み中…', noSpecs: 'spec がありません', empty: '答え合わせ待ちはありません',
         records: n => '記録 ' + n, answered: n => '答え済み ' + n, calibrated: m => '線あり (' + m + ')', stale: '文言が古い', collecting: (n, m) => '集めている ' + n + '/' + m, ready: (n, m) => '線を引ける ' + n + '/' + m,
         noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
-        done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正' },
+        done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正',
+        wording: '聞き方', current: '今の文言', noRun: 'まだ測っていません', running: '候補を測っています…', runTune: '候補を測る', runPropose: n => 'AI に候補を ' + n + ' 個作らせて測る',
+        holdoutLine: (h, c) => 'holdout ' + h + '(今のまま: ' + c + ')', winnerLine: w => '候補 ' + w + ' を採用できます', keptLine: '今の文言のまま',
+        adoptedLine: p => '採用済み: ' + p, sameMeaning: '意味は同じ → 採用', changedMeaning: '意味が違う → 却下', notePrompt: '意味のどこが変わりましたか？(任意)',
+        checkHint: '言い換えても、まだあなたの聞きたいことを聞いていますか？数字は機械が確かめました。意味はあなたが確かめてください。', rejected: '記録しました: 意味が違うので採用しない', adoptedToast: p => '採用しました: ' + p },
 };
 const $ = (s, el=document) => el.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -548,7 +575,10 @@ async function j(url, opts) { const r = await fetch(url, opts); const b = await 
 let state = null;
 async function load() {
   const st = await j('/v1/status');
-  for (const sp of st.specs) sp.queue = await j('/v1/queue?spec=' + encodeURIComponent(sp.id) + '&limit=30');
+  for (const sp of st.specs) {
+    sp.queue = await j('/v1/queue?spec=' + encodeURIComponent(sp.id) + '&limit=30');
+    try { sp.tune = await j('/v1/tune?spec=' + encodeURIComponent(sp.id)); } catch (e) { sp.tune = null; }
+  }
   state = st; render();
 }
 function render() {
@@ -583,8 +613,63 @@ function render() {
       sec.appendChild(el);
     }
     if (sp.last_calibration) sec.innerHTML += '<pre>' + esc(t('last')) + '\n' + esc(sp.last_calibration) + '</pre>';
+    sec.appendChild(wordingBlock(sp));
     root.appendChild(sec);
   }
+}
+// 聞き方の欄: 最新の tune の結果、勝った候補の文言、人の「意味は同じ / 違う」、候補を測るボタン
+function wordingBlock(sp) {
+  const el = document.createElement('details'); el.className = 'wording';
+  const tu = sp.tune; const latest = tu && tu.latest;
+  let head = '<summary><b>' + esc(t('wording')) + '</b>';
+  if (tu && tu.running) head += ' <span class="pill ready">' + esc(t('running')) + '</span>';
+  else if (latest && latest.adopted) head += ' <span class="pill calibrated">' + esc(t('adoptedLine')(latest.adopted_path.split('/').pop())) + '</span>';
+  else if (latest && latest.adoptable) head += ' <span class="pill ready">' + esc(t('winnerLine')(latest.winner)) + '</span>';
+  else if (latest) head += ' <span class="pill">' + esc(t('keptLine')) + '</span>';
+  else head += ' <span class="pill">' + esc(t('noRun')) + '</span>';
+  head += '</summary>';
+  let body = '';
+  if (latest) {
+    body += '<div class="meta"><span>' + esc(latest.model) + '</span><span>' + esc(latest.truths) + ' truths</span><span>' + esc(latest.at.slice(0, 16).replace('T', ' ')) + '</span></div>';
+    body += '<table class="cands"><tr><th>candidate</th><th>top-1</th><th>brier</th><th>prec@act</th><th>rec@act</th><th></th></tr>';
+    for (const c of latest.candidates) body += '<tr' + (c.name === latest.winner && latest.winner !== 'current' ? ' class="win"' : '') + '><td>' + esc(c.name) + '</td><td>' + c.top1.toFixed(3) + '</td><td>' + c.brier.toFixed(4) + '</td><td>' + c.prec_at_act.toFixed(3) + '</td><td>' + c.rec_at_act.toFixed(3) + '</td><td class="k">' + esc(c.change) + '</td></tr>';
+    body += '</table>';
+    if (latest.have_holdout) body += '<div class="k">' + esc(t('holdoutLine')(latest.holdout.toFixed(3), latest.candidates[0].top1.toFixed(3))) + '</div>';
+    body += '<div class="k">' + esc(latest.decision) + '</div>';
+    if (latest.adoptable && !latest.adopted && latest.winner_wording) {
+      const w = latest.winner_wording, cur = latest.current_wording || {};
+      body += '<div class="diff"><div><div class="k">' + esc(t('current')) + '</div><div class="text">' + esc(cur.question || '') + '</div>' + optionsHTML(cur.options) + '</div>';
+      body += '<div><div class="k">' + esc(latest.winner) + '</div><div class="text">' + esc(w.question || '') + '</div>' + optionsHTML(w.options, cur.options) + '</div></div>';
+      body += '<div class="k">' + esc(t('checkHint')) + '</div>';
+      body += '<div class="btns"><button class="top" data-act="adopt">' + esc(t('sameMeaning')) + '</button><button class="weak" data-act="reject">' + esc(t('changedMeaning')) + '</button></div>';
+    }
+  }
+  if (tu && tu.error) body += '<div class="k">' + esc(t('error')(tu.error)) + '</div>';
+  if (tu && tu.wiki && !tu.running) {
+    body += '<div class="btns"><button data-act="run" data-propose="0">' + esc(t('runTune')) + '</button>' + (tu.proposer ? '<button data-act="run" data-propose="3">' + esc(t('runPropose')(3)) + '</button>' : '') + '</div>';
+  }
+  el.innerHTML = head + '<div class="wbody">' + body + '</div>';
+  if (latest && (latest.adoptable && !latest.adopted)) el.open = true;
+  el.addEventListener('click', async ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    ev.preventDefault();
+    try {
+      if (b.dataset.act === 'run') {
+        await j('/v1/tune/run', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ spec: sp.id, propose: Number(b.dataset.propose) }) });
+        toast(t('running')); load();
+      } else if (b.dataset.act === 'adopt' || b.dataset.act === 'reject') {
+        const same = b.dataset.act === 'adopt';
+        const note = same ? '' : (prompt(t('notePrompt')) || '');
+        const res = await j('/v1/tune/adopt', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ spec: sp.id, run: latest.run, meaning_same: same, note }) });
+        toast(same ? t('adoptedToast')(res.path.split('/').pop()) : t('rejected'), 6000); load();
+      }
+    } catch (e) { toast(t('error')(e.message)); }
+  });
+  return el;
+}
+function optionsHTML(opts, base) {
+  if (!opts) return '';
+  return '<div class="opts">' + Object.entries(opts).map(([id, d]) => '<div' + (base && base[id] !== d ? ' class="changed"' : '') + '><span class="k">' + esc(id) + '</span> ' + esc(d) + '</div>').join('') + '</div>';
 }
 render();
 load().catch(e => { $('#root').innerHTML = '<div class="empty">' + esc(t('error')(e.message)) + '</div>'; });

@@ -28,6 +28,9 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 | `shikii_decide` | spec の質問を決定モデルに聞く。帯（act / ask / discard / abstain）、最上位の答え、確率、trace_id | `spec`, `inputs`（object）, `tainted`（任意） |
 | `shikii_label` | 判定に正解を付ける。`!x`（x ではなかった）も可。正解が `eval.min_n` に届けば自動で較正し、結果に `calibrated: true` と報告が付く | `trace_id`, `truth`, `spec` / `weight` / `source`（任意） |
 | `shikii_status` | spec ごとの記録・正解・(model, hash) の状態 | なし |
+| `shikii_tune` | spec の聞き方の候補(`variants:` + 提案役が作る N 個)を正解の貯金で採点。候補ごとの数字、holdout、採用できるか | `spec`, `propose`（任意。`mcp` を `--proposer URL` 付きで起こした時だけ） |
+
+**採用の道具は無い。** 言い換えてもまだ同じことを聞いているかは人にしか分からないので、採用は画面（`shikii serve`）で人が「意味は同じ」を押した時か、端末の `tune --write` だけ。エージェントは候補を作って測るところまで。
 
 誤り（知らない spec、spec に無い正解、無い trace）は JSON-RPC のエラーではなく、道具の結果の `isError: true` と本文で返す。エージェントが読んで直せるように。
 

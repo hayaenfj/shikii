@@ -1,0 +1,70 @@
+{
+  "spec": "intent",
+  "spec_path": "/Users/falcon/tmp/TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner420972935/001/intent.yaml",
+  "spec_hash": "9f30e659c8f2b1f1",
+  "version": 1,
+  "model": "m",
+  "truths": 4,
+  "at": "2026-10-17T22:43:39+09:00",
+  "run": "2026-10-17-intent-m-54",
+  "run_page": "wiki/runs/2026-10-17-intent-m-54.md",
+  "candidates": [
+    {
+      "name": "current",
+      "top1": 0.5,
+      "brier": 0.41000000000000003,
+      "prec_at_act": 0.5,
+      "rec_at_act": 1,
+      "change": "(as is)"
+    },
+    {
+      "name": "strict",
+      "top1": 1,
+      "brier": 0.009999999999999995,
+      "prec_at_act": 1,
+      "rec_at_act": 1,
+      "change": "question: What is asked? Be strict about questions."
+    },
+    {
+      "name": "worse",
+      "top1": 0.5,
+      "brier": 0.41000000000000003,
+      "prec_at_act": 0.5,
+      "rec_at_act": 1,
+      "change": "question: What is asked? Anything goes."
+    }
+  ],
+  "holdout": 1,
+  "have_holdout": true,
+  "winner": "strict",
+  "adoptable": true,
+  "decision": "adopted strict as version 2 (by the person at the terminal, --write)",
+  "lesson": "strict: question: What is asked? Be strict about questions. → top-1 0.500 → 1.000, brier 0.4100 → 0.0100, holdout 1.000 \u003e current 0.500 on 4 truths",
+  "winner_variant": {
+    "Name": "strict",
+    "Question": "What is asked? Be strict about questions.",
+    "Options": null,
+    "Levels": null,
+    "Template": ""
+  },
+  "winner_wording": {
+    "question": "What is asked? Be strict about questions.",
+    "options": {
+      "change_request": "wants a change",
+      "other": "none",
+      "question": "wants an answer"
+    },
+    "template": "{{ message }}"
+  },
+  "current_wording": {
+    "question": "What is asked?",
+    "options": {
+      "change_request": "wants a change",
+      "other": "none",
+      "question": "wants an answer"
+    },
+    "template": "{{ message }}"
+  },
+  "adopted": true,
+  "adopted_path": "/Users/falcon/tmp/TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner420972935/001/intent-v2.yaml"
+}

@@ -1,0 +1,45 @@
+{
+  "spec": "intent",
+  "spec_path": "/Users/falcon/tmp/TestTuneDoesNotAdoptAWinByNoise1188724220/001/intent.yaml",
+  "spec_hash": "9f30e659c8f2b1f1",
+  "version": 1,
+  "model": "m",
+  "truths": 5,
+  "at": "2026-10-17T22:43:39+09:00",
+  "run": "2026-10-17-intent-m-56",
+  "run_page": "wiki/runs/2026-10-17-intent-m-56.md",
+  "candidates": [
+    {
+      "name": "current",
+      "top1": 0.6,
+      "brier": 0.33,
+      "prec_at_act": 0.6,
+      "rec_at_act": 1,
+      "change": "(as is)"
+    },
+    {
+      "name": "v2",
+      "top1": 0.8,
+      "brier": 0.17,
+      "prec_at_act": 0.8,
+      "rec_at_act": 1,
+      "change": "question: What is asked? v2"
+    }
+  ],
+  "holdout": 0.6,
+  "have_holdout": true,
+  "winner": "current",
+  "adoptable": false,
+  "decision": "kept current (holdout does not beat it)",
+  "lesson": "v2 wins on the full bank (0.800 vs 0.600) but the holdout 0.600 does not beat keeping current 0.600: within noise on 5 truths; more truths will settle it",
+  "current_wording": {
+    "question": "What is asked?",
+    "options": {
+      "change_request": "wants a change",
+      "other": "none",
+      "question": "wants an answer"
+    },
+    "template": "{{ message }}"
+  },
+  "adopted": false
+}
