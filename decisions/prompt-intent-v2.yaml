@@ -65,3 +65,14 @@ calibration:
     brier: 0.01564234238521169
     ece: 0.04583037754973626
     fitted_at: "2026-10-17"
+# 画面の表示用の訳(モデルには送らない。較正の鍵にも入らない)
+display:
+  ja:
+    title: 依頼の種類
+    question: 利用者はコーディングアシスタントに何を求めていますか？
+    options:
+      change_request: 変更の依頼
+      question: 質問・調査
+      review: レビュー
+      operation: 操作(実行・コミットなど)
+      other: 依頼ではない

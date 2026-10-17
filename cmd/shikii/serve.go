@@ -150,25 +150,52 @@ func (s *server) handleSpecs(w http.ResponseWriter, r *http.Request) {
 }
 
 func specSummary(sp *spec.Spec) map[string]any {
-	m := map[string]any{"id": sp.ID, "type": string(sp.Type), "path": sp.Path(), "hash": sp.Hash(), "question": sp.Question,
+	titles, questions := map[string]string{}, map[string]string{}
+	for lang, d := range sp.Display {
+		if d.Title != "" {
+			titles[lang] = d.Title
+		}
+		if d.Question != "" {
+			questions[lang] = d.Question
+		}
+	}
+	return map[string]any{"id": sp.ID, "type": string(sp.Type), "path": sp.Path(), "hash": sp.Hash(), "question": sp.Question,
+		"titles": titles, "questions": questions,
 		"min_n": sp.Eval.MinN, "act": sp.Thresholds.Act, "ask": sp.Thresholds.Ask, "choices": truthChoices(sp)}
-	return m
 }
 
 // truthChoices は画面のボタンになる正解の候補。choice は選択肢 id、noul は yes/no、score は "0".."n-1"。
-func truthChoices(sp *spec.Spec) []map[string]string {
-	var out []map[string]string
+func truthChoices(sp *spec.Spec) []map[string]any {
+	// labels は言語ごとの表示名(display から)。無い言語は画面側で label(英語/id)に落ちる
+	labelsFor := func(id string, level int) map[string]string {
+		out := map[string]string{}
+		for lang, d := range sp.Display {
+			if level >= 0 {
+				if level < len(d.Levels) {
+					out[lang] = fmt.Sprintf("%d: %s", level, d.Levels[level])
+				}
+			} else if v, ok := d.Options[id]; ok {
+				out[lang] = v
+			}
+		}
+		return out
+	}
+	var out []map[string]any
 	switch sp.Type {
 	case spec.Noul:
-		out = append(out, map[string]string{"truth": "yes", "label": "yes"}, map[string]string{"truth": "no", "label": "no"})
+		out = append(out, map[string]any{"truth": "yes", "label": "yes", "labels": labelsFor("yes", -1)},
+			map[string]any{"truth": "no", "label": "no", "labels": labelsFor("no", -1)})
 	case spec.Choice:
 		for _, o := range sp.Options {
-			out = append(out, map[string]string{"truth": o.ID, "label": o.ID, "description": o.Description})
+			out = append(out, map[string]any{"truth": o.ID, "label": o.ID, "description": o.Description, "labels": labelsFor(o.ID, -1)})
 		}
 	case spec.Score:
 		for i, lv := range sp.Levels {
-			out = append(out, map[string]string{"truth": fmt.Sprint(i), "label": fmt.Sprintf("%d: %s", i, lv)})
+			out = append(out, map[string]any{"truth": fmt.Sprint(i), "label": fmt.Sprintf("%d: %s", i, lv), "labels": labelsFor("", i)})
 		}
+	}
+	if out == nil {
+		out = []map[string]any{}
 	}
 	return out
 }
@@ -353,6 +380,12 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []map[string]any{}
 	for _, sp := range specs {
+		titles := map[string]string{}
+		for lang, d := range sp.Display {
+			if d.Title != "" {
+				titles[lang] = d.Title
+			}
+		}
 		nRec, labs, err := s.st.Counts(sp.ID)
 		if err != nil {
 			writeErr(w, 500, err)
@@ -383,7 +416,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		last := s.lastCal[sp.ID]
 		s.mu.Unlock()
-		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "records": nRec, "labels": len(labs),
+		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "records": nRec, "labels": len(labs),
 			"unlabeled": nRec - countLabeledRecords(labeled, nRec), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
@@ -479,13 +512,16 @@ function render() {
   for (const sp of state.specs) {
     const sec = document.createElement('section');
     const pills = sp.keys.map(k => '<span class="pill ' + k.state + '">' + esc(k.model) + ' · ' + esc(k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n)) + '</span>').join(' ');
-    sec.innerHTML = '<h2>' + esc(sp.id) + ' <span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span></h2>';
+    const title = (sp.titles && sp.titles[lang]) ? esc(sp.titles[lang]) + ' <span class="k" style="color:var(--muted);font-size:12px;font-weight:400">' + esc(sp.id) + '</span>' : esc(sp.id);
+    sec.innerHTML = '<h2>' + title + ' <span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span></h2>';
     if (!sp.queue.items.length) { sec.innerHTML += '<div class="empty">' + esc(t('empty')) + '</div>'; }
     for (const it of sp.queue.items) {
       const el = document.createElement('div'); el.className = 'item ' + it.band;
       const text = it.inputs ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
-      const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(c.label) + (c.truth === it.top ? ' · ' + esc(t('model')((it.p*100).toFixed(0))) : '') + '</button>').join('');
-      const not = it.top ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(it.top)) + '</button>' : '';
+      const name = c => (c.labels && c.labels[lang]) || c.label;
+      const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
+      const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('model')((it.p*100).toFixed(0))) : '') + '</button>').join('');
+      const not = it.top ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
       el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
       el.addEventListener('click', async ev => {
         const b = ev.target.closest('button'); if (!b) return;

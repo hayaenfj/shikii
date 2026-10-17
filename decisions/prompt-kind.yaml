@@ -35,3 +35,14 @@ thresholds:
 
 eval:
   min_n: 50
+# 画面の表示用の訳(モデルには送らない。較正の鍵にも入らない)
+display:
+  ja:
+    title: 依頼の種類(Claude Code の hook)
+    question: この依頼に対して、コーディングエージェントは結局何をすることになりそうか？
+    options:
+      edit: ファイルを変える
+      explain: 説明する(ファイルは触らない)
+      investigate: 調べて報告する
+      run: 実行して結果を報告する
+      decide: 提案への返事・選択

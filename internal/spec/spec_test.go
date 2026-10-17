@@ -102,6 +102,32 @@ func TestPutCalibrationReplacesStaleBlockOfSameModel(t *testing.T) {
 	}
 }
 
+// display は画面の表示用の訳。較正の鍵(Hash)には入らない。知らない選択肢や段数の合わない levels は検証で弾く。
+func TestDisplayTranslationsDoNotTouchHashButAreValidated(t *testing.T) {
+	s := noulSpec()
+	before := s.Hash()
+	s.Display = map[string]Display{"ja": {Title: "同じ案件か", Options: map[string]string{"yes": "同じ", "no": "違う"}}}
+	if err := s.Validate(); err != nil {
+		t.Fatalf("valid display rejected: %v", err)
+	}
+	if s.Hash() != before {
+		t.Fatal("display must not change the calibration key")
+	}
+	bad := noulSpec()
+	bad.Display = map[string]Display{"ja": {Options: map[string]string{"maybe": "たぶん"}}}
+	if err := bad.Validate(); err == nil {
+		t.Fatal("display for an option that does not exist must be rejected")
+	}
+	sc := noulSpec()
+	sc.Type = Score
+	sc.Levels = []string{"a", "b", "c"}
+	sc.Thresholds.Level = 0
+	sc.Display = map[string]Display{"ja": {Levels: []string{"低", "高"}}}
+	if err := sc.Validate(); err == nil {
+		t.Fatal("display levels with a different count must be rejected")
+	}
+}
+
 func TestValidateRejectsBadSpecs(t *testing.T) {
 	cases := map[string]func(*Spec){
 		"no id":           func(s *Spec) { s.ID = "" },

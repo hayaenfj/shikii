@@ -187,6 +187,40 @@ func TestServeUIHasLanguageSwitch(t *testing.T) {
 	}
 }
 
+// spec に display.ja があれば、画面向けの API は題名と選択肢の日本語を一緒に返す(id と英語はそのまま)。
+func TestServeExposesDisplayTranslations(t *testing.T) {
+	url, specPath, _ := newServeFixture(t, "local", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	b, _ := os.ReadFile(specPath)
+	withDisplay := string(b) + `display:
+  ja:
+    title: 依頼の種類
+    options:
+      change_request: 変更の依頼
+      question: 質問
+      other: その他
+`
+	if err := os.WriteFile(specPath, []byte(withDisplay), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var specs struct {
+		Specs []map[string]any `json:"specs"`
+	}
+	getJSON(t, url+"/v1/specs", &specs)
+	if len(specs.Specs) != 1 || specs.Specs[0]["titles"].(map[string]any)["ja"] != "依頼の種類" {
+		t.Fatalf("specs must carry titles per language: %v", specs.Specs)
+	}
+	postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix"}})
+	var q struct {
+		Items []map[string]any `json:"items"`
+	}
+	getJSON(t, url+"/v1/queue?spec=intent", &q)
+	choices := q.Items[0]["choices"].([]any)
+	first := choices[0].(map[string]any)
+	if first["truth"] != "change_request" || first["labels"].(map[string]any)["ja"] != "変更の依頼" {
+		t.Fatalf("choices must carry per-language labels: %v", first)
+	}
+}
+
 // 正解がまだ無い spec でも status の keys は空配列(null だと画面の JS が落ちる)。
 func TestServeStatusNeverReturnsNullLists(t *testing.T) {
 	url, _, _ := newServeFixture(t, "local", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})

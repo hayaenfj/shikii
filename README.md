@@ -81,7 +81,7 @@ bin/shikii serve --specs decisions --local http://127.0.0.1:8080        # http:/
 curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message":"fix the typo"}}'
 ```
 
-Programs call `POST /v1/decide` and `POST /v1/label` from any language. People open the page: every decision that is still waiting for an answer is listed, `ask` first, with one button per option. Press the button, the truth is stored, and when a spec reaches `eval.min_n` the server calibrates and writes the spec by itself. Nobody types a trace id. The page is a single HTML file with no external loads, so it works on a laptop with no internet.
+Programs call `POST /v1/decide` and `POST /v1/label` from any language. People open the page: every decision that is still waiting for an answer is listed, `ask` first, with one button per option. Press the button, the truth is stored, and when a spec reaches `eval.min_n` the server calibrates and writes the spec by itself. Nobody types a trace id. The page is a single HTML file with no external loads, so it works on a laptop with no internet. It has a language switch; add a `display:` block to a spec (per language: title, question, option or level names) and the page shows the decision in that language too. `display` is never sent to the model and is not part of the calibration key.
 
 ### Use any GGUF as a decision model
 

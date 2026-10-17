@@ -87,8 +87,18 @@ type Spec struct {
 	Thresholds  Thresholds    `yaml:"thresholds"`
 	Eval        Eval          `yaml:"eval"`
 	Calibration []Calibration `yaml:"calibration,omitempty"`
+	// Display は画面の表示用の訳(言語コード → 題名・選択肢・段階)。モデルには送らず、較正の鍵にも入らない。
+	Display map[string]Display `yaml:"display,omitempty"`
 
 	path string
+}
+
+// Display は 1 言語ぶんの表示用の訳。Options は choice の id(noul なら yes / no)→ 表示名、Levels は score の段階(低い順、数は levels と同じ)。
+type Display struct {
+	Title    string            `yaml:"title,omitempty"`
+	Question string            `yaml:"question,omitempty"`
+	Options  map[string]string `yaml:"options,omitempty"`
+	Levels   []string          `yaml:"levels,omitempty"`
 }
 
 // Load は YAML を読み、検証する。
@@ -161,7 +171,32 @@ func (s *Spec) Validate() error {
 			return fmt.Errorf("thresholds.level must be in 1..%d", len(s.Levels)-1)
 		}
 	}
+	for lang, d := range s.Display {
+		for id := range d.Options {
+			if !s.hasTruthID(id) {
+				return fmt.Errorf("display.%s.options: %q is not an option of this spec", lang, id)
+			}
+		}
+		if len(d.Levels) > 0 && len(d.Levels) != len(s.Levels) {
+			return fmt.Errorf("display.%s.levels: %d entries, spec has %d levels", lang, len(d.Levels), len(s.Levels))
+		}
+	}
 	return nil
+}
+
+// hasTruthID は表示用の訳が指す id が spec にあるか(choice は option の id、noul は yes / no)。
+func (s *Spec) hasTruthID(id string) bool {
+	switch s.Type {
+	case Noul:
+		return id == "yes" || id == "no"
+	case Choice:
+		for _, o := range s.Options {
+			if o.ID == id {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Hash は較正を鍵付けするハッシュ。質問・型・state テンプレ・選択肢・レベルから作る。
