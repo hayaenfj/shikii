@@ -8,6 +8,9 @@ coverage.*
 /.shikii/
 /.shikii-*/
 
+# 比較ベンチの材料(scripts/bench/rag-rows.py が正解の貯金から作る)
+/testdata/prompt-intent-rag.json
+
 # 鍵と環境。鍵は DECISIONS_API_KEY / TYPESAFE_API_KEY の環境変数で渡す(ファイルには置かない)
 .env
 .env.*

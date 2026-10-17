@@ -1,0 +1,36 @@
+# 比較ベンチの RAG の腕: v2 と同じ質問・同じ選択肢に、似た例(正解付き)を本文に足して聞く。
+# examples は scripts/bench/rag-rows.py が正解の貯金から作る(その行自身は除く)。較正の鍵は v2 とは別の指紋になる。
+id: prompt-intent-rag
+version: 1
+type: choice
+question: |
+  The state is a message a user sent to a coding assistant, preceded by a few similar past messages with their known request type. What is the user asking the assistant to do in the last message?
+  Short messages like "fix it" or "why?" are still requests; pick the closest request type.
+options:
+  - id: change_request
+    description: Change something in the repository - edit, fix, add, remove, rename, refactor, write tests or docs. Includes terse commands like "fix the typo" or "直して".
+  - id: question
+    description: Explain, investigate, compare or give an opinion, without changing anything. Includes "why", "what does this do", "where is", "調べて".
+  - id: review
+    description: Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality.
+  - id: operation
+    description: Run or operate something without editing code - run tests, build, commit, push, deploy, restart, install, show logs.
+  - id: other
+    description: Not a request at all - greetings, thanks, acknowledgements ("ok", "了解"), small talk, or ending the session.
+state:
+  template: |
+    Similar past messages and their request type:
+    {{ examples }}
+
+    Message to classify:
+    {{ message }}
+  required: [message, examples]
+policy:
+  send_to: [local]
+  pii: false
+thresholds:
+  act: 0.75
+  ask: 0.60
+eval:
+  labeled: testdata/prompt-intent-rag.json
+  min_n: 50
