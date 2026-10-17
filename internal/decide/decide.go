@@ -128,7 +128,7 @@ func PickEndpoint(sp *spec.Spec, sess Session, eps []Endpoint) *Endpoint {
 func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess Session, eps []Endpoint) (*Decision, error) {
 	d := &Decision{
 		TraceID: store.NewTraceID(), SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type),
-		InputsHash: store.HashInputs(inputs), At: time.Now(), Tainted: sess.Tainted,
+		InputsHash: store.HashInputs(sp.StateInputs(inputs)), At: time.Now(), Tainted: sess.Tainted,
 	}
 
 	state, missing := sp.Render(inputs)
@@ -161,13 +161,22 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 	if len(missing) > 0 {
 		return d, nil // 足す文脈が無い: ここで止まる(人へ)
 	}
-	d.Minimal = &store.Pass{SpecHash: d.SpecHash, Raw: d.Raw, Calibrated: d.Calibrated, IsCalibrated: d.IsCalibrated, Top: d.Top, P: d.P, Band: string(d.Band)}
+	minimal := *d // 文脈の段の呼び出しが失敗したら、最小の答え(迷い)を返す。答えを捨てない
+	d.Minimal = &store.Pass{SpecHash: d.SpecHash, InputsHash: d.InputsHash, Raw: d.Raw, Calibrated: d.Calibrated, IsCalibrated: d.IsCalibrated, Top: d.Top, P: d.P, Band: string(d.Band)}
 	d.SpecHash = csp.Hash()
+	d.InputsHash = store.HashInputs(csp.StateInputs(inputs))
 	if err := askOnce(ctx, csp, d, cstate, ep); err != nil {
-		return nil, err
+		minimal.Reason = "context rung failed: " + err.Error()
+		return &minimal, nil
 	}
 	d.Rung = "context"
 	return d, nil
+}
+
+// DiscardUnsure は、この spec で discard が「迷い」か(一番高い選択肢で帯を決める型: choice と、level 無しの score)。
+// noul と level 付きの score の discard は確信した「いいえ / 低い」。段を上げる条件と、人に回った数の数え方で同じ規則を使う。
+func DiscardUnsure(sp *spec.Spec) bool {
+	return sp.Type == spec.Choice || (sp.Type == spec.Score && sp.Thresholds.Level == 0)
 }
 
 // askOnce は 1 つの段を聞く: 多択(または分解した はい/いいえ の列)を 1 回の呼び出しで聞き、raw・較正・top・帯を d に書く。
@@ -217,11 +226,7 @@ func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *
 // unsure は「迷った」か: ask 帯はいつでも迷い。一番高い選択肢で帯を決める型(choice と、level 無しの score)では
 // discard(どの選択肢も ask に届かない)も迷い。noul と level 付きの score の discard は確信した「いいえ / 低い」なので迷いではない。
 func unsure(sp *spec.Spec, b Band) bool {
-	if b == Ask {
-		return true
-	}
-	argmaxBand := sp.Type == spec.Choice || (sp.Type == spec.Score && sp.Thresholds.Level == 0)
-	return b == Discard && argmaxBand
+	return b == Ask || (b == Discard && DiscardUnsure(sp))
 }
 
 // StepQuestions は分解の全段を 1 回の呼び出しに載せる質問の集まり(鍵は step-0, step-1, …)。

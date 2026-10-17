@@ -318,11 +318,9 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	for _, l := range labels {
-		if err := s.st.AppendLabel(l); err != nil {
-			writeErr(w, 500, err)
-			return
-		}
+	if err := s.st.AppendLabels(labels); err != nil { // 2 段分を 1 回で書く(片方だけ残らない)
+		writeErr(w, 500, err)
+		return
 	}
 	l := labels[0]
 	// 文脈を足して決まった判定への答えは、最小の質問にも付く(rungs = 2)。線は段ごとに引かれる
@@ -343,9 +341,9 @@ func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 	if err != nil || !sp.LiveHash(hash) || model == "" {
 		return "", false
 	}
-	rs := sp // この記録の段
+	rs, rung := sp, "minimal" // この記録の段。線を引くのはこの段だけ(他の段の線は触らない)
 	if hash == sp.ContextHash() {
-		rs = sp.ContextSpec()
+		rs, rung = sp.ContextSpec(), "context"
 	}
 	if c := rs.CalibrationFor(model); c != nil && c.SpecHash == hash {
 		return "", false // もう線がある。引き直しは drift が悪化を言った時に(ここでは触らない)
@@ -368,7 +366,7 @@ func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 				err = fmt.Errorf("calibrate panicked: %v", r)
 			}
 		}()
-		return runCalibrate(sp.Path(), calibrateOpts{ef: ef, storeDir: s.o.storeDir, labeled: "none", bins: 10, write: true})
+		return runCalibrate(sp.Path(), calibrateOpts{ef: ef, storeDir: s.o.storeDir, labeled: "none", bins: 10, write: true, rung: rung})
 	}()
 	report := strings.TrimSpace(buf.String())
 	if err != nil {
@@ -499,7 +497,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal を先に
 		})
 		labeled, _ := s.st.LabeledTraces(sp.ID)
-		funnel, _ := s.st.Funnel(sp.ID)
+		funnel, _ := s.st.Funnel(sp.ID, decide.DiscardUnsure(sp))
 		s.mu.Lock()
 		last := s.lastCal[sp.ID]
 		s.mu.Unlock()

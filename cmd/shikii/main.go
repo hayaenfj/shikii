@@ -247,9 +247,16 @@ func recordDecision(st store.Store, sp *spec.Spec, d *decide.Decision, inputs ma
 	if d.Rung != "context" || d.Band != decide.Act || d.Minimal == nil {
 		return nil
 	}
+	if sp.Type == spec.Score && sp.Thresholds.Level > 0 {
+		return nil // P は P(level ≥ k)、Top は一番高い段階。別の事象なので 1 つの正解にはできない(監査 3 回目の 8)
+	}
+	inputsHash := d.Minimal.InputsHash
+	if inputsHash == "" {
+		inputsHash = rec.InputsHash
+	}
 	l := store.Label{
 		TraceID: rec.TraceID, SpecID: rec.SpecID, SpecHash: d.Minimal.SpecHash, Type: rec.Type, Model: rec.Model,
-		InputsHash: rec.InputsHash, Inputs: rec.Inputs, Raw: d.Minimal.Raw,
+		InputsHash: inputsHash, Inputs: rec.Inputs, Raw: d.Minimal.Raw,
 		Truth: d.Top, Weight: d.P, Source: "context", Tainted: rec.Tainted, Rung: "minimal", At: rec.At,
 	}
 	if err := st.AppendLabel(l); err != nil {
@@ -298,10 +305,10 @@ func cmdLabel(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := st.AppendLabels(labels); err != nil { // 2 段分を 1 回で書く(片方だけ残らない)
+		return err
+	}
 	for _, l := range labels {
-		if err := st.AppendLabel(l); err != nil {
-			return err
-		}
 		fmt.Fprintf(stdout, "labeled %s (%s, %s, %s rung) truth=%s weight=%.2f source=%s\n", l.TraceID, l.SpecID, l.Model, l.Rung, l.Truth, l.Weight, l.Source)
 	}
 	return nil
@@ -360,6 +367,7 @@ type calibrateOpts struct {
 	bins     int
 	write    bool
 	force    bool
+	rung     string // "" = 両方の段、"minimal" | "context" = その段だけ引く(serve の自動較正は正解が揃った段だけ)
 }
 
 // runCalibrate は calibrate の本体。報告は stdout に出す。
@@ -368,21 +376,23 @@ func runCalibrate(path string, o calibrateOpts) error {
 	if err != nil {
 		return err
 	}
-	// 最小の質問の段。ここに線が引けないのは誤り(今までと同じ)。
-	cal, ok, err := calibrateRung(sp, o)
-	if err != nil {
-		return err
-	}
-	if o.write && !ok {
-		return fmt.Errorf("calibrate: refusing to write (see WARNING above; use --force to override)")
-	}
 	wrote := false
-	if o.write {
-		sp.PutCalibration(cal)
-		wrote = true
+	// 最小の質問の段。ここに線が引けないのは誤り(今までと同じ)。
+	if o.rung != "context" {
+		cal, ok, err := calibrateRung(sp, o)
+		if err != nil {
+			return err
+		}
+		if o.write && !ok {
+			return fmt.Errorf("calibrate: refusing to write (see WARNING above; use --force to override)")
+		}
+		if o.write {
+			sp.PutCalibration(cal)
+			wrote = true
+		}
 	}
 	// 文脈の段(あれば)。正解は、文脈を足して決まった判定に人が答えた分だけ。まだ無ければ知らせて進む。
-	if csp := sp.ContextSpec(); csp != nil {
+	if csp := sp.ContextSpec(); csp != nil && o.rung != "minimal" {
 		fmt.Fprintf(stdout, "\ncontext rung: the same question asked with state.context (hash=%s)\n", csp.Hash())
 		co := o
 		co.labeled = "none" // ファイルの行は最小の質問のもの
@@ -395,6 +405,8 @@ func runCalibrate(path string, o calibrateOpts) error {
 		case o.write && cok:
 			sp.PutCalibration(ccal)
 			wrote = true
+		case o.write && o.rung == "context":
+			return fmt.Errorf("calibrate: refusing to write the context rung (see WARNING above)")
 		case o.write:
 			fmt.Fprintln(stdout, "note: context rung not written (see WARNING above)")
 		}
@@ -507,10 +519,16 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	if len(labels) == 0 {
 		return cal, false, fmt.Errorf("calibrate: %w for (hash=%s, model=%s)", errNoLabels, sp.Hash(), model)
 	}
-	// 件数不足でも報告は出す。書き戻しだけ止める。
-	underMin := len(labels) < sp.Eval.MinN
+	// 件数不足でも報告は出す。書き戻しだけ止める。数えるのは人(または結果)が決めた正解: 機械の正解(上の段の答え)だけで線は引かない(監査 3 回目の 2)
+	nHuman := 0
+	for _, l := range labels {
+		if store.HumanSource(l.Source) {
+			nHuman++
+		}
+	}
+	underMin := nHuman < sp.Eval.MinN
 	if underMin {
-		fmt.Fprintf(stdout, "WARNING: %d samples < eval.min_n=%d; report only, will not write\n", len(labels), sp.Eval.MinN)
+		fmt.Fprintf(stdout, "WARNING: %d human truths (%d samples in all) < eval.min_n=%d; report only, will not write\n", nHuman, len(labels), sp.Eval.MinN)
 	}
 
 	// 報告は常に出す。書き戻してよいか(ok)は別に返し、--write の時だけ効く。
@@ -524,7 +542,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	if err != nil {
 		return cal, false, err
 	}
-	cal.Model, cal.SpecHash, cal.N = model, sp.Hash(), len(labels)
+	cal.Model, cal.SpecHash, cal.N, cal.NHuman = model, sp.Hash(), len(labels), nHuman
 	cal.FittedOn, cal.FittedAt = *labeledPath, time.Now().Format("2006-01-02")
 	return cal, (ok && !underMin) || *force, nil
 }
@@ -655,7 +673,13 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		at     time.Time
 	}
 	bank := map[string]truth{}
-	for _, l := range store.LatestPerInput(all) {
+	var human []store.Label
+	for _, l := range all {
+		if store.HumanSource(l.Source) { // 機械の正解(上の段の答え)は聞き直さない: 別の段で聞き直しても同じモデルの答えで、人の正解に化けてしまう(監査 3 回目の 1)
+			human = append(human, l)
+		}
+	}
+	for _, l := range store.LatestPerInput(human) {
 		if l.InputsHash == "" || seen[l.InputsHash] {
 			continue
 		}
@@ -1662,12 +1686,18 @@ func cmdStatus(args []string) error {
 			fmt.Fprintf(stdout, "  by truth:  %s\n", fmtCounts(byTruth))
 		}
 		sp := specs[id]
-		if f, err := st.Funnel(id); err == nil && f.Records > 0 {
+		if f, err := st.Funnel(id, sp != nil && decide.DiscardUnsure(sp)); err == nil && f.Records > 0 {
 			// 段ごとの数。進み具合は 1000 判定あたりの人の判断(ask のまま人に回った数)
 			fmt.Fprintf(stdout, "  rungs: settled by the minimal question %d, by added context %d, left to a person %d (%.0f per 1000 decisions)\n", f.Minimal, f.Context, f.Human, f.HumanPerThousand())
 		}
 		if len(labs) > 0 {
-			fmt.Fprintf(stdout, "  audit: 1 in 20 act decisions is shown to a person; human-checked so far: %d\n", bySource["audit"])
+			audited := map[string]bool{} // 判定(trace)で数える。文脈を通った判定の答えは 2 段に付くが、人の確認は 1 回
+			for _, l := range labs {
+				if l.Source == "audit" {
+					audited[l.TraceID] = true
+				}
+			}
+			fmt.Fprintf(stdout, "  audit: 1 in 20 act decisions is shown to a person; human-checked so far: %d\n", len(audited))
 		}
 		for key, n := range byKey {
 			note := ""

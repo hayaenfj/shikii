@@ -124,6 +124,7 @@ type Calibration struct {
 	PrecisionAt float64            `yaml:"precision_at_act,omitempty"` // act 閾値での正答率(較正後)
 	FittedOn    string             `yaml:"fitted_on,omitempty"`
 	N           int                `yaml:"n"`
+	NHuman      int                `yaml:"n_human,omitempty"` // そのうち人(または結果)が決めた正解の数。書き戻しはこれが min_n 以上の時だけ
 	Brier       float64            `yaml:"brier"`
 	ECE         float64            `yaml:"ece"`
 	FittedAt    string             `yaml:"fitted_at"`
@@ -505,6 +506,25 @@ func (s *Spec) WithoutContext() *Spec {
 	c := *s
 	c.State.Context = ""
 	return &c
+}
+
+// StateInputs は inputs のうち、この spec の template が使うもの(required と template の placeholder)だけ。
+// 入力の指紋はこれで取る: 文脈の入力が違っても、最小の質問では同じ入力。
+func (s *Spec) StateInputs(in map[string]string) map[string]string {
+	used := map[string]bool{}
+	for _, r := range s.State.Required {
+		used[r] = true
+	}
+	for _, p := range placeholders(s.State.Template) {
+		used[p] = true
+	}
+	out := make(map[string]string, len(used))
+	for k, v := range in {
+		if used[k] {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // Save は読み込んだパスに書き戻す。書き換えるのは `calibration` キーだけで、

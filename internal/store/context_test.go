@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,7 +35,8 @@ func TestLabelsForReachBothRungs(t *testing.T) {
 	}
 }
 
-// 段ごとの数: 最小で決まった / 文脈で決まった / 人に回った(ask のまま)。進み具合は 1000 判定あたりの人の判断。
+// 段ごとの数: 最小で決まった / 文脈で決まった / 人に回った。「人に回った」は decide の「迷い」と同じ規則:
+// ask はいつでも、discard は一番高い選択肢で帯を決める型(choice、level 無しの score)の時だけ(監査 3 回目の 4)。
 func TestFunnelCountsWhereDecisionsSettle(t *testing.T) {
 	st := Store{Dir: filepath.Join(t.TempDir(), "s")}
 	add := func(rung, band string) {
@@ -49,17 +51,54 @@ func TestFunnelCountsWhereDecisionsSettle(t *testing.T) {
 	add("minimal", "ask")
 	add("context", "act")
 	add("context", "ask")
-	f, err := st.Funnel("s")
+	add("context", "discard")
+	// noul: discard は確信した「いいえ」= 決まった
+	f, err := st.Funnel("s", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Records != 5 || f.Minimal != 2 || f.Context != 1 || f.Human != 2 {
-		t.Fatalf("funnel: %+v", f)
+	if f.Records != 6 || f.Minimal != 2 || f.Context != 2 || f.Human != 2 {
+		t.Fatalf("noul funnel: %+v", f)
 	}
-	if f.HumanPerThousand() != 400 {
-		t.Fatalf("2 of 5 go to a person = 400 per 1000, got %v", f.HumanPerThousand())
+	// choice: discard も迷い = 人へ(README の「the tests … 0.45 → 人へ」はこちら)
+	f, _ = st.Funnel("s", true)
+	if f.Minimal != 1 || f.Context != 1 || f.Human != 4 {
+		t.Fatalf("choice funnel: %+v", f)
 	}
-	if empty, _ := st.Funnel("none"); empty.Records != 0 || empty.HumanPerThousand() != 0 {
+	if f.HumanPerThousand() != 667 {
+		t.Fatalf("4 of 6 go to a person = 667 per 1000, got %v", f.HumanPerThousand())
+	}
+	if empty, _ := st.Funnel("none", true); empty.Records != 0 || empty.HumanPerThousand() != 0 {
 		t.Fatalf("no records: zero, not a division error: %+v", empty)
+	}
+}
+
+// 監査 6: 1 つの答えから出る 2 件のラベルは 1 回の書き込みで追記する(途中で失敗して片方だけ残らない)。
+func TestAppendLabelsWritesAllOrNothing(t *testing.T) {
+	dir := t.TempDir()
+	st := Store{Dir: filepath.Join(dir, "s")}
+	r := rec("h", "m")
+	a, b := LabelFor(&r, "yes", 1, "ui")
+	if b != nil {
+		t.Fatal(b)
+	}
+	m := a
+	m.SpecHash = "h2"
+	if err := st.AppendLabels([]Label{a, m}); err != nil {
+		t.Fatal(err)
+	}
+	if ls, _ := st.Labels("s", "h", "m"); len(ls) != 1 {
+		t.Fatalf("both labels land: %+v", ls)
+	}
+	if ls, _ := st.Labels("s", "h2", "m"); len(ls) != 1 {
+		t.Fatalf("both labels land: %+v", ls)
+	}
+	// 書けない置き場: 1 件も残らない
+	bad := Store{Dir: filepath.Join(dir, "file")}
+	if err := os.WriteFile(bad.Dir, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := bad.AppendLabels([]Label{a, m}); err == nil {
+		t.Fatalf("an unwritable store must fail")
 	}
 }

@@ -48,6 +48,7 @@ type Record struct {
 // Pass は 1 つの段の答え。文脈を足して聞き直した記録が、最小の質問の答えを持っておくのに使う。
 type Pass struct {
 	SpecHash     string             `json:"spec_hash"`
+	InputsHash   string             `json:"inputs_hash,omitempty"` // この段の template が使う入力だけの指紋(文脈の入力が違っても最小の質問では同じ入力)
 	Raw          map[string]float64 `json:"raw,omitempty"`
 	Calibrated   map[string]float64 `json:"calibrated,omitempty"`
 	IsCalibrated bool               `json:"is_calibrated"`
@@ -218,6 +219,9 @@ func LabelsFor(rec *Record, truth string, weight float64, source string) ([]Labe
 	if rec.Minimal != nil {
 		m := l
 		m.SpecHash, m.Raw, m.Rung = rec.Minimal.SpecHash, rec.Minimal.Raw, "minimal"
+		if rec.Minimal.InputsHash != "" {
+			m.InputsHash = rec.Minimal.InputsHash
+		}
 		if _, ok := m.Raw[strings.TrimPrefix(truth, "!")]; !ok && rec.Type != "noul" {
 			return nil, fmt.Errorf("truth %q is not an option of the minimal pass", truth)
 		}
@@ -243,7 +247,8 @@ func (f Funnel) HumanPerThousand() float64 {
 }
 
 // Funnel は spec の記録を段と帯で数える。読めない行は数えない。
-func (s Store) Funnel(specID string) (Funnel, error) {
+// discardUnsure は decide の「迷い」と同じ規則: 一番高い選択肢で帯を決める型(choice、level 無しの score)では discard も人へ。
+func (s Store) Funnel(specID string, discardUnsure bool) (Funnel, error) {
 	var f Funnel
 	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
@@ -252,7 +257,7 @@ func (s Store) Funnel(specID string) (Funnel, error) {
 		}
 		f.Records++
 		switch {
-		case r.Band == "ask":
+		case r.Band == "ask" || (discardUnsure && r.Band == "discard"):
 			f.Human++
 		case r.RungOf() == "context":
 			f.Context++
@@ -297,10 +302,42 @@ func Correct(top, truth string) bool {
 
 // AppendLabel はラベルを追記する。
 func (s Store) AppendLabel(l Label) error {
-	if l.TraceID == "" || l.SpecID == "" || l.SpecHash == "" || l.Model == "" {
-		return errors.New("label needs trace_id, spec_id, spec_hash and model")
+	return s.AppendLabels([]Label{l})
+}
+
+// AppendLabels は複数のラベル(同じ spec)を 1 回の書き込みで追記する。1 つの答えが 2 つの段に付く時、片方だけ残ることがない。
+func (s Store) AppendLabels(ls []Label) error {
+	if len(ls) == 0 {
+		return nil
 	}
-	return appendJSONL(s.labelsPath(l.SpecID), l)
+	var buf []byte
+	for _, l := range ls {
+		if l.TraceID == "" || l.SpecID == "" || l.SpecHash == "" || l.Model == "" {
+			return errors.New("label needs trace_id, spec_id, spec_hash and model")
+		}
+		if l.SpecID != ls[0].SpecID {
+			return errors.New("labels in one append must belong to one spec")
+		}
+		b, err := json.Marshal(l)
+		if err != nil {
+			return err
+		}
+		if len(b) > MaxLineBytes {
+			return fmt.Errorf("record too large: %d bytes > %d (inputs must stay under the line limit)", len(b), MaxLineBytes)
+		}
+		buf = append(append(buf, b...), '\n')
+	}
+	path := s.labelsPath(ls[0].SpecID)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(buf)
+	return err
 }
 
 // Labels は (spec_hash, model) に一致するラベルだけを返す。古い文言・別モデルのラベルは較正に使わない。
@@ -383,6 +420,9 @@ func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 		var r Record
 		if json.Unmarshal(line, &r) == nil {
 			take(r.InputsHash, r.Inputs, r.Tainted)
+			if r.Minimal != nil {
+				take(r.Minimal.InputsHash, r.Inputs, r.Tainted) // 最小の段の指紋からも同じ本文に届く(Render は余分な入力を無視する)
+			}
 		}
 		return nil
 	})
