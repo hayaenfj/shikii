@@ -40,7 +40,7 @@ It also comes with `shikii-readout`, a small adapter (about 600 lines) that turn
 
 - *How to ask*: wording, option descriptions and context layout are measured on the stored truths and improved without new labels (`tune`). Lessons about which phrasing works for which kind of question and which model family accumulate in a shared, human-editable wiki.
 - *How far to trust*: calibration per (question, model), bands instead of raw numbers, no `act` without evidence, invalidation on change, replay after change, drift checks. Audit sampling is next.
-- *When to escalate* (not built yet): one model, several levels of asking: a minimal question first, more context or a decomposed question when unsure, a person last. Answers from a higher level become truths for the lower one, so the cheapest way of asking keeps getting better. The measure of progress will be human decisions per thousand, holding precision.
+- *When to escalate* (first rung built): one model, several levels of asking: a minimal question first, more context or a decomposed question when unsure, a person last. Decomposition exists today: a choice can be asked as a chain of yes/no `steps` whose branch probabilities multiply into the original options, scored by `tune` on the same truths and sent to the model in one call. Answers from a higher level become truths for the lower one, so the cheapest way of asking keeps getting better. The measure of progress will be human decisions per thousand, holding precision.
 
 A hypothesis we intend to test, not a claim: for typed decisions, a measured question plus calibration may reach useful accuracy with far fewer examples than fine-tuning (LoRA) and with better-calibrated answers than retrieval (RAG), on the same base model. The benchmark is simple and we will publish it: same task, same truths, same model, three methods, accuracy and Brier side by side.
 
@@ -120,6 +120,21 @@ bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --
 The layout is fixed: run shikii at the project root, with `decisions/` (specs), `wiki/` (how-to-ask knowledge) and `.shikii/` (records and truths) beside each other. There is no flag for where the wiki lives.
 
 Wording moves accuracy far more than calibration does (0.68 → 0.90 in our data; a layout change moved a 27B model by 5 points). The truths people gave do not depend on the wording, so every candidate wording can be scored on all of them with no new labels: top-1, Brier, precision and recall at `act`, plus a k-fold holdout of the selection itself. A candidate is adopted only when that holdout beats keeping the current wording; a win by one example out of 62 does not pass (we saw exactly that: 0.984 on the full bank, 0.952 on holdout, so the current 0.968 stayed). Ties keep the current wording. The winner becomes a new version file; the old one stays, and the calibration is fitted immediately by replay.
+
+A candidate may also change the *shape* of the question, not just its words. For a choice, `steps:` asks a chain of yes/no questions in one call and multiplies the branch probabilities into the original options:
+
+```yaml
+variants:
+  - name: two-step
+    steps:
+      - ask: Is this message a request, as opposed to a greeting, thanks or small talk?
+        no: other
+      - ask: Does it ask to change something in the repository?
+        yes: change_request
+        no: question
+```
+
+Every option appears exactly once as a leaf; the truths, the calibration and the bands are unchanged, so a decomposition is scored and adopted like any rewording. It helps models that answer yes/no better than a five-way choice; on a 27B model that already handles the choice well it lost (0.790 vs 0.968), which `tune` measured on the same truths.
 
 You do not have to write the candidates yourself:
 
