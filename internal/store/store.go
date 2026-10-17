@@ -278,13 +278,10 @@ func AuditSample(traceID string) bool {
 	return h.Sum32()%20 == 0
 }
 
-// HumanSource は、その出どころの正解を人(または結果)が確かめたか。上の段の答え(context)・聞き直し(replay)・ファイル(file)は機械の正解。
+// HumanSource は、その出どころの正解を人(または結果)が決めたか。機械が決めた正解は上の段の答え(context)だけ。
+// 聞き直し(replay)とファイル(file)は確率を機械が取り直しただけで、正解そのものは人が付けたもの。
 func HumanSource(source string) bool {
-	switch source {
-	case "context", "replay", "file":
-		return false
-	}
-	return true
+	return source != "context"
 }
 
 // Partial は "!<id>" 形式の部分ラベルか。

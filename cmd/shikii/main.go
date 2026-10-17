@@ -1245,7 +1245,7 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 		if prec < sp.Thresholds.Act {
 			out = append(out, fmt.Sprintf("%s: precision at act is %.3f < thresholds.act %.2f on %d labels", key, prec, sp.Thresholds.Act, len(labels)))
 		}
-		// 人が確かめた正解だけでも測る。機械の正解(context / replay / file)は同じモデルと同じ方向に間違いうるので、act の精度の保証は人の分で取る。
+		// 人が決めた正解だけでも測る。機械の正解(context: 上の段の答え)は同じモデルと同じ方向に間違いうるので、act の精度の保証は人の分で取る。
 		// 抜き取り(act の 20 件に 1 件が答え合わせの列に出る)が母数を作る。min_n に届くまでは数だけ言い、届いたら act を割れば落とす。
 		var human []store.Label
 		for _, l := range labels {

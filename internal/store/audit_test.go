@@ -23,16 +23,14 @@ func TestAuditSampleIsOneInTwentyAndStable(t *testing.T) {
 	}
 }
 
-// 人の正解と機械の正解を分ける: 上の段の答え(context)・聞き直し(replay)・ファイル(file)は人が見ていない。
+// 人の正解と機械の正解を分ける: 機械が決めた正解は上の段の答え(context)だけ。聞き直し(replay)とファイル(file)の正解は人が付けたもの。
 func TestHumanSourceExcludesMachineTruths(t *testing.T) {
-	for _, s := range []string{"ui", "manual", "ask", "audit", "mcp", "outcome", ""} {
+	for _, s := range []string{"ui", "manual", "ask", "audit", "mcp", "outcome", "replay", "file", ""} {
 		if !HumanSource(s) {
-			t.Fatalf("%q is a truth a person (or the outcome) gave", s)
+			t.Fatalf("%q is a truth a person (or the outcome) decided", s)
 		}
 	}
-	for _, s := range []string{"context", "replay", "file"} {
-		if HumanSource(s) {
-			t.Fatalf("%q is a machine truth", s)
-		}
+	if HumanSource("context") {
+		t.Fatalf("context is the machine's own answer used as a truth")
 	}
 }
