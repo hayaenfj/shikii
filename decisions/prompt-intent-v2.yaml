@@ -76,3 +76,11 @@ display:
       review: レビュー
       operation: 操作(実行・コミットなど)
       other: 依頼ではない
+# 聞き方の候補(`shikii tune` が正解の貯金で採点する。鍵には入らない)
+variants:
+  - name: shorter-question
+    question: |
+      The state is a message a user sent to a coding assistant. Which kind of request is it?
+  - name: other-tight
+    options:
+      other: Not a request at all - greetings, thanks, acknowledgements ("ok", "了解"), small talk, goodbye. Anything that asks for work, however short, is a request and never other.

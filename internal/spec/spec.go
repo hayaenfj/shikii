@@ -90,8 +90,46 @@ type Spec struct {
 	Calibration []Calibration `yaml:"calibration,omitempty"`
 	// Display は画面の表示用の訳(言語コード → 題名・選択肢・段階)。モデルには送らず、較正の鍵にも入らない。
 	Display map[string]Display `yaml:"display,omitempty"`
+	// Variants は聞き方の候補(`shikii tune` が正解の貯金で採点する)。鍵には入らない。採用されたものは新しい版として別ファイルになる。
+	Variants []Variant `yaml:"variants,omitempty"`
 
 	path string
+}
+
+// Variant は聞き方の候補。書いた項目だけを上書きする(無い項目は今の spec のまま)。
+type Variant struct {
+	Name     string            `yaml:"name"`
+	Question string            `yaml:"question,omitempty"`
+	Options  map[string]string `yaml:"options,omitempty"`  // choice: id → 説明の言い換え
+	Levels   []string          `yaml:"levels,omitempty"`   // score: 段階の言い換え(数は同じ)
+	Template string            `yaml:"template,omitempty"` // state の並べ方
+}
+
+// WithVariant は候補を当てた写し(path は無し。鍵は変わる)。
+func (s *Spec) WithVariant(v Variant) *Spec {
+	c := *s
+	c.Calibration = nil
+	c.Variants = nil
+	c.path = ""
+	if v.Question != "" {
+		c.Question = v.Question
+	}
+	if v.Template != "" {
+		c.State = State{Template: v.Template, Required: append([]string(nil), s.State.Required...)}
+	}
+	if len(v.Options) > 0 {
+		c.Options = make([]Option, len(s.Options))
+		for i, o := range s.Options {
+			if d, ok := v.Options[o.ID]; ok {
+				o.Description = d
+			}
+			c.Options[i] = o
+		}
+	}
+	if len(v.Levels) > 0 {
+		c.Levels = append([]string(nil), v.Levels...)
+	}
+	return &c
 }
 
 // Display は 1 言語ぶんの表示用の訳。Options は choice の id(noul なら yes / no)→ 表示名、Levels は score の段階(低い順、数は levels と同じ)。
@@ -181,6 +219,31 @@ func (s *Spec) Validate() error {
 		}
 		if len(d.Levels) > 0 && len(d.Levels) != len(s.Levels) {
 			return fmt.Errorf("display.%s.levels: %d entries, spec has %d levels", lang, len(d.Levels), len(s.Levels))
+		}
+	}
+	names := map[string]bool{}
+	for i, v := range s.Variants {
+		if strings.TrimSpace(v.Name) == "" || names[v.Name] || v.Name == "current" {
+			return fmt.Errorf("variants[%d]: name must be unique, non-empty and not \"current\"", i)
+		}
+		names[v.Name] = true
+		if v.Question == "" && len(v.Options) == 0 && len(v.Levels) == 0 && v.Template == "" {
+			return fmt.Errorf("variants[%d] (%s): changes nothing", i, v.Name)
+		}
+		for id := range v.Options {
+			if s.Type != Choice || !s.hasTruthID(id) {
+				return fmt.Errorf("variants[%d] (%s).options: %q is not an option of this spec", i, v.Name, id)
+			}
+		}
+		if len(v.Levels) > 0 && len(v.Levels) != len(s.Levels) {
+			return fmt.Errorf("variants[%d] (%s).levels: %d entries, spec has %d levels", i, v.Name, len(v.Levels), len(s.Levels))
+		}
+		if v.Template != "" {
+			for _, r := range s.State.Required {
+				if !strings.Contains(v.Template, "{{ "+r+" }}") && !strings.Contains(v.Template, "{{"+r+"}}") {
+					return fmt.Errorf("variants[%d] (%s).template: does not mention required input %q", i, v.Name, r)
+				}
+			}
 		}
 	}
 	return nil

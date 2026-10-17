@@ -68,6 +68,8 @@ func main() {
 		err = cmdUp(os.Args[2:])
 	case "doctor":
 		err = cmdDoctor(os.Args[2:])
+	case "tune":
+		err = cmdTune(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -98,7 +100,8 @@ func usage() {
                    質問に答えるだけで spec を作る(フラグで渡したものは聞かない)
   shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080] [--readout-port 8090]
                    手元のモデルを起こす。普通の GGUF なら shikii-readout を前に立てる。Ctrl-C で止める
-  shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   何が動いていて何が足りないかを 1 画面で`)
+  shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   何が動いていて何が足りないかを 1 画面で
+  shikii tune      <spec.yaml> [--labeled file] [--local URL] [--write]        spec の variants:(聞き方の候補)を正解の貯金で採点し、勝った候補を新しい版として書く`)
 }
 
 // endpointFlags は decide / calibrate 共通のエンドポイント指定。
