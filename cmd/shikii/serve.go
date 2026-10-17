@@ -406,7 +406,7 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(uiHTML))
 }
 
-// uiHTML は 1 枚の画面。外部の読み込み無し(オフラインでも開ける)。
+// uiHTML は 1 枚の画面。外部の読み込み無し(オフラインでも開ける)。言語は右上で選ぶ(辞書 T に足せば増える)。
 const uiHTML = `<!doctype html>
 <meta charset="utf-8">
 <title>shikii</title>
@@ -415,7 +415,9 @@ const uiHTML = `<!doctype html>
   :root { color-scheme: light dark; --fg:#1b1f2a; --bg:#fff; --muted:#6b7280; --line:#e5e7eb; --amber:#b45309; --amberbg:#fef3c7; --ok:#166534; --okbg:#dcfce7; }
   @media (prefers-color-scheme: dark) { :root { --fg:#e5e7eb; --bg:#0b1020; --muted:#9ca3af; --line:#1f2937; --amber:#fbbf24; --amberbg:#3a2a05; --ok:#86efac; --okbg:#0f2f1a; } }
   body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 20px; max-width: 980px; margin: 0 auto; }
+  header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
   h1 { font-size: 20px; margin: 0 0 4px; } h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  #lang { margin-left:auto; font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
   h2 { font-size: 16px; margin: 28px 0 8px; display:flex; gap:10px; align-items:baseline; flex-wrap: wrap; }
   .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
   .pill.calibrated { background: var(--okbg); color: var(--ok); border-color: transparent; }
@@ -433,47 +435,75 @@ const uiHTML = `<!doctype html>
   pre { font-size: 12px; color: var(--muted); white-space: pre-wrap; margin: 6px 0 0; }
   #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; display: none; max-width: 90vw; white-space: pre-wrap; }
 </style>
-<h1>shikii <small>answer what was true; the line draws itself</small></h1>
-<div id="root"><div class="empty">loading…</div></div>
+<header>
+  <h1>shikii <small id="tagline"></small></h1>
+  <select id="lang" aria-label="language"><option value="en">English</option><option value="ja">日本語</option></select>
+</header>
+<div id="root"><div class="empty">…</div></div>
 <div id="toast"></div>
 <script>
+// 辞書。言語を足すときはここに 1 つ増やし、<select> に option を足す。
+const T = {
+  en: { tagline: 'answer what was true; the line draws itself', loading: 'loading…', noSpecs: 'no specs', empty: 'nothing waiting for an answer',
+        records: n => n + ' records', answered: n => n + ' answered', calibrated: m => 'calibrated (' + m + ')', stale: 'stale wording', collecting: (n, m) => 'collecting ' + n + '/' + m, ready: (n, m) => 'ready ' + n + '/' + m,
+        noText: h => '(text not stored: policy.pii is possible; only the hash ' + h + ')', model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
+        done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration' },
+  ja: { tagline: '本当はどうだったかを答える。線は自分で引かれる', loading: '読み込み中…', noSpecs: 'spec がありません', empty: '答え合わせ待ちはありません',
+        records: n => '記録 ' + n, answered: n => '答え済み ' + n, calibrated: m => '線あり (' + m + ')', stale: '文言が古い', collecting: (n, m) => '集めている ' + n + '/' + m, ready: (n, m) => '線を引ける ' + n + '/' + m,
+        noText: h => '(本文は残していません: policy.pii が possible。ハッシュ ' + h + ' だけ)', model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
+        done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正' },
+};
 const $ = (s, el=document) => el.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let lang = 'en';
+try { lang = localStorage.getItem('shikii.lang') || (navigator.language || 'en').slice(0,2); } catch (e) {}
+if (!T[lang]) lang = 'en';
+const t = k => T[lang][k];
+$('#lang').value = lang;
+$('#lang').addEventListener('change', e => { lang = e.target.value; try { localStorage.setItem('shikii.lang', lang); } catch (x) {} render(); });
 let toastTimer;
-function toast(msg, ms=4000) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', ms); }
+function toast(msg, ms=4000) { const el = $('#toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.style.display = 'none', ms); }
 async function j(url, opts) { const r = await fetch(url, opts); const b = await r.json(); if (!r.ok) throw new Error(b.error || r.status); return b; }
+let state = null;
 async function load() {
   const st = await j('/v1/status');
+  for (const sp of st.specs) sp.queue = await j('/v1/queue?spec=' + encodeURIComponent(sp.id) + '&limit=30');
+  state = st; render();
+}
+function render() {
+  $('#tagline').textContent = t('tagline');
+  document.documentElement.lang = lang;
   const root = $('#root'); root.innerHTML = '';
-  if (!st.specs.length) { root.innerHTML = '<div class="empty">no specs</div>'; return; }
-  for (const sp of st.specs) {
-    const q = await j('/v1/queue?spec=' + encodeURIComponent(sp.id) + '&limit=30');
+  if (!state) { root.innerHTML = '<div class="empty">' + esc(t('loading')) + '</div>'; return; }
+  if (!state.specs.length) { root.innerHTML = '<div class="empty">' + esc(t('noSpecs')) + '</div>'; return; }
+  for (const sp of state.specs) {
     const sec = document.createElement('section');
-    const pills = sp.keys.map(k => '<span class="pill ' + k.state + '">' + esc(k.model) + ' · ' + (k.state === 'calibrated' ? 'calibrated (' + esc(k.method) + ')' : k.state === 'stale' ? 'stale wording' : k.state + ' ' + k.n + '/' + sp.min_n) + '</span>').join(' ');
-    sec.innerHTML = '<h2>' + esc(sp.id) + ' <span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + sp.records + ' records · ' + sp.labels + ' answered</span></h2>';
-    if (!q.items.length) { sec.innerHTML += '<div class="empty">nothing waiting for an answer</div>'; }
-    for (const it of q.items) {
+    const pills = sp.keys.map(k => '<span class="pill ' + k.state + '">' + esc(k.model) + ' · ' + esc(k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n)) + '</span>').join(' ');
+    sec.innerHTML = '<h2>' + esc(sp.id) + ' <span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span></h2>';
+    if (!sp.queue.items.length) { sec.innerHTML += '<div class="empty">' + esc(t('empty')) + '</div>'; }
+    for (const it of sp.queue.items) {
       const el = document.createElement('div'); el.className = 'item ' + it.band;
-      const text = it.inputs ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">(text not stored: policy.pii is possible; only the hash ' + esc(it.inputs_hash) + ')</span>';
-      const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(c.label) + (c.truth === it.top ? ' · model ' + (it.p*100).toFixed(0) + '%' : '') + '</button>').join('');
-      const not = it.top ? '<button class="weak" data-truth="!' + esc(it.top) + '">not ' + esc(it.top) + ' (that is all I know)</button>' : '';
-      el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.stale ? '<span>wording changed since</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
+      const text = it.inputs ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
+      const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(c.label) + (c.truth === it.top ? ' · ' + esc(t('model')((it.p*100).toFixed(0))) : '') + '</button>').join('');
+      const not = it.top ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(it.top)) + '</button>' : '';
+      el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
       el.addEventListener('click', async ev => {
         const b = ev.target.closest('button'); if (!b) return;
         for (const x of el.querySelectorAll('button')) x.disabled = true;
         try {
           const res = await j('/v1/label', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ trace_id: it.trace_id, spec: sp.id, truth: b.dataset.truth, source: 'ui' }) });
           el.remove();
-          if (res.calibrated) { toast('enough answers: calibration written\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); } else { toast('answered: ' + res.truth); }
-        } catch (e) { toast('error: ' + e.message); for (const x of el.querySelectorAll('button')) x.disabled = false; }
+          if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); } else { toast(t('done')(res.truth)); }
+        } catch (e) { toast(t('error')(e.message)); for (const x of el.querySelectorAll('button')) x.disabled = false; }
       });
       sec.appendChild(el);
     }
-    if (sp.last_calibration) sec.innerHTML += '<pre>last auto-calibration\n' + esc(sp.last_calibration) + '</pre>';
+    if (sp.last_calibration) sec.innerHTML += '<pre>' + esc(t('last')) + '\n' + esc(sp.last_calibration) + '</pre>';
     root.appendChild(sec);
   }
 }
-load().catch(e => { $('#root').innerHTML = '<div class="empty">error: ' + esc(e.message) + '</div>'; });
+render();
+load().catch(e => { $('#root').innerHTML = '<div class="empty">' + esc(t('error')(e.message)) + '</div>'; });
 setInterval(() => { if (!document.hidden) load().catch(()=>{}); }, 15000);
 </script>
 `

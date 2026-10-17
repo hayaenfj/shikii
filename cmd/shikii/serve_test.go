@@ -169,6 +169,24 @@ func TestServeUIIsSelfContained(t *testing.T) {
 	}
 }
 
+// 画面は言語を選べる(英語と日本語。辞書を足せば増える)。選択はブラウザに残る。
+func TestServeUIHasLanguageSwitch(t *testing.T) {
+	url, _, _ := newServeFixture(t, "local", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	resp, err := http.Get(url + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(resp.Body)
+	html := buf.String()
+	for _, must := range []string{`id="lang"`, `value="en"`, `value="ja"`, "答え合わせ待ちはありません", "nothing waiting for an answer", "localStorage"} {
+		if !strings.Contains(html, must) {
+			t.Fatalf("UI must offer a language switch with an English and a Japanese dictionary; missing %q", must)
+		}
+	}
+}
+
 // 正解がまだ無い spec でも status の keys は空配列(null だと画面の JS が落ちる)。
 func TestServeStatusNeverReturnsNullLists(t *testing.T) {
 	url, _, _ := newServeFixture(t, "local", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
