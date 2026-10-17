@@ -18,7 +18,7 @@ state:
 
 policy:
   send_to: [local]            # 契約書は外に出さない
-  pii: possible
+  pii: possible               # 契約の本文は記録にも残さない。人が画面で答えることはできず、レビューの結果を知るプログラムが正解を付ける
 
 thresholds:
   act: 0.80                   # 矛盾ありとして弁護士の確認待ちに入れる

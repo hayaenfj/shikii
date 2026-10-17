@@ -22,7 +22,7 @@ state:
 
 policy:
   send_to: [local]
-  pii: possible
+  pii: local                          # 作り物の例。本文を手元に残す(画面で人が答えられる)。外には送らない
 
 thresholds:
   act: 0.75

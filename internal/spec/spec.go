@@ -156,9 +156,11 @@ func (s *Spec) Validate() error {
 		}
 	}
 	switch s.Policy.PII {
-	case "", "never", "possible", "local":
+	case "never", "possible", "local":
+	case "":
+		return fmt.Errorf("policy.pii is required: local (keep the text on this machine, never send hosted; people can answer on the page), never (keep the text, hosted allowed) or possible (keep only a hash; people cannot answer, only programs can)")
 	default:
-		return fmt.Errorf("policy.pii: unknown value %q (never | possible | local)", s.Policy.PII)
+		return fmt.Errorf("policy.pii: unknown value %q (local | never | possible)", s.Policy.PII)
 	}
 	if !(0 < s.Thresholds.Ask && s.Thresholds.Ask <= s.Thresholds.Act && s.Thresholds.Act <= 1) {
 		return fmt.Errorf("thresholds must satisfy 0 < ask <= act <= 1")

@@ -175,7 +175,7 @@ Same specs, same labels, five evaluation sets, all synthetic: prompt intent (62 
 
 **Does it work in Japanese?** Yes, and it is where the differences show. Kev-4B gets 0.913 on Japanese prompts; the 27B models get 1.000. On the two Japanese yes/no sets (duplicate bug reports, same-matter inquiries) every model we tried separated positives from negatives completely; calibration only sharpened the probabilities.
 
-**Where does my data go?** Only the rendered state goes to the endpoint named in `send_to`. `pii` has three settings: `possible` (the default) keeps a hash of the inputs in the store, never the text; `local` keeps the text in the local store so truths can be replayed, and refuses hosted endpoints even if `send_to` lists them; `never` keeps the text and allows hosted. `--tainted` keeps everything local regardless. Keys are read from `DECISIONS_API_KEY` or `TYPESAFE_API_KEY` and nowhere else.
+**Where does my data go?** Only the rendered state goes to the endpoint named in `send_to`. `pii` is required and has three settings. `local` keeps the text in the local store, so people can answer on the page and truths can be replayed, and refuses hosted endpoints even if `send_to` lists them. `never` keeps the text and allows hosted. `possible` keeps only a hash: nobody can tell afterwards what was true, so only a program that knows the outcome can label those decisions. `--tainted` keeps everything local regardless. Keys are read from `DECISIONS_API_KEY` or `TYPESAFE_API_KEY` and nowhere else.
 
 **The store keeps growing.** `shikii gc` removes records older than 30 days that never got a label. Labelled records and labels stay forever, as they are the calibration material. It is a dry run unless you pass `--apply`.
 

@@ -356,10 +356,16 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		if _, ok := labeled[rec.TraceID]; ok {
 			continue
 		}
+		// 本文が無ければ人には答えられない。ボタンの材料は出さず、answerable=false で言う(outcome 等のプログラムからの正解は別経路)
+		answerable := len(rec.Inputs) > 0
+		choices := []map[string]any{}
+		if answerable {
+			choices = truthChoices(sp)
+		}
 		items = append(items, map[string]any{
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": rec.SpecHash != sp.Hash(),
-			"choices": truthChoices(sp),
+			"answerable": answerable, "choices": choices,
 		})
 	}
 	sort.SliceStable(items, func(i, j int) bool { return rank[items[i]["band"].(string)] < rank[items[j]["band"].(string)] })
@@ -479,11 +485,11 @@ const uiHTML = `<!doctype html>
 const T = {
   en: { tagline: 'answer what was true; the line draws itself', loading: 'loading…', noSpecs: 'no specs', empty: 'nothing waiting for an answer',
         records: n => n + ' records', answered: n => n + ' answered', calibrated: m => 'calibrated (' + m + ')', stale: 'stale wording', collecting: (n, m) => 'collecting ' + n + '/' + m, ready: (n, m) => 'ready ' + n + '/' + m,
-        noText: h => '(text not stored: policy.pii is possible; only the hash ' + h + ')', model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
+        noText: h => 'No text was kept for this decision (policy.pii: possible), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Set policy.pii: local in the spec and the next decisions will keep their text on this machine. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
         done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration' },
   ja: { tagline: '本当はどうだったかを答える。線は自分で引かれる', loading: '読み込み中…', noSpecs: 'spec がありません', empty: '答え合わせ待ちはありません',
         records: n => '記録 ' + n, answered: n => '答え済み ' + n, calibrated: m => '線あり (' + m + ')', stale: '文言が古い', collecting: (n, m) => '集めている ' + n + '/' + m, ready: (n, m) => '線を引ける ' + n + '/' + m,
-        noText: h => '(本文は残していません: policy.pii が possible。ハッシュ ' + h + ' だけ)', model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
+        noText: h => 'この判定は本文を残していないので(policy.pii: possible)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。spec の policy.pii を local にすると、次の判定から本文が手元に残ります。ハッシュ: ' + h, model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
         done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正' },
 };
 const $ = (s, el=document) => el.querySelector(s);
@@ -517,11 +523,11 @@ function render() {
     if (!sp.queue.items.length) { sec.innerHTML += '<div class="empty">' + esc(t('empty')) + '</div>'; }
     for (const it of sp.queue.items) {
       const el = document.createElement('div'); el.className = 'item ' + it.band;
-      const text = it.inputs ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
+      const text = it.answerable ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
       const name = c => (c.labels && c.labels[lang]) || c.label;
       const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
       const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('model')((it.p*100).toFixed(0))) : '') + '</button>').join('');
-      const not = it.top ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
+      const not = (it.answerable && it.top) ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
       el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
       el.addEventListener('click', async ev => {
         const b = ev.target.closest('button'); if (!b) return;

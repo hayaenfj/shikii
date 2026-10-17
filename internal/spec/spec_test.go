@@ -145,6 +145,7 @@ func TestValidateRejectsBadSpecs(t *testing.T) {
 		"level zero-ish":  func(s *Spec) { s.Type = Score; s.Levels = []string{"a", "b", "c"}; s.Thresholds.Level = -1 },
 		"no template":     func(s *Spec) { s.State.Template = "" },
 		"bad pii":         func(s *Spec) { s.Policy.PII = "maybe" },
+		"no pii":          func(s *Spec) { s.Policy.PII = "" }, // 黙って possible に倒さない。書いた人が選ぶ
 	}
 	for name, mutate := range cases {
 		s := noulSpec()

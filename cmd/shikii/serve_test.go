@@ -221,6 +221,24 @@ func TestServeExposesDisplayTranslations(t *testing.T) {
 	}
 }
 
+// 本文が残っていない(pii: possible)判定は、人には答えられない。待ち行列はそれを answerable=false で言い、ボタンの材料(choices)を出さない。
+func TestServeQueueMarksItemsWithoutTextAsUnanswerable(t *testing.T) {
+	url, _, _ := newServeFixture(t, "possible", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix"}})
+	var q struct {
+		TextStored bool             `json:"text_stored"`
+		Items      []map[string]any `json:"items"`
+	}
+	getJSON(t, url+"/v1/queue?spec=intent", &q)
+	if q.TextStored || len(q.Items) != 1 {
+		t.Fatalf("queue: %+v", q)
+	}
+	it := q.Items[0]
+	if it["answerable"] != false || len(it["choices"].([]any)) != 0 || it["inputs"] != nil {
+		t.Fatalf("without text the item must be marked unanswerable and carry no choices: %v", it)
+	}
+}
+
 // 正解がまだ無い spec でも status の keys は空配列(null だと画面の JS が落ちる)。
 func TestServeStatusNeverReturnsNullLists(t *testing.T) {
 	url, _, _ := newServeFixture(t, "local", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
