@@ -278,8 +278,8 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if (req.Record == nil || *req.Record) && d.Band != decide.Abstain {
-		if err := s.st.AppendRecord(recordOf(sp, d, req.Inputs)); err != nil {
-			writeErr(w, 500, fmt.Errorf("record: %w", err))
+		if err := recordDecision(s.st, sp, d, req.Inputs); err != nil {
+			writeErr(w, 500, err)
 			return
 		}
 	}
@@ -313,16 +313,20 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 	if req.Source == "" {
 		req.Source = "ui"
 	}
-	l, err := store.LabelFor(rec, req.Truth, req.Weight, req.Source)
+	labels, err := store.LabelsFor(rec, req.Truth, req.Weight, req.Source)
 	if err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	if err := s.st.AppendLabel(l); err != nil {
-		writeErr(w, 500, err)
-		return
+	for _, l := range labels {
+		if err := s.st.AppendLabel(l); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
 	}
-	resp := map[string]any{"trace_id": l.TraceID, "spec": l.SpecID, "model": l.Model, "truth": l.Truth, "weight": l.Weight, "source": l.Source, "calibrated": false}
+	l := labels[0]
+	// 文脈を足して決まった判定への答えは、最小の質問にも付く(rungs = 2)。線は段ごとに引かれる
+	resp := map[string]any{"trace_id": l.TraceID, "spec": l.SpecID, "model": l.Model, "truth": l.Truth, "weight": l.Weight, "source": l.Source, "rungs": len(labels), "calibrated": false}
 	if s.o.autoCalibrate {
 		if report, did := s.maybeCalibrate(rec.SpecID, rec.SpecHash, rec.Model); did {
 			resp["calibrated"] = true
@@ -336,10 +340,14 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 // 失敗しても label の処理は成功のまま(報告に残すだけ)。
 func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 	sp, err := s.spec(specID)
-	if err != nil || sp.Hash() != hash || model == "" {
+	if err != nil || !sp.LiveHash(hash) || model == "" {
 		return "", false
 	}
-	if c := sp.CalibrationFor(model); c != nil && c.SpecHash == sp.Hash() {
+	rs := sp // この記録の段
+	if hash == sp.ContextHash() {
+		rs = sp.ContextSpec()
+	}
+	if c := rs.CalibrationFor(model); c != nil && c.SpecHash == hash {
 		return "", false // もう線がある。引き直しは drift が悪化を言った時に(ここでは触らない)
 	}
 	labels, err := s.st.Labels(specID, hash, model)
@@ -420,8 +428,8 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, map[string]any{
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
-			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": rec.SpecHash != sp.Hash(),
-			"answerable": answerable, "choices": choices,
+			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": !sp.LiveHash(rec.SpecHash),
+			"answerable": answerable, "choices": choices, "rung": rec.RungOf(),
 		})
 	}
 	sort.SliceStable(items, func(i, j int) bool { return rank[items[i]["band"].(string)] < rank[items[j]["band"].(string)] })
@@ -462,24 +470,35 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			parts := strings.SplitN(k, "\x00", 2)
 			model, hash := parts[0], parts[1]
 			state := "collecting"
-			method := ""
+			method, rung := "", "minimal"
+			rs := sp // この指紋の段
+			if hash == sp.ContextHash() {
+				rs, rung = sp.ContextSpec(), "context"
+			}
 			switch {
-			case hash != sp.Hash():
+			case !sp.LiveHash(hash):
 				state = "stale"
-			case sp.CalibrationFor(model) != nil && sp.CalibrationFor(model).SpecHash == sp.Hash():
-				state, method = "calibrated", sp.CalibrationFor(model).Method
+			case rs.CalibrationFor(model) != nil && rs.CalibrationFor(model).SpecHash == hash:
+				state, method = "calibrated", rs.CalibrationFor(model).Method
 			case n >= sp.Eval.MinN:
 				state = "ready"
 			}
-			keys = append(keys, map[string]any{"model": model, "hash": hash, "n": n, "state": state, "method": method})
+			keys = append(keys, map[string]any{"model": model, "hash": hash, "n": n, "state": state, "method": method, "rung": rung})
 		}
-		sort.Slice(keys, func(i, j int) bool { return keys[i]["model"].(string) < keys[j]["model"].(string) })
+		sort.Slice(keys, func(i, j int) bool {
+			if keys[i]["model"] != keys[j]["model"] {
+				return keys[i]["model"].(string) < keys[j]["model"].(string)
+			}
+			return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal を先に
+		})
 		labeled, _ := s.st.LabeledTraces(sp.ID)
+		funnel, _ := s.st.Funnel(sp.ID)
 		s.mu.Lock()
 		last := s.lastCal[sp.ID]
 		s.mu.Unlock()
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "records": nRec, "labels": len(labs),
-			"unlabeled": nRec - countLabeledRecords(labeled, nRec), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last})
+			"unlabeled": nRec - countLabeledRecords(labeled, nRec), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last,
+			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
 	writeJSON(w, 200, map[string]any{"specs": out, "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir})
@@ -548,6 +567,7 @@ const uiHTML = `<!doctype html>
 const T = {
   en: { tagline: 'answer what was true; the line draws itself', loading: 'loading…', noSpecs: 'no specs', empty: 'nothing waiting for an answer',
         records: n => n + ' records', answered: n => n + ' answered', calibrated: m => 'calibrated (' + m + ')', stale: 'stale wording', collecting: (n, m) => 'collecting ' + n + '/' + m, ready: (n, m) => 'ready ' + n + '/' + m,
+        withContext: 'asked again with context', contextRung: 'context rung', toPerson: (h, k) => 'to a person ' + h + ' (' + k + ' per 1000)',
         noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
         done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration',
         wording: 'Wording', current: 'current', noRun: 'no tune run yet', running: 'measuring candidates…', runTune: 'measure the candidates', runPropose: n => 'ask the model for ' + n + ' candidates and measure',
@@ -556,6 +576,7 @@ const T = {
         checkHint: 'Does the new wording still ask what you mean? Numbers are checked by the machine; the meaning is yours to check.', rejected: 'recorded: meaning changed, not adopted', adoptedToast: p => 'adopted: ' + p },
   ja: { tagline: '本当はどうだったかを答える。線は自分で引かれる', loading: '読み込み中…', noSpecs: 'spec がありません', empty: '答え合わせ待ちはありません',
         records: n => '記録 ' + n, answered: n => '答え済み ' + n, calibrated: m => '線あり (' + m + ')', stale: '文言が古い', collecting: (n, m) => '集めている ' + n + '/' + m, ready: (n, m) => '線を引ける ' + n + '/' + m,
+        withContext: '文脈を足して聞き直した', contextRung: '文脈の段', toPerson: (h, k) => '人へ ' + h + '(1000 判定あたり ' + k + ')',
         noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
         done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正',
         wording: '聞き方', current: '今の文言', noRun: 'まだ測っていません', running: '候補を測っています…', runTune: '候補を測る', runPropose: n => 'AI に候補を ' + n + ' 個作らせて測る',
@@ -591,9 +612,10 @@ function render() {
   if (!state.specs.length) { root.innerHTML = '<div class="empty">' + esc(t('noSpecs')) + '</div>'; return; }
   for (const sp of state.specs) {
     const sec = document.createElement('section');
-    const pills = sp.keys.map(k => '<span class="pill ' + k.state + '">' + esc(k.model) + ' · ' + esc(k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n)) + '</span>').join(' ');
+    const pills = sp.keys.map(k => '<span class="pill ' + k.state + '">' + esc(k.model) + (k.rung === 'context' ? ' · ' + esc(t('contextRung')) : '') + ' · ' + esc(k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n)) + '</span>').join(' ');
     const title = (sp.titles && sp.titles[lang]) ? esc(sp.titles[lang]) + ' <span class="k" style="color:var(--muted);font-size:12px;font-weight:400">' + esc(sp.id) + '</span>' : esc(sp.id);
-    sec.innerHTML = '<h2>' + title + ' <span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span></h2>';
+    const funnel = (sp.funnel && sp.records > 0) ? ' <span class="pill">' + esc(t('toPerson')(sp.funnel.human, sp.funnel.human_per_thousand)) + '</span>' : '';
+    sec.innerHTML = '<h2>' + title + ' <span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span>' + funnel + '</h2>';
     if (!sp.queue.items.length) { sec.innerHTML += '<div class="empty">' + esc(t('empty')) + '</div>'; }
     for (const it of sp.queue.items) {
       const el = document.createElement('div'); el.className = 'item ' + it.band;
@@ -602,7 +624,7 @@ function render() {
       const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
       const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('model')((it.p*100).toFixed(0))) : '') + '</button>').join('');
       const not = (it.answerable && it.top) ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
-      el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
+      el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
       el.addEventListener('click', async ev => {
         const b = ev.target.closest('button'); if (!b) return;
         for (const x of el.querySelectorAll('button')) x.disabled = true;

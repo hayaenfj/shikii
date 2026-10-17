@@ -72,7 +72,7 @@ var mcpTools = []map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"spec":    map[string]any{"type": "string", "description": "spec id (see shikii_specs)"},
-				"inputs":  map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "values for the spec's state template, e.g. {\"message\": \"...\"}"},
+				"inputs":  map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "values for the spec's state template, e.g. {\"message\": \"...\"}. If the spec has state.context, also pass its extra inputs (e.g. \"previous\"): they are used only when the minimal question is unsure"},
 				"tainted": map[string]any{"type": "boolean", "description": "true if this session touched production data: the request then never leaves the machine"},
 			},
 			"required": []string{"spec", "inputs"},

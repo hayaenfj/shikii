@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -38,7 +39,28 @@ type Record struct {
 	P            float64            `json:"p"`
 	Band         string             `json:"band"`
 	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。この本文は聞き直しでも hosted に送らない
+	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問。古い記録は空) | context(文脈を足して聞き直した)
+	Minimal      *Pass              `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段の指紋と raw。人の正解はこちらにも付く)
 	At           time.Time          `json:"at"`
+}
+
+// Pass は 1 つの段の答え。文脈を足して聞き直した記録が、最小の質問の答えを持っておくのに使う。
+type Pass struct {
+	SpecHash     string             `json:"spec_hash"`
+	Raw          map[string]float64 `json:"raw,omitempty"`
+	Calibrated   map[string]float64 `json:"calibrated,omitempty"`
+	IsCalibrated bool               `json:"is_calibrated"`
+	Top          string             `json:"top,omitempty"`
+	P            float64            `json:"p"`
+	Band         string             `json:"band"`
+}
+
+// RungOf は記録の段の名前。古い記録(rung 無し)は最小の質問。
+func (r Record) RungOf() string {
+	if r.Rung == "" {
+		return "minimal"
+	}
+	return r.Rung
 }
 
 // Label は正解 1 件。Truth は型ごとの表現: noul は "yes"/"no"、choice は選択肢 id、score はレベル番号。
@@ -53,8 +75,9 @@ type Label struct {
 	Raw        map[string]float64 `json:"raw"`
 	Truth      string             `json:"truth"`
 	Weight     float64            `json:"weight"`
-	Source     string             `json:"source"` // ask | outcome | manual | ui | mcp | file | replay | …
+	Source     string             `json:"source"` // ask | outcome | manual | ui | mcp | file | replay | context | …
 	Tainted    bool               `json:"tainted,omitempty"`
+	Rung       string             `json:"rung,omitempty"` // この正解が付いた段(minimal | context)。raw と spec_hash はその段のもの
 	At         time.Time          `json:"at"`
 }
 
@@ -179,6 +202,68 @@ func LabelFor(rec *Record, truth string, weight float64, source string) (Label, 
 		Model: rec.Model, InputsHash: rec.InputsHash, Inputs: rec.Inputs, Raw: rec.Raw,
 		Truth: truth, Weight: weight, Source: source, Tainted: rec.Tainted, At: time.Now(),
 	}, nil
+}
+
+// LabelsFor は 1 つの正解を、その記録が通った全部の段に付ける。
+// 最小の質問で決まった記録なら 1 件。文脈を足して決まった記録なら 2 件: 最終の答え(文脈の指紋・raw)と、最小の質問(その指紋・raw)。
+// 人の答えは聞き方に依らないので、下の段もそのまま同じ正解で学べる(上の段の答えが下の段の正解になる、の人の側)。
+func LabelsFor(rec *Record, truth string, weight float64, source string) ([]Label, error) {
+	l, err := LabelFor(rec, truth, weight, source)
+	if err != nil {
+		return nil, err
+	}
+	l.Rung = rec.RungOf()
+	out := []Label{l}
+	if rec.Minimal != nil {
+		m := l
+		m.SpecHash, m.Raw, m.Rung = rec.Minimal.SpecHash, rec.Minimal.Raw, "minimal"
+		if _, ok := m.Raw[strings.TrimPrefix(truth, "!")]; !ok && rec.Type != "noul" {
+			return nil, fmt.Errorf("truth %q is not an option of the minimal pass", truth)
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// Funnel は記録がどの段で決まったかの数。進み具合は「1000 判定あたりの人の判断(ask のまま人に回った数)」で見る。
+type Funnel struct {
+	Records int `json:"records"`
+	Minimal int `json:"minimal"` // 最小の質問で決まった(act / discard)
+	Context int `json:"context"` // 文脈を足して決まった(act / discard)
+	Human   int `json:"human"`   // どの段でも決まらず人に回った(ask)
+}
+
+// HumanPerThousand は 1000 判定あたりの人の判断。記録が無ければ 0。
+func (f Funnel) HumanPerThousand() float64 {
+	if f.Records == 0 {
+		return 0
+	}
+	return math.Round(1000 * float64(f.Human) / float64(f.Records))
+}
+
+// Funnel は spec の記録を段と帯で数える。読めない行は数えない。
+func (s Store) Funnel(specID string) (Funnel, error) {
+	var f Funnel
+	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
+		var r Record
+		if json.Unmarshal(line, &r) != nil {
+			return nil
+		}
+		f.Records++
+		switch {
+		case r.Band == "ask":
+			f.Human++
+		case r.RungOf() == "context":
+			f.Context++
+		default:
+			f.Minimal++
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return f, err
+	}
+	return f, nil
 }
 
 // Partial は "!<id>" 形式の部分ラベルか。

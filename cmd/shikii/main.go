@@ -94,16 +94,17 @@ func usageText() string {
                    同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune。採用の道具は無い)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
   shikii decide    <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
+                   spec に state.context があれば、迷った時(ask。多択では discard も)だけ文脈の入力を足して聞き直す(別の指紋・別の線)。そこで確信に届いた答えは最小の質問の正解として残る
   shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]
   shikii label     --last --spec-id ID <truth>
   shikii calibrate <spec.yaml> [--labeled file] [--model M] [--local URL] [--hosted URL] [--store DIR] [--bins 10] [--write] [--force]
-                   正解で線を引く。今の (hash, model) に無い正解は本文で聞き直す
+                   正解で線を引く。今の (hash, model) に無い正解は本文で聞き直す。state.context があれば文脈の段の線も別に引く
+  shikii status    [spec.yaml...] [--store DIR]      記録と正解の数、段ごとの数(1000 判定あたりの人の判断)、線の状態
   shikii tune      <spec.yaml> [--labeled file] [--local URL] [--store DIR] [--folds 5] [--propose N --proposer URL [--proposer-model M]] [--write]
                    spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は ./wiki/runs/
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--local URL] [--hosted URL]
-  shikii status    [spec.yaml...] [--store DIR]
   shikii gc        [spec.yaml...] [--older-than 30d] [--apply] [--store DIR]
   shikii hash      <spec.yaml>
 `
@@ -183,8 +184,8 @@ func cmdDecide(args []string) error {
 		return err
 	}
 	if !*noRecord && d.Band != decide.Abstain {
-		if err := (store.Store{Dir: *storeDir}).AppendRecord(recordOf(sp, d, inputs)); err != nil {
-			return fmt.Errorf("record: %w", err)
+		if err := recordDecision(store.Store{Dir: *storeDir}, sp, d, inputs); err != nil {
+			return err
 		}
 	}
 	if *asJSON {
@@ -200,6 +201,9 @@ func cmdDecide(args []string) error {
 	fmt.Fprintln(stdout)
 	if d.Reason != "" {
 		fmt.Fprintln(stdout, "reason:", d.Reason)
+	}
+	if d.Minimal != nil {
+		fmt.Fprintf(stdout, "rung=context (the minimal question was unsure: top=%s p=%.3f band=%s; asked again with state.context)\n", d.Minimal.Top, d.Minimal.P, d.Minimal.Band)
 	}
 	if len(d.Raw) > 0 {
 		fmt.Fprintln(stdout, "raw:", fmtDist(d.Raw))
@@ -229,8 +233,29 @@ func recordOf(sp *spec.Spec, d *decide.Decision, inputs map[string]string) store
 		Model: d.Model, Endpoint: d.Endpoint,
 		Inputs: copyInputs(inputs), InputsHash: d.InputsHash,
 		Raw: d.Raw, Calibrated: d.Calibrated, IsCalibrated: d.IsCalibrated,
-		Top: d.Top, P: d.P, Band: string(d.Band), Tainted: d.Tainted, At: d.At,
+		Top: d.Top, P: d.P, Band: string(d.Band), Tainted: d.Tainted, Rung: d.Rung, Minimal: d.Minimal, At: d.At,
 	}
+}
+
+// recordDecision は判定を記録する。文脈を足した段で確信(act)に届いたら、その答えを最小の質問の正解として残す:
+// 上の段の答えが下の段の正解になる(重みは較正済みの確率、出どころは context)。人が後で答えればそちらが新しいので勝つ。
+func recordDecision(st store.Store, sp *spec.Spec, d *decide.Decision, inputs map[string]string) error {
+	rec := recordOf(sp, d, inputs)
+	if err := st.AppendRecord(rec); err != nil {
+		return fmt.Errorf("record: %w", err)
+	}
+	if d.Rung != "context" || d.Band != decide.Act || d.Minimal == nil {
+		return nil
+	}
+	l := store.Label{
+		TraceID: rec.TraceID, SpecID: rec.SpecID, SpecHash: d.Minimal.SpecHash, Type: rec.Type, Model: rec.Model,
+		InputsHash: rec.InputsHash, Inputs: rec.Inputs, Raw: d.Minimal.Raw,
+		Truth: d.Top, Weight: d.P, Source: "context", Tainted: rec.Tainted, Rung: "minimal", At: rec.At,
+	}
+	if err := st.AppendLabel(l); err != nil {
+		return fmt.Errorf("record context truth: %w", err)
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------- label
@@ -269,14 +294,16 @@ func cmdLabel(args []string) error {
 		}
 		rec, truth = r, pos[1]
 	}
-	l, err := store.LabelFor(rec, truth, *weight, *source)
+	labels, err := store.LabelsFor(rec, truth, *weight, *source)
 	if err != nil {
 		return err
 	}
-	if err := st.AppendLabel(l); err != nil {
-		return err
+	for _, l := range labels {
+		if err := st.AppendLabel(l); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "labeled %s (%s, %s, %s rung) truth=%s weight=%.2f source=%s\n", l.TraceID, l.SpecID, l.Model, l.Rung, l.Truth, l.Weight, l.Source)
 	}
-	fmt.Fprintf(stdout, "labeled %s (%s, %s) truth=%s weight=%.2f source=%s\n", l.TraceID, l.SpecID, l.Model, l.Truth, l.Weight, l.Source)
 	return nil
 }
 
@@ -337,13 +364,58 @@ type calibrateOpts struct {
 
 // runCalibrate は calibrate の本体。報告は stdout に出す。
 func runCalibrate(path string, o calibrateOpts) error {
-	ef, storeDir, labeledPath, bins, write, force := o.ef, &o.storeDir, &o.labeled, &o.bins, &o.write, &o.force
-	if *bins <= 0 {
-		*bins = 10
-	}
 	sp, err := spec.Load(path)
 	if err != nil {
 		return err
+	}
+	// 最小の質問の段。ここに線が引けないのは誤り(今までと同じ)。
+	cal, ok, err := calibrateRung(sp, o)
+	if err != nil {
+		return err
+	}
+	if o.write && !ok {
+		return fmt.Errorf("calibrate: refusing to write (see WARNING above; use --force to override)")
+	}
+	wrote := false
+	if o.write {
+		sp.PutCalibration(cal)
+		wrote = true
+	}
+	// 文脈の段(あれば)。正解は、文脈を足して決まった判定に人が答えた分だけ。まだ無ければ知らせて進む。
+	if csp := sp.ContextSpec(); csp != nil {
+		fmt.Fprintf(stdout, "\ncontext rung: the same question asked with state.context (hash=%s)\n", csp.Hash())
+		co := o
+		co.labeled = "none" // ファイルの行は最小の質問のもの
+		ccal, cok, err := calibrateRung(csp, co)
+		switch {
+		case errors.Is(err, errNoLabels):
+			fmt.Fprintln(stdout, "note: no truths on the context rung yet (they come from people answering decisions that went through it)")
+		case err != nil:
+			return err
+		case o.write && cok:
+			sp.PutCalibration(ccal)
+			wrote = true
+		case o.write:
+			fmt.Fprintln(stdout, "note: context rung not written (see WARNING above)")
+		}
+	}
+	if wrote {
+		if err := sp.Save(); err != nil {
+			return err
+		}
+		fmt.Fprintln(stdout, "wrote calibration to", sp.Path())
+	}
+	return nil
+}
+
+var errNoLabels = errors.New("no labels")
+
+// calibrateRung は 1 つの段(spec の指紋 1 つ)の線を引く。報告は常に出し、書いてよいか(ok)を返す。線そのものは書かない(呼ぶ側がまとめて書く)。
+func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, error) {
+	ef, storeDir, labeledPath, bins, force := o.ef, &o.storeDir, &o.labeled, &o.bins, &o.force
+	var cal spec.Calibration
+	if *bins <= 0 {
+		*bins = 10
 	}
 	if *labeledPath == "none" {
 		*labeledPath = "" // store のラベルと聞き直しだけで進む
@@ -360,7 +432,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 	st := store.Store{Dir: *storeDir}
 	labels, model, err := labelsFromFile(sp, *labeledPath, ef, st)
 	if err != nil {
-		return err
+		return cal, false, err
 	}
 	seen := map[string]bool{}
 	for _, l := range labels {
@@ -372,7 +444,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 	//    正解は人が決めたもので文言にもモデルにも依らない。確率だけ取り直す。
 	replayed, replayModel, err := replayTruths(sp, st, ef, model, seen)
 	if err != nil {
-		return err
+		return cal, false, err
 	}
 	if model == "" {
 		model = replayModel
@@ -384,11 +456,11 @@ func runCalibrate(path string, o calibrateOpts) error {
 	//    後で人が付けた訂正の方が新しければ、下の LatestPerInput でそちらが勝つ(監査 C2)。
 	stored, err := st.Labels(sp.ID, sp.Hash(), model)
 	if err != nil {
-		return err
+		return cal, false, err
 	}
 	replayedSet, err := storedInputs(st, sp, model)
 	if err != nil {
-		return err
+		return cal, false, err
 	}
 	for _, l := range replayed {
 		if replayedSet[l.InputsHash] {
@@ -396,7 +468,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 		}
 		replayedSet[l.InputsHash] = true
 		if err := st.AppendLabel(l); err != nil {
-			return fmt.Errorf("persist replayed label: %w", err)
+			return cal, false, fmt.Errorf("persist replayed label: %w", err)
 		}
 		stored = append(stored, l)
 	}
@@ -404,7 +476,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 	persisted := 0
 	storedSet, err := storedInputs(st, sp, model)
 	if err != nil {
-		return err
+		return cal, false, err
 	}
 	for _, l := range labels {
 		if l.Model == "" || l.InputsHash == "" {
@@ -415,7 +487,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 		}
 		storedSet[l.InputsHash] = true
 		if err := st.AppendLabel(l); err != nil {
-			return fmt.Errorf("persist label: %w", err)
+			return cal, false, fmt.Errorf("persist label: %w", err)
 		}
 		persisted++
 	}
@@ -433,7 +505,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 	}
 	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s n=%d (file=%d store=%d replay=%d)\n", sp.ID, sp.Hash(), model, len(labels), fileN, storedN, len(replayed))
 	if len(labels) == 0 {
-		return fmt.Errorf("calibrate: no labels for (hash=%s, model=%s)", sp.Hash(), model)
+		return cal, false, fmt.Errorf("calibrate: %w for (hash=%s, model=%s)", errNoLabels, sp.Hash(), model)
 	}
 	// 件数不足でも報告は出す。書き戻しだけ止める。
 	underMin := len(labels) < sp.Eval.MinN
@@ -442,7 +514,6 @@ func runCalibrate(path string, o calibrateOpts) error {
 	}
 
 	// 報告は常に出す。書き戻してよいか(ok)は別に返し、--write の時だけ効く。
-	var cal spec.Calibration
 	var ok bool
 	switch sp.Type {
 	case spec.Noul:
@@ -451,22 +522,11 @@ func runCalibrate(path string, o calibrateOpts) error {
 		cal, ok, err = verifyTop(sp, labels, *bins)
 	}
 	if err != nil {
-		return err
-	}
-	if !*write {
-		return nil
-	}
-	if (!ok || underMin) && !*force {
-		return fmt.Errorf("calibrate: refusing to write (see WARNING above; use --force to override)")
+		return cal, false, err
 	}
 	cal.Model, cal.SpecHash, cal.N = model, sp.Hash(), len(labels)
 	cal.FittedOn, cal.FittedAt = *labeledPath, time.Now().Format("2006-01-02")
-	sp.PutCalibration(cal)
-	if err := sp.Save(); err != nil {
-		return err
-	}
-	fmt.Fprintln(stdout, "wrote calibration to", sp.Path())
-	return nil
+	return cal, (ok && !underMin) || *force, nil
 }
 
 // labelsFromFile はラベル付きファイルを store.Label の形に揃える。モデルに聞いた行があれば、その実モデル名も返す。
@@ -536,7 +596,7 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 			}
 			reused++
 		default:
-			d, err := decide.Decide(ctx, sp, r.Inputs, sess, eps)
+			d, err := decide.Decide(ctx, sp.WithoutContext(), r.Inputs, sess, eps) // ファイルの正解は最小の質問の段のもの
 			if err != nil {
 				return nil, "", fmt.Errorf("row %d: %w", i, err)
 			}
@@ -633,7 +693,8 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 	defer cancel()
 
 	var out []store.Label
-	noText, noEndpoint, invalid := 0, 0, 0
+	noText, noEndpoint, noContext, invalid := 0, 0, 0, 0
+	rs := sp.WithoutContext() // この段(この指紋)だけで聞き直す。段を上がると別の指紋の答えになってしまう
 	hashes := make([]string, 0, len(bank))
 	for h := range bank {
 		hashes = append(hashes, h)
@@ -655,12 +716,16 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		}
 		// tainted で記録された本文は、今のセッションが tainted でなくても hosted に送らない(監査 S1)
 		sess := decide.Session{Tainted: ef.tainted || stored.Tainted}
-		d, err := decide.Decide(ctx, sp, inputs, sess, eps)
+		d, err := decide.Decide(ctx, rs, inputs, sess, eps)
 		if err != nil {
 			return nil, model, fmt.Errorf("replay %s: %w", h, err)
 		}
 		if d.Band == decide.Abstain {
-			noEndpoint++
+			if strings.HasPrefix(d.Reason, "missing required input") {
+				noContext++ // 文脈の段の聞き直し: この本文には足す文脈が記録されていない
+			} else {
+				noEndpoint++
+			}
 			continue
 		}
 		if model == "" {
@@ -692,6 +757,9 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 	}
 	if noEndpoint > 0 {
 		fmt.Fprintf(stdout, "note: %d earlier truth(s) not replayed: no endpoint to ask (pass --local or a key for --hosted)\n", noEndpoint)
+	}
+	if noContext > 0 {
+		fmt.Fprintf(stdout, "note: %d earlier truth(s) not replayed on this rung: their text has no context inputs (%s)\n", noContext, strings.Join(sp.State.Required, ", "))
 	}
 	if invalid > 0 {
 		fmt.Fprintf(stdout, "note: %d earlier truth(s) skipped: their answer no longer exists in the spec\n", invalid)
@@ -1128,9 +1196,14 @@ func cmdCheck(args []string) error {
 func checkSpec(sp *spec.Spec, st store.Store) []string {
 	var out []string
 	h := sp.Hash()
+	base := sp
 	for _, c := range sp.Calibration {
 		key := fmt.Sprintf("calibration(model=%s)", c.Model)
-		if c.SpecHash != h {
+		sp := base // この線の段の spec(文脈の段の線は、文脈の段の指紋と正解で検証する)
+		if c.SpecHash == base.ContextHash() {
+			sp = base.ContextSpec()
+			key = fmt.Sprintf("calibration(model=%s, context rung)", c.Model)
+		} else if c.SpecHash != h {
 			out = append(out, fmt.Sprintf("%s: stale spec_hash %s (current %s): the question/template/options changed after calibration; re-run calibrate", key, c.SpecHash, h))
 			continue
 		}
@@ -1571,19 +1644,28 @@ func cmdStatus(args []string) error {
 			fmt.Fprintf(stdout, "  by truth:  %s\n", fmtCounts(byTruth))
 		}
 		sp := specs[id]
+		if f, err := st.Funnel(id); err == nil && f.Records > 0 {
+			// 段ごとの数。進み具合は 1000 判定あたりの人の判断(ask のまま人に回った数)
+			fmt.Fprintf(stdout, "  rungs: settled by the minimal question %d, by added context %d, left to a person %d (%.0f per 1000 decisions)\n", f.Minimal, f.Context, f.Human, f.HumanPerThousand())
+		}
 		for key, n := range byKey {
 			note := ""
 			if sp != nil {
 				parts := strings.SplitN(key, " @ ", 2)
+				rs := sp // この指紋の段
+				if parts[1] == sp.ContextHash() {
+					rs = sp.ContextSpec()
+					note = "  (context rung)"
+				}
 				switch {
-				case parts[1] != sp.Hash():
+				case !sp.LiveHash(parts[1]):
 					note = "  (stale hash: spec wording changed since; not used)"
-				case sp.CalibrationFor(parts[0]) != nil:
-					note = "  calibrated: " + sp.CalibrationFor(parts[0]).Method
+				case rs.CalibrationFor(parts[0]) != nil:
+					note += "  calibrated: " + rs.CalibrationFor(parts[0]).Method
 				case n >= sp.Eval.MinN:
-					note = fmt.Sprintf("  ready to calibrate (>= min_n %d)", sp.Eval.MinN)
+					note += fmt.Sprintf("  ready to calibrate (>= min_n %d)", sp.Eval.MinN)
 				default:
-					note = fmt.Sprintf("  collecting (%d/%d)", n, sp.Eval.MinN)
+					note += fmt.Sprintf("  collecting (%d/%d)", n, sp.Eval.MinN)
 				}
 			}
 			fmt.Fprintf(stdout, "  %-50s %4d%s\n", key, n, note)

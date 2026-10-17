@@ -204,7 +204,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	defer cancel()
 
 	// 1. 今の聞き方を採点(提案役に混同表と外した実例を渡すため、先に)
-	current, err := scoreCandidate(ctx, candidate{"current", sp}, bank, eps, o.ef.tainted)
+	current, err := scoreCandidate(ctx, candidate{"current", sp.WithoutContext()}, bank, eps, o.ef.tainted)
 	if err != nil {
 		return nil, fmt.Errorf("tune: current: %w", err)
 	}
@@ -237,9 +237,10 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 			return nil, errors.New("tune: nothing to score (every proposal was invalid)")
 		}
 	}
-	cands := []candidate{{"current", sp}}
+	// 候補は最小の質問の段だけで採点する(聞き方の比較。段を上がると文脈の段の答えが混ざる)。採用した版は context を引き継ぐ。
+	cands := []candidate{{"current", sp.WithoutContext()}}
 	for _, v := range sp.Variants {
-		cands = append(cands, candidate{v.Name, sp.WithVariant(v)})
+		cands = append(cands, candidate{v.Name, sp.WithVariant(v).WithoutContext()})
 	}
 	fmt.Fprintf(stdout, "tune %s: %d truths × %d candidates (model asked %d times)\n", sp.ID, len(bank), len(cands), len(bank)*len(cands))
 	scores := make([]candScore, len(cands))

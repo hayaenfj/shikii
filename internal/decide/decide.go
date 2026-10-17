@@ -56,6 +56,8 @@ type Decision struct {
 	Band         Band               `json:"band"`
 	Reason       string             `json:"reason,omitempty"`
 	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。記録に残り、聞き直しでも hosted に送らない
+	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問) | context(迷ったので文脈を足して聞き直した)
+	Minimal      *store.Pass        `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段の指紋と raw)。人の正解はこちらにも付く
 	At           time.Time          `json:"at"`
 }
 
@@ -144,16 +146,42 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 	}
 	d.Endpoint = ep.Kind
 
+	// 第 1 段: 最小の質問
+	d.Rung = "minimal"
+	if err := askOnce(ctx, sp, d, state, ep); err != nil {
+		return nil, err
+	}
+	// 第 2 段: 迷った(ask)時だけ、文脈の入力が揃っていれば文脈を足して聞き直す。
+	// 文脈を足した聞き方は別の指紋なので、答えはその指紋で記録され、較正もその指紋の線で掛かる。最小の質問の答えは Minimal に残す。
+	csp := sp.ContextSpec()
+	if !unsure(sp, d.Band) || csp == nil {
+		return d, nil
+	}
+	cstate, missing := csp.Render(inputs)
+	if len(missing) > 0 {
+		return d, nil // 足す文脈が無い: ここで止まる(人へ)
+	}
+	d.Minimal = &store.Pass{SpecHash: d.SpecHash, Raw: d.Raw, Calibrated: d.Calibrated, IsCalibrated: d.IsCalibrated, Top: d.Top, P: d.P, Band: string(d.Band)}
+	d.SpecHash = csp.Hash()
+	if err := askOnce(ctx, csp, d, cstate, ep); err != nil {
+		return nil, err
+	}
+	d.Rung = "context"
+	return d, nil
+}
+
+// askOnce は 1 つの段を聞く: 多択(または分解した はい/いいえ の列)を 1 回の呼び出しで聞き、raw・較正・top・帯を d に書く。
+func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *Endpoint) error {
 	if len(sp.Steps) > 0 {
 		return decideBySteps(ctx, sp, d, state, ep)
 	}
 	resp, err := ep.Client.Ask(ctx, state, map[string]systemone.Question{questionKey: BuildQuestion(sp)})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ans, ok := resp.Answers[questionKey]
 	if !ok {
-		return nil, fmt.Errorf("response has no answer for %q", questionKey)
+		return fmt.Errorf("response has no answer for %q", questionKey)
 	}
 	// 較正の鍵には実際に答えたモデルを使う。"jev-latest" が別版に切り替わったら
 	// 較正は失効し、act が出なくなる(それが望む挙動)。
@@ -183,7 +211,17 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 		}
 	}
 	d.Band = band(sp.Thresholds, d.P, d.IsCalibrated)
-	return d, nil
+	return nil
+}
+
+// unsure は「迷った」か: ask 帯はいつでも迷い。一番高い選択肢で帯を決める型(choice と、level 無しの score)では
+// discard(どの選択肢も ask に届かない)も迷い。noul と level 付きの score の discard は確信した「いいえ / 低い」なので迷いではない。
+func unsure(sp *spec.Spec, b Band) bool {
+	if b == Ask {
+		return true
+	}
+	argmaxBand := sp.Type == spec.Choice || (sp.Type == spec.Score && sp.Thresholds.Level == 0)
+	return b == Discard && argmaxBand
 }
 
 // StepQuestions は分解の全段を 1 回の呼び出しに載せる質問の集まり(鍵は step-0, step-1, …)。
@@ -224,16 +262,16 @@ func StepDistribution(sp *spec.Spec, pYes []float64) map[string]float64 {
 }
 
 // decideBySteps は分解した choice を 1 回の呼び出しで聞き、積の分布を多択の答えと同じ形にする(較正・帯・記録は共通)。
-func decideBySteps(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *Endpoint) (*Decision, error) {
+func decideBySteps(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *Endpoint) error {
 	resp, err := ep.Client.Ask(ctx, state, StepQuestions(sp))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	pYes := make([]float64, len(sp.Steps))
 	for i := range sp.Steps {
 		ans, ok := resp.Answers[stepKey(i)]
 		if !ok {
-			return nil, fmt.Errorf("response has no answer for %q", stepKey(i))
+			return fmt.Errorf("response has no answer for %q", stepKey(i))
 		}
 		pYes[i] = ans.Noul
 	}
@@ -246,7 +284,7 @@ func decideBySteps(ctx context.Context, sp *spec.Spec, d *Decision, state string
 	d.Top, d.P = argmax(d.Calibrated)
 	d.Confidence = abs(2*d.P - 1)
 	d.Band = band(sp.Thresholds, d.P, d.IsCalibrated)
-	return d, nil
+	return nil
 }
 
 // band は閾値と較正の有無から帯を決める。較正の無い判定は act を出さない。

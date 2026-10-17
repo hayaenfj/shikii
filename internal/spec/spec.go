@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -36,6 +37,58 @@ type Option struct {
 type State struct {
 	Template string   `yaml:"template"`
 	Required []string `yaml:"required"`
+	// Context は「迷った時だけ文脈を足して聞き直す」並べ方(任意)。required の入力を全部使い、template に無い入力を 1 つ以上足す。
+	// 足した入力が揃っていて、最小の質問の答えが ask 帯の時だけ使う。文脈を足した聞き方は別の指紋(ContextHash)を持ち、較正も別に引く。
+	Context string `yaml:"context,omitempty"`
+}
+
+var placeholderRe = regexp.MustCompile(`\{\{\s*([A-Za-z0-9_]+)\s*\}\}`)
+
+// placeholders は template の中の {{ name }} を、出た順(重複なし)で返す。
+func placeholders(tpl string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range placeholderRe.FindAllStringSubmatch(tpl, -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
+// ContextInputs は context が足す入力(required に無い placeholder)を名前順で返す。context が無ければ nil。
+func (s State) ContextInputs() []string {
+	if s.Context == "" {
+		return nil
+	}
+	req := map[string]bool{}
+	for _, r := range s.Required {
+		req[r] = true
+	}
+	var out []string
+	for _, p := range placeholders(s.Context) {
+		if !req[p] {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (s State) validateContext() error {
+	if s.Context == "" {
+		return nil
+	}
+	for _, r := range s.Required {
+		if !strings.Contains(s.Context, "{{ "+r+" }}") && !strings.Contains(s.Context, "{{"+r+"}}") {
+			return fmt.Errorf("state.context: does not mention required input %q", r)
+		}
+	}
+	if len(s.ContextInputs()) == 0 {
+		return fmt.Errorf("state.context: must add at least one input that state.template does not use (it is the context asked for only when the minimal question is unsure)")
+	}
+	return nil
 }
 
 // Policy は送ってよい先。tainted セッションでは hosted が自動で外れる。
@@ -185,7 +238,7 @@ func (s *Spec) WithVariant(v Variant) *Spec {
 		c.Question = v.Question
 	}
 	if v.Template != "" {
-		c.State = State{Template: v.Template, Required: append([]string(nil), s.State.Required...)}
+		c.State = State{Template: v.Template, Required: append([]string(nil), s.State.Required...), Context: s.State.Context}
 	}
 	if len(v.Options) > 0 {
 		c.Options = make([]Option, len(s.Options))
@@ -263,6 +316,9 @@ func (s *Spec) Validate() error {
 	}
 	if strings.TrimSpace(s.State.Template) == "" {
 		return fmt.Errorf("state.template is required")
+	}
+	if err := s.State.validateContext(); err != nil {
+		return err
 	}
 	if len(s.Policy.SendTo) == 0 {
 		return fmt.Errorf("policy.send_to is required")
@@ -405,23 +461,50 @@ func (s *Spec) CalibrationFor(model string) *Calibration {
 
 // PutCalibration は同じ (hash, model) の較正を置き換え、無ければ追加する。
 func (s *Spec) PutCalibration(c Calibration) {
-	// 同じモデルの線は 1 本だけ。古いハッシュの線(文言を変える前のもの)は置き換える。別のモデルの線は残す。
-	kept := s.Calibration[:0]
-	replaced := false
+	// 同じモデルの線は段ごとに 1 本(最小の質問と、あれば文脈の段)。古いハッシュの線(文言を変える前のもの)は置き換える。別のモデルの線は残す。
+	kept := make([]Calibration, 0, len(s.Calibration)+1) // 写し(ContextSpec)と配列を共有しているので、その場で書き換えない
 	for _, cur := range s.Calibration {
-		if cur.Model != c.Model {
+		if cur.Model != c.Model || (cur.SpecHash != c.SpecHash && s.LiveHash(cur.SpecHash)) {
 			kept = append(kept, cur)
-			continue
-		}
-		if !replaced {
-			kept = append(kept, c)
-			replaced = true
 		}
 	}
-	if !replaced {
-		kept = append(kept, c)
+	s.Calibration = append(kept, c)
+}
+
+// HasContext は「迷った時だけ文脈を足す」段があるか。
+func (s *Spec) HasContext() bool { return s.State.Context != "" }
+
+// ContextSpec は文脈を足した聞き方そのもの: template を context に替え、足した入力を required にした写し。
+// 指紋(Hash)は別になるので、較正も別に引かれる。較正の一覧とファイルの場所は共有する。context が無ければ nil。
+func (s *Spec) ContextSpec() *Spec {
+	if !s.HasContext() {
+		return nil
 	}
-	s.Calibration = kept
+	c := *s
+	c.State = State{Template: s.State.Context, Required: append(append([]string(nil), s.State.Required...), s.State.ContextInputs()...)}
+	c.Variants = nil
+	c.Steps = copySteps(s.Steps)
+	return &c
+}
+
+// ContextHash は文脈の段の指紋。無ければ空。
+func (s *Spec) ContextHash() string {
+	if c := s.ContextSpec(); c != nil {
+		return c.Hash()
+	}
+	return ""
+}
+
+// LiveHash は h が今の聞き方のどちらかの段の指紋か(それ以外は文言を変える前の古い指紋)。
+func (s *Spec) LiveHash(h string) bool {
+	return h == s.Hash() || (s.HasContext() && h == s.ContextHash())
+}
+
+// WithoutContext は最小の質問だけで聞く写し(指紋は同じ)。tune の採点や聞き直しのように、段を上がらずに測りたい時に使う。
+func (s *Spec) WithoutContext() *Spec {
+	c := *s
+	c.State.Context = ""
+	return &c
 }
 
 // Save は読み込んだパスに書き戻す。書き換えるのは `calibration` キーだけで、

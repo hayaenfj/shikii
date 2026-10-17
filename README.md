@@ -40,7 +40,7 @@ It also comes with `shikii-readout`, a small adapter (about 600 lines) that turn
 
 - *How to ask*: wording, option descriptions and context layout are measured on the stored truths and improved without new labels (`tune`). Lessons about which phrasing works for which kind of question and which model family accumulate in a shared, human-editable wiki.
 - *How far to trust*: calibration per (question, model), bands instead of raw numbers, no `act` without evidence, invalidation on change, replay after change, drift checks. Audit sampling is next.
-- *When to escalate* (first rung built): one model, several levels of asking: a minimal question first, more context or a decomposed question when unsure, a person last. Decomposition exists today: a choice can be asked as a chain of yes/no `steps` whose branch probabilities multiply into the original options, scored by `tune` on the same truths and sent to the model in one call. Answers from a higher level become truths for the lower one, so the cheapest way of asking keeps getting better. The measure of progress will be human decisions per thousand, holding precision.
+- *When to escalate* (the ladder exists): one model, several levels of asking: a minimal question first, the same question with more context when unsure (`state.context`), a person last. A choice can also be asked as a chain of yes/no `steps` whose branch probabilities multiply into the original options; `tune` scores that like any rewording. Each level is its own fingerprint with its own calibration. Answers from a higher level become truths for the lower one: a confident answer with context is recorded as a weighted truth for the minimal question, and a person's answer is recorded for every level the decision went through. So the cheapest way of asking keeps getting better. The measure of progress is human decisions per thousand, holding precision; `status` prints it.
 
 A hypothesis we intend to test, not a claim: for typed decisions, a measured question plus calibration may reach useful accuracy with far fewer examples than fine-tuning (LoRA) and with better-calibrated answers than retrieval (RAG), on the same base model. The benchmark is simple and we will publish it: same task, same truths, same model, three methods, accuracy and Brier side by side.
 
@@ -136,6 +136,23 @@ variants:
 
 Every option appears exactly once as a leaf; the truths, the calibration and the bands are unchanged, so a decomposition is scored and adopted like any rewording. It helps models that answer yes/no better than a five-way choice; on a 27B model that already handles the choice well it lost (0.790 vs 0.968), which `tune` measured on the same truths.
 
+### Adding context only when unsure
+
+The ladder at run time is `state.template` → `state.context` → a person. `decide` asks the minimal question first. If the answer is unsure (`ask`; for a choice also `discard`, meaning no option reached `ask`) and the caller supplied the extra inputs that `state.context` names (the previous turn, the files touched, whatever the spec asks for), it asks the same question again with that context and returns the second answer; the first stays on the record as `minimal`. The context layout is its own fingerprint, so it gets its own calibration line and cannot `act` until it has one. Nothing happens when the caller passes no context, or when the minimal answer was already confident, so adding `state.context` to a spec costs nothing on the decisions that were already fine, and does not touch the minimal question's hash or calibration.
+
+On the 27B model through `shikii-readout`, uncalibrated, with the previous assistant turn "Shall I remove the deprecated `--legacy` flag?" as context:
+
+| message | minimal question | with context |
+|---|---|---|
+| do it | operation 0.58 (no option reaches `ask`) | change_request 0.73 |
+| yes please | question 0.34 | change_request 0.87 |
+| go ahead | other 0.32 | change_request 0.77 |
+| the tests | question 0.58 | change_request 0.45 (still unsure → a person) |
+
+What context can settle gets settled; what is genuinely ambiguous stays with a person.
+
+Truths flow down the ladder. When the context rung reaches `act`, its answer is recorded as a truth for the minimal rung with source `context` and the calibrated probability as weight; when a person answers a decision that went through both rungs, their answer is recorded for both. `calibrate` fits one line per rung, `check` verifies both, and `status` shows where decisions settle: by the minimal question, by added context, or left to a person, as a count per thousand decisions. `tune` scores wording candidates on the minimal rung only, so a candidate is never credited for context it did not have.
+
 You do not have to write the candidates yourself:
 
 ```sh
@@ -169,6 +186,12 @@ options:
 state:
   template: "{{ message }}"
   required: [message]            # missing input → abstain; the model is never called
+  context: |                     # optional: asked only when the minimal question is unsure and the caller passed `previous`
+    Previous assistant turn:
+    {{ previous }}
+
+    User's message:
+    {{ message }}
 policy:
   send_to: [hosted, local]       # a tainted session skips hosted automatically
   pii: true                      # the text may contain personal information → never sent to a hosted endpoint
@@ -183,7 +206,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in `docs/operations.md` and the integration notes. There are 124 Go tests across 8 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in `docs/operations.md` and the integration notes. There are 133 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 
