@@ -34,6 +34,16 @@ It also comes with `shikii-readout`, a small adapter (about 600 lines) that turn
 
 > The name is Japanese: *shikii* (閾) means threshold, the line that turns a probability into an action. The command is `shikii` too.
 
+## The goal
+
+**People give only two things, their intent and the truths. The machine grows everything else: how to ask, how far to trust, when to escalate. What it learns is shared between people.**
+
+- *How to ask*: wording, option descriptions and context layout are measured on the stored truths and improved without new labels (`tune`). Lessons about which phrasing works for which kind of question and which model family accumulate in a shared, human-editable wiki.
+- *How far to trust*: calibration per (question, model), bands instead of raw numbers, no `act` without evidence, invalidation on change, replay after change, drift checks, audit sampling.
+- *When to escalate*: one model, several levels of asking: a minimal question first, more context or a decomposed question when unsure, a person last. Answers from a higher level become truths for the lower one, so the cheapest way of asking keeps getting better. The measure of progress is human decisions per thousand, holding precision.
+
+A hypothesis we intend to test, not a claim: for typed decisions, a measured question plus calibration may reach useful accuracy with far fewer examples than fine-tuning (LoRA) and with better-calibrated answers than retrieval (RAG), on the same base model. The benchmark is simple and we will publish it: same task, same truths, same model, three methods, accuracy and Brier side by side.
+
 ## Quick start
 
 Go 1.24 or newer. Nothing else is needed for the first run.
