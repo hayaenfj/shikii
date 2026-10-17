@@ -15,7 +15,7 @@ README の仮説「型の付いた判定なら、測った聞き方と較正の�
 |---|---|---|
 | **A. 測った聞き方 + 較正** | `tune` で選んだ v2 の文言で 1 問聞き、`calibrate` が線を引く。shikii がいつもやること | `scripts/bench/run.sh <url> <name>` |
 | **B. RAG 風** | 同じ質問に、似た例 5 件（正解付き）を本文の前に足す。似ている度は文字 2-gram の Jaccard。検索の元は**その行と同じ分割（5 分割）を除いた 4/5**で、較正の 5 分割（4 つで当てて 1 つ = 2 割で試す）と同じ割合（試す側の行は検索の元に入らない） | 同上（`scripts/bench/rag-rows.py` が材料を作り、`scripts/bench/prompt-intent-rag.yaml` で聞く） |
-| **C. LoRA** | 土台のモデルを 62 件で微調整し、選択肢のトークンの確率を読む | 未実施（下の手順） |
+| **C. LoRA** | 土台のモデルを 5 分割の 4/5（約 50 件）で微調整し、選択肢のトークンの確率を読む | `scripts/bench/lora/run.sh <venv> <work>`（mlx-lm、Apple silicon） |
 
 B の注意: 最初は検索の元を leave-one-out（その行以外の 61 件）にしていた。これは RAG に有利で、27B の Brier が 0.0092 と出た。分割の外から取る今の形では 0.0179。下の表は今の形の数字。
 
@@ -36,14 +36,28 @@ B の注意: 最初は検索の元を leave-one-out（その行以外の 61 件�
 - どちらの腕も較正は同じ道具で引けている。RAG は shikii の外の仕組みではなく、`state.template` に例を入れる聞き方の 1 つとして同じ貯金で測れる。つまり A と B は対立ではなく、同じ物差しで並べられる。ただし B は呼ぶ側が `examples` という入力を作って渡す必要があり、`tune` は入力を作らないので、今の `tune` の variant（文言と並べ方だけ）では表せない。tune の候補にするには「貯金から例を引く」段取りを tune 側に足す必要がある
 - 費用: B は本文が 5 例分長い。27B readout で 1 問 0.58 秒 → 約 1.1 秒
 
-## C（LoRA）の手順（未実施）
+## 3 腕を同じ土台で（Qwen3-4B、2026-10-18）
 
-土台は学習できる形（bf16 / 4bit の safetensors）が要る。三値の 27B は学習できないので、同じ土台で 3 腕を揃えるなら Qwen3-4B（Kev-4B の土台）のような普通のモデルを使い、A と B もそのモデルで回し直す。
+三値の 27B は学習できないので、3 腕を揃える土台は普通のモデル `Qwen/Qwen3-4B`（Kev-4B の土台の系統）。A・B は同じモデルの GGUF（Q8_0）を本家 llama.cpp + `shikii-readout` で、C は HF 版（bf16）を mlx-lm で学習・採点した。手順は `scripts/bench/lora/run.sh`（分割の作成 `make_folds.py`、採点 `score.py`、物差し `report.py`）。
 
-1. 土台: `Qwen/Qwen3-4B`（HF、約 8 GB）。A・B 用に同じモデルの GGUF を `shikii up --gguf` で `shikii-readout` 越しに
-2. 学習データ: 62 件を 5 分割。各分割で 4/5（約 50 件）を `{"messages":[{"role":"user","content":"<質問 + 本文>"},{"role":"assistant","content":"<正解の id>"}]}` の形に
-3. 学習: `mlx_lm.lora --model Qwen/Qwen3-4B --train --data <fold>/ --iters 200 --batch-size 4 --adapter-path adapters/<fold>`（Apple silicon、1 分割あたり数分）
-4. 評価: 残り 1/5 の各行で、質問 + 本文の次トークンの対数確率を 5 つの選択肢の id の最初のトークンで読み、正規化して分布にする（生成はしない）。これを 5 分割分つなげて 62 件の raw にする
-5. 比較: その raw を `{"inputs":{"message":…},"raw":{…},"truth":…}` の形で labeled file に書き、`shikii calibrate --labeled` で A・B と同じ物差し（top-1、Brier、CV prec/rec）を出す
+- C の学習: 62 件を 5 分割、各分割で残り約 50 件を 200 歩（batch 4、LoRA 8 層、lr 1e-4）。1 分割あたり数分
+- C の採点: 生成せず、prompt の次トークンの対数確率を 5 つの id の最初のトークンで読んで softmax（`shikii-readout` と同じ考え方）。各行は「それを見ていない adapter」の答えなので 62 件全部が out-of-sample
+- 対照: 同じ prompt を LoRA 無しの土台で採点（C の prompt と A の文言・配置の違いを分けるため）
 
-やるなら機械の時間は 1 時間ほど、ダウンロードは 8 GB。結果が出たら上の表に行を足す。
+| 腕 | top-1 | Brier | act 0.75 での prec / rec | 備考 |
+|---|---|---|---|---|
+| A: v2 の文言そのまま（readout） | 0.774 | 0.2216 | 0.774 / 1.000（線は引けない） | 全部 0.75 以上に張り付く |
+| **A: この土台で `tune` が選んだ文言**（shorter-question、readout） | **0.855** | 0.1394 | holdout 0.855、p=0.031 | 7 候補中。採用はしていない（評価用） |
+| B: 似た例 5 件（readout） | **0.855** | **0.1199** | 較正後 CV 0.931 / 0.964 | 例は分割の外から |
+| 対照: 平文の prompt、LoRA 無し（mlx） | 0.903 | 0.0967 | 0.903 / 1.000（生） | readout の配置より 13 ポイント高い |
+| **C: LoRA 約 50 件 × 5 分割（mlx）** | **0.952** | **0.0375** | 0.952 / 1.000（生、未較正） | 全部 0.75 以上 |
+
+読み方:
+
+- **この課題・この土台では仮説は支持されない。** 約 50 件の LoRA は、測った聞き方（0.855）より 10 ポイント高く、Brier も 4 分の 1。「微調整よりずっと少ない例で届く」とは言えない。LoRA の例の数（50）もすでに少ない
+- 似た例を足す B は、測った聞き方と top-1 で同じ、Brier で上。小さい土台では文言を測るより例を見せる方が効く
+- 対照（0.903）と A の v2（0.774）の差は、文言ではなく **配置**（`shikii-readout` の System One の並べ方か、平文か）。同じ重みで 13 ポイント。27B では配置で 5 ポイント動いた（model-comparison.md）。readout の配置は決定モデル向けで、素の 4B には合っていない可能性がある。A の腕を公平にするには、配置も `tune` の候補に入れる必要がある（今は template と文言だけ）
+- 公平さの注意: A・B は Q8 の GGUF、C と対照は bf16。確率の読み方も違う（readout は System One の口、C は最初のトークンの softmax）。C と対照の precision は未較正で、全部 0.75 以上に張り付いているので「act の精度」としては読めない（top-1 と同じ数になる）
+- 27B（上の表）では A と B はほぼ同じで、LoRA は測れていない（三値で学習できない）
+
+次にやるなら: (1) 配置を tune の候補に入れて A をやり直す、(2) C の raw に線を引いて act の精度を較正後で並べる（calibrate が choice の raw 付き行を読める口を足す）、(3) 別の課題（same-issue / same-inquiry、はい/いいえ）で同じ 3 腕。
