@@ -24,6 +24,10 @@ state:
   template: |
     request: {{ request }}
   required: [request]
+  # 迷った時だけ: hook が transcript から取った直前のアシスタントの発言を足して聞き直す(別の指紋・別の線)。短い返事(「yes please」「go ahead」)はこれで決まる
+  context: |
+    previous assistant turn: {{ previous }}
+    request: {{ request }}
 
 policy:
   send_to: [local]    # 依頼文は外に送らない
