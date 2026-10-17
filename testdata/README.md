@@ -13,11 +13,6 @@
 問い合わせの同一判定(`decisions/same-inquiry.yaml`、はい/いいえ)の較正用 32 組、日本語。
 同じ案件 12、別の案件 12、同じ種類の問題だが別の案件 8(境界。重み 0.5)。注文番号は架空。
 
-## noul-synthetic-labeled.json
-
-はい/いいえ の**合成データ**(本文無し、`"s"`)。関連ペアの Δ(ロジット)の下限 ≈ 2.54、無関係ペアの上限 ≈ 1.96、境界 ≈ 1.91 という
-統計だけを写したもので、`raw` 付きなのでモデルを呼ばずに `shikii calibrate` の動きを確かめられる。テストと `--overconfident` 無しのデモ用。
-
 ## prompt-intent-labeled.json / -ja.json / -en.json
 
 prompt-intent(5 択)の**種集合**。英語・日本語の依頼文 62 件(日 23・英 39)、正解ラベルは作業者(Claude)が付けた。

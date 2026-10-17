@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+
+	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
 // shikii mcp: serve と同じ中身を、stdio の MCP サーバー(JSON-RPC 2.0、1 行 1 メッセージ)として出す。
@@ -36,7 +38,7 @@ func cmdMCP(args []string) error {
 		return err
 	}
 	log.SetOutput(os.Stderr) // stdout は MCP の通信路。ログは stderr へ
-	log.Printf("shikii mcp: specs=%s store=%s local=%q hosted=%q", o.specsDir, o.storeDir, o.ef.local, o.ef.hosted)
+	log.Printf("shikii mcp: specs=%s store=%s local=%q hosted=%q", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted))
 	return runMCP(bufio.NewReader(os.Stdin), os.Stdout, newServer(o))
 }
 
@@ -194,6 +196,18 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 	}
 	var body io.Reader
 	if method == http.MethodPost {
+		if name == "shikii_label" {
+			// エージェントのラベルは人のラベルと区別できるように、出どころが無ければ "mcp" を付ける(監査 S6)
+			var m map[string]any
+			if json.Unmarshal(args, &m) == nil {
+				if s, _ := m["source"].(string); s == "" {
+					m["source"] = "mcp"
+					if b, err := json.Marshal(m); err == nil {
+						args = b
+					}
+				}
+			}
+		}
 		body = bytes.NewReader(args)
 	}
 	req := httptest.NewRequest(method, path, body)

@@ -19,7 +19,7 @@ hf download prism-ml/Ternary-Bonsai-2-27B-gguf Ternary-Bonsai-2-27B-PQ2_0.gguf  
 ```sh
 bin/shikii decide decisions/prompt-kind.yaml --local http://127.0.0.1:8083 --tainted -i request='fix the typo in README'
 #  model=ternary-bonsai-2-27b  top=edit p=0.950  band=ask   ← 較正が無いので act は出ない(設計どおり)
-scripts/eval-model.sh http://127.0.0.1:8083 bonsai2       # Kev-4B / OpenJev と同じ 4 セット
+scripts/eval-model.sh http://127.0.0.1:8083 bonsai2       # Kev-4B / OpenJev と同じ 5 セット
 ```
 
 止めるのは `pkill -x bonjev`。モデルは `~/.cache/huggingface/hub/models--prism-ml--Ternary-Bonsai-2-27B-gguf/` に残る。
@@ -44,7 +44,7 @@ scripts/eval-model.sh http://127.0.0.1:8083 bonsai2       # Kev-4B / OpenJev と
 | prompt-intent-v2 / en 39 | top-1 0.949 | 1.000 / 0.923 | identity（生で足りる） |
 | same-issue / same-inquiry（noul、各 32 組） | 生 Brier 0.049 / 0.084、正負は分離 | Platt CV **0.019 / 0.028** | **platt** |
 
-Kev-4B（学習済み、較正済み）では Platt が CV で負けて identity になったが、Bonsai 2 では Platt が勝つ。
+差し替え後の題材では Kev-4B でも Platt がわずかに勝つ(0.038→0.035)が、Bonsai 2 は 0.049→0.019 と桁違いに効く。較正の要否は触れ込みではなく数字で決まる。
 「較正が要るモデル」（設計 §7.1）の最初の実例で、フレームワークの較正が初めて値を生んだ測定でもある。
 
 ## 注意

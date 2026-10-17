@@ -36,7 +36,7 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 1. `shikii_specs` で spec の id と正解の候補を知る
 2. 判断の場面で `shikii_decide` を呼び、`band` を見る。`act` なら進める、`ask` なら人に聞く、`discard` なら何もしない
 3. 結果が分かった時（実際に変更したか、利用者が選んだか）に `shikii_label` を `trace_id` 付きで呼ぶ
-4. 線は溜まれば自動で引かれる。`shikii_status` で `collecting n/50` → `calibrated` になるのが見える
+4. 線は溜まれば自動で引かれる。`shikii_status` の `keys[].state` が `collecting`（`n` / `min_n` 付き）→ `calibrated` になるのが見える
 
 ## テスト
 

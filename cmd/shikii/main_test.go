@@ -176,7 +176,7 @@ func TestVerifiedModelGetsIdentityAndActs(t *testing.T) {
 	var traces []string
 	for i := 0; i < 3; i++ {
 		out := capture(t, func() error {
-			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix it"})
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=fix it %d", i)})
 		})
 		if !strings.Contains(out, "band=ask") {
 			t.Fatalf("before verification must be ask: %s", out)
@@ -229,7 +229,7 @@ func TestCheckAndDrift(t *testing.T) {
 	var traces []string
 	for i := 0; i < 4; i++ {
 		out := capture(t, func() error {
-			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix"})
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=fix %d", i)})
 		})
 		traces = append(traces, traceRe.FindStringSubmatch(out)[1])
 	}
@@ -273,7 +273,7 @@ func TestCheckAndDrift(t *testing.T) {
 	// 外れが増える(モデルは change_request と言い続けるが正解は question)→ precision が落ちて警告
 	for i := 0; i < 6; i++ {
 		o := capture(t, func() error {
-			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=why"})
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=why %d", i)})
 		})
 		tr := traceRe.FindStringSubmatch(o)[1]
 		capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ask", tr, "question"}) })
@@ -304,7 +304,7 @@ func TestCalibrateWritesVectorWhenIdentityIsNotEnough(t *testing.T) {
 	specPath := writeSpec(t, dir, "false")
 	for i := 0; i < 6; i++ {
 		out := capture(t, func() error {
-			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix"})
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=fix %d", i)})
 		})
 		if !strings.Contains(out, "band=discard") {
 			t.Fatalf("raw 0.55 is below ask: %s", out)
@@ -458,7 +458,7 @@ func TestCalibrateFromFilePersistsLabelsForOfflineCheck(t *testing.T) {
 	out = capture(t, func() error {
 		return cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--model", "kev"})
 	})
-	if !strings.Contains(out, "reused 8 stored labels") || !strings.Contains(out, "n=8 (file=8 store=0 replay=0)") || strings.Contains(out, "persisted") {
+	if !strings.Contains(out, "reused 8 stored labels") || !strings.Contains(out, "n=8 (file=8 store=8 replay=0)") || strings.Contains(out, "persisted") {
 		t.Fatalf("re-run must reuse stored labels offline without double counting: %s", out)
 	}
 
@@ -590,7 +590,7 @@ func TestPartialLabelsCountAgainstPrecision(t *testing.T) {
 	var traces []string
 	for i := 0; i < 5; i++ {
 		out := capture(t, func() error {
-			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=do it"})
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=do it %d", i)})
 		})
 		traces = append(traces, traceRe.FindStringSubmatch(out)[1])
 	}
@@ -665,7 +665,7 @@ eval:
 	var traces []string
 	for i := 0; i < 4; i++ {
 		out := capture(t, func() error {
-			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "m=x"})
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("m=x %d", i)})
 		})
 		if !strings.Contains(out, "band=ask") || !strings.Contains(out, "p=0.900") {
 			t.Fatalf("decide must band on P(level>=3)=0.90 (ask, since uncalibrated): %s", out)
@@ -768,7 +768,7 @@ func TestStatusInventory(t *testing.T) {
 	var traces []string
 	for i := 0; i < 3; i++ {
 		out := capture(t, func() error {
-			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix"})
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=fix %d", i)})
 		})
 		traces = append(traces, traceRe.FindStringSubmatch(out)[1])
 	}
@@ -812,7 +812,7 @@ func TestGCKeepsLabeledAndIsDryRunByDefault(t *testing.T) {
 	var traces []string
 	for i := 0; i < 3; i++ {
 		out := capture(t, func() error {
-			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix"})
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=fix %d", i)})
 		})
 		traces = append(traces, traceRe.FindStringSubmatch(out)[1])
 	}

@@ -37,6 +37,7 @@ type Record struct {
 	Top          string             `json:"top,omitempty"`
 	P            float64            `json:"p"`
 	Band         string             `json:"band"`
+	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。この本文は聞き直しでも hosted に送らない
 	At           time.Time          `json:"at"`
 }
 
@@ -52,8 +53,18 @@ type Label struct {
 	Raw        map[string]float64 `json:"raw"`
 	Truth      string             `json:"truth"`
 	Weight     float64            `json:"weight"`
-	Source     string             `json:"source"` // ask | undo | manual | …
+	Source     string             `json:"source"` // ask | outcome | manual | ui | mcp | file | replay | …
+	Tainted    bool               `json:"tainted,omitempty"`
 	At         time.Time          `json:"at"`
+}
+
+// MaxLineBytes は記録・ラベル 1 行の上限。書く側で弾く(読む側の上限より小さい)。
+const MaxLineBytes = 4 << 20
+
+// StoredInput は本文と、その判定が tainted だったか。
+type StoredInput struct {
+	Inputs  map[string]string
+	Tainted bool
 }
 
 // Store はディレクトリ 1 つ。
@@ -157,13 +168,16 @@ func LabelFor(rec *Record, truth string, weight float64, source string) (Label, 
 	if weight <= 0 {
 		weight = 1
 	}
+	if weight > 1 {
+		return Label{}, fmt.Errorf("weight must be in (0, 1], got %g (1 = a firm truth; less = a weak one)", weight)
+	}
 	if source == "" {
 		source = "manual"
 	}
 	return Label{
 		TraceID: rec.TraceID, SpecID: rec.SpecID, SpecHash: rec.SpecHash, Type: rec.Type,
 		Model: rec.Model, InputsHash: rec.InputsHash, Inputs: rec.Inputs, Raw: rec.Raw,
-		Truth: truth, Weight: weight, Source: source, At: time.Now(),
+		Truth: truth, Weight: weight, Source: source, Tainted: rec.Tainted, At: time.Now(),
 	}, nil
 }
 
@@ -246,20 +260,26 @@ func (s Store) Counts(specID string) (records int, labels []Label, err error) {
 
 // InputsByHash は本文が残っている記録から、入力のハッシュ → 本文 の対応を作る。
 // 文言やモデルを変えた後に、同じ入力を新しい (spec_hash, model) で聞き直すための材料。
-func (s Store) InputsByHash(specID string) (map[string]map[string]string, error) {
-	out := map[string]map[string]string{}
-	take := func(hash string, inputs map[string]string) {
+func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
+	out := map[string]StoredInput{}
+	take := func(hash string, inputs map[string]string, tainted bool) {
 		if hash == "" || len(inputs) == 0 {
 			return
 		}
-		if _, ok := out[hash]; !ok {
-			out[hash] = inputs
+		cur, ok := out[hash]
+		if !ok {
+			out[hash] = StoredInput{Inputs: inputs, Tainted: tainted}
+			return
+		}
+		if tainted && !cur.Tainted { // 一度でも tainted で記録された本文は、以後も外に出さない
+			cur.Tainted = true
+			out[hash] = cur
 		}
 	}
 	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
 		if json.Unmarshal(line, &r) == nil {
-			take(r.InputsHash, r.Inputs)
+			take(r.InputsHash, r.Inputs, r.Tainted)
 		}
 		return nil
 	})
@@ -270,7 +290,7 @@ func (s Store) InputsByHash(specID string) (map[string]map[string]string, error)
 	err = scanJSONL(s.labelsPath(specID), func(line []byte) error {
 		var l Label
 		if json.Unmarshal(line, &l) == nil {
-			take(l.InputsHash, l.Inputs)
+			take(l.InputsHash, l.Inputs, l.Tainted)
 		}
 		return nil
 	})
@@ -278,6 +298,34 @@ func (s Store) InputsByHash(specID string) (map[string]map[string]string, error)
 		return nil, err
 	}
 	return out, nil
+}
+
+// LatestPerInput は入力(inputs_hash)ごとに最新のラベル 1 つだけを残す。
+// 同じ入力に複数の正解(ファイルの行、後から人が付けた訂正、同じ trace への 2 回目)があれば新しい方が勝つ。
+// calibrate / check / drift は全部これを通す(数え方を揃えるため)。inputs_hash の無いラベルはそのまま残す。
+func LatestPerInput(labels []Label) []Label {
+	latest := map[string]Label{}
+	order := []string{}
+	var out []Label
+	for _, l := range labels {
+		if l.InputsHash == "" {
+			out = append(out, l)
+			continue
+		}
+		cur, ok := latest[l.InputsHash]
+		if !ok {
+			order = append(order, l.InputsHash)
+			latest[l.InputsHash] = l
+			continue
+		}
+		if l.At.After(cur.At) {
+			latest[l.InputsHash] = l
+		}
+	}
+	for _, h := range order {
+		out = append(out, latest[h])
+	}
+	return out
 }
 
 // Records は spec の記録を新しい順に limit 件(limit <= 0 なら全部)。待ち行列の表示用。
@@ -413,7 +461,7 @@ func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error)
 	if err := tmp.Close(); err != nil {
 		return discard(err)
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
 		return discard(err)
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
@@ -423,14 +471,17 @@ func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error)
 }
 
 func appendJSONL(path string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if len(b) > MaxLineBytes {
+		return fmt.Errorf("record too large: %d bytes > %d (inputs must stay under the line limit)", len(b), MaxLineBytes)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -446,7 +497,7 @@ func scanJSONL(path string, fn func(line []byte) error) error {
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	sc.Buffer(make([]byte, 64<<10), 2*MaxLineBytes) // 書く側の上限より大きく(古い記録や手で直した行でも読める)
 	for sc.Scan() {
 		if len(strings.TrimSpace(sc.Text())) == 0 {
 			continue

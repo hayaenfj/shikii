@@ -55,6 +55,7 @@ type Decision struct {
 	Confidence   float64            `json:"confidence,omitempty"`
 	Band         Band               `json:"band"`
 	Reason       string             `json:"reason,omitempty"`
+	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。記録に残り、聞き直しでも hosted に送らない
 	At           time.Time          `json:"at"`
 }
 
@@ -125,7 +126,7 @@ func PickEndpoint(sp *spec.Spec, sess Session, eps []Endpoint) *Endpoint {
 func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess Session, eps []Endpoint) (*Decision, error) {
 	d := &Decision{
 		TraceID: store.NewTraceID(), SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type),
-		InputsHash: store.HashInputs(inputs), At: time.Now(),
+		InputsHash: store.HashInputs(inputs), At: time.Now(), Tainted: sess.Tainted,
 	}
 
 	state, missing := sp.Render(inputs)
@@ -251,21 +252,31 @@ func argmax(m map[string]float64) (string, float64) {
 
 // MassAtOrAbove は score の分布で level ≥ k の確率の和。キーはレベル番号("0".."n-1")。
 func MassAtOrAbove(m map[string]float64, k int) float64 {
+	// 加算は鍵の順に固定する(map の走査順は毎回変わり、閾値ちょうどで帯が揺れる)
 	var s float64
-	for key, p := range m {
+	for _, key := range sortedKeys(m) {
 		if i, err := strconv.Atoi(key); err == nil && i >= k {
-			s += p
+			s += m[key]
 		}
 	}
 	return s
 }
 
+func sortedKeys(m map[string]float64) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // expectedLevel は score の期待値 Σ(level × p)。キーはレベル番号("0".."n-1")。
 func expectedLevel(m map[string]float64) float64 {
 	var e float64
-	for k, p := range m {
+	for _, k := range sortedKeys(m) {
 		if i, err := strconv.Atoi(k); err == nil {
-			e += float64(i) * p
+			e += float64(i) * m[k]
 		}
 	}
 	return e

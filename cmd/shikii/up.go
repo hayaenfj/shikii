@@ -71,7 +71,7 @@ func probe(base string) probeResult {
 		return p
 	}
 	resp.Body.Close()
-	p.up = resp.StatusCode < 500
+	p.up = resp.StatusCode == http.StatusOK // 4xx は「何か別のものがいる」。生きているとは言わない
 	if r, err := c.Get(strings.TrimRight(base, "/") + "/v1/models"); err == nil {
 		var m struct {
 			Data []struct {
@@ -135,17 +135,26 @@ func cmdUp(args []string) error {
 		return err
 	}
 	fmt.Fprintln(stdout, "waiting for /health (the first run downloads the model; this can take minutes) …")
+	exited := make(chan error, 1)
+	go func() { exited <- srv.Wait() }() // 子が死んだらすぐ分かるように(ProcessState は Wait の後にしか立たない)
 	var pr probeResult
-	for i := 0; i < 600; i++ {
-		time.Sleep(2 * time.Second)
-		if pr = probe(base); pr.up {
-			break
-		}
-		if srv.ProcessState != nil {
-			return errors.New("llama-server exited before becoming healthy")
+	healthy := false
+	deadline := time.After(20 * time.Minute)
+wait:
+	for {
+		select {
+		case err := <-exited:
+			return fmt.Errorf("llama-server exited before becoming healthy: %v", err)
+		case <-deadline:
+			break wait
+		case <-time.After(2 * time.Second):
+			if pr = probe(base); pr.up {
+				healthy = true
+				break wait
+			}
 		}
 	}
-	if !pr.up {
+	if !healthy {
 		return errors.New("llama-server did not become healthy in 20 minutes")
 	}
 	useURL := base
@@ -166,12 +175,10 @@ func cmdUp(args []string) error {
 	fmt.Fprintf(stdout, "\nready. model=%s\n  shikii decide <spec> --local %s -i …\n  shikii serve --local %s\nCtrl-C stops everything.\n", pr.model, useURL, useURL)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	done := make(chan error, 1)
-	go func() { done <- srv.Wait() }()
 	select {
 	case <-sig:
 		cancel()
-	case err := <-done:
+	case err := <-exited:
 		if err != nil {
 			return fmt.Errorf("llama-server stopped: %w", err)
 		}

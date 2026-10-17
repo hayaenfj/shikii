@@ -2,7 +2,7 @@
 # 鍵も GPU も無しで、decide → label → calibrate → check → drift → status → gc の輪を一周する。
 # 偽のモデル(cmd/fake-systemone)を使うので、数字は本物ではない。手順と出力の形を見るためのもの。
 #   scripts/demo.sh            # 普通の偽モデル
-#   scripts/demo.sh --overconfident   # 確率を端に寄せた偽モデル(較正が効く様子を見る)
+#   scripts/demo.sh --overconfident   # 確率を端に寄せた偽モデル(生と較正後の混同表を見比べる)
 set -eu
 cd "$(dirname "$0")/.."
 go build -o bin/shikii ./cmd/shikii
@@ -54,11 +54,9 @@ $D calibrate "$SPEC" --labeled none $L --model fake-systemone/1 --write | grep -
 $D check --store "$STORE" "$SPEC"
 $D decide "$SPEC" $L -i 'message=Fix the typo in README.md' | head -2
 
-step "7. 棚卸しと劣化の監視"
+step "7. 棚卸しと劣化の監視(6b で引き直した線に対して、直近の正解で劣化していないか)"
 $D status --store "$STORE" "$SPEC"
-printf '\n(drift は較正の鍵が合う時だけ動く。文言を戻すと動く)\n'
-sed -i.bak 's/ Be strict\.//' "$SPEC" && rm -f "$SPEC.bak"
-$D drift "$SPEC" --store "$STORE" --model fake-systemone/1 || true
+$D drift "$SPEC" --store "$STORE" --model fake-systemone/1
 
 step "8. 掃除(表示だけ。ラベル付きの記録は残る)"
 $D gc --store "$STORE" --older-than 0 "$SPEC"

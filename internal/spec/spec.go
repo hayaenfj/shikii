@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -154,6 +155,9 @@ func (s *Spec) Validate() error {
 		if d != "hosted" && d != "local" {
 			return fmt.Errorf("policy.send_to: unknown destination %q", d)
 		}
+	}
+	if s.Eval.MinN < 1 {
+		return fmt.Errorf("eval.min_n must be at least 1 (how many truths before a calibration may be written; 50 is a sensible start)")
 	}
 	if s.Policy.PII == nil {
 		return fmt.Errorf("policy.pii is required: true (the text can contain personal information: never sent to a hosted endpoint) or false (it cannot). shikii does not decide what counts as personal information; you do")
@@ -328,7 +332,25 @@ func (s *Spec) Save() error {
 	if err := enc.Close(); err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, buf.Bytes(), 0o644)
+	// 同じフォルダに書いてから rename(途中で落ちても元の spec は壊れない。serve が毎回読み直すため)
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return os.Rename(tmp.Name(), s.path)
 }
 
 // Path は読み込み元。

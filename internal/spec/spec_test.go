@@ -13,6 +13,7 @@ func noulSpec() *Spec {
 		State:      State{Template: "A: {{ a }}\nB: {{ b }}", Required: []string{"a", "b"}},
 		Policy:     Policy{SendTo: []string{"hosted"}, PII: boolPtr(false)},
 		Thresholds: Thresholds{Act: 0.7, Ask: 0.5},
+		Eval:       Eval{MinN: 1},
 	}
 }
 
@@ -145,6 +146,7 @@ func TestValidateRejectsBadSpecs(t *testing.T) {
 		"level zero-ish":  func(s *Spec) { s.Type = Score; s.Levels = []string{"a", "b", "c"}; s.Thresholds.Level = -1 },
 		"no template":     func(s *Spec) { s.State.Template = "" },
 		"no pii":          func(s *Spec) { s.Policy.PII = nil }, // 既定は無い。書いた人が true / false を選ぶ
+		"min_n zero":      func(s *Spec) { s.Eval.MinN = 0 },    // 監査 S4: 0 だとラベル 1 件で線が引ける
 	}
 	for name, mutate := range cases {
 		s := noulSpec()

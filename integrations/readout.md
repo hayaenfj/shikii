@@ -15,12 +15,12 @@ shikii ──/v1/systemone──▶ shikii-readout ──/apply-template, /compl
 llama-server -m <model>.gguf --port 8086 --host 127.0.0.1 -c 4096 -ngl 99 -fa on -ctk q8_0 -ctv q8_0 -np 1 --alias <name>
 bin/shikii-readout --upstream http://127.0.0.1:8086 --port 8090                   # 起動時に /tokenize でラベルを検査
 bin/shikii decide decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 -i message='README の誤字を直して'
-scripts/eval-model.sh http://127.0.0.1:8090 <name>                                   # 他のモデルと同じ 4 セット
+scripts/eval-model.sh http://127.0.0.1:8090 <name>                                   # 他のモデルと同じ 5 セット
 ```
 
 止めるのは `pkill -x shikii-readout`（llama-server は別）。
 
-## 中身（`cmd/readout/main.go`、約 450 行、依存は標準ライブラリと `internal/systemone` の並び保持だけ）
+## 中身（`cmd/readout/main.go`、約 600 行、依存は標準ライブラリと `internal/systemone` の並び保持だけ）
 
 | 段 | 何をするか | 壊れ方の検査 |
 |---|---|---|
@@ -57,12 +57,12 @@ scripts/eval-model.sh http://127.0.0.1:8090 <name>                              
 | prompt-intent-v2 / 62 | top-1 **0.968**、prec@act 0.983 / rec 0.983 | vector 0.967 / 0.967 | **identity** | 0.968、生 1.000 / 0.900 → vector 0.982 / 0.949 |
 | ja 23 | top-1 1.000、rec@act 0.957 | 1.000 / 0.955 | identity | 1.000 |
 | en 39 | top-1 0.949 | 1.000 / 1.000 | identity | 0.949 |
-| はい/いいえ 32 組 | 当時の題材は差し替えたので数字は載せない。差し替え後は下の表 | | | Brier 0.026 → Platt 0.013 |
+| はい/いいえ 32 組 | 当時の題材は差し替えたので数字は載せない。差し替え後は下の表 | | | 同左 |
 | 速さ | 1 問 ≈ 5 秒（156 問 13 分、prefix cache は system までしか効かない） | | | ≈ 2.5 秒 |
 
 読み方:
 
-- **順位は BonJev と同じ**（top-1 が 4 セットとも一致）。prompt の工夫や内蔵の較正が無くても、文字の読み出しそのものは同じ所に着く
+- **順位は BonJev と同じ**（top-1 が prompt-intent の 3 セットとも一致）。prompt の工夫や内蔵の較正が無くても、文字の読み出しそのものは同じ所に着く
 - **確率は BonJev より鋭い**（生の recall@act 0.983 vs 0.900）。文字の softmax は端に寄るので、act の閾値 0.75 に生で届く。
   代わりに はい/いいえ では分離が極端すぎて、`calib.Fit` の素の Newton 法が発散した（T=5e-7、in-sample の Brier 0.107）。
   CV がそれを捕まえて identity に戻していたが、これは最適化の不具合で、同日に直線探索付きに直した（その 32 件がテストになっている）
@@ -85,7 +85,7 @@ scripts/eval-model.sh http://127.0.0.1:8090 <name>                              
   日本語は 0.870 と Bonsai 2 の 1.000 に劣る（土台が Qwen3.6 と Qwen3.8 の差）
 - Bonsai 2 に本家対応の版が出れば、こちらに差し替えるだけで日本語も取れる見込み
 
-### 配置を state-last + warm-up にした後（2026-10-17、同じ 4 セット、`-fa on -ctk/-ctv q8_0 -np 1`）
+### 配置を state-last + warm-up にした後（2026-10-17、同じセット、`-fa on -ctk/-ctv q8_0 -np 1`）
 
 | セット | Bonsai 2 PQ2_0（fork） | Ternary-Bonsai-27B Q2_g64（**本家 0.7.0**） |
 |---|---|---|

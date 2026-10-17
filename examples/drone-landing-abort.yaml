@@ -27,7 +27,7 @@ state:
 
 policy:
   send_to: [local]            # 現場の機器から外の API には出さない
-  pii: false                  # 本文に個人情報は入らない(hosted にも送れる)
+  pii: false                  # 本文に個人情報は入らない(send_to が local だけなので、どのみち外には出ない)
 
 thresholds:
   act: 0.90                   # 自動中止。高めに置く。較正済みでなければ出ない

@@ -1,10 +1,10 @@
 # shikii(閾) — 詳しい使い方(日本語)
 
-名前は閾値の「閾」。確率を act / ask / discard の帯に切る閾が、この道具の芯だから。CLI の名前は `shikii` のまま。
+名前は閾値の「閾」。確率を act / ask / discard の帯に切る閾が、この道具の芯だから。コマンドの名前も `shikii`。
 モジュールは `github.com/hayaenfj/shikii`、ライセンスは Apache 2.0([`LICENSE`](../LICENSE))。英語の README は [`../README.md`](../README.md)、日本語の短い版は [`readme/README_ja.md`](readme/README_ja.md)。
 
 設計は [`docs/decision-ops-framework.md`](decision-ops-framework.md)、止め方・戻し方・残っているものは [`docs/operations.md`](operations.md)。
-この試作で動くのは **spec / decide / calibrate** の 3 つだけ(設計 §11 の「ここまでは作る」の範囲)。
+最初の試作は **spec / decide / calibrate** の 3 つだけだった(設計 §11)。今は label / check / drift / bias / status / gc / serve / mcp / new / up / doctor も動く。この手引きは CLI の中身を順に説明する。
 
 ```sh
 go build -o bin/shikii ./cmd/shikii
@@ -21,7 +21,7 @@ bin/shikii decide decisions/same-issue.yaml --local http://127.0.0.1:8080 --tain
 bin/shikii label <trace_id> change_request --source ask
 bin/shikii label --last --spec-id prompt-intent question --source ask   # 直近の記録に付ける(trace 不要)
 
-# 較正。noul は Platt、choice/score は検証(act での precision が act 以上なら identity を書く)。
+# 較正。noul は identity と Platt、choice/score は identity と vector(選択肢ごとの bias + 温度)を 5-fold CV で比べて勝った方を書く。
 # ファイルのラベルと store のラベル((spec_hash, model) が一致するもの)を合わせて使う
 bin/shikii calibrate decisions/same-issue.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M'
 ```
@@ -34,7 +34,7 @@ llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M --port 8080 --host 127.0.0.1
 ```
 
 モデル名は応答の `model`(例 `ggml-org/Kev-4B-GGUF:Q4_K_M`)が較正の鍵になる。`--model` で送った名前ではない。
-Kev-4B は英語のみ。日本語の依頼では `other` に確率が逃げる(実測: 「README の誤字を直して」→ change_request 0.48)。
+Kev-4B は英語のみと表記されているが、v2 の文言なら日本語の依頼でも top-1 0.913(v1 の文言では `other` に逃げて 0.68 だった。文言の方が効く)。
 
 ## 構成
 
@@ -43,12 +43,12 @@ Kev-4B は英語のみ。日本語の依頼では `other` に確率が逃げる(
 | `internal/spec` | Decision Spec の読み書き。較正の鍵 `Hash()`(質問・テンプレ・選択肢から。閾値・policy は含めない) |
 | `internal/systemone` | System One 形式(`POST /v1/systemone`)の薄いクライアント。Jev / llama.cpp はベース URL の差だけ |
 | `internal/decide` | 仕様 + 入力 → 帯。required 欠落は abstain、tainted は hosted を外す、**較正が無い判定は act を出さない** |
-| `internal/calib` | Platt 較正、Brier / ECE / 信頼度図、正負の逆転検出 |
+| `internal/calib` | Platt 較正(`calib.go`)、vector scaling(`vector.go`)、Brier / ECE / 信頼度図、正負の逆転検出 |
 | `cmd/shikii` | CLI |
 | `cmd/readout` | **普通の GGUF を System One にするアダプタ** `shikii-readout`。後ろの llama-server の `/apply-template` と `/completion` で選択肢の文字の確率を読む。推論も較正も持たない |
 | `cmd/fake-systemone` | 鍵も GPU も無しで輪を回すための偽モデル |
 | `decisions/*.yaml` | spec の例(不具合報告の重複、問い合わせの同一判定、依頼の種類) |
-| `testdata/` | 合成ラベル(本文なし) |
+| `testdata/` | 作り物のラベル付きデータ(依頼文 62 件、不具合報告と問い合わせの各 32 組)と、CI 用の較正の裏付け(`store/labels/`) |
 
 ## score の帯: `thresholds.level`
 
@@ -202,4 +202,4 @@ Claude Code の hook との接続(判定 → 結果からラベル)は [`integra
 
 - 等張回帰
 - 鍵の取り出し(環境変数で渡す。このプロセスはキーチェーンに触らない)
-- `ask` の答えを自動で label に流す口(今は `shikii label` を手で打つ)
+- `ask` の答えを拾う口は `shikii serve` の画面(ボタンで `/v1/label`)で済んだ。残るのは hook の文脈(UI が無い)

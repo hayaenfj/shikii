@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
+	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
 // shikii serve: 1 プロセスで、プログラム向けの HTTP の口と、人向けの画面を出す。
@@ -54,7 +56,7 @@ func cmdServe(args []string) error {
 		return err
 	}
 	addr := fmt.Sprintf("127.0.0.1:%d", o.port)
-	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, o.ef.local, o.ef.hosted, o.autoCalibrate, addr)
+	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted), o.autoCalibrate, addr)
 	return http.ListenAndServe(addr, newServer(o))
 }
 
@@ -200,9 +202,35 @@ func truthChoices(sp *spec.Spec) []map[string]any {
 	return out
 }
 
-func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
+// maxBody は POST 本文の上限。store の 1 行の上限(4 MiB)より小さく。
+const maxBody = 1 << 20
+
+// acceptJSONPost はブラウザ上の他サイトからの書き込みを弾く(監査 S3)。
+//   - Origin があれば、この口(127.0.0.1 / localhost)のものだけ通す
+//   - Content-Type は application/json だけ(text/plain の「単純リクエスト」は preflight 無しで届くため)
+//   - 本文は maxBody まで(超えると 413)
+func acceptJSONPost(w http.ResponseWriter, r *http.Request) bool {
 	if r.Method != http.MethodPost {
 		writeErr(w, 405, errors.New("POST only"))
+		return false
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		u, err := url.Parse(origin)
+		if err != nil || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "[::1]" && u.Hostname() != "::1") {
+			writeErr(w, 403, fmt.Errorf("cross-origin request from %q is not allowed", origin))
+			return false
+		}
+	}
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "application/json") {
+		writeErr(w, 415, errors.New("Content-Type must be application/json"))
+		return false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	return true
+}
+
+func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
+	if !acceptJSONPost(w, r) {
 		return
 	}
 	var req struct {
@@ -212,6 +240,11 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		Record  *bool             `json:"record"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeErr(w, 413, fmt.Errorf("body larger than %d bytes", maxBody))
+			return
+		}
 		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 		return
 	}
@@ -240,8 +273,7 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, 405, errors.New("POST only"))
+	if !acceptJSONPost(w, r) {
 		return
 	}
 	var req struct {
@@ -307,8 +339,15 @@ func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 	stdout = &buf
 	ef := s.o.ef
 	ef.model = model
-	err = runCalibrate(sp.Path(), calibrateOpts{ef: ef, storeDir: s.o.storeDir, labeled: "none", bins: 10, write: true})
-	stdout = old
+	err = func() (err error) {
+		defer func() {
+			stdout = old // panic しても stdout を差し替えたままにしない(MCP の通信路を守る)
+			if r := recover(); r != nil {
+				err = fmt.Errorf("calibrate panicked: %v", r)
+			}
+		}()
+		return runCalibrate(sp.Path(), calibrateOpts{ef: ef, storeDir: s.o.storeDir, labeled: "none", bins: 10, write: true})
+	}()
 	report := strings.TrimSpace(buf.String())
 	if err != nil {
 		report += "\nERROR: " + err.Error()
@@ -331,6 +370,9 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	if v := r.URL.Query().Get("limit"); v != "" {
 		fmt.Sscanf(v, "%d", &limit)
+	}
+	if limit < 1 || limit > 1000 {
+		limit = 50
 	}
 	sp, err := s.spec(id)
 	if errors.Is(err, errNotFound) {

@@ -123,6 +123,15 @@ const DefaultPath = "/v1/systemone"
 
 // New はクライアントを作る。baseURL にパスが含まれていれば(例: https://openrouter.ai/api/alpha/decisions)
 // それをそのまま使い、無ければ /v1/systemone を足す。
+// RedactURL は URL に埋め込まれた資格情報(user:token@host)を伏せる。ログと誤り文に使う。
+func RedactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	return u.Redacted()
+}
+
 func New(baseURL, apiKey, model string) *Client {
 	base, path := SplitEndpoint(baseURL)
 	return &Client{
@@ -177,7 +186,7 @@ func (c *Client) Ask(ctx context.Context, state string, qs map[string]Question) 
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("systemone %s: HTTP %d: %s", c.BaseURL, resp.StatusCode, strings.TrimSpace(string(raw)))
+		return nil, fmt.Errorf("systemone %s: HTTP %d: %s", RedactURL(c.BaseURL), resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	var out Response
 	if err := json.Unmarshal(raw, &out); err != nil {

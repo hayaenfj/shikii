@@ -2,6 +2,7 @@ package store
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func TestInputsByHashOnlyFromRecordsThatKeptText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[withText.InputsHash]["a"] != "x" {
+	if len(got) != 1 || got[withText.InputsHash].Inputs["a"] != "x" {
 		t.Fatalf("want only the record that kept its text, got %v", got)
 	}
 	// ファイルから較正した時のラベルは記録を持たない。ラベル側に本文があればそれも材料になる
@@ -42,7 +43,7 @@ func TestInputsByHashOnlyFromRecordsThatKeptText(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ = st.InputsByHash("s")
-	if len(got) != 2 || got[fromFile.InputsHash]["a"] != "z" {
+	if len(got) != 2 || got[fromFile.InputsHash].Inputs["a"] != "z" {
 		t.Fatalf("labels that carry text must count too, got %v", got)
 	}
 }
@@ -73,6 +74,44 @@ func TestRecentRecordsAndLabeledTraces(t *testing.T) {
 	}
 	if none, err := st.Records("no-such", 5); err != nil || len(none) != 0 {
 		t.Fatalf("missing spec must be empty, got %v %v", none, err)
+	}
+}
+
+// 監査 S2: 書く側に上限が無く読む側に 1 MiB の上限があり、巨大な 1 行で store 全体が読めなくなった。
+// 書く側で弾き、読む側は余裕を持つ。
+func TestOversizedRecordIsRejectedNotWritten(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	r := rec("h1", "m")
+	r.Inputs = map[string]string{"a": strings.Repeat("x", MaxLineBytes)}
+	if err := st.AppendRecord(r); err == nil {
+		t.Fatal("a record larger than MaxLineBytes must be rejected")
+	}
+	ok := rec("h1", "m")
+	ok.Inputs = map[string]string{"a": strings.Repeat("x", 1<<20+100)} // 1 MiB を少し超える(読める)
+	if err := st.AppendRecord(ok); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.Records("s", 0); err != nil || len(got) != 1 {
+		t.Fatalf("a record just above 1 MiB must still be readable: %d %v", len(got), err)
+	}
+}
+
+// 監査 S9: 本文を含む store は持ち主だけが読める(0600 / 0700)。
+func TestStoreFilesAreOwnerOnly(t *testing.T) {
+	st := Store{Dir: filepath.Join(t.TempDir(), "s")}
+	if err := st.AppendRecord(rec("h1", "m")); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(st.recordsPath("s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Fatalf("record file must be 0600, got %o", fi.Mode().Perm())
+	}
+	di, _ := os.Stat(filepath.Join(st.Dir, "records"))
+	if di.Mode().Perm() != 0o700 {
+		t.Fatalf("store dirs must be 0700, got %o", di.Mode().Perm())
 	}
 }
 

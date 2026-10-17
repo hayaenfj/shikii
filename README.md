@@ -22,7 +22,7 @@
 `scripts/demo.sh`
 
 > [!IMPORTANT]
-> shikii never runs a model and never reads a keychain. It talks to a decision-model endpoint you already have, keeps the records, and refuses to **act** until the probabilities for *this question on this model* have been verified against labels. Calibration blocks are generated, never written by hand.
+> shikii never runs inference itself (`shikii up` only launches llama-server for you) and never reads a keychain. It talks to a decision-model endpoint you already have, keeps the records, and refuses to **act** until the probabilities for *this question on this model* have been verified against labels. Calibration blocks are generated, never written by hand.
 
 ---
 
@@ -30,7 +30,7 @@ Decision models (TypeSafe Jev, llama.cpp Kev-4B and OpenJev, OpenRouter Decision
 
 shikii owns the part nobody ships: the **lifecycle** of a decision. A spec file holds the question, the options, the state template and the thresholds. `decide` asks a model and returns a band (`act` / `ask` / `discard` / `abstain`), never a raw number. `label` records what was true. `calibrate` fits and cross-validates, then writes the result back into the spec under a key made of the question's hash and the model's name. `check` fails CI when the wording or the model drifted. `gc` keeps the store small.
 
-It also comes with `shikii-readout`, a 500-line adapter that turns **any chat GGUF on a stock llama.cpp** into a decision model by reading the logits of the option letters. In our measurements an ordinary 27B ternary model read this way matched trained decision models on accuracy, at 0.6 seconds a question on a laptop.
+It also comes with `shikii-readout`, a small adapter (about 600 lines) that turns **any chat GGUF on a stock llama.cpp** into a decision model by reading the logits of the option letters. In our measurements an ordinary 27B ternary model read this way matched trained decision models on accuracy, at 0.6 seconds a question on a laptop.
 
 > The name is Japanese: *shikii* (閾) means threshold, the line that turns a probability into an action. The command is `shikii` too.
 
@@ -43,7 +43,7 @@ Go 1.24 or newer. Nothing else is needed for the first run.
 ```sh
 git clone https://github.com/hayaenfj/shikii && cd shikii
 scripts/demo.sh                 # fake model: decide → label → calibrate → check → drift → status → gc
-scripts/demo.sh --overconfident # a fake model whose probabilities need calibration; watch calibrate pick platt
+scripts/demo.sh --overconfident # a fake model whose probabilities are too sharp; compare the raw and calibrated confusion matrices
 ```
 
 ### Point it at a real model
@@ -81,7 +81,7 @@ bin/shikii serve --specs decisions --local http://127.0.0.1:8080        # http:/
 curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message":"fix the typo"}}'
 ```
 
-Programs call `POST /v1/decide` and `POST /v1/label` from any language. People open the page: every decision that is still waiting for an answer is listed, `ask` first, with one button per option. Press the button, the truth is stored, and when a spec reaches `eval.min_n` the server calibrates and writes the spec by itself. Nobody types a trace id. The page is a single HTML file with no external loads, so it works on a laptop with no internet. It has a language switch; add a `display:` block to a spec (per language: title, question, option or level names) and the page shows the decision in that language too. `display` is never sent to the model and is not part of the calibration key.
+Programs call `POST /v1/decide` and `POST /v1/label` from any language. People open the page: the decisions still waiting for an answer are listed (newest 30 per spec), `ask` first, with one button per option. Press the button, the truth is stored, and when a spec reaches `eval.min_n` the server calibrates and writes the spec by itself. Nobody types a trace id. The page is a single HTML file with no external loads, so it works on a laptop with no internet. It has a language switch; add a `display:` block to a spec (per language: title, question, option or level names) and the page shows the decision in that language too. `display` is never sent to the model and is not part of the calibration key.
 
 The same thing as MCP tools for an agent: `shikii mcp` speaks the Model Context Protocol over stdio and exposes `shikii_specs`, `shikii_decide`, `shikii_label` and `shikii_status`. Claude Code picks it up from the repo's `.mcp.json`. See [`integrations/mcp.md`](integrations/mcp.md).
 
@@ -132,7 +132,7 @@ thresholds:
 
 `calibrate` compares three methods under 5-fold cross-validation and writes the winner. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Every safety-relevant branch (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, …) has a recorded mutation that made a test fail before the fix was accepted. There are 63 Go tests across 8 packages; the demo runs in CI.
+Every safety-relevant branch (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, …) has a recorded mutation that made a test fail before the fix was accepted. There are 95 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -169,11 +169,11 @@ Same specs, same labels, five evaluation sets, all synthetic: prompt intent (62 
 
 ## FAQ
 
-**Does shikii run models?** No. It sends System One requests to an endpoint you run or rent, and keeps everything that happens after the answer. `shikii-readout` is the one exception in spirit: it converts a chat model's logits into the same shape, but the inference is still llama.cpp's.
+**Does shikii run models?** Not the inference. It sends System One requests to an endpoint you run or rent, and keeps everything that happens after the answer (`shikii up` is a convenience that launches llama-server and waits for it). `shikii-readout` is the one exception in spirit: it converts a chat model's logits into the same shape, but the inference is still llama.cpp's.
 
 **Why does my decision never reach `act`?** Because the spec has no calibration block for `(this question hash, this model id)`. Collect labels (`label`, or `--labeled file`), run `calibrate --write`, and `status` shows `calibrated: identity|platt|vector`. A decision without verified precision at the act threshold is not allowed to act. That is the point.
 
-**I changed one word in the question and the calibration disappeared.** Correct, and it costs you minutes, not labels. The hash changed, so constants fitted to the old wording are not trusted. But the truths people gave (this request *was* a change request, these two reports *were* the same bug) do not depend on the wording or the model. Run `calibrate --write` again: it replays every stored truth against the new wording and the current model, refits, and writes. No human in the loop. The text of every decision is kept in the local store for exactly this reason; `calibrate` tells you if any older truths have no text and cannot be replayed.
+**I changed one word in the question and the calibration disappeared.** Correct, and it costs you minutes, not labels. The hash changed, so constants fitted to the old wording are not trusted. But the truths people gave (this request *was* a change request, these two reports *were* the same bug) do not depend on the wording or the model. Run `calibrate --write` again: it replays every stored truth against the new wording and the current model, refits, and writes. No human in the loop. The text of every recorded decision is kept in the local store for exactly this reason (`--no-record` and `"record": false` are the only exceptions); `calibrate` tells you if any older truths have no text and cannot be replayed.
 
 **Which model should I use?** It depends on licence, speed and language, and shikii does not decide for you. The table above and [`docs/model-comparison.md`](docs/model-comparison.md) are the argument: with the same spec and the same labels you can choose by numbers, including whether a model needs calibration at all. `scripts/eval-model.sh <url> <name>` reproduces the table for a new endpoint.
 

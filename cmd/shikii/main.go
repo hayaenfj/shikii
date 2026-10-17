@@ -81,7 +81,7 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   shikii decide    <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
-  shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|undo|manual] [--store DIR]
+  shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]
   shikii label     --last --spec-id ID <truth>              直近の記録に付ける(trace_id 不要)
   shikii calibrate <spec.yaml> [--labeled file] [--model M] [--hosted URL] [--local URL] [--store DIR] [--bins N] [--write] [--force]
   shikii hash      <spec.yaml>
@@ -221,7 +221,7 @@ func recordOf(sp *spec.Spec, d *decide.Decision, inputs map[string]string) store
 		Model: d.Model, Endpoint: d.Endpoint,
 		Inputs: copyInputs(inputs), InputsHash: d.InputsHash,
 		Raw: d.Raw, Calibrated: d.Calibrated, IsCalibrated: d.IsCalibrated,
-		Top: d.Top, P: d.P, Band: string(d.Band), At: d.At,
+		Top: d.Top, P: d.P, Band: string(d.Band), Tainted: d.Tainted, At: d.At,
 	}
 }
 
@@ -232,7 +232,7 @@ func cmdLabel(args []string) error {
 	storeDir := bindStore(fs)
 	specID := fs.String("spec-id", "", "記録を探す spec(省略時は全部見る)")
 	weight := fs.Float64("weight", 1, "ラベルの重み(弱いラベルは 1 未満)")
-	source := fs.String("source", "manual", "ラベルの出どころ: ask | undo | manual など")
+	source := fs.String("source", "manual", "ラベルの出どころ: ask | outcome | manual | ui | mcp など(replay と file は calibrate が付ける)")
 	last := fs.Bool("last", false, "trace_id の代わりに、--spec-id の直近の記録に付ける")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -371,22 +371,21 @@ func runCalibrate(path string, o calibrateOpts) error {
 	if model == "" {
 		model = ef.model
 	}
-	// 3. store に溜まったラベル。(hash, model) が一致するものだけ。ファイル側・聞き直し側と同じ入力は二重に数えない。
+	// 3. store に溜まったラベル。(hash, model) が一致するもの全部。ファイル側と同じ入力があっても落とさない:
+	//    後で人が付けた訂正の方が新しければ、下の LatestPerInput でそちらが勝つ(監査 C2)。
 	stored, err := st.Labels(sp.ID, sp.Hash(), model)
 	if err != nil {
 		return err
 	}
-	kept := stored[:0]
-	for _, l := range stored {
-		if !seen[l.InputsHash] {
-			kept = append(kept, l)
-		}
+	replayedSet, err := storedInputs(st, sp, model)
+	if err != nil {
+		return err
 	}
-	stored = kept
 	for _, l := range replayed {
-		if alreadyStored(st, sp, l) {
+		if replayedSet[l.InputsHash] {
 			continue
 		}
+		replayedSet[l.InputsHash] = true
 		if err := st.AppendLabel(l); err != nil {
 			return fmt.Errorf("persist replayed label: %w", err)
 		}
@@ -394,13 +393,18 @@ func runCalibrate(path string, o calibrateOpts) error {
 	}
 	// 4. モデルに聞いて得たファイル行のラベルは store に残す。以後 check / drift がモデル無しで検証できる。
 	persisted := 0
+	storedSet, err := storedInputs(st, sp, model)
+	if err != nil {
+		return err
+	}
 	for _, l := range labels {
 		if l.Model == "" || l.InputsHash == "" {
 			continue // raw 付きの行(モデルを呼んでいない)は残さない
 		}
-		if alreadyStored(st, sp, l) {
+		if storedSet[l.InputsHash] {
 			continue
 		}
+		storedSet[l.InputsHash] = true
 		if err := st.AppendLabel(l); err != nil {
 			return fmt.Errorf("persist label: %w", err)
 		}
@@ -409,8 +413,16 @@ func runCalibrate(path string, o calibrateOpts) error {
 	if persisted > 0 {
 		fmt.Fprintf(stdout, "persisted %d queried labels to %s\n", persisted, *storeDir)
 	}
+	fileN, storedN := len(labels), len(stored)
 	labels = append(labels, stored...)
-	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s n=%d (file=%d store=%d replay=%d)\n", sp.ID, sp.Hash(), model, len(labels), len(labels)-len(stored), len(stored), len(replayed))
+	// 入力ごとに最新の正解 1 つ(check / drift と同じ数え方)。訂正は置き換え、同じ入力の重複は 1 件
+	if before := len(labels); before > 0 {
+		labels = store.LatestPerInput(labels)
+		if len(labels) < before {
+			fmt.Fprintf(stdout, "deduplicated: %d labels on %d distinct inputs (latest truth per input wins)\n", before, len(labels))
+		}
+	}
+	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s n=%d (file=%d store=%d replay=%d)\n", sp.ID, sp.Hash(), model, len(labels), fileN, storedN, len(replayed))
 	if len(labels) == 0 {
 		return fmt.Errorf("calibrate: no labels for (hash=%s, model=%s)", sp.Hash(), model)
 	}
@@ -467,10 +479,27 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
+	// 同じ入力の以前のラベル(raw と時刻の再利用に使う)。複数あれば一番古いもの = 最初に聞いた時のもの。
+	// 後から人が付けた訂正の時刻を借りると、ファイルの正解がその訂正と同時刻になり LatestPerInput で勝ってしまう(監査 C2)。
 	stored := map[string]store.Label{}
 	if prior, err := st.Labels(sp.ID, sp.Hash(), ef.model); err == nil {
 		for _, l := range prior {
-			stored[l.InputsHash] = l
+			if cur, ok := stored[l.InputsHash]; !ok || l.At.Before(cur.At) {
+				stored[l.InputsHash] = l
+			}
+		}
+	}
+	// ファイルの行の時刻は「その入力を最初に取り込んだ時刻」(モデルを問わず、今の文言で一番古いラベル)。
+	// 毎回「今」にすると、人が後から付けた訂正より新しくなって勝ってしまう。
+	firstSeen := map[string]time.Time{}
+	if _, all, err := st.Counts(sp.ID); err == nil {
+		for _, l := range all {
+			if l.SpecHash != sp.Hash() || l.InputsHash == "" {
+				continue
+			}
+			if cur, ok := firstSeen[l.InputsHash]; !ok || l.At.Before(cur) {
+				firstSeen[l.InputsHash] = l.At
+			}
 		}
 	}
 	reused := 0
@@ -516,6 +545,9 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 		if l.Weight <= 0 {
 			l.Weight = 1
 		}
+		if first, ok := firstSeen[l.InputsHash]; ok && l.InputsHash != "" {
+			l.At = first
+		}
 		out = append(out, l)
 	}
 	if reused > 0 {
@@ -525,17 +557,16 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 }
 
 // alreadyStored は同じ (hash, model, inputs_hash) のラベルが store にあるか。
-func alreadyStored(st store.Store, sp *spec.Spec, l store.Label) bool {
-	existing, err := st.Labels(sp.ID, sp.Hash(), l.Model)
+func storedInputs(st store.Store, sp *spec.Spec, model string) (map[string]bool, error) {
+	existing, err := st.Labels(sp.ID, sp.Hash(), model)
 	if err != nil {
-		return false
+		return nil, err
 	}
+	out := make(map[string]bool, len(existing))
 	for _, e := range existing {
-		if e.InputsHash == l.InputsHash {
-			return true
-		}
+		out[e.InputsHash] = true
 	}
-	return false
+	return out, nil
 }
 
 // replayTruths は「正解の貯金」を今の (spec_hash, model) に持ち込む。
@@ -555,13 +586,11 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		at     time.Time
 	}
 	bank := map[string]truth{}
-	for _, l := range all {
+	for _, l := range store.LatestPerInput(all) {
 		if l.InputsHash == "" || seen[l.InputsHash] {
 			continue
 		}
-		if cur, ok := bank[l.InputsHash]; !ok || l.At.After(cur.at) {
-			bank[l.InputsHash] = truth{l.Truth, l.Weight, l.At}
-		}
+		bank[l.InputsHash] = truth{l.Truth, l.Weight, l.At}
 	}
 	if len(bank) == 0 {
 		return nil, model, nil
@@ -591,7 +620,6 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		return nil, model, err
 	}
 	eps := ef.endpoints()
-	sess := decide.Session{Tainted: ef.tainted}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
@@ -606,15 +634,18 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		if current[h] {
 			continue
 		}
-		inputs, ok := texts[h]
+		stored, ok := texts[h]
 		if !ok {
 			noText++
 			continue
 		}
+		inputs := stored.Inputs
 		if len(eps) == 0 {
 			noEndpoint++
 			continue
 		}
+		// tainted で記録された本文は、今のセッションが tainted でなくても hosted に送らない(監査 S1)
+		sess := decide.Session{Tainted: ef.tainted || stored.Tainted}
 		d, err := decide.Decide(ctx, sp, inputs, sess, eps)
 		if err != nil {
 			return nil, model, fmt.Errorf("replay %s: %w", h, err)
@@ -712,8 +743,9 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibrat
 	fmt.Fprintf(stdout, "platt 5-fold CV: precision@act=%.3f brier=%.4f (raw: precision@act=%.3f brier=%.4f)\n", cvPrec, cvBrier, rawPrec, rawBrier)
 	identityOK, plattOK := rawPrec >= sp.Thresholds.Act, cvPrec >= sp.Thresholds.Act
 	identity := spec.Calibration{Method: "identity", PrecisionAt: rawPrec, Brier: rawBrier, ECE: calib.ECE(rawProbs, truths, weights, bins)}
+	// spec に書く Brier は CV の値(in-sample は楽観側で、drift の基準線として甘い。監査 C6)
 	platt := spec.Calibration{Method: "platt", Bias: pl.Bias, Temperature: pl.Temperature, PrecisionAt: cvPrec,
-		Brier: calib.Brier(calProbs, truths, weights), ECE: calib.ECE(calProbs, truths, weights, bins)}
+		Brier: cvBrier, ECE: calib.ECE(calProbs, truths, weights, bins)}
 	switch {
 	case identityOK && plattOK && cvBrier < rawBrier:
 		fmt.Fprintf(stdout, "choose platt: both satisfy act; CV brier %.4f < raw %.4f\n", cvBrier, rawBrier)
@@ -803,7 +835,7 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibration,
 		return spec.Calibration{}, false, fmt.Errorf("vector scaling: %w", err)
 	}
 	calRep := topReport(sp, ms, &v)
-	cvPrec, cvRec := crossValidateVector(sp, fit, 5)
+	cvPrec, cvRec := crossValidateVector(sp, ms, 5) // 採点は全ラベル(部分ラベル込み)。当てるのは完全ラベルだけ(関数の中で分ける)
 	fmt.Fprintf(stdout, "vector:     temperature=%.4f biases=%s\n", v.Temperature, fmtDist(v.Biases))
 	fmt.Fprintf(stdout, "calibrated: top-1 accuracy=%.3f brier(top)=%.4f ece(top)=%.4f (in-sample)\n", calRep.acc, calRep.brier, calRep.ece)
 	printThresholdReport(sp.Thresholds, calRep.pTop, calRep.correct, calRep.weights)
@@ -835,6 +867,8 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibration,
 
 // crossValidateVector は k-fold で vector を当て、外した fold での act 閾値の precision / recall を合算する。
 func crossValidateVector(sp *spec.Spec, ms []calib.MultiSample, k int) (precision, recall float64) {
+	// 採点は identity / check と同じ集合(部分ラベル "!x" を含む全ラベル)と同じ事象(judge)で行う。
+	// 当てる(FitVector)のは正解の選択肢が分かっている完全ラベルだけ。監査 C1 / C4。
 	if k < 2 || len(ms) < k {
 		return 0, 0
 	}
@@ -842,9 +876,10 @@ func crossValidateVector(sp *spec.Spec, ms []calib.MultiSample, k int) (precisio
 	for fold := 0; fold < k; fold++ {
 		var train, test []calib.MultiSample
 		for i, s := range ms {
-			if i%k == fold {
+			switch {
+			case i%k == fold:
 				test = append(test, s)
-			} else {
+			case !store.Partial(s.Truth):
 				train = append(train, s)
 			}
 		}
@@ -853,12 +888,11 @@ func crossValidateVector(sp *spec.Spec, ms []calib.MultiSample, k int) (precisio
 			continue
 		}
 		for _, s := range test {
-			top, p := argmax(v.Apply(s.Raw))
+			_, p, correct := judge(sp, v.Apply(s.Raw), s.Truth)
 			w := s.Weight
 			if w <= 0 {
 				w = 1
 			}
-			correct := top == s.Truth
 			switch {
 			case p >= sp.Thresholds.Act && correct:
 				tp += w
@@ -1106,6 +1140,15 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 			out = append(out, fmt.Sprintf("%s: unknown method %q (calibration blocks are generated, not hand-written)", key, c.Method))
 			continue
 		}
+		// 手書きのブロックを弾く: calibrate が書かないもの(min_n 未満の n、日付無し)は通さない(監査 S5)
+		if c.N < sp.Eval.MinN {
+			out = append(out, fmt.Sprintf("%s: n=%d < eval.min_n=%d (calibrate would not have written this block; --force or hand-written)", key, c.N, sp.Eval.MinN))
+			continue
+		}
+		if strings.TrimSpace(c.FittedAt) == "" {
+			out = append(out, key+": fitted_at is empty (calibration blocks are generated, not hand-written)")
+			continue
+		}
 		labels, err := collectLabels(sp, st, c.Model, c.FittedOn)
 		if err != nil {
 			out = append(out, key+": "+err.Error())
@@ -1129,10 +1172,11 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 // collectLabels は store のラベルと、eval.labeled の raw 付き行(noul)を合わせる。モデルは呼ばない。
 // raw 付き行はどのモデルの確率か分からないので、その較正が同じファイルで当てられた(fitted_on が一致する)時だけ使う。
 func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]store.Label, error) {
-	labels, err := st.Labels(sp.ID, sp.Hash(), model)
+	all, err := st.Labels(sp.ID, sp.Hash(), model)
 	if err != nil {
 		return nil, err
 	}
+	labels := store.LatestPerInput(all) // calibrate と同じ数え方(入力ごとに最新の正解 1 つ)
 	if sp.Eval.Labeled == "" || sp.Eval.Labeled != fittedOn {
 		return labels, nil
 	}
@@ -1234,10 +1278,14 @@ func cmdDrift(args []string) error {
 	if c == nil {
 		return fmt.Errorf("drift: no current calibration for model %s (hash %s); nothing to drift from", *model, sp.Hash())
 	}
-	labels, err := (store.Store{Dir: *storeDir}).Labels(sp.ID, sp.Hash(), *model)
+	if (c.Method == "platt" || c.Method == "vector") && !(c.Temperature > 0) {
+		return fmt.Errorf("drift: calibration for %s has temperature %g (not > 0); the block is broken or hand-written, run check", *model, c.Temperature)
+	}
+	all, err := (store.Store{Dir: *storeDir}).Labels(sp.ID, sp.Hash(), *model)
 	if err != nil {
 		return err
 	}
+	labels := store.LatestPerInput(all)
 	if len(labels) == 0 {
 		return fmt.Errorf("drift: no labels in store for (hash=%s, model=%s)", sp.Hash(), *model)
 	}
