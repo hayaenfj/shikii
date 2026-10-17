@@ -74,6 +74,15 @@ bin/shikii calibrate examples/prompt-intent.yaml --model <model name from the re
 bin/shikii check examples/prompt-intent.yaml        # exit 1 when the wording changed or precision@act fell below act
 ```
 
+### Or run one process for programs and people
+
+```sh
+bin/shikii serve --specs decisions --local http://127.0.0.1:8080        # http://127.0.0.1:8095/
+curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message":"fix the typo"}}'
+```
+
+Programs call `POST /v1/decide` and `POST /v1/label` from any language. People open the page: every decision that is still waiting for an answer is listed, `ask` first, with one button per option. Press the button, the truth is stored, and when a spec reaches `eval.min_n` the server calibrates and writes the spec by itself. Nobody types a trace id. The page is a single HTML file with no external loads, so it works on a laptop with no internet.
+
 ### Use any GGUF as a decision model
 
 ```sh
@@ -193,6 +202,7 @@ shikii bias      <spec> [--rows K] [--permutations N]     # does the answer depe
 shikii status    [spec...] [--store DIR]                  # inventory: records, labels, sources, per-(model, hash) state
 shikii gc        [spec...] [--older-than 30d] [--apply]   # drop old unlabelled records; dry run by default
 shikii hash      <spec>
+shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # HTTP API + review page; auto-calibrates
 ```
 
 ## Contributing

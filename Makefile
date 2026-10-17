@@ -49,6 +49,11 @@ status: build
 drift: build
 	$(BIN) drift decisions/prompt-kind.yaml --model '$(MODEL)' --store $(STORE)
 
+# 1 プロセスで HTTP の口と画面(http://127.0.0.1:8095/)。LOCAL= で手元のモデル、STORE= で置き場
+LOCAL ?= http://127.0.0.1:8080
+serve: build
+	$(BIN) serve --specs decisions --store $(STORE) --local $(LOCAL)
+
 # 古くてラベルの無い記録の掃除。表示だけ。消すなら make gc GC_FLAGS=--apply
 gc: build
 	$(BIN) gc --store $(STORE) $(GC_FLAGS)

@@ -69,6 +69,35 @@ func TestInputsByHashOnlyFromRecordsThatKeptText(t *testing.T) {
 	}
 }
 
+// Records は新しい順に limit 件。LabeledTraces はラベルの付いた trace の集合(待ち行列の「済み」判定に使う)。
+func TestRecentRecordsAndLabeledTraces(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	var recs []Record
+	for i := 0; i < 3; i++ {
+		r := rec("h1", "m")
+		r.At = time.Now().Add(time.Duration(i) * time.Second)
+		recs = append(recs, r)
+		if err := st.AppendRecord(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := st.Records("s", 2)
+	if err != nil || len(got) != 2 || got[0].TraceID != recs[2].TraceID || got[1].TraceID != recs[1].TraceID {
+		t.Fatalf("want the 2 newest first, got %v %v", got, err)
+	}
+	l, _ := LabelFor(&recs[1], "yes", 1, "ui")
+	if err := st.AppendLabel(l); err != nil {
+		t.Fatal(err)
+	}
+	labeled, err := st.LabeledTraces("s")
+	if err != nil || len(labeled) != 1 || labeled[recs[1].TraceID].Truth != "yes" {
+		t.Fatalf("labeled traces: %v %v", labeled, err)
+	}
+	if none, err := st.Records("no-such", 5); err != nil || len(none) != 0 {
+		t.Fatalf("missing spec must be empty, got %v %v", none, err)
+	}
+}
+
 func TestHashInputsIsOrderIndependent(t *testing.T) {
 	a := HashInputs(map[string]string{"x": "1", "y": "2"})
 	b := HashInputs(map[string]string{"y": "2", "x": "1"})

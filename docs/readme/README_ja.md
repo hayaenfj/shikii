@@ -86,6 +86,15 @@ bin/shikii calibrate examples/prompt-intent.yaml --model <答えに入ってい�
 bin/shikii check examples/prompt-intent.yaml        # 文言が変わっていないか、線がまだ正しいか。だめなら exit 1(CI 向け)
 ```
 
+### または、プログラムと人のための 1 プロセスを立てる
+
+```sh
+bin/shikii serve --specs decisions --local http://127.0.0.1:8080        # http://127.0.0.1:8095/
+curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message":"誤字を直して"}}'
+```
+
+プログラムはどの言語からでも `POST /v1/decide` と `POST /v1/label` を叩くだけ。人はブラウザで画面を開くと、答え合わせ待ちの判定が `ask` から順に並び、選択肢ごとにボタンがあります。押せば正解が記録され、`eval.min_n` に届いた spec はサーバーが自分で線を引いて書き込みます。trace id を打つ人はいません。画面は外部の読み込み無しの HTML 1 枚なので、ネットの無い社内のノート PC でも開けます。
+
 ### 普通のチャット用モデルを使う
 
 ```sh
@@ -231,6 +240,7 @@ shikii bias      <spec> [--rows K] [--permutations N]     # 選択肢の順番�
 shikii status    [spec...] [--store DIR]                  # 記録・正解・線の溜まり具合
 shikii gc        [spec...] [--older-than 30d] [--apply]   # 古くて正解の無い記録を消す(既定は数えるだけ)
 shikii hash      <spec>
+shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # HTTP の口 + 答え合わせの画面。自動で線を引く
 ```
 
 ## 手伝ってくれる人へ

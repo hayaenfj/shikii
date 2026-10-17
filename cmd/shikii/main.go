@@ -58,6 +58,8 @@ func main() {
 		err = cmdStatus(os.Args[2:])
 	case "gc":
 		err = cmdGC(os.Args[2:])
+	case "serve":
+		err = cmdServe(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -79,7 +81,9 @@ func usage() {
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]  直近のラベルで劣化を見る
   shikii bias      <spec.yaml> [--labeled file] [--rows K] [--permutations N] [--local URL] ... choice の順序バイアスを測る
   shikii status    [spec.yaml ...] [--store DIR]           記録・ラベル・較正の棚卸し
-  shikii gc        [spec.yaml ...] [--older-than 30d] [--apply] [--store DIR]  古くてラベルの無い記録を消す(既定は表示だけ)`)
+  shikii gc        [spec.yaml ...] [--older-than 30d] [--apply] [--store DIR]  古くてラベルの無い記録を消す(既定は表示だけ)
+  shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--auto-calibrate=false]
+                   1 プロセスで HTTP の /v1/decide /v1/label /v1/status /v1/queue と、ブラウザで正解を付ける画面(/)。正解が溜まると自動で線を引く`)
 }
 
 // endpointFlags は decide / calibrate 共通のエンドポイント指定。
@@ -281,6 +285,25 @@ func cmdCalibrate(args []string) error {
 	path, err := parseSpecPath(fs, args)
 	if err != nil {
 		return err
+	}
+	return runCalibrate(path, calibrateOpts{ef: ef, storeDir: *storeDir, labeled: *labeledPath, bins: *bins, write: *write, force: *force})
+}
+
+// calibrateOpts は calibrate の指定。CLI と serve(自動の較正)が同じ中身を使う。
+type calibrateOpts struct {
+	ef       endpointFlags
+	storeDir string
+	labeled  string // "" = spec の eval.labeled、"none" = ファイルを使わない
+	bins     int
+	write    bool
+	force    bool
+}
+
+// runCalibrate は calibrate の本体。報告は stdout に出す。
+func runCalibrate(path string, o calibrateOpts) error {
+	ef, storeDir, labeledPath, bins, write, force := o.ef, &o.storeDir, &o.labeled, &o.bins, &o.write, &o.force
+	if *bins <= 0 {
+		*bins = 10
 	}
 	sp, err := spec.Load(path)
 	if err != nil {

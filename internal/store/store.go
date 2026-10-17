@@ -293,6 +293,45 @@ func (s Store) InputsByHash(specID string) (map[string]map[string]string, error)
 	return out, nil
 }
 
+// Records は spec の記録を新しい順に limit 件(limit <= 0 なら全部)。待ち行列の表示用。
+func (s Store) Records(specID string, limit int) ([]Record, error) {
+	var all []Record
+	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
+		var r Record
+		if json.Unmarshal(line, &r) == nil {
+			all = append(all, r)
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].At.After(all[j].At) })
+	if limit > 0 && len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
+// LabeledTraces は trace_id → ラベル(複数なら最新)。記録に正解が付いたかを見るため。
+func (s Store) LabeledTraces(specID string) (map[string]Label, error) {
+	out := map[string]Label{}
+	err := scanJSONL(s.labelsPath(specID), func(line []byte) error {
+		var l Label
+		if json.Unmarshal(line, &l) != nil || l.TraceID == "" {
+			return nil
+		}
+		if cur, ok := out[l.TraceID]; !ok || l.At.After(cur.At) {
+			out[l.TraceID] = l
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LastRecord は spec の最後に追記された記録。手でラベルを付けるときに trace_id を控えなくてよいようにする。
 func (s Store) LastRecord(specID string) (*Record, error) {
 	var last *Record
