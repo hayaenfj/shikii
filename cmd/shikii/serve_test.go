@@ -168,3 +168,43 @@ func TestServeUIIsSelfContained(t *testing.T) {
 		}
 	}
 }
+
+// 正解がまだ無い spec でも status の keys は空配列(null だと画面の JS が落ちる)。
+func TestServeStatusNeverReturnsNullLists(t *testing.T) {
+	url, _, _ := newServeFixture(t, "local", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	resp, err := http.Get(url + "/v1/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(resp.Body)
+	if strings.Contains(buf.String(), "null") {
+		t.Fatalf("status must use empty lists, never null:\n%s", buf.String())
+	}
+}
+
+// 同じ id の spec が 2 つあれば version の大きい方を使う(文言 v1 → v2 を同じ id で持つ運用のため)。同じ version なら誤り。
+func TestLoadSpecsPicksHighestVersionForDuplicateIDs(t *testing.T) {
+	dir := t.TempDir()
+	v1 := writeSpec(t, dir, "never")
+	b, _ := os.ReadFile(v1)
+	v2 := strings.Replace(strings.Replace(string(b), "version: 1", "version: 2", 1), "question: What is asked?", "question: What is asked, exactly?", 1)
+	if err := os.WriteFile(filepath.Join(dir, "intent-v2.yaml"), []byte(v2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	specs, err := loadSpecs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sp := specs["intent"]; sp == nil || sp.Version != 2 || !strings.Contains(sp.Question, "exactly") {
+		t.Fatalf("duplicate id must resolve to the higher version: %+v", specs["intent"])
+	}
+	// 同じ version で id が重なるのは誤り
+	if err := os.WriteFile(filepath.Join(dir, "intent-dup.yaml"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadSpecs(dir); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("same id and same version must be an error, got %v", err)
+	}
+}

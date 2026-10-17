@@ -88,12 +88,23 @@ func loadSpecs(dir string) (map[string]*spec.Spec, error) {
 		return nil, fmt.Errorf("no spec (*.yaml) in %s", dir)
 	}
 	out := map[string]*spec.Spec{}
+	seen := map[string]map[int]string{} // id → version → path
 	for _, f := range files {
 		sp, err := spec.Load(f)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
-		out[sp.ID] = sp
+		// 同じ id は version の大きい方(文言 v1 → v2 を同じ id で持つ運用)。同じ id・同じ version が 2 つあれば決められないので誤り
+		if prev, ok := seen[sp.ID][sp.Version]; ok {
+			return nil, fmt.Errorf("duplicate spec id %q with the same version %d: %s and %s", sp.ID, sp.Version, prev, f)
+		}
+		if seen[sp.ID] == nil {
+			seen[sp.ID] = map[int]string{}
+		}
+		seen[sp.ID][sp.Version] = f
+		if cur, ok := out[sp.ID]; !ok || sp.Version > cur.Version {
+			out[sp.ID] = sp
+		}
 	}
 	return out, nil
 }
@@ -130,7 +141,7 @@ func (s *server) handleSpecs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	var out []map[string]any
+	out := []map[string]any{}
 	for _, sp := range specs {
 		out = append(out, specSummary(sp))
 	}
@@ -340,7 +351,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	var out []map[string]any
+	out := []map[string]any{}
 	for _, sp := range specs {
 		nRec, labs, err := s.st.Counts(sp.ID)
 		if err != nil {
@@ -351,7 +362,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		for _, l := range labs {
 			byKey[l.Model+"\x00"+l.SpecHash]++
 		}
-		var keys []map[string]any
+		keys := []map[string]any{} // 無くても [] (null だと画面が落ちる)
 		for k, n := range byKey {
 			parts := strings.SplitN(k, "\x00", 2)
 			model, hash := parts[0], parts[1]
