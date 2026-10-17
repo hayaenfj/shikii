@@ -187,12 +187,24 @@ func cmdDecide(args []string) error {
 	return nil
 }
 
-// recordOf は Decision を記録の形にする。本文は pii: never の時だけ残る。
+// recordOf は Decision を記録の形にする。本文は常に残す。
+// copyInputs は本文の写し(記録とラベルに残す)。
+func copyInputs(inputs map[string]string) map[string]string {
+	if len(inputs) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(inputs))
+	for k, v := range inputs {
+		out[k] = v
+	}
+	return out
+}
+
 func recordOf(sp *spec.Spec, d *decide.Decision, inputs map[string]string) store.Record {
 	return store.Record{
 		TraceID: d.TraceID, SpecID: d.SpecID, SpecHash: d.SpecHash, Type: d.Type,
 		Model: d.Model, Endpoint: d.Endpoint,
-		Inputs: store.RedactInputs(sp.Policy.PII, inputs), InputsHash: d.InputsHash,
+		Inputs: copyInputs(inputs), InputsHash: d.InputsHash,
 		Raw: d.Raw, Calibrated: d.Calibrated, IsCalibrated: d.IsCalibrated,
 		Top: d.Top, P: d.P, Band: string(d.Band), At: d.At,
 	}
@@ -462,7 +474,7 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 		case func() bool { _, ok := stored[store.HashInputs(r.Inputs)]; return ok }():
 			prior := stored[store.HashInputs(r.Inputs)]
 			l.Raw, l.Model, l.TraceID, l.InputsHash = prior.Raw, prior.Model, prior.TraceID, prior.InputsHash
-			l.Inputs = store.RedactInputs(sp.Policy.PII, r.Inputs)
+			l.Inputs = copyInputs(r.Inputs)
 			if !prior.At.IsZero() {
 				l.At = prior.At
 			}
@@ -479,7 +491,7 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 				return nil, "", fmt.Errorf("row %d: abstained: %s", i, d.Reason)
 			}
 			l.Raw, l.Model, l.TraceID, l.InputsHash = d.Raw, d.Model, d.TraceID, d.InputsHash
-			l.Inputs = store.RedactInputs(sp.Policy.PII, r.Inputs) // 本文を残せる方針なら、正解と一緒に残す(聞き直しの材料)
+			l.Inputs = copyInputs(r.Inputs) // 正解と一緒に本文も残す(聞き直しの材料)
 			if model == "" {
 				model = d.Model
 			} else if model != d.Model {
@@ -513,7 +525,7 @@ func alreadyStored(st store.Store, sp *spec.Spec, l store.Label) bool {
 
 // replayTruths は「正解の貯金」を今の (spec_hash, model) に持ち込む。
 // store にある spec のラベル全部(古いハッシュ・別モデルのものを含む)から、入力ごとに最新の正解を取り、
-// 本文が残っている記録(pii: never / local)のものだけを、今の文言で今のモデルに聞き直してラベルにする。
+// 本文が残っている記録のものだけを、今の文言で今のモデルに聞き直してラベルにする。
 // seen に入っている入力(ファイル側で扱ったもの)は飛ばす。model が空なら、最初の答えのモデル名を返す。
 // 聞き直せない正解(本文が無い)は数えて理由を出す。黙って 0 件にしない。
 func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string, seen map[string]bool) ([]store.Label, string, error) {
@@ -621,7 +633,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		fmt.Fprintf(stdout, "replayed %d earlier truths against the current wording and model (hash=%s, model=%s); no human labels needed\n", len(out), sp.Hash(), model)
 	}
 	if noText > 0 {
-		fmt.Fprintf(stdout, "note: %d earlier truth(s) cannot be replayed: no text stored for them. Set policy.pii: local (keep text locally, never send hosted) or never to make truths reusable across wording and model changes\n", noText)
+		fmt.Fprintf(stdout, "note: %d earlier truth(s) cannot be replayed: no text stored for them (recorded before text was kept)\n", noText)
 	}
 	if noEndpoint > 0 {
 		fmt.Fprintf(stdout, "note: %d earlier truth(s) not replayed: no endpoint to ask (pass --local or a key for --hosted)\n", noEndpoint)
@@ -655,7 +667,7 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibrat
 	fmt.Fprintf(stdout, "ece:   raw=%.4f calibrated=%.4f (bins=%d)\n", calib.ECE(rawProbs, truths, weights, bins), calib.ECE(calProbs, truths, weights, bins), bins)
 	fmt.Fprintf(stdout, "separation(Δ, weight>=1): pos_min=%.3f neg_max=%.3f overlap=%d inverted=%v (weak labels excluded: %d)\n", sep.PosMin, sep.NegMax, sep.Overlap, sep.Inverted, sep.Weak)
 	if sep.Overlap > 0 {
-		// どの例が重なっているかを出す。本文は出さない(pii に従う)。inputs_hash でラベルを辿れる。
+		// どの例が重なっているかを出す。本文は出さない。inputs_hash でラベルを辿れる。
 		fmt.Fprintln(stdout, "overlapping (truth raw weight inputs_hash):")
 		for i, l := range labels {
 			if l.Weight > 0 && l.Weight < 1 {

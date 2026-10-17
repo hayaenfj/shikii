@@ -26,8 +26,8 @@ state:
   required: [request]
 
 policy:
-  send_to: [local]    # 本文を手元に残す方針(pii: local)なので外には送らない
-  pii: local      # 依頼文を手元の記録と正解に残す(文言やモデルを変えた時に聞き直す材料)。外の AI には送らない
+  send_to: [local]    # 依頼文は外に送らない
+  pii: true                   # 本文に個人情報が入り得る → 外の AI(hosted)には送らない。本文は手元の記録に残る
 
 thresholds:
   act: 0.75

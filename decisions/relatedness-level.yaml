@@ -22,7 +22,7 @@ state:
 
 policy:
   send_to: [local]
-  pii: local                          # 作り物の例。本文を手元に残す(画面で人が答えられる)。外には送らない
+  pii: true                   # 本文に個人情報が入り得る → 外の AI(hosted)には送らない。本文は手元の記録に残る
 
 thresholds:
   act: 0.75

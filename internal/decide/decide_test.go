@@ -53,7 +53,7 @@ func noulSpec(sendTo ...string) *spec.Spec {
 	return &spec.Spec{
 		ID: "n", Type: spec.Noul, Question: "Same case?",
 		State:      spec.State{Template: "1: {{ a }}\n2: {{ b }}", Required: []string{"a", "b"}},
-		Policy:     spec.Policy{SendTo: sendTo, PII: "possible"},
+		Policy:     spec.Policy{SendTo: sendTo, PII: boolPtr(false)},
 		Thresholds: spec.Thresholds{Act: 0.7, Ask: 0.5},
 	}
 }
@@ -117,32 +117,32 @@ func TestTaintedSessionNeverReachesHosted(t *testing.T) {
 	}
 }
 
-// pii: local は「本文を手元に残す代わりに、外には送らない」。send_to が hosted を先に挙げていても local に落ちる。
-func TestLocalPIINeverReachesHosted(t *testing.T) {
+// pii: true(個人情報が入り得る)の spec は、send_to が hosted を先に挙げていても hosted に行かない。hosted しか無ければ abstain。
+func TestPIITrueNeverReachesHosted(t *testing.T) {
 	hosted := newFake(t, "jev-1.13.0", systemone.Answer{Type: "noul", Noul: 0.99})
 	local := newFake(t, "kev-4b", systemone.Answer{Type: "noul", Noul: 0.60})
 	eps := []Endpoint{
 		{Kind: "hosted", Client: systemone.New(hosted.srv.URL, "k", "jev-latest")},
 		{Kind: "local", Client: systemone.New(local.srv.URL, "", "kev-4b")},
 	}
+	yes := true
 	sp := noulSpec("hosted", "local")
-	sp.Policy.PII = "local"
+	sp.Policy.PII = &yes
 	d, err := Decide(context.Background(), sp, okInputs, Session{}, eps)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if d.Endpoint != "local" || hosted.calls.Load() != 0 {
-		t.Fatalf("pii=local must never use hosted: endpoint=%s hosted calls=%d", d.Endpoint, hosted.calls.Load())
+		t.Fatalf("pii=true must never use hosted: endpoint=%s hosted calls=%d", d.Endpoint, hosted.calls.Load())
 	}
-	// hosted しか無ければ abstain(黙って hosted に送らない)
 	onlyHosted := noulSpec("hosted")
-	onlyHosted.Policy.PII = "local"
+	onlyHosted.Policy.PII = &yes
 	d, err = Decide(context.Background(), onlyHosted, okInputs, Session{}, eps)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if d.Band != Abstain || hosted.calls.Load() != 0 {
-		t.Fatalf("pii=local with hosted-only spec must abstain, got band=%s hosted calls=%d", d.Band, hosted.calls.Load())
+		t.Fatalf("pii=true with hosted-only spec must abstain, got band=%s hosted calls=%d", d.Band, hosted.calls.Load())
 	}
 }
 
@@ -372,3 +372,5 @@ func TestScoreBandUsesMassAtOrAboveLevel(t *testing.T) {
 		t.Fatalf("MassAtOrAbove: %f", m)
 	}
 }
+
+func boolPtr(b bool) *bool { return &b }

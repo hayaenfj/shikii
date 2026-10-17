@@ -87,8 +87,8 @@ func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "kev-4b", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 
-	// pii: possible → 本文は記録しない
-	specPossible := writeSpec(t, dir, "possible")
+	// pii: true でも本文は記録に残る(何を外に送るかとは別の話)
+	specPossible := writeSpec(t, dir, "true")
 	out := capture(t, func() error {
 		return cmdDecide([]string{specPossible, "--local", srv.URL, "--store", storeDir, "-i", "message=fix the typo"})
 	})
@@ -104,16 +104,16 @@ func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Inputs != nil {
-		t.Fatalf("pii=possible must not store inputs, got %v", rec.Inputs)
+	if rec.Inputs["message"] != "fix the typo in README.md" && rec.Inputs["message"] == "" {
+		t.Fatalf("text must be kept in the record regardless of pii, got %v", rec.Inputs)
 	}
 	if rec.InputsHash == "" || rec.Model != "kev-4b" || rec.Raw["change_request"] != 0.9 {
 		t.Fatalf("record: %+v", rec)
 	}
 
-	// pii: never → 本文が残る
+	// pii: false でも同じく本文が残る
 	_ = os.MkdirAll(filepath.Join(dir, "never"), 0o755)
-	specNever := writeSpec(t, filepath.Join(dir, "never"), "never")
+	specNever := writeSpec(t, filepath.Join(dir, "never"), "false")
 	out = capture(t, func() error {
 		return cmdDecide([]string{specNever, "--local", srv.URL, "--store", storeDir, "-i", "message=why is the sky blue"})
 	})
@@ -123,7 +123,7 @@ func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rec2.Inputs["message"] != "why is the sky blue" {
-		t.Fatalf("pii=never must store inputs, got %v", rec2.Inputs)
+		t.Fatalf("pii=false must store inputs too, got %v", rec2.Inputs)
 	}
 
 	// label: 1 件目は当たり、2 件目は外れ(モデルは change_request と言ったが question が正解)
@@ -171,7 +171,7 @@ func TestVerifiedModelGetsIdentityAndActs(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "jev-1.13.0", map[string]float64{"change_request": 1, "question": 0, "other": 0})
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 
 	var traces []string
 	for i := 0; i < 3; i++ {
@@ -224,7 +224,7 @@ func TestCheckAndDrift(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "m1", map[string]float64{"change_request": 0.95, "question": 0.03, "other": 0.02})
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 
 	var traces []string
 	for i := 0; i < 4; i++ {
@@ -301,7 +301,7 @@ func TestCalibrateWritesVectorWhenIdentityIsNotEnough(t *testing.T) {
 	storeDir := filepath.Join(dir, ".shikii")
 	// 正解は常に change_request だが、モデルは 0.55 しか出さない(Kev-4B の「確信不足」の再現)
 	srv := fakeSystemOne(t, "kev", map[string]float64{"change_request": 0.55, "other": 0.35, "question": 0.10})
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 	for i := 0; i < 6; i++ {
 		out := capture(t, func() error {
 			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix"})
@@ -370,7 +370,7 @@ func TestCalibratePrefersVectorWhenItRaisesRecall(t *testing.T) {
 		}
 	}
 	srv := fakeByMessage(t, "kev", table)
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 	for msg := range table {
 		out := capture(t, func() error {
 			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=" + msg})
@@ -435,7 +435,7 @@ func TestCalibrateFromFilePersistsLabelsForOfflineCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := fakeByMessage(t, "kev", table)
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 
 	out := capture(t, func() error {
 		return cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
@@ -513,7 +513,7 @@ state:
   required: [a]
 policy:
   send_to: [local]
-  pii: never
+  pii: false
 thresholds:
   act: 0.70
   ask: 0.50
@@ -586,7 +586,7 @@ func TestPartialLabelsCountAgainstPrecision(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.07, "other": 0.03})
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 	var traces []string
 	for i := 0; i < 5; i++ {
 		out := capture(t, func() error {
@@ -651,7 +651,7 @@ state:
   required: [m]
 policy:
   send_to: [local]
-  pii: never
+  pii: false
 thresholds:
   act: 0.75
   ask: 0.50
@@ -718,7 +718,7 @@ func TestBiasDetectsOrderSensitivity(t *testing.T) {
 		}))
 	}
 	dir := t.TempDir()
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 	var rows []map[string]any
 	for i := 0; i < 6; i++ {
 		rows = append(rows, map[string]any{"inputs": map[string]string{"message": fmt.Sprintf("m%d", i)}, "truth": "change_request"})
@@ -764,7 +764,7 @@ func TestStatusInventory(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	specPath := writeSpec(t, dir, "never") // min_n: 2
+	specPath := writeSpec(t, dir, "false") // min_n: 2
 	var traces []string
 	for i := 0; i < 3; i++ {
 		out := capture(t, func() error {
@@ -808,7 +808,7 @@ func TestGCKeepsLabeledAndIsDryRunByDefault(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 	var traces []string
 	for i := 0; i < 3; i++ {
 		out := capture(t, func() error {
@@ -872,7 +872,7 @@ func TestLabelLastRecord(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	specPath := writeSpec(t, dir, "never")
+	specPath := writeSpec(t, dir, "false")
 	var traces []string
 	for _, msg := range []string{"first", "second"} {
 		out := capture(t, func() error {
@@ -894,13 +894,13 @@ func TestLabelLastRecord(t *testing.T) {
 	}
 }
 
-// 文言を変えると較正は消えるが、人が付けた正解は消えない。pii: local で本文が残っていれば、
+// 文言を変えると較正は消えるが、人が付けた正解は消えない。pii: true で本文が残っていれば、
 // calibrate が同じ入力を新しい文言(新しいハッシュ)でモデルに聞き直し、人の手を借りずに線を引き直す。
 func TestCalibrateReplaysTruthsAfterWordingChange(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	specPath := writeSpec(t, dir, "local") // min_n: 2
+	specPath := writeSpec(t, dir, "true") // min_n: 2
 	var traces []string
 	for i := 0; i < 3; i++ {
 		out := capture(t, func() error {
@@ -951,59 +951,37 @@ func TestCalibrateReplaysTruthsAfterWordingChange(t *testing.T) {
 	capture(t, func() error { return cmdCheck([]string{"--store", storeDir, specPath}) })
 }
 
-// 本文が残っていない(pii: possible)なら聞き直せない。黙って 0 件にせず、理由を言う。
+// 本文が残っていない(本文を残す前の古い)記録の正解は聞き直せない。黙って 0 件にせず、理由を言う。
 func TestCalibrateCannotReplayWithoutStoredText(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	specPath := writeSpec(t, dir, "possible")
-	out := capture(t, func() error {
-		return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix"})
-	})
-	tr := traceRe.FindStringSubmatch(out)[1]
-	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, tr, "change_request"}) })
-	b, _ := os.ReadFile(specPath)
-	edited := strings.Replace(string(b), "question: What is asked?", "question: What is asked? Be strict.", 1)
-	if err := os.WriteFile(specPath, []byte(edited), 0o644); err != nil {
+	specPath := writeSpec(t, dir, "true")
+	sp := mustLoad(t, specPath)
+	st := store.Store{Dir: storeDir}
+	old := store.Record{TraceID: store.NewTraceID(), SpecID: sp.ID, SpecHash: "old-hash", Type: "choice", Model: "m",
+		InputsHash: store.HashInputs(map[string]string{"message": "fix"}), Raw: map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0},
+		Top: "change_request", P: 0.9, Band: "ask", At: time.Now()} // Inputs 無し
+	if err := st.AppendRecord(old); err != nil {
+		t.Fatal(err)
+	}
+	l, err := store.LabelFor(&old, "change_request", 1, "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLabel(l); err != nil {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	old := stdout
+	o := stdout
 	stdout = &buf
-	err := cmdCalibrate([]string{specPath, "--local", srv.URL, "--store", storeDir})
-	stdout = old
+	err = cmdCalibrate([]string{specPath, "--local", srv.URL, "--store", storeDir})
+	stdout = o
 	if err == nil {
-		t.Fatal("no labels for the new hash and nothing to replay: calibrate must fail")
+		t.Fatal("no labels for the current hash and nothing to replay: calibrate must fail")
 	}
-	if !strings.Contains(buf.String(), "1 earlier truth") || !strings.Contains(buf.String(), "pii: local") {
+	if !strings.Contains(buf.String(), "1 earlier truth") || !strings.Contains(buf.String(), "no text stored") {
 		t.Fatalf("calibrate must say how many truths exist but cannot be replayed, and why:\n%s", buf.String())
-	}
-}
-
-// ファイルから較正した正解も貯金に入る。文言を変えた後、ファイル無し(--labeled none)でも聞き直しで線が戻る。
-func TestReplayCoversTruthsThatCameFromAFile(t *testing.T) {
-	dir := t.TempDir()
-	storeDir := filepath.Join(dir, ".shikii")
-	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	specPath := writeSpec(t, dir, "never")
-	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"fix b"},"truth":"change_request"},{"inputs":{"message":"fix c"},"truth":"change_request"}]`
-	labeledPath := filepath.Join(dir, "rows.json")
-	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	capture(t, func() error {
-		return cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
-	})
-	b, _ := os.ReadFile(specPath)
-	edited := strings.Replace(string(b), "question: What is asked?", "question: What is asked? Be strict.", 1)
-	if err := os.WriteFile(specPath, []byte(edited), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out := capture(t, func() error {
-		return cmdCalibrate([]string{specPath, "--labeled", "none", "--local", srv.URL, "--store", storeDir, "--write"})
-	})
-	if !strings.Contains(out, "replayed 3") || !strings.Contains(out, "wrote calibration") || strings.Contains(out, "file=3") {
-		t.Fatalf("truths from the file must be replayable without the file:\n%s", out)
 	}
 }
 

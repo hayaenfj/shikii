@@ -24,7 +24,7 @@ state:
   required: [message]
 policy:
   send_to: [hosted, local]
-  pii: never
+  pii: false                  # 本文に個人情報は入らない(hosted にも送れる)
 thresholds:
   act: 0.75
   ask: 0.60

@@ -3,7 +3,7 @@
 //	<dir>/records/<spec_id>.jsonl  … 全判定(生の確率付き)
 //	<dir>/labels/<spec_id>.jsonl   … 正解ラベル(利用者の操作から拾う)
 //
-// 本文(inputs)は spec の policy.pii が "never" の時だけ残す。それ以外はハッシュだけ。
+// 本文(inputs)は常に手元の記録に残す(人が後から正解を付け、文言やモデルを変えた時に聞き直すため)。外に送るかは spec の send_to と pii で決まる。
 package store
 
 import (
@@ -29,7 +29,7 @@ type Record struct {
 	Type         string             `json:"type"`
 	Model        string             `json:"model,omitempty"`
 	Endpoint     string             `json:"endpoint,omitempty"`
-	Inputs       map[string]string  `json:"inputs,omitempty"` // pii: never か local の時だけ
+	Inputs       map[string]string  `json:"inputs,omitempty"` // 本文(古い記録には無いことがある)
 	InputsHash   string             `json:"inputs_hash"`
 	Raw          map[string]float64 `json:"raw,omitempty"`
 	Calibrated   map[string]float64 `json:"calibrated,omitempty"`
@@ -48,7 +48,7 @@ type Label struct {
 	Type       string             `json:"type"`
 	Model      string             `json:"model"`
 	InputsHash string             `json:"inputs_hash"`
-	Inputs     map[string]string  `json:"inputs,omitempty"` // pii: never / local の時だけ。正解と本文を一緒に持つ(聞き直しの材料)
+	Inputs     map[string]string  `json:"inputs,omitempty"` // 正解と本文を一緒に持つ(聞き直しの材料)
 	Raw        map[string]float64 `json:"raw"`
 	Truth      string             `json:"truth"`
 	Weight     float64            `json:"weight"`
@@ -81,19 +81,6 @@ func HashInputs(inputs map[string]string) string {
 		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
-}
-
-// RedactInputs は pii の方針に従って本文を残すか決める。"never" と "local" は残す(local は外に送らない方の制約で、
-// それは decide 側が守る)。"possible" とそれ以外は残さない。本文が残っていれば、文言やモデルを変えた後に同じ入力を聞き直せる。
-func RedactInputs(pii string, inputs map[string]string) map[string]string {
-	if pii != "never" && pii != "local" {
-		return nil
-	}
-	out := make(map[string]string, len(inputs))
-	for k, v := range inputs {
-		out[k] = v
-	}
-	return out
 }
 
 func (s Store) recordsPath(specID string) string {
@@ -257,7 +244,7 @@ func (s Store) Counts(specID string) (records int, labels []Label, err error) {
 	return records, labels, nil
 }
 
-// InputsByHash は本文が残っている記録(pii: never / local)から、入力のハッシュ → 本文 の対応を作る。
+// InputsByHash は本文が残っている記録から、入力のハッシュ → 本文 の対応を作る。
 // 文言やモデルを変えた後に、同じ入力を新しい (spec_hash, model) で聞き直すための材料。
 func (s Store) InputsByHash(specID string) (map[string]map[string]string, error) {
 	out := map[string]map[string]string{}

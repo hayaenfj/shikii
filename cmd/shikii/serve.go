@@ -356,7 +356,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		if _, ok := labeled[rec.TraceID]; ok {
 			continue
 		}
-		// 本文が無ければ人には答えられない。ボタンの材料は出さず、answerable=false で言う(outcome 等のプログラムからの正解は別経路)
+		// 本文が無い(古い)記録は人には答えられない。ボタンの材料は出さず、answerable=false で言う(結果を知るプログラムからの正解は別経路)
 		answerable := len(rec.Inputs) > 0
 		choices := []map[string]any{}
 		if answerable {
@@ -375,7 +375,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []map[string]any{}
 	}
-	writeJSON(w, 200, map[string]any{"spec": id, "items": items, "text_stored": sp.Policy.PII == "never" || sp.Policy.PII == "local"})
+	writeJSON(w, 200, map[string]any{"spec": id, "items": items})
 }
 
 func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -485,11 +485,11 @@ const uiHTML = `<!doctype html>
 const T = {
   en: { tagline: 'answer what was true; the line draws itself', loading: 'loading…', noSpecs: 'no specs', empty: 'nothing waiting for an answer',
         records: n => n + ' records', answered: n => n + ' answered', calibrated: m => 'calibrated (' + m + ')', stale: 'stale wording', collecting: (n, m) => 'collecting ' + n + '/' + m, ready: (n, m) => 'ready ' + n + '/' + m,
-        noText: h => 'No text was kept for this decision (policy.pii: possible), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Set policy.pii: local in the spec and the next decisions will keep their text on this machine. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
+        noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
         done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration' },
   ja: { tagline: '本当はどうだったかを答える。線は自分で引かれる', loading: '読み込み中…', noSpecs: 'spec がありません', empty: '答え合わせ待ちはありません',
         records: n => '記録 ' + n, answered: n => '答え済み ' + n, calibrated: m => '線あり (' + m + ')', stale: '文言が古い', collecting: (n, m) => '集めている ' + n + '/' + m, ready: (n, m) => '線を引ける ' + n + '/' + m,
-        noText: h => 'この判定は本文を残していないので(policy.pii: possible)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。spec の policy.pii を local にすると、次の判定から本文が手元に残ります。ハッシュ: ' + h, model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
+        noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
         done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正' },
 };
 const $ = (s, el=document) => el.querySelector(s);

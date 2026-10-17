@@ -39,7 +39,7 @@ type State struct {
 // Policy は送ってよい先。tainted セッションでは hosted が自動で外れる。
 type Policy struct {
 	SendTo []string `yaml:"send_to"` // "hosted" | "local"
-	PII    string   `yaml:"pii"`     // "never"(本文を残してよく外にも送れる) | "possible"(本文を残さない) | "local"(本文を手元にだけ残し、外には送らない)
+	PII    *bool    `yaml:"pii"`     // true: 本文に個人情報が入り得る(hosted には送らない)。false: 入らない。既定は無い(書かなければ誤り)。何が個人情報かはこの道具は判断しない
 }
 
 // Thresholds は名前付きの閾値。業務コードは帯だけを見る。
@@ -155,12 +155,8 @@ func (s *Spec) Validate() error {
 			return fmt.Errorf("policy.send_to: unknown destination %q", d)
 		}
 	}
-	switch s.Policy.PII {
-	case "never", "possible", "local":
-	case "":
-		return fmt.Errorf("policy.pii is required: local (keep the text on this machine, never send hosted; people can answer on the page), never (keep the text, hosted allowed) or possible (keep only a hash; people cannot answer, only programs can)")
-	default:
-		return fmt.Errorf("policy.pii: unknown value %q (local | never | possible)", s.Policy.PII)
+	if s.Policy.PII == nil {
+		return fmt.Errorf("policy.pii is required: true (the text can contain personal information: never sent to a hosted endpoint) or false (it cannot). shikii does not decide what counts as personal information; you do")
 	}
 	if !(0 < s.Thresholds.Ask && s.Thresholds.Ask <= s.Thresholds.Act && s.Thresholds.Act <= 1) {
 		return fmt.Errorf("thresholds must satisfy 0 < ask <= act <= 1")
@@ -187,6 +183,9 @@ func (s *Spec) Validate() error {
 }
 
 // hasTruthID は表示用の訳が指す id が spec にあるか(choice は option の id、noul は yes / no)。
+// PIISensitive は本文に個人情報が入り得ると宣言されているか(hosted に送らない)。
+func (s *Spec) PIISensitive() bool { return s.Policy.PII != nil && *s.Policy.PII }
+
 func (s *Spec) hasTruthID(id string) bool {
 	switch s.Type {
 	case Noul:

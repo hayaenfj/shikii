@@ -107,8 +107,8 @@ func AskOrdered(ctx context.Context, sp *spec.Spec, state string, order []int, c
 // tainted セッションでは hosted を飛ばす。無ければ nil。
 func PickEndpoint(sp *spec.Spec, sess Session, eps []Endpoint) *Endpoint {
 	for _, kind := range sp.Policy.SendTo {
-		// tainted なセッションと、本文を手元に残す代わりに外へ送らない pii: local は、hosted を使わない
-		if kind == "hosted" && (sess.Tainted || sp.Policy.PII == "local") {
+		// tainted なセッションと、個人情報が入り得ると宣言された spec(pii: true)は、hosted を使わない
+		if kind == "hosted" && (sess.Tainted || sp.PIISensitive()) {
 			continue
 		}
 		for i := range eps {
@@ -138,7 +138,7 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 	ep := PickEndpoint(sp, sess, eps)
 	if ep == nil {
 		d.Band = Abstain
-		d.Reason = fmt.Sprintf("no permitted endpoint (send_to=%v, tainted=%v, pii=%s)", sp.Policy.SendTo, sess.Tainted, sp.Policy.PII)
+		d.Reason = fmt.Sprintf("no permitted endpoint (send_to=%v, tainted=%v, pii=%v)", sp.Policy.SendTo, sess.Tainted, sp.PIISensitive())
 		return d, nil
 	}
 	d.Endpoint = ep.Kind

@@ -13,7 +13,7 @@ Stop ─────────── decisions-label.mjs ── 指紋が変�
 
 - 設定: `~/.claude/jev/decisions.json` `{"bin","spec","store","local"}`。無ければ hook は従来の経路（Jev 直叩き）
 - 本番 DB を読んだ（tainted）セッションでは hosted に送らず、`local`（llama.cpp の Kev-4B）があればそれで判定する
-- 記録は `~/.claude/jev/decisions-store/`。`pii: possible` なので本文は残らない
+- 記録は `~/.claude/jev/decisions-store/`。依頼文も本文として残る(`pii: true` なので外の AI には送らない。手元の Kev-4B だけ)
 - 50 件溜まったら `shikii calibrate decisions/prompt-kind.yaml --model '<実モデル名>' --store ~/.claude/jev/decisions-store --write`
 
 ## 他のエージェントに付けるとき

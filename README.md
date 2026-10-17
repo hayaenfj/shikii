@@ -116,7 +116,7 @@ state:
   required: [message]            # missing input → abstain; the model is never called
 policy:
   send_to: [hosted, local]       # a tainted session skips hosted automatically
-  pii: possible                  # records keep a hash of the inputs, never the text
+  pii: true                      # the text may contain personal information → never sent to a hosted endpoint
 thresholds:
   act: 0.75                      # ≥ act → act automatically, only if calibrated
   ask: 0.60                      # ≥ ask → ask a human; below → discard
@@ -124,7 +124,7 @@ thresholds:
 
 <p align="center"><img src="docs/assets/shikii-lifecycle.svg" alt="one lifecycle for every decision model" width="100%"></p>
 
-**The calibration key is `(hash of question + template + options, model id as returned by the endpoint)`.** Edit one word of the question, or let `jev-latest` roll to a new version, and the calibration is simply gone: the band drops to `ask` instead of silently acting on stale constants. Getting it back is machine time, not human time: truths are kept per input, independent of wording and model, and `calibrate` replays them against the new key when the inputs were stored (`pii: local` or `never`). Prompt layout is part of the key too: `shikii-readout` reports its layout in the model name (`…+state-last`), because moving the state inside the prompt changed a 27B model's accuracy by 5 points with the same weights.
+**The calibration key is `(hash of question + template + options, model id as returned by the endpoint)`.** Edit one word of the question, or let `jev-latest` roll to a new version, and the calibration is simply gone: the band drops to `ask` instead of silently acting on stale constants. Getting it back is machine time, not human time: truths are kept per input together with the text, independent of wording and model, and `calibrate` replays them against the new key. Prompt layout is part of the key too: `shikii-readout` reports its layout in the model name (`…+state-last`), because moving the state inside the prompt changed a 27B model's accuracy by 5 points with the same weights.
 
 `calibrate` compares three methods under 5-fold cross-validation and writes the winner. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
@@ -169,13 +169,13 @@ Same specs, same labels, five evaluation sets, all synthetic: prompt intent (62 
 
 **Why does my decision never reach `act`?** Because the spec has no calibration block for `(this question hash, this model id)`. Collect labels (`label`, or `--labeled file`), run `calibrate --write`, and `status` shows `calibrated: identity|platt|vector`. A decision without verified precision at the act threshold is not allowed to act. That is the point.
 
-**I changed one word in the question and the calibration disappeared.** Correct, and it costs you minutes, not labels. The hash changed, so constants fitted to the old wording are not trusted. But the truths people gave (this request *was* a change request, these two reports *were* the same bug) do not depend on the wording or the model. Run `calibrate --write` again: it replays every stored truth against the new wording and the current model, refits, and writes. No human in the loop. The only requirement is that the inputs were kept, which `policy.pii: local` (kept on this machine, never sent to a hosted endpoint) or `never` does; with `pii: possible` only hashes are stored and `calibrate` tells you how many truths it could not replay.
+**I changed one word in the question and the calibration disappeared.** Correct, and it costs you minutes, not labels. The hash changed, so constants fitted to the old wording are not trusted. But the truths people gave (this request *was* a change request, these two reports *were* the same bug) do not depend on the wording or the model. Run `calibrate --write` again: it replays every stored truth against the new wording and the current model, refits, and writes. No human in the loop. The text of every decision is kept in the local store for exactly this reason; `calibrate` tells you if any older truths have no text and cannot be replayed.
 
 **Which model should I use?** It depends on licence, speed and language, and shikii does not decide for you. The table above and [`docs/model-comparison.md`](docs/model-comparison.md) are the argument: with the same spec and the same labels you can choose by numbers, including whether a model needs calibration at all. `scripts/eval-model.sh <url> <name>` reproduces the table for a new endpoint.
 
 **Does it work in Japanese?** Yes, and it is where the differences show. Kev-4B gets 0.913 on Japanese prompts; the 27B models get 1.000. On the two Japanese yes/no sets (duplicate bug reports, same-matter inquiries) every model we tried separated positives from negatives completely; calibration only sharpened the probabilities.
 
-**Where does my data go?** Only the rendered state goes to the endpoint named in `send_to`. `pii` is required and has three settings. `local` keeps the text in the local store, so people can answer on the page and truths can be replayed, and refuses hosted endpoints even if `send_to` lists them. `never` keeps the text and allows hosted. `possible` keeps only a hash: nobody can tell afterwards what was true, so only a program that knows the outcome can label those decisions. `--tainted` keeps everything local regardless. Keys are read from `DECISIONS_API_KEY` or `TYPESAFE_API_KEY` and nowhere else.
+**Where does my data go?** Only the rendered state goes to the endpoint named in `send_to`, and only you decide where that may be: shikii does not guess what counts as personal information. Every spec must say `pii: true` (the text may contain personal information, so it is never sent to a hosted endpoint, whatever `send_to` says) or `pii: false`. There is no default. The text of every decision is kept in the local store on your machine, so people can answer on the page and truths can be replayed after a wording or model change. `--tainted` keeps everything local regardless. Keys are read from `DECISIONS_API_KEY` or `TYPESAFE_API_KEY` and nowhere else.
 
 **The store keeps growing.** `shikii gc` removes records older than 30 days that never got a label. Labelled records and labels stay forever, as they are the calibration material. It is a dry run unless you pass `--apply`.
 

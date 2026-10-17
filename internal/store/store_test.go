@@ -15,28 +15,6 @@ func rec(specHash, model string) Record {
 	}
 }
 
-// 本文は pii: never の時だけ残る。
-func TestRedactInputsFollowsPIIPolicy(t *testing.T) {
-	in := map[string]string{"summary1": "login fails after the third attempt"}
-	if got := RedactInputs("never", in); got["summary1"] != in["summary1"] {
-		t.Fatalf("pii=never must keep inputs, got %v", got)
-	}
-	if got := RedactInputs("possible", in); got != nil {
-		t.Fatalf("pii=possible must drop inputs, got %v", got)
-	}
-	if got := RedactInputs("", in); got != nil {
-		t.Fatalf("unset pii must be treated as possible, got %v", got)
-	}
-}
-
-// pii: local は本文を手元の記録に残す(聞き直しに使う)。外に送らないのは decide 側の責任。
-func TestRedactInputsKeepsTextForLocalPolicy(t *testing.T) {
-	in := map[string]string{"report1": "login fails after the third attempt"}
-	if got := RedactInputs("local", in); got["report1"] != in["report1"] {
-		t.Fatalf("pii=local must keep inputs in the local store, got %v", got)
-	}
-}
-
 // InputsByHash は本文が残っている記録から、入力のハッシュ → 本文 の対応を作る(聞き直しの材料)。
 func TestInputsByHashOnlyFromRecordsThatKeptText(t *testing.T) {
 	st := Store{Dir: t.TempDir()}

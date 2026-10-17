@@ -17,7 +17,7 @@ TYPESAFE_API_KEY=... bin/shikii decide decisions/prompt-intent.yaml -i message='
 bin/shikii decide decisions/same-issue.yaml --local http://127.0.0.1:8080 --tainted \
   -i report1='ログイン画面でパスワードを 3 回間違えると 500 エラーになる' -i report2='パスワード誤入力の回数制限に達した直後にサーバーエラー(500)'
 
-# 判定は ./.shikii/records/ に残る(本文は pii: never の時だけ)。ask で選んだ答えをラベルにする
+# 判定は ./.shikii/records/ に本文ごと残る。ask で選んだ答えをラベルにする
 bin/shikii label <trace_id> change_request --source ask
 bin/shikii label --last --spec-id prompt-intent question --source ask   # 直近の記録に付ける(trace 不要)
 

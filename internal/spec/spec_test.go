@@ -11,7 +11,7 @@ func noulSpec() *Spec {
 	return &Spec{
 		ID: "t", Type: Noul, Question: "Is it so?",
 		State:      State{Template: "A: {{ a }}\nB: {{ b }}", Required: []string{"a", "b"}},
-		Policy:     Policy{SendTo: []string{"hosted"}, PII: "never"},
+		Policy:     Policy{SendTo: []string{"hosted"}, PII: boolPtr(false)},
 		Thresholds: Thresholds{Act: 0.7, Ask: 0.5},
 	}
 }
@@ -144,8 +144,7 @@ func TestValidateRejectsBadSpecs(t *testing.T) {
 		"level too high":  func(s *Spec) { s.Type = Score; s.Levels = []string{"a", "b", "c"}; s.Thresholds.Level = 3 },
 		"level zero-ish":  func(s *Spec) { s.Type = Score; s.Levels = []string{"a", "b", "c"}; s.Thresholds.Level = -1 },
 		"no template":     func(s *Spec) { s.State.Template = "" },
-		"bad pii":         func(s *Spec) { s.Policy.PII = "maybe" },
-		"no pii":          func(s *Spec) { s.Policy.PII = "" }, // 黙って possible に倒さない。書いた人が選ぶ
+		"no pii":          func(s *Spec) { s.Policy.PII = nil }, // 既定は無い。書いた人が true / false を選ぶ
 	}
 	for name, mutate := range cases {
 		s := noulSpec()
@@ -171,7 +170,7 @@ state:
   required: [a]
 policy:
   send_to: [local]
-  pii: never
+  pii: false
 thresholds:
   act: 0.7
   ask: 0.5
@@ -218,7 +217,7 @@ state:
   required: [a]
 policy:
   send_to: [local]
-  pii: never
+  pii: false
 thresholds:
   act: 0.7
   ask: 0.5
@@ -270,3 +269,5 @@ eval:
 		t.Fatalf("empty calibration must remove the key and keep comments:\n%s", out)
 	}
 }
+
+func boolPtr(b bool) *bool { return &b }
