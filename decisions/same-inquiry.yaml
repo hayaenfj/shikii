@@ -15,7 +15,7 @@ state:
   required: [inquiry1, inquiry2]
 policy:
   send_to: [local, hosted]
-  pii: possible # 実運用の問い合わせには個人情報が入り得る。記録に本文は残さない
+  pii: local # 実運用の問い合わせには個人情報が入り得る。手元の記録には残すが外には送らない(possible にすれば本文も残さない)
 thresholds:
   act: 0.70
   ask: 0.50
