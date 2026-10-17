@@ -53,7 +53,7 @@ type Thresholds struct {
 
 // Eval はラベル付きデータの所在と、較正に必要な最低件数。
 type Eval struct {
-	Labeled string `yaml:"labeled"`
+	Labeled string `yaml:"labeled,omitempty"`
 	MinN    int    `yaml:"min_n"`
 }
 

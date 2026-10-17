@@ -63,7 +63,7 @@ scripts/demo.sh --overconfident # 自信過剰な偽 AI。確率を補正する�
 make build                                        # bin/shikii, bin/shikii-readout, bin/fake-systemone
 
 # a) 手元のパソコンで動かす(初回は Kev-4B というモデル約 2.5GB を取得)
-make server                                       # llama-server が :8080 で待つ
+bin/shikii up                                     # llama-server を探して Kev-4B を :8080 に起こし、応答するまで待つ(make server でも可)
 bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8080 -i message='README の誤字を直して'
 
 # b) TypeSafe 社のホスト版 Jev。鍵は環境変数で渡す(ファイルには置かない)
@@ -108,8 +108,10 @@ bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8090 -i m
 ### 入れる・更新する
 
 ```sh
-make install          # bin/shikii を ~/.local/bin/shikii に置く
+make install          # bin/shikii と bin/shikii-readout を ~/.local/bin に置く
 git pull && make install
+shikii doctor         # 何が動いていて何が足りないか、直すコマンドまで 1 画面で
+shikii new my-decision --type choice   # 質問にいくつか答えると spec ができる。試す打ち方も出る
 ```
 
 ## 何をしてくれるのか
@@ -244,6 +246,9 @@ shikii gc        [spec...] [--older-than 30d] [--apply]   # 古くて正解の�
 shikii hash      <spec>
 shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # HTTP の口 + 答え合わせの画面。自動で線を引く
 shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # 同じものを stdio の MCP の道具として
+shikii new       <id> [--type ...] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--from spec.yaml]   # 質問に答えるだけで spec を作る
+shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # 手元のモデルを起こす。普通の GGUF なら shikii-readout を前に立てる
+shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # 何が動いていて何が足りないか、直し方
 ```
 
 ## 手伝ってくれる人へ

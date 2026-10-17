@@ -52,7 +52,7 @@ scripts/demo.sh --overconfident # a fake model whose probabilities need calibrat
 make build                                        # bin/shikii, bin/shikii-readout, bin/fake-systemone
 
 # a) local decision model on llama.cpp (downloads Kev-4B, about 2.5 GB, on first run)
-make server                                       # llama-server on :8080
+bin/shikii up                                     # finds llama-server, starts Kev-4B on :8080, waits until healthy (or: make server)
 bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8080 -i message='fix the typo in README'
 
 # b) hosted TypeSafe Jev. The key comes from the environment only
@@ -96,8 +96,10 @@ bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8090 -i m
 ### Install and update
 
 ```sh
-make install          # copies bin/shikii to ~/.local/bin/shikii
+make install          # copies bin/shikii and bin/shikii-readout to ~/.local/bin
 git pull && make install
+shikii doctor         # what is running, what is missing, and the command that fixes it
+shikii new my-decision --type choice   # a new spec by answering a few questions; try it with the printed command
 ```
 
 ## How shikii works
@@ -206,6 +208,9 @@ shikii gc        [spec...] [--older-than 30d] [--apply]   # drop old unlabelled 
 shikii hash      <spec>
 shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # HTTP API + review page; auto-calibrates
 shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # the same as MCP tools over stdio
+shikii new       <id> [--type ...] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--from spec.yaml]   # make a spec by answering questions
+shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # start a local model; puts shikii-readout in front of a plain GGUF
+shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # what is running, what is missing, how to fix it
 ```
 
 ## Contributing

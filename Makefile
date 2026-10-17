@@ -33,10 +33,12 @@ fake: build
 	bin/fake-systemone --port 8099
 
 test:
+	test -z "$$(gofmt -l .)" || (gofmt -l . && echo 'gofmt: 上のファイルを整形して' && exit 1)
 	go vet ./... && go test ./... && scripts/check-readme.sh
 
 install: build
 	cp $(BIN) $(INSTALL)
+	cp bin/shikii-readout $(dir $(INSTALL))shikii-readout
 
 # 契約の検査(CI と同じ store で。違反で exit 1)。較正を書き直したら testdata/store/labels/ も写し直す
 check: build

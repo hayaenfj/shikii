@@ -62,6 +62,12 @@ func main() {
 		err = cmdServe(os.Args[2:])
 	case "mcp":
 		err = cmdMCP(os.Args[2:])
+	case "new":
+		err = cmdNew(os.Args[2:])
+	case "up":
+		err = cmdUp(os.Args[2:])
+	case "doctor":
+		err = cmdDoctor(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -87,7 +93,12 @@ func usage() {
   shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--auto-calibrate=false]
                    1 プロセスで HTTP の /v1/decide /v1/label /v1/status /v1/queue と、ブラウザで正解を付ける画面(/)。正解が溜まると自動で線を引く
   shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--auto-calibrate=false]
-                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status)`)
+                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status)
+  shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]
+                   質問に答えるだけで spec を作る(フラグで渡したものは聞かない)
+  shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080] [--readout-port 8090]
+                   手元のモデルを起こす。普通の GGUF なら shikii-readout を前に立てる。Ctrl-C で止める
+  shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   何が動いていて何が足りないかを 1 画面で`)
 }
 
 // endpointFlags は decide / calibrate 共通のエンドポイント指定。
