@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"os"
 	"path/filepath"
@@ -264,6 +265,26 @@ func (s Store) Funnel(specID string) (Funnel, error) {
 		return f, err
 	}
 	return f, nil
+}
+
+// AuditSample は「この判定を抜き取りで人に見せるか」。act で自動で動いた判定は人が見ないので、act の精度は人の正解で測れない。
+// そこで 20 件に 1 件を trace_id で決めて(何度見ても同じ)答え合わせの列に出す。空の trace は出さない。
+func AuditSample(traceID string) bool {
+	if traceID == "" {
+		return false
+	}
+	h := fnv.New32a()
+	h.Write([]byte(traceID))
+	return h.Sum32()%20 == 0
+}
+
+// HumanSource は、その出どころの正解を人(または結果)が確かめたか。上の段の答え(context)・聞き直し(replay)・ファイル(file)は機械の正解。
+func HumanSource(source string) bool {
+	switch source {
+	case "context", "replay", "file":
+		return false
+	}
+	return true
 }
 
 // Partial は "!<id>" 形式の部分ラベルか。

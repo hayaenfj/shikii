@@ -1241,9 +1241,22 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 			out = append(out, key+": no labels to verify against (store or eval.labeled)")
 			continue
 		}
-		prec, inverted := evaluateCalibration(sp, c, labels)
+		prec, inverted, _ := evaluateCalibration(sp, c, labels)
 		if prec < sp.Thresholds.Act {
 			out = append(out, fmt.Sprintf("%s: precision at act is %.3f < thresholds.act %.2f on %d labels", key, prec, sp.Thresholds.Act, len(labels)))
+		}
+		// 人が確かめた正解だけでも測る。機械の正解(context / replay / file)は同じモデルと同じ方向に間違いうるので、act の精度の保証は人の分で取る。
+		// 抜き取り(act の 20 件に 1 件が答え合わせの列に出る)が母数を作る。min_n に届くまでは数だけ言い、届いたら act を割れば落とす。
+		var human []store.Label
+		for _, l := range labels {
+			if store.HumanSource(l.Source) {
+				human = append(human, l)
+			}
+		}
+		hPrec, _, hAct := evaluateCalibration(sp, c, human)
+		fmt.Fprintf(stdout, "note %s: %s: human-checked act decisions: %d (precision %.3f)\n", sp.ID, key, hAct, hPrec)
+		if hAct >= sp.Eval.MinN && hPrec < sp.Thresholds.Act {
+			out = append(out, fmt.Sprintf("%s: precision at act on human-checked decisions is %.3f < thresholds.act %.2f on %d act decisions (machine truths made it look like %.3f)", key, hPrec, sp.Thresholds.Act, hAct, prec))
 		}
 		if inverted {
 			out = append(out, key+": positives and negatives overlap on Δ; a monotone calibration cannot separate them")
@@ -1293,7 +1306,7 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 }
 
 // evaluateCalibration は較正を当てた上で act 閾値での precision を出す。noul は逆転も見る。
-func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label) (precision float64, inverted bool) {
+func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label) (precision float64, inverted bool, nAct int) {
 	probs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
 	switch sp.Type {
 	case spec.Noul:
@@ -1319,7 +1332,12 @@ func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label
 			probs[i], truths[i], weights[i] = p, correct, l.Weight
 		}
 	}
-	return precisionAt(sp.Thresholds.Act, probs, truths, weights), inverted
+	for _, p := range probs {
+		if p >= sp.Thresholds.Act {
+			nAct++ // 線を掛けた後に act 帯に入る判定の数(人の正解だけで精度を測る時の母数)
+		}
+	}
+	return precisionAt(sp.Thresholds.Act, probs, truths, weights), inverted, nAct
 }
 
 // judge は 1 ラベルの「帯に使う確率」と「その答えが正しかったか」。
@@ -1647,6 +1665,9 @@ func cmdStatus(args []string) error {
 		if f, err := st.Funnel(id); err == nil && f.Records > 0 {
 			// 段ごとの数。進み具合は 1000 判定あたりの人の判断(ask のまま人に回った数)
 			fmt.Fprintf(stdout, "  rungs: settled by the minimal question %d, by added context %d, left to a person %d (%.0f per 1000 decisions)\n", f.Minimal, f.Context, f.Human, f.HumanPerThousand())
+		}
+		if len(labs) > 0 {
+			fmt.Fprintf(stdout, "  audit: 1 in 20 act decisions is shown to a person; human-checked so far: %d\n", bySource["audit"])
 		}
 		for key, n := range byKey {
 			note := ""

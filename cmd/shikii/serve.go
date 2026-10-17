@@ -414,7 +414,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	rank := map[string]int{"ask": 0, "act": 1, "discard": 2}
+	rank := map[string]int{"ask": 0, "audit": 1, "act": 2, "discard": 3} // 迷い → 抜き取り(act の 20 件に 1 件) → 残り
 	var items []map[string]any
 	for _, rec := range recs {
 		if _, ok := labeled[rec.TraceID]; ok {
@@ -430,9 +430,16 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": !sp.LiveHash(rec.SpecHash),
 			"answerable": answerable, "choices": choices, "rung": rec.RungOf(),
+			"audit": rec.Band == "act" && store.AuditSample(rec.TraceID),
 		})
 	}
-	sort.SliceStable(items, func(i, j int) bool { return rank[items[i]["band"].(string)] < rank[items[j]["band"].(string)] })
+	order := func(it map[string]any) int {
+		if it["audit"] == true {
+			return rank["audit"]
+		}
+		return rank[it["band"].(string)]
+	}
+	sort.SliceStable(items, func(i, j int) bool { return order(items[i]) < order(items[j]) })
 	if len(items) > limit {
 		items = items[:limit]
 	}
@@ -539,6 +546,7 @@ const uiHTML = `<!doctype html>
   .item { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 8px 0; }
   .item.ask { border-color: var(--amber); }
   .meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; display:flex; gap:12px; flex-wrap:wrap; }
+  .meta .audit { font-weight: 600; }
   .text { white-space: pre-wrap; word-break: break-word; margin: 4px 0 10px; }
   .text .k { color: var(--muted); font-size: 12px; }
   .btns { display:flex; gap:8px; flex-wrap:wrap; }
@@ -568,6 +576,7 @@ const T = {
   en: { tagline: 'answer what was true; the line draws itself', loading: 'loading…', noSpecs: 'no specs', empty: 'nothing waiting for an answer',
         records: n => n + ' records', answered: n => n + ' answered', calibrated: m => 'calibrated (' + m + ')', stale: 'stale wording', collecting: (n, m) => 'collecting ' + n + '/' + m, ready: (n, m) => 'ready ' + n + '/' + m,
         withContext: 'asked again with context', contextRung: 'context rung', toPerson: (h, k) => 'to a person ' + h + ' (' + k + ' per 1000)',
+        audit: 'audit sample: the machine acted on this; 1 in 20 is shown here so its precision is measured on what people checked',
         noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
         done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration',
         wording: 'Wording', current: 'current', noRun: 'no tune run yet', running: 'measuring candidates…', runTune: 'measure the candidates', runPropose: n => 'ask the model for ' + n + ' candidates and measure',
@@ -577,6 +586,7 @@ const T = {
   ja: { tagline: '本当はどうだったかを答える。線は自分で引かれる', loading: '読み込み中…', noSpecs: 'spec がありません', empty: '答え合わせ待ちはありません',
         records: n => '記録 ' + n, answered: n => '答え済み ' + n, calibrated: m => '線あり (' + m + ')', stale: '文言が古い', collecting: (n, m) => '集めている ' + n + '/' + m, ready: (n, m) => '線を引ける ' + n + '/' + m,
         withContext: '文脈を足して聞き直した', contextRung: '文脈の段', toPerson: (h, k) => '人へ ' + h + '(1000 判定あたり ' + k + ')',
+        audit: '抜き取り検査: 機械が自動で動いた判定。20 件に 1 件をここに出し、人が確かめた分で精度を測る',
         noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
         done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正',
         wording: '聞き方', current: '今の文言', noRun: 'まだ測っていません', running: '候補を測っています…', runTune: '候補を測る', runPropose: n => 'AI に候補を ' + n + ' 個作らせて測る',
@@ -624,12 +634,12 @@ function render() {
       const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
       const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('model')((it.p*100).toFixed(0))) : '') + '</button>').join('');
       const not = (it.answerable && it.top) ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
-      el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
+      el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.audit ? '<span class="audit">' + esc(t('audit')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
       el.addEventListener('click', async ev => {
         const b = ev.target.closest('button'); if (!b) return;
         for (const x of el.querySelectorAll('button')) x.disabled = true;
         try {
-          const res = await j('/v1/label', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ trace_id: it.trace_id, spec: sp.id, truth: b.dataset.truth, source: 'ui' }) });
+          const res = await j('/v1/label', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ trace_id: it.trace_id, spec: sp.id, truth: b.dataset.truth, source: it.audit ? 'audit' : 'ui' }) });
           el.remove();
           if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); } else { toast(t('done')(res.truth)); }
         } catch (e) { toast(t('error')(e.message)); for (const x of el.querySelectorAll('button')) x.disabled = false; }
