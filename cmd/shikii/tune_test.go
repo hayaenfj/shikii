@@ -188,3 +188,111 @@ func TestTuneDoesNotAdoptAWinByNoise(t *testing.T) {
 		t.Fatal("nothing may be written")
 	}
 }
+
+// 提案役(チャット用 LLM)の偽物: 受け取ったプロンプトを控え、候補 2 つを JSON で返す。
+func fakeProposer(t *testing.T) (*httptest.Server, *[]string) {
+	t.Helper()
+	var prompts []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role, Content string
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		var all strings.Builder
+		for _, m := range req.Messages {
+			all.WriteString(m.Content + "\n")
+		}
+		prompts = append(prompts, all.String())
+		body := map[string]any{"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "```json\n" +
+			`[{"name":"proposed-strict","question":"What is asked? Be strict about questions.","rationale":"questions were mistaken for requests"},` +
+			`{"name":"proposed-loose","question":"What is asked? Anything goes.","rationale":"control"}]` + "\n```"}}}}
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &prompts
+}
+
+// --propose N: 提案役に今の聞き方・混同表・外した実例・これまでの学びを渡して候補を作らせ、spec の variants に残し、採点し、学びを markdown に追記する。
+func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	model := wordingSensitiveModel(t)
+	proposer, prompts := fakeProposer(t)
+	specPath := writeSpec(t, dir, "false") // 候補は書かない。提案役に作らせる
+	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"fix b"},"truth":"change_request"},
+	          {"inputs":{"message":"why a"},"truth":"question"},{"inputs":{"message":"why b"},"truth":"question"}]`
+	labeledPath := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 人が書いた決まり(wiki の spec ページの Rules)は提案役に毎回渡る
+	wiki := filepath.Join(dir, "wiki")
+	notebook := filepath.Join(wiki, "specs", "intent.md")
+	if err := os.MkdirAll(filepath.Dir(notebook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(notebook, []byte("# intent\n\n## Rules\n- Never mention the word banana.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error {
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", model.URL, "--store", storeDir, "--wiki", wiki,
+			"--propose", "2", "--proposer", proposer.URL, "--write"})
+	})
+	if len(*prompts) < 1 {
+		t.Fatal("the proposer must be asked")
+	}
+	p := (*prompts)[0]
+	for _, must := range []string{"What is asked?", "confusion", "why a", "Never mention the word banana"} {
+		if !strings.Contains(p, must) {
+			t.Fatalf("proposer prompt must carry the current wording, the confusion matrix, a missed example and the human rules; missing %q:\n%s", must, p)
+		}
+	}
+	if !strings.Contains(out, "proposed-strict") || !strings.Contains(out, "winner: proposed-strict") {
+		t.Fatalf("proposed candidates must be scored and the good one must win:\n%s", out)
+	}
+	// 提案は spec の variants に残る(次回は提案無しでも採点できる)
+	sp := mustLoad(t, specPath)
+	if len(sp.Variants) != 2 || sp.Variants[0].Name != "proposed-strict" {
+		t.Fatalf("proposals must be stored in the spec: %+v", sp.Variants)
+	}
+	// wiki: run ページに数字と採否と一行の学び、spec ページに run への案内。人の決まりは残る
+	nb, _ := os.ReadFile(notebook)
+	for _, must := range []string{"## Rules", "Never mention the word banana", "proposed-strict", "adopted", "Lesson:", "runs/"} {
+		if !strings.Contains(string(nb), must) {
+			t.Fatalf("spec page must keep the rules and point at the run; missing %q:\n%s", must, nb)
+		}
+	}
+	runs, _ := filepath.Glob(filepath.Join(wiki, "runs", "*.md"))
+	if len(runs) != 1 {
+		t.Fatalf("one run page expected, got %v", runs)
+	}
+	if rp, _ := os.ReadFile(runs[0]); !strings.Contains(string(rp), "holdout") || !strings.Contains(string(rp), "proposed-strict") {
+		t.Fatalf("run page must carry the table and the holdout:\n%s", rp)
+	}
+	// 2 回目の提案は、前回の学びを読んで出す
+	capture(t, func() error {
+		return cmdTune([]string{filepath.Join(dir, "intent-v2.yaml"), "--labeled", labeledPath, "--local", model.URL, "--store", storeDir, "--wiki", wiki,
+			"--propose", "2", "--proposer", proposer.URL})
+	})
+	if len(*prompts) < 2 || !strings.Contains((*prompts)[1], "Lesson:") {
+		t.Fatalf("the second proposal must be fed the earlier lessons:\n%s", (*prompts)[len(*prompts)-1])
+	}
+}
+
+// pii: true の本文は、手元(loopback)以外の提案役には渡さない。
+func TestTuneProposeRefusesRemoteProposerForPIISpecs(t *testing.T) {
+	dir := t.TempDir()
+	model := wordingSensitiveModel(t)
+	specPath := writeSpec(t, dir, "true")
+	labeledPath := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(labeledPath, []byte(`[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"why a"},"truth":"question"}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := cmdTune([]string{specPath, "--labeled", labeledPath, "--local", model.URL, "--store", filepath.Join(dir, ".shikii"), "--wiki", filepath.Join(dir, "wiki"),
+		"--propose", "2", "--proposer", "https://api.example.invalid/v1"})
+	if err == nil || !strings.Contains(err.Error(), "pii") {
+		t.Fatalf("a pii:true spec must not send example texts to a remote proposer, got %v", err)
+	}
+}

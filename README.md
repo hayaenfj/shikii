@@ -117,6 +117,14 @@ bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --
 
 Wording moves accuracy far more than calibration does (0.68 → 0.90 in our data; a layout change moved a 27B model by 5 points). The truths people gave do not depend on the wording, so every candidate wording can be scored on all of them with no new labels: top-1, Brier, precision and recall at `act`, plus a k-fold holdout of the selection itself. A candidate is adopted only when that holdout beats keeping the current wording; a win by one example out of 62 does not pass (we saw exactly that: 0.984 on the full bank, 0.952 on holdout, so the current 0.968 stayed). Ties keep the current wording. The winner becomes a new version file; the old one stays, and the calibration is fitted immediately by replay.
 
+You do not have to write the candidates yourself:
+
+```sh
+bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --propose 3 --proposer http://127.0.0.1:8087
+```
+
+`--propose` hands a chat model the current wording, the confusion matrix, the examples it gets wrong and the relevant pages of the [wiki](wiki/index.md) (how to ask this type, this model family's habits, confirmed patterns, this decision's own rules), and asks for candidates. They are stored in the spec's `variants:` so people can read them, scored like any other candidate, and the run is written back to `wiki/runs/` with the numbers, the decision and a one-line lesson. The wiki is where the knowledge of *how to ask* accumulates, is edited by people, and is read by the next proposal. A spec with `pii: true` only ever sends example texts to a proposer on this machine.
+
 ### Install and update
 
 ```sh
@@ -156,7 +164,7 @@ thresholds:
 
 `calibrate` compares three methods under 5-fold cross-validation and writes the winner. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Every safety-relevant branch (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, …) has a recorded mutation that made a test fail before the fix was accepted. There are 99 Go tests across 8 packages; the demo runs in CI.
+Every safety-relevant branch (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, …) has a recorded mutation that made a test fail before the fix was accepted. There are 102 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 

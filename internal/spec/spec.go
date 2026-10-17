@@ -358,32 +358,12 @@ func (s *Spec) Save() error {
 		return fmt.Errorf("%s: top level must be a mapping", s.path)
 	}
 	root := doc.Content[0]
-
-	// 既存の calibration キーを探す
-	at := -1
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == "calibration" {
-			at = i
-			break
-		}
+	// 書き戻すのは生成物の 2 つだけ(較正ブロックと、tune が足す候補)。文言・コメント・他の項目は触らない。
+	if err := setMappingKey(root, "calibration", s.Calibration, len(s.Calibration) == 0, "較正ブロックは `shikii calibrate --write` が生成する。手で書かない。"); err != nil {
+		return err
 	}
-	switch {
-	case len(s.Calibration) == 0 && at >= 0:
-		root.Content = append(root.Content[:at], root.Content[at+2:]...)
-	case len(s.Calibration) == 0:
-		// 何も書くものがない
-	default:
-		var val yaml.Node
-		if err := val.Encode(s.Calibration); err != nil {
-			return err
-		}
-		if at >= 0 {
-			root.Content[at+1] = &val
-		} else {
-			key := &yaml.Node{Kind: yaml.ScalarNode, Value: "calibration",
-				HeadComment: "較正ブロックは `shikii calibrate --write` が生成する。手で書かない。"}
-			root.Content = append(root.Content, key, &val)
-		}
+	if err := setMappingKey(root, "variants", s.Variants, len(s.Variants) == 0, "聞き方の候補。`shikii tune` が採点する(--propose で足される)。鍵には入らない。"); err != nil {
+		return err
 	}
 
 	var buf bytes.Buffer
@@ -414,6 +394,34 @@ func (s *Spec) Save() error {
 		return err
 	}
 	return os.Rename(tmp.Name(), s.path)
+}
+
+// setMappingKey は root の key を value で置き換える(無ければ末尾に足し、empty なら消す)。
+func setMappingKey(root *yaml.Node, key string, value any, empty bool, headComment string) error {
+	at := -1
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == key {
+			at = i
+			break
+		}
+	}
+	switch {
+	case empty && at >= 0:
+		root.Content = append(root.Content[:at], root.Content[at+2:]...)
+	case empty:
+	default:
+		var val yaml.Node
+		if err := val.Encode(value); err != nil {
+			return err
+		}
+		if at >= 0 {
+			root.Content[at+1] = &val
+		} else {
+			k := &yaml.Node{Kind: yaml.ScalarNode, Value: key, HeadComment: headComment}
+			root.Content = append(root.Content, k, &val)
+		}
+	}
+	return nil
 }
 
 // Path は読み込み元。

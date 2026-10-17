@@ -57,6 +57,10 @@ func cmdTune(args []string) error {
 	labeledPath := fs.String("labeled", "", "正解の貯金に足すラベル付きファイル(省略時は spec の eval.labeled。none なら使わない)")
 	write := fs.Bool("write", false, "勝った候補を新しい版として書き、その場で較正する")
 	folds := fs.Int("folds", 5, "holdout の分割数")
+	propose := fs.Int("propose", 0, "提案役(チャット用 LLM)に候補を N 個作らせて spec の variants に足す")
+	proposer := fs.String("proposer", "", "提案役の URL(OpenAI 互換の /v1/chat/completions。本家 llama-server でも可)。pii: true の spec は手元(127.0.0.1)の提案役だけ")
+	proposerModel := fs.String("proposer-model", "", "提案役のモデル名(空なら口の既定)")
+	wikiDir := fs.String("wiki", "wiki", "聞き方の wiki(markdown のフォルダ)。提案役が読み、tune が runs/ と specs/ に書く。空なら使わない")
 	path, err := parseSpecPath(fs, args)
 	if err != nil {
 		return err
@@ -65,8 +69,14 @@ func cmdTune(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(sp.Variants) == 0 {
-		return errors.New("tune: the spec has no variants: (candidate wordings). Add e.g.\n  variants:\n    - name: strict-other\n      options:\n        other: \"Not a request at all: greetings, thanks, acknowledgements\"")
+	if *propose > 0 && *proposer == "" {
+		return errors.New("tune: --propose needs --proposer URL (a chat endpoint, e.g. http://127.0.0.1:8087 for a local llama-server with a chat GGUF)")
+	}
+	if *propose > 0 && sp.PIISensitive() && !isLoopback(*proposer) {
+		return fmt.Errorf("tune: this spec has pii: true, so example texts may only go to a local proposer (127.0.0.1); %s is not local", *proposer)
+	}
+	if len(sp.Variants) == 0 && *propose == 0 {
+		return errors.New("tune: the spec has no variants: (candidate wordings). Add e.g.\n  variants:\n    - name: strict-other\n      options:\n        other: \"Not a request at all: greetings, thanks, acknowledgements\"\nor let a model propose some: --propose 3 --proposer http://127.0.0.1:8087")
 	}
 	if *labeledPath == "none" {
 		*labeledPath = ""
@@ -87,18 +97,48 @@ func cmdTune(args []string) error {
 	if len(eps) == 0 {
 		return errors.New("tune: no endpoint (pass --local URL or a key for --hosted)")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	// 1. 今の聞き方を採点(提案役に混同表と外した実例を渡すため、先に)
+	current, err := scoreCandidate(ctx, candidate{"current", sp}, bank, eps, ef.tainted)
+	if err != nil {
+		return fmt.Errorf("tune: current: %w", err)
+	}
+	// 2. 提案(あれば): wiki を読ませて候補を作らせ、spec の variants に残す
+	var rationales []string
+	if *propose > 0 {
+		system, user := buildProposerPrompt(sp, current, bank, wikiContext(*wikiDir, sp, current.model), *propose, !sp.PIISensitive() || isLoopback(*proposer))
+		props, _, err := askProposer(ctx, *proposer, *proposerModel, system, user)
+		if err != nil {
+			return fmt.Errorf("tune: %w", err)
+		}
+		added, skipped, notes := adoptProposals(sp, props)
+		rationales = notes
+		fmt.Fprintf(stdout, "proposer: %d proposal(s), %d added to variants, %d skipped\n", len(props), added, skipped)
+		for _, n := range notes {
+			fmt.Fprintln(stdout, "  "+n)
+		}
+		if added > 0 {
+			if err := sp.Save(); err != nil {
+				return fmt.Errorf("tune: save proposals into %s: %w", sp.Path(), err)
+			}
+		}
+		if len(sp.Variants) == 0 {
+			return errors.New("tune: nothing to score (every proposal was invalid)")
+		}
+	}
 	cands := []candidate{{"current", sp}}
 	for _, v := range sp.Variants {
 		cands = append(cands, candidate{v.Name, sp.WithVariant(v)})
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
 	fmt.Fprintf(stdout, "tune %s: %d truths × %d candidates (model asked %d times)\n", sp.ID, len(bank), len(cands), len(bank)*len(cands))
 	scores := make([]candScore, len(cands))
-	for i, c := range cands {
-		s, err := scoreCandidate(ctx, c, bank, eps, ef.tainted)
+	scores[0] = current
+	for i := 1; i < len(cands); i++ {
+		s, err := scoreCandidate(ctx, cands[i], bank, eps, ef.tainted)
 		if err != nil {
-			return fmt.Errorf("tune: candidate %s: %w", c.name, err)
+			return fmt.Errorf("tune: candidate %s: %w", cands[i].name, err)
 		}
 		scores[i] = s
 	}
@@ -135,21 +175,45 @@ func cmdTune(args []string) error {
 			fmt.Fprintf(stdout, "holdout (%d-fold: pick on %d/%d, measure on 1/%d): top-1=%.3f  vs keeping current: %.3f\n", k, k-1, k, k, holdout, scores[0].acc)
 		}
 	}
+	// 3. 採否
+	adopt := false
+	var decision, lesson string
 	switch {
 	case best == 0:
+		decision = "kept current (nothing beats it; ties keep it)"
+		lesson = fmt.Sprintf("none of %d candidates beat the current wording (top-1 %.3f) on %d truths", len(cands)-1, scores[0].acc, len(bank))
 		fmt.Fprintln(stdout, "winner: current (nothing beats the current wording; ties keep it)")
-		return nil
 	case !haveHoldout:
+		decision = "kept current (too few truths for a holdout)"
+		lesson = fmt.Sprintf("%s looked better on the full bank (%.3f vs %.3f) but %d truths are too few for a holdout", scores[best].name, scores[best].acc, scores[0].acc, len(bank))
 		fmt.Fprintf(stdout, "winner: current (too few truths for a holdout; %s looked better on the full bank but that is not enough)\n", scores[best].name)
-		return nil
 	case holdout <= scores[0].acc+1e-12:
 		// 貯金全体では勝って見えても、選び方の当たりが現状を上回らない = まぐれの範囲。変えない
+		decision = "kept current (holdout does not beat it)"
+		lesson = fmt.Sprintf("%s wins on the full bank (%.3f vs %.3f) but the holdout %.3f does not beat keeping current %.3f: within noise on %d truths; more truths will settle it", scores[best].name, scores[best].acc, scores[0].acc, holdout, scores[0].acc, len(bank))
 		fmt.Fprintf(stdout, "winner: current (%s is better on the full bank, %.3f vs %.3f, but the holdout %.3f does not beat keeping current %.3f: not enough evidence to change the wording. More truths will settle it)\n",
 			scores[best].name, scores[best].acc, scores[0].acc, holdout, scores[0].acc)
+	default:
+		adopt = true
+		lesson = fmt.Sprintf("%s: %s → top-1 %.3f → %.3f, brier %.4f → %.4f, holdout %.3f > current %.3f on %d truths", scores[best].name, describeVariant(sp, cands[best].sp), scores[0].acc, scores[best].acc, scores[0].brier, scores[best].brier, holdout, scores[0].acc, len(bank))
+		fmt.Fprintf(stdout, "winner: %s  top-1 %.3f → %.3f, brier %.4f → %.4f\n", scores[best].name, scores[0].acc, scores[best].acc, scores[0].brier, scores[best].brier)
+		printConfusion(scores[best].confusion)
+		if *write {
+			decision = fmt.Sprintf("adopted %s as version %d", scores[best].name, sp.Version+1)
+		} else {
+			decision = fmt.Sprintf("would adopt %s (dry run; pass --write)", scores[best].name)
+		}
+	}
+	if *wikiDir != "" {
+		if runPath, err := writeRunPage(*wikiDir, sp, current.model, cands, scores, holdout, haveHoldout, decision, lesson, rationales); err != nil {
+			fmt.Fprintf(stdout, "note: could not write the wiki run page: %v\n", err)
+		} else {
+			fmt.Fprintf(stdout, "wiki: %s\n", runPath)
+		}
+	}
+	if !adopt {
 		return nil
 	}
-	fmt.Fprintf(stdout, "winner: %s  top-1 %.3f → %.3f, brier %.4f → %.4f\n", scores[best].name, scores[0].acc, scores[best].acc, scores[0].brier, scores[best].brier)
-	printConfusion(scores[best].confusion)
 	if !*write {
 		fmt.Fprintln(stdout, "dry run: pass --write to adopt it as a new version and calibrate it")
 		return nil

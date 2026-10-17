@@ -24,7 +24,7 @@ state:
   required: [message]
 policy:
   send_to: [hosted, local]
-  pii: false                  # 本文に個人情報は入らない(hosted にも送れる)
+  pii: false # 本文に個人情報は入らない(hosted にも送れる)
 thresholds:
   act: 0.75
   ask: 0.60
@@ -84,3 +84,15 @@ variants:
   - name: other-tight
     options:
       other: Not a request at all - greetings, thanks, acknowledgements ("ok", "了解"), small talk, goodbye. Anything that asks for work, however short, is a request and never other.
+  - name: tighten-review-vs-operation
+    question: The state is a message a user sent to a coding assistant. What is the user asking the assistant to do? Short messages like "fix it" or "why?" are still requests; pick the closest request type.
+    options:
+      review: Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality, or ask for a correctness check (e.g., "Does this look correct?").
+  - name: clarify-review-purpose
+    question: The state is a message a user sent to a coding assistant. What is the user asking the assistant to do? Short messages like "fix it" or "why?" are still requests; pick the closest request type.
+    options:
+      review: Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality, or verify correctness (e.g., "Does this implementation look correct?").
+  - name: add-review-example
+    question: The state is a message a user sent to a coding assistant. What is the user asking the assistant to do? Short messages like "fix it" or "why?" are still requests; pick the closest request type.
+    options:
+      review: Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality. Includes correctness checks like "Does this look correct?".

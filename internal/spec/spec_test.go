@@ -103,6 +103,40 @@ func TestPutCalibrationReplacesStaleBlockOfSameModel(t *testing.T) {
 	}
 }
 
+// Save は variants も書き戻す(提案された候補を spec に残すため)。コメントと他の項目は触らない。
+func TestSaveWritesVariantsAndKeepsTheRest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.yaml")
+	src := "# head comment\nid: t\nversion: 1\ntype: noul\nquestion: Is it so?  # trailing\nstate:\n  template: \"A: {{ a }}\"\n  required: [a]\npolicy:\n  send_to: [local]\n  pii: false\nthresholds:\n  act: 0.7\n  ask: 0.5\neval:\n  min_n: 2\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Variants = []Variant{{Name: "v1", Question: "Is it really so?"}}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), "# head comment") || !strings.Contains(string(b), "# trailing") || !strings.Contains(string(b), "variants:") {
+		t.Fatalf("save must add variants and keep comments:\n%s", b)
+	}
+	again, err := Load(path)
+	if err != nil || len(again.Variants) != 1 || again.Variants[0].Question != "Is it really so?" {
+		t.Fatalf("variants round trip: %v %+v", err, again.Variants)
+	}
+	again.Variants = nil
+	if err := again.Save(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(path)
+	if strings.Contains(string(b), "variants:") {
+		t.Fatalf("emptying variants must remove the key:\n%s", b)
+	}
+}
+
 // display は画面の表示用の訳。較正の鍵(Hash)には入らない。知らない選択肢や段数の合わない levels は検証で弾く。
 func TestDisplayTranslationsDoNotTouchHashButAreValidated(t *testing.T) {
 	s := noulSpec()
