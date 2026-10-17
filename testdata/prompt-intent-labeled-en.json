@@ -1,0 +1,236 @@
+[
+ {
+  "inputs": {
+   "message": "Fix the typo in README.md"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Fix the typo"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Add a --verbose flag to the CLI"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Rename userId to userID everywhere"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Update the dependency to v2 and fix the breaking changes"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Make the error message mention the file name"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Remove the unused import in main.go"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Write a unit test for parseConfig"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Refactor the retry loop into its own function"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Change the default port to 8081"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "What does this function do?"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "Why does the build fail on CI but not locally?"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "Where is the retry logic implemented?"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "How are decision models like Jev built?"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "Which files handle routing?"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "Is it safe to call Close twice here?"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "Explain the difference between Platt scaling and isotonic regression"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "Can you summarize what changed in the last release?"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "Review this diff before I merge it"
+  },
+  "truth": "review"
+ },
+ {
+  "inputs": {
+   "message": "Does this implementation look correct to you?"
+  },
+  "truth": "review"
+ },
+ {
+  "inputs": {
+   "message": "Look over my changes to the scorer and tell me what's wrong"
+  },
+  "truth": "review"
+ },
+ {
+  "inputs": {
+   "message": "Check my test coverage for the new package"
+  },
+  "truth": "review"
+ },
+ {
+  "inputs": {
+   "message": "Rate the readability of this module"
+  },
+  "truth": "review"
+ },
+ {
+  "inputs": {
+   "message": "Run the tests"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "Commit this with the message 'fix typo'"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "Deploy to staging"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "Build the binary and show me the size"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "Push the branch and open a PR"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "Install the dependencies"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "Run go vet and show failures only"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "Thanks, that's all for today"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "ok"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "hmm"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "Good morning"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "Let's take a break and continue tomorrow"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "Never mind, I figured it out myself"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "lol"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "Fix it"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "Why?"
+  },
+  "truth": "question"
+ }
+]

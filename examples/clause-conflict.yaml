@@ -1,0 +1,28 @@
+# 例(法律): 2 つの契約条項が矛盾するか(はい/いいえ)。レビューの前さばきに使う。較正ブロックは無い状態から始める。
+# 注意: act は「矛盾ありとして人のレビュー待ち行列に入れる」で、契約内容を自動で変える操作ではない。
+id: clause-conflict
+version: 1
+type: noul
+
+question: |
+  Do these two clauses from the same contract conflict - can a party not comply with both at once,
+  or does one override, shorten or void the other?
+  Answer "no" if they merely overlap in topic or repeat each other.
+
+state:
+  template: |
+    Clause A: {{ clause_a }}
+
+    Clause B: {{ clause_b }}
+  required: [clause_a, clause_b]
+
+policy:
+  send_to: [local]            # 契約書は外に出さない
+  pii: possible
+
+thresholds:
+  act: 0.80                   # 矛盾ありとして弁護士の確認待ちに入れる
+  ask: 0.50                   # 「要確認」の印だけ付ける。それ未満は何もしない
+
+eval:
+  min_n: 40

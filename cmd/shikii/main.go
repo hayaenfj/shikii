@@ -1,0 +1,1618 @@
+// shikii は決定モデルの運用 CLI。
+//
+//	shikii decide    <spec.yaml> -i k=v ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR]
+//	shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|undo|manual] [--store DIR]
+//	shikii calibrate <spec.yaml> [--labeled file] [--model M] [--store DIR] [--write] [--force]
+//	shikii hash      <spec.yaml>
+//
+// ホスト版の鍵は TYPESAFE_API_KEY から読む。鍵の取り出しはこのプロセスでは行わない。
+// 判定は既定で ./.shikii/ に記録され、label がそこから正解ラベルを作り、calibrate がそれを使う。
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"math"
+	"math/rand"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/hayaenfj/shikii/internal/calib"
+	"github.com/hayaenfj/shikii/internal/decide"
+	"github.com/hayaenfj/shikii/internal/spec"
+	"github.com/hayaenfj/shikii/internal/store"
+	"github.com/hayaenfj/shikii/internal/systemone"
+)
+
+var stdout io.Writer = os.Stdout
+
+func main() {
+	if len(os.Args) < 2 {
+		usage()
+		os.Exit(2)
+	}
+	var err error
+	switch os.Args[1] {
+	case "decide":
+		err = cmdDecide(os.Args[2:])
+	case "label":
+		err = cmdLabel(os.Args[2:])
+	case "calibrate":
+		err = cmdCalibrate(os.Args[2:])
+	case "hash":
+		err = cmdHash(os.Args[2:])
+	case "check":
+		err = cmdCheck(os.Args[2:])
+	case "drift":
+		err = cmdDrift(os.Args[2:])
+	case "bias":
+		err = cmdBias(os.Args[2:])
+	case "status":
+		err = cmdStatus(os.Args[2:])
+	case "gc":
+		err = cmdGC(os.Args[2:])
+	default:
+		usage()
+		os.Exit(2)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "shikii:", err)
+		os.Exit(1)
+	}
+}
+
+func usage() {
+	fmt.Fprintln(os.Stderr, `usage:
+  shikii decide    <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
+  shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|undo|manual] [--store DIR]
+  shikii label     --last --spec-id ID <truth>              直近の記録に付ける(trace_id 不要)
+  shikii calibrate <spec.yaml> [--labeled file] [--model M] [--hosted URL] [--local URL] [--store DIR] [--bins N] [--write] [--force]
+  shikii hash      <spec.yaml>
+  shikii check     <spec.yaml>... [--store DIR]            較正の契約を検査(CI 向け。違反で exit 1)
+  shikii drift     <spec.yaml> --model M [--window N] [--store DIR]  直近のラベルで劣化を見る
+  shikii bias      <spec.yaml> [--labeled file] [--rows K] [--permutations N] [--local URL] ... choice の順序バイアスを測る
+  shikii status    [spec.yaml ...] [--store DIR]           記録・ラベル・較正の棚卸し
+  shikii gc        [spec.yaml ...] [--older-than 30d] [--apply] [--store DIR]  古くてラベルの無い記録を消す(既定は表示だけ)`)
+}
+
+// endpointFlags は decide / calibrate 共通のエンドポイント指定。
+type endpointFlags struct {
+	model, hosted, local string
+	tainted              bool
+}
+
+func (f *endpointFlags) bind(fs *flag.FlagSet) {
+	fs.StringVar(&f.model, "model", "jev-latest", "モデル名(リクエストに入れる。calibrate では較正の鍵にもなる)")
+	fs.StringVar(&f.hosted, "hosted", "https://api.typesafe.ai", "ホスト版の URL。パス付きならそのまま使う(例 https://openrouter.ai/api/alpha/decisions)。鍵は DECISIONS_API_KEY か TYPESAFE_API_KEY")
+	fs.StringVar(&f.local, "local", "", "ローカル(llama.cpp 等)のベース URL")
+	fs.BoolVar(&f.tainted, "tainted", false, "本番データを読んだセッション: hosted に送らない")
+}
+
+// hostedKey は hosted 用の鍵。DECISIONS_API_KEY(汎用)か TYPESAFE_API_KEY。鍵の取り出しはこのプロセスでは行わない。
+func hostedKey() string {
+	if k := os.Getenv("DECISIONS_API_KEY"); k != "" {
+		return k
+	}
+	return os.Getenv("TYPESAFE_API_KEY")
+}
+
+func (f *endpointFlags) endpoints() []decide.Endpoint {
+	var eps []decide.Endpoint
+	if key := hostedKey(); key != "" && f.hosted != "" {
+		eps = append(eps, decide.Endpoint{Kind: "hosted", Client: systemone.New(f.hosted, key, f.model)})
+	}
+	if f.local != "" {
+		eps = append(eps, decide.Endpoint{Kind: "local", Client: systemone.New(f.local, "", f.model)})
+	}
+	return eps
+}
+
+func bindStore(fs *flag.FlagSet) *string {
+	return fs.String("store", ".shikii", "記録とラベルの置き場")
+}
+
+type kvFlag map[string]string
+
+func (k kvFlag) String() string { return "" }
+func (k kvFlag) Set(v string) error {
+	i := strings.IndexByte(v, '=')
+	if i <= 0 {
+		return fmt.Errorf("want key=value, got %q", v)
+	}
+	k[v[:i]] = v[i+1:]
+	return nil
+}
+
+// ---------------------------------------------------------------- decide
+
+func cmdDecide(args []string) error {
+	fs := flag.NewFlagSet("decide", flag.ContinueOnError)
+	var ef endpointFlags
+	ef.bind(fs)
+	storeDir := bindStore(fs)
+	noRecord := fs.Bool("no-record", false, "記録しない")
+	inputs := kvFlag{}
+	fs.Var(inputs, "i", "入力 key=value(複数可)")
+	asJSON := fs.Bool("json", false, "Decision を JSON で出す")
+	path, err := parseSpecPath(fs, args)
+	if err != nil {
+		return err
+	}
+	sp, err := spec.Load(path)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	d, err := decide.Decide(ctx, sp, inputs, decide.Session{Tainted: ef.tainted}, ef.endpoints())
+	if err != nil {
+		return err
+	}
+	if !*noRecord && d.Band != decide.Abstain {
+		if err := (store.Store{Dir: *storeDir}).AppendRecord(recordOf(sp, d, inputs)); err != nil {
+			return fmt.Errorf("record: %w", err)
+		}
+	}
+	if *asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(d)
+	}
+	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s endpoint=%s trace=%s\n", d.SpecID, d.SpecHash, d.Model, d.Endpoint, d.TraceID)
+	fmt.Fprintf(stdout, "band=%s top=%s p=%.3f calibrated=%v", d.Band, d.Top, d.P, d.IsCalibrated)
+	if sp.Type == spec.Score {
+		fmt.Fprintf(stdout, " score=%.2f", d.Score)
+	}
+	fmt.Fprintln(stdout)
+	if d.Reason != "" {
+		fmt.Fprintln(stdout, "reason:", d.Reason)
+	}
+	if len(d.Raw) > 0 {
+		fmt.Fprintln(stdout, "raw:", fmtDist(d.Raw))
+		if d.IsCalibrated {
+			fmt.Fprintln(stdout, "calibrated:", fmtDist(d.Calibrated))
+		}
+	}
+	return nil
+}
+
+// recordOf は Decision を記録の形にする。本文は pii: never の時だけ残る。
+func recordOf(sp *spec.Spec, d *decide.Decision, inputs map[string]string) store.Record {
+	return store.Record{
+		TraceID: d.TraceID, SpecID: d.SpecID, SpecHash: d.SpecHash, Type: d.Type,
+		Model: d.Model, Endpoint: d.Endpoint,
+		Inputs: store.RedactInputs(sp.Policy.PII, inputs), InputsHash: d.InputsHash,
+		Raw: d.Raw, Calibrated: d.Calibrated, IsCalibrated: d.IsCalibrated,
+		Top: d.Top, P: d.P, Band: string(d.Band), At: d.At,
+	}
+}
+
+// ---------------------------------------------------------------- label
+
+func cmdLabel(args []string) error {
+	fs := flag.NewFlagSet("label", flag.ContinueOnError)
+	storeDir := bindStore(fs)
+	specID := fs.String("spec-id", "", "記録を探す spec(省略時は全部見る)")
+	weight := fs.Float64("weight", 1, "ラベルの重み(弱いラベルは 1 未満)")
+	source := fs.String("source", "manual", "ラベルの出どころ: ask | undo | manual など")
+	last := fs.Bool("last", false, "trace_id の代わりに、--spec-id の直近の記録に付ける")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	st := store.Store{Dir: *storeDir}
+	var rec *store.Record
+	var truth string
+	switch {
+	case *last:
+		if fs.NArg() != 1 || *specID == "" {
+			return fmt.Errorf("usage: shikii label --last --spec-id ID <truth>")
+		}
+		r, err := st.LastRecord(*specID)
+		if err != nil {
+			return err
+		}
+		rec, truth = r, fs.Arg(0)
+	default:
+		if fs.NArg() != 2 {
+			return fmt.Errorf("usage: shikii label <trace_id> <truth>  |  shikii label --last --spec-id ID <truth>")
+		}
+		r, err := st.FindRecord(*specID, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		rec, truth = r, fs.Arg(1)
+	}
+	l, err := store.LabelFor(rec, truth, *weight, *source)
+	if err != nil {
+		return err
+	}
+	if err := st.AppendLabel(l); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "labeled %s (%s, %s) truth=%s weight=%.2f source=%s\n", l.TraceID, l.SpecID, l.Model, l.Truth, l.Weight, l.Source)
+	return nil
+}
+
+// ---------------------------------------------------------------- calibrate
+
+// labeled はラベル付きデータ 1 行。Truth は noul なら true/false か "yes"/"no"、choice/score なら id/番号。
+// Raw(noul の生の確率)があればモデルを呼ばない。
+type labeled struct {
+	Inputs map[string]string `json:"inputs"`
+	Truth  json.RawMessage   `json:"truth"`
+	Weight float64           `json:"weight,omitempty"`
+	Raw    *float64          `json:"raw,omitempty"`
+}
+
+func parseTruth(t spec.Type, raw json.RawMessage) (string, error) {
+	var b bool
+	if err := json.Unmarshal(raw, &b); err == nil {
+		if t != spec.Noul {
+			return "", fmt.Errorf("%s truth must be a string, got %s", t, raw)
+		}
+		if b {
+			return "yes", nil
+		}
+		return "no", nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", fmt.Errorf("truth must be bool or string, got %s", raw)
+	}
+	return s, nil
+}
+
+func cmdCalibrate(args []string) error {
+	fs := flag.NewFlagSet("calibrate", flag.ContinueOnError)
+	var ef endpointFlags
+	ef.bind(fs)
+	storeDir := bindStore(fs)
+	labeledPath := fs.String("labeled", "", "ラベル付きデータ(省略時は spec の eval.labeled。無ければ store のラベルだけ。none なら spec の既定も使わない)")
+	bins := fs.Int("bins", 10, "信頼度図の bin 数")
+	write := fs.Bool("write", false, "較正を spec に書き戻す")
+	force := fs.Bool("force", false, "逆転・精度不足でも書き戻す")
+	path, err := parseSpecPath(fs, args)
+	if err != nil {
+		return err
+	}
+	sp, err := spec.Load(path)
+	if err != nil {
+		return err
+	}
+	if *labeledPath == "none" {
+		*labeledPath = "" // store のラベルと聞き直しだけで進む
+	} else if *labeledPath == "" {
+		// spec 既定のファイルは無くてもよい(store のラベルだけで進む)。--labeled で明示したら無ければ誤り。
+		if _, err := os.Stat(sp.Eval.Labeled); sp.Eval.Labeled != "" && err == nil {
+			*labeledPath = sp.Eval.Labeled
+		} else if sp.Eval.Labeled != "" {
+			fmt.Fprintf(stdout, "note: eval.labeled %s not found; using store labels only\n", sp.Eval.Labeled)
+		}
+	}
+
+	// 1. ラベル付きファイル(あれば)。Raw の無い行は、store に同じ入力のラベルがあればそれを使い、無ければモデルに聞く。
+	st := store.Store{Dir: *storeDir}
+	labels, model, err := labelsFromFile(sp, *labeledPath, ef, st)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, l := range labels {
+		if l.InputsHash != "" {
+			seen[l.InputsHash] = true
+		}
+	}
+	// 2. 聞き直し: 古い文言・別のモデルで付いた正解を、本文が残っている記録から今の (hash, model) で聞き直す。
+	//    正解は人が決めたもので文言にもモデルにも依らない。確率だけ取り直す。
+	replayed, replayModel, err := replayTruths(sp, st, ef, model, seen)
+	if err != nil {
+		return err
+	}
+	if model == "" {
+		model = replayModel
+	}
+	if model == "" {
+		model = ef.model
+	}
+	// 3. store に溜まったラベル。(hash, model) が一致するものだけ。ファイル側・聞き直し側と同じ入力は二重に数えない。
+	stored, err := st.Labels(sp.ID, sp.Hash(), model)
+	if err != nil {
+		return err
+	}
+	kept := stored[:0]
+	for _, l := range stored {
+		if !seen[l.InputsHash] {
+			kept = append(kept, l)
+		}
+	}
+	stored = kept
+	for _, l := range replayed {
+		if alreadyStored(st, sp, l) {
+			continue
+		}
+		if err := st.AppendLabel(l); err != nil {
+			return fmt.Errorf("persist replayed label: %w", err)
+		}
+		stored = append(stored, l)
+	}
+	// 4. モデルに聞いて得たファイル行のラベルは store に残す。以後 check / drift がモデル無しで検証できる。
+	persisted := 0
+	for _, l := range labels {
+		if l.Model == "" || l.InputsHash == "" {
+			continue // raw 付きの行(モデルを呼んでいない)は残さない
+		}
+		if alreadyStored(st, sp, l) {
+			continue
+		}
+		if err := st.AppendLabel(l); err != nil {
+			return fmt.Errorf("persist label: %w", err)
+		}
+		persisted++
+	}
+	if persisted > 0 {
+		fmt.Fprintf(stdout, "persisted %d queried labels to %s\n", persisted, *storeDir)
+	}
+	labels = append(labels, stored...)
+	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s n=%d (file=%d store=%d replay=%d)\n", sp.ID, sp.Hash(), model, len(labels), len(labels)-len(stored), len(stored), len(replayed))
+	if len(labels) == 0 {
+		return fmt.Errorf("calibrate: no labels for (hash=%s, model=%s)", sp.Hash(), model)
+	}
+	// 件数不足でも報告は出す。書き戻しだけ止める。
+	underMin := len(labels) < sp.Eval.MinN
+	if underMin {
+		fmt.Fprintf(stdout, "WARNING: %d samples < eval.min_n=%d; report only, will not write\n", len(labels), sp.Eval.MinN)
+	}
+
+	// 報告は常に出す。書き戻してよいか(ok)は別に返し、--write の時だけ効く。
+	var cal spec.Calibration
+	var ok bool
+	switch sp.Type {
+	case spec.Noul:
+		cal, ok, err = calibrateNoul(sp, labels, *bins)
+	default:
+		cal, ok, err = verifyTop(sp, labels, *bins)
+	}
+	if err != nil {
+		return err
+	}
+	if !*write {
+		return nil
+	}
+	if (!ok || underMin) && !*force {
+		return fmt.Errorf("calibrate: refusing to write (see WARNING above; use --force to override)")
+	}
+	cal.Model, cal.SpecHash, cal.N = model, sp.Hash(), len(labels)
+	cal.FittedOn, cal.FittedAt = *labeledPath, time.Now().Format("2006-01-02")
+	sp.PutCalibration(cal)
+	if err := sp.Save(); err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, "wrote calibration to", sp.Path())
+	return nil
+}
+
+// labelsFromFile はラベル付きファイルを store.Label の形に揃える。モデルに聞いた行があれば、その実モデル名も返す。
+// Raw の無い行は、store に同じ入力(inputs_hash)のラベルが --model の鍵で残っていればそれを使う(モデル無しで再較正できる)。
+func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store) ([]store.Label, string, error) {
+	if path == "" {
+		return nil, "", nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", err
+	}
+	var rows []labeled
+	if err := json.Unmarshal(b, &rows); err != nil {
+		return nil, "", fmt.Errorf("%s: %w", path, err)
+	}
+	eps := ef.endpoints()
+	sess := decide.Session{Tainted: ef.tainted}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	stored := map[string]store.Label{}
+	if prior, err := st.Labels(sp.ID, sp.Hash(), ef.model); err == nil {
+		for _, l := range prior {
+			stored[l.InputsHash] = l
+		}
+	}
+	reused := 0
+
+	model := ""
+	out := make([]store.Label, 0, len(rows))
+	for i, r := range rows {
+		truth, err := parseTruth(sp.Type, r.Truth)
+		if err != nil {
+			return nil, "", fmt.Errorf("row %d: %w", i, err)
+		}
+		l := store.Label{SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Truth: truth, Weight: r.Weight, Source: "file", At: time.Now()}
+		switch {
+		case r.Raw != nil && sp.Type == spec.Noul:
+			l.Raw = map[string]float64{"yes": *r.Raw, "no": 1 - *r.Raw}
+		case func() bool { _, ok := stored[store.HashInputs(r.Inputs)]; return ok }():
+			prior := stored[store.HashInputs(r.Inputs)]
+			l.Raw, l.Model, l.TraceID, l.InputsHash = prior.Raw, prior.Model, prior.TraceID, prior.InputsHash
+			l.Inputs = store.RedactInputs(sp.Policy.PII, r.Inputs)
+			if !prior.At.IsZero() {
+				l.At = prior.At
+			}
+			if model == "" {
+				model = prior.Model
+			}
+			reused++
+		default:
+			d, err := decide.Decide(ctx, sp, r.Inputs, sess, eps)
+			if err != nil {
+				return nil, "", fmt.Errorf("row %d: %w", i, err)
+			}
+			if d.Band == decide.Abstain {
+				return nil, "", fmt.Errorf("row %d: abstained: %s", i, d.Reason)
+			}
+			l.Raw, l.Model, l.TraceID, l.InputsHash = d.Raw, d.Model, d.TraceID, d.InputsHash
+			l.Inputs = store.RedactInputs(sp.Policy.PII, r.Inputs) // 本文を残せる方針なら、正解と一緒に残す(聞き直しの材料)
+			if model == "" {
+				model = d.Model
+			} else if model != d.Model {
+				return nil, "", fmt.Errorf("row %d: model changed mid-run (%s → %s)", i, model, d.Model)
+			}
+		}
+		if l.Weight <= 0 {
+			l.Weight = 1
+		}
+		out = append(out, l)
+	}
+	if reused > 0 {
+		fmt.Fprintf(stdout, "reused %d stored labels for file rows (model=%s); queried %d\n", reused, ef.model, len(out)-reused)
+	}
+	return out, model, nil
+}
+
+// alreadyStored は同じ (hash, model, inputs_hash) のラベルが store にあるか。
+func alreadyStored(st store.Store, sp *spec.Spec, l store.Label) bool {
+	existing, err := st.Labels(sp.ID, sp.Hash(), l.Model)
+	if err != nil {
+		return false
+	}
+	for _, e := range existing {
+		if e.InputsHash == l.InputsHash {
+			return true
+		}
+	}
+	return false
+}
+
+// replayTruths は「正解の貯金」を今の (spec_hash, model) に持ち込む。
+// store にある spec のラベル全部(古いハッシュ・別モデルのものを含む)から、入力ごとに最新の正解を取り、
+// 本文が残っている記録(pii: never / local)のものだけを、今の文言で今のモデルに聞き直してラベルにする。
+// seen に入っている入力(ファイル側で扱ったもの)は飛ばす。model が空なら、最初の答えのモデル名を返す。
+// 聞き直せない正解(本文が無い)は数えて理由を出す。黙って 0 件にしない。
+func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string, seen map[string]bool) ([]store.Label, string, error) {
+	_, all, err := st.Counts(sp.ID)
+	if err != nil {
+		return nil, model, err
+	}
+	// 入力ごとに最新の正解(同じ入力に複数付いていれば新しい方)
+	type truth struct {
+		truth  string
+		weight float64
+		at     time.Time
+	}
+	bank := map[string]truth{}
+	for _, l := range all {
+		if l.InputsHash == "" || seen[l.InputsHash] {
+			continue
+		}
+		if cur, ok := bank[l.InputsHash]; !ok || l.At.After(cur.at) {
+			bank[l.InputsHash] = truth{l.Truth, l.Weight, l.At}
+		}
+	}
+	if len(bank) == 0 {
+		return nil, model, nil
+	}
+	// 今の (hash, model) に既にあるものは聞き直さない。model が未定なら、最初の答えで確定してから見る。
+	current := map[string]bool{}
+	loadCurrent := func(m string) error {
+		have, err := st.Labels(sp.ID, sp.Hash(), m)
+		if err != nil {
+			return err
+		}
+		for _, l := range have {
+			current[l.InputsHash] = true
+		}
+		return nil
+	}
+	// model が未定でも --model の値(既定あり)で一度見ておく。実際のモデル名が違えば最初の答えで見直す。
+	guess := model
+	if guess == "" {
+		guess = ef.model
+	}
+	if err := loadCurrent(guess); err != nil {
+		return nil, model, err
+	}
+	texts, err := st.InputsByHash(sp.ID)
+	if err != nil {
+		return nil, model, err
+	}
+	eps := ef.endpoints()
+	sess := decide.Session{Tainted: ef.tainted}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	var out []store.Label
+	noText, noEndpoint, invalid := 0, 0, 0
+	hashes := make([]string, 0, len(bank))
+	for h := range bank {
+		hashes = append(hashes, h)
+	}
+	sort.Strings(hashes)
+	for _, h := range hashes {
+		if current[h] {
+			continue
+		}
+		inputs, ok := texts[h]
+		if !ok {
+			noText++
+			continue
+		}
+		if len(eps) == 0 {
+			noEndpoint++
+			continue
+		}
+		d, err := decide.Decide(ctx, sp, inputs, sess, eps)
+		if err != nil {
+			return nil, model, fmt.Errorf("replay %s: %w", h, err)
+		}
+		if d.Band == decide.Abstain {
+			noEndpoint++
+			continue
+		}
+		if model == "" {
+			model = d.Model
+			if err := loadCurrent(model); err != nil {
+				return nil, model, err
+			}
+			if current[h] {
+				continue
+			}
+		} else if d.Model != model {
+			return nil, model, fmt.Errorf("replay: model changed mid-run (%s → %s)", model, d.Model)
+		}
+		rec := recordOf(sp, d, inputs)
+		t := bank[h]
+		l, err := store.LabelFor(&rec, t.truth, t.weight, "replay")
+		if err != nil {
+			invalid++ // 正解が今の spec に無い選択肢など。黙って捨てずに数える
+			continue
+		}
+		out = append(out, l)
+		current[h] = true
+	}
+	if len(out) > 0 {
+		fmt.Fprintf(stdout, "replayed %d earlier truths against the current wording and model (hash=%s, model=%s); no human labels needed\n", len(out), sp.Hash(), model)
+	}
+	if noText > 0 {
+		fmt.Fprintf(stdout, "note: %d earlier truth(s) cannot be replayed: no text stored for them. Set policy.pii: local (keep text locally, never send hosted) or never to make truths reusable across wording and model changes\n", noText)
+	}
+	if noEndpoint > 0 {
+		fmt.Fprintf(stdout, "note: %d earlier truth(s) not replayed: no endpoint to ask (pass --local or a key for --hosted)\n", noEndpoint)
+	}
+	if invalid > 0 {
+		fmt.Fprintf(stdout, "note: %d earlier truth(s) skipped: their answer no longer exists in the spec\n", invalid)
+	}
+	return out, model, nil
+}
+
+// calibrateNoul は Platt を当てて指標を出す(設計 §7)。正負が逆転していれば ok=false。
+func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibration, bool, error) {
+	samples := make([]calib.Sample, len(labels))
+	rawProbs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
+	for i, l := range labels {
+		p := l.Raw["yes"]
+		samples[i] = calib.Sample{Delta: calib.Logit(p), Truth: l.Truth == "yes", Weight: l.Weight}
+		rawProbs[i], truths[i], weights[i] = p, l.Truth == "yes", l.Weight
+	}
+	sep := calib.CheckSeparation(samples)
+	pl, err := calib.Fit(samples)
+	if err != nil {
+		return spec.Calibration{}, false, fmt.Errorf("calibrate: %w", err)
+	}
+	calProbs := make([]float64, len(samples))
+	for i, s := range samples {
+		calProbs[i] = pl.Apply(s.Delta)
+	}
+	fmt.Fprintf(stdout, "platt: bias=%.4f temperature=%.4f\n", pl.Bias, pl.Temperature)
+	fmt.Fprintf(stdout, "brier: raw=%.4f calibrated=%.4f\n", calib.Brier(rawProbs, truths, weights), calib.Brier(calProbs, truths, weights))
+	fmt.Fprintf(stdout, "ece:   raw=%.4f calibrated=%.4f (bins=%d)\n", calib.ECE(rawProbs, truths, weights, bins), calib.ECE(calProbs, truths, weights, bins), bins)
+	fmt.Fprintf(stdout, "separation(Δ, weight>=1): pos_min=%.3f neg_max=%.3f overlap=%d inverted=%v (weak labels excluded: %d)\n", sep.PosMin, sep.NegMax, sep.Overlap, sep.Inverted, sep.Weak)
+	if sep.Overlap > 0 {
+		// どの例が重なっているかを出す。本文は出さない(pii に従う)。inputs_hash でラベルを辿れる。
+		fmt.Fprintln(stdout, "overlapping (truth raw weight inputs_hash):")
+		for i, l := range labels {
+			if l.Weight > 0 && l.Weight < 1 {
+				continue
+			}
+			d := samples[i].Delta
+			if (l.Truth == "yes" && d < sep.NegMax) || (l.Truth == "no" && d > sep.PosMin) {
+				fmt.Fprintf(stdout, "  %-3s %.3f %.1f %s\n", l.Truth, l.Raw["yes"], l.Weight, l.InputsHash)
+			}
+		}
+	}
+	fmt.Fprintf(stdout, "boundaries after calibration: neg_max→%.3f (ask=%.2f) pos_min→%.3f (act=%.2f)\n",
+		pl.Apply(sep.NegMax), sp.Thresholds.Ask, pl.Apply(sep.PosMin), sp.Thresholds.Act)
+	printThresholdReport(sp.Thresholds, calProbs, truths, weights)
+	printReliability("calibrated", calProbs, truths, weights, bins)
+	if sep.Inverted {
+		fmt.Fprintln(stdout, "WARNING: positives and negatives overlap on Δ; a monotone calibration cannot fix this. Change the question or the model.")
+		return spec.Calibration{Method: "platt", Bias: pl.Bias, Temperature: pl.Temperature,
+			Brier: calib.Brier(calProbs, truths, weights), ECE: calib.ECE(calProbs, truths, weights, bins)}, false, nil
+	}
+
+	// identity と platt を比べる。platt は in-sample で甘いので 5-fold CV の Brier と precision@act で判定。
+	// 生の確率が既に較正されているモデル(Jev、Kev の noul 等)では platt は改善しないので identity を選ぶ。
+	rawPrec := precisionAt(sp.Thresholds.Act, rawProbs, truths, weights)
+	rawBrier := calib.Brier(rawProbs, truths, weights)
+	cvPrec, cvBrier := crossValidatePlatt(sp, samples, 5)
+	fmt.Fprintf(stdout, "platt 5-fold CV: precision@act=%.3f brier=%.4f (raw: precision@act=%.3f brier=%.4f)\n", cvPrec, cvBrier, rawPrec, rawBrier)
+	identityOK, plattOK := rawPrec >= sp.Thresholds.Act, cvPrec >= sp.Thresholds.Act
+	identity := spec.Calibration{Method: "identity", PrecisionAt: rawPrec, Brier: rawBrier, ECE: calib.ECE(rawProbs, truths, weights, bins)}
+	platt := spec.Calibration{Method: "platt", Bias: pl.Bias, Temperature: pl.Temperature, PrecisionAt: cvPrec,
+		Brier: calib.Brier(calProbs, truths, weights), ECE: calib.ECE(calProbs, truths, weights, bins)}
+	switch {
+	case identityOK && plattOK && cvBrier < rawBrier:
+		fmt.Fprintf(stdout, "choose platt: both satisfy act; CV brier %.4f < raw %.4f\n", cvBrier, rawBrier)
+		return platt, true, nil
+	case identityOK:
+		fmt.Fprintf(stdout, "choose identity: raw precision at act %.3f >= act and platt does not improve brier (CV %.4f vs raw %.4f)\n", rawPrec, cvBrier, rawBrier)
+		return identity, true, nil
+	case plattOK:
+		fmt.Fprintf(stdout, "choose platt: CV precision at act %.3f >= act (raw was %.3f)\n", cvPrec, rawPrec)
+		return platt, true, nil
+	default:
+		fmt.Fprintf(stdout, "WARNING: neither raw (%.3f) nor platt-calibrated (CV %.3f) precision at act reaches thresholds.act (%.2f): act must not be allowed for this model.\n", rawPrec, cvPrec, sp.Thresholds.Act)
+		return platt, false, nil
+	}
+}
+
+// crossValidatePlatt は k-fold で Platt を当て、外した fold での precision@act と Brier を合算する。
+func crossValidatePlatt(sp *spec.Spec, samples []calib.Sample, k int) (precision, brier float64) {
+	if k < 2 || len(samples) < k {
+		return 0, 1
+	}
+	var probs []float64
+	var truths []bool
+	var weights []float64
+	for fold := 0; fold < k; fold++ {
+		var train, test []calib.Sample
+		for i, s := range samples {
+			if i%k == fold {
+				test = append(test, s)
+			} else {
+				train = append(train, s)
+			}
+		}
+		pl, err := calib.Fit(train)
+		if err != nil {
+			continue
+		}
+		for _, s := range test {
+			probs = append(probs, pl.Apply(s.Delta))
+			truths = append(truths, s.Truth)
+			weights = append(weights, s.Weight)
+		}
+	}
+	if len(probs) == 0 {
+		return 0, 1
+	}
+	return precisionAt(sp.Thresholds.Act, probs, truths, weights), calib.Brier(probs, truths, weights)
+}
+
+// verifyTop は choice / score の検証と較正(設計 §7.1)。
+//  1. 生の分布で、最上位の確率に対する正答率と act 閾値での precision を測る
+//  2. precision が act 以上なら identity(= 生のまま act を許す印)で ok
+//  3. 足りなければ vector scaling を当てて測り直す。較正後に act 以上なら vector で ok、
+//     それでも足りなければ vector を返すが ok=false(書き戻しは --force が要る)
+func verifyTop(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibration, bool, error) {
+	// 報告は全ラベルで、当てる(FitVector / CV)のは正解の選択肢が分かっているラベルだけ。
+	// 部分ラベル("!edit" = edit ではなかった)は precision の評価には効くが、分布の学習には使えない。
+	ms := make([]calib.MultiSample, len(labels))
+	var fit []calib.MultiSample
+	partial := 0
+	for i, l := range labels {
+		ms[i] = calib.MultiSample{Raw: l.Raw, Truth: l.Truth, Weight: l.Weight}
+		if store.Partial(l.Truth) {
+			partial++
+		} else {
+			fit = append(fit, ms[i])
+		}
+	}
+	if partial > 0 {
+		fmt.Fprintf(stdout, "labels: %d full, %d partial (\"!option\"; used for precision, not for fitting)\n", len(fit), partial)
+	}
+	rawRep := topReport(sp, ms, nil)
+	fmt.Fprintf(stdout, "raw:        top-1 accuracy=%.3f brier(top)=%.4f ece(top)=%.4f\n", rawRep.acc, rawRep.brier, rawRep.ece)
+	printThresholdReport(sp.Thresholds, rawRep.pTop, rawRep.correct, rawRep.weights)
+	printReliability("top, raw", rawRep.pTop, rawRep.correct, rawRep.weights, bins)
+	printConfusion(rawRep.confusion)
+	identityOK := rawRep.precAct >= sp.Thresholds.Act
+	identity := spec.Calibration{Method: "identity", PrecisionAt: rawRep.precAct, Brier: rawRep.brier, ECE: rawRep.ece}
+
+	// vector は in-sample だと甘く見えるので、採否は k-fold CV の指標で決める。
+	v, err := calib.FitVector(fit)
+	if err != nil {
+		if identityOK {
+			fmt.Fprintf(stdout, "identity: raw precision at act %.3f >= act (vector scaling could not be fitted: %v)\n", rawRep.precAct, err)
+			return identity, true, nil
+		}
+		return spec.Calibration{}, false, fmt.Errorf("vector scaling: %w", err)
+	}
+	calRep := topReport(sp, ms, &v)
+	cvPrec, cvRec := crossValidateVector(sp, fit, 5)
+	fmt.Fprintf(stdout, "vector:     temperature=%.4f biases=%s\n", v.Temperature, fmtDist(v.Biases))
+	fmt.Fprintf(stdout, "calibrated: top-1 accuracy=%.3f brier(top)=%.4f ece(top)=%.4f (in-sample)\n", calRep.acc, calRep.brier, calRep.ece)
+	printThresholdReport(sp.Thresholds, calRep.pTop, calRep.correct, calRep.weights)
+	printReliability("top, calibrated", calRep.pTop, calRep.correct, calRep.weights, bins)
+	printConfusion(calRep.confusion)
+	fmt.Fprintf(stdout, "vector 5-fold CV at act: precision=%.3f recall=%.3f\n", cvPrec, cvRec)
+	vectorOK := cvPrec >= sp.Thresholds.Act
+	vector := spec.Calibration{
+		Method: "vector", Temperature: v.Temperature, Biases: v.Biases,
+		PrecisionAt: cvPrec, Brier: calRep.brier, ECE: calRep.ece,
+	}
+
+	// 選ぶ: precision@act を満たす候補のうち recall@act が高い方。同点なら単純な identity。
+	switch {
+	case identityOK && vectorOK && cvRec > rawRep.recAct:
+		fmt.Fprintf(stdout, "choose vector: both satisfy act; vector recall %.3f > identity recall %.3f\n", cvRec, rawRep.recAct)
+		return vector, true, nil
+	case identityOK:
+		fmt.Fprintf(stdout, "choose identity: raw precision at act %.3f >= act (recall %.3f)\n", rawRep.precAct, rawRep.recAct)
+		return identity, true, nil
+	case vectorOK:
+		fmt.Fprintf(stdout, "choose vector: CV precision at act %.3f >= act (identity was %.3f)\n", cvPrec, rawRep.precAct)
+		return vector, true, nil
+	default:
+		fmt.Fprintf(stdout, "WARNING: neither raw (%.3f) nor vector-calibrated (CV %.3f) precision at act reaches thresholds.act (%.2f): act must not be allowed for this model.\n", rawRep.precAct, cvPrec, sp.Thresholds.Act)
+		return vector, false, nil
+	}
+}
+
+// crossValidateVector は k-fold で vector を当て、外した fold での act 閾値の precision / recall を合算する。
+func crossValidateVector(sp *spec.Spec, ms []calib.MultiSample, k int) (precision, recall float64) {
+	if k < 2 || len(ms) < k {
+		return 0, 0
+	}
+	var tp, fp, fn float64
+	for fold := 0; fold < k; fold++ {
+		var train, test []calib.MultiSample
+		for i, s := range ms {
+			if i%k == fold {
+				test = append(test, s)
+			} else {
+				train = append(train, s)
+			}
+		}
+		v, err := calib.FitVector(train)
+		if err != nil {
+			continue
+		}
+		for _, s := range test {
+			top, p := argmax(v.Apply(s.Raw))
+			w := s.Weight
+			if w <= 0 {
+				w = 1
+			}
+			correct := top == s.Truth
+			switch {
+			case p >= sp.Thresholds.Act && correct:
+				tp += w
+			case p >= sp.Thresholds.Act && !correct:
+				fp += w
+			case correct:
+				fn += w
+			}
+		}
+	}
+	if tp+fp > 0 {
+		precision = tp / (tp + fp)
+	}
+	if tp+fn > 0 {
+		recall = tp / (tp + fn)
+	}
+	return precision, recall
+}
+
+// report は最上位の確率に対する指標の束。
+type report struct {
+	pTop      []float64
+	correct   []bool
+	weights   []float64
+	acc       float64
+	brier     float64
+	ece       float64
+	precAct   float64
+	recAct    float64
+	confusion map[string]map[string]float64
+}
+
+// topReport は(較正があれば当ててから)最上位の確率・正誤・混同表を集める。
+func topReport(sp *spec.Spec, ms []calib.MultiSample, v *calib.Vector) report {
+	r := report{
+		pTop: make([]float64, len(ms)), correct: make([]bool, len(ms)), weights: make([]float64, len(ms)),
+		confusion: map[string]map[string]float64{},
+	}
+	var hit, total float64
+	for i, s := range ms {
+		dist := s.Raw
+		if v != nil {
+			dist = v.Apply(s.Raw)
+		}
+		top, p, correct := judge(sp, dist, s.Truth)
+		w := s.Weight
+		if w <= 0 {
+			w = 1
+		}
+		r.pTop[i], r.correct[i], r.weights[i] = p, correct, w
+		if r.confusion[s.Truth] == nil {
+			r.confusion[s.Truth] = map[string]float64{}
+		}
+		r.confusion[s.Truth][top] += w
+		total += w
+		if r.correct[i] {
+			hit += w
+		}
+	}
+	if total > 0 {
+		r.acc = hit / total
+	}
+	r.brier = calib.Brier(r.pTop, r.correct, r.weights)
+	r.ece = calib.ECE(r.pTop, r.correct, r.weights, 10)
+	r.precAct = precisionAt(sp.Thresholds.Act, r.pTop, r.correct, r.weights)
+	r.recAct = recallAt(sp.Thresholds.Act, r.pTop, r.correct, r.weights)
+	return r
+}
+
+func recallAt(th float64, probs []float64, truths []bool, weights []float64) float64 {
+	var tp, fn float64
+	for i, p := range probs {
+		if !truths[i] {
+			continue
+		}
+		if p >= th {
+			tp += weights[i]
+		} else {
+			fn += weights[i]
+		}
+	}
+	if tp+fn == 0 {
+		return 0
+	}
+	return tp / (tp + fn)
+}
+
+func precisionAt(th float64, probs []float64, truths []bool, weights []float64) float64 {
+	var tp, fp float64
+	for i, p := range probs {
+		if p < th {
+			continue
+		}
+		if truths[i] {
+			tp += weights[i]
+		} else {
+			fp += weights[i]
+		}
+	}
+	if tp+fp == 0 {
+		return 0
+	}
+	return tp / (tp + fp)
+}
+
+func printConfusion(confusion map[string]map[string]float64) {
+	fmt.Fprintln(stdout, "confusion (truth → predicted):")
+	truths := make([]string, 0, len(confusion))
+	for t := range confusion {
+		truths = append(truths, t)
+	}
+	sort.Strings(truths)
+	for _, t := range truths {
+		fmt.Fprintf(stdout, "  %s: %s\n", t, fmtDist(confusion[t]))
+	}
+}
+
+// printThresholdReport は act / ask の閾値での precision / recall を出し、act での precision を返す。
+func printThresholdReport(t spec.Thresholds, probs []float64, truths []bool, weights []float64) float64 {
+	report := func(name string, th float64) float64 {
+		var tp, fp, fn float64
+		for i, p := range probs {
+			w := weights[i]
+			switch {
+			case p >= th && truths[i]:
+				tp += w
+			case p >= th && !truths[i]:
+				fp += w
+			case p < th && truths[i]:
+				fn += w
+			}
+		}
+		prec, rec := 0.0, 0.0
+		if tp+fp > 0 {
+			prec = tp / (tp + fp)
+		}
+		if tp+fn > 0 {
+			rec = tp / (tp + fn)
+		}
+		fmt.Fprintf(stdout, "at %s>=%.2f: precision=%.3f recall=%.3f (tp=%.0f fp=%.0f fn=%.0f)\n", name, th, prec, rec, tp, fp, fn)
+		return prec
+	}
+	precAct := report("act", t.Act)
+	report("ask", t.Ask)
+	return precAct
+}
+
+func printReliability(name string, probs []float64, truths []bool, weights []float64, bins int) {
+	fmt.Fprintf(stdout, "reliability (%s):\n", name)
+	for _, b := range calib.Reliability(probs, truths, weights, bins) {
+		if b.N > 0 {
+			fmt.Fprintf(stdout, "  [%.1f,%.1f) n=%4.0f conf=%.3f acc=%.3f\n", b.Lo, b.Hi, b.N, b.Confidence, b.Accuracy)
+		}
+	}
+}
+
+func argmax(m map[string]float64) (string, float64) {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	best, bp := "", -1.0
+	for _, k := range keys {
+		if m[k] > bp {
+			best, bp = k, m[k]
+		}
+	}
+	return best, bp
+}
+
+// ---------------------------------------------------------------- hash / helpers
+
+func cmdHash(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: shikii hash <spec.yaml>")
+	}
+	sp, err := spec.Load(args[0])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, sp.Hash())
+	return nil
+}
+
+// ---------------------------------------------------------------- check(契約の検査、設計 §8)
+
+// cmdCheck は spec の較正ブロックが今も有効かを調べる。CI で回す前提で、違反があれば exit 1。
+//   - 較正の spec_hash が現在のハッシュと一致する(文言を変えたのに定数を据え置いていない)
+//   - 較正は手で書かれていない(method が既知で、鍵が揃っている)
+//   - ラベル(store + eval.labeled の raw 行)で、較正後の act 閾値での precision が act 以上
+//   - noul は正負が逆転していない
+func cmdCheck(args []string) error {
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	storeDir := bindStore(fs)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() == 0 {
+		return fmt.Errorf("usage: shikii check <spec.yaml>...")
+	}
+	var violations int
+	for _, path := range fs.Args() {
+		sp, err := spec.Load(path)
+		if err != nil {
+			fmt.Fprintf(stdout, "FAIL %s: %v\n", path, err)
+			violations++
+			continue
+		}
+		for _, v := range checkSpec(sp, store.Store{Dir: *storeDir}) {
+			fmt.Fprintf(stdout, "FAIL %s: %s\n", sp.ID, v)
+			violations++
+		}
+		fmt.Fprintf(stdout, "ok   %s hash=%s calibrations=%d\n", sp.ID, sp.Hash(), len(sp.Calibration))
+	}
+	if violations > 0 {
+		return fmt.Errorf("check: %d violation(s)", violations)
+	}
+	return nil
+}
+
+// checkSpec は 1 spec の違反を列挙する。
+func checkSpec(sp *spec.Spec, st store.Store) []string {
+	var out []string
+	h := sp.Hash()
+	for _, c := range sp.Calibration {
+		key := fmt.Sprintf("calibration(model=%s)", c.Model)
+		if c.SpecHash != h {
+			out = append(out, fmt.Sprintf("%s: stale spec_hash %s (current %s): the question/template/options changed after calibration; re-run calibrate", key, c.SpecHash, h))
+			continue
+		}
+		switch c.Method {
+		case "identity":
+		case "platt":
+			if sp.Type != spec.Noul || c.Temperature <= 0 {
+				out = append(out, key+": platt requires noul and temperature > 0")
+				continue
+			}
+		case "vector":
+			if sp.Type == spec.Noul || c.Temperature <= 0 {
+				out = append(out, key+": vector requires choice/score and temperature > 0")
+				continue
+			}
+		default:
+			out = append(out, fmt.Sprintf("%s: unknown method %q (calibration blocks are generated, not hand-written)", key, c.Method))
+			continue
+		}
+		labels, err := collectLabels(sp, st, c.Model, c.FittedOn)
+		if err != nil {
+			out = append(out, key+": "+err.Error())
+			continue
+		}
+		if len(labels) == 0 {
+			out = append(out, key+": no labels to verify against (store or eval.labeled)")
+			continue
+		}
+		prec, inverted := evaluateCalibration(sp, c, labels)
+		if prec < sp.Thresholds.Act {
+			out = append(out, fmt.Sprintf("%s: precision at act is %.3f < thresholds.act %.2f on %d labels", key, prec, sp.Thresholds.Act, len(labels)))
+		}
+		if inverted {
+			out = append(out, key+": positives and negatives overlap on Δ; a monotone calibration cannot separate them")
+		}
+	}
+	return out
+}
+
+// collectLabels は store のラベルと、eval.labeled の raw 付き行(noul)を合わせる。モデルは呼ばない。
+// raw 付き行はどのモデルの確率か分からないので、その較正が同じファイルで当てられた(fitted_on が一致する)時だけ使う。
+func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]store.Label, error) {
+	labels, err := st.Labels(sp.ID, sp.Hash(), model)
+	if err != nil {
+		return nil, err
+	}
+	if sp.Eval.Labeled == "" || sp.Eval.Labeled != fittedOn {
+		return labels, nil
+	}
+	b, err := os.ReadFile(sp.Eval.Labeled)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return labels, nil
+		}
+		return nil, err
+	}
+	var rows []labeled
+	if err := json.Unmarshal(b, &rows); err != nil {
+		return nil, fmt.Errorf("%s: %w", sp.Eval.Labeled, err)
+	}
+	for _, r := range rows {
+		if r.Raw == nil || sp.Type != spec.Noul {
+			continue // モデルを呼ばないと分からない行は check では使わない
+		}
+		truth, err := parseTruth(sp.Type, r.Truth)
+		if err != nil {
+			return nil, err
+		}
+		w := r.Weight
+		if w <= 0 {
+			w = 1
+		}
+		labels = append(labels, store.Label{SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Model: model,
+			Raw: map[string]float64{"yes": *r.Raw, "no": 1 - *r.Raw}, Truth: truth, Weight: w, Source: "file"})
+	}
+	return labels, nil
+}
+
+// evaluateCalibration は較正を当てた上で act 閾値での precision を出す。noul は逆転も見る。
+func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label) (precision float64, inverted bool) {
+	probs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
+	switch sp.Type {
+	case spec.Noul:
+		pl := calib.Platt{Bias: c.Bias, Temperature: c.Temperature}
+		samples := make([]calib.Sample, len(labels))
+		for i, l := range labels {
+			d := calib.Logit(l.Raw["yes"])
+			samples[i] = calib.Sample{Delta: d, Truth: l.Truth == "yes", Weight: l.Weight}
+			p := l.Raw["yes"]
+			if c.Method == "platt" {
+				p = pl.Apply(d)
+			}
+			probs[i], truths[i], weights[i] = p, l.Truth == "yes", l.Weight
+		}
+		inverted = calib.CheckSeparation(samples).Inverted
+	default:
+		for i, l := range labels {
+			dist := l.Raw
+			if c.Method == "vector" {
+				dist = calib.Vector{Temperature: c.Temperature, Biases: c.Biases}.Apply(l.Raw)
+			}
+			_, p, correct := judge(sp, dist, l.Truth)
+			probs[i], truths[i], weights[i] = p, correct, l.Weight
+		}
+	}
+	return precisionAt(sp.Thresholds.Act, probs, truths, weights), inverted
+}
+
+// judge は 1 ラベルの「帯に使う確率」と「その答えが正しかったか」。
+//   - choice: 最上位の確率、正解は top == truth("!x" は x 以外)
+//   - score で thresholds.level あり: P(level ≥ k)、正解は truth のレベル ≥ k(事象が起きたか)
+//   - score で level なし: choice と同じ
+func judge(sp *spec.Spec, dist map[string]float64, truth string) (top string, p float64, correct bool) {
+	top, p = argmax(dist)
+	if sp.Type == spec.Score && sp.Thresholds.Level > 0 && !store.Partial(truth) {
+		p = decide.MassAtOrAbove(dist, sp.Thresholds.Level)
+		lvl, err := strconv.Atoi(truth)
+		return top, p, err == nil && lvl >= sp.Thresholds.Level
+	}
+	return top, p, store.Correct(top, truth)
+}
+
+// ---------------------------------------------------------------- drift(劣化の監視、設計 §9)
+
+// cmdDrift は直近 N 件のラベルで、較正時の Brier と act での precision がどれだけ悪化したかを見る。
+// 較正時の Brier から +0.05 以上悪化、または precision が act を割ったら警告して exit 1。
+func cmdDrift(args []string) error {
+	fs := flag.NewFlagSet("drift", flag.ContinueOnError)
+	storeDir := bindStore(fs)
+	model := fs.String("model", "", "較正の鍵になっているモデル名(必須)")
+	window := fs.Int("window", 50, "直近何件を見るか")
+	tol := fs.Float64("tolerance", 0.05, "Brier の悪化をどこまで許すか")
+	path, err := parseSpecPath(fs, args)
+	if err != nil {
+		return err
+	}
+	if *model == "" {
+		return fmt.Errorf("drift: --model is required")
+	}
+	sp, err := spec.Load(path)
+	if err != nil {
+		return err
+	}
+	c := sp.CalibrationFor(*model)
+	if c == nil {
+		return fmt.Errorf("drift: no current calibration for model %s (hash %s); nothing to drift from", *model, sp.Hash())
+	}
+	labels, err := (store.Store{Dir: *storeDir}).Labels(sp.ID, sp.Hash(), *model)
+	if err != nil {
+		return err
+	}
+	if len(labels) == 0 {
+		return fmt.Errorf("drift: no labels in store for (hash=%s, model=%s)", sp.Hash(), *model)
+	}
+	sort.Slice(labels, func(i, j int) bool { return labels[i].At.Before(labels[j].At) })
+	if len(labels) > *window {
+		labels = labels[len(labels)-*window:]
+	}
+	prec, brier, agree := driftMetrics(sp, *c, labels)
+	fmt.Fprintf(stdout, "spec=%s model=%s window=%d (calibrated %s on n=%d)\n", sp.ID, *model, len(labels), c.FittedAt, c.N)
+	fmt.Fprintf(stdout, "brier:            at calibration=%.4f recent=%.4f\n", c.Brier, brier)
+	fmt.Fprintf(stdout, "precision at act: recent=%.3f (act=%.2f)\n", prec, sp.Thresholds.Act)
+	fmt.Fprintf(stdout, "ask agreement:    %.3f (share of ask-sourced labels where the user picked the model's top)\n", agree)
+	var warn []string
+	if brier > c.Brier+*tol {
+		warn = append(warn, fmt.Sprintf("brier worsened by %.4f (> %.2f)", brier-c.Brier, *tol))
+	}
+	if prec < sp.Thresholds.Act {
+		warn = append(warn, fmt.Sprintf("precision at act %.3f < %.2f", prec, sp.Thresholds.Act))
+	}
+	if len(warn) > 0 {
+		fmt.Fprintln(stdout, "WARNING: "+strings.Join(warn, "; ")+". Re-run calibrate, or drop act to ask for this model.")
+		return fmt.Errorf("drift: %d warning(s)", len(warn))
+	}
+	fmt.Fprintln(stdout, "ok")
+	return nil
+}
+
+// driftMetrics は較正を当てた直近ラベルの precision@act・Brier・ask での一致率。
+func driftMetrics(sp *spec.Spec, c spec.Calibration, labels []store.Label) (precision, brier, askAgreement float64) {
+	probs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
+	var askN, askHit float64
+	for i, l := range labels {
+		var p float64
+		var correct bool
+		if sp.Type == spec.Noul {
+			p = l.Raw["yes"]
+			if c.Method == "platt" {
+				p = calib.Platt{Bias: c.Bias, Temperature: c.Temperature}.Apply(calib.Logit(p))
+			}
+			correct = l.Truth == "yes"
+		} else {
+			dist := l.Raw
+			if c.Method == "vector" {
+				dist = calib.Vector{Temperature: c.Temperature, Biases: c.Biases}.Apply(l.Raw)
+			}
+			_, p, correct = judge(sp, dist, l.Truth)
+		}
+		probs[i], truths[i], weights[i] = p, correct, l.Weight
+		if l.Source == "ask" {
+			askN += l.Weight
+			if correct {
+				askHit += l.Weight
+			}
+		}
+	}
+	if askN > 0 {
+		askAgreement = askHit / askN
+	}
+	return precisionAt(sp.Thresholds.Act, probs, truths, weights), calib.Brier(probs, truths, weights), askAgreement
+}
+
+// ---------------------------------------------------------------- bias(順序バイアスの測定)
+
+// cmdBias は choice の選択肢の並びを入れ替えて同じ state を聞き直し、答えが並びでどれだけ動くかを測る。
+//   - flip rate: 並びを変えたら最上位が変わった割合
+//   - mean |Δp|: 選択肢ごとの確率の動き
+//   - position mass: 並びの位置ごとの平均確率(位置に偏りがあれば「先頭に寄る」等が見える)
+//
+// 記録も較正もしない。生成しないモデルなので順列を回すのは安い。
+func cmdBias(args []string) error {
+	fs := flag.NewFlagSet("bias", flag.ContinueOnError)
+	var ef endpointFlags
+	ef.bind(fs)
+	labeledPath := fs.String("labeled", "", "state を取る元(省略時は spec の eval.labeled)")
+	rows := fs.Int("rows", 20, "使う行数の上限")
+	perms := fs.Int("permutations", 5, "行ごとに回す順列の数")
+	seed := fs.Int64("seed", 1, "順列の乱数の種")
+	path, err := parseSpecPath(fs, args)
+	if err != nil {
+		return err
+	}
+	sp, err := spec.Load(path)
+	if err != nil {
+		return err
+	}
+	if sp.Type != spec.Choice {
+		return fmt.Errorf("bias: only choice has an option order (spec type is %s)", sp.Type)
+	}
+	if *labeledPath == "" {
+		*labeledPath = sp.Eval.Labeled
+	}
+	if *labeledPath == "" {
+		return fmt.Errorf("bias: need --labeled (or eval.labeled) for states")
+	}
+	b, err := os.ReadFile(*labeledPath)
+	if err != nil {
+		return err
+	}
+	var lab []labeled
+	if err := json.Unmarshal(b, &lab); err != nil {
+		return fmt.Errorf("%s: %w", *labeledPath, err)
+	}
+	if len(lab) > *rows {
+		lab = lab[:*rows]
+	}
+	ep := decide.PickEndpoint(sp, decide.Session{Tainted: ef.tainted}, ef.endpoints())
+	if ep == nil {
+		return fmt.Errorf("bias: no permitted endpoint")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	rep, model, err := measureBias(ctx, sp, lab, ep.Client, *perms, *seed)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s rows=%d permutations=%d queries=%d\n", sp.ID, sp.Hash(), model, rep.rows, *perms, rep.queries)
+	fmt.Fprintf(stdout, "flip rate (top changes with order): %.3f (%d/%d)\n", rep.flipRate, rep.flips, rep.compared)
+	fmt.Fprintln(stdout, "mean |Δp| by option:")
+	for _, o := range sp.Options {
+		fmt.Fprintf(stdout, "  %-16s %.3f\n", o.ID, rep.meanAbsDelta[o.ID])
+	}
+	fmt.Fprintln(stdout, "mean Δp by position vs spec order (1 = listed first; + means that slot gets extra probability):")
+	for i, m := range rep.positionMass {
+		fmt.Fprintf(stdout, "  pos %d: %+.3f\n", i+1, m)
+	}
+	fmt.Fprintf(stdout, "position shift spread (max−min): %.3f\n", rep.positionSpread)
+	if rep.flipRate > 0.10 || rep.positionSpread > 0.10 {
+		fmt.Fprintln(stdout, "WARNING: the answer depends on option order. Shuffle options at query time or average over permutations before trusting act.")
+		return fmt.Errorf("bias: order sensitivity above tolerance")
+	}
+	fmt.Fprintln(stdout, "ok")
+	return nil
+}
+
+type biasReport struct {
+	rows, queries, flips, compared int
+	flipRate                       float64
+	meanAbsDelta                   map[string]float64
+	positionMass                   []float64
+	positionSpread                 float64
+}
+
+// measureBias は行ごとに spec の並び + N 個の順列で聞き、並びによる揺れを集計する。
+func measureBias(ctx context.Context, sp *spec.Spec, lab []labeled, c *systemone.Client, perms int, seed int64) (biasReport, string, error) {
+	K := len(sp.Options)
+	rep := biasReport{meanAbsDelta: map[string]float64{}, positionMass: make([]float64, K)}
+	posN := make([]float64, K)
+	sumAbs := map[string]float64{}
+	var nAbs float64
+	rng := rand.New(rand.NewSource(seed))
+	model := ""
+	canonical := make([]int, K)
+	for i := range canonical {
+		canonical[i] = i
+	}
+	// 位置の偏りは「その位置に置かれた選択肢の確率が、spec の並びで聞いた時からどれだけ動いたか」で測る。
+	// 位置ごとの平均確率そのものだと、どの選択肢が偶然その位置に来たかに引きずられる。
+	addPos := func(order []int, dist, base map[string]float64) {
+		for pos, idx := range order {
+			id := sp.Options[idx].ID
+			rep.positionMass[pos] += dist[id] - base[id]
+			posN[pos]++
+		}
+	}
+	for _, r := range lab {
+		state, missing := sp.Render(r.Inputs)
+		if len(missing) > 0 {
+			continue
+		}
+		base, m, err := decide.AskOrdered(ctx, sp, state, canonical, c)
+		if err != nil {
+			return rep, "", err
+		}
+		model = m
+		rep.rows++
+		rep.queries++
+		baseTop, _ := argmax(base)
+		for p := 0; p < perms; p++ {
+			order := rng.Perm(K)
+			dist, _, err := decide.AskOrdered(ctx, sp, state, order, c)
+			if err != nil {
+				return rep, "", err
+			}
+			rep.queries++
+			rep.compared++
+			addPos(order, dist, base)
+			if top, _ := argmax(dist); top != baseTop {
+				rep.flips++
+			}
+			for _, o := range sp.Options {
+				sumAbs[o.ID] += math.Abs(dist[o.ID] - base[o.ID])
+			}
+			nAbs++
+		}
+	}
+	if rep.compared > 0 {
+		rep.flipRate = float64(rep.flips) / float64(rep.compared)
+	}
+	for _, o := range sp.Options {
+		if nAbs > 0 {
+			rep.meanAbsDelta[o.ID] = sumAbs[o.ID] / nAbs
+		}
+	}
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for i := range rep.positionMass {
+		if posN[i] > 0 {
+			rep.positionMass[i] /= posN[i]
+		}
+		lo, hi = math.Min(lo, rep.positionMass[i]), math.Max(hi, rep.positionMass[i])
+	}
+	if K > 0 {
+		rep.positionSpread = hi - lo
+	}
+	return rep, model, nil
+}
+
+// ---------------------------------------------------------------- status(店の棚卸し)
+
+// cmdStatus は store と spec を突き合わせて、判定ごとの記録・ラベルの数、ラベルの出どころと中身の偏り、
+// 較正の有無と鍵の一致を 1 画面に出す。運用で最初に見る画面。モデルも外部も呼ばない。
+func cmdStatus(args []string) error {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	storeDir := bindStore(fs)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	st := store.Store{Dir: *storeDir}
+	specs := map[string]*spec.Spec{}
+	for _, path := range fs.Args() {
+		sp, err := spec.Load(path)
+		if err != nil {
+			return err
+		}
+		specs[sp.ID] = sp
+	}
+	ids, err := st.SpecIDs()
+	if err != nil {
+		return err
+	}
+	for id := range specs {
+		if !containsString(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	if len(ids) == 0 {
+		fmt.Fprintln(stdout, "no records, no labels, no specs")
+		return nil
+	}
+	for _, id := range ids {
+		recs, labs, err := st.Counts(id)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "%s: records=%d labels=%d\n", id, recs, len(labs))
+		byKey := map[string]int{}
+		bySource := map[string]int{}
+		byTruth := map[string]int{}
+		var last time.Time
+		for _, l := range labs {
+			byKey[l.Model+" @ "+l.SpecHash]++
+			bySource[l.Source]++
+			byTruth[l.Truth]++
+			if l.At.After(last) {
+				last = l.At
+			}
+		}
+		if len(labs) > 0 {
+			fmt.Fprintf(stdout, "  last label: %s\n", last.Format("2006-01-02 15:04"))
+			fmt.Fprintf(stdout, "  by source: %s\n", fmtCounts(bySource))
+			fmt.Fprintf(stdout, "  by truth:  %s\n", fmtCounts(byTruth))
+		}
+		sp := specs[id]
+		for key, n := range byKey {
+			note := ""
+			if sp != nil {
+				parts := strings.SplitN(key, " @ ", 2)
+				switch {
+				case parts[1] != sp.Hash():
+					note = "  (stale hash: spec wording changed since; not used)"
+				case sp.CalibrationFor(parts[0]) != nil:
+					note = "  calibrated: " + sp.CalibrationFor(parts[0]).Method
+				case n >= sp.Eval.MinN:
+					note = fmt.Sprintf("  ready to calibrate (>= min_n %d)", sp.Eval.MinN)
+				default:
+					note = fmt.Sprintf("  collecting (%d/%d)", n, sp.Eval.MinN)
+				}
+			}
+			fmt.Fprintf(stdout, "  %-50s %4d%s\n", key, n, note)
+		}
+		if sp == nil {
+			fmt.Fprintln(stdout, "  (spec not given; pass its path to see calibration state)")
+		}
+	}
+	return nil
+}
+
+// cmdGC は「古くてラベルの無い記録」を店じまいする。ラベル付きの記録とラベルは年齢に関係なく残す(較正の材料)。
+// 既定は表示だけ。--apply を付けた時だけ書き換える。
+func cmdGC(args []string) error {
+	fs := flag.NewFlagSet("gc", flag.ContinueOnError)
+	storeDir := bindStore(fs)
+	olderThan := fs.String("older-than", "30d", "この年齢より古く、ラベルの無い記録を消す(例 30d, 12h, 1w。0 なら年齢を問わない)")
+	apply := fs.Bool("apply", false, "実際に消す。無ければ数えるだけ")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	age, err := parseAge(*olderThan)
+	if err != nil {
+		return err
+	}
+	st := store.Store{Dir: *storeDir}
+	var ids []string
+	for _, path := range fs.Args() {
+		sp, err := spec.Load(path)
+		if err != nil {
+			return err
+		}
+		ids = append(ids, sp.ID)
+	}
+	if len(ids) == 0 {
+		if ids, err = st.SpecIDs(); err != nil {
+			return err
+		}
+	}
+	sort.Strings(ids)
+	cutoff := time.Now().Add(-age)
+	total := 0
+	for _, id := range ids {
+		res, err := st.GC(id, cutoff, *apply)
+		if err != nil {
+			return fmt.Errorf("gc %s: %w", id, err)
+		}
+		verb := "would remove"
+		if *apply {
+			verb = "removed"
+		}
+		fmt.Fprintf(stdout, "%s: %s %d unlabeled record(s) older than %s; keep %d labeled, %d recent, %d unparsable\n",
+			id, verb, res.Removed, *olderThan, res.KeptLabeled, res.KeptRecent, res.KeptUnparsed)
+		total += res.Removed
+	}
+	if !*apply && total > 0 {
+		fmt.Fprintln(stdout, "dry run: nothing was changed. Re-run with --apply to remove them.")
+	}
+	return nil
+}
+
+// parseAge は "30d" "1w" "12h" のような年齢。time.ParseDuration は d と w を知らないので先に換える。負は拒む。
+func parseAge(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, errors.New("--older-than needs a value such as 30d, 12h or 0")
+	}
+	if s == "0" {
+		return 0, nil
+	}
+	var d time.Duration
+	var err error
+	switch {
+	case strings.HasSuffix(s, "d"):
+		d, err = scaledDuration(strings.TrimSuffix(s, "d"), 24*time.Hour)
+	case strings.HasSuffix(s, "w"):
+		d, err = scaledDuration(strings.TrimSuffix(s, "w"), 7*24*time.Hour)
+	default:
+		d, err = time.ParseDuration(s)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("--older-than %q: use a duration such as 30d, 1w, 12h or 0", s)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("--older-than %q: must not be negative", s)
+	}
+	return d, nil
+}
+
+func scaledDuration(num string, unit time.Duration) (time.Duration, error) {
+	n, err := strconv.ParseFloat(num, 64)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(n * float64(unit)), nil
+}
+
+func fmtCounts(m map[string]int) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", k, m[k]))
+	}
+	return strings.Join(parts, " ")
+}
+
+func containsString(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// parseSpecPath は「<spec.yaml> フラグ…」と「フラグ… <spec.yaml>」の両方を受ける。
+func parseSpecPath(fs *flag.FlagSet, args []string) (string, error) {
+	var path string
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		path, args = args[0], args[1:]
+	}
+	if err := fs.Parse(args); err != nil {
+		return "", err
+	}
+	if path == "" {
+		if fs.NArg() != 1 {
+			return "", fmt.Errorf("spec path is required")
+		}
+		path = fs.Arg(0)
+	}
+	return path, nil
+}
+
+func fmtDist(m map[string]float64) string {
+	b, _ := json.Marshal(m)
+	return string(b)
+}

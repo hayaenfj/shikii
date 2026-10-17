@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 600" width="1600" height="600" role="img" aria-label="shikii: a model gives you a probability, shikii tells you whether you may act on it">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E1424"/>
+      <stop offset="1" stop-color="#050810"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#2A3147"/>
+      <stop offset="0.60" stop-color="#2A3147"/>
+      <stop offset="0.60" stop-color="#4B5B82"/>
+      <stop offset="0.75" stop-color="#4B5B82"/>
+      <stop offset="0.75" stop-color="#F5B700"/>
+      <stop offset="1" stop-color="#FFD54F"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 H0 V40" fill="none" stroke="#FFFFFF" stroke-opacity="0.04"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="600" fill="url(#bg)"/>
+  <rect width="1600" height="600" fill="url(#grid)"/>
+
+  <!-- giant 閾 watermark -->
+  <text x="1180" y="540" text-anchor="middle" font-family="'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif" font-size="640" fill="#FFFFFF" fill-opacity="0.04">閾</text>
+
+  <!-- wordmark -->
+  <g font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif">
+    <text x="110" y="250" font-size="150" font-weight="700" letter-spacing="-6" fill="#F2F5FA">shikii</text>
+    <text x="118" y="310" font-size="30" font-weight="400" letter-spacing="6" fill="#8FA3C8">閾 · THRESHOLD · DECISION MODEL OPERATIONS</text>
+    <text x="118" y="400" font-size="40" font-weight="500" fill="#F2F5FA">A model gives you a probability.</text>
+    <text x="118" y="456" font-size="40" font-weight="700" fill="#F5B700">shikii tells you whether you may act on it.</text>
+    <text x="118" y="520" font-size="22" fill="#5B6B8C">define → decide → record → label → calibrate → check → drift</text>
+  </g>
+
+  <!-- probability bar with bands -->
+  <g transform="translate(1180,0)">
+    <rect x="120" y="90" width="48" height="420" rx="24" fill="url(#bar)"/>
+    <!-- thresholds -->
+    <line x1="100" y1="195" x2="300" y2="195" stroke="#F5B700" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
+    <line x1="100" y1="258" x2="300" y2="258" stroke="#8FA3C8" stroke-width="3" stroke-linecap="round" stroke-dasharray="8 8"/>
+    <g font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="22">
+      <text x="190" y="135" fill="#F5B700" font-weight="700">act</text>
+      <text x="190" y="188" fill="#F5B700" font-size="18">≥ 0.75, only if calibrated</text>
+      <text x="190" y="232" fill="#C7D2E8" font-weight="700">ask</text>
+      <text x="190" y="290" fill="#8FA3C8" font-size="18">≥ 0.60, a human decides</text>
+      <text x="190" y="440" fill="#5B6B8C" font-weight="700">discard</text>
+      <text x="190" y="100" fill="#5B6B8C" font-size="16">1.0</text>
+      <text x="190" y="515" fill="#5B6B8C" font-size="16">0.0</text>
+    </g>
+    <!-- the probability the model returned -->
+    <circle cx="144" cy="170" r="16" fill="#050810" stroke="#F2F5FA" stroke-width="4"/>
+    <circle cx="144" cy="170" r="6" fill="#F2F5FA"/>
+  </g>
+</svg>

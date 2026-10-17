@@ -1,0 +1,37 @@
+# 例(ロボット・ドローン): 着陸を中止すべきか(はい/いいえ)。
+# この例は「答え合わせが済むまで自動で動かない」を説明するためのもの。
+#   act     = 自動で中止(上昇して待機)。較正が書かれ、act での precision が確かめられた後にだけ出る
+#   ask     = 操縦者に警告を出して判断を仰ぐ。較正が無いうちは、どんなに確率が高くてもここ止まり
+#   discard = 何もしない(着陸を続ける)
+#   abstain = 入力が欠けている(センサーの要約が無い)。判定していない
+# state には機体のテレメトリの要約(文)を入れる。確率は shikii が計算するのではなく、つないだ決定モデルが返す。
+# 実機に使うなら、眼前の安全装置(高度・障害物センサーの割り込み)とは別の層に置くこと。これはその代わりにはならない。
+id: drone-landing-abort
+version: 1
+type: noul
+
+question: |
+  Given this telemetry summary during final approach, should the landing be aborted now
+  (climb and hold) rather than continued? Answer "yes" when continuing is likely unsafe:
+  obstacle or person in the landing zone, unstable attitude, drifting position, degraded GPS or wind beyond limits.
+  Answer "no" when the approach is nominal or the anomaly is minor and already corrected.
+
+state:
+  template: |
+    Altitude AGL: {{ altitude_m }} m, descent rate {{ descent_mps }} m/s
+    Position error vs pad: {{ position_error_m }} m, drift {{ drift_mps }} m/s
+    Wind: {{ wind_mps }} m/s, gusts {{ gust_mps }} m/s
+    GPS: {{ gps_status }}; attitude: {{ attitude }}
+    Landing zone camera: {{ zone_observation }}
+  required: [altitude_m, descent_mps, position_error_m, drift_mps, wind_mps, gust_mps, gps_status, attitude, zone_observation]
+
+policy:
+  send_to: [local]            # 現場の機器から外の API には出さない
+  pii: never
+
+thresholds:
+  act: 0.90                   # 自動中止。高めに置く。較正済みでなければ出ない
+  ask: 0.40                   # 操縦者に警告。低めに置いて取りこぼしを減らす
+
+eval:
+  min_n: 100                  # 記録した着陸と、操縦者が実際に中止したかどうかの対応から正解を作る

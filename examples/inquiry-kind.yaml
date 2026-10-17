@@ -1,0 +1,36 @@
+# 例(ビジネス): 問い合わせの種類(5 択)。受付の振り分けに使う。較正ブロックは無い状態から始める。
+id: inquiry-kind
+version: 1
+type: choice
+
+question: |
+  The state is a message a customer sent to a support desk. What is the customer asking for?
+  Pick the closest kind even when the message is short or mixes several things.
+
+options:
+  - id: order_status
+    description: Where is my order, delivery delay, tracking, address change for an order already placed.
+  - id: billing
+    description: Charges, invoices, receipts, refunds, double billing, plan or subscription changes.
+  - id: account_access
+    description: Cannot log in, password reset, two-factor codes, account deletion, data export.
+  - id: product_question
+    description: How a product or feature works, sizes, compatibility, availability, shipping regions - before or after buying.
+  - id: complaint
+    description: Damaged or wrong item, service quality, unwanted emails, a request to escalate.
+
+state:
+  template: |
+    {{ message }}
+  required: [message]
+
+policy:
+  send_to: [local]            # 問い合わせ本文には個人情報が入り得る。手元の AI だけに送る
+  pii: possible               # 記録に本文は残さない(ハッシュだけ)
+
+thresholds:
+  act: 0.80                   # 自動で振り分ける。較正済みの時だけ
+  ask: 0.55                   # 担当者に候補を見せて選んでもらう。それ未満は「その他」の列に
+
+eval:
+  min_n: 50

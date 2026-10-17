@@ -1,0 +1,22 @@
+name: test
+on:
+  push:
+  pull_request:
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go build -o bin/shikii ./cmd/shikii && go build -o bin/fake-systemone ./cmd/fake-systemone && go build -o bin/shikii-readout ./cmd/readout
+      # 契約の検査: spec の較正ブロックが今の文言と合い、act での precision が足りているか。
+      # 裏付けのラベルは testdata/store/labels/(較正を書いた時のものを写した。入力はハッシュだけ)
+      - run: bin/shikii check --store testdata/store decisions/*.yaml
+      # 偽モデルで輪が一周するか
+      - run: scripts/demo.sh > /tmp/demo.log && tail -5 /tmp/demo.log
+      # README: 言語切替行と docs/readme/ の対応、各言語版の先頭行、相対リンクの実在
+      - run: scripts/check-readme.sh

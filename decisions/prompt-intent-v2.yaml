@@ -1,0 +1,67 @@
+# prompt-intent の文言実験(2026-10-16)。v1 では誤り 21/66 のうち 19 件が other に吸われた。
+# 較正では順位の誤りは直らないので、選択肢の説明を具体化し、other を「依頼ではないもの」に限定する。
+# 同じ testdata/prompt-intent-labeled.json で v1 と生の精度を比べた: top-1 0.682 → 0.903。
+id: prompt-intent
+version: 2
+type: choice
+question: |
+  The state is a message a user sent to a coding assistant. What is the user asking the assistant to do?
+  Short messages like "fix it" or "why?" are still requests; pick the closest request type.
+options:
+  - id: change_request
+    description: Change something in the repository - edit, fix, add, remove, rename, refactor, write tests or docs. Includes terse commands like "fix the typo" or "直して".
+  - id: question
+    description: Explain, investigate, compare or give an opinion, without changing anything. Includes "why", "what does this do", "where is", "調べて".
+  - id: review
+    description: Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality.
+  - id: operation
+    description: Run or operate something without editing code - run tests, build, commit, push, deploy, restart, install, show logs.
+  - id: other
+    description: Not a request at all - greetings, thanks, acknowledgements ("ok", "了解"), small talk, or ending the session.
+state:
+  template: |
+    {{ message }}
+  required: [message]
+policy:
+  send_to: [hosted, local]
+  pii: never
+thresholds:
+  act: 0.75
+  ask: 0.60
+eval:
+  labeled: testdata/prompt-intent-labeled.json
+  min_n: 50
+# 較正ブロックは `shikii calibrate --write` が生成する。手で書かない。
+calibration:
+  - model: ggml-org/Kev-4B-GGUF:Q4_K_M
+    spec_hash: df1367887c4970a7
+    method: vector
+    temperature: 0.44894918617400287
+    biases:
+      change_request: -0.36401015048582736
+      operation: 0.587543414864858
+      other: -0.5348494885571329
+      question: -0.06151837617222262
+      review: 0.37283460035032495
+    precision_at_act: 0.9629629629629629
+    fitted_on: testdata/prompt-intent-labeled.json
+    "n": 62
+    brier: 0.046888433844563024
+    ece: 0.04970909658127454
+    fitted_at: "2026-10-16"
+  - model: ternary-bonsai-2-27b
+    spec_hash: df1367887c4970a7
+    method: vector
+    temperature: 0.6476247912548807
+    biases:
+      change_request: -0.9561972502792933
+      operation: -0.5266943867505005
+      other: 0.6100832685021256
+      question: -0.3029058663577843
+      review: 1.1757142348854523
+    precision_at_act: 0.9824561403508771
+    fitted_on: testdata/prompt-intent-labeled.json
+    "n": 62
+    brier: 0.01564234238521169
+    ece: 0.04583037754973626
+    fitted_at: "2026-10-17"

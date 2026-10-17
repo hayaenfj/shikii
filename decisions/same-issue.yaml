@@ -1,0 +1,48 @@
+# 不具合報告の重複判定: 2 つの報告が同じ不具合か。はい/いいえ(noul)の例。較正ブロックは `shikii calibrate --write` が生成する。
+id: same-issue
+version: 1
+type: noul
+question: |
+  Do these two bug reports describe the same underlying defect
+  (one is a duplicate of the other, or both are symptoms of the same root cause)?
+  Answer "no" if they merely concern the same screen, feature or technology.
+state:
+  template: |
+    Report 1: {{ report1 }}
+
+    Report 2: {{ report2 }}
+  required: [report1, report2]
+policy:
+  send_to: [local, hosted]
+  pii: possible
+thresholds:
+  act: 0.70
+  ask: 0.50
+eval:
+  # 較正用の 32 組(作り物、日本語): 同じ不具合 12、別の不具合 12、同じ画面や機能だが別の不具合 8(境界。false に重み 0.5)
+  labeled: testdata/same-issue-labeled.json
+  min_n: 20
+# 較正ブロックは `shikii calibrate --write` が生成する。手で書かない。
+calibration:
+  - model: ggml-org/Kev-4B-GGUF:Q4_K_M
+    spec_hash: 39e5d9072ae0c8c2
+    method: platt
+    bias: -0.40408618678950053
+    temperature: 0.8737206997496267
+    precision_at_act: 1
+    fitted_on: testdata/same-issue-labeled.json
+    "n": 32
+    brier: 0.03135395650200396
+    ece: 0.09488364359184301
+    fitted_at: "2026-10-17"
+  - model: ternary-bonsai-27b-q2g64+state-last
+    spec_hash: 39e5d9072ae0c8c2
+    method: platt
+    bias: -1.0298694759988787
+    temperature: 0.8588824690797229
+    precision_at_act: 1
+    fitted_on: testdata/same-issue-labeled.json
+    "n": 32
+    brier: 0.01986838302669632
+    ece: 0.0971489899711626
+    fitted_at: "2026-10-17"

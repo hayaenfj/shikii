@@ -1,0 +1,279 @@
+// Package decide は仕様 + 入力 → 帯(act / ask / discard / abstain)。
+// エンドポイントの選択・送信可否の統制・較正の適用をここで行い、業務コードには帯だけを渡す。
+package decide
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/hayaenfj/shikii/internal/calib"
+	"github.com/hayaenfj/shikii/internal/spec"
+	"github.com/hayaenfj/shikii/internal/store"
+	"github.com/hayaenfj/shikii/internal/systemone"
+)
+
+// Band は判定の帯。
+type Band string
+
+const (
+	Act     Band = "act"     // 自動で実行してよい
+	Ask     Band = "ask"     // 利用者に確認
+	Discard Band = "discard" // 捨てる
+	Abstain Band = "abstain" // 判定していない(入力不足・送れる先が無い)
+)
+
+// Session は呼び出し側の状態。Tainted なら hosted に送らない。
+type Session struct {
+	Tainted bool
+}
+
+// Endpoint は送り先。Kind は spec の policy.send_to と対応する。
+type Endpoint struct {
+	Kind   string // "hosted" | "local"
+	Client *systemone.Client
+}
+
+// Decision は 1 回の判定の結果と来歴。
+type Decision struct {
+	TraceID      string             `json:"trace_id"`
+	SpecID       string             `json:"spec_id"`
+	SpecHash     string             `json:"spec_hash"`
+	Type         string             `json:"type"`
+	InputsHash   string             `json:"inputs_hash"`
+	Model        string             `json:"model,omitempty"`
+	Endpoint     string             `json:"endpoint,omitempty"`
+	Raw          map[string]float64 `json:"raw,omitempty"`
+	Calibrated   map[string]float64 `json:"calibrated,omitempty"`
+	IsCalibrated bool               `json:"is_calibrated"`
+	Top          string             `json:"top,omitempty"`
+	P            float64            `json:"p"`
+	Score        float64            `json:"score,omitempty"`
+	Confidence   float64            `json:"confidence,omitempty"`
+	Band         Band               `json:"band"`
+	Reason       string             `json:"reason,omitempty"`
+	At           time.Time          `json:"at"`
+}
+
+// questionKey は 1 spec = 1 質問なので固定。
+const questionKey = "q"
+
+// BuildQuestion は spec を System One の質問に変換する。choice の選択肢は spec の並びで送る。
+func BuildQuestion(sp *spec.Spec) systemone.Question {
+	return BuildQuestionOrdered(sp, nil)
+}
+
+// BuildQuestionOrdered は choice の選択肢を order(spec.Options の添字の並び)で送る。
+// nil なら spec の並び。順序バイアスの測定(shikii bias)が順列を回すのに使う。
+func BuildQuestionOrdered(sp *spec.Spec, order []int) systemone.Question {
+	q := systemone.Question{Type: string(sp.Type), Instructions: sp.Question}
+	switch sp.Type {
+	case spec.Choice:
+		oc := make(systemone.OrderedCriteria, 0, len(sp.Options))
+		if order == nil {
+			for _, o := range sp.Options {
+				oc = append(oc, systemone.Criterion{ID: o.ID, Description: o.Description})
+			}
+		} else {
+			for _, i := range order {
+				o := sp.Options[i]
+				oc = append(oc, systemone.Criterion{ID: o.ID, Description: o.Description})
+			}
+		}
+		q.Criteria = oc
+	case spec.Score:
+		q.Criteria = sp.Levels
+	}
+	return q
+}
+
+// AskOrdered は選択肢の並びを指定して 1 回聞き、生の分布を返す(較正も記録もしない)。順序バイアスの測定用。
+func AskOrdered(ctx context.Context, sp *spec.Spec, state string, order []int, c *systemone.Client) (map[string]float64, string, error) {
+	resp, err := c.Ask(ctx, state, map[string]systemone.Question{questionKey: BuildQuestionOrdered(sp, order)})
+	if err != nil {
+		return nil, "", err
+	}
+	ans, ok := resp.Answers[questionKey]
+	if !ok {
+		return nil, "", fmt.Errorf("response has no answer for %q", questionKey)
+	}
+	return rawDistribution(sp, ans), resp.Model, nil
+}
+
+// PickEndpoint は policy.send_to の順に、送ってよい最初のエンドポイントを選ぶ。
+// tainted セッションでは hosted を飛ばす。無ければ nil。
+func PickEndpoint(sp *spec.Spec, sess Session, eps []Endpoint) *Endpoint {
+	for _, kind := range sp.Policy.SendTo {
+		// tainted なセッションと、本文を手元に残す代わりに外へ送らない pii: local は、hosted を使わない
+		if kind == "hosted" && (sess.Tainted || sp.Policy.PII == "local") {
+			continue
+		}
+		for i := range eps {
+			if eps[i].Kind == kind && eps[i].Client != nil {
+				return &eps[i]
+			}
+		}
+	}
+	return nil
+}
+
+// Decide は 1 回の判定。モデル呼び出しが失敗した時だけ error を返す。
+// 判定しないと決めた場合は error ではなく Abstain と理由を返す。
+func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess Session, eps []Endpoint) (*Decision, error) {
+	d := &Decision{
+		TraceID: store.NewTraceID(), SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type),
+		InputsHash: store.HashInputs(inputs), At: time.Now(),
+	}
+
+	state, missing := sp.Render(inputs)
+	if len(missing) > 0 {
+		d.Band = Abstain
+		d.Reason = "missing required input: " + strings.Join(missing, ", ")
+		return d, nil
+	}
+
+	ep := PickEndpoint(sp, sess, eps)
+	if ep == nil {
+		d.Band = Abstain
+		d.Reason = fmt.Sprintf("no permitted endpoint (send_to=%v, tainted=%v, pii=%s)", sp.Policy.SendTo, sess.Tainted, sp.Policy.PII)
+		return d, nil
+	}
+	d.Endpoint = ep.Kind
+
+	resp, err := ep.Client.Ask(ctx, state, map[string]systemone.Question{questionKey: BuildQuestion(sp)})
+	if err != nil {
+		return nil, err
+	}
+	ans, ok := resp.Answers[questionKey]
+	if !ok {
+		return nil, fmt.Errorf("response has no answer for %q", questionKey)
+	}
+	// 較正の鍵には実際に答えたモデルを使う。"jev-latest" が別版に切り替わったら
+	// 較正は失効し、act が出なくなる(それが望む挙動)。
+	d.Model = resp.Model
+	if d.Model == "" {
+		d.Model = ep.Client.Model
+	}
+
+	d.Raw = rawDistribution(sp, ans)
+	d.Calibrated, d.IsCalibrated = applyCalibration(sp, d.Model, d.Raw)
+
+	switch sp.Type {
+	case spec.Noul:
+		d.Top = "yes"
+		d.P = d.Calibrated["yes"]
+		d.Confidence = abs(2*d.P - 1)
+	case spec.Choice:
+		d.Top, d.P = argmax(d.Calibrated)
+		d.Confidence = ans.Confidence
+	case spec.Score:
+		d.Top, d.P = argmax(d.Calibrated)
+		d.Score = expectedLevel(d.Calibrated)
+		d.Confidence = ans.Confidence
+		if sp.Thresholds.Level > 0 {
+			// 順序尺度: 帯は P(level ≥ k)。隣接レベルに割れた確率を合算する
+			d.P = MassAtOrAbove(d.Calibrated, sp.Thresholds.Level)
+		}
+	}
+	d.Band = band(sp.Thresholds, d.P, d.IsCalibrated)
+	return d, nil
+}
+
+// band は閾値と較正の有無から帯を決める。較正の無い判定は act を出さない。
+func band(t spec.Thresholds, p float64, calibrated bool) Band {
+	switch {
+	case p >= t.Act && calibrated:
+		return Act
+	case p >= t.Ask:
+		return Ask
+	default:
+		return Discard
+	}
+}
+
+func rawDistribution(sp *spec.Spec, ans systemone.Answer) map[string]float64 {
+	switch sp.Type {
+	case spec.Noul:
+		return map[string]float64{"yes": ans.Noul, "no": 1 - ans.Noul}
+	default:
+		out := make(map[string]float64, len(ans.Probabilities))
+		for k, v := range ans.Probabilities {
+			out[k] = v
+		}
+		return out
+	}
+}
+
+// applyCalibration は (hash, model) に一致する較正があれば当てる。
+//   - "identity": 定数なし。較正済みモデルの出力をそのまま信用してよいと検証した印(設計 §7.1)
+//   - "platt":    noul のみ。σ((Δ−bias)/T)
+//   - "vector":   choice/score。softmax((log p_k + b_k)/T)
+func applyCalibration(sp *spec.Spec, model string, raw map[string]float64) (map[string]float64, bool) {
+	out := make(map[string]float64, len(raw))
+	for k, v := range raw {
+		out[k] = v
+	}
+	c := sp.CalibrationFor(model)
+	if c == nil {
+		return out, false
+	}
+	if c.Method == "identity" {
+		return out, true
+	}
+	if c.Method == "vector" && sp.Type != spec.Noul && c.Temperature > 0 {
+		return calib.Vector{Temperature: c.Temperature, Biases: c.Biases}.Apply(raw), true
+	}
+	if sp.Type != spec.Noul || c.Method != "platt" || c.Temperature <= 0 {
+		return out, false
+	}
+	p := calib.Platt{Bias: c.Bias, Temperature: c.Temperature}.Apply(calib.Logit(raw["yes"]))
+	out["yes"], out["no"] = p, 1-p
+	return out, true
+}
+
+func argmax(m map[string]float64) (string, float64) {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys) // 同点時の決定性
+	best, bp := "", -1.0
+	for _, k := range keys {
+		if m[k] > bp {
+			best, bp = k, m[k]
+		}
+	}
+	return best, bp
+}
+
+// MassAtOrAbove は score の分布で level ≥ k の確率の和。キーはレベル番号("0".."n-1")。
+func MassAtOrAbove(m map[string]float64, k int) float64 {
+	var s float64
+	for key, p := range m {
+		if i, err := strconv.Atoi(key); err == nil && i >= k {
+			s += p
+		}
+	}
+	return s
+}
+
+// expectedLevel は score の期待値 Σ(level × p)。キーはレベル番号("0".."n-1")。
+func expectedLevel(m map[string]float64) float64 {
+	var e float64
+	for k, p := range m {
+		if i, err := strconv.Atoi(k); err == nil {
+			e += float64(i) * p
+		}
+	}
+	return e
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}

@@ -1,0 +1,27 @@
+# ビルド成果物(make build / make install が作る)
+/bin/
+*.test
+*.out
+coverage.*
+
+# 記録とラベルの置き場。較正の材料で、環境ごとに違う。eval-model.sh は .shikii-eval/<name>/ に分ける
+/.shikii/
+/.shikii-*/
+
+# 鍵と環境。鍵は DECISIONS_API_KEY / TYPESAFE_API_KEY の環境変数で渡す(ファイルには置かない)
+.env
+.env.*
+*.key
+
+# 道具の状態(Serena、エディタ、OS)
+/.serena/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 実験の一時ファイル(スクラッチは /private/tmp 側に置くが、手元に落とした時のため)
+*.log
+*.tmp
+/tmp/

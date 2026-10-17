@@ -1,0 +1,49 @@
+# 問い合わせの同一判定: 2 件の問い合わせが同じ案件か(同じ注文・同じアカウントの問題・一方が他方の続き)。はい/いいえ(noul)の例。
+# 較正ブロックは `shikii calibrate --write` が生成する。
+id: same-inquiry
+version: 1
+type: noul
+question: |
+  Are these two customer inquiries about the same matter - the same order, the same account problem,
+  or one a follow-up to the other - so that they should be handled as one ticket?
+  Answer "no" if they are merely the same kind of problem from different cases.
+state:
+  template: |
+    Inquiry 1: {{ inquiry1 }}
+
+    Inquiry 2: {{ inquiry2 }}
+  required: [inquiry1, inquiry2]
+policy:
+  send_to: [local, hosted]
+  pii: possible # 実運用の問い合わせには個人情報が入り得る。記録に本文は残さない
+thresholds:
+  act: 0.70
+  ask: 0.50
+eval:
+  # 較正用の 32 組(作り物、日本語): 同じ案件 12、別の案件 12、同じ種類の問題だが別の案件 8(境界。false に重み 0.5)
+  labeled: testdata/same-inquiry-labeled.json
+  min_n: 20
+# 較正ブロックは `shikii calibrate --write` が生成する。手で書かない。
+calibration:
+  - model: ggml-org/Kev-4B-GGUF:Q4_K_M
+    spec_hash: b5cc9f9cb1f2e4f4
+    method: platt
+    bias: -0.38879812759568777
+    temperature: 0.7707934390161127
+    precision_at_act: 1
+    fitted_on: testdata/same-inquiry-labeled.json
+    "n": 32
+    brier: 0.016506640562992073
+    ece: 0.09140828543149455
+    fitted_at: "2026-10-17"
+  - model: ternary-bonsai-27b-q2g64+state-last
+    spec_hash: b5cc9f9cb1f2e4f4
+    method: platt
+    bias: -1.0829784801021145
+    temperature: 1.0378293608578189
+    precision_at_act: 1
+    fitted_on: testdata/same-inquiry-labeled.json
+    "n": 32
+    brier: 0.017144495793551505
+    ece: 0.09122244487982892
+    fitted_at: "2026-10-17"

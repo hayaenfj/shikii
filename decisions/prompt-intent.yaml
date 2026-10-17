@@ -1,0 +1,36 @@
+# claude-jev の prompt-intent(依頼が変更の依頼か)を spec で表現し直したもの。
+id: prompt-intent
+version: 1
+type: choice
+
+question: |
+  What is the user asking for in this message to a coding assistant?
+
+options:
+  - id: change_request
+    description: Asks for a change to code, configuration or documents in the repository
+  - id: question
+    description: Asks for an explanation, investigation or opinion; no change is requested
+  - id: review
+    description: Asks for an evaluation of existing changes or code
+  - id: operation
+    description: Asks to run, commit, deploy or otherwise operate something without changing code
+  - id: other
+    description: None of the above
+
+state:
+  template: |
+    {{ message }}
+  required: [message]
+
+policy:
+  send_to: [hosted, local]
+  pii: never
+
+thresholds:
+  act: 0.75
+  ask: 0.60
+
+eval:
+  labeled: testdata/prompt-intent-labeled.json
+  min_n: 50

@@ -1,0 +1,33 @@
+# score 型の例。same-issue の はい/いいえ を 5 段の順序尺度にしたもの。期待値 Σ(level × p) がレベル間の値を取る。
+id: relatedness-level
+version: 2
+type: score
+
+question: |
+  How strongly are these two bug reports connected?
+
+levels:
+  - Unrelated - different defects that only share a product or vocabulary
+  - Same area - same screen, feature or technology, no concrete link
+  - Circumstantial link - shared component, symptom or timing, but no confirmed common cause
+  - Directly connected - same root cause, or one a regression or side effect of the other
+  - Same defect - a duplicate report of the very same bug
+
+state:
+  template: |
+    Report 1: {{ report1 }}
+
+    Report 2: {{ report2 }}
+  required: [report1, report2]
+
+policy:
+  send_to: [local]
+  pii: possible
+
+thresholds:
+  act: 0.75
+  ask: 0.50
+  level: 3    # 帯は P(level ≥ 3 = Directly connected)。最上位の確率ではない(隣接レベルに割れるため)
+
+eval:
+  min_n: 20

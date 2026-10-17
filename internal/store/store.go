@@ -1,0 +1,433 @@
+// Package store は判定の記録とラベルの保管。JSONL を spec ごとに 1 ファイル。
+//
+//	<dir>/records/<spec_id>.jsonl  … 全判定(生の確率付き)
+//	<dir>/labels/<spec_id>.jsonl   … 正解ラベル(利用者の操作から拾う)
+//
+// 本文(inputs)は spec の policy.pii が "never" の時だけ残す。それ以外はハッシュだけ。
+package store
+
+import (
+	"bufio"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+// Record は 1 回の判定。decide.Decision に来歴を足したもの。
+type Record struct {
+	TraceID      string             `json:"trace_id"`
+	SpecID       string             `json:"spec_id"`
+	SpecHash     string             `json:"spec_hash"`
+	Type         string             `json:"type"`
+	Model        string             `json:"model,omitempty"`
+	Endpoint     string             `json:"endpoint,omitempty"`
+	Inputs       map[string]string  `json:"inputs,omitempty"` // pii: never か local の時だけ
+	InputsHash   string             `json:"inputs_hash"`
+	Raw          map[string]float64 `json:"raw,omitempty"`
+	Calibrated   map[string]float64 `json:"calibrated,omitempty"`
+	IsCalibrated bool               `json:"is_calibrated"`
+	Top          string             `json:"top,omitempty"`
+	P            float64            `json:"p"`
+	Band         string             `json:"band"`
+	At           time.Time          `json:"at"`
+}
+
+// Label は正解 1 件。Truth は型ごとの表現: noul は "yes"/"no"、choice は選択肢 id、score はレベル番号。
+type Label struct {
+	TraceID    string             `json:"trace_id"`
+	SpecID     string             `json:"spec_id"`
+	SpecHash   string             `json:"spec_hash"`
+	Type       string             `json:"type"`
+	Model      string             `json:"model"`
+	InputsHash string             `json:"inputs_hash"`
+	Inputs     map[string]string  `json:"inputs,omitempty"` // pii: never / local の時だけ。正解と本文を一緒に持つ(聞き直しの材料)
+	Raw        map[string]float64 `json:"raw"`
+	Truth      string             `json:"truth"`
+	Weight     float64            `json:"weight"`
+	Source     string             `json:"source"` // ask | undo | manual | …
+	At         time.Time          `json:"at"`
+}
+
+// Store はディレクトリ 1 つ。
+type Store struct{ Dir string }
+
+// NewTraceID は 16 桁の乱数。
+func NewTraceID() string {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
+// HashInputs は入力の本文を残さずに同一性だけ比べるためのハッシュ。
+func HashInputs(inputs map[string]string) string {
+	keys := make([]string, 0, len(inputs))
+	for k := range inputs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	h := sha256.New()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write([]byte(inputs[k]))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// RedactInputs は pii の方針に従って本文を残すか決める。"never" と "local" は残す(local は外に送らない方の制約で、
+// それは decide 側が守る)。"possible" とそれ以外は残さない。本文が残っていれば、文言やモデルを変えた後に同じ入力を聞き直せる。
+func RedactInputs(pii string, inputs map[string]string) map[string]string {
+	if pii != "never" && pii != "local" {
+		return nil
+	}
+	out := make(map[string]string, len(inputs))
+	for k, v := range inputs {
+		out[k] = v
+	}
+	return out
+}
+
+func (s Store) recordsPath(specID string) string {
+	return filepath.Join(s.Dir, "records", specID+".jsonl")
+}
+
+func (s Store) labelsPath(specID string) string {
+	return filepath.Join(s.Dir, "labels", specID+".jsonl")
+}
+
+// AppendRecord は判定を追記する。
+func (s Store) AppendRecord(r Record) error {
+	if r.TraceID == "" || r.SpecID == "" {
+		return errors.New("record needs trace_id and spec_id")
+	}
+	return appendJSONL(s.recordsPath(r.SpecID), r)
+}
+
+// FindRecord は trace_id で判定を探す。spec が分かっていれば specID で絞る(空なら全部見る)。
+func (s Store) FindRecord(specID, traceID string) (*Record, error) {
+	var files []string
+	if specID != "" {
+		files = []string{s.recordsPath(specID)}
+	} else {
+		var err error
+		files, err = filepath.Glob(filepath.Join(s.Dir, "records", "*.jsonl"))
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, f := range files {
+		var found *Record
+		err := scanJSONL(f, func(line []byte) error {
+			var r Record
+			if err := json.Unmarshal(line, &r); err != nil {
+				return nil // 壊れた行は飛ばす
+			}
+			if r.TraceID == traceID {
+				found = &r
+			}
+			return nil
+		})
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		if found != nil {
+			return found, nil
+		}
+	}
+	return nil, fmt.Errorf("no record with trace_id %s", traceID)
+}
+
+// LabelFor は判定の記録と利用者の答えからラベルを作る。答えは型ごとの表現に合っていなければならない。
+func LabelFor(rec *Record, truth string, weight float64, source string) (Label, error) {
+	truth = strings.TrimSpace(truth)
+	switch rec.Type {
+	case "noul":
+		if truth != "yes" && truth != "no" {
+			return Label{}, fmt.Errorf("noul truth must be yes or no, got %q", truth)
+		}
+	case "choice", "score":
+		// "!<id>" は部分ラベル(その選択肢ではなかった、だけが分かっている)。結果から拾う時に使う。
+		if _, ok := rec.Raw[strings.TrimPrefix(truth, "!")]; !ok || truth == "!" {
+			keys := make([]string, 0, len(rec.Raw))
+			for k := range rec.Raw {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			return Label{}, fmt.Errorf("%s truth must be one of %v, got %q", rec.Type, keys, truth)
+		}
+	default:
+		return Label{}, fmt.Errorf("record has unknown type %q", rec.Type)
+	}
+	if weight <= 0 {
+		weight = 1
+	}
+	if source == "" {
+		source = "manual"
+	}
+	return Label{
+		TraceID: rec.TraceID, SpecID: rec.SpecID, SpecHash: rec.SpecHash, Type: rec.Type,
+		Model: rec.Model, InputsHash: rec.InputsHash, Inputs: rec.Inputs, Raw: rec.Raw,
+		Truth: truth, Weight: weight, Source: source, At: time.Now(),
+	}, nil
+}
+
+// Partial は "!<id>" 形式の部分ラベルか。
+func Partial(truth string) bool { return strings.HasPrefix(truth, "!") && len(truth) > 1 }
+
+// Correct はモデルの最上位 top が正解 truth と合うか。部分ラベル "!x" は「x でなければ正しい」。
+func Correct(top, truth string) bool {
+	if Partial(truth) {
+		return top != truth[1:]
+	}
+	return top == truth
+}
+
+// AppendLabel はラベルを追記する。
+func (s Store) AppendLabel(l Label) error {
+	if l.TraceID == "" || l.SpecID == "" || l.SpecHash == "" || l.Model == "" {
+		return errors.New("label needs trace_id, spec_id, spec_hash and model")
+	}
+	return appendJSONL(s.labelsPath(l.SpecID), l)
+}
+
+// Labels は (spec_hash, model) に一致するラベルだけを返す。古い文言・別モデルのラベルは較正に使わない。
+func (s Store) Labels(specID, specHash, model string) ([]Label, error) {
+	var out []Label
+	err := scanJSONL(s.labelsPath(specID), func(line []byte) error {
+		var l Label
+		if err := json.Unmarshal(line, &l); err != nil {
+			return nil
+		}
+		if l.SpecHash == specHash && l.Model == model {
+			out = append(out, l)
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SpecIDs は記録かラベルのある spec の id を返す。
+func (s Store) SpecIDs() ([]string, error) {
+	seen := map[string]bool{}
+	for _, sub := range []string{"records", "labels"} {
+		files, err := filepath.Glob(filepath.Join(s.Dir, sub, "*.jsonl"))
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range files {
+			seen[strings.TrimSuffix(filepath.Base(f), ".jsonl")] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// Counts は spec の記録数と、全ラベル(鍵で絞らない)を返す。棚卸し用。
+func (s Store) Counts(specID string) (records int, labels []Label, err error) {
+	err = scanJSONL(s.recordsPath(specID), func([]byte) error { records++; return nil })
+	if err != nil && !os.IsNotExist(err) {
+		return 0, nil, err
+	}
+	err = scanJSONL(s.labelsPath(specID), func(line []byte) error {
+		var l Label
+		if json.Unmarshal(line, &l) == nil {
+			labels = append(labels, l)
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return 0, nil, err
+	}
+	return records, labels, nil
+}
+
+// InputsByHash は本文が残っている記録(pii: never / local)から、入力のハッシュ → 本文 の対応を作る。
+// 文言やモデルを変えた後に、同じ入力を新しい (spec_hash, model) で聞き直すための材料。
+func (s Store) InputsByHash(specID string) (map[string]map[string]string, error) {
+	out := map[string]map[string]string{}
+	take := func(hash string, inputs map[string]string) {
+		if hash == "" || len(inputs) == 0 {
+			return
+		}
+		if _, ok := out[hash]; !ok {
+			out[hash] = inputs
+		}
+	}
+	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
+		var r Record
+		if json.Unmarshal(line, &r) == nil {
+			take(r.InputsHash, r.Inputs)
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	// ファイルから較正した時のラベルは記録を持たないので、ラベル側の本文も見る
+	err = scanJSONL(s.labelsPath(specID), func(line []byte) error {
+		var l Label
+		if json.Unmarshal(line, &l) == nil {
+			take(l.InputsHash, l.Inputs)
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	return out, nil
+}
+
+// LastRecord は spec の最後に追記された記録。手でラベルを付けるときに trace_id を控えなくてよいようにする。
+func (s Store) LastRecord(specID string) (*Record, error) {
+	var last *Record
+	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
+		var r Record
+		if json.Unmarshal(line, &r) == nil {
+			last = &r
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	if last == nil {
+		return nil, fmt.Errorf("no records for spec %s", specID)
+	}
+	return last, nil
+}
+
+// GCResult は GC が何を残し、何を消した(消す)かの数。
+type GCResult struct {
+	Removed      int // 古くてラベルの無い記録(apply なら消した数、そうでなければ消す予定の数)
+	KeptLabeled  int // ラベルが付いているので年齢に関係なく残した
+	KeptRecent   int // cutoff より新しいので残した
+	KeptUnparsed int // JSON として読めない行。読めないものは捨てない
+}
+
+// GC は spec の記録のうち「at が before より古く、ラベルが 1 つも付いていない」ものを取り除く。
+// ラベルは較正の材料なので、ラベルの付いた記録はいつまでも残す。ラベルのファイルには触らない。
+// apply が false なら数えるだけで書き換えない。apply なら同じディレクトリに書いてから rename で置き換える(途中で落ちても元のファイルは壊れない)。
+func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error) {
+	var res GCResult
+	labeled := map[string]bool{}
+	err := scanJSONL(s.labelsPath(specID), func(line []byte) error {
+		var l Label
+		if json.Unmarshal(line, &l) == nil && l.TraceID != "" {
+			labeled[l.TraceID] = true
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return res, err
+	}
+	var keep [][]byte
+	err = scanJSONL(s.recordsPath(specID), func(line []byte) error {
+		var r Record
+		if json.Unmarshal(line, &r) != nil || r.TraceID == "" {
+			res.KeptUnparsed++
+			keep = append(keep, append([]byte(nil), line...))
+			return nil
+		}
+		switch {
+		case labeled[r.TraceID]:
+			res.KeptLabeled++
+		case !r.At.Before(before):
+			res.KeptRecent++
+		default:
+			res.Removed++
+			return nil
+		}
+		keep = append(keep, append([]byte(nil), line...))
+		return nil
+	})
+	if err != nil {
+		if os.IsNotExist(err) {
+			return res, nil
+		}
+		return res, err
+	}
+	if !apply || res.Removed == 0 {
+		return res, nil
+	}
+	path := s.recordsPath(specID)
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".gc-*")
+	if err != nil {
+		return res, err
+	}
+	discard := func(e error) (GCResult, error) {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return res, e
+	}
+	w := bufio.NewWriter(tmp)
+	for _, line := range keep {
+		if _, err := w.Write(append(line, '\n')); err != nil {
+			return discard(err)
+		}
+	}
+	if err := w.Flush(); err != nil {
+		return discard(err)
+	}
+	if err := tmp.Close(); err != nil {
+		return discard(err)
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		return discard(err)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return discard(err)
+	}
+	return res, nil
+}
+
+func appendJSONL(path string, v any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(b, '\n'))
+	return err
+}
+
+func scanJSONL(path string, fn func(line []byte) error) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		if len(strings.TrimSpace(sc.Text())) == 0 {
+			continue
+		}
+		if err := fn([]byte(sc.Text())); err != nil {
+			return err
+		}
+	}
+	return sc.Err()
+}

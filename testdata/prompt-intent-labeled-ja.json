@@ -1,0 +1,140 @@
+[
+ {
+  "inputs": {
+   "message": "README の誤字を直して"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "この関数の引数に timeout を足してください"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "テストが落ちているので直して"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "ログ出力を JSON 形式にして"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "設定ファイルの読み込みを環境変数でも上書きできるようにして"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "docs の目次を更新しておいて"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "この関数は何をしているのか説明して"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "この設計で問題になりそうな点はどこ？"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "goroutine leak の原因を調べてほしい（まだ直さないで）"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "この閾値 0.75 の根拠はなに？"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "どのライブラリを使うのがいいと思う？"
+  },
+  "truth": "question"
+ },
+ {
+  "inputs": {
+   "message": "この PR をレビューして"
+  },
+  "truth": "review"
+ },
+ {
+  "inputs": {
+   "message": "この差分にセキュリティ上の問題がないか見て"
+  },
+  "truth": "review"
+ },
+ {
+  "inputs": {
+   "message": "書いたコードの命名が一貫しているか評価して"
+  },
+  "truth": "review"
+ },
+ {
+  "inputs": {
+   "message": "テストを実行して"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "ブランチを main に切り替えて"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "サーバーを再起動して"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "ログの最後の 50 行を見せて"
+  },
+  "truth": "operation"
+ },
+ {
+  "inputs": {
+   "message": "ありがとう、助かった"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "了解です"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "なるほど"
+  },
+  "truth": "other"
+ },
+ {
+  "inputs": {
+   "message": "直して"
+  },
+  "truth": "change_request"
+ },
+ {
+  "inputs": {
+   "message": "なぜ？"
+  },
+  "truth": "question"
+ }
+]

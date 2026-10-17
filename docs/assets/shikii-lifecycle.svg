@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 560" width="1600" height="560" role="img" aria-label="shikii lifecycle: define, decide, record, label, calibrate, check, drift around one spec">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E1424"/>
+      <stop offset="1" stop-color="#050810"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8FA3C8"/>
+    </marker>
+    <marker id="arrowGold" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#F5B700"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="560" fill="url(#bg)"/>
+  <text x="800" y="420" text-anchor="middle" font-family="'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif" font-size="520" fill="#FFFFFF" fill-opacity="0.03">閾</text>
+
+  <g font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif">
+    <!-- top row: the forward path -->
+    <g font-size="26" font-weight="600" fill="#F2F5FA">
+      <rect x="90" y="150" width="190" height="72" rx="36" fill="#141B2E" stroke="#2A3147" stroke-width="2"/>
+      <text x="185" y="196" text-anchor="middle">define</text>
+      <rect x="360" y="150" width="190" height="72" rx="36" fill="#141B2E" stroke="#2A3147" stroke-width="2"/>
+      <text x="455" y="196" text-anchor="middle">decide</text>
+      <rect x="630" y="150" width="190" height="72" rx="36" fill="#141B2E" stroke="#2A3147" stroke-width="2"/>
+      <text x="725" y="196" text-anchor="middle">record</text>
+      <rect x="900" y="150" width="190" height="72" rx="36" fill="#141B2E" stroke="#2A3147" stroke-width="2"/>
+      <text x="995" y="196" text-anchor="middle">label</text>
+      <rect x="1170" y="150" width="210" height="72" rx="36" fill="#1B1A12" stroke="#F5B700" stroke-width="3" filter="url(#glow)"/>
+      <text x="1275" y="196" text-anchor="middle" fill="#F5B700">calibrate</text>
+    </g>
+    <g stroke="#8FA3C8" stroke-width="3" fill="none" marker-end="url(#arrow)">
+      <line x1="280" y1="186" x2="352" y2="186"/>
+      <line x1="550" y1="186" x2="622" y2="186"/>
+      <line x1="820" y1="186" x2="892" y2="186"/>
+      <line x1="1090" y1="186" x2="1162" y2="186"/>
+    </g>
+
+    <!-- small captions under the top row -->
+    <g font-size="17" fill="#8FA3C8" text-anchor="middle">
+      <text x="185" y="250">one YAML per decision</text>
+      <text x="455" y="250">band, never a raw number</text>
+      <text x="725" y="250">hash of inputs, not text</text>
+      <text x="995" y="250">what was true, partial ok</text>
+      <text x="1275" y="250">identity · platt · vector, 5-fold CV</text>
+    </g>
+
+    <!-- the write-back: calibrate -> spec (define) along the bottom -->
+    <path d="M1275 222 C 1275 330, 1275 330, 1180 330 L 70 330 C 44 330, 44 330, 44 304 L 44 212 C 44 186, 56 186, 82 186" fill="none" stroke="#F5B700" stroke-width="3" stroke-dasharray="10 8" marker-end="url(#arrowGold)"/>
+    <text x="730" y="316" text-anchor="middle" font-size="19" fill="#F5B700">written back into the spec under the key (spec_hash, model). Change a word, the key changes, the model stops acting.</text>
+
+    <!-- bottom row: guards -->
+    <g font-size="24" font-weight="600" fill="#F2F5FA">
+      <rect x="300" y="400" width="200" height="64" rx="32" fill="#141B2E" stroke="#2A3147" stroke-width="2"/>
+      <text x="400" y="441" text-anchor="middle">check</text>
+      <rect x="700" y="400" width="200" height="64" rx="32" fill="#141B2E" stroke="#2A3147" stroke-width="2"/>
+      <text x="800" y="441" text-anchor="middle">drift</text>
+      <rect x="1100" y="400" width="200" height="64" rx="32" fill="#141B2E" stroke="#2A3147" stroke-width="2"/>
+      <text x="1200" y="441" text-anchor="middle">gc</text>
+    </g>
+    <g font-size="17" fill="#8FA3C8" text-anchor="middle">
+      <text x="400" y="495">CI fails on stale hash or low precision</text>
+      <text x="800" y="495">recent labels vs the recorded Brier</text>
+      <text x="1200" y="495">old unlabelled records go, labels stay</text>
+    </g>
+
+    <text x="800" y="80" text-anchor="middle" font-size="34" font-weight="700" fill="#F2F5FA" letter-spacing="-1">One lifecycle for every decision model</text>
+  </g>
+</svg>

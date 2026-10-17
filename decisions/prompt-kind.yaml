@@ -1,0 +1,37 @@
+# claude-jev の UserPromptSubmit hook(prompt-intent.mjs)が使う判定。文言は hook が直接 Jev に送っていたものと同じ。
+# hook は calibrated["edit"] を見る(0.75 以上: 変更の依頼とみなす / 0.60 以上: 判断を委ねる)。
+# 正解は Stop 時の結果から付く: ファイルが変わっていれば "edit"、変わっていなければ "!edit"(部分ラベル、重み 0.7)。
+id: prompt-kind
+version: 1
+type: choice
+
+question: |
+  What will the coding agent most likely end up doing in response to `request`?
+
+options:
+  - id: edit
+    description: editing, adding, fixing or deleting files in the repository (code, docs, config, tests)
+  - id: explain
+    description: answering a question or explaining something, without touching files
+  - id: investigate
+    description: researching or reading code/web to report findings or options, without editing
+  - id: run
+    description: running commands, tests, or checking a live system and reporting the result, without editing
+  - id: decide
+    description: the user is replying to a proposal or choosing between options the agent offered
+
+state:
+  template: |
+    request: {{ request }}
+  required: [request]
+
+policy:
+  send_to: [local]    # 本文を手元に残す方針(pii: local)なので外には送らない
+  pii: local      # 依頼文を手元の記録と正解に残す(文言やモデルを変えた時に聞き直す材料)。外の AI には送らない
+
+thresholds:
+  act: 0.75
+  ask: 0.60
+
+eval:
+  min_n: 50
