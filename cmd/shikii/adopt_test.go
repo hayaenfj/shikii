@@ -19,11 +19,11 @@ import (
 func newTuneFixture(t *testing.T) (srvURL, specsDir, wiki, labeledPath string) {
 	t.Helper()
 	dir := t.TempDir()
+	t.Chdir(dir)
 	specsDir = filepath.Join(dir, "decisions")
 	specWithVariants(t, dir) // decisions/intent.yaml with variants strict / worse; the wiki is expected next to decisions/, with no flag
 	labeledPath = filepath.Join(dir, "rows.json")
-	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"fix b"},"truth":"change_request"},
-	          {"inputs":{"message":"why a"},"truth":"question"},{"inputs":{"message":"why b"},"truth":"question"}]`
+	rows := bankRows()
 	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
 		t.Fatal(err)
 	}

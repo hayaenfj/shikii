@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -362,8 +363,10 @@ func (s *Spec) Save() error {
 	if err := setMappingKey(root, "calibration", s.Calibration, len(s.Calibration) == 0, "較正ブロックは `shikii calibrate --write` が生成する。手で書かない。"); err != nil {
 		return err
 	}
-	if err := setMappingKey(root, "variants", s.Variants, len(s.Variants) == 0, "聞き方の候補。`shikii tune` が採点する(--propose で足される)。鍵には入らない。"); err != nil {
-		return err
+	if variantsChanged(root, s.Variants) { // 触っていなければ再エンコードしない(人のコメントが残る)
+		if err := setMappingKey(root, "variants", s.Variants, len(s.Variants) == 0, "聞き方の候補。`shikii tune` が採点する(--propose で足される)。鍵には入らない。"); err != nil {
+			return err
+		}
 	}
 
 	var buf bytes.Buffer
@@ -397,6 +400,20 @@ func (s *Spec) Save() error {
 }
 
 // setMappingKey は root の key を value で置き換える(無ければ末尾に足し、empty なら消す)。
+// variantsChanged はファイルの variants と今の値が違うか。
+func variantsChanged(root *yaml.Node, now []Variant) bool {
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "variants" {
+			var onDisk []Variant
+			if err := root.Content[i+1].Decode(&onDisk); err != nil {
+				return true
+			}
+			return !reflect.DeepEqual(onDisk, now)
+		}
+	}
+	return len(now) > 0
+}
+
 func setMappingKey(root *yaml.Node, key string, value any, empty bool, headComment string) error {
 	at := -1
 	for i := 0; i+1 < len(root.Content); i += 2 {

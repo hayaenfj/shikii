@@ -41,13 +41,14 @@ func cmdNew(args []string) error {
 	minN := fs.Int("min-n", 50, "線を引くのに要る正解の数")
 	titleJa := fs.String("title-ja", "", "画面に出す日本語の題名(任意)")
 	force := fs.Bool("force", false, "同名のファイルがあっても上書きする")
-	if err := fs.Parse(args); err != nil {
+	pos, err := parseMixed(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+	if len(pos) != 1 {
 		return errors.New("usage: shikii new <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]")
 	}
-	id := fs.Arg(0)
+	id := pos[0]
 	path := filepath.Join(*dir, id+".yaml")
 	if _, err := os.Stat(path); err == nil && !*force {
 		return fmt.Errorf("%s already exists (use --force to overwrite)", path)

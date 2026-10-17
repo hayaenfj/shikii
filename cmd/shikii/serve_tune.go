@@ -175,6 +175,9 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("run is required (from GET /v1/tune)"))
 		return
 	}
+	// 読んでから書くまで 1 つの鍵の中で(同じ run への同時の採用を 409 にする)
+	s.calibMu.Lock()
+	defer s.calibMu.Unlock()
 	res, err := loadTuneResult(s.o.wikiDir, req.Run)
 	if err != nil {
 		writeErr(w, 404, fmt.Errorf("unknown run %q", req.Run))
@@ -192,21 +195,27 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, errors.New("this run has nothing to adopt (the current wording was kept)"))
 		return
 	}
-	s.calibMu.Lock()
-	defer s.calibMu.Unlock()
 	recordMeaningCheck(res, *req.MeaningSame, req.Note, "page")
 	if !*req.MeaningSame {
 		writeJSON(w, 200, map[string]any{"adopted": false, "run": res.Run, "reason": "meaning judged to have changed; recorded"})
 		return
 	}
 	var buf bytes.Buffer
-	old := stdout
-	stdout = &buf
-	newPath, err := adoptWording(res, s.o.ef, s.o.storeDir, "")
-	stdout = old
+	newPath, err := func() (p string, err error) {
+		old := stdout
+		stdout = &buf
+		defer func() {
+			stdout = old
+			if r := recover(); r != nil {
+				err = fmt.Errorf("adopt panicked: %v", r)
+			}
+		}()
+		return adoptWording(res, s.o.ef, s.o.storeDir, "")
+	}()
 	saveTuneResult(res)
 	if err != nil {
-		writeErr(w, 500, fmt.Errorf("%v\n%s", err, strings.TrimSpace(buf.String())))
+		appendRunNote(res.RunPage, fmt.Sprintf("**Not adopted:** %s", strings.SplitN(err.Error(), "\n", 2)[0]))
+		writeErr(w, 422, fmt.Errorf("%v\n%s", err, strings.TrimSpace(buf.String())))
 		return
 	}
 	appendRunNote(res.RunPage, fmt.Sprintf("**Adopted** as %s via the page after a person confirmed the meaning.", newPath))

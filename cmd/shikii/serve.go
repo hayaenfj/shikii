@@ -39,7 +39,7 @@ type serveOpts struct {
 	storeDir      string
 	ef            endpointFlags
 	autoCalibrate bool
-	wikiDir       string // 聞き方の wiki。空なら specs の隣の wiki/。tune の結果を置き、画面と MCP が読む
+	wikiDir       string // 聞き方の wiki。空なら ./wiki。tune の結果を置き、画面と MCP が読む
 	proposer      string // 候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけ
 	proposerModel string
 }
@@ -77,7 +77,7 @@ type server struct {
 
 func newServer(o serveOpts) http.Handler {
 	if o.wikiDir == "" {
-		o.wikiDir = wikiDirForSpecs(o.specsDir)
+		o.wikiDir = wikiRoot
 	}
 	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]string{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
 	mux := http.NewServeMux()

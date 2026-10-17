@@ -36,6 +36,17 @@ func wordingSensitiveModel(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// bankRows は tune のテストで使う正解 12 件: fix a〜f は change_request、why a〜f は question。extra は足す行の JSON。
+// 12 件なのは、片側の符号検定(勝ち 6 負け 0 で p = 1/64)が通る最小に近い数だから。
+func bankRows(extra ...string) string {
+	var rows []string
+	for _, x := range []string{"a", "b", "c", "d", "e", "f"} {
+		rows = append(rows, `{"inputs":{"message":"fix `+x+`"},"truth":"change_request"}`, `{"inputs":{"message":"why `+x+`"},"truth":"question"}`)
+	}
+	rows = append(rows, extra...)
+	return "[" + strings.Join(rows, ",") + "]"
+}
+
 func specWithVariants(t *testing.T, dir string) string {
 	t.Helper()
 	sub := filepath.Join(dir, "decisions") // 標準の配置: decisions/ の隣に wiki/ ができる
@@ -59,11 +70,11 @@ func specWithVariants(t *testing.T, dir string) string {
 // 正解の貯金で聞き方の候補を全部採点し、勝った候補だけを新しい版として書く。負けた候補は書かない。
 func TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner(t *testing.T) {
 	dir := t.TempDir()
+	t.Chdir(dir)
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := wordingSensitiveModel(t)
 	specPath := specWithVariants(t, dir)
-	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"fix b"},"truth":"change_request"},
-	          {"inputs":{"message":"why a"},"truth":"question"},{"inputs":{"message":"why b"},"truth":"question"}]`
+	rows := bankRows()
 	labeledPath := filepath.Join(dir, "rows.json")
 	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
 		t.Fatal(err)
@@ -99,7 +110,7 @@ func TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner(t *testing.T) {
 		t.Fatalf("the adopted wording must be calibrated right away: %+v", v2.Calibration)
 	}
 	// 負けた候補 "worse" はどこにも書かれていない
-	if b, _ := os.ReadFile(v2Path); strings.Contains(string(b), "Anything goes") && !strings.Contains(string(b), "variants:") {
+	if strings.Contains(v2.Question, "Anything goes") {
 		t.Fatal("a losing variant must not become the question")
 	}
 }
@@ -107,6 +118,7 @@ func TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner(t *testing.T) {
 // 今の文言が一番良ければ、何も書かない(「変えない」も結論)。
 func TestTuneKeepsCurrentWhenNothingBeatsIt(t *testing.T) {
 	dir := t.TempDir()
+	t.Chdir(dir)
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := wordingSensitiveModel(t)
 	specPath := specWithVariants(t, dir)
@@ -130,6 +142,7 @@ func TestTuneKeepsCurrentWhenNothingBeatsIt(t *testing.T) {
 // 貯金が min_n 未満なら測らない(少ない正解で文言を選ぶのは当てずっぽう)。
 func TestTuneRefusesWithoutEnoughTruths(t *testing.T) {
 	dir := t.TempDir()
+	t.Chdir(dir)
 	srv := wordingSensitiveModel(t)
 	specPath := specWithVariants(t, dir)
 	labeledPath := filepath.Join(dir, "rows.json")
@@ -149,6 +162,7 @@ func TestTuneRefusesWithoutEnoughTruths(t *testing.T) {
 // 貯金全体では 1 件多く当てる候補でも、holdout(k-1 で選んで 1 で測る)が現状を上回らなければ採らない(まぐれの勝ちで文言を変えない)。
 func TestTuneDoesNotAdoptAWinByNoise(t *testing.T) {
 	dir := t.TempDir()
+	t.Chdir(dir)
 	storeDir := filepath.Join(dir, ".shikii")
 	// 現状: m1〜m3 を当て、m4 m5 を外す(3/5)。候補 "v2": m1〜m3 と m5 を当て、m4 を外す(4/5)。
 	// 5 分割の holdout: m4 を外した 4 件では候補が勝つ → m4 で外す。m5 を外した 4 件は同点 → 現状 → m5 で外す。
@@ -221,6 +235,7 @@ func fakeProposer(t *testing.T) (*httptest.Server, *[]string) {
 // --propose N: 提案役に今の聞き方・混同表・外した実例・これまでの学びを渡して候補を作らせ、spec の variants に残し、採点し、学びを markdown に追記する。
 func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	dir := t.TempDir()
+	t.Chdir(dir)
 	storeDir := filepath.Join(dir, ".shikii")
 	model := wordingSensitiveModel(t)
 	proposer, prompts := fakeProposer(t)
@@ -228,8 +243,7 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 		t.Fatal(err)
 	}
 	specPath := writeSpec(t, filepath.Join(dir, "decisions"), "false") // 候補は書かない。提案役に作らせる。wiki は decisions/ の隣
-	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"fix b"},"truth":"change_request"},
-	          {"inputs":{"message":"why a"},"truth":"question"},{"inputs":{"message":"why b"},"truth":"question"}]`
+	rows := bankRows()
 	labeledPath := filepath.Join(dir, "rows.json")
 	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
 		t.Fatal(err)
@@ -259,6 +273,16 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	if !strings.Contains(out, "proposed-strict") || !strings.Contains(out, "winner: proposed-strict") {
 		t.Fatalf("proposed candidates must be scored and the good one must win:\n%s", out)
 	}
+	// 機械が作った文言は --write でも人が読む前には採用されない。読んだ人が tune --write で採用する
+	if _, err := os.Stat(filepath.Join(dir, "decisions", "intent-v2.yaml")); err == nil {
+		t.Fatal("a proposed wording must not be adopted unseen")
+	}
+	capture(t, func() error {
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", model.URL, "--store", storeDir, "--write"})
+	})
+	if _, err := os.Stat(filepath.Join(dir, "decisions", "intent-v2.yaml")); err != nil {
+		t.Fatal("after reading the variants, tune --write adopts the winner")
+	}
 	// 提案は spec の variants に残る(次回は提案無しでも採点できる)
 	sp := mustLoad(t, specPath)
 	if len(sp.Variants) != 2 || sp.Variants[0].Name != "proposed-strict" {
@@ -272,8 +296,8 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 		}
 	}
 	runs, _ := filepath.Glob(filepath.Join(wiki, "runs", "*.md"))
-	if len(runs) != 1 {
-		t.Fatalf("one run page expected, got %v", runs)
+	if len(runs) != 2 {
+		t.Fatalf("two run pages expected (propose, then adopt), got %v", runs)
 	}
 	if rp, _ := os.ReadFile(runs[0]); !strings.Contains(string(rp), "holdout") || !strings.Contains(string(rp), "proposed-strict") {
 		t.Fatalf("run page must carry the table and the holdout:\n%s", rp)
@@ -291,6 +315,7 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 // pii: true の本文は、手元(loopback)以外の提案役には渡さない。
 func TestTuneProposeRefusesRemoteProposerForPIISpecs(t *testing.T) {
 	dir := t.TempDir()
+	t.Chdir(dir)
 	model := wordingSensitiveModel(t)
 	specPath := writeSpec(t, dir, "true")
 	labeledPath := filepath.Join(dir, "rows.json")

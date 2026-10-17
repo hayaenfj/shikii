@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -39,12 +40,31 @@ type proposal struct {
 
 // isLoopback は提案役が手元か(pii: true の本文を渡してよいか)。
 func isLoopback(raw string) bool {
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
 	u, err := url.Parse(raw)
 	if err != nil {
 		return false
 	}
-	h := u.Hostname()
-	return h == "127.0.0.1" || h == "localhost" || h == "::1"
+	h := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	if h == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(h)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsUnspecified() // 0.0.0.0 / :: は「この機械の全ての口」= 手元
+}
+
+// proposerAuth は提案役に付ける鍵。hosted(TypeSafe / OpenRouter)の鍵は提案役には渡さない: 別の相手なので。
+// 提案役に鍵が要るなら SHIKII_PROPOSER_KEY。手元の提案役には何も付けない。
+func proposerAuth(base string) string {
+	if isLoopback(base) {
+		return ""
+	}
+	return os.Getenv("SHIKII_PROPOSER_KEY")
 }
 
 // wikiContext は提案役に渡す wiki の抜粋: 型・モデルの系統・確認済みパターン・この spec のページ。
@@ -99,7 +119,9 @@ func modelSlug(model string) string {
 }
 
 // buildProposerPrompt は提案役への依頼文。
-func buildProposerPrompt(sp *spec.Spec, cur candScore, bank []bankRow, wikiText string, n int, withExamples bool) (system, user string) {
+// localProposer: 提案役が手元(loopback)か。遠い提案役には pii: true の本文も tainted な本文も見せない。
+func buildProposerPrompt(sp *spec.Spec, cur candScore, bank []bankRow, wikiText string, n int, localProposer bool) (system, user string) {
+	withExamples := localProposer || !sp.PIISensitive()
 	system = "You improve how a typed question is asked to a decision model (a model that answers with probabilities, not text). " +
 		"You will propose alternative wordings. Keep the meaning of the question and the identity of every option; change only how it is phrased, " +
 		"how options are described, or how the input text is laid out. Prefer changes that address the errors shown. " +
@@ -136,8 +158,8 @@ func buildProposerPrompt(sp *spec.Spec, cur candScore, bank []bankRow, wikiText 
 		b.WriteString("\n## Examples the current wording gets wrong (input, truth)\n")
 		shown := 0
 		for i, r := range bank {
-			if cur.correct[i] || shown >= 6 {
-				continue
+			if cur.correct[i] || shown >= 6 || (r.tainted && !localProposer) {
+				continue // tainted な本文(本番のデータに触った作業で記録した)は手元の提案役にしか見せない
 			}
 			state, _ := sp.Render(r.inputs)
 			fmt.Fprintf(&b, "- %q → truth %s\n", trim(state, 200), r.truth)
@@ -183,7 +205,7 @@ func askProposer(ctx context.Context, base, model, system, user string) ([]propo
 		return nil, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if key := hostedKey(); key != "" && !isLoopback(base) {
+	if key := proposerAuth(base); key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	resp, err := http.DefaultClient.Do(req)
@@ -220,15 +242,32 @@ func askProposer(ctx context.Context, base, model, system, user string) ([]propo
 
 // parseProposals は返事から JSON 配列を取り出す(``` で囲まれていても、前後に文があっても)。
 func parseProposals(content string) ([]proposal, error) {
-	s := content
-	if i := strings.Index(s, "["); i >= 0 {
-		if j := strings.LastIndex(s, "]"); j > i {
-			s = s[i : j+1]
-		}
-	}
 	var props []proposal
-	if err := json.Unmarshal([]byte(s), &props); err != nil {
-		return nil, fmt.Errorf("proposer did not return a JSON array of proposals: %w\n%s", err, trim(content, 300))
+	var lastErr error
+	parsed := false
+	// 前置きに [ があっても良い: 配列として読める最初の [ … 最後の ] を探す
+	for i := strings.Index(content, "["); i >= 0 && i < len(content); {
+		j := strings.LastIndex(content, "]")
+		if j <= i {
+			break
+		}
+		if err := json.Unmarshal([]byte(content[i:j+1]), &props); err == nil {
+			parsed = true
+			break
+		} else {
+			lastErr = err
+		}
+		next := strings.Index(content[i+1:], "[")
+		if next < 0 {
+			break
+		}
+		i += 1 + next
+	}
+	if !parsed {
+		if lastErr == nil {
+			lastErr = errors.New("no JSON array found")
+		}
+		return nil, fmt.Errorf("proposer did not return a JSON array of proposals: %w\n%s", lastErr, trim(content, 300))
 	}
 	if len(props) == 0 {
 		return nil, errors.New("proposer returned no proposals")

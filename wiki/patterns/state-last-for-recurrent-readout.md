@@ -1,6 +1,6 @@
 # 本文（state）は答えの直前に置く（普通のチャット用モデルの読み出し）
 
-status: confirmed
+status: tentative  <!-- 2026-10-18: 効いたのは Ternary-Bonsai-27B(Qwen3.5 系)の 1 組。Bonsai 2(fork)は変わらず。再帰層のある別のモデルで効いたら confirmed に(人が変える) -->
 
 ## いつ効くか
 

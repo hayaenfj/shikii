@@ -1,6 +1,6 @@
 # other を「依頼ではないもの」と明示する
 
-status: confirmed
+status: tentative  <!-- 2026-10-18: 効いたのは Kev-4B の 1 組だけ。別のモデルか別の正解の組で効いたら confirmed に(人が変える) -->
 
 ## いつ効くか
 

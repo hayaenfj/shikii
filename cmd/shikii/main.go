@@ -80,28 +80,33 @@ func main() {
 	}
 }
 
-func usage() {
-	fmt.Fprintln(os.Stderr, `usage:
+func usage() { fmt.Fprint(os.Stderr, usageText()) }
+
+func usageText() string {
+	return `usage (flags may come before or after the positional arguments):
+  shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]
+                   質問に答えるだけで decisions/<id>.yaml を作る
+  shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]
+                   手元のモデルを起こす(llama-server を探し、普通の GGUF なら shikii-readout も前に立てる)
+  shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL] [--auto-calibrate=false]
+                   HTTP の口 + 答え合わせと聞き方の画面。wiki は ./wiki(基本構成: 実行する場所に decisions/ wiki/ .shikii/)
+  shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]
+                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune。採用の道具は無い)
+  shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
   shikii decide    <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
   shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]
-  shikii label     --last --spec-id ID <truth>              直近の記録に付ける(trace_id 不要)
-  shikii calibrate <spec.yaml> [--labeled file] [--model M] [--hosted URL] [--local URL] [--store DIR] [--bins N] [--write] [--force]
+  shikii label     --last --spec-id ID <truth>
+  shikii calibrate <spec.yaml> [--labeled file] [--model M] [--local URL] [--hosted URL] [--store DIR] [--bins 10] [--write] [--force]
+                   正解で線を引く。今の (hash, model) に無い正解は本文で聞き直す
+  shikii tune      <spec.yaml> [--labeled file] [--local URL] [--store DIR] [--folds 5] [--propose N --proposer URL [--proposer-model M]] [--write]
+                   spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は ./wiki/runs/
+  shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
+  shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
+  shikii bias      <spec.yaml> [--rows K] [--permutations N] [--local URL] [--hosted URL]
+  shikii status    [spec.yaml...] [--store DIR]
+  shikii gc        [spec.yaml...] [--older-than 30d] [--apply] [--store DIR]
   shikii hash      <spec.yaml>
-  shikii check     <spec.yaml>... [--store DIR]            較正の契約を検査(CI 向け。違反で exit 1)
-  shikii drift     <spec.yaml> --model M [--window N] [--store DIR]  直近のラベルで劣化を見る
-  shikii bias      <spec.yaml> [--labeled file] [--rows K] [--permutations N] [--local URL] ... choice の順序バイアスを測る
-  shikii status    [spec.yaml ...] [--store DIR]           記録・ラベル・較正の棚卸し
-  shikii gc        [spec.yaml ...] [--older-than 30d] [--apply] [--store DIR]  古くてラベルの無い記録を消す(既定は表示だけ)
-  shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--auto-calibrate=false]
-                   1 プロセスで HTTP の /v1/decide /v1/label /v1/status /v1/queue と、ブラウザで正解を付ける画面(/)。正解が溜まると自動で線を引く
-  shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--auto-calibrate=false]
-                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status)
-  shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]
-                   質問に答えるだけで spec を作る(フラグで渡したものは聞かない)
-  shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080] [--readout-port 8090]
-                   手元のモデルを起こす。普通の GGUF なら shikii-readout を前に立てる。Ctrl-C で止める
-  shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   何が動いていて何が足りないかを 1 画面で
-  shikii tune      <spec.yaml> [--labeled file] [--local URL] [--write]        spec の variants:(聞き方の候補)を正解の貯金で採点し、勝った候補を新しい版として書く`)
+`
 }
 
 // endpointFlags は decide / calibrate 共通のエンドポイント指定。
@@ -237,7 +242,8 @@ func cmdLabel(args []string) error {
 	weight := fs.Float64("weight", 1, "ラベルの重み(弱いラベルは 1 未満)")
 	source := fs.String("source", "manual", "ラベルの出どころ: ask | outcome | manual | ui | mcp など(replay と file は calibrate が付ける)")
 	last := fs.Bool("last", false, "trace_id の代わりに、--spec-id の直近の記録に付ける")
-	if err := fs.Parse(args); err != nil {
+	pos, err := parseMixed(fs, args)
+	if err != nil {
 		return err
 	}
 	st := store.Store{Dir: *storeDir}
@@ -245,23 +251,23 @@ func cmdLabel(args []string) error {
 	var truth string
 	switch {
 	case *last:
-		if fs.NArg() != 1 || *specID == "" {
+		if len(pos) != 1 || *specID == "" {
 			return fmt.Errorf("usage: shikii label --last --spec-id ID <truth>")
 		}
 		r, err := st.LastRecord(*specID)
 		if err != nil {
 			return err
 		}
-		rec, truth = r, fs.Arg(0)
+		rec, truth = r, pos[0]
 	default:
-		if fs.NArg() != 2 {
+		if len(pos) != 2 {
 			return fmt.Errorf("usage: shikii label <trace_id> <truth>  |  shikii label --last --spec-id ID <truth>")
 		}
-		r, err := st.FindRecord(*specID, fs.Arg(0))
+		r, err := st.FindRecord(*specID, pos[0])
 		if err != nil {
 			return err
 		}
-		rec, truth = r, fs.Arg(1)
+		rec, truth = r, pos[1]
 	}
 	l, err := store.LabelFor(rec, truth, *weight, *source)
 	if err != nil {
@@ -1070,8 +1076,8 @@ func argmax(m map[string]float64) (string, float64) {
 // ---------------------------------------------------------------- hash / helpers
 
 func cmdHash(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: shikii hash <spec.yaml>")
+	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
+		return fmt.Errorf("usage: shikii hash <spec.yaml>\n  prints the spec's hash (question, options, template; not display/variants/calibration)")
 	}
 	sp, err := spec.Load(args[0])
 	if err != nil {
@@ -1091,14 +1097,15 @@ func cmdHash(args []string) error {
 func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	storeDir := bindStore(fs)
-	if err := fs.Parse(args); err != nil {
+	paths, err := parseMixed(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() == 0 {
+	if len(paths) == 0 {
 		return fmt.Errorf("usage: shikii check <spec.yaml>...")
 	}
 	var violations int
-	for _, path := range fs.Args() {
+	for _, path := range paths {
 		sp, err := spec.Load(path)
 		if err != nil {
 			fmt.Fprintf(stdout, "FAIL %s: %v\n", path, err)
@@ -1513,12 +1520,13 @@ func measureBias(ctx context.Context, sp *spec.Spec, lab []labeled, c *systemone
 func cmdStatus(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	storeDir := bindStore(fs)
-	if err := fs.Parse(args); err != nil {
+	paths, err := parseMixed(fs, args)
+	if err != nil {
 		return err
 	}
 	st := store.Store{Dir: *storeDir}
 	specs := map[string]*spec.Spec{}
-	for _, path := range fs.Args() {
+	for _, path := range paths {
 		sp, err := spec.Load(path)
 		if err != nil {
 			return err
@@ -1594,7 +1602,8 @@ func cmdGC(args []string) error {
 	storeDir := bindStore(fs)
 	olderThan := fs.String("older-than", "30d", "この年齢より古く、ラベルの無い記録を消す(例 30d, 12h, 1w。0 なら年齢を問わない)")
 	apply := fs.Bool("apply", false, "実際に消す。無ければ数えるだけ")
-	if err := fs.Parse(args); err != nil {
+	paths, err := parseMixed(fs, args)
+	if err != nil {
 		return err
 	}
 	age, err := parseAge(*olderThan)
@@ -1603,7 +1612,7 @@ func cmdGC(args []string) error {
 	}
 	st := store.Store{Dir: *storeDir}
 	var ids []string
-	for _, path := range fs.Args() {
+	for _, path := range paths {
 		sp, err := spec.Load(path)
 		if err != nil {
 			return err
@@ -1697,20 +1706,31 @@ func containsString(xs []string, s string) bool {
 
 // parseSpecPath は「<spec.yaml> フラグ…」と「フラグ… <spec.yaml>」の両方を受ける。
 func parseSpecPath(fs *flag.FlagSet, args []string) (string, error) {
-	var path string
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		path, args = args[0], args[1:]
-	}
-	if err := fs.Parse(args); err != nil {
+	pos, err := parseMixed(fs, args)
+	if err != nil {
 		return "", err
 	}
-	if path == "" {
-		if fs.NArg() != 1 {
-			return "", fmt.Errorf("spec path is required")
-		}
-		path = fs.Arg(0)
+	if len(pos) != 1 {
+		return "", fmt.Errorf("spec path is required")
 	}
-	return path, nil
+	return pos[0], nil
+}
+
+// parseMixed はフラグを位置引数の前にも後ろにも書けるようにする(`shikii status spec.yaml --store DIR` と
+// `shikii status --store DIR spec.yaml` が同じ)。Go の flag は最初の位置引数で止まるので、残りを続けて読む。
+func parseMixed(fs *flag.FlagSet, args []string) ([]string, error) {
+	var pos []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			return pos, nil
+		}
+		pos = append(pos, rest[0])
+		args = rest[1:]
+	}
 }
 
 func fmtDist(m map[string]float64) string {

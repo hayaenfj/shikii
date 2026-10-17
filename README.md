@@ -22,7 +22,7 @@
 `scripts/demo.sh`
 
 > [!IMPORTANT]
-> shikii never runs inference itself (`shikii up` only launches llama-server for you) and never reads a keychain. It talks to a decision-model endpoint you already have, keeps the records, and refuses to **act** until the probabilities for *this question on this model* have been verified against labels. Calibration blocks are generated, never written by hand.
+> shikii never runs inference itself (`shikii up` launches llama-server for you, and `shikii-readout` in front of a plain GGUF) and never reads a keychain. It talks to a decision-model endpoint you already have, keeps the records, and refuses to **act** until the probabilities for *this question on this model* have been verified against labels. Calibration blocks are generated, never written by hand.
 
 ---
 
@@ -30,7 +30,7 @@ Decision models (TypeSafe Jev, llama.cpp Kev-4B and OpenJev, OpenRouter Decision
 
 shikii owns the part nobody ships: the **lifecycle** of a decision. A spec file holds the question, the options, the state template and the thresholds. `decide` asks a model and returns a band (`act` / `ask` / `discard` / `abstain`), never a raw number. `label` records what was true. `calibrate` fits and cross-validates, then writes the result back into the spec under a key made of the question's hash and the model's name. `check` fails CI when the wording or the model drifted. `gc` keeps the store small.
 
-It also comes with `shikii-readout`, a small adapter (about 600 lines) that turns **any chat GGUF on a stock llama.cpp** into a decision model by reading the logits of the option letters. In our measurements an ordinary 27B ternary model read this way matched trained decision models on accuracy, at 0.6 seconds a question on a laptop.
+It also comes with `shikii-readout`, a small adapter (about 600 lines) that turns **any chat GGUF on a stock llama.cpp** into a decision model by reading the logits of the option letters. In our measurements an ordinary 27B ternary model read this way matched trained decision models on accuracy, at 0.6 seconds a question on a Mac.
 
 > The name is Japanese: *shikii* (閾) means threshold, the line that turns a probability into an action. The command is `shikii` too.
 
@@ -39,8 +39,8 @@ It also comes with `shikii-readout`, a small adapter (about 600 lines) that turn
 **People give only two things, their intent and the truths. The machine grows everything else: how to ask, how far to trust, when to escalate. What it learns is shared between people.**
 
 - *How to ask*: wording, option descriptions and context layout are measured on the stored truths and improved without new labels (`tune`). Lessons about which phrasing works for which kind of question and which model family accumulate in a shared, human-editable wiki.
-- *How far to trust*: calibration per (question, model), bands instead of raw numbers, no `act` without evidence, invalidation on change, replay after change, drift checks, audit sampling.
-- *When to escalate*: one model, several levels of asking: a minimal question first, more context or a decomposed question when unsure, a person last. Answers from a higher level become truths for the lower one, so the cheapest way of asking keeps getting better. The measure of progress is human decisions per thousand, holding precision.
+- *How far to trust*: calibration per (question, model), bands instead of raw numbers, no `act` without evidence, invalidation on change, replay after change, drift checks. Audit sampling is next.
+- *When to escalate* (not built yet): one model, several levels of asking: a minimal question first, more context or a decomposed question when unsure, a person last. Answers from a higher level become truths for the lower one, so the cheapest way of asking keeps getting better. The measure of progress will be human decisions per thousand, holding precision.
 
 A hypothesis we intend to test, not a claim: for typed decisions, a measured question plus calibration may reach useful accuracy with far fewer examples than fine-tuning (LoRA) and with better-calibrated answers than retrieval (RAG), on the same base model. The benchmark is simple and we will publish it: same task, same truths, same model, three methods, accuracy and Brier side by side.
 
@@ -117,6 +117,8 @@ bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080   
 bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --write  # adopts the winner as v+1 and calibrates it
 ```
 
+The layout is fixed: run shikii at the project root, with `decisions/` (specs), `wiki/` (how-to-ask knowledge) and `.shikii/` (records and truths) beside each other. There is no flag for where the wiki lives.
+
 Wording moves accuracy far more than calibration does (0.68 → 0.90 in our data; a layout change moved a 27B model by 5 points). The truths people gave do not depend on the wording, so every candidate wording can be scored on all of them with no new labels: top-1, Brier, precision and recall at `act`, plus a k-fold holdout of the selection itself. A candidate is adopted only when that holdout beats keeping the current wording; a win by one example out of 62 does not pass (we saw exactly that: 0.984 on the full bank, 0.952 on holdout, so the current 0.968 stayed). Ties keep the current wording. The winner becomes a new version file; the old one stays, and the calibration is fitted immediately by replay.
 
 You do not have to write the candidates yourself:
@@ -125,7 +127,7 @@ You do not have to write the candidates yourself:
 bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --propose 3 --proposer http://127.0.0.1:8087
 ```
 
-`--propose` hands a chat model the current wording, the confusion matrix, the examples it gets wrong and the relevant pages of the [wiki](wiki/index.md) (how to ask this type, this model family's habits, confirmed patterns, this decision's own rules), and asks for candidates. They are stored in the spec's `variants:` so people can read them, scored like any other candidate, and the run is written back to `wiki/runs/` with the numbers, the decision and a one-line lesson. The wiki is where the knowledge of *how to ask* accumulates, is edited by people, and is read by the next proposal. A spec with `pii: true` only ever sends example texts to a proposer on this machine.
+`--propose` hands a chat model the current wording, the confusion matrix, the examples it gets wrong and the relevant pages of the [wiki](wiki/index.md) (how to ask this type, this model family's habits, confirmed patterns, this decision's own rules and the wordings people rejected), and asks for candidates. Texts from `pii: true` specs and texts recorded under `--tainted` go only to a proposer on this machine; the hosted key is never sent to a proposer (set `SHIKII_PROPOSER_KEY` if yours needs one). A wording proposed in this run is never adopted by the same `--write`: a person reads it first, then adopts on the page or with a plain `tune --write`. They are stored in the spec's `variants:` so people can read them, scored like any other candidate, and the run is written back to `wiki/runs/` with the numbers, the decision and a one-line lesson. The wiki is where the knowledge of *how to ask* accumulates, is edited by people, and is read by the next proposal. A spec with `pii: true` only ever sends example texts to a proposer on this machine.
 
 ### Install and update
 
@@ -164,9 +166,9 @@ thresholds:
 
 **The calibration key is `(hash of question + template + options, model id as returned by the endpoint)`.** Edit one word of the question, or let `jev-latest` roll to a new version, and the calibration is simply gone: the band drops to `ask` instead of silently acting on stale constants. Getting it back is machine time, not human time: truths are kept per input together with the text, independent of wording and model, and `calibrate` replays them against the new key. Prompt layout is part of the key too: `shikii-readout` reports its layout in the model name (`…+state-last`), because moving the state inside the prompt changed a 27B model's accuracy by 5 points with the same weights.
 
-`calibrate` compares three methods under 5-fold cross-validation and writes the winner. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
+`calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Every safety-relevant branch (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, …) has a recorded mutation that made a test fail before the fix was accepted. There are 105 Go tests across 8 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in `docs/operations.md` and the integration notes. There are 119 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -186,7 +188,7 @@ Taint is a first-class input: pass `--tainted` (or let your hook do it) in a ses
 
 ## Results
 
-Same specs, same labels, five evaluation sets, all synthetic: prompt intent (62 requests, English and Japanese), duplicate bug reports (32 Japanese pairs) and same-matter customer inquiries (32 Japanese pairs). Details and the full table are in [`docs/model-comparison.md`](docs/model-comparison.md).
+Same specs, same labels, three synthetic tasks, five model routes (the table shows four; the fifth, Bonsai 2 through a forked readout, is in the full table): prompt intent (62 requests, English and Japanese), duplicate bug reports (32 Japanese pairs) and same-matter customer inquiries (32 Japanese pairs). Details and the full table are in [`docs/model-comparison.md`](docs/model-comparison.md).
 
 | Model | Licence | top-1 (all / ja) | yes/no Brier, raw → chosen (bug reports / inquiries) | Seconds per question |
 |---|---|---|---|---|
@@ -197,9 +199,9 @@ Same specs, same labels, five evaluation sets, all synthetic: prompt intent (62 
 
 **Wording beats calibration.** On prompt intent, 19 of 21 errors landed on *other*; rewording the options took top-1 from 0.68 to 0.90 before any calibration. Calibration is for "right order, not enough confidence". The confusion matrix `calibrate` prints tells you which case you have.
 
-**Whether a model needs calibration is decided by numbers, not by its label.** On the two yes/no sets, OpenJev's raw probabilities were good enough twice and `identity` was written; Kev-4B gained a little from Platt; the ordinary LLMs gained two to four times. All ten (model, set) pairs separated positives from negatives completely, so the difference is only how honest the probabilities are. `calibrate` runs the comparison under cross-validation for each *(question, model)* and writes what won.
+**Whether a model needs calibration is decided by numbers, not by its label.** On the two yes/no sets, OpenJev's raw probabilities were good enough twice and `identity` was written; Kev-4B gained a little from Platt; the ordinary LLMs gained 1.5 to 4 times. All ten (model, set) pairs separated positives from negatives completely, so the difference is only how honest the probabilities are. `calibrate` runs the comparison under cross-validation for each *(question, model)* and writes what won.
 
-**An ordinary GGUF lands next to a trained decision model.** A 27B ternary chat model, mainline llama.cpp 0.7.0, one adapter, no fork, no training, no Rust: same top-1 as the best Apache-licensed trained model, Japanese 1.000, 0.58 s a question with flash attention and a warmed prefix. Moving the state from before the options to right before the answer took it from 0.919 to 0.968 with the same weights, which is why the layout is part of the calibration key.
+**An ordinary GGUF lands next to a trained decision model.** A 27B ternary chat model, mainline llama.cpp 0.7.0, one adapter, no fork, no training, no Rust: same top-1 as the best Apache-licensed route (Bonsai 2 via BonJev), above the trained 4B, Japanese 1.000, 0.58 s a question with flash attention and a warmed prefix. Moving the state from before the options to right before the answer took it from 0.919 to 0.968 with the same weights, which is why the layout is part of the calibration key.
 
 ## FAQ
 
@@ -228,9 +230,10 @@ Same specs, same labels, five evaluation sets, all synthetic: prompt intent (62 
 - [`integrations/readout.md`](integrations/readout.md), [`integrations/bonjev.md`](integrations/bonjev.md), [`integrations/claude-code.md`](integrations/claude-code.md), [`integrations/mcp.md`](integrations/mcp.md): the connections we run.
 - [`examples/`](examples/) and [`testdata/`](testdata/README.md): a spec with no calibration to start from, and the synthetic labelled sets used in tests.
 
-The commands:
+The commands (flags may come before or after the positional arguments):
 
 ```
+shikii tune      <spec> [--labeled file] [--folds 5] [--propose N --proposer URL] [--write]   # score candidate wordings; adopt only past holdout + sign test + a person
 shikii decide    <spec> -i k=v ... [--hosted URL] [--local URL] [--tainted] [--store DIR] [--json]
 shikii label     <trace_id> <truth> | --last --spec-id ID <truth>   [--weight W] [--source ask|outcome|manual]
 shikii calibrate <spec> [--labeled file] [--model M] [--store DIR] [--write] [--force]
@@ -249,7 +252,7 @@ shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # wh
 
 ## Contributing
 
-Issues and pull requests are welcome. One rule: a test that guards a behaviour must be shown failing first. Break the behaviour on purpose, run the test, record how it failed, then fix it and record that it passes. The docs list those mutations for every safety branch; keep the list honest.
+Issues and pull requests are welcome. Two rules. A test that guards a behaviour must be shown failing first: break the behaviour on purpose, run the test, record how it failed, then fix it and record that it passes. And only people change a wiki pattern's status (`confirmed` / `tentative` / `rejected`), with the run that is the evidence.
 
 ## License
 

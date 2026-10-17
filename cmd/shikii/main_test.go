@@ -993,3 +993,37 @@ func mustLoad(t *testing.T, path string) *spec.Spec {
 	}
 	return sp
 }
+
+// フラグは位置引数の後ろに書いてもよい(README の一覧がその順で書いてある)。new / status / check / gc / label の 5 つ。
+func TestFlagsMayFollowPositionals(t *testing.T) {
+	dir := t.TempDir()
+	specPath := writeSpec(t, dir, "false")
+	storeDir := filepath.Join(dir, ".shikii")
+	newDir := filepath.Join(dir, "new")
+	if err := os.MkdirAll(newDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	capture(t, func() error {
+		return cmdNew([]string{"my-decision", "--type", "noul", "--dir", newDir, "--pii", "false", "--send-to", "local", "--question", "Is it?", "--input", "text"})
+	})
+	if _, err := os.Stat(filepath.Join(newDir, "my-decision.yaml")); err != nil {
+		t.Fatalf("new <id> --type ... must work with the id first: %v", err)
+	}
+	for _, c := range []struct {
+		name string
+		run  func() error
+	}{
+		{"status", func() error { return cmdStatus([]string{specPath, "--store", storeDir}) }},
+		{"check", func() error { return cmdCheck([]string{specPath, "--store", storeDir}) }},
+		{"gc", func() error { return cmdGC([]string{specPath, "--store", storeDir}) }},
+	} {
+		out := capture(t, c.run)
+		if strings.Contains(out, "--store") || strings.Contains(out, "no such file") {
+			t.Fatalf("%s <spec> --store DIR must treat --store as a flag, got:\n%s", c.name, out)
+		}
+	}
+	err := cmdLabel([]string{"no-such-trace", "question", "--store", storeDir})
+	if err == nil || strings.Contains(err.Error(), "usage") {
+		t.Fatalf("label <trace> <truth> --store DIR must parse the flag, got %v", err)
+	}
+}
