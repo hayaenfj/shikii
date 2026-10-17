@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "shikii": {
+      "command": "shikii",
+      "args": ["mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"]
+    }
+  }
+}

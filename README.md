@@ -83,6 +83,8 @@ curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message"
 
 Programs call `POST /v1/decide` and `POST /v1/label` from any language. People open the page: every decision that is still waiting for an answer is listed, `ask` first, with one button per option. Press the button, the truth is stored, and when a spec reaches `eval.min_n` the server calibrates and writes the spec by itself. Nobody types a trace id. The page is a single HTML file with no external loads, so it works on a laptop with no internet. It has a language switch; add a `display:` block to a spec (per language: title, question, option or level names) and the page shows the decision in that language too. `display` is never sent to the model and is not part of the calibration key.
 
+The same thing as MCP tools for an agent: `shikii mcp` speaks the Model Context Protocol over stdio and exposes `shikii_specs`, `shikii_decide`, `shikii_label` and `shikii_status`. Claude Code picks it up from the repo's `.mcp.json`. See [`integrations/mcp.md`](integrations/mcp.md).
+
 ### Use any GGUF as a decision model
 
 ```sh
@@ -187,7 +189,7 @@ Same specs, same labels, five evaluation sets, all synthetic: prompt intent (62 
 - [`docs/operations.md`](docs/operations.md): how to stop or roll back every moving part, how to read a failure, what is still missing.
 - [`docs/model-comparison.md`](docs/model-comparison.md): the comparison table and how to reproduce it.
 - [`docs/guide.ja.md`](docs/guide.ja.md): the long-form Japanese guide with every command and a full real-world loop.
-- [`integrations/readout.md`](integrations/readout.md), [`integrations/bonjev.md`](integrations/bonjev.md), [`integrations/claude-code.md`](integrations/claude-code.md): the three connections we run.
+- [`integrations/readout.md`](integrations/readout.md), [`integrations/bonjev.md`](integrations/bonjev.md), [`integrations/claude-code.md`](integrations/claude-code.md), [`integrations/mcp.md`](integrations/mcp.md): the connections we run.
 - [`examples/`](examples/) and [`testdata/`](testdata/README.md): a spec with no calibration to start from, and the synthetic labelled sets used in tests.
 
 The commands:
@@ -203,6 +205,7 @@ shikii status    [spec...] [--store DIR]                  # inventory: records, 
 shikii gc        [spec...] [--older-than 30d] [--apply]   # drop old unlabelled records; dry run by default
 shikii hash      <spec>
 shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # HTTP API + review page; auto-calibrates
+shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # the same as MCP tools over stdio
 ```
 
 ## Contributing

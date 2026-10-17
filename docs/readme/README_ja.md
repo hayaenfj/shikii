@@ -95,6 +95,8 @@ curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message"
 
 プログラムはどの言語からでも `POST /v1/decide` と `POST /v1/label` を叩くだけ。人はブラウザで画面を開くと、答え合わせ待ちの判定が `ask` から順に並び、選択肢ごとにボタンがあります。押せば正解が記録され、`eval.min_n` に届いた spec はサーバーが自分で線を引いて書き込みます。trace id を打つ人はいません。画面は外部の読み込み無しの HTML 1 枚なので、ネットの無い社内のノート PC でも開けます。言語の切替があり、spec に `display:`（言語ごとの題名・質問・選択肢や段階の名前）を書けば、その言語で判定が表示されます。`display` は AI には送らず、線の鍵にも入りません。
 
+同じものをエージェントの道具としても出せます。`shikii mcp` は stdio の MCP サーバーで、`shikii_specs` / `shikii_decide` / `shikii_label` / `shikii_status` の 4 つを出します。Claude Code はリポジトリの `.mcp.json` から拾います。手順は [`integrations/mcp.md`](../../integrations/mcp.md)。
+
 ### 普通のチャット用モデルを使う
 
 ```sh
@@ -225,7 +227,7 @@ shikii は「決定モデル」向けの共通の呼び方（`POST /v1/systemone
 - [`docs/decision-ops-framework.md`](../decision-ops-framework.md): 設計の記録。数字と出典まで入った、作った本人向けの書き方。
 - [`docs/operations.md`](../operations.md): 動いているものの止め方・戻し方、おかしいときの見分け方、まだ無いもの。
 - [`docs/model-comparison.md`](../model-comparison.md): 比較表と、同じ表を作る手順。
-- [`integrations/readout.md`](../../integrations/readout.md)、[`integrations/bonjev.md`](../../integrations/bonjev.md)、[`integrations/claude-code.md`](../../integrations/claude-code.md): 実際に動かしている 3 つのつなぎ方。
+- [`integrations/readout.md`](../../integrations/readout.md)、[`integrations/bonjev.md`](../../integrations/bonjev.md)、[`integrations/claude-code.md`](../../integrations/claude-code.md)、[`integrations/mcp.md`](../../integrations/mcp.md): 実際に動かしているつなぎ方。
 - [`examples/`](../../examples/) と [`testdata/`](../../testdata/README.md): 線を引く前の設定ファイルの例と、テストに使う作り物の正解データ。
 
 コマンド一覧:
@@ -241,6 +243,7 @@ shikii status    [spec...] [--store DIR]                  # 記録・正解・�
 shikii gc        [spec...] [--older-than 30d] [--apply]   # 古くて正解の無い記録を消す(既定は数えるだけ)
 shikii hash      <spec>
 shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # HTTP の口 + 答え合わせの画面。自動で線を引く
+shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # 同じものを stdio の MCP の道具として
 ```
 
 ## 手伝ってくれる人へ

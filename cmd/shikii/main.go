@@ -60,6 +60,8 @@ func main() {
 		err = cmdGC(os.Args[2:])
 	case "serve":
 		err = cmdServe(os.Args[2:])
+	case "mcp":
+		err = cmdMCP(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -83,7 +85,9 @@ func usage() {
   shikii status    [spec.yaml ...] [--store DIR]           記録・ラベル・較正の棚卸し
   shikii gc        [spec.yaml ...] [--older-than 30d] [--apply] [--store DIR]  古くてラベルの無い記録を消す(既定は表示だけ)
   shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--auto-calibrate=false]
-                   1 プロセスで HTTP の /v1/decide /v1/label /v1/status /v1/queue と、ブラウザで正解を付ける画面(/)。正解が溜まると自動で線を引く`)
+                   1 プロセスで HTTP の /v1/decide /v1/label /v1/status /v1/queue と、ブラウザで正解を付ける画面(/)。正解が溜まると自動で線を引く
+  shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--auto-calibrate=false]
+                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status)`)
 }
 
 // endpointFlags は decide / calibrate 共通のエンドポイント指定。
