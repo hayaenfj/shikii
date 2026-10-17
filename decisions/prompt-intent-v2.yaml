@@ -98,7 +98,7 @@ variants:
       review: Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality. Includes correctness checks like "Does this look correct?".
   - name: two-step
     steps:
-      - ask: Is this message asking the assistant to do or answer anything at all? Greetings, thanks, "ok" and small talk are not requests.
+      - ask: Is this message a request (something the assistant should do or answer), as opposed to a greeting, thanks, an acknowledgement or small talk?
         no: other
       - ask: Does the message ask to change something in the repository (edit, fix, add, remove, rename, refactor, write tests or docs)? Terse commands like "fix the typo" count.
         yes: change_request

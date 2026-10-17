@@ -15,3 +15,4 @@
 ## 証拠
 
 - [prompt-intent の v1 → v2](../specs/prompt-intent.md): 説明を具体化して other を限定し、top-1 0.682 → 0.903（Kev-4B、62 件）
+- 分解は万能ではない: 多択が上手なモデルには要らない。Ternary-Bonsai-27B（readout）で prompt-intent を 4 段の はい/いいえ に割ると top-1 0.790（多択は 0.968）。1 段目を否定の列挙で書いた版は 0.306 → [noul-define-yes-before-contrast](../patterns/noul-define-yes-before-contrast.md)。分解が効くのは多択で崩れるモデル（小さいモデル、選択肢が多い時）と見込むが、まだ測っていない（[run](../runs/2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64-2.md)）
