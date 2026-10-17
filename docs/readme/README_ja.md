@@ -86,7 +86,7 @@ bin/shikii doctor         # 何が動いていて何が足りないか、直す�
 
 人が付けた正解は文言に依らないので、聞き方の候補をいくつ作っても**新しい正解なしで全部採点できます**。`shikii tune` は候補ごとに正解率・確率の質・`act` での精度と再現率を出し、さらに「候補を選ぶこと自体がまぐれでないか」を k 分割の holdout で測ります。採用するのは holdout が「今の文言のまま」を上回る時だけ。62 件中 1 件多く当てた程度では通りません（実際にそうなりました）。
 
-候補は人が書いてもよく、チャット用の AI に作らせることもできます（`--propose`）。AI には今の聞き方・どこで間違えているか・外した実例・そして [wiki](../../wiki/index.md) の該当ページ（この型の聞き方、このモデルの系統の癖、確認済みのパターン、この判定の決まり）を渡します。結果は wiki の `runs/` に数字と採否と一行の学びとして書き戻され、次の提案がそれを読みます。
+候補は人が書いてもよく、チャット用の AI に作らせることもできます（`--propose`）。AI には今の聞き方・どこで間違えているか・外した実例・そして [wiki](../../wiki/index.md)（spec のフォルダの隣の `wiki/` に自動でできる markdown のフォルダ。設定は要りません）の該当ページ（この型の聞き方、このモデルの系統の癖、確認済みのパターン、この判定の決まり）を渡します。結果は wiki の `runs/` に数字と採否と一行の学びとして書き戻され、次の提案がそれを読みます。
 
 ただし**意味は機械には確かめられません**。言い換えが「まだ同じことを聞いているか」は人が画面で確認し、「違う」と言えばそれも記録されます。数字は機械、意味は人。
 
@@ -171,13 +171,13 @@ bin/shikii doctor         # 何が動いていて何が足りないか、直す�
 ```
 shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--from spec.yaml]   # 質問に答えて spec を作る
 shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # 手元のモデルを起こす。普通の GGUF なら変換役を前に
-shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--proposer URL] [--wiki DIR]   # HTTP の口 + 答え合わせと聞き方の画面
+shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--proposer URL]   # HTTP の口 + 答え合わせと聞き方の画面
 shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--proposer URL]   # 同じものを MCP の道具として(採用の道具は無い)
 shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # 何が動いていて何が足りないか
 shikii decide    <spec> -i k=v ... [--hosted URL] [--local URL] [--tainted] [--json]   # 聞く(プログラム向け)
 shikii label     <trace_id> <truth> | --last --spec-id ID <truth>   # 正解を付ける(端末から)
 shikii calibrate <spec> [--labeled file] [--model M] [--write]   # 線を引く。古い正解は新しい文言で聞き直す
-shikii tune      <spec> [--propose N --proposer URL] [--write] [--wiki DIR]   # 聞き方の候補を採点し、holdout が勝てば新しい版に
+shikii tune      <spec> [--propose N --proposer URL] [--write]   # 聞き方の候補を採点し、holdout が勝てば新しい版に。結果は wiki/runs/ へ
 shikii check     <spec>... [--store DIR]   # CI: 文言が変わった線、手書きの線、精度不足の線を落とす
 shikii drift     <spec> --model M [--window N]   # 最近の正解で劣化を見る
 shikii bias      <spec> [--rows K] [--permutations N]   # 選択肢の順番で答えが変わるか

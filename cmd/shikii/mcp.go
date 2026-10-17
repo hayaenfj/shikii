@@ -31,7 +31,6 @@ func cmdMCP(args []string) error {
 	fs.StringVar(&o.specsDir, "specs", "decisions", "spec(*.yaml)のフォルダ")
 	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
-	fs.StringVar(&o.wikiDir, "wiki", "wiki", "聞き方の wiki(tune の結果の置き場)")
 	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL")
 	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
 	if err := fs.Parse(args); err != nil {

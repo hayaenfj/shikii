@@ -68,11 +68,9 @@ func (s *server) handleTuneGet(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	running, lastErr := s.tuning[id], s.tuneErr[id]
 	s.mu.Unlock()
-	out := map[string]any{"spec": id, "running": running, "error": lastErr, "proposer": s.o.proposer != "", "wiki": s.o.wikiDir != ""}
-	if s.o.wikiDir != "" {
-		if res, err := latestTuneResult(s.o.wikiDir, id); err == nil {
-			out["latest"] = res
-		}
+	out := map[string]any{"spec": id, "running": running, "error": lastErr, "proposer": s.o.proposer != ""}
+	if res, err := latestTuneResult(s.o.wikiDir, id); err == nil {
+		out["latest"] = res
 	}
 	writeJSON(w, 200, out)
 }
@@ -95,10 +93,6 @@ func (s *server) decodeTuneReq(w http.ResponseWriter, r *http.Request) (specRef,
 		return specRef{}, 0, false
 	} else if err != nil {
 		writeErr(w, 500, err)
-		return specRef{}, 0, false
-	}
-	if s.o.wikiDir == "" {
-		writeErr(w, 400, errors.New("serve was started without --wiki; tune results need a place to live"))
 		return specRef{}, 0, false
 	}
 	if req.Propose > 0 && s.o.proposer == "" {
@@ -177,7 +171,7 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("meaning_same (true/false) is required: a person must say whether the new wording still asks the same thing"))
 		return
 	}
-	if s.o.wikiDir == "" || req.Run == "" {
+	if req.Run == "" {
 		writeErr(w, 400, errors.New("run is required (from GET /v1/tune)"))
 		return
 	}

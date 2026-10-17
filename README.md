@@ -240,8 +240,8 @@ shikii bias      <spec> [--rows K] [--permutations N]     # does the answer depe
 shikii status    [spec...] [--store DIR]                  # inventory: records, labels, sources, per-(model, hash) state
 shikii gc        [spec...] [--older-than 30d] [--apply]   # drop old unlabelled records; dry run by default
 shikii hash      <spec>
-shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # HTTP API + review page; auto-calibrates
-shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # the same as MCP tools over stdio
+shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]   # HTTP API + review and wording page; auto-calibrates
+shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]   # the same as MCP tools over stdio (no adopt tool)
 shikii new       <id> [--type ...] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--from spec.yaml]   # make a spec by answering questions
 shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # start a local model; puts shikii-readout in front of a plain GGUF
 shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # what is running, what is missing, how to fix it

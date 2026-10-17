@@ -39,7 +39,7 @@ type serveOpts struct {
 	storeDir      string
 	ef            endpointFlags
 	autoCalibrate bool
-	wikiDir       string // 聞き方の wiki。tune の結果を置き、画面と MCP が読む
+	wikiDir       string // 聞き方の wiki。空なら specs の隣の wiki/。tune の結果を置き、画面と MCP が読む
 	proposer      string // 候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけ
 	proposerModel string
 }
@@ -52,7 +52,6 @@ func cmdServe(args []string) error {
 	fs.StringVar(&o.specsDir, "specs", "decisions", "spec(*.yaml)のフォルダ")
 	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
-	fs.StringVar(&o.wikiDir, "wiki", "wiki", "聞き方の wiki(tune の結果の置き場。画面の「聞き方」の欄が読む)")
 	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけを測る")
 	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
 	if err := fs.Parse(args); err != nil {
@@ -77,6 +76,9 @@ type server struct {
 }
 
 func newServer(o serveOpts) http.Handler {
+	if o.wikiDir == "" {
+		o.wikiDir = wikiDirForSpecs(o.specsDir)
+	}
 	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]string{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleUI)
@@ -645,7 +647,7 @@ function wordingBlock(sp) {
     }
   }
   if (tu && tu.error) body += '<div class="k">' + esc(t('error')(tu.error)) + '</div>';
-  if (tu && tu.wiki && !tu.running) {
+  if (tu && !tu.running) {
     body += '<div class="btns"><button data-act="run" data-propose="0">' + esc(t('runTune')) + '</button>' + (tu.proposer ? '<button data-act="run" data-propose="3">' + esc(t('runPropose')(3)) + '</button>' : '') + '</div>';
   }
   el.innerHTML = head + '<div class="wbody">' + body + '</div>';

@@ -60,7 +60,6 @@ func cmdTune(args []string) error {
 	fs.IntVar(&o.propose, "propose", 0, "提案役(チャット用 LLM)に候補を N 個作らせて spec の variants に足す")
 	fs.StringVar(&o.proposer, "proposer", "", "提案役の URL(OpenAI 互換の /v1/chat/completions。本家 llama-server でも可)。pii: true の spec は手元(127.0.0.1)の提案役だけ")
 	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名(空なら口の既定)")
-	fs.StringVar(&o.wikiDir, "wiki", "wiki", "聞き方の wiki(markdown のフォルダ)。提案役が読み、tune が runs/ と specs/ に書く。空なら使わない")
 	path, err := parseSpecPath(fs, args)
 	if err != nil {
 		return err
@@ -81,7 +80,26 @@ type tuneOpts struct {
 	propose       int
 	proposer      string
 	proposerModel string
-	wikiDir       string
+	wikiDir       string // 空なら wikiDirFor(specPath)
+}
+
+// wikiDirFor は聞き方の wiki の置き場。spec のフォルダの隣の wiki/(decisions/ の隣なら wiki/)。
+// フラグではなく配置で決まる: wiki は共有する知識なので spec と同じリポジトリに入る。
+func wikiDirFor(specPath string) string {
+	abs, err := filepath.Abs(specPath)
+	if err != nil {
+		abs = specPath
+	}
+	return filepath.Join(filepath.Dir(filepath.Dir(abs)), "wiki")
+}
+
+// wikiDirForSpecs は specs のフォルダから見た wiki の置き場(serve / mcp)。
+func wikiDirForSpecs(specsDir string) string {
+	abs, err := filepath.Abs(specsDir)
+	if err != nil {
+		abs = specsDir
+	}
+	return filepath.Join(filepath.Dir(abs), "wiki")
 }
 
 // tuneResult は 1 回の tune の結果。wiki/runs/<name>.json にも残り、画面と MCP が読む。採用の判断もここに積む。
@@ -152,6 +170,9 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	}
 	if o.folds <= 0 {
 		o.folds = 5
+	}
+	if o.wikiDir == "" {
+		o.wikiDir = wikiDirFor(o.specPath)
 	}
 	if o.propose > 0 && o.proposer == "" {
 		return nil, errors.New("tune: --propose needs --proposer URL (a chat endpoint, e.g. http://127.0.0.1:8087 for a local llama-server with a chat GGUF)")
@@ -295,16 +316,13 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 			res.Decision = fmt.Sprintf("%s may be adopted once a person confirms the meaning is unchanged (page, or --write)", scores[best].name)
 		}
 	}
-	if o.wikiDir != "" {
-		runPath, err := writeRunPage(o.wikiDir, sp, current.model, cands, scores, res.Holdout, res.HaveHoldout, res.Decision, res.Lesson, rationales)
-		if err != nil {
-			fmt.Fprintf(stdout, "note: could not write the wiki run page: %v\n", err)
-		} else {
-			res.RunPage = runPath
-			res.Run = strings.TrimSuffix(filepath.Base(runPath), ".md")
-			fmt.Fprintf(stdout, "wiki: %s\n", runPath)
-		}
+	runPath, err := writeRunPage(o.wikiDir, sp, current.model, cands, scores, res.Holdout, res.HaveHoldout, res.Decision, res.Lesson, rationales)
+	if err != nil {
+		return res, fmt.Errorf("tune: write the wiki run page: %w", err)
 	}
+	res.RunPage = runPath
+	res.Run = strings.TrimSuffix(filepath.Base(runPath), ".md")
+	fmt.Fprintf(stdout, "wiki: %s\n", runPath)
 	if !res.Adoptable {
 		saveTuneResult(res)
 		return res, nil

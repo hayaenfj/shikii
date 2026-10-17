@@ -38,7 +38,11 @@ func wordingSensitiveModel(t *testing.T) *httptest.Server {
 
 func specWithVariants(t *testing.T, dir string) string {
 	t.Helper()
-	path := writeSpec(t, dir, "false") // id intent, min_n 2, question "What is asked?"
+	sub := filepath.Join(dir, "decisions") // 標準の配置: decisions/ の隣に wiki/ ができる
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := writeSpec(t, sub, "false") // id intent, min_n 2, question "What is asked?"
 	b, _ := os.ReadFile(path)
 	src := string(b) + `variants:
   - name: strict
@@ -65,20 +69,20 @@ func TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--wiki", filepath.Join(storeDir, "wiki")})
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir})
 	})
 	for _, must := range []string{"current", "strict", "worse", "top-1", "holdout", "winner: strict"} {
 		if !strings.Contains(out, must) {
 			t.Fatalf("tune report must mention %q:\n%s", must, out)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "intent-v2.yaml")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "decisions", "intent-v2.yaml")); err == nil {
 		t.Fatal("without --write nothing may be written")
 	}
 	capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write", "--wiki", filepath.Join(storeDir, "wiki")})
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
 	})
-	v2Path := filepath.Join(dir, "intent-v2.yaml")
+	v2Path := filepath.Join(dir, "decisions", "intent-v2.yaml")
 	v2, err := spec.Load(v2Path)
 	if err != nil {
 		t.Fatalf("winner must be written as a new version: %v", err)
@@ -113,12 +117,12 @@ func TestTuneKeepsCurrentWhenNothingBeatsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write", "--wiki", filepath.Join(storeDir, "wiki")})
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
 	})
 	if !strings.Contains(out, "winner: current") {
 		t.Fatalf("ties must keep the current wording:\n%s", out)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "intent-v2.yaml")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "decisions", "intent-v2.yaml")); err == nil {
 		t.Fatal("keeping the current wording must not write a new version")
 	}
 }
@@ -135,7 +139,7 @@ func TestTuneRefusesWithoutEnoughTruths(t *testing.T) {
 	var buf bytes.Buffer
 	old := stdout
 	stdout = &buf
-	err := cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii"), "--wiki", filepath.Join(dir, "wiki")})
+	err := cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii")})
 	stdout = old
 	if err == nil || !strings.Contains(err.Error(), "min_n") {
 		t.Fatalf("tune must refuse below min_n, got %v", err)
@@ -179,12 +183,12 @@ func TestTuneDoesNotAdoptAWinByNoise(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write", "--wiki", filepath.Join(storeDir, "wiki")})
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
 	})
 	if !strings.Contains(out, "winner: current") || !strings.Contains(out, "holdout") {
 		t.Fatalf("a win that the holdout does not support must not be adopted:\n%s", out)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "intent-v2.yaml")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "decisions", "intent-v2.yaml")); err == nil {
 		t.Fatal("nothing may be written")
 	}
 }
@@ -220,7 +224,10 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	storeDir := filepath.Join(dir, ".shikii")
 	model := wordingSensitiveModel(t)
 	proposer, prompts := fakeProposer(t)
-	specPath := writeSpec(t, dir, "false") // 候補は書かない。提案役に作らせる
+	if err := os.MkdirAll(filepath.Join(dir, "decisions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	specPath := writeSpec(t, filepath.Join(dir, "decisions"), "false") // 候補は書かない。提案役に作らせる。wiki は decisions/ の隣
 	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"fix b"},"truth":"change_request"},
 	          {"inputs":{"message":"why a"},"truth":"question"},{"inputs":{"message":"why b"},"truth":"question"}]`
 	labeledPath := filepath.Join(dir, "rows.json")
@@ -237,7 +244,7 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error {
-		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", model.URL, "--store", storeDir, "--wiki", wiki,
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", model.URL, "--store", storeDir,
 			"--propose", "2", "--proposer", proposer.URL, "--write"})
 	})
 	if len(*prompts) < 1 {
@@ -273,7 +280,7 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	}
 	// 2 回目の提案は、前回の学びを読んで出す
 	capture(t, func() error {
-		return cmdTune([]string{filepath.Join(dir, "intent-v2.yaml"), "--labeled", labeledPath, "--local", model.URL, "--store", storeDir, "--wiki", wiki,
+		return cmdTune([]string{filepath.Join(dir, "decisions", "intent-v2.yaml"), "--labeled", labeledPath, "--local", model.URL, "--store", storeDir,
 			"--propose", "2", "--proposer", proposer.URL})
 	})
 	if len(*prompts) < 2 || !strings.Contains((*prompts)[1], "Lesson:") {
@@ -290,7 +297,7 @@ func TestTuneProposeRefusesRemoteProposerForPIISpecs(t *testing.T) {
 	if err := os.WriteFile(labeledPath, []byte(`[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"why a"},"truth":"question"}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := cmdTune([]string{specPath, "--labeled", labeledPath, "--local", model.URL, "--store", filepath.Join(dir, ".shikii"), "--wiki", filepath.Join(dir, "wiki"),
+	err := cmdTune([]string{specPath, "--labeled", labeledPath, "--local", model.URL, "--store", filepath.Join(dir, ".shikii"),
 		"--propose", "2", "--proposer", "https://api.example.invalid/v1"})
 	if err == nil || !strings.Contains(err.Error(), "pii") {
 		t.Fatalf("a pii:true spec must not send example texts to a remote proposer, got %v", err)

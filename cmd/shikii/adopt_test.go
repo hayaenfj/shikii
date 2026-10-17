@@ -20,10 +20,7 @@ func newTuneFixture(t *testing.T) (srvURL, specsDir, wiki, labeledPath string) {
 	t.Helper()
 	dir := t.TempDir()
 	specsDir = filepath.Join(dir, "decisions")
-	if err := os.MkdirAll(specsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	specWithVariants(t, specsDir) // intent.yaml with variants strict / worse
+	specWithVariants(t, dir) // decisions/intent.yaml with variants strict / worse; the wiki is expected next to decisions/, with no flag
 	labeledPath = filepath.Join(dir, "rows.json")
 	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"fix b"},"truth":"change_request"},
 	          {"inputs":{"message":"why a"},"truth":"question"},{"inputs":{"message":"why b"},"truth":"question"}]`
@@ -41,7 +38,7 @@ func newTuneFixture(t *testing.T) (srvURL, specsDir, wiki, labeledPath string) {
 	model := wordingSensitiveModel(t)
 	var ef endpointFlags
 	ef.model, ef.local = "m", model.URL
-	h := newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), ef: ef, autoCalibrate: true, wikiDir: wiki})
+	h := newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), ef: ef, autoCalibrate: true})
 	s := httptest.NewServer(h)
 	t.Cleanup(s.Close)
 	return s.URL, specsDir, wiki, labeledPath
@@ -107,11 +104,11 @@ func TestServeRunsTuneAndAdoptsOnlyWithHumanMeaningCheck(t *testing.T) {
 
 // MCP は tune を回して結果を読めるが、採用の道具は無い(意味の確認は人の仕事)。
 func TestMCPCanTuneButCannotAdopt(t *testing.T) {
-	_, specsDir, wiki, _ := newTuneFixture(t)
+	_, specsDir, _, _ := newTuneFixture(t)
 	model := wordingSensitiveModel(t)
 	var ef endpointFlags
 	ef.model, ef.local = "m", model.URL
-	h := newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(filepath.Dir(specsDir), ".shikii"), ef: ef, wikiDir: wiki})
+	h := newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(filepath.Dir(specsDir), ".shikii"), ef: ef})
 	var in, out bytes.Buffer
 	send := func(req map[string]any) map[string]any {
 		in.Reset()
