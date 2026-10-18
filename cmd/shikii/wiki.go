@@ -248,7 +248,7 @@ func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []can
 		return 0, 0, nil
 	}
 	specAbs, _ := filepath.Abs(sp.Path())
-	specRel := sp.Path() // 下書きに書く path は実行する場所(プロジェクトの根)からの相対。基本構成なら decisions/<id>.yaml
+	specRel := sp.Path() // 下書きに書く path はプロジェクトルート(実行する場所)からの相対。基本構成なら decisions/<id>.yaml
 	if cwd, err := os.Getwd(); err == nil {
 		if rel, err := filepath.Rel(cwd, specAbs); err == nil && !strings.HasPrefix(rel, "..") {
 			specRel = rel

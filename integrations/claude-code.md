@@ -34,4 +34,4 @@ Stop ─────────── decisions-label.mjs ── ハッシュ�
 
 - **hook**(この文書の上半分): 常に自動で効く判定。人も Claude も意識しない
 - **MCP**(`shikii mcp`、[mcp.md](mcp.md)): エージェントやプログラムが「今この判定が要る」と自分で呼ぶ口。型と帯の契約が道具の説明に固定されている
-- **skill**(`skills/shikii/SKILL.md`): shikii を使って仕事をする時の作法。いつ判定を呼ぶか、帯にどう従うか、正解と線と状態は人のもの、tune の採用は人の「意味は同じ」の後、本文を外に出さない判定。手順と判断だけで数字や判定の論理は書かない(CLI と MCP を指す)。参照は `references/`(帯と領収書、spec の書き方、正解・較正・審判の約束)に分けて必要な時だけ読ませる。repo の根が plugin(`.claude-plugin/plugin.json`)なので、Claude Code の plugin として入れれば skill が載る。CI は `scripts/check-skill.sh` で前書きと参照の実在を見る
+- **skill**(`skills/shikii/SKILL.md`): shikii を使って仕事をする時の作法。いつ判定を呼ぶか、帯にどう従うか、正解と線と状態は人のもの、tune の採用は人の「意味は同じ」の後、本文を外に出さない判定。手順と判断だけで数字や判定の論理は書かない(CLI と MCP を指す)。参照は `references/`(帯と領収書、spec の書き方、正解・較正・審判の約束)に分けて必要な時だけ読ませる。リポジトリのルートが plugin(`.claude-plugin/plugin.json`)なので、Claude Code の plugin として入れれば skill が載る。CI は `scripts/check-skill.sh` で前書きと参照の実在を見る

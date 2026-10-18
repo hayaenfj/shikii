@@ -1,7 +1,7 @@
 #!/bin/sh
 # shikii を 1 行で入れる: curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 # Go 1.27 以上があれば go install で ~/go/bin(または GOBIN)に shikii と shikii-readout が入る。
-# その後 `shikii init` を実行する場所(プロジェクトの根)で 1 回打てば、エージェントの準備は終わり。
+# その後 `shikii init` をプロジェクトルート(実行する場所)で 1 回打てば、エージェントの準備は終わり。
 set -eu
 if ! command -v go >/dev/null 2>&1; then
   echo "install.sh: Go 1.27 or newer is needed (https://go.dev/dl/). Or use Docker: docker compose up" >&2

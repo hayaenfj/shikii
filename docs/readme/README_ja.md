@@ -11,7 +11,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
-[困りごと](#困りごと) · [shikii がすること](#shikii-がすること) · [あなたがすること](#あなたがすること) · [最短の入り口](#最短の入り口) · [一周の例](#一周の例) · [何が新しいか](#何が新しいか) · [もっと読む](#もっと読む)
+[困りごと](#困りごと) · [shikii がすること](#shikii-がすること) · [あなたがすること](#あなたがすること) · [インストール](#インストール) · [最短の入り口](#最短の入り口) · [一周の例](#一周の例) · [何が新しいか](#何が新しいか) · [もっと読む](#もっと読む)
 
 <p align="center"><img src="../assets/shikii-hero.svg" alt="shikii" width="100%"></p>
 
@@ -41,10 +41,18 @@ AI に「この問い合わせは前のと同じ案件？」と聞くと「た�
 
 それ以外は機械がやります。
 
+## インストール
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
+cd <プロジェクトルート> && shikii init
+```
+
+`shikii init` で、フォルダ（`decisions/` `wiki/` `.shikii/`）、Claude Code / Cursor 用の設定（`.mcp.json`）、エージェント向けの作法（skill）が 1 回で揃います。Go を入れたくなければ下の Docker。
+
 ## 最短の入り口
 
 - **Docker**: Go もモデルの準備も無いなら `docker compose up`。手元の AI（Kev-4B）と shikii が立ち、答え合わせの画面が http://127.0.0.1:8095 に出ます（[詳しく](../../integrations/docker.md)）
-- **1 行で入れる**: `curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh` のあと、プロジェクトの根で `shikii init`。フォルダ、Claude Code / Cursor 用の設定（`.mcp.json`）、エージェント向けの作法（skill）が 1 回で揃います
 - **既製の判定**: `decisions/` に 6 つ（依頼の種類、不具合の重複、問い合わせの同一判定、…）。そのまま使うか、`shikii new --from decisions/prompt-intent-v2.yaml` で写して書き換えます（[一覧](../../decisions/README.md)）
 - **過去の表がある**: `shikii import past.csv --spec decisions/<id>.yaml` で答え合わせの材料にできます。最初の 50 件を手で答えなくてよい
 

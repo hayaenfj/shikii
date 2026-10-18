@@ -97,7 +97,7 @@ type tuneOpts struct {
 	wikiDir       string // 空なら ./wiki(テストだけが別の場所を指す)
 }
 
-// 基本構成: 実行する場所(プロジェクトの根)に decisions/ wiki/ .shikii/。wiki は常に ./wiki で、フラグも推測も無い。
+// 基本構成: プロジェクトルート(実行する場所)に decisions/ wiki/ .shikii/。wiki は常に ./wiki で、フラグも推測も無い。
 const wikiRoot = "wiki"
 
 // tuneResult は 1 回の tune の結果。wiki/runs/<name>.json にも残り、画面と MCP が読む。採用の判断もここに積む。

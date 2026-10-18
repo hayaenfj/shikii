@@ -8,7 +8,7 @@ docker compose up            # 初回は Kev-4B(約 2.5 GB)を取ってくる
 # → http://127.0.0.1:8095 が答え合わせの画面
 ```
 
-- プロジェクトの根（このフォルダ）が `/work` に mount される。`decisions/`（判定）、`wiki/`（知識）、`.shikii/`（記録と正解）はホストのファイルがそのまま使われ、容れ物を消しても残る
+- プロジェクトルート（このフォルダ）が `/work` に mount される。`decisions/`（判定）、`wiki/`（知識）、`.shikii/`（記録と正解）はホストのファイルがそのまま使われ、容れ物を消しても残る
 - Linux では bind mount の所有者がホストのままなので、compose は `user: "${UID:-1000}:${GID:-1000}"` で動かす（`export UID GID` してから `docker compose up`。合わなければ `.shikii/` に書けず答えが保存されない）
 - 他の容れ物（podman、k8s）では、`/.dockerenv` か `/run/.containerenv` か `KUBERNETES_SERVICE_HOST` があれば全ての口で待つ。無い容れ物では 127.0.0.1 に縛られるので host network を使う
 - 画面は `127.0.0.1:8095` にだけ出す（LAN には出さない）。容れ物の中では shikii は全ての口で待つ（`/.dockerenv` があれば。ホストで直接動かす時は今までどおり 127.0.0.1 だけ）

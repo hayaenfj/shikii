@@ -1,4 +1,4 @@
-// Package shikii はモジュールの根。skill(エージェント向けの作法)を実行ファイルに埋め込み、`shikii init` が配る。
+// Package shikii はモジュールのルート。skill(エージェント向けの作法)を実行ファイルに埋め込み、`shikii init` が配る。
 package shikii
 
 import "embed"
