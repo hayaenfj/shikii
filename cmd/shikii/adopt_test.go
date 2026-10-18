@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -145,14 +144,7 @@ func TestMCPCanTuneButCannotAdopt(t *testing.T) {
 // 画面に「聞き方」の欄がある: 結果を読み、tune を回し、人が意味を確かめて採用 / 却下する。両言語。
 func TestServeUIHasWordingSection(t *testing.T) {
 	url, _, _, _ := newTuneFixture(t)
-	resp, err := http.Get(url + "/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(resp.Body)
-	html := buf.String()
+	html := uiText(t, url)
 	for _, must := range []string{"/v1/tune?spec=", "/v1/tune/run", "/v1/tune/adopt", "meaning_same", "意味は同じ", "意味が違う", "same meaning", "meaning changed"} {
 		if !strings.Contains(html, must) {
 			t.Fatalf("UI must have the wording section; missing %q", must)

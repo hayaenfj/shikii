@@ -1,0 +1,17 @@
+{
+  "name": "shikii-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "shikii の答え合わせの画面(Svelte)。ビルド結果 dist/ は Go の実行ファイルに埋め込まれる",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "node scripts/check-locales.mjs"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "svelte": "5.57.2",
+    "vite": "8.3.4"
+  }
+}

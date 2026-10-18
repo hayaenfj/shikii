@@ -31,3 +31,6 @@ coverage.*
 
 # Python のキャッシュ(scripts/bench/lora)
 __pycache__/
+
+# 画面(web/)の依存。ビルド結果 web/dist は commit する(Go だけで go install できるように)
+/web/node_modules/

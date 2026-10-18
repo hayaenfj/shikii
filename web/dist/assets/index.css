@@ -1,0 +1,46 @@
+/* shikii の画面の見た目。色は変数(--bg など)で持ち、ダークモードは prefers-color-scheme で切り替える。
+   「くわしく」の要素は .adv に付け、body.advanced の時だけ出す */
+:root { color-scheme: light dark; --fg:#1b1f2a; --bg:#fff; --muted:#6b7280; --line:#e5e7eb; --amber:#b45309; --amberbg:#fef3c7; --ok:#166534; --okbg:#dcfce7; }
+@media (prefers-color-scheme: dark) { :root { --fg:#e5e7eb; --bg:#0b1020; --muted:#9ca3af; --line:#1f2937; --amber:#fbbf24; --amberbg:#3a2a05; --ok:#86efac; --okbg:#0f2f1a; } }
+body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 20px; max-width: 980px; margin: 0 auto; }
+header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+h1 { font-size: 20px; margin: 0 0 4px; } h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+.adv { display: none !important; } body.advanced .adv { display: revert !important; }
+#help { margin-left:auto; font: inherit; font-size: 13px; width: 30px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+.howto { border: 1px solid var(--amber); background: var(--amberbg); color: var(--fg); border-radius: 10px; padding: 12px 16px; margin: 8px 0 14px; font-size: 14px; } .howto ol { margin: 6px 0 8px 20px; padding: 0; } .howto li { margin: 3px 0; }
+.redo-out { font-size: 13px; color: var(--amber); margin-top: 6px; min-height: 0; }
+.todo { font-size: 14px; color: var(--fg); margin: 8px 0 6px; } .num { display:inline-block; min-width: 1.4em; color: var(--muted); font-size: 12px; }
+#mode { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+.status { margin: 6px 0 10px; font-size: 14px; } .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 4px; } .bar > div { height: 100%; background: var(--ok); }
+#tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 14px; } #tabs button { font-size: 14px; padding: 6px 12px; } #tabs button.active { border-color: var(--fg); font-weight: 600; } .badge { background: var(--amberbg); color: var(--amber); border-radius: 999px; padding: 0 7px; font-size: 12px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0 10px; } .chips button { font-size: 13px; padding: 4px 10px; } .chips button.active { border-color: var(--fg); font-weight: 600; } .chips .sep { flex: 1; }
+.item.card { padding: 18px 20px; } .item.card .text { font-size: 16px; }
+.q { font-size: 15px; margin: 4px 0 8px; } .guess { font-size: 14px; margin: 6px 0; } .keys { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
+body:not(.advanced) .btns button { font-size: 15px; padding: 8px 14px; }
+#lang { margin-left:8px; font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+h2 { font-size: 16px; margin: 28px 0 8px; display:flex; gap:10px; align-items:baseline; flex-wrap: wrap; }
+h2 .k { color:var(--muted); font-size:12px; font-weight:400; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill.calibrated { background: var(--okbg); color: var(--ok); border-color: transparent; }
+.pill.ready { background: var(--amberbg); color: var(--amber); border-color: transparent; }
+.item { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 8px 0; }
+.item.ask { border-color: var(--amber); }
+.meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; display:flex; gap:12px; flex-wrap:wrap; }
+.meta .audit { font-weight: 600; }
+.text { white-space: pre-wrap; word-break: break-word; margin: 4px 0 10px; }
+.text .k { color: var(--muted); font-size: 12px; }
+.btns { display:flex; gap:8px; flex-wrap:wrap; }
+button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+button:hover { border-color: var(--fg); } button.top { border-color: var(--amber); }
+button.weak { color: var(--muted); font-size: 13px; }
+.empty { color: var(--muted); padding: 10px 0; }
+pre { font-size: 12px; color: var(--muted); white-space: pre-wrap; margin: 6px 0 0; }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; display: none; max-width: 90vw; white-space: pre-wrap; }
+#toast.show { display: block; }
+details.wording { border: 1px dashed var(--line); border-radius: 10px; padding: 8px 14px; margin: 12px 0; }
+details.wording summary { cursor: pointer; }
+.wbody { margin-top: 8px; } .wbody .k { color: var(--muted); font-size: 12px; margin: 4px 0; }
+table.cands { border-collapse: collapse; font-size: 13px; margin: 6px 0; } table.cands th, table.cands td { text-align: left; padding: 2px 10px 2px 0; border-bottom: 1px solid var(--line); }
+table.cands tr.win td { color: var(--amber); }
+.diff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; } @media (max-width: 700px) { .diff { grid-template-columns: 1fr; } }
+.opts div { font-size: 13px; margin: 2px 0; } .opts div.changed { background: var(--amberbg); border-radius: 4px; padding: 1px 4px; }

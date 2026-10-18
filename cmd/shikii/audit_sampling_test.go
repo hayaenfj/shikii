@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -77,7 +78,7 @@ func TestQueuePutsAuditSamplesRightAfterAskItems(t *testing.T) {
 	if nAudit != sampled {
 		t.Fatalf("every sampled act decision is in the queue: %d vs %d", nAudit, sampled)
 	}
-	body := getBody(t, s.URL+"/")
+	body := uiText(t, s.URL)
 	if !strings.Contains(body, "audit") || !strings.Contains(body, "抜き取り") {
 		t.Fatalf("the page must name the audit sample in both languages")
 	}
@@ -92,6 +93,27 @@ func getBody(t *testing.T, url string) string {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	return string(b)
+}
+
+// uiAssetRef は index.html が読む自分の assets(script の src と link の href)。
+var uiAssetRef = regexp.MustCompile(`(?:src|href)="([^"]+)"`)
+
+// uiText は画面の文字を全部返す: index.html と、そこから読む assets を連結したもの。
+// 画面は Svelte のバンドル(web/dist を埋め込み)なので、文言は index.html ではなく assets/*.js に入っている。
+// 参照は全部 ./ からの相対(外部の読み込み無し)。それ以外があれば落とす。
+func uiText(t *testing.T, url string) string {
+	t.Helper()
+	index := getBody(t, url+"/")
+	var sb strings.Builder
+	sb.WriteString(index)
+	for _, m := range uiAssetRef.FindAllStringSubmatch(index, -1) {
+		ref := m[1]
+		if !strings.HasPrefix(ref, "./") {
+			t.Fatalf("index.html must reference only its own assets (relative ./), found %q", ref)
+		}
+		sb.WriteString(getBody(t, url+ref[1:]))
+	}
+	return sb.String()
 }
 
 // check は、act の精度を人の正解だけでも測る。機械の正解(context / replay / file)で高く見えても、人が確かめた act の判定が

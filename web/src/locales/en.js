@@ -1,0 +1,25 @@
+// 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
+// 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
+export default {
+  langName: 'English',
+  tagline: 'tell it what was actually true; that is all it needs to learn when to trust itself', loading: 'loading…', noSpecs: 'no decisions set up yet', empty: 'nothing waiting for an answer. When the AI decides something, it shows up here.',
+  modeSimple: 'simple view', modeAdvanced: 'details', remaining: n => n + ' waiting', keysHint: 'Keys: 1-9 choose an answer, Enter = same as the AI, → = skip',
+  tabKnowledge: 'Knowledge', viewOne: 'one at a time', viewList: 'list', skip: 'skip (later)', position: (i, n) => i + ' / ' + n, more: m => m + ' more waiting', showMore: m => 'show more (' + m + ')', unskip: n => 'bring back ' + n + ' skipped', emptyFiltered: 'nothing in this group',
+  chip_all: 'all', chip_ask: 'AI unsure', chip_audit: 'spot check', chip_other: 'other', auditShort: 'spot check',
+  viewTodo: 'to answer', viewDone: 'answered', yourAnswer: (name, when) => 'Your answer: ' + name + ' (' + when + ')', changeAnswer: 'Press another button to change your answer. The newest answer counts.', redo: 'ask the AI again', redoHint: 'asks the AI again with today\'s wording and line, keeps your answer', redoResult: (b, a) => 'before: ' + b + '  →  now: ' + a, redoAgree: 'now matches your answer', redoDisagree: 'still differs from your answer', noneAnswered: 'nothing answered yet', wasRedone: 'asked again',
+  plainAuto: 'The AI may act on its own here (enough answers were checked).', plainReady: 'Enough answers: the line can be drawn.', plainLearning: (n, m) => 'Still learning: ' + n + ' of ' + m + ' answers checked before the AI may act on its own.', plainStale: 'The question changed; it is learning again.',
+  aiGuess: (name, p) => 'AI guess: ' + name + ' (' + p + '% sure)', bandAsk: 'The AI was unsure.', bandAct: 'The AI acted on its own.', bandDiscard: 'The AI let it pass.', sameAsAI: 'same as the AI',
+  records: n => n + ' decisions', answered: n => n + ' checked', calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'ready to draw the line ' + n + '/' + m,
+  howToTitle: 'How to use this page', howTo: ['Pick a decision in the tabs at the top.', 'Read the text on the card. The AI already guessed; its guess is marked "same as the AI".', 'Press the answer that was actually true (keys 1-9, or Enter for "same as the AI"). The next card appears.', 'Not sure? Skip it with → and come back later. When enough answers are checked, the AI is allowed to act on its own.'], gotIt: 'got it', todo: 'Read the text, then press what was actually true.',
+  withContext: 'asked again with context', contextRung: 'context rung', toPerson: (h, k) => 'to a person ' + h + ' (' + k + ' per 1000)',
+  audit: 'audit sample: the machine acted on this; 1 in 20 is shown here so its precision is measured on what people checked',
+  knowledge: 'Knowledge (claims)', claimsCount: (n, p) => n + ' claims, ' + p + ' prose pages', noClaims: 'no claims yet (tune drafts one when a candidate wins)',
+  promote: 'make it a claim (promote)', deleteDraft: 'delete draft', confirm: 'confirm', reject: 'reject', confirmable: 'two independent models support it: you may confirm',
+  promptClaim: 'The generalized claim (not tied to this spec):', promptSlug: 'File name (lowercase, digits, dashes):', promptModels: 'Which models does it apply to?', claimDone: 'recorded',
+  noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
+  done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration',
+  wording: 'Wording (rewordings)', current: 'current', noRun: 'not measured yet', running: 'measuring rewordings…', runTune: 'measure the rewordings', runPropose: n => 'ask the AI for ' + n + ' rewordings and measure',
+  holdoutLine: (h, c) => 'tried on a held-back part: ' + h + ' (keeping current: ' + c + ')', winnerLine: w => 'rewording ' + w + ' may be adopted', keptLine: 'current wording kept',
+  adoptedLine: p => 'adopted as ' + p, sameMeaning: 'same meaning → adopt', changedMeaning: 'meaning changed → reject', notePrompt: 'What changed in the meaning? (optional)',
+  checkHint: 'Does the new wording still ask what you mean? Numbers are checked by the machine; the meaning is yours to check.', rejected: 'recorded: meaning changed, not adopted', adoptedToast: p => 'adopted: ' + p,
+};

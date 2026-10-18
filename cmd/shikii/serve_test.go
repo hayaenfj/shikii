@@ -145,7 +145,7 @@ func TestServeRejectsUnknownSpecAndBadTruth(t *testing.T) {
 	}
 }
 
-// 画面は 1 枚の HTML で、外部の読み込み無しに動く(オフラインの社内でも開ける)。
+// 画面は外部の読み込み無しに動く(オフラインの社内でも開ける): index.html が読むのは自分の assets だけで、API は同じ口の /v1/。
 func TestServeUIIsSelfContained(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	resp, err := http.Get(url + "/")
@@ -159,32 +159,71 @@ func TestServeUIIsSelfContained(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
 		t.Fatalf("GET / must serve HTML: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
-	for _, must := range []string{"/v1/queue", "/v1/label", "/v1/status"} {
-		if !strings.Contains(html, must) {
-			t.Fatalf("UI must talk to %s", must)
-		}
-	}
-	for _, never := range []string{"https://", "http://", "<script src"} {
+	for _, never := range []string{"https://", "http://"} {
 		if strings.Contains(html, never) {
 			t.Fatalf("UI must not load anything from outside: found %q", never)
 		}
 	}
+	body := uiText(t, url) // 参照が ./ 以外なら uiText が落とす
+	for _, must := range []string{"/v1/queue", "/v1/label", "/v1/status"} {
+		if !strings.Contains(body, must) {
+			t.Fatalf("UI must talk to %s", must)
+		}
+	}
 }
 
-// 画面は言語を選べる(英語と日本語。辞書を足せば増える)。選択はブラウザに残る。
+// 画面は言語を選べる(英語と日本語。辞書を足せば増える)。選択はブラウザに残る(shikii.lang)。
 func TestServeUIHasLanguageSwitch(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	resp, err := http.Get(url + "/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(resp.Body)
-	html := buf.String()
-	for _, must := range []string{`id="lang"`, `value="en"`, `value="ja"`, "答え合わせ待ちはありません", "nothing waiting for an answer", "localStorage"} {
-		if !strings.Contains(html, must) {
+	body := uiText(t, url)
+	for _, must := range []string{`id="lang"`, "shikii.lang", "答え合わせ待ちはありません", "nothing waiting for an answer", "localStorage"} {
+		if !strings.Contains(body, must) {
 			t.Fatalf("UI must offer a language switch with an English and a Japanese dictionary; missing %q", must)
+		}
+	}
+}
+
+// 画面は Svelte で組んだバンドル(web/dist)を実行ファイルに埋め込んで配る: "/" が index.html、そこから読む assets は 200 で正しい種類、
+// 知らないパスは 404(全部を index.html にするような取りこぼしは無い)。言語の選択がある(保存先 shikii.lang。選択肢の名前は各言語の辞書の langName:「日本語」「English」)。
+func TestServeUIServesEmbeddedBundleWithLanguagePicker(t *testing.T) {
+	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	index := getBody(t, url+"/")
+	refs := uiAssetRef.FindAllStringSubmatch(index, -1)
+	if len(refs) < 2 {
+		t.Fatalf("index.html must load its script and stylesheet from assets/: %s", index)
+	}
+	for _, m := range refs {
+		ref := m[1]
+		if !strings.HasPrefix(ref, "./assets/") {
+			t.Fatalf("assets must be served from ./assets/, found %q", ref)
+		}
+		resp, err := http.Get(url + ref[1:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		ct := resp.Header.Get("Content-Type")
+		if resp.StatusCode != 200 {
+			t.Fatalf("asset %s must be served, got %d", ref, resp.StatusCode)
+		}
+		if (strings.HasSuffix(ref, ".js") && !strings.Contains(ct, "javascript")) || (strings.HasSuffix(ref, ".css") && !strings.Contains(ct, "text/css")) {
+			t.Fatalf("asset %s has the wrong content type %q", ref, ct)
+		}
+	}
+	for _, p := range []string{"/nope", "/assets/nope.js", "/web/dist/index.html"} {
+		resp, err := http.Get(url + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 404 {
+			t.Fatalf("unknown path %s must be 404, got %d", p, resp.StatusCode)
+		}
+	}
+	body := uiText(t, url)
+	for _, must := range []string{`id="lang"`, "shikii.lang", "日本語", "English"} {
+		if !strings.Contains(body, must) {
+			t.Fatalf("the language picker must be in the bundle; missing %q", must)
 		}
 	}
 }
@@ -258,7 +297,7 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 	if err := os.WriteFile(specPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	body := getBody(t, url+"/")
+	body := uiText(t, url)
 	for _, must := range []string{`id="mode"`, "かんたん表示", "くわしく", "AI の予想", "AI と同じ", "1〜9", "まだ学習中", "class=\"adv\"", "shikii.mode"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("beginner view missing %q", must)
@@ -284,7 +323,7 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 // 件数が増えた時の見せ方: 判定ごとのタブ(待ち件数の印)、1 件ずつ / 一覧、種類の数で絞り込み、スキップ、ほかに待っている数。知識のタブは「くわしく」の時だけ。
 func TestServeUIHasTabsAndScalesToManyItems(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	body := getBody(t, url+"/")
+	body := uiText(t, url)
 	for _, must := range []string{"#tabs {", "shikii.tab", "1 件ずつ", "一覧", "スキップ(あとで)", "ほかに ", "AI が迷った", "抜き取り", "さらに表示", "data-tab=\"wiki\"", "limit=200", "ArrowRight"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("scalable view missing %q", must)
@@ -309,7 +348,7 @@ func TestBindHostIsLoopbackExceptInsideAContainer(t *testing.T) {
 // 使い方の案内: 最初に 4 手順の案内が出て、閉じれば次回から出ない(右上の ? で再表示)。カードの上に「今やること」、ボタンに番号(キーと同じ)。
 func TestServeUIExplainsItself(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	body := getBody(t, url+"/")
+	body := uiText(t, url)
 	for _, must := range []string{`id="help"`, "この画面の使い方", "本当はどれだったかのボタンを押します", "わかった", "shikii.help", "本文を読んで、本当はどれだったかを押してください", `class="num"`} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("the page must explain itself; missing %q", must)

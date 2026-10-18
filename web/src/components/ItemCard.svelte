@@ -1,0 +1,86 @@
+<script>
+  // 1 件のカード: AI の予想と自信、本文、答えのボタン(番号付き。AI の予想は「AI と同じ」)、「〜ではない」(部分正解 !top)、
+  // スキップ、「AI にもう一度聞く」(くわしく)。回答済みのカードでは別のボタンで答えを直せる(いちばん新しい答えが使われる)。
+  // キー操作(App.svelte)は .item の先頭のカードの .btns button を押すので、ここの class(top / skip)は変えない
+  import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
+  import { ui, skipped, load } from '../lib/state.svelte.js';
+  import { api } from '../lib/api.js';
+  import { toast } from '../lib/toast.svelte.js';
+
+  let { sp, it, pos = '' } = $props();
+  let busy = $state(false);
+  let redoOut = $state('');
+
+  const name = c => loc(c.labels, c.label);
+  const choiceOf = truth => it.choices.find(c => c.truth === truth) || { label: truth };
+  let topName = $derived(it.top ? name(choiceOf(it.top)) : '');
+  let bandWord = $derived(it.band === 'ask' ? t('bandAsk') : it.band === 'act' ? t('bandAct') : t('bandDiscard'));
+
+  async function answer(truth) {
+    busy = true;
+    try {
+      const res = await api.label({ trace_id: it.trace_id, spec: sp.id, truth, source: it.audit ? 'audit' : 'ui' });
+      if (it.truth) { sp.answered = null; }
+      else { sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++; }
+      if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); }
+      else { toast(t('done')(res.truth)); }
+    } catch (e) { toast(t('error')(e.message)); busy = false; }
+  }
+
+  // 今の聞き方と線で同じ本文をもう一度判定。前と今を並べ、あなたの答えとの一致を出す
+  async function redo() {
+    busy = true;
+    try {
+      const res = await api.redo({ trace_id: it.trace_id, spec: sp.id });
+      const word = x => (x.band === 'ask' ? t('bandAsk') : x.band === 'act' ? t('bandAct') : x.band === 'abstain' ? 'abstain' : t('bandDiscard')) + ' ' + name(choiceOf(x.top || '-')) + ' ' + Math.round((x.p || 0) * 100) + '%';
+      let line = t('redoResult')(word(res.before), word(res.after));
+      if (res.truth) line += ' · ' + (res.correct_after ? t('redoAgree') : t('redoDisagree'));
+      redoOut = line;
+      if (res.recorded) { sp.answered = null; load(); }
+    } catch (e) { toast(t('error')(e.message)); }
+    busy = false;
+  }
+</script>
+
+<div class="item {it.band}" class:card={ui.view === 'one'}>
+  {#if pos}<div class="k">{pos}</div>{/if}
+  {#if it.truth}
+    <div class="guess">{t('yourAnswer')(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of} <span class="k">· {t('wasRedone')}</span>{/if}</div>
+    <div class="k">{t('changeAnswer')}</div>
+  {/if}
+  {#if it.top}
+    <div class="guess">{bandWord} {t('aiGuess')(topName, (it.p * 100).toFixed(0))}{#if it.audit} <span class="audit">{t('auditShort')}</span>{/if}</div>
+  {/if}
+  <div class="meta adv">
+    <span>{it.band}</span><span>{fmtDateTime(it.at)}</span><span>{it.model || ''}</span>
+    {#if it.rung === 'context'}<span>{t('withContext')}</span>{/if}
+    {#if it.audit}<span class="audit">{t('audit')}</span>{/if}
+    {#if it.stale}<span>{t('changed')}</span>{/if}
+  </div>
+  <div class="text">
+    {#if it.answerable}
+      {#each Object.entries(it.inputs) as [k, v]}
+        <div><span class="k">{k}</span><br>{v}</div>
+      {/each}
+    {:else}
+      <span class="k">{t('noText')(it.inputs_hash)}</span>
+    {/if}
+  </div>
+  <div class="btns">
+    {#each it.choices as c, i}
+      <button type="button" class:top={c.truth === it.top} class:active={c.truth === it.truth} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
+        <span class="num">{i + 1}</span>{name(c)}{#if c.truth === it.top} · {t('sameAsAI')}{/if}
+      </button>
+    {/each}
+    {#if it.answerable && it.top}
+      <button type="button" class="weak" data-truth={'!' + it.top} disabled={busy} onclick={() => answer('!' + it.top)}>{t('notThat')(topName)}</button>
+    {/if}
+    {#if !it.truth}
+      <button type="button" class="weak skip" disabled={busy} onclick={() => skipped.add(it.trace_id)}>{t('skip')}</button>
+    {/if}
+    {#if it.answerable}
+      <button type="button" class="weak adv" title={t('redoHint')} disabled={busy} onclick={redo}>{t('redo')}</button>
+    {/if}
+  </div>
+  <div class="redo-out">{redoOut}</div>
+</div>
