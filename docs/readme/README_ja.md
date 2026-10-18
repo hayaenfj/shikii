@@ -7,7 +7,7 @@
 ### AI に「はい / いいえ」「どれ」「どの程度」を決めさせて、業務で使い続けるための道具。あなたがするのは、答え合わせと、たまに「これで合ってる？」に答えることだけ。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-169%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-170%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -36,7 +36,7 @@ AI に「この問い合わせは前のと同じ案件？」と聞くと「た�
 ## あなたがすること
 
 - **何を決めたいかを書く。** 質問に答えるだけで、判定の定義ファイルができます（`shikii new`）
-- **答え合わせをする。** 画面に「AI が迷った判断」と「自動で動いた判断の 20 件に 1 件」が並ぶので、本当はどうだったかをボタンで答えます。1〜9 のキーと Enter（AI と同じ）で流せます
+- **答え合わせをする。** 画面に「AI が迷った判断」と「自動で動いた判断の 20 件に 1 件」が並ぶので、本当はどうだったかをボタンで答えます。1〜9 のキーと Enter（AI と同じ）で流せます。「答えたもの」で前の答えを直せます（いちばん新しい答えが使われます）。「くわしく」にすると「AI にもう一度聞く」が出て、聞き方や線を変えたあとに同じ本文をもう一度判定させて、前と今を並べて見られます
 - **たまに「これで合ってる？」に答える。** 機械が「この聞き方の方が当たる」と見つけた時、意味が変わっていないかを見て、採用か却下を押します
 
 それ以外は機械がやります。

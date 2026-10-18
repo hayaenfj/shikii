@@ -108,6 +108,8 @@ func newServer(o serveOpts) http.Handler {
 	mux.HandleFunc("/v1/decide", s.handleDecide)
 	mux.HandleFunc("/v1/label", s.handleLabel)
 	mux.HandleFunc("/v1/queue", s.handleQueue)
+	mux.HandleFunc("/v1/answered", s.handleAnswered)
+	mux.HandleFunc("/v1/redo", s.handleRedo)
 	mux.HandleFunc("/v1/status", s.handleStatus)
 	mux.HandleFunc("/v1/tune", s.handleTuneGet)
 	mux.HandleFunc("/v1/tune/run", s.handleTuneRun)
@@ -311,6 +313,125 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, d)
 }
 
+// handleAnswered は人が答えた判定(新しい順)。答えを直す(同じ trace にもう一度 /v1/label: 新しい答えが勝つ)と、AI にもう一度聞く(/v1/redo)の材料。
+func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("spec")
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		fmt.Sscanf(v, "%d", &limit)
+	}
+	if limit < 1 || limit > 1000 {
+		limit = 50
+	}
+	sp, err := s.spec(id)
+	if errors.Is(err, errNotFound) {
+		writeErr(w, 404, fmt.Errorf("unknown spec %q", id))
+		return
+	} else if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	recs, err := s.st.Records(id, 0)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	labeled, err := s.st.LabeledTraces(id)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	items := []map[string]any{}
+	for _, rec := range recs {
+		l, ok := labeled[rec.TraceID]
+		if !ok || !store.HumanSource(l.Source) {
+			continue
+		}
+		items = append(items, map[string]any{
+			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
+			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "stale": !sp.LiveHash(rec.SpecHash), "rung": rec.RungOf(), "redo_of": rec.RedoOf,
+			"answerable": len(rec.Inputs) > 0, "choices": truthChoices(sp),
+			"truth": l.Truth, "truth_at": l.At, "source": l.Source, "correct": store.Correct(rec.Top, l.Truth),
+		})
+		if len(items) >= limit {
+			break
+		}
+	}
+	writeJSON(w, 200, map[string]any{"spec": id, "items": items})
+}
+
+// handleRedo は過去の判定の本文を、今の聞き方(spec)と線でもう一度判定する。新しい記録(redo_of = 元の trace)を残し、元の記録は列から消える。
+// 人が既に答えていれば、その答えは同じ本文の正解なので新しい記録にも写す(もう一度答えさせない)。前と今を並べて返す。
+func (s *server) handleRedo(w http.ResponseWriter, r *http.Request) {
+	if !acceptJSONPost(w, r) {
+		return
+	}
+	var req struct {
+		Spec    string `json:"spec"`
+		TraceID string `json:"trace_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		return
+	}
+	sp, err := s.spec(req.Spec)
+	if errors.Is(err, errNotFound) {
+		writeErr(w, 404, fmt.Errorf("unknown spec %q", req.Spec))
+		return
+	} else if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	rec, err := s.st.FindRecord(req.Spec, req.TraceID)
+	if err != nil {
+		writeErr(w, 404, err)
+		return
+	}
+	if len(rec.Inputs) == 0 {
+		writeErr(w, 409, errors.New("this decision kept no text, so it cannot be asked again"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	d, err := decide.Decide(ctx, sp, rec.Inputs, decide.Session{Tainted: rec.Tainted || s.o.ef.tainted}, s.o.ef.endpoints())
+	if err != nil {
+		writeErr(w, 502, err)
+		return
+	}
+	attachReceipt(sp, s.st, d)
+	resp := map[string]any{"before": map[string]any{"trace_id": rec.TraceID, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model, "stale": !sp.LiveHash(rec.SpecHash)}, "after": d, "recorded": false}
+	if d.Band == decide.Abstain {
+		writeJSON(w, 200, resp)
+		return
+	}
+	newRec := recordOf(sp, d, rec.Inputs)
+	newRec.RedoOf = rec.TraceID
+	if err := s.st.AppendRecord(newRec); err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	resp["recorded"] = true
+	labeled, err := s.st.LabeledTraces(req.Spec)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	if l, ok := labeled[rec.TraceID]; ok && store.HumanSource(l.Source) {
+		copied, err := store.LabelsFor(&newRec, l.Truth, l.Weight, l.Source)
+		if err == nil {
+			err = s.st.AppendLabels(copied)
+		}
+		if err != nil {
+			writeErr(w, 500, fmt.Errorf("carry the person's answer to the new decision: %w", err))
+			return
+		}
+		resp["truth"] = l.Truth
+		resp["correct_before"] = store.Correct(rec.Top, l.Truth)
+		resp["correct_after"] = store.Correct(d.Top, l.Truth)
+	}
+	writeJSON(w, 200, resp)
+}
+
 func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 	if !acceptJSONPost(w, r) {
 		return
@@ -438,9 +559,18 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rank := map[string]int{"ask": 0, "audit": 1, "act": 2, "discard": 3} // 迷い → 抜き取り(act の 20 件に 1 件) → 残り
+	superseded := map[string]bool{}                                      // やり直した元の記録は列に出さない(新しい判定が代わりに出る)
+	for _, rec := range recs {
+		if rec.RedoOf != "" {
+			superseded[rec.RedoOf] = true
+		}
+	}
 	var items []map[string]any
 	for _, rec := range recs {
 		if _, ok := labeled[rec.TraceID]; ok {
+			continue
+		}
+		if superseded[rec.TraceID] {
 			continue
 		}
 		// 本文が無い(古い)記録は人には答えられない。ボタンの材料は出さず、answerable=false で言う(結果を知るプログラムからの正解は別経路)
@@ -568,6 +698,7 @@ const uiHTML = `<!doctype html>
   .adv { display: none !important; } body.advanced .adv { display: revert !important; }
   #help { margin-left:auto; font: inherit; font-size: 13px; width: 30px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
   .howto { border: 1px solid var(--amber); background: var(--amberbg); color: var(--fg); border-radius: 10px; padding: 12px 16px; margin: 8px 0 14px; font-size: 14px; } .howto ol { margin: 6px 0 8px 20px; padding: 0; } .howto li { margin: 3px 0; }
+  .redo-out { font-size: 13px; color: var(--amber); margin-top: 6px; min-height: 0; }
   .todo { font-size: 14px; color: var(--fg); margin: 8px 0 6px; } .num { display:inline-block; min-width: 1.4em; color: var(--muted); font-size: 12px; }
   #mode { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
   .status { margin: 6px 0 10px; font-size: 14px; } .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 4px; } .bar > div { height: 100%; background: var(--ok); }
@@ -617,6 +748,7 @@ const T = {
         modeSimple: 'simple view', modeAdvanced: 'details', remaining: n => n + ' waiting', keysHint: 'Keys: 1-9 choose an answer, Enter = same as the AI, → = skip',
         tabKnowledge: 'Knowledge', viewOne: 'one at a time', viewList: 'list', skip: 'skip (later)', position: (i, n) => i + ' / ' + n, more: m => m + ' more waiting', showMore: m => 'show more (' + m + ')', unskip: n => 'bring back ' + n + ' skipped', emptyFiltered: 'nothing in this group',
         chip_all: 'all', chip_ask: 'AI unsure', chip_audit: 'spot check', chip_other: 'other', auditShort: 'spot check',
+        viewTodo: 'to answer', viewDone: 'answered', yourAnswer: (name, when) => 'Your answer: ' + name + ' (' + when + ')', changeAnswer: 'Press another button to change your answer. The newest answer counts.', redo: 'ask the AI again', redoHint: 'asks the AI again with today\'s wording and line, keeps your answer', redoResult: (b, a) => 'before: ' + b + '  →  now: ' + a, redoAgree: 'now matches your answer', redoDisagree: 'still differs from your answer', noneAnswered: 'nothing answered yet', wasRedone: 'asked again',
         plainAuto: 'The AI may act on its own here (enough answers were checked).', plainReady: 'Enough answers: the line can be drawn.', plainLearning: (n, m) => 'Still learning: ' + n + ' of ' + m + ' answers checked before the AI may act on its own.', plainStale: 'The question changed; it is learning again.',
         aiGuess: (name, p) => 'AI guess: ' + name + ' (' + p + '% sure)', bandAsk: 'The AI was unsure.', bandAct: 'The AI acted on its own.', bandDiscard: 'The AI let it pass.', sameAsAI: 'same as the AI',
         records: n => n + ' decisions', answered: n => n + ' checked', calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'ready to draw the line ' + n + '/' + m,
@@ -636,6 +768,7 @@ const T = {
         modeSimple: 'かんたん表示', modeAdvanced: 'くわしく', remaining: n => '残り ' + n + ' 件', keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」、→ でスキップ',
         tabKnowledge: '知識', viewOne: '1 件ずつ', viewList: '一覧', skip: 'スキップ(あとで)', position: (i, n) => i + ' / ' + n + ' 件', more: m => 'ほかに ' + m + ' 件待っています', showMore: m => 'さらに表示(' + m + ' 件)', unskip: n => 'スキップした ' + n + ' 件を戻す', emptyFiltered: 'この種類の待ちはありません',
         chip_all: '全部', chip_ask: 'AI が迷った', chip_audit: '抜き取り', chip_other: 'その他', auditShort: '抜き取り',
+        viewTodo: 'まだ', viewDone: '答えたもの', yourAnswer: (name, when) => 'あなたの答え: ' + name + '(' + when + ')', changeAnswer: '別のボタンを押すと答えを直せます。いちばん新しい答えが使われます。', redo: 'AI にもう一度聞く', redoHint: '今の聞き方と線で同じ本文をもう一度判定します。あなたの答えはそのまま残ります', redoResult: (b, a) => '前: ' + b + '  →  今: ' + a, redoAgree: 'あなたの答えと一致しました', redoDisagree: 'まだあなたの答えと違います', noneAnswered: 'まだ答えたものはありません', wasRedone: 'もう一度聞いた結果',
         plainAuto: 'この判定は AI が自分で動いてよい状態です(答え合わせが十分に揃いました)。', plainReady: '答えが揃いました。AI の自信の数字を直す線を引けます。', plainLearning: (n, m) => 'まだ学習中: 答え合わせ ' + n + ' 件。AI が自分で動けるようになるまで ' + m + ' 件。', plainStale: '質問の文が変わったので、学び直しています。',
         aiGuess: (name, p) => 'AI の予想: ' + name + '(自信 ' + p + '%)', bandAsk: 'AI は迷いました。', bandAct: 'AI は自分で動きました。', bandDiscard: 'AI は見送りました。', sameAsAI: 'AI と同じ',
         records: n => '判定 ' + n + ' 件', answered: n => '答え合わせ済み ' + n + ' 件', calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変わったので学び直し', collecting: (n, m) => '学習中 ' + n + '/' + m, ready: (n, m) => '線を引けます ' + n + '/' + m,
@@ -688,7 +821,7 @@ async function load() {
   state = st; render();
 }
 // 画面の状態: 開いているタブ(判定ごと。「くわしく」なら知識のタブも)、見せ方(1 件ずつ / 一覧)、絞り込み(全部 / 迷い / 抜き取り / その他)、あとで答える(スキップ)
-let tab = null, view = 'one', filter = 'all', listSize = 30;
+let tab = null, view = 'one', filter = 'all', listSize = 30, done = false;
 const skipped = new Set();
 try { tab = localStorage.getItem('shikii.tab'); view = localStorage.getItem('shikii.view') || 'one'; } catch (e) {}
 function remember(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -697,19 +830,33 @@ function itemCard(sp, it, pos) {
   const text = it.answerable ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
   const name = c => (c.labels && c.labels[lang]) || c.label;
   const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
-  const btns = it.choices.map((c, i) => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '"><span class="num">' + (i + 1) + '</span>' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('sameAsAI')) : '') + '</button>').join('');
+  const btns = it.choices.map((c, i) => '<button class="' + (c.truth === it.top ? 'top' : '') + (c.truth === it.truth ? ' active' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '"><span class="num">' + (i + 1) + '</span>' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('sameAsAI')) : '') + '</button>').join('');
   const not = (it.answerable && it.top) ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
-  const skip = '<button class="weak skip" data-skip="1">' + esc(t('skip')) + '</button>';
+  const skip = it.truth ? '' : '<button class="weak skip" data-skip="1">' + esc(t('skip')) + '</button>';
+  const redo = it.answerable ? '<button class="weak adv" data-redo="1" title="' + esc(t('redoHint')) + '">' + esc(t('redo')) + '</button>' : '';
+  const yours = it.truth ? '<div class="guess">' + esc(t('yourAnswer')(name(it.choices.find(c => c.truth === it.truth) || {label: it.truth}), new Date(it.truth_at).toLocaleString())) + (it.redo_of ? ' <span class="k">· ' + esc(t('wasRedone')) + '</span>' : '') + '</div><div class="k">' + esc(t('changeAnswer')) + '</div>' : '';
   const bandWord = it.band === 'ask' ? t('bandAsk') : it.band === 'act' ? t('bandAct') : t('bandDiscard');
   const guess = it.top ? '<div class="guess">' + esc(bandWord) + ' ' + esc(t('aiGuess')(topName, (it.p*100).toFixed(0))) + (it.audit ? ' <span class="audit">' + esc(t('auditShort')) + '</span>' : '') + '</div>' : '';
-  el.innerHTML = (pos ? '<div class="k">' + esc(pos) + '</div>' : '') + guess + '<div class="meta adv"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.audit ? '<span class="audit">' + esc(t('audit')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + skip + '</div>';
+  el.innerHTML = (pos ? '<div class="k">' + esc(pos) + '</div>' : '') + yours + guess + '<div class="meta adv"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.audit ? '<span class="audit">' + esc(t('audit')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + skip + redo + '</div><div class="redo-out"></div>';
   el.addEventListener('click', async ev => {
     const b = ev.target.closest('button'); if (!b) return;
     if (b.dataset.skip) { skipped.add(it.trace_id); render(); return; }
     for (const x of el.querySelectorAll('button')) x.disabled = true;
+    if (b.dataset.redo) {
+      try {
+        const res = await j('/v1/redo', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ trace_id: it.trace_id, spec: sp.id }) });
+        const word = x => (x.band === 'ask' ? t('bandAsk') : x.band === 'act' ? t('bandAct') : x.band === 'abstain' ? 'abstain' : t('bandDiscard')) + ' ' + name(it.choices.find(c => c.truth === x.top) || {label: x.top || '-'}) + ' ' + Math.round((x.p || 0) * 100) + '%';
+        let line = t('redoResult')(word(res.before), word(res.after));
+        if (res.truth) line += ' · ' + (res.correct_after ? t('redoAgree') : t('redoDisagree'));
+        el.querySelector('.redo-out').textContent = line;
+        if (res.recorded) { sp.answered = null; load(); }
+      } catch (e) { toast(t('error')(e.message)); }
+      for (const x of el.querySelectorAll('button')) x.disabled = false;
+      return;
+    }
     try {
       const res = await j('/v1/label', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ trace_id: it.trace_id, spec: sp.id, truth: b.dataset.truth, source: it.audit ? 'audit' : 'ui' }) });
-      sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++;
+      if (it.truth) { sp.answered = null; } else { sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++; }
       if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); } else { toast(t('done')(res.truth)); render(); }
     } catch (e) { toast(t('error')(e.message)); for (const x of el.querySelectorAll('button')) x.disabled = false; }
   });
@@ -759,9 +906,23 @@ function render() {
   const counts = { all: all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length };
   const chips = document.createElement('div'); chips.className = 'chips';
   chips.innerHTML = ['all', 'ask', 'audit', 'other'].map(k => '<button data-filter="' + k + '" class="' + (filter === k ? 'active' : '') + '">' + esc(t('chip_' + k)) + ' ' + counts[k] + '</button>').join('')
-    + '<span class="sep"></span><button data-view="one" class="' + (view === 'one' ? 'active' : '') + '">' + esc(t('viewOne')) + '</button><button data-view="list" class="' + (view === 'list' ? 'active' : '') + '">' + esc(t('viewList')) + '</button>';
-  chips.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; if (b.dataset.filter) filter = b.dataset.filter; if (b.dataset.view) { view = b.dataset.view; remember('shikii.view', view); } render(); });
+    + '<span class="sep"></span><button data-view="one" class="' + (view === 'one' ? 'active' : '') + '">' + esc(t('viewOne')) + '</button><button data-view="list" class="' + (view === 'list' ? 'active' : '') + '">' + esc(t('viewList')) + '</button>'
+    + '<span class="sep"></span><button data-done="0" class="' + (!done ? 'active' : '') + '">' + esc(t('viewTodo')) + '</button><button data-done="1" class="' + (done ? 'active' : '') + '">' + esc(t('viewDone')) + ' ' + (sp.labels || 0) + '</button>';
+  chips.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; if (b.dataset.filter) filter = b.dataset.filter; if (b.dataset.view) { view = b.dataset.view; remember('shikii.view', view); } if (b.dataset.done !== undefined) done = b.dataset.done === '1'; render(); });
   sec.appendChild(chips);
+  if (done) {
+    // 答えたもの: 新しい順。答えを直す(別のボタン)、AI にもう一度聞く(くわしく)
+    if (!sp.answered) {
+      sec.innerHTML += '<div class="empty">' + esc(t('loading')) + '</div>'; root.appendChild(sec);
+      j('/v1/answered?spec=' + encodeURIComponent(sp.id) + '&limit=200').then(r => { sp.answered = r.items; render(); }).catch(e => toast(t('error')(e.message)));
+      return;
+    }
+    if (!sp.answered.length) sec.innerHTML += '<div class="empty">' + esc(t('noneAnswered')) + '</div>';
+    for (const it of sp.answered.slice(0, listSize)) sec.appendChild(itemCard(sp, it, ''));
+    if (sp.answered.length > listSize) { const b = document.createElement('button'); b.className = 'weak'; b.textContent = t('showMore')(sp.answered.length - listSize); b.addEventListener('click', () => { listSize += 30; render(); }); sec.appendChild(b); }
+    root.appendChild(sec);
+    return;
+  }
   const matching = all.filter(it => filter === 'all' || kind(it) === filter);
   const visible = matching.filter(it => !skipped.has(it.trace_id));
   const extra = Math.max(0, (sp.unlabeled || 0) - all.length);

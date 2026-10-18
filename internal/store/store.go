@@ -42,6 +42,7 @@ type Record struct {
 	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。この本文は聞き直しでも hosted に送らない
 	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問。古い記録は空) | context(文脈を足して聞き直した)
 	Minimal      *Pass              `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw。人の正解はこちらにも付く)
+	RedoOf       string             `json:"redo_of,omitempty"` // 過去の判定(trace_id)の本文を、今の聞き方と線でもう一度判定したもの。元の記録は列から消える
 	At           time.Time          `json:"at"`
 }
 
