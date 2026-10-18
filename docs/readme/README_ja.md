@@ -48,17 +48,17 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 cd <プロジェクトルート> && shikii init
 ```
 
-`shikii init` で、フォルダ（`decisions/` `wiki/` `.shikii/`）と、エージェントの設定が 1 回で揃います。Claude Code（`.mcp.json`）、Cursor（`.cursor/mcp.json`）、OpenCode（`opencode.json`）、Codex（`~/.codex/config.toml`）に shikii の MCP の項を足し、`AGENTS.md` に作法の節を、`~/.claude/skills/shikii` に詳しい作法（skill）を置きます。あなたが書いた設定は触りません（shikii の項が既にあればそのまま）。skill のフォルダだけは毎回置き直すので、手で直さないでください。`wiki/` には既製の知識（質問の型ごとの聞き方、効いた書き方のパターン、モデルごとの癖）が写され、聞き方の改善（`tune --propose`）がそれを読みます。あなたが直したページは次の `init` でも上書きされません。コマンドの出力と hook の文は英語です(Claude Code の設定の言語が日本語なら hook の文は日本語も併記。他の言語は英語のままで、記録にその言語の答えの名前だけ残ります)。画面には日本語があります。Go を入れたくなければ下の Docker。
+`shikii init` で、フォルダ `.shikii/`（この 1 つだけ。中に `decisions/` = 判定の定義、`wiki/` = 知識、`records/` と `labels/` = 記録と答え合わせ。プロジェクトのルートに他のものは増えません）と、エージェントの設定が 1 回で揃います。Claude Code（`.mcp.json`）、Cursor（`.cursor/mcp.json`）、OpenCode（`opencode.json`）、Codex（`~/.codex/config.toml`）に shikii の MCP の項を足し、`AGENTS.md` に作法の節を、`~/.claude/skills/shikii` に詳しい作法（skill）を置きます。あなたが書いた設定は触りません（shikii の項が既にあればそのまま）。skill のフォルダだけは毎回置き直すので、手で直さないでください。`wiki/` には既製の知識（質問の型ごとの聞き方、効いた書き方のパターン、モデルごとの癖）が写され、聞き方の改善（`tune --propose`）がそれを読みます。あなたが直したページは次の `init` でも上書きされません。コマンドの出力と hook の文は英語です(Claude Code の設定の言語が日本語なら hook の文は日本語も併記。他の言語は英語のままで、記録にその言語の答えの名前だけ残ります)。画面には日本語があります。Go を入れたくなければ下の Docker。
 
-設定は手元の AI（`shikii up` で :8080）を指します。外の AI だけで使うなら、4 つの設定（`.mcp.json`、`.cursor/mcp.json`、`opencode.json`、`~/.codex/config.toml`）それぞれから `--local` を手で外してください。使っていないツールの設定ファイルも作られるので、要らなければ消すか `.gitignore` に入れてください（`shikii init` はもう一度打っても、あるものは触りません）。`.shikii/labels/`（答え合わせ）は AI を替えても使う資産なので commit を勧めます。`.shikii/records/`（判定の記録）は増え続けるので、commit するかは任意です（`shikii gc` で古いものを捨てられます）。Codex の設定に `mcp_servers` が既にあれば足さず、手で足す行を表示します。プロジェクトに `CLAUDE.md` だけがある時は `AGENTS.md` を作りません（作ると OpenCode が `CLAUDE.md` を読まなくなるため）。
+設定は手元の AI（`shikii up` で :8080）を指します。外の AI だけで使うなら、4 つの設定（`.mcp.json`、`.cursor/mcp.json`、`opencode.json`、`~/.codex/config.toml`）それぞれから `--local` を手で外してください。使っていないツールの設定ファイルも作られるので、要らなければ消すか `.gitignore` に入れてください（`shikii init` はもう一度打っても、あるものは触りません）。`.shikii/decisions/`（判定の定義）、`.shikii/wiki/`（知識）、`.shikii/labels/`（答え合わせ）は AI を替えても使う資産なので commit を勧めます。`.shikii/records/`（判定の記録）は増え続けるので、commit するかは任意です（`shikii gc` で古いものを捨てられます）。Codex の設定に `mcp_servers` が既にあれば足さず、手で足す行を表示します。プロジェクトに `CLAUDE.md` だけがある時は `AGENTS.md` を作りません（作ると OpenCode が `CLAUDE.md` を読まなくなるため）。
 
 答え合わせの画面そのもの（`web/`、Svelte）を直すには Node 24 が要ります（`make web`）。言語を足すのは `web/src/locales/` に辞書を 1 つ足して `web/src/lib/i18n.js` に登録するだけで、`npm run check` が鍵の揃いを見ます。使うだけなら要りません（組んだ画面は commit 済みで、実行ファイルに埋め込まれています）。
 
 ## 最短の入り口
 
 - **Docker**: Go もモデルの準備も無いなら `docker compose up`。手元の AI（Kev-4B）と shikii が立ち、答え合わせの画面が http://127.0.0.1:8095 に出ます（[詳しく](../../integrations/docker.md)）
-- **既製の判定**: `decisions/` に 6 つ（依頼の種類、不具合の重複、問い合わせの同一判定、…）。そのまま使うか、`shikii new --from decisions/prompt-intent-v2.yaml` で写して書き換えます（[一覧](../../decisions/README.md)）
-- **過去の表がある**: `shikii import past.csv --spec decisions/<id>.yaml` で答え合わせの材料にできます。最初の 50 件を手で答えなくてよい
+- **既製の判定**: この repo の `decisions/` に 6 つ（依頼の種類、不具合の重複、問い合わせの同一判定、…）。自分の `.shikii/decisions/` に写すか、`shikii new --from <repo>/decisions/prompt-intent-v2.yaml` で写して書き換えます（[一覧](../../decisions/README.md)）
+- **過去の表がある**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` で答え合わせの材料にできます。最初の 50 件を手で答えなくてよい
 - **自分のプログラムから**: `shikii serve` を立てて `POST /v1/decide`（判定）と `POST /v1/label`（正解）を叩きます。本文は JSON で、`-H 'Content-Type: application/json'` が要ります（口の一覧は [詳しい使い方](../guide.ja.md#serve-の-http-api)）
 - **AI 自身の判断を測る**(Claude Code と Codex): `shikii hook install` で hook が入り、AI が作業中にしている判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか、この依頼で結局何をするか。最後の正解は作業ツリーの変化から自動で付く)を shikii に通します。線が引けるまでは記録だけ。引けたら、危ないコマンド(消す・外を変える・外に送る)の前に確認が出て、その文に「何件の正解で引いた線か、人が確かめた精度」が付きます。安全なコマンドは黙って通ります([詳しく](../../integrations/claude-code.md))
 - **別の人の例**: [問い合わせメールの振り分け](../examples/inquiry-route.md)。shikii を初めて使う人が README だけで一周した記録（spec と 22 件の入力つき）
@@ -67,12 +67,12 @@ cd <プロジェクトルート> && shikii init
 
 ```sh
 shikii up                                                             # 手元の AI を起こす(初回は取ってくる)
-shikii decide decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask  (まだ線が無いので「人に確かめて」)
-shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080
+shikii serve --local http://127.0.0.1:8080                                   # 判定の定義と知識は .shikii/ から読む
 #   → http://127.0.0.1:8095 で答え合わせ。判定ごとに決めた数(eval.min_n、この判定は 20 件)たまると線が自動で引かれる
 #     手持ちが少ないうちに試すなら、spec の eval.min_n を手持ちの件数に下げる(--force で書いた線は check が落とす)
-shikii decide decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=act
 #     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
 #     (自動で動いてよい。根拠つき: 線は 61 件の正解で引き、うち 48 件は人の答え。人が答えた正解のうち、この線なら自動で動く側に入る 25 件で 96% が正しかった)

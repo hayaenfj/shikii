@@ -10,11 +10,11 @@
 go build -o bin/shikii ./cmd/shikii
 
 # 仕様のハッシュ(較正の鍵)
-bin/shikii hash decisions/same-issue.yaml
+bin/shikii hash .shikii/decisions/same-issue.yaml
 
 # 判定。ホスト版は TYPESAFE_API_KEY があれば使う。--tainted なら hosted に送らない
-TYPESAFE_API_KEY=... bin/shikii decide decisions/prompt-intent.yaml -i message='README の誤字を直して'
-bin/shikii decide decisions/same-issue.yaml --local http://127.0.0.1:8080 --tainted \
+TYPESAFE_API_KEY=... bin/shikii decide .shikii/decisions/prompt-intent.yaml -i message='README の誤字を直して'
+bin/shikii decide .shikii/decisions/same-issue.yaml --local http://127.0.0.1:8080 --tainted \
   -i report1='ログイン画面でパスワードを 3 回間違えると 500 エラーになる' -i report2='パスワード誤入力の回数制限に達した直後にサーバーエラー(500)'
 
 # 判定は ./.shikii/records/ に本文ごと残る。ask で選んだ答えをラベルにする
@@ -23,7 +23,7 @@ bin/shikii label --last --spec-id prompt-intent question --source ask   # 直近
 
 # 較正。noul は identity と Platt、choice/score は identity と vector(選択肢ごとの bias + 温度)を 5-fold CV で比べて勝った方を書く。
 # ファイルのラベルと store のラベル((spec_hash, model) が一致するもの)を合わせて使う
-bin/shikii calibrate decisions/same-issue.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M'
+bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M'
 ```
 
 ## ローカルの決定モデル(llama.cpp)
@@ -47,7 +47,7 @@ Kev-4B は英語のみと表記されているが、v2 の文言なら日本語�
 | `cmd/shikii` | CLI |
 | `cmd/shikii-readout` | **普通の GGUF を System One にするアダプタ** `shikii-readout`。後ろの llama-server の `/apply-template` と `/completion` で選択肢の文字の確率を読む。推論も較正も持たない |
 | `cmd/fake-systemone` | 鍵も GPU も無しで輪を回すための偽モデル |
-| `decisions/*.yaml` | spec の例(不具合報告の重複、問い合わせの同一判定、依頼の種類) |
+| `decisions/*.yaml` | spec の見本(この repo。自分のプロジェクトでは `.shikii/decisions/` に写す) |
 | `testdata/` | 作り物のラベル付きデータ(依頼文 62 件、不具合報告と問い合わせの各 32 組)と、CI 用の較正の裏付け(`store/labels/`) |
 
 ## score の帯: `thresholds.level`
@@ -72,7 +72,7 @@ Kev-4B は英語のみと表記されているが、v2 の文言なら日本語�
 
 ## serve の HTTP API
 
-本文は JSON。`-H 'Content-Type: application/json'` が無いと 415 で蹴る。`spec` は `decisions/<id>.yaml` の id。
+本文は JSON。`-H 'Content-Type: application/json'` が無いと 415 で蹴る。`spec` は `.shikii/decisions/<id>.yaml` の id。
 
 | 口 | 体 | 返すもの |
 |---|---|---|
@@ -94,7 +94,7 @@ curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec"
 ## choice の順序バイアス: `shikii bias`
 
 ```sh
-bin/shikii bias decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --rows 20 --permutations 5   # state は calibrate と同じ貯金(--store の正解の本文、または --labeled)
+bin/shikii bias .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --rows 20 --permutations 5   # state は calibrate と同じ貯金(--store の正解の本文、または --labeled)
 ```
 
 選択肢の並びを入れ替えて同じ state を聞き直し、最上位が変わる率(flip rate)と、位置ごとの確率のずれ
@@ -109,10 +109,10 @@ bin/shikii bias decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --
 
 ```sh
 # CI で回す。較正の spec_hash が今の文言と合うか、ラベル上で act での precision が act 以上か。違反で exit 1
-bin/shikii check decisions/*.yaml
+bin/shikii check .shikii/decisions/*.yaml
 
 # 直近 N 件のラベルで、較正時の Brier から +0.05 以上悪化 / precision が act 未満なら警告して exit 1
-bin/shikii drift decisions/prompt-intent.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M' --window 50
+bin/shikii drift .shikii/decisions/prompt-intent.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M' --window 50
 ```
 
 較正の方法は 3 つ。どれも `calibrate --write` が生成し、鍵は (spec_hash, model)。
@@ -123,7 +123,7 @@ bin/shikii drift decisions/prompt-intent.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K
 | `vector` | choice / score | softmax((log p_k + b_k)/T)。選択肢ごとの癖(短い state で other に逃げる等)を直す |
 | `identity` | どれでも | 定数なし。生の分布で act での precision が足りると検証した印(Jev のような較正済みモデル向け) |
 
-## 実機で一周した例(2026-10-16、Kev-4B Q4_K_M、`decisions/prompt-intent-v2.yaml`)
+## 実機で一周した例(2026-10-16、Kev-4B Q4_K_M、この repo の `decisions/prompt-intent-v2.yaml`)
 
 ```
 calibrate --labeled testdata/prompt-intent-labeled.json --local http://127.0.0.1:8080 --tainted --write
@@ -131,7 +131,7 @@ calibrate --labeled testdata/prompt-intent-labeled.json --local http://127.0.0.1
   vector:     T=0.449  biases={other:-0.53, operation:+0.59, …}
   5-fold CV:  precision@act 0.963 recall@act 0.912   → choose vector(recall が上がる)
   persisted 62 queried labels to .shikii
-check decisions/*.yaml   → ok(stale なし、ラベル上の precision@act ≥ act)
+check .shikii/decisions/*.yaml   → ok(stale なし、ラベル上の precision@act ≥ act)
 drift … --model '…Kev-4B…' → ok(Brier 0.0469 → 0.0481、precision 0.976)
 ```
 
@@ -149,7 +149,7 @@ OpenJev は生の確率で足りて両方 `identity`、Kev-4B は Platt がわ�
 ## 棚卸し: `shikii status`
 
 ```sh
-bin/shikii status --store ~/.shikii/agent/.shikii ~/.shikii/agent/decisions/prompt-kind.yaml
+bin/shikii status --store ~/.shikii/agent ~/.shikii/agent/decisions/prompt-kind.yaml
 # prompt-kind: records=1 labels=1
 #   by source: outcome=1   by truth: !edit=1
 #   ggml-org/Kev-4B-GGUF:Q4_K_M @ 68ed82631e63f2a2   1  collecting (1/50)
@@ -163,11 +163,11 @@ spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome 
 記録(`records/`)は判定のたびに増える。ラベルは較正の材料なので捨てないが、ラベルの付かなかった古い記録は要らない。
 
 ```sh
-bin/shikii gc --store ~/.shikii/agent/.shikii                 # 表示だけ(既定: 30d より古くラベルの無い記録が候補)
+bin/shikii gc --store ~/.shikii/agent                 # 表示だけ(既定: 30d より古くラベルの無い記録が候補)
 # prompt-kind: would remove 120 unlabeled record(s) older than 30d; keep 48 labeled, 15 recent, 0 unparsable
 # dry run: nothing was changed. Re-run with --apply to remove them.
-bin/shikii gc --store ~/.shikii/agent/.shikii --apply         # 実際に消す
-bin/shikii gc --older-than 1w decisions/prompt-intent-v2.yaml       # spec と年齢を指定(d / w / h。0 なら年齢を問わない)
+bin/shikii gc --store ~/.shikii/agent --apply         # 実際に消す
+bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # spec と年齢を指定(d / w / h。0 なら年齢を問わない)
 ```
 
 消すのは「`--older-than` より古く、ラベルが 1 つも付いていない記録」だけ。ラベル付きの記録・ラベル・JSON として読めない行は年齢に関係なく残す。
@@ -208,7 +208,7 @@ scripts/demo.sh --overconfident  # 確率を端に寄せた偽モデル。較正
 ```sh
 llama-server -m <any>.gguf --port 8086 --alias my-model      # 本家でも fork でも
 bin/shikii-readout --upstream http://127.0.0.1:8086 --port 8090
-bin/shikii decide decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 -i message='README の誤字を直して'
+bin/shikii decide .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 -i message='README の誤字を直して'
 ```
 
 - 起動時に `/tokenize` で全ラベルが 1 トークンかを確かめ、違えば起動しない
@@ -222,7 +222,7 @@ bin/shikii decide decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 
 
 ## 接続例
 
-Claude Code と Codex の hook(`shikii hook install`): AI 自身の作業中の判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか、この依頼で結局何をするか)を測る。置き場は `~/.shikii/agent`(基本構成)、モデルは :8080、答え合わせの画面は `cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080`。線が無いうちは記録だけ(影の期間)。線が引けたら、危ないコマンド(消す・外を変える・外に送る)が act なら確認を出し、迷った判定は「あとで答える → URL」を端末に 1 行、ターンの終わりに答え待ちの件数を 1 行。deny は出さない。失敗しても止めない(hook.log に理由)。帯 → 振る舞いの表と中の形は [`integrations/claude-code.md`](../integrations/claude-code.md)。
+Claude Code と Codex の hook(`shikii hook install`): AI 自身の作業中の判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか、この依頼で結局何をするか)を測る。置き場は `~/.shikii/agent`(基本構成)、モデルは :8080、答え合わせの画面は `shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080`。線が無いうちは記録だけ(影の期間)。線が引けたら、危ないコマンド(消す・外を変える・外に送る)が act なら確認を出し、迷った判定は「あとで答える → URL」を端末に 1 行、ターンの終わりに答え待ちの件数を 1 行。deny は出さない。失敗しても止めない(hook.log に理由)。帯 → 振る舞いの表と中の形は [`integrations/claude-code.md`](../integrations/claude-code.md)。
 他のエージェントに付けるときの最小手順もそこに。
 
 ## まだ無いもの

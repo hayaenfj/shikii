@@ -17,7 +17,7 @@ hf download prism-ml/Ternary-Bonsai-2-27B-gguf Ternary-Bonsai-2-27B-PQ2_0.gguf  
 ```
 
 ```sh
-bin/shikii decide decisions/prompt-kind.yaml --local http://127.0.0.1:8083 --tainted -i request='fix the typo in README'
+bin/shikii decide .shikii/decisions/prompt-kind.yaml --local http://127.0.0.1:8083 --tainted -i request='fix the typo in README'
 #  model=ternary-bonsai-2-27b  top=edit p=0.950  band=ask   ← 較正が無いので act は出ない(設計どおり)
 scripts/eval-model.sh http://127.0.0.1:8083 bonsai2       # Kev-4B / OpenJev と同じ 5 セット
 ```

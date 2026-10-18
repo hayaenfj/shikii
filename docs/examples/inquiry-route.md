@@ -8,7 +8,7 @@ prompt-intent のような「AI への依頼の分類」ではない分野で、
 問い合わせメールを 4 つの窓口（請求 / 故障 / 解約 / その他）に回す。入力は日本語 22 件（各 5〜6 件）、個人情報は無し。
 
 - spec: [`inquiry-route/inquiry-route.yaml`](inquiry-route/inquiry-route.yaml)（`shikii new inquiry-route --type choice --question … --option billing=… ×4 --input body --pii true --send-to local` で作り、聞き方の候補 `variants:` を 3 つ手で足した。較正ブロックは外してある。線は使う人が自分のモデルで引く）
-- 過去の表: [`inquiry-route/past.csv`](inquiry-route/past.csv)（`body,truth` の 22 行。`shikii import past.csv --spec decisions/inquiry-route.yaml --out truths.json` で答え合わせの材料になる）
+- 過去の表: [`inquiry-route/past.csv`](inquiry-route/past.csv)（`body,truth` の 22 行。`shikii import past.csv --spec .shikii/decisions/inquiry-route.yaml --out truths.json` で答え合わせの材料になる）
 
 ## 一周の結果（Kev-4B Q4_K_M、手元の llama-server）
 
@@ -19,7 +19,7 @@ prompt-intent のような「AI への依頼の分類」ではない分野で、
 | `POST /v1/label` 22 件 | 間違った答え（`refund`）は選択肢の一覧つきで拒否された |
 | `shikii calibrate --write` | 22 件 < `eval.min_n` 50 で書かない → spec の `eval.min_n` を 20 に下げて書けた。選ばれた方法は identity（生の確率がそのまま使える） |
 | 較正後の `decide` | `band=act`、receipt 付き。serve は再起動なしで新しい線を使った |
-| `shikii tune`（候補 3 つ） | どれも現状に勝てず `winner: current`（同点なら現状維持）。`wiki/runs/` に表と一行の学びが残った |
+| `shikii tune`（候補 3 つ） | どれも現状に勝てず `winner: current`（同点なら現状維持）。`.shikii/wiki/runs/` に表と一行の学びが残った |
 | 抜き取り（act の 20 件に 1 件）に答える | `/v1/queue` の `audit: true` の判定に `/v1/label` で答えられた |
 | MCP（`shikii mcp` に stdio で initialize / tools/list / tools/call） | 道具 5 つ、`shikii_decide` が JSON を返した。`init` が書いた 4 つの設定は文書どおり |
 
@@ -40,10 +40,10 @@ prompt-intent のような「AI への依頼の分類」ではない分野で、
 
 ```sh
 shikii init
-cp <この repo>/docs/examples/inquiry-route/inquiry-route.yaml decisions/      # または shikii new <id> で自分の問題を書く
-shikii import <この repo>/docs/examples/inquiry-route/past.csv --spec decisions/inquiry-route.yaml --out truths.json
-shikii calibrate decisions/inquiry-route.yaml --labeled truths.json --local http://127.0.0.1:8080 --write
-shikii decide decisions/inquiry-route.yaml --local http://127.0.0.1:8080 -i body='先月の請求額が二重に引き落とされているようです'
+cp <この repo>/docs/examples/inquiry-route/inquiry-route.yaml .shikii/decisions/   # または shikii new <id> で自分の問題を書く
+shikii import <この repo>/docs/examples/inquiry-route/past.csv --spec .shikii/decisions/inquiry-route.yaml --out truths.json
+shikii calibrate .shikii/decisions/inquiry-route.yaml --labeled truths.json --local http://127.0.0.1:8080 --write
+shikii decide .shikii/decisions/inquiry-route.yaml --local http://127.0.0.1:8080 -i body='先月の請求額が二重に引き落とされているようです'
 ```
 
 22 件は試しの数。業務で使うなら `eval.min_n` を 50 以上に戻し、`shikii serve` の画面で答え合わせを続けて、線を引き直す。

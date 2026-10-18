@@ -1,7 +1,7 @@
 # shikii: 決定モデルの運用フレームワーク(コマンド名も shikii)
 BIN     ?= bin/shikii
 INSTALL ?= $(HOME)/.local/bin/shikii
-STORE   ?= $(HOME)/.claude/jev/decisions-store
+STORE   ?= .shikii
 MODEL   ?= ggml-org/Kev-4B-GGUF:Q4_K_M
 
 .PHONY: build test install check status drift server demo fake web
@@ -55,17 +55,21 @@ install: build
 check: build
 	$(BIN) check --store testdata/store decisions/*.yaml
 
-# claude-jev の hook が溜めたラベルの棚卸し
+# AI 自身の判断(shikii hook)が溜めた記録の棚卸し
 status: build
-	$(BIN) status --store $(STORE) decisions/prompt-kind.yaml
+	$(BIN) status --store $(HOME)/.shikii/agent $(HOME)/.shikii/agent/decisions/*.yaml
 
 drift: build
-	$(BIN) drift decisions/prompt-kind.yaml --model '$(MODEL)' --store $(STORE)
+	$(BIN) drift $(HOME)/.shikii/agent/decisions/prompt-kind.yaml --model '$(MODEL)' --store $(HOME)/.shikii/agent
 
 # 1 プロセスで HTTP の口と画面(http://127.0.0.1:8095/)。LOCAL= で手元のモデル、STORE= で置き場
 LOCAL ?= http://127.0.0.1:8080
-serve: build
-	$(BIN) serve --specs decisions --store $(STORE) --local $(LOCAL)
+# この repo 自身で回す時: 見本の spec と知識は repo の decisions/ wiki/ にあるので、.shikii/ の下からリンクで指す(他のプロジェクトでは init が .shikii/ に実物を作る)
+.shikii/decisions .shikii/wiki:
+	mkdir -p .shikii && ln -s ../$(notdir $@) $@
+
+serve: build .shikii/decisions .shikii/wiki
+	$(BIN) serve --store $(STORE) --local $(LOCAL)
 
 # 古くてラベルの無い記録の掃除。表示だけ。消すなら make gc GC_FLAGS=--apply
 gc: build

@@ -21,8 +21,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/shikii ./cmd/shiki
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/shikii /out/shikii-readout /usr/local/bin/
-# 基本構成: 実行する場所(/work)に decisions/ wiki/ .shikii/。ホストのプロジェクトをここに mount する
+# 基本構成: 実行する場所(/work)の .shikii/ の下に decisions/ wiki/ records/ labels/。ホストのプロジェクトをここに mount する
 WORKDIR /work
 EXPOSE 8095
 ENTRYPOINT ["shikii"]
-CMD ["serve", "--specs", "decisions", "--store", ".shikii", "--local", "http://llama:8080", "--port", "8095"]
+CMD ["serve", "--store", ".shikii", "--local", "http://llama:8080", "--port", "8095"]

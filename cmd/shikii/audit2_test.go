@@ -207,7 +207,7 @@ func fnvHash(s string) uint32 {
 	return h.Sum32()
 }
 
-// 基本構成: 実行する場所に decisions/ wiki/ .shikii/。wiki は常に ./wiki で、spec の置き場からは推測しない(親フォルダに書かない)。
+// 基本構成: shikii が作るものは全部 store(.shikii/)の下。wiki は常に <store>/wiki で、spec の置き場からは推測しない(親フォルダに書かない)。
 func TestWikiLivesAtTheProjectRootNotNextToTheSpec(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "myproject")
@@ -233,7 +233,7 @@ func TestWikiLivesAtTheProjectRootNotNextToTheSpec(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "wiki")); err == nil {
 		t.Fatal("tune must never write a wiki above the project")
 	}
-	if runs, _ := filepath.Glob(filepath.Join(project, "wiki", "runs", "*.md")); len(runs) != 1 {
+	if runs, _ := filepath.Glob(filepath.Join(project, ".shikii", "wiki", "runs", "*.md")); len(runs) != 1 {
 		t.Fatalf("the run must land in ./wiki of the project: %v", runs)
 	}
 }
@@ -270,7 +270,7 @@ func TestProposeWithWriteDoesNotAdoptUnseenWording(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "decisions", "intent-v2.yaml")); err != nil {
 		t.Fatal("after a person has seen the variants, tune --write adopts the winner")
 	}
-	res, err := latestTuneResult("wiki", "intent")
+	res, err := latestTuneResult(filepath.Join(".shikii", "wiki"), "intent")
 	if err != nil || len(res.MeaningChecks) != 1 || res.MeaningChecks[0].By != "terminal --write" {
 		t.Fatalf("the terminal adoption must be recorded as the person's meaning check: %v %+v", err, res)
 	}
@@ -366,7 +366,7 @@ func TestRejectionReachesTheNextProposer(t *testing.T) {
 	if code, _ := postJSON(t, url+"/v1/tune/adopt", map[string]any{"spec": "intent", "run": res["run"], "meaning_same": false, "note": "it now asks about tone"}); code != 200 {
 		t.Fatalf("reject: %d", code)
 	}
-	sp := mustLoad(t, filepath.Join(filepath.Dir(wiki), "decisions", "intent.yaml"))
+	sp := mustLoad(t, filepath.Join(filepath.Dir(filepath.Dir(wiki)), "decisions", "intent.yaml"))
 	if ctx := wikiContext(wiki, sp, "m"); !strings.Contains(ctx, "it now asks about tone") || !strings.Contains(ctx, "strict") {
 		t.Fatalf("the proposer must be told which wording a person rejected and why:\n%s", ctx)
 	}

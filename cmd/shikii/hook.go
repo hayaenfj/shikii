@@ -3,7 +3,7 @@ package main
 // shikii hook: Claude Code の hook として、AI 自身の作業中の判断(このコマンドは何をするか、この編集は頼まれた範囲か、
 // この依頼は着手前に方針を合わせるべきか、この依頼で結局ファイルを変えるか)を shikii に通す。
 //
-// 置き場は固定: ~/.shikii/agent/ に基本構成(decisions/ wiki/ .shikii/)。モデルは手元の :8080。答え合わせの画面は :8096。
+// 置き場は固定: ~/.shikii/agent/ がそのまま store(decisions/ wiki/ records/ labels/ sessions/ hook.log)。モデルは手元の :8080。答え合わせの画面は :8096。
 // 線が無いうちは記録だけで何も出さない(影の期間)。線が引けたら帯で振る舞いを変える(hookOutcome)。deny は出さない。止めるのは人。
 // 失敗(モデルが無い、遅い、書けない)は exit 0 で黙る: hook が作業を止めてはいけない。理由は .shikii/hook.log に 1 行。
 
@@ -148,7 +148,7 @@ func (o hookOut) json(event string) []byte {
 
 // ---------------------------------------------------------------- セッションの状態
 
-// hookSession はセッションごとの控え(~/.shikii/agent/.shikii/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
+// hookSession はセッションごとの控え(~/.shikii/agent/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 type hookSession struct {
 	Request  string        `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
 	Previous string        `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
@@ -179,7 +179,7 @@ func sessionPath(agent, id string) string {
 	if id == "" {
 		id = "no-session"
 	}
-	return filepath.Join(agent, ".shikii", "sessions", id+".json")
+	return filepath.Join(agent, "sessions", id+".json")
 }
 
 // lockSession はセッションの控えの錠(flock)。Claude Code は hook を並列に走らせる(Bash と Edit の PreToolUse が同時、Stop と次の依頼が重なる)ので、
@@ -261,7 +261,7 @@ func cut(s string, n int) string {
 
 // pruneSessions は古いセッションの控えを消す(7 日)。
 func pruneSessions(agent string) {
-	dir := filepath.Join(agent, ".shikii", "sessions")
+	dir := filepath.Join(agent, "sessions")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -289,7 +289,7 @@ func hookDecide(agent, specID string, inputs map[string]string, bypass bool) (*d
 	if err != nil {
 		return nil, hookOut{}, err
 	}
-	st := store.Store{Dir: filepath.Join(agent, ".shikii")}
+	st := store.Store{Dir: agent}
 	attachReceipt(sp, st, d)
 	l := localize(sp, d, hookLang())
 	if specID == "command-effect" {
@@ -636,7 +636,7 @@ func hookStop(agent string, in *hookInput, sess *hookSession) (hookOut, error) {
 	if m := strings.TrimSpace(in.LastAssistantMessage); m != "" {
 		sess.Previous = cut(m, requestMax)
 	}
-	st := store.Store{Dir: filepath.Join(agent, ".shikii")}
+	st := store.Store{Dir: agent}
 	firstErr := settlePending(agent, sess, treeSnapshot(in.CWD))
 	pruneSessions(agent)
 	// 答え待ちの要約: このセッションで人の答えを待つことになった判定のうち、まだ答えの無いもの。新顔がある時だけ言う(毎ターン同じ数を繰り返さない)
@@ -652,7 +652,7 @@ func hookStop(agent string, in *hookInput, sess *hookSession) (hookOut, error) {
 			fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s/", n, hookPageURL),
 			fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, hookPageURL), "\n", l)}, firstErr
 	}
-	start := fmt.Sprintf("cd %s && shikii serve --port 8096 --local %s", agent, hookLocalURL)
+	start := fmt.Sprintf("shikii serve --store %s --port 8096 --local %s", agent, hookLocalURL)
 	return hookOut{System: bi(
 		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer. Start the page: %s", n, start),
 		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち。画面を立てる: %s", n, start), "\n", l)}, firstErr
@@ -666,7 +666,7 @@ func hookMaybeCalibrate(agent, specID string) error {
 	if err != nil {
 		return nil // spec が無い(人が消した)なら何もしない
 	}
-	st := store.Store{Dir: filepath.Join(agent, ".shikii")}
+	st := store.Store{Dir: agent}
 	recs, err := st.Records(specID, 0)
 	if err != nil {
 		return err
@@ -712,7 +712,7 @@ func spawnCalibrate(agent, path, storeDir, model string) {
 		hookLog("auto-calibrate: cannot find shikii: " + err.Error())
 		return
 	}
-	logf, err := os.OpenFile(filepath.Join(agent, ".shikii", "hook.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	logf, err := os.OpenFile(filepath.Join(agent, "hook.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}
@@ -756,7 +756,7 @@ func settlePending(agent string, sess *hookSession, now string) error {
 	if len(sess.Pending) == 0 {
 		return nil
 	}
-	st := store.Store{Dir: filepath.Join(agent, ".shikii")}
+	st := store.Store{Dir: agent}
 	var firstErr error
 	for _, p := range sess.Pending {
 		if now == "" {
@@ -900,7 +900,7 @@ func hookLog(msg string) {
 	if err != nil {
 		return
 	}
-	p := filepath.Join(agent, ".shikii", "hook.log")
+	p := filepath.Join(agent, "hook.log")
 	_ = os.MkdirAll(filepath.Dir(p), 0o755)
 	f, err := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -953,7 +953,7 @@ func hookInstall(args []string, install bool) error {
 	home := filepath.Dir(filepath.Dir(agent))
 	tilde := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
 	if install {
-		fmt.Fprintf(stdout, "1. %s: decisions/ wiki/ .shikii/ for the agent's own decisions; copy the 4 specs that are missing (command-effect, edit-in-scope, needs-plan, prompt-kind) and the shared wiki pages. Existing files are never overwritten\n", tilde(agent))
+		fmt.Fprintf(stdout, "1. %s: decisions/ wiki/ records/ labels/ for the agent's own decisions (this folder is the store); copy the 4 specs that are missing (command-effect, edit-in-scope, needs-plan, prompt-kind) and the shared wiki pages. Existing files are never overwritten\n", tilde(agent))
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: add 3 hooks (PreToolUse %s, UserPromptSubmit, Stop) running `shikii hook <event>` (%s); a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Hooks that are already there are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), t.toolsRe, t.who, filepath.Base(t.rel), t.note)
 		}
@@ -970,7 +970,7 @@ func hookInstall(args []string, install bool) error {
 		return nil
 	}
 	if install {
-		for _, d := range []string{"decisions", "wiki", filepath.Join("wiki", "specs"), filepath.Join("wiki", "runs"), ".shikii"} {
+		for _, d := range []string{"decisions", "wiki", filepath.Join("wiki", "specs"), filepath.Join("wiki", "runs"), "records", "labels"} {
 			if err := os.MkdirAll(filepath.Join(agent, d), 0o755); err != nil {
 				return err
 			}
@@ -1003,7 +1003,7 @@ func hookInstall(args []string, install bool) error {
 		}
 	}
 	if install {
-		fmt.Fprintf(stdout, "answer page: cd %s && shikii serve --port 8096 --local %s   (then %s/)\n", tilde(agent), hookLocalURL, hookPageURL)
+		fmt.Fprintf(stdout, "answer page: shikii serve --store %s --port 8096 --local %s   (then %s/)\n", tilde(agent), hookLocalURL, hookPageURL)
 	}
 	return nil
 }

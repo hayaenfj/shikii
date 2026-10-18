@@ -107,7 +107,7 @@ func TestWikiClaimRulesFromAudit4(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSpec(t, specsDir, "false")
-	pdir := filepath.Join(dir, "wiki", "patterns")
+	pdir := filepath.Join(dir, ".shikii", "wiki", "patterns")
 	if err := os.MkdirAll(filepath.Join(pdir, "drafts"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestWikiClaimRulesFromAudit4(t *testing.T) {
 	if len(list.Claims) != 1 || list.Claims[0]["confirmable"] != false || list.Claims[0]["supporting_models"] != 1.0 {
 		t.Fatalf("two layouts of one base model are one model: %+v", list.Claims)
 	}
-	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "wiki/patterns/drafts/intent-plain.md", "action": "status", "status": "confirmed"}); code != 409 {
+	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "patterns/drafts/intent-plain.md", "action": "status", "status": "confirmed"}); code != 409 {
 		t.Fatalf("a draft must be promoted before it can be confirmed, got %d", code)
 	}
 	pg, body, err := readClaimPage(draft)

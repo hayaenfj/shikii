@@ -12,7 +12,7 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
   "mcpServers": {
     "shikii": {
       "command": "shikii",
-      "args": ["mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"]
+      "args": ["mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"]
     }
   }
 }

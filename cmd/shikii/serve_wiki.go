@@ -17,7 +17,7 @@ import (
 // 状態を変えるのは人だけ。機械は confirmable(支持するモデルが 2 つ以上、反証無し)と言うだけ。
 
 // wikiPages は wiki/patterns と wiki/patterns/drafts のページ(前書きの無いものも、主張ではないと分かるように載せる)。
-func wikiPages() ([]string, error) {
+func wikiPages(wikiRoot string) ([]string, error) {
 	a, _ := filepath.Glob(filepath.Join(wikiRoot, "patterns", "*.md"))
 	b, _ := filepath.Glob(filepath.Join(wikiRoot, "patterns", "drafts", "*.md"))
 	all := append(a, b...)
@@ -64,7 +64,7 @@ func baseModel(m string) string {
 }
 
 func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
-	paths, err := wikiPages()
+	paths, err := wikiPages(s.o.wikiDir)
 	if err != nil {
 		writeErr(w, 500, err)
 		return
@@ -73,8 +73,9 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 	for _, p := range paths {
 		c, err := claimSummary(p)
 		if err != nil {
-			c = map[string]any{"path": filepath.ToSlash(p), "error": err.Error(), "is_claim": false}
+			c = map[string]any{"error": err.Error(), "is_claim": false}
 		}
+		c["path"] = wikiRel(s.o.wikiDir, p)
 		claims = append(claims, c)
 	}
 	writeJSON(w, 200, map[string]any{"claims": claims})
@@ -83,16 +84,25 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,80}$`)
 
 // insidePatterns は path が wiki/patterns(と drafts)の中の .md か。外は触らない。
-func insidePatterns(p string) (string, bool) {
+// 口の path は wiki ルートからの相対("patterns/x.md"、"patterns/drafts/x.md")。置き場(<store>/wiki)が変わっても画面と口は変わらない。
+func insidePatterns(wikiRoot, p string) (string, bool) {
 	clean := filepath.Clean(filepath.FromSlash(p))
 	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") || filepath.Ext(clean) != ".md" {
 		return "", false
 	}
-	dir := filepath.Dir(clean)
-	if dir != filepath.Join(wikiRoot, "patterns") && dir != filepath.Join(wikiRoot, "patterns", "drafts") {
+	dir := filepath.Dir(clean) // 親が patterns か patterns/drafts そのもの(.. や別の場所は等しくならない)
+	if dir != "patterns" && dir != filepath.Join("patterns", "drafts") {
 		return "", false
 	}
-	return clean, true
+	return filepath.Join(wikiRoot, clean), true
+}
+
+// wikiRel は wiki ルートからの相対の path(口と画面に出す形)。
+func wikiRel(wikiRoot, p string) string {
+	if rel, err := filepath.Rel(wikiRoot, p); err == nil {
+		return filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(p)
 }
 
 func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +121,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 		return
 	}
-	path, ok := insidePatterns(req.Path)
+	path, ok := insidePatterns(s.o.wikiDir, req.Path)
 	if !ok {
 		writeErr(w, 400, errors.New("path must be a .md under wiki/patterns or wiki/patterns/drafts"))
 		return
@@ -131,7 +141,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	isDraft := filepath.Dir(path) == filepath.Join(wikiRoot, "patterns", "drafts")
+	isDraft := filepath.Dir(path) == filepath.Join(s.o.wikiDir, "patterns", "drafts")
 	switch req.Action {
 	case "promote":
 		// 下書きを一般化した主張に書き直して patterns/ に移す。証拠と再検証の手順は引き継ぐ。状態は tentative(人が確かめるのはこれから)
@@ -143,7 +153,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 400, errors.New("promote needs a slug (lowercase, digits, dashes) and the generalized claim text"))
 			return
 		}
-		dst := filepath.Join(wikiRoot, "patterns", req.Slug+".md")
+		dst := filepath.Join(s.o.wikiDir, "patterns", req.Slug+".md")
 		if _, err := os.Stat(dst); err == nil {
 			writeErr(w, 409, fmt.Errorf("%s already exists", dst))
 			return
@@ -161,7 +171,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"path": filepath.ToSlash(dst), "status": pg.Status})
+		writeJSON(w, 200, map[string]any{"path": wikiRel(s.o.wikiDir, dst), "status": pg.Status})
 	case "status":
 		if pg.Claim == "" && pg.Retest == nil {
 			writeErr(w, 409, errors.New("this page has no front matter; it is prose, not a claim"))
@@ -180,7 +190,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"path": filepath.ToSlash(path), "status": pg.Status})
+		writeJSON(w, 200, map[string]any{"path": wikiRel(s.o.wikiDir, path), "status": pg.Status})
 	case "delete":
 		if !isDraft {
 			writeErr(w, 409, errors.New("only drafts are deleted; reject a claim instead so the record stays"))
@@ -190,7 +200,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"path": filepath.ToSlash(path), "deleted": true})
+		writeJSON(w, 200, map[string]any{"path": wikiRel(s.o.wikiDir, path), "deleted": true})
 	default:
 		writeErr(w, 400, errors.New("action must be promote, status or delete"))
 	}

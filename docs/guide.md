@@ -71,7 +71,7 @@ bin/shikii check examples/prompt-intent.yaml        # exit 1 when the wording ch
 ### Or run one process for programs and people
 
 ```sh
-bin/shikii serve --specs decisions --local http://127.0.0.1:8080        # http://127.0.0.1:8095/
+bin/shikii serve --local http://127.0.0.1:8080        # http://127.0.0.1:8095/  (specs from .shikii/decisions, knowledge from .shikii/wiki)
 curl -s localhost:8095/v1/decide -H 'Content-Type: application/json' -d '{"spec":"prompt-intent","inputs":{"message":"fix the typo"}}'
 curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec":"prompt-intent","trace_id":"<from the decide response>","truth":"change_request"}'
 ```
@@ -109,11 +109,11 @@ bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8090 -i m
 #   - name: other-tight
 #     options:
 #       other: Not a request at all - greetings, thanks, small talk. Anything that asks for work is never other.
-bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080          # scores every candidate on the stored truths
-bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --write  # adopts the winner as v+1 and calibrates it
+bin/shikii tune .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080          # scores every candidate on the stored truths
+bin/shikii tune .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --write  # adopts the winner as v+1 and calibrates it
 ```
 
-The layout is fixed: run shikii at the project root, with `decisions/` (specs), `wiki/` (how-to-ask knowledge) and `.shikii/` (records and truths) beside each other. There is no flag for where the wiki lives.
+The layout is fixed: run shikii at the project root, and everything shikii makes lives under `.shikii/`: `decisions/` (specs), `wiki/` (how-to-ask knowledge), `records/` and `labels/` (records and truths). Nothing else is added to the project root. `--store` moves the whole folder; there is no separate flag for where the specs or the wiki live.
 
 Wording moves accuracy far more than calibration does (0.68 → 0.90 in our data; a layout change moved a 27B model by 5 points). The truths people gave do not depend on the wording, so every candidate wording can be scored on all of them with no new labels: top-1, Brier, precision and recall at `act`, plus a k-fold holdout of the selection itself. A candidate is adopted only when that holdout beats keeping the current wording; a win by one example out of 62 does not pass (we saw exactly that: 0.984 on the full bank, 0.952 on holdout, so the current 0.968 stayed). Ties keep the current wording. The winner becomes a new version file; the old one stays, and the calibration is fitted immediately by replay.
 
@@ -154,7 +154,7 @@ A judge can carry part of the labelling: `shikii judge` asks a second, larger mo
 You do not have to write the candidates yourself:
 
 ```sh
-bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --propose 3 --proposer http://127.0.0.1:8087
+bin/shikii tune .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --propose 3 --proposer http://127.0.0.1:8087
 ```
 
 `--propose` hands a chat model the current wording, the confusion matrix, the examples it gets wrong and the relevant pages of the [wiki](../wiki/index.md) (how to ask this type, this model family's habits, confirmed patterns, this decision's own rules and the wordings people rejected), and asks for candidates. Texts from `pii: true` specs and texts recorded under `--tainted` go only to a proposer on this machine; the hosted key is never sent to a proposer (set `SHIKII_PROPOSER_KEY` if yours needs one). A wording proposed in this run is never adopted by the same `--write`: a person reads it first, then adopts on the page or with a plain `tune --write`. They are stored in the spec's `variants:` so people can read them, scored like any other candidate, and the run is written back to `wiki/runs/` with the numbers, the decision and a one-line lesson. The wiki is where the knowledge of *how to ask* accumulates, is edited by people, and is read by the next proposal. A pattern page is not prose but a verifiable claim: front matter with the claim, where it applies, the evidence runs, and a retest recipe (which spec, which candidate should beat which). `shikii wiki verify` reruns the recipe on the current model, records the verdict as new evidence, and says when two independent models support a claim; a person changes the status. Anyone can rerun a claim on their own model and add to its evidence. Every `tune` run drafts a claim for a candidate that beat the current wording, and the answer page has a knowledge panel where a person turns a draft into a general claim, confirms or rejects it; the machine never changes a status.
@@ -164,19 +164,19 @@ bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --
 ```sh
 shikii hook install          # shows what it would do
 shikii hook install --yes    # ~/.shikii/agent/ (specs, wiki, store) + 3 hooks in ~/.claude/settings.json and ~/.codex/hooks.json; open a new terminal (Codex: run /hooks once to trust them)
-cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080   # the answer page for these decisions
+shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080   # the answer page for these decisions
 shikii hook uninstall --yes  # removes the 3 hooks; records and truths stay
 ```
 
 Four specs ship with it: `command-effect` (read / change_project / change_outside / destroy / send_outside, asked before every Bash call), `edit-in-scope` (is this edit part of what the user asked, before Edit/Write), `needs-plan` (should the agent agree on an approach first, on every prompt) and `prompt-kind` (what the agent will end up doing; its truth comes for free at the end of the turn from whether the working tree changed). Everything is local-only (`send_to: [local]`, `pii: true`).
 
-Until a spec has a calibration line the hooks only record (shadow mode). Once it does: a confident `destroy`, `send_outside` or `change_outside` asks for confirmation (under `--dangerously-skip-permissions` it becomes a one-line warning instead), a confident out-of-scope edit or needs-a-plan request becomes context for the agent, and anything unsure prints one line with the URL of the decision to answer later. A hook never denies; stopping is a person's call. At the end of a turn one line says how many of this session's decisions wait for an answer (only when new ones were added). If Claude Code's `language` setting is Japanese, every message is shown in Japanese next to the English; for other languages the message stays English. Either way the record keeps `display` (language, the question and answer in that language when the spec has them, the message shown) so you can trace what was said later. Failures (no model, slow model) never block: the hook exits 0 and logs to `~/.shikii/agent/.shikii/hook.log`. Details and the band → behaviour table: [`integrations/claude-code.md`](../integrations/claude-code.md).
+Until a spec has a calibration line the hooks only record (shadow mode). Once it does: a confident `destroy`, `send_outside` or `change_outside` asks for confirmation (under `--dangerously-skip-permissions` it becomes a one-line warning instead), a confident out-of-scope edit or needs-a-plan request becomes context for the agent, and anything unsure prints one line with the URL of the decision to answer later. A hook never denies; stopping is a person's call. At the end of a turn one line says how many of this session's decisions wait for an answer (only when new ones were added). If Claude Code's `language` setting is Japanese, every message is shown in Japanese next to the English; for other languages the message stays English. Either way the record keeps `display` (language, the question and answer in that language when the spec has them, the message shown) so you can trace what was said later. Failures (no model, slow model) never block: the hook exits 0 and logs to `~/.shikii/agent/hook.log`. Details and the band → behaviour table: [`integrations/claude-code.md`](../integrations/claude-code.md).
 
 ### Install and update
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # needs Go 1.27+
-cd <project root> && shikii init   # folders (wiki/ gets the shared knowledge: types, patterns, model pages); MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill
+cd <project root> && shikii init   # .shikii/ (decisions, wiki with the shared knowledge, records, labels); MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill
 make install          # copies bin/shikii and bin/shikii-readout to ~/.local/bin
 git pull && make install
 shikii doctor         # what is running, what is missing, and the command that fixes it
@@ -185,7 +185,7 @@ shikii new my-decision --type choice   # a new spec by answering a few questions
 
 `shikii init` points the four MCP entries at a local model on :8080; hosted only? Remove `--local` from all four entries by hand. Unused tool files can be deleted or gitignored. Projects with only a `CLAUDE.md` get no `AGENTS.md`. The skill folder (`~/.claude/skills/shikii`) is replaced on every init, so do not edit it by hand; your own entries in the MCP files are never rewritten.
 
-What to commit: `decisions/` and `wiki/` always. `.shikii/labels/` holds the truths, the asset that survives a model change, so commit it. `.shikii/records/` grows with every decision; committing it is optional (`shikii gc` drops old unlabelled records).
+What to commit: `.shikii/decisions/` and `.shikii/wiki/` always. `.shikii/labels/` holds the truths, the asset that survives a model change, so commit it. `.shikii/records/` grows with every decision; committing it is optional (`shikii gc` drops old unlabelled records).
 
 To change the answer page itself (`web/`, Svelte) you need Node 24 (`make web`); just using shikii does not: the built page is committed and embedded in the binary.
 
@@ -242,7 +242,7 @@ shikii speaks the System One request shape (`POST /v1/systemone`), so anything t
 | **PrismML Bonsai** via [BonJev](https://github.com/ChezRD/bonjev) | Same, with BonJev's own prompt and built-in calibration | Rust build and the Prism fork. [`integrations/bonjev.md`](../integrations/bonjev.md) |
 | **Fake model** (`bin/fake-systemone`) | Deterministic probabilities for demos and tests | Nothing. `make fake` |
 | **Claude Code and Codex hooks** (`shikii hook install`) | The agent's own decisions measured: what a command does, is this edit in scope, does this request need a plan, what will the agent end up doing (labelled from the working tree) | [`integrations/claude-code.md`](../integrations/claude-code.md) (Japanese) |
-| **Docker** | llama.cpp with Kev-4B and shikii in two containers; `decisions/`, `wiki/`, `.shikii/` stay on the host | `docker compose up`. [`integrations/docker.md`](../integrations/docker.md) |
+| **Docker** | llama.cpp with Kev-4B and shikii in two containers; `.shikii/` stays on the host | `docker compose up`. [`integrations/docker.md`](../integrations/docker.md) |
 
 Taint is a first-class input: pass `--tainted` (or let your hook do it) in a session that touched production data and the request never leaves the machine. If no local endpoint is configured, the decision abstains.
 
@@ -271,7 +271,7 @@ Same specs, same labels, three synthetic tasks, five model routes (the table sho
 
 **Why does my decision never reach `act`?** Because the spec has no calibration block for `(this question hash, this model id)`. Collect labels (`label`, or `--labeled file`), run `calibrate --write`, and `status` shows `calibrated: identity|platt|vector`. A decision without verified precision at the act threshold is not allowed to act. That is the point.
 
-**I have fewer than 50 truths. How do I start?** Import a table of past decisions (`shikii import past.csv --spec decisions/<id>.yaml`), or lower `eval.min_n` in the spec to what you have for a trial and raise it again before relying on the line. `calibrate` and `tune` say exactly this when the truths fall short.
+**I have fewer than 50 truths. How do I start?** Import a table of past decisions (`shikii import past.csv --spec .shikii/decisions/<id>.yaml`), or lower `eval.min_n` in the spec to what you have for a trial and raise it again before relying on the line. `calibrate` and `tune` say exactly this when the truths fall short.
 
 **I changed one word in the question and the calibration disappeared.** Correct, and it costs you compute, not labels. The hash changed, so constants fitted to the old wording are not trusted. But the truths people gave (this request *was* a change request, these two reports *were* the same bug) do not depend on the wording or the model. Run `calibrate --write` again: it replays every stored truth against the new wording and the current model, refits, and writes. No human in the loop. The text of every recorded decision is kept in the local store for exactly this reason (`--no-record` and `"record": false` are the only exceptions); `calibrate` tells you if any older truths have no text and cannot be replayed.
 

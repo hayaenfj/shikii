@@ -2,7 +2,7 @@
 # 使い方(利用側のリポジトリの workflow):
 #   - uses: hayaenfj/shikii@main
 #     with:
-#       specs: decisions/*.yaml      # 検査する spec
+#       specs: .shikii/decisions/*.yaml      # 検査する spec
 #       store: .shikii               # 正解の置き場(リポジトリに入れている場合)。無ければ testdata/store のように正解のあるフォルダ
 name: shikii check
 description: Fail the PR when a decision spec's calibration is stale, hand-written or below its act precision
@@ -10,7 +10,7 @@ inputs:
   specs:
     description: spec files to check (glob)
     required: false
-    default: decisions/*.yaml
+    default: .shikii/decisions/*.yaml
   store:
     description: directory with records and truths
     required: false

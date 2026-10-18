@@ -48,17 +48,17 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 cd <project root> && shikii init
 ```
 
-`shikii init` sets up the folders (`decisions/` `wiki/` `.shikii/`) and the agent integrations in one go: the shikii MCP server for Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) and Codex (`~/.codex/config.toml`), a section in `AGENTS.md`, and the detailed rules (the skill) in `~/.claude/skills/shikii`. Your own entries are never touched (an existing shikii entry is left alone). Only the skill folder is replaced each time, so do not edit it by hand. `wiki/` receives the shared knowledge (how to ask each question type, wording patterns that worked, each model's habits); the wording improver (`tune --propose`) reads it, and pages you edited are never overwritten by a later `init`. No Go? Use Docker below.
+`shikii init` sets up one folder, `.shikii/` (with `decisions/` for your specs, `wiki/` for the knowledge, `records/` and `labels/` for the records and your corrections; nothing else is added to the project root), and the agent integrations in one go: the shikii MCP server for Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) and Codex (`~/.codex/config.toml`), a section in `AGENTS.md`, and the detailed rules (the skill) in `~/.claude/skills/shikii`. Your own entries are never touched (an existing shikii entry is left alone). Only the skill folder is replaced each time, so do not edit it by hand. `wiki/` receives the shared knowledge (how to ask each question type, wording patterns that worked, each model's habits); the wording improver (`tune --propose`) reads it, and pages you edited are never overwritten by a later `init`. No Go? Use Docker below.
 
-The entries point at a local model (`shikii up`, port 8080). Hosted only? Remove `--local` by hand from each of the four files. Config files for tools you do not use are created too; delete them or add them to `.gitignore` (a second `shikii init` never touches what exists). Commit `.shikii/labels/` (your corrections, the asset that survives a model change). `.shikii/records/` (every decision) keeps growing, so committing it is optional (`shikii gc` drops old ones). If Codex already has `mcp_servers`, nothing is added and the lines to paste are printed. A project with only a `CLAUDE.md` gets no `AGENTS.md` (OpenCode would stop reading `CLAUDE.md`).
+The entries point at a local model (`shikii up`, port 8080). Hosted only? Remove `--local` by hand from each of the four files. Config files for tools you do not use are created too; delete them or add them to `.gitignore` (a second `shikii init` never touches what exists). Commit `.shikii/decisions/`, `.shikii/wiki/` and `.shikii/labels/` (your specs, the knowledge and your corrections: the assets that survive a model change). `.shikii/records/` (every decision) keeps growing, so committing it is optional (`shikii gc` drops old ones). If Codex already has `mcp_servers`, nothing is added and the lines to paste are printed. A project with only a `CLAUDE.md` gets no `AGENTS.md` (OpenCode would stop reading `CLAUDE.md`).
 
 Changing the answer page itself (`web/`, Svelte) needs Node 24 (`make web`). Using shikii does not: the built page is committed and embedded in the binary.
 
 ## Shortest ways in
 
 - **Docker**: no Go, no model? `docker compose up` starts a local model (Kev-4B) and shikii, with the answer page at http://127.0.0.1:8095 ([details](integrations/docker.md))
-- **Ready-made decisions**: six in `decisions/` (request type, duplicate bug report, same inquiry, …). Use one as is, or copy and edit with `shikii new --from decisions/prompt-intent-v2.yaml` ([list](decisions/README.md))
-- **You already have a table of past decisions**: `shikii import past.csv --spec decisions/<id>.yaml` turns it into corrections, so you do not answer the first 50 by hand
+- **Ready-made decisions**: six in this repo's `decisions/` (request type, duplicate bug report, same inquiry, …). Copy one into your `.shikii/decisions/`, or start from it with `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` ([list](decisions/README.md))
+- **You already have a table of past decisions**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` turns it into corrections, so you do not answer the first 50 by hand
 - **From your own program**: start `shikii serve` and call `POST /v1/decide` (decide) and `POST /v1/label` (correct). The body is JSON and `-H 'Content-Type: application/json'` is required (all endpoints: [the long guide](docs/guide.md#or-run-one-process-for-programs-and-people))
 - **Someone else's example**: [routing inquiry mails](docs/examples/inquiry-route.md) (Japanese). A first-time user went through the whole loop with nothing but the README; the spec and the 22 inputs are included
 - **Measure the AI's own judgement** (Claude Code and Codex): `shikii hook install` adds hooks that run shikii on the agent's own decisions: what a command does, whether an edit is within what you asked, whether a request needs a plan first, and what the agent will end up doing (that last truth comes for free from whether the working tree changed). Nothing changes until a line exists. Then a risky command (delete, change outside the project, send outside) asks you to confirm, with how many truths the line rests on and the human-checked precision; safe commands pass silently ([details](integrations/claude-code.md), Japanese)
@@ -68,12 +68,12 @@ Changing the answer page itself (`web/`, Svelte) needs Node 24 (`make web`). Usi
 
 ```sh
 shikii up                                                             # start the local model (downloaded on first run)
-shikii decide decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask  (no line yet, so: ask a person)
-shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080
+shikii serve --local http://127.0.0.1:8080                                   # specs and knowledge are read from .shikii/
 #   → answer at http://127.0.0.1:8095. Once a decision has the number it asks for (eval.min_n, 20 for this one) the line is drawn by itself
 #     To try with fewer answers, lower eval.min_n in the spec to what you have (a line written with --force is flagged by check)
-shikii decide decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=act
 #     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
 #     (safe to act, with the evidence: the line rests on 61 corrections, 48 of them from people. Of the human answers that this line puts on the act side, 25, 96% were right)

@@ -94,11 +94,13 @@ type tuneOpts struct {
 	propose       int
 	proposer      string
 	proposerModel string
-	wikiDir       string // 空なら ./wiki(テストだけが別の場所を指す)
+	wikiDir       string // 空なら <store>/wiki(テストだけが別の場所を指す)
 }
 
-// 基本構成: プロジェクトルート(実行する場所)に decisions/ wiki/ .shikii/。wiki は常に ./wiki で、フラグも推測も無い。
-const wikiRoot = "wiki"
+// 基本構成: shikii が作るものは全部 store(既定 .shikii/)の下。decisions/(spec)、wiki/(知識)、records/ と labels/(記録と正解)。
+// プロジェクトルートに増えるのは .shikii/ だけ。wiki と spec の置き場に別のフラグは無い(store から決まる)。
+func wikiDirOf(storeDir string) string  { return filepath.Join(storeDir, "wiki") }
+func specsDirOf(storeDir string) string { return filepath.Join(storeDir, "decisions") }
 
 // tuneResult は 1 回の tune の結果。wiki/runs/<name>.json にも残り、画面と MCP が読む。採用の判断もここに積む。
 type tuneResult struct {
@@ -174,7 +176,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		o.folds = 5
 	}
 	if o.wikiDir == "" {
-		o.wikiDir = wikiRoot
+		o.wikiDir = wikiDirOf(o.storeDir)
 	}
 	if o.propose > 0 && o.proposer == "" {
 		return nil, errors.New("tune: --propose needs --proposer URL (a chat endpoint, e.g. http://127.0.0.1:8087 for a local llama-server with a chat GGUF)")

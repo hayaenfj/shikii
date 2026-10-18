@@ -20,7 +20,7 @@ func TestInitSeedsTheWikiWithSharedKnowledgeWithoutOverwriting(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("HOME", filepath.Join(dir, "home"))
-	mine := filepath.Join(dir, "wiki", "types", "choice.md")
+	mine := filepath.Join(dir, ".shikii", "wiki", "types", "choice.md")
 	if err := os.MkdirAll(filepath.Dir(mine), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -32,11 +32,11 @@ func TestInitSeedsTheWikiWithSharedKnowledgeWithoutOverwriting(t *testing.T) {
 		t.Fatalf("init must say it seeded the wiki:\n%s", out)
 	}
 	for _, p := range []string{"index.md", "types/noul.md", "types/score.md", "models/kev-4b.md"} {
-		if !fileExists(filepath.Join(dir, "wiki", p)) {
+		if !fileExists(filepath.Join(dir, ".shikii", "wiki", p)) {
 			t.Fatalf("seeded wiki must have %s", p)
 		}
 	}
-	if pats, _ := filepath.Glob(filepath.Join(dir, "wiki", "patterns", "*.md")); len(pats) == 0 {
+	if pats, _ := filepath.Glob(filepath.Join(dir, ".shikii", "wiki", "patterns", "*.md")); len(pats) == 0 {
 		t.Fatal("seeded wiki must have the patterns (the proposer reads them)")
 	}
 	if b, _ := os.ReadFile(mine); string(b) != "# mine\n" {
@@ -44,7 +44,7 @@ func TestInitSeedsTheWikiWithSharedKnowledgeWithoutOverwriting(t *testing.T) {
 	}
 	// 写したページの相対リンクは、この wiki の中で全部解ける(repo だけにある runs/ や specs/ へ張ったら落ちる)
 	link := regexp.MustCompile(`\]\(([^)#]+)[^)]*\)`)
-	if err := filepath.Walk(filepath.Join(dir, "wiki"), func(p string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(filepath.Join(dir, ".shikii", "wiki"), func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(p, ".md") {
 			return err
 		}
@@ -130,7 +130,7 @@ func TestRunPageLinksOnlyToPagesTheWikiHas(t *testing.T) {
 	write := func() string {
 		scores := []candScore{{name: "current", p: []float64{0.9, 0.8}, acc: 1}}
 		cands := []candidate{{"current", sp}}
-		path, err := writeRunPage(filepath.Join(dir, "wiki"), sp, "ggml-org/Kev-4B-GGUF:Q4_K_M", cands, scores, 0, false, "kept current", "nothing beats it", nil)
+		path, err := writeRunPage(filepath.Join(dir, ".shikii", "wiki"), sp, "ggml-org/Kev-4B-GGUF:Q4_K_M", cands, scores, 0, false, "kept current", "nothing beats it", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -141,14 +141,14 @@ func TestRunPageLinksOnlyToPagesTheWikiHas(t *testing.T) {
 	if !strings.Contains(page, "model page: kev-4b ·") || !strings.Contains(page, "type: choice ·") || strings.Contains(page, "../models/") || strings.Contains(page, "../types/") {
 		t.Fatalf("without the pages, the run names them as plain text:\n%s", page)
 	}
-	if !strings.Contains(page, "[intent](../specs/intent.md)") || !fileExists(filepath.Join(dir, "wiki", "specs", "intent.md")) {
+	if !strings.Contains(page, "[intent](../specs/intent.md)") || !fileExists(filepath.Join(dir, ".shikii", "wiki", "specs", "intent.md")) {
 		t.Fatalf("the spec page is always created, so it is always a link:\n%s", page)
 	}
 	for _, p := range []string{"models/kev-4b.md", "types/choice.md"} {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, "wiki", p)), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, ".shikii", "wiki", p)), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "wiki", p), []byte("# x\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, ".shikii", "wiki", p), []byte("# x\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

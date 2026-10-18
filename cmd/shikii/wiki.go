@@ -120,11 +120,11 @@ func cmdWiki(args []string) error {
 		return err
 	}
 	if len(paths) == 0 {
-		paths, _ = filepath.Glob(filepath.Join(wikiRoot, "patterns", "*.md"))
+		paths, _ = filepath.Glob(filepath.Join(wikiDirOf(*storeDir), "patterns", "*.md"))
 		sort.Strings(paths)
 	}
 	if len(paths) == 0 {
-		return fmt.Errorf("no pattern pages under %s/patterns", wikiRoot)
+		return fmt.Errorf("no pattern pages under %s/patterns", wikiDirOf(*storeDir))
 	}
 	eps := ef.endpoints()
 	st := store.Store{Dir: *storeDir}

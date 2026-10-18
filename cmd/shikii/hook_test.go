@@ -140,7 +140,7 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if out != "" {
 		t.Fatalf("shadow mode must print nothing, got %q", out)
 	}
-	recs, err := (store.Store{Dir: filepath.Join(agent, ".shikii")}).Records("command-effect", 0)
+	recs, err := (store.Store{Dir: agent}).Records("command-effect", 0)
 	if err != nil || len(recs) != 1 || recs[0].Inputs["command"] != "rm -rf build/" || recs[0].Band != "ask" {
 		t.Fatalf("one ask record expected, got %v %v", recs, err)
 	}
@@ -156,7 +156,7 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if out != "" {
 		t.Fatalf("a missing model must not produce output, got %q", out)
 	}
-	logb, _ := os.ReadFile(filepath.Join(agent, ".shikii", "hook.log"))
+	logb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
 	if !strings.Contains(string(logb), "127.0.0.1:1") {
 		t.Fatalf("hook.log must say why: %q", logb)
 	}
@@ -173,7 +173,7 @@ func TestHookCalibratedCommandEffectAsks(t *testing.T) {
 	agent := hookEnv(t, model)
 	writeAgentCommandEffect(t, filepath.Dir(filepath.Dir(agent))) // 人が spec を直した(min_n を 2 に)、のつもり
 	specPath := filepath.Join(agent, "decisions", "command-effect.yaml")
-	storeDir := filepath.Join(agent, ".shikii")
+	storeDir := agent
 	cwd := t.TempDir()
 	var traces []string
 	for i := 0; i < 3; i++ {
@@ -273,16 +273,16 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	for _, s := range []string{"changed", "changed2", "changed3", "changed4"} {
 		run(s, true)
 	}
-	labels, err := (store.Store{Dir: filepath.Join(agent, ".shikii")}).LabeledTraces("prompt-kind")
+	labels, err := (store.Store{Dir: agent}).LabeledTraces("prompt-kind")
 	if err != nil || len(labels) != 5 {
 		t.Fatalf("five outcome labels expected: %v %v", labels, err)
 	}
 	// 正解が min_n(4)に届いたので、Stop が線を引いて spec に書く(serve を通らない正解なので hook が引く)
 	if b, _ := os.ReadFile(pkPath); !strings.Contains(string(b), "calibration:") || !strings.Contains(string(b), "model: kev-4b") {
-		logb, _ := os.ReadFile(filepath.Join(agent, ".shikii", "hook.log"))
+		logb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
 		t.Fatalf("Stop must draw the line once truths reach min_n. hook.log:\n%s", logb)
 	}
-	if logb, _ := os.ReadFile(filepath.Join(agent, ".shikii", "hook.log")); !strings.Contains(string(logb), "auto-calibrate prompt-kind (kev-4b)") {
+	if logb, _ := os.ReadFile(filepath.Join(agent, "hook.log")); !strings.Contains(string(logb), "auto-calibrate prompt-kind (kev-4b)") {
 		t.Fatalf("hook.log must say the line was drawn: %s", logb)
 	}
 	for _, l := range labels {
@@ -316,7 +316,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	runHook(t, "stop", map[string]any{"session_id": "two", "cwd": repo})
-	labels, _ = (store.Store{Dir: filepath.Join(agent, ".shikii")}).LabeledTraces("prompt-kind")
+	labels, _ = (store.Store{Dir: agent}).LabeledTraces("prompt-kind")
 	if labels[first].Truth != "!edit" || labels[second].Truth != "edit" {
 		t.Fatalf("first request must be settled at the second request: first=%+v second=%+v", labels[first], labels[second])
 	}
@@ -377,7 +377,7 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	runHook(t, "pre-tool-use", map[string]any{"session_id": "s", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": "rm -rf a"}})
 	runHook(t, "pre-tool-use", map[string]any{"session_id": "s", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": "rm -rf b"}})
 	out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd})
-	if !strings.Contains(out, "2 of this session's decisions wait") || !strings.Contains(out, "shikii serve --port 8096") {
+	if !strings.Contains(out, "2 of this session's decisions wait") || !strings.Contains(out, "--port 8096") {
 		t.Fatalf("without a page the line must give the serve command: %s", out)
 	}
 	if strings.Contains(out, "hookSpecificOutput") {
@@ -391,9 +391,9 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) }))
 	t.Cleanup(page.Close)
 	hookPageURL = page.URL
-	recs, _ := (store.Store{Dir: filepath.Join(agent, ".shikii")}).Records("command-effect", 0)
+	recs, _ := (store.Store{Dir: agent}).Records("command-effect", 0)
 	capture(t, func() error {
-		return cmdLabel([]string{"--store", filepath.Join(agent, ".shikii"), "--source", "ui", recs[0].TraceID, "destroy"})
+		return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "destroy"})
 	})
 	runHook(t, "pre-tool-use", map[string]any{"session_id": "s", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": "rm -rf c"}})
 	out = runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd})
@@ -421,7 +421,7 @@ func TestHookAuditGaps(t *testing.T) {
 		t.Fatal("event names must match Claude Code's")
 	}
 	// session_id は sessions/ の中に収まる
-	if p := sessionPath("/a", "../../etc/passwd"); filepath.Dir(p) != filepath.Join("/a", ".shikii", "sessions") {
+	if p := sessionPath("/a", "../../etc/passwd"); filepath.Dir(p) != filepath.Join("/a", "sessions") {
 		t.Fatalf("session path must stay inside sessions/: %s", p)
 	}
 	// cut は多バイト文字を割らない
@@ -458,7 +458,7 @@ func TestHookAuditGaps(t *testing.T) {
 	cwd := t.TempDir()
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "w", "cwd": cwd, "prompt": "write the installation notes to docs/install.md"})
 	runHook(t, "pre-tool-use", map[string]any{"session_id": "w", "cwd": cwd, "tool_name": "Write", "tool_input": map[string]any{"file_path": filepath.Join(cwd, "docs", "install.md"), "content": "x"}})
-	recs, _ := (store.Store{Dir: filepath.Join(agent, ".shikii")}).Records("edit-in-scope", 0)
+	recs, _ := (store.Store{Dir: agent}).Records("edit-in-scope", 0)
 	if len(recs) != 1 || recs[0].Inputs["file"] != filepath.Join("docs", "install.md") {
 		t.Fatalf("Write must be asked as edit-in-scope with the path relative to cwd: %+v", recs)
 	}
@@ -469,7 +469,7 @@ func TestHookAuditGaps(t *testing.T) {
 	if err := os.WriteFile(np, []byte(strings.Replace(string(b), "min_n: 50", "min_n: 2", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	storeDir := filepath.Join(agent, ".shikii")
+	storeDir := agent
 	for i := 0; i < 2; i++ {
 		runHook(t, "user-prompt-submit", map[string]any{"session_id": "n", "cwd": cwd, "prompt": fmt.Sprintf("redesign the whole authentication module, version %d", i)})
 	}
@@ -630,7 +630,7 @@ func TestHookWritesTheConfiguredLanguageAlongsideEnglish(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	storeDir := filepath.Join(agent, ".shikii")
+	storeDir := agent
 	cwd := t.TempDir()
 	st := store.Store{Dir: storeDir}
 
@@ -751,13 +751,13 @@ func TestHookSecondAudit(t *testing.T) {
 	if got := len(loadSession(agent, "par").Asked); got != 30 {
 		t.Fatalf("30 parallel updates must all survive, got %d", got)
 	}
-	if left, _ := filepath.Glob(filepath.Join(agent, ".shikii", "sessions", "*.tmp")); len(left) != 0 {
+	if left, _ := filepath.Glob(filepath.Join(agent, "sessions", "*.tmp")); len(left) != 0 {
 		t.Fatalf("no .tmp may be left behind: %v", left)
 	}
 
 	// 同じ入力(ls)の正解が 50 件あっても、入力ごとに 1 件と数えるので線は引かない(毎 Stop に ERROR を書き続けない)
 	cwd := t.TempDir()
-	storeDir := filepath.Join(agent, ".shikii")
+	storeDir := agent
 	specPath := filepath.Join(agent, "decisions", "command-effect.yaml")
 	b, _ := os.ReadFile(specPath)
 	if err := os.WriteFile(specPath, []byte(strings.Replace(string(b), "min_n: 50", "min_n: 3", 1)), 0o644); err != nil {
@@ -824,7 +824,7 @@ func TestHookCodex(t *testing.T) {
 	cwd := t.TempDir()
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "cx", "turn_id": "t1", "cwd": cwd, "prompt": "add the installation notes and fix the parser"})
 	runHook(t, "pre-tool-use", map[string]any{"session_id": "cx", "turn_id": "t1", "cwd": cwd, "tool_name": "apply_patch", "tool_input": map[string]any{"command": "*** Begin Patch\n*** Update File: docs/install.md\n+x\n*** End Patch\n"}})
-	recs, _ := (store.Store{Dir: filepath.Join(agent, ".shikii")}).Records("edit-in-scope", 0)
+	recs, _ := (store.Store{Dir: agent}).Records("edit-in-scope", 0)
 	if len(recs) != 1 || recs[0].Inputs["file"] != "docs/install.md" {
 		t.Fatalf("apply_patch must be asked as edit-in-scope with the patched file: %+v", recs)
 	}
@@ -832,7 +832,7 @@ func TestHookCodex(t *testing.T) {
 	// Codex(turn_id あり)では線が引けた後の destroy も "ask" を出さず、端末の 1 行に落ちる
 	writeAgentCommandEffect(t, home)
 	specPath := filepath.Join(agent, "decisions", "command-effect.yaml")
-	storeDir := filepath.Join(agent, ".shikii")
+	storeDir := agent
 	for i := 0; i < 3; i++ {
 		runHook(t, "pre-tool-use", map[string]any{"session_id": "cx", "turn_id": "t2", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": fmt.Sprintf("rm -rf %d", i)}})
 	}
