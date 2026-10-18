@@ -42,13 +42,14 @@ cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080
 
 shikii は線(較正)が無いうちは `act` を出さない。hook はそれをそのまま「線が無いうちは口を出さない」にしている。ツールは一切止めず、記録だけが溜まる。入れた日から出るのは、ターンの終わりの「答え待ち N 件 → URL」の 1 行だけ(下)。
 
-線を引くのは機械: 正解が `eval.min_n`(50)に届くと、画面(`serve`)で答えた直後はその serve が、そうでなければ次のターンの終わりに hook が(4 spec とも。prompt-kind の結果の正解は画面を通らないのでここでしか引けない)、線を引いて spec に書く(`hook.log` に `auto-calibrate …` の 1 行)。そこから hook が振る舞いを変える。
+線を引くのは機械: 人の正解(入力ごとに 1 件。同じコマンドを 50 回答えても 1 件)が `eval.min_n`(50)に届くと、画面(`serve`)で答えた直後はその serve が、そうでなければ次のターンの終わりに hook が(4 spec とも。prompt-kind の結果の正解は画面を通らないのでここでしか引けない)、線を引いて spec に書く。hook は `shikii calibrate --write` を切り離した別プロセスで起こす(文言を変えた後の聞き直しが長くても hook の timeout に掛からない。同じ spec は 10 分に 1 回まで)。結果は `hook.log` の `auto-calibrate …` の行。そこから hook が振る舞いを変える。
 
 | spec | 判定 | hook が出すもの |
 |---|---|---|
 | どれでも | 線が無い(影) | 何も出さない(記録だけ) |
 | command-effect | act で `read` / `change_project` | 何も出さない(黙って通す) |
 | command-effect | act で `change_outside` / `destroy` / `send_outside` | 確認を出す(`permissionDecision: ask`。理由は `shikii: this command looks like destroy (p=0.91; line on 61 truths, human-checked precision 0.96)`)。`--dangerously-skip-permissions` の時は確認を出さず端末に同じ 1 行 |
+| command-effect | ask / discard だが、重い 3 択(change_outside / destroy / send_outside)の確率の和が act 以上(例: destroy 0.45 + send_outside 0.40) | 確認を出す(理由は `shikii: this command looks like one of change_outside / destroy / send_outside (together p=0.85…)`)。どれであっても止めて人に聞く判断は同じなので、割れを「迷い」で終わらせない |
 | command-effect | ask / discard(線はあるが迷った) | 端末に 1 行 `shikii: unsure (command-effect destroy p=0.62). Answer later: http://127.0.0.1:8096/?spec=command-effect&trace=…` |
 | edit-in-scope | discard(確信して「範囲外」) | エージェントに文脈 + 端末に 1 行 `shikii: this edit looks outside what the user asked for (edit-in-scope p(yes)=0.12…). If it is a needed step, say why; if not, do not make it` |
 | needs-plan | act | エージェントに文脈 `shikii: this request looks like one to agree on an approach with the user before changing anything (needs-plan p=0.88…). Consider EnterPlanMode or a one-line confirmation first` |
@@ -58,7 +59,7 @@ shikii は線(較正)が無いうちは `act` を出さない。hook はそれ�
 
 **deny は出さない**。止めるかどうかは人。hook が出すのは「黙る / 確認を出す / 注意の文」の 3 つだけ。
 
-文は英語。`~/.claude/settings.json` の `language` が日本語なら、同じ文を日本語で併記する。他の言語は文は英語のままで、記録の `display` に spec の `display.<lang>` の質問と答えの名前(あれば)と言語だけが入る。例: `shikii: this command looks like destroy (p=0.91) / shikii: このコマンドは「消す・上書き・戻せない変更」に見える(p=0.91)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。英語の設定なら英語だけで、`display` は付かない。
+文は英語。`~/.claude/settings.json` の `language` が日本語なら、同じ文を日本語で併記する。他の言語は文は英語のままで、記録の `display` に spec の `display.<lang>` の質問と答えの名前(あれば)と言語だけが入る。例: `shikii: this command looks like destroy (p=0.91) / shikii: このコマンドは「消す・上書き・戻せない変更」に見える(p=0.91)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。英語の設定なら英語だけで、`display` は付かない(spec に `display.<lang>` が無く出した文も無い時も付かない)。
 
 ターンの終わり(Stop)には、そのセッションの判定で人の答えを待つもの(迷った判定と、act の 20 件に 1 件の抜き取り。線が無い間は、生の確率が spec の `thresholds.ask` 以上の判定が「迷った」になり、それ未満の discard は記録だけ)が新しく増えていれば 1 行だけ出す: `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`。画面が立っていなければ URL の代わりに起動コマンド。同じ数を毎ターン繰り返さない。URL の `?spec=<id>&trace=<trace_id>` で開くと、その 1 件が先頭に来る(答え済み・列に無い trace は元の順のまま)。
 
@@ -77,8 +78,8 @@ Stop ───────────── shikii hook stop ──────
                                                      └ last_assistant_message を控える(needs-plan の文脈の段に使う)。答え待ちの要約を 1 行
 ```
 
-- transcript は読まない(形が文書化されていない)。セッションごとの控えは `~/.shikii/agent/.shikii/sessions/<session_id>.json`(request、previous、pending、asked。7 日で消える)。Claude Code は hook を並列に走らせるので、控えは flock で 1 プロセスずつ読み書きし、tmp に書いて rename する
-- 作業ツリーのハッシュは、仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id。HEAD や index は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。中身そのものは残らない。限界: 並走する別のエージェントやフォーマッタの変更も「変わった」に数える
+- transcript は読まない(形が文書化されていない)。セッションごとの控えは `~/.shikii/agent/.shikii/sessions/<session_id>.json`(request、previous、pending、asked。7 日で消える)。Claude Code は hook を並列に走らせるので、控えは flock の中で 読む → 変える → 書く(tmp に書いて rename)。錠は短く持ち(モデルの呼び出しは錠の外)、2 秒待っても取れなければ錠なしで進む
+- 作業ツリーのハッシュは、仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id。HEAD や index は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。新しい blob は仮の objects に書いて消すので、未追跡ファイル(`.env` など)の中身が repo の `.git/objects` に残らない。全体で 3 秒を超えたら(.gitignore の無い巨大な node_modules など)正解を付けない。限界: 並走する別のエージェントやフォーマッタの変更も「変わった」に数える
 - 短い返事(40 字未満。「ok」「yes go ahead」)は依頼を置き換えず前の依頼に添える(edit-in-scope が「ok」を依頼として読まないように)
 - Claude Code 側の契約(公式の hooks reference、2026-10-18): hook は stdin に `session_id` `cwd` `permission_mode` `tool_name` `tool_input` `prompt` `stop_hook_active` `last_assistant_message` を受け、stdout の `hookSpecificOutput.permissionDecision`(allow / ask / deny)と `additionalContext`、トップレベルの `systemMessage` を返せる。人が許可を拒んだことを知る event は無いので、command-effect の正解は画面からだけ
 

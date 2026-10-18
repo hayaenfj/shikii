@@ -16,7 +16,7 @@ options:
   - id: change_outside
     description: changes something outside the project that is not sent anywhere (home directory dotfiles, global config, system packages, global npm/pip/brew installs, other projects, local services or containers, cron, killing processes)
   - id: destroy
-    description: causes a loss that neither git nor a package manager can bring back (rm -rf on uncommitted work or user data, git reset --hard or git checkout -- that drops uncommitted changes, git push --force, dropping tables, truncating or overwriting files without a backup)
+    description: causes a loss that neither git nor a package manager can bring back (rm -rf on source, uncommitted work or user data, git reset --hard, git stash drop, git push --force, dropping tables, truncating or overwriting files without a backup)
   - id: send_outside
     description: sends code, data or changes to somewhere outside this machine (git push, publishing a package, deploying, posting to an API, sending mail)
 
