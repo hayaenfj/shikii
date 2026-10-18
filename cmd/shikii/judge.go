@@ -54,8 +54,11 @@ func cmdJudge(args []string) error {
 		return fmt.Errorf("judge: %d human truths with text < eval.min_n=%d; the judge cannot be calibrated yet", len(human), sp.Eval.MinN)
 	}
 	var agree, total float64
+	var agreeWrong, totalWrong float64 // 判定モデルが外した入力だけでの一致率(同じ系統の審判が穴を埋められるかの目安)
 	judgeModel := ""
+	answered := map[string]bool{} // 人の正解がある入力: 審判は触らない(別の trace で再判定されていても)
 	for _, l := range human {
+		answered[l.InputsHash] = true
 		d, err := decide.Decide(ctx, ask, l.Inputs, decide.Session{Tainted: sess.Tainted || l.Tainted}, eps)
 		if err != nil {
 			return fmt.Errorf("judge: %w", err)
@@ -69,12 +72,23 @@ func cmdJudge(args []string) error {
 		if correct {
 			agree += l.Weight
 		}
+		if _, _, modelRight := judge(ask, l.Raw, l.Truth); len(l.Raw) > 0 && !modelRight {
+			totalWrong += l.Weight
+			if correct {
+				agreeWrong += l.Weight
+			}
+		}
 	}
 	if total == 0 {
 		return errors.New("judge: could not ask the judge about any human truth")
 	}
 	agreement := agree / total
 	fmt.Fprintf(stdout, "judge %s: agreement %.3f with %d human truths (threshold act=%.2f)\n", judgeModel, agreement, len(human), sp.Thresholds.Act)
+	if totalWrong > 0 {
+		fmt.Fprintf(stdout, "judge: agreement %.3f on inputs the decision model got wrong (%d of them; low means a judge of the same family shares the holes)\n", agreeWrong/totalWrong, int(totalWrong+0.5))
+	} else {
+		fmt.Fprintln(stdout, "judge: on inputs the decision model got wrong: none in the human truths yet")
+	}
 	if agreement < sp.Thresholds.Act {
 		return fmt.Errorf("judge: agreement %.3f < act %.2f; this judge is not trusted for %s", agreement, sp.Thresholds.Act, sp.ID)
 	}
@@ -88,9 +102,13 @@ func cmdJudge(args []string) error {
 	if err != nil {
 		return err
 	}
-	written, unsure := 0, 0
+	written, unsure, skippedHuman := 0, 0, 0
 	for _, rec := range recs {
 		if _, done := labeled[rec.TraceID]; done || len(rec.Inputs) == 0 || !sp.LiveHash(rec.SpecHash) {
+			continue
+		}
+		if answered[rec.InputsHash] || (rec.Minimal != nil && answered[rec.Minimal.InputsHash]) {
+			skippedHuman++ // 人が答えた入力: 審判の答えで上書きしない
 			continue
 		}
 		d, err := decide.Decide(ctx, ask, rec.Inputs, decide.Session{Tainted: sess.Tainted || rec.Tainted}, eps)
@@ -112,6 +130,6 @@ func cmdJudge(args []string) error {
 		}
 		written++
 	}
-	fmt.Fprintf(stdout, "judge: labeled %d record(s) (weight %.3f, source judge); %d left to a person (judge unsure)\n", written, agreement, unsure)
+	fmt.Fprintf(stdout, "judge: labeled %d record(s) (weight %.3f, source judge); %d left to a person (judge unsure); %d skipped (already answered by people)\n", written, agreement, unsure, skippedHuman)
 	return nil
 }

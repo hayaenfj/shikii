@@ -7,16 +7,11 @@ services:
     command: ["-hf", "ggml-org/Kev-4B-GGUF:Q4_K_M", "--host", "0.0.0.0", "--port", "8080"]
     volumes:
       - hf-cache:/root/.cache/llama.cpp
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 60
   shikii:
     build: .
-    depends_on:
-      llama:
-        condition: service_healthy
+    # Linux の bind mount はホストの所有者のまま。画像は root では動かないので、ホストの uid/gid で動かして .shikii/ wiki/ decisions/ に書けるようにする
+    user: "${UID:-1000}:${GID:-1000}"
+    depends_on: [llama]   # healthcheck は使わない(外部コマンドに頼らない)。shikii 自身が llama の /health を待つ
     volumes:
       - .:/work
     ports:

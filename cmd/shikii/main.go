@@ -382,16 +382,41 @@ func rawFromRow(sp *spec.Spec, raw json.RawMessage) (map[string]float64, error) 
 		if sp.Type != spec.Noul {
 			return nil, fmt.Errorf("raw: a single number is only for noul; give {id: probability} for %s", sp.Type)
 		}
+		if p < 0 || p > 1 {
+			return nil, fmt.Errorf("raw: P(yes) must be in 0..1, got %g", p)
+		}
 		return map[string]float64{"yes": p, "no": 1 - p}, nil
 	}
 	var dist map[string]float64
 	if err := json.Unmarshal(raw, &dist); err != nil {
 		return nil, fmt.Errorf("raw: want a number (noul) or {id: probability}: %w", err)
 	}
-	for k := range dist {
+	// 鍵は全部揃っていて(noul は yes が要る。no は補う)、各値は 0..1、和は 1 に近いこと。欠け・範囲外は黙って 0 にしない(監査 4 回目の 9)
+	if sp.Type == spec.Noul {
+		if _, ok := dist["yes"]; !ok {
+			return nil, errors.New("raw: noul needs \"yes\"")
+		}
+		if _, ok := dist["no"]; !ok {
+			dist["no"] = 1 - dist["yes"]
+		}
+	}
+	sum := 0.0
+	for k, v := range dist {
 		if !sp.HasTruthKey(k) {
 			return nil, fmt.Errorf("raw: %q is not an option of this spec", k)
 		}
+		if v < 0 || v > 1 {
+			return nil, fmt.Errorf("raw: %q must be in 0..1, got %g", k, v)
+		}
+		sum += v
+	}
+	for _, id := range sp.TruthKeys() {
+		if _, ok := dist[id]; !ok {
+			return nil, fmt.Errorf("raw: missing %q (give every option's probability)", id)
+		}
+	}
+	if sum < 0.98 || sum > 1.02 {
+		return nil, fmt.Errorf("raw: probabilities sum to %.3f, want 1", sum)
 	}
 	return dist, nil
 }

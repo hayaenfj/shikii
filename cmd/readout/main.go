@@ -20,7 +20,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -101,6 +100,12 @@ func main() {
 		thinkingKwarg: true,
 	}
 	ctx := context.Background()
+	// 後ろの llama-server が立つのを自分で待つ(Docker で先にモデルを起こす時。curl / wget に頼らない)
+	wctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	if err := systemone.WaitReady(wctx, s.cfg.Upstream, 3*time.Second, log.Printf); err != nil {
+		log.Fatal(err)
+	}
+	cancel()
 	if s.cfg.Model == "" {
 		name, err := s.upstreamModel(ctx)
 		if err != nil {
@@ -118,11 +123,7 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{"status":"ok"}`)) })
 	mux.HandleFunc("/v1/models", s.handleModels)
 	mux.HandleFunc("/v1/systemone", s.handleSystemOne)
-	host := "127.0.0.1" // ホストでは loopback だけ。容れ物(/.dockerenv)の中では全ての口(外に出すかは port の公開が決める)
-	if _, err := os.Stat("/.dockerenv"); err == nil {
-		host = "0.0.0.0"
-	}
-	addr := fmt.Sprintf("%s:%d", host, *port)
+	addr := fmt.Sprintf("%s:%d", systemone.BindHost(), *port)
 	log.Printf("shikii-readout: model=%s upstream=%s listening on http://%s (POST /v1/systemone)", s.cfg.Model, s.cfg.Upstream, addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }

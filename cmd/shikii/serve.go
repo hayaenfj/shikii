@@ -10,7 +10,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -47,14 +46,9 @@ type serveOpts struct {
 
 // bindHost は待ち受け先。ホストでは 127.0.0.1 だけ(LAN に出さない)。容れ物(Docker、/.dockerenv がある)の中では全ての口で待ち、
 // 外に出すかはホスト側の port の公開が決める(compose は 127.0.0.1:8095 に絞っている)。選ぶ設定は無い。
-func bindHost() string { return bindHostFor("/.dockerenv") }
+func bindHost() string { return systemone.BindHost() }
 
-func bindHostFor(dockerenv string) string {
-	if _, err := os.Stat(dockerenv); err == nil {
-		return "0.0.0.0"
-	}
-	return "127.0.0.1"
-}
+func bindHostFor(marker string) string { return systemone.BindHostFor([]string{marker}, "") }
 
 func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
@@ -72,12 +66,22 @@ func cmdServe(args []string) error {
 	if _, err := loadSpecs(o.specsDir); err != nil {
 		return err
 	}
+	// 手元のモデルの口が立つのを自分で待つ(Docker で先にモデルを起こす時。curl / wget に頼らない)
+	if o.ef.local != "" {
+		wctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		if err := systemone.WaitReady(wctx, o.ef.local, 3*time.Second, log.Printf); err != nil {
+			cancel()
+			return err
+		}
+		cancel()
+	}
 	addr := fmt.Sprintf("%s:%d", bindHost(), o.port)
 	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted), o.autoCalibrate, addr)
 	return http.ListenAndServe(addr, newServer(o))
 }
 
 type server struct {
+	wikiMu  sync.Mutex // 画面からの wiki の操作を直列にする(tune の updateClaims とはプロセスが違えば別。書き込みは原子的に行う)
 	o       serveOpts
 	st      store.Store
 	calibMu sync.Mutex        // calibrate / tune は stdout を差し替えて報告を捕まえるので 1 つずつ

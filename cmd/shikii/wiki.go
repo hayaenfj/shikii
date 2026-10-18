@@ -27,6 +27,8 @@ type claimPage struct {
 	AppliesTo map[string]string `yaml:"applies_to,omitempty"` // type / models / lang など、効く範囲(自由な文)
 	Evidence  []claimEvidence   `yaml:"evidence,omitempty"`
 	Retest    *claimRetest      `yaml:"retest,omitempty"`
+
+	extra map[string]any // 機械が知らない前書きの項目(author: など)。読んだまま書き戻す(コメントは残らない)
 }
 
 type claimEvidence struct {
@@ -65,6 +67,15 @@ func readClaimPage(path string) (claimPage, string, error) {
 	if err := yaml.Unmarshal([]byte(front), &pg); err != nil {
 		return pg, "", fmt.Errorf("%s: front matter: %w", path, err)
 	}
+	var raw map[string]any
+	if err := yaml.Unmarshal([]byte(front), &raw); err == nil {
+		for _, k := range []string{"claim", "status", "applies_to", "evidence", "retest"} {
+			delete(raw, k)
+		}
+		if len(raw) > 0 {
+			pg.extra = raw
+		}
+	}
 	return pg, body, nil
 }
 
@@ -78,9 +89,21 @@ func writeClaimPage(path string, pg claimPage, body string) error {
 		return err
 	}
 	_ = enc.Close()
+	if len(pg.extra) > 0 {
+		b, err := yaml.Marshal(pg.extra)
+		if err != nil {
+			return err
+		}
+		buf.Write(b)
+	}
 	buf.WriteString("---\n")
 	buf.WriteString(body)
-	return os.WriteFile(path, buf.Bytes(), 0o644)
+	// 原子的に: 途中で切れても前書きが壊れた半端なページが残らない
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 func cmdWiki(args []string) error {
@@ -206,7 +229,7 @@ func runRetest(ctx context.Context, rt *claimRetest, labeled string, st store.St
 	return claimEvidence{
 		Date:    time.Now().Format("2006-01-02"),
 		Model:   sb.model,
-		Result:  fmt.Sprintf("%s %.3f vs %s %.3f (top-1 on %d truths; %d better / %d worse, p=%.3f)", rt.Better, sa.acc, rt.Than, sb.acc, len(bank), wins, losses, p),
+		Result:  fmt.Sprintf("%s %.3f vs %s %.3f (top-1 on %d truths, %d human; %d better / %d worse, p=%.3f)", rt.Better, sa.acc, rt.Than, sb.acc, len(bank), humanTruths(bank), wins, losses, p),
 		Verdict: verdict,
 	}, nil
 }
@@ -215,7 +238,7 @@ func runRetest(ctx context.Context, rt *claimRetest, labeled string, st store.St
 //  1. current に有意に勝った候補(対の勝敗、片側の符号検定 p ≤ 0.05)を、主張の下書き(wiki/patterns/drafts/<spec>-<候補>.md、status draft)として起草する。
 //     既に同じ下書きがあれば証拠を足す。人は下書きを一般化した主張に書き直して patterns/ に移し、状態を付ける
 //  2. この spec を retest に持つ既存の主張(patterns/*.md と drafts/*.md)で、better と than が今回の候補にあれば、今回の採点を証拠として足す
-func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []candScore, run string) (drafted, updated int, err error) {
+func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []candScore, run string, human int) (drafted, updated int, err error) {
 	byName := map[string]candScore{}
 	for i, c := range cands {
 		byName[c.name] = scores[i]
@@ -256,7 +279,7 @@ func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []can
 			v = "contradicts"
 		}
 		return claimEvidence{Date: time.Now().Format("2006-01-02"), Model: b.model, Run: run, Verdict: v,
-			Result: fmt.Sprintf("%s %.3f vs %s %.3f (top-1 on %d truths; %d better / %d worse, p=%.3f)", a.name, a.acc, b.name, b.acc, len(a.correct), wins, losses, p)}, v
+			Result: fmt.Sprintf("%s %.3f vs %s %.3f (top-1 on %d truths, %d human; %d better / %d worse, p=%.3f)", a.name, a.acc, b.name, b.acc, len(a.correct), human, wins, losses, p)}, v
 	}
 	// 2. 既存の主張に証拠を足す
 	pages, _ := filepath.Glob(filepath.Join(wikiDir, "patterns", "*.md"))

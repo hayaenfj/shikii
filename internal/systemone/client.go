@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -201,4 +202,53 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 		return nil, fmt.Errorf("systemone: bad response: %w", err)
 	}
 	return &out, nil
+}
+
+// BindHost は待ち受け先。ホストでは 127.0.0.1 だけ(LAN に出さない)。容れ物の中(Docker の /.dockerenv、podman の /run/.containerenv、
+// k8s の KUBERNETES_SERVICE_HOST)では全ての口で待ち、外に出すかは port の公開が決める。選ぶ設定は無い。
+func BindHost() string {
+	return BindHostFor([]string{"/.dockerenv", "/run/.containerenv"}, "KUBERNETES_SERVICE_HOST")
+}
+
+func BindHostFor(markers []string, kubeEnv string) string {
+	for _, m := range markers {
+		if _, err := os.Stat(m); err == nil {
+			return "0.0.0.0"
+		}
+	}
+	if kubeEnv != "" && os.Getenv(kubeEnv) != "" {
+		return "0.0.0.0"
+	}
+	return "127.0.0.1"
+}
+
+// WaitReady はモデルの口(llama-server や shikii-readout の baseURL)が /health で 200 を返すまで待つ。
+// Docker などで先にモデルを起こす時、外部コマンド(curl / wget)の healthcheck に頼らず shikii 自身が待つための口。
+// every の間隔で繰り返し、ctx が切れたら何を待っていたかを添えて誤りを返す。進み具合は logf に出す(10 回に 1 回)。
+func WaitReady(ctx context.Context, baseURL string, every time.Duration, logf func(string, ...any)) error {
+	url := strings.TrimRight(baseURL, "/") + "/health"
+	client := &http.Client{Timeout: 3 * time.Second}
+	for i := 0; ; i++ {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		resp, err := client.Do(req)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				if i > 0 && logf != nil {
+					logf("model at %s is ready", baseURL)
+				}
+				return nil
+			}
+		}
+		if i == 0 && logf != nil {
+			logf("waiting for the model at %s (GET /health)", baseURL)
+		} else if i%10 == 0 && logf != nil {
+			logf("still waiting for the model at %s", baseURL)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("the model at %s did not come up: %w (is it still loading, or is the URL wrong?)", baseURL, ctx.Err())
+		case <-time.After(every):
+		}
+	}
 }

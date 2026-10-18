@@ -433,6 +433,25 @@ func (s *Spec) hasTruthID(id string) bool {
 	return false
 }
 
+// TruthKeys は raw の鍵の全部(noul は yes/no、choice は選択肢 id、score は段階の番号)。
+func (s *Spec) TruthKeys() []string {
+	switch s.Type {
+	case Noul:
+		return []string{"yes", "no"}
+	case Score:
+		out := make([]string, len(s.Levels))
+		for i := range s.Levels {
+			out[i] = fmt.Sprint(i)
+		}
+		return out
+	}
+	out := make([]string, len(s.Options))
+	for i, o := range s.Options {
+		out[i] = o.ID
+	}
+	return out
+}
+
 // HasTruthKey は id が raw の鍵として正しいか: noul は yes/no、choice は選択肢 id、score は段階の番号("0".."n-1")。
 func (s *Spec) HasTruthKey(id string) bool {
 	if s.Type == Score {

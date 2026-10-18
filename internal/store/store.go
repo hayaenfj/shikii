@@ -461,7 +461,12 @@ func LatestPerInput(labels []Label) []Label {
 			latest[l.InputsHash] = l
 			continue
 		}
-		if l.At.After(cur.At) {
+		// 人の正解は機械の正解(context / judge)より常に強い。同じ種類どうしは新しい方(監査 4 回目の 2)
+		switch {
+		case HumanSource(l.Source) && !HumanSource(cur.Source):
+			latest[l.InputsHash] = l
+		case !HumanSource(l.Source) && HumanSource(cur.Source):
+		case l.At.After(cur.At):
 			latest[l.InputsHash] = l
 		}
 	}

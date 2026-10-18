@@ -44,7 +44,11 @@ func cmdImport(args []string) error {
 	}
 	col := map[string]int{}
 	for i, h := range header {
-		col[strings.TrimSpace(h)] = i
+		name := strings.TrimSpace(strings.TrimPrefix(h, "\ufeff")) // Excel の UTF-8 BOM は最初の列名に付く
+		if _, dup := col[name]; dup {
+			return fmt.Errorf("%s: column %q appears twice", pos[0], name)
+		}
+		col[name] = i
 	}
 	if _, ok := col["truth"]; !ok {
 		return fmt.Errorf("%s: no \"truth\" column (columns: %s)", pos[0], strings.Join(header, ", "))

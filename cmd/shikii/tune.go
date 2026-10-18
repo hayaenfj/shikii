@@ -34,6 +34,18 @@ type bankRow struct {
 	truth   string
 	weight  float64
 	tainted bool
+	human   bool // 人(または結果)が決めた正解か。機械の正解(context / judge)は false。tune と wiki の証拠は人の数を添える
+}
+
+// humanTruths は貯金のうち人が決めた正解の数。
+func humanTruths(bank []bankRow) int {
+	n := 0
+	for _, r := range bank {
+		if r.human {
+			n++
+		}
+	}
+	return n
 }
 
 type candidate struct {
@@ -242,7 +254,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	for _, v := range sp.Variants {
 		cands = append(cands, candidate{v.Name, sp.WithVariant(v).WithoutContext()})
 	}
-	fmt.Fprintf(stdout, "tune %s: %d truths × %d candidates (model asked %d times)\n", sp.ID, len(bank), len(cands), len(bank)*len(cands))
+	fmt.Fprintf(stdout, "tune %s: %d truths (%d human) × %d candidates (model asked %d times)\n", sp.ID, len(bank), humanTruths(bank), len(cands), len(bank)*len(cands))
 	scores := make([]candScore, len(cands))
 	scores[0] = current
 	for i := 1; i < len(cands); i++ {
@@ -340,7 +352,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	res.RunPage = runPath
 	res.Run = strings.TrimSuffix(filepath.Base(runPath), ".md")
 	// 自動で育つ: 有意に勝った候補を主張の下書きに、既存の主張にはこの run を証拠として足す(モデルは呼び直さない)
-	if drafted, updated, err := updateClaims(o.wikiDir, sp, cands, scores, res.Run); err != nil {
+	if drafted, updated, err := updateClaims(o.wikiDir, sp, cands, scores, res.Run, humanTruths(bank)); err != nil {
 		fmt.Fprintf(stdout, "note: wiki claims not updated: %v\n", err)
 	} else if drafted+updated > 0 {
 		fmt.Fprintf(stdout, "wiki: %d claim(s) drafted, %d claim(s) given new evidence from this run\n", drafted, updated)
@@ -580,7 +592,7 @@ func truthBank(sp *spec.Spec, st store.Store, labeledPath string) (rows []bankRo
 			if err != nil {
 				return nil, 0, fmt.Errorf("row %d: %w", i, err)
 			}
-			put(store.HashInputs(r.Inputs), bankRow{inputs: r.Inputs, truth: truth, weight: r.Weight}, time.Time{})
+			put(store.HashInputs(r.Inputs), bankRow{inputs: r.Inputs, truth: truth, weight: r.Weight, human: true}, time.Time{})
 		}
 	}
 	_, all, err := st.Counts(sp.ID)
@@ -596,7 +608,7 @@ func truthBank(sp *spec.Spec, st store.Store, labeledPath string) (rows []bankRo
 		if !ok {
 			continue
 		}
-		put(l.InputsHash, bankRow{inputs: t.Inputs, truth: l.Truth, weight: l.Weight, tainted: t.Tainted}, l.At)
+		put(l.InputsHash, bankRow{inputs: t.Inputs, truth: l.Truth, weight: l.Weight, tainted: t.Tainted, human: store.HumanSource(l.Source)}, l.At)
 	}
 	for _, h := range order {
 		rows = append(rows, latest[h].row)

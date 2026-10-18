@@ -35,7 +35,7 @@ func claimSummary(path string) (map[string]any, error) {
 	for _, e := range pg.Evidence {
 		switch e.Verdict {
 		case "supports":
-			models[e.Model] = true
+			models[baseModel(e.Model)] = true // 同じ土台の配置違いは 1 つのモデル(監査 4 回目の 11)
 		case "contradicts":
 			contra++
 		}
@@ -53,6 +53,14 @@ func claimSummary(path string) (map[string]any, error) {
 		out["retest"] = pg.Retest
 	}
 	return out, nil
+}
+
+// baseModel は応答 model 名から配置の接尾辞("+state-last" 等)を外した土台の名前。
+func baseModel(m string) string {
+	if i := strings.Index(m, "+"); i > 0 {
+		return m[:i]
+	}
+	return m
 }
 
 func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +116,12 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("path must be a .md under wiki/patterns or wiki/patterns/drafts"))
 		return
 	}
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		writeErr(w, 400, errors.New("symbolic links under wiki/patterns are not followed"))
+		return
+	}
+	s.wikiMu.Lock()
+	defer s.wikiMu.Unlock()
 	pg, body, err := readClaimPage(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -151,6 +165,10 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 	case "status":
 		if pg.Claim == "" && pg.Retest == nil {
 			writeErr(w, 409, errors.New("this page has no front matter; it is prose, not a claim"))
+			return
+		}
+		if isDraft {
+			writeErr(w, 409, errors.New("a draft has no status to change; promote it first (generalize the claim)"))
 			return
 		}
 		if req.Status != "confirmed" && req.Status != "rejected" && req.Status != "tentative" {
