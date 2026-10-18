@@ -1,11 +1,11 @@
 @AGENTS.md
 
-# このプロジェクトの共有メモリ
+# このプロジェクトの共有メモリ(要点。運用は .claude/memory/feedback-shared-memory-with-claude.md)
 
-- Claude Code のメモリ(このプロジェクトについて覚えておくこと: 目的、決めたこと、本人からの指示、言葉の決まり)は **`.claude/memory/` に保存する**。repo に入れて commit するので、別の機械・別のセッション・別の人のエージェントでも同じ記憶から始められる
-- 形は Claude Code の自動メモリと同じ: 1 つの事実 = 1 ファイル(前書きに `name` `description` `metadata.type`)、`MEMORY.md` が一覧(1 行 1 件、中身は書かない)。新しい記憶を書いたら `MEMORY.md` にも 1 行足す。同じことを言う記憶が既にあればそのファイルを直す(重複を作らない)
-- 個人の機械にしか意味の無いもの(セッションの id、家のフォルダのパス、鍵、メールアドレス)は入れない。それは `~/.claude/projects/<このフォルダ>/memory/` の方に置く
-- セッションの始めに `.claude/memory/MEMORY.md` を読む。そこに無いことを本人から言われたら、`.claude/memory/` に書く
+- 記憶の正本は **repo の `.claude/memory/`**(索引 `MEMORY.md`)。commit する。Claude Code・Codex・Cursor・OpenCode、別の機械、worktree で同じ記憶から始める
+- 形は Claude Code の自動メモリと同じ(1 事実 1 ファイル、前書きに `name` `description` `metadata.type`、索引に 1 行)。同じテーマは既存のファイルを直す。更新の直前に読み直す
+- 個人の機械にしか意味の無いもの(セッション id、家のパス、鍵、メール)は `~/.claude/projects/<このフォルダ>/memory/` に置き、そこの `MEMORY.md` には「正本は repo の .claude/memory/」の案内を残す
+- セッションの始めに `.claude/memory/MEMORY.md` を読む。本人から新しいことを言われたら `.claude/memory/` に書く。進捗の実体は docs/operations.md の「第 N 段」
 
 # 言葉と作法(詳しくは .claude/memory/ の各ファイル)
 
