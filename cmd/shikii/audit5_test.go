@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -75,6 +78,27 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 	if code != 200 || res["truth"] != "change_request" || res["correct_before"] != true || res["correct_after"] != true {
 		t.Fatalf("redo of an answered decision carries the answer and compares: %d %v", code, res)
 	}
+	// 監査 6 の 4: 回答済みは元を出さず 1 件(redo_of 付き)、回答済みの数は人が答えた本文の数 = 1 のまま
+	getJSON(t, url+"/v1/answered?spec=intent", &a)
+	if len(a.Items) != 1 || a.Items[0]["redo_of"] != newTrace {
+		t.Fatalf("the redone record replaces the original in the answered list too: %v", a.Items)
+	}
+	var stat struct{ Specs []map[string]any }
+	getJSON(t, url+"/v1/status", &stat)
+	if stat.Specs[0]["labels"] != 1.0 {
+		t.Fatalf("answered count is the number of texts a person answered (1), got %v", stat.Specs[0]["labels"])
+	}
+	// 監査 6 の 8a: limit(2 件答えてから 1 件に絞る)
+	_, d2 := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "why is it slow?"}})
+	postJSON(t, url+"/v1/label", map[string]any{"spec": "intent", "trace_id": d2["trace_id"], "truth": "question"})
+	getJSON(t, url+"/v1/answered?spec=intent", &a)
+	if len(a.Items) != 2 {
+		t.Fatalf("two texts answered: %d", len(a.Items))
+	}
+	getJSON(t, url+"/v1/answered?spec=intent&limit=1", &a)
+	if len(a.Items) != 1 {
+		t.Fatalf("limit must cap the answered list: %d", len(a.Items))
+	}
 	st := store.Store{Dir: storeDir}
 	labeled, _ := st.LabeledTraces("intent")
 	if l, ok := labeled[res["after"].(map[string]any)["trace_id"].(string)]; !ok || l.Truth != "change_request" || !store.HumanSource(l.Source) {
@@ -111,5 +135,54 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 		if !strings.Contains(body, must) {
 			t.Fatalf("UI must offer the redo: missing %q", must)
 		}
+	}
+}
+
+// 監査 6 の 5・8c: やり直しは /v1/decide と同じ作法で記録する。文脈の段で act に届けば最小の段に機械の正解(source context)が残り、
+// 人の答えの写しは 2 段(文脈のハッシュと最小のハッシュ)に付く。
+func TestRedoRecordsLikeDecideOnTheContextRung(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	specPath := writeContextSpec(t, dir)
+	sp := mustLoad(t, specPath)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", N: 2, FittedAt: "2026-10-18"})
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.ContextHash(), Method: "identity", N: 2, FittedAt: "2026-10-18"})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	storeDir := filepath.Join(dir, ".shikii")
+	var ef endpointFlags
+	ef.model, ef.local = "m", srv.URL
+	ts := httptest.NewServer(newServer(serveOpts{specsDir: filepath.Join(dir, "decisions"), storeDir: storeDir, ef: ef}))
+	defer ts.Close()
+	inputs := map[string]string{"message": "fix a", "previous": "I renamed the module"}
+	code, d := postJSON(t, ts.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": inputs})
+	if code != 200 || d["rung"] != "context" || d["band"] != "act" {
+		t.Fatalf("fixture: context act expected, got %d %v", code, d)
+	}
+	if n := len(readLabels(t, storeDir, "intent")); n != 1 {
+		t.Fatalf("decide on the context rung leaves one machine truth, got %d", n)
+	}
+	code, res := postJSON(t, ts.URL+"/v1/redo", map[string]any{"spec": "intent", "trace_id": d["trace_id"]})
+	if code != 200 || res["recorded"] != true {
+		t.Fatalf("redo: %d %v", code, res)
+	}
+	labels := readLabels(t, storeDir, "intent")
+	if len(labels) != 2 || labels[1].Source != "context" || labels[1].Rung != "minimal" {
+		t.Fatalf("redo must record like decide: a second context truth for the minimal rung, got %+v", labels)
+	}
+	// 人が元に答えてから、やり直す → 写しは 2 段
+	postJSON(t, ts.URL+"/v1/label", map[string]any{"spec": "intent", "trace_id": d["trace_id"], "truth": "question"})
+	before := len(readLabels(t, storeDir, "intent"))
+	postJSON(t, ts.URL+"/v1/redo", map[string]any{"spec": "intent", "trace_id": d["trace_id"]})
+	after := readLabels(t, storeDir, "intent")
+	copied := 0
+	for _, l := range after[before:] {
+		if l.Source == "ui" && l.Truth == "question" {
+			copied++
+		}
+	}
+	if copied != 2 {
+		t.Fatalf("the person's answer is carried to both rungs of the new record (2 labels), got %d of %+v", copied, after[before:])
 	}
 }

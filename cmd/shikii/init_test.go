@@ -40,7 +40,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("model = \"o3\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("model = \"o3\""), 0o644); err != nil { // 末尾に改行が無い
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# My project\n"), 0o644); err != nil {
@@ -72,7 +72,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	}
 	// Codex: 既存の行は残り、[mcp_servers.shikii] が末尾に足される
 	cb, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
-	if !strings.HasPrefix(string(cb), "model = \"o3\"") || !strings.Contains(string(cb), "[mcp_servers.shikii]") || !strings.Contains(string(cb), `command = "shikii"`) {
+	if !strings.HasPrefix(string(cb), "model = \"o3\"\n\n[mcp_servers.shikii]") || !strings.Contains(string(cb), `command = "shikii"`) {
 		t.Fatalf("Codex config must keep its lines and gain the shikii server:\n%s", cb)
 	}
 	// AGENTS.md: 節が足される
@@ -116,5 +116,55 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	}
 	if err := cmdInit(nil); err == nil || !strings.Contains(err.Error(), "by hand") {
 		t.Fatalf("a broken .mcp.json must stop init: %v", err)
+	}
+}
+
+// 監査 6: init が人の設定を壊す経路を閉じる。
+//  1. Codex の config.toml に mcp_servers がどんな書き方でもあれば触らない(末尾に足すと TOML の二重定義で Codex が設定を読めなくなる)
+//  2. 読めない .mcp.json は置き換えない
+//  6. CLAUDE.md だけのプロジェクトに AGENTS.md を作らない(OpenCode が CLAUDE.md を読まなくなる)
+//  9. HOME が無くてもプロジェクト側は済ませて成功で終わる
+func TestInitNeverBreaksWhatPeopleWrote(t *testing.T) {
+	for name, toml := range map[string]string{
+		"inline":  "mcp_servers = { shikii = { command = \"x\" } }\n",
+		"table":   "[mcp_servers]\nshikii = { command = \"x\" }\n",
+		"quoted":  "[mcp_servers.\"shikii\"]\ncommand = \"x\"\n",
+		"heading": "[mcp_servers.shikii]\ncommand = \"x\"\n",
+	} {
+		p := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(p, []byte(toml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		did, err := addCodexServer(p, []string{"mcp"})
+		b, _ := os.ReadFile(p)
+		if err != nil || did || string(b) != toml {
+			t.Fatalf("%s: a config that already has mcp_servers must be left alone: did=%v err=%v\n%s", name, did, err, b)
+		}
+	}
+	if os.Geteuid() != 0 {
+		p := filepath.Join(t.TempDir(), ".mcp.json")
+		if err := os.WriteFile(p, []byte(`{"mcpServers":{"mine":{"command":"x"}}}`), 0o000); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := addJSONEntry(p, "mcpServers", "shikii", map[string]any{"command": "shikii"}); err == nil {
+			t.Fatalf("an unreadable config must stop init, not be replaced")
+		}
+		_ = os.Chmod(p, 0o644)
+		if b, _ := os.ReadFile(p); !strings.Contains(string(b), "mine") {
+			t.Fatalf("the unreadable file must keep its content: %s", b)
+		}
+	}
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", "")
+	if err := os.WriteFile("CLAUDE.md", []byte("# rules\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error { return cmdInit(nil) })
+	if _, err := os.Stat("AGENTS.md"); !os.IsNotExist(err) || !strings.Contains(out, "AGENTS.md: not created") {
+		t.Fatalf("with only CLAUDE.md, AGENTS.md must not be created and init must say why:\n%s", out)
+	}
+	if !strings.Contains(out, "no HOME") || !fileExists(".mcp.json") || !fileExists("opencode.json") {
+		t.Fatalf("without HOME, the project side is still prepared and init succeeds:\n%s", out)
 	}
 }

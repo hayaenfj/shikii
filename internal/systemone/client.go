@@ -235,19 +235,19 @@ func WaitReady(ctx context.Context, baseURL string, every time.Duration, logf fu
 			resp.Body.Close()
 			if resp.StatusCode == 200 {
 				if i > 0 && logf != nil {
-					logf("model at %s is ready", baseURL)
+					logf("model at %s is ready", RedactURL(baseURL))
 				}
 				return nil
 			}
 		}
 		if i == 0 && logf != nil {
-			logf("waiting for the model at %s (GET /health)", baseURL)
+			logf("waiting for the model at %s (GET /health)", RedactURL(baseURL))
 		} else if i%10 == 0 && logf != nil {
-			logf("still waiting for the model at %s", baseURL)
+			logf("still waiting for the model at %s", RedactURL(baseURL))
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("the model at %s did not come up: %w (is it still loading, or is the URL wrong?)", baseURL, ctx.Err())
+			return fmt.Errorf("the model at %s did not come up: %w (is it still loading, or is the URL wrong?)", RedactURL(baseURL), ctx.Err())
 		case <-time.After(every):
 		}
 	}

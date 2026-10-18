@@ -9,7 +9,7 @@
 **A model gives you a probability. shikii tells you whether you may act on it.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-172%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-173%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
@@ -31,7 +31,7 @@
   ```sh
   make install && shikii up                       # starts a local model (fetches Kev-4B)
   shikii decide decisions/prompt-intent-v2.yaml -i message="fix the typo" --local http://127.0.0.1:8080
-  shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080   # answer page at http://127.0.0.1:8095
+  shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080   # answer page at http://127.0.0.1:8095 (fix an earlier answer under "answered"; "ask the AI again" re-decides a past text with today's wording and line, appending, never deleting)
   ```
 - No Go, no model set up? `docker compose up` starts llama.cpp with Kev-4B and shikii; the answer page is at http://127.0.0.1:8095 and your `decisions/`, `wiki/` and `.shikii/` stay on the host ([integrations/docker.md](integrations/docker.md)).
 - Already have a table of past decisions? `shikii import past.csv --spec decisions/<id>.yaml` turns it into truths, so the first line can be drawn without labelling 50 items by hand. In CI, `uses: hayaenfj/shikii@main` runs `shikii check` on every PR.
@@ -182,7 +182,7 @@ bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # needs Go 1.27+
-cd <project root> && shikii init   # folders; MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill (points at a local model on :8080; hosted only? remove --local by hand)
+cd <project root> && shikii init   # folders; MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill (points at a local model on :8080; hosted only? remove --local from all four entries by hand. Unused tool files can be deleted or gitignored; CLAUDE.md-only projects get no AGENTS.md)
 make install          # copies bin/shikii and bin/shikii-readout to ~/.local/bin
 git pull && make install
 shikii doctor         # what is running, what is missing, and the command that fixes it

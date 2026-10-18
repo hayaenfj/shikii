@@ -18,8 +18,6 @@ else
   go install github.com/hayaenfj/shikii/cmd/shikii@latest github.com/hayaenfj/shikii/cmd/shikii-readout@latest
 fi
 BIN="$(go env GOBIN)"; [ -n "$BIN" ] || BIN="$(go env GOPATH)/bin"
-# cmd/shikii-readout の実行ファイル名は readout になるので、shikii-readout の名前にも置く
-[ -f "$BIN/readout" ] && cp "$BIN/readout" "$BIN/shikii-readout"
 echo "installed: $BIN/shikii $BIN/shikii-readout"
 case ":$PATH:" in *":$BIN:"*) ;; *) echo "add to PATH: $BIN";; esac
 echo "next: cd <your project> && shikii init"

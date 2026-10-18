@@ -260,7 +260,11 @@ func recordOf(sp *spec.Spec, d *decide.Decision, inputs map[string]string) store
 // recordDecision は判定を記録する。文脈を足した段で確信(act)に届いたら、その答えを最小の質問の正解として残す:
 // 上の段の答えが下の段の正解になる(重みは較正済みの確率、出どころは context)。人が後で答えればそちらが新しいので勝つ。
 func recordDecision(st store.Store, sp *spec.Spec, d *decide.Decision, inputs map[string]string) error {
-	rec := recordOf(sp, d, inputs)
+	return recordDecisionRec(st, sp, d, recordOf(sp, d, inputs))
+}
+
+// recordDecisionRec は rec(recordOf に印を足したもの。やり直しなら RedoOf)を書く本体。判定の記録の作法はここ 1 か所(監査 6 の 5)。
+func recordDecisionRec(st store.Store, sp *spec.Spec, d *decide.Decision, rec store.Record) error {
 	if err := st.AppendRecord(rec); err != nil {
 		return fmt.Errorf("record: %w", err)
 	}

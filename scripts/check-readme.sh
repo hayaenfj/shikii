@@ -49,11 +49,15 @@ for f in README.md docs/readme/README_*.md; do
 done
 
 # 4. バッジのテスト数 = 実測(go test -list で数える。全言語の README が同じ数)
-actual=$(for p in $(go list ./... 2>/dev/null); do go test -list '^Test' "$p" 2>/dev/null | grep -c '^Test' || true; done | awk '{s+=$1} END {print s}')
+if command -v go >/dev/null; then
+  actual=$(for p in $(go list ./... 2>/dev/null); do go test -list '^Test' "$p" 2>/dev/null | grep -c '^Test' || true; done | awk '{s+=$1} END {print s}')
+else
+  actual=""; err "go が無いのでテスト数を数えられない"
+fi
 for f in README.md docs/readme/README_*.md; do
   n=$(grep -oE 'tests-[0-9]+%20go' "$f" | head -1 | grep -oE '[0-9]+' | head -1 || true)
-  [ -n "$n" ] || { err "$f: tests のバッジが無い"; continue; }
-  [ "$n" = "$actual" ] || err "$f: tests のバッジは $n、実測は $actual"
+  [ -n "${n}" ] || { err "$f: tests のバッジが無い"; continue; }
+  [ "${n}" = "${actual}" ] || err "$f: tests のバッジは ${n}、実測は ${actual}"
 done
 
 # 5. Go の版: go.mod の版と、README の本文の「Go 1.xx」が一致(バッジは 1.27 なのに本文が 1.24、のような矛盾を防ぐ)
@@ -66,10 +70,11 @@ done
 
 # 6. README の receipt の行は shikii decide の実物の書式(main.go の Fprintf)と同じ形
 for f in README.md docs/readme/README_ja.md; do
-  grep -o 'receipt: .*' "$f" | while read -r line; do
-    grep -qE '^receipt: line [a-z]+ fitted [0-9-]+ on [0-9]+ truths \([0-9]+ human\); human-checked act decisions [0-9]+, precision [0-9.]+' <<<"$line" \
-      || echo "check-readme: $f: receipt の行が shikii decide の出力の形ではない: $line" >&2
-  done | tee /dev/stderr | grep -q . && fail=1 || true
+  while read -r line; do
+    [ -z "${line}" ] && continue
+    grep -qE '^receipt: line [a-z]+ fitted [0-9-]+ on [0-9]+ truths \([0-9]+ human\); human-checked act decisions [0-9]+, precision [0-9.]+' <<<"${line}" \
+      || err "$f: receipt の行が shikii decide の出力の形ではない: ${line}"
+  done < <(grep -o 'receipt: .*' "$f" || true)
 done
 
 # 7. 構造の図は生成スクリプトから作り直しても変わらない(手で SVG を直したら落ちる)
@@ -77,6 +82,8 @@ if command -v python3 >/dev/null; then
   tmp=$(mktemp -d); cp docs/assets/shikii-architecture*.svg "$tmp"/
   python3 scripts/gen-architecture-svg.py >/dev/null && { cmp -s "$tmp/shikii-architecture.svg" docs/assets/shikii-architecture.svg && cmp -s "$tmp/shikii-architecture-en.svg" docs/assets/shikii-architecture-en.svg; } || err "docs/assets/shikii-architecture*.svg は scripts/gen-architecture-svg.py の出力と違う(スクリプトを直して生成し直す)"
   cp "$tmp"/*.svg docs/assets/; rm -rf "$tmp"
+else
+  err "python3 が無いので図の検査(7)ができない"
 fi
 
 if [ "$fail" -ne 0 ]; then exit 1; fi

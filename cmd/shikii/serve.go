@@ -343,10 +343,16 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
+	superseded := map[string]bool{} // やり直した元の記録は回答済みにも出さない(新しい記録に答えが写っている。件数の水増しと、元への訂正が新しい記録に届かない経路を防ぐ)
+	for _, rec := range recs {
+		if rec.RedoOf != "" {
+			superseded[rec.RedoOf] = true
+		}
+	}
 	items := []map[string]any{}
 	for _, rec := range recs {
 		l, ok := labeled[rec.TraceID]
-		if !ok || !store.HumanSource(l.Source) {
+		if !ok || !store.HumanSource(l.Source) || superseded[rec.TraceID] {
 			continue
 		}
 		items = append(items, map[string]any{
@@ -408,7 +414,7 @@ func (s *server) handleRedo(w http.ResponseWriter, r *http.Request) {
 	}
 	newRec := recordOf(sp, d, rec.Inputs)
 	newRec.RedoOf = rec.TraceID
-	if err := s.st.AppendRecord(newRec); err != nil {
+	if err := recordDecisionRec(s.st, sp, d, newRec); err != nil { // /v1/decide と同じ作法(文脈の段で act なら最小の段の機械の正解も)
 		writeErr(w, 500, err)
 		return
 	}
@@ -658,11 +664,18 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal を先に
 		})
 		labeled, _ := s.st.LabeledTraces(sp.ID)
+		// 回答済みの数 = 人が答えた本文(inputs_hash)の数。やり直しで写した答えや、同じ記録への答えの直しは数えない
+		answered := map[string]bool{}
+		for _, l := range labeled {
+			if store.HumanSource(l.Source) {
+				answered[l.InputsHash] = true
+			}
+		}
 		funnel, _ := s.st.Funnel(sp.ID, decide.DiscardUnsure(sp))
 		s.mu.Lock()
 		last := s.lastCal[sp.ID]
 		s.mu.Unlock()
-		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(labs),
+		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
 			"unlabeled": nRec - countLabeledRecords(labeled, nRec), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}

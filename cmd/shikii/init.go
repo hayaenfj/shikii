@@ -54,24 +54,30 @@ func cmdInit(args []string) error {
 			fmt.Fprintf(stdout, "%s: shikii entry kept as it is (%s; edit it by hand, init never rewrites it)\n", f.path, f.who)
 		}
 	}
+	switch did, err := addAgentsSection("AGENTS.md"); {
+	case err != nil:
+		return err
+	case did:
+		fmt.Fprintln(stdout, "AGENTS.md: shikii section added (Codex and OpenCode read it; the full rules are in the skill)")
+	case fileExists("CLAUDE.md") && !fileExists("AGENTS.md"):
+		fmt.Fprintln(stdout, "AGENTS.md: not created, because this project has CLAUDE.md and OpenCode stops reading CLAUDE.md once AGENTS.md exists. Add the shikii section to CLAUDE.md by hand, or create AGENTS.md with `@CLAUDE.md` in it and run init again")
+	}
+	fmt.Fprintln(stdout, "all four MCP entries point at a local model on :8080 (started by shikii up). Hosted only? remove --local from each of them by hand")
+	// 家のフォルダに置くもの(Codex の設定、skill)。HOME が無い環境(容れ物の CI など)では飛ばす: プロジェクトの準備は済んでいる
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return err
+		fmt.Fprintln(stdout, "no HOME: skipped Codex (~/.codex/config.toml) and the skill (~/.claude/skills/shikii)")
+		return nil
 	}
 	codex := filepath.Join(home, ".codex", "config.toml")
-	if did, err := addCodexServer(codex, mcpArgs); err != nil {
+	switch did, err := addCodexServer(codex, mcpArgs); {
+	case err != nil:
 		return err
-	} else if did {
+	case did:
 		fmt.Fprintf(stdout, "%s: [mcp_servers.shikii] added (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
-	} else {
-		fmt.Fprintf(stdout, "%s: shikii entry kept as it is (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
+	default:
+		fmt.Fprintf(stdout, "%s: has mcp_servers already, kept as it is (Codex; add by hand if shikii is missing: [mcp_servers.shikii] command = \"shikii\" args = [%s])\n", filepath.Join("~", ".codex", "config.toml"), quotedList(mcpArgs))
 	}
-	if did, err := addAgentsSection("AGENTS.md"); err != nil {
-		return err
-	} else if did {
-		fmt.Fprintln(stdout, "AGENTS.md: shikii section added (Codex and OpenCode read it; the full rules are in the skill)")
-	}
-	fmt.Fprintln(stdout, "the MCP entries point at a local model on :8080 (started by shikii up). Hosted only? remove --local by hand")
 
 	// skill: 置き直す(古いファイルも消す)
 	dst := filepath.Join(home, ".claude", "skills", "shikii")
@@ -87,7 +93,11 @@ func cmdInit(args []string) error {
 // 数字は丸めず(UseNumber)、& < > は \u に変えず、一時ファイル + rename で書く。壊れた JSON は上書きしない。並びは変わる(JSON の object に順序は無い)。
 func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 	cfg := map[string]any{}
-	if b, err := os.ReadFile(path); err == nil {
+	b, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("%s: %w (init does not replace a file it cannot read)", path, err)
+	}
+	if err == nil {
 		dec := json.NewDecoder(bytes.NewReader(b))
 		dec.UseNumber()
 		if err := dec.Decode(&cfg); err != nil {
@@ -119,20 +129,17 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 	return true, os.Rename(path+".tmp", path)
 }
 
-// addCodexServer は Codex の ~/.codex/config.toml に [mcp_servers.shikii] を足す(無い時だけ。TOML は読まず、見出しの有無で判断して末尾に足す)。
+// addCodexServer は Codex の ~/.codex/config.toml に [mcp_servers.shikii] を足す。TOML は読まないので、mcp_servers という語が
+// どこかにあれば(見出し、インラインテーブル、[mcp_servers] の下の鍵、引用した鍵)触らない: 末尾に足すと二重定義で Codex が設定を読めなくなる(監査 6 の 1)。
 func addCodexServer(path string, args []string) (bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return false, err
 	}
-	if strings.Contains(string(b), "[mcp_servers.shikii]") {
+	if strings.Contains(string(b), "mcp_servers") {
 		return false, nil
 	}
-	quoted := make([]string, len(args))
-	for i, a := range args {
-		quoted[i] = strconv.Quote(a)
-	}
-	block := "\n[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [" + strings.Join(quoted, ", ") + "]\n"
+	block := "\n[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [" + quotedList(args) + "]\n"
 	if len(b) > 0 && !strings.HasSuffix(string(b), "\n") {
 		block = "\n" + block
 	}
@@ -148,6 +155,19 @@ func addCodexServer(path string, args []string) (bool, error) {
 	return true, err
 }
 
+func quotedList(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = strconv.Quote(a)
+	}
+	return strings.Join(quoted, ", ")
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
 const agentsMarker = "<!-- shikii -->"
 
 // addAgentsSection は AGENTS.md(Codex と OpenCode が読む)に shikii の節を足す(無い時だけ。印で見分ける)。中身は作法の要点と skill への案内。
@@ -158,6 +178,9 @@ func addAgentsSection(path string) (bool, error) {
 	}
 	if strings.Contains(string(b), agentsMarker) {
 		return false, nil
+	}
+	if os.IsNotExist(err) && fileExists("CLAUDE.md") {
+		return false, nil // OpenCode は AGENTS.md があると CLAUDE.md を読まなくなる。黙って作らない(呼び出し側が言う)
 	}
 	section := agentsMarker + "\n## shikii(判定の作法)\n\n" +
 		"- 同じ種類の判断は自分で決めず `shikii decide`(MCP なら shikii_decide)を呼び、帯に従う: act だけ自動、ask は人に確かめる、discard は動かない、abstain は入力を揃える\n" +
