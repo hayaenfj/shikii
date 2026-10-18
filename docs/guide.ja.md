@@ -149,7 +149,7 @@ OpenJev は生の確率で足りて両方 `identity`、Kev-4B は Platt がわ�
 ## 棚卸し: `shikii status`
 
 ```sh
-bin/shikii status --store ~/.claude/jev/decisions-store decisions/prompt-kind.yaml
+bin/shikii status --store ~/.shikii/agent/.shikii ~/.shikii/agent/decisions/prompt-kind.yaml
 # prompt-kind: records=1 labels=1
 #   by source: outcome=1   by truth: !edit=1
 #   ggml-org/Kev-4B-GGUF:Q4_K_M @ 68ed82631e63f2a2   1  collecting (1/50)
@@ -163,10 +163,10 @@ spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome 
 記録(`records/`)は判定のたびに増える。ラベルは較正の材料なので捨てないが、ラベルの付かなかった古い記録は要らない。
 
 ```sh
-bin/shikii gc --store ~/.claude/jev/decisions-store                 # 表示だけ(既定: 30d より古くラベルの無い記録が候補)
+bin/shikii gc --store ~/.shikii/agent/.shikii                 # 表示だけ(既定: 30d より古くラベルの無い記録が候補)
 # prompt-kind: would remove 120 unlabeled record(s) older than 30d; keep 48 labeled, 15 recent, 0 unparsable
 # dry run: nothing was changed. Re-run with --apply to remove them.
-bin/shikii gc --store ~/.claude/jev/decisions-store --apply         # 実際に消す
+bin/shikii gc --store ~/.shikii/agent/.shikii --apply         # 実際に消す
 bin/shikii gc --older-than 1w decisions/prompt-intent-v2.yaml       # spec と年齢を指定(d / w / h。0 なら年齢を問わない)
 ```
 
@@ -222,7 +222,7 @@ bin/shikii decide decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 
 
 ## 接続例
 
-Claude Code の hook との接続(判定 → 結果からラベル)は [`integrations/claude-code.md`](../integrations/claude-code.md)。
+Claude Code の hook(`shikii hook install`): AI 自身の作業中の判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか、この依頼で結局何をするか)を測る。置き場は `~/.shikii/agent`(基本構成)、モデルは :8080、答え合わせの画面は `cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080`。線が無いうちは記録だけ(影の期間)。線が引けたら、危ないコマンド(消す・外を変える・外に送る)が act なら確認を出し、迷った判定は「あとで答える → URL」を端末に 1 行、ターンの終わりに答え待ちの件数を 1 行。deny は出さない。失敗しても止めない(hook.log に理由)。帯 → 振る舞いの表と中の形は [`integrations/claude-code.md`](../integrations/claude-code.md)。
 他のエージェントに付けるときの最小手順もそこに。
 
 ## まだ無いもの

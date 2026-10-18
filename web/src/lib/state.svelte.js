@@ -6,10 +6,13 @@ import { SvelteSet } from 'svelte/reactivity';
 import { api } from './api.js';
 import { read, write } from './prefs.js';
 
+// URL の ?spec=<id>&trace=<trace_id> で、その判定を開いた状態で始める(hook の「あとで答える → URL」から来る)。pinned の 1 件は列の先頭に出る
+const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 export const ui = $state({
   advanced: read('shikii.mode') === 'advanced',
   showHelp: read('shikii.help') !== 'hidden',
-  tab: read('shikii.tab'),
+  tab: params.get('spec') || read('shikii.tab'),
+  pinned: params.get('trace') || '',
   view: read('shikii.view') || 'one',
   filter: 'all',
   listSize: 30,

@@ -1,0 +1,33 @@
+# AI 自身の判断 3: この依頼は、何かを変える前に人と方針を合わせるべきものか。Claude Code の UserPromptSubmit で聞く。
+# 迷った時は、直前のアシスタントの発言(Stop で hook が控えたもの)を足して聞き直す(別のハッシュ・別の線)。
+# 線が引けたら、act(合わせるべき)の時だけエージェントに「着手前に方針を合わせる」を渡す。
+id: needs-plan
+version: 1
+type: noul
+
+question: |
+  A user sent `request` to a coding agent. Before changing anything, should the agent first agree on an approach with the user (because the change is large or ambiguous, several designs are reasonable, it changes existing behaviour, or the user is still thinking aloud), rather than just doing it?
+
+state:
+  template: |
+    request: {{ request }}
+  required: [request]
+  context: |
+    previous assistant turn: {{ previous }}
+    request: {{ request }}
+
+policy:
+  send_to: [local]
+  pii: true
+
+thresholds:
+  act: 0.75
+  ask: 0.55
+
+eval:
+  min_n: 50
+
+display:
+  ja:
+    title: 着手前に方針を合わせるか
+    question: この依頼は、AI がすぐ手を動かすのではなく、先に進め方を人と合わせるべきものか？
