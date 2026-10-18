@@ -580,6 +580,23 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 	if !fileExists(filepath.Join(home, ".shikii", "agent", "decisions", "command-effect.yaml")) {
 		t.Fatal("uninstall must keep the agent's records and specs")
 	}
+	// 控えは shikii の hook が入っていない版: uninstall 後の settings.json(shikii 無し)でも bak は最初の 1 回のまま
+	if bb, _ := os.ReadFile(settings + ".bak-shikii"); string(bb) != other {
+		t.Fatalf("the backup must stay the first pre-shikii version:\n%s", bb)
+	}
+	// settings.json が元から無い時: install は控えを作らず、その後の uninstall も hook 入りの版を控えない
+	home2 := t.TempDir()
+	t.Setenv("HOME", home2)
+	s2 := filepath.Join(home2, ".claude", "settings.json")
+	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	capture(t, func() error { return cmdHook([]string{"uninstall", "--yes"}) })
+	if fileExists(s2 + ".bak-shikii") {
+		t.Fatal("a settings.json that shikii created must never be backed up with shikii's hooks in it")
+	}
+	// --help は stdout に usage、誤りではない
+	if out := capture(t, func() error { return cmdHook([]string{"--help"}) }); !strings.Contains(out, "usage: shikii hook") {
+		t.Fatalf("--help must print usage: %s", out)
+	}
 }
 
 // 設定の言語が英語以外なら、出す文は英語と併記し、記録に display(言語・質問・答え・出した文)が付く。英語なら英語だけで display は無い。

@@ -229,4 +229,4 @@ Claude Code の hook(`shikii hook install`): AI 自身の作業中の判断(こ�
 
 - 等張回帰
 - 鍵の取り出し(環境変数で渡す。このプロセスはキーチェーンに触らない)
-- `ask` の答えを拾う口は `shikii serve` の画面(ボタンで `/v1/label`)で済んだ。残るのは hook の文脈(UI が無い)
+- `ask` の答えを拾う口は `shikii serve` の画面(ボタンで `/v1/label`)で済んだ。hook の判定も Stop が件数と URL を 1 行出し、同じ画面(:8096)で答える
