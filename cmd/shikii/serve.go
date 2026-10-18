@@ -65,6 +65,7 @@ func cmdServe(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	o.resolve()
 	if _, err := loadSpecs(o.specsDir); err != nil {
 		return err
 	}
@@ -99,13 +100,18 @@ type server struct {
 	tuneErr map[string]string // spec id → 最後の tune の失敗
 }
 
-func newServer(o serveOpts) http.Handler {
+// resolve は置き場の既定を埋める: spec は <store>/decisions、wiki は <store>/wiki(基本構成。別のフラグは無い)。
+func (o *serveOpts) resolve() {
 	if o.specsDir == "" {
 		o.specsDir = specsDirOf(o.storeDir)
 	}
 	if o.wikiDir == "" {
 		o.wikiDir = wikiDirOf(o.storeDir)
 	}
+}
+
+func newServer(o serveOpts) http.Handler {
+	o.resolve()
 	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]string{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleUI)
