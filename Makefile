@@ -4,9 +4,18 @@ INSTALL ?= $(HOME)/.local/bin/shikii
 STORE   ?= $(HOME)/.claude/jev/decisions-store
 MODEL   ?= ggml-org/Kev-4B-GGUF:Q4_K_M
 
-.PHONY: build test install check status drift server demo fake
+.PHONY: build test install check status drift server demo fake web
 
-build:
+# 画面(web/、Svelte)のビルド。結果 web/dist は実行ファイルに埋め込まれ、repo にも commit する(使うだけなら Node は要らない)。
+# 画面を直したら make web → commit。Node 24 と npm が要る
+web:
+	cd web && npm ci && npm run build
+
+# web/dist が無ければ先に組む(あれば触らない: commit 済みの dist をそのまま埋め込む)
+web/dist/index.html:
+	$(MAKE) web
+
+build: web/dist/index.html
 	go build -o $(BIN) ./cmd/shikii
 	go build -o bin/fake-systemone ./cmd/fake-systemone
 	go build -o bin/shikii-readout ./cmd/shikii-readout

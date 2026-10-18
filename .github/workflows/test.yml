@@ -10,6 +10,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # 画面(web/、Svelte): 元から組み直して、commit 済みの web/dist と一致することを確かめる
+      # (手で dist を直したり、元を直して make web を忘れたら落ちる)。辞書の鍵の揃いも見る
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: cd web && npm ci && npm run check && npm run build
+      - run: git add -N web/dist && git diff --exit-code -- web/dist
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test ./...
