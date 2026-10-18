@@ -217,6 +217,8 @@ thresholds:
   ask: 0.60                      # ≥ ask → ask a human; below → discard
 ```
 
+<p align="center"><img src="docs/assets/shikii-architecture.svg" alt="shikii architecture: three things people do, the assets (questions, truths, receipts), the loop the machine grows, the verifiable wiki, disposable models" width="100%"></p>
+
 <p align="center"><img src="docs/assets/shikii-lifecycle.svg" alt="one lifecycle for every decision model" width="100%"></p>
 
 **The calibration key is `(hash of question + template + options, model id as returned by the endpoint)`.** Edit one word of the question, or let `jev-latest` roll to a new version, and the calibration is simply gone: the band drops to `ask` instead of silently acting on stale constants. Getting it back is machine time, not human time: truths are kept per input together with the text, independent of wording and model, and `calibrate` replays them against the new key. Prompt layout is part of the key too: `shikii-readout` reports its layout in the model name (`…+state-last`), because moving the state inside the prompt changed a 27B model's accuracy by 5 points with the same weights.
