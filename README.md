@@ -9,7 +9,7 @@
 **A model gives you a probability. shikii tells you whether you may act on it.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-170%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-172%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
@@ -188,6 +188,8 @@ git pull && make install
 shikii doctor         # what is running, what is missing, and the command that fixes it
 shikii new my-decision --type choice   # a new spec by answering a few questions; try it with the printed command
 ```
+
+To change the answer page itself (`web/`, Svelte) you need Node 24 (`make web`); just using shikii does not — the built page is committed and embedded in the binary.
 
 ## How shikii works
 

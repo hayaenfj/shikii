@@ -16,4 +16,6 @@ docker compose up            # 初回は Kev-4B(約 2.5 GB)を取ってくる
 - 普通の GGUF（素のチャット用モデル）を使うなら、`llama` の command を `-m <file>` にし、間に `shikii-readout` の容れ物を立てて shikii の `--local` をそこに向ける（compose の末尾のコメント）
 - 判定を自分のプログラムから叩くなら `POST http://127.0.0.1:8095/v1/decide`、正解は `/v1/label`（[mcp.md](mcp.md) と同じ口）
 
-画像は `Dockerfile`（多段。実行側は distroless、root では動かない）。CI が毎回 `docker build` して壊れていないことを確かめる。
+画像は `Dockerfile`（3 段。実行側は distroless、root では動かない）。CI が毎回 `docker build` して壊れていないことを確かめる。
+- 3 段の中身: (a) `node:24-alpine` で答え合わせの画面（`web/`、Svelte）を組む → (b) `golang:1.27` で (a) の結果を `web/dist` に置いて `shikii` と `shikii-readout` を組む（画面は実行ファイルに埋め込まれる）→ (c) distroless に実行ファイルだけを置く。
+- Docker で使う人は Node も Go も要らない。`web/node_modules` と `web/dist` は `.dockerignore` で画像に入れず、毎回 (a) で組み直す。
