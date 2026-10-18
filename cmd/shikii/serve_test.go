@@ -280,3 +280,14 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 		t.Fatalf("status must carry the question in people's words: %+v", st.Specs)
 	}
 }
+
+// 件数が増えた時の見せ方: 判定ごとのタブ(待ち件数の印)、1 件ずつ / 一覧、種類の数で絞り込み、スキップ、ほかに待っている数。知識のタブは「くわしく」の時だけ。
+func TestServeUIHasTabsAndScalesToManyItems(t *testing.T) {
+	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	body := getBody(t, url+"/")
+	for _, must := range []string{"#tabs {", "shikii.tab", "1 件ずつ", "一覧", "スキップ(あとで)", "ほかに ", "AI が迷った", "抜き取り", "さらに表示", "data-tab=\"wiki\"", "limit=200", "ArrowRight"} {
+		if !strings.Contains(body, must) {
+			t.Fatalf("scalable view missing %q", must)
+		}
+	}
+}

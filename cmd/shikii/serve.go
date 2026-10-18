@@ -546,6 +546,9 @@ const uiHTML = `<!doctype html>
   .adv { display: none !important; } body.advanced .adv { display: revert !important; }
   #mode { margin-left:auto; font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
   .status { margin: 6px 0 10px; font-size: 14px; } .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 4px; } .bar > div { height: 100%; background: var(--ok); }
+  #tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 14px; } #tabs button { font-size: 14px; padding: 6px 12px; } #tabs button.active { border-color: var(--fg); font-weight: 600; } .badge { background: var(--amberbg); color: var(--amber); border-radius: 999px; padding: 0 7px; font-size: 12px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0 10px; } .chips button { font-size: 13px; padding: 4px 10px; } .chips button.active { border-color: var(--fg); font-weight: 600; } .chips .sep { flex: 1; }
+  .item.card { padding: 18px 20px; } .item.card .text { font-size: 16px; }
   .q { font-size: 15px; margin: 4px 0 8px; } .guess { font-size: 14px; margin: 6px 0; } .keys { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
   body:not(.advanced) .btns button { font-size: 15px; padding: 8px 14px; }
   #lang { margin-left:8px; font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
@@ -585,7 +588,9 @@ const uiHTML = `<!doctype html>
 // 辞書。言語を足すときはここに 1 つ増やし、<select> に option を足す。
 const T = {
   en: { tagline: 'tell it what was actually true; that is all it needs to learn when to trust itself', loading: 'loading…', noSpecs: 'no decisions set up yet', empty: 'nothing waiting for an answer. When the AI decides something, it shows up here.',
-        modeSimple: 'simple view', modeAdvanced: 'details', remaining: n => n + ' waiting', keysHint: 'Keys: 1-9 choose an answer, Enter = same as the AI',
+        modeSimple: 'simple view', modeAdvanced: 'details', remaining: n => n + ' waiting', keysHint: 'Keys: 1-9 choose an answer, Enter = same as the AI, → = skip',
+        tabKnowledge: 'Knowledge', viewOne: 'one at a time', viewList: 'list', skip: 'skip (later)', position: (i, n) => i + ' / ' + n, more: m => m + ' more waiting', showMore: m => 'show more (' + m + ')', unskip: n => 'bring back ' + n + ' skipped', emptyFiltered: 'nothing in this group',
+        chip_all: 'all', chip_ask: 'AI unsure', chip_audit: 'spot check', chip_other: 'other', auditShort: 'spot check',
         plainAuto: 'The AI may act on its own here (enough answers were checked).', plainReady: 'Enough answers: the line can be drawn.', plainLearning: (n, m) => 'Still learning: ' + n + ' of ' + m + ' answers checked before the AI may act on its own.', plainStale: 'The question changed; it is learning again.',
         aiGuess: (name, p) => 'AI guess: ' + name + ' (' + p + '% sure)', bandAsk: 'The AI was unsure.', bandAct: 'The AI acted on its own.', bandDiscard: 'The AI let it pass.', sameAsAI: 'same as the AI',
         records: n => n + ' decisions', answered: n => n + ' checked', calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'ready to draw the line ' + n + '/' + m,
@@ -601,7 +606,9 @@ const T = {
         adoptedLine: p => 'adopted as ' + p, sameMeaning: 'same meaning → adopt', changedMeaning: 'meaning changed → reject', notePrompt: 'What changed in the meaning? (optional)',
         checkHint: 'Does the new wording still ask what you mean? Numbers are checked by the machine; the meaning is yours to check.', rejected: 'recorded: meaning changed, not adopted', adoptedToast: p => 'adopted: ' + p },
   ja: { tagline: 'AI の答えが本当に合っていたかを教えてください。それだけで、AI はいつ自分を信じてよいかを覚えます', loading: '読み込み中…', noSpecs: 'まだ判定が登録されていません', empty: '答え合わせ待ちはありません。AI が何かを判定すると、ここに並びます。',
-        modeSimple: 'かんたん表示', modeAdvanced: 'くわしく', remaining: n => '残り ' + n + ' 件', keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」',
+        modeSimple: 'かんたん表示', modeAdvanced: 'くわしく', remaining: n => '残り ' + n + ' 件', keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」、→ でスキップ',
+        tabKnowledge: '知識', viewOne: '1 件ずつ', viewList: '一覧', skip: 'スキップ(あとで)', position: (i, n) => i + ' / ' + n + ' 件', more: m => 'ほかに ' + m + ' 件待っています', showMore: m => 'さらに表示(' + m + ' 件)', unskip: n => 'スキップした ' + n + ' 件を戻す', emptyFiltered: 'この種類の待ちはありません',
+        chip_all: '全部', chip_ask: 'AI が迷った', chip_audit: '抜き取り', chip_other: 'その他', auditShort: '抜き取り',
         plainAuto: 'この判定は AI が自分で動いてよい状態です(答え合わせが十分に揃いました)。', plainReady: '答えが揃いました。AI の自信の数字を直す線を引けます。', plainLearning: (n, m) => 'まだ学習中: 答え合わせ ' + n + ' 件。AI が自分で動けるようになるまで ' + m + ' 件。', plainStale: '質問の文が変わったので、学び直しています。',
         aiGuess: (name, p) => 'AI の予想: ' + name + '(自信 ' + p + '%)', bandAsk: 'AI は迷いました。', bandAct: 'AI は自分で動きました。', bandDiscard: 'AI は見送りました。', sameAsAI: 'AI と同じ',
         records: n => '判定 ' + n + ' 件', answered: n => '答え合わせ済み ' + n + ' 件', calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変わったので学び直し', collecting: (n, m) => '学習中 ' + n + '/' + m, ready: (n, m) => '線を引けます ' + n + '/' + m,
@@ -636,6 +643,7 @@ document.addEventListener('keydown', ev => {
   const first = document.querySelector('.item'); if (!first) return;
   if (/^[1-9]$/.test(ev.key)) { const b = first.querySelectorAll('.btns button')[Number(ev.key) - 1]; if (b) { ev.preventDefault(); b.click(); } }
   else if (ev.key === 'Enter') { const b = first.querySelector('.btns button.top'); if (b) { ev.preventDefault(); b.click(); } }
+  else if (ev.key === 'ArrowRight' || ev.key === 's') { const b = first.querySelector('.btns button.skip'); if (b) { ev.preventDefault(); b.click(); } }
 });
 let toastTimer;
 function toast(msg, ms=4000) { const el = $('#toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.style.display = 'none', ms); }
@@ -644,11 +652,39 @@ let state = null;
 async function load() {
   const st = await j('/v1/status');
   for (const sp of st.specs) {
-    sp.queue = await j('/v1/queue?spec=' + encodeURIComponent(sp.id) + '&limit=30');
+    sp.queue = await j('/v1/queue?spec=' + encodeURIComponent(sp.id) + '&limit=200');
     try { sp.tune = await j('/v1/tune?spec=' + encodeURIComponent(sp.id)); } catch (e) { sp.tune = null; }
   }
   try { st.wiki = await j('/v1/wiki'); } catch (e) { st.wiki = null; }
   state = st; render();
+}
+// 画面の状態: 開いているタブ(判定ごと。「くわしく」なら知識のタブも)、見せ方(1 件ずつ / 一覧)、絞り込み(全部 / 迷い / 抜き取り / その他)、あとで答える(スキップ)
+let tab = null, view = 'one', filter = 'all', listSize = 30;
+const skipped = new Set();
+try { tab = localStorage.getItem('shikii.tab'); view = localStorage.getItem('shikii.view') || 'one'; } catch (e) {}
+function remember(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function itemCard(sp, it, pos) {
+  const el = document.createElement('div'); el.className = 'item ' + it.band + (view === 'one' ? ' card' : '');
+  const text = it.answerable ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
+  const name = c => (c.labels && c.labels[lang]) || c.label;
+  const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
+  const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('sameAsAI')) : '') + '</button>').join('');
+  const not = (it.answerable && it.top) ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
+  const skip = '<button class="weak skip" data-skip="1">' + esc(t('skip')) + '</button>';
+  const bandWord = it.band === 'ask' ? t('bandAsk') : it.band === 'act' ? t('bandAct') : t('bandDiscard');
+  const guess = it.top ? '<div class="guess">' + esc(bandWord) + ' ' + esc(t('aiGuess')(topName, (it.p*100).toFixed(0))) + (it.audit ? ' <span class="audit">' + esc(t('auditShort')) + '</span>' : '') + '</div>' : '';
+  el.innerHTML = (pos ? '<div class="k">' + esc(pos) + '</div>' : '') + guess + '<div class="meta adv"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.audit ? '<span class="audit">' + esc(t('audit')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + skip + '</div>';
+  el.addEventListener('click', async ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.skip) { skipped.add(it.trace_id); render(); return; }
+    for (const x of el.querySelectorAll('button')) x.disabled = true;
+    try {
+      const res = await j('/v1/label', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ trace_id: it.trace_id, spec: sp.id, truth: b.dataset.truth, source: it.audit ? 'audit' : 'ui' }) });
+      sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++;
+      if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); } else { toast(t('done')(res.truth)); render(); }
+    } catch (e) { toast(t('error')(e.message)); for (const x of el.querySelectorAll('button')) x.disabled = false; }
+  });
+  return el;
 }
 function render() {
   $('#tagline').textContent = t('tagline');
@@ -657,49 +693,62 @@ function render() {
   const root = $('#root'); root.innerHTML = '';
   if (!state) { root.innerHTML = '<div class="empty">' + esc(t('loading')) + '</div>'; return; }
   if (!state.specs.length) { root.innerHTML = '<div class="empty">' + esc(t('noSpecs')) + '</div>'; return; }
-  for (const sp of state.specs) {
-    const sec = document.createElement('section');
-    const pills = sp.keys.map(k => '<span class="pill ' + k.state + '">' + esc(k.model) + (k.rung === 'context' ? ' · ' + esc(t('contextRung')) : '') + ' · ' + esc(k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n)) + '</span>').join(' ');
-    const title = (sp.titles && sp.titles[lang]) ? esc(sp.titles[lang]) + ' <span class="k" style="color:var(--muted);font-size:12px;font-weight:400">' + esc(sp.id) + '</span>' : esc(sp.id);
-    const funnel = (sp.funnel && sp.records > 0) ? ' <span class="pill">' + esc(t('toPerson')(sp.funnel.human, sp.funnel.human_per_thousand)) + '</span>' : '';
-    sec.innerHTML = '<h2>' + title + ' <span class="pill">' + esc(t('remaining')(sp.queue.items.length)) + '</span> <span class="adv"><span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span>' + funnel + '</span></h2>';
-    // 人の言葉の状態と進み具合(かんたん表示の中心)
-    const live = sp.keys.filter(k => k.state !== 'stale');
-    const n = live.reduce((m, k) => Math.max(m, k.n), 0);
-    let plain = t('plainLearning')(n, sp.min_n), pct = Math.min(100, Math.round(100 * n / Math.max(1, sp.min_n)));
-    if (live.some(k => k.state === 'calibrated')) { plain = t('plainAuto'); pct = 100; }
-    else if (live.some(k => k.state === 'ready')) { plain = t('plainReady'); pct = 100; }
-    else if (sp.keys.length && !live.length) plain = t('plainStale');
-    const q = (sp.questions && sp.questions[lang]) || sp.question || '';
-    sec.innerHTML += (q ? '<div class="q">' + esc(q) + '</div>' : '') + '<div class="status">' + esc(plain) + '<div class="bar"><div style="width:' + pct + '%"></div></div></div>';
-    if (sp.queue.items.length) sec.innerHTML += '<div class="keys">' + esc(t('keysHint')) + '</div>';
-    if (!sp.queue.items.length) { sec.innerHTML += '<div class="empty">' + esc(t('empty')) + '</div>'; }
-    for (const it of sp.queue.items) {
-      const el = document.createElement('div'); el.className = 'item ' + it.band;
-      const text = it.answerable ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
-      const name = c => (c.labels && c.labels[lang]) || c.label;
-      const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
-      const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('sameAsAI')) : '') + '</button>').join('');
-      const not = (it.answerable && it.top) ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
-      const bandWord = it.band === 'ask' ? t('bandAsk') : it.band === 'act' ? t('bandAct') : t('bandDiscard');
-      const guess = it.top ? '<div class="guess">' + esc(bandWord) + ' ' + esc(t('aiGuess')(topName, (it.p*100).toFixed(0))) + '</div>' : '';
-      el.innerHTML = guess + '<div class="meta adv"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.audit ? '<span class="audit">' + esc(t('audit')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
-      el.addEventListener('click', async ev => {
-        const b = ev.target.closest('button'); if (!b) return;
-        for (const x of el.querySelectorAll('button')) x.disabled = true;
-        try {
-          const res = await j('/v1/label', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ trace_id: it.trace_id, spec: sp.id, truth: b.dataset.truth, source: it.audit ? 'audit' : 'ui' }) });
-          el.remove();
-          if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); } else { toast(t('done')(res.truth)); }
-        } catch (e) { toast(t('error')(e.message)); for (const x of el.querySelectorAll('button')) x.disabled = false; }
-      });
-      sec.appendChild(el);
+  // タブ: 判定ごとに 1 つ(待ち件数の印付き)。知識のタブは「くわしく」の時だけ
+  const ids = state.specs.map(s => s.id);
+  if (tab === 'wiki' && !(advanced && state.wiki)) tab = null;
+  if (tab !== 'wiki' && !ids.includes(tab)) tab = ids[0];
+  const nav = document.createElement('nav'); nav.id = 'tabs';
+  nav.innerHTML = state.specs.map(sp => '<button data-tab="' + esc(sp.id) + '" class="' + (tab === sp.id ? 'active' : '') + '">' + esc((sp.titles && sp.titles[lang]) || sp.id) + (sp.unlabeled ? ' <span class="badge">' + esc(sp.unlabeled) + '</span>' : '') + '</button>').join('')
+    + (advanced && state.wiki ? '<button data-tab="wiki" class="adv ' + (tab === 'wiki' ? 'active' : '') + '">' + esc(t('tabKnowledge')) + '</button>' : '');
+  nav.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; tab = b.dataset.tab; remember('shikii.tab', tab); render(); });
+  root.appendChild(nav);
+  if (tab === 'wiki') { root.appendChild(knowledgeBlock(state.wiki)); return; }
+  const sp = state.specs.find(s => s.id === tab);
+  const sec = document.createElement('section');
+  const pills = sp.keys.map(k => '<span class="pill ' + k.state + '">' + esc(k.model) + (k.rung === 'context' ? ' · ' + esc(t('contextRung')) : '') + ' · ' + esc(k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n)) + '</span>').join(' ');
+  const title = (sp.titles && sp.titles[lang]) ? esc(sp.titles[lang]) + ' <span class="k adv" style="color:var(--muted);font-size:12px;font-weight:400">' + esc(sp.id) + '</span>' : esc(sp.id);
+  const funnel = (sp.funnel && sp.records > 0) ? ' <span class="pill">' + esc(t('toPerson')(sp.funnel.human, sp.funnel.human_per_thousand)) + '</span>' : '';
+  sec.innerHTML = '<h2>' + title + ' <span class="adv"><span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span>' + funnel + '</span></h2>';
+  // 人の言葉の状態と進み具合(かんたん表示の中心)
+  const live = sp.keys.filter(k => k.state !== 'stale');
+  const n = live.reduce((m, k) => Math.max(m, k.n), 0);
+  let plain = t('plainLearning')(n, sp.min_n), pct = Math.min(100, Math.round(100 * n / Math.max(1, sp.min_n)));
+  if (live.some(k => k.state === 'calibrated')) { plain = t('plainAuto'); pct = 100; }
+  else if (live.some(k => k.state === 'ready')) { plain = t('plainReady'); pct = 100; }
+  else if (sp.keys.length && !live.length) plain = t('plainStale');
+  const q = (sp.questions && sp.questions[lang]) || sp.question || '';
+  sec.innerHTML += (q ? '<div class="q">' + esc(q) + '</div>' : '') + '<div class="status">' + esc(plain) + '<div class="bar"><div style="width:' + pct + '%"></div></div></div>';
+  // 件数が増えた時の見せ方: 種類ごとの数(押すと絞り込み)、1 件ずつ / 一覧、スキップ、ほかに待っている数
+  const all = sp.queue.items;
+  const kind = it => it.band === 'ask' ? 'ask' : it.audit ? 'audit' : 'other';
+  const counts = { all: all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length };
+  const chips = document.createElement('div'); chips.className = 'chips';
+  chips.innerHTML = ['all', 'ask', 'audit', 'other'].map(k => '<button data-filter="' + k + '" class="' + (filter === k ? 'active' : '') + '">' + esc(t('chip_' + k)) + ' ' + counts[k] + '</button>').join('')
+    + '<span class="sep"></span><button data-view="one" class="' + (view === 'one' ? 'active' : '') + '">' + esc(t('viewOne')) + '</button><button data-view="list" class="' + (view === 'list' ? 'active' : '') + '">' + esc(t('viewList')) + '</button>';
+  chips.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; if (b.dataset.filter) filter = b.dataset.filter; if (b.dataset.view) { view = b.dataset.view; remember('shikii.view', view); } render(); });
+  sec.appendChild(chips);
+  const matching = all.filter(it => filter === 'all' || kind(it) === filter);
+  const visible = matching.filter(it => !skipped.has(it.trace_id));
+  const extra = Math.max(0, (sp.unlabeled || 0) - all.length);
+  if (!visible.length) {
+    const d = document.createElement('div'); d.className = 'empty';
+    d.innerHTML = esc(all.length ? t('emptyFiltered') : t('empty')) + (matching.length ? ' <button class="weak" data-unskip="1">' + esc(t('unskip')(matching.length)) + '</button>' : '') + (extra ? '<div>' + esc(t('more')(extra)) + '</div>' : '');
+    d.addEventListener('click', ev => { if (ev.target.closest('[data-unskip]')) { skipped.clear(); render(); } });
+    sec.appendChild(d);
+  } else if (view === 'one') {
+    sec.innerHTML += '<div class="keys">' + esc(t('keysHint')) + '</div>';
+    sec.appendChild(itemCard(sp, visible[0], t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')));
+  } else {
+    sec.innerHTML += '<div class="keys">' + esc(t('keysHint')) + '</div>';
+    for (const it of visible.slice(0, listSize)) sec.appendChild(itemCard(sp, it, ''));
+    if (visible.length > listSize || extra) {
+      const b = document.createElement('button'); b.className = 'weak'; b.textContent = t('showMore')(Math.max(0, visible.length - listSize) + extra);
+      b.addEventListener('click', () => { listSize += 30; render(); }); sec.appendChild(b);
     }
-    if (sp.last_calibration) sec.innerHTML += '<pre class="adv">' + esc(t('last')) + '\n' + esc(sp.last_calibration) + '</pre>';
-    sec.appendChild(wordingBlock(sp));
-    root.appendChild(sec);
   }
-  if (state.wiki) root.appendChild(knowledgeBlock(state.wiki));
+  if (sp.last_calibration) sec.innerHTML += '<pre class="adv">' + esc(t('last')) + '\n' + esc(sp.last_calibration) + '</pre>';
+  sec.appendChild(wordingBlock(sp));
+  root.appendChild(sec);
 }
 // 知識の欄: 主張と下書きの一覧(証拠、支持するモデルの数、confirmable の印)。人がすること: 下書きを一般化して主張にする(promote)、confirmed / rejected にする、下書きを消す。
 function knowledgeBlock(wk) {
