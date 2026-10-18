@@ -1,202 +1,106 @@
 [English](../../README.md) · [日本語](README_ja.md) · [简体中文](README_zh.md) · [繁體中文](README_zh-TW.md) · [한국어](README_ko.md) · [Deutsch](README_de.md) · **Español** · [Français](README_fr.md) · [Italiano](README_it.md) · [Português (Brasil)](README_pt-BR.md) · [Русский](README_ru.md) · [Українська](README_uk.md) · [Polski](README_pl.md) · [Türkçe](README_tr.md) · [Tiếng Việt](README_vi.md) · [Bahasa Indonesia](README_id.md)
 
-# shikii: Operar modelos de decisión
+<p align="center"><img src="../assets/gen-mark.png" alt="shikii" width="112"></p>
 
-### Un único ciclo de vida para cualquier modelo de decisión: define → decide → record → label → calibrate → check → drift.
+# shikii: convertir el «probablemente» de una IA en un «se puede actuar» sobre el que montar un negocio
 
-**Un modelo te da una probabilidad. shikii te dice si puedes actuar con ella.**
+### Una herramienta para dejar que una IA decida sí/no, cuál o cuánto, y para que esa decisión siga siendo de fiar en el trabajo diario. Usted revisa algunas respuestas y, de vez en cuando, confirma «¿esto sigue siendo lo que quería decir?». La máquina hace el resto.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
-**[Notas de diseño](../decision-ops-framework.md) · [Operaciones](../operations.md) · [Comparación de modelos](../model-comparison.md) · [Guía detallada (japonés)](../guide.ja.md)**
+[El problema](#el-problema) · [Qué hace shikii](#qué-hace-shikii) · [Qué hace usted](#qué-hace-usted) · [Instalación](#instalación) · [Los caminos más cortos](#los-caminos-más-cortos) · [Una vuelta completa](#una-vuelta-completa) · [Qué hay de nuevo](#qué-hay-de-nuevo) · [Leer más](#leer-más)
 
-[Inicio rápido](#inicio-rápido) · [Cómo funciona shikii](#cómo-funciona-shikii) · [Qué puedes conectar](#qué-puedes-conectar) · [Resultados](#resultados) · [FAQ](#faq) · [Documentación](#documentación)
+<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii: un modelo le da una probabilidad, shikii le dice si puede actuar con ella" width="100%"></p>
 
-<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii" width="100%"></p>
+## El problema
 
-`scripts/demo.sh`
+Pregunte a una IA «¿esta consulta es el mismo asunto que la anterior?» y responde «probablemente, 0,9». Para el trabajo real, eso no basta.
 
-> [!IMPORTANT]
-> shikii nunca ejecuta un modelo ni lee un llavero de claves. Habla con un endpoint de modelo de decisión que ya tienes, guarda los registros y se niega a **actuar** hasta que las probabilidades de *esta pregunta en este modelo* hayan sido verificadas con etiquetas. Los bloques de calibración se generan, nunca se escriben a mano.
+- ¿Ese 0,9 acierta de verdad 9 veces de cada 10?
+- Desde el día en que cambió a un modelo nuevo, ¿ha empezado a mentir sin que nadie lo note?
+- Si cambia un poco la redacción, ¿cómo se mueve el acierto?
+- Las decisiones que tomó por su cuenta, sin que nadie mirara: ¿siguen siendo correctas?
 
----
+Si una persona tiene que revisar cada respuesta, usar la IA tenía poco sentido.
 
-Los modelos de decisión (TypeSafe Jev, Kev-4B y OpenJev en llama.cpp, OpenRouter Decisions, …) responden preguntas tipadas, `choice`, `score` y `noul` (sí/no), con probabilidades y sin texto generado. Todos los proveedores incluyen el mismo aviso: *las probabilidades no están calibradas para tus datos, y los umbrales no se trasladan de un modelo o de una pregunta a otros.*
+## Qué hace shikii
 
-shikii se encarga de lo que nadie entrega: el **ciclo de vida** de una decisión. Un archivo spec contiene la pregunta, las opciones, la plantilla de estado y los umbrales. `decide` consulta a un modelo y devuelve una banda (`act` / `ask` / `discard` / `abstain`), nunca un número crudo. `label` registra qué era cierto. `calibrate` ajusta y valida de forma cruzada, y luego escribe el resultado en el spec bajo una clave formada por el hash de la pregunta y el nombre del modelo. `check` hace fallar la CI cuando la redacción o el modelo se han desviado. `gc` mantiene el store pequeño.
+1. **Reúne sus correcciones y traza la línea por encima de la cual la IA puede actuar sola.** A partir de las respuestas que usted dio («esto es lo que era cierto de verdad»), mide cómo se relaciona la confianza de la IA con la frecuencia con que acierta y decide desde dónde se puede confiar en ella. Hasta que exista una línea, nada actúa. Cuando existe, cada decisión automática lleva un recibo que dice sobre cuántas respuestas revisadas descansa la línea y con qué frecuencia acertaron
+2. **Prueba otras formas de preguntar y se queda con la mejor.** Sobre las mismas correcciones puntúa preguntas alternativas, descripciones de las opciones y disposiciones del prompt, y adopta una solo cuando es realmente mejor. Usted solo confirma que el significado no cambió
+3. **Le permite cambiar de modelo sin empezar de cero.** Las correcciones viven aparte del modelo, así que un modelo nuevo las reutiliza y la máquina vuelve a trazar la línea. Sin trabajo humano
+4. **Guarda lo aprendido en una wiki.** «Preguntar así funciona» se acumula como afirmaciones con los números medidos, que se pueden volver a probar en otro modelo. Lo que otras personas midieron con sus modelos se añade a la misma página
 
-Incluye además `shikii-readout`, un adaptador de 500 líneas que convierte **cualquier GGUF de chat en un llama.cpp estándar** en un modelo de decisión leyendo los logits de las letras de las opciones. En nuestras mediciones, un modelo ternario corriente de 27B leído de este modo igualó en precisión a los modelos de decisión entrenados, a 0,6 segundos por pregunta en un portátil.
+## Qué hace usted
 
-> El nombre es japonés: *shikii* (閾) significa umbral, la línea que convierte una probabilidad en una acción. La CLI se llama `shikii`.
+- **Escribe lo que quiere que se decida.** Responda unas pocas preguntas y aparece un archivo de decisión (`shikii new`, de forma interactiva o con `--type --question --option --input --pii`; el formato completo está en [la referencia del archivo de decisión](../../skills/shikii/references/spec.md))
+- **Revisa respuestas.** La página muestra las decisiones en las que la IA dudó, más 1 de cada 20 de las que ejecutó, y usted pulsa el botón de lo que era cierto de verdad. Las teclas 1 a 9 y Enter (igual que la elección de la IA) van rápido. «Respondidas» permite corregir una respuesta anterior (cuenta la más reciente). «Detalles» añade «preguntar otra vez a la IA», que vuelve a decidir el mismo texto con la redacción y la línea de hoy y muestra el antes y el después; los registros se añaden, nunca se borran
+- **De vez en cuando confirma «¿esto sigue siendo lo que quería decir?».** Cuando la máquina encuentra una redacción que puntúa mejor, usted mira si cambió el significado y pulsa adoptar o rechazar
 
-## Inicio rápido
+Todo lo demás es trabajo de la máquina.
 
-Go 1.27 o superior. No se necesita nada más para la primera ejecución.
-
-### Ejecuta todo el ciclo sin clave ni GPU
-
-```sh
-git clone https://github.com/hayaenfj/shikii && cd shikii
-scripts/demo.sh                 # modelo falso: decide → label → calibrate → check → drift → status → gc
-scripts/demo.sh --overconfident # un modelo falso cuyas probabilidades necesitan calibración; observa cómo calibrate elige platt
-```
-
-### Apúntalo a un modelo real
+## Instalación
 
 ```sh
-make build                                        # bin/shikii, bin/shikii-readout, bin/fake-systemone
-
-# a) modelo de decisión local en llama.cpp (descarga Kev-4B, unos 2,5 GB, en la primera ejecución)
-make server                                       # llama-server en :8080
-bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8080 -i message='fix the typo in README'
-
-# b) TypeSafe Jev alojado. La clave se toma solo del entorno
-export TYPESAFE_API_KEY=...
-bin/shikii decide examples/prompt-intent.yaml -i message='fix the typo in README'
-
-# c) API OpenRouter Decisions
-export DECISIONS_API_KEY=...
-bin/shikii decide examples/prompt-intent.yaml --hosted https://openrouter.ai/api/alpha/decisions -i message='…'
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh     # necesita Go 1.27 o más reciente
+cd <raíz del proyecto> && shikii init
 ```
 
-La respuesta es una banda, un trace id y las probabilidades. Mientras el spec no tenga una calibración para este modelo, la banda es como máximo `ask`.
+`shikii init` prepara una carpeta, `.shikii/` (con `decisions/` para sus archivos de decisión, `wiki/` para el conocimiento, `records/` y `labels/` para los registros y sus correcciones; nada más se añade a la raíz del proyecto), y de una vez las conexiones con los agentes: el servidor MCP de shikii para Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) y Codex (`~/.codex/config.toml`), una sección en `AGENTS.md` y las reglas detalladas (la skill) en `~/.claude/skills/shikii`. Sus propias entradas nunca se tocan (una entrada de shikii ya existente se deja tal cual). Solo la carpeta de la skill se reemplaza cada vez, así que no la edite a mano. `wiki/` recibe el conocimiento compartido (cómo preguntar cada tipo de pregunta, patrones de redacción que funcionaron, las costumbres de cada modelo); el mejorador de redacción (`tune --propose`) lo lee, y las páginas que usted editó nunca las sobrescribe un `init` posterior. ¿Sin Go? Use Docker, más abajo.
 
-### Cierra el ciclo
+Las entradas apuntan a un modelo local (`shikii up`, puerto 8080). ¿Solo alojado? Quite `--local` a mano de cada uno de los cuatro archivos. También se crean archivos de configuración para herramientas que no usa; bórrelos o añádalos a `.gitignore` (un segundo `shikii init` nunca toca lo que ya existe). Haga commit de `.shikii/decisions/`, `.shikii/wiki/` y `.shikii/labels/` (sus archivos de decisión, el conocimiento y sus correcciones: los activos que sobreviven a un cambio de modelo). `.shikii/records/` (cada decisión) crece sin parar, así que hacerle commit es opcional (`shikii gc` descarta los antiguos). Si Codex ya tiene `mcp_servers`, no se añade nada y se imprimen las líneas que hay que pegar. Un proyecto con solo un `CLAUDE.md` no recibe `AGENTS.md` (OpenCode dejaría de leer `CLAUDE.md`).
+
+Cambiar la propia página de respuestas (`web/`, Svelte) necesita Node 24 (`make web`). Usar shikii no: la página ya construida está en el repositorio e incrustada en el binario.
+
+## Los caminos más cortos
+
+- **Docker**: ¿sin Go, sin modelo? `docker compose up` arranca un modelo local (Kev-4B) y shikii, con la página de respuestas en http://127.0.0.1:8095 ([detalles](../../integrations/docker.md))
+- **Decisiones listas para usar**: seis en la carpeta `decisions/` de este repositorio (tipo de solicitud, informe de error duplicado, misma consulta, …). Copie una a su `.shikii/decisions/`, o parta de ella con `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` ([lista](../../decisions/README.md))
+- **Ya tiene una tabla de decisiones pasadas**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` la convierte en correcciones, así no responde las primeras 50 a mano
+- **Desde su propio programa**: arranque `shikii serve` y llame a `POST /v1/decide` (decidir) y `POST /v1/label` (corregir). El cuerpo es JSON y `-H 'Content-Type: application/json'` es obligatorio (todos los endpoints: [la guía larga](../guide.md#or-run-one-process-for-programs-and-people))
+- **El ejemplo de otra persona**: [encaminar correos de consulta](../examples/inquiry-route.md) (japonés). Alguien que usaba shikii por primera vez dio la vuelta completa solo con el README; se incluyen el archivo de decisión y las 22 entradas
+- **Medir el propio juicio de la IA** (Claude Code y Codex): `shikii hook install` añade hooks que pasan por shikii las decisiones del propio agente: qué hace un comando, si una edición está dentro de lo que usted pidió, si una petición necesita primero un plan, y qué acabará haciendo el agente (esa última verdad sale gratis de si el árbol de trabajo cambió). Nada cambia hasta que exista una línea. Después, un comando arriesgado (borrar, cambiar fuera del proyecto, enviar fuera) le pide confirmación, con el número de verdades sobre las que descansa la línea y la precisión revisada por personas; los comandos seguros pasan en silencio ([detalles](../../integrations/claude-code.md), japonés)
+- **En CI**: `uses: hayaenfj/shikii@main` ejecuta `shikii check` en cada pull request, de modo que una redacción cambiada o una línea debilitada hace fallar la build
+
+## Una vuelta completa
 
 ```sh
-bin/shikii label <trace_id> change_request          # o:  label --last --spec-id prompt-intent change_request
-bin/shikii calibrate examples/prompt-intent.yaml --model <model name from the response> --write
-bin/shikii check examples/prompt-intent.yaml        # exit 1 cuando la redacción cambió o precision@act cayó por debajo de act
+shikii up                                                             # arrancar el modelo local (se descarga la primera vez)
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=ask  (aún no hay línea, así que: preguntar a una persona)
+shikii serve --local http://127.0.0.1:8080                                   # los archivos de decisión y el conocimiento se leen de .shikii/
+#   → responda en http://127.0.0.1:8095. Cuando una decisión tiene el número que pide (eval.min_n, 20 en esta), la línea se traza sola
+#     Para probar con menos respuestas, baje eval.min_n en el archivo de decisión a lo que tenga (una línea escrita con --force la marca check)
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=act
+#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
+#     (se puede actuar, con la prueba: la línea descansa sobre 61 correcciones, 48 de ellas de personas. De las respuestas humanas que esta línea pone del lado de act, 25, el 96 % fueron correctas)
 ```
 
-### Usa cualquier GGUF como modelo de decisión
+Solo hay cuatro bandas. `act` = adelante, `ask` = consultar a una persona, `discard` = no hacer nada, `abstain` = falta la entrada. Usted nunca lee una probabilidad en bruto.
 
-```sh
-make server-gguf GGUF=/path/to/model.gguf ALIAS=my-model   # llama-server estándar con flash attention y KV de 8 bits, :8086
-make readout                                               # shikii-readout delante, :8090
-bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8090 -i message='…'
-```
+## Qué hay de nuevo
 
-### Instalar y actualizar
+<p align="center"><img src="../assets/shikii-architecture-en.svg" alt="arquitectura de shikii: tres cosas que hacen las personas, los activos (preguntas, verdades, recibos), el bucle que la máquina hace crecer, la wiki verificable, modelos desechables" width="100%"></p>
 
-```sh
-make install          # copia bin/shikii a ~/.local/bin/shikii
-git pull && make install
-```
+- **El conocimiento se acumula en las preguntas y las correcciones, no en el modelo.** Así que el modelo es desechable y cambiarlo no necesita trabajo humano. Medido: con la máquina eligiendo la redacción y la disposición y añadiendo ejemplos parecidos, un modelo base corriente igualó en acierto al ajuste fino (LoRA) ([números](../bench.md))
+- **Las decisiones automáticas vienen con pruebas.** No «95 % de confianza», sino «precisión 0,96 sobre 48 respuestas revisadas por personas»
+- **La wiki no se lee, se mide.** «Preguntar así funciona» se acumula como afirmaciones con números y se vuelve a probar en modelos nuevos. Solo una persona decide que una afirmación está confirmada
 
-## Cómo funciona shikii
+## Leer más
 
-Cada decisión es un único archivo YAML. La pregunta, las opciones, la plantilla de estado, adónde se puede enviar el estado, los umbrales y, generados por `calibrate --write`, los bloques de calibración.
-
-```yaml
-id: prompt-intent
-type: choice
-question: What is the user asking the assistant to do?
-options:
-  - id: change_request
-    description: Change something in the repository - edit, fix, add, remove, rename...
-  - id: question
-    description: Explain, investigate, compare or give an opinion, without changing anything.
-state:
-  template: "{{ message }}"
-  required: [message]            # falta una entrada → abstain; el modelo nunca se llama
-policy:
-  send_to: [hosted, local]       # una sesión tainted omite hosted automáticamente
-  pii: possible                  # los registros guardan un hash de las entradas, nunca el texto
-thresholds:
-  act: 0.75                      # ≥ act → act automáticamente, solo si está calibrado
-  ask: 0.60                      # ≥ ask → preguntar a una persona; por debajo → discard
-```
-
-<p align="center"><img src="../assets/shikii-lifecycle.svg" alt="define, decide, record, label, calibrate, check, drift" width="100%"></p>
-
-**La clave de calibración es `(hash de pregunta + plantilla + opciones, id del modelo tal como lo devuelve el endpoint)`.** Si editas una sola palabra de la pregunta, o dejas que `jev-latest` pase a una versión nueva, la calibración simplemente desaparece: la banda baja a `ask` en lugar de actuar en silencio con constantes obsoletas. La disposición del prompt también forma parte de la clave: `shikii-readout` informa de su disposición en el nombre del modelo (`…+state-last`), porque mover el estado dentro del prompt cambió en 5 puntos la precisión de un modelo de 27B con los mismos pesos.
-
-`calibrate` compara tres métodos con validación cruzada de 5 pliegues y escribe el ganador. `identity` significa que las probabilidades crudas ya cumplen precision@act y el modelo simplemente se marca como verificado. `platt` (σ((Δ−bias)/T)) es para preguntas de sí/no. `vector` (softmax((log p + b)/T)) es para choice y score, y corrige vicios por opción como "recurrir a *other*". Las etiquetas parciales (`!option`, "no era *eso*") cuentan para la precisión pero no para el ajuste. Las etiquetas obtenidas de un archivo se persisten, de modo que `check` y `drift` se ejecutan después sin conexión.
-
-Cada rama relevante para la seguridad (enrutado de taint, ningún act sin calibración, invalidación por hash obsoleto, validación de etiquetas, detección de inversiones, elección de método por CV, `gc` en modo simulación, …) tiene una mutación registrada que hizo fallar un test antes de aceptar la corrección. Hay 63 tests de Go en 8 paquetes; la demo se ejecuta en CI.
-
-## Qué puedes conectar
-
-shikii habla la forma de petición de System One (`POST /v1/systemone`), así que sirve cualquier cosa que la exponga. El adaptador cubre todo lo demás.
-
-| Destino | Qué obtiene shikii | Requisitos y guía |
-|---|---|---|
-| **TypeSafe Jev** (alojado) | `choice` / `score` / `noul` con probabilidades, id de modelo como `jev-1.13.0` | `TYPESAFE_API_KEY` en el entorno. `--hosted` por defecto |
-| **Modelos de decisión en llama.cpp** (Kev-4B, OpenJev, Clef, …) | La misma forma, en local, id de modelo desde `/v1/models` | `llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M` (`make server`). llama.cpp 0.6.0 o superior |
-| **API OpenRouter Decisions** | La misma forma a través de OpenRouter | `DECISIONS_API_KEY`, `--hosted https://openrouter.ai/api/alpha/decisions` |
-| **Cualquier GGUF de chat** mediante `shikii-readout` | Lectura de logits de letras en forma System One, sin calibración propia | `llama-server` estándar 0.7.0 detrás. [`integrations/readout.md`](../../integrations/readout.md) |
-| **PrismML Bonsai** mediante [BonJev](https://github.com/ChezRD/bonjev) | Lo mismo, con el prompt propio de BonJev y calibración integrada | Compilación en Rust y el fork de Prism. [`integrations/bonjev.md`](../../integrations/bonjev.md) |
-| **Modelo falso** (`bin/fake-systemone`) | Probabilidades deterministas para demos y tests | Nada. `make fake` |
-| **Hook de Claude Code** (claude-jev) | Cada prompt clasificado, cada turno etiquetado a partir del árbol de trabajo | [`integrations/claude-code.md`](../../integrations/claude-code.md) |
-
-El taint es una entrada de primera clase: pasa `--tainted` (o deja que lo haga tu hook) en una sesión que haya tocado datos de producción y la petición nunca sale de la máquina. Si no hay ningún endpoint local configurado, la decisión se abstiene.
-
-## Resultados
-
-Mismos specs, mismas etiquetas, cuatro conjuntos de evaluación (intención de prompts en inglés y japonés, 62 peticiones; vinculación de casos idénticos en 32 pares en japonés). Los detalles y la tabla completa están en [`docs/model-comparison.md`](../model-comparison.md).
-
-| Modelo | Licencia | top-1 (todo / ja) | Brier sí/no (crudo) | Calibración elegida | Segundos por pregunta |
-|---|---|---|---|---|---|
-| Kev-4B (modelo de decisión entrenado) | Apache 2.0 | 0.919 / 0.913 | 0.046 | identity | 0.25 |
-| OpenJev 27B (entrenado) | CC BY-NC 4.0 | **0.984 / 1.000** | 0.020 | vector | 3.8 |
-| Bonsai 2 27B mediante BonJev | Apache 2.0 | 0.968 / 1.000 | 0.026 → **0.013 (platt)** | vector / platt | 2.5 |
-| **Ternary-Bonsai-27B mediante `shikii-readout`, llama.cpp estándar** | Apache 2.0 | 0.968 / 1.000 | 0.015 | identity | **0.58** |
-
-**La redacción vence a la calibración.** En la intención de prompts, 19 de 21 errores caían en *other*; reformular las opciones llevó el top-1 de 0.68 a 0.90 antes de cualquier calibración. La calibración sirve para el caso "orden correcto, confianza insuficiente". La matriz de confusión que imprime `calibrate` te dice en cuál de los dos casos estás.
-
-**Los modelos ya calibrados no necesitan Platt.** El sí/no de Kev-4B tenía un Brier de 0.046 en crudo; Platt lo empeoró bajo validación cruzada, así que se escribió `identity`. La primera vez que `calibrate` eligió `platt` fue con un LLM corriente leído mediante logits. Que haga falta calibrar es una propiedad de *modelo más lectura*, no del modelo.
-
-**Un GGUF corriente queda al lado de un modelo de decisión entrenado.** Un modelo de chat ternario de 27B, llama.cpp 0.7.0 de la rama principal, un adaptador, sin fork, sin entrenamiento, sin Rust: el mismo top-1 que el mejor modelo entrenado con licencia Apache, 1.000 en japonés, 0.58 s por pregunta con flash attention y un prefijo precalentado. Mover el estado de antes de las opciones a justo antes de la respuesta lo llevó de 0.919 a 0.968 con los mismos pesos, y por eso la disposición forma parte de la clave de calibración.
-
-## FAQ
-
-**¿shikii ejecuta modelos?** No. Envía peticiones System One a un endpoint que tú ejecutas o alquilas, y guarda todo lo que ocurre después de la respuesta. `shikii-readout` es la única excepción en espíritu: convierte los logits de un modelo de chat a la misma forma, pero la inferencia sigue siendo de llama.cpp.
-
-**¿Por qué mi decisión nunca llega a `act`?** Porque el spec no tiene un bloque de calibración para `(el hash de esta pregunta, este id de modelo)`. Reúne etiquetas (`label`, o `--labeled file`), ejecuta `calibrate --write` y `status` mostrará `calibrated: identity|platt|vector`. Una decisión sin precisión verificada en el umbral de act no tiene permitido actuar. Ese es el objetivo.
-
-**Cambié una palabra de la pregunta y la calibración desapareció.** Correcto. El hash cambió, y las constantes se ajustaron a otra pregunta. `status` muestra las etiquetas antiguas como `stale hash`; vuelve a ejecutar `calibrate --write` cuando tengas etiquetas para la nueva redacción.
-
-**¿Qué modelo debería usar?** Depende de la licencia, la velocidad y el idioma, y shikii no decide por ti. La tabla de arriba y [`docs/model-comparison.md`](../model-comparison.md) son el argumento: con el mismo spec y las mismas etiquetas puedes elegir por números, incluido si un modelo necesita calibración o no. `scripts/eval-model.sh <url> <name>` reproduce la tabla para un endpoint nuevo.
-
-**¿Funciona en japonés?** Sí, y es donde se notan las diferencias. Kev-4B obtiene 0.913 en prompts en japonés; los modelos de 27B obtienen 1.000. La vinculación de casos idénticos en resúmenes de investigación en japonés separa por completo los positivos de los negativos en todos los modelos de 27B.
-
-**¿Adónde van mis datos?** Solo el estado renderizado va al endpoint indicado en `send_to`. Con `pii: possible` (el valor por defecto) el store guarda un hash de las entradas, nunca el texto. `--tainted` mantiene todo en local. Las claves se leen de `DECISIONS_API_KEY` o `TYPESAFE_API_KEY` y de ningún otro sitio.
-
-**El store no deja de crecer.** `shikii gc` elimina los registros de más de 30 días que nunca recibieron una etiqueta. Los registros etiquetados y las etiquetas se conservan para siempre, porque son el material de calibración. Es una simulación a menos que pases `--apply`.
-
-**¿Tiende a favorecer la primera opción?** Mide antes de corregir: `shikii bias <spec> --permutations 100` baraja las opciones e informa de los cambios de respuesta y del desplazamiento de posición. Kev-4B: 0 cambios en 100, desplazamiento ≤ 0.024. Los LLM corrientes leídos mediante logits pueden diferir; el comando existe para ellos.
-
-## Documentación
-
-- [`docs/decision-ops-framework.md`](../decision-ops-framework.md): notas de diseño, qué posee el framework y qué se niega a poseer, el plan de verificación y lo que se confirmó.
-- [`docs/operations.md`](../operations.md): cómo detener o revertir cada pieza en movimiento, cómo interpretar un fallo, qué falta todavía.
-- [`docs/model-comparison.md`](../model-comparison.md): la tabla comparativa y cómo reproducirla.
-- [`docs/guide.ja.md`](../guide.ja.md): la guía extensa en japonés, con todos los comandos y un ciclo completo en un caso real.
-- [`integrations/readout.md`](../../integrations/readout.md), [`integrations/bonjev.md`](../../integrations/bonjev.md), [`integrations/claude-code.md`](../../integrations/claude-code.md): las tres conexiones que usamos.
-- [`examples/`](../../examples/) y [`testdata/`](../../testdata/README.md): un spec sin calibración para empezar, y los conjuntos etiquetados sintéticos usados en los tests.
-
-Los comandos:
-
-```
-shikii decide    <spec> -i k=v ... [--hosted URL] [--local URL] [--tainted] [--store DIR] [--json]
-shikii label     <trace_id> <truth> | --last --spec-id ID <truth>   [--weight W] [--source ask|outcome|manual]
-shikii calibrate <spec> [--labeled file] [--model M] [--store DIR] [--write] [--force]
-shikii check     <spec>...  [--store DIR]                 # CI: hash obsoleto, bloques escritos a mano, precision@act por debajo de act → exit 1
-shikii drift     <spec> --model M [--window N]            # etiquetas recientes frente al Brier y la precisión registrados en la calibración
-shikii bias      <spec> [--rows K] [--permutations N]     # ¿la respuesta depende del orden de las opciones?
-shikii status    [spec...] [--store DIR]                  # inventario: registros, etiquetas, orígenes, estado por (modelo, hash)
-shikii gc        [spec...] [--older-than 30d] [--apply]   # elimina registros antiguos sin etiqueta; simulación por defecto
-shikii hash      <spec>
-```
+- [La guía larga](../guide.md): cada comando, el inicio rápido completo, la API HTTP, qué se puede conectar, los resultados medidos y las preguntas frecuentes · [la referencia del archivo de decisión](../../skills/shikii/references/spec.md)
+- [Notas de diseño](../decision-ops-framework.md): de qué se hace cargo el framework y de qué se niega a hacerse cargo, y qué se verificó · [Arquitectura](../architecture.md) (japonés)
+- [Decisiones listas para usar](../../decisions/README.md) · [la wiki de cómo preguntar](../../wiki/index.md) · [benchmark](../bench.md) · [comparación de modelos](../model-comparison.md) · [registro de operación](../operations.md)
+- [Conexiones](../../integrations/mcp.md): MCP, el adaptador que convierte un modelo de chat corriente en un modelo de decisión, Docker, Claude Code
+- [Guía en japonés](../guide.ja.md) con una vuelta completa de un caso real
 
 ## Contribuir
 
-Los issues y los pull requests son bienvenidos. Una sola regla: un test que protege un comportamiento debe mostrarse fallando primero. Rompe el comportamiento a propósito, ejecuta el test, registra cómo falló, y luego corrígelo y registra que pasa. La documentación enumera esas mutaciones para cada rama de seguridad; mantén esa lista honesta.
+Los issues y los pull requests son bienvenidos. Un test que protege un comportamiento se muestra primero fallando: rompa el comportamiento a propósito, ejecute el test, anote cómo falló, luego arréglelo y anote que pasa. Cada número de la documentación sale de un script. Solo las personas cambian el estado de una afirmación de la wiki (`confirmed` / `tentative` / `rejected`), con la ejecución que sirve de prueba. Sin opciones nuevas: la disposición (`decisions/` `wiki/` `.shikii/` en la raíz del proyecto) y las reglas fijas hacen el trabajo.
 
 ## Licencia
 
-[Apache 2.0](../../LICENSE). Las licencias de los modelos son aparte: Kev-4B y la familia Bonsai son Apache 2.0, OpenJev es CC BY-NC 4.0, Jev alojado es el servicio de TypeSafe. shikii almacena tus probabilidades y etiquetas, nada de los modelos.
+[Apache 2.0](../../LICENSE). Las licencias de los modelos son aparte: Kev-4B y la familia Bonsai son Apache 2.0, OpenJev es CC BY-NC 4.0, el Jev alojado es un servicio de TypeSafe. shikii guarda sus probabilidades y etiquetas, nada de los modelos.
