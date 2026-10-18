@@ -59,6 +59,10 @@ for f in README.md docs/readme/README_*.md; do
   [ -n "${n}" ] || { err "$f: tests のバッジが無い"; continue; }
   [ "${n}" = "${actual}" ] || err "$f: tests のバッジは ${n}、実測は ${actual}"
 done
+# 本文の「There are N Go tests」も同じ数(バッジだけ直して本文が古いまま、を防ぐ)
+while IFS= read -r n; do
+  [ "${n}" = "${actual}" ] || err "README.md: 本文の「${n} Go tests」は実測 ${actual} と違う"
+done < <(grep -oE 'are [0-9]+ Go tests' README.md | grep -oE '[0-9]+' || true)
 
 # 5. Go の版: go.mod の版と、README の本文の「Go 1.xx」が一致(バッジは 1.27 なのに本文が 1.24、のような矛盾を防ぐ)
 gover=$(grep -m1 '^go ' go.mod | awk '{print $2}' | cut -d. -f1,2)
@@ -85,6 +89,14 @@ if command -v python3 >/dev/null; then
 else
   err "python3 が無いので図の検査(7)ができない"
 fi
+
+# 8. /v1 に本文を送る curl の例は Content-Type を付けている(curl の既定は form なので、無いと serve が 415 で蹴る。初めての利用者が README の例をそのまま打って止まった)
+for f in README.md docs/*.md docs/readme/README_*.md integrations/*.md skills/shikii/SKILL.md skills/shikii/references/*.md; do
+  [ -e "$f" ] || continue
+  while IFS= read -r line; do
+    case "$line" in *"Content-Type: application/json"*) ;; *) err "$f: /v1 に送る curl の例に -H 'Content-Type: application/json' が無い: ${line}";; esac
+  done < <(grep -E 'curl .*/v1/.* (-d|--data)' "$f" || true)
+done
 
 if [ "$fail" -ne 0 ]; then exit 1; fi
 echo "check-readme: ok ($(wc -w <<<"$codes" | tr -d ' ') languages)"

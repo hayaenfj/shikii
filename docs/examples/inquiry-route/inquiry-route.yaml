@@ -1,0 +1,39 @@
+# inquiry-route: made by `shikii new`. The calibration block is written by `shikii calibrate --write`; never by hand.
+id: inquiry-route
+version: 1
+type: choice
+question: この問い合わせメールは、どの担当に回すべきか。
+options:
+  - id: billing
+    description: 請求・支払い・領収書・料金に関する問い合わせ
+  - id: fault
+    description: 製品やサービスが動かない・壊れた・エラーが出るという報告
+  - id: cancel
+    description: 解約・退会・契約の停止の申し出
+  - id: other
+    description: 上のどれにも当たらない問い合わせ(資料請求、感想、営業など)
+state:
+  template: |
+    {{ body }}
+  required:
+    - body
+policy:
+  send_to:
+    - local
+  pii: true
+thresholds:
+  act: 0.75
+  ask: 0.6
+eval:
+  min_n: 20   # 試しの件数(手持ちの 22 件に合わせた)。業務では 50 以上に戻す
+display:
+  ja:
+    title: 問い合わせメールの振り分け
+variants:
+  - name: other-tight
+    options:
+      other: 上のどれにも当たらないもの。資料請求、感想、お礼、営業、採用、新機能の予定などの質問。お金・不具合・解約の話が少しでもあれば other ではない
+  - name: question-support
+    question: カスタマーサポートに届いたこのメールは、請求・不具合・解約・その他のどの窓口が対応すべきか。
+  - name: plain-layout
+    layout: plain

@@ -9,11 +9,11 @@
 **A model gives you a probability. shikii tells you whether you may act on it.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-173%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-179%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
-**[Architecture](docs/architecture.md) (Japanese) · [Design notes](docs/decision-ops-framework.md) · [Operations](docs/operations.md) · [Model comparison](docs/model-comparison.md) · [Benchmark](docs/bench.md)**
+**[Architecture](docs/architecture.md) (Japanese) · [Design notes](docs/decision-ops-framework.md) · [Operations](docs/operations.md) · [Model comparison](docs/model-comparison.md) · [Benchmark](docs/bench.md) · [A first user's walkthrough](docs/examples/inquiry-route.md) (Japanese)**
 
 [Quick start](#quick-start) · [How shikii works](#how-shikii-works) · [What you can connect](#what-you-can-connect) · [Results](#results) · [FAQ](#faq) · [Documentation](#documentation)
 
@@ -103,7 +103,8 @@ bin/shikii check examples/prompt-intent.yaml        # exit 1 when the wording ch
 
 ```sh
 bin/shikii serve --specs decisions --local http://127.0.0.1:8080        # http://127.0.0.1:8095/
-curl -s localhost:8095/v1/decide -d '{"spec":"prompt-intent","inputs":{"message":"fix the typo"}}'
+curl -s localhost:8095/v1/decide -H 'Content-Type: application/json' -d '{"spec":"prompt-intent","inputs":{"message":"fix the typo"}}'
+curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec":"prompt-intent","trace_id":"<from the decide response>","truth":"change_request"}'
 ```
 
 Programs call `POST /v1/decide` and `POST /v1/label` from any language. People open the page: the decisions still waiting for an answer are listed (newest 30 per spec), `ask` first, with one button per option. Press the button, the truth is stored, and when a spec reaches `eval.min_n` the server calibrates and writes the spec by itself. Nobody types a trace id. The page is a single HTML file with no external loads, so it works on a laptop with no internet. It has a language switch; add a `display:` block to a spec (per language: title, question, option or level names) and the page shows the decision in that language too. `display` is never sent to the model and is not part of the calibration key.
@@ -182,7 +183,7 @@ bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # needs Go 1.27+
-cd <project root> && shikii init   # folders; MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill (points at a local model on :8080; hosted only? remove --local from all four entries by hand. Unused tool files can be deleted or gitignored; CLAUDE.md-only projects get no AGENTS.md)
+cd <project root> && shikii init   # folders (wiki/ gets the shared knowledge: types, patterns, model pages); MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill (points at a local model on :8080; hosted only? remove --local from all four entries by hand. Unused tool files can be deleted or gitignored; CLAUDE.md-only projects get no AGENTS.md)
 make install          # copies bin/shikii and bin/shikii-readout to ~/.local/bin
 git pull && make install
 shikii doctor         # what is running, what is missing, and the command that fixes it
@@ -229,7 +230,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in `docs/operations.md` and the integration notes. There are 138 Go tests across 8 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in `docs/operations.md` and the integration notes. There are 179 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 

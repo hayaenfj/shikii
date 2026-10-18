@@ -7,4 +7,4 @@
 - 5 段の score が得意（同一の不具合 P(≥3) 0.950、無関係 0.008）
 - 商用可（Apache 2.0）、fork 不要。この wiki では「用途を選ばない既定」に最も近いモデル
 
-証拠: [integrations/readout.md](../../integrations/readout.md)、[docs/model-comparison.md](../../docs/model-comparison.md)
+証拠: [integrations/readout.md](https://github.com/hayaenfj/shikii/blob/main/integrations/readout.md)、[docs/model-comparison.md](https://github.com/hayaenfj/shikii/blob/main/docs/model-comparison.md)

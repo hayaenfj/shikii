@@ -7,4 +7,4 @@
 - 順序バイアス: 100 回並べ替えて反転 0、ずれ ≤ 0.024。無視できる
 - 5 段の score は弱い（同一の不具合の組で P(≥3) = 0.418）。順序尺度は 27B 級に任せる方がよい
 
-証拠: [docs/model-comparison.md](../../docs/model-comparison.md)
+証拠: [docs/model-comparison.md](https://github.com/hayaenfj/shikii/blob/main/docs/model-comparison.md)

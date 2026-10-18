@@ -47,4 +47,4 @@ Ternary-Bonsai-27B(readout、state-last)で同じ 5 文に 4 通りの聞き方�
 | thanks, that is all | 0.06 | 0.02 | **0.01** | 0.02 |
 | 了解 | 0.16 | 0.05 | **0.05** | 0.20 |
 
-否定の列挙で終わる文では、明らかな依頼 3 つが 0.42〜0.62 で、分解の 1 段目としては使えない(prompt-intent の two-step が top-1 0.306 に落ちた run: [2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64](../runs/2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64.md))。
+否定の列挙で終わる文では、明らかな依頼 3 つが 0.42〜0.62 で、分解の 1 段目としては使えない(prompt-intent の two-step が top-1 0.306 に落ちた run: [2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64](https://github.com/hayaenfj/shikii/blob/main/wiki/runs/2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64.md))。

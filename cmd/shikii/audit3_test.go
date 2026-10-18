@@ -179,7 +179,7 @@ func TestHumanCheckedCountsTracesAndLevelScoresWriteNoMachineTruth(t *testing.T)
 		return cmdLabel([]string{trace, "change_request", "--store", storeDir, "--source", "audit"})
 	})
 	out = capture(t, func() error { return cmdStatus([]string{specPath, "--store", storeDir}) })
-	if !strings.Contains(out, "human-checked so far: 1") {
+	if !strings.Contains(out, "audit answers so far: 1") {
 		t.Fatalf("one audited decision is one human check, not two labels:\n%s", out)
 	}
 

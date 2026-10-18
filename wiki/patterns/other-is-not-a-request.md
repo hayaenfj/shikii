@@ -17,7 +17,7 @@ status: tentative  <!-- 2026-10-18: 効いたのは Kev-4B の 1 組だけ。別
 
 ## 証拠
 
-- prompt-intent v1 → v2（Kev-4B、62 件）: 誤り 21 件のうち 19 件が other に落ちていた → 説明を具体化して top-1 0.682 → 0.903、other への誤り 0。[specs/prompt-intent](../specs/prompt-intent.md)
+- prompt-intent v1 → v2（Kev-4B、62 件）: 誤り 21 件のうち 19 件が other に落ちていた → 説明を具体化して top-1 0.682 → 0.903、other への誤り 0。[specs/prompt-intent](https://github.com/hayaenfj/shikii/blob/main/wiki/specs/prompt-intent.md)
 - prompt-intent v2 で other をさらに締める候補（other-tight）: Ternary-Bonsai-27B で 0.968 → 0.984 だが holdout 0.952 で不採用（62 件では有意でない）。効き方は頭打ちに近い
 
 ## 反証

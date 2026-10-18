@@ -292,7 +292,7 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 	}
 	sp, err := s.spec(req.Spec)
 	if errors.Is(err, errNotFound) {
-		writeErr(w, 404, fmt.Errorf("unknown spec %q", req.Spec))
+		writeUnknownSpec(w, req.Spec)
 		return
 	} else if err != nil {
 		writeErr(w, 500, err)
@@ -327,7 +327,7 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 	}
 	sp, err := s.spec(id)
 	if errors.Is(err, errNotFound) {
-		writeErr(w, 404, fmt.Errorf("unknown spec %q", id))
+		writeUnknownSpec(w, id)
 		return
 	} else if err != nil {
 		writeErr(w, 500, err)
@@ -384,7 +384,7 @@ func (s *server) handleRedo(w http.ResponseWriter, r *http.Request) {
 	}
 	sp, err := s.spec(req.Spec)
 	if errors.Is(err, errNotFound) {
-		writeErr(w, 404, fmt.Errorf("unknown spec %q", req.Spec))
+		writeUnknownSpec(w, req.Spec)
 		return
 	} else if err != nil {
 		writeErr(w, 500, err)
@@ -550,7 +550,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	sp, err := s.spec(id)
 	if errors.Is(err, errNotFound) {
-		writeErr(w, 404, fmt.Errorf("unknown spec %q", id))
+		writeUnknownSpec(w, id)
 		return
 	} else if err != nil {
 		writeErr(w, 500, err)
@@ -709,4 +709,14 @@ func mustSub(fsys fs.FS, dir string) fs.FS {
 		panic(err)
 	}
 	return sub
+}
+
+// writeUnknownSpec は spec の id が解決できない時の返事。id が空なら「spec が要る」と言う(初めての利用者が /v1/redo に trace_id だけ送った時、
+// `unknown spec ""` では何を足せばよいか分からなかった)。
+func writeUnknownSpec(w http.ResponseWriter, id string) {
+	if id == "" {
+		writeErr(w, 400, errors.New(`spec is required: the decision's spec id (the file name in decisions/ without .yaml, as in /v1/queue?spec=<id>)`))
+		return
+	}
+	writeErr(w, 404, fmt.Errorf("unknown spec %q", id))
 }

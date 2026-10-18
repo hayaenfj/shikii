@@ -59,7 +59,7 @@ func (s *server) runTuneCaptured(o tuneOpts) (*tuneResult, string, error) {
 func (s *server) handleTuneGet(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("spec")
 	if _, err := s.specRef(id); errors.Is(err, errNotFound) {
-		writeErr(w, 404, fmt.Errorf("unknown spec %q", id))
+		writeUnknownSpec(w, id)
 		return
 	} else if err != nil {
 		writeErr(w, 500, err)
@@ -89,7 +89,7 @@ func (s *server) decodeTuneReq(w http.ResponseWriter, r *http.Request) (specRef,
 	}
 	ref, err := s.specRef(req.Spec)
 	if errors.Is(err, errNotFound) {
-		writeErr(w, 404, fmt.Errorf("unknown spec %q", req.Spec))
+		writeUnknownSpec(w, req.Spec)
 		return specRef{}, 0, false
 	} else if err != nil {
 		writeErr(w, 500, err)

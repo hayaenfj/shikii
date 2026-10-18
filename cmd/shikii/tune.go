@@ -210,7 +210,11 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		fmt.Fprintf(stdout, "note: %d truth(s) could not be scored (missing input, or no permitted endpoint for tainted text) and were left out\n", unscorable)
 	}
 	if len(bank) < sp.Eval.MinN {
-		return nil, fmt.Errorf("tune: %d truths < eval.min_n=%d; choosing a wording on fewer truths is guesswork. Collect more (shikii serve) or pass --labeled", len(bank), sp.Eval.MinN)
+		hint := "collect more truths (shikii serve, shikii label, shikii import), or for a trial lower eval.min_n in the spec to the truths you have"
+		if labeledPath == "" {
+			hint += "; truths in a file are read with --labeled FILE"
+		}
+		return nil, fmt.Errorf("tune: %d truths < eval.min_n=%d; choosing a wording on fewer truths is guesswork. %s", len(bank), sp.Eval.MinN, hint)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()

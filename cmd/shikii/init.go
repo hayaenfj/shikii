@@ -24,12 +24,20 @@ func cmdInit(args []string) error {
 	if len(args) > 0 {
 		return errors.New("usage: shikii init  (no flags: it prepares the current folder and the agent)")
 	}
-	for _, d := range []string{"decisions", "wiki", ".shikii"} {
+	for _, d := range []string{"decisions", "wiki", filepath.Join("wiki", "specs"), filepath.Join("wiki", "runs"), ".shikii"} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return err
 		}
 	}
 	fmt.Fprintln(stdout, "folders: decisions/ (specs) wiki/ (knowledge) .shikii/ (records and truths)")
+	// 既製の知識: 型・パターン・モデルのページを、無いものだけ写す(tune --propose がここを読んで候補を作る。人が直したページは触らない)
+	n, err := seedWiki("wiki")
+	if err != nil {
+		return fmt.Errorf("wiki: %w", err)
+	}
+	if n > 0 {
+		fmt.Fprintf(stdout, "wiki/: %d pages of shared knowledge added (index.md, types/, patterns/, models/; pages you already have are never overwritten)\n", n)
+	}
 
 	// MCP の設定: Claude Code(.mcp.json)、Cursor(.cursor/mcp.json)、OpenCode(opencode.json の mcp)、Codex(~/.codex/config.toml)。
 	// 既に shikii の項があれば触らない(人が --proposer などを足していても残る)。他の項と鍵も残す。
@@ -87,6 +95,37 @@ func cmdInit(args []string) error {
 	fmt.Fprintf(stdout, "skill: %s replaced (the agent's rules; not a place to edit by hand, change skills/shikii in the repo instead)\n", filepath.Join("~", ".claude", "skills", "shikii"))
 	fmt.Fprintln(stdout, "next: shikii up  (start a local model), then shikii new <id> or copy decisions/*.yaml from the repo; shikii serve for the answer page")
 	return nil
+}
+
+// seedWiki は埋め込みの既製の知識(shikii.WikiFS)を dst(プロジェクトの wiki/)に写す。既にあるファイルは触らない。写した数を返す。
+func seedWiki(dst string) (int, error) {
+	n := 0
+	err := fs.WalkDir(shikii.WikiFS, "wiki", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel := strings.TrimPrefix(p, "wiki/")
+		if p == "wiki" {
+			return nil
+		}
+		target := filepath.Join(dst, filepath.FromSlash(rel))
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if fileExists(target) {
+			return nil
+		}
+		b, err := shikii.WikiFS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(target, b, 0o644); err != nil {
+			return err
+		}
+		n++
+		return nil
+	})
+	return n, err
 }
 
 // addJSONEntry は JSON の設定ファイルの key(object)に name の項を足す。既にあれば触らず false。

@@ -16,4 +16,4 @@ spec に `thresholds.level: k` を書く。帯は最上位の段階の確率で�
 - relatedness-level、同一の不具合の組（Ternary-Bonsai-27B readout）: 最上位の確率 0.544（ask 止まり）、P(≥3) = 0.950（act）。無関係の組は 0.008
 - 旧題材でも同じ形（最上位 0.52 → P(≥3) 0.96、Kev-4B、2026-10-16）
 
-[docs/guide.ja.md](../../docs/guide.ja.md) の「score の帯」
+[docs/guide.ja.md](https://github.com/hayaenfj/shikii/blob/main/docs/guide.ja.md) の「score の帯」

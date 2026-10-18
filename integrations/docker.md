@@ -14,7 +14,7 @@ docker compose up            # 初回は Kev-4B(約 2.5 GB)を取ってくる
 - 画面は `127.0.0.1:8095` にだけ出す（LAN には出さない）。容れ物の中では shikii は全ての口で待つ（`/.dockerenv` があれば。ホストで直接動かす時は今までどおり 127.0.0.1 だけ）
 - 鍵は環境変数でだけ渡す。hosted も使うなら compose の `environment:` に `DECISIONS_API_KEY` を足す
 - 普通の GGUF（素のチャット用モデル）を使うなら、`llama` の command を `-m <file>` にし、間に `shikii-readout` の容れ物を立てて shikii の `--local` をそこに向ける（compose の末尾のコメント）
-- 判定を自分のプログラムから叩くなら `POST http://127.0.0.1:8095/v1/decide`、正解は `/v1/label`（[mcp.md](mcp.md) と同じ口）
+- 判定を自分のプログラムから叩くなら `POST http://127.0.0.1:8095/v1/decide`、正解は `/v1/label`（[mcp.md](mcp.md) と同じ口。本文は JSON で `-H 'Content-Type: application/json'` が要る。口の一覧は [guide.ja.md](../docs/guide.ja.md#serve-の-http-api)）
 
 画像は `Dockerfile`（3 段。実行側は distroless、root では動かない）。CI が毎回 `docker build` して壊れていないことを確かめる。
 - 3 段の中身: (a) `node:24-alpine` で答え合わせの画面（`web/`、Svelte）を組む → (b) `golang:1.27` で (a) の結果を `web/dist` に置いて `shikii` と `shikii-readout` を組む（画面は実行ファイルに埋め込まれる）→ (c) distroless に実行ファイルだけを置く。

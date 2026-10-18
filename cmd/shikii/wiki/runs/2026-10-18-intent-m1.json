@@ -1,0 +1,48 @@
+{
+  "spec": "intent",
+  "spec_path": "/Users/falcon/tmp/TestTooFewTruthsSaysWhatToDoNext2590069044/001/intent.yaml",
+  "spec_hash": "9f30e659c8f2b1f1",
+  "version": 1,
+  "model": "m1",
+  "truths": 2,
+  "at": "2026-10-18T16:19:47+09:00",
+  "run": "2026-10-18-intent-m1",
+  "run_page": "wiki/runs/2026-10-18-intent-m1.md",
+  "candidates": [
+    {
+      "name": "current",
+      "top1": 1,
+      "brier": 0.009999999999999995,
+      "prec_at_act": 1,
+      "rec_at_act": 1,
+      "change": ""
+    },
+    {
+      "name": "strict",
+      "top1": 1,
+      "brier": 0.009999999999999995,
+      "prec_at_act": 1,
+      "rec_at_act": 1,
+      "change": "question: What exactly is asked?"
+    }
+  ],
+  "holdout": 1,
+  "have_holdout": true,
+  "holdout_better": 0,
+  "holdout_worse": 0,
+  "p_value": 1,
+  "winner": "current",
+  "adoptable": false,
+  "decision": "kept current (nothing beats it; ties keep it)",
+  "lesson": "none of 1 candidates beat the current wording (top-1 1.000) on 2 truths",
+  "current_wording": {
+    "question": "What is asked?",
+    "options": {
+      "change_request": "wants a change",
+      "other": "none",
+      "question": "wants an answer"
+    },
+    "template": "{{ message }}"
+  },
+  "adopted": false
+}

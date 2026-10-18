@@ -15,4 +15,4 @@
 
 ## 証拠
 
-- [same-issue / same-inquiry](../specs/same-issue.md): 5 つの口 × 2 セットの 10 通り全部で正負が完全に分かれた（2026-10-17）
+- [same-issue / same-inquiry](https://github.com/hayaenfj/shikii/blob/main/wiki/specs/same-issue.md): 5 つの口 × 2 セットの 10 通り全部で正負が完全に分かれた（2026-10-17）

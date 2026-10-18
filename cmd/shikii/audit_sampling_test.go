@@ -163,7 +163,7 @@ func TestCheckMeasuresActPrecisionOnHumanTruthsToo(t *testing.T) {
 		t.Fatalf("below min_n check reports the count without failing:\n%s", out)
 	}
 	out = capture(t, func() error { return cmdStatus([]string{specPath, "--store", storeDir}) })
-	if !strings.Contains(out, "audit: 1 in 20 act decisions is shown to a person; human-checked so far: 1") {
+	if !strings.Contains(out, "audit: 1 in 20 act decisions is shown to a person; audit answers so far: 1") {
 		t.Fatalf("status must show the audit sampling state:\n%s", out)
 	}
 }

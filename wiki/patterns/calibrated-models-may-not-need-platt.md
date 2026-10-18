@@ -19,4 +19,4 @@ status: confirmed
 - Bonsai 2 27B（BonJev）: 0.049 → 0.019、0.084 → 0.028。普通の LLM には大きく効く
 - Ternary-Bonsai-27B（readout）: 0.048 → 0.024、0.033 → 0.020
 
-[docs/model-comparison.md](../../docs/model-comparison.md)
+[docs/model-comparison.md](https://github.com/hayaenfj/shikii/blob/main/docs/model-comparison.md)

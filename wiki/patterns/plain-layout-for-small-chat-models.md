@@ -25,7 +25,7 @@ retest:
 ## いつ効くか
 
 - モデル: 決定モデルとして学習されていない、素のチャット用モデルを `shikii-readout` で読む時（Qwen3-4B で確認）
-- 効かない / 要らない: 決定モデル（Kev-4B 等）は配置を見ない。27B readout（Ternary-Bonsai）は state-last で既に 0.968、plain で 0.984（Brier 0.0136 → 0.0095）、plain + 短い質問で 1.000。害は無いが holdout は 1 勝 0 敗（p=0.5）で門を越えず現状維持（[run](../runs/2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64-3.md)）。正解が増えれば決まる
+- 効かない / 要らない: 決定モデル（Kev-4B 等）は配置を見ない。27B readout（Ternary-Bonsai）は state-last で既に 0.968、plain で 0.984（Brier 0.0136 → 0.0095）、plain + 短い質問で 1.000。害は無いが holdout は 1 勝 0 敗（p=0.5）で門を越えず現状維持（[run](https://github.com/hayaenfj/shikii/blob/main/wiki/runs/2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64-3.md)）。正解が増えれば決まる
 
 ## 書き方
 
@@ -43,7 +43,7 @@ Qwen3-4B Q8_0（本家 llama.cpp 0.7.0 + `shikii-readout`）、prompt-intent の
 | plain + 短い質問 | 0.887 | 0.0975 | |
 | mlx で平文の prompt（対照、bf16） | 0.903 | 0.0967 | readout の plain と同じ数字 → 差は配置 |
 
-run: [2026-10-18-prompt-intent-qwen3-4b-q8-2](../runs/2026-10-18-prompt-intent-qwen3-4b-q8-2.md)。比較ベンチの文脈は [docs/bench.md](../../docs/bench.md)。
+run: [2026-10-18-prompt-intent-qwen3-4b-q8-2](https://github.com/hayaenfj/shikii/blob/main/wiki/runs/2026-10-18-prompt-intent-qwen3-4b-q8-2.md)。比較ベンチの文脈は [docs/bench.md](https://github.com/hayaenfj/shikii/blob/main/docs/bench.md)。
 
 ## 理屈（推測）
 

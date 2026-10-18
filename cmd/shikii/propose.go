@@ -104,6 +104,14 @@ func wikiContext(wikiDir string, sp *spec.Spec, model string) string {
 }
 
 // modelSlug はモデル名から wiki のページ名を作る(量子化と配置の接尾辞は落とす)。
+// wikiLink は wiki の rel(wiki/ からの相対)のページがあれば runs/ からの Markdown のリンク、無ければ文字だけ。
+func wikiLink(wikiDir, rel, text string) string {
+	if fileExists(filepath.Join(wikiDir, filepath.FromSlash(rel))) {
+		return fmt.Sprintf("[%s](../%s)", text, rel)
+	}
+	return text
+}
+
 func modelSlug(model string) string {
 	s := strings.ToLower(model)
 	if i := strings.Index(s, "+"); i >= 0 {
@@ -345,7 +353,9 @@ func writeRunPage(wikiDir string, sp *spec.Spec, model string, cands []candidate
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# tune %s on %s (%s)\n\n", sp.ID, model, day)
-	fmt.Fprintf(&b, "spec: [%s](../specs/%s.md) · model page: [%s](../models/%s.md) · type: [%s](../types/%s.md) · truths: %d · hash before: %s\n\n", sp.ID, sp.ID, slug, slug, sp.Type, sp.Type, len(scores[0].p), sp.Hash())
+	// モデルと型のページは、あるものだけリンクにする(新しいプロジェクトの wiki に無いページへ張ると、利用者の wiki でリンク切れになる)。spec のページはこの下で必ず作る
+	fmt.Fprintf(&b, "spec: [%s](../specs/%s.md) · model page: %s · type: %s · truths: %d · hash before: %s\n\n", sp.ID, sp.ID,
+		wikiLink(wikiDir, "models/"+slug+".md", slug), wikiLink(wikiDir, "types/"+string(sp.Type)+".md", string(sp.Type)), len(scores[0].p), sp.Hash())
 	b.WriteString("| candidate | top-1 | brier | prec@act | rec@act | what changes |\n|---|---|---|---|---|---|\n")
 	for i, s := range scores {
 		fmt.Fprintf(&b, "| %s | %.3f | %.4f | %.3f | %.3f | %s |\n", s.name, s.acc, s.brier, s.prec, s.rec, strings.ReplaceAll(describeVariant(sp, cands[i].sp), "|", "\\|"))

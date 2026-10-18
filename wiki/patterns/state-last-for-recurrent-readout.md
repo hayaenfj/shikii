@@ -33,7 +33,7 @@ retest:
 
 ## 証拠
 
-- Ternary-Bonsai-27B Q2_g64: state-first で top-1 0.919 / 日本語 0.870 → state-last で 0.968 / 1.000（同じ重み、62 件）。[integrations/readout.md](../../integrations/readout.md)
+- Ternary-Bonsai-27B Q2_g64: state-first で top-1 0.919 / 日本語 0.870 → state-last で 0.968 / 1.000（同じ重み、62 件）。[integrations/readout.md](https://github.com/hayaenfj/shikii/blob/main/integrations/readout.md)
 - Bonsai 2 27B（fork）: 0.968 で変わらず。悪くはならない
 
 ## 副作用

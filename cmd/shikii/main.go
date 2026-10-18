@@ -487,7 +487,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 			return err
 		}
 		if o.write && !ok {
-			return fmt.Errorf("calibrate: refusing to write (see WARNING above; use --force to override)")
+			return fmt.Errorf("calibrate: refusing to write: fewer human truths than eval.min_n=%d (see WARNING above). Collect more truths (shikii serve, shikii label, shikii import), or for a trial lower eval.min_n in the spec to the truths you have; --force writes anyway but check will flag the line", sp.Eval.MinN)
 		}
 		if o.write {
 			sp.PutCalibration(cal)
@@ -631,7 +631,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	}
 	underMin := nHuman < sp.Eval.MinN
 	if underMin {
-		fmt.Fprintf(stdout, "WARNING: %d human truths (%d samples in all) < eval.min_n=%d; report only, will not write\n", nHuman, len(labels), sp.Eval.MinN)
+		fmt.Fprintf(stdout, "WARNING: %d human truths (%d samples in all) < eval.min_n=%d; report only, will not write (collect more, or lower eval.min_n in the spec for a trial)\n", nHuman, len(labels), sp.Eval.MinN)
 	}
 
 	// 報告は常に出す。書き戻してよいか(ok)は別に返し、--write の時だけ効く。
@@ -1529,11 +1529,15 @@ func cmdDrift(args []string) error {
 	if len(labels) > *window {
 		labels = labels[len(labels)-*window:]
 	}
-	prec, brier, agree := driftMetrics(sp, *c, labels)
+	prec, brier, agree, askN := driftMetrics(sp, *c, labels)
 	fmt.Fprintf(stdout, "spec=%s model=%s window=%d (calibrated %s on n=%d)\n", sp.ID, *model, len(labels), c.FittedAt, c.N)
 	fmt.Fprintf(stdout, "brier:            at calibration=%.4f recent=%.4f\n", c.Brier, brier)
 	fmt.Fprintf(stdout, "precision at act: recent=%.3f (act=%.2f)\n", prec, sp.Thresholds.Act)
-	fmt.Fprintf(stdout, "ask agreement:    %.3f (share of ask-sourced labels where the user picked the model's top)\n", agree)
+	if askN > 0 {
+		fmt.Fprintf(stdout, "ask agreement:    %.3f (share of ask-sourced labels where the user picked the model's top)\n", agree)
+	} else {
+		fmt.Fprintln(stdout, "ask agreement:    n/a (no ask-sourced labels in this window)")
+	}
 	var warn []string
 	if brier > c.Brier+*tol {
 		warn = append(warn, fmt.Sprintf("brier worsened by %.4f (> %.2f)", brier-c.Brier, *tol))
@@ -1550,9 +1554,9 @@ func cmdDrift(args []string) error {
 }
 
 // driftMetrics は較正を当てた直近ラベルの precision@act・Brier・ask での一致率。
-func driftMetrics(sp *spec.Spec, c spec.Calibration, labels []store.Label) (precision, brier, askAgreement float64) {
+func driftMetrics(sp *spec.Spec, c spec.Calibration, labels []store.Label) (precision, brier, askAgreement, askN float64) {
 	probs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
-	var askN, askHit float64
+	var askHit float64
 	for i, l := range labels {
 		var p float64
 		var correct bool
@@ -1580,7 +1584,7 @@ func driftMetrics(sp *spec.Spec, c spec.Calibration, labels []store.Label) (prec
 	if askN > 0 {
 		askAgreement = askHit / askN
 	}
-	return precisionAt(sp.Thresholds.Act, probs, truths, weights), calib.Brier(probs, truths, weights), askAgreement
+	return precisionAt(sp.Thresholds.Act, probs, truths, weights), calib.Brier(probs, truths, weights), askAgreement, askN
 }
 
 // ---------------------------------------------------------------- bias(順序バイアスの測定)
@@ -1595,7 +1599,8 @@ func cmdBias(args []string) error {
 	fs := flag.NewFlagSet("bias", flag.ContinueOnError)
 	var ef endpointFlags
 	ef.bind(fs)
-	labeledPath := fs.String("labeled", "", "state を取る元(省略時は spec の eval.labeled)")
+	labeledPath := fs.String("labeled", "", "state を取る元(省略時は spec の eval.labeled。無ければ store の正解の本文)")
+	storeDir := bindStore(fs)
 	rows := fs.Int("rows", 20, "使う行数の上限")
 	perms := fs.Int("permutations", 5, "行ごとに回す順列の数")
 	seed := fs.Int64("seed", 1, "順列の乱数の種")
@@ -1613,16 +1618,18 @@ func cmdBias(args []string) error {
 	if *labeledPath == "" {
 		*labeledPath = sp.Eval.Labeled
 	}
-	if *labeledPath == "" {
-		return fmt.Errorf("bias: need --labeled (or eval.labeled) for states")
-	}
-	b, err := os.ReadFile(*labeledPath)
+	// state は calibrate / tune と同じ貯金から: --labeled のファイルと store の正解の本文(入力ごとに最新)
+	bank, _, err := truthBank(sp, store.Store{Dir: *storeDir}, *labeledPath)
 	if err != nil {
 		return err
 	}
-	var lab []labeled
-	if err := json.Unmarshal(b, &lab); err != nil {
-		return fmt.Errorf("%s: %w", *labeledPath, err)
+	if len(bank) == 0 {
+		return fmt.Errorf("bias: no states to ask: no truths in %s and no --labeled file (shikii label / shikii import first)", *storeDir)
+	}
+	lab := make([]labeled, 0, len(bank))
+	for _, row := range bank {
+		truth, _ := json.Marshal(row.truth)
+		lab = append(lab, labeled{Inputs: row.inputs, Truth: truth, Weight: row.weight})
 	}
 	if len(lab) > *rows {
 		lab = lab[:*rows]
@@ -1808,7 +1815,8 @@ func cmdStatus(args []string) error {
 					audited[l.TraceID] = true
 				}
 			}
-			fmt.Fprintf(stdout, "  audit: 1 in 20 act decisions is shown to a person; human-checked so far: %d\n", len(audited))
+			// receipt の「human-checked act decisions」とは別の数: こちらは抜き取りに人が答えた判定の数。receipt は人の正解のうち、この線なら act に入るもの全部
+			fmt.Fprintf(stdout, "  audit: 1 in 20 act decisions is shown to a person; audit answers so far: %d\n", len(audited))
 		}
 		for key, n := range byKey {
 			note := ""

@@ -5,4 +5,4 @@
 - 遅い: 1 問 3.8 秒、常駐 16GB。バッチ向き。hook の 1 問には重い
 - 非商用。手元の既定には使えない
 
-証拠: [docs/model-comparison.md](../../docs/model-comparison.md)
+証拠: [docs/model-comparison.md](https://github.com/hayaenfj/shikii/blob/main/docs/model-comparison.md)

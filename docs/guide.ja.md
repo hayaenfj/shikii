@@ -64,10 +64,37 @@ Kev-4B は英語のみと表記されているが、v2 の文言なら日本語�
 | 同じ画面の別の不具合 | 0.712 | 0.048 | 1.18 |
 | 無関係 | 0.929 | 0.008 | 0.09 |
 
+## 判定の定義ファイル(spec)の書き方
+
+`shikii new <id>` が対話(またはフラグ `--type --question --option id=説明 --input name --pii true|false --send-to local`)で作る。項目の意味と書き方の全部は [skills/shikii/references/spec.md](../skills/shikii/references/spec.md)(`shikii init` が `~/.claude/skills/shikii/references/spec.md` にも置く)。
+
+正解が `eval.min_n`(既定 50)に足りないうちは `calibrate --write` も `tune` も書かない。手持ちが少ないうちに試すなら、spec の `eval.min_n` を手持ちの件数に下げる。`--force` で書いた線は `check` が「calibrate なら書かなかった線」として落とすので、試しの道には使わない。
+
+## serve の HTTP API
+
+本文は JSON。`-H 'Content-Type: application/json'` が無いと 415 で蹴る。`spec` は `decisions/<id>.yaml` の id。
+
+| 口 | 体 | 返すもの |
+|---|---|---|
+| `POST /v1/decide` | `{"spec","inputs":{…},"tainted":false}` | 判定(band、top、p、trace_id、receipt) |
+| `POST /v1/label` | `{"spec","trace_id","truth","weight":1,"source":"ui"}` | 付けた正解(文脈の段を通った判定は 2 段に付く) |
+| `GET /v1/queue?spec=<id>` | | 未回答(ask と抜き取り。やり直した元は出ない) |
+| `GET /v1/answered?spec=<id>&limit=30` | | 回答済み(人の正解だけ) |
+| `POST /v1/redo` | `{"spec","trace_id"}` | 今の聞き方と線で同じ本文を再判定し、前と今を並べて返す(新しい記録、人の答えは写る) |
+| `GET /v1/status` | | spec ごとの状態(線の有無、正解の数、人の言葉の質問) |
+| `GET /v1/tune?spec=<id>` · `POST /v1/tune/run` · `POST /v1/tune/adopt` | `{"spec","propose"}` · `{"spec","run","meaning_same":true}` | 聞き方の改善の最新・裏で回す・採否 |
+| `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
+| `GET /v1/specs` | | 読み込んでいる spec の一覧 |
+
+```sh
+curl -s localhost:8095/v1/decide -H 'Content-Type: application/json' -d '{"spec":"same-issue","inputs":{"report1":"…","report2":"…"}}'
+curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec":"same-issue","trace_id":"<decide の返事の trace_id>","truth":"yes"}'
+```
+
 ## choice の順序バイアス: `shikii bias`
 
 ```sh
-bin/shikii bias decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --rows 20 --permutations 5
+bin/shikii bias decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --rows 20 --permutations 5   # state は calibrate と同じ貯金(--store の正解の本文、または --labeled)
 ```
 
 選択肢の並びを入れ替えて同じ state を聞き直し、最上位が変わる率(flip rate)と、位置ごとの確率のずれ
