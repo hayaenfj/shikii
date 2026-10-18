@@ -91,6 +91,8 @@ func newServer(o serveOpts) http.Handler {
 	mux.HandleFunc("/v1/tune/run", s.handleTuneRun)
 	mux.HandleFunc("/v1/tune/sync", s.handleTuneSync)
 	mux.HandleFunc("/v1/tune/adopt", s.handleTuneAdopt)
+	mux.HandleFunc("/v1/wiki", s.handleWikiList)
+	mux.HandleFunc("/v1/wiki/claim", s.handleWikiClaim)
 	return mux
 }
 
@@ -575,6 +577,9 @@ const T = {
         records: n => n + ' records', answered: n => n + ' answered', calibrated: m => 'calibrated (' + m + ')', stale: 'stale wording', collecting: (n, m) => 'collecting ' + n + '/' + m, ready: (n, m) => 'ready ' + n + '/' + m,
         withContext: 'asked again with context', contextRung: 'context rung', toPerson: (h, k) => 'to a person ' + h + ' (' + k + ' per 1000)',
         audit: 'audit sample: the machine acted on this; 1 in 20 is shown here so its precision is measured on what people checked',
+        knowledge: 'Knowledge (claims)', claimsCount: (n, p) => n + ' claims, ' + p + ' prose pages', noClaims: 'no claims yet (tune drafts one when a candidate wins)',
+        promote: 'make it a claim (promote)', deleteDraft: 'delete draft', confirm: 'confirm', reject: 'reject', confirmable: 'two independent models support it: you may confirm',
+        promptClaim: 'The generalized claim (not tied to this spec):', promptSlug: 'File name (lowercase, digits, dashes):', promptModels: 'Which models does it apply to?', claimDone: 'recorded',
         noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
         done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration',
         wording: 'Wording', current: 'current', noRun: 'no tune run yet', running: 'measuring candidates…', runTune: 'measure the candidates', runPropose: n => 'ask the model for ' + n + ' candidates and measure',
@@ -585,6 +590,9 @@ const T = {
         records: n => '記録 ' + n, answered: n => '答え済み ' + n, calibrated: m => '線あり (' + m + ')', stale: '文言が古い', collecting: (n, m) => '集めている ' + n + '/' + m, ready: (n, m) => '線を引ける ' + n + '/' + m,
         withContext: '文脈を足して聞き直した', contextRung: '文脈の段', toPerson: (h, k) => '人へ ' + h + '(1000 判定あたり ' + k + ')',
         audit: '抜き取り検査: 機械が自動で動いた判定。20 件に 1 件をここに出し、人が確かめた分で精度を測る',
+        knowledge: '知識(主張)', claimsCount: (n, p) => '主張 ' + n + '、文章のページ ' + p, noClaims: 'まだ主張はありません(tune で勝った候補があれば下書きができます)',
+        promote: '主張にする', deleteDraft: '下書きを消す', confirm: 'confirmed にする', reject: '却下', confirmable: '独立したモデル 2 つが支持: confirmed にできます',
+        promptClaim: '一般化した主張の文(この spec に限らない言い方で):', promptSlug: 'ファイル名(英小文字・数字・ハイフン):', promptModels: '効くモデルの範囲:', claimDone: '記録しました',
         noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
         done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正',
         wording: '聞き方', current: '今の文言', noRun: 'まだ測っていません', running: '候補を測っています…', runTune: '候補を測る', runPropose: n => 'AI に候補を ' + n + ' 個作らせて測る',
@@ -610,6 +618,7 @@ async function load() {
     sp.queue = await j('/v1/queue?spec=' + encodeURIComponent(sp.id) + '&limit=30');
     try { sp.tune = await j('/v1/tune?spec=' + encodeURIComponent(sp.id)); } catch (e) { sp.tune = null; }
   }
+  try { st.wiki = await j('/v1/wiki'); } catch (e) { st.wiki = null; }
   state = st; render();
 }
 function render() {
@@ -648,6 +657,43 @@ function render() {
     sec.appendChild(wordingBlock(sp));
     root.appendChild(sec);
   }
+  if (state.wiki) root.appendChild(knowledgeBlock(state.wiki));
+}
+// 知識の欄: 主張と下書きの一覧(証拠、支持するモデルの数、confirmable の印)。人がすること: 下書きを一般化して主張にする(promote)、confirmed / rejected にする、下書きを消す。
+function knowledgeBlock(wk) {
+  const sec = document.createElement('section');
+  const claims = (wk.claims || []).filter(c => c.is_claim);
+  const prose = (wk.claims || []).filter(c => !c.is_claim).length;
+  sec.innerHTML = '<h2>' + esc(t('knowledge')) + ' <span class="pill">' + esc(t('claimsCount')(claims.length, prose)) + '</span></h2>';
+  if (!claims.length) sec.innerHTML += '<div class="empty">' + esc(t('noClaims')) + '</div>';
+  for (const c of claims) {
+    const el = document.createElement('div'); el.className = 'item';
+    const ev = (c.evidence || []).map(e => '<div class="k">' + esc(e.date + ' · ' + e.model + ' · ' + e.result + ' → ' + e.verdict) + '</div>').join('');
+    let btns = '';
+    if (c.status === 'draft') btns += '<button data-act="promote">' + esc(t('promote')) + '</button><button class="weak" data-act="delete">' + esc(t('deleteDraft')) + '</button>';
+    else {
+      if (c.status !== 'confirmed') btns += '<button data-act="status" data-status="confirmed">' + esc(t('confirm')) + '</button>';
+      if (c.status !== 'rejected') btns += '<button class="weak" data-act="status" data-status="rejected">' + esc(t('reject')) + '</button>';
+    }
+    el.innerHTML = '<div class="meta"><span class="pill ' + (c.status === 'confirmed' ? 'calibrated' : c.status === 'draft' ? 'ready' : '') + '">' + esc(c.status) + '</span><span>' + esc(c.path) + '</span>' +
+      (c.confirmable ? '<span class="audit">' + esc(t('confirmable')) + '</span>' : '') + '</div><div class="text"><b>' + esc(c.claim) + '</b>' +
+      (c.applies_to ? '<div class="k">' + esc(Object.entries(c.applies_to).map(([k, v]) => k + ': ' + v).join(' · ')) + '</div>' : '') + ev + '</div><div class="btns">' + btns + '</div>';
+    el.addEventListener('click', async ev => {
+      const b = ev.target.closest('button'); if (!b) return;
+      const body = { path: c.path, action: b.dataset.act, status: b.dataset.status };
+      if (b.dataset.act === 'promote') {
+        body.claim = prompt(t('promptClaim'), c.claim); if (!body.claim) return;
+        body.slug = prompt(t('promptSlug'), c.path.split('/').pop().replace(/\.md$/, '')); if (!body.slug) return;
+        const models = prompt(t('promptModels'), (c.applies_to && c.applies_to.models) || ''); if (models === null) return;
+        body.applies_to = Object.assign({}, c.applies_to || {}, { models });
+      }
+      for (const x of el.querySelectorAll('button')) x.disabled = true;
+      try { await j('/v1/wiki/claim', { method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body) }); toast(t('claimDone')); load(); }
+      catch (e) { toast(t('error')(e.message)); for (const x of el.querySelectorAll('button')) x.disabled = false; }
+    });
+    sec.appendChild(el);
+  }
+  return sec;
 }
 // 聞き方の欄: 最新の tune の結果、勝った候補の文言、人の「意味は同じ / 違う」、候補を測るボタン
 function wordingBlock(sp) {

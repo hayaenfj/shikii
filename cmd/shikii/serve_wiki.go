@@ -1,0 +1,179 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+// 画面から wiki を育てる口。下書き(機械が tune の run から起草)と主張(人が置いたもの)を一覧し、
+// 人が「下書きを一般化して主張にする」「状態を変える(confirmed / rejected)」「下書きを消す」をする。
+// 状態を変えるのは人だけ。機械は confirmable(支持するモデルが 2 つ以上、反証無し)と言うだけ。
+
+// wikiPages は wiki/patterns と wiki/patterns/drafts のページ(前書きの無いものも、主張ではないと分かるように載せる)。
+func wikiPages() ([]string, error) {
+	a, _ := filepath.Glob(filepath.Join(wikiRoot, "patterns", "*.md"))
+	b, _ := filepath.Glob(filepath.Join(wikiRoot, "patterns", "drafts", "*.md"))
+	all := append(a, b...)
+	sort.Strings(all)
+	return all, nil
+}
+
+func claimSummary(path string) (map[string]any, error) {
+	pg, _, err := readClaimPage(path)
+	if err != nil {
+		return nil, err
+	}
+	models := map[string]bool{}
+	contra := 0
+	for _, e := range pg.Evidence {
+		switch e.Verdict {
+		case "supports":
+			models[e.Model] = true
+		case "contradicts":
+			contra++
+		}
+	}
+	ev := []claimEvidence{}
+	if pg.Evidence != nil {
+		ev = pg.Evidence
+	}
+	out := map[string]any{
+		"path": filepath.ToSlash(path), "claim": pg.Claim, "status": pg.Status, "applies_to": pg.AppliesTo, "evidence": ev,
+		"supporting_models": len(models), "contradicting": contra, "is_claim": pg.Retest != nil || pg.Claim != "",
+		"confirmable": len(models) >= 2 && contra == 0 && pg.Status != "confirmed" && pg.Status != "rejected",
+	}
+	if pg.Retest != nil {
+		out["retest"] = pg.Retest
+	}
+	return out, nil
+}
+
+func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
+	paths, err := wikiPages()
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	claims := []map[string]any{}
+	for _, p := range paths {
+		c, err := claimSummary(p)
+		if err != nil {
+			c = map[string]any{"path": filepath.ToSlash(p), "error": err.Error(), "is_claim": false}
+		}
+		claims = append(claims, c)
+	}
+	writeJSON(w, 200, map[string]any{"claims": claims})
+}
+
+var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,80}$`)
+
+// insidePatterns は path が wiki/patterns(と drafts)の中の .md か。外は触らない。
+func insidePatterns(p string) (string, bool) {
+	clean := filepath.Clean(filepath.FromSlash(p))
+	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") || filepath.Ext(clean) != ".md" {
+		return "", false
+	}
+	dir := filepath.Dir(clean)
+	if dir != filepath.Join(wikiRoot, "patterns") && dir != filepath.Join(wikiRoot, "patterns", "drafts") {
+		return "", false
+	}
+	return clean, true
+}
+
+func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
+	if !acceptJSONPost(w, r) {
+		return
+	}
+	var req struct {
+		Path      string            `json:"path"`
+		Action    string            `json:"action"` // promote | status | delete
+		Slug      string            `json:"slug"`
+		Claim     string            `json:"claim"`
+		AppliesTo map[string]string `json:"applies_to"`
+		Status    string            `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		return
+	}
+	path, ok := insidePatterns(req.Path)
+	if !ok {
+		writeErr(w, 400, errors.New("path must be a .md under wiki/patterns or wiki/patterns/drafts"))
+		return
+	}
+	pg, body, err := readClaimPage(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeErr(w, 404, err)
+		} else {
+			writeErr(w, 500, err)
+		}
+		return
+	}
+	isDraft := filepath.Dir(path) == filepath.Join(wikiRoot, "patterns", "drafts")
+	switch req.Action {
+	case "promote":
+		// 下書きを一般化した主張に書き直して patterns/ に移す。証拠と再検証の手順は引き継ぐ。状態は tentative(人が確かめるのはこれから)
+		if !isDraft {
+			writeErr(w, 409, errors.New("only a draft can be promoted"))
+			return
+		}
+		if !slugRe.MatchString(req.Slug) || strings.TrimSpace(req.Claim) == "" {
+			writeErr(w, 400, errors.New("promote needs a slug (lowercase, digits, dashes) and the generalized claim text"))
+			return
+		}
+		dst := filepath.Join(wikiRoot, "patterns", req.Slug+".md")
+		if _, err := os.Stat(dst); err == nil {
+			writeErr(w, 409, fmt.Errorf("%s already exists", dst))
+			return
+		}
+		pg.Claim = strings.TrimSpace(req.Claim)
+		pg.Status = "tentative"
+		if len(req.AppliesTo) > 0 {
+			pg.AppliesTo = req.AppliesTo
+		}
+		if err := writeClaimPage(dst, pg, body); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		if err := os.Remove(path); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"path": filepath.ToSlash(dst), "status": pg.Status})
+	case "status":
+		if pg.Claim == "" && pg.Retest == nil {
+			writeErr(w, 409, errors.New("this page has no front matter; it is prose, not a claim"))
+			return
+		}
+		if req.Status != "confirmed" && req.Status != "rejected" && req.Status != "tentative" {
+			writeErr(w, 400, errors.New("status must be confirmed, rejected or tentative"))
+			return
+		}
+		pg.Status = req.Status
+		if err := writeClaimPage(path, pg, body); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"path": filepath.ToSlash(path), "status": pg.Status})
+	case "delete":
+		if !isDraft {
+			writeErr(w, 409, errors.New("only drafts are deleted; reject a claim instead so the record stays"))
+			return
+		}
+		if err := os.Remove(path); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"path": filepath.ToSlash(path), "deleted": true})
+	default:
+		writeErr(w, 400, errors.New("action must be promote, status or delete"))
+	}
+}
