@@ -4,7 +4,7 @@ README の仮説「型の付いた判定なら、測った聞き方と較正の�
 
 ## 揃えるもの
 
-- 課題: `prompt-intent`（コーディングアシスタントへの依頼文の 5 択）
+- 課題: `prompt-intent`（AI への依頼文の 5 択）
 - 正解: `testdata/prompt-intent-labeled.json` の 62 件（英 39・日 23、人が付けた）
 - モデル: 3 つの腕で同じもの。較正は `calibrate` の 5 分割（4 つで当てて 1 つで試す）
 - 物差し: top-1、Brier（top）、act 閾値（0.75）での precision / recall（較正後は 5 分割 CV の値）
