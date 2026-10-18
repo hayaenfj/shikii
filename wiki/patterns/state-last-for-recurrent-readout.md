@@ -1,6 +1,25 @@
+---
+claim: 普通のチャット用モデルを shikii-readout で読む時、本文(state)は選択肢の後ろ・答えの直前に置く(state-last)方が、先頭に置く(state-first)より当たる
+status: tentative
+applies_to:
+  models: 再帰層を持つ Qwen3.5 / 3.8 系(Ternary-Bonsai-27B で確認)。Bonsai 2(fork)は変わらず
+  type: choice
+evidence:
+  - date: "2026-10-17"
+    model: ternary-bonsai-27b-q2g64
+    result: state-last 0.968 vs state-first 0.919 (top-1 on 62 truths; 日本語 23 件は 1.000 vs 0.870)
+    verdict: supports
+  - date: "2026-10-18"
+    model: ternary-bonsai-27b-q2g64+state-first
+    result: current 0.968 vs state-first 0.919 (top-1 on 62 truths; 3 better / 0 worse, p=0.125)
+    verdict: inconclusive
+retest:
+  spec: decisions/prompt-intent-v2.yaml
+  better: current
+  than: state-first
+---
 # 本文（state）は答えの直前に置く（普通のチャット用モデルの読み出し）
 
-status: tentative  <!-- 2026-10-18: 効いたのは Ternary-Bonsai-27B(Qwen3.5 系)の 1 組。Bonsai 2(fork)は変わらず。再帰層のある別のモデルで効いたら confirmed に(人が変える) -->
 
 ## いつ効くか
 

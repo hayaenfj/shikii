@@ -1,6 +1,26 @@
+---
+claim: 素のチャット用モデル(決定モデルとして学習されていない)を shikii-readout で読む時は、 plain 配置(system 無し、選択肢を「- id」の列で、id の最初のトークンを読む)が state-last より当たる
+status: tentative
+applies_to:
+  models: 素のチャット用モデル(Qwen3-4B で確認)。決定モデルは配置を見ない。27B(Ternary-Bonsai)は差が小さい
+  type: choice
+evidence:
+  - date: "2026-10-18"
+    model: qwen3-4b-q8+state-last
+    result: plain 0.903 vs current 0.774 (top-1 on 62 truths; 8 better / 1 worse, p=0.020)
+    verdict: supports
+    run: 2026-10-18-prompt-intent-qwen3-4b-q8-2
+  - date: "2026-10-18"
+    model: ternary-bonsai-27b-q2g64+state-last
+    result: plain 0.984 vs current 0.968 (top-1 on 62 truths; 1 better / 0 worse, p=0.500)
+    verdict: inconclusive
+retest:
+  spec: decisions/prompt-intent-v2.yaml
+  better: plain
+  than: current
+---
 # 素のチャット用モデルには plain 配置（system 無し・id をそのまま読む）
 
-status: tentative  <!-- 2026-10-18: Qwen3-4B Q8 の 1 組。別の素のモデルで効いたら confirmed に(人が変える) -->
 
 ## いつ効くか
 

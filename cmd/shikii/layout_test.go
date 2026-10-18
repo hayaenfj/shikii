@@ -29,11 +29,15 @@ func layoutSensitiveModel(t *testing.T) *httptest.Server {
 		} else {
 			truth = "change_request"
 		}
-		probs := map[string]float64{"change_request": (1 - p) / 2, "question": (1 - p) / 2, "other": 0}
-		probs[truth] = p
 		resp := systemone.Response{Model: name, Answers: map[string]systemone.Answer{}}
-		for k := range req.Questions {
-			resp.Answers[k] = systemone.Answer{Type: "choice", Choice: truth, Probabilities: probs, Confidence: p}
+		for k, q := range req.Questions {
+			ans := truth
+			if strings.Contains(q.Instructions, "Anything goes") {
+				ans = "other" // わざと悪い文言には全部 other と答える(反証の例を作る)
+			}
+			probs := map[string]float64{"change_request": (1 - p) / 2, "question": (1 - p) / 2, "other": 0}
+			probs[ans] = p
+			resp.Answers[k] = systemone.Answer{Type: "choice", Choice: ans, Probabilities: probs, Confidence: p}
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}))

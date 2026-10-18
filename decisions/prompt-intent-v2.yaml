@@ -81,6 +81,8 @@ variants:
   # 配置の候補(2026-10-18): 同じ重みで配置だけで 13 ポイント動いた(docs/bench.md)。plain は system 無し・"- id: 説明"・id の最初のトークンを読む
   - name: plain
     layout: plain
+  - name: state-first
+    layout: state-first   # 旧配置。wiki の state-last-for-recurrent-readout の再検証に使う(current が state-last)
   - name: plain-shorter
     layout: plain
     question: |

@@ -58,6 +58,8 @@ func main() {
 		err = cmdStatus(os.Args[2:])
 	case "gc":
 		err = cmdGC(os.Args[2:])
+	case "wiki":
+		err = cmdWiki(os.Args[2:])
 	case "serve":
 		err = cmdServe(os.Args[2:])
 	case "mcp":
@@ -103,6 +105,8 @@ func usageText() string {
   shikii status    [spec.yaml...] [--store DIR]      記録と正解の数、段ごとの数(1000 判定あたりの人の判断)、線の状態
   shikii tune      <spec.yaml> [--labeled file] [--local URL] [--store DIR] [--folds 5] [--propose N --proposer URL [--proposer-model M]] [--write]
                    spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は ./wiki/runs/
+  shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
+                   wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--local URL] [--hosted URL]
