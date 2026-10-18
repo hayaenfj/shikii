@@ -1,0 +1,43 @@
+{
+  "spec": "same-issue-rag",
+  "spec_path": "scripts/bench/same-issue-rag.yaml",
+  "spec_hash": "75af9097a1d9c00d",
+  "version": 1,
+  "model": "qwen3-4b-q8+state-last",
+  "truths": 32,
+  "at": "2026-10-18T09:34:47+09:00",
+  "run": "2026-10-18-same-issue-rag-qwen3-4b-q8",
+  "run_page": "wiki/runs/2026-10-18-same-issue-rag-qwen3-4b-q8.md",
+  "candidates": [
+    {
+      "name": "current",
+      "top1": 0.9285714285714286,
+      "brier": 0.06861421576164306,
+      "prec_at_act": 0.9272727272727272,
+      "rec_at_act": 0.9807692307692307,
+      "change": ""
+    },
+    {
+      "name": "plain",
+      "top1": 0.9285714285714286,
+      "brier": 0.04996305768880634,
+      "prec_at_act": 0.9454545454545454,
+      "rec_at_act": 1,
+      "change": "layout: plain"
+    }
+  ],
+  "holdout": 0.8928571428571429,
+  "have_holdout": true,
+  "holdout_better": 0,
+  "holdout_worse": 2,
+  "p_value": 1,
+  "winner": "current",
+  "adoptable": false,
+  "decision": "kept current (holdout 0.893 vs 0.929, 0 better / 2 worse, p=1.000: not enough evidence)",
+  "lesson": "plain wins on the full bank (0.929 vs 0.929) but the holdout (0.893 vs 0.929; 0 better, 2 worse, p=1.000) does not rule out chance on 32 truths; more truths will settle it",
+  "current_wording": {
+    "question": "Do these two bug reports describe the same underlying defect\n(one is a duplicate of the other, or both are symptoms of the same root cause)?\nAnswer \"no\" if they merely concern the same screen, feature or technology.\n",
+    "template": "Similar past pairs and whether they were the same defect:\n{{ examples }}\n\nPair to judge:\nReport 1: {{ report1 }}\n\nReport 2: {{ report2 }}\n"
+  },
+  "adopted": false
+}

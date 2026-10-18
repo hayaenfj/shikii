@@ -54,3 +54,7 @@ display:
     options:
       "yes": 同じ不具合
       "no": 別の不具合
+# 聞き方の候補(2026-10-18): 配置だけ違う候補。素のチャット用モデルを変換役で読む時に効くか(prompt-intent では 13 ポイント)
+variants:
+  - name: plain
+    layout: plain

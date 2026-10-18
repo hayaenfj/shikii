@@ -99,6 +99,7 @@ func usageText() string {
   shikii label     --last --spec-id ID <truth>
   shikii calibrate <spec.yaml> [--labeled file] [--model M] [--local URL] [--hosted URL] [--store DIR] [--bins 10] [--write] [--force]
                    正解で線を引く。今の (hash, model) に無い正解は本文で聞き直す。state.context があれば文脈の段の線も別に引く
+                   --labeled の行に raw(noul は P(yes) の数字、choice / score は {id: p})があればモデルを呼ばずその確率で測る(別の道具の確率を同じ物差しで)
   shikii status    [spec.yaml...] [--store DIR]      記録と正解の数、段ごとの数(1000 判定あたりの人の判断)、線の状態
   shikii tune      <spec.yaml> [--labeled file] [--local URL] [--store DIR] [--folds 5] [--propose N --proposer URL [--proposer-model M]] [--write]
                    spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は ./wiki/runs/
@@ -322,7 +323,33 @@ type labeled struct {
 	Inputs map[string]string `json:"inputs"`
 	Truth  json.RawMessage   `json:"truth"`
 	Weight float64           `json:"weight,omitempty"`
-	Raw    *float64          `json:"raw,omitempty"`
+	// Raw は確率の持ち込み(モデルを呼ばない行)。noul は P(yes) の数字 1 つ、choice / score は {id: p} の object。
+	// 比較ベンチの LoRA の腕のように、別の道具が出した確率を同じ物差しで測るのに使う。
+	Raw json.RawMessage `json:"raw,omitempty"`
+}
+
+// rawFromRow は行の raw を分布にする。無ければ nil。鍵が spec の選択肢に無ければ誤り(黙って捨てない)。
+func rawFromRow(sp *spec.Spec, raw json.RawMessage) (map[string]float64, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var p float64
+	if err := json.Unmarshal(raw, &p); err == nil {
+		if sp.Type != spec.Noul {
+			return nil, fmt.Errorf("raw: a single number is only for noul; give {id: probability} for %s", sp.Type)
+		}
+		return map[string]float64{"yes": p, "no": 1 - p}, nil
+	}
+	var dist map[string]float64
+	if err := json.Unmarshal(raw, &dist); err != nil {
+		return nil, fmt.Errorf("raw: want a number (noul) or {id: probability}: %w", err)
+	}
+	for k := range dist {
+		if !sp.HasTruthKey(k) {
+			return nil, fmt.Errorf("raw: %q is not an option of this spec", k)
+		}
+	}
+	return dist, nil
 }
 
 func parseTruth(t spec.Type, raw json.RawMessage) (string, error) {
@@ -599,9 +626,13 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 			return nil, "", fmt.Errorf("row %d: %w", i, err)
 		}
 		l := store.Label{SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Truth: truth, Weight: r.Weight, Source: "file", At: time.Now()}
+		given, err := rawFromRow(sp, r.Raw)
+		if err != nil {
+			return nil, "", fmt.Errorf("row %d: %w", i, err)
+		}
 		switch {
-		case r.Raw != nil && sp.Type == spec.Noul:
-			l.Raw = map[string]float64{"yes": *r.Raw, "no": 1 - *r.Raw}
+		case given != nil:
+			l.Raw = given // 持ち込みの確率: モデルは呼ばない
 		case func() bool { _, ok := stored[store.HashInputs(r.Inputs)]; return ok }():
 			prior := stored[store.HashInputs(r.Inputs)]
 			l.Raw, l.Model, l.TraceID, l.InputsHash = prior.Raw, prior.Model, prior.TraceID, prior.InputsHash
@@ -1312,7 +1343,11 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 		return nil, fmt.Errorf("%s: %w", sp.Eval.Labeled, err)
 	}
 	for _, r := range rows {
-		if r.Raw == nil || sp.Type != spec.Noul {
+		given, err := rawFromRow(sp, r.Raw)
+		if err != nil {
+			return nil, err
+		}
+		if given == nil {
 			continue // モデルを呼ばないと分からない行は check では使わない
 		}
 		truth, err := parseTruth(sp.Type, r.Truth)
@@ -1324,7 +1359,7 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 			w = 1
 		}
 		labels = append(labels, store.Label{SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Model: model,
-			Raw: map[string]float64{"yes": *r.Raw, "no": 1 - *r.Raw}, Truth: truth, Weight: w, Source: "file"})
+			Raw: given, Truth: truth, Weight: w, Source: "file"})
 	}
 	return labels, nil
 }

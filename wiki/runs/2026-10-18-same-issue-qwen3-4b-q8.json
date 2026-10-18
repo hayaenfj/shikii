@@ -1,0 +1,43 @@
+{
+  "spec": "same-issue",
+  "spec_path": "decisions/same-issue.yaml",
+  "spec_hash": "39e5d9072ae0c8c2",
+  "version": 1,
+  "model": "qwen3-4b-q8+state-last",
+  "truths": 32,
+  "at": "2026-10-18T09:33:53+09:00",
+  "run": "2026-10-18-same-issue-qwen3-4b-q8",
+  "run_page": "wiki/runs/2026-10-18-same-issue-qwen3-4b-q8.md",
+  "candidates": [
+    {
+      "name": "current",
+      "top1": 0.9107142857142857,
+      "brier": 0.07860054706888184,
+      "prec_at_act": 0.9107142857142857,
+      "rec_at_act": 1,
+      "change": ""
+    },
+    {
+      "name": "plain",
+      "top1": 0.9107142857142857,
+      "brier": 0.08007673408000844,
+      "prec_at_act": 0.9272727272727272,
+      "rec_at_act": 1,
+      "change": "layout: plain"
+    }
+  ],
+  "holdout": 0.9107142857142857,
+  "have_holdout": true,
+  "holdout_better": 0,
+  "holdout_worse": 0,
+  "p_value": 1,
+  "winner": "current",
+  "adoptable": false,
+  "decision": "kept current (nothing beats it; ties keep it)",
+  "lesson": "none of 1 candidates beat the current wording (top-1 0.911) on 32 truths",
+  "current_wording": {
+    "question": "Do these two bug reports describe the same underlying defect\n(one is a duplicate of the other, or both are symptoms of the same root cause)?\nAnswer \"no\" if they merely concern the same screen, feature or technology.\n",
+    "template": "Report 1: {{ report1 }}\n\nReport 2: {{ report2 }}\n"
+  },
+  "adopted": false
+}

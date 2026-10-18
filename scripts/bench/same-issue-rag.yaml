@@ -1,0 +1,31 @@
+# 比較ベンチの RAG の腕(はい/いいえ): same-issue と同じ質問に、似た例(正解付き)を本文の前に足す。
+# examples は scripts/bench/rag-rows.py が正解の貯金から作る(その行の分割の外から)。
+id: same-issue-rag
+version: 1
+type: noul
+question: |
+  Do these two bug reports describe the same underlying defect
+  (one is a duplicate of the other, or both are symptoms of the same root cause)?
+  Answer "no" if they merely concern the same screen, feature or technology.
+state:
+  template: |
+    Similar past pairs and whether they were the same defect:
+    {{ examples }}
+
+    Pair to judge:
+    Report 1: {{ report1 }}
+
+    Report 2: {{ report2 }}
+  required: [report1, report2, examples]
+policy:
+  send_to: [local]
+  pii: true
+thresholds:
+  act: 0.70
+  ask: 0.50
+eval:
+  labeled: testdata/same-issue-rag.json
+  min_n: 20
+variants:
+  - name: plain
+    layout: plain

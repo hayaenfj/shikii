@@ -34,3 +34,7 @@ thresholds:
 eval:
   labeled: testdata/prompt-intent-rag.json
   min_n: 50
+# 配置の候補: tune でこの spec を測ると、既定(state-last)と plain の両方の数字が出る(腕 B を公平にするため)
+variants:
+  - name: plain
+    layout: plain

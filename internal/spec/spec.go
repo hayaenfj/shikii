@@ -433,6 +433,19 @@ func (s *Spec) hasTruthID(id string) bool {
 	return false
 }
 
+// HasTruthKey は id が raw の鍵として正しいか: noul は yes/no、choice は選択肢 id、score は段階の番号("0".."n-1")。
+func (s *Spec) HasTruthKey(id string) bool {
+	if s.Type == Score {
+		for i := range s.Levels {
+			if id == fmt.Sprint(i) {
+				return true
+			}
+		}
+		return false
+	}
+	return s.hasTruthID(id)
+}
+
 // Hash は較正を鍵付けするハッシュ。質問・型・state テンプレ・選択肢・レベルから作る。
 // 閾値や policy は含めない(動かしても較正は有効)。
 func (s *Spec) Hash() string {

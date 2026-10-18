@@ -1,0 +1,50 @@
+{
+  "spec": "prompt-intent-rag",
+  "spec_path": "scripts/bench/prompt-intent-rag.yaml",
+  "spec_hash": "59b354c3ce2d673f",
+  "version": 1,
+  "model": "qwen3-4b-q8+state-last",
+  "truths": 62,
+  "at": "2026-10-18T09:32:32+09:00",
+  "run": "2026-10-18-prompt-intent-rag-qwen3-4b-q8",
+  "run_page": "wiki/runs/2026-10-18-prompt-intent-rag-qwen3-4b-q8.md",
+  "candidates": [
+    {
+      "name": "current",
+      "top1": 0.8870967741935484,
+      "brier": 0.11357345225288838,
+      "prec_at_act": 0.8833333333333333,
+      "rec_at_act": 0.9636363636363636,
+      "change": ""
+    },
+    {
+      "name": "plain",
+      "top1": 0.9516129032258065,
+      "brier": 0.04822329808689199,
+      "prec_at_act": 0.9516129032258065,
+      "rec_at_act": 1,
+      "change": "layout: plain"
+    }
+  ],
+  "holdout": 0.9516129032258065,
+  "have_holdout": true,
+  "holdout_better": 5,
+  "holdout_worse": 1,
+  "p_value": 0.109375,
+  "winner": "current",
+  "adoptable": false,
+  "decision": "kept current (holdout 0.952 vs 0.887, 5 better / 1 worse, p=0.109: not enough evidence)",
+  "lesson": "plain wins on the full bank (0.952 vs 0.887) but the holdout (0.952 vs 0.887; 5 better, 1 worse, p=0.109) does not rule out chance on 62 truths; more truths will settle it",
+  "current_wording": {
+    "question": "The state is a message a user sent to a coding assistant, preceded by a few similar past messages with their known request type. What is the user asking the assistant to do in the last message?\nShort messages like \"fix it\" or \"why?\" are still requests; pick the closest request type.\n",
+    "options": {
+      "change_request": "Change something in the repository - edit, fix, add, remove, rename, refactor, write tests or docs. Includes terse commands like \"fix the typo\" or \"直して\".",
+      "operation": "Run or operate something without editing code - run tests, build, commit, push, deploy, restart, install, show logs.",
+      "other": "Not a request at all - greetings, thanks, acknowledgements (\"ok\", \"了解\"), small talk, or ending the session.",
+      "question": "Explain, investigate, compare or give an opinion, without changing anything. Includes \"why\", \"what does this do\", \"where is\", \"調べて\".",
+      "review": "Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality."
+    },
+    "template": "Similar past messages and their request type:\n{{ examples }}\n\nMessage to classify:\n{{ message }}\n"
+  },
+  "adopted": false
+}

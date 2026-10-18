@@ -12,3 +12,4 @@
 使っているパターン: [same-vocabulary-is-no](../patterns/same-vocabulary-is-no.md)
 
 ## Runs
+- [2026-10-18 qwen3-4b-q8](../runs/2026-10-18-same-issue-qwen3-4b-q8.md) — kept current (nothing beats it; ties keep it). Lesson: none of 1 candidates beat the current wording (top-1 0.911) on 32 truths
