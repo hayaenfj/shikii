@@ -459,9 +459,13 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for _, sp := range specs {
 		titles := map[string]string{}
+		questions := map[string]string{} // 画面の「何を聞いているか」(人の言葉)
 		for lang, d := range sp.Display {
 			if d.Title != "" {
 				titles[lang] = d.Title
+			}
+			if d.Question != "" {
+				questions[lang] = d.Question
 			}
 		}
 		nRec, labs, err := s.st.Counts(sp.ID)
@@ -504,7 +508,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		last := s.lastCal[sp.ID]
 		s.mu.Unlock()
-		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "records": nRec, "labels": len(labs),
+		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(labs),
 			"unlabeled": nRec - countLabeledRecords(labeled, nRec), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
@@ -539,7 +543,12 @@ const uiHTML = `<!doctype html>
   body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 20px; max-width: 980px; margin: 0 auto; }
   header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
   h1 { font-size: 20px; margin: 0 0 4px; } h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
-  #lang { margin-left:auto; font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  .adv { display: none !important; } body.advanced .adv { display: revert !important; }
+  #mode { margin-left:auto; font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  .status { margin: 6px 0 10px; font-size: 14px; } .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 4px; } .bar > div { height: 100%; background: var(--ok); }
+  .q { font-size: 15px; margin: 4px 0 8px; } .guess { font-size: 14px; margin: 6px 0; } .keys { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
+  body:not(.advanced) .btns button { font-size: 15px; padding: 8px 14px; }
+  #lang { margin-left:8px; font: inherit; font-size: 13px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
   h2 { font-size: 16px; margin: 28px 0 8px; display:flex; gap:10px; align-items:baseline; flex-wrap: wrap; }
   .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
   .pill.calibrated { background: var(--okbg); color: var(--ok); border-color: transparent; }
@@ -567,6 +576,7 @@ const uiHTML = `<!doctype html>
 </style>
 <header>
   <h1>shikii <small id="tagline"></small></h1>
+  <button id="mode" type="button"></button>
   <select id="lang" aria-label="language"><option value="en">English</option><option value="ja">日本語</option></select>
 </header>
 <div id="root"><div class="empty">…</div></div>
@@ -574,8 +584,11 @@ const uiHTML = `<!doctype html>
 <script>
 // 辞書。言語を足すときはここに 1 つ増やし、<select> に option を足す。
 const T = {
-  en: { tagline: 'answer what was true; the line draws itself', loading: 'loading…', noSpecs: 'no specs', empty: 'nothing waiting for an answer',
-        records: n => n + ' records', answered: n => n + ' answered', calibrated: m => 'calibrated (' + m + ')', stale: 'stale wording', collecting: (n, m) => 'collecting ' + n + '/' + m, ready: (n, m) => 'ready ' + n + '/' + m,
+  en: { tagline: 'tell it what was actually true; that is all it needs to learn when to trust itself', loading: 'loading…', noSpecs: 'no decisions set up yet', empty: 'nothing waiting for an answer. When the AI decides something, it shows up here.',
+        modeSimple: 'simple view', modeAdvanced: 'details', remaining: n => n + ' waiting', keysHint: 'Keys: 1-9 choose an answer, Enter = same as the AI',
+        plainAuto: 'The AI may act on its own here (enough answers were checked).', plainReady: 'Enough answers: the line can be drawn.', plainLearning: (n, m) => 'Still learning: ' + n + ' of ' + m + ' answers checked before the AI may act on its own.', plainStale: 'The question changed; it is learning again.',
+        aiGuess: (name, p) => 'AI guess: ' + name + ' (' + p + '% sure)', bandAsk: 'The AI was unsure.', bandAct: 'The AI acted on its own.', bandDiscard: 'The AI let it pass.', sameAsAI: 'same as the AI',
+        records: n => n + ' decisions', answered: n => n + ' checked', calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'ready to draw the line ' + n + '/' + m,
         withContext: 'asked again with context', contextRung: 'context rung', toPerson: (h, k) => 'to a person ' + h + ' (' + k + ' per 1000)',
         audit: 'audit sample: the machine acted on this; 1 in 20 is shown here so its precision is measured on what people checked',
         knowledge: 'Knowledge (claims)', claimsCount: (n, p) => n + ' claims, ' + p + ' prose pages', noClaims: 'no claims yet (tune drafts one when a candidate wins)',
@@ -583,21 +596,24 @@ const T = {
         promptClaim: 'The generalized claim (not tied to this spec):', promptSlug: 'File name (lowercase, digits, dashes):', promptModels: 'Which models does it apply to?', claimDone: 'recorded',
         noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
         done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration',
-        wording: 'Wording', current: 'current', noRun: 'no tune run yet', running: 'measuring candidates…', runTune: 'measure the candidates', runPropose: n => 'ask the model for ' + n + ' candidates and measure',
-        holdoutLine: (h, c) => 'holdout ' + h + ' vs keeping current ' + c, winnerLine: w => 'candidate ' + w + ' may be adopted', keptLine: 'current wording kept',
+        wording: 'Wording (rewordings)', current: 'current', noRun: 'not measured yet', running: 'measuring rewordings…', runTune: 'measure the rewordings', runPropose: n => 'ask the AI for ' + n + ' rewordings and measure',
+        holdoutLine: (h, c) => 'tried on a held-back part: ' + h + ' (keeping current: ' + c + ')', winnerLine: w => 'rewording ' + w + ' may be adopted', keptLine: 'current wording kept',
         adoptedLine: p => 'adopted as ' + p, sameMeaning: 'same meaning → adopt', changedMeaning: 'meaning changed → reject', notePrompt: 'What changed in the meaning? (optional)',
         checkHint: 'Does the new wording still ask what you mean? Numbers are checked by the machine; the meaning is yours to check.', rejected: 'recorded: meaning changed, not adopted', adoptedToast: p => 'adopted: ' + p },
-  ja: { tagline: '本当はどうだったかを答える。線は自分で引かれる', loading: '読み込み中…', noSpecs: 'spec がありません', empty: '答え合わせ待ちはありません',
-        records: n => '記録 ' + n, answered: n => '答え済み ' + n, calibrated: m => '線あり (' + m + ')', stale: '文言が古い', collecting: (n, m) => '集めている ' + n + '/' + m, ready: (n, m) => '線を引ける ' + n + '/' + m,
+  ja: { tagline: 'AI の答えが本当に合っていたかを教えてください。それだけで、AI はいつ自分を信じてよいかを覚えます', loading: '読み込み中…', noSpecs: 'まだ判定が登録されていません', empty: '答え合わせ待ちはありません。AI が何かを判定すると、ここに並びます。',
+        modeSimple: 'かんたん表示', modeAdvanced: 'くわしく', remaining: n => '残り ' + n + ' 件', keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」',
+        plainAuto: 'この判定は AI が自分で動いてよい状態です(答え合わせが十分に揃いました)。', plainReady: '答えが揃いました。AI の自信の数字を直す線を引けます。', plainLearning: (n, m) => 'まだ学習中: 答え合わせ ' + n + ' 件。AI が自分で動けるようになるまで ' + m + ' 件。', plainStale: '質問の文が変わったので、学び直しています。',
+        aiGuess: (name, p) => 'AI の予想: ' + name + '(自信 ' + p + '%)', bandAsk: 'AI は迷いました。', bandAct: 'AI は自分で動きました。', bandDiscard: 'AI は見送りました。', sameAsAI: 'AI と同じ',
+        records: n => '判定 ' + n + ' 件', answered: n => '答え合わせ済み ' + n + ' 件', calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変わったので学び直し', collecting: (n, m) => '学習中 ' + n + '/' + m, ready: (n, m) => '線を引けます ' + n + '/' + m,
         withContext: '文脈を足して聞き直した', contextRung: '文脈の段', toPerson: (h, k) => '人へ ' + h + '(1000 判定あたり ' + k + ')',
         audit: '抜き取り検査: 機械が自動で動いた判定。20 件に 1 件をここに出し、人が確かめた分で精度を測る',
         knowledge: '知識(主張)', claimsCount: (n, p) => '主張 ' + n + '、文章のページ ' + p, noClaims: 'まだ主張はありません(tune で勝った候補があれば下書きができます)',
         promote: '主張にする', deleteDraft: '下書きを消す', confirm: 'confirmed にする', reject: '却下', confirmable: '独立したモデル 2 つが支持: confirmed にできます',
         promptClaim: '一般化した主張の文(この spec に限らない言い方で):', promptSlug: 'ファイル名(英小文字・数字・ハイフン):', promptModels: '効くモデルの範囲:', claimDone: '記録しました',
-        noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, model: p => 'AI は ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に文言が変わった',
+        noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, model: p => 'AI の自信 ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に質問の文が変わりました',
         done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正',
-        wording: '聞き方', current: '今の文言', noRun: 'まだ測っていません', running: '候補を測っています…', runTune: '候補を測る', runPropose: n => 'AI に候補を ' + n + ' 個作らせて測る',
-        holdoutLine: (h, c) => 'holdout ' + h + '(今のまま: ' + c + ')', winnerLine: w => '候補 ' + w + ' を採用できます', keptLine: '今の文言のまま',
+        wording: '聞き方(言い換えの案)', current: '今の文言', noRun: 'まだ測っていません', running: '案を測っています…', runTune: '案を測る', runPropose: n => 'AI に案を ' + n + ' 個作らせて測る',
+        holdoutLine: (h, c) => '別の分で試した正解率 ' + h + '(今のまま: ' + c + ')', winnerLine: w => '言い換えの案 ' + w + ' を採用できます', keptLine: '今の文言のまま',
         adoptedLine: p => '採用済み: ' + p, sameMeaning: '意味は同じ → 採用', changedMeaning: '意味が違う → 却下', notePrompt: '意味のどこが変わりましたか？(任意)',
         checkHint: '言い換えても、まだあなたの聞きたいことを聞いていますか？数字は機械が確かめました。意味はあなたが確かめてください。', rejected: '記録しました: 意味が違うので採用しない', adoptedToast: p => '採用しました: ' + p },
 };
@@ -609,6 +625,18 @@ if (!T[lang]) lang = 'en';
 const t = k => T[lang][k];
 $('#lang').value = lang;
 $('#lang').addEventListener('change', e => { lang = e.target.value; try { localStorage.setItem('shikii.lang', lang); } catch (x) {} render(); });
+// かんたん表示が既定。「くわしく」で主張・言い換えの案・指紋・モデル名などを出す
+let advanced = false;
+try { advanced = localStorage.getItem('shikii.mode') === 'advanced'; } catch (e) {}
+document.body.classList.toggle('advanced', advanced);
+$('#mode').addEventListener('click', () => { advanced = !advanced; document.body.classList.toggle('advanced', advanced); try { localStorage.setItem('shikii.mode', advanced ? 'advanced' : 'simple'); } catch (x) {} render(); });
+// キー操作: 1〜9 で先頭の判定の答えを選ぶ、Enter で AI と同じ
+document.addEventListener('keydown', ev => {
+  if (ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName)) return;
+  const first = document.querySelector('.item'); if (!first) return;
+  if (/^[1-9]$/.test(ev.key)) { const b = first.querySelectorAll('.btns button')[Number(ev.key) - 1]; if (b) { ev.preventDefault(); b.click(); } }
+  else if (ev.key === 'Enter') { const b = first.querySelector('.btns button.top'); if (b) { ev.preventDefault(); b.click(); } }
+});
 let toastTimer;
 function toast(msg, ms=4000) { const el = $('#toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.style.display = 'none', ms); }
 async function j(url, opts) { const r = await fetch(url, opts); const b = await r.json(); if (!r.ok) throw new Error(b.error || r.status); return b; }
@@ -624,6 +652,7 @@ async function load() {
 }
 function render() {
   $('#tagline').textContent = t('tagline');
+  $('#mode').textContent = t(advanced ? 'modeSimple' : 'modeAdvanced');
   document.documentElement.lang = lang;
   const root = $('#root'); root.innerHTML = '';
   if (!state) { root.innerHTML = '<div class="empty">' + esc(t('loading')) + '</div>'; return; }
@@ -633,16 +662,28 @@ function render() {
     const pills = sp.keys.map(k => '<span class="pill ' + k.state + '">' + esc(k.model) + (k.rung === 'context' ? ' · ' + esc(t('contextRung')) : '') + ' · ' + esc(k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n)) + '</span>').join(' ');
     const title = (sp.titles && sp.titles[lang]) ? esc(sp.titles[lang]) + ' <span class="k" style="color:var(--muted);font-size:12px;font-weight:400">' + esc(sp.id) + '</span>' : esc(sp.id);
     const funnel = (sp.funnel && sp.records > 0) ? ' <span class="pill">' + esc(t('toPerson')(sp.funnel.human, sp.funnel.human_per_thousand)) + '</span>' : '';
-    sec.innerHTML = '<h2>' + title + ' <span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span>' + funnel + '</h2>';
+    sec.innerHTML = '<h2>' + title + ' <span class="pill">' + esc(t('remaining')(sp.queue.items.length)) + '</span> <span class="adv"><span class="pill">' + esc(sp.type) + '</span> ' + pills + ' <span class="pill">' + esc(t('records')(sp.records)) + ' · ' + esc(t('answered')(sp.labels)) + '</span>' + funnel + '</span></h2>';
+    // 人の言葉の状態と進み具合(かんたん表示の中心)
+    const live = sp.keys.filter(k => k.state !== 'stale');
+    const n = live.reduce((m, k) => Math.max(m, k.n), 0);
+    let plain = t('plainLearning')(n, sp.min_n), pct = Math.min(100, Math.round(100 * n / Math.max(1, sp.min_n)));
+    if (live.some(k => k.state === 'calibrated')) { plain = t('plainAuto'); pct = 100; }
+    else if (live.some(k => k.state === 'ready')) { plain = t('plainReady'); pct = 100; }
+    else if (sp.keys.length && !live.length) plain = t('plainStale');
+    const q = (sp.questions && sp.questions[lang]) || sp.question || '';
+    sec.innerHTML += (q ? '<div class="q">' + esc(q) + '</div>' : '') + '<div class="status">' + esc(plain) + '<div class="bar"><div style="width:' + pct + '%"></div></div></div>';
+    if (sp.queue.items.length) sec.innerHTML += '<div class="keys">' + esc(t('keysHint')) + '</div>';
     if (!sp.queue.items.length) { sec.innerHTML += '<div class="empty">' + esc(t('empty')) + '</div>'; }
     for (const it of sp.queue.items) {
       const el = document.createElement('div'); el.className = 'item ' + it.band;
       const text = it.answerable ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
       const name = c => (c.labels && c.labels[lang]) || c.label;
       const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
-      const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('model')((it.p*100).toFixed(0))) : '') + '</button>').join('');
+      const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('sameAsAI')) : '') + '</button>').join('');
       const not = (it.answerable && it.top) ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
-      el.innerHTML = '<div class="meta"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.audit ? '<span class="audit">' + esc(t('audit')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
+      const bandWord = it.band === 'ask' ? t('bandAsk') : it.band === 'act' ? t('bandAct') : t('bandDiscard');
+      const guess = it.top ? '<div class="guess">' + esc(bandWord) + ' ' + esc(t('aiGuess')(topName, (it.p*100).toFixed(0))) + '</div>' : '';
+      el.innerHTML = guess + '<div class="meta adv"><span>' + esc(it.band) + '</span><span>' + esc(new Date(it.at).toLocaleString()) + '</span><span>' + esc(it.model || '') + '</span>' + (it.rung === 'context' ? '<span>' + esc(t('withContext')) + '</span>' : '') + (it.audit ? '<span class="audit">' + esc(t('audit')) + '</span>' : '') + (it.stale ? '<span>' + esc(t('changed')) + '</span>' : '') + '</div><div class="text">' + text + '</div><div class="btns">' + btns + not + '</div>';
       el.addEventListener('click', async ev => {
         const b = ev.target.closest('button'); if (!b) return;
         for (const x of el.querySelectorAll('button')) x.disabled = true;
@@ -654,7 +695,7 @@ function render() {
       });
       sec.appendChild(el);
     }
-    if (sp.last_calibration) sec.innerHTML += '<pre>' + esc(t('last')) + '\n' + esc(sp.last_calibration) + '</pre>';
+    if (sp.last_calibration) sec.innerHTML += '<pre class="adv">' + esc(t('last')) + '\n' + esc(sp.last_calibration) + '</pre>';
     sec.appendChild(wordingBlock(sp));
     root.appendChild(sec);
   }
@@ -662,7 +703,7 @@ function render() {
 }
 // 知識の欄: 主張と下書きの一覧(証拠、支持するモデルの数、confirmable の印)。人がすること: 下書きを一般化して主張にする(promote)、confirmed / rejected にする、下書きを消す。
 function knowledgeBlock(wk) {
-  const sec = document.createElement('section');
+  const sec = document.createElement('section'); sec.className = 'adv';
   const claims = (wk.claims || []).filter(c => c.is_claim);
   const prose = (wk.claims || []).filter(c => !c.is_claim).length;
   sec.innerHTML = '<h2>' + esc(t('knowledge')) + ' <span class="pill">' + esc(t('claimsCount')(claims.length, prose)) + '</span></h2>';
@@ -698,7 +739,7 @@ function knowledgeBlock(wk) {
 }
 // 聞き方の欄: 最新の tune の結果、勝った候補の文言、人の「意味は同じ / 違う」、候補を測るボタン
 function wordingBlock(sp) {
-  const el = document.createElement('details'); el.className = 'wording';
+  const el = document.createElement('details'); el.className = 'wording adv';
   const tu = sp.tune; const latest = tu && tu.latest;
   let head = '<summary><b>' + esc(t('wording')) + '</b>';
   if (tu && tu.running) head += ' <span class="pill ready">' + esc(t('running')) + '</span>';

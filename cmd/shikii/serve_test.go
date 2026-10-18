@@ -248,3 +248,35 @@ func TestServeQueueMarksItemsWithoutTextAsUnanswerable(t *testing.T) {
 		t.Fatalf("without text the item must be marked unanswerable and carry no choices: %v", it)
 	}
 }
+
+// IT に詳しくない人のための画面: 既定は「かんたん表示」で、主張・言い換えの案・指紋・モデル名は「くわしく」に隠れる。
+// 判定ごとに人の言葉の質問、AI の予想と自信、「AI と同じ」ボタン、キー操作、学習の進み具合が出る。専門用語は画面に出さない。
+func TestServeUIIsBeginnerFriendly(t *testing.T) {
+	url, specPath, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	b, _ := os.ReadFile(specPath)
+	src := string(b) + "display:\n  ja:\n    title: 依頼の種類\n    question: この依頼は何を求めていますか？\n"
+	if err := os.WriteFile(specPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body := getBody(t, url+"/")
+	for _, must := range []string{`id="mode"`, "かんたん表示", "くわしく", "AI の予想", "AI と同じ", "1〜9", "まだ学習中", "class=\"adv\"", "shikii.mode"} {
+		if !strings.Contains(body, must) {
+			t.Fatalf("beginner view missing %q", must)
+		}
+	}
+	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h"} {
+		if strings.Contains(body, never) {
+			t.Fatalf("jargon must not appear in the page: %q", never)
+		}
+	}
+	var st struct {
+		Specs []struct {
+			Questions map[string]string `json:"questions"`
+			Question  string            `json:"question"`
+		} `json:"specs"`
+	}
+	getJSON(t, url+"/v1/status", &st)
+	if len(st.Specs) != 1 || st.Specs[0].Questions["ja"] != "この依頼は何を求めていますか？" || st.Specs[0].Question == "" {
+		t.Fatalf("status must carry the question in people's words: %+v", st.Specs)
+	}
+}
