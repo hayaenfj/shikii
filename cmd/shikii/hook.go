@@ -93,6 +93,7 @@ func cmdHook(args []string) error {
 // hookInput は Claude Code が stdin に渡す JSON のうち使う所。
 type hookInput struct {
 	SessionID            string          `json:"session_id"`
+	TurnID               string          `json:"turn_id"` // Codex だけが付ける(Codex は permissionDecision "ask" を受けないので、確認は端末の 1 行に落とす)
 	CWD                  string          `json:"cwd"`
 	PermissionMode       string          `json:"permission_mode"`
 	ToolName             string          `json:"tool_name"`
@@ -477,7 +478,8 @@ func runHookEvent(event string) error {
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return fmt.Errorf("stdin is not Claude Code's hook JSON: %w", err)
 	}
-	bypass := in.PermissionMode == "bypassPermissions"
+	// 確認(ask)を出せない時: bypass(本人が確認を飛ばしている)と Codex(hook の "ask" を受けない。deny と allow だけ)。どちらも端末の 1 行に落とす
+	bypass := in.PermissionMode == "bypassPermissions" || in.TurnID != "" || in.ToolName == "apply_patch"
 	var out hookOut
 	switch event {
 	case "stop":
@@ -544,10 +546,13 @@ func hookPreToolUse(agent string, in *hookInput, snapshot *hookSession, bypass b
 			return hookOut{}, nil, err
 		}
 		return out, []func(*hookSession){noteAsked("command-effect", d)}, nil
-	case "Edit", "Write", "MultiEdit", "NotebookEdit":
+	case "Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch":
 		file := ti.FilePath
 		if file == "" {
 			file = ti.Notebook
+		}
+		if in.ToolName == "apply_patch" { // Codex: 入力は patch の文(tool_input.command)。触るファイルの名前を見出し行から取る
+			file = strings.Join(patchFiles(ti.Command, 3), ", ")
 		}
 		if file == "" || snapshot.Request == "" {
 			return hookOut{}, nil, nil // 依頼の控えが無ければ「範囲か」は問えない
@@ -562,6 +567,24 @@ func hookPreToolUse(agent string, in *hookInput, snapshot *hookSession, bypass b
 		return out, []func(*hookSession){noteAsked("edit-in-scope", d)}, nil
 	}
 	return hookOut{}, nil, nil
+}
+
+// patchFiles は apply_patch の文(`*** Update File: path` / `*** Add File:` / `*** Delete File:`)から触るファイルを最大 max 個取る。
+func patchFiles(patch string, max int) []string {
+	var files []string
+	for _, line := range strings.Split(patch, "\n") {
+		for _, h := range []string{"*** Update File: ", "*** Add File: ", "*** Delete File: "} {
+			if strings.HasPrefix(line, h) {
+				if f := strings.TrimSpace(strings.TrimPrefix(line, h)); f != "" {
+					files = append(files, f)
+				}
+			}
+		}
+		if len(files) >= max {
+			break
+		}
+	}
+	return files
 }
 
 // hookUserPrompt は prompt-kind と needs-plan を聞き、依頼と作業ツリーのハッシュを控える。前の依頼の結果の正解はここ(次の依頼が来た時)で決める。
@@ -890,13 +913,28 @@ func hookLog(msg string) {
 // ---------------------------------------------------------------- install / uninstall
 
 // hookEvents は settings.json に足す 3 つ。command は PATH の shikii(MCP の設定と同じ流儀)。
-var hookEvents = []struct {
+type hookEvent struct {
 	event, matcher, cmd string
 	timeout             int
+}
+
+// hookEventsFor は settings の種類ごとの 3 つ。Claude Code は Edit / Write…、Codex は編集が apply_patch という道具名(入力の形も違う: patch の文)。
+func hookEventsFor(toolsRe string) []hookEvent {
+	return []hookEvent{
+		{"PreToolUse", toolsRe, hookCmdPrefix + "pre-tool-use", hookTimeout},
+		{"UserPromptSubmit", "", hookCmdPrefix + "user-prompt-submit", hookTimeout},
+		{"Stop", "", hookCmdPrefix + "stop", hookTimeout + 5},
+	}
+}
+
+const codexToolsRe = "Bash|apply_patch"
+
+// hookTargets は hook を書く設定ファイル(家の下、固定)。両方に同じ 3 つを足す。無いツールの設定ファイルも作られる(init と同じ流儀。要らなければ消す)。
+var hookTargets = []struct {
+	rel, who, toolsRe, note string
 }{
-	{"PreToolUse", hookToolsRe, hookCmdPrefix + "pre-tool-use", hookTimeout},
-	{"UserPromptSubmit", "", hookCmdPrefix + "user-prompt-submit", hookTimeout},
-	{"Stop", "", hookCmdPrefix + "stop", hookTimeout + 5},
+	{filepath.Join(".claude", "settings.json"), "Claude Code", hookToolsRe, ""},
+	{filepath.Join(".codex", "hooks.json"), "Codex", codexToolsRe, " Codex asks you to review new hooks once: run /hooks in Codex and trust them"},
 }
 
 func hookInstall(args []string, install bool) error {
@@ -913,15 +951,19 @@ func hookInstall(args []string, install bool) error {
 		return err
 	}
 	home := filepath.Dir(filepath.Dir(agent))
-	settings := filepath.Join(home, ".claude", "settings.json")
 	tilde := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
 	if install {
 		fmt.Fprintf(stdout, "1. %s: decisions/ wiki/ .shikii/ for the agent's own decisions; copy the 4 specs that are missing (command-effect, edit-in-scope, needs-plan, prompt-kind) and the shared wiki pages. Existing files are never overwritten\n", tilde(agent))
-		fmt.Fprintf(stdout, "2. %s: add 3 hooks (PreToolUse %s, UserPromptSubmit, Stop) running `shikii hook <event>`; a backup of the file as it was goes to settings.json.bak-shikii (once, only if it existed). Hooks that are already there are kept; a second install adds nothing\n", tilde(settings), hookToolsRe)
-		fmt.Fprintf(stdout, "   Until a spec has a calibration line the hooks only record (shadow mode); they never deny a tool. Claude Code only (Cursor, OpenCode and Codex have no hook).\n")
-		fmt.Fprintf(stdout, "   Needs: the local model on %s (start it with `shikii up`; without it the hooks stay silent and record nothing) and `shikii` on Claude Code's PATH (`which shikii`)\n", hookLocalURL)
+		for i, t := range hookTargets {
+			fmt.Fprintf(stdout, "%d. %s: add 3 hooks (PreToolUse %s, UserPromptSubmit, Stop) running `shikii hook <event>` (%s); a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Hooks that are already there are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), t.toolsRe, t.who, filepath.Base(t.rel), t.note)
+		}
+		fmt.Fprintf(stdout, "   Until a spec has a calibration line the hooks only record (shadow mode); they never deny a tool. Claude Code and Codex (Cursor and OpenCode have no hook).\n")
+		fmt.Fprintf(stdout, "   Needs: the local model on %s (start it with `shikii up`; without it the hooks stay silent and record nothing) and `shikii` on the agent's PATH (`which shikii`)\n", hookLocalURL)
 	} else {
-		fmt.Fprintf(stdout, "1. %s: remove the handlers whose command starts with `%s` (other hooks stay). %s is kept: it holds the records and truths\n", tilde(settings), hookCmdPrefix, tilde(agent))
+		for i, t := range hookTargets {
+			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command starts with `%s` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)), hookCmdPrefix)
+		}
+		fmt.Fprintf(stdout, "   %s is kept: it holds the records and truths\n", tilde(agent))
 	}
 	if !yes {
 		fmt.Fprintln(stdout, "(shown only; pass --yes to do it)")
@@ -943,19 +985,22 @@ func hookInstall(args []string, install bool) error {
 		}
 		fmt.Fprintf(stdout, "%s: %d specs and %d wiki pages added\n", tilde(agent), n, w)
 	}
-	changed, err := editHooks(settings, install)
-	if err != nil {
-		return err
-	}
-	switch {
-	case changed && install:
-		fmt.Fprintf(stdout, "%s: hooks added. Start a new terminal for them to take effect\n", tilde(settings))
-	case changed:
-		fmt.Fprintf(stdout, "%s: hooks removed. Start a new terminal for it to take effect\n", tilde(settings))
-	case install:
-		fmt.Fprintf(stdout, "%s: hooks were already there, nothing changed\n", tilde(settings))
-	default:
-		fmt.Fprintf(stdout, "%s: no shikii hooks found, nothing changed\n", tilde(settings))
+	for _, t := range hookTargets {
+		settings := filepath.Join(home, t.rel)
+		changed, err := editHooks(settings, install, hookEventsFor(t.toolsRe))
+		if err != nil {
+			return err
+		}
+		switch {
+		case changed && install:
+			fmt.Fprintf(stdout, "%s: hooks added (%s). Start a new terminal for them to take effect.%s\n", tilde(settings), t.who, t.note)
+		case changed:
+			fmt.Fprintf(stdout, "%s: hooks removed (%s). Start a new terminal for it to take effect\n", tilde(settings), t.who)
+		case install:
+			fmt.Fprintf(stdout, "%s: hooks were already there, nothing changed (%s)\n", tilde(settings), t.who)
+		default:
+			fmt.Fprintf(stdout, "%s: no shikii hooks found, nothing changed (%s)\n", tilde(settings), t.who)
+		}
 	}
 	if install {
 		fmt.Fprintf(stdout, "answer page: cd %s && shikii serve --port 8096 --local %s   (then %s/)\n", tilde(agent), hookLocalURL, hookPageURL)
@@ -989,7 +1034,7 @@ func seedAgentSpecs(dst string) (int, error) {
 
 // editHooks は settings.json の hooks に shikii の 3 つを足す(install)か、`shikii hook ` で始まる handler を外す(uninstall)。
 // 他の hook と他の鍵は残す。書く前に .bak-shikii に控える。変えたかを返す。
-func editHooks(path string, install bool) (bool, error) {
+func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) {
 	cfg := map[string]any{}
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {

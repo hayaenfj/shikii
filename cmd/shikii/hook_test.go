@@ -775,3 +775,85 @@ func TestHookSecondAudit(t *testing.T) {
 		t.Fatalf("3 truths on one input are 1 truth; the hook must not try to draw a line:\n%s", logb)
 	}
 }
+
+// Codex: ~/.codex/hooks.json にも同じ 3 つ(PreToolUse は Bash|apply_patch)。他の hook は残り、2 回目は増えず、uninstall で自分の分だけ消える。
+// Codex は "ask" を受けないので確認は端末の 1 行に落ち、apply_patch は patch の文から触るファイルを取って edit-in-scope を聞く。
+func TestHookCodex(t *testing.T) {
+	files := patchFiles("*** Begin Patch\n*** Update File: cmd/a.go\n@@\n-x\n+y\n*** Add File: docs/b.md\n+hi\n*** Delete File: c.txt\n*** End Patch\n", 3)
+	if strings.Join(files, ",") != "cmd/a.go,docs/b.md,c.txt" {
+		t.Fatalf("patchFiles: %v", files)
+	}
+	if got := patchFiles("*** Update File: a\n*** Update File: b\n*** Update File: c\n*** Update File: d\n", 2); len(got) != 2 {
+		t.Fatalf("patchFiles must stop at max: %v", got)
+	}
+
+	model := fakeSystemOne(t, "kev-4b", map[string]float64{"read": 0, "change_project": 0, "change_outside": 0, "destroy": 1, "send_outside": 0})
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	codexHooks := filepath.Join(home, ".codex", "hooks.json")
+	if err := os.MkdirAll(filepath.Dir(codexHooks), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other := `{"description":"mine","hooks":{"PreToolUse":[{"matcher":"^Bash$","hooks":[{"type":"command","command":"~/.codex/scripts/deny-check.sh"}]}]}}`
+	if err := os.WriteFile(codexHooks, []byte(other), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// hookEnv と同じ差し替え(HOME は上で決めたものを使う)
+	agent := filepath.Join(home, ".shikii", "agent")
+	oldLocal, oldPage, oldCal := hookLocalURL, hookPageURL, hookCalibrate
+	hookLocalURL, hookPageURL, hookCalibrate = model.URL, "http://127.0.0.1:1", runCalibrateInProcess
+	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate = oldLocal, oldPage, oldCal })
+	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	cmds := hookCommands(codexHooks)
+	if len(cmds) != 3 {
+		t.Fatalf("Codex must get the 3 hooks: %v", cmds)
+	}
+	b, _ := os.ReadFile(codexHooks)
+	if !strings.Contains(string(b), `"matcher": "Bash|apply_patch"`) || !strings.Contains(string(b), "deny-check.sh") || !strings.Contains(string(b), `"description": "mine"`) {
+		t.Fatalf("Codex hooks.json must carry the apply_patch matcher and keep what was there:\n%s", b)
+	}
+	if bb, _ := os.ReadFile(codexHooks + ".bak-shikii"); string(bb) != other {
+		t.Fatal("the Codex file must be backed up once before shikii touches it")
+	}
+	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	if cmds := hookCommands(codexHooks); len(cmds) != 3 {
+		t.Fatalf("second install must not duplicate in Codex: %v", cmds)
+	}
+
+	// apply_patch → edit-in-scope(ファイル名は patch の見出しから)
+	cwd := t.TempDir()
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "cx", "turn_id": "t1", "cwd": cwd, "prompt": "add the installation notes and fix the parser"})
+	runHook(t, "pre-tool-use", map[string]any{"session_id": "cx", "turn_id": "t1", "cwd": cwd, "tool_name": "apply_patch", "tool_input": map[string]any{"command": "*** Begin Patch\n*** Update File: docs/install.md\n+x\n*** End Patch\n"}})
+	recs, _ := (store.Store{Dir: filepath.Join(agent, ".shikii")}).Records("edit-in-scope", 0)
+	if len(recs) != 1 || recs[0].Inputs["file"] != "docs/install.md" {
+		t.Fatalf("apply_patch must be asked as edit-in-scope with the patched file: %+v", recs)
+	}
+
+	// Codex(turn_id あり)では線が引けた後の destroy も "ask" を出さず、端末の 1 行に落ちる
+	writeAgentCommandEffect(t, home)
+	specPath := filepath.Join(agent, "decisions", "command-effect.yaml")
+	storeDir := filepath.Join(agent, ".shikii")
+	for i := 0; i < 3; i++ {
+		runHook(t, "pre-tool-use", map[string]any{"session_id": "cx", "turn_id": "t2", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": fmt.Sprintf("rm -rf %d", i)}})
+	}
+	crecs, _ := (store.Store{Dir: storeDir}).Records("command-effect", 0)
+	for _, r := range crecs {
+		capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ui", r.TraceID, "destroy"}) })
+	}
+	capture(t, func() error {
+		return cmdCalibrate([]string{specPath, "--store", storeDir, "--model", "kev-4b", "--write"})
+	})
+	out := runHook(t, "pre-tool-use", map[string]any{"session_id": "cx", "turn_id": "t3", "cwd": cwd, "permission_mode": "default", "tool_name": "Bash", "tool_input": map[string]any{"command": "rm -rf /tmp/x"}})
+	var got map[string]any
+	_ = json.Unmarshal([]byte(out), &got)
+	if _, has := got["hookSpecificOutput"]; has || !strings.Contains(fmt.Sprint(got["systemMessage"]), "destroy") {
+		t.Fatalf("Codex cannot take ask: it must become a system line only: %s", out)
+	}
+
+	// uninstall は Codex 側も自分の分だけ外す
+	capture(t, func() error { return cmdHook([]string{"uninstall", "--yes"}) })
+	b, _ = os.ReadFile(codexHooks)
+	if len(hookCommands(codexHooks)) != 0 || !strings.Contains(string(b), "deny-check.sh") {
+		t.Fatalf("uninstall must remove only shikii's Codex hooks:\n%s", b)
+	}
+}

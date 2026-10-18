@@ -159,11 +159,11 @@ bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --
 
 `--propose` hands a chat model the current wording, the confusion matrix, the examples it gets wrong and the relevant pages of the [wiki](../wiki/index.md) (how to ask this type, this model family's habits, confirmed patterns, this decision's own rules and the wordings people rejected), and asks for candidates. Texts from `pii: true` specs and texts recorded under `--tainted` go only to a proposer on this machine; the hosted key is never sent to a proposer (set `SHIKII_PROPOSER_KEY` if yours needs one). A wording proposed in this run is never adopted by the same `--write`: a person reads it first, then adopts on the page or with a plain `tune --write`. They are stored in the spec's `variants:` so people can read them, scored like any other candidate, and the run is written back to `wiki/runs/` with the numbers, the decision and a one-line lesson. The wiki is where the knowledge of *how to ask* accumulates, is edited by people, and is read by the next proposal. A pattern page is not prose but a verifiable claim: front matter with the claim, where it applies, the evidence runs, and a retest recipe (which spec, which candidate should beat which). `shikii wiki verify` reruns the recipe on the current model, records the verdict as new evidence, and says when two independent models support a claim; a person changes the status. Anyone can rerun a claim on their own model and add to its evidence. Every `tune` run drafts a claim for a candidate that beat the current wording, and the answer page has a knowledge panel where a person turns a draft into a general claim, confirms or rejects it; the machine never changes a status.
 
-### Measure the agent's own judgement (Claude Code hooks)
+### Measure the agent's own judgement (Claude Code and Codex hooks)
 
 ```sh
 shikii hook install          # shows what it would do
-shikii hook install --yes    # ~/.shikii/agent/ (specs, wiki, store) + 3 hooks in ~/.claude/settings.json; open a new terminal
+shikii hook install --yes    # ~/.shikii/agent/ (specs, wiki, store) + 3 hooks in ~/.claude/settings.json and ~/.codex/hooks.json; open a new terminal (Codex: run /hooks once to trust them)
 cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080   # the answer page for these decisions
 shikii hook uninstall --yes  # removes the 3 hooks; records and truths stay
 ```
@@ -227,7 +227,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 188 Go tests across 8 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 189 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -241,7 +241,7 @@ shikii speaks the System One request shape (`POST /v1/systemone`), so anything t
 | **Any chat GGUF** via `shikii-readout` | Letter-logit readout in System One shape, no calibration of its own | Stock `llama-server` 0.7.0 behind it. [`integrations/readout.md`](../integrations/readout.md) |
 | **PrismML Bonsai** via [BonJev](https://github.com/ChezRD/bonjev) | Same, with BonJev's own prompt and built-in calibration | Rust build and the Prism fork. [`integrations/bonjev.md`](../integrations/bonjev.md) |
 | **Fake model** (`bin/fake-systemone`) | Deterministic probabilities for demos and tests | Nothing. `make fake` |
-| **Claude Code hooks** (`shikii hook install`) | The agent's own decisions measured: what a command does, is this edit in scope, does this request need a plan, what will the agent end up doing (labelled from the working tree) | [`integrations/claude-code.md`](../integrations/claude-code.md) (Japanese) |
+| **Claude Code and Codex hooks** (`shikii hook install`) | The agent's own decisions measured: what a command does, is this edit in scope, does this request need a plan, what will the agent end up doing (labelled from the working tree) | [`integrations/claude-code.md`](../integrations/claude-code.md) (Japanese) |
 | **Docker** | llama.cpp with Kev-4B and shikii in two containers; `decisions/`, `wiki/`, `.shikii/` stay on the host | `docker compose up`. [`integrations/docker.md`](../integrations/docker.md) |
 
 Taint is a first-class input: pass `--tainted` (or let your hook do it) in a session that touched production data and the request never leaves the machine. If no local endpoint is configured, the decision abstains.
