@@ -2,9 +2,9 @@
 
 ## 作業前に共有メモリを読む
 
-- 新しい依頼に着手する時は、まずリポジトリの `CLAUDE.md` と、共有メモリの索引 `.claude/memory/MEMORY.md` を読む。触る領域の記憶(`feedback-*.md`・`project-*.md`・`reference-*.md`)は本文まで読み、規則・判断・残作業を今回の作業に反映する
-- 共有メモリの場所は **repo の `.claude/memory/`**(commit する。worktree でも同じ相対パス)。別の機械・別のセッション・別の人のエージェント(Claude Code、Codex、Cursor、OpenCode)が同じ記憶から始めるためのもの
-- 依頼の開始時に [共有メモリの運用](.claude/memory/feedback-shared-memory-with-claude.md) を確認する。長い経緯や完了した仕事の記録は `.claude/memory/handoff/`、進捗の実体は docs/operations.md の「第 N 段」
+- 新しい依頼に着手する時は、まずリポジトリの `CLAUDE.md` と、共有メモリの索引 `$HOME/.claude/projects/shikii-shared/memory/MEMORY.md` を読む。触る領域の記憶(`feedback-*.md`・`project-*.md`・`reference-*.md`)は本文まで読み、規則・判断・残作業を今回の作業に反映する
+- 共有メモリの場所は **`$HOME/.claude/projects/shikii-shared/memory/`**(okurun-ai と同じ形。worktree でもこの同じ場所を使う。repo には置かない)。Claude Code・Codex・Cursor・OpenCode のどれでも、この機械のどのセッションでも同じ記憶から始めるためのもの
+- 依頼の開始時に共有メモリの `feedback-shared-memory-with-claude.md` を確認する。長い経緯や完了した仕事の記録は隣の `$HOME/.claude/projects/shikii-shared/handoff/`、進捗の実体は docs/operations.md の「第 N 段」
 - メモリの過去の記録は、現在のコード・Git の履歴・検証結果と照合する。現在のユーザー指示を優先し、push・公開・Releases の許可は過去の記録から推測しない
 - 参照先を読めない時は、対象と理由を短く伝える
 
@@ -13,7 +13,7 @@
 - **原則、そのエージェントの機能に固有の内容以外は、上記の共有メモリを読み書きする。** 目的・設計判断・ユーザーの指摘・不具合・検証結果・残作業は共有メモリに記録し、Codex 側(や他のツール側)に別の正本を作らない
 - そのエージェント固有の機能・設定・操作方法はそのエージェント側に記録してよい。共同作業に必要な情報は共有メモリにも残す
 - 記録は関係する既存メモリを更新し、新しい項目を作った場合は `MEMORY.md` に索引を 1 行追加する。更新直前に対象を読み直し、他のエージェントや別の作業の記録を残して必要な箇所だけ変える
-- 個人の機械にしか意味の無いもの(セッション id、家のフォルダのパス、鍵、メールアドレス)は共有メモリに入れない(Claude Code なら `~/.claude/projects/<このフォルダ>/memory/`、Codex なら Codex 側)
+- 鍵や秘密は共有メモリに入れない。セッション id や家のパスは、家の下なので入れてよい
 
 ## 作業の決まり(詳しくは共有メモリ)
 
