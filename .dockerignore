@@ -8,3 +8,4 @@ docs/assets/
 # 画面の依存とビルド結果(画像の中で node の段が組み直す)
 web/node_modules/
 web/dist/
+web/.ui-test
