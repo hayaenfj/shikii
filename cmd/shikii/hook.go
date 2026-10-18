@@ -41,6 +41,11 @@ var (
 	hookDecideTimeout = 5 * time.Second
 	hookProbeTimeout  = 300 * time.Millisecond
 	hookSessionTTL    = 7 * 24 * time.Hour
+	hookLockWait      = 2 * time.Second  // 錠を待つ上限
+	hookGitTimeout    = 3 * time.Second  // 作業ツリーのハッシュ取り(git)の上限。超えたら "" (正解を付けない)
+	hookCalibrateGap  = 10 * time.Minute // 同じ spec の自動較正を続けて起こさない間
+	// hookCalibrate は線を引く本体。既定は別プロセス(shikii calibrate --write)を切り離して起こす: 聞き直し(replay)が長くても hook の timeout に掛からない。テストは同プロセスに差し替える
+	hookCalibrate = spawnCalibrate
 )
 
 const (
@@ -144,11 +149,11 @@ func (o hookOut) json(event string) []byte {
 
 // hookSession はセッションごとの控え(~/.shikii/agent/.shikii/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 type hookSession struct {
-	Request  string        `json:"request,omitempty"`  // 人が最後に送った依頼(UserPromptSubmit で控える)
-	Previous string        `json:"previous,omitempty"` // 直前のアシスタントの発言(Stop で控える)
-	Pending  []pendingItem `json:"pending,omitempty"`  // prompt-kind の結果の正解を待つ判定
-	Asked    []askedItem   `json:"asked,omitempty"`    // このセッションで人の答えを待つことになった判定(ask と抜き取り)
-	Reported int           `json:"reported,omitempty"` // Stop で最後に答え待ちを伝えた時の Asked の数(新しく増えた時だけ言う)
+	Request  string        `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
+	Previous string        `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
+	Pending  []pendingItem `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
+	Asked    []askedItem   `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
+	Reported []string      `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
 	At       time.Time     `json:"at"`
 }
 
@@ -177,7 +182,7 @@ func sessionPath(agent, id string) string {
 }
 
 // lockSession はセッションの控えの錠(flock)。Claude Code は hook を並列に走らせる(Bash と Edit の PreToolUse が同時、Stop と次の依頼が重なる)ので、
-// 読む → 変える → 書く の間を 1 プロセスずつにする。錠が取れなければ待たずに進む(hook は止めない)。
+// 読む → 変える → 書く の間を 1 プロセスずつにする。錠は短く持つ(モデルの呼び出しは錠の外)。hookLockWait 待っても取れなければ錠なしで進む(hook は止めない)。
 func lockSession(agent, id string) (unlock func()) {
 	p := sessionPath(agent, id) + ".lock"
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -187,14 +192,32 @@ func lockSession(agent, id string) (unlock func()) {
 	if err != nil {
 		return func() {}
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		f.Close()
-		return func() {}
+	deadline := time.Now().Add(hookLockWait)
+	for {
+		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			hookLog(fmt.Sprintf("session %s: lock busy for %s; proceeding without it", id, hookLockWait))
+			f.Close()
+			return func() {}
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	return func() {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		f.Close()
 	}
+}
+
+// updateSession は錠の中で 控えを読む → fn で変える → 書く。並列の hook が互いの変更を消さないための唯一の書き口。
+func updateSession(agent, id string, fn func(s *hookSession)) error {
+	unlock := lockSession(agent, id)
+	defer unlock()
+	s := loadSession(agent, id)
+	fn(s)
+	return saveSession(agent, id, s)
 }
 
 func loadSession(agent, id string) *hookSession {
@@ -268,10 +291,20 @@ func hookDecide(agent, specID string, inputs map[string]string, bypass bool) (*d
 	st := store.Store{Dir: filepath.Join(agent, ".shikii")}
 	attachReceipt(sp, st, d)
 	l := localize(sp, d, hookLang())
+	if specID == "command-effect" {
+		dist := d.Raw
+		if d.IsCalibrated {
+			dist = d.Calibrated
+		}
+		for _, id := range heavyOptions {
+			l.Heavy += dist[id]
+		}
+		l.Act = sp.Thresholds.Act
+	}
 	out := hookOutcome(specID, d, bypass, l)
 	if d.Band != decide.Abstain {
 		rec := recordOf(sp, d, inputs)
-		if l.Lang != "" {
+		if l.Lang != "" && (l.Question != "" || l.Top != "" || out.message() != "") { // 言語だけの display は付けない(読む物が無い)
 			rec.Display = &store.RecordDisplay{Lang: l.Lang, Question: l.Question, Top: l.Top, Message: out.message()}
 		}
 		if err := recordDecisionRec(st, sp, d, rec); err != nil {
@@ -313,7 +346,11 @@ func hookLang() string {
 // hookLoc は設定の言語での言い方: 言語コード、spec の display.<lang> の質問と答え(無ければ空)。Lang が "" なら英語だけ。
 type hookLoc struct {
 	Lang, Question, Top string
+	Heavy, Act          float64 // command-effect: 重い 3 択(change_outside / destroy / send_outside)の確率の和と、spec の act 閾値。割れても和が act に届けば確認を出す
 }
+
+// heavyOptions は command-effect で確認を出す側の選択肢。
+var heavyOptions = []string{"change_outside", "destroy", "send_outside"}
 
 func localize(sp *spec.Spec, d *decide.Decision, lang string) hookLoc {
 	l := hookLoc{Lang: lang}
@@ -386,7 +423,15 @@ func hookOutcome(specID string, d *decide.Decision, bypass bool, l hookLoc) hook
 				return hookOut{Permission: "ask", Reason: bi(en, ja, " / ", l)}
 			}
 			return hookOut{}
-		default: // ask / discard: 線はあるが迷った
+		default: // ask / discard: 線はあるが迷った。重い 3 択の間で割れているだけ(和が act 以上)なら、どれであっても確認を出す
+			if l.Act > 0 && l.Heavy >= l.Act {
+				en := fmt.Sprintf("shikii: this command looks like one of change_outside / destroy / send_outside (together p=%.2f%s)", l.Heavy, receipt)
+				ja := fmt.Sprintf("shikii: このコマンドは「外を変える / 消す / 外に送る」のどれかに見える(合わせて p=%.2f%s)", l.Heavy, receiptJA)
+				if bypass {
+					return hookOut{System: bi(en, ja, "\n", l)}
+				}
+				return hookOut{Permission: "ask", Reason: bi(en, ja, " / ", l)}
+			}
 			return unsure()
 		}
 	case "edit-in-scope":
@@ -433,20 +478,37 @@ func runHookEvent(event string) error {
 		return fmt.Errorf("stdin is not Claude Code's hook JSON: %w", err)
 	}
 	bypass := in.PermissionMode == "bypassPermissions"
-	unlock := lockSession(agent, in.SessionID)
-	defer unlock()
-	sess := loadSession(agent, in.SessionID)
 	var out hookOut
 	switch event {
-	case "pre-tool-use":
-		out, err = hookPreToolUse(agent, &in, sess, bypass)
-	case "user-prompt-submit":
-		out, err = hookUserPrompt(agent, &in, sess)
 	case "stop":
-		out, err = hookStop(agent, &in, sess)
-	}
-	if serr := saveSession(agent, in.SessionID, sess); serr != nil && err == nil {
-		err = serr
+		// Stop は速い仕事だけ(ツリーのハッシュ、結果の正解、要約)なので錠の中で。線を引くのは錠の外で別プロセス
+		if !in.StopHookActive {
+			err = updateSession(agent, in.SessionID, func(sess *hookSession) { out, err = hookStop(agent, &in, sess) })
+			for _, id := range []string{"prompt-kind", "command-effect", "edit-in-scope", "needs-plan"} {
+				if cerr := hookMaybeCalibrate(agent, id); cerr != nil && err == nil {
+					err = cerr
+				}
+			}
+		}
+	default:
+		// モデルの呼び出しは錠の外(控えの写しを読むだけ)。控えへの変更は muts にまとめ、錠の中で読み直した控えに当てる
+		snapshot := loadSession(agent, in.SessionID)
+		var muts []func(*hookSession)
+		switch event {
+		case "pre-tool-use":
+			out, muts, err = hookPreToolUse(agent, &in, snapshot, bypass)
+		case "user-prompt-submit":
+			out, muts, err = hookUserPrompt(agent, &in, snapshot)
+		}
+		if len(muts) > 0 {
+			if serr := updateSession(agent, in.SessionID, func(sess *hookSession) {
+				for _, m := range muts {
+					m(sess)
+				}
+			}); serr != nil && err == nil {
+				err = serr
+			}
+		}
 	}
 	if b := out.json(hookEventName(event)); b != nil {
 		fmt.Fprintln(stdout, string(b))
@@ -464,7 +526,8 @@ func hookEventName(event string) string {
 	return "Stop"
 }
 
-func hookPreToolUse(agent string, in *hookInput, sess *hookSession, bypass bool) (hookOut, error) {
+// hookPreToolUse は Bash なら command-effect、Edit 系なら edit-in-scope を聞く。snapshot は控えの写し(読むだけ)。控えへの変更は muts で返す。
+func hookPreToolUse(agent string, in *hookInput, snapshot *hookSession, bypass bool) (hookOut, []func(*hookSession), error) {
 	var ti struct {
 		Command  string `json:"command"`
 		FilePath string `json:"file_path"`
@@ -474,100 +537,92 @@ func hookPreToolUse(agent string, in *hookInput, sess *hookSession, bypass bool)
 	switch in.ToolName {
 	case "Bash":
 		if strings.TrimSpace(ti.Command) == "" {
-			return hookOut{}, nil
+			return hookOut{}, nil, nil
 		}
 		d, out, err := hookDecide(agent, "command-effect", map[string]string{"command": cut(ti.Command, requestMax), "cwd": in.CWD}, bypass)
 		if err != nil {
-			return hookOut{}, err
+			return hookOut{}, nil, err
 		}
-		noteAsked(sess, "command-effect", d)
-		return out, nil
+		return out, []func(*hookSession){noteAsked("command-effect", d)}, nil
 	case "Edit", "Write", "MultiEdit", "NotebookEdit":
 		file := ti.FilePath
 		if file == "" {
 			file = ti.Notebook
 		}
-		if file == "" || sess.Request == "" {
-			return hookOut{}, nil // 依頼の控えが無ければ「範囲か」は問えない
+		if file == "" || snapshot.Request == "" {
+			return hookOut{}, nil, nil // 依頼の控えが無ければ「範囲か」は問えない
 		}
 		if rel, err := filepath.Rel(in.CWD, file); err == nil && !strings.HasPrefix(rel, "..") {
 			file = rel
 		}
-		d, out, err := hookDecide(agent, "edit-in-scope", map[string]string{"file": file, "request": sess.Request}, bypass)
+		d, out, err := hookDecide(agent, "edit-in-scope", map[string]string{"file": file, "request": snapshot.Request}, bypass)
 		if err != nil {
-			return hookOut{}, err
+			return hookOut{}, nil, err
 		}
-		noteAsked(sess, "edit-in-scope", d)
-		return out, nil
+		return out, []func(*hookSession){noteAsked("edit-in-scope", d)}, nil
 	}
-	return hookOut{}, nil
+	return hookOut{}, nil, nil
 }
 
-func hookUserPrompt(agent string, in *hookInput, sess *hookSession) (hookOut, error) {
+// hookUserPrompt は prompt-kind と needs-plan を聞き、依頼と作業ツリーのハッシュを控える。前の依頼の結果の正解はここ(次の依頼が来た時)で決める。
+func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	req := cut(strings.TrimSpace(in.Prompt), requestMax)
 	if req == "" || strings.HasPrefix(req, "/") {
-		return hookOut{}, nil
+		return hookOut{}, nil, nil
 	}
 	// 短い返事(「ok」「yes go ahead」)は依頼を置き換えず、前の依頼に添える: edit-in-scope が「ok」を依頼として読まないように
-	if utf8.RuneCountInString(req) < shortReply && sess.Request != "" {
-		sess.Request = cut(sess.Request+" / "+req, requestMax)
-	} else {
-		sess.Request = req
+	request := req
+	if utf8.RuneCountInString(req) < shortReply && snapshot.Request != "" {
+		request = cut(snapshot.Request+" / "+req, requestMax)
 	}
 	inputs := map[string]string{"request": req}
-	if sess.Previous != "" {
-		inputs["previous"] = sess.Previous // 文脈の段(迷った時だけ使われる)
+	if snapshot.Previous != "" {
+		inputs["previous"] = snapshot.Previous // 文脈の段(迷った時だけ使われる)
+	}
+	tree := treeSnapshot(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
+	muts := []func(*hookSession){
+		func(s *hookSession) { s.Request = request },
+		// 前の依頼の結果の正解は、次の依頼が来た時点のツリーで決める(依頼の境目 = 次の依頼。Stop まで待つと 2 つの依頼が混ざる)
+		func(s *hookSession) { settlePending(agent, s, tree) },
 	}
 	var firstErr error
-	// 前の依頼の結果の正解は、次の依頼が来た時点のツリーで決める(依頼の境目 = 次の依頼。Stop まで待つと 2 つの依頼が混ざる)
-	if err := settlePending(agent, sess, in.CWD); err != nil {
-		firstErr = err
-	}
 	// prompt-kind: 結果の正解のために作業ツリーのハッシュを控える
-	if d, _, err := hookDecide(agent, "prompt-kind", inputs, false); err != nil && firstErr == nil {
+	if d, _, err := hookDecide(agent, "prompt-kind", inputs, false); err != nil {
 		firstErr = err
-	} else if err == nil && d.Band != decide.Abstain {
-		if tree := treeSnapshot(in.CWD); tree != "" {
-			sess.Pending = append(sess.Pending, pendingItem{Trace: d.TraceID, Tree: tree, At: time.Now()})
+	} else if d.Band != decide.Abstain {
+		if tree != "" {
+			muts = append(muts, func(s *hookSession) {
+				s.Pending = append(s.Pending, pendingItem{Trace: d.TraceID, Tree: tree, At: time.Now()})
+			})
 		}
-		noteAsked(sess, "prompt-kind", d)
+		muts = append(muts, noteAsked("prompt-kind", d))
 	}
 	d, out, err := hookDecide(agent, "needs-plan", inputs, false)
 	if err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
-		return hookOut{}, firstErr
+		return hookOut{}, muts, firstErr
 	}
-	noteAsked(sess, "needs-plan", d)
-	return out, firstErr
+	muts = append(muts, noteAsked("needs-plan", d))
+	return out, muts, firstErr
 }
 
+// hookStop は錠の中で呼ばれる: 直前のアシスタントの発言を控え、残った pending に結果の正解を付け、答え待ちの要約を 1 行。線を引くのは呼ぶ側(錠の外)。
 func hookStop(agent string, in *hookInput, sess *hookSession) (hookOut, error) {
-	if in.StopHookActive {
-		return hookOut{}, nil
-	}
 	if m := strings.TrimSpace(in.LastAssistantMessage); m != "" {
-		if len(m) > requestMax {
-			m = m[:requestMax]
-		}
-		sess.Previous = m
+		sess.Previous = cut(m, requestMax)
 	}
 	st := store.Store{Dir: filepath.Join(agent, ".shikii")}
-	firstErr := settlePending(agent, sess, in.CWD)
-	// 線を引く: hook が書いた正解(prompt-kind の結果)は serve を通らないので、ここで min_n に届いたかを見る(他の spec も、画面を立てていない間に CLI で答えた分を拾う)
-	for _, id := range []string{"prompt-kind", "command-effect", "edit-in-scope", "needs-plan"} {
-		if err := hookMaybeCalibrate(agent, id); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
+	firstErr := settlePending(agent, sess, treeSnapshot(in.CWD))
 	pruneSessions(agent)
-	// 答え待ちの要約: このセッションで人の答えを待つことになった判定のうち、まだ答えの無いもの。増えた時だけ言う(毎ターン同じ数を繰り返さない)
-	n := unansweredCount(st, sess.Asked)
-	if n == 0 || len(sess.Asked) <= sess.Reported { // 新しく答え待ちになった判定が無ければ繰り返さない
+	// 答え待ちの要約: このセッションで人の答えを待つことになった判定のうち、まだ答えの無いもの。新顔がある時だけ言う(毎ターン同じ数を繰り返さない)
+	waiting := unanswered(st, sess.Asked)
+	n := len(waiting)
+	if n == 0 || !hasNew(waiting, sess.Reported) {
 		return hookOut{}, firstErr
 	}
-	sess.Reported = len(sess.Asked)
+	sess.Reported = waiting
 	l := hookLoc{Lang: hookLang()}
 	if serveUp() {
 		return hookOut{System: bi(
@@ -580,8 +635,8 @@ func hookStop(agent string, in *hookInput, sess *hookSession) (hookOut, error) {
 		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち。画面を立てる: %s", n, start), "\n", l)}, firstErr
 }
 
-// hookMaybeCalibrate は serve の自動較正と同じ規則: 今の文言(hash)にまだ線が無いモデルの正解が eval.min_n に届いていれば線を引いて spec に書く。
-// 線があるモデルは触らない(引き直しは drift が悪化を言った時)。結果は hook.log に 1 行。
+// hookMaybeCalibrate は serve の自動較正と同じ規則: 今の文言(hash)にまだ線が無いモデルについて、人の正解(入力ごとに 1 件)が eval.min_n に届いていれば線を引く。
+// 線があるモデルは触らない(引き直しは drift が悪化を言った時)。本体は hookCalibrate(既定は別プロセスを切り離す)。同じ spec は hookCalibrateGap の間は 1 回。
 func hookMaybeCalibrate(agent, specID string) error {
 	path := filepath.Join(agent, "decisions", specID+".yaml")
 	sp, err := spec.Load(path)
@@ -604,39 +659,81 @@ func hookMaybeCalibrate(agent, specID string) error {
 			continue
 		}
 		labels, err := st.Labels(specID, sp.Hash(), model)
-		if err != nil || len(labels) < sp.Eval.MinN {
+		if err != nil {
 			continue
 		}
-		var buf bytes.Buffer
-		old := stdout
-		stdout = &buf
-		ef := endpointFlags{local: hookLocalURL, model: model}
-		err = func() (err error) {
-			defer func() {
-				stdout = old
-				if r := recover(); r != nil {
-					err = fmt.Errorf("calibrate panicked: %v", r)
-				}
-			}()
-			return runCalibrate(path, calibrateOpts{ef: ef, storeDir: st.Dir, labeled: "none", bins: 10, write: true, rung: "minimal"})
-		}()
-		line := lastLine(buf.String())
-		if err != nil {
-			line += " ERROR: " + err.Error()
+		var human []store.Label
+		for _, l := range store.LatestPerInput(labels) { // calibrate と同じ数え方: 入力ごとに 1 件、人の正解だけ
+			if store.HumanSource(l.Source) {
+				human = append(human, l)
+			}
 		}
-		hookLog(fmt.Sprintf("auto-calibrate %s (%s): %s", specID, model, line))
+		if len(human) < sp.Eval.MinN {
+			continue
+		}
+		guard := filepath.Join(st.Dir, "calibrating-"+specID)
+		if info, err := os.Stat(guard); err == nil && time.Since(info.ModTime()) < hookCalibrateGap {
+			continue // 前の較正がまだ走っている(か、直前に失敗した)。しばらく置く
+		}
+		_ = os.WriteFile(guard, []byte(time.Now().Format(time.RFC3339)+" "+model+"\n"), 0o600)
+		hookCalibrate(agent, path, st.Dir, model)
 	}
 	return nil
 }
 
-// settlePending は控えてある prompt-kind の判定に結果の正解を付ける: 依頼の時のツリーと今のツリーが違えば edit(重み 1)、同じなら !edit(部分、重み 0.7)。
-// 依頼の直後(次の依頼が来た時)と Stop で呼ぶ。git の外なら付けずに捨てる(比べる物が無い)。
-func settlePending(agent string, sess *hookSession, cwd string) error {
+// spawnCalibrate は `shikii calibrate <spec> --store … --local … --model … --write` を切り離した別プロセスで起こす(hook は待たない)。
+// 出力は hook.log に追記。聞き直しが長くても hook の timeout に掛からず、途中で殺されても spec は tmp + rename で壊れない。
+func spawnCalibrate(agent, path, storeDir, model string) {
+	exe, err := os.Executable()
+	if err != nil {
+		hookLog("auto-calibrate: cannot find shikii: " + err.Error())
+		return
+	}
+	logf, err := os.OpenFile(filepath.Join(agent, ".shikii", "hook.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer logf.Close()
+	fmt.Fprintf(logf, "%s auto-calibrate %s (%s): started in the background\n", time.Now().Format(time.RFC3339), filepath.Base(path), model)
+	cmd := exec.Command(exe, "calibrate", path, "--store", storeDir, "--local", hookLocalURL, "--model", model, "--write")
+	cmd.Stdout = logf
+	cmd.Stderr = logf
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(logf, "%s auto-calibrate: %v\n", time.Now().Format(time.RFC3339), err)
+		return
+	}
+	_ = cmd.Process.Release()
+}
+
+// runCalibrateInProcess は hookCalibrate の同プロセス版(テストと、別プロセスを起こせない環境の予備)。
+func runCalibrateInProcess(agent, path, storeDir, model string) {
+	var buf bytes.Buffer
+	old := stdout
+	stdout = &buf
+	err := func() (err error) {
+		defer func() {
+			stdout = old
+			if r := recover(); r != nil {
+				err = fmt.Errorf("calibrate panicked: %v", r)
+			}
+		}()
+		return runCalibrate(path, calibrateOpts{ef: endpointFlags{local: hookLocalURL, model: model}, storeDir: storeDir, labeled: "none", bins: 10, write: true, rung: "minimal"})
+	}()
+	line := lastLine(buf.String())
+	if err != nil {
+		line += " ERROR: " + err.Error()
+	}
+	hookLog(fmt.Sprintf("auto-calibrate %s (%s): %s", strings.TrimSuffix(filepath.Base(path), ".yaml"), model, line))
+}
+
+// settlePending は控えてある prompt-kind の判定に結果の正解を付ける: 依頼の時のツリーと今のツリー(now)が違えば edit(重み 1)、同じなら !edit(部分、重み 0.7)。
+// 依頼の直後(次の依頼が来た時)と Stop で呼ぶ。now が ""(git の外、または git が間に合わない)なら付けずに捨てる(比べる物が無い)。
+func settlePending(agent string, sess *hookSession, now string) error {
 	if len(sess.Pending) == 0 {
 		return nil
 	}
 	st := store.Store{Dir: filepath.Join(agent, ".shikii")}
-	now := treeSnapshot(cwd)
 	var firstErr error
 	for _, p := range sess.Pending {
 		if now == "" {
@@ -654,15 +751,19 @@ func settlePending(agent string, sess *hookSession, cwd string) error {
 	return firstErr
 }
 
-func noteAsked(sess *hookSession, specID string, d *decide.Decision) {
-	if waitsForPerson(d) {
-		sess.Asked = append(sess.Asked, askedItem{Spec: specID, Trace: d.TraceID})
+// noteAsked は「人の答えを待つ判定」を控えに足す変更(錠の中で当てる)。
+func noteAsked(specID string, d *decide.Decision) func(*hookSession) {
+	return func(s *hookSession) {
+		if waitsForPerson(d) {
+			s.Asked = append(s.Asked, askedItem{Spec: specID, Trace: d.TraceID})
+		}
 	}
 }
 
-func unansweredCount(st store.Store, asked []askedItem) int {
+// unanswered は asked のうち、まだ答えの無い trace。
+func unanswered(st store.Store, asked []askedItem) []string {
 	labeled := map[string]map[string]store.Label{}
-	n := 0
+	var out []string
 	for _, a := range asked {
 		if _, ok := labeled[a.Spec]; !ok {
 			m, err := st.LabeledTraces(a.Spec)
@@ -672,10 +773,24 @@ func unansweredCount(st store.Store, asked []askedItem) int {
 			labeled[a.Spec] = m
 		}
 		if _, ok := labeled[a.Spec][a.Trace]; !ok {
-			n++
+			out = append(out, a.Trace)
 		}
 	}
-	return n
+	return out
+}
+
+// hasNew は waiting に reported に無い trace があるか。
+func hasNew(waiting, reported []string) bool {
+	seen := map[string]bool{}
+	for _, r := range reported {
+		seen[r] = true
+	}
+	for _, w := range waiting {
+		if !seen[w] {
+			return true
+		}
+	}
+	return false
 }
 
 func labelTrace(st store.Store, specID, trace, truth string, weight float64, source string) error {
@@ -702,13 +817,17 @@ func serveUp() bool {
 }
 
 // treeSnapshot は作業ツリーの中身のハッシュ: 仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id の先頭 16 桁。
-// HEAD や index の状態は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。中身そのものは残らない。git の外なら ""。
+// HEAD や index の状態は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。
+// 新しい blob は仮の objects(GIT_OBJECT_DIRECTORY)に書いて消すので、未追跡ファイルの中身が repo の .git/objects に残らない(repo の objects は alternates として読むだけ)。
+// 全体で hookGitTimeout を超えたら ""(.gitignore の無い巨大な node_modules など。正解を付けないだけで hook は止めない)。git の外なら ""。
 func treeSnapshot(cwd string) string {
 	if cwd == "" {
 		return ""
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
+	defer cancel()
 	run := func(env []string, args ...string) (string, bool) {
-		cmd := exec.Command("git", args...)
+		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Dir = cwd
 		cmd.Env = append(os.Environ(), env...)
 		var out bytes.Buffer
@@ -717,19 +836,31 @@ func treeSnapshot(cwd string) string {
 		if err := cmd.Run(); err != nil {
 			return "", false
 		}
-		return out.String(), true
+		return strings.TrimSpace(out.String()), true
 	}
 	if _, ok := run(nil, "rev-parse", "--is-inside-work-tree"); !ok {
 		return ""
 	}
-	tmp, err := os.CreateTemp("", "shikii-index-*")
+	objects, ok := run(nil, "rev-parse", "--git-path", "objects")
+	if !ok {
+		return ""
+	}
+	if !filepath.IsAbs(objects) {
+		objects = filepath.Join(cwd, objects)
+	}
+	scratch, err := os.MkdirTemp("", "shikii-git-*")
 	if err != nil {
 		return ""
 	}
-	tmp.Close()
-	os.Remove(tmp.Name()) // 空の index から始める(無いファイル名を渡すと git が作る)
-	defer os.Remove(tmp.Name())
-	env := []string{"GIT_INDEX_FILE=" + tmp.Name()}
+	defer os.RemoveAll(scratch)
+	env := []string{
+		"GIT_INDEX_FILE=" + filepath.Join(scratch, "index"),
+		"GIT_OBJECT_DIRECTORY=" + filepath.Join(scratch, "objects"),
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES=" + objects,
+	}
+	if err := os.MkdirAll(filepath.Join(scratch, "objects"), 0o755); err != nil {
+		return ""
+	}
 	if _, ok := run(env, "add", "-A", "--", "."); !ok {
 		return ""
 	}
@@ -737,7 +868,7 @@ func treeSnapshot(cwd string) string {
 	if !ok {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(strings.TrimSpace(tree)))
+	sum := sha256.Sum256([]byte(tree))
 	return hex.EncodeToString(sum[:])[:16]
 }
 

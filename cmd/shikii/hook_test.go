@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/spec"
@@ -21,13 +23,14 @@ func hookEnv(t *testing.T, model *httptest.Server) (agent string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	agent = filepath.Join(home, ".shikii", "agent")
-	oldLocal, oldPage := hookLocalURL, hookPageURL
-	hookLocalURL = "http://127.0.0.1:1" // 閉じている口(モデルが無い)
+	oldLocal, oldPage, oldCal := hookLocalURL, hookPageURL, hookCalibrate
+	hookCalibrate = runCalibrateInProcess // テストは線を同プロセスで引く(本番は別プロセスを切り離す)
+	hookLocalURL = "http://127.0.0.1:1"   // 閉じている口(モデルが無い)
 	if model != nil {
 		hookLocalURL = model.URL
 	}
 	hookPageURL = "http://127.0.0.1:1"
-	t.Cleanup(func() { hookLocalURL, hookPageURL = oldLocal, oldPage })
+	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate = oldLocal, oldPage, oldCal })
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	return agent
 }
@@ -337,6 +340,12 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	// 空と / 始まりは判定しない
 	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "x", "cwd": repo, "prompt": "/model"}); out != "" || loadSession(agent, "x").Request != "" {
 		t.Fatal("slash commands must be skipped")
+	}
+	// 長い直前の発言は 1500 バイトに切る(多バイト文字を割らない)
+	longJa := strings.Repeat("日本語の長い説明。", 300)
+	runHook(t, "stop", map[string]any{"session_id": "same", "cwd": repo, "last_assistant_message": longJa})
+	if prev := loadSession(agent, "same").Previous; len(prev) > requestMax || !utf8.ValidString(prev) || len(prev) < requestMax-3 {
+		t.Fatalf("previous must be cut to %d bytes on a rune boundary, got %d bytes valid=%v", requestMax, len(prev), utf8.ValidString(prev))
 	}
 	// stop_hook_active なら何もしない
 	if out := runHook(t, "stop", map[string]any{"session_id": "same", "cwd": repo, "stop_hook_active": true, "last_assistant_message": "loop"}); out != "" || loadSession(agent, "same").Previous == "loop" {
@@ -669,5 +678,100 @@ func TestHookWritesTheConfiguredLanguageAlongsideEnglish(t *testing.T) {
 	// noul の答えは display が無くても はい / いいえ
 	if l := localize(&spec.Spec{}, &decide.Decision{Top: "yes"}, "ja"); l.Top != "はい" {
 		t.Fatalf("noul yes must read はい in Japanese, got %+v", l)
+	}
+}
+
+// 2 回目の監査: ツリーのハッシュ取りが repo の index と .git/objects を汚さない、重い 3 択の和で確認を出す、並列の更新が消えない、抜き取りも答え待ちに入る、
+// 同じ入力の正解 50 件では線を引こうとしない(calibrate と同じ数え方)。
+func TestHookSecondAudit(t *testing.T) {
+	// treeSnapshot: 未追跡ファイルの中身が .git/objects に残らず、本物の index も触らない
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git init: %v %s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte("SECRET=hunter2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if treeSnapshot(repo) == "" {
+		t.Fatal("snapshot must work in a fresh repo")
+	}
+	blob, _ := exec.Command("git", "-C", repo, "hash-object", ".env").Output()
+	if err := exec.Command("git", "-C", repo, "cat-file", "-e", strings.TrimSpace(string(blob))).Run(); err == nil {
+		t.Fatal("the content of an untracked file must not be left in the repo's .git/objects")
+	}
+	if out, _ := exec.Command("git", "-C", repo, "ls-files", "--cached").Output(); len(strings.TrimSpace(string(out))) != 0 {
+		t.Fatalf("the repo's own index must stay untouched, got %q", out)
+	}
+	if treeSnapshot(t.TempDir()) != "" {
+		t.Fatal("outside git the snapshot must be empty")
+	}
+
+	// 重い 3 択の間で割れている(destroy 0.45 / send_outside 0.40)なら、迷いではなく確認
+	split := &decide.Decision{TraceID: "0123456789abcdef", Band: decide.Ask, Top: "destroy", P: 0.45, IsCalibrated: true}
+	o := hookOutcome("command-effect", split, false, hookLoc{Heavy: 0.85, Act: 0.75})
+	if o.Permission != "ask" || !strings.Contains(o.Reason, "together p=0.85") {
+		t.Fatalf("a split between heavy options must still ask: %+v", o)
+	}
+	if o := hookOutcome("command-effect", split, false, hookLoc{Heavy: 0.55, Act: 0.75}); o.Permission != "" || !strings.Contains(o.System, "unsure") {
+		t.Fatalf("below act the split is just unsure: %+v", o)
+	}
+
+	// 抜き取り(act の 20 件に 1 件)も人の答え待ちに入る
+	audit := ""
+	for i := 0; i < 2000 && audit == ""; i++ {
+		tr := fmt.Sprintf("%016x", i)
+		if store.AuditSample(tr) {
+			audit = tr
+		}
+	}
+	if audit == "" {
+		t.Fatal("no audit sample trace found")
+	}
+	s := &hookSession{}
+	noteAsked("command-effect", &decide.Decision{TraceID: audit, Band: decide.Act, IsCalibrated: true})(s)
+	noteAsked("command-effect", &decide.Decision{TraceID: "ffffffffffffffff", Band: decide.Act, IsCalibrated: true})(s)
+	if len(s.Asked) != 1 || s.Asked[0].Trace != audit {
+		t.Fatalf("the audit sample must be asked and the plain act must not: %+v", s.Asked)
+	}
+
+	// 並列の更新が消えない(錠の中で 読む → 変える → 書く)
+	model := fakeSystemOne(t, "kev-4b", map[string]float64{"read": 0.1, "change_project": 0.2, "change_outside": 0.05, "destroy": 0.6, "send_outside": 0.05})
+	agent := hookEnv(t, model)
+	var wg sync.WaitGroup
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_ = updateSession(agent, "par", func(s *hookSession) {
+				s.Asked = append(s.Asked, askedItem{Spec: "command-effect", Trace: fmt.Sprintf("%016x", i)})
+			})
+		}(i)
+	}
+	wg.Wait()
+	if got := len(loadSession(agent, "par").Asked); got != 30 {
+		t.Fatalf("30 parallel updates must all survive, got %d", got)
+	}
+	if left, _ := filepath.Glob(filepath.Join(agent, ".shikii", "sessions", "*.tmp")); len(left) != 0 {
+		t.Fatalf("no .tmp may be left behind: %v", left)
+	}
+
+	// 同じ入力(ls)の正解が 50 件あっても、入力ごとに 1 件と数えるので線は引かない(毎 Stop に ERROR を書き続けない)
+	cwd := t.TempDir()
+	storeDir := filepath.Join(agent, ".shikii")
+	specPath := filepath.Join(agent, "decisions", "command-effect.yaml")
+	b, _ := os.ReadFile(specPath)
+	if err := os.WriteFile(specPath, []byte(strings.Replace(string(b), "min_n: 50", "min_n: 3", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		runHook(t, "pre-tool-use", map[string]any{"session_id": "dup", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}})
+	}
+	recs, _ := (store.Store{Dir: storeDir}).Records("command-effect", 0)
+	for _, r := range recs {
+		capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ui", r.TraceID, "destroy"}) })
+	}
+	runHook(t, "stop", map[string]any{"session_id": "dup", "cwd": cwd})
+	if logb, _ := os.ReadFile(filepath.Join(storeDir, "hook.log")); strings.Contains(string(logb), "auto-calibrate command-effect") {
+		t.Fatalf("3 truths on one input are 1 truth; the hook must not try to draw a line:\n%s", logb)
 	}
 }
