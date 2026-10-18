@@ -29,7 +29,7 @@ retest:
 
 ## 書き方
 
-spec か variant に `layout: plain`。変換役は system の文を外し、質問 → `- id: 説明` の列 → `Input:` の後ろに本文 → 「Answer with the option id only.」と並べ、文字（A, B, …）ではなく**各 id の最初のトークン**の確率を読む。配置は指紋と model 名（`…+plain`）に入るので線は別に引かれる。
+spec か variant に `layout: plain`。変換役は system の文を外し、質問 → `- id: 説明` の列 → `Input:` の後ろに本文 → 「Answer with the option id only.」と並べ、文字（A, B, …）ではなく**各 id の最初のトークン**の確率を読む。配置はハッシュと model 名（`…+plain`）に入るので線は別に引かれる。
 
 ## 証拠
 

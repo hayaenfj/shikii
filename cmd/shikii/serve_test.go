@@ -249,7 +249,7 @@ func TestServeQueueMarksItemsWithoutTextAsUnanswerable(t *testing.T) {
 	}
 }
 
-// IT に詳しくない人のための画面: 既定は「かんたん表示」で、主張・言い換えの案・指紋・モデル名は「くわしく」に隠れる。
+// IT に詳しくない人のための画面: 既定は「かんたん表示」で、主張・言い換えの案・ハッシュ・モデル名は「くわしく」に隠れる。
 // 判定ごとに人の言葉の質問、AI の予想と自信、「AI と同じ」ボタン、キー操作、学習の進み具合が出る。専門用語は画面に出さない。
 func TestServeUIIsBeginnerFriendly(t *testing.T) {
 	url, specPath, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})

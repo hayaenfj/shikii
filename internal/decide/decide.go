@@ -57,7 +57,7 @@ type Decision struct {
 	Reason       string             `json:"reason,omitempty"`
 	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。記録に残り、聞き直しでも hosted に送らない
 	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問) | context(迷ったので文脈を足して聞き直した)
-	Minimal      *store.Pass        `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段の指紋と raw)。人の正解はこちらにも付く
+	Minimal      *store.Pass        `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw)。人の正解はこちらにも付く
 	Receipt      *Receipt           `json:"receipt,omitempty"` // act の判定に付く領収書(何を根拠に動いてよいと言ったか)。呼ぶ側(cmd)が store を見て付ける
 	At           time.Time          `json:"at"`
 }
@@ -167,7 +167,7 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 		return nil, err
 	}
 	// 第 2 段: 迷った(ask)時だけ、文脈の入力が揃っていれば文脈を足して聞き直す。
-	// 文脈を足した聞き方は別の指紋なので、答えはその指紋で記録され、較正もその指紋の線で掛かる。最小の質問の答えは Minimal に残す。
+	// 文脈を足した聞き方は別のハッシュなので、答えはそのハッシュで記録され、較正もそのハッシュの線で掛かる。最小の質問の答えは Minimal に残す。
 	csp := sp.ContextSpec()
 	if !unsure(sp, d.Band) || csp == nil {
 		return d, nil

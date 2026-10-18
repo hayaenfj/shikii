@@ -29,8 +29,8 @@ func TestContextTemplateMustAddAnInputAndKeepRequired(t *testing.T) {
 	}
 }
 
-// 文脈を足した聞き方は別の指紋を持つ。最小の質問の指紋は context を足しても変わらない(今ある線は消えない)。
-// 較正は両方の段を 1 つの spec に持て、古い指紋の線だけが置き換わる。
+// 文脈を足した聞き方は別のハッシュを持つ。最小の質問のハッシュは context を足しても変わらない(今ある線は消えない)。
+// 較正は両方の段を 1 つの spec に持て、古いハッシュの線だけが置き換わる。
 func TestContextRungHasItsOwnHashAndCalibration(t *testing.T) {
 	sp := choiceSpec()
 	before := sp.Hash()
@@ -59,7 +59,7 @@ func TestContextRungHasItsOwnHashAndCalibration(t *testing.T) {
 	if m := sp.WithoutContext(); m.HasContext() || m.Hash() != sp.Hash() {
 		t.Fatalf("WithoutContext is the minimal question under the same hash: %+v", m.State)
 	}
-	// 較正: 同じモデルで 2 段の線が共存し、古い指紋の線は置き換わる
+	// 較正: 同じモデルで 2 段の線が共存し、古いハッシュの線は置き換わる
 	sp.PutCalibration(Calibration{Model: "m", SpecHash: "stale", Method: "identity"})
 	sp.PutCalibration(Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity"})
 	sp.PutCalibration(Calibration{Model: "m", SpecHash: sp.ContextHash(), Method: "identity"})

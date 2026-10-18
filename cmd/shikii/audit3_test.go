@@ -124,7 +124,7 @@ func TestAutoCalibrateWritesOnlyTheTriggeringRung(t *testing.T) {
 	}
 }
 
-// 監査 5: 入力の指紋は段ごと(その段の template が使う入力だけ)。文脈の入力が違っても最小の質問では同じ入力。
+// 監査 5: 入力のハッシュは段ごと(その段の template が使う入力だけ)。文脈の入力が違っても最小の質問では同じ入力。
 func TestInputsHashIsPerRung(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)
@@ -157,7 +157,7 @@ func TestInputsHashIsPerRung(t *testing.T) {
 	if !strings.Contains(out, "deduplicated: 3 labels on 2 distinct inputs") {
 		t.Fatalf("the store label for {message, previous} and the file row for {message} are the same minimal input:\n%s", out)
 	}
-	// 聞き直しの材料: 最小の段の指紋からも本文が見つかる
+	// 聞き直しの材料: 最小の段のハッシュからも本文が見つかる
 	st := store.Store{Dir: storeDir}
 	texts, err := st.InputsByHash("intent")
 	if err != nil || texts[d.Minimal.InputsHash].Inputs["message"] != "fix a" {

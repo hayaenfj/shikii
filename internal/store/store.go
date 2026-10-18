@@ -41,14 +41,14 @@ type Record struct {
 	Band         string             `json:"band"`
 	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。この本文は聞き直しでも hosted に送らない
 	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問。古い記録は空) | context(文脈を足して聞き直した)
-	Minimal      *Pass              `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段の指紋と raw。人の正解はこちらにも付く)
+	Minimal      *Pass              `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw。人の正解はこちらにも付く)
 	At           time.Time          `json:"at"`
 }
 
 // Pass は 1 つの段の答え。文脈を足して聞き直した記録が、最小の質問の答えを持っておくのに使う。
 type Pass struct {
 	SpecHash     string             `json:"spec_hash"`
-	InputsHash   string             `json:"inputs_hash,omitempty"` // この段の template が使う入力だけの指紋(文脈の入力が違っても最小の質問では同じ入力)
+	InputsHash   string             `json:"inputs_hash,omitempty"` // この段の template が使う入力だけのハッシュ(文脈の入力が違っても最小の質問では同じ入力)
 	Raw          map[string]float64 `json:"raw,omitempty"`
 	Calibrated   map[string]float64 `json:"calibrated,omitempty"`
 	IsCalibrated bool               `json:"is_calibrated"`
@@ -207,7 +207,7 @@ func LabelFor(rec *Record, truth string, weight float64, source string) (Label, 
 }
 
 // LabelsFor は 1 つの正解を、その記録が通った全部の段に付ける。
-// 最小の質問で決まった記録なら 1 件。文脈を足して決まった記録なら 2 件: 最終の答え(文脈の指紋・raw)と、最小の質問(その指紋・raw)。
+// 最小の質問で決まった記録なら 1 件。文脈を足して決まった記録なら 2 件: 最終の答え(文脈のハッシュ・raw)と、最小の質問(そのハッシュ・raw)。
 // 人の答えは聞き方に依らないので、下の段もそのまま同じ正解で学べる(上の段の答えが下の段の正解になる、の人の側)。
 func LabelsFor(rec *Record, truth string, weight float64, source string) ([]Label, error) {
 	l, err := LabelFor(rec, truth, weight, source)
@@ -421,7 +421,7 @@ func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 		if json.Unmarshal(line, &r) == nil {
 			take(r.InputsHash, r.Inputs, r.Tainted)
 			if r.Minimal != nil {
-				take(r.Minimal.InputsHash, r.Inputs, r.Tainted) // 最小の段の指紋からも同じ本文に届く(Render は余分な入力を無視する)
+				take(r.Minimal.InputsHash, r.Inputs, r.Tainted) // 最小の段のハッシュからも同じ本文に届く(Render は余分な入力を無視する)
 			}
 		}
 		return nil

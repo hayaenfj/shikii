@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1588 780" width="1588" height="780" font-family="-apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1615 780" width="1615" height="780" font-family="-apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif">
 <defs>
 <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#1e293b"/></linearGradient>
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/></marker>
@@ -11,10 +11,10 @@
 .flow { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrow); } .flowA { stroke: #fbbf24; stroke-width: 2.5; fill: none; marker-end: url(#arrowAmber); }
 .pill { fill: #0f172a; stroke: #475569; stroke-width: 1; }
 </style></defs>
-<rect width="1588" height="780" fill="url(#bg)"/>
+<rect width="1615" height="780" fill="url(#bg)"/>
 <text x="40" y="48" class="h" font-size="26" >shikii の構造</text>
 <text x="40" y="74" class="k" font-size="14" >問いと正解は資産。モデルは使い捨て。知識は検証できる主張として wiki に溜まり、測るたびに自分で育つ。</text>
-<rect x="40" y="100" width="1508" height="92" class="box human"/>
+<rect x="40" y="100" width="1535" height="92" class="box human"/>
 <text x="60" y="130" class="ac" font-size="15" >人がすること（この 3 つだけ）</text>
 <rect x="60" y="146" width="279" height="30" rx="15" ry="15" class="pill"/>
 <text x="74" y="165.68" class="t" font-size="13" >意図を書く（spec と wiki の細則）</text>
@@ -26,7 +26,7 @@
 <text x="60" y="262" class="bl" font-size="15" >資産（モデルを替えても残る）</text>
 <text x="60" y="296" class="t" >decisions/  問い</text>
 <text x="76" y="316" class="k" >文言・選択肢・並べ方・配置・分解・文脈</text>
-<text x="76" y="334" class="k" >指紋 = 聞き方 1 つにつき線 1 本</text>
+<text x="76" y="334" class="k" >ハッシュ = 聞き方 1 つにつき線 1 本</text>
 <text x="60" y="370" class="t" >.shikii/  正解の貯金</text>
 <text x="76" y="390" class="k" >系譜つき: 人の正解 ＞ 機械の正解（審判・上の段）</text>
 <text x="76" y="408" class="k" >本文と一緒に残り、文言やモデルが変わると聞き直す</text>
@@ -34,7 +34,7 @@
 <text x="76" y="464" class="k" >act の判定ごとに: どの線を、いつ、何件の正解で、</text>
 <text x="76" y="482" class="k" >そのうち人の分、人が確かめた act の数と精度</text>
 <text x="76" y="518" class="k" font-size="12" textLength="368" lengthAdjust="spacingAndGlyphs" font-style="italic">「95% の確信」ではなく「人が検査した 48 件で精度 0.96」</text>
-<rect x="490" y="232" width="568" height="320" class="box"/>
+<rect x="490" y="232" width="596" height="320" class="box"/>
 <text x="510" y="262" class="t" font-size="15" font-weight="700">機械が育てる輪</text>
 <rect x="510" y="282" width="202" height="48" rx="12" ry="12" class="pill"/>
 <text x="524" y="301" class="t" font-size="14" >decide</text>
@@ -42,9 +42,9 @@
 <rect x="803.0784000000001" y="282" width="179" height="48" rx="12" ry="12" class="pill"/>
 <text x="817.0784000000001" y="301" class="t" font-size="14" >serve  答え合わせ</text>
 <text x="817.0784000000001" y="320" class="k" font-size="12" >迷い → 人、抜き取り</text>
-<rect x="803.0784000000001" y="362" width="235" height="48" rx="12" ry="12" class="pill"/>
+<rect x="803.0784000000001" y="362" width="263" height="48" rx="12" ry="12" class="pill"/>
 <text x="817.0784000000001" y="381" class="t" font-size="14" >calibrate  線</text>
-<text x="817.0784000000001" y="400" class="k" font-size="12" >指紋 × モデルごと、人の正解で</text>
+<text x="817.0784000000001" y="400" class="k" font-size="12" >ハッシュ × モデルごと、人の正解で</text>
 <rect x="510" y="362" width="243" height="48" rx="12" ry="12" class="pill"/>
 <text x="524" y="381" class="t" font-size="14" >tune  聞き方を測る</text>
 <text x="524" y="400" class="k" font-size="12" >holdout + 符号検定 + 人の確認</text>
@@ -63,27 +63,27 @@
 <path d="M 863.0784000000001 410 L 863.0784000000001 440" class="flow"/>
 <path d="M 801.0784000000001 466 L 655 466" class="flow"/>
 <text x="510" y="532" class="k" font-size="11.5" >審判も迷えば人へ。act の判定の 20 件に 1 件は人が抜き取りで確かめる</text>
-<rect x="1118" y="232" width="430" height="320" class="box wiki"/>
-<text x="1138" y="262" class="gr" font-size="15" >検証できる wiki（知識）</text>
-<text x="1138" y="296" class="t" >主張 = claim</text>
-<text x="1154" y="316" class="k" >+ 効く範囲 applies_to</text>
-<text x="1154" y="334" class="k" >+ 証拠 evidence（run ごと、人の正解の数つき）</text>
-<text x="1154" y="352" class="k" >+ 再検証の手順 retest（spec、候補 vs 候補）</text>
-<text x="1138" y="388" class="t" >tune が勝者を下書きに起草</text>
-<text x="1138" y="410" class="t" >別のモデルの run が証拠を足す</text>
-<text x="1138" y="432" class="t" >wiki verify が今のモデルで測り直す</text>
-<text x="1138" y="468" class="gr" >独立したモデル 2 つが支持 → confirmable</text>
-<text x="1138" y="490" class="k" >状態を変えるのは人だけ</text>
-<text x="1138" y="518" class="k" font-style="italic">別の人が自分のモデルで回した結果も証拠になる</text>
+<rect x="1145" y="232" width="430" height="320" class="box wiki"/>
+<text x="1165" y="262" class="gr" font-size="15" >検証できる wiki（知識）</text>
+<text x="1165" y="296" class="t" >主張 = claim</text>
+<text x="1181" y="316" class="k" >+ 効く範囲 applies_to</text>
+<text x="1181" y="334" class="k" >+ 証拠 evidence（run ごと、人の正解の数つき）</text>
+<text x="1181" y="352" class="k" >+ 再検証の手順 retest（spec、候補 vs 候補）</text>
+<text x="1165" y="388" class="t" >tune が勝者を下書きに起草</text>
+<text x="1165" y="410" class="t" >別のモデルの run が証拠を足す</text>
+<text x="1165" y="432" class="t" >wiki verify が今のモデルで測り直す</text>
+<text x="1165" y="468" class="gr" >独立したモデル 2 つが支持 → confirmable</text>
+<text x="1165" y="490" class="k" >状態を変えるのは人だけ</text>
+<text x="1165" y="518" class="k" font-style="italic">別の人が自分のモデルで回した結果も証拠になる</text>
 <path d="M 460 392 L 488 392" class="flowA"/>
 <text x="464" y="382" class="k" font-size="10.5" >読む</text>
-<path d="M 1058.3616000000002 392 L 1116 392" class="flowA"/>
-<text x="1060.3616000000002" y="382" class="k" font-size="10.5" >起草・証拠</text>
-<path d="M 1298 232 C 1298 206, 1118 206, 1103 192" class="flowA"/>
-<text x="1178" y="218" class="k" font-size="11" >確かめる</text>
+<path d="M 1085.7792000000002 392 L 1143 392" class="flowA"/>
+<text x="1087.7792000000002" y="382" class="k" font-size="10.5" >起草・証拠</text>
+<path d="M 1325 232 C 1325 206, 1145 206, 1130 192" class="flowA"/>
+<text x="1205" y="218" class="k" font-size="11" >確かめる</text>
 <path d="M 235 232 C 235 206, 220 206, 228 192" class="flowA"/>
 <text x="246" y="218" class="k" font-size="11" >意図・正解</text>
-<rect x="40" y="592" width="1508" height="120" class="box model"/>
+<rect x="40" y="592" width="1535" height="120" class="box model"/>
 <text x="60" y="622" class="k" font-size="15" fill="#cbd5e1" font-weight="700">モデル（使い捨て。替えたら calibrate が貯金を聞き直すだけ、人の手は 0）</text>
 <rect x="60" y="642" width="205" height="32" rx="16" ry="16" class="pill"/>
 <text x="74" y="662.68" class="t" font-size="13" >決定モデル（Kev-4B …）</text>

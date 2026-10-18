@@ -26,7 +26,7 @@
 <text x="60" y="262" class="bl" font-size="15" >Assets (survive a model swap)</text>
 <text x="60" y="296" class="t" >decisions/  the questions</text>
 <text x="76" y="316" class="k" >wording, options, layout, steps, context</text>
-<text x="76" y="334" class="k" >fingerprint: one line per way of asking</text>
+<text x="76" y="334" class="k" >hash: one line per way of asking</text>
 <text x="60" y="370" class="t" >.shikii/  the bank of truths</text>
 <text x="76" y="390" class="k" >human truths outrank machine truths</text>
 <text x="76" y="408" class="k" >kept with the text; replayed on changes</text>
@@ -44,7 +44,7 @@
 <text x="774.7424" y="320" class="k" font-size="11" >unsure → person; audit</text>
 <rect x="760.7424" y="362" width="201" height="48" rx="12" ry="12" class="pill"/>
 <text x="774.7424" y="381" class="t" font-size="14" >calibrate  the line</text>
-<text x="774.7424" y="400" class="k" font-size="11" >per fingerprint × model</text>
+<text x="774.7424" y="400" class="k" font-size="11" >per hash × model</text>
 <rect x="490" y="362" width="231" height="48" rx="12" ry="12" class="pill"/>
 <text x="504" y="381" class="t" font-size="14" >tune  measure wordings</text>
 <text x="504" y="400" class="k" font-size="11" >holdout, sign test, a person</text>

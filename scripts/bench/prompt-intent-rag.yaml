@@ -1,5 +1,5 @@
 # 比較ベンチの RAG の腕: v2 と同じ質問・同じ選択肢に、似た例(正解付き)を本文に足して聞く。
-# examples は scripts/bench/rag-rows.py が正解の貯金から作る(その行自身は除く)。較正の鍵は v2 とは別の指紋になる。
+# examples は scripts/bench/rag-rows.py が正解の貯金から作る(その行自身は除く)。較正の鍵は v2 とは別のハッシュになる。
 id: prompt-intent-rag
 version: 1
 type: choice

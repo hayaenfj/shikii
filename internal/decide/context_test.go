@@ -57,7 +57,7 @@ func contextSpec() *spec.Spec {
 	return sp
 }
 
-// 迷った時(ask 帯)だけ、文脈の入力が揃っていれば文脈を足して聞き直す。1 回目の答えは minimal に残り、2 回目は文脈の段の指紋で記録される。
+// 迷った時(ask 帯)だけ、文脈の入力が揃っていれば文脈を足して聞き直す。1 回目の答えは minimal に残り、2 回目は文脈の段のハッシュで記録される。
 func TestContextIsAddedOnlyWhenUnsureAndAvailable(t *testing.T) {
 	srv, states := contextSensitiveModel(t)
 	sp := contextSpec()

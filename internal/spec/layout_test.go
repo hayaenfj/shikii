@@ -2,7 +2,7 @@ package spec
 
 import "testing"
 
-// 配置(layout)は聞き方の一部: 指紋に入り、variant で変えられ、知らない名前は弾く。
+// 配置(layout)は聞き方の一部: ハッシュに入り、variant で変えられ、知らない名前は弾く。
 // 同じ重みで配置だけで 13 ポイント動いたので(docs/bench.md)、人が手で選ぶのではなく tune が測って選べるようにする。
 func TestLayoutIsPartOfTheWordingAndIsValidated(t *testing.T) {
 	sp := choiceSpec()

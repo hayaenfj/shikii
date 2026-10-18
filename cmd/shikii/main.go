@@ -103,7 +103,7 @@ func usageText() string {
                    同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune。採用の道具は無い)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
   shikii decide    <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
-                   spec に state.context があれば、迷った時(ask。多択では discard も)だけ文脈の入力を足して聞き直す(別の指紋・別の線)。そこで確信に届いた答えは最小の質問の正解として残る
+                   spec に state.context があれば、迷った時(ask。多択では discard も)だけ文脈の入力を足して聞き直す(別のハッシュ・別の線)。そこで確信に届いた答えは最小の質問の正解として残る
   shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]
   shikii label     --last --spec-id ID <truth>
   shikii calibrate <spec.yaml> [--labeled file] [--model M] [--local URL] [--hosted URL] [--store DIR] [--bins 10] [--write] [--force]
@@ -521,7 +521,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 
 var errNoLabels = errors.New("no labels")
 
-// calibrateRung は 1 つの段(spec の指紋 1 つ)の線を引く。報告は常に出し、書いてよいか(ok)を返す。線そのものは書かない(呼ぶ側がまとめて書く)。
+// calibrateRung は 1 つの段(spec のハッシュ 1 つ)の線を引く。報告は常に出し、書いてよいか(ok)を返す。線そのものは書かない(呼ぶ側がまとめて書く)。
 func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, error) {
 	ef, storeDir, labeledPath, bins, force := o.ef, &o.storeDir, &o.labeled, &o.bins, &o.force
 	var cal spec.Calibration
@@ -821,7 +821,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 
 	var out []store.Label
 	noText, noEndpoint, noContext, invalid := 0, 0, 0, 0
-	rs := sp.WithoutContext() // この段(この指紋)だけで聞き直す。段を上がると別の指紋の答えになってしまう
+	rs := sp.WithoutContext() // この段(このハッシュ)だけで聞き直す。段を上がると別のハッシュの答えになってしまう
 	hashes := make([]string, 0, len(bank))
 	for h := range bank {
 		hashes = append(hashes, h)
@@ -1326,7 +1326,7 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 	base := sp
 	for _, c := range sp.Calibration {
 		key := fmt.Sprintf("calibration(model=%s)", c.Model)
-		sp := base // この線の段の spec(文脈の段の線は、文脈の段の指紋と正解で検証する)
+		sp := base // この線の段の spec(文脈の段の線は、文脈の段のハッシュと正解で検証する)
 		if c.SpecHash == base.ContextHash() {
 			sp = base.ContextSpec()
 			key = fmt.Sprintf("calibration(model=%s, context rung)", c.Model)
@@ -1810,7 +1810,7 @@ func cmdStatus(args []string) error {
 			note := ""
 			if sp != nil {
 				parts := strings.SplitN(key, " @ ", 2)
-				rs := sp // この指紋の段
+				rs := sp // このハッシュの段
 				if parts[1] == sp.ContextHash() {
 					rs = sp.ContextSpec()
 					note = "  (context rung)"

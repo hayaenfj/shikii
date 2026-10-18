@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// 文脈の段で決まった記録に人が答えると、正解は両方の段に付く: 最終の答え(文脈の指紋・文脈の raw)と、最小の質問(その指紋・その raw)。
+// 文脈の段で決まった記録に人が答えると、正解は両方の段に付く: 最終の答え(文脈のハッシュ・文脈の raw)と、最小の質問(そのハッシュ・その raw)。
 func TestLabelsForReachBothRungs(t *testing.T) {
 	r := rec("ctx-hash", "m")
 	r.Type, r.Rung = "choice", "context"

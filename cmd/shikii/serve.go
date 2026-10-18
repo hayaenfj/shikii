@@ -499,7 +499,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			model, hash := parts[0], parts[1]
 			state := "collecting"
 			method, rung := "", "minimal"
-			rs := sp // この指紋の段
+			rs := sp // このハッシュの段
 			if hash == sp.ContextHash() {
 				rs, rung = sp.ContextSpec(), "context"
 			}
@@ -648,7 +648,7 @@ if (!T[lang]) lang = 'en';
 const t = k => T[lang][k];
 $('#lang').value = lang;
 $('#lang').addEventListener('change', e => { lang = e.target.value; try { localStorage.setItem('shikii.lang', lang); } catch (x) {} render(); });
-// かんたん表示が既定。「くわしく」で主張・言い換えの案・指紋・モデル名などを出す
+// かんたん表示が既定。「くわしく」で主張・言い換えの案・ハッシュ・モデル名などを出す
 let advanced = false;
 try { advanced = localStorage.getItem('shikii.mode') === 'advanced'; } catch (e) {}
 document.body.classList.toggle('advanced', advanced);

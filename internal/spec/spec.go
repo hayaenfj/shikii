@@ -38,7 +38,7 @@ type State struct {
 	Template string   `yaml:"template"`
 	Required []string `yaml:"required"`
 	// Context は「迷った時だけ文脈を足して聞き直す」並べ方(任意)。required の入力を全部使い、template に無い入力を 1 つ以上足す。
-	// 足した入力が揃っていて、最小の質問の答えが ask 帯の時だけ使う。文脈を足した聞き方は別の指紋(ContextHash)を持ち、較正も別に引く。
+	// 足した入力が揃っていて、最小の質問の答えが ask 帯の時だけ使う。文脈を足した聞き方は別のハッシュ(ContextHash)を持ち、較正も別に引く。
 	Context string `yaml:"context,omitempty"`
 }
 
@@ -148,7 +148,7 @@ type Spec struct {
 	// Variants は聞き方の候補(`shikii tune` が正解の貯金で採点する)。鍵には入らない。採用されたものは新しい版として別ファイルになる。
 	Variants []Variant `yaml:"variants,omitempty"`
 	Steps    []Step    `yaml:"steps,omitempty"` // choice の分解: はい/いいえ の列。あれば多択を 1 つ聞く代わりに全段を 1 回で聞き、枝の積で分布を作る
-	// Layout は prompt の配置(state-last | state-first | plain。空なら相手の既定)。聞き方の一部なので指紋に入る。
+	// Layout は prompt の配置(state-last | state-first | plain。空なら相手の既定)。聞き方の一部なのでハッシュに入る。
 	// shikii-readout が従い、応答の model 名に配置が付くので較正の鍵も分かれる。決定モデルは無視する。
 	Layout string `yaml:"layout,omitempty"`
 
@@ -539,7 +539,7 @@ func (s *Spec) PutCalibration(c Calibration) {
 func (s *Spec) HasContext() bool { return s.State.Context != "" }
 
 // ContextSpec は文脈を足した聞き方そのもの: template を context に替え、足した入力を required にした写し。
-// 指紋(Hash)は別になるので、較正も別に引かれる。較正の一覧とファイルの場所は共有する。context が無ければ nil。
+// ハッシュ(Hash)は別になるので、較正も別に引かれる。較正の一覧とファイルの場所は共有する。context が無ければ nil。
 func (s *Spec) ContextSpec() *Spec {
 	if !s.HasContext() {
 		return nil
@@ -551,7 +551,7 @@ func (s *Spec) ContextSpec() *Spec {
 	return &c
 }
 
-// ContextHash は文脈の段の指紋。無ければ空。
+// ContextHash は文脈の段のハッシュ。無ければ空。
 func (s *Spec) ContextHash() string {
 	if c := s.ContextSpec(); c != nil {
 		return c.Hash()
@@ -559,12 +559,12 @@ func (s *Spec) ContextHash() string {
 	return ""
 }
 
-// LiveHash は h が今の聞き方のどちらかの段の指紋か(それ以外は文言を変える前の古い指紋)。
+// LiveHash は h が今の聞き方のどちらかの段のハッシュか(それ以外は文言を変える前の古いハッシュ)。
 func (s *Spec) LiveHash(h string) bool {
 	return h == s.Hash() || (s.HasContext() && h == s.ContextHash())
 }
 
-// WithoutContext は最小の質問だけで聞く写し(指紋は同じ)。tune の採点や聞き直しのように、段を上がらずに測りたい時に使う。
+// WithoutContext は最小の質問だけで聞く写し(ハッシュは同じ)。tune の採点や聞き直しのように、段を上がらずに測りたい時に使う。
 func (s *Spec) WithoutContext() *Spec {
 	c := *s
 	c.State.Context = ""
@@ -572,7 +572,7 @@ func (s *Spec) WithoutContext() *Spec {
 }
 
 // StateInputs は inputs のうち、この spec の template が使うもの(required と template の placeholder)だけ。
-// 入力の指紋はこれで取る: 文脈の入力が違っても、最小の質問では同じ入力。
+// 入力のハッシュはこれで取る: 文脈の入力が違っても、最小の質問では同じ入力。
 func (s *Spec) StateInputs(in map[string]string) map[string]string {
 	used := map[string]bool{}
 	for _, r := range s.State.Required {
