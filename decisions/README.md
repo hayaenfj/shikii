@@ -1,6 +1,6 @@
 # 既製の判定
 
-そのまま使うか、`shikii new --from decisions/<id>.yaml` で写して書き換える。正解の種（`testdata/`）があるものは、`shikii calibrate <spec> --labeled <種> --local <URL>` でその場で線が引ける。wiki の細則（`wiki/specs/<id>.md`）は、人が正解を付ける時と審判が読む手引き。
+自分のプロジェクトでは `.shikii/decisions/` に写してそのまま使うか、`shikii new --from <この repo>/decisions/<id>.yaml` で写して書き換える（spec の置き場は `.shikii/decisions/`。`shikii init` が作る）。正解の種（`testdata/`）があるものは、`shikii calibrate <spec> --labeled <種> --local <URL>` でその場で線が引ける。wiki の細則（`wiki/specs/<id>.md`）は、人が正解を付ける時と審判が読む手引き。
 
 | spec | 何を決めるか | 型 | 入力 | 正解の種 | 細則 |
 |---|---|---|---|---|---|

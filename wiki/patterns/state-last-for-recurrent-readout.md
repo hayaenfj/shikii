@@ -14,7 +14,7 @@ evidence:
     result: current 0.968 vs state-first 0.919 (top-1 on 62 truths; 3 better / 0 worse, p=0.125)
     verdict: inconclusive
 retest:
-  spec: decisions/prompt-intent-v2.yaml
+  spec: .shikii/decisions/prompt-intent-v2.yaml
   better: current
   than: state-first
 ---

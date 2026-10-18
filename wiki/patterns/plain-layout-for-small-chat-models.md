@@ -15,7 +15,7 @@ evidence:
     result: plain 0.984 vs current 0.968 (top-1 on 62 truths; 1 better / 0 worse, p=0.500)
     verdict: inconclusive
 retest:
-  spec: decisions/prompt-intent-v2.yaml
+  spec: .shikii/decisions/prompt-intent-v2.yaml
   better: plain
   than: current
 ---

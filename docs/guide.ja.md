@@ -131,7 +131,7 @@ calibrate --labeled testdata/prompt-intent-labeled.json --local http://127.0.0.1
   vector:     T=0.449  biases={other:-0.53, operation:+0.59, …}
   5-fold CV:  precision@act 0.963 recall@act 0.912   → choose vector(recall が上がる)
   persisted 62 queried labels to .shikii
-check .shikii/decisions/*.yaml   → ok(stale なし、ラベル上の precision@act ≥ act)
+check decisions/*.yaml   → ok(stale なし、ラベル上の precision@act ≥ act)
 drift … --model '…Kev-4B…' → ok(Brier 0.0469 → 0.0481、precision 0.976)
 ```
 

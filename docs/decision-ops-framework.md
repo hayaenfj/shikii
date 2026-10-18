@@ -105,7 +105,7 @@ had-scorer が残した教訓（フレームワークが**構造で**防ぐべ�
 分けて持つ。較正は `(spec の内容ハッシュ, モデル ID)` に鍵付けし、どちらかが変わると無効になる。
 
 ```yaml
-# decisions/same-issue.yaml
+# .shikii/decisions/same-issue.yaml
 id: same-issue
 version: 1
 type: noul                          # noul | choice | score

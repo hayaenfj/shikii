@@ -15,7 +15,7 @@ evidence:
     result: yes-first 1.000 vs current 0.964 (top-1 on 32 truths; 1 better / 0 worse, p=0.500)
     verdict: inconclusive
 retest:
-  spec: decisions/same-issue.yaml
+  spec: .shikii/decisions/same-issue.yaml
   better: yes-first
   than: current
 ---

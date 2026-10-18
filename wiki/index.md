@@ -35,7 +35,7 @@ evidence:                    # 機械が書き足す。1 run 1 件、日付・�
     result: plain 0.903 vs current 0.774 (top-1 on 62 truths; 8 better / 1 worse, p=0.020)
     verdict: supports
 retest:                      # 再検証の手順: この spec で、候補 better が候補 than を top-1 で上回れば支持
-  spec: decisions/prompt-intent-v2.yaml
+  spec: .shikii/decisions/prompt-intent-v2.yaml
   better: plain
   than: current
 ---
