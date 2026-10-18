@@ -1,202 +1,106 @@
 [English](../../README.md) · [日本語](README_ja.md) · [简体中文](README_zh.md) · [繁體中文](README_zh-TW.md) · [한국어](README_ko.md) · [Deutsch](README_de.md) · [Español](README_es.md) · [Français](README_fr.md) · [Italiano](README_it.md) · [Português (Brasil)](README_pt-BR.md) · [Русский](README_ru.md) · [Українська](README_uk.md) · [Polski](README_pl.md) · [Türkçe](README_tr.md) · [Tiếng Việt](README_vi.md) · **Bahasa Indonesia**
 
-# shikii: Mengoperasikan Model Keputusan
+<p align="center"><img src="../assets/gen-mark.png" alt="shikii" width="112"></p>
 
-### Satu siklus hidup untuk setiap model keputusan: define → decide → record → label → calibrate → check → drift.
+# shikii: mengubah "mungkin" dari AI menjadi "aman untuk dijalankan" yang bisa Anda pakai menjalankan bisnis
 
-**Model memberi Anda probabilitas. shikii memberi tahu apakah Anda boleh bertindak berdasarkan probabilitas itu.**
+### Alat untuk membiarkan AI memutuskan ya/tidak, yang mana, atau seberapa banyak, dan menjaga keputusan itu tetap bisa dipercaya dalam pekerjaan sehari-hari. Anda memeriksa sebagian jawaban dan, sesekali, mengonfirmasi "apakah ini masih yang saya maksud?". Sisanya dikerjakan mesin.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
-**[Catatan desain](../decision-ops-framework.md) · [Operasi](../operations.md) · [Perbandingan model](../model-comparison.md) · [Panduan lengkap (bahasa Jepang)](../guide.ja.md)**
+[Masalahnya](#masalahnya) · [Apa yang dilakukan shikii](#apa-yang-dilakukan-shikii) · [Apa yang Anda lakukan](#apa-yang-anda-lakukan) · [Instalasi](#instalasi) · [Jalan masuk tersingkat](#jalan-masuk-tersingkat) · [Satu putaran penuh](#satu-putaran-penuh) · [Apa yang baru](#apa-yang-baru) · [Baca lebih lanjut](#baca-lebih-lanjut)
 
-[Mulai cepat](#mulai-cepat) · [Cara kerja shikii](#cara-kerja-shikii) · [Apa yang bisa dihubungkan](#apa-yang-bisa-dihubungkan) · [Hasil](#hasil) · [FAQ](#faq) · [Dokumentasi](#dokumentasi)
+<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii: model memberi Anda sebuah probabilitas, shikii memberi tahu apakah Anda boleh bertindak atasnya" width="100%"></p>
 
-<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii" width="100%"></p>
+## Masalahnya
 
-`scripts/demo.sh`
+Tanyakan pada AI "apakah pertanyaan ini perkara yang sama dengan yang sebelumnya?" dan ia menjawab "mungkin, 0,9". Untuk pekerjaan nyata, itu belum cukup.
 
-> [!IMPORTANT]
-> shikii tidak pernah menjalankan model dan tidak pernah membaca keychain. Ia hanya berbicara dengan endpoint model keputusan yang sudah Anda miliki, menyimpan catatan, dan menolak **act** sampai probabilitas untuk *pertanyaan ini pada model ini* terverifikasi dengan label. Blok kalibrasi dihasilkan otomatis, tidak pernah ditulis tangan.
+- Apakah 0,9 itu benar-benar tepat 9 dari 10 kali?
+- Sejak hari Anda menggantinya dengan model baru, apakah ia diam-diam mulai keliru?
+- Kalau Anda mengubah sedikit kata-katanya, bagaimana akurasinya bergeser?
+- Keputusan yang ia ambil sendiri, tanpa ada yang mengawasi: apakah masih benar?
 
----
+Kalau seseorang harus memeriksa setiap jawaban, tidak banyak gunanya memakai AI.
 
-Model keputusan (TypeSafe Jev, llama.cpp Kev-4B dan OpenJev, OpenRouter Decisions, …) menjawab pertanyaan bertipe, `choice`, `score`, dan `noul` (ya/tidak), dengan probabilitas dan tanpa teks yang dihasilkan. Setiap vendor menyertakan penafian yang sama: *probabilitas tidak dikalibrasi untuk data Anda, dan ambang batas tidak berlaku lintas model maupun lintas pertanyaan.*
+## Apa yang dilakukan shikii
 
-shikii memegang bagian yang tidak disediakan siapa pun: **siklus hidup** sebuah keputusan. Sebuah file spec berisi pertanyaan, opsi, templat state, dan ambang batas. `decide` bertanya ke model dan mengembalikan sebuah band (`act` / `ask` / `discard` / `abstain`), tidak pernah angka mentah. `label` mencatat apa yang benar. `calibrate` melakukan fitting dan validasi silang, lalu menulis hasilnya kembali ke spec di bawah kunci yang terdiri dari hash pertanyaan dan nama model. `check` menggagalkan CI ketika redaksi atau model bergeser. `gc` menjaga store tetap kecil.
+1. **Mengumpulkan koreksi Anda dan menarik garis batas yang di atasnya AI boleh bertindak sendiri.** Dari jawaban yang Anda beri ("ini yang sebenarnya benar") ia mengukur hubungan antara keyakinan AI dan seberapa sering AI benar, lalu memutuskan dari mana ke atas ia bisa dipercaya. Sebelum ada garis, tidak ada yang bertindak. Setelah ada, setiap keputusan otomatis membawa tanda terima yang menyebutkan garis itu bertumpu pada berapa jawaban yang sudah diperiksa dan seberapa sering jawaban itu benar
+2. **Mencoba cara bertanya lain dan menyimpan yang lebih baik.** Pada koreksi yang sama ia menilai pertanyaan alternatif, deskripsi pilihan dan tata letak prompt, dan hanya mengadopsinya kalau benar-benar lebih baik. Anda cukup mengonfirmasi bahwa maknanya tidak berubah
+3. **Membiarkan Anda mengganti model tanpa mulai dari nol.** Koreksi tersimpan terpisah dari model, sehingga model baru memakainya kembali dan garis ditarik ulang oleh mesin. Tidak perlu kerja manusia
+4. **Menyimpan apa yang dipelajari dalam sebuah wiki.** "Bertanya dengan cara ini berhasil" terkumpul sebagai klaim dengan angka hasil ukur, yang bisa diuji ulang pada model lain. Apa yang orang lain ukur pada model mereka ditambahkan ke halaman yang sama
 
-Ia juga disertai `shikii-readout`, adapter 500 baris yang mengubah **GGUF chat apa pun di llama.cpp standar** menjadi model keputusan dengan membaca logit dari huruf-huruf opsi. Dalam pengukuran kami, model ternary 27B biasa yang dibaca dengan cara ini menyamai akurasi model keputusan terlatih, dengan kecepatan 0.6 detik per pertanyaan di laptop.
+## Apa yang Anda lakukan
 
-> Namanya berasal dari bahasa Jepang: *shikii* (閾) berarti ambang batas, garis yang mengubah probabilitas menjadi tindakan. CLI-nya bernama `shikii`.
+- **Tuliskan apa yang ingin diputuskan.** Jawab beberapa pertanyaan dan sebuah berkas keputusan muncul (`shikii new`, secara interaktif atau dengan `--type --question --option --input --pii`; format lengkapnya ada di [referensi spec](../../skills/shikii/references/spec.md))
+- **Periksa jawaban.** Halaman menampilkan keputusan yang AI tidak yakin, plus 1 dari 20 keputusan yang ia jalankan sendiri, dan Anda menekan tombol untuk apa yang sebenarnya benar. Tombol 1 sampai 9 dan Enter (sama dengan pilihan AI) membuatnya cepat. "Sudah dijawab" memungkinkan Anda memperbaiki jawaban sebelumnya (yang terbaru yang dihitung). "Detail" menambahkan "tanya AI lagi", yang memutuskan ulang teks yang sama dengan kata-kata dan garis hari ini dan menampilkan sebelum dan sesudah; catatan hanya ditambahkan, tidak pernah dihapus
+- **Sesekali konfirmasi "apakah ini masih yang saya maksud?".** Ketika mesin menemukan kata-kata yang nilainya lebih baik, Anda melihat apakah maknanya berubah dan menekan terima atau tolak
 
-## Mulai cepat
+Semua yang lain adalah pekerjaan mesin.
 
-Go 1.27 atau lebih baru. Tidak ada yang lain yang dibutuhkan untuk menjalankan pertama kali.
-
-### Jalankan seluruh siklus tanpa key atau GPU
-
-```sh
-git clone https://github.com/hayaenfj/shikii && cd shikii
-scripts/demo.sh                 # model palsu: decide → label → calibrate → check → drift → status → gc
-scripts/demo.sh --overconfident # model palsu yang probabilitasnya perlu dikalibrasi; lihat calibrate memilih platt
-```
-
-### Arahkan ke model sungguhan
+## Instalasi
 
 ```sh
-make build                                        # bin/shikii, bin/shikii-readout, bin/fake-systemone
-
-# a) model keputusan lokal di llama.cpp (mengunduh Kev-4B, sekitar 2.5 GB, saat pertama dijalankan)
-make server                                       # llama-server di :8080
-bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8080 -i message='fix the typo in README'
-
-# b) TypeSafe Jev hosted. Key hanya diambil dari environment
-export TYPESAFE_API_KEY=...
-bin/shikii decide examples/prompt-intent.yaml -i message='fix the typo in README'
-
-# c) OpenRouter Decisions API
-export DECISIONS_API_KEY=...
-bin/shikii decide examples/prompt-intent.yaml --hosted https://openrouter.ai/api/alpha/decisions -i message='…'
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh     # butuh Go 1.27 atau lebih baru
+cd <root proyek> && shikii init
 ```
 
-Jawabannya berupa band, trace id, dan probabilitas. Sampai spec memuat kalibrasi untuk model ini, band paling tinggi hanya `ask`.
+`shikii init` menyiapkan satu folder, `.shikii/` (berisi `decisions/` untuk spec Anda, `wiki/` untuk pengetahuan, `records/` dan `labels/` untuk catatan dan koreksi Anda; tidak ada lagi yang ditambahkan ke root proyek), dan sambungan ke agen sekali jalan: server MCP shikii untuk Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) dan Codex (`~/.codex/config.toml`), sebuah bagian di `AGENTS.md`, dan aturan rinci (skill) di `~/.claude/skills/shikii`. Entri milik Anda sendiri tidak pernah disentuh (entri shikii yang sudah ada dibiarkan). Hanya folder skill yang diganti setiap kali, jadi jangan menyuntingnya dengan tangan. `wiki/` menerima pengetahuan bersama (cara bertanya untuk tiap jenis pertanyaan, pola kata yang pernah berhasil, kebiasaan tiap model); penyempurna kata-kata (`tune --propose`) membacanya, dan halaman yang Anda sunting tidak pernah ditimpa oleh `init` berikutnya. Tidak punya Go? Pakai Docker di bawah.
 
-### Tutup siklusnya
+Entri-entri itu mengarah ke model lokal (`shikii up`, port 8080). Hanya memakai model layanan luar? Hapus `--local` dengan tangan dari masing-masing keempat berkas. Berkas konfigurasi untuk alat yang tidak Anda pakai juga dibuat; hapus atau tambahkan ke `.gitignore` (`shikii init` kedua tidak pernah menyentuh yang sudah ada). Commit `.shikii/decisions/`, `.shikii/wiki/` dan `.shikii/labels/` (spec Anda, pengetahuan dan koreksi Anda: aset yang tetap hidup saat model berganti). `.shikii/records/` (setiap keputusan) terus bertambah, jadi commit atau tidak terserah Anda (`shikii gc` membuang yang lama). Jika Codex sudah punya `mcp_servers`, tidak ada yang ditambahkan dan baris-baris yang perlu ditempel dicetak. Proyek yang hanya punya `CLAUDE.md` tidak mendapat `AGENTS.md` (OpenCode akan berhenti membaca `CLAUDE.md`).
+
+Mengubah halaman jawaban itu sendiri (`web/`, Svelte) membutuhkan Node 24 (`make web`). Memakai shikii tidak: halaman yang sudah dibangun di-commit dan ditanam dalam binary.
+
+## Jalan masuk tersingkat
+
+- **Docker**: tidak ada Go, tidak ada model? `docker compose up` menjalankan model lokal (Kev-4B) dan shikii, dengan halaman jawaban di http://127.0.0.1:8095 ([detail](../../integrations/docker.md))
+- **Keputusan siap pakai**: enam buah di `decisions/` repo ini (jenis permintaan, laporan bug duplikat, pertanyaan yang sama, …). Salin satu ke `.shikii/decisions/` Anda, atau mulai darinya dengan `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` ([daftar](../../decisions/README.md))
+- **Anda sudah punya tabel keputusan lama**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` mengubahnya menjadi koreksi, jadi Anda tidak perlu menjawab 50 yang pertama dengan tangan
+- **Dari program Anda sendiri**: jalankan `shikii serve` dan panggil `POST /v1/decide` (memutuskan) dan `POST /v1/label` (mengoreksi). Isinya JSON dan `-H 'Content-Type: application/json'` wajib ada (semua endpoint: [panduan panjang](../guide.md#or-run-one-process-for-programs-and-people))
+- **Contoh dari orang lain**: [menyalurkan surel pertanyaan](../examples/inquiry-route.md) (bahasa Jepang). Seorang pengguna baru menyelesaikan seluruh putaran hanya dengan README; spec dan 22 masukannya disertakan
+- **Mengukur penilaian AI sendiri** (Claude Code dan Codex): `shikii hook install` menambahkan hook yang menjalankan shikii pada keputusan agen itu sendiri: apa yang dilakukan sebuah perintah, apakah suatu suntingan masih dalam batas yang Anda minta, apakah suatu permintaan perlu rencana dulu, dan apa yang akhirnya akan dilakukan agen (kebenaran terakhir itu didapat gratis dari apakah working tree berubah). Tidak ada yang berubah sampai ada garis. Setelah itu perintah berisiko (menghapus, mengubah di luar proyek, mengirim ke luar) meminta konfirmasi Anda, dengan berapa kebenaran yang menopang garis itu dan presisi hasil pemeriksaan manusia; perintah aman lewat tanpa suara ([detail](../../integrations/claude-code.md), bahasa Jepang)
+- **Di CI**: `uses: hayaenfj/shikii@main` menjalankan `shikii check` pada setiap pull request, sehingga kata-kata yang berubah atau garis yang melemah menggagalkan build
+
+## Satu putaran penuh
 
 ```sh
-bin/shikii label <trace_id> change_request          # or:  label --last --spec-id prompt-intent change_request
-bin/shikii calibrate examples/prompt-intent.yaml --model <model name from the response> --write
-bin/shikii check examples/prompt-intent.yaml        # exit 1 ketika redaksi berubah atau precision@act turun di bawah act
+shikii up                                                             # jalankan model lokal (diunduh saat pertama kali)
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=ask  (belum ada garis, jadi: tanya orang)
+shikii serve --local http://127.0.0.1:8080                                   # spec dan pengetahuan dibaca dari .shikii/
+#   → jawab di http://127.0.0.1:8095. Begitu sebuah keputusan mencapai jumlah yang dimintanya (eval.min_n, 20 untuk yang ini) garis ditarik sendiri
+#     Untuk mencoba dengan jawaban lebih sedikit, turunkan eval.min_n di spec ke jumlah yang Anda punya (garis yang ditulis dengan --force ditandai oleh check)
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=act
+#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
+#     (aman untuk dijalankan, dengan buktinya: garis bertumpu pada 61 koreksi, 48 di antaranya dari manusia. Dari jawaban manusia yang oleh garis ini ditempatkan di sisi act, 25 buah, 96% benar)
 ```
 
-### Pakai GGUF apa pun sebagai model keputusan
+Hanya ada empat band. `act` = jalankan, `ask` = tanya orang, `discard` = jangan lakukan apa pun, `abstain` = masukan kurang. Anda tidak pernah membaca probabilitas mentah.
 
-```sh
-make server-gguf GGUF=/path/to/model.gguf ALIAS=my-model   # llama-server standar dengan flash attention dan KV 8-bit, :8086
-make readout                                               # shikii-readout di depannya, :8090
-bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8090 -i message='…'
-```
+## Apa yang baru
 
-### Instal dan perbarui
+<p align="center"><img src="../assets/shikii-architecture-en.svg" alt="arsitektur shikii: tiga hal yang dilakukan manusia, aset (pertanyaan, kebenaran, tanda terima), putaran yang ditumbuhkan mesin, wiki yang bisa diverifikasi, model sekali pakai" width="100%"></p>
 
-```sh
-make install          # menyalin bin/shikii ke ~/.local/bin/shikii
-git pull && make install
-```
+- **Pengetahuan terkumpul di pertanyaan dan koreksi, bukan di model.** Jadi model bisa dibuang, dan menggantinya tidak perlu kerja manusia. Terukur: dengan mesin memilih kata-kata dan tata letak serta menambahkan contoh serupa, model dasar biasa menyamai akurasi fine-tuning (LoRA) ([angka](../bench.md))
+- **Keputusan otomatis datang dengan bukti.** Bukan "95% yakin" melainkan "presisi 0,96 pada 48 jawaban yang diperiksa manusia"
+- **Wiki tidak dibaca, melainkan diukur.** "Bertanya dengan cara ini berhasil" terkumpul sebagai klaim dengan angka dan diuji ulang pada model baru. Hanya manusia yang memutuskan sebuah klaim terkonfirmasi
 
-## Cara kerja shikii
+## Baca lebih lanjut
 
-Setiap keputusan adalah satu file YAML. Isinya pertanyaan, opsi, templat state, tujuan yang boleh menerima state, ambang batas, dan blok kalibrasi yang dihasilkan oleh `calibrate --write`.
+- [Panduan panjang](../guide.md): setiap perintah, mulai cepat lengkap, HTTP API, apa yang bisa Anda sambungkan, hasil ukur dan FAQ · [referensi spec](../../skills/shikii/references/spec.md)
+- [Catatan desain](../decision-ops-framework.md): apa yang dimiliki kerangka ini dan apa yang ia tolak untuk dimiliki, serta apa yang sudah diverifikasi · [Arsitektur](../architecture.md) (bahasa Jepang)
+- [Keputusan siap pakai](../../decisions/README.md) · [wiki cara bertanya](../../wiki/index.md) · [tolok ukur](../bench.md) · [perbandingan model](../model-comparison.md) · [log operasi](../operations.md)
+- [Sambungan](../../integrations/mcp.md): MCP, adaptor yang mengubah model chat biasa menjadi model keputusan, Docker, Claude Code
+- [Panduan bahasa Jepang](../guide.ja.md) dengan satu putaran penuh dari dunia nyata
 
-```yaml
-id: prompt-intent
-type: choice
-question: What is the user asking the assistant to do?
-options:
-  - id: change_request
-    description: Change something in the repository - edit, fix, add, remove, rename...
-  - id: question
-    description: Explain, investigate, compare or give an opinion, without changing anything.
-state:
-  template: "{{ message }}"
-  required: [message]            # input hilang → abstain; model tidak pernah dipanggil
-policy:
-  send_to: [hosted, local]       # sesi yang tainted otomatis melewati hosted
-  pii: possible                  # catatan menyimpan hash input, tidak pernah teksnya
-thresholds:
-  act: 0.75                      # ≥ act → act otomatis, hanya jika sudah dikalibrasi
-  ask: 0.60                      # ≥ ask → tanya manusia; di bawahnya → discard
-```
+## Berkontribusi
 
-<p align="center"><img src="../assets/shikii-lifecycle.svg" alt="define, decide, record, label, calibrate, check, drift" width="100%"></p>
-
-**Kunci kalibrasi adalah `(hash dari pertanyaan + templat + opsi, model id seperti yang dikembalikan endpoint)`.** Ubah satu kata pada pertanyaan, atau biarkan `jev-latest` berganti ke versi baru, dan kalibrasinya begitu saja hilang: band turun ke `ask` alih-alih diam-diam bertindak dengan konstanta yang sudah usang. Tata letak prompt juga bagian dari kunci: `shikii-readout` melaporkan tata letaknya dalam nama model (`…+state-last`), karena memindahkan state ke dalam prompt saja mengubah akurasi model 27B sebesar 5 poin dengan bobot yang sama.
-
-`calibrate` membandingkan tiga metode dengan validasi silang 5-fold dan menulis pemenangnya. `identity` berarti probabilitas mentah sudah memenuhi precision@act dan model hanya ditandai sebagai terverifikasi. `platt` (σ((Δ−bias)/T)) untuk pertanyaan ya/tidak. `vector` (softmax((log p + b)/T)) untuk choice dan score, dan memperbaiki kebiasaan per opsi seperti "lari ke *other* saat ragu". Label parsial (`!option`, "bukan *yang itu*") dihitung untuk precision tetapi tidak untuk fitting. Label yang diperoleh dari file disimpan secara permanen, sehingga setelahnya `check` dan `drift` berjalan offline.
-
-Setiap cabang yang menyangkut keamanan (perutean taint, tidak ada act tanpa kalibrasi, pembatalan hash usang, validasi label, deteksi inversi, pemilihan metode berbasis CV, `gc` dry-run, …) punya satu mutation tercatat yang membuat test gagal sebelum perbaikannya diterima. Ada 63 test Go di 8 package; demo berjalan di CI.
-
-## Apa yang bisa dihubungkan
-
-shikii berbicara dengan bentuk request System One (`POST /v1/systemone`), jadi apa pun yang melayaninya bisa dipakai. Adapter menangani sisanya.
-
-| Target | Yang diterima shikii | Persyaratan dan panduan |
-|---|---|---|
-| **TypeSafe Jev** (hosted) | `choice` / `score` / `noul` dengan probabilitas, model id seperti `jev-1.13.0` | `TYPESAFE_API_KEY` di environment. Default untuk `--hosted` |
-| **Model keputusan llama.cpp** (Kev-4B, OpenJev, Clef, …) | Bentuk yang sama, secara lokal, model id dari `/v1/models` | `llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M` (`make server`). llama.cpp 0.6.0 atau lebih baru |
-| **OpenRouter Decisions API** | Bentuk yang sama melalui OpenRouter | `DECISIONS_API_KEY`, `--hosted https://openrouter.ai/api/alpha/decisions` |
-| **GGUF chat apa pun** lewat `shikii-readout` | Pembacaan logit huruf dalam bentuk System One, tanpa kalibrasi bawaan | `llama-server` standar 0.7.0 di belakangnya. [`integrations/readout.md`](../../integrations/readout.md) |
-| **PrismML Bonsai** lewat [BonJev](https://github.com/ChezRD/bonjev) | Sama, dengan prompt sendiri dan kalibrasi bawaan BonJev | Build Rust dan fork Prism. [`integrations/bonjev.md`](../../integrations/bonjev.md) |
-| **Model palsu** (`bin/fake-systemone`) | Probabilitas deterministik untuk demo dan test | Tidak perlu apa-apa. `make fake` |
-| **Hook Claude Code** (claude-jev) | Setiap prompt diklasifikasi, setiap giliran diberi label dari working tree | [`integrations/claude-code.md`](../../integrations/claude-code.md) |
-
-Taint adalah input kelas satu: berikan `--tainted` (atau biarkan hook Anda yang melakukannya) pada sesi yang menyentuh data produksi, dan request tidak akan pernah meninggalkan mesin. Jika tidak ada endpoint lokal yang dikonfigurasi, keputusan akan abstain.
-
-## Hasil
-
-Spec yang sama, label yang sama, empat set evaluasi (intent prompt dalam bahasa Inggris dan Jepang, 62 request; pencocokan kasus yang sama pada 32 pasang bahasa Jepang). Detail dan tabel lengkap ada di [`docs/model-comparison.md`](../model-comparison.md).
-
-| Model | Lisensi | top-1 (semua / ja) | Brier ya/tidak (mentah) | Kalibrasi yang dipilih | Detik per pertanyaan |
-|---|---|---|---|---|---|
-| Kev-4B (model keputusan terlatih) | Apache 2.0 | 0.919 / 0.913 | 0.046 | identity | 0.25 |
-| OpenJev 27B (terlatih) | CC BY-NC 4.0 | **0.984 / 1.000** | 0.020 | vector | 3.8 |
-| Bonsai 2 27B lewat BonJev | Apache 2.0 | 0.968 / 1.000 | 0.026 → **0.013 (platt)** | vector / platt | 2.5 |
-| **Ternary-Bonsai-27B lewat `shikii-readout`, llama.cpp standar** | Apache 2.0 | 0.968 / 1.000 | 0.015 | identity | **0.58** |
-
-**Redaksi mengalahkan kalibrasi.** Pada intent prompt, 19 dari 21 kesalahan jatuh ke *other*; menulis ulang opsi menaikkan top-1 dari 0.68 ke 0.90 sebelum ada kalibrasi apa pun. Kalibrasi untuk kasus "urutan benar, keyakinan kurang". Confusion matrix yang dicetak `calibrate` memberi tahu Anda sedang menghadapi kasus yang mana.
-
-**Model yang sudah terkalibrasi tidak butuh Platt.** Ya/tidak milik Kev-4B punya Brier 0.046 saat mentah; Platt malah memperburuknya di bawah validasi silang, sehingga `identity` yang ditulis. Pertama kalinya `calibrate` memilih `platt` adalah pada LLM biasa yang dibaca lewat logit. Perlu tidaknya kalibrasi adalah sifat dari *model ditambah cara membacanya*, bukan sifat model saja.
-
-**GGUF biasa mendarat tepat di samping model keputusan terlatih.** Model chat ternary 27B, llama.cpp mainline 0.7.0, satu adapter, tanpa fork, tanpa pelatihan, tanpa Rust: top-1 sama dengan model terlatih berlisensi Apache terbaik, bahasa Jepang 1.000, 0.58 detik per pertanyaan dengan flash attention dan prefix yang sudah dipanaskan. Memindahkan state dari sebelum opsi ke tepat sebelum jawaban menaikkannya dari 0.919 ke 0.968 dengan bobot yang sama, itulah sebabnya tata letak menjadi bagian dari kunci kalibrasi.
-
-## FAQ
-
-**Apakah shikii menjalankan model?** Tidak. Ia mengirim request System One ke endpoint yang Anda jalankan atau sewa, dan menyimpan semua yang terjadi setelah jawaban. `shikii-readout` adalah satu-satunya pengecualian secara semangat: ia mengubah logit model chat menjadi bentuk yang sama, tetapi inferensinya tetap milik llama.cpp.
-
-**Mengapa keputusan saya tidak pernah mencapai `act`?** Karena spec tidak punya blok kalibrasi untuk `(hash pertanyaan ini, model id ini)`. Kumpulkan label (`label`, atau `--labeled file`), jalankan `calibrate --write`, lalu `status` menampilkan `calibrated: identity|platt|vector`. Keputusan tanpa precision terverifikasi pada ambang act tidak diizinkan untuk act. Itulah intinya.
-
-**Saya mengubah satu kata pada pertanyaan dan kalibrasinya hilang.** Benar. Hash berubah, konstanta tadi di-fit untuk pertanyaan yang berbeda. `status` menampilkan label lama sebagai `stale hash`; jalankan ulang `calibrate --write` setelah Anda punya label untuk redaksi yang baru.
-
-**Model mana yang sebaiknya saya pakai?** Tergantung lisensi, kecepatan, dan bahasa, dan shikii tidak memutuskan untuk Anda. Tabel di atas dan [`docs/model-comparison.md`](../model-comparison.md) adalah argumennya: dengan spec dan label yang sama Anda bisa memilih berdasarkan angka, termasuk apakah suatu model butuh kalibrasi sama sekali. `scripts/eval-model.sh <url> <name>` mereproduksi tabel untuk endpoint baru.
-
-**Apakah berfungsi dalam bahasa Jepang?** Ya, dan di situlah perbedaannya terlihat. Kev-4B mendapat 0.913 pada prompt bahasa Jepang; model 27B mendapat 1.000. Pencocokan kasus yang sama pada ringkasan investigasi berbahasa Jepang memisahkan sampel positif dari negatif dengan sempurna pada setiap model 27B.
-
-**Ke mana data saya pergi?** Hanya state yang sudah dirender yang dikirim ke endpoint yang disebut di `send_to`. Dengan `pii: possible` (default), store menyimpan hash input, tidak pernah teksnya. `--tainted` menjaga semuanya tetap lokal. Key dibaca dari `DECISIONS_API_KEY` atau `TYPESAFE_API_KEY` dan tidak dari tempat lain.
-
-**Store terus membesar.** `shikii gc` menghapus catatan yang lebih tua dari 30 hari dan tidak pernah diberi label. Catatan berlabel dan label itu sendiri disimpan selamanya, karena itulah bahan kalibrasi. Perintah ini hanya dry run kecuali Anda menyertakan `--apply`.
-
-**Apakah ia condong ke opsi pertama?** Ukur sebelum mengoreksi: `shikii bias <spec> --permutations 100` mengacak opsi dan melaporkan jumlah flip serta pergeseran posisi. Kev-4B: 0 flip dari 100, pergeseran ≤ 0.024. LLM biasa yang dibaca lewat logit mungkin berbeda; perintah ini ada untuk mereka.
-
-## Dokumentasi
-
-- [`docs/decision-ops-framework.md`](../decision-ops-framework.md): catatan desain, apa yang dimiliki framework dan apa yang sengaja tidak dimilikinya, rencana verifikasi, dan apa yang sudah terkonfirmasi.
-- [`docs/operations.md`](../operations.md): cara menghentikan atau me-rollback setiap bagian yang bergerak, cara membaca kegagalan, apa yang masih belum ada.
-- [`docs/model-comparison.md`](../model-comparison.md): tabel perbandingan dan cara mereproduksinya.
-- [`docs/guide.ja.md`](../guide.ja.md): panduan panjang berbahasa Jepang dengan semua perintah dan satu siklus penuh di dunia nyata.
-- [`integrations/readout.md`](../../integrations/readout.md), [`integrations/bonjev.md`](../../integrations/bonjev.md), [`integrations/claude-code.md`](../../integrations/claude-code.md): tiga koneksi yang kami jalankan.
-- [`examples/`](../../examples/) dan [`testdata/`](../../testdata/README.md): spec tanpa kalibrasi sebagai titik awal, dan set berlabel sintetis yang dipakai dalam test.
-
-Perintah-perintahnya:
-
-```
-shikii decide    <spec> -i k=v ... [--hosted URL] [--local URL] [--tainted] [--store DIR] [--json]
-shikii label     <trace_id> <truth> | --last --spec-id ID <truth>   [--weight W] [--source ask|outcome|manual]
-shikii calibrate <spec> [--labeled file] [--model M] [--store DIR] [--write] [--force]
-shikii check     <spec>...  [--store DIR]                 # CI: stale hash, blok tulisan tangan, precision@act di bawah act → exit 1
-shikii drift     <spec> --model M [--window N]            # label terbaru dibandingkan dengan Brier dan precision yang tercatat saat kalibrasi
-shikii bias      <spec> [--rows K] [--permutations N]     # apakah jawaban bergantung pada urutan opsi?
-shikii status    [spec...] [--store DIR]                  # inventaris: catatan, label, sumber, status per (model, hash)
-shikii gc        [spec...] [--older-than 30d] [--apply]   # hapus catatan lama tanpa label; default-nya dry run
-shikii hash      <spec>
-```
-
-## Kontribusi
-
-Issue dan pull request disambut. Satu aturan: test yang menjaga sebuah perilaku harus diperlihatkan gagal terlebih dahulu. Rusak perilaku itu dengan sengaja, jalankan test, catat bagaimana ia gagal, lalu perbaiki dan catat bahwa ia lulus. Dokumen mencantumkan mutation itu untuk setiap cabang keamanan; jaga agar daftarnya tetap jujur.
+Issue dan pull request disambut baik. Tes yang menjaga suatu perilaku ditunjukkan gagal dulu: rusak perilakunya dengan sengaja, jalankan tesnya, catat bagaimana ia gagal, lalu perbaiki dan catat bahwa ia lulus. Setiap angka dalam dokumen berasal dari skrip. Hanya manusia yang mengubah status klaim wiki (`confirmed` / `tentative` / `rejected`), dengan run yang menjadi buktinya. Tidak ada opsi baru: tata letaknya (`decisions/` `wiki/` `.shikii/` di root proyek) dan aturan tetap yang bekerja.
 
 ## Lisensi
 
-[Apache 2.0](../../LICENSE). Lisensi model terpisah: Kev-4B dan keluarga Bonsai berlisensi Apache 2.0, OpenJev berlisensi CC BY-NC 4.0, Jev hosted adalah layanan TypeSafe. shikii menyimpan probabilitas dan label Anda, bukan apa pun milik model.
+[Apache 2.0](../../LICENSE). Lisensi model terpisah: Kev-4B dan keluarga Bonsai berlisensi Apache 2.0, OpenJev CC BY-NC 4.0, Jev yang dihosting adalah layanan TypeSafe. shikii menyimpan probabilitas dan label Anda, bukan apa pun dari model.
