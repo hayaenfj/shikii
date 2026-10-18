@@ -13,7 +13,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
-**[Design notes](docs/decision-ops-framework.md) · [Operations](docs/operations.md) · [Model comparison](docs/model-comparison.md)**
+**[Architecture](docs/architecture.md) (Japanese) · [Design notes](docs/decision-ops-framework.md) · [Operations](docs/operations.md) · [Model comparison](docs/model-comparison.md) · [Benchmark](docs/bench.md)**
 
 [Quick start](#quick-start) · [How shikii works](#how-shikii-works) · [What you can connect](#what-you-can-connect) · [Results](#results) · [FAQ](#faq) · [Documentation](#documentation)
 

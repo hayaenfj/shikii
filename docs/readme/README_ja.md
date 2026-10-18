@@ -189,6 +189,8 @@ wiki のパターンは文章ではなく **検証できる主張** です。ペ
 
 ## もっと読む
 
+- [`docs/architecture.md`](../architecture.md): 構造の設計。検証できる wiki を中心に、問いと正解は資産、信頼の負担、段階の 4 つの柱と、できたもの・まだのもの
+- [`docs/bench.md`](../bench.md): 比較ベンチ（測った聞き方 / 似た例 / LoRA）の手順と数字
 - [`docs/why-shikii.ja.md`](../why-shikii.ja.md): なぜ作ったか、何を決めたか。初めて読む人向け
 - [`wiki/`](../../wiki/index.md): 聞き方の知識。型ごと・モデルの系統ごとの癖、証拠付きのパターン、判定ごとの決まりと run
 - [`docs/guide.ja.md`](../guide.ja.md): 全コマンドと、実機で一周した例を載せた長い手引き
