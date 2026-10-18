@@ -7,7 +7,7 @@
 ### AI に「はい / いいえ」「どれ」「どの程度」を決めさせて、業務で使い続けるための道具。あなたがするのは、答え合わせと、たまに「これで合ってる？」に答えることだけ。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-185%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-187%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 cd <プロジェクトルート> && shikii init
 ```
 
-`shikii init` で、フォルダ（`decisions/` `wiki/` `.shikii/`）と、エージェントの設定が 1 回で揃います。Claude Code（`.mcp.json`）、Cursor（`.cursor/mcp.json`）、OpenCode（`opencode.json`）、Codex（`~/.codex/config.toml`）に shikii の MCP の項を足し、`AGENTS.md` に作法の節を、`~/.claude/skills/shikii` に詳しい作法（skill）を置きます。あなたが書いた設定は触りません（shikii の項が既にあればそのまま）。skill のフォルダだけは毎回置き直すので、手で直さないでください。`wiki/` には既製の知識（質問の型ごとの聞き方、効いた書き方のパターン、モデルごとの癖）が写され、聞き方の改善（`tune --propose`）がそれを読みます。あなたが直したページは次の `init` でも上書きされません。コマンドの出力と画面以外の文は英語です。Go を入れたくなければ下の Docker。
+`shikii init` で、フォルダ（`decisions/` `wiki/` `.shikii/`）と、エージェントの設定が 1 回で揃います。Claude Code（`.mcp.json`）、Cursor（`.cursor/mcp.json`）、OpenCode（`opencode.json`）、Codex（`~/.codex/config.toml`）に shikii の MCP の項を足し、`AGENTS.md` に作法の節を、`~/.claude/skills/shikii` に詳しい作法（skill）を置きます。あなたが書いた設定は触りません（shikii の項が既にあればそのまま）。skill のフォルダだけは毎回置き直すので、手で直さないでください。`wiki/` には既製の知識（質問の型ごとの聞き方、効いた書き方のパターン、モデルごとの癖）が写され、聞き方の改善（`tune --propose`）がそれを読みます。あなたが直したページは次の `init` でも上書きされません。コマンドの出力と hook の文は英語です(設定の言語が英語以外なら hook の文はその言語を併記)。画面には日本語があります。Go を入れたくなければ下の Docker。
 
 設定は手元の AI（`shikii up` で :8080）を指します。外の AI だけで使うなら、4 つの設定（`.mcp.json`、`.cursor/mcp.json`、`opencode.json`、`~/.codex/config.toml`）それぞれから `--local` を手で外してください。使っていないツールの設定ファイルも作られるので、要らなければ消すか `.gitignore` に入れてください（`shikii init` はもう一度打っても、あるものは触りません）。`.shikii/labels/`（答え合わせ）は AI を替えても使う資産なので commit を勧めます。`.shikii/records/`（判定の記録）は増え続けるので、commit するかは任意です（`shikii gc` で古いものを捨てられます）。Codex の設定に `mcp_servers` が既にあれば足さず、手で足す行を表示します。プロジェクトに `CLAUDE.md` だけがある時は `AGENTS.md` を作りません（作ると OpenCode が `CLAUDE.md` を読まなくなるため）。
 
@@ -60,7 +60,7 @@ cd <プロジェクトルート> && shikii init
 - **既製の判定**: `decisions/` に 6 つ（依頼の種類、不具合の重複、問い合わせの同一判定、…）。そのまま使うか、`shikii new --from decisions/prompt-intent-v2.yaml` で写して書き換えます（[一覧](../../decisions/README.md)）
 - **過去の表がある**: `shikii import past.csv --spec decisions/<id>.yaml` で答え合わせの材料にできます。最初の 50 件を手で答えなくてよい
 - **自分のプログラムから**: `shikii serve` を立てて `POST /v1/decide`（判定）と `POST /v1/label`（正解）を叩きます。本文は JSON で、`-H 'Content-Type: application/json'` が要ります（口の一覧は [詳しい使い方](../guide.ja.md#serve-の-http-api)）
-- **AI 自身の判断を測る**: `shikii hook install` で Claude Code の hook が入り、AI が作業中にしている判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか)を shikii に通します。線が引けるまでは記録だけ。引けたら、危ないコマンドの前に確認が出て、それ以外には根拠が付きます([詳しく](../../integrations/claude-code.md))
+- **AI 自身の判断を測る**(Claude Code のみ): `shikii hook install` で hook が入り、AI が作業中にしている判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか、この依頼で結局何をするか。最後の正解は作業ツリーの変化から自動で付く)を shikii に通します。線が引けるまでは記録だけ。引けたら、危ないコマンド(消す・外を変える・外に送る)の前に確認が出て、その文に「何件の正解で引いた線か、人が確かめた精度」が付きます。安全なコマンドは黙って通ります([詳しく](../../integrations/claude-code.md))
 - **別の人の例**: [問い合わせメールの振り分け](../examples/inquiry-route.md)。shikii を初めて使う人が README だけで一周した記録（spec と 22 件の入力つき）
 
 ## 一周の例

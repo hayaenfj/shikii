@@ -1,6 +1,6 @@
-# claude-jev の UserPromptSubmit hook(prompt-intent.mjs)が使う判定。文言は hook が直接 Jev に送っていたものと同じ。
-# hook は calibrated["edit"] を見る(0.75 以上: 変更の依頼とみなす / 0.60 以上: 判断を委ねる)。
-# 正解は Stop 時の結果から付く: ファイルが変わっていれば "edit"、変わっていなければ "!edit"(部分ラベル、重み 0.7)。
+# Claude Code の hook(`shikii hook user-prompt-submit`)が使う判定。この依頼を受けた AI は結局何をすることになるか。
+# 正解は結果から自動で付く: ターンの終わり(Stop)に作業ツリーのハッシュが変わっていれば edit、変わっていなければ !edit(部分ラベル、重み 0.7)。
+# 線が引けるまで hook は何も出さない(記録だけ)。元のファイルは integrations/claude-code/specs/prompt-kind.yaml。
 id: prompt-kind
 version: 1
 type: choice
@@ -24,7 +24,7 @@ state:
   template: |
     request: {{ request }}
   required: [request]
-  # 迷った時だけ: hook が transcript から取った直前のアシスタントの発言を足して聞き直す(別のハッシュ・別の線)。短い返事(「yes please」「go ahead」)はこれで決まる
+  # 迷った時だけ: 直前のアシスタントの発言(Stop の hook が控えたもの)を足して聞き直す(別のハッシュ・別の線)。短い返事(「yes please」「go ahead」)はこれで決まる
   context: |
     previous assistant turn: {{ previous }}
     request: {{ request }}
