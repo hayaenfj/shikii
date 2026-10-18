@@ -9,7 +9,7 @@
 
   let { sp, it, pos = '' } = $props();
   let busy = $state(false);
-  let redoOut = $state('');
+  let redoRes = $state(null); // やり直しの結果(前・今・答えとの一致)。文は描く時に組むので、言語を切り替えても変わる
 
   const name = c => loc(c.labels, c.label);
   const choiceOf = truth => it.choices.find(c => c.truth === truth) || { label: truth };
@@ -32,24 +32,29 @@
     busy = true;
     try {
       const res = await api.redo({ trace_id: it.trace_id, spec: sp.id });
-      const word = x => (x.band === 'ask' ? t('bandAsk') : x.band === 'act' ? t('bandAct') : x.band === 'abstain' ? 'abstain' : t('bandDiscard')) + ' ' + name(choiceOf(x.top || '-')) + ' ' + Math.round((x.p || 0) * 100) + '%';
-      let line = t('redoResult')(word(res.before), word(res.after));
-      if (res.truth) line += ' · ' + (res.correct_after ? t('redoAgree') : t('redoDisagree'));
-      redoOut = line;
+      redoRes = res;
       if (res.recorded) { sp.answered = null; load(); }
     } catch (e) { toast(t('error')(e.message)); }
     busy = false;
+  }
+
+  const bandOf = x => x.band === 'ask' ? t('bandAsk') : x.band === 'act' ? t('bandAct') : x.band === 'abstain' ? t('bandAbstain') : t('bandDiscard');
+  const word = x => bandOf(x) + ' ' + name(choiceOf(x.top || '-')) + ' ' + Math.round((x.p || 0) * 100) + '%';
+  function redoLine(res) {
+    let line = t('redoResult')(word(res.before), word(res.after));
+    if (res.truth) line += ' · ' + (res.correct_after ? t('redoAgree') : t('redoDisagree'));
+    return line;
   }
 </script>
 
 <div class="item {it.band}" class:card={ui.view === 'one'}>
   {#if pos}<div class="k">{pos}</div>{/if}
   {#if it.truth}
-    <div class="guess">{t('yourAnswer')(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of} <span class="k">· {t('wasRedone')}</span>{/if}</div>
+    <div class="guess">{t('yourAnswer')(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of}{' '}<span class="k">· {t('wasRedone')}</span>{/if}</div>
     <div class="k">{t('changeAnswer')}</div>
   {/if}
   {#if it.top}
-    <div class="guess">{bandWord} {t('aiGuess')(topName, (it.p * 100).toFixed(0))}{#if it.audit} <span class="audit">{t('auditShort')}</span>{/if}</div>
+    <div class="guess">{bandWord} {t('aiGuess')(topName, (it.p * 100).toFixed(0))}{#if it.audit}{' '}<span class="audit">{t('auditShort')}</span>{/if}</div>
   {/if}
   <div class="meta adv">
     <span>{it.band}</span><span>{fmtDateTime(it.at)}</span><span>{it.model || ''}</span>
@@ -69,7 +74,7 @@
   <div class="btns">
     {#each it.choices as c, i}
       <button type="button" class:top={c.truth === it.top} class:active={c.truth === it.truth} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
-        <span class="num">{i + 1}</span>{name(c)}{#if c.truth === it.top} · {t('sameAsAI')}{/if}
+        <span class="num">{i + 1}</span>{name(c)}{#if c.truth === it.top}{' · ' + t('sameAsAI')}{/if}
       </button>
     {/each}
     {#if it.answerable && it.top}
@@ -82,5 +87,5 @@
       <button type="button" class="weak adv" title={t('redoHint')} disabled={busy} onclick={redo}>{t('redo')}</button>
     {/if}
   </div>
-  <div class="redo-out">{redoOut}</div>
+  <div class="redo-out">{redoRes ? redoLine(redoRes) : ''}</div>
 </div>

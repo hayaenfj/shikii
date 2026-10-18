@@ -11,8 +11,8 @@ MODEL   ?= ggml-org/Kev-4B-GGUF:Q4_K_M
 web:
 	cd web && npm ci && npm run build
 
-# web/dist が無ければ先に組む(あれば触らない: commit 済みの dist をそのまま埋め込む)
-web/dist/index.html:
+# web/dist が無い、または元(web/src など)より古ければ組む(監査 7 の 9)。commit 済みの dist を埋め込む
+web/dist/index.html: $(shell find web/src web/index.html web/vite.config.js web/package-lock.json -type f 2>/dev/null)
 	$(MAKE) web
 
 build: web/dist/index.html

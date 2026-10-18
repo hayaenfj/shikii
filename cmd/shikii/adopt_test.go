@@ -145,7 +145,7 @@ func TestMCPCanTuneButCannotAdopt(t *testing.T) {
 func TestServeUIHasWordingSection(t *testing.T) {
 	url, _, _, _ := newTuneFixture(t)
 	html := uiText(t, url)
-	for _, must := range []string{"/v1/tune?spec=", "/v1/tune/run", "/v1/tune/adopt", "meaning_same", "意味は同じ", "意味が違う", "same meaning", "meaning changed"} {
+	for _, must := range []string{"v1/tune?spec=", "v1/tune/run", "v1/tune/adopt", "meaning_same", "意味は同じ", "意味が違う", "same meaning", "meaning changed"} {
 		if !strings.Contains(html, must) {
 			t.Fatalf("UI must have the wording section; missing %q", must)
 		}

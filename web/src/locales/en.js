@@ -2,8 +2,9 @@
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
   langName: 'English',
+  helpTitle: 'how to use', langLabel: 'language', bandAbstain: 'The AI did not decide (not enough input).', truthsCount: n => n + ' truths', tableHead: ['candidate', 'top-1', 'brier', 'prec@act', 'rec@act'], yesTo: 'yes→', noTo: 'no→',
   tagline: 'tell it what was actually true; that is all it needs to learn when to trust itself', loading: 'loading…', noSpecs: 'no decisions set up yet', empty: 'nothing waiting for an answer. When the AI decides something, it shows up here.',
-  modeSimple: 'simple view', modeAdvanced: 'details', remaining: n => n + ' waiting', keysHint: 'Keys: 1-9 choose an answer, Enter = same as the AI, → = skip',
+  modeSimple: 'simple view', modeAdvanced: 'details', keysHint: 'Keys: 1-9 choose an answer, Enter = same as the AI, → = skip',
   tabKnowledge: 'Knowledge', viewOne: 'one at a time', viewList: 'list', skip: 'skip (later)', position: (i, n) => i + ' / ' + n, more: m => m + ' more waiting', showMore: m => 'show more (' + m + ')', unskip: n => 'bring back ' + n + ' skipped', emptyFiltered: 'nothing in this group',
   chip_all: 'all', chip_ask: 'AI unsure', chip_audit: 'spot check', chip_other: 'other', auditShort: 'spot check',
   viewTodo: 'to answer', viewDone: 'answered', yourAnswer: (name, when) => 'Your answer: ' + name + ' (' + when + ')', changeAnswer: 'Press another button to change your answer. The newest answer counts.', redo: 'ask the AI again', redoHint: 'asks the AI again with today\'s wording and line, keeps your answer', redoResult: (b, a) => 'before: ' + b + '  →  now: ' + a, redoAgree: 'now matches your answer', redoDisagree: 'still differs from your answer', noneAnswered: 'nothing answered yet', wasRedone: 'asked again',
@@ -16,7 +17,7 @@ export default {
   knowledge: 'Knowledge (claims)', claimsCount: (n, p) => n + ' claims, ' + p + ' prose pages', noClaims: 'no claims yet (tune drafts one when a candidate wins)',
   promote: 'make it a claim (promote)', deleteDraft: 'delete draft', confirm: 'confirm', reject: 'reject', confirmable: 'two independent models support it: you may confirm',
   promptClaim: 'The generalized claim (not tied to this spec):', promptSlug: 'File name (lowercase, digits, dashes):', promptModels: 'Which models does it apply to?', claimDone: 'recorded',
-  noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, model: p => 'model ' + p + '%', notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
+  noText: h => 'No text was kept for this decision (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
   done: t => 'answered: ' + t, calibratedToast: 'enough answers: calibration written', error: m => 'error: ' + m, last: 'last auto-calibration',
   wording: 'Wording (rewordings)', current: 'current', noRun: 'not measured yet', running: 'measuring rewordings…', runTune: 'measure the rewordings', runPropose: n => 'ask the AI for ' + n + ' rewordings and measure',
   holdoutLine: (h, c) => 'tried on a held-back part: ' + h + ' (keeping current: ' + c + ')', winnerLine: w => 'rewording ' + w + ' may be adopted', keptLine: 'current wording kept',

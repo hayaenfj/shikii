@@ -131,7 +131,7 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 	}
 	// 画面に部品がある
 	body := uiText(t, url)
-	for _, must := range []string{"/v1/answered", "/v1/redo", "回答済み", "AI にもう一度聞く", "別のボタンを押すと答えを直せます"} {
+	for _, must := range []string{"v1/answered", "v1/redo", "回答済み", "AI にもう一度聞く", "別のボタンを押すと答えを直せます"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("UI must offer the redo: missing %q", must)
 		}

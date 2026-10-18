@@ -52,7 +52,7 @@ cd <プロジェクトルート> && shikii init
 
 設定は手元の AI（`shikii up` で :8080）を指します。外の AI だけで使うなら、4 つの設定（`.mcp.json`、`.cursor/mcp.json`、`opencode.json`、`~/.codex/config.toml`）それぞれから `--local` を手で外してください。使っていないツールの設定ファイルも作られるので、要らなければ消すか `.gitignore` に入れてください（`shikii init` はもう一度打っても、あるものは触りません）。Codex の設定に `mcp_servers` が既にあれば足さず、手で足す行を表示します。プロジェクトに `CLAUDE.md` だけがある時は `AGENTS.md` を作りません（作ると OpenCode が `CLAUDE.md` を読まなくなるため）。
 
-答え合わせの画面そのもの（`web/`、Svelte）を直すには Node 24 が要ります（`make web`）。使うだけなら要りません（組んだ画面は commit 済みで、実行ファイルに埋め込まれています）。
+答え合わせの画面そのもの（`web/`、Svelte）を直すには Node 24 が要ります（`make web`）。言語を足すのは `web/src/locales/` に辞書を 1 つ足して `web/src/lib/i18n.js` に登録するだけで、`npm run check` が鍵の揃いを見ます。使うだけなら要りません（組んだ画面は commit 済みで、実行ファイルに埋め込まれています）。
 
 ## 最短の入り口
 

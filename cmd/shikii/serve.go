@@ -693,6 +693,11 @@ func countLabeledRecords(labeled map[string]store.Label, nRec int) int {
 // handleUI は画面(web/ を Svelte で組んだもの)。ビルド結果 web/dist は実行ファイルに埋め込まれている(shikii.WebFS)ので外部の読み込みは無い。
 // "/" が index.html、"/assets/..." がその JS と CSS。それ以外の知らないパスは 404(/v1/... は mux が先に取る)。
 func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") {
+		http.NotFound(w, r) // フォルダの一覧(/assets/)は出さない。"/" 以外に HTML のパスは無い
+		return
+	}
+	w.Header().Set("Cache-Control", "no-cache") // dist は版ごとに同じ名前(assets/index.js)なので、古い版を抱えない
 	webFiles.ServeHTTP(w, r)
 }
 

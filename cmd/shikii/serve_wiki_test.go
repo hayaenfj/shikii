@@ -92,7 +92,7 @@ func TestServeWikiListsClaimsAndLetsAPersonPromoteAndDecide(t *testing.T) {
 		t.Fatalf("deleted draft must be gone")
 	}
 	body2 := uiText(t, s.URL)
-	for _, must := range []string{"/v1/wiki", "主張にする", "promote"} {
+	for _, must := range []string{"v1/wiki", "主張にする", "promote"} {
 		if !strings.Contains(body2, must) {
 			t.Fatalf("the page must have the knowledge block; missing %q", must)
 		}

@@ -40,7 +40,7 @@
   {#if list && list.length}
     <div class="opts">
       {#each list as s, i}
-        <div class="changed"><span class="k">{i + 1}.</span> {s.ask}{#if s.yes} <span class="k">yes→</span>{s.yes}{/if}{#if s.no} <span class="k">no→</span>{s.no}{/if}</div>
+        <div class="changed"><span class="k">{i + 1}.</span> {s.ask}{#if s.yes}{' '}<span class="k">{t('yesTo')}</span>{s.yes}{/if}{#if s.no}{' '}<span class="k">{t('noTo')}</span>{s.no}{/if}</div>
       {/each}
     </div>
   {/if}
@@ -57,10 +57,10 @@
   </summary>
   <div class="wbody">
     {#if latest}
-      <div class="meta"><span>{latest.model}</span><span>{latest.truths} truths</span><span>{latest.at.slice(0, 16).replace('T', ' ')}</span></div>
+      <div class="meta"><span>{latest.model}</span><span>{t('truthsCount')(latest.truths)}</span><span>{latest.at.slice(0, 16).replace('T', ' ')}</span></div>
       <table class="cands">
         <tbody>
-          <tr><th>candidate</th><th>top-1</th><th>brier</th><th>prec@act</th><th>rec@act</th><th></th></tr>
+          <tr>{#each t('tableHead') as h}<th>{h}</th>{/each}<th></th></tr>
           {#each latest.candidates as c}
             <tr class:win={c.name === latest.winner && latest.winner !== 'current'}>
               <td>{c.name}</td><td>{c.top1.toFixed(3)}</td><td>{c.brier.toFixed(4)}</td><td>{c.prec_at_act.toFixed(3)}</td><td>{c.rec_at_act.toFixed(3)}</td><td class="k">{c.change}</td>

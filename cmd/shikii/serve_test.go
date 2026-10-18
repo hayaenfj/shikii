@@ -165,7 +165,7 @@ func TestServeUIIsSelfContained(t *testing.T) {
 		}
 	}
 	body := uiText(t, url) // 参照が ./ 以外なら uiText が落とす
-	for _, must := range []string{"/v1/queue", "/v1/label", "/v1/status"} {
+	for _, must := range []string{"v1/queue", "v1/label", "v1/status"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("UI must talk to %s", must)
 		}
@@ -210,7 +210,7 @@ func TestServeUIServesEmbeddedBundleWithLanguagePicker(t *testing.T) {
 			t.Fatalf("asset %s has the wrong content type %q", ref, ct)
 		}
 	}
-	for _, p := range []string{"/nope", "/assets/nope.js", "/web/dist/index.html"} {
+	for _, p := range []string{"/nope", "/assets/nope.js", "/web/dist/index.html", "/assets/"} {
 		resp, err := http.Get(url + p)
 		if err != nil {
 			t.Fatal(err)

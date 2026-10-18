@@ -1,8 +1,9 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
   langName: '日本語',
+  helpTitle: '使い方', langLabel: '言語', bandAbstain: 'AI は判定しませんでした(入力が足りない)。', truthsCount: n => n + ' 件の正解', tableHead: ['候補', 'top-1', 'brier', 'act の精度', 'act の再現率'], yesTo: 'はい→', noTo: 'いいえ→',
   tagline: 'AI の答えが本当に合っていたかを教えてください。それだけで、AI はいつ自分を信じてよいかを覚えます', loading: '読み込み中…', noSpecs: 'まだ判定が登録されていません', empty: '答え合わせ待ちはありません。AI が何かを判定すると、ここに並びます。',
-  modeSimple: 'かんたん表示', modeAdvanced: 'くわしく', remaining: n => '残り ' + n + ' 件', keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」、→ でスキップ',
+  modeSimple: 'かんたん表示', modeAdvanced: 'くわしく', keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」、→ でスキップ',
   tabKnowledge: '知識', viewOne: '1 件ずつ', viewList: '一覧', skip: 'スキップ(あとで)', position: (i, n) => i + ' / ' + n + ' 件', more: m => 'ほかに ' + m + ' 件待っています', showMore: m => 'さらに表示(' + m + ' 件)', unskip: n => 'スキップした ' + n + ' 件を戻す', emptyFiltered: 'この種類の待ちはありません',
   chip_all: '全部', chip_ask: 'AI が迷った', chip_audit: '抜き取り', chip_other: 'その他', auditShort: '抜き取り',
   viewTodo: '未回答', viewDone: '回答済み', yourAnswer: (name, when) => 'あなたの答え: ' + name + '(' + when + ')', changeAnswer: '別のボタンを押すと答えを直せます。いちばん新しい答えが使われます。', redo: 'AI にもう一度聞く', redoHint: '今の聞き方と線で同じ本文をもう一度判定します。あなたの答えはそのまま残ります', redoResult: (b, a) => '前: ' + b + '  →  今: ' + a, redoAgree: 'あなたの答えと一致しました', redoDisagree: 'まだあなたの答えと違います', noneAnswered: '回答済みのものはまだありません', wasRedone: 'もう一度聞いた結果',
@@ -15,7 +16,7 @@ export default {
   knowledge: '知識(主張)', claimsCount: (n, p) => '主張 ' + n + '、文章のページ ' + p, noClaims: 'まだ主張はありません(tune で勝った候補があれば下書きができます)',
   promote: '主張にする', deleteDraft: '下書きを消す', confirm: 'confirmed にする', reject: '却下', confirmable: '独立したモデル 2 つが支持: confirmed にできます',
   promptClaim: '一般化した主張の文(この spec に限らない言い方で):', promptSlug: 'ファイル名(英小文字・数字・ハイフン):', promptModels: '効くモデルの範囲:', claimDone: '記録しました',
-  noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, model: p => 'AI の自信 ' + p + '%', notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に質問の文が変わりました',
+  noText: h => 'この判定は本文が残っていないので(本文を残す前の記録)、人には正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に質問の文が変わりました',
   done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。線を引いて書き込みました', error: m => 'エラー: ' + m, last: '最後の自動較正',
   wording: '聞き方(言い換えの案)', current: '今の文言', noRun: 'まだ測っていません', running: '案を測っています…', runTune: '案を測る', runPropose: n => 'AI に案を ' + n + ' 個作らせて測る',
   holdoutLine: (h, c) => '別の分で試した正解率 ' + h + '(今のまま: ' + c + ')', winnerLine: w => '言い換えの案 ' + w + ' を採用できます', keptLine: '今の文言のまま',

@@ -46,7 +46,7 @@
 
 <header>
   <h1>shikii <small id="tagline">{t('tagline')}</small></h1>
-  <button id="help" type="button" title="how to use" onclick={() => setShowHelp(!ui.showHelp)}>?</button>
+  <button id="help" type="button" title={t('helpTitle')} onclick={() => setShowHelp(!ui.showHelp)}>?</button>
   <button id="mode" type="button" onclick={() => setAdvanced(!ui.advanced)}>{t(ui.advanced ? 'modeSimple' : 'modeAdvanced')}</button>
   <LangPicker />
 </header>
