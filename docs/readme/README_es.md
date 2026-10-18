@@ -7,7 +7,7 @@
 **Un modelo te da una probabilidad. shikii te dice si puedes actuar con ella.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-161%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-169%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -34,7 +34,7 @@ Incluye además `shikii-readout`, un adaptador de 500 líneas que convierte **cu
 
 ## Inicio rápido
 
-Go 1.24 o superior. No se necesita nada más para la primera ejecución.
+Go 1.27 o superior. No se necesita nada más para la primera ejecución.
 
 ### Ejecuta todo el ciclo sin clave ni GPU
 

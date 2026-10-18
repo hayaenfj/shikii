@@ -13,12 +13,12 @@ if [ "$GO_MINOR" -lt 27 ]; then
   exit 1
 fi
 if [ -f go.mod ] && grep -q 'module github.com/hayaenfj/shikii' go.mod; then
-  go install ./cmd/shikii ./cmd/readout      # repo の中: 今のソースから
+  go install ./cmd/shikii ./cmd/shikii-readout      # repo の中: 今のソースから
 else
-  go install github.com/hayaenfj/shikii/cmd/shikii@latest github.com/hayaenfj/shikii/cmd/readout@latest
+  go install github.com/hayaenfj/shikii/cmd/shikii@latest github.com/hayaenfj/shikii/cmd/shikii-readout@latest
 fi
 BIN="$(go env GOBIN)"; [ -n "$BIN" ] || BIN="$(go env GOPATH)/bin"
-# cmd/readout の実行ファイル名は readout になるので、shikii-readout の名前にも置く
+# cmd/shikii-readout の実行ファイル名は readout になるので、shikii-readout の名前にも置く
 [ -f "$BIN/readout" ] && cp "$BIN/readout" "$BIN/shikii-readout"
 echo "installed: $BIN/shikii $BIN/shikii-readout"
 case ":$PATH:" in *":$BIN:"*) ;; *) echo "add to PATH: $BIN";; esac

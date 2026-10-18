@@ -45,7 +45,7 @@ Kev-4B は英語のみと表記されているが、v2 の文言なら日本語�
 | `internal/decide` | 仕様 + 入力 → 帯。required 欠落は abstain、tainted は hosted を外す、**較正が無い判定は act を出さない** |
 | `internal/calib` | Platt 較正(`calib.go`)、vector scaling(`vector.go`)、Brier / ECE / 信頼度図、正負の逆転検出 |
 | `cmd/shikii` | CLI |
-| `cmd/readout` | **普通の GGUF を System One にするアダプタ** `shikii-readout`。後ろの llama-server の `/apply-template` と `/completion` で選択肢の文字の確率を読む。推論も較正も持たない |
+| `cmd/shikii-readout` | **普通の GGUF を System One にするアダプタ** `shikii-readout`。後ろの llama-server の `/apply-template` と `/completion` で選択肢の文字の確率を読む。推論も較正も持たない |
 | `cmd/fake-systemone` | 鍵も GPU も無しで輪を回すための偽モデル |
 | `decisions/*.yaml` | spec の例(不具合報告の重複、問い合わせの同一判定、依頼の種類) |
 | `testdata/` | 作り物のラベル付きデータ(依頼文 62 件、不具合報告と問い合わせの各 32 組)と、CI 用の較正の裏付け(`store/labels/`) |

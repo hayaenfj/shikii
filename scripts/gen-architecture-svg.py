@@ -8,7 +8,7 @@ def est(text, size):
         elif ch == " ": w += size * 0.32
         elif ch.isupper() or ch.isdigit(): w += size * 0.72
         else: w += size * 0.63
-    return w * 1.12  # ブラウザのフォントは手元の描画より広い。見積もりに余裕を持たせる
+    return w * 1.12  # 見積もり(等幅換算)に 12% の余裕: 手元の描画(rsvg)とブラウザ(Chrome/Safari の既定フォント)で同じ文を測ると、ブラウザが最大 10% 広かった(2026-10-18)。超える行には textLength を付けて枠内に収める  # ブラウザのフォントは手元の描画より広い。見積もりに余裕を持たせる
 def esc(s): return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 STR = {
  "ja": dict(title="shikii の構造", sub="問いと正解は資産。モデルは使い捨て。知識は検証できる主張として wiki に溜まり、測るたびに自分で育つ。",
@@ -133,6 +133,8 @@ def gen(lang, path):
     text(40, 760, S["foot"], "k", 12, maxw=W-80)
     out.append("</svg>")
     open(path,"w",encoding="utf-8").write("\n".join(out)+"\n")
-gen("ja", "/Users/falcon/git/ai-company/haya1/docs/assets/shikii-architecture.svg")
-gen("en", "/Users/falcon/git/ai-company/haya1/docs/assets/shikii-architecture-en.svg")
+import os
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "assets")
+gen("ja", os.path.join(ASSETS, "shikii-architecture.svg"))
+gen("en", os.path.join(ASSETS, "shikii-architecture-en.svg"))
 print("written ja + en")

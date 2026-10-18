@@ -66,18 +66,24 @@ func cmdServe(args []string) error {
 	if _, err := loadSpecs(o.specsDir); err != nil {
 		return err
 	}
-	// 手元のモデルの口が立つのを自分で待つ(Docker で先にモデルを起こす時。curl / wget に頼らない)
-	if o.ef.local != "" {
-		wctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-		if err := systemone.WaitReady(wctx, o.ef.local, 3*time.Second, log.Printf); err != nil {
-			cancel()
-			return err
-		}
-		cancel()
+	if err := waitForLocalModel(o.ef.local, systemone.WaitReady); err != nil {
+		return err
 	}
 	addr := fmt.Sprintf("%s:%d", bindHost(), o.port)
 	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted), o.autoCalibrate, addr)
 	return http.ListenAndServe(addr, newServer(o))
+}
+
+// waitForLocalModel は手元のモデルの口が立つのを自分で待つ(Docker で先にモデルを起こす時。curl / wget に頼らない)。
+// --local が無い(hosted だけ)なら待たない: hosted は外のサービスで、起動を待つ対象ではない。最長 15 分。URL が違う時は最初の行で分かるようにする。
+func waitForLocalModel(local string, wait func(context.Context, string, time.Duration, func(string, ...any)) error) error {
+	if local == "" {
+		return nil
+	}
+	log.Printf("waiting for the local model at %s (if the URL is wrong, stop now and fix --local; serve does not open its port until the model answers)", systemone.RedactURL(local))
+	wctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	return wait(wctx, local, 3*time.Second, log.Printf)
 }
 
 type server struct {

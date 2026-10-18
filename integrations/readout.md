@@ -20,7 +20,7 @@ scripts/eval-model.sh http://127.0.0.1:8090 <name>                              
 
 止めるのは `pkill -x shikii-readout`（llama-server は別）。
 
-## 中身（`cmd/readout/main.go`、約 600 行、依存は標準ライブラリと `internal/systemone` の並び保持だけ）
+## 中身（`cmd/shikii-readout/main.go`、約 600 行、依存は標準ライブラリと `internal/systemone` の並び保持だけ）
 
 | 段 | 何をするか | 壊れ方の検査 |
 |---|---|---|

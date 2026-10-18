@@ -8,14 +8,42 @@ import (
 	"testing"
 )
 
-// shikii init は 1 回でエージェントの準備を済ませる(オプション無し): 基本構成のフォルダ、.mcp.json の shikii の項(他の項は残す)、
-// skill を ~/.claude/skills/shikii に配る。2 回目は何も壊さない。
+func readJSON(t *testing.T, path string) map[string]any {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("%s: %v\n%s", path, err, b)
+	}
+	return m
+}
+
+// shikii init は 1 回でエージェントの準備を済ませる(オプション無し): 基本構成のフォルダ、MCP の設定(Claude Code / Cursor / OpenCode / Codex)、
+// AGENTS.md の節、skill を ~/.claude/skills/shikii に置き直す。人が書いたものは触らず、2 回目も安全。
 func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	home := filepath.Join(dir, "home")
 	t.Setenv("HOME", home)
-	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(`{"mcpServers":{"other":{"command":"x"}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(`{"top":{"n":12345678901234567890},"mcpServers":{"other":{"command":"x","env":{"T":"a&b<c>"}}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude", "skills", "shikii", "references"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".claude", "skills", "shikii", "references", "OLD.md"), []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("model = \"o3\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# My project\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error { return cmdInit(nil) })
@@ -24,32 +52,69 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 			t.Fatalf("%s must exist", d)
 		}
 	}
+	// Claude Code: 他の項・上位の鍵・数字・& < > がそのまま
 	b, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
-	var m map[string]map[string]map[string]any
-	if err := json.Unmarshal(b, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m["mcpServers"]["other"] == nil || m["mcpServers"]["shikii"] == nil || m["mcpServers"]["shikii"]["command"] != "shikii" {
+	m := readJSON(t, filepath.Join(dir, ".mcp.json"))
+	servers := m["mcpServers"].(map[string]any)
+	if servers["other"] == nil || servers["shikii"] == nil || servers["shikii"].(map[string]any)["command"] != "shikii" {
 		t.Fatalf("the shikii server must be added without dropping others: %s", b)
 	}
-	skill := filepath.Join(home, ".claude", "skills", "shikii", "SKILL.md")
-	sb, err := os.ReadFile(skill)
+	if !strings.Contains(string(b), `"a&b<c>"`) || !strings.Contains(string(b), "12345678901234567890") || !strings.Contains(string(b), `"top"`) {
+		t.Fatalf("other keys, numbers and & < > must survive untouched: %s", b)
+	}
+	// Cursor と OpenCode
+	if c := readJSON(t, filepath.Join(dir, ".cursor", "mcp.json")); c["mcpServers"].(map[string]any)["shikii"] == nil {
+		t.Fatalf("Cursor reads .cursor/mcp.json")
+	}
+	oc := readJSON(t, filepath.Join(dir, "opencode.json"))
+	if e, _ := oc["mcp"].(map[string]any)["shikii"].(map[string]any); e == nil || e["type"] != "local" {
+		t.Fatalf("OpenCode reads opencode.json mcp.shikii with type local: %+v", oc)
+	}
+	// Codex: 既存の行は残り、[mcp_servers.shikii] が末尾に足される
+	cb, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if !strings.HasPrefix(string(cb), "model = \"o3\"") || !strings.Contains(string(cb), "[mcp_servers.shikii]") || !strings.Contains(string(cb), `command = "shikii"`) {
+		t.Fatalf("Codex config must keep its lines and gain the shikii server:\n%s", cb)
+	}
+	// AGENTS.md: 節が足される
+	ab, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if !strings.HasPrefix(string(ab), "# My project") || strings.Count(string(ab), "## shikii") != 1 {
+		t.Fatalf("AGENTS.md must keep its content and gain one shikii section:\n%s", ab)
+	}
+	// skill: 置き直し(古いファイルは消える)
+	sb, err := os.ReadFile(filepath.Join(home, ".claude", "skills", "shikii", "SKILL.md"))
 	if err != nil || !strings.Contains(string(sb), "name: shikii") {
 		t.Fatalf("the skill must be installed for the agent: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "shikii", "references", "bands.md")); err != nil {
 		t.Fatalf("references must come along: %v", err)
 	}
-	for _, must := range []string{".mcp.json", "skills/shikii", "shikii up"} {
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "shikii", "references", "OLD.md")); !os.IsNotExist(err) {
+		t.Fatalf("stale files in the skill folder must be removed (the skill is replaced, not merged)")
+	}
+	for _, must := range []string{".mcp.json", ".cursor/mcp.json", "opencode.json", "Codex", "AGENTS.md", "skills/shikii", "shikii up"} {
 		if !strings.Contains(out, must) {
 			t.Fatalf("init must say what it did and what comes next; missing %q:\n%s", must, out)
 		}
 	}
-	// 2 回目: 同じ結果、重複や誤り無し
-	capture(t, func() error { return cmdInit(nil) })
+	// 2 回目: 何も重複せず、人が足した --proposer も残る
+	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(`{"mcpServers":{"other":{"command":"x"},"shikii":{"command":"shikii","args":["mcp","--proposer","http://127.0.0.1:8083"]}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = capture(t, func() error { return cmdInit(nil) })
 	b2, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
-	var m2 map[string]map[string]any
-	if err := json.Unmarshal(b2, &m2); err != nil || len(m2["mcpServers"]) != 2 {
-		t.Fatalf("init must be idempotent (other + shikii, nothing duplicated): %v %s", err, b2)
+	if !strings.Contains(string(b2), "--proposer") || !strings.Contains(out, "kept") {
+		t.Fatalf("an existing shikii entry must be kept as the person wrote it: %s\n%s", b2, out)
+	}
+	cb2, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	ab2, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if strings.Count(string(cb2), "[mcp_servers.shikii]") != 1 || strings.Count(string(ab2), "## shikii") != 1 {
+		t.Fatalf("init must be idempotent for Codex and AGENTS.md")
+	}
+	// 壊れた JSON は上書きしない
+	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte("{broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdInit(nil); err == nil || !strings.Contains(err.Error(), "by hand") {
+		t.Fatalf("a broken .mcp.json must stop init: %v", err)
 	}
 }

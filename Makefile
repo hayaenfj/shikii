@@ -9,7 +9,7 @@ MODEL   ?= ggml-org/Kev-4B-GGUF:Q4_K_M
 build:
 	go build -o $(BIN) ./cmd/shikii
 	go build -o bin/fake-systemone ./cmd/fake-systemone
-	go build -o bin/shikii-readout ./cmd/readout
+	go build -o bin/shikii-readout ./cmd/shikii-readout
 
 # 普通の GGUF を System One にするアダプタ(後ろに llama-server が要る。UPSTREAM で指定)
 UPSTREAM ?= http://127.0.0.1:8086

@@ -380,7 +380,7 @@ Brier から +0.05 以上の悪化、または act での precision が `thresho
   Jev の jaggedness に載っている「選択肢順序の偏り」は、学習済みの決定モデルでは出ないことがある——測ってから補正を決める
 - 普通の LLM の経路(2026-10-17): BonJev + Bonsai 2 27B を `--local` に向けただけで動いた。prompt-intent-v2 で top-1 0.968(Kev-4B 0.919)、
   はい/いいえ で Platt が初めて CV で選ばれた(差し替え後の same-issue では 0.049 → 0.019)。「較正が要るモデル」(§7.1)の最初の実例。`integrations/bonjev.md`
-- 自前のアダプタ(2026-10-17): `cmd/readout`(`shikii-readout`)。普通の GGUF を System One にする。推論は持たず、後ろの llama-server の
+- 自前のアダプタ(2026-10-17): `cmd/shikii-readout`(`shikii-readout`)。普通の GGUF を System One にする。推論は持たず、後ろの llama-server の
   `/apply-template` + `/completion` で選択肢の文字の確率を読む。BonJev と同じ原理だが、fork への FFI も内蔵の較正も持たない。
   「フレームワークは推論を所有しない」(§3.2)は守ったまま、所有する範囲に「形式の変換」だけ足した形。数字は `integrations/readout.md`
 - 記録の掃除(2026-10-17): `shikii gc`。消すのは「古くてラベルの無い記録」だけで、ラベル付きの記録とラベルは較正の材料として残す。

@@ -7,7 +7,7 @@
 **Model memberi Anda probabilitas. shikii memberi tahu apakah Anda boleh bertindak berdasarkan probabilitas itu.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-161%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-169%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -34,7 +34,7 @@ Ia juga disertai `shikii-readout`, adapter 500 baris yang mengubah **GGUF chat a
 
 ## Mulai cepat
 
-Go 1.24 atau lebih baru. Tidak ada yang lain yang dibutuhkan untuk menjalankan pertama kali.
+Go 1.27 atau lebih baru. Tidak ada yang lain yang dibutuhkan untuk menjalankan pertama kali.
 
 ### Jalankan seluruh siklus tanpa key atau GPU
 

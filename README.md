@@ -9,7 +9,7 @@
 **A model gives you a probability. shikii tells you whether you may act on it.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-161%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-169%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
@@ -23,7 +23,7 @@
 
 **Two shortest ways in**
 
-- From Claude Code / Cursor: three lines in `.mcp.json` give you `shikii_decide` / `shikii_label` / `shikii_tune` as tools. The repo is also a Claude Code plugin: its skill (`skills/shikii/SKILL.md`) teaches the agent *when* to decide, how to follow the bands, and that truths and statuses belong to people
+- From an agent: `shikii init` adds the shikii MCP server to Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) and Codex (`~/.codex/config.toml`), a section to `AGENTS.md`, and the skill (`skills/shikii/SKILL.md`) to `~/.claude/skills/shikii`. The skill teaches the agent *when* to decide, how to follow the bands, and that truths and statuses belong to people. Your own entries are never rewritten; the skill folder is replaced on every init, so do not edit it by hand
   ```json
   { "mcpServers": { "shikii": { "command": "shikii", "args": ["mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"] } } }
   ```
@@ -182,7 +182,7 @@ bin/shikii tune decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 --
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # needs Go 1.27+
-cd <project root> && shikii init   # folders, .mcp.json for Claude Code / Cursor, the agent skill
+cd <project root> && shikii init   # folders; MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill (points at a local model on :8080; hosted only? remove --local by hand)
 make install          # copies bin/shikii and bin/shikii-readout to ~/.local/bin
 git pull && make install
 shikii doctor         # what is running, what is missing, and the command that fixes it

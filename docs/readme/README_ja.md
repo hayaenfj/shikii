@@ -48,7 +48,9 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 cd <プロジェクトルート> && shikii init
 ```
 
-`shikii init` で、フォルダ（`decisions/` `wiki/` `.shikii/`）、Claude Code / Cursor 用の設定（`.mcp.json`）、エージェント向けの作法（skill）が 1 回で揃います。Go を入れたくなければ下の Docker。
+`shikii init` で、フォルダ（`decisions/` `wiki/` `.shikii/`）と、エージェントの設定が 1 回で揃います。Claude Code（`.mcp.json`）、Cursor（`.cursor/mcp.json`）、OpenCode（`opencode.json`）、Codex（`~/.codex/config.toml`）に shikii の MCP の項を足し、`AGENTS.md` に作法の節を、`~/.claude/skills/shikii` に詳しい作法（skill）を置きます。あなたが書いた設定は触りません（shikii の項が既にあればそのまま）。skill のフォルダだけは毎回置き直すので、手で直さないでください。Go を入れたくなければ下の Docker。
+
+設定は手元の AI（`shikii up` で :8080）を指します。外の AI だけで使うなら、設定の `--local` を手で外してください。
 
 ## 最短の入り口
 
@@ -63,9 +65,11 @@ shikii up                                                             # 手元�
 shikii decide decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask  (まだ線が無いので「人に確かめて」)
 shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080
-#   → http://127.0.0.1:8095 で答え合わせ。50 件たまると線が自動で引かれる
+#   → http://127.0.0.1:8095 で答え合わせ。判定ごとに決めた数(この判定は 20 件)たまると線が自動で引かれる
 shikii decide decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=act   receipt: 人が確かめた 48 件で精度 0.96  (自動で動いてよい。根拠つき)
+#   → band=act
+#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
+#     (自動で動いてよい。根拠つき: 線は 61 件の正解で引き、うち 48 件は人の答え。自動で動いた 25 件を人が確かめたら 96% が正しかった)
 ```
 
 `band` は 4 つだけ。`act` = 任せてよい、`ask` = 人に確かめて、`discard` = 動かない、`abstain` = 入力が足りない。生の確率で判断する場面はありません。

@@ -7,7 +7,7 @@
 **Модель выдаёт вероятность. shikii говорит, можно ли действовать на её основе.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-161%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-169%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -34,7 +34,7 @@ shikii берёт на себя то, что никто не поставляе�
 
 ## Быстрый старт
 
-Go 1.24 или новее. Для первого запуска больше ничего не нужно.
+Go 1.27 или новее. Для первого запуска больше ничего не нужно.
 
 ### Весь цикл без ключа и без GPU
 

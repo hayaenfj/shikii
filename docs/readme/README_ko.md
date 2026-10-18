@@ -7,7 +7,7 @@
 **모델은 확률을 줍니다. shikii는 그 확률로 행동해도 되는지 알려줍니다.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-161%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-169%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -34,7 +34,7 @@ shikii가 맡는 것은 아무도 제공하지 않는 부분, 곧 결정의 **�
 
 ## 빠른 시작
 
-Go 1.24 이상이 필요합니다. 첫 실행에는 그 밖에 아무것도 필요 없습니다.
+Go 1.27 이상이 필요합니다. 첫 실행에는 그 밖에 아무것도 필요 없습니다.
 
 ### 키도 GPU도 없이 전체 루프 돌려 보기
 

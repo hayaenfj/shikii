@@ -7,7 +7,7 @@
 **模型給你一個機率。shikii 告訴你能不能據此行動。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-161%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-169%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -34,7 +34,7 @@ shikii 負責的是沒人提供的那一塊:決策的**生命週期**。一個 s
 
 ## 快速開始
 
-需要 Go 1.24 或更新版本。第一次執行不需要其他任何東西。
+需要 Go 1.27 或更新版本。第一次執行不需要其他任何東西。
 
 ### 不需要金鑰和 GPU,跑完整個迴圈
 

@@ -5,7 +5,7 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 
 ## 入れ方（Claude Code）
 
-プロジェクトの `.mcp.json`:
+`shikii init` が Claude Code(`.mcp.json`)、Cursor(`.cursor/mcp.json`)、OpenCode(`opencode.json` の `mcp`、`type: local`)、Codex(`~/.codex/config.toml` の `[mcp_servers.shikii]`)に同じ項を足す(既にあれば触らない)。手で書くならプロジェクトの `.mcp.json`:
 
 ```json
 {
