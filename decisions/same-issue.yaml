@@ -58,3 +58,8 @@ display:
 variants:
   - name: plain
     layout: plain
+  # wiki のパターン noul-define-yes-before-contrast の再検証: はい の定義を先に、対比は as opposed to で後ろに(今の文は否定の指示で終わる)
+  - name: yes-first
+    question: |
+      Do these two bug reports describe the same underlying defect - one is a duplicate of the other,
+      or both are symptoms of the same root cause - as opposed to merely concerning the same screen, feature or technology?

@@ -279,6 +279,7 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 502, err)
 		return
 	}
+	attachReceipt(sp, s.st, d)
 	if (req.Record == nil || *req.Record) && d.Band != decide.Abstain {
 		if err := recordDecision(s.st, sp, d, req.Inputs); err != nil {
 			writeErr(w, 500, err)

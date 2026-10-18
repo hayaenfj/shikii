@@ -58,7 +58,22 @@ type Decision struct {
 	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。記録に残り、聞き直しでも hosted に送らない
 	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問) | context(迷ったので文脈を足して聞き直した)
 	Minimal      *store.Pass        `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段の指紋と raw)。人の正解はこちらにも付く
+	Receipt      *Receipt           `json:"receipt,omitempty"` // act の判定に付く領収書(何を根拠に動いてよいと言ったか)。呼ぶ側(cmd)が store を見て付ける
 	At           time.Time          `json:"at"`
+}
+
+// Receipt は act の判定の領収書: 線の鍵と方法、引いた日、正解の数(人の分)、人が確かめた act の判定の数とその精度。
+// 「95% の確信」ではなく「この種の判定は人が検査した n 件で精度 x」と言うためのもの。線が無ければ領収書も無い。
+type Receipt struct {
+	SpecHash        string  `json:"spec_hash"`
+	Model           string  `json:"model"`
+	Method          string  `json:"method"`
+	FittedAt        string  `json:"fitted_at"`
+	N               int     `json:"n"`
+	NHuman          int     `json:"n_human"`
+	PrecisionAtFit  float64 `json:"precision_at_fit"`
+	HumanCheckedAct int     `json:"human_checked_act"` // 人(または結果)が確かめた、線を掛けて act になる判定の数
+	HumanPrecision  float64 `json:"human_precision"`   // その精度(0 件なら 0。まだ誰も確かめていない、という意味)
 }
 
 // questionKey は 1 spec = 1 質問なので固定。

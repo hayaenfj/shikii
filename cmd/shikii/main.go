@@ -62,6 +62,8 @@ func main() {
 		err = cmdWiki(os.Args[2:])
 	case "import":
 		err = cmdImport(os.Args[2:])
+	case "judge":
+		err = cmdJudge(os.Args[2:])
 	case "serve":
 		err = cmdServe(os.Args[2:])
 	case "mcp":
@@ -109,6 +111,8 @@ func usageText() string {
                    spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は ./wiki/runs/
   shikii import    <past.csv> --spec <spec.yaml> [--out truths.json]
                    手元の過去の表(入力の列 + truth [+ weight])を正解の貯金(JSON)にする。線を引く前の 50 件を業務の表で埋める
+  shikii judge     <spec.yaml> --local <judge URL> [--model M] [--store DIR]
+                   審判: 別の(大きい)モデルに同じ spec を聞く。人の正解との一致率が act に届けば、正解の無い記録に重み付きの正解(source judge)を付ける。審判も迷えば人へ
   shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
                    wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
@@ -192,6 +196,7 @@ func cmdDecide(args []string) error {
 	if err != nil {
 		return err
 	}
+	attachReceipt(sp, store.Store{Dir: *storeDir}, d)
 	if !*noRecord && d.Band != decide.Abstain {
 		if err := recordDecision(store.Store{Dir: *storeDir}, sp, d, inputs); err != nil {
 			return err
@@ -213,6 +218,9 @@ func cmdDecide(args []string) error {
 	}
 	if d.Minimal != nil {
 		fmt.Fprintf(stdout, "rung=context (the minimal question was unsure: top=%s p=%.3f band=%s; asked again with state.context)\n", d.Minimal.Top, d.Minimal.P, d.Minimal.Band)
+	}
+	if r := d.Receipt; r != nil {
+		fmt.Fprintf(stdout, "receipt: line %s fitted %s on %d truths (%d human); human-checked act decisions %d, precision %.3f\n", r.Method, r.FittedAt, r.N, r.NHuman, r.HumanCheckedAct, r.HumanPrecision)
 	}
 	if len(d.Raw) > 0 {
 		fmt.Fprintln(stdout, "raw:", fmtDist(d.Raw))
@@ -272,6 +280,34 @@ func recordDecision(st store.Store, sp *spec.Spec, d *decide.Decision, inputs ma
 		return fmt.Errorf("record context truth: %w", err)
 	}
 	return nil
+}
+
+// attachReceipt は act の判定に領収書を付ける: その段の線(方法・日・正解の数)と、人が確かめた act の判定の数と精度(store の人の正解だけ)。
+func attachReceipt(sp *spec.Spec, st store.Store, d *decide.Decision) {
+	if d.Band != decide.Act {
+		return
+	}
+	rs := sp
+	if d.Rung == "context" && sp.ContextSpec() != nil {
+		rs = sp.ContextSpec()
+	}
+	c := rs.CalibrationFor(d.Model)
+	if c == nil {
+		return
+	}
+	r := &decide.Receipt{SpecHash: c.SpecHash, Model: c.Model, Method: c.Method, FittedAt: c.FittedAt, N: c.N, NHuman: c.NHuman, PrecisionAtFit: c.PrecisionAt}
+	if labels, err := st.Labels(sp.ID, c.SpecHash, d.Model); err == nil {
+		var human []store.Label
+		for _, l := range store.LatestPerInput(labels) {
+			if store.HumanSource(l.Source) {
+				human = append(human, l)
+			}
+		}
+		if len(human) > 0 {
+			r.HumanPrecision, _, r.HumanCheckedAct = evaluateCalibration(rs, *c, human)
+		}
+	}
+	d.Receipt = r
 }
 
 // ---------------------------------------------------------------- label

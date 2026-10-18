@@ -1,6 +1,24 @@
+---
+claim: >-
+  はい/いいえ の質問は、はい になるものを先に肯定で定義し、対比(いいえ になるもの)は
+  "as opposed to …" で後ろに付ける。否定の列挙や否定の指示で終わる文は、はい の側が弱くなる
+status: tentative
+applies_to:
+  type: noul
+  models: 普通のチャット用モデルを shikii-readout で読む時に確認(Ternary-Bonsai-27B)。決定モデルは未確認
+evidence:
+  - date: "2026-10-18"
+    model: ternary-bonsai-27b-q2g64+state-last
+    result: prompt-intent の分解の 1 段目で、否定の列挙で終わる文 0.306 → 肯定の定義 + as opposed to 0.790(top-1、62 件)。同じ 5 文の P(yes) は 0.42〜0.62 → 0.96〜0.97
+    verdict: supports
+    run: 2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64-2
+retest:
+  spec: decisions/same-issue.yaml
+  better: yes-first
+  than: current
+---
 # はい/いいえ は「はい の定義」を先に、対比は後に
 
-status: tentative  <!-- 2026-10-18: Ternary-Bonsai-27B(readout)の 1 組。別のモデルで効いたら confirmed に(人が変える) -->
 
 ## いつ効くか
 

@@ -30,7 +30,9 @@ func TestHumanSourceExcludesMachineTruths(t *testing.T) {
 			t.Fatalf("%q is a truth a person (or the outcome) decided", s)
 		}
 	}
-	if HumanSource("context") {
-		t.Fatalf("context is the machine's own answer used as a truth")
+	for _, s := range []string{"context", "judge"} {
+		if HumanSource(s) {
+			t.Fatalf("%q is a machine truth (the model's own answer, or another model's)", s)
+		}
 	}
 }
