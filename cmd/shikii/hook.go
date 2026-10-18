@@ -60,8 +60,13 @@ func agentHome() (string, error) {
 }
 
 func cmdHook(args []string) error {
-	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
-		return errors.New("usage: shikii hook install [--yes] | uninstall [--yes] | pre-tool-use | user-prompt-submit | stop\n  install/uninstall: Claude Code hooks that measure the agent's own decisions (shown first; --yes does it)\n  the other three are run by Claude Code and read its JSON on stdin; not for typing by hand")
+	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | pre-tool-use | user-prompt-submit | stop\n  install/uninstall: Claude Code hooks that measure the agent's own decisions (shown first; --yes does it)\n  the other three are run by Claude Code and read its JSON on stdin; not for typing by hand\n"
+	if len(args) == 0 {
+		return errors.New(strings.TrimSpace(usage))
+	}
+	if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+		fmt.Fprint(stdout, usage)
+		return nil
 	}
 	switch args[0] {
 	case "install":
@@ -781,7 +786,7 @@ func hookInstall(args []string, install bool) error {
 	tilde := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
 	if install {
 		fmt.Fprintf(stdout, "1. %s: decisions/ wiki/ .shikii/ for the agent's own decisions; copy the 4 specs that are missing (command-effect, edit-in-scope, needs-plan, prompt-kind) and the shared wiki pages. Existing files are never overwritten\n", tilde(agent))
-		fmt.Fprintf(stdout, "2. %s: add 3 hooks (PreToolUse %s, UserPromptSubmit, Stop) running `shikii hook <event>`; a backup goes to settings.json.bak-shikii. Hooks that are already there are kept; a second install adds nothing\n", tilde(settings), hookToolsRe)
+		fmt.Fprintf(stdout, "2. %s: add 3 hooks (PreToolUse %s, UserPromptSubmit, Stop) running `shikii hook <event>`; a backup of the file as it was goes to settings.json.bak-shikii (once, only if it existed). Hooks that are already there are kept; a second install adds nothing\n", tilde(settings), hookToolsRe)
 		fmt.Fprintf(stdout, "   Until a spec has a calibration line the hooks only record (shadow mode); they never deny a tool. Claude Code only (Cursor, OpenCode and Codex have no hook).\n")
 		fmt.Fprintf(stdout, "   Needs: the local model on %s (start it with `shikii up`; without it the hooks stay silent and record nothing) and `shikii` on Claude Code's PATH (`which shikii`)\n", hookLocalURL)
 	} else {
@@ -940,7 +945,7 @@ func editHooks(path string, install bool) (bool, error) {
 	} else {
 		delete(cfg, "hooks")
 	}
-	if len(b) > 0 && !fileExists(path+".bak-shikii") { // 控えは最初の 1 回だけ(shikii が触る前の設定が残る)
+	if len(b) > 0 && !fileExists(path+".bak-shikii") && !strings.Contains(string(b), hookCmdPrefix) { // 控えは最初の 1 回だけ、shikii の hook が入っていない版(install が作った settings.json は控えない)
 		if err := os.WriteFile(path+".bak-shikii", b, 0o600); err != nil {
 			return false, err
 		}

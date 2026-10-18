@@ -28,9 +28,9 @@ shikii hook uninstall --yes  # 足した 3 つの hook だけ外す。記録と�
 `install` がすること(2 回目は何も足さない):
 
 1. `~/.shikii/agent/` に基本構成(`decisions/` `wiki/` `.shikii/`)。4 つの spec と既製の wiki の知識を、**無いものだけ**写す(線の入った spec・人が直した spec は触らない)
-2. `~/.claude/settings.json` の `hooks` に `PreToolUse`(matcher `Bash|Edit|Write|MultiEdit|NotebookEdit`)、`UserPromptSubmit`、`Stop` の 3 つ(command は `shikii hook <event>`、timeout は PreToolUse / UserPromptSubmit 10 秒、Stop 15 秒)。他の hook と鍵は残す。初めて触る時だけ、触る前の settings.json を `settings.json.bak-shikii` に控える(以後は上書きしない。元から無ければ作らない)
+2. `~/.claude/settings.json` の `hooks` に `PreToolUse`(matcher `Bash|Edit|Write|MultiEdit|NotebookEdit`)、`UserPromptSubmit`、`Stop` の 3 つ(command は `shikii hook <event>`、timeout は PreToolUse / UserPromptSubmit 10 秒、Stop 15 秒)。他の hook と鍵は残す。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
-固定の規則(オプションは無い): 置き場は `~/.shikii/agent`(プロジェクトをまたいで 1 つ)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、コマンドや依頼の文はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒。モデルが無ければ待たずに黙る。
+固定の規則(オプションは無い): 置き場は `~/.shikii/agent`(プロジェクトをまたいで 1 つ)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、コマンドや依頼の文はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒、hook 1 回(起動と記録を含む)で 0.6〜0.8 秒。ツール呼び出しごとにこれが足される。モデルが無ければ待たずに黙る。
 
 答え合わせの画面:
 
@@ -42,7 +42,7 @@ cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080
 
 shikii は線(較正)が無いうちは `act` を出さない。hook はそれをそのまま「線が無いうちは口を出さない」にしている。ツールは一切止めず、記録だけが溜まる。入れた日から出るのは、ターンの終わりの「答え待ち N 件 → URL」の 1 行だけ(下)。
 
-線を引くのは機械: 各 spec の正解が `eval.min_n`(50)に届くと、画面(`serve`)で答えた時はその serve が、hook が書いた結果の正解(prompt-kind)は hook のターンの終わりが、線を引いて spec に書く(`hook.log` に `auto-calibrate …` の 1 行)。そこから hook が振る舞いを変える。
+線を引くのは機械: 正解が `eval.min_n`(50)に届くと、画面(`serve`)で答えた直後はその serve が、そうでなければ次のターンの終わりに hook が(4 spec とも。prompt-kind の結果の正解は画面を通らないのでここでしか引けない)、線を引いて spec に書く(`hook.log` に `auto-calibrate …` の 1 行)。そこから hook が振る舞いを変える。
 
 | spec | 判定 | hook が出すもの |
 |---|---|---|
@@ -58,9 +58,9 @@ shikii は線(較正)が無いうちは `act` を出さない。hook はそれ�
 
 **deny は出さない**。止めるかどうかは人。hook が出すのは「黙る / 確認を出す / 注意の文」の 3 つだけ。
 
-文は英語。`~/.claude/settings.json` の `language` が英語以外なら、同じ文をその言語で併記する(今は日本語の文の型だけがある。他の言語は spec の `display.<lang>` の名前が記録に入る)。例: `shikii: this command looks like destroy (p=0.91) / shikii: このコマンドは「消す・上書き・戻せない変更」に見える(p=0.91)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。英語の設定なら英語だけで、`display` は付かない。
+文は英語。`~/.claude/settings.json` の `language` が日本語なら、同じ文を日本語で併記する。他の言語は文は英語のままで、記録の `display` に spec の `display.<lang>` の質問と答えの名前(あれば)と言語だけが入る。例: `shikii: this command looks like destroy (p=0.91) / shikii: このコマンドは「消す・上書き・戻せない変更」に見える(p=0.91)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。英語の設定なら英語だけで、`display` は付かない。
 
-ターンの終わり(Stop)には、そのセッションの判定で人の答えを待つもの(迷った判定と、act の 20 件に 1 件の抜き取り)が新しく増えていれば 1 行だけ出す: `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`。画面が立っていなければ URL の代わりに起動コマンド。同じ数を毎ターン繰り返さない。URL の `?spec=<id>&trace=<trace_id>` で開くと、その 1 件が先頭に来る(答え済み・列に無い trace は元の順のまま)。
+ターンの終わり(Stop)には、そのセッションの判定で人の答えを待つもの(迷った判定と、act の 20 件に 1 件の抜き取り。線が無い間は、生の確率が spec の `thresholds.ask` 以上の判定が「迷った」になり、それ未満の discard は記録だけ)が新しく増えていれば 1 行だけ出す: `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`。画面が立っていなければ URL の代わりに起動コマンド。同じ数を毎ターン繰り返さない。URL の `?spec=<id>&trace=<trace_id>` で開くと、その 1 件が先頭に来る(答え済み・列に無い trace は元の順のまま)。
 
 ## 失敗しても止めない
 
@@ -84,7 +84,7 @@ Stop ───────────── shikii hook stop ──────
 
 ## claude-jev から移る人へ
 
-1. 先に `node ~/dotfiles/claude-jev/uninstall.mjs --yes` で jev を外す(両方入っていると同じ event で 2 回判定される)
+1. 先に claude-jev を置いた場所の `uninstall.mjs`(例: `node ~/dotfiles/claude-jev/uninstall.mjs --yes`)で jev を外す(両方入っていると同じ event で 2 回判定される)
 2. Node は要らない。置き場は `~/.claude/jev/` → `~/.shikii/agent/`。古い記録(`~/.claude/jev/decisions-store`)は引き継がない(spec の文言が違うので線の材料にならない)
 3. 固定の閾値(0.75 で進め、0.60 で確認)は無い。線が引けるまで何もせず、引けたら帯で振る舞う
 4. prompt-intent → prompt-kind(同じ 5 択)。モデルの振り分け(jev-router)は無い

@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 cd <プロジェクトルート> && shikii init
 ```
 
-`shikii init` で、フォルダ（`decisions/` `wiki/` `.shikii/`）と、エージェントの設定が 1 回で揃います。Claude Code（`.mcp.json`）、Cursor（`.cursor/mcp.json`）、OpenCode（`opencode.json`）、Codex（`~/.codex/config.toml`）に shikii の MCP の項を足し、`AGENTS.md` に作法の節を、`~/.claude/skills/shikii` に詳しい作法（skill）を置きます。あなたが書いた設定は触りません（shikii の項が既にあればそのまま）。skill のフォルダだけは毎回置き直すので、手で直さないでください。`wiki/` には既製の知識（質問の型ごとの聞き方、効いた書き方のパターン、モデルごとの癖）が写され、聞き方の改善（`tune --propose`）がそれを読みます。あなたが直したページは次の `init` でも上書きされません。コマンドの出力と hook の文は英語です(設定の言語が英語以外なら hook の文はその言語を併記)。画面には日本語があります。Go を入れたくなければ下の Docker。
+`shikii init` で、フォルダ（`decisions/` `wiki/` `.shikii/`）と、エージェントの設定が 1 回で揃います。Claude Code（`.mcp.json`）、Cursor（`.cursor/mcp.json`）、OpenCode（`opencode.json`）、Codex（`~/.codex/config.toml`）に shikii の MCP の項を足し、`AGENTS.md` に作法の節を、`~/.claude/skills/shikii` に詳しい作法（skill）を置きます。あなたが書いた設定は触りません（shikii の項が既にあればそのまま）。skill のフォルダだけは毎回置き直すので、手で直さないでください。`wiki/` には既製の知識（質問の型ごとの聞き方、効いた書き方のパターン、モデルごとの癖）が写され、聞き方の改善（`tune --propose`）がそれを読みます。あなたが直したページは次の `init` でも上書きされません。コマンドの出力と hook の文は英語です(Claude Code の設定の言語が日本語なら hook の文は日本語も併記。他の言語は英語のままで、記録にその言語の答えの名前だけ残ります)。画面には日本語があります。Go を入れたくなければ下の Docker。
 
 設定は手元の AI（`shikii up` で :8080）を指します。外の AI だけで使うなら、4 つの設定（`.mcp.json`、`.cursor/mcp.json`、`opencode.json`、`~/.codex/config.toml`）それぞれから `--local` を手で外してください。使っていないツールの設定ファイルも作られるので、要らなければ消すか `.gitignore` に入れてください（`shikii init` はもう一度打っても、あるものは触りません）。`.shikii/labels/`（答え合わせ）は AI を替えても使う資産なので commit を勧めます。`.shikii/records/`（判定の記録）は増え続けるので、commit するかは任意です（`shikii gc` で古いものを捨てられます）。Codex の設定に `mcp_servers` が既にあれば足さず、手で足す行を表示します。プロジェクトに `CLAUDE.md` だけがある時は `AGENTS.md` を作りません（作ると OpenCode が `CLAUDE.md` を読まなくなるため）。
 
