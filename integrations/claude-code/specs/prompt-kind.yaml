@@ -1,0 +1,52 @@
+# AI 自身の判断 4: この依頼を受けた AI は結局何をすることになるか。Claude Code の UserPromptSubmit で聞く。
+# 正解は結果から自動で付く: ターンの終わり(Stop)に作業ツリーのハッシュが変わっていれば edit、変わっていなければ !edit(部分ラベル、重み 0.7)。
+# 迷った時は、直前のアシスタントの発言(Stop で hook が控えたもの)を足して聞き直す。
+id: prompt-kind
+version: 1
+type: choice
+
+question: |
+  What will the coding agent most likely end up doing in response to `request`?
+
+options:
+  - id: edit
+    description: editing, adding, fixing or deleting files in the repository (code, docs, config, tests)
+  - id: explain
+    description: answering a question or explaining something, without touching files
+  - id: investigate
+    description: researching or reading code/web to report findings or options, without editing
+  - id: run
+    description: running commands, tests, or checking a live system and reporting the result, without editing
+  - id: decide
+    description: the user is replying to a proposal or choosing between options the agent offered
+
+state:
+  template: |
+    request: {{ request }}
+  required: [request]
+  # 迷った時だけ: hook が transcript から取った直前のアシスタントの発言を足して聞き直す(別のハッシュ・別の線)。短い返事(「yes please」「go ahead」)はこれで決まる
+  context: |
+    previous assistant turn: {{ previous }}
+    request: {{ request }}
+
+policy:
+  send_to: [local]    # 依頼文は外に送らない
+  pii: true                   # 本文に個人情報が入り得る → 外の AI(hosted)には送らない。本文は手元の記録に残る
+
+thresholds:
+  act: 0.75
+  ask: 0.60
+
+eval:
+  min_n: 50
+# 画面の表示用の訳(モデルには送らない。較正の鍵にも入らない)
+display:
+  ja:
+    title: 依頼の種類
+    question: この依頼を受けた AI は、結局どんな作業をすることになりそうか？
+    options:
+      edit: ファイルを変える
+      explain: 説明する(ファイルは触らない)
+      investigate: 調べて報告する
+      run: 実行して結果を報告する
+      decide: 提案への返事・選択

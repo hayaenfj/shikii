@@ -33,7 +33,13 @@
   let all = $derived(sp.queue.items);
   let counts = $derived({ all: all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length });
   let matching = $derived(all.filter(it => ui.filter === 'all' || kind(it) === ui.filter));
-  let visible = $derived(matching.filter(it => !skipped.has(it.trace_id)));
+  // URL で指された判定(ui.pinned)は先頭に(hook の「あとで答える → URL」から来た人が、その 1 件をすぐ答えられる)
+  let visible = $derived.by(() => {
+    const v = matching.filter(it => !skipped.has(it.trace_id));
+    const i = v.findIndex(it => it.trace_id === ui.pinned);
+    if (i > 0) v.unshift(v.splice(i, 1)[0]);
+    return v;
+  });
   let extra = $derived(Math.max(0, (sp.unlabeled || 0) - all.length));
 
   // 回答済み: 開いた時に読む(新しい順)。答えを直した・もう一度聞いた後は null に戻るので読み直す

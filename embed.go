@@ -14,6 +14,12 @@ var SkillFS embed.FS
 //go:embed wiki/index.md wiki/types wiki/patterns wiki/models
 var WikiFS embed.FS
 
+// AgentSpecsFS は AI 自身の作業中の判断の spec(integrations/claude-code/specs/: command-effect、edit-in-scope、needs-plan、prompt-kind)。
+// `shikii hook install` が ~/.shikii/agent/decisions/ に、無いものだけ写す(線の入った spec や人が直した spec は触らない)。
+//
+//go:embed integrations/claude-code/specs
+var AgentSpecsFS embed.FS
+
 // WebFS は答え合わせの画面(web/ を Svelte で組み、`make web` でビルドした web/dist)。`shikii serve` が "/" で返す。
 // dist は repo に commit してあるので、使うだけなら Node は要らない(画面を直す時だけ Node 24 と `make web`)。
 //
