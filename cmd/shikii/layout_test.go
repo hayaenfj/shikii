@@ -74,3 +74,39 @@ func TestTuneScoresAndAdoptsALayout(t *testing.T) {
 		t.Fatalf("the adopted version carries the layout and is calibrated under the layout's model name: %+v", v2.Calibration)
 	}
 }
+
+// 置き場の既定: shikii が作るものは全部 store(.shikii/)の下。--specs を省けば <store>/decisions、wiki は <store>/wiki。
+// serve は newServer より前(spec の読み込み)で既定を埋める: 埋めないと `no spec (*.yaml) in ` で起動できない(2026-10-18 に実機で起きた)。
+func TestLayoutDefaultsLiveUnderTheStore(t *testing.T) {
+	o := serveOpts{storeDir: filepath.Join("x", ".shikii")}
+	o.resolve()
+	if o.specsDir != filepath.Join("x", ".shikii", "decisions") || o.wikiDir != filepath.Join("x", ".shikii", "wiki") {
+		t.Fatalf("defaults must live under the store: %+v", o)
+	}
+	o = serveOpts{storeDir: ".shikii", specsDir: "decisions", wikiDir: "w"}
+	o.resolve()
+	if o.specsDir != "decisions" || o.wikiDir != "w" {
+		t.Fatalf("explicit folders must stay: %+v", o)
+	}
+	// init が作る置き場と new の既定も同じ
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", t.TempDir())
+	capture(t, func() error { return cmdInit(nil) })
+	for _, p := range []string{"decisions", "wiki", "records", "labels", filepath.Join("wiki", "index.md")} {
+		if !fileExists(filepath.Join(dir, ".shikii", p)) {
+			t.Fatalf("init must create .shikii/%s", p)
+		}
+	}
+	for _, p := range []string{"decisions", "wiki"} {
+		if fileExists(filepath.Join(dir, p)) {
+			t.Fatalf("init must not add %s/ to the project root", p)
+		}
+	}
+	capture(t, func() error {
+		return cmdNew([]string{"my-id", "--type", "noul", "--question", "Is it?", "--input", "text", "--pii", "true", "--send-to", "local"})
+	})
+	if !fileExists(filepath.Join(dir, ".shikii", "decisions", "my-id.yaml")) {
+		t.Fatal("new must write under .shikii/decisions")
+	}
+}
