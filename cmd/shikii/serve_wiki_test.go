@@ -18,7 +18,7 @@ func TestServeWikiListsClaimsAndLetsAPersonPromoteAndDecide(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSpec(t, specsDir, "false")
-	pdir := filepath.Join(dir, "wiki", "patterns")
+	pdir := filepath.Join(dir, ".shikii", "wiki", "patterns")
 	if err := os.MkdirAll(filepath.Join(pdir, "drafts"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestServeWikiListsClaimsAndLetsAPersonPromoteAndDecide(t *testing.T) {
 	// 下書きを一般化して主張にする: patterns/<slug>.md に移り、status は tentative、本文と証拠は残る
 	code, out := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": d["path"], "action": "promote", "slug": "strict-wording",
 		"claim": "厳しく問う文言は迷いを減らす", "applies_to": map[string]string{"type": "choice", "models": "小さいモデル"}})
-	if code != 200 || out["path"] != "wiki/patterns/strict-wording.md" {
+	if code != 200 || out["path"] != "patterns/strict-wording.md" {
 		t.Fatalf("promote: %d %v", code, out)
 	}
 	if _, err := os.Stat(draft); !os.IsNotExist(err) {
@@ -64,28 +64,28 @@ func TestServeWikiListsClaimsAndLetsAPersonPromoteAndDecide(t *testing.T) {
 		t.Fatalf("promoted page: %v %+v\n%s", err, pg, body)
 	}
 	// 状態を変える(confirmed / rejected だけ)。知らない状態は 400。前書きの無いページは 409
-	code, _ = postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "wiki/patterns/strict-wording.md", "action": "status", "status": "confirmed"})
+	code, _ = postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "patterns/strict-wording.md", "action": "status", "status": "confirmed"})
 	pg, _, _ = readClaimPage(filepath.Join(pdir, "strict-wording.md"))
 	if code != 200 || pg.Status != "confirmed" {
 		t.Fatalf("a person confirms: %d %+v", code, pg)
 	}
-	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "wiki/patterns/strict-wording.md", "action": "status", "status": "maybe"}); code != 400 {
+	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "patterns/strict-wording.md", "action": "status", "status": "maybe"}); code != 400 {
 		t.Fatalf("unknown status must be 400, got %d", code)
 	}
-	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "wiki/patterns/old-prose.md", "action": "status", "status": "confirmed"}); code != 409 {
+	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "patterns/old-prose.md", "action": "status", "status": "confirmed"}); code != 409 {
 		t.Fatalf("a page without front matter cannot change status, got %d", code)
 	}
 	// 外の path は 400。消すのは下書きだけ(主張は却下にする)
 	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "../etc/passwd", "action": "delete"}); code != 400 {
 		t.Fatalf("paths outside wiki/patterns must be refused, got %d", code)
 	}
-	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "wiki/patterns/strict-wording.md", "action": "delete"}); code != 409 {
+	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "patterns/strict-wording.md", "action": "delete"}); code != 409 {
 		t.Fatalf("only drafts may be deleted; claims are rejected instead, got %d", code)
 	}
 	if err := os.WriteFile(filepath.Join(pdir, "drafts", "intent-worse.md"), []byte("---\nclaim: x\nstatus: draft\n---\n# d\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "wiki/patterns/drafts/intent-worse.md", "action": "delete"}); code != 200 {
+	if code, _ := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": "patterns/drafts/intent-worse.md", "action": "delete"}); code != 200 {
 		t.Fatalf("a draft may be deleted, got %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(pdir, "drafts", "intent-worse.md")); !os.IsNotExist(err) {

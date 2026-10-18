@@ -27,15 +27,15 @@ shikii hook uninstall --yes  # 足した 3 つの hook だけ外す。記録と�
 
 `install` がすること(2 回目は何も足さない):
 
-1. `~/.shikii/agent/` に基本構成(`decisions/` `wiki/` `.shikii/`)。4 つの spec と既製の wiki の知識を、**無いものだけ**写す(線の入った spec・人が直した spec は触らない)
+1. `~/.shikii/agent/` に基本構成(`decisions/` `wiki/` `records/` `labels/`。store そのもの)。4 つの spec と既製の wiki の知識を、**無いものだけ**写す(線の入った spec・人が直した spec は触らない)
 2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `PreToolUse`(matcher は Claude Code が `Bash|Edit|Write|MultiEdit|NotebookEdit`、Codex が `Bash|apply_patch`)、`UserPromptSubmit`、`Stop` の 3 つ(command は `shikii hook <event>`、timeout は PreToolUse / UserPromptSubmit 10 秒、Stop 15 秒)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。他の hook と鍵は残す。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
-固定の規則(オプションは無い): 置き場は `~/.shikii/agent`(プロジェクトをまたいで 1 つ)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、コマンドや依頼の文はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒、hook 1 回(起動と記録を含む)で 0.6〜0.8 秒。ツール呼び出しごとにこれが足される。モデルが無ければ待たずに黙る。
+固定の規則(オプションは無い): 置き場は `~/.shikii/agent`(プロジェクトをまたいで 1 つ。これが store で、中に decisions/ wiki/ records/ labels/ sessions/)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、コマンドや依頼の文はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒、hook 1 回(起動と記録を含む)で 0.6〜0.8 秒。ツール呼び出しごとにこれが足される。モデルが無ければ待たずに黙る。
 
 答え合わせの画面:
 
 ```sh
-cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080
+shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080
 ```
 
 ## 影の期間 → 帯で振る舞う
@@ -65,7 +65,7 @@ shikii は線(較正)が無いうちは `act` を出さない。hook はそれ�
 
 ## 失敗しても止めない
 
-モデルが無い・5 秒で返らない・store に書けない → hook は exit 0 で何も出さず、理由を `~/.shikii/agent/.shikii/hook.log` に 1 行書く。hook が作業を止めることはない。Claude Code 側で `shikii` が見つからない(PATH)時は hook.log も書かれないので、`which shikii` と Claude Code の `--debug` で見る。
+モデルが無い・5 秒で返らない・store に書けない → hook は exit 0 で何も出さず、理由を `~/.shikii/agent/hook.log` に 1 行書く。hook が作業を止めることはない。Claude Code 側で `shikii` が見つからない(PATH)時は hook.log も書かれないので、`which shikii` と Claude Code の `--debug` で見る。
 
 ## 中の形
 
@@ -78,7 +78,7 @@ Stop ───────────── shikii hook stop ──────
                                                      └ last_assistant_message を控える(needs-plan の文脈の段に使う)。答え待ちの要約を 1 行
 ```
 
-- transcript は読まない(形が文書化されていない)。セッションごとの控えは `~/.shikii/agent/.shikii/sessions/<session_id>.json`(request、previous、pending、asked。7 日で消える)。Claude Code は hook を並列に走らせるので、控えは flock の中で 読む → 変える → 書く(tmp に書いて rename)。錠は短く持ち(モデルの呼び出しは錠の外)、2 秒待っても取れなければ錠なしで進む
+- transcript は読まない(形が文書化されていない)。セッションごとの控えは `~/.shikii/agent/sessions/<session_id>.json`(request、previous、pending、asked。7 日で消える)。Claude Code は hook を並列に走らせるので、控えは flock の中で 読む → 変える → 書く(tmp に書いて rename)。錠は短く持ち(モデルの呼び出しは錠の外)、2 秒待っても取れなければ錠なしで進む
 - 作業ツリーのハッシュは、仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id。HEAD や index は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。新しい blob は仮の objects に書いて消すので、未追跡ファイル(`.env` など)の中身が repo の `.git/objects` に残らない。全体で 3 秒を超えたら(.gitignore の無い巨大な node_modules など)正解を付けない。限界: 並走する別のエージェントやフォーマッタの変更も「変わった」に数える
 - 短い返事(40 字未満。「ok」「yes go ahead」)は依頼を置き換えず前の依頼に添える(edit-in-scope が「ok」を依頼として読まないように)
 - Claude Code 側の契約(公式の hooks reference、2026-10-18): hook は stdin に `session_id` `cwd` `permission_mode` `tool_name` `tool_input` `prompt` `stop_hook_active` `last_assistant_message` を受け、stdout の `hookSpecificOutput.permissionDecision`(allow / ask / deny)と `additionalContext`、トップレベルの `systemMessage` を返せる。人が許可を拒んだことを知る event は無いので、command-effect の正解は画面からだけ

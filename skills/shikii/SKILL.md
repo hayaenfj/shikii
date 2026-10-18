@@ -13,7 +13,7 @@ shikii は「人が出すのは意図と正解だけ。聞き方も信頼も段�
 
 - 業務の振り分け: 問い合わせや issue をどの窓口に回すか、2 つの報告が同じ不具合か、依頼は変更か質問か、PR がある領域に触るか
 - 開発中の繰り返しの判断: テストの失敗の種類(環境 / 既存の不具合 / 今の変更)、変更の重さの段階、レビューの指摘の種類
-- 既に `decisions/` に spec があるプロジェクトでは、自分で判断する前に `shikii decide` か MCP の `shikii_decide` を使う。帯に従う
+- 既に `.shikii/decisions/` に spec があるプロジェクトでは、自分で判断する前に `shikii decide` か MCP の `shikii_decide` を使う。帯に従う
 
 **使わない場面**: 一度きりの判断、文章や設計を作る仕事、理由づけが要る判断(この設計でよいか、このバグの原因は何か)、入力が 1 つの文に決まらないもの。これらは自分で考える。
 
@@ -27,21 +27,21 @@ shikii は「人が出すのは意図と正解だけ。聞き方も信頼も段�
 2. **線は人の正解からしか引けない。** `calibration:` ブロックを手で書かない。`shikii calibrate --write` だけが書く。人の正解が `min_n` に届くまでは `act` は出ない。それが正しい挙動
 3. **正解は人(または結果)が決める。** あなたが「きっとこうだ」と思っても正解にしない。人の答えは `shikii label <trace> <truth>` か MCP の `shikii_label`。結果から分かる時(ファイルが変わった、など)は `--source outcome`
 4. **聞き方は tune が選ぶ。** 文言・選択肢の説明・配置(`layout: plain`)・分解(`steps`)は spec の `variants:` に候補として書き、`shikii tune` が同じ正解で測る。勝っても採用は人が「意味は同じ」と確かめてから(`tune --write` か画面)。あなたが文言を直接書き換えない
-5. **知識は wiki に。** 勝った候補は主張の下書き(`wiki/patterns/drafts/`)になる。あなたは下書きを一般化した文に書き直せるが、状態(tentative / confirmed / rejected)は変えない。`shikii wiki verify` で再検証できる
+5. **知識は wiki に。** 勝った候補は主張の下書き(`.shikii/wiki/patterns/drafts/`)になる。あなたは下書きを一般化した文に書き直せるが、状態(tentative / confirmed / rejected)は変えない。`shikii wiki verify` で再検証できる
 6. **本文は外に出さない判定がある。** spec の `pii: true` と、本番データを読んだセッション(`--tainted`)は手元のモデルだけ。提案役・審判も同じ
 
 ## よくある流れ
 
 | したいこと | すること |
 |---|---|
-| 判定する | `shikii decide decisions/<id>.yaml -i key=value --local http://127.0.0.1:8080` または MCP `shikii_decide`。迷った時の文脈(直前の発言など)が spec の `state.context` にあれば、その入力も渡す |
+| 判定する | `shikii decide .shikii/decisions/<id>.yaml -i key=value --local http://127.0.0.1:8080` または MCP `shikii_decide`。迷った時の文脈(直前の発言など)が spec の `state.context` にあれば、その入力も渡す |
 | 正解を付ける | 人の答えを `shikii label <trace_id> <truth>`。画面(`shikii serve`、http://127.0.0.1:8095)でも |
-| 過去の表を使う | `shikii import past.csv --spec decisions/<id>.yaml` → `calibrate --labeled` |
-| 線を引く | `shikii calibrate decisions/<id>.yaml --local URL --write`(人の正解が min_n 以上の時だけ書かれる) |
-| 聞き方を育てる | spec の `variants:` に候補 → `shikii tune decisions/<id>.yaml --local URL`(`--propose 3 --proposer URL` で AI に候補を作らせる) |
-| 大きいモデルに正解を出させる | `shikii judge decisions/<id>.yaml --local <審判の URL>`(人の正解との一致率が act に届く時だけ) |
-| CI で守る | `shikii check decisions/*.yaml`(文言が変わった線、手書きの線、精度不足を落とす) |
-| 状態を見る | `shikii status decisions/*.yaml`(1000 判定あたりの人の判断、線の状態、抜き取り) |
+| 過去の表を使う | `shikii import past.csv --spec .shikii/decisions/<id>.yaml` → `calibrate --labeled` |
+| 線を引く | `shikii calibrate .shikii/decisions/<id>.yaml --local URL --write`(人の正解が min_n 以上の時だけ書かれる) |
+| 聞き方を育てる | spec の `variants:` に候補 → `shikii tune .shikii/decisions/<id>.yaml --local URL`(`--propose 3 --proposer URL` で AI に候補を作らせる) |
+| 大きいモデルに正解を出させる | `shikii judge .shikii/decisions/<id>.yaml --local <審判の URL>`(人の正解との一致率が act に届く時だけ) |
+| CI で守る | `shikii check .shikii/decisions/*.yaml`(文言が変わった線、手書きの線、精度不足を落とす) |
+| 状態を見る | `shikii status .shikii/decisions/*.yaml`(1000 判定あたりの人の判断、線の状態、抜き取り) |
 
 ## 読む順
 

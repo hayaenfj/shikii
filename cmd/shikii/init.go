@@ -15,7 +15,7 @@ import (
 )
 
 // cmdInit は 1 回でエージェントの準備を済ませる(オプションは無い。基本構成と固定の規則で決める):
-//  1. プロジェクトルート(実行する場所)に decisions/ wiki/ .shikii/
+//  1. プロジェクトルート(実行する場所)に .shikii/(その下に decisions/ wiki/ records/ labels/。他には何も増やさない)
 //  2. .mcp.json に shikii の MCP サーバーの項(Claude Code が読む)。既に shikii の項があれば触らない(人が --proposer などを足していても残る)。他の項と鍵も残す
 //  3. skill(作法)を ~/.claude/skills/shikii に置き直す(毎回。手で直す場所ではない。直すなら repo の skills/shikii)
 //
@@ -24,24 +24,25 @@ func cmdInit(args []string) error {
 	if len(args) > 0 {
 		return errors.New("usage: shikii init  (no flags: it prepares the current folder and the agent)")
 	}
-	for _, d := range []string{"decisions", "wiki", filepath.Join("wiki", "specs"), filepath.Join("wiki", "runs"), ".shikii"} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+	// shikii が作るものは全部 .shikii/ の下(プロジェクトルートに増えるのはこの 1 つだけ)
+	for _, d := range []string{"decisions", "wiki", filepath.Join("wiki", "specs"), filepath.Join("wiki", "runs"), "records", "labels"} {
+		if err := os.MkdirAll(filepath.Join(".shikii", d), 0o755); err != nil {
 			return err
 		}
 	}
-	fmt.Fprintln(stdout, "folders: decisions/ (specs) wiki/ (knowledge) .shikii/ (records and truths)")
+	fmt.Fprintln(stdout, "folders: .shikii/decisions/ (specs) .shikii/wiki/ (knowledge) .shikii/records/ and .shikii/labels/ (records and truths). Nothing else is added to the project root")
 	// 既製の知識: 型・パターン・モデルのページを、無いものだけ写す(tune --propose がここを読んで候補を作る。人が直したページは触らない)
-	n, err := seedWiki("wiki")
+	n, err := seedWiki(filepath.Join(".shikii", "wiki"))
 	if err != nil {
 		return fmt.Errorf("wiki: %w", err)
 	}
 	if n > 0 {
-		fmt.Fprintf(stdout, "wiki/: %d pages of shared knowledge added (index.md, types/, patterns/, models/; pages you already have are never overwritten)\n", n)
+		fmt.Fprintf(stdout, ".shikii/wiki/: %d pages of shared knowledge added (index.md, types/, patterns/, models/; pages you already have are never overwritten)\n", n)
 	}
 
 	// MCP の設定: Claude Code(.mcp.json)、Cursor(.cursor/mcp.json)、OpenCode(opencode.json の mcp)、Codex(~/.codex/config.toml)。
 	// 既に shikii の項があれば触らない(人が --proposer などを足していても残る)。他の項と鍵も残す。
-	mcpArgs := []string{"mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"}
+	mcpArgs := []string{"mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"}
 	claude := map[string]any{"command": "shikii", "args": mcpArgs}
 	for _, f := range []struct {
 		path, key string
@@ -93,7 +94,7 @@ func cmdInit(args []string) error {
 		return fmt.Errorf("skill: %w", err)
 	}
 	fmt.Fprintf(stdout, "skill: %s replaced (the agent's rules; not a place to edit by hand, change skills/shikii in the repo instead)\n", filepath.Join("~", ".claude", "skills", "shikii"))
-	fmt.Fprintln(stdout, "next: shikii up  (start a local model), then shikii new <id> or copy decisions/*.yaml from the repo; shikii serve for the answer page")
+	fmt.Fprintln(stdout, "next: shikii up  (start a local model), then shikii new <id> (writes .shikii/decisions/<id>.yaml) or copy a spec from the repo's decisions/ into .shikii/decisions/; shikii serve for the answer page")
 	return nil
 }
 

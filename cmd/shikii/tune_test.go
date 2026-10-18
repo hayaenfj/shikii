@@ -249,7 +249,7 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 人が書いた決まり(wiki の spec ページの Rules)は提案役に毎回渡る
-	wiki := filepath.Join(dir, "wiki")
+	wiki := filepath.Join(dir, ".shikii", "wiki")
 	notebook := filepath.Join(wiki, "specs", "intent.md")
 	if err := os.MkdirAll(filepath.Dir(notebook), 0o755); err != nil {
 		t.Fatal(err)

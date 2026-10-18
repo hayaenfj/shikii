@@ -26,7 +26,7 @@ func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
 func cmdNew(args []string) error {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
-	dir := fs.String("dir", "decisions", "書き出す先のフォルダ")
+	dir := fs.String("dir", filepath.Join(".shikii", "decisions"), "書き出す先のフォルダ(既定は .shikii/decisions)")
 	from := fs.String("from", "", "見本にする spec(examples/*.yaml など)。id と、フラグで渡したものだけ変える")
 	typ := fs.String("type", "", "choice | noul | score")
 	question := fs.String("question", "", "質問文(モデルに見せる。英語でも日本語でも)")

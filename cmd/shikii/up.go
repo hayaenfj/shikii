@@ -205,7 +205,7 @@ func findReadout() (string, error) {
 
 func cmdDoctor(args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	specsDir := fs.String("specs", "decisions", "spec のフォルダ")
+	specsDir := fs.String("specs", "", "spec のフォルダ(既定は <store>/decisions)")
 	storeDir := fs.String("store", ".shikii", "記録の置き場")
 	local := fs.String("local", "http://127.0.0.1:8080", "手元のモデルの URL")
 	hosted := fs.String("hosted", "https://api.typesafe.ai", "ホスト版の URL(空なら見ない)")
@@ -250,6 +250,9 @@ func cmdDoctor(args []string) error {
 		}
 	}
 	// 4. spec と store
+	if *specsDir == "" {
+		*specsDir = specsDirOf(*storeDir)
+	}
 	specs, err := loadSpecs(*specsDir)
 	if err != nil {
 		fmt.Fprintf(stdout, "MISSING specs in %s: %v → shikii new <id>\n", *specsDir, err)

@@ -57,7 +57,7 @@ func cmdServe(args []string) error {
 	var o serveOpts
 	o.ef.bind(fs)
 	fs.IntVar(&o.port, "port", 8095, "待ち受けるポート(127.0.0.1 のみ)")
-	fs.StringVar(&o.specsDir, "specs", "decisions", "spec(*.yaml)のフォルダ")
+	fs.StringVar(&o.specsDir, "specs", "", "spec(*.yaml)のフォルダ(既定は <store>/decisions)")
 	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
 	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけを測る")
@@ -100,8 +100,11 @@ type server struct {
 }
 
 func newServer(o serveOpts) http.Handler {
+	if o.specsDir == "" {
+		o.specsDir = specsDirOf(o.storeDir)
+	}
 	if o.wikiDir == "" {
-		o.wikiDir = wikiRoot
+		o.wikiDir = wikiDirOf(o.storeDir)
 	}
 	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]string{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
 	mux := http.NewServeMux()

@@ -94,13 +94,13 @@ func usage() { fmt.Fprint(os.Stderr, usageText()) }
 
 func usageText() string {
 	return `usage (flags may come before or after the positional arguments):
-  shikii init      実行する場所に decisions/ wiki/ .shikii/ を作り、.mcp.json に shikii を足し、skill を ~/.claude/skills/shikii に写す(オプション無し、2 回目も安全)
+  shikii init      実行する場所に .shikii/(decisions/ wiki/ records/ labels/)を作り、.mcp.json などに shikii を足し、skill を ~/.claude/skills/shikii に写す(オプション無し、2 回目も安全)
   shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]
-                   質問に答えるだけで decisions/<id>.yaml を作る
+                   質問に答えるだけで .shikii/decisions/<id>.yaml を作る
   shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]
                    手元のモデルを起こす(llama-server を探し、普通の GGUF なら shikii-readout も前に立てる)
   shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL] [--auto-calibrate=false]
-                   HTTP の口 + 答え合わせと聞き方の画面。wiki は ./wiki(基本構成: 実行する場所に decisions/ wiki/ .shikii/)
+                   HTTP の口 + 答え合わせと聞き方の画面。spec は <store>/decisions、wiki は <store>/wiki(基本構成: shikii が作るものは全部 .shikii/ の下)
   shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]
                    同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune。採用の道具は無い)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
@@ -116,13 +116,13 @@ func usageText() string {
                    --labeled の行に raw(noul は P(yes) の数字、choice / score は {id: p})があればモデルを呼ばずその確率で測る(別の道具の確率を同じ物差しで)
   shikii status    [spec.yaml...] [--store DIR]      記録と正解の数、段ごとの数(1000 判定あたりの人の判断)、線の状態
   shikii tune      <spec.yaml> [--labeled file] [--local URL] [--store DIR] [--folds 5] [--propose N --proposer URL [--proposer-model M]] [--write]
-                   spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は ./wiki/runs/
+                   spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は <store>/wiki/runs/
   shikii import    <past.csv> --spec <spec.yaml> [--out truths.json]
                    手元の過去の表(入力の列 + truth [+ weight])を正解の貯金(JSON)にする。線を引く前の 50 件を業務の表で埋める
   shikii judge     <spec.yaml> --local <judge URL> [--model M] [--store DIR]
                    審判: 別の(大きい)モデルに同じ spec を聞く。人の正解との一致率が act に届けば、正解の無い記録に重み付きの正解(source judge)を付ける。審判も迷えば人へ
   shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
-                   wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
+                   <store>/wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]

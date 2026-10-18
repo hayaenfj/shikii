@@ -14,7 +14,7 @@ shikii ──/v1/systemone──▶ shikii-readout ──/apply-template, /compl
 # -fa on(flash attention)、-ctk/-ctv q8_0(KV を 8bit)、-np 1(スロットを割らない)は速さのため。make server-gguf GGUF=… ALIAS=… でも同じ
 llama-server -m <model>.gguf --port 8086 --host 127.0.0.1 -c 4096 -ngl 99 -fa on -ctk q8_0 -ctv q8_0 -np 1 --alias <name>
 bin/shikii-readout --upstream http://127.0.0.1:8086 --port 8090                   # 起動時に /tokenize でラベルを検査
-bin/shikii decide decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 -i message='README の誤字を直して'
+bin/shikii decide .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 -i message='README の誤字を直して'
 scripts/eval-model.sh http://127.0.0.1:8090 <name>                                   # 他のモデルと同じ 5 セット
 ```
 

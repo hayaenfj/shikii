@@ -1,5 +1,5 @@
 # AI 自身の判断 1: このシェルコマンドは機械に何をするか。Claude Code の PreToolUse(Bash)で `shikii hook pre-tool-use` が聞く。
-# 正解は「実際どれだったか」(許可してよかったか、ではない)。人は ~/.shikii/agent の画面(:8096)で答える。
+# 正解は「実際どれだったか」(許可してよかったか、ではない)。人は ~/.shikii/agent の画面(:8096、`shikii serve --store ~/.shikii/agent --port 8096`)で答える。
 # 線が引けるまでは記録だけ(影の期間)。線が引けたら、change_outside / destroy / send_outside が act なら確認を出す。read / change_project は黙って通す。
 id: command-effect
 version: 1

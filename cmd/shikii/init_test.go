@@ -47,7 +47,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error { return cmdInit(nil) })
-	for _, d := range []string{"decisions", "wiki", ".shikii"} {
+	for _, d := range []string{filepath.Join(".shikii", "decisions"), filepath.Join(".shikii", "wiki"), filepath.Join(".shikii", "records")} {
 		if fi, err := os.Stat(filepath.Join(dir, d)); err != nil || !fi.IsDir() {
 			t.Fatalf("%s must exist", d)
 		}

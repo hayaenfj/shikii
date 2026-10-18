@@ -33,7 +33,7 @@ func newTuneFixture(t *testing.T) (srvURL, specsDir, wiki, labeledPath string) {
 	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wiki = filepath.Join(dir, "wiki")
+	wiki = filepath.Join(dir, ".shikii", "wiki")
 	model := wordingSensitiveModel(t)
 	var ef endpointFlags
 	ef.model, ef.local = "m", model.URL

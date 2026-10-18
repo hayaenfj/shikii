@@ -58,7 +58,7 @@ func TestWikiVerifyRunsRetestsAndRecordsEvidence(t *testing.T) {
 	if err := os.WriteFile(labeledPath, []byte(bankRows()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pdir := filepath.Join(dir, "wiki", "patterns")
+	pdir := filepath.Join(dir, ".shikii", "wiki", "patterns")
 	if err := os.MkdirAll(pdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestTuneDraftsClaimsAndFeedsEvidenceToExistingOnes(t *testing.T) {
 	if err := os.WriteFile(labeledPath, []byte(bankRows()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pdir := filepath.Join(dir, "wiki", "patterns")
+	pdir := filepath.Join(dir, ".shikii", "wiki", "patterns")
 	if err := os.MkdirAll(pdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
