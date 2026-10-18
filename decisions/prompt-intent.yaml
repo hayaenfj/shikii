@@ -45,7 +45,7 @@ eval:
 display:
   ja:
     title: 依頼の種類(v1 の文言)
-    question: 利用者はコーディングアシスタントに何を求めていますか？
+    question: 利用者は AI に何を求めていますか？
     options:
       change_request: 変更の依頼
       question: 質問・調査
