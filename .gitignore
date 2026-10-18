@@ -28,3 +28,6 @@ coverage.*
 *.log
 *.tmp
 /tmp/
+
+# Python のキャッシュ(scripts/bench/lora)
+__pycache__/
