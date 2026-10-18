@@ -1,6 +1,6 @@
 # shikii の構造の図(日本語と英語)。文字幅を見積もって枠を決める(はみ出し防止)。
 import unicodedata, sys
-W, H = 1400, 780
+W, H = 1500, 780
 def est(text, size):
     w = 0.0
     for ch in text:
@@ -8,7 +8,7 @@ def est(text, size):
         elif ch == " ": w += size * 0.32
         elif ch.isupper() or ch.isdigit(): w += size * 0.72
         else: w += size * 0.63
-    return w
+    return w * 1.12  # ブラウザのフォントは手元の描画より広い。見積もりに余裕を持たせる
 def esc(s): return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 STR = {
  "ja": dict(title="shikii の構造", sub="問いと正解は資産。モデルは使い捨て。知識は検証できる主張として wiki に溜まり、測るたびに自分で育つ。",
@@ -41,12 +41,18 @@ STR = {
    foot="The four pillars in docs/architecture.md: verifiable wiki / questions and truths as assets / the burden of trust (lines, audit, receipts, judge) / the ladder as constrained optimization"),
 }
 def gen(lang, path):
+    global W
     S = STR[lang]; out = []
     # 言語ごとの寸法: 英語は文が長いので小さい文字と狭い余白
-    P = dict(ja=dict(AW=380, sub=12, pad=40, gap=56, wgap=70, wmin=360), en=dict(AW=340, sub=11, pad=28, gap=40, wgap=50, wmin=340))[lang]
-    def text(x, y, s, cls="t", size=None, extra=""):
+    P = dict(ja=dict(AW=420, sub=12, pad=40, gap=50, wgap=60, wmin=430), en=dict(AW=400, sub=11, pad=28, gap=40, wgap=50, wmin=400))[lang]
+    def text(x, y, s, cls="t", size=None, extra="", maxw=None):
         sz = f' font-size="{size}"' if size else ""
-        out.append(f'<text x="{x}" y="{y}" class="{cls}"{sz} {extra}>{esc(s)}</text>')
+        fit = ""
+        if maxw is not None:
+            base = size or {"t":14,"h":20,"k":12.5,"ac":14,"gr":14,"bl":14}[cls]
+            if est(s, base) > maxw:  # 最後の保険: 枠を超える行は枠内に収める(どの描画器でも溢れない)
+                fit = f' textLength="{maxw:.0f}" lengthAdjust="spacingAndGlyphs"'
+        out.append(f'<text x="{x}" y="{y}" class="{cls}"{sz}{fit} {extra}>{esc(s)}</text>')
     def pill(x, y, s, size=13, h=30):
         w = est(s, size) + 28
         out.append(f'<rect x="{x}" y="{y}" width="{w:.0f}" height="{h}" rx="{h/2:.0f}" ry="{h/2:.0f}" class="pill"/>'); text(x + 14, y + h/2 + size*0.36, s, "t", size); return w
@@ -54,6 +60,18 @@ def gen(lang, path):
         sub_size = sub_size or P["sub"]
         w = max(est(title, size), est(sub, sub_size)) + P["pad"]
         out.append(f'<rect x="{x}" y="{y}" width="{w:.0f}" height="48" rx="12" ry="12" class="pill"/>'); text(x + 14, y + 19, title, "t", size); text(x + 14, y + 38, sub, "k", sub_size); return w
+    # 先に横の配置を決めて、必要な幅にする(箱が右端を超えない)
+    AX0, AW0 = 40, P["AW"]
+    LX0 = AX0 + AW0 + 30
+    nw0 = lambda t, u: max(est(t, 14), est(u, P["sub"])) + P["pad"]
+    leftw0 = max(nw0(*S["n1"]), nw0(*S["n4"]), nw0(*S["n5"])); rightw0 = max(nw0(*S["n2"]), nw0(*S["n3"]), nw0(*S["n6"]))
+    LW0 = 20 + leftw0 + P["gap"] + rightw0 + 20
+    WX0 = int(LX0 + LW0 + P["wgap"])
+    wneed = max(e for e in [est(S[k], 14 if k in ("w1","w2","w3","w4","w5") else 12.5) + 56 for k in ("w1","w1a","w1b","w1c","w2","w3","w4","w5","w6","w7")])
+    WW0 = max(P["wmin"], min(wneed, 520))
+    rowh = 60 + sum(est(S[k], 13) + 28 + 16 for k in ("h1","h2","h3")) + 40
+    rowm = 60 + sum(est(S[k], 13) + 28 + 16 for k in ("m1","m2","m3","m4")) + 40
+    W = int(max(1500, WX0 + WW0 + 40, rowh, rowm))
     out.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" font-family="-apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif">
 <defs>
 <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#1e293b"/></linearGradient>
@@ -69,13 +87,15 @@ def gen(lang, path):
 </style></defs>
 <rect width="{W}" height="{H}" fill="url(#bg)"/>''')
     text(40, 48, S["title"], "h", 26); text(40, 74, S["sub"], "k", 14)
-    out.append('<rect x="40" y="100" width="1320" height="92" class="box human"/>'); text(60, 130, S["human"], "ac", 15)
+    out.append(f'<rect x="40" y="100" width="{W-80}" height="92" class="box human"/>'); text(60, 130, S["human"], "ac", 15)
     x = 60
     for k in ("h1","h2","h3"): x += pill(x, 146, S[k]) + 16
     AX, AW = 40, P["AW"]
     out.append(f'<rect x="{AX}" y="232" width="{AW}" height="320" class="box asset"/>'); text(60, 262, S["asset"], "bl", 15)
     rows = [(296,"a1","t"),(316,"a1a","k"),(334,"a1b","k"),(370,"a2","t"),(390,"a2a","k"),(408,"a2b","k"),(444,"a3","t"),(464,"a3a","k"),(482,"a3b","k"),(518,"a3c","k")]
-    for y,k,c in rows: text(60 if c=="t" else 76, y, S[k], c, 12 if (c=="k" and est(S[k],12.5) > AW-50) else None, 'font-style="italic"' if k=="a3c" else "")
+    for y,k,c in rows:
+        x0 = 60 if c=="t" else 76
+        text(x0, y, S[k], c, 12 if (c=="k" and est(S[k],12.5) > AW-50) else None, 'font-style="italic"' if k=="a3c" else "", maxw=AX+AW-16-x0)
     LX = AX + AW + 30
     NL = LX + 20
     nw = lambda t, u: max(est(t, 14), est(u, P["sub"])) + P["pad"]
@@ -90,8 +110,8 @@ def gen(lang, path):
     out.append(f'<path d="M {NL+w5:.0f} 466 L {NL+w5:.0f} 466" class="flow" style="display:none"/>'); out.append(f'<path d="M {cl} 362 L {cl} 332" class="flow"/>')
     out.append(f'<path d="M {cl} 410 L {cl} 440" class="flow"/>'); out.append(f'<path d="M {cr} 410 L {cr} 440" class="flow"/>')
     out.append(f'<path d="M {NR-2} 466 L {NL+w5+2:.0f} 466" class="flow"/>')
-    text(NL, 532, S["loopnote"], "k", 11.5)
-    WX = int(LX + LW + P["wgap"]); WW = max(P["wmin"], 1360 - WX)
+    text(NL, 532, S["loopnote"], "k", 11.5, maxw=LX+LW-16-NL)
+    WX = int(LX + LW + P["wgap"]); WW = (W-40) - WX
     out.append(f'<rect x="{WX}" y="232" width="{WW}" height="320" class="box wiki"/>'); text(WX+20, 262, S["wiki"], "gr", 15)
     for y,k,c in [(296,"w1","t"),(316,"w1a","k"),(334,"w1b","k"),(352,"w1c","k"),(388,"w2","t"),(410,"w3","t"),(432,"w4","t"),(468,"w5","gr"),(490,"w6","k"),(518,"w7","k")]:
         base = 14 if c!="k" else 12.5
@@ -99,17 +119,18 @@ def gen(lang, path):
         for cand in (12.5, 12, 11.5, 11):
             if est(S[k], base) > WW-44 and est(S[k], cand) <= WW-44: size = cand; break
         if est(S[k], base) > WW-44 and size is None: size = 11
-        text(WX+36 if (c=="k" and y<360) else WX+20, y, S[k], c, size, 'font-style="italic"' if k=="w7" else "")
+        x0 = WX+36 if (c=="k" and y<360) else WX+20
+        text(x0, y, S[k], c, size, 'font-style="italic"' if k=="w7" else "", maxw=WX+WW-16-x0)
     out.append(f'<path d="M {AX+AW} 392 L {LX-2} 392" class="flowA"/>'); text(AX+AW+4, 382, S["read"], "k", 10.5)
     out.append(f'<path d="M {LX+LW} 392 L {WX-2} 392" class="flowA"/>'); text(LX+LW+2, 382, S["draft"], "k", 10.5)
     out.append(f'<path d="M {WX+180} 232 C {WX+180} 206, {WX} 206, {WX-15} 192" class="flowA"/>'); text(WX+60, 218, S["check"], "k", 11)
     out.append('<path d="M 235 232 C 235 206, 220 206, 228 192" class="flowA"/>'); text(246, 218, S["intent"], "k", 11)
-    out.append('<rect x="40" y="592" width="1320" height="120" class="box model"/>'); text(60, 622, S["models"], "k", 15, 'fill="#cbd5e1" font-weight="700"')
+    out.append(f'<rect x="40" y="592" width="{W-80}" height="120" class="box model"/>'); text(60, 622, S["models"], "k", 15, 'fill="#cbd5e1" font-weight="700"')
     x = 60
     for k in ("m1","m2","m3","m4"): x += pill(x, 642, S[k], 13, 32) + 16
-    text(60, 700, S["mnote"], "k")
+    text(60, 700, S["mnote"], "k", maxw=W-120)
     out.append(f'<path d="M {cl} 592 L {cl} 554" class="flow"/>'); out.append(f'<path d="M {cr} 592 L {cr} 554" class="flow"/>')
-    text(40, 760, S["foot"], "k", 12)
+    text(40, 760, S["foot"], "k", 12, maxw=W-80)
     out.append("</svg>")
     open(path,"w",encoding="utf-8").write("\n".join(out)+"\n")
 gen("ja", "/Users/falcon/git/ai-company/haya1/docs/assets/shikii-architecture.svg")
