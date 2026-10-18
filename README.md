@@ -33,6 +33,7 @@
   shikii decide decisions/prompt-intent-v2.yaml -i message="fix the typo" --local http://127.0.0.1:8080
   shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080   # answer page at http://127.0.0.1:8095
   ```
+- Already have a table of past decisions? `shikii import past.csv --spec decisions/<id>.yaml` turns it into truths, so the first line can be drawn without labelling 50 items by hand. In CI, `uses: hayaenfj/shikii@main` runs `shikii check` on every PR.
 
 > [!IMPORTANT]
 > shikii never runs inference itself (`shikii up` launches llama-server for you, and `shikii-readout` in front of a plain GGUF) and never reads a keychain. It talks to a decision-model endpoint you already have, keeps the records, and refuses to **act** until the probabilities for *this question on this model* have been verified against labels. Calibration blocks are generated, never written by hand.

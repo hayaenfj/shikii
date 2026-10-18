@@ -1,0 +1,39 @@
+# GitHub Action: PR で `shikii check` を回す(文言が変わった線、手書きの線、精度不足の線を落とす)。
+# 使い方(利用側のリポジトリの workflow):
+#   - uses: hayaenfj/shikii@main
+#     with:
+#       specs: decisions/*.yaml      # 検査する spec
+#       store: .shikii               # 正解の置き場(リポジトリに入れている場合)。無ければ testdata/store のように正解のあるフォルダ
+name: shikii check
+description: Fail the PR when a decision spec's calibration is stale, hand-written or below its act precision
+inputs:
+  specs:
+    description: spec files to check (glob)
+    required: false
+    default: decisions/*.yaml
+  store:
+    description: directory with records and truths
+    required: false
+    default: .shikii
+  version:
+    description: shikii ref to build (branch, tag or commit)
+    required: false
+    default: main
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.22"
+    - name: build shikii
+      shell: bash
+      run: |
+        set -eu
+        tmp="$(mktemp -d)"
+        git clone --depth 1 --branch "${{ inputs.version }}" https://github.com/hayaenfj/shikii "$tmp/shikii"
+        (cd "$tmp/shikii" && go build -o "$RUNNER_TEMP/shikii" ./cmd/shikii)
+    - name: shikii check
+      shell: bash
+      run: |
+        set -eu
+        "$RUNNER_TEMP/shikii" check --store "${{ inputs.store }}" ${{ inputs.specs }}
