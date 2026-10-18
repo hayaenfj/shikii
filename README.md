@@ -23,7 +23,7 @@
 
 **Two shortest ways in**
 
-- From Claude Code / Cursor: three lines in `.mcp.json` give you `shikii_decide` / `shikii_label` / `shikii_tune` as tools
+- From Claude Code / Cursor: three lines in `.mcp.json` give you `shikii_decide` / `shikii_label` / `shikii_tune` as tools. The repo is also a Claude Code plugin: its skill (`skills/shikii/SKILL.md`) teaches the agent *when* to decide, how to follow the bands, and that truths and statuses belong to people
   ```json
   { "mcpServers": { "shikii": { "command": "shikii", "args": ["mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"] } } }
   ```

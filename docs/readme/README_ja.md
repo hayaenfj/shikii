@@ -27,7 +27,7 @@
 
 **最短の入り口（2 つ）**
 
-- Claude Code / Cursor から: `.mcp.json` に 3 行足すと `shikii_decide` / `shikii_label` / `shikii_tune` が道具として使えます
+- Claude Code / Cursor から: `.mcp.json` に 3 行足すと `shikii_decide` / `shikii_label` / `shikii_tune` が道具として使えます。この repo は Claude Code の plugin でもあり、skill（`skills/shikii/SKILL.md`）がエージェントに「いつ判定を呼ぶか、帯にどう従うか、正解と状態は人のもの」という作法を教えます
   ```json
   { "mcpServers": { "shikii": { "command": "shikii", "args": ["mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"] } } }
   ```

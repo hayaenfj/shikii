@@ -23,3 +23,5 @@ jobs:
       - run: scripts/demo.sh > /tmp/demo.log && tail -5 /tmp/demo.log
       # README: 言語切替行と docs/readme/ の対応、各言語版の先頭行、相対リンクの実在
       - run: scripts/check-readme.sh
+      # skill(エージェント向けの作法)の前書きと参照の実在
+      - run: scripts/check-skill.sh

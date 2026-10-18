@@ -34,7 +34,7 @@ fake: build
 
 test:
 	test -z "$$(gofmt -l .)" || (gofmt -l . && echo 'gofmt: 上のファイルを整形して' && exit 1)
-	go vet ./... && go test ./... && scripts/check-readme.sh
+	go vet ./... && go test ./... && scripts/check-readme.sh && scripts/check-skill.sh
 
 install: build
 	cp $(BIN) $(INSTALL)
