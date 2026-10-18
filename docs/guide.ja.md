@@ -222,7 +222,7 @@ bin/shikii decide decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8090 
 
 ## 接続例
 
-Claude Code の hook(`shikii hook install`): AI 自身の作業中の判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか、この依頼で結局何をするか)を測る。置き場は `~/.shikii/agent`(基本構成)、モデルは :8080、答え合わせの画面は `cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080`。線が無いうちは記録だけ(影の期間)。線が引けたら、危ないコマンド(消す・外を変える・外に送る)が act なら確認を出し、迷った判定は「あとで答える → URL」を端末に 1 行、ターンの終わりに答え待ちの件数を 1 行。deny は出さない。失敗しても止めない(hook.log に理由)。帯 → 振る舞いの表と中の形は [`integrations/claude-code.md`](../integrations/claude-code.md)。
+Claude Code と Codex の hook(`shikii hook install`): AI 自身の作業中の判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか、この依頼で結局何をするか)を測る。置き場は `~/.shikii/agent`(基本構成)、モデルは :8080、答え合わせの画面は `cd ~/.shikii/agent && shikii serve --port 8096 --local http://127.0.0.1:8080`。線が無いうちは記録だけ(影の期間)。線が引けたら、危ないコマンド(消す・外を変える・外に送る)が act なら確認を出し、迷った判定は「あとで答える → URL」を端末に 1 行、ターンの終わりに答え待ちの件数を 1 行。deny は出さない。失敗しても止めない(hook.log に理由)。帯 → 振る舞いの表と中の形は [`integrations/claude-code.md`](../integrations/claude-code.md)。
 他のエージェントに付けるときの最小手順もそこに。
 
 ## まだ無いもの

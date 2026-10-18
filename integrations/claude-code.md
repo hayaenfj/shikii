@@ -1,8 +1,8 @@
-# 接続例: Claude Code の hook(`shikii hook`)— AI 自身の作業中の判断を測る
+# 接続例: Claude Code と Codex の hook(`shikii hook`)— AI 自身の作業中の判断を測る
 
 業務の判定(問い合わせの振り分けなど)はエージェントが MCP で呼ぶ([mcp.md](mcp.md))。これとは別に、**AI 自身が作業の最中にしている判断**を shikii に通すのがこの接続。判断の瞬間はツール呼び出しの直前・依頼の直後・ターンの終わりなので、エージェントが思い出して呼ぶ口ではなく、Claude Code の hook で必ず呼ぶ。
 
-**Claude Code の hook だけ**。Cursor / OpenCode / Codex には `shikii init` で MCP と skill が入るが、作業中の判断を自動で測る口は無い(付けるなら下の「他のエージェントに付けるとき」)。帯(act / ask / discard / abstain)・線(較正)・receipt の言葉は [bands.md](../skills/shikii/references/bands.md)。
+**Claude Code と Codex の hook**(両方とも同じ形の hook を持つ。`install` は両方の設定に書く)。Cursor / OpenCode には `shikii init` で MCP と skill が入るが、作業中の判断を自動で測る口は無い(付けるなら下の「他のエージェントに付けるとき」)。帯(act / ask / discard / abstain)・線(較正)・receipt の言葉は [bands.md](../skills/shikii/references/bands.md)。
 
 測るのは 4 つ(spec は [`claude-code/specs/`](claude-code/specs/)):
 
@@ -28,7 +28,7 @@ shikii hook uninstall --yes  # 足した 3 つの hook だけ外す。記録と�
 `install` がすること(2 回目は何も足さない):
 
 1. `~/.shikii/agent/` に基本構成(`decisions/` `wiki/` `.shikii/`)。4 つの spec と既製の wiki の知識を、**無いものだけ**写す(線の入った spec・人が直した spec は触らない)
-2. `~/.claude/settings.json` の `hooks` に `PreToolUse`(matcher `Bash|Edit|Write|MultiEdit|NotebookEdit`)、`UserPromptSubmit`、`Stop` の 3 つ(command は `shikii hook <event>`、timeout は PreToolUse / UserPromptSubmit 10 秒、Stop 15 秒)。他の hook と鍵は残す。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
+2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `PreToolUse`(matcher は Claude Code が `Bash|Edit|Write|MultiEdit|NotebookEdit`、Codex が `Bash|apply_patch`)、`UserPromptSubmit`、`Stop` の 3 つ(command は `shikii hook <event>`、timeout は PreToolUse / UserPromptSubmit 10 秒、Stop 15 秒)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。他の hook と鍵は残す。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
 固定の規則(オプションは無い): 置き場は `~/.shikii/agent`(プロジェクトをまたいで 1 つ)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、コマンドや依頼の文はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒、hook 1 回(起動と記録を含む)で 0.6〜0.8 秒。ツール呼び出しごとにこれが足される。モデルが無ければ待たずに黙る。
 
@@ -48,7 +48,7 @@ shikii は線(較正)が無いうちは `act` を出さない。hook はそれ�
 |---|---|---|
 | どれでも | 線が無い(影) | 何も出さない(記録だけ) |
 | command-effect | act で `read` / `change_project` | 何も出さない(黙って通す) |
-| command-effect | act で `change_outside` / `destroy` / `send_outside` | 確認を出す(`permissionDecision: ask`。理由は `shikii: this command looks like destroy (p=0.91; line on 61 truths, human-checked precision 0.96)`)。`--dangerously-skip-permissions` の時は確認を出さず端末に同じ 1 行 |
+| command-effect | act で `change_outside` / `destroy` / `send_outside` | 確認を出す(`permissionDecision: ask`。理由は `shikii: this command looks like destroy (p=0.91; line on 61 truths, human-checked precision 0.96)`)。`--dangerously-skip-permissions` の時と **Codex**(hook の `ask` を受けない。deny と allow だけ)では確認を出さず端末に同じ 1 行 |
 | command-effect | ask / discard だが、重い 3 択(change_outside / destroy / send_outside)の確率の和が act 以上(例: destroy 0.45 + send_outside 0.40) | 確認を出す(理由は `shikii: this command looks like one of change_outside / destroy / send_outside (together p=0.85…)`)。どれであっても止めて人に聞く判断は同じなので、割れを「迷い」で終わらせない |
 | command-effect | ask / discard(線はあるが迷った) | 端末に 1 行 `shikii: unsure (command-effect destroy p=0.62). Answer later: http://127.0.0.1:8096/?spec=command-effect&trace=…` |
 | edit-in-scope | discard(確信して「範囲外」) | エージェントに文脈 + 端末に 1 行 `shikii: this edit looks outside what the user asked for (edit-in-scope p(yes)=0.12…). If it is a needed step, say why; if not, do not make it` |
@@ -82,6 +82,7 @@ Stop ───────────── shikii hook stop ──────
 - 作業ツリーのハッシュは、仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id。HEAD や index は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。新しい blob は仮の objects に書いて消すので、未追跡ファイル(`.env` など)の中身が repo の `.git/objects` に残らない。全体で 3 秒を超えたら(.gitignore の無い巨大な node_modules など)正解を付けない。限界: 並走する別のエージェントやフォーマッタの変更も「変わった」に数える
 - 短い返事(40 字未満。「ok」「yes go ahead」)は依頼を置き換えず前の依頼に添える(edit-in-scope が「ok」を依頼として読まないように)
 - Claude Code 側の契約(公式の hooks reference、2026-10-18): hook は stdin に `session_id` `cwd` `permission_mode` `tool_name` `tool_input` `prompt` `stop_hook_active` `last_assistant_message` を受け、stdout の `hookSpecificOutput.permissionDecision`(allow / ask / deny)と `additionalContext`、トップレベルの `systemMessage` を返せる。人が許可を拒んだことを知る event は無いので、command-effect の正解は画面からだけ
+- Codex 側の契約(learn.chatgpt.com/docs/hooks、2026-10-18): 同じ event 名と stdin の鍵に、Codex だけの `turn_id` と `model` が足される(hook はこれで Codex と見分ける)。編集は `tool_name: "apply_patch"` で、patch の文が `tool_input.command` に入る(hook は `*** Update File:` などの見出しから触るファイルの名前を取り、edit-in-scope に渡す)。`permissionDecision: "ask"` は受けない(hook が失敗扱いになり道具は進む)ので、確認は端末の 1 行にする。Stop の出力は JSON が必須(shikii は常に JSON)
 
 ## claude-jev から移る人へ
 
