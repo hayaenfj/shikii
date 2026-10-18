@@ -1,6 +1,7 @@
 name: test
 on:
   push:
+    branches: [main]   # タグの push では走らせない(同じコミットの CI を 2 回回さない)
   pull_request:
 jobs:
   go:
