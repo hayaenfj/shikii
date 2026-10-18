@@ -217,7 +217,7 @@ thresholds:
   ask: 0.60                      # ≥ ask → ask a human; below → discard
 ```
 
-<p align="center"><img src="docs/assets/shikii-architecture.svg" alt="shikii architecture: three things people do, the assets (questions, truths, receipts), the loop the machine grows, the verifiable wiki, disposable models" width="100%"></p>
+<p align="center"><img src="docs/assets/shikii-architecture-en.svg" alt="shikii architecture: three things people do, the assets (questions, truths, receipts), the loop the machine grows, the verifiable wiki, disposable models" width="100%"></p>
 
 <p align="center"><img src="docs/assets/shikii-lifecycle.svg" alt="one lifecycle for every decision model" width="100%"></p>
 
