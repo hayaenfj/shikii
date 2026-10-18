@@ -4,7 +4,7 @@
 
 | ファイル | 型 | 用途 | 見どころ |
 |---|---|---|---|
-| `prompt-intent.yaml` | choice | コーディングエージェントへの依頼の種類(5 択) | `scripts/demo.sh` が使う。`decisions/prompt-intent-v2.yaml` の測る前の姿 |
+| `prompt-intent.yaml` | choice | AI への依頼の種類(5 択) | `scripts/demo.sh` が使う。`decisions/prompt-intent-v2.yaml` の測る前の姿 |
 | `inquiry-kind.yaml` | choice | 問い合わせの種類(ビジネス) | `pii: true` と `send_to: [local]`。本文を外の AI に出さない(手元の記録には残り、担当者が画面で答えられる) |
 | `clause-conflict.yaml` | noul | 契約条項の矛盾(法律) | act が「自動で直す」ではなく「人のレビュー待ちに入れる」であること |
 | `drone-landing-abort.yaml` | noul | 着陸の中止判断(ロボット・ドローン) | act / ask / discard / abstain がそれぞれ何を意味するかを、コメントで 1 行ずつ |

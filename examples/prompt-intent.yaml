@@ -1,4 +1,4 @@
-# 例: コーディングエージェントへの依頼の種類(5 択)。scripts/demo.sh が使う。較正ブロックは無い状態から始める。
+# 例: AI への依頼の種類(5 択)。scripts/demo.sh が使う。較正ブロックは無い状態から始める。
 id: prompt-intent
 version: 2
 type: choice

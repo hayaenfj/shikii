@@ -42,8 +42,8 @@ eval:
 # 画面の表示用の訳(モデルには送らない。較正の鍵にも入らない)
 display:
   ja:
-    title: 依頼の種類(Claude Code の hook)
-    question: この依頼に対して、コーディングエージェントは結局何をすることになりそうか？
+    title: 依頼の種類
+    question: この依頼を受けた AI は、結局どんな作業をすることになりそうか？
     options:
       edit: ファイルを変える
       explain: 説明する(ファイルは触らない)
