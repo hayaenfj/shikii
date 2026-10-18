@@ -120,7 +120,8 @@ func usageText() string {
                    wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
-  shikii bias      <spec.yaml> [--rows K] [--permutations N] [--local URL] [--hosted URL]
+  shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]
+                   選択肢の並びで答えが変わるかを測る。本文は calibrate と同じ正解の貯金(store、または --labeled)から
   shikii gc        [spec.yaml...] [--older-than 30d] [--apply] [--store DIR]
   shikii hash      <spec.yaml>
 `

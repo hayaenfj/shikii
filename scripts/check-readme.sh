@@ -2,7 +2,7 @@
 # README の整合性を検査する(CI でも回す)。違反があれば 1 で終わる。
 #  1. 先頭の言語切替行に並ぶ README_<lang>.md が全部あり、逆に docs/readme/ にある版は全部切替行に載っている
 #  2. 各言語版の先頭行にも同じ切替行がある(自分の言語は太字、他はリンク)
-#  3. README.md と各言語版の相対リンク(ファイル)が実在する
+#  3. README.md と各言語版、docs/ docs/examples/ integrations/ の相対リンク(ファイル)が実在する
 #  4. tests のバッジの数が実測と同じ  5. Go の版が go.mod と矛盾しない  6. receipt の例が実物の書式  7. 図が生成スクリプトの出力と同じ
 set -eu
 cd "$(dirname "$0")/.."
@@ -43,7 +43,8 @@ check_links() {
     [ -e "$dir/$target" ] || echo "$f: リンク先が無い: $target"
   done
 }
-for f in README.md docs/readme/README_*.md; do
+for f in README.md docs/readme/README_*.md docs/*.md docs/examples/*.md integrations/*.md; do
+  [ -e "$f" ] || continue
   out=$(check_links "$f")
   [ -z "$out" ] || { echo "$out" >&2; fail=1; }
 done
@@ -59,10 +60,12 @@ for f in README.md docs/readme/README_*.md; do
   [ -n "${n}" ] || { err "$f: tests のバッジが無い"; continue; }
   [ "${n}" = "${actual}" ] || err "$f: tests のバッジは ${n}、実測は ${actual}"
 done
-# 本文の「There are N Go tests」も同じ数(バッジだけ直して本文が古いまま、を防ぐ)
-while IFS= read -r n; do
-  [ "${n}" = "${actual}" ] || err "README.md: 本文の「${n} Go tests」は実測 ${actual} と違う"
-done < <(grep -oE 'are [0-9]+ Go tests' README.md | grep -oE '[0-9]+' || true)
+# 本文の「There are N Go tests」も同じ数(バッジだけ直して本文が古いまま、を防ぐ。README と英語の長い案内)
+for f in README.md docs/guide.md; do
+  while IFS= read -r n; do
+    [ "${n}" = "${actual}" ] || err "$f: 本文の「${n} Go tests」は実測 ${actual} と違う"
+  done < <(grep -oE 'are [0-9]+ Go tests' "$f" | grep -oE '[0-9]+' || true)
+done
 
 # 5. Go の版: go.mod の版と、README の本文の「Go 1.xx」が一致(バッジは 1.27 なのに本文が 1.24、のような矛盾を防ぐ)
 gover=$(grep -m1 '^go ' go.mod | awk '{print $2}' | cut -d. -f1,2)
