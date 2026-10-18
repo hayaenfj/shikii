@@ -27,6 +27,7 @@
   ```json
   { "mcpServers": { "shikii": { "command": "shikii", "args": ["mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"] } } }
   ```
+- One line to install: `curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh`, then `shikii init` at your project root: it creates the folders, adds shikii to `.mcp.json` and installs the skill for the agent (same habit as rtk and rea)
 - From a terminal: use one of the ready-made decisions in `decisions/` (request type, duplicate bug report, same inquiry, …) or copy one with `shikii new --from decisions/prompt-intent-v2.yaml`
   ```sh
   make install && shikii up                       # starts a local model (fetches Kev-4B)
