@@ -1,6 +1,6 @@
 # shikii の画像: shikii と shikii-readout だけ(モデルは別の容れ物。docker-compose.yml を見る)。
 # 使い方: docker compose up → 答え合わせの画面 http://127.0.0.1:8095
-FROM golang:1.24 AS build
+FROM golang:1.27 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

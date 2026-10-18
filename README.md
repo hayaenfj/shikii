@@ -8,7 +8,7 @@
 
 **A model gives you a probability. shikii tells you whether you may act on it.**
 
-[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square)](go.mod)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
 [![Tests](https://img.shields.io/badge/tests-161%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
@@ -61,7 +61,7 @@ A hypothesis we intend to test, not a claim: for typed decisions, a measured que
 
 ## Quick start
 
-Go 1.24 or newer. Nothing else is needed for the first run.
+Go 1.27 or newer. Nothing else is needed for the first run.
 
 ### Run the whole loop without a key or a GPU
 

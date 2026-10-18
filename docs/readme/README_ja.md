@@ -8,7 +8,7 @@
 
 **AI は「たぶん 0.9」と言う。shikii は「その 0.9 で動いていいか」を根拠付きで答え、聞き方を自分で良くし、学んだことを検証できる主張として wiki に残す。モデルを替えても、問いと正解と主張はそのまま使える。**
 
-[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square)](../../go.mod)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-161%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
