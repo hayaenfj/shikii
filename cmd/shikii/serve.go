@@ -768,7 +768,7 @@ const T = {
         modeSimple: 'かんたん表示', modeAdvanced: 'くわしく', remaining: n => '残り ' + n + ' 件', keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」、→ でスキップ',
         tabKnowledge: '知識', viewOne: '1 件ずつ', viewList: '一覧', skip: 'スキップ(あとで)', position: (i, n) => i + ' / ' + n + ' 件', more: m => 'ほかに ' + m + ' 件待っています', showMore: m => 'さらに表示(' + m + ' 件)', unskip: n => 'スキップした ' + n + ' 件を戻す', emptyFiltered: 'この種類の待ちはありません',
         chip_all: '全部', chip_ask: 'AI が迷った', chip_audit: '抜き取り', chip_other: 'その他', auditShort: '抜き取り',
-        viewTodo: 'まだ', viewDone: '答えたもの', yourAnswer: (name, when) => 'あなたの答え: ' + name + '(' + when + ')', changeAnswer: '別のボタンを押すと答えを直せます。いちばん新しい答えが使われます。', redo: 'AI にもう一度聞く', redoHint: '今の聞き方と線で同じ本文をもう一度判定します。あなたの答えはそのまま残ります', redoResult: (b, a) => '前: ' + b + '  →  今: ' + a, redoAgree: 'あなたの答えと一致しました', redoDisagree: 'まだあなたの答えと違います', noneAnswered: 'まだ答えたものはありません', wasRedone: 'もう一度聞いた結果',
+        viewTodo: '未回答', viewDone: '回答済み', yourAnswer: (name, when) => 'あなたの答え: ' + name + '(' + when + ')', changeAnswer: '別のボタンを押すと答えを直せます。いちばん新しい答えが使われます。', redo: 'AI にもう一度聞く', redoHint: '今の聞き方と線で同じ本文をもう一度判定します。あなたの答えはそのまま残ります', redoResult: (b, a) => '前: ' + b + '  →  今: ' + a, redoAgree: 'あなたの答えと一致しました', redoDisagree: 'まだあなたの答えと違います', noneAnswered: '回答済みのものはまだありません', wasRedone: 'もう一度聞いた結果',
         plainAuto: 'この判定は AI が自分で動いてよい状態です(答え合わせが十分に揃いました)。', plainReady: '答えが揃いました。AI の自信の数字を直す線を引けます。', plainLearning: (n, m) => 'まだ学習中: 答え合わせ ' + n + ' 件。AI が自分で動けるようになるまで ' + m + ' 件。', plainStale: '質問の文が変わったので、学び直しています。',
         aiGuess: (name, p) => 'AI の予想: ' + name + '(自信 ' + p + '%)', bandAsk: 'AI は迷いました。', bandAct: 'AI は自分で動きました。', bandDiscard: 'AI は見送りました。', sameAsAI: 'AI と同じ',
         records: n => '判定 ' + n + ' 件', answered: n => '答え合わせ済み ' + n + ' 件', calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変わったので学び直し', collecting: (n, m) => '学習中 ' + n + '/' + m, ready: (n, m) => '線を引けます ' + n + '/' + m,
@@ -911,7 +911,7 @@ function render() {
   chips.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; if (b.dataset.filter) filter = b.dataset.filter; if (b.dataset.view) { view = b.dataset.view; remember('shikii.view', view); } if (b.dataset.done !== undefined) done = b.dataset.done === '1'; render(); });
   sec.appendChild(chips);
   if (done) {
-    // 答えたもの: 新しい順。答えを直す(別のボタン)、AI にもう一度聞く(くわしく)
+    // 回答済み: 新しい順。答えを直す(別のボタン)、AI にもう一度聞く(くわしく)
     if (!sp.answered) {
       sec.innerHTML += '<div class="empty">' + esc(t('loading')) + '</div>'; root.appendChild(sec);
       j('/v1/answered?spec=' + encodeURIComponent(sp.id) + '&limit=200').then(r => { sp.answered = r.items; render(); }).catch(e => toast(t('error')(e.message)));
