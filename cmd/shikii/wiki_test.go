@@ -114,3 +114,56 @@ func TestWikiVerifyRunsRetestsAndRecordsEvidence(t *testing.T) {
 		t.Fatalf("two independent models supporting → a person may confirm:\n%s", out)
 	}
 }
+
+// 自動で育つ: tune の run が終わるごとに、現状に有意に勝った候補を主張の下書きとして起草し、
+// その spec についての既存の主張には run の採点から証拠を足す(モデルは呼び直さない)。人は下書きを一般化して patterns/ に移すだけ。
+func TestTuneDraftsClaimsAndFeedsEvidenceToExistingOnes(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	srv := wordingSensitiveModel(t)      // strict が why を当て、worse は current と同じ
+	specPath := specWithVariants(t, dir) // variants: strict, worse
+	labeledPath := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(labeledPath, []byte(bankRows()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pdir := filepath.Join(dir, "wiki", "patterns")
+	if err := os.MkdirAll(pdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	existing := filepath.Join(pdir, "strict-beats-worse.md") // worse には主張を置かない: 勝っていない候補が下書きにならないことを見るため
+	if err := os.WriteFile(existing, []byte("---\nclaim: strict beats worse\nstatus: tentative\nretest:\n  spec: decisions/intent.yaml\n  better: strict\n  than: worse\n---\n# strict beats worse\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error {
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii")})
+	})
+	if !strings.Contains(out, "1 claim(s) drafted") || !strings.Contains(out, "1 claim(s) given new evidence") {
+		t.Fatalf("tune must draft a claim for the significant winner and feed the existing claim:\n%s", out)
+	}
+	draft := filepath.Join(pdir, "drafts", "intent-strict.md")
+	pg, body, err := readClaimPage(draft)
+	if err != nil {
+		t.Fatalf("draft must exist: %v", err)
+	}
+	if pg.Status != "draft" || pg.Retest == nil || pg.Retest.Better != "strict" || pg.Retest.Than != "current" || pg.Retest.Spec != "decisions/intent.yaml" || len(pg.Evidence) != 1 || pg.Evidence[0].Verdict != "supports" || pg.Evidence[0].Run == "" || pg.AppliesTo["type"] != "choice" {
+		t.Fatalf("draft front matter: %+v", pg)
+	}
+	if !strings.Contains(body, "起草") {
+		t.Fatalf("the draft body tells a person what to do with it:\n%s", body)
+	}
+	ex, _, _ := readClaimPage(existing)
+	if len(ex.Evidence) != 1 || ex.Evidence[0].Verdict != "supports" || ex.Evidence[0].Run == "" || ex.Status != "tentative" {
+		t.Fatalf("the existing claim gets this run as evidence without a model call, status untouched: %+v", ex)
+	}
+	// 2 回目の run: 下書きは重複せず証拠が 2 件に。worse は下書きにならない(有意に勝っていない)
+	capture(t, func() error {
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii")})
+	})
+	pg, _, _ = readClaimPage(draft)
+	if len(pg.Evidence) != 2 {
+		t.Fatalf("a second run adds evidence to the same draft: %+v", pg.Evidence)
+	}
+	if _, err := os.Stat(filepath.Join(pdir, "drafts", "intent-worse.md")); err == nil {
+		t.Fatalf("a candidate that does not beat current must not become a claim")
+	}
+}

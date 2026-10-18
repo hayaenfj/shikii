@@ -18,7 +18,7 @@
 
 機械の使い方: 提案役は今の型とモデルの系統に当てはまる主張だけを読んで候補を作る。`tune` の run はどの主張の証拠になるかを記録する。エージェントは run から主張を起草できるが、状態は変えない。
 
-実装: `cmd/shikii/wiki.go`、`wiki/index.md` の形式、`wiki/patterns/plain-layout-for-small-chat-models.md` と `state-last-for-recurrent-readout.md` が最初の例。残り: 他のパターンに retest を付ける（noul の文言の主張は noul の spec に候補が要る）、提案役が主張の条件で読む範囲を絞る、run から主張を起草する道具。
+実装: `cmd/shikii/wiki.go`、`wiki/index.md` の形式、`wiki/patterns/plain-layout-for-small-chat-models.md` と `state-last-for-recurrent-readout.md` が最初の例。`tune` は run ごとに、有意に勝った候補を主張の下書き（`patterns/drafts/`）として起草し、既存の主張に証拠を足す（自動で育つ部分）。残り: 他のパターンに retest を付ける（noul の文言の主張は noul の spec に候補が要る）、提案役が主張の条件で読む範囲を絞る。
 
 ## 柱 2: 問いと正解は資産、モデルは使い捨て
 

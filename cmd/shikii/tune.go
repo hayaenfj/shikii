@@ -339,6 +339,12 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	}
 	res.RunPage = runPath
 	res.Run = strings.TrimSuffix(filepath.Base(runPath), ".md")
+	// 自動で育つ: 有意に勝った候補を主張の下書きに、既存の主張にはこの run を証拠として足す(モデルは呼び直さない)
+	if drafted, updated, err := updateClaims(o.wikiDir, sp, cands, scores, res.Run); err != nil {
+		fmt.Fprintf(stdout, "note: wiki claims not updated: %v\n", err)
+	} else if drafted+updated > 0 {
+		fmt.Fprintf(stdout, "wiki: %d claim(s) drafted, %d claim(s) given new evidence from this run\n", drafted, updated)
+	}
 	fmt.Fprintf(stdout, "wiki: %s\n", runPath)
 	if !res.Adoptable {
 		saveTuneResult(res)

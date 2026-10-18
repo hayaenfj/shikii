@@ -25,6 +25,19 @@
 > shikii は推論そのものは行いません。手元やホスト版の決定モデルに質問を送り、答えを記録し、答え合わせが済むまで「自動で動いてよい」とは言いません。
 > 「動いてよい」の根拠の数字も、聞き方の候補も、機械が作って書き込むもので、人が手で書くものではありません。
 
+**最短の入り口（2 つ）**
+
+- Claude Code / Cursor から: `.mcp.json` に 3 行足すと `shikii_decide` / `shikii_label` / `shikii_tune` が道具として使えます
+  ```json
+  { "mcpServers": { "shikii": { "command": "shikii", "args": ["mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"] } } }
+  ```
+- 端末から: 既製の判定（`decisions/` の 5 つ。依頼の種類、不具合の重複、問い合わせの同一判定、…）をそのまま使うか、`shikii new --from decisions/prompt-intent-v2.yaml` で写して書き換える
+  ```sh
+  make install && shikii up                       # 手元のモデルを起こす(Kev-4B を自動で取る)
+  shikii decide decisions/prompt-intent-v2.yaml -i message="fix the typo" --local http://127.0.0.1:8080
+  shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080   # 答え合わせの画面 http://127.0.0.1:8095
+  ```
+
 ---
 
 ## 目指すもの

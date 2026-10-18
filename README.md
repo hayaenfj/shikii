@@ -21,6 +21,19 @@
 
 `scripts/demo.sh`
 
+**Two shortest ways in**
+
+- From Claude Code / Cursor: three lines in `.mcp.json` give you `shikii_decide` / `shikii_label` / `shikii_tune` as tools
+  ```json
+  { "mcpServers": { "shikii": { "command": "shikii", "args": ["mcp", "--specs", "decisions", "--store", ".shikii", "--local", "http://127.0.0.1:8080"] } } }
+  ```
+- From a terminal: use one of the ready-made decisions in `decisions/` (request type, duplicate bug report, same inquiry, …) or copy one with `shikii new --from decisions/prompt-intent-v2.yaml`
+  ```sh
+  make install && shikii up                       # starts a local model (fetches Kev-4B)
+  shikii decide decisions/prompt-intent-v2.yaml -i message="fix the typo" --local http://127.0.0.1:8080
+  shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080   # answer page at http://127.0.0.1:8095
+  ```
+
 > [!IMPORTANT]
 > shikii never runs inference itself (`shikii up` launches llama-server for you, and `shikii-readout` in front of a plain GGUF) and never reads a keychain. It talks to a decision-model endpoint you already have, keeps the records, and refuses to **act** until the probabilities for *this question on this model* have been verified against labels. Calibration blocks are generated, never written by hand.
 

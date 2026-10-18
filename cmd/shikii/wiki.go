@@ -210,3 +210,101 @@ func runRetest(ctx context.Context, rt *claimRetest, labeled string, st store.St
 		Verdict: verdict,
 	}, nil
 }
+
+// updateClaims は tune の run の採点から wiki を育てる(モデルは呼び直さない):
+//  1. current に有意に勝った候補(対の勝敗、片側の符号検定 p ≤ 0.05)を、主張の下書き(wiki/patterns/drafts/<spec>-<候補>.md、status draft)として起草する。
+//     既に同じ下書きがあれば証拠を足す。人は下書きを一般化した主張に書き直して patterns/ に移し、状態を付ける
+//  2. この spec を retest に持つ既存の主張(patterns/*.md と drafts/*.md)で、better と than が今回の候補にあれば、今回の採点を証拠として足す
+func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []candScore, run string) (drafted, updated int, err error) {
+	byName := map[string]candScore{}
+	for i, c := range cands {
+		byName[c.name] = scores[i]
+	}
+	cur, ok := byName["current"]
+	if !ok {
+		return 0, 0, nil
+	}
+	specAbs, _ := filepath.Abs(sp.Path())
+	specRel := sp.Path() // 下書きに書く path は実行する場所(プロジェクトの根)からの相対。基本構成なら decisions/<id>.yaml
+	if cwd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(cwd, specAbs); err == nil && !strings.HasPrefix(rel, "..") {
+			specRel = rel
+		}
+	}
+	sameSpec := func(p string) bool {
+		abs, err := filepath.Abs(p)
+		return err == nil && abs == specAbs
+	}
+	verdictOf := func(a, b candScore) (claimEvidence, string) {
+		wins, losses := 0, 0
+		for i := range a.correct {
+			if i >= len(b.correct) {
+				break
+			}
+			if a.correct[i] && !b.correct[i] {
+				wins++
+			} else if !a.correct[i] && b.correct[i] {
+				losses++
+			}
+		}
+		p := signTestP(wins, losses)
+		v := "inconclusive"
+		switch {
+		case a.acc > b.acc && p <= signTestAlpha:
+			v = "supports"
+		case a.acc < b.acc:
+			v = "contradicts"
+		}
+		return claimEvidence{Date: time.Now().Format("2006-01-02"), Model: b.model, Run: run, Verdict: v,
+			Result: fmt.Sprintf("%s %.3f vs %s %.3f (top-1 on %d truths; %d better / %d worse, p=%.3f)", a.name, a.acc, b.name, b.acc, len(a.correct), wins, losses, p)}, v
+	}
+	// 2. 既存の主張に証拠を足す
+	pages, _ := filepath.Glob(filepath.Join(wikiDir, "patterns", "*.md"))
+	drafts, _ := filepath.Glob(filepath.Join(wikiDir, "patterns", "drafts", "*.md"))
+	seen := map[string]bool{}
+	for _, path := range append(pages, drafts...) {
+		pg, body, err := readClaimPage(path)
+		if err != nil || pg.Retest == nil || !sameSpec(pg.Retest.Spec) {
+			continue
+		}
+		a, okA := byName[pg.Retest.Better]
+		b, okB := byName[pg.Retest.Than]
+		if !okA || !okB {
+			continue
+		}
+		ev, _ := verdictOf(a, b)
+		pg.Evidence = append(pg.Evidence, ev)
+		if err := writeClaimPage(path, pg, body); err != nil {
+			return drafted, updated, err
+		}
+		updated++
+		seen[pg.Retest.Better+"\x00"+pg.Retest.Than] = true
+	}
+	// 1. 有意に勝った候補を起草する(既に主張があるものは除く)
+	for _, c := range cands {
+		if c.name == "current" || seen[c.name+"\x00current"] {
+			continue
+		}
+		ev, v := verdictOf(byName[c.name], cur)
+		if v != "supports" {
+			continue
+		}
+		path := filepath.Join(wikiDir, "patterns", "drafts", sp.ID+"-"+c.name+".md")
+		pg := claimPage{
+			Claim:     fmt.Sprintf("%s では候補 %s が current より当たる(%s)", sp.ID, c.name, describeVariant(sp, c.sp)),
+			Status:    "draft",
+			AppliesTo: map[string]string{"type": string(sp.Type), "models": cur.model},
+			Evidence:  []claimEvidence{ev},
+			Retest:    &claimRetest{Spec: specRel, Better: c.name, Than: "current"},
+		}
+		body := fmt.Sprintf("# 下書き: %s\n\n機械が tune の run %s から起草した主張。人がすること: 効く範囲(型・モデルの系統)を見極めて主張を一般化し、`wiki/patterns/` に移して状態を tentative にする。要らなければ消す。\n\n候補の中身: %s\n", pg.Claim, run, describeVariant(sp, c.sp))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return drafted, updated, err
+		}
+		if err := writeClaimPage(path, pg, body); err != nil {
+			return drafted, updated, err
+		}
+		drafted++
+	}
+	return drafted, updated, nil
+}
