@@ -20,6 +20,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -117,7 +118,11 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{"status":"ok"}`)) })
 	mux.HandleFunc("/v1/models", s.handleModels)
 	mux.HandleFunc("/v1/systemone", s.handleSystemOne)
-	addr := fmt.Sprintf("127.0.0.1:%d", *port)
+	host := "127.0.0.1" // ホストでは loopback だけ。容れ物(/.dockerenv)の中では全ての口(外に出すかは port の公開が決める)
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		host = "0.0.0.0"
+	}
+	addr := fmt.Sprintf("%s:%d", host, *port)
 	log.Printf("shikii-readout: model=%s upstream=%s listening on http://%s (POST /v1/systemone)", s.cfg.Model, s.cfg.Upstream, addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }

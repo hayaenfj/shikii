@@ -1,0 +1,31 @@
+# docker compose up  → 答え合わせの画面 http://127.0.0.1:8095
+# 2 つの容れ物: llama(llama.cpp の公式サーバー。Kev-4B を初回に取ってくる、約 2.5 GB)と shikii(この repo の画像)。
+# プロジェクトの根(このフォルダ)を /work に mount するので、decisions/ wiki/ .shikii/ はホストのものがそのまま使われ、育った知識も残る。
+services:
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: ["-hf", "ggml-org/Kev-4B-GGUF:Q4_K_M", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - hf-cache:/root/.cache/llama.cpp
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+  shikii:
+    build: .
+    depends_on:
+      llama:
+        condition: service_healthy
+    volumes:
+      - .:/work
+    ports:
+      - "127.0.0.1:8095:8095"
+    # 鍵は環境変数でだけ渡す(ファイルには置かない)。hosted も使うなら: environment: [DECISIONS_API_KEY]
+volumes:
+  hf-cache:
+# 普通の GGUF(素のチャット用モデル)を使うなら、llama の command を -m <file> に替え、間に shikii-readout を立てる:
+#   readout:
+#     build: .
+#     entrypoint: ["shikii-readout", "--upstream", "http://llama:8080", "--port", "8090"]
+#   そして shikii の --local を http://readout:8090 に。

@@ -37,6 +37,7 @@
   shikii decide decisions/prompt-intent-v2.yaml -i message="fix the typo" --local http://127.0.0.1:8080
   shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080   # 答え合わせの画面 http://127.0.0.1:8095
   ```
+- Go もモデルの準備も無いなら `docker compose up`。llama.cpp（Kev-4B）と shikii が立ち、答え合わせの画面が http://127.0.0.1:8095 に出ます。`decisions/`、`wiki/`、`.shikii/` はホストのまま（[integrations/docker.md](../../integrations/docker.md)）
 - 過去の判定の表があるなら `shikii import past.csv --spec decisions/<id>.yaml` で正解の貯金にできます。最初の線を引く 50 件を手で答えなくてよい。CI では `uses: hayaenfj/shikii@main` が PR ごとに `shikii check` を回します
 
 ---

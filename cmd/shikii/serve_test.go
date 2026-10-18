@@ -291,3 +291,17 @@ func TestServeUIHasTabsAndScalesToManyItems(t *testing.T) {
 		}
 	}
 }
+
+// 待ち受け先は決め打ち: ホストでは 127.0.0.1 だけ(LAN に出さない)。容れ物(/.dockerenv がある)の中では全ての口(port の公開はホスト側が 127.0.0.1 に絞る)。
+func TestBindHostIsLoopbackExceptInsideAContainer(t *testing.T) {
+	if got := bindHostFor(filepath.Join(t.TempDir(), "no-such-file")); got != "127.0.0.1" {
+		t.Fatalf("on a host shikii must listen on loopback only, got %q", got)
+	}
+	marker := filepath.Join(t.TempDir(), ".dockerenv")
+	if err := os.WriteFile(marker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := bindHostFor(marker); got != "0.0.0.0" {
+		t.Fatalf("inside a container the port must be reachable from the host, got %q", got)
+	}
+}

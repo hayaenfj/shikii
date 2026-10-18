@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -44,6 +45,17 @@ type serveOpts struct {
 	proposerModel string
 }
 
+// bindHost は待ち受け先。ホストでは 127.0.0.1 だけ(LAN に出さない)。容れ物(Docker、/.dockerenv がある)の中では全ての口で待ち、
+// 外に出すかはホスト側の port の公開が決める(compose は 127.0.0.1:8095 に絞っている)。選ぶ設定は無い。
+func bindHost() string { return bindHostFor("/.dockerenv") }
+
+func bindHostFor(dockerenv string) string {
+	if _, err := os.Stat(dockerenv); err == nil {
+		return "0.0.0.0"
+	}
+	return "127.0.0.1"
+}
+
 func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	var o serveOpts
@@ -60,7 +72,7 @@ func cmdServe(args []string) error {
 	if _, err := loadSpecs(o.specsDir); err != nil {
 		return err
 	}
-	addr := fmt.Sprintf("127.0.0.1:%d", o.port)
+	addr := fmt.Sprintf("%s:%d", bindHost(), o.port)
 	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted), o.autoCalibrate, addr)
 	return http.ListenAndServe(addr, newServer(o))
 }

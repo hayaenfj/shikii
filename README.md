@@ -33,6 +33,7 @@
   shikii decide decisions/prompt-intent-v2.yaml -i message="fix the typo" --local http://127.0.0.1:8080
   shikii serve --specs decisions --store .shikii --local http://127.0.0.1:8080   # answer page at http://127.0.0.1:8095
   ```
+- No Go, no model set up? `docker compose up` starts llama.cpp with Kev-4B and shikii; the answer page is at http://127.0.0.1:8095 and your `decisions/`, `wiki/` and `.shikii/` stay on the host ([integrations/docker.md](integrations/docker.md)).
 - Already have a table of past decisions? `shikii import past.csv --spec decisions/<id>.yaml` turns it into truths, so the first line can be drawn without labelling 50 items by hand. In CI, `uses: hayaenfj/shikii@main` runs `shikii check` on every PR.
 
 > [!IMPORTANT]
