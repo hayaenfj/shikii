@@ -736,6 +736,13 @@ func describeVariant(base, c *spec.Spec) string {
 			parts = append(parts, fmt.Sprintf("level %d: %s", i, trim(c.Levels[i], 40)))
 		}
 	}
+	if c.Layout != base.Layout {
+		l := c.Layout
+		if l == "" {
+			l = "default"
+		}
+		parts = append(parts, "layout: "+l)
+	}
 	if !reflect.DeepEqual(c.Steps, base.Steps) {
 		if len(c.Steps) == 0 {
 			parts = append(parts, "asked as one choice again (no steps)")

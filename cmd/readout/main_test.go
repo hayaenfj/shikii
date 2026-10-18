@@ -38,11 +38,22 @@ func (f *fakeUpstream) handler() http.Handler {
 		_, _ = w.Write([]byte(`{"models":[{"name":"fake-gguf"}]}`))
 	})
 	mux.HandleFunc("/tokenize", func(w http.ResponseWriter, r *http.Request) {
-		var in struct{ Content string }
+		var in struct {
+			Content    string `json:"content"`
+			WithPieces bool   `json:"with_pieces"`
+		}
 		_ = json.NewDecoder(r.Body).Decode(&in)
 		f.mu.Lock()
 		multi := f.multiToken[in.Content]
 		f.mu.Unlock()
+		if in.WithPieces { // 最初のトークンは先頭 2 文字(短ければ全部)という偽のトークナイザ
+			piece := in.Content
+			if len(piece) > 2 {
+				piece = piece[:2]
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"tokens": []map[string]any{{"id": 7, "piece": piece}}})
+			return
+		}
 		if multi {
 			_, _ = w.Write([]byte(`{"tokens":[220,16]}`))
 			return
@@ -101,6 +112,7 @@ func newTestServer(t *testing.T, f *fakeUpstream) (*server, *httptest.Server) {
 	t.Cleanup(up.Close)
 	s := &server{
 		cfg:           config{Upstream: up.URL, Model: "fake-gguf", NProbs: 8, System: defaultSystem, Timeout: 10 * time.Second},
+		base:          "fake-gguf",
 		http:          up.Client(),
 		thinkingKwarg: true,
 	}
@@ -356,5 +368,44 @@ func TestPrefixWarmUpOncePerPrefixAndAfterCacheMiss(t *testing.T) {
 	ask(t, s2, fmt.Sprintf(q, "first"))
 	if len(f2.completions) != 1 {
 		t.Fatalf("state-first layout must not warm up, got %+v", f2.completions)
+	}
+}
+
+// 配置(layout)は要求ごとに選べる。plain は system 無し・選択肢を "- id: 説明"・入力を Input: の後ろに置き、
+// 文字(A, B, …)ではなく選択肢 id の最初のトークンの確率を読む。応答の model には配置が付く(較正の鍵が分かれる)。
+func TestPlainLayoutReadsOptionIdsAndNamesTheLayout(t *testing.T) {
+	f := &fakeUpstream{top: []tokenProb{{"al", 0.7}, {"ze", 0.2}, {"mi", 0.05}, {"The", 0.05}}} // 偽トークナイザ: 最初のトークンは先頭 2 文字
+	s, _ := newTestServer(t, f)
+	code, out := ask(t, s, `{"state":"fix the typo","layout":"plain","questions":{"q":{"type":"choice","instructions":"what?","criteria":{"zeta":"Z desc","alpha":"A desc","mid":"M desc"}}}}`)
+	if code != 200 {
+		t.Fatalf("code %d: %v", code, out)
+	}
+	for _, must := range []string{"what?", "- zeta: Z desc\n- alpha: A desc\n- mid: M desc", "Input:\nfix the typo", "Answer with the option id only."} {
+		if !strings.Contains(f.lastPrompt, must) {
+			t.Fatalf("plain layout missing %q:\n%s", must, f.lastPrompt)
+		}
+	}
+	if strings.Contains(f.lastPrompt, "<|system|>") || strings.Contains(f.lastPrompt, "<state>") || strings.Contains(f.lastPrompt, "A. ") {
+		t.Fatalf("plain layout has no system message, no state tags and no letters:\n%s", f.lastPrompt)
+	}
+	ans := out["answers"].(map[string]any)["q"].(map[string]any)
+	probs := ans["probabilities"].(map[string]any)
+	if ans["choice"] != "alpha" || math.Abs(probs["alpha"].(float64)-0.7/0.95) > 1e-9 || math.Abs(probs["zeta"].(float64)-0.2/0.95) > 1e-9 {
+		t.Fatalf("probabilities must be read from the ids' first tokens: %v", ans)
+	}
+	if out["model"] != "fake-gguf+plain" {
+		t.Fatalf("the layout must be in the model name so calibration keys differ, got %v", out["model"])
+	}
+	// 既定の配置の名前は今までどおり
+	code, out = ask(t, s, `{"state":"x","questions":{"q":{"type":"choice","instructions":"what?","criteria":{"a":"A","b":"B"}}}}`)
+	if code != 200 || out["model"] != "fake-gguf" {
+		t.Fatalf("default layout keeps the configured name: %d %v", code, out["model"])
+	}
+	// 知らない配置は 422。最初のトークンが重なる id も 422(読み分けられない)
+	if code, _ := ask(t, s, `{"state":"x","layout":"sideways","questions":{"q":{"type":"choice","instructions":"what?","criteria":{"a":"A","b":"B"}}}}`); code != 422 {
+		t.Fatalf("unknown layout must be 422, got %d", code)
+	}
+	if code, out := ask(t, s, `{"state":"x","layout":"plain","questions":{"q":{"type":"choice","instructions":"what?","criteria":{"change_request":"A","change_x":"B"}}}}`); code != 422 || !strings.Contains(fmt.Sprint(out), "first token") {
+		t.Fatalf("ids sharing a first token cannot be read under plain layout: %d %v", code, out)
 	}
 }

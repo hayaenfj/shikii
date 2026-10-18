@@ -66,10 +66,12 @@ func modelName(upstream string, c config) string {
 type server struct {
 	cfg  config
 	http *http.Client
+	base string // 配置の接尾辞を付ける前の名前(upstream の名前か --model)。既定以外の配置の応答は base+"+"+配置
 
 	mu             sync.Mutex
-	thinkingKwarg  bool // enable_thinking=false を送るか。upstream が蹴ったら false に落とす
-	missingLabels  int  // n_probs の上位に入らなかったラベルの延べ数(観測用)
+	pieces         map[string]string // plain 配置で読む、選択肢 id → 最初のトークン(/tokenize の結果を覚える)
+	thinkingKwarg  bool              // enable_thinking=false を送るか。upstream が蹴ったら false に落とす
+	missingLabels  int               // n_probs の上位に入らなかったラベルの延べ数(観測用)
 	totalQuestions int
 
 	// 接頭辞の warm-up。Qwen3.5/3.8 系(Bonsai の土台)は再帰層を持ち、KV を途中まで巻き戻せない。
@@ -103,7 +105,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("upstream model name: %v (pass --model)", err)
 		}
+		s.base = name
 		s.cfg.Model = modelName(name, s.cfg)
+	} else {
+		s.base = s.cfg.Model
 	}
 	if err := s.checkLabels(ctx); err != nil {
 		log.Fatalf("label check failed: %v", err)
@@ -131,7 +136,14 @@ type rawRequest struct {
 	State     json.RawMessage        `json:"state"`
 	Model     string                 `json:"model"`
 	Questions map[string]rawQuestion `json:"questions"`
+	Layout    string                 `json:"layout"` // 配置の名前(state-last | state-first | plain)。空なら起動時の既定
 }
+
+// layouts は知っている配置。spec の layout と同じ名前。
+var layouts = map[string]bool{"state-last": true, "state-first": true, "plain": true}
+
+// plainMarker は plain 配置で state が始まる印(ここより前が spec 内で共通の接頭辞)。
+const plainMarker = "\nInput:\n"
 
 // question は解釈済みの質問。Options は提示順(choice は criteria の並び、score は level の並び、noul は yes/no)。
 type question struct {
@@ -147,13 +159,13 @@ type option struct {
 }
 
 // parseRequest は本体を読んで検証する。criteria の並びは JSON の並びのまま(Go の map に入れない)。
-func parseRequest(body []byte) (state string, qs []question, err error) {
+func parseRequest(body []byte) (state string, qs []question, layout string, err error) {
 	var req rawRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "", nil, fmt.Errorf("bad json: %w", err)
+		return "", nil, "", fmt.Errorf("bad json: %w", err)
 	}
 	if len(req.Questions) == 0 {
-		return "", nil, errors.New("questions is required")
+		return "", nil, "", errors.New("questions is required")
 	}
 	state = stateText(req.State)
 	keys := make([]string, 0, len(req.Questions))
@@ -165,11 +177,11 @@ func parseRequest(body []byte) (state string, qs []question, err error) {
 		rq := req.Questions[k]
 		q, err := parseQuestion(k, rq)
 		if err != nil {
-			return "", nil, err
+			return "", nil, "", err
 		}
 		qs = append(qs, q)
 	}
-	return state, qs, nil
+	return state, qs, req.Layout, nil
 }
 
 func parseQuestion(key string, rq rawQuestion) (question, error) {
@@ -245,7 +257,11 @@ type message struct {
 // buildMessages は 1 質問ぶんの会話を作る。選択肢は提示順に A, B, … を付ける。
 // stateFirst=false(既定)では state を最後に置く: 先頭の system・質問・選択肢が同じ spec の全問で
 // 共通の接頭辞になり、llama-server の cache_prompt で再利用される。
-func buildMessages(system, state string, q question, stateFirst bool) []message {
+func buildMessages(system, state string, q question, layout string) []message {
+	if layout == "plain" {
+		return buildPlain(state, q)
+	}
+	stateFirst := layout == "state-first"
 	var b strings.Builder
 	stateBlock := "<state>\n" + state + "\n</state>\n"
 	if stateFirst {
@@ -288,6 +304,38 @@ func buildMessages(system, state string, q question, stateFirst bool) []message 
 	return []message{{Role: "system", Content: system}, {Role: "user", Content: b.String()}}
 }
 
+// buildPlain は plain 配置: system 無し、質問、選択肢を "- id: 説明"、入力を Input: の後ろ、最後に id で答えるよう頼む。
+// 文字(A, B, …)ではなく選択肢 id そのものの最初のトークンを読む。素のチャット用モデルには、決定モデル向けの並べ方より合うことがある
+// (Qwen3-4B で 13 ポイント、docs/bench.md)。
+func buildPlain(state string, q question) []message {
+	var b strings.Builder
+	switch q.Type {
+	case "noul":
+		b.WriteString("Is the following statement true of the input?\nStatement: ")
+		b.WriteString(q.Instructions)
+		b.WriteString("\n\nOptions:\n")
+	case "score":
+		b.WriteString(q.Instructions)
+		b.WriteString("\n\nScale (lowest first):\n")
+	default:
+		b.WriteString(q.Instructions)
+		b.WriteString("\n\nOptions:\n")
+	}
+	for _, o := range q.Options {
+		b.WriteString("- ")
+		b.WriteString(o.ID)
+		if o.Description != "" && o.Description != o.ID {
+			b.WriteString(": ")
+			b.WriteString(o.Description)
+		}
+		b.WriteByte('\n')
+	}
+	b.WriteString(plainMarker)
+	b.WriteString(state)
+	b.WriteString("\n\nAnswer with the option id only.")
+	return []message{{Role: "user", Content: b.String()}}
+}
+
 // ---- 読み出し ----
 
 type tokenProb struct {
@@ -298,16 +346,21 @@ type tokenProb struct {
 // readProbs は上位トークンの確率からラベルの確率を拾い、正規化する。
 // 上位に入らなかったラベルには probFloor を与える(missing に数える)。
 func readProbs(top []tokenProb, n int) (probs []float64, missing int) {
+	return readProbsFor(top, labels[:n])
+}
+
+// readProbsFor は keys(文字、または plain 配置では選択肢 id の最初のトークン)ごとの確率を上位から拾って正規化する。
+func readProbsFor(top []tokenProb, keys []string) (probs []float64, missing int) {
 	byTok := map[string]float64{}
 	for _, t := range top {
 		if _, seen := byTok[t.Token]; !seen {
 			byTok[t.Token] = t.Prob
 		}
 	}
-	probs = make([]float64, n)
+	probs = make([]float64, len(keys))
 	var sum float64
-	for i := 0; i < n; i++ {
-		p, ok := byTok[labels[i]]
+	for i, k := range keys {
+		p, ok := byTok[k]
 		if !ok || p <= 0 {
 			p = probFloor
 			missing++
@@ -319,6 +372,76 @@ func readProbs(top []tokenProb, n int) (probs []float64, missing int) {
 		probs[i] /= sum
 	}
 	return probs, missing
+}
+
+// optionKeys は配置に応じて読むトークンを返す: 既定は文字(A, B, …)、plain は各 id の最初のトークン(/tokenize で調べ、覚える)。
+// 2 つの id が同じ最初のトークンなら読み分けられないので誤り。
+func (s *server) optionKeys(ctx context.Context, q question, layout string) ([]string, error) {
+	if layout != "plain" {
+		return labels[:len(q.Options)], nil
+	}
+	keys := make([]string, len(q.Options))
+	seen := map[string]string{}
+	for i, o := range q.Options {
+		piece, err := s.firstPiece(ctx, o.ID)
+		if err != nil {
+			return nil, err
+		}
+		if other, dup := seen[piece]; dup {
+			return nil, fmt.Errorf("plain layout: options %q and %q share the first token %q and cannot be told apart; use letters (state-last) or rename an option", other, o.ID, piece)
+		}
+		seen[piece] = o.ID
+		keys[i] = piece
+	}
+	return keys, nil
+}
+
+// firstPiece は文字列の最初のトークンの文字列(/tokenize with_pieces)。
+func (s *server) firstPiece(ctx context.Context, text string) (string, error) {
+	s.mu.Lock()
+	if p, ok := s.pieces[text]; ok {
+		s.mu.Unlock()
+		return p, nil
+	}
+	s.mu.Unlock()
+	var out struct {
+		Tokens []struct {
+			ID    int    `json:"id"`
+			Piece string `json:"piece"`
+		} `json:"tokens"`
+	}
+	if _, err := s.post(ctx, "/tokenize", map[string]any{"content": text, "with_pieces": true}, &out); err != nil {
+		return "", err
+	}
+	if len(out.Tokens) == 0 || out.Tokens[0].Piece == "" {
+		return "", fmt.Errorf("/tokenize returned no pieces for %q (with_pieces unsupported?)", text)
+	}
+	s.mu.Lock()
+	if s.pieces == nil {
+		s.pieces = map[string]string{}
+	}
+	s.pieces[text] = out.Tokens[0].Piece
+	s.mu.Unlock()
+	return out.Tokens[0].Piece, nil
+}
+
+// requestLayout は要求の配置を決める: 空なら起動時の既定、知らない名前は誤り。
+func (s *server) requestLayout(req string) (string, error) {
+	if req == "" {
+		return s.cfg.layout(), nil
+	}
+	if !layouts[req] {
+		return "", fmt.Errorf("unknown layout %q (one of state-last, state-first, plain)", req)
+	}
+	return req, nil
+}
+
+// responseModel は応答の model 名。既定の配置なら設定どおり、違う配置なら土台の名前 + "+" + 配置(較正の鍵が分かれる)。
+func (s *server) responseModel(layout string) string {
+	if layout == s.cfg.layout() {
+		return s.cfg.Model
+	}
+	return s.base + "+" + layout
 }
 
 // answerFor は System One の answer を型ごとに組む(llama.cpp の決定モデルと同じ形)。
@@ -481,11 +604,15 @@ type completion struct {
 
 // warmPrefixFor は prompt の接頭辞(state の手前まで)を、前回と違えば upstream に n_predict=0 で流し、
 // チェックポイントを作らせる。state-first 配置では接頭辞が state を含むので何もしない。
-func (s *server) warmPrefixFor(ctx context.Context, prompt string) error {
-	if s.cfg.StateFirst {
+func (s *server) warmPrefixFor(ctx context.Context, prompt, layout string) error {
+	marker := stateMarker
+	switch layout {
+	case "state-first":
 		return nil
+	case "plain":
+		marker = plainMarker
 	}
-	idx := strings.LastIndex(prompt, stateMarker)
+	idx := strings.LastIndex(prompt, marker)
 	if idx <= 0 {
 		return nil
 	}
@@ -549,7 +676,12 @@ func (s *server) handleSystemOne(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	state, qs, err := parseRequest(body)
+	state, qs, layoutReq, err := parseRequest(body)
+	if err != nil {
+		writeErr(w, 422, err.Error())
+		return
+	}
+	layout, err := s.requestLayout(layoutReq)
 	if err != nil {
 		writeErr(w, 422, err.Error())
 		return
@@ -559,12 +691,17 @@ func (s *server) handleSystemOne(w http.ResponseWriter, r *http.Request) {
 	answers := map[string]any{}
 	inputTokens := 0
 	for _, q := range qs {
-		prompt, err := s.applyTemplate(ctx, buildMessages(s.cfg.System, state, q, s.cfg.StateFirst))
+		keys, err := s.optionKeys(ctx, q, layout)
+		if err != nil {
+			writeErr(w, 422, err.Error())
+			return
+		}
+		prompt, err := s.applyTemplate(ctx, buildMessages(s.cfg.System, state, q, layout))
 		if err != nil {
 			writeErr(w, 502, err.Error())
 			return
 		}
-		if err := s.warmPrefixFor(ctx, prompt); err != nil {
+		if err := s.warmPrefixFor(ctx, prompt, layout); err != nil {
 			writeErr(w, 502, err.Error())
 			return
 		}
@@ -574,7 +711,7 @@ func (s *server) handleSystemOne(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.noteCache(c)
-		probs, missing := readProbs(c.Probs[0].Top, len(q.Options))
+		probs, missing := readProbsFor(c.Probs[0].Top, keys)
 		s.mu.Lock()
 		s.missingLabels += missing
 		s.totalQuestions++
@@ -587,7 +724,7 @@ func (s *server) handleSystemOne(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"model":   s.cfg.Model,
+		"model":   s.responseModel(layout),
 		"answers": answers,
 		"usage":   map[string]int{"input_tokens": inputTokens, "output_tokens": len(qs)},
 	})

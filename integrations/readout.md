@@ -26,6 +26,7 @@ scripts/eval-model.sh http://127.0.0.1:8090 <name>                              
 |---|---|---|
 | 要求の解釈 | `questions` は名前→質問の object。choice の criteria は **JSON の並びのまま**読む（Go の map に入れない）。score は level の配列、noul は criteria 無しか true/false の説明 | 2〜26 択以外・不明な型・instructions 無しは 422 |
 | プロンプト | system + user。質問、`A. id: 説明` の列、**最後に** `<state>…</state>`、「Reply with one letter.」。state を最後に置くので、同じ spec の全問で先頭が共通になり llama-server の `cache_prompt` が効く。`--state-first` で旧配置。配置名は応答の `model` に `+state-last` / `+state-first` として付く（並びが変われば確率が変わるので較正の鍵も変える） | テストが提示順・配置・接尾辞を固定 |
+| 配置の切替（`layout`） | 要求の `layout`（spec の `layout:` から来る）で要求ごとに配置を変える: `state-last`（既定）/ `state-first` / `plain`。plain は system 無し、質問、`- id: 説明` の列、`Input:` の後ろに state、「Answer with the option id only.」で、文字ではなく **各 id の最初のトークン**（`/tokenize` の `with_pieces`）の確率を読む。2 つの id が同じ最初のトークンなら 422。既定以外の配置の応答 `model` は `<土台>+<配置>`（較正の鍵が分かれる）。知らない名前は 422 | テストが plain の並び・id の読み・model 名・422 を固定（変異: 常に文字で読む → 落ちる） |
 | chat template | upstream の `/apply-template` に `chat_template_kwargs: {enable_thinking: false}` を付けて渡す。4xx で蹴られたら外して送り直し、以後は付けない | 送り直しの有無をテスト |
 | 接頭辞の warm-up | Bonsai の土台 Qwen3.5/3.8 系は再帰層（Gated DeltaNet）を持ち、KV を途中まで巻き戻せない。接頭辞のちょうど末尾にチェックポイントが無いと `cache_prompt` が効かず毎回全部 prefill する（実測 `cache_n=0`、1 問 4 秒）。そこで spec の接頭辞（`<state>` の手前まで）が変わった時だけ、それを `n_predict: 0` で先に流してチェックポイントを作る。応答の `cache_n` が接頭辞に届かなければ次回また流す | 新しい接頭辞で 1 回・同じ接頭辞で 0 回・cache miss 後に再度、をテスト |
 | 読み出し | `/completion` を `n_predict: 1`、温度 1、切り捨て無し、`n_probs` で回し、ラベル文字の確率を拾って正規化。上位に入らなかった文字は床 1e-6 | 床と合計 1 をテスト |

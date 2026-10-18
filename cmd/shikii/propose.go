@@ -35,7 +35,8 @@ type proposal struct {
 	Options   map[string]string `json:"options,omitempty"`
 	Levels    []string          `json:"levels,omitempty"`
 	Template  string            `json:"template,omitempty"`
-	Steps     []spec.Step       `json:"steps,omitempty"` // choice を はい/いいえ の列に分解する提案
+	Steps     []spec.Step       `json:"steps,omitempty"`  // choice を はい/いいえ の列に分解する提案
+	Layout    string            `json:"layout,omitempty"` // prompt の配置の提案(state-last | state-first | plain)
 	Rationale string            `json:"rationale,omitempty"`
 }
 
@@ -133,6 +134,8 @@ func buildProposerPrompt(sp *spec.Spec, cur candScore, bank []bankRow, wikiText 
 			"A middle step settles exactly one option (yes or no) and passes the rest on; the last step settles both; every option appears exactly once. " +
 			"Branch probabilities are multiplied into the original options, so this suits models that answer yes/no better than a multi-way choice."
 	}
+	system += " A proposal may also set \"layout\" (one of state-last, state-first, plain) to change how the prompt is arranged for a plain chat model behind shikii-readout: " +
+		"plain drops the system message, lists options as \"- id: description\" and reads the option id itself instead of a letter. Decision models ignore it."
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Current spec (id %s, type %s)\nquestion: %s\n", sp.ID, sp.Type, strings.TrimSpace(sp.Question))
 	for _, o := range sp.Options {
@@ -298,7 +301,7 @@ func adoptProposals(sp *spec.Spec, props []proposal) (added, skipped int, notes 
 		for i := 2; names[name]; i++ {
 			name = fmt.Sprintf("%s-%d", base, i)
 		}
-		v := spec.Variant{Name: name, Question: strings.TrimSpace(p.Question), Options: p.Options, Levels: p.Levels, Template: p.Template, Steps: p.Steps}
+		v := spec.Variant{Name: name, Question: strings.TrimSpace(p.Question), Options: p.Options, Levels: p.Levels, Template: p.Template, Steps: p.Steps, Layout: p.Layout}
 		trial := *sp
 		trial.Variants = append(append([]spec.Variant(nil), sp.Variants...), v)
 		if err := trial.Validate(); err != nil {

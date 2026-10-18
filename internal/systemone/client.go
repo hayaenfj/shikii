@@ -86,6 +86,9 @@ type Request struct {
 	State     string              `json:"state"`
 	Model     string              `json:"model,omitempty"`
 	Questions map[string]Question `json:"questions"`
+	// Layout は prompt の配置の名前(state-last | state-first | plain)。shikii-readout が従い、応答の model 名に付ける。
+	// 決定モデルは知らない項目として無視する。空なら相手の既定。
+	Layout string `json:"layout,omitempty"`
 }
 
 // Answer は 1 質問の答え。型ごとに使うフィールドが違う。
@@ -160,7 +163,12 @@ func SplitEndpoint(raw string) (base, path string) {
 
 // Ask は state に対して質問群を 1 回で評価する。
 func (c *Client) Ask(ctx context.Context, state string, qs map[string]Question) (*Response, error) {
-	body, err := json.Marshal(Request{State: state, Model: c.Model, Questions: qs})
+	return c.AskLayout(ctx, state, qs, "")
+}
+
+// AskLayout は Ask に配置の名前を添える(spec の layout。空なら相手の既定)。
+func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Question, layout string) (*Response, error) {
+	body, err := json.Marshal(Request{State: state, Model: c.Model, Questions: qs, Layout: layout})
 	if err != nil {
 		return nil, err
 	}

@@ -95,7 +95,7 @@ func BuildQuestionOrdered(sp *spec.Spec, order []int) systemone.Question {
 
 // AskOrdered は選択肢の並びを指定して 1 回聞き、生の分布を返す(較正も記録もしない)。順序バイアスの測定用。
 func AskOrdered(ctx context.Context, sp *spec.Spec, state string, order []int, c *systemone.Client) (map[string]float64, string, error) {
-	resp, err := c.Ask(ctx, state, map[string]systemone.Question{questionKey: BuildQuestionOrdered(sp, order)})
+	resp, err := c.AskLayout(ctx, state, map[string]systemone.Question{questionKey: BuildQuestionOrdered(sp, order)}, sp.Layout)
 	if err != nil {
 		return nil, "", err
 	}
@@ -184,7 +184,7 @@ func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *
 	if len(sp.Steps) > 0 {
 		return decideBySteps(ctx, sp, d, state, ep)
 	}
-	resp, err := ep.Client.Ask(ctx, state, map[string]systemone.Question{questionKey: BuildQuestion(sp)})
+	resp, err := ep.Client.AskLayout(ctx, state, map[string]systemone.Question{questionKey: BuildQuestion(sp)}, sp.Layout)
 	if err != nil {
 		return err
 	}
@@ -268,7 +268,7 @@ func StepDistribution(sp *spec.Spec, pYes []float64) map[string]float64 {
 
 // decideBySteps は分解した choice を 1 回の呼び出しで聞き、積の分布を多択の答えと同じ形にする(較正・帯・記録は共通)。
 func decideBySteps(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *Endpoint) error {
-	resp, err := ep.Client.Ask(ctx, state, StepQuestions(sp))
+	resp, err := ep.Client.AskLayout(ctx, state, StepQuestions(sp), sp.Layout)
 	if err != nil {
 		return err
 	}

@@ -148,8 +148,26 @@ type Spec struct {
 	// Variants は聞き方の候補(`shikii tune` が正解の貯金で採点する)。鍵には入らない。採用されたものは新しい版として別ファイルになる。
 	Variants []Variant `yaml:"variants,omitempty"`
 	Steps    []Step    `yaml:"steps,omitempty"` // choice の分解: はい/いいえ の列。あれば多択を 1 つ聞く代わりに全段を 1 回で聞き、枝の積で分布を作る
+	// Layout は prompt の配置(state-last | state-first | plain。空なら相手の既定)。聞き方の一部なので指紋に入る。
+	// shikii-readout が従い、応答の model 名に配置が付くので較正の鍵も分かれる。決定モデルは無視する。
+	Layout string `yaml:"layout,omitempty"`
 
 	path string
+}
+
+// Layouts は shikii が知っている配置の名前。shikii-readout の並べ方と対応する。
+var Layouts = []string{"state-last", "state-first", "plain"}
+
+func validateLayout(l string) error {
+	if l == "" {
+		return nil
+	}
+	for _, k := range Layouts {
+		if l == k {
+			return nil
+		}
+	}
+	return fmt.Errorf("layout: unknown %q (one of %s)", l, strings.Join(Layouts, " | "))
 }
 
 // Variant は聞き方の候補。書いた項目だけを上書きする(無い項目は今の spec のまま)。
@@ -160,6 +178,7 @@ type Variant struct {
 	Levels   []string          `yaml:"levels,omitempty"`   // score: 段階の言い換え(数は同じ)
 	Template string            `yaml:"template,omitempty"` // state の並べ方
 	Steps    []Step            `yaml:"steps,omitempty"`    // choice: 多択を はい/いいえ の列に分解する(空なら今のまま)
+	Layout   string            `yaml:"layout,omitempty"`   // prompt の配置(state-last | state-first | plain)。空なら今のまま
 }
 
 // Step は分解の 1 段: はい/いいえ の質問と、どちらの答えでどの選択肢に確定するか。
@@ -258,6 +277,9 @@ func (s *Spec) WithVariant(v Variant) *Spec {
 	} else {
 		c.Steps = copySteps(s.Steps)
 	}
+	if v.Layout != "" {
+		c.Layout = v.Layout
+	}
 	return &c
 }
 
@@ -315,6 +337,9 @@ func (s *Spec) Validate() error {
 	if err := validateSteps(s.Type, s.Options, s.Steps); err != nil {
 		return err
 	}
+	if err := validateLayout(s.Layout); err != nil {
+		return err
+	}
 	if strings.TrimSpace(s.State.Template) == "" {
 		return fmt.Errorf("state.template is required")
 	}
@@ -362,10 +387,13 @@ func (s *Spec) Validate() error {
 			return fmt.Errorf("variants[%d]: name must be unique, non-empty and not \"current\"", i)
 		}
 		names[v.Name] = true
-		if v.Question == "" && len(v.Options) == 0 && len(v.Levels) == 0 && v.Template == "" && len(v.Steps) == 0 {
+		if v.Question == "" && len(v.Options) == 0 && len(v.Levels) == 0 && v.Template == "" && len(v.Steps) == 0 && v.Layout == "" {
 			return fmt.Errorf("variants[%d] (%s): changes nothing", i, v.Name)
 		}
 		if err := validateSteps(s.Type, s.Options, v.Steps); err != nil {
+			return fmt.Errorf("variants[%d] (%s).%w", i, v.Name, err)
+		}
+		if err := validateLayout(v.Layout); err != nil {
 			return fmt.Errorf("variants[%d] (%s).%w", i, v.Name, err)
 		}
 		for id := range v.Options {
@@ -425,6 +453,9 @@ func (s *Spec) Hash() string {
 	}
 	for _, st := range s.Steps { // 分解は聞き方。無い spec の鍵は変わらない
 		w("step", st.Ask, st.Yes, st.No)
+	}
+	if s.Layout != "" { // 配置も聞き方。無い spec の鍵は変わらない
+		w("layout", s.Layout)
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

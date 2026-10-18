@@ -1,0 +1,126 @@
+{
+  "spec": "prompt-intent",
+  "spec_path": "decisions/prompt-intent-v2.yaml",
+  "spec_hash": "df1367887c4970a7",
+  "version": 2,
+  "model": "qwen3-4b-q8+state-last",
+  "truths": 62,
+  "at": "2026-10-18T09:10:29+09:00",
+  "run": "2026-10-18-prompt-intent-qwen3-4b-q8-2",
+  "run_page": "wiki/runs/2026-10-18-prompt-intent-qwen3-4b-q8-2.md",
+  "candidates": [
+    {
+      "name": "current",
+      "top1": 0.7741935483870968,
+      "brier": 0.22156027630323685,
+      "prec_at_act": 0.7741935483870968,
+      "rec_at_act": 1,
+      "change": ""
+    },
+    {
+      "name": "plain",
+      "top1": 0.9032258064516129,
+      "brier": 0.09591451336670481,
+      "prec_at_act": 0.9032258064516129,
+      "rec_at_act": 1,
+      "change": "layout: plain"
+    },
+    {
+      "name": "plain-shorter",
+      "top1": 0.8870967741935484,
+      "brier": 0.0975151649502604,
+      "prec_at_act": 0.9016393442622951,
+      "rec_at_act": 1,
+      "change": "question: The input is a message a user sent to a coding assistant. Wh…; layout: plain"
+    },
+    {
+      "name": "shorter-question",
+      "top1": 0.8548387096774194,
+      "brier": 0.13943829841049898,
+      "prec_at_act": 0.8548387096774194,
+      "rec_at_act": 1,
+      "change": "question: The state is a message a user sent to a coding assistant. Wh…"
+    },
+    {
+      "name": "other-tight",
+      "top1": 0.7741935483870968,
+      "brier": 0.21864182427131384,
+      "prec_at_act": 0.7833333333333333,
+      "rec_at_act": 0.9791666666666666,
+      "change": "other: Not a request at all - greetings, thanks…"
+    },
+    {
+      "name": "tighten-review-vs-operation",
+      "top1": 0.7741935483870968,
+      "brier": 0.209930091919799,
+      "prec_at_act": 0.7833333333333333,
+      "rec_at_act": 0.9791666666666666,
+      "change": "question: The state is a message a user sent to a coding assistant. Wh…; review: Evaluate changes or code that already ex…"
+    },
+    {
+      "name": "clarify-review-purpose",
+      "top1": 0.7903225806451613,
+      "brier": 0.20054558173951598,
+      "prec_at_act": 0.8032786885245902,
+      "rec_at_act": 1,
+      "change": "question: The state is a message a user sent to a coding assistant. Wh…; review: Evaluate changes or code that already ex…"
+    },
+    {
+      "name": "add-review-example",
+      "top1": 0.7741935483870968,
+      "brier": 0.21901809523952173,
+      "prec_at_act": 0.7741935483870968,
+      "rec_at_act": 1,
+      "change": "question: The state is a message a user sent to a coding assistant. Wh…; review: Evaluate changes or code that already ex…"
+    },
+    {
+      "name": "two-step",
+      "top1": 0.3225806451612903,
+      "brier": 0.623556734514915,
+      "prec_at_act": 0.3220338983050847,
+      "rec_at_act": 0.95,
+      "change": "decomposed into 4 yes/no steps: Is this message a request (something the assistant…"
+    }
+  ],
+  "holdout": 0.8870967741935484,
+  "have_holdout": true,
+  "holdout_better": 8,
+  "holdout_worse": 1,
+  "p_value": 0.01953125,
+  "winner": "plain",
+  "adoptable": true,
+  "decision": "plain may be adopted once a person confirms the meaning is unchanged (page, or --write)",
+  "lesson": "plain: layout: plain → top-1 0.774 → 0.903, brier 0.2216 → 0.0959, holdout 0.887 \u003e current 0.774 (8 better / 1 worse, p=0.020) on 62 truths",
+  "winner_variant": {
+    "Name": "plain",
+    "Question": "",
+    "Options": null,
+    "Levels": null,
+    "Template": "",
+    "Steps": null,
+    "Layout": "plain"
+  },
+  "winner_wording": {
+    "question": "The state is a message a user sent to a coding assistant. What is the user asking the assistant to do?\nShort messages like \"fix it\" or \"why?\" are still requests; pick the closest request type.\n",
+    "options": {
+      "change_request": "Change something in the repository - edit, fix, add, remove, rename, refactor, write tests or docs. Includes terse commands like \"fix the typo\" or \"直して\".",
+      "operation": "Run or operate something without editing code - run tests, build, commit, push, deploy, restart, install, show logs.",
+      "other": "Not a request at all - greetings, thanks, acknowledgements (\"ok\", \"了解\"), small talk, or ending the session.",
+      "question": "Explain, investigate, compare or give an opinion, without changing anything. Includes \"why\", \"what does this do\", \"where is\", \"調べて\".",
+      "review": "Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality."
+    },
+    "template": "{{ message }}\n"
+  },
+  "current_wording": {
+    "question": "The state is a message a user sent to a coding assistant. What is the user asking the assistant to do?\nShort messages like \"fix it\" or \"why?\" are still requests; pick the closest request type.\n",
+    "options": {
+      "change_request": "Change something in the repository - edit, fix, add, remove, rename, refactor, write tests or docs. Includes terse commands like \"fix the typo\" or \"直して\".",
+      "operation": "Run or operate something without editing code - run tests, build, commit, push, deploy, restart, install, show logs.",
+      "other": "Not a request at all - greetings, thanks, acknowledgements (\"ok\", \"了解\"), small talk, or ending the session.",
+      "question": "Explain, investigate, compare or give an opinion, without changing anything. Includes \"why\", \"what does this do\", \"where is\", \"調べて\".",
+      "review": "Evaluate changes or code that already exist - review a diff or PR, check for problems, rate quality."
+    },
+    "template": "{{ message }}\n"
+  },
+  "adopted": false
+}
