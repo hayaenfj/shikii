@@ -305,3 +305,14 @@ func TestBindHostIsLoopbackExceptInsideAContainer(t *testing.T) {
 		t.Fatalf("inside a container the port must be reachable from the host, got %q", got)
 	}
 }
+
+// 使い方の案内: 最初に 4 手順の案内が出て、閉じれば次回から出ない(右上の ? で再表示)。カードの上に「今やること」、ボタンに番号(キーと同じ)。
+func TestServeUIExplainsItself(t *testing.T) {
+	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	body := getBody(t, url+"/")
+	for _, must := range []string{`id="help"`, "この画面の使い方", "本当はどれだったかのボタンを押します", "わかった", "shikii.help", "本文を読んで、本当はどれだったかを押してください", `class="num"`} {
+		if !strings.Contains(body, must) {
+			t.Fatalf("the page must explain itself; missing %q", must)
+		}
+	}
+}

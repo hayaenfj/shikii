@@ -560,7 +560,10 @@ const uiHTML = `<!doctype html>
   header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
   h1 { font-size: 20px; margin: 0 0 4px; } h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
   .adv { display: none !important; } body.advanced .adv { display: revert !important; }
-  #mode { margin-left:auto; font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  #help { margin-left:auto; font: inherit; font-size: 13px; width: 30px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  .howto { border: 1px solid var(--amber); background: var(--amberbg); color: var(--fg); border-radius: 10px; padding: 12px 16px; margin: 8px 0 14px; font-size: 14px; } .howto ol { margin: 6px 0 8px 20px; padding: 0; } .howto li { margin: 3px 0; }
+  .todo { font-size: 14px; color: var(--fg); margin: 8px 0 6px; } .num { display:inline-block; min-width: 1.4em; color: var(--muted); font-size: 12px; }
+  #mode { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
   .status { margin: 6px 0 10px; font-size: 14px; } .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 4px; } .bar > div { height: 100%; background: var(--ok); }
   #tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 14px; } #tabs button { font-size: 14px; padding: 6px 12px; } #tabs button.active { border-color: var(--fg); font-weight: 600; } .badge { background: var(--amberbg); color: var(--amber); border-radius: 999px; padding: 0 7px; font-size: 12px; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0 10px; } .chips button { font-size: 13px; padding: 4px 10px; } .chips button.active { border-color: var(--fg); font-weight: 600; } .chips .sep { flex: 1; }
@@ -595,6 +598,7 @@ const uiHTML = `<!doctype html>
 </style>
 <header>
   <h1>shikii <small id="tagline"></small></h1>
+  <button id="help" type="button" title="how to use">?</button>
   <button id="mode" type="button"></button>
   <select id="lang" aria-label="language"><option value="en">English</option><option value="ja">日本語</option></select>
 </header>
@@ -610,6 +614,7 @@ const T = {
         plainAuto: 'The AI may act on its own here (enough answers were checked).', plainReady: 'Enough answers: the line can be drawn.', plainLearning: (n, m) => 'Still learning: ' + n + ' of ' + m + ' answers checked before the AI may act on its own.', plainStale: 'The question changed; it is learning again.',
         aiGuess: (name, p) => 'AI guess: ' + name + ' (' + p + '% sure)', bandAsk: 'The AI was unsure.', bandAct: 'The AI acted on its own.', bandDiscard: 'The AI let it pass.', sameAsAI: 'same as the AI',
         records: n => n + ' decisions', answered: n => n + ' checked', calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'ready to draw the line ' + n + '/' + m,
+        howToTitle: 'How to use this page', howTo: ['Pick a decision in the tabs at the top.', 'Read the text on the card. The AI already guessed; its guess is marked "same as the AI".', 'Press the answer that was actually true (keys 1-9, or Enter for "same as the AI"). The next card appears.', 'Not sure? Skip it with → and come back later. When enough answers are checked, the AI is allowed to act on its own.'], gotIt: 'got it', todo: 'Read the text, then press what was actually true.',
         withContext: 'asked again with context', contextRung: 'context rung', toPerson: (h, k) => 'to a person ' + h + ' (' + k + ' per 1000)',
         audit: 'audit sample: the machine acted on this; 1 in 20 is shown here so its precision is measured on what people checked',
         knowledge: 'Knowledge (claims)', claimsCount: (n, p) => n + ' claims, ' + p + ' prose pages', noClaims: 'no claims yet (tune drafts one when a candidate wins)',
@@ -628,6 +633,7 @@ const T = {
         plainAuto: 'この判定は AI が自分で動いてよい状態です(答え合わせが十分に揃いました)。', plainReady: '答えが揃いました。AI の自信の数字を直す線を引けます。', plainLearning: (n, m) => 'まだ学習中: 答え合わせ ' + n + ' 件。AI が自分で動けるようになるまで ' + m + ' 件。', plainStale: '質問の文が変わったので、学び直しています。',
         aiGuess: (name, p) => 'AI の予想: ' + name + '(自信 ' + p + '%)', bandAsk: 'AI は迷いました。', bandAct: 'AI は自分で動きました。', bandDiscard: 'AI は見送りました。', sameAsAI: 'AI と同じ',
         records: n => '判定 ' + n + ' 件', answered: n => '答え合わせ済み ' + n + ' 件', calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変わったので学び直し', collecting: (n, m) => '学習中 ' + n + '/' + m, ready: (n, m) => '線を引けます ' + n + '/' + m,
+        howToTitle: 'この画面の使い方', howTo: ['上のタブで判定の種類を選びます。', 'カードの本文を読みます。AI の予想は「AI と同じ」と書いたボタンです。', '本当はどれだったかのボタンを押します(キー 1〜9、AI と同じなら Enter)。押すと次のカードが出ます。', '分からなければ → でスキップして、あとで戻れます。答え合わせが揃うと、AI が自分で動けるようになります。'], gotIt: 'わかった', todo: '本文を読んで、本当はどれだったかを押してください。',
         withContext: '文脈を足して聞き直した', contextRung: '文脈の段', toPerson: (h, k) => '人へ ' + h + '(1000 判定あたり ' + k + ')',
         audit: '抜き取り検査: 機械が自動で動いた判定。20 件に 1 件をここに出し、人が確かめた分で精度を測る',
         knowledge: '知識(主張)', claimsCount: (n, p) => '主張 ' + n + '、文章のページ ' + p, noClaims: 'まだ主張はありません(tune で勝った候補があれば下書きができます)',
@@ -649,8 +655,9 @@ const t = k => T[lang][k];
 $('#lang').value = lang;
 $('#lang').addEventListener('change', e => { lang = e.target.value; try { localStorage.setItem('shikii.lang', lang); } catch (x) {} render(); });
 // かんたん表示が既定。「くわしく」で主張・言い換えの案・ハッシュ・モデル名などを出す
-let advanced = false;
-try { advanced = localStorage.getItem('shikii.mode') === 'advanced'; } catch (e) {}
+let advanced = false, showHelp = true;
+try { advanced = localStorage.getItem('shikii.mode') === 'advanced'; showHelp = localStorage.getItem('shikii.help') !== 'hidden'; } catch (e) {}
+$('#help').addEventListener('click', () => { showHelp = !showHelp; remember('shikii.help', showHelp ? 'shown' : 'hidden'); render(); });
 document.body.classList.toggle('advanced', advanced);
 $('#mode').addEventListener('click', () => { advanced = !advanced; document.body.classList.toggle('advanced', advanced); try { localStorage.setItem('shikii.mode', advanced ? 'advanced' : 'simple'); } catch (x) {} render(); });
 // キー操作: 1〜9 で先頭の判定の答えを選ぶ、Enter で AI と同じ
@@ -684,7 +691,7 @@ function itemCard(sp, it, pos) {
   const text = it.answerable ? Object.entries(it.inputs).map(([k,v]) => '<div><span class="k">' + esc(k) + '</span><br>' + esc(v) + '</div>').join('') : '<span class="k">' + esc(t('noText')(it.inputs_hash)) + '</span>';
   const name = c => (c.labels && c.labels[lang]) || c.label;
   const topName = it.top ? name(it.choices.find(c => c.truth === it.top) || {label: it.top}) : '';
-  const btns = it.choices.map(c => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '">' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('sameAsAI')) : '') + '</button>').join('');
+  const btns = it.choices.map((c, i) => '<button class="' + (c.truth === it.top ? 'top' : '') + '" data-truth="' + esc(c.truth) + '" title="' + esc(c.description || '') + '"><span class="num">' + (i + 1) + '</span>' + esc(name(c)) + (c.truth === it.top ? ' · ' + esc(t('sameAsAI')) : '') + '</button>').join('');
   const not = (it.answerable && it.top) ? '<button class="weak" data-truth="!' + esc(it.top) + '">' + esc(t('notThat')(topName)) + '</button>' : '';
   const skip = '<button class="weak skip" data-skip="1">' + esc(t('skip')) + '</button>';
   const bandWord = it.band === 'ask' ? t('bandAsk') : it.band === 'act' ? t('bandAct') : t('bandDiscard');
@@ -709,6 +716,12 @@ function render() {
   const root = $('#root'); root.innerHTML = '';
   if (!state) { root.innerHTML = '<div class="empty">' + esc(t('loading')) + '</div>'; return; }
   if (!state.specs.length) { root.innerHTML = '<div class="empty">' + esc(t('noSpecs')) + '</div>'; return; }
+  if (showHelp) {
+    const h = document.createElement('div'); h.className = 'howto';
+    h.innerHTML = '<b>' + esc(t('howToTitle')) + '</b><ol>' + t('howTo').map(x => '<li>' + esc(x) + '</li>').join('') + '</ol><button class="weak" data-gotit="1">' + esc(t('gotIt')) + '</button>';
+    h.addEventListener('click', ev => { if (ev.target.closest('[data-gotit]')) { showHelp = false; remember('shikii.help', 'hidden'); render(); } });
+    root.appendChild(h);
+  }
   // タブ: 判定ごとに 1 つ(待ち件数の印付き)。知識のタブは「くわしく」の時だけ
   const ids = state.specs.map(s => s.id);
   if (tab === 'wiki' && !(advanced && state.wiki)) tab = null;
@@ -752,7 +765,7 @@ function render() {
     d.addEventListener('click', ev => { if (ev.target.closest('[data-unskip]')) { skipped.clear(); render(); } });
     sec.appendChild(d);
   } else if (view === 'one') {
-    sec.innerHTML += '<div class="keys">' + esc(t('keysHint')) + '</div>';
+    sec.innerHTML += '<div class="todo">' + esc(t('todo')) + '</div><div class="keys">' + esc(t('keysHint')) + '</div>';
     sec.appendChild(itemCard(sp, visible[0], t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')));
   } else {
     sec.innerHTML += '<div class="keys">' + esc(t('keysHint')) + '</div>';
