@@ -42,11 +42,20 @@ type Record struct {
 	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。この本文は聞き直しでも hosted に送らない
 	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問。古い記録は空) | context(文脈を足して聞き直した)
 	Minimal      *Pass              `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw。人の正解はこちらにも付く)
+	Display      *RecordDisplay     `json:"display,omitempty"` // 設定の言語での併記(hook が書く。英語なら無い): 何と言われて何をしたかを後から辿るため
 	RedoOf       string             `json:"redo_of,omitempty"` // 過去の判定(trace_id)の本文を、今の聞き方と線でもう一度判定したもの。元の記録は列から消える
 	At           time.Time          `json:"at"`
 }
 
 // Pass は 1 つの段の答え。文脈を足して聞き直した記録が、最小の質問の答えを持っておくのに使う。
+// RecordDisplay は判定の記録に添える、設定の言語での訳(spec の display.<lang> から)。モデルには送らず、較正の鍵にも入らない。
+type RecordDisplay struct {
+	Lang     string `json:"lang"`
+	Question string `json:"question,omitempty"` // 人の言葉の質問
+	Top      string `json:"top,omitempty"`      // モデルの答え(選択肢)の人の言葉
+	Message  string `json:"message,omitempty"`  // hook が人かエージェントに出した文(英語と併記)。出さなかったら無い
+}
+
 type Pass struct {
 	SpecHash     string             `json:"spec_hash"`
 	InputsHash   string             `json:"inputs_hash,omitempty"` // この段の template が使う入力だけのハッシュ(文脈の入力が違っても最小の質問では同じ入力)

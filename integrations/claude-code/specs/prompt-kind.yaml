@@ -24,7 +24,7 @@ state:
   template: |
     request: {{ request }}
   required: [request]
-  # 迷った時だけ: hook が transcript から取った直前のアシスタントの発言を足して聞き直す(別のハッシュ・別の線)。短い返事(「yes please」「go ahead」)はこれで決まる
+  # 迷った時だけ: 直前のアシスタントの発言(Stop の hook が控えたもの)を足して聞き直す(別のハッシュ・別の線)。短い返事(「yes please」「go ahead」)はこれで決まる
   context: |
     previous assistant turn: {{ previous }}
     request: {{ request }}

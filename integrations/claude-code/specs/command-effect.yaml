@@ -6,17 +6,17 @@ version: 1
 type: choice
 
 question: |
-  A coding agent is about to run `command` in the project at `cwd`. What does the command do to the machine?
+  A coding agent is about to run `command` in the project at `cwd`. What does the command do to the machine? If more than one applies, pick the heaviest: destroy > send_outside > change_outside > change_project > read.
 
 options:
   - id: read
-    description: only reads or inspects (ls, cat, grep, git status/log/diff, go test, build, curl GET, running checks) and changes no file and no state outside temporary outputs
+    description: only reads, inspects, builds or tests (ls, cat, grep, git status/log/diff, go test, make build, curl GET, linters) and changes nothing that anyone would miss; build outputs, caches and files under /tmp count as nothing
   - id: change_project
-    description: changes files or git state inside the project directory (editing, formatting, generating, go mod tidy, git add/commit/checkout/stash, installing project-local dependencies)
+    description: changes files or git state inside the project directory in a way git can undo or redo (editing, formatting, generating, go mod tidy, git add/commit/stash/checkout of a branch, installing project-local dependencies, removing regenerable folders such as node_modules or build/)
   - id: change_outside
-    description: changes something outside the project (home directory dotfiles, global config, system packages, global npm/pip/brew installs, other projects, services, cron)
+    description: changes something outside the project that is not sent anywhere (home directory dotfiles, global config, system packages, global npm/pip/brew installs, other projects, local services or containers, cron, killing processes)
   - id: destroy
-    description: deletes, overwrites or rewrites history in a way that is hard to undo (rm -rf, git reset --hard, git push --force, dropping tables, truncating files, overwriting without backup)
+    description: causes a loss that neither git nor a package manager can bring back (rm -rf on uncommitted work or user data, git reset --hard or git checkout -- that drops uncommitted changes, git push --force, dropping tables, truncating or overwriting files without a backup)
   - id: send_outside
     description: sends code, data or changes to somewhere outside this machine (git push, publishing a package, deploying, posting to an API, sending mail)
 

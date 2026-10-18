@@ -170,7 +170,7 @@ shikii hook uninstall --yes  # removes the 3 hooks; records and truths stay
 
 Four specs ship with it: `command-effect` (read / change_project / change_outside / destroy / send_outside, asked before every Bash call), `edit-in-scope` (is this edit part of what the user asked, before Edit/Write), `needs-plan` (should the agent agree on an approach first, on every prompt) and `prompt-kind` (what the agent will end up doing; its truth comes for free at the end of the turn from whether the working tree changed). Everything is local-only (`send_to: [local]`, `pii: true`).
 
-Until a spec has a calibration line the hooks only record (shadow mode). Once it does: a confident `destroy`, `send_outside` or `change_outside` asks for confirmation (under `--dangerously-skip-permissions` it becomes a one-line warning instead), a confident out-of-scope edit or needs-a-plan request becomes context for the agent, and anything unsure prints one line with the URL of the decision to answer later. A hook never denies; stopping is a person's call. At the end of a turn one line says how many of this session's decisions wait for an answer. Failures (no model, slow model) never block: the hook exits 0 and logs to `~/.shikii/agent/.shikii/hook.log`. Details and the band → behaviour table: [`integrations/claude-code.md`](../integrations/claude-code.md).
+Until a spec has a calibration line the hooks only record (shadow mode). Once it does: a confident `destroy`, `send_outside` or `change_outside` asks for confirmation (under `--dangerously-skip-permissions` it becomes a one-line warning instead), a confident out-of-scope edit or needs-a-plan request becomes context for the agent, and anything unsure prints one line with the URL of the decision to answer later. A hook never denies; stopping is a person's call. At the end of a turn one line says how many of this session's decisions wait for an answer (only when new ones were added). If Claude Code's `language` setting is not English, every message carries that language next to the English, and the record keeps the translation (`display`: language, question, answer, the message shown) so you can trace what was said later. Failures (no model, slow model) never block: the hook exits 0 and logs to `~/.shikii/agent/.shikii/hook.log`. Details and the band → behaviour table: [`integrations/claude-code.md`](../integrations/claude-code.md).
 
 ### Install and update
 
@@ -227,7 +227,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 185 Go tests across 8 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 187 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -308,6 +308,7 @@ shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--pro
 shikii new       <id> [--type ...] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--from spec.yaml]   # make a spec by answering questions
 shikii init                                               # folders, wiki seed, MCP entries, AGENTS.md section, agent skill
 shikii hook      install [--yes] | uninstall [--yes]      # Claude Code hooks that measure the agent's own decisions (~/.shikii/agent, local model, page on :8096)
+                 pre-tool-use | user-prompt-submit | stop  # run by Claude Code with its JSON on stdin; not for typing by hand
 shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # start a local model; puts shikii-readout in front of a plain GGUF
 shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # what is running, what is missing, how to fix it
 ```
