@@ -61,7 +61,7 @@ cd <project root> && shikii init
 - **你已经有一张过去决定的表格**：`shikii import past.csv --spec .shikii/decisions/<id>.yaml` 把它变成核对结果，前 50 条就不必手动回答了
 - **从你自己的程序调用**：启动 `shikii serve`，调用 `POST /v1/decide`（判定）和 `POST /v1/label`（核对）。请求体是 JSON，必须带 `-H 'Content-Type: application/json'`（所有接口见[完整指南](../guide.md#or-run-one-process-for-programs-and-people)）
 - **别人的例子**：[咨询邮件分流](../examples/inquiry-route.md)（日语）。一位第一次使用的人只靠 README 走完了整个循环；spec 和 22 条输入都在里面
-- **测量 AI 自己的判断**（Claude Code 和 Codex）：`shikii hook install` 会装上 hook，让 shikii 跑在 agent 自己做的决定上：一条命令会做什么、一次编辑是否在你要求的范围内、一个请求是否需要先出计划、以及 agent 最终会做什么（最后这个正确答案是免费得到的，看工作树有没有变化就行）。线画出来之前什么都不会变。之后，危险的命令（删除、改动项目之外的东西、往外发送）会请你确认，并附上这条线建立在多少条正确答案上以及人工核对过的精确率；安全的命令悄悄放行（[详情](../../integrations/claude-code.md)，日语）
+- **测量 AI 自己的思考**（Claude Code 和 Codex）：`shikii hook install` 会装上两个 hook，在 agent 每一轮工作的前后各跑一次 shikii。之前问：这个请求最终会改动文件吗？agent 是否应该先和你商定做法？之后问：改动是否在你要求的范围内？你要求的事做完了吗？第一个正确答案是免费得到的，看工作树有没有变化就行；其余的由你在页面上回答。线画出来之前什么都不会变。之后，需要先出计划的请求会变成一条给 agent 的提示，看起来没做完或超出范围的一轮会变成一行给你的提示，并附上这条线建立在多少条正确答案上以及人工核对过的精确率。hook 从不拦下任何工具（[详情](../../integrations/claude-code.md)，日语）
 - **在 CI 里**：`uses: hayaenfj/shikii@main` 会在每个 pull request 上跑 `shikii check`，问法被改动或线被削弱时构建就会失败
 
 ## 走完一圈
