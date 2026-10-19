@@ -1809,6 +1809,18 @@ func cmdStatus(args []string) error {
 			fmt.Fprintf(stdout, "  by source: %s\n", fmtCounts(bySource))
 			fmt.Fprintf(stdout, "  by truth:  %s\n", fmtCounts(byTruth))
 		}
+		// 仕事ごとの数(hook の記録に付く印。1 つの store に複数のプロジェクトの判定が溜まるので、どこで何件かを見る。線は全体で 1 本)
+		if all, err := st.Records(id, 0); err == nil {
+			byProject := map[string]int{}
+			for _, r := range all {
+				if r.Project != "" {
+					byProject[r.Project]++
+				}
+			}
+			if len(byProject) > 0 {
+				fmt.Fprintf(stdout, "  by project: %s\n", fmtCounts(byProject))
+			}
+		}
 		sp := specs[id]
 		if f, err := st.Funnel(id, sp != nil && decide.DiscardUnsure(sp)); err == nil && f.Records > 0 {
 			// 段ごとの数。進み具合は 1000 判定あたりの人の判断(ask のまま人に回った数)

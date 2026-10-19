@@ -367,7 +367,7 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 		items = append(items, map[string]any{
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "stale": !sp.LiveHash(rec.SpecHash), "rung": rec.RungOf(), "redo_of": rec.RedoOf,
-			"answerable": len(rec.Inputs) > 0, "choices": truthChoices(sp),
+			"answerable": len(rec.Inputs) > 0, "choices": truthChoices(sp), "project": rec.Project,
 			"truth": l.Truth, "truth_at": l.At, "source": l.Source, "correct": store.Correct(rec.Top, l.Truth),
 		})
 		if len(items) >= limit {
@@ -599,7 +599,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		items = append(items, map[string]any{
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": !sp.LiveHash(rec.SpecHash),
-			"answerable": answerable, "choices": choices, "rung": rec.RungOf(),
+			"answerable": answerable, "choices": choices, "rung": rec.RungOf(), "project": rec.Project,
 			"audit": rec.Band == "act" && store.AuditSample(rec.TraceID),
 		})
 	}

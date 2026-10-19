@@ -43,6 +43,7 @@ type Record struct {
 	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問。古い記録は空) | context(文脈を足して聞き直した)
 	Minimal      *Pass              `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw。人の正解はこちらにも付く)
 	Display      *RecordDisplay     `json:"display,omitempty"` // 設定の言語での併記(hook が書く。英語なら無い): 何と言われて何をしたかを後から辿るため
+	Project      string             `json:"project,omitempty"` // どの仕事の判定か(hook が書く: cwd の repo のルートの名、git の外なら cwd の名)。入力でもハッシュの鍵でもなく、画面と status で分けて見るための印
 	RedoOf       string             `json:"redo_of,omitempty"` // 過去の判定(trace_id)の本文を、今の聞き方と線でもう一度判定したもの。元の記録は列から消える
 	At           time.Time          `json:"at"`
 }

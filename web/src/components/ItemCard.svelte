@@ -56,6 +56,7 @@
   {#if it.top}
     <div class="guess">{bandWord} {t('aiGuess')(topName, (it.p * 100).toFixed(0))}{#if it.audit}{' '}<span class="audit">{t('auditShort')}</span>{/if}</div>
   {/if}
+  {#if it.project}<div class="meta"><span class="project">{it.project}</span></div>{/if}
   <div class="meta adv">
     <span>{it.band}</span><span>{fmtDateTime(it.at)}</span><span>{it.model || ''}</span>
     {#if it.rung === 'context'}<span>{t('withContext')}</span>{/if}

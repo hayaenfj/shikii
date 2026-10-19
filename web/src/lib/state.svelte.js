@@ -15,6 +15,8 @@ export const ui = $state({
   pinned: params.get('trace') || '',
   view: read('shikii.view') || 'one',
   filter: 'all',
+  project: '', // 仕事(記録の project の印)での絞り込み。'' は全部。hook の store は 1 つなので、どの repo の判定かで分けて見る
+
   listSize: 30,
   done: false,
 });
