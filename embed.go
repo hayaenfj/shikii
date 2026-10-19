@@ -14,7 +14,7 @@ var SkillFS embed.FS
 //go:embed wiki/index.md wiki/types wiki/patterns wiki/models
 var WikiFS embed.FS
 
-// AgentSpecsFS は AI 自身の作業中の判断の spec(integrations/claude-code/specs/: command-effect、edit-in-scope、needs-plan、prompt-kind)。
+// AgentSpecsFS は AI 自身の考え方の spec(integrations/claude-code/specs/: 考える前の prompt-kind と needs-plan、考え終わった後の changes-in-scope と done-as-asked)。
 // `shikii hook install` が ~/.shikii/agent/decisions/ に、無いものだけ写す(線の入った spec や人が直した spec は触らない)。
 //
 //go:embed integrations/claude-code/specs

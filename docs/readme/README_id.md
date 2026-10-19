@@ -7,7 +7,7 @@
 ### Alat untuk membiarkan AI memutuskan ya/tidak, yang mana, atau seberapa banyak, dan menjaga keputusan itu tetap bisa dipercaya dalam pekerjaan sehari-hari. Anda memeriksa sebagian jawaban dan, sesekali, mengonfirmasi "apakah ini masih yang saya maksud?". Sisanya dikerjakan mesin.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 

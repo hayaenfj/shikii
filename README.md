@@ -7,7 +7,7 @@
 ### A tool for letting an AI decide yes/no, which one, or how much, and keeping that decision trustworthy in daily work. You check some answers and, now and then, confirm "is this still what I meant?". The machine does the rest.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
@@ -61,7 +61,7 @@ Changing the answer page itself (`web/`, Svelte) needs Node 24 (`make web`). Usi
 - **You already have a table of past decisions**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` turns it into corrections, so you do not answer the first 50 by hand
 - **From your own program**: start `shikii serve` and call `POST /v1/decide` (decide) and `POST /v1/label` (correct). The body is JSON and `-H 'Content-Type: application/json'` is required (all endpoints: [the long guide](docs/guide.md#or-run-one-process-for-programs-and-people))
 - **Someone else's example**: [routing inquiry mails](docs/examples/inquiry-route.md) (Japanese). A first-time user went through the whole loop with nothing but the README; the spec and the 22 inputs are included
-- **Measure the AI's own judgement** (Claude Code and Codex): `shikii hook install` adds hooks that run shikii on the agent's own decisions: what a command does, whether an edit is within what you asked, whether a request needs a plan first, and what the agent will end up doing (that last truth comes for free from whether the working tree changed). Nothing changes until a line exists. Then a risky command (delete, change outside the project, send outside) asks you to confirm, with how many truths the line rests on and the human-checked precision; safe commands pass silently ([details](integrations/claude-code.md), Japanese)
+- **Measure the AI's own thinking** (Claude Code and Codex): `shikii hook install` adds two hooks that run shikii before and after each turn. Before: will this request end up changing files, and should the agent agree on an approach first? After: were the changes within what you asked, and did it finish what you asked? The first truth comes for free from whether the working tree changed; the rest you answer on a page. Nothing changes until a line exists. Then a request that needs a plan becomes a note to the agent, and a turn that looks unfinished or out of scope becomes one line to you, with how many truths the line rests on and the human-checked precision. No hook ever stops a tool ([details](integrations/claude-code.md), Japanese)
 - **In CI**: `uses: hayaenfj/shikii@main` runs `shikii check` on every pull request, so a changed wording or a weakened line fails the build
 
 ## One full loop
