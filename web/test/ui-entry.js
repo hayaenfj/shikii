@@ -61,10 +61,16 @@ function checkProject(target) {
   const items = [...target.querySelectorAll('.item')];
   const onlyBeta = items.length === 1 && items[0].textContent.includes('BETA-1') && !!items[0].querySelector('.project');
   unmount(app);
+  // 別の判定に切り替えて、そこに beta が無ければ絞らない(空の列にならない)
+  const other = { ...sp, id: 'needs-plan', queue: { items: [item('q1', 'ALPHA-ONLY', 'alpha')] }, records: 1, unlabeled: 1 };
+  const app2 = mount(SpecPanel, { target, props: { sp: other } });
+  flushSync();
+  const notStranded = target.querySelectorAll('.item').length === 1;
+  unmount(app2);
   ui.project = '';
   ui.view = 'one';
-  const ok = hasChips && onlyBeta;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (project chips=' + chips.length + ', filtered to beta=' + onlyBeta + ')');
+  const ok = hasChips && onlyBeta && notStranded;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (project chips=' + chips.length + ', filtered to beta=' + onlyBeta + ', other spec not stranded=' + notStranded + ')');
   return ok;
 }
 

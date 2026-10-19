@@ -20,6 +20,6 @@ else
 fi
 BIN="$(go env GOBIN)"; [ -n "$BIN" ] || BIN="$(go env GOPATH)/bin"
 echo "installed: $BIN/shikii $BIN/shikii-readout"
-case ":$PATH:" in *":$BIN:"*) ;; *) echo "add to PATH: $BIN  (the hooks call plain \`shikii\`, so it must be on the PATH of the terminal that starts the agent)";; esac
+case ":$PATH:" in *":$BIN:"*) ;; *) echo "add to PATH: $BIN  (the hooks use the binary's own path and work without it; the agent needs it on PATH to run \`shikii\` itself)";; esac
 "$BIN/shikii" hook install --yes
 echo "done. Open a new terminal and use Claude Code or Codex as usual. To hand it a business decision, just tell the agent what you want decided; it sets shikii up in the project by itself."

@@ -111,7 +111,7 @@
       <form class="add-variant" onsubmit={e => { e.preventDefault(); addVariant(); }}>
         <div class="k">{t('addWording')}</div>
         <input name="name" placeholder={t('candName')} bind:value={candName} required>
-        <textarea name="question" rows="2" placeholder={t('candQuestion')} bind:value={candQuestion}></textarea>
+        <textarea name="question" rows="2" placeholder={sp.type === 'choice' ? t('candQuestionOrOptions') : t('candQuestion')} bind:value={candQuestion} required={sp.type !== 'choice'}></textarea>
         {#if sp.type === 'choice'}<textarea name="options" rows="2" placeholder={t('candOptions')} bind:value={candOptions}></textarea>{/if}
         <div class="btns"><button type="submit" class="weak" disabled={adding}>{t('addWordingBtn')}</button></div>
       </form>

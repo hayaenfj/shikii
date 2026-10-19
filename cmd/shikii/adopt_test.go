@@ -195,6 +195,15 @@ func TestServeAddsAPersonsRewordingToVariants(t *testing.T) {
 	if code, r := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "intent", "name": "bad-id", "options": map[string]string{"nope": "not an option"}}); code != 400 || !strings.Contains(fmt.Sprint(r["error"]), "nope") {
 		t.Fatalf("an unknown option id must be refused before writing: %d %v", code, r)
 	}
+	// 名前は英数字・ハイフン・下線だけ(wiki/runs のファイル名に入る): 区切り文字や改行は 400
+	for _, bad := range []string{"x/../../outside", "with space", "a\nb", strings.Repeat("n", 41)} {
+		if code, _ := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "intent", "name": bad, "question": "q"}); code != 400 {
+			t.Fatalf("name %q must be refused: %d", bad, code)
+		}
+	}
+	if code, _ := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "intent", "name": "too-long", "question": strings.Repeat("q", 2001)}); code != 400 {
+		t.Fatalf("a question over 2000 bytes must be refused: %d", code)
+	}
 	if b, _ := os.ReadFile(path); strings.Contains(string(b), "bad-id") || strings.Contains(string(b), "name: empty") {
 		t.Fatalf("refused rewordings must not be written:\n%s", b)
 	}

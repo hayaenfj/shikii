@@ -53,17 +53,18 @@ var (
 	hookTune      = spawnTune
 	hookTuneEvery = 50 // 前回の自動 tune から人の正解(入力ごとに 1 件)がこれだけ増えたら、また回す
 	// hookSpawn は shikii 自身を切り離した別プロセスで起こす(モデル `up`、画面 `serve`)。人にコマンドを打たせない。テストは記録するだけの物に差し替える
-	hookSpawn    = spawnShikii
+	hookSpawn    = spawnShikii      // 起こした子の pid を返す(分からなければ 0)
 	hookStartGap = 10 * time.Minute // 同じ物を起こし続けない間(起こしてから応えるまでの時間、失敗した時の再試行の間)
 )
 
 const (
-	hookCmdPrefix = "shikii hook " // settings.json の中で自分の handler を見分ける印
-	hookTimeout   = 10             // 秒。モデルの 5 秒(2 つの問いは並行) + 書き込み
-	requestMax    = 1500           // request / summary として控える文の長さ(バイト)
-	shortReply    = 40             // これより短い依頼は返事とみなし、前の依頼に添える(文字数)
-	filesMax      = 30             // Stop の問いに並べる「変わったファイル」の上限(残りは件数だけ)
-	listingMax    = 4 << 20        // 控える作業ツリーの一覧の上限(バイト)。超えたら変わったファイルは分からない扱い
+	hookCmdPrefix  = "shikii hook " // settings.json の中で自分の handler を見分ける印
+	hookTimeout    = 10             // 秒。モデルの 5 秒(2 つの問いは並行) + 書き込み
+	requestMax     = 1500           // request / summary として控える文の長さ(バイト)
+	shortReply     = 40             // これより短い依頼は返事とみなし、前の依頼に添える(文字数)
+	filesMax       = 30             // Stop の問いに並べる「変わったファイル」の上限(残りは件数だけ)
+	listingMax     = 4 << 20        // 控える作業ツリーの一覧の上限(バイト)。超えたら変わったファイルは分からない扱い
+	hookLogLineMax = 400            // hook.log の 1 行の上限(バイト)。誤りの文にモデルの応答本文が付いてくることがある
 )
 
 // hookSpecs は hook が聞く 4 つ(埋め込みの spec の id)。前 2 つは依頼の直後、後 2 つはターンの終わり。
@@ -109,6 +110,7 @@ func cmdHook(args []string) error {
 // hookInput は Claude Code と Codex が stdin に渡す JSON のうち使う所(鍵は両方同じ)。
 type hookInput struct {
 	SessionID            string `json:"session_id"`
+	AgentID              string `json:"agent_id"` // 付いていれば人の依頼ではない(サブエージェント等)。依頼の控えを変えない
 	CWD                  string `json:"cwd"`
 	Prompt               string `json:"prompt"`
 	StopHookActive       bool   `json:"stop_hook_active"`
@@ -559,7 +561,7 @@ func hookEventName(event string) string {
 // hookUserPrompt は考える前の 2 つ(prompt-kind と needs-plan)を聞き、依頼と作業ツリーの状態を控える。前の依頼の結果の正解はここ(次の依頼が来た時)で決める。
 func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	req := cut(strings.TrimSpace(in.Prompt), requestMax)
-	if req == "" || strings.HasPrefix(req, "/") {
+	if req == "" || strings.HasPrefix(req, "/") || in.AgentID != "" {
 		return hookOut{}, nil, nil
 	}
 	// 短い返事(「ok」「yes go ahead」)は依頼を置き換えず、前の依頼に添える: ターンの終わりの問いが「ok」を依頼として読まないように
@@ -573,11 +575,12 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	}
 	tree, listing, listed, project := treeState(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
 	var firstErr error
+	pendingNow := snapshot.Pending // 前の依頼の pending(写し)。錠の中で settle するのはこの trace だけ(重なった Stop や次の依頼が足した pending を巻き込まない)
 	muts := []func(*hookSession){
 		func(s *hookSession) { s.Request, s.Judged = request, false },
 		// 前の依頼の結果の正解は、次の依頼が来た時点のツリーで決める(依頼の境目 = 次の依頼。Stop まで待つと 2 つの依頼が混ざる)
 		func(s *hookSession) {
-			if err := settlePending(agent, s, tree); err != nil && firstErr == nil {
+			if err := settlePending(agent, s, tree, pendingNow); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		},
@@ -587,7 +590,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 				_ = os.Remove(p) // git の外(か間に合わない、か大きすぎる): 前の依頼の一覧を残して比べてしまわない
 				return
 			}
-			if err := writeAtomic(p, []byte(listing)); err != nil && firstErr == nil {
+			// 先頭に「どの依頼の一覧か」の印: Stop は自分が見た依頼の一覧だけと比べる(次の依頼が書き直した一覧と比べない)
+			if err := writeAtomic(p, []byte(listingHeader(request)+listing)); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		},
@@ -619,27 +623,32 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	tree, listing, listed, project := treeState(in.CWD)
 	last := cut(strings.TrimSpace(in.LastAssistantMessage), requestMax)
+	req := snapshot.Request // この Stop が評価する依頼。錠の中で控えの依頼が変わっていたら(次の依頼が先に来た)、この Stop の印は当てない
+	pendingNow := snapshot.Pending
 	var firstErr error
 	muts := []func(*hookSession){
 		func(s *hookSession) {
-			if last != "" {
+			if last != "" && s.Request == req {
 				s.Previous = last
 			}
 		},
 		func(s *hookSession) {
-			if err := settlePending(agent, s, tree); err != nil && firstErr == nil {
+			if err := settlePending(agent, s, tree, pendingNow); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		},
 	}
 	pruneSessions(agent)
-	if snapshot.Request == "" || snapshot.Judged {
+	if req == "" || snapshot.Judged {
 		return hookOut{}, muts, firstErr
 	}
 	var changed []string
 	known := false
 	if listed {
 		if before, err := os.ReadFile(sessionFilesPath(agent, in.SessionID)); err == nil {
+			if !strings.HasPrefix(string(before), listingHeader(req)) {
+				return hookOut{}, muts, firstErr // 一覧は既に次の依頼のもの: この Stop は比べる物を失ったので評価しない(次の依頼の Stop が評価する)
+			}
 			changed, known = changedFiles(string(before), listing), true
 		}
 	}
@@ -661,12 +670,22 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		muts = append(muts, noteAsked(hookSpecs[2+i], d))
 		out.System = joinLines(out.System, outs[i].System)
 	}
-	muts = append(muts, func(s *hookSession) { s.Judged = true })
+	muts = append(muts, func(s *hookSession) {
+		if s.Request == req {
+			s.Judged = true
+		}
+	})
 	return out, muts, firstErr
 }
 
+// listingHeader は作業ツリーの一覧の先頭行: どの依頼の時の一覧か(依頼のハッシュ)。changedFiles はタブの無い行を読まないので比較には入らない。
+func listingHeader(request string) string {
+	sum := sha256.Sum256([]byte(request))
+	return "#request " + hex.EncodeToString(sum[:])[:16] + "\n"
+}
+
 // stopSummary は答え待ちの要約(錠の中、このターンの判定を足した後): このセッションで人の答えを待つことになった判定のうち、まだ答えの無いもの。
-// 新顔がある時だけ 1 行(毎ターン同じ数を繰り返さない)。画面が立っていれば URL、無ければ起動コマンド。
+// 新顔がある時だけ 1 行(毎ターン同じ数を繰り返さない)。画面が立っていなければ裏で起こし、行は常に URL。
 func stopSummary(agent string, sess *hookSession) string {
 	st := store.Store{Dir: agent}
 	waiting := unanswered(st, sess.Asked)
@@ -682,7 +701,7 @@ func stopSummary(agent string, sess *hookSession) string {
 		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, hookPageURL), l)
 }
 
-// changedFiles は 2 つの一覧(`git ls-files --stage`: "mode sha stage\tpath")を比べ、中身が変わった・増えた・消えたファイルの path を名前順で返す。
+// changedFiles は 2 つの一覧(`git ls-files --stage`: "mode sha stage\tpath")を比べ、中身か mode が変わった・増えた・消えたファイルの path を名前順で返す。
 func changedFiles(before, after string) []string {
 	parse := func(listing string) map[string]string {
 		m := map[string]string{}
@@ -695,7 +714,7 @@ func changedFiles(before, after string) []string {
 			if len(meta) < 2 {
 				continue
 			}
-			m[line[tab+1:]] = meta[1]
+			m[line[tab+1:]] = meta[0] + " " + meta[1] // mode と blob の id(chmod だけの変更も「変わった」)
 		}
 		return m
 	}
@@ -721,7 +740,7 @@ func changedFiles(before, after string) []string {
 func filesInput(changed []string, known bool) string {
 	switch {
 	case !known:
-		return "(unknown: not a git working tree)"
+		return "(unknown: no git listing for this turn)"
 	case len(changed) == 0:
 		return "(none)"
 	}
@@ -826,12 +845,16 @@ func hookMaybeTune(agent, specID string) error {
 	guard := filepath.Join(agent, "tuned-"+specID)
 	last := -1
 	if b, err := os.ReadFile(guard); err == nil {
-		fmt.Sscanf(string(b), "%d", &last)
+		var cnt int
+		var hash string
+		if _, err := fmt.Sscanf(string(b), "%d %s", &cnt, &hash); err == nil && hash == sp.Hash() {
+			last = cnt // 同じ文言の時だけ前回の数を引き継ぐ(文言を変えたら新しい spec として数え直す)
+		}
 	}
 	if last >= 0 && n-last < hookTuneEvery {
 		return nil
 	}
-	if err := os.WriteFile(guard, []byte(fmt.Sprintf("%d %s\n", n, time.Now().Format(time.RFC3339))), 0o600); err != nil {
+	if err := os.WriteFile(guard, []byte(fmt.Sprintf("%d %s %s\n", n, sp.Hash(), time.Now().Format(time.RFC3339))), 0o600); err != nil {
 		return err
 	}
 	hookTune(agent, path, st.Dir)
@@ -931,15 +954,25 @@ func runCalibrateInProcess(agent, path, storeDir, model string) {
 
 // settlePending は控えてある prompt-kind の判定に結果の正解を付ける: 依頼の時のツリーと今のツリー(now)が違えば edit(重み 1)、同じなら !edit(部分、重み 0.7)。
 // 依頼の直後(次の依頼が来た時)と Stop で呼ぶ。now が ""(git の外、または git が間に合わない)なら付けずに捨てる(比べる物が無い)。
-func settlePending(agent string, sess *hookSession, now string) error {
-	if len(sess.Pending) == 0 {
+// only は呼ぶ側が錠の外で見た pending: 錠の中でもまだ残っているものだけ付ける(重なった hook が後から足した pending は、その hook の番で決まる)。
+func settlePending(agent string, sess *hookSession, now string, only []pendingItem) error {
+	if len(sess.Pending) == 0 || len(only) == 0 {
 		return nil
+	}
+	mine := map[string]bool{}
+	for _, p := range only {
+		mine[p.Trace] = true
 	}
 	st := store.Store{Dir: agent}
 	var firstErr error
+	var rest []pendingItem
 	for _, p := range sess.Pending {
+		if !mine[p.Trace] {
+			rest = append(rest, p)
+			continue
+		}
 		if now == "" {
-			break
+			continue // 比べる物が無い: 付けずに捨てる
 		}
 		truth, weight := "!edit", 0.7
 		if p.Tree != now {
@@ -949,7 +982,7 @@ func settlePending(agent string, sess *hookSession, now string) error {
 			firstErr = err
 		}
 	}
-	sess.Pending = nil
+	sess.Pending = rest
 	return firstErr
 }
 
@@ -1007,6 +1040,20 @@ func labelTrace(st store.Store, specID, trace, truth string, weight float64, sou
 	return st.AppendLabels(labels)
 }
 
+// modelUp は手元のモデルが応えるか(/health、300ms。up.go の probe は 3 秒 × 3 要求で hook には重い)。
+func modelUp() bool {
+	c := &http.Client{Timeout: hookProbeTimeout}
+	resp, err := c.Get(strings.TrimRight(hookLocalURL, "/") + "/health")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == 200
+}
+
+// lookPath は PATH の検索(テストが差し替える)。
+var lookPath = exec.LookPath
+
 // serveUp は答え合わせの画面が立っているか(300ms)。
 func serveUp() bool {
 	c := &http.Client{Timeout: hookProbeTimeout}
@@ -1037,9 +1084,10 @@ func treeState(cwd string) (hash, listing string, listed bool, project string) {
 	project = filepath.Base(filepath.Clean(cwd))
 	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
+	dir := cwd
 	run := func(env []string, args ...string) (string, bool) {
 		cmd := exec.CommandContext(ctx, "git", args...)
-		cmd.Dir = cwd
+		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), env...)
 		var out bytes.Buffer
 		cmd.Stdout = &out
@@ -1054,6 +1102,7 @@ func treeState(cwd string) (hash, listing string, listed bool, project string) {
 		return "", "", false, project // git の外: 印は cwd の名
 	}
 	project = filepath.Base(top)
+	dir = top // 以降は repo のルートで(サブディレクトリから起こしたセッションでも repo 全体を見る)
 	objects, ok := run(nil, "rev-parse", "--git-path", "objects")
 	if !ok {
 		return "", "", false, project
@@ -1083,11 +1132,21 @@ func treeState(cwd string) (hash, listing string, listed bool, project string) {
 	}
 	sum := sha256.Sum256([]byte(tree))
 	hash = hex.EncodeToString(sum[:])[:16]
-	listing, ok = run(env, "ls-files", "--stage", "--full-name")
-	if !ok || len(listing) > listingMax {
+	// 一覧は読みながら上限で止める(巨大な repo で全部をメモリに読んでから捨てない)
+	ls := exec.CommandContext(ctx, "git", "ls-files", "--stage", "--full-name")
+	ls.Dir = dir
+	ls.Env = append(os.Environ(), env...)
+	ls.Stderr = io.Discard
+	pipe, err := ls.StdoutPipe()
+	if err != nil || ls.Start() != nil {
 		return hash, "", false, project
 	}
-	return hash, listing, true, project
+	lb, rerr := io.ReadAll(io.LimitReader(pipe, int64(listingMax)+1))
+	_ = ls.Wait()
+	if rerr != nil || len(lb) > listingMax {
+		return hash, "", false, project
+	}
+	return hash, strings.TrimSpace(string(lb)), true, project
 }
 
 func hookLog(msg string) {
@@ -1102,21 +1161,22 @@ func hookLog(msg string) {
 		return
 	}
 	defer f.Close()
+	msg = strings.ReplaceAll(cut(msg, hookLogLineMax), "\n", " ") // モデルの応答本文(依頼や返答を含み得る)を丸ごと残さない
 	fmt.Fprintf(f, "%s %s\n", time.Now().Format(time.RFC3339), msg)
 }
 
 // ---------------------------------------------------------------- 裏で起こす(人にコマンドを打たせない)
 
-// spawnShikii は `shikii <args>` を Setsid で切り離して起こし、出力を ~/.shikii/agent/<logName> に追記する。hook も install も待たない。
-func spawnShikii(agent, logName string, args ...string) {
+// spawnShikii は `shikii <args>` を Setsid で切り離して起こし、出力を ~/.shikii/agent/<logName> に追記する。hook も install も待たない。子の pid を返す。
+func spawnShikii(agent, logName string, args ...string) int {
 	exe, err := os.Executable()
 	if err != nil {
 		hookLog("cannot find shikii: " + err.Error())
-		return
+		return 0
 	}
 	logf, err := os.OpenFile(filepath.Join(agent, logName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
-		return
+		return 0
 	}
 	defer logf.Close()
 	fmt.Fprintf(logf, "%s shikii %s: started in the background\n", time.Now().Format(time.RFC3339), strings.Join(args, " "))
@@ -1126,35 +1186,61 @@ func spawnShikii(agent, logName string, args ...string) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(logf, "%s shikii %s: %v\n", time.Now().Format(time.RFC3339), strings.Join(args, " "), err)
-		return
+		return 0
 	}
+	pid := cmd.Process.Pid
 	_ = cmd.Process.Release()
+	return pid
 }
 
-// startOnce は guard(~/.shikii/agent/starting-<what>)が hookStartGap より古いか無い時だけ fn を呼ぶ。起こしてから応えるまで待つ間に何度も起こさない。
-func startOnce(agent, what string, fn func()) bool {
+// startOnce は起こす権利を guard(~/.shikii/agent/starting-<what>)の flock で 1 つの hook だけに渡し、前に起こした子がまだ生きている(pid)か
+// hookStartGap の中なら起こさない。長いモデルの取得の間(10 分を超えても)、生きている子がいれば二重に起こさない。fn は起こした子の pid を返す。
+func startOnce(agent, what string, fn func() int) bool {
+	_ = os.MkdirAll(agent, 0o755)
 	guard := filepath.Join(agent, "starting-"+what)
-	if info, err := os.Stat(guard); err == nil && time.Since(info.ModTime()) < hookStartGap {
+	f, err := os.OpenFile(guard, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
 		return false
 	}
-	_ = os.MkdirAll(agent, 0o755)
-	_ = os.WriteFile(guard, []byte(time.Now().Format(time.RFC3339)+"\n"), 0o600)
-	fn()
+	defer f.Close()
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		return false // 別の hook が今まさに起こしている
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	b, _ := io.ReadAll(f)
+	var pid int
+	var at string
+	fmt.Sscanf(string(b), "%d %s", &pid, &at)
+	if pid > 0 && processAlive(pid) {
+		return false
+	}
+	if t, err := time.Parse(time.RFC3339, at); err == nil && time.Since(t) < hookStartGap {
+		return false
+	}
+	pid = fn()
+	_ = f.Truncate(0)
+	_, _ = f.Seek(0, 0)
+	fmt.Fprintf(f, "%d %s\n", pid, time.Now().Format(time.RFC3339))
 	return true
+}
+
+// processAlive は pid のプロセスがまだいるか(signal 0)。
+func processAlive(pid int) bool {
+	return syscall.Kill(pid, 0) == nil
 }
 
 // ensureModel は手元のモデル(hookLocalURL)が応えなければ `shikii up` を裏で起こす。llama-server が無ければ起こさず hook.log に入れ方を 1 行(10 分に 1 回)。
 // 初回はモデルを取ってくるので、応えるまでの数ターンは記録が付かないだけ。hook はこれを待たない。
 func ensureModel(agent string) {
-	if probe(hookLocalURL).up {
+	if modelUp() {
 		return
 	}
-	startOnce(agent, "model", func() {
-		if _, err := exec.LookPath("llama-server"); err != nil {
+	startOnce(agent, "model", func() int {
+		if _, err := lookPath("llama-server"); err != nil {
 			hookLog("no local model on " + hookLocalURL + " and no llama-server on PATH: install llama.cpp (brew install llama.cpp) and the hooks will start it; until then they record nothing")
-			return
+			return 0
 		}
-		hookSpawn(agent, "up.log", "up")
+		return hookSpawn(agent, "up.log", "up")
 	})
 }
 
@@ -1163,8 +1249,8 @@ func ensurePage(agent string) {
 	if serveUp() {
 		return
 	}
-	startOnce(agent, "page", func() {
-		hookSpawn(agent, "serve.log", "serve", "--store", agent, "--port", "8096", "--local", hookLocalURL)
+	startOnce(agent, "page", func() int {
+		return hookSpawn(agent, "serve.log", "serve", "--store", agent, "--port", "8096", "--local", hookLocalURL)
 	})
 }
 
@@ -1177,9 +1263,26 @@ type hookEvent struct {
 }
 
 // hookEvents は 2 つ: 考える前(UserPromptSubmit)と考え終わった後(Stop)。Claude Code と Codex で同じ。
-var hookEvents = []hookEvent{
-	{"UserPromptSubmit", hookCmdPrefix + "user-prompt-submit", hookTimeout},
-	{"Stop", hookCmdPrefix + "stop", hookTimeout + 5},
+// command は今の実行ファイルの絶対パス + " hook <event>": エージェントの shell の PATH に `shikii` が無くても(go install 直後の ~/go/bin など)動く。
+// 実行ファイルが動いたら `shikii hook install --yes` を流し直せば、古いパスの handler は外れて新しいものが入る。
+func hookEvents() []hookEvent {
+	exe := "shikii"
+	if p, err := os.Executable(); err == nil {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			p = r
+		}
+		exe = p
+	}
+	return []hookEvent{
+		{"UserPromptSubmit", exe + " hook user-prompt-submit", hookTimeout},
+		{"Stop", exe + " hook stop", hookTimeout + 5},
+	}
+}
+
+// isShikiiHook は handler の command が shikii の hook か: `<…/>shikii[…] hook <event>`(PATH の `shikii` でも絶対パスでも、古い版の pre-tool-use でも)。
+func isShikiiHook(command string) bool {
+	f := strings.Fields(command)
+	return len(f) >= 3 && f[1] == "hook" && strings.HasPrefix(filepath.Base(f[0]), "shikii")
 }
 
 // hookTargets は hook を書く設定ファイル(家の下、固定)。両方に同じ 2 つを足す。無いツールの設定ファイルも作られる(init と同じ流儀。要らなければ消す)。
@@ -1208,13 +1311,13 @@ func hookInstall(args []string, install bool) error {
 	if install {
 		fmt.Fprintf(stdout, "1. %s: decisions/ wiki/ records/ labels/ for the agent's own decisions (this folder is the store); copy the 4 specs that are missing (%s) and the shared wiki pages. Existing files are never overwritten. ~/.claude/skills/shikii (the agent's rules for using shikii) is put in place\n", tilde(agent), strings.Join(hookSpecs, ", "))
 		for i, t := range hookTargets {
-			fmt.Fprintf(stdout, "%d. %s: add 2 hooks (UserPromptSubmit, Stop) running `shikii hook <event>` (%s); shikii hooks from an older version (PreToolUse) are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), t.who, filepath.Base(t.rel), t.note)
+			fmt.Fprintf(stdout, "%d. %s: add 2 hooks (UserPromptSubmit, Stop) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), tilde(strings.Fields(hookEvents()[0].cmd)[0]), t.who, filepath.Base(t.rel), t.note)
 		}
 		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Until a spec has a calibration line they only record (shadow mode); they never stop a tool. Claude Code and Codex (Cursor and OpenCode have no hook).\n")
-		fmt.Fprintf(stdout, "   The local model (%s) and the answer page (%s) are started in the background by the hooks when they are not running; install starts the model now if llama-server is on PATH. `shikii` must be on the agent's PATH (`which shikii`)\n", hookLocalURL, hookPageURL)
+		fmt.Fprintf(stdout, "   The local model (%s) and the answer page (%s) are started in the background by the hooks when they are not running; install starts the model now if llama-server is on PATH\n", hookLocalURL, hookPageURL)
 	} else {
 		for i, t := range hookTargets {
-			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command starts with `%s` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)), hookCmdPrefix)
+			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command is `… shikii hook <event>` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)))
 		}
 		fmt.Fprintf(stdout, "   %s is kept: it holds the records and truths\n", tilde(agent))
 	}
@@ -1244,7 +1347,7 @@ func hookInstall(args []string, install bool) error {
 	}
 	for _, t := range hookTargets {
 		settings := filepath.Join(home, t.rel)
-		changed, err := editHooks(settings, install, hookEvents)
+		changed, err := editHooks(settings, install, hookEvents())
 		if err != nil {
 			return err
 		}
@@ -1260,9 +1363,9 @@ func hookInstall(args []string, install bool) error {
 		}
 	}
 	if install {
-		if probe(hookLocalURL).up {
+		if modelUp() {
 			fmt.Fprintf(stdout, "local model: already answering on %s\n", hookLocalURL)
-		} else if _, err := exec.LookPath("llama-server"); err != nil {
+		} else if _, err := lookPath("llama-server"); err != nil {
 			fmt.Fprintf(stdout, "local model: none on %s and no llama-server on PATH. Install llama.cpp (brew install llama.cpp); the hooks start the model by themselves after that. Until then they record nothing\n", hookLocalURL)
 		} else {
 			ensureModel(agent)
@@ -1330,9 +1433,9 @@ func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) 
 		c, _ := m["command"].(string)
 		return c
 	}
-	stale := func(h any) bool { // 外すもの: shikii の handler のうち、今の版に無い(uninstall なら全部)
+	stale := func(h any) bool { // 外すもの: shikii の handler のうち、今の版に無い(uninstall なら全部。実行ファイルのパスが変わった古い handler もここで外れる)
 		c := command(h)
-		return strings.HasPrefix(c, hookCmdPrefix) && !want[c]
+		return isShikiiHook(c) && !want[c]
 	}
 	changed := false
 	// 1) 全 event を掃く
@@ -1400,7 +1503,7 @@ func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) 
 	} else {
 		delete(cfg, "hooks")
 	}
-	if len(b) > 0 && !fileExists(path+".bak-shikii") && !strings.Contains(string(b), hookCmdPrefix) { // 控えは最初の 1 回だけ、shikii の hook が入っていない版(install が作った settings.json は控えない)
+	if len(b) > 0 && !fileExists(path+".bak-shikii") && !strings.Contains(string(b), " hook user-prompt-submit") && !strings.Contains(string(b), " hook pre-tool-use") && !strings.Contains(string(b), " hook stop") { // 控えは最初の 1 回だけ、shikii の hook が入っていない版(install が作った settings.json は控えない)
 		if err := os.WriteFile(path+".bak-shikii", b, 0o600); err != nil {
 			return false, err
 		}
@@ -1441,7 +1544,7 @@ func hookCommands(path string) []string {
 	for _, groups := range cfg.Hooks {
 		for _, g := range groups {
 			for _, h := range g.Hooks {
-				if strings.HasPrefix(h.Command, hookCmdPrefix) {
+				if isShikiiHook(h.Command) {
 					out = append(out, h.Command)
 				}
 			}

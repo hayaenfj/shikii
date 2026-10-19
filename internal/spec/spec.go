@@ -411,6 +411,10 @@ func (s *Spec) Validate() error {
 				}
 			}
 		}
+		// 名前は wiki/runs のファイル名と表に入る: 区切り文字・空白・長すぎる名前は受けない
+		if v.Name == "" || len(v.Name) > 60 || strings.ContainsAny(v.Name, "/\\ \t\r\n") || strings.Contains(v.Name, "..") {
+			return fmt.Errorf("variants[%d].name %q: 1 to 60 characters, no spaces, slashes or \"..\" (it becomes part of a file name)", i, v.Name)
+		}
 	}
 	return nil
 }
@@ -612,10 +616,14 @@ func (s *Spec) Save() error {
 	if err := setMappingKey(root, "calibration", s.Calibration, len(s.Calibration) == 0, "較正ブロックは `shikii calibrate --write` が生成する。手で書かない。"); err != nil {
 		return err
 	}
-	if variantsChanged(root, s.Variants) { // 触っていなければ再エンコードしない(人のコメントが残る)
-		if err := setMappingKey(root, "variants", s.Variants, len(s.Variants) == 0, "聞き方の候補。`shikii tune` が採点する(--propose で足される)。鍵には入らない。"); err != nil {
+	// 候補は別のプロセスも足す(画面の /v1/tune/variant、裏の tune --propose、calibrate --write)。読んでから書くまでの間に増えた候補を消さないよう、
+	// ファイルにある候補と自分の候補を名前で併合する(同じ名前は自分のが勝つ)。触っていなければ再エンコードしない(人のコメントが残る)
+	merged := mergeVariants(onDiskVariants(root), s.Variants)
+	if variantsChanged(root, merged) {
+		if err := setMappingKey(root, "variants", merged, len(merged) == 0, "聞き方の候補。`shikii tune` が採点する(--propose で足される)。鍵には入らない。"); err != nil {
 			return err
 		}
+		s.Variants = merged
 	}
 
 	var buf bytes.Buffer
@@ -650,6 +658,48 @@ func (s *Spec) Save() error {
 
 // setMappingKey は root の key を value で置き換える(無ければ末尾に足し、empty なら消す)。
 // variantsChanged はファイルの variants と今の値が違うか。
+// onDiskVariants はファイルの variants(読めなければ nil)。
+func onDiskVariants(root *yaml.Node) []Variant {
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "variants" {
+			var onDisk []Variant
+			if err := root.Content[i+1].Decode(&onDisk); err != nil {
+				return nil
+			}
+			return onDisk
+		}
+	}
+	return nil
+}
+
+// mergeVariants はファイルの候補(onDisk)と自分の候補(mine)を名前で併合する: 順はファイルの順 → 自分だけが持つもの。同じ名前は mine。
+// mine が空なら空にする(候補を全部片付ける書き込み)。
+func mergeVariants(onDisk, mine []Variant) []Variant {
+	if len(onDisk) == 0 || len(mine) == 0 { // 自分が空にしたなら空にする(候補を片付ける書き込み)。ファイルに何も無ければ自分のまま
+		return mine
+	}
+	byName := map[string]Variant{}
+	for _, v := range mine {
+		byName[v.Name] = v
+	}
+	out := make([]Variant, 0, len(onDisk)+len(mine))
+	seen := map[string]bool{}
+	for _, v := range onDisk {
+		if m, ok := byName[v.Name]; ok {
+			out = append(out, m)
+		} else {
+			out = append(out, v)
+		}
+		seen[v.Name] = true
+	}
+	for _, v := range mine {
+		if !seen[v.Name] {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 func variantsChanged(root *yaml.Node, now []Variant) bool {
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		if root.Content[i].Value == "variants" {

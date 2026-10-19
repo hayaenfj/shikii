@@ -7,7 +7,7 @@
 ### AI に「はい / いいえ」「どれ」「どの程度」を決めさせ、答え合わせで育てる道具。あなたがするのは、画面で「本当はどうだったか」を答えることだけ。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-193%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-196%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -31,7 +31,7 @@ Claude Code か Codex を使っている人向けです。コードを書く AI 
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-これだけです。実行ファイルを入れ、Claude Code と Codex に hook を 2 つ足し、エージェントの作法(skill)を置き、手元の小さな AI(Kev-4B)を裏で起こします(llama.cpp が無ければ入れ方を 1 行示します)。新しいターミナルで普段どおり AI に仕事を頼むだけで、測るのは 4 つ。
+これだけです。実行ファイルを入れ、Claude Code と Codex に hook を 2 つ足し、エージェントの作法(skill)を置き、手元の小さな AI(Kev-4B)を裏で起こします(llama.cpp が無ければ入れ方を 1 行示します)。新しいターミナルで普段どおり AI に仕事を頼むだけで、測るのは 4 つ(Codex は最初に `/hooks` で shikii の hook を一度 trust します)。
 
 | いつ | 問い | 正解の出どころ |
 |---|---|---|
@@ -50,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 > 問い合わせが前のと同じ案件かどうかを shikii で判定して、答え合わせで育てていきたい
 
-エージェントは作法(skill)に沿って進めます。プロジェクトに `.shikii/` を作り(`shikii init`)、質問・選択肢・入力を決めて判定の定義ファイルを書き(`shikii new`。質問と選択肢の文はあなたに一度読んでもらいます。それが「意図」です)、判定を呼び(`shikii decide`)、答え合わせの画面(http://127.0.0.1:8095)を立ててあなたに知らせます。最初はどの判定も `ask`(人に確かめて)です。あなたが画面で答えていくと、判定ごとに決めた数(この例は 20 件)で線が自動で引かれ、次からはこうなります。
+エージェントは作法(skill)に沿って進めます。プロジェクトに `.shikii/` を作り(`shikii init`)、質問・選択肢・入力を決めて判定の定義ファイルを書き(`shikii new`。質問と選択肢の文はあなたに一度読んでもらいます。それが「意図」です)、判定を呼び(`shikii decide`)、答え合わせの画面(http://127.0.0.1:8095)を立ててあなたに知らせます。線が無いうちは `act`(任せてよい)は出ません。あなたが画面で答えていくと、判定ごとに決めた数(この例は 20 件)で線が自動で引かれ、次からはこうなります。
 
 ```sh
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080

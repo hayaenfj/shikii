@@ -7,7 +7,7 @@
 ### Una herramienta para dejar que una IA decida sí/no, cuál o cuánto, y para que esa decisión siga siendo de fiar en el trabajo diario. Usted revisa algunas respuestas y, de vez en cuando, confirma «¿esto sigue siendo lo que quería decir?». La máquina hace el resto.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-193%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-196%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 

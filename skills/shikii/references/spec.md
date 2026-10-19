@@ -1,6 +1,6 @@
 # spec の書き方
 
-1 判定 = 1 YAML(`.shikii/decisions/<id>.yaml`)。`shikii new <id> --type choice --question "…" --option id=説明 … --input name --pii true|false` で作るのが基本。既製の判定は `decisions/README.md`。
+1 判定 = 1 YAML(`.shikii/decisions/<id>.yaml`)。`shikii new <id> --type choice --question "…" --option id=説明 … --input name --pii true|false --send-to local` で作るのが基本(`--send-to` は送ってよい先。無ければ対話で聞かれるので、エージェントが打つ時は必ず付ける)。既製の判定は `decisions/README.md`。
 
 - 型: `noul`(はい/いいえ)、`choice`(多択。選択肢は id と説明)、`score`(段階。levels を低い順)
 - `state.template`: 入力の並べ方。`{{ name }}` が入力。`required` に必須の入力

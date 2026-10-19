@@ -7,7 +7,7 @@
 ### A tool that lets an AI decide "yes or no", "which one" and "how much", and grows it from your corrections. All you do is answer, on a page, what was actually true.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-193%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-196%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
@@ -31,7 +31,7 @@ For people who use Claude Code or Codex. The coding agent makes judgements when 
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-That is all. It installs the binary, adds two hooks to Claude Code and Codex, puts the agent's rules (a skill) in place, and starts a small local AI (Kev-4B) in the background (if llama.cpp is missing it prints the one line to install it). Open a new terminal and keep working with the agent as usual. Four things are measured.
+That is all. It installs the binary, adds two hooks to Claude Code and Codex, puts the agent's rules (a skill) in place, and starts a small local AI (Kev-4B) in the background (if llama.cpp is missing it prints the one line to install it). Open a new terminal and keep working with the agent as usual (in Codex, run `/hooks` once to trust shikii's hooks). Four things are measured.
 
 | When | Question | Where the truth comes from |
 |---|---|---|
@@ -50,7 +50,7 @@ For decisions you repeat at work, such as "is this inquiry the same case?" or "i
 
 > I want shikii to decide whether an inquiry is the same case as an earlier one, and to grow it from my corrections
 
-The agent follows its rules (the skill): it creates `.shikii/` in the project (`shikii init`), settles the question, the options and the inputs and writes the decision file (`shikii new`; it shows you the question and the options once, because that is your intent), calls the decision (`shikii decide`), starts the answer page (http://127.0.0.1:8095) and tells you. At first every decision is `ask` (check with a person). As you answer on the page, the line is drawn automatically once the decision's own count is reached (20 in this example), and from then on:
+The agent follows its rules (the skill): it creates `.shikii/` in the project (`shikii init`), settles the question, the options and the inputs and writes the decision file (`shikii new`; it shows you the question and the options once, because that is your intent), calls the decision (`shikii decide`), starts the answer page (http://127.0.0.1:8095) and tells you. Until a line exists no decision is `act` (go ahead). As you answer on the page, the line is drawn automatically once the decision's own count is reached (20 in this example), and from then on:
 
 ```sh
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080

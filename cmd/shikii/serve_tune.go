@@ -8,6 +8,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/spec"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -84,6 +85,11 @@ func (s *server) handleTuneGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
+// variantNameRe は候補の名前の形(wiki/runs のファイル名や表に入るので、改行や長い文を入れない)。variantTextMax は質問・説明の長さの上限(バイト)。
+var variantNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
+
+const variantTextMax = 2000
+
 // handleTuneVariant は人が画面で書いた候補の言い方を spec の variants に 1 つ足す(POST /v1/tune/variant: spec, name, question, options{id: 説明})。
 // 書くのは variants だけ(提案役と同じ経路: ファイルを読み直して足し、Save が他の項目を触らない)。候補は spec として検証してから書く(無い選択肢の id などは 400)。
 // 足すだけで採点も採用もしない: 採点は次の tune、採用は人。
@@ -120,9 +126,19 @@ func (s *server) handleTuneVariant(w http.ResponseWriter, r *http.Request) {
 		}
 		v.Options[id] = d
 	}
-	if v.Name == "" {
-		writeErr(w, 400, errors.New("name is required: a short label for this rewording (letters, digits, dashes)"))
+	if !variantNameRe.MatchString(v.Name) {
+		writeErr(w, 400, errors.New("name is required: a short label for this rewording, 1 to 40 letters, digits, dashes or underscores"))
 		return
+	}
+	if len(v.Question) > variantTextMax {
+		writeErr(w, 400, fmt.Errorf("the question is too long (%d bytes; at most %d)", len(v.Question), variantTextMax))
+		return
+	}
+	for id, d := range v.Options {
+		if len(d) > variantTextMax {
+			writeErr(w, 400, fmt.Errorf("the description of %q is too long (%d bytes; at most %d)", id, len(d), variantTextMax))
+			return
+		}
 	}
 	if v.Question == "" && len(v.Options) == 0 {
 		writeErr(w, 400, errors.New("a rewording needs a question or at least one option description"))
