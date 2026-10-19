@@ -162,11 +162,12 @@ bin/shikii tune .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1
 ### Measure the agent's own thinking (Claude Code and Codex hooks)
 
 ```sh
-shikii hook install          # shows what it would do
-shikii hook install --yes    # ~/.shikii/agent/ (specs, wiki, store) + 2 hooks in ~/.claude/settings.json and ~/.codex/hooks.json; open a new terminal (Codex: run /hooks once to trust them)
-shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080   # the answer page for these decisions
+shikii hook install          # shows what it would do (install.sh runs the --yes form for you)
+shikii hook install --yes    # ~/.shikii/agent/ (specs, wiki, store), the agent's skill, 2 hooks in ~/.claude/settings.json and ~/.codex/hooks.json, and the local model if llama-server is present; open a new terminal (Codex: run /hooks once to trust them)
 shikii hook uninstall --yes  # removes the 2 hooks; records and truths stay
 ```
+
+The hooks start what is missing by themselves: the local model (`shikii up`, when :8080 does not answer) and the answer page (`shikii serve --store ~/.shikii/agent --port 8096`, when a decision waits and :8096 is down), at most once per 10 minutes, logging to `~/.shikii/agent/up.log` and `serve.log`. Nobody has to type a start command.
 
 The hooks run at two moments only: when a request arrives (before the agent thinks) and when the turn ends (after it has finished). There is no per-tool hook: classifying every shell command is noise, not thinking, and permissions are already Claude Code's job. Four specs ship with it. Before the turn: `prompt-kind` (what the agent will end up doing; its truth comes for free from whether the working tree changed by the next request) and `needs-plan` (should the agent agree on an approach first). After the turn: `changes-in-scope` (the files that changed during the turn, compared against the request) and `done-as-asked` (request, changed files and closing message: did it finish what was asked). Three or four decisions per request, whatever the number of tool calls. Everything is local-only (`send_to: [local]`, `pii: true`). The store is one for all your projects and so is each line (the questions are about the agent's thinking, not about a repository); every record carries the project name (the repository's root folder), the page can filter by it, and `status` counts per project. If a spec has candidate wordings (`variants:`), the Stop hook also runs `tune` in the background every 50 new human truths (never `--write`: adopting a wording stays a person's call; the run lands in `wiki/runs/`).
 
@@ -227,7 +228,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 192 Go tests across 8 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 193 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 

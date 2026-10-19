@@ -52,6 +52,9 @@ var (
 	// hookTune は聞き方の候補を採点する本体(shikii tune。--write は付けない: 採用は人)。同じく別プロセスを切り離す。テストは同プロセスに差し替える
 	hookTune      = spawnTune
 	hookTuneEvery = 50 // 前回の自動 tune から人の正解(入力ごとに 1 件)がこれだけ増えたら、また回す
+	// hookSpawn は shikii 自身を切り離した別プロセスで起こす(モデル `up`、画面 `serve`)。人にコマンドを打たせない。テストは記録するだけの物に差し替える
+	hookSpawn    = spawnShikii
+	hookStartGap = 10 * time.Minute // 同じ物を起こし続けない間(起こしてから応えるまでの時間、失敗した時の再試行の間)
 )
 
 const (
@@ -494,6 +497,7 @@ func runHookEvent(event string) error {
 	if event == "stop" && in.StopHookActive {
 		return nil
 	}
+	ensureModel(agent) // 無ければ裏で起こす(この turn は記録が付かないだけ。待たない)
 	// モデルの呼び出しは錠の外(控えの写しを読むだけ)。控えへの変更は muts にまとめ、錠の中で読み直した控えに当てる
 	snapshot := loadSession(agent, in.SessionID)
 	var out hookOut
@@ -672,15 +676,10 @@ func stopSummary(agent string, sess *hookSession) string {
 	}
 	sess.Reported = waiting
 	l := hookLoc{Lang: hookLang()}
-	if serveUp() {
-		return bi(
-			fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s/", n, hookPageURL),
-			fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, hookPageURL), l)
-	}
-	start := fmt.Sprintf("shikii serve --store %s --port 8096 --local %s", agent, hookLocalURL)
+	ensurePage(agent) // 立っていなければ裏で起こす。人に起動コマンドを打たせない
 	return bi(
-		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer. Start the page: %s", n, start),
-		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち。画面を立てる: %s", n, start), l)
+		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s/", n, hookPageURL),
+		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, hookPageURL), l)
 }
 
 // changedFiles は 2 つの一覧(`git ls-files --stage`: "mode sha stage\tpath")を比べ、中身が変わった・増えた・消えたファイルの path を名前順で返す。
@@ -1106,6 +1105,69 @@ func hookLog(msg string) {
 	fmt.Fprintf(f, "%s %s\n", time.Now().Format(time.RFC3339), msg)
 }
 
+// ---------------------------------------------------------------- 裏で起こす(人にコマンドを打たせない)
+
+// spawnShikii は `shikii <args>` を Setsid で切り離して起こし、出力を ~/.shikii/agent/<logName> に追記する。hook も install も待たない。
+func spawnShikii(agent, logName string, args ...string) {
+	exe, err := os.Executable()
+	if err != nil {
+		hookLog("cannot find shikii: " + err.Error())
+		return
+	}
+	logf, err := os.OpenFile(filepath.Join(agent, logName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer logf.Close()
+	fmt.Fprintf(logf, "%s shikii %s: started in the background\n", time.Now().Format(time.RFC3339), strings.Join(args, " "))
+	cmd := exec.Command(exe, args...)
+	cmd.Stdout = logf
+	cmd.Stderr = logf
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(logf, "%s shikii %s: %v\n", time.Now().Format(time.RFC3339), strings.Join(args, " "), err)
+		return
+	}
+	_ = cmd.Process.Release()
+}
+
+// startOnce は guard(~/.shikii/agent/starting-<what>)が hookStartGap より古いか無い時だけ fn を呼ぶ。起こしてから応えるまで待つ間に何度も起こさない。
+func startOnce(agent, what string, fn func()) bool {
+	guard := filepath.Join(agent, "starting-"+what)
+	if info, err := os.Stat(guard); err == nil && time.Since(info.ModTime()) < hookStartGap {
+		return false
+	}
+	_ = os.MkdirAll(agent, 0o755)
+	_ = os.WriteFile(guard, []byte(time.Now().Format(time.RFC3339)+"\n"), 0o600)
+	fn()
+	return true
+}
+
+// ensureModel は手元のモデル(hookLocalURL)が応えなければ `shikii up` を裏で起こす。llama-server が無ければ起こさず hook.log に入れ方を 1 行(10 分に 1 回)。
+// 初回はモデルを取ってくるので、応えるまでの数ターンは記録が付かないだけ。hook はこれを待たない。
+func ensureModel(agent string) {
+	if probe(hookLocalURL).up {
+		return
+	}
+	startOnce(agent, "model", func() {
+		if _, err := exec.LookPath("llama-server"); err != nil {
+			hookLog("no local model on " + hookLocalURL + " and no llama-server on PATH: install llama.cpp (brew install llama.cpp) and the hooks will start it; until then they record nothing")
+			return
+		}
+		hookSpawn(agent, "up.log", "up")
+	})
+}
+
+// ensurePage は答え合わせの画面(hookPageURL)が立っていなければ `shikii serve --store ~/.shikii/agent --port 8096` を裏で起こす。URL は常に同じ。
+func ensurePage(agent string) {
+	if serveUp() {
+		return
+	}
+	startOnce(agent, "page", func() {
+		hookSpawn(agent, "serve.log", "serve", "--store", agent, "--port", "8096", "--local", hookLocalURL)
+	})
+}
+
 // ---------------------------------------------------------------- install / uninstall
 
 // hookEvent は settings に足す 1 つ。command は PATH の shikii(MCP の設定と同じ流儀)。matcher は無い(どちらの event もツールを選ばない)。
@@ -1144,12 +1206,12 @@ func hookInstall(args []string, install bool) error {
 	home := filepath.Dir(filepath.Dir(agent))
 	tilde := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
 	if install {
-		fmt.Fprintf(stdout, "1. %s: decisions/ wiki/ records/ labels/ for the agent's own decisions (this folder is the store); copy the 4 specs that are missing (%s) and the shared wiki pages. Existing files are never overwritten\n", tilde(agent), strings.Join(hookSpecs, ", "))
+		fmt.Fprintf(stdout, "1. %s: decisions/ wiki/ records/ labels/ for the agent's own decisions (this folder is the store); copy the 4 specs that are missing (%s) and the shared wiki pages. Existing files are never overwritten. ~/.claude/skills/shikii (the agent's rules for using shikii) is put in place\n", tilde(agent), strings.Join(hookSpecs, ", "))
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: add 2 hooks (UserPromptSubmit, Stop) running `shikii hook <event>` (%s); shikii hooks from an older version (PreToolUse) are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), t.who, filepath.Base(t.rel), t.note)
 		}
 		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Until a spec has a calibration line they only record (shadow mode); they never stop a tool. Claude Code and Codex (Cursor and OpenCode have no hook).\n")
-		fmt.Fprintf(stdout, "   Needs: the local model on %s (start it with `shikii up`; without it the hooks stay silent and record nothing) and `shikii` on the agent's PATH (`which shikii`)\n", hookLocalURL)
+		fmt.Fprintf(stdout, "   The local model (%s) and the answer page (%s) are started in the background by the hooks when they are not running; install starts the model now if llama-server is on PATH. `shikii` must be on the agent's PATH (`which shikii`)\n", hookLocalURL, hookPageURL)
 	} else {
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command starts with `%s` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)), hookCmdPrefix)
@@ -1175,6 +1237,10 @@ func hookInstall(args []string, install bool) error {
 			return err
 		}
 		fmt.Fprintf(stdout, "%s: %d specs and %d wiki pages added\n", tilde(agent), n, w)
+		if err := copySkill(filepath.Join(home, ".claude", "skills", "shikii")); err != nil {
+			return fmt.Errorf("skill: %w", err)
+		}
+		fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, ".claude", "skills", "shikii")))
 	}
 	for _, t := range hookTargets {
 		settings := filepath.Join(home, t.rel)
@@ -1194,7 +1260,15 @@ func hookInstall(args []string, install bool) error {
 		}
 	}
 	if install {
-		fmt.Fprintf(stdout, "answer page: shikii serve --store %s --port 8096 --local %s   (then %s/)\n", tilde(agent), hookLocalURL, hookPageURL)
+		if probe(hookLocalURL).up {
+			fmt.Fprintf(stdout, "local model: already answering on %s\n", hookLocalURL)
+		} else if _, err := exec.LookPath("llama-server"); err != nil {
+			fmt.Fprintf(stdout, "local model: none on %s and no llama-server on PATH. Install llama.cpp (brew install llama.cpp); the hooks start the model by themselves after that. Until then they record nothing\n", hookLocalURL)
+		} else {
+			ensureModel(agent)
+			fmt.Fprintf(stdout, "local model: starting in the background (the first run downloads it; a few minutes). Log: %s\n", tilde(filepath.Join(agent, "up.log")))
+		}
+		fmt.Fprintf(stdout, "answer page: %s/ (started in the background when the first decision waits for you)\n", hookPageURL)
 	}
 	return nil
 }

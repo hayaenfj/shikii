@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/decide"
@@ -23,17 +24,29 @@ func hookEnv(t *testing.T, model *httptest.Server) (agent string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	agent = filepath.Join(home, ".shikii", "agent")
-	oldLocal, oldPage, oldCal, oldTune := hookLocalURL, hookPageURL, hookCalibrate, hookTune
+	oldLocal, oldPage, oldCal, oldTune, oldSpawn := hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn
 	hookCalibrate = runCalibrateInProcess // テストは線を同プロセスで引く(本番は別プロセスを切り離す)
 	hookTune = runTuneInProcess
+	spawned = nil
+	hookSpawn = recordSpawn             // 本物の up / serve は起こさない(記録だけ)
 	hookLocalURL = "http://127.0.0.1:1" // 閉じている口(モデルが無い)
 	if model != nil {
 		hookLocalURL = model.URL
 	}
 	hookPageURL = "http://127.0.0.1:1"
-	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate, hookTune = oldLocal, oldPage, oldCal, oldTune })
+	t.Cleanup(func() {
+		hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn = oldLocal, oldPage, oldCal, oldTune, oldSpawn
+	})
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	spawned = nil // install が起こした分は数えない
 	return agent
+}
+
+// spawned は hookSpawn の記録(テスト)。
+var spawned []string
+
+func recordSpawn(agent, logName string, args ...string) {
+	spawned = append(spawned, strings.Join(args, " "))
 }
 
 // runHook は stdin の JSON を与えて event を走らせ、stdout を返す。hook は何があっても誤りを返さない。
@@ -518,8 +531,11 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	// 1 依頼で prompt-kind(edit 0.9、線が無いので ask)+ needs-plan(ask)+ Stop の done-as-asked(ask)= 3 件
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "add a --json flag to the status command"})
 	out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Added."})
-	if !strings.Contains(out, "3 of this session's decisions wait") || !strings.Contains(out, "--port 8096") {
-		t.Fatalf("without a page the line must give the serve command: %s", out)
+	if !strings.Contains(out, "3 of this session's decisions wait") || !strings.Contains(out, hookPageURL+"/") || strings.Contains(out, "Start the page") {
+		t.Fatalf("the line must always give the URL (the page is started in the background): %s", out)
+	}
+	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+agent+" --port 8096 --local ") {
+		t.Fatalf("a Stop with answers waiting and no page must start the page once: %v", spawned)
 	}
 	if strings.Contains(out, "hookSpecificOutput") {
 		t.Fatalf("Stop must not return hookSpecificOutput (it would continue the conversation): %s", out)
@@ -528,16 +544,56 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	if out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd}); out != "" {
 		t.Fatalf("nothing new: the line must not repeat: %s", out)
 	}
-	// 画面が立っている → URL。1 件に答え、次の依頼で 3 件増えると、残りの数(5)で言い直す
+	// 画面が立っている → 起こさない。1 件に答え、次の依頼で 3 件増えると、残りの数(5)で言い直す
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) }))
 	t.Cleanup(page.Close)
 	hookPageURL = page.URL
+	spawned = nil
 	recs, _ := (store.Store{Dir: agent}).Records("needs-plan", 0)
 	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "no"}) })
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "and document the flag in the README too"})
 	out = runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Documented."})
 	if !strings.Contains(out, "5 of this session's decisions wait") || !strings.Contains(out, page.URL+"/") {
 		t.Fatalf("with the page up the line must carry the URL and the remaining count: %s", out)
+	}
+	if len(spawned) != 0 {
+		t.Fatalf("a page that is up must not be started again: %v", spawned)
+	}
+}
+
+// モデルが無ければ hook が `shikii up` を裏で起こす(10 分に 1 回)。install は作法(skill)も置き、モデルを起こす。人がコマンドを打つ場面を無くす。
+func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
+	if _, err := exec.LookPath("llama-server"); err != nil {
+		t.Skip("no llama-server on PATH: the hook would only log a hint")
+	}
+	agent := hookEnv(t, nil) // モデルの口は閉じている
+	home := filepath.Dir(filepath.Dir(agent))
+	if !fileExists(filepath.Join(home, ".claude", "skills", "shikii", "SKILL.md")) {
+		t.Fatal("hook install must put the agent's skill in place")
+	}
+	// install は guard を書いているので、まず guard を消して依頼の直後の起こし方を見る
+	_ = os.Remove(filepath.Join(agent, "starting-model"))
+	cwd := t.TempDir()
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "add a flag to the status command"})
+	if len(spawned) != 1 || spawned[0] != "up" {
+		t.Fatalf("a missing model must start `shikii up` once: %v", spawned)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "and document it in the README as well"})
+	runHook(t, "stop", map[string]any{"session_id": "m", "cwd": cwd})
+	if len(spawned) != 1 {
+		t.Fatalf("within %s the model must not be started again: %v", hookStartGap, spawned)
+	}
+	// 10 分過ぎれば(guard が古ければ)もう一度
+	old := time.Now().Add(-hookStartGap - time.Minute)
+	_ = os.Chtimes(filepath.Join(agent, "starting-model"), old, old)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "now run the tests and tell me what fails"})
+	if len(spawned) != 2 {
+		t.Fatalf("after the gap the model may be started again: %v", spawned)
+	}
+	// install の表示に、人が打つコマンドは無い
+	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	if strings.Contains(out, "shikii serve --store") || !strings.Contains(out, "started in the background") {
+		t.Fatalf("install must not tell the person to start anything by hand: %s", out)
 	}
 }
 
@@ -834,9 +890,9 @@ func TestHookCodex(t *testing.T) {
 	}
 	// hookEnv と同じ差し替え(HOME は上で決めたものを使う)
 	agent := filepath.Join(home, ".shikii", "agent")
-	oldLocal, oldPage, oldCal := hookLocalURL, hookPageURL, hookCalibrate
-	hookLocalURL, hookPageURL, hookCalibrate = model.URL, "http://127.0.0.1:1", runCalibrateInProcess
-	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate = oldLocal, oldPage, oldCal })
+	oldLocal, oldPage, oldCal, oldSpawn := hookLocalURL, hookPageURL, hookCalibrate, hookSpawn
+	hookLocalURL, hookPageURL, hookCalibrate, hookSpawn = model.URL, "http://127.0.0.1:1", runCalibrateInProcess, recordSpawn
+	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate, hookSpawn = oldLocal, oldPage, oldCal, oldSpawn })
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(codexHooks)
 	if len(cmds) != 2 || cmds[0] != "shikii hook stop" || cmds[1] != "shikii hook user-prompt-submit" {

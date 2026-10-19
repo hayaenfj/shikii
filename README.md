@@ -7,7 +7,7 @@
 ### A tool that lets an AI decide "yes or no", "which one" and "how much", and grows it from your corrections. All you do is answer, on a page, what was actually true.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-192%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-193%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
@@ -29,12 +29,9 @@ For people who use Claude Code or Codex. The coding agent makes judgements when 
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
-shikii up                    # start a small local AI (Kev-4B on :8080); the first run downloads it
-shikii hook install --yes    # two hooks for Claude Code and Codex; they take effect in a new terminal
-shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080   # the answer page
 ```
 
-Then just keep working with the agent as usual. Four things are measured.
+That is all. It installs the binary, adds two hooks to Claude Code and Codex, puts the agent's rules (a skill) in place, and starts a small local AI (Kev-4B) in the background (if llama.cpp is missing it prints the one line to install it). Open a new terminal and keep working with the agent as usual. Four things are measured.
 
 | When | Question | Where the truth comes from |
 |---|---|---|
@@ -43,23 +40,17 @@ Then just keep working with the agent as usual. Four things are measured.
 | The turn ends | Were the changes within what you asked? | You, on the page |
 | The turn ends | Did it finish what you asked? | You, on the page |
 
-At the end of a turn one line appears, `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`, and you answer on the page when you have a minute; each takes seconds. After 50 answers a line is drawn and the agent's behaviour changes: a request that needs a plan becomes a note to the agent, and a turn that looks unfinished or out of scope becomes one line to you, each with a receipt such as "line on 61 truths, human-checked precision 0.96". Until then the hooks only record. No hook ever stops a tool.
+At the end of a turn one line appears, `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`, and you open it when you have a minute (the hook starts the page in the background too); each answer takes seconds. After 50 answers a line is drawn and the agent's behaviour changes: a request that needs a plan becomes a note to the agent, and a turn that looks unfinished or out of scope becomes one line to you, each with grounds such as "line on 61 truths, human-checked precision 0.96". Until then the hooks only record. No hook ever stops a tool.
 
 Everything lives in one place, `~/.shikii/agent`, with one line per question across all your projects (the questions are about the agent's thinking, so the truth is the same in every repository). Each record is marked with the repository it came from, and the page can filter by it. Details: [the hook](integrations/claude-code.md) (Japanese).
 
 ## Use 2: hand it a business decision
 
-For decisions you repeat at work, such as "is this inquiry the same case?" or "is this message a change request?": let the AI decide and grow it from your corrections.
+For decisions you repeat at work, such as "is this inquiry the same case?" or "is this message a change request?": let the AI decide and grow it from your corrections. Here too there is no command to type. You tell the agent.
 
-```sh
-cd <project root> && shikii init            # .shikii/ plus the agent setup (MCP, skill, AGENTS.md) in one go
-shikii new                                  # answer a few questions and a decision file appears (.shikii/decisions/<id>.yaml)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=ask  (no line yet: "check with a person")
-shikii serve --local http://127.0.0.1:8080  # answer at http://127.0.0.1:8095
-```
+> I want shikii to decide whether an inquiry is the same case as an earlier one, and to grow it from my corrections
 
-As you answer on the page, the line is drawn automatically once the decision's own count is reached (20 for this one), and from then on:
+The agent follows its rules (the skill): it creates `.shikii/` in the project (`shikii init`), settles the question, the options and the inputs and writes the decision file (`shikii new`; it shows you the question and the options once, because that is your intent), calls the decision (`shikii decide`), starts the answer page (http://127.0.0.1:8095) and tells you. At first every decision is `ask` (check with a person). As you answer on the page, the line is drawn automatically once the decision's own count is reached (20 in this example), and from then on:
 
 ```sh
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
@@ -70,6 +61,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 
 There are only four `band` values: `act` = go ahead, `ask` = check with a person, `discard` = do not act, `abstain` = not enough input. Raw probabilities are never what you act on.
 
+- **By hand**: `shikii init` → `shikii new` → `shikii decide … -i key=value` → `shikii serve`. All of it is in [the guide](docs/guide.md)
 - **From an agent**: `shikii init` writes the MCP setup, so Claude Code, Cursor, OpenCode and Codex can call the tools `shikii_decide` and `shikii_label` directly ([MCP](integrations/mcp.md))
 - **From your own program**: start `shikii serve` and call `POST /v1/decide` (decide) and `POST /v1/label` (correct). The body is JSON and needs `-H 'Content-Type: application/json'` ([HTTP API](docs/guide.md#or-run-one-process-for-programs-and-people))
 - **Ready-made decisions**: six in this repo's `decisions/` (request type, duplicate bug report, same inquiry, …). Copy one with `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` and reword it ([list](decisions/README.md))
@@ -90,12 +82,12 @@ On the answer page (`shikii serve`) a person does three things. Everything else 
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 or newer; a single binary
-shikii up        # a local AI (Kev-4B). To use hosted Jev or OpenRouter instead, put the key in an environment variable ([connections](docs/guide.md#what-you-can-connect))
-shikii doctor    # what is running, what is missing
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 or newer; otherwise Docker (above)
 ```
 
-`shikii init` creates one folder, `.shikii/` (inside: `decisions/` = decision files, `wiki/` = knowledge, `records/` and `labels/` = records and corrections). Nothing else appears at the project root. `decisions/`, `wiki/` and `labels/` are assets that survive a change of AI, so commit them; `records/` keeps growing, so committing it is optional (`shikii gc` drops old ones). It also adds a shikii entry to your agents' setup (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`, OpenCode's `opencode.json`, Codex's `~/.codex/config.toml`) without touching entries you wrote. Running it again changes nothing that exists.
+What install.sh does: installs the binaries (`shikii` and `shikii-readout`), adds two hooks to Claude Code and Codex, puts the agent's rules (the skill) in `~/.claude/skills/shikii`, and, if llama.cpp is present, starts the local AI (Kev-4B on :8080) in the background. To use hosted Jev or OpenRouter instead, put the key in an environment variable ([connections](docs/guide.md#what-you-can-connect)). `shikii doctor` tells you what is running and what is missing.
+
+The per-project setup (`shikii init`) is the agent's job (you may also run it yourself). It creates one folder, `.shikii/` (inside: `decisions/` = decision files, `wiki/` = knowledge, `records/` and `labels/` = records and corrections). Nothing else appears at the project root. `decisions/`, `wiki/` and `labels/` are assets that survive a change of AI, so commit them; `records/` keeps growing, so committing it is optional (`shikii gc` drops old ones). It also adds a shikii entry to your agents' setup (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`, OpenCode's `opencode.json`, Codex's `~/.codex/config.toml`) without touching entries you wrote. Running it again changes nothing that exists.
 
 Command output and hook messages are in English (if Claude Code's language setting is Japanese, hook messages are shown in Japanese next to the English). The page has Japanese. The finer points, such as using only a hosted AI, `AGENTS.md` versus `CLAUDE.md`, and Node for changing the page itself, are in [the guide](docs/guide.md).
 

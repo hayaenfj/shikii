@@ -1,7 +1,8 @@
 #!/bin/sh
 # shikii を 1 行で入れる: curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 # Go 1.27 以上があれば go install で ~/go/bin(または GOBIN)に shikii と shikii-readout が入る。
-# その後 `shikii init` をプロジェクトルート(実行する場所)で 1 回打てば、エージェントの準備は終わり。
+# 続けて `shikii hook install --yes` を流す: Claude Code と Codex の hook(AI 自身の考え方を測る)、エージェントの作法(skill)、
+# 手元のモデル(llama-server があれば裏で起こす)。これで人が打つコマンドは終わり。業務の判定(shikii init / new / serve)はエージェントが skill に沿って進める。
 set -eu
 if ! command -v go >/dev/null 2>&1; then
   echo "install.sh: Go 1.27 or newer is needed (https://go.dev/dl/). Or use Docker: docker compose up" >&2
@@ -19,5 +20,6 @@ else
 fi
 BIN="$(go env GOBIN)"; [ -n "$BIN" ] || BIN="$(go env GOPATH)/bin"
 echo "installed: $BIN/shikii $BIN/shikii-readout"
-case ":$PATH:" in *":$BIN:"*) ;; *) echo "add to PATH: $BIN";; esac
-echo "next: cd <your project> && shikii init"
+case ":$PATH:" in *":$BIN:"*) ;; *) echo "add to PATH: $BIN  (the hooks call plain \`shikii\`, so it must be on the PATH of the terminal that starts the agent)";; esac
+"$BIN/shikii" hook install --yes
+echo "done. Open a new terminal and use Claude Code or Codex as usual. To hand it a business decision, just tell the agent what you want decided; it sets shikii up in the project by itself."
