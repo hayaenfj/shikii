@@ -43,8 +43,32 @@ function checkPinned(target) {
   return ok;
 }
 
+// hook の記録には仕事の印(project)が付く。2 つ以上の仕事があれば絞り込みが出て、押すとその仕事のカードだけになり、カードに印が見える
+function checkProject(target) {
+  const item = (trace, text, project) => ({ trace_id: trace, at: '2026-10-19T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: text }, inputs_hash: trace, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal', audit: false, project });
+  const sp = { id: 'done-as-asked', type: 'noul', question: 'q', titles: {}, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 3, queue: { items: [item('p1', 'ALPHA-1', 'alpha'), item('p2', 'ALPHA-2', 'alpha'), item('p3', 'BETA-1', 'beta')] }, tune: null };
+  ui.pinned = '';
+  ui.project = '';
+  ui.view = 'list';
+  const app = mount(SpecPanel, { target, props: { sp } });
+  flushSync();
+  const chips = [...target.querySelectorAll('.chips.projects button')];
+  const beta = chips.find(b => b.textContent.startsWith('beta'));
+  const hasChips = chips.length === 3 && !!beta;
+  if (beta) beta.click();
+  flushSync();
+  const items = [...target.querySelectorAll('.item')];
+  const onlyBeta = items.length === 1 && items[0].textContent.includes('BETA-1') && !!items[0].querySelector('.project');
+  unmount(app);
+  ui.project = '';
+  ui.view = 'one';
+  const ok = hasChips && onlyBeta;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (project chips=' + chips.length + ', filtered to beta=' + onlyBeta + ')');
+  return ok;
+}
+
 export function run() {
   const target = document.getElementById('app');
-  const ok = checkLang(target) && checkPinned(target);
+  const ok = checkLang(target) && checkPinned(target) && checkProject(target);
   if (!ok) process.exit(1);
 }

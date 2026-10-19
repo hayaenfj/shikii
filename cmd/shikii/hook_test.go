@@ -190,6 +190,17 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if cis[0].Inputs["request"] != "fix the typo in a.go" || cis[0].Inputs["files"] != "a.go\nb.md" || cis[0].Inputs["summary"] != "Fixed the typo." {
 		t.Fatalf("changes-in-scope must see the request, the changed files and the closing message: %+v", cis[0].Inputs)
 	}
+	// 記録には仕事の印(repo のルートの名)が付く。入力ではないので inputs とハッシュには入らない
+	for _, id := range hookSpecs {
+		recs, _ := st.Records(id, 0)
+		if recs[0].Project != filepath.Base(repo) || recs[0].Inputs["project"] != "" {
+			t.Fatalf("%s: the record must carry the project mark %q outside the inputs: project=%q inputs=%v", id, filepath.Base(repo), recs[0].Project, recs[0].Inputs)
+		}
+	}
+	// status は仕事ごとの数を出す
+	if out := capture(t, func() error { return cmdStatus([]string{"--store", agent}) }); !strings.Contains(out, "by project: "+filepath.Base(repo)+"=1") {
+		t.Fatalf("status must count records per project: %s", out)
+	}
 	daa, _ := st.Records("done-as-asked", 0)
 	if daa[0].Inputs["summary"] != "Fixed the typo." || daa[0].Inputs["files"] != "a.go\nb.md" {
 		t.Fatalf("done-as-asked inputs: %+v", daa[0].Inputs)
@@ -732,8 +743,8 @@ func TestHookSecondAudit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte("SECRET=hunter2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	hash, listing, listed := treeState(repo)
-	if hash == "" || !listed || !strings.HasSuffix(listing, "\t.env") || strings.Contains(listing, "hunter2") {
+	hash, listing, listed, project := treeState(repo)
+	if hash == "" || !listed || project != filepath.Base(repo) || !strings.HasSuffix(listing, "\t.env") || strings.Contains(listing, "hunter2") {
 		t.Fatalf("snapshot must work in a fresh repo and list paths, not contents: %q %q", hash, listing)
 	}
 	blob, _ := exec.Command("git", "-C", repo, "hash-object", ".env").Output()
@@ -743,7 +754,7 @@ func TestHookSecondAudit(t *testing.T) {
 	if out, _ := exec.Command("git", "-C", repo, "ls-files", "--cached").Output(); len(strings.TrimSpace(string(out))) != 0 {
 		t.Fatalf("the repo's own index must stay untouched, got %q", out)
 	}
-	if h, l, ok := treeState(t.TempDir()); h != "" || l != "" || ok {
+	if h, l, ok, _ := treeState(t.TempDir()); h != "" || l != "" || ok {
 		t.Fatal("outside git the snapshot must be empty")
 	}
 

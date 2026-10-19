@@ -32,7 +32,13 @@
   const kind = it => it.band === 'ask' ? 'ask' : it.audit ? 'audit' : 'other';
   let all = $derived(sp.queue.items);
   let counts = $derived({ all: all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length });
-  let matching = $derived(all.filter(it => ui.filter === 'all' || kind(it) === ui.filter));
+  // 仕事(project の印)ごとの数。印の付く記録(hook)が 2 つ以上の仕事にまたがる時だけ絞り込みを出す
+  let projects = $derived.by(() => {
+    const m = new Map();
+    for (const it of all) if (it.project) m.set(it.project, (m.get(it.project) || 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  });
+  let matching = $derived(all.filter(it => (ui.filter === 'all' || kind(it) === ui.filter) && (!ui.project || it.project === ui.project)));
   // URL で指された判定(ui.pinned)は先頭に(hook の「あとで答える → URL」から来た人が、その 1 件をすぐ答えられる)
   let visible = $derived.by(() => {
     const v = matching.filter(it => !skipped.has(it.trace_id));
@@ -63,6 +69,15 @@
   {#if question}<div class="q">{question}</div>{/if}
   <div class="status">{progress.plain}<div class="bar"><div style="width:{progress.pct}%"></div></div></div>
   <Chips {counts} labels={sp.labels} />
+  {#if projects.length > 1}
+    <div class="chips projects">
+      <span class="k">{t('byProject')}</span>
+      <button type="button" class:active={!ui.project} onclick={() => { ui.project = ''; }}>{t('chip_all')} {all.length}</button>
+      {#each projects as [name, n]}
+        <button type="button" class:active={ui.project === name} onclick={() => { ui.project = ui.project === name ? '' : name; }}>{name} {n}</button>
+      {/each}
+    </div>
+  {/if}
 
   {#if ui.done}
     {#if !sp.answered}

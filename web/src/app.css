@@ -27,6 +27,8 @@ h2 .k { color:var(--muted); font-size:12px; font-weight:400; }
 .item.ask { border-color: var(--amber); }
 .meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; display:flex; gap:12px; flex-wrap:wrap; }
 .meta .audit { font-weight: 600; }
+.meta .project { background: var(--bg2, rgba(127,127,127,.12)); border-radius: 4px; padding: 0 6px; }
+.chips.projects .k { font-size: 12px; }
 .text { white-space: pre-wrap; word-break: break-word; margin: 4px 0 10px; }
 .text .k { color: var(--muted); font-size: 12px; }
 .btns { display:flex; gap:8px; flex-wrap:wrap; }

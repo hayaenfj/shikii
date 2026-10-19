@@ -286,7 +286,7 @@ func pruneSessions(agent string) {
 
 // hookDecide は ~/.shikii/agent の spec で判定し、帯を振る舞いに写し、記録する。線が無ければ band は act にならない(= 影の期間)。
 // 設定の言語が英語以外なら、出す文は英語と併記し、記録にも display(言語、質問、答え、出した文)を添える。
-func hookDecide(agent, specID string, inputs map[string]string) (*decide.Decision, hookOut, error) {
+func hookDecide(agent, specID string, inputs map[string]string, project string) (*decide.Decision, hookOut, error) {
 	sp, err := spec.Load(filepath.Join(agent, "decisions", specID+".yaml"))
 	if err != nil {
 		return nil, hookOut{}, err
@@ -304,6 +304,7 @@ func hookDecide(agent, specID string, inputs map[string]string) (*decide.Decisio
 	out := hookOutcome(specID, d, l)
 	if d.Band != decide.Abstain {
 		rec := recordOf(sp, d, inputs)
+		rec.Project = project                                                         // どの仕事の判定か(画面と status で分けて見る印。入力ではないのでハッシュは変わらない)
 		if l.Lang != "" && (l.Question != "" || l.Top != "" || out.message() != "") { // 言語だけの display は付けない(読む物が無い)
 			rec.Display = &store.RecordDisplay{Lang: l.Lang, Question: l.Question, Top: l.Top, Message: out.message()}
 		}
@@ -316,7 +317,7 @@ func hookDecide(agent, specID string, inputs map[string]string) (*decide.Decisio
 
 // hookDecideAll は同じ入力で複数の spec を並行して聞く(1 つの hook の中で順に待つと timeout に近づく)。
 // 返す順は specIDs の順。聞かなかった(skip)spec は nil。
-func hookDecideAll(agent string, specIDs []string, inputs map[string]string, skip func(id string) bool) ([]*decide.Decision, []hookOut, error) {
+func hookDecideAll(agent string, specIDs []string, inputs map[string]string, project string, skip func(id string) bool) ([]*decide.Decision, []hookOut, error) {
 	ds := make([]*decide.Decision, len(specIDs))
 	outs := make([]hookOut, len(specIDs))
 	errs := make([]error, len(specIDs))
@@ -328,7 +329,7 @@ func hookDecideAll(agent string, specIDs []string, inputs map[string]string, ski
 		wg.Add(1)
 		go func(i int, id string) {
 			defer wg.Done()
-			ds[i], outs[i], errs[i] = hookDecide(agent, id, inputs)
+			ds[i], outs[i], errs[i] = hookDecide(agent, id, inputs, project)
 		}(i, id)
 	}
 	wg.Wait()
@@ -560,7 +561,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if snapshot.Previous != "" {
 		inputs["previous"] = snapshot.Previous // 文脈の段(迷った時だけ使われる)
 	}
-	tree, listing, listed := treeState(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
+	tree, listing, listed, project := treeState(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
 	var firstErr error
 	muts := []func(*hookSession){
 		func(s *hookSession) { s.Request, s.Judged = request, false },
@@ -581,7 +582,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 		},
 	}
-	ds, outs, err := hookDecideAll(agent, hookSpecs[:2], inputs, nil)
+	ds, outs, err := hookDecideAll(agent, hookSpecs[:2], inputs, project, nil)
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
@@ -606,7 +607,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 // 同じ依頼について 1 回だけ(Judged)。依頼の控えが無ければ聞かない。何も変えていなければ changes-in-scope は聞かない。
 // ほかに、直前のアシスタントの発言を控え、残った pending に結果の正解を付ける。答え待ちの要約は呼ぶ側が錠の中で足す(stopSummary)。
 func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
-	tree, listing, listed := treeState(in.CWD)
+	tree, listing, listed, project := treeState(in.CWD)
 	last := cut(strings.TrimSpace(in.LastAssistantMessage), requestMax)
 	var firstErr error
 	muts := []func(*hookSession){
@@ -636,7 +637,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	if inputs["summary"] == "" {
 		inputs["summary"] = "(none)"
 	}
-	ds, outs, err := hookDecideAll(agent, hookSpecs[2:], inputs, func(id string) bool {
+	ds, outs, err := hookDecideAll(agent, hookSpecs[2:], inputs, project, func(id string) bool {
 		return id == "changes-in-scope" && (!known || len(changed) == 0) // 何も変えていない(か分からない)なら「範囲か」は問えない
 	})
 	if err != nil && firstErr == nil {
@@ -908,19 +909,21 @@ func serveUp() bool {
 
 // treeSnapshot は作業ツリーの中身のハッシュだけ(treeState の前半)。
 func treeSnapshot(cwd string) string {
-	h, _, _ := treeState(cwd)
+	h, _, _, _ := treeState(cwd)
 	return h
 }
 
 // treeState は作業ツリーの状態: 仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id の先頭 16 桁(hash)と、
-// その index の `git ls-files --stage` の一覧(listing。Stop で依頼の時と比べて「変わったファイル」を出す。空の repo では空。listed はそれが取れたか)。
+// その index の `git ls-files --stage` の一覧(listing。Stop で依頼の時と比べて「変わったファイル」を出す。空の repo では空。listed はそれが取れたか)、
+// それと project(記録に付ける仕事の印: repo のルートのフォルダ名。git の外なら cwd のフォルダ名)。
 // HEAD や index の状態は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。
 // 新しい blob は仮の objects(GIT_OBJECT_DIRECTORY)に書いて消すので、未追跡ファイルの中身が repo の .git/objects に残らない(repo の objects は alternates として読むだけ)。
 // 全体で hookGitTimeout を超えたら ""(.gitignore の無い巨大な node_modules など。正解を付けないだけで hook は止めない)。git の外なら ""。
-func treeState(cwd string) (hash, listing string, listed bool) {
+func treeState(cwd string) (hash, listing string, listed bool, project string) {
 	if cwd == "" {
-		return "", "", false
+		return "", "", false, ""
 	}
+	project = filepath.Base(filepath.Clean(cwd))
 	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
 	run := func(env []string, args ...string) (string, bool) {
@@ -935,19 +938,21 @@ func treeState(cwd string) (hash, listing string, listed bool) {
 		}
 		return strings.TrimSpace(out.String()), true
 	}
-	if _, ok := run(nil, "rev-parse", "--is-inside-work-tree"); !ok {
-		return "", "", false
+	top, ok := run(nil, "rev-parse", "--show-toplevel")
+	if !ok {
+		return "", "", false, project // git の外: 印は cwd の名
 	}
+	project = filepath.Base(top)
 	objects, ok := run(nil, "rev-parse", "--git-path", "objects")
 	if !ok {
-		return "", "", false
+		return "", "", false, project
 	}
 	if !filepath.IsAbs(objects) {
 		objects = filepath.Join(cwd, objects)
 	}
 	scratch, err := os.MkdirTemp("", "shikii-git-*")
 	if err != nil {
-		return "", "", false
+		return "", "", false, project
 	}
 	defer os.RemoveAll(scratch)
 	env := []string{
@@ -956,22 +961,22 @@ func treeState(cwd string) (hash, listing string, listed bool) {
 		"GIT_ALTERNATE_OBJECT_DIRECTORIES=" + objects,
 	}
 	if err := os.MkdirAll(filepath.Join(scratch, "objects"), 0o755); err != nil {
-		return "", "", false
+		return "", "", false, project
 	}
 	if _, ok := run(env, "add", "-A", "--", "."); !ok {
-		return "", "", false
+		return "", "", false, project
 	}
 	tree, ok := run(env, "write-tree")
 	if !ok {
-		return "", "", false
+		return "", "", false, project
 	}
 	sum := sha256.Sum256([]byte(tree))
 	hash = hex.EncodeToString(sum[:])[:16]
 	listing, ok = run(env, "ls-files", "--stage", "--full-name")
 	if !ok || len(listing) > listingMax {
-		return hash, "", false
+		return hash, "", false, project
 	}
-	return hash, listing, true
+	return hash, listing, true, project
 }
 
 func hookLog(msg string) {

@@ -222,7 +222,7 @@ bin/shikii decide .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0
 
 ## 接続例
 
-Claude Code と Codex の hook(`shikii hook install`): AI 自身の考え方を、考える前(この依頼で結局ファイルを変えるか、着手前に進め方を合わせるべきか)と考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)の 2 点で測る。ツール呼び出しごとの hook は無い(コマンドの分類は考え方ではなく雑音で、許可は Claude Code の仕事)。置き場は `~/.shikii/agent`(基本構成)、モデルは :8080、答え合わせの画面は `shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080`。線が無いうちは記録だけ(影の期間)。線が引けたら、方針合わせが要る依頼は AI への文脈、終えていない・範囲の外に見えるターンは人への 1 行、迷った判定は「あとで答える → URL」を端末に 1 行、ターンの終わりに答え待ちの件数を 1 行。ツールは止めず、許可の判定も出さない。失敗しても止めない(hook.log に理由)。帯 → 振る舞いの表と中の形は [`integrations/claude-code.md`](../integrations/claude-code.md)。
+Claude Code と Codex の hook(`shikii hook install`): AI 自身の考え方を、考える前(この依頼で結局ファイルを変えるか、着手前に進め方を合わせるべきか)と考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)の 2 点で測る。ツール呼び出しごとの hook は無い(コマンドの分類は考え方ではなく雑音で、許可は Claude Code の仕事)。置き場は `~/.shikii/agent`(基本構成。プロジェクトをまたいで 1 つ、線も 1 本。記録に仕事の印 `project`(repo のルートの名)が付き、画面は仕事ごとに絞り込め、`status` は仕事ごとに数える)、モデルは :8080、答え合わせの画面は `shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080`。線が無いうちは記録だけ(影の期間)。線が引けたら、方針合わせが要る依頼は AI への文脈、終えていない・範囲の外に見えるターンは人への 1 行、迷った判定は「あとで答える → URL」を端末に 1 行、ターンの終わりに答え待ちの件数を 1 行。ツールは止めず、許可の判定も出さない。失敗しても止めない(hook.log に理由)。帯 → 振る舞いの表と中の形は [`integrations/claude-code.md`](../integrations/claude-code.md)。
 他のエージェントに付けるときの最小手順もそこに。
 
 ## まだ無いもの
