@@ -22,21 +22,23 @@
 ## 入れる・外す
 
 ```sh
-shikii up                    # 手元のモデル(:8080)。立っていないと hook は黙って何も記録しない
-which shikii                 # Claude Code がそのまま `shikii` を呼ぶので、PATH に要る
-shikii hook install          # 何をするかを表示するだけ
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # 実行ファイル + 下の install --yes まで全部
+shikii hook install          # 何をするかを表示するだけ(install.sh が --yes で流すのと同じ)
 shikii hook install --yes    # 実行。新しいターミナルで claude を起こし直すと効く
 shikii hook uninstall --yes  # 足した 2 つの hook だけ外す。記録と正解(~/.shikii/agent)は残る
+which shikii                 # Claude Code がそのまま `shikii` を呼ぶので、PATH に要る
 ```
+
+**人が打つのは install.sh の 1 行だけ。** モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面(:8096)は、ターンの終わりに答え待ちが出た時に立っていなければ hook が `shikii serve` を裏で起こす。どちらも 10 分に 1 回まで(`starting-model` / `starting-page` の guard)。出力は `~/.shikii/agent/up.log` と `serve.log`。
 
 `install` がすること(2 回目は何も足さない):
 
-1. `~/.shikii/agent/` に基本構成(`decisions/` `wiki/` `records/` `labels/`。store そのもの)。4 つの spec と既製の wiki の知識を、**無いものだけ**写す(線の入った spec・人が直した spec は触らない)
+1. `~/.shikii/agent/` に基本構成(`decisions/` `wiki/` `records/` `labels/`。store そのもの)。4 つの spec と既製の wiki の知識を、**無いものだけ**写す(線の入った spec・人が直した spec は触らない)。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
 2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `UserPromptSubmit` と `Stop` の 2 つ(command は `shikii hook <event>`、timeout は UserPromptSubmit 10 秒、Stop 15 秒。matcher は無い)。古い版が足した `PreToolUse` の shikii の hook は外す(他の hook と鍵は残す)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
 固定の規則(オプションは無い): 置き場は `~/.shikii/agent`(プロジェクトをまたいで 1 つ。これが store で、中に decisions/ wiki/ records/ labels/ sessions/)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、依頼・返答・ファイル名はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しには何も足されない。モデルが無ければ待たずに黙る。
 
-答え合わせの画面:
+答え合わせの画面は hook が立てる。手で立てるなら:
 
 ```sh
 shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080

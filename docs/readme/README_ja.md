@@ -7,7 +7,7 @@
 ### AI に「はい / いいえ」「どれ」「どの程度」を決めさせ、答え合わせで育てる道具。あなたがするのは、画面で「本当はどうだったか」を答えることだけ。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-192%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-193%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -29,12 +29,9 @@ Claude Code か Codex を使っている人向けです。コードを書く AI 
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
-shikii up                    # 手元の小さな AI(Kev-4B、:8080)を起こす。初回は取ってくる
-shikii hook install --yes    # Claude Code と Codex に hook を 2 つ足す。新しいターミナルから効く
-shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080   # 答え合わせの画面
 ```
 
-あとは普段どおり AI に仕事を頼むだけです。測るのは 4 つ。
+これだけです。実行ファイルを入れ、Claude Code と Codex に hook を 2 つ足し、エージェントの作法(skill)を置き、手元の小さな AI(Kev-4B)を裏で起こします(llama.cpp が無ければ入れ方を 1 行示します)。新しいターミナルで普段どおり AI に仕事を頼むだけで、測るのは 4 つ。
 
 | いつ | 問い | 正解の出どころ |
 |---|---|---|
@@ -43,23 +40,17 @@ shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080  
 | 作業を終えた時 | 変えたものは、頼まれた範囲の中だったか | あなたが画面で |
 | 作業を終えた時 | 頼まれたことを終えたか | あなたが画面で |
 
-ターンの終わりに `shikii: このセッションの判定 3 件が答え待ち: http://127.0.0.1:8096/` と 1 行出るので、手の空いた時に画面で答えます。1 件数秒です。答えが 50 件たまると線が引け、そこから AI の振る舞いが変わります。進め方を合わせた方がよさそうな依頼は AI への一言になり、終えていない・範囲の外に見えるターンはあなたへの 1 行になります。どちらにも「線は正解 61 件、人が確かめた精度 0.96」のような根拠が付きます。線が引けるまでは記録だけで、hook がツールを止めることはありません。
+ターンの終わりに `shikii: このセッションの判定 3 件が答え待ち: http://127.0.0.1:8096/` と 1 行出るので、手の空いた時に開いて答えます(画面も hook が裏で立てます)。1 件数秒です。答えが 50 件たまると線が引け、そこから AI の振る舞いが変わります。進め方を合わせた方がよさそうな依頼は AI への一言になり、終えていない・範囲の外に見えるターンはあなたへの 1 行になります。どちらにも「線は正解 61 件、人が確かめた精度 0.96」のような根拠が付きます。線が引けるまでは記録だけで、hook がツールを止めることはありません。
 
 置き場は `~/.shikii/agent` の 1 つで、プロジェクトをまたいで線は 1 本です(問いは AI の考え方についてのもので、どの repo でも同じ基準で答えが付くから)。記録にはどの repo の判定かの印が付き、画面で仕事ごとに見られます。詳しくは [hook の説明](../../integrations/claude-code.md)。
 
 ## 使い方 2: 業務の判定を任せる
 
-「この問い合わせは同じ案件か」「この依頼は変更の依頼か」のように、仕事の中で繰り返す判定を AI に任せ、答え合わせで育てる使い方です。
+「この問い合わせは同じ案件か」「この依頼は変更の依頼か」のように、仕事の中で繰り返す判定を AI に任せ、答え合わせで育てる使い方です。ここでも人が打つコマンドはありません。エージェントに言うだけです。
 
-```sh
-cd <プロジェクトルート> && shikii init       # .shikii/ と、エージェントの設定(MCP・skill・AGENTS.md)が 1 回で揃う
-shikii new                                  # 質問に答えると判定の定義ファイルができる(.shikii/decisions/<id>.yaml)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=ask  (まだ線が無いので「人に確かめて」)
-shikii serve --local http://127.0.0.1:8080  # http://127.0.0.1:8095 で答え合わせ
-```
+> 問い合わせが前のと同じ案件かどうかを shikii で判定して、答え合わせで育てていきたい
 
-画面で答えていくと、判定ごとに決めた数(この判定は 20 件)で線が自動で引かれ、次からはこうなります。
+エージェントは作法(skill)に沿って進めます。プロジェクトに `.shikii/` を作り(`shikii init`)、質問・選択肢・入力を決めて判定の定義ファイルを書き(`shikii new`。質問と選択肢の文はあなたに一度読んでもらいます。それが「意図」です)、判定を呼び(`shikii decide`)、答え合わせの画面(http://127.0.0.1:8095)を立ててあなたに知らせます。最初はどの判定も `ask`(人に確かめて)です。あなたが画面で答えていくと、判定ごとに決めた数(この例は 20 件)で線が自動で引かれ、次からはこうなります。
 
 ```sh
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
@@ -70,6 +61,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 
 `band` は 4 つだけ。`act` = 任せてよい、`ask` = 人に確かめて、`discard` = 動かない、`abstain` = 入力が足りない。生の確率で判断する場面はありません。
 
+- **自分で打つなら**: `shikii init` → `shikii new` → `shikii decide … -i key=value` → `shikii serve`。全部 [詳しい使い方](../guide.ja.md) に
 - **エージェントから**: `shikii init` が MCP の設定を書くので、Claude Code・Cursor・OpenCode・Codex は道具 `shikii_decide` と `shikii_label` をそのまま呼べます([MCP](../../integrations/mcp.md))
 - **自分のプログラムから**: `shikii serve` を立てて `POST /v1/decide`(判定)と `POST /v1/label`(正解)。本文は JSON で、`-H 'Content-Type: application/json'` が要ります([口の一覧](../guide.ja.md#serve-の-http-api))
 - **既製の判定**: この repo の `decisions/` に 6 つ(依頼の種類、不具合の重複、問い合わせの同一判定、…)。`shikii new --from <repo>/decisions/prompt-intent-v2.yaml` で写して書き換えます([一覧](../../decisions/README.md))
@@ -90,12 +82,12 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 ## インストール
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 以上。実行ファイル 1 つ
-shikii up        # 手元の AI(Kev-4B)。ホスト版の Jev や OpenRouter を使うなら鍵は環境変数で([接続先](../guide.ja.md#接続先))
-shikii doctor    # 何が動いていて、何が足りないか
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 以上。無ければ Docker(上)
 ```
 
-`shikii init` が作るのはフォルダ `.shikii/` の 1 つだけです(中に `decisions/` = 判定の定義、`wiki/` = 知識、`records/` と `labels/` = 記録と答え合わせ)。プロジェクトのルートに他のものは増えません。`decisions/` `wiki/` `labels/` は AI を替えても使う資産なので commit を勧め、`records/` は増え続けるので任意です(`shikii gc` で古いものを捨てられます)。エージェントの設定(Claude Code の `.mcp.json`、Cursor の `.cursor/mcp.json`、OpenCode の `opencode.json`、Codex の `~/.codex/config.toml`)にも shikii の項を足しますが、あなたが書いた項は触りません。もう一度打っても、あるものは触りません。
+install.sh がすること: 実行ファイル(`shikii` と `shikii-readout`)を入れ、Claude Code と Codex に hook を 2 つ足し、エージェントの作法(skill)を `~/.claude/skills/shikii` に置き、llama.cpp があれば手元の AI(Kev-4B、:8080)を裏で起こします。ホスト版の Jev や OpenRouter を使うなら鍵は環境変数で([接続先](../guide.ja.md#接続先))。何が動いていて何が足りないかは `shikii doctor`。
+
+プロジェクトごとの準備(`shikii init`)はエージェントが打ちます(自分で打ってもよい)。作るのはフォルダ `.shikii/` の 1 つだけです(中に `decisions/` = 判定の定義、`wiki/` = 知識、`records/` と `labels/` = 記録と答え合わせ)。プロジェクトのルートに他のものは増えません。`decisions/` `wiki/` `labels/` は AI を替えても使う資産なので commit を勧め、`records/` は増え続けるので任意です(`shikii gc` で古いものを捨てられます)。エージェントの設定(Claude Code の `.mcp.json`、Cursor の `.cursor/mcp.json`、OpenCode の `opencode.json`、Codex の `~/.codex/config.toml`)にも shikii の項を足しますが、あなたが書いた項は触りません。もう一度打っても、あるものは触りません。
 
 コマンドの出力と hook の文は英語です(Claude Code の設定の言語が日本語なら、hook の文は日本語も併記されます)。画面には日本語があります。外の AI だけで使う時の設定、`AGENTS.md` と `CLAUDE.md` の扱い、画面そのものを直す時の Node などの細かい注意は [詳しい使い方](../guide.ja.md) にあります。
 
