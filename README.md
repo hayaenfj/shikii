@@ -29,7 +29,7 @@ If a person has to check every answer, there was little point in using the AI.
 ## What shikii does
 
 1. **Collects your corrections and draws the line above which the AI may act on its own.** From the answers you gave ("this is what was actually true") it measures how the AI's confidence relates to how often it is right, and decides from where up it can be trusted. Until a line exists, nothing acts. Once it does, every automatic decision carries a receipt that says how many checked answers the line rests on and how often they were right
-2. **Tries other ways of asking and keeps the better one.** On the same corrections it scores alternative questions, option descriptions and prompt layouts, and adopts one only when it is genuinely better. You only confirm the meaning did not change
+2. **Tries other ways of asking and keeps the better one.** On the same corrections it scores alternative questions, option descriptions and prompt layouts, and adopts one only when it is genuinely better. The candidates come from you (typed on the page, in your own words) or from an AI; the machine measures them again every time enough new corrections have arrived. You only confirm the meaning did not change
 3. **Lets you swap the model without starting over.** The corrections live apart from the model, so a new model reuses them and the line is redrawn by the machine. No human work
 4. **Keeps what it learned in a wiki.** "Asking it this way works" accumulates as claims with the measured numbers, re-testable on another model. What other people measured on their models is added to the same page
 
@@ -37,7 +37,7 @@ If a person has to check every answer, there was little point in using the AI.
 
 - **Write down what you want decided.** Answer a few questions and a decision file appears (`shikii new`, interactively or with `--type --question --option --input --pii`; the full format is in [the spec reference](skills/shikii/references/spec.md))
 - **Check answers.** The page shows the decisions the AI was unsure about, plus 1 in 20 of the ones it acted on, and you press the button for what was actually true. Keys 1 to 9 and Enter (same as the AI's pick) move fast. "Answered" lets you fix an earlier answer (the newest one counts). "Details" adds "ask the AI again", which re-decides the same text with today's wording and line and shows before and after; records are appended, never deleted
-- **Now and then confirm "is this still what I meant?".** When the machine finds a wording that scores better, you look at whether the meaning changed and press adopt or reject
+- **Now and then confirm "is this still what I meant?".** When the machine finds a wording that scores better, you look at whether the meaning changed and press adopt or reject. If a better way of asking comes to mind, type it on the same page; the machine measures it, you never edit a file
 
 Everything else is the machine's job.
 
