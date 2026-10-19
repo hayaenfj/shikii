@@ -23,14 +23,15 @@ func hookEnv(t *testing.T, model *httptest.Server) (agent string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	agent = filepath.Join(home, ".shikii", "agent")
-	oldLocal, oldPage, oldCal := hookLocalURL, hookPageURL, hookCalibrate
+	oldLocal, oldPage, oldCal, oldTune := hookLocalURL, hookPageURL, hookCalibrate, hookTune
 	hookCalibrate = runCalibrateInProcess // テストは線を同プロセスで引く(本番は別プロセスを切り離す)
-	hookLocalURL = "http://127.0.0.1:1"   // 閉じている口(モデルが無い)
+	hookTune = runTuneInProcess
+	hookLocalURL = "http://127.0.0.1:1" // 閉じている口(モデルが無い)
 	if model != nil {
 		hookLocalURL = model.URL
 	}
 	hookPageURL = "http://127.0.0.1:1"
-	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate = oldLocal, oldPage, oldCal })
+	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate, hookTune = oldLocal, oldPage, oldCal, oldTune })
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	return agent
 }
@@ -870,5 +871,90 @@ func TestHookCodex(t *testing.T) {
 	b, _ = os.ReadFile(codexHooks)
 	if len(hookCommands(codexHooks)) != 0 || !strings.Contains(string(b), "deny-check.sh") {
 		t.Fatalf("uninstall must remove only shikii's Codex hooks:\n%s", b)
+	}
+}
+
+// 聞き方の候補(variants)がある spec は、人の正解が min_n に届き、前回から hookTuneEvery 件増えるたびに、Stop が tune を裏で回す(--write 無し。採用は人)。
+// 候補の無い spec は回さない。増えていなければ回さない。
+func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
+	model := fakeAgentModel(t, func(state string) float64 {
+		if strings.Contains(state, "redesign") {
+			return 0.9
+		}
+		return 0.1
+	})
+	agent := hookEnv(t, model)
+	old := hookTuneEvery
+	hookTuneEvery = 2
+	t.Cleanup(func() { hookTuneEvery = old })
+	np := lowerMinN(t, agent, "needs-plan", 2)
+	b, _ := os.ReadFile(np)
+	if err := os.WriteFile(np, append(b, []byte("variants:\n  - name: short\n    question: Should the agent agree on an approach with the user before changing anything for `request`?\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lowerMinN(t, agent, "prompt-kind", 2) // 候補の無い spec: 正解が溜まっても回さない
+	cwd := t.TempDir()
+	st := store.Store{Dir: agent}
+	logHas := func(s string) int {
+		lb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+		return strings.Count(string(lb), s)
+	}
+	answer := func(i int) { // 1 依頼 → needs-plan と prompt-kind に人の正解を 1 件ずつ
+		prompt := fmt.Sprintf("add a flag to the status command, round %d", i)
+		if i%2 == 0 {
+			prompt = fmt.Sprintf("redesign the storage layer, round %d", i)
+		}
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": fmt.Sprintf("t%d", i), "cwd": cwd, "prompt": prompt})
+		for _, id := range []string{"needs-plan", "prompt-kind"} {
+			recs, _ := st.Records(id, 0)
+			truth := "no"
+			if id == "prompt-kind" {
+				truth = "edit"
+			} else if strings.Contains(recs[0].Inputs["request"], "redesign") {
+				truth = "yes"
+			}
+			capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, truth}) })
+		}
+	}
+	answer(1)
+	runHook(t, "stop", map[string]any{"session_id": "t1", "cwd": cwd})
+	if logHas("auto-tune needs-plan") != 0 {
+		t.Fatal("below min_n nothing must be tuned")
+	}
+	answer(2)
+	runHook(t, "stop", map[string]any{"session_id": "t2", "cwd": cwd})
+	if logHas("auto-tune needs-plan") != 1 {
+		lb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+		t.Fatalf("at min_n the first tune must run once:\n%s", lb)
+	}
+	if logHas("ERROR") != 0 {
+		lb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+		t.Fatalf("auto-tune must succeed:\n%s", lb)
+	}
+	if runs, _ := filepath.Glob(filepath.Join(agent, "wiki", "runs", "*needs-plan*.md")); len(runs) != 1 {
+		t.Fatalf("the run must be written to wiki/runs: %v", runs)
+	}
+	if g, _ := os.ReadFile(filepath.Join(agent, "tuned-needs-plan")); !strings.HasPrefix(string(g), "2 ") {
+		t.Fatalf("the guard must remember the count at the last run: %q", g)
+	}
+	// 増えていなければ回さない(同じ Stop を繰り返しても 1 回のまま)
+	runHook(t, "stop", map[string]any{"session_id": "t2", "cwd": cwd})
+	answer(3)
+	runHook(t, "stop", map[string]any{"session_id": "t3", "cwd": cwd})
+	if logHas("auto-tune needs-plan") != 1 {
+		t.Fatalf("one new truth is below hookTuneEvery: no second run")
+	}
+	answer(4)
+	runHook(t, "stop", map[string]any{"session_id": "t4", "cwd": cwd})
+	if logHas("auto-tune needs-plan") != 2 {
+		t.Fatalf("after %d more truths the tune must run again", hookTuneEvery)
+	}
+	// 候補の無い spec は、正解が溜まっても回さない
+	if logHas("auto-tune prompt-kind") != 0 {
+		t.Fatal("a spec without variants has nothing to try: no auto-tune")
+	}
+	// 採用は人: spec の文言は変わっていない(variants は残る)
+	if b, _ := os.ReadFile(np); !strings.Contains(string(b), "name: short") || strings.Contains(string(b), "version: 2") {
+		t.Fatalf("auto-tune must not adopt: %s", b)
 	}
 }

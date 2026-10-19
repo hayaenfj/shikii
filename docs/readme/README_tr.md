@@ -7,7 +7,7 @@
 ### Bir yapay zekâya evet/hayır, hangisi ya da ne kadar sorusunu karar verdirmek ve bu kararı günlük işte güvenilir tutmak için bir araç. Siz bazı cevapları kontrol edersiniz ve ara sıra "hâlâ demek istediğim bu mu?" diye onaylarsınız. Gerisini makine yapar.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
