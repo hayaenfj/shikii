@@ -29,7 +29,7 @@ Nếu một người phải kiểm tra từng câu trả lời, thì dùng AI c�
 ## shikii làm gì
 
 1. **Gom các lần sửa của bạn và vạch ra đường ranh mà từ đó trở lên AI được tự hành động.** Từ những câu bạn đã trả lời ("thực ra đúng là thế này"), nó đo quan hệ giữa độ tự tin của AI và tần suất AI đúng, rồi quyết định từ mức nào trở lên có thể tin được. Chưa có đường ranh thì không gì tự hành động. Khi đã có, mỗi quyết định tự động đi kèm một biên nhận cho biết đường ranh dựa trên bao nhiêu câu trả lời đã kiểm tra và chúng đúng bao nhiêu phần
-2. **Thử các cách hỏi khác và giữ lại cách tốt hơn.** Trên cùng những lần sửa đó, nó chấm điểm các câu hỏi thay thế, mô tả lựa chọn và bố cục lời nhắc, và chỉ áp dụng khi thật sự tốt hơn. Bạn chỉ xác nhận là ý nghĩa không thay đổi
+2. **Thử các cách hỏi khác và giữ lại cách tốt hơn.** Trên cùng những lần sửa đó, nó chấm điểm các câu hỏi thay thế, mô tả lựa chọn và bố cục lời nhắc, và chỉ áp dụng khi thật sự tốt hơn. Các ứng viên đến từ bạn (gõ ngay trên trang, bằng lời của bạn) hoặc từ một AI; mỗi khi có đủ lần sửa mới, máy lại đo chúng một lần nữa. Bạn chỉ xác nhận là ý nghĩa không thay đổi
 3. **Cho bạn đổi mô hình mà không phải bắt đầu lại.** Các lần sửa được lưu tách khỏi mô hình, nên mô hình mới dùng lại chúng và máy tự vạch lại đường ranh. Không cần người làm gì
 4. **Giữ những gì đã học trong một wiki.** "Hỏi theo cách này thì đúng" được tích lại thành các nhận định kèm con số đã đo, có thể kiểm lại trên mô hình khác. Những gì người khác đo trên mô hình của họ được thêm vào cùng một trang
 
@@ -37,7 +37,7 @@ Nếu một người phải kiểm tra từng câu trả lời, thì dùng AI c�
 
 - **Viết ra điều bạn muốn quyết định.** Trả lời vài câu hỏi là có một tệp quyết định (`shikii new`, theo kiểu hỏi đáp hoặc với `--type --question --option --input --pii`; định dạng đầy đủ ở [tài liệu tham chiếu spec](../../skills/shikii/references/spec.md))
 - **Kiểm tra câu trả lời.** Trang web hiện những quyết định AI không chắc, cộng thêm 1 trong 20 quyết định nó đã tự làm, và bạn nhấn nút cho đáp án đúng thật. Các phím 1 đến 9 và Enter (giống lựa chọn của AI) giúp đi nhanh. "Đã trả lời" cho phép sửa câu trả lời trước (câu mới nhất được tính). "Chi tiết" thêm mục "hỏi AI lại", quyết định lại cùng văn bản đó với cách hỏi và đường ranh hôm nay, rồi hiện trước và sau; bản ghi chỉ được thêm vào, không bao giờ bị xóa
-- **Thỉnh thoảng xác nhận "đây vẫn là điều tôi muốn chứ?".** Khi máy tìm được cách hỏi đạt điểm cao hơn, bạn xem ý nghĩa có đổi không rồi nhấn chấp nhận hoặc từ chối
+- **Thỉnh thoảng xác nhận "đây vẫn là điều tôi muốn chứ?".** Khi máy tìm được cách hỏi đạt điểm cao hơn, bạn xem ý nghĩa có đổi không rồi nhấn chấp nhận hoặc từ chối. Nếu bạn nghĩ ra cách hỏi tốt hơn, hãy gõ nó ngay trên trang đó; máy sẽ đo, bạn không bao giờ phải sửa tệp
 
 Mọi việc còn lại là của máy.
 

@@ -29,7 +29,7 @@ Se una persona deve controllare ogni risposta, usare l'IA aveva poco senso.
 ## Cosa fa shikii
 
 1. **Raccoglie le sue correzioni e traccia la linea sopra la quale l'IA può agire da sola.** Dalle risposte che lei ha dato («questo era davvero vero») misura come la fiducia dell'IA si lega alla frequenza con cui ha ragione, e decide da dove in su ci si può fidare. Finché non esiste una linea, niente agisce. Quando esiste, ogni decisione automatica porta una ricevuta che dice su quante risposte controllate si regge la linea e quante volte erano giuste
-2. **Prova altri modi di chiedere e tiene il migliore.** Sulle stesse correzioni dà un punteggio a domande alternative, descrizioni delle opzioni e disposizioni del prompt, e ne adotta una solo quando è davvero migliore. Lei conferma soltanto che il significato non è cambiato
+2. **Prova altri modi di chiedere e tiene il migliore.** Sulle stesse correzioni dà un punteggio a domande alternative, descrizioni delle opzioni e disposizioni del prompt, e ne adotta una solo quando è davvero migliore. I candidati vengono da lei (scritti nella pagina, con le sue parole) o da un'IA; la macchina li misura di nuovo ogni volta che sono arrivate abbastanza correzioni nuove. Lei conferma soltanto che il significato non è cambiato
 3. **Le lascia cambiare modello senza ricominciare da capo.** Le correzioni vivono separate dal modello, quindi un modello nuovo le riusa e la macchina ritraccia la linea. Nessun lavoro umano
 4. **Conserva ciò che ha imparato in un wiki.** «Chiedere così funziona» si accumula come affermazioni con i numeri misurati, da riprovare su un altro modello. Ciò che altre persone hanno misurato sui loro modelli si aggiunge alla stessa pagina
 
@@ -37,7 +37,7 @@ Se una persona deve controllare ogni risposta, usare l'IA aveva poco senso.
 
 - **Scrive cosa vuole far decidere.** Risponde a poche domande e compare un file di decisione (`shikii new`, in modo interattivo o con `--type --question --option --input --pii`; il formato completo è nel [riferimento del file di decisione](../../skills/shikii/references/spec.md))
 - **Controlla le risposte.** La pagina mostra le decisioni su cui l'IA era incerta, più 1 su 20 di quelle su cui ha agito, e lei preme il pulsante di ciò che era davvero vero. I tasti da 1 a 9 e Invio (uguale alla scelta dell'IA) vanno veloci. «Risposte date» permette di correggere una risposta precedente (vale la più recente). «Dettagli» aggiunge «chiedi di nuovo all'IA», che ridecide lo stesso testo con la formulazione e la linea di oggi e mostra prima e dopo; le registrazioni vengono aggiunte, mai cancellate
-- **Ogni tanto conferma «è ancora quello che intendevo?».** Quando la macchina trova una formulazione con un punteggio migliore, lei guarda se il significato è cambiato e preme adotta o rifiuta
+- **Ogni tanto conferma «è ancora quello che intendevo?».** Quando la macchina trova una formulazione con un punteggio migliore, lei guarda se il significato è cambiato e preme adotta o rifiuta. Se le viene in mente un modo migliore di chiedere, lo scriva nella stessa pagina; la macchina lo misura, lei non modifica mai un file
 
 Tutto il resto è compito della macchina.
 

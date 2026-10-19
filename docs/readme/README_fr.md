@@ -29,7 +29,7 @@ Si une personne doit vérifier chaque réponse, utiliser l'IA n'avait pas grand 
 ## Ce que fait shikii
 
 1. **Rassemble vos corrections et trace la ligne au-dessus de laquelle l'IA peut agir seule.** À partir des réponses que vous avez données (« voici ce qui était vrai en réalité »), il mesure le lien entre la confiance de l'IA et la fréquence à laquelle elle a raison, et décide à partir d'où on peut lui faire confiance. Tant qu'il n'y a pas de ligne, rien n'agit. Dès qu'il y en a une, chaque décision automatique porte un reçu qui dit sur combien de réponses vérifiées la ligne repose et à quelle fréquence elles étaient justes
-2. **Essaie d'autres façons de demander et garde la meilleure.** Sur les mêmes corrections, il note d'autres questions, d'autres descriptions des options et d'autres agencements du prompt, et n'en adopte une que si elle est vraiment meilleure. Vous confirmez seulement que le sens n'a pas changé
+2. **Essaie d'autres façons de demander et garde la meilleure.** Sur les mêmes corrections, il note d'autres questions, d'autres descriptions des options et d'autres agencements du prompt, et n'en adopte une que si elle est vraiment meilleure. Les candidats viennent de vous (tapés sur la page, avec vos propres mots) ou d'une IA ; la machine les mesure à nouveau chaque fois qu'assez de nouvelles corrections sont arrivées. Vous confirmez seulement que le sens n'a pas changé
 3. **Vous laisse changer de modèle sans repartir de zéro.** Les corrections vivent à part du modèle, donc un nouveau modèle les réutilise et la machine retrace la ligne. Aucun travail humain
 4. **Garde ce qu'il a appris dans un wiki.** « Demander comme ceci marche » s'accumule sous forme d'affirmations avec les chiffres mesurés, que l'on peut retester sur un autre modèle. Ce que d'autres personnes ont mesuré sur leurs modèles s'ajoute à la même page
 
@@ -37,7 +37,7 @@ Si une personne doit vérifier chaque réponse, utiliser l'IA n'avait pas grand 
 
 - **Vous écrivez ce que vous voulez faire décider.** Répondez à quelques questions et un fichier de décision apparaît (`shikii new`, de façon interactive ou avec `--type --question --option --input --pii` ; le format complet est dans [la référence du fichier de décision](../../skills/shikii/references/spec.md))
 - **Vous vérifiez des réponses.** La page montre les décisions où l'IA hésitait, plus 1 sur 20 de celles qu'elle a exécutées, et vous appuyez sur le bouton de ce qui était vrai en réalité. Les touches 1 à 9 et Entrée (même choix que l'IA) vont vite. « Répondues » permet de corriger une réponse antérieure (la plus récente compte). « Détails » ajoute « redemander à l'IA », qui redécide le même texte avec la formulation et la ligne d'aujourd'hui et montre l'avant et l'après ; les enregistrements sont ajoutés, jamais effacés
-- **De temps en temps, vous confirmez « est-ce toujours ce que je voulais dire ? ».** Quand la machine trouve une formulation qui obtient un meilleur score, vous regardez si le sens a changé et vous appuyez sur adopter ou rejeter
+- **De temps en temps, vous confirmez « est-ce toujours ce que je voulais dire ? ».** Quand la machine trouve une formulation qui obtient un meilleur score, vous regardez si le sens a changé et vous appuyez sur adopter ou rejeter. Si une meilleure façon de demander vous vient à l'esprit, tapez-la sur la même page ; la machine la mesure, vous ne modifiez jamais un fichier
 
 Tout le reste est le travail de la machine.
 
