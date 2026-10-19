@@ -7,7 +7,7 @@
 ### AI に「はい / いいえ」「どれ」「どの程度」を決めさせて、業務で使い続けるための道具。あなたがするのは、答え合わせと、たまに「これで合ってる？」に答えることだけ。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -60,7 +60,7 @@ cd <プロジェクトルート> && shikii init
 - **既製の判定**: この repo の `decisions/` に 6 つ（依頼の種類、不具合の重複、問い合わせの同一判定、…）。自分の `.shikii/decisions/` に写すか、`shikii new --from <repo>/decisions/prompt-intent-v2.yaml` で写して書き換えます（[一覧](../../decisions/README.md)）
 - **過去の表がある**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` で答え合わせの材料にできます。最初の 50 件を手で答えなくてよい
 - **自分のプログラムから**: `shikii serve` を立てて `POST /v1/decide`（判定）と `POST /v1/label`（正解）を叩きます。本文は JSON で、`-H 'Content-Type: application/json'` が要ります（口の一覧は [詳しい使い方](../guide.ja.md#serve-の-http-api)）
-- **AI 自身の判断を測る**(Claude Code と Codex): `shikii hook install` で hook が入り、AI が作業中にしている判断(このコマンドは何をするか、この編集は頼まれた範囲か、着手前に方針を合わせるか、この依頼で結局何をするか。最後の正解は作業ツリーの変化から自動で付く)を shikii に通します。線が引けるまでは記録だけ。引けたら、危ないコマンド(消す・外を変える・外に送る)の前に確認が出て、その文に「何件の正解で引いた線か、人が確かめた精度」が付きます。安全なコマンドは黙って通ります([詳しく](../../integrations/claude-code.md))
+- **AI 自身の考え方を測る**(Claude Code と Codex): `shikii hook install` で hook が 2 つ入り、ターンの前と後で shikii を通します。前: この依頼で結局ファイルを変えることになるか、着手前に進め方を合わせるべきか。後: 変えたものは頼まれた範囲の中だったか、頼まれたことを終えたか。最初の正解は作業ツリーの変化から自動で付き、残りはあなたが画面で答えます。線が引けるまでは記録だけ。引けたら、方針合わせが要る依頼は AI への一言になり、終えていない・範囲の外に見えるターンはあなたへの 1 行になって、その文に「何件の正解で引いた線か、人が確かめた精度」が付きます。hook がツールを止めることはありません([詳しく](../../integrations/claude-code.md))
 - **別の人の例**: [問い合わせメールの振り分け](../examples/inquiry-route.md)。shikii を初めて使う人が README だけで一周した記録（spec と 22 件の入力つき）
 
 ## 一周の例

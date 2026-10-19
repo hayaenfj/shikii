@@ -104,9 +104,9 @@ func usageText() string {
   shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]
                    同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune。採用の道具は無い)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
-  shikii hook      install [--yes] | uninstall [--yes] | pre-tool-use | user-prompt-submit | stop
-                   Claude Code の hook として AI 自身の作業中の判断(コマンドの効果、編集は頼まれた範囲か、着手前に方針を合わせるか、依頼の種類)を測る。
-                   置き場は ~/.shikii/agent(基本構成)、モデルは :8080、答え合わせの画面は :8096。線が無いうちは記録だけ(影)。deny は出さない
+  shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop
+                   Claude Code / Codex の hook として AI 自身の考え方を 2 点で測る: 考える前(この依頼で結局ファイルを変えるか、着手前に方針を合わせるか)と
+                   考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場は ~/.shikii/agent(基本構成)、モデルは :8080、画面は :8096。線が無いうちは記録だけ(影)。ツールは止めない
   shikii decide   <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
                    spec に state.context があれば、迷った時(ask。多択では discard も)だけ文脈の入力を足して聞き直す(別のハッシュ・別の線)。そこで確信に届いた答えは最小の質問の正解として残る
   shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]
