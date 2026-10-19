@@ -7,7 +7,7 @@
 ### Инструмент, который позволяет ИИ решать «да/нет», «какой из них» или «насколько» и сохраняет это решение надёжным в повседневной работе. Вы проверяете часть ответов и время от времени подтверждаете: «это всё ещё то, что я имел в виду?». Остальное делает машина.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 

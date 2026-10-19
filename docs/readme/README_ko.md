@@ -7,7 +7,7 @@
 ### AI에게 "예/아니오", "어느 것", "어느 정도"를 결정하게 하고, 그 결정을 일상 업무에서 계속 믿을 수 있게 유지하는 도구. 당신은 답을 일부 맞춰 보고, 가끔 "이게 아직 내가 원한 뜻인가?"에 답하면 됩니다. 나머지는 기계가 합니다.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 

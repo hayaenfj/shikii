@@ -857,3 +857,50 @@ func TestHookCodex(t *testing.T) {
 		t.Fatalf("uninstall must remove only shikii's Codex hooks:\n%s", b)
 	}
 }
+
+// 影の期間の command-effect は薄くする: 「読むだけ」と自信を持って言ったコマンドは 10 件に 1 件だけ記録し、危うさの気配があるものは全部記録する。
+// 線が引けたら全部記録する。
+func TestHookThinsConfidentReadCommandsInShadow(t *testing.T) {
+	readModel := fakeSystemOne(t, "kev-4b", map[string]float64{"read": 0.95, "change_project": 0.03, "change_outside": 0.01, "destroy": 0.005, "send_outside": 0.005})
+	agent := hookEnv(t, readModel)
+	cwd := t.TempDir()
+	want := 0
+	for i := 0; i < 40; i++ {
+		cmd := fmt.Sprintf("ls -la dir%d", i)
+		if keepSample(store.HashInputs(map[string]string{"command": cmd, "cwd": cwd})) {
+			want++
+		}
+		runHook(t, "pre-tool-use", map[string]any{"session_id": "thin", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": cmd}})
+	}
+	st := store.Store{Dir: agent}
+	recs, _ := st.Records("command-effect", 0)
+	if len(recs) != want || want >= 40 || want == 0 {
+		t.Fatalf("confident read commands must be thinned to the sampled ones: got %d records, sampled %d of 40", len(recs), want)
+	}
+	// 気配のあるもの(重い 3 択の和 ≥ 0.25)は全部残る
+	hookLocalURL = fakeSystemOne(t, "kev-4b", map[string]float64{"read": 0.6, "change_project": 0.1, "change_outside": 0.1, "destroy": 0.15, "send_outside": 0.05}).URL
+	for i := 0; i < 5; i++ {
+		runHook(t, "pre-tool-use", map[string]any{"session_id": "thin", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": fmt.Sprintf("rm -rf tmp%d", i)}})
+	}
+	recs, _ = st.Records("command-effect", 0)
+	if len(recs) != want+5 {
+		t.Fatalf("commands with a hint of risk must all be recorded: got %d, want %d", len(recs), want+5)
+	}
+	// top が read でないものも全部残る
+	hookLocalURL = fakeSystemOne(t, "kev-4b", map[string]float64{"read": 0.1, "change_project": 0.85, "change_outside": 0.03, "destroy": 0.01, "send_outside": 0.01}).URL
+	for i := 0; i < 5; i++ {
+		runHook(t, "pre-tool-use", map[string]any{"session_id": "thin", "cwd": cwd, "tool_name": "Bash", "tool_input": map[string]any{"command": fmt.Sprintf("gofmt -w f%d.go", i)}})
+	}
+	recs, _ = st.Records("command-effect", 0)
+	if len(recs) != want+10 {
+		t.Fatalf("commands the model does not call read must all be recorded: got %d, want %d", len(recs), want+10)
+	}
+	// 線が引けたら「読むだけ」も全部記録(抜き取りの材料)
+	d := &decide.Decision{InputsHash: "01", Top: "read", IsCalibrated: true} // 01 は標本に入らない: 線があることだけが残す理由
+	if thinOut("command-effect", d, hookLoc{Heavy: 0.01}) {
+		t.Fatal("once a line exists nothing is thinned")
+	}
+	if thinOut("edit-in-scope", &decide.Decision{InputsHash: "01", Top: "yes"}, hookLoc{}) {
+		t.Fatal("only command-effect is thinned")
+	}
+}

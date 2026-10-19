@@ -54,6 +54,8 @@ const (
 	hookToolsRe   = "Bash|Edit|Write|MultiEdit|NotebookEdit"
 	requestMax    = 1500 // request / command として控える文の長さ(バイト)
 	shortReply    = 40   // これより短い依頼は返事とみなし、前の依頼に添える(文字数)
+	heavyFloor    = 0.25 // 影の期間の command-effect: 重い 3 択の確率の和がこれ以上なら必ず記録
+	thinKeepOneIn = 10   // 影の期間の command-effect: 「読むだけ」と自信を持って言ったものは、これに 1 件だけ記録
 )
 
 func agentHome() (string, error) {
@@ -303,7 +305,7 @@ func hookDecide(agent, specID string, inputs map[string]string, bypass bool) (*d
 		l.Act = sp.Thresholds.Act
 	}
 	out := hookOutcome(specID, d, bypass, l)
-	if d.Band != decide.Abstain {
+	if d.Band != decide.Abstain && !thinOut(specID, d, l) {
 		rec := recordOf(sp, d, inputs)
 		if l.Lang != "" && (l.Question != "" || l.Top != "" || out.message() != "") { // 言語だけの display は付けない(読む物が無い)
 			rec.Display = &store.RecordDisplay{Lang: l.Lang, Question: l.Question, Top: l.Top, Message: out.message()}
@@ -313,6 +315,29 @@ func hookDecide(agent, specID string, inputs map[string]string, bypass bool) (*d
 		}
 	}
 	return d, out, nil
+}
+
+// thinOut は影の期間(線が無い)の command-effect を薄くする: Bash は依頼 1 回に何十回も走るので、全部を答え待ちにすると
+// 画面がコマンドで埋まり、依頼まわりの判定(needs-plan、edit-in-scope)が沈む。危うさの気配があるもの(重い 3 択の確率の和が heavyFloor 以上、
+// または top が read でない)は全部残し、残り(読むだけ、と自信を持って言ったもの)は thinKeepOneIn 件に 1 件だけ記録する(入力のハッシュで決める。
+// 同じコマンドは毎回同じ側に落ちる)。線が引けたら全部記録する(抜き取りの材料)。手の規則(「ls は除く」)は書かない: 何が安全かはモデルの答えと人の正解が決める。
+func thinOut(specID string, d *decide.Decision, l hookLoc) bool {
+	if specID != "command-effect" || d.IsCalibrated || d.Top != "read" || l.Heavy >= heavyFloor {
+		return false
+	}
+	return !keepSample(d.InputsHash)
+}
+
+// keepSample は hash(16 進)の末尾で thinKeepOneIn 件に 1 件を選ぶ。
+func keepSample(hash string) bool {
+	if hash == "" {
+		return true
+	}
+	n := 0
+	for _, c := range hash[len(hash)-2:] {
+		n = n*16 + strings.IndexByte("0123456789abcdef", byte(c))
+	}
+	return n%thinKeepOneIn == 0
 }
 
 // ---------------------------------------------------------------- 設定の言語(併記)
