@@ -3,6 +3,7 @@
 import { mount, unmount, flushSync } from 'svelte';
 import LangPicker from '../src/components/LangPicker.svelte';
 import SpecPanel from '../src/components/SpecPanel.svelte';
+import Wording from '../src/components/Wording.svelte';
 import { i18n, t } from '../src/lib/i18n.svelte.js';
 import { ui } from '../src/lib/state.svelte.js';
 
@@ -67,8 +68,43 @@ function checkProject(target) {
   return ok;
 }
 
-export function run() {
+// 聞き方の欄に、人が候補を書く入力がある(多択なら選択肢の説明も)。送ると v1/tune/variant に名前・質問・「id: 説明」を解いた options が届く
+async function checkWording(target) {
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => { if (!opts || !opts.body) return { ok: true, json: async () => ({ specs: [] }) }; calls.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({ added: "plain-words", variants: ["plain-words"] }) }; };
+  const sp = { id: 'intent', type: 'choice', tune: { running: false, proposer: false, variants: [] } };
+  const app = mount(Wording, { target, props: { sp } });
+  flushSync();
+  const form = target.querySelector('form.add-variant');
+  const name = form && form.querySelector('input[name=name]');
+  const question = form && form.querySelector('textarea[name=question]');
+  const options = form && form.querySelector('textarea[name=options]');
+  const hasForm = !!(name && question && options);
+  if (hasForm) {
+    name.value = 'plain-words'; name.dispatchEvent(new window.Event('input', { bubbles: true }));
+    question.value = 'What does this message want?'; question.dispatchEvent(new window.Event('input', { bubbles: true }));
+    options.value = 'other: greetings and thanks only\n\nnot-a-line'; options.dispatchEvent(new window.Event('input', { bubbles: true }));
+    flushSync();
+    form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 0));
+  }
+  unmount(app);
+  // はい / いいえ の問いには選択肢の説明の入力は無い
+  const noul = mount(Wording, { target, props: { sp: { id: 'same-issue', type: 'noul', tune: { running: false, proposer: false, variants: [] } } } });
+  flushSync();
+  const noOptionsForNoul = !target.querySelector('textarea[name=options]');
+  unmount(noul);
+  globalThis.fetch = realFetch;
+  const call = calls.find(c => c.url.endsWith('v1/tune/variant'));
+  const sent = !!call && call.body.spec === 'intent' && call.body.name === 'plain-words' && call.body.question === 'What does this message want?' && JSON.stringify(call.body.options) === JSON.stringify({ other: 'greetings and thanks only' });
+  const ok = hasForm && sent && noOptionsForNoul;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rewording form=' + hasForm + ', sent to v1/tune/variant=' + sent + ', no options box for noul=' + noOptionsForNoul + ')');
+  return ok;
+}
+
+export async function run() {
   const target = document.getElementById('app');
-  const ok = checkLang(target) && checkPinned(target) && checkProject(target);
+  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target);
   if (!ok) process.exit(1);
 }

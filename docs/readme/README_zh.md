@@ -7,7 +7,7 @@
 ### 让 AI 来决定"是/否""选哪个""到什么程度"，并让这个决定在日常工作里一直靠得住的工具。你只需要核对一部分答案，偶尔确认一句"这还是我想要的吗？"。剩下的交给机器。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-192%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 

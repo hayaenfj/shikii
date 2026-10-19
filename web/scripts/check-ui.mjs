@@ -18,4 +18,4 @@ for (const k of ['window', 'document', 'navigator', 'localStorage']) {
   Object.defineProperty(globalThis, k, { value: dom.window[k], configurable: true, writable: true });
 }
 const m = await import(join(web, '.ui-test', 'ui-entry.js'));
-m.run();
+await m.run();

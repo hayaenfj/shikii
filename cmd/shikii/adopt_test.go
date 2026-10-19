@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -145,7 +146,7 @@ func TestMCPCanTuneButCannotAdopt(t *testing.T) {
 func TestServeUIHasWordingSection(t *testing.T) {
 	url, _, _, _ := newTuneFixture(t)
 	html := uiText(t, url)
-	for _, must := range []string{"v1/tune?spec=", "v1/tune/run", "v1/tune/adopt", "meaning_same", "意味は同じ", "意味が違う", "same meaning", "meaning changed"} {
+	for _, must := range []string{"v1/tune?spec=", "v1/tune/run", "v1/tune/adopt", "meaning_same", "意味は同じ", "意味が違う", "same meaning", "meaning changed", "v1/tune/variant", "言い換えの案を書く", "write a rewording"} {
 		if !strings.Contains(html, must) {
 			t.Fatalf("UI must have the wording section; missing %q", must)
 		}
@@ -153,3 +154,71 @@ func TestServeUIHasWordingSection(t *testing.T) {
 }
 
 func bufioReader(b *bytes.Buffer) *bufio.Reader { return bufio.NewReader(b) }
+
+// 人が画面で候補の言い方を書ける: POST /v1/tune/variant が spec の variants に足し(他の項目は触らない)、GET /v1/tune が並べ、次の tune が採点する。
+// 名前が無い・中身が無い → 400、同じ名前 → 409、spec に無い選択肢の id → 400(検証してから書く)。
+func TestServeAddsAPersonsRewordingToVariants(t *testing.T) {
+	url, specsDir, _, _ := newTuneFixture(t)
+	path := filepath.Join(specsDir, "intent.yaml")
+	before, _ := os.ReadFile(path)
+	code, r := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "intent", "name": "plain-words", "question": "What does this message want?", "options": map[string]string{"other": "greetings and thanks only", "": "ignored"}})
+	if code != 200 || r["added"] != "plain-words" {
+		t.Fatalf("adding a rewording: %d %v", code, r)
+	}
+	after, _ := os.ReadFile(path)
+	if !strings.Contains(string(after), "name: plain-words") || !strings.Contains(string(after), "greetings and thanks only") || !strings.Contains(string(after), "name: strict") {
+		t.Fatalf("the rewording must be saved into variants next to the existing ones:\n%s", after)
+	}
+	if !strings.Contains(string(after), "question: What is asked?") {
+		t.Fatalf("the spec's own wording must be untouched:\n%s\nbefore:\n%s", after, before)
+	}
+	var st map[string]any
+	getJSON(t, url+"/v1/tune?spec=intent", &st)
+	vs, _ := st["variants"].([]any)
+	names := ""
+	for _, v := range vs {
+		names += v.(map[string]any)["name"].(string) + ","
+	}
+	if !strings.Contains(names, "plain-words,") || !strings.Contains(names, "strict,") {
+		t.Fatalf("GET /v1/tune must list the candidates: %v", st["variants"])
+	}
+	// 誤り: 名前なし、中身なし、同じ名前、無い選択肢
+	if code, r := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "intent", "question": "x"}); code != 400 {
+		t.Fatalf("no name must be 400: %d %v", code, r)
+	}
+	if code, r := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "intent", "name": "empty"}); code != 400 {
+		t.Fatalf("no question and no options must be 400: %d %v", code, r)
+	}
+	if code, r := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "intent", "name": "plain-words", "question": "again"}); code != 409 {
+		t.Fatalf("a duplicate name must be 409: %d %v", code, r)
+	}
+	if code, r := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "intent", "name": "bad-id", "options": map[string]string{"nope": "not an option"}}); code != 400 || !strings.Contains(fmt.Sprint(r["error"]), "nope") {
+		t.Fatalf("an unknown option id must be refused before writing: %d %v", code, r)
+	}
+	if b, _ := os.ReadFile(path); strings.Contains(string(b), "bad-id") || strings.Contains(string(b), "name: empty") {
+		t.Fatalf("refused rewordings must not be written:\n%s", b)
+	}
+	if code, _ := postJSON(t, url+"/v1/tune/variant", map[string]any{"spec": "nope", "name": "x", "question": "y"}); code != 404 {
+		t.Fatalf("unknown spec must be 404: %d", code)
+	}
+	// 次の tune が人の候補も採点する
+	if code, r := postJSON(t, url+"/v1/tune/run", map[string]any{"spec": "intent"}); code != 202 {
+		t.Fatalf("tune/run: %d %v", code, r)
+	}
+	for i := 0; i < 200; i++ {
+		getJSON(t, url+"/v1/tune?spec=intent", &st)
+		if st["running"] == false && st["latest"] != nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	latest, _ := st["latest"].(map[string]any)
+	cands, _ := latest["candidates"].([]any)
+	scored := ""
+	for _, c := range cands {
+		scored += c.(map[string]any)["name"].(string) + ","
+	}
+	if !strings.Contains(scored, "plain-words,") {
+		t.Fatalf("the next tune must score the person's rewording: %v", scored)
+	}
+}

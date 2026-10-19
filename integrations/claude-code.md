@@ -46,7 +46,7 @@ shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080
 
 shikii は線(較正)が無いうちは `act` を出さない。hook はそれをそのまま「線が無いうちは口を出さない」にしている。ツールは一切止めず、記録だけが溜まる。入れた日から出るのは、ターンの終わりの「答え待ち N 件 → URL」の 1 行だけ(下)。
 
-**聞き方を試すのも機械**(wiki の lint に当たる、ゆっくりした周期): spec に `variants:`(人が書いた候補の言い方)があり、人の正解が `eval.min_n` 以上で、前回の自動 tune から正解が 50 件増えていれば、Stop が `shikii tune`(`--write` 無し)を切り離した別プロセスで回し、結果を `wiki/runs/` と `hook.log` の `auto-tune …` の行に残す。候補が無い spec では何もしない(試す物が無い)。採用は人が意味を確かめてから(画面か `tune --write`)。前回の数は `tuned-<spec>` に控える。
+**聞き方を試すのも機械**(wiki の lint に当たる、ゆっくりした周期): spec に `variants:`(人が書いた候補の言い方)があり、人の正解が `eval.min_n` 以上で、前回の自動 tune から正解が 50 件増えていれば、Stop が `shikii tune`(`--write` 無し)を切り離した別プロセスで回し、結果を `wiki/runs/` と `hook.log` の `auto-tune …` の行に残す。候補が無い spec では何もしない(試す物が無い)。採用は人が意味を確かめてから(画面か `tune --write`)。前回の数は `tuned-<spec>` に控える。候補は画面の「聞き方」の欄で人が自分の言葉で書ける(短い名前と質問の言い換え。多択なら選択肢の説明も「id: 説明」の行で)。送ると `POST /v1/tune/variant` が spec として検証してから `variants:` に足す(採点も採用もしない)。YAML を開かなくても、人が書く → 機械が 50 件ごとに測る → 人が採用する、が画面で回る。
 
 線を引くのは機械: 人の正解(入力ごとに 1 件。同じ依頼文を 50 回答えても 1 件)が `eval.min_n`(50)に届くと、画面(`serve`)で答えた直後はその serve が、そうでなければ次のターンの終わりに hook が(4 spec とも。prompt-kind の結果の正解は画面を通らないのでここでしか引けない)、線を引いて spec に書く。hook は `shikii calibrate --write` を切り離した別プロセスで起こす(文言を変えた後の聞き直しが長くても hook の timeout に掛からない。同じ spec は 10 分に 1 回まで)。結果は `hook.log` の `auto-calibrate …` の行。そこから hook が振る舞いを変える。
 

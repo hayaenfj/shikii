@@ -16,6 +16,30 @@
     catch (e) { toast(t('error')(e.message)); }
   }
 
+  // 人が自分の言葉で候補を書く。足すだけ(採点は次の tune、採用は人)。選択肢の説明は「id: 説明」の行
+  let candName = $state('');
+  let candQuestion = $state('');
+  let candOptions = $state('');
+  let adding = $state(false);
+  function parseOptions(text) {
+    const out = {};
+    for (const line of text.split('\n')) {
+      const i = line.indexOf(':');
+      if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    }
+    return out;
+  }
+  async function addVariant() {
+    adding = true;
+    try {
+      const res = await api.tuneVariant({ spec: sp.id, name: candName, question: candQuestion, options: parseOptions(candOptions) });
+      toast(t('candAdded')(res.added), 6000);
+      candName = ''; candQuestion = ''; candOptions = '';
+      load();
+    } catch (e) { toast(t('error')(e.message)); }
+    adding = false;
+  }
+
   async function judge(same) {
     try {
       const note = same ? '' : (prompt(t('notePrompt')) || '');
@@ -82,6 +106,16 @@
       {/if}
     {/if}
     {#if tu && tu.error}<div class="k">{t('error')(tu.error)}</div>{/if}
+    {#if tu}
+      <div class="k cands-line">{tu.variants && tu.variants.length ? t('candidates')(tu.variants.length) + ': ' + tu.variants.map(v => v.name).join(', ') : t('noCandidates')}</div>
+      <form class="add-variant" onsubmit={e => { e.preventDefault(); addVariant(); }}>
+        <div class="k">{t('addWording')}</div>
+        <input name="name" placeholder={t('candName')} bind:value={candName} required>
+        <textarea name="question" rows="2" placeholder={t('candQuestion')} bind:value={candQuestion}></textarea>
+        {#if sp.type === 'choice'}<textarea name="options" rows="2" placeholder={t('candOptions')} bind:value={candOptions}></textarea>{/if}
+        <div class="btns"><button type="submit" class="weak" disabled={adding}>{t('addWordingBtn')}</button></div>
+      </form>
+    {/if}
     {#if tu && !tu.running}
       <div class="btns">
         <button type="button" onclick={() => run(0)}>{t('runTune')}</button>
