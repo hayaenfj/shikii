@@ -61,7 +61,7 @@ cd <project root> && shikii init
 - **과거 결정의 표가 이미 있다**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml`이 그것을 정답 데이터로 바꿔 주므로, 처음 50건을 손으로 답하지 않아도 됩니다
 - **내 프로그램에서**: `shikii serve`를 띄우고 `POST /v1/decide`(판정)와 `POST /v1/label`(정답)을 호출합니다. 본문은 JSON이고 `-H 'Content-Type: application/json'`이 필요합니다(모든 엔드포인트는 [긴 안내서](../guide.md#or-run-one-process-for-programs-and-people))
 - **다른 사람의 예**: [문의 메일 분류](../examples/inquiry-route.md)(일본어). 처음 쓰는 사람이 README만으로 한 바퀴를 다 돌았고, spec과 22건의 입력이 들어 있습니다
-- **AI 자신의 판단을 측정한다**(Claude Code와 Codex): `shikii hook install`로 hook이 들어가, 에이전트가 스스로 하는 결정(이 명령이 무엇을 하는지, 이 편집이 요청 범위 안인지, 이 요청에 먼저 계획이 필요한지, 에이전트가 결국 무엇을 하게 되는지. 마지막 정답은 작업 트리가 바뀌었는지로 공짜로 얻습니다)에 shikii를 통과시킵니다. 선이 생기기 전에는 아무것도 바뀌지 않습니다. 생긴 뒤에는 위험한 명령(삭제, 프로젝트 밖 변경, 밖으로 보내기)이 확인을 요청하며, 그 선이 몇 건의 정답 위에 서 있는지와 사람이 확인한 정밀도가 함께 나옵니다. 안전한 명령은 조용히 통과합니다([자세히](../../integrations/claude-code.md), 일본어)
+- **AI 자신의 생각을 측정한다**(Claude Code와 Codex): `shikii hook install`로 hook 두 개가 들어가, 에이전트가 요청 하나를 처리하는 매 턴의 앞과 뒤에 shikii를 실행합니다. 앞에서는: 이 요청이 결국 파일을 바꾸게 되는가, 에이전트가 먼저 진행 방법을 합의해야 하는가? 뒤에서는: 바뀐 것이 요청한 범위 안인가, 요청한 일을 끝냈는가? 첫 정답은 작업 트리가 바뀌었는지로 공짜로 얻고, 나머지는 당신이 화면에서 답합니다. 선이 생기기 전에는 아무것도 바뀌지 않습니다. 생긴 뒤에는 계획이 필요한 요청이 에이전트에게 보내는 메모가 되고, 끝나지 않았거나 범위를 벗어난 듯한 턴은 당신에게 보내는 한 줄이 되며, 그 선이 몇 건의 정답 위에 서 있는지와 사람이 확인한 정밀도가 함께 나옵니다. hook이 도구를 막는 일은 결코 없습니다([자세히](../../integrations/claude-code.md), 일본어)
 - **CI에서**: `uses: hayaenfj/shikii@main`이 모든 pull request에서 `shikii check`를 실행하므로, 묻는 방식이 바뀌거나 선이 약해지면 빌드가 실패합니다
 
 ## 한 바퀴 돌아보기
