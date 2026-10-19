@@ -29,7 +29,7 @@ Her cevabı bir insan kontrol edecekse, yapay zekâyı kullanmanın pek anlamı 
 ## shikii ne yapar
 
 1. **Düzeltmelerinizi toplar ve yapay zekânın kendi başına hareket edebileceği çizgiyi çizer.** Verdiğiniz cevaplardan ("aslında doğrusu buydu") yapay zekânın güveni ile ne sıklıkla haklı çıktığı arasındaki ilişkiyi ölçer ve nereden yukarısına güvenilebileceğine karar verir. Bir çizgi olmadan hiçbir şey kendi başına hareket etmez. Çizgi çizildikten sonra her otomatik karar, çizginin kaç kontrol edilmiş cevaba dayandığını ve bunların ne sıklıkla doğru olduğunu söyleyen bir makbuz taşır
-2. **Başka soru biçimlerini dener ve iyi olanı tutar.** Aynı düzeltmeler üzerinde alternatif soruları, seçenek açıklamalarını ve istem düzenlerini puanlar; birini yalnızca gerçekten daha iyiyse benimser. Siz sadece anlamın değişmediğini onaylarsınız
+2. **Başka soru biçimlerini dener ve iyi olanı tutar.** Aynı düzeltmeler üzerinde alternatif soruları, seçenek açıklamalarını ve istem düzenlerini puanlar; birini yalnızca gerçekten daha iyiyse benimser. Adaylar sizden (sayfaya kendi sözcüklerinizle yazılır) ya da bir yapay zekâdan gelir; yeterince yeni düzeltme biriktiğinde makine onları her seferinde yeniden ölçer. Siz sadece anlamın değişmediğini onaylarsınız
 3. **Modeli sıfırdan başlamadan değiştirmenizi sağlar.** Düzeltmeler modelden ayrı durur, bu yüzden yeni bir model onları yeniden kullanır ve çizgi makine tarafından yeniden çizilir. İnsan emeği gerekmez
 4. **Öğrendiklerini bir wiki'de saklar.** "Böyle sormak işe yarıyor" bilgisi, ölçülmüş sayılarla birlikte iddialar olarak birikir ve başka bir modelde yeniden test edilebilir. Başkalarının kendi modellerinde ölçtükleri de aynı sayfaya eklenir
 
@@ -37,7 +37,7 @@ Her cevabı bir insan kontrol edecekse, yapay zekâyı kullanmanın pek anlamı 
 
 - **Neyin karara bağlanacağını yazın.** Birkaç soruya cevap verin, bir karar dosyası ortaya çıkar (`shikii new`, etkileşimli olarak ya da `--type --question --option --input --pii` ile; biçimin tamamı [spec başvuru belgesinde](../../skills/shikii/references/spec.md))
 - **Cevapları kontrol edin.** Sayfa, yapay zekânın emin olamadığı kararları ve kendi başına hareket ettiği her 20 karardan 1'ini gösterir; siz aslında doğru olanın düğmesine basarsınız. 1'den 9'a kadar tuşlar ve Enter (yapay zekânın seçimiyle aynı) hızlı ilerletir. "Cevaplandı" ile önceki bir cevabı düzeltebilirsiniz (en yenisi geçerlidir). "Ayrıntılar", "yapay zekâya tekrar sor"u ekler: aynı metin bugünün soru biçimi ve çizgisiyle yeniden karara bağlanır, önce ve sonra yan yana gösterilir; kayıtlar sona eklenir, hiç silinmez
-- **Ara sıra "hâlâ demek istediğim bu mu?" diye onaylayın.** Makine daha iyi puan alan bir soru biçimi bulduğunda, anlamın değişip değişmediğine bakar ve benimse ya da reddet'e basarsınız
+- **Ara sıra "hâlâ demek istediğim bu mu?" diye onaylayın.** Makine daha iyi puan alan bir soru biçimi bulduğunda, anlamın değişip değişmediğine bakar ve benimse ya da reddet'e basarsınız. Aklınıza daha iyi bir soru biçimi gelirse aynı sayfaya yazın; makine onu ölçer, siz hiçbir zaman bir dosyayı düzenlemezsiniz
 
 Geri kalan her şey makinenin işidir.
 

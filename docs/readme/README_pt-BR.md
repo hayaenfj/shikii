@@ -29,7 +29,7 @@ Se uma pessoa precisa conferir cada resposta, usar a IA serviu para pouco.
 ## O que o shikii faz
 
 1. **Reúne suas correções e traça a linha acima da qual a IA pode agir sozinha.** A partir das respostas que você deu ("isto é o que era verdade de fato"), ele mede como a confiança da IA se relaciona com a frequência com que ela acerta e decide a partir de onde se pode confiar nela. Enquanto não existe linha, nada age. Quando ela existe, cada decisão automática carrega um recibo que diz em quantas respostas conferidas a linha se apoia e com que frequência elas estavam certas
-2. **Experimenta outras formas de perguntar e fica com a melhor.** Com as mesmas correções, ele pontua perguntas, descrições de opções e arranjos de prompt alternativos, e só adota um quando é de fato melhor. Você só confirma que o sentido não mudou
+2. **Experimenta outras formas de perguntar e fica com a melhor.** Com as mesmas correções, ele pontua perguntas, descrições de opções e arranjos de prompt alternativos, e só adota um quando é de fato melhor. Os candidatos vêm de você (digitados na página, com suas próprias palavras) ou de uma IA; a máquina os mede de novo toda vez que chegam correções novas em número suficiente. Você só confirma que o sentido não mudou
 3. **Permite trocar o modelo sem começar do zero.** As correções ficam separadas do modelo, então um modelo novo as reaproveita e a máquina traça a linha de novo. Sem trabalho humano
 4. **Guarda o que aprendeu em um wiki.** "Perguntar deste jeito funciona" se acumula como afirmações com os números medidos, que podem ser testadas de novo em outro modelo. O que outras pessoas mediram nos modelos delas é somado à mesma página
 
@@ -37,7 +37,7 @@ Se uma pessoa precisa conferir cada resposta, usar a IA serviu para pouco.
 
 - **Escreva o que você quer que seja decidido.** Responda a algumas perguntas e um arquivo de decisão aparece (`shikii new`, de forma interativa ou com `--type --question --option --input --pii`; o formato completo está na [referência do spec](../../skills/shikii/references/spec.md))
 - **Confira respostas.** A página mostra as decisões em que a IA ficou em dúvida, mais 1 em cada 20 das que ela executou, e você aperta o botão do que era verdade de fato. As teclas 1 a 9 e Enter (igual à escolha da IA) agilizam. "Respondidas" permite corrigir uma resposta anterior (a mais nova é a que vale). "Detalhes" acrescenta "perguntar à IA de novo", que decide o mesmo texto outra vez com a redação e a linha de hoje e mostra o antes e o depois; os registros são acrescentados, nunca apagados
-- **De vez em quando, confirme "isso ainda é o que eu queria?".** Quando a máquina encontra uma redação que pontua melhor, você olha se o sentido mudou e aperta adotar ou rejeitar
+- **De vez em quando, confirme "isso ainda é o que eu queria?".** Quando a máquina encontra uma redação que pontua melhor, você olha se o sentido mudou e aperta adotar ou rejeitar. Se uma forma melhor de perguntar vier à sua cabeça, digite-a na mesma página; a máquina a mede, você nunca edita um arquivo
 
 Todo o resto é trabalho da máquina.
 

@@ -29,7 +29,7 @@ Wenn ein Mensch jede Antwort nachprüfen muss, hatte der Einsatz der KI wenig Si
 ## Was shikii tut
 
 1. **Sammelt Ihre Korrekturen und zieht die Linie, oberhalb derer die KI allein handeln darf.** Aus den Antworten, die Sie gegeben haben („das war tatsächlich richtig“), misst es, wie die Zuversicht der KI mit ihrer Trefferquote zusammenhängt, und legt fest, ab wo man ihr vertrauen kann. Solange keine Linie existiert, handelt nichts. Sobald es eine gibt, trägt jede automatische Entscheidung einen Beleg, der sagt, auf wie vielen geprüften Antworten die Linie ruht und wie oft diese richtig waren
-2. **Probiert andere Arten zu fragen aus und behält die bessere.** Auf denselben Korrekturen bewertet es andere Fragen, Beschreibungen der Optionen und Anordnungen des Prompts und übernimmt eine nur, wenn sie wirklich besser ist. Sie bestätigen nur, dass sich die Bedeutung nicht geändert hat
+2. **Probiert andere Arten zu fragen aus und behält die bessere.** Auf denselben Korrekturen bewertet es andere Fragen, Beschreibungen der Optionen und Anordnungen des Prompts und übernimmt eine nur, wenn sie wirklich besser ist. Die Kandidaten kommen von Ihnen (auf der Seite eingetippt, in Ihren eigenen Worten) oder von einer KI; die Maschine misst sie jedes Mal neu, wenn genug neue Korrekturen eingegangen sind. Sie bestätigen nur, dass sich die Bedeutung nicht geändert hat
 3. **Lässt Sie das Modell wechseln, ohne von vorn zu beginnen.** Die Korrekturen liegen getrennt vom Modell, also nutzt ein neues Modell sie weiter, und die Maschine zieht die Linie neu. Keine menschliche Arbeit
 4. **Bewahrt das Gelernte in einem Wiki.** „So zu fragen funktioniert“ sammelt sich als Behauptungen mit den gemessenen Zahlen an, die sich auf einem anderen Modell erneut prüfen lassen. Was andere Leute auf ihren Modellen gemessen haben, kommt auf dieselbe Seite
 
@@ -37,7 +37,7 @@ Wenn ein Mensch jede Antwort nachprüfen muss, hatte der Einsatz der KI wenig Si
 
 - **Schreiben Sie auf, was entschieden werden soll.** Beantworten Sie ein paar Fragen, und eine Entscheidungsdatei entsteht (`shikii new`, im Dialog oder mit `--type --question --option --input --pii`; das vollständige Format steht in [der Referenz zur Entscheidungsdatei](../../skills/shikii/references/spec.md))
 - **Prüfen Sie Antworten nach.** Die Seite zeigt die Entscheidungen, bei denen die KI unsicher war, plus 1 von 20 derer, nach denen sie gehandelt hat, und Sie drücken den Knopf für das, was tatsächlich zutraf. Die Tasten 1 bis 9 und Enter (gleich wie die Wahl der KI) gehen schnell. „Beantwortet“ lässt Sie eine frühere Antwort korrigieren (die neueste zählt). „Details“ fügt „die KI noch einmal fragen“ hinzu, was denselben Text mit der heutigen Formulierung und Linie neu entscheidet und vorher und nachher zeigt; Aufzeichnungen werden angehängt, nie gelöscht
-- **Bestätigen Sie hin und wieder: „Ist das noch das, was ich gemeint habe?“.** Wenn die Maschine eine Formulierung findet, die besser abschneidet, sehen Sie nach, ob sich die Bedeutung geändert hat, und drücken auf übernehmen oder ablehnen
+- **Bestätigen Sie hin und wieder: „Ist das noch das, was ich gemeint habe?“.** Wenn die Maschine eine Formulierung findet, die besser abschneidet, sehen Sie nach, ob sich die Bedeutung geändert hat, und drücken auf übernehmen oder ablehnen. Fällt Ihnen eine bessere Art zu fragen ein, tippen Sie sie auf derselben Seite ein; die Maschine misst sie, Sie bearbeiten nie eine Datei
 
 Alles andere ist Aufgabe der Maschine.
 

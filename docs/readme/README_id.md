@@ -29,7 +29,7 @@ Kalau seseorang harus memeriksa setiap jawaban, tidak banyak gunanya memakai AI.
 ## Apa yang dilakukan shikii
 
 1. **Mengumpulkan koreksi Anda dan menarik garis batas yang di atasnya AI boleh bertindak sendiri.** Dari jawaban yang Anda beri ("ini yang sebenarnya benar") ia mengukur hubungan antara keyakinan AI dan seberapa sering AI benar, lalu memutuskan dari mana ke atas ia bisa dipercaya. Sebelum ada garis, tidak ada yang bertindak. Setelah ada, setiap keputusan otomatis membawa tanda terima yang menyebutkan garis itu bertumpu pada berapa jawaban yang sudah diperiksa dan seberapa sering jawaban itu benar
-2. **Mencoba cara bertanya lain dan menyimpan yang lebih baik.** Pada koreksi yang sama ia menilai pertanyaan alternatif, deskripsi pilihan dan tata letak prompt, dan hanya mengadopsinya kalau benar-benar lebih baik. Anda cukup mengonfirmasi bahwa maknanya tidak berubah
+2. **Mencoba cara bertanya lain dan menyimpan yang lebih baik.** Pada koreksi yang sama ia menilai pertanyaan alternatif, deskripsi pilihan dan tata letak prompt, dan hanya mengadopsinya kalau benar-benar lebih baik. Kandidatnya datang dari Anda (diketik di halaman, dengan kata-kata Anda sendiri) atau dari AI; mesin mengukurnya lagi setiap kali koreksi baru sudah cukup terkumpul. Anda cukup mengonfirmasi bahwa maknanya tidak berubah
 3. **Membiarkan Anda mengganti model tanpa mulai dari nol.** Koreksi tersimpan terpisah dari model, sehingga model baru memakainya kembali dan garis ditarik ulang oleh mesin. Tidak perlu kerja manusia
 4. **Menyimpan apa yang dipelajari dalam sebuah wiki.** "Bertanya dengan cara ini berhasil" terkumpul sebagai klaim dengan angka hasil ukur, yang bisa diuji ulang pada model lain. Apa yang orang lain ukur pada model mereka ditambahkan ke halaman yang sama
 
@@ -37,7 +37,7 @@ Kalau seseorang harus memeriksa setiap jawaban, tidak banyak gunanya memakai AI.
 
 - **Tuliskan apa yang ingin diputuskan.** Jawab beberapa pertanyaan dan sebuah berkas keputusan muncul (`shikii new`, secara interaktif atau dengan `--type --question --option --input --pii`; format lengkapnya ada di [referensi spec](../../skills/shikii/references/spec.md))
 - **Periksa jawaban.** Halaman menampilkan keputusan yang AI tidak yakin, plus 1 dari 20 keputusan yang ia jalankan sendiri, dan Anda menekan tombol untuk apa yang sebenarnya benar. Tombol 1 sampai 9 dan Enter (sama dengan pilihan AI) membuatnya cepat. "Sudah dijawab" memungkinkan Anda memperbaiki jawaban sebelumnya (yang terbaru yang dihitung). "Detail" menambahkan "tanya AI lagi", yang memutuskan ulang teks yang sama dengan kata-kata dan garis hari ini dan menampilkan sebelum dan sesudah; catatan hanya ditambahkan, tidak pernah dihapus
-- **Sesekali konfirmasi "apakah ini masih yang saya maksud?".** Ketika mesin menemukan kata-kata yang nilainya lebih baik, Anda melihat apakah maknanya berubah dan menekan terima atau tolak
+- **Sesekali konfirmasi "apakah ini masih yang saya maksud?".** Ketika mesin menemukan kata-kata yang nilainya lebih baik, Anda melihat apakah maknanya berubah dan menekan terima atau tolak. Kalau terpikir cara bertanya yang lebih baik, ketik di halaman yang sama; mesin yang mengukurnya, Anda tidak pernah menyunting berkas
 
 Semua yang lain adalah pekerjaan mesin.
 

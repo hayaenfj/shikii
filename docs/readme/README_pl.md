@@ -29,7 +29,7 @@ Jeśli człowiek musi sprawdzać każdą odpowiedź, używanie AI miało mało s
 ## Co robi shikii
 
 1. **Zbiera twoje poprawki i wyznacza linię, powyżej której AI może działać samo.** Z odpowiedzi, które podałeś („tak było naprawdę”), mierzy, jak pewność AI ma się do tego, jak często ma rację, i ustala, od jakiego poziomu można mu zaufać. Dopóki nie ma linii, nic nie działa. Gdy już jest, każda automatyczna decyzja niesie pokwitowanie: na ilu sprawdzonych odpowiedziach opiera się linia i jak często były trafne
-2. **Próbuje innych sposobów pytania i zachowuje lepszy.** Na tych samych poprawkach ocenia alternatywne pytania, opisy opcji i układy promptu, a przyjmuje nowy tylko wtedy, gdy jest naprawdę lepszy. Ty tylko potwierdzasz, że znaczenie się nie zmieniło
+2. **Próbuje innych sposobów pytania i zachowuje lepszy.** Na tych samych poprawkach ocenia alternatywne pytania, opisy opcji i układy promptu, a przyjmuje nowy tylko wtedy, gdy jest naprawdę lepszy. Kandydaci pochodzą od ciebie (wpisani na stronie, twoimi słowami) albo od AI; maszyna mierzy ich ponownie za każdym razem, gdy zebrało się dość nowych poprawek. Ty tylko potwierdzasz, że znaczenie się nie zmieniło
 3. **Pozwala wymienić model bez zaczynania od zera.** Poprawki są przechowywane osobno od modelu, więc nowy model korzysta z nich ponownie, a linię maszyna wyznacza na nowo. Bez pracy człowieka
 4. **Zapisuje to, czego się nauczyło, w wiki.** „Tak pytać działa” gromadzi się jako twierdzenia ze zmierzonymi liczbami, które można sprawdzić ponownie na innym modelu. To, co inni zmierzyli na swoich modelach, trafia na tę samą stronę
 
@@ -37,7 +37,7 @@ Jeśli człowiek musi sprawdzać każdą odpowiedź, używanie AI miało mało s
 
 - **Zapisz, co ma być rozstrzygane.** Odpowiedz na kilka pytań i powstaje plik decyzji (`shikii new`, interaktywnie albo z flagami `--type --question --option --input --pii`; pełny format jest w [opisie spec](../../skills/shikii/references/spec.md))
 - **Sprawdzaj odpowiedzi.** Strona pokazuje decyzje, przy których AI miało wątpliwości, plus 1 na 20 tych, przy których działało, a ty naciskasz przycisk z tym, co było naprawdę. Klawisze od 1 do 9 i Enter (to samo, co wybrało AI) przyspieszają pracę. „Odpowiedziane” pozwala poprawić wcześniejszą odpowiedź (liczy się najnowsza). „Szczegóły” dodaje „zapytaj AI ponownie”: ten sam tekst jest rozstrzygany na nowo z dzisiejszym sformułowaniem i linią, a „przed” i „po” są pokazane obok siebie; zapisy są tylko dopisywane, nigdy usuwane
-- **Od czasu do czasu potwierdź: „czy to nadal to, o co mi chodziło?”.** Gdy maszyna znajdzie sformułowanie, które wypada lepiej, patrzysz, czy znaczenie się zmieniło, i naciskasz „przyjmij” albo „odrzuć”
+- **Od czasu do czasu potwierdź: „czy to nadal to, o co mi chodziło?”.** Gdy maszyna znajdzie sformułowanie, które wypada lepiej, patrzysz, czy znaczenie się zmieniło, i naciskasz „przyjmij” albo „odrzuć”. Jeśli przyjdzie ci do głowy lepszy sposób pytania, wpisz go na tej samej stronie; maszyna go zmierzy, ty nigdy nie edytujesz pliku
 
 Cała reszta to zadanie maszyny.
 
