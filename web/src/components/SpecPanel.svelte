@@ -38,7 +38,10 @@
     for (const it of all) if (it.project) m.set(it.project, (m.get(it.project) || 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   });
-  let matching = $derived(all.filter(it => (ui.filter === 'all' || kind(it) === ui.filter) && (!ui.project || it.project === ui.project)));
+  // この判定に無い仕事が選ばれたまま(別の判定で選んだ)なら絞らない。回答済みにも同じ絞り込みをかける
+  let activeProject = $derived(projects.some(([name]) => name === ui.project) ? ui.project : '');
+  let matching = $derived(all.filter(it => (ui.filter === 'all' || kind(it) === ui.filter) && (!activeProject || it.project === activeProject)));
+  let answeredVisible = $derived((sp.answered || []).filter(it => !activeProject || it.project === activeProject));
   // URL で指された判定(ui.pinned)は先頭に(hook の「あとで答える → URL」から来た人が、その 1 件をすぐ答えられる)
   let visible = $derived.by(() => {
     const v = matching.filter(it => !skipped.has(it.trace_id));
@@ -72,9 +75,9 @@
   {#if projects.length > 1}
     <div class="chips projects">
       <span class="k">{t('byProject')}</span>
-      <button type="button" class:active={!ui.project} onclick={() => { ui.project = ''; }}>{t('chip_all')} {all.length}</button>
+      <button type="button" class:active={!activeProject} onclick={() => { ui.project = ''; }}>{t('chip_all')} {all.length}</button>
       {#each projects as [name, n]}
-        <button type="button" class:active={ui.project === name} onclick={() => { ui.project = ui.project === name ? '' : name; }}>{name} {n}</button>
+        <button type="button" class:active={activeProject === name} onclick={() => { ui.project = ui.project === name ? '' : name; }}>{name} {n}</button>
       {/each}
     </div>
   {/if}
@@ -83,12 +86,12 @@
     {#if !sp.answered}
       <div class="empty">{t('loading')}</div>
     {:else}
-      {#if !sp.answered.length}<div class="empty">{t('noneAnswered')}</div>{/if}
-      {#each sp.answered.slice(0, ui.listSize) as it (it.trace_id)}
+      {#if !answeredVisible.length}<div class="empty">{t('noneAnswered')}</div>{/if}
+      {#each answeredVisible.slice(0, ui.listSize) as it (it.trace_id)}
         <ItemCard {sp} {it} />
       {/each}
-      {#if sp.answered.length > ui.listSize}
-        <button type="button" class="weak" onclick={() => { ui.listSize += 30; }}>{t('showMore')(sp.answered.length - ui.listSize)}</button>
+      {#if answeredVisible.length > ui.listSize}
+        <button type="button" class="weak" onclick={() => { ui.listSize += 30; }}>{t('showMore')(answeredVisible.length - ui.listSize)}</button>
       {/if}
     {/if}
   {:else}

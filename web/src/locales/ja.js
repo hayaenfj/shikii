@@ -21,6 +21,6 @@ export default {
   wording: '聞き方(言い換えの案)', current: '今の文言', noRun: 'まだ測っていません', running: '案を測っています…', runTune: '案を測る', runPropose: n => 'AI に案を ' + n + ' 個作らせて測る',
   holdoutLine: (h, c) => '別の分で試した正解率 ' + h + '(今のまま: ' + c + ')', winnerLine: w => '言い換えの案 ' + w + ' を採用できます', keptLine: '今の文言のまま',
   adoptedLine: p => '採用済み: ' + p, sameMeaning: '意味は同じ → 採用', changedMeaning: '意味が違う → 却下', notePrompt: '意味のどこが変わりましたか？(任意)',
-  candidates: n => '測る前の案 ' + n + ' 件', noCandidates: '案はまだありません。下に書くか、AI に作らせてください', addWording: '言い換えの案を書く', candName: '短い名前(例: plain-words)', candQuestion: '質問をあなたの言葉で(空なら今の質問のまま)', candOptions: '選択肢の説明。1 行に 1 つ、id: 説明 の形(変えるものだけ)', addWordingBtn: '案を足す', candAdded: n => '足しました: ' + n + '。次に測る時に採点されます',
+  candidates: n => '測る前の案 ' + n + ' 件', noCandidates: '案はまだありません。下に書くか、AI に作らせてください', addWording: '言い換えの案を書く', candName: '短い名前(例: plain-words)', candQuestion: '質問をあなたの言葉で', candQuestionOrOptions: '質問をあなたの言葉で(空なら今の質問のまま。下の選択肢の説明だけ変える)', candOptions: '選択肢の説明。1 行に 1 つ、id: 説明 の形(変えるものだけ)', addWordingBtn: '案を足す', candAdded: n => '足しました: ' + n + '。次に測る時に採点されます',
   checkHint: '言い換えても、まだあなたの聞きたいことを聞いていますか？数字は機械が確かめました。意味はあなたが確かめてください。', rejected: '記録しました: 意味が違うので採用しない', adoptedToast: p => '採用しました: ' + p,
 };

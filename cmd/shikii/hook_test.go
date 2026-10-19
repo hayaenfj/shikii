@@ -45,8 +45,9 @@ func hookEnv(t *testing.T, model *httptest.Server) (agent string) {
 // spawned は hookSpawn の記録(テスト)。
 var spawned []string
 
-func recordSpawn(agent, logName string, args ...string) {
+func recordSpawn(agent, logName string, args ...string) int {
 	spawned = append(spawned, strings.Join(args, " "))
+	return 0
 }
 
 // runHook は stdin の JSON を与えて event を走らせ、stdout を返す。hook は何があっても誤りを返さない。
@@ -563,9 +564,9 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 
 // モデルが無ければ hook が `shikii up` を裏で起こす(10 分に 1 回)。install は作法(skill)も置き、モデルを起こす。人がコマンドを打つ場面を無くす。
 func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
-	if _, err := exec.LookPath("llama-server"); err != nil {
-		t.Skip("no llama-server on PATH: the hook would only log a hint")
-	}
+	oldLook := lookPath
+	lookPath = func(file string) (string, error) { return "/usr/bin/" + file, nil } // llama-server がある機械、のつもり(CI でも走る)
+	t.Cleanup(func() { lookPath = oldLook })
 	agent := hookEnv(t, nil) // モデルの口は閉じている
 	home := filepath.Dir(filepath.Dir(agent))
 	if !fileExists(filepath.Join(home, ".claude", "skills", "shikii", "SKILL.md")) {
@@ -583,9 +584,11 @@ func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 	if len(spawned) != 1 {
 		t.Fatalf("within %s the model must not be started again: %v", hookStartGap, spawned)
 	}
-	// 10 分過ぎれば(guard が古ければ)もう一度
+	// 10 分過ぎれば(guard の時刻が古く、前の子も生きていなければ)もう一度
 	old := time.Now().Add(-hookStartGap - time.Minute)
-	_ = os.Chtimes(filepath.Join(agent, "starting-model"), old, old)
+	if err := os.WriteFile(filepath.Join(agent, "starting-model"), []byte("0 "+old.Format(time.RFC3339)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "now run the tests and tell me what fails"})
 	if len(spawned) != 2 {
 		t.Fatalf("after the gap the model may be started again: %v", spawned)
@@ -703,8 +706,8 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(settings)
-	if len(cmds) != 2 || cmds[0] != "shikii hook stop" || cmds[1] != "shikii hook user-prompt-submit" {
-		t.Fatalf("hooks after install: %v", cmds)
+	if len(cmds) != 2 || !strings.HasSuffix(cmds[0], " hook stop") || !strings.HasSuffix(cmds[1], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
+		t.Fatalf("hooks after install must run the binary by its absolute path: %v", cmds)
 	}
 	b, _ := os.ReadFile(settings)
 	if !strings.Contains(string(b), "node other.mjs") || !strings.Contains(string(b), "rtk hook claude") || !strings.Contains(string(b), `"language": "Japanese"`) || !strings.Contains(string(b), `"SessionStart": []`) {
@@ -895,7 +898,7 @@ func TestHookCodex(t *testing.T) {
 	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate, hookSpawn = oldLocal, oldPage, oldCal, oldSpawn })
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(codexHooks)
-	if len(cmds) != 2 || cmds[0] != "shikii hook stop" || cmds[1] != "shikii hook user-prompt-submit" {
+	if len(cmds) != 2 || !strings.HasSuffix(cmds[0], " hook stop") || !strings.HasSuffix(cmds[1], " hook user-prompt-submit") {
 		t.Fatalf("Codex must get the 2 hooks and lose the old one: %v", cmds)
 	}
 	b, _ := os.ReadFile(codexHooks)
@@ -990,8 +993,8 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 	if runs, _ := filepath.Glob(filepath.Join(agent, "wiki", "runs", "*needs-plan*.md")); len(runs) != 1 {
 		t.Fatalf("the run must be written to wiki/runs: %v", runs)
 	}
-	if g, _ := os.ReadFile(filepath.Join(agent, "tuned-needs-plan")); !strings.HasPrefix(string(g), "2 ") {
-		t.Fatalf("the guard must remember the count at the last run: %q", g)
+	if g, _ := os.ReadFile(filepath.Join(agent, "tuned-needs-plan")); !strings.HasPrefix(string(g), "2 ") || len(strings.Fields(string(g))) != 3 {
+		t.Fatalf("the guard must remember the count, the spec hash and the time of the last run: %q", g)
 	}
 	// 増えていなければ回さない(同じ Stop を繰り返しても 1 回のまま)
 	runHook(t, "stop", map[string]any{"session_id": "t2", "cwd": cwd})
@@ -1012,5 +1015,172 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 	// 採用は人: spec の文言は変わっていない(variants は残る)
 	if b, _ := os.ReadFile(np); !strings.Contains(string(b), "name: short") || strings.Contains(string(b), "version: 2") {
 		t.Fatalf("auto-tune must not adopt: %s", b)
+	}
+}
+
+// 監査の再現(2026-10-19): 依頼 A の Stop がモデル待ちの間に次の依頼 B が控えを書き終えていると、Stop A の変更は B の控えに当たってはいけない
+// (B が「評価済み」になり、B の prompt-kind に結果の正解が付き、B の Stop が何も聞かなくなる)。
+func TestHookStopDoesNotTouchTheNextRequest(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
+	agent := hookEnv(t, model)
+	st := store.Store{Dir: agent}
+	repo := gitRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "r", "cwd": repo, "prompt": "fix the typo in a.go please"})
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a // fixed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Stop A が始まる: 錠の外で控えを読み、モデルに聞く(まだ書かない)
+	snapshot := loadSession(agent, "r")
+	in := hookInput{SessionID: "r", CWD: repo, LastAssistantMessage: "Fixed the typo."}
+	_, muts, err := hookStop(agent, &in, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// その間に依頼 B の UserPromptSubmit が終わる(控えを書く)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "r", "cwd": repo, "prompt": "now add a README that explains the module"})
+	traceB := loadSession(agent, "r").Pending[0].Trace
+	if err := updateSession(agent, "r", func(s *hookSession) {
+		for _, m := range muts {
+			m(s)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sess := loadSession(agent, "r")
+	labels, _ := st.LabeledTraces("prompt-kind")
+	if sess.Judged {
+		t.Fatal("request B must not be marked judged by request A's Stop")
+	}
+	if l, ok := labels[traceB]; ok {
+		t.Fatalf("request B's prompt-kind must not get an outcome truth from A's Stop: %+v", l)
+	}
+	if sess.Previous == "Fixed the typo." {
+		t.Fatal("A's closing message must not become B's previous")
+	}
+	// A の pending(A の trace)は決まっている
+	if len(labels) != 1 {
+		t.Fatalf("A's prompt-kind must be settled exactly once: %v", labels)
+	}
+	// B のターン: README を足して Stop → done-as-asked は 2 件目
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "stop", map[string]any{"session_id": "r", "cwd": repo, "last_assistant_message": "Added README.md."})
+	recs, _ := st.Records("done-as-asked", 0)
+	if len(recs) != 2 {
+		t.Fatalf("done-as-asked for request B must still be asked: %d records", len(recs))
+	}
+	cis, _ := st.Records("changes-in-scope", 0)
+	if len(cis) != 2 || cis[0].Inputs["files"] != "README.md" {
+		t.Fatalf("B's changes must be compared against B's own listing: %+v", cis)
+	}
+}
+
+// 監査の再現: サブディレクトリから起こしたセッションでも repo 全体を見る。chmod だけの変更も「変わった」。hook.log の 1 行は切る。
+// 裏で起こす guard は flock で排他(並列 30 本で 1 回)で、前の子が生きていれば 10 分を過ぎても起こさない。tune の guard は spec の文言が変わると数え直す。
+func TestHookSecondAuditRound(t *testing.T) {
+	repo := gitRepo(t)
+	sub := filepath.Join(repo, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "other.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, before, listed, project := treeState(sub)
+	if !listed || project != filepath.Base(repo) || !strings.Contains(before, "\tother.txt") {
+		t.Fatalf("from a subdirectory the listing must cover the whole repo and the project must be the repo: listed=%v project=%q listing=%q", listed, project, before)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "other.txt"), []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, after, _, _ := treeState(sub)
+	if got := changedFiles(before, after); strings.Join(got, ",") != "other.txt" {
+		t.Fatalf("a change outside the subdirectory must count: %v", got)
+	}
+	// mode だけの変更
+	if err := os.Chmod(filepath.Join(repo, "other.txt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, modeChanged, _, _ := treeState(sub)
+	if got := changedFiles(after, modeChanged); strings.Join(got, ",") != "other.txt" {
+		t.Fatalf("a mode-only change must count: %v", got)
+	}
+
+	agent := hookEnv(t, nil)
+	// hook.log の 1 行は hookLogLineMax に切られ、改行は畳まれる(モデルの応答本文を丸ごと残さない)
+	hookLog("line1\n" + strings.Repeat("x", 2000))
+	lb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+	last := lastLine(string(lb))
+	if len(last) > hookLogLineMax+40 || strings.Contains(last, "line1\nx") {
+		t.Fatalf("hook.log lines must be cut and single-line: %d bytes", len(last))
+	}
+
+	// startOnce: 並列 30 本で 1 回だけ、生きている子(自分の pid)がいれば gap を過ぎても起こさない
+	var mu sync.Mutex
+	calls := 0
+	var wg sync.WaitGroup
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			startOnce(agent, "thing", func() int { mu.Lock(); calls++; mu.Unlock(); return os.Getpid() })
+		}()
+	}
+	wg.Wait()
+	if calls != 1 {
+		t.Fatalf("30 parallel hooks must start the thing once, got %d", calls)
+	}
+	old := time.Now().Add(-hookStartGap - time.Minute)
+	_ = os.Chtimes(filepath.Join(agent, "starting-thing"), old, old)
+	if err := os.WriteFile(filepath.Join(agent, "starting-thing"), []byte(fmt.Sprintf("%d %s\n", os.Getpid(), old.Format(time.RFC3339))), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if startOnce(agent, "thing", func() int { return 0 }) {
+		t.Fatal("while the child is alive the thing must not be started again, even after the gap")
+	}
+	if err := os.WriteFile(filepath.Join(agent, "starting-thing"), []byte(fmt.Sprintf("%d %s\n", 999999, old.Format(time.RFC3339))), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !startOnce(agent, "thing", func() int { return 0 }) {
+		t.Fatal("a dead child and an old guard must allow a new start")
+	}
+
+	// tune の guard: 文言(hash)が変わると前回の数を引き継がない
+	oldEvery := hookTuneEvery
+	hookTuneEvery = 50
+	t.Cleanup(func() { hookTuneEvery = oldEvery })
+	np := lowerMinN(t, agent, "needs-plan", 1)
+	b, _ := os.ReadFile(np)
+	if err := os.WriteFile(np, append(b, []byte("variants:\n  - name: short\n    question: Plan first for `request`?\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sp, _ := spec.Load(np)
+	if err := os.WriteFile(filepath.Join(agent, "tuned-needs-plan"), []byte("40 "+sp.Hash()+" 2026-10-19T00:00:00Z\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hookLocalURL = fakeAgentModel(t, func(string) float64 { return 0.9 }).URL
+	cwd := t.TempDir()
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": cwd, "prompt": "redesign the storage layer"})
+	recs, _ := (store.Store{Dir: agent}).Records("needs-plan", 0)
+	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "yes"}) })
+	runHook(t, "stop", map[string]any{"session_id": "g", "cwd": cwd})
+	if lb, _ := os.ReadFile(filepath.Join(agent, "hook.log")); strings.Contains(string(lb), "auto-tune needs-plan") {
+		t.Fatal("same wording, 1 truth since the last run of 40: no tune")
+	}
+	// 文言が変わった(hash が違う)→ 前回の 40 は引き継がず、1 件 ≥ min_n(1) で回る
+	b, _ = os.ReadFile(np)
+	if err := os.WriteFile(np, []byte(strings.Replace(string(b), "should the agent first agree", "must the agent first agree", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g2", "cwd": cwd, "prompt": "redesign the whole queue"})
+	recs, _ = (store.Store{Dir: agent}).Records("needs-plan", 0)
+	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "yes"}) })
+	runHook(t, "stop", map[string]any{"session_id": "g2", "cwd": cwd})
+	if lb, _ := os.ReadFile(filepath.Join(agent, "hook.log")); !strings.Contains(string(lb), "auto-tune needs-plan") {
+		t.Fatalf("a changed wording must not inherit the old count:\n%s", lb)
 	}
 }
