@@ -7,7 +7,7 @@
 ### Một công cụ để giao cho AI quyết định có/không, cái nào, hay bao nhiêu, và giữ cho quyết định đó đáng tin trong công việc hằng ngày. Bạn kiểm tra một số câu trả lời và thỉnh thoảng xác nhận "đây vẫn là điều tôi muốn chứ?". Phần còn lại máy lo.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-190%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
