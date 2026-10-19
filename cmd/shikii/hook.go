@@ -49,6 +49,9 @@ var (
 	hookCalibrateGap  = 10 * time.Minute // 同じ spec の自動較正を続けて起こさない間
 	// hookCalibrate は線を引く本体。既定は別プロセス(shikii calibrate --write)を切り離して起こす: 聞き直し(replay)が長くても hook の timeout に掛からない。テストは同プロセスに差し替える
 	hookCalibrate = spawnCalibrate
+	// hookTune は聞き方の候補を採点する本体(shikii tune。--write は付けない: 採用は人)。同じく別プロセスを切り離す。テストは同プロセスに差し替える
+	hookTune      = spawnTune
+	hookTuneEvery = 50 // 前回の自動 tune から人の正解(入力ごとに 1 件)がこれだけ増えたら、また回す
 )
 
 const (
@@ -519,10 +522,13 @@ func runHookEvent(event string) error {
 		fmt.Fprintln(stdout, string(b))
 	}
 	if event == "stop" {
-		// 線を引くのは錠の外で別プロセス
+		// 線を引くのと聞き方を試すのは錠の外で別プロセス(カーパシーの wiki の lint に当たる、ゆっくりした周期の仕事)
 		for _, id := range hookSpecs {
 			if cerr := hookMaybeCalibrate(agent, id); cerr != nil && err == nil {
 				err = cerr
+			}
+			if terr := hookMaybeTune(agent, id); terr != nil && err == nil {
+				err = terr
 			}
 		}
 	}
@@ -770,6 +776,112 @@ func hookMaybeCalibrate(agent, specID string) error {
 		hookCalibrate(agent, path, st.Dir, model)
 	}
 	return nil
+}
+
+// humanTruths は今の文言(hash)に付いた人の正解の数(入力ごとに 1 件、モデルをまたいで数える)。calibrate / tune と同じ数え方。
+func humanTruthsFor(st store.Store, sp *spec.Spec) (int, error) {
+	recs, err := st.Records(sp.ID, 0)
+	if err != nil {
+		return 0, err
+	}
+	models := map[string]bool{}
+	for _, r := range recs {
+		if r.Model != "" && sp.LiveHash(r.SpecHash) {
+			models[r.Model] = true
+		}
+	}
+	var all []store.Label
+	for model := range models {
+		labels, err := st.Labels(sp.ID, sp.Hash(), model)
+		if err != nil {
+			return 0, err
+		}
+		all = append(all, labels...)
+	}
+	n := 0
+	for _, l := range store.LatestPerInput(all) {
+		if store.HumanSource(l.Source) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// hookMaybeTune は聞き方の候補を機械に試させる(wiki の lint に当たるゆっくりした周期): spec に variants(人が書いた候補の言い方)があり、
+// 人の正解が eval.min_n 以上で、前回の自動 tune から hookTuneEvery 件増えていれば、`shikii tune`(--write 無し)を切り離して起こす。
+// 候補が無ければ試す物が無いので何もしない。採用は人が意味を確かめてから(画面か tune --write)。前回の数は tuned-<spec> に控える。
+func hookMaybeTune(agent, specID string) error {
+	path := filepath.Join(agent, "decisions", specID+".yaml")
+	sp, err := spec.Load(path)
+	if err != nil || len(sp.Variants) == 0 {
+		return nil
+	}
+	st := store.Store{Dir: agent}
+	n, err := humanTruthsFor(st, sp)
+	if err != nil {
+		return err
+	}
+	if n < sp.Eval.MinN {
+		return nil
+	}
+	guard := filepath.Join(agent, "tuned-"+specID)
+	last := -1
+	if b, err := os.ReadFile(guard); err == nil {
+		fmt.Sscanf(string(b), "%d", &last)
+	}
+	if last >= 0 && n-last < hookTuneEvery {
+		return nil
+	}
+	if err := os.WriteFile(guard, []byte(fmt.Sprintf("%d %s\n", n, time.Now().Format(time.RFC3339))), 0o600); err != nil {
+		return err
+	}
+	hookTune(agent, path, st.Dir)
+	return nil
+}
+
+// spawnTune は `shikii tune <spec> --store … --local …` を切り離した別プロセスで起こす(hook は待たない。--write は付けない)。出力は hook.log に追記。
+func spawnTune(agent, path, storeDir string) {
+	exe, err := os.Executable()
+	if err != nil {
+		hookLog("auto-tune: cannot find shikii: " + err.Error())
+		return
+	}
+	logf, err := os.OpenFile(filepath.Join(agent, "hook.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer logf.Close()
+	fmt.Fprintf(logf, "%s auto-tune %s: started in the background (adoption is a person's call: the page, or tune --write)\n", time.Now().Format(time.RFC3339), strings.TrimSuffix(filepath.Base(path), ".yaml"))
+	cmd := exec.Command(exe, "tune", path, "--store", storeDir, "--local", hookLocalURL)
+	cmd.Stdout = logf
+	cmd.Stderr = logf
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(logf, "%s auto-tune: %v\n", time.Now().Format(time.RFC3339), err)
+		return
+	}
+	_ = cmd.Process.Release()
+}
+
+// runTuneInProcess は hookTune の同プロセス版(テスト用)。
+func runTuneInProcess(agent, path, storeDir string) {
+	var buf bytes.Buffer
+	old := stdout
+	stdout = &buf
+	_, err := func() (res *tuneResult, err error) {
+		defer func() {
+			stdout = old
+			if r := recover(); r != nil {
+				err = fmt.Errorf("tune panicked: %v", r)
+			}
+		}()
+		return runTune(tuneOpts{specPath: path, ef: endpointFlags{local: hookLocalURL}, storeDir: storeDir, labeled: "none"})
+	}()
+	line := lastLine(buf.String())
+	if err != nil {
+		line += " ERROR: " + err.Error()
+	}
+	hookLog(fmt.Sprintf("auto-tune %s: %s", strings.TrimSuffix(filepath.Base(path), ".yaml"), line))
 }
 
 // spawnCalibrate は `shikii calibrate <spec> --store … --local … --model … --write` を切り離した別プロセスで起こす(hook は待たない)。
