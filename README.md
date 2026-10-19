@@ -2,105 +2,121 @@
 
 <p align="center"><img src="docs/assets/gen-mark.png" alt="shikii" width="112"></p>
 
-# shikii: turn an AI's "probably" into a "safe to act" you can run a business on
+# shikii: turn the AI's "probably" into a "safe to use" you can run a business on
 
-### A tool for letting an AI decide yes/no, which one, or how much, and keeping that decision trustworthy in daily work. You check some answers and, now and then, confirm "is this still what I meant?". The machine does the rest.
+### A tool that lets an AI decide "yes or no", "which one" and "how much", and grows it from your corrections. All you do is answer, on a page, what was actually true.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
 [![Tests](https://img.shields.io/badge/tests-192%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
-[The problem](#the-problem) · [What shikii does](#what-shikii-does) · [What you do](#what-you-do) · [Install](#install) · [Shortest ways in](#shortest-ways-in) · [One full loop](#one-full-loop) · [What is new](#what-is-new) · [Read more](#read-more)
+[The problem](#the-problem) · [Use 1: measure the AI's own thinking](#use-1-measure-the-ais-own-thinking) · [Use 2: hand it a business decision](#use-2-hand-it-a-business-decision) · [What you do on the page](#what-you-do-on-the-page) · [Install](#install) · [Why you can swap the AI](#why-you-can-swap-the-ai) · [Read more](#read-more)
 
-<p align="center"><img src="docs/assets/shikii-hero.svg" alt="shikii: a model gives you a probability, shikii tells you whether you may act on it" width="100%"></p>
+<p align="center"><img src="docs/assets/shikii-hero.svg" alt="shikii" width="100%"></p>
 
 ## The problem
 
-Ask an AI "is this inquiry the same matter as the last one?" and it says "probably, 0.9". For real work that is not enough.
+Ask an AI "is this inquiry the same case as the last one?" and it says "probably, 0.9". For work, that is not enough. Is that 0.9 really right nine times out of ten? Did it quietly become a lie the day you switched to a newer AI? Are the decisions it makes while nobody is watching still correct? If a person has to check every time, there was little point in using an AI.
 
-- Is that 0.9 really right 9 times in 10?
-- Since the day you swapped in a new model, has it quietly started lying?
-- If you change the wording a little, how does the accuracy move?
-- The decisions it took on its own, with nobody watching: are they still right?
+shikii draws a **line** from your corrections: above this, the AI may act on its own. Until a line exists, nothing is trusted. Once it exists, every automatic decision carries its grounds: how many corrections the line rests on and how often it was right. The line lives with the question and the corrections, not inside the AI, so swapping the AI costs no human work.
 
-If a person has to check every answer, there was little point in using the AI.
+There are two ways to use it: measuring the thinking of the AI that writes your code (the lightest), and handing it a decision from your business.
 
-## What shikii does
+## Use 1: measure the AI's own thinking
 
-1. **Collects your corrections and draws the line above which the AI may act on its own.** From the answers you gave ("this is what was actually true") it measures how the AI's confidence relates to how often it is right, and decides from where up it can be trusted. Until a line exists, nothing acts. Once it does, every automatic decision carries a receipt that says how many checked answers the line rests on and how often they were right
-2. **Tries other ways of asking and keeps the better one.** On the same corrections it scores alternative questions, option descriptions and prompt layouts, and adopts one only when it is genuinely better. The candidates come from you (typed on the page, in your own words) or from an AI; the machine measures them again every time enough new corrections have arrived. You only confirm the meaning did not change
-3. **Lets you swap the model without starting over.** The corrections live apart from the model, so a new model reuses them and the line is redrawn by the machine. No human work
-4. **Keeps what it learned in a wiki.** "Asking it this way works" accumulates as claims with the measured numbers, re-testable on another model. What other people measured on their models is added to the same page
+For people who use Claude Code or Codex. The coding agent makes judgements when it receives a request and when it finishes; shikii measures them silently.
 
-## What you do
+```sh
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
+shikii up                    # start a small local AI (Kev-4B on :8080); the first run downloads it
+shikii hook install --yes    # two hooks for Claude Code and Codex; they take effect in a new terminal
+shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080   # the answer page
+```
 
-- **Write down what you want decided.** Answer a few questions and a decision file appears (`shikii new`, interactively or with `--type --question --option --input --pii`; the full format is in [the spec reference](skills/shikii/references/spec.md))
-- **Check answers.** The page shows the decisions the AI was unsure about, plus 1 in 20 of the ones it acted on, and you press the button for what was actually true. Keys 1 to 9 and Enter (same as the AI's pick) move fast. "Answered" lets you fix an earlier answer (the newest one counts). "Details" adds "ask the AI again", which re-decides the same text with today's wording and line and shows before and after; records are appended, never deleted
-- **Now and then confirm "is this still what I meant?".** When the machine finds a wording that scores better, you look at whether the meaning changed and press adopt or reject. If a better way of asking comes to mind, type it on the same page; the machine measures it, you never edit a file
+Then just keep working with the agent as usual. Four things are measured.
 
-Everything else is the machine's job.
+| When | Question | Where the truth comes from |
+|---|---|---|
+| A request arrives | Will this request end up changing files? | Automatic: did the working tree change before the next request |
+| A request arrives | Should the agent agree on an approach with you before touching anything? | You, on the page |
+| The turn ends | Were the changes within what you asked? | You, on the page |
+| The turn ends | Did it finish what you asked? | You, on the page |
+
+At the end of a turn one line appears, `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`, and you answer on the page when you have a minute; each takes seconds. After 50 answers a line is drawn and the agent's behaviour changes: a request that needs a plan becomes a note to the agent, and a turn that looks unfinished or out of scope becomes one line to you, each with a receipt such as "line on 61 truths, human-checked precision 0.96". Until then the hooks only record. No hook ever stops a tool.
+
+Everything lives in one place, `~/.shikii/agent`, with one line per question across all your projects (the questions are about the agent's thinking, so the truth is the same in every repository). Each record is marked with the repository it came from, and the page can filter by it. Details: [the hook](integrations/claude-code.md) (Japanese).
+
+## Use 2: hand it a business decision
+
+For decisions you repeat at work, such as "is this inquiry the same case?" or "is this message a change request?": let the AI decide and grow it from your corrections.
+
+```sh
+cd <project root> && shikii init            # .shikii/ plus the agent setup (MCP, skill, AGENTS.md) in one go
+shikii new                                  # answer a few questions and a decision file appears (.shikii/decisions/<id>.yaml)
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=ask  (no line yet: "check with a person")
+shikii serve --local http://127.0.0.1:8080  # answer at http://127.0.0.1:8095
+```
+
+As you answer on the page, the line is drawn automatically once the decision's own count is reached (20 for this one), and from then on:
+
+```sh
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=act
+#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
+#     (safe to act. The line rests on 61 truths, 48 of them answered by people; of the human-answered ones that this line would let act, 25, 96% were right)
+```
+
+There are only four `band` values: `act` = go ahead, `ask` = check with a person, `discard` = do not act, `abstain` = not enough input. Raw probabilities are never what you act on.
+
+- **From an agent**: `shikii init` writes the MCP setup, so Claude Code, Cursor, OpenCode and Codex can call the tools `shikii_decide` and `shikii_label` directly ([MCP](integrations/mcp.md))
+- **From your own program**: start `shikii serve` and call `POST /v1/decide` (decide) and `POST /v1/label` (correct). The body is JSON and needs `-H 'Content-Type: application/json'` ([HTTP API](docs/guide.md#or-run-one-process-for-programs-and-people))
+- **Ready-made decisions**: six in this repo's `decisions/` (request type, duplicate bug report, same inquiry, …). Copy one with `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` and reword it ([list](decisions/README.md))
+- **You already have a table of past decisions**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` turns it into corrections, so you need not answer the first 50 by hand
+- **Docker**: no Go and no model yet? `docker compose up` starts a local AI and shikii, with the page at http://127.0.0.1:8095 ([details](integrations/docker.md))
+- **Someone else's example**: [routing inquiry mails](docs/examples/inquiry-route.md) (Japanese). A first-time user went through the whole loop with nothing but the README, decision file and 22 inputs included
+
+## What you do on the page
+
+On the answer page (`shikii serve`) a person does three things. Everything else is the machine's job.
+
+1. **Answer.** The page shows the decisions the AI was unsure about, plus 1 in 20 of the ones it acted on, and you press the button for what was actually true. Keys 1 to 9 and Enter (same as the AI's pick) move fast. "Answered" lets you fix an earlier answer (the newest one counts)
+2. **Write a rewording.** If you think "asking it this way would work better", type it in the "Wording" panel in your own words. The machine scores it against the current wording on the same corrections (for the agent's own decisions, automatically every 50 new answers) and only says "may be adopted" when it is genuinely better. You can also let an AI propose rewordings. You never open a file
+3. **Press adopt or reject.** You look at whether the meaning changed and press. The machine checks the numbers; you check the meaning
+
+"Details" adds the state of the line per model, "ask the AI again" (re-decide the same text with today's wording and line and see before and after), and the knowledge panel (claims of the form "asking this way works", with their evidence). Records are appended, never deleted; a new decision takes the old one's place.
 
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh     # needs Go 1.27 or newer
-cd <project root> && shikii init
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 or newer; a single binary
+shikii up        # a local AI (Kev-4B). To use hosted Jev or OpenRouter instead, put the key in an environment variable ([connections](docs/guide.md#what-you-can-connect))
+shikii doctor    # what is running, what is missing
 ```
 
-`shikii init` sets up one folder, `.shikii/` (with `decisions/` for your specs, `wiki/` for the knowledge, `records/` and `labels/` for the records and your corrections; nothing else is added to the project root), and the agent integrations in one go: the shikii MCP server for Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) and Codex (`~/.codex/config.toml`), a section in `AGENTS.md`, and the detailed rules (the skill) in `~/.claude/skills/shikii`. Your own entries are never touched (an existing shikii entry is left alone). Only the skill folder is replaced each time, so do not edit it by hand. `wiki/` receives the shared knowledge (how to ask each question type, wording patterns that worked, each model's habits); the wording improver (`tune --propose`) reads it, and pages you edited are never overwritten by a later `init`. No Go? Use Docker below.
+`shikii init` creates one folder, `.shikii/` (inside: `decisions/` = decision files, `wiki/` = knowledge, `records/` and `labels/` = records and corrections). Nothing else appears at the project root. `decisions/`, `wiki/` and `labels/` are assets that survive a change of AI, so commit them; `records/` keeps growing, so committing it is optional (`shikii gc` drops old ones). It also adds a shikii entry to your agents' setup (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`, OpenCode's `opencode.json`, Codex's `~/.codex/config.toml`) without touching entries you wrote. Running it again changes nothing that exists.
 
-The entries point at a local model (`shikii up`, port 8080). Hosted only? Remove `--local` by hand from each of the four files. Config files for tools you do not use are created too; delete them or add them to `.gitignore` (a second `shikii init` never touches what exists). Commit `.shikii/decisions/`, `.shikii/wiki/` and `.shikii/labels/` (your specs, the knowledge and your corrections: the assets that survive a model change). `.shikii/records/` (every decision) keeps growing, so committing it is optional (`shikii gc` drops old ones). If Codex already has `mcp_servers`, nothing is added and the lines to paste are printed. A project with only a `CLAUDE.md` gets no `AGENTS.md` (OpenCode would stop reading `CLAUDE.md`).
+Command output and hook messages are in English (if Claude Code's language setting is Japanese, hook messages are shown in Japanese next to the English). The page has Japanese. The finer points, such as using only a hosted AI, `AGENTS.md` versus `CLAUDE.md`, and Node for changing the page itself, are in [the guide](docs/guide.md).
 
-Changing the answer page itself (`web/`, Svelte) needs Node 24 (`make web`). Using shikii does not: the built page is committed and embedded in the binary.
+## Why you can swap the AI
 
-## Shortest ways in
+<p align="center"><img src="docs/assets/shikii-architecture-en.svg" alt="shikii architecture: three things people do, the assets (questions, truths, receipts), the loop the machine grows, the verifiable wiki, the disposable model" width="100%"></p>
 
-- **Docker**: no Go, no model? `docker compose up` starts a local model (Kev-4B) and shikii, with the answer page at http://127.0.0.1:8095 ([details](integrations/docker.md))
-- **Ready-made decisions**: six in this repo's `decisions/` (request type, duplicate bug report, same inquiry, …). Copy one into your `.shikii/decisions/`, or start from it with `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` ([list](decisions/README.md))
-- **You already have a table of past decisions**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` turns it into corrections, so you do not answer the first 50 by hand
-- **From your own program**: start `shikii serve` and call `POST /v1/decide` (decide) and `POST /v1/label` (correct). The body is JSON and `-H 'Content-Type: application/json'` is required (all endpoints: [the long guide](docs/guide.md#or-run-one-process-for-programs-and-people))
-- **Someone else's example**: [routing inquiry mails](docs/examples/inquiry-route.md) (Japanese). A first-time user went through the whole loop with nothing but the README; the spec and the 22 inputs are included
-- **Measure the AI's own thinking** (Claude Code and Codex): `shikii hook install` adds two hooks that run shikii before and after each turn. Before: will this request end up changing files, and should the agent agree on an approach first? After: were the changes within what you asked, and did it finish what you asked? The first truth comes for free from whether the working tree changed; the rest you answer on a page. Nothing changes until a line exists. Then a request that needs a plan becomes a note to the agent, and a turn that looks unfinished or out of scope becomes one line to you, with how many truths the line rests on and the human-checked precision. No hook ever stops a tool ([details](integrations/claude-code.md), Japanese)
-- **In CI**: `uses: hayaenfj/shikii@main` runs `shikii check` on every pull request, so a changed wording or a weakened line fails the build
-
-## One full loop
-
-```sh
-shikii up                                                             # start the local model (downloaded on first run)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=ask  (no line yet, so: ask a person)
-shikii serve --local http://127.0.0.1:8080                                   # specs and knowledge are read from .shikii/
-#   → answer at http://127.0.0.1:8095. Once a decision has the number it asks for (eval.min_n, 20 for this one) the line is drawn by itself
-#     To try with fewer answers, lower eval.min_n in the spec to what you have (a line written with --force is flagged by check)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=act
-#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
-#     (safe to act, with the evidence: the line rests on 61 corrections, 48 of them from people. Of the human answers that this line puts on the act side, 25, 96% were right)
-```
-
-There are only four bands. `act` = go ahead, `ask` = check with a person, `discard` = do nothing, `abstain` = input missing. You never read a raw probability.
-
-## What is new
-
-<p align="center"><img src="docs/assets/shikii-architecture-en.svg" alt="shikii architecture: three things people do, the assets (questions, truths, receipts), the loop the machine grows, the verifiable wiki, disposable models" width="100%"></p>
-
-- **Knowledge accumulates in the questions and the corrections, not in the model.** So the model is disposable, and swapping it needs no human work. Measured: with the machine choosing the wording and layout and adding similar examples, an ordinary base model matched fine-tuning (LoRA) on accuracy ([numbers](docs/bench.md))
-- **Automatic decisions come with evidence.** Not "95% confident" but "precision 0.96 on 48 answers people checked"
-- **The wiki is not read, it is measured.** "Asking it this way works" accumulates as claims with numbers and is re-tested on new models. Only a person decides a claim is confirmed
+- **Knowledge accumulates with the question and the corrections, not inside the AI.** The corrections survive the AI, so a new one can use them as they are and the line is redrawn. In our measurements, letting the machine choose the wording and layout and add similar examples reached the same accuracy as fine-tuning the model's weights (LoRA) ([numbers](docs/bench.md))
+- **Automatic decisions carry a receipt.** Not "95% confident" but "precision 0.96 on 48 human-checked cases"
+- **The wiki is not read, it is measured.** "Asking this way works" accumulates as claims with numbers, and can be retested on a new AI. Only a person decides a claim is confirmed
 
 ## Read more
 
-- [The long guide](docs/guide.md): every command, the full quick start, the HTTP API, what you can connect, the measured results and the FAQ · [the spec reference](skills/shikii/references/spec.md)
-- [Design notes](docs/decision-ops-framework.md): what the framework owns and refuses to own, and what was verified · [Architecture](docs/architecture.md) (Japanese)
-- [Ready-made decisions](decisions/README.md) · [the wiki of how to ask](wiki/index.md) · [benchmark](docs/bench.md) · [model comparison](docs/model-comparison.md) · [operations log](docs/operations.md)
-- [Connections](integrations/mcp.md): MCP, the adapter that turns a plain chat model into a decision model, Docker, Claude Code
-- [Japanese guide](docs/guide.ja.md) with a full real-world loop
+- [The guide](docs/guide.md): every command, the HTTP API, FAQ · [the spec reference](skills/shikii/references/spec.md)
+- [The hook](integrations/claude-code.md) (Japanese): how the agent's own thinking is measured, the band → behaviour table, the internals
+- [Architecture](docs/architecture.md) (Japanese): the whole picture behind the diagram above
+- [Ready-made decisions](decisions/README.md) · [the wiki of how to ask](wiki/index.md) · [measured numbers](docs/bench.md) · [operations notes](docs/operations.md)
+- [Connecting](integrations/mcp.md): MCP, the adapter for ordinary chat models, Docker
 
-## Contributing
-
-Issues and pull requests are welcome. A test that guards a behaviour is shown failing first: break the behaviour on purpose, run the test, record how it failed, then fix it and record that it passes. Every number in the docs comes from a script. Only people change a wiki claim's status (`confirmed` / `tentative` / `rejected`), with the run that is the evidence. No new options: the layout (`decisions/` `wiki/` `.shikii/` at the project root) and fixed rules do the work.
+**For contributors**: break a test on purpose and watch it fail before fixing it. Every number comes from a script. Only a person confirms a wiki claim. Add no settings; fixed places and fixed rules instead.
 
 ## License
 
-[Apache 2.0](LICENSE). Model licences are separate: Kev-4B and the Bonsai family are Apache 2.0, OpenJev is CC BY-NC 4.0, hosted Jev is TypeSafe's service. shikii stores your probabilities and labels, nothing of the models.
+[Apache 2.0](LICENSE). Model licenses are separate (Kev-4B and the Bonsai family are Apache 2.0, OpenJev is CC BY-NC 4.0, hosted Jev is TypeSafe's service).
