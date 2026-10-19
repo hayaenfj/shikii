@@ -22,5 +22,6 @@ export default {
   wording: 'Wording (rewordings)', current: 'current', noRun: 'not measured yet', running: 'measuring rewordings…', runTune: 'measure the rewordings', runPropose: n => 'ask the AI for ' + n + ' rewordings and measure',
   holdoutLine: (h, c) => 'tried on a held-back part: ' + h + ' (keeping current: ' + c + ')', winnerLine: w => 'rewording ' + w + ' may be adopted', keptLine: 'current wording kept',
   adoptedLine: p => 'adopted as ' + p, sameMeaning: 'same meaning → adopt', changedMeaning: 'meaning changed → reject', notePrompt: 'What changed in the meaning? (optional)',
+  candidates: n => n + ' rewordings waiting to be measured', noCandidates: 'no rewordings yet: write one below, or let the AI propose some', addWording: 'write a rewording', candName: 'short name (e.g. plain-words)', candQuestion: 'the question, said your way (leave empty to keep the current question)', candOptions: 'option descriptions, one per line as id: description (only the ones you change)', addWordingBtn: 'add the rewording', candAdded: n => 'added: ' + n + '. It will be measured on the next run',
   checkHint: 'Does the new wording still ask what you mean? Numbers are checked by the machine; the meaning is yours to check.', rejected: 'recorded: meaning changed, not adopted', adoptedToast: p => 'adopted: ' + p,
 };

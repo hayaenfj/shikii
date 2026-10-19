@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hayaenfj/shikii/internal/spec"
 	"log"
 	"net/http"
 	"strings"
@@ -72,7 +73,89 @@ func (s *server) handleTuneGet(w http.ResponseWriter, r *http.Request) {
 	if res, err := latestTuneResult(s.o.wikiDir, id); err == nil {
 		out["latest"] = res
 	}
+	// 今ある候補(人が画面か YAML で書いたもの、提案役が足したもの)。次の tune(手でも、hook の自動でも)が採点する
+	variants := []map[string]any{}
+	if sp, err := s.spec(id); err == nil {
+		for _, v := range sp.Variants {
+			variants = append(variants, map[string]any{"name": v.Name, "question": v.Question, "options": v.Options})
+		}
+	}
+	out["variants"] = variants
 	writeJSON(w, 200, out)
+}
+
+// handleTuneVariant は人が画面で書いた候補の言い方を spec の variants に 1 つ足す(POST /v1/tune/variant: spec, name, question, options{id: 説明})。
+// 書くのは variants だけ(提案役と同じ経路: ファイルを読み直して足し、Save が他の項目を触らない)。候補は spec として検証してから書く(無い選択肢の id などは 400)。
+// 足すだけで採点も採用もしない: 採点は次の tune、採用は人。
+func (s *server) handleTuneVariant(w http.ResponseWriter, r *http.Request) {
+	if !acceptJSONPost(w, r) {
+		return
+	}
+	var req struct {
+		Spec     string            `json:"spec"`
+		Name     string            `json:"name"`
+		Question string            `json:"question"`
+		Options  map[string]string `json:"options"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		return
+	}
+	ref, err := s.specRef(req.Spec)
+	if errors.Is(err, errNotFound) {
+		writeUnknownSpec(w, req.Spec)
+		return
+	} else if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	v := spec.Variant{Name: strings.TrimSpace(req.Name), Question: strings.TrimSpace(req.Question)}
+	for id, d := range req.Options {
+		id, d = strings.TrimSpace(id), strings.TrimSpace(d)
+		if id == "" || d == "" { // 空の行は無視(画面の textarea の空行)
+			continue
+		}
+		if v.Options == nil {
+			v.Options = map[string]string{}
+		}
+		v.Options[id] = d
+	}
+	if v.Name == "" {
+		writeErr(w, 400, errors.New("name is required: a short label for this rewording (letters, digits, dashes)"))
+		return
+	}
+	if v.Question == "" && len(v.Options) == 0 {
+		writeErr(w, 400, errors.New("a rewording needs a question or at least one option description"))
+		return
+	}
+	s.calibMu.Lock() // 読んでから書くまで 1 つの鍵の中で(tune --write や採用と同時に書かない)
+	defer s.calibMu.Unlock()
+	fresh, err := spec.Load(ref.path)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	for _, have := range fresh.Variants {
+		if have.Name == v.Name {
+			writeErr(w, 409, fmt.Errorf("a rewording named %q already exists; pick another name", v.Name))
+			return
+		}
+	}
+	fresh.Variants = append(fresh.Variants, v)
+	if err := fresh.Validate(); err != nil {
+		writeErr(w, 400, fmt.Errorf("this rewording is not valid for the spec: %w", err))
+		return
+	}
+	if err := fresh.Save(); err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	names := make([]string, 0, len(fresh.Variants))
+	for _, x := range fresh.Variants {
+		names = append(names, x.Name)
+	}
+	log.Printf("tune %s: rewording %q added by a person (%d candidates)", ref.id, v.Name, len(names))
+	writeJSON(w, 200, map[string]any{"spec": ref.id, "added": v.Name, "variants": names})
 }
 
 func (s *server) decodeTuneReq(w http.ResponseWriter, r *http.Request) (specRef, int, bool) {

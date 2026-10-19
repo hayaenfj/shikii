@@ -86,7 +86,7 @@ Programs call `POST /v1/decide` and `POST /v1/label` from any language; the body
 | `GET /v1/answered?spec=<id>` | the latest answers, to fix an earlier one |
 | `POST /v1/redo` | `{"spec","trace_id"}` → re-decides a past text with today's wording and line, appending, never deleting |
 | `GET /v1/status` | the same inventory as `shikii status` |
-| `GET /v1/tune?spec=<id>`, `POST /v1/tune/run`, `POST /v1/tune/adopt` | the latest tune result, a new run in the background, adopt or reject a wording |
+| `GET /v1/tune?spec=<id>`, `POST /v1/tune/run`, `POST /v1/tune/variant`, `POST /v1/tune/adopt` | the latest tune result and the current candidates, a new run in the background, a rewording written by a person (`{"spec","name","question","options"}`; validated, never adopted by itself), adopt or reject a wording |
 | `GET /v1/wiki`, `POST /v1/wiki/claim`, `GET /v1/specs` | the knowledge panel and the spec list |
 
 The page also has a *wording* section per spec: the latest `tune` result, the winner's wording next to the current one, and two buttons, **same meaning → adopt** and **meaning changed → reject**. Numbers are the machine's job; whether a rewording still asks what you meant is a person's. Start `serve` with `--proposer http://127.0.0.1:8087` and the page can also ask a chat model for new candidates and score them in the background.
@@ -227,7 +227,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 191 Go tests across 8 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 192 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 

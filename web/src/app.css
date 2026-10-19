@@ -46,3 +46,5 @@ table.cands { border-collapse: collapse; font-size: 13px; margin: 6px 0; } table
 table.cands tr.win td { color: var(--amber); }
 .diff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; } @media (max-width: 700px) { .diff { grid-template-columns: 1fr; } }
 .opts div { font-size: 13px; margin: 2px 0; } .opts div.changed { background: var(--amberbg); border-radius: 4px; padding: 1px 4px; }
+
+.add-variant { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; } .add-variant input, .add-variant textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--border, #ccc); border-radius: 6px; background: transparent; color: inherit; }

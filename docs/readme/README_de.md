@@ -7,7 +7,7 @@
 ### Ein Werkzeug, mit dem eine KI Ja/Nein, „welches“ oder „wie viel“ entscheidet und diese Entscheidung im Arbeitsalltag verlässlich bleibt. Sie prüfen einige Antworten nach und bestätigen hin und wieder: „Ist das noch das, was ich gemeint habe?“. Den Rest macht die Maschine.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-191%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-192%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
