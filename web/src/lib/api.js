@@ -20,4 +20,5 @@ export const api = {
   tuneAdopt: body => post('v1/tune/adopt', body),
   tuneVariant: body => post('v1/tune/variant', body),
   wikiClaim: body => post('v1/wiki/claim', body),
+  notebook: body => post('v1/wiki/notebook', body),
 };

@@ -4,6 +4,7 @@ import { mount, unmount, flushSync } from 'svelte';
 import LangPicker from '../src/components/LangPicker.svelte';
 import SpecPanel from '../src/components/SpecPanel.svelte';
 import Wording from '../src/components/Wording.svelte';
+import Notebook from '../src/components/Notebook.svelte';
 import { i18n, t } from '../src/lib/i18n.svelte.js';
 import { ui } from '../src/lib/state.svelte.js';
 
@@ -111,6 +112,30 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
-  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target);
+  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target);
   if (!ok) process.exit(1);
+}
+
+async function checkNotebook(target) {
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url, body: JSON.parse(opts.body) });
+    return { ok: true, json: async () => ({ source_material: [{ id: '0000000000000001', request: 'README installation', reply: '<img src=x onerror=alert(1)> missing startup steps' }] }) };
+  };
+  const wiki = { notebook_project: 'alpha', pending_sources_count: 1, lessons: [{ id: 'a', title: '<img src=x onerror=alert(1)>', lesson: 'Include model startup steps', applies_to: 'README installation', sources: [{ id: '0000000000000001', hash: 'h' }] }] };
+  const app = mount(Notebook, { target, props: { wiki } });
+  flushSync();
+  const hasLesson = target.textContent.includes('Include model startup steps') && target.textContent.includes('alpha');
+  const button = target.querySelector('button');
+  if (button) button.click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  flushSync();
+  const readSource = target.textContent.includes('missing startup steps') && calls[0]?.body.operation === 'query' && calls[0]?.body.sources?.[0] === '0000000000000001';
+  const inertText = !target.querySelector('img') && target.textContent.includes('<img src=x onerror=alert(1)>');
+  unmount(app);
+  globalThis.fetch = realFetch;
+  const ok = hasLesson && readSource && inertText;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (notebook lesson=' + hasLesson + ', source lookup=' + readSource + ', quoted HTML is text=' + inertText + ')');
+  return ok;
 }

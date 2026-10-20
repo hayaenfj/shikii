@@ -88,10 +88,11 @@ Programs call `POST /v1/decide` and `POST /v1/label` from any language; the body
 | `GET /v1/status` | the same inventory as `shikii status` |
 | `GET /v1/tune?spec=<id>`, `POST /v1/tune/run`, `POST /v1/tune/variant`, `POST /v1/tune/adopt` | the latest tune result and the current candidates, a new run in the background, a rewording written by a person (`{"spec","name","question","options"}`; validated, never adopted by itself), adopt or reject a wording |
 | `GET /v1/wiki`, `POST /v1/wiki/claim`, `GET /v1/specs` | the knowledge panel and the spec list |
+| `POST /v1/wiki/notebook` | conversation wiki: query, ingest and lint lessons with sources; lessons remain hypotheses |
 
 The page also has a *wording* section per spec: the latest `tune` result, the winner's wording next to the current one, and two buttons, **same meaning → adopt** and **meaning changed → reject**. Numbers are the machine's job; whether a rewording still asks what you meant is a person's. Start `serve` with `--proposer http://127.0.0.1:8087` and the page can also ask a chat model for new candidates and score them in the background.
 
-The same thing as MCP tools for an agent: `shikii mcp` speaks the Model Context Protocol over stdio and exposes `shikii_specs`, `shikii_decide`, `shikii_label`, `shikii_status` and `shikii_tune`. There is deliberately no adopt tool: an agent can propose and measure wordings, only a person can adopt one. Claude Code picks it up from the repo's `.mcp.json`. See [`integrations/mcp.md`](../integrations/mcp.md).
+The same thing as MCP tools for an agent: `shikii mcp` speaks the Model Context Protocol over stdio and exposes `shikii_specs`, `shikii_decide`, `shikii_label`, `shikii_status`, `shikii_tune` and `shikii_wiki`. There is deliberately no wording-adoption tool: an agent can propose and measure wordings, only a person can adopt one. The conversation wiki uses the usual agent to write hypotheses with sources, independently of truth labels and calibration. Claude Code picks it up from the repo's `.mcp.json`. See [`integrations/mcp.md`](../integrations/mcp.md).
 
 ### Use any GGUF as a decision model
 
@@ -228,7 +229,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 203 Go tests across 8 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 211 Go tests across 8 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -304,6 +305,10 @@ shikii status    [spec...] [--store DIR]                  # inventory: records, 
 shikii gc        [spec...] [--older-than 30d] [--apply]   # drop old unlabelled records; dry run by default
 shikii hash      <spec>
 shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]   # rerun the retest recipes of the wiki's claims on the current model; only a person changes a status
+shikii wiki query [query-or-source-id]                      # lessons and sources from this project, stored in ~/.shikii/agent
+shikii wiki ingest                                         # the usual agent submits a lesson and source ids as JSON on stdin
+shikii wiki lint                                           # check sources, revisions and links; repair the generated index
+shikii version                                             # show the CLI version
 shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]   # HTTP API + review and wording page; auto-calibrates
 shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]   # the same as MCP tools over stdio (no adopt tool)
 shikii new       <id> [--type ...] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--from spec.yaml]   # make a spec by answering questions

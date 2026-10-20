@@ -84,6 +84,7 @@ Kev-4B は英語のみと表記されているが、v2 の文言なら日本語�
 | `GET /v1/status` | | spec ごとの状態(線の有無、正解の数、人の言葉の質問) |
 | `GET /v1/tune?spec=<id>` · `POST /v1/tune/run` · `POST /v1/tune/variant` · `POST /v1/tune/adopt` | `{"spec","propose"}` · `{"spec","name","question","options"}` · `{"spec","run","meaning_same":true}` | 聞き方の改善の最新と今の候補・裏で回す・人が書いた候補を足す(検証してから。採用はしない)・採否 |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
+| `POST /v1/wiki/notebook` | `operation: query / ingest / lint` | 会話から育つ wiki。出典付きの教訓と原文の検索・取り込み・点検。教訓は仮説 |
 | `GET /v1/specs` | | 読み込んでいる spec の一覧 |
 
 ```sh

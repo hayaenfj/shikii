@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 
+	shikii "github.com/hayaenfj/shikii"
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
@@ -113,6 +114,24 @@ var mcpTools = []map[string]any{
 		"description": "Inventory per spec: records, truths, and for each (model, wording hash) whether it is collecting, ready, calibrated or stale.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 	},
+	{
+		"name":        "shikii_wiki",
+		"description": "同じ仕事の会話から wiki を育てる。query で教訓と未整理の原資料を読み、sources を指定した query で原文を確かめる。ingest は利用中のエージェントが書いた教訓・適用条件・出典IDを保存し、索引と履歴を更新する。再利用する教訓が無ければ sources だけで整理済みにする。既存の教訓の更新には id、古い教訓の置き換えには replaces を使う。全て仮説であり、正解・較正・confirmed の状態は変更しない。lint は出典やリンクを点検し、生成した索引を整える。人に画面操作を求めない。",
+		"inputSchema": map[string]any{
+			"type": "object", "additionalProperties": false,
+			"properties": map[string]any{
+				"operation":  map[string]any{"type": "string", "enum": []string{"query", "ingest", "lint"}},
+				"query":      map[string]any{"type": "string", "description": "検索する依頼や話題"},
+				"sources":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この仕事で観察された原資料のID。最大8件"},
+				"id":         map[string]any{"type": "string", "description": "更新する既存の教訓のID"},
+				"title":      map[string]any{"type": "string"},
+				"lesson":     map[string]any{"type": "string", "description": "出典から導いた教訓。機械の解釈なので仮説として保存する"},
+				"applies_to": map[string]any{"type": "string", "description": "この教訓が当てはまる条件"},
+				"replaces":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この教訓で更新する、同じ仕事の古い教訓のID。最大4件。更新時の省略は既存の指定を保ち、空配列は置き換えを解除する"},
+			},
+			"required": []string{"operation"},
+		},
+	},
 }
 
 // runMCP は 1 行 1 メッセージの JSON-RPC を読み、答えを書く。通知(id 無し)には答えない。
@@ -166,8 +185,8 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 		return reply(map[string]any{
 			"protocolVersion": v,
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-			"serverInfo":      map[string]any{"name": "shikii", "version": "0.1"},
-			"instructions":    "shikii turns a decision model's probability into act / ask / discard. Call shikii_specs first; decide with shikii_decide; when you learn what was true, call shikii_label with the trace_id so the spec can be calibrated.",
+			"serverInfo":      map[string]any{"name": "shikii", "version": shikii.Version},
+			"instructions":    "shikii turns a decision model's probability into act / ask / discard. Call shikii_specs first; decide with shikii_decide; when you learn what was true, call shikii_label with the trace_id so the spec can be calibrated. Use shikii_wiki to query, ingest and lint lessons from this project's conversations. Lessons are hypotheses with sources, never truth labels or permission to act. Your usual agent maintains this wiki without asking the user to organize it.",
 		})
 	case "notifications/initialized", "notifications/cancelled":
 		return nil
@@ -210,6 +229,8 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 		method, path = http.MethodGet, "/v1/status"
 	case "shikii_tune":
 		method, path = http.MethodPost, "/v1/tune/sync"
+	case "shikii_wiki":
+		method, path = http.MethodPost, "/v1/wiki/notebook"
 	default:
 		return 0, nil, fmt.Errorf("unknown tool %q", name)
 	}

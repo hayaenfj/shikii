@@ -29,8 +29,11 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 | `shikii_label` | 判定に正解を付ける。`!x`（x ではなかった）も可。正解が `eval.min_n` に届けば自動で較正し、結果に `calibrated: true` と報告が付く | `trace_id`, `truth`, `spec` / `weight` / `source`（任意） |
 | `shikii_status` | spec ごとの記録・正解・(model, hash) の状態 | なし |
 | `shikii_tune` | spec の聞き方の候補(`variants:` + 提案役が作る N 個)を正解の貯金で採点。候補ごとの数字、holdout、採用できるか | `spec`, `propose`（任意。`mcp` を `--proposer URL` 付きで起こした時だけ） |
+| `shikii_wiki` | 同じ仕事の会話から出典付きの教訓を育てる。取り込み・検索・点検 | `operation`（`query` / `ingest` / `lint`）、`sources` / `title` / `lesson` / `applies_to` / `id` / `replaces` / `query` |
 
 `propose > 0` を使うには `shikii mcp` を `--proposer URL` 付きで起こす(`.mcp.json` の例には無い)。
+
+`shikii_wiki` は 0.3 で追加した。文章は現在のエージェントが書き、別のモデルは使わない。置き場は hook と同じ `~/.shikii/agent` で、MCP サーバーを起こしたプロジェクトだけを扱う。`query` は関連する教訓と未整理の会話を返し、`sources: [出典ID]` を渡すと原文を読める。`ingest` で題・教訓・適用する場面・出典を保存し、教訓がない会話は `sources` だけで整理済みにできる。教訓は仮説で、正解や較正には数えない。[作法の詳細](../skills/shikii/references/wiki.md)。
 
 **採用の道具は無い。** 言い換えてもまだ同じことを聞いているかは人にしか分からないので、採用は画面（`shikii serve`）で人が「意味は同じ」を押した時か、端末の `tune --write` だけ。エージェントは候補を作って測るところまで。
 

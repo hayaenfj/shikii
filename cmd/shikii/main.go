@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	shikii "github.com/hayaenfj/shikii"
 	"github.com/hayaenfj/shikii/internal/calib"
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/spec"
@@ -40,6 +41,8 @@ func main() {
 	}
 	var err error
 	switch os.Args[1] {
+	case "version", "--version":
+		fmt.Fprintf(stdout, "shikii %s\n", shikii.Version)
 	case "decide":
 		err = cmdDecide(os.Args[2:])
 	case "label":
@@ -102,11 +105,11 @@ func usageText() string {
   shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL] [--auto-calibrate=false]
                    HTTP の口 + 答え合わせと聞き方の画面。spec は <store>/decisions、wiki は <store>/wiki(基本構成: shikii が作るものは全部 .shikii/ の下)
   shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]
-                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune。採用の道具は無い)
+                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune / shikii_wiki。判定の聞き方の採用は人)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
   shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop
                    Claude Code / Codex の hook として AI 自身の考え方を 2 点で測る: 考える前(この依頼で結局ファイルを変えるか、着手前に方針を合わせるか)と
-                   考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場は ~/.shikii/agent(基本構成)、モデルは :8080、画面は :8096。線が無いうちは記録だけ(影)。ツールは止めない
+                   考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場は ~/.shikii/agent、モデルは :8080、画面は :8096。過去の会話と wiki の教訓を引用し、整理をエージェントへ渡す。判定からの助言は線を引いてから。ツールは止めない
   shikii decide   <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
                    spec に state.context があれば、迷った時(ask。多択では discard も)だけ文脈の入力を足して聞き直す(別のハッシュ・別の線)。そこで確信に届いた答えは最小の質問の正解として残る
   shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]
@@ -123,6 +126,9 @@ func usageText() string {
                    審判: 別の(大きい)モデルに同じ spec を聞く。人の正解との一致率が act に届けば、正解の無い記録に重み付きの正解(source judge)を付ける。審判も迷えば人へ
   shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
                    <store>/wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
+  shikii wiki query [検索文または出典ID] | ingest (JSON を標準入力) | lint
+                   普段の会話を ~/.shikii/agent の出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
+  shikii version                                  版を表示する
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]

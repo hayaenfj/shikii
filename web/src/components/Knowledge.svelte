@@ -5,6 +5,7 @@
   import { load } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
+  import Notebook from './Notebook.svelte';
 
   let { wiki } = $props();
   let busyPath = $state('');
@@ -26,6 +27,8 @@
     busyPath = '';
   }
 </script>
+
+<Notebook {wiki} />
 
 <section class="adv">
   <h2>{t('knowledge')} <span class="pill">{t('claimsCount')(claims.length, prose)}</span></h2>
