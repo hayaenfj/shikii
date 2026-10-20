@@ -43,6 +43,8 @@ func main() {
 	switch os.Args[1] {
 	case "version", "--version":
 		fmt.Fprintf(stdout, "shikii %s\n", shikii.Version)
+	case "review":
+		err = cmdReview(os.Args[2:])
 	case "decide":
 		err = cmdDecide(os.Args[2:])
 	case "label":
@@ -105,7 +107,7 @@ func usageText() string {
   shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL] [--auto-calibrate=false]
                    HTTP の口 + 答え合わせと聞き方の画面。spec は <store>/decisions、wiki は <store>/wiki(基本構成: shikii が作るものは全部 .shikii/ の下)
   shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]
-                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune / shikii_wiki。判定の聞き方の採用は人)
+                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune / shikii_wiki / shikii_review。判定の聞き方の採用は人)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
   shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop
                    Claude Code / Codex の hook として AI 自身の考え方を 2 点で測る: 考える前(この依頼で結局ファイルを変えるか、着手前に方針を合わせるか)と
@@ -129,6 +131,7 @@ func usageText() string {
   shikii wiki query [検索文または出典ID] | ingest (JSON を標準入力) | lint
                    普段の会話を ~/.shikii/agent の出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
   shikii version                                  版を表示する
+  shikii review query | submit (JSON を標準入力)    会話と結果から AI が根拠付きで仮採点。人は抜き取りと保留を確認し、訂正を次の採点へ返す。仮採点は正解・較正と分けて保存する
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]

@@ -24,6 +24,7 @@
       else { sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++; }
       if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); }
       else { toast(t('done')(res.truth)); }
+      if (it.review) load();
     } catch (e) { toast(t('error')(e.message)); busy = false; }
   }
 
@@ -53,7 +54,9 @@
     <div class="guess">{t('yourAnswer')(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of}{' '}<span class="k">· {t('wasRedone')}</span>{/if}</div>
     <div class="k">{t('changeAnswer')}</div>
   {/if}
-  {#if it.top}
+  {#if it.review}
+    <div class="audit">{it.review_reason === 'uncertain' ? t('reviewUncertain') : t('reviewRandom')}</div>
+  {:else if it.top}
     <div class="guess">{bandWord} {t('aiGuess')(topName, (it.p * 100).toFixed(0))}{#if it.audit}{' '}<span class="audit">{t('auditShort')}</span>{/if}</div>
   {/if}
   {#if it.project}<div class="meta"><span class="project">{it.project}</span></div>{/if}
@@ -72,13 +75,17 @@
       <span class="k">{t('noText')(it.inputs_hash)}</span>
     {/if}
   </div>
+  {#if it.review}
+    <div class="text"><span class="k">{t('reviewReply')}</span><br>{it.review.source_material.reply}</div>
+    <details class="adv review-evidence"><summary>{t('reviewEvidence')}</summary><p>{it.review.truth}: {it.review.reason}</p></details>
+  {/if}
   <div class="btns">
     {#each it.choices as c, i}
-      <button type="button" class:top={c.truth === it.top} class:active={c.truth === it.truth} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
-        <span class="num">{i + 1}</span>{name(c)}{#if c.truth === it.top}{' · ' + t('sameAsAI')}{/if}
+      <button type="button" class:top={!it.review && c.truth === it.top} class:active={c.truth === it.truth} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
+        <span class="num">{i + 1}</span>{name(c)}{#if !it.review && c.truth === it.top}{' · ' + t('sameAsAI')}{/if}
       </button>
     {/each}
-    {#if it.answerable && it.top}
+    {#if it.answerable && it.top && !it.review}
       <button type="button" class="weak" data-truth={'!' + it.top} disabled={busy} onclick={() => answer('!' + it.top)}>{t('notThat')(topName)}</button>
     {/if}
     {#if !it.truth}

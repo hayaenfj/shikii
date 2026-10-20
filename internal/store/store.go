@@ -25,27 +25,28 @@ import (
 
 // Record は 1 回の判定。decide.Decision に来歴を足したもの。
 type Record struct {
-	TraceID      string             `json:"trace_id"`
-	SpecID       string             `json:"spec_id"`
-	SpecHash     string             `json:"spec_hash"`
-	Type         string             `json:"type"`
-	Model        string             `json:"model,omitempty"`
-	Endpoint     string             `json:"endpoint,omitempty"`
-	Inputs       map[string]string  `json:"inputs,omitempty"` // 本文(古い記録には無いことがある)
-	InputsHash   string             `json:"inputs_hash"`
-	Raw          map[string]float64 `json:"raw,omitempty"`
-	Calibrated   map[string]float64 `json:"calibrated,omitempty"`
-	IsCalibrated bool               `json:"is_calibrated"`
-	Top          string             `json:"top,omitempty"`
-	P            float64            `json:"p"`
-	Band         string             `json:"band"`
-	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。この本文は聞き直しでも hosted に送らない
-	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問。古い記録は空) | context(文脈を足して聞き直した)
-	Minimal      *Pass              `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw。人の正解はこちらにも付く)
-	Display      *RecordDisplay     `json:"display,omitempty"` // 設定の言語での併記(hook が書く。英語なら無い): 何と言われて何をしたかを後から辿るため
-	Project      string             `json:"project,omitempty"` // どの仕事の判定か(hook が書く: cwd の repo のルートの名、git の外なら cwd の名)。入力でもハッシュの鍵でもなく、画面と status で分けて見るための印
-	RedoOf       string             `json:"redo_of,omitempty"` // 過去の判定(trace_id)の本文を、今の聞き方と線でもう一度判定したもの。元の記録は列から消える
-	At           time.Time          `json:"at"`
+	TraceID       string             `json:"trace_id"`
+	SpecID        string             `json:"spec_id"`
+	SpecHash      string             `json:"spec_hash"`
+	Type          string             `json:"type"`
+	Model         string             `json:"model,omitempty"`
+	Endpoint      string             `json:"endpoint,omitempty"`
+	Inputs        map[string]string  `json:"inputs,omitempty"` // 本文(古い記録には無いことがある)
+	InputsHash    string             `json:"inputs_hash"`
+	Raw           map[string]float64 `json:"raw,omitempty"`
+	Calibrated    map[string]float64 `json:"calibrated,omitempty"`
+	IsCalibrated  bool               `json:"is_calibrated"`
+	Top           string             `json:"top,omitempty"`
+	P             float64            `json:"p"`
+	Band          string             `json:"band"`
+	Tainted       bool               `json:"tainted,omitempty"`        // 本番データを読んだセッションの判定。この本文は聞き直しでも hosted に送らない
+	Rung          string             `json:"rung,omitempty"`           // どの段で決まったか: minimal(最小の質問。古い記録は空) | context(文脈を足して聞き直した)
+	Minimal       *Pass              `json:"minimal,omitempty"`        // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw。人の正解はこちらにも付く)
+	Display       *RecordDisplay     `json:"display,omitempty"`        // 設定の言語での併記(hook が書く。英語なら無い): 何と言われて何をしたかを後から辿るため
+	Project       string             `json:"project,omitempty"`        // どの仕事の判定か(hook が書く: cwd の repo のルートの名、git の外なら cwd の名)。入力でもハッシュの鍵でもなく、画面と status で分けて見るための印
+	RedoOf        string             `json:"redo_of,omitempty"`        // 過去の判定(trace_id)の本文を、今の聞き方と線でもう一度判定したもの。元の記録は列から消える
+	ReviewPending bool               `json:"review_pending,omitempty"` // 会話の続きを受けて AI が仮採点する。人への全件採点待ちにしない
+	At            time.Time          `json:"at"`
 }
 
 // Pass は 1 つの段の答え。文脈を足して聞き直した記録が、最小の質問の答えを持っておくのに使う。
@@ -515,7 +516,7 @@ func (s Store) LabeledTraces(specID string) (map[string]Label, error) {
 		if json.Unmarshal(line, &l) != nil || l.TraceID == "" {
 			return nil
 		}
-		if cur, ok := out[l.TraceID]; !ok || l.At.After(cur.At) {
+		if cur, ok := out[l.TraceID]; !ok || (HumanSource(l.Source) && !HumanSource(cur.Source)) || (HumanSource(l.Source) == HumanSource(cur.Source) && l.At.After(cur.At)) {
 			out[l.TraceID] = l
 		}
 		return nil

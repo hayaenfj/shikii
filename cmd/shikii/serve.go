@@ -134,6 +134,7 @@ func newServer(o serveOpts) http.Handler {
 	mux.HandleFunc("/v1/wiki", s.handleWikiList)
 	mux.HandleFunc("/v1/wiki/claim", s.handleWikiClaim)
 	mux.HandleFunc("/v1/wiki/notebook", s.handleNotebook)
+	mux.HandleFunc("/v1/review", s.handleReview)
 	return mux
 }
 
@@ -582,7 +583,12 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rank := map[string]int{"ask": 0, "audit": 1, "act": 2, "discard": 3} // 迷い → 抜き取り(act の 20 件に 1 件) → 残り
-	superseded := map[string]bool{}                                      // やり直した元の記録は列に出さない(新しい判定が代わりに出る)
+	reviews, err := s.st.Reviews(id)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	superseded := map[string]bool{} // やり直した元の記録は列に出さない(新しい判定が代わりに出る)
 	for _, rec := range recs {
 		if rec.RedoOf != "" {
 			superseded[rec.RedoOf] = true
@@ -590,7 +596,8 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	var items []map[string]any
 	for _, rec := range recs {
-		if _, ok := labeled[rec.TraceID]; ok {
+		show, audit, reviewReason := reviewQueueState(rec, labeled, reviews)
+		if !show {
 			continue
 		}
 		if superseded[rec.TraceID] {
@@ -606,8 +613,11 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": !sp.LiveHash(rec.SpecHash),
 			"answerable": answerable, "choices": choices, "rung": rec.RungOf(), "project": rec.Project,
-			"audit": rec.Band == "act" && store.AuditSample(rec.TraceID),
+			"audit": audit, "review_reason": reviewReason,
 		})
+		if grade, ok := reviews[rec.TraceID]; ok {
+			items[len(items)-1]["review"] = grade
+		}
 	}
 	order := func(it map[string]any) int {
 		if it["audit"] == true {
@@ -679,6 +689,27 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal を先に
 		})
 		labeled, _ := s.st.LabeledTraces(sp.ID)
+		reviews, rerr := s.st.Reviews(sp.ID)
+		if rerr != nil {
+			writeErr(w, 500, rerr)
+			return
+		}
+		records, rerr := s.st.Records(sp.ID, 0)
+		if rerr != nil {
+			writeErr(w, 500, rerr)
+			return
+		}
+		todo, reviewPending := 0, 0
+		for _, rec := range records {
+			if show, _, _ := reviewQueueState(rec, labeled, reviews); show {
+				todo++
+			}
+			if _, graded := reviews[rec.TraceID]; rec.ReviewPending && !graded {
+				if _, answered := labeled[rec.TraceID]; !answered {
+					reviewPending++
+				}
+			}
+		}
 		// 回答済みの数 = 人が答えた本文(inputs_hash)の数。やり直しで写した答えや、同じ記録への答えの直しは数えない
 		answered := map[string]bool{}
 		for _, l := range labeled {
@@ -691,7 +722,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		last := s.lastCal[sp.ID]
 		s.mu.Unlock()
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
-			"unlabeled": nRec - countLabeledRecords(labeled, nRec), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last,
+			"unlabeled": todo, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })

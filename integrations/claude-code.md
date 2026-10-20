@@ -74,7 +74,8 @@ shikii は線(較正)が無いうちは `act` を出さない。判定に基づ�
 | changes-in-scope | discard(確信して「範囲の外」) | 端末の人に 1 行 `shikii: this turn's changes look outside what you asked for (changes-in-scope p(yes)=0.12…). Check the changed files before going on` |
 | done-as-asked | discard(確信して「終えていない」) | 端末の人に 1 行 `shikii: this turn looks unfinished against what you asked (done-as-asked p(yes)=0.15…). Something may be left to ask for again` |
 | changes-in-scope / done-as-asked | act(範囲の中 / 終えた) | 何も出さない |
-| どれでも | ask(線はあるが迷った) | 端末に 1 行 `shikii: unsure (done-as-asked yes p=0.62). Answer later: http://127.0.0.1:8096/?spec=done-as-asked&trace=…` |
+| needs-plan | ask(線はあるが迷った) | 端末に 1 行 `shikii: unsure (done-as-asked yes p=0.62). Answer later: http://127.0.0.1:8096/?spec=done-as-asked&trace=…` |
+| changes-in-scope / done-as-asked | ask | 次の会話で AI の仮採点へ回す。人は抜き取りと保留を確認 |
 | prompt-kind | 何でも | 何も出さない(結果の正解のためにツリーのハッシュを控える) |
 | (Stop) | 線が無くても | 新しく答え待ちになった判定があれば 1 行(件数と URL)。無ければ黙る |
 
@@ -83,6 +84,14 @@ shikii は線(較正)が無いうちは `act` を出さない。判定に基づ�
 文は英語。`~/.claude/settings.json` の `language` が日本語なら、同じ文を日本語で併記する。他の言語は文は英語のままで、記録の `display` に spec の `display.<lang>` の質問と答えの名前(あれば)と言語だけが入る。例: `shikii: this turn looks unfinished against what you asked (done-as-asked p(yes)=0.15)` の下に `shikii: このターンは頼んだことを終えていないように見える(done-as-asked p(はい)=0.15)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。はい / いいえの問い(noul)の答えの名前は p(yes) が 0.5 未満なら「いいえ」側(終えていない、範囲の外)。英語の設定なら英語だけで、`display` は付かない(spec に `display.<lang>` が無く出した文も無い時も付かない)。
 
 ターンの終わり(Stop)には、そのセッションの判定で人の答えを待つもの(迷った判定と、act の 20 件に 1 件の抜き取り。線が無い間は、生の確率が spec の `thresholds.ask` 以上の判定が「迷った」になり、それ未満の discard は記録だけ)が新しく増えていれば 1 行だけ出す: `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`。画面が立っていなければ hook が裏で起こし、行は常にこの URL。同じ数を毎ターン繰り返さない。URL の `?spec=<id>&trace=<trace_id>` で開くと、その 1 件が先頭に来る(答え済み・列に無い trace は元の順のまま)。
+
+## AI の仮採点と抜き打ち確認
+
+Stop の範囲・完了の判定は全件を人への答え待ちにせず、次の人の返事と同じターンの判定を結び付ける。UserPromptSubmit は最大 2 会話の仮採点をエージェントへ渡す。`shikii_review` または `shikii review query / submit` で原文と作業結果から仮採点し、根拠不足は `unknown` にする。通知・別の仕事・古い Stop の扱いは会話記録と同じ。
+
+仮採点は `records/reviews/<spec>.jsonl` に原資料と根拠付きで残し、正解や較正へは混ぜない。人は実行・見送り・迷いの帯によらず無作為の抜き取りと保留を確認する。最初と不一致が出た種類は 5 件に 1 件、直近の無作為の確認が 20 件続けて一致したら 20 件に 1 件。保留の確認は無作為の成績とは分ける。人の訂正は次の採点役へ返す。仮採点を保存した後で人の答えに合わせて書き換えることはできない。
+
+画面は人の返事を示し、AI の答えを選択肢で強調しない。AI の採点と根拠は「くわしく」で開いて読める。件数と人との一致、無作為の確認の一致、抜き取りの頻度も表示する。仮採点前は全件を人に求めず、過去の版で記録した判定の扱いは維持する。採点の文脈はエスケープ後 4 KB までで、会話の引用・wiki の文脈とは別。既存の MCP セッションでも hook が示す絶対パスの CLI が使える。
 
 ## 失敗しても止めない
 

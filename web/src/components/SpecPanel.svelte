@@ -29,7 +29,7 @@
   });
 
   // 件数が増えた時の見せ方: 種類ごとの数(押すと絞り込み)、1 件ずつ / 一覧、スキップ、ほかに待っている数
-  const kind = it => it.band === 'ask' ? 'ask' : it.audit ? 'audit' : 'other';
+  const kind = it => it.audit ? 'audit' : it.band === 'ask' ? 'ask' : 'other';
   let all = $derived(sp.queue.items);
   let counts = $derived({ all: all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length });
   // 仕事(project の印)ごとの数。印の付く記録(hook)が 2 つ以上の仕事にまたがる時だけ絞り込みを出す
@@ -71,6 +71,8 @@
   </h2>
   {#if question}<div class="q">{question}</div>{/if}
   <div class="status">{progress.plain}<div class="bar"><div style="width:{progress.pct}%"></div></div></div>
+  {#if sp.review_quality?.scored}<p class="k review-quality">{t('reviewQuality')(sp.review_quality)}</p>{/if}
+  {#if sp.review_pending}<p class="k">{t('reviewPending')(sp.review_pending)}</p>{/if}
   <Chips {counts} labels={sp.labels} />
   {#if projects.length > 1}
     <div class="chips projects">

@@ -18,11 +18,17 @@ import (
 )
 
 type Feedback struct {
-	ID      string    `json:"id"` // 元の依頼の識別子。繰り返した同じ文も別の依頼
-	Request string    `json:"request"`
-	Summary string    `json:"summary"`
-	Reply   string    `json:"reply"` // 次に人が伝えた発言。訂正か追加かは未確定
-	At      time.Time `json:"at"`
+	ID      string         `json:"id"` // 元の依頼の識別子。繰り返した同じ文も別の依頼
+	Request string         `json:"request"`
+	Summary string         `json:"summary"`
+	Reply   string         `json:"reply"` // 次に人が伝えた発言。訂正か追加かは未確定
+	At      time.Time      `json:"at"`
+	Targets []ReviewTarget `json:"targets,omitempty"`
+}
+
+type ReviewTarget struct {
+	Spec    string `json:"spec"`
+	TraceID string `json:"trace_id"`
 }
 
 const (
@@ -41,7 +47,7 @@ func (s Store) AppendFeedback(scope string, f Feedback) error {
 	if scope == "" || f.ID == "" || strings.TrimSpace(f.Request) == "" || strings.TrimSpace(f.Summary) == "" || strings.TrimSpace(f.Reply) == "" {
 		return errors.New("feedback needs a project, turn, request, closing message and human reply")
 	}
-	if len(f.Request) > feedbackTextMax || len(f.Summary) > feedbackTextMax || len(f.Reply) > feedbackTextMax {
+	if len(f.Request) > feedbackTextMax || len(f.Summary) > feedbackTextMax || len(f.Reply) > feedbackTextMax || len(f.Targets) > 2 {
 		return errors.New("feedback text exceeds the per-field limit")
 	}
 	if f.At.IsZero() {
@@ -86,7 +92,7 @@ func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 		}
 		var v Feedback
 		if len(line) > 32<<10 || json.Unmarshal([]byte(line), &v) != nil || v.ID == "" || v.Request == "" || v.Summary == "" || v.Reply == "" ||
-			len(v.Request) > feedbackTextMax || len(v.Summary) > feedbackTextMax || len(v.Reply) > feedbackTextMax {
+			len(v.Request) > feedbackTextMax || len(v.Summary) > feedbackTextMax || len(v.Reply) > feedbackTextMax || len(v.Targets) > 2 {
 			continue
 		}
 		recent = append(recent, v)

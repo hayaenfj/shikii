@@ -1,6 +1,8 @@
 // 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
+  reviewRandom: 'Spot-check an AI assessment', reviewUncertain: 'The AI could not assess this', reviewReply: 'The person’s follow-up', reviewEvidence: 'Show the AI assessment and evidence', reviewPending: n => `${n} decisions await AI assessment after the next reply`, reviewQuality: q => `${q.scored} AI assessments (${q.uncertain} undecided) · ${q.correct}/${q.checked} scored checks agree · ${q.uncertain_checked} undecided cases checked · ${q.random_correct}/${q.random_checked} random checks agree · sampling 1 in ${q.audit_every}`,
+
   langName: 'English',
   helpTitle: 'how to use', langLabel: 'language', bandAbstain: 'The AI did not decide (not enough input).', truthsCount: n => n + ' truths', tableHead: ['candidate', 'top-1', 'brier', 'prec@act', 'rec@act'], yesTo: 'yes→', noTo: 'no→',
   tagline: 'tell it what was actually true; that is all it needs to learn when to trust itself', loading: 'loading…', noSpecs: 'no decisions set up yet', empty: 'nothing waiting for an answer. When the AI decides something, it shows up here.',

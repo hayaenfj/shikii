@@ -166,6 +166,7 @@ type hookSession struct {
 	Previous  string         `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
 	Pending   []pendingItem  `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
 	Asked     []askedItem    `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
+	Reviews   []askedItem    `json:"reviews,omitempty"`         // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
 	Reported  []string       `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
 	Judged    bool           `json:"judged,omitempty"`          // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
 	At        time.Time      `json:"at"`
@@ -319,6 +320,7 @@ func hookDecide(agent, specID string, inputs map[string]string, project string) 
 	out := hookOutcome(specID, d, l)
 	if d.Band != decide.Abstain {
 		rec := recordOf(sp, d, inputs)
+		rec.ReviewPending = store.ReviewSpec(specID)
 		rec.Project = project                                                         // どの仕事の判定か(画面と status で分けて見る印。入力ではないのでハッシュは変わらない)
 		if l.Lang != "" && (l.Question != "" || l.Top != "" || out.message() != "") { // 言語だけの display は付けない(読む物が無い)
 			rec.Display = &store.RecordDisplay{Lang: l.Lang, Question: l.Question, Top: l.Top, Message: out.message()}
@@ -470,7 +472,7 @@ func hookOutcome(specID string, d *decide.Decision, l hookLoc) hookOut {
 				fmt.Sprintf("shikii: this turn's changes look outside what you asked for (changes-in-scope p(yes)=%.2f%s). Check the changed files before going on", d.P, receipt),
 				fmt.Sprintf("shikii: このターンで変えたものは頼まれた範囲の外に見える(changes-in-scope p(はい)=%.2f%s)。続ける前に変わったファイルを確かめる", d.P, receiptJA), l)}
 		case decide.Ask:
-			return unsure()
+			return hookOut{} // 会話を受けた仮採点へ。人は抜き取りと保留を確認する
 		}
 	case "done-as-asked":
 		switch d.Band {
@@ -479,7 +481,7 @@ func hookOutcome(specID string, d *decide.Decision, l hookLoc) hookOut {
 				fmt.Sprintf("shikii: this turn looks unfinished against what you asked (done-as-asked p(yes)=%.2f%s). Something may be left to ask for again", d.P, receipt),
 				fmt.Sprintf("shikii: このターンは頼んだことを終えていないように見える(done-as-asked p(はい)=%.2f%s)。言い直すことが残っているかもしれない", d.P, receiptJA), l)}
 		case decide.Ask:
-			return unsure()
+			return hookOut{}
 		}
 	}
 	return hookOut{} // prompt-kind と、確信して「問題なし」側: 記録だけ
@@ -532,6 +534,11 @@ func runHookEvent(event string) error {
 		// 人の依頼が進んだ時だけ。通知は同じ TurnID なので wiki の仕事を増やさない。
 		current := loadSession(agent, in.SessionID)
 		if current.TurnID != snapshot.TurnID {
+			if context, rerr := reviewContext(agent, current.Scope); rerr != nil {
+				hookLog("review: " + rerr.Error())
+			} else {
+				out.Context = joinLines(out.Context, context)
+			}
 			if context, werr := notebookContext(agent, current.Scope, cut(in.Prompt, requestMax)); werr != nil {
 				hookLog("wiki: " + werr.Error())
 			} else {
@@ -692,7 +699,11 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			if last != "" && s.Request == req && s.TurnID == snapshot.TurnID {
 				s.Previous = last
 				if s.TurnID != "" && scope != "" && s.Scope == scope {
-					s.Completed = &completedTurn{TurnID: s.TurnID, Request: req, Summary: last, At: time.Now()}
+					var targets []store.ReviewTarget
+					if s.Completed != nil && s.Completed.TurnID == s.TurnID {
+						targets = s.Completed.Targets
+					}
+					s.Completed = &completedTurn{TurnID: s.TurnID, Request: req, Summary: last, At: time.Now(), Targets: targets}
 				}
 			}
 		},
@@ -727,16 +738,26 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		firstErr = err
 	}
 	var out hookOut
+	targets := []store.ReviewTarget{}
 	for i, d := range ds {
 		if d == nil || d.Band == decide.Abstain {
 			continue
 		}
-		muts = append(muts, noteAsked(hookSpecs[2+i], d))
+		target := askedItem{Spec: hookSpecs[2+i], Trace: d.TraceID}
+		muts = append(muts, func(s *hookSession) {
+			if s.Request == req && s.TurnID == snapshot.TurnID {
+				s.Reviews = append(s.Reviews, target)
+			}
+		})
+		targets = append(targets, store.ReviewTarget{Spec: hookSpecs[2+i], TraceID: d.TraceID})
 		out.System = joinLines(out.System, outs[i].System)
 	}
 	muts = append(muts, func(s *hookSession) {
 		if s.Request == req && s.TurnID == snapshot.TurnID {
 			s.Judged = true
+			if s.Completed != nil && s.Completed.TurnID == s.TurnID {
+				s.Completed.Targets = targets
+			}
 		}
 	})
 	return out, muts, firstErr
@@ -752,7 +773,7 @@ func listingHeader(request string) string {
 // 新顔がある時だけ 1 行(毎ターン同じ数を繰り返さない)。画面が立っていなければ裏で起こし、行は常に URL。
 func stopSummary(agent string, sess *hookSession) string {
 	st := store.Store{Dir: agent}
-	waiting := unanswered(st, sess.Asked)
+	waiting := unanswered(st, append(append([]askedItem{}, sess.Asked...), sess.Reviews...))
 	n := len(waiting)
 	if n == 0 || !hasNew(waiting, sess.Reported) {
 		return ""
@@ -1072,6 +1093,8 @@ func noteAsked(specID string, d *decide.Decision) func(*hookSession) {
 // unanswered は asked のうち、まだ答えの無い trace。
 func unanswered(st store.Store, asked []askedItem) []string {
 	labeled := map[string]map[string]store.Label{}
+	reviews := map[string]map[string]store.Review{}
+	records := map[string]map[string]store.Record{}
 	var out []string
 	for _, a := range asked {
 		if _, ok := labeled[a.Spec]; !ok {
@@ -1080,8 +1103,18 @@ func unanswered(st store.Store, asked []askedItem) []string {
 				m = map[string]store.Label{}
 			}
 			labeled[a.Spec] = m
+			reviews[a.Spec], _ = st.Reviews(a.Spec)
+			records[a.Spec] = map[string]store.Record{}
+			all, _ := st.Records(a.Spec, 0)
+			for _, rec := range all {
+				records[a.Spec][rec.TraceID] = rec
+			}
 		}
-		if _, ok := labeled[a.Spec][a.Trace]; !ok {
+		rec, ok := records[a.Spec][a.Trace]
+		if !ok {
+			continue
+		}
+		if show, _, _ := reviewQueueState(rec, labeled[a.Spec], reviews[a.Spec]); show {
 			out = append(out, a.Trace)
 		}
 	}
