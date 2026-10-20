@@ -107,6 +107,9 @@ func writeClaimPage(path string, pg claimPage, body string) error {
 }
 
 func cmdWiki(args []string) error {
+	if len(args) > 0 && args[0] != "verify" {
+		return cmdNotebook(args)
+	}
 	if len(args) == 0 || args[0] != "verify" {
 		return errors.New("usage: shikii wiki verify [pattern.md ...] [--local URL] [--hosted URL] [--labeled file] [--store DIR]\n  再検証の手順を持つ主張(wiki/patterns/*.md の前書き)を今のモデルで回し、証拠を書き足す。状態は人が変える")
 	}

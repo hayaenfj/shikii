@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -78,7 +79,15 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		c["path"] = wikiRel(s.o.wikiDir, p)
 		claims = append(claims, c)
 	}
-	writeJSON(w, 200, map[string]any{"claims": claims})
+	result := map[string]any{"claims": claims, "lessons": []notebook.Page{}, "notebook_issues": []notebook.Issue{}, "pending_sources_count": 0, "notebook_project": filepath.Base(s.o.projectScope)}
+	if root, err := agentHome(); err == nil {
+		if view, err := (notebook.Book{Root: root, Scope: s.o.projectScope}).Query(""); err == nil {
+			result["lessons"], result["notebook_issues"], result["pending_sources_count"] = view.Lessons, view.Issues, len(view.Pending)
+		} else {
+			result["notebook_issues"] = []notebook.Issue{{Kind: "unreadable-notebook"}}
+		}
+	}
+	writeJSON(w, 200, result)
 }
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,80}$`)

@@ -36,6 +36,7 @@ import (
 // spec はフォルダから毎回読み直すので、ファイルを直せばすぐ効く。推論は持たない(--local / --hosted の先に任せる)。
 
 type serveOpts struct {
+	projectScope  string // プロセスを起こした仕事。wiki の原資料を他の仕事と混ぜない
 	port          int
 	specsDir      string
 	storeDir      string
@@ -102,6 +103,9 @@ type server struct {
 
 // resolve は置き場の既定を埋める: spec は <store>/decisions、wiki は <store>/wiki(基本構成。別のフラグは無い)。
 func (o *serveOpts) resolve() {
+	if o.projectScope == "" {
+		o.projectScope = currentProjectScope()
+	}
 	if o.specsDir == "" {
 		o.specsDir = specsDirOf(o.storeDir)
 	}
@@ -129,6 +133,7 @@ func newServer(o serveOpts) http.Handler {
 	mux.HandleFunc("/v1/tune/variant", s.handleTuneVariant)
 	mux.HandleFunc("/v1/wiki", s.handleWikiList)
 	mux.HandleFunc("/v1/wiki/claim", s.handleWikiClaim)
+	mux.HandleFunc("/v1/wiki/notebook", s.handleNotebook)
 	return mux
 }
 

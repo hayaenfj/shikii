@@ -4,12 +4,13 @@
 
 # shikii: turn the AI's "probably" into a "safe to use" you can run a business on
 
-### A tool that lets an AI decide "yes or no", "which one" and "how much", and grows it from your corrections. All you do is answer, on a page, what was actually true.
+### A tool that grows lessons from everyday conversations and checks AI decisions against outcomes and corrections. Your usual agent maintains the wiki while you work.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-203%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-211%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
 [The problem](#the-problem) · [Use 1: measure the AI's own thinking](#use-1-measure-the-ais-own-thinking) · [Use 2: hand it a business decision](#use-2-hand-it-a-business-decision) · [What you do on the page](#what-you-do-on-the-page) · [Install](#install) · [Why you can swap the AI](#why-you-can-swap-the-ai) · [Read more](#read-more)
 
@@ -44,7 +45,9 @@ At the end of a turn one line appears, `shikii: 3 of this session's decisions wa
 
 Everything lives in one place, `~/.shikii/agent`, with one line per question across all your projects (the questions are about the agent's thinking, so the truth is the same in every repository). Each record is marked with the repository it came from, and the page can filter by it. Details: [the hook](integrations/claude-code.md) (Japanese).
 
-**Your ordinary corrections also help the next request.** After an agent replies, your next message is saved together with the original request and the reply. Before a similar request, shikii quotes up to two past exchanges from the same project to the agent. This needs no answer-page action or additional model. Follow-up requests remain readable as follow-ups; interpreting a conversation never turns it into a truth label or an accuracy claim.
+**0.3: your ordinary conversations grow a wiki.** The original request, the agent's reply and your next message become source material. Your usual agent turns useful observations into lessons with sources and conditions. Before a similar request, shikii quotes related lessons from the same project. It keeps earlier revisions, updates the index and checks sources and links once a day. No wiki-specific page actions or additional model are needed. The Knowledge panel shows lessons and their original sources.
+
+This follows [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): retain sources, let the agent maintain the wiki, and separate ingestion, queries and periodic maintenance. Lessons remain hypotheses with sources; interpreting a conversation never makes it a truth label or an accuracy claim. [Changes in 0.3](CHANGELOG.md) (Japanese).
 
 ## Use 2: hand it a business decision
 

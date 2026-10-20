@@ -25,6 +25,8 @@ shikii は「人が出すのは意図と正解だけ。聞き方も信頼も段�
 
 ## 守ること(順番)
 
+**0.3 の会話の wiki**: hook が未整理の会話を渡したら、普段の仕事の中で教訓にまとめる。原資料・索引・版は shikii が管理する。道具は `shikii_wiki`、現れていなければ hook が示した CLI。人に画面操作を求めない。取り込み・検索・点検の手順は [会話の wiki](references/wiki.md)。教訓は仮説で、下の正解・線・主張の状態の規則を変えない。
+
 1. **帯に従う。** `act` = 自動で動いてよい(線があり、確率が act 閾値以上)。`ask` = 人に確かめる。`discard` = 動かない(はい/いいえ では「いいえ」、多択では「どれにも届かない」)。`abstain` = 入力か送れる先が無い。帯以外の数字(生の確率)で判断しない
 2. **線は人の正解からしか引けない。** `calibration:` ブロックを手で書かない。`shikii calibrate --write` だけが書く。人の正解が `min_n` に届くまでは `act` は出ない。それが正しい挙動
 3. **正解は人(または結果)が決める。** あなたが「きっとこうだ」と思っても正解にしない。人の答えは `shikii label <trace> <truth>` か MCP の `shikii_label`。結果から分かる時(ファイルが変わった、など)は `--source outcome`
@@ -50,4 +52,5 @@ shikii は「人が出すのは意図と正解だけ。聞き方も信頼も段�
 - 帯と領収書の読み方: [references/bands.md](references/bands.md)
 - spec の書き方(型、入力、文脈、配置、候補): [references/spec.md](references/spec.md)
 - 正解・較正・審判の約束: [references/truths.md](references/truths.md)
+- 普段の会話から育てる wiki: [references/wiki.md](references/wiki.md)
 - 全コマンドと詳細: `shikii --help`、repo の README と docs/

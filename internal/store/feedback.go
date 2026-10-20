@@ -85,7 +85,7 @@ func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 			break // 改行まで書かれた観察だけを使う
 		}
 		var v Feedback
-		if len(line) > 16<<10 || json.Unmarshal([]byte(line), &v) != nil || v.ID == "" || v.Request == "" || v.Summary == "" || v.Reply == "" ||
+		if len(line) > 32<<10 || json.Unmarshal([]byte(line), &v) != nil || v.ID == "" || v.Request == "" || v.Summary == "" || v.Reply == "" ||
 			len(v.Request) > feedbackTextMax || len(v.Summary) > feedbackTextMax || len(v.Reply) > feedbackTextMax {
 			continue
 		}
@@ -105,6 +105,25 @@ func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 		}
 	}
 	return out, nil
+}
+
+// RecentFeedback は wiki に取り込む原資料。正解の一覧とは分離している。
+func (s Store) RecentFeedback(scope string) ([]Feedback, error) { return s.recentFeedback(scope) }
+
+// TextMatch は検索語のうち、文章に含まれる語の割合。
+// 長い教訓でも短い検索語で見つけられる。確信度や実行を許す線ではない。
+func TextMatch(query, text string) float64 {
+	a, b := feedbackTerms(query), feedbackTerms(text)
+	common := 0
+	for word := range a {
+		if b[word] {
+			common++
+		}
+	}
+	if len(a) == 0 || (common < 2 && len(a) > 1) {
+		return 0
+	}
+	return float64(common) / float64(len(a))
 }
 
 // RecallFeedback は依頼の語の重なりで最大 2 件を返す。返すのは原文で、

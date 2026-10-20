@@ -4,12 +4,13 @@
 
 # shikii: AI の「たぶん」を、仕事で使える「大丈夫」に変える
 
-### AI に「はい / いいえ」「どれ」「どの程度」を決めさせ、答え合わせで育てる道具。あなたがするのは、画面で「本当はどうだったか」を答えることだけ。
+### 普段の会話から出典付きの教訓を育て、AI の判断を答え合わせで確かめる道具。依頼と訂正はいつもどおり、wiki の整理は AI が行います。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-203%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-211%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-00ADD8?style=flat-square)](../../CHANGELOG.md)
 
 [困りごと](#困りごと) · [使い方 1: AI 自身の考え方を測る](#使い方-1-ai-自身の考え方を測る) · [使い方 2: 業務の判定を任せる](#使い方-2-業務の判定を任せる) · [画面でできること](#画面でできること) · [インストール](#インストール) · [なぜ AI を替えても良いか](#なぜ-ai-を替えても良いか) · [もっと読む](#もっと読む)
 
@@ -44,7 +45,9 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 置き場は `~/.shikii/agent` の 1 つで、プロジェクトをまたいで線は 1 本です(問いは AI の考え方についてのもので、どの repo でも同じ基準で答えが付くから)。記録にはどの repo の判定かの印が付き、画面で仕事ごとに見られます。詳しくは [hook の説明](../../integrations/claude-code.md)。
 
-**普段の訂正も、次に活かします。** AI の返答の後に「まだ終わっていない」「そこは頼んでいない」と伝えると、元の依頼・返答・その後の発言が一組で残ります。次の似た依頼の前に、同じプロジェクトの過去の会話を AI に引用として渡します。この参照には画面操作も別のモデルも要りません。追加依頼も原文のまま区別できる形で残し、会話の解釈を正解や精度の数字には数えません。
+**0.3: 普段の会話から wiki が育ちます。** 「まだ終わっていない」「そこは頼んでいない」と伝えると、元の依頼・返答・その後の発言が一組で残ります。普段使っているエージェントが、当てはまる場面と出典を付けて教訓にまとめます。次の似た依頼ではその教訓を引用し、変更前の版も残します。索引は自動で更新され、出典やリンクは一日一回点検されます。wiki のための画面操作や追加のモデルは要りません。「知識」画面から教訓と原文を読めます。
+
+原資料を残し、AI が取り込み・検索・定期点検を回す [カーパシーの LLM Wiki の発想](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)を取り入れています。教訓は出典付きの仮説として扱い、会話の解釈を正解や精度の数字には数えません。[0.3 の変更内容](../../CHANGELOG.md)。
 
 ## 使い方 2: 業務の判定を任せる
 

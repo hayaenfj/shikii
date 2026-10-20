@@ -528,6 +528,17 @@ func runHookEvent(event string) error {
 			err = serr
 		}
 	}
+	if event == "user-prompt-submit" && len(muts) > 0 {
+		// 人の依頼が進んだ時だけ。通知は同じ TurnID なので wiki の仕事を増やさない。
+		current := loadSession(agent, in.SessionID)
+		if current.TurnID != snapshot.TurnID {
+			if context, werr := notebookContext(agent, current.Scope, cut(in.Prompt, requestMax)); werr != nil {
+				hookLog("wiki: " + werr.Error())
+			} else {
+				out.Context = joinLines(out.Context, context)
+			}
+		}
+	}
 	if summary != "" {
 		out.System = joinLines(out.System, summary)
 	}
@@ -543,6 +554,9 @@ func runHookEvent(event string) error {
 			if terr := hookMaybeTune(agent, id); terr != nil && err == nil {
 				err = terr
 			}
+		}
+		if werr := notebookMaintenance(agent, snapshot.Scope); werr != nil {
+			hookLog("wiki lint: " + werr.Error())
 		}
 	}
 	return err
