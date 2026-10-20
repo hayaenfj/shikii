@@ -144,15 +144,15 @@ func TestHookOutcomeTable(t *testing.T) {
 		{"changes out of scope: a line for the person, no context", "changes-in-scope", d(decide.Discard, "yes", 0.1, true), func(o hookOut) bool {
 			return o.Context == "" && strings.Contains(o.System, "outside what you asked") && strings.Contains(o.System, "0.10")
 		}},
-		{"changes unsure: URL", "changes-in-scope", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
-			return strings.Contains(o.System, "spec=changes-in-scope&trace=")
+		{"changes unsure: 仮採点へ回す", "changes-in-scope", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
+			return o.empty()
 		}},
 		{"done: silent", "done-as-asked", d(decide.Act, "yes", 0.9, true), func(o hookOut) bool { return o.empty() }},
 		{"not done: a line for the person", "done-as-asked", d(decide.Discard, "yes", 0.2, true), func(o hookOut) bool {
 			return o.Context == "" && strings.Contains(o.System, "unfinished") && strings.Contains(o.System, "0.20")
 		}},
-		{"done unsure: URL", "done-as-asked", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
-			return strings.Contains(o.System, "spec=done-as-asked&trace=")
+		{"done unsure: 仮採点へ回す", "done-as-asked", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
+			return o.empty()
 		}},
 		{"prompt-kind: record only", "prompt-kind", d(decide.Act, "edit", 0.95, true), func(o hookOut) bool { return o.empty() }},
 	}
@@ -534,10 +534,10 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	if out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd}); out != "" {
 		t.Fatalf("nothing waits yet: %q", out)
 	}
-	// 1 依頼で prompt-kind(edit 0.9、線が無いので ask)+ needs-plan(ask)+ Stop の done-as-asked(ask)= 3 件
+	// 人の確認は prompt-kind と needs-plan の 2 件。Stop の完了判定は AI の仮採点を待つ。
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "add a --json flag to the status command"})
 	out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Added."})
-	if !strings.Contains(out, "3 of this session's decisions wait") || !strings.Contains(out, hookPageURL+"/") || strings.Contains(out, "Start the page") {
+	if !strings.Contains(out, "2 of this session's decisions wait") || !strings.Contains(out, hookPageURL+"/") || strings.Contains(out, "Start the page") {
 		t.Fatalf("the line must always give the URL (the page is started in the background): %s", out)
 	}
 	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+agent+" --port 8096 --local ") {
@@ -550,7 +550,7 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	if out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd}); out != "" {
 		t.Fatalf("nothing new: the line must not repeat: %s", out)
 	}
-	// 画面が立っている → 起こさない。1 件に答え、次の依頼で 3 件増えると、残りの数(5)で言い直す
+	// 画面が立っている → 起こさない。1 件に答え、次の依頼で 2 件増えると残りは 3 件。
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) }))
 	t.Cleanup(page.Close)
 	hookPageURL = page.URL
@@ -559,7 +559,7 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "no"}) })
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "and document the flag in the README too"})
 	out = runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Documented."})
-	if !strings.Contains(out, "5 of this session's decisions wait") || !strings.Contains(out, page.URL+"/") {
+	if !strings.Contains(out, "3 of this session's decisions wait") || !strings.Contains(out, page.URL+"/") {
 		t.Fatalf("with the page up the line must carry the URL and the remaining count: %s", out)
 	}
 	if len(spawned) != 0 {

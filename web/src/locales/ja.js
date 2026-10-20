@@ -1,5 +1,7 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
+  reviewRandom: 'AI の仮採点を抜き打ちで確認', reviewUncertain: 'AI が採点を保留したため確認', reviewReply: 'その後の人の返事', reviewEvidence: 'AI の仮採点と根拠を見る', reviewPending: n => `会話の続きを受けて AI が仮採点する判定: ${n} 件`, reviewQuality: q => `AI の仮採点 ${q.scored} 件（保留 ${q.uncertain} 件） · 採点の比較 ${q.checked} 件中 ${q.correct} 件一致 · 保留の確認 ${q.uncertain_checked} 件 · 無作為の確認 ${q.random_checked} 件中 ${q.random_correct} 件一致 · 抜き取りは ${q.audit_every} 件に 1 件`,
+
   langName: '日本語',
   helpTitle: '使い方', langLabel: '言語', bandAbstain: 'AI は判定しませんでした(入力が足りない)。', truthsCount: n => n + ' 件の正解', tableHead: ['候補', 'top-1', 'brier', 'act の精度', 'act の再現率'], yesTo: 'はい→', noTo: 'いいえ→',
   tagline: 'AI の答えが本当に合っていたかを教えてください。それだけで、AI はいつ自分を信じてよいかを覚えます', loading: '読み込み中…', noSpecs: 'まだ判定が登録されていません', empty: '答え合わせ待ちはありません。AI が何かを判定すると、ここに並びます。',

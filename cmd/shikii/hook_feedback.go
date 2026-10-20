@@ -9,10 +9,11 @@ import (
 )
 
 type completedTurn struct {
-	TurnID  string    `json:"turn_id"`
-	Request string    `json:"request"`
-	Summary string    `json:"summary"`
-	At      time.Time `json:"at"`
+	TurnID  string               `json:"turn_id"`
+	Request string               `json:"request"`
+	Summary string               `json:"summary"`
+	At      time.Time            `json:"at"`
+	Targets []store.ReviewTarget `json:"targets,omitempty"`
 }
 
 func feedbackScope(path string) string {
@@ -37,7 +38,7 @@ func observeFeedback(agent string, s, snapshot *hookSession, scope, reply string
 		return nil
 	}
 	return (store.Store{Dir: agent}).AppendFeedback(scope, store.Feedback{
-		ID: c.TurnID, Request: c.Request, Summary: c.Summary, Reply: reply,
+		ID: c.TurnID, Request: c.Request, Summary: c.Summary, Reply: reply, Targets: c.Targets,
 	})
 }
 

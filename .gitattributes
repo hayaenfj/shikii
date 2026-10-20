@@ -1,0 +1,2 @@
+# 圧縮した JS のテンプレート文字列では、行末の空白にも意味がある。
+web/dist/assets/*.js whitespace=-blank-at-eol

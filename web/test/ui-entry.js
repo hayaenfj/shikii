@@ -5,6 +5,7 @@ import LangPicker from '../src/components/LangPicker.svelte';
 import SpecPanel from '../src/components/SpecPanel.svelte';
 import Wording from '../src/components/Wording.svelte';
 import Notebook from '../src/components/Notebook.svelte';
+import ItemCard from '../src/components/ItemCard.svelte';
 import { i18n, t } from '../src/lib/i18n.svelte.js';
 import { ui } from '../src/lib/state.svelte.js';
 
@@ -112,8 +113,32 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
-  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target);
+  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && await checkReview(target);
   if (!ok) process.exit(1);
+}
+
+async function checkReview(target) {
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    if (opts?.body) calls.push({ url, body: JSON.parse(opts.body) });
+    return { ok: true, json: async () => opts?.body ? { truth: 'no' } : { specs: [] } };
+  };
+  const item = { trace_id: 'review-1', band: 'ask', top: 'yes', p: .9, at: '2026-10-20T00:00:00Z', audit: true, review_reason: 'random', answerable: true, inputs: { request: '起動手順を日本語にして', summary: '直しました' }, choices: [{ truth: 'yes', label: '完了' }, { truth: 'no', label: '未完了' }], review: { truth: 'yes', reason: '<img src=x onerror=alert(1)> 仮採点の根拠', source_material: { reply: '英語の手順が残っています' } } };
+  const sp = { id: 'done-as-asked', queue: { items: [item] }, labels: 0, unlabeled: 1 };
+  const app = mount(ItemCard, { target, props: { sp, it: item } });
+  flushSync();
+  const originalReply = target.textContent.includes('英語の手順が残っています');
+  const unprimed = !target.querySelector('.guess') && !target.querySelector('button.top') && !target.querySelector('.review-evidence[open]');
+  const evidence = target.querySelector('.review-evidence')?.textContent.includes('仮採点の根拠') && !target.querySelector('img');
+  target.querySelector('button[data-truth="no"]')?.click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const sent = calls.some(call => call.url.endsWith('v1/label') && call.body.truth === 'no' && call.body.source === 'audit' && call.body.trace_id === item.trace_id);
+  unmount(app);
+  globalThis.fetch = realFetch;
+  const ok = originalReply && unprimed && evidence && sent;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (review original reply=' + originalReply + ', unprimed choices=' + unprimed + ', inert evidence=' + evidence + ', human audit sent=' + sent + ')');
+  return ok;
 }
 
 async function checkNotebook(target) {
