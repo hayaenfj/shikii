@@ -19,6 +19,14 @@
 
 **置き場は 1 つ、記録には仕事の印。** `~/.shikii/agent` はプロジェクトをまたいで 1 つで、線も spec ごとに 1 本(問いは AI の考え方についてのもので、どの repo でも同じ基準で正解が付く。プロジェクトごとに分けると小さい repo では線が一生引けない)。その代わり、記録には `project`(cwd の repo のルートのフォルダ名。git の外なら cwd の名)が付き、画面は 2 つ以上の仕事があれば「仕事ごと」の絞り込みを出し、カードに印を見せる。`status` は `by project: haya1=12 okurun-ai=3` を出す。入力ではないので、モデルへの問いもハッシュも変わらない。
 
+## 普段の会話を次の依頼に活かす
+
+「まだ終わっていない」「そこは頼んでいない」と普段どおり伝えるだけで、元の依頼・AI の最後の返答・その後の人の発言を一組で残す。次に似た依頼が来ると、同じプロジェクトの過去のやり取りを最大 2 件、着手前の AI に引用として渡す。画面での答え合わせや別のモデルは要らず、判定モデルの線が無い間やモデルが止まっている時も、この参照は働く。
+
+記録するのは原文(依頼・返答・次の発言それぞれ最大 1500 バイト)で、訂正か追加依頼かを機械が確定したものではない。「追加で英訳して」も追加依頼として読める形で残し、発言が無いことは成功に数えない。会話の解釈を正解ラベルや精度の数字には入れない。引用より今回の依頼と規則が優先される。
+
+記録は `~/.shikii/agent/records/feedback/<プロジェクトの実パスのハッシュ>.jsonl`。通常の判定・正解とは別で、保存と検索は手元で行い、引用は利用中のコーディングエージェントの文脈に渡す。別の判定モデルや提案役には送らない。同名の別 repo の会話は混ぜず、同じ repo のサブディレクトリや symlink は同じ仕事として参照する。依頼と次の発言を結ぶのは、同じセッション・同じ仕事で返答した後だけ。通知、サブエージェント、返答前の追記は結ばない。読むのは末尾 4 MB のうち最近 256 件までで、依頼の語の重なりで探す。渡す引用は JSON として囲み、エスケープ後も 4 KB まで。
+
 ## 入れる・外す
 
 ```sh
@@ -46,7 +54,7 @@ shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080
 
 ## 影の期間 → 帯で振る舞う
 
-shikii は線(較正)が無いうちは `act` を出さない。hook はそれをそのまま「線が無いうちは口を出さない」にしている。ツールは一切止めず、記録だけが溜まる。入れた日から出るのは、ターンの終わりの「答え待ち N 件 → URL」の 1 行だけ(下)。
+shikii は線(較正)が無いうちは `act` を出さない。判定に基づく助言も線が引けてから出す。過去の会話は正誤を判定せず引用として返せるので、線が無い間から着手前に届く。ツールは一切止めない。ターンの終わりには「答え待ち N 件 → URL」が 1 行出る(下)。
 
 **聞き方を試すのも機械**(wiki の lint に当たる、ゆっくりした周期): spec に `variants:`(人が書いた候補の言い方)があり、人の正解が `eval.min_n` 以上で、前回の自動 tune から正解が 50 件増えていれば、Stop が `shikii tune`(`--write` 無し)を切り離した別プロセスで回し、結果を `wiki/runs/` と `hook.log` の `auto-tune …` の行に残す。候補が無い spec では何もしない(試す物が無い)。採用は人が意味を確かめてから(画面か `tune --write`)。前回の数は `tuned-<spec>` に控える。候補は画面の「聞き方」の欄で人が自分の言葉で書ける(短い名前と質問の言い換え。多択なら選択肢の説明も「id: 説明」の行で)。送ると `POST /v1/tune/variant` が spec として検証してから `variants:` に足す(採点も採用もしない)。YAML を開かなくても、人が書く → 機械が 50 件ごとに測る → 人が採用する、が画面で回る。
 
@@ -54,7 +62,7 @@ shikii は線(較正)が無いうちは `act` を出さない。hook はそれ�
 
 | spec | 判定 | hook が出すもの |
 |---|---|---|
-| どれでも | 線が無い(影) | 何も出さない(記録だけ) |
+| どれでも | 線が無い(影) | 判定からの助言は出さない(過去の会話の引用は別) |
 | needs-plan | act | エージェントに文脈 `shikii: this request looks like one to agree on an approach with the user before changing anything (needs-plan p=0.88; line on 61 truths, human-checked precision 0.96). Consider EnterPlanMode or a one-line confirmation first` |
 | needs-plan | discard(合わせなくてよい) | 何も出さない |
 | changes-in-scope | discard(確信して「範囲の外」) | 端末の人に 1 行 `shikii: this turn's changes look outside what you asked for (changes-in-scope p(yes)=0.12…). Check the changed files before going on` |
@@ -78,11 +86,12 @@ shikii は線(較正)が無いうちは `act` を出さない。hook はそれ�
 
 ```
 UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending に結果の正解(今のツリーと比べる)
+                                                     直前の返答と今回の人の発言を一組で残す。同じ仕事の似た依頼の会話を引用
                                                      decide prompt-kind, needs-plan(並行)
                                                      └ sessions/<id>.json に request と作業ツリーのハッシュ、<id>.files に作業ツリーの一覧を控える
 Stop ───────────── shikii hook stop ──────────────── 残った pending に結果の正解(変わっていれば edit で片付け、変わっていなければ !edit を付けて持ち越す)
                                                      依頼の時の一覧と今の一覧を比べて「変わったファイル」→ decide changes-in-scope, done-as-asked(並行。同じ依頼で 1 回だけ)
-                                                     └ last_assistant_message を控える(needs-plan の文脈の段に使う)。答え待ちの要約を 1 行。4 spec の正解が min_n に届いていれば線を引く
+                                                     └ last_assistant_message を控える(次の人の発言との対応・needs-plan の文脈)。答え待ちの要約を 1 行。4 spec の正解が min_n に届いていれば線を引く
 ```
 
 - transcript は読まない(形が文書化されていない)。セッションごとの控えは `~/.shikii/agent/sessions/<session_id>.json`(request、previous、pending、asked、judged。7 日で消える)と `<session_id>.files`(依頼の時の `git ls-files --stage` の一覧。4 MB まで)。Claude Code は hook を並列に走らせる(Stop と次の依頼が重なる)ので、控えは flock の中で 読む → 変える → 書く(tmp に書いて rename)。錠は短く持ち(モデルの呼び出しは錠の外)、2 秒待っても取れなければ錠なしで進む
@@ -90,7 +99,7 @@ Stop ───────────── shikii hook stop ──────
 - 変わったファイルの一覧は問いに最大 30 件(残りは `... and N more`)。何も変えていなければ changes-in-scope は聞かず、done-as-asked の files は `(none)`
 - 短い返事(40 字未満。「ok」「yes go ahead」)は依頼を置き換えず前の依頼に添える(ターンの終わりの問いが「ok」を依頼として読まないように)。短い返事でも新しいターンなので judged は戻り、「ok」の後のターンもまた評価される(依頼の文は「前の依頼 / ok」で別の入力)
 - 裏の作業の完了通知(Claude Code がサブエージェントや背景のコマンドの終わりを「ユーザーの発言」として流す `<task-notification>` / `[SYSTEM NOTIFICATION - NOT USER INPUT]`)は依頼ではない: 考える前の 2 問は聞かず、依頼・一覧・pending も置き換えない(実測で記録の半分近くがこれだった)。通知の後に作業が続いたら、そのターンの終わりで元の依頼に対して「範囲か・終えたか」をもう一度判定する(本人の選択: 長い裏作業の最後の状態を測る。1 つの依頼に通知の数だけ判定が残る)
-- 重なり: Stop(依頼 A)がモデル待ちの間に次の依頼 B が控えを書いても、Stop A の印(judged、previous、結果の正解)は A の控えにしか当たらない(依頼の文を見比べ、pending は自分が見た trace だけ settle、一覧は先頭行の依頼のハッシュが合う時だけ比べる)。`agent_id` の付いた UserPromptSubmit(サブエージェント等)は人の依頼ではないので控えを変えない
+- 重なり: Stop(依頼 A)がモデル待ちの間に次の依頼 B が控えを書いても、Stop A の印(judged、previous、返答の控え)は A の控えにしか当たらない(依頼ごとの識別子も比べるため、同じ文を繰り返した依頼も区別する)。pending は自分が見た trace だけ settle、一覧は先頭行の依頼のハッシュが合う時だけ比べる。`agent_id` の付いた UserPromptSubmit(サブエージェント等)は人の依頼ではないので控えを変えない
 - hook.log の 1 行は 400 バイトで切る(モデルの誤りの文に応答本文が付いてくることがある)
 - Claude Code 側の契約(公式の hooks reference、2026-10-18): hook は stdin に `session_id` `cwd` `prompt` `stop_hook_active` `last_assistant_message` を受け、stdout の `hookSpecificOutput.additionalContext`(UserPromptSubmit)とトップレベルの `systemMessage` を返せる。Stop で `hookSpecificOutput` を返すと会話が続くので返さない
 - Codex 側の契約(learn.chatgpt.com/docs/hooks、2026-10-19): 同じ event 名と stdin の鍵(`Stop` にも `last_assistant_message` と `stop_hook_active`)に、Codex だけの `turn_id` と `model` が足される。Stop の出力は JSON か無出力(shikii は出す時は JSON、出さない時は無出力)。shikii は Codex と Claude Code を見分けない(両方同じ 2 つの問い)

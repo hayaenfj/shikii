@@ -7,7 +7,7 @@
 ### A tool that lets an AI decide "yes or no", "which one" and "how much", and grows it from your corrections. All you do is answer, on a page, what was actually true.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-197%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-203%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 
@@ -43,6 +43,8 @@ That is all. It installs the binary, adds two hooks to Claude Code and Codex, pu
 At the end of a turn one line appears, `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`, and you open it when you have a minute (the hook starts the page in the background too); each answer takes seconds. After 50 answers a line is drawn and the agent's behaviour changes: a request that needs a plan becomes a note to the agent, and a turn that looks unfinished or out of scope becomes one line to you, each with grounds such as "line on 61 truths, human-checked precision 0.96". Until then the hooks only record. No hook ever stops a tool.
 
 Everything lives in one place, `~/.shikii/agent`, with one line per question across all your projects (the questions are about the agent's thinking, so the truth is the same in every repository). Each record is marked with the repository it came from, and the page can filter by it. Details: [the hook](integrations/claude-code.md) (Japanese).
+
+**Your ordinary corrections also help the next request.** After an agent replies, your next message is saved together with the original request and the reply. Before a similar request, shikii quotes up to two past exchanges from the same project to the agent. This needs no answer-page action or additional model. Follow-up requests remain readable as follow-ups; interpreting a conversation never turns it into a truth label or an accuracy claim.
 
 ## Use 2: hand it a business decision
 

@@ -6,7 +6,8 @@ package main
 // ツール呼び出しごとの hook は持たない: コマンド 1 つ 1 つの分類は AI の考え方ではなく、許可の是非は Claude Code の permission が見ている。
 //
 // 置き場は固定: ~/.shikii/agent/ がそのまま store(decisions/ wiki/ records/ labels/ sessions/ hook.log)。モデルは手元の :8080。答え合わせの画面は :8096。
-// 線が無いうちは記録だけで何も出さない(影の期間)。線が引けたら帯で振る舞いを変える(hookOutcome)。deny は出さず、ツールも止めない。止めるのは人。
+// 判定からの助言は線が引けてから帯に従って出す(hookOutcome)。過去の会話は線が無くても引用できる。
+// deny は出さず、ツールも止めない。止めるのは人。
 // 失敗(モデルが無い、遅い、書けない)は exit 0 で黙る: hook が作業を止めてはいけない。理由は hook.log に 1 行。
 
 import (
@@ -158,13 +159,16 @@ func (o hookOut) json(event string) []byte {
 // hookSession はセッションごとの控え(~/.shikii/agent/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 // 依頼の時の作業ツリーの一覧は隣の <id>.files(大きいので JSON には入れない)。
 type hookSession struct {
-	Request  string        `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
-	Previous string        `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
-	Pending  []pendingItem `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
-	Asked    []askedItem   `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
-	Reported []string      `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
-	Judged   bool          `json:"judged,omitempty"`          // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
-	At       time.Time     `json:"at"`
+	Request   string         `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
+	TurnID    string         `json:"turn_id,omitempty"`         // 同じ文の依頼を繰り返しても別のターン
+	Scope     string         `json:"scope,omitempty"`           // repo の実パス。会話の引用を同じ仕事に限るため(線は従来どおり共有)
+	Completed *completedTurn `json:"completed,omitempty"`       // この依頼に返答した時の控え。次の人の発言と一組にする
+	Previous  string         `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
+	Pending   []pendingItem  `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
+	Asked     []askedItem    `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
+	Reported  []string       `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
+	Judged    bool           `json:"judged,omitempty"`          // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
+	At        time.Time      `json:"at"`
 }
 
 type pendingItem struct {
@@ -602,11 +606,17 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if snapshot.Previous != "" {
 		inputs["previous"] = snapshot.Previous // 文脈の段(迷った時だけ使われる)
 	}
-	tree, listing, listed, project := treeState(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
+	tree, listing, listed, project, scope := treeStateWithScope(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
+	turnID := store.NewTraceID()
 	var firstErr error
 	pendingNow := snapshot.Pending // 前の依頼の pending(写し)。錠の中で settle するのはこの trace だけ(重なった Stop や次の依頼が足した pending を巻き込まない)
 	muts := []func(*hookSession){
-		func(s *hookSession) { s.Request, s.Judged = request, false },
+		func(s *hookSession) {
+			if ferr := observeFeedback(agent, s, snapshot, scope, req); ferr != nil {
+				hookLog("feedback: " + ferr.Error())
+			}
+			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
+		},
 		// 前の依頼の結果の正解は、次の依頼が来た時点のツリーで決める(依頼の境目 = 次の依頼。Stop まで待つと 2 つの依頼が混ざる)
 		func(s *hookSession) {
 			if err := settlePending(agent, s, tree, pendingNow, true); err != nil && firstErr == nil {
@@ -630,6 +640,14 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		firstErr = err
 	}
 	var out hookOut
+	// 過去の会話は確率や正解ではない。較正前でも、引用としてエージェントに渡せる。
+	if recalled, ferr := recallFeedback(agent, scope, req); ferr != nil {
+		if firstErr == nil {
+			firstErr = ferr
+		}
+	} else {
+		out.Context = recalled
+	}
 	for i, d := range ds {
 		if d == nil || d.Band == decide.Abstain {
 			continue
@@ -650,15 +668,18 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 // 同じ依頼について 1 回だけ(Judged)。依頼の控えが無ければ聞かない。何も変えていなければ changes-in-scope は聞かない。
 // ほかに、直前のアシスタントの発言を控え、残った pending に結果の正解を付ける。答え待ちの要約は呼ぶ側が錠の中で足す(stopSummary)。
 func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
-	tree, listing, listed, project := treeState(in.CWD)
+	tree, listing, listed, project, scope := treeStateWithScope(in.CWD)
 	last := cut(strings.TrimSpace(in.LastAssistantMessage), requestMax)
 	req := snapshot.Request // この Stop が評価する依頼。錠の中で控えの依頼が変わっていたら(次の依頼が先に来た)、この Stop の印は当てない
 	pendingNow := snapshot.Pending
 	var firstErr error
 	muts := []func(*hookSession){
 		func(s *hookSession) {
-			if last != "" && s.Request == req {
+			if last != "" && s.Request == req && s.TurnID == snapshot.TurnID {
 				s.Previous = last
+				if s.TurnID != "" && scope != "" && s.Scope == scope {
+					s.Completed = &completedTurn{TurnID: s.TurnID, Request: req, Summary: last, At: time.Now()}
+				}
 			}
 		},
 		func(s *hookSession) {
@@ -700,7 +721,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		out.System = joinLines(out.System, outs[i].System)
 	}
 	muts = append(muts, func(s *hookSession) {
-		if s.Request == req {
+		if s.Request == req && s.TurnID == snapshot.TurnID {
 			s.Judged = true
 		}
 	})
@@ -1117,9 +1138,17 @@ func treeSnapshot(cwd string) string {
 // 新しい blob は仮の objects(GIT_OBJECT_DIRECTORY)に書いて消すので、未追跡ファイルの中身が repo の .git/objects に残らない(repo の objects は alternates として読むだけ)。
 // 全体で hookGitTimeout を超えたら ""(.gitignore の無い巨大な node_modules など。正解を付けないだけで hook は止めない)。git の外なら ""。
 func treeState(cwd string) (hash, listing string, listed bool, project string) {
+	hash, listing, listed, project, _ = treeStateWithScope(cwd)
+	return
+}
+
+// treeStateWithScope は一覧と同じ repo の実パスも返す。同名の別 repo の会話を混ぜず、
+// サブディレクトリや symlink からの依頼は同じ仕事として参照する。
+func treeStateWithScope(cwd string) (hash, listing string, listed bool, project, scope string) {
 	if cwd == "" {
-		return "", "", false, ""
+		return "", "", false, "", ""
 	}
+	scope = feedbackScope(cwd)
 	project = filepath.Base(filepath.Clean(cwd))
 	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
@@ -1138,20 +1167,21 @@ func treeState(cwd string) (hash, listing string, listed bool, project string) {
 	}
 	top, ok := run(nil, "rev-parse", "--show-toplevel")
 	if !ok {
-		return "", "", false, project // git の外: 印は cwd の名
+		return "", "", false, project, scope // git の外: 印は cwd の名
 	}
 	project = filepath.Base(top)
+	scope = feedbackScope(top)
 	dir = top // 以降は repo のルートで(サブディレクトリから起こしたセッションでも repo 全体を見る)
 	objects, ok := run(nil, "rev-parse", "--git-path", "objects")
 	if !ok {
-		return "", "", false, project
+		return "", "", false, project, scope
 	}
 	if !filepath.IsAbs(objects) {
 		objects = filepath.Join(cwd, objects)
 	}
 	scratch, err := os.MkdirTemp("", "shikii-git-*")
 	if err != nil {
-		return "", "", false, project
+		return "", "", false, project, scope
 	}
 	defer os.RemoveAll(scratch)
 	env := []string{
@@ -1160,14 +1190,14 @@ func treeState(cwd string) (hash, listing string, listed bool, project string) {
 		"GIT_ALTERNATE_OBJECT_DIRECTORIES=" + objects,
 	}
 	if err := os.MkdirAll(filepath.Join(scratch, "objects"), 0o755); err != nil {
-		return "", "", false, project
+		return "", "", false, project, scope
 	}
 	if _, ok := run(env, "add", "-A", "--", "."); !ok {
-		return "", "", false, project
+		return "", "", false, project, scope
 	}
 	tree, ok := run(env, "write-tree")
 	if !ok {
-		return "", "", false, project
+		return "", "", false, project, scope
 	}
 	sum := sha256.Sum256([]byte(tree))
 	hash = hex.EncodeToString(sum[:])[:16]
@@ -1178,14 +1208,14 @@ func treeState(cwd string) (hash, listing string, listed bool, project string) {
 	ls.Stderr = io.Discard
 	pipe, err := ls.StdoutPipe()
 	if err != nil || ls.Start() != nil {
-		return hash, "", false, project
+		return hash, "", false, project, scope
 	}
 	lb, rerr := io.ReadAll(io.LimitReader(pipe, int64(listingMax)+1))
 	_ = ls.Wait()
 	if rerr != nil || len(lb) > listingMax {
-		return hash, "", false, project
+		return hash, "", false, project, scope
 	}
-	return hash, strings.TrimSpace(string(lb)), true, project
+	return hash, strings.TrimSpace(string(lb)), true, project, scope
 }
 
 func hookLog(msg string) {
@@ -1352,7 +1382,7 @@ func hookInstall(args []string, install bool) error {
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: add 2 hooks (UserPromptSubmit, Stop) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), tilde(strings.Fields(hookEvents()[0].cmd)[0]), t.who, filepath.Base(t.rel), t.note)
 		}
-		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Until a spec has a calibration line they only record (shadow mode); they never stop a tool. Claude Code and Codex (Cursor and OpenCode have no hook).\n")
+		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool. Claude Code and Codex (Cursor and OpenCode have no hook).\n")
 		fmt.Fprintf(stdout, "   The local model (%s) and the answer page (%s) are started in the background by the hooks when they are not running; install starts the model now if llama-server is on PATH\n", hookLocalURL, hookPageURL)
 	} else {
 		for i, t := range hookTargets {

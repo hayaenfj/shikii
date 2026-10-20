@@ -7,7 +7,7 @@
 ### AI に「はい / いいえ」「どれ」「どの程度」を決めさせ、答え合わせで育てる道具。あなたがするのは、画面で「本当はどうだったか」を答えることだけ。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-197%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-203%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
@@ -43,6 +43,8 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 ターンの終わりに `shikii: このセッションの判定 3 件が答え待ち: http://127.0.0.1:8096/` と 1 行出るので、手の空いた時に開いて答えます(画面も hook が裏で立てます)。1 件数秒です。答えが 50 件たまると線が引け、そこから AI の振る舞いが変わります。進め方を合わせた方がよさそうな依頼は AI への一言になり、終えていない・範囲の外に見えるターンはあなたへの 1 行になります。どちらにも「線は正解 61 件、人が確かめた精度 0.96」のような根拠が付きます。線が引けるまでは記録だけで、hook がツールを止めることはありません。
 
 置き場は `~/.shikii/agent` の 1 つで、プロジェクトをまたいで線は 1 本です(問いは AI の考え方についてのもので、どの repo でも同じ基準で答えが付くから)。記録にはどの repo の判定かの印が付き、画面で仕事ごとに見られます。詳しくは [hook の説明](../../integrations/claude-code.md)。
+
+**普段の訂正も、次に活かします。** AI の返答の後に「まだ終わっていない」「そこは頼んでいない」と伝えると、元の依頼・返答・その後の発言が一組で残ります。次の似た依頼の前に、同じプロジェクトの過去の会話を AI に引用として渡します。この参照には画面操作も別のモデルも要りません。追加依頼も原文のまま区別できる形で残し、会話の解釈を正解や精度の数字には数えません。
 
 ## 使い方 2: 業務の判定を任せる
 
