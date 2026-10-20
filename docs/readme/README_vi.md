@@ -4,103 +4,111 @@
 
 # shikii: biến câu "có lẽ" của AI thành câu "làm được, an toàn" mà bạn có thể dựa vào để vận hành công việc
 
-### Một công cụ để giao cho AI quyết định có/không, cái nào, hay bao nhiêu, và giữ cho quyết định đó đáng tin trong công việc hằng ngày. Bạn kiểm tra một số câu trả lời và thỉnh thoảng xác nhận "đây vẫn là điều tôi muốn chứ?". Phần còn lại máy lo.
+### Một công cụ để AI quyết định "có hay không", "cái nào" và "bao nhiêu", rồi lớn lên từ những lần sửa của bạn. Việc của bạn chỉ là trả lời, trên một trang, điều gì thật sự đã đúng.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-196%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
-[Vấn đề](#vấn-đề) · [shikii làm gì](#shikii-làm-gì) · [Bạn làm gì](#bạn-làm-gì) · [Cài đặt](#cài-đặt) · [Đường vào ngắn nhất](#đường-vào-ngắn-nhất) · [Một vòng trọn vẹn](#một-vòng-trọn-vẹn) · [Điểm mới](#điểm-mới) · [Đọc thêm](#đọc-thêm)
+[Vấn đề](#vấn-đề) · [Cách dùng 1: đo chính cách nghĩ của AI](#cách-dùng-1-đo-chính-cách-nghĩ-của-ai) · [Cách dùng 2: giao một quyết định trong công việc](#cách-dùng-2-giao-một-quyết-định-trong-công-việc) · [Bạn làm gì trên trang](#bạn-làm-gì-trên-trang) · [Cài đặt](#cài-đặt) · [Vì sao bạn có thể đổi AI](#vì-sao-bạn-có-thể-đổi-ai) · [Đọc thêm](#đọc-thêm)
 
-<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii: mô hình cho bạn một xác suất, shikii cho bạn biết có được hành động theo nó hay không" width="100%"></p>
+<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii" width="100%"></p>
 
 ## Vấn đề
 
-Hỏi AI "yêu cầu này có cùng vụ việc với yêu cầu trước không?" và nó trả lời "có lẽ, 0,9". Với công việc thật, như vậy chưa đủ.
+Hỏi AI "yêu cầu này có cùng vụ việc với yêu cầu trước không?" và nó trả lời "có lẽ, 0,9". Với công việc thật, như vậy chưa đủ. Con số 0,9 đó có thật sự đúng 9 lần trong 10 không? Từ ngày bạn đổi sang AI mới hơn, nó có âm thầm trở thành nói sai không? Những quyết định nó tự đưa ra khi không ai nhìn còn đúng không? Nếu một người phải kiểm tra mỗi lần, thì dùng AI cũng chẳng còn mấy ý nghĩa.
 
-- Con số 0,9 đó có thật sự đúng 9 lần trong 10 không?
-- Từ ngày bạn đổi sang mô hình mới, nó có âm thầm bắt đầu nói sai không?
-- Nếu đổi cách hỏi một chút, độ chính xác thay đổi thế nào?
-- Những quyết định nó tự đưa ra khi không ai nhìn: chúng còn đúng không?
+shikii vạch một **đường ranh** từ những lần sửa của bạn: từ mức này trở lên, AI được tự hành động. Chưa có đường ranh thì không gì được tin. Khi đã có, mỗi quyết định tự động đi kèm căn cứ của nó: đường ranh dựa trên bao nhiêu lần sửa và đúng bao nhiêu phần. Đường ranh nằm cùng câu hỏi và các lần sửa, không nằm trong AI, nên đổi AI không tốn công người.
 
-Nếu một người phải kiểm tra từng câu trả lời, thì dùng AI cũng chẳng còn mấy ý nghĩa.
+Có hai cách dùng: đo cách nghĩ của AI đang viết mã cho bạn (nhẹ nhất), và giao cho nó một quyết định trong công việc của bạn.
 
-## shikii làm gì
+## Cách dùng 1: đo chính cách nghĩ của AI
 
-1. **Gom các lần sửa của bạn và vạch ra đường ranh mà từ đó trở lên AI được tự hành động.** Từ những câu bạn đã trả lời ("thực ra đúng là thế này"), nó đo quan hệ giữa độ tự tin của AI và tần suất AI đúng, rồi quyết định từ mức nào trở lên có thể tin được. Chưa có đường ranh thì không gì tự hành động. Khi đã có, mỗi quyết định tự động đi kèm một biên nhận cho biết đường ranh dựa trên bao nhiêu câu trả lời đã kiểm tra và chúng đúng bao nhiêu phần
-2. **Thử các cách hỏi khác và giữ lại cách tốt hơn.** Trên cùng những lần sửa đó, nó chấm điểm các câu hỏi thay thế, mô tả lựa chọn và bố cục lời nhắc, và chỉ áp dụng khi thật sự tốt hơn. Các ứng viên đến từ bạn (gõ ngay trên trang, bằng lời của bạn) hoặc từ một AI; mỗi khi có đủ lần sửa mới, máy lại đo chúng một lần nữa. Bạn chỉ xác nhận là ý nghĩa không thay đổi
-3. **Cho bạn đổi mô hình mà không phải bắt đầu lại.** Các lần sửa được lưu tách khỏi mô hình, nên mô hình mới dùng lại chúng và máy tự vạch lại đường ranh. Không cần người làm gì
-4. **Giữ những gì đã học trong một wiki.** "Hỏi theo cách này thì đúng" được tích lại thành các nhận định kèm con số đã đo, có thể kiểm lại trên mô hình khác. Những gì người khác đo trên mô hình của họ được thêm vào cùng một trang
+Dành cho người dùng Claude Code hoặc Codex. Agent viết mã đưa ra các phán đoán khi nhận yêu cầu và khi làm xong; shikii đo chúng trong im lặng.
 
-## Bạn làm gì
+```sh
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
+```
 
-- **Viết ra điều bạn muốn quyết định.** Trả lời vài câu hỏi là có một tệp quyết định (`shikii new`, theo kiểu hỏi đáp hoặc với `--type --question --option --input --pii`; định dạng đầy đủ ở [tài liệu tham chiếu spec](../../skills/shikii/references/spec.md))
-- **Kiểm tra câu trả lời.** Trang web hiện những quyết định AI không chắc, cộng thêm 1 trong 20 quyết định nó đã tự làm, và bạn nhấn nút cho đáp án đúng thật. Các phím 1 đến 9 và Enter (giống lựa chọn của AI) giúp đi nhanh. "Đã trả lời" cho phép sửa câu trả lời trước (câu mới nhất được tính). "Chi tiết" thêm mục "hỏi AI lại", quyết định lại cùng văn bản đó với cách hỏi và đường ranh hôm nay, rồi hiện trước và sau; bản ghi chỉ được thêm vào, không bao giờ bị xóa
-- **Thỉnh thoảng xác nhận "đây vẫn là điều tôi muốn chứ?".** Khi máy tìm được cách hỏi đạt điểm cao hơn, bạn xem ý nghĩa có đổi không rồi nhấn chấp nhận hoặc từ chối. Nếu bạn nghĩ ra cách hỏi tốt hơn, hãy gõ nó ngay trên trang đó; máy sẽ đo, bạn không bao giờ phải sửa tệp
+Chỉ vậy thôi. Lệnh này cài tệp chạy, thêm hai hook vào Claude Code và Codex, đặt các quy tắc của agent (một skill) vào chỗ, và khởi động một AI nhỏ trên máy bạn (Kev-4B) chạy nền (nếu thiếu llama.cpp, nó in ra một dòng để bạn cài). Mở một terminal mới và tiếp tục làm việc với agent như thường (trong Codex, chạy `/hooks` một lần để tin cậy các hook của shikii). Bốn điều được đo.
 
-Mọi việc còn lại là của máy.
+| Khi nào | Câu hỏi | Đáp án thật đến từ đâu |
+|---|---|---|
+| Một yêu cầu đến | Yêu cầu này rồi có làm thay đổi tệp không? | Tự động: cây làm việc có thay đổi trước yêu cầu kế tiếp không |
+| Một yêu cầu đến | Agent có nên thống nhất cách làm với bạn trước khi đụng vào gì không? | Bạn, trên trang |
+| Lượt kết thúc | Các thay đổi có nằm trong phạm vi bạn yêu cầu không? | Bạn, trên trang |
+| Lượt kết thúc | Nó đã làm xong điều bạn yêu cầu chưa? | Bạn, trên trang |
+
+Cuối mỗi lượt hiện ra một dòng, `shikii: 3 quyết định của phiên này đang chờ bạn trả lời: http://127.0.0.1:8096/`, và bạn mở nó khi rảnh một phút (hook cũng khởi động trang ở chế độ nền); mỗi câu trả lời chỉ mất vài giây. Sau 50 câu trả lời, đường ranh được vạch và cách hành xử của agent thay đổi: một yêu cầu cần lập kế hoạch sẽ thành một ghi chú gửi agent, còn một lượt trông như chưa xong hoặc vượt phạm vi sẽ thành một dòng gửi bạn, mỗi cái kèm căn cứ như "đường ranh trên 61 đáp án, độ chính xác do người kiểm tra 0,96". Trước đó, các hook chỉ ghi lại. Không hook nào bao giờ chặn một công cụ.
+
+Mọi thứ nằm ở một chỗ, `~/.shikii/agent`, với một đường ranh cho mỗi câu hỏi xuyên suốt mọi dự án của bạn (các câu hỏi là về cách nghĩ của agent, nên đáp án thật giống nhau ở mọi kho mã). Mỗi bản ghi được đánh dấu kho mã nó đến từ đâu, và trang có thể lọc theo đó. Chi tiết: [hook](../../integrations/claude-code.md) (tiếng Nhật).
+
+## Cách dùng 2: giao một quyết định trong công việc
+
+Dành cho những quyết định bạn lặp lại trong công việc, như "yêu cầu này có cùng vụ việc không?" hay "tin nhắn này có phải là yêu cầu thay đổi không?": để AI quyết định và lớn lên từ những lần sửa của bạn. Ở đây cũng không có lệnh nào phải gõ. Bạn nói với agent.
+
+> Tôi muốn shikii quyết định xem một yêu cầu có cùng vụ việc với yêu cầu trước không, và lớn lên từ những lần sửa của tôi
+
+Agent làm theo quy tắc của nó (skill): tạo `.shikii/` trong dự án (`shikii init`), chốt câu hỏi, các lựa chọn và đầu vào rồi viết tệp quyết định (`shikii new`; nó cho bạn xem câu hỏi và các lựa chọn một lần, vì đó là ý định của bạn), gọi quyết định (`shikii decide`), khởi động trang trả lời (http://127.0.0.1:8095) và báo cho bạn. Chưa có đường ranh thì không quyết định nào là `act` (cứ làm). Khi bạn trả lời trên trang, đường ranh tự được vạch khi đạt số lượng riêng của quyết định đó (20 trong ví dụ này), và từ đó trở đi:
+
+```sh
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=act
+#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
+#     (làm được, an toàn. Đường ranh dựa trên 61 đáp án, 48 trong đó do người trả lời; trong các câu do người trả lời mà đường ranh này cho phép hành động, 25 câu, 96% là đúng)
+```
+
+Chỉ có bốn giá trị `band`: `act` = cứ làm, `ask` = hỏi một người, `discard` = không làm gì, `abstain` = thiếu đầu vào. Bạn không bao giờ hành động dựa trên xác suất thô.
+
+- **Bằng tay**: `shikii init` → `shikii new` → `shikii decide … -i key=value` → `shikii serve`. Tất cả có trong [hướng dẫn](../guide.md)
+- **Từ một agent**: `shikii init` viết sẵn thiết lập MCP, nên Claude Code, Cursor, OpenCode và Codex có thể gọi trực tiếp các công cụ `shikii_decide` và `shikii_label` ([MCP](../../integrations/mcp.md))
+- **Từ chương trình của bạn**: chạy `shikii serve` và gọi `POST /v1/decide` (quyết định) và `POST /v1/label` (sửa). Nội dung là JSON và bắt buộc có `-H 'Content-Type: application/json'` ([HTTP API](../guide.md#or-run-one-process-for-programs-and-people))
+- **Quyết định làm sẵn**: sáu cái trong thư mục `decisions/` của repo này (loại yêu cầu, báo lỗi trùng, cùng vụ việc, …). Chép một cái với `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` rồi viết lại lời ([danh sách](../../decisions/README.md))
+- **Bạn đã có bảng các quyết định cũ**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` biến nó thành các lần sửa, nên bạn không phải trả lời 50 câu đầu bằng tay
+- **Docker**: chưa có Go và chưa có mô hình? `docker compose up` khởi động một AI trên máy và shikii, với trang tại http://127.0.0.1:8095 ([chi tiết](../../integrations/docker.md))
+- **Ví dụ của người khác**: [phân luồng thư yêu cầu](../examples/inquiry-route.md) (tiếng Nhật). Một người dùng lần đầu đã đi trọn vòng chỉ với README, có kèm tệp quyết định và 22 đầu vào
+
+## Bạn làm gì trên trang
+
+Trên trang trả lời (`shikii serve`), một người làm ba việc. Mọi việc còn lại là của máy.
+
+1. **Trả lời.** Trang hiện những quyết định AI không chắc, cộng thêm 1 trong 20 quyết định nó đã tự làm, và bạn nhấn nút cho điều thật sự đã đúng. Các phím 1 đến 9 và Enter (giống lựa chọn của AI) giúp đi nhanh. "Đã trả lời" cho phép sửa câu trả lời trước (câu mới nhất được tính)
+2. **Viết một cách hỏi khác.** Nếu bạn nghĩ "hỏi theo cách này sẽ tốt hơn", hãy gõ nó vào ô "Cách hỏi" bằng lời của bạn. Máy chấm điểm nó so với cách hỏi hiện tại trên cùng những lần sửa (với các quyết định của chính agent, tự động mỗi 50 câu trả lời mới) và chỉ nói "có thể áp dụng" khi nó thật sự tốt hơn. Bạn cũng có thể để một AI đề xuất cách hỏi. Bạn không bao giờ phải mở tệp
+3. **Nhấn chấp nhận hoặc từ chối.** Bạn xem ý nghĩa có đổi không rồi nhấn. Máy kiểm tra con số; bạn kiểm tra ý nghĩa
+
+"Chi tiết" thêm trạng thái của đường ranh theo từng mô hình, mục "hỏi AI lại" (quyết định lại cùng văn bản đó với cách hỏi và đường ranh hôm nay, rồi xem trước và sau), và bảng kiến thức (các nhận định dạng "hỏi theo cách này thì đúng", kèm bằng chứng). Bản ghi chỉ được thêm vào, không bao giờ bị xóa; quyết định mới thay chỗ quyết định cũ.
 
 ## Cài đặt
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh     # cần Go 1.27 trở lên
-cd <thư mục gốc dự án> && shikii init
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 trở lên; nếu không có thì dùng Docker (ở trên)
 ```
 
-`shikii init` dựng một thư mục duy nhất, `.shikii/` (bên trong có `decisions/` cho các spec của bạn, `wiki/` cho kiến thức, `records/` và `labels/` cho bản ghi và các lần sửa của bạn; không thêm gì khác vào thư mục gốc dự án), đồng thời thiết lập các kết nối với agent trong một lần: máy chủ MCP của shikii cho Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) và Codex (`~/.codex/config.toml`), một mục trong `AGENTS.md`, và các quy tắc chi tiết (skill) trong `~/.claude/skills/shikii`. Các mục do bạn tự viết không bao giờ bị đụng đến (mục shikii đã có sẵn thì để nguyên). Chỉ thư mục skill được thay mới mỗi lần, nên đừng sửa nó bằng tay. `wiki/` nhận phần kiến thức chung (cách hỏi từng loại câu hỏi, các mẫu câu đã hiệu quả, thói quen của từng mô hình); bộ cải thiện cách hỏi (`tune --propose`) đọc nó, và các trang bạn đã sửa không bao giờ bị `init` lần sau ghi đè. Không có Go? Dùng Docker bên dưới.
+install.sh làm gì: cài các tệp chạy (`shikii` và `shikii-readout`), thêm hai hook vào Claude Code và Codex, đặt các quy tắc của agent (skill) vào `~/.claude/skills/shikii`, và nếu có llama.cpp, khởi động AI trên máy (Kev-4B tại :8080) chạy nền. Muốn dùng Jev trên dịch vụ hoặc OpenRouter thay cho nó, hãy đặt khóa vào một biến môi trường ([kết nối](../guide.md#what-you-can-connect)). `shikii doctor` cho bạn biết cái gì đang chạy và cái gì còn thiếu.
 
-Các mục cấu hình trỏ đến một mô hình chạy trên máy bạn (`shikii up`, cổng 8080). Chỉ dùng mô hình trên dịch vụ ngoài? Hãy tự xóa `--local` khỏi từng tệp trong bốn tệp. Tệp cấu hình cho những công cụ bạn không dùng cũng được tạo ra; hãy xóa hoặc thêm vào `.gitignore` (chạy `shikii init` lần hai không bao giờ đụng vào thứ đã có). Hãy commit `.shikii/decisions/`, `.shikii/wiki/` và `.shikii/labels/` (spec của bạn, kiến thức và các lần sửa: tài sản còn nguyên khi đổi mô hình). `.shikii/records/` (mọi quyết định) lớn dần, nên commit hay không là tùy bạn (`shikii gc` bỏ các bản cũ). Nếu Codex đã có `mcp_servers`, không gì được thêm và các dòng cần dán được in ra. Dự án chỉ có `CLAUDE.md` sẽ không nhận `AGENTS.md` (vì OpenCode sẽ ngừng đọc `CLAUDE.md`).
+Thiết lập cho từng dự án (`shikii init`) là việc của agent (bạn cũng có thể tự chạy). Nó tạo một thư mục duy nhất, `.shikii/` (bên trong: `decisions/` = các tệp quyết định, `wiki/` = kiến thức, `records/` và `labels/` = bản ghi và các lần sửa). Không gì khác xuất hiện ở thư mục gốc dự án. `decisions/`, `wiki/` và `labels/` là tài sản còn nguyên khi đổi AI, nên hãy commit chúng; `records/` lớn dần, nên commit hay không là tùy bạn (`shikii gc` bỏ các bản cũ). Nó cũng thêm một mục shikii vào thiết lập của các agent (Claude Code `.mcp.json`, Cursor `.cursor/mcp.json`, OpenCode `opencode.json`, Codex `~/.codex/config.toml`) mà không đụng đến các mục bạn tự viết. Chạy lại lần nữa không thay đổi gì đã có.
 
-Sửa chính trang trả lời (`web/`, Svelte) cần Node 24 (`make web`). Dùng shikii thì không cần: trang đã dựng sẵn được commit và nhúng trong tệp chạy.
+Đầu ra của lệnh và các thông báo của hook bằng tiếng Anh (nếu ngôn ngữ trong thiết lập của Claude Code là tiếng Nhật, thông báo của hook hiện thêm tiếng Nhật bên cạnh tiếng Anh). Trang có tiếng Nhật. Các điểm tinh hơn, như chỉ dùng AI trên dịch vụ, `AGENTS.md` so với `CLAUDE.md`, và Node để sửa chính trang đó, nằm trong [hướng dẫn](../guide.md).
 
-## Đường vào ngắn nhất
-
-- **Docker**: không có Go, không có mô hình? `docker compose up` khởi động một mô hình trên máy (Kev-4B) và shikii, với trang trả lời tại http://127.0.0.1:8095 ([chi tiết](../../integrations/docker.md))
-- **Quyết định làm sẵn**: sáu cái trong thư mục `decisions/` của repo này (loại yêu cầu, báo lỗi trùng, cùng vụ việc, …). Chép một cái vào `.shikii/decisions/` của bạn, hoặc bắt đầu từ nó với `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` ([danh sách](../../decisions/README.md))
-- **Bạn đã có bảng các quyết định cũ**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` biến nó thành các lần sửa, nên bạn không phải trả lời 50 câu đầu bằng tay
-- **Từ chương trình của bạn**: chạy `shikii serve` và gọi `POST /v1/decide` (quyết định) và `POST /v1/label` (sửa). Nội dung là JSON và bắt buộc có `-H 'Content-Type: application/json'` (mọi điểm cuối: [hướng dẫn dài](../guide.md#or-run-one-process-for-programs-and-people))
-- **Ví dụ của người khác**: [phân luồng thư yêu cầu](../examples/inquiry-route.md) (tiếng Nhật). Một người dùng lần đầu đã đi trọn vòng chỉ với README; có kèm spec và 22 đầu vào
-- **Đo chính cách nghĩ của AI** (Claude Code và Codex): `shikii hook install` thêm hai hook chạy shikii trước và sau mỗi lượt. Trước: yêu cầu này rồi có làm thay đổi tệp không, và agent có nên thống nhất cách làm trước không? Sau: các thay đổi có nằm trong phạm vi bạn yêu cầu không, và nó đã làm xong điều bạn yêu cầu chưa? Đáp án đầu tiên có sẵn miễn phí từ việc cây làm việc có thay đổi hay không; phần còn lại bạn trả lời trên một trang web. Chưa có đường ranh thì không gì thay đổi. Sau đó, một yêu cầu cần lập kế hoạch sẽ thành một ghi chú gửi agent, còn một lượt trông như chưa xong hoặc vượt phạm vi sẽ thành một dòng gửi bạn, kèm số đáp án mà đường ranh dựa trên và độ chính xác do người kiểm tra. Không hook nào bao giờ chặn một công cụ ([chi tiết](../../integrations/claude-code.md), tiếng Nhật)
-- **Trong CI**: `uses: hayaenfj/shikii@main` chạy `shikii check` trên mỗi pull request, nên một cách hỏi bị đổi hoặc một đường ranh bị yếu đi sẽ làm bản dựng thất bại
-
-## Một vòng trọn vẹn
-
-```sh
-shikii up                                                             # khởi động mô hình trên máy (lần đầu sẽ tải về)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=ask  (chưa có đường ranh, nên: hỏi người)
-shikii serve --local http://127.0.0.1:8080                                   # spec và kiến thức được đọc từ .shikii/
-#   → trả lời tại http://127.0.0.1:8095. Khi một quyết định đủ số nó yêu cầu (eval.min_n, với cái này là 20) đường ranh tự được vạch
-#     Để thử với ít câu trả lời hơn, hạ eval.min_n trong spec xuống số bạn có (đường ranh viết bằng --force sẽ bị check đánh dấu)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=act
-#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
-#     (làm được, an toàn, kèm bằng chứng: đường ranh dựa trên 61 lần sửa, 48 trong đó từ người. Trong các câu trả lời của người mà đường ranh này xếp vào phía act, 25 câu, 96% là đúng)
-```
-
-Chỉ có bốn dải. `act` = cứ làm, `ask` = hỏi người, `discard` = không làm gì, `abstain` = thiếu đầu vào. Bạn không bao giờ phải đọc một xác suất thô.
-
-## Điểm mới
+## Vì sao bạn có thể đổi AI
 
 <p align="center"><img src="../assets/shikii-architecture-en.svg" alt="kiến trúc shikii: ba việc con người làm, các tài sản (câu hỏi, đáp án, biên nhận), vòng lặp máy nuôi lớn, wiki kiểm chứng được, mô hình dùng xong bỏ" width="100%"></p>
 
-- **Kiến thức tích lại trong câu hỏi và các lần sửa, không phải trong mô hình.** Nên mô hình là thứ dùng xong bỏ, và đổi nó không cần người làm gì. Đã đo: khi máy chọn cách hỏi và bố cục rồi thêm các ví dụ tương tự, một mô hình nền thông thường đạt độ chính xác ngang với tinh chỉnh (LoRA) ([con số](../bench.md))
-- **Quyết định tự động đi kèm bằng chứng.** Không phải "tự tin 95%" mà là "độ chính xác 0,96 trên 48 câu trả lời đã được người kiểm tra"
-- **Wiki không phải để đọc, mà để đo.** "Hỏi theo cách này thì đúng" tích lại thành nhận định kèm con số và được kiểm lại trên mô hình mới. Chỉ có người mới quyết định một nhận định là đã xác nhận
+- **Kiến thức tích lại cùng câu hỏi và các lần sửa, không phải trong AI.** Các lần sửa còn nguyên khi đổi AI, nên AI mới dùng lại chúng y như cũ và đường ranh được vạch lại. Trong các phép đo của chúng tôi, để máy chọn cách hỏi và bố cục rồi thêm các ví dụ tương tự đạt độ chính xác ngang với tinh chỉnh trọng số của mô hình (LoRA) ([con số](../bench.md))
+- **Quyết định tự động đi kèm biên nhận.** Không phải "tự tin 95%" mà là "độ chính xác 0,96 trên 48 trường hợp đã được người kiểm tra"
+- **Wiki không phải để đọc, mà để đo.** "Hỏi theo cách này thì đúng" tích lại thành các nhận định kèm con số, và có thể kiểm lại trên AI mới. Chỉ có người mới quyết định một nhận định là đã xác nhận
 
 ## Đọc thêm
 
-- [Hướng dẫn dài](../guide.md): mọi lệnh, phần bắt đầu nhanh đầy đủ, HTTP API, những gì bạn có thể kết nối, kết quả đã đo và câu hỏi thường gặp · [tài liệu tham chiếu spec](../../skills/shikii/references/spec.md)
-- [Ghi chú thiết kế](../decision-ops-framework.md): khung này nhận trách nhiệm gì và từ chối nhận gì, và những gì đã được kiểm chứng · [Kiến trúc](../architecture.md) (tiếng Nhật)
-- [Quyết định làm sẵn](../../decisions/README.md) · [wiki về cách hỏi](../../wiki/index.md) · [đo hiệu năng](../bench.md) · [so sánh mô hình](../model-comparison.md) · [nhật ký vận hành](../operations.md)
-- [Kết nối](../../integrations/mcp.md): MCP, bộ chuyển đổi biến một mô hình chat thường thành mô hình quyết định, Docker, Claude Code
-- [Hướng dẫn tiếng Nhật](../guide.ja.md) với một vòng trọn vẹn từ thực tế
+- [Hướng dẫn](../guide.md): mọi lệnh, HTTP API, câu hỏi thường gặp · [tài liệu tham chiếu spec](../../skills/shikii/references/spec.md)
+- [Hook](../../integrations/claude-code.md) (tiếng Nhật): cách đo chính cách nghĩ của agent, bảng dải → cách hành xử, cấu trúc bên trong
+- [Kiến trúc](../architecture.md) (tiếng Nhật): toàn cảnh phía sau sơ đồ ở trên
+- [Quyết định làm sẵn](../../decisions/README.md) · [wiki về cách hỏi](../../wiki/index.md) · [con số đã đo](../bench.md) · [ghi chú vận hành](../operations.md)
+- [Kết nối](../../integrations/mcp.md): MCP, bộ chuyển đổi cho các mô hình chat thường, Docker
 
-## Đóng góp
-
-Hoan nghênh issue và pull request. Một bài kiểm thử bảo vệ một hành vi phải được cho thấy thất bại trước: cố ý phá hành vi đó, chạy kiểm thử, ghi lại nó thất bại thế nào, rồi sửa và ghi lại rằng nó đạt. Mọi con số trong tài liệu đều đến từ một script. Chỉ có người mới đổi trạng thái của một nhận định trong wiki (`confirmed` / `tentative` / `rejected`), kèm lần chạy làm bằng chứng. Không thêm tùy chọn mới: bố cục (`decisions/` `wiki/` `.shikii/` ở thư mục gốc dự án) và các quy tắc cố định làm việc đó.
+**Dành cho người đóng góp**: cố ý phá một bài kiểm thử và xem nó thất bại trước khi sửa. Mọi con số đều đến từ một script. Chỉ có người mới xác nhận một nhận định trong wiki. Không thêm thiết lập mới; thay vào đó là chỗ đặt cố định và quy tắc cố định.
 
 ## Giấy phép
 
-[Apache 2.0](../../LICENSE). Giấy phép của mô hình là chuyện riêng: Kev-4B và họ Bonsai theo Apache 2.0, OpenJev theo CC BY-NC 4.0, Jev trên dịch vụ là của TypeSafe. shikii lưu xác suất và nhãn của bạn, không lưu gì của mô hình.
+[Apache 2.0](../../LICENSE). Giấy phép của mô hình là chuyện riêng (Kev-4B và họ Bonsai theo Apache 2.0, OpenJev theo CC BY-NC 4.0, Jev trên dịch vụ là dịch vụ của TypeSafe).

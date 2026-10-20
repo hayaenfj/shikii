@@ -4,103 +4,111 @@
 
 # shikii：把 AI 的「大概是」變成業務上敢用的「可以放手」
 
-### 讓 AI 來決定「是/否」「選哪個」「到什麼程度」，並讓這個決定在日常工作中一直靠得住的工具。你只需要核對一部分答案，偶爾確認一句「這還是我想要的嗎？」。剩下的交給機器。
+### 讓 AI 來決定「是/否」「選哪個」「到什麼程度」，並從你的核對結果裡把它養大的工具。你要做的，只是在頁面上回答「實際上是怎樣」。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-196%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
-[問題在哪](#問題在哪) · [shikii 做什麼](#shikii-做什麼) · [你做什麼](#你做什麼) · [安裝](#安裝) · [最快的入口](#最快的入口) · [走完一圈](#走完一圈) · [新在哪裡](#新在哪裡) · [繼續閱讀](#繼續閱讀)
+[問題在哪](#問題在哪) · [用法 1：量測 AI 自己的思考](#用法-1量測-ai-自己的思考) · [用法 2：把業務決定交給它](#用法-2把業務決定交給它) · [你在頁面上做什麼](#你在頁面上做什麼) · [安裝](#安裝) · [為什麼可以換 AI](#為什麼可以換-ai) · [繼續閱讀](#繼續閱讀)
 
-<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii：模型給你一個機率，shikii 告訴你能不能照著做" width="100%"></p>
+<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii" width="100%"></p>
 
 ## 問題在哪
 
-問 AI「這則諮詢和上一則是同一件事嗎？」，它回答「大概是，0.9」。真正做事時，這還不夠。
+問 AI「這則諮詢和上一則是同一件事嗎？」，它回答「大概是，0.9」。真正做事時，這還不夠。這個 0.9 真的是 10 次裡對 9 次嗎？從你換上新 AI 的那天起，它是不是已經悄悄變成了謊話？那些沒人盯著、它自己做出的決定，現在還對嗎？如果每次都要人來核對，用 AI 就沒什麼意義了。
 
-- 這個 0.9 真的是 10 次裡對 9 次嗎？
-- 從換上新模型那天起，它是不是已經悄悄開始說錯了？
-- 把問法稍微改一下，準確率會怎麼變？
-- 那些沒人盯著、它自己做出的決定，現在還對嗎？
+shikii 從你的核對結果裡畫出一條**線**：線以上，AI 才可以自己動手。線畫出來之前，什麼都不信任。線畫出來之後，每一個自動決定都帶著根據：這條線建立在多少條核對結果上、答對過多少次。線留在問題和核對結果那一邊，不在 AI 裡面，所以換 AI 不花人手。
 
-如果每個答案都要人來核對，用 AI 就沒什麼意義了。
+用法有兩種：量測替你寫程式的 AI 自己的思考（最輕的一種），以及把你業務裡的一項決定交給它。
 
-## shikii 做什麼
+## 用法 1：量測 AI 自己的思考
 
-1. **收集你的核對結果，畫出一條「線」：線以上 AI 才可以自己動手。** 從你給出的答案（「實際上是這樣」）裡，它量出 AI 的自信程度與實際答對頻率之間的關係，再決定從哪個位置往上可以信任。線畫出來之前，什麼都不會自動執行。線畫出來之後，每一個自動決定都帶著一份根據，寫明這條線建立在多少條核對過的答案上、這些答案當時答對了多少
-2. **嘗試別的問法，留下更好的那個。** 用同一批核對結果替其他候選的問題、選項說明和提示詞排版打分，只在真正更好的時候才採用。候選問法可以來自你（在頁面上用自己的話輸入），也可以來自 AI；每當新的核對結果累積到足夠多，機器就再量一次。你只需確認意思沒變
-3. **換模型不必從頭再來。** 核對結果與模型分開保存，新模型可以直接沿用，線由機器重新畫。不需要人手
-4. **把學到的東西留在 wiki 裡。** 「這樣問效果好」會連同量出的數字一起作為主張累積下來，可以在別的模型上重新驗證。其他人在他們的模型上量到的結果也加到同一頁
+給用 Claude Code 或 Codex 的人。寫程式的 agent 在收到請求時和完成工作時都會做判斷；shikii 默默地量測它們。
 
-## 你做什麼
+```sh
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
+```
 
-- **寫下你想決定什麼。** 回答幾個問題，一個決策檔案就出來了（`shikii new`，可以互動式，也可以用 `--type --question --option --input --pii`；完整格式見 [spec 參考](../../skills/shikii/references/spec.md)）
-- **核對答案。** 頁面上會列出 AI 沒把握的決定，再加上它自動執行的決定裡每 20 條抽 1 條，你按下按鈕告訴它實際是什麼。按鍵 1 到 9 和 Enter（與 AI 的選擇相同）可以快速過。「已回答」可以修正之前的答案（以最新的為準）。「詳情」裡多出一個「再問一次 AI」，用今天的問法和線對同一段文字重新判定，並把前後並排顯示；紀錄只追加，從不刪除
-- **偶爾確認一句「這還是我想要的嗎？」。** 當機器找到一種得分更高的問法時，你看看意思有沒有變，然後按下採用或拒絕。要是你想到了更好的問法，就在同一個頁面上輸入；機器來量測，你從不用改檔案
+就這樣。它會安裝執行檔，替 Claude Code 和 Codex 加上兩個 hook，放好 agent 的規則（skill），並在背景啟動一個小的本機 AI（Kev-4B）（沒有 llama.cpp 的話，會印出安裝它的那一行）。開一個新的終端機，照常和 agent 一起工作就好（在 Codex 裡，先跑一次 `/hooks` 來信任 shikii 的 hook）。量測的有四件事。
 
-其餘的都是機器的工作。
+| 時機 | 問題 | 正確答案從哪裡來 |
+|---|---|---|
+| 收到請求時 | 這個請求最終會改動檔案嗎？ | 自動：下一個請求之前，工作樹有沒有變化 |
+| 收到請求時 | agent 動手之前，應該先和你商定做法嗎？ | 你，在頁面上 |
+| 一輪結束時 | 改動是否在你要求的範圍內？ | 你，在頁面上 |
+| 一輪結束時 | 你要求的事做完了嗎？ | 你，在頁面上 |
+
+一輪結束時會出現一行 `shikii: 這個工作階段有 3 條決定等你回答: http://127.0.0.1:8096/`，有空的時候打開就好（hook 也會在背景把頁面啟動起來）；每個答案只要幾秒。累積 50 個答案之後線就畫出來，agent 的行為隨之改變：需要先出計畫的請求會變成一條給 agent 的提示，看起來沒做完或超出範圍的一輪會變成一行給你的提示，兩者都附帶根據，例如「線建立在 61 條正確答案上，人工核對的精確率 0.96」。在那之前，hook 只做紀錄。hook 從不攔下任何工具。
+
+所有東西都放在同一個地方 `~/.shikii/agent`，每個問題一條線，跨你所有的專案（這些問題問的是 agent 的思考方式，所以正確答案在每個儲存庫裡都一樣）。每條紀錄都標記了它來自哪個儲存庫，頁面可以按儲存庫篩選。詳情：[hook](../../integrations/claude-code.md)（日文）。
+
+## 用法 2：把業務決定交給它
+
+像「這則諮詢是同一件事嗎？」「這則訊息是變更請求嗎？」這類你在工作裡反覆做的決定：讓 AI 來決定，再從你的核對結果裡把它養大。這裡同樣沒有要你打的命令。你跟 agent 說就行。
+
+> 我想讓 shikii 來判定一則諮詢是不是和之前的某一則同一件事，並從我的核對結果裡把它養大
+
+agent 會照它的規則（skill）進行：在專案裡建立 `.shikii/`（`shikii init`），定下問題、選項和輸入，寫出決策檔案（`shikii new`；它會把問題和選項給你看一次，因為那是你的意圖），呼叫判定（`shikii decide`），啟動核對頁面（http://127.0.0.1:8095），然後告訴你。線畫出來之前，沒有任何決定會是 `act`（放手去做）。隨著你在頁面上回答，一到這個決定自己定下的數量（這個例子是 20 條），線就自動畫出來，從此以後：
+
+```sh
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=act
+#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
+#     (可以放手去做。這條線建立在 61 條正確答案上，其中 48 條是人回答的；在人回答的答案裡，這條線會放行的那 25 條，有 96% 是對的)
+```
+
+`band` 只有四種值：`act` = 放手去做，`ask` = 找人確認，`discard` = 什麼都不做，`abstain` = 輸入不足。你照著做的從來不是原始機率。
+
+- **手動**：`shikii init` → `shikii new` → `shikii decide … -i key=value` → `shikii serve`。全部都在[指南](../guide.md)裡
+- **從 agent**：`shikii init` 會寫好 MCP 設定，所以 Claude Code、Cursor、OpenCode 和 Codex 可以直接呼叫 `shikii_decide` 和 `shikii_label` 這兩個工具（[MCP](../../integrations/mcp.md)）
+- **從你自己的程式**：啟動 `shikii serve`，呼叫 `POST /v1/decide`（判定）和 `POST /v1/label`（核對）。請求內容是 JSON，必須帶 `-H 'Content-Type: application/json'`（[HTTP API](../guide.md#or-run-one-process-for-programs-and-people)）
+- **現成的決策**：本儲存庫的 `decisions/` 裡有六個（請求類型、重複的 bug 回報、同一諮詢，……）。用 `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` 複製一個再改寫（[清單](../../decisions/README.md)）
+- **你已經有一張過去決定的表格**：`shikii import past.csv --spec .shikii/decisions/<id>.yaml` 把它變成核對結果，前 50 條就不必手動回答了
+- **Docker**：還沒有 Go，也沒有模型？`docker compose up` 會啟動一個本機 AI 和 shikii，頁面在 http://127.0.0.1:8095（[詳情](../../integrations/docker.md)）
+- **別人的例子**：[諮詢郵件分流](../examples/inquiry-route.md)（日文）。一位第一次使用的人只靠 README 走完了整個循環；決策檔案和 22 筆輸入都在裡面
+
+## 你在頁面上做什麼
+
+在核對頁面（`shikii serve`）上，人做三件事。其餘的都是機器的工作。
+
+1. **回答。** 頁面上會列出 AI 沒把握的決定，再加上它自動執行的決定裡每 20 條抽 1 條，你按下按鈕告訴它實際是什麼。按鍵 1 到 9 和 Enter（與 AI 的選擇相同）可以快速過。「已回答」可以修正之前的答案（以最新的為準）
+2. **寫一個新問法。** 要是你覺得「這樣問應該更準」，就在「問法」面板裡用自己的話輸入。機器會用同一批核對結果替它和目前的問法打分（agent 自己的決定，每新增 50 個答案就自動量一次），只在真正更好的時候才說「可以採用」。你也可以讓 AI 來提新問法。你從不用打開檔案
+3. **按下採用或拒絕。** 你看看意思有沒有變，然後按下去。機器核對數字；你核對意思
+
+「詳情」裡會多出每個模型的線的狀態、「再問一次 AI」（用今天的問法和線對同一段文字重新判定，並把前後並排顯示），以及知識面板（「這樣問效果好」這一類的主張，連同它們的證據）。紀錄只追加，從不刪除；新的決定會接替舊的位置。
 
 ## 安裝
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh     # needs Go 1.27 or newer
-cd <project root> && shikii init
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 或更新；沒有的話用 Docker（見上）
 ```
 
-`shikii init` 一次建好一個資料夾 `.shikii/`（裡面 `decisions/` 放你的 spec，`wiki/` 放知識，`records/` 和 `labels/` 放紀錄和你的核對結果；專案根目錄不會再多出別的東西），以及各個 agent 的接入：替 Claude Code（`.mcp.json`）、Cursor（`.cursor/mcp.json`）、OpenCode（`opencode.json`）和 Codex（`~/.codex/config.toml`）設好 shikii 的 MCP server，在 `AGENTS.md` 裡加一節，並把詳細規則（skill）放到 `~/.claude/skills/shikii`。你自己寫的條目絕不會被動（已有的 shikii 條目也原樣保留）。只有 skill 資料夾每次都會被換掉，所以不要手動改它。`wiki/` 會收到共享知識（每種問題類型該怎麼問、有效的措辭模式、每個模型的習性）；改進問法的功能（`tune --propose`）會讀取它，而你編輯過的頁面不會被之後的 `init` 覆寫。沒有 Go？用下面的 Docker。
+install.sh 做的事：安裝執行檔（`shikii` 和 `shikii-readout`），替 Claude Code 和 Codex 加上兩個 hook，把 agent 的規則（skill）放到 `~/.claude/skills/shikii`，而且如果有 llama.cpp，就在背景啟動本機 AI（Kev-4B，連接埠 :8080）。想改用託管版 Jev 或 OpenRouter，把金鑰放進環境變數（[可以接什麼](../guide.md#what-you-can-connect)）。`shikii doctor` 會告訴你什麼在跑、什麼還缺。
 
-這些條目指向本機模型（`shikii up`，連接埠 8080）。只用託管模型？在四個檔案裡各自手動刪掉 `--local`。你不用的工具也會產生設定檔；刪掉它們或加進 `.gitignore`（再跑一次 `shikii init` 不會碰已有的東西）。請把 `.shikii/decisions/`、`.shikii/wiki/` 和 `.shikii/labels/` 提交到版本庫（你的 spec、知識和核對結果：這些是換模型也能留下來的資產）。`.shikii/records/`（每一條決定）會一直增長，提交與否隨意（`shikii gc` 會清掉舊的）。如果 Codex 已經有 `mcp_servers`，就不會添加，而是印出需要貼上的幾行。只有 `CLAUDE.md` 的專案不會產生 `AGENTS.md`（否則 OpenCode 會不再讀 `CLAUDE.md`）。
+每個專案的準備（`shikii init`）是 agent 的工作（你也可以自己跑）。它只建立一個資料夾 `.shikii/`（裡面：`decisions/` = 決策檔案，`wiki/` = 知識，`records/` 和 `labels/` = 紀錄和核對結果）。專案根目錄不會再多出別的東西。`decisions/`、`wiki/` 和 `labels/` 是換 AI 也能留下來的資產，所以請提交到版本庫；`records/` 會一直增長，提交與否隨意（`shikii gc` 會清掉舊的）。它也會在你各個 agent 的設定裡（Claude Code 的 `.mcp.json`、Cursor 的 `.cursor/mcp.json`、OpenCode 的 `opencode.json`、Codex 的 `~/.codex/config.toml`）加上一條 shikii 的條目，而不碰你自己寫的條目。再跑一次，已有的東西不會改變。
 
-要修改核對頁面本身（`web/`，Svelte）需要 Node 24（`make web`）。只是使用 shikii 則不需要：建好的頁面已提交，並嵌在執行檔裡。
+命令的輸出和 hook 的訊息是英文（如果 Claude Code 的語言設定是日文，hook 的訊息會在英文旁邊附上日文）。頁面有日文。更細的地方，例如只用託管 AI、`AGENTS.md` 和 `CLAUDE.md` 的取捨，以及修改頁面本身要用的 Node，都在[指南](../guide.md)裡。
 
-## 最快的入口
-
-- **Docker**：沒有 Go，也沒有模型？`docker compose up` 會啟動一個本機模型（Kev-4B）和 shikii，核對頁面在 http://127.0.0.1:8095（[詳情](../../integrations/docker.md)）
-- **現成的決策**：本儲存庫的 `decisions/` 裡有六個（請求類型、重複的 bug 回報、同一諮詢，……）。複製一個到你的 `.shikii/decisions/`，或用 `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` 以它為起點（[清單](../../decisions/README.md)）
-- **你已經有一張過去決定的表格**：`shikii import past.csv --spec .shikii/decisions/<id>.yaml` 把它變成核對結果，前 50 條就不必手動回答了
-- **從你自己的程式呼叫**：啟動 `shikii serve`，呼叫 `POST /v1/decide`（判定）和 `POST /v1/label`（核對）。請求內容是 JSON，必須帶 `-H 'Content-Type: application/json'`（所有端點見[完整指南](../guide.md#or-run-one-process-for-programs-and-people)）
-- **別人的例子**：[諮詢郵件分流](../examples/inquiry-route.md)（日文）。一位第一次使用的人只靠 README 走完了整個循環；spec 和 22 筆輸入都在裡面
-- **量測 AI 自己的思考**（Claude Code 和 Codex）：`shikii hook install` 會裝上兩個 hook，在 agent 每一輪工作的前後各跑一次 shikii。之前問：這個請求最終會改動檔案嗎？agent 是否應該先和你商定做法？之後問：改動是否在你要求的範圍內？你要求的事做完了嗎？第一個正確答案是免費得到的，看工作樹有沒有變化就行；其餘的由你在頁面上回答。線畫出來之前什麼都不會變。之後，需要先出計畫的請求會變成一條給 agent 的提示，看起來沒做完或超出範圍的一輪會變成一行給你的提示，並附上這條線建立在多少條正確答案上以及人工核對過的精確率。hook 從不攔下任何工具（[詳情](../../integrations/claude-code.md)，日文）
-- **在 CI 裡**：`uses: hayaenfj/shikii@main` 會在每個 pull request 上跑 `shikii check`，問法被改動或線被削弱時建置就會失敗
-
-## 走完一圈
-
-```sh
-shikii up                                                             # start the local model (downloaded on first run)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=ask  (no line yet, so: ask a person)
-shikii serve --local http://127.0.0.1:8080                                   # specs and knowledge are read from .shikii/
-#   → answer at http://127.0.0.1:8095. Once a decision has the number it asks for (eval.min_n, 20 for this one) the line is drawn by itself
-#     To try with fewer answers, lower eval.min_n in the spec to what you have (a line written with --force is flagged by check)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=act
-#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
-#     (safe to act, with the evidence: the line rests on 61 corrections, 48 of them from people. Of the human answers that this line puts on the act side, 25, 96% were right)
-```
-
-區段（band）只有四種。`act` = 放手去做，`ask` = 找人確認，`discard` = 什麼都不做，`abstain` = 輸入不足。你永遠不需要去讀一個原始機率。
-
-## 新在哪裡
+## 為什麼可以換 AI
 
 <p align="center"><img src="../assets/shikii-architecture-en.svg" alt="shikii 的架構：人做的三件事，資產（問題、正確答案、根據），機器養大的循環，可驗證的 wiki，可丟棄的模型" width="100%"></p>
 
-- **知識累積在問題和核對結果裡，而不是在模型裡。** 所以模型是可丟棄的，換模型不需要人手。實測：讓機器選擇問法和排版、再加上相似的例子，一個普通的基礎模型在準確率上追平了微調（LoRA）（[數字](../bench.md)）
-- **自動決定附帶證據。** 不是「95% 有信心」，而是「在人核對過的 48 筆答案上精確率 0.96」
-- **wiki 不是拿來讀的，是拿來量的。** 「這樣問效果好」作為帶數字的主張累積下來，並在新模型上重新測試。只有人才能判定一條主張已被證實
+- **知識累積在問題和核對結果裡，而不是在 AI 裡。** 核對結果比 AI 活得久，所以新的 AI 可以原樣沿用，線由機器重新畫。在我們的實測裡，讓機器選擇問法和排版、再加上相似的例子，達到了和微調模型權重（LoRA）相同的準確率（[數字](../bench.md)）
+- **自動決定附帶根據。** 不是「95% 有信心」，而是「在人核對過的 48 筆上精確率 0.96」
+- **wiki 不是拿來讀的，是拿來量的。** 「這樣問效果好」作為帶數字的主張累積下來，並可以在新的 AI 上重新測試。只有人才能判定一條主張已被證實
 
 ## 繼續閱讀
 
-- [完整指南](../guide.md)：每條命令、完整的快速上手、HTTP API、可以接什麼、量到的結果和常見問題 · [spec 參考](../../skills/shikii/references/spec.md)
-- [設計筆記](../decision-ops-framework.md)：這個框架負責什麼、拒絕負責什麼，以及驗證過什麼 · [架構](../architecture.md)（日文）
-- [現成的決策](../../decisions/README.md) · [怎麼問的 wiki](../../wiki/index.md) · [基準測試](../bench.md) · [模型比較](../model-comparison.md) · [營運日誌](../operations.md)
-- [接入](../../integrations/mcp.md)：MCP、把普通聊天模型變成決策模型的轉接器、Docker、Claude Code
-- [日文指南](../guide.ja.md)，含一個完整的真實循環
+- [指南](../guide.md)：每條命令、HTTP API、常見問題 · [spec 參考](../../skills/shikii/references/spec.md)
+- [hook](../../integrations/claude-code.md)（日文）：agent 自己的思考是怎麼量的、區段 → 行為的對照表、內部結構
+- [架構](../architecture.md)（日文）：上面那張圖背後的全貌
+- [現成的決策](../../decisions/README.md) · [怎麼問的 wiki](../../wiki/index.md) · [量到的數字](../bench.md) · [營運筆記](../operations.md)
+- [接入](../../integrations/mcp.md)：MCP、把普通聊天模型接進來的轉接器、Docker
 
-## 參與貢獻
-
-歡迎提 issue 和 pull request。守護某個行為的測試要先展示它失敗：故意把行為破壞掉，跑測試，記下它怎麼失敗的，再修好並記下它通過。文件裡的每個數字都來自腳本。只有人可以改變 wiki 主張的狀態（`confirmed` / `tentative` / `rejected`），並附上作為證據的那次執行。不加新選項：靠佈局（專案根目錄下的 `decisions/` `wiki/` `.shikii/`）和固定規則來解決。
+**給參與貢獻的人**：先故意把測試弄壞、看它失敗，再修好。每個數字都來自腳本。只有人可以確認一條 wiki 主張。不加新設定；靠固定的位置和固定的規則來解決。
 
 ## 授權
 
-[Apache 2.0](../../LICENSE)。模型的授權另計：Kev-4B 和 Bonsai 系列是 Apache 2.0，OpenJev 是 CC BY-NC 4.0，託管版 Jev 是 TypeSafe 的服務。shikii 只保存你的機率和標籤，不保存模型的任何東西。
+[Apache 2.0](../../LICENSE)。模型的授權另計（Kev-4B 和 Bonsai 系列是 Apache 2.0，OpenJev 是 CC BY-NC 4.0，託管版 Jev 是 TypeSafe 的服務）。

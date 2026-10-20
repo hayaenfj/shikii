@@ -2,105 +2,113 @@
 
 <p align="center"><img src="../assets/gen-mark.png" alt="shikii" width="112"></p>
 
-# shikii: trasformare il «probabilmente» di un'IA in un «si può agire» su cui far girare un'attività
+# shikii: trasformare il «probabilmente» dell'IA in un «ci si può fidare» su cui far girare un'attività
 
-### Uno strumento per lasciare che un'IA decida sì/no, quale o quanto, e per mantenere quella decisione affidabile nel lavoro di ogni giorno. Lei controlla alcune risposte e, ogni tanto, conferma «è ancora quello che intendevo?». Il resto lo fa la macchina.
+### Uno strumento che lascia a un'IA decidere «sì o no», «quale» e «quanto», e la fa crescere con le sue correzioni. Lei deve solo rispondere, in una pagina, a cosa era davvero vero.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-196%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
-[Il problema](#il-problema) · [Cosa fa shikii](#cosa-fa-shikii) · [Cosa fa lei](#cosa-fa-lei) · [Installazione](#installazione) · [Le vie più brevi](#le-vie-più-brevi) · [Un giro completo](#un-giro-completo) · [Cosa c'è di nuovo](#cosa-cè-di-nuovo) · [Per saperne di più](#per-saperne-di-più)
+[Il problema](#il-problema) · [Uso 1: misurare il pensiero dell'IA stessa](#uso-1-misurare-il-pensiero-dellia-stessa) · [Uso 2: affidarle una decisione di lavoro](#uso-2-affidarle-una-decisione-di-lavoro) · [Cosa fa lei nella pagina](#cosa-fa-lei-nella-pagina) · [Installazione](#installazione) · [Perché si può cambiare IA](#perché-si-può-cambiare-ia) · [Per saperne di più](#per-saperne-di-più)
 
-<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii: un modello le dà una probabilità, shikii le dice se può agire in base a quella" width="100%"></p>
+<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii" width="100%"></p>
 
 ## Il problema
 
-Chieda a un'IA «questa richiesta riguarda la stessa pratica della precedente?» e risponde «probabilmente, 0,9». Per il lavoro vero non basta.
+Chieda a un'IA «questa richiesta riguarda la stessa pratica della precedente?» e risponde «probabilmente, 0,9». Per il lavoro non basta. Quel 0,9 è davvero giusto nove volte su dieci? Dal giorno in cui è passato a un'IA più nuova, è diventato in silenzio una bugia? Le decisioni che prende mentre nessuno guarda sono ancora giuste? Se una persona deve controllare ogni volta, usare un'IA aveva poco senso.
 
-- Quel 0,9 è davvero giusto 9 volte su 10?
-- Dal giorno in cui ha messo un modello nuovo, ha iniziato a mentire in silenzio?
-- Se cambia un po' la formulazione, come si sposta la precisione?
-- Le decisioni che ha preso da sola, senza nessuno a guardare: sono ancora giuste?
+shikii traccia una **linea** a partire dalle sue correzioni: sopra questa, l'IA può agire da sola. Finché non esiste una linea, non ci si fida di nulla. Quando esiste, ogni decisione automatica porta con sé le sue basi: su quante correzioni si regge la linea e quante volte aveva ragione. La linea vive insieme alla domanda e alle correzioni, non dentro l'IA, quindi cambiare IA non costa lavoro umano.
 
-Se una persona deve controllare ogni risposta, usare l'IA aveva poco senso.
+Ci sono due modi di usarlo: misurare il pensiero dell'IA che scrive il suo codice (il più leggero) e affidarle una decisione del suo lavoro.
 
-## Cosa fa shikii
+## Uso 1: misurare il pensiero dell'IA stessa
 
-1. **Raccoglie le sue correzioni e traccia la linea sopra la quale l'IA può agire da sola.** Dalle risposte che lei ha dato («questo era davvero vero») misura come la fiducia dell'IA si lega alla frequenza con cui ha ragione, e decide da dove in su ci si può fidare. Finché non esiste una linea, niente agisce. Quando esiste, ogni decisione automatica porta una ricevuta che dice su quante risposte controllate si regge la linea e quante volte erano giuste
-2. **Prova altri modi di chiedere e tiene il migliore.** Sulle stesse correzioni dà un punteggio a domande alternative, descrizioni delle opzioni e disposizioni del prompt, e ne adotta una solo quando è davvero migliore. I candidati vengono da lei (scritti nella pagina, con le sue parole) o da un'IA; la macchina li misura di nuovo ogni volta che sono arrivate abbastanza correzioni nuove. Lei conferma soltanto che il significato non è cambiato
-3. **Le lascia cambiare modello senza ricominciare da capo.** Le correzioni vivono separate dal modello, quindi un modello nuovo le riusa e la macchina ritraccia la linea. Nessun lavoro umano
-4. **Conserva ciò che ha imparato in un wiki.** «Chiedere così funziona» si accumula come affermazioni con i numeri misurati, da riprovare su un altro modello. Ciò che altre persone hanno misurato sui loro modelli si aggiunge alla stessa pagina
+Per chi usa Claude Code o Codex. L'agente che scrive codice prende delle decisioni quando riceve una richiesta e quando finisce; shikii le misura in silenzio.
 
-## Cosa fa lei
+```sh
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
+```
 
-- **Scrive cosa vuole far decidere.** Risponde a poche domande e compare un file di decisione (`shikii new`, in modo interattivo o con `--type --question --option --input --pii`; il formato completo è nel [riferimento del file di decisione](../../skills/shikii/references/spec.md))
-- **Controlla le risposte.** La pagina mostra le decisioni su cui l'IA era incerta, più 1 su 20 di quelle su cui ha agito, e lei preme il pulsante di ciò che era davvero vero. I tasti da 1 a 9 e Invio (uguale alla scelta dell'IA) vanno veloci. «Risposte date» permette di correggere una risposta precedente (vale la più recente). «Dettagli» aggiunge «chiedi di nuovo all'IA», che ridecide lo stesso testo con la formulazione e la linea di oggi e mostra prima e dopo; le registrazioni vengono aggiunte, mai cancellate
-- **Ogni tanto conferma «è ancora quello che intendevo?».** Quando la macchina trova una formulazione con un punteggio migliore, lei guarda se il significato è cambiato e preme adotta o rifiuta. Se le viene in mente un modo migliore di chiedere, lo scriva nella stessa pagina; la macchina lo misura, lei non modifica mai un file
+Tutto qui. Installa il binario, aggiunge due hook a Claude Code e Codex, mette al loro posto le regole dell'agente (una skill) e avvia in background una piccola IA locale (Kev-4B) (se manca llama.cpp, stampa la riga per installarlo). Apra un terminale nuovo e continui a lavorare con l'agente come sempre (in Codex, esegua `/hooks` una volta per dare fiducia agli hook di shikii). Vengono misurate quattro cose.
 
-Tutto il resto è compito della macchina.
+| Quando | Domanda | Da dove viene la verità |
+|---|---|---|
+| Arriva una richiesta | Questa richiesta finirà per modificare dei file? | Automatica: l'albero di lavoro è cambiato prima della richiesta successiva |
+| Arriva una richiesta | L'agente dovrebbe accordarsi con lei su un approccio prima di toccare qualcosa? | Lei, nella pagina |
+| Il turno finisce | Le modifiche sono rimaste dentro ciò che ha chiesto? | Lei, nella pagina |
+| Il turno finisce | Ha finito ciò che ha chiesto? | Lei, nella pagina |
+
+Alla fine di un turno compare una riga, `shikii: 3 decisioni di questa sessione aspettano la sua risposta: http://127.0.0.1:8096/`, e lei la apre quando ha un minuto (anche la pagina viene avviata in background dall'hook); ogni risposta richiede pochi secondi. Dopo 50 risposte si traccia una linea e il comportamento dell'agente cambia: una richiesta che ha bisogno di un piano diventa una nota per l'agente, e un turno che sembra incompiuto o fuori dal richiesto diventa una riga per lei, ognuna con le sue basi, come «linea su 61 verità, precisione controllata da persone 0,96». Fino ad allora gli hook si limitano a registrare. Nessun hook ferma mai uno strumento.
+
+Tutto vive in un unico posto, `~/.shikii/agent`, con una linea per domanda per tutti i suoi progetti (le domande riguardano il pensiero dell'agente, quindi la verità è la stessa in ogni repository). Ogni registrazione è contrassegnata con il repository da cui viene, e la pagina può filtrare per repository. Dettagli: [l'hook](../../integrations/claude-code.md) (giapponese).
+
+## Uso 2: affidarle una decisione di lavoro
+
+Per le decisioni che ripete al lavoro, come «questa richiesta è la stessa pratica?» o «questo messaggio è una richiesta di modifica?»: lasci decidere l'IA e la faccia crescere con le sue correzioni. Anche qui non c'è nessun comando da digitare. Lo dice all'agente.
+
+> Voglio che shikii decida se una richiesta riguarda la stessa pratica di una precedente, e che cresca con le mie correzioni
+
+L'agente segue le sue regole (la skill): crea `.shikii/` nel progetto (`shikii init`), fissa la domanda, le opzioni e gli input e scrive il file di decisione (`shikii new`; le mostra una volta la domanda e le opzioni, perché quella è la sua intenzione), chiama la decisione (`shikii decide`), avvia la pagina delle risposte (http://127.0.0.1:8095) e la avvisa. Finché non esiste una linea nessuna decisione è `act` (procedere). Man mano che lei risponde nella pagina, la linea si traccia da sola quando si raggiunge il numero fissato per quella decisione (20 in questo esempio), e da quel momento:
+
+```sh
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=act
+#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
+#     (si può agire. La linea si regge su 61 verità, 48 delle quali date da persone; di quelle date da persone che questa linea lascerebbe agire, 25, il 96% era giusto)
+```
+
+I valori di `band` sono solo quattro: `act` = procedere, `ask` = verificare con una persona, `discard` = non agire, `abstain` = input insufficiente. Non si agisce mai su una probabilità grezza.
+
+- **A mano**: `shikii init` → `shikii new` → `shikii decide … -i key=value` → `shikii serve`. È tutto nella [guida](../guide.md)
+- **Da un agente**: `shikii init` scrive la configurazione MCP, così Claude Code, Cursor, OpenCode e Codex possono chiamare direttamente gli strumenti `shikii_decide` e `shikii_label` ([MCP](../../integrations/mcp.md))
+- **Dal suo programma**: avvii `shikii serve` e chiami `POST /v1/decide` (decidere) e `POST /v1/label` (correggere). Il corpo è JSON e serve `-H 'Content-Type: application/json'` ([API HTTP](../guide.md#or-run-one-process-for-programs-and-people))
+- **Decisioni pronte**: sei nella cartella `decisions/` di questo repository (tipo di richiesta, segnalazione di bug duplicata, stessa richiesta, …). Ne copi una con `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` e la riformuli ([elenco](../../decisions/README.md))
+- **Ha già una tabella di decisioni passate**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` la trasforma in correzioni, così non deve rispondere alle prime 50 a mano
+- **Docker**: ancora niente Go e niente modello? `docker compose up` avvia un'IA locale e shikii, con la pagina su http://127.0.0.1:8095 ([dettagli](../../integrations/docker.md))
+- **L'esempio di qualcun altro**: [smistare le e-mail di richiesta](../examples/inquiry-route.md) (giapponese). Una persona al primo utilizzo ha fatto tutto il giro con il solo README; sono inclusi il file di decisione e i 22 input
+
+## Cosa fa lei nella pagina
+
+Nella pagina delle risposte (`shikii serve`) una persona fa tre cose. Tutto il resto è compito della macchina.
+
+1. **Rispondere.** La pagina mostra le decisioni su cui l'IA era incerta, più 1 su 20 di quelle su cui ha agito, e lei preme il pulsante di ciò che era davvero vero. I tasti da 1 a 9 e Invio (uguale alla scelta dell'IA) vanno veloci. «Risposte date» permette di correggere una risposta precedente (vale la più recente)
+2. **Scrivere una riformulazione.** Se pensa «chiedendo così funzionerebbe meglio», lo scriva nel pannello «Formulazione» con le sue parole. La macchina le dà un punteggio rispetto alla formulazione attuale sulle stesse correzioni (per le decisioni dell'agente stesso, in automatico ogni 50 risposte nuove) e dice «si può adottare» solo quando è davvero migliore. Può anche lasciare che un'IA proponga delle riformulazioni. Non apre mai un file
+3. **Premere adotta o rifiuta.** Lei guarda se il significato è cambiato e preme. La macchina controlla i numeri; lei controlla il significato
+
+«Dettagli» aggiunge lo stato della linea per ogni modello, «chiedi di nuovo all'IA» (ridecide lo stesso testo con la formulazione e la linea di oggi e mostra prima e dopo) e il pannello della conoscenza (affermazioni del tipo «chiedere così funziona», con le loro prove). Le registrazioni vengono aggiunte, mai cancellate; una decisione nuova prende il posto di quella vecchia.
 
 ## Installazione
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh     # serve Go 1.27 o più recente
-cd <radice del progetto> && shikii init
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 o più recente; altrimenti Docker (sopra)
 ```
 
-`shikii init` prepara una cartella, `.shikii/` (con `decisions/` per i suoi file di decisione, `wiki/` per la conoscenza, `records/` e `labels/` per le registrazioni e le sue correzioni; nient'altro viene aggiunto alla radice del progetto), e in un colpo solo i collegamenti con gli agenti: il server MCP di shikii per Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) e Codex (`~/.codex/config.toml`), una sezione in `AGENTS.md` e le regole dettagliate (la skill) in `~/.claude/skills/shikii`. Le sue voci non vengono mai toccate (una voce shikii già presente resta com'è). Solo la cartella della skill viene sostituita ogni volta, quindi non la modifichi a mano. `wiki/` riceve la conoscenza condivisa (come porre ogni tipo di domanda, formulazioni che hanno funzionato, le abitudini di ogni modello); il miglioratore di formulazione (`tune --propose`) la legge, e le pagine che lei ha modificato non vengono mai sovrascritte da un `init` successivo. Niente Go? Usi Docker, qui sotto.
+Cosa fa install.sh: installa i binari (`shikii` e `shikii-readout`), aggiunge due hook a Claude Code e Codex, mette le regole dell'agente (la skill) in `~/.claude/skills/shikii` e, se llama.cpp è presente, avvia in background l'IA locale (Kev-4B su :8080). Per usare invece Jev in hosting o OpenRouter, metta la chiave in una variabile d'ambiente ([collegamenti](../guide.md#what-you-can-connect)). `shikii doctor` le dice cosa è in esecuzione e cosa manca.
 
-Le voci puntano a un modello locale (`shikii up`, porta 8080). Solo in hosting? Tolga `--local` a mano da ciascuno dei quattro file. Vengono creati anche i file di configurazione per strumenti che non usa; li cancelli o li aggiunga a `.gitignore` (un secondo `shikii init` non tocca mai ciò che esiste). Faccia il commit di `.shikii/decisions/`, `.shikii/wiki/` e `.shikii/labels/` (i suoi file di decisione, la conoscenza e le sue correzioni: il patrimonio che sopravvive a un cambio di modello). `.shikii/records/` (ogni decisione) continua a crescere, quindi farne il commit è facoltativo (`shikii gc` scarta quelle vecchie). Se Codex ha già `mcp_servers`, non viene aggiunto nulla e vengono stampate le righe da incollare. Un progetto con solo un `CLAUDE.md` non riceve `AGENTS.md` (OpenCode smetterebbe di leggere `CLAUDE.md`).
+La preparazione per progetto (`shikii init`) è compito dell'agente (può anche eseguirla lei). Crea una sola cartella, `.shikii/` (dentro: `decisions/` = file di decisione, `wiki/` = conoscenza, `records/` e `labels/` = registrazioni e correzioni). Nella radice del progetto non compare nient'altro. `decisions/`, `wiki/` e `labels/` sono un patrimonio che sopravvive a un cambio di IA, quindi ne faccia il commit; `records/` continua a crescere, quindi farne il commit è facoltativo (`shikii gc` scarta quelle vecchie). Aggiunge anche una voce shikii alla configurazione dei suoi agenti (`.mcp.json` di Claude Code, `.cursor/mcp.json` di Cursor, `opencode.json` di OpenCode, `~/.codex/config.toml` di Codex) senza toccare le voci scritte da lei. Eseguirlo di nuovo non cambia nulla di ciò che esiste.
 
-Modificare la pagina delle risposte stessa (`web/`, Svelte) richiede Node 24 (`make web`). Usare shikii no: la pagina compilata è nel repository e incorporata nel binario.
+L'output dei comandi e i messaggi degli hook sono in inglese (se la lingua impostata in Claude Code è il giapponese, i messaggi degli hook sono mostrati in giapponese accanto all'inglese). La pagina ha il giapponese. I punti più fini, come usare solo un'IA in hosting, `AGENTS.md` rispetto a `CLAUDE.md` e Node per modificare la pagina stessa, sono nella [guida](../guide.md).
 
-## Le vie più brevi
+## Perché si può cambiare IA
 
-- **Docker**: niente Go, niente modello? `docker compose up` avvia un modello locale (Kev-4B) e shikii, con la pagina delle risposte su http://127.0.0.1:8095 ([dettagli](../../integrations/docker.md))
-- **Decisioni pronte**: sei nella cartella `decisions/` di questo repository (tipo di richiesta, segnalazione di bug duplicata, stessa richiesta, …). Ne copi una nel suo `.shikii/decisions/`, oppure parta da lì con `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` ([elenco](../../decisions/README.md))
-- **Ha già una tabella di decisioni passate**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` la trasforma in correzioni, così non risponde alle prime 50 a mano
-- **Dal suo programma**: avvii `shikii serve` e chiami `POST /v1/decide` (decidere) e `POST /v1/label` (correggere). Il corpo è JSON e `-H 'Content-Type: application/json'` è obbligatorio (tutti gli endpoint: [la guida lunga](../guide.md#or-run-one-process-for-programs-and-people))
-- **L'esempio di qualcun altro**: [smistare le e-mail di richiesta](../examples/inquiry-route.md) (giapponese). Una persona che usava shikii per la prima volta ha fatto tutto il giro con il solo README; sono inclusi il file di decisione e i 22 input
-- **Misurare il pensiero dell'IA stessa** (Claude Code e Codex): `shikii hook install` aggiunge due hook che fanno girare shikii prima e dopo ogni turno. Prima: questa richiesta finirà per modificare dei file, e l'agente dovrebbe prima accordarsi su un approccio? Dopo: le modifiche sono rimaste in ciò che lei ha chiesto, e ha finito ciò che lei ha chiesto? La prima verità arriva gratis dal fatto che l'albero di lavoro sia cambiato o no; al resto risponde lei su una pagina. Niente cambia finché non esiste una linea. Poi una richiesta che ha bisogno di un piano diventa una nota per l'agente, e un turno che sembra incompiuto o fuori da ciò che era chiesto diventa una riga per lei, con quante verità reggono la linea e la precisione controllata da persone. Nessun hook ferma mai uno strumento ([dettagli](../../integrations/claude-code.md), giapponese)
-- **In CI**: `uses: hayaenfj/shikii@main` esegue `shikii check` su ogni pull request, così una formulazione cambiata o una linea indebolita fa fallire la build
+<p align="center"><img src="../assets/shikii-architecture-en.svg" alt="architettura di shikii: tre cose che fanno le persone, il patrimonio (domande, verità, ricevute), il ciclo che la macchina fa crescere, il wiki verificabile, il modello usa e getta" width="100%"></p>
 
-## Un giro completo
-
-```sh
-shikii up                                                             # avviare il modello locale (scaricato alla prima esecuzione)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=ask  (ancora nessuna linea, quindi: chiedere a una persona)
-shikii serve --local http://127.0.0.1:8080                                   # i file di decisione e la conoscenza si leggono da .shikii/
-#   → risponda su http://127.0.0.1:8095. Quando una decisione ha il numero che chiede (eval.min_n, 20 per questa), la linea si traccia da sola
-#     Per provare con meno risposte, abbassi eval.min_n nel file di decisione a quante ne ha (una linea scritta con --force viene segnalata da check)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=act
-#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
-#     (si può agire, con la prova: la linea si regge su 61 correzioni, 48 delle quali di persone. Delle risposte umane che questa linea mette dal lato act, 25, il 96% era giusto)
-```
-
-Ci sono solo quattro fasce. `act` = procedere, `ask` = verificare con una persona, `discard` = non fare nulla, `abstain` = manca l'input. Non legge mai una probabilità grezza.
-
-## Cosa c'è di nuovo
-
-<p align="center"><img src="../assets/shikii-architecture-en.svg" alt="architettura di shikii: tre cose che fanno le persone, il patrimonio (domande, verità, ricevute), il ciclo che la macchina fa crescere, il wiki verificabile, modelli usa e getta" width="100%"></p>
-
-- **La conoscenza si accumula nelle domande e nelle correzioni, non nel modello.** Quindi il modello è usa e getta, e cambiarlo non richiede lavoro umano. Misurato: con la macchina che sceglie formulazione e disposizione e aggiunge esempi simili, un modello base ordinario ha raggiunto la stessa precisione della messa a punto (LoRA) ([numeri](../bench.md))
-- **Le decisioni automatiche arrivano con le prove.** Non «sicuro al 95%» ma «precisione 0,96 su 48 risposte controllate da persone»
-- **Il wiki non si legge, si misura.** «Chiedere così funziona» si accumula come affermazioni con numeri e viene riprovato sui modelli nuovi. Solo una persona decide che un'affermazione è confermata
+- **La conoscenza si accumula insieme alla domanda e alle correzioni, non dentro l'IA.** Le correzioni sopravvivono all'IA, quindi una nuova può usarle così come sono e la linea viene ritracciata. Nelle nostre misurazioni, lasciare che la macchina scelga formulazione e disposizione e aggiunga esempi simili ha raggiunto la stessa precisione della messa a punto dei pesi del modello (LoRA) ([numeri](../bench.md))
+- **Le decisioni automatiche portano una ricevuta.** Non «sicuro al 95%» ma «precisione 0,96 su 48 casi controllati da persone»
+- **Il wiki non si legge, si misura.** «Chiedere così funziona» si accumula come affermazioni con i numeri, e può essere riprovato su un'IA nuova. Solo una persona decide che un'affermazione è confermata
 
 ## Per saperne di più
 
-- [La guida lunga](../guide.md): ogni comando, l'avvio rapido completo, l'API HTTP, cosa si può collegare, i risultati misurati e le domande frequenti · [il riferimento del file di decisione](../../skills/shikii/references/spec.md)
-- [Note di progettazione](../decision-ops-framework.md): di cosa si fa carico il framework e di cosa rifiuta di farsi carico, e cosa è stato verificato · [Architettura](../architecture.md) (giapponese)
-- [Decisioni pronte](../../decisions/README.md) · [il wiki su come chiedere](../../wiki/index.md) · [benchmark](../bench.md) · [confronto tra modelli](../model-comparison.md) · [diario operativo](../operations.md)
-- [Collegamenti](../../integrations/mcp.md): MCP, l'adattatore che trasforma un normale modello di chat in un modello di decisione, Docker, Claude Code
-- [Guida in giapponese](../guide.ja.md) con un giro completo su un caso reale
+- [La guida](../guide.md): ogni comando, l'API HTTP, le domande frequenti · [il riferimento del file di decisione](../../skills/shikii/references/spec.md)
+- [L'hook](../../integrations/claude-code.md) (giapponese): come viene misurato il pensiero dell'agente stesso, la tabella fascia → comportamento, il funzionamento interno
+- [Architettura](../architecture.md) (giapponese): il quadro completo dietro il diagramma qui sopra
+- [Decisioni pronte](../../decisions/README.md) · [il wiki su come chiedere](../../wiki/index.md) · [numeri misurati](../bench.md) · [note operative](../operations.md)
+- [Collegamenti](../../integrations/mcp.md): MCP, l'adattatore per i normali modelli di chat, Docker
 
-## Contribuire
-
-Issue e pull request sono benvenuti. Un test che protegge un comportamento viene prima mostrato mentre fallisce: rompa il comportamento di proposito, esegua il test, annoti come è fallito, poi lo sistemi e annoti che passa. Ogni numero nella documentazione viene da uno script. Solo le persone cambiano lo stato di un'affermazione del wiki (`confirmed` / `tentative` / `rejected`), con l'esecuzione che ne è la prova. Nessuna opzione nuova: la disposizione (`decisions/` `wiki/` `.shikii/` nella radice del progetto) e regole fisse fanno il lavoro.
+**Per chi contribuisce**: rompa un test di proposito e lo guardi fallire prima di sistemarlo. Ogni numero viene da uno script. Solo una persona conferma un'affermazione del wiki. Nessuna impostazione nuova: posti fissi e regole fisse al loro posto.
 
 ## Licenza
 
-[Apache 2.0](../../LICENSE). Le licenze dei modelli sono a parte: Kev-4B e la famiglia Bonsai sono Apache 2.0, OpenJev è CC BY-NC 4.0, il Jev in hosting è un servizio di TypeSafe. shikii conserva le sue probabilità e le sue etichette, nulla dei modelli.
+[Apache 2.0](../../LICENSE). Le licenze dei modelli sono a parte (Kev-4B e la famiglia Bonsai sono Apache 2.0, OpenJev è CC BY-NC 4.0, il Jev in hosting è un servizio di TypeSafe).

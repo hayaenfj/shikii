@@ -2,105 +2,113 @@
 
 <p align="center"><img src="../assets/gen-mark.png" alt="shikii" width="112"></p>
 
-# shikii: yapay zekânın "muhtemelen" demesini, üzerine iş kurabileceğiniz bir "güvenle yapılabilir"e çevirin
+# shikii: yapay zekânın "muhtemelen" demesini, üzerine iş kurabileceğiniz bir "güvenle kullanılabilir"e çevirin
 
-### Bir yapay zekâya evet/hayır, hangisi ya da ne kadar sorusunu karar verdirmek ve bu kararı günlük işte güvenilir tutmak için bir araç. Siz bazı cevapları kontrol edersiniz ve ara sıra "hâlâ demek istediğim bu mu?" diye onaylarsınız. Gerisini makine yapar.
+### Bir yapay zekâya "evet mi hayır mı", "hangisi" ve "ne kadar" sorularını karar verdiren ve onu sizin düzeltmelerinizle büyüten bir araç. Sizin tek yaptığınız, bir sayfada aslında neyin doğru olduğunu cevaplamaktır.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-196%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
-[Sorun](#sorun) · [shikii ne yapar](#shikii-ne-yapar) · [Siz ne yaparsınız](#siz-ne-yaparsınız) · [Kurulum](#kurulum) · [En kısa yollar](#en-kısa-yollar) · [Tam bir tur](#tam-bir-tur) · [Yeni olan ne](#yeni-olan-ne) · [Daha fazla okuma](#daha-fazla-okuma)
+[Sorun](#sorun) · [Kullanım 1: yapay zekânın kendi düşüncesini ölçün](#kullanım-1-yapay-zekânın-kendi-düşüncesini-ölçün) · [Kullanım 2: bir iş kararını ona bırakın](#kullanım-2-bir-iş-kararını-ona-bırakın) · [Sayfada ne yaparsınız](#sayfada-ne-yaparsınız) · [Kurulum](#kurulum) · [Yapay zekâyı neden değiştirebilirsiniz](#yapay-zekâyı-neden-değiştirebilirsiniz) · [Daha fazla okuma](#daha-fazla-okuma)
 
-<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii: bir model size bir olasılık verir, shikii buna göre hareket edebilir misiniz söyler" width="100%"></p>
+<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii" width="100%"></p>
 
 ## Sorun
 
-Bir yapay zekâya "bu başvuru öncekiyle aynı konu mu?" diye sorun, "muhtemelen, 0,9" der. Gerçek iş için bu yeterli değildir.
+Bir yapay zekâya "bu başvuru öncekiyle aynı konu mu?" diye sorun, "muhtemelen, 0,9" der. İş için bu yeterli değildir. Bu 0,9 gerçekten 10 seferin 9'unda doğru mu? Daha yeni bir yapay zekâya geçtiğiniz gün sessizce yalana dönüştü mü? Kimse bakmazken verdiği kararlar hâlâ doğru mu? Her seferinde bir insan kontrol edecekse, yapay zekâ kullanmanın pek anlamı kalmamıştır.
 
-- Bu 0,9 gerçekten 10 seferin 9'unda doğru mu?
-- Yeni bir modele geçtiğiniz günden beri sessizce yanlış söylemeye başladı mı?
-- Soruyu biraz farklı yazarsanız doğruluk nasıl değişir?
-- Kimse bakmazken kendi başına verdiği kararlar hâlâ doğru mu?
+shikii, düzeltmelerinizden bir **çizgi** çizer: bunun üstünde yapay zekâ kendi başına hareket edebilir. Bir çizgi oluşana kadar hiçbir şeye güvenilmez. Oluştuktan sonra her otomatik karar kendi dayanağını taşır: çizginin kaç düzeltmeye dayandığı ve ne sıklıkla doğru çıktığı. Çizgi yapay zekânın içinde değil, sorunun ve düzeltmelerin yanında yaşar; bu yüzden yapay zekâyı değiştirmek insan emeği gerektirmez.
 
-Her cevabı bir insan kontrol edecekse, yapay zekâyı kullanmanın pek anlamı kalmaz.
+İki kullanım yolu var: kodunuzu yazan yapay zekânın düşüncesini ölçmek (en hafifi) ve ona işinizden bir kararı bırakmak.
 
-## shikii ne yapar
+## Kullanım 1: yapay zekânın kendi düşüncesini ölçün
 
-1. **Düzeltmelerinizi toplar ve yapay zekânın kendi başına hareket edebileceği çizgiyi çizer.** Verdiğiniz cevaplardan ("aslında doğrusu buydu") yapay zekânın güveni ile ne sıklıkla haklı çıktığı arasındaki ilişkiyi ölçer ve nereden yukarısına güvenilebileceğine karar verir. Bir çizgi olmadan hiçbir şey kendi başına hareket etmez. Çizgi çizildikten sonra her otomatik karar, çizginin kaç kontrol edilmiş cevaba dayandığını ve bunların ne sıklıkla doğru olduğunu söyleyen bir makbuz taşır
-2. **Başka soru biçimlerini dener ve iyi olanı tutar.** Aynı düzeltmeler üzerinde alternatif soruları, seçenek açıklamalarını ve istem düzenlerini puanlar; birini yalnızca gerçekten daha iyiyse benimser. Adaylar sizden (sayfaya kendi sözcüklerinizle yazılır) ya da bir yapay zekâdan gelir; yeterince yeni düzeltme biriktiğinde makine onları her seferinde yeniden ölçer. Siz sadece anlamın değişmediğini onaylarsınız
-3. **Modeli sıfırdan başlamadan değiştirmenizi sağlar.** Düzeltmeler modelden ayrı durur, bu yüzden yeni bir model onları yeniden kullanır ve çizgi makine tarafından yeniden çizilir. İnsan emeği gerekmez
-4. **Öğrendiklerini bir wiki'de saklar.** "Böyle sormak işe yarıyor" bilgisi, ölçülmüş sayılarla birlikte iddialar olarak birikir ve başka bir modelde yeniden test edilebilir. Başkalarının kendi modellerinde ölçtükleri de aynı sayfaya eklenir
+Claude Code ya da Codex kullananlar için. Kod yazan ajan, bir istek aldığında ve işi bitirdiğinde kararlar verir; shikii bunları sessizce ölçer.
 
-## Siz ne yaparsınız
+```sh
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
+```
 
-- **Neyin karara bağlanacağını yazın.** Birkaç soruya cevap verin, bir karar dosyası ortaya çıkar (`shikii new`, etkileşimli olarak ya da `--type --question --option --input --pii` ile; biçimin tamamı [spec başvuru belgesinde](../../skills/shikii/references/spec.md))
-- **Cevapları kontrol edin.** Sayfa, yapay zekânın emin olamadığı kararları ve kendi başına hareket ettiği her 20 karardan 1'ini gösterir; siz aslında doğru olanın düğmesine basarsınız. 1'den 9'a kadar tuşlar ve Enter (yapay zekânın seçimiyle aynı) hızlı ilerletir. "Cevaplandı" ile önceki bir cevabı düzeltebilirsiniz (en yenisi geçerlidir). "Ayrıntılar", "yapay zekâya tekrar sor"u ekler: aynı metin bugünün soru biçimi ve çizgisiyle yeniden karara bağlanır, önce ve sonra yan yana gösterilir; kayıtlar sona eklenir, hiç silinmez
-- **Ara sıra "hâlâ demek istediğim bu mu?" diye onaylayın.** Makine daha iyi puan alan bir soru biçimi bulduğunda, anlamın değişip değişmediğine bakar ve benimse ya da reddet'e basarsınız. Aklınıza daha iyi bir soru biçimi gelirse aynı sayfaya yazın; makine onu ölçer, siz hiçbir zaman bir dosyayı düzenlemezsiniz
+Hepsi bu. İkili dosyayı kurar, Claude Code ve Codex'e iki hook ekler, ajanın kurallarını (bir skill) yerine koyar ve arka planda küçük bir yerel yapay zekâ (Kev-4B) başlatır (llama.cpp yoksa, onu kurmak için gereken tek satırı yazdırır). Yeni bir terminal açın ve ajanla her zamanki gibi çalışmaya devam edin (Codex'te shikii'nin hook'larına güvenmek için bir kez `/hooks` çalıştırın). Dört şey ölçülür.
 
-Geri kalan her şey makinenin işidir.
+| Ne zaman | Soru | Doğru cevap nereden gelir |
+|---|---|---|
+| Bir istek geldiğinde | Bu istek sonunda dosyaları değiştirecek mi? | Otomatik: bir sonraki isteğe kadar çalışma ağacı değişti mi |
+| Bir istek geldiğinde | Ajan bir şeye dokunmadan önce sizinle bir yaklaşım üzerinde anlaşmalı mı? | Siz, sayfada |
+| Tur bittiğinde | Değişiklikler istediğinizin sınırları içinde miydi? | Siz, sayfada |
+| Tur bittiğinde | İstediğinizi bitirdi mi? | Siz, sayfada |
+
+Bir turun sonunda tek bir satır belirir, `shikii: bu oturumun 3 kararı cevabınızı bekliyor: http://127.0.0.1:8096/`, ve bir dakikanız olduğunda açarsınız (hook sayfayı da arka planda başlatır); her cevap saniyeler alır. 50 cevaptan sonra bir çizgi çizilir ve ajanın davranışı değişir: plan gerektiren bir istek ajana bir not olur; bitmemiş ya da kapsam dışı görünen bir tur ise size tek bir satır olur. Her biri "61 doğru cevaba dayanan çizgi, insan tarafından kontrol edilmiş kesinlik 0,96" gibi bir dayanakla gelir. O zamana kadar hook'lar yalnızca kayıt tutar. Hiçbir hook hiçbir zaman bir aracı durdurmaz.
+
+Her şey tek bir yerde, `~/.shikii/agent` içinde yaşar; tüm projeleriniz boyunca her soru için tek bir çizgi vardır (sorular ajanın düşüncesi hakkındadır, bu yüzden doğru cevap her depoda aynıdır). Her kayıt, geldiği depoyla işaretlenir ve sayfa buna göre filtreleyebilir. Ayrıntılar: [hook](../../integrations/claude-code.md) (Japonca).
+
+## Kullanım 2: bir iş kararını ona bırakın
+
+"Bu başvuru aynı konu mu?" ya da "bu mesaj bir değişiklik isteği mi?" gibi işte tekrarladığınız kararlar için: yapay zekâ karar versin ve onu düzeltmelerinizle büyütün. Burada da yazılacak bir komut yoktur. Ajana söylersiniz.
+
+> Bir başvurunun öncekiyle aynı konu olup olmadığına shikii'nin karar vermesini ve bunu düzeltmelerimle büyütmesini istiyorum
+
+Ajan kurallarını (skill'i) izler: projede `.shikii/` oluşturur (`shikii init`), soruyu, seçenekleri ve girdileri belirleyip karar dosyasını yazar (`shikii new`; soruyu ve seçenekleri size bir kez gösterir, çünkü bu sizin niyetinizdir), kararı çağırır (`shikii decide`), cevap sayfasını başlatır (http://127.0.0.1:8095) ve size haber verir. Bir çizgi oluşana kadar hiçbir karar `act` (devam et) olmaz. Sayfada cevap verdikçe, kararın kendi sayısına ulaşıldığında (bu örnekte 20) çizgi otomatik olarak çizilir ve o andan itibaren:
+
+```sh
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=act
+#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
+#     (güvenle yapılabilir. Çizgi 61 doğru cevaba dayanıyor, 48'i insanlar tarafından verilmiş; insanların cevapladıklarından bu çizginin act tarafına koyduğu 25 tanesinin %96'sı doğruydu)
+```
+
+Yalnızca dört `band` değeri vardır: `act` = devam et, `ask` = bir insana danış, `discard` = hareket etme, `abstain` = girdi yetersiz. Hiçbir zaman ham olasılıklara göre hareket etmezsiniz.
+
+- **Elle**: `shikii init` → `shikii new` → `shikii decide … -i key=value` → `shikii serve`. Hepsi [kılavuzda](../guide.md)
+- **Bir ajandan**: `shikii init` MCP ayarını yazar, böylece Claude Code, Cursor, OpenCode ve Codex `shikii_decide` ve `shikii_label` araçlarını doğrudan çağırabilir ([MCP](../../integrations/mcp.md))
+- **Kendi programınızdan**: `shikii serve`i başlatın ve `POST /v1/decide` (karar) ile `POST /v1/label` (düzeltme) çağırın. Gövde JSON'dur ve `-H 'Content-Type: application/json'` gerekir ([HTTP API](../guide.md#or-run-one-process-for-programs-and-people))
+- **Hazır kararlar**: bu deponun `decisions/` klasöründe altı tane (istek türü, yinelenen hata raporu, aynı başvuru, …). Birini `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` ile kopyalayın ve kendi sözcüklerinizle yeniden yazın ([liste](../../decisions/README.md))
+- **Elinizde zaten geçmiş kararların bir tablosu var**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` onu düzeltmelere çevirir, böylece ilk 50'yi elle cevaplamanız gerekmez
+- **Docker**: henüz Go da model de yok mu? `docker compose up` yerel bir yapay zekâ ve shikii'yi başlatır; sayfa http://127.0.0.1:8095 adresindedir ([ayrıntılar](../../integrations/docker.md))
+- **Başkasının örneği**: [başvuru e-postalarını yönlendirme](../examples/inquiry-route.md) (Japonca). İlk kez kullanan biri yalnızca README ile tüm turu tamamladı; karar dosyası ve 22 girdi dahil
+
+## Sayfada ne yaparsınız
+
+Cevap sayfasında (`shikii serve`) bir insan üç şey yapar. Geri kalan her şey makinenin işidir.
+
+1. **Cevaplayın.** Sayfa, yapay zekânın emin olamadığı kararları ve kendi başına hareket ettiği her 20 karardan 1'ini gösterir; siz aslında doğru olanın düğmesine basarsınız. 1'den 9'a kadar tuşlar ve Enter (yapay zekânın seçimiyle aynı) hızlı ilerletir. "Cevaplandı" ile önceki bir cevabı düzeltebilirsiniz (en yenisi geçerlidir)
+2. **Yeni bir soru biçimi yazın.** "Böyle sorsak daha iyi olur" diye düşünüyorsanız, "Soru biçimi" panelinde kendi sözcüklerinizle yazın. Makine onu aynı düzeltmeler üzerinde mevcut soru biçimiyle karşılaştırıp puanlar (ajanın kendi kararları için her 50 yeni cevapta otomatik olarak) ve yalnızca gerçekten daha iyiyse "benimsenebilir" der. Soru biçimi önermeyi bir yapay zekâya da bırakabilirsiniz. Hiçbir zaman bir dosya açmazsınız
+3. **Benimse ya da reddet'e basın.** Anlamın değişip değişmediğine bakar ve basarsınız. Sayıları makine kontrol eder; anlamı siz kontrol edersiniz
+
+"Ayrıntılar", model başına çizginin durumunu, "yapay zekâya tekrar sor"u (aynı metni bugünün soru biçimi ve çizgisiyle yeniden karara bağlayıp öncesini ve sonrasını görmek) ve bilgi panelini ("böyle sormak işe yarıyor" biçimindeki iddialar, kanıtlarıyla) ekler. Kayıtlar sona eklenir, hiç silinmez; yeni bir karar eskisinin yerini alır.
 
 ## Kurulum
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh     # Go 1.27 veya daha yenisi gerekir
-cd <proje kök dizini> && shikii init
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # Go 1.27 veya daha yenisi; yoksa Docker (yukarıda)
 ```
 
-`shikii init` tek bir klasörü, `.shikii/`yi kurar (içinde spec'leriniz için `decisions/`, bilgi için `wiki/`, kayıtlar ve düzeltmeleriniz için `records/` ve `labels/`; proje kök dizinine başka bir şey eklenmez) ve aynı anda ajan bağlantılarını hazırlar: Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`opencode.json`) ve Codex (`~/.codex/config.toml`) için shikii MCP sunucusu, `AGENTS.md` içinde bir bölüm ve `~/.claude/skills/shikii` içinde ayrıntılı kurallar (skill). Kendi girdilerinize hiç dokunulmaz (var olan bir shikii girdisi olduğu gibi bırakılır). Yalnızca skill klasörü her seferinde yenilenir, bu yüzden onu elle düzenlemeyin. `wiki/` ortak bilgiyi alır (her soru türünün nasıl sorulacağı, işe yaramış yazım kalıpları, her modelin alışkanlıkları); soru biçimi iyileştiricisi (`tune --propose`) onu okur ve düzenlediğiniz sayfalar sonraki bir `init` ile asla üzerine yazılmaz. Go yok mu? Aşağıdaki Docker'ı kullanın.
+install.sh'ın yaptığı: ikili dosyaları (`shikii` ve `shikii-readout`) kurar, Claude Code ve Codex'e iki hook ekler, ajanın kurallarını (skill'i) `~/.claude/skills/shikii` içine koyar ve llama.cpp varsa yerel yapay zekâyı (Kev-4B, :8080 üzerinde) arka planda başlatır. Bunun yerine barındırılan Jev ya da OpenRouter kullanmak için anahtarı bir ortam değişkenine koyun ([bağlantılar](../guide.md#what-you-can-connect)). Neyin çalıştığını ve neyin eksik olduğunu `shikii doctor` söyler.
 
-Girdiler yerel bir modele işaret eder (`shikii up`, port 8080). Yalnızca barındırılan model mi? Dört dosyanın her birinden `--local`ı elle kaldırın. Kullanmadığınız araçlar için de yapılandırma dosyaları oluşturulur; silin ya da `.gitignore`a ekleyin (ikinci bir `shikii init` var olana asla dokunmaz). `.shikii/decisions/`, `.shikii/wiki/` ve `.shikii/labels/` klasörlerini commit edin (spec'leriniz, bilgi ve düzeltmeleriniz: model değişikliğinden sağ çıkan varlıklar). `.shikii/records/` (her karar) büyümeye devam eder, bu yüzden commit etmek isteğe bağlıdır (`shikii gc` eskileri atar). Codex'te zaten `mcp_servers` varsa hiçbir şey eklenmez ve yapıştırılacak satırlar yazdırılır. Yalnızca `CLAUDE.md` olan bir proje `AGENTS.md` almaz (OpenCode `CLAUDE.md`yi okumayı bırakırdı).
+Proje başına kurulum (`shikii init`) ajanın işidir (kendiniz de çalıştırabilirsiniz). Tek bir klasör oluşturur, `.shikii/` (içinde: `decisions/` = karar dosyaları, `wiki/` = bilgi, `records/` ve `labels/` = kayıtlar ve düzeltmeler). Proje kök dizininde başka hiçbir şey belirmez. `decisions/`, `wiki/` ve `labels/` yapay zekâ değişikliğinden sağ çıkan varlıklardır, bu yüzden onları commit edin; `records/` büyümeye devam eder, bu yüzden commit etmek isteğe bağlıdır (`shikii gc` eskileri atar). Ayrıca ajanlarınızın ayarlarına (Claude Code'un `.mcp.json`u, Cursor'ın `.cursor/mcp.json`u, OpenCode'un `opencode.json`u, Codex'in `~/.codex/config.toml`u) sizin yazdığınız girdilere dokunmadan bir shikii girdisi ekler. Tekrar çalıştırmak var olan hiçbir şeyi değiştirmez.
 
-Cevap sayfasının kendisini (`web/`, Svelte) değiştirmek Node 24 gerektirir (`make web`). shikii'yi kullanmak gerektirmez: derlenmiş sayfa commit edilmiştir ve ikili dosyanın içine gömülüdür.
+Komut çıktısı ve hook mesajları İngilizcedir (Claude Code'un dil ayarı Japonca ise hook mesajları İngilizcenin yanında Japonca da gösterilir). Sayfada Japonca vardır. Yalnızca barındırılan bir yapay zekâ kullanmak, `AGENTS.md` ile `CLAUDE.md` farkı ve sayfanın kendisini değiştirmek için Node gibi ince ayrıntılar [kılavuzdadır](../guide.md).
 
-## En kısa yollar
+## Yapay zekâyı neden değiştirebilirsiniz
 
-- **Docker**: Go yok, model yok mu? `docker compose up` yerel bir model (Kev-4B) ve shikii'yi başlatır; cevap sayfası http://127.0.0.1:8095 adresindedir ([ayrıntılar](../../integrations/docker.md))
-- **Hazır kararlar**: bu deponun `decisions/` klasöründe altı tane (istek türü, yinelenen hata raporu, aynı başvuru, …). Birini kendi `.shikii/decisions/` klasörünüze kopyalayın ya da `shikii new --from <repo>/decisions/prompt-intent-v2.yaml` ile ondan başlayın ([liste](../../decisions/README.md))
-- **Elinizde zaten geçmiş kararların bir tablosu var**: `shikii import past.csv --spec .shikii/decisions/<id>.yaml` onu düzeltmelere çevirir, böylece ilk 50'yi elle cevaplamazsınız
-- **Kendi programınızdan**: `shikii serve`i başlatın ve `POST /v1/decide` (karar) ile `POST /v1/label` (düzeltme) çağırın. Gövde JSON'dur ve `-H 'Content-Type: application/json'` zorunludur (tüm uç noktalar: [uzun kılavuz](../guide.md#or-run-one-process-for-programs-and-people))
-- **Başkasının örneği**: [başvuru e-postalarını yönlendirme](../examples/inquiry-route.md) (Japonca). İlk kez kullanan biri yalnızca README ile tüm turu tamamladı; spec ve 22 girdi dahil
-- **Yapay zekânın kendi düşüncesini ölçün** (Claude Code ve Codex): `shikii hook install`, her turdan önce ve sonra shikii'yi çalıştıran iki hook ekler. Önce: bu istek sonunda dosyaları değiştirecek mi ve ajan önce bir yaklaşım üzerinde anlaşmalı mı? Sonra: değişiklikler istediğinizin sınırları içinde miydi ve istediğinizi bitirdi mi? İlk doğru cevap, çalışma ağacının değişip değişmediğinden bedavaya gelir; gerisini bir sayfada siz cevaplarsınız. Bir çizgi oluşana kadar hiçbir şey değişmez. Sonra plan gerektiren bir istek ajana bir not olur; bitmemiş ya da kapsam dışı görünen bir tur ise size tek satırlık bir mesaj olur, çizginin kaç doğru cevaba dayandığı ve insan tarafından kontrol edilmiş kesinlik ile birlikte. Hiçbir hook hiçbir zaman bir aracı durdurmaz ([ayrıntılar](../../integrations/claude-code.md), Japonca)
-- **CI içinde**: `uses: hayaenfj/shikii@main` her pull request'te `shikii check` çalıştırır, böylece değişen bir soru biçimi ya da zayıflayan bir çizgi derlemeyi düşürür
+<p align="center"><img src="../assets/shikii-architecture-en.svg" alt="shikii mimarisi: insanların yaptığı üç şey, varlıklar (sorular, doğru cevaplar, makbuzlar), makinenin büyüttüğü döngü, doğrulanabilir wiki, kullan-at model" width="100%"></p>
 
-## Tam bir tur
-
-```sh
-shikii up                                                             # yerel modeli başlat (ilk çalıştırmada indirilir)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=ask  (henüz çizgi yok, o yüzden: bir insana sor)
-shikii serve --local http://127.0.0.1:8080                                   # spec'ler ve bilgi .shikii/ içinden okunur
-#   → http://127.0.0.1:8095 adresinde cevaplayın. Bir karar istediği sayıya ulaşınca (eval.min_n, bunun için 20) çizgi kendiliğinden çizilir
-#     Daha az cevapla denemek için spec'teki eval.min_n değerini elinizdekine düşürün (--force ile yazılan bir çizgi check tarafından işaretlenir)
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
-#   → band=act
-#     receipt: line platt fitted 2026-10-18 on 61 truths (48 human); human-checked act decisions 25, precision 0.960
-#     (güvenle yapılabilir, kanıtıyla: çizgi 61 düzeltmeye dayanıyor, 48'i insanlardan. Bu çizginin act tarafına koyduğu insan cevaplarından, 25 tane, %96'sı doğruydu)
-```
-
-Yalnızca dört bant vardır. `act` = devam et, `ask` = bir insana danış, `discard` = hiçbir şey yapma, `abstain` = girdi eksik. Hiçbir zaman ham bir olasılık okumazsınız.
-
-## Yeni olan ne
-
-<p align="center"><img src="../assets/shikii-architecture-en.svg" alt="shikii mimarisi: insanların yaptığı üç şey, varlıklar (sorular, doğru cevaplar, makbuzlar), makinenin büyüttüğü döngü, doğrulanabilir wiki, kullan-at modeller" width="100%"></p>
-
-- **Bilgi modelde değil, sorularda ve düzeltmelerde birikir.** Bu yüzden model kullan-attır ve değiştirmek insan emeği gerektirmez. Ölçüldü: soru biçimini ve düzeni makine seçip benzer örnekler eklediğinde, sıradan bir temel model doğrulukta ince ayara (LoRA) yetişti ([sayılar](../bench.md))
-- **Otomatik kararlar kanıtla gelir.** "%95 eminim" değil, "insanların kontrol ettiği 48 cevapta kesinlik 0,96"
-- **Wiki okunmaz, ölçülür.** "Böyle sormak işe yarıyor" bilgisi sayılarla birlikte iddialar olarak birikir ve yeni modellerde yeniden test edilir. Bir iddianın doğrulandığına yalnızca bir insan karar verir
+- **Bilgi yapay zekânın içinde değil, soruyla ve düzeltmelerle birlikte birikir.** Düzeltmeler yapay zekâdan sağ çıkar, bu yüzden yeni bir yapay zekâ onları olduğu gibi kullanabilir ve çizgi yeniden çizilir. Ölçümlerimizde, soru biçimini ve düzeni makinenin seçmesi ve benzer örnekler eklemesi, modelin ağırlıklarına ince ayar yapmakla (LoRA) aynı doğruluğa ulaştı ([sayılar](../bench.md))
+- **Otomatik kararlar bir makbuz taşır.** "%95 eminim" değil, "insanların kontrol ettiği 48 durumda kesinlik 0,96"
+- **Wiki okunmaz, ölçülür.** "Böyle sormak işe yarıyor" bilgisi sayılarla birlikte iddialar olarak birikir ve yeni bir yapay zekâda yeniden test edilebilir. Bir iddianın doğrulandığına yalnızca bir insan karar verir
 
 ## Daha fazla okuma
 
-- [Uzun kılavuz](../guide.md): her komut, tam hızlı başlangıç, HTTP API, neleri bağlayabileceğiniz, ölçülen sonuçlar ve SSS · [spec başvuru belgesi](../../skills/shikii/references/spec.md)
-- [Tasarım notları](../decision-ops-framework.md): çerçevenin neyi sahiplendiği ve neyi sahiplenmeyi reddettiği, nelerin doğrulandığı · [Mimari](../architecture.md) (Japonca)
-- [Hazır kararlar](../../decisions/README.md) · [nasıl sorulur wiki'si](../../wiki/index.md) · [kıyaslama](../bench.md) · [model karşılaştırması](../model-comparison.md) · [işletim günlüğü](../operations.md)
-- [Bağlantılar](../../integrations/mcp.md): MCP, sıradan bir sohbet modelini karar modeline çeviren uyarlayıcı, Docker, Claude Code
-- [Japonca kılavuz](../guide.ja.md), gerçek hayattan tam bir turla
+- [Kılavuz](../guide.md): her komut, HTTP API, SSS · [spec başvuru belgesi](../../skills/shikii/references/spec.md)
+- [Hook](../../integrations/claude-code.md) (Japonca): ajanın kendi düşüncesinin nasıl ölçüldüğü, bant → davranış tablosu, iç yapı
+- [Mimari](../architecture.md) (Japonca): yukarıdaki şemanın arkasındaki bütün resim
+- [Hazır kararlar](../../decisions/README.md) · [nasıl sorulur wiki'si](../../wiki/index.md) · [ölçülen sayılar](../bench.md) · [işletim notları](../operations.md)
+- [Bağlantılar](../../integrations/mcp.md): MCP, sıradan sohbet modelleri için uyarlayıcı, Docker
 
-## Katkıda bulunma
-
-Issue'lar ve pull request'ler memnuniyetle karşılanır. Bir davranışı koruyan bir test önce başarısız olurken gösterilir: davranışı bilerek bozun, testi çalıştırın, nasıl düştüğünü kaydedin, sonra düzeltin ve geçtiğini kaydedin. Belgelerdeki her sayı bir betikten gelir. Bir wiki iddiasının durumunu (`confirmed` / `tentative` / `rejected`) yalnızca insanlar değiştirir, kanıt olan çalıştırmayla birlikte. Yeni seçenek yok: yerleşim (proje kök dizininde `decisions/` `wiki/` `.shikii/`) ve sabit kurallar işi görür.
+**Katkıda bulunanlar için**: bir testi bilerek bozun ve düzeltmeden önce düştüğünü görün. Her sayı bir betikten gelir. Bir wiki iddiasını yalnızca bir insan doğrular. Ayar eklemeyin; bunun yerine sabit yerler ve sabit kurallar.
 
 ## Lisans
 
-[Apache 2.0](../../LICENSE). Model lisansları ayrıdır: Kev-4B ve Bonsai ailesi Apache 2.0, OpenJev CC BY-NC 4.0, barındırılan Jev TypeSafe'in hizmetidir. shikii olasılıklarınızı ve etiketlerinizi saklar, modellerden hiçbir şey saklamaz.
+[Apache 2.0](../../LICENSE). Model lisansları ayrıdır (Kev-4B ve Bonsai ailesi Apache 2.0, OpenJev CC BY-NC 4.0, barındırılan Jev TypeSafe'in hizmetidir).
