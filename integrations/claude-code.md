@@ -10,7 +10,7 @@
 
 | spec | いつ | 問い | 正解の出どころ |
 |---|---|---|---|
-| `prompt-kind` | 考える前(UserPromptSubmit) | この依頼で AI は結局何をするか(edit / explain / investigate / run / decide) | **結果から自動**: 次の依頼が来た時(無ければターンの終わり)に作業ツリーの中身が変わっていれば edit、変わっていなければ !edit(「edit ではなかった」の部分正解、重み 0.7) |
+| `prompt-kind` | 考える前(UserPromptSubmit) | この依頼で AI は結局何をするか(edit / explain / investigate / run / decide) | **結果から自動**: 次の依頼が来た時(無ければターンの終わり)に作業ツリーの中身が変わっていれば edit、変わっていなければ !edit(「edit ではなかった」の部分正解、重み 0.7)。ターンの終わりの !edit は次の人の依頼まで持ち越し、裏の作業が後から変えたら(通知の後の Stop)同じ判定に edit を付け直す(新しい正解が勝つ) |
 | `needs-plan` | 考える前(UserPromptSubmit) | この依頼は、手を動かす前に進め方を人と合わせるべきか | 人が画面で答える |
 | `changes-in-scope` | 考え終わった後(Stop) | このターンで変えたファイル(依頼の時と今の作業ツリーを比べた一覧)は、依頼の範囲の中だったか。何も変えていなければ聞かない | 人が画面で答える |
 | `done-as-asked` | 考え終わった後(Stop) | 依頼・変わったファイル・最後の返答を見て、頼まれたことを終えたか(人がもう一度言い直すことは残っていないか) | 人が画面で答える |
@@ -80,7 +80,7 @@ shikii は線(較正)が無いうちは `act` を出さない。hook はそれ�
 UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending に結果の正解(今のツリーと比べる)
                                                      decide prompt-kind, needs-plan(並行)
                                                      └ sessions/<id>.json に request と作業ツリーのハッシュ、<id>.files に作業ツリーの一覧を控える
-Stop ───────────── shikii hook stop ──────────────── 残った pending に結果の正解
+Stop ───────────── shikii hook stop ──────────────── 残った pending に結果の正解(変わっていれば edit で片付け、変わっていなければ !edit を付けて持ち越す)
                                                      依頼の時の一覧と今の一覧を比べて「変わったファイル」→ decide changes-in-scope, done-as-asked(並行。同じ依頼で 1 回だけ)
                                                      └ last_assistant_message を控える(needs-plan の文脈の段に使う)。答え待ちの要約を 1 行。4 spec の正解が min_n に届いていれば線を引く
 ```
@@ -89,6 +89,7 @@ Stop ───────────── shikii hook stop ──────
 - 作業ツリーの状態は、repo のルートで(サブディレクトリから起こしたセッションでも repo 全体を見る)、仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id(ハッシュ)と、その index の一覧(ファイルごとの blob の id)。HEAD や index は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。新しい blob は仮の objects に書いて消すので、未追跡ファイル(`.env` など)の中身が repo の `.git/objects` に残らない(一覧にも中身は入らない。path と id だけ)。全体で 3 秒を超えたら(.gitignore の無い巨大な node_modules など)正解を付けず、変わったファイルも分からない扱い。一覧(ファイルごとの mode と blob の id。chmod だけの変更も数える)は 4 MB まで読んで止める。git の外では prompt-kind の正解と changes-in-scope は無く、done-as-asked の files は `(unknown: no git listing for this turn)`。限界: 並走する別のエージェントやフォーマッタの変更も「変わった」に数える。`git add` は repo の clean filter(Git LFS など)を通常どおり走らせる(普通の `git add` と同じ副作用。filter を持つ repo では知っておく)
 - 変わったファイルの一覧は問いに最大 30 件(残りは `... and N more`)。何も変えていなければ changes-in-scope は聞かず、done-as-asked の files は `(none)`
 - 短い返事(40 字未満。「ok」「yes go ahead」)は依頼を置き換えず前の依頼に添える(ターンの終わりの問いが「ok」を依頼として読まないように)。短い返事でも新しいターンなので judged は戻り、「ok」の後のターンもまた評価される(依頼の文は「前の依頼 / ok」で別の入力)
+- 裏の作業の完了通知(Claude Code がサブエージェントや背景のコマンドの終わりを「ユーザーの発言」として流す `<task-notification>` / `[SYSTEM NOTIFICATION - NOT USER INPUT]`)は依頼ではない: 考える前の 2 問は聞かず、依頼・一覧・pending も置き換えない(実測で記録の半分近くがこれだった)。通知の後に作業が続いたら、そのターンの終わりで元の依頼に対して「範囲か・終えたか」をもう一度判定する(本人の選択: 長い裏作業の最後の状態を測る。1 つの依頼に通知の数だけ判定が残る)
 - 重なり: Stop(依頼 A)がモデル待ちの間に次の依頼 B が控えを書いても、Stop A の印(judged、previous、結果の正解)は A の控えにしか当たらない(依頼の文を見比べ、pending は自分が見た trace だけ settle、一覧は先頭行の依頼のハッシュが合う時だけ比べる)。`agent_id` の付いた UserPromptSubmit(サブエージェント等)は人の依頼ではないので控えを変えない
 - hook.log の 1 行は 400 バイトで切る(モデルの誤りの文に応答本文が付いてくることがある)
 - Claude Code 側の契約(公式の hooks reference、2026-10-18): hook は stdin に `session_id` `cwd` `prompt` `stop_hook_active` `last_assistant_message` を受け、stdout の `hookSpecificOutput.additionalContext`(UserPromptSubmit)とトップレベルの `systemMessage` を返せる。Stop で `hookSpecificOutput` を返すと会話が続くので返さない

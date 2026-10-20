@@ -331,7 +331,12 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 		}
 		runHook(t, "stop", map[string]any{"session_id": session, "cwd": repo, "last_assistant_message": "Done: " + session})
 		sess = loadSession(agent, session)
-		if sess.Previous != "Done: "+session || len(sess.Pending) != 0 || !sess.Judged {
+		// 変えたなら edit が付いて片付く。変えていなければ !edit(部分)を付けて次の人の依頼まで持ち越す(裏の作業が後から変えたら edit に置き換えるため)
+		wantPending := 0
+		if !change {
+			wantPending = 1
+		}
+		if sess.Previous != "Done: "+session || len(sess.Pending) != wantPending || !sess.Judged || (wantPending == 1 && !sess.Pending[0].Settled) {
 			t.Fatalf("session after stop: %+v", sess)
 		}
 	}
@@ -1182,5 +1187,72 @@ func TestHookSecondAuditRound(t *testing.T) {
 	runHook(t, "stop", map[string]any{"session_id": "g2", "cwd": cwd})
 	if lb, _ := os.ReadFile(filepath.Join(agent, "hook.log")); !strings.Contains(string(lb), "auto-tune needs-plan") {
 		t.Fatalf("a changed wording must not inherit the old count:\n%s", lb)
+	}
+}
+
+// 裏のエージェントの完了通知(Claude Code が「ユーザーの発言」として流す <task-notification>)は依頼ではない:
+// 考える前の 2 問は聞かず、依頼・一覧・pending は置き換えない。通知の後に作業が続いたら、そのターンの終わりで
+// 元の依頼に対してもう一度だけ判定し直す(本人の選択、2026-10-20)。実測では記録の半分近くが通知由来だった。
+func TestHookIgnoresBackgroundNotificationsAsRequests(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
+	agent := hookEnv(t, model)
+	st := store.Store{Dir: agent}
+	repo := gitRepo(t)
+	count := func(id string) int { recs, _ := st.Records(id, 0); return len(recs) }
+	const human = "translate the README into German in the background and tell me when it is done"
+
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "bg", "cwd": repo, "prompt": human})
+	runHook(t, "stop", map[string]any{"session_id": "bg", "cwd": repo, "last_assistant_message": "Started one agent; waiting."})
+	if count("prompt-kind") != 1 || count("needs-plan") != 1 || count("done-as-asked") != 1 {
+		t.Fatalf("the human request is judged once: kind=%d plan=%d done=%d", count("prompt-kind"), count("needs-plan"), count("done-as-asked"))
+	}
+	notices := []string{
+		"<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n</task-notification>",
+		"<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\nThis is an automated background-task event.\n<task-notification>…</task-notification>\n</system-reminder>",
+	}
+	for _, n := range notices {
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": "bg", "cwd": repo, "prompt": n})
+	}
+	if count("prompt-kind") != 1 || count("needs-plan") != 1 {
+		t.Fatalf("a notification is not a request and is not judged: kind=%d plan=%d", count("prompt-kind"), count("needs-plan"))
+	}
+	sess := loadSession(agent, "bg")
+	if sess.Request != human || len(sess.Pending) != 1 {
+		t.Fatalf("a notification must not replace the request or settle its pending: request=%q pending=%d", sess.Request, len(sess.Pending))
+	}
+	// 通知の後に作業が続いた: そのターンの終わりで、元の依頼に対して範囲と完了をもう一度判定する
+	if err := os.WriteFile(filepath.Join(repo, "README_de.md"), []byte("Deutsch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "stop", map[string]any{"session_id": "bg", "cwd": repo, "last_assistant_message": "German README written."})
+	if count("changes-in-scope") != 1 || count("done-as-asked") != 2 {
+		t.Fatalf("after a notification the Stop judges again: changes=%d done=%d", count("changes-in-scope"), count("done-as-asked"))
+	}
+	recs, _ := st.Records("changes-in-scope", 0)
+	if recs[0].Inputs["request"] != human || recs[0].Inputs["files"] != "README_de.md" {
+		t.Fatalf("the re-judgement is about the human request and the files changed since it: %+v", recs[0].Inputs)
+	}
+	// 通知が無ければ、同じ依頼の 3 回目の Stop は聞き直さない
+	runHook(t, "stop", map[string]any{"session_id": "bg", "cwd": repo, "last_assistant_message": "German README written, again."})
+	if count("done-as-asked") != 2 {
+		t.Fatalf("without a new notification the same request is not judged again: %d", count("done-as-asked"))
+	}
+	// 結果の正解: 最初の Stop では「変わっていない」(!edit、部分)が付くが、通知の後の Stop でファイルが変わったので
+	// 同じ trace に edit(重み 1)が付き直り、新しい方が勝つ。次の人の依頼では付け足さない
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "bg", "cwd": repo, "prompt": "thanks, now explain the Makefile"})
+	latest, _ := st.LabeledTraces("prompt-kind")
+	if len(latest) != 1 {
+		t.Fatalf("one trace labeled: %+v", latest)
+	}
+	for _, l := range latest {
+		if l.Truth != "edit" || l.Weight != 1 || l.Source != "outcome" {
+			t.Fatalf("the newest outcome truth must be edit w=1: %+v", l)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(agent, "labels", "prompt-kind.jsonl")); strings.Count(string(b), `"truth":"!edit"`) != 1 || strings.Count(string(b), `"truth":"edit"`) != 1 {
+		t.Fatalf("first !edit (partial) then edit on the same trace, nothing more:\n%s", b)
+	}
+	if sess := loadSession(agent, "bg"); len(sess.Pending) != 1 {
+		t.Fatalf("only the new request's pending remains: %d", len(sess.Pending))
 	}
 }

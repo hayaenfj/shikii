@@ -171,6 +171,9 @@ type pendingItem struct {
 	Trace string    `json:"trace"`
 	Tree  string    `json:"tree"` // 作業ツリーのハッシュ(中身は入れない)
 	At    time.Time `json:"at"`
+	// Settled: ターンの終わりに「変わっていない」(!edit、部分)を付けた後も、次の人の依頼まで持ち越す印。裏の作業が後から
+	// ファイルを変えたら(通知の後の Stop)、同じ trace に edit(重み 1、新しい答えが勝つ)を付け直せる
+	Settled bool `json:"settled,omitempty"`
 }
 
 type askedItem struct {
@@ -558,11 +561,37 @@ func hookEventName(event string) string {
 	return "Stop"
 }
 
+// isNotification は、Claude Code が裏の作業(サブエージェント・背景のコマンド)の完了を「ユーザーの発言」として流す
+// <task-notification> / [SYSTEM NOTIFICATION - NOT USER INPUT] の入力か(人の依頼ではない。実測で記録の半分近くがこれだった)。
+func isNotification(prompt string) bool {
+	p := strings.TrimSpace(prompt)
+	if strings.HasPrefix(p, "<task-notification>") || strings.HasPrefix(p, "<system-reminder>") {
+		return true
+	}
+	head := p
+	if len(head) > 300 {
+		head = head[:300]
+	}
+	return strings.Contains(head, "[SYSTEM NOTIFICATION - NOT USER INPUT]")
+}
+
 // hookUserPrompt は考える前の 2 つ(prompt-kind と needs-plan)を聞き、依頼と作業ツリーの状態を控える。前の依頼の結果の正解はここ(次の依頼が来た時)で決める。
 func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	req := cut(strings.TrimSpace(in.Prompt), requestMax)
 	if req == "" || strings.HasPrefix(req, "/") || in.AgentID != "" {
 		return hookOut{}, nil, nil
+	}
+	if isNotification(req) {
+		// 裏の作業の完了通知は依頼ではない: 2 問は聞かず、依頼・一覧・pending も置き換えない(結果の正解は次の人の依頼で決める)。
+		// 通知の後に作業が続いたら、そのターンの終わりで元の依頼に対してもう一度だけ判定し直す(Judged を戻す)
+		if snapshot.Request == "" {
+			return hookOut{}, nil, nil
+		}
+		return hookOut{}, []func(*hookSession){func(s *hookSession) {
+			if s.Request == snapshot.Request {
+				s.Judged = false
+			}
+		}}, nil
 	}
 	// 短い返事(「ok」「yes go ahead」)は依頼を置き換えず、前の依頼に添える: ターンの終わりの問いが「ok」を依頼として読まないように
 	request := req
@@ -580,7 +609,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		func(s *hookSession) { s.Request, s.Judged = request, false },
 		// 前の依頼の結果の正解は、次の依頼が来た時点のツリーで決める(依頼の境目 = 次の依頼。Stop まで待つと 2 つの依頼が混ざる)
 		func(s *hookSession) {
-			if err := settlePending(agent, s, tree, pendingNow); err != nil && firstErr == nil {
+			if err := settlePending(agent, s, tree, pendingNow, true); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		},
@@ -633,7 +662,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			}
 		},
 		func(s *hookSession) {
-			if err := settlePending(agent, s, tree, pendingNow); err != nil && firstErr == nil {
+			if err := settlePending(agent, s, tree, pendingNow, false); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		},
@@ -955,7 +984,9 @@ func runCalibrateInProcess(agent, path, storeDir, model string) {
 // settlePending は控えてある prompt-kind の判定に結果の正解を付ける: 依頼の時のツリーと今のツリー(now)が違えば edit(重み 1)、同じなら !edit(部分、重み 0.7)。
 // 依頼の直後(次の依頼が来た時)と Stop で呼ぶ。now が ""(git の外、または git が間に合わない)なら付けずに捨てる(比べる物が無い)。
 // only は呼ぶ側が錠の外で見た pending: 錠の中でもまだ残っているものだけ付ける(重なった hook が後から足した pending は、その hook の番で決まる)。
-func settlePending(agent string, sess *hookSession, now string, only []pendingItem) error {
+// final は「次の人の依頼が来た」(依頼の境目): ここで pending は必ず片付く。Stop(final=false)では、変わっていれば edit を付けて片付け、
+// 変わっていなければ !edit(部分)を 1 回だけ付けて持ち越す(裏の作業の通知の後の Stop で変わっていれば edit に置き換わる)。
+func settlePending(agent string, sess *hookSession, now string, only []pendingItem, final bool) error {
 	if len(sess.Pending) == 0 || len(only) == 0 {
 		return nil
 	}
@@ -974,12 +1005,20 @@ func settlePending(agent string, sess *hookSession, now string, only []pendingIt
 		if now == "" {
 			continue // 比べる物が無い: 付けずに捨てる
 		}
-		truth, weight := "!edit", 0.7
 		if p.Tree != now {
-			truth, weight = "edit", 1
+			if err := labelTrace(st, "prompt-kind", p.Trace, "edit", 1, "outcome"); err != nil && firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
-		if err := labelTrace(st, "prompt-kind", p.Trace, truth, weight, "outcome"); err != nil && firstErr == nil {
-			firstErr = err
+		if !p.Settled {
+			if err := labelTrace(st, "prompt-kind", p.Trace, "!edit", 0.7, "outcome"); err != nil && firstErr == nil {
+				firstErr = err
+			}
+			p.Settled = true
+		}
+		if !final {
+			rest = append(rest, p)
 		}
 	}
 	sess.Pending = rest
