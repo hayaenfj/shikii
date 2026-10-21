@@ -22,7 +22,7 @@ import (
 // 2 回目以降は同じ結果で、人が書いたものを壊さない。
 func cmdInit(args []string) error {
 	if len(args) > 0 {
-		return errors.New("usage: shikii init  (no flags: it prepares the current folder and the agent)")
+		return errors.New("使い方: shikii init または shikii --init（追加の引数は不要です）")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -39,14 +39,19 @@ func cmdInit(args []string) error {
 			return err
 		}
 	}
-	fmt.Fprintln(stdout, "folders: .shikii/decisions/ (specs) .shikii/wiki/ (knowledge) .shikii/records/ and .shikii/labels/ (records and truths). Nothing else is added to the project root")
+	fmt.Fprintln(stdout, "保存先: .shikii/（decisions/・wiki/・records/・labels/）")
+	nSpecs, err := seedAgentSpecs(filepath.Join(root, "decisions"))
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "既製の判定: 4種類を準備（新規%d件、既存の設定は保持）\n", nSpecs)
 	// 既製の知識: 型・パターン・モデルのページを、無いものだけ写す(tune --propose がここを読んで候補を作る。人が直したページは触らない)
 	n, err := seedWiki(filepath.Join(root, "wiki"))
 	if err != nil {
 		return fmt.Errorf("wiki: %w", err)
 	}
 	if n > 0 {
-		fmt.Fprintf(stdout, ".shikii/wiki/: %d pages of shared knowledge added (index.md, types/, patterns/, models/; pages you already have are never overwritten)\n", n)
+		fmt.Fprintf(stdout, ".shikii/wiki/: 既製の知識を%d件追加（既存のページは保持）\n", n)
 	}
 
 	// MCP の設定: Claude Code(.mcp.json)、Cursor(.cursor/mcp.json)、OpenCode(opencode.json の mcp)、Codex(~/.codex/config.toml)。
@@ -67,34 +72,33 @@ func cmdInit(args []string) error {
 			return err
 		}
 		if did {
-			fmt.Fprintf(stdout, "%s: shikii added (%s)\n", f.path, f.who)
+			fmt.Fprintf(stdout, "%s: shikiiを追加（%s）\n", f.path, f.who)
 		} else {
-			fmt.Fprintf(stdout, "%s: shikii entry kept as it is (%s; edit it by hand, init never rewrites it)\n", f.path, f.who)
+			fmt.Fprintf(stdout, "%s: 既存のshikii設定を保持（%s）\n", f.path, f.who)
 		}
 	}
 	switch did, err := addAgentsSection(filepath.Join(scope, "AGENTS.md")); {
 	case err != nil:
 		return err
 	case did:
-		fmt.Fprintln(stdout, "AGENTS.md: shikii section added (Codex and OpenCode read it; the full rules are in the skill)")
+		fmt.Fprintln(stdout, "AGENTS.md: shikiiの作法を追加（Codex・OpenCode向け）")
 	case fileExists(filepath.Join(scope, "CLAUDE.md")) && !fileExists(filepath.Join(scope, "AGENTS.md")):
-		fmt.Fprintln(stdout, "AGENTS.md: not created, because this project has CLAUDE.md and OpenCode stops reading CLAUDE.md once AGENTS.md exists. Add the shikii section to CLAUDE.md by hand, or create AGENTS.md with `@CLAUDE.md` in it and run init again")
+		fmt.Fprintln(stdout, "AGENTS.md: 作成を省略（既存のCLAUDE.mdを優先）")
 	}
-	fmt.Fprintln(stdout, "all four MCP entries point at a local model on :8080 (started by shikii up). Hosted only? remove --local from each of them by hand")
 	// 家のフォルダに置くもの(Codex の設定、skill)。HOME が無い環境(容れ物の CI など)では飛ばす: プロジェクトの準備は済んでいる
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintln(stdout, "no HOME: skipped Codex (~/.codex/config.toml) and the skill (~/.claude/skills/shikii)")
-		return nil
+		fmt.Fprintln(stdout, "HOMEが無いためCodexの共通設定とskillを省略し、プロジェクト側だけ準備します")
+		return completeProjectInit(root, scope)
 	}
 	codex := filepath.Join(home, ".codex", "config.toml")
 	switch did, err := addCodexServer(codex, mcpArgs); {
 	case err != nil:
 		return err
 	case did:
-		fmt.Fprintf(stdout, "%s: [mcp_servers.shikii] added (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
+		fmt.Fprintf(stdout, "%s: shikiiを追加（Codex）\n", filepath.Join("~", ".codex", "config.toml"))
 	default:
-		fmt.Fprintf(stdout, "%s: has mcp_servers already, kept as it is (Codex; add by hand if shikii is missing: [mcp_servers.shikii] command = \"shikii\" args = [%s])\n", filepath.Join("~", ".codex", "config.toml"), quotedList(mcpArgs))
+		fmt.Fprintf(stdout, "%s: 既存のMCP設定を保持（Codex）\n", filepath.Join("~", ".codex", "config.toml"))
 	}
 
 	// skill: 置き直す(古いファイルも消す)
@@ -102,8 +106,17 @@ func cmdInit(args []string) error {
 	if err := copySkill(dst); err != nil {
 		return fmt.Errorf("skill: %w", err)
 	}
-	fmt.Fprintf(stdout, "skill: %s replaced (the agent's rules; not a place to edit by hand, change skills/shikii in the repo instead)\n", filepath.Join("~", ".claude", "skills", "shikii"))
-	fmt.Fprintln(stdout, "next: shikii up  (start a local model), then shikii new <id> (writes .shikii/decisions/<id>.yaml) or copy a spec from the repo's decisions/ into .shikii/decisions/; shikii serve for the answer page")
+	fmt.Fprintf(stdout, "skill: %sを更新\n", filepath.Join("~", ".claude", "skills", "shikii"))
+	return completeProjectInit(root, scope)
+}
+
+func completeProjectInit(root, scope string) error {
+	if err := finishProjectInit(root, scope); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "利用可能: %s\n画面: %s（答え合わせが必要になると自動起動）\n", scope, projectPageURL(root))
+	fmt.Fprintln(stdout, "次: 普段どおり、このプロジェクトで依頼してください。新しいMCP設定は次のセッションから反映されます。")
+	fmt.Fprintln(stdout, "業務の判定を追加する時は shikii new <id>。モデルの手動起動は shikii up。")
 	return nil
 }
 
@@ -193,7 +206,7 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 		dec := json.NewDecoder(bytes.NewReader(b))
 		dec.UseNumber()
 		if err := dec.Decode(&cfg); err != nil {
-			return false, fmt.Errorf("%s: %w (fix it by hand; init does not overwrite a broken file)", path, err)
+			return false, fmt.Errorf("%s: JSONを確認してください（壊れた設定は上書きしません）: %w", path, err)
 		}
 	}
 	section, _ := cfg[key].(map[string]any)
@@ -271,7 +284,7 @@ func addAgentsSection(path string) (bool, error) {
 	if strings.Contains(string(b), agentsMarker) {
 		return false, nil
 	}
-	if os.IsNotExist(err) && fileExists("CLAUDE.md") {
+	if os.IsNotExist(err) && fileExists(filepath.Join(filepath.Dir(path), "CLAUDE.md")) {
 		return false, nil // OpenCode は AGENTS.md があると CLAUDE.md を読まなくなる。黙って作らない(呼び出し側が言う)
 	}
 	section := agentsMarker + "\n## shikii(判定の作法)\n\n" +

@@ -17,7 +17,7 @@
 
 依頼 1 回につき判定は 3〜4 件(ツール呼び出しの数に依らない)。`status` の「1000 判定あたりの人の判断」が使うほど減り、act の判定に receipt(人が確かめた件数と精度)が付く。これが「AI の確かさが上がった」の数字になる。
 
-**会話も採点も線も、プロジェクトごと。** 各プロジェクトの `.shikii/` に `decisions/` `wiki/` `records/` `labels/` `sessions/` を置く。hook が自動で準備するので、人の操作は増えない。Git の中ではリポジトリのルート、外では cwd が仕事の単位。同名の別フォルダは混ぜず、同じ repo のサブディレクトリや symlink は同じ仕事になる。`.shikii/` の共有先へのリンクは使わない。hook は `/.shikii/` を Git のローカルな `info/exclude` に足し、私的な会話を `git add -A` に巻き込まない。状態取りでも `.shikii/` を除き、shikii 自身の記録をファイル変更の結果に数えない。
+**会話も採点も線も、プロジェクトごと。** `shikii --init`で有効にした各プロジェクトの `.shikii/` に `decisions/` `wiki/` `records/` `labels/` `sessions/` を置く。hook が自動で準備するので、人の操作は増えない。Git の中ではリポジトリのルート、外では cwd が仕事の単位。同名の別フォルダは混ぜず、同じ repo のサブディレクトリや symlink は同じ仕事になる。`.shikii/` の共有先へのリンクは使わない。hook は `/.shikii/` を Git のローカルな `info/exclude` に足し、私的な会話を `git add -A` に巻き込まない。状態取りでも `.shikii/` を除き、shikii 自身の記録をファイル変更の結果に数えない。
 
 `~/.shikii/agent` は共通の型・道具・プロジェクトの索引だけを持つ。画面の :8096 はプロジェクトの入口を並べ、`/p/<実パスのハッシュ>/` から選んだ仕事の記録だけを読む。同じ URL 配下の API が採点・正解・教訓もその仕事へ保存し、成績を合算しない。hook が示す答え合わせのリンクも直接その仕事を開く。旧共通 store の会話や線は自動では引き継がない。
 
@@ -45,11 +45,11 @@ shikii hook uninstall --yes  # 足した 2 つの hook だけ外す。各プロ�
 which shikii                 # Claude Code がそのまま `shikii` を呼ぶので、PATH に要る
 ```
 
-**人が打つのは install.sh の 1 行だけ。** モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面(:8096)は、ターンの終わりに答え待ちが出た時に立っていなければ hook が `shikii serve` を裏で起こす。起こす権利は guard(`starting-model` / `starting-page`)の flock で 1 つの hook だけが取り、前に起こした子が生きている間(長いモデルの取得中も)と 10 分の中は起こさない。出力は `~/.shikii/agent/up.log` と `serve.log`。
+**インストール後、利用するプロジェクトで一度初期化する。** `shikii --init` を実行するか、エージェントに「このプロジェクトでshikiiを使いたい」と頼む。初期化は既製の4問・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を保存する。印が無い・別のプロジェクトの印・壊れた印ではhookは動かず、保存先・Gitの除外・モデルの起動にも触れない。初期化失敗では有効にせず、再実行しても既存データを保持する。 モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面(:8096)は、ターンの終わりに答え待ちが出た時に立っていなければ hook が `shikii serve` を裏で起こす。起こす権利は guard(`starting-model` / `starting-page`)の flock で 1 つの hook だけが取り、前に起こした子が生きている間(長いモデルの取得中も)と 10 分の中は起こさない。出力は `~/.shikii/agent/up.log` と `serve.log`。
 
 `install` がすること(2 回目は何も足さない):
 
-1. `~/.shikii/agent/` に共通の型と既製の wiki を置く。各仕事の `.shikii/` は最初の hook が自動で準備し、4 つの spec を埋め込みの原本から**無いものだけ**写す。他の仕事の線は写さず、既にその仕事で育てた spec は触らない。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
+1. `~/.shikii/agent/` に共通の型と既製の wiki を置く。各仕事の `.shikii/` は`shikii --init`（`shikii init`も同じ）が準備し、4 つの spec を埋め込みの原本から**無いものだけ**写す。他の仕事の線は写さず、既にその仕事で育てた spec は触らない。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
 2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `UserPromptSubmit` と `Stop` の 2 つ(command は **実行ファイルの絶対パス** + ` hook <event>`。エージェントの shell の PATH に `shikii` が無くても動く。実行ファイルを動かしたら `shikii hook install --yes` を流し直すと古いパスの handler が外れて新しいものが入る。timeout は UserPromptSubmit 10 秒、Stop 15 秒。matcher は無い)。古い版が足した `PreToolUse` の shikii の hook は外す(他の hook と鍵は残す)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
 固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ records/ labels/ sessions/)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、依頼・返答・ファイル名はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しには何も足されない。モデルが無ければ待たずに黙る。

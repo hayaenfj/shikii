@@ -1,6 +1,6 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
-  projectsTitle: 'プロジェクト', projectsHow: '仕事を選ぶと、その会話・教訓・答え合わせだけを表示します。', projectsEmpty: 'まだプロジェクトはありません。エージェントと話すと自動で追加されます。',
+  projectsTitle: 'プロジェクト', projectsHow: '仕事を選ぶと、その会話・教訓・答え合わせだけを表示します。', projectsEmpty: 'まだプロジェクトはありません。利用するプロジェクトで shikii --init を実行するか、エージェントにこの場所での利用を頼んでください。',
   legacyTextLimit: 'この欄は保存上限付近で終わっています。以前の版では続きが保存されていない場合があります。', originalTextLimit: '長文のため、原文の保存上限（64 KB）まで表示しています。', originalTextUnavailable: '原文を読み出せません。判定に保存された冒頭を表示しています。',
 
   reviewRandom: 'AI の仮採点を抜き打ちで確認', reviewUncertain: 'AI が採点を保留したため確認', reviewReply: 'その後の人の返事', reviewEvidence: 'AI の仮採点と根拠を見る', reviewPending: n => `会話の続きを受けて AI が仮採点する判定: ${n} 件`, reviewQuality: q => `AI の仮採点 ${q.scored} 件（保留 ${q.uncertain} 件） · 採点の比較 ${q.checked} 件中 ${q.correct} 件一致 · 保留の確認 ${q.uncertain_checked} 件 · 無作為の確認 ${q.random_checked} 件中 ${q.random_correct} 件一致 · 抜き取りは ${q.audit_every} 件に 1 件`,

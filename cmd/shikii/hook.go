@@ -520,6 +520,9 @@ func runHookEvent(event string) error {
 	}
 	common := agent
 	agent, _, err = prepareHookProject(in.CWD)
+	if errors.Is(err, errProjectInactive) {
+		return nil // 初期化していない場所では保存・Gitの変更・モデルの起動をしない。
+	}
 	if err != nil {
 		return err
 	}
@@ -1461,7 +1464,7 @@ func hookInstall(args []string, install bool) error {
 	home := filepath.Dir(filepath.Dir(agent))
 	tilde := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
 	if install {
-		fmt.Fprintf(stdout, "1. %s: shared templates and wiki pages only; each project automatically gets its own .shikii/ for conversations, decisions, reviews, truths and calibration; copy the 4 template specs that are missing (%s) and the shared wiki pages. Existing files are never overwritten. ~/.claude/skills/shikii (the agent's rules for using shikii) is put in place\n", tilde(agent), strings.Join(hookSpecs, ", "))
+		fmt.Fprintf(stdout, "1. %s: 共通の型とwikiを準備します。利用するプロジェクトで shikii --init を一度実行すると、その .shikii/ へ会話・判定・採点・正解・較正を保存します。未初期化の場所ではhookは動きません。既製の4問（%s）とskillを準備し、既存の設定は保持します。\n", tilde(agent), strings.Join(hookSpecs, ", "))
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: add 2 hooks (UserPromptSubmit, Stop) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), tilde(strings.Fields(hookEvents()[0].cmd)[0]), t.who, filepath.Base(t.rel), t.note)
 		}

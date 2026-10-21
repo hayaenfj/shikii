@@ -7,7 +7,7 @@
 ### A tool that grows lessons from everyday conversations and checks AI decisions against outcomes and corrections. Your usual agent maintains the wiki while you work.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-234%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-239%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 [![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -32,7 +32,7 @@ For people who use Claude Code or Codex. The coding agent makes judgements when 
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-That is all. It installs the binary, adds two hooks to Claude Code and Codex, puts the agent's rules (a skill) in place, and starts a small local AI (Kev-4B) in the background (if llama.cpp is missing it prints the one line to install it). Open a new terminal and keep working with the agent as usual (in Codex, run `/hooks` once to trust shikii's hooks). Four things are measured.
+Install once, then open a new terminal. In each project you want to use, tell the agent ‘use shikii in this project’, or run `shikii --init` yourself (`shikii init` does the same). Initialization prepares the four decisions, wiki, MCP setup, agent rules and a link to the project's page. Hooks stay silent in projects you have not initialized. The installer adds two hooks to Claude Code and Codex and prepares a small local AI (Kev-4B); if llama.cpp is missing it shows how to install it. In Codex, run `/hooks` once to trust the hooks. Four things are measured.
 
 | When | Question | Where the truth comes from |
 |---|---|---|
@@ -43,7 +43,7 @@ That is all. It installs the binary, adds two hooks to Claude Code and Codex, pu
 
 At the end of a turn one line appears, `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`, and you open it when you have a minute (the hook starts the page in the background too); each answer takes seconds. After 50 answers a line is drawn and the agent's behaviour changes: a request that needs a plan becomes a note to the agent, and a turn that looks unfinished or out of scope becomes one line to you, each with grounds such as "line on 61 truths, human-checked precision 0.96". Until then the hooks only record. No hook ever stops a tool.
 
-Each project's `.shikii/` holds its conversations, lessons, assessments, truths and calibration. The hooks prepare it automatically. The common page on :8096 opens each project separately; `~/.shikii/agent` holds shared templates, tools and the project index. Details: [the hook](integrations/claude-code.md) (Japanese).
+Each project's `.shikii/` holds its conversations, lessons, assessments, truths and calibration. Run `shikii --init` once to enable automatic recording in that project. Existing data is preserved. The common page on :8096 opens each project separately; `~/.shikii/agent` holds shared templates, tools and the project index. Details: [the hook](integrations/claude-code.md) (Japanese).
 
 **0.4: useful memory arrives briefly, and reflection is batched.** Lessons are selected by their titles and conditions, up to two in a short quote. The same revision is not repeated for one hour in the session; updates arrive immediately. Routine assessment and wiki work are grouped into two conversations and handled with one query and one submission. A single pending conversation is offered at the next request after a day. No additional model or settings are needed.
 
@@ -96,9 +96,9 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 What install.sh does: installs the binaries (`shikii` and `shikii-readout`), adds two hooks to Claude Code and Codex, puts the agent's rules (the skill) in `~/.claude/skills/shikii`, and, if llama.cpp is present, starts the local AI (Kev-4B on :8080) in the background. To use hosted Jev or OpenRouter instead, put the key in an environment variable ([connections](docs/guide.md#what-you-can-connect)). `shikii doctor` tells you what is running and what is missing.
 
-The per-project setup (`shikii init`) is the agent's job (you may also run it yourself). It creates one folder, `.shikii/` (inside: `decisions/` = decision files, `wiki/` = knowledge, `records/` and `labels/` = records and corrections). Nothing else appears at the project root. `decisions/`, `wiki/` and `labels/` survive a change of AI. Hooks exclude `.shikii/` from untracked Git files because it also contains private conversations. Check and select any material before sharing it. `shikii gc` drops old records. It also adds a shikii entry to your agents' setup (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`, OpenCode's `opencode.json`, Codex's `~/.codex/config.toml`) without touching entries you wrote. Running it again changes nothing that exists.
+The per-project setup (`shikii --init` or `shikii init`) is the agent's job when you ask to use shikii there; you may also run it yourself. It creates one folder, `.shikii/` (inside: `decisions/` = decision files, `wiki/` = knowledge, `records/` and `labels/` = records and corrections). MCP configuration files and, when appropriate, an AGENTS.md section are also prepared. `decisions/`, `wiki/` and `labels/` survive a change of AI. Initialization excludes `.shikii/` from untracked Git files because it also contains private conversations. Check and select any material before sharing it. `shikii gc` drops old records. It also adds a shikii entry to your agents' setup (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`, OpenCode's `opencode.json`, Codex's `~/.codex/config.toml`) without touching entries you wrote. Running it again changes nothing that exists.
 
-Command output and hook messages are in English (if Claude Code's language setting is Japanese, hook messages are shown in Japanese next to the English). The page has Japanese. The finer points, such as using only a hosted AI, `AGENTS.md` versus `CLAUDE.md`, and Node for changing the page itself, are in [the guide](docs/guide.md).
+The initializer explains readiness and next steps in Japanese; other commands and hook messages may use English (hook messages also include Japanese when Claude Code is set to Japanese). The page has Japanese. The finer points, such as using only a hosted AI, `AGENTS.md` versus `CLAUDE.md`, and Node for changing the page itself, are in [the guide](docs/guide.md).
 
 ## Why you can swap the AI
 

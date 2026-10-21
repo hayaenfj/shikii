@@ -16,6 +16,8 @@ func TestHookSeparatesProjectStores(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
 	hookEnv(t, model)
 	a, b := gitRepo(t), gitRepo(t)
+	initTestProject(t, a)
+	initTestProject(t, b)
 	const session = "same-session"
 	const request = "README のインストール手順を詳しく書き直して"
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": a, "prompt": request})
@@ -102,10 +104,7 @@ func TestProjectHubKeepsReadsAndWritesWithinTheSelectedProject(t *testing.T) {
 	if err := os.Mkdir(b, 0700); err != nil {
 		t.Fatal(err)
 	}
-	bStore, bScope, err := prepareHookProject(b)
-	if err != nil {
-		t.Fatal(err)
-	}
+	bStore, bScope := initTestProject(t, b)
 	aScope := feedbackScope(a)
 	id, trace := reviewSeed(t, store.Store{Dir: aStore}, aScope, 1)
 	if _, err := runNotebook(aStore, aScope, notebookRequest{Operation: "ingest", Draft: notebook.Draft{Sources: []string{id}, Title: "起動手順", Lesson: "モデルを起動する手順を書く", AppliesTo: "README の導入手順"}}); err != nil {
