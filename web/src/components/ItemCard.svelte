@@ -69,7 +69,9 @@
   <div class="text">
     {#if it.answerable}
       {#each Object.entries(it.inputs) as [k, v]}
-        <div><span class="k">{k}</span><br>{v}</div>
+        <div><span class="k">{k}</span><br>{it.original_inputs?.[k] ?? v}
+          {#if it.text_status?.[k]}<div class="k text-limit">{t(it.text_status[k] === 'legacy' ? 'legacyTextLimit' : it.text_status[k] === 'limited' ? 'originalTextLimit' : 'originalTextUnavailable')}</div>{/if}
+        </div>
       {/each}
     {:else}
       <span class="k">{t('noText')(it.inputs_hash)}</span>

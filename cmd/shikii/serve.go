@@ -377,6 +377,7 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 			"answerable": len(rec.Inputs) > 0, "choices": truthChoices(sp), "project": rec.Project,
 			"truth": l.Truth, "truth_at": l.At, "source": l.Source, "correct": store.Correct(rec.Top, l.Truth),
 		})
+		items[len(items)-1]["original_inputs"], items[len(items)-1]["text_status"] = s.st.RecordText(rec)
 		if len(items) >= limit {
 			break
 		}
@@ -618,6 +619,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		if grade, ok := reviews[rec.TraceID]; ok {
 			items[len(items)-1]["review"] = grade
 		}
+		items[len(items)-1]["original_inputs"], items[len(items)-1]["text_status"] = s.st.RecordText(rec)
 	}
 	order := func(it map[string]any) int {
 		if it["audit"] == true {

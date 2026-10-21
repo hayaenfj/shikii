@@ -1,6 +1,8 @@
 // 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
+  legacyTextLimit: 'This field ends near the old storage limit. Earlier versions may not have kept the rest.', originalTextLimit: 'This long text is shown up to the 64 KB source storage limit.', originalTextUnavailable: 'The original text could not be read. Showing the beginning kept with the decision.',
+
   reviewRandom: 'Spot-check an AI assessment', reviewUncertain: 'The AI could not assess this', reviewReply: 'The person’s follow-up', reviewEvidence: 'Show the AI assessment and evidence', reviewPending: n => `${n} decisions await AI assessment after the next reply`, reviewQuality: q => `${q.scored} AI assessments (${q.uncertain} undecided) · ${q.correct}/${q.checked} scored checks agree · ${q.uncertain_checked} undecided cases checked · ${q.random_correct}/${q.random_checked} random checks agree · sampling 1 in ${q.audit_every}`,
 
   langName: 'English',

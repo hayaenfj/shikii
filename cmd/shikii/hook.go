@@ -159,17 +159,18 @@ func (o hookOut) json(event string) []byte {
 // hookSession はセッションごとの控え(~/.shikii/agent/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 // 依頼の時の作業ツリーの一覧は隣の <id>.files(大きいので JSON には入れない)。
 type hookSession struct {
-	Request   string         `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
-	TurnID    string         `json:"turn_id,omitempty"`         // 同じ文の依頼を繰り返しても別のターン
-	Scope     string         `json:"scope,omitempty"`           // repo の実パス。会話の引用を同じ仕事に限るため(線は従来どおり共有)
-	Completed *completedTurn `json:"completed,omitempty"`       // この依頼に返答した時の控え。次の人の発言と一組にする
-	Previous  string         `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
-	Pending   []pendingItem  `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
-	Asked     []askedItem    `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
-	Reviews   []askedItem    `json:"reviews,omitempty"`         // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
-	Reported  []string       `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
-	Judged    bool           `json:"judged,omitempty"`          // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
-	At        time.Time      `json:"at"`
+	Request     string         `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
+	RequestText string         `json:"request_text,omitempty"`    // 画面用の原文。判定の入力とは分けて保持する
+	TurnID      string         `json:"turn_id,omitempty"`         // 同じ文の依頼を繰り返しても別のターン
+	Scope       string         `json:"scope,omitempty"`           // repo の実パス。会話の引用を同じ仕事に限るため(線は従来どおり共有)
+	Completed   *completedTurn `json:"completed,omitempty"`       // この依頼に返答した時の控え。次の人の発言と一組にする
+	Previous    string         `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
+	Pending     []pendingItem  `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
+	Asked       []askedItem    `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
+	Reviews     []askedItem    `json:"reviews,omitempty"`         // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
+	Reported    []string       `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
+	Judged      bool           `json:"judged,omitempty"`          // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
+	At          time.Time      `json:"at"`
 }
 
 type pendingItem struct {
@@ -302,7 +303,7 @@ func pruneSessions(agent string) {
 
 // hookDecide は ~/.shikii/agent の spec で判定し、帯を振る舞いに写し、記録する。線が無ければ band は act にならない(= 影の期間)。
 // 設定の言語が英語以外なら、出す文は英語と併記し、記録にも display(言語、質問、答え、出した文)を添える。
-func hookDecide(agent, specID string, inputs map[string]string, project string) (*decide.Decision, hookOut, error) {
+func hookDecide(agent, specID string, inputs map[string]string, project string, originals ...map[string]string) (*decide.Decision, hookOut, error) {
 	sp, err := spec.Load(filepath.Join(agent, "decisions", specID+".yaml"))
 	if err != nil {
 		return nil, hookOut{}, err
@@ -328,13 +329,18 @@ func hookDecide(agent, specID string, inputs map[string]string, project string) 
 		if err := recordDecisionRec(st, sp, d, rec); err != nil {
 			return nil, hookOut{}, err
 		}
+		for _, text := range originals {
+			if err := st.SaveRecordText(rec, text); err != nil {
+				return d, out, err
+			}
+		}
 	}
 	return d, out, nil
 }
 
 // hookDecideAll は同じ入力で複数の spec を並行して聞く(1 つの hook の中で順に待つと timeout に近づく)。
 // 返す順は specIDs の順。聞かなかった(skip)spec は nil。
-func hookDecideAll(agent string, specIDs []string, inputs map[string]string, project string, skip func(id string) bool) ([]*decide.Decision, []hookOut, error) {
+func hookDecideAll(agent string, specIDs []string, inputs map[string]string, project string, skip func(id string) bool, originals ...map[string]string) ([]*decide.Decision, []hookOut, error) {
 	ds := make([]*decide.Decision, len(specIDs))
 	outs := make([]hookOut, len(specIDs))
 	errs := make([]error, len(specIDs))
@@ -346,7 +352,7 @@ func hookDecideAll(agent string, specIDs []string, inputs map[string]string, pro
 		wg.Add(1)
 		go func(i int, id string) {
 			defer wg.Done()
-			ds[i], outs[i], errs[i] = hookDecide(agent, id, inputs, project)
+			ds[i], outs[i], errs[i] = hookDecide(agent, id, inputs, project, originals...)
 		}(i, id)
 	}
 	wg.Wait()
@@ -628,6 +634,18 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		inputs["previous"] = snapshot.Previous // 文脈の段(迷った時だけ使われる)
 	}
 	tree, listing, listed, project, scope := treeStateWithScope(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
+	requestText := strings.TrimSpace(in.Prompt)
+	if utf8.RuneCountInString(req) < shortReply && snapshot.Request != "" && snapshot.Scope == scope {
+		previous := snapshot.RequestText
+		if previous == "" {
+			previous = snapshot.Request
+		}
+		requestText = previous + " / " + requestText
+	}
+	if !strings.HasPrefix(requestText, request) {
+		requestText = ""
+	}
+	requestText = cut(requestText, store.RecordTextLimit+utf8.UTFMax)
 	turnID := store.NewTraceID()
 	var firstErr error
 	pendingNow := snapshot.Pending // 前の依頼の pending(写し)。錠の中で settle するのはこの trace だけ(重なった Stop や次の依頼が足した pending を巻き込まない)
@@ -637,6 +655,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 				hookLog("feedback: " + ferr.Error())
 			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
+			s.RequestText = requestText
 		},
 		// 前の依頼の結果の正解は、次の依頼が来た時点のツリーで決める(依頼の境目 = 次の依頼。Stop まで待つと 2 つの依頼が混ざる)
 		func(s *hookSession) {
@@ -656,7 +675,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 		},
 	}
-	ds, outs, err := hookDecideAll(agent, hookSpecs[:2], inputs, project, nil)
+	ds, outs, err := hookDecideAll(agent, hookSpecs[:2], inputs, project, nil, map[string]string{"request": strings.TrimSpace(in.Prompt)})
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
@@ -731,9 +750,13 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	if inputs["summary"] == "" {
 		inputs["summary"] = "(none)"
 	}
+	originals := map[string]string{"summary": strings.TrimSpace(in.LastAssistantMessage)}
+	if snapshot.RequestText != "" {
+		originals["request"] = snapshot.RequestText
+	}
 	ds, outs, err := hookDecideAll(agent, hookSpecs[2:], inputs, project, func(id string) bool {
 		return id == "changes-in-scope" && (!known || len(changed) == 0) // 何も変えていない(か分からない)なら「範囲か」は問えない
-	})
+	}, originals)
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
