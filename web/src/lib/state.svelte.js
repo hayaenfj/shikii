@@ -1,7 +1,7 @@
 // 画面の状態と、サーバーからの読み込み。
 // ui: 開いているタブ(判定ごと。「くわしく」なら知識のタブも)、見せ方(1 件ずつ / 一覧)、絞り込み(全部 / 迷い / 抜き取り / その他)、
 //     未回答 / 回答済み、あとで答える(スキップ)、かんたん表示 / くわしく、使い方の案内。保存するものは localStorage(shikii.*)
-// data: /v1/status の結果に、spec ごとの待ち(queue)・聞き方(tune)・知識(wiki)を足したもの。null は読み込み前
+// data: /v1/status と、表示中の列・聞き方または知識。null は読み込み前
 import { SvelteSet } from 'svelte/reactivity';
 import { api } from './api.js';
 import { read, write } from './prefs.js';
@@ -28,14 +28,41 @@ export function setShowHelp(v) { ui.showHelp = v; write('shikii.help', v ? 'show
 export function setTab(v) { ui.tab = v; write('shikii.tab', v); }
 export function setView(v) { ui.view = v; write('shikii.view', v); }
 
-// 全部を読み直す。spec ごとの tune と wiki は失敗しても画面を止めない(null にして欄を畳む)
+// ナビと読取りで同じ選択規則を使う。知識は未読でも、くわしく表示から開ける。
+export function selectedTab(st, selection = ui) {
+  if (!st?.specs?.length) return null;
+  if (selection.advanced && selection.tab === 'wiki') return 'wiki';
+  return st.specs.find(s => s.id === selection.tab)?.id
+    || st.specs.find(s => s.unlabeled > 0)?.id || st.specs[0].id;
+}
+
+let loadVersion = 0;
+// statusと表示中の欄だけを更新する。遅い古い応答は新しい選択へ反映しない。
 export async function load() {
-  const st = await api.status();
-  if (Array.isArray(st.projects)) { data.state = st; return; }
-  for (const sp of st.specs) {
-    sp.queue = await api.queue(sp.id);
-    try { sp.tune = await api.tune(sp.id); } catch (e) { sp.tune = null; }
+  const version = ++loadVersion;
+  const selection = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
+  try {
+    const st = await api.status();
+    if (version !== loadVersion) return;
+    if (!Array.isArray(st.projects)) {
+      const tab = selectedTab(st, selection);
+      if (tab === 'wiki') {
+        st.wiki = await api.wiki();
+      } else if (tab) {
+        const sp = st.specs.find(s => s.id === tab);
+        // 回答済みでは未回答の列を読まない。
+        sp.queue = { items: [] };
+        const [rows, tune] = await Promise.all([
+          selection.done ? api.answered(tab) : api.queue(tab),
+          selection.advanced && !selection.done ? api.tune(tab).catch(() => null) : null,
+        ]);
+        if (selection.done) sp.answered = rows.items;
+        else sp.queue = rows;
+        sp.tune = tune;
+      }
+    }
+    if (version === loadVersion) { data.state = st; data.loadError = ''; }
+  } catch (e) {
+    if (version === loadVersion) data.loadError = e.message;
   }
-  try { st.wiki = await api.wiki(); } catch (e) { st.wiki = null; }
-  data.state = st;
 }

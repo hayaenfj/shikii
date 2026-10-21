@@ -35,12 +35,12 @@
     busy = true;
     try {
       const res = await api.label({ trace_id: it.trace_id, spec: sp.id, truth, source: it.audit ? 'audit' : 'ui' });
-      if (it.truth) { sp.answered = null; }
-      else { sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++; }
-      if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); load(); }
+      if (!it.truth) { sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++; }
+      if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); }
       else { toast(t('done')(res.truth)); }
-      if (it.review) load();
-    } catch (e) { toast(t('error')(e.message)); busy = false; }
+      if (it.truth || it.review || res.calibrated) await load();
+    } catch (e) { toast(t('error')(e.message)); }
+    finally { busy = false; }
   }
 
   // 今の聞き方と線で同じ本文をもう一度判定。前と今を並べ、あなたの答えとの一致を出す
@@ -49,7 +49,7 @@
     try {
       const res = await api.redo({ trace_id: it.trace_id, spec: sp.id });
       redoRes = res;
-      if (res.recorded) { sp.answered = null; load(); }
+      if (res.recorded) await load();
     } catch (e) { toast(t('error')(e.message)); }
     busy = false;
   }
