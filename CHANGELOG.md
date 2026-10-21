@@ -8,7 +8,7 @@
 - Verifies SHA256SUMS and the asset hashes, then updates shikii and readout beside the running executable. Leaves the installation unchanged if the current version is the same or newer.
 - Checks the package contents and executable version before replacing files, and restores the existing executables if replacement fails. Preserves conversations, memories, human answers and calibration, and refreshes existing hooks and agent instructions. Restart a running UI or MCP server to use the new version.
 - Makes `CHANGELOG.md` the English changelog and keeps the Japanese history in `CHANGELOG_ja.md`, with links between them.
-- Clarifies the target of before-work and after-work cards. Shows the current request first and folds the earlier reply into reference context. For yes/no decisions, the displayed prediction, its probability and the matching answer button now use the more likely answer, including after a retry.
+- Clarifies the target of before-work and after-work cards. Shows the current request first and folds the AI reply from before that request into conversation context. For yes/no decisions, the displayed prediction, its probability and the matching answer button now use the more likely answer, including after a retry.
 
 ## 0.4.1 — Connect corrections to the next action
 
