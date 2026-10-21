@@ -7,7 +7,7 @@
 ### 普段の会話から出典付きの教訓を育て、AI の判断を答え合わせで確かめる道具。依頼と訂正はいつもどおり、wiki の整理は AI が行います。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-234%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-239%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 [![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](../../CHANGELOG.md)
@@ -32,7 +32,7 @@ Claude Code か Codex を使っている人向けです。コードを書く AI 
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-これだけです。実行ファイルを入れ、Claude Code と Codex に hook を 2 つ足し、エージェントの作法(skill)を置き、手元の小さな AI(Kev-4B)を裏で起こします(llama.cpp が無ければ入れ方を 1 行示します)。新しいターミナルで普段どおり AI に仕事を頼むだけで、測るのは 4 つ(Codex は最初に `/hooks` で shikii の hook を一度 trust します)。
+まず一度インストールし、新しいターミナルを開きます。利用するプロジェクトで「このプロジェクトでshikiiを使いたい」とエージェントに頼むか、自分で `shikii --init` を一度実行します（`shikii init` も同じ）。既製の4問・wiki・MCP・作法と画面への入口が揃い、以後は普段どおり仕事を頼めます。未初期化の場所ではhookは動きません。インストール時にはClaude CodeとCodexのhookと、手元の小さなAI（Kev-4B）を準備します（llama.cppが無ければ入れ方を案内。Codexは最初に `/hooks` でhookを一度trustします）。測るのは4つです。
 
 | いつ | 問い | 正解の出どころ |
 |---|---|---|
@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 ターンの終わりに `shikii: このセッションの判定 3 件が答え待ち: http://127.0.0.1:8096/` と 1 行出るので、手の空いた時に開いて答えます(画面も hook が裏で立てます)。1 件数秒です。答えが 50 件たまると線が引け、そこから AI の振る舞いが変わります。進め方を合わせた方がよさそうな依頼は AI への一言になり、終えていない・範囲の外に見えるターンはあなたへの 1 行になります。どちらにも「線は正解 61 件、人が確かめた精度 0.96」のような根拠が付きます。線が引けるまでは記録だけで、hook がツールを止めることはありません。
 
-会話・教訓・仮採点・正解・線は、各プロジェクトの `.shikii/` に保存します。hook が自動で準備し、:8096 の共通画面から仕事を選んで開きます。`~/.shikii/agent` は共通の型・道具・プロジェクトの入口を持ちます。詳しくは [hook の説明](../../integrations/claude-code.md)。
+会話・教訓・仮採点・正解・線は、各プロジェクトの `.shikii/` に保存します。`shikii --init` でその仕事の自動記録を有効にし、:8096の共通画面から選んで開きます。再初期化しても既存データを保持します。`~/.shikii/agent` は共通の型・道具・プロジェクトの入口を持ちます。詳しくは [hook の説明](../../integrations/claude-code.md)。
 
 **0.4: 必要な記憶を短く届け、振り返りをまとめます。** 題と適用する場面が近い教訓を最大2件、短く引用します。同じセッションに同じ版を一時間は繰り返さず、更新された版はすぐ届けます。採点とwiki整理は2会話ずつ、一度の確認と一括保存で済ませます。1件のままでも一日経ったら次の依頼で整理を促します。追加のモデルや設定は要りません。
 
@@ -96,9 +96,9 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 install.sh がすること: 実行ファイル(`shikii` と `shikii-readout`)を入れ、Claude Code と Codex に hook を 2 つ足し、エージェントの作法(skill)を `~/.claude/skills/shikii` に置き、llama.cpp があれば手元の AI(Kev-4B、:8080)を裏で起こします。ホスト版の Jev や OpenRouter を使うなら鍵は環境変数で([接続先](../guide.ja.md#接続先))。何が動いていて何が足りないかは `shikii doctor`。
 
-プロジェクトごとの準備(`shikii init`)はエージェントが打ちます(自分で打ってもよい)。作るのはフォルダ `.shikii/` の 1 つだけです(中に `decisions/` = 判定の定義、`wiki/` = 知識、`records/` と `labels/` = 記録と答え合わせ)。プロジェクトのルートに他のものは増えません。`decisions/` `wiki/` `labels/` は AI を替えても使う資産です。ただし会話も入るため、hook は `.shikii/` を Git の未追跡ファイルから除外します。共有する資料は内容を確認して選びます。`records/` は `shikii gc` で古いものを捨てられます。エージェントの設定(Claude Code の `.mcp.json`、Cursor の `.cursor/mcp.json`、OpenCode の `opencode.json`、Codex の `~/.codex/config.toml`)にも shikii の項を足しますが、あなたが書いた項は触りません。もう一度打っても、あるものは触りません。
+プロジェクトごとの準備（`shikii --init`、`shikii init`も同じ）は、その仕事での利用を頼まれたエージェントが行います（自分で打ってもよい）。作るのはフォルダ `.shikii/` の 1 つだけです(中に `decisions/` = 判定の定義、`wiki/` = 知識、`records/` と `labels/` = 記録と答え合わせ)。MCPの設定ファイルと、必要な場合はAGENTS.mdの作法も準備します。`decisions/` `wiki/` `labels/` は AI を替えても使う資産です。ただし会話も入るため、初期化時に `.shikii/` をGitの未追跡ファイルから除外します。共有する資料は内容を確認して選びます。`records/` は `shikii gc` で古いものを捨てられます。エージェントの設定(Claude Code の `.mcp.json`、Cursor の `.cursor/mcp.json`、OpenCode の `opencode.json`、Codex の `~/.codex/config.toml`)にも shikii の項を足しますが、あなたが書いた項は触りません。もう一度打っても、あるものは触りません。
 
-コマンドの出力と hook の文は英語です(Claude Code の設定の言語が日本語なら、hook の文は日本語も併記されます)。画面には日本語があります。外の AI だけで使う時の設定、`AGENTS.md` と `CLAUDE.md` の扱い、画面そのものを直す時の Node などの細かい注意は [詳しい使い方](../guide.ja.md) にあります。
+初期化の案内は日本語で利用可能な状態と次の行動を示します。他のコマンドとhookの文には英語もあります(Claude Code の設定の言語が日本語なら、hook の文は日本語も併記されます)。画面には日本語があります。外の AI だけで使う時の設定、`AGENTS.md` と `CLAUDE.md` の扱い、画面そのものを直す時の Node などの細かい注意は [詳しい使い方](../guide.ja.md) にあります。
 
 ## なぜ AI を替えても良いか
 

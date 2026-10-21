@@ -67,7 +67,7 @@ func main() {
 		err = cmdGC(os.Args[2:])
 	case "wiki":
 		err = cmdWiki(os.Args[2:])
-	case "init":
+	case "init", "--init":
 		err = cmdInit(os.Args[2:])
 	case "import":
 		err = cmdImport(os.Args[2:])
@@ -101,7 +101,7 @@ func usage() { fmt.Fprint(os.Stderr, usageText()) }
 
 func usageText() string {
 	return `usage (flags may come before or after the positional arguments):
-  shikii init      実行する場所に .shikii/(decisions/ wiki/ records/ labels/)を作り、.mcp.json などに shikii を足し、skill を ~/.claude/skills/shikii に写す(オプション無し、2 回目も安全)
+  shikii init      （shikii --initでも同じ）このプロジェクトでの自動記録を有効にし、4種類の判定・wiki・MCP・作法と画面への入口を準備する。2回目も安全
   shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]
                    質問に答えるだけで .shikii/decisions/<id>.yaml を作る
   shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]

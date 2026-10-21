@@ -102,7 +102,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	}
 	out = capture(t, func() error { return cmdInit(nil) })
 	b2, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
-	if !strings.Contains(string(b2), "--proposer") || !strings.Contains(out, "kept") {
+	if !strings.Contains(string(b2), "--proposer") || !strings.Contains(out, "保持") {
 		t.Fatalf("an existing shikii entry must be kept as the person wrote it: %s\n%s", b2, out)
 	}
 	cb2, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
@@ -114,7 +114,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte("{broken"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdInit(nil); err == nil || !strings.Contains(err.Error(), "by hand") {
+	if err := cmdInit(nil); err == nil || !strings.Contains(err.Error(), "JSON") {
 		t.Fatalf("a broken .mcp.json must stop init: %v", err)
 	}
 }
@@ -161,10 +161,10 @@ func TestInitNeverBreaksWhatPeopleWrote(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error { return cmdInit(nil) })
-	if _, err := os.Stat("AGENTS.md"); !os.IsNotExist(err) || !strings.Contains(out, "AGENTS.md: not created") {
+	if _, err := os.Stat("AGENTS.md"); !os.IsNotExist(err) || !strings.Contains(out, "AGENTS.md: 作成を省略") {
 		t.Fatalf("with only CLAUDE.md, AGENTS.md must not be created and init must say why:\n%s", out)
 	}
-	if !strings.Contains(out, "no HOME") || !fileExists(".mcp.json") || !fileExists("opencode.json") {
+	if !strings.Contains(out, "HOMEが無い") || !fileExists(".mcp.json") || !fileExists("opencode.json") {
 		t.Fatalf("without HOME, the project side is still prepared and init succeeds:\n%s", out)
 	}
 }

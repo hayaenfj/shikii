@@ -57,14 +57,8 @@ func TestProjectDefaultCLIRejectsLinkedStore(t *testing.T) {
 func TestProjectCalibrationsKeepTheirReports(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	a, b := gitRepo(t), gitRepo(t)
-	aStore, aScope, err := prepareHookProject(a)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bStore, bScope, err := prepareHookProject(b)
-	if err != nil {
-		t.Fatal(err)
-	}
+	aStore, aScope := initTestProject(t, a)
+	bStore, bScope := initTestProject(t, b)
 	enteredA, enteredB, releaseA, releaseB := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req systemone.Request

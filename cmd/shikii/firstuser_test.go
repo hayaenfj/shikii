@@ -28,7 +28,7 @@ func TestInitSeedsTheWikiWithSharedKnowledgeWithoutOverwriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error { return cmdInit(nil) })
-	if !strings.Contains(out, "wiki/: ") || !strings.Contains(out, "pages of shared knowledge added") {
+	if !strings.Contains(out, "wiki/: ") || !strings.Contains(out, "既製の知識") {
 		t.Fatalf("init must say it seeded the wiki:\n%s", out)
 	}
 	for _, p := range []string{"index.md", "types/noul.md", "types/score.md", "models/kev-4b.md"} {

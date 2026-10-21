@@ -28,6 +28,98 @@ type projectEntry struct {
 	URL  string `json:"url"`
 }
 
+var errProjectInactive = errors.New("このプロジェクトでは shikii --init を実行してください")
+
+// 設定ではなく、明示的な初期化が最後まで済んだ印。別の場所へコピーしても有効にしない。
+type projectActivation struct {
+	Version int    `json:"version"`
+	Scope   string `json:"scope"`
+}
+
+func projectActive(root, scope string) (bool, error) {
+	info, err := os.Lstat(root)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return false, errors.New("初期化の保存先は通常のフォルダにしてください")
+	}
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return false, err
+	}
+	defer dir.Close()
+	opened, err := dir.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		return false, errors.New("初期化の保存先が変わりました")
+	}
+	markerInfo, err := dir.Lstat("project.json")
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !markerInfo.Mode().IsRegular() {
+		return false, errors.New("初期化の印は通常のファイルにしてください")
+	}
+	f, err := dir.OpenFile("project.json", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil || !stat.Mode().IsRegular() || !os.SameFile(markerInfo, stat) || stat.Size() > 4096 {
+		return false, errors.New("プロジェクトの初期化の印を確認できません")
+	}
+	var activation projectActivation
+	decoder := json.NewDecoder(io.LimitReader(f, 4097))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&activation); err != nil {
+		return false, err
+	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		return false, errors.New("プロジェクトの初期化の印が不正です")
+	}
+	return activation.Version == 1 && activation.Scope == scope, nil
+}
+
+func finishProjectInit(root, scope string) error {
+	// 索引が先にできても、最後の印が無ければ画面にもhookにも現れない。
+	if _, err := os.UserHomeDir(); err == nil {
+		if err := registerProject(scope); err != nil {
+			return err
+		}
+	}
+	marker := filepath.Join(root, "project.json")
+	if info, err := os.Lstat(marker); err == nil && !info.Mode().IsRegular() {
+		return errors.New("初期化の印にリンクは使えません")
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	data, _ := json.Marshal(projectActivation{Version: 1, Scope: scope})
+	f, err := os.CreateTemp(root, ".project-init-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), marker)
+}
+
 func projectScopeAt(cwd string) string {
 	if cwd == "" {
 		return ""
@@ -181,6 +273,13 @@ func prepareHookProject(cwd string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	active, err := projectActive(root, scope)
+	if err != nil {
+		return "", "", err
+	}
+	if !active {
+		return "", "", errProjectInactive
+	}
 	if err := excludeProjectStore(scope); err != nil {
 		return "", "", err
 	}
@@ -193,37 +292,44 @@ func prepareHookProject(cwd string) (string, string, error) {
 	if _, err := seedWiki(filepath.Join(root, "wiki")); err != nil {
 		return "", "", err
 	}
+	if err := registerProject(scope); err != nil {
+		return "", "", err
+	}
+	return root, scope, nil
+}
+
+func registerProject(scope string) error {
 	common, err := agentHome()
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	entry := projectEntry{ID: projectID(scope), Name: filepath.Base(scope), Path: scope, URL: "/p/" + projectID(scope) + "/"}
 	data, _ := json.Marshal(entry)
 	dir := filepath.Join(common, "projects")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", "", err
+		return err
 	}
 	info, err := os.Lstat(dir)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return "", "", errors.New("プロジェクトの索引を開けません")
+		return errors.New("プロジェクトの索引を開けません")
 	}
 	tmp, err := os.CreateTemp(dir, ".project-*")
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	defer os.Remove(tmp.Name())
 	_, err = tmp.Write(data)
 	closeErr := tmp.Close()
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	if closeErr != nil {
-		return "", "", closeErr
+		return closeErr
 	}
 	if err := os.Rename(tmp.Name(), filepath.Join(dir, entry.ID+".json")); err != nil {
-		return "", "", err
+		return err
 	}
-	return root, scope, nil
+	return nil
 }
 
 func registeredProjects(common string) []projectEntry {
@@ -241,6 +347,9 @@ func registeredProjects(common string) []projectEntry {
 			continue
 		}
 		if checkProjectStore(filepath.Join(p.Path, ".shikii"), false) != nil {
+			continue
+		}
+		if active, err := projectActive(filepath.Join(p.Path, ".shikii"), p.Path); err != nil || !active {
 			continue
 		}
 		p.Name, p.URL = filepath.Base(p.Path), "/p/"+p.ID+"/"

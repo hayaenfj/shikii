@@ -44,11 +44,24 @@ func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent strin
 		root = roots[0]
 	}
 	t.Chdir(root)
-	agent, _, err := prepareHookProject(root)
+	agent, _ = initTestProject(t, root)
+	return agent
+}
+
+func initTestProject(t *testing.T, root string) (string, string) {
+	t.Helper()
+	previous, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return agent
+	t.Chdir(root)
+	capture(t, func() error { return cmdInit(nil) })
+	t.Chdir(previous)
+	store, scope, err := projectStoreAt(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store, scope
 }
 
 // spawned は hookSpawn の記録(テスト)。
@@ -290,6 +303,7 @@ func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 	}
 	// git の外: changes-in-scope は聞かず、done-as-asked の files は「分からない」
 	plain := t.TempDir()
+	initTestProject(t, plain)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "nogit", "cwd": plain, "prompt": "write notes.txt with three lines about the weather"})
 	runHook(t, "stop", map[string]any{"session_id": "nogit", "cwd": plain, "last_assistant_message": "Wrote notes.txt."})
 	plainStore := store.Store{Dir: filepath.Join(plain, ".shikii")}
@@ -930,6 +944,7 @@ func TestHookCodex(t *testing.T) {
 
 	// Codex の stdin(turn_id、model つき)でも同じように記録する
 	repo := gitRepo(t)
+	initTestProject(t, repo)
 	agent = filepath.Join(repo, ".shikii")
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "cx", "turn_id": "t1", "model": "gpt", "cwd": repo, "prompt": "add the installation notes and fix the parser"})
 	if err := os.WriteFile(filepath.Join(repo, "install.md"), []byte("x"), 0o644); err != nil {
