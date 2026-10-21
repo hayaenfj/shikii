@@ -13,6 +13,12 @@
   let claims = $derived((wiki.claims || []).filter(c => c.is_claim));
   let prose = $derived((wiki.claims || []).filter(c => !c.is_claim).length);
 
+  function evidenceText(e) {
+    const present = value => typeof value === 'string' && value.trim();
+    const details = [e?.date, e?.model, e?.result].filter(present).join(' · ');
+    return [details, e?.verdict].filter(present).join(' → ');
+  }
+
   async function act(c, action, status) {
     const body = { path: c.path, action, status };
     if (action === 'promote') {
@@ -44,7 +50,7 @@
         <b>{c.claim}</b>
         {#if c.applies_to}<div class="k">{Object.entries(c.applies_to).map(([k, v]) => k + ': ' + v).join(' · ')}</div>{/if}
         {#each c.evidence || [] as e}
-          <div class="k">{e.date + ' · ' + e.model + ' · ' + e.result + ' → ' + e.verdict}</div>
+          <div class="k">{evidenceText(e)}</div>
         {/each}
       </div>
       <div class="btns">

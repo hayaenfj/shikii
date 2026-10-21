@@ -32,11 +32,11 @@ type claimPage struct {
 }
 
 type claimEvidence struct {
-	Date    string `yaml:"date"`
-	Model   string `yaml:"model"`
-	Result  string `yaml:"result"`
-	Verdict string `yaml:"verdict"` // supports | contradicts | inconclusive
-	Run     string `yaml:"run,omitempty"`
+	Date    string `yaml:"date" json:"date"`
+	Model   string `yaml:"model" json:"model"`
+	Result  string `yaml:"result" json:"result"`
+	Verdict string `yaml:"verdict" json:"verdict"` // supports | contradicts | inconclusive
+	Run     string `yaml:"run,omitempty" json:"run,omitempty"`
 }
 
 // claimRetest は再検証の手順: spec の候補 better が候補 than を top-1 で上回れば主張は支持される。

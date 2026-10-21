@@ -11,6 +11,8 @@
 - Clarifies the target of before-work and after-work cards. Shows the current request first and folds the AI reply from before that request into conversation context. For yes/no decisions, the displayed prediction, its probability and the matching answer button now use the more likely answer, including after a retry.
 - Redesigns the UI with navigation grouped by before-work and after-work decisions, counts, a prominent question, distinct conversation blocks and larger answer buttons. Adds responsive layouts, light and dark colors, and clearer project cards. Opens a pending decision on first use while preserving an existing selection, and prevents navigation keystrokes from submitting an answer.
 
+- Fixes evidence details in the knowledge view by using consistent JSON field names. Missing evidence fields no longer appear as `undefined`.
+
 ## 0.4.1 — Connect corrections to the next action
 
 - Changes the license for shikii itself to `Apache-2.0 OR MIT`, letting users choose either license. Terms for third-party code, dependencies, models and services remain unchanged.

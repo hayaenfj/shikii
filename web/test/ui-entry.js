@@ -1,3 +1,4 @@
+import Knowledge from '../src/components/Knowledge.svelte';
 import Projects from '../src/components/Projects.svelte';
 import { load, data } from '../src/lib/state.svelte.js';
 // 画面の振る舞いの検査(jsdom): (1) 言語の選択を change すると、言語・文・保存値が変わる。(2) ?trace= で指された判定が列の先頭に来る。
@@ -122,7 +123,8 @@ export async function run() {
   const navigationOK = checkNavigation(target);
   const focusOK = checkAnswerFocus(target);
   const landingOK = await checkLanding(target);
-  const ok = contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const evidenceOK = checkClaimEvidence(target);
+  const ok = evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok) process.exit(1);
 }
 
@@ -356,5 +358,24 @@ async function checkLanding(target) {
   unmount(app); globalThis.fetch = realFetch; data.state = savedState; ui.tab = savedTab;
   const ok = pendingFirst && respectedChoice && safeNavigation && shortcutWorks;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回は確認待ち=' + pendingFirst + ', 選択済みは保持=' + respectedChoice + ', ナビ操作で回答しない=' + safeNavigation + ', 回答のキー操作=' + shortcutWorks + ')');
+  return ok;
+}
+
+// API の証拠を表示し、欠けた項目から undefined を作らない。
+function checkClaimEvidence(target) {
+  i18n.lang = 'ja';
+  const wiki = { claims: [{ path: 'patterns/example.md', is_claim: true, status: 'tentative', claim: '検証用の主張', evidence: [
+    { date: '2026-10-22', model: 'fixture-model', result: '<b>fixture-result</b>', verdict: 'supports', run: 'r1' },
+    { model: 'partial-model' },
+  ] }] };
+  const app = mount(Knowledge, { target, props: { wiki } });
+  flushSync();
+  const text = target.textContent;
+  const complete = ['2026-10-22', 'fixture-model', '<b>fixture-result</b>', 'supports'].every(v => text.includes(v));
+  const partial = text.includes('partial-model') && !text.includes('undefined') && !text.includes('null');
+  const escaped = target.querySelectorAll('.text b').length === 1;
+  unmount(app);
+  const ok = complete && partial && escaped;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (証拠の表示=' + complete + ', 欠けた項目の表示=' + partial + ', 文字として表示=' + escaped + ')');
   return ok;
 }
