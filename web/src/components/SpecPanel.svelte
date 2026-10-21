@@ -59,7 +59,8 @@
   });
 </script>
 
-<section>
+<section class="decision-panel">
+  <div class="panel-eyebrow">{t('workspaceTitle')} <span aria-hidden="true">/</span> {t('decisionNav')}</div>
   <h2>
     {#if title}{title} <span class="k adv">{sp.id}</span>{:else}{sp.id}{/if}
     <span class="adv">
@@ -69,10 +70,17 @@
       {#if sp.funnel && sp.records > 0}<span class="pill">{t('toPerson')(sp.funnel.human, sp.funnel.human_per_thousand)}</span>{/if}
     </span>
   </h2>
+  <div class="overview-stats">
+    <div class="stat-tile"><span>{t('pendingCount')}</span><strong>{sp.unlabeled || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot pending-dot" aria-hidden="true"></span></div>
+    <div class="stat-tile"><span>{t('checkedCount')}</span><strong>{sp.labels || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot checked-dot" aria-hidden="true"></span></div>
+    <div class="stat-tile"><span>{t('recordCount')}</span><strong>{sp.records || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot record-dot" aria-hidden="true"></span></div>
+  </div>
+  <div class="question-box"><div class="question-icon" aria-hidden="true">?</div><div><div class="eyebrow">{t('questionHeading')}</div>
   {#if question}<div class="q">{question}</div>{/if}
   {#if sp.id === 'needs-plan'}<p class="decision-phase">{t('beforeWork')}</p>
   {:else if sp.id === 'done-as-asked' || sp.id === 'changes-in-scope'}<p class="decision-phase">{t('afterWork')}</p>{/if}
-  <div class="status">{progress.plain}<div class="bar"><div style="width:{progress.pct}%"></div></div></div>
+  </div></div>
+  <div class="status"><div class="learning-line"><span class="learning-icon" aria-hidden="true">◒</span><span>{progress.plain}</span><span class="learning-number">{Math.min(n, sp.min_n)} / {sp.min_n}</span></div><div class="bar" role="progressbar" aria-label={t('learningProgress')} aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"><div style="width:{progress.pct}%"></div></div></div>
   {#if sp.review_quality?.scored}<p class="k review-quality">{t('reviewQuality')(sp.review_quality)}</p>{/if}
   {#if sp.review_pending}<p class="k">{t('reviewPending')(sp.review_pending)}</p>{/if}
   <Chips {counts} labels={sp.labels} />
@@ -90,7 +98,7 @@
     {#if !sp.answered}
       <div class="empty">{t('loading')}</div>
     {:else}
-      {#if !answeredVisible.length}<div class="empty">{t('noneAnswered')}</div>{/if}
+      {#if !answeredVisible.length}<div class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>{t('noneAnswered')}</p></div>{/if}
       {#each answeredVisible.slice(0, ui.listSize) as it (it.trace_id)}
         <ItemCard {sp} {it} />
       {/each}
@@ -100,8 +108,8 @@
     {/if}
   {:else}
     {#if !visible.length}
-      <div class="empty">
-        {all.length ? t('emptyFiltered') : t('empty')}
+      <div class="empty"><span class="empty-icon" aria-hidden="true">✓</span>
+        <p>{all.length ? t('emptyFiltered') : t('empty')}</p>
         {#if matching.length}<button type="button" class="weak" onclick={() => skipped.clear()}>{t('unskip')(matching.length)}</button>{/if}
         {#if extra}<div>{t('more')(extra)}</div>{/if}
       </div>

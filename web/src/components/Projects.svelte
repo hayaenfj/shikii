@@ -4,21 +4,17 @@
 </script>
 
 <section class="projects">
-  <h2>{t('projectsTitle')}</h2>
+  <div class="panel-eyebrow">shikii / {t('workspaceTitle')}</div><h2>{t('projectsTitle')}</h2>
   <p>{t('projectsHow')}</p>
+  <div class="project-grid">
   {#each projects as project}
     <a class="project-entry" href={project.url}>
+      <span class="project-folder" aria-hidden="true">▱</span><span class="project-arrow" aria-hidden="true">↗</span>
       <strong>{project.name}</strong>
-      <small>{project.path}</small>
+      <small>{project.path}</small><span class="project-open">{t('openProject')} <span aria-hidden="true">→</span></span>
     </a>
   {:else}
     <p class="empty">{t('projectsEmpty')}</p>
   {/each}
+  </div>
 </section>
-
-<style>
-  .projects { max-width: 800px; margin: 24px auto; }
-  .project-entry { display: block; padding: 18px; margin: 12px 0; border: 1px solid var(--border, #ddd); border-radius: 8px; text-decoration: none; color: inherit; }
-  .project-entry:hover { background: var(--bg2, #f5f5f5); }
-  small { display: block; overflow-wrap: anywhere; margin-top: 6px; opacity: .7; }
-</style>

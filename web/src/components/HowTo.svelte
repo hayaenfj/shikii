@@ -4,12 +4,12 @@
   import { setShowHelp } from '../lib/state.svelte.js';
 </script>
 
-<div class="howto">
-  <b>{t('howToTitle')}</b>
+<details class="howto">
+  <summary><b>{t('howToTitle')}</b><span>{t('howToShort')}</span></summary><div class="howto-body">
   <ol>
     {#each t('howTo') as step}
       <li>{step}</li>
     {/each}
   </ol>
   <button class="weak" type="button" onclick={() => setShowHelp(false)}>{t('gotIt')}</button>
-</div>
+</div></details>
