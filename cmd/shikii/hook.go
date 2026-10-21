@@ -1004,16 +1004,13 @@ func spawnTune(agent, path, storeDir string) {
 // runTuneInProcess は hookTune の同プロセス版(テスト用)。
 func runTuneInProcess(agent, path, storeDir string) {
 	var buf bytes.Buffer
-	old := stdout
-	stdout = &buf
 	_, err := func() (res *tuneResult, err error) {
 		defer func() {
-			stdout = old
 			if r := recover(); r != nil {
 				err = fmt.Errorf("tune panicked: %v", r)
 			}
 		}()
-		return runTune(tuneOpts{specPath: path, ef: endpointFlags{local: hookLocalURL}, storeDir: storeDir, labeled: "none"})
+		return runTune(tuneOpts{output: &buf, specPath: path, ef: endpointFlags{local: hookLocalURL}, storeDir: storeDir, labeled: "none"})
 	}()
 	line := lastLine(buf.String())
 	if err != nil {
@@ -1050,16 +1047,13 @@ func spawnCalibrate(agent, path, storeDir, model string) {
 // runCalibrateInProcess は hookCalibrate の同プロセス版(テストと、別プロセスを起こせない環境の予備)。
 func runCalibrateInProcess(agent, path, storeDir, model string) {
 	var buf bytes.Buffer
-	old := stdout
-	stdout = &buf
 	err := func() (err error) {
 		defer func() {
-			stdout = old
 			if r := recover(); r != nil {
 				err = fmt.Errorf("calibrate panicked: %v", r)
 			}
 		}()
-		return runCalibrate(path, calibrateOpts{ef: endpointFlags{local: hookLocalURL, model: model}, storeDir: storeDir, labeled: "none", bins: 10, write: true, rung: "minimal"})
+		return runCalibrate(path, calibrateOpts{output: &buf, ef: endpointFlags{local: hookLocalURL, model: model}, storeDir: storeDir, labeled: "none", bins: 10, write: true, rung: "minimal"})
 	}()
 	line := lastLine(buf.String())
 	if err != nil {
@@ -1540,29 +1534,18 @@ func seedAgentSpecs(dst string) (int, error) {
 			return err
 		}
 		target := filepath.Join(dst, filepath.Base(p))
-		if fileExists(target) {
-			return nil
-		}
 		b, err := shikii.AgentSpecsFS.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		f, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-		if os.IsExist(err) {
-			return nil
-		}
+		created, err := seedFile(target, b)
 		if err != nil {
 			return err
 		}
-		_, err = f.Write(b)
-		closeErr := f.Close()
-		if err != nil {
-			return err
+		if created {
+			n++
 		}
-		if closeErr != nil {
-			return closeErr
-		}
-		n++
+
 		return nil
 	})
 	return n, err

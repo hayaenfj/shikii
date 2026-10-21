@@ -59,15 +59,15 @@ func cmdServe(args []string) error {
 	o.ef.bind(fs)
 	fs.IntVar(&o.port, "port", 8095, "待ち受けるポート(127.0.0.1 のみ)")
 	fs.StringVar(&o.specsDir, "specs", "", "spec(*.yaml)のフォルダ(既定は <store>/decisions)")
-	fs.StringVar(&o.storeDir, "store", defaultProjectStore(), "記録とラベルの置き場")
+	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
 	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけを測る")
 	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if o.storeDir == ".shikii" {
-		o.storeDir = defaultProjectStore()
+	if err := resolveStoreFlag(fs); err != nil {
+		return err
 	}
 	o.resolve()
 	common, _ := agentHome()
@@ -105,7 +105,7 @@ type server struct {
 	wikiMu  sync.Mutex // 画面からの wiki の操作を直列にする(tune の updateClaims とはプロセスが違えば別。書き込みは原子的に行う)
 	o       serveOpts
 	st      store.Store
-	calibMu sync.Mutex        // calibrate / tune は stdout を差し替えて報告を捕まえるので 1 つずつ
+	calibMu sync.Mutex        // 同じプロジェクトの spec の較正・候補の保存を直列にする
 	lastCal map[string]string // spec id → 最後の自動較正の報告
 	mu      sync.Mutex
 	tuning  map[string]bool   // spec id → 裏で tune が走っている
@@ -537,18 +537,15 @@ func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 	s.calibMu.Lock()
 	defer s.calibMu.Unlock()
 	var buf bytes.Buffer
-	old := stdout
-	stdout = &buf
 	ef := s.o.ef
 	ef.model = model
 	err = func() (err error) {
 		defer func() {
-			stdout = old // panic しても stdout を差し替えたままにしない(MCP の通信路を守る)
 			if r := recover(); r != nil {
 				err = fmt.Errorf("calibrate panicked: %v", r)
 			}
 		}()
-		return runCalibrate(sp.Path(), calibrateOpts{ef: ef, storeDir: s.o.storeDir, labeled: "none", bins: 10, write: true, rung: rung})
+		return runCalibrate(sp.Path(), calibrateOpts{output: &buf, ef: ef, storeDir: s.o.storeDir, labeled: "none", bins: 10, write: true, rung: rung})
 	}()
 	report := strings.TrimSpace(buf.String())
 	if err != nil {

@@ -53,13 +53,13 @@ func (s Store) AppendFeedback(scope string, f Feedback) error {
 	if f.At.IsZero() {
 		f.At = time.Now().UTC()
 	}
-	return appendJSONL(s.feedbackPath(scope), f)
+	return s.appendJSONL(s.feedbackPath(scope), f)
 }
 
 // recentFeedback は同じ仕事の末尾だけ読む。先頭が行の途中ならその行を捨て、
 // 壊れた行を飛ばす。途中までの書き込みも採らない。重複した ID は最新だけ。
 func (s Store) recentFeedback(scope string) ([]Feedback, error) {
-	f, err := os.Open(s.feedbackPath(scope))
+	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}

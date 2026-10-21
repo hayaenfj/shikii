@@ -144,7 +144,7 @@ func (s Store) AppendRecord(r Record) error {
 	if r.TraceID == "" || r.SpecID == "" {
 		return errors.New("record needs trace_id and spec_id")
 	}
-	return appendJSONL(s.recordsPath(r.SpecID), r)
+	return s.appendJSONL(s.recordsPath(r.SpecID), r)
 }
 
 // FindRecord は trace_id で判定を探す。spec が分かっていれば specID で絞る(空なら全部見る)。
@@ -161,7 +161,7 @@ func (s Store) FindRecord(specID, traceID string) (*Record, error) {
 	}
 	for _, f := range files {
 		var found *Record
-		err := scanJSONL(f, func(line []byte) error {
+		err := s.scanJSONL(f, func(line []byte) error {
 			var r Record
 			if err := json.Unmarshal(line, &r); err != nil {
 				return nil // 壊れた行は飛ばす
@@ -262,7 +262,7 @@ func (f Funnel) HumanPerThousand() float64 {
 // discardUnsure は decide の「迷い」と同じ規則: 一番高い選択肢で帯を決める型(choice、level 無しの score)では discard も人へ。
 func (s Store) Funnel(specID string, discardUnsure bool) (Funnel, error) {
 	var f Funnel
-	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
+	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
 		if json.Unmarshal(line, &r) != nil {
 			return nil
@@ -340,10 +340,7 @@ func (s Store) AppendLabels(ls []Label) error {
 		buf = append(append(buf, b...), '\n')
 	}
 	path := s.labelsPath(ls[0].SpecID)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := s.openFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY)
 	if err != nil {
 		return err
 	}
@@ -355,7 +352,7 @@ func (s Store) AppendLabels(ls []Label) error {
 // Labels は (spec_hash, model) に一致するラベルだけを返す。古い文言・別モデルのラベルは較正に使わない。
 func (s Store) Labels(specID, specHash, model string) ([]Label, error) {
 	var out []Label
-	err := scanJSONL(s.labelsPath(specID), func(line []byte) error {
+	err := s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
 		var l Label
 		if err := json.Unmarshal(line, &l); err != nil {
 			return nil
@@ -393,11 +390,11 @@ func (s Store) SpecIDs() ([]string, error) {
 
 // Counts は spec の記録数と、全ラベル(鍵で絞らない)を返す。棚卸し用。
 func (s Store) Counts(specID string) (records int, labels []Label, err error) {
-	err = scanJSONL(s.recordsPath(specID), func([]byte) error { records++; return nil })
+	err = s.scanJSONL(s.recordsPath(specID), func([]byte) error { records++; return nil })
 	if err != nil && !os.IsNotExist(err) {
 		return 0, nil, err
 	}
-	err = scanJSONL(s.labelsPath(specID), func(line []byte) error {
+	err = s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
 		var l Label
 		if json.Unmarshal(line, &l) == nil {
 			labels = append(labels, l)
@@ -428,7 +425,7 @@ func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 			out[hash] = cur
 		}
 	}
-	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
+	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
 		if json.Unmarshal(line, &r) == nil {
 			take(r.InputsHash, r.Inputs, r.Tainted)
@@ -442,7 +439,7 @@ func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 		return nil, err
 	}
 	// ファイルから較正した時のラベルは記録を持たないので、ラベル側の本文も見る
-	err = scanJSONL(s.labelsPath(specID), func(line []byte) error {
+	err = s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
 		var l Label
 		if json.Unmarshal(line, &l) == nil {
 			take(l.InputsHash, l.Inputs, l.Tainted)
@@ -491,7 +488,7 @@ func LatestPerInput(labels []Label) []Label {
 // Records は spec の記録を新しい順に limit 件(limit <= 0 なら全部)。待ち行列の表示用。
 func (s Store) Records(specID string, limit int) ([]Record, error) {
 	var all []Record
-	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
+	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
 		if json.Unmarshal(line, &r) == nil {
 			all = append(all, r)
@@ -511,7 +508,7 @@ func (s Store) Records(specID string, limit int) ([]Record, error) {
 // LabeledTraces は trace_id → ラベル(複数なら最新)。記録に正解が付いたかを見るため。
 func (s Store) LabeledTraces(specID string) (map[string]Label, error) {
 	out := map[string]Label{}
-	err := scanJSONL(s.labelsPath(specID), func(line []byte) error {
+	err := s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
 		var l Label
 		if json.Unmarshal(line, &l) != nil || l.TraceID == "" {
 			return nil
@@ -530,7 +527,7 @@ func (s Store) LabeledTraces(specID string) (map[string]Label, error) {
 // LastRecord は spec の最後に追記された記録。手でラベルを付けるときに trace_id を控えなくてよいようにする。
 func (s Store) LastRecord(specID string) (*Record, error) {
 	var last *Record
-	err := scanJSONL(s.recordsPath(specID), func(line []byte) error {
+	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
 		if json.Unmarshal(line, &r) == nil {
 			last = &r
@@ -560,7 +557,7 @@ type GCResult struct {
 func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error) {
 	var res GCResult
 	labeled := map[string]bool{}
-	err := scanJSONL(s.labelsPath(specID), func(line []byte) error {
+	err := s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
 		var l Label
 		if json.Unmarshal(line, &l) == nil && l.TraceID != "" {
 			labeled[l.TraceID] = true
@@ -571,7 +568,7 @@ func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error)
 		return res, err
 	}
 	var keep [][]byte
-	err = scanJSONL(s.recordsPath(specID), func(line []byte) error {
+	err = s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
 		if json.Unmarshal(line, &r) != nil || r.TraceID == "" {
 			res.KeptUnparsed++
@@ -600,13 +597,19 @@ func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error)
 		return res, nil
 	}
 	path := s.recordsPath(specID)
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".gc-*")
+	parent, name, err := s.parentRoot(path, false)
+	if err != nil {
+		return res, err
+	}
+	defer parent.Close()
+	tmpName := name + ".gc-" + NewTraceID()
+	tmp, err := parent.OpenFile(tmpName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return res, err
 	}
 	discard := func(e error) (GCResult, error) {
 		tmp.Close()
-		os.Remove(tmp.Name())
+		parent.Remove(tmpName)
 		return res, e
 	}
 	w := bufio.NewWriter(tmp)
@@ -621,19 +624,13 @@ func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error)
 	if err := tmp.Close(); err != nil {
 		return discard(err)
 	}
-	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
-		return discard(err)
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := parent.Rename(tmpName, name); err != nil {
 		return discard(err)
 	}
 	return res, nil
 }
 
-func appendJSONL(path string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
+func (s Store) appendJSONL(path string, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -641,7 +638,7 @@ func appendJSONL(path string, v any) error {
 	if len(b) > MaxLineBytes {
 		return fmt.Errorf("record too large: %d bytes > %d (inputs must stay under the line limit)", len(b), MaxLineBytes)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := s.openFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY)
 	if err != nil {
 		return err
 	}
@@ -650,8 +647,8 @@ func appendJSONL(path string, v any) error {
 	return err
 }
 
-func scanJSONL(path string, fn func(line []byte) error) error {
-	f, err := os.Open(path)
+func (s Store) scanJSONL(path string, fn func(line []byte) error) error {
+	f, err := s.openFile(path, os.O_RDONLY)
 	if err != nil {
 		return err
 	}
