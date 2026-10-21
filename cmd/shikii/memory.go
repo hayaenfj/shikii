@@ -42,7 +42,7 @@ func memoryContext(root, scope, request string, session *hookSession) (string, e
 		for _, source := range p.Sources {
 			ids = append(ids, source.ID)
 		}
-		quotes = append(quotes, memoryQuote{Key: key, ID: p.ID, Revision: p.Revision, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids})
+		quotes = append(quotes, memoryQuote{Key: key, ID: p.ID, Revision: p.Revision, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids, Correction: p.Correction})
 		keys = append(keys, key)
 	}
 	// 教訓がまだ無い話題だけ、似た依頼の原文を一会話返す。整理済みの教訓と重ねない。
@@ -85,6 +85,11 @@ func memoryContext(root, scope, request string, session *hookSession) (string, e
 			q := &clipped[i]
 			q.Lesson, q.AppliesTo = text(q.Lesson), text(q.AppliesTo)
 			q.Request, q.Summary, q.Reply = text(q.Request), text(q.Summary), text(q.Reply)
+			if q.Correction != nil {
+				c := *q.Correction
+				c.Quote, c.Action = text(c.Quote), text(c.Action)
+				q.Correction = &c
+			}
 		}
 		data, err := json.Marshal(clipped)
 		if err != nil {

@@ -7,7 +7,7 @@
 ### A tool that grows lessons from everyday conversations and checks AI decisions against outcomes and corrections. Your usual agent maintains the wiki while you work.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-246%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 [![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -47,7 +47,7 @@ Each project's `.shikii/` holds its conversations, lessons, assessments, truths 
 
 **0.4: useful memory arrives briefly, and reflection is batched.** Lessons are selected by their titles and conditions, up to two in a short quote. The same revision is not repeated for one hour in the session; updates arrive immediately. Routine assessment and wiki work are grouped into two conversations and handled with one query and one submission. A single pending conversation is offered at the next request after a day. No additional model or settings are needed.
 
-Memory delivery and usefulness are tracked separately: the delivered quote and revision are kept, then routine reflection records the decision and observed result as helpful, unused, harmful, or unknown. The knowledge view includes pending items and supporting observations. These are AI assessments, not a measured improvement against a no-memory control.
+Memory delivery and usefulness are tracked separately: the delivered quote and revision are kept, then routine reflection records the decision and observed result as helpful, unused, harmful, or unknown. The knowledge view includes pending items and supporting observations. These are AI assessments, not a measured improvement against a no-memory control. Explicit corrections can also carry the quoted user statement and a concrete action for the next matching request. Routine reflection tracks whether that action was followed, the same issue recurred, the correction did not apply, or the result is unknown. This is recorded separately from helpfulness, without extra user input.
 
 **Your ordinary conversations grow a wiki.** The original request, the agent's reply and your next message become source material. Your usual agent turns useful observations into lessons with sources and conditions. Before a similar request, shikii quotes related lessons from the same project. It keeps earlier revisions, updates the index and checks sources and links once a day. No wiki-specific page actions or additional model are needed. The Knowledge panel shows lessons and their original sources.
 

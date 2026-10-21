@@ -34,10 +34,24 @@
             <span class="pill" data-memory={key}>{t('memoryEffectCount')(key, effect.stats[key])}</span>
           {/each}
         </div>
+        {#if effect.corrections}
+          <h3>{t('correctionTitle')}</h3>
+          <p class="k">{t('correctionHow')}</p>
+          <div class="meta">
+            {#each ['delivered', 'followed', 'repeated', 'not_applicable', 'unknown', 'pending'] as key}
+              <span class="pill" data-correction={key}>{t('correctionCount')(key, effect.corrections[key])}</span>
+            {/each}
+          </div>
+        {/if}
         {#each effect.recent || [] as item (item.source_id + item.quote.key)}
           <details class="text">
             <summary>{t('memoryEffectCount')(item.assessment.result, 1)} · {item.request}</summary>
             <p>{item.quote.lesson || item.quote.reply}</p>
+            {#if item.quote.correction}
+              <p>{t('correctionQuote')}: {item.quote.correction.quote}</p>
+              <p>{t('correctionAction')}: {item.quote.correction.action}</p>
+              <p data-correction-result={item.assessment.correction_result || 'unknown'}>{t('correctionCount')(item.assessment.correction_result || 'unknown', 1)}</p>
+            {/if}
             <div class="k">{item.quote.key}</div>
             <p>{t('memoryEffectDecision')}: {item.assessment.decision || t('memoryEffectUnknown')}</p>
             <p>{t('memoryEffectEvidence')}: {item.assessment.evidence}</p>
@@ -53,6 +67,12 @@
     <div class="item lesson">
       <div class="meta"><span class="pill">{t('notebookHypothesis')}</span></div>
       <div class="text"><b>{page.title}</b><p>{page.lesson}</p><div class="k">{t('notebookWhen')}: {page.applies_to}</div></div>
+      {#if page.correction}
+        <div class="text">
+          <p>{t('correctionQuote')}: {page.correction.quote}</p>
+          <p>{t('correctionAction')}: {page.correction.action}</p>
+        </div>
+      {/if}
       <div class="btns">
         {#each page.sources || [] as ref}
           <button type="button" class="weak" disabled={busy === ref.id} onclick={() => source(ref.id)}>{t('notebookSource')} {ref.id.slice(0, 6)}</button>

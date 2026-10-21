@@ -66,24 +66,31 @@ type rpcError struct {
 const mcpProtocol = "2025-03-26"
 
 // mcpTools は道具の一覧。inputSchema は JSON Schema。
+var correctionSchema = map[string]any{"type": "object", "additionalProperties": false,
+	"properties": map[string]any{"source_id": map[string]any{"type": "string"}, "quote": map[string]any{"type": "string"}, "action": map[string]any{"type": "string"}},
+	"required":   []string{"source_id", "quote", "action"},
+}
+
 var mcpTools = []map[string]any{
 	{
 		"name":        "shikii_reflect",
-		"description": "採点・wiki整理・記憶の寄与の仮評価を最大2会話ずつまとめる。queryで原文・対象・届いた記憶・教訓・人の訂正を読み、submitでreviews/wiki/memoryを保存する。memoryはhelpful/unused/harmful/unknownと、使った判断decision・確認結果evidenceを記録する。配送や作業成功だけを効果とせず、根拠不足はunknown。正解・較正には混ぜない。complete:falseなら各errorを確認して再送する。",
+		"description": "採点・wiki整理・記憶の寄与の仮評価を最大2会話ずつまとめる。queryで原文・対象・届いた記憶・教訓・人の訂正を読み、submitでreviews/wiki/memoryを保存する。memoryはhelpful/unused/harmful/unknownと、使った判断decision・確認結果evidenceを記録する。訂正の教訓にはcorrection:{source_id,quote,action}を付け、人の返答の原文と次の行動を結ぶ。届いた訂正へのmemoryにはcorrection_result（followed/repeated/not_applicable/unknown）も付ける。配送や作業成功だけを効果とせず、根拠不足はunknown。正解・較正には混ぜない。complete:falseなら各errorを確認して再送する。",
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"operation": map[string]any{"type": "string", "enum": []string{"query", "submit"}},
 			"memory": map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 				"source_id": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"},
 				"result":   map[string]any{"type": "string", "enum": []string{"helpful", "unused", "harmful", "unknown"}},
 				"decision": map[string]any{"type": "string"}, "evidence": map[string]any{"type": "string"},
+				"correction_result": map[string]any{"type": "string", "enum": []string{"followed", "repeated", "not_applicable", "unknown"}},
 			}, "required": []string{"source_id", "key", "result", "decision", "evidence"}}},
 			"reviews": map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 				"source_id": map[string]any{"type": "string"}, "trace_id": map[string]any{"type": "string"},
 				"truth": map[string]any{"type": "string", "enum": []string{"yes", "no", "unknown"}}, "reason": map[string]any{"type": "string"},
 			}, "required": []string{"source_id", "trace_id", "truth", "reason"}}},
 			"wiki": map[string]any{"type": "array", "maxItems": 2, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-				"sources": map[string]any{"type": "array", "maxItems": 2, "items": map[string]any{"type": "string"}},
-				"id":      map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "lesson": map[string]any{"type": "string"}, "applies_to": map[string]any{"type": "string"},
+				"sources":    map[string]any{"type": "array", "maxItems": 2, "items": map[string]any{"type": "string"}},
+				"correction": correctionSchema,
+				"id":         map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "lesson": map[string]any{"type": "string"}, "applies_to": map[string]any{"type": "string"},
 				"replaces": map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "string"}},
 			}, "required": []string{"sources"}}},
 		}, "required": []string{"operation"}},
@@ -150,7 +157,7 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "shikii_wiki",
-		"description": "同じ仕事の会話から wiki を育てる。query で教訓と未整理の原資料を読み、sources を指定した query で原文を確かめる。ingest は利用中のエージェントが書いた教訓・適用条件・出典IDを保存し、索引と履歴を更新する。再利用する教訓が無ければ sources だけで整理済みにする。既存の教訓の更新には id、古い教訓の置き換えには replaces を使う。全て仮説であり、正解・較正・confirmed の状態は変更しない。lint は出典やリンクを点検し、生成した索引を整える。人に画面操作を求めない。",
+		"description": "同じ仕事の会話から wiki を育てる。query で教訓と未整理の原資料を読み、sources を指定した query で原文を確かめる。ingest は利用中のエージェントが書いた教訓・適用条件・出典IDを保存し、索引と履歴を更新する。再利用する教訓が無ければ sources だけで整理済みにする。既存の教訓の更新には id、古い教訓の置き換えには replaces を使う。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次に変える行動を結ぶ。引用の存在は意味の正しさを保証しない。全て仮説であり、正解・較正・confirmed の状態は変更しない。lint は出典やリンクを点検し、生成した索引を整える。人に画面操作を求めない。",
 		"inputSchema": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
@@ -158,6 +165,7 @@ var mcpTools = []map[string]any{
 				"query":      map[string]any{"type": "string", "description": "検索する依頼や話題"},
 				"sources":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この仕事で観察された原資料のID。最大8件"},
 				"id":         map[string]any{"type": "string", "description": "更新する既存の教訓のID"},
+				"correction": correctionSchema,
 				"title":      map[string]any{"type": "string"},
 				"lesson":     map[string]any{"type": "string", "description": "出典から導いた教訓。機械の解釈なので仮説として保存する"},
 				"applies_to": map[string]any{"type": "string", "description": "この教訓が当てはまる条件"},

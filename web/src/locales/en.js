@@ -2,6 +2,10 @@
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
   memoryEffectTitle: 'Memory and decisions (AI assessment)',
+  correctionTitle: 'From correction to action (AI)',
+  correctionHow: 'Observations of behavior after a correction was delivered in this window. Excludes undelivered corrections and improvement claims against a no-memory baseline.',
+  correctionCount: (key, n) => ({ delivered: 'Corrections delivered', followed: 'Followed', repeated: 'Same issue repeated', not_applicable: 'Not applicable', unknown: 'Unknown', pending: 'Pending' }[key] || key) + ': ' + n,
+  correctionQuote: 'Quoted user statement', correctionAction: 'Action to change (hypothesis)',
   memoryEffectHow: n => 'Up to the last ' + n + ' deliveries, assessed from decisions and observed results. Pending assessments remain visible.',
   memoryEffectCount: (key, n) => ({ delivered: 'Delivered', helpful: 'Helpful', unused: 'Unused', harmful: 'Harmful', unknown: 'Unknown', pending: 'Pending' }[key] || key) + ': ' + n,
   memoryEffectDecision: 'Decision', memoryEffectEvidence: 'Observed result', memoryEffectUnknown: 'No recorded decision',
