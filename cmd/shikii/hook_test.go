@@ -19,6 +19,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
+	"gopkg.in/yaml.v3"
 )
 
 // hookEnv は仮の HOME に道具を入れ、指定した仕事の .shikii を準備してモデルと画面を差し替える。
@@ -61,6 +62,20 @@ func initTestProject(t *testing.T, root string) (string, string) {
 	t.Chdir(previous)
 	store, scope, err := projectStoreAt(root)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// 既存プロジェクトは更新しても旧形式を保持する。その回帰検査用の状態を準備する。
+	// 新形式の入力と経路はhook_planning_test.goで検証する。
+	path := filepath.Join(store, "decisions", "needs-plan.yaml")
+	sp := mustLoad(t, path)
+	sp.Version = 1
+	sp.Question = "A user sent `request` to a coding agent. Before changing anything, should the agent first agree on an approach with the user (because the change is large or ambiguous, several designs are reasonable, it changes existing behaviour, or the user is still thinking aloud), rather than just doing it?\n"
+	sp.State = spec.State{Template: "request: {{ request }}", Required: []string{"request"}, Context: "previous assistant turn: {{ previous }}\nrequest: {{ request }}"}
+	data, err := yaml.Marshal(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}
 	return store, scope

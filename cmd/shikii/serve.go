@@ -401,6 +401,13 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 			"answerable": len(rec.Inputs) > 0, "choices": truthChoices(sp), "project": rec.Project,
 			"truth": l.Truth, "truth_at": l.At, "source": l.Source, "correct": store.Correct(rec.Top, l.Truth),
 		})
+		if legacyPlanningRecord(sp, rec) {
+			items[len(items)-1]["legacy_planning"] = true
+			if rec.Display != nil {
+				items[len(items)-1]["record_question"] = rec.Display.Question
+			}
+			items[len(items)-1]["choices"] = []map[string]any{{"truth": "yes", "label": "yes", "labels": map[string]string{"ja": "はい"}}, {"truth": "no", "label": "no", "labels": map[string]string{"ja": "いいえ"}}}
+		}
 		items[len(items)-1]["original_inputs"], items[len(items)-1]["text_status"] = s.st.RecordText(rec)
 		if len(items) >= limit {
 			break
@@ -638,6 +645,9 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	var pending []queued
 	for _, rec := range recs {
+		if legacyPlanningRecord(sp, rec) {
+			continue
+		}
 		show, audit, reason := reviewQueueState(rec, labeled, reviews)
 		if show && !superseded[rec.TraceID] {
 			pending = append(pending, queued{rec, audit, reason})
@@ -741,8 +751,12 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, rerr)
 			return
 		}
-		todo, reviewPending := 0, 0
+		todo, reviewPending, legacyPlanning := 0, 0, 0
 		for _, rec := range records {
+			if legacyPlanningRecord(sp, rec) {
+				legacyPlanning++
+				continue
+			}
 			if show, _, _ := reviewQueueState(rec, labeled, reviews); show {
 				todo++
 			}
@@ -768,7 +782,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			result = &last.result
 		}
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
-			"unlabeled": todo, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result,
+			"unlabeled": todo, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })

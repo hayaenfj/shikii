@@ -79,7 +79,7 @@ func agentHome() (string, error) {
 }
 
 func cmdHook(args []string) error {
-	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the other two are run by the agent and read its JSON on stdin; not for typing by hand\n"
+	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | plan query | plan submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks and plan query/submit are run by the agent and read JSON on stdin; not for typing by hand\n"
 	if len(args) == 0 {
 		return errors.New(strings.TrimSpace(usage))
 	}
@@ -92,6 +92,8 @@ func cmdHook(args []string) error {
 		return hookInstall(args[1:], true)
 	case "uninstall":
 		return hookInstall(args[1:], false)
+	case "plan":
+		return cmdHookPlan(args[1:])
 	case "user-prompt-submit", "stop":
 		// hook は作業を止めない: 何があっても exit 0。理由は hook.log に
 		if err := runHookEvent(args[0]); err != nil {
@@ -158,18 +160,20 @@ func (o hookOut) json(event string) []byte {
 // hookSession はプロジェクトごとの控え(.shikii/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 // 依頼の時の作業ツリーの一覧は隣の <id>.files(大きいので JSON には入れない)。
 type hookSession struct {
-	Request     string           `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
-	RequestText string           `json:"request_text,omitempty"`    // 画面用の原文。判定の入力とは分けて保持する
-	TurnID      string           `json:"turn_id,omitempty"`         // 同じ文の依頼を繰り返しても別のターン
-	Scope       string           `json:"scope,omitempty"`           // repo の実パス。会話も採点も線も同じ仕事に限る
-	Completed   *completedTurn   `json:"completed,omitempty"`       // この依頼に返答した時の控え。次の人の発言と一組にする
-	Memories    []memoryDelivery `json:"memories,omitempty"`        // このセッションに届けた記憶の版(直近16件)
-	Previous    string           `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
-	Pending     []pendingItem    `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
-	Asked       []askedItem      `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
-	Reviews     []askedItem      `json:"reviews,omitempty"`         // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
-	Reported    []string         `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
-	Judged      bool             `json:"judged,omitempty"`          // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
+	Request     string           `json:"request,omitempty"`          // 人が最後に送った依頼(UserPromptSubmit で控える)
+	RequestText string           `json:"request_text,omitempty"`     // 画面用の原文。判定の入力とは分けて保持する
+	RawPrompt   string           `json:"last_user_prompt,omitempty"` // 結合せず控えた最後の人の発言。引用の出典に使う
+	TurnID      string           `json:"turn_id,omitempty"`          // 同じ文の依頼を繰り返しても別のターン
+	Scope       string           `json:"scope,omitempty"`            // repo の実パス。会話も採点も線も同じ仕事に限る
+	Completed   *completedTurn   `json:"completed,omitempty"`        // この依頼に返答した時の控え。次の人の発言と一組にする
+	Memories    []memoryDelivery `json:"memories,omitempty"`         // このセッションに届けた記憶の版(直近16件)
+	Previous    string           `json:"previous,omitempty"`         // 直前のアシスタントの発言(Stop で控える)
+	Planning    *planningFrame   `json:"planning,omitempty"`         // 現在の依頼について、エージェントが原文付きで整理する文脈
+	Pending     []pendingItem    `json:"pending,omitempty"`          // prompt-kind の結果の正解を待つ判定
+	Asked       []askedItem      `json:"asked,omitempty"`            // このセッションで人の答えを待つことになった判定(ask と抜き取り)
+	Reviews     []askedItem      `json:"reviews,omitempty"`          // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
+	Reported    []string         `json:"reported_traces,omitempty"`  // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
+	Judged      bool             `json:"judged,omitempty"`           // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
 	At          time.Time        `json:"at"`
 }
 
@@ -667,6 +671,10 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	}
 	requestText = cut(requestText, store.RecordTextLimit+utf8.UTFMax)
 	turnID := store.NewTraceID()
+	var planning *planningFrame
+	if sp, err := spec.Load(filepath.Join(agent, "decisions", "needs-plan.yaml")); err == nil && needsPlanningContext(sp) {
+		planning = newPlanningFrame(snapshot, in, scope, turnID)
+	}
 	var firstErr error
 	pendingNow := snapshot.Pending // 前の依頼の pending(写し)。錠の中で settle するのはこの trace だけ(重なった Stop や次の依頼が足した pending を巻き込まない)
 	muts := []func(*hookSession){
@@ -676,6 +684,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
 			s.RequestText = requestText
+			s.RawPrompt = cut(strings.TrimSpace(in.Prompt), 4000)
+			s.Planning = planning
 		},
 		// 前の依頼の結果の正解は、次の依頼が来た時点のツリーで決める(依頼の境目 = 次の依頼。Stop まで待つと 2 つの依頼が混ざる)
 		func(s *hookSession) {
@@ -695,11 +705,14 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 		},
 	}
-	ds, outs, err := hookDecideAll(agent, hookSpecs[:2], inputs, project, nil, map[string]string{"request": strings.TrimSpace(in.Prompt)})
+	ds, outs, err := hookDecideAll(agent, hookSpecs[:2], inputs, project, func(id string) bool { return id == "needs-plan" && planning != nil }, map[string]string{"request": strings.TrimSpace(in.Prompt)})
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
 	var out hookOut
+	if planning != nil {
+		out.Context = planningNotice(in.SessionID, turnID)
+	}
 	for i, d := range ds {
 		if d == nil || d.Band == decide.Abstain {
 			continue
