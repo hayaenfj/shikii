@@ -3,7 +3,7 @@
 export default {
   beforeWork: 'Before work: judge whether this request needed a discussion of the approach before starting.',
   afterWork: 'After work: compare this request with its closing reply and changed files.',
-  inputRequest: 'Current request', inputSummary: 'Closing reply for this request', inputFiles: 'Files changed for this request', inputPrevious: 'Earlier reply (context; open if needed)',
+  inputRequest: 'Current request', inputSummary: 'Closing reply for this request', inputFiles: 'Files changed for this request', inputPrevious: 'AI reply before this request (conversation context)',
   memoryEffectTitle: 'Memory and decisions (AI assessment)',
   correctionTitle: 'From correction to action (AI)',
   correctionHow: 'Observations of behavior after a correction was delivered in this window. Excludes undelivered corrections and improvement claims against a no-memory baseline.',

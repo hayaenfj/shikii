@@ -238,7 +238,7 @@ async function checkProjectEntrances(target) {
   return ok;
 }
 
-// 完了した前の仕事の返答を、今回の着手前の判定対象と取り違えない。
+// この依頼より前のAIの返答を、今回の着手前の判定対象と取り違えない。
 function checkTurnContext(target) {
   i18n.lang = 'ja';
   const make = (id, inputs) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 1, labels: 0, unlabeled: 1, tune: null, queue: { items: [{ trace_id: id, answerable: true, inputs, original_inputs: { previous: '前の仕事は完了しました。末尾 <img src=x>' }, text_status: {}, choices: [] }] } });
@@ -248,7 +248,7 @@ function checkTurnContext(target) {
   const first = target.querySelector('.text [data-input]');
   const previous = target.querySelector('details.previous-context');
   const before = first?.dataset.input === 'request' && first.textContent.includes('今回の依頼') && first.textContent.includes('今回の新しい依頼') && target.querySelector('.decision-phase')?.textContent.includes('着手前');
-  const folded = !!previous && !previous.open && previous.querySelector('summary')?.textContent.includes('前の仕事の返答') && previous.textContent.includes('末尾 <img src=x>') && !target.querySelector('img');
+  const folded = !!previous && !previous.open && previous.querySelector('summary')?.textContent.includes('この依頼より前のAIの返答') && previous.textContent.includes('末尾 <img src=x>') && !target.querySelector('img');
   if (previous) previous.open = true;
   const readable = previous?.open && previous.textContent.includes('前の仕事は完了しました。末尾');
   unmount(app);
