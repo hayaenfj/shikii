@@ -446,8 +446,12 @@ async function checkLoadOrdering() {
 async function checkLazyNavigation(target) {
   const realFetch = globalThis.fetch, state = data.state;
   const saved = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
-  let calls = [];
-  globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } }; };
+  let calls = [], holdQueue = false, releaseQueue;
+  globalThis.fetch = async url => {
+    calls.push(url);
+    if (holdQueue && url.startsWith('v1/queue')) return { ok: true, json: () => new Promise(resolve => { releaseQueue = resolve; }) };
+    return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } };
+  };
   data.state = null; ui.tab = 'needs-plan'; ui.advanced = false; ui.done = false;
   const app = mount(App, { target }); flushSync();
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
@@ -456,12 +460,15 @@ async function checkLazyNavigation(target) {
   const switched = calls.includes('v1/queue?spec=done-as-asked&limit=200') && !!target.querySelector('.decision-panel');
   calls = []; target.querySelectorAll('.answer-tabs button')[1]?.click(); flushSync(); await settle();
   const answered = calls.length === 2 && calls.includes('v1/answered?spec=done-as-asked&limit=200') && target.querySelector('.answer-tabs button span')?.textContent === '1';
+  holdQueue = true;
   target.querySelector('.answer-tabs button')?.click(); flushSync(); await settle();
+  const waiting = !!target.querySelector('[role="status"]') && !target.querySelector('.decision-panel');
+  holdQueue = false; releaseQueue?.({ items: [] }); await settle();
   target.querySelector('#mode')?.click(); flushSync(); await settle(); calls = [];
   const wiki = target.querySelector('[data-tab="wiki"]'); wiki?.click(); flushSync(); await settle();
   const knowledge = !!wiki && calls.filter(url => url === 'v1/wiki').length === 1 && !calls.some(url => url.startsWith('v1/queue')) && target.querySelector('.notebook h2')?.textContent.includes(t('notebookTitle'));
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
-  const ok = initial && switched && answered && knowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回2要求=' + initial + ', タブ切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 未読の知識を開く=' + knowledge + ')');
+  const ok = initial && switched && answered && waiting && knowledge;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回2要求=' + initial + ', タブ切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 切替中は読込み待ち=' + waiting + ', 未読の知識を開く=' + knowledge + ')');
   return ok;
 }

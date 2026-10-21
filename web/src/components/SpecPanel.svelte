@@ -28,7 +28,7 @@
 
   // 件数が増えた時の見せ方: 種類ごとの数(押すと絞り込み)、1 件ずつ / 一覧、スキップ、ほかに待っている数
   const kind = it => it.audit ? 'audit' : it.band === 'ask' ? 'ask' : 'other';
-  let all = $derived(sp.queue.items);
+  let all = $derived(sp.queue?.items || []);
   let counts = $derived({ all: ui.done ? (sp.unlabeled || 0) : all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length });
   // 表示中の列から仕事の印を数える。回答済みでも、未回答の列を読む必要はない。
   let projectItems = $derived(ui.done ? (sp.answered || []) : all);
