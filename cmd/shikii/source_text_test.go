@@ -6,7 +6,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -55,5 +57,51 @@ func TestHookKeepsFullClosingTextForPeople(t *testing.T) {
 	after, _ := st.FindRecord(before.SpecID, before.TraceID)
 	if after.InputsHash != before.InputsHash || after.SpecHash != before.SpecHash || after.Inputs["summary"] != before.Inputs["summary"] {
 		t.Fatal("画面用の原文は元の判定・入力・ハッシュを変えない")
+	}
+}
+
+// 件数を絞る前後で、優先順・やり直し元の除外・返す原文が変わらない。
+func TestServeQueueLimitKeepsPriorityAndOriginals(t *testing.T) {
+	url, path, dir := newServeFixture(t, "false", map[string]float64{"change_request": 1})
+	sp, err := spec.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := store.Store{Dir: dir}
+	ids := []string{"0000000000000001", "0000000000000002", "0000000000000003", "0000000000000004"}
+	for i, id := range ids {
+		inputs := map[string]string{"message": "fixture"}
+		rec := store.Record{TraceID: id, SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Band: "ask", Inputs: inputs, InputsHash: store.HashInputs(inputs), At: time.Unix(int64(i), 0)}
+		if i == 1 {
+			rec.Band = "discard"
+		}
+		if i == 3 {
+			rec.RedoOf = ids[2]
+		}
+		if err := st.AppendRecord(rec); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.SaveRecordText(rec, map[string]string{"message": "fixture original " + id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, check := range []struct {
+		query string
+		want  []string
+	}{{"&limit=1", []string{ids[3]}}, {"&limit=2", []string{ids[3], ids[0]}}, {"", []string{ids[3], ids[0], ids[1]}}} {
+		var result struct {
+			Items []struct {
+				TraceID   string            `json:"trace_id"`
+				Originals map[string]string `json:"original_inputs"`
+			} `json:"items"`
+		}
+		if code := getJSON(t, url+"/v1/queue?spec=intent"+check.query, &result); code != 200 || len(result.Items) != len(check.want) {
+			t.Fatalf("queue %s: status=%d rows=%+v", check.query, code, result.Items)
+		}
+		for i, item := range result.Items {
+			if item.TraceID != check.want[i] || item.Originals["message"] != "fixture original "+item.TraceID {
+				t.Fatalf("queue %s row %d: got %+v, want %s with its original", check.query, i, item, check.want[i])
+			}
+		}
 	}
 }

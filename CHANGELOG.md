@@ -13,6 +13,8 @@
 
 - Fixes evidence details in the knowledge view by using consistent JSON field names. Missing evidence fields no longer appear as `undefined`.
 
+- Limits original-text loading to the records returned by the queue API, preserving priority order and excluding superseded decisions.
+
 ## 0.4.1 — Connect corrections to the next action
 
 - Changes the license for shikii itself to `Apache-2.0 OR MIT`, letting users choose either license. Terms for third-party code, dependencies, models and services remain unchanged.

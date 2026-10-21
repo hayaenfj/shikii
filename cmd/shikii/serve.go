@@ -604,15 +604,32 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			superseded[rec.RedoOf] = true
 		}
 	}
-	var items []map[string]any
+	type queued struct {
+		record store.Record
+		audit  bool
+		reason string
+	}
+	var pending []queued
 	for _, rec := range recs {
-		show, audit, reviewReason := reviewQueueState(rec, labeled, reviews)
-		if !show {
-			continue
+		show, audit, reason := reviewQueueState(rec, labeled, reviews)
+		if show && !superseded[rec.TraceID] {
+			pending = append(pending, queued{rec, audit, reason})
 		}
-		if superseded[rec.TraceID] {
-			continue
+	}
+	order := func(it queued) int {
+		if it.audit {
+			return rank["audit"]
 		}
+		return rank[it.record.Band]
+	}
+	sort.SliceStable(pending, func(i, j int) bool { return order(pending[i]) < order(pending[j]) })
+	if len(pending) > limit {
+		pending = pending[:limit]
+	}
+	// 原文の読取りと表示用データの構築は、実際に返す記録だけに限る。
+	items := make([]map[string]any, 0, len(pending))
+	for _, item := range pending {
+		rec := item.record
 		// 本文が無い(古い)記録は人には答えられない。ボタンの材料は出さず、answerable=false で言う(結果を知るプログラムからの正解は別経路)
 		answerable := len(rec.Inputs) > 0
 		choices := []map[string]any{}
@@ -623,25 +640,12 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": !sp.LiveHash(rec.SpecHash),
 			"answerable": answerable, "choices": choices, "rung": rec.RungOf(), "project": rec.Project,
-			"audit": audit, "review_reason": reviewReason,
+			"audit": item.audit, "review_reason": item.reason,
 		})
 		if grade, ok := reviews[rec.TraceID]; ok {
 			items[len(items)-1]["review"] = grade
 		}
 		items[len(items)-1]["original_inputs"], items[len(items)-1]["text_status"] = s.st.RecordText(rec)
-	}
-	order := func(it map[string]any) int {
-		if it["audit"] == true {
-			return rank["audit"]
-		}
-		return rank[it["band"].(string)]
-	}
-	sort.SliceStable(items, func(i, j int) bool { return order(items[i]) < order(items[j]) })
-	if len(items) > limit {
-		items = items[:limit]
-	}
-	if items == nil {
-		items = []map[string]any{}
 	}
 	writeJSON(w, 200, map[string]any{"spec": id, "items": items})
 }
