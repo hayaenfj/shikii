@@ -125,6 +125,7 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
+  const planningOK = checkPlanningContext(target);
   const calibrationOK = checkCalibrationReport(target);
   const contextOK = checkTurnContext(target);
   const binaryOK = await checkBinaryPrediction(target);
@@ -135,8 +136,26 @@ export async function run() {
   const loadingOK = await checkFocusedLoading(target);
   const orderingOK = await checkLoadOrdering();
   const lazyNavOK = await checkLazyNavigation(target);
-  const ok = calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok) process.exit(1);
+}
+
+function checkPlanningContext(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const sp = { id: 'needs-plan', type: 'noul', display_options: {} };
+  const it = { trace_id: 'planning', answerable: true, band: 'ask', p: .6, top: 'yes', model: 'm', at: '2026-10-22T00:00:00Z', choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], inputs: { open: '列の並びが未決 <img src=x>', agreed: 'CSVとして出力する範囲は合意済み', request: '出力機能を追加して' } };
+  const app = mount(ItemCard, { target, props: { sp, it } }); flushSync();
+  const labels = [...target.querySelectorAll('.field-label')].map(el => el.textContent);
+  const named = labels[0] === t('inputRequest') && labels[1]?.includes('合意') && labels[2]?.includes('未決');
+  const evidence = target.textContent.includes(it.inputs.agreed) && target.textContent.includes(it.inputs.open) && !target.querySelector('img');
+  unmount(app);
+  const legacy = mount(ItemCard, { target, props: { sp, it: { ...it, truth: 'no', truth_at: it.at, legacy_planning: true, record_question: '以前の質問' } } }); flushSync();
+  const separate = target.textContent.includes('以前の質問') && target.textContent.includes('過去の形式') && !target.querySelector('.answer-choice') && !target.querySelector('button.weak.adv[title]');
+  unmount(legacy);
+  i18n.lang = lang;
+  const ok = named && evidence && separate;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (依頼・合意・未決事項の順=' + named + ', 整理と根拠を文字として表示=' + evidence + ', 過去の形式を区別=' + separate + ')');
+  return ok;
 }
 
 function checkCalibrationReport(target) {

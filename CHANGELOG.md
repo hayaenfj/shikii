@@ -4,6 +4,8 @@
 
 ## 0.4.3 — Clearer reviews and less repeated loading
 
+- Prepare approach decisions from the current request, agreement evidence, and open questions; reject unsupported quotes and stale submissions without treating AI interpretations as human truths.
+
 - Distinguish insufficient truths from prediction quality when calibration is refused; show a concise calibration summary and keep diagnostic logs collapsed.
 
 - Clarifies the target of before-work and after-work cards. Shows the current request first and folds the AI reply from before that request into conversation context. For yes/no decisions, the displayed prediction, its probability and the matching answer button now use the more likely answer, including after a retry.

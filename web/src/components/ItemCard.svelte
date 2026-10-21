@@ -22,12 +22,12 @@
   const isHook = () => ['prompt-kind', 'needs-plan', 'changes-in-scope', 'done-as-asked'].includes(sp.id);
   function inputLabel(key) {
     if (!isHook()) return key;
-    return { request: t('inputRequest'), summary: t('inputSummary'), files: t('inputFiles'), previous: t('inputPrevious') }[key] || key;
+    return { request: t('inputRequest'), agreed: t('inputAgreed'), open: t('inputOpen'), summary: t('inputSummary'), files: t('inputFiles'), previous: t('inputPrevious') }[key] || key;
   }
   let inputs = $derived.by(() => {
     const entries = Object.entries(it.inputs || {});
     if (!isHook()) return entries;
-    const order = { request: 0, summary: 1, files: 2, previous: 3 };
+    const order = { request: 0, agreed: 1, open: 2, summary: 3, files: 4, previous: 5 };
     return entries.sort(([a], [b]) => (order[a] ?? 4) - (order[b] ?? 4));
   });
 
@@ -71,8 +71,9 @@
   <div class="card-topline"><span class="card-kind"><span class="record-mark" aria-hidden="true"></span>{t('conversationRecord')}</span><span class="card-position">{pos}</span>{#if it.project}<span class="project">{it.project}</span>{/if}{#if it.at}<time datetime={it.at}>{fmtDateTime(it.at)}</time>{/if}</div>
   {#if it.truth}
     <div class="your-answer"><span aria-hidden="true">✓</span> {t('yourAnswer')(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of}{' '}<span class="k">· {t('wasRedone')}</span>{/if}</div>
-    <div class="k change-answer">{t('changeAnswer')}</div>
+    {#if !it.legacy_planning}<div class="k change-answer">{t('changeAnswer')}</div>{/if}
   {/if}
+  {#if it.legacy_planning}<div class="audit legacy-planning"><strong>{t('legacyPlanning')}</strong>{#if it.record_question}<p>{it.record_question}</p>{/if}</div>{/if}
   {#if it.review}<div class="audit review-banner">{it.review_reason === 'uncertain' ? t('reviewUncertain') : t('reviewRandom')}</div>{/if}
   <div class="meta adv">
     <span>{it.band}</span><span>{it.model || ''}</span>
@@ -104,7 +105,7 @@
   {:else if it.top}
     <div class="guess prediction"><div><span class="prediction-label">{t('predictionHeading')}</span><strong>{t('aiGuess')(topName, (guess.p * 100).toFixed(0))}</strong><span class="prediction-band">{bandWord}{#if it.audit} · {t('auditShort')}{/if}</span></div><div class="confidence-ring" style="--confidence:{Math.round(guess.p * 100)}%" aria-hidden="true"><span>{Math.round(guess.p * 100)}<small>%</small></span></div></div>
   {/if}
-  <div class="answer-area"><div class="answer-heading"><span>{t('yourDecision')}</span><small>{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small></div>
+  {#if !it.legacy_planning}<div class="answer-area"><div class="answer-heading"><span>{t('yourDecision')}</span><small>{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small></div>
     <div class="btns" role="group" aria-label={t('yourDecision')}>
       {#each it.choices as c, i}
         <button type="button" class="answer-choice" class:top={!it.review && c.truth === guess.truth} class:active={c.truth === it.truth} aria-pressed={c.truth === it.truth} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
@@ -117,6 +118,6 @@
       {#if !it.truth}<button type="button" class="weak skip" disabled={busy} onclick={() => skipped.add(it.trace_id)}>{t('skip')} <span aria-hidden="true">→</span></button>{/if}
       {#if it.answerable}<button type="button" class="weak adv" title={t('redoHint')} disabled={busy} onclick={redo}>{t('redo')}</button>{/if}
     </div>
-  </div>
+  </div>{/if}
   <div class="redo-out" aria-live="polite">{redoRes ? redoLine(redoRes) : ''}</div>
 </article>

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // 件数が揃っていても分離や精度で保存を止める。理由と保存しない事実を一緒に検証する。
@@ -30,7 +32,11 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 			}
 			sp := mustLoad(t, path)
 			sp.Eval.MinN = tc.min
-			if err := sp.Save(); err != nil {
+			specData, err := yaml.Marshal(sp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, specData, 0600); err != nil {
 				t.Fatal(err)
 			}
 			before, _ := os.ReadFile(path)
@@ -63,7 +69,7 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 				t.Fatal(err)
 			}
 			var report bytes.Buffer
-			err := runCalibrate(path, calibrateOpts{output: &report, storeDir: filepath.Join(dir, "store"), labeled: file, write: true})
+			err = runCalibrate(path, calibrateOpts{output: &report, storeDir: filepath.Join(dir, "store"), labeled: file, write: true})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("wrong refusal: %v\n%s", err, report.String())
 			}

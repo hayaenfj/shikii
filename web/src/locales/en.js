@@ -1,6 +1,10 @@
 // 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
+  legacyPlanning: 'This answer belongs to the previous format and is not used to evaluate the new question.',
+  planningLearning: n => 'Learning uses new records with agreement evidence and open questions. The ' + n + ' previous records are preserved separately.',
+  inputAgreed: 'Agreed approach (AI interpretation and source quotes)',
+  inputOpen: 'Open questions (AI interpretation and source quotes)',
   calibrationHeld: 'Automatic action is on hold. Your answers are saved.',
   calibrationQuality: n => 'There are ' + n + ' truths, but predictions from the current question and model do not meet the requirements for automatic action. Calibration was not saved. Review the question or model.',
   calibrationInsufficient: (n, min) => 'There are ' + n + ' human or outcome truths; ' + min + ' are required. Calibration was not saved.',

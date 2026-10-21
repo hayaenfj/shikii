@@ -77,6 +77,7 @@
   {:else if sp.id === 'done-as-asked' || sp.id === 'changes-in-scope'}<p class="decision-phase">{t('afterWork')}</p>{/if}
   </div></div>
   <div class="status"><div class="learning-line"><span class="learning-icon" aria-hidden="true">◒</span><span>{progress.plain}</span><span class="learning-number">{Math.min(n, sp.min_n)} / {sp.min_n}</span></div><div class="bar" role="progressbar" aria-label={t('learningProgress')} aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"><div style="width:{progress.pct}%"></div></div></div>
+  {#if sp.planning_context && sp.legacy_planning_records}<p class="k">{t('planningLearning')(sp.legacy_planning_records)}</p>{/if}
   {#if sp.last_calibration}
     <div class="calibration-report">
       <strong>{t('last')}</strong>{#if calibration?.at}<time>{calibration.at}</time>{/if}
