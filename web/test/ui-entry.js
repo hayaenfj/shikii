@@ -115,8 +115,23 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
-  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok) process.exit(1);
+}
+
+function checkCorrection(target) {
+  const correction = { source_id: 'source', quote: 'まだ英語が残っています <img src=x>', action: '案内の全文を確認する' };
+  const effect = { window: 256, stats: {}, corrections: { delivered: 7, followed: 2, repeated: 1, not_applicable: 1, unknown: 1, pending: 2 }, recent: [{ source_id: 'turn', request: '案内を直す', quote: { key: 'lesson:one:old', correction }, assessment: { result: 'unknown', correction_result: 'repeated', decision: '一部だけ確認した', evidence: '同じ箇所への指摘を原文で確認した' } }] };
+  const app = mount(Notebook, { target, props: { wiki: { memory_effect: effect, lessons: [{ id: 'lesson', title: '案内の確認', lesson: '全文を見る', applies_to: '案内の更新', correction, sources: [] }] } } });
+  flushSync();
+  const count = key => target.querySelector('[data-correction="' + key + '"]')?.textContent;
+  const counts = count('delivered')?.includes('7') && count('followed')?.includes('2') && count('repeated')?.includes('1') && count('pending')?.includes('2');
+  const chain = target.textContent.includes(correction.quote) && target.textContent.includes(correction.action) && target.textContent.includes('同じ箇所への指摘を原文で確認した') && !!target.querySelector('[data-correction-result="repeated"]');
+  const inert = !target.querySelector('img');
+  unmount(app);
+  const ok = counts && chain && inert;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (correction counts=' + counts + ', quote action and outcome=' + chain + ', inert correction=' + inert + ')');
+  return ok;
 }
 
 function checkMemoryEffect(target) {

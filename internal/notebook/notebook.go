@@ -31,24 +31,26 @@ type Source struct {
 }
 
 type Page struct {
-	ID        string   `json:"id" yaml:"id"`
-	Title     string   `json:"title" yaml:"title"`
-	Lesson    string   `json:"lesson" yaml:"lesson"`
-	AppliesTo string   `json:"applies_to" yaml:"applies_to"`
-	Status    string   `json:"status" yaml:"status"`
-	Sources   []Source `json:"sources" yaml:"sources"`
-	Replaces  []string `json:"replaces,omitempty" yaml:"replaces,omitempty"`
-	Revision  string   `json:"revision" yaml:"revision"`
-	Previous  string   `json:"previous,omitempty" yaml:"previous,omitempty"`
+	ID         string            `json:"id" yaml:"id"`
+	Title      string            `json:"title" yaml:"title"`
+	Lesson     string            `json:"lesson" yaml:"lesson"`
+	AppliesTo  string            `json:"applies_to" yaml:"applies_to"`
+	Status     string            `json:"status" yaml:"status"`
+	Sources    []Source          `json:"sources" yaml:"sources"`
+	Replaces   []string          `json:"replaces,omitempty" yaml:"replaces,omitempty"`
+	Revision   string            `json:"revision" yaml:"revision"`
+	Previous   string            `json:"previous,omitempty" yaml:"previous,omitempty"`
+	Correction *store.Correction `json:"correction,omitempty" yaml:"correction,omitempty"`
 }
 
 type Draft struct {
-	ID        string   `json:"id,omitempty"`
-	Title     string   `json:"title,omitempty"`
-	Lesson    string   `json:"lesson,omitempty"`
-	AppliesTo string   `json:"applies_to,omitempty"`
-	Sources   []string `json:"sources"`
-	Replaces  []string `json:"replaces,omitempty"`
+	ID         string            `json:"id,omitempty"`
+	Title      string            `json:"title,omitempty"`
+	Lesson     string            `json:"lesson,omitempty"`
+	AppliesTo  string            `json:"applies_to,omitempty"`
+	Sources    []string          `json:"sources"`
+	Replaces   []string          `json:"replaces,omitempty"`
+	Correction *store.Correction `json:"correction,omitempty"`
 }
 
 type Issue struct {
@@ -198,7 +200,11 @@ func (b Book) pageBytes(p Page) ([]byte, error) {
 	for _, source := range p.Sources {
 		fmt.Fprintf(&links, "- [%s](../../../records/wiki-sources/%s/%s.json)\n", source.ID, digest([]byte(b.Scope)), source.ID)
 	}
-	return []byte("---\n" + string(front) + "---\n\n# " + p.Title + "\n\n" + p.Lesson + "\n\n適用する場面: " + p.AppliesTo + "\n\n## 出典\n\n" + links.String() + "\nこの教訓は出典付きの仮説です。今回の依頼と規則を優先します。\n"), nil
+	correction := ""
+	if p.Correction != nil {
+		correction = "\n\n人の訂正の引用: " + p.Correction.Quote + "\n\n次に変える行動（仮説）: " + p.Correction.Action
+	}
+	return []byte("---\n" + string(front) + "---\n\n# " + p.Title + "\n\n" + p.Lesson + "\n\n適用する場面: " + p.AppliesTo + correction + "\n\n## 出典\n\n" + links.String() + "\nこの教訓は出典付きの仮説です。今回の依頼と規則を優先します。\n"), nil
 }
 
 func parsePage(data []byte) (Page, error) {
@@ -384,6 +390,9 @@ func (b Book) PendingSources() ([]store.Feedback, error) {
 
 func (b Book) Ingest(d Draft) (Result, error) {
 	result := Result{Reviewed: []string{}}
+	if d.Correction != nil && (!d.Correction.Valid() || d.Lesson == "") {
+		return result, errors.New("訂正には人の発言の出典・引用と、次に変える行動の教訓が必要です")
+	}
 	d.Title, d.Lesson, d.AppliesTo = strings.TrimSpace(d.Title), strings.TrimSpace(d.Lesson), strings.TrimSpace(d.AppliesTo)
 	if len(d.Sources) < 1 || len(d.Sources) > 8 || len(d.Replaces) > 4 {
 		return result, errors.New("wiki ingest needs 1 to 8 source ids and at most 4 replaced lessons")
@@ -453,6 +462,13 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		raw[id] = data
 		refs = append(refs, Source{ID: id, Hash: digest(data)})
 	}
+	if d.Correction != nil {
+		var observed store.Feedback
+		data, ok := raw[d.Correction.SourceID]
+		if !ok || json.Unmarshal(data, &observed) != nil || !strings.Contains(observed.Reply, d.Correction.Quote) {
+			return result, errors.New("訂正の引用は指定した出典の人の返答から、そのまま抜き出します")
+		}
+	}
 	pages, issues, err := b.pages()
 	if err != nil || len(issues) > 0 {
 		return result, errors.New("wiki has unreadable or changed pages; inspect wiki lint before ingesting")
@@ -483,7 +499,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 				return result, errors.New("wiki has 128 lessons; update or consolidate an existing lesson")
 			}
 		}
-		p := Page{ID: id, Title: strings.TrimSpace(d.Title), Lesson: strings.TrimSpace(d.Lesson), AppliesTo: strings.TrimSpace(d.AppliesTo), Status: "hypothesis", Sources: refs, Replaces: d.Replaces}
+		p := Page{ID: id, Title: strings.TrimSpace(d.Title), Lesson: strings.TrimSpace(d.Lesson), AppliesTo: strings.TrimSpace(d.AppliesTo), Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction}
 		if old, ok := byID[id]; ok {
 			if bad := b.sourceIssues(old); len(bad) > 0 {
 				return result, errors.New("the existing lesson has missing or changed sources")
@@ -509,6 +525,9 @@ func (b Book) Ingest(d Draft) (Result, error) {
 				p.Replaces = append([]string{}, old.Replaces...)
 			}
 			p.Previous = old.Previous
+			if p.Correction == nil {
+				p.Correction = old.Correction
+			}
 		}
 		if len(p.Replaces) > 4 {
 			return result, errors.New("a lesson can replace at most 4 earlier lessons")

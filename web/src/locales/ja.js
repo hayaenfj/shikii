@@ -1,6 +1,10 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
   memoryEffectTitle: '記憶と判断の振り返り（AI）',
+  correctionTitle: '訂正から次の行動へ（AI）',
+  correctionHow: 'この記録に届いた訂正を対象に、次の行動を仮評価します。未配送の訂正や、記憶なしとの改善率は含みません。',
+  correctionCount: (key, n) => ({ delivered: '届いた訂正', followed: '訂正に沿った', repeated: '同じ指摘が再発', not_applicable: '今回は対象外', unknown: '不明', pending: '未評価' }[key] || key) + ' ' + n + '件',
+  correctionQuote: '人の発言の引用', correctionAction: '次に変える行動（仮説）',
   memoryEffectHow: n => '記憶を届けた直近' + n + '依頼までを対象に、使った判断と確認結果から仮評価します。未評価も含めて表示します。',
   memoryEffectCount: (key, n) => ({ delivered: '届いた', helpful: '役立った', unused: '使わなかった', harmful: '妨げた', unknown: '不明', pending: '未評価' }[key] || key) + ' ' + n + '件',
   memoryEffectDecision: '判断', memoryEffectEvidence: '確認結果', memoryEffectUnknown: '判断の記録なし',

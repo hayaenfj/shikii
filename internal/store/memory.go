@@ -18,15 +18,16 @@ import (
 )
 
 type MemoryQuote struct {
-	Key       string   `json:"key"`
-	ID        string   `json:"id"`
-	Revision  string   `json:"revision,omitempty"`
-	Lesson    string   `json:"lesson,omitempty"`
-	AppliesTo string   `json:"applies_to,omitempty"`
-	Sources   []string `json:"sources,omitempty"`
-	Request   string   `json:"request,omitempty"`
-	Summary   string   `json:"summary,omitempty"`
-	Reply     string   `json:"reply,omitempty"`
+	Correction *Correction `json:"correction,omitempty"`
+	Key        string      `json:"key"`
+	ID         string      `json:"id"`
+	Revision   string      `json:"revision,omitempty"`
+	Lesson     string      `json:"lesson,omitempty"`
+	AppliesTo  string      `json:"applies_to,omitempty"`
+	Sources    []string    `json:"sources,omitempty"`
+	Request    string      `json:"request,omitempty"`
+	Summary    string      `json:"summary,omitempty"`
+	Reply      string      `json:"reply,omitempty"`
 }
 
 type MemoryDelivery struct {
@@ -38,12 +39,13 @@ type MemoryDelivery struct {
 }
 
 type MemoryAssessment struct {
-	SourceID string    `json:"source_id"`
-	Key      string    `json:"key"`
-	Result   string    `json:"result"`
-	Decision string    `json:"decision"`
-	Evidence string    `json:"evidence"`
-	At       time.Time `json:"at"`
+	CorrectionResult string    `json:"correction_result,omitempty"`
+	SourceID         string    `json:"source_id"`
+	Key              string    `json:"key"`
+	Result           string    `json:"result"`
+	Decision         string    `json:"decision"`
+	Evidence         string    `json:"evidence"`
+	At               time.Time `json:"at"`
 }
 
 type MemoryStats struct {
@@ -57,8 +59,9 @@ type MemoryStats struct {
 }
 
 type MemorySummary struct {
-	Window int         `json:"window"` // 直近の配送ターン数の上限。成功例だけを選ばない。
-	Stats  MemoryStats `json:"stats"`
+	Corrections CorrectionStats `json:"corrections"`
+	Window      int             `json:"window"` // 直近の配送ターン数の上限。成功例だけを選ばない。
+	Stats       MemoryStats     `json:"stats"`
 }
 
 type MemoryObservation struct {
@@ -98,6 +101,18 @@ func validMemoryDelivery(d MemoryDelivery) bool {
 			return false
 		}
 		seen[q.Key] = true
+		if q.Correction != nil {
+			if !q.Correction.Valid() || q.Revision == "" {
+				return false
+			}
+			cited := false
+			for _, id := range q.Sources {
+				cited = cited || id == q.Correction.SourceID
+			}
+			if !cited {
+				return false
+			}
+		}
 		if q.Revision != "" {
 			if !textTrace.MatchString(q.Revision) || q.Key != "lesson:"+q.ID+":"+q.Revision || q.Lesson == "" || q.AppliesTo == "" || len(q.Sources) == 0 || len(q.Sources) > 16 {
 				return false
@@ -215,6 +230,9 @@ func (s Store) SaveMemoryDelivery(d MemoryDelivery) error {
 }
 
 func validMemoryAssessment(a MemoryAssessment) bool {
+	if !validCorrectionResult(a.CorrectionResult) || (a.CorrectionResult != "" && a.CorrectionResult != "unknown" && strings.TrimSpace(a.Decision) == "") {
+		return false
+	}
 	if !textTrace.MatchString(a.SourceID) || a.Key == "" || len(a.Key) > 80 || strings.TrimSpace(a.Evidence) == "" || len(a.Decision) > feedbackTextMax || len(a.Evidence) > feedbackTextMax {
 		return false
 	}
@@ -262,16 +280,23 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	if err != nil {
 		return err
 	}
-	delivered := false
+	delivered, correction := false, false
 	for _, d := range deliveries {
 		for _, q := range d.Quotes {
 			if d.ID == a.SourceID && q.Key == a.Key {
 				delivered = true
+				correction = q.Correction != nil
 			}
 		}
 	}
 	if !delivered {
 		return errors.New("この依頼へ実際に届けた記憶を指定してください")
+	}
+	if !correction && a.CorrectionResult != "" {
+		return errors.New("この依頼へ届いた訂正にだけ行動の観察を付けられます")
+	}
+	if correction && a.CorrectionResult == "" {
+		a.CorrectionResult = "unknown"
 	}
 	feedback, err := s.RecentFeedback(scope)
 	if err != nil {
@@ -289,7 +314,7 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		return err
 	}
 	if old != nil {
-		if old.Result == a.Result && old.Decision == a.Decision && old.Evidence == a.Evidence {
+		if old.Result == a.Result && old.Decision == a.Decision && old.Evidence == a.Evidence && old.CorrectionResult == a.CorrectionResult {
 			return nil
 		}
 		return errors.New("記憶の元の仮評価は塗り替えません")
@@ -344,6 +369,23 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 				return r, err
 			}
 			item := MemoryObservation{SourceID: d.ID, Request: d.Request, At: d.At, Quote: q, Assessment: a}
+			if q.Correction != nil {
+				r.Corrections.Delivered++
+				if a == nil {
+					r.Corrections.Pending++
+				} else {
+					switch a.CorrectionResult {
+					case "followed":
+						r.Corrections.Followed++
+					case "repeated":
+						r.Corrections.Repeated++
+					case "not_applicable":
+						r.Corrections.NotApplicable++
+					default:
+						r.Corrections.Unknown++
+					}
+				}
+			}
 			r.All = append(r.All, item)
 			r.Stats.Delivered++
 			if a == nil {
