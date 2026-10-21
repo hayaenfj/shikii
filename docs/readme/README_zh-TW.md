@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
 [問題在哪](#問題在哪) · [用法 1：量測 AI 自己的思考](#用法-1量測-ai-自己的思考) · [用法 2：把業務決定交給它](#用法-2把業務決定交給它) · [你在頁面上做什麼](#你在頁面上做什麼) · [安裝](#安裝) · [為什麼可以換 AI](#為什麼可以換-ai) · [繼續閱讀](#繼續閱讀)
@@ -111,4 +111,4 @@ install.sh 做的事：安裝執行檔（`shikii` 和 `shikii-readout`），替 
 
 ## 授權
 
-[Apache 2.0](../../LICENSE)。模型的授權另計（Kev-4B 和 Bonsai 系列是 Apache 2.0，OpenJev 是 CC BY-NC 4.0，託管版 Jev 是 TypeSafe 的服務）。
+[Apache-2.0 OR MIT](../../LICENSE)。模型的授權另計（Kev-4B 和 Bonsai 系列是 Apache 2.0，OpenJev 是 CC BY-NC 4.0，託管版 Jev 是 TypeSafe 的服務）。

@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
 [Vấn đề](#vấn-đề) · [Cách dùng 1: đo chính cách nghĩ của AI](#cách-dùng-1-đo-chính-cách-nghĩ-của-ai) · [Cách dùng 2: giao một quyết định trong công việc](#cách-dùng-2-giao-một-quyết-định-trong-công-việc) · [Bạn làm gì trên trang](#bạn-làm-gì-trên-trang) · [Cài đặt](#cài-đặt) · [Vì sao bạn có thể đổi AI](#vì-sao-bạn-có-thể-đổi-ai) · [Đọc thêm](#đọc-thêm)
@@ -111,4 +111,4 @@ Thiết lập cho từng dự án (`shikii init`) là việc của agent (bạn 
 
 ## Giấy phép
 
-[Apache 2.0](../../LICENSE). Giấy phép của mô hình là chuyện riêng (Kev-4B và họ Bonsai theo Apache 2.0, OpenJev theo CC BY-NC 4.0, Jev trên dịch vụ là dịch vụ của TypeSafe).
+[Apache-2.0 OR MIT](../../LICENSE). Giấy phép của mô hình là chuyện riêng (Kev-4B và họ Bonsai theo Apache 2.0, OpenJev theo CC BY-NC 4.0, Jev trên dịch vụ là dịch vụ của TypeSafe).

@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
 [Проблема](#проблема) · [Способ 1: измерить мышление самого ИИ](#способ-1-измерить-мышление-самого-ии) · [Способ 2: доверить ему рабочее решение](#способ-2-доверить-ему-рабочее-решение) · [Что вы делаете на странице](#что-вы-делаете-на-странице) · [Установка](#установка) · [Почему ИИ можно сменить](#почему-ии-можно-сменить) · [Читать дальше](#читать-дальше)
@@ -111,4 +111,4 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 ## Лицензия
 
-[Apache 2.0](../../LICENSE). Лицензии моделей отдельные (Kev-4B и семейство Bonsai — Apache 2.0, OpenJev — CC BY-NC 4.0, облачный Jev — сервис TypeSafe).
+[Apache-2.0 OR MIT](../../LICENSE). Лицензии моделей отдельные (Kev-4B и семейство Bonsai — Apache 2.0, OpenJev — CC BY-NC 4.0, облачный Jev — сервис TypeSafe).

@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 [![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](../../CHANGELOG.md)
 
@@ -124,4 +124,4 @@ install.sh がすること: 実行ファイル(`shikii` と `shikii-readout`)を
 
 ## ライセンス
 
-[Apache 2.0](../../LICENSE)。AI モデルのライセンスは別です(Kev-4B と Bonsai 系は Apache 2.0、OpenJev は CC BY-NC 4.0、ホスト版 Jev は TypeSafe 社のサービス)。
+[Apache-2.0 OR MIT](../../LICENSE)。AI モデルのライセンスは別です(Kev-4B と Bonsai 系は Apache 2.0、OpenJev は CC BY-NC 4.0、ホスト版 Jev は TypeSafe 社のサービス)。

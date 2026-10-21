@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
 [Sorun](#sorun) · [Kullanım 1: yapay zekânın kendi düşüncesini ölçün](#kullanım-1-yapay-zekânın-kendi-düşüncesini-ölçün) · [Kullanım 2: bir iş kararını ona bırakın](#kullanım-2-bir-iş-kararını-ona-bırakın) · [Sayfada ne yaparsınız](#sayfada-ne-yaparsınız) · [Kurulum](#kurulum) · [Yapay zekâyı neden değiştirebilirsiniz](#yapay-zekâyı-neden-değiştirebilirsiniz) · [Daha fazla okuma](#daha-fazla-okuma)
@@ -111,4 +111,4 @@ Komut çıktısı ve hook mesajları İngilizcedir (Claude Code'un dil ayarı Ja
 
 ## Lisans
 
-[Apache 2.0](../../LICENSE). Model lisansları ayrıdır (Kev-4B ve Bonsai ailesi Apache 2.0, OpenJev CC BY-NC 4.0, barındırılan Jev TypeSafe'in hizmetidir).
+[Apache-2.0 OR MIT](../../LICENSE). Model lisansları ayrıdır (Kev-4B ve Bonsai ailesi Apache 2.0, OpenJev CC BY-NC 4.0, barındırılan Jev TypeSafe'in hizmetidir).
