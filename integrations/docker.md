@@ -15,7 +15,7 @@
 
 ## 初回の準備と起動
 
-非公開の間はGitHubに認証してcloneする。shikiiのフォルダで、最初に画像を組み、業務の問いを1つ用意する。
+リポジトリをcloneし、shikiiのフォルダで、最初に画像を組み、業務の問いを1つ用意する。
 
 ```sh
 docker compose build shikii
@@ -44,4 +44,4 @@ HTTPの判定は `POST /v1/decide`、正解は `POST /v1/label`。JSONのContent
 
 `Dockerfile` はNode.jsで画面を組み、Goで2つの実行ファイルを組み、実行用のdistroless画像へ入れる。ホストで使うだけならGo・Node.jsは不要。実行時はrootで動かさない。
 
-shikii本体は `Apache-2.0 OR MIT`。OCIの `org.opencontainers.image.licenses` に同じ式を付け、`LICENSE`・`LICENSE-APACHE`・`LICENSE-MIT` を `/usr/share/licenses/shikii/` へ入れる。依存やベース画像・モデルの条件はそれぞれに従う。
+shikii本体は `Apache-2.0 OR MIT`。OCIの `org.opencontainers.image.licenses` に同じ式を付け、`LICENSE`・`LICENSE-APACHE`・`LICENSE-MIT`・`THIRD-PARTY-NOTICES` を `/usr/share/licenses/shikii/` へ入れる。依存やベース画像・モデルの条件はそれぞれに従う。

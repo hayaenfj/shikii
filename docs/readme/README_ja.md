@@ -10,13 +10,13 @@
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
-[![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.1-00ADD8?style=flat-square)](../../CHANGELOG.md)
 
-このREADMEは開発中のソースを説明しています。リリース済みの0.4.0は短い記憶とまとめた振り返りに対応し、訂正の原文・次の行動・その観察を結ぶ機能は未リリースです。[変更履歴](../../CHANGELOG.md)。
+0.4.1では、訂正の原文・次の行動・その観察を結びます。0.4.0の短い記憶とまとめた振り返りを引き継いでいます。[変更履歴](../../CHANGELOG.md)。
 
 [何が変わるか](#何が変わるか) · [必要なもの](#必要なもの) · [始め方](#始め方) · [普段の会話から学ぶ](#普段の会話から学ぶ) · [人が確認すること](#人が確認すること) · [役立ったかを確かめる](#役立ったかを確かめる) · [プロジェクトごとの記憶](#プロジェクトごとの記憶) · [業務の判定にも使う](#業務の判定にも使う) · [もっと読む](#もっと読む)
 
-<p align="center"><img src="../assets/shikii-hero-ja.svg" alt="普段の依頼と訂正から教訓と次の行動をまとめ、次の似た依頼で使い、結果を振り返る流れ" width="100%"></p>
+<p align="center"><img src="../assets/shikii-hero.svg" alt="shikii：モデルの確率を、任せてよい判断へ" width="100%"></p>
 
 ## 何が変わるか
 
@@ -30,6 +30,8 @@
 | 教訓にまとめる | 「案内を日本語化する時は全文を確認する」と、当てはまる場面・訂正の原文・次に変える行動を結ぶ |
 | 次の似た依頼 | 短い引用が届き、エージェントが今回の条件を確かめて作業へ反映する |
 | 振り返る | 全文を確認した記録があるか、同じ指摘が再発したかを、判断と確認結果に結び付ける |
+
+<p align="center"><img src="../assets/shikii-conversation-ja.svg" alt="普段の依頼と訂正から教訓と次の行動をまとめ、次の似た依頼で使い、結果を振り返る流れ" width="100%"></p>
 
 目指すのは「使うほど同じ訂正が減る」ことです。現時点で用意しているのは、それを実利用から確かめる仕組みです。記憶の保存数やAIの自己採点だけで改善したとは扱いません。
 
@@ -80,7 +82,13 @@ Go 1.27以上と `llama-server` が使えることを確認します。macOS以�
 
 ### 2. shikiiをインストールする
 
-**現在このリポジトリは非公開です。** GitHubに認証してcloneしたshikiiのフォルダで、Go 1.27以上を使って実行します。未認証のraw URLを使うcurlは404になります。
+Go 1.27以上があれば、次の1行でインストールできます。
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
+```
+
+ソースから入れる場合は、cloneしたshikiiのフォルダで次を実行します。
 
 ```sh
 sh install.sh
@@ -127,7 +135,7 @@ AIの仮採点は人の正解とは分けて保存します。人が抜き取り
 | 見ること | 記録する分類 |
 |---|---|
 | 記憶が判断にどう関わったか | 役立った・使わなかった・妨げた・不明 |
-| 届いた訂正を次の行動へ反映できたか（未リリース） | 訂正に沿った・同じ指摘が再発・今回は対象外・不明 |
+| 届いた訂正を次の行動へ反映できたか | 訂正に沿った・同じ指摘が再発・今回は対象外・不明 |
 
 「知識」画面には届いた数と未評価も表示します。訂正に従ったことと記憶が役立ったことは別に観察し、成功・追加依頼・沈黙だけでは効果を決めません。これは確認結果に基づくAIの仮評価で、記憶が無い場合と比べた改善率ではありません。
 
@@ -186,4 +194,4 @@ scripts/demo.sh
 
 ## ライセンス
 
-[Apache-2.0 OR MIT](../../LICENSE)。利用者が[Apache 2.0](../../LICENSE-APACHE)と[MIT](../../LICENSE-MIT)のどちらかを選べます。第三者のコード・依存・モデル・外部サービスのライセンスや利用条件は別です。開発中の版をソースや実行ファイルとして配る時は、この3つのライセンスファイルと必要な第三者の通知を同梱します。既存の0.4.0配布物は元のApache-2.0表記のままです。
+[Apache-2.0 OR MIT](../../LICENSE)。利用者が[Apache 2.0](../../LICENSE-APACHE)と[MIT](../../LICENSE-MIT)のどちらかを選べます。第三者のコード・依存・モデル・外部サービスのライセンスや利用条件は別です。ソースや実行ファイルとして配る時は、この3つのライセンスファイルと必要な第三者の通知を同梱します。既存の0.4.0配布物は元のApache-2.0表記のままです。

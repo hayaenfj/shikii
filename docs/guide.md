@@ -6,11 +6,11 @@ Everything the [README](../README.md) leaves out: every command, the full quick 
 
 ## Use it in ordinary conversations
 
-For automatic recording in Claude Code or Codex, install once and initialize each project explicitly with `shikii --init`. Uninitialized projects stay untouched. This repository is currently private: authenticate and clone it, then run `sh install.sh` in that checkout with Go 1.27 or newer. See [Get started](../README.md#get-started) for the order of setup.
+For automatic recording in Claude Code or Codex, install once and initialize each project explicitly with `shikii --init`. Uninitialized projects stay untouched. Use the one-line curl installer in [Get started](../README.md#get-started), or clone the source and run `sh install.sh` in that checkout with Go 1.27 or newer.
 
 Your usual agent organizes requests, replies and the next human message into lessons with sources and conditions. Before similar work it receives up to two short quotes from the same project. Assessment, wiki work and memory observations are handled together using `shikii reflect query / submit`, MCP `shikii_reflect`, or `POST /v1/reflect`.
 
-Reflection preserves the delivered quote and revision and records a decision and observed result: helpful, unused, harmful or unknown. The unreleased correction workflow also links a verbatim user statement to an action, and observes followed, repeated, not applicable or unknown separately. Success or silence alone establishes neither. See [the input format and evidence rules](../skills/shikii/references/review.md) (Japanese).
+Reflection preserves the delivered quote and revision and records a decision and observed result: helpful, unused, harmful or unknown. The 0.4.1 correction workflow also links a verbatim user statement to an action, and observes followed, repeated, not applicable or unknown separately. Success or silence alone establishes neither. See [the input format and evidence rules](../skills/shikii/references/review.md) (Japanese).
 
 Conversations, lessons, provisional assessments, truths and calibration belong to the project's `.shikii/`. The common `~/.shikii/agent` holds templates, tools and the project index. The Knowledge panel shows memory observations and their evidence. People check random samples and undecided cases; AI assessments do not become truth labels or calibration automatically.
 
@@ -40,7 +40,7 @@ A hypothesis we intend to test, not a claim: for typed decisions, a measured que
 
 ## Quick start
 
-Go 1.27 or newer. The fake-model demo needs no key or GPU. Authenticate with GitHub before cloning this private repository.
+Go 1.27 or newer. The fake-model demo needs no key or GPU.
 
 ### Run the whole loop without a key or a GPU
 
@@ -197,7 +197,7 @@ Model-based advice waits for a calibration line. Conversation recording, memory 
 ### Install and update
 
 ```sh
-sh install.sh                # Go 1.27+; run inside an authenticated clone while the repository is private
+sh install.sh                # Go 1.27+; run inside a source checkout
 cd <project root> && shikii init   # .shikii/ (decisions, wiki with the shared knowledge, records, labels); MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill
 make install          # copies bin/shikii and bin/shikii-readout to ~/.local/bin
 git pull && make install

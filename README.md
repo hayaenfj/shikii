@@ -10,13 +10,13 @@ Your usual agent builds lessons from requests, replies and corrections, with lin
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
-[![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
-This README describes the development source. Released version 0.4.0 supports concise memory and batched reflection. Linking a quoted correction, the next action and its observed outcome is unreleased. See the [changelog](CHANGELOG.md) (Japanese).
+Version 0.4.1 links a quoted correction, the next action and its observed outcome. It builds on concise memory and batched reflection from 0.4.0. See the [changelog](CHANGELOG.md) (Japanese).
 
 [What changes](#what-changes) · [Requirements](#requirements) · [Get started](#get-started) · [Learn from ordinary conversations](#learn-from-ordinary-conversations) · [What people check](#what-people-check) · [Check whether memory helped](#check-whether-memory-helped) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Use it for business decisions](#use-it-for-business-decisions) · [Read more](#read-more)
 
-<p align="center"><img src="docs/assets/shikii-hero.svg" alt="A request and correction become a sourced lesson and an action for similar work; observed results feed reflection" width="100%"></p>
+<p align="center"><img src="docs/assets/shikii-hero.svg" alt="shikii: a model gives you a probability; shikii tells you whether you may act on it" width="100%"></p>
 
 ## What changes
 
@@ -30,6 +30,8 @@ For example, you ask for a Japanese version of some instructions, then point out
 | A lesson is written | Link “Check the whole text when translating instructions” to its conditions, the quoted correction and a concrete action |
 | Similar work comes next | Deliver a short quote; the agent checks whether it applies and uses it in the work |
 | Reflection | Link the decision to evidence of the full-text check or a recurrence of the same issue |
+
+<p align="center"><img src="docs/assets/shikii-conversation.svg" alt="A request and correction become a sourced lesson and an action for similar work; observed results feed reflection" width="100%"></p>
 
 The goal is fewer repeated corrections as you use it. What exists today is the mechanism for checking that in real work. Stored memory counts and an agent's own scores alone do not demonstrate improvement.
 
@@ -80,7 +82,13 @@ The default model is **Kev-4B, Q4_K_M** (`ggml-org/Kev-4B-GGUF:Q4_K_M`). It down
 
 ### 2. Install shikii
 
-**This repository is currently private.** Authenticate with GitHub, clone shikii, and run the following from that checkout with Go 1.27 or newer. Anonymous curl requests to its raw URLs return 404.
+With Go 1.27 or newer, install with one command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
+```
+
+To install from a source checkout instead, clone shikii and run this inside its folder:
 
 ```sh
 sh install.sh
@@ -127,7 +135,7 @@ The delivered quote and revision stay linked to the request. Routine reflection 
 | Question | Recorded outcomes |
 |---|---|
 | How did memory affect the decision? | Helpful, unused, harmful, unknown |
-| Was a delivered correction reflected in the next action? (unreleased) | Followed, same issue repeated, not applicable, unknown |
+| Was a delivered correction reflected in the next action? | Followed, same issue repeated, not applicable, unknown |
 
 The Knowledge panel includes delivery counts and pending assessments. Following a correction and finding a memory helpful are assessed separately. Success, another request or silence alone does not establish an effect. These are evidence-backed AI observations, not an improvement rate measured against a no-memory control.
 
@@ -186,4 +194,4 @@ scripts/demo.sh
 
 ## License
 
-[Apache-2.0 OR MIT](LICENSE), at your option: [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT). The licenses of third-party dependencies, bundled code, models and external services remain separate. Source or binary distributions of this development version should include all three license files and applicable third-party notices. Existing 0.4.0 release assets retain their original Apache-2.0 notice.
+[Apache-2.0 OR MIT](LICENSE), at your option: [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT). The licenses of third-party dependencies, bundled code, models and external services remain separate. Source or binary distributions should include all three license files and applicable third-party notices. Existing 0.4.0 release assets retain their original Apache-2.0 notice.

@@ -191,8 +191,8 @@ def architecture(lang, path):
 
 def generate(directory=ASSETS):
     directory.mkdir(parents=True, exist_ok=True)
-    hero("ja", directory / "shikii-hero-ja.svg")
-    hero("en", directory / "shikii-hero.svg")
+    hero("ja", directory / "shikii-conversation-ja.svg")
+    hero("en", directory / "shikii-conversation.svg")
     architecture("ja", directory / "shikii-architecture.svg")
     architecture("en", directory / "shikii-architecture-en.svg")
 
