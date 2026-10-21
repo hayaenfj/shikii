@@ -10,9 +10,9 @@ Your usual agent builds lessons from requests, replies and corrections, with lin
 [![Tests](https://img.shields.io/badge/tests-261%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.4.2-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.3-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.4.2 adds `shikii update` for future upgrades. It also includes the correction tracking, concise memory and batched reflection from earlier versions. See the [changelog](CHANGELOG.md).
+Version 0.4.3 makes conversation reviews clearer and loads only the information on screen. It fixes knowledge evidence display and keeps `shikii update`, correction tracking and batched reflection. See the [changelog](CHANGELOG.md).
 
 [What changes](#what-changes) · [Requirements](#requirements) · [Get started](#get-started) · [Learn from ordinary conversations](#learn-from-ordinary-conversations) · [What people check](#what-people-check) · [Check whether memory helped](#check-whether-memory-helped) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Use it for business decisions](#use-it-for-business-decisions) · [Read more](#read-more)
 

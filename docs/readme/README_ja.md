@@ -10,9 +10,9 @@
 [![Tests](https://img.shields.io/badge/tests-261%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.4.2-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.4.3-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.4.2では、`shikii update` で次回からの更新を行えます。訂正の追跡、短い記憶とまとめた振り返りも引き継いでいます。[変更履歴](../../CHANGELOG_ja.md)。
+0.4.3では、会話の確認を分かりやすくし、表示中の情報だけを読み込みます。知識の証拠表示を直し、`shikii update`、訂正の追跡、まとめた振り返りも引き継いでいます。[変更履歴](../../CHANGELOG_ja.md)。
 
 [何が変わるか](#何が変わるか) · [必要なもの](#必要なもの) · [始め方](#始め方) · [普段の会話から学ぶ](#普段の会話から学ぶ) · [人が確認すること](#人が確認すること) · [役立ったかを確かめる](#役立ったかを確かめる) · [プロジェクトごとの記憶](#プロジェクトごとの記憶) · [業務の判定にも使う](#業務の判定にも使う) · [もっと読む](#もっと読む)
 
