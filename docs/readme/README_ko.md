@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
 [문제](#문제) · [사용법 1: AI 자신의 생각을 측정한다](#사용법-1-ai-자신의-생각을-측정한다) · [사용법 2: 업무의 결정을 맡긴다](#사용법-2-업무의-결정을-맡긴다) · [화면에서 하는 일](#화면에서-하는-일) · [설치](#설치) · [왜 AI를 바꿔도 되는가](#왜-ai를-바꿔도-되는가) · [더 읽기](#더-읽기)
@@ -111,4 +111,4 @@ install.sh가 하는 일: 실행 파일(`shikii`와 `shikii-readout`)을 설치�
 
 ## 라이선스
 
-[Apache 2.0](../../LICENSE). 모델의 라이선스는 별도입니다(Kev-4B와 Bonsai 계열은 Apache 2.0, OpenJev는 CC BY-NC 4.0, 호스팅 Jev는 TypeSafe의 서비스).
+[Apache-2.0 OR MIT](../../LICENSE). 모델의 라이선스는 별도입니다(Kev-4B와 Bonsai 계열은 Apache 2.0, OpenJev는 CC BY-NC 4.0, 호스팅 Jev는 TypeSafe의 서비스).

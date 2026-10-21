@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
 [El problema](#el-problema) · [Uso 1: medir el propio pensamiento de la IA](#uso-1-medir-el-propio-pensamiento-de-la-ia) · [Uso 2: encargarle una decisión del negocio](#uso-2-encargarle-una-decisión-del-negocio) · [Qué hace usted en la página](#qué-hace-usted-en-la-página) · [Instalación](#instalación) · [Por qué puede cambiar la IA](#por-qué-puede-cambiar-la-ia) · [Leer más](#leer-más)
@@ -111,4 +111,4 @@ La salida de los comandos y los mensajes de los hooks están en inglés (si el i
 
 ## Licencia
 
-[Apache 2.0](../../LICENSE). Las licencias de los modelos son aparte (Kev-4B y la familia Bonsai son Apache 2.0, OpenJev es CC BY-NC 4.0, el Jev alojado es un servicio de TypeSafe).
+[Apache-2.0 OR MIT](../../LICENSE). Las licencias de los modelos son aparte (Kev-4B y la familia Bonsai son Apache 2.0, OpenJev es CC BY-NC 4.0, el Jev alojado es un servicio de TypeSafe).

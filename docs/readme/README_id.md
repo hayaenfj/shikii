@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 
 [Masalahnya](#masalahnya) · [Cara pakai 1: mengukur cara berpikir AI itu sendiri](#cara-pakai-1-mengukur-cara-berpikir-ai-itu-sendiri) · [Cara pakai 2: serahkan keputusan bisnis kepadanya](#cara-pakai-2-serahkan-keputusan-bisnis-kepadanya) · [Apa yang Anda lakukan di halaman](#apa-yang-anda-lakukan-di-halaman) · [Instalasi](#instalasi) · [Mengapa AI-nya boleh diganti](#mengapa-ai-nya-boleh-diganti) · [Baca lebih lanjut](#baca-lebih-lanjut)
@@ -111,4 +111,4 @@ Keluaran perintah dan pesan hook dalam bahasa Inggris (kalau pengaturan bahasa C
 
 ## Lisensi
 
-[Apache 2.0](../../LICENSE). Lisensi model terpisah (Kev-4B dan keluarga Bonsai berlisensi Apache 2.0, OpenJev CC BY-NC 4.0, Jev yang dihosting adalah layanan TypeSafe).
+[Apache-2.0 OR MIT](../../LICENSE). Lisensi model terpisah (Kev-4B dan keluarga Bonsai berlisensi Apache 2.0, OpenJev CC BY-NC 4.0, Jev yang dihosting adalah layanan TypeSafe).

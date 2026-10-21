@@ -20,7 +20,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/shikii ./cmd/shiki
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/shikii-readout ./cmd/shikii-readout
 
 FROM gcr.io/distroless/static-debian12:nonroot
+LABEL org.opencontainers.image.licenses="Apache-2.0 OR MIT"
 COPY --from=build /out/shikii /out/shikii-readout /usr/local/bin/
+COPY --from=build /src/LICENSE /src/LICENSE-APACHE /src/LICENSE-MIT /usr/share/licenses/shikii/
 # 基本構成: 実行する場所(/work)の .shikii/ の下に decisions/ wiki/ records/ labels/。ホストのプロジェクトをここに mount する
 WORKDIR /work
 EXPOSE 8095
