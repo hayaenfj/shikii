@@ -50,6 +50,16 @@ func TestServeWikiListsClaimsAndLetsAPersonPromoteAndDecide(t *testing.T) {
 		t.Fatalf("a draft with 2 supporting models is confirmable: %+v", d)
 	}
 
+	// HTTP の証拠は、画面が読む小文字のキーで値を返す。
+	evidence := d["evidence"].([]any)[0].(map[string]any)
+	for key, want := range map[string]string{
+		"date": "2026-10-18", "model": "m", "result": "strict 1.000 vs current 0.500", "verdict": "supports", "run": "r1",
+	} {
+		if evidence[key] != want {
+			t.Fatalf("evidence JSON field %s: got %v, want %s", key, evidence[key], want)
+		}
+	}
+
 	// 下書きを一般化して主張にする: patterns/<slug>.md に移り、status は tentative、本文と証拠は残る
 	code, out := postJSON(t, s.URL+"/v1/wiki/claim", map[string]any{"path": d["path"], "action": "promote", "slug": "strict-wording",
 		"claim": "厳しく問う文言は迷いを減らす", "applies_to": map[string]string{"type": "choice", "models": "小さいモデル"}})
