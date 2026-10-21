@@ -409,3 +409,9 @@ func TestPlainLayoutReadsOptionIdsAndNamesTheLayout(t *testing.T) {
 		t.Fatalf("ids sharing a first token cannot be read under plain layout: %d %v", code, out)
 	}
 }
+
+// readProbs は上位トークンの確率からラベルの確率を拾い、正規化する。
+// 上位に入らなかったラベルには probFloor を与える(missing に数える)。
+func readProbs(top []tokenProb, n int) (probs []float64, missing int) {
+	return readProbsFor(top, labels[:n])
+}

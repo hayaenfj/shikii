@@ -349,12 +349,6 @@ type tokenProb struct {
 	Prob  float64 `json:"prob"`
 }
 
-// readProbs は上位トークンの確率からラベルの確率を拾い、正規化する。
-// 上位に入らなかったラベルには probFloor を与える(missing に数える)。
-func readProbs(top []tokenProb, n int) (probs []float64, missing int) {
-	return readProbsFor(top, labels[:n])
-}
-
 // readProbsFor は keys(文字、または plain 配置では選択肢 id の最初のトークン)ごとの確率を上位から拾って正規化する。
 func readProbsFor(top []tokenProb, keys []string) (probs []float64, missing int) {
 	byTok := map[string]float64{}

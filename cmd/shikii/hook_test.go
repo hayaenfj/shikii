@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -1281,4 +1283,82 @@ func TestHookIgnoresBackgroundNotificationsAsRequests(t *testing.T) {
 	if sess := loadSession(agent, "bg"); len(sess.Pending) != 1 {
 		t.Fatalf("only the new request's pending remains: %d", len(sess.Pending))
 	}
+}
+
+// runTuneInProcess は hookTune の同プロセス版(テスト用)。
+func runTuneInProcess(agent, path, storeDir string) {
+	var buf bytes.Buffer
+	_, err := func() (res *tuneResult, err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("tune panicked: %v", r)
+			}
+		}()
+		return runTune(tuneOpts{output: &buf, specPath: path, ef: endpointFlags{local: hookLocalURL}, storeDir: storeDir, labeled: "none"})
+	}()
+	line := lastLine(buf.String())
+	if err != nil {
+		line += " ERROR: " + err.Error()
+	}
+	hookLog(fmt.Sprintf("auto-tune %s: %s", strings.TrimSuffix(filepath.Base(path), ".yaml"), line))
+}
+
+// runCalibrateInProcess はテストで較正を同プロセス内で実行する。
+func runCalibrateInProcess(agent, path, storeDir, model string) {
+	var buf bytes.Buffer
+	err := func() (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("calibrate panicked: %v", r)
+			}
+		}()
+		return runCalibrate(path, calibrateOpts{output: &buf, ef: endpointFlags{local: hookLocalURL, model: model}, storeDir: storeDir, labeled: "none", bins: 10, write: true, rung: "minimal"})
+	}()
+	line := lastLine(buf.String())
+	if err != nil {
+		line += " ERROR: " + err.Error()
+	}
+	hookLog(fmt.Sprintf("auto-calibrate %s (%s): %s", strings.TrimSuffix(filepath.Base(path), ".yaml"), model, line))
+}
+
+// treeSnapshot は作業ツリーの中身のハッシュだけ(treeState の前半)。
+func treeSnapshot(cwd string) string {
+	h, _, _, _ := treeState(cwd)
+	return h
+}
+
+// hookCommands はテストで settings.json の登録内容を確かめる。
+func hookCommands(path string) []string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var cfg struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if json.Unmarshal(b, &cfg) != nil {
+		return nil
+	}
+	var out []string
+	for _, groups := range cfg.Hooks {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				if isShikiiHook(h.Command) {
+					out = append(out, h.Command)
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// treeState はテストで scope 以外の作業ツリーの状態を読む。
+func treeState(cwd string) (hash, listing string, listed bool, project string) {
+	hash, listing, listed, project, _ = treeStateWithScope(cwd)
+	return
 }

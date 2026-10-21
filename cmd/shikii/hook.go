@@ -59,13 +59,12 @@ var (
 )
 
 const (
-	hookCmdPrefix  = "shikii hook " // settings.json の中で自分の handler を見分ける印
-	hookTimeout    = 10             // 秒。モデルの 5 秒(2 つの問いは並行) + 書き込み
-	requestMax     = 1500           // request / summary として控える文の長さ(バイト)
-	shortReply     = 40             // これより短い依頼は返事とみなし、前の依頼に添える(文字数)
-	filesMax       = 30             // Stop の問いに並べる「変わったファイル」の上限(残りは件数だけ)
-	listingMax     = 4 << 20        // 控える作業ツリーの一覧の上限(バイト)。超えたら変わったファイルは分からない扱い
-	hookLogLineMax = 400            // hook.log の 1 行の上限(バイト)。誤りの文にモデルの応答本文が付いてくることがある
+	hookTimeout    = 10      // 秒。モデルの 5 秒(2 つの問いは並行) + 書き込み
+	requestMax     = 1500    // request / summary として控える文の長さ(バイト)
+	shortReply     = 40      // これより短い依頼は返事とみなし、前の依頼に添える(文字数)
+	filesMax       = 30      // Stop の問いに並べる「変わったファイル」の上限(残りは件数だけ)
+	listingMax     = 4 << 20 // 控える作業ツリーの一覧の上限(バイト)。超えたら変わったファイルは分からない扱い
+	hookLogLineMax = 400     // hook.log の 1 行の上限(バイト)。誤りの文にモデルの応答本文が付いてくることがある
 )
 
 // hookSpecs は hook が聞く 4 つ(埋め込みの spec の id)。前 2 つは依頼の直後、後 2 つはターンの終わり。
@@ -1006,24 +1005,6 @@ func spawnTune(agent, path, storeDir string) {
 	_ = cmd.Process.Release()
 }
 
-// runTuneInProcess は hookTune の同プロセス版(テスト用)。
-func runTuneInProcess(agent, path, storeDir string) {
-	var buf bytes.Buffer
-	_, err := func() (res *tuneResult, err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("tune panicked: %v", r)
-			}
-		}()
-		return runTune(tuneOpts{output: &buf, specPath: path, ef: endpointFlags{local: hookLocalURL}, storeDir: storeDir, labeled: "none"})
-	}()
-	line := lastLine(buf.String())
-	if err != nil {
-		line += " ERROR: " + err.Error()
-	}
-	hookLog(fmt.Sprintf("auto-tune %s: %s", strings.TrimSuffix(filepath.Base(path), ".yaml"), line))
-}
-
 // spawnCalibrate は `shikii calibrate <spec> --store … --local … --model … --write` を切り離した別プロセスで起こす(hook は待たない)。
 // 出力は hook.log に追記。聞き直しが長くても hook の timeout に掛からず、途中で殺されても spec は tmp + rename で壊れない。
 func spawnCalibrate(agent, path, storeDir, model string) {
@@ -1047,24 +1028,6 @@ func spawnCalibrate(agent, path, storeDir, model string) {
 		return
 	}
 	_ = cmd.Process.Release()
-}
-
-// runCalibrateInProcess は hookCalibrate の同プロセス版(テストと、別プロセスを起こせない環境の予備)。
-func runCalibrateInProcess(agent, path, storeDir, model string) {
-	var buf bytes.Buffer
-	err := func() (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("calibrate panicked: %v", r)
-			}
-		}()
-		return runCalibrate(path, calibrateOpts{output: &buf, ef: endpointFlags{local: hookLocalURL, model: model}, storeDir: storeDir, labeled: "none", bins: 10, write: true, rung: "minimal"})
-	}()
-	line := lastLine(buf.String())
-	if err != nil {
-		line += " ERROR: " + err.Error()
-	}
-	hookLog(fmt.Sprintf("auto-calibrate %s (%s): %s", strings.TrimSuffix(filepath.Base(path), ".yaml"), model, line))
 }
 
 // settlePending は控えてある prompt-kind の判定に結果の正解を付ける: 依頼の時のツリーと今のツリー(now)が違えば edit(重み 1)、同じなら !edit(部分、重み 0.7)。
@@ -1202,24 +1165,14 @@ func serveUp() bool {
 	return resp.StatusCode == 200
 }
 
-// treeSnapshot は作業ツリーの中身のハッシュだけ(treeState の前半)。
-func treeSnapshot(cwd string) string {
-	h, _, _, _ := treeState(cwd)
-	return h
-}
-
-// treeState は作業ツリーの状態: 仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id の先頭 16 桁(hash)と、
+// treeStateWithScope は作業ツリーの状態: 仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id の先頭 16 桁(hash)と、
 // その index の `git ls-files --stage` の一覧(listing。Stop で依頼の時と比べて「変わったファイル」を出す。空の repo では空。listed はそれが取れたか)、
-// それと project(記録に付ける仕事の印: repo のルートのフォルダ名。git の外なら cwd のフォルダ名)。
+// それと実パスの scope、project(記録に付ける仕事の印: repo のルートのフォルダ名。git の外なら cwd のフォルダ名)。
 // HEAD や index の状態は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。
 // 新しい blob は仮の objects(GIT_OBJECT_DIRECTORY)に書いて消すので、未追跡ファイルの中身が repo の .git/objects に残らない(repo の objects は alternates として読むだけ)。
 // 全体で hookGitTimeout を超えたら ""(.gitignore の無い巨大な node_modules など。正解を付けないだけで hook は止めない)。git の外なら ""。
-func treeState(cwd string) (hash, listing string, listed bool, project string) {
-	hash, listing, listed, project, _ = treeStateWithScope(cwd)
-	return
-}
 
-// treeStateWithScope は一覧と同じ repo の実パスも返す。同名の別 repo の会話を混ぜず、
+// 一覧と同じ repo の実パスを返し、同名の別 repo の会話を混ぜず、
 // サブディレクトリや symlink からの依頼は同じ仕事として参照する。
 func treeStateWithScope(cwd string) (hash, listing string, listed bool, project, scope string) {
 	if cwd == "" {
@@ -1678,34 +1631,4 @@ func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) 
 		return false, err
 	}
 	return true, os.Rename(path+".tmp", path)
-}
-
-// hookCommands は settings.json に入っている shikii の hook の command を返す(doctor / テスト用)。
-func hookCommands(path string) []string {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var cfg struct {
-		Hooks map[string][]struct {
-			Hooks []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if json.Unmarshal(b, &cfg) != nil {
-		return nil
-	}
-	var out []string
-	for _, groups := range cfg.Hooks {
-		for _, g := range groups {
-			for _, h := range g.Hooks {
-				if isShikiiHook(h.Command) {
-					out = append(out, h.Command)
-				}
-			}
-		}
-	}
-	sort.Strings(out)
-	return out
 }

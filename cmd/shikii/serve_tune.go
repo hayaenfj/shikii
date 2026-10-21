@@ -230,13 +230,6 @@ func (s *server) handleTuneRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 202, map[string]any{"spec": ref.id, "running": true})
 }
 
-func errString(err error) string {
-	if err == nil {
-		return "ok"
-	}
-	return err.Error()
-}
-
 func (s *server) handleTuneSync(w http.ResponseWriter, r *http.Request) {
 	ref, propose, ok := s.decodeTuneReq(w, r)
 	if !ok {
