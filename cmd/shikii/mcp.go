@@ -69,9 +69,14 @@ const mcpProtocol = "2025-03-26"
 var mcpTools = []map[string]any{
 	{
 		"name":        "shikii_reflect",
-		"description": "採点とwiki整理を最大2会話ずつまとめる。queryで原文・対象・既存の教訓・人の訂正例を一度に読み、submitでreviewsとwikiを保存する。根拠不足はunknown。追加依頼や沈黙だけで成功にせず、正解・較正には混ぜない。complete:falseなら各項目のerrorを確認して再送する。",
+		"description": "採点・wiki整理・記憶の寄与の仮評価を最大2会話ずつまとめる。queryで原文・対象・届いた記憶・教訓・人の訂正を読み、submitでreviews/wiki/memoryを保存する。memoryはhelpful/unused/harmful/unknownと、使った判断decision・確認結果evidenceを記録する。配送や作業成功だけを効果とせず、根拠不足はunknown。正解・較正には混ぜない。complete:falseなら各errorを確認して再送する。",
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"operation": map[string]any{"type": "string", "enum": []string{"query", "submit"}},
+			"memory": map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+				"source_id": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"},
+				"result":   map[string]any{"type": "string", "enum": []string{"helpful", "unused", "harmful", "unknown"}},
+				"decision": map[string]any{"type": "string"}, "evidence": map[string]any{"type": "string"},
+			}, "required": []string{"source_id", "key", "result", "decision", "evidence"}}},
 			"reviews": map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 				"source_id": map[string]any{"type": "string"}, "trace_id": map[string]any{"type": "string"},
 				"truth": map[string]any{"type": "string", "enum": []string{"yes", "no", "unknown"}}, "reason": map[string]any{"type": "string"},

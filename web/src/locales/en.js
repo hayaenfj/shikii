@@ -1,6 +1,11 @@
 // 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
+  memoryEffectTitle: 'Memory and decisions (AI assessment)',
+  memoryEffectHow: n => 'Up to the last ' + n + ' deliveries, assessed from decisions and observed results. Pending assessments remain visible.',
+  memoryEffectCount: (key, n) => ({ delivered: 'Delivered', helpful: 'Helpful', unused: 'Unused', harmful: 'Harmful', unknown: 'Unknown', pending: 'Pending' }[key] || key) + ': ' + n,
+  memoryEffectDecision: 'Decision', memoryEffectEvidence: 'Observed result', memoryEffectUnknown: 'No recorded decision',
+  memoryEffectError: 'Memory deliveries or assessments could not be read. Check the records.',
   projectsTitle: 'Projects', projectsHow: 'Choose a project to see its conversations, lessons and reviews.', projectsEmpty: 'No projects yet. Run shikii --init in a project, or ask your agent to use shikii there.',
   legacyTextLimit: 'This field ends near the old storage limit. Earlier versions may not have kept the rest.', originalTextLimit: 'This long text is shown up to the 64 KB source storage limit.', originalTextUnavailable: 'The original text could not be read. Showing the beginning kept with the decision.',
 
