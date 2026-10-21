@@ -13,14 +13,18 @@
   let question = $derived(loc(sp.questions, sp.question || ''));
 
   // モデルごとの印の文。状態の鍵(collecting / ready)は辞書の鍵と同じ
-  const pillText = k => k.model + (k.rung === 'context' ? ' · ' + t('contextRung') : '') + ' · ' + (k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n));
+  const isHeld = k => k.state !== 'calibrated' && k.state !== 'stale' && sp.calibration_result?.hash === k.hash && sp.calibration_result?.model === k.model && ['quality', 'insufficient', 'error'].includes(sp.calibration_result?.reason);
+  const pillText = k => k.model + (k.rung === 'context' ? ' · ' + t('contextRung') : '') + ' · ' + (isHeld(k) ? t('calibrationHeld') : k.state === 'calibrated' ? t('calibrated')(k.method) : k.state === 'stale' ? t('stale') : t(k.state)(k.n, sp.min_n));
 
   // 人の言葉の状態と進み具合(かんたん表示の中心)
   let live = $derived(sp.keys.filter(k => k.state !== 'stale'));
+  let calibration = $derived(live.some(k => k.hash === sp.calibration_result?.hash && k.model === sp.calibration_result?.model) ? sp.calibration_result : null);
+  let calibrationSummary = $derived(calibration?.reason === 'quality' ? t('calibrationQuality')(calibration.human_truths) : calibration?.reason === 'insufficient' ? t('calibrationInsufficient')(calibration.human_truths, calibration.min_n) : calibration?.reason === 'written' ? t('calibrationWritten')(calibration.human_truths) : calibration?.reason === 'error' ? t('calibrationError') : t('calibrationDiagnostic'));
   let n = $derived(live.reduce((m, k) => Math.max(m, k.n), 0));
   let progress = $derived.by(() => {
     let plain = t('plainLearning')(n, sp.min_n), pct = Math.min(100, Math.round(100 * n / Math.max(1, sp.min_n)));
     if (live.some(k => k.state === 'calibrated')) { plain = t('plainAuto'); pct = 100; }
+    else if (live.some(isHeld)) { plain = t('calibrationHeld'); }
     else if (live.some(k => k.state === 'ready')) { plain = t('plainReady'); pct = 100; }
     else if (sp.keys.length && !live.length) plain = t('plainStale');
     return { plain, pct };
@@ -73,6 +77,13 @@
   {:else if sp.id === 'done-as-asked' || sp.id === 'changes-in-scope'}<p class="decision-phase">{t('afterWork')}</p>{/if}
   </div></div>
   <div class="status"><div class="learning-line"><span class="learning-icon" aria-hidden="true">◒</span><span>{progress.plain}</span><span class="learning-number">{Math.min(n, sp.min_n)} / {sp.min_n}</span></div><div class="bar" role="progressbar" aria-label={t('learningProgress')} aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"><div style="width:{progress.pct}%"></div></div></div>
+  {#if sp.last_calibration}
+    <div class="calibration-report">
+      <strong>{t('last')}</strong>{#if calibration?.at}<time>{calibration.at}</time>{/if}
+      <p class="calibration-summary">{calibrationSummary}</p>
+      <details class="adv"><summary>{t('calibrationDetails')}</summary><pre>{sp.last_calibration}</pre></details>
+    </div>
+  {/if}
   {#if sp.review_quality?.scored}<p class="k review-quality">{t('reviewQuality')(sp.review_quality)}</p>{/if}
   {#if sp.review_pending}<p class="k">{t('reviewPending')(sp.review_pending)}</p>{/if}
   <Chips {counts} labels={sp.labels} />
@@ -120,8 +131,6 @@
         <button type="button" class="weak" onclick={() => { ui.listSize += 30; }}>{t('showMore')(Math.max(0, visible.length - ui.listSize) + extra)}</button>
       {/if}
     {/if}
-    {#if sp.last_calibration}<pre class="adv">{t('last')}
-{sp.last_calibration}</pre>{/if}
     {#if ui.advanced}<Wording {sp} />{/if}
   {/if}
 </section>

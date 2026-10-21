@@ -503,6 +503,26 @@ type calibrateOpts struct {
 	rung     string // "" = 両方の段、"minimal" | "context" = その段だけ引く(serve の自動較正は正解が揃った段だけ)
 }
 
+// 保存できない理由を件数不足と予測の品質に分ける。画面も同じ理由を使う。
+type calibrationRefusal struct {
+	humanTruths int
+	minN        int
+}
+
+func (e *calibrationRefusal) reason() string {
+	if e.humanTruths < e.minN {
+		return "insufficient"
+	}
+	return "quality"
+}
+
+func (e *calibrationRefusal) Error() string {
+	if e.reason() == "insufficient" {
+		return fmt.Sprintf("較正は保存していません。人・結果による正解が%d件で、必要な%d件に届いていません。shikii serve・shikii label・shikii importで正解を追加してください。試行だけならspecのeval.min_n を下げられます。", e.humanTruths, e.minN)
+	}
+	return fmt.Sprintf("較正は保存していません。正解は%d件ありますが、現在の質問とモデルの予測では自動実行の条件を満たしません。質問やモデルの見直しが必要です。", e.humanTruths)
+}
+
 // runCalibrate は calibrate の本体。報告は stdout に出す。
 func runCalibrate(path string, o calibrateOpts) error {
 	stdout := reportWriter(o.output)
@@ -518,7 +538,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 			return err
 		}
 		if o.write && !ok {
-			return fmt.Errorf("calibrate: refusing to write: fewer human truths than eval.min_n=%d (see WARNING above). Collect more truths (shikii serve, shikii label, shikii import), or for a trial lower eval.min_n in the spec to the truths you have; --force writes anyway but check will flag the line", sp.Eval.MinN)
+			return &calibrationRefusal{humanTruths: cal.NHuman, minN: sp.Eval.MinN}
 		}
 		if o.write {
 			sp.PutCalibration(cal)
@@ -540,7 +560,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 			sp.PutCalibration(ccal)
 			wrote = true
 		case o.write && o.rung == "context":
-			return fmt.Errorf("calibrate: refusing to write the context rung (see WARNING above)")
+			return &calibrationRefusal{humanTruths: ccal.NHuman, minN: csp.Eval.MinN}
 		case o.write:
 			fmt.Fprintln(stdout, "note: context rung not written (see WARNING above)")
 		}
