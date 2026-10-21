@@ -19,8 +19,8 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// hookEnv は HOME を仮の場所にし、~/.shikii/agent を install して、モデルと画面の URL を差し替える。
-func hookEnv(t *testing.T, model *httptest.Server) (agent string) {
+// hookEnv は仮の HOME に道具を入れ、指定した仕事の .shikii を準備してモデルと画面を差し替える。
+func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	agent = filepath.Join(home, ".shikii", "agent")
@@ -39,6 +39,15 @@ func hookEnv(t *testing.T, model *httptest.Server) (agent string) {
 	})
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	spawned = nil // install が起こした分は数えない
+	root := t.TempDir()
+	if len(roots) > 0 {
+		root = roots[0]
+	}
+	t.Chdir(root)
+	agent, _, err := prepareHookProject(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return agent
 }
 
@@ -174,8 +183,8 @@ func TestHookOutcomeTable(t *testing.T) {
 // 影の期間: 依頼の直後とターンの終わりに 4 つを聞いて記録だけし、stdout には何も出さない。モデルが無ければ exit 0・無出力・hook.log に 1 行。
 func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 }) // noul は確信して「いいえ」(discard: 答え待ちにならない)
-	agent := hookEnv(t, model)
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +240,7 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s2", "cwd": repo, "prompt": "and now the other file"}); out != "" {
 		t.Fatalf("a missing model must not produce output, got %q", out)
 	}
-	logb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+	logb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 	if !strings.Contains(string(logb), "127.0.0.1:1") {
 		t.Fatalf("hook.log must say why: %q", logb)
 	}
@@ -247,9 +256,9 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 // changedFiles は増えた・変わった・消えたを名前順に、filesInput は 30 件で切る。
 func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
-	agent := hookEnv(t, model)
-	st := store.Store{Dir: agent}
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
+	st := store.Store{Dir: agent}
 	count := func(id string) int { recs, _ := st.Records(id, 0); return len(recs) }
 
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "once", "cwd": repo, "prompt": "explain what the Makefile does, do not change anything"})
@@ -283,11 +292,12 @@ func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 	plain := t.TempDir()
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "nogit", "cwd": plain, "prompt": "write notes.txt with three lines about the weather"})
 	runHook(t, "stop", map[string]any{"session_id": "nogit", "cwd": plain, "last_assistant_message": "Wrote notes.txt."})
-	recs, _ = st.Records("done-as-asked", 0)
-	if count("changes-in-scope") != 1 || !strings.HasPrefix(recs[0].Inputs["files"], "(unknown") {
+	plainStore := store.Store{Dir: filepath.Join(plain, ".shikii")}
+	recs, _ = plainStore.Records("done-as-asked", 0)
+	if count("changes-in-scope") != 1 || len(recs) != 1 || !strings.HasPrefix(recs[0].Inputs["files"], "(unknown") {
 		t.Fatalf("outside git: changes=%d files=%q", count("changes-in-scope"), recs[0].Inputs["files"])
 	}
-	if fileExists(sessionFilesPath(agent, "nogit")) {
+	if fileExists(sessionFilesPath(plainStore.Dir, "nogit")) {
 		t.Fatal("outside git no listing may be kept")
 	}
 
@@ -310,9 +320,9 @@ func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 // 変わっていなければ !edit(重み 0.7)を結果の正解として付け、Stop は直前のアシスタントの発言を控える。正解が min_n に届けば Stop が線を引く。
 func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.2 })
-	agent := hookEnv(t, model)
-	pkPath := lowerMinN(t, agent, "prompt-kind", 4)
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
+	pkPath := lowerMinN(t, agent, "prompt-kind", 4)
 	traceOf := map[string]string{} // session → prompt-kind の trace
 	run := func(session string, change bool) {
 		out := runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "fix the typo in README " + session})
@@ -353,10 +363,10 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	}
 	// 正解が min_n(4)に届いたので、Stop が線を引いて spec に書く(serve を通らない正解なので hook が引く)
 	if b, _ := os.ReadFile(pkPath); !strings.Contains(string(b), "calibration:") || !strings.Contains(string(b), "model: kev-4b") {
-		logb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+		logb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 		t.Fatalf("Stop must draw the line once truths reach min_n. hook.log:\n%s", logb)
 	}
-	if logb, _ := os.ReadFile(filepath.Join(agent, "hook.log")); !strings.Contains(string(logb), "auto-calibrate prompt-kind (kev-4b)") {
+	if logb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); !strings.Contains(string(logb), "auto-calibrate prompt-kind (kev-4b)") {
 		t.Fatalf("hook.log must say the line was drawn: %s", logb)
 	}
 	for _, l := range labels {
@@ -436,8 +446,9 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 		}
 		return 0.1
 	})
-	agent := hookEnv(t, model)
-	home := filepath.Dir(filepath.Dir(agent))
+	cwd := t.TempDir()
+	agent := hookEnv(t, model, cwd)
+	home, _ := os.UserHomeDir()
 	specPath := lowerMinN(t, agent, "done-as-asked", 2)
 	settings := filepath.Join(home, ".claude", "settings.json")
 	setLang := func(lang string) {
@@ -451,7 +462,6 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 		}
 	}
 	st := store.Store{Dir: agent}
-	cwd := t.TempDir()
 	turn := func(session, prompt, last string) string {
 		runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": cwd, "prompt": prompt})
 		return runHook(t, "stop", map[string]any{"session_id": session, "cwd": cwd, "last_assistant_message": last})
@@ -529,8 +539,8 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 // Stop の要約: 答え待ちがあれば 1 行(画面が立っていれば URL、無ければ起動コマンド)、無ければ無出力。答えが付けば数から外れる。同じ数を毎ターン繰り返さない。
 func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.6 }) // noul は迷い(ask): 全部答え待ち
-	agent := hookEnv(t, model)
 	cwd := t.TempDir()
+	agent := hookEnv(t, model, cwd)
 	if out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd}); out != "" {
 		t.Fatalf("nothing waits yet: %q", out)
 	}
@@ -540,7 +550,7 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	if !strings.Contains(out, "2 of this session's decisions wait") || !strings.Contains(out, hookPageURL+"/") || strings.Contains(out, "Start the page") {
 		t.Fatalf("the line must always give the URL (the page is started in the background): %s", out)
 	}
-	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+agent+" --port 8096 --local ") {
+	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+filepath.Join(os.Getenv("HOME"), ".shikii", "agent")+" --port 8096 --local ") {
 		t.Fatalf("a Stop with answers waiting and no page must start the page once: %v", spawned)
 	}
 	if strings.Contains(out, "hookSpecificOutput") {
@@ -572,14 +582,14 @@ func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 	oldLook := lookPath
 	lookPath = func(file string) (string, error) { return "/usr/bin/" + file, nil } // llama-server がある機械、のつもり(CI でも走る)
 	t.Cleanup(func() { lookPath = oldLook })
-	agent := hookEnv(t, nil) // モデルの口は閉じている
-	home := filepath.Dir(filepath.Dir(agent))
+	cwd := t.TempDir()
+	hookEnv(t, nil, cwd) // モデルの口は閉じている
+	home, _ := os.UserHomeDir()
 	if !fileExists(filepath.Join(home, ".claude", "skills", "shikii", "SKILL.md")) {
 		t.Fatal("hook install must put the agent's skill in place")
 	}
 	// install は guard を書いているので、まず guard を消して依頼の直後の起こし方を見る
-	_ = os.Remove(filepath.Join(agent, "starting-model"))
-	cwd := t.TempDir()
+	_ = os.Remove(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "starting-model"))
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "add a flag to the status command"})
 	if len(spawned) != 1 || spawned[0] != "up" {
 		t.Fatalf("a missing model must start `shikii up` once: %v", spawned)
@@ -591,7 +601,7 @@ func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 	}
 	// 10 分過ぎれば(guard の時刻が古く、前の子も生きていなければ)もう一度
 	old := time.Now().Add(-hookStartGap - time.Minute)
-	if err := os.WriteFile(filepath.Join(agent, "starting-model"), []byte("0 "+old.Format(time.RFC3339)+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "starting-model"), []byte("0 "+old.Format(time.RFC3339)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "now run the tests and tell me what fails"})
@@ -634,8 +644,8 @@ func TestHookAuditGaps(t *testing.T) {
 		}
 		return 0.1
 	})
-	agent := hookEnv(t, model)
 	cwd := t.TempDir()
+	agent := hookEnv(t, model, cwd)
 	// 線が引けた needs-plan は UserPromptSubmit の文脈として返る(event 名が違うと Claude Code が捨てる)
 	np := lowerMinN(t, agent, "needs-plan", 2)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "n", "cwd": cwd, "prompt": "write the installation notes to docs/install.md"})
@@ -660,7 +670,7 @@ func TestHookAuditGaps(t *testing.T) {
 	}
 
 	// 壊れた settings.json は触らず誤りを返す。空のファイルは {} と同じ
-	home := filepath.Dir(filepath.Dir(agent))
+	home, _ := os.UserHomeDir()
 	settings := filepath.Join(home, ".claude", "settings.json")
 	if err := os.WriteFile(settings, []byte("{ broken"), 0o600); err != nil {
 		t.Fatal(err)
@@ -843,7 +853,8 @@ func TestHookSecondAudit(t *testing.T) {
 
 	// 並列の更新が消えない(錠の中で 読む → 変える → 書く)
 	model := fakeAgentModel(t, func(string) float64 { return 0.6 })
-	agent := hookEnv(t, model)
+	cwd := t.TempDir()
+	agent := hookEnv(t, model, cwd)
 	var wg sync.WaitGroup
 	for i := 0; i < 30; i++ {
 		wg.Add(1)
@@ -863,7 +874,6 @@ func TestHookSecondAudit(t *testing.T) {
 	}
 
 	// 同じ入力(同じ依頼文)の正解が 3 件あっても、入力ごとに 1 件と数えるので線は引かない(毎 Stop に ERROR を書き続けない)
-	cwd := t.TempDir()
 	lowerMinN(t, agent, "needs-plan", 3)
 	same := "please run the whole test suite and tell me which packages fail"
 	for i := 0; i < 3; i++ {
@@ -877,7 +887,7 @@ func TestHookSecondAudit(t *testing.T) {
 		capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", r.TraceID, "no"}) })
 	}
 	runHook(t, "stop", map[string]any{"session_id": "dup0", "cwd": cwd})
-	if logb, _ := os.ReadFile(filepath.Join(agent, "hook.log")); strings.Contains(string(logb), "auto-calibrate needs-plan") {
+	if logb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); strings.Contains(string(logb), "auto-calibrate needs-plan") {
 		t.Fatalf("3 truths on one input are 1 truth; the hook must not try to draw a line:\n%s", logb)
 	}
 }
@@ -920,6 +930,7 @@ func TestHookCodex(t *testing.T) {
 
 	// Codex の stdin(turn_id、model つき)でも同じように記録する
 	repo := gitRepo(t)
+	agent = filepath.Join(repo, ".shikii")
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "cx", "turn_id": "t1", "model": "gpt", "cwd": repo, "prompt": "add the installation notes and fix the parser"})
 	if err := os.WriteFile(filepath.Join(repo, "install.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
@@ -947,7 +958,8 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 		}
 		return 0.1
 	})
-	agent := hookEnv(t, model)
+	cwd := t.TempDir()
+	agent := hookEnv(t, model, cwd)
 	old := hookTuneEvery
 	hookTuneEvery = 2
 	t.Cleanup(func() { hookTuneEvery = old })
@@ -957,10 +969,9 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	lowerMinN(t, agent, "prompt-kind", 2) // 候補の無い spec: 正解が溜まっても回さない
-	cwd := t.TempDir()
 	st := store.Store{Dir: agent}
 	logHas := func(s string) int {
-		lb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+		lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 		return strings.Count(string(lb), s)
 	}
 	answer := func(i int) { // 1 依頼 → needs-plan と prompt-kind に人の正解を 1 件ずつ
@@ -988,11 +999,11 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 	answer(2)
 	runHook(t, "stop", map[string]any{"session_id": "t2", "cwd": cwd})
 	if logHas("auto-tune needs-plan") != 1 {
-		lb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+		lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 		t.Fatalf("at min_n the first tune must run once:\n%s", lb)
 	}
 	if logHas("ERROR") != 0 {
-		lb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+		lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 		t.Fatalf("auto-tune must succeed:\n%s", lb)
 	}
 	if runs, _ := filepath.Glob(filepath.Join(agent, "wiki", "runs", "*needs-plan*.md")); len(runs) != 1 {
@@ -1027,9 +1038,9 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 // (B が「評価済み」になり、B の prompt-kind に結果の正解が付き、B の Stop が何も聞かなくなる)。
 func TestHookStopDoesNotTouchTheNextRequest(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
-	agent := hookEnv(t, model)
-	st := store.Store{Dir: agent}
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
+	st := store.Store{Dir: agent}
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1115,10 +1126,11 @@ func TestHookSecondAuditRound(t *testing.T) {
 		t.Fatalf("a mode-only change must count: %v", got)
 	}
 
-	agent := hookEnv(t, nil)
+	cwd := t.TempDir()
+	agent := hookEnv(t, nil, cwd)
 	// hook.log の 1 行は hookLogLineMax に切られ、改行は畳まれる(モデルの応答本文を丸ごと残さない)
 	hookLog("line1\n" + strings.Repeat("x", 2000))
-	lb, _ := os.ReadFile(filepath.Join(agent, "hook.log"))
+	lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 	last := lastLine(string(lb))
 	if len(last) > hookLogLineMax+40 || strings.Contains(last, "line1\nx") {
 		t.Fatalf("hook.log lines must be cut and single-line: %d bytes", len(last))
@@ -1168,12 +1180,11 @@ func TestHookSecondAuditRound(t *testing.T) {
 		t.Fatal(err)
 	}
 	hookLocalURL = fakeAgentModel(t, func(string) float64 { return 0.9 }).URL
-	cwd := t.TempDir()
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": cwd, "prompt": "redesign the storage layer"})
 	recs, _ := (store.Store{Dir: agent}).Records("needs-plan", 0)
 	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "yes"}) })
 	runHook(t, "stop", map[string]any{"session_id": "g", "cwd": cwd})
-	if lb, _ := os.ReadFile(filepath.Join(agent, "hook.log")); strings.Contains(string(lb), "auto-tune needs-plan") {
+	if lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); strings.Contains(string(lb), "auto-tune needs-plan") {
 		t.Fatal("same wording, 1 truth since the last run of 40: no tune")
 	}
 	// 文言が変わった(hash が違う)→ 前回の 40 は引き継がず、1 件 ≥ min_n(1) で回る
@@ -1185,7 +1196,7 @@ func TestHookSecondAuditRound(t *testing.T) {
 	recs, _ = (store.Store{Dir: agent}).Records("needs-plan", 0)
 	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "yes"}) })
 	runHook(t, "stop", map[string]any{"session_id": "g2", "cwd": cwd})
-	if lb, _ := os.ReadFile(filepath.Join(agent, "hook.log")); !strings.Contains(string(lb), "auto-tune needs-plan") {
+	if lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); !strings.Contains(string(lb), "auto-tune needs-plan") {
 		t.Fatalf("a changed wording must not inherit the old count:\n%s", lb)
 	}
 }
@@ -1195,9 +1206,9 @@ func TestHookSecondAuditRound(t *testing.T) {
 // 元の依頼に対してもう一度だけ判定し直す(本人の選択、2026-10-20)。実測では記録の半分近くが通知由来だった。
 func TestHookIgnoresBackgroundNotificationsAsRequests(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
-	agent := hookEnv(t, model)
-	st := store.Store{Dir: agent}
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
+	st := store.Store{Dir: agent}
 	count := func(id string) int { recs, _ := st.Records(id, 0); return len(recs) }
 	const human = "translate the README into German in the background and tell me when it is done"
 

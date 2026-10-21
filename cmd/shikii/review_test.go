@@ -16,8 +16,8 @@ import (
 
 func reviewFixture(t *testing.T) (store.Store, string, http.Handler) {
 	t.Helper()
-	agent := hookEnv(t, nil)
 	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
 	t.Chdir(repo)
 	return store.Store{Dir: agent}, feedbackScope(repo), newServer(serveOpts{storeDir: agent, projectScope: feedbackScope(repo)})
 }
@@ -122,8 +122,8 @@ func TestReviewHumanAuditsIncludeScoredAndUncertainItems(t *testing.T) {
 
 func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .6 })
-	agent := hookEnv(t, model)
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
 	t.Chdir(repo)
 	request := "README の導入手順を、初めての利用者が日本語で読んで起動できるように全体を更新してください"
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "review", "cwd": repo, "prompt": request})

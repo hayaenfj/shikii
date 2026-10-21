@@ -10,6 +10,7 @@
   import Knowledge from './components/Knowledge.svelte';
   import Toast from './components/Toast.svelte';
   import LangPicker from './components/LangPicker.svelte';
+  import Projects from './components/Projects.svelte';
 
   let st = $derived(data.state);
   let hasWiki = $derived(!!(st && st.wiki));
@@ -46,18 +47,24 @@
 
 <header>
   <h1>shikii <small id="tagline">{t('tagline')}</small></h1>
-  <button id="help" type="button" title={t('helpTitle')} onclick={() => setShowHelp(!ui.showHelp)}>?</button>
+  {#if !st?.projects}<button id="help" type="button" title={t('helpTitle')} onclick={() => setShowHelp(!ui.showHelp)}>?</button>
   <button id="mode" type="button" onclick={() => setAdvanced(!ui.advanced)}>{t(ui.advanced ? 'modeSimple' : 'modeAdvanced')}</button>
+  {/if}
   <LangPicker />
 </header>
 
 <div id="root">
   {#if !st}
     <div class="empty">{data.loadError ? t('error')(data.loadError) : t('loading')}</div>
+  {:else if st.projects}
+    <Projects projects={st.projects} />
   {:else if !st.specs.length}
     <div class="empty">{t('noSpecs')}</div>
   {:else}
     {#if ui.showHelp}<HowTo />{/if}
+    {#if st.project_name}
+      <p class="project-heading"><a href="../../">{t('projectsTitle')}</a> / <strong>{st.project_name}</strong></p>
+    {/if}
     <Tabs specs={st.specs} {hasWiki} active={activeTab} />
     {#if activeTab === 'wiki'}
       <Knowledge wiki={st.wiki} />

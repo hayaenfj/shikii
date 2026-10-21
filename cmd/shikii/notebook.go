@@ -2,16 +2,13 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -21,14 +18,7 @@ func currentProjectScope() string {
 	if err != nil {
 		return ""
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
-	cmd.Dir = cwd
-	if top, err := cmd.Output(); err == nil {
-		return feedbackScope(strings.TrimSpace(string(top)))
-	}
-	return feedbackScope(cwd)
+	return projectScopeAt(cwd)
 }
 
 type notebookRequest struct {
@@ -56,13 +46,13 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	return nil, errors.New("wiki operation must be ingest, query or lint")
 }
 
-// 教訓の置き場は hook と同じ ~/.shikii/agent。呼び出した仕事だけを扱う。
+// 教訓の置き場は hook と同じプロジェクトの .shikii/。呼び出した仕事だけを扱う。
 // 新しい接続先や設定は持たず、文章は利用中のエージェントから JSON で受け取る。
 func cmdNotebook(args []string) error {
 	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint") {
 		return errors.New("usage: shikii wiki query [query] | ingest (JSON on stdin) | lint | verify …")
 	}
-	root, err := agentHome()
+	root, scope, err := currentProjectStore()
 	if err != nil {
 		return err
 	}
@@ -94,7 +84,7 @@ func cmdNotebook(args []string) error {
 	} else if len(args) != 1 {
 		return errors.New("wiki lint takes no arguments")
 	}
-	result, err := runNotebook(root, currentProjectScope(), req)
+	result, err := runNotebook(root, scope, req)
 	if err != nil {
 		return err
 	}
@@ -124,12 +114,7 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("wiki accepts exactly one JSON object"))
 		return
 	}
-	root, err := agentHome()
-	if err != nil {
-		writeErr(w, 500, err)
-		return
-	}
-	result, err := runNotebook(root, s.o.projectScope, req)
+	result, err := runNotebook(s.o.storeDir, s.o.projectScope, req)
 	if err != nil {
 		writeErr(w, 400, err)
 		return

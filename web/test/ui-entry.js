@@ -1,3 +1,5 @@
+import Projects from '../src/components/Projects.svelte';
+import { load, data } from '../src/lib/state.svelte.js';
 // 画面の振る舞いの検査(jsdom): (1) 言語の選択を change すると、言語・文・保存値が変わる。(2) ?trace= で指された判定が列の先頭に来る。
 // 文字の有無を見る Go のテストでは、onchange が外れても気づけない(監査 7 の 2)。vite の lib ビルドで 1 つに組み、scripts/check-ui.mjs が jsdom の中で run() を呼ぶ。
 import { mount, unmount, flushSync } from 'svelte';
@@ -113,7 +115,7 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
-  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && await checkReview(target) && checkFullText(target);
+  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok) process.exit(1);
 }
 
@@ -180,5 +182,23 @@ async function checkNotebook(target) {
   globalThis.fetch = realFetch;
   const ok = hasLesson && readSource && inertText;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (notebook lesson=' + hasLesson + ', source lookup=' + readSource + ', quoted HTML is text=' + inertText + ')');
+  return ok;
+}
+
+async function checkProjectEntrances(target) {
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => ({ projects: [{ name: '<img src=x>', path: '/work/alpha', url: '/p/abc/' }], specs: [] }) }; };
+
+  await load();
+  const app = mount(Projects, { target, props: { projects: data.state.projects } });
+  flushSync();
+  const scopedLink = target.querySelector('a')?.getAttribute('href') === '/p/abc/';
+  const namesOnly = target.textContent.includes('/work/alpha') && !target.querySelector('img');
+  const noQueues = calls.length === 1 && calls[0] === 'v1/status';
+  unmount(app);
+  globalThis.fetch = realFetch;
+  const ok = scopedLink && namesOnly && noQueues;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (project entrance=' + scopedLink + ', escaped project names=' + namesOnly + ', no combined queue=' + noQueues + ')');
   return ok;
 }

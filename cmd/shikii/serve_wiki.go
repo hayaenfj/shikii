@@ -80,8 +80,8 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		claims = append(claims, c)
 	}
 	result := map[string]any{"claims": claims, "lessons": []notebook.Page{}, "notebook_issues": []notebook.Issue{}, "pending_sources_count": 0, "notebook_project": filepath.Base(s.o.projectScope)}
-	if root, err := agentHome(); err == nil {
-		if view, err := (notebook.Book{Root: root, Scope: s.o.projectScope}).Query(""); err == nil {
+	{
+		if view, err := (notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}).Query(""); err == nil {
 			result["lessons"], result["notebook_issues"], result["pending_sources_count"] = view.Lessons, view.Issues, len(view.Pending)
 		} else {
 			result["notebook_issues"] = []notebook.Issue{{Kind: "unreadable-notebook"}}

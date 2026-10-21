@@ -18,8 +18,8 @@ func TestHookKeepsFullClosingTextForPeople(t *testing.T) {
 		}
 		return .6
 	})
-	agent := hookEnv(t, model)
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
 	t.Chdir(repo)
 	request := strings.Repeat("README の日本語の起動手順を更新してください。", 100) + "END-OF-FULL-REQUEST"
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "full-text", "cwd": repo, "prompt": request})

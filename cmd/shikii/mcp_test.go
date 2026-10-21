@@ -11,7 +11,7 @@ import (
 )
 
 // MCP のやり取りを 1 往復ずつ流す(stdio の代わりに io.Pipe 相当のバッファ)。
-func mcpSession(t *testing.T, pii string, probs map[string]float64) (send func(req map[string]any) map[string]any, specPath string) {
+func mcpSession(t *testing.T, pii string, probs map[string]float64, roots ...string) (send func(req map[string]any) map[string]any, specPath string) {
 	t.Helper()
 	dir := t.TempDir()
 	specsDir := filepath.Join(dir, "decisions")
@@ -22,7 +22,11 @@ func mcpSession(t *testing.T, pii string, probs map[string]float64) (send func(r
 	model := fakeSystemOne(t, "m", probs)
 	var ef endpointFlags
 	ef.model, ef.local = "m", model.URL
-	h := newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), ef: ef, autoCalibrate: true})
+	storeDir := filepath.Join(dir, ".shikii")
+	if len(roots) > 0 {
+		storeDir = roots[0]
+	}
+	h := newServer(serveOpts{specsDir: specsDir, storeDir: storeDir, ef: ef, autoCalibrate: true})
 	var in bytes.Buffer
 	var out bytes.Buffer
 	send = func(req map[string]any) map[string]any {

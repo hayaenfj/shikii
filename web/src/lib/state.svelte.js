@@ -15,7 +15,7 @@ export const ui = $state({
   pinned: params.get('trace') || '',
   view: read('shikii.view') || 'one',
   filter: 'all',
-  project: '', // 仕事(記録の project の印)での絞り込み。'' は全部。hook の store は 1 つなので、どの repo の判定かで分けて見る
+  project: '', // 仕事(記録の project の印)での絞り込み。'' は全部。一つのプロジェクトの中で付けた印だけを絞る
 
   listSize: 30,
   done: false,
@@ -31,6 +31,7 @@ export function setView(v) { ui.view = v; write('shikii.view', v); }
 // 全部を読み直す。spec ごとの tune と wiki は失敗しても画面を止めない(null にして欄を畳む)
 export async function load() {
   const st = await api.status();
+  if (Array.isArray(st.projects)) { data.state = st; return; }
   for (const sp of st.specs) {
     sp.queue = await api.queue(sp.id);
     try { sp.tune = await api.tune(sp.id); } catch (e) { sp.tune = null; }

@@ -7,7 +7,7 @@
 ### A tool that grows lessons from everyday conversations and checks AI decisions against outcomes and corrections. Your usual agent maintains the wiki while you work.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-219%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-221%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 [![Version](https://img.shields.io/badge/version-0.3.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -43,7 +43,7 @@ That is all. It installs the binary, adds two hooks to Claude Code and Codex, pu
 
 At the end of a turn one line appears, `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`, and you open it when you have a minute (the hook starts the page in the background too); each answer takes seconds. After 50 answers a line is drawn and the agent's behaviour changes: a request that needs a plan becomes a note to the agent, and a turn that looks unfinished or out of scope becomes one line to you, each with grounds such as "line on 61 truths, human-checked precision 0.96". Until then the hooks only record. No hook ever stops a tool.
 
-Everything lives in one place, `~/.shikii/agent`, with one line per question across all your projects (the questions are about the agent's thinking, so the truth is the same in every repository). Each record is marked with the repository it came from, and the page can filter by it. Details: [the hook](integrations/claude-code.md) (Japanese).
+Each project's `.shikii/` holds its conversations, lessons, assessments, truths and calibration. The hooks prepare it automatically. The common page on :8096 opens each project separately; `~/.shikii/agent` holds shared templates, tools and the project index. Details: [the hook](integrations/claude-code.md) (Japanese).
 
 **0.3: your ordinary conversations grow a wiki.** The original request, the agent's reply and your next message become source material. Your usual agent turns useful observations into lessons with sources and conditions. Before a similar request, shikii quotes related lessons from the same project. It keeps earlier revisions, updates the index and checks sources and links once a day. No wiki-specific page actions or additional model are needed. The Knowledge panel shows lessons and their original sources.
 
@@ -94,7 +94,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 What install.sh does: installs the binaries (`shikii` and `shikii-readout`), adds two hooks to Claude Code and Codex, puts the agent's rules (the skill) in `~/.claude/skills/shikii`, and, if llama.cpp is present, starts the local AI (Kev-4B on :8080) in the background. To use hosted Jev or OpenRouter instead, put the key in an environment variable ([connections](docs/guide.md#what-you-can-connect)). `shikii doctor` tells you what is running and what is missing.
 
-The per-project setup (`shikii init`) is the agent's job (you may also run it yourself). It creates one folder, `.shikii/` (inside: `decisions/` = decision files, `wiki/` = knowledge, `records/` and `labels/` = records and corrections). Nothing else appears at the project root. `decisions/`, `wiki/` and `labels/` are assets that survive a change of AI, so commit them; `records/` keeps growing, so committing it is optional (`shikii gc` drops old ones). It also adds a shikii entry to your agents' setup (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`, OpenCode's `opencode.json`, Codex's `~/.codex/config.toml`) without touching entries you wrote. Running it again changes nothing that exists.
+The per-project setup (`shikii init`) is the agent's job (you may also run it yourself). It creates one folder, `.shikii/` (inside: `decisions/` = decision files, `wiki/` = knowledge, `records/` and `labels/` = records and corrections). Nothing else appears at the project root. `decisions/`, `wiki/` and `labels/` survive a change of AI. Hooks exclude `.shikii/` from untracked Git files because it also contains private conversations. Check and select any material before sharing it. `shikii gc` drops old records. It also adds a shikii entry to your agents' setup (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`, OpenCode's `opencode.json`, Codex's `~/.codex/config.toml`) without touching entries you wrote. Running it again changes nothing that exists.
 
 Command output and hook messages are in English (if Claude Code's language setting is Japanese, hook messages are shown in Japanese next to the English). The page has Japanese. The finer points, such as using only a hosted AI, `AGENTS.md` versus `CLAUDE.md`, and Node for changing the page itself, are in [the guide](docs/guide.md).
 

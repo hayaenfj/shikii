@@ -5,7 +5,7 @@ package main
 // 考え終わった後(Stop): 変えたものは頼まれた範囲の中だったか(changes-in-scope)、頼まれたことを終えたか(done-as-asked)。
 // ツール呼び出しごとの hook は持たない: コマンド 1 つ 1 つの分類は AI の考え方ではなく、許可の是非は Claude Code の permission が見ている。
 //
-// 置き場は固定: ~/.shikii/agent/ がそのまま store(decisions/ wiki/ records/ labels/ sessions/ hook.log)。モデルは手元の :8080。答え合わせの画面は :8096。
+// 置き場は各プロジェクトの .shikii/(decisions/ wiki/ records/ labels/ sessions/)。共通側は型・道具と画面の入口だけ。モデルは手元の :8080。答え合わせの画面は :8096。
 // 判定からの助言は線が引けてから帯に従って出す(hookOutcome)。過去の会話は線が無くても引用できる。
 // deny は出さず、ツールも止めない。止めるのは人。
 // 失敗(モデルが無い、遅い、書けない)は exit 0 で黙る: hook が作業を止めてはいけない。理由は hook.log に 1 行。
@@ -156,13 +156,13 @@ func (o hookOut) json(event string) []byte {
 
 // ---------------------------------------------------------------- セッションの状態
 
-// hookSession はセッションごとの控え(~/.shikii/agent/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
+// hookSession はプロジェクトごとの控え(.shikii/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 // 依頼の時の作業ツリーの一覧は隣の <id>.files(大きいので JSON には入れない)。
 type hookSession struct {
 	Request     string         `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
 	RequestText string         `json:"request_text,omitempty"`    // 画面用の原文。判定の入力とは分けて保持する
 	TurnID      string         `json:"turn_id,omitempty"`         // 同じ文の依頼を繰り返しても別のターン
-	Scope       string         `json:"scope,omitempty"`           // repo の実パス。会話の引用を同じ仕事に限るため(線は従来どおり共有)
+	Scope       string         `json:"scope,omitempty"`           // repo の実パス。会話も採点も線も同じ仕事に限る
 	Completed   *completedTurn `json:"completed,omitempty"`       // この依頼に返答した時の控え。次の人の発言と一組にする
 	Previous    string         `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
 	Pending     []pendingItem  `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
@@ -301,7 +301,7 @@ func pruneSessions(agent string) {
 
 // ---------------------------------------------------------------- 判定
 
-// hookDecide は ~/.shikii/agent の spec で判定し、帯を振る舞いに写し、記録する。線が無ければ band は act にならない(= 影の期間)。
+// hookDecide はプロジェクトの spec で判定し、帯を振る舞いに写し、記録する。線が無ければ band は act にならない(= 影の期間)。
 // 設定の言語が英語以外なら、出す文は英語と併記し、記録にも display(言語、質問、答え、出した文)を添える。
 func hookDecide(agent, specID string, inputs map[string]string, project string, originals ...map[string]string) (*decide.Decision, hookOut, error) {
 	sp, err := spec.Load(filepath.Join(agent, "decisions", specID+".yaml"))
@@ -319,6 +319,9 @@ func hookDecide(agent, specID string, inputs map[string]string, project string, 
 	attachReceipt(sp, st, d)
 	l := localize(sp, d, hookLang())
 	out := hookOutcome(specID, d, l)
+	page := strings.TrimSuffix(projectPageURL(agent), "/")
+	out.Context = strings.ReplaceAll(out.Context, hookPageURL+"/", page+"/")
+	out.System = strings.ReplaceAll(out.System, hookPageURL+"/", page+"/")
 	if d.Band != decide.Abstain {
 		rec := recordOf(sp, d, inputs)
 		rec.ReviewPending = store.ReviewSpec(specID)
@@ -514,7 +517,12 @@ func runHookEvent(event string) error {
 	if event == "stop" && in.StopHookActive {
 		return nil
 	}
-	ensureModel(agent) // 無ければ裏で起こす(この turn は記録が付かないだけ。待たない)
+	common := agent
+	agent, _, err = prepareHookProject(in.CWD)
+	if err != nil {
+		return err
+	}
+	ensureModel(common) // 無ければ裏で起こす(この turn は記録が付かないだけ。待たない)
 	// モデルの呼び出しは錠の外(控えの写しを読むだけ)。控えへの変更は muts にまとめ、錠の中で読み直した控えに当てる
 	snapshot := loadSession(agent, in.SessionID)
 	var out hookOut
@@ -805,8 +813,8 @@ func stopSummary(agent string, sess *hookSession) string {
 	l := hookLoc{Lang: hookLang()}
 	ensurePage(agent) // 立っていなければ裏で起こす。人に起動コマンドを打たせない
 	return bi(
-		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s/", n, hookPageURL),
-		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, hookPageURL), l)
+		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s/", n, strings.TrimSuffix(projectPageURL(agent), "/")),
+		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, strings.TrimSuffix(projectPageURL(agent), "/")), l)
 }
 
 // changedFiles は 2 つの一覧(`git ls-files --stage`: "mode sha stage\tpath")を比べ、中身か mode が変わった・増えた・消えたファイルの path を名前順で返す。
@@ -1265,6 +1273,10 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 	if _, ok := run(env, "add", "-A", "--", "."); !ok {
 		return "", "", false, project, scope
 	}
+	// 仮の index だけから内部記録を除く。ignored な path の否定指定は git add がエラーにするため、別の操作で除く。
+	if _, ok := run(env, "rm", "--cached", "-r", "-f", "--ignore-unmatch", "--", ".shikii"); !ok {
+		return "", "", false, project, scope
+	}
 	tree, ok := run(env, "write-tree")
 	if !ok {
 		return "", "", false, project, scope
@@ -1385,6 +1397,11 @@ func ensureModel(agent string) {
 
 // ensurePage は答え合わせの画面(hookPageURL)が立っていなければ `shikii serve --store ~/.shikii/agent --port 8096` を裏で起こす。URL は常に同じ。
 func ensurePage(agent string) {
+	common, err := agentHome()
+	if err != nil {
+		return
+	}
+	agent = common
 	if serveUp() {
 		return
 	}
@@ -1448,7 +1465,7 @@ func hookInstall(args []string, install bool) error {
 	home := filepath.Dir(filepath.Dir(agent))
 	tilde := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
 	if install {
-		fmt.Fprintf(stdout, "1. %s: decisions/ wiki/ records/ labels/ for the agent's own decisions (this folder is the store); copy the 4 specs that are missing (%s) and the shared wiki pages. Existing files are never overwritten. ~/.claude/skills/shikii (the agent's rules for using shikii) is put in place\n", tilde(agent), strings.Join(hookSpecs, ", "))
+		fmt.Fprintf(stdout, "1. %s: shared templates and wiki pages only; each project automatically gets its own .shikii/ for conversations, decisions, reviews, truths and calibration; copy the 4 template specs that are missing (%s) and the shared wiki pages. Existing files are never overwritten. ~/.claude/skills/shikii (the agent's rules for using shikii) is put in place\n", tilde(agent), strings.Join(hookSpecs, ", "))
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: add 2 hooks (UserPromptSubmit, Stop) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), tilde(strings.Fields(hookEvents()[0].cmd)[0]), t.who, filepath.Base(t.rel), t.note)
 		}
@@ -1458,14 +1475,14 @@ func hookInstall(args []string, install bool) error {
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command is `… shikii hook <event>` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)))
 		}
-		fmt.Fprintf(stdout, "   %s is kept: it holds the records and truths\n", tilde(agent))
+		fmt.Fprintf(stdout, "   %s and each project's .shikii/ are kept\n", tilde(agent))
 	}
 	if !yes {
 		fmt.Fprintln(stdout, "(shown only; pass --yes to do it)")
 		return nil
 	}
 	if install {
-		for _, d := range []string{"decisions", "wiki", filepath.Join("wiki", "specs"), filepath.Join("wiki", "runs"), "records", "labels"} {
+		for _, d := range []string{"decisions", "wiki", filepath.Join("wiki", "specs"), filepath.Join("wiki", "runs")} {
 			if err := os.MkdirAll(filepath.Join(agent, d), 0o755); err != nil {
 				return err
 			}
@@ -1530,8 +1547,20 @@ func seedAgentSpecs(dst string) (int, error) {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(target, b, 0o644); err != nil {
+		f, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if os.IsExist(err) {
+			return nil
+		}
+		if err != nil {
 			return err
+		}
+		_, err = f.Write(b)
+		closeErr := f.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
 		}
 		n++
 		return nil

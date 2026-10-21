@@ -165,9 +165,11 @@ bin/shikii tune .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1
 
 ```sh
 shikii hook install          # shows what it would do (install.sh runs the --yes form for you)
-shikii hook install --yes    # ~/.shikii/agent/ (specs, wiki, store), the agent's skill, 2 hooks in ~/.claude/settings.json and ~/.codex/hooks.json, and the local model if llama-server is present; open a new terminal (Codex: run /hooks once to trust them)
+shikii hook install --yes    # ~/.shikii/agent/ (shared templates and project index; data lives in each project’s .shikii/), the agent's skill, 2 hooks in ~/.claude/settings.json and ~/.codex/hooks.json, and the local model if llama-server is present; open a new terminal (Codex: run /hooks once to trust them)
 shikii hook uninstall --yes  # removes the 2 hooks; records and truths stay
 ```
+
+Conversations, lessons, provisional assessments, truth labels and calibration stay in each project's `.shikii/`. Hooks create it automatically at the repository root (the current folder outside Git) and add `/.shikii/` to Git's local `info/exclude`. The page on :8096 lists project entrances without combining their histories or scores. CLI, MCP and the selected project's page read and write the same store. Projects with the same folder name are distinguished by their real paths. Existing global histories are not imported.
 
 The hooks start what is missing by themselves: the local model (`shikii up`, when :8080 does not answer) and the answer page (`shikii serve --store ~/.shikii/agent --port 8096`, when a decision waits and :8096 is down), at most once per 10 minutes, logging to `~/.shikii/agent/up.log` and `serve.log`. Nobody has to type a start command.
 
@@ -230,7 +232,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 219 Go tests across 10 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 221 Go tests across 10 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -306,7 +308,7 @@ shikii status    [spec...] [--store DIR]                  # inventory: records, 
 shikii gc        [spec...] [--older-than 30d] [--apply]   # drop old unlabelled records; dry run by default
 shikii hash      <spec>
 shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]   # rerun the retest recipes of the wiki's claims on the current model; only a person changes a status
-shikii wiki query [query-or-source-id]                      # lessons and sources from this project, stored in ~/.shikii/agent
+shikii wiki query [query-or-source-id]                      # lessons and sources from this project, stored in this project’s .shikii/
 shikii wiki ingest                                         # the usual agent submits a lesson and source ids as JSON on stdin
 shikii wiki lint                                           # check sources, revisions and links; repair the generated index
 shikii version                                             # show the CLI version
@@ -314,7 +316,7 @@ shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--host
 shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]   # the same as MCP tools over stdio (no adopt tool)
 shikii new       <id> [--type ...] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--from spec.yaml]   # make a spec by answering questions
 shikii init                                               # folders, wiki seed, MCP entries, AGENTS.md section, agent skill
-shikii hook      install [--yes] | uninstall [--yes]      # Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (~/.shikii/agent, local model, page on :8096)
+shikii hook      install [--yes] | uninstall [--yes]      # Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (project .shikii/, local model, project chooser on :8096)
                  user-prompt-submit | stop                 # run by the agent with its JSON on stdin; not for typing by hand
 shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # start a local model; puts shikii-readout in front of a plain GGUF
 shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # what is running, what is missing, how to fix it
