@@ -1,21 +1,47 @@
-# Docker で動かす
+# Docker・Podmanで業務のAPIと画面を動かす
 
-Go もモデルの準備も要らない入り口。2 つの容れ物（llama.cpp の公式サーバーと shikii）を `docker compose` で立てる。
+コンテナの入口は業務の判定APIと答え合わせの画面向け。ホストのClaude Code・Codexにhookを入れる操作は、[通常の導入](../docs/readme/README_ja.md#始め方)で行う。
+
+## 用意するもの
+
+| 構成 | 必要なもの |
+|---|---|
+| Docker | 稼働中のDocker EngineとDocker Compose、リポジトリのclone |
+| Podman | 稼働中のPodmanエンジンと外部のCompose provider、リポジトリのclone |
+| 画像をビルドする時 | ネットワーク。Node.js 24とGo 1.27はビルド用のコンテナが用意する |
+| 初めて判定モデルを動かす時 | モデルを取得する通信と保存領域。既定はKev-4B Q4_K_M（約2.5GB） |
+
+[Docker Composeの説明](https://docs.docker.com/compose/)。Podmanの `compose` は、docker-composeまたはpodman-composeなど外部のproviderを呼ぶため、Podman本体とは別にproviderが必要。[Podman公式の説明](https://docs.podman.io/en/latest/markdown/podman-compose.1.html)。
+
+## 初回の準備と起動
+
+非公開の間はGitHubに認証してcloneする。shikiiのフォルダで、最初に画像を組み、業務の問いを1つ用意する。
 
 ```sh
-git clone https://github.com/hayaenfj/shikii && cd shikii
-docker compose up            # 初回は Kev-4B(約 2.5 GB)を取ってくる
-# → http://127.0.0.1:8095 が答え合わせの画面
+docker compose build shikii
+docker compose run --rm --no-deps shikii new same-issue --from decisions/same-issue.yaml
+docker compose up
+# → http://127.0.0.1:8095
 ```
 
-- プロジェクトルート（このフォルダ）が `/work` に mount される。`.shikii/`（判定の定義、知識、記録と正解）はホストのファイルがそのまま使われ、容れ物を消しても残る
-- Linux では bind mount の所有者がホストのままなので、compose は `user: "${UID:-1000}:${GID:-1000}"` で動かす（bash には `GID` が無いので `UID=$(id -u) GID=$(id -g) docker compose up` と渡す）
-- 他の容れ物（podman、k8s）では、`/.dockerenv` か `/run/.containerenv` か `KUBERNETES_SERVICE_HOST` があれば全ての口で待つ。無い容れ物では 127.0.0.1 に縛られるので host network を使う
-- 画面は `127.0.0.1:8095` にだけ出す（LAN には出さない）。容れ物の中では shikii は全ての口で待つ（`/.dockerenv` があれば。ホストで直接動かす時は今までどおり 127.0.0.1 だけ）
-- 鍵は環境変数でだけ渡す。hosted も使うなら compose の `environment:` に `DECISIONS_API_KEY` を足す
-- 普通の GGUF（素のチャット用モデル）を使うなら、`llama` の command を `-m <file>` にし、間に `shikii-readout` の容れ物を立てて shikii の `--local` をそこに向ける（compose の末尾のコメント）
-- 判定を自分のプログラムから叩くなら `POST http://127.0.0.1:8095/v1/decide`、正解は `/v1/label`（[mcp.md](mcp.md) と同じ口。本文は JSON で `-H 'Content-Type: application/json'` が要る。口の一覧は [guide.ja.md](../docs/guide.ja.md#serve-の-http-api)）
+すでに `.shikii/decisions/` へ問いを準備したプロジェクトでは、起動から進める。`new` は既存の同名の問いを上書きしない。サンプルをコピーする時に、サンプルの古い線は持ち込まない。
 
-画像は `Dockerfile`（3 段。実行側は distroless、root では動かない）。CI が毎回 `docker build` して壊れていないことを確かめる。
-- 3 段の中身: (a) `node:24-alpine` で答え合わせの画面（`web/`、Svelte）を組む → (b) `golang:1.27` で (a) の結果を `web/dist` に置いて `shikii` と `shikii-readout` を組む（画面は実行ファイルに埋め込まれる）→ (c) distroless に実行ファイルだけを置く。
-- Docker で使う人は Node も Go も要らない。`web/node_modules` と `web/dist` は `.dockerignore` で画像に入れず、毎回 (a) で組み直す。
+Linuxでbind mountの所有者を合わせる場合は、各composeコマンドに `env UID="$(id -u)" GID="$(id -g)"` を前置する。Compose構成の `user` がその値を使う。シェルのreadonlyなUID変数に代入せず、子プロセスへ値を渡す。
+
+Podmanの場合は、providerを用意して同じ `docker-compose.yml` を `podman compose` から使う。Composeとモデルを組み合わせた一式の起動は、この更新では実測していない。providerやホスト側のvolumeの権限も含めて確認する。
+
+## 保存先とモデル
+
+- プロジェクトを `/work` にmountし、`.shikii/` の問い・知識・記録・正解をホストへ残す。コンテナを作り直しても同じ資料を使う。
+- Composeはllama.cppの公式サーバーとshikiiを立てる。llama.cppは `0.0.0.0:8080`、shikiiは `http://llama:8080` の準備ができるのを待つ。ホストの画面は `127.0.0.1:8095` に出す。
+- shikiiはDockerの `/.dockerenv`、Podmanの `/run/.containerenv` などからコンテナを判別する。モデルやruntimeを替える場合は、その構成の待ち受けと接続先を確認する。
+- 外部APIの鍵は環境変数で渡す。利用する判定が外部送信を許可していることも確かめる。
+- 通常のチャットGGUFを使う場合は、llama.cppとの間に `shikii-readout` を置く。[変換役の条件と実行例](readout.md)。任意のチャットAPIへそのままつながる変換役ではない。
+
+HTTPの判定は `POST /v1/decide`、正解は `POST /v1/label`。JSONのContent-Typeが必要。[APIの一覧](../docs/guide.ja.md#serve-の-http-api)。
+
+## 画像の中身とライセンス
+
+`Dockerfile` はNode.jsで画面を組み、Goで2つの実行ファイルを組み、実行用のdistroless画像へ入れる。ホストで使うだけならGo・Node.jsは不要。実行時はrootで動かさない。
+
+shikii本体は `Apache-2.0 OR MIT`。OCIの `org.opencontainers.image.licenses` に同じ式を付け、`LICENSE`・`LICENSE-APACHE`・`LICENSE-MIT` を `/usr/share/licenses/shikii/` へ入れる。依存やベース画像・モデルの条件はそれぞれに従う。

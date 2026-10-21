@@ -1,100 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1615 780" width="1615" height="780" font-family="-apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="970" viewBox="0 0 1200 970" role="img" aria-labelledby="title desc" lang="ja" font-family="-apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Segoe UI', sans-serif">
+<title id="title">記憶は、初期化したプロジェクトに残る</title><desc id="desc">会話の教訓と仮評価を、業務の正解やモデルに任せるための線と分けます。</desc>
 <defs>
-<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#1e293b"/></linearGradient>
-<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/></marker>
-<marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#fbbf24"/></marker>
-<style>
-.box { fill: #1e293b; stroke: #334155; stroke-width: 1.5; rx: 14; }
-.asset { fill: #172554; stroke: #3b82f6; } .wiki { fill: #052e16; stroke: #22c55e; } .human { fill: #3b2a05; stroke: #f59e0b; } .model { fill: #1f2937; stroke: #64748b; stroke-dasharray: 6 4; }
-.t { fill: #e2e8f0; font-size: 14px; } .h { fill: #f8fafc; font-size: 20px; font-weight: 700; } .k { fill: #94a3b8; font-size: 12.5px; }
-.ac { fill: #fbbf24; font-size: 14px; font-weight: 700; } .gr { fill: #86efac; font-size: 14px; font-weight: 700; } .bl { fill: #93c5fd; font-size: 14px; font-weight: 700; }
-.flow { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrow); } .flowA { stroke: #fbbf24; stroke-width: 2.5; fill: none; marker-end: url(#arrowAmber); }
-.pill { fill: #0f172a; stroke: #475569; stroke-width: 1; }
-</style></defs>
-<rect width="1615" height="780" fill="url(#bg)"/>
-<text x="40" y="48" class="h" font-size="26" >shikii の構造</text>
-<text x="40" y="74" class="k" font-size="14" >問いと正解は資産。モデルは使い捨て。知識は検証できる主張として wiki に溜まり、測るたびに自分で育つ。</text>
-<rect x="40" y="100" width="1535" height="92" class="box human"/>
-<text x="60" y="130" class="ac" font-size="15" >人がすること（この 3 つだけ）</text>
-<rect x="60" y="146" width="279" height="30" rx="15" ry="15" class="pill"/>
-<text x="74" y="165.68" class="t" font-size="13" >意図を書く（spec と wiki の細則）</text>
-<rect x="354.7231999999999" y="146" width="411" height="30" rx="15" ry="15" class="pill"/>
-<text x="368.7231999999999" y="165.68" class="t" font-size="13" >抜き取りの正解に答える（迷い + act の 20 件に 1 件）</text>
-<rect x="781.6512" y="146" width="477" height="30" rx="15" ry="15" class="pill"/>
-<text x="795.6512" y="165.68" class="t" font-size="13" >主張の意味を確かめる（下書きを一般化し、確か / 却下を決める）</text>
-<rect x="40" y="232" width="420" height="320" class="box asset"/>
-<text x="60" y="262" class="bl" font-size="15" >資産（モデルを替えても残る）</text>
-<text x="60" y="296" class="t" >decisions/  問い</text>
-<text x="76" y="316" class="k" >文言・選択肢・並べ方・配置・分解・文脈</text>
-<text x="76" y="334" class="k" >ハッシュ = 聞き方 1 つにつき線 1 本</text>
-<text x="60" y="370" class="t" >.shikii/  正解の貯金</text>
-<text x="76" y="390" class="k" >系譜つき: 人の正解 ＞ 機械の正解（審判・上の段）</text>
-<text x="76" y="408" class="k" >本文と一緒に残り、文言やモデルが変わると聞き直す</text>
-<text x="60" y="444" class="t" >領収書</text>
-<text x="76" y="464" class="k" >act の判定ごとに: どの線を、いつ、何件の正解で、</text>
-<text x="76" y="482" class="k" >そのうち人の分、人が確かめた act の数と精度</text>
-<text x="76" y="518" class="k" font-size="12" textLength="368" lengthAdjust="spacingAndGlyphs" font-style="italic">「95% の確信」ではなく「人が検査した 48 件で精度 0.96」</text>
-<rect x="490" y="232" width="596" height="320" class="box"/>
-<text x="510" y="262" class="t" font-size="15" font-weight="700">機械が育てる輪</text>
-<rect x="510" y="282" width="202" height="48" rx="12" ry="12" class="pill"/>
-<text x="524" y="301" class="t" font-size="14" >decide</text>
-<text x="524" y="320" class="k" font-size="12" >帯 act / ask / discard</text>
-<rect x="803.0784000000001" y="282" width="179" height="48" rx="12" ry="12" class="pill"/>
-<text x="817.0784000000001" y="301" class="t" font-size="14" >serve  答え合わせ</text>
-<text x="817.0784000000001" y="320" class="k" font-size="12" >迷い → 人、抜き取り</text>
-<rect x="803.0784000000001" y="362" width="263" height="48" rx="12" ry="12" class="pill"/>
-<text x="817.0784000000001" y="381" class="t" font-size="14" >calibrate  線</text>
-<text x="817.0784000000001" y="400" class="k" font-size="12" >ハッシュ × モデルごと、人の正解で</text>
-<rect x="510" y="362" width="243" height="48" rx="12" ry="12" class="pill"/>
-<text x="524" y="381" class="t" font-size="14" >tune  聞き方を測る</text>
-<text x="524" y="400" class="k" font-size="12" >holdout + 符号検定 + 人の確認</text>
-<rect x="510" y="442" width="143" height="48" rx="12" ry="12" class="pill"/>
-<text x="524" y="461" class="t" font-size="14" >段階</text>
-<text x="524" y="480" class="k" font-size="12" >最小 → 文脈 → 人</text>
-<rect x="803.0784000000001" y="442" width="224" height="48" rx="12" ry="12" class="pill"/>
-<text x="817.0784000000001" y="461" class="t" font-size="14" >judge  審判</text>
-<text x="817.0784000000001" y="480" class="k" font-size="12" >人との一致率 ≥ act の時だけ</text>
-<path d="M 712 306 L 801.0784000000001 306" class="flow"/>
-<path d="M 863.0784000000001 330 L 863.0784000000001 360" class="flow"/>
-<path d="M 801.0784000000001 386 L 755 386" class="flow"/>
-<path d="M 653 466 L 653 466" class="flow" style="display:none"/>
-<path d="M 570 362 L 570 332" class="flow"/>
-<path d="M 570 410 L 570 440" class="flow"/>
-<path d="M 863.0784000000001 410 L 863.0784000000001 440" class="flow"/>
-<path d="M 801.0784000000001 466 L 655 466" class="flow"/>
-<text x="510" y="532" class="k" font-size="11.5" >審判も迷えば人へ。act の判定の 20 件に 1 件は人が抜き取りで確かめる</text>
-<rect x="1145" y="232" width="430" height="320" class="box wiki"/>
-<text x="1165" y="262" class="gr" font-size="15" >検証できる wiki（知識）</text>
-<text x="1165" y="296" class="t" >主張 = claim</text>
-<text x="1181" y="316" class="k" >+ 効く範囲 applies_to</text>
-<text x="1181" y="334" class="k" >+ 証拠 evidence（run ごと、人の正解の数つき）</text>
-<text x="1181" y="352" class="k" >+ 再検証の手順 retest（spec、候補 vs 候補）</text>
-<text x="1165" y="388" class="t" >tune が勝者を下書きに起草</text>
-<text x="1165" y="410" class="t" >別のモデルの run が証拠を足す</text>
-<text x="1165" y="432" class="t" >wiki verify が今のモデルで測り直す</text>
-<text x="1165" y="468" class="gr" >独立したモデル 2 つが支持 → confirmable</text>
-<text x="1165" y="490" class="k" >状態を変えるのは人だけ</text>
-<text x="1165" y="518" class="k" font-style="italic">別の人が自分のモデルで回した結果も証拠になる</text>
-<path d="M 460 392 L 488 392" class="flowA"/>
-<text x="464" y="382" class="k" font-size="10.5" >読む</text>
-<path d="M 1085.7792000000002 392 L 1143 392" class="flowA"/>
-<text x="1087.7792000000002" y="382" class="k" font-size="10.5" >起草・証拠</text>
-<path d="M 1325 232 C 1325 206, 1145 206, 1130 192" class="flowA"/>
-<text x="1205" y="218" class="k" font-size="11" >確かめる</text>
-<path d="M 235 232 C 235 206, 220 206, 228 192" class="flowA"/>
-<text x="246" y="218" class="k" font-size="11" >意図・正解</text>
-<rect x="40" y="592" width="1535" height="120" class="box model"/>
-<text x="60" y="622" class="k" font-size="15" fill="#cbd5e1" font-weight="700">モデル（使い捨て。替えたら calibrate が貯金を聞き直すだけ、人の手は 0）</text>
-<rect x="60" y="642" width="205" height="32" rx="16" ry="16" class="pill"/>
-<text x="74" y="662.68" class="t" font-size="13" >決定モデル（Kev-4B …）</text>
-<rect x="280.75839999999994" y="642" width="398" height="32" rx="16" ry="16" class="pill"/>
-<text x="294.75839999999994" y="662.68" class="t" font-size="13" >普通のチャット用モデル + shikii-readout（配置）</text>
-<rect x="694.4368" y="642" width="236" height="32" rx="16" ry="16" class="pill"/>
-<text x="708.4368" y="662.68" class="t" font-size="13" >ホスト版（鍵は環境変数だけ）</text>
-<rect x="946.3535999999999" y="642" width="266" height="32" rx="16" ry="16" class="pill"/>
-<text x="960.3535999999999" y="662.68" class="t" font-size="13" >審判は別の大きいモデル（同じ口）</text>
-<text x="60" y="700" class="k" >共通の口 POST /v1/systemone。pii: true と本番を読んだ本文は手元のモデルだけ。</text>
-<path d="M 570 592 L 570 554" class="flow"/>
-<path d="M 863.0784000000001 592 L 863.0784000000001 554" class="flow"/>
-<text x="40" y="760" class="k" font-size="12" >docs/architecture.md の 4 つの柱: 検証できる wiki / 問いと正解は資産 / 信頼の負担（線・抜き取り・領収書・審判）/ 段階は制約付き最適化</text>
+  <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b2d"/><stop offset="1" stop-color="#080f1b"/></linearGradient>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#7d93af" stroke-width="1.5"/></marker>
+</defs>
+<rect width="1200" height="970" rx="24" fill="url(#bg)"/>
+<text x="40" y="58" font-size="32" font-weight="700" fill="#f0f5fc">記憶は、初期化したプロジェクトに残る</text>
+<text x="40" y="98" font-size="19" font-weight="400" fill="#b3c3d9">会話の教訓と仮評価を、業務の正解やモデルに任せるための線と分けます。</text>
+<rect x="40" y="142" width="1120" height="108" rx="16" fill="#28241b" stroke="#6d5631"/>
+<text x="64" y="181" font-size="23" font-weight="700" fill="#f4c76a">人は意図と訂正を伝え、必要な確認をする</text>
+<text x="64" y="215" font-size="18" font-weight="400" fill="#b3c3d9">普段の会話に加え、採点の抜き取り・保留や、業務の正解・聞き方の意味を確認します。</text>
+<rect x="40" y="282" width="1120" height="480" rx="16" fill="#0e1a2a" stroke="#4d6d96"/>
+<text x="64" y="322" font-size="23" font-weight="700" fill="#e3edfa">このプロジェクトの .shikii/</text>
+<rect x="64" y="346" width="512" height="390" rx="16" fill="#152236" stroke="#2b405b"/>
+<text x="86" y="386" font-size="22" font-weight="700" fill="#83d8b0">会話を次の仕事へ</text>
+<text x="86" y="430" font-size="19" font-weight="700" fill="#83d8b0">1.</text>
+<text x="118" y="430" font-size="20" font-weight="600" fill="#e3edfa">原資料と版を残す</text>
+<text x="118" y="456" font-size="18" font-weight="400" fill="#b3c3d9">records/ · 依頼・返答・次の発言</text>
+<text x="86" y="496" font-size="19" font-weight="700" fill="#83d8b0">2.</text>
+<text x="118" y="496" font-size="20" font-weight="600" fill="#e3edfa">教訓と次の行動をまとめる</text>
+<text x="118" y="522" font-size="18" font-weight="400" fill="#b3c3d9">wiki/ · 出典・適用条件・訂正の引用</text>
+<text x="86" y="562" font-size="19" font-weight="700" fill="#83d8b0">3.</text>
+<text x="118" y="562" font-size="20" font-weight="600" fill="#e3edfa">似た依頼へ短く届ける</text>
+<text x="118" y="588" font-size="18" font-weight="400" fill="#b3c3d9">届いた引用と版を依頼に結ぶ</text>
+<text x="86" y="628" font-size="19" font-weight="700" fill="#83d8b0">4.</text>
+<text x="118" y="628" font-size="20" font-weight="600" fill="#e3edfa">判断と確認結果を振り返る</text>
+<text x="118" y="654" font-size="18" font-weight="400" fill="#b3c3d9">役立ち方と訂正への行動を別に観察</text>
+<text x="86" y="711" font-size="18" font-weight="400" fill="#83d8b0">教訓は仮説。評価はAIの観察。</text>
+<rect x="624" y="346" width="512" height="390" rx="16" fill="#152236" stroke="#2b405b"/>
+<text x="646" y="386" font-size="22" font-weight="700" fill="#8db8f4">業務の判定を任せる</text>
+<text x="646" y="430" font-size="19" font-weight="700" fill="#8db8f4">1.</text>
+<text x="678" y="430" font-size="20" font-weight="600" fill="#e3edfa">問いと選択肢を決める</text>
+<text x="678" y="456" font-size="18" font-weight="400" fill="#b3c3d9">decisions/ · 意図を定義する</text>
+<text x="646" y="496" font-size="19" font-weight="700" fill="#8db8f4">2.</text>
+<text x="678" y="496" font-size="20" font-weight="600" fill="#e3edfa">モデルに判定を聞く</text>
+<text x="678" y="522" font-size="18" font-weight="400" fill="#b3c3d9">act / ask / discard / abstain</text>
+<text x="646" y="562" font-size="19" font-weight="700" fill="#8db8f4">3.</text>
+<text x="678" y="562" font-size="20" font-weight="600" fill="#e3edfa">人や結果から正解を得る</text>
+<text x="678" y="588" font-size="18" font-weight="400" fill="#b3c3d9">labels/ · 仮採点と区別する</text>
+<text x="646" y="628" font-size="19" font-weight="700" fill="#8db8f4">4.</text>
+<text x="678" y="628" font-size="20" font-weight="600" fill="#e3edfa">線を引き、聞き方を測る</text>
+<text x="678" y="654" font-size="18" font-weight="400" fill="#b3c3d9">calibrate / tune · 意味は人が確認</text>
+<text x="646" y="711" font-size="18" font-weight="400" fill="#8db8f4">会話の仮採点だけでは線を引かない。</text>
+<rect x="40" y="794" width="1120" height="100" rx="16" fill="#152236" stroke="#2b405b"/>
+<text x="64" y="831" font-size="22" font-weight="700" fill="#d2e1f5">共通の入口: ~/.shikii/agent</text>
+<text x="64" y="866" font-size="18" font-weight="400" fill="#b3c3d9">型・道具・プロジェクトの索引。会話・正解・線は各プロジェクトへ保存。</text>
+<text x="40" y="937" font-size="18" font-weight="400" fill="#b3c3d9">会話の整理は利用中のエージェント。既製の4問の判定は手元のモデルが担当します。</text>
 </svg>

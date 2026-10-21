@@ -84,11 +84,26 @@ for f in README.md docs/readme/README_ja.md; do
   done < <(grep -o 'receipt: .*' "$f" || true)
 done
 
-# 7. 構造の図は生成スクリプトから作り直しても変わらない(手で SVG を直したら落ちる)
+# 7. READMEの図4枚は同じスクリプトから再生成できる。作業中のSVGを書き換えずに比較する。
 if command -v python3 >/dev/null; then
-  tmp=$(mktemp -d); cp docs/assets/shikii-architecture*.svg "$tmp"/
-  python3 scripts/gen-architecture-svg.py >/dev/null && { cmp -s "$tmp/shikii-architecture.svg" docs/assets/shikii-architecture.svg && cmp -s "$tmp/shikii-architecture-en.svg" docs/assets/shikii-architecture-en.svg; } || err "docs/assets/shikii-architecture*.svg は scripts/gen-architecture-svg.py の出力と違う(スクリプトを直して生成し直す)"
-  cp "$tmp"/*.svg docs/assets/; rm -rf "$tmp"
+  assets=(shikii-hero.svg shikii-hero-ja.svg shikii-architecture.svg shikii-architecture-en.svg)
+  have_assets=1
+  for asset in "${assets[@]}"; do
+    [ -f "docs/assets/$asset" ] || { err "図の生成物が無い: docs/assets/$asset"; have_assets=0; }
+  done
+  if [ "$have_assets" -eq 1 ]; then
+    tmp=$(mktemp -d)
+    if ! python3 - "$tmp" <<'PYGEN'
+import runpy, sys
+from pathlib import Path
+runpy.run_path("scripts/gen-architecture-svg.py")["generate"](Path(sys.argv[1]))
+PYGEN
+    then err "READMEの図を再生成できない"; fi
+    for asset in "${assets[@]}"; do
+      cmp -s "$tmp/$asset" "docs/assets/$asset" || err "docs/assets/$asset は生成スクリプトの出力と違う"
+    done
+    rm -rf "$tmp"
+  fi
 else
   err "python3 が無いので図の検査(7)ができない"
 fi

@@ -1,100 +1,61 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1559 780" width="1559" height="780" font-family="-apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1150" viewBox="0 0 1200 1150" role="img" aria-labelledby="title desc" lang="en" font-family="-apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Segoe UI', sans-serif">
+<title id="title">Memory stays with the initialized project</title><desc id="desc">Conversation lessons and provisional observations stay separate from truths and calibration.</desc>
 <defs>
-<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#1e293b"/></linearGradient>
-<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/></marker>
-<marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#fbbf24"/></marker>
-<style>
-.box { fill: #1e293b; stroke: #334155; stroke-width: 1.5; rx: 14; }
-.asset { fill: #172554; stroke: #3b82f6; } .wiki { fill: #052e16; stroke: #22c55e; } .human { fill: #3b2a05; stroke: #f59e0b; } .model { fill: #1f2937; stroke: #64748b; stroke-dasharray: 6 4; }
-.t { fill: #e2e8f0; font-size: 14px; } .h { fill: #f8fafc; font-size: 20px; font-weight: 700; } .k { fill: #94a3b8; font-size: 12.5px; }
-.ac { fill: #fbbf24; font-size: 14px; font-weight: 700; } .gr { fill: #86efac; font-size: 14px; font-weight: 700; } .bl { fill: #93c5fd; font-size: 14px; font-weight: 700; }
-.flow { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrow); } .flowA { stroke: #fbbf24; stroke-width: 2.5; fill: none; marker-end: url(#arrowAmber); }
-.pill { fill: #0f172a; stroke: #475569; stroke-width: 1; }
-</style></defs>
-<rect width="1559" height="780" fill="url(#bg)"/>
-<text x="40" y="48" class="h" font-size="26" >How shikii is built</text>
-<text x="40" y="74" class="k" font-size="14" >Questions and truths are the asset. Models are disposable. Knowledge accumulates as verifiable claims in a wiki and grows every time something is measured.</text>
-<rect x="40" y="100" width="1479" height="92" class="box human"/>
-<text x="60" y="130" class="ac" font-size="15" >What people do (only these three)</text>
-<rect x="60" y="146" width="415" height="30" rx="15" ry="15" class="pill"/>
-<text x="74" y="165.68" class="t" font-size="13" >Write the intent (the spec and the wiki rules)</text>
-<rect x="491.1504" y="146" width="460" height="30" rx="15" ry="15" class="pill"/>
-<text x="505.1504" y="165.68" class="t" font-size="13" >Answer sampled truths (unsure ones + 1 in 20 acted)</text>
-<rect x="967.5824000000001" y="146" width="475" height="30" rx="15" ry="15" class="pill"/>
-<text x="981.5824000000001" y="165.68" class="t" font-size="13" >Check claims (generalize a draft, confirm or reject)</text>
-<rect x="40" y="232" width="400" height="320" class="box asset"/>
-<text x="60" y="262" class="bl" font-size="15" >Assets (survive a model swap)</text>
-<text x="60" y="296" class="t" >decisions/  the questions</text>
-<text x="76" y="316" class="k" >wording, options, layout, steps, context</text>
-<text x="76" y="334" class="k" >hash: one line per way of asking</text>
-<text x="60" y="370" class="t" >.shikii/  the bank of truths</text>
-<text x="76" y="390" class="k" >human truths outrank machine truths</text>
-<text x="76" y="408" class="k" >kept with the text; replayed on changes</text>
-<text x="60" y="444" class="t" >receipts</text>
-<text x="76" y="464" class="k" >per act decision: which line, fitted when,</text>
-<text x="76" y="482" class="k" font-size="12" >on how many truths; human checks; precision</text>
-<text x="76" y="518" class="k" font-size="12" textLength="348" lengthAdjust="spacingAndGlyphs" font-style="italic">not "95% sure" but "0.96 on 48 checked by people"</text>
-<rect x="470" y="232" width="572" height="320" class="box"/>
-<text x="490" y="262" class="t" font-size="15" font-weight="700">The loop the machine grows</text>
-<rect x="490" y="282" width="203" height="48" rx="12" ry="12" class="pill"/>
-<text x="504" y="301" class="t" font-size="14" >decide</text>
-<text x="504" y="320" class="k" font-size="11" >bands act / ask / discard</text>
-<rect x="760.7424" y="282" width="191" height="48" rx="12" ry="12" class="pill"/>
-<text x="774.7424" y="301" class="t" font-size="14" >serve  answer page</text>
-<text x="774.7424" y="320" class="k" font-size="11" >unsure → person; audit</text>
-<rect x="760.7424" y="362" width="201" height="48" rx="12" ry="12" class="pill"/>
-<text x="774.7424" y="381" class="t" font-size="14" >calibrate  the line</text>
-<text x="774.7424" y="400" class="k" font-size="11" >per hash × model</text>
-<rect x="490" y="362" width="231" height="48" rx="12" ry="12" class="pill"/>
-<text x="504" y="381" class="t" font-size="14" >tune  measure wordings</text>
-<text x="504" y="400" class="k" font-size="11" >holdout, sign test, a person</text>
-<rect x="490" y="442" width="226" height="48" rx="12" ry="12" class="pill"/>
-<text x="504" y="461" class="t" font-size="14" >ladder</text>
-<text x="504" y="480" class="k" font-size="11" >minimal → context → a person</text>
-<rect x="760.7424" y="442" width="261" height="48" rx="12" ry="12" class="pill"/>
-<text x="774.7424" y="461" class="t" font-size="14" >judge</text>
-<text x="774.7424" y="480" class="k" font-size="11" >agrees with people ≥ act, else no</text>
-<path d="M 693 306 L 758.7424 306" class="flow"/>
-<path d="M 820.7424 330 L 820.7424 360" class="flow"/>
-<path d="M 758.7424 386 L 723 386" class="flow"/>
-<path d="M 716 466 L 716 466" class="flow" style="display:none"/>
-<path d="M 550 362 L 550 332" class="flow"/>
-<path d="M 550 410 L 550 440" class="flow"/>
-<path d="M 820.7424 410 L 820.7424 440" class="flow"/>
-<path d="M 758.7424 466 L 718 466" class="flow"/>
-<text x="490" y="532" class="k" font-size="11.5" textLength="536" lengthAdjust="spacingAndGlyphs" >An unsure judge defers to a person. 1 in 20 acted decisions is audited by a person.</text>
-<rect x="1091" y="232" width="428" height="320" class="box wiki"/>
-<text x="1111" y="262" class="gr" font-size="15" >Verifiable wiki (knowledge)</text>
-<text x="1111" y="296" class="t" >a claim</text>
-<text x="1127" y="316" class="k" >+ where it applies</text>
-<text x="1127" y="334" class="k" >+ evidence (per run, human-truth count)</text>
-<text x="1127" y="352" class="k" >+ retest recipe (spec, candidate vs other)</text>
-<text x="1111" y="388" class="t" >tune drafts a claim per winner</text>
-<text x="1111" y="410" class="t" >runs on other models add evidence</text>
-<text x="1111" y="432" class="t" >wiki verify reruns on the current model</text>
-<text x="1111" y="468" class="gr" >2 independent models agree → confirmable</text>
-<text x="1111" y="490" class="k" >only a person changes the status</text>
-<text x="1111" y="518" class="k" font-style="italic">anyone's run on their model adds evidence</text>
-<path d="M 440 392 L 468 392" class="flowA"/>
-<text x="444" y="382" class="k" font-size="10.5" >reads</text>
-<path d="M 1041.96 392 L 1089 392" class="flowA"/>
-<text x="1043.96" y="382" class="k" font-size="10.5" >drafts</text>
-<path d="M 1271 232 C 1271 206, 1091 206, 1076 192" class="flowA"/>
-<text x="1151" y="218" class="k" font-size="11" >checks</text>
-<path d="M 235 232 C 235 206, 220 206, 228 192" class="flowA"/>
-<text x="246" y="218" class="k" font-size="11" >intent, truths</text>
-<rect x="40" y="592" width="1479" height="120" class="box model"/>
-<text x="60" y="622" class="k" font-size="15" fill="#cbd5e1" font-weight="700">Models (disposable: swap one, calibrate replays the bank; no human work)</text>
-<rect x="60" y="642" width="257" height="32" rx="16" ry="16" class="pill"/>
-<text x="74" y="662.68" class="t" font-size="13" >decision models (Kev-4B …)</text>
-<rect x="332.8832" y="642" width="400" height="32" rx="16" ry="16" class="pill"/>
-<text x="346.8832" y="662.68" class="t" font-size="13" >plain chat models + shikii-readout (layout)</text>
-<rect x="748.7456" y="642" width="313" height="32" rx="16" ry="16" class="pill"/>
-<text x="762.7456" y="662.68" class="t" font-size="13" >hosted (key via environment only)</text>
-<rect x="1077.3935999999999" y="642" width="418" height="32" rx="16" ry="16" class="pill"/>
-<text x="1091.3935999999999" y="662.68" class="t" font-size="13" >the judge is another, larger model (same door)</text>
-<text x="60" y="700" class="k" >One door: POST /v1/systemone. Texts marked pii: true or read from production never leave the machine.</text>
-<path d="M 550 592 L 550 554" class="flow"/>
-<path d="M 820.7424 592 L 820.7424 554" class="flow"/>
-<text x="40" y="760" class="k" font-size="12" >The four pillars in docs/architecture.md: verifiable wiki / questions and truths as assets / the burden of trust (lines, audit, receipts, judge) / the ladder as constrained optimization</text>
+  <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b2d"/><stop offset="1" stop-color="#080f1b"/></linearGradient>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#7d93af" stroke-width="1.5"/></marker>
+</defs>
+<rect width="1200" height="1150" rx="24" fill="url(#bg)"/>
+<text x="40" y="58" font-size="32" font-weight="700" fill="#f0f5fc">Memory stays with the initialized project</text>
+<text x="40" y="98" font-size="19" font-weight="400" fill="#b3c3d9">Conversation lessons and provisional observations stay separate from truths and</text>
+<text x="40" y="126.5" font-size="19" font-weight="400" fill="#b3c3d9">calibration.</text>
+<rect x="40" y="142" width="1120" height="134" rx="16" fill="#28241b" stroke="#6d5631"/>
+<text x="64" y="181" font-size="23" font-weight="700" fill="#f4c76a">People provide intent, corrections and the checks that need them</text>
+<text x="64" y="215" font-size="18" font-weight="400" fill="#b3c3d9">Keep working as usual. Check sampled assessments, undecided cases, business truths and</text>
+<text x="64" y="242.0" font-size="18" font-weight="400" fill="#b3c3d9">wording meaning.</text>
+<rect x="40" y="310" width="1120" height="590" rx="16" fill="#0e1a2a" stroke="#4d6d96"/>
+<text x="64" y="350" font-size="23" font-weight="700" fill="#e3edfa">This project&#x27;s .shikii/</text>
+<rect x="64" y="374" width="512" height="494" rx="16" fill="#152236" stroke="#2b405b"/>
+<text x="86" y="414" font-size="22" font-weight="700" fill="#83d8b0">Conversations inform later work</text>
+<text x="86" y="458" font-size="19" font-weight="700" fill="#83d8b0">1.</text>
+<text x="118" y="458" font-size="20" font-weight="600" fill="#e3edfa">Keep sources and revisions</text>
+<text x="118" y="484" font-size="18" font-weight="400" fill="#b3c3d9">records/ · request, reply, next</text>
+<text x="118" y="511.0" font-size="18" font-weight="400" fill="#b3c3d9">message</text>
+<text x="86" y="548" font-size="19" font-weight="700" fill="#83d8b0">2.</text>
+<text x="118" y="548" font-size="20" font-weight="600" fill="#e3edfa">Write a lesson and next action</text>
+<text x="118" y="574" font-size="18" font-weight="400" fill="#b3c3d9">wiki/ · sources, conditions,</text>
+<text x="118" y="601.0" font-size="18" font-weight="400" fill="#b3c3d9">correction</text>
+<text x="86" y="638" font-size="19" font-weight="700" fill="#83d8b0">3.</text>
+<text x="118" y="638" font-size="20" font-weight="600" fill="#e3edfa">Recall briefly for similar work</text>
+<text x="118" y="664" font-size="18" font-weight="400" fill="#b3c3d9">Link the actual quote and revision</text>
+<text x="118" y="691.0" font-size="18" font-weight="400" fill="#b3c3d9">to a request</text>
+<text x="86" y="728" font-size="19" font-weight="700" fill="#83d8b0">4.</text>
+<text x="118" y="728" font-size="20" font-weight="600" fill="#e3edfa">Reflect on decisions and results</text>
+<text x="118" y="754" font-size="18" font-weight="400" fill="#b3c3d9">Observe usefulness and behavior</text>
+<text x="118" y="781.0" font-size="18" font-weight="400" fill="#b3c3d9">separately</text>
+<text x="86" y="826" font-size="18" font-weight="400" fill="#83d8b0">Lessons are hypotheses. Assessments are</text>
+<text x="86" y="853.0" font-size="18" font-weight="400" fill="#83d8b0">AI observations.</text>
+<rect x="624" y="374" width="512" height="494" rx="16" fill="#152236" stroke="#2b405b"/>
+<text x="646" y="414" font-size="22" font-weight="700" fill="#8db8f4">Delegate a repeated decision</text>
+<text x="646" y="458" font-size="19" font-weight="700" fill="#8db8f4">1.</text>
+<text x="678" y="458" font-size="20" font-weight="600" fill="#e3edfa">Define the question and options</text>
+<text x="678" y="484" font-size="18" font-weight="400" fill="#b3c3d9">decisions/ · express the intent</text>
+<text x="646" y="548" font-size="19" font-weight="700" fill="#8db8f4">2.</text>
+<text x="678" y="548" font-size="20" font-weight="600" fill="#e3edfa">Ask a model for a decision</text>
+<text x="678" y="574" font-size="18" font-weight="400" fill="#b3c3d9">act / ask / discard / abstain</text>
+<text x="646" y="638" font-size="19" font-weight="700" fill="#8db8f4">3.</text>
+<text x="678" y="638" font-size="20" font-weight="600" fill="#e3edfa">Get truths from people or outcomes</text>
+<text x="678" y="664" font-size="18" font-weight="400" fill="#b3c3d9">labels/ · separate from provisional</text>
+<text x="678" y="691.0" font-size="18" font-weight="400" fill="#b3c3d9">scores</text>
+<text x="646" y="728" font-size="19" font-weight="700" fill="#8db8f4">4.</text>
+<text x="678" y="728" font-size="20" font-weight="600" fill="#e3edfa">Calibrate and measure wording</text>
+<text x="678" y="754" font-size="18" font-weight="400" fill="#b3c3d9">calibrate / tune · people check</text>
+<text x="678" y="781.0" font-size="18" font-weight="400" fill="#b3c3d9">meaning</text>
+<text x="646" y="826" font-size="18" font-weight="400" fill="#8db8f4">Conversation assessments alone cannot</text>
+<text x="646" y="853.0" font-size="18" font-weight="400" fill="#8db8f4">calibrate a line.</text>
+<rect x="40" y="930" width="1120" height="120" rx="16" fill="#152236" stroke="#2b405b"/>
+<text x="64" y="967" font-size="22" font-weight="700" fill="#d2e1f5">Shared entry point: ~/.shikii/agent</text>
+<text x="64" y="1002" font-size="18" font-weight="400" fill="#b3c3d9">Templates, tools and project index. Conversations, truths and calibration belong to each</text>
+<text x="64" y="1029.0" font-size="18" font-weight="400" fill="#b3c3d9">project.</text>
+<text x="40" y="1094" font-size="18" font-weight="400" fill="#b3c3d9">The active agent organizes conversations. A local model handles the four built-in decision</text>
+<text x="40" y="1121.0" font-size="18" font-weight="400" fill="#b3c3d9">questions.</text>
 </svg>
