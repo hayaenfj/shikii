@@ -113,8 +113,26 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
-  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && await checkReview(target);
+  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && await checkReview(target) && checkFullText(target);
   if (!ok) process.exit(1);
+}
+
+function checkFullText(target) {
+  const prefix = '確認した文章。'.repeat(100);
+  const end = '最後まで読めます <img src=x onerror=alert(1)>';
+  const it = { trace_id: 'full-text', band: 'ask', inputs: { summary: prefix }, original_inputs: { summary: prefix + end }, text_status: {}, answerable: true, choices: [] };
+  const sp = { id: 'done-as-asked' };
+  let app = mount(ItemCard, { target, props: { sp, it } });
+  flushSync();
+  const complete = target.textContent.includes(end) && !target.querySelector('img') && !target.querySelector('.text-limit');
+  unmount(app);
+  app = mount(ItemCard, { target, props: { sp, it: { ...it, original_inputs: {}, text_status: { summary: 'legacy' } } } });
+  flushSync();
+  const legacy = !!target.querySelector('.text-limit') && !target.textContent.includes(end);
+  unmount(app);
+  const ok = complete && legacy;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (full reply end=' + complete + ', old storage limit explained=' + legacy + ')');
+  return ok;
 }
 
 async function checkReview(target) {

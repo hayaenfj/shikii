@@ -27,10 +27,12 @@ type reviewTask struct {
 }
 
 type reviewTarget struct {
-	Spec     string `json:"spec"`
-	TraceID  string `json:"trace_id"`
-	Question string `json:"question"`
-	Files    string `json:"files"`
+	Spec           string            `json:"spec"`
+	TraceID        string            `json:"trace_id"`
+	Question       string            `json:"question"`
+	Files          string            `json:"files"`
+	OriginalInputs map[string]string `json:"original_inputs,omitempty"`
+	TextStatus     map[string]string `json:"text_status,omitempty"`
 }
 
 func reviewQuestion(spec string) string {
@@ -69,7 +71,8 @@ func reviewTargets(st store.Store, source store.Feedback) []reviewTarget {
 		if err != nil || !rec.ReviewPending || rec.Inputs["request"] != source.Request {
 			continue
 		}
-		out = append(out, reviewTarget{Spec: target.Spec, TraceID: target.TraceID, Question: reviewQuestion(target.Spec), Files: rec.Inputs["files"]})
+		originals, status := st.RecordText(*rec)
+		out = append(out, reviewTarget{Spec: target.Spec, TraceID: target.TraceID, Question: reviewQuestion(target.Spec), Files: rec.Inputs["files"], OriginalInputs: originals, TextStatus: status})
 	}
 	return out
 }
@@ -275,6 +278,8 @@ func reviewContext(root, scope string) (string, error) {
 			targets := append([]reviewTarget{}, task.Targets...)
 			for i := range targets {
 				targets[i].Files = cut(targets[i].Files, budget)
+				targets[i].OriginalInputs = nil // 原文は query で読む。hook の文脈には重ねて入れない
+				targets[i].TextStatus = nil
 			}
 			clipped = append(clipped, reviewTask{Source: source, Targets: targets})
 		}
