@@ -43,6 +43,8 @@ func main() {
 	switch os.Args[1] {
 	case "version", "--version":
 		fmt.Fprintf(stdout, "shikii %s\n", shikii.Version)
+	case "update":
+		err = cmdUpdate(os.Args[2:])
 	case "review":
 		err = cmdReview(os.Args[2:])
 	case "reflect":
@@ -111,6 +113,7 @@ func usageText() string {
   shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]
                    同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune / shikii_wiki / shikii_review / shikii_reflect。判定の聞き方の採用は人)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
+  shikii update    最新の安定版を確認し、実行中のshikiiと同じ場所へ本体・readoutを更新する
   shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop
                    Claude Code / Codex の hook として AI 自身の考え方を 2 点で測る: 考える前(この依頼で結局ファイルを変えるか、着手前に方針を合わせるか)と
                    考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場はプロジェクトの .shikii/、モデルは :8080、画面は :8096。過去の会話と wiki の教訓を引用し、整理をエージェントへ渡す。判定からの助言は線を引いてから。ツールは止めない

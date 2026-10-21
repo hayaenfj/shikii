@@ -16,6 +16,20 @@ Conversations, lessons, provisional assessments, truths and calibration belong t
 
 The sections below cover the decision-model workflow and its CLI in detail.
 
+## Update shikii
+
+Use one command to update to the latest stable release:
+
+```sh
+shikii update
+```
+
+It downloads the latest stable GitHub Release for macOS or Linux on arm64 or amd64. Go, curl and GitHub CLI are unnecessary. SHA256SUMS and available asset digests are checked, then the staged binary must report the expected version before installation. The current executable's real directory receives shikii and readout; a different PATH entry is not updated instead. Equal or older releases are skipped.
+
+Both binaries are prepared before replacement. A write failure restores replaced files. Licenses and third-party notices are retained in `shikii-licenses/` beside the binary. Concurrent updates are rejected. Conversations, lessons, truths and calibration are preserved.
+
+Hooks already using this executable have their configuration and agent instructions refreshed by the new binary. No hooks are added for a standalone installation. If this final step fails, the error states that the binaries were updated and suggests `shikii hook install --yes` to retry. Running UI and MCP processes are left running; restart them to load the new binary.
+
 ## What shikii is
 
 Decision models (TypeSafe Jev, llama.cpp Kev-4B and OpenJev, OpenRouter Decisions, …) answer typed questions, `choice`, `score` and `noul` (yes/no), with probabilities and no generated text. Every vendor ships the same disclaimer: *the probabilities are not calibrated for your data, and thresholds do not carry across models or questions.*
@@ -249,7 +263,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 250 Go tests across 10 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 260 Go tests across 10 packages; the demo runs in CI.
 
 ## What you can connect
 

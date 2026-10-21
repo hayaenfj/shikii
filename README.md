@@ -7,12 +7,12 @@
 Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
-[![Version](https://img.shields.io/badge/version-0.4.1-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.2-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.4.1 links a quoted correction, the next action and its observed outcome. It builds on concise memory and batched reflection from 0.4.0. See the [changelog](CHANGELOG.md) (Japanese).
+Version 0.4.2 adds `shikii update` for future upgrades. It also includes the correction tracking, concise memory and batched reflection from earlier versions. See the [changelog](CHANGELOG.md).
 
 [What changes](#what-changes) · [Requirements](#requirements) · [Get started](#get-started) · [Learn from ordinary conversations](#learn-from-ordinary-conversations) · [What people check](#what-people-check) · [Check whether memory helped](#check-whether-memory-helped) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Use it for business decisions](#use-it-for-business-decisions) · [Read more](#read-more)
 
@@ -104,6 +104,14 @@ Open the agent in a new terminal, in a project you want to enable, and ask:
 
 The agent runs `shikii --init`; you can run it yourself too. Only initialized projects are enabled. Initialization prepares four decisions, the wiki, MCP setup, agent instructions and a link to the project's page. Reinitialization preserves existing data. Check setup with `shikii doctor` and open http://127.0.0.1:8096 for the project pages.
 
+### Future updates
+
+```sh
+shikii update
+```
+
+This checks the latest stable release, verifies its hashes, and updates shikii and readout in the current binary directory. Go is unnecessary for updates. Conversations, lessons and truths are preserved, and existing hooks and agent instructions are refreshed. Restart running UI and MCP processes to use the new binary. [Details](docs/guide.md#update-shikii).
+
 ## Learn from ordinary conversations
 
 1. **Keep the conversation.** The next human message joins the previous request and reply as one source observation.
@@ -188,7 +196,7 @@ scripts/demo.sh
 - [The guide](docs/guide.md): conversation reflection, CLI and HTTP API
 - [Hooks](integrations/claude-code.md) (Japanese): work done before and after a turn
 - [Architecture](docs/architecture.md) (Japanese): conversation learning, business decisions, storage and ownership
-- [Agent instructions](skills/shikii/SKILL.md), [changelog](CHANGELOG.md) and [operations](docs/operations.md) (Japanese)
+- [Changelog](CHANGELOG.md); [agent instructions](skills/shikii/SKILL.md) and [operations](docs/operations.md) (Japanese)
 
 **For contributors**: break a test and observe its failure before fixing it. Separate observations from truths, and ground numerical claims in measurements. Keep fixed places and rules rather than adding settings.
 
