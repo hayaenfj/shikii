@@ -3,8 +3,6 @@
   // 未回答のカード(1 件ずつ / 一覧、スキップ、ほかに待っている数)または回答済み(新しい順、答えの直し、AI にもう一度聞く)、最後の自動較正、聞き方の欄
   import { t, loc } from '../lib/i18n.svelte.js';
   import { ui, skipped } from '../lib/state.svelte.js';
-  import { api } from '../lib/api.js';
-  import { toast } from '../lib/toast.svelte.js';
   import Chips from './Chips.svelte';
   import ItemCard from './ItemCard.svelte';
   import Wording from './Wording.svelte';
@@ -31,11 +29,12 @@
   // 件数が増えた時の見せ方: 種類ごとの数(押すと絞り込み)、1 件ずつ / 一覧、スキップ、ほかに待っている数
   const kind = it => it.audit ? 'audit' : it.band === 'ask' ? 'ask' : 'other';
   let all = $derived(sp.queue.items);
-  let counts = $derived({ all: all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length });
-  // 仕事(project の印)ごとの数。印の付く記録(hook)が 2 つ以上の仕事にまたがる時だけ絞り込みを出す
+  let counts = $derived({ all: ui.done ? (sp.unlabeled || 0) : all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length });
+  // 表示中の列から仕事の印を数える。回答済みでも、未回答の列を読む必要はない。
+  let projectItems = $derived(ui.done ? (sp.answered || []) : all);
   let projects = $derived.by(() => {
     const m = new Map();
-    for (const it of all) if (it.project) m.set(it.project, (m.get(it.project) || 0) + 1);
+    for (const it of projectItems) if (it.project) m.set(it.project, (m.get(it.project) || 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   });
   // この判定に無い仕事が選ばれたまま(別の判定で選んだ)なら絞らない。回答済みにも同じ絞り込みをかける
@@ -50,13 +49,6 @@
     return v;
   });
   let extra = $derived(Math.max(0, (sp.unlabeled || 0) - all.length));
-
-  // 回答済み: 開いた時に読む(新しい順)。答えを直した・もう一度聞いた後は null に戻るので読み直す
-  $effect(() => {
-    if (ui.done && !sp.answered) {
-      api.answered(sp.id).then(r => { sp.answered = r.items; }).catch(e => toast(t('error')(e.message)));
-    }
-  });
 </script>
 
 <section class="decision-panel">
@@ -87,7 +79,7 @@
   {#if projects.length > 1}
     <div class="chips projects">
       <span class="k">{t('byProject')}</span>
-      <button type="button" class:active={!activeProject} onclick={() => { ui.project = ''; }}>{t('chip_all')} {all.length}</button>
+      <button type="button" class:active={!activeProject} onclick={() => { ui.project = ''; }}>{t('chip_all')} {projectItems.length}</button>
       {#each projects as [name, n]}
         <button type="button" class:active={activeProject === name} onclick={() => { ui.project = ui.project === name ? '' : name; }}>{name} {n}</button>
       {/each}
@@ -130,6 +122,6 @@
     {/if}
     {#if sp.last_calibration}<pre class="adv">{t('last')}
 {sp.last_calibration}</pre>{/if}
-    <Wording {sp} />
+    {#if ui.advanced}<Wording {sp} />{/if}
   {/if}
 </section>

@@ -15,6 +15,8 @@
 
 - Limits original-text loading to the records returned by the queue API, preserving priority order and excluding superseded decisions.
 
+- Refreshes only the visible queue or answered records. Loads wording details and knowledge when opened, keeps counts and project filters available, and ignores late responses after navigation. Removes unused UI styles.
+
 ## 0.4.1 — Connect corrections to the next action
 
 - Changes the license for shikii itself to `Apache-2.0 OR MIT`, letting users choose either license. Terms for third-party code, dependencies, models and services remain unchanged.

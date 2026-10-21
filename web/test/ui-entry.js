@@ -74,10 +74,17 @@ function checkProject(target) {
   flushSync();
   const notStranded = target.querySelectorAll('.item').length === 1;
   unmount(app2);
-  ui.project = '';
+  ui.done = true; ui.project = '';
+  const app3 = mount(SpecPanel, { target, props: { sp: { ...sp, queue: { items: [] }, answered: [item('a1', 'ANSWERED-ALPHA', 'alpha'), item('b1', 'ANSWERED-BETA', 'beta')] } } });
+  flushSync();
+  [...target.querySelectorAll('.chips.projects button')].find(b => b.textContent.startsWith('beta'))?.click();
+  flushSync();
+  const answeredProject = target.querySelectorAll('.item').length === 1 && target.querySelector('.item').textContent.includes('ANSWERED-BETA');
+  unmount(app3);
+  ui.project = ''; ui.done = false;
   ui.view = 'one';
-  const ok = hasChips && onlyBeta && notStranded;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (project chips=' + chips.length + ', filtered to beta=' + onlyBeta + ', other spec not stranded=' + notStranded + ')');
+  const ok = hasChips && onlyBeta && notStranded && answeredProject;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (project chips=' + chips.length + ', filtered to beta=' + onlyBeta + ', other spec not stranded=' + notStranded + ', answered project=' + answeredProject + ')');
   return ok;
 }
 
@@ -124,7 +131,10 @@ export async function run() {
   const focusOK = checkAnswerFocus(target);
   const landingOK = await checkLanding(target);
   const evidenceOK = checkClaimEvidence(target);
-  const ok = evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const loadingOK = await checkFocusedLoading(target);
+  const orderingOK = await checkLoadOrdering();
+  const lazyNavOK = await checkLazyNavigation(target);
+  const ok = loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok) process.exit(1);
 }
 
@@ -377,5 +387,81 @@ function checkClaimEvidence(target) {
   unmount(app);
   const ok = complete && partial && escaped;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (証拠の表示=' + complete + ', 欠けた項目の表示=' + partial + ', 文字として表示=' + escaped + ')');
+  return ok;
+}
+
+
+function loadingSpecs() {
+  return ['needs-plan', 'done-as-asked', 'prompt-kind', 'changes-in-scope'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 1 }));
+}
+
+// 表示中の情報だけを取得する。回答済み・知識・くわしくへの切替も取りこぼさない。
+async function checkFocusedLoading() {
+  const realFetch = globalThis.fetch, state = data.state;
+  const saved = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
+  let calls = [];
+  globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [] } : url.startsWith('v1/tune') ? { variants: [] } : { items: [] } }; };
+  ui.tab = 'needs-plan'; ui.advanced = false; ui.done = false;
+  await load();
+  const simple = calls.length === 2 && calls[1] === 'v1/queue?spec=needs-plan&limit=200';
+  calls = []; ui.advanced = true; await load();
+  const advanced = calls.length === 3 && calls.includes('v1/tune?spec=needs-plan') && !calls.includes('v1/wiki');
+  calls = []; ui.done = true; await load();
+  const answered = calls.length === 2 && calls.includes('v1/answered?spec=needs-plan&limit=200') && !calls.some(url => url.startsWith('v1/queue') || url.startsWith('v1/tune'));
+  calls = []; ui.tab = 'wiki'; await load();
+  const knowledge = calls.length === 2 && calls[1] === 'v1/wiki' && !!data.state.wiki;
+  globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  const ok = simple && advanced && answered && knowledge;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (必要な2要求=' + simple + ', 詳細は表示時だけ=' + advanced + ', 回答済みを取得=' + answered + ', 知識は選択時だけ=' + knowledge + ')');
+  return ok;
+}
+
+// 遅い古い応答で切替後の情報を上書きせず、取得失敗と再試行を表示へ反映する。
+async function checkLoadOrdering() {
+  const realFetch = globalThis.fetch, state = data.state;
+  const saved = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
+  let release, blocked = true, version = 0;
+  const wait = new Promise(resolve => { release = resolve; });
+  globalThis.fetch = async url => {
+    if (url === 'v1/status') { const current = ++version; return { ok: true, json: async () => ({ specs: loadingSpecs(), version: current }) }; }
+    if (url.startsWith('v1/queue?spec=needs-plan') && blocked) { blocked = false; return { ok: true, json: async () => { await wait; return { items: [] }; } }; }
+    return { ok: true, json: async () => ({ items: [] }) };
+  };
+  ui.tab = 'needs-plan'; ui.advanced = false; ui.done = false;
+  const slow = load(); await new Promise(resolve => setTimeout(resolve, 0));
+  ui.tab = 'done-as-asked'; await load(); release(); await slow;
+  const latest = data.state.version === 2;
+  globalThis.fetch = async () => ({ ok: false, json: async () => ({ error: 'fixture unavailable' }) });
+  await load().catch(() => {});
+  const failed = data.loadError === 'fixture unavailable' && data.state.version === 2;
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs(), version: 3 } : { items: [] } });
+  await load(); const recovered = !data.loadError && data.state.version === 3;
+  globalThis.fetch = realFetch; data.state = state; data.loadError = ''; Object.assign(ui, saved);
+  const ok = latest && failed && recovered;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (古い応答を無視=' + latest + ', 失敗を表示=' + failed + ', 再試行で復帰=' + recovered + ')');
+  return ok;
+}
+
+// 実際のナビから遅延読取りを行い、未読の知識も開ける。
+async function checkLazyNavigation(target) {
+  const realFetch = globalThis.fetch, state = data.state;
+  const saved = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
+  let calls = [];
+  globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } }; };
+  data.state = null; ui.tab = 'needs-plan'; ui.advanced = false; ui.done = false;
+  const app = mount(App, { target }); flushSync();
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  await settle(); const initial = calls.length === 2 && !!target.querySelector('.decision-panel');
+  calls = []; target.querySelector('[data-tab="done-as-asked"]')?.click(); flushSync(); await settle();
+  const switched = calls.includes('v1/queue?spec=done-as-asked&limit=200') && !!target.querySelector('.decision-panel');
+  calls = []; target.querySelectorAll('.answer-tabs button')[1]?.click(); flushSync(); await settle();
+  const answered = calls.length === 2 && calls.includes('v1/answered?spec=done-as-asked&limit=200') && target.querySelector('.answer-tabs button span')?.textContent === '1';
+  target.querySelector('.answer-tabs button')?.click(); flushSync(); await settle();
+  target.querySelector('#mode')?.click(); flushSync(); await settle(); calls = [];
+  const wiki = target.querySelector('[data-tab="wiki"]'); wiki?.click(); flushSync(); await settle();
+  const knowledge = !!wiki && calls.filter(url => url === 'v1/wiki').length === 1 && !calls.some(url => url.startsWith('v1/queue')) && target.querySelector('.notebook h2')?.textContent.includes(t('notebookTitle'));
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  const ok = initial && switched && answered && knowledge;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回2要求=' + initial + ', タブ切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 未読の知識を開く=' + knowledge + ')');
   return ok;
 }
