@@ -7,7 +7,7 @@
 ### A tool that grows lessons from everyday conversations and checks AI decisions against outcomes and corrections. Your usual agent maintains the wiki while you work.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-221%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-228%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
 [![Version](https://img.shields.io/badge/version-0.3.0-00ADD8?style=flat-square)](CHANGELOG.md)

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"io"
 	"net/http"
 	"os"
@@ -52,19 +53,27 @@ func projectStoreAt(cwd string) (string, string, error) {
 		return "", "", errors.New("プロジェクトのフォルダを確かめられません")
 	}
 	root := filepath.Join(scope, ".shikii")
+	if err := validateStoreDirectories(root); err != nil {
+		return "", "", err
+	}
+
+	return root, scope, nil
+}
+
+func validateStoreDirectories(root string) error {
 	for _, part := range []string{"", "decisions", "wiki", "records", "labels", "sessions"} {
 		info, err := os.Lstat(filepath.Join(root, part))
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return "", "", err
+			return err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return "", "", errors.New("プロジェクトの保存先に共有先へのリンクは使えません")
+			return errors.New("プロジェクトの保存先に共有先へのリンクは使えません")
 		}
 	}
-	return root, scope, nil
+	return nil
 }
 
 func currentProjectStore() (string, string, error) {
@@ -75,16 +84,36 @@ func currentProjectStore() (string, string, error) {
 	return projectStoreAt(cwd)
 }
 
-func defaultProjectStore() string {
+func defaultProjectStore() (string, error) {
 	root, _, err := currentProjectStore()
 	if err != nil {
-		return ".shikii"
+		return "", err
 	}
 	cwd, _ := os.Getwd()
 	if filepath.Dir(root) == feedbackScope(cwd) {
-		return ".shikii"
+		return ".shikii", nil
 	}
-	return root
+	return root, nil
+}
+
+// フラグを読み切ってから既定を解く。拒否した保存先へ相対パスで戻らない。
+func resolveStoreFlag(fs *flag.FlagSet) error {
+	f := fs.Lookup("store")
+	if f == nil {
+		return nil
+	}
+	path := f.Value.String()
+	if path == ".shikii" {
+		var err error
+		path, err = defaultProjectStore()
+		if err != nil {
+			return err
+		}
+	}
+	if err := validateStoreDirectories(path); err != nil {
+		return err
+	}
+	return f.Value.Set(path)
 }
 
 // symlink の共有先へ個別の会話や較正を書かない。
@@ -251,7 +280,11 @@ func newProjectHub(common string, options serveOpts) http.Handler {
 					continue
 				}
 				if len(parts) == 1 {
-					http.Redirect(w, r, p.URL, http.StatusTemporaryRedirect)
+					target := p.URL
+					if r.URL.RawQuery != "" {
+						target += "?" + r.URL.RawQuery
+					}
+					http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 					return
 				}
 				mu.Lock()

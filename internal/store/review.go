@@ -54,7 +54,7 @@ func (s Store) Reviews(specID string) (map[string]Review, error) {
 	if !ReviewSpec(specID) {
 		return out, nil
 	}
-	err := scanJSONL(filepath.Join(s.Dir, "records", "reviews", specID+".jsonl"), func(line []byte) error {
+	err := s.scanJSONL(filepath.Join(s.Dir, "records", "reviews", specID+".jsonl"), func(line []byte) error {
 		var r Review
 		if json.Unmarshal(line, &r) == nil && r.Spec == specID && r.TraceID != "" && r.Rubric == ReviewRubric {
 			out[r.TraceID] = r
@@ -127,10 +127,7 @@ func (s Store) SaveReview(r Review) (Review, error) {
 		return r, errors.New("仮採点には対象・根拠・yes / no / unknown が必要です")
 	}
 	dir := filepath.Join(s.Dir, "records", "reviews")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return r, err
-	}
-	f, err := os.OpenFile(filepath.Join(dir, r.Spec+".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	f, err := s.openFile(filepath.Join(dir, r.Spec+".lock"), os.O_CREATE|os.O_RDWR)
 	if err != nil {
 		return r, err
 	}
@@ -162,6 +159,6 @@ func (s Store) SaveReview(r Review) (Review, error) {
 	}
 	r.Rubric, r.Every, r.At = ReviewRubric, ReviewQuality(all, labels).Every, time.Now().UTC()
 	r.Sampled = ReviewSample(r.TraceID, r.Every)
-	err = appendJSONL(filepath.Join(dir, r.Spec+".jsonl"), r)
+	err = s.appendJSONL(filepath.Join(dir, r.Spec+".jsonl"), r)
 	return r, err
 }

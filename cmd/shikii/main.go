@@ -174,7 +174,7 @@ func (f *endpointFlags) endpoints() []decide.Endpoint {
 }
 
 func bindStore(fs *flag.FlagSet) *string {
-	return fs.String("store", defaultProjectStore(), "記録とラベルの置き場")
+	return fs.String("store", ".shikii", "記録とラベルの置き場")
 }
 
 type kvFlag map[string]string
@@ -187,6 +187,14 @@ func (k kvFlag) Set(v string) error {
 	}
 	k[v[:i]] = v[i+1:]
 	return nil
+}
+
+// 報告先は呼び出しごとに渡す。HTTP の処理がプロセス共通の stdout を差し替えない。
+func reportWriter(writers ...io.Writer) io.Writer {
+	if len(writers) > 0 && writers[0] != nil {
+		return writers[0]
+	}
+	return stdout
 }
 
 // ---------------------------------------------------------------- decide
@@ -479,6 +487,7 @@ func cmdCalibrate(args []string) error {
 
 // calibrateOpts は calibrate の指定。CLI と serve(自動の較正)が同じ中身を使う。
 type calibrateOpts struct {
+	output   io.Writer
 	ef       endpointFlags
 	storeDir string
 	labeled  string // "" = spec の eval.labeled、"none" = ファイルを使わない
@@ -490,6 +499,7 @@ type calibrateOpts struct {
 
 // runCalibrate は calibrate の本体。報告は stdout に出す。
 func runCalibrate(path string, o calibrateOpts) error {
+	stdout := reportWriter(o.output)
 	sp, err := spec.Load(path)
 	if err != nil {
 		return err
@@ -542,6 +552,7 @@ var errNoLabels = errors.New("no labels")
 
 // calibrateRung は 1 つの段(spec のハッシュ 1 つ)の線を引く。報告は常に出し、書いてよいか(ok)を返す。線そのものは書かない(呼ぶ側がまとめて書く)。
 func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, error) {
+	stdout := reportWriter(o.output)
 	ef, storeDir, labeledPath, bins, force := o.ef, &o.storeDir, &o.labeled, &o.bins, &o.force
 	var cal spec.Calibration
 	if *bins <= 0 {
@@ -560,7 +571,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 
 	// 1. ラベル付きファイル(あれば)。Raw の無い行は、store に同じ入力のラベルがあればそれを使い、無ければモデルに聞く。
 	st := store.Store{Dir: *storeDir}
-	labels, model, err := labelsFromFile(sp, *labeledPath, ef, st)
+	labels, model, err := labelsFromFile(sp, *labeledPath, ef, st, stdout)
 	if err != nil {
 		return cal, false, err
 	}
@@ -572,7 +583,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	}
 	// 2. 聞き直し: 古い文言・別のモデルで付いた正解を、本文が残っている記録から今の (hash, model) で聞き直す。
 	//    正解は人が決めたもので文言にもモデルにも依らない。確率だけ取り直す。
-	replayed, replayModel, err := replayTruths(sp, st, ef, model, seen)
+	replayed, replayModel, err := replayTruths(sp, st, ef, model, seen, stdout)
 	if err != nil {
 		return cal, false, err
 	}
@@ -653,9 +664,9 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	var ok bool
 	switch sp.Type {
 	case spec.Noul:
-		cal, ok, err = calibrateNoul(sp, labels, *bins)
+		cal, ok, err = calibrateNoul(sp, labels, *bins, stdout)
 	default:
-		cal, ok, err = verifyTop(sp, labels, *bins)
+		cal, ok, err = verifyTop(sp, labels, *bins, stdout)
 	}
 	if err != nil {
 		return cal, false, err
@@ -667,7 +678,8 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 
 // labelsFromFile はラベル付きファイルを store.Label の形に揃える。モデルに聞いた行があれば、その実モデル名も返す。
 // Raw の無い行は、store に同じ入力(inputs_hash)のラベルが --model の鍵で残っていればそれを使う(モデル無しで再較正できる)。
-func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store) ([]store.Label, string, error) {
+func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store, reports ...io.Writer) ([]store.Label, string, error) {
+	stdout := reportWriter(reports...)
 	if path == "" {
 		return nil, "", nil
 	}
@@ -783,7 +795,8 @@ func storedInputs(st store.Store, sp *spec.Spec, model string) (map[string]bool,
 // 本文が残っている記録のものだけを、今の文言で今のモデルに聞き直してラベルにする。
 // seen に入っている入力(ファイル側で扱ったもの)は飛ばす。model が空なら、最初の答えのモデル名を返す。
 // 聞き直せない正解(本文が無い)は数えて理由を出す。黙って 0 件にしない。
-func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string, seen map[string]bool) ([]store.Label, string, error) {
+func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string, seen map[string]bool, reports ...io.Writer) ([]store.Label, string, error) {
+	stdout := reportWriter(reports...)
 	_, all, err := st.Counts(sp.ID)
 	if err != nil {
 		return nil, model, err
@@ -914,7 +927,8 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 }
 
 // calibrateNoul は Platt を当てて指標を出す(設計 §7)。正負が逆転していれば ok=false。
-func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibration, bool, error) {
+func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writer) (spec.Calibration, bool, error) {
+	stdout := reportWriter(reports...)
 	samples := make([]calib.Sample, len(labels))
 	rawProbs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
 	for i, l := range labels {
@@ -950,8 +964,8 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibrat
 	}
 	fmt.Fprintf(stdout, "boundaries after calibration: neg_max→%.3f (ask=%.2f) pos_min→%.3f (act=%.2f)\n",
 		pl.Apply(sep.NegMax), sp.Thresholds.Ask, pl.Apply(sep.PosMin), sp.Thresholds.Act)
-	printThresholdReport(sp.Thresholds, calProbs, truths, weights)
-	printReliability("calibrated", calProbs, truths, weights, bins)
+	printThresholdReport(sp.Thresholds, calProbs, truths, weights, stdout)
+	printReliability("calibrated", calProbs, truths, weights, bins, stdout)
 	if sep.Inverted {
 		fmt.Fprintln(stdout, "WARNING: positives and negatives overlap on Δ; a monotone calibration cannot fix this. Change the question or the model.")
 		return spec.Calibration{Method: "platt", Bias: pl.Bias, Temperature: pl.Temperature,
@@ -1023,7 +1037,8 @@ func crossValidatePlatt(sp *spec.Spec, samples []calib.Sample, k int) (precision
 //  2. precision が act 以上なら identity(= 生のまま act を許す印)で ok
 //  3. 足りなければ vector scaling を当てて測り直す。較正後に act 以上なら vector で ok、
 //     それでも足りなければ vector を返すが ok=false(書き戻しは --force が要る)
-func verifyTop(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibration, bool, error) {
+func verifyTop(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writer) (spec.Calibration, bool, error) {
+	stdout := reportWriter(reports...)
 	// 報告は全ラベルで、当てる(FitVector / CV)のは正解の選択肢が分かっているラベルだけ。
 	// 部分ラベル("!edit" = edit ではなかった)は precision の評価には効くが、分布の学習には使えない。
 	ms := make([]calib.MultiSample, len(labels))
@@ -1042,9 +1057,9 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibration,
 	}
 	rawRep := topReport(sp, ms, nil)
 	fmt.Fprintf(stdout, "raw:        top-1 accuracy=%.3f brier(top)=%.4f ece(top)=%.4f\n", rawRep.acc, rawRep.brier, rawRep.ece)
-	printThresholdReport(sp.Thresholds, rawRep.pTop, rawRep.correct, rawRep.weights)
-	printReliability("top, raw", rawRep.pTop, rawRep.correct, rawRep.weights, bins)
-	printConfusion(rawRep.confusion)
+	printThresholdReport(sp.Thresholds, rawRep.pTop, rawRep.correct, rawRep.weights, stdout)
+	printReliability("top, raw", rawRep.pTop, rawRep.correct, rawRep.weights, bins, stdout)
+	printConfusion(rawRep.confusion, stdout)
 	identityOK := rawRep.precAct >= sp.Thresholds.Act
 	identity := spec.Calibration{Method: "identity", PrecisionAt: rawRep.precAct, Brier: rawRep.brier, ECE: rawRep.ece}
 
@@ -1061,9 +1076,9 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int) (spec.Calibration,
 	cvPrec, cvRec := crossValidateVector(sp, ms, 5) // 採点は全ラベル(部分ラベル込み)。当てるのは完全ラベルだけ(関数の中で分ける)
 	fmt.Fprintf(stdout, "vector:     temperature=%.4f biases=%s\n", v.Temperature, fmtDist(v.Biases))
 	fmt.Fprintf(stdout, "calibrated: top-1 accuracy=%.3f brier(top)=%.4f ece(top)=%.4f (in-sample)\n", calRep.acc, calRep.brier, calRep.ece)
-	printThresholdReport(sp.Thresholds, calRep.pTop, calRep.correct, calRep.weights)
-	printReliability("top, calibrated", calRep.pTop, calRep.correct, calRep.weights, bins)
-	printConfusion(calRep.confusion)
+	printThresholdReport(sp.Thresholds, calRep.pTop, calRep.correct, calRep.weights, stdout)
+	printReliability("top, calibrated", calRep.pTop, calRep.correct, calRep.weights, bins, stdout)
+	printConfusion(calRep.confusion, stdout)
 	fmt.Fprintf(stdout, "vector 5-fold CV at act: precision=%.3f recall=%.3f\n", cvPrec, cvRec)
 	vectorOK := cvPrec >= sp.Thresholds.Act
 	vector := spec.Calibration{
@@ -1221,7 +1236,8 @@ func precisionAt(th float64, probs []float64, truths []bool, weights []float64) 
 	return tp / (tp + fp)
 }
 
-func printConfusion(confusion map[string]map[string]float64) {
+func printConfusion(confusion map[string]map[string]float64, reports ...io.Writer) {
+	stdout := reportWriter(reports...)
 	fmt.Fprintln(stdout, "confusion (truth → predicted):")
 	truths := make([]string, 0, len(confusion))
 	for t := range confusion {
@@ -1234,7 +1250,8 @@ func printConfusion(confusion map[string]map[string]float64) {
 }
 
 // printThresholdReport は act / ask の閾値での precision / recall を出し、act での precision を返す。
-func printThresholdReport(t spec.Thresholds, probs []float64, truths []bool, weights []float64) float64 {
+func printThresholdReport(t spec.Thresholds, probs []float64, truths []bool, weights []float64, reports ...io.Writer) float64 {
+	stdout := reportWriter(reports...)
 	report := func(name string, th float64) float64 {
 		var tp, fp, fn float64
 		for i, p := range probs {
@@ -1263,7 +1280,8 @@ func printThresholdReport(t spec.Thresholds, probs []float64, truths []bool, wei
 	return precAct
 }
 
-func printReliability(name string, probs []float64, truths []bool, weights []float64, bins int) {
+func printReliability(name string, probs []float64, truths []bool, weights []float64, bins int, reports ...io.Writer) {
+	stdout := reportWriter(reports...)
 	fmt.Fprintf(stdout, "reliability (%s):\n", name)
 	for _, b := range calib.Reliability(probs, truths, weights, bins) {
 		if b.N > 0 {
@@ -2005,6 +2023,9 @@ func parseMixed(fs *flag.FlagSet, args []string) ([]string, error) {
 		}
 		rest := fs.Args()
 		if len(rest) == 0 {
+			if err := resolveStoreFlag(fs); err != nil {
+				return nil, err
+			}
 			return pos, nil
 		}
 		pos = append(pos, rest[0])

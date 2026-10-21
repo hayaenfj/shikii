@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -85,6 +86,7 @@ func cmdTune(args []string) error {
 
 // tuneOpts は tune の指定。CLI と serve / mcp が同じ中身を使う。
 type tuneOpts struct {
+	output        io.Writer
 	specPath      string
 	ef            endpointFlags
 	storeDir      string
@@ -168,6 +170,7 @@ func wordingOf(sp *spec.Spec) *wording {
 
 // runTune は tune の本体。報告は stdout に出し、結果を返す(wiki があれば runs/ に md と json を書く)。
 func runTune(o tuneOpts) (*tuneResult, error) {
+	stdout := reportWriter(o.output)
 	sp, err := spec.Load(o.specPath)
 	if err != nil {
 		return nil, err
@@ -342,7 +345,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		res.WinnerWording = wordingOf(cands[best].sp)
 		res.Lesson = fmt.Sprintf("%s: %s → top-1 %.3f → %.3f, brier %.4f → %.4f, holdout %.3f > current %.3f (%d better / %d worse, p=%.3f) on %d truths", scores[best].name, describeVariant(sp, cands[best].sp), scores[0].acc, scores[best].acc, scores[0].brier, scores[best].brier, res.Holdout, scores[0].acc, res.HoldoutWins, res.HoldoutLosses, res.PValue, len(bank))
 		fmt.Fprintf(stdout, "winner: %s  top-1 %.3f → %.3f, brier %.4f → %.4f\n", scores[best].name, scores[0].acc, scores[best].acc, scores[0].brier, scores[best].brier)
-		printConfusion(scores[best].confusion)
+		printConfusion(scores[best].confusion, stdout)
 		if o.write && o.propose > 0 {
 			res.Decision = fmt.Sprintf("%s was proposed by a model this run, so --write did not adopt it: a person has to read it first (it is saved in variants; adopt on the page, or run tune --write without --propose)", scores[best].name)
 		} else if o.write {
@@ -384,7 +387,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	}
 	// 端末の --write は「読んだ人がいる」ことの表明。意味の確認として残す
 	recordMeaningCheck(res, true, "", "terminal --write")
-	newPath, err := adoptWording(res, o.ef, o.storeDir, labeledPath)
+	newPath, err := adoptWording(res, o.ef, o.storeDir, labeledPath, stdout)
 	saveTuneResult(res)
 	if err != nil {
 		return res, err
@@ -419,7 +422,7 @@ func binom(n, k int) float64 {
 }
 
 // adoptWording は勝った候補を新しい版として書き、その場で較正する。結果に採用の印を付ける(json / md の保存は呼ぶ側)。
-func adoptWording(res *tuneResult, ef endpointFlags, storeDir, labeledPath string) (string, error) {
+func adoptWording(res *tuneResult, ef endpointFlags, storeDir, labeledPath string, reports ...io.Writer) (string, error) {
 	base, err := spec.Load(res.SpecPath)
 	if err != nil {
 		return "", err
@@ -452,7 +455,7 @@ func adoptWording(res *tuneResult, ef endpointFlags, storeDir, labeledPath strin
 		}
 	}
 	// 採用と較正は一体: 線が引けない文言は版にしない(残すと serve が較正無しの新版を使い、act が黙って消える)
-	if err := runCalibrate(newPath, calibrateOpts{ef: ef, storeDir: storeDir, labeled: lab, bins: 10, write: true}); err != nil {
+	if err := runCalibrate(newPath, calibrateOpts{output: reportWriter(reports...), ef: ef, storeDir: storeDir, labeled: lab, bins: 10, write: true}); err != nil {
 		_ = os.Remove(newPath)
 		return "", fmt.Errorf("not adopted: calibration of the new wording failed, so %s was not kept: %w", filepath.Base(newPath), err)
 	}

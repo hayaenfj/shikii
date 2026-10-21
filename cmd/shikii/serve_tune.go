@@ -36,17 +36,15 @@ func (s *server) specRef(id string) (specRef, error) {
 	return specRef{id: sp.ID, path: sp.Path()}, nil
 }
 
-// runTuneCaptured は stdout を捕まえて runTune を回す(calibrate と同じ鍵で 1 つずつ)。
+// runTuneCaptured は個別の報告先で runTune を回す。同じ仕事の spec の変更だけを直列にする。
 func (s *server) runTuneCaptured(o tuneOpts) (*tuneResult, string, error) {
 	s.calibMu.Lock()
 	defer s.calibMu.Unlock()
 	var buf bytes.Buffer
-	old := stdout
-	stdout = &buf
+	o.output = &buf
 	var res *tuneResult
 	err := func() (err error) {
 		defer func() {
-			stdout = old
 			if r := recover(); r != nil {
 				err = fmt.Errorf("tune panicked: %v", r)
 			}
@@ -301,15 +299,12 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 	}
 	var buf bytes.Buffer
 	newPath, err := func() (p string, err error) {
-		old := stdout
-		stdout = &buf
 		defer func() {
-			stdout = old
 			if r := recover(); r != nil {
 				err = fmt.Errorf("adopt panicked: %v", r)
 			}
 		}()
-		return adoptWording(res, s.o.ef, s.o.storeDir, "")
+		return adoptWording(res, s.o.ef, s.o.storeDir, "", &buf)
 	}()
 	saveTuneResult(res)
 	if err != nil {

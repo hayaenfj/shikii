@@ -1,14 +1,14 @@
 # プロジェクト分離の監査（2026-10-21）
 
-対象は `caee172..01d2634`。独立した2つの監査役が、プロジェクト別の保存先、共通画面、CLI/MCP、採点・較正を確認した。**指摘は5件（medium 2件、low 3件）、全て未修正。** 重複は1件に統合した。今回は監査と安全な再現だけを行い、修正は加えていない。
+対象は `caee172..01d2634`。独立した2つの監査役が、プロジェクト別の保存先、共通画面、CLI/MCP、採点・較正を確認した。**指摘は5件（medium 2件、low 3件）。2026-10-21の修正依頼で5件とも修正済み。** 重複は1件に統合した。以下の原因・再現・コード位置は監査対象の `01d2634` 時点で、修正後の確認は「修正と再検証」に記す。
 
-| ID | 深刻度 | 主分類 | 問題 |
-|---|---|---|---|
-| SHK-20261021-001 | medium | data-protection | 別プロジェクトの同時較正で報告と出力先が混ざる |
-| SHK-20261021-002 | medium | input-validation | サブディレクトリで init・new・tune の保存先が分かれる |
-| SHK-20261021-003 | low | data-protection | 保存先の検査エラーを無視し、既定のCLIがリンク先へ保存する |
-| SHK-20261021-004 | low | data-protection | JSONLの末端ファイルのリンク経由で別の記録を読み書きする |
-| SHK-20261021-005 | low | input-validation | 末尾 / のないURLへの転送でspec・traceの指定が消える |
+| ID | 深刻度 | 主分類 | 問題 | 状態 |
+|---|---|---|---|---|
+| SHK-20261021-001 | medium | data-protection | 別プロジェクトの同時較正で報告と出力先が混ざる | 修正済み |
+| SHK-20261021-002 | medium | input-validation | サブディレクトリで init・new・tune の保存先が分かれる | 修正済み |
+| SHK-20261021-003 | low | data-protection | 保存先の検査エラーを無視し、既定のCLIがリンク先へ保存する | 修正済み |
+| SHK-20261021-004 | low | data-protection | JSONLの末端ファイルのリンク経由で別の記録を読み書きする | 修正済み |
+| SHK-20261021-005 | low | input-validation | 末尾 / のないURLへの転送でspec・traceの指定が消える | 修正済み |
 
 ## 前提と確認範囲
 
@@ -72,6 +72,26 @@
 - **推奨修正**：正規化したパスへ元のqueryを保持して転送する。
 - **受け入れ条件**：末尾 / の有無にかかわらず、同じspec・traceが開く。未知のプロジェクトは引き続き拒否する。
 
+## 修正と再検証（2026-10-21）
+
+- **001**：較正・tune・採用・hook内の同プロセス実行は、報告先のio.Writerを呼び出しごとに渡す。HTTP処理はstdoutを差し替えず、別プロジェクトは並行して処理できる。同じ仕事のspec保存の排他は保つ。`TestProjectCalibrationsKeepTheirReports` は実際のhubの同時較正と応答を、`TestProjectTuningKeepsProcessOutput` は終了順序を制御したtuneの出力先を確認する。
+- **002**：init・new・tuneもプロジェクトルートを使う。initのMCP設定・AGENTS.mdも同じ場所へ置き、明示したnewの出力先やstoreは保持する。`TestProjectCommandsShareRootFromSubdirectories` の3経路で確認する。
+- **003**：フラグを全て読んだ後に保存先を解決し、検査エラーをそのまま返す。CLI/MCP/serveの起動・推論・保存より前に拒否する。`TestProjectDefaultCLIRejectsLinkedStore` で、リンク先が増えず、MCP/serveも拒否することを確認する。
+- **004**：Storeは通常フォルダをos.Rootで保持し、中間フォルダの同一性と最終ファイルの種類を検査する。JSONL・正解の一括追記・会話・仮採点とロック・長文の原文を同じ経路で開く。GCの置き換えも保持した親フォルダから行う。`TestStoreRejectsLinkedJSONLPaths` は5種類×末端ファイル・中間フォルダ・store自体のリンクを確認し、リンク先を変更しない。
+- **005**：末尾 / の補完時もRawQueryを引き継ぐ。`TestProjectHubRedirectKeepsQuery` でspec・traceの保持を確認する。
+- **OPS-SEED-001**：書き終えた一時ファイルだけを最終名へ公開し、既存の通常ファイルを上書きしない。使い捨ての子プロセスだけにファイルサイズ上限を設け、実際の書き込みエラーで最終名が残らず、再試行で4つのspecを正常に読めることを `TestSeedFailureDoesNotPublishPartialSpec` で確認した。
+
+修正前は5件の回帰テストが実行時に失敗し、原文のstoreリンクと初期化の書き込み失敗もREDを確認した。修正後は全228 Goテスト、対象のrace検査（実行結果58件）、画面8検査、make test（gofmt・vet・README/skill検査を含む）が成功した。報告先・initの配置・保存先エラー・ファイルリンク・query・初期化を戻す変異と、tuneの古いstdout捕捉を使う変異の計7件も実行時REDを確認した。
+
+修正後の回帰確認は次で行う。下の過去の再現用overlayは、問題が起こることを確認した旧版向けの資料である。
+
+```sh
+go test ./cmd/shikii ./internal/store \
+  -run '^TestProject|^TestStoreRejectsLinkedJSONLPaths|^TestSeedFailure' -count=1
+go test -race ./cmd/shikii ./internal/store \
+  -run '^TestProject|^TestStoreRejectsLinkedJSONLPaths|^TestSeedFailure|^TestHook|^TestNotebook|^TestReview|^TestRecordText' -count=1
+```
+
 ## 再現資料
 
 この機械の隔離ディレクトリに、再現コード・overlay・ログを保持している。合成markerだけを使い、実会話や秘密は含めていない。
@@ -92,8 +112,8 @@ go test -overlay /tmp/shikii-audit-ui-dvr_ndb2/overlay.json ./cmd/shikii \
 
 ## 未解決の運用事項と未確認範囲
 
-- **OPS-SEED-001（既存動作、low / availability）**：seedAgentSpecsが最終ファイルを作った直後に一度だけ合成I/O中断を入れると、空のspecが再試行後も既存ファイルとして残ることを確認した。以前の既存ファイル保持方式にもある回復性の課題で、今回の差分の5件には数えていない。空の最終名を公開しない原子的な作成と、正常な既存ファイルの保持を両立するのが修正条件。証跡は `/tmp/shikii-independent-project-audit/interrupted-seed.log`。
+- **OPS-SEED-001（既存動作、low / availability、修正済み）**：seedAgentSpecsが最終ファイルを作った直後に一度だけ合成I/O中断を入れると、空のspecが再試行後も既存ファイルとして残ることを確認した。以前の既存ファイル保持方式にもある回復性の課題で、今回の差分の5件には数えていない。空の最終名を公開しない原子的な作成と、正常な既存ファイルの保持を両立するのが修正条件。証跡は `/tmp/shikii-independent-project-audit/interrupted-seed.log`。
 - **CHK-HOST-001（未確認境界）**：合成の不正HostによるGETで、hub一覧と個別queueの合成markerへHTTP 200で到達することを確認した。実ブラウザとDNSを組み合わせた到達は未確認で、DNS rebindingによる攻撃成立は断定しない。既存S3のPOST Origin対策とは別の確認事項。
-- 依存パッケージやCIの権限設定の再監査、別UID間の認証・認可、実利用の負荷、各OSの耐障害性までは検証していない。修正後は上記の受け入れ条件を回帰テストにし、RED→GREENを確認する必要がある。
+- 依存パッケージやCIの権限設定の再監査、別UID間の認証・認可、実利用の負荷、各OSの耐障害性までは検証していない。確認できた受け入れ条件は上記の回帰テストに記録した。
 
-この監査は脆弱性がないことを保証するものではない。修正は未実施、push・公開はしていない。
+この監査は脆弱性がないことを保証するものではない。5件とOPS-SEED-001の修正を実施した。CHK-HOST-001は未確認境界として残る。push・公開はしていない。

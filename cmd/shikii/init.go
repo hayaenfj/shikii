@@ -24,15 +24,24 @@ func cmdInit(args []string) error {
 	if len(args) > 0 {
 		return errors.New("usage: shikii init  (no flags: it prepares the current folder and the agent)")
 	}
-	// shikii が作るものは全部 .shikii/ の下(プロジェクトルートに増えるのはこの 1 つだけ)
-	for _, d := range []string{"decisions", "wiki", filepath.Join("wiki", "specs"), filepath.Join("wiki", "runs"), "records", "labels"} {
-		if err := os.MkdirAll(filepath.Join(".shikii", d), 0o755); err != nil {
+	root, scope, err := currentProjectStore()
+	if err != nil {
+		return err
+	}
+	if err := checkProjectStore(root, true); err != nil {
+		return err
+	}
+	if err := excludeProjectStore(scope); err != nil {
+		return err
+	}
+	for _, d := range []string{"specs", "runs"} {
+		if err := os.MkdirAll(filepath.Join(root, "wiki", d), 0700); err != nil {
 			return err
 		}
 	}
 	fmt.Fprintln(stdout, "folders: .shikii/decisions/ (specs) .shikii/wiki/ (knowledge) .shikii/records/ and .shikii/labels/ (records and truths). Nothing else is added to the project root")
 	// 既製の知識: 型・パターン・モデルのページを、無いものだけ写す(tune --propose がここを読んで候補を作る。人が直したページは触らない)
-	n, err := seedWiki(filepath.Join(".shikii", "wiki"))
+	n, err := seedWiki(filepath.Join(root, "wiki"))
 	if err != nil {
 		return fmt.Errorf("wiki: %w", err)
 	}
@@ -53,7 +62,7 @@ func cmdInit(args []string) error {
 		{filepath.Join(".cursor", "mcp.json"), "mcpServers", claude, "Cursor"},
 		{"opencode.json", "mcp", map[string]any{"type": "local", "command": append([]string{"shikii"}, mcpArgs...)}, "OpenCode"},
 	} {
-		did, err := addJSONEntry(f.path, f.key, "shikii", f.entry)
+		did, err := addJSONEntry(filepath.Join(scope, f.path), f.key, "shikii", f.entry)
 		if err != nil {
 			return err
 		}
@@ -63,12 +72,12 @@ func cmdInit(args []string) error {
 			fmt.Fprintf(stdout, "%s: shikii entry kept as it is (%s; edit it by hand, init never rewrites it)\n", f.path, f.who)
 		}
 	}
-	switch did, err := addAgentsSection("AGENTS.md"); {
+	switch did, err := addAgentsSection(filepath.Join(scope, "AGENTS.md")); {
 	case err != nil:
 		return err
 	case did:
 		fmt.Fprintln(stdout, "AGENTS.md: shikii section added (Codex and OpenCode read it; the full rules are in the skill)")
-	case fileExists("CLAUDE.md") && !fileExists("AGENTS.md"):
+	case fileExists(filepath.Join(scope, "CLAUDE.md")) && !fileExists(filepath.Join(scope, "AGENTS.md")):
 		fmt.Fprintln(stdout, "AGENTS.md: not created, because this project has CLAUDE.md and OpenCode stops reading CLAUDE.md once AGENTS.md exists. Add the shikii section to CLAUDE.md by hand, or create AGENTS.md with `@CLAUDE.md` in it and run init again")
 	}
 	fmt.Fprintln(stdout, "all four MCP entries point at a local model on :8080 (started by shikii up). Hosted only? remove --local from each of them by hand")
@@ -113,20 +122,63 @@ func seedWiki(dst string) (int, error) {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		if fileExists(target) {
-			return nil
-		}
 		b, err := shikii.WikiFS.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(target, b, 0o644); err != nil {
+		created, err := seedFile(target, b)
+		if err != nil {
 			return err
 		}
-		n++
+		if created {
+			n++
+		}
+
 		return nil
 	})
 	return n, err
+}
+
+// seedFile は書き終えた内容だけを公開し、既存の通常ファイルは保持する。
+func seedFile(path string, data []byte) (bool, error) {
+	checkExisting := func() error {
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return errors.New("既製のファイルの置き場にリンクは使えません")
+		}
+		return nil
+	}
+	if err := checkExisting(); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".seed-*")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(f.Name())
+	if err := f.Chmod(0644); err != nil {
+		f.Close()
+		return false, err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return false, err
+	}
+	if err := f.Close(); err != nil {
+		return false, err
+	}
+	if err := os.Link(f.Name(), path); err != nil {
+		if os.IsExist(err) {
+			return false, checkExisting()
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // addJSONEntry は JSON の設定ファイルの key(object)に name の項を足す。既にあれば触らず false。

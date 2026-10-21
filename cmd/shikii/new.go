@@ -48,6 +48,19 @@ func cmdNew(args []string) error {
 	if len(pos) != 1 {
 		return errors.New("usage: shikii new <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]")
 	}
+	explicitDir := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "dir" {
+			explicitDir = true
+		}
+	})
+	if !explicitDir {
+		root, _, err := currentProjectStore()
+		if err != nil {
+			return err
+		}
+		*dir = specsDirOf(root)
+	}
 	id := pos[0]
 	path := filepath.Join(*dir, id+".yaml")
 	if _, err := os.Stat(path); err == nil && !*force {

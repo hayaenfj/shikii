@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"syscall"
 	"unicode/utf8"
 )
 
@@ -69,23 +68,21 @@ func (s Store) SaveRecordText(rec Record, originals map[string]string) error {
 	if err != nil {
 		return err
 	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	parent, name, err := s.parentRoot(path, true)
+	if err != nil {
 		return err
 	}
-	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("原文の置き場を確認できません")
-	}
+	defer parent.Close()
 	data, err := json.Marshal(text)
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, ".text-*")
+	tmpName := ".text-" + NewTraceID()
+	f, err := parent.OpenFile(tmpName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
+	defer parent.Remove(tmpName)
 	if _, err := f.Write(data); err != nil {
 		f.Close()
 		return err
@@ -93,11 +90,11 @@ func (s Store) SaveRecordText(rec Record, originals map[string]string) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Link(f.Name(), path); err != nil {
+	if err := parent.Link(tmpName, name); err != nil {
 		if !os.IsExist(err) {
 			return err
 		}
-		old, err := readRecordText(path)
+		old, err := s.readRecordText(path)
 		if err != nil || !bytes.Equal(old, data) {
 			return errors.New("保存済みの原文は上書きできません")
 		}
@@ -105,15 +102,8 @@ func (s Store) SaveRecordText(rec Record, originals map[string]string) error {
 	return nil
 }
 
-func readRecordText(path string) ([]byte, error) {
-	info, err := os.Lstat(filepath.Dir(path))
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("原文の置き場を確認できません")
-	}
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+func (s Store) readRecordText(path string) ([]byte, error) {
+	f, err := s.openFile(path, os.O_RDONLY)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +130,7 @@ func (s Store) RecordText(rec Record) (map[string]string, map[string]string) {
 	if err != nil {
 		return originals, status
 	}
-	data, err := readRecordText(path)
+	data, err := s.readRecordText(path)
 	if os.IsNotExist(err) {
 		return originals, status
 	}
