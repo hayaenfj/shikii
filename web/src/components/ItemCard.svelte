@@ -13,8 +13,23 @@
 
   const name = c => loc(c.labels, c.label);
   const choiceOf = truth => it.choices.find(c => c.truth === truth) || { label: truth };
-  let topName = $derived(it.top ? name(choiceOf(it.top)) : '');
+  // noulのpは「はい」の確率で、topは常にyes。画面の予想は確率の高い側にする。
+  const prediction = x => sp.type === 'noul' && x.top === 'yes' && x.p < 0.5 ? { truth: 'no', p: 1 - x.p } : { truth: x.top, p: x.p };
+  let guess = $derived(prediction(it));
+  let topName = $derived(guess.truth ? name(choiceOf(guess.truth)) : '');
   let bandWord = $derived(it.band === 'ask' ? t('bandAsk') : it.band === 'act' ? t('bandAct') : t('bandDiscard'));
+
+  const isHook = () => ['prompt-kind', 'needs-plan', 'changes-in-scope', 'done-as-asked'].includes(sp.id);
+  function inputLabel(key) {
+    if (!isHook()) return key;
+    return { request: t('inputRequest'), summary: t('inputSummary'), files: t('inputFiles'), previous: t('inputPrevious') }[key] || key;
+  }
+  let inputs = $derived.by(() => {
+    const entries = Object.entries(it.inputs || {});
+    if (!isHook()) return entries;
+    const order = { request: 0, summary: 1, files: 2, previous: 3 };
+    return entries.sort(([a], [b]) => (order[a] ?? 4) - (order[b] ?? 4));
+  });
 
   async function answer(truth) {
     busy = true;
@@ -40,10 +55,14 @@
   }
 
   const bandOf = x => x.band === 'ask' ? t('bandAsk') : x.band === 'act' ? t('bandAct') : x.band === 'abstain' ? t('bandAbstain') : t('bandDiscard');
-  const word = x => bandOf(x) + ' ' + name(choiceOf(x.top || '-')) + ' ' + Math.round((x.p || 0) * 100) + '%';
+  const word = x => { const g = prediction(x); return bandOf(x) + ' ' + name(choiceOf(g.truth || '-')) + ' ' + Math.round((g.p || 0) * 100) + '%'; };
   function redoLine(res) {
     let line = t('redoResult')(word(res.before), word(res.after));
-    if (res.truth) line += ' · ' + (res.correct_after ? t('redoAgree') : t('redoDisagree'));
+    if (res.truth) {
+      const top = prediction(res.after).truth;
+      const correct = sp.type === 'noul' ? (res.truth.startsWith('!') ? top !== res.truth.slice(1) : top === res.truth) : res.correct_after;
+      line += ' · ' + (correct ? t('redoAgree') : t('redoDisagree'));
+    }
     return line;
   }
 </script>
@@ -57,7 +76,7 @@
   {#if it.review}
     <div class="audit">{it.review_reason === 'uncertain' ? t('reviewUncertain') : t('reviewRandom')}</div>
   {:else if it.top}
-    <div class="guess">{bandWord} {t('aiGuess')(topName, (it.p * 100).toFixed(0))}{#if it.audit}{' '}<span class="audit">{t('auditShort')}</span>{/if}</div>
+    <div class="guess">{bandWord} {t('aiGuess')(topName, (guess.p * 100).toFixed(0))}{#if it.audit}{' '}<span class="audit">{t('auditShort')}</span>{/if}</div>
   {/if}
   {#if it.project}<div class="meta"><span class="project">{it.project}</span></div>{/if}
   <div class="meta adv">
@@ -68,10 +87,19 @@
   </div>
   <div class="text">
     {#if it.answerable}
-      {#each Object.entries(it.inputs) as [k, v]}
-        <div><span class="k">{k}</span><br>{it.original_inputs?.[k] ?? v}
-          {#if it.text_status?.[k]}<div class="k text-limit">{t(it.text_status[k] === 'legacy' ? 'legacyTextLimit' : it.text_status[k] === 'limited' ? 'originalTextLimit' : 'originalTextUnavailable')}</div>{/if}
-        </div>
+      {#each inputs as [k, v]}
+        {#if sp.id === 'needs-plan' && k === 'previous'}
+          <details class="previous-context" data-input={k}>
+            <summary>{inputLabel(k)}</summary>
+            <div>{it.original_inputs?.[k] ?? v}
+              {#if it.text_status?.[k]}<div class="k text-limit">{t(it.text_status[k] === 'legacy' ? 'legacyTextLimit' : it.text_status[k] === 'limited' ? 'originalTextLimit' : 'originalTextUnavailable')}</div>{/if}
+            </div>
+          </details>
+        {:else}
+          <div data-input={k}><span class="k">{inputLabel(k)}</span><br>{it.original_inputs?.[k] ?? v}
+            {#if it.text_status?.[k]}<div class="k text-limit">{t(it.text_status[k] === 'legacy' ? 'legacyTextLimit' : it.text_status[k] === 'limited' ? 'originalTextLimit' : 'originalTextUnavailable')}</div>{/if}
+          </div>
+        {/if}
       {/each}
     {:else}
       <span class="k">{t('noText')(it.inputs_hash)}</span>
@@ -83,12 +111,12 @@
   {/if}
   <div class="btns">
     {#each it.choices as c, i}
-      <button type="button" class:top={!it.review && c.truth === it.top} class:active={c.truth === it.truth} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
-        <span class="num">{i + 1}</span>{name(c)}{#if !it.review && c.truth === it.top}{' · ' + t('sameAsAI')}{/if}
+      <button type="button" class:top={!it.review && c.truth === guess.truth} class:active={c.truth === it.truth} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
+        <span class="num">{i + 1}</span>{name(c)}{#if !it.review && c.truth === guess.truth}{' · ' + t('sameAsAI')}{/if}
       </button>
     {/each}
     {#if it.answerable && it.top && !it.review}
-      <button type="button" class="weak" data-truth={'!' + it.top} disabled={busy} onclick={() => answer('!' + it.top)}>{t('notThat')(topName)}</button>
+      <button type="button" class="weak" data-truth={'!' + guess.truth} disabled={busy} onclick={() => answer('!' + guess.truth)}>{t('notThat')(topName)}</button>
     {/if}
     {#if !it.truth}
       <button type="button" class="weak skip" disabled={busy} onclick={() => skipped.add(it.trace_id)}>{t('skip')}</button>

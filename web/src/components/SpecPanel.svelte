@@ -70,6 +70,8 @@
     </span>
   </h2>
   {#if question}<div class="q">{question}</div>{/if}
+  {#if sp.id === 'needs-plan'}<p class="decision-phase">{t('beforeWork')}</p>
+  {:else if sp.id === 'done-as-asked' || sp.id === 'changes-in-scope'}<p class="decision-phase">{t('afterWork')}</p>{/if}
   <div class="status">{progress.plain}<div class="bar"><div style="width:{progress.pct}%"></div></div></div>
   {#if sp.review_quality?.scored}<p class="k review-quality">{t('reviewQuality')(sp.review_quality)}</p>{/if}
   {#if sp.review_pending}<p class="k">{t('reviewPending')(sp.review_pending)}</p>{/if}

@@ -1,5 +1,8 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
+  beforeWork: '着手前の判断です。今回の依頼を始める前に、進め方の相談が必要だったかを答えてください。',
+  afterWork: '作業後の確認です。今回の依頼・最後の返答・変更内容を照らして答えてください。',
+  inputRequest: '今回の依頼', inputSummary: '今回の最後の返答', inputFiles: '今回の変更ファイル', inputPrevious: '前の仕事の返答（参考・必要な時に開く）',
   memoryEffectTitle: '記憶と判断の振り返り（AI）',
   correctionTitle: '訂正から次の行動へ（AI）',
   correctionHow: 'この記録に届いた訂正を対象に、次の行動を仮評価します。未配送の訂正や、記憶なしとの改善率は含みません。',
