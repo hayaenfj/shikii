@@ -3,7 +3,7 @@
 名前は閾値の「閾」。確率を act / ask / discard の帯に切る閾が、この道具の芯だから。コマンドの名前も `shikii`。
 モジュールは `github.com/hayaenfj/shikii`、ライセンスは Apache-2.0 OR MIT（どちらかを選択）([`LICENSE`](../LICENSE))。英語の README は [`../README.md`](../README.md)、日本語の短い版は [`readme/README_ja.md`](readme/README_ja.md)。
 
-設計は [`docs/decision-ops-framework.md`](decision-ops-framework.md)、止め方・戻し方・残っているものは [`docs/operations.md`](operations.md)。
+設計は [`docs/decision-ops-framework.md`](decision-ops-framework.md)。
 最初の試作は **spec / decide / calibrate** の 3 つだけだった(設計 §11)。今は label / check / drift / bias / status / gc / serve / mcp / new / up / doctor も動く。この手引きは CLI の中身を順に説明する。
 
 ```sh

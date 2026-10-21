@@ -38,3 +38,6 @@ web/.ui-test/
 
 # 記憶は repo に置かない(正本は ~/.claude/projects/shikii-shared/。CLAUDE.md を見る)
 /.claude/memory/
+
+# 手元の作業・検証・反映の記録。公開文書には含めない
+/docs/operations.md

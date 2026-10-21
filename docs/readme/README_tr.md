@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Sorun](#sorun) · [Kullanım 1: yapay zekânın kendi düşüncesini ölçün](#kullanım-1-yapay-zekânın-kendi-düşüncesini-ölçün) · [Kullanım 2: bir iş kararını ona bırakın](#kullanım-2-bir-iş-kararını-ona-bırakın) · [Sayfada ne yaparsınız](#sayfada-ne-yaparsınız) · [Kurulum](#kurulum) · [Yapay zekâyı neden değiştirebilirsiniz](#yapay-zekâyı-neden-değiştirebilirsiniz) · [Daha fazla okuma](#daha-fazla-okuma)
 
@@ -104,7 +104,7 @@ Komut çıktısı ve hook mesajları İngilizcedir (Claude Code'un dil ayarı Ja
 - [Kılavuz](../guide.md): her komut, HTTP API, SSS · [spec başvuru belgesi](../../skills/shikii/references/spec.md)
 - [Hook](../../integrations/claude-code.md) (Japonca): ajanın kendi düşüncesinin nasıl ölçüldüğü, bant → davranış tablosu, iç yapı
 - [Mimari](../architecture.md) (Japonca): yukarıdaki şemanın arkasındaki bütün resim
-- [Hazır kararlar](../../decisions/README.md) · [nasıl sorulur wiki'si](../../wiki/index.md) · [ölçülen sayılar](../bench.md) · [işletim notları](../operations.md)
+- [Hazır kararlar](../../decisions/README.md) · [nasıl sorulur wiki'si](../../wiki/index.md) · [ölçülen sayılar](../bench.md)
 - [Bağlantılar](../../integrations/mcp.md): MCP, sıradan sohbet modelleri için uyarlayıcı, Docker
 
 **Katkıda bulunanlar için**: bir testi bilerek bozun ve düzeltmeden önce düştüğünü görün. Her sayı bir betikten gelir. Bir wiki iddiasını yalnızca bir insan doğrular. Ayar eklemeyin; bunun yerine sabit yerler ve sabit kurallar.

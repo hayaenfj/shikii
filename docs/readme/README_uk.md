@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Проблема](#проблема) · [Спосіб 1: виміряти мислення самого ШІ](#спосіб-1-виміряти-мислення-самого-ші) · [Спосіб 2: доручити йому робоче рішення](#спосіб-2-доручити-йому-робоче-рішення) · [Що ви робите на сторінці](#що-ви-робите-на-сторінці) · [Встановлення](#встановлення) · [Чому ШІ можна замінити](#чому-ші-можна-замінити) · [Читати далі](#читати-далі)
 
@@ -104,7 +104,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 - [Посібник](../guide.md): кожна команда, HTTP API, часті запитання · [довідка зі spec](../../skills/shikii/references/spec.md)
 - [Hook](../../integrations/claude-code.md) (японською): як вимірюється мислення самого агента, таблиця «смуга → поведінка», внутрішній устрій
 - [Архітектура](../architecture.md) (японською): повна картина за діаграмою вище
-- [Готові рішення](../../decisions/README.md) · [wiki про те, як запитувати](../../wiki/index.md) · [виміряні числа](../bench.md) · [нотатки з експлуатації](../operations.md)
+- [Готові рішення](../../decisions/README.md) · [wiki про те, як запитувати](../../wiki/index.md) · [виміряні числа](../bench.md)
 - [Підключення](../../integrations/mcp.md): MCP, адаптер для звичайних чат-моделей, Docker
 
 **Для учасників**: навмисно зламайте тест і подивіться, як він падає, перш ніж виправляти. Кожне число береться зі скрипта. Лише людина підтверджує твердження у wiki. Не додавайте налаштувань; замість них — фіксовані місця і фіксовані правила.

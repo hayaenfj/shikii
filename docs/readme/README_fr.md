@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Le problème](#le-problème) · [Usage 1 : mesurer la réflexion de l'IA elle-même](#usage-1--mesurer-la-réflexion-de-lia-elle-même) · [Usage 2 : lui confier une décision métier](#usage-2--lui-confier-une-décision-métier) · [Ce que vous faites sur la page](#ce-que-vous-faites-sur-la-page) · [Installation](#installation) · [Pourquoi vous pouvez changer d'IA](#pourquoi-vous-pouvez-changer-dia) · [Pour aller plus loin](#pour-aller-plus-loin)
 
@@ -104,7 +104,7 @@ La sortie des commandes et les messages des hooks sont en anglais (si la langue 
 - [Le guide](../guide.md) : chaque commande, l'API HTTP, la FAQ · [la référence du fichier de décision](../../skills/shikii/references/spec.md)
 - [Le hook](../../integrations/claude-code.md) (en japonais) : comment la réflexion de l'agent lui-même est mesurée, le tableau bande → comportement, les rouages
 - [Architecture](../architecture.md) (en japonais) : la vue d'ensemble derrière le schéma ci-dessus
-- [Décisions prêtes à l'emploi](../../decisions/README.md) · [le wiki des façons de demander](../../wiki/index.md) · [chiffres mesurés](../bench.md) · [notes d'exploitation](../operations.md)
+- [Décisions prêtes à l'emploi](../../decisions/README.md) · [le wiki des façons de demander](../../wiki/index.md) · [chiffres mesurés](../bench.md)
 - [Branchements](../../integrations/mcp.md) : MCP, l'adaptateur pour les modèles de chat ordinaires, Docker
 
 **Pour les contributeurs** : cassez un test exprès et regardez-le échouer avant de le corriger. Chaque chiffre vient d'un script. Seule une personne confirme une affirmation du wiki. N'ajoutez pas de réglages ; des emplacements fixes et des règles fixes à la place.

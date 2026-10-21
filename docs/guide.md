@@ -263,7 +263,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted; the records are in [operations.md](operations.md) and the integration notes. There are 260 Go tests across 10 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 260 Go tests across 10 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -361,7 +361,6 @@ shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # wh
 
 - [decision-ops-framework.md](decision-ops-framework.md): design notes, what the framework owns and what it refuses to own, the verification plan and what was confirmed.
 - [architecture.md](architecture.md) (Japanese): the structure behind the diagram.
-- [operations.md](operations.md): how to stop or roll back every moving part, how to read a failure, what is still missing.
 - [model-comparison.md](model-comparison.md) and [bench.md](bench.md): the comparison table, the LoRA / RAG / wording benchmark, and how to reproduce both.
 - [guide.ja.md](guide.ja.md): the long-form Japanese guide with every command and a full real-world loop.
 - [spec.md](../skills/shikii/references/spec.md), [bands.md](../skills/shikii/references/bands.md): the spec format and what each band and receipt means.

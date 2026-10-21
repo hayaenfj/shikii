@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Problem](#problem) · [Zastosowanie 1: zmierz myślenie samego AI](#zastosowanie-1-zmierz-myślenie-samego-ai) · [Zastosowanie 2: powierz mu decyzję biznesową](#zastosowanie-2-powierz-mu-decyzję-biznesową) · [Co robisz na stronie](#co-robisz-na-stronie) · [Instalacja](#instalacja) · [Dlaczego można wymienić AI](#dlaczego-można-wymienić-ai) · [Czytaj dalej](#czytaj-dalej)
 
@@ -104,7 +104,7 @@ Wyjście poleceń i komunikaty hooków są po angielsku (jeśli język w ustawie
 - [Przewodnik](../guide.md): każde polecenie, HTTP API, FAQ · [opis spec](../../skills/shikii/references/spec.md)
 - [Hook](../../integrations/claude-code.md) (po japońsku): jak mierzone jest myślenie samego agenta, tabela pasmo → zachowanie, budowa wewnętrzna
 - [Architektura](../architecture.md) (po japońsku): cały obraz stojący za rysunkiem powyżej
-- [Gotowe decyzje](../../decisions/README.md) · [wiki o tym, jak pytać](../../wiki/index.md) · [zmierzone liczby](../bench.md) · [notatki operacyjne](../operations.md)
+- [Gotowe decyzje](../../decisions/README.md) · [wiki o tym, jak pytać](../../wiki/index.md) · [zmierzone liczby](../bench.md)
 - [Połączenia](../../integrations/mcp.md): MCP, adapter dla zwykłych modeli czatowych, Docker
 
 **Dla współtwórców**: celowo zepsuj test i zobacz, jak nie przechodzi, zanim go naprawisz. Każda liczba pochodzi ze skryptu. Tylko człowiek potwierdza twierdzenie w wiki. Nie dodawaj ustawień; zamiast tego stałe miejsca i stałe zasady.

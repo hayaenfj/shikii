@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Il problema](#il-problema) · [Uso 1: misurare il pensiero dell'IA stessa](#uso-1-misurare-il-pensiero-dellia-stessa) · [Uso 2: affidarle una decisione di lavoro](#uso-2-affidarle-una-decisione-di-lavoro) · [Cosa fa lei nella pagina](#cosa-fa-lei-nella-pagina) · [Installazione](#installazione) · [Perché si può cambiare IA](#perché-si-può-cambiare-ia) · [Per saperne di più](#per-saperne-di-più)
 
@@ -104,7 +104,7 @@ L'output dei comandi e i messaggi degli hook sono in inglese (se la lingua impos
 - [La guida](../guide.md): ogni comando, l'API HTTP, le domande frequenti · [il riferimento del file di decisione](../../skills/shikii/references/spec.md)
 - [L'hook](../../integrations/claude-code.md) (giapponese): come viene misurato il pensiero dell'agente stesso, la tabella fascia → comportamento, il funzionamento interno
 - [Architettura](../architecture.md) (giapponese): il quadro completo dietro il diagramma qui sopra
-- [Decisioni pronte](../../decisions/README.md) · [il wiki su come chiedere](../../wiki/index.md) · [numeri misurati](../bench.md) · [note operative](../operations.md)
+- [Decisioni pronte](../../decisions/README.md) · [il wiki su come chiedere](../../wiki/index.md) · [numeri misurati](../bench.md)
 - [Collegamenti](../../integrations/mcp.md): MCP, l'adattatore per i normali modelli di chat, Docker
 
 **Per chi contribuisce**: rompa un test di proposito e lo guardi fallire prima di sistemarlo. Ogni numero viene da uno script. Solo una persona conferma un'affermazione del wiki. Nessuna impostazione nuova: posti fissi e regole fisse al loro posto.

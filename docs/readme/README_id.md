@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Masalahnya](#masalahnya) · [Cara pakai 1: mengukur cara berpikir AI itu sendiri](#cara-pakai-1-mengukur-cara-berpikir-ai-itu-sendiri) · [Cara pakai 2: serahkan keputusan bisnis kepadanya](#cara-pakai-2-serahkan-keputusan-bisnis-kepadanya) · [Apa yang Anda lakukan di halaman](#apa-yang-anda-lakukan-di-halaman) · [Instalasi](#instalasi) · [Mengapa AI-nya boleh diganti](#mengapa-ai-nya-boleh-diganti) · [Baca lebih lanjut](#baca-lebih-lanjut)
 
@@ -104,7 +104,7 @@ Keluaran perintah dan pesan hook dalam bahasa Inggris (kalau pengaturan bahasa C
 - [Panduan](../guide.md): setiap perintah, HTTP API, FAQ · [referensi spec](../../skills/shikii/references/spec.md)
 - [Hook](../../integrations/claude-code.md) (bahasa Jepang): cara mengukur pemikiran agen itu sendiri, tabel band → perilaku, isi dalamnya
 - [Arsitektur](../architecture.md) (bahasa Jepang): gambaran utuh di balik diagram di atas
-- [Keputusan siap pakai](../../decisions/README.md) · [wiki cara bertanya](../../wiki/index.md) · [angka hasil ukur](../bench.md) · [catatan operasi](../operations.md)
+- [Keputusan siap pakai](../../decisions/README.md) · [wiki cara bertanya](../../wiki/index.md) · [angka hasil ukur](../bench.md)
 - [Sambungan](../../integrations/mcp.md): MCP, adaptor untuk model chat biasa, Docker
 
 **Untuk kontributor**: rusak sebuah tes dengan sengaja dan lihat ia gagal sebelum memperbaikinya. Setiap angka berasal dari skrip. Hanya manusia yang mengonfirmasi klaim wiki. Jangan tambahkan pengaturan; pakai tempat tetap dan aturan tetap.

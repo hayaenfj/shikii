@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [O problema](#o-problema) · [Uso 1: medir o pensamento da própria IA](#uso-1-medir-o-pensamento-da-própria-ia) · [Uso 2: delegar uma decisão do negócio](#uso-2-delegar-uma-decisão-do-negócio) · [O que você faz na página](#o-que-você-faz-na-página) · [Instalação](#instalação) · [Por que dá para trocar a IA](#por-que-dá-para-trocar-a-ia) · [Leia mais](#leia-mais)
 
@@ -104,7 +104,7 @@ A saída dos comandos e as mensagens dos hooks são em inglês (se o idioma conf
 - [O guia](../guide.md): cada comando, a API HTTP, perguntas frequentes · [a referência do spec](../../skills/shikii/references/spec.md)
 - [O hook](../../integrations/claude-code.md) (em japonês): como o pensamento do próprio agente é medido, a tabela faixa → comportamento, o funcionamento interno
 - [Arquitetura](../architecture.md) (em japonês): o quadro completo por trás do diagrama acima
-- [Decisões prontas](../../decisions/README.md) · [o wiki de como perguntar](../../wiki/index.md) · [números medidos](../bench.md) · [notas de operação](../operations.md)
+- [Decisões prontas](../../decisions/README.md) · [o wiki de como perguntar](../../wiki/index.md) · [números medidos](../bench.md)
 - [Conexões](../../integrations/mcp.md): MCP, o adaptador para modelos de chat comuns, Docker
 
 **Para quem contribui**: quebre um teste de propósito e veja-o falhar antes de corrigir. Cada número vem de um script. Só uma pessoa confirma uma afirmação do wiki. Não acrescente configurações; lugares fixos e regras fixas no lugar delas.

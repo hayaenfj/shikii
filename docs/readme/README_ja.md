@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.4.2-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
 0.4.2では、`shikii update` で次回からの更新を行えます。訂正の追跡、短い記憶とまとめた振り返りも引き継いでいます。[変更履歴](../../CHANGELOG_ja.md)。
@@ -196,7 +196,7 @@ scripts/demo.sh
 - [詳しい使い方](../guide.ja.md): 会話の振り返り、CLI、HTTP API
 - [hookの説明](../../integrations/claude-code.md): 依頼の前と作業の後に行うこと
 - [構造の設計](../architecture.md): 会話の学習と業務の判定、それぞれの保存と役割
-- [エージェントの作法](../../skills/shikii/SKILL.md)・[変更履歴](../../CHANGELOG_ja.md)・[運用メモ](../operations.md)
+- [エージェントの作法](../../skills/shikii/SKILL.md)・[変更履歴](../../CHANGELOG_ja.md)
 
 **開発に参加する人へ**: テストはわざと壊して落ちるのを見てから直す。観察と正解を分け、効果を数で主張する時は測定結果を示す。基本構成と固定の規則で済ませ、新しい設定を増やさない。
 

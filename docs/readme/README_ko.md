@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [문제](#문제) · [사용법 1: AI 자신의 생각을 측정한다](#사용법-1-ai-자신의-생각을-측정한다) · [사용법 2: 업무의 결정을 맡긴다](#사용법-2-업무의-결정을-맡긴다) · [화면에서 하는 일](#화면에서-하는-일) · [설치](#설치) · [왜 AI를 바꿔도 되는가](#왜-ai를-바꿔도-되는가) · [더 읽기](#더-읽기)
 
@@ -104,7 +104,7 @@ install.sh가 하는 일: 실행 파일(`shikii`와 `shikii-readout`)을 설치�
 - [안내서](../guide.md): 모든 명령, HTTP API, FAQ · [spec 참고](../../skills/shikii/references/spec.md)
 - [hook](../../integrations/claude-code.md)(일본어): 에이전트 자신의 생각을 측정하는 방식, 구간(band) → 행동의 표, 내부 구조
 - [구조](../architecture.md)(일본어): 위 그림 뒤에 있는 전체 모습
-- [미리 만들어진 결정](../../decisions/README.md) · [묻는 방법의 wiki](../../wiki/index.md) · [측정한 숫자](../bench.md) · [운영 기록](../operations.md)
+- [미리 만들어진 결정](../../decisions/README.md) · [묻는 방법의 wiki](../../wiki/index.md) · [측정한 숫자](../bench.md)
 - [연결](../../integrations/mcp.md): MCP, 일반 채팅 모델용 어댑터, Docker
 
 **기여하는 분께**: 테스트는 일부러 깨서 실패하는 모습을 본 뒤에 고칩니다. 모든 숫자는 스크립트에서 나옵니다. wiki의 주장을 확인하는 것은 사람만입니다. 설정 항목은 더하지 않습니다. 정해진 자리와 정해진 규칙이 그 일을 합니다.
