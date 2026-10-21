@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [El problema](#el-problema) · [Uso 1: medir el propio pensamiento de la IA](#uso-1-medir-el-propio-pensamiento-de-la-ia) · [Uso 2: encargarle una decisión del negocio](#uso-2-encargarle-una-decisión-del-negocio) · [Qué hace usted en la página](#qué-hace-usted-en-la-página) · [Instalación](#instalación) · [Por qué puede cambiar la IA](#por-qué-puede-cambiar-la-ia) · [Leer más](#leer-más)
 
@@ -104,7 +104,7 @@ La salida de los comandos y los mensajes de los hooks están en inglés (si el i
 - [La guía](../guide.md): cada comando, la API HTTP, preguntas frecuentes · [la referencia del archivo de decisión](../../skills/shikii/references/spec.md)
 - [El hook](../../integrations/claude-code.md) (japonés): cómo se mide el propio pensamiento del agente, la tabla banda → comportamiento, el funcionamiento interno
 - [Arquitectura](../architecture.md) (japonés): el cuadro completo detrás del diagrama de arriba
-- [Decisiones listas para usar](../../decisions/README.md) · [la wiki de cómo preguntar](../../wiki/index.md) · [números medidos](../bench.md) · [notas de operación](../operations.md)
+- [Decisiones listas para usar](../../decisions/README.md) · [la wiki de cómo preguntar](../../wiki/index.md) · [números medidos](../bench.md)
 - [Conexiones](../../integrations/mcp.md): MCP, el adaptador para modelos de chat corrientes, Docker
 
 **Para quienes colaboran**: rompa un test a propósito y vea cómo falla antes de arreglarlo. Cada número sale de un script. Solo una persona confirma una afirmación de la wiki. No añada opciones; en su lugar, lugares fijos y reglas fijas.

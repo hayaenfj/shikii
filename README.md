@@ -9,7 +9,7 @@ Your usual agent builds lessons from requests, replies and corrections, with lin
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.4.2-00ADD8?style=flat-square)](CHANGELOG.md)
 
 Version 0.4.2 adds `shikii update` for future upgrades. It also includes the correction tracking, concise memory and batched reflection from earlier versions. See the [changelog](CHANGELOG.md).
@@ -196,7 +196,8 @@ scripts/demo.sh
 - [The guide](docs/guide.md): conversation reflection, CLI and HTTP API
 - [Hooks](integrations/claude-code.md) (Japanese): work done before and after a turn
 - [Architecture](docs/architecture.md) (Japanese): conversation learning, business decisions, storage and ownership
-- [Changelog](CHANGELOG.md); [agent instructions](skills/shikii/SKILL.md) and [operations](docs/operations.md) (Japanese)
+- [Changelog](CHANGELOG.md)
+- [Agent instructions](skills/shikii/SKILL.md) (Japanese)
 
 **For contributors**: break a test and observe its failure before fixing it. Separate observations from truths, and ground numerical claims in measurements. Keep fixed places and rules rather than adding settings.
 

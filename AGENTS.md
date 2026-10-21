@@ -4,7 +4,7 @@
 
 - 新しい依頼に着手する時は、まずリポジトリの `CLAUDE.md` と、共有メモリの索引 `$HOME/.claude/projects/shikii-shared/memory/MEMORY.md` を読む。触る領域の記憶(`feedback-*.md`・`project-*.md`・`reference-*.md`)は本文まで読み、規則・判断・残作業を今回の作業に反映する
 - 共有メモリの場所は **`$HOME/.claude/projects/shikii-shared/memory/`**(okurun-ai と同じ形。worktree でもこの同じ場所を使う。repo には置かない)。Claude Code・Codex・Cursor・OpenCode のどれでも、この機械のどのセッションでも同じ記憶から始めるためのもの
-- 依頼の開始時に共有メモリの `feedback-shared-memory-with-claude.md` を確認する。長い経緯や完了した仕事の記録は隣の `$HOME/.claude/projects/shikii-shared/handoff/`、進捗の実体は docs/operations.md の「第 N 段」
+- 依頼の開始時に共有メモリの `feedback-shared-memory-with-claude.md` を確認する。長い経緯や完了した仕事の記録は隣の `$HOME/.claude/projects/shikii-shared/handoff/`、進捗の実体はローカル専用の docs/operations.md の「第 N 段」。このファイルはGit管理外とし、無い環境では共有メモリとhandoffを参照する
 - メモリの過去の記録は、現在のコード・Git の履歴・検証結果と照合する。現在のユーザー指示を優先し、push・公開・Releases の許可は過去の記録から推測しない
 - 参照先を読めない時は、対象と理由を短く伝える
 

@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Vấn đề](#vấn-đề) · [Cách dùng 1: đo chính cách nghĩ của AI](#cách-dùng-1-đo-chính-cách-nghĩ-của-ai) · [Cách dùng 2: giao một quyết định trong công việc](#cách-dùng-2-giao-một-quyết-định-trong-công-việc) · [Bạn làm gì trên trang](#bạn-làm-gì-trên-trang) · [Cài đặt](#cài-đặt) · [Vì sao bạn có thể đổi AI](#vì-sao-bạn-có-thể-đổi-ai) · [Đọc thêm](#đọc-thêm)
 
@@ -104,7 +104,7 @@ Thiết lập cho từng dự án (`shikii init`) là việc của agent (bạn 
 - [Hướng dẫn](../guide.md): mọi lệnh, HTTP API, câu hỏi thường gặp · [tài liệu tham chiếu spec](../../skills/shikii/references/spec.md)
 - [Hook](../../integrations/claude-code.md) (tiếng Nhật): cách đo chính cách nghĩ của agent, bảng dải → cách hành xử, cấu trúc bên trong
 - [Kiến trúc](../architecture.md) (tiếng Nhật): toàn cảnh phía sau sơ đồ ở trên
-- [Quyết định làm sẵn](../../decisions/README.md) · [wiki về cách hỏi](../../wiki/index.md) · [con số đã đo](../bench.md) · [ghi chú vận hành](../operations.md)
+- [Quyết định làm sẵn](../../decisions/README.md) · [wiki về cách hỏi](../../wiki/index.md) · [con số đã đo](../bench.md)
 - [Kết nối](../../integrations/mcp.md): MCP, bộ chuyển đổi cho các mô hình chat thường, Docker
 
 **Dành cho người đóng góp**: cố ý phá một bài kiểm thử và xem nó thất bại trước khi sửa. Mọi con số đều đến từ một script. Chỉ có người mới xác nhận một nhận định trong wiki. Không thêm thiết lập mới; thay vào đó là chỗ đặt cố định và quy tắc cố định.

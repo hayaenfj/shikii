@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Проблема](#проблема) · [Способ 1: измерить мышление самого ИИ](#способ-1-измерить-мышление-самого-ии) · [Способ 2: доверить ему рабочее решение](#способ-2-доверить-ему-рабочее-решение) · [Что вы делаете на странице](#что-вы-делаете-на-странице) · [Установка](#установка) · [Почему ИИ можно сменить](#почему-ии-можно-сменить) · [Читать дальше](#читать-дальше)
 
@@ -104,7 +104,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 - [Руководство](../guide.md): каждая команда, HTTP API, частые вопросы · [справка по spec](../../skills/shikii/references/spec.md)
 - [Hook](../../integrations/claude-code.md) (на японском): как измеряется мышление самого агента, таблица «полоса → поведение», внутреннее устройство
 - [Архитектура](../architecture.md) (на японском): полная картина за схемой выше
-- [Готовые решения](../../decisions/README.md) · [wiki о том, как спрашивать](../../wiki/index.md) · [измеренные числа](../bench.md) · [заметки об эксплуатации](../operations.md)
+- [Готовые решения](../../decisions/README.md) · [wiki о том, как спрашивать](../../wiki/index.md) · [измеренные числа](../bench.md)
 - [Подключение](../../integrations/mcp.md): MCP, адаптер для обычных чат-моделей, Docker
 
 **Участникам**: нарочно сломайте тест и посмотрите, как он падает, прежде чем исправлять. Каждое число берётся из скрипта. Только человек подтверждает утверждение в wiki. Не добавляйте настроек; вместо них — фиксированные места и фиксированные правила.

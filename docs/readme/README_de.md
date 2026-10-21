@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [Das Problem](#das-problem) · [Verwendung 1: das Denken der KI selbst messen](#verwendung-1-das-denken-der-ki-selbst-messen) · [Verwendung 2: ihr eine Geschäftsentscheidung übergeben](#verwendung-2-ihr-eine-geschäftsentscheidung-übergeben) · [Was Sie auf der Seite tun](#was-sie-auf-der-seite-tun) · [Installation](#installation) · [Warum Sie die KI wechseln können](#warum-sie-die-ki-wechseln-können) · [Mehr lesen](#mehr-lesen)
 
@@ -104,7 +104,7 @@ Befehlsausgaben und Hook-Meldungen sind auf Englisch (steht die Spracheinstellun
 - [Die Anleitung](../guide.md): jeder Befehl, die HTTP-API, FAQ · [die Referenz zur Entscheidungsdatei](../../skills/shikii/references/spec.md)
 - [Der Hook](../../integrations/claude-code.md) (Japanisch): wie das Denken des Agenten selbst gemessen wird, die Tabelle Band → Verhalten, das Innere
 - [Architektur](../architecture.md) (Japanisch): das ganze Bild hinter dem Diagramm oben
-- [Fertige Entscheidungen](../../decisions/README.md) · [das Wiki, wie man fragt](../../wiki/index.md) · [gemessene Zahlen](../bench.md) · [Betriebsnotizen](../operations.md)
+- [Fertige Entscheidungen](../../decisions/README.md) · [das Wiki, wie man fragt](../../wiki/index.md) · [gemessene Zahlen](../bench.md)
 - [Anbindungen](../../integrations/mcp.md): MCP, der Adapter für gewöhnliche Chat-Modelle, Docker
 
 **Für Mitwirkende**: einen Test absichtlich brechen und ihn fehlschlagen sehen, bevor Sie ihn beheben. Jede Zahl stammt aus einem Skript. Nur ein Mensch bestätigt eine Wiki-Behauptung. Keine Einstellungen hinzufügen; stattdessen feste Orte und feste Regeln.

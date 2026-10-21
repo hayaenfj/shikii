@@ -4,7 +4,7 @@
 
 - 記憶の正本は **`$HOME/.claude/projects/shikii-shared/memory/`**(索引 `MEMORY.md`。長い記録は隣の `handoff/`)。okurun-ai と同じ形。Claude Code のこのプロジェクトの `memory/` はそこへのリンク。worktree でも同じ場所を使う。repo には記憶を置かない
 - 形は Claude Code の自動メモリと同じ(1 事実 1 ファイル、前書きに `name` `description` `metadata.type`、索引に 1 行)。同じテーマは既存のファイルを直す。更新の直前に読み直す
-- セッションの始めに `MEMORY.md` を読む。本人から新しいことを言われたら共有メモリに書く。進捗の実体は docs/operations.md の「第 N 段」
+- セッションの始めに `MEMORY.md` を読む。本人から新しいことを言われたら共有メモリに書く。進捗の実体はローカル専用の docs/operations.md の「第 N 段」(Git管理外。無い環境では共有メモリとhandoffを参照)
 - 別の機械に入れる時は、`mkdir -p ~/.claude/projects/shikii-shared/{memory,handoff}` して `~/.claude/projects/<このフォルダの名>/memory` をリンクにする(中身は本人が持ち運ぶ)
 
 # 言葉と作法(詳しくは共有メモリの各ファイル)

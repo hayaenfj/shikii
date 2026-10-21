@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
 [![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
-[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
+[![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 
 [問題在哪](#問題在哪) · [用法 1：量測 AI 自己的思考](#用法-1量測-ai-自己的思考) · [用法 2：把業務決定交給它](#用法-2把業務決定交給它) · [你在頁面上做什麼](#你在頁面上做什麼) · [安裝](#安裝) · [為什麼可以換 AI](#為什麼可以換-ai) · [繼續閱讀](#繼續閱讀)
 
@@ -104,7 +104,7 @@ install.sh 做的事：安裝執行檔（`shikii` 和 `shikii-readout`），替 
 - [指南](../guide.md)：每條命令、HTTP API、常見問題 · [spec 參考](../../skills/shikii/references/spec.md)
 - [hook](../../integrations/claude-code.md)（日文）：agent 自己的思考是怎麼量的、區段 → 行為的對照表、內部結構
 - [架構](../architecture.md)（日文）：上面那張圖背後的全貌
-- [現成的決策](../../decisions/README.md) · [怎麼問的 wiki](../../wiki/index.md) · [量到的數字](../bench.md) · [營運筆記](../operations.md)
+- [現成的決策](../../decisions/README.md) · [怎麼問的 wiki](../../wiki/index.md) · [量到的數字](../bench.md)
 - [接入](../../integrations/mcp.md)：MCP、把普通聊天模型接進來的轉接器、Docker
 
 **給參與貢獻的人**：先故意把測試弄壞、看它失敗，再修好。每個數字都來自腳本。只有人可以確認一條 wiki 主張。不加新設定；靠固定的位置和固定的規則來解決。

@@ -169,4 +169,4 @@ AI に見せる文の並べ方も鍵に入れています。普通のチャッ�
 
 ## 10. もっと詳しく
 
-数字と出典まで含めた設計の記録は [`decision-ops-framework.md`](decision-ops-framework.md)。使い方は [`guide.ja.md`](guide.ja.md)。動いているものの止め方は [`operations.md`](operations.md)。モデルの比較表は [`model-comparison.md`](model-comparison.md)。
+数字と出典まで含めた設計の記録は [`decision-ops-framework.md`](decision-ops-framework.md)。使い方は [`guide.ja.md`](guide.ja.md)。モデルの比較表は [`model-comparison.md`](model-comparison.md)。

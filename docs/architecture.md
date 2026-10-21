@@ -89,4 +89,4 @@ Gitの中は実パスのプロジェクトルート、外は実行したフォ�
 
 次に実利用で確かめるのは、訂正に沿う行動が具体的に残るか、同じ指摘が繰り返されるか。元の目的と途中の作業を継続して管理する機能や、記憶の意味の矛盾を自動で解消する機能は今後の候補で、現在の動作としては説明しない。
 
-検証・反映の記録は[運用メモ](operations.md)の第45〜49段。READMEの図は `scripts/gen-architecture-svg.py` から生成し、`scripts/check-readme.sh` で日英4枚の一致を検査する。
+検証の手順は[CI](../.github/workflows/test.yml)にある。READMEの図は `scripts/gen-architecture-svg.py` から生成し、`scripts/check-readme.sh` で日英4枚の一致を検査する。
