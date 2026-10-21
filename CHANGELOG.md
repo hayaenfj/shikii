@@ -2,20 +2,21 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.4.3 — Clearer reviews and less repeated loading
+
+- Clarifies the target of before-work and after-work cards. Shows the current request first and folds the AI reply from before that request into conversation context. For yes/no decisions, the displayed prediction, its probability and the matching answer button now use the more likely answer, including after a retry.
+- Redesigns the UI with navigation grouped by before-work and after-work decisions, counts, a prominent question, distinct conversation blocks and larger answer buttons. Adds responsive layouts, light and dark colors, and clearer project cards. Opens a pending decision on first use while preserving an existing selection, and prevents navigation keystrokes from submitting an answer.
+- Fixes evidence details in the knowledge view by using consistent JSON field names. Missing evidence fields no longer appear as `undefined`.
+- Limits original-text loading to the records returned by the queue API, preserving priority order and excluding superseded decisions.
+- Refreshes only the visible queue or answered records. Loads wording details and knowledge when opened, keeps counts and project filters available, and ignores late responses after navigation. Removes unused UI styles.
+- Removes unused declarations and moves test-only helpers into test files while preserving hook behavior and test coverage.
+
 ## 0.4.2 — Update to the latest release with one command
 
 - `shikii update` checks GitHub Releases for the latest stable version and downloads the package for macOS or Linux on arm64 or amd64. Go, curl and the GitHub CLI are not required.
 - Verifies SHA256SUMS and the asset hashes, then updates shikii and readout beside the running executable. Leaves the installation unchanged if the current version is the same or newer.
 - Checks the package contents and executable version before replacing files, and restores the existing executables if replacement fails. Preserves conversations, memories, human answers and calibration, and refreshes existing hooks and agent instructions. Restart a running UI or MCP server to use the new version.
 - Makes `CHANGELOG.md` the English changelog and keeps the Japanese history in `CHANGELOG_ja.md`, with links between them.
-- Clarifies the target of before-work and after-work cards. Shows the current request first and folds the AI reply from before that request into conversation context. For yes/no decisions, the displayed prediction, its probability and the matching answer button now use the more likely answer, including after a retry.
-- Redesigns the UI with navigation grouped by before-work and after-work decisions, counts, a prominent question, distinct conversation blocks and larger answer buttons. Adds responsive layouts, light and dark colors, and clearer project cards. Opens a pending decision on first use while preserving an existing selection, and prevents navigation keystrokes from submitting an answer.
-
-- Fixes evidence details in the knowledge view by using consistent JSON field names. Missing evidence fields no longer appear as `undefined`.
-
-- Limits original-text loading to the records returned by the queue API, preserving priority order and excluding superseded decisions.
-
-- Refreshes only the visible queue or answered records. Loads wording details and knowledge when opened, keeps counts and project filters available, and ignores late responses after navigation. Removes unused UI styles.
 
 ## 0.4.1 — Connect corrections to the next action
 
