@@ -134,21 +134,21 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 		runHook(t, "stop", map[string]any{"session_id": "review", "cwd": repo, "last_assistant_message": "日本語で起動手順をまとめました"})
 	}
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "review", "cwd": repo, "prompt": "まだ英語が残っています。日本語の指定を満たすように直してください。"})
-	if !strings.Contains(feedbackContext(t, out), "shikii_review") {
-		t.Fatal("人の返答後に仮採点をエージェントへ渡す")
+	if strings.Contains(feedbackContext(t, out), "shikii_reflect") {
+		t.Fatal("一会話だけなら仮採点をまとめるまで待つ")
 	}
 	observed, err := (store.Store{Dir: agent}).RecentFeedback(feedbackScope(repo))
 	if err != nil || len(observed) != 1 || len(observed[0].Targets) != 2 {
 		t.Fatalf("繰り返した Stop でも元の採点対象を保つ: %+v %v", observed, err)
 	}
-	ctx, err := reviewContext(agent, feedbackScope(repo))
-	if err != nil || len(ctx) > 4096 {
-		t.Fatal("採点の文脈は 4 KB まで")
+	ctx, err := reflectContext(agent, feedbackScope(repo))
+	if err != nil || len(ctx) > 1800 {
+		t.Fatal("振り返りの案内は1800バイトまで")
 	}
 	if _, err := runReview(agent, feedbackScope(gitRepo(t)), reviewRequest{Operation: "submit", SourceID: observed[0].ID, TraceID: observed[0].Targets[0].TraceID, Truth: "no", Reason: "別の仕事"}); err == nil {
 		t.Fatal("別の仕事の会話を採点しない")
 	}
-	if ctx, err := reviewContext(agent, feedbackScope(gitRepo(t))); err != nil || ctx != "" {
+	if ctx, err := reflectContext(agent, feedbackScope(gitRepo(t))); err != nil || ctx != "" {
 		t.Fatal("別の仕事へ採点の文脈を持ち出さない")
 	}
 	st := store.Store{Dir: agent}
@@ -162,9 +162,9 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx, err = reviewContext(agent, feedbackScope(repo))
-	if err != nil || len(ctx) == 0 || len(ctx) > 4096 || !json.Valid([]byte(ctx[strings.LastIndex(ctx, "\n")+1:])) {
-		t.Fatal("引用をエスケープした後も 4 KB と JSON の境界を保つ")
+	ctx, err = reflectContext(agent, feedbackScope(repo))
+	if err != nil || len(ctx) == 0 || len(ctx) > 1800 || !json.Valid([]byte(ctx[strings.LastIndex(ctx, "\n")+1:])) {
+		t.Fatal("原文を重ねず、短い案内とJSONの境界を保つ")
 	}
 }
 

@@ -36,10 +36,10 @@ func TestHookSeparatesProjectStores(t *testing.T) {
 	if loadSession(bStore, session).Previous != "" {
 		t.Fatal("同じ session id でも他の仕事の返答を渡さない")
 	}
-	if ctx, err := recallFeedback(bStore, feedbackScope(b), request); err != nil || ctx != "" {
+	if ctx, err := memoryContext(bStore, feedbackScope(b), request, &hookSession{}); err != nil || ctx != "" {
 		t.Fatalf("他の仕事の会話を返さない: %v", err)
 	}
-	if ctx, err := recallFeedback(aStore, feedbackScope(a), request); err != nil || !strings.Contains(ctx, "起動手順") {
+	if ctx, err := memoryContext(aStore, feedbackScope(a), request, &hookSession{}); err != nil || !strings.Contains(ctx, "起動手順") {
 		t.Fatalf("元の仕事では会話を参照できる: %v", err)
 	}
 	status, err := exec.Command("git", "-C", a, "status", "--porcelain", "--untracked-files=all").Output()

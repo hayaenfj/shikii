@@ -159,18 +159,19 @@ func (o hookOut) json(event string) []byte {
 // hookSession はプロジェクトごとの控え(.shikii/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 // 依頼の時の作業ツリーの一覧は隣の <id>.files(大きいので JSON には入れない)。
 type hookSession struct {
-	Request     string         `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
-	RequestText string         `json:"request_text,omitempty"`    // 画面用の原文。判定の入力とは分けて保持する
-	TurnID      string         `json:"turn_id,omitempty"`         // 同じ文の依頼を繰り返しても別のターン
-	Scope       string         `json:"scope,omitempty"`           // repo の実パス。会話も採点も線も同じ仕事に限る
-	Completed   *completedTurn `json:"completed,omitempty"`       // この依頼に返答した時の控え。次の人の発言と一組にする
-	Previous    string         `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
-	Pending     []pendingItem  `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
-	Asked       []askedItem    `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
-	Reviews     []askedItem    `json:"reviews,omitempty"`         // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
-	Reported    []string       `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
-	Judged      bool           `json:"judged,omitempty"`          // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
-	At          time.Time      `json:"at"`
+	Request     string           `json:"request,omitempty"`         // 人が最後に送った依頼(UserPromptSubmit で控える)
+	RequestText string           `json:"request_text,omitempty"`    // 画面用の原文。判定の入力とは分けて保持する
+	TurnID      string           `json:"turn_id,omitempty"`         // 同じ文の依頼を繰り返しても別のターン
+	Scope       string           `json:"scope,omitempty"`           // repo の実パス。会話も採点も線も同じ仕事に限る
+	Completed   *completedTurn   `json:"completed,omitempty"`       // この依頼に返答した時の控え。次の人の発言と一組にする
+	Memories    []memoryDelivery `json:"memories,omitempty"`        // このセッションに届けた記憶の版(直近16件)
+	Previous    string           `json:"previous,omitempty"`        // 直前のアシスタントの発言(Stop で控える)
+	Pending     []pendingItem    `json:"pending,omitempty"`         // prompt-kind の結果の正解を待つ判定
+	Asked       []askedItem      `json:"asked,omitempty"`           // このセッションで人の答えを待つことになった判定(ask と抜き取り)
+	Reviews     []askedItem      `json:"reviews,omitempty"`         // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
+	Reported    []string         `json:"reported_traces,omitempty"` // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
+	Judged      bool             `json:"judged,omitempty"`          // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
+	At          time.Time        `json:"at"`
 }
 
 type pendingItem struct {
@@ -548,13 +549,22 @@ func runHookEvent(event string) error {
 		// 人の依頼が進んだ時だけ。通知は同じ TurnID なので wiki の仕事を増やさない。
 		current := loadSession(agent, in.SessionID)
 		if current.TurnID != snapshot.TurnID {
-			if context, rerr := reviewContext(agent, current.Scope); rerr != nil {
-				hookLog("review: " + rerr.Error())
-			} else {
-				out.Context = joinLines(out.Context, context)
+			// 同じセッションへ届ける記憶は、書き戻しと一緒に重複を除く。
+			if merr := updateSession(agent, in.SessionID, func(s *hookSession) {
+				if s.TurnID != current.TurnID || s.Scope != current.Scope {
+					return
+				}
+				context, merr := memoryContext(agent, s.Scope, cut(in.Prompt, requestMax), s)
+				if merr != nil {
+					hookLog("memory: " + merr.Error())
+				} else {
+					out.Context = joinLines(out.Context, context)
+				}
+			}); merr != nil {
+				hookLog("memory: " + merr.Error())
 			}
-			if context, werr := notebookContext(agent, current.Scope, cut(in.Prompt, requestMax)); werr != nil {
-				hookLog("wiki: " + werr.Error())
+			if context, rerr := reflectContext(agent, current.Scope); rerr != nil {
+				hookLog("reflect: " + rerr.Error())
 			} else {
 				out.Context = joinLines(out.Context, context)
 			}
@@ -688,14 +698,6 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		firstErr = err
 	}
 	var out hookOut
-	// 過去の会話は確率や正解ではない。較正前でも、引用としてエージェントに渡せる。
-	if recalled, ferr := recallFeedback(agent, scope, req); ferr != nil {
-		if firstErr == nil {
-			firstErr = ferr
-		}
-	} else {
-		out.Context = recalled
-	}
 	for i, d := range ds {
 		if d == nil || d.Band == decide.Abstain {
 			continue

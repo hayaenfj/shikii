@@ -7,10 +7,10 @@
 ### A tool that grows lessons from everyday conversations and checks AI decisions against outcomes and corrections. Your usual agent maintains the wiki while you work.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-228%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-234%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/operations.md)
-[![Version](https://img.shields.io/badge/version-0.3.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
 [The problem](#the-problem) · [Use 1: measure the AI's own thinking](#use-1-measure-the-ais-own-thinking) · [Use 2: hand it a business decision](#use-2-hand-it-a-business-decision) · [What you do on the page](#what-you-do-on-the-page) · [Install](#install) · [Why you can swap the AI](#why-you-can-swap-the-ai) · [Read more](#read-more)
 
@@ -45,11 +45,13 @@ At the end of a turn one line appears, `shikii: 3 of this session's decisions wa
 
 Each project's `.shikii/` holds its conversations, lessons, assessments, truths and calibration. The hooks prepare it automatically. The common page on :8096 opens each project separately; `~/.shikii/agent` holds shared templates, tools and the project index. Details: [the hook](integrations/claude-code.md) (Japanese).
 
-**0.3: your ordinary conversations grow a wiki.** The original request, the agent's reply and your next message become source material. Your usual agent turns useful observations into lessons with sources and conditions. Before a similar request, shikii quotes related lessons from the same project. It keeps earlier revisions, updates the index and checks sources and links once a day. No wiki-specific page actions or additional model are needed. The Knowledge panel shows lessons and their original sources.
+**0.4: useful memory arrives briefly, and reflection is batched.** Lessons are selected by their titles and conditions, up to two in a short quote. The same revision is not repeated for one hour in the session; updates arrive immediately. Routine assessment and wiki work are grouped into two conversations and handled with one query and one submission. A single pending conversation is offered at the next request after a day. No additional model or settings are needed.
+
+**Your ordinary conversations grow a wiki.** The original request, the agent's reply and your next message become source material. Your usual agent turns useful observations into lessons with sources and conditions. Before a similar request, shikii quotes related lessons from the same project. It keeps earlier revisions, updates the index and checks sources and links once a day. No wiki-specific page actions or additional model are needed. The Knowledge panel shows lessons and their original sources.
 
 **AI handles routine assessment; people spot-check it.** After your next reply, your usual agent assesses whether the previous work stayed in scope and finished the request, recording evidence or leaving it undecided. People check random samples and undecided cases. Human corrections return as examples for future assessment. Provisional assessments stay separate from truth labels and calibration. [How assessment works](skills/shikii/references/review.md) (Japanese).
 
-This follows [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): retain sources, let the agent maintain the wiki, and separate ingestion, queries and periodic maintenance. Lessons remain hypotheses with sources; interpreting a conversation never makes it a truth label or an accuracy claim. [Changes in 0.3](CHANGELOG.md) (Japanese).
+This follows [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): retain sources, let the agent maintain the wiki, and separate ingestion, queries and periodic maintenance. Lessons remain hypotheses with sources; interpreting a conversation never makes it a truth label or an accuracy claim. [Changes in 0.4](CHANGELOG.md) (Japanese).
 
 ## Use 2: hand it a business decision
 

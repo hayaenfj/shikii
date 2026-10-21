@@ -296,6 +296,17 @@ func (b Book) sourceIssues(p Page) []Issue {
 }
 
 func (b Book) Query(query string) (View, error) {
+	return b.query(query, false)
+}
+
+// Recall は自動で届ける教訓。本文の偶然の一致より、題と適用条件を重視する。
+// 手で探す Query は従来どおり本文も検索する。
+func (b Book) Recall(query string) ([]Page, error) {
+	v, err := b.query(query, true)
+	return v.Lessons, err
+}
+
+func (b Book) query(query string, recall bool) (View, error) {
 	v := View{Lessons: []Page{}, Pending: []store.Feedback{}, Issues: []Issue{}}
 	pages, issues, err := b.pages()
 	if err != nil {
@@ -313,8 +324,12 @@ func (b Book) Query(query string) (View, error) {
 		for _, id := range p.Replaces {
 			superseded[id] = true
 		}
-		score := store.TextMatch(query, p.Title+" "+p.AppliesTo+" "+p.Lesson)
-		if query == "" || score >= 0.18 {
+		text, threshold := p.Title+" "+p.AppliesTo+" "+p.Lesson, 0.18
+		if recall {
+			text, threshold = p.Title+" "+p.AppliesTo, 0.35
+		}
+		score := store.TextMatch(query, text)
+		if (!recall && query == "") || score >= threshold {
 			scores[p.ID] = score
 		}
 	}
@@ -325,21 +340,35 @@ func (b Book) Query(query string) (View, error) {
 	}
 	sort.SliceStable(v.Lessons, func(i, j int) bool { return scores[v.Lessons[i].ID] > scores[v.Lessons[j].ID] })
 	limit := 2
-	if query == "" {
+	if query == "" && !recall {
 		limit = 20
 	}
 	if len(v.Lessons) > limit {
 		v.Lessons = v.Lessons[:limit]
 	}
+	if recall {
+		return v, nil
+	}
+	v.Pending, err = b.PendingSources()
+	if len(v.Pending) > 2 {
+		v.Pending = v.Pending[:2]
+	}
+	return v, err
+}
+
+// PendingSources は原資料を古いものから返す。読み出す履歴の量は Store が制限する。
+func (b Book) PendingSources() ([]store.Feedback, error) {
 	recent, err := (store.Store{Dir: b.Root}).RecentFeedback(b.Scope)
 	if err != nil {
-		return v, err
+		return nil, err
 	}
 	dir, err := b.directory(false, "sources")
 	if err != nil && !os.IsNotExist(err) {
-		return v, err
+		return nil, err
 	}
-	for _, f := range recent {
+	pending := []store.Feedback{}
+	for i := len(recent) - 1; i >= 0; i-- {
+		f := recent[i]
 		if !idPattern.MatchString(f.ID) {
 			continue
 		}
@@ -348,12 +377,9 @@ func (b Book) Query(query string) (View, error) {
 				continue
 			}
 		}
-		v.Pending = append(v.Pending, f)
-		if len(v.Pending) == 2 {
-			break
-		}
+		pending = append(pending, f)
 	}
-	return v, nil
+	return pending, nil
 }
 
 func (b Book) Ingest(d Draft) (Result, error) {
