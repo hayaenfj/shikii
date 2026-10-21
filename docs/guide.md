@@ -4,6 +4,18 @@ Everything the [README](../README.md) leaves out: every command, the full quick 
 
 [What shikii is](#what-shikii-is) · [The goal](#the-goal) · [Quick start](#quick-start) · [How shikii works](#how-shikii-works) · [What you can connect](#what-you-can-connect) · [Results](#results) · [FAQ](#faq) · [Commands](#commands) · [More documentation](#more-documentation)
 
+## Use it in ordinary conversations
+
+For automatic recording in Claude Code or Codex, install once and initialize each project explicitly with `shikii --init`. Uninitialized projects stay untouched. This repository is currently private: authenticate and clone it, then run `sh install.sh` in that checkout with Go 1.27 or newer. See [Get started](../README.md#get-started) for the order of setup.
+
+Your usual agent organizes requests, replies and the next human message into lessons with sources and conditions. Before similar work it receives up to two short quotes from the same project. Assessment, wiki work and memory observations are handled together using `shikii reflect query / submit`, MCP `shikii_reflect`, or `POST /v1/reflect`.
+
+Reflection preserves the delivered quote and revision and records a decision and observed result: helpful, unused, harmful or unknown. The unreleased correction workflow also links a verbatim user statement to an action, and observes followed, repeated, not applicable or unknown separately. Success or silence alone establishes neither. See [the input format and evidence rules](../skills/shikii/references/review.md) (Japanese).
+
+Conversations, lessons, provisional assessments, truths and calibration belong to the project's `.shikii/`. The common `~/.shikii/agent` holds templates, tools and the project index. The Knowledge panel shows memory observations and their evidence. People check random samples and undecided cases; AI assessments do not become truth labels or calibration automatically.
+
+The sections below cover the decision-model workflow and its CLI in detail.
+
 ## What shikii is
 
 Decision models (TypeSafe Jev, llama.cpp Kev-4B and OpenJev, OpenRouter Decisions, …) answer typed questions, `choice`, `score` and `noul` (yes/no), with probabilities and no generated text. Every vendor ships the same disclaimer: *the probabilities are not calibrated for your data, and thresholds do not carry across models or questions.*
@@ -28,7 +40,7 @@ A hypothesis we intend to test, not a claim: for typed decisions, a measured que
 
 ## Quick start
 
-Go 1.27 or newer. Nothing else is needed for the first run.
+Go 1.27 or newer. The fake-model demo needs no key or GPU. Authenticate with GitHub before cloning this private repository.
 
 ### Run the whole loop without a key or a GPU
 
@@ -37,6 +49,10 @@ git clone https://github.com/hayaenfj/shikii && cd shikii
 scripts/demo.sh                 # fake model: decide → label → calibrate → check → drift → status → gc
 scripts/demo.sh --overconfident # a fake model whose probabilities are too sharp; compare the raw and calibrated confusion matrices
 ```
+
+### Prepare the default local model runtime
+
+On macOS with Homebrew: `brew install go llama.cpp`, then check `go version` (1.27+) and `llama-server --version`. The [formula](https://formulae.brew.sh/formula/llama.cpp) installs the server. Other systems: [official installation instructions](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md). The default for `shikii up` and the hooks is Kev-4B Q4_K_M, `ggml-org/Kev-4B-GGUF:Q4_K_M`.
 
 ### Point it at a real model
 
@@ -90,6 +106,7 @@ Programs call `POST /v1/decide` and `POST /v1/label` from any language; the body
 | `GET /v1/wiki`, `POST /v1/wiki/claim`, `GET /v1/specs` | the knowledge panel and the spec list |
 | `POST /v1/wiki/notebook` | conversation wiki: query, ingest and lint lessons with sources; lessons remain hypotheses |
 | `POST /v1/review` | query and submit evidence-backed provisional assessments; humans check random samples and undecided cases |
+| `POST /v1/reflect` | query or submit `reviews`, `wiki` and `memory` together, including correction observations; check `complete` and each item's `error` |
 
 The page also has a *wording* section per spec: the latest `tune` result, the winner's wording next to the current one, and two buttons, **same meaning → adopt** and **meaning changed → reject**. Numbers are the machine's job; whether a rewording still asks what you meant is a person's. Start `serve` with `--proposer http://127.0.0.1:8087` and the page can also ask a chat model for new candidates and score them in the background.
 
@@ -175,12 +192,12 @@ The hooks start what is missing by themselves: the local model (`shikii up`, whe
 
 The hooks run at two moments only: when a request arrives (before the agent thinks) and when the turn ends (after it has finished). There is no per-tool hook: classifying every shell command is noise, not thinking, and permissions are already Claude Code's job. Four specs ship with it. Before the turn: `prompt-kind` (what the agent will end up doing; its truth comes for free from whether the working tree changed by the next request) and `needs-plan` (should the agent agree on an approach first). After the turn: `changes-in-scope` (the files that changed during the turn, compared against the request) and `done-as-asked` (request, changed files and closing message: did it finish what was asked). Three or four decisions per request, whatever the number of tool calls. Everything is local-only (`send_to: [local]`, `pii: true`). Each project's `.shikii/` holds its conversations, assessments, truths and calibration; the shared page opens each project separately. If a spec has candidate wordings (`variants:`), the Stop hook also runs `tune` in the background every 50 new human truths (never `--write`: adopting a wording stays a person's call; the run lands in `wiki/runs/`).
 
-Until a spec has a calibration line the hooks only record (shadow mode). Once it does: a confident needs-a-plan request becomes context for the agent, a turn that confidently looks out of scope or unfinished becomes one line to the person (never to the agent: feeding context at Stop would keep the conversation going by itself), and an unsure needs-plan decision prints one line with its URL. Scope and completion decisions wait for routine AI assessment after the next human reply; people check random samples and undecided assessments. Provisional assessments never become truth labels or calibration data. See [the assessment workflow](../skills/shikii/references/review.md) (Japanese). A hook never stops a tool or returns a permission decision. At the end of a turn one line says how many of this session's decisions wait for an answer (only when new ones were added). If Claude Code's `language` setting is Japanese, every message is shown in Japanese next to the English; for other languages the message stays English. Either way the record keeps `display` (language, the question and answer in that language when the spec has them, the message shown) so you can trace what was said later. Failures (no model, slow model) never block: the hook exits 0 and logs to `~/.shikii/agent/hook.log`. Details and the band → behaviour table: [`integrations/claude-code.md`](../integrations/claude-code.md).
+Model-based advice waits for a calibration line. Conversation recording, memory recall and batched reflection work before a line exists, including when the decision model is unavailable. Once it does: a confident needs-a-plan request becomes context for the agent, a turn that confidently looks out of scope or unfinished becomes one line to the person (never to the agent: feeding context at Stop would keep the conversation going by itself), and an unsure needs-plan decision prints one line with its URL. Scope and completion decisions wait for routine AI assessment after the next human reply; people check random samples and undecided assessments. Provisional assessments never become truth labels or calibration data. See [the assessment workflow](../skills/shikii/references/review.md) (Japanese). A hook never stops a tool or returns a permission decision. At the end of a turn one line says how many of this session's decisions wait for an answer (only when new ones were added). If Claude Code's `language` setting is Japanese, every message is shown in Japanese next to the English; for other languages the message stays English. Either way the record keeps `display` (language, the question and answer in that language when the spec has them, the message shown) so you can trace what was said later. Failures (no model, slow model) never block: the hook exits 0 and logs to `~/.shikii/agent/hook.log`. Details and the band → behaviour table: [`integrations/claude-code.md`](../integrations/claude-code.md).
 
 ### Install and update
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # needs Go 1.27+
+sh install.sh                # Go 1.27+; run inside an authenticated clone while the repository is private
 cd <project root> && shikii init   # .shikii/ (decisions, wiki with the shared knowledge, records, labels); MCP entries for Claude Code, Cursor, OpenCode, Codex; AGENTS.md section; the agent skill
 make install          # copies bin/shikii and bin/shikii-readout to ~/.local/bin
 git pull && make install
@@ -236,18 +253,22 @@ Safety-relevant branches (taint routing, no act without calibration, stale-hash 
 
 ## What you can connect
 
-shikii speaks the System One request shape (`POST /v1/systemone`), so anything that serves it works. The adapter covers everything else.
+shikii speaks the System One request shape (`POST /v1/systemone`), with an `answers` object and probabilities. A chat-completions API alone is insufficient. `shikii-readout` specifically requires llama.cpp's `/apply-template`, `/tokenize` and `/completion` APIs.
 
 | Target | What shikii gets | Requirements and guide |
 |---|---|---|
 | **TypeSafe Jev** (hosted) | `choice` / `score` / `noul` with probabilities, model id such as `jev-1.13.0` | `TYPESAFE_API_KEY` in the environment. Default `--hosted` |
 | **llama.cpp decision models** (Kev-4B, OpenJev, Clef, …) | Same shape, locally, model id from `/v1/models` | `llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M` (`make server`). llama.cpp 0.6.0 or newer |
+| **Ollama** | System One probabilities from a decision model | v0.35.0+, `--local http://127.0.0.1:11434 --model nimble`. [Official API](https://docs.ollama.com/api/systemone); matched against the client, inference not tested in this update |
+| **LM Studio** | Jev-compatible System One with a loaded decision model | `--local http://127.0.0.1:1234 --model <loaded-model-id>`. [Official API](https://lmstudio.ai/docs/developer/jev-compat/systemone); inference not tested in this update |
 | **OpenRouter Decisions API** | Same shape through OpenRouter | `DECISIONS_API_KEY`, `--hosted https://openrouter.ai/api/alpha/decisions` |
 | **Any chat GGUF** via `shikii-readout` | Letter-logit readout in System One shape, no calibration of its own | Stock `llama-server` 0.7.0 behind it. [`integrations/readout.md`](../integrations/readout.md) |
 | **PrismML Bonsai** via [BonJev](https://github.com/ChezRD/bonjev) | Same, with BonJev's own prompt and built-in calibration | Rust build and the Prism fork. [`integrations/bonjev.md`](../integrations/bonjev.md) |
 | **Fake model** (`bin/fake-systemone`) | Deterministic probabilities for demos and tests | Nothing. `make fake` |
 | **Claude Code and Codex hooks** (`shikii hook install`) | The agent's own thinking measured before and after each turn: will this request change files (labelled from the working tree), does it need a plan, were the changes in scope, was the request completed | [`integrations/claude-code.md`](../integrations/claude-code.md) (Japanese) |
-| **Docker** | llama.cpp with Kev-4B and shikii in two containers; `.shikii/` stays on the host | `docker compose up`. [`integrations/docker.md`](../integrations/docker.md) |
+| **Docker / Podman** | Containerized business API and page; `.shikii/` stays on the host. Host-agent hooks are separate | Docker Compose, or Podman with an external Compose provider. Podman execution not tested in this update. [`integrations/docker.md`](../integrations/docker.md) |
+
+The built-in hooks remain fixed to localhost:8080; installing another server does not replace them. The endpoint alternatives above are for the business CLI, MCP and `serve`. Local clients send no Authorization header. For local-only decisions, choose a locally executed model: Ollama can forward to cloud models through a local URL ([official explanation](https://docs.ollama.com/capabilities/decision)). Specifications were checked on 2026-10-21; this is distinct from verifying inference on the actual runtime.
 
 Taint is a first-class input: pass `--tainted` (or let your hook do it) in a session that touched production data and the request never leaves the machine. If no local endpoint is configured, the decision abstains.
 
@@ -333,10 +354,10 @@ shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # wh
 - [integrations/readout.md](../integrations/readout.md), [integrations/bonjev.md](../integrations/bonjev.md), [integrations/claude-code.md](../integrations/claude-code.md), [integrations/mcp.md](../integrations/mcp.md), [integrations/docker.md](../integrations/docker.md): the connections we run.
 - [examples/](../examples/) and [testdata/](../testdata/README.md): a spec with no calibration to start from, and the synthetic labelled sets used in tests.
 
-## 0.4: concise memory and batched reflection
+## Conversation recall and reflection limits
 
 Before a request, the hook quotes up to two lessons whose titles and conditions match, within 1800 bytes after JSON escaping. The same revision is suppressed for one hour in that session; updated revisions arrive immediately. If no lesson applies, at most one similar unprocessed conversation is quoted. Archived source material is not repeated. Manual wiki queries still search lesson bodies.
 
-Assessment and wiki ingestion are grouped into two conversations, or one pending conversation after a day at the next request. `shikii reflect query` returns original material, targets, relevant existing lessons and human corrections together. `shikii reflect submit` accepts `reviews` and `wiki` in one JSON object. The MCP equivalent is `shikii_reflect` and the HTTP endpoint is `POST /v1/reflect`. Check `complete` and each item's `error`; successful items persist and can be retried with identical input. This does not create truth labels or calibration data. See [the JSON workflow](../skills/shikii/references/review.md).
+Assessment and wiki ingestion are grouped into two conversations, or one pending conversation after a day at the next request. `shikii reflect query` returns original material, targets, relevant existing lessons and human corrections together. `shikii reflect submit` accepts `reviews`, `wiki` and `memory` in one JSON object. The MCP equivalent is `shikii_reflect` and the HTTP endpoint is `POST /v1/reflect`. Check `complete` and each item's `error`; successful items persist and can be retried with identical input. This does not create truth labels or calibration data. See [the JSON workflow](../skills/shikii/references/review.md).
 
 Initialize each project explicitly with `shikii --init` (`shikii init` is equivalent), or ask the agent to use shikii in that project. This prepares the four built-in decisions, wiki, MCP, rules and page link. The completion marker is written last; uninitialized projects remain untouched by hooks. Reinitialization preserves existing settings and data. Subdirectories resolve to the same project root.

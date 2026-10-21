@@ -9,6 +9,10 @@
 ```sh
 go build -o bin/shikii ./cmd/shikii
 
+# 以下の例で使う問いを、このプロジェクトへコピーする
+bin/shikii new prompt-intent --from examples/prompt-intent.yaml
+bin/shikii new same-issue --from decisions/same-issue.yaml
+
 # 仕様のハッシュ(較正の鍵)
 bin/shikii hash .shikii/decisions/same-issue.yaml
 
@@ -26,15 +30,50 @@ bin/shikii label --last --spec-id prompt-intent question --source ask   # 直近
 bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M'
 ```
 
+## 普段の会話で使う
+
+Claude Code・Codexの自動記録は、インストール後に利用するプロジェクトで `shikii --init` を一度実行して有効にする。未初期化の場所ではhookは動かない。非公開の間のインストールは、認証してcloneしたshikiiのフォルダで `sh install.sh`。Go 1.27以上が必要。概要と導入の順序は[日本語README](readme/README_ja.md#始め方)にある。
+
+依頼・返答・次の人の発言から、利用中のエージェントが出典付きの教訓をまとめる。同じプロジェクトの似た依頼へ最大2件、1800バイト以内の短い引用を届け、同じ版は同じセッションへ一時間繰り返さない。会話の整理に別のモデルは起こさない。
+
+未処理が2会話、または1会話が一日経った後の依頼で、採点・wiki・記憶の振り返りをまとめる。人が普段の整理のために実行する必要はないが、CLIは次の形で呼べる。
+
+```sh
+shikii reflect query
+shikii reflect submit < reflection.json
+```
+
+`reflection.json` は取得した対象に対する `reviews`・`wiki`・`memory` を含むJSON。`complete`と各項目の`error`を確認し、失敗分だけ直して再送する。原文、届いた引用と版、関連する教訓、人の訂正例を読んでから保存する。[入力例と作法](../skills/shikii/references/review.md)。
+
+開発中の訂正の追跡では、wikiの `correction: {source_id, quote, action}` が人の返答の原文と次に変える行動を結ぶ。次に届いた時の `memory` へ `result`（役立ち方）と `correction_result`（沿った・再発・対象外・不明）、判断と確認結果を残す。両方を区別し、成功・追加依頼・沈黙だけで改善にしない。未評価も知識画面に残す。この部分は[変更履歴](../CHANGELOG.md)の未リリースの項目。
+
 ## ローカルの決定モデル(llama.cpp)
 
 ```sh
-brew install llama.cpp            # 0.6.0 (build 11429) で /v1/systemone が使えた
+brew install llama.cpp            # Homebrewの公式formula
+llama-server --version
 llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M --port 8080 --host 127.0.0.1
 ```
 
+基本モデルは `ggml-org/Kev-4B-GGUF:Q4_K_M`。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookもこのモデルを使う。
+
 モデル名は応答の `model`(例 `ggml-org/Kev-4B-GGUF:Q4_K_M`)が較正の鍵になる。`--model` で送った名前ではない。
 Kev-4B は英語のみと表記されているが、v2 の文言なら日本語の依頼でも top-1 0.913(v1 の文言では `other` に逃げて 0.68 だった。文言の方が効く)。
+
+## 判定モデルの接続先
+
+業務の `decide`・MCP・`serve` は、System One形式の `POST /v1/systemone` を使う。OpenAI互換のチャットAPIと同じ意味ではない。CLIで指定するURLにパスがあればそれを使い、パスが無ければ `/v1/systemone` を付ける。応答には問いごとの `answers` と確率が必要。`shikii-readout` はllama.cppの `/apply-template`・`/tokenize`・`/completion` を使う変換役で、任意のチャットAPIに対応する変換役ではない。
+
+| 接続先 | 条件 | URLの例 |
+|---|---|---|
+| llama.cpp | Kev-4Bなどの決定モデル | `--local http://127.0.0.1:8080` |
+| Ollama | v0.35.0以上、System One対応の決定モデル。今回の実機推論は未検証 | `--local http://127.0.0.1:11434 --model nimble` |
+| LM Studio | Jev互換のSystem One対応API、読み込み済みの決定モデル。今回の実機推論は未検証 | `--local http://127.0.0.1:1234 --model <読み込み済みのモデルID>` |
+| Jev | `TYPESAFE_API_KEY`、外部送信を許可するspec | `--hosted https://api.typesafe.ai --model jev-latest` |
+
+参照: [OllamaのSystem One](https://docs.ollama.com/api/systemone)、[LM StudioのSystem One](https://lmstudio.ai/docs/developer/jev-compat/systemone)、[TypeSafeのAPI](https://docs.typesafe.ai/introduction/quickstart)。2026-10-21に公式仕様とクライアントを照合したもので、接続先の実機推論の成功を保証する表ではない。ローカルのクライアントはAuthorizationを付けないため、認証を必須にした構成は別途確認が必要。
+
+既製のhookは `127.0.0.1:8080` の固定構成で、OllamaやLM Studioへ自動で切り替わらない。会話の整理と参照は判定用モデルが止まっていても動く。OllamaはローカルURL経由でクラウドモデルも呼べるため、手元だけで扱う判定にはローカルのモデルを選ぶ。[Ollamaのクラウドモデルの説明](https://docs.ollama.com/capabilities/decision)。
 
 ## 構成
 
@@ -86,7 +125,7 @@ Kev-4B は英語のみと表記されているが、v2 の文言なら日本語�
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
 | `POST /v1/wiki/notebook` | `operation: query / ingest / lint` | 会話から育つ wiki。出典付きの教訓と原文の検索・取り込み・点検。教訓は仮説 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
-| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` | 最大2会話の採点とwiki整理をまとめて確認・保存。`complete`と各`error`を確認する |
+| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` | 最大2会話の採点・wiki整理・届いた記憶と訂正の観察をまとめて確認・保存。`complete`と各`error`を確認する |
 | `GET /v1/specs` | | 読み込んでいる spec の一覧 |
 
 ```sh
@@ -152,7 +191,7 @@ OpenJev は生の確率で足りて両方 `identity`、Kev-4B は Platt がわ�
 ## 棚卸し: `shikii status`
 
 ```sh
-bin/shikii status --store ~/.shikii/agent ~/.shikii/agent/decisions/prompt-kind.yaml
+bin/shikii status --store .shikii .shikii/decisions/prompt-kind.yaml
 # prompt-kind: records=1 labels=1
 #   by source: outcome=1   by truth: !edit=1
 #   ggml-org/Kev-4B-GGUF:Q4_K_M @ 68ed82631e63f2a2   1  collecting (1/50)
@@ -166,10 +205,10 @@ spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome 
 記録(`records/`)は判定のたびに増える。ラベルは較正の材料なので捨てないが、ラベルの付かなかった古い記録は要らない。
 
 ```sh
-bin/shikii gc --store ~/.shikii/agent                 # 表示だけ(既定: 30d より古くラベルの無い記録が候補)
+bin/shikii gc --store .shikii                 # 表示だけ(既定: 30d より古くラベルの無い記録が候補)
 # prompt-kind: would remove 120 unlabeled record(s) older than 30d; keep 48 labeled, 15 recent, 0 unparsable
 # dry run: nothing was changed. Re-run with --apply to remove them.
-bin/shikii gc --store ~/.shikii/agent --apply         # 実際に消す
+bin/shikii gc --store .shikii --apply         # 実際に消す
 bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # spec と年齢を指定(d / w / h。0 なら年齢を問わない)
 ```
 
@@ -225,8 +264,9 @@ bin/shikii decide .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0
 
 ## 接続例
 
-Claude Code と Codex の hook(`shikii hook install`): AI 自身の考え方を、考える前(この依頼で結局ファイルを変えるか、着手前に進め方を合わせるべきか)と考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)の 2 点で測る。ツール呼び出しごとの hook は無い(コマンドの分類は考え方ではなく雑音で、許可は Claude Code の仕事)。置き場は `~/.shikii/agent`(基本構成。プロジェクトをまたいで 1 つ、線も 1 本。記録に仕事の印 `project`(repo のルートの名)が付き、画面は仕事ごとに絞り込め、`status` は仕事ごとに数える)、モデルは :8080、答え合わせの画面は :8096。どちらも無ければ hook が裏で起こす(`shikii up`、`shikii serve --store ~/.shikii/agent --port 8096`。10 分に 1 回まで)。install.sh が `shikii hook install --yes`(hook・skill・モデル)まで流すので、人が打つのは 1 行。spec に `variants:`(候補の言い方)があれば、人の正解が 50 件増えるごとに Stop が `tune` を裏で回す(`--write` 無し。採用は人。結果は `wiki/runs/`)。線が無いうちは記録だけ(影の期間)。線が引けたら、方針合わせが要る依頼は AI への文脈、終えていない・範囲の外に見えるターンは人への 1 行、迷った判定は「あとで答える → URL」を端末に 1 行、ターンの終わりに答え待ちの件数を 1 行。ツールは止めず、許可の判定も出さない。失敗しても止めない(hook.log に理由)。帯 → 振る舞いの表と中の形は [`integrations/claude-code.md`](../integrations/claude-code.md)。
-他のエージェントに付けるときの最小手順もそこに。
+Claude CodeとCodexは、依頼の前と作業の後の2つのhookで会話の記録・記憶の参照・4問の判定を行う。初期化したプロジェクトの `.shikii/` へ会話・仮採点・正解・線を保存し、共通の `~/.shikii/agent` には型・道具・仕事の入口を置く。線もプロジェクトごとで、別の仕事の実績は持ち込まない。
+
+会話の整理と範囲・完了の仮採点は通常のエージェントが担当し、人は抜き取りと保留を確認する。仮採点は正解・較正とは別。判定用モデルが使えなくても、会話の記録と参照は働く。手元のモデルは `:8080`、共通画面は `:8096`。ツールを止めず、実行許可を出す仕組みではない。[hookの詳しい説明](../integrations/claude-code.md)。
 
 ## まだ無いもの
 
