@@ -115,7 +115,9 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
-  const ok = checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const contextOK = checkTurnContext(target);
+  const binaryOK = await checkBinaryPrediction(target);
+  const ok = contextOK && binaryOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok) process.exit(1);
 }
 
@@ -233,5 +235,57 @@ async function checkProjectEntrances(target) {
   globalThis.fetch = realFetch;
   const ok = scopedLink && namesOnly && noQueues;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (project entrance=' + scopedLink + ', escaped project names=' + namesOnly + ', no combined queue=' + noQueues + ')');
+  return ok;
+}
+
+// 完了した前の仕事の返答を、今回の着手前の判定対象と取り違えない。
+function checkTurnContext(target) {
+  i18n.lang = 'ja';
+  const make = (id, inputs) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 1, labels: 0, unlabeled: 1, tune: null, queue: { items: [{ trace_id: id, answerable: true, inputs, original_inputs: { previous: '前の仕事は完了しました。末尾 <img src=x>' }, text_status: {}, choices: [] }] } });
+  ui.done = false; ui.filter = 'all'; ui.project = ''; ui.view = 'one'; ui.pinned = '';
+  let app = mount(SpecPanel, { target, props: { sp: make('needs-plan', { previous: '前の仕事は完了しました。', request: '今回の新しい依頼' }) } });
+  flushSync();
+  const first = target.querySelector('.text [data-input]');
+  const previous = target.querySelector('details.previous-context');
+  const before = first?.dataset.input === 'request' && first.textContent.includes('今回の依頼') && first.textContent.includes('今回の新しい依頼') && target.querySelector('.decision-phase')?.textContent.includes('着手前');
+  const folded = !!previous && !previous.open && previous.querySelector('summary')?.textContent.includes('前の仕事の返答') && previous.textContent.includes('末尾 <img src=x>') && !target.querySelector('img');
+  if (previous) previous.open = true;
+  const readable = previous?.open && previous.textContent.includes('前の仕事は完了しました。末尾');
+  unmount(app);
+  app = mount(SpecPanel, { target, props: { sp: make('done-as-asked', { files: 'changed.go', request: '今回の新しい依頼', summary: '今回の作業を終えました。' }) } });
+  flushSync();
+  const fields = [...target.querySelectorAll('.text [data-input]')];
+  const after = fields[0]?.dataset.input === 'request' && fields[1]?.dataset.input === 'summary' && fields[1].textContent.includes('今回の最後の返答') && target.querySelector('.decision-phase')?.textContent.includes('作業後') && !target.querySelector('details.previous-context');
+  unmount(app);
+  const ok = before && folded && readable && after;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (着手前の対象=' + before + ', 前の完了返答を折りたたむ=' + folded + ', 原文を読める=' + readable + ', 作業後の対象=' + after + ')');
+  return ok;
+}
+
+// noulのtop=yesは確率の対象。46%なら画面の予想と「AIと同じ」はno/54%になる。
+async function checkBinaryPrediction(target) {
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push(JSON.parse(opts.body)); return { ok: true, json: async () => url.endsWith('v1/redo') ? ({ before: { top: 'yes', p: .46, band: 'discard' }, after: { top: 'yes', p: .3, band: 'discard' }, truth: 'no', correct_after: false }) : ({ truth: 'no' }) }; };
+  const it = { trace_id: 'binary', answerable: true, band: 'discard', top: 'yes', p: .46, inputs: { request: '今回の依頼' }, choices: [{ truth: 'yes', label: '先に合わせる' }, { truth: 'no', label: 'そのまま進めてよい' }] };
+  const sp = { id: 'needs-plan', type: 'noul', queue: { items: [it] }, unlabeled: 1, labels: 0 };
+  let app = mount(ItemCard, { target, props: { sp, it } });
+  flushSync();
+  const guess = target.querySelector('.guess')?.textContent;
+  const negative = guess?.includes('そのまま進めてよい') && guess.includes('54%') && target.querySelector('button.top')?.dataset.truth === 'no';
+  target.querySelector('.btns button.adv')?.click();
+  await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
+  const redone = target.querySelector('.redo-out')?.textContent.includes('そのまま進めてよい 70%') && target.querySelector('.redo-out')?.textContent.includes('あなたの答えと一致しました');
+  target.querySelector('button.top')?.click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const submitted = calls.some(c => c.trace_id === 'binary' && c.truth === 'no');
+  unmount(app);
+  app = mount(ItemCard, { target, props: { sp: { id: 'custom', type: 'choice' }, it: { ...it, top: 'yes' } } });
+  flushSync();
+  const unchangedChoice = target.querySelector('button.top')?.dataset.truth === 'yes' && target.querySelector('.guess')?.textContent.includes('46%');
+  unmount(app);
+  globalThis.fetch = realFetch;
+  const ok = negative && submitted && unchangedChoice && redone;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (二択の予想=' + negative + ', 同じ答えの保存=' + submitted + ', 多択の予想=' + unchangedChoice + ', 再判定の一致=' + redone + ')');
   return ok;
 }

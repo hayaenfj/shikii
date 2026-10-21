@@ -1,6 +1,9 @@
 // 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
+  beforeWork: 'Before work: judge whether this request needed a discussion of the approach before starting.',
+  afterWork: 'After work: compare this request with its closing reply and changed files.',
+  inputRequest: 'Current request', inputSummary: 'Closing reply for this request', inputFiles: 'Files changed for this request', inputPrevious: 'Earlier reply (context; open if needed)',
   memoryEffectTitle: 'Memory and decisions (AI assessment)',
   correctionTitle: 'From correction to action (AI)',
   correctionHow: 'Observations of behavior after a correction was delivered in this window. Excludes undelivered corrections and improvement claims against a no-memory baseline.',
