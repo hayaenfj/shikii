@@ -32,7 +32,7 @@ bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ggml-org/Kev-4B-
 
 ## 普段の会話で使う
 
-Claude Code・Codexの自動記録は、インストール後に利用するプロジェクトで `shikii --init` を一度実行して有効にする。未初期化の場所ではhookは動かない。非公開の間のインストールは、認証してcloneしたshikiiのフォルダで `sh install.sh`。Go 1.27以上が必要。概要と導入の順序は[日本語README](readme/README_ja.md#始め方)にある。
+Claude Code・Codexの自動記録は、インストール後に利用するプロジェクトで `shikii --init` を一度実行して有効にする。未初期化の場所ではhookは動かない。インストールは[日本語README](readme/README_ja.md#始め方)のcurlの1行で行う。ソースから入れる場合はcloneしたshikiiのフォルダで `sh install.sh`。Go 1.27以上が必要。
 
 依頼・返答・次の人の発言から、利用中のエージェントが出典付きの教訓をまとめる。同じプロジェクトの似た依頼へ最大2件、1800バイト以内の短い引用を届け、同じ版は同じセッションへ一時間繰り返さない。会話の整理に別のモデルは起こさない。
 
@@ -45,7 +45,7 @@ shikii reflect submit < reflection.json
 
 `reflection.json` は取得した対象に対する `reviews`・`wiki`・`memory` を含むJSON。`complete`と各項目の`error`を確認し、失敗分だけ直して再送する。原文、届いた引用と版、関連する教訓、人の訂正例を読んでから保存する。[入力例と作法](../skills/shikii/references/review.md)。
 
-開発中の訂正の追跡では、wikiの `correction: {source_id, quote, action}` が人の返答の原文と次に変える行動を結ぶ。次に届いた時の `memory` へ `result`（役立ち方）と `correction_result`（沿った・再発・対象外・不明）、判断と確認結果を残す。両方を区別し、成功・追加依頼・沈黙だけで改善にしない。未評価も知識画面に残す。この部分は[変更履歴](../CHANGELOG.md)の未リリースの項目。
+0.4.1の訂正の追跡では、wikiの `correction: {source_id, quote, action}` が人の返答の原文と次に変える行動を結ぶ。次に届いた時の `memory` へ `result`（役立ち方）と `correction_result`（沿った・再発・対象外・不明）、判断と確認結果を残す。両方を区別し、成功・追加依頼・沈黙だけで改善にしない。未評価も知識画面に残す。この部分は[変更履歴](../CHANGELOG.md)の0.4.1の項目。
 
 ## ローカルの決定モデル(llama.cpp)
 

@@ -37,14 +37,14 @@
 
 ## 届いた記憶と訂正の観察
 
-実際に届けた引用と版を依頼IDに結び、普段のreflectで使った判断と確認結果を保存する。記憶の役立ち方は helpful / unused / harmful / unknown。開発中の訂正の追跡は、教訓の `correction: {source_id, quote, action}` に指定した人の返答の原文と次の行動を付け、次に届いた時の `correction_result` で followed / repeated / not_applicable / unknown を記録する。訂正という解釈は仮説のままで、原文が存在することから正解や実行許可を作らない。
+実際に届けた引用と版を依頼IDに結び、普段のreflectで使った判断と確認結果を保存する。記憶の役立ち方は helpful / unused / harmful / unknown。0.4.1の訂正の追跡は、教訓の `correction: {source_id, quote, action}` に指定した人の返答の原文と次の行動を付け、次に届いた時の `correction_result` で followed / repeated / not_applicable / unknown を記録する。訂正という解釈は仮説のままで、原文が存在することから正解や実行許可を作らない。
 
-訂正に沿ったことと役立ったことは別の観察。成功や沈黙だけで改善にせず、不明と未評価を残す。知識画面の数は直近の配送の窓の実績で、記憶なしとの改善率ではない。追加のモデル・人の入力は要らず、既存の `reflect query / submit` とMCP・HTTPで扱う。[JSONと根拠の規則](../skills/shikii/references/review.md)。訂正の追跡は未リリース。
+訂正に沿ったことと役立ったことは別の観察。成功や沈黙だけで改善にせず、不明と未評価を残す。知識画面の数は直近の配送の窓の実績で、記憶なしとの改善率ではない。追加のモデル・人の入力は要らず、既存の `reflect query / submit` とMCP・HTTPで扱う。[JSONと根拠の規則](../skills/shikii/references/review.md)。訂正の追跡は0.4.1で利用できる。
 
 ## 入れる・外す
 
 ```sh
-sh install.sh               # 非公開の間は、認証してcloneしたshikiiのフォルダで実行（Go 1.27以上）
+curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 shikii hook install          # 何をするかを表示するだけ(install.sh が --yes で流すのと同じ)
 shikii hook install --yes    # 実行。新しいターミナルで claude を起こし直すと効く
 shikii hook uninstall --yes  # 足した 2 つの hook だけ外す。各プロジェクトの記録と正解(.shikii/)は残る

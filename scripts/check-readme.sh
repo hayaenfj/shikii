@@ -86,7 +86,7 @@ done
 
 # 7. READMEの図4枚は同じスクリプトから再生成できる。作業中のSVGを書き換えずに比較する。
 if command -v python3 >/dev/null; then
-  assets=(shikii-hero.svg shikii-hero-ja.svg shikii-architecture.svg shikii-architecture-en.svg)
+  assets=(shikii-conversation.svg shikii-conversation-ja.svg shikii-architecture.svg shikii-architecture-en.svg)
   have_assets=1
   for asset in "${assets[@]}"; do
     [ -f "docs/assets/$asset" ] || { err "図の生成物が無い: docs/assets/$asset"; have_assets=0; }
