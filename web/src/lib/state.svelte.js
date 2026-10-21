@@ -51,7 +51,6 @@ export async function load() {
       } else if (tab) {
         const sp = st.specs.find(s => s.id === tab);
         // 回答済みでは未回答の列を読まない。
-        sp.queue = { items: [] };
         const [rows, tune] = await Promise.all([
           selection.done ? api.answered(tab) : api.queue(tab),
           selection.advanced && !selection.done ? api.tune(tab).catch(() => null) : null,
