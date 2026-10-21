@@ -51,8 +51,6 @@ type serveOpts struct {
 // 外に出すかはホスト側の port の公開が決める(compose は 127.0.0.1:8095 に絞っている)。選ぶ設定は無い。
 func bindHost() string { return systemone.BindHost() }
 
-func bindHostFor(marker string) string { return systemone.BindHostFor([]string{marker}, "") }
-
 func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	var o serveOpts
@@ -742,13 +740,6 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
 	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir})
-}
-
-func countLabeledRecords(labeled map[string]store.Label, nRec int) int {
-	if len(labeled) > nRec {
-		return nRec
-	}
-	return len(labeled)
 }
 
 // handleUI は画面(web/ を Svelte で組んだもの)。ビルド結果 web/dist は実行ファイルに埋め込まれている(shikii.WebFS)ので外部の読み込みは無い。

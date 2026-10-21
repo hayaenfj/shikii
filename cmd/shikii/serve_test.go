@@ -13,6 +13,7 @@ import (
 
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
+	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
 // serve のテスト用: spec フォルダ・store・偽モデルを揃えて、ハンドラを httptest で立てる。
@@ -355,3 +356,5 @@ func TestServeUIExplainsItself(t *testing.T) {
 		}
 	}
 }
+
+func bindHostFor(marker string) string { return systemone.BindHostFor([]string{marker}, "") }
