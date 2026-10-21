@@ -30,14 +30,17 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 | `shikii_status` | spec ごとの記録・正解・(model, hash) の状態 | なし |
 | `shikii_tune` | spec の聞き方の候補(`variants:` + 提案役が作る N 個)を正解の貯金で採点。候補ごとの数字、holdout、採用できるか | `spec`, `propose`（任意。`mcp` を `--proposer URL` 付きで起こした時だけ） |
 | `shikii_wiki` | 同じ仕事の会話から出典付きの教訓を育てる。取り込み・検索・点検 | `operation`（`query` / `ingest` / `lint`）、`sources` / `title` / `lesson` / `applies_to` / `id` / `replaces` / `query` |
-
 | `shikii_review` | 会話と結果から根拠付きで仮採点。人の抜き取りと訂正例を参照 | `operation`（`query` / `submit`）、`source_id` / `trace_id` / `truth`（`yes` / `no` / `unknown`）/ `reason` |
+
+| `shikii_reflect` | 最大2会話の仮採点とwiki整理をまとめて確認・保存 | `operation`（`query` / `submit`）、`reviews` / `wiki` |
 
 `propose > 0` を使うには `shikii mcp` を `--proposer URL` 付きで起こす(`.mcp.json` の例には無い)。
 
-`shikii_wiki` は 0.3 で追加した。文章は現在のエージェントが書き、別のモデルは使わない。置き場は hook と同じ `~/.shikii/agent` で、MCP サーバーを起こしたプロジェクトだけを扱う。`query` は関連する教訓と未整理の会話を返し、`sources: [出典ID]` を渡すと原文を読める。`ingest` で題・教訓・適用する場面・出典を保存し、教訓がない会話は `sources` だけで整理済みにできる。教訓は仮説で、正解や較正には数えない。[作法の詳細](../skills/shikii/references/wiki.md)。
+`shikii_wiki` は 0.3 で追加した。文章は現在のエージェントが書き、別のモデルは使わない。置き場はhookと同じ各仕事の `.shikii/` で、MCP サーバーを起こしたプロジェクトだけを扱う。`query` は関連する教訓と未整理の会話を返し、`sources: [出典ID]` を渡すと原文を読める。`ingest` で題・教訓・適用する場面・出典を保存し、教訓がない会話は `sources` だけで整理済みにできる。教訓は仮説で、正解や較正には数えない。[作法の詳細](../skills/shikii/references/wiki.md)。
 
 `shikii_review` は、まず `query` で同じ仕事の原文・採点対象・人の訂正例を確認してから `submit` で仮採点を保存する。人の正解は登録せず、人への確認を全件増やさない。抜き取りは shikii が選び、画面からの人の訂正を次の `query` に戻す。[採点の詳細](../skills/shikii/references/review.md)。
+
+0.4のhookは `shikii_reflect` を案内する。`query` は原文を重ねず、採点対象・関連する教訓・人の訂正例を一緒に返す。`submit` は仮採点4件とwiki整理2件まで。返答の `complete` と項目ごとの `error` を確認し、失敗分は直して再送する。成功分は保持し、同じ内容の再送は重複させない。[JSONと手順](../skills/shikii/references/review.md)。
 
 **採用の道具は無い。** 言い換えてもまだ同じことを聞いているかは人にしか分からないので、採用は画面（`shikii serve`）で人が「意味は同じ」を押した時か、端末の `tune --write` だけ。エージェントは候補を作って測るところまで。
 

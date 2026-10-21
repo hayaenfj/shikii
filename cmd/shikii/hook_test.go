@@ -383,7 +383,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	}
 	// 2 回目の UserPromptSubmit は previous(文脈)を持って聞く: 落ちないこと。短い返事は依頼を置き換えず前の依頼に添える(ターンの終わりの問いが「ok」を依頼として読まない)
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "same", "cwd": repo, "prompt": "and the other one"})
-	if !strings.Contains(feedbackContext(t, out), "pending_sources") || strings.Contains(out, "systemMessage") || loadSession(agent, "same").Request != "fix the typo in README same / and the other one" || loadSession(agent, "same").Judged {
+	if strings.Contains(out, "systemMessage") || loadSession(agent, "same").Request != "fix the typo in README same / and the other one" || loadSession(agent, "same").Judged {
 		t.Fatalf("second prompt: out=%q sess=%+v", out, loadSession(agent, "same"))
 	}
 	long := "please also rewrite the README section about installation so that it mentions Docker"

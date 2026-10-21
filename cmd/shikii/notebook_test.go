@@ -43,14 +43,14 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	var plugin struct {
 		Version string `json:"version"`
 	}
-	if err := json.Unmarshal(manifest, &plugin); err != nil || plugin.Version != shikii.Version || shikii.Version != "0.3.0" {
+	if err := json.Unmarshal(manifest, &plugin); err != nil || plugin.Version != shikii.Version || shikii.Version != "0.4.0" {
 		t.Fatalf("CLI・MCP・plugin の版を揃える: %s %+v %v", shikii.Version, plugin, err)
 	}
 	old := os.Args
 	os.Args = []string{"shikii", "--version"}
 	out := capture(t, func() error { main(); return nil })
 	os.Args = old
-	if strings.TrimSpace(out) != "shikii 0.3.0" {
+	if strings.TrimSpace(out) != "shikii 0.4.0" {
 		t.Fatalf("版を確認できる: %s", out)
 	}
 	repo := gitRepo(t)
@@ -159,7 +159,7 @@ func TestNotebookConversationIngestQueryLintLoop(t *testing.T) {
 	if len(q["lessons"].([]any)) != 1 || len(q["pending_sources"].([]any)) != 0 {
 		t.Fatalf("整理した教訓を検索して使える: %v", q)
 	}
-	ctx, err := notebookContext(agent, feedbackScope(repo), "モデルを起動する方法を説明して")
+	ctx, err := memoryContext(agent, feedbackScope(repo), "README の導入手順を書く依頼", &hookSession{})
 	if err != nil || !strings.Contains(ctx, "モデルを起動する方法まで含めて確認する") || !strings.Contains(ctx, sourceID) {
 		t.Fatalf("依頼の前に教訓と出典が届く: %s %v", ctx, err)
 	}
@@ -189,8 +189,8 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "wiki", "cwd": repo, "prompt": "README のインストール手順を更新して"})
 	runHook(t, "stop", map[string]any{"session_id": "wiki", "cwd": repo, "last_assistant_message": "更新しました"})
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "wiki", "cwd": repo, "prompt": "まだ終わっていない。モデルを起動する手順も書いて"}))
-	if !strings.Contains(ctx, "shikii wiki ingest") || !strings.Contains(ctx, "モデルを起動する手順") || !strings.Contains(ctx, "今回の依頼") {
-		t.Fatalf("エージェントに出典と取り込みの作法を自動で渡す: %s", ctx)
+	if strings.Contains(ctx, "shikii_reflect") {
+		t.Fatalf("一会話だけなら整理をまとめるまで待つ: %s", ctx)
 	}
 	// 通知では整理の仕事を増やさない。
 	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "wiki", "cwd": repo, "prompt": "<task-notification>done</task-notification>"}); out != "" {
@@ -204,7 +204,7 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 	if len(view["pending_sources"].([]any)) != 0 || len(view["lessons"].([]any)) != 0 {
 		t.Fatalf("全ての発言から教訓を捏造する必要はない: %v", view)
 	}
-	ctx, err := notebookContext(agent, feedbackScope(repo), "README")
+	ctx, err := reflectContext(agent, feedbackScope(repo))
 	if err != nil || ctx != "" {
 		t.Fatalf("整理済みの会話を繰り返し渡さない: %s %v", ctx, err)
 	}
@@ -214,13 +214,13 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx, err = notebookContext(agent, feedbackScope(repo), "README")
-	if err != nil || ctx == "" || len(ctx) > 4096 || !utf8.ValidString(ctx) {
-		t.Fatalf("wiki の引用もエスケープ後に4KB以内: bytes=%d err=%v", len(ctx), err)
+	ctx, err = reflectContext(agent, feedbackScope(repo))
+	if err != nil || ctx == "" || len(ctx) > 1800 || !utf8.ValidString(ctx) {
+		t.Fatalf("wiki の引用も原文を重ねず1800バイト以内: bytes=%d err=%v", len(ctx), err)
 	}
 	parts := strings.SplitN(ctx, "\n", 2)
 	var quoted map[string]any
-	if len(parts) != 2 || json.Unmarshal([]byte(parts[1]), &quoted) != nil || len(quoted["pending_sources"].([]any)) != 2 {
+	if len(parts) != 2 || json.Unmarshal([]byte(parts[1]), &quoted) != nil || len(quoted["sources"].([]any)) != 2 {
 		t.Fatal("切り詰めても引用データと指示の境界を保つ")
 	}
 }

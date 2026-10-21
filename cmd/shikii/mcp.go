@@ -68,6 +68,22 @@ const mcpProtocol = "2025-03-26"
 // mcpTools は道具の一覧。inputSchema は JSON Schema。
 var mcpTools = []map[string]any{
 	{
+		"name":        "shikii_reflect",
+		"description": "採点とwiki整理を最大2会話ずつまとめる。queryで原文・対象・既存の教訓・人の訂正例を一度に読み、submitでreviewsとwikiを保存する。根拠不足はunknown。追加依頼や沈黙だけで成功にせず、正解・較正には混ぜない。complete:falseなら各項目のerrorを確認して再送する。",
+		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+			"operation": map[string]any{"type": "string", "enum": []string{"query", "submit"}},
+			"reviews": map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+				"source_id": map[string]any{"type": "string"}, "trace_id": map[string]any{"type": "string"},
+				"truth": map[string]any{"type": "string", "enum": []string{"yes", "no", "unknown"}}, "reason": map[string]any{"type": "string"},
+			}, "required": []string{"source_id", "trace_id", "truth", "reason"}}},
+			"wiki": map[string]any{"type": "array", "maxItems": 2, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+				"sources": map[string]any{"type": "array", "maxItems": 2, "items": map[string]any{"type": "string"}},
+				"id":      map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "lesson": map[string]any{"type": "string"}, "applies_to": map[string]any{"type": "string"},
+				"replaces": map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "string"}},
+			}, "required": []string{"sources"}}},
+		}, "required": []string{"operation"}},
+	},
+	{
 		"name":        "shikii_review",
 		"description": "会話と作業結果から、頼まれた範囲と完了を根拠付きで仮採点する。query で同じ仕事の未採点の原文・対象・人の訂正例を確認し、submit で source_id / trace_id / truth / reason を保存する。根拠が足りなければ unknown。追加依頼・挨拶・沈黙だけで成功や失敗にしない。人の正解や較正には混ぜない。人への抜き打ち確認は shikii が選ぶ。",
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
@@ -246,6 +262,8 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 		method, path = http.MethodPost, "/v1/wiki/notebook"
 	case "shikii_review":
 		method, path = http.MethodPost, "/v1/review"
+	case "shikii_reflect":
+		method, path = http.MethodPost, "/v1/reflect"
 	default:
 		return 0, nil, fmt.Errorf("unknown tool %q", name)
 	}

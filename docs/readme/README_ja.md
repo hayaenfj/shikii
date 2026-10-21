@@ -7,10 +7,10 @@
 ### 普段の会話から出典付きの教訓を育て、AI の判断を答え合わせで確かめる道具。依頼と訂正はいつもどおり、wiki の整理は AI が行います。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-228%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-234%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
-[![Version](https://img.shields.io/badge/version-0.3.0-00ADD8?style=flat-square)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](../../CHANGELOG.md)
 
 [困りごと](#困りごと) · [使い方 1: AI 自身の考え方を測る](#使い方-1-ai-自身の考え方を測る) · [使い方 2: 業務の判定を任せる](#使い方-2-業務の判定を任せる) · [画面でできること](#画面でできること) · [インストール](#インストール) · [なぜ AI を替えても良いか](#なぜ-ai-を替えても良いか) · [もっと読む](#もっと読む)
 
@@ -45,11 +45,13 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 会話・教訓・仮採点・正解・線は、各プロジェクトの `.shikii/` に保存します。hook が自動で準備し、:8096 の共通画面から仕事を選んで開きます。`~/.shikii/agent` は共通の型・道具・プロジェクトの入口を持ちます。詳しくは [hook の説明](../../integrations/claude-code.md)。
 
-**0.3: 普段の会話から wiki が育ちます。** 「まだ終わっていない」「そこは頼んでいない」と伝えると、元の依頼・返答・その後の発言が一組で残ります。普段使っているエージェントが、当てはまる場面と出典を付けて教訓にまとめます。次の似た依頼ではその教訓を引用し、変更前の版も残します。索引は自動で更新され、出典やリンクは一日一回点検されます。wiki のための画面操作や追加のモデルは要りません。「知識」画面から教訓と原文を読めます。
+**0.4: 必要な記憶を短く届け、振り返りをまとめます。** 題と適用する場面が近い教訓を最大2件、短く引用します。同じセッションに同じ版を一時間は繰り返さず、更新された版はすぐ届けます。採点とwiki整理は2会話ずつ、一度の確認と一括保存で済ませます。1件のままでも一日経ったら次の依頼で整理を促します。追加のモデルや設定は要りません。
+
+**普段の会話から wiki が育ちます。** 「まだ終わっていない」「そこは頼んでいない」と伝えると、元の依頼・返答・その後の発言が一組で残ります。普段使っているエージェントが、当てはまる場面と出典を付けて教訓にまとめます。次の似た依頼ではその教訓を引用し、変更前の版も残します。索引は自動で更新され、出典やリンクは一日一回点検されます。wiki のための画面操作や追加のモデルは要りません。「知識」画面から教訓と原文を読めます。
 
 **普段の採点も AI、人は抜き打ち確認。** 次の返事を受けて、通常のエージェントが「頼まれた範囲か」「頼まれたことを終えたか」を根拠付きで仮採点し、分からないものは保留します。人は無作為の抜き取りと保留だけを確認し、訂正は次の採点へ戻ります。仮採点は正解ラベルや較正と分けて保存します。[採点の作法](../../skills/shikii/references/review.md)。
 
-原資料を残し、AI が取り込み・検索・定期点検を回す [カーパシーの LLM Wiki の発想](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)を取り入れています。教訓は出典付きの仮説として扱い、会話の解釈を正解や精度の数字には数えません。[0.3 の変更内容](../../CHANGELOG.md)。
+原資料を残し、AI が取り込み・検索・定期点検を回す [カーパシーの LLM Wiki の発想](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)を取り入れています。教訓は出典付きの仮説として扱い、会話の解釈を正解や精度の数字には数えません。[0.4 の変更内容](../../CHANGELOG.md)。
 
 ## 使い方 2: 業務の判定を任せる
 
