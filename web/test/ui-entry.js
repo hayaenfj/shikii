@@ -8,6 +8,8 @@ import SpecPanel from '../src/components/SpecPanel.svelte';
 import Wording from '../src/components/Wording.svelte';
 import Notebook from '../src/components/Notebook.svelte';
 import ItemCard from '../src/components/ItemCard.svelte';
+import Tabs from '../src/components/Tabs.svelte';
+import App from '../src/App.svelte';
 import { i18n, t } from '../src/lib/i18n.svelte.js';
 import { ui } from '../src/lib/state.svelte.js';
 
@@ -117,7 +119,10 @@ export async function run() {
   const target = document.getElementById('app');
   const contextOK = checkTurnContext(target);
   const binaryOK = await checkBinaryPrediction(target);
-  const ok = contextOK && binaryOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const navigationOK = checkNavigation(target);
+  const focusOK = checkAnswerFocus(target);
+  const landingOK = await checkLanding(target);
+  const ok = contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok) process.exit(1);
 }
 
@@ -287,5 +292,69 @@ async function checkBinaryPrediction(target) {
   globalThis.fetch = realFetch;
   const ok = negative && submitted && unchangedChoice && redone;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (二択の予想=' + negative + ', 同じ答えの保存=' + submitted + ', 多択の予想=' + unchangedChoice + ', 再判定の一致=' + redone + ')');
+  return ok;
+}
+
+// 着手前・作業後を分け、選んだ判定が保存され、キーボードでも現在地が分かる。
+function checkNavigation(target) {
+  i18n.lang = 'ja';
+  const specs = ['changes-in-scope', 'done-as-asked', 'needs-plan', 'prompt-kind'].map(id => ({ id, titles: {}, unlabeled: id === 'needs-plan' ? 3 : 0 }));
+  const app = mount(Tabs, { target, props: { specs, active: 'needs-plan', hasWiki: false } });
+  flushSync();
+  const before = target.querySelector('[data-stage="before"]');
+  const after = target.querySelector('[data-stage="after"]');
+  const grouped = before?.querySelectorAll('[data-tab]').length === 2 && after?.querySelectorAll('[data-tab]').length === 2 && before.textContent.includes('着手前') && after.textContent.includes('作業後');
+  const selected = target.querySelector('[data-tab="needs-plan"]')?.getAttribute('aria-current') === 'page';
+  target.querySelector('[data-tab="done-as-asked"]')?.click();
+  flushSync();
+  const remembered = ui.tab === 'done-as-asked' && localStorage.getItem('shikii.tab') === 'done-as-asked';
+  unmount(app);
+  const ok = grouped && selected && remembered;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (判定の時点を区別=' + grouped + ', 現在地=' + selected + ', 選択を保持=' + remembered + ')');
+  return ok;
+}
+
+// 会話を読んでから答えられ、二択では重複する「〜ではない」を出さない。
+function checkAnswerFocus(target) {
+  const it = { trace_id: 'focus', at: '2026-10-22T00:00:00Z', band: 'discard', top: 'yes', p: .46, answerable: true, inputs: { request: '新しい依頼' }, choices: [{ truth: 'yes', label: '先に相談する' }, { truth: 'no', label: 'そのまま進める' }] };
+  const app = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it } });
+  flushSync();
+  const conversation = target.querySelector('.text');
+  const guess = target.querySelector('.guess');
+  const answers = target.querySelector('.btns');
+  const readingOrder = !!conversation && !!guess && !!answers && !!(conversation.compareDocumentPosition(guess) & 4) && !!(guess.compareDocumentPosition(answers) & 4);
+  const buttons = [...target.querySelectorAll('button[data-truth]')];
+  const clearChoices = buttons.length === 2 && buttons.every(b => ['yes', 'no'].includes(b.dataset.truth));
+  const answerPrompt = target.querySelector('.answer-heading')?.textContent.includes('あなたの判断');
+  unmount(app);
+  const ok = readingOrder && clearChoices && answerPrompt;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (会話から回答の順=' + readingOrder + ', 重複しない二択=' + clearChoices + ', 答える場所=' + answerPrompt + ')');
+  return ok;
+}
+
+// 初めて開く時は確認待ちへ案内し、選択済みの判定は勝手に切り替えない。
+async function checkLanding(target) {
+  const realFetch = globalThis.fetch, savedState = data.state, savedTab = ui.tab;
+  const specs = ['done-as-asked', 'needs-plan'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: id === 'needs-plan' ? 2 : 0, queue: { items: [] } }));
+  const calls = [];
+  const item = { trace_id: 'keyboard', band: 'ask', top: 'yes', p: .8, at: '2026-10-22T00:00:00Z', answerable: true, inputs: { request: '依頼' }, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
+  globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push(JSON.parse(opts.body)); return { ok: true, json: async () => url === 'v1/status' ? { specs } : url.startsWith('v1/queue') ? { items: url.includes('needs-plan') ? [item] : [] } : opts?.body ? { truth: 'yes' } : {} }; };
+  data.state = { specs }; ui.tab = 'missing'; ui.done = false;
+  const app = mount(App, { target }); flushSync();
+  await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
+  const pendingFirst = target.querySelector('.decision-panel h2')?.textContent.includes('needs-plan');
+  ui.tab = 'done-as-asked'; flushSync();
+  const respectedChoice = target.querySelector('.decision-panel h2')?.textContent.includes('done-as-asked');
+  ui.tab = 'needs-plan'; flushSync();
+  const navButton = target.querySelector('[data-tab="needs-plan"]'); navButton.focus();
+  navButton.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const safeNavigation = calls.length === 0;
+  document.body.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const shortcutWorks = calls.length === 1 && calls[0].truth === 'yes';
+  unmount(app); globalThis.fetch = realFetch; data.state = savedState; ui.tab = savedTab;
+  const ok = pendingFirst && respectedChoice && safeNavigation && shortcutWorks;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回は確認待ち=' + pendingFirst + ', 選択済みは保持=' + respectedChoice + ', ナビ操作で回答しない=' + safeNavigation + ', 回答のキー操作=' + shortcutWorks + ')');
   return ok;
 }
