@@ -99,12 +99,26 @@ func waitForLocalModel(local string, wait func(context.Context, string, time.Dur
 	return wait(wctx, local, 3*time.Second, log.Printf)
 }
 
+type calibrationResult struct {
+	Reason      string `json:"reason"`
+	HumanTruths int    `json:"human_truths"`
+	MinN        int    `json:"min_n"`
+	Hash        string `json:"hash"`
+	Model       string `json:"model"`
+	At          string `json:"at"`
+}
+
+type calibrationReport struct {
+	log    string
+	result calibrationResult
+}
+
 type server struct {
 	wikiMu  sync.Mutex // 画面からの wiki の操作を直列にする(tune の updateClaims とはプロセスが違えば別。書き込みは原子的に行う)
 	o       serveOpts
 	st      store.Store
-	calibMu sync.Mutex        // 同じプロジェクトの spec の較正・候補の保存を直列にする
-	lastCal map[string]string // spec id → 最後の自動較正の報告
+	calibMu sync.Mutex                   // 同じプロジェクトの spec の較正・候補の保存を直列にする
+	lastCal map[string]calibrationReport // spec id → 最後の自動較正の報告
 	mu      sync.Mutex
 	tuning  map[string]bool   // spec id → 裏で tune が走っている
 	tuneErr map[string]string // spec id → 最後の tune の失敗
@@ -125,7 +139,7 @@ func (o *serveOpts) resolve() {
 
 func newServer(o serveOpts) http.Handler {
 	o.resolve()
-	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]string{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
+	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]calibrationReport{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleUI)
 	mux.HandleFunc("/v1/specs", s.handleSpecs)
@@ -547,11 +561,26 @@ func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 		return runCalibrate(sp.Path(), calibrateOpts{output: &buf, ef: ef, storeDir: s.o.storeDir, labeled: "none", bins: 10, write: true, rung: rung})
 	}()
 	report := strings.TrimSpace(buf.String())
+	result := calibrationResult{Reason: "written", MinN: rs.Eval.MinN, Hash: hash, Model: model, At: time.Now().Format("2006-01-02 15:04:05")}
 	if err != nil {
 		report += "\nERROR: " + err.Error()
+		result.Reason = "error"
+		var refused *calibrationRefusal
+		if errors.As(err, &refused) {
+			result.Reason, result.HumanTruths, result.MinN = refused.reason(), refused.humanTruths, refused.minN
+		}
+	} else if after, loadErr := s.spec(specID); loadErr == nil {
+		if rung == "context" {
+			after = after.ContextSpec()
+		}
+		if after != nil {
+			if c := after.CalibrationFor(model); c != nil {
+				result.HumanTruths = c.NHuman
+			}
+		}
 	}
 	s.mu.Lock()
-	s.lastCal[specID] = time.Now().Format("2006-01-02 15:04:05") + "\n" + report
+	s.lastCal[specID] = calibrationReport{log: result.At + "\n" + report, result: result}
 	s.mu.Unlock()
 	log.Printf("auto-calibrate %s (%s): %s", specID, model, lastLine(report))
 	return report, err == nil
@@ -734,8 +763,12 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		last := s.lastCal[sp.ID]
 		s.mu.Unlock()
+		var result *calibrationResult
+		if last.log != "" {
+			result = &last.result
+		}
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
-			"unlabeled": todo, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last,
+			"unlabeled": todo, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })

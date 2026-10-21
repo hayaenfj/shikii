@@ -125,6 +125,7 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
+  const calibrationOK = checkCalibrationReport(target);
   const contextOK = checkTurnContext(target);
   const binaryOK = await checkBinaryPrediction(target);
   const navigationOK = checkNavigation(target);
@@ -134,8 +135,35 @@ export async function run() {
   const loadingOK = await checkFocusedLoading(target);
   const orderingOK = await checkLoadOrdering();
   const lazyNavOK = await checkLazyNavigation(target);
-  const ok = loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok) process.exit(1);
+}
+
+function checkCalibrationReport(target) {
+  const saved = { advanced: ui.advanced, done: ui.done }, lang = i18n.lang;
+  ui.advanced = true; ui.done = false; i18n.lang = 'ja';
+  let summaries = true, closed = true, states = true;
+  for (const reason of ['quality', 'insufficient', 'written', 'stale']) {
+    const result = { reason, human_truths: reason === 'insufficient' ? 2 : 50, min_n: 50, model: 'm', hash: reason === 'stale' ? 'old' : 'current', at: '2026-10-22 00:00:00' };
+    const sp = { id: 'needs-plan', type: 'noul', min_n: 50, keys: [{ model: 'm', hash: 'current', n: 50, state: reason === 'written' ? 'calibrated' : 'ready', method: 'identity' }], records: 50, labels: 50, queue: { items: [] }, calibration_result: result, last_calibration: 'diagnostic marker: long technical log' };
+    const app = mount(SpecPanel, { target, props: { sp } }); flushSync();
+    const report = target.querySelector('.calibration-report');
+    const detail = report?.querySelector('details');
+    closed &&= !!detail && !detail.open && detail.querySelector('pre')?.textContent.includes('diagnostic marker') && !target.querySelector('.decision-panel > pre');
+    const text = report?.querySelector('.calibration-summary')?.textContent || '';
+    if (reason === 'quality') summaries &&= text.includes('50') && text.includes('予測') && !text.includes('不足');
+    if (reason === 'insufficient') summaries &&= text.includes('2') && text.includes('50') && text.includes('届いていません');
+    if (reason === 'written') summaries &&= text.includes('保存しました');
+    const progress = target.querySelector('.learning-line')?.textContent || '';
+    if (reason === 'quality') states &&= progress.includes('見送り') && !progress.includes('線を引けます') && !target.querySelector('.pill.ready')?.textContent.includes('線を引けます');
+    if (reason === 'stale') states &&= progress.includes(t('plainReady')) && !progress.includes('線を引けます');
+    if (reason === 'written') states &&= progress.includes(t('plainAuto'));
+    unmount(app);
+  }
+  Object.assign(ui, saved); i18n.lang = lang;
+  const ok = summaries && closed && states;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (較正の理由を要約=' + summaries + ', 診断ログを折りたたむ=' + closed + ', 見送りと現在の状態を区別=' + states + ')');
+  return ok;
 }
 
 function checkCorrection(target) {

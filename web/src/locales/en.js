@@ -1,6 +1,13 @@
 // 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
+  calibrationHeld: 'Automatic action is on hold. Your answers are saved.',
+  calibrationQuality: n => 'There are ' + n + ' truths, but predictions from the current question and model do not meet the requirements for automatic action. Calibration was not saved. Review the question or model.',
+  calibrationInsufficient: (n, min) => 'There are ' + n + ' human or outcome truths; ' + min + ' are required. Calibration was not saved.',
+  calibrationWritten: n => 'Calibration was saved after checking ' + n + ' truths.',
+  calibrationError: 'Calibration failed. Your answers are saved. Open the diagnostic log to check the cause.',
+  calibrationDiagnostic: 'This is a previous automatic calibration report. Open the diagnostic log for details.',
+  calibrationDetails: 'Open diagnostic log',
   decisionNav: 'Decisions to check',
   navBefore: 'Before work',
   navAfter: 'After work',
@@ -48,9 +55,9 @@ export default {
   tabKnowledge: 'Knowledge', viewOne: 'one at a time', viewList: 'list', skip: 'skip (later)', position: (i, n) => i + ' / ' + n, more: m => m + ' more waiting', showMore: m => 'show more (' + m + ')', unskip: n => 'bring back ' + n + ' skipped', emptyFiltered: 'nothing in this group',
   chip_all: 'all', chip_ask: 'AI unsure', chip_audit: 'spot check', chip_other: 'other', auditShort: 'spot check', byProject: 'by project:',
   viewTodo: 'to answer', viewDone: 'answered', yourAnswer: (name, when) => 'Your answer: ' + name + ' (' + when + ')', changeAnswer: 'Press another button to change your answer. The newest answer counts.', redo: 'ask the AI again', redoHint: 'asks the AI again with today\'s wording and line, keeps your answer', redoResult: (b, a) => 'before: ' + b + '  →  now: ' + a, redoAgree: 'now matches your answer', redoDisagree: 'still differs from your answer', noneAnswered: 'nothing answered yet', wasRedone: 'asked again',
-  plainAuto: 'The AI may act on its own here (enough answers were checked).', plainReady: 'Enough answers: the line can be drawn.', plainLearning: (n, m) => 'Still learning: ' + n + ' of ' + m + ' answers checked before the AI may act on its own.', plainStale: 'The question changed; it is learning again.',
+  plainAuto: 'The AI may act on its own here (enough answers were checked).', plainReady: 'Enough answers have been collected. Prediction quality still needs to be checked before automatic action.', plainLearning: (n, m) => 'Still learning: ' + n + ' of ' + m + ' answers checked before the AI may act on its own.', plainStale: 'The question changed; it is learning again.',
   aiGuess: (name, p) => 'AI guess: ' + name + ' (' + p + '% sure)', bandAsk: 'Needs a human check', bandAct: 'Eligible for automatic action', bandDiscard: 'Not for automatic action', sameAsAI: 'same as the AI',
-  records: n => n + ' decisions', answered: n => n + ' checked', calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'ready to draw the line ' + n + '/' + m,
+  records: n => n + ' decisions', answered: n => n + ' checked', calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'enough answers ' + n + '/' + m,
   howToTitle: 'How to use this page', howTo: ['Pick a decision in the tabs at the top.', 'Read the text on the card. The AI already guessed; its guess is marked "same as the AI".', 'Press the answer that was actually true (keys 1-9, or Enter for "same as the AI"). The next card appears.', 'Not sure? Skip it with → and come back later. When enough answers are checked, the AI is allowed to act on its own.'], gotIt: 'got it', todo: 'Read the text, then press what was actually true.',
   withContext: 'asked again with context', contextRung: 'context rung', toPerson: (h, k) => 'to a person ' + h + ' (' + k + ' per 1000)',
   audit: 'audit sample: the machine acted on this; 1 in 20 is shown here so its precision is measured on what people checked',
