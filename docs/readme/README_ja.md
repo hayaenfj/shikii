@@ -7,12 +7,12 @@
 いつものエージェントが、依頼・返答・訂正から出典付きの教訓を育てます。次の似た依頼で思い出し、行動にどう反映されたかまで振り返ります。人は普段どおりに仕事を頼み、抜き取りと保留を確認します。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-250%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-260%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
-[![Version](https://img.shields.io/badge/version-0.4.1-00ADD8?style=flat-square)](../../CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.2-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.4.1では、訂正の原文・次の行動・その観察を結びます。0.4.0の短い記憶とまとめた振り返りを引き継いでいます。[変更履歴](../../CHANGELOG.md)。
+0.4.2では、`shikii update` で次回からの更新を行えます。訂正の追跡、短い記憶とまとめた振り返りも引き継いでいます。[変更履歴](../../CHANGELOG_ja.md)。
 
 [何が変わるか](#何が変わるか) · [必要なもの](#必要なもの) · [始め方](#始め方) · [普段の会話から学ぶ](#普段の会話から学ぶ) · [人が確認すること](#人が確認すること) · [役立ったかを確かめる](#役立ったかを確かめる) · [プロジェクトごとの記憶](#プロジェクトごとの記憶) · [業務の判定にも使う](#業務の判定にも使う) · [もっと読む](#もっと読む)
 
@@ -104,6 +104,14 @@ install.shは実行ファイル・hook（依頼の前と作業の後の2点）�
 
 エージェントが `shikii --init` を実行します（自分で実行しても同じです）。初期化した場所だけで有効になり、既製の4問・wiki・MCPの設定・作法と画面への入口が揃います。再初期化しても既存データを保持します。導入の状態は `shikii doctor`、記録の画面は http://127.0.0.1:8096 から確認できます。
 
+### 次回からの更新
+
+```sh
+shikii update
+```
+
+最新の安定版を確認し、配布物のハッシュを照合して、本体とreadoutを同じ場所へ更新します。更新にGoは不要で、会話・記憶・正解を保持します。導入済みのhookと作法も更新します。起動中の画面・MCPは再起動すると新版になります。[詳しい動作](../guide.ja.md#shikii本体を更新する)。
+
 ## 普段の会話から学ぶ
 
 1. **依頼と返答を残す。** 次の人の発言が来ると、直前の依頼・返答・その発言が一組になります。
@@ -188,7 +196,7 @@ scripts/demo.sh
 - [詳しい使い方](../guide.ja.md): 会話の振り返り、CLI、HTTP API
 - [hookの説明](../../integrations/claude-code.md): 依頼の前と作業の後に行うこと
 - [構造の設計](../architecture.md): 会話の学習と業務の判定、それぞれの保存と役割
-- [エージェントの作法](../../skills/shikii/SKILL.md)・[変更履歴](../../CHANGELOG.md)・[運用メモ](../operations.md)
+- [エージェントの作法](../../skills/shikii/SKILL.md)・[変更履歴](../../CHANGELOG_ja.md)・[運用メモ](../operations.md)
 
 **開発に参加する人へ**: テストはわざと壊して落ちるのを見てから直す。観察と正解を分け、効果を数で主張する時は測定結果を示す。基本構成と固定の規則で済ませ、新しい設定を増やさない。
 

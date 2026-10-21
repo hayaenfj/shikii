@@ -52,6 +52,7 @@ shikii は「人が出すのは意図と正解だけ。聞き方も信頼も段�
 | 大きいモデルに正解を出させる | `shikii judge .shikii/decisions/<id>.yaml --local <審判の URL>`(人の正解との一致率が act に届く時だけ) |
 | CI で守る | `shikii check .shikii/decisions/*.yaml`(文言が変わった線、手書きの線、精度不足を落とす) |
 | 状態を見る | `shikii status .shikii/decisions/*.yaml`(1000 判定あたりの人の判断、線の状態、抜き取り) |
+| shikii本体を更新する | `shikii update`。公式の最新安定版とハッシュを確認し、実行中の場所へ本体とreadoutを更新する。導入済みのhookと作法も反映し、起動中の画面・MCPは再起動する。会話・記憶・正解を保持する |
 
 ## 読む順
 

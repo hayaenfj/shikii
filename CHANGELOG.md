@@ -1,74 +1,82 @@
-# 変更履歴
+# Changelog
 
-## 0.4.1 — 訂正を次の行動へつなぐ
+**English** · [日本語](CHANGELOG_ja.md)
 
-- shikii本体のライセンスを `Apache-2.0 OR MIT` に変更し、利用者がどちらかを選べるようにします。第三者のコード・依存・モデル・サービスの条件はそのままです。
+## 0.4.2 — Update to the latest release with one command
 
-- 明示的な訂正の原文と次に変える行動を、出典付きの教訓へ添えられます。次の似た依頼へ従来の短い引用の中で届けます。
-- 普段の振り返りで「訂正に沿った・同じ指摘が再発・対象外・不明」を、判断・確認結果とともに保存します。役立ったかの評価や正解・較正とは分けます。
-- 知識画面に実際に届いた訂正の数・分類・未評価と具体例を表示します。設定・追加モデル・人の入力を増やさず、既存の記憶と採点を保持します。
-- 日英READMEと構造の図を現在の使い方へ揃え、必要な道具・Homebrewでの導入・基本モデルKev-4B Q4_K_Mを明記しました。元のヒーロー画像を保持し、会話の説明図は本文で使います。
-- CLI・MCP・プラグインの版を0.4.1へ揃えました。
+- `shikii update` checks GitHub Releases for the latest stable version and downloads the package for macOS or Linux on arm64 or amd64. Go, curl and the GitHub CLI are not required.
+- Verifies SHA256SUMS and the asset hashes, then updates shikii and readout beside the running executable. Leaves the installation unchanged if the current version is the same or newer.
+- Checks the package contents and executable version before replacing files, and restores the existing executables if replacement fails. Preserves conversations, memories, human answers and calibration, and refreshes existing hooks and agent instructions. Restart a running UI or MCP server to use the new version.
+- Makes `CHANGELOG.md` the English changelog and keeps the Japanese history in `CHANGELOG_ja.md`, with links between them.
 
-## 0.4.0 — 必要な記憶を短く届け、振り返りをまとめる
+## 0.4.1 — Connect corrections to the next action
 
-- 題と適用条件が近い教訓を最大2件、JSONのエスケープ後1800バイト以内で引用します。同じセッションに同じ版を一時間は繰り返さず、更新はすぐ届けます。
-- 教訓が無い話題では未整理の似た会話を最大1件だけ返し、整理済みの原文は重ねません。手動のwiki検索は引き続き本文も探せます。
-- 未処理が2会話になった時、または1件が一日経った後の依頼で、短い案内だけを渡します。原文と採点対象を別々の文脈へ重ねません。
-- `shikii reflect query / submit`、MCP `shikii_reflect`、HTTP `POST /v1/reflect` で、採点とwiki整理を一度の確認と一括保存にまとめます。古い未処理から順に処理します。
-- 保存の一部が失敗したら項目ごとのエラーを返し、成功分は保持して再送できます。既存の個別操作も使えます。正解・較正との区別は維持します。
-- CLI・MCP・プラグインの版を0.4.0に揃えました。既存データを消さず、そのまま使います。
+- Changes the license for shikii itself to `Apache-2.0 OR MIT`, letting users choose either license. Terms for third-party code, dependencies, models and services remain unchanged.
+- Lets lessons retain the exact wording of an explicit correction and the action to change next, with a source reference. Delivers them within the existing short quotation for a similar request.
+- Records whether an agent followed a correction, repeated the issue, found it inapplicable or could not determine the result, together with the decision and supporting evidence. Keeps this separate from memory usefulness, human answers and calibration.
+- Shows delivered corrections, their outcomes, pending assessments and examples in the knowledge view. Preserves existing memories and assessments without adding settings, models or human input.
+- Updates the English and Japanese READMEs and architecture diagrams to match current use. Documents required tools, Homebrew installation and the default Kev-4B Q4_K_M model. Preserves the original hero image and places the conversation diagram in the body.
+- Aligns the CLI, MCP server and plugin versions at 0.4.1.
 
-### 記憶が判断にどう役立ったかを追う
+## 0.4.0 — Deliver concise memories and batch reflection
 
-- 実際に届けた引用と版を依頼ごとに保存し、後から教訓が変わっても当時の内容で振り返ります。
-- 通常の `reflect query / submit` で、記憶ごとに役立った・使わなかった・妨げた・不明を、判断と確認結果に結び付けて仮評価します。
-- 「知識」画面に配送数・4分類・未評価と、最近の判断・確認結果を表示します。作業の成功だけでは効果に数えず、過去の効果を推測して埋めません。
-- AIの仮評価として保持し、検索順位・正解・較正を自動で変えません。設定やモデル、人の入力は増やしません。
+- Quotes up to two lessons whose titles and applicability match the request, within 1,800 bytes after JSON escaping. Suppresses the same revision for one hour in a session while delivering updated revisions immediately.
+- Falls back to at most one similar, unprocessed conversation when no lesson matches. Does not repeat source material already processed. Manual wiki search can still search lesson bodies.
+- Sends a short reflection reminder when two conversations are pending, or on a request after one conversation has waited a day. Avoids repeating source material and assessment targets in separate contexts.
+- Adds `shikii reflect query / submit`, MCP `shikii_reflect` and HTTP `POST /v1/reflect` to inspect and save assessments and wiki entries together, starting with the oldest pending conversations.
+- Returns errors per item when part of a submission fails, retaining successful items for safe retries. Existing individual operations remain available. Keeps human answers and calibration separate.
+- Aligns the CLI, MCP server and plugin versions at 0.4.0. Keeps existing data usable without deleting it.
 
-### 利用するプロジェクトだけを一度で準備する
+### Track how memories contribute to decisions
 
-- `shikii --init`（`shikii init`も同じ）で、そのプロジェクトの自動記録を有効にします。既製の4問・wiki・MCP・作法と画面への入口を一度で準備します。
-- 初期化が完了した印を最後に保存し、未初期化・途中で失敗した場所ではhookが何も作りません。別の場所の印やリンクも有効にしません。
-- サブフォルダからの初期化も同じプロジェクトルートを使い、再実行しても設定や会話を保持します。初期化の案内を日本語で短く揃えました。
+- Saves the quotation and revision actually delivered for each request, so later reflection uses the content seen at the time.
+- Uses the normal `reflect query / submit` flow to assess each memory as helpful, unused, harmful or unknown, tied to a decision and supporting evidence.
+- Shows deliveries, the four outcomes, pending assessments and recent decisions with evidence in the knowledge view. Does not count task success alone as a memory effect or infer effects for past deliveries.
+- Keeps these as provisional AI assessments. Does not automatically change search ranking, human answers or calibration, or add settings, models or human input.
 
-### AI が普段の採点を行い、人が抜き打ち確認する
+### Initialize only the projects you choose
 
-「頼まれた範囲を守ったか」「頼まれたことを終えたか」を、通常のエージェントが会話と作業結果から根拠付きで仮採点します。人は抜き取りと判断を保留したものを確認します。
+- `shikii --init` (also `shikii init`) enables automatic recording for that project. Prepares the four built-in questions, wiki, MCP integration, agent instructions and UI entry in one step.
+- Writes the completion marker last. Hooks create nothing in uninitialized or failed projects, and reject markers or links belonging elsewhere.
+- Resolves initialization from subdirectories to the same project root and preserves settings and conversations on repeated initialization. Keeps initialization messages concise and in Japanese.
 
-- 人の次の返事を受けて、hook が採点とwiki整理をまとめ、必要な時に短い案内を渡します。`shikii review query / submit`、MCP の `shikii_review` で確認・保存できます。
-- 根拠不足は `unknown` にし、人へ確認します。追加依頼・挨拶・沈黙だけで成功や失敗にしません。
-- 抜き取りは5件に1件。無作為の確認が直近20件続けて一致した種類は20件に1件に減らし、不一致が出たら戻します。保留の確認と無作為の確認の成績は分けます。
-- 人には元の会話を見せ、AI の答えを選択肢に強調しません。人の訂正は次の採点役へ例として返します。
-- 仮採点と根拠・原資料は `records/reviews/` に保持します。人の答えを見た後に AI の採点を塗り替えず、正解ラベルや較正の件数には混ぜません。
+### Let AI assess routine work and humans spot-check
 
-### 長い返答を末尾まで読めるようにする
+The regular agent provisionally assesses whether work stayed within the requested scope and whether it completed the request, using conversation and execution evidence. Humans review random samples and cases the agent cannot assess.
 
-判定用の短い入力と、画面で読む原文を分けました。長い返答は別に保存し、未回答・回答済みの画面と採点の `query` から末尾まで読めます。原文を補っても、元の判定・ハッシュ・正解・較正は変わりません。以前の保存上限に達した記録や、原文の保存上限に達した場合は画面に表示します。
+- After the next human reply, hooks combine assessment and wiki preparation and send a short reminder when needed. `shikii review query / submit` and MCP `shikii_review` support inspection and submission.
+- Uses `unknown` when evidence is insufficient and leaves the case for human review. Additional requests, greetings and silence alone do not establish success or failure.
+- Samples one in five assessments. After 20 consecutive agreements in random checks for the same assessment type, reduces sampling to one in twenty; a disagreement restores the previous rate. Tracks uncertain cases separately from random samples.
+- Shows humans the original conversation without highlighting the AI's answer. Returns human corrections as examples for subsequent assessors.
+- Stores provisional assessments, evidence and source material under `records/reviews/`. Does not rewrite the original AI assessment after seeing a human answer or count it as a truth label or calibration sample.
 
-### プロジェクトごとに会話と信頼の実績を分ける
+### Read long replies through to the end
 
-会話・教訓・仮採点・正解・較正を各プロジェクトの `.shikii/` に保存し、hook が自動で準備します。共通画面は仕事の入口を並べ、選んだ仕事の記録だけを表示・更新します。CLI と MCP も同じ保存先を使います。共通側から過去の会話や線を引き継ぎません。
+Separates bounded decision inputs from the original text shown in the UI. Stores long replies separately so pending and completed views, and assessment `query` results, can show the full ending. Adding original text does not change the original decision, hash, human answer or calibration. The UI identifies records affected by earlier storage limits or the original-text storage limit.
 
-### プロジェクト分離の監査指摘を修正
+### Separate conversations and trust history by project
 
-- 別の仕事で較正・tune・採用が重なっても、報告が混ざらず、プロセスの出力先を変えません。
-- サブフォルダからの init・new・tune も同じプロジェクトルートを使います。保存先を拒否した時は処理を続けません。
-- 記録・正解・会話・仮採点・原文の中間フォルダとファイルのリンクを拒否します。
-- 画面URLの末尾 / を補っても、開く判定と記録の指定を保ちます。
-- 初期化の書き込みが失敗しても、空のspecを最終名で残しません。
+Stores conversations, lessons, provisional assessments, human answers and calibration in each project's `.shikii/`, with hook preparation. The shared UI lists projects and reads or updates only the selected project's records. CLI and MCP use the same location. Does not import old shared conversations or calibration.
 
-## 0.3.0 — 普段の会話から wiki を育てる
+### Fix project-isolation audit findings
 
-依頼・AI の返答・その後の人の発言を原資料にして、普段使っているエージェントが教訓と適用する場面をまとめます。shikii が出典、索引、過去の版、変更履歴を管理し、次の似た依頼へ教訓を引用します。wiki のための画面操作や、別のモデルの常駐は要りません。
+- Keeps reports separate when calibration, tuning or adoption run concurrently in different projects, without changing process-wide output streams.
+- Uses the same project root for init, new and tune from subdirectories. Stops processing when the storage location is rejected.
+- Rejects symlinks in intermediate directories and files for records, human answers, conversations, provisional assessments and original text.
+- Preserves decision and record selections when redirecting a UI URL to add a trailing slash.
+- Does not leave an empty spec at its final filename when initialization fails to write it.
 
-- **取り込む**: hook が未整理の会話を最大 2 件渡し、エージェントが MCP の `shikii_wiki` または `shikii wiki ingest` で整理します。追加依頼など、再利用する教訓がない会話は原文を保管して整理済みにできます。
-- **調べる**: `query` は同じ仕事の教訓、未整理の会話、出典の原文を返します。短い検索語でも長い教訓を探せます。「知識」画面からも教訓と原文を読めます。
-- **更新する**: 教訓を更新しても元の出典と前の版が残ります。古い教訓を置き換えると、参照では新しい教訓を使います。置き換えは解除でき、以前の内容に戻した場合も変更履歴が残ります。
-- **点検する**: `lint` は出典のハッシュ、生成ページ、過去の版、リンクを検査し、生成した索引を修復します。ターンの終わりにも一日一回だけ点検します。
-- **確かさを区別する**: 教訓は全て出典付きの仮説です。欠けた・変更された出典を持つ教訓は参照から外し、AI の解釈を人の正解や較正に数えません。
-- **版を確かめる**: `shikii version` と MCP、プラグインの版を `0.3.0` に揃えました。
+## 0.3.0 — Grow a wiki from everyday conversations
 
-原資料を保存し、AI が wiki を編集し、取り込み・検索・定期点検を回す流れは、[Andrej Karpathy の LLM Wiki の発想](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)を取り入れています。shikii の「主張・証拠・再検証」の wiki と組み合わせ、会話の解釈と検証された結果を区別します。
+The regular agent turns requests, AI replies and subsequent human messages into lessons with applicability conditions. shikii manages sources, the index, earlier revisions and history, then quotes lessons for similar requests. No wiki-specific UI work or additional resident model is required.
 
-導入済みの人は、新しい実行ファイルと skill に更新すると既存の 2 つの hook で働きます。MCP サーバーを次に起動すると新しい道具が現れます。それまでのセッションでも、hook が案内する CLI をエージェントが使えます。
+- **Ingest:** hooks provide up to two unprocessed conversations for the agent to organize through MCP `shikii_wiki` or `shikii wiki ingest`. Conversations without a reusable lesson, such as an additional request, can be archived as processed while retaining their source text.
+- **Search:** `query` returns lessons, unprocessed conversations and original sources from the same project. Short search terms can find long lessons. The knowledge view also shows lessons and sources.
+- **Update:** updating a lesson preserves its sources and previous revisions. Replacing an old lesson makes references use the new one. Replacement can be undone, and reverting content still leaves a history entry.
+- **Check:** `lint` verifies source hashes, generated pages, revisions and links, and repairs the generated index. Runs once a day at the end of a turn as well.
+- **Distinguish certainty:** all lessons are hypotheses with sources. Excludes lessons whose sources are missing or changed, and does not count AI interpretations as human answers or calibration samples.
+- **Check versions:** aligns `shikii version`, MCP and the plugin at `0.3.0`.
+
+The workflow of retaining sources, having AI edit a wiki, and running ingestion, search and periodic checks draws on [Andrej Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). Combined with shikii's claims, evidence and retesting, it distinguishes conversational interpretation from verified results.
+
+Existing users can update the executables and agent instructions to use this through the existing two hooks. New MCP tools appear when the server next starts. Until then, agents can use the CLI commands supplied by the hooks.

@@ -30,6 +30,20 @@ bin/shikii label --last --spec-id prompt-intent question --source ask   # 直近
 bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M'
 ```
 
+## shikii本体を更新する
+
+引数の要らない更新コマンドで、最新の安定版へ更新する。
+
+```sh
+shikii update
+```
+
+GitHub Releasesの最新安定版から、利用中のOS・CPU向けの本体とreadoutを取得する。Go・curl・GitHub CLIは不要。SHA256SUMSと添付のハッシュ、起動する本体の版を確認し、実行中のshikiiの実体と同じフォルダへ更新する。PATHの別の場所へ入れ直すことはない。現在の版と同じか古い配布物には置き換えない。
+
+本体のライセンスと第三者の通知は、実行ファイルの隣の `shikii-licenses/` へ残す。配布物の欠落やハッシュ不一致では置き換えず、書き込み途中の失敗では本体とreadoutを元へ戻す。同時更新は拒否する。保存先の書き込み権限が無い場合は、その旨を表示する。会話・教訓・正解・較正の保存先を初期化しない。
+
+この実行ファイルを使うhookが導入済みなら、新しい本体からhookと作法を更新する。導入していないhookは追加しない。この反映だけに失敗した場合は本体の更新済みを明示し、`shikii hook install --yes` で再試行できる。起動中の画面・MCPは停止しないため、再起動して新版へ切り替える。
+
 ## 普段の会話で使う
 
 Claude Code・Codexの自動記録は、インストール後に利用するプロジェクトで `shikii --init` を一度実行して有効にする。未初期化の場所ではhookは動かない。インストールは[日本語README](readme/README_ja.md#始め方)のcurlの1行で行う。ソースから入れる場合はcloneしたshikiiのフォルダで `sh install.sh`。Go 1.27以上が必要。
@@ -45,7 +59,7 @@ shikii reflect submit < reflection.json
 
 `reflection.json` は取得した対象に対する `reviews`・`wiki`・`memory` を含むJSON。`complete`と各項目の`error`を確認し、失敗分だけ直して再送する。原文、届いた引用と版、関連する教訓、人の訂正例を読んでから保存する。[入力例と作法](../skills/shikii/references/review.md)。
 
-0.4.1の訂正の追跡では、wikiの `correction: {source_id, quote, action}` が人の返答の原文と次に変える行動を結ぶ。次に届いた時の `memory` へ `result`（役立ち方）と `correction_result`（沿った・再発・対象外・不明）、判断と確認結果を残す。両方を区別し、成功・追加依頼・沈黙だけで改善にしない。未評価も知識画面に残す。この部分は[変更履歴](../CHANGELOG.md)の0.4.1の項目。
+0.4.1の訂正の追跡では、wikiの `correction: {source_id, quote, action}` が人の返答の原文と次に変える行動を結ぶ。次に届いた時の `memory` へ `result`（役立ち方）と `correction_result`（沿った・再発・対象外・不明）、判断と確認結果を残す。両方を区別し、成功・追加依頼・沈黙だけで改善にしない。未評価も知識画面に残す。この部分は[変更履歴](../CHANGELOG_ja.md)の0.4.1の項目。
 
 ## ローカルの決定モデル(llama.cpp)
 
