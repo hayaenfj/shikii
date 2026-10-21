@@ -31,8 +31,8 @@ func feedbackContext(t *testing.T, out string) string {
 // 正解・較正や自動実行の許可には変えない。ローカルのモデルが無くても参照できる。
 func TestHookRecallsConversationFeedback(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
-	agent := hookEnv(t, model)
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
 	const request = "README のインストール手順を、初めて使う人が迷わない形に更新して"
 	const summary = "インストール手順を更新しました。"
 	const correction = "まだ終わっていない。README にモデルの起動手順が残っていないので追記して"
@@ -66,8 +66,8 @@ func TestHookRecallsConversationFeedback(t *testing.T) {
 // 別の仕事での発言も混ぜない。同名の repo も、サブディレクトリも確認する。
 func TestHookFeedbackKeepsConversationBoundaries(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
-	agent := hookEnv(t, model)
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
 	const request = "README のインストール手順を更新して、初めての人に必要な説明を揃えて"
 	const correction = "そこは頼んでいない。README の手順だけを変更して"
 	prompt := func(session, cwd, text string) string {
@@ -130,8 +130,8 @@ func TestHookFeedbackKeepsConversationBoundaries(t *testing.T) {
 // 古い Stop のモデル待ち中に次の依頼が来ても、その返答を次の依頼のものにしない。
 func TestHookFeedbackRejectsStaleStop(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
-	agent := hookEnv(t, model)
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
 	const request = "README のインストール手順を詳しく書き直して、初めてこの道具を使う人がモデルの起動まで迷わず進められる形に揃えて"
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "race", "cwd": repo, "prompt": request})
 	snapshot := loadSession(agent, "race")
@@ -157,8 +157,8 @@ func TestHookFeedbackRejectsStaleStop(t *testing.T) {
 // 過去の利用者の発言も引用データ。改行・タグ・制御文字で引用を抜けさせず、
 // JSON のエスケープ後にも文脈は 4 KB まで。モデルを呼ぶ必要はない。
 func TestHookFeedbackQuotesAndLimitsHistory(t *testing.T) {
-	agent := hookEnv(t, nil)
 	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
 	const request = "README のインストール手順を更新して"
 	for i, id := range []string{"0000000000000001", "0000000000000002"} {
 		err := (store.Store{Dir: agent}).AppendFeedback(feedbackScope(repo), store.Feedback{

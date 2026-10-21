@@ -59,22 +59,33 @@ func cmdServe(args []string) error {
 	o.ef.bind(fs)
 	fs.IntVar(&o.port, "port", 8095, "待ち受けるポート(127.0.0.1 のみ)")
 	fs.StringVar(&o.specsDir, "specs", "", "spec(*.yaml)のフォルダ(既定は <store>/decisions)")
-	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
+	fs.StringVar(&o.storeDir, "store", defaultProjectStore(), "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
 	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけを測る")
 	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if o.storeDir == ".shikii" {
+		o.storeDir = defaultProjectStore()
+	}
 	o.resolve()
-	if _, err := loadSpecs(o.specsDir); err != nil {
-		return err
+	common, _ := agentHome()
+	absStore, _ := filepath.Abs(o.storeDir)
+	hub := absStore == common
+	if !hub {
+		if _, err := loadSpecs(o.specsDir); err != nil {
+			return err
+		}
 	}
 	if err := waitForLocalModel(o.ef.local, systemone.WaitReady); err != nil {
 		return err
 	}
 	addr := fmt.Sprintf("%s:%d", bindHost(), o.port)
 	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted), o.autoCalibrate, addr)
+	if hub {
+		return http.ListenAndServe(addr, newProjectHub(common, o))
+	}
 	return http.ListenAndServe(addr, newServer(o))
 }
 
@@ -728,7 +739,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
-	writeJSON(w, 200, map[string]any{"specs": out, "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir})
+	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir})
 }
 
 func countLabeledRecords(labeled map[string]store.Label, nRec int) int {

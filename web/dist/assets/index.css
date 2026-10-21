@@ -48,3 +48,8 @@ table.cands tr.win td { color: var(--amber); }
 .opts div { font-size: 13px; margin: 2px 0; } .opts div.changed { background: var(--amberbg); border-radius: 4px; padding: 1px 4px; }
 
 .add-variant { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; } .add-variant input, .add-variant textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--border, #ccc); border-radius: 6px; background: transparent; color: inherit; }
+
+  .projects.svelte-fiykfy { max-width: 800px; margin: 24px auto; }
+  .project-entry.svelte-fiykfy { display: block; padding: 18px; margin: 12px 0; border: 1px solid var(--border, #ddd); border-radius: 8px; text-decoration: none; color: inherit; }
+  .project-entry.svelte-fiykfy:hover { background: var(--bg2, #f5f5f5); }
+  small.svelte-fiykfy { display: block; overflow-wrap: anywhere; margin-top: 6px; opacity: .7; }

@@ -53,14 +53,14 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	if strings.TrimSpace(out) != "shikii 0.3.0" {
 		t.Fatalf("版を確認できる: %s", out)
 	}
-	agent := hookEnv(t, nil)
 	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
 	t.Chdir(repo)
 	const id = "0000000000000011"
 	if err := (store.Store{Dir: agent}).AppendFeedback(feedbackScope(repo), store.Feedback{ID: id, Request: "README install", Summary: "done", Reply: "missing startup"}); err != nil {
 		t.Fatal(err)
 	}
-	send, _ := mcpSession(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	send, _ := mcpSession(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}, agent)
 	init := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"}))
 	if init["serverInfo"].(map[string]any)["version"] != shikii.Version {
 		t.Fatal("MCP の起動時にも同じ版を返す")
@@ -90,8 +90,8 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 }
 
 func TestNotebookTransportRejectsUnauthorizedFieldsAndBrowserPosts(t *testing.T) {
-	agent := hookEnv(t, nil)
 	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
 	t.Chdir(repo)
 	h := newServer(serveOpts{storeDir: agent, projectScope: feedbackScope(repo)})
 	if err := (store.Store{Dir: agent}).AppendFeedback(feedbackScope(repo), store.Feedback{ID: "0000000000000001", Request: "README install", Summary: "done", Reply: "missing startup"}); err != nil {
@@ -131,8 +131,8 @@ func TestNotebookTransportRejectsUnauthorizedFieldsAndBrowserPosts(t *testing.T)
 // 普段の会話 → エージェントによる取り込み → 出典付きの教訓 → 次の依頼、を
 // 画面操作や新しいモデルなしで一周する。原文と既存の wiki は上書きしない。
 func TestNotebookConversationIngestQueryLintLoop(t *testing.T) {
-	agent := hookEnv(t, nil)
 	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
 	t.Chdir(repo)
 	const sourceID = "0000000000000001"
 	st := store.Store{Dir: agent}
@@ -183,8 +183,8 @@ func TestNotebookConversationIngestQueryLintLoop(t *testing.T) {
 
 func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
-	agent := hookEnv(t, model)
 	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
 	t.Chdir(repo)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "wiki", "cwd": repo, "prompt": "README のインストール手順を更新して"})
 	runHook(t, "stop", map[string]any{"session_id": "wiki", "cwd": repo, "last_assistant_message": "更新しました"})

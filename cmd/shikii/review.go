@@ -222,11 +222,11 @@ func cmdReview(args []string) error {
 		}
 		req.Operation = "submit"
 	}
-	root, err := agentHome()
+	root, scope, err := currentProjectStore()
 	if err != nil {
 		return err
 	}
-	result, err := runReview(root, currentProjectScope(), req)
+	result, err := runReview(root, scope, req)
 	if err != nil {
 		return err
 	}
@@ -242,12 +242,7 @@ func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	root, err := agentHome()
-	if err != nil {
-		writeErr(w, 500, err)
-		return
-	}
-	result, err := runReview(root, s.o.projectScope, req)
+	result, err := runReview(s.o.storeDir, s.o.projectScope, req)
 	if err != nil {
 		writeErr(w, 400, err)
 		return

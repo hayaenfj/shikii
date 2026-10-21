@@ -30,12 +30,15 @@ func cmdMCP(args []string) error {
 	var o serveOpts
 	o.ef.bind(fs)
 	fs.StringVar(&o.specsDir, "specs", "", "spec(*.yaml)のフォルダ(既定は <store>/decisions)")
-	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
+	fs.StringVar(&o.storeDir, "store", defaultProjectStore(), "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
 	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL")
 	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if o.storeDir == ".shikii" {
+		o.storeDir = defaultProjectStore()
 	}
 	if o.specsDir == "" {
 		o.specsDir = specsDirOf(o.storeDir)

@@ -111,7 +111,7 @@ func usageText() string {
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
   shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop
                    Claude Code / Codex の hook として AI 自身の考え方を 2 点で測る: 考える前(この依頼で結局ファイルを変えるか、着手前に方針を合わせるか)と
-                   考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場は ~/.shikii/agent、モデルは :8080、画面は :8096。過去の会話と wiki の教訓を引用し、整理をエージェントへ渡す。判定からの助言は線を引いてから。ツールは止めない
+                   考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場はプロジェクトの .shikii/、モデルは :8080、画面は :8096。過去の会話と wiki の教訓を引用し、整理をエージェントへ渡す。判定からの助言は線を引いてから。ツールは止めない
   shikii decide   <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
                    spec に state.context があれば、迷った時(ask。多択では discard も)だけ文脈の入力を足して聞き直す(別のハッシュ・別の線)。そこで確信に届いた答えは最小の質問の正解として残る
   shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]
@@ -129,7 +129,7 @@ func usageText() string {
   shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
                    <store>/wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
   shikii wiki query [検索文または出典ID] | ingest (JSON を標準入力) | lint
-                   普段の会話を ~/.shikii/agent の出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
+                   普段の会話をプロジェクトの .shikii/ にある出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
   shikii version                                  版を表示する
   shikii review query | submit (JSON を標準入力)    会話と結果から AI が根拠付きで仮採点。人は抜き取りと保留を確認し、訂正を次の採点へ返す。仮採点は正解・較正と分けて保存する
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
@@ -174,7 +174,7 @@ func (f *endpointFlags) endpoints() []decide.Endpoint {
 }
 
 func bindStore(fs *flag.FlagSet) *string {
-	return fs.String("store", ".shikii", "記録とラベルの置き場")
+	return fs.String("store", defaultProjectStore(), "記録とラベルの置き場")
 }
 
 type kvFlag map[string]string

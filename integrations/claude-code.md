@@ -17,7 +17,9 @@
 
 依頼 1 回につき判定は 3〜4 件(ツール呼び出しの数に依らない)。`status` の「1000 判定あたりの人の判断」が使うほど減り、act の判定に receipt(人が確かめた件数と精度)が付く。これが「AI の確かさが上がった」の数字になる。
 
-**置き場は 1 つ、記録には仕事の印。** `~/.shikii/agent` はプロジェクトをまたいで 1 つで、線も spec ごとに 1 本(問いは AI の考え方についてのもので、どの repo でも同じ基準で正解が付く。プロジェクトごとに分けると小さい repo では線が一生引けない)。その代わり、記録には `project`(cwd の repo のルートのフォルダ名。git の外なら cwd の名)が付き、画面は 2 つ以上の仕事があれば「仕事ごと」の絞り込みを出し、カードに印を見せる。`status` は `by project: haya1=12 okurun-ai=3` を出す。入力ではないので、モデルへの問いもハッシュも変わらない。
+**会話も採点も線も、プロジェクトごと。** 各プロジェクトの `.shikii/` に `decisions/` `wiki/` `records/` `labels/` `sessions/` を置く。hook が自動で準備するので、人の操作は増えない。Git の中ではリポジトリのルート、外では cwd が仕事の単位。同名の別フォルダは混ぜず、同じ repo のサブディレクトリや symlink は同じ仕事になる。`.shikii/` の共有先へのリンクは使わない。hook は `/.shikii/` を Git のローカルな `info/exclude` に足し、私的な会話を `git add -A` に巻き込まない。状態取りでも `.shikii/` を除き、shikii 自身の記録をファイル変更の結果に数えない。
+
+`~/.shikii/agent` は共通の型・道具・プロジェクトの索引だけを持つ。画面の :8096 はプロジェクトの入口を並べ、`/p/<実パスのハッシュ>/` から選んだ仕事の記録だけを読む。同じ URL 配下の API が採点・正解・教訓もその仕事へ保存し、成績を合算しない。hook が示す答え合わせのリンクも直接その仕事を開く。旧共通 store の会話や線は自動では引き継がない。
 
 ## 普段の会話を次の依頼に活かす
 
@@ -25,13 +27,13 @@
 
 記録するのは原文(依頼・返答・次の発言それぞれ最大 1500 バイト)で、訂正か追加依頼かを機械が確定したものではない。「追加で英訳して」も追加依頼として読める形で残し、発言が無いことは成功に数えない。会話の解釈を正解ラベルや精度の数字には入れない。引用より今回の依頼と規則が優先される。
 
-記録は `~/.shikii/agent/records/feedback/<プロジェクトの実パスのハッシュ>.jsonl`。通常の判定・正解とは別で、保存と検索は手元で行い、引用は利用中のコーディングエージェントの文脈に渡す。別の判定モデルや提案役には送らない。同名の別 repo の会話は混ぜず、同じ repo のサブディレクトリや symlink は同じ仕事として参照する。依頼と次の発言を結ぶのは、同じセッション・同じ仕事で返答した後だけ。通知、サブエージェント、返答前の追記は結ばない。読むのは末尾 4 MB のうち最近 256 件までで、依頼の語の重なりで探す。渡す引用は JSON として囲み、エスケープ後も 4 KB まで。
+記録は `.shikii/records/feedback/<プロジェクトの実パスのハッシュ>.jsonl`。通常の判定・正解とは別で、保存と検索は手元で行い、引用は利用中のコーディングエージェントの文脈に渡す。別の判定モデルや提案役には送らない。同名の別 repo の会話は混ぜず、同じ repo のサブディレクトリや symlink は同じ仕事として参照する。依頼と次の発言を結ぶのは、同じセッション・同じ仕事で返答した後だけ。通知、サブエージェント、返答前の追記は結ばない。読むのは末尾 4 MB のうち最近 256 件までで、依頼の語の重なりで探す。渡す引用は JSON として囲み、エスケープ後も 4 KB まで。
 
 0.3 の wiki は、この会話記録を原資料にする。UserPromptSubmit が未整理の会話を最大 2 件、通常のエージェントへ渡す。エージェントは `shikii_wiki` の `ingest`（または `shikii wiki ingest` の標準入力 JSON）で題・教訓・適用する場面・出典 ID を保存する。再利用する教訓が無ければ出典 ID だけで整理済みにできる。MCP がまだ更新されていないセッションにも、hook が実行ファイルの絶対パスで CLI を案内する。
 
-生成領域は `~/.shikii/agent/wiki/lessons/<仕事のハッシュ>/`。`index.md` は索引、`log.md` は追記の履歴、`revisions/` は前の版。原資料は `records/wiki-sources/<仕事のハッシュ>/` に不変の形で残す。教訓の `id` を渡すと更新でき、`replaces` で古い教訓を置き換える。出典が消えた・変わった教訓は参照から外す。教訓は常に仮説で、正解・線・`patterns/` の状態は変えない。
+生成領域は `.shikii/wiki/lessons/<仕事のハッシュ>/`。`index.md` は索引、`log.md` は追記の履歴、`revisions/` は前の版。原資料は `records/wiki-sources/<仕事のハッシュ>/` に不変の形で残す。教訓の `id` を渡すと更新でき、`replaces` で古い教訓を置き換える。出典が消えた・変わった教訓は参照から外す。教訓は常に仮説で、正解・線・`patterns/` の状態は変えない。
 
-`query` で教訓や出典を読み、`lint` で出典・版・リンクを点検する。Stop でも一日一回だけ点検して索引のずれを修復する。生成した教訓は 1 つの仕事で最大 128 件、既存の教訓への統合・更新を優先する。1 回の取り込みの出典は 8 件まで。依頼前に渡す wiki の教訓・未整理の会話はそれぞれ 2 件まで、合計 4 KB までで、元の会話の引用（最大 4 KB）とは別。引用は今使っているエージェントに渡し、新たなモデルには送らない。「知識」画面は、画面のプロセスを起こした仕事の教訓と原文を表示する。
+`query` で教訓や出典を読み、`lint` で出典・版・リンクを点検する。Stop でも一日一回だけ点検して索引のずれを修復する。生成した教訓は 1 つの仕事で最大 128 件、既存の教訓への統合・更新を優先する。1 回の取り込みの出典は 8 件まで。依頼前に渡す wiki の教訓・未整理の会話はそれぞれ 2 件まで、合計 4 KB までで、元の会話の引用（最大 4 KB）とは別。引用は今使っているエージェントに渡し、新たなモデルには送らない。「知識」画面は、選んだ仕事の教訓と原文を表示する。
 
 ## 入れる・外す
 
@@ -39,7 +41,7 @@
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh   # 実行ファイル + 下の install --yes まで全部
 shikii hook install          # 何をするかを表示するだけ(install.sh が --yes で流すのと同じ)
 shikii hook install --yes    # 実行。新しいターミナルで claude を起こし直すと効く
-shikii hook uninstall --yes  # 足した 2 つの hook だけ外す。記録と正解(~/.shikii/agent)は残る
+shikii hook uninstall --yes  # 足した 2 つの hook だけ外す。各プロジェクトの記録と正解(.shikii/)は残る
 which shikii                 # Claude Code がそのまま `shikii` を呼ぶので、PATH に要る
 ```
 
@@ -47,10 +49,10 @@ which shikii                 # Claude Code がそのまま `shikii` を呼ぶの
 
 `install` がすること(2 回目は何も足さない):
 
-1. `~/.shikii/agent/` に基本構成(`decisions/` `wiki/` `records/` `labels/`。store そのもの)。4 つの spec と既製の wiki の知識を、**無いものだけ**写す(線の入った spec・人が直した spec は触らない)。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
+1. `~/.shikii/agent/` に共通の型と既製の wiki を置く。各仕事の `.shikii/` は最初の hook が自動で準備し、4 つの spec を埋め込みの原本から**無いものだけ**写す。他の仕事の線は写さず、既にその仕事で育てた spec は触らない。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
 2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `UserPromptSubmit` と `Stop` の 2 つ(command は **実行ファイルの絶対パス** + ` hook <event>`。エージェントの shell の PATH に `shikii` が無くても動く。実行ファイルを動かしたら `shikii hook install --yes` を流し直すと古いパスの handler が外れて新しいものが入る。timeout は UserPromptSubmit 10 秒、Stop 15 秒。matcher は無い)。古い版が足した `PreToolUse` の shikii の hook は外す(他の hook と鍵は残す)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
-固定の規則(オプションは無い): 置き場は `~/.shikii/agent`(プロジェクトをまたいで 1 つ。これが store で、中に decisions/ wiki/ records/ labels/ sessions/)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、依頼・返答・ファイル名はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しには何も足されない。モデルが無ければ待たずに黙る。
+固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ records/ labels/ sessions/)、モデルは手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。spec は全部 `send_to: [local]`、`pii: true` で、依頼・返答・ファイル名はこの機械の外に出ない。1 回の判定は手元のモデルで 0.1〜0.5 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しには何も足されない。モデルが無ければ待たずに黙る。
 
 答え合わせの画面は hook が立てる。手で立てるなら:
 
@@ -115,8 +117,8 @@ Stop ───────────── shikii hook stop ──────
                                                      └ last_assistant_message を控える(次の人の発言との対応・needs-plan の文脈)。答え待ちの要約を 1 行。4 spec の正解が min_n に届いていれば線を引く
 ```
 
-- transcript は読まない(形が文書化されていない)。セッションごとの控えは `~/.shikii/agent/sessions/<session_id>.json`(request、previous、pending、asked、judged。7 日で消える)と `<session_id>.files`(依頼の時の `git ls-files --stage` の一覧。4 MB まで)。Claude Code は hook を並列に走らせる(Stop と次の依頼が重なる)ので、控えは flock の中で 読む → 変える → 書く(tmp に書いて rename)。錠は短く持ち(モデルの呼び出しは錠の外)、2 秒待っても取れなければ錠なしで進む
-- 作業ツリーの状態は、repo のルートで(サブディレクトリから起こしたセッションでも repo 全体を見る)、仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id(ハッシュ)と、その index の一覧(ファイルごとの blob の id)。HEAD や index は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。新しい blob は仮の objects に書いて消すので、未追跡ファイル(`.env` など)の中身が repo の `.git/objects` に残らない(一覧にも中身は入らない。path と id だけ)。全体で 3 秒を超えたら(.gitignore の無い巨大な node_modules など)正解を付けず、変わったファイルも分からない扱い。一覧(ファイルごとの mode と blob の id。chmod だけの変更も数える)は 4 MB まで読んで止める。git の外では prompt-kind の正解と changes-in-scope は無く、done-as-asked の files は `(unknown: no git listing for this turn)`。限界: 並走する別のエージェントやフォーマッタの変更も「変わった」に数える。`git add` は repo の clean filter(Git LFS など)を通常どおり走らせる(普通の `git add` と同じ副作用。filter を持つ repo では知っておく)
+- transcript は読まない(形が文書化されていない)。セッションごとの控えは `.shikii/sessions/<session_id>.json`(request、previous、pending、asked、judged。7 日で消える)と `<session_id>.files`(依頼の時の `git ls-files --stage` の一覧。4 MB まで)。Claude Code は hook を並列に走らせる(Stop と次の依頼が重なる)ので、控えは flock の中で 読む → 変える → 書く(tmp に書いて rename)。錠は短く持ち(モデルの呼び出しは錠の外)、2 秒待っても取れなければ錠なしで進む
+- 作業ツリーの状態は、repo のルートで(サブディレクトリから起こしたセッションでも repo 全体を見る)、仮の index に `git add -A`(.gitignore は尊重、未追跡も入るが `.shikii/` は除外)して `git write-tree` した tree の id(ハッシュ)と、その index の一覧(ファイルごとの blob の id)。HEAD や index は入れないので、commit / stash / checkout だけでは変わらず、ファイルの中身が変わった時だけ変わる。新しい blob は仮の objects に書いて消すので、未追跡ファイル(`.env` など)の中身が repo の `.git/objects` に残らない(一覧にも中身は入らない。path と id だけ)。全体で 3 秒を超えたら(.gitignore の無い巨大な node_modules など)正解を付けず、変わったファイルも分からない扱い。一覧(ファイルごとの mode と blob の id。chmod だけの変更も数える)は 4 MB まで読んで止める。git の外では prompt-kind の正解と changes-in-scope は無く、done-as-asked の files は `(unknown: no git listing for this turn)`。限界: 並走する別のエージェントやフォーマッタの変更も「変わった」に数える。`git add` は repo の clean filter(Git LFS など)を通常どおり走らせる(普通の `git add` と同じ副作用。filter を持つ repo では知っておく)
 - 変わったファイルの一覧は問いに最大 30 件(残りは `... and N more`)。何も変えていなければ changes-in-scope は聞かず、done-as-asked の files は `(none)`
 - 短い返事(40 字未満。「ok」「yes go ahead」)は依頼を置き換えず前の依頼に添える(ターンの終わりの問いが「ok」を依頼として読まないように)。短い返事でも新しいターンなので judged は戻り、「ok」の後のターンもまた評価される(依頼の文は「前の依頼 / ok」で別の入力)
 - 裏の作業の完了通知(Claude Code がサブエージェントや背景のコマンドの終わりを「ユーザーの発言」として流す `<task-notification>` / `[SYSTEM NOTIFICATION - NOT USER INPUT]`)は依頼ではない: 考える前の 2 問は聞かず、依頼・一覧・pending も置き換えない(実測で記録の半分近くがこれだった)。通知の後に作業が続いたら、そのターンの終わりで元の依頼に対して「範囲か・終えたか」をもう一度判定する(本人の選択: 長い裏作業の最後の状態を測る。1 つの依頼に通知の数だけ判定が残る)

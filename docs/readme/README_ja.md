@@ -7,7 +7,7 @@
 ### 普段の会話から出典付きの教訓を育て、AI の判断を答え合わせで確かめる道具。依頼と訂正はいつもどおり、wiki の整理は AI が行います。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-219%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-221%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 [![Version](https://img.shields.io/badge/version-0.3.0-00ADD8?style=flat-square)](../../CHANGELOG.md)
@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 ターンの終わりに `shikii: このセッションの判定 3 件が答え待ち: http://127.0.0.1:8096/` と 1 行出るので、手の空いた時に開いて答えます(画面も hook が裏で立てます)。1 件数秒です。答えが 50 件たまると線が引け、そこから AI の振る舞いが変わります。進め方を合わせた方がよさそうな依頼は AI への一言になり、終えていない・範囲の外に見えるターンはあなたへの 1 行になります。どちらにも「線は正解 61 件、人が確かめた精度 0.96」のような根拠が付きます。線が引けるまでは記録だけで、hook がツールを止めることはありません。
 
-置き場は `~/.shikii/agent` の 1 つで、プロジェクトをまたいで線は 1 本です(問いは AI の考え方についてのもので、どの repo でも同じ基準で答えが付くから)。記録にはどの repo の判定かの印が付き、画面で仕事ごとに見られます。詳しくは [hook の説明](../../integrations/claude-code.md)。
+会話・教訓・仮採点・正解・線は、各プロジェクトの `.shikii/` に保存します。hook が自動で準備し、:8096 の共通画面から仕事を選んで開きます。`~/.shikii/agent` は共通の型・道具・プロジェクトの入口を持ちます。詳しくは [hook の説明](../../integrations/claude-code.md)。
 
 **0.3: 普段の会話から wiki が育ちます。** 「まだ終わっていない」「そこは頼んでいない」と伝えると、元の依頼・返答・その後の発言が一組で残ります。普段使っているエージェントが、当てはまる場面と出典を付けて教訓にまとめます。次の似た依頼ではその教訓を引用し、変更前の版も残します。索引は自動で更新され、出典やリンクは一日一回点検されます。wiki のための画面操作や追加のモデルは要りません。「知識」画面から教訓と原文を読めます。
 
@@ -94,7 +94,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 install.sh がすること: 実行ファイル(`shikii` と `shikii-readout`)を入れ、Claude Code と Codex に hook を 2 つ足し、エージェントの作法(skill)を `~/.claude/skills/shikii` に置き、llama.cpp があれば手元の AI(Kev-4B、:8080)を裏で起こします。ホスト版の Jev や OpenRouter を使うなら鍵は環境変数で([接続先](../guide.ja.md#接続先))。何が動いていて何が足りないかは `shikii doctor`。
 
-プロジェクトごとの準備(`shikii init`)はエージェントが打ちます(自分で打ってもよい)。作るのはフォルダ `.shikii/` の 1 つだけです(中に `decisions/` = 判定の定義、`wiki/` = 知識、`records/` と `labels/` = 記録と答え合わせ)。プロジェクトのルートに他のものは増えません。`decisions/` `wiki/` `labels/` は AI を替えても使う資産なので commit を勧め、`records/` は増え続けるので任意です(`shikii gc` で古いものを捨てられます)。エージェントの設定(Claude Code の `.mcp.json`、Cursor の `.cursor/mcp.json`、OpenCode の `opencode.json`、Codex の `~/.codex/config.toml`)にも shikii の項を足しますが、あなたが書いた項は触りません。もう一度打っても、あるものは触りません。
+プロジェクトごとの準備(`shikii init`)はエージェントが打ちます(自分で打ってもよい)。作るのはフォルダ `.shikii/` の 1 つだけです(中に `decisions/` = 判定の定義、`wiki/` = 知識、`records/` と `labels/` = 記録と答え合わせ)。プロジェクトのルートに他のものは増えません。`decisions/` `wiki/` `labels/` は AI を替えても使う資産です。ただし会話も入るため、hook は `.shikii/` を Git の未追跡ファイルから除外します。共有する資料は内容を確認して選びます。`records/` は `shikii gc` で古いものを捨てられます。エージェントの設定(Claude Code の `.mcp.json`、Cursor の `.cursor/mcp.json`、OpenCode の `opencode.json`、Codex の `~/.codex/config.toml`)にも shikii の項を足しますが、あなたが書いた項は触りません。もう一度打っても、あるものは触りません。
 
 コマンドの出力と hook の文は英語です(Claude Code の設定の言語が日本語なら、hook の文は日本語も併記されます)。画面には日本語があります。外の AI だけで使う時の設定、`AGENTS.md` と `CLAUDE.md` の扱い、画面そのものを直す時の Node などの細かい注意は [詳しい使い方](../guide.ja.md) にあります。
 
