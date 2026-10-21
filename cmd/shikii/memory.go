@@ -14,15 +14,7 @@ type memoryDelivery struct {
 	At  time.Time `json:"at"`
 }
 
-type memoryQuote struct {
-	ID        string   `json:"id"`
-	Lesson    string   `json:"lesson,omitempty"`
-	AppliesTo string   `json:"applies_to,omitempty"`
-	Sources   []string `json:"sources,omitempty"`
-	Request   string   `json:"request,omitempty"`
-	Summary   string   `json:"summary,omitempty"`
-	Reply     string   `json:"reply,omitempty"`
-}
+type memoryQuote = store.MemoryQuote
 
 // memoryContext はセッションの錠の中で呼ぶ。適用条件が合う教訓を優先し、
 // 同じ版を一時間は繰り返さない。更新された版と別セッションにはすぐ届ける。
@@ -50,7 +42,7 @@ func memoryContext(root, scope, request string, session *hookSession) (string, e
 		for _, source := range p.Sources {
 			ids = append(ids, source.ID)
 		}
-		quotes = append(quotes, memoryQuote{ID: p.ID, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids})
+		quotes = append(quotes, memoryQuote{Key: key, ID: p.ID, Revision: p.Revision, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids})
 		keys = append(keys, key)
 	}
 	// 教訓がまだ無い話題だけ、似た依頼の原文を一会話返す。整理済みの教訓と重ねない。
@@ -72,7 +64,7 @@ func memoryContext(root, scope, request string, session *hookSession) (string, e
 			if seen[key] || !unprocessed[f.ID] || store.TextMatch(request, f.Request) < 0.5 {
 				continue
 			}
-			quotes = append(quotes, memoryQuote{ID: f.ID, Request: f.Request, Summary: f.Summary, Reply: f.Reply})
+			quotes = append(quotes, memoryQuote{Key: key, ID: f.ID, Request: f.Request, Summary: f.Summary, Reply: f.Reply})
 			keys = append(keys, key)
 			break
 		}
@@ -100,6 +92,12 @@ func memoryContext(root, scope, request string, session *hookSession) (string, e
 		}
 		if len(prefix)+len(data) > 1800 {
 			continue
+		}
+		// 検索候補ではなく、実際に返す短い引用を版ごとに保存する。
+		if session.TurnID != "" {
+			if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: session.TurnID, Scope: scope, Request: request, Quotes: clipped}); err != nil {
+				return "", err
+			}
 		}
 		for _, key := range keys {
 			session.Memories = append(session.Memories, memoryDelivery{Key: key, At: time.Now().UTC()})

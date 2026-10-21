@@ -1,5 +1,10 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
+  memoryEffectTitle: '記憶と判断の振り返り（AI）',
+  memoryEffectHow: n => '記憶を届けた直近' + n + '依頼までを対象に、使った判断と確認結果から仮評価します。未評価も含めて表示します。',
+  memoryEffectCount: (key, n) => ({ delivered: '届いた', helpful: '役立った', unused: '使わなかった', harmful: '妨げた', unknown: '不明', pending: '未評価' }[key] || key) + ' ' + n + '件',
+  memoryEffectDecision: '判断', memoryEffectEvidence: '確認結果', memoryEffectUnknown: '判断の記録なし',
+  memoryEffectError: '記憶の配送・評価を読み出せません。集計を確認してください。',
   projectsTitle: 'プロジェクト', projectsHow: '仕事を選ぶと、その会話・教訓・答え合わせだけを表示します。', projectsEmpty: 'まだプロジェクトはありません。利用するプロジェクトで shikii --init を実行するか、エージェントにこの場所での利用を頼んでください。',
   legacyTextLimit: 'この欄は保存上限付近で終わっています。以前の版では続きが保存されていない場合があります。', originalTextLimit: '長文のため、原文の保存上限（64 KB）まで表示しています。', originalTextUnavailable: '原文を読み出せません。判定に保存された冒頭を表示しています。',
 

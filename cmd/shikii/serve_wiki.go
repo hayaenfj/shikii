@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -80,6 +81,11 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		claims = append(claims, c)
 	}
 	result := map[string]any{"claims": claims, "lessons": []notebook.Page{}, "notebook_issues": []notebook.Issue{}, "pending_sources_count": 0, "notebook_project": filepath.Base(s.o.projectScope)}
+	if report, err := (store.Store{Dir: s.o.storeDir}).MemoryReport(s.o.projectScope); err == nil {
+		result["memory_effect"] = report
+	} else {
+		result["memory_effect_error"] = true
+	}
 	{
 		if view, err := (notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}).Query(""); err == nil {
 			result["lessons"], result["notebook_issues"], result["pending_sources_count"] = view.Lessons, view.Issues, len(view.Pending)

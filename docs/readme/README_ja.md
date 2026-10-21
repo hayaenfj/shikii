@@ -7,7 +7,7 @@
 ### 普段の会話から出典付きの教訓を育て、AI の判断を答え合わせで確かめる道具。依頼と訂正はいつもどおり、wiki の整理は AI が行います。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-239%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-246%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../operations.md)
 [![Version](https://img.shields.io/badge/version-0.4.0-00ADD8?style=flat-square)](../../CHANGELOG.md)
@@ -46,6 +46,8 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 会話・教訓・仮採点・正解・線は、各プロジェクトの `.shikii/` に保存します。`shikii --init` でその仕事の自動記録を有効にし、:8096の共通画面から選んで開きます。再初期化しても既存データを保持します。`~/.shikii/agent` は共通の型・道具・プロジェクトの入口を持ちます。詳しくは [hook の説明](../../integrations/claude-code.md)。
 
 **0.4: 必要な記憶を短く届け、振り返りをまとめます。** 題と適用する場面が近い教訓を最大2件、短く引用します。同じセッションに同じ版を一時間は繰り返さず、更新された版はすぐ届けます。採点とwiki整理は2会話ずつ、一度の確認と一括保存で済ませます。1件のままでも一日経ったら次の依頼で整理を促します。追加のモデルや設定は要りません。
+
+届けた引用と版を依頼ごとに保存し、普段の振り返りで「使った判断・確認結果」と結びます。「知識」画面では、役立った・使わなかった・妨げた・不明と未評価を確認できます。AIの仮評価として扱い、配送数だけを効果に数えたり、過去の効果を推測で埋めたりしません。
 
 **普段の会話から wiki が育ちます。** 「まだ終わっていない」「そこは頼んでいない」と伝えると、元の依頼・返答・その後の発言が一組で残ります。普段使っているエージェントが、当てはまる場面と出典を付けて教訓にまとめます。次の似た依頼ではその教訓を引用し、変更前の版も残します。索引は自動で更新され、出典やリンクは一日一回点検されます。wiki のための画面操作や追加のモデルは要りません。「知識」画面から教訓と原文を読めます。
 
