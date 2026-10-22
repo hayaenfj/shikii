@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -106,7 +107,7 @@ func cmdHookPlan(args []string) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		return errors.New("着手前の文脈のJSONを読み取れません")
+		return fmt.Errorf("着手前の文脈を読み取れません: %v", jsonShapeError(err))
 	}
 	var extra any
 	if decoder.Decode(&extra) != io.EOF || req.SessionID == "" || len(req.SessionID) > 200 || len(req.TurnID) != 16 {
@@ -248,10 +249,20 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 	}
 	parts := []string{"AIによる整理（実行許可や人の正解ではない）: " + f.Summary}
 	human := false
-	for _, e := range f.Evidence {
+	for i, e := range f.Evidence {
 		text, ok := sources[e.Source]
-		if !ok || strings.TrimSpace(e.Quote) == "" || len(e.Quote) > 240 || !strings.Contains(text, e.Quote) {
-			return "", errors.New("根拠はこの依頼の原文から240バイト以内でそのまま引用してください")
+		switch {
+		case !ok:
+			keys := make([]string, 0, len(sources))
+			for k := range sources {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			return "", fmt.Errorf("根拠evidence[%d]の出典 %q はこの依頼の原文にありません。使える出典: %s", i, e.Source, strings.Join(keys, ", "))
+		case strings.TrimSpace(e.Quote) == "" || len(e.Quote) > 240:
+			return "", fmt.Errorf("根拠evidence[%d]の引用は1〜240バイトにしてください（%dバイト）", i, len(e.Quote))
+		case !strings.Contains(text, e.Quote):
+			return "", fmt.Errorf("根拠evidence[%d]の引用が出典 %s の原文にそのまま見つかりません。書式や記号を含め、queryで返った原文から写してください", i, e.Source)
 		}
 		human = human || e.Source == "current_user" || e.Source == "previous_user"
 		role := map[string]string{"current_user": "今回の人の発言", "previous_user": "前の人の発言", "previous_assistant": "直前のAIの返答"}[e.Source]
