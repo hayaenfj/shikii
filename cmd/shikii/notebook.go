@@ -62,7 +62,7 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 // 新しい接続先や設定は持たず、文章は利用中のエージェントから JSON で受け取る。
 func cmdNotebook(args []string) error {
 	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain") {
-		return errors.New("使い方: shikii wiki query [検索語・出典ID・lesson:記事ID@版] | ingest | capture | maintain（JSONを標準入力）| lint | verify …")
+		return errors.New("使い方: shikii wiki query [検索語・出典ID（最大8件）・lesson:記事ID@版] | ingest | capture | maintain（JSONを標準入力）| lint | verify …")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -97,9 +97,16 @@ func cmdNotebook(args []string) error {
 		}
 	} else if req.Operation == "query" {
 		req.Query = strings.Join(args[1:], " ")
-		if len(args) == 2 && len(args[1]) == 16 {
-			if _, err := hex.DecodeString(args[1]); err == nil {
-				req.Sources, req.Query = []string{args[1]}, ""
+		if len(args) > 1 {
+			allIDs := true
+			for _, id := range args[1:] {
+				if _, err := hex.DecodeString(id); len(id) != 16 || err != nil {
+					allIDs = false
+					break
+				}
+			}
+			if allIDs {
+				req.Sources, req.Query = args[1:], ""
 			}
 		}
 	} else if len(args) != 1 {

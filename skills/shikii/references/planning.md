@@ -1,6 +1,6 @@
 # Prepare context before work
 
-The coding agent owns interpretation: identify the current task, find relevant conversation and wiki evidence, and distinguish an unresolved user decision from an ordinary implementation detail. The program retrieves records, checks quotes and scope, and measures the resulting decision. Do not ask the person to fill in a context form or add another model.
+The agent owns interpretation: identify the current task, find relevant conversation and wiki evidence, and distinguish an unresolved user decision from a delegated task detail. This applies to writing, research, business support and software. The program retrieves records, checks quotes and scope, and measures the resulting decision. Do not ask the person to fill in a context form or add another model.
 
 ## Recover the current task
 
@@ -25,6 +25,8 @@ If an earlier decision or project constraint matters, choose concrete topic word
 ```
 
 The optional `query` searches this project's wiki, including lesson bodies, and returns up to two applicable lessons with their revision and source IDs. Refine the topic if the results do not apply; do not treat delivery as relevance or usefulness. This lookup is independent of the hook's one-hour suppression of repeated memory quotations.
+
+Choose short topic terms and plausible alternative wording rather than copying the whole request into keyword search. For example, a receipt question can concern a refund policy, while a personal-name correction can concern publication rules. If the returned topic is wrong, refine the query before citing it. For comparing more candidates and reusing retrieved evidence, follow [wiki.md](wiki.md#search-and-reuse-evidence).
 
 Read each lesson's applicability. Planning returns a short summary; use `shikii wiki query lesson:<page_id>` for its full knowledge body and related pages. If its meaning or origin is unclear, use `shikii wiki query <source_id>` to inspect the original exchange. Prefer current instructions over historical agreements; a wiki lesson is a hypothesis, never current approval. If no usable evidence exists, keep the missing context unknown.
 

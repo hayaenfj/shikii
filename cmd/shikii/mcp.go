@@ -175,7 +175,7 @@ var mcpTools = []map[string]any{
 					"kind":  map[string]any{"type": "string", "enum": []string{"human", "agent", "code", "test", "release"}},
 					"title": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "reference": map[string]any{"type": "string"}, "version": map[string]any{"type": "string"}, "observed_at": map[string]any{"type": "string", "format": "date-time"},
 				}, "required": []string{"kind", "title", "content", "reference", "version", "observed_at"}, "description": "確認した原資料の控え。プログラムは参照先を実行・取得しない。AIの提供する観察で、実行許可や正解にはしない"},
-				"query":         map[string]any{"type": "string", "description": "検索する依頼や話題"},
+				"query":         map[string]any{"type": "string", "description": "検索する話題の語。本文2件とsearch.total・最大8候補を返す。意味検索ではないので話題の一致を確認する"},
 				"sources":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この仕事で観察された原資料のID。最大8件"},
 				"id":            map[string]any{"type": "string", "description": "更新する既存の教訓のID"},
 				"correction":    correctionSchema,

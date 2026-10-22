@@ -1,6 +1,10 @@
 package notebook
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestSearchKeepsCommandsAndRanksApplicableFields(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
@@ -39,5 +43,49 @@ func TestSearchKeepsCommandsAndRanksApplicableFields(t *testing.T) {
 	}
 	if p, err := b.Recall("installed packages"); err != nil || len(p) != 0 {
 		t.Fatal("自動配送は本文だけの一致を使わない")
+	}
+}
+
+func TestSearchShowsBoundedCandidatesBeyondFullArticles(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	for i := range 10 {
+		source := seed(t, b, i+1)
+		d := draft(source, "参加者の受付 "+source)
+		d.Lesson, d.AppliesTo = "受付の規定を確認する", "説明会の参加者受付"
+		body := "BODY_ONLY_" + source
+		d.Body = &body
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v, err := b.Query("参加者 受付")
+	if err != nil || v.Search == nil || v.Search.Total != 10 || len(v.Search.Candidates) != 8 || len(v.Lessons) != 2 {
+		t.Fatalf("本文2件とは別に一致数と最大8候補を返す: %+v %v", v, err)
+	}
+	for i, c := range v.Search.Candidates {
+		if c.ID == "" || c.Revision == "" || c.Title == "" || c.AppliesTo == "" || len(c.Fields) == 0 || len(c.Terms) == 0 {
+			t.Fatalf("候補を適用条件と一致箇所から比較できる: %+v", c)
+		}
+		if i < 2 && (c.ID != v.Lessons[i].ID || c.Revision != v.Lessons[i].Revision) {
+			t.Fatal("候補の順位と返した本文の版が対応する")
+		}
+	}
+	selected, err := b.Query("lesson:" + v.Search.Candidates[2].ID)
+	if err != nil || len(selected.Lessons) != 1 || selected.Lessons[0].Body == "" {
+		t.Fatal("3位以降の記事を選んで本文へ進める", err)
+	}
+	data, _ := json.Marshal(v)
+	if strings.Contains(string(data), selected.Lessons[0].Body) {
+		t.Fatal("候補だけの記事の本文まで一括配送しない")
+	}
+	for _, q := range []string{"該当しない話題", ""} {
+		other, err := b.Query(q)
+		if err != nil || (q == "" && other.Search != nil) || (q != "" && (other.Search == nil || other.Search.Total != 0 || len(other.Search.Candidates) != 0)) {
+			t.Fatal("0件と全体一覧を検索結果の上限と区別する", q, err)
+		}
+	}
+	quiet, err := b.query("参加者 受付", true)
+	if err != nil || quiet.Search != nil || len(quiet.Lessons) != 2 {
+		t.Fatal("自動配送を候補一覧で膨らませない", err)
 	}
 }

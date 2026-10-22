@@ -3,8 +3,13 @@ package main
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func TestNotebookCapturesObservedSourcesThroughHTTPAndCLI(t *testing.T) {
@@ -51,5 +56,66 @@ func TestNotebookCapturesObservedSourcesThroughHTTPAndCLI(t *testing.T) {
 	cli := notebookCommand(t, "capture", `{"kind":"code","title":"Source excerpt","content":"package fixture","reference":"example.go:1","version":"fixture-v1","observed_at":"2026-01-01T00:00:00Z"}`)
 	if cli["kind"] != "code" {
 		t.Fatal("CLIからも同じ保存操作を使える")
+	}
+}
+
+func TestNotebookCLIReadsSourcesTogether(t *testing.T) {
+	repo := gitRepo(t)
+	root := hookEnv(t, nil, repo)
+	t.Chdir(repo)
+	book := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	ids := []string{}
+	for _, content := range []string{"返品の承認済み規定", "送料を除くという確認結果"} {
+		source, err := book.Capture(notebook.Observation{Kind: "test", Title: content, Content: content, Reference: "fixture", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, source.ID)
+	}
+	text := capture(t, func() error { return cmdWiki([]string{"query", ids[0], ids[1], ids[0]}) })
+	var got struct {
+		Observations []notebook.Observation `json:"observations"`
+	}
+	if err := json.Unmarshal([]byte(text), &got); err != nil || len(got.Observations) != 2 {
+		t.Fatalf("一度のCLI呼出しで重複を除いて原資料を読める: %s %v", text, err)
+	}
+	seen := map[string]bool{}
+	for _, source := range got.Observations {
+		if (source.ID != ids[0] && source.ID != ids[1]) || seen[source.ID] || source.Content == "" || source.Version != "v1" {
+			t.Fatalf("指定した原文・版をそれぞれ一度返す: %+v", source)
+		}
+		seen[source.ID] = true
+	}
+	// 検索語の区切りは従来どおり。IDだけの引数と混同しない。
+	body := "送料を除いた支払額を返す。"
+	if _, err := book.Ingest(notebook.Draft{Sources: ids, Title: "返品 送料", Lesson: body, AppliesTo: "返品の対応", Body: &body}); err != nil {
+		t.Fatal(err)
+	}
+	text = capture(t, func() error { return cmdWiki([]string{"query", "返品", "送料"}) })
+	if !strings.Contains(text, `"lessons":[{`) {
+		t.Fatalf("複数の検索語は検索を続ける: %s", text)
+	}
+	for _, args := range [][]string{
+		{"query", ids[0], "0000000000000000"},
+		{"query", ids[0], ids[1], ids[0], ids[1], ids[0], ids[1], ids[0], ids[1], ids[0]},
+	} {
+		if err := cmdWiki(args); err == nil {
+			t.Fatal("別プロジェクトの原資料や8件を超える読込みを検索へ逃がさない")
+		}
+	}
+	// まとめ読込みでも引用元の改変検出を通す。
+	paths, err := filepath.Glob(filepath.Join(root, "records", "wiki-sources", "*", ids[0]+".json"))
+	if err != nil || len(paths) != 1 {
+		t.Fatal("保存した原資料を確認できない", err)
+	}
+	data, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths[0], append(data, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdWiki([]string{"query", ids[0], ids[1]}); err == nil {
+		t.Fatal("まとめ読込みで引用元のハッシュ照合を省略しない")
 	}
 }
