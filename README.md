@@ -7,7 +7,7 @@
 Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-294%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-295%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.5.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -114,6 +114,8 @@ This checks the latest stable release, verifies its hashes, and updates shikii a
 
 Updated skills and hook instructions take effect in a new agent session. Existing project decision questions and calibration are preserved; newly initialized projects receive the current built-in prompts.
 
+Use the same setup for writing, research, event planning or software projects. The built-in questions cover the agent's work; local file changes are evidence when available. For decisions such as refund eligibility or an external action, use a task-specific spec and the relevant business evidence.
+
 ## Learn from ordinary conversations
 
 1. **Keep the conversation.** The next human message joins the previous request and reply as one source observation.
@@ -122,6 +124,8 @@ Updated skills and hook instructions take effect in a new agent session. Existin
 4. **Reflect in batches.** Assessment, wiki work and memory observations are grouped after two pending sources, or at the next request after a single source has waited a day. The agent also revisits up to two articles and connected knowledge. People need not perform these steps each time.
 
 The agent can retain inspected code, test results and release observations with their version, time and reference using `shikii wiki capture`. These sources are integrated into existing topics. Search keeps commands and identifiers and prioritizes titles and applicability; the agent reads selected bodies and sources when a summary is insufficient.
+
+Search returns two full articles and up to eight lightweight candidates with the total match count. It matches words, so the agent checks the topic and can search alternative terms. Within the current task it reuses unchanged article text and sources; `shikii wiki query <source_id> <source_id> ...` reads up to eight missing sources together.
 
 Lessons remain hypotheses with sources. The current request and rules take priority. Original conversations and earlier revisions remain available. Periodic checks inspect sources, revisions and links, and repair the index. The active agent organizes the conversations without starting another model for this work.
 

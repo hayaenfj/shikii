@@ -7,7 +7,7 @@
 いつものエージェントが、依頼・返答・訂正から出典付きの教訓を育てます。次の似た依頼で思い出し、行動にどう反映されたかまで振り返ります。人は普段どおりに仕事を頼み、抜き取りと保留を確認します。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-294%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-295%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.5.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -114,6 +114,8 @@ shikii update
 
 更新したskillとhookの案内文は、新しいエージェントのセッションで使います。既存プロジェクトの判定用の質問文と較正は保持し、新しく初期化するプロジェクトには新版の既製プロンプトを用意します。
 
+文書作成・調査・イベント運営・ソフトウェア開発で同じ構成を使えます。既製の質問はエージェントの仕事を扱い、ファイル変更は確認できる範囲の根拠として使います。返金可否や外部への操作を判定する時は、その業務の質問と根拠を用意します。
+
 ## 普段の会話から学ぶ
 
 1. **依頼と返答を残す。** 次の人の発言が来ると、直前の依頼・返答・その発言が一組になります。
@@ -122,6 +124,8 @@ shikii update
 4. **結果をまとめて振り返る。** 未処理が2会話になった時、または1会話が一日経った後の依頼で、採点・wiki整理・届いた記憶の評価をまとめます。人が毎回操作する必要はありません。
 
 確認したコード・テスト結果・Releaseの観察は、`shikii wiki capture`で種類・版・時点・参照箇所とともに残せます。エージェントが既存の記事へ統合し、普段の振り返りで最大2記事ずつ本文・出典・関連を見直します。検索はコマンド名と識別子を残し、題と適用条件を優先します。要約だけでは足りない時は、必要な本文と原資料を読みます。
+
+検索では本文2件に加え、一致した総数と最大8件の軽い候補一覧を返します。語の一致で探すため、エージェントが話題を確認し、必要なら別の言葉でも検索します。同じ作業では変わっていない本文・出典を再利用し、足りない原資料は `shikii wiki query <出典ID> <出典ID> ...` で最大8件をまとめて読めます。
 
 教訓は出典付きの仮説です。今回の依頼と規則を優先し、元の会話や前の版も残します。出典・版・リンクの定期点検と索引の修復も行います。会話の整理に追加のモデルは起こさず、利用中のエージェントが担当します。
 
