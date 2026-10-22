@@ -26,7 +26,7 @@ If an earlier decision or project constraint matters, choose concrete topic word
 
 The optional `query` searches this project's wiki, including lesson bodies, and returns up to two applicable lessons with their revision and source IDs. Refine the topic if the results do not apply; do not treat delivery as relevance or usefulness. This lookup is independent of the hook's one-hour suppression of repeated memory quotations.
 
-Read each lesson's applicability. If its meaning or origin is unclear, use `shikii wiki query <source_id>` to inspect the original exchange. Prefer current instructions over historical agreements; a wiki lesson is a hypothesis, never current approval. If no usable evidence exists, keep the missing context unknown.
+Read each lesson's applicability. Planning returns a short summary; use `shikii wiki query lesson:<page_id>` for its full knowledge body and related pages. If its meaning or origin is unclear, use `shikii wiki query <source_id>` to inspect the original exchange. Prefer current instructions over historical agreements; a wiki lesson is a hypothesis, never current approval. If no usable evidence exists, keep the missing context unknown.
 
 ## Submit grounded interpretations
 

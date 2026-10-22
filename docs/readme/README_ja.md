@@ -7,7 +7,7 @@
 いつものエージェントが、依頼・返答・訂正から出典付きの教訓を育てます。次の似た依頼で思い出し、行動にどう反映されたかまで振り返ります。人は普段どおりに仕事を頼み、抜き取りと保留を確認します。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-279%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-282%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.4.3-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -115,13 +115,13 @@ shikii update
 ## 普段の会話から学ぶ
 
 1. **依頼と返答を残す。** 次の人の発言が来ると、直前の依頼・返答・その発言が一組になります。
-2. **いつものエージェントが整理する。** 普段の作業の中で、出典と適用する場面を付けて教訓をまとめます。明示的な訂正には原文と次の行動を添えます。
+2. **いつものエージェントが整理する。** 原資料を読み、同じ話題の知識へ統合します。検索用の短い要約と、背景・判断理由・未確定点を残す本文を分け、関連するページをつなぎます。明示的な訂正には原文と次の行動を添えます。
 3. **必要な場面へ短く届ける。** 同じプロジェクトの似た依頼に最大2件を引用します。同じセッションへ同じ版を一時間繰り返さず、更新した版はすぐ届けます。
 4. **結果をまとめて振り返る。** 未処理が2会話になった時、または1会話が一日経った後の依頼で、採点・wiki整理・届いた記憶の評価をまとめます。人が毎回操作する必要はありません。
 
 教訓は出典付きの仮説です。今回の依頼と規則を優先し、元の会話や前の版も残します。出典・版・リンクの定期点検と索引の修復も行います。会話の整理に追加のモデルは起こさず、利用中のエージェントが担当します。
 
-原資料を保ち、AIが取り込み・検索・点検を行う[カーパシーのLLM Wikiの発想](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)を取り入れています。[詳しい作法](../../skills/shikii/references/wiki.md)。
+原資料を保ち、AIが取り込み・検索・点検を行う[カーパシーのLLM Wikiの発想](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)を取り入れています。自動の引用は短く保ち、明示的な検索では本文も探せます。`shikii wiki query lesson:<ページID>` で本文と関連知識を読めます。[エージェント向けの作法（英語）](../../skills/shikii/references/wiki.md)。
 
 ## 人が確認すること
 

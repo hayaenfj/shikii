@@ -1,5 +1,6 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
+  notebookBody: '背景・判断理由を読む', notebookRelated: '関連する知識', notebookBack: '知識の一覧へ戻る',
   legacyPlanning: '過去の形式の回答です。新しい質問の答え合わせには使いません。',
   planningLearning: n => '合意・未決事項を含む新しい記録で学習します。過去の' + n + '件は保持し、今の答え合わせには混ぜません。',
   inputAgreed: '合意した方針（AIの整理と原文の根拠）',

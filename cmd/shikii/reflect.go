@@ -271,5 +271,5 @@ func reflectContext(root, scope string) (string, error) {
 		ids = append(ids, task.Source.ID)
 	}
 	data, _ := json.Marshal(map[string]any{"sources": ids})
-	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,applies_to}]（教訓なしはsourcesだけ）。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), nil
+	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related}]（教訓なしはsourcesだけ）。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), nil
 }

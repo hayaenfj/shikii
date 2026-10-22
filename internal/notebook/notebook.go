@@ -41,6 +41,8 @@ type Page struct {
 	Revision   string            `json:"revision" yaml:"revision"`
 	Previous   string            `json:"previous,omitempty" yaml:"previous,omitempty"`
 	Correction *store.Correction `json:"correction,omitempty" yaml:"correction,omitempty"`
+	Body       string            `json:"body,omitempty" yaml:"body,omitempty"`
+	Related    []string          `json:"related,omitempty" yaml:"related,omitempty"`
 }
 
 type Draft struct {
@@ -51,6 +53,8 @@ type Draft struct {
 	Sources    []string          `json:"sources"`
 	Replaces   []string          `json:"replaces,omitempty"`
 	Correction *store.Correction `json:"correction,omitempty"`
+	Body       *string           `json:"body,omitempty"`
+	Related    []string          `json:"related,omitempty"`
 }
 
 type Issue struct {
@@ -204,7 +208,17 @@ func (b Book) pageBytes(p Page) ([]byte, error) {
 	if p.Correction != nil {
 		correction = "\n\n人の訂正の引用: " + p.Correction.Quote + "\n\n次に変える行動（仮説）: " + p.Correction.Action
 	}
-	return []byte("---\n" + string(front) + "---\n\n# " + p.Title + "\n\n" + p.Lesson + "\n\n適用する場面: " + p.AppliesTo + correction + "\n\n## 出典\n\n" + links.String() + "\nこの教訓は出典付きの仮説です。今回の依頼と規則を優先します。\n"), nil
+	article := ""
+	if p.Body != "" {
+		article = "\n\n" + p.Body
+	}
+	if len(p.Related) > 0 {
+		article += "\n\n## 関連する知識\n\n"
+		for _, id := range p.Related {
+			article += fmt.Sprintf("- [%s](%s.md)\n", id, id)
+		}
+	}
+	return []byte("---\n" + string(front) + "---\n\n# " + p.Title + "\n\n" + p.Lesson + "\n\n適用する場面: " + p.AppliesTo + article + correction + "\n\n## 出典\n\n" + links.String() + "\nこの教訓は出典付きの仮説です。今回の依頼と規則を優先します。\n"), nil
 }
 
 func parsePage(data []byte) (Page, error) {
@@ -219,11 +233,16 @@ func parsePage(data []byte) (Page, error) {
 	if err := yaml.Unmarshal(data[4:4+end], &p); err != nil {
 		return p, err
 	}
-	if !idPattern.MatchString(p.ID) || p.Status != "hypothesis" || p.Title == "" || p.Lesson == "" || p.AppliesTo == "" || len(p.Sources) == 0 || len(p.Sources) > 16 || len(p.Replaces) > 4 {
+	if !idPattern.MatchString(p.ID) || p.Status != "hypothesis" || p.Title == "" || p.Lesson == "" || p.AppliesTo == "" || len(p.Sources) == 0 || len(p.Sources) > 16 || len(p.Replaces) > 4 || len(p.Body) > 16<<10 || len(p.Related) > 8 {
 		return p, errors.New("invalid wiki lesson metadata")
 	}
 	if p.Previous != "" && !idPattern.MatchString(p.Previous) {
 		return p, errors.New("invalid previous wiki revision")
+	}
+	for _, id := range p.Related {
+		if !idPattern.MatchString(id) || id == p.ID {
+			return p, errors.New("invalid related wiki page")
+		}
 	}
 	return p, nil
 }
@@ -321,6 +340,7 @@ func (b Book) query(query string, recall bool) (View, error) {
 	v.Issues = append(v.Issues, issues...)
 	superseded := map[string]bool{}
 	scores := map[string]float64{}
+	exact := !recall && strings.HasPrefix(query, "lesson:")
 	for _, p := range pages {
 		bad := b.sourceIssues(p)
 		v.Issues = append(v.Issues, bad...)
@@ -330,13 +350,17 @@ func (b Book) query(query string, recall bool) (View, error) {
 		for _, id := range p.Replaces {
 			superseded[id] = true
 		}
-		text, threshold := p.Title+" "+p.AppliesTo+" "+p.Lesson, 0.18
+		text, threshold := p.Title+" "+p.AppliesTo+" "+p.Lesson+" "+p.Body, 0.18
 		if recall {
 			text, threshold = p.Title+" "+p.AppliesTo, 0.35
 		}
 		score := store.TextMatch(query, text)
-		if (!recall && query == "") || score >= threshold {
+		if !exact && ((!recall && query == "") || score >= threshold) {
 			scores[p.ID] = score
+		}
+		// 直接参照は置き換え前のページも読める。出典の検証は省略しない。
+		if !recall && query == "lesson:"+p.ID {
+			return View{Lessons: []Page{p}, Pending: v.Pending, Issues: v.Issues}, nil
 		}
 	}
 	for _, p := range pages {
@@ -394,24 +418,28 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		return result, errors.New("訂正には人の発言の出典・引用と、次に変える行動の教訓が必要です")
 	}
 	d.Title, d.Lesson, d.AppliesTo = strings.TrimSpace(d.Title), strings.TrimSpace(d.Lesson), strings.TrimSpace(d.AppliesTo)
-	if len(d.Sources) < 1 || len(d.Sources) > 8 || len(d.Replaces) > 4 {
-		return result, errors.New("wiki ingest needs 1 to 8 source ids and at most 4 replaced lessons")
+	body := ""
+	if d.Body != nil {
+		body = strings.TrimSpace(*d.Body)
+	}
+	if len(d.Sources) < 1 || len(d.Sources) > 8 || len(d.Replaces) > 4 || len(d.Related) > 8 {
+		return result, errors.New("wiki ingest needs 1 to 8 source ids, at most 4 replaced lessons and 8 related pages")
 	}
 	if d.Lesson != "" && (strings.TrimSpace(d.Title) == "" || strings.TrimSpace(d.AppliesTo) == "") {
 		return result, errors.New("a lesson needs a title and the conditions where it applies")
 	}
-	for _, s := range []string{d.Title, d.Lesson, d.AppliesTo} {
+	for _, s := range []string{d.Title, d.Lesson, d.AppliesTo, body} {
 		if !utf8.ValidString(s) {
 			return result, errors.New("wiki text must be UTF-8")
 		}
 	}
-	if len(d.Title) > 200 || len(d.Lesson) > 2000 || len(d.AppliesTo) > 1000 {
+	if len(d.Title) > 200 || len(d.Lesson) > 2000 || len(d.AppliesTo) > 1000 || len(body) > 16<<10 {
 		return result, errors.New("wiki lesson exceeds the text limits")
 	}
-	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0) {
+	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Related != nil) {
 		return result, errors.New("reviewing a source without a lesson accepts only source ids")
 	}
-	for _, id := range append(append([]string{}, d.Sources...), d.Replaces...) {
+	for _, id := range append(append(append([]string{}, d.Sources...), d.Replaces...), d.Related...) {
 		if !idPattern.MatchString(id) {
 			return result, errors.New("wiki ids must be 16 lowercase hexadecimal characters")
 		}
@@ -499,7 +527,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 				return result, errors.New("wiki has 128 lessons; update or consolidate an existing lesson")
 			}
 		}
-		p := Page{ID: id, Title: strings.TrimSpace(d.Title), Lesson: strings.TrimSpace(d.Lesson), AppliesTo: strings.TrimSpace(d.AppliesTo), Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction}
+		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related}
 		if old, ok := byID[id]; ok {
 			if bad := b.sourceIssues(old); len(bad) > 0 {
 				return result, errors.New("the existing lesson has missing or changed sources")
@@ -524,6 +552,12 @@ func (b Book) Ingest(d Draft) (Result, error) {
 			if d.Replaces == nil {
 				p.Replaces = append([]string{}, old.Replaces...)
 			}
+			if d.Body == nil {
+				p.Body = old.Body
+			}
+			if d.Related == nil {
+				p.Related = old.Related
+			}
 			p.Previous = old.Previous
 			if p.Correction == nil {
 				p.Correction = old.Correction
@@ -534,11 +568,21 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		}
 		sort.Slice(p.Sources, func(i, j int) bool { return p.Sources[i].ID < p.Sources[j].ID })
 		p.Replaces = unique(p.Replaces)
+		p.Related = unique(p.Related)
+		for _, related := range p.Related {
+			linked, ok := byID[related]
+			if !ok || related == id || len(b.sourceIssues(linked)) > 0 {
+				return result, errors.New("a related page must be another page with valid sources in this project")
+			}
+		}
 		if old, ok := byID[id]; ok && revision(p) != old.Revision {
 			// 内容を元に戻す更新も、前の版へのリンクを持つ新しい版にする。
 			p.Previous = old.Revision
 		}
 		p.Revision = revision(p)
+		if data, err := b.pageBytes(p); err != nil || len(data) > 64<<10 {
+			return result, errors.New("wiki page exceeds the size limit")
+		}
 		byID[id] = p
 		if cyclic(byID) {
 			return result, errors.New("replaced wiki lessons must not form a cycle")
@@ -728,6 +772,11 @@ func (b Book) Lint() (Report, error) {
 		for _, id := range p.Replaces {
 			if _, ok := known[id]; !ok {
 				report.Issues = append(report.Issues, Issue{Kind: "missing-replaced-page", Page: p.ID})
+			}
+		}
+		for _, id := range p.Related {
+			if _, ok := known[id]; !ok {
+				report.Issues = append(report.Issues, Issue{Kind: "missing-related-page", Page: p.ID})
 			}
 		}
 	}

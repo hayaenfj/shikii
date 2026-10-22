@@ -7,7 +7,7 @@
 Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-279%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-282%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.4.3-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -115,13 +115,13 @@ This checks the latest stable release, verifies its hashes, and updates shikii a
 ## Learn from ordinary conversations
 
 1. **Keep the conversation.** The next human message joins the previous request and reply as one source observation.
-2. **Let the usual agent organize it.** The agent writes lessons with sources and conditions during its ordinary work. Explicit corrections can include the quoted statement and the action to change.
+2. **Let the usual agent organize it.** The agent reads sources and integrates them into existing topics: a short retrieval summary, a knowledge body with background, reasons and open questions, and links to related pages. Explicit corrections can include the quoted statement and the action to change.
 3. **Recall briefly when relevant.** Up to two related lessons arrive for a similar request in the same project. The same revision is suppressed for one hour in a session; updated revisions arrive immediately.
 4. **Reflect in batches.** Assessment, wiki work and memory observations are grouped after two pending conversations, or at the next request after a single conversation has waited a day. People need not perform these steps each time.
 
 Lessons remain hypotheses with sources. The current request and rules take priority. Original conversations and earlier revisions remain available. Periodic checks inspect sources, revisions and links, and repair the index. The active agent organizes the conversations without starting another model for this work.
 
-This follows [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): retain source material and let the agent handle ingestion, queries and maintenance. See [the workflow](skills/shikii/references/wiki.md) (Japanese).
+This follows [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): retain source material and let the agent handle ingestion, queries and maintenance. Automatic recall stays brief; explicit queries search full bodies, and `shikii wiki query lesson:<page_id>` opens a page and its related knowledge. See [the workflow](skills/shikii/references/wiki.md).
 
 ## What people check
 

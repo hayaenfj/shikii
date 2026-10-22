@@ -4,6 +4,8 @@
 
 ## 0.4.3 — Clearer reviews and less repeated loading
 
+- Separate concise retrieval summaries from knowledge bodies and related pages. Search full articles, follow exact page references, and keep earlier sources, revisions and legacy pages readable. Update the agent workflow to reconcile evidence into existing topics and show article details and related navigation in the UI.
+
 - Move task-context interpretation into the English agent skill; make recent conversation and explicitly searched wiki evidence available to planning with scoped, revision-checked citations.
 
 - Prepare approach decisions from the current request, agreement evidence, and open questions; reject unsupported quotes and stale submissions without treating AI interpretations as human truths.
