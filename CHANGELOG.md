@@ -2,6 +2,16 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.6.0 — Less for people to check
+
+- Learn scope and completion from observable results. A change undone during the next request counts as out of scope; a change kept through the following request counts as in scope with reduced weight. Repeating the same request counts as unfinished; a clearly different request counts as finished with reduced weight. Short replies and unclear cases are left unlabeled. AI assessments still stay out of truths and calibration.
+- Stop waiting for a person on decisions that results answer (`prompt-kind`, `changes-in-scope`, `done-as-asked`). People still answer planning decisions without a line, audits of calibrated automatic decisions, and sampled or uncertain AI assessments.
+- Retry automatic calibration that could not draw a line only after 20 more truths for the same wording and model, instead of after every turn.
+- When a built-in question has enough truths but still no line, ask the agent once for up to three meaning-preserving candidate wordings through `shikii hook variants submit`. Shikii validates them, adds them to `variants:` and scores them in the background. A winning candidate is reported to the person once; adoption still requires a person to confirm that the meaning is unchanged.
+- Skip before-work context preparation when a calibrated `prompt-kind` is confident that the request only explains, investigates or runs something. Replies to proposals and edits keep it.
+- Report malformed planning and candidate JSON by field and expected shape, and name the evidence item, source and available sources when a quotation does not match.
+- Add a "person's work" line to `shikii status`: decisions that wait for a person under the current rules, per 1000 overall and for the last 7 days, and whether truths came from a person or from results.
+
 ## 0.5.0 — Evidence that reaches decisions
 
 - Search all stored articles and expose every matching candidate through data-sized continuations. Remove fixed article, citation, related-page and source-lookup counts. Continue with the same query or source IDs through CLI, MCP and HTTP; the knowledge view follows article-list continuations automatically. Reject continuations after the project, request or results change. Teach the agent to reformulate keyword searches and reuse already-read evidence at the same project and revision.

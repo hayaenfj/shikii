@@ -7,12 +7,12 @@
 Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-299%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-308%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.5.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.5.0 improves command-aware search, preserves observed evidence, and brings article maintenance into normal reflection. Decisions retain the article versions they quote; the Knowledge panel separates retrieval, quotation and usefulness. See the [changelog](CHANGELOG.md).
+Version 0.6.0 reduces what people are asked to check. Scope and completion now learn from observable results, decisions answered by results no longer wait for a person, and a question that cannot reach a reliable threshold gets candidate wordings from the agent and is measured automatically. `shikii status` shows how many decisions still wait for a person. See the [changelog](CHANGELOG.md).
 
 [What changes](#what-changes) · [Requirements](#requirements) · [Get started](#get-started) · [Learn from ordinary conversations](#learn-from-ordinary-conversations) · [What people check](#what-people-check) · [Check whether memory helped](#check-whether-memory-helped) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Use it for business decisions](#use-it-for-business-decisions) · [Read more](#read-more)
 
