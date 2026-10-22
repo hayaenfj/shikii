@@ -43,14 +43,14 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	var plugin struct {
 		Version string `json:"version"`
 	}
-	if err := json.Unmarshal(manifest, &plugin); err != nil || plugin.Version != shikii.Version || shikii.Version != "0.4.3" {
+	if err := json.Unmarshal(manifest, &plugin); err != nil || plugin.Version != shikii.Version || shikii.Version != "0.4.4" {
 		t.Fatalf("CLI・MCP・plugin の版を揃える: %s %+v %v", shikii.Version, plugin, err)
 	}
 	old := os.Args
 	os.Args = []string{"shikii", "--version"}
 	out := capture(t, func() error { main(); return nil })
 	os.Args = old
-	if strings.TrimSpace(out) != "shikii 0.4.3" {
+	if strings.TrimSpace(out) != "shikii 0.4.4" {
 		t.Fatalf("版を確認できる: %s", out)
 	}
 	repo := gitRepo(t)

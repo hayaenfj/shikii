@@ -7,12 +7,12 @@
 Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-282%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-283%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.4.3-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.4-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.4.3 makes conversation reviews clearer and loads only the information on screen. It fixes knowledge evidence display and keeps `shikii update`, correction tracking and batched reflection. See the [changelog](CHANGELOG.md).
+Version 0.4.4 connects concise memories to fuller knowledge articles and related pages. It includes updated agent guidance for context, wiki editing and reflection, clearer reviews, and verified updates. See the [changelog](CHANGELOG.md).
 
 [What changes](#what-changes) · [Requirements](#requirements) · [Get started](#get-started) · [Learn from ordinary conversations](#learn-from-ordinary-conversations) · [What people check](#what-people-check) · [Check whether memory helped](#check-whether-memory-helped) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Use it for business decisions](#use-it-for-business-decisions) · [Read more](#read-more)
 
@@ -111,6 +111,8 @@ shikii update
 ```
 
 This checks the latest stable release, verifies its hashes, and updates shikii and readout in the current binary directory. Go is unnecessary for updates. Conversations, lessons and truths are preserved, and existing hooks and agent instructions are refreshed. Restart running UI and MCP processes to use the new binary. [Details](docs/guide.md#update-shikii).
+
+Updated skills and hook instructions take effect in a new agent session. Existing project decision questions and calibration are preserved; newly initialized projects receive the current built-in prompts.
 
 ## Learn from ordinary conversations
 

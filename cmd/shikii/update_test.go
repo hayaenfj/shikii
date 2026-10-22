@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	shikii "github.com/hayaenfj/shikii"
 )
 
 type updateFixture struct {
@@ -169,6 +171,98 @@ func TestUpdateInstallsVerifiedPairAtExecutable(t *testing.T) {
 	info, err := os.Stat(f.opts.executable)
 	if err != nil || info.Mode().Perm()&0o111 == 0 {
 		t.Fatal("実行権限がない")
+	}
+}
+
+// 実際の新版を配布物として通し、置換後のhook installまで実行する。
+// HOMEとプロジェクトは隔離し、公開Releaseや利用中の設定は使わない。
+func TestUpdateRefreshesSkillAndPreservesExistingPrompts(t *testing.T) {
+	compiled := filepath.Join(t.TempDir(), "new-shikii")
+	if out, err := exec.Command("go", "build", "-o", compiled, ".").CombinedOutput(); err != nil {
+		t.Fatalf("更新する本体を組む: %v %s", err, out)
+	}
+	body, err := os.ReadFile(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := fixtureUpdate(t)
+	f.tag, f.opts.version, f.files["shikii"] = "v"+shikii.Version, "0.4.3", body
+	// 実hookのcommandと同じ、空白を含まない絶対パスを使う。
+	f.opts.executable = filepath.Join(t.TempDir(), "shikii")
+	for _, name := range []string{"shikii", "shikii-readout"} {
+		if err := os.WriteFile(filepath.Join(filepath.Dir(f.opts.executable), name), []byte("old"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir()) // hook installからモデルを起動しない。
+	skill := filepath.Join(home, ".claude", "skills", "shikii")
+	if err := os.MkdirAll(skill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("old skill"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settings, _ := json.Marshal(map[string]any{"fixture": "keep", "hooks": map[string]any{
+		"UserPromptSubmit": []any{map[string]any{"hooks": []any{
+			map[string]any{"type": "command", "command": f.opts.executable + " hook user-prompt-submit"},
+			map[string]any{"type": "command", "command": "keep-other-hook"},
+		}}},
+	}})
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.WriteFile(settingsPath, settings, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// 既存の質問・較正・人の回答を更新で書き換えない。
+	preserved := map[string][]byte{}
+	for _, rel := range []string{
+		".shikii/agent/decisions/needs-plan.yaml",
+		"project/.shikii/decisions/needs-plan.yaml",
+		"project/.shikii/labels/needs-plan.jsonl",
+	} {
+		path := filepath.Join(home, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		preserved[path] = []byte("fixture: existing question and observations\n")
+		if err := os.WriteFile(path, preserved[path], 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.opts.finish = finishUpdate
+	if err := runUpdate(context.Background(), f.opts); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"SKILL.md", "references/wiki.md", "references/planning.md", "references/review.md"} {
+		want, err := shikii.SkillFS.ReadFile("skills/shikii/" + rel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(skill, rel))
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("updateから新版のskillとpromptを配置する: %s %v", rel, err)
+		}
+	}
+	for path, want := range preserved {
+		if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("既存の判定文と回答を保持する: %s %v", path, err)
+		}
+	}
+	got, _ := os.ReadFile(settingsPath)
+	if !bytes.Contains(got, []byte("keep-other-hook")) || !bytes.Contains(got, []byte(`"fixture": "keep"`)) {
+		t.Fatal("他のhookと設定を保持する")
+	}
+	// 新しく初期化するプロジェクトには新版の判定promptを用意する。
+	fresh := t.TempDir()
+	cmd := exec.Command(f.opts.executable, "--init")
+	cmd.Dir = fresh
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("新版で新規プロジェクトを初期化: %v %s", err, out)
+	}
+	want, _ := shikii.AgentSpecsFS.ReadFile("integrations/claude-code/specs/needs-plan.yaml")
+	if got, err := os.ReadFile(filepath.Join(fresh, ".shikii", "decisions", "needs-plan.yaml")); err != nil || !bytes.Equal(got, want) {
+		t.Fatal("新規プロジェクトの判定promptは新版", err)
 	}
 }
 
