@@ -1841,6 +1841,7 @@ func cmdStatus(args []string) error {
 		fmt.Fprintln(stdout, "no records, no labels, no specs")
 		return nil
 	}
+	var total personWork
 	for _, id := range ids {
 		recs, labs, err := st.Counts(id)
 		if err != nil {
@@ -1881,6 +1882,12 @@ func cmdStatus(args []string) error {
 			// 段ごとの数。進み具合は 1000 判定あたりの人の判断(ask のまま人に回った数)
 			fmt.Fprintf(stdout, "  rungs: settled by the minimal question %d, by added context %d, left to a person %d (%.0f per 1000 decisions)\n", f.Minimal, f.Context, f.Human, f.HumanPerThousand())
 		}
+		if all, err := st.Records(id, 0); err == nil && len(all) > 0 {
+			reviews, _ := st.Reviews(id)
+			w := countPersonWork(id, sp != nil && decide.DiscardUnsure(sp), all, labs, reviews, time.Now())
+			w.print(stdout, "  ")
+			total.add(w)
+		}
 		if len(labs) > 0 {
 			audited := map[string]bool{} // 判定(trace)で数える。文脈を通った判定の答えは 2 段に付くが、人の確認は 1 回
 			for _, l := range labs {
@@ -1916,6 +1923,9 @@ func cmdStatus(args []string) error {
 		if sp == nil {
 			fmt.Fprintln(stdout, "  (spec not given; pass its path to see calibration state)")
 		}
+	}
+	if len(ids) > 1 && total.Records > 0 {
+		total.print(stdout, "all specs: ")
 	}
 	return nil
 }
