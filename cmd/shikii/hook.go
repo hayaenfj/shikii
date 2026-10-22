@@ -722,6 +722,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
+	if planning != nil && planningNotNeeded(ds[0]) {
+		planning = nil // 線のある prompt-kind が確信して「ファイルを変えない」: 着手前の整理を頼まない(控えへは最初の mut が nil を書く)
+	}
 	var out hookOut
 	if planning != nil {
 		out.Context = planningNotice(in.SessionID, turnID)
@@ -740,6 +743,19 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		out.System = joinLines(out.System, outs[i].System)
 	}
 	return out, muts, firstErr
+}
+
+// planningNotNeeded は、着手前の整理を省いてよいか: prompt-kind に線があり、確信して(act)説明・調査・実行(ファイルを変えない)と答えた時だけ。
+// 提案への返事・選択(decide)は合意が要になるので省かない。線が無ければ省かない(省く根拠が測られていない)。
+func planningNotNeeded(d *decide.Decision) bool {
+	if d == nil || !d.IsCalibrated || d.Band != decide.Act {
+		return false
+	}
+	switch d.Top {
+	case "explain", "investigate", "run":
+		return true
+	}
+	return false
 }
 
 // hookStop は考え終わった後の 2 つ(changes-in-scope と done-as-asked)を、依頼・変わったファイルの一覧・最後の返答を揃えて聞く。
