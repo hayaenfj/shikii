@@ -67,6 +67,7 @@ type View struct {
 	Lessons []Page           `json:"lessons"`
 	Pending []store.Feedback `json:"pending_sources"`
 	Issues  []Issue          `json:"issues"`
+	Matches []Match          `json:"matches,omitempty"`
 }
 
 type Result struct {
@@ -339,7 +340,7 @@ func (b Book) query(query string, recall bool) (View, error) {
 	}
 	v.Issues = append(v.Issues, issues...)
 	superseded := map[string]bool{}
-	scores := map[string]float64{}
+	valid := []Page{}
 	exact := !recall && strings.HasPrefix(query, "lesson:")
 	for _, p := range pages {
 		bad := b.sourceIssues(p)
@@ -350,31 +351,29 @@ func (b Book) query(query string, recall bool) (View, error) {
 		for _, id := range p.Replaces {
 			superseded[id] = true
 		}
-		text, threshold := p.Title+" "+p.AppliesTo+" "+p.Lesson+" "+p.Body, 0.18
-		if recall {
-			text, threshold = p.Title+" "+p.AppliesTo, 0.35
-		}
-		score := store.TextMatch(query, text)
-		if !exact && ((!recall && query == "") || score >= threshold) {
-			scores[p.ID] = score
-		}
+		valid = append(valid, p)
 		// 直接参照は置き換え前のページも読める。出典の検証は省略しない。
 		if !recall && query == "lesson:"+p.ID {
 			return View{Lessons: []Page{p}, Pending: v.Pending, Issues: v.Issues}, nil
 		}
 	}
-	for _, p := range pages {
-		if _, ok := scores[p.ID]; ok && !superseded[p.ID] {
+	for _, p := range valid {
+		if !superseded[p.ID] && !exact {
 			v.Lessons = append(v.Lessons, p)
 		}
 	}
-	sort.SliceStable(v.Lessons, func(i, j int) bool { return scores[v.Lessons[i].ID] > scores[v.Lessons[j].ID] })
+	if query != "" || recall {
+		v.Lessons, v.Matches = rankPages(v.Lessons, query, recall)
+	}
 	limit := 2
 	if query == "" && !recall {
 		limit = 20
 	}
 	if len(v.Lessons) > limit {
 		v.Lessons = v.Lessons[:limit]
+		if len(v.Matches) > limit {
+			v.Matches = v.Matches[:limit]
+		}
 	}
 	if recall {
 		return v, nil
