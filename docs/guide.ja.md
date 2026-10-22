@@ -4,6 +4,10 @@
 モジュールは `github.com/hayaenfj/shikii`、ライセンスは Apache-2.0 OR MIT（どちらかを選択）([`LICENSE`](../LICENSE))。英語の README は [`../README.md`](../README.md)、日本語の短い版は [`readme/README_ja.md`](readme/README_ja.md)。
 
 設計は [`docs/decision-ops-framework.md`](decision-ops-framework.md)。
+
+文書・調査・業務にも同じ保存・検索・振り返りを使える。新規プロジェクトの既製4問は開発に限定しない表現で、既存の質問文・較正は保持する。`edit`の結果と変更範囲の判定は観測できたローカルファイルが対象。外部操作や業務の可否は専用の質問と根拠で扱い、Gitの比較ができない時に空の一覧から変更なしという正解を作らない。
+
+明示的な検索は語の一致で探し、本文2件と`search.total`（有効な一致記事数）、最大8件の`search.candidates`を返す。候補の題・適用条件・版・一致欄と語を比べ、話題が違えば検索語を見直す。同じ作業では同じプロジェクト・版の原文を再利用し、不足する原資料は`shikii wiki query <出典ID> <出典ID> ...`で最大8件をまとめて読む。新しい依頼・版の変更・文脈の欠落時は読み直す。これは引用元のハッシュ照合を省略する仕組みではない。
 最初の試作は **spec / decide / calibrate** の 3 つだけだった(設計 §11)。今は label / check / drift / bias / status / gc / serve / mcp / new / up / doctor も動く。この手引きは CLI の中身を順に説明する。
 
 ```sh

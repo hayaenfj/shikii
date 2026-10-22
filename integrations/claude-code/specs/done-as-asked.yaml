@@ -3,16 +3,16 @@
 # 普段は会話と結果から AI が仮採点し、人は抜き取りと保留を画面(:8096、`shikii serve --store ~/.shikii/agent --port 8096`)で答える: 「もう一度言い直すことが残っていなかったか」。
 # 線が引けたら、確信して「終えていない」(discard)の時だけ端末に 1 行。エージェントには渡さない(Stop で文脈を返すと会話が続く。続けるかは人が決める)。
 id: done-as-asked
-version: 1
+version: 2
 type: noul
 
 question: |
-  The user asked a coding agent for `request`. The agent ended its turn with `summary`; these files changed during the turn: `files`. Did the agent finish what was asked, so that the user has nothing to repeat, correct or ask about again? An honest "I could not do X because Y" and a direct answer to a question both count as finished. Stopping half-way, asking a question the request already answered, or saying it is done without doing it do not.
+  The user asked an AI agent for `request`. The agent ended its turn with `summary`; available local file changes are `files`. Did the agent finish the requested answer, draft, investigation or action, so that the user has nothing to repeat, correct or ask about again? An honest "I could not do X because Y" and a direct answer to a question both count as finished. Stopping half-way, asking a question the request already answered, or saying it is done without doing it do not. File changes are supporting evidence when available; an empty list alone does not mean the task is unfinished.
 
 state:
   template: |
     request: {{ request }}
-    files changed during the turn:
+    observed local file changes (when available):
     {{ files }}
     agent's closing message: {{ summary }}
   required: [request, summary]

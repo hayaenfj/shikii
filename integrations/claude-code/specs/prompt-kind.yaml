@@ -2,21 +2,21 @@
 # 正解は結果から自動で付く: 次の依頼が来た時(無ければターンの終わり)に作業ツリーのハッシュが変わっていれば edit、変わっていなければ !edit(部分ラベル、重み 0.7)。
 # 迷った時は、直前のアシスタントの発言(Stop で hook が控えたもの)を足して聞き直す。
 id: prompt-kind
-version: 1
+version: 2
 type: choice
 
 question: |
-  What will the coding agent most likely end up doing in response to `request`?
+  What will the AI agent most likely end up doing in response to `request`, whether the task involves writing, research, business support or software?
 
 options:
   - id: edit
-    description: editing, adding, fixing or deleting files in the repository (code, docs, config, tests)
+    description: editing, adding, fixing or deleting local project files (documents, spreadsheets, images, code or configuration)
   - id: explain
     description: answering a question or explaining something, without touching files
   - id: investigate
-    description: researching or reading code/web to report findings or options, without editing
+    description: researching or reading documents, data, code or the web to report findings or options, without editing files
   - id: run
-    description: running commands, tests, or checking a live system and reporting the result, without editing
+    description: running commands or tools, performing checks and reporting the result, without editing files
   - id: decide
     description: the user is replying to a proposal or choosing between options the agent offered
 
