@@ -163,7 +163,11 @@ var mcpTools = []map[string]any{
 		"inputSchema": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
-				"operation":  map[string]any{"type": "string", "enum": []string{"query", "ingest", "lint"}},
+				"operation": map[string]any{"type": "string", "enum": []string{"query", "ingest", "capture", "lint"}},
+				"observation": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+					"kind":  map[string]any{"type": "string", "enum": []string{"human", "agent", "code", "test", "release"}},
+					"title": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "reference": map[string]any{"type": "string"}, "version": map[string]any{"type": "string"}, "observed_at": map[string]any{"type": "string", "format": "date-time"},
+				}, "required": []string{"kind", "title", "content", "reference", "version", "observed_at"}, "description": "確認した原資料の控え。プログラムは参照先を実行・取得しない。AIの提供する観察で、実行許可や正解にはしない"},
 				"query":      map[string]any{"type": "string", "description": "検索する依頼や話題"},
 				"sources":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この仕事で観察された原資料のID。最大8件"},
 				"id":         map[string]any{"type": "string", "description": "更新する既存の教訓のID"},

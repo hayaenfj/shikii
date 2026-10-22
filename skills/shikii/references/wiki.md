@@ -30,6 +30,14 @@ Omitting `body`, `related` or `replaces` on update preserves it. Explicit `body:
 
 The same draft fields work in `shikii reflect submit`'s `wiki` array. Use individual ingestion calls for deeper cross-topic editing while reflection handles pending observations. Save the intended editorial work before marking a source reviewed.
 
+## Preserve observed evidence
+
+Use `shikii wiki capture` with JSON on stdin, or `shikii_wiki` with `operation: "capture", observation: {...}`, to retain a source you actually inspected. Fields are `kind` (`human`, `agent`, `code`, `test`, or `release`), `title`, `content`, `reference`, `version`, and `observed_at` (RFC3339). Include the relevant excerpt or result, an exact file/line, command or release reference, and the commit/artifact version or observation context. Content is at most 32 KiB and the encoded object at most 64 KiB. Keep secrets and private material local. Capture does not fetch a URL, execute a command or establish the correctness of an agent's report.
+
+The returned ID can be used in `sources` during ordinary ingestion. Repeating the same observation is idempotent; a changed result or version creates another immutable source. Unprocessed captures appear in reflection's `observations` within its two-source budget. Read and integrate them into existing topics, or mark them reviewed with a source-only draft. At most 128 unprocessed captures may wait; finish useful integration before capturing more.
+
+`wiki query <source_id>` returns conversations in `source_material`, captured evidence in `observations`, and available long conversation text in `originals`. Original text includes its record ID and truncation/unavailability status. Ingestion archives available long text with a separate citation hash, preserving it even if the decision record is later removed. Missing historical text cannot be reconstructed from a summary; keep that limit explicit. Separate a person's chosen policy, the agent's proposal, and a version-specific observed result in the article. Neither a `human` kind nor historical evidence supplies current permission or a truth label.
+
 ## Retrieve and maintain
 
 Lessons are hypotheses. Current requests and rules take priority; wiki entries never supply current permission, human truth labels, calibration or `confirmed` status.

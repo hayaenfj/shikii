@@ -26,8 +26,9 @@ import (
 type Book struct{ Root, Scope string }
 
 type Source struct {
-	ID   string `json:"id" yaml:"id"`
-	Hash string `json:"hash" yaml:"hash"`
+	ID       string `json:"id" yaml:"id"`
+	Hash     string `json:"hash" yaml:"hash"`
+	TextHash string `json:"text_hash,omitempty" yaml:"text_hash,omitempty"`
 }
 
 type Page struct {
@@ -64,10 +65,11 @@ type Issue struct {
 }
 
 type View struct {
-	Lessons []Page           `json:"lessons"`
-	Pending []store.Feedback `json:"pending_sources"`
-	Issues  []Issue          `json:"issues"`
-	Matches []Match          `json:"matches,omitempty"`
+	Lessons      []Page           `json:"lessons"`
+	Pending      []store.Feedback `json:"pending_sources"`
+	Issues       []Issue          `json:"issues"`
+	Matches      []Match          `json:"matches,omitempty"`
+	Observations []Observation    `json:"observations,omitempty"`
 }
 
 type Result struct {
@@ -317,6 +319,12 @@ func (b Book) sourceIssues(p Page) []Issue {
 		} else if digest(data) != s.Hash {
 			issues = append(issues, Issue{Kind: "changed-source", Page: p.ID, Source: s.ID})
 		}
+		if s.TextHash != "" {
+			text, err := readOriginals(filepath.Join(dir, s.ID+".text.json"))
+			if err != nil || digest(text) != s.TextHash {
+				issues = append(issues, Issue{Kind: "changed-source-text", Page: p.ID, Source: s.ID})
+			}
+		}
 	}
 	return issues
 }
@@ -470,6 +478,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	}
 	refs := []Source{}
 	raw := map[string][]byte{}
+	texts := map[string][]byte{}
 	for _, id := range d.Sources {
 		data, err := readFile(filepath.Join(sourceDir, id+".json"))
 		if os.IsNotExist(err) {
@@ -482,12 +491,32 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		if err != nil {
 			return result, err
 		}
-		var observed store.Feedback
-		if json.Unmarshal(data, &observed) != nil || observed.ID != id || observed.Request == "" || observed.Summary == "" || observed.Reply == "" {
+		if !validSource(data, id) {
 			return result, errors.New("invalid archived wiki source")
 		}
+		var observation Observation
+		if json.Unmarshal(data, &observation) == nil && observation.Kind != "" {
+			if _, err := b.readObservation(sourceDir, id); err != nil {
+				return result, err
+			}
+		}
 		raw[id] = data
-		refs = append(refs, Source{ID: id, Hash: digest(data)})
+		ref := Source{ID: id, Hash: digest(data)}
+		text, err := readOriginals(filepath.Join(sourceDir, id+".text.json"))
+		if os.IsNotExist(err) {
+			var f store.Feedback
+			_ = json.Unmarshal(data, &f)
+			if originals := b.originals(f); len(originals) > 0 {
+				text, _ = json.Marshal(originals)
+			}
+		} else if err != nil {
+			return result, err
+		}
+		if len(text) > 0 {
+			texts[id] = text
+			ref.TextHash = digest(text)
+		}
+		refs = append(refs, ref)
 	}
 	if d.Correction != nil {
 		var observed store.Feedback
@@ -535,7 +564,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 				found := false
 				for _, r := range p.Sources {
 					if ref.ID == r.ID {
-						if ref.Hash != r.Hash {
+						if ref.Hash != r.Hash || (ref.TextHash != "" && ref.TextHash != r.TextHash) {
 							return result, errors.New("an existing lesson's source hash changed")
 						}
 						found = true
@@ -591,6 +620,11 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	for id, data := range raw {
 		if err := immutable(filepath.Join(sourceDir, id+".json"), data); err != nil {
 			return result, err
+		}
+		if text := texts[id]; len(text) > 0 {
+			if err := immutableLarge(filepath.Join(sourceDir, id+".text.json"), text); err != nil {
+				return result, err
+			}
 		}
 	}
 	if p := result.Page; p != nil {
@@ -814,9 +848,13 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 		return nil, errors.New("wiki pages need inspection before their sources can be read")
 	}
 	expected := map[string]string{}
+	expectedText := map[string]string{}
 	for _, p := range pages {
 		for _, source := range p.Sources {
 			expected[source.ID] = source.Hash
+			if source.TextHash != "" {
+				expectedText[source.ID] = source.TextHash
+			}
 		}
 	}
 	dir, err := b.directory(false, "sources")
@@ -824,6 +862,8 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 		return nil, err
 	}
 	out := []store.Feedback{}
+	observations := []Observation{}
+	originals := map[string][]Original{}
 	for _, id := range unique(ids) {
 		if !idPattern.MatchString(id) {
 			return nil, errors.New("invalid wiki source id")
@@ -847,12 +887,42 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 			return nil, errors.New("a cited wiki source has changed")
 		}
 		var f store.Feedback
-		if json.Unmarshal(data, &f) != nil || f.ID != id {
+		if !validSource(data, id) {
 			return nil, errors.New("invalid archived wiki source")
 		}
-		out = append(out, f)
+		_ = json.Unmarshal(data, &f)
+		if f.Request != "" {
+			out = append(out, f)
+			var text []byte
+			textErr := os.ErrNotExist
+			if dir != "" {
+				text, textErr = readOriginals(filepath.Join(dir, id+".text.json"))
+			}
+			if hash := expectedText[id]; hash != "" && (textErr != nil || digest(text) != hash) {
+				return nil, errors.New("原資料の長文のハッシュが一致しません")
+			}
+			if textErr == nil {
+				var saved []Original
+				if json.Unmarshal(text, &saved) != nil {
+					return nil, errors.New("原資料の長文を読み取れません")
+				}
+				originals[id] = saved
+			} else if os.IsNotExist(textErr) || dir == "" {
+				if value := b.originals(f); len(value) > 0 {
+					originals[id] = value
+				}
+			} else {
+				return nil, textErr
+			}
+		} else {
+			o, err := b.readObservation(dir, id)
+			if err != nil {
+				return nil, err
+			}
+			observations = append(observations, o)
+		}
 	}
-	return map[string]any{"source_material": out}, nil
+	return map[string]any{"source_material": out, "observations": observations, "originals": originals}, nil
 }
 
 // MaybeLint は一日一回の軽い点検。会話ごとの取り込みと、遅い周期の整備を分ける。
