@@ -73,6 +73,7 @@ type View struct {
 	Matches      []Match           `json:"matches,omitempty"`
 	Observations []Observation     `json:"observations,omitempty"`
 	Maintenance  []MaintenanceTask `json:"maintenance,omitempty"`
+	Search       *SearchResult     `json:"search,omitempty"`
 }
 
 type Result struct {
@@ -390,6 +391,15 @@ func (b Book) query(query string, recall bool) (View, error) {
 	}
 	if query != "" || recall {
 		v.Lessons, v.Matches = rankPages(v.Lessons, query, recall)
+	}
+	if query != "" && !recall {
+		v.Search = &SearchResult{Total: len(v.Lessons), Candidates: []SearchCandidate{}}
+		for i, page := range v.Lessons {
+			if i == 8 {
+				break
+			}
+			v.Search.Candidates = append(v.Search.Candidates, SearchCandidate{Match: v.Matches[i], Title: page.Title, AppliesTo: page.AppliesTo})
+		}
 	}
 	limit := 2
 	if query == "" && !recall {

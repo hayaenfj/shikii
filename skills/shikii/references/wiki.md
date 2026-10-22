@@ -15,6 +15,16 @@ The hook sends a reflection reminder after two pending conversations, or on a re
 
 For greetings or follow-up requests with no reusable finding, submit `sources` only. Silence and thanks are not success truths. For explicit corrections, attach `correction: {source_id, quote, action}`: the exact human reply and the next action to change. See [correction reflection](review.md).
 
+## Search and reuse evidence
+
+Keyword search matches text; it does not establish semantic relevance. Choose topic words from the current task and consider common alternative terms. If a query returns nothing or an unrelated topic, try the relevant policy or subject terms instead of treating that result as proof that knowledge is absent. `wiki query` returns two full articles plus `search.total` and up to eight lightweight `search.candidates` with titles, applicability, revisions and matching fields/terms. Compare these before changing the query; open a lower-ranked candidate with `wiki query lesson:<id>`. `search.total` counts matching valid articles, not all potentially relevant knowledge. Automatic recall stays bounded separately.
+
+Check shared rules as well as the task's subject: an event article can supply the schedule while a publication article governs the draft's headings or privacy. Follow relevant connections or search that shared topic before finalizing the deliverable; finding the subject article alone does not establish complete coverage.
+
+Within the active task, retain the actual text with its project, article ID/revision and source IDs/hashes. A query already includes each returned article's full `body`; do not fetch that identical article again just to read its body. Read original sources only when they are missing from context or their meaning or provenance needs checking. Fetch up to eight missing sources together: `shikii wiki query <source_id> <source_id> ...`, or MCP query with `sources: ["...", "..."]`. Reuse this evidence across related cases in the same task instead of repeating topic, article and source lookups for every answer.
+
+Start a new task or changed topic with a current topic lookup. Re-read changed article revisions, new citations and any evidence no longer available after context loss; an ID alone is not the source text. Writes or a stale-revision rejection require a fresh lookup. Keep the actual cited revision for historical comparisons. This reuse rule does not skip the program's provenance checks or turn an earlier agreement into current permission.
+
 ## Ingestion contract
 
 MCP tool: `shikii_wiki`, operations `query` / `ingest` / `lint`. CLI `shikii wiki ingest` accepts the same JSON on stdin without `operation`. Use the CLI if MCP is unavailable; do not ask the person to run it.

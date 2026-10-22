@@ -15,6 +15,19 @@ type Match struct {
 	Terms    []string `json:"terms"`
 }
 
+// SearchResult keeps a small shortlist separate from the two full articles.
+// Total counts valid matches, not the completeness or correctness of retrieval.
+type SearchResult struct {
+	Total      int               `json:"total"`
+	Candidates []SearchCandidate `json:"candidates"`
+}
+
+type SearchCandidate struct {
+	Match
+	Title     string `json:"title"`
+	AppliesTo string `json:"applies_to"`
+}
+
 func searchTerms(text string) map[string]bool {
 	out := map[string]bool{}
 	var word, ja []rune
