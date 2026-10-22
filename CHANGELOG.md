@@ -4,6 +4,8 @@
 
 ## 0.4.3 — Clearer reviews and less repeated loading
 
+- Move task-context interpretation into the English agent skill; make recent conversation and explicitly searched wiki evidence available to planning with scoped, revision-checked citations.
+
 - Prepare approach decisions from the current request, agreement evidence, and open questions; reject unsupported quotes and stale submissions without treating AI interpretations as human truths.
 
 - Distinguish insufficient truths from prediction quality when calibration is refused; show a concise calibration summary and keep diagnostic logs collapsed.

@@ -1,39 +1,68 @@
-# 着手前の文脈を整理する
+# Prepare context before work
 
-新形式の `needs-plan` は「この依頼を始める前に、人と決める必要がある未決事項は残っているか」を測る。通常のエージェントが、今回の依頼・合意した方針・未決事項を整理して渡す。人に入力欄を埋めてもらわず、別のモデルも追加しない。
+The coding agent owns interpretation: identify the current task, find relevant conversation and wiki evidence, and distinguish an unresolved user decision from an ordinary implementation detail. The program retrieves records, checks quotes and scope, and measures the resulting decision. Do not ask the person to fill in a context form or add another model.
 
-## hookから案内された時
+## Recover the current task
 
-変更に着手する前に次を行う。hookが渡した `session_id` と `turn_id` をそのまま使う。別の仕事や古い依頼のIDを探して代用しない。
+When the hook supplies `session_id` and `turn_id`, pass them as JSON on stdin to `shikii hook plan query`. Use the exact executable path supplied by the hook when available.
 
-1. `shikii hook plan query` の標準入力へ、IDを含むJSONを渡す。
-2. 返された `source_material` と今の会話を読み、`agreed`（合意した方針）と `open`（人と決める必要がある未決事項）を日本語で短く整理する。
-3. `shikii hook plan submit` の標準入力へ、同じIDと整理した内容を渡す。
+Read `source_material` with the active conversation. Identify:
+
+- What the person wants **now**: an answer, investigation, comparison, change, or operation.
+- Which approach and constraints have already been selected, and which request that selection belongs to.
+- A concrete decision the person must resolve **before that task can begin**, if one exists.
+
+An information question needs an answer; it does not inherently need a separate clarification. Explaining options or brainstorming can begin before a later implementation is selected. An accepted proposal does not need the same agreement again. Missing background and agent-owned implementation details are not automatically blocking user choices.
+
+A short reply can refer to earlier work. The query includes up to four recent turns from this session, with each historical field bounded to 1200 bytes. Read their sequence rather than joining their text into a new user statement. A historical answer remains historical even when a new reply arrives before the agent finishes.
+
+## Retrieve relevant wiki evidence
+
+If an earlier decision or project constraint matters, choose concrete topic words from that task and query again, for example:
+
+```json
+{"session_id":"the supplied ID","turn_id":"0123456789abcdef","query":"CSV export columns and filters"}
+```
+
+The optional `query` searches this project's wiki, including lesson bodies, and returns up to two applicable lessons with their revision and source IDs. Refine the topic if the results do not apply; do not treat delivery as relevance or usefulness. This lookup is independent of the hook's one-hour suppression of repeated memory quotations.
+
+Read each lesson's applicability. If its meaning or origin is unclear, use `shikii wiki query <source_id>` to inspect the original exchange. Prefer current instructions over historical agreements; a wiki lesson is a hypothesis, never current approval. If no usable evidence exists, keep the missing context unknown.
+
+## Submit grounded interpretations
+
+Pass the same IDs, the wiki query used for any cited lesson, and `agreed` / `open` to `shikii hook plan submit`:
 
 ```json
 {
-  "session_id": "hookが示した値",
-  "turn_id": "0123456789abcdef",
-  "agreed": {
-    "summary": "出力する列と既存フィルターの保持が指定されている。",
-    "evidence": [{"source":"current_user","quote":"原文に実在する短い引用"}]
+  "session_id":"the supplied ID",
+  "turn_id":"0123456789abcdef",
+  "query":"CSV export columns and filters",
+  "agreed":{
+    "summary":"The current task is to implement the selected export while preserving its filters.",
+    "evidence":[{"source":"current_user","quote":"an exact short quote from the returned text"}]
   },
-  "open": {"unknown":true}
+  "open":{"unknown":true}
 }
 ```
 
-`source` は `current_user`（今回の人の発言）、`previous_user`（前の人の発言）、`previous_assistant`（前の依頼に対応するAIの返答）。各原文は最大4000バイトで、返答前の追記が続く場合や旧セッションに原文がない場合は、対応しない出典を省く。引用はqueryで返された原文の一部をそのまま使う。各整理は600バイトまで、根拠は1〜3件で各240バイトまで。JSON全体は16KBまで。
+Write summaries in the language that makes the task and its constraints clear. Preserve original quotations without translating them. Each summary is at most 600 bytes, with one to three quotes of at most 240 bytes each. The input JSON is at most 16 KB. Wiki search text is at most 1500 bytes.
 
-合意には人の発言の根拠が必要。AIが提案しただけの案を合意にしない。短い承認は何に対する返答かを確認し、必要なら人の承認とAIの提案の両方を引用する。撤回・条件変更・新しい依頼を優先し、過去の合意を別の依頼へ広げない。根拠が足りなければ `unknown:true` とし、summaryや引用を補わない。
+Use the exact source keys returned by query:
 
-未決事項がないという整理にも、具体的な依頼や委ねられた範囲の原文を添える。関数名などAIへ任された実装詳細と、人に決めてもらう必要がある選択を区別する。引用の存在を機械が確認しても、整理の意味はAIの仮説のまま。
+- `current_user`, `previous_user`, `previous_assistant`: the immediate exchange.
+- `history:...`: a specific older field from this session, supplied as reference.
+- `lesson:<id>:<revision>`: a wiki hypothesis with its applicability and provenance.
 
-## 結果の扱い
+Agreement needs evidence from `current_user` or `previous_user`; wiki and history alone cannot establish current agreement. For a short acceptance, also cite the proposal or prior constraint it refers to. Latest withdrawals and changed conditions override earlier agreement. Do not broaden acceptance to a different request.
 
-- `recorded:true` は判定の記録を保存したという意味。文脈の整理を人の正解や較正には数えない。
-- `shadow:true` は線がない期間。助言は出さず、AIの予想だけで人への確認を増やさない。
-- `advice` がある時だけ、較正済みの判定からの助言として読む。引用や整理、空のadviceから実行許可を作らない。今回の指示と通常の許可規則を優先する。
-- 両項目が不明なら、モデルを呼ばず `recorded:false` で見送る。内部の判断材料不足を、人へ追加入力を求める理由にしない。
-- モデル待ちに次の依頼が来た場合や、ターンを閉じた後の結果は採用しない。古いIDで再送せず、現在の案内を使う。モデルが応答しない場合は本来の依頼を優先し、推測で結果を埋めない。
+For `open`, describe a concrete unresolved choice that blocks the **current** task, or explain why the specified task can start without one. Do not put the question being answered, a possible later design decision, or an unspecified helper name in that category. Support a finding of no blocking choices with the actual request or delegated scope. If the evidence is insufficient, use only `{"unknown":true}` for that item; do not invent a summary or quote.
 
-同じ内容の再送は同じ判定を返す。判定を保存した後に別の整理で上書きしない。旧形式のプロジェクトは自動では書き換えない。新形式では合意と未決事項がない過去の入力から正解を聞き直さず、新しい入力に対する答え合わせを集める。
+## Read the result
+
+- `recorded:true` means a decision record was saved. AI interpretations and regression expectations are not human labels or calibration data.
+- `shadow:true` means there is no valid calibration line. Use no raw score to recommend confirmation; `advice` stays empty.
+- Read a nonempty `advice` as calibrated guidance, within the current instructions and existing execution permissions. Evidence, an empty advice, and a no prediction do not grant permission.
+- If both facts are unknown, no model is called and `recorded:false` is returned. Missing internal context alone is not a reason to give the person another form.
+- Stale or closed turns are rejected. Re-query when the wiki revision changes or a newer request arrives. Repeating the same submission preserves the first prediction rather than appending duplicates.
+
+Existing project questions are retained. Do not reinterpret their old labels for a new question. Measure information questions, approved work, and genuinely blocking choices separately; an always-no predictor is not an improvement merely because most examples are no.
