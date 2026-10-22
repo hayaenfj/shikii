@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -147,5 +148,43 @@ func TestWaitsForPersonFor(t *testing.T) {
 		if got := waitsForPersonFor(c.spec, &c.d); got != c.want {
 			t.Errorf("%s %s calibrated=%v: got %v, want %v", c.spec, c.d.Band, c.d.IsCalibrated, got, c.want)
 		}
+	}
+}
+
+// 線が引けなかった spec は、正解が hookRecalibrateEvery 件増えるまで自動較正を繰り返さない(毎回の聞き直しは機械の時間を使うだけ)。
+func TestHookDoesNotRetryAFailedCalibrationUntilTruthsGrow(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return 0.2 })
+	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
+	lowerMinN(t, agent, "prompt-kind", 2)
+	calls := 0
+	oldCal, oldGap := hookCalibrate, hookCalibrateGap
+	hookCalibrate = func(agent, path, storeDir, model string) { calls++ } // 線を引けなかった(spec は変わらない)
+	hookCalibrateGap = 0
+	t.Cleanup(func() { hookCalibrate, hookCalibrateGap = oldCal, oldGap })
+	turn := func(session string) {
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "explain what the parser in " + session + " does"})
+		runHook(t, "stop", map[string]any{"session_id": session, "cwd": repo, "last_assistant_message": "Explained."})
+	}
+	for _, s := range []string{"s1", "s2", "s3"} {
+		turn(s)
+	}
+	if calls != 1 {
+		t.Fatalf("the first attempt at min_n must run once: %d", calls)
+	}
+	for i := 0; i < 3; i++ {
+		turn(fmt.Sprintf("more%d", i))
+	}
+	if calls != 1 {
+		t.Fatalf("a failed line must not be retried before %d more truths: %d calls", hookRecalibrateEvery, calls)
+	}
+	// 文言が変わった(または控えが古い形)なら数え直す
+	guard := filepath.Join(agent, "calibrating-prompt-kind")
+	if err := os.WriteFile(guard, []byte("2026-10-22T08:20:03+09:00 kev-4b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	turn("after-old-guard")
+	if calls != 2 {
+		t.Fatalf("an old-format guard must not block: %d calls", calls)
 	}
 }
