@@ -61,9 +61,35 @@ shikii reflect query
 shikii reflect submit < reflection.json
 ```
 
-`reflection.json` は取得した対象に対する `reviews`・`wiki`・`memory` を含むJSON。`complete`と各項目の`error`を確認し、失敗分だけ直して再送する。原文、届いた引用と版、関連する教訓、人の訂正例を読んでから保存する。[入力例と作法](../skills/shikii/references/review.md)。
+`reflection.json` は取得した対象に対する `reviews`・`wiki`・`memory`・`maintenance` を含むJSON。`complete`と各項目の`error`を確認し、失敗分だけ直して再送する。原文、届いた引用と版、関連する教訓、人の訂正例を読んでから保存する。[入力例と作法](../skills/shikii/references/review.md)。
 
 0.4.1の訂正の追跡では、wikiの `correction: {source_id, quote, action}` が人の返答の原文と次に変える行動を結ぶ。次に届いた時の `memory` へ `result`（役立ち方）と `correction_result`（沿った・再発・対象外・不明）、判断と確認結果を残す。両方を区別し、成功・追加依頼・沈黙だけで改善にしない。未評価も知識画面に残す。この部分は[変更履歴](../CHANGELOG_ja.md)の0.4.1の項目。
+
+## 確認結果を原資料にし、知識を検索・見直す
+
+0.5.0では会話のほか、エージェントが実際に確認したコード・テスト・Releaseなども原資料にできる。以下の操作は通常のエージェントが行い、人が毎回整理する必要はない。
+
+```sh
+shikii wiki capture < observation.json
+shikii wiki query "返金 適用条件"
+shikii wiki query "返金 適用条件" continue:CURSOR
+shikii wiki query "lesson:<ページID>"
+shikii wiki query "<出典ID>" "<別の出典ID>"
+shikii wiki query "lesson:<ページID>@<版>"
+shikii wiki ingest < article.json
+shikii wiki maintain < maintenance.json
+shikii wiki lint
+```
+
+`observation.json`には`kind`（`human`・`agent`・`code`・`test`・`release`）、`title`・`content`・`reference`・`version`・`observed_at`（RFC3339）を書く。本文は32KiB、JSON全体は64KiBまで。確認した抜粋や結果と、その対象の版を残す。`reference`は参照先の説明で、URL取得やコマンド実行は行わない。返されたIDを記事の`sources`へ使う。同じ観察は重複登録せず、変わった内容や版は別の原資料になる。
+
+検索は題・適用条件・要約・本文を調べ、一致した欄と語、候補の版を返す。候補だけでは意味の関連性を確定できないため、本文と必要な原資料を確認する。`CURSOR`は直前の応答の`next_cursor`に置き換え、同じ検索語または出典IDで続きを取得する。末尾へ着いたことと、必要な知識を見つけたことは別。応答が大きければ分割されるが、記事数や出典数で探索を打ち切らない。同じプロジェクト・同じ版の実際に読んだ内容は作業中に再利用する。
+
+`article.json`の短い`lesson`と詳しい`body`を分け、背景・根拠・適用条件・未確定点を既存記事へ統合する。`related`で関連をつなぎ、意味の編集には`change_reason`を残す。利用できる長い会話原文は引用時に別のハッシュとともに保持し、元の判定記録を消した後も参照できる。原資料や原文が欠けている時は、その限界を残す。
+
+`wiki query`の一覧や`reflect query`には最大2記事の`maintenance`対象がある。本文・原資料・関連ページを確認し、必要な編集を保存した後、最新の`page_id`・`revision`・`key`と確認理由`reason`を`maintenance.json`へ渡す。振り返りの`maintenance`配列へまとめてもよい。記事や関連する版が変われば古い見直し結果は拒否し、未変更でも30日後に再確認する。本文やリンクがないことは確認のきっかけであり、不要な文章や関係を追加する指示ではない。
+
+着手前の`hook plan query`は`pages`で必要な本文を選べる。判断には候補・読んだ記事・引用した版・当時の利用可能な版と取得量が残る。過去の比較は記録された版だけで行い、後から更新されたwikiや解決結果を混ぜない。保存・検索・引用の件数と、判断に役立ったという観察は分ける。詳しい契約は[wikiの作法](../skills/shikii/references/wiki.md)を参照する。
 
 ## ローカルの決定モデル(llama.cpp)
 
@@ -141,9 +167,9 @@ Kev-4B は英語のみと表記されているが、v2 の文言なら日本語�
 | `GET /v1/status` | | spec ごとの状態(線の有無、正解の数、人の言葉の質問) |
 | `GET /v1/tune?spec=<id>` · `POST /v1/tune/run` · `POST /v1/tune/variant` · `POST /v1/tune/adopt` | `{"spec","propose"}` · `{"spec","name","question","options"}` · `{"spec","run","meaning_same":true}` | 聞き方の改善の最新と今の候補・裏で回す・人が書いた候補を足す(検証してから。採用はしない)・採否 |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
-| `POST /v1/wiki/notebook` | `operation: query / ingest / lint` | 会話から育つ wiki。出典付きの教訓と原文の検索・取り込み・点検。教訓は仮説 |
+| `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
-| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` | 最大2会話の採点・wiki整理・届いた記憶と訂正の観察をまとめて確認・保存。`complete`と各`error`を確認する |
+| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 最大2原資料の採点・wiki整理・届いた記憶と訂正の観察、最大2記事の見直しをまとめて確認・保存。`complete`と各`error`を確認する |
 | `GET /v1/specs` | | 読み込んでいる spec の一覧 |
 
 ```sh
