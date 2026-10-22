@@ -15,7 +15,7 @@ type Match struct {
 	Terms    []string `json:"terms"`
 }
 
-// SearchResult keeps a small shortlist separate from the two full articles.
+// SearchResult exposes all matching candidates; QueryPage divides large responses.
 // Total counts valid matches, not the completeness or correctness of retrieval.
 type SearchResult struct {
 	Total      int               `json:"total"`

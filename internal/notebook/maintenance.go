@@ -58,7 +58,7 @@ func maintenanceTasks(pages []Page) []MaintenanceTask {
 }
 
 func readCheckpoints(dir string) (map[string]maintenanceCheckpoint, error) {
-	data, err := readOriginals(filepath.Join(dir, ".maintenance.json"))
+	data, err := readRegistry(filepath.Join(dir, ".maintenance.json"))
 	if os.IsNotExist(err) {
 		return map[string]maintenanceCheckpoint{}, nil
 	}
@@ -66,7 +66,7 @@ func readCheckpoints(dir string) (map[string]maintenanceCheckpoint, error) {
 		return nil, err
 	}
 	var out map[string]maintenanceCheckpoint
-	if json.Unmarshal(data, &out) != nil || len(out) > pageLimit {
+	if json.Unmarshal(data, &out) != nil {
 		return nil, errors.New("wikiの見直し記録を読み取れません")
 	}
 	if out == nil {

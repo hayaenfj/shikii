@@ -13,7 +13,21 @@ export const api = {
   queue: id => j('v1/queue?spec=' + encodeURIComponent(id) + '&limit=200'),
   answered: id => j('v1/answered?spec=' + encodeURIComponent(id) + '&limit=200'),
   tune: id => j('v1/tune?spec=' + encodeURIComponent(id)),
-  wiki: () => j('v1/wiki'),
+  wiki: async () => {
+    const result = await j('v1/wiki');
+    let cursor = result.next_cursor;
+    const seen = new Set();
+    while (cursor) {
+      if (seen.has(cursor)) throw new Error('知識の続きが前進しません');
+      seen.add(cursor);
+      const page = await j('v1/wiki?cursor=' + encodeURIComponent(cursor));
+      result.lessons = [...(result.lessons || []), ...(page.lessons || [])];
+      result.notebook_issues = [...(result.notebook_issues || []), ...(page.notebook_issues || [])];
+      cursor = page.next_cursor;
+    }
+    delete result.next_cursor;
+    return result;
+  },
   label: body => post('v1/label', body),
   redo: body => post('v1/redo', body),
   tuneRun: body => post('v1/tune/run', body),

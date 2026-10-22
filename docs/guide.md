@@ -12,7 +12,7 @@ Your usual agent reads requests, replies and the next human message and integrat
 
 This also applies to writing, research and business work. New projects receive domain-neutral prompts; existing project questions and calibration remain unchanged. The built-in `edit` outcome and scope checks concern observed local files. External actions and business eligibility need their own spec and evidence. Without a usable Git snapshot, hooks do not infer a file-change truth from an empty list.
 
-Explicit keyword search returns two full articles plus `search.total` and up to eight lightweight `search.candidates`. Candidates include title, applicability, revision and matching fields/terms; `total` counts matched valid pages, not every potentially relevant page. Refine topic terms when the results are unrelated. Reuse the actual text already read in the active task at the same project/revision, and fetch missing sources together with `shikii wiki query <source_id> <source_id> ...` (up to eight). A new task, changed revision or lost context needs a fresh lookup. This does not bypass citation checks.
+Explicit keyword search covers all stored articles and returns `search.total` and `search.candidates` with title, applicability, revision and matching fields/terms. Responses are divided by JSON data size instead of a candidate or source count. If `next_cursor` is present, repeat the same query or source IDs with `continue:CURSOR` on the CLI, or `cursor` in MCP/HTTP. Continue until the needed evidence is found or no cursor remains. Invalid, cross-project, changed-request and stale-result cursors are rejected. The knowledge view follows list continuations automatically. A single large source is returned intact on its own rather than truncated. Refine topic terms when results are unrelated; matching is not semantic search. Reuse actual text already read at the same project/revision and fetch missing sources together. A new task, changed revision or lost context needs a fresh lookup; citation checks remain active.
 
 Reflection preserves the delivered quote and revision and records a decision and observed result: helpful, unused, harmful or unknown. The 0.4.1 correction workflow also links a verbatim user statement to an action, and observes followed, repeated, not applicable or unknown separately. Success or silence alone establishes neither. See [the input format and evidence rules](../skills/shikii/references/review.md) (Japanese).
 
@@ -267,7 +267,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 295 Go tests across 10 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 299 Go tests across 10 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -347,7 +347,7 @@ shikii status    [spec...] [--store DIR]                  # inventory: records, 
 shikii gc        [spec...] [--older-than 30d] [--apply]   # drop old unlabelled records; dry run by default
 shikii hash      <spec>
 shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]   # rerun the retest recipes of the wiki's claims on the current model; only a person changes a status
-shikii wiki query [query-or-source-ids]                     # search or read up to eight sources from this project's .shikii/
+shikii wiki query [query-or-source-ids]                     # search or read sources; append continue:CURSOR with the same arguments
 shikii wiki ingest                                         # lesson and source IDs as JSON on stdin
 shikii wiki capture                                        # observed source with kind, version, reference and time
 shikii wiki maintain                                       # reviewed page, revision, neighborhood key and reason
@@ -375,7 +375,7 @@ shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # wh
 
 ## Knowledge sources and article maintenance
 
-Capture inspected evidence with `wiki capture` (JSON on stdin): `kind` is human, agent, code, test or release; include title, content, reference, version and observed_at (RFC3339). Text is bounded to 32 KiB and the encoded object to 64 KiB. Reference strings are not executed or fetched. The returned ID is an immutable, project-scoped source for ingestion. Captured observations share the two-source reflection budget; at most 128 may wait unprocessed. Available long conversation originals are preserved separately with a citation hash during ingestion.
+Capture inspected evidence with `wiki capture` (JSON on stdin): `kind` is human, agent, code, test or release; include title, content, reference, version and observed_at (RFC3339). Text is bounded to 32 KiB and the encoded object to 64 KiB. Reference strings are not executed or fetched. The returned ID is an immutable, project-scoped source for ingestion. Captured observations share the two-source reflection work batch; the pending queue and stored articles have no fixed count ceiling. Available long conversation originals are preserved separately with a citation hash during ingestion.
 
 Query results explain matching fields and terms. Titles and applicability outrank body-only matches; automatic recall uses titles and applicability only. `hook plan query` can select up to two article IDs with `pages`; cite returned article keys during submit. A decision records ranked candidates, selected bodies, exact citations, available revisions, lookup milliseconds and context bytes. Use `lesson:<id>@<revision>` for historical articles and constrain retrospective comparisons to the recorded inventory. Retrieval, quotation, agent assessment and observable outcomes remain distinct.
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -59,6 +60,96 @@ func TestNotebookCapturesObservedSourcesThroughHTTPAndCLI(t *testing.T) {
 	}
 }
 
+func TestNotebookContinuationAcrossCLIHTTPAndMCP(t *testing.T) {
+	repo := gitRepo(t)
+	root := hookEnv(t, nil, repo)
+	t.Chdir(repo)
+	scope := feedbackScope(repo)
+	book := notebook.Book{Root: root, Scope: scope}
+	ids := []string{}
+	for i := range 12 {
+		o, err := book.Capture(notebook.Observation{Kind: "test", Title: fmt.Sprint("Fixture ", i), Content: strings.Repeat("x", 9000), Reference: "fixture", Version: "v1", ObservedAt: time.Unix(1, 0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, o.ID)
+	}
+	args := append([]string{"query"}, ids...)
+	first := capture(t, func() error { return cmdWiki(args) })
+	var one struct {
+		Next         string                 `json:"next_cursor"`
+		Observations []notebook.Observation `json:"observations"`
+	}
+	if err := json.Unmarshal([]byte(first), &one); err != nil || one.Next == "" || len(one.Observations) >= 12 {
+		t.Fatal("CLIで分割し続きを返す", err)
+	}
+	cli := capture(t, func() error { return cmdWiki(append(args, "continue:"+one.Next)) })
+	data, _ := json.Marshal(map[string]any{"operation": "query", "sources": ids, "cursor": one.Next})
+	h := newServer(serveOpts{storeDir: root, projectScope: scope})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/v1/wiki/notebook", strings.NewReader(string(data)))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatal("HTTPから同じ続きを読める", rec.Code, rec.Body.String())
+	}
+	var a, b any
+	if json.Unmarshal([]byte(cli), &a) != nil || json.Unmarshal(rec.Body.Bytes(), &b) != nil {
+		t.Fatal("続きはJSON")
+	}
+	ja, _ := json.Marshal(a)
+	jb, _ := json.Marshal(b)
+	if string(ja) != string(jb) {
+		t.Fatal("CLIとHTTPで同じ続きを返す")
+	}
+	send, _ := mcpSession(t, "true", map[string]float64{"change_request": .9, "question": .1, "other": 0}, root)
+	m := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "shikii_wiki", "arguments": map[string]any{"operation": "query", "sources": ids, "cursor": one.Next}}}))
+	if m["isError"] == true || m["structuredContent"] == nil {
+		t.Fatal("MCPでも続きの入力を扱える", m)
+	}
+	jm, _ := json.Marshal(m["structuredContent"])
+	if string(jm) != string(ja) {
+		t.Fatal("MCPも同じ原資料を返す")
+	}
+	for i, id := range ids {
+		body := strings.Repeat("Detailed evidence. ", 550)
+		if _, err := book.Ingest(notebook.Draft{Title: fmt.Sprint("Topic ", i), Lesson: "Checked", AppliesTo: "Topic maintenance", Sources: []string{id}, Body: &body}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seen, cursor := map[string]bool{}, ""
+	for calls := 0; ; calls++ {
+		if calls > len(ids) {
+			t.Fatal("画面の一覧の続きが前進しない")
+		}
+		r := httptest.NewRecorder()
+		h.ServeHTTP(r, httptest.NewRequest("GET", "/v1/wiki?cursor="+cursor, nil))
+		if r.Code != 200 {
+			t.Fatal("画面の続きの取得", r.Body.String())
+		}
+		var page struct {
+			Lessons []notebook.Page `json:"lessons"`
+			Next    string          `json:"next_cursor"`
+		}
+		if err := json.Unmarshal(r.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range page.Lessons {
+			if seen[p.ID] {
+				t.Fatal("画面の一覧で記事が重複した")
+			}
+			seen[p.ID] = true
+		}
+		if page.Next == "" {
+			break
+		}
+		cursor = page.Next
+	}
+	if len(seen) != len(ids) {
+		t.Fatal("画面でも全記事へ到達する", len(seen))
+	}
+}
+
 func TestNotebookCLIReadsSourcesTogether(t *testing.T) {
 	repo := gitRepo(t)
 	root := hookEnv(t, nil, repo)
@@ -97,10 +188,9 @@ func TestNotebookCLIReadsSourcesTogether(t *testing.T) {
 	}
 	for _, args := range [][]string{
 		{"query", ids[0], "0000000000000000"},
-		{"query", ids[0], ids[1], ids[0], ids[1], ids[0], ids[1], ids[0], ids[1], ids[0]},
 	} {
 		if err := cmdWiki(args); err == nil {
-			t.Fatal("別プロジェクトの原資料や8件を超える読込みを検索へ逃がさない")
+			t.Fatal("別プロジェクトの原資料を検索へ逃がさない")
 		}
 	}
 	// まとめ読込みでも引用元の改変検出を通す。
