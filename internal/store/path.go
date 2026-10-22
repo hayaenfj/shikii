@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // parentRoot は保存先から末端の親までを通常のフォルダだけで開く。
@@ -90,9 +91,18 @@ func (s Store) openFile(path string, flags int) (*os.File, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	f, err := root.OpenFile(name, flags|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	// 同じ新しいファイルを同時に作ると(hook の並行する判定、wiki の差し込み先の並行する判定)、os.Root の作成付きの open が
+	// ENOENT を返すことがある(2026-10-23、darwin で再現: TestFirstRecordsCanBeAppendedConcurrently)。作成付きなら短く待って開き直す。
+	var f *os.File
+	for attempt := 0; ; attempt++ {
+		f, err = root.OpenFile(name, flags|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+		if err == nil || flags&os.O_CREATE == 0 || !os.IsNotExist(err) || attempt >= 3 {
+			break
+		}
+		time.Sleep(time.Duration(attempt+1) * time.Millisecond)
+	}
 	if err != nil {
-		return nil, err
+		return nil, err // 包まない(呼ぶ側が os.IsNotExist で「まだ無い」を見分ける)
 	}
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() {
