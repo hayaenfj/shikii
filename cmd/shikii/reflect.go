@@ -280,7 +280,7 @@ func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
 
 func reflectContext(root, scope string) (string, error) {
 	view, err := reflectQuery(root, scope)
-	if err != nil || len(view.Sources)+len(view.Observations)+len(view.Maintenance) == 0 {
+	if err != nil || len(view.Sources)+len(view.Observations) == 0 {
 		return "", err
 	}
 	oldest := time.Time{}
@@ -290,7 +290,7 @@ func reflectContext(root, scope string) (string, error) {
 	if len(view.Observations) > 0 && (oldest.IsZero() || view.Observations[0].ObservedAt.Before(oldest)) {
 		oldest = view.Observations[0].ObservedAt
 	}
-	if len(view.Maintenance) == 0 && len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
+	if len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
 		return "", nil
 	}
 	executable, err := os.Executable()
