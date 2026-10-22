@@ -53,6 +53,8 @@ var (
 	// hookTune は聞き方の候補を採点する本体(shikii tune。--write は付けない: 採用は人)。同じく別プロセスを切り離す。テストは同プロセスに差し替える
 	hookTune      = spawnTune
 	hookTuneEvery = 50 // 前回の自動 tune から人の正解(入力ごとに 1 件)がこれだけ増えたら、また回す
+	// hookRecalibrateEvery: 線が引けなかった spec は、正解がこれだけ増えるまで自動較正(聞き直しを含む)を繰り返さない
+	hookRecalibrateEvery = 20
 	// hookSpawn は shikii 自身を切り離した別プロセスで起こす(モデル `up`、画面 `serve`)。人にコマンドを打たせない。テストは記録するだけの物に差し替える
 	hookSpawn    = spawnShikii      // 起こした子の pid を返す(分からなければ 0)
 	hookStartGap = 10 * time.Minute // 同じ物を起こし続けない間(起こしてから応えるまでの時間、失敗した時の再試行の間)
@@ -923,10 +925,28 @@ func hookMaybeCalibrate(agent, specID string) error {
 		if info, err := os.Stat(guard); err == nil && time.Since(info.ModTime()) < hookCalibrateGap {
 			continue // 前の較正がまだ走っている(か、直前に失敗した)。しばらく置く
 		}
-		_ = os.WriteFile(guard, []byte(time.Now().Format(time.RFC3339)+" "+model+"\n"), 0o600)
+		if last, ok := lastCalibrateAttempt(guard, sp.Hash(), model); ok && len(human) < last+hookRecalibrateEvery {
+			continue // 同じ文言とモデルで線が引けなかった: 正解が hookRecalibrateEvery 件増えるまで聞き直しをしない
+		}
+		_ = os.WriteFile(guard, []byte(fmt.Sprintf("%s %s %d %s\n", time.Now().Format(time.RFC3339), model, len(human), sp.Hash())), 0o600)
 		hookCalibrate(agent, path, st.Dir, model)
 	}
 	return nil
+}
+
+// lastCalibrateAttempt は前回の自動較正の控え(時刻 モデル 正解の数 文言のハッシュ)から、同じ文言とモデルで試した時の正解の数を返す。
+// 線が引けていればそもそも呼ばれないので、控えがあるのは「試したが線が引けなかった」か「まだ走っている」。古い形の控えは無いものとする。
+func lastCalibrateAttempt(guard, hash, model string) (int, bool) {
+	b, err := os.ReadFile(guard)
+	if err != nil {
+		return 0, false
+	}
+	var at, m, h string
+	var n int
+	if _, err := fmt.Sscanf(string(b), "%s %s %d %s", &at, &m, &n, &h); err != nil || m != model || h != hash {
+		return 0, false
+	}
+	return n, true
 }
 
 // humanTruths は今の文言(hash)に付いた人の正解の数(入力ごとに 1 件、モデルをまたいで数える)。calibrate / tune と同じ数え方。
