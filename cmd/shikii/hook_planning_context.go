@@ -47,13 +47,13 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 }
 
 // 検索語はskillを読んだエージェントが選ぶ。プログラムは話題や合意を推測しない。
-func planningWikiSources(root, scope, query string, sources map[string]string) string {
+func planningWikiSources(root, scope, query string, sources map[string]string) ([]notebook.Page, string) {
 	if strings.TrimSpace(query) == "" {
-		return ""
+		return nil, ""
 	}
 	view, err := (notebook.Book{Root: root, Scope: scope}).Query(query)
 	if err != nil {
-		return "wikiの参照を読み出せません。未知の条件を補わず、現在の依頼を優先してください。"
+		return nil, "wikiの参照を読み出せません。未知の条件を補わず、現在の依頼を優先してください。"
 	}
 	for _, page := range view.Lessons {
 		key := "lesson:" + page.ID + ":" + page.Revision
@@ -64,7 +64,7 @@ func planningWikiSources(root, scope, query string, sources map[string]string) s
 		sources[key] = fmt.Sprintf("教訓（仮説）: %s\n適用条件: %s\n出典: %s", cut(page.Lesson, 800), cut(page.AppliesTo, 300), strings.Join(ids, ", "))
 	}
 	if len(view.Issues) > 0 {
-		return "出典や版を確認できないwikiは参照から外しました。"
+		return view.Lessons, "出典や版を確認できないwikiは参照から外しました。"
 	}
-	return ""
+	return view.Lessons, ""
 }

@@ -48,6 +48,7 @@ type planningRequest struct {
 	TurnID    string        `json:"turn_id"`
 	Agreed    *planningFact `json:"agreed,omitempty"`
 	Open      *planningFact `json:"open,omitempty"`
+	Pages     []string      `json:"pages,omitempty"`
 }
 
 type planningReceipt struct {
@@ -142,11 +143,14 @@ func cmdHookPlan(args []string) error {
 		return err
 	}
 	if args[0] == "query" {
-		notice := planningWikiSources(root, scope, req.Query, s.Planning.Sources)
+		notice, knowledge, err := preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
+		if err != nil {
+			return err
+		}
 		if req.Agreed != nil || req.Open != nil {
 			return errors.New("queryでは整理した内容を渡せません")
 		}
-		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice})
+		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": knowledge})
 	}
 	// 同時のsubmitは待たせず再試行にする。新しい人の依頼とStopは妨げない。
 	busy, err := sessions.OpenFile(name+".planning.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
@@ -169,7 +173,10 @@ func cmdHookPlan(args []string) error {
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
 		return err
 	}
-	planningWikiSources(root, scope, req.Query, s.Planning.Sources)
+	_, knowledge, err := preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
+	if err != nil {
+		return err
+	}
 	agreed, err := renderPlanningFact(req.Agreed, s.Planning.Sources, true)
 	if err != nil {
 		return err
@@ -178,6 +185,7 @@ func cmdHookPlan(args []string) error {
 	if err != nil {
 		return err
 	}
+	planningCitations(req, knowledge)
 	canonical, _ := json.Marshal(req)
 	digest := sha256.Sum256(canonical)
 	key := hex.EncodeToString(digest[:])
@@ -218,7 +226,7 @@ func cmdHookPlan(args []string) error {
 		result.Advice = strings.ReplaceAll(result.Advice, hookPageURL+"/", strings.TrimSuffix(projectPageURL(root), "/")+"/")
 	}
 	// モデルを待つ間に依頼が進んだら、古い文脈を記録も助言もせず破棄する。
-	err = savePlanningResult(sessions, name, root, scope, req, sp, d, inputs, result, key)
+	err = savePlanningResult(sessions, name, root, scope, req, sp, d, inputs, result, key, knowledge)
 	if err != nil {
 		return err
 	}
@@ -250,7 +258,7 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 		if strings.HasPrefix(e.Source, "history:") {
 			role = "同じセッションの過去の会話（参考・現在の合意ではない） [" + e.Source + "]"
 		}
-		if strings.HasPrefix(e.Source, "lesson:") {
+		if strings.HasPrefix(e.Source, "lesson:") || strings.HasPrefix(e.Source, "article:") {
 			role = "wikiの教訓（出典付きの仮説・現在の合意ではない） [" + e.Source + "]"
 		}
 		parts = append(parts, role+": "+e.Quote)
@@ -303,7 +311,7 @@ func currentPlanningFrame(s *hookSession, turnID, scope string) error {
 	return nil
 }
 
-func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequest, sp *spec.Spec, d *decide.Decision, inputs map[string]string, result *planningReceipt, digest string) error {
+func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequest, sp *spec.Spec, d *decide.Decision, inputs map[string]string, result *planningReceipt, digest string, knowledge *store.KnowledgeContext) error {
 	lock, err := dir.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return err
@@ -330,6 +338,9 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 	if fresh.Hash() != sp.Hash() {
 		return errors.New("判定中に質問が変わりました。文脈を読み直してください")
 	}
+	if err := validatePlanningKnowledge(root, scope, knowledge); err != nil {
+		return err
+	}
 	if d != nil {
 		st := store.Store{Dir: root}
 		records, err := st.Records("needs-plan", 0)
@@ -352,6 +363,7 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		}
 		if !recorded {
 			rec := recordOf(sp, d, inputs)
+			rec.KnowledgeContext = knowledge
 			rec.Project = filepath.Base(scope)
 			l := localize(sp, d, hookLang())
 			if l.Lang != "" {

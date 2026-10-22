@@ -33,7 +33,8 @@
     busy = id;
     try {
       const result = await api.notebook({ operation: 'query', sources: [id] });
-      for (const value of result.source_material || []) material[value.id] = value;
+      for (const value of result.source_material || []) material[value.id] = { ...value, originals: result.originals?.[value.id] };
+      for (const value of result.observations || []) material[value.id] = value;
     } catch (e) { toast(t('error')(e.message)); }
     busy = '';
   }
@@ -42,6 +43,25 @@
 <section class="adv notebook">
   <h2>{t('notebookTitle')} {#if wiki.notebook_project}<span class="pill project">{wiki.notebook_project}</span>{/if}</h2>
   <p class="k">{t('notebookHow')}</p>
+  {#if wiki.knowledge_usage}
+    <div class="memory-effect">
+      <h3>{t('knowledgeUsageTitle')}</h3>
+      <p class="k">{t('knowledgeUsageHow')}</p>
+      <div class="meta">
+        {#each ['prepared', 'with_matches', 'with_citations'] as key}
+          <span class="pill" data-knowledge={key}>{t('knowledgeUsageCount')(key, wiki.knowledge_usage[key])}</span>
+        {/each}
+      </div>
+      <p class="k">{t('knowledgeUsageCost')(wiki.knowledge_usage.lookup_milliseconds, wiki.knowledge_usage.context_bytes)}</p>
+    </div>
+  {/if}
+  {#if wiki.maintenance?.length}
+    <div class="memory-effect">
+      <h3>{t('knowledgeMaintenanceTitle')}</h3>
+      <p class="k">{t('knowledgeMaintenanceHow')}</p>
+      <ul>{#each wiki.maintenance as task}<li data-maintenance={task.page_id}>{task.title}</li>{/each}</ul>
+    </div>
+  {/if}
   {#if effect || wiki.memory_effect_error}
     <div class="memory-effect">
       <h3>{t('memoryEffectTitle')}</h3>
