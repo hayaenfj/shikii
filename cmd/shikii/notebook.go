@@ -55,14 +55,14 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	case "lint":
 		return b.Lint()
 	}
-	return nil, errors.New("wiki operation must be ingest, query, capture or lint")
+	return nil, errors.New("使い方: wiki query / ingest / capture / maintain / lint")
 }
 
 // 教訓の置き場は hook と同じプロジェクトの .shikii/。呼び出した仕事だけを扱う。
 // 新しい接続先や設定は持たず、文章は利用中のエージェントから JSON で受け取る。
 func cmdNotebook(args []string) error {
 	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain") {
-		return errors.New("usage: shikii wiki query [query] | ingest (JSON on stdin) | lint | verify …")
+		return errors.New("使い方: shikii wiki query [検索語・出典ID・lesson:記事ID@版] | ingest | capture | maintain（JSONを標準入力）| lint | verify …")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {

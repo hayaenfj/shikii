@@ -16,16 +16,16 @@
 <text x="86" y="386" font-size="22" font-weight="700" fill="#83d8b0">会話を次の仕事へ</text>
 <text x="86" y="430" font-size="19" font-weight="700" fill="#83d8b0">1.</text>
 <text x="118" y="430" font-size="20" font-weight="600" fill="#e3edfa">原資料と版を残す</text>
-<text x="118" y="456" font-size="18" font-weight="400" fill="#b3c3d9">records/ · 依頼・返答・次の発言</text>
+<text x="118" y="456" font-size="18" font-weight="400" fill="#b3c3d9">records/ · 会話・コード・確認結果</text>
 <text x="86" y="496" font-size="19" font-weight="700" fill="#83d8b0">2.</text>
-<text x="118" y="496" font-size="20" font-weight="600" fill="#e3edfa">教訓と次の行動をまとめる</text>
-<text x="118" y="522" font-size="18" font-weight="400" fill="#b3c3d9">wiki/ · 出典・適用条件・訂正の引用</text>
+<text x="118" y="496" font-size="20" font-weight="600" fill="#e3edfa">知識へ統合して見直す</text>
+<text x="118" y="522" font-size="18" font-weight="400" fill="#b3c3d9">wiki/ · 本文・出典・関連する知識</text>
 <text x="86" y="562" font-size="19" font-weight="700" fill="#83d8b0">3.</text>
-<text x="118" y="562" font-size="20" font-weight="600" fill="#e3edfa">似た依頼へ短く届ける</text>
-<text x="118" y="588" font-size="18" font-weight="400" fill="#b3c3d9">届いた引用と版を依頼に結ぶ</text>
+<text x="118" y="562" font-size="20" font-weight="600" fill="#e3edfa">必要な知識を選んで読む</text>
+<text x="118" y="588" font-size="18" font-weight="400" fill="#b3c3d9">短い要約から本文・原資料へ</text>
 <text x="86" y="628" font-size="19" font-weight="700" fill="#83d8b0">4.</text>
 <text x="118" y="628" font-size="20" font-weight="600" fill="#e3edfa">判断と確認結果を振り返る</text>
-<text x="118" y="654" font-size="18" font-weight="400" fill="#b3c3d9">役立ち方と訂正への行動を別に観察</text>
+<text x="118" y="654" font-size="18" font-weight="400" fill="#b3c3d9">引用した版・判断・訂正への行動</text>
 <text x="86" y="711" font-size="18" font-weight="400" fill="#83d8b0">教訓は仮説。評価はAIの観察。</text>
 <rect x="624" y="346" width="512" height="390" rx="16" fill="#152236" stroke="#2b405b"/>
 <text x="646" y="386" font-size="22" font-weight="700" fill="#8db8f4">業務の判定を任せる</text>
