@@ -59,8 +59,8 @@ func TestSearchShowsBoundedCandidatesBeyondFullArticles(t *testing.T) {
 		}
 	}
 	v, err := b.Query("参加者 受付")
-	if err != nil || v.Search == nil || v.Search.Total != 10 || len(v.Search.Candidates) != 8 || len(v.Lessons) != 2 {
-		t.Fatalf("本文2件とは別に一致数と最大8候補を返す: %+v %v", v, err)
+	if err != nil || v.Search == nil || v.Search.Total != 10 || len(v.Search.Candidates) != 10 || len(v.Lessons) != 2 {
+		t.Fatalf("本文2件とは別に一致した全候補を返す: %+v %v", v, err)
 	}
 	for i, c := range v.Search.Candidates {
 		if c.ID == "" || c.Revision == "" || c.Title == "" || c.AppliesTo == "" || len(c.Fields) == 0 || len(c.Terms) == 0 {

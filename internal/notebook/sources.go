@@ -109,9 +109,6 @@ func (b Book) Capture(o Observation) (Observation, error) {
 			return Observation{}, err
 		}
 	}
-	if len(kept) >= 128 {
-		return Observation{}, errors.New("未整理の原資料が128件あります。振り返りで統合してから追加します")
-	}
 	data, _ = json.Marshal(o)
 	if len(data) > 64<<10 {
 		return Observation{}, errors.New("原資料のJSONは64KB以内です")
@@ -128,7 +125,7 @@ func (b Book) Capture(o Observation) (Observation, error) {
 }
 
 func capturedIDs(dir string) ([]string, error) {
-	data, err := readFile(filepath.Join(dir, ".captured.json"))
+	data, err := readRegistry(filepath.Join(dir, ".captured.json"))
 	if os.IsNotExist(err) {
 		return []string{}, nil
 	}
@@ -136,7 +133,7 @@ func capturedIDs(dir string) ([]string, error) {
 		return nil, err
 	}
 	var ids []string
-	if json.Unmarshal(data, &ids) != nil || len(ids) > 128 {
+	if json.Unmarshal(data, &ids) != nil {
 		return nil, errors.New("原資料の待ち行列を読み取れません")
 	}
 	for _, id := range ids {

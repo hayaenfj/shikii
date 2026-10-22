@@ -125,10 +125,18 @@ func TestNotebookRelatedPagesAndExactLookup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, related := range [][]string{{d.ID}, {foreign.Page.ID}, {"ffffffffffffffff"}, {"../outside"}, {a.Page.ID, a.Page.ID, a.Page.ID, a.Page.ID, a.Page.ID, a.Page.ID, a.Page.ID, a.Page.ID, a.Page.ID}} {
+	for _, related := range [][]string{{d.ID}, {foreign.Page.ID}, {"ffffffffffffffff"}, {"../outside"}} {
 		if _, err := b.Ingest(articleDraft(t, d, map[string]any{"related": related})); err == nil {
-			t.Fatalf("同じプロジェクトの別ページだけを上限付きで関連付ける: %v", related)
+			t.Fatalf("同じプロジェクトの別ページだけを関連付ける: %v", related)
 		}
+	}
+	duplicates := make([]string, 12)
+	for i := range duplicates {
+		duplicates[i] = a.Page.ID
+	}
+	merged, err := b.Ingest(articleDraft(t, d, map[string]any{"related": duplicates}))
+	if err != nil || len(merged.Page.Related) != 1 {
+		t.Fatal("関連は件数で拒否せず重複を除く", err)
 	}
 	_ = os.Remove(filepath.Join(dir, a.Page.ID+".md"))
 	if report, err := b.Lint(); err != nil || !hasIssue(report.Issues, "missing-related-page") {

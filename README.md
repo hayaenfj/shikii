@@ -7,7 +7,7 @@
 Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-295%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-299%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.5.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -125,7 +125,7 @@ Use the same setup for writing, research, event planning or software projects. T
 
 The agent can retain inspected code, test results and release observations with their version, time and reference using `shikii wiki capture`. These sources are integrated into existing topics. Search keeps commands and identifiers and prioritizes titles and applicability; the agent reads selected bodies and sources when a summary is insufficient.
 
-Search returns two full articles and up to eight lightweight candidates with the total match count. It matches words, so the agent checks the topic and can search alternative terms. Within the current task it reuses unchanged article text and sources; `shikii wiki query <source_id> <source_id> ...` reads up to eight missing sources together.
+Search covers all stored articles and reports the total match count and lightweight candidates. Large candidate lists, article lists and source responses are split by data size; follow `next_cursor` with the same query or source IDs to continue. The CLI accepts `continue:CURSOR` after the original arguments; MCP and HTTP accept `cursor`. The agent checks topic relevance, reads selected bodies, and reuses unchanged evidence within the current task. Article and source counts do not stop exploration.
 
 Lessons remain hypotheses with sources. The current request and rules take priority. Original conversations and earlier revisions remain available. Periodic checks inspect sources, revisions and links, and repair the index. The active agent organizes the conversations without starting another model for this work.
 

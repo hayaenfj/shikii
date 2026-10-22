@@ -24,6 +24,7 @@ func currentProjectScope() string {
 type notebookRequest struct {
 	Operation string `json:"operation"`
 	Query     string `json:"query,omitempty"`
+	Cursor    string `json:"cursor,omitempty"`
 	notebook.Draft
 	Observation *notebook.Observation       `json:"observation,omitempty"`
 	Maintenance *notebook.MaintenanceReview `json:"maintenance,omitempty"`
@@ -37,9 +38,9 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 			return nil, errors.New("wiki query exceeds the text limit")
 		}
 		if len(req.Sources) > 0 {
-			return b.ReadSources(req.Sources)
+			return b.ReadSourcesPage(req.Sources, req.Cursor)
 		}
-		return b.Query(req.Query)
+		return b.QueryPage(req.Query, req.Cursor)
 	case "ingest":
 		return b.Ingest(req.Draft)
 	case "capture":
@@ -62,7 +63,7 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 // 新しい接続先や設定は持たず、文章は利用中のエージェントから JSON で受け取る。
 func cmdNotebook(args []string) error {
 	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain") {
-		return errors.New("使い方: shikii wiki query [検索語・出典ID（最大8件）・lesson:記事ID@版] | ingest | capture | maintain（JSONを標準入力）| lint | verify …")
+		return errors.New("使い方: shikii wiki query [検索語・出典ID…・lesson:記事ID@版] [continue:続きのカーソル] | ingest | capture | maintain（JSONを標準入力）| lint | verify …")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -96,6 +97,13 @@ func cmdNotebook(args []string) error {
 			return errors.New("wiki ingest accepts exactly one JSON object")
 		}
 	} else if req.Operation == "query" {
+		if len(args) > 1 && strings.HasPrefix(args[len(args)-1], "continue:") {
+			req.Cursor = strings.TrimPrefix(args[len(args)-1], "continue:")
+			if req.Cursor == "" {
+				return errors.New("続きのカーソルが必要です")
+			}
+			args = args[:len(args)-1]
+		}
 		req.Query = strings.Join(args[1:], " ")
 		if len(args) > 1 {
 			allIDs := true

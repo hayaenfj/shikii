@@ -90,10 +90,17 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		result["memory_effect_error"] = true
 	}
 	{
-		if view, err := (notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}).Query(""); err == nil {
+		if view, err := (notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}).QueryPage("", r.URL.Query().Get("cursor")); err == nil {
 			result["lessons"], result["notebook_issues"], result["pending_sources_count"] = view.Lessons, view.Issues, len(view.Pending)
 			result["maintenance"] = view.Maintenance
+			if view.NextCursor != "" {
+				result["next_cursor"] = view.NextCursor
+			}
 		} else {
+			if r.URL.Query().Get("cursor") != "" {
+				writeErr(w, 400, err)
+				return
+			}
 			result["notebook_issues"] = []notebook.Issue{{Kind: "unreadable-notebook"}}
 		}
 	}

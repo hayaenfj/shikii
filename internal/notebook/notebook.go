@@ -74,6 +74,7 @@ type View struct {
 	Observations []Observation     `json:"observations,omitempty"`
 	Maintenance  []MaintenanceTask `json:"maintenance,omitempty"`
 	Search       *SearchResult     `json:"search,omitempty"`
+	NextCursor   string            `json:"next_cursor,omitempty"`
 }
 
 type Result struct {
@@ -87,8 +88,6 @@ type Report struct {
 }
 
 var idPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
-
-const pageLimit = 128
 
 func digest(data []byte) string {
 	h := sha256.Sum256(data)
@@ -243,7 +242,7 @@ func parsePage(data []byte) (Page, error) {
 	if err := yaml.Unmarshal(data[4:4+end], &p); err != nil {
 		return p, err
 	}
-	if !idPattern.MatchString(p.ID) || p.Status != "hypothesis" || p.Title == "" || p.Lesson == "" || p.AppliesTo == "" || len(p.Sources) == 0 || len(p.Sources) > 16 || len(p.Replaces) > 4 || len(p.Body) > 16<<10 || len(p.Related) > 8 {
+	if !idPattern.MatchString(p.ID) || p.Status != "hypothesis" || p.Title == "" || p.Lesson == "" || p.AppliesTo == "" || len(p.Sources) == 0 || len(p.Body) > 16<<10 {
 		return p, errors.New("invalid wiki lesson metadata")
 	}
 	if p.Previous != "" && !idPattern.MatchString(p.Previous) {
@@ -277,8 +276,8 @@ func (b Book) pages() ([]Page, []Issue, error) {
 		return nil, nil, err
 	}
 	defer f.Close()
-	// 生成ページは 128 件まで。索引や履歴を含む名前も上限を付けて読む。
-	entries, err := f.ReadDir(pageLimit + 8)
+	// 全ての生成ページを対象にし、応答の分割はQueryPageで行う。
+	entries, err := f.ReadDir(-1)
 	if err != nil && err != io.EOF {
 		return nil, nil, err
 	}
@@ -395,15 +394,14 @@ func (b Book) query(query string, recall bool) (View, error) {
 	if query != "" && !recall {
 		v.Search = &SearchResult{Total: len(v.Lessons), Candidates: []SearchCandidate{}}
 		for i, page := range v.Lessons {
-			if i == 8 {
-				break
-			}
 			v.Search.Candidates = append(v.Search.Candidates, SearchCandidate{Match: v.Matches[i], Title: page.Title, AppliesTo: page.AppliesTo})
 		}
 	}
-	limit := 2
+	limit := len(v.Lessons)
+	if recall || query != "" {
+		limit = 2
+	}
 	if query == "" && !recall {
-		limit = 20
 		v.Observations, err = b.PendingObservations()
 		if err != nil {
 			return v, err
@@ -465,8 +463,8 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	if d.Body != nil {
 		body = strings.TrimSpace(*d.Body)
 	}
-	if len(d.Sources) < 1 || len(d.Sources) > 8 || len(d.Replaces) > 4 || len(d.Related) > 8 {
-		return result, errors.New("wiki ingest needs 1 to 8 source ids, at most 4 replaced lessons and 8 related pages")
+	if len(d.Sources) < 1 {
+		return result, errors.New("wiki ingest needs source ids")
 	}
 	if d.Lesson != "" && (strings.TrimSpace(d.Title) == "" || strings.TrimSpace(d.AppliesTo) == "") {
 		return result, errors.New("a lesson needs a title and the conditions where it applies")
@@ -586,11 +584,6 @@ func (b Book) Ingest(d Draft) (Result, error) {
 				return result, errors.New("a replaced lesson must be another page in this project")
 			}
 		}
-		if len(pages) >= pageLimit {
-			if _, ok := byID[id]; !ok {
-				return result, errors.New("wiki has 128 lessons; update or consolidate an existing lesson")
-			}
-		}
 		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related}
 		p.ChangeReason = d.ChangeReason
 		if old, ok := byID[id]; ok {
@@ -614,9 +607,6 @@ func (b Book) Ingest(d Draft) (Result, error) {
 					p.Sources = append(p.Sources, ref)
 				}
 			}
-			if len(p.Sources) > 16 {
-				return result, errors.New("a lesson can cite at most 16 sources")
-			}
 			if d.Replaces == nil {
 				p.Replaces = append([]string{}, old.Replaces...)
 			}
@@ -630,9 +620,6 @@ func (b Book) Ingest(d Draft) (Result, error) {
 			if p.Correction == nil {
 				p.Correction = old.Correction
 			}
-		}
-		if len(p.Replaces) > 4 {
-			return result, errors.New("a lesson can replace at most 4 earlier lessons")
 		}
 		sort.Slice(p.Sources, func(i, j int) bool { return p.Sources[i].ID < p.Sources[j].ID })
 		p.Replaces = unique(p.Replaces)
@@ -857,7 +844,7 @@ func (b Book) Lint() (Report, error) {
 		report.Issues = append(report.Issues, Issue{Kind: "cyclic-replacements"})
 	}
 	expected := index(pages)
-	actual, err := readFile(filepath.Join(dir, "index.md"))
+	actual, err := readRegistry(filepath.Join(dir, "index.md"))
 	if err != nil || !bytes.Equal(actual, expected) {
 		if err := writeFile(filepath.Join(dir, "index.md"), expected); err != nil {
 			return report, err
@@ -872,8 +859,8 @@ func (b Book) Lint() (Report, error) {
 
 // ReadSources は引用を確かめるための原文。識別子は同じ仕事の観察だけを指す。
 func (b Book) ReadSources(ids []string) (map[string]any, error) {
-	if len(ids) == 0 || len(ids) > 8 {
-		return nil, errors.New("wiki source lookup accepts 1 to 8 source ids")
+	if len(ids) == 0 {
+		return nil, errors.New("wiki source lookup needs source ids")
 	}
 	recent, err := (store.Store{Dir: b.Root}).RecentFeedback(b.Scope)
 	if err != nil {

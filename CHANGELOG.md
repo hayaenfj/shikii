@@ -4,7 +4,7 @@
 
 ## 0.5.0 — Evidence that reaches decisions
 
-- Return a bounded search shortlist and total match count alongside two full articles. Let the CLI read up to eight source IDs together; teach the agent to reformulate keyword searches and reuse already-read evidence at the same project and revision.
+- Search all stored articles and expose every matching candidate through data-sized continuations. Remove fixed article, citation, related-page and source-lookup counts. Continue with the same query or source IDs through CLI, MCP and HTTP; the knowledge view follows article-list continuations automatically. Reject continuations after the project, request or results change. Teach the agent to reformulate keyword searches and reuse already-read evidence at the same project and revision.
 - Generalize new projects' four built-in questions for writing, research, business support and software. Keep local-file observations distinct from external actions, preserve existing project questions and calibration, and give changed prompts separate calibration hashes.
 - Preserve command names and identifiers in wiki search, prioritize titles and applicability, and explain matching fields and terms. Keep automatic recall concise.
 - Capture inspected human or agent text, code, test results and release observations with their type, version, time and reference. Preserve available long conversation originals and their citation hashes independently of decision-record retention.
