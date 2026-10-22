@@ -19,21 +19,39 @@ import (
 )
 
 // shikii up: 手元のモデルを 1 コマンドで用意する。
-//   - llama-server を探して起こす(既定は Kev-4B。初回は取得に時間がかかる)
-//   - /health が ok になるまで待ち、/v1/systemone が通るか(決定モデルか)を見る
-//   - 普通の GGUF なら shikii-readout を前に立てて、decide に渡す URL を言う
+//   - llama-server を探して裏のポート(--port + 6。既定 8086)で起こす(既定は Ternary-Bonsai-27B Q2_g64。初回は取得に時間がかかる)
+//   - /health が ok になるまで待つ
+//   - 前に shikii-readout を --port(既定 8080)で立てる。後ろが普通の GGUF なら文字の確率を読み出し、学習済みの決定モデル(Kev など)なら
+//     そのまま通す。shikii・hook・MCP は常に --port を見ればよく、モデルの種類で接続先を変えない
 //   - Ctrl-C で両方止める
 // shikii doctor: 何が動いていて何が足りないかを 1 画面で言う(足りないものには直し方)。
 
+// defaultModel は既定のモデル(普通のチャット用 GGUF。本家 llama.cpp と shikii-readout で決定モデルの速さで使う。
+// 2026-10-17 の実測で prompt-intent top-1 0.968、日本語 1.000。約 7.6 GB)。
+// 「Q2_g64」は Hugging Face の量子化タグとして通らないので、":" の後にファイル名を書く(-hf <repo> --hff <file> に展開)。
+const defaultModel = "prism-ml/Ternary-Bonsai-27B-gguf:Ternary-Bonsai-27B-Q2_g64.gguf"
+
+// hfArgs は -hf の値を llama-server の引数にする。"<repo>:<file>.gguf" ならファイル名で指定し、それ以外("<repo>[:quant]")はそのまま渡す。
+func hfArgs(hf string) []string {
+	if i := strings.LastIndex(hf, ":"); i > 0 && strings.HasSuffix(hf, ".gguf") {
+		return []string{"-hf", hf[:i], "--hff", hf[i+1:]}
+	}
+	return []string{"-hf", hf}
+}
+
+// llamaPortOffset は readout の口(--port)から llama-server の裏の口までの固定の差(オプションは無い)。
+const llamaPortOffset = 6
+
 type upOpts struct {
 	hf, gguf, alias string
-	port, readout   int
+	port            int // shikii が見る口(shikii-readout)
 	ctx             int
 }
 
 type plan struct {
-	server  []string // llama-server のコマンド
-	install string   // llama-server が無い時の入れ方
+	server    []string // llama-server のコマンド(裏の口で起こす)
+	llamaPort int      // 裏の口
+	install   string   // llama-server が無い時の入れ方
 }
 
 // upPlan は何を起こすかを決める(実行はしない。テストで確かめる部分)。
@@ -41,7 +59,11 @@ func upPlan(o upOpts, llamaPath string) plan {
 	if llamaPath == "" {
 		return plan{install: "llama-server not found. Install llama.cpp (brew install llama.cpp, or https://github.com/ggml-org/llama.cpp/releases) and run shikii up again"}
 	}
-	args := []string{llamaPath, "--port", fmt.Sprint(o.port), "--host", "127.0.0.1"}
+	if strings.Contains(strings.ToLower(o.hf+" "+o.gguf+" "+o.alias), "kev-4b") {
+		return plan{install: "Kev-4B is not supported (project decision, 2026-10-23). Use the default local model (shikii up, Ternary-Bonsai-27B), any other GGUF (shikii up --gguf <file>), or TypeSafe Jev with TYPESAFE_API_KEY set"}
+	}
+	llamaPort := o.port + llamaPortOffset
+	args := []string{llamaPath, "--port", fmt.Sprint(llamaPort), "--host", "127.0.0.1"}
 	switch {
 	case o.gguf != "":
 		args = append(args, "-m", o.gguf, "-c", fmt.Sprint(o.ctx), "-ngl", "99", "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "-np", "1")
@@ -49,9 +71,9 @@ func upPlan(o upOpts, llamaPath string) plan {
 			args = append(args, "--alias", o.alias)
 		}
 	default:
-		args = append(args, "-hf", o.hf)
+		args = append(append(args, hfArgs(o.hf)...), "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "-np", "1")
 	}
-	return plan{server: args}
+	return plan{server: args, llamaPort: llamaPort}
 }
 
 type probeResult struct {
@@ -107,11 +129,10 @@ func probe(base string) probeResult {
 func cmdUp(args []string) error {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	var o upOpts
-	fs.StringVar(&o.hf, "hf", "ggml-org/Kev-4B-GGUF:Q4_K_M", "Hugging Face のモデル(llama-server -hf に渡す)")
+	fs.StringVar(&o.hf, "hf", defaultModel, "Hugging Face のモデル(llama-server -hf に渡す)")
 	fs.StringVar(&o.gguf, "gguf", "", "手元の GGUF ファイル(あれば -hf より優先)")
 	fs.StringVar(&o.alias, "alias", "", "GGUF の時の名前(較正の鍵になる)")
-	fs.IntVar(&o.port, "port", 8080, "llama-server のポート")
-	fs.IntVar(&o.readout, "readout-port", 8090, "普通の GGUF だった時に前に立てる shikii-readout のポート")
+	fs.IntVar(&o.port, "port", 8080, "shikii が見る口(shikii-readout)。llama-server はその 6 つ上の口で裏に立つ")
 	fs.IntVar(&o.ctx, "ctx", 4096, "文脈長(GGUF の時)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -121,10 +142,18 @@ func cmdUp(args []string) error {
 	if p.install != "" {
 		return errors.New(p.install)
 	}
-	base := fmt.Sprintf("http://127.0.0.1:%d", o.port)
-	if pr := probe(base); pr.up {
-		fmt.Fprintf(stdout, "something already answers on %s (model=%s). Use --port for another one, or just point shikii at it\n", base, pr.model)
+	readout, err := findReadout()
+	if err != nil {
+		return err
+	}
+	front := fmt.Sprintf("http://127.0.0.1:%d", o.port)
+	base := fmt.Sprintf("http://127.0.0.1:%d", p.llamaPort)
+	if pr := probe(front); pr.up {
+		fmt.Fprintf(stdout, "something already answers on %s (model=%s). Use --port for another one, or just point shikii at it\n", front, pr.model)
 		return nil
+	}
+	if pr := probe(base); pr.up {
+		return fmt.Errorf("something already answers on %s (model=%s), where llama-server would start. Use --port for another pair of ports", base, pr.model)
 	}
 	fmt.Fprintln(stdout, "starting:", strings.Join(p.server, " "))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -157,22 +186,29 @@ wait:
 	if !healthy {
 		return errors.New("llama-server did not become healthy in 20 minutes")
 	}
-	useURL := base
-	var ro *exec.Cmd
-	if !pr.decisionModel {
-		readout, err := findReadout()
-		if err != nil {
-			return fmt.Errorf("%s is a plain chat model and shikii-readout is needed in front, but: %w", pr.model, err)
-		}
-		ro = exec.CommandContext(ctx, readout, "--upstream", base, "--port", fmt.Sprint(o.readout))
-		ro.Stdout, ro.Stderr = os.Stderr, os.Stderr
-		if err := ro.Start(); err != nil {
-			return err
-		}
-		useURL = fmt.Sprintf("http://127.0.0.1:%d", o.readout)
-		fmt.Fprintf(stdout, "%s is a plain chat model → shikii-readout started in front on %s\n", pr.model, useURL)
+	// 前に readout を立てる。普通の GGUF なら読み出し、決定モデルならそのまま通す(readout が自分で見分ける)
+	ro := exec.CommandContext(ctx, readout, "--upstream", base, "--port", fmt.Sprint(o.port))
+	ro.Stdout, ro.Stderr = os.Stderr, os.Stderr
+	if err := ro.Start(); err != nil {
+		return err
 	}
-	fmt.Fprintf(stdout, "\nready. model=%s\n  shikii decide <spec> --local %s -i …\n  shikii serve --local %s\nCtrl-C stops everything.\n", pr.model, useURL, useURL)
+	roExited := make(chan error, 1)
+	go func() { roExited <- ro.Wait() }()
+	for ready := false; !ready; {
+		select {
+		case err := <-roExited:
+			return fmt.Errorf("shikii-readout exited before becoming healthy: %v", err)
+		case err := <-exited:
+			return fmt.Errorf("llama-server stopped: %v", err)
+		case <-time.After(time.Second):
+			ready = probe(front).up
+		}
+	}
+	kind := "plain chat GGUF, read out by shikii-readout"
+	if pr.decisionModel {
+		kind = "decision model, passed through by shikii-readout"
+	}
+	fmt.Fprintf(stdout, "\nready. model=%s (%s)\n  shikii decide <spec> --local %s -i …\n  shikii serve --local %s\nCtrl-C stops everything.\n", probe(front).model, kind, front, front)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	select {
@@ -182,10 +218,12 @@ wait:
 		if err != nil {
 			return fmt.Errorf("llama-server stopped: %w", err)
 		}
+	case err := <-roExited:
+		if err != nil {
+			return fmt.Errorf("shikii-readout stopped: %w", err)
+		}
 	}
-	if ro != nil {
-		_ = ro.Wait()
-	}
+	<-roExited
 	return nil
 }
 
@@ -231,7 +269,7 @@ func cmdDoctor(args []string) error {
 		pr := probe(*local)
 		switch {
 		case !pr.up:
-			fmt.Fprintf(stdout, "MISSING local model at %s: unreachable → shikii up   (starts Kev-4B; or shikii up --gguf <file> for any GGUF)\n", *local)
+			fmt.Fprintf(stdout, "MISSING local model at %s: unreachable → shikii up   (starts %s behind shikii-readout; or shikii up --gguf <file> for any GGUF)\n", *local, defaultModel)
 		case pr.decisionModel:
 			fmt.Fprintf(stdout, "ok   local model at %s: %s (decision model)\n", *local, pr.model)
 		default:

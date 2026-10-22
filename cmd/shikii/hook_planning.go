@@ -19,7 +19,6 @@ import (
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
-	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
 // 文脈の整理は通常のエージェントが行う。hookは原文を控えるだけで、合意や未決事項を推測しない。
@@ -211,7 +210,7 @@ func cmdHookPlan(args []string) error {
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), hookDecideTimeout)
 		defer cancel()
-		d, err = decide.Decide(ctx, sp, inputs, decide.Session{}, []decide.Endpoint{{Kind: "local", Client: systemone.New(hookLocalURL, "", "jev-latest")}})
+		d, err = decide.Decide(ctx, sp, inputs, decide.Session{}, hookEndpoints())
 		if err != nil {
 			return err
 		}

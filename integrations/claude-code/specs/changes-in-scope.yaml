@@ -20,8 +20,10 @@ state:
   required: [request, files]
 
 policy:
-  send_to: [local]    # 依頼の文とファイル名は外に出さない
-  pii: true
+  # 2026-10-23 の決定: 標準は TypeSafe の Jev(鍵 TYPESAFE_API_KEY があれば hosted へ送る)、手元の標準は Ternary-Bonsai-27B。
+  # 依頼・返答・教訓の文を Jev へ送ることは本人が許可した。本文は手元の記録にも残る
+  send_to: [hosted, local]
+  pii: false
 
 thresholds:
   act: 0.75

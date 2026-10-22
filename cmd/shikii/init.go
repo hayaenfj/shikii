@@ -44,7 +44,7 @@ func cmdInit(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "既製の判定: 4種類を準備（新規%d件、既存の設定は保持）\n", nSpecs)
+	fmt.Fprintf(stdout, "既製の判定: %d種類を準備（hookの%d問とwikiの%d問。新規%d件、既存の設定は保持）\n", len(hookSpecs)+len(wikiSpecs), len(hookSpecs), len(wikiSpecs), nSpecs)
 	// 既製の知識: 型・パターン・モデルのページを、無いものだけ写す(tune --propose がここを読んで候補を作る。人が直したページは触らない)
 	n, err := seedWiki(filepath.Join(root, "wiki"))
 	if err != nil {

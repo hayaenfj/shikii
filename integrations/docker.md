@@ -9,7 +9,7 @@
 | Docker | 稼働中のDocker EngineとDocker Compose、リポジトリのclone |
 | Podman | 稼働中のPodmanエンジンと外部のCompose provider、リポジトリのclone |
 | 画像をビルドする時 | ネットワーク。Node.js 24とGo 1.27はビルド用のコンテナが用意する |
-| 初めて判定モデルを動かす時 | モデルを取得する通信と保存領域。既定はKev-4B Q4_K_M（約2.5GB） |
+| 初めて判定モデルを動かす時 | モデルを取得する通信と保存領域。既定はTernary-Bonsai-27B Q2_g64（約7.6GB。普通のチャット用モデルで、shikii-readoutが決定モデルの形で答える） |
 
 [Docker Composeの説明](https://docs.docker.com/compose/)。Podmanの `compose` は、docker-composeまたはpodman-composeなど外部のproviderを呼ぶため、Podman本体とは別にproviderが必要。[Podman公式の説明](https://docs.podman.io/en/latest/markdown/podman-compose.1.html)。
 
@@ -33,7 +33,7 @@ Podmanの場合は、providerを用意して同じ `docker-compose.yml` を `pod
 ## 保存先とモデル
 
 - プロジェクトを `/work` にmountし、`.shikii/` の問い・知識・記録・正解をホストへ残す。コンテナを作り直しても同じ資料を使う。
-- Composeはllama.cppの公式サーバーとshikiiを立てる。llama.cppは `0.0.0.0:8080`、shikiiは `http://llama:8080` の準備ができるのを待つ。ホストの画面は `127.0.0.1:8095` に出す。
+- Composeはllama.cppの公式サーバー、shikii-readout、shikiiを立てる。llama.cppは `0.0.0.0:8086`、readoutは `http://llama:8086` の準備を待って `8080` で答え、shikiiは `http://readout:8080` の準備ができるのを待つ。ホストの画面は `127.0.0.1:8095` に出す。Kev-4Bのような決定モデルに替えてもreadoutはその答えをそのまま通すので、接続先は変えない。
 - shikiiはDockerの `/.dockerenv`、Podmanの `/run/.containerenv` などからコンテナを判別する。モデルやruntimeを替える場合は、その構成の待ち受けと接続先を確認する。
 - 外部APIの鍵は環境変数で渡す。利用する判定が外部送信を許可していることも確かめる。
 - 通常のチャットGGUFを使う場合は、llama.cppとの間に `shikii-readout` を置く。[変換役の条件と実行例](readout.md)。任意のチャットAPIへそのままつながる変換役ではない。

@@ -170,12 +170,21 @@ func hostedKey() string {
 	return os.Getenv("TYPESAFE_API_KEY")
 }
 
+// modelChoice は SHIKII_MODEL(local / hosted)。鍵があっても手元のモデルを使いたい時は local。空なら両方(鍵があれば hosted が先)。
+func modelChoice() string {
+	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("SHIKII_MODEL"))); v {
+	case "local", "hosted":
+		return v
+	}
+	return ""
+}
+
 func (f *endpointFlags) endpoints() []decide.Endpoint {
 	var eps []decide.Endpoint
-	if key := hostedKey(); key != "" && f.hosted != "" {
+	if key := hostedKey(); key != "" && f.hosted != "" && modelChoice() != "local" {
 		eps = append(eps, decide.Endpoint{Kind: "hosted", Client: systemone.New(f.hosted, key, f.model)})
 	}
-	if f.local != "" {
+	if f.local != "" && modelChoice() != "hosted" {
 		eps = append(eps, decide.Endpoint{Kind: "local", Client: systemone.New(f.local, "", f.model)})
 	}
 	return eps

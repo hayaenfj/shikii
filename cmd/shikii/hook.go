@@ -40,8 +40,9 @@ import (
 
 // 固定の規則(オプションは無い)。テストだけが差し替える。
 var (
-	hookLocalURL      = "http://127.0.0.1:8080" // 手元のモデル(init の MCP 設定と同じ)
-	hookPageURL       = "http://127.0.0.1:8096" // AI 自身の判断の答え合わせの画面(プロジェクトの serve は 8095)
+	hookLocalURL      = "http://127.0.0.1:8080"   // 手元のモデル(init の MCP 設定と同じ)
+	hookHostedURL     = "https://api.typesafe.ai" // 標準の TypeSafe Jev。鍵(TYPESAFE_API_KEY / DECISIONS_API_KEY)がある時だけ使う(2026-10-23 の決定)
+	hookPageURL       = "http://127.0.0.1:8096"   // AI 自身の判断の答え合わせの画面(プロジェクトの serve は 8095)
 	hookDecideTimeout = 5 * time.Second
 	hookProbeTimeout  = 300 * time.Millisecond
 	hookSessionTTL    = 7 * 24 * time.Hour
@@ -310,6 +311,24 @@ func pruneSessions(agent string) {
 
 // ---------------------------------------------------------------- 判定
 
+// hookEndpoints は hook が送る口。標準は TypeSafe の Jev(鍵がある時)、次に手元のモデル。spec の send_to の順で最初に送れる口が使われる。
+// 鍵があっても SHIKII_MODEL=local なら手元だけ(modelChoice)。
+func hookEndpoints() []decide.Endpoint {
+	var eps []decide.Endpoint
+	if key := hostedKey(); key != "" && modelChoice() != "local" {
+		eps = append(eps, decide.Endpoint{Kind: "hosted", Client: systemone.New(hookHostedURL, key, "jev-latest")})
+	}
+	if modelChoice() != "hosted" {
+		eps = append(eps, decide.Endpoint{Kind: "local", Client: systemone.New(hookLocalURL, "", "jev-latest")})
+	}
+	return eps
+}
+
+// usesHosted は hook が Jev を使うか(鍵があり、SHIKII_MODEL=local でない)。
+func usesHosted() bool {
+	return hostedKey() != "" && modelChoice() != "local"
+}
+
 // hookDecide はプロジェクトの spec で判定し、帯を振る舞いに写し、記録する。線が無ければ band は act にならない(= 影の期間)。
 // 設定の言語が英語以外なら、出す文は英語と併記し、記録にも display(言語、質問、答え、出した文)を添える。
 func hookDecide(agent, specID string, inputs map[string]string, project string, originals ...map[string]string) (*decide.Decision, hookOut, error) {
@@ -319,8 +338,7 @@ func hookDecide(agent, specID string, inputs map[string]string, project string, 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookDecideTimeout)
 	defer cancel()
-	eps := []decide.Endpoint{{Kind: "local", Client: systemone.New(hookLocalURL, "", "jev-latest")}}
-	d, err := decide.Decide(ctx, sp, inputs, decide.Session{}, eps)
+	d, err := decide.Decide(ctx, sp, inputs, decide.Session{}, hookEndpoints())
 	if err != nil {
 		return nil, hookOut{}, err
 	}
@@ -1398,8 +1416,8 @@ func processAlive(pid int) bool {
 // ensureModel は手元のモデル(hookLocalURL)が応えなければ `shikii up` を裏で起こす。llama-server が無ければ起こさず hook.log に入れ方を 1 行(10 分に 1 回)。
 // 初回はモデルを取ってくるので、応えるまでの数ターンは記録が付かないだけ。hook はこれを待たない。
 func ensureModel(agent string) {
-	if modelUp() {
-		return
+	if usesHosted() || modelUp() {
+		return // 鍵があれば Jev が標準(SHIKII_MODEL=local なら除く)。手元のモデルは起こさない
 	}
 	startOnce(agent, "model", func() int {
 		if _, err := lookPath("llama-server"); err != nil {
@@ -1534,7 +1552,9 @@ func hookInstall(args []string, install bool) error {
 		}
 	}
 	if install {
-		if modelUp() {
+		if usesHosted() {
+			fmt.Fprintf(stdout, "model: TypeSafe Jev (%s; the key is in the environment). No local model is started. SHIKII_MODEL=local selects the local model instead\n", hookHostedURL)
+		} else if modelUp() {
 			fmt.Fprintf(stdout, "local model: already answering on %s\n", hookLocalURL)
 		} else if _, err := lookPath("llama-server"); err != nil {
 			fmt.Fprintf(stdout, "local model: none on %s and no llama-server on PATH. Install llama.cpp (brew install llama.cpp); the hooks start the model by themselves after that. Until then they record nothing\n", hookLocalURL)

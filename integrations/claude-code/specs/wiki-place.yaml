@@ -14,8 +14,10 @@ state:
     new lesson applies to: {{ new_applies }}
   required: [title, lesson, applies_to, new_lesson, new_applies]
 policy:
-  send_to: [local]
-  pii: true
+  # 2026-10-23 の決定: 標準は TypeSafe の Jev(鍵 TYPESAFE_API_KEY があれば hosted へ送る)、手元の標準は Ternary-Bonsai-27B。
+  # 依頼・返答・教訓の文を Jev へ送ることは本人が許可した。本文は手元の記録にも残る
+  send_to: [hosted, local]
+  pii: false
 thresholds:
   act: 0.75
   ask: 0.55

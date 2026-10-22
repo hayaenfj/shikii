@@ -31,7 +31,7 @@ bin/shikii label --last --spec-id prompt-intent question --source ask   # 直近
 
 # 較正。noul は identity と Platt、choice/score は identity と vector(選択肢ごとの bias + 温度)を 5-fold CV で比べて勝った方を書く。
 # ファイルのラベルと store のラベル((spec_hash, model) が一致するもの)を合わせて使う
-bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M'
+bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ternary-bonsai-27b-q2g64+state-last'   # 応答の model(鍵があれば Jev の名前)
 ```
 
 ## shikii本体を更新する
@@ -96,13 +96,12 @@ shikii wiki lint
 ```sh
 brew install llama.cpp            # Homebrewの公式formula
 llama-server --version
-llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M --port 8080 --host 127.0.0.1
+shikii up                         # llama-server を :8086 に、shikii-readout を :8080 に立てる(初回は約 7.6 GB を取得)
 ```
 
-基本モデルは `ggml-org/Kev-4B-GGUF:Q4_K_M`。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookもこのモデルを使う。
+基本モデルは `prism-ml/Ternary-Bonsai-27B-gguf` の `Ternary-Bonsai-27B-Q2_g64.gguf`(普通のチャット用モデル。`shikii-readout` が選択肢の文字の確率を読み、決定モデルの速さで答える。1 問 約 0.6 秒)。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookもこのモデルを使う。Kev-4B のような学習済みの決定モデルは `shikii up --hf ggml-org/Kev-4B-GGUF:Q4_K_M`(readout はその答えをそのまま通す)。
 
-モデル名は応答の `model`(例 `ggml-org/Kev-4B-GGUF:Q4_K_M`)が較正の鍵になる。`--model` で送った名前ではない。
-Kev-4B は英語のみと表記されているが、v2 の文言なら日本語の依頼でも top-1 0.913(v1 の文言では `other` に逃げて 0.68 だった。文言の方が効く)。
+モデル名は応答の `model`が較正の鍵になる。`--model` で送った名前ではない。
 
 ## 判定モデルの接続先
 
@@ -110,7 +109,7 @@ Kev-4B は英語のみと表記されているが、v2 の文言なら日本語�
 
 | 接続先 | 条件 | URLの例 |
 |---|---|---|
-| llama.cpp | Kev-4Bなどの決定モデル | `--local http://127.0.0.1:8080` |
+| llama.cpp | 通常のGGUF(手元の標準はTernary-Bonsai-27B)を `shikii-readout` 越しに。OpenJevなどの決定モデルはそのまま通す | `--local http://127.0.0.1:8080`(`shikii up` が立てる readout の口) |
 | Ollama | v0.35.0以上、System One対応の決定モデル。今回の実機推論は未検証 | `--local http://127.0.0.1:11434 --model nimble` |
 | LM Studio | Jev互換のSystem One対応API、読み込み済みの決定モデル。今回の実機推論は未検証 | `--local http://127.0.0.1:1234 --model <読み込み済みのモデルID>` |
 | Jev | `TYPESAFE_API_KEY`、外部送信を許可するspec | `--hosted https://api.typesafe.ai --model jev-latest` |
@@ -198,7 +197,7 @@ bin/shikii bias .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1
 bin/shikii check .shikii/decisions/*.yaml
 
 # 直近 N 件のラベルで、較正時の Brier から +0.05 以上悪化 / precision が act 未満なら警告して exit 1
-bin/shikii drift .shikii/decisions/prompt-intent.yaml --model 'ggml-org/Kev-4B-GGUF:Q4_K_M' --window 50
+bin/shikii drift .shikii/decisions/prompt-intent.yaml --model 'ternary-bonsai-27b-q2g64+state-last' --window 50
 ```
 
 較正の方法は 3 つ。どれも `calibrate --write` が生成し、鍵は (spec_hash, model)。
@@ -238,7 +237,7 @@ OpenJev は生の確率で足りて両方 `identity`、Kev-4B は Platt がわ�
 bin/shikii status --store .shikii .shikii/decisions/prompt-kind.yaml
 # prompt-kind: records=1 labels=1
 #   by source: outcome=1   by truth: !edit=1
-#   ggml-org/Kev-4B-GGUF:Q4_K_M @ 68ed82631e63f2a2   1  collecting (1/50)
+#   ternary-bonsai-27b-q2g64+state-last @ 68ed82631e63f2a2   1  collecting (1/50)
 ```
 
 spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome / file)と中身の偏り、(model, spec_hash) ごとの件数と状態
