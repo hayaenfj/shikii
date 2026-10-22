@@ -24,6 +24,8 @@ The sections below cover the decision-model workflow and its CLI in detail.
 
 Use one command to update to the latest stable release:
 
+**The update to 0.7.0 erases the contents of `.shikii/` in every initialized project and initializes them again** (a project decision). Earlier conversations, lessons, provisional assessments, truths and calibration are removed; the built-in questions, the wiki templates and the project link are recreated. Back up anything you want to keep first. Updates that do not cross 0.7.0 keep everything.
+
 ```sh
 shikii update
 ```
@@ -267,7 +269,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 313 Go tests across 10 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 314 Go tests across 10 packages; the demo runs in CI.
 
 ## What you can connect
 

@@ -30,6 +30,69 @@ type updateOptions struct {
 	client                            *http.Client
 	finish                            func(context.Context, string) error
 	replace                           func(string, string) error
+	reset                             func(context.Context, string, [3]uint64, [3]uint64) error // 版を跨ぐ時にプロジェクトの記録を初期化し直す(前の版、後の版)
+}
+
+// storeResetAt は、ここを跨ぐ更新で各プロジェクトの .shikii/ の中を全部消して初期化し直す版(本人の決定、2026-10-23)。
+var storeResetAt = [3]uint64{0, 7, 0}
+
+func versionString(v [3]uint64) string { return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) }
+
+// crossesStoreReset は from < storeResetAt <= to か。
+func crossesStoreReset(from, to [3]uint64) bool {
+	return updateNewer(storeResetAt, from) && !updateNewer(storeResetAt, to)
+}
+
+// resetProjectStores は 0.7.0 を跨ぐ更新で、登録済みの各プロジェクトの .shikii/ の中を全部消し、新しい本体で初期化し直す。
+func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) error {
+	if !crossesStoreReset(from, to) {
+		return nil
+	}
+	common, err := agentHome()
+	if err != nil {
+		return err
+	}
+	projects := registeredProjects(common)
+	if len(projects) == 0 {
+		return nil
+	}
+	fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(projects))
+	return wipeProjectStores(projects, func(path string) error {
+		cmd := exec.CommandContext(ctx, exe, "--init")
+		cmd.Dir = path
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("%s: 初期化し直せません: %v %s", path, err, strings.TrimSpace(string(out)))
+		}
+		fmt.Fprintf(stdout, "  %s: 消して初期化し直しました\n", path)
+		return nil
+	})
+}
+
+// wipeProjectStores は各プロジェクトの .shikii/(通常のフォルダ)の中を全部消し、reinit で初期化し直す。.shikii/ の外は触らない。
+func wipeProjectStores(projects []projectEntry, reinit func(path string) error) error {
+	for _, p := range projects {
+		store := filepath.Join(p.Path, ".shikii")
+		info, err := os.Lstat(store)
+		if err != nil {
+			return fmt.Errorf("%s: %w", store, err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s: 通常のフォルダではないので消しません", store)
+		}
+		entries, err := os.ReadDir(store)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if err := os.RemoveAll(filepath.Join(store, e.Name())); err != nil {
+				return fmt.Errorf("%s: %w", filepath.Join(store, e.Name()), err)
+			}
+		}
+		if err := reinit(p.Path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func cmdUpdate(args []string) error {
@@ -60,7 +123,7 @@ func defaultUpdateOptions(exe string) updateOptions {
 	return updateOptions{
 		executable: exe, version: shikii.Version, goos: runtime.GOOS, goarch: runtime.GOARCH,
 		latestURL: "https://api.github.com/repos/hayaenfj/shikii/releases/latest", downloadBase: "https://github.com", client: client,
-		finish: finishUpdate,
+		finish: finishUpdate, reset: resetProjectStores,
 	}
 }
 
@@ -167,6 +230,11 @@ func runUpdate(ctx context.Context, o updateOptions) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "shikii %s → %s に更新しました。\n", o.version, version)
+	if o.reset != nil {
+		if err := o.reset(ctx, exe, current, next); err != nil {
+			return fmt.Errorf("本体とreadoutは更新済みですが、プロジェクトの初期化し直しを完了できません: %w", err)
+		}
+	}
 	if o.finish != nil {
 		if err := o.finish(ctx, exe); err != nil {
 			return fmt.Errorf("本体とreadoutは更新済みですが、反映を完了できません: %w", err)
