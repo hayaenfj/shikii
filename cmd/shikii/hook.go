@@ -81,7 +81,7 @@ func agentHome() (string, error) {
 }
 
 func cmdHook(args []string) error {
-	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | plan query | plan submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks and plan query/submit are run by the agent and read JSON on stdin; not for typing by hand\n"
+	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
 	if len(args) == 0 {
 		return errors.New(strings.TrimSpace(usage))
 	}
@@ -96,6 +96,8 @@ func cmdHook(args []string) error {
 		return hookInstall(args[1:], false)
 	case "plan":
 		return cmdHookPlan(args[1:])
+	case "variants":
+		return cmdHookVariants(args[1:])
 	case "user-prompt-submit", "stop":
 		// hook は作業を止めない: 何があっても exit 0。理由は hook.log に
 		if err := runHookEvent(args[0]); err != nil {
@@ -572,6 +574,13 @@ func runHookEvent(event string) error {
 			} else {
 				out.Context = joinLines(out.Context, context)
 			}
+			out.Context = joinLines(out.Context, variantsContext(agent))
+		}
+	}
+	if event == "stop" {
+		if line := wordingSummary(agent); line != "" {
+			ensurePage(agent)
+			summary = joinLines(summary, line)
 		}
 	}
 	if summary != "" {
@@ -1007,7 +1016,7 @@ func hookMaybeTune(agent, specID string) error {
 	if last >= 0 && n-last < hookTuneEvery {
 		return nil
 	}
-	if err := os.WriteFile(guard, []byte(fmt.Sprintf("%d %s %s\n", n, sp.Hash(), time.Now().Format(time.RFC3339))), 0o600); err != nil {
+	if err := writeTuneGuard(agent, sp, n); err != nil {
 		return err
 	}
 	hookTune(agent, path, st.Dir)
