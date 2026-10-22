@@ -2,170 +2,151 @@
 
 <p align="center"><img src="docs/assets/gen-mark.png" alt="shikii" width="96"></p>
 
-# shikii: turn a correction into the next action
+# shikii: turn an AI's “probably” into a “safe to act”
 
-Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
+A model gives you a probability. shikii tells you whether you may act on it. It draws the line from the answers people and results supply, turns every decision into a band (`act` / `ask` / `discard`), measures better ways of asking, and keeps what it learned in a wiki that your agent uses while it works.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-313%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-314%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.6.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.7.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.6.0 reduces what people are asked to check. Scope and completion now learn from observable results, decisions answered by results no longer wait for a person, and a question that cannot reach a reliable threshold gets candidate wordings from the agent and is measured automatically. `shikii status` shows how many decisions still wait for a person. See the [changelog](CHANGELOG.md).
+Version 0.7.0 goes back to the line and the bands. TypeSafe Jev is the standard model, Ternary-Bonsai-27B the local standard, and any chat GGUF runs at decision-model speed through `shikii-readout`. New wiki lessons are placed next to the right page and checked for contradictions by the decision model. **Updating to 0.7.0 erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
-[What changes](#what-changes) · [Requirements](#requirements) · [Get started](#get-started) · [Learn from ordinary conversations](#learn-from-ordinary-conversations) · [What people check](#what-people-check) · [Check whether memory helped](#check-whether-memory-helped) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Use it for business decisions](#use-it-for-business-decisions) · [Read more](#read-more)
+[The problem](#the-problem) · [What shikii does](#what-shikii-does) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [One full loop](#one-full-loop) · [Learn from conversations](#learn-from-conversations) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
 <p align="center"><img src="docs/assets/shikii-hero.svg" alt="shikii: a model gives you a probability; shikii tells you whether you may act on it" width="100%"></p>
 
-## What changes
+## The problem
 
-“I already explained that.” “It remembers what I said, but still does the same thing.” shikii aims to reduce this repeated explanation and correction.
+Ask an AI “is this inquiry the same matter as the last one?” and it says “probably, 0.9”. For real work that is not enough.
 
-For example, you ask for a Japanese version of some instructions, then point out: “There is still English left.”
+- Is that 0.9 really right 9 times in 10?
+- Since the day you swapped in a new model, has it quietly started to drift?
+- If you change the wording a little, how does the accuracy move?
+- The decisions it took on its own, with nobody watching: are they still right?
 
-| Moment | What shikii and the agent keep or do |
-|---|---|
-| A correction arrives | Preserve the request, the reply and the person's statement as source material |
-| A lesson is written | Link “Check the whole text when translating instructions” to its conditions, the quoted correction and a concrete action |
-| Similar work comes next | Deliver a short quote; the agent checks whether it applies and uses it in the work |
-| Reflection | Link the decision to evidence of the full-text check or a recurrence of the same issue |
+If a person has to check every answer, there was little point in using the AI.
 
-<p align="center"><img src="docs/assets/shikii-conversation.svg" alt="A request and correction become a sourced lesson and an action for similar work; observed results feed reflection" width="100%"></p>
+## What shikii does
 
-The goal is fewer repeated corrections as you use it. What exists today is the mechanism for checking that in real work. Stored memory counts and an agent's own scores alone do not demonstrate improvement.
+1. **Collects your answers and draws the line above which the AI may act on its own.** From the truths people supply, and from results that can be observed automatically, it measures how the model's confidence relates to how often it is right. Until that line exists, no decision is `act`.
+2. **Turns every decision into a band.** `act` proceeds automatically, `ask` goes to a person, `discard` does nothing, `abstain` means an input or an endpoint is missing. Automatic decisions carry a receipt stating how many truths and human checks stand behind the line.
+3. **Tries other ways of asking and keeps the better one.** On the same truths it scores alternative questions, option descriptions and prompt layouts. A person only confirms that the meaning is unchanged before a better one is adopted.
+4. **Lets you swap the model without starting over.** Truths live apart from the model. The standard is TypeSafe Jev; the local standard is Ternary-Bonsai-27B, an ordinary chat model that `shikii-readout` turns into a decision model by reading the probability of each option letter, at about 0.6 s per question.
+5. **Keeps what it learned in a wiki your agent uses.** Requests, replies and corrections become lessons with sources. Before a new lesson is saved, the decision model finds the page it belongs to and flags a contradiction; what the agent then saves becomes the truth for that judgement, so nobody labels it.
+
+## What you do
+
+- **Write down what you want decided.** A decision file holds the question, the options, the inputs and the thresholds (`shikii new`, or copy a [ready-made decision](decisions/README.md)).
+- **Answer some questions.** The page shows the decisions the model was unsure about and 1 in 20 of the ones it acted on; you press the button for what was actually true. Results that can be observed (a change undone, a request repeated, a lesson merged) are answered by the machine.
+- **Now and then confirm a wording.** When a better way of asking is found, you check that it asks the same thing and press adopt or reject.
+- **Correct your agent as usual.** “There is still English left” in an ordinary conversation is enough; the agent files it as a lesson and shikii keeps it next to the right page.
+
+Everything else is the machine's job.
 
 ## Requirements
 
-Choose the combination for your use case. The agent that organizes conversations and the model that answers decision questions have different jobs.
-
 | Use case | What you need |
 |---|---|
-| Learn from ordinary conversations | Claude Code or Codex, shikii, and initialization of the chosen project |
-| Automatically evaluate the built-in questions | Standard: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment (nothing to download). Local standard: llama.cpp (`llama-server`) with Ternary-Bonsai-27B through `shikii up`, about 10 GB of memory. Hooks use Jev when the key is set, otherwise `127.0.0.1:8080` |
-| Use another model for business decisions | Choose a System One endpoint and decision model from the table below |
-| Install from source | Go 1.27 or newer, Git and sh. The UI is bundled; Node.js is unnecessary |
-| Run the business API and page in containers | Docker with Compose, or Podman with a Compose provider. Build containers supply Go and Node.js |
-| Try the workflow without a key or GPU | Go 1.27 or newer and the included fake model (`scripts/demo.sh`) |
-| Develop the UI or documentation | Node.js 24 and npm for the UI; Python 3 for diagram generation and documentation checks |
+| Learn from ordinary conversations | Claude Code or Codex, shikii, and `shikii --init` in the projects you choose |
+| Answer the built-in questions | Standard: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment, nothing to download. Local standard: llama.cpp (`llama-server`) and Ternary-Bonsai-27B through `shikii up`, about 10 GB of memory while running |
+| Use another model for business decisions | Any System One endpoint from the table below |
+| Install from source | Go 1.27 or newer, Git and sh. The page is bundled; Node.js is not needed |
+| Run the business API and page in containers | Docker with Compose, or Podman with a Compose provider ([setup](integrations/docker.md)) |
+| Try the whole loop without a key or GPU | Go 1.27 or newer and the included fake model (`scripts/demo.sh`) |
 
-The business CLI, MCP server and `serve` can use these model endpoints:
-
-| Endpoint | Preparation and verification |
+| Endpoint | What it needs |
 |---|---|
-| llama.cpp | Any chat GGUF through the included `shikii-readout` adapter (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. [Examples](integrations/readout.md) |
-| Ollama | v0.35.0 or newer with System One and a decision model. Its documented `/v1/systemone` shape matches the client; inference on Ollama was not tested in this update. [Official API](https://docs.ollama.com/api/systemone) |
-| LM Studio | The Jev-compatible `/v1/systemone` endpoint and a loaded decision model. Documentation matches the client; inference on LM Studio was not tested in this update. [Official API](https://lmstudio.ai/docs/developer/jev-compat/systemone) |
-| Jev (TypeSafe AI) | The standard. Hosted API access and `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` are sent here when the key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
-
-Ollama and LM Studio do not replace the built-in hooks' model; Jev does when the key is set, and llama.cpp through `shikii up` otherwise. Select an endpoint URL and decision model for business use. A chat-completions endpoint alone is insufficient. See [connection requirements](docs/guide.md#what-you-can-connect).
-
-Podman `compose` invokes an external Compose provider. See [Podman's documentation](https://docs.podman.io/en/latest/markdown/podman-compose.1.html). A Dockerfile and Compose file are included; Podman execution was not tested in this update. Containers run the business API and page; host-agent hooks are configured separately. See [Docker and Podman setup](integrations/docker.md).
+| Jev (TypeSafe AI) | The standard. `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` go here when the key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
+| llama.cpp | Any chat GGUF through the included `shikii-readout` (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. Kev-4B is not supported. [Examples](integrations/readout.md) |
+| Ollama / LM Studio | Their `/v1/systemone` endpoints with a decision model, for business decisions. Not tested in this release |
 
 ## Get started
 
-Automatic conversation recording supports Claude Code and Codex. Install once, initialize the projects you choose, then work as usual.
+### 1. A key, or llama.cpp
 
-### 1. Prepare Go, and a key or llama.cpp
+**Standard: TypeSafe Jev.** Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded. The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with a key; `SHIKII_MODEL=hosted` forces Jev.
 
-**Standard: TypeSafe Jev.** Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of the shell and the agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and no local memory is used; the built-in questions are answered by Jev. The request text, the agent's reply and wiki lessons are sent to TypeSafe for that; they also stay in the local records. To keep using a local model while the key is set, put `SHIKII_MODEL=local` in the environment (`SHIKII_MODEL=hosted` forces Jev).
-
-**Local standard: llama.cpp.** Without a key, shikii runs a local model. On macOS with Homebrew, use the official [Go](https://formulae.brew.sh/formula/go) and [llama.cpp](https://formulae.brew.sh/formula/llama.cpp) formulae. If needed, set up Homebrew from [its official site](https://brew.sh/) first.
+**Local standard: llama.cpp.** Without a key, shikii runs a local model. On macOS with Homebrew:
 
 ```sh
 brew install go llama.cpp
-go version
+go version            # 1.27 or newer
 llama-server --version
 ```
 
-Check that Go is 1.27 or newer and `llama-server` is available. For other systems, see [llama.cpp's installation guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md).
-
-The default local model is **Ternary-Bonsai-27B, Q2_g64** (`prism-ml/Ternary-Bonsai-27B-gguf`, file `Ternary-Bonsai-27B-Q2_g64.gguf`, Apache 2.0). It is an ordinary chat model, not a trained decision model: `shikii up` runs it on stock llama.cpp behind `shikii-readout`, which reads the probability of each option letter and answers at decision-model speed (about 0.6 s per question on Apple Silicon). It downloads about 7.6 GB on first start and serves the built-in decision questions locally on :8080 (llama-server itself listens on :8086). It needs about 10 GB of memory while running. In our measurements it scored top-1 0.968 on request-type decisions and 1.000 on the Japanese ones. Any other GGUF works the same way (`shikii up --gguf <file>`); trained decision models such as OpenJev are passed through unchanged. Kev-4B is not supported. Your usual agent remains responsible for organizing conversation lessons.
+For other systems, see [llama.cpp's installation guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md). The default local model is **Ternary-Bonsai-27B Q2_g64** (`prism-ml/Ternary-Bonsai-27B-gguf`, Apache 2.0, about 7.6 GB to download and 10 GB of memory while running). `shikii up` starts llama-server on :8086 and `shikii-readout` on :8080, so hooks, MCP and the page always talk to :8080. Any other GGUF works the same way (`shikii up --gguf <file>`).
 
 ### 2. Install shikii
-
-With Go 1.27 or newer, install with one command:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-To install from a source checkout instead, clone shikii and run this inside its folder:
+From a source checkout, run `sh install.sh` inside its folder. The installer adds the binaries, two hooks (before and after a turn) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, use `/hooks` once to trust the hooks.
 
-```sh
-sh install.sh
-```
+### 3. Initialize the projects you choose
 
-The installer adds the binaries, two hooks (before and after a turn), and the agent's instructions. It uses llama.cpp for the local decision model and explains how to prepare it if missing. It also reports when the binary directory needs adding to PATH. In Codex, use `/hooks` once to trust the hooks.
-
-### 3. Initialize the project you choose
-
-Open the agent in a new terminal, in a project you want to enable, and ask:
+In a project you want to enable, ask your agent:
 
 > Use shikii in this project.
 
-The agent runs `shikii --init`; you can run it yourself too. Only initialized projects are enabled. Initialization prepares four decisions, the wiki, MCP setup, agent instructions and a link to the project's page. Reinitialization preserves existing data. Check setup with `shikii doctor` and open http://127.0.0.1:8096 for the project pages.
+The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. Initialization prepares the built-in questions, the wiki, the MCP setup, the agent's instructions and the project's page. `shikii doctor` checks the setup; http://127.0.0.1:8096 lists the project pages.
 
-### Future updates
+### Updates
 
 ```sh
 shikii update
 ```
 
-This checks the latest stable release, verifies its hashes, and updates shikii and readout in the current binary directory. Go is unnecessary for updates. Conversations, lessons and truths are preserved, and existing hooks and agent instructions are refreshed. Restart running UI and MCP processes to use the new binary. [Details](docs/guide.md#update-shikii).
+This fetches the latest stable release, verifies its hashes and replaces shikii and readout. **The update to 0.7.0 erases the contents of `.shikii/` in every initialized project and initializes them again.** Earlier conversations, lessons, truths and calibration are removed; back up anything you want to keep. Later updates keep them. Restart the page and MCP afterwards.
 
-Updated skills and hook instructions take effect in a new agent session. Existing project decision questions and calibration are preserved; newly initialized projects receive the current built-in prompts.
+## One full loop
 
-Use the same setup for writing, research, event planning or software projects. The built-in questions cover the agent's work; local file changes are evidence when available. For decisions such as refund eligibility or an external action, use a task-specific spec and the relevant business evidence.
+```sh
+shikii up                                                        # or: export TYPESAFE_API_KEY=…
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=ask   (no line yet: a person decides)
+shikii serve --local http://127.0.0.1:8080                       # answer page: http://127.0.0.1:8095
+#   Once a decision has the number of truths it asks for (eval.min_n), the line is drawn by itself.
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+#   → band=act   with a receipt (how many truths, how many checked by a person, the precision of the act side)
+```
 
-## Learn from ordinary conversations
+| Band | What to do |
+|---|---|
+| `act` | Proceed automatically under the calibrated conditions |
+| `ask` | Check with a person |
+| `discard` | Do not act |
+| `abstain` | Supply the missing input or an available endpoint |
 
-1. **Keep the conversation.** The next human message joins the previous request and reply as one source observation.
-2. **Let the usual agent organize it.** The agent reads sources and integrates them into existing topics: a short retrieval summary, a knowledge body with background, reasons and open questions, and links to related pages. Explicit corrections can include the quoted statement and the action to change.
-3. **Recall briefly when relevant.** Up to two related lessons arrive for a similar request in the same project. The same revision is suppressed for one hour in a session; updated revisions arrive immediately.
-4. **Reflect in batches.** Assessment, wiki work and memory observations are grouped after two pending sources, or at the next request after a single source has waited a day. The agent also revisits up to two articles and connected knowledge. People need not perform these steps each time.
+Calibration belongs to one question and one model; change either and it is measured again. `shikii tune` scores alternative wordings on the stored truths; `shikii drift` and `shikii check` catch a model that drifted or a line that was weakened. To try this without a key or GPU, run `scripts/demo.sh` in the checkout.
 
-The agent can retain inspected code, test results and release observations with their version, time and reference using `shikii wiki capture`. These sources are integrated into existing topics. Search keeps commands and identifiers and prioritizes titles and applicability; the agent reads selected bodies and sources when a summary is insufficient.
+- [Ready-made decisions](decisions/README.md) · [a business example](docs/examples/inquiry-route.md) (Japanese) · [all commands and the HTTP API](docs/guide.md) · [MCP](integrations/mcp.md) · [measurements](docs/bench.md)
 
-Search covers all stored articles and reports the total match count and lightweight candidates. Large candidate lists, article lists and source responses are split by data size; follow `next_cursor` with the same query or source IDs to continue. The CLI accepts `continue:CURSOR` after the original arguments; MCP and HTTP accept `cursor`. The agent checks topic relevance, reads selected bodies, and reuses unchanged evidence within the current task. Article and source counts do not stop exploration.
+## Learn from conversations
 
-Lessons remain hypotheses with sources. The current request and rules take priority. Original conversations and earlier revisions remain available. Periodic checks inspect sources, revisions and links, and repair the index. The active agent organizes the conversations without starting another model for this work.
+With the hooks installed, two moments of every turn are kept: the request before the agent starts, and the reply with the changed files after it. The next human message closes the pair. From these the agent writes lessons with sources; shikii delivers up to two related lessons before similar work and the agent reports in its reflection whether they helped.
 
-This follows [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): retain source material and let the agent handle ingestion, queries and maintenance. Automatic recall stays brief; explicit queries search full bodies, and `shikii wiki query lesson:<page_id>` opens a page and its related knowledge. See [the workflow](skills/shikii/references/wiki.md).
+<p align="center"><img src="docs/assets/shikii-conversation.svg" alt="A request and correction become a sourced lesson and an action for similar work; observed results feed reflection" width="100%"></p>
 
-## What people check
+The decision model answers the built-in questions about the agent's own work (what kind of request this is, whether an approach should be agreed first, whether the changes stayed in scope, whether the request was completed) and, in 0.7.0, where a new lesson belongs and whether it contradicts an existing one. Truths for these come from what happens next: a change undone during the next request, a request repeated, a lesson merged or replaced. Only questions that results cannot answer wait for a person, and the page shows how many.
 
 | Work | Routine owner | A person's part |
 |---|---|---|
-| Organize lessons from conversations | The active agent | Correct it in ordinary conversation; no separate organizing steps |
-| Assess scope and completion | The agent, using outcomes and the next reply | Check random samples and undecided cases |
-| Decide whether to agree on an approach first | A decision model makes the initial assessment | Supply the needed truths on the page |
-| Business truths and the meaning of proposed wording | People or observable outcomes | Supply truths and check meaning before adoption |
+| Lessons from conversations | The active agent | Correct it in ordinary conversation |
+| Where a lesson belongs, scope, completion | The decision model, answered by results | Check samples and undecided cases |
+| Business truths and the meaning of a wording | People | Supply truths, confirm meaning before adoption |
 
-Provisional AI assessments are stored separately from human truths. Corrections made during spot-checking return as examples for later assessment. Scope and completion assessments are not automatically fed into calibration. See [assessment and sampling](skills/shikii/references/review.md) (Japanese).
-
-The Knowledge panel shows lessons, sources and memory observations. The Wording panel measures alternatives and lets a person adopt one after checking its meaning. You do not need to open these panels for each conversation to be remembered.
-
-## Check whether memory helped
-
-The delivered quote and revision stay linked to the request. Routine reflection connects them to a decision and an observed result, using two separate observations.
-
-| Question | Recorded outcomes |
-|---|---|
-| How did memory affect the decision? | Helpful, unused, harmful, unknown |
-| Was a delivered correction reflected in the next action? | Followed, same issue repeated, not applicable, unknown |
-
-The Knowledge panel includes delivery counts and pending assessments. Following a correction and finding a memory helpful are assessed separately. Success, another request or silence alone does not establish an effect. These are evidence-backed AI observations, not an improvement rate measured against a no-memory control.
-
-The Knowledge panel also separates decisions that searched the wiki, found candidates and actually quoted evidence. Recorded planning contexts retain the available and used article revisions, lookup time and context bytes. For a controlled comparison, use the same inputs and the recorded revisions (`shikii wiki query lesson:<page_id>@<revision>`); exclude later knowledge. These counts measure retrieval and quotation, not a proven reduction in unnecessary questions.
+This follows [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): keep the sources, let the agent ingest, query and maintain. Details: [hooks](integrations/claude-code.md) (Japanese), [the wiki workflow](skills/shikii/references/wiki.md).
 
 ## Memory belongs to a project
 
-Conversations, lessons, provisional assessments, truths and calibration belong to that project's `.shikii/`. Unrelated projects, including ones with the same name, stay separate. Subdirectories of the same project use the same store.
+Conversations, lessons, provisional assessments, truths and calibration live in that project's `.shikii/`. Unrelated projects stay separate. The shared `~/.shikii/agent` holds templates, tools and the project index. Initialization keeps `.shikii/` out of untracked Git files because it contains private conversations.
 
 <p align="center"><img src="docs/assets/shikii-architecture-en.svg" alt="An initialized project keeps conversation lessons and provisional observations separate from business questions and truths; the shared area contains templates, tools and project links" width="100%"></p>
-
-The four main storage areas are:
 
 ```text
 .shikii/
@@ -175,44 +156,15 @@ The four main storage areas are:
   labels/     Truths supplied by people or outcomes
 ```
 
-The shared `~/.shikii/agent` holds templates, tools and the project index. Initialization excludes `.shikii/` from untracked Git files because it contains private conversations. Review and select material before sharing it. Memory is stored outside model weights and remains available when you change agents or decision models.
-
-## Use it for business decisions
-
-Use shikii for repeated decisions such as routing inquiries or detecting duplicate bug reports.
-
-> Have shikii decide whether an inquiry is the same case as an earlier one, and improve it from checked answers.
-
-The agent prepares the question, options and inputs, then starts the decision service and answer page. People check the intended question and supply truths. These support a line above which the model may act. Until that line exists, no decision is `act`.
-
-| Band | What to do |
-|---|---|
-| `act` | Proceed automatically under the calibrated conditions |
-| `ask` | Check with a person |
-| `discard` | Do not act |
-| `abstain` | Supply missing input or an available endpoint |
-
-Calibration belongs to a particular question and model; changes require measurement again. Automatic decisions carry a receipt stating the truths and human checks behind the line. Conversation hypotheses and provisional assessments alone never create it.
-
-- [Ready-made decisions](decisions/README.md), [a business example](docs/examples/inquiry-route.md) (Japanese), [all commands and HTTP API](docs/guide.md)
-- [MCP](integrations/mcp.md), [Docker](integrations/docker.md), [measurements](docs/bench.md)
-
-To try the business-decision lifecycle without a key or GPU, run this in the shikii checkout with Go 1.27 or newer. Fake-model numbers demonstrate the workflow only.
-
-```sh
-scripts/demo.sh
-```
-
 ## Read more
 
-- [The guide](docs/guide.md): conversation reflection, CLI and HTTP API
-- [Hooks](integrations/claude-code.md) (Japanese): work done before and after a turn
-- [Architecture](docs/architecture.md) (Japanese): conversation learning, business decisions, storage and ownership
+- [The guide](docs/guide.md): every command, the HTTP API, connecting models
+- [Architecture](docs/architecture.md) (Japanese)
+- [Agent instructions](skills/shikii/SKILL.md)
 - [Changelog](CHANGELOG.md)
-- [Agent instructions](skills/shikii/SKILL.md) (Japanese)
 
-**For contributors**: break a test and observe its failure before fixing it. Separate observations from truths, and ground numerical claims in measurements. Keep fixed places and rules rather than adding settings.
+**For contributors**: break a test and watch it fail before fixing it. Keep observations apart from truths, and ground numbers in measurements. Prefer fixed places and rules over settings.
 
 ## License
 
-[Apache-2.0 OR MIT](LICENSE), at your option: [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT). The licenses of third-party dependencies, bundled code, models and external services remain separate. Source or binary distributions should include all three license files and applicable third-party notices. Existing 0.4.0 release assets retain their original Apache-2.0 notice.
+[Apache-2.0 OR MIT](LICENSE), at your option: [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT). Third-party dependencies, bundled code, models and external services keep their own licenses. Distributions should include all three license files and the applicable third-party notices.
