@@ -259,9 +259,9 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if daa[0].Inputs["summary"] != "Fixed the typo." || daa[0].Inputs["files"] != "a.go\nb.md" {
 		t.Fatalf("done-as-asked inputs: %+v", daa[0].Inputs)
 	}
-	// 確信した「いいえ」は答え待ちにならない(prompt-kind の edit 0.9 は線が無いので ask → 答え待ち)
+	// 確信した「いいえ」は答え待ちにならない。prompt-kind の edit 0.9 は線が無いので ask だが、結果から正解が付くので人を待たない
 	sess := loadSession(agent, "s1")
-	if len(sess.Asked) != 1 || sess.Asked[0].Spec != "prompt-kind" {
+	if len(sess.Asked) != 0 {
 		t.Fatalf("asked: %+v", sess.Asked)
 	}
 
@@ -575,10 +575,10 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	if out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd}); out != "" {
 		t.Fatalf("nothing waits yet: %q", out)
 	}
-	// 人の確認は prompt-kind と needs-plan の 2 件。Stop の完了判定は AI の仮採点を待つ。
+	// 人の確認は needs-plan の 1 件。prompt-kind は結果から正解が付くので迷っても人を待たない。Stop の完了判定は AI の仮採点と結果を待つ。
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "add a --json flag to the status command"})
 	out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Added."})
-	if !strings.Contains(out, "2 of this session's decisions wait") || !strings.Contains(out, hookPageURL+"/") || strings.Contains(out, "Start the page") {
+	if !strings.Contains(out, "1 of this session's decisions wait") || !strings.Contains(out, hookPageURL+"/") || strings.Contains(out, "Start the page") {
 		t.Fatalf("the line must always give the URL (the page is started in the background): %s", out)
 	}
 	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+filepath.Join(os.Getenv("HOME"), ".shikii", "agent")+" --port 8096 --local ") {
@@ -591,7 +591,7 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	if out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd}); out != "" {
 		t.Fatalf("nothing new: the line must not repeat: %s", out)
 	}
-	// 画面が立っている → 起こさない。1 件に答え、次の依頼で 2 件増えると残りは 3 件。
+	// 画面が立っている → 起こさない。1 件に答え、次の依頼で 1 件増えると残りは 1 件。
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) }))
 	t.Cleanup(page.Close)
 	hookPageURL = page.URL
@@ -600,7 +600,7 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "no"}) })
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "and document the flag in the README too"})
 	out = runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Documented."})
-	if !strings.Contains(out, "3 of this session's decisions wait") || !strings.Contains(out, page.URL+"/") {
+	if !strings.Contains(out, "1 of this session's decisions wait") || !strings.Contains(out, page.URL+"/") {
 		t.Fatalf("with the page up the line must carry the URL and the remaining count: %s", out)
 	}
 	if len(spawned) != 0 {

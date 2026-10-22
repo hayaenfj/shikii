@@ -380,7 +380,7 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		for _, item := range s.Asked {
 			alreadyAsked = alreadyAsked || item.Trace == d.TraceID
 		}
-		if !alreadyAsked && waitsForPerson(d) {
+		if !alreadyAsked && waitsForPersonFor("needs-plan", d) {
 			s.Asked = append(s.Asked, askedItem{Spec: "needs-plan", Trace: d.TraceID})
 		}
 	}

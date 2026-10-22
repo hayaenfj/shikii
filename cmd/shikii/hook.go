@@ -170,6 +170,7 @@ type hookSession struct {
 	Previous    string           `json:"previous,omitempty"`         // 直前のアシスタントの発言(Stop で控える)
 	Planning    *planningFrame   `json:"planning,omitempty"`         // 現在の依頼について、エージェントが原文付きで整理する文脈
 	Pending     []pendingItem    `json:"pending,omitempty"`          // prompt-kind の結果の正解を待つ判定
+	Watch       []scopeWatch     `json:"watch,omitempty"`            // changes-in-scope の結果の正解を待つ判定(変えたファイルが戻されるか)
 	Asked       []askedItem      `json:"asked,omitempty"`            // このセッションで人の答えを待つことになった判定(ask と抜き取り)
 	Reviews     []askedItem      `json:"reviews,omitempty"`          // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
 	Reported    []string         `json:"reported_traces,omitempty"`  // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
@@ -441,11 +442,6 @@ func bi(en, ja string, l hookLoc) string {
 	return en + "\n" + ja
 }
 
-// waitsForPerson は人の答えを待つ判定か: 迷った(ask)か、抜き取り(act の 20 件に 1 件)。
-func waitsForPerson(d *decide.Decision) bool {
-	return d.Band == decide.Ask || (d.Band == decide.Act && store.AuditSample(d.TraceID))
-}
-
 func answerURL(specID, trace string) string {
 	return fmt.Sprintf("%s/?spec=%s&trace=%s", hookPageURL, specID, trace)
 }
@@ -682,6 +678,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			if ferr := observeFeedback(agent, s, snapshot, scope, req); ferr != nil {
 				hookLog("feedback: " + ferr.Error())
 			}
+			if derr := settleDone(agent, linkedCompletion(s, snapshot, scope), req); derr != nil {
+				hookLog("outcome: " + derr.Error())
+			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
 			s.RequestText = requestText
 			s.RawPrompt = cut(strings.TrimSpace(in.Prompt), 4000)
@@ -690,6 +689,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		// 前の依頼の結果の正解は、次の依頼が来た時点のツリーで決める(依頼の境目 = 次の依頼。Stop まで待つと 2 つの依頼が混ざる)
 		func(s *hookSession) {
 			if err := settlePending(agent, s, tree, pendingNow, true); err != nil && firstErr == nil {
+				firstErr = err
+			}
+			if err := settleScope(agent, s, listing, listed, true); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		},
@@ -755,6 +757,9 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			if err := settlePending(agent, s, tree, pendingNow, false); err != nil && firstErr == nil {
 				firstErr = err
 			}
+			if err := settleScope(agent, s, listing, listed, false); err != nil && firstErr == nil {
+				firstErr = err
+			}
 		},
 	}
 	pruneSessions(agent)
@@ -763,8 +768,10 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	}
 	var changed []string
 	known := false
+	var before []byte
 	if listed {
-		if before, err := os.ReadFile(sessionFilesPath(agent, in.SessionID)); err == nil {
+		var err error
+		if before, err = os.ReadFile(sessionFilesPath(agent, in.SessionID)); err == nil {
 			if !strings.HasPrefix(string(before), listingHeader(req)) {
 				return hookOut{}, muts, firstErr // 一覧は既に次の依頼のもの: この Stop は比べる物を失ったので評価しない(次の依頼の Stop が評価する)
 			}
@@ -792,9 +799,17 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			continue
 		}
 		target := askedItem{Spec: hookSpecs[2+i], Trace: d.TraceID}
+		var watch *scopeWatch
+		if target.Spec == "changes-in-scope" { // 変えたファイルが次の依頼の間に戻されるかを見張る(結果の正解)
+			w := newScopeWatch(d.TraceID, string(before), changed)
+			watch = &w
+		}
 		muts = append(muts, func(s *hookSession) {
 			if s.Request == req && s.TurnID == snapshot.TurnID {
 				s.Reviews = append(s.Reviews, target)
+				if watch != nil {
+					s.Watch = append(s.Watch, *watch)
+				}
 			}
 		})
 		targets = append(targets, store.ReviewTarget{Spec: hookSpecs[2+i], TraceID: d.TraceID})
@@ -836,22 +851,7 @@ func stopSummary(agent string, sess *hookSession) string {
 
 // changedFiles は 2 つの一覧(`git ls-files --stage`: "mode sha stage\tpath")を比べ、中身か mode が変わった・増えた・消えたファイルの path を名前順で返す。
 func changedFiles(before, after string) []string {
-	parse := func(listing string) map[string]string {
-		m := map[string]string{}
-		for _, line := range strings.Split(listing, "\n") {
-			tab := strings.IndexByte(line, '\t')
-			if tab < 0 {
-				continue
-			}
-			meta := strings.Fields(line[:tab])
-			if len(meta) < 2 {
-				continue
-			}
-			m[line[tab+1:]] = meta[0] + " " + meta[1] // mode と blob の id(chmod だけの変更も「変わった」)
-		}
-		return m
-	}
-	a, b := parse(before), parse(after)
+	a, b := parseListing(before), parseListing(after)
 	seen := map[string]bool{}
 	var out []string
 	for p, sha := range a {
@@ -1090,7 +1090,7 @@ func settlePending(agent string, sess *hookSession, now string, only []pendingIt
 // noteAsked は「人の答えを待つ判定」を控えに足す変更(錠の中で当てる)。
 func noteAsked(specID string, d *decide.Decision) func(*hookSession) {
 	return func(s *hookSession) {
-		if waitsForPerson(d) {
+		if waitsForPersonFor(specID, d) {
 			s.Asked = append(s.Asked, askedItem{Spec: specID, Trace: d.TraceID})
 		}
 	}
