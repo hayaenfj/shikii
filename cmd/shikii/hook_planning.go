@@ -28,6 +28,7 @@ type planningFrame struct {
 	At      time.Time         `json:"at"`
 	Digest  string            `json:"digest,omitempty"`
 	Result  *planningReceipt  `json:"result,omitempty"`
+	Recent  []planningTurn    `json:"recent,omitempty"`
 }
 
 type planningQuote struct {
@@ -43,6 +44,7 @@ type planningFact struct {
 
 type planningRequest struct {
 	SessionID string        `json:"session_id"`
+	Query     string        `json:"query,omitempty"`
 	TurnID    string        `json:"turn_id"`
 	Agreed    *planningFact `json:"agreed,omitempty"`
 	Open      *planningFact `json:"open,omitempty"`
@@ -78,6 +80,7 @@ func newPlanningFrame(previous *hookSession, in *hookInput, scope, turnID string
 			f.Sources["previous_assistant"] = cut(previous.Completed.Summary, 4000)
 		}
 	}
+	addPlanningContext(scope, previous, f)
 	return f
 }
 
@@ -87,7 +90,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: 着手前の判断用に会話を整理します。人に入力を頼まず、%s hook plan queryへ次のJSONを渡して原文を読み、同じIDとagreed・openを%s hook plan submitへ渡してください。各項目はsummaryとevidence:[{source,quote}]（原文から引用）、不明ならunknown:true。合意の根拠には人の発言が必要です。整理は仮説で、実行許可や人の正解にはしません。詳細は作法のreferences/planning.md。\n", command, command) + string(ids)
+	return fmt.Sprintf("shikii: 着手前の判断用に会話を整理します。人に入力を頼まず、%s hook plan queryへ次のJSONを渡して今回と直近の会話を読み、必要なwikiはqueryに検索語を付けて探します。同じID・検索語とagreed・openを%s hook plan submitへ渡してください。各項目はsummaryとevidence:[{source,quote}]（原文から引用）、不明ならunknown:true。合意の根拠には人の発言が必要です。整理は仮説で、実行許可や人の正解にはしません。詳細は作法のreferences/planning.md。\n", command, command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
@@ -107,6 +110,9 @@ func cmdHookPlan(args []string) error {
 	var extra any
 	if decoder.Decode(&extra) != io.EOF || req.SessionID == "" || len(req.SessionID) > 200 || len(req.TurnID) != 16 {
 		return errors.New("現在のsession_idとturn_idを含むJSONを一つ渡してください")
+	}
+	if len(req.Query) > requestMax {
+		return errors.New("wikiの検索語が長すぎます")
 	}
 	if _, err := hex.DecodeString(req.TurnID); err != nil {
 		return errors.New("turn_idが不正です")
@@ -136,10 +142,11 @@ func cmdHookPlan(args []string) error {
 		return err
 	}
 	if args[0] == "query" {
+		notice := planningWikiSources(root, scope, req.Query, s.Planning.Sources)
 		if req.Agreed != nil || req.Open != nil {
 			return errors.New("queryでは整理した内容を渡せません")
 		}
-		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources})
+		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice})
 	}
 	// 同時のsubmitは待たせず再試行にする。新しい人の依頼とStopは妨げない。
 	busy, err := sessions.OpenFile(name+".planning.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
@@ -162,6 +169,7 @@ func cmdHookPlan(args []string) error {
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
 		return err
 	}
+	planningWikiSources(root, scope, req.Query, s.Planning.Sources)
 	agreed, err := renderPlanningFact(req.Agreed, s.Planning.Sources, true)
 	if err != nil {
 		return err
@@ -239,6 +247,12 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 		}
 		human = human || e.Source == "current_user" || e.Source == "previous_user"
 		role := map[string]string{"current_user": "今回の人の発言", "previous_user": "前の人の発言", "previous_assistant": "直前のAIの返答"}[e.Source]
+		if strings.HasPrefix(e.Source, "history:") {
+			role = "同じセッションの過去の会話（参考・現在の合意ではない） [" + e.Source + "]"
+		}
+		if strings.HasPrefix(e.Source, "lesson:") {
+			role = "wikiの教訓（出典付きの仮説・現在の合意ではない） [" + e.Source + "]"
+		}
 		parts = append(parts, role+": "+e.Quote)
 	}
 	if agreement && !human {

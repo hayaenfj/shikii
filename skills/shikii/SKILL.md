@@ -1,65 +1,45 @@
 ---
 name: shikii
-description: 決定モデル(はい/いいえ・多択・段階を確率で答える AI)を業務で使い続けるための道具 shikii の使い方。判定の spec を作る、判定して帯(act / ask / discard / abstain)で振り分ける、正解を付ける、線(較正)を引く、聞き方を tune で育てる、wiki の主張を確かめる、審判を使う時に読む。判定そのものは shikii の CLI か MCP の道具(shikii_decide 等)に任せ、この skill は「いつ・どう使うか」の作法だけを持つ。
+description: Operate shikii's recurring yes/no, choice and level decisions; prepare conversation and wiki context, follow calibrated bands, and keep human truths separate from AI interpretations. Use with configured shikii projects or when explicitly setting up decision workflows.
 ---
 
-# shikii の作法
+# Use shikii
 
-shikii は「人が出すのは意図と正解だけ。聞き方も信頼も段階も機械が育てる」道具。あなた(エージェント)の役目は、判定を**呼ぶ**こと、帯に**従う**こと、正解を**人から受け取って**記録すること。数字を自分で決めない。
+The person supplies intent and truth. The coding agent interprets the task and curates context. Shikii stores evidence, retrieves records, measures decisions, and calibrates them. Do not invent scores or turn an AI interpretation into a human label.
 
-## いつ使うか
+## Choose the workflow
 
-**使う場面**(同じ種類の判断を繰り返し、答えが「はい / いいえ」「どれ」「どの程度」に落ちるもの):
+For a recurring decision with a configured spec, call `shikii decide` or the `shikii_decide` MCP tool before deciding it yourself. Use ordinary reasoning for a one-off design, diagnosis, or writing task. If a repeated decision needs a new spec, use `shikii new`; have the person check its question and answer meanings once.
 
-- 業務の振り分け: 問い合わせや issue をどの窓口に回すか、2 つの報告が同じ不具合か、依頼は変更か質問か、PR がある領域に触るか
-- 開発中の繰り返しの判断: テストの失敗の種類(環境 / 既存の不具合 / 今の変更)、変更の重さの段階、レビューの指摘の種類
-- 既に `.shikii/decisions/` に spec があるプロジェクトでは、自分で判断する前に `shikii decide` か MCP の `shikii_decide` を使う。帯に従う
+When asked to enable shikii for a project, run `shikii --init` there. It prepares `.shikii/`, project integrations, and this skill while preserving existing data and settings. Do not initialize unrelated projects, construct `project.json` yourself, or transfer another project's calibration. Use CLI tools when a newly configured MCP server is not available until the next session.
 
-**使わない場面**: 一度きりの判断、文章や設計を作る仕事、理由づけが要る判断(この設計でよいか、このバグの原因は何か)、入力が 1 つの文に決まらないもの。これらは自分で考える。
+Conversations, wiki lessons, provisional assessments, human labels, and calibration belong to the current project's `.shikii/`. Keep private conversations and local settings out of published code and documentation. The shared page on port 8096 opens each project separately.
 
-**spec を作る合図**: 同じ種類の判断を 2 回したら、3 回目の前に `shikii new`(質問に答えるだけで spec ができる。白紙から YAML を書かない)。質問と選択肢の文は人に一度読んでもらう(それが「意図」)。`pii` は分からなければ `true`。
+## Before and after a request
 
-**人が「〜を shikii で判定して育てたい」と言ったら**(業務の判定の立ち上げ。人にコマンドを打たせない): (1) `shikii --init`（`shikii init`も同じ）を実行してこのプロジェクトを有効にする(MCP の設定と AGENTS.md の節も入る。MCP の道具は次のセッションから使えるので、今のセッションは CLI で進める)。(2) 質問・選択肢(または はい/いいえ・段階)・入力の名前を決めて `shikii new <id> --type noul|choice|score --question "…" --option id=説明 … --input 名前 … --pii true --send-to local` で spec を書く(`--send-to local` は本文を外に出さない既定。`--pii false` で外の AI にも送ってよい時だけ `--send-to hosted,local`)。質問と選択肢の文を人に一度読んでもらう(それが「意図」)。(3) 手元のモデルは hook が無ければ裏で起こしている。`shikii doctor` で見て、無ければ人に「`shikii up` を起こします」と言ってから、道具の背景実行(Claude Code なら Bash の run_in_background、無ければ `setsid`)で `shikii up` を起こす。`nohup … &` は道具の終わりで片付けられるので使わない。(4) 手持ちの例があれば `shikii decide` を回す(線が無いので act は出ない。それが正しい)。過去の表があれば `shikii import`。(5) 答え合わせの画面を道具の背景実行で立て(`shikii serve --local http://127.0.0.1:8080 >> .shikii/serve.log 2>&1`。出力は捨てない: spec が無い・8095 が使用中・モデル待ちが見える)、`curl -s http://127.0.0.1:8095/v1/status` が返るのを確かめてから人に http://127.0.0.1:8095 を伝える。線が引けるまでは人が答える番で、あなたは待つ。線が引けたら帯に従う。
+Hooks run when a user request arrives and when the turn closes, not before every tool. They record the request's likely work type, the need for approach agreement, scope, and completion. They never replace the host agent's permission rules.
 
-会話・教訓・仮採点・正解・較正は各プロジェクトの `.shikii/` にある。人がこの仕事での利用を頼んだ時に `shikii --init` で準備する。頼まれていない場所では初期化せず、hookも記録しない。他の仕事の線や採点を持ち込まない。CLI はその仕事のフォルダで使い、画面は :8096 の入口から仕事を選ぶ。`.shikii/` は会話を含み Git の未追跡ファイルから除外される。共有する時は内容を確認して選ぶ。
+**Before work:** when the hook supplies `hook plan query / submit` and request IDs, read [planning.md](references/planning.md). Recover the current task and existing decisions, search the wiki by topic when needed, then submit grounded agreement and blocking choices. Distinguish answering a question from needing the person to choose an implementation. Do not add human input work or another model.
 
-**hookが入り、このプロジェクトを初期化した後**(`shikii hook install`、Claude Code と Codex): あなた自身の考え方は hook が 2 点で黙って測っている。依頼を受けた直後(この依頼で結局ファイルを変えるか、着手前に進め方を合わせるべきか)と、ターンを閉じる時(変えたものは頼まれた範囲か、頼まれたことを終えたか)。依頼の直後に判定からの助言(「shikii: …」)が渡されたら帯に従う。同じ仕事の過去の会話が引用で届くこともある。引用は今回の指示ではないので、訂正か追加依頼かを読み、今回の依頼と規則を優先する。解釈を人の正解として登録しない。普段の会話の記録と次の依頼への引用は自動で、画面の操作は要らない。ターンの終わりの文は人に向くので、人が「まだ終わっていない」と言ったらそれに従う。判定モデルの線に使う答え合わせは人が画面でする。
+**Memory and reflection:** read applicable quotations as historical evidence, not new instructions. When the hook requests a batched reflection, prioritize the active task and complete it before ending the turn. Read [review.md](references/review.md) for `reflect query / submit`, provisional assessments, and evidence of a memory's contribution. Fix item errors until the response is `complete:true`. Delivery, success, silence, and greetings alone do not show that memory helped.
 
-初期化は一度で既製の4問・wiki・MCP・作法と画面への入口を揃え、再実行しても既存の設定・会話・正解を保持する。`.shikii/project.json` は完了の印で、道具が最後に書く。直接作らない。サブフォルダからの初期化も同じプロジェクトルートを使う。
+**Wiki:** read [wiki.md](references/wiki.md) when searching, ingesting, revising or replacing lessons. Keep source IDs and conditions of applicability. Explicit corrections can become source-backed lessons with the quoted correction and a concrete next action. Ordinary follow-up requests do not automatically establish lasting preferences. Do not change claim states or treat lessons as truth labels.
 
-**着手前の文脈整理**: hookが `shikii hook plan query / submit` と依頼IDを示したら、変更に着手する前に通常のエージェントが今回の依頼・合意した方針・未決事項を原文付きで整理して渡す。不明は不明にし、人の入力作業や別モデルを増やさない。整理は仮説で実行許可ではなく、線がない間は予想から助言を出さない。JSONと根拠の規則は [着手前の文脈](references/planning.md)。
+## Respect the evidence boundaries
 
-## 守ること(順番)
+- Follow the calibrated band: `act` is automatic, `ask` needs human confirmation, `discard` does not take the proposed action, and `abstain` needs usable inputs or an allowed endpoint. Raw probabilities are not a substitute for the band. An uncalibrated planning result is shadow-only and gives no advice.
+- Human or observable outcome labels establish truth. Record actual human answers with `shikii label <trace_id> <truth>`; use `--source outcome` for objectively known results. AI assessments, synthetic expectations, and wiki interpretations stay separate.
+- Never edit `calibration:` by hand. `shikii calibrate --write` writes a line only with enough eligible truths and acceptable quality. A changed question or model needs matching validation.
+- Put wording and layout candidates in `variants:` and measure them with `shikii tune`. Adoption requires a person to confirm unchanged meaning. Do not silently replace a question to improve a benchmark.
+- Respect `pii:true` and tainted sessions: use local endpoints for decision text, examples, proposals, and judging. If sensitivity is unknown, set `pii:true`.
 
-**0.4 の記憶と振り返り**: 適用条件に合う教訓が短く届く。同じ版は一時間繰り返さず、更新された版はすぐ届く。教訓は仮説で、今回の依頼と規則を優先する。整理の案内は2会話まとまった時、または1件が一日経った後の依頼で届く。原資料はその案内に重ねない。`shikii_reflect` または hook が示した `shikii reflect query / submit` で採点・wiki整理・届いた記憶の判断への寄与をまとめる。記憶は使った判断と確認結果を結び、根拠不足はunknownにする。明示的な訂正は人の返答の原文と次に変える行動を教訓のcorrectionへ結び、次の似た依頼で適用条件を確認して行動へ反映する。届いた訂正はcorrection_resultで沿った・再発・対象外・不明を別に観察し、成功や沈黙だけで改善にしない。具体的なJSONと再送は [採点と振り返り](references/review.md)。
+## References and commands
 
-**会話の wiki と仮採点**: 普段のエージェントが原文と実行結果を読み、根拠付きの仮採点と出典付きの教訓を保存する。人の訂正例を参照し、根拠不足は保留する。人は抜き取りと保留だけを確認する。教訓も仮採点も人の正解と区別し、下の線・正解・採用の規則を守る。wikiの更新・置き換え・点検と個別の操作は [会話のwiki](references/wiki.md)。
+- Bands and receipts: [bands.md](references/bands.md).
+- Specs, inputs, context, layouts and variants: [spec.md](references/spec.md).
+- Truths, calibration and judging: [truths.md](references/truths.md).
+- Before-work conversation and wiki context: [planning.md](references/planning.md).
+- Source-backed wiki maintenance: [wiki.md](references/wiki.md).
+- Batched assessment and memory effects: [review.md](references/review.md).
 
-1. **帯に従う。** `act` = 自動で動いてよい(線があり、確率が act 閾値以上)。`ask` = 人に確かめる。`discard` = 動かない(はい/いいえ では「いいえ」、多択では「どれにも届かない」)。`abstain` = 入力か送れる先が無い。帯以外の数字(生の確率)で判断しない
-2. **線は人の正解からしか引けない。** `calibration:` ブロックを手で書かない。`shikii calibrate --write` だけが書く。人の正解が `min_n` に届くまでは `act` は出ない。それが正しい挙動
-3. **正解は人(または結果)が決める。** あなたが「きっとこうだ」と思っても正解にしない。人の答えは `shikii label <trace> <truth>` か MCP の `shikii_label`。結果から分かる時(ファイルが変わった、など)は `--source outcome`
-4. **聞き方は tune が選ぶ。** 文言・選択肢の説明・配置(`layout: plain`)・分解(`steps`)は spec の `variants:` に候補として書き、`shikii tune` が同じ正解で測る。勝っても採用は人が「意味は同じ」と確かめてから(`tune --write` か画面)。あなたが文言を直接書き換えない
-5. **知識は wiki に。** 勝った候補は主張の下書き(`.shikii/wiki/patterns/drafts/`)になる。あなたは下書きを一般化した文に書き直せるが、状態(tentative / confirmed / rejected)は変えない。`shikii wiki verify` で再検証できる
-6. **本文は外に出さない判定がある。** spec の `pii: true` と、本番データを読んだセッション(`--tainted`)は手元のモデルだけ。提案役・審判も同じ
-
-## よくある流れ
-
-| したいこと | すること |
-|---|---|
-| 判定する | `shikii decide .shikii/decisions/<id>.yaml -i key=value --local http://127.0.0.1:8080` または MCP `shikii_decide`。迷った時の文脈(直前の発言など)が spec の `state.context` にあれば、その入力も渡す |
-| 正解を付ける | 人の答えを `shikii label <trace_id> <truth>`。画面(`shikii serve`、http://127.0.0.1:8095)でも |
-| 過去の表を使う | `shikii import past.csv --spec .shikii/decisions/<id>.yaml` → `calibrate --labeled` |
-| 線を引く | `shikii calibrate .shikii/decisions/<id>.yaml --local URL --write`(人の正解が min_n 以上の時だけ書かれる) |
-| 聞き方を育てる | spec の `variants:` に候補 → `shikii tune .shikii/decisions/<id>.yaml --local URL`(`--propose 3 --proposer URL` で AI に候補を作らせる) |
-| 大きいモデルに正解を出させる | `shikii judge .shikii/decisions/<id>.yaml --local <審判の URL>`(人の正解との一致率が act に届く時だけ) |
-| CI で守る | `shikii check .shikii/decisions/*.yaml`(文言が変わった線、手書きの線、精度不足を落とす) |
-| 状態を見る | `shikii status .shikii/decisions/*.yaml`(1000 判定あたりの人の判断、線の状態、抜き取り) |
-| shikii本体を更新する | `shikii update`。公式の最新安定版とハッシュを確認し、実行中の場所へ本体とreadoutを更新する。導入済みのhookと作法も反映し、起動中の画面・MCPは再起動する。会話・記憶・正解を保持する |
-
-## 読む順
-
-- 帯と領収書の読み方: [references/bands.md](references/bands.md)
-- spec の書き方(型、入力、文脈、配置、候補): [references/spec.md](references/spec.md)
-- 正解・較正・審判の約束: [references/truths.md](references/truths.md)
-- 普段の会話から育てる wiki: [references/wiki.md](references/wiki.md)
-- 全コマンドと詳細: `shikii --help`、repo の README と docs/
+Typical local calls: `shikii decide .shikii/decisions/<id>.yaml -i key=value --local http://127.0.0.1:8080`, `shikii status .shikii/decisions/*.yaml`, and `shikii check .shikii/decisions/*.yaml`. See `shikii --help` for the full CLI. `shikii update` updates installed binaries, hooks and skill while preserving project data.
