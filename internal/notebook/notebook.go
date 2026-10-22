@@ -326,7 +326,11 @@ func (b Book) sourceIssues(p Page) []Issue {
 			issues = append(issues, Issue{Kind: "changed-source", Page: p.ID, Source: s.ID})
 		}
 		if s.TextHash != "" {
-			text, err := readOriginals(filepath.Join(dir, s.ID+".text.json"))
+			var text []byte
+			err := dirErr
+			if err == nil {
+				text, err = readOriginals(filepath.Join(dir, s.ID+".text.json"))
+			}
 			if err != nil || digest(text) != s.TextHash {
 				issues = append(issues, Issue{Kind: "changed-source-text", Page: p.ID, Source: s.ID})
 			}
