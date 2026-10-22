@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	shikii "github.com/hayaenfj/shikii"
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -349,5 +351,58 @@ func TestPlanningKeepsOldRecordsOutOfTheNewAnswerQueue(t *testing.T) {
 	}
 	if records, _ := st.Records("needs-plan", 0); len(records) != 3 {
 		t.Fatal("old history was removed")
+	}
+}
+
+// 線のある prompt-kind が確信して「ファイルを変えない」と答えた依頼では、着手前の整理をエージェントに頼まない。
+// 線が無い時と、提案への返事・選択(decide)は従来どおり頼む。
+func TestPlanningIsSkippedOnlyForConfidentNonEditRequests(t *testing.T) {
+	top := "explain"
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Questions map[string]struct {
+				Type string `json:"type"`
+			} `json:"questions"`
+		}
+		body, _ := readAll(r)
+		_ = json.Unmarshal(body, &req)
+		ans := map[string]any{}
+		for k, q := range req.Questions {
+			if q.Type == "noul" {
+				ans[k] = map[string]any{"type": "noul", "noul": 0.2}
+				continue
+			}
+			probs := map[string]float64{"edit": 0.02, "explain": 0.02, "investigate": 0.02, "run": 0.02, "decide": 0.02}
+			probs[top] = 0.92
+			ans[k] = map[string]any{"type": "choice", "choice": top, "probabilities": probs, "confidence": 0.92}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"model": "kev-4b", "answers": ans})
+	}))
+	t.Cleanup(model.Close)
+	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
+	usePlanningSpec(t, agent)
+	ask := func(session string) string {
+		return runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "what does the retry loop in the uploader do?"})
+	}
+	if out := ask("no-line"); !strings.Contains(out, "hook plan query") {
+		t.Fatalf("without a line the planning context must still be asked for: %s", out)
+	}
+	path := filepath.Join(agent, "decisions", "prompt-kind.yaml")
+	sp := mustLoad(t, path)
+	sp.Calibration = []spec.Calibration{{Model: "kev-4b", SpecHash: sp.Hash(), Method: "identity", N: 50}}
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if out := ask("explain"); strings.Contains(out, "hook plan query") || loadSession(agent, "explain").Planning != nil {
+		t.Fatalf("a confident explain must skip the planning context: %s %+v", out, loadSession(agent, "explain").Planning)
+	}
+	top = "decide"
+	if out := ask("decide"); !strings.Contains(out, "hook plan query") {
+		t.Fatalf("a reply to a proposal must keep the planning context: %s", out)
+	}
+	top = "edit"
+	if out := ask("edit"); !strings.Contains(out, "hook plan query") {
+		t.Fatalf("an edit must keep the planning context: %s", out)
 	}
 }
