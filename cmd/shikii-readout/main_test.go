@@ -25,6 +25,8 @@ type fakeUpstream struct {
 	templateCalls int
 	completions   []fakeCompletion // /completion の履歴(warm-up を含む)
 	cacheN        int              // /completion が timings.cache_n として返す値
+	decision      bool             // 学習済みの決定モデルのふり(/v1/systemone に自分で答える。Kev など)
+	systemOneHits int              // /v1/systemone が呼ばれた数
 }
 
 type fakeCompletion struct {
@@ -36,6 +38,17 @@ func (f *fakeUpstream) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"models":[{"name":"fake-gguf"}]}`))
+	})
+	mux.HandleFunc("/v1/systemone", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.systemOneHits++
+		decision := f.decision
+		f.mu.Unlock()
+		if !decision { // 本家 llama.cpp は普通の GGUF だと 501 を返す
+			http.Error(w, `{"error":"not a decision model"}`, 501)
+			return
+		}
+		_, _ = w.Write([]byte(`{"model":"fake-decision","answers":{"q":{"type":"noul","noul":0.91}},"usage":{"input_tokens":12}}`))
 	})
 	mux.HandleFunc("/tokenize", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
@@ -414,4 +427,33 @@ func TestPlainLayoutReadsOptionIdsAndNamesTheLayout(t *testing.T) {
 // 上位に入らなかったラベルには probFloor を与える(missing に数える)。
 func readProbs(top []tokenProb, n int) (probs []float64, missing int) {
 	return readProbsFor(top, labels[:n])
+}
+
+// 後ろが学習済みの決定モデル(/v1/systemone に自分で答える)なら、readout は読み出さずにそのまま通す。
+// これで shikii は常に readout の口(8080)を見ればよく、モデルが Kev でも普通の GGUF でも接続先は変わらない。
+func TestPassesThroughToADecisionModelUpstream(t *testing.T) {
+	f := &fakeUpstream{decision: true, top: []tokenProb{{Token: "A", Prob: 0.9}, {Token: "B", Prob: 0.1}}}
+	s, _ := newTestServer(t, f)
+	if err := s.detectUpstream(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !s.passThrough {
+		t.Fatal("a 2xx /v1/systemone upstream must be passed through")
+	}
+	code, out := ask(t, s, `{"state":"x","questions":{"q":{"type":"noul","instructions":"Is this a probe?"}}}`)
+	if code != 200 || out["model"] != "fake-decision" || out["answers"].(map[string]any)["q"].(map[string]any)["noul"] != 0.91 {
+		t.Fatalf("the upstream's own answer must come back unchanged: %d %v", code, out)
+	}
+	f.mu.Lock()
+	hits, completions := f.systemOneHits, len(f.completions)
+	f.mu.Unlock()
+	if hits != 2 || completions != 0 { // 1 回は起動時の探り、1 回は本番。文字の読み出しはしない
+		t.Fatalf("pass-through must not read letters: systemone=%d completions=%d", hits, completions)
+	}
+
+	plain := &fakeUpstream{top: []tokenProb{{Token: "A", Prob: 0.9}, {Token: "B", Prob: 0.1}}}
+	s2, _ := newTestServer(t, plain)
+	if err := s2.detectUpstream(context.Background()); err != nil || s2.passThrough {
+		t.Fatalf("a 501 upstream is a plain GGUF and is read out: err=%v passThrough=%v", err, s2.passThrough)
+	}
 }
