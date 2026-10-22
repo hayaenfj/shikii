@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -255,20 +256,20 @@ func decodeReflect(input io.Reader) (reflectRequest, error) {
 }
 
 func cmdReflect(args []string) error {
-	if len(args) != 1 || (args[0] != "query" && args[0] != "submit") {
-		return errors.New("使い方: shikii reflect query | submit（JSONを標準入力）")
+	if len(args) != 1 || (args[0] != "query" && args[0] != "place" && args[0] != "submit") {
+		return errors.New("使い方: shikii reflect query | place | submit（place と submit は JSON を標準入力）")
 	}
 	req := reflectRequest{Operation: args[0]}
-	if args[0] == "submit" {
+	if args[0] != "query" {
 		var err error
 		req, err = decodeReflect(stdin)
 		if err != nil {
 			return err
 		}
-		if req.Operation != "" && req.Operation != "submit" {
-			return errors.New("submit では振り返りだけを保存します")
+		if req.Operation != "" && req.Operation != args[0] {
+			return fmt.Errorf("%s の JSON に別の operation は書けません", args[0])
 		}
-		req.Operation = "submit"
+		req.Operation = args[0]
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
