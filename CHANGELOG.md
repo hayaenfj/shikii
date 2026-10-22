@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.4.4 — Connected knowledge and agent guidance
+
+- Include full knowledge bodies, related pages, and English agent skills for context preparation and wiki editing, alongside clearer review and calibration displays.
+- Verify that updating from 0.4.3 installs the embedded skills and refreshes existing hooks while preserving project questions, calibration and answers. New projects receive current built-in prompts. Start a new agent session and restart running UI or MCP processes after updating.
+- Align CLI, MCP and plugin versions at 0.4.4 so installations already reporting 0.4.3 can receive these changes through `shikii update`.
+
 ## 0.4.3 — Clearer reviews and less repeated loading
 
 - Separate concise retrieval summaries from knowledge bodies and related pages. Search full articles, follow exact page references, and keep earlier sources, revisions and legacy pages readable. Update the agent workflow to reconcile evidence into existing topics and show article details and related navigation in the UI.

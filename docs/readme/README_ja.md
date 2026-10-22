@@ -7,12 +7,12 @@
 いつものエージェントが、依頼・返答・訂正から出典付きの教訓を育てます。次の似た依頼で思い出し、行動にどう反映されたかまで振り返ります。人は普段どおりに仕事を頼み、抜き取りと保留を確認します。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-282%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-283%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.4.3-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.4.4-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.4.3では、会話の確認を分かりやすくし、表示中の情報だけを読み込みます。知識の証拠表示を直し、`shikii update`、訂正の追跡、まとめた振り返りも引き継いでいます。[変更履歴](../../CHANGELOG_ja.md)。
+0.4.4では、短い記憶から詳しい知識本文と関連ページを読めます。文脈整理・wiki編集・振り返りの作法、会話を確認しやすい画面、検証付きの更新をまとめています。[変更履歴](../../CHANGELOG_ja.md)。
 
 [何が変わるか](#何が変わるか) · [必要なもの](#必要なもの) · [始め方](#始め方) · [普段の会話から学ぶ](#普段の会話から学ぶ) · [人が確認すること](#人が確認すること) · [役立ったかを確かめる](#役立ったかを確かめる) · [プロジェクトごとの記憶](#プロジェクトごとの記憶) · [業務の判定にも使う](#業務の判定にも使う) · [もっと読む](#もっと読む)
 
@@ -111,6 +111,8 @@ shikii update
 ```
 
 最新の安定版を確認し、配布物のハッシュを照合して、本体とreadoutを同じ場所へ更新します。更新にGoは不要で、会話・記憶・正解を保持します。導入済みのhookと作法も更新します。起動中の画面・MCPは再起動すると新版になります。[詳しい動作](../guide.ja.md#shikii本体を更新する)。
+
+更新したskillとhookの案内文は、新しいエージェントのセッションで使います。既存プロジェクトの判定用の質問文と較正は保持し、新しく初期化するプロジェクトには新版の既製プロンプトを用意します。
 
 ## 普段の会話から学ぶ
 
