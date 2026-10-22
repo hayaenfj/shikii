@@ -27,4 +27,4 @@ COPY --from=build /src/LICENSE /src/LICENSE-APACHE /src/LICENSE-MIT /src/THIRD-P
 WORKDIR /work
 EXPOSE 8095
 ENTRYPOINT ["shikii"]
-CMD ["serve", "--store", ".shikii", "--local", "http://llama:8080", "--port", "8095"]
+CMD ["serve", "--store", ".shikii", "--local", "http://readout:8080", "--port", "8095"]

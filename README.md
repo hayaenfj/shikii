@@ -7,7 +7,7 @@
 Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-311%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-313%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.6.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -42,7 +42,7 @@ Choose the combination for your use case. The agent that organizes conversations
 | Use case | What you need |
 |---|---|
 | Learn from ordinary conversations | Claude Code or Codex, shikii, and initialization of the chosen project |
-| Automatically evaluate the four built-in questions | The standard setup uses llama.cpp (`llama-server`) and Kev-4B. Hooks use `127.0.0.1:8080` |
+| Automatically evaluate the built-in questions | Standard: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment (nothing to download). Local standard: llama.cpp (`llama-server`) with Ternary-Bonsai-27B through `shikii up`, about 10 GB of memory. Hooks use Jev when the key is set, otherwise `127.0.0.1:8080` |
 | Use another model for business decisions | Choose a System One endpoint and decision model from the table below |
 | Install from source | Go 1.27 or newer, Git and sh. The UI is bundled; Node.js is unnecessary |
 | Run the business API and page in containers | Docker with Compose, or Podman with a Compose provider. Build containers supply Go and Node.js |
@@ -53,12 +53,12 @@ The business CLI, MCP server and `serve` can use these model endpoints:
 
 | Endpoint | Preparation and verification |
 |---|---|
-| llama.cpp | A decision model such as Kev-4B. Ordinary chat GGUFs need the included `shikii-readout` adapter. [Examples](integrations/readout.md) |
+| llama.cpp | Any chat GGUF through the included `shikii-readout` adapter (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. [Examples](integrations/readout.md) |
 | Ollama | v0.35.0 or newer with System One and a decision model. Its documented `/v1/systemone` shape matches the client; inference on Ollama was not tested in this update. [Official API](https://docs.ollama.com/api/systemone) |
 | LM Studio | The Jev-compatible `/v1/systemone` endpoint and a loaded decision model. Documentation matches the client; inference on LM Studio was not tested in this update. [Official API](https://lmstudio.ai/docs/developer/jev-compat/systemone) |
-| Jev (TypeSafe AI) | Hosted API access and `TYPESAFE_API_KEY`. Use only for decisions permitted to leave the machine. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
+| Jev (TypeSafe AI) | The standard. Hosted API access and `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` are sent here when the key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
 
-These alternatives do not automatically replace the built-in hooks' llama.cpp setup. Select an endpoint URL and decision model for business use. A chat-completions endpoint alone is insufficient. See [connection requirements](docs/guide.md#what-you-can-connect).
+Ollama and LM Studio do not replace the built-in hooks' model; Jev does when the key is set, and llama.cpp through `shikii up` otherwise. Select an endpoint URL and decision model for business use. A chat-completions endpoint alone is insufficient. See [connection requirements](docs/guide.md#what-you-can-connect).
 
 Podman `compose` invokes an external Compose provider. See [Podman's documentation](https://docs.podman.io/en/latest/markdown/podman-compose.1.html). A Dockerfile and Compose file are included; Podman execution was not tested in this update. Containers run the business API and page; host-agent hooks are configured separately. See [Docker and Podman setup](integrations/docker.md).
 
@@ -66,9 +66,11 @@ Podman `compose` invokes an external Compose provider. See [Podman's documentati
 
 Automatic conversation recording supports Claude Code and Codex. Install once, initialize the projects you choose, then work as usual.
 
-### 1. Prepare Go and llama.cpp
+### 1. Prepare Go, and a key or llama.cpp
 
-On macOS with Homebrew, use the official [Go](https://formulae.brew.sh/formula/go) and [llama.cpp](https://formulae.brew.sh/formula/llama.cpp) formulae. If needed, set up Homebrew from [its official site](https://brew.sh/) first.
+**Standard: TypeSafe Jev.** Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of the shell and the agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and no local memory is used; the built-in questions are answered by Jev. The request text, the agent's reply and wiki lessons are sent to TypeSafe for that; they also stay in the local records. To keep using a local model while the key is set, put `SHIKII_MODEL=local` in the environment (`SHIKII_MODEL=hosted` forces Jev).
+
+**Local standard: llama.cpp.** Without a key, shikii runs a local model. On macOS with Homebrew, use the official [Go](https://formulae.brew.sh/formula/go) and [llama.cpp](https://formulae.brew.sh/formula/llama.cpp) formulae. If needed, set up Homebrew from [its official site](https://brew.sh/) first.
 
 ```sh
 brew install go llama.cpp
@@ -78,7 +80,7 @@ llama-server --version
 
 Check that Go is 1.27 or newer and `llama-server` is available. For other systems, see [llama.cpp's installation guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md).
 
-The default model is **Kev-4B, Q4_K_M** (`ggml-org/Kev-4B-GGUF:Q4_K_M`). It downloads about 2.5 GB on first start and serves the four built-in decision questions locally on :8080. Your usual agent remains responsible for organizing conversation lessons.
+The default local model is **Ternary-Bonsai-27B, Q2_g64** (`prism-ml/Ternary-Bonsai-27B-gguf`, file `Ternary-Bonsai-27B-Q2_g64.gguf`, Apache 2.0). It is an ordinary chat model, not a trained decision model: `shikii up` runs it on stock llama.cpp behind `shikii-readout`, which reads the probability of each option letter and answers at decision-model speed (about 0.6 s per question on Apple Silicon). It downloads about 7.6 GB on first start and serves the built-in decision questions locally on :8080 (llama-server itself listens on :8086). It needs about 10 GB of memory while running. In our measurements it scored top-1 0.968 on request-type decisions and 1.000 on the Japanese ones. Any other GGUF works the same way (`shikii up --gguf <file>`); trained decision models such as OpenJev are passed through unchanged. Kev-4B is not supported. Your usual agent remains responsible for organizing conversation lessons.
 
 ### 2. Install shikii
 

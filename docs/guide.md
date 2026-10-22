@@ -36,7 +36,7 @@ Hooks already using this executable have their configuration and agent instructi
 
 ## What shikii is
 
-Decision models (TypeSafe Jev, llama.cpp Kev-4B and OpenJev, OpenRouter Decisions, …) answer typed questions, `choice`, `score` and `noul` (yes/no), with probabilities and no generated text. Every vendor ships the same disclaimer: *the probabilities are not calibrated for your data, and thresholds do not carry across models or questions.*
+Decision models (TypeSafe Jev, llama.cpp OpenJev, OpenRouter Decisions, …) answer typed questions, `choice`, `score` and `noul` (yes/no), with probabilities and no generated text. Every vendor ships the same disclaimer: *the probabilities are not calibrated for your data, and thresholds do not carry across models or questions.*
 
 shikii owns the part nobody ships: the **lifecycle** of a decision. A spec file holds the question, the options, the state template and the thresholds. `decide` asks a model and returns a band (`act` / `ask` / `discard` / `abstain`), never a raw number. `label` records what was true. `calibrate` fits and cross-validates, then writes the result back into the spec under a key made of the question's hash and the model's name. `check` fails CI when the wording or the model drifted. `gc` keeps the store small.
 
@@ -77,8 +77,8 @@ On macOS with Homebrew: `brew install go llama.cpp`, then check `go version` (1.
 ```sh
 make build                                        # bin/shikii, bin/shikii-readout, bin/fake-systemone
 
-# a) local decision model on llama.cpp (downloads Kev-4B, about 2.5 GB, on first run)
-bin/shikii up                                     # finds llama-server, starts Kev-4B on :8080, waits until healthy (or: make server)
+# a) local model on llama.cpp (downloads Ternary-Bonsai-27B Q2_g64, about 7.6 GB, on first run)
+bin/shikii up                                     # finds llama-server, starts it on :8086 and shikii-readout on :8080, waits until healthy
 bin/shikii decide examples/prompt-intent.yaml --local http://127.0.0.1:8080 -i message='fix the typo in README'
 
 # b) hosted TypeSafe Jev. The key comes from the environment only
@@ -267,7 +267,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 311 Go tests across 10 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 313 Go tests across 10 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -276,7 +276,8 @@ shikii speaks the System One request shape (`POST /v1/systemone`), with an `answ
 | Target | What shikii gets | Requirements and guide |
 |---|---|---|
 | **TypeSafe Jev** (hosted) | `choice` / `score` / `noul` with probabilities, model id such as `jev-1.13.0` | `TYPESAFE_API_KEY` in the environment. Default `--hosted` |
-| **llama.cpp decision models** (Kev-4B, OpenJev, Clef, …) | Same shape, locally, model id from `/v1/models` | `llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M` (`make server`). llama.cpp 0.6.0 or newer |
+| **llama.cpp decision models** (OpenJev, Clef, …) | Same shape, locally, model id from `/v1/models` | `shikii up --hf <repo:quant>` (shikii-readout passes a decision model through) or `llama-server -hf <repo:quant>`. llama.cpp 0.6.0 or newer. Kev-4B is not supported |
+| **Any chat GGUF on stock llama.cpp** (the default: Ternary-Bonsai-27B Q2_g64) | `shikii-readout` reads the option letters' probabilities and serves the same shape | `shikii up` (llama-server on :8086, readout on :8080). Details in [integrations/readout.md](../integrations/readout.md) |
 | **Ollama** | System One probabilities from a decision model | v0.35.0+, `--local http://127.0.0.1:11434 --model nimble`. [Official API](https://docs.ollama.com/api/systemone); matched against the client, inference not tested in this update |
 | **LM Studio** | Jev-compatible System One with a loaded decision model | `--local http://127.0.0.1:1234 --model <loaded-model-id>`. [Official API](https://lmstudio.ai/docs/developer/jev-compat/systemone); inference not tested in this update |
 | **OpenRouter Decisions API** | Same shape through OpenRouter | `DECISIONS_API_KEY`, `--hosted https://openrouter.ai/api/alpha/decisions` |

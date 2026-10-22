@@ -7,7 +7,7 @@
 いつものエージェントが、依頼・返答・訂正から出典付きの教訓を育てます。次の似た依頼で思い出し、行動にどう反映されたかまで振り返ります。人は普段どおりに仕事を頼み、抜き取りと保留を確認します。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-311%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-313%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.6.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -42,7 +42,7 @@
 | やりたいこと | 必要なもの |
 |---|---|
 | 普段の会話から学ぶ | Claude CodeまたはCodex、shikii、利用するプロジェクトの初期化 |
-| 既製の4問を自動で判定する | 標準構成はllama.cpp（`llama-server`）とKev-4B。hookは `127.0.0.1:8080` を使う |
+| 既製の問いを自動で判定する | 標準はTypeSafeのJev（環境変数 `TYPESAFE_API_KEY`。取得も手元のメモリも不要）。手元の標準はllama.cpp（`llama-server`）とTernary-Bonsai-27Bを `shikii up` で立てる構成（メモリ約10GB）。hookは鍵があればJev、無ければ `127.0.0.1:8080` を使う |
 | 業務の判定に別のモデルを使う | 下の一覧から、System One形式に対応する接続先とモデルを選ぶ |
 | ソースからインストールする | Go 1.27以上、Git、sh。画面は同梱済みでNode.jsは不要 |
 | コンテナで業務のAPI・画面を動かす | DockerとCompose、またはPodmanとCompose provider。Go・Node.jsはビルド用コンテナが用意する |
@@ -53,12 +53,12 @@
 
 | 接続先 | 準備するもの・確認状況 |
 |---|---|
-| llama.cpp | Kev-4Bなどの決定モデル。通常のチャットGGUFは同梱の `shikii-readout` を介してつなぐ。[実行例](../../integrations/readout.md) |
+| llama.cpp | 通常のチャットGGUFを同梱の `shikii-readout` を介してつなぐ（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。[実行例](../../integrations/readout.md) |
 | Ollama | v0.35.0以上のSystem One対応APIと決定モデル。公式仕様の `/v1/systemone` とshikiiの形式を照合済み、今回の実機推論は未検証。[公式仕様](https://docs.ollama.com/api/systemone) |
 | LM Studio | Jev互換の `/v1/systemone` と、読み込み済みの決定モデル。公式仕様との照合済み、今回の実機推論は未検証。[公式仕様](https://lmstudio.ai/docs/developer/jev-compat/systemone) |
-| Jev（TypeSafe AI） | 外部APIの利用権と `TYPESAFE_API_KEY`。外部送信を許可した判定で使う。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
+| Jev（TypeSafe AI） | 標準。外部APIの利用権と `TYPESAFE_API_KEY`。鍵があれば、既製の問いと `send_to` に `hosted` を含む業務の判定がここへ送られる。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
 
-Ollama・LM Studio・Jevは、既製hookのllama.cpp構成を自動で置き換える設定ではありません。業務の接続先として使う時はURLと決定モデル名を指定します。チャットAPIがあるだけでは判定用の接続条件を満たしません。[接続先の詳しい条件](../guide.ja.md#判定モデルの接続先)。
+Ollama・LM Studioは既製hookのモデルを置き換えません。Jevは鍵があれば置き換え、無ければ `shikii up` のllama.cpp構成を使います。業務の接続先として使う時はURLと決定モデル名を指定します。チャットAPIがあるだけでは判定用の接続条件を満たしません。[接続先の詳しい条件](../guide.ja.md#判定モデルの接続先)。
 
 Podmanの `compose` は外部のCompose providerを呼び出します。[Podman公式の説明](https://docs.podman.io/en/latest/markdown/podman-compose.1.html)。このリポジトリにはDockerfileとCompose構成がありますが、Podmanでの実行はこの更新では検証していません。コンテナは業務のAPI・画面用で、ホストのエージェントへのhook設定は別です。[Docker・Podmanの準備](../../integrations/docker.md)。
 
@@ -66,9 +66,11 @@ Podmanの `compose` は外部のCompose providerを呼び出します。[Podman�
 
 自動で会話を記録する使い方はClaude CodeとCodexに対応しています。インストール後、利用するプロジェクトで一度初期化し、普段どおり仕事を頼みます。
 
-### 1. Goとllama.cppを用意する
+### 1. Goと、鍵またはllama.cppを用意する
 
-macOSでHomebrewを使う場合は次のとおりです。[Go](https://formulae.brew.sh/formula/go)と[llama.cpp](https://formulae.brew.sh/formula/llama.cpp)の公式formulaを使います。Homebrewが無ければ[公式サイト](https://brew.sh/)で先に準備します。
+**標準はTypeSafeのJevです。** [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIの鍵を取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものも手元のメモリも要らず、既製の問いはJevが答えます。そのために依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。鍵を置いたまま手元のモデルを使いたい時は、環境変数 `SHIKII_MODEL=local` を置きます（`SHIKII_MODEL=hosted` ならJevに固定）。
+
+**手元の標準はllama.cppです。** 鍵が無ければshikiiは手元のモデルを動かします。macOSでHomebrewを使う場合は次のとおりです。[Go](https://formulae.brew.sh/formula/go)と[llama.cpp](https://formulae.brew.sh/formula/llama.cpp)の公式formulaを使います。Homebrewが無ければ[公式サイト](https://brew.sh/)で先に準備します。
 
 ```sh
 brew install go llama.cpp
@@ -78,7 +80,7 @@ llama-server --version
 
 Go 1.27以上と `llama-server` が使えることを確認します。macOS以外のllama.cppの導入は[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照してください。
 
-基本モデルは **Kev-4BのQ4_K_M版**（`ggml-org/Kev-4B-GGUF:Q4_K_M`）です。初回起動時に約2.5GBを取得し、手元の `:8080` で4問の判定に使います。会話の教訓をまとめる役は普段のエージェントが担当します。
+手元の基本モデルは **Ternary-Bonsai-27BのQ2_g64版**（`prism-ml/Ternary-Bonsai-27B-gguf` の `Ternary-Bonsai-27B-Q2_g64.gguf`、Apache 2.0）です。学習済みの決定モデルではなく普通のチャット用モデルですが、`shikii up` が本家のllama.cppの前に `shikii-readout` を立て、選択肢の文字の確率を読んで決定モデルと同じ速さで答えます（Apple Siliconで1問 約0.6秒）。初回起動時に約7.6GBを取得し、手元の `:8080` で既製の判定に使います（llama-server自体は `:8086` で裏に立ちます）。動かしている間のメモリは約10GBです。実測では依頼の種類の判定でtop-1 0.968、日本語では1.000でした。他のGGUFも同じ形で使えます（`shikii up --gguf <file>`）。OpenJevのような学習済みの決定モデルはshikii-readoutがそのまま通します。Kev-4Bは使えません。会話の教訓をまとめる役は普段のエージェントが担当します。
 
 ### 2. shikiiをインストールする
 

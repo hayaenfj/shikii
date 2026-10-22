@@ -1,17 +1,22 @@
 # docker compose up  → 答え合わせの画面 http://127.0.0.1:8095
-# 2 つの容れ物: llama(llama.cpp の公式サーバー。Kev-4B を初回に取ってくる、約 2.5 GB)と shikii(この repo の画像)。
+# 3 つの容れ物: llama(llama.cpp の公式サーバー。Ternary-Bonsai-27B Q2_g64 を初回に取ってくる、約 7.6 GB)、
+# readout(shikii-readout。普通の GGUF の文字の確率を読んで決定モデルの形で答える。決定モデルならそのまま通す)、shikii(この repo の画像)。
 # プロジェクトルート(このフォルダ)を /work に mount するので、.shikii/(判定の定義、知識、記録と正解)はホストのものがそのまま使われ、育った知識も残る。
 services:
   llama:
     image: ghcr.io/ggml-org/llama.cpp:server
-    command: ["-hf", "ggml-org/Kev-4B-GGUF:Q4_K_M", "--host", "0.0.0.0", "--port", "8080"]
+    command: ["-hf", "prism-ml/Ternary-Bonsai-27B-gguf", "--hff", "Ternary-Bonsai-27B-Q2_g64.gguf", "--host", "0.0.0.0", "--port", "8086", "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "-np", "1"]
     volumes:
       - hf-cache:/root/.cache/llama.cpp
+  readout:
+    build: .
+    entrypoint: ["shikii-readout", "--upstream", "http://llama:8086", "--port", "8080"]
+    depends_on: [llama]   # readout 自身が llama の /health を待つ
   shikii:
     build: .
     # Linux の bind mount はホストの所有者のまま。画像は root では動かないので、ホストの uid/gid で動かして .shikii/ に書けるようにする
     user: "${UID:-1000}:${GID:-1000}"
-    depends_on: [llama]   # healthcheck は使わない(外部コマンドに頼らない)。shikii 自身が llama の /health を待つ
+    depends_on: [readout]   # healthcheck は使わない(外部コマンドに頼らない)。shikii 自身が readout の /health を待つ
     volumes:
       - .:/work
     ports:
@@ -19,8 +24,5 @@ services:
     # 鍵は環境変数でだけ渡す(ファイルには置かない)。hosted も使うなら: environment: [DECISIONS_API_KEY]
 volumes:
   hf-cache:
-# 普通の GGUF(素のチャット用モデル)を使うなら、llama の command を -m <file> に替え、間に shikii-readout を立てる:
-#   readout:
-#     build: .
-#     entrypoint: ["shikii-readout", "--upstream", "http://llama:8080", "--port", "8090"]
-#   そして shikii の --local を http://readout:8090 に。
+# 別のモデルを使うなら llama の command を替えるだけ(手元の GGUF なら -m <file>)。readout は学習済みの決定モデルの答えもそのまま通すので、他は変えない。
+# 手元のモデルを立てずに TypeSafe の Jev を使うなら、llama と readout を外し、shikii に environment: [TYPESAFE_API_KEY] を渡す。

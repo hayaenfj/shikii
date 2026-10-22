@@ -45,12 +45,23 @@ func TestProbeDecisionModel(t *testing.T) {
 
 // up は何を起こすかを先に決める: 決定モデルならそのまま、普通の GGUF なら readout を前に立てる。llama-server が無ければ入れ方を言う。
 func TestUpPlan(t *testing.T) {
-	p := upPlan(upOpts{hf: "ggml-org/Kev-4B-GGUF:Q4_K_M", port: 8080}, "/opt/homebrew/bin/llama-server")
-	if len(p.server) == 0 || p.server[0] != "/opt/homebrew/bin/llama-server" || !contains(p.server, "-hf") || !contains(p.server, "ggml-org/Kev-4B-GGUF:Q4_K_M") || !contains(p.server, "8080") {
-		t.Fatalf("server command: %v", p.server)
+	p := upPlan(upOpts{hf: defaultModel, port: 8080}, "/opt/homebrew/bin/llama-server")
+	if len(p.server) == 0 || p.server[0] != "/opt/homebrew/bin/llama-server" || !contains(p.server, "-hf") || !contains(p.server, "prism-ml/Ternary-Bonsai-27B-gguf") || !contains(p.server, "--hff") || !contains(p.server, "Ternary-Bonsai-27B-Q2_g64.gguf") || !contains(p.server, "8086") || contains(p.server, "8080") || p.llamaPort != 8086 {
+		t.Fatalf("llama-server must start on the back port (--port + 6) with the file named explicitly (Q2_g64 is not a Hugging Face quant tag), leaving --port to shikii-readout: %v", p.server)
 	}
-	p = upPlan(upOpts{gguf: "/models/x.gguf", port: 8086, alias: "x"}, "/opt/homebrew/bin/llama-server")
-	for _, want := range []string{"-m", "/models/x.gguf", "-fa", "on", "-ctk", "q8_0", "-np", "1", "--alias", "x"} {
+	if strings.Contains(defaultModel, "Kev") {
+		t.Fatal("the default model is the plain GGUF that measured best (Ternary-Bonsai-27B), not Kev")
+	}
+	if q := upPlan(upOpts{hf: "ggml-org/OpenJev-GGUF:Q4_K_M", port: 8080}, "/opt/homebrew/bin/llama-server"); !contains(q.server, "ggml-org/OpenJev-GGUF:Q4_K_M") || contains(q.server, "--hff") {
+		t.Fatalf("a quant tag is passed to -hf as is: %v", q.server)
+	}
+	for _, o := range []upOpts{{hf: "ggml-org/Kev-4B-GGUF:Q4_K_M", port: 8080}, {gguf: "/models/kev-4b-q4.gguf", port: 8080}} {
+		if q := upPlan(o, "/opt/homebrew/bin/llama-server"); len(q.server) != 0 || !strings.Contains(q.install, "Kev-4B is not supported") {
+			t.Fatalf("Kev-4B is refused (project decision 2026-10-23): %+v", q)
+		}
+	}
+	p = upPlan(upOpts{gguf: "/models/x.gguf", port: 9000, alias: "x"}, "/opt/homebrew/bin/llama-server")
+	for _, want := range []string{"-m", "/models/x.gguf", "-fa", "on", "-ctk", "q8_0", "-np", "1", "--alias", "x", "9006"} {
 		if !contains(p.server, want) {
 			t.Fatalf("gguf server command must carry %q: %v", want, p.server)
 		}
