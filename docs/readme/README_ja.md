@@ -7,12 +7,12 @@
 いつものエージェントが、依頼・返答・訂正から出典付きの教訓を育てます。次の似た依頼で思い出し、行動にどう反映されたかまで振り返ります。人は普段どおりに仕事を頼み、抜き取りと保留を確認します。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-299%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-308%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.5.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.5.0では、コマンド名を残す検索、確認結果の原資料化、普段の振り返りでのwikiの見直しを強化しました。判断に引用した記事の版を保持し、検索・引用・役立ち方を分けて確認できます。[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
+0.6.0では、人が確認する量を減らしました。範囲と完了の判定は観測できる結果から学び、結果が答える判定は人を待ちません。正解が揃っても線が引けない質問には、エージェントが聞き方の候補を出して自動で測ります。人が答える判定の数は `shikii status` で確かめられます。[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
 
 [何が変わるか](#何が変わるか) · [必要なもの](#必要なもの) · [始め方](#始め方) · [普段の会話から学ぶ](#普段の会話から学ぶ) · [人が確認すること](#人が確認すること) · [役立ったかを確かめる](#役立ったかを確かめる) · [プロジェクトごとの記憶](#プロジェクトごとの記憶) · [業務の判定にも使う](#業務の判定にも使う) · [もっと読む](#もっと読む)
 

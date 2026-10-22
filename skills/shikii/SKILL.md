@@ -33,6 +33,7 @@ Hooks run when a user request arrives and when the turn closes, not before every
 - Human or observable outcome labels establish truth. Record actual human answers with `shikii label <trace_id> <truth>`; use `--source outcome` for objectively known results. AI assessments, synthetic expectations, and wiki interpretations stay separate.
 - Never edit `calibration:` by hand. `shikii calibrate --write` writes a line only with enough eligible truths and acceptable quality. A changed question or model needs matching validation.
 - Put wording and layout candidates in `variants:` and measure them with `shikii tune`. Adoption requires a person to confirm unchanged meaning. Do not silently replace a question to improve a benchmark.
+- When the hook reports that a built-in decision has enough truths but still no line, write up to three candidates that keep the question's meaning and pass them as JSON to `shikii hook variants submit` at a natural break in the task. Shikii validates and scores them in the background; do not ask the person to write candidates or adopt one yourself.
 - Respect `pii:true` and tainted sessions: use local endpoints for decision text, examples, proposals, and judging. If sensitivity is unknown, set `pii:true`.
 
 ## References and commands
