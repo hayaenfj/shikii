@@ -171,11 +171,13 @@ async function checkNotebookArticle(target) {
 function checkPlanningContext(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const sp = { id: 'needs-plan', type: 'noul', display_options: {} };
-  const it = { trace_id: 'planning', answerable: true, band: 'ask', p: .6, top: 'yes', model: 'm', at: '2026-10-22T00:00:00Z', choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], inputs: { open: '列の並びが未決 <img src=x>', agreed: 'CSVとして出力する範囲は合意済み', request: '出力機能を追加して' } };
+  const it = { trace_id: 'planning', answerable: true, band: 'ask', p: .6, top: 'yes', model: 'm', at: '2026-10-22T00:00:00Z', choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], inputs: { open: '列の並びが未決 <img src=x>', agreed: 'AIによる整理（実行許可や人の正解ではない）: CSVとして出力する範囲は合意済み\n今回の人の発言: AIによる整理（実行許可や人の正解ではない）: と書いた', request: '出力機能を追加して' } };
   const app = mount(ItemCard, { target, props: { sp, it } }); flushSync();
   const labels = [...target.querySelectorAll('.field-label')].map(el => el.textContent);
-  const named = labels[0] === t('inputRequest') && labels[1]?.includes('合意') && labels[2]?.includes('未決');
-  const evidence = target.textContent.includes(it.inputs.agreed) && target.textContent.includes(it.inputs.open) && !target.querySelector('img');
+  const named = labels[0] === t('inputRequest') && labels[1]?.includes('もう決まっている') && labels[2]?.includes('まだ決まっていない');
+  // モデルへ渡す前置き「AIによる整理（…）: 」は画面では外す(先頭だけ。人の発言の中の同じ文字は残す)
+  const agreedShown = target.querySelector('[data-input=agreed] .message-body')?.textContent || '';
+  const evidence = agreedShown.startsWith('CSVとして出力する範囲は合意済み') && agreedShown.includes('今回の人の発言: AIによる整理（実行許可や人の正解ではない）: と書いた') && target.textContent.includes(it.inputs.open) && !target.querySelector('img');
   unmount(app);
   const legacy = mount(ItemCard, { target, props: { sp, it: { ...it, truth: 'no', truth_at: it.at, legacy_planning: true, record_question: '以前の質問' } } }); flushSync();
   const separate = target.textContent.includes('以前の質問') && target.textContent.includes('過去の形式') && !target.querySelector('.answer-choice') && !target.querySelector('button.weak.adv[title]');
@@ -344,7 +346,7 @@ function checkTurnContext(target) {
   flushSync();
   const first = target.querySelector('.text [data-input]');
   const previous = target.querySelector('details.previous-context');
-  const before = first?.dataset.input === 'request' && first.textContent.includes('今回の依頼') && first.textContent.includes('今回の新しい依頼') && target.querySelector('.decision-phase')?.textContent.includes('着手前');
+  const before = first?.dataset.input === 'request' && first.textContent.includes('今回の依頼') && first.textContent.includes('今回の新しい依頼') && target.querySelector('.decision-phase')?.textContent.includes('始める前');
   const folded = !!previous && !previous.open && previous.querySelector('summary')?.textContent.includes('この依頼より前のAIの返答') && previous.textContent.includes('末尾 <img src=x>') && !target.querySelector('img');
   if (previous) previous.open = true;
   const readable = previous?.open && previous.textContent.includes('前の仕事は完了しました。末尾');
@@ -395,7 +397,7 @@ function checkNavigation(target) {
   flushSync();
   const before = target.querySelector('[data-stage="before"]');
   const after = target.querySelector('[data-stage="after"]');
-  const grouped = before?.querySelectorAll('[data-tab]').length === 2 && after?.querySelectorAll('[data-tab]').length === 2 && before.textContent.includes('着手前') && after.textContent.includes('作業後');
+  const grouped = before?.querySelectorAll('[data-tab]').length === 2 && after?.querySelectorAll('[data-tab]').length === 2 && before.textContent.includes('作業前') && after.textContent.includes('作業後');
   const selected = target.querySelector('[data-tab="needs-plan"]')?.getAttribute('aria-current') === 'page';
   target.querySelector('[data-tab="done-as-asked"]')?.click();
   flushSync();
