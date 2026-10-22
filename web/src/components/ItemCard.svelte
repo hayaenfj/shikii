@@ -24,6 +24,12 @@
     if (!isHook()) return key;
     return { request: t('inputRequest'), agreed: t('inputAgreed'), open: t('inputOpen'), summary: t('inputSummary'), files: t('inputFiles'), previous: t('inputPrevious') }[key] || key;
   }
+  // 着手前の整理の先頭に付く前置きはモデルへ渡す入力の一部。画面では見出しが同じことを言うので外す(先頭だけ)
+  const planningPrefix = 'AIによる整理（実行許可や人の正解ではない）: ';
+  const shown = (k, v) => {
+    const text = it.original_inputs?.[k] ?? v;
+    return sp.id === 'needs-plan' && (k === 'agreed' || k === 'open') && typeof text === 'string' && text.startsWith(planningPrefix) ? text.slice(planningPrefix.length) : text;
+  };
   let inputs = $derived.by(() => {
     const entries = Object.entries(it.inputs || {});
     if (!isHook()) return entries;
@@ -92,7 +98,7 @@
             </div>
           </details>
         {:else}
-          <div class="input-field" data-input={k}><div class="field-label"><span class="field-dot" aria-hidden="true"></span>{inputLabel(k)}</div><div class="message-body">{it.original_inputs?.[k] ?? v}</div>
+          <div class="input-field" data-input={k}><div class="field-label"><span class="field-dot" aria-hidden="true"></span>{inputLabel(k)}</div><div class="message-body">{shown(k, v)}</div>
             {#if it.text_status?.[k]}<div class="k text-limit">{t(it.text_status[k] === 'legacy' ? 'legacyTextLimit' : it.text_status[k] === 'limited' ? 'originalTextLimit' : 'originalTextUnavailable')}</div>{/if}
           </div>
         {/if}
