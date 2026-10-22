@@ -6,8 +6,28 @@
   let { wiki } = $props();
   let material = $state({});
   let busy = $state('');
-  let lessons = $derived(wiki.lessons || []);
+  let selected = $state(null);
+  let navigation = 0;
+  let lessons = $derived(selected ? [selected] : wiki.lessons || []);
   let effect = $derived(wiki.memory_effect);
+
+  async function related(id) {
+    const request = ++navigation;
+    busy = id;
+    try {
+      const result = await api.notebook({ operation: 'query', query: 'lesson:' + id });
+      if (request !== navigation) return;
+      if (result.lessons?.[0]) selected = result.lessons[0];
+      else toast(t('notebookIssues'));
+    } catch (e) { if (request === navigation) toast(t('error')(e.message)); }
+    if (request === navigation) busy = '';
+  }
+
+  function back() {
+    navigation++;
+    selected = null;
+    busy = '';
+  }
 
   async function source(id) {
     busy = id;
@@ -63,10 +83,30 @@
   {#if wiki.pending_sources_count}<p class="k">{t('notebookPending')(wiki.pending_sources_count)}</p>{/if}
   {#if (wiki.notebook_issues || []).length}<p class="audit">{t('notebookIssues')}</p>{/if}
   {#if !lessons.length}<div class="empty">{t('notebookEmpty')}</div>{/if}
+  {#if selected}<button type="button" class="weak" data-notebook-back onclick={back}>{t('notebookBack')}</button>{/if}
   {#each lessons as page (page.id)}
     <div class="item lesson">
       <div class="meta"><span class="pill">{t('notebookHypothesis')}</span></div>
       <div class="text"><b>{page.title}</b><p>{page.lesson}</p><div class="k">{t('notebookWhen')}: {page.applies_to}</div></div>
+      {#if page.body}
+        <details class="text wiki-article" open={!!selected}>
+          <summary>{t('notebookBody')}</summary>
+          {#each page.body.split(/\n\s*\n/) as block}
+            {#if /^#{1,6} /.test(block)}
+              <h4>{block.replace(/^#{1,6} /, '')}</h4>
+            {:else}<p>{block}</p>{/if}
+          {/each}
+        </details>
+      {/if}
+      {#if page.related?.length}
+        <div class="text"><span class="k">{t('notebookRelated')}</span>
+          <div class="btns">
+            {#each page.related as id}
+              <button type="button" class="weak" data-related={id} disabled={!!busy} onclick={() => related(id)}>{wiki.lessons?.find(p => p.id === id)?.title || id.slice(0, 8)}</button>
+            {/each}
+          </div>
+        </div>
+      {/if}
       {#if page.correction}
         <div class="text">
           <p>{t('correctionQuote')}: {page.correction.quote}</p>
@@ -86,3 +126,8 @@
     </div>
   {/each}
 </section>
+
+<style>
+  .wiki-article p { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .wiki-article h4 { margin-bottom: .5rem; }
+</style>

@@ -65,9 +65,23 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	if init["serverInfo"].(map[string]any)["version"] != shikii.Version {
 		t.Fatal("MCP の起動時にも同じ版を返す")
 	}
+	listed := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
+	for _, item := range listed["tools"].([]any) {
+		tool := item.(map[string]any)
+		if tool["name"] != "shikii_wiki" && tool["name"] != "shikii_reflect" {
+			continue
+		}
+		properties := tool["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		if tool["name"] == "shikii_reflect" {
+			properties = properties["wiki"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+		}
+		if properties["body"] == nil || properties["related"] == nil {
+			t.Fatal("wikiとreflectの道具から本文・関連を渡せる", tool["name"])
+		}
+	}
 	for _, args := range []map[string]any{
 		{"operation": "query"},
-		{"operation": "ingest", "sources": []string{id}, "title": "モデルの起動", "lesson": "モデルの起動手順まで確認する", "applies_to": "README の導入手順"},
+		{"operation": "ingest", "sources": []string{id}, "title": "モデルの起動", "lesson": "モデルの起動手順まで確認する", "applies_to": "README の導入手順", "body": "## 背景\n\nARTICLE_ONLY_MARKER", "related": []string{}},
 		{"operation": "query", "sources": []string{id}},
 		{"operation": "lint"},
 	} {
@@ -86,6 +100,13 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	var wiki map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &wiki); err != nil || len(wiki["lessons"].([]any)) != 1 || wiki["notebook_project"] != filepath.Base(repo) {
 		t.Fatalf("画面にも同じ仕事の教訓が届く: err=%v", err)
+	}
+	if wiki["lessons"].([]any)[0].(map[string]any)["body"] != "## 背景\n\nARTICLE_ONLY_MARKER" {
+		t.Fatal("MCPで登録した本文が画面にも届く")
+	}
+	quote, err := memoryContext(agent, feedbackScope(repo), "README の導入手順", &hookSession{})
+	if err != nil || !strings.Contains(quote, "モデルの起動手順") || strings.Contains(quote, "ARTICLE_ONLY_MARKER") {
+		t.Fatal("自動配送では本文でなく要約を引用する", err)
 	}
 }
 

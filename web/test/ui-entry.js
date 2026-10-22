@@ -125,6 +125,7 @@ async function checkWording(target) {
 
 export async function run() {
   const target = document.getElementById('app');
+  const articleOK = await checkNotebookArticle(target);
   const planningOK = checkPlanningContext(target);
   const calibrationOK = checkCalibrationReport(target);
   const contextOK = checkTurnContext(target);
@@ -137,7 +138,34 @@ export async function run() {
   const orderingOK = await checkLoadOrdering();
   const lazyNavOK = await checkLazyNavigation(target);
   const ok = planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
-  if (!ok) process.exit(1);
+  if (!ok || !articleOK) process.exit(1);
+}
+
+async function checkNotebookArticle(target) {
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  const related = { id: '0000000000000002', title: '関連する背景', lesson: '関連の要約', body: '## 理由\n\n出典に残る経緯', related: ['0000000000000001'], sources: [] };
+  globalThis.fetch = async (url, opts) => { calls.push(JSON.parse(opts.body)); return { ok: true, json: async () => ({ lessons: [related] }) }; };
+  const wiki = { lessons: [{ id: '0000000000000001', title: '導入', lesson: '短い検索用要約', body: '## 背景\n\n<img src=x onerror=alert(1)>\n\n## 未確定\n\nまだ未検証の条件', related: [related.id], sources: [] }] };
+  const app = mount(Notebook, { target, props: { wiki } }); flushSync();
+  const details = target.querySelector('.wiki-article');
+  const article = !!details && details.textContent.includes('まだ未検証の条件') && !!details.querySelector('h4');
+  const escaped = !!details && details.textContent.includes('<img src=x onerror=alert(1)>') && !target.querySelector('img');
+  target.querySelector('[data-related]')?.click();
+  await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
+  const followed = calls[0]?.query === 'lesson:' + related.id && target.textContent.includes('出典に残る経緯');
+  let release;
+  globalThis.fetch = async () => ({ ok: true, json: () => new Promise(resolve => { release = resolve; }) });
+  target.querySelector('[data-related]')?.click();
+  await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
+  target.querySelector('[data-notebook-back]')?.click(); flushSync();
+  release?.({ lessons: [related] });
+  await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
+  const returned = target.textContent.includes('短い検索用要約') && !target.textContent.includes('出典に残る経緯');
+  unmount(app); globalThis.fetch = realFetch;
+  const ok = article && escaped && followed && returned;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (知識本文=' + article + ', HTMLを文字表示=' + escaped + ', 関連を開く=' + followed + ', 一覧へ戻る=' + returned + ')');
+  return ok;
 }
 
 function checkPlanningContext(target) {
