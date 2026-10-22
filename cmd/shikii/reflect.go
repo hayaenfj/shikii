@@ -38,10 +38,11 @@ type reflectSource struct {
 }
 
 type reflectView struct {
-	Sources      []reflectSource     `json:"sources"`
-	Lessons      []notebook.Page     `json:"lessons"`
-	Corrections  any                 `json:"human_corrections"`
-	MemoryEffect store.MemorySummary `json:"memory_effect"`
+	Sources      []reflectSource        `json:"sources"`
+	Lessons      []notebook.Page        `json:"lessons"`
+	Corrections  any                    `json:"human_corrections"`
+	MemoryEffect store.MemorySummary    `json:"memory_effect"`
+	Observations []notebook.Observation `json:"observations,omitempty"`
 }
 
 // 採点とwikiで同じ原文を二度取らせない。各キューの古いものから最大2会話をまとめる。
@@ -111,6 +112,14 @@ func reflectQuery(root, scope string) (reflectView, error) {
 		if len(v.Sources) == 2 {
 			break
 		}
+	}
+	observations, err := book.PendingObservations()
+	if err != nil {
+		return v, err
+	}
+	v.Observations = observations
+	if len(v.Observations) > 2-len(v.Sources) {
+		v.Observations = v.Observations[:2-len(v.Sources)]
 	}
 	return v, nil
 }
@@ -255,10 +264,17 @@ func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
 
 func reflectContext(root, scope string) (string, error) {
 	view, err := reflectQuery(root, scope)
-	if err != nil || len(view.Sources) == 0 {
+	if err != nil || len(view.Sources)+len(view.Observations) == 0 {
 		return "", err
 	}
-	if len(view.Sources) < 2 && (view.Sources[0].Source.At.IsZero() || time.Since(view.Sources[0].Source.At) < 24*time.Hour) {
+	oldest := time.Time{}
+	if len(view.Sources) > 0 {
+		oldest = view.Sources[0].Source.At
+	}
+	if len(view.Observations) > 0 && (oldest.IsZero() || view.Observations[0].ObservedAt.Before(oldest)) {
+		oldest = view.Observations[0].ObservedAt
+	}
+	if len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
 		return "", nil
 	}
 	executable, err := os.Executable()
@@ -269,6 +285,9 @@ func reflectContext(root, scope string) (string, error) {
 	ids := []string{}
 	for _, task := range view.Sources {
 		ids = append(ids, task.Source.ID)
+	}
+	for _, o := range view.Observations {
+		ids = append(ids, o.ID)
 	}
 	data, _ := json.Marshal(map[string]any{"sources": ids})
 	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related}]（教訓なしはsourcesだけ）。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), nil

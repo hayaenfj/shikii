@@ -25,6 +25,7 @@ type notebookRequest struct {
 	Operation string `json:"operation"`
 	Query     string `json:"query,omitempty"`
 	notebook.Draft
+	Observation *notebook.Observation `json:"observation,omitempty"`
 }
 
 func runNotebook(root, scope string, req notebookRequest) (any, error) {
@@ -40,16 +41,21 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		return b.Query(req.Query)
 	case "ingest":
 		return b.Ingest(req.Draft)
+	case "capture":
+		if req.Observation == nil {
+			return nil, errors.New("保存する原資料が必要です")
+		}
+		return b.Capture(*req.Observation)
 	case "lint":
 		return b.Lint()
 	}
-	return nil, errors.New("wiki operation must be ingest, query or lint")
+	return nil, errors.New("wiki operation must be ingest, query, capture or lint")
 }
 
 // 教訓の置き場は hook と同じプロジェクトの .shikii/。呼び出した仕事だけを扱う。
 // 新しい接続先や設定は持たず、文章は利用中のエージェントから JSON で受け取る。
 func cmdNotebook(args []string) error {
-	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint") {
+	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture") {
 		return errors.New("usage: shikii wiki query [query] | ingest (JSON on stdin) | lint | verify …")
 	}
 	root, scope, err := currentProjectStore()
@@ -57,7 +63,7 @@ func cmdNotebook(args []string) error {
 		return err
 	}
 	req := notebookRequest{Operation: args[0]}
-	if req.Operation == "ingest" {
+	if req.Operation == "ingest" || req.Operation == "capture" {
 		if len(args) != 1 {
 			return errors.New("wiki ingest reads one JSON object from stdin")
 		}
@@ -67,7 +73,12 @@ func cmdNotebook(args []string) error {
 		}
 		dec := json.NewDecoder(bytes.NewReader(data))
 		dec.DisallowUnknownFields()
-		if err := dec.Decode(&req.Draft); err != nil {
+		var target any = &req.Draft
+		if req.Operation == "capture" {
+			req.Observation = &notebook.Observation{}
+			target = req.Observation
+		}
+		if err := dec.Decode(target); err != nil {
 			return errors.New("wiki ingest needs valid JSON with sources and, for a lesson, title, lesson and applies_to")
 		}
 		var extra any
