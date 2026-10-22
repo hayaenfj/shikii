@@ -345,6 +345,27 @@ func (b Book) Query(query string) (View, error) {
 
 // Recall は自動で届ける教訓。本文の偶然の一致より、題と適用条件を重視する。
 // 手で探す Query は従来どおり本文も検索する。
+// Live は検索に使える記事(出典が揃い、置き換えられていないもの)を、検索語で並べずに返す。差し込み先の判定の候補。
+func (b Book) Live() ([]Page, error) {
+	pages, _, err := b.pages()
+	if err != nil {
+		return nil, err
+	}
+	superseded := map[string]bool{}
+	for _, p := range pages {
+		for _, id := range p.Replaces {
+			superseded[id] = true
+		}
+	}
+	live := []Page{}
+	for _, p := range pages {
+		if !superseded[p.ID] && len(b.sourceIssues(p)) == 0 {
+			live = append(live, p)
+		}
+	}
+	return live, nil
+}
+
 func (b Book) Recall(query string) ([]Page, error) {
 	v, err := b.query(query, true)
 	return v.Lessons, err

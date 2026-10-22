@@ -1,0 +1,30 @@
+# wiki の差し込み先: 新しい教訓は既存の記事と同じ話題か(同じなら、その記事へ足す・置き換える。違えば新しい記事)。
+# reflect place で、エージェントが書いた教訓と生きている記事を一本ずつ突き合わせて聞く。
+# 正解は結果から自動で付く: submit でエージェントがその記事へ足した・置き換えたら「はい」(重み 1)、別の先を選んだら「いいえ」(部分、重み 0.5)。人は答えない。
+id: wiki-place
+version: 1
+type: noul
+question: "A new lesson is being added to a project wiki. Is the new lesson about the same topic as the existing page, so that it should be merged into that page (as an update or addition) rather than filed as a separate new page? Answer no if they are about different topics, even if some words overlap."
+state:
+  template: |
+    existing page title: {{ title }}
+    existing page lesson: {{ lesson }}
+    existing page applies to: {{ applies_to }}
+    new lesson: {{ new_lesson }}
+    new lesson applies to: {{ new_applies }}
+  required: [title, lesson, applies_to, new_lesson, new_applies]
+policy:
+  send_to: [local]
+  pii: true
+thresholds:
+  act: 0.75
+  ask: 0.55
+eval:
+  min_n: 50
+display:
+  ja:
+    title: wiki の差し込み先
+    question: 新しい教訓は、この既存の記事と同じ話題か？（同じなら記事へ足す・置き換える。違えば新しい記事）
+    options:
+      "yes": 同じ話題（この記事へ）
+      "no": 別の話題

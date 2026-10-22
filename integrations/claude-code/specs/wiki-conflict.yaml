@@ -1,0 +1,27 @@
+# wiki の矛盾: 同じ話題の新しい教訓は、既存の教訓と食い違うか(従うと、もう一方を破ることになるか)。
+# reflect place で、差し込み先の上位の記事についてだけ聞く。線が引けるまでは疑いとしてエージェントへ渡し、エージェントが本文を読んで決める。
+# 正解は結果から自動で付く: submit でその記事を置き換えたら「はい」(重み 1)、置き換えずに同じ記事へ足したら「いいえ」(部分、重み 0.5)。人は答えない。
+id: wiki-conflict
+version: 1
+type: noul
+question: "Two lessons in a project wiki are about the same topic. Do they give conflicting guidance, so that following one would mean breaking the other in the same situation? Answer no if the new lesson merely adds detail, rephrases, or extends the existing one without contradicting it."
+state:
+  template: |
+    existing lesson: {{ lesson }}
+    new lesson: {{ new_lesson }}
+  required: [lesson, new_lesson]
+policy:
+  send_to: [local]
+  pii: true
+thresholds:
+  act: 0.75
+  ask: 0.55
+eval:
+  min_n: 50
+display:
+  ja:
+    title: wiki の矛盾
+    question: 新しい教訓は、同じ話題の既存の教訓と食い違うか？（片方に従うと、もう片方を破ることになるか）
+    options:
+      "yes": 食い違う
+      "no": 食い違わない（足す・言い換え）

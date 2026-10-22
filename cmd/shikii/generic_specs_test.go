@@ -15,8 +15,8 @@ func TestGenericAgentSpecsKeepCodingCalibrationsSeparate(t *testing.T) {
 		"changes-in-scope": "9381415d9f1d3696", "done-as-asked": "2bba11b5ee687b57",
 	}
 	dir := t.TempDir()
-	if n, err := seedAgentSpecs(dir); err != nil || n != 4 {
-		t.Fatal("4つの既製質問を準備する", n, err)
+	if n, err := seedAgentSpecs(dir); err != nil || n != len(hookSpecs)+len(wikiSpecs) {
+		t.Fatal("既製の質問(hook の4つと wiki の2つ)を準備する", n, err)
 	}
 	for id, oldHash := range previous {
 		t.Run(id, func(t *testing.T) {

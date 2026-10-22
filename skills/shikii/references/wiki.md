@@ -42,6 +42,10 @@ Omitting `body`, `related` or `replaces` on update preserves it. Explicit `body:
 
 The same draft fields work in `shikii reflect submit`'s `wiki` array. Use individual ingestion calls for deeper cross-topic editing while reflection handles pending observations. Save the intended editorial work before marking a source reviewed.
 
+## Place a new lesson before saving it
+
+Before submitting a draft that has a `lesson`, pass it to reflection's `place` operation (`shikii_reflect` with `operation: "place"` and the draft in `wiki`, or `shikii reflect place` on stdin). Shikii compares the draft with every live page using the local decision model and returns, per draft, `candidates` ordered by `same_topic.p`, each with `page_id`, `revision`, `title`, `applies_to` and, for the top three, a `conflict` judgement. Until a line is drawn these are hints, never decisions: read the candidate bodies, then set `id` to merge into the same topic, `replaces` when the new lesson supersedes conflicting guidance, or neither for a genuinely new topic. A flagged conflict means read both and decide which rests on the newer evidence; do not keep both silently. What you then save becomes the outcome truth for those judgements (merged or replaced → same topic; replaced → conflict), so no person labels them. With no live pages the result just says a new page will be created.
+
 ## Preserve observed evidence
 
 Use `shikii wiki capture` with JSON on stdin, or `shikii_wiki` with `operation: "capture", observation: {...}`, to retain a source you actually inspected. Fields are `kind` (`human`, `agent`, `code`, `test`, or `release`), `title`, `content`, `reference`, `version`, and `observed_at` (RFC3339). Include the relevant excerpt or result, an exact file/line, command or release reference, and the commit/artifact version or observation context. Content is at most 32 KiB and the encoded object at most 64 KiB. Keep secrets and private material local. Capture does not fetch a URL, execute a command or establish the correctness of an agent's report.

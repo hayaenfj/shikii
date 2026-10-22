@@ -34,8 +34,8 @@ func TestSeedFailureDoesNotPublishPartialSpec(t *testing.T) {
 		t.Fatalf("書けなかった spec を最終名で公開しない: %v %v", files, err)
 	}
 	n, err := seedAgentSpecs(dir)
-	if err != nil || n != 4 {
-		t.Fatalf("再試行で4つを正常に準備できる: n=%d err=%v", n, err)
+	if err != nil || n != len(hookSpecs)+len(wikiSpecs) {
+		t.Fatalf("再試行で既製の質問を全部正常に準備できる: n=%d err=%v", n, err)
 	}
 	for _, id := range hookSpecs {
 		mustLoad(t, filepath.Join(dir, id+".yaml"))
