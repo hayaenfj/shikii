@@ -80,6 +80,51 @@ type server struct {
 	// 先に流しておく。すると以後は state のぶんだけの prefill になる(cache_n=137/154、1 問 0.5〜1.1 秒)。
 	warmPrefix string // 最後に warm-up した接頭辞
 	warmTokens int    // その接頭辞のトークン数(cache_n がこれに届かなければ次回また warm-up)
+
+	// passThrough は後ろが学習済みの決定モデル(/v1/systemone に自分で答える。Kev・OpenJev など)の時 true。
+	// その時は読み出さずにそのまま通す。shikii は常に readout の口を見ればよく、モデルの種類で接続先を変えない。
+	passThrough bool
+}
+
+// detectUpstream は後ろが決定モデルか(/v1/systemone が答えるか)を一度だけ探る。本家 llama.cpp は普通の GGUF だと 501 を返す。
+func (s *server) detectUpstream(ctx context.Context) error {
+	probe := map[string]any{"state": "probe", "questions": map[string]any{"q": map[string]any{"type": "noul", "instructions": "Is this a probe?"}}}
+	code, err := s.post(ctx, "/v1/systemone", probe, nil)
+	switch {
+	case err == nil && code/100 == 2:
+		s.passThrough = true
+		return nil
+	case code == 501 || code == 404:
+		s.passThrough = false
+		return nil
+	}
+	return fmt.Errorf("upstream /v1/systemone: %v", err)
+}
+
+// forward は要求をそのまま後ろへ渡し、応答もそのまま返す(決定モデルの答えに手を加えない)。
+func (s *server) forward(w http.ResponseWriter, r *http.Request, body []byte) {
+	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.Upstream+"/v1/systemone", bytes.NewReader(body))
+	if err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.http.Do(req)
+	if err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(raw)
 }
 
 // stateMarker は prompt 中で state が始まる印。ここより前が spec 内で共通の接頭辞。
@@ -106,6 +151,9 @@ func main() {
 		log.Fatal(err)
 	}
 	cancel()
+	if err := s.detectUpstream(ctx); err != nil {
+		log.Fatal(err)
+	}
 	if s.cfg.Model == "" {
 		name, err := s.upstreamModel(ctx)
 		if err != nil {
@@ -113,10 +161,15 @@ func main() {
 		}
 		s.base = name
 		s.cfg.Model = modelName(name, s.cfg)
+		if s.passThrough {
+			s.cfg.Model = name // 決定モデルの答えをそのまま通すので、名前(較正の鍵)も後ろのまま
+		}
 	} else {
 		s.base = s.cfg.Model
 	}
-	if err := s.checkLabels(ctx); err != nil {
+	if s.passThrough {
+		log.Printf("shikii-readout: %s answers /v1/systemone itself (decision model); passing requests through", s.cfg.Model)
+	} else if err := s.checkLabels(ctx); err != nil {
 		log.Fatalf("label check failed: %v", err)
 	}
 	mux := http.NewServeMux()
@@ -674,6 +727,10 @@ func (s *server) handleSystemOne(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
 	if err != nil {
 		writeErr(w, 400, err.Error())
+		return
+	}
+	if s.passThrough {
+		s.forward(w, r, body)
 		return
 	}
 	state, qs, layoutReq, err := parseRequest(body)
