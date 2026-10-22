@@ -348,6 +348,14 @@ func (b Book) Recall(query string) ([]Page, error) {
 
 func (b Book) query(query string, recall bool) (View, error) {
 	v := View{Lessons: []Page{}, Pending: []store.Feedback{}, Issues: []Issue{}}
+	if !recall && strings.HasPrefix(query, "lesson:") && strings.Contains(query, "@") {
+		p, err := b.readRevision(query)
+		if err != nil {
+			return v, err
+		}
+		v.Lessons = append(v.Lessons, p)
+		return v, nil
+	}
 	pages, issues, err := b.pages()
 	if err != nil {
 		return v, err

@@ -28,6 +28,12 @@ The optional `query` searches this project's wiki, including lesson bodies, and 
 
 Read each lesson's applicability. Planning returns a short summary; use `shikii wiki query lesson:<page_id>` for its full knowledge body and related pages. If its meaning or origin is unclear, use `shikii wiki query <source_id>` to inspect the original exchange. Prefer current instructions over historical agreements; a wiki lesson is a hypothesis, never current approval. If no usable evidence exists, keep the missing context unknown.
 
+When the article body is needed as decision evidence, add `pages: ["<page_id>"]` to planning query (up to two). It returns the selected full text as `article:<id>:<revision>` in `source_material`; cite an exact quote and pass the same `pages` and search text during submit. Follow related pages selectively instead of loading the entire wiki. The quote still needs current human evidence to support agreement. A changed cited revision during the decision is rejected; re-read the source rather than carrying its old meaning forward.
+
+Recorded planning decisions retain `knowledge_context`: ranked candidate revisions, explicitly read articles, actual wiki quotations, and the inventory of available article revisions at preparation time. Search time and UTF-8 context bytes measure retrieval cost, not model tokens or usefulness. A returned or opened article is not automatically a used citation. The knowledge view counts these separately from the existing evidence-based memory assessments.
+
+For a comparison with and without memory, freeze the task inputs and this available-revision inventory. Retrieve an old article with `shikii wiki query lesson:<page_id>@<revision>` and follow only revisions in that inventory. Do not substitute current pages, later sources, or newly resolved outcomes into an earlier judgment. Keep synthetic expectations, agent assessments and observable/human outcomes separate. Compare information questions, already-approved work and genuinely blocking choices separately; retrieval and quotation counts alone do not establish fewer unnecessary questions or higher accuracy.
+
 ## Submit grounded interpretations
 
 Pass the same IDs, the wiki query used for any cited lesson, and `agreed` / `open` to `shikii hook plan submit`:
@@ -52,6 +58,7 @@ Use the exact source keys returned by query:
 - `current_user`, `previous_user`, `previous_assistant`: the immediate exchange.
 - `history:...`: a specific older field from this session, supplied as reference.
 - `lesson:<id>:<revision>`: a wiki hypothesis with its applicability and provenance.
+- `article:<id>:<revision>`: the selected article body with source references, also a hypothesis.
 
 Agreement needs evidence from `current_user` or `previous_user`; wiki and history alone cannot establish current agreement. For a short acceptance, also cite the proposal or prior constraint it refers to. Latest withdrawals and changed conditions override earlier agreement. Do not broaden acceptance to a different request.
 

@@ -293,22 +293,27 @@ async function checkNotebook(target) {
   const calls = [];
   globalThis.fetch = async (url, opts) => {
     calls.push({ url, body: JSON.parse(opts.body) });
-    return { ok: true, json: async () => ({ source_material: [{ id: '0000000000000001', request: 'README installation', reply: '<img src=x onerror=alert(1)> missing startup steps' }] }) };
+    return { ok: true, json: async () => ({ source_material: [{ id: '0000000000000001', request: 'README installation', reply: '<img src=x onerror=alert(1)> missing startup steps' }], originals: { '0000000000000001': [{ original_inputs: { summary: 'FULL-TEXT-END' } }] }, observations: [{ id: '0000000000000002', kind: 'test', content: 'OBSERVED-TEST-PASS', version: 'fixture-v1', observed_at: '2026-01-01T00:00:00Z' }] }) };
   };
-  const wiki = { notebook_project: 'alpha', pending_sources_count: 1, lessons: [{ id: 'a', title: '<img src=x onerror=alert(1)>', lesson: 'Include model startup steps', applies_to: 'README installation', sources: [{ id: '0000000000000001', hash: 'h' }] }] };
+  const wiki = { notebook_project: 'alpha', pending_sources_count: 1, knowledge_usage: { window: 256, prepared: 3, with_matches: 2, with_citations: 1, citations: 1, context_bytes: 450, lookup_milliseconds: 2.5 }, maintenance: [{ page_id: 'a', title: 'Source review', revision: 'r1', key: 'k1' }], lessons: [{ id: 'a', title: '<img src=x onerror=alert(1)>', lesson: 'Include model startup steps', applies_to: 'README installation', sources: [{ id: '0000000000000001', hash: 'h' }, { id: '0000000000000002', hash: 'h2' }] }] };
   const app = mount(Notebook, { target, props: { wiki } });
   flushSync();
   const hasLesson = target.textContent.includes('Include model startup steps') && target.textContent.includes('alpha');
-  const button = target.querySelector('button');
-  if (button) button.click();
+  const buttons = [...target.querySelectorAll('.lesson .btns button')];
+  if (buttons[0]) buttons[0].click();
   await new Promise(resolve => setTimeout(resolve, 0));
   flushSync();
   const readSource = target.textContent.includes('missing startup steps') && calls[0]?.body.operation === 'query' && calls[0]?.body.sources?.[0] === '0000000000000001';
+  if (buttons[1]) buttons[1].click();
+  await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
+  const observed = target.textContent.includes('FULL-TEXT-END') && target.textContent.includes('OBSERVED-TEST-PASS');
+  const usage = target.querySelector('[data-knowledge="prepared"]')?.textContent.includes('3') && target.querySelector('[data-knowledge="with_citations"]')?.textContent.includes('1');
+  const maintenance = target.querySelector('[data-maintenance="a"]')?.textContent.includes('Source review');
   const inertText = !target.querySelector('img') && target.textContent.includes('<img src=x onerror=alert(1)>');
   unmount(app);
   globalThis.fetch = realFetch;
-  const ok = hasLesson && readSource && inertText;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (notebook lesson=' + hasLesson + ', source lookup=' + readSource + ', quoted HTML is text=' + inertText + ')');
+  const ok = hasLesson && readSource && observed && usage && maintenance && inertText;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (notebook lesson=' + hasLesson + ', source lookup=' + readSource + ', observed sources=' + observed + ', usage=' + usage + ', maintenance=' + maintenance + ', quoted HTML is text=' + inertText + ')');
   return ok;
 }
 
