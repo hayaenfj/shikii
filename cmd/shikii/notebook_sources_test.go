@@ -39,6 +39,15 @@ func TestNotebookCapturesObservedSourcesThroughHTTPAndCLI(t *testing.T) {
 	if len(got["lessons"].([]any)) != 1 {
 		t.Fatal("確認結果を教訓の出典にできる")
 	}
+	all := notebookCommand(t, "query", "")
+	task := all["maintenance"].([]any)[0].(map[string]any)
+	review := map[string]any{"page_id": task["page_id"], "revision": task["revision"], "key": task["key"], "reason": "Checked the captured smoke result against the article."}
+	data, _ = json.Marshal(review)
+	notebookCommand(t, "maintain", string(data))
+	after, err := reflectQuery(root, feedbackScope(repo))
+	if err != nil || len(after.Maintenance) != 0 {
+		t.Fatal("見直し結果をCLIで保存し振り返りから除く", err)
+	}
 	cli := notebookCommand(t, "capture", `{"kind":"code","title":"Source excerpt","content":"package fixture","reference":"example.go:1","version":"fixture-v1","observed_at":"2026-01-01T00:00:00Z"}`)
 	if cli["kind"] != "code" {
 		t.Fatal("CLIからも同じ保存操作を使える")

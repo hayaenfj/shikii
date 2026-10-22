@@ -40,6 +40,10 @@ The returned ID can be used in `sources` during ordinary ingestion. Repeating th
 
 ## Retrieve and maintain
 
+`wiki query` without text and `reflect query` include up to two `maintenance` tasks. They identify the page revision, connected revisions, and a `key` for that exact neighborhood. Work on these small tasks during normal reflection: read the article and sources, search nearby topics for duplicates, reconcile stale or conflicting claims, and check both incoming and outgoing links. `summary-only` and `unlinked` are prompts for inspection, not errors requiring padded content or invented relationships. Unresolved conflicts stay attributed and unresolved.
+
+For a semantic edit, include a concise `change_reason` (at most 1000 bytes) in the ingestion draft; it is retained with the article revision. Then re-query maintenance because an edit changes its key. A review that finds no supported edit is useful too. Save it with `shikii wiki maintain` on stdin, `shikii_wiki` operation `maintain` with a `maintenance` object, or reflection's `maintenance` array (up to two): `{"page_id":"…","revision":"…","key":"…","reason":"What was checked against which sources, what changed or why no change is supported"}`. This records the review, not semantic correctness. Changed page or connected revisions invalidate the checkpoint; unchanged neighborhoods return after 30 days. Stale keys are rejected. No new user labeling or model is needed.
+
 Lessons are hypotheses. Current requests and rules take priority; wiki entries never supply current permission, human truth labels, calibration or `confirmed` status.
 
 Automatic recall selects up to two lessons by title and applicability within 1800 bytes after JSON escaping. It suppresses a revision for one hour in a session; updates arrive immediately. When no lesson applies, at most one similar unprocessed conversation is returned. Query the full article when needed; do not enlarge automatic quotations into transcript dumps.

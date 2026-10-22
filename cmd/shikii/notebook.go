@@ -25,7 +25,8 @@ type notebookRequest struct {
 	Operation string `json:"operation"`
 	Query     string `json:"query,omitempty"`
 	notebook.Draft
-	Observation *notebook.Observation `json:"observation,omitempty"`
+	Observation *notebook.Observation       `json:"observation,omitempty"`
+	Maintenance *notebook.MaintenanceReview `json:"maintenance,omitempty"`
 }
 
 func runNotebook(root, scope string, req notebookRequest) (any, error) {
@@ -46,6 +47,11 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 			return nil, errors.New("保存する原資料が必要です")
 		}
 		return b.Capture(*req.Observation)
+	case "maintain":
+		if req.Maintenance == nil {
+			return nil, errors.New("見直しの記録が必要です")
+		}
+		return b.Maintain(*req.Maintenance)
 	case "lint":
 		return b.Lint()
 	}
@@ -55,7 +61,7 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 // 教訓の置き場は hook と同じプロジェクトの .shikii/。呼び出した仕事だけを扱う。
 // 新しい接続先や設定は持たず、文章は利用中のエージェントから JSON で受け取る。
 func cmdNotebook(args []string) error {
-	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture") {
+	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain") {
 		return errors.New("usage: shikii wiki query [query] | ingest (JSON on stdin) | lint | verify …")
 	}
 	root, scope, err := currentProjectStore()
@@ -63,7 +69,7 @@ func cmdNotebook(args []string) error {
 		return err
 	}
 	req := notebookRequest{Operation: args[0]}
-	if req.Operation == "ingest" || req.Operation == "capture" {
+	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" {
 		if len(args) != 1 {
 			return errors.New("wiki ingest reads one JSON object from stdin")
 		}
@@ -77,6 +83,10 @@ func cmdNotebook(args []string) error {
 		if req.Operation == "capture" {
 			req.Observation = &notebook.Observation{}
 			target = req.Observation
+		}
+		if req.Operation == "maintain" {
+			req.Maintenance = &notebook.MaintenanceReview{}
+			target = req.Maintenance
 		}
 		if err := dec.Decode(target); err != nil {
 			return errors.New("wiki ingest needs valid JSON with sources and, for a lesson, title, lesson and applies_to")
