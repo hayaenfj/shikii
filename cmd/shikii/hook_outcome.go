@@ -25,7 +25,7 @@ const (
 )
 
 // outcomeSpecs は結果から正解が付く判定。迷い(ask)でも人の答えを待たない(結果が答える)。
-var outcomeSpecs = map[string]bool{"prompt-kind": true, "changes-in-scope": true, "done-as-asked": true}
+var outcomeSpecs = map[string]bool{"prompt-kind": true, "changes-in-scope": true, "done-as-asked": true, "wiki-place": true, "wiki-conflict": true}
 
 // waitsForPersonFor は、この判定が人の答えを待つか。
 // 線の無い判定は自動で何もしないので抜き取る物が無い。結果から正解が付く判定は迷っても結果を待つ。

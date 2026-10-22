@@ -599,6 +599,11 @@ func runHookEvent(event string) error {
 				err = terr
 			}
 		}
+		for _, id := range wikiSpecs { // wiki の差し込み先・矛盾も、結果の正解が貯まれば同じ周期で線を引く
+			if cerr := hookMaybeCalibrate(agent, id); cerr != nil && err == nil {
+				err = cerr
+			}
+		}
 		if werr := notebookMaintenance(agent, snapshot.Scope); werr != nil {
 			hookLog("wiki lint: " + werr.Error())
 		}

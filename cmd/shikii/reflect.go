@@ -157,6 +157,12 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		}
 		return reflectQuery(root, scope)
 	}
+	if req.Operation == "place" {
+		if len(req.Reviews)+len(req.Memory)+len(req.Maintenance) != 0 {
+			return nil, errors.New("place では wiki の草稿だけを渡せます")
+		}
+		return placeDrafts(root, scope, req.Wiki)
+	}
 	if req.Operation != "submit" || len(req.Reviews) > 4 || len(req.Wiki) > 2 || len(req.Memory) > 4 || len(req.Maintenance) > 2 || len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) == 0 {
 		return nil, errors.New("submit は最大4件の仮採点・2件のwiki整理・4件の記憶の仮評価を受け取ります")
 	}
@@ -190,10 +196,24 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		result.Reviews = append(result.Reviews, receipt)
 	}
 	for _, draft := range req.Wiki {
+		// 差し込み先・矛盾の判定への結果の正解は保存の前に組み、保存が通ってから書く(記事が変わると判定の入力と引き合わせられない)
+		outcome, oerr := placementOutcome(root, scope, draft)
 		_, err := (notebook.Book{Root: root, Scope: scope}).Ingest(draft)
 		receipt := reflectReceipt{Sources: draft.Sources}
 		if err != nil {
 			result.Complete, receipt.Error = false, err.Error()
+		} else if oerr != nil {
+			hookLog("wiki place: " + oerr.Error())
+		} else {
+			bySpec := map[string][]store.Label{} // 追記は spec ごと
+			for _, l := range outcome {
+				bySpec[l.SpecID] = append(bySpec[l.SpecID], l)
+			}
+			for _, labels := range bySpec {
+				if err := (store.Store{Dir: root}).AppendLabels(labels); err != nil {
+					hookLog("wiki place: " + err.Error())
+				}
+			}
 		}
 		result.Wiki = append(result.Wiki, receipt)
 	}
@@ -306,5 +326,5 @@ func reflectContext(root, scope string) (string, error) {
 		ids = append(ids, o.ID)
 	}
 	data, _ := json.Marshal(map[string]any{"sources": ids})
-	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。observationsは確認結果の原資料です。maintenanceの最大2記事は本文・関連・出典を見直し、最新のpage_id・revision・keyとreasonをmaintenance配列で保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related}]（教訓なしはsourcesだけ）。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), nil
+	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。observationsは確認結果の原資料です。maintenanceの最大2記事は本文・関連・出典を見直し、最新のpage_id・revision・keyとreasonをmaintenance配列で保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related}]（教訓なしはsourcesだけ）。新しい教訓は submit の前に operation:place で wiki の草稿を渡し、返った差し込み先の候補と矛盾の疑いを読んでから id・replaces を決めます。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), nil
 }

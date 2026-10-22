@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- Place a new wiki lesson before saving it. `shikii_reflect` / `shikii reflect` gain a `place` operation: the draft is compared with every live page by the local decision model (`wiki-place`, same topic?) and the top three also get a conflict judgement (`wiki-conflict`). Candidates come back ordered by probability with page ids and revisions; the agent reads them and chooses `id`, `replaces` or a new page. What it saves becomes the outcome truth for those judgements, so nobody labels them, and lines are drawn automatically once enough truths exist.
+- The before-work question is shown in plain words on the answer page: what it asks, what each answer means, and the AI's reading of what was already decided, without the prompt prefix.
+- Fix a lost record when two first-time writes to a new store file ran at the same time (parallel hook decisions on a fresh project).
+
 ## 0.6.0 — Less for people to check
 
 - Learn scope and completion from observable results. A change undone during the next request counts as out of scope; a change kept through the following request counts as in scope with reduced weight. Repeating the same request counts as unfinished; a clearly different request counts as finished with reduced weight. Short replies and unclear cases are left unlabeled. AI assessments still stay out of truths and calibration.
