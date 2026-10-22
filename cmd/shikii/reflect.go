@@ -15,10 +15,11 @@ import (
 )
 
 type reflectRequest struct {
-	Operation string                    `json:"operation"`
-	Reviews   []reviewRequest           `json:"reviews,omitempty"`
-	Wiki      []notebook.Draft          `json:"wiki,omitempty"`
-	Memory    []memoryAssessmentRequest `json:"memory,omitempty"`
+	Operation   string                       `json:"operation"`
+	Reviews     []reviewRequest              `json:"reviews,omitempty"`
+	Wiki        []notebook.Draft             `json:"wiki,omitempty"`
+	Memory      []memoryAssessmentRequest    `json:"memory,omitempty"`
+	Maintenance []notebook.MaintenanceReview `json:"maintenance,omitempty"`
 }
 
 type memoryAssessmentRequest struct {
@@ -38,11 +39,12 @@ type reflectSource struct {
 }
 
 type reflectView struct {
-	Sources      []reflectSource        `json:"sources"`
-	Lessons      []notebook.Page        `json:"lessons"`
-	Corrections  any                    `json:"human_corrections"`
-	MemoryEffect store.MemorySummary    `json:"memory_effect"`
-	Observations []notebook.Observation `json:"observations,omitempty"`
+	Sources      []reflectSource            `json:"sources"`
+	Lessons      []notebook.Page            `json:"lessons"`
+	Corrections  any                        `json:"human_corrections"`
+	MemoryEffect store.MemorySummary        `json:"memory_effect"`
+	Observations []notebook.Observation     `json:"observations,omitempty"`
+	Maintenance  []notebook.MaintenanceTask `json:"maintenance,omitempty"`
 }
 
 // 採点とwikiで同じ原文を二度取らせない。各キューの古いものから最大2会話をまとめる。
@@ -121,10 +123,15 @@ func reflectQuery(root, scope string) (reflectView, error) {
 	if len(v.Observations) > 2-len(v.Sources) {
 		v.Observations = v.Observations[:2-len(v.Sources)]
 	}
+	v.Maintenance, err = book.Maintenance()
+	if err != nil {
+		return v, err
+	}
 	return v, nil
 }
 
 type reflectReceipt struct {
+	PageID   string   `json:"page_id,omitempty"`
 	TraceID  string   `json:"trace_id,omitempty"`
 	Sources  []string `json:"sources,omitempty"`
 	Error    string   `json:"error,omitempty"`
@@ -133,10 +140,11 @@ type reflectReceipt struct {
 }
 
 type reflectResult struct {
-	Complete bool             `json:"complete"`
-	Reviews  []reflectReceipt `json:"reviews"`
-	Wiki     []reflectReceipt `json:"wiki"`
-	Memory   []reflectReceipt `json:"memory"`
+	Complete    bool             `json:"complete"`
+	Reviews     []reflectReceipt `json:"reviews"`
+	Wiki        []reflectReceipt `json:"wiki"`
+	Memory      []reflectReceipt `json:"memory"`
+	Maintenance []reflectReceipt `json:"maintenance,omitempty"`
 }
 
 func runReflect(root, scope string, req reflectRequest) (any, error) {
@@ -144,12 +152,12 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		return nil, errors.New("振り返るプロジェクトを確認できません")
 	}
 	if req.Operation == "query" {
-		if len(req.Reviews)+len(req.Wiki)+len(req.Memory) != 0 {
+		if len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) != 0 {
 			return nil, errors.New("query では保存する内容を渡せません")
 		}
 		return reflectQuery(root, scope)
 	}
-	if req.Operation != "submit" || len(req.Reviews) > 4 || len(req.Wiki) > 2 || len(req.Memory) > 4 || len(req.Reviews)+len(req.Wiki)+len(req.Memory) == 0 {
+	if req.Operation != "submit" || len(req.Reviews) > 4 || len(req.Wiki) > 2 || len(req.Memory) > 4 || len(req.Maintenance) > 2 || len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) == 0 {
 		return nil, errors.New("submit は最大4件の仮採点・2件のwiki整理・4件の記憶の仮評価を受け取ります")
 	}
 	sources := map[string]bool{}
@@ -196,6 +204,14 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 			result.Complete, receipt.Error = false, err.Error()
 		}
 		result.Memory = append(result.Memory, receipt)
+	}
+	for _, m := range req.Maintenance {
+		_, err := (notebook.Book{Root: root, Scope: scope}).Maintain(m)
+		receipt := reflectReceipt{PageID: m.PageID, Key: m.Key}
+		if err != nil {
+			result.Complete, receipt.Error = false, err.Error()
+		}
+		result.Maintenance = append(result.Maintenance, receipt)
 	}
 	return result, nil
 }
@@ -264,7 +280,7 @@ func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
 
 func reflectContext(root, scope string) (string, error) {
 	view, err := reflectQuery(root, scope)
-	if err != nil || len(view.Sources)+len(view.Observations) == 0 {
+	if err != nil || len(view.Sources)+len(view.Observations)+len(view.Maintenance) == 0 {
 		return "", err
 	}
 	oldest := time.Time{}
@@ -274,7 +290,7 @@ func reflectContext(root, scope string) (string, error) {
 	if len(view.Observations) > 0 && (oldest.IsZero() || view.Observations[0].ObservedAt.Before(oldest)) {
 		oldest = view.Observations[0].ObservedAt
 	}
-	if len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
+	if len(view.Maintenance) == 0 && len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
 		return "", nil
 	}
 	executable, err := os.Executable()
@@ -290,5 +306,5 @@ func reflectContext(root, scope string) (string, error) {
 		ids = append(ids, o.ID)
 	}
 	data, _ := json.Marshal(map[string]any{"sources": ids})
-	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related}]（教訓なしはsourcesだけ）。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), nil
+	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。observationsは確認結果の原資料です。maintenanceの最大2記事は本文・関連・出典を見直し、最新のpage_id・revision・keyとreasonをmaintenance配列で保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related}]（教訓なしはsourcesだけ）。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), nil
 }

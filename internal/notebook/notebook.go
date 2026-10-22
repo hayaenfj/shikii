@@ -32,30 +32,32 @@ type Source struct {
 }
 
 type Page struct {
-	ID         string            `json:"id" yaml:"id"`
-	Title      string            `json:"title" yaml:"title"`
-	Lesson     string            `json:"lesson" yaml:"lesson"`
-	AppliesTo  string            `json:"applies_to" yaml:"applies_to"`
-	Status     string            `json:"status" yaml:"status"`
-	Sources    []Source          `json:"sources" yaml:"sources"`
-	Replaces   []string          `json:"replaces,omitempty" yaml:"replaces,omitempty"`
-	Revision   string            `json:"revision" yaml:"revision"`
-	Previous   string            `json:"previous,omitempty" yaml:"previous,omitempty"`
-	Correction *store.Correction `json:"correction,omitempty" yaml:"correction,omitempty"`
-	Body       string            `json:"body,omitempty" yaml:"body,omitempty"`
-	Related    []string          `json:"related,omitempty" yaml:"related,omitempty"`
+	ID           string            `json:"id" yaml:"id"`
+	Title        string            `json:"title" yaml:"title"`
+	Lesson       string            `json:"lesson" yaml:"lesson"`
+	AppliesTo    string            `json:"applies_to" yaml:"applies_to"`
+	Status       string            `json:"status" yaml:"status"`
+	Sources      []Source          `json:"sources" yaml:"sources"`
+	Replaces     []string          `json:"replaces,omitempty" yaml:"replaces,omitempty"`
+	Revision     string            `json:"revision" yaml:"revision"`
+	Previous     string            `json:"previous,omitempty" yaml:"previous,omitempty"`
+	Correction   *store.Correction `json:"correction,omitempty" yaml:"correction,omitempty"`
+	Body         string            `json:"body,omitempty" yaml:"body,omitempty"`
+	Related      []string          `json:"related,omitempty" yaml:"related,omitempty"`
+	ChangeReason string            `json:"change_reason,omitempty" yaml:"change_reason,omitempty"`
 }
 
 type Draft struct {
-	ID         string            `json:"id,omitempty"`
-	Title      string            `json:"title,omitempty"`
-	Lesson     string            `json:"lesson,omitempty"`
-	AppliesTo  string            `json:"applies_to,omitempty"`
-	Sources    []string          `json:"sources"`
-	Replaces   []string          `json:"replaces,omitempty"`
-	Correction *store.Correction `json:"correction,omitempty"`
-	Body       *string           `json:"body,omitempty"`
-	Related    []string          `json:"related,omitempty"`
+	ID           string            `json:"id,omitempty"`
+	Title        string            `json:"title,omitempty"`
+	Lesson       string            `json:"lesson,omitempty"`
+	AppliesTo    string            `json:"applies_to,omitempty"`
+	Sources      []string          `json:"sources"`
+	Replaces     []string          `json:"replaces,omitempty"`
+	Correction   *store.Correction `json:"correction,omitempty"`
+	Body         *string           `json:"body,omitempty"`
+	Related      []string          `json:"related,omitempty"`
+	ChangeReason string            `json:"change_reason,omitempty"`
 }
 
 type Issue struct {
@@ -65,11 +67,12 @@ type Issue struct {
 }
 
 type View struct {
-	Lessons      []Page           `json:"lessons"`
-	Pending      []store.Feedback `json:"pending_sources"`
-	Issues       []Issue          `json:"issues"`
-	Matches      []Match          `json:"matches,omitempty"`
-	Observations []Observation    `json:"observations,omitempty"`
+	Lessons      []Page            `json:"lessons"`
+	Pending      []store.Feedback  `json:"pending_sources"`
+	Issues       []Issue           `json:"issues"`
+	Matches      []Match           `json:"matches,omitempty"`
+	Observations []Observation     `json:"observations,omitempty"`
+	Maintenance  []MaintenanceTask `json:"maintenance,omitempty"`
 }
 
 type Result struct {
@@ -212,8 +215,11 @@ func (b Book) pageBytes(p Page) ([]byte, error) {
 		correction = "\n\n人の訂正の引用: " + p.Correction.Quote + "\n\n次に変える行動（仮説）: " + p.Correction.Action
 	}
 	article := ""
+	if p.ChangeReason != "" {
+		article = "\n\n変更理由: " + p.ChangeReason
+	}
 	if p.Body != "" {
-		article = "\n\n" + p.Body
+		article += "\n\n" + p.Body
 	}
 	if len(p.Related) > 0 {
 		article += "\n\n## 関連する知識\n\n"
@@ -376,6 +382,14 @@ func (b Book) query(query string, recall bool) (View, error) {
 	limit := 2
 	if query == "" && !recall {
 		limit = 20
+		v.Observations, err = b.PendingObservations()
+		if err != nil {
+			return v, err
+		}
+		v.Maintenance, err = b.Maintenance()
+		if err != nil {
+			return v, err
+		}
 	}
 	if len(v.Lessons) > limit {
 		v.Lessons = v.Lessons[:limit]
@@ -435,15 +449,15 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	if d.Lesson != "" && (strings.TrimSpace(d.Title) == "" || strings.TrimSpace(d.AppliesTo) == "") {
 		return result, errors.New("a lesson needs a title and the conditions where it applies")
 	}
-	for _, s := range []string{d.Title, d.Lesson, d.AppliesTo, body} {
+	for _, s := range []string{d.Title, d.Lesson, d.AppliesTo, body, d.ChangeReason} {
 		if !utf8.ValidString(s) {
 			return result, errors.New("wiki text must be UTF-8")
 		}
 	}
-	if len(d.Title) > 200 || len(d.Lesson) > 2000 || len(d.AppliesTo) > 1000 || len(body) > 16<<10 {
+	if len(d.Title) > 200 || len(d.Lesson) > 2000 || len(d.AppliesTo) > 1000 || len(body) > 16<<10 || len(d.ChangeReason) > 1000 {
 		return result, errors.New("wiki lesson exceeds the text limits")
 	}
-	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Related != nil) {
+	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Related != nil || d.ChangeReason != "") {
 		return result, errors.New("reviewing a source without a lesson accepts only source ids")
 	}
 	for _, id := range append(append(append([]string{}, d.Sources...), d.Replaces...), d.Related...) {
@@ -556,7 +570,11 @@ func (b Book) Ingest(d Draft) (Result, error) {
 			}
 		}
 		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related}
+		p.ChangeReason = d.ChangeReason
 		if old, ok := byID[id]; ok {
+			if d.ChangeReason == "" {
+				p.ChangeReason = old.ChangeReason
+			}
 			if bad := b.sourceIssues(old); len(bad) > 0 {
 				return result, errors.New("the existing lesson has missing or changed sources")
 			}
