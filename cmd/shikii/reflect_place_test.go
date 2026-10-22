@@ -148,4 +148,12 @@ func TestReflectPlaceWithoutPagesNeedsNoModel(t *testing.T) {
 	if p := out.(placeResult).Placements; len(p) != 1 || len(p[0].Candidates) != 0 || !strings.Contains(p[0].Note, "新しい記事") {
 		t.Fatalf("%+v", p)
 	}
+	// CLI からも同じ(shikii reflect place、JSON を標準入力)
+	old := stdin
+	defer func() { stdin = old }()
+	stdin = strings.NewReader(fmt.Sprintf(`{"wiki":[{"sources":["%016x"],"title":"t","lesson":"l","applies_to":"a"}]}`, 300))
+	cli := capture(t, func() error { return cmdReflect([]string{"place"}) })
+	if !strings.Contains(cli, `"placements"`) || !strings.Contains(cli, "新しい記事") {
+		t.Fatalf("shikii reflect place must answer like the MCP operation: %s", cli)
+	}
 }
