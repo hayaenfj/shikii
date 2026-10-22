@@ -7,12 +7,12 @@
 Your usual agent builds lessons from requests, replies and corrections, with links to the original conversation. Related lessons arrive before similar work. Reflection records how they affected the next decision. People keep asking for work as usual and check samples and undecided cases.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-283%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-292%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.4.4-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.5.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.4.4 connects concise memories to fuller knowledge articles and related pages. It includes updated agent guidance for context, wiki editing and reflection, clearer reviews, and verified updates. See the [changelog](CHANGELOG.md).
+Version 0.5.0 improves command-aware search, preserves observed evidence, and brings article maintenance into normal reflection. Decisions retain the article versions they quote; the Knowledge panel separates retrieval, quotation and usefulness. See the [changelog](CHANGELOG.md).
 
 [What changes](#what-changes) · [Requirements](#requirements) · [Get started](#get-started) · [Learn from ordinary conversations](#learn-from-ordinary-conversations) · [What people check](#what-people-check) · [Check whether memory helped](#check-whether-memory-helped) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Use it for business decisions](#use-it-for-business-decisions) · [Read more](#read-more)
 
@@ -119,7 +119,9 @@ Updated skills and hook instructions take effect in a new agent session. Existin
 1. **Keep the conversation.** The next human message joins the previous request and reply as one source observation.
 2. **Let the usual agent organize it.** The agent reads sources and integrates them into existing topics: a short retrieval summary, a knowledge body with background, reasons and open questions, and links to related pages. Explicit corrections can include the quoted statement and the action to change.
 3. **Recall briefly when relevant.** Up to two related lessons arrive for a similar request in the same project. The same revision is suppressed for one hour in a session; updated revisions arrive immediately.
-4. **Reflect in batches.** Assessment, wiki work and memory observations are grouped after two pending conversations, or at the next request after a single conversation has waited a day. People need not perform these steps each time.
+4. **Reflect in batches.** Assessment, wiki work and memory observations are grouped after two pending sources, or at the next request after a single source has waited a day. The agent also revisits up to two articles and connected knowledge. People need not perform these steps each time.
+
+The agent can retain inspected code, test results and release observations with their version, time and reference using `shikii wiki capture`. These sources are integrated into existing topics. Search keeps commands and identifiers and prioritizes titles and applicability; the agent reads selected bodies and sources when a summary is insufficient.
 
 Lessons remain hypotheses with sources. The current request and rules take priority. Original conversations and earlier revisions remain available. Periodic checks inspect sources, revisions and links, and repair the index. The active agent organizes the conversations without starting another model for this work.
 
@@ -148,6 +150,8 @@ The delivered quote and revision stay linked to the request. Routine reflection 
 | Was a delivered correction reflected in the next action? | Followed, same issue repeated, not applicable, unknown |
 
 The Knowledge panel includes delivery counts and pending assessments. Following a correction and finding a memory helpful are assessed separately. Success, another request or silence alone does not establish an effect. These are evidence-backed AI observations, not an improvement rate measured against a no-memory control.
+
+The Knowledge panel also separates decisions that searched the wiki, found candidates and actually quoted evidence. Recorded planning contexts retain the available and used article revisions, lookup time and context bytes. For a controlled comparison, use the same inputs and the recorded revisions (`shikii wiki query lesson:<page_id>@<revision>`); exclude later knowledge. These counts measure retrieval and quotation, not a proven reduction in unnecessary questions.
 
 ## Memory belongs to a project
 

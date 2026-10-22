@@ -118,9 +118,9 @@ Programs call `POST /v1/decide` and `POST /v1/label` from any language; the body
 | `GET /v1/status` | the same inventory as `shikii status` |
 | `GET /v1/tune?spec=<id>`, `POST /v1/tune/run`, `POST /v1/tune/variant`, `POST /v1/tune/adopt` | the latest tune result and the current candidates, a new run in the background, a rewording written by a person (`{"spec","name","question","options"}`; validated, never adopted by itself), adopt or reject a wording |
 | `GET /v1/wiki`, `POST /v1/wiki/claim`, `GET /v1/specs` | the knowledge panel and the spec list |
-| `POST /v1/wiki/notebook` | conversation wiki: query, ingest and lint lessons with sources; lessons remain hypotheses |
+| `POST /v1/wiki/notebook` | project wiki: query, ingest, capture observed sources, maintain article reviews and lint; lessons remain hypotheses |
 | `POST /v1/review` | query and submit evidence-backed provisional assessments; humans check random samples and undecided cases |
-| `POST /v1/reflect` | query or submit `reviews`, `wiki` and `memory` together, including correction observations; check `complete` and each item's `error` |
+| `POST /v1/reflect` | query or submit `reviews`, `wiki`, `memory` and `maintenance` together, including correction observations; check `complete` and each item's `error` |
 
 The page also has a *wording* section per spec: the latest `tune` result, the winner's wording next to the current one, and two buttons, **same meaning → adopt** and **meaning changed → reject**. Numbers are the machine's job; whether a rewording still asks what you meant is a person's. Start `serve` with `--proposer http://127.0.0.1:8087` and the page can also ask a chat model for new candidates and score them in the background.
 
@@ -263,7 +263,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 283 Go tests across 10 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 292 Go tests across 10 packages; the demo runs in CI.
 
 ## What you can connect
 
@@ -344,7 +344,9 @@ shikii gc        [spec...] [--older-than 30d] [--apply]   # drop old unlabelled 
 shikii hash      <spec>
 shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]   # rerun the retest recipes of the wiki's claims on the current model; only a person changes a status
 shikii wiki query [query-or-source-id]                      # lessons and sources from this project, stored in this project’s .shikii/
-shikii wiki ingest                                         # the usual agent submits a lesson and source ids as JSON on stdin
+shikii wiki ingest                                         # lesson and source IDs as JSON on stdin
+shikii wiki capture                                        # observed source with kind, version, reference and time
+shikii wiki maintain                                       # reviewed page, revision, neighborhood key and reason
 shikii wiki lint                                           # check sources, revisions and links; repair the generated index
 shikii version                                             # show the CLI version
 shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]   # HTTP API + review and wording page; auto-calibrates
@@ -366,6 +368,14 @@ shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # wh
 - [spec.md](../skills/shikii/references/spec.md), [bands.md](../skills/shikii/references/bands.md): the spec format and what each band and receipt means.
 - [integrations/readout.md](../integrations/readout.md), [integrations/bonjev.md](../integrations/bonjev.md), [integrations/claude-code.md](../integrations/claude-code.md), [integrations/mcp.md](../integrations/mcp.md), [integrations/docker.md](../integrations/docker.md): the connections we run.
 - [examples/](../examples/) and [testdata/](../testdata/README.md): a spec with no calibration to start from, and the synthetic labelled sets used in tests.
+
+## Knowledge sources and article maintenance
+
+Capture inspected evidence with `wiki capture` (JSON on stdin): `kind` is human, agent, code, test or release; include title, content, reference, version and observed_at (RFC3339). Text is bounded to 32 KiB and the encoded object to 64 KiB. Reference strings are not executed or fetched. The returned ID is an immutable, project-scoped source for ingestion. Captured observations share the two-source reflection budget; at most 128 may wait unprocessed. Available long conversation originals are preserved separately with a citation hash during ingestion.
+
+Query results explain matching fields and terms. Titles and applicability outrank body-only matches; automatic recall uses titles and applicability only. `hook plan query` can select up to two article IDs with `pages`; cite returned article keys during submit. A decision records ranked candidates, selected bodies, exact citations, available revisions, lookup milliseconds and context bytes. Use `lesson:<id>@<revision>` for historical articles and constrain retrospective comparisons to the recorded inventory. Retrieval, quotation, agent assessment and observable outcomes remain distinct.
+
+Listing the wiki and querying reflection returns up to two maintenance tasks. The active agent reads articles, connected knowledge and sources, edits through ingestion with change_reason, then records the current page_id, revision, key and reason through wiki maintain or reflection. Page and connected revisions invalidate earlier reviews; unchanged neighborhoods return after 30 days. Missing bodies or links are inspection prompts, not semantic errors. See [the source and maintenance contract](../skills/shikii/references/wiki.md).
 
 ## Conversation recall and reflection limits
 

@@ -79,10 +79,10 @@ COPY = {
         "project": "このプロジェクトの .shikii/",
         "memory_title": "会話を次の仕事へ",
         "memory_rows": [
-            ("原資料と版を残す", "records/ · 依頼・返答・次の発言"),
-            ("教訓と次の行動をまとめる", "wiki/ · 出典・適用条件・訂正の引用"),
-            ("似た依頼へ短く届ける", "届いた引用と版を依頼に結ぶ"),
-            ("判断と確認結果を振り返る", "役立ち方と訂正への行動を別に観察"),
+            ("原資料と版を残す", "records/ · 会話・コード・確認結果"),
+            ("知識へ統合して見直す", "wiki/ · 本文・出典・関連する知識"),
+            ("必要な知識を選んで読む", "短い要約から本文・原資料へ"),
+            ("判断と確認結果を振り返る", "引用した版・判断・訂正への行動"),
         ],
         "decision_title": "業務の判定を任せる",
         "decision_rows": [
@@ -114,10 +114,10 @@ COPY = {
         "project": "This project's .shikii/",
         "memory_title": "Conversations inform later work",
         "memory_rows": [
-            ("Keep sources and revisions", "records/ · request, reply, next message"),
-            ("Write a lesson and next action", "wiki/ · sources, conditions, correction"),
-            ("Recall briefly for similar work", "Link the actual quote and revision to a request"),
-            ("Reflect on decisions and results", "Observe usefulness and behavior separately"),
+            ("Keep sources and revisions", "records/ · conversations, code, results"),
+            ("Integrate and revisit knowledge", "wiki/ · bodies, sources, related pages"),
+            ("Select the knowledge to read", "Short summaries lead to bodies and sources"),
+            ("Reflect on decisions and results", "Keep quoted revisions and observed results"),
         ],
         "decision_title": "Delegate a repeated decision",
         "decision_rows": [

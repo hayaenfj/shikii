@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.5.0 — Evidence that reaches decisions
+
+- Preserve command names and identifiers in wiki search, prioritize titles and applicability, and explain matching fields and terms. Keep automatic recall concise.
+- Capture inspected human or agent text, code, test results and release observations with their type, version, time and reference. Preserve available long conversation originals and their citation hashes independently of decision-record retention.
+- Bring up to two article reviews into normal reflection. Track connected revisions, reject stale reviews, retain editorial reasons, and revisit unchanged neighborhoods after 30 days.
+- Let planning select article bodies and cite their exact revisions. Retain ranked candidates, read articles, quotations, available revisions and retrieval costs. Reject cited sources that change during a decision and make historical revisions available for comparisons without future knowledge.
+- Show retrieval, quotation and existing memory assessments separately, together with source evidence and upcoming article reviews. Refresh the English skill, English/Japanese documentation and architecture diagrams.
+
 ## 0.4.4 — Connected knowledge and agent guidance
 
 - Include full knowledge bodies, related pages, and English agent skills for context preparation and wiki editing, alongside clearer review and calibration displays.
