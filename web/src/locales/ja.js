@@ -1,5 +1,13 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
+  summaryLine: (m, g, p) => '届いた教訓 ' + (m.delivered || 0) + ' 件（役立った ' + (m.helpful || 0) + '）・止める検査 ' + (g.enabled || 0) + ' 有効（止めた ' + (g.stopped || 0) + '、直った ' + (g.fixed || 0) + '）・人が答える判定 ' + (p.waits || 0) + ' / ' + (p.records || 0),
+  summaryOpen: 'クリックで詳細',
+  summaryMemoryHead: '届いた教訓', summaryMemoryNone: 'まだ届いていません。似た依頼の前と、サブエージェントの開始時に届きます。',
+  summaryMemoryRow: m => '届けた ' + m.delivered + ' 件: 役立った ' + m.helpful + '、使わなかった ' + m.unused + '、害があった ' + m.harmful + '、不明 ' + m.unknown + '、観察待ち ' + m.pending + '（次の依頼待ち ' + m.awaiting_feedback + '）。直近7日: 届けた ' + m.recent_delivered + '、役立った ' + m.recent_helpful,
+  summaryCorrections: c => '訂正の配送 ' + c.delivered + ': 沿った ' + c.followed + '、再発 ' + c.repeated + '、対象外 ' + c.not_applicable + '、不明 ' + c.unknown + '、観察待ち ' + c.pending,
+  summaryGuardsHead: '止める検査', summaryGuardsNone: 'まだありません。人の訂正から shikii guard add で草稿を置き、shikii guard enable で有効にします。',
+  summaryGuardOn: '有効', summaryGuardOff: '無効（草稿）', summaryGuardLastPass: at => '最後: 通過 ' + at, summaryGuardLastStop: (at, r) => '最後: 止めた ' + at + ': ' + r,
+  summaryPersonHead: '人が答える判定', summaryPersonRow: p => '今の規則で人を待つ判定 ' + (p.waits || 0) + ' / ' + (p.records || 0) + '（1000件あたり ' + Math.round(p.per_thousand || 0) + '。直近7日 ' + (p.recent_waits || 0) + ' / ' + (p.recent_records || 0) + '）。正解を決めたのは 人 ' + (p.by_person || 0) + '、結果 ' + (p.by_result || 0),
   notebookBody: '背景・判断理由を読む', notebookRelated: '関連する知識', notebookBack: '知識の一覧へ戻る',
   legacyPlanning: '過去の形式の回答です。新しい質問の答え合わせには使いません。',
   planningLearning: n => '今の形の記録だけで学習します。以前の形の記録' + n + '件は残してありますが、答え合わせには使いません。',

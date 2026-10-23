@@ -84,3 +84,19 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.7 ui-monospace,m
 .calibration-report time { display:block; margin-top:4px; color:var(--muted); font-size:10px; }
 .calibration-summary { margin:10px 0; line-height:1.8; }
 .calibration-report summary { cursor:pointer; color:var(--muted); }
+
+/* 効き目の要約(0.7.4): 1 行 + クリックで詳細 */
+.summary-card { border:1px solid var(--line); border-radius:12px; background:var(--surface); margin:0 0 16px; font-size:13px; }
+.summary-card > summary { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; list-style:none; }
+.summary-card > summary::-webkit-details-marker { display:none; }
+.summary-mark { color:var(--accent); }
+.summary-line { flex:1; }
+.summary-hint { color:var(--muted); font-size:11px; }
+.summary-body { padding:4px 14px 12px; border-top:1px solid var(--line); display:grid; gap:10px; }
+.summary-body h3 { font-size:12px; margin:10px 0 4px; color:var(--muted); letter-spacing:.04em; }
+.summary-body p { margin:0; }
+.summary-body .muted { color:var(--muted); }
+.summary-guards { list-style:none; padding:0; margin:0; display:grid; gap:6px; }
+.summary-guards .kind { color:var(--muted); font-size:11px; }
+.summary-guards .state { padding:1px 6px; border:1px solid var(--line); border-radius:5px; font-size:10px; }
+.summary-guards .state.on { border-color:var(--accent); color:var(--accent); }

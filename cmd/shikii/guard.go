@@ -413,6 +413,29 @@ func printGuardStats(out io.Writer, root string) {
 	fmt.Fprintf(out, "guards: %d of %d enabled; stopped %d turns, fixed before the turn ended %d\n", s.Enabled, len(guards), s.Stopped, s.Fixed)
 }
 
+// guardSummaryJSON は画面用(/v1/status の summary.guards): 数と、各検査の状態・最後の結果。
+func guardSummaryJSON(root string) map[string]any {
+	guards, err := loadGuards(root)
+	items := []map[string]any{}
+	if err != nil {
+		return map[string]any{"total": 0, "enabled": 0, "stopped": 0, "fixed": 0, "items": items, "error": err.Error()}
+	}
+	recs := readGuardRecords(root)
+	last := map[string]guardRecord{}
+	for _, r := range recs {
+		last[r.Guard] = r
+	}
+	for _, g := range guards {
+		item := map[string]any{"id": g.ID, "kind": g.Kind, "title": g.Title, "enabled": g.Enabled, "reason": g.Reason}
+		if r, ok := last[g.ID]; ok {
+			item["last"] = map[string]any{"pass": r.Pass, "at": r.At, "reason": r.Reason, "recheck": r.Recheck}
+		}
+		items = append(items, item)
+	}
+	s := countGuardStats(guards, recs)
+	return map[string]any{"total": len(guards), "enabled": s.Enabled, "stopped": s.Stopped, "fixed": s.Fixed, "items": items}
+}
+
 // ---------------------------------------------------------------- CLI
 
 func cmdGuard(args []string) error {
