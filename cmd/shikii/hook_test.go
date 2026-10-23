@@ -722,7 +722,7 @@ func TestHookAuditGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 2 {
+	if cmds := hookCommands(settings); len(cmds) != 3 {
 		t.Fatalf("an empty settings.json must be treated as {}: %v", cmds)
 	}
 }
@@ -752,8 +752,12 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(settings)
-	if len(cmds) != 2 || !strings.HasSuffix(cmds[0], " hook stop") || !strings.HasSuffix(cmds[1], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
+	if len(cmds) != 3 || !strings.HasSuffix(cmds[0], " hook stop") || !strings.HasSuffix(cmds[1], " hook subagent-start") || !strings.HasSuffix(cmds[2], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
 		t.Fatalf("hooks after install must run the binary by its absolute path: %v", cmds)
+	}
+	// Codex には SubagentStart が無いので 2 つだけ(0.7.3)
+	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 2 || strings.Contains(strings.Join(codex, " "), "subagent-start") {
+		t.Fatalf("Codex gets UserPromptSubmit and Stop only: %v", codex)
 	}
 	b, _ := os.ReadFile(settings)
 	if !strings.Contains(string(b), "node other.mjs") || !strings.Contains(string(b), "rtk hook claude") || !strings.Contains(string(b), `"language": "Japanese"`) || !strings.Contains(string(b), `"SessionStart": []`) {
@@ -782,7 +786,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 2 {
+	if cmds := hookCommands(settings); len(cmds) != 3 {
 		t.Fatalf("second install must not duplicate: %v", cmds)
 	}
 	if !strings.Contains(out, "already there") {
@@ -803,7 +807,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 2 || !strings.Contains(out, "hooks added") {
+	if cmds := hookCommands(settings); len(cmds) != 3 || !strings.Contains(out, "hooks added") {
 		t.Fatalf("install must remove the old pre-tool-use hook: %v\n%s", cmds, out)
 	}
 	if b, _ = os.ReadFile(settings); !strings.Contains(string(b), "rtk hook claude") || strings.Contains(string(b), "Bash|Edit") {

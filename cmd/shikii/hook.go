@@ -82,7 +82,7 @@ func agentHome() (string, error) {
 }
 
 func cmdHook(args []string) error {
-	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
+	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
 	if len(args) == 0 {
 		return errors.New(strings.TrimSpace(usage))
 	}
@@ -99,7 +99,7 @@ func cmdHook(args []string) error {
 		return cmdHookPlan(args[1:])
 	case "variants":
 		return cmdHookVariants(args[1:])
-	case "user-prompt-submit", "stop":
+	case "user-prompt-submit", "stop", "subagent-start":
 		// hook は作業を止めない: 何があっても exit 0。理由は hook.log に
 		if err := runHookEvent(args[0]); err != nil {
 			hookLog(err.Error())
@@ -109,7 +109,7 @@ func cmdHook(args []string) error {
 		// 古い版が settings に残した event。何もせず黙る(次の `shikii hook install --yes` が外す)
 		return nil
 	}
-	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop)", args[0])
+	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start)", args[0])
 }
 
 // ---------------------------------------------------------------- Claude Code / Codex の JSON
@@ -117,7 +117,8 @@ func cmdHook(args []string) error {
 // hookInput は Claude Code と Codex が stdin に渡す JSON のうち使う所(鍵は両方同じ)。
 type hookInput struct {
 	SessionID            string `json:"session_id"`
-	AgentID              string `json:"agent_id"` // 付いていれば人の依頼ではない(サブエージェント等)。依頼の控えを変えない
+	AgentID              string `json:"agent_id"`   // 付いていれば人の依頼ではない(サブエージェント等)。依頼の控えを変えない
+	AgentType            string `json:"agent_type"` // SubagentStart: サブエージェントの種類(Explore など)
 	CWD                  string `json:"cwd"`
 	Prompt               string `json:"prompt"`
 	StopHookActive       bool   `json:"stop_hook_active"`
@@ -559,6 +560,8 @@ func runHookEvent(event string) error {
 	case "stop":
 		out, muts, err = hookStop(agent, &in, snapshot)
 		muts = append(muts, func(s *hookSession) { summary = stopSummary(agent, s) }) // 答え待ちの要約は、このターンの判定を控えに足した後の控えで数える
+	case "subagent-start":
+		out, err = hookSubagentStart(agent, &in, snapshot) // 親の控えは変えない(muts 無し)
 	}
 	if len(muts) > 0 {
 		if serr := updateSession(agent, in.SessionID, func(sess *hookSession) {
@@ -640,8 +643,11 @@ func joinLines(a, b string) string {
 }
 
 func hookEventName(event string) string {
-	if event == "user-prompt-submit" {
+	switch event {
+	case "user-prompt-submit":
 		return "UserPromptSubmit"
+	case "subagent-start":
+		return "SubagentStart"
 	}
 	return "Stop"
 }
@@ -658,6 +664,28 @@ func isNotification(prompt string) bool {
 		head = head[:300]
 	}
 	return strings.Contains(head, "[SYSTEM NOTIFICATION - NOT USER INPUT]")
+}
+
+// hookSubagentStart は、サブエージェント(Claude Code の Agent ツール)が始まる時に、親の依頼に近い教訓を同じ形で届ける。
+// サブエージェントの依頼文は UserPromptSubmit に来ないので、0.7.2 まではここに何も届いていなかった(2026-10-23 の実験で判明)。
+// 親のセッションの控え(依頼・届けた記憶の版)は変えず、配送は親とは別の ID(ターンとサブエージェントのハッシュ)で記録する。
+// 親の依頼がまだ無ければ何も出さない。判定(2 問)はしない。
+func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hookOut, error) {
+	if snapshot.Request == "" || snapshot.Scope == "" || snapshot.TurnID == "" {
+		return hookOut{}, nil
+	}
+	sum := sha256.Sum256([]byte(snapshot.TurnID + "/" + in.AgentID))
+	sub := hookSession{TurnID: hex.EncodeToString(sum[:])[:16], Scope: snapshot.Scope} // 届けた版の控えは持たない: 親が受け取っていてもサブエージェントには届ける
+	context, err := memoryContext(agent, snapshot.Scope, snapshot.Request, &sub)
+	if err != nil || context == "" {
+		return hookOut{}, err
+	}
+	kind := in.AgentType
+	if kind == "" {
+		kind = "subagent"
+	}
+	head := "shikii: このサブエージェント(" + kind + ")に、親の依頼「" + cut(snapshot.Request, 80) + "」に近い記憶を届けます。"
+	return hookOut{Context: joinLines(head, context)}, nil
 }
 
 // hookUserPrompt は考える前の 2 つ(prompt-kind と needs-plan)を聞き、依頼と作業ツリーの状態を控える。前の依頼の結果の正解はここ(次の依頼が来た時)で決める。
@@ -1449,9 +1477,10 @@ func ensurePage(agent string) {
 type hookEvent struct {
 	event, cmd string
 	timeout    int
+	claudeOnly bool // Codex に無い event(SubagentStart)は Claude Code の設定にだけ足す
 }
 
-// hookEvents は 2 つ: 考える前(UserPromptSubmit)と考え終わった後(Stop)。Claude Code と Codex で同じ。
+// hookEvents は 3 つ: 考える前(UserPromptSubmit)、考え終わった後(Stop)、サブエージェントが始まる時(SubagentStart。Claude Code だけ)。
 // command は今の実行ファイルの絶対パス + " hook <event>": エージェントの shell の PATH に `shikii` が無くても(go install 直後の ~/go/bin など)動く。
 // 実行ファイルが動いたら `shikii hook install --yes` を流し直せば、古いパスの handler は外れて新しいものが入る。
 func hookEvents() []hookEvent {
@@ -1463,9 +1492,30 @@ func hookEvents() []hookEvent {
 		exe = p
 	}
 	return []hookEvent{
-		{"UserPromptSubmit", exe + " hook user-prompt-submit", hookTimeout},
-		{"Stop", exe + " hook stop", hookTimeout + 5},
+		{"UserPromptSubmit", exe + " hook user-prompt-submit", hookTimeout, false},
+		{"Stop", exe + " hook stop", hookTimeout + 5, false},
+		{"SubagentStart", exe + " hook subagent-start", hookTimeout, true}, // サブエージェントにも親の依頼に近い教訓を届ける(0.7.3)
 	}
+}
+
+// hookEventsFor は設定ファイルごとに足す hook。Codex には SubagentStart が無いので外す。
+func hookEventsFor(who string) []hookEvent {
+	var evs []hookEvent
+	for _, ev := range hookEvents() {
+		if ev.claudeOnly && who != "Claude Code" {
+			continue
+		}
+		evs = append(evs, ev)
+	}
+	return evs
+}
+
+func hookEventNames(evs []hookEvent) string {
+	names := make([]string, 0, len(evs))
+	for _, ev := range evs {
+		names = append(names, ev.event)
+	}
+	return strings.Join(names, ", ")
 }
 
 // isShikiiHook は handler の command が shikii の hook か: `<…/>shikii[…] hook <event>`(PATH の `shikii` でも絶対パスでも、古い版の pre-tool-use でも)。
@@ -1500,7 +1550,8 @@ func hookInstall(args []string, install bool) error {
 	if install {
 		fmt.Fprintf(stdout, "1. %s: 共通の型とwikiを準備します。利用するプロジェクトで shikii --init を一度実行すると、その .shikii/ へ会話・判定・採点・正解・較正を保存します。未初期化の場所ではhookは動きません。既製の4問（%s）とskillを準備し、既存の設定は保持します。\n", tilde(agent), strings.Join(hookSpecs, ", "))
 		for i, t := range hookTargets {
-			fmt.Fprintf(stdout, "%d. %s: add 2 hooks (UserPromptSubmit, Stop) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), tilde(strings.Fields(hookEvents()[0].cmd)[0]), t.who, filepath.Base(t.rel), t.note)
+			evs := hookEventsFor(t.who)
+			fmt.Fprintf(stdout, "%d. %s: add %d hooks (%s) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), len(evs), hookEventNames(evs), tilde(strings.Fields(evs[0].cmd)[0]), t.who, filepath.Base(t.rel), t.note)
 		}
 		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool. Claude Code and Codex (Cursor and OpenCode have no hook).\n")
 		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page (%s) is started the same way\n", hookLocalURL, hookPageURL)
@@ -1544,7 +1595,7 @@ func hookInstall(args []string, install bool) error {
 	}
 	for _, t := range hookTargets {
 		settings := filepath.Join(home, t.rel)
-		changed, err := editHooks(settings, install, hookEvents())
+		changed, err := editHooks(settings, install, hookEventsFor(t.who))
 		if err != nil {
 			return err
 		}
