@@ -214,13 +214,14 @@ async function checkLanesForPersonSpec(target) {
   const badges = [...target.querySelectorAll('#tabs .badge')].map(b => b.textContent).join(',') === '1,2';
   const youCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0;
   target.querySelector('.answer-tabs [data-lane="results"]')?.click(); flushSync(); await settle();
-  const resultsCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length === 0 && (target.querySelector('.lane-results')?.textContent || '').includes('次の依頼') && !!target.querySelector('.readonly-note');
+  // 人が正解を付ける問い: 「AI が決めた(答えなくてよい)」の列。読めて、違うと思えば直せる(ボタンは残る)
+  const resultsCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0 && (target.querySelector('.lane-results')?.textContent || '').includes('AI が確信') && (target.querySelector('.answer-tabs [data-lane="results"]')?.textContent || '').includes('AI が決めた');
   let clicked = 0;
   for (const b of target.querySelectorAll('.item button')) b.addEventListener('click', () => { clicked++; });
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); flushSync();
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = you && first && badges && youCards && resultsCards && clicked === 0;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答える問いの列: あなたがやること=' + you + ', 最初は人待ちの問い=' + first + ', 印=' + badges + ', 未回答にボタン=' + youCards + ', 結果待ちは読むだけ=' + resultsCards + ', キーで押さない=' + (clicked === 0) + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答える問いの列: あなたがやること=' + you + ', 最初は人待ちの問い=' + first + ', 印=' + badges + ', 未回答にボタン=' + youCards + ', AI が決めた列=' + resultsCards + ', キーで押さない=' + (clicked === 0) + ')');
   return ok;
 }
 

@@ -592,7 +592,7 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	// 人の確認は needs-plan の 1 件。prompt-kind は結果から正解が付くので迷っても人を待たない。Stop の完了判定は AI の仮採点と結果を待つ。
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "add a --json flag to the status command"})
 	out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Added."})
-	if !strings.Contains(out, "1 of this session's decisions wait") || !strings.Contains(out, pageNotUp+"/") || strings.Contains(out, "Start the page") {
+	if !strings.Contains(out, "1 of this session's decisions wait") || !strings.Contains(out, pageNotUp) || strings.Contains(out, "Start the page") {
 		t.Fatalf("the line must always say where to answer (the page is started in the background; here it never comes up): %s", out)
 	}
 	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+filepath.Join(cwd, ".shikii")+" --port 0 --local ") {

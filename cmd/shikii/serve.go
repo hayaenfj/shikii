@@ -700,9 +700,6 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		show, audit, reason := reviewQueueState(rec, labeled, reviews)
-		if show && !outcomeSpecs[id] && !machineOnlySpecs[id] && !waitsForPersonRecord(id, rec, audit) {
-			continue // 人が正解を付ける問いの act(抜き取り外): 結果は来ず人も答えないので列に出さない(監査 R5)
-		}
 		if show && !superseded[rec.TraceID] {
 			pending = append(pending, queued{rec, audit, reason})
 		}

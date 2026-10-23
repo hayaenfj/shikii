@@ -101,7 +101,7 @@
   {/if}
   {#if sp.review_quality?.scored}<p class="k review-quality">{t('reviewQuality')(sp.review_quality)}</p>{/if}
   {#if sp.review_pending}<p class="k">{t('reviewPending')(sp.review_pending)}</p>{/if}
-  <Chips {counts} labels={sp.labels} {machineOnly} {resultsCount} />
+  <Chips {counts} labels={sp.labels} {machineOnly} {resultsCount} settledByAI={!machineOnly && sp.truth_source === 'person'} />
   {#if projects.length > 1}
     <div class="chips projects">
       <span class="k">{t('byProject')}</span>
@@ -132,14 +132,14 @@
         {#if extra}<div>{t('more')(extra)}</div>{/if}
       </div>
     {:else if ui.view === 'one'}
-      {#if lane === 'you'}<div class="todo">{t('todo')}</div><div class="keys">{t('keysHint')}</div>{:else}<div class="todo lane-results">{t(machineOnly ? 'machineOnlyLane' : 'resultsLane')}</div>{/if}
+      {#if lane === 'you'}<div class="todo">{t('todo')}</div><div class="keys">{t('keysHint')}</div>{:else}<div class="todo lane-results">{t(machineOnly ? 'machineOnlyLane' : sp.truth_source === 'person' ? 'settledByAILane' : 'resultsLane')}</div>{/if}
       {#key visible[0].trace_id}
-        <ItemCard {sp} it={visible[0]} readonly={lane === 'results'} pos={t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')} />
+        <ItemCard {sp} it={visible[0]} readonly={lane === 'results' && (machineOnly || sp.truth_source !== 'person')} pos={t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')} />
       {/key}
     {:else}
-      {#if lane === 'you'}<div class="keys">{t('keysHint')}</div>{:else}<div class="todo lane-results">{t(machineOnly ? 'machineOnlyLane' : 'resultsLane')}</div>{/if}
+      {#if lane === 'you'}<div class="keys">{t('keysHint')}</div>{:else}<div class="todo lane-results">{t(machineOnly ? 'machineOnlyLane' : sp.truth_source === 'person' ? 'settledByAILane' : 'resultsLane')}</div>{/if}
       {#each visible.slice(0, ui.listSize) as it (it.trace_id)}
-        <ItemCard {sp} {it} readonly={lane === 'results'} />
+        <ItemCard {sp} {it} readonly={lane === 'results' && (machineOnly || sp.truth_source !== 'person')} />
       {/each}
       {#if visible.length > ui.listSize || extra}
         <button type="button" class="weak" onclick={() => { ui.listSize += 30; }}>{t('showMore')(Math.max(0, visible.length - ui.listSize) + extra)}</button>
