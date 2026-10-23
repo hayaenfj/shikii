@@ -17,6 +17,7 @@ import (
 
 type reflectRequest struct {
 	Operation   string                       `json:"operation"`
+	Sources     []string                     `json:"sources,omitempty"` // query の対象の控え(hook の理由の文と同じ形。query は対象を自分で選ぶので無視する。監査 R5)
 	Reviews     []reviewRequest              `json:"reviews,omitempty"`
 	Wiki        []notebook.Draft             `json:"wiki,omitempty"`
 	Memory      []memoryAssessmentRequest    `json:"memory,omitempty"`

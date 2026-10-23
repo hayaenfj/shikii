@@ -504,6 +504,8 @@ func countRitualStats(recs []guardRecord) ritualStats {
 			case !r.Recheck && r.Pass:
 				st.Asked++
 				st.Done++
+			case !r.Recheck && !r.Pass && failed[key]:
+				// 同じターンの二度目の失敗(通知の後の Stop)は数えない
 			case !r.Recheck && !r.Pass:
 				st.Asked++
 				failed[key] = true
@@ -601,6 +603,9 @@ func guardList(root string) error {
 		if g.Enabled {
 			state = "有効"
 		}
+		if isBuiltinGuard(g.ID) {
+			state = "組み込み(常に有効)"
+		}
 		line := fmt.Sprintf("%-24s %-16s %s  %s", g.ID, g.Kind, state, g.Title)
 		if r, ok := last[g.ID]; ok {
 			if r.Pass {
@@ -618,6 +623,9 @@ func guardAdd(root string, in io.Reader) error {
 	data, err := io.ReadAll(io.LimitReader(in, 64<<10))
 	if err != nil {
 		return err
+	}
+	if bytes.Contains(data, []byte(ritualPlan)) || bytes.Contains(data, []byte(ritualReflect)) {
+		return errors.New("plan-before-work / reflect-before-end は組み込みの作法の検査の id で、草稿には使えません")
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()

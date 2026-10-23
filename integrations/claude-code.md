@@ -59,14 +59,14 @@ shikii hook uninstall --yes  # 足した hook(Claude Code 3 つ、Codex 2 つ)�
 which shikii                 # Claude Code がそのまま `shikii` を呼ぶので、PATH に要る
 ```
 
-**インストール後、利用するプロジェクトで一度初期化する。** `shikii --init` を実行するか、エージェントに「このプロジェクトでshikiiを使いたい」と頼む。初期化は既製の問い(hookの4問とwikiの2問)・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を保存する。印が無い・別のプロジェクトの印・壊れた印ではhookは動かず、保存先・Gitの除外・モデルの起動にも触れない。初期化失敗では有効にせず、再実行しても既存データを保持する。 鍵が無く、モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面(:8096)は、ターンの終わりに答え待ちが出た時に立っていなければ hook が `shikii serve` を裏で起こす。起こす権利は guard(`starting-model` / `starting-page`)の flock で 1 つの hook だけが取り、前に起こした子が生きている間(長いモデルの取得中も)と 10 分の中は起こさない。出力は `~/.shikii/agent/up.log` と `serve.log`。
+**インストール後、利用するプロジェクトで一度初期化する。** `shikii --init` を実行するか、エージェントに「このプロジェクトでshikiiを使いたい」と頼む。初期化は既製の問い(hookの4問とwikiの2問)・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を保存する。印が無い・別のプロジェクトの印・壊れた印ではhookは動かず、保存先・Gitの除外・モデルの起動にも触れない。初期化失敗では有効にせず、再実行しても既存データを保持する。 鍵が無く、モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が立っていなければ `shikii serve --store <プロジェクト>/.shikii --port 0` を裏で起こす(hook は待たない。serve が空いているポートを取り、`~/.shikii/agent/pages/<id>.json` に印を書き、ブラウザで一度開く)。起こす権利は印(`starting-model` / `starting-page-<id>`)の flock で 1 つの hook だけが取り、前に起こした子が生きている間と、モデルは 10 分・画面は 30 秒の中は起こさない。出力は `~/.shikii/agent/up.log` と `serve-<id>.log`。
 
 `install` がすること(2 回目は何も足さない):
 
 1. `~/.shikii/agent/` に共通の型と既製の wiki を置く。各仕事の `.shikii/` は`shikii --init`（`shikii init`も同じ）が準備し、4 つの spec を埋め込みの原本から**無いものだけ**写す。他の仕事の線は写さず、既にその仕事で育てた spec は触らない。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
 2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `UserPromptSubmit` と `Stop` の 2 つ、Claude Code にはさらに `SubagentStart`(0.7.3。サブエージェントが始まる時に、親の依頼に近い教訓を同じ形で届ける。Codex には無い event なので足さない)(command は **実行ファイルの絶対パス** + ` hook <event>`。エージェントの shell の PATH に `shikii` が無くても動く。実行ファイルを動かしたら `shikii hook install --yes` を流し直すと古いパスの handler が外れて新しいものが入る。timeout は UserPromptSubmit 10 秒、Stop 15 秒。matcher は無い)。古い版が足した `PreToolUse` の shikii の hook は外す(他の hook と鍵は残す)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
-固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ guards/ records/ labels/ sessions/)、モデルは推奨が TypeSafe の Jev(環境変数 `TYPESAFE_API_KEY` がある時。`SHIKII_MODEL=local` なら手元)、鍵が無ければ手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。既製の spec は全部 `send_to: [hosted, local]`、`pii: false` で、鍵があれば依頼・返答・wiki の教訓が TypeSafe へ送られる(2026-10-23 の決定。手元の記録にも残る)。1 回の判定は Jev で約 0.2 秒、手元のモデルで 0.1〜0.6 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しには何も足されない。モデルが無ければ待たずに黙る。
+固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ guards/ records/ labels/ sessions/)、モデルは推奨が TypeSafe の Jev(環境変数 `TYPESAFE_API_KEY` がある時。`SHIKII_MODEL=local` なら手元)、鍵が無ければ手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面はプロジェクトごとに空いているポート(`shikii page` で分かる)。手で `serve` を起こす時の既定は 8095。既製の spec は全部 `send_to: [hosted, local]`、`pii: false` で、鍵があれば依頼・返答・wiki の教訓が TypeSafe へ送られる(2026-10-23 の決定。手元の記録にも残る)。1 回の判定は Jev で約 0.2 秒、手元のモデルで 0.1〜0.6 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しには何も足されない。モデルが無ければ待たずに黙る。
 
 答え合わせの画面は hook が立てる。手で立てるなら:
 
@@ -99,7 +99,7 @@ shikii は線(較正)が無いうちは `act` を出さない。判定に基づ�
 
 文は英語。`~/.claude/settings.json` の `language` が日本語なら、同じ文を日本語で併記する。他の言語は文は英語のままで、記録の `display` に spec の `display.<lang>` の質問と答えの名前(あれば)と言語だけが入る。例: `shikii: this turn looks unfinished against what you asked (done-as-asked p(yes)=0.15)` の下に `shikii: このターンは頼んだことを終えていないように見える(done-as-asked p(はい)=0.15)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。はい / いいえの問い(noul)の答えの名前は p(yes) が 0.5 未満なら「いいえ」側(終えていない、範囲の外)。英語の設定なら英語だけで、`display` は付かない(spec に `display.<lang>` が無く出した文も無い時も付かない)。
 
-ターンの終わり(Stop)には、そのセッションの判定で人の答えを待つもの(迷った判定と、act の 20 件に 1 件の抜き取り。線が無い間は、生の確率が spec の `thresholds.ask` 以上の判定が「迷った」になり、それ未満の discard は記録だけ)が新しく増えていれば 1 行だけ出す: `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:8096/`。画面が立っていなければ hook が裏で起こし、行は常にこの URL。同じ数を毎ターン繰り返さない。URL の `?spec=<id>&trace=<trace_id>` で開くと、その 1 件が先頭に来る(答え済み・列に無い trace は元の順のまま)。
+ターンの終わり(Stop)には、そのセッションの判定で人の答えを待つもの(迷った判定と、act の 20 件に 1 件の抜き取り。線が無い間は、生の確率が spec の `thresholds.ask` 以上の判定が「迷った」になり、それ未満の discard は記録だけ)が新しく増えていれば 1 行だけ出す: `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:<空いていたポート>/`。行にはそのプロジェクトの画面の URL が入り、立っていなければ hook が裏で起こして「まだ立っていない」と書く。同じ数を毎ターン繰り返さない。URL の `?spec=<id>&trace=<trace_id>` で開くと、その 1 件が先頭に来る(答え済み・列に無い trace は元の順のまま)。
 
 ## 長い返答を画面で読む
 

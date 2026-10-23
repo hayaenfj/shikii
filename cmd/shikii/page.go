@@ -78,15 +78,16 @@ func livePage(scope string) string {
 }
 
 var (
-	pageStartWait = 3 * time.Second  // 起こしてから応えるまで待つ上限(hook の中)
-	pageStartGap  = 30 * time.Second // 前に起こした子が死んでいても、この間は起こし直さない(失敗し続ける serve を連打しない)
-	openBrowser   = openInBrowser    // テストは記録するだけの物に差し替える
+	pageStartGap   = 30 * time.Second // 前に起こした子が死んでいても、この間は起こし直さない(失敗し続ける serve を連打しない)
+	pageStaleGuard = 5 * time.Minute  // 起こす権利の印の pid が生きているのに画面が応えない時、この時間を過ぎたら印を片付ける(pid の再利用。監査 R5)
+	openBrowser    = openInBrowser    // テストは記録するだけの物に差し替える
 )
 
-// ensureProjectPage は、このプロジェクトの画面が立っていなければ `shikii serve --store <scope>/.shikii --port 0` を裏で起こし、
-// 応えたらブラウザで開く(Claude Code・Codex の最初の依頼で。人に起動コマンドを打たせない)。起こす権利は startOnce の flock で 1 つの hook だけに
-// 渡し、serve 自身も立っている画面があれば起きないので、複数のエージェントが同じプロジェクトで動いても画面は 1 つ。
-// 返すのは URL と、今回起こしたか。
+// ensureProjectPage は、このプロジェクトの画面が立っていなければ `shikii serve --store <scope>/.shikii --port 0` を裏で起こす
+// (Claude Code・Codex の最初の依頼で。人に起動コマンドを打たせない)。hook は応えるのを待たない(Claude Code の制限時間の中に収める。監査 R5):
+// 印とブラウザは serve 自身が口を開けた直後に書き・開く。起こす権利は startOnceWithin の flock で 1 つの hook だけに渡し、
+// serve 自身も立っている画面があれば起きないので、複数のエージェントが同じプロジェクトで動いても画面は 1 つ。
+// 返すのは URL(立っていれば)と、今回起こしたか。
 func ensureProjectPage(scope string) (string, bool) {
 	common, err := agentHome()
 	if err != nil || scope == "" {
@@ -97,19 +98,37 @@ func ensureProjectPage(scope string) (string, bool) {
 	}
 	id := projectID(scope)
 	root := filepath.Join(scope, ".shikii")
-	if !startOnceWithin(common, "page-"+id, pageStartGap, func() int {
+	clearStaleStartGuard(common, "page-"+id)
+	started := startOnceWithin(common, "page-"+id, pageStartGap, func() int {
 		return hookSpawn(common, "serve-"+id+".log", "serve", "--store", root, "--port", "0", "--local", hookLocalURL)
-	}) {
-		return "", false
+	})
+	return "", started
+}
+
+// clearStaleStartGuard は、起こす権利の印の pid が生きているのに画面が応えず、印が pageStaleGuard より古ければ印を消す(別のプロセスが pid を再利用した時に永久に起こせなくなるのを避ける)。
+func clearStaleStartGuard(common, what string) {
+	path := filepath.Join(common, "starting-"+what)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
 	}
-	deadline := time.Now().Add(pageStartWait)
+	var pid int
+	var at string
+	fmt.Sscanf(string(b), "%d %s", &pid, &at)
+	if t, err := time.Parse(time.RFC3339, at); err == nil && time.Since(t) > pageStaleGuard {
+		_ = os.Remove(path)
+	}
+}
+
+// waitForPage は画面が応えるまで待つ(CLI の shikii page 用。hook では使わない)。
+func waitForPage(scope string, limit time.Duration) string {
+	deadline := time.Now().Add(limit)
 	for {
-		if r, ok := readPageRecord(common, scope); ok && pageUp(r) {
-			openBrowser(r.url() + "/")
-			return r.url(), true
+		if url := livePage(scope); url != "" {
+			return url
 		}
 		if time.Now().After(deadline) {
-			return "", false
+			return ""
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -132,18 +151,16 @@ func openInBrowser(url string) {
 	}
 }
 
-// pageBase は hook の文に入れる画面の URL: 立っていればそれ、無ければ起こして待ち、それでも無ければ「まだ立っていない」の文。
-func pageBase(scope string) string {
+// pageRef は hook の文に入れる画面の場所: 立っていれば URL(末尾に /)、無ければ起こしておき「まだ立っていない」の文(英日)。
+func pageRef(scope string) string {
 	if url := livePage(scope); url != "" {
-		return url
+		return url + "/"
 	}
-	if url, _ := ensureProjectPage(scope); url != "" {
-		return url
-	}
+	ensureProjectPage(scope)
 	return pageNotUp
 }
 
-const pageNotUp = "(画面はまだ立っていません。次の依頼で hook が起こします)"
+const pageNotUp = "(the page is not up yet; the next request's hook starts it / 画面はまだ立っていません。次の依頼で hook が起こします)"
 
 // cmdPage は、このプロジェクトの画面がどこで立っているか(URL・ポート・pid)を言う。エージェントが人に聞かれた時にいつでも答えるための口。
 // 立っていなければ起こして(hook と同じ)から言う。
@@ -163,6 +180,9 @@ func cmdPage(args []string) error {
 		return err
 	}
 	url, started := ensureProjectPage(scope)
+	if url == "" {
+		url = waitForPage(scope, 5*time.Second) // CLI は待てる(hook は待たない)
+	}
 	if url == "" {
 		fmt.Fprintln(stdout, "page: not running (could not start it; see ~/.shikii/agent/serve-"+projectID(scope)+".log)")
 		return nil

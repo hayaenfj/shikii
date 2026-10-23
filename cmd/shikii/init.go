@@ -121,7 +121,7 @@ func completeProjectInit(root, scope string, version int) error {
 	if err := finishProjectInit(root, scope, version); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "利用可能: %s\n画面: エージェントの最初の依頼で hook が起こし(空いているポート)、ブラウザで開きます。今の URL は shikii status\n", scope)
+	fmt.Fprintf(stdout, "利用可能: %s\n画面: エージェントの最初の依頼で hook が起こし(空いているポート)、ブラウザで開きます。URL は shikii page\n", scope)
 	fmt.Fprintln(stdout, "次: 普段どおり、このプロジェクトで依頼してください。新しいMCP設定は次のセッションから反映されます。")
 	fmt.Fprintln(stdout, "業務の判定を追加する時は shikii new <id>。モデルの手動起動は shikii up。")
 	return nil

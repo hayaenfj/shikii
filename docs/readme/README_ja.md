@@ -7,7 +7,7 @@
 モデルは確率を返します。shikiiは、その確率で動いてよいかを答えます。人と結果が付けた正解から線を引き、すべての判断を帯（`act` / `ask` / `discard`）にし、学んだことをエージェントが仕事中に使うwikiに貯め、人の訂正は次の仕事で機械が止める検査にします。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-362%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-363%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.8.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -102,7 +102,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 > このプロジェクトでshikiiを使って
 
-エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。既製の問い・wiki・止める検査の置き場・MCPの設定（プロジェクトに `.mcp.json`・`.cursor/mcp.json`・`opencode.json` と `AGENTS.md` の節（`CLAUDE.md` だけのプロジェクトでは作りません）が足されます。Gitの除外に入るのは `.shikii/` だけです）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。画面は最初の依頼の hook が空いているポートで立ててブラウザで開きます。URL はいつでも `shikii page` で分かります。
+エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。既製の問い・wiki・止める検査の置き場・MCPの設定（プロジェクトに `.mcp.json`・`.cursor/mcp.json`・`opencode.json` と `AGENTS.md` の節（`CLAUDE.md` だけのプロジェクトでは作りません）が足されます。Gitの除外に入るのは `.shikii/` だけです）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
 
 ### 更新
 

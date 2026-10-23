@@ -7,7 +7,7 @@
 A model gives you a probability. shikii tells you whether you may act on it. It draws the line from the answers people and results supply, turns every decision into a band (`act` / `ask` / `discard`), keeps what it learned in a wiki that your agent uses while it works, and turns your corrections into checks that stop the agent next time.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-362%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-363%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.8.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -102,7 +102,7 @@ In a project you want to enable, ask your agent:
 
 > Use shikii in this project.
 
-The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. The answer page is one per project: the first request's hook starts it on a free port and opens it in the browser (`shikii page` tells you the URL). Initialization prepares the built-in questions, the wiki, the place for guards, the MCP setup (it adds `.mcp.json`, `.cursor/mcp.json`, `opencode.json` and a section in `AGENTS.md` (not when the project has only `CLAUDE.md`) to the project; only `.shikii/` is excluded from Git) and the agent's instructions. `shikii doctor` checks the setup. The page is started by the first request's hook on a free port and opened in the browser; `shikii page` prints its URL at any time.shikii/agent --port 8096`.
+The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. The answer page is one per project: the first request's hook starts it on a free port and opens it in the browser (`shikii page` tells you the URL). Initialization prepares the built-in questions, the wiki, the place for guards, the MCP setup (it adds `.mcp.json`, `.cursor/mcp.json`, `opencode.json` and a section in `AGENTS.md` (not when the project has only `CLAUDE.md`) to the project; only `.shikii/` is excluded from Git) and the agent's instructions. `shikii doctor` checks the setup.
 
 ### Updates
 

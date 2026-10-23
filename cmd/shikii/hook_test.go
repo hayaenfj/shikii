@@ -35,7 +35,6 @@ func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent strin
 	hookSpawn = recordSpawn // 本物の up / serve は起こさない(記録だけ)
 	opened = nil
 	openBrowser = func(url string) { opened = append(opened, url) }
-	pageStartWait = 0                   // 起こした画面を待たない(記録だけなので来ない)
 	hookLocalURL = "http://127.0.0.1:1" // 閉じている口(モデルが無い)
 	if model != nil {
 		hookLocalURL = model.URL

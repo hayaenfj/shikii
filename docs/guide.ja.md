@@ -206,7 +206,7 @@ shikii up                         # llama-server を :8086 に、shikii-readout 
 |---|---|---|
 | `POST /v1/decide` | `{"spec","inputs":{…},"tainted":false}` | 判定(band、top、p、trace_id、receipt) |
 | `POST /v1/label` | `{"spec","trace_id","truth","weight":1,"source":"ui"}` | 付けた正解(文脈の段を通った判定は 2 段に付く) |
-| `GET /v1/queue?spec=<id>` | | 未回答(ask と抜き取り。やり直した元は出ない) |
+| `GET /v1/queue?spec=<id>` | | 未回答(人待ちの記録と、結果待ちの記録。各項目に `waits_for_person`。やり直した元は出ない) |
 | `GET /v1/answered?spec=<id>&limit=30` | | 回答済み(人の正解だけ) |
 | `POST /v1/redo` | `{"spec","trace_id"}` | 今の聞き方と線で同じ本文を再判定し、前と今を並べて返す(新しい記録、人の答えは写る) |
 | `GET /v1/status` | | spec ごとの状態(線の有無、正解の数、人の言葉の質問) |
@@ -279,9 +279,10 @@ OpenJev は生の確率で足りて両方 `identity`、Kev-4B は Platt がわ�
 
 ## 棚卸し: `shikii status`
 
+画面の場所は `shikii page`(`page: http://127.0.0.1:<port>/ (port …, pid …, up)`。立っていなければ起こして待つ)。
+
 ```sh
 bin/shikii status --store .shikii .shikii/decisions/prompt-kind.yaml
-bin/shikii page                 # このプロジェクトの画面の URL・ポート・pid(立っていなければ起こす)
 # prompt-kind: records=1 labels=1
 #   by source: outcome=1   by truth: !edit=1
 #   ternary-bonsai-27b-q2g64+state-last @ 68ed82631e63f2a2   1  collecting (1/50)
@@ -358,7 +359,7 @@ bin/shikii decide .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0
 
 Claude CodeとCodexは、依頼の前と作業の後のhook(Claude Codeはサブエージェントの開始にも。計3つ、Codexは2つ)で会話の記録・記憶の参照・既製の問いの判定を行う。初期化したプロジェクトの `.shikii/` へ会話・仮採点・正解・線を保存し、共通の `~/.shikii/agent` には型・道具・仕事の入口を置く。線もプロジェクトごとで、別の仕事の実績は持ち込まない。
 
-会話の整理と範囲・完了の仮採点は通常のエージェントが担当し、人は抜き取りと保留を確認する。仮採点は正解・較正とは別。判定用モデルが使えなくても、会話の記録と参照は働く。手元のモデルは `:8080`。画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開く(URL は `shikii status`)。ツールを止めず、実行許可を出す仕組みではない。[hookの詳しい説明](../integrations/claude-code.md)。
+会話の整理と範囲・完了の仮採点は通常のエージェントが担当し、人は抜き取りと保留を確認する。仮採点は正解・較正とは別。判定用モデルが使えなくても、会話の記録と参照は働く。手元のモデルは `:8080`。画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開く(URL は `shikii page`)。ツールを止めず、実行許可を出す仕組みではない。[hookの詳しい説明](../integrations/claude-code.md)。
 
 ## まだ無いもの
 

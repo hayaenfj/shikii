@@ -30,6 +30,9 @@ func isBuiltinGuard(id string) bool { return id == ritualPlan || id == ritualRef
 
 // ritualStop は、このターンで頼んだ作法が済んでいるかを見る。recheck(止めた後の Stop)では記録だけして止めない。
 func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, changed []string, known bool, recheck bool) (hookOut, error) {
+	if snapshot.RitualStopped == snapshot.TurnID && snapshot.TurnID != "" {
+		recheck = true // このターンで一度止めた(通知の後の Stop は stop_hook_active が付かない): 記録だけ、もう止めない(監査 R5)
+	}
 	now := time.Now().UTC()
 	var recs []guardRecord
 	var failed []string
@@ -44,7 +47,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualPlan, Pass: pass, Reason: reason, Recheck: recheck})
 	}
 	// 振り返り: 依頼前に挙げた会話が、まだ振り返りの対象に残っている(仮採点・wiki・届いた教訓の評価のどれかが未)
-	if len(snapshot.ReflectAsked) > 0 {
+	if len(snapshot.ReflectAsked) > 0 && snapshot.ReflectAskedTurn == snapshot.TurnID {
 		left, err := reflectLeft(root, scope, snapshot.ReflectAsked)
 		if err != nil {
 			return hookOut{}, err
@@ -57,7 +60,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 				ids = append(ids, l.id)
 			}
 			data, _ := json.Marshal(map[string]any{"sources": ids})
-			reason = "振り返りの保存が無いまま終えようとしています: " + strings.Join(leftLines(left), "、") + "。" + hookExe() + " reflect query に " + string(data) + " を渡して原文・届いた記憶を読み、reviews・wiki(教訓なしは sources だけ)・memory(届いた教訓ごとの helpful / unused / harmful / unknown)を submit してから終えてください"
+			reason = "振り返りの保存が無いまま終えようとしています: " + strings.Join(leftLines(left), "、") + "。" + hookExe() + " reflect query(または shikii_reflect の query。対象 " + string(data) + ")で原文・届いた記憶を読み、reviews・wiki(教訓なしは sources だけ)・memory(届いた教訓ごとの helpful / unused / harmful / unknown)を submit してから終えてください"
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReflect, Pass: pass, Reason: reason, Recheck: recheck})

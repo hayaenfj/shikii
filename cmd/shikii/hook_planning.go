@@ -223,7 +223,7 @@ func cmdHookPlan(args []string) error {
 		attachReceipt(sp, store.Store{Dir: root}, d)
 		out := hookOutcome("needs-plan", d, localize(sp, d, hookLang()))
 		result.Advice = joinLines(out.Context, out.System)
-		result.Advice = strings.ReplaceAll(result.Advice, hookPageURL+"/", pageBase(filepath.Dir(root))+"/")
+		result.Advice = strings.ReplaceAll(result.Advice, hookPageURL+"/", pageRef(filepath.Dir(root)))
 	}
 	// モデルを待つ間に依頼が進んだら、古い文脈を記録も助言もせず破棄する。
 	err = savePlanningResult(sessions, name, root, scope, req, sp, d, inputs, result, key, knowledge)
