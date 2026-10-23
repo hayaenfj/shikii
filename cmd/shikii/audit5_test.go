@@ -26,13 +26,17 @@ func TestServeWaitsForTheLocalModelOnlyWhenThereIsOne(t *testing.T) {
 		}
 		return nil
 	}
-	if err := waitForLocalModel("", fake); err != nil || len(asked) != 0 {
+	if err := waitForLocalModel("", false, fake); err != nil || len(asked) != 0 {
 		t.Fatalf("hosted only: nothing to wait for, got %v %v", err, asked)
 	}
-	if err := waitForLocalModel("http://127.0.0.1:8080", fake); err != nil || len(asked) != 1 || asked[0] != "http://127.0.0.1:8080" {
+	// 鍵があって Jev を使う時は、--local があっても待たない(手元のモデルは起こさない決まりなので、待つと画面が開かない。2026-10-23)
+	if err := waitForLocalModel("http://127.0.0.1:1", true, fake); err != nil || len(asked) != 0 {
+		t.Fatalf("with a key the page must open without a local model: %v %v", err, asked)
+	}
+	if err := waitForLocalModel("http://127.0.0.1:8080", false, fake); err != nil || len(asked) != 1 || asked[0] != "http://127.0.0.1:8080" {
 		t.Fatalf("a local model is waited for at its URL: %v %v", err, asked)
 	}
-	if err := waitForLocalModel("http://127.0.0.1:1", fake); err == nil {
+	if err := waitForLocalModel("http://127.0.0.1:1", false, fake); err == nil {
 		t.Fatalf("a model that never answers must fail the start")
 	}
 }

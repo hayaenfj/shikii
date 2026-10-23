@@ -76,7 +76,7 @@ func cmdServe(args []string) error {
 			return err
 		}
 	}
-	if err := waitForLocalModel(o.ef.local, systemone.WaitReady); err != nil {
+	if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
 		return err
 	}
 	addr := fmt.Sprintf("%s:%d", bindHost(), o.port)
@@ -88,9 +88,15 @@ func cmdServe(args []string) error {
 }
 
 // waitForLocalModel は手元のモデルの口が立つのを自分で待つ(Docker で先にモデルを起こす時。curl / wget に頼らない)。
-// --local が無い(hosted だけ)なら待たない: hosted は外のサービスで、起動を待つ対象ではない。最長 15 分。URL が違う時は最初の行で分かるようにする。
-func waitForLocalModel(local string, wait func(context.Context, string, time.Duration, func(string, ...any)) error) error {
+// --local が無い(hosted だけ)なら待たない: hosted は外のサービスで、起動を待つ対象ではない。
+// 鍵があって Jev を使う(hosted = usesHosted())時も待たない: 手元のモデルは起こさない決まり(0.7.1)なので、待つと画面が永久に開かない
+// (hook は常に --local 付きで serve を起こす。2026-10-23 に実機で観測)。最長 15 分。URL が違う時は最初の行で分かるようにする。
+func waitForLocalModel(local string, hosted bool, wait func(context.Context, string, time.Duration, func(string, ...any)) error) error {
 	if local == "" {
+		return nil
+	}
+	if hosted {
+		log.Printf("key present: decisions go to TypeSafe Jev; not waiting for the local model at %s (SHIKII_MODEL=local would wait)", systemone.RedactURL(local))
 		return nil
 	}
 	log.Printf("waiting for the local model at %s (if the URL is wrong, stop now and fix --local; serve does not open its port until the model answers)", systemone.RedactURL(local))
