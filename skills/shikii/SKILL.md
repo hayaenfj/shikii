@@ -27,6 +27,8 @@ Hooks run when a user request arrives and when the turn closes, not before every
 
 **Wiki:** read [wiki.md](references/wiki.md) when searching, ingesting, revising or replacing lessons. Reuse article bodies and original sources already read in the active task at the same project and revision. Read missing evidence and reconcile it with existing topics. Keep a short retrieval summary, a supported knowledge body, related pages, source IDs and conditions of applicability. Explicit corrections can become source-backed lessons with the quoted correction and a concrete next action. Ordinary follow-up requests do not automatically establish lasting preferences. Do not change claim states or treat lessons as truth labels. Before saving a new lesson, pass the draft to reflection's `place` operation and read the returned same-topic candidates and conflict flags, then choose `id`, `replaces` or a new page.
 
+**Guards:** when a correction can be checked mechanically (two files that must change together, words never to use, words a commit body must contain), draft a guard with `shikii guard add` as described in [guards.md](references/guards.md). It is written disabled; the person decides whether to enable it (`shikii guard enable <id>` shows the negative example stopping before it turns the guard on). When a guard stops your turn, fix the work and end again; never disable a guard to get past it.
+
 ## Respect the evidence boundaries
 
 - Follow the calibrated band: `act` is automatic, `ask` needs human confirmation, `discard` does not take the proposed action, and `abstain` needs usable inputs or an allowed endpoint. Raw probabilities are not a substitute for the band. An uncalibrated planning result is shadow-only and gives no advice.

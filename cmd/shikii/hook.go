@@ -127,15 +127,17 @@ type hookInput struct {
 
 // hookOut は hook が返すもの。空なら何も出さない(判断なし)。許可の判定(allow / ask / deny)は出さない。
 type hookOut struct {
-	Context string // エージェントに渡す文(additionalContext。UserPromptSubmit だけ)
+	Context string // エージェントに渡す文(additionalContext。UserPromptSubmit と SubagentStart)
 	System  string // 端末の人に見せる文(systemMessage)
+	Block   bool   // Stop を止める(止める検査に引っかかった。0.7.3)。Claude Code は reason を渡して続行させる
+	Reason  string // 止める理由(エージェントへ)
 }
 
 func (o hookOut) empty() bool { return o == hookOut{} }
 
-// message は記録に残す「出した文」: 端末の文、エージェントへの文脈のうち最初にあるもの。
+// message は記録に残す「出した文」: 端末の文、止める理由、エージェントへの文脈のうち最初にあるもの。
 func (o hookOut) message() string {
-	for _, s := range []string{o.System, o.Context} {
+	for _, s := range []string{o.System, o.Reason, o.Context} {
 		if s != "" {
 			return s
 		}
@@ -153,6 +155,10 @@ func (o hookOut) json(event string) []byte {
 	}
 	if o.System != "" {
 		out["systemMessage"] = o.System
+	}
+	if o.Block && event == "Stop" && o.Reason != "" { // 止める検査: Claude Code の Stop の decision(Codex は読めなければ無視する)
+		out["decision"] = "block"
+		out["reason"] = o.Reason
 	}
 	if len(out) == 0 {
 		return nil
@@ -181,6 +187,7 @@ type hookSession struct {
 	Reviews     []askedItem      `json:"reviews,omitempty"`          // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
 	Reported    []string         `json:"reported_traces,omitempty"`  // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
 	Judged      bool             `json:"judged,omitempty"`           // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
+	Head        string           `json:"head,omitempty"`             // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
 	At          time.Time        `json:"at"`
 }
 
@@ -538,6 +545,10 @@ func runHookEvent(event string) error {
 		return fmt.Errorf("stdin is not the agent's hook JSON: %w", err)
 	}
 	if event == "stop" && in.StopHookActive {
+		// 止めた後の Stop: もう止めない(無限ループを避ける)。止める検査だけもう一度当てて、直ったかを記録する(0.7.3)
+		if root, _, perr := prepareHookProject(in.CWD); perr == nil {
+			guardRecheck(root, &in)
+		}
 		return nil
 	}
 	common := agent
@@ -716,6 +727,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		inputs["previous"] = snapshot.Previous // 文脈の段(迷った時だけ使われる)
 	}
 	tree, listing, listed, project, scope := treeStateWithScope(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
+	head := gitHead(in.CWD)                                             // このターンのコミットを止める検査が見るための起点
 	requestText := strings.TrimSpace(in.Prompt)
 	if utf8.RuneCountInString(req) < shortReply && snapshot.Request != "" && snapshot.Scope == scope {
 		previous := snapshot.RequestText
@@ -744,6 +756,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 				hookLog("outcome: " + derr.Error())
 			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
+			s.Head = head
 			s.RequestText = requestText
 			s.RawPrompt = cut(strings.TrimSpace(in.Prompt), 4000)
 			s.Planning = planning
@@ -841,7 +854,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		},
 	}
 	pruneSessions(agent)
-	if req == "" || snapshot.Judged {
+	if req == "" {
 		return hookOut{}, muts, firstErr
 	}
 	var changed []string
@@ -855,6 +868,14 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			}
 			changed, known = changedFiles(string(before), listing), true
 		}
+	}
+	// 止める検査(0.7.3): 有効な guard を変わったファイル・足した行・このターンのコミットに当てる。引っかかれば Stop を止めて理由を返す
+	out, gerr := guardStop(agent, in, snapshot, string(before), changed, known, false)
+	if gerr != nil && firstErr == nil {
+		firstErr = gerr
+	}
+	if snapshot.Judged {
+		return out, muts, firstErr
 	}
 	inputs := map[string]string{"request": snapshot.Request, "files": filesInput(changed, known), "summary": last}
 	if inputs["summary"] == "" {
@@ -870,7 +891,6 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
-	var out hookOut
 	targets := []store.ReviewTarget{}
 	for i, d := range ds {
 		if d == nil || d.Band == decide.Abstain {
