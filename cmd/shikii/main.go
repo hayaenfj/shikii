@@ -89,6 +89,8 @@ func main() {
 		err = cmdTune(os.Args[2:])
 	case "hook":
 		err = cmdHook(os.Args[2:])
+	case "guard":
+		err = cmdGuard(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -136,6 +138,8 @@ func usageText() string {
   shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
                    <store>/wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
   shikii wiki query [検索文または出典ID] | ingest (JSON を標準入力) | lint
+  shikii guard     list | add (JSON を標準入力) | enable <id> | disable <id> | try
+                   人の訂正を「止める検査」にする(paired-files / forbidden-words / commit-body)。enable は負例で止まるのを確かめてから有効にする
                    普段の会話をプロジェクトの .shikii/ にある出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
   shikii version                                  版を表示する
   shikii review query | submit (JSON を標準入力)    会話と結果から AI が根拠付きで仮採点。人は抜き取りと保留を確認し、訂正を次の採点へ返す。仮採点は正解・較正と分けて保存する
@@ -1939,6 +1943,7 @@ func cmdStatus(args []string) error {
 	if scope := storeScope(*storeDir); scope != "" { // 届いた教訓の効果(置き場の親がプロジェクト)
 		printMemoryEffect(stdout, st, scope, time.Now())
 	}
+	printGuardStats(stdout, *storeDir) // 止める検査(0.7.3): 有効な数、止めた数、直った数
 	return nil
 }
 
