@@ -1429,6 +1429,11 @@ func spawnShikii(agent, logName string, args ...string) int {
 // startOnce は起こす権利を guard(~/.shikii/agent/starting-<what>)の flock で 1 つの hook だけに渡し、前に起こした子がまだ生きている(pid)か
 // hookStartGap の中なら起こさない。長いモデルの取得の間(10 分を超えても)、生きている子がいれば二重に起こさない。fn は起こした子の pid を返す。
 func startOnce(agent, what string, fn func() int) bool {
+	return startOnceWithin(agent, what, hookStartGap, fn)
+}
+
+// startOnceWithin は startOnce の間隔(gap)を指定する版。画面は 30 秒(止めてすぐ立て直せる)、モデルは 10 分(取得に時間がかかる)。
+func startOnceWithin(agent, what string, gap time.Duration, fn func() int) bool {
 	_ = os.MkdirAll(agent, 0o755)
 	guard := filepath.Join(agent, "starting-"+what)
 	f, err := os.OpenFile(guard, os.O_CREATE|os.O_RDWR, 0o600)
@@ -1447,7 +1452,7 @@ func startOnce(agent, what string, fn func() int) bool {
 	if pid > 0 && processAlive(pid) {
 		return false
 	}
-	if t, err := time.Parse(time.RFC3339, at); err == nil && time.Since(t) < hookStartGap {
+	if t, err := time.Parse(time.RFC3339, at); err == nil && time.Since(t) < gap {
 		return false
 	}
 	pid = fn()

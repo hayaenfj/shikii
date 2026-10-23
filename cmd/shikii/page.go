@@ -78,8 +78,9 @@ func livePage(scope string) string {
 }
 
 var (
-	pageStartWait = 3 * time.Second // 起こしてから応えるまで待つ上限(hook の中)
-	openBrowser   = openInBrowser   // テストは記録するだけの物に差し替える
+	pageStartWait = 3 * time.Second  // 起こしてから応えるまで待つ上限(hook の中)
+	pageStartGap  = 30 * time.Second // 前に起こした子が死んでいても、この間は起こし直さない(失敗し続ける serve を連打しない)
+	openBrowser   = openInBrowser    // テストは記録するだけの物に差し替える
 )
 
 // ensureProjectPage は、このプロジェクトの画面が立っていなければ `shikii serve --store <scope>/.shikii --port 0` を裏で起こし、
@@ -96,7 +97,7 @@ func ensureProjectPage(scope string) (string, bool) {
 	}
 	id := projectID(scope)
 	root := filepath.Join(scope, ".shikii")
-	if !startOnce(common, "page-"+id, func() int {
+	if !startOnceWithin(common, "page-"+id, pageStartGap, func() int {
 		return hookSpawn(common, "serve-"+id+".log", "serve", "--store", root, "--port", "0", "--local", hookLocalURL)
 	}) {
 		return "", false

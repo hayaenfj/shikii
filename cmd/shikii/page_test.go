@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 0.7.6: serve は --port 0 で空いているポートを取り、ポートと pid を ~/.shikii/agent/pages/<id>.json に書く。
@@ -97,5 +99,29 @@ func TestFirstRequestStartsOneProjectPageAndOpensTheBrowser(t *testing.T) {
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "p3", "cwd": other, "prompt": "README を直して"})
 	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+filepath.Join(other, ".shikii")+" --port 0 --local ") {
 		t.Fatalf("別のプロジェクトは別の画面: %v", spawned)
+	}
+}
+
+// 画面を止めた(子が死んだ)直後でも、pageStartGap(30 秒)を過ぎれば起こし直せる。モデルの 10 分の間隔は使わない。
+func TestPageRestartsSoonAfterItDied(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	id := projectID(repo)
+	// 1 分前に起こした子はもう死んでいる
+	os.WriteFile(filepath.Join(common, "starting-page-"+id), []byte(fmt.Sprintf("%d %s\n", 1<<22, time.Now().Add(-time.Minute).Format(time.RFC3339))), 0o600)
+	spawned = nil
+	ensureProjectPage(repo)
+	if len(spawned) != 1 {
+		t.Fatalf("死んだ画面は 30 秒を過ぎれば起こし直す: %v", spawned)
+	}
+	// 10 秒前なら(失敗し続ける serve を連打しないため)まだ起こさない
+	os.WriteFile(filepath.Join(common, "starting-page-"+id), []byte(fmt.Sprintf("%d %s\n", 1<<22, time.Now().Add(-10*time.Second).Format(time.RFC3339))), 0o600)
+	spawned = nil
+	ensureProjectPage(repo)
+	if len(spawned) != 0 {
+		t.Fatalf("30 秒の中では起こし直さない: %v", spawned)
 	}
 }
