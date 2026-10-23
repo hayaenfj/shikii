@@ -62,7 +62,7 @@ var (
 )
 
 const (
-	hookTimeout    = 10      // 秒。モデルの 5 秒(2 つの問いは並行) + 書き込み
+	hookTimeout    = 15      // 秒。git 3 秒 + モデルの 5 秒(2 つの問いは並行) + 書き込み(監査 R5: 画面の起動は待たない)
 	requestMax     = 1500    // request / summary として控える文の長さ(バイト)
 	shortReply     = 40      // これより短い依頼は返事とみなし、前の依頼に添える(文字数)
 	filesMax       = 30      // Stop の問いに並べる「変わったファイル」の上限(残りは件数だけ)
@@ -172,26 +172,29 @@ func (o hookOut) json(event string) []byte {
 // hookSession はプロジェクトごとの控え(.shikii/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 // 依頼の時の作業ツリーの一覧は隣の <id>.files(大きいので JSON には入れない)。
 type hookSession struct {
-	Request       string           `json:"request,omitempty"`          // 人が最後に送った依頼(UserPromptSubmit で控える)
-	RequestText   string           `json:"request_text,omitempty"`     // 画面用の原文。判定の入力とは分けて保持する
-	RawPrompt     string           `json:"last_user_prompt,omitempty"` // 結合せず控えた最後の人の発言。引用の出典に使う
-	TurnID        string           `json:"turn_id,omitempty"`          // 同じ文の依頼を繰り返しても別のターン
-	Scope         string           `json:"scope,omitempty"`            // repo の実パス。会話も採点も線も同じ仕事に限る
-	Completed     *completedTurn   `json:"completed,omitempty"`        // この依頼に返答した時の控え。次の人の発言と一組にする
-	Memories      []memoryDelivery `json:"memories,omitempty"`         // このセッションに届けた記憶の版(直近16件)
-	Previous      string           `json:"previous,omitempty"`         // 直前のアシスタントの発言(Stop で控える)
-	Planning      *planningFrame   `json:"planning,omitempty"`         // 現在の依頼について、エージェントが原文付きで整理する文脈
-	Pending       []pendingItem    `json:"pending,omitempty"`          // prompt-kind の結果の正解を待つ判定
-	Watch         []scopeWatch     `json:"watch,omitempty"`            // changes-in-scope の結果の正解を待つ判定(変えたファイルが戻されるか)
-	Asked         []askedItem      `json:"asked,omitempty"`            // このセッションで人の答えを待つことになった判定(ask と抜き取り)
-	Reviews       []askedItem      `json:"reviews,omitempty"`          // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
-	Reported      []string         `json:"reported_traces,omitempty"`  // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
-	Judged        bool             `json:"judged,omitempty"`           // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
-	Head          string           `json:"head,omitempty"`             // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
-	HeadAt        time.Time        `json:"head_at,omitempty"`          // 依頼の時刻。これより前にコミットされたもの(切り替え先の既存のコミット)は見ない
-	MemoryNoticed bool             `json:"memory_noticed,omitempty"`   // まだ wiki に無いメモリがあると、このセッションで一度伝えた(0.8.0)
-	ReflectAsked  []string         `json:"reflect_asked,omitempty"`    // 依頼前に振り返りを頼んだ会話(作法の検査が Stop で見る。0.8.0)
-	At            time.Time        `json:"at"`
+	Request          string           `json:"request,omitempty"`            // 人が最後に送った依頼(UserPromptSubmit で控える)
+	RequestText      string           `json:"request_text,omitempty"`       // 画面用の原文。判定の入力とは分けて保持する
+	RawPrompt        string           `json:"last_user_prompt,omitempty"`   // 結合せず控えた最後の人の発言。引用の出典に使う
+	TurnID           string           `json:"turn_id,omitempty"`            // 同じ文の依頼を繰り返しても別のターン
+	Scope            string           `json:"scope,omitempty"`              // repo の実パス。会話も採点も線も同じ仕事に限る
+	Completed        *completedTurn   `json:"completed,omitempty"`          // この依頼に返答した時の控え。次の人の発言と一組にする
+	Memories         []memoryDelivery `json:"memories,omitempty"`           // このセッションに届けた記憶の版(直近16件)
+	Previous         string           `json:"previous,omitempty"`           // 直前のアシスタントの発言(Stop で控える)
+	Planning         *planningFrame   `json:"planning,omitempty"`           // 現在の依頼について、エージェントが原文付きで整理する文脈
+	Pending          []pendingItem    `json:"pending,omitempty"`            // prompt-kind の結果の正解を待つ判定
+	Watch            []scopeWatch     `json:"watch,omitempty"`              // changes-in-scope の結果の正解を待つ判定(変えたファイルが戻されるか)
+	Asked            []askedItem      `json:"asked,omitempty"`              // このセッションで人の答えを待つことになった判定(ask と抜き取り)
+	Reviews          []askedItem      `json:"reviews,omitempty"`            // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
+	Reported         []string         `json:"reported_traces,omitempty"`    // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
+	Judged           bool             `json:"judged,omitempty"`             // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
+	Head             string           `json:"head,omitempty"`               // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
+	HeadAt           time.Time        `json:"head_at,omitempty"`            // 依頼の時刻。これより前にコミットされたもの(切り替え先の既存のコミット)は見ない
+	MemoryNoticed    bool             `json:"memory_noticed,omitempty"`     // まだ wiki に無いメモリがあると、このセッションで一度伝えた(0.8.0)
+	ReflectAsked     []string         `json:"reflect_asked,omitempty"`      // 依頼前に振り返りを頼んだ会話(作法の検査が Stop で見る。0.8.0)
+	ReflectAskedTurn string           `json:"reflect_asked_turn,omitempty"` // ReflectAsked を頼んだターン(別のターンの残りで止めない。監査 R5)
+	RitualStopped    string           `json:"ritual_stopped,omitempty"`     // 作法の検査で止めたターン(通知の後の Stop でもう一度止めない。監査 R5)
+	PageNoticed      bool             `json:"page_noticed,omitempty"`       // 画面の場所をこのセッションで伝えた(0.8.0)
+	At               time.Time        `json:"at"`
 }
 
 type pendingItem struct {
@@ -357,9 +360,9 @@ func hookDecide(agent, specID string, inputs map[string]string, project string, 
 	attachReceipt(sp, st, d)
 	l := localize(sp, d, hookLang())
 	out := hookOutcome(specID, d, l)
-	page := pageBase(filepath.Dir(agent))
-	out.Context = strings.ReplaceAll(out.Context, hookPageURL+"/", page+"/")
-	out.System = strings.ReplaceAll(out.System, hookPageURL+"/", page+"/")
+	page := pageRef(filepath.Dir(agent))
+	out.Context = strings.ReplaceAll(out.Context, hookPageURL+"/", page)
+	out.System = strings.ReplaceAll(out.System, hookPageURL+"/", page)
 	if d.Band != decide.Abstain {
 		rec := recordOf(sp, d, inputs)
 		rec.ReviewPending = store.ReviewSpec(specID)
@@ -604,18 +607,20 @@ func runHookEvent(event string) error {
 			}); merr != nil {
 				hookLog("memory: " + merr.Error())
 			}
-			if context, ids, rerr := reflectContext(agent, current.Scope); rerr != nil {
+			context, ids, rerr := reflectContext(agent, current.Scope)
+			if rerr != nil {
 				hookLog("reflect: " + rerr.Error())
+				ids = nil // 頼めなかったターンは前のターンの残りで止めない(監査 R5)
 			} else {
 				out.Context = joinLines(out.Context, context)
-				// 頼んだ会話を控えに書く(作法の検査が Stop で見る: 振り返りが済んだか)。頼まなかったターンは空にする
-				if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
-					if s.TurnID == current.TurnID {
-						s.ReflectAsked = ids
-					}
-				}); uerr != nil {
-					hookLog("reflect: " + uerr.Error())
+			}
+			// 頼んだ会話とターンを控えに書く(作法の検査が Stop で見る: 振り返りが済んだか)。頼まなかったターンは空にする
+			if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
+				if s.TurnID == current.TurnID {
+					s.ReflectAsked, s.ReflectAskedTurn = ids, current.TurnID
 				}
+			}); uerr != nil {
+				hookLog("reflect: " + uerr.Error())
 			}
 			out.Context = joinLines(out.Context, variantsContext(agent))
 		}
@@ -737,7 +742,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		inputs["previous"] = snapshot.Previous // 文脈の段(迷った時だけ使われる)
 	}
 	tree, listing, listed, project, scope := treeStateWithScope(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
-	pageURL, pageStarted := ensureProjectPage(scope)                    // エージェントが動き出したら(最初の依頼)このプロジェクトの画面を 1 つ立て、ブラウザで開く(0.8.0)
+	pageURL, pageStarted := ensureProjectPage(scope)                    // エージェントが動き出したら(最初の依頼)このプロジェクトの画面を 1 つ立てる(serve がブラウザで開く。hook は待たない。0.8.0)
 	head := gitHead(in.CWD)                                             // このターンのコミットを止める検査が見るための起点
 	requestText := strings.TrimSpace(in.Prompt)
 	if utf8.RuneCountInString(req) < shortReply && snapshot.Request != "" && snapshot.Scope == scope {
@@ -817,8 +822,13 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		out.Context = joinLines(out.Context, outs[i].Context)
 		out.System = joinLines(out.System, outs[i].System)
 	}
-	if pageStarted {
-		out.Context = joinLines(out.Context, "shikii: このプロジェクトの画面を起こし、ブラウザで開きました: "+pageURL+"/")
+	switch {
+	case pageStarted:
+		out.Context = joinLines(out.Context, "shikii: このプロジェクトの画面を起こしています(ブラウザで開きます。URL は shikii page か次の依頼で)")
+		muts = append(muts, func(s *hookSession) { s.PageNoticed = true })
+	case pageURL != "" && !snapshot.PageNoticed: // 立っている画面の場所をセッションに 1 回
+		out.Context = joinLines(out.Context, "shikii: このプロジェクトの画面: "+pageURL+"/")
+		muts = append(muts, func(s *hookSession) { s.PageNoticed = true })
 	}
 	// 言われなくても気付く: このプロジェクトのエージェントのメモリに wiki へ移していないファイルがあれば伝える(0.8.0)。セッションに 1 回
 	if !snapshot.MemoryNoticed {
@@ -895,7 +905,17 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	if gerr != nil && firstErr == nil {
 		firstErr = gerr
 	}
-	if snapshot.Judged || out.Block {
+	if out.Block { // 人の検査が止めたターンでも、作法の検査は評価して記録し、理由を連ねる(監査 R5: 数に出ないまま消えていた)
+		if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, false); rerr != nil && firstErr == nil {
+			firstErr = rerr
+		} else if rout.Block {
+			out.Reason = joinLines(out.Reason, rout.Reason)
+		}
+		turn := snapshot.TurnID
+		muts = append(muts, func(s *hookSession) { s.RitualStopped = turn })
+		return out, muts, firstErr
+	}
+	if snapshot.Judged {
 		return out, muts, firstErr // 止めたターンは直す前の変更と返答で判定しない(次の依頼で、直した後のツリーと返答を見る)
 	}
 	inputs := map[string]string{"request": snapshot.Request, "files": filesInput(changed, known), "summary": last}
@@ -947,6 +967,8 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		firstErr = rerr
 	} else if rout.Block {
 		out.Block, out.Reason = true, joinLines(out.Reason, rout.Reason)
+		turn := snapshot.TurnID
+		muts = append(muts, func(s *hookSession) { s.RitualStopped = turn })
 	}
 	return out, muts, firstErr
 }
@@ -968,10 +990,10 @@ func stopSummary(agent string, sess *hookSession) string {
 	}
 	sess.Reported = waiting
 	l := hookLoc{Lang: hookLang()}
-	page := pageBase(filepath.Dir(agent)) // 立っていなければ裏で起こす。人に起動コマンドを打たせない
+	page := pageRef(filepath.Dir(agent)) // 立っていなければ裏で起こす。人に起動コマンドを打たせない
 	return bi(
-		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s/", n, page),
-		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, page), l)
+		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s", n, page),
+		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s", n, page), l)
 }
 
 // changedFiles は 2 つの一覧(`git ls-files --stage`: "mode sha stage\tpath")を比べ、中身か mode が変わった・増えた・消えたファイルの path を名前順で返す。
@@ -1688,7 +1710,7 @@ func hookInstall(args []string, install bool) error {
 			ensureModel(agent)
 			fmt.Fprintf(stdout, "local model: starting in the background (the first run downloads it; a few minutes). Log: %s\n", tilde(filepath.Join(agent, "up.log")))
 		}
-		fmt.Fprintln(stdout, "answer page: one per project, started by the first request's hook on a free port and opened in the browser (the URL is in shikii status)")
+		fmt.Fprintln(stdout, "answer page: one per project, started by the first request's hook on a free port and opened in the browser (shikii page prints the URL)")
 	}
 	return nil
 }

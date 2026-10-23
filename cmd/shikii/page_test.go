@@ -33,6 +33,9 @@ func TestServePicksAFreePortAndRecordsIt(t *testing.T) {
 	if livePage(repo) != "" {
 		t.Fatal("口が応えるまでは立っていない")
 	}
+	if len(opened) != 1 || !strings.Contains(opened[0], strconv.Itoa(port)) {
+		t.Fatalf("hook が起こした画面(port 0)は serve 自身がブラウザで開く: %v", opened)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/status", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
 	go http.Serve(ln, mux)
@@ -53,10 +56,26 @@ func TestServePicksAFreePortAndRecordsIt(t *testing.T) {
 	if !strings.Contains(out, "page: not running") {
 		t.Fatalf("status は画面の状態を出す:\n%s", out)
 	}
+	// 手で起こした serve(固定ポート)は印を書かず、ブラウザも開かない(hook の画面の印を上書きしない)
+	opened = nil
+	ln2, err := listenPage(common, repo, false, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln2.Close()
+	rec2, _ := readPageRecord(common, repo)
+	ln3, err := listenPage(common, repo, false, 18095)
+	if err != nil {
+		t.Skip("port 18095 busy")
+	}
+	defer ln3.Close()
+	if rec3, _ := readPageRecord(common, repo); rec3.Port != rec2.Port || len(opened) != 1 {
+		t.Fatalf("固定ポートの serve は印を書かずブラウザも開かない: %+v opened=%v", rec3, opened)
+	}
 }
 
-// 最初の依頼の hook は、このプロジェクトの画面が立っていなければ `serve --store <root> --port 0` を 1 つだけ起こし、応えたらブラウザで開く。
-// 立っていれば起こさず開かない。別のプロジェクトの画面は数えない。
+// 最初の依頼の hook は、このプロジェクトの画面が立っていなければ `serve --store <root> --port 0` を 1 つだけ起こす(待たない。ブラウザは serve が開く)。
+// 立っていれば起こさず、場所をセッションに 1 回伝える。別のプロジェクトの画面は数えない。
 func TestFirstRequestStartsOneProjectPageAndOpensTheBrowser(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -79,18 +98,21 @@ func TestFirstRequestStartsOneProjectPageAndOpensTheBrowser(t *testing.T) {
 		t.Fatalf("画面が無ければ空いているポートで起こす: %v", spawned)
 	}
 	url := "http://127.0.0.1:" + strconv.Itoa(port)
-	if len(opened) != 1 || opened[0] != url+"/" {
-		t.Fatalf("応えたらブラウザで開く: %v", opened)
+	if len(opened) != 0 {
+		t.Fatalf("hook はブラウザを開かない(serve が開く): %v", opened)
 	}
-	if !strings.Contains(out, "画面を起こし") || !strings.Contains(out, url+"/") {
-		t.Fatalf("起こした時だけ URL を伝える:\n%s", out)
+	if !strings.Contains(out, "画面を起こしています") {
+		t.Fatalf("起こした時はそう伝える:\n%s", out)
 	}
-	// 立っていれば(別のエージェントでも)起こさず、開かない。起こす権利の guard を消しても(startOnce が許しても)起こさない
+	// 立っていれば(別のエージェントでも)起こさず、場所をセッションに 1 回伝える。起こす権利の guard を消しても(startOnce が許しても)起こさない
 	spawned, opened = nil, nil
 	os.Remove(filepath.Join(common, "starting-page-"+projectID(repo)))
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "p2", "cwd": repo, "prompt": "次は画面の色を直して"})
-	if len(spawned) != 0 || len(opened) != 0 || strings.Contains(out, "画面を起こし") {
-		t.Fatalf("立っていれば二つ目を起こさない: spawned=%v opened=%v\n%s", spawned, opened, out)
+	if len(spawned) != 0 || len(opened) != 0 || strings.Contains(out, "画面を起こし") || !strings.Contains(out, "画面: "+url+"/") {
+		t.Fatalf("立っていれば二つ目を起こさず、場所を伝える: spawned=%v opened=%v\n%s", spawned, opened, out)
+	}
+	if out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "p2", "cwd": repo, "prompt": "さらに色を直して"}); strings.Contains(out, "画面: ") {
+		t.Fatalf("同じセッションでは二度言わない:\n%s", out)
 	}
 	// 別のプロジェクトは自分の画面を持つ
 	other := gitRepo(t)

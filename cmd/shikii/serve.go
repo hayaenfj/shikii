@@ -78,38 +78,52 @@ func cmdServe(args []string) error {
 			return err
 		}
 	}
-	if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
-		return err
-	}
 	scope := filepath.Dir(absStore)
-	if !hub && o.port == 0 {
+	auto := !hub && o.port == 0 // hook が起こすプロジェクトの画面(0.8.0): 空いているポート、印、ブラウザ、手元のモデルは口を開けた後に待つ
+	if auto {
 		if url := livePage(scope); url != "" { // 画面はプロジェクトに 1 つ(別のエージェントの hook が先に起こしていた)
 			log.Printf("shikii serve: this project's page is already up at %s/ ; not starting another", url)
 			return nil
 		}
+	} else if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
+		return err // 手で起こす serve(Docker など)は従来どおり、モデルが応えるまで口を開けない
 	}
 	ln, err := listenPage(common, scope, hub, o.port)
 	if err != nil {
 		return err
 	}
 	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted), o.autoCalibrate, ln.Addr())
+	var handler http.Handler = newServer(o)
 	if hub {
-		return http.Serve(ln, newProjectHub(common, o))
+		handler = newProjectHub(common, o)
 	}
-	return http.Serve(ln, newServer(o))
+	if !auto {
+		return http.Serve(ln, handler)
+	}
+	errc := make(chan error, 1)
+	go func() { errc <- http.Serve(ln, handler) }()
+	// 口を開けてから手元のモデルを待つ(status・列・wiki はモデル無しで答えられる。hook は待たない)
+	if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
+		ln.Close()
+		return err
+	}
+	return <-errc
 }
 
-// listenPage は待ち受けを始め(port 0 なら空いているポート)、プロジェクトの画面なら ~/.shikii/agent/pages/ にポートと pid の印を書く。
+// listenPage は待ち受けを始める。hook が起こすプロジェクトの画面(port 0)なら、空いているポートを取り、~/.shikii/agent/pages/ に
+// ポートと pid の印を書き、ブラウザで一度開く。手で起こした serve(固定ポート)は印を書かない(hook の画面の印を上書きしない。監査 R5)。
 func listenPage(common, scope string, hub bool, port int) (net.Listener, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bindHost(), port))
 	if err != nil {
 		return nil, err
 	}
-	if !hub {
-		if err := writePageRecord(common, scope, ln.Addr().(*net.TCPAddr).Port, os.Getpid()); err != nil {
+	if !hub && port == 0 {
+		p := ln.Addr().(*net.TCPAddr).Port
+		if err := writePageRecord(common, scope, p, os.Getpid()); err != nil {
 			ln.Close()
 			return nil, err
 		}
+		openBrowser(fmt.Sprintf("http://127.0.0.1:%d/", p))
 	}
 	return ln, nil
 }
@@ -686,6 +700,9 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		show, audit, reason := reviewQueueState(rec, labeled, reviews)
+		if show && !outcomeSpecs[id] && !machineOnlySpecs[id] && !waitsForPersonRecord(id, rec, audit) {
+			continue // 人が正解を付ける問いの act(抜き取り外): 結果は来ず人も答えないので列に出さない(監査 R5)
+		}
 		if show && !superseded[rec.TraceID] {
 			pending = append(pending, queued{rec, audit, reason})
 		}
@@ -733,7 +750,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	var page map[string]any // この画面の所在(0.8.0): エージェントが MCP からも URL とポートを答えられるように
 	if common, err := agentHome(); err == nil {
 		if abs, err := filepath.Abs(s.o.storeDir); err == nil {
-			if rec, ok := readPageRecord(common, filepath.Dir(abs)); ok {
+			if rec, ok := readPageRecord(common, filepath.Dir(abs)); ok && rec.PID == os.Getpid() { // 自分の印だけ(手で起こした別の serve の印は答えない)
 				page = map[string]any{"url": rec.url() + "/", "port": rec.Port, "pid": rec.PID}
 			}
 		}
@@ -843,9 +860,12 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if outcomeSpecs[sp.ID] {
 			truthSource = "results"
 		}
-		awaiting := todo - waitingPerson // 結果待ち(次の依頼・振り返りの結果が正解を付ける)
+		awaiting, settledByAI := todo-waitingPerson, 0 // 結果待ち(次の依頼・振り返りの結果が正解を付ける)
+		if !outcomeSpecs[sp.ID] && personAnswers {     // 人が正解を付ける問いの act(抜き取り外)は結果が来ないので「AI が決めた(確認不要)」(監査 R5)
+			settledByAI, awaiting = awaiting, 0
+		}
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
-			"unlabeled": todo, "waiting_for_person": waitingPerson, "awaiting_results": awaiting, "undecided": undecided, "truth_source": truthSource, "person_answers": personAnswers, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
+			"unlabeled": todo, "waiting_for_person": waitingPerson, "awaiting_results": awaiting, "settled_by_ai": settledByAI, "undecided": undecided, "truth_source": truthSource, "person_answers": personAnswers, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })

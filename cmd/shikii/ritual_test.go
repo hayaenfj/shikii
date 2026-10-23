@@ -31,6 +31,23 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 1 || recs[0].Pass || recs[0].Recheck {
 		t.Fatalf("止めた記録が残る: %+v", recs)
 	}
+	// 直さずに止めた後の Stop(stop_hook_active): 止めないが、直っていない記録は残る
+	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "まだ", "stop_hook_active": true})
+	if strings.Contains(out, "block") {
+		t.Fatalf("止めた後の Stop は直っていなくても止めない: %s", out)
+	}
+	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 2 || recs[1].Pass || !recs[1].Recheck {
+		t.Fatalf("直っていない記録が残る: %+v", recs)
+	}
+	// 裏の作業の通知が来た後の Stop(stop_hook_active は付かない)でも、同じターンをもう一度止めない。頼んだ回数も 1 のまま
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "<task-notification>裏の作業が終わりました</task-notification>"})
+	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "通知を受けた"})
+	if strings.Contains(out, "block") {
+		t.Fatalf("通知の後の Stop で同じターンを二度止めない: %s", out)
+	}
+	if st := countRitualStats(readGuardRecords(root)); st.Plan.Asked != 1 {
+		t.Fatalf("同じターンは 1 回だけ数える: %+v", st.Plan)
+	}
 	// 止められた直後に整理を submit できる(ターンの判定が済んでいても、整理がまだなら受ける)
 	if _, err := planningCall(t, "query", map[string]string{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID}); err != nil {
 		t.Fatalf("止められた後の query: %v", err)
@@ -42,7 +59,7 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	if strings.Contains(out, "block") {
 		t.Fatalf("二度目の Stop は止めない: %s", out)
 	}
-	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 2 || !recs[1].Pass || !recs[1].Recheck {
+	if recs := guardRecordsFor(root, ritualPlan); len(recs) < 3 || !recs[len(recs)-1].Pass || !recs[len(recs)-1].Recheck {
 		t.Fatalf("止めてから済ませた記録(直った)が残る: %+v", recs)
 	}
 	// 次の依頼: 整理を submit してからファイルを変えて終えれば止めない
@@ -57,7 +74,7 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	if strings.Contains(out, "block") {
 		t.Fatalf("整理を submit した依頼は止めない: %s", out)
 	}
-	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 3 || !recs[2].Pass {
+	if recs := guardRecordsFor(root, ritualPlan); !recs[len(recs)-1].Pass || recs[len(recs)-1].Recheck {
 		t.Fatalf("通った記録が残る: %+v", recs)
 	}
 	if sOut := capture(t, func() error { return cmdStatus([]string{"--store", root}) }); !strings.Contains(sOut, "rituals: plan-before-work done 1 of 2 asked (after a stop 1)") {
@@ -137,5 +154,30 @@ func TestStopStopsOnceWhenReflectionWasAskedButNotSaved(t *testing.T) {
 	}
 	if recs := guardRecordsFor(root, ritualReflect); len(recs) != 2 || !recs[1].Pass || !recs[1].Recheck {
 		t.Fatalf("保存した後の再検査は通る(直った記録): %+v", recs)
+	}
+}
+
+// 監査 R5: 人の検査(guard)が止めたターンでも、作法の検査は評価して記録し、理由を連ねる(数に出ないまま消えない)。
+func TestRitualIsRecordedEvenWhenAGuardStopsTheTurnFirst(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	writeGuard(t, root, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "根を使わない", Words: []string{"根"}, Enabled: true})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# shikii\n\nプロジェクトの根に置く\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
+	var parsed map[string]any
+	if json.Unmarshal([]byte(out), &parsed) != nil || parsed["decision"] != "block" {
+		t.Fatalf("guard で止まる: %s", out)
+	}
+	reason, _ := parsed["reason"].(string)
+	if !strings.Contains(reason, "no-ne") || !strings.Contains(reason, "計画の整理") {
+		t.Fatalf("理由に人の検査と作法の両方: %s", reason)
+	}
+	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 1 || recs[0].Pass || recs[0].Recheck {
+		t.Fatalf("作法の記録も残る: %+v", recs)
+	}
+	if st := countRitualStats(readGuardRecords(root)); st.Plan.Asked != 1 {
+		t.Fatalf("頼んだ回数に数える: %+v", st.Plan)
 	}
 }

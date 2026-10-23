@@ -72,6 +72,7 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	// 結果で正解が付く判定の「迷い」は結果待ち、人が答える判定の「迷い」は人待ち
 	st.AppendRecord(store.Record{TraceID: "pk1", SpecID: "prompt-kind", Type: "choice", Model: "m", Inputs: map[string]string{"request": "x"}, InputsHash: "pk1", Raw: map[string]float64{"edit": .5, "explain": .5}, Top: "edit", Band: "ask", At: time.Now()})
 	st.AppendRecord(store.Record{TraceID: "np1", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": "o"}, InputsHash: "np1", Raw: map[string]float64{"yes": .5, "no": .5}, Top: "yes", Band: "ask", At: time.Now()})
+	st.AppendRecord(store.Record{TraceID: "np2", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "y", "agreed": "a", "open": "o"}, InputsHash: "np2", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
 	o := serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}
 	h := newServer(o)
 	rec := httptest.NewRecorder()
@@ -97,8 +98,13 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	if pk := got["prompt-kind"]; pk["waiting_for_person"] != float64(0) || pk["awaiting_results"] != float64(1) {
 		t.Fatalf("結果で正解が付く判定の迷いは結果待ち: %v", pk)
 	}
-	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["person_answers"] != true {
-		t.Fatalf("人が答える判定の迷いは人待ち: %v", np)
+	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["person_answers"] != true || np["awaiting_results"] != float64(0) || np["settled_by_ai"] != float64(1) {
+		t.Fatalf("人が答える判定の迷いは人待ち、抜き取り外の act は結果待ちでなく AI が決めた: %v", np)
+	}
+	nq := httptest.NewRecorder()
+	h.ServeHTTP(nq, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=needs-plan", nil))
+	if !strings.Contains(nq.Body.String(), `"np1"`) || strings.Contains(nq.Body.String(), `"np2"`) {
+		t.Fatalf("人が正解を付ける問いの列には人待ちだけ: %s", nq.Body.String()[:300])
 	}
 	q := httptest.NewRecorder()
 	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=prompt-kind", nil))
