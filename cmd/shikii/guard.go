@@ -235,11 +235,28 @@ func guardNegative(g guard) (guardInput, string) {
 	case guardKindPairedFiles:
 		return guardInput{Changed: []string{g.Pairs[0][0]}, Known: true}, g.Pairs[0][0] + " だけが変わったターン"
 	case guardKindForbiddenWords:
-		return guardInput{Changed: []string{guardNegativePath}, Known: true, Added: map[string][]string{guardNegativePath: {"この行には " + g.Words[0] + " が入っている"}}}, "「" + g.Words[0] + "」を含む行を足したターン"
+		path := negativePathFor(g)
+		return guardInput{Changed: []string{path}, Known: true, Added: map[string][]string{path: {"この行には " + g.Words[0] + " が入っている"}}}, "「" + g.Words[0] + "」を含む行を足したターン"
 	case guardKindCommitBody:
 		return guardInput{Commits: []string{"件名だけのコミット"}, CommitsKnown: true}, "本文の無いコミットをしたターン"
 	}
 	return guardInput{}, ""
+}
+
+// negativePathFor は負例・正例に使う架空のパス。except のどれにも合わない名前にする(except が *.txt や ** でも enable できる)。
+func negativePathFor(g guard) string {
+	for _, p := range []string{guardNegativePath, "shikii-guard-negative/example.go", "shikii-guard-negative/a/b/c.md", "shikii-guard-negative"} {
+		skip := false
+		for _, e := range g.Except {
+			if matchPath(e, p) {
+				skip = true
+			}
+		}
+		if !skip {
+			return p
+		}
+	}
+	return guardNegativePath
 }
 
 func guardPositive(g guard) guardInput {
@@ -247,7 +264,8 @@ func guardPositive(g guard) guardInput {
 	case guardKindPairedFiles:
 		return guardInput{Changed: []string{g.Pairs[0][0], g.Pairs[0][1]}, Known: true}
 	case guardKindForbiddenWords:
-		return guardInput{Changed: []string{guardNegativePath}, Known: true, Added: map[string][]string{guardNegativePath: {"この行には使わない語が無い"}}}
+		path := negativePathFor(g)
+		return guardInput{Changed: []string{path}, Known: true, Added: map[string][]string{path: {"この行には使わない語が無い"}}}
 	case guardKindCommitBody:
 		return guardInput{Commits: []string{"件名\n\n" + strings.Join(g.Required, "\n") + "\n"}, CommitsKnown: true}
 	}

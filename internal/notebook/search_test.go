@@ -85,8 +85,8 @@ func TestSearchShowsBoundedCandidatesBeyondFullArticles(t *testing.T) {
 		}
 	}
 	quiet, err := b.query("参加者 受付", true)
-	if err != nil || quiet.Search != nil || len(quiet.Lessons) != 2 {
-		t.Fatal("自動配送を候補一覧で膨らませない", err)
+	if err != nil || quiet.Search != nil || len(quiet.Lessons) != RecallCandidates {
+		t.Fatal("自動配送の候補は RecallCandidates 件までで、候補一覧で膨らませない", err)
 	}
 }
 
@@ -113,5 +113,34 @@ func TestRecallDeliversForLongRequestsByPageCoverage(t *testing.T) {
 	}
 	if p, err := b.Recall("README の誤字を直してください。質問はせず、最後まで進めてください。"); err != nil || len(p) != 0 {
 		t.Fatalf("合わない依頼には届けない: %+v %v", p, err)
+	}
+}
+
+// 自動配送の門(0.7.4 の監査の指摘): どの記事にもある識別子(例: shikii)と仮名の 2 文字だけでは届けない。
+// 珍しい識別子(例: Makefile)は 1 語の一致でも届ける(以前は 2 語が要った)。
+func TestRecallIgnoresUbiquitousIdentifiersAndDeliversOnRareOnes(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	for i, a := range []string{"shikiiの変更履歴を追加・更新する時", "shikiiでコミットする時", "shikiiのライセンスを説明する時", "shikiiの公開作業を報告する時", "shikiiの画面を直す時"} {
+		d := draft(source, "教訓"+string(rune('A'+i)))
+		d.Lesson, d.AppliesTo = "shikii についての決まり "+string(rune('A'+i)), a
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk := draft(source, "Makefile の決まり")
+	mk.Lesson, mk.AppliesTo = "make test を先に回す。", "Makefile を触る時"
+	rm, err := b.Ingest(mk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := b.Recall("shikii の説明を直して"); len(p) != 0 {
+		t.Fatalf("どの記事にもある識別子と仮名だけでは届けない: %+v", p)
+	}
+	if p, _ := b.Recall("shikii statusも画面に出したほうが良いよね。クリックしたら詳細も見える感じで"); len(p) > 1 || (len(p) == 1 && !strings.Contains(p[0].AppliesTo, "画面")) {
+		t.Fatalf("遍在する識別子で関係ない記事を届けない: %+v", p)
+	}
+	if p, _ := b.Recall("Makefile で test を回して"); len(p) != 1 || p[0].ID != rm.Page.ID {
+		t.Fatalf("珍しい識別子は 1 語でも届ける: %+v", p)
 	}
 }

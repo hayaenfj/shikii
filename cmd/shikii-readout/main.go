@@ -97,6 +97,10 @@ func (s *server) detectUpstream(ctx context.Context) error {
 	case code == 501 || code == 404:
 		s.passThrough = false
 		return nil
+	case code/100 == 4: // post は 2xx 以外を err にするので code だけで見る
+		// 探りの形を 400/422 で弾く決定モデル(要求は読めている)。素通しにして、本番の要求はそのモデルに答えさせる(監査 2026-10-23)
+		s.passThrough = true
+		return nil
 	}
 	return fmt.Errorf("upstream /v1/systemone: %v", err)
 }

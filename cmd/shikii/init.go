@@ -28,6 +28,9 @@ func cmdInit(args []string) error {
 	if err != nil {
 		return err
 	}
+	if isSharedPlaceScope(scope) {
+		return errors.New("ホームフォルダは初期化しません(~/.shikii は共通の置き場です)。プロジェクトのフォルダで実行してください")
+	}
 	if err := checkProjectStore(root, true); err != nil {
 		return err
 	}

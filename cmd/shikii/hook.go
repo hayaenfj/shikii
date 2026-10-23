@@ -188,6 +188,7 @@ type hookSession struct {
 	Reported    []string         `json:"reported_traces,omitempty"`  // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
 	Judged      bool             `json:"judged,omitempty"`           // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
 	Head        string           `json:"head,omitempty"`             // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
+	HeadAt      time.Time        `json:"head_at,omitempty"`          // 依頼の時刻。これより前にコミットされたもの(切り替え先の既存のコミット)は見ない
 	At          time.Time        `json:"at"`
 }
 
@@ -685,9 +686,8 @@ func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hook
 	if snapshot.Request == "" || snapshot.Scope == "" || snapshot.TurnID == "" {
 		return hookOut{}, nil
 	}
-	sum := sha256.Sum256([]byte(snapshot.TurnID + "/" + in.AgentID))
-	sub := hookSession{TurnID: hex.EncodeToString(sum[:])[:16], Scope: snapshot.Scope} // 届けた版の控えは持たない: 親が受け取っていてもサブエージェントには届ける
-	context, err := memoryContext(agent, snapshot.Scope, snapshot.Request, &sub)
+	sub := hookSession{Scope: snapshot.Scope} // 届けた版の控えは持たない: 親が受け取っていてもサブエージェントには届ける
+	context, err := memoryContextFor(agent, snapshot.Scope, snapshot.Request, &sub, snapshot.TurnID, in.AgentID)
 	if err != nil || context == "" {
 		return hookOut{}, err
 	}
@@ -756,7 +756,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 				hookLog("outcome: " + derr.Error())
 			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
-			s.Head = head
+			s.Head, s.HeadAt = head, time.Now()
 			s.RequestText = requestText
 			s.RawPrompt = cut(strings.TrimSpace(in.Prompt), 4000)
 			s.Planning = planning
@@ -874,8 +874,8 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	if gerr != nil && firstErr == nil {
 		firstErr = gerr
 	}
-	if snapshot.Judged {
-		return out, muts, firstErr
+	if snapshot.Judged || out.Block {
+		return out, muts, firstErr // 止めたターンは直す前の変更と返答で判定しない(次の依頼で、直した後のツリーと返答を見る)
 	}
 	inputs := map[string]string{"request": snapshot.Request, "files": filesInput(changed, known), "summary": last}
 	if inputs["summary"] == "" {
@@ -1580,6 +1580,16 @@ func hookInstall(args []string, install bool) error {
 			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command is `… shikii hook <event>` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)))
 		}
 		fmt.Fprintf(stdout, "   %s and each project's .shikii/ are kept\n", tilde(agent))
+	}
+	if install {
+		if from, to := installedVersion(agent), currentVersion(); crossesStoreReset(from, to) {
+			if projects := registeredProjects(agent); len(projects) > 0 {
+				fmt.Fprintf(stdout, "%d. %s への更新(前の版 %s): 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。残したいものは先に控えてください:\n", len(hookTargets)+2, versionString(to), versionString(from), len(projects))
+				for _, p := range projects {
+					fmt.Fprintf(stdout, "   - %s\n", p.Path)
+				}
+			}
+		}
 	}
 	if !yes {
 		fmt.Fprintln(stdout, "(shown only; pass --yes to do it)")

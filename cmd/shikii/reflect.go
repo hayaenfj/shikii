@@ -60,7 +60,11 @@ func reflectQuery(root, scope string) (reflectView, error) {
 	memories := map[string][]store.MemoryObservation{}
 	for _, item := range report.All {
 		if item.Assessment == nil {
-			memories[item.SourceID] = append(memories[item.SourceID], item)
+			key := item.SourceID
+			if item.Parent != "" { // サブエージェントへの配送は親の会話に添えて評価する(source_id は配送の id のまま)
+				key = item.Parent
+			}
+			memories[key] = append(memories[key], item)
 		}
 	}
 	// 各キューの先頭2件があれば、合わせた先頭2会話の対象は全て揃う。

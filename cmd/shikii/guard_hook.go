@@ -7,14 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // 止める検査とターンの観測(0.7.3)。
-// 変わったファイルは依頼の時の一覧(sessions/<id>.files)と今の一覧の差(hookStop と同じ)。足した行は、依頼の時の中身
-// (一覧の blob。無ければ HEAD の中身、それも無ければ空)と今の中身を行で比べて、今にしか無い行。
-// このターンのコミットは、依頼の時に控えた HEAD(session.Head)から今の HEAD までの log。
+// 変わったファイルは依頼の時の一覧(sessions/<id>.files)と今の一覧の差(hookStop と同じ)。足した行は、依頼の時の中身と今の中身を
+// 行で比べて、今にしか無い行。依頼の時の中身は一覧の blob が repo にあればそれ、無ければ HEAD の中身(依頼の時に未コミットだった
+// ファイルの blob は一覧を取った仮の置き場と共に消えるので、その分は HEAD との差になる)、それも無ければ空。
+// このターンのコミットは、依頼の時に控えた HEAD(session.Head)から今の HEAD までの log(HEAD が辿れない時は見ない)。
 // 取れない時は「分からない」として検査を通す(止めるのは確かな時だけ)。
 
 func gitRun(ctx context.Context, dir string, args ...string) (string, bool) {
@@ -65,7 +67,7 @@ func addedLines(old, new []byte) []string {
 func isBinary(b []byte) bool { return bytes.IndexByte(b, 0) >= 0 }
 
 // guardTurnInput はターンの観測を組む。before は依頼の時の一覧(先頭行は依頼の印)、changed は hookStop が出した変わったファイル。
-func guardTurnInput(cwd, before string, changed []string, known bool, head string) guardInput {
+func guardTurnInput(cwd, before string, changed []string, known bool, head string, since time.Time) guardInput {
 	in := guardInput{Changed: changed, Known: known, Added: map[string][]string{}}
 	if cwd == "" {
 		return in
@@ -102,12 +104,22 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 		}
 	}
 	if head != "" {
-		if out, ok := gitRun(ctx, top, "log", "--format=%B%x1e", head+"..HEAD"); ok {
+		// 依頼の HEAD が今の HEAD の祖先でなければ(別の系統に切り替えた)、head..HEAD は他人や前からのコミットなので見ない。
+		// 祖先でも、依頼より前にコミットされたもの(枝を切り替えて入った既存のコミット)は見ない
+		if _, ancestor := gitRun(ctx, top, "merge-base", "--is-ancestor", head, "HEAD"); !ancestor {
+			return in
+		}
+		if out, ok := gitRun(ctx, top, "log", "--format=%ct%x1f%B%x1e", head+"..HEAD"); ok {
 			in.CommitsKnown = true
-			for _, m := range strings.Split(out, "\x1e") {
-				if strings.TrimSpace(m) != "" {
-					in.Commits = append(in.Commits, strings.TrimSpace(m))
+			for _, rec := range strings.Split(out, "\x1e") {
+				ts, body, found := strings.Cut(strings.TrimSpace(rec), "\x1f")
+				if !found || strings.TrimSpace(body) == "" {
+					continue
 				}
+				if sec, err := strconv.ParseInt(strings.TrimSpace(ts), 10, 64); err == nil && !since.IsZero() && sec < since.Unix()-1 {
+					continue
+				}
+				in.Commits = append(in.Commits, strings.TrimSpace(body))
 			}
 		}
 	}
@@ -164,7 +176,7 @@ func guardStop(root string, in *hookInput, snapshot *hookSession, before string,
 	if err != nil || len(guards) == 0 {
 		return hookOut{}, err
 	}
-	input := guardTurnInput(in.CWD, before, changed, known, snapshot.Head)
+	input := guardTurnInput(in.CWD, before, changed, known, snapshot.Head, snapshot.HeadAt)
 	var recs []guardRecord
 	var failed []guardResult
 	now := time.Now().UTC()

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -55,5 +57,78 @@ func TestSubagentStartDeliversTheParentRequestsLessons(t *testing.T) {
 	}
 	if len(sub.Quotes) == 0 || sub.Quotes[0].ID != draft.ID {
 		t.Fatalf("サブエージェントへの配送にも引用の版が残る: %+v", sub)
+	}
+}
+
+// 監査(2026-10-23): サブエージェントへの配送は親の会話に添えて振り返りで評価でき、教訓の版が変わった後の再開始でも黙らない。
+func TestSubagentDeliveriesAreAssessedWithTheParentAndSurviveRevisions(t *testing.T) {
+	st, scope, h, draft, _ := memoryEffectFixture(t)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub2", "cwd": scope, "prompt": "README の導入手順を更新してください"})
+	parent := loadSession(st.Dir, "sub2").TurnID
+	runHook(t, "subagent-start", map[string]any{"session_id": "sub2", "cwd": scope, "agent_id": "agent-x", "agent_type": "Explore"})
+	deliveries, _ := st.MemoryDeliveries(scope)
+	var sub store.MemoryDelivery
+	for _, d := range deliveries {
+		if d.Parent != "" {
+			sub = d
+		}
+	}
+	if sub.Parent != parent || sub.Agent != "agent-x" {
+		t.Fatalf("サブエージェントへの配送に親のターンと agent を付ける: %+v", deliveries)
+	}
+	// 教訓の版が変わってから同じサブエージェントがもう一度始まっても届く(以前は同じ id への別の引用として拒まれ、黙っていた)
+	draft.Lesson = draft.Lesson + " 変更後も確認する。"
+	if _, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(draft); err != nil {
+		t.Fatal(err)
+	}
+	out := runHook(t, "subagent-start", map[string]any{"session_id": "sub2", "cwd": scope, "agent_id": "agent-x", "agent_type": "Explore"})
+	if !strings.Contains(out, "変更後も確認する") {
+		t.Fatalf("版が変わった後の再開始にも届く: %q", out)
+	}
+	// 振り返り: 親の会話(返答と次の発言が揃った後)に、サブエージェントへの配送も並ぶ
+	runHook(t, "stop", map[string]any{"session_id": "sub2", "cwd": scope, "last_assistant_message": "更新しました。"})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub2", "cwd": scope, "prompt": "次は画面の色を直して。"})
+	q := reflectCall(t, h, map[string]any{"operation": "query"})
+	sources, _ := q["sources"].([]any)
+	found := 0
+	for _, s := range sources {
+		src := s.(map[string]any)
+		if src["source_material"].(map[string]any)["id"] != parent {
+			continue
+		}
+		for _, m := range src["memories"].([]any) {
+			if m.(map[string]any)["parent"] == parent {
+				found++
+			}
+		}
+	}
+	if found < 1 {
+		t.Fatalf("サブエージェントへの配送が親の会話に添えて評価に出る: %v", q["sources"])
+	}
+}
+
+// 監査(2026-10-23): 既に届けた版を除いてから 2 件に切る。除く前に 2 件に切ると、届いた版が席を塞いで 3 位の教訓が届かない。
+func TestRecallCutsToTwoAfterRemovingAlreadyDeliveredRevisions(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	var keys []string
+	for i := 0; i < 2; i++ {
+		d := draft
+		d.ID, d.Title = "", "README の導入手順を更新してください "+string(rune('A'+i)) // 依頼そのものを題にして、元の教訓より上位に来るようにする
+		d.Lesson = "README の導入手順では確認の手順 " + string(rune('A'+i)) + " も書く。"
+		d.AppliesTo = "README の導入手順を更新してください"
+		r, err := book.Ingest(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, "lesson:"+r.Page.ID+":"+r.Page.Revision)
+	}
+	sess := &hookSession{TurnID: "aaaaaaaaaaaaaaaa"}
+	for _, k := range keys {
+		sess.Memories = append(sess.Memories, memoryDelivery{Key: k, At: time.Now().UTC()})
+	}
+	ctx, err := memoryContext(st.Dir, scope, "README の導入手順を更新してください", sess)
+	if err != nil || !strings.Contains(ctx, draft.Lesson) {
+		t.Fatalf("届けた 2 件を除いた後の 3 本目が届く: %v %q", err, ctx)
 	}
 }

@@ -36,6 +36,8 @@ type MemoryDelivery struct {
 	Request string        `json:"request"`
 	Quotes  []MemoryQuote `json:"quotes"`
 	At      time.Time     `json:"at"`
+	Parent  string        `json:"parent,omitempty"` // サブエージェントへの配送: 親のターン(会話の出典 id)。振り返りは親の会話に添えて評価する(0.7.4)
+	Agent   string        `json:"agent,omitempty"`  // サブエージェントの id
 }
 
 type MemoryAssessment struct {
@@ -66,6 +68,8 @@ type MemorySummary struct {
 
 type MemoryObservation struct {
 	SourceID   string            `json:"source_id"`
+	Parent     string            `json:"parent,omitempty"`
+	Agent      string            `json:"agent,omitempty"`
 	Request    string            `json:"request"`
 	At         time.Time         `json:"at"`
 	Quote      MemoryQuote       `json:"quote"`
@@ -368,7 +372,7 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 			if err != nil {
 				return r, err
 			}
-			item := MemoryObservation{SourceID: d.ID, Request: d.Request, At: d.At, Quote: q, Assessment: a}
+			item := MemoryObservation{SourceID: d.ID, Parent: d.Parent, Agent: d.Agent, Request: d.Request, At: d.At, Quote: q, Assessment: a}
 			if q.Correction != nil {
 				r.Corrections.Delivered++
 				if a == nil {
