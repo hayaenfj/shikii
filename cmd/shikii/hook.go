@@ -42,7 +42,7 @@ import (
 var (
 	hookLocalURL      = "http://127.0.0.1:8080"   // 手元のモデル(init の MCP 設定と同じ)
 	hookHostedURL     = "https://api.typesafe.ai" // 標準の TypeSafe Jev。鍵(TYPESAFE_API_KEY / DECISIONS_API_KEY)がある時だけ使う(2026-10-23 の決定)
-	hookPageURL       = "http://127.0.0.1:8096"   // AI 自身の判断の答え合わせの画面(プロジェクトの serve は 8095)
+	hookPageURL       = "http://127.0.0.1:8096"   // 文の中の画面の URL の置き字。出す時にそのプロジェクトの画面の URL(空いているポート)に置き換える(0.7.6)
 	hookDecideTimeout = 5 * time.Second
 	hookProbeTimeout  = 300 * time.Millisecond
 	hookSessionTTL    = 7 * 24 * time.Hour
@@ -356,7 +356,7 @@ func hookDecide(agent, specID string, inputs map[string]string, project string, 
 	attachReceipt(sp, st, d)
 	l := localize(sp, d, hookLang())
 	out := hookOutcome(specID, d, l)
-	page := strings.TrimSuffix(projectPageURL(agent), "/")
+	page := pageBase(filepath.Dir(agent))
 	out.Context = strings.ReplaceAll(out.Context, hookPageURL+"/", page+"/")
 	out.System = strings.ReplaceAll(out.System, hookPageURL+"/", page+"/")
 	if d.Band != decide.Abstain {
@@ -728,6 +728,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		inputs["previous"] = snapshot.Previous // 文脈の段(迷った時だけ使われる)
 	}
 	tree, listing, listed, project, scope := treeStateWithScope(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
+	pageURL, pageStarted := ensureProjectPage(scope)                    // エージェントが動き出したら(最初の依頼)このプロジェクトの画面を 1 つ立て、ブラウザで開く(0.7.6)
 	head := gitHead(in.CWD)                                             // このターンのコミットを止める検査が見るための起点
 	requestText := strings.TrimSpace(in.Prompt)
 	if utf8.RuneCountInString(req) < shortReply && snapshot.Request != "" && snapshot.Scope == scope {
@@ -806,6 +807,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		muts = append(muts, noteAsked(hookSpecs[i], d))
 		out.Context = joinLines(out.Context, outs[i].Context)
 		out.System = joinLines(out.System, outs[i].System)
+	}
+	if pageStarted {
+		out.Context = joinLines(out.Context, "shikii: このプロジェクトの画面を起こし、ブラウザで開きました: "+pageURL+"/")
 	}
 	// 言われなくても気付く: このプロジェクトのエージェントのメモリに wiki へ移していないファイルがあれば伝える(0.7.6)。セッションに 1 回
 	if !snapshot.MemoryNoticed {
@@ -949,10 +953,10 @@ func stopSummary(agent string, sess *hookSession) string {
 	}
 	sess.Reported = waiting
 	l := hookLoc{Lang: hookLang()}
-	ensurePage(agent) // 立っていなければ裏で起こす。人に起動コマンドを打たせない
+	page := pageBase(filepath.Dir(agent)) // 立っていなければ裏で起こす。人に起動コマンドを打たせない
 	return bi(
-		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s/", n, strings.TrimSuffix(projectPageURL(agent), "/")),
-		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, strings.TrimSuffix(projectPageURL(agent), "/")), l)
+		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s/", n, page),
+		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s/", n, page), l)
 }
 
 // changedFiles は 2 つの一覧(`git ls-files --stage`: "mode sha stage\tpath")を比べ、中身か mode が変わった・増えた・消えたファイルの path を名前順で返す。
@@ -1291,17 +1295,6 @@ func modelUp() bool {
 // lookPath は PATH の検索(テストが差し替える)。
 var lookPath = exec.LookPath
 
-// serveUp は答え合わせの画面が立っているか(300ms)。
-func serveUp() bool {
-	c := &http.Client{Timeout: hookProbeTimeout}
-	resp, err := c.Get(hookPageURL + "/v1/status")
-	if err != nil {
-		return false
-	}
-	resp.Body.Close()
-	return resp.StatusCode == 200
-}
-
 // treeStateWithScope は作業ツリーの状態: 仮の index に `git add -A`(.gitignore は尊重、未追跡も入る)して `git write-tree` した tree の id の先頭 16 桁(hash)と、
 // その index の `git ls-files --stage` の一覧(listing。Stop で依頼の時と比べて「変わったファイル」を出す。空の repo では空。listed はそれが取れたか)、
 // それと実パスの scope、project(記録に付ける仕事の印: repo のルートのフォルダ名。git の外なら cwd のフォルダ名)。
@@ -1484,19 +1477,9 @@ func ensureModel(agent string) {
 	})
 }
 
-// ensurePage は答え合わせの画面(hookPageURL)が立っていなければ `shikii serve --store ~/.shikii/agent --port 8096` を裏で起こす。URL は常に同じ。
-func ensurePage(agent string) {
-	common, err := agentHome()
-	if err != nil {
-		return
-	}
-	agent = common
-	if serveUp() {
-		return
-	}
-	startOnce(agent, "page", func() int {
-		return hookSpawn(agent, "serve.log", "serve", "--store", agent, "--port", "8096", "--local", hookLocalURL)
-	})
+// ensurePage は、この置き場(root)のプロジェクトの画面が立っていなければ裏で起こす(0.7.6: プロジェクトごとに 1 つ、ポートは空いているもの)。
+func ensurePage(root string) {
+	ensureProjectPage(filepath.Dir(root))
 }
 
 // ---------------------------------------------------------------- install / uninstall
@@ -1587,7 +1570,7 @@ func hookInstall(args []string, install bool) error {
 			fmt.Fprintf(stdout, "%d. %s: add %d hooks (%s) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), len(evs), hookEventNames(evs), tilde(strings.Fields(evs[0].cmd)[0]), t.who, filepath.Base(t.rel), t.note)
 		}
 		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool. Claude Code and Codex (Cursor and OpenCode have no hook).\n")
-		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page (%s) is started the same way\n", hookLocalURL, hookPageURL)
+		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page is one per project: the first request's hook starts it on a free port, records it in ~/.shikii/agent/pages/, and opens it in the browser\n", hookLocalURL)
 	} else {
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command is `… shikii hook <event>` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)))
@@ -1685,7 +1668,7 @@ func hookInstall(args []string, install bool) error {
 			ensureModel(agent)
 			fmt.Fprintf(stdout, "local model: starting in the background (the first run downloads it; a few minutes). Log: %s\n", tilde(filepath.Join(agent, "up.log")))
 		}
-		fmt.Fprintf(stdout, "answer page: %s/ (started in the background when the first decision waits for you)\n", hookPageURL)
+		fmt.Fprintln(stdout, "answer page: one per project, started by the first request's hook on a free port and opened in the browser (the URL is in shikii status)")
 	}
 	return nil
 }

@@ -19,7 +19,7 @@
 
 **会話も採点も線も、プロジェクトごと。** `shikii --init`で有効にした各プロジェクトの `.shikii/` に `decisions/` `wiki/` `guards/` `records/` `labels/` `sessions/` を置く。初期化が準備し、その後の記録はhookが行う。Git の中ではリポジトリのルート、外では cwd が仕事の単位。同名の別フォルダは混ぜず、同じ repo のサブディレクトリや symlink は同じ仕事になる。`.shikii/` の共有先へのリンクは使わない。hook は `/.shikii/` を Git のローカルな `info/exclude` に足し、私的な会話を `git add -A` に巻き込まない。状態取りでも `.shikii/` を除き、shikii 自身の記録をファイル変更の結果に数えない。
 
-`~/.shikii/agent` は共通の型・道具・プロジェクトの索引だけを持つ。画面の :8096 はプロジェクトの入口を並べ、`/p/<実パスのハッシュ>/` から選んだ仕事の記録だけを読む。同じ URL 配下の API が採点・正解・教訓もその仕事へ保存し、成績を合算しない。hook が示す答え合わせのリンクも直接その仕事を開く。旧共通 store の会話や線は自動では引き継がない。
+`~/.shikii/agent` は共通の型・道具・プロジェクトの索引と、各プロジェクトの画面の印(`pages/<id>.json`: ポートと pid)を持つ。画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こし(`serve --store <プロジェクト>/.shikii --port 0`)、ブラウザで開く。共通の入口(`serve --store ~/.shikii/agent --port 8096`)は手で立てた時だけ、`/p/<実パスのハッシュ>/` から各仕事の記録を読む。同じ URL 配下の API が採点・正解・教訓もその仕事へ保存し、成績を合算しない。hook が示す答え合わせのリンクも直接その仕事を開く。旧共通 store の会話や線は自動では引き継がない。
 
 ## 着手前の文脈を整理する
 
@@ -71,7 +71,7 @@ which shikii                 # Claude Code がそのまま `shikii` を呼ぶの
 答え合わせの画面は hook が立てる。手で立てるなら:
 
 ```sh
-shikii serve --store ~/.shikii/agent --port 8096 --local http://127.0.0.1:8080
+shikii serve --store <プロジェクト>/.shikii --port 0 --local http://127.0.0.1:8080   # 最初の依頼の hook が起こす。ポートは空いているもの、印は ~/.shikii/agent/pages/<id>.json
 ```
 
 ## 影の期間 → 帯で振る舞う
@@ -90,7 +90,7 @@ shikii は線(較正)が無いうちは `act` を出さない。判定に基づ�
 | changes-in-scope | discard(確信して「範囲の外」) | 端末の人に 1 行 `shikii: this turn's changes look outside what you asked for (changes-in-scope p(yes)=0.12…). Check the changed files before going on` |
 | done-as-asked | discard(確信して「終えていない」) | 端末の人に 1 行 `shikii: this turn looks unfinished against what you asked (done-as-asked p(yes)=0.15…). Something may be left to ask for again` |
 | changes-in-scope / done-as-asked | act(範囲の中 / 終えた) | 何も出さない |
-| needs-plan | ask(線はあるが迷った) | 端末に 1 行 `shikii: unsure (done-as-asked yes p=0.62). Answer later: http://127.0.0.1:8096/?spec=done-as-asked&trace=…` |
+| needs-plan | ask(線はあるが迷った) | 端末に 1 行 `shikii: unsure (done-as-asked yes p=0.62). Answer later: http://127.0.0.1:<空いていたポート>/?spec=done-as-asked&trace=…` |
 | changes-in-scope / done-as-asked | ask | 次の会話で AI の仮採点へ回す。人は抜き取りと保留を確認 |
 | prompt-kind | 何でも | 何も出さない(結果の正解のためにツリーのハッシュを控える) |
 | (Stop) | 線が無くても | 新しく答え待ちになった判定があれば 1 行(件数と URL)。無ければ黙る |

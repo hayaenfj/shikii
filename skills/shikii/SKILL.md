@@ -13,7 +13,7 @@ For a recurring decision with a configured spec, call `shikii decide` or the `sh
 
 When asked to enable shikii for a project, run `shikii --init` there. It prepares `.shikii/`, project integrations, and this skill while preserving existing data and settings. Do not initialize unrelated projects, construct `project.json` yourself, or transfer another project's calibration. Use CLI tools when a newly configured MCP server is not available until the next session.
 
-Conversations, wiki lessons, provisional assessments, human labels, and calibration belong to the current project's `.shikii/`. Keep private conversations and local settings out of published code and documentation. The shared page on port 8096 opens each project separately.
+Conversations, wiki lessons, provisional assessments, human labels, and calibration belong to the current project's `.shikii/`. Keep private conversations and local settings out of published code and documentation. Each project has one answer page, started by the first request's hook on a free port and opened in the browser. When the person asks where the page is, run `shikii page` (or read `page` in `shikii_status`) and answer with its URL and port.
 
 New projects receive domain-neutral built-in questions. `prompt-kind` still means local file editing for `edit`; `changes-in-scope` covers observed local files, not unobserved external actions. Use task-specific evidence and a dedicated spec for business actions the hooks cannot observe. Existing project questions and calibration are preserved on update; changed wording needs its own validation.
 

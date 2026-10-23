@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,7 +32,10 @@ func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent strin
 	hookCalibrate = runCalibrateInProcess // テストは線を同プロセスで引く(本番は別プロセスを切り離す)
 	hookTune = runTuneInProcess
 	spawned = nil
-	hookSpawn = recordSpawn             // 本物の up / serve は起こさない(記録だけ)
+	hookSpawn = recordSpawn // 本物の up / serve は起こさない(記録だけ)
+	opened = nil
+	openBrowser = func(url string) { opened = append(opened, url) }
+	pageStartWait = 0                   // 起こした画面を待たない(記録だけなので来ない)
 	hookLocalURL = "http://127.0.0.1:1" // 閉じている口(モデルが無い)
 	if model != nil {
 		hookLocalURL = model.URL
@@ -81,8 +85,19 @@ func initTestProject(t *testing.T, root string) (string, string) {
 	return store, scope
 }
 
-// spawned は hookSpawn の記録(テスト)。
-var spawned []string
+// spawned は hookSpawn の記録(テスト)。opened はブラウザで開いた URL の記録。
+var spawned, opened []string
+
+// spawnedUps は起こした中の手元のモデル(up)だけ(画面の serve を除く)。
+func spawnedUps() []string {
+	var out []string
+	for _, s := range spawned {
+		if s == "up" || strings.HasPrefix(s, "up ") {
+			out = append(out, s)
+		}
+	}
+	return out
+}
 
 func recordSpawn(agent, logName string, args ...string) int {
 	spawned = append(spawned, strings.Join(args, " "))
@@ -578,11 +593,11 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	// 人の確認は needs-plan の 1 件。prompt-kind は結果から正解が付くので迷っても人を待たない。Stop の完了判定は AI の仮採点と結果を待つ。
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "add a --json flag to the status command"})
 	out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Added."})
-	if !strings.Contains(out, "1 of this session's decisions wait") || !strings.Contains(out, hookPageURL+"/") || strings.Contains(out, "Start the page") {
-		t.Fatalf("the line must always give the URL (the page is started in the background): %s", out)
+	if !strings.Contains(out, "1 of this session's decisions wait") || !strings.Contains(out, pageNotUp+"/") || strings.Contains(out, "Start the page") {
+		t.Fatalf("the line must always say where to answer (the page is started in the background; here it never comes up): %s", out)
 	}
-	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+filepath.Join(os.Getenv("HOME"), ".shikii", "agent")+" --port 8096 --local ") {
-		t.Fatalf("a Stop with answers waiting and no page must start the page once: %v", spawned)
+	if len(spawned) != 1 || !strings.HasPrefix(spawned[0], "serve --store "+filepath.Join(cwd, ".shikii")+" --port 0 --local ") {
+		t.Fatalf("the first request starts this project's page once on a free port; the Stop does not start a second one: %v", spawned)
 	}
 	if strings.Contains(out, "hookSpecificOutput") {
 		t.Fatalf("Stop must not return hookSpecificOutput (it would continue the conversation): %s", out)
@@ -594,7 +609,8 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	// 画面が立っている → 起こさない。1 件に答え、次の依頼で 1 件増えると残りは 1 件。
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) }))
 	t.Cleanup(page.Close)
-	hookPageURL = page.URL
+	common, _ := agentHome() // このプロジェクトの画面の印(0.7.6: ポートは空いているもの)
+	writePageRecord(common, cwd, page.Listener.Addr().(*net.TCPAddr).Port, os.Getpid())
 	spawned = nil
 	recs, _ := (store.Store{Dir: agent}).Records("needs-plan", 0)
 	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "no"}) })
@@ -622,12 +638,12 @@ func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 	// install は guard を書いているので、まず guard を消して依頼の直後の起こし方を見る
 	_ = os.Remove(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "starting-model"))
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "add a flag to the status command"})
-	if len(spawned) != 1 || spawned[0] != "up" {
+	if ups := spawnedUps(); len(ups) != 1 { // 画面(serve)の起動は別に数える(0.7.6)
 		t.Fatalf("a missing model must start `shikii up` once: %v", spawned)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "and document it in the README as well"})
 	runHook(t, "stop", map[string]any{"session_id": "m", "cwd": cwd})
-	if len(spawned) != 1 {
+	if len(spawnedUps()) != 1 {
 		t.Fatalf("within %s the model must not be started again: %v", hookStartGap, spawned)
 	}
 	// 10 分過ぎれば(guard の時刻が古く、前の子も生きていなければ)もう一度
@@ -636,7 +652,7 @@ func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 		t.Fatal(err)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "now run the tests and tell me what fails"})
-	if len(spawned) != 2 {
+	if len(spawnedUps()) != 2 {
 		t.Fatalf("after the gap the model may be started again: %v", spawned)
 	}
 	// install の表示に、人が打つコマンドは無い

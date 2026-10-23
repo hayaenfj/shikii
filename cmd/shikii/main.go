@@ -65,6 +65,8 @@ func main() {
 		err = cmdBias(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
+	case "page":
+		err = cmdPage(os.Args[2:])
 	case "gc":
 		err = cmdGC(os.Args[2:])
 	case "wiki":
@@ -118,7 +120,7 @@ func usageText() string {
   shikii update    最新の安定版を確認し、実行中のshikiiと同じ場所へ本体・readoutを更新する
   shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | plan query|submit | variants submit
                    Claude Code / Codex の hook として AI 自身の考え方を 2 点で測る: 考える前(この依頼で結局ファイルを変えるか、着手前に方針を合わせるか)と
-                   考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場はプロジェクトの .shikii/、モデルは :8080、画面は :8096。過去の会話と wiki の教訓を引用し、整理をエージェントへ渡す。判定からの助言は線を引いてから。ツールは止めない
+                   考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場はプロジェクトの .shikii/、モデルは :8080、画面はプロジェクトごとに空いているポート(shikii page)。過去の会話と wiki の教訓を引用し、整理をエージェントへ渡す。判定からの助言は線を引いてから。ツールは止めない
   shikii hook plan query | submit（JSONを標準入力）
                    着手前の依頼・合意した方針・未決事項を、通常のエージェントが原文付きで整理して判定する。人の入力や正解にはしない
   shikii decide   <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
@@ -129,6 +131,7 @@ func usageText() string {
                    正解で線を引く。今の (hash, model) に無い正解は本文で聞き直す。state.context があれば文脈の段の線も別に引く
                    --labeled の行に raw(noul は P(yes) の数字、choice / score は {id: p})があればモデルを呼ばずその確率で測る(別の道具の確率を同じ物差しで)
   shikii status    [spec.yaml...] [--store DIR]      記録と正解の数、段ごとの数(1000 判定あたりの人の判断)、線の状態
+  shikii page                                         このプロジェクトの画面の URL・ポート・pid(立っていなければ起こす)
   shikii tune      <spec.yaml> [--labeled file] [--local URL] [--store DIR] [--folds 5] [--propose N --proposer URL [--proposer-model M]] [--write]
                    spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は <store>/wiki/runs/
   shikii import    <past.csv> --spec <spec.yaml> [--out truths.json]
@@ -1950,7 +1953,14 @@ func cmdStatus(args []string) error {
 	if scope := storeScope(*storeDir); scope != "" { // 届いた教訓の効果(置き場の親がプロジェクト)
 		printMemoryEffect(stdout, st, scope, time.Now())
 	}
-	printGuardStats(stdout, *storeDir) // 止める検査(0.7.3): 有効な数、止めた数、直った数
+	printGuardStats(stdout, *storeDir)               // 止める検査(0.7.3): 有効な数、止めた数、直った数
+	if scope := storeScope(*storeDir); scope != "" { // 画面(0.7.6): プロジェクトごとに 1 つ、ポートは空いているもの
+		if url := livePage(scope); url != "" {
+			fmt.Fprintf(stdout, "page: %s/ (up)\n", url)
+		} else {
+			fmt.Fprintln(stdout, "page: not running (the first request's hook starts it on a free port and opens the browser)")
+		}
+	}
 	return nil
 }
 

@@ -234,7 +234,7 @@ func wordingSummary(agent string) string {
 		}
 		lines = append(lines, bi(
 			fmt.Sprintf("shikii: a candidate wording %q beat the current question of %s on the stored truths. Only check that it asks the same thing, then adopt or reject: %s", res.Winner, id, projectPageURL(agent)),
-			fmt.Sprintf("shikii: 判定「%s」で聞き方の候補「%s」が今の質問を上回りました。意味が同じかだけ確かめて採用か却下を: %s", id, res.Winner, projectPageURL(agent)),
+			fmt.Sprintf("shikii: 判定「%s」で聞き方の候補「%s」が今の質問を上回りました。意味が同じかだけ確かめて採用か却下を: %s", id, res.Winner, pageBase(filepath.Dir(agent))+"/"),
 			hookLoc{Lang: hookLang()}))
 	}
 	return strings.Join(lines, "\n")
