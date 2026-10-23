@@ -31,7 +31,7 @@
   });
 
   // 件数が増えた時の見せ方: 種類ごとの数(押すと絞り込み)、1 件ずつ / 一覧、スキップ、ほかに待っている数
-  const kind = it => it.audit ? 'audit' : it.band === 'ask' ? 'ask' : 'other';
+  const kind = it => it.waits_for_person === false ? 'other' : it.audit ? 'audit' : it.band === 'ask' ? 'ask' : 'other'; // other = 結果待ち(人は答えない)
   let all = $derived(sp.queue?.items || []);
   let counts = $derived({ all: ui.done ? (sp.unlabeled || 0) : all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length });
   // 表示中の列から仕事の印を数える。回答済みでも、未回答の列を読む必要はない。
@@ -69,10 +69,11 @@
     </span>
   </h2>
   <div class="overview-stats">
-    {#if machineOnly}
+    {#if !machineOnly}
+    <div class="stat-tile"><span>{t('pendingCount')}</span><strong>{sp.waiting_for_person || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot pending-dot" aria-hidden="true"></span></div>
+    {/if}
+    {#if machineOnly || sp.awaiting_results}
     <div class="stat-tile"><span>{t('awaitingResults')}</span><strong>{sp.awaiting_results || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot record-dot" aria-hidden="true"></span></div>
-    {:else}
-    <div class="stat-tile"><span>{t('pendingCount')}</span><strong>{sp.unlabeled || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot pending-dot" aria-hidden="true"></span></div>
     {/if}
     <div class="stat-tile"><span>{t('checkedCount')}</span><strong>{sp.labels || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot checked-dot" aria-hidden="true"></span></div>
     <div class="stat-tile"><span>{t('recordCount')}</span><strong>{sp.records || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot record-dot" aria-hidden="true"></span></div>
@@ -128,12 +129,12 @@
       <div class="todo">{t('todo')}</div>
       <div class="keys">{t('keysHint')}</div>
       {#key visible[0].trace_id}
-        <ItemCard {sp} it={visible[0]} readonly={machineOnly} pos={t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')} />
+        <ItemCard {sp} it={visible[0]} readonly={machineOnly || visible[0].waits_for_person === false} pos={t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')} />
       {/key}
     {:else}
       <div class="keys">{t('keysHint')}</div>
       {#each visible.slice(0, ui.listSize) as it (it.trace_id)}
-        <ItemCard {sp} {it} readonly={machineOnly} />
+        <ItemCard {sp} {it} readonly={machineOnly || it.waits_for_person === false} />
       {/each}
       {#if visible.length > ui.listSize || extra}
         <button type="button" class="weak" onclick={() => { ui.listSize += 30; }}>{t('showMore')(Math.max(0, visible.length - ui.listSize) + extra)}</button>

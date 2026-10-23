@@ -111,6 +111,7 @@
   {:else if it.top}
     <div class="guess prediction"><div><span class="prediction-label">{t('predictionHeading')}</span><strong>{t('aiGuess')(topName, (guess.p * 100).toFixed(0))}</strong><span class="prediction-band">{bandWord}{#if it.audit} · {t('auditShort')}{/if}</span></div><div class="confidence-ring" style="--confidence:{Math.round(guess.p * 100)}%" aria-hidden="true"><span>{Math.round(guess.p * 100)}<small>%</small></span></div></div>
   {/if}
+  {#if readonly && !it.legacy_planning}<p class="k readonly-note">{t('readonlyNote')}</p>{/if}
   {#if !it.legacy_planning && !readonly}<div class="answer-area"><div class="answer-heading"><span>{t('yourDecision')}</span><small>{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small></div>
     <div class="btns" role="group" aria-label={t('yourDecision')}>
       {#each it.choices as c, i}

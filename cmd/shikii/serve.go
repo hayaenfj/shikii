@@ -710,7 +710,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": !sp.LiveHash(rec.SpecHash),
 			"answerable": answerable, "choices": choices, "rung": rec.RungOf(), "project": rec.Project,
-			"audit": item.audit, "review_reason": item.reason,
+			"audit": item.audit, "review_reason": item.reason, "waits_for_person": waitsForPersonRecord(id, item.record, item.audit),
 		})
 		if grade, ok := reviews[rec.TraceID]; ok {
 			items[len(items)-1]["review"] = grade
@@ -793,14 +793,17 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, rerr)
 			return
 		}
-		todo, reviewPending, legacyPlanning := 0, 0, 0
+		todo, reviewPending, legacyPlanning, waitingPerson := 0, 0, 0, 0
 		for _, rec := range records {
 			if legacyPlanningRecord(sp, rec) {
 				legacyPlanning++
 				continue
 			}
-			if show, _, _ := reviewQueueState(rec, labeled, reviews); show {
+			if show, audit, _ := reviewQueueState(rec, labeled, reviews); show {
 				todo++
+				if waitsForPersonRecord(sp.ID, rec, audit) { // 人の答えを待つのは抜き取りと、結果で正解が付かない判定の迷いだけ(0.7.6)
+					waitingPerson++
+				}
 			}
 			if _, graded := reviews[rec.TraceID]; rec.ReviewPending && !graded {
 				if _, answered := labeled[rec.TraceID]; !answered {
@@ -824,19 +827,21 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if last.log != "" {
 			result = &last.result
 		}
-		truthSource, personAnswers, awaiting := "person", true, 0
+		truthSource, personAnswers := "person", !machineOnlySpecs[sp.ID] // 人は答えない判定(wiki の矛盾など): 0.7.6 に 60 件が確認待ちに見えた
 		if outcomeSpecs[sp.ID] {
 			truthSource = "results"
 		}
-		if machineOnlySpecs[sp.ID] { // 人は答えない: 確認待ちは 0、結果待ちの数だけ別に出す(0.7.6: wiki の矛盾 60 件が確認待ちに見えた)
-			personAnswers, awaiting, todo = false, todo, 0
-		}
+		awaiting := todo - waitingPerson // 結果待ち(次の依頼・振り返りの結果が正解を付ける)
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
-			"unlabeled": todo, "truth_source": truthSource, "person_answers": personAnswers, "awaiting_results": awaiting, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
+			"unlabeled": todo, "waiting_for_person": waitingPerson, "awaiting_results": awaiting, "truth_source": truthSource, "person_answers": personAnswers, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
-	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir,
+	modelName, endpoint := "local", s.o.ef.local // AI の状態(0.7.6): どのモデルで判定しているか
+	if usesHosted() {
+		modelName, endpoint = "TypeSafe Jev", systemone.RedactURL(s.o.ef.hosted)
+	}
+	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir, "model": map[string]any{"name": modelName, "endpoint": endpoint},
 		"summary": statusSummary(s.st, s.o.storeDir, s.o.projectScope, person, time.Now()), "page": page})
 }
 

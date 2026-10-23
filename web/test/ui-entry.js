@@ -129,17 +129,18 @@ async function checkSummary(target) {
   const summary = { person: { records: 20, waits: 2, recent_records: 20, recent_waits: 2, by_person: 1, by_result: 13, per_thousand: 100, recent_per_thousand: 100 },
     memory: { delivered: 4, helpful: 1, unused: 2, harmful: 0, unknown: 1, pending: 0, awaiting_feedback: 0, recent_delivered: 4, recent_helpful: 1, corrections: { delivered: 0 } },
     guards: { total: 3, enabled: 3, stopped: 1, fixed: 1, items: [{ id: 'changelog-pair', kind: 'paired-files', title: '変更履歴は英語と日本語を揃える', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'CHANGELOG_ja.md が変わっていない' } }] } };
-  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs(), summary } : { items: [] } });
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs(), summary, model: { name: 'TypeSafe Jev', endpoint: 'https://api.typesafe.ai' } } : { items: [] } });
   Object.assign(ui, { tab: '', advanced: false, done: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
   const details = target.querySelector('#summary');
   const line = details?.querySelector('.summary-line')?.textContent || '';
-  const oneLine = line.includes('4') && line.includes('3') && line.includes('2 / 20');
+  // 先頭はまず「あなたがやること」(人待ちの合計 4 = 4 問 × 1)、次に AI の状態(モデル名・自分で判断できる問い 0 / 4・教訓 4・検査 3)
+  const oneLine = line.startsWith('あなたがやること: 4 件') && line.includes('TypeSafe Jev') && line.includes('0 / 4') && line.includes('届いた教訓 4') && line.includes('検査 3');
   const closed = !!details && !details.open;
   details?.querySelector('summary')?.click(); flushSync();
   const opened = !!details && details.open;
-  const body = details?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (details?.textContent || '').includes('CHANGELOG_ja.md が変わっていない');
+  const body = details?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (details?.textContent || '').includes('CHANGELOG_ja.md が変わっていない') && details.querySelectorAll('.summary-you-list button').length === 4 && (details.textContent || '').includes('学習中 0 / 50');
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = oneLine && closed && opened && body;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (効き目の要約: 1行=' + oneLine + ', 閉じて始まる=' + closed + ', クリックで開く=' + opened + ', 検査の一覧と最後の結果=' + body + ')');
@@ -150,7 +151,7 @@ async function checkSummary(target) {
 // 0.7.6: 人が答えない判定(wiki の矛盾)は、確認待ちの印を出さず、カードに答えのボタンを出さず、案内を 1 行出す。キー操作も押さない。
 async function checkMachineOnlySpec(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
-  const specs = loadingSpecs().concat([{ id: 'wiki-conflict', type: 'noul', titles: { ja: 'wiki の矛盾' }, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 0, awaiting_results: 3, person_answers: false, truth_source: 'results' }]);
+  const specs = loadingSpecs().concat([{ id: 'wiki-conflict', type: 'noul', titles: { ja: 'wiki の矛盾' }, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 3, waiting_for_person: 0, awaiting_results: 3, person_answers: false, truth_source: 'results' }]);
   const item = { trace_id: 'wc1', at: '2026-10-23T00:00:00Z', band: 'discard', top: 'no', p: 0.8, model: 'm', inputs: { lesson: 'a', new_lesson: 'b' }, inputs_hash: 'wc1', raw: { yes: 0.2, no: 0.8 }, stale: false, answerable: true, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal', audit: false };
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs } : url.startsWith('v1/queue?spec=wiki-conflict') ? { items: [item] } : { items: [] } });
   Object.assign(ui, { tab: 'wiki-conflict', advanced: false, done: false, pinned: '', view: 'list' });
@@ -556,7 +557,7 @@ function checkClaimEvidence(target) {
 
 
 function loadingSpecs() {
-  return ['needs-plan', 'done-as-asked', 'prompt-kind', 'changes-in-scope'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 1 }));
+  return ['needs-plan', 'done-as-asked', 'prompt-kind', 'changes-in-scope'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 1, waiting_for_person: 1, person_answers: true }));
 }
 
 // 表示中の情報だけを取得する。回答済み・知識・くわしくへの切替も取りこぼさない。

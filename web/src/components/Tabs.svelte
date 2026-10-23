@@ -6,9 +6,10 @@
     { id: 'before', label: 'navBefore', ids: ['prompt-kind', 'needs-plan'] },
     { id: 'after', label: 'navAfter', ids: ['changes-in-scope', 'done-as-asked'] },
     { id: 'other', label: 'navOther', ids: [] },
+    { id: 'machine', label: 'navMachine', ids: [] }, // AI だけが答える問い(wiki の矛盾・差し込み先)。人の仕事ではない(0.7.6)
   ];
   const builtins = stages.flatMap(s => s.ids);
-  const itemsFor = stage => stage.id === 'other' ? specs.filter(s => !builtins.includes(s.id)) : stage.ids.map(id => specs.find(s => s.id === id)).filter(Boolean);
+  const itemsFor = stage => stage.id === 'machine' ? specs.filter(s => s.person_answers === false) : stage.id === 'other' ? specs.filter(s => !builtins.includes(s.id) && s.person_answers !== false) : stage.ids.map(id => specs.find(s => s.id === id)).filter(Boolean);
 </script>
 
 <nav id="tabs" aria-label={t('decisionNav')}>
@@ -22,7 +23,7 @@
           <button type="button" data-tab={sp.id} aria-current={active === sp.id ? 'page' : undefined} class:active={active === sp.id} onclick={() => setTab(sp.id)}>
             <span class="nav-icon" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
             <span class="nav-title">{loc(sp.titles, sp.id)}</span>
-            {#if sp.unlabeled}<span class="badge">{sp.unlabeled}</span>{/if}
+            {#if sp.waiting_for_person}<span class="badge">{sp.waiting_for_person}</span>{/if}
           </button>
         {/each}
       </div>

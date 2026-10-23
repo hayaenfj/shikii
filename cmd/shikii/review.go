@@ -250,3 +250,12 @@ func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, result)
 }
+
+// waitsForPersonRecord は、列に出る記録のうち人の答えを待つもの: 抜き取り(audit)か、結果で正解が付かない判定の「迷い」(ask)。
+// 結果で正解が付く判定(prompt-kind など)の迷いは次の依頼の結果が答える。AI だけが答える判定(wiki の矛盾など)は人を待たない(0.7.6)。
+func waitsForPersonRecord(specID string, rec store.Record, audit bool) bool {
+	if machineOnlySpecs[specID] {
+		return false
+	}
+	return audit || (rec.Band == "ask" && !outcomeSpecs[specID])
+}
