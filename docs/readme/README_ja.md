@@ -7,10 +7,10 @@
 モデルは確率を返します。shikiiは、その確率で動いてよいかを答えます。人と結果が付けた正解から線を引き、すべての判断を帯（`act` / `ask` / `discard`）にし、学んだことをエージェントが仕事中に使うwikiに貯め、人の訂正は次の仕事で機械が止める検査にします。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-361%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-362%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.7.5-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.8.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
 0.7は線と帯の原点に戻った版です。推奨のモデルはTypeSafeのJevで、環境変数に鍵を置くだけで取得するものは無く、1問 約0.2秒で答えます。鍵を置けない時は手元のllama.cppで同じ問いに答えます。新しい教訓はwikiのどこに差し込むか・既存の教訓と食い違わないかを決定モデルが見ます。0.7.3では、人の訂正を「止める検査」にし、サブエージェントにも教訓を届け、届いた教訓が行動を変えたかを本番で数えます。**0.6.0以前からの更新は、初期化済みの各プロジェクトの `.shikii/` の中を全部消して初期化し直します。** 残したいものは先に控えてください。[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
 

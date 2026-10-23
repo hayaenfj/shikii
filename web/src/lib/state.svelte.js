@@ -19,7 +19,7 @@ export const ui = $state({
 
   listSize: 30,
   done: false,
-  results: false, // 「次の依頼・振り返りで確定する」の列を見ている(人は答えない記録。0.7.6)
+  results: false, // 「次の依頼・振り返りで確定する」の列を見ている(人は答えない記録。0.8.0)
 });
 export const skipped = new SvelteSet();
 export const data = $state({ state: null, loadError: '' });

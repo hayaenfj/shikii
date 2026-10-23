@@ -6,7 +6,7 @@
     { id: 'before', label: 'navBefore', ids: ['prompt-kind', 'needs-plan'] },
     { id: 'after', label: 'navAfter', ids: ['changes-in-scope', 'done-as-asked'] },
     { id: 'other', label: 'navOther', ids: [] },
-    { id: 'machine', label: 'navMachine', ids: [] }, // AI だけが答える問い(wiki の矛盾・差し込み先)。人の仕事ではない(0.7.6)
+    { id: 'machine', label: 'navMachine', ids: [] }, // AI だけが答える問い(wiki の矛盾・差し込み先)。人の仕事ではない(0.8.0)
   ];
   const builtins = stages.flatMap(s => s.ids);
   const itemsFor = stage => stage.id === 'machine' ? specs.filter(s => s.person_answers === false) : stage.id === 'other' ? specs.filter(s => !builtins.includes(s.id) && s.person_answers !== false) : stage.ids.map(id => specs.find(s => s.id === id)).filter(Boolean);

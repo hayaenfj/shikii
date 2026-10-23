@@ -444,7 +444,7 @@ func countGuardStats(guards []guard, recs []guardRecord) guardStats {
 	failed := map[string]map[string]bool{} // session/turn → guard → まだ直っていない
 	for _, r := range recs {
 		if isBuiltinGuard(r.Guard) {
-			continue // 作法の検査は countRitualStats で別に数える(0.7.6)
+			continue // 作法の検査は countRitualStats で別に数える(0.8.0)
 		}
 		key := r.Session + "/" + r.Turn
 		if !r.Recheck && !r.Pass {
@@ -480,7 +480,7 @@ func printGuardStats(out io.Writer, root string) {
 		s := countGuardStats(guards, recs)
 		fmt.Fprintf(out, "guards: %d of %d enabled; stopped %d turns, fixed before the turn ended %d\n", s.Enabled, len(guards), s.Stopped, s.Fixed)
 	}
-	// 作法の検査(0.7.6): 頼んだ回数のうち済んでいた回数と、止めてから済んだ回数。人には「AI が作法をやっているか」が見える
+	// 作法の検査(0.8.0): 頼んだ回数のうち済んでいた回数と、止めてから済んだ回数。人には「AI が作法をやっているか」が見える
 	r := countRitualStats(recs)
 	fmt.Fprintf(out, "rituals: plan-before-work done %d of %d asked (after a stop %d); reflect-before-end done %d of %d asked (after a stop %d)\n", r.Plan.Done, r.Plan.Asked, r.Plan.Fixed, r.Reflect.Done, r.Reflect.Asked, r.Reflect.Fixed)
 }
@@ -533,7 +533,7 @@ func guardSummaryJSON(root string) map[string]any {
 	for _, r := range recs {
 		last[r.Guard] = r
 	}
-	guards = append(builtinGuards(), guards...) // 作法の検査(組み込み)も並べる(0.7.6)
+	guards = append(builtinGuards(), guards...) // 作法の検査(組み込み)も並べる(0.8.0)
 	for _, g := range guards {
 		item := map[string]any{"id": g.ID, "kind": g.Kind, "title": g.Title, "enabled": g.Enabled, "reason": g.Reason, "builtin": isBuiltinGuard(g.ID)}
 		if r, ok := last[g.ID]; ok {

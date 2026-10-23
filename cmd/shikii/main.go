@@ -1954,7 +1954,7 @@ func cmdStatus(args []string) error {
 		printMemoryEffect(stdout, st, scope, time.Now())
 	}
 	printGuardStats(stdout, *storeDir)               // 止める検査(0.7.3): 有効な数、止めた数、直った数
-	if scope := storeScope(*storeDir); scope != "" { // 画面(0.7.6): プロジェクトごとに 1 つ、ポートは空いているもの
+	if scope := storeScope(*storeDir); scope != "" { // 画面(0.8.0): プロジェクトごとに 1 つ、ポートは空いているもの
 		if url := livePage(scope); url != "" {
 			fmt.Fprintf(stdout, "page: %s/ (up)\n", url)
 		} else {

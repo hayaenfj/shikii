@@ -609,7 +609,7 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	// 画面が立っている → 起こさない。1 件に答え、次の依頼で 1 件増えると残りは 1 件。
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) }))
 	t.Cleanup(page.Close)
-	common, _ := agentHome() // このプロジェクトの画面の印(0.7.6: ポートは空いているもの)
+	common, _ := agentHome() // このプロジェクトの画面の印(0.8.0: ポートは空いているもの)
 	writePageRecord(common, cwd, page.Listener.Addr().(*net.TCPAddr).Port, os.Getpid())
 	spawned = nil
 	recs, _ := (store.Store{Dir: agent}).Records("needs-plan", 0)
@@ -638,7 +638,7 @@ func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 	// install は guard を書いているので、まず guard を消して依頼の直後の起こし方を見る
 	_ = os.Remove(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "starting-model"))
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "add a flag to the status command"})
-	if ups := spawnedUps(); len(ups) != 1 { // 画面(serve)の起動は別に数える(0.7.6)
+	if ups := spawnedUps(); len(ups) != 1 { // 画面(serve)の起動は別に数える(0.8.0)
 		t.Fatalf("a missing model must start `shikii up` once: %v", spawned)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "and document it in the README as well"})

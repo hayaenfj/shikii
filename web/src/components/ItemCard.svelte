@@ -7,7 +7,7 @@
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
 
-  let { sp, it, pos = '', readonly = false } = $props(); // readonly: 人が答えない判定(AI が答え、正解は結果から)。ボタンを出さない(0.7.6)
+  let { sp, it, pos = '', readonly = false } = $props(); // readonly: 人が答えない判定(AI が答え、正解は結果から)。ボタンを出さない(0.8.0)
   let busy = $state(false);
   let redoRes = $state(null); // やり直しの結果(前・今・答えとの一致)。文は描く時に組むので、言語を切り替えても変わる
 

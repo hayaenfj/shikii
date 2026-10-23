@@ -11,7 +11,7 @@
   let lessons = $derived(selected ? [selected] : wiki.lessons || []);
   let effect = $derived(wiki.memory_effect);
 
-  // AI が何を蓄積しているか(0.7.6): 記事を関連リンクで繋がる群にまとめて階層で見せる。群の名は、群の中でいちばん多く指されている記事の題。
+  // AI が何を蓄積しているか(0.8.0): 記事を関連リンクで繋がる群にまとめて階層で見せる。群の名は、群の中でいちばん多く指されている記事の題。
   // 繋がりの無い記事は「単独の記事」。各群は畳め、記事を押すと本文・出典へ(既存の表示)
   let all = $derived(wiki.lessons || []);
   let groups = $derived.by(() => {

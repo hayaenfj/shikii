@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// 0.7.6: serve は --port 0 で空いているポートを取り、ポートと pid を ~/.shikii/agent/pages/<id>.json に書く。
+// 0.8.0: serve は --port 0 で空いているポートを取り、ポートと pid を ~/.shikii/agent/pages/<id>.json に書く。
 // livePage は立っている画面の URL を返し、死んだ pid や応えない口は「立っていない」。
 func TestServePicksAFreePortAndRecordsIt(t *testing.T) {
 	hookEnv(t, nil)

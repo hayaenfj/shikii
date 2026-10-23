@@ -4,7 +4,7 @@
 
 ## 0.4のまとめた振り返り
 
-振り返りは省けない(0.7.6): 依頼前の hook が対象の会話を挙げたターンは、その会話の仮採点・wiki(教訓なしは sources だけ)・届いた教訓ごとの評価(memory)を submit するまで、Stop が一度だけ止まる。二度目は通るが、やらなかったことは記録され、`shikii status` の `rituals:` と画面の「AI の状態」に出る。
+振り返りは省けない(0.8.0): 依頼前の hook が対象の会話を挙げたターンは、その会話の仮採点・wiki(教訓なしは sources だけ)・届いた教訓ごとの評価(memory)を submit するまで、Stop が一度だけ止まる。二度目は通るが、やらなかったことは記録され、`shikii status` の `rituals:` と画面の「AI の状態」に出る。
 
 0.5では、確認したコード・テスト・Releaseなどの原資料を`observations`へ返し、会話と合わせて最大2件を整理する。加えて`maintenance`に最大2件のwiki見直し対象がある。[wikiの作法](wiki.md)で本文・関連・出典を確認し、必要な編集を保存した後、最新のpage_id・revision・keyとreasonを`submit`の`maintenance`配列へ渡す。見直しだけのsubmitも使える。各保存の失敗は従来どおりcomplete:falseで返る。
 

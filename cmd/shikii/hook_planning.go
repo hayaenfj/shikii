@@ -318,7 +318,7 @@ func readPlanningSession(dir *os.Root, name string) (*hookSession, error) {
 }
 
 func currentPlanningFrame(s *hookSession, turnID, scope string) error {
-	// Judged(ターンの終わりの判定が済んだ)後は受けないが、作法の検査が止めた直後(整理の submit がまだ無い)は受ける(0.7.6)
+	// Judged(ターンの終わりの判定が済んだ)後は受けないが、作法の検査が止めた直後(整理の submit がまだ無い)は受ける(0.8.0)
 	if s.Scope != scope || s.TurnID != turnID || (s.Judged && s.Planning != nil && s.Planning.Result != nil) || s.Planning == nil || s.Planning.TurnID != turnID || time.Since(s.Planning.At) > hookSessionTTL {
 		return errors.New("現在進行中の同じプロジェクト・同じ依頼の文脈だけを扱えます")
 	}

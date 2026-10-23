@@ -42,7 +42,7 @@ import (
 var (
 	hookLocalURL      = "http://127.0.0.1:8080"   // 手元のモデル(init の MCP 設定と同じ)
 	hookHostedURL     = "https://api.typesafe.ai" // 標準の TypeSafe Jev。鍵(TYPESAFE_API_KEY / DECISIONS_API_KEY)がある時だけ使う(2026-10-23 の決定)
-	hookPageURL       = "http://127.0.0.1:8096"   // 文の中の画面の URL の置き字。出す時にそのプロジェクトの画面の URL(空いているポート)に置き換える(0.7.6)
+	hookPageURL       = "http://127.0.0.1:8096"   // 文の中の画面の URL の置き字。出す時にそのプロジェクトの画面の URL(空いているポート)に置き換える(0.8.0)
 	hookDecideTimeout = 5 * time.Second
 	hookProbeTimeout  = 300 * time.Millisecond
 	hookSessionTTL    = 7 * 24 * time.Hour
@@ -189,8 +189,8 @@ type hookSession struct {
 	Judged        bool             `json:"judged,omitempty"`           // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
 	Head          string           `json:"head,omitempty"`             // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
 	HeadAt        time.Time        `json:"head_at,omitempty"`          // 依頼の時刻。これより前にコミットされたもの(切り替え先の既存のコミット)は見ない
-	MemoryNoticed bool             `json:"memory_noticed,omitempty"`   // まだ wiki に無いメモリがあると、このセッションで一度伝えた(0.7.6)
-	ReflectAsked  []string         `json:"reflect_asked,omitempty"`    // 依頼前に振り返りを頼んだ会話(作法の検査が Stop で見る。0.7.6)
+	MemoryNoticed bool             `json:"memory_noticed,omitempty"`   // まだ wiki に無いメモリがあると、このセッションで一度伝えた(0.8.0)
+	ReflectAsked  []string         `json:"reflect_asked,omitempty"`    // 依頼前に振り返りを頼んだ会話(作法の検査が Stop で見る。0.8.0)
 	At            time.Time        `json:"at"`
 }
 
@@ -737,7 +737,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		inputs["previous"] = snapshot.Previous // 文脈の段(迷った時だけ使われる)
 	}
 	tree, listing, listed, project, scope := treeStateWithScope(in.CWD) // 今のツリー: 前の依頼の結果を決める「今」でもあり、この依頼の控えでもある(1 回で両方)
-	pageURL, pageStarted := ensureProjectPage(scope)                    // エージェントが動き出したら(最初の依頼)このプロジェクトの画面を 1 つ立て、ブラウザで開く(0.7.6)
+	pageURL, pageStarted := ensureProjectPage(scope)                    // エージェントが動き出したら(最初の依頼)このプロジェクトの画面を 1 つ立て、ブラウザで開く(0.8.0)
 	head := gitHead(in.CWD)                                             // このターンのコミットを止める検査が見るための起点
 	requestText := strings.TrimSpace(in.Prompt)
 	if utf8.RuneCountInString(req) < shortReply && snapshot.Request != "" && snapshot.Scope == scope {
@@ -820,7 +820,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if pageStarted {
 		out.Context = joinLines(out.Context, "shikii: このプロジェクトの画面を起こし、ブラウザで開きました: "+pageURL+"/")
 	}
-	// 言われなくても気付く: このプロジェクトのエージェントのメモリに wiki へ移していないファイルがあれば伝える(0.7.6)。セッションに 1 回
+	// 言われなくても気付く: このプロジェクトのエージェントのメモリに wiki へ移していないファイルがあれば伝える(0.8.0)。セッションに 1 回
 	if !snapshot.MemoryNoticed {
 		if notice := memoryImportNotice(scope); notice != "" {
 			out.Context = joinLines(out.Context, notice)
@@ -942,7 +942,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			}
 		}
 	})
-	// 作法の検査(0.7.6): 判定を記録した上で、頼んだ計画・振り返りが済んでいなければ一度だけ止める
+	// 作法の検査(0.8.0): 判定を記録した上で、頼んだ計画・振り返りが済んでいなければ一度だけ止める
 	if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, false); rerr != nil && firstErr == nil {
 		firstErr = rerr
 	} else if rout.Block {
@@ -1497,7 +1497,7 @@ func ensureModel(agent string) {
 	})
 }
 
-// ensurePage は、この置き場(root)のプロジェクトの画面が立っていなければ裏で起こす(0.7.6: プロジェクトごとに 1 つ、ポートは空いているもの)。
+// ensurePage は、この置き場(root)のプロジェクトの画面が立っていなければ裏で起こす(0.8.0: プロジェクトごとに 1 つ、ポートは空いているもの)。
 func ensurePage(root string) {
 	ensureProjectPage(filepath.Dir(root))
 }

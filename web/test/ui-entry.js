@@ -148,7 +148,7 @@ async function checkSummary(target) {
 }
 
 
-// 0.7.6: 人が答えない判定(wiki の矛盾)は、確認待ちの印を出さず、カードに答えのボタンを出さず、案内を 1 行出す。キー操作も押さない。
+// 0.8.0: 人が答えない判定(wiki の矛盾)は、確認待ちの印を出さず、カードに答えのボタンを出さず、案内を 1 行出す。キー操作も押さない。
 async function checkMachineOnlySpec(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const specs = loadingSpecs().concat([{ id: 'wiki-conflict', type: 'noul', titles: { ja: 'wiki の矛盾' }, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 3, waiting_for_person: 0, awaiting_results: 3, person_answers: false, truth_source: 'results' }]);
@@ -161,7 +161,7 @@ async function checkMachineOnlySpec(target) {
   const buttons = target.querySelectorAll('.item .btns button').length;
   const notice = (target.querySelector('.machine-only')?.textContent || '').includes('結果');
   const badge = !!target.querySelector('[data-tab="wiki-conflict"] .badge');
-  // 列: 「未回答」の列が無く、「振り返りで確定する」の列が選ばれている(0.7.6)
+  // 列: 「未回答」の列が無く、「振り返りで確定する」の列が選ばれている(0.8.0)
   const lanes = !target.querySelector('.answer-tabs [data-lane="you"]') && target.querySelector('.answer-tabs [data-lane="results"]')?.classList.contains('active') && (target.querySelector('.lane-results')?.textContent || '').includes('振り返り');
   let clicked = 0;
   for (const b of target.querySelectorAll('.item button')) b.addEventListener('click', () => { clicked++; });
@@ -173,7 +173,7 @@ async function checkMachineOnlySpec(target) {
 }
 
 
-// 0.7.6: 知識の欄は「AI が蓄積しているもの」を関連リンクで繋がる群に階層で見せる。群を開くと記事が並び、題を押すと本文へ。繋がりの無い記事は「単独の記事」
+// 0.8.0: 知識の欄は「AI が蓄積しているもの」を関連リンクで繋がる群に階層で見せる。群を開くと記事が並び、題を押すと本文へ。繋がりの無い記事は「単独の記事」
 async function checkNotebookTree(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const mk = (id, title, related = []) => ({ id, revision: 'r' + id, title, lesson: title + 'の決まり', applies_to: title + 'の時', sources: [{ id: 'src' + id }], related, status: 'hypothesis' });
