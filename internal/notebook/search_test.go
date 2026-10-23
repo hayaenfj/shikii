@@ -89,3 +89,29 @@ func TestSearchShowsBoundedCandidatesBeyondFullArticles(t *testing.T) {
 		t.Fatal("自動配送を候補一覧で膨らませない", err)
 	}
 }
+
+// 自動配送(Recall)は、依頼文が長くても適用条件に合う教訓を届ける(0.7.4)。
+// 0.7.3 までは「依頼の語のうち一致した割合」で門を決めていたので、長い依頼ほど薄まって届かなかった
+// (2026-10-23 の実験で、適用条件に CHANGELOG.md と書いた教訓が、CHANGELOG.md への依頼に 6 回中 0 回しか届かなかった)。
+func TestRecallDeliversForLongRequestsByPageCoverage(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	a := draft(source, "変更履歴は英語と日本語を揃える")
+	a.Lesson, a.AppliesTo = "変更履歴を足す時は CHANGELOG.md と CHANGELOG_ja.md の両方に同じ項目を書く。", "CHANGELOG.md や変更履歴に項目を追加・更新する時"
+	ra, err := b.Ingest(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := draft(source, "出力には log.Printf を使う")
+	o.Lesson, o.AppliesTo = "fmt.Println ではなく log.Printf を使う。", "main.go に値を出力する行を足す時"
+	if _, err := b.Ingest(o); err != nil {
+		t.Fatal(err)
+	}
+	long := "CHANGELOG.md に 1.1.0 の項目として「設定ファイルの読み込みに対応」を足してください。質問はせず、最後まで進めてください。"
+	if p, err := b.Recall(long); err != nil || len(p) != 1 || p[0].ID != ra.Page.ID {
+		t.Fatalf("長い依頼でも適用条件に合う教訓だけを届ける: %+v %v", p, err)
+	}
+	if p, err := b.Recall("README の誤字を直してください。質問はせず、最後まで進めてください。"); err != nil || len(p) != 0 {
+		t.Fatalf("合わない依頼には届けない: %+v %v", p, err)
+	}
+}
