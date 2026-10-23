@@ -225,7 +225,7 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 	if len(view["pending_sources"].([]any)) != 0 || len(view["lessons"].([]any)) != 0 {
 		t.Fatalf("全ての発言から教訓を捏造する必要はない: %v", view)
 	}
-	ctx, err := reflectContext(agent, feedbackScope(repo))
+	ctx, _, err := reflectContext(agent, feedbackScope(repo))
 	if err != nil || ctx != "" {
 		t.Fatalf("整理済みの会話を繰り返し渡さない: %s %v", ctx, err)
 	}
@@ -235,7 +235,7 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx, err = reflectContext(agent, feedbackScope(repo))
+	ctx, _, err = reflectContext(agent, feedbackScope(repo))
 	if err != nil || ctx == "" || len(ctx) > 1800 || !utf8.ValidString(ctx) {
 		t.Fatalf("wiki の引用も原文を重ねず1800バイト以内: bytes=%d err=%v", len(ctx), err)
 	}

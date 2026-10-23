@@ -4,6 +4,7 @@
 
 ## 0.7.6 — 未公開
 
+- 作法の検査(組み込み・常に有効): 依頼前の hook が計画の整理を頼んだ依頼でファイルを変えたのに `hook plan submit` が無い時、または振り返りの対象(会話)を挙げたのに仮採点・wiki・届いた教訓の評価が submit されていない時、Stop を一度だけ止めて実行すべきコマンドを返す。二度目の Stop は通すが、やらなかったことは `records/guards.jsonl` に `plan-before-work` / `reflect-before-end` として残り、`shikii status` の `rituals: … done N of M asked (after a stop K)`、`/v1/status` の `guards.rituals`、画面の「AI の状態」に出る。`shikii guard list` に組み込みとして並び、外せない。振り返りの JSON が読めない時はどの欄かを応答に書く。
 - 画面: 先頭にまず「あなたがやること: N 件」(無ければ「今はありません」。待っている問いへの入口付き)、次に「AI の状態」(判定モデル、自分で判断できる問いの数、問いごとの学習の進み、届いた教訓、止める検査)を出す。「確認待ち」は人が答えるもの(結果で正解が付かない問いでの AI の迷いと、20 件に 1 件の抜き取り)だけを数え、結果を待つ記録は「結果待ち」として読むだけにする。wiki の問いは「AI だけが答える問い」の群に。`/v1/status` に `waiting_for_person` と `model`、列の項目に `waits_for_person` を足した。
 - 画面: wiki の問い(`wiki-conflict`・`wiki-place`)は AI が答え、正解は振り返りの結果から付くので、確認待ちに数えない(矛盾の判定 60 件が人の仕事に見えていた)。印も答えのボタンも出さず、案内 1 行と「結果待ち」の数を出す。`/v1/status` の各問いに `truth_source`・`person_answers`・`awaiting_results` を足した。
 - 答え合わせの画面はプロジェクトごとに 1 つで、エージェントが動き出したら立つ: 最初の依頼の hook(Claude Code・Codex)がこのプロジェクトの画面が立っているか確かめ、無ければ `shikii serve --store <プロジェクト>/.shikii --port 0` を起こし、ブラウザで開く。ポートは固定しない: serve が空いているポートを取り、ポートと pid を `~/.shikii/agent/pages/<プロジェクト id>.json` に書き、hook はそれを読む。同じプロジェクトで複数のエージェントが動いても画面は 1 つ(起こす権利は flock で 1 つに、serve 自身も立っている画面があれば起きない)。`shikii page`(と `/v1/status` の `page`。MCP の shikii_status でも)がいつでも URL・ポート・pid を答える。`shikii status` も URL を出す。共通の :8096 の入口は hook が起こさなくなった(`shikii serve --store ~/.shikii/agent` で手で立てられる)。

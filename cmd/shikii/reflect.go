@@ -262,7 +262,7 @@ func decodeReflect(input io.Reader) (reflectRequest, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		return req, errors.New("振り返りのJSONを確認してください")
+		return req, fmt.Errorf("振り返りのJSONを確認してください: %v", err) // どこが読めないかを返す(エージェントが直して再送できるように。0.7.6)
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
@@ -315,10 +315,10 @@ func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, result)
 }
 
-func reflectContext(root, scope string) (string, error) {
+func reflectContext(root, scope string) (string, []string, error) {
 	view, err := reflectQuery(root, scope)
 	if err != nil || len(view.Sources)+len(view.Observations) == 0 {
-		return "", err
+		return "", nil, err
 	}
 	oldest := time.Time{}
 	if len(view.Sources) > 0 {
@@ -328,7 +328,7 @@ func reflectContext(root, scope string) (string, error) {
 		oldest = view.Observations[0].ObservedAt
 	}
 	if len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
-		return "", nil
+		return "", nil, nil
 	}
 	executable, err := os.Executable()
 	if err != nil {
@@ -343,5 +343,5 @@ func reflectContext(root, scope string) (string, error) {
 		ids = append(ids, o.ID)
 	}
 	data, _ := json.Marshal(map[string]any{"sources": ids})
-	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。observationsは確認結果の原資料です。maintenanceの最大2記事は本文・関連・出典を見直し、最新のpage_id・revision・keyとreasonをmaintenance配列で保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related}]（教訓なしはsourcesだけ）。新しい教訓は submit の前に operation:place で wiki の草稿を渡し、返った差し込み先の候補と矛盾の疑いを読んでから id・replaces を決めます。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。訂正が決まった検査にできるもの(片方を変えたらもう片方も・使わない語・コミット本文に含む語)なら、`shikii guard add` で草稿(無効)を置き、有効にするかは人に聞きます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), nil
+	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。observationsは確認結果の原資料です。maintenanceの最大2記事は本文・関連・出典を見直し、最新のpage_id・revision・keyとreasonをmaintenance配列で保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related}]（教訓なしはsourcesだけ）。新しい教訓は submit の前に operation:place で wiki の草稿を渡し、返った差し込み先の候補と矛盾の疑いを読んでから id・replaces を決めます。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。訂正が決まった検査にできるもの(片方を変えたらもう片方も・使わない語・コミット本文に含む語)なら、`shikii guard add` で草稿(無効)を置き、有効にするかは人に聞きます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n" + string(data), ids, nil
 }

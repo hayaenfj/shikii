@@ -32,15 +32,20 @@ func TestStatusEndpointCarriesTheSummaryForThePage(t *testing.T) {
 	s := get()
 	mem, _ := s["memory"].(map[string]any)
 	gu, _ := s["guards"].(map[string]any)
-	if mem["delivered"] != 0.0 || gu["total"] != 0.0 || gu["enabled"] != 0.0 {
-		t.Fatalf("最初は何も無い: %v", s)
+	if mem["delivered"] != 0.0 || gu["total"] != 0.0 || gu["enabled"] != 0.0 || gu["rituals"] == nil { // 人の検査は無く、作法の検査(組み込み)の数だけある(0.7.6)
+		t.Fatalf("最初は何も無い(作法の検査の数は別): %v", s)
 	}
 	writeGuard(t, st.Dir, guard{ID: "changelog-pair", Kind: guardKindPairedFiles, Title: "変更履歴は英語と日本語を揃える", Pairs: [][]string{{"CHANGELOG.md", "CHANGELOG_ja.md"}}})
 	memoryEffectPrompt(t, scope, "s1")
 	s = get()
 	mem, _ = s["memory"].(map[string]any)
 	gu, _ = s["guards"].(map[string]any)
-	items, _ := gu["items"].([]any)
+	var items []any // 人が作った検査だけ(組み込みの作法の検査は builtin:true で並ぶ)
+	for _, it := range gu["items"].([]any) {
+		if it.(map[string]any)["builtin"] != true {
+			items = append(items, it)
+		}
+	}
 	if mem["delivered"] != 1.0 || mem["pending"] != 1.0 || gu["total"] != 1.0 || gu["enabled"] != 1.0 || len(items) != 1 || items[0].(map[string]any)["id"] != "changelog-pair" {
 		t.Fatalf("届けた教訓と止める検査が summary に出る: %v", s)
 	}

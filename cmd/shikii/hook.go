@@ -190,6 +190,7 @@ type hookSession struct {
 	Head          string           `json:"head,omitempty"`             // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
 	HeadAt        time.Time        `json:"head_at,omitempty"`          // 依頼の時刻。これより前にコミットされたもの(切り替え先の既存のコミット)は見ない
 	MemoryNoticed bool             `json:"memory_noticed,omitempty"`   // まだ wiki に無いメモリがあると、このセッションで一度伝えた(0.7.6)
+	ReflectAsked  []string         `json:"reflect_asked,omitempty"`    // 依頼前に振り返りを頼んだ会話(作法の検査が Stop で見る。0.7.6)
 	At            time.Time        `json:"at"`
 }
 
@@ -603,10 +604,18 @@ func runHookEvent(event string) error {
 			}); merr != nil {
 				hookLog("memory: " + merr.Error())
 			}
-			if context, rerr := reflectContext(agent, current.Scope); rerr != nil {
+			if context, ids, rerr := reflectContext(agent, current.Scope); rerr != nil {
 				hookLog("reflect: " + rerr.Error())
 			} else {
 				out.Context = joinLines(out.Context, context)
+				// 頼んだ会話を控えに書く(作法の検査が Stop で見る: 振り返りが済んだか)。頼まなかったターンは空にする
+				if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
+					if s.TurnID == current.TurnID {
+						s.ReflectAsked = ids
+					}
+				}); uerr != nil {
+					hookLog("reflect: " + uerr.Error())
+				}
 			}
 			out.Context = joinLines(out.Context, variantsContext(agent))
 		}
@@ -933,6 +942,12 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			}
 		}
 	})
+	// 作法の検査(0.7.6): 判定を記録した上で、頼んだ計画・振り返りが済んでいなければ一度だけ止める
+	if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, false); rerr != nil && firstErr == nil {
+		firstErr = rerr
+	} else if rout.Block {
+		out.Block, out.Reason = true, joinLines(out.Reason, rout.Reason)
+	}
 	return out, muts, firstErr
 }
 

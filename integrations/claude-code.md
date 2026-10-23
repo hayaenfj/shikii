@@ -119,6 +119,10 @@ Stop の範囲・完了の判定は全件を人への答え待ちにせず、次
 
 モデルが無い・5 秒で返らない・store に書けない → hook は exit 0 で何も出さず、理由を `~/.shikii/agent/hook.log` に 1 行書く。hook が作業を止めることはない。Claude Code 側で `shikii` が見つからない(PATH)時は hook.log も書かれないので、`which shikii` と Claude Code の `--debug` で見る。
 
+## 作法の検査(0.7.6): 計画と振り返りをやらないと終われない
+
+hook は「計画を整理せよ」「振り返りを保存せよ」と頼むだけだったので、長い作業の中で後回しにされ、誰も気付かなかった(haya1 では needs-plan の記録 0 件、届いた教訓の評価 26 件中 6 件)。0.7.6 からは組み込みの検査が Stop で見る: (a) 計画の整理を頼んだ依頼でファイルを変え、`hook plan submit` が無ければ一度止める。(b) 依頼前に振り返りの対象(会話)を挙げたターンで、その会話の仮採点・wiki・届いた教訓の評価が submit されていなければ一度止める。止めた後の Stop は通すが、済んだかは `records/guards.jsonl` に `plan-before-work` / `reflect-before-end` として残り、`shikii status` の `rituals:` の行(頼んだ回数のうち済んでいた回数、止めてから済んだ回数)と画面の「AI の状態」に出る。`shikii guard list` に組み込みとして並び、外す設定は無い。
+
 ## 訂正を止める検査にする(0.7.3)
 
 repo と CLAUDE.md を読めば分かる教訓は行動を変えなかった(2026-10-23、5 課題 × 2 条件で 4 同点)が、知り得ない決まりは届けば 6 回中 6 回守られ、止める検査は 6 回中 6 回直させた(数字はガイド)。機械で確かめられる訂正は `.shikii/guards/<id>.yaml` の「止める検査」にする。種類は `paired-files`(片方が変わったらもう片方も)、`forbidden-words`(足した行に使わない語)、`commit-body`(そのターンのコミットの本文に含む語)の 3 つで、新しいオプションは無い。Stop で、依頼の時の一覧との差(変わったファイル)、依頼の時の中身との差(足した行)、依頼の時に控えた HEAD からのコミットに当て、引っかかれば `decision: block` と理由を返す。`stop_hook_active` の Stop では止めず、直ったかを `records/guards.jsonl` に記録する(Claude Code の hooks reference によれば連続 8 回で block を無視するので、1 回で止めるのをやめる)。一覧や HEAD が取れない時は通す。

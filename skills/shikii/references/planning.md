@@ -38,6 +38,8 @@ For a comparison with and without memory, freeze the task inputs and this availa
 
 ## Submit grounded interpretations
 
+Submit is not optional: when the hook asked for this planning and the turn changed files, the Stop hook stops the turn once until `hook plan submit` was called for the turn (agreed and open may be `unknown:true` when the conversation gives no evidence). The miss is recorded either way.
+
 Pass the same IDs, the wiki query used for any cited lesson, and `agreed` / `open` to `shikii hook plan submit`:
 
 ```json

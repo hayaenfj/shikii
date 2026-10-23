@@ -29,6 +29,8 @@ Hooks run when a user request arrives and when the turn closes, not before every
 
 **Guards:** when a correction can be checked mechanically (two files that must change together, words never to use, words a commit body must contain), draft a guard with `shikii guard add` as described in [guards.md](references/guards.md). It is written disabled; the person decides whether to enable it (`shikii guard enable <id>` shows the negative example stopping before it turns the guard on). When a guard stops your turn, fix the work and end again; never disable a guard to get past it.
 
+**Rituals are checked too (built in, always on):** when the request hook asked you to prepare the planning context and you changed files, the Stop hook stops the turn once until `hook plan submit` was called for this turn; when the hook listed conversations to reflect on, the Stop hook stops the turn once until `reflect submit` saved their reviews, wiki entries and the assessment of every delivered lesson. The second Stop passes, but the miss is recorded (`shikii status` shows `rituals:` and the page shows it under the AI's state). Do the ritual before ending; do not end twice to get past it.
+
 **Memory import:** when the person asks to move an existing memory (Claude Code's auto memory folder, Codex notes) into shikii's wiki, or when the request hook reports files not yet in the wiki, follow [import-memory.md](references/import-memory.md): keep each file as a captured source, draft one lesson per rule, place and ingest, and turn the memory folder into a thin index that points at the wiki pages. One instruction from the person is enough.
 
 ## Respect the evidence boundaries
