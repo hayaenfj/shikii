@@ -72,7 +72,7 @@ scripts/demo.sh --overconfident # a fake model whose probabilities are too sharp
 
 ### Recommended: TypeSafe Jev
 
-Put `TYPESAFE_API_KEY` in the environment (shikii reads it from the environment only and never from a keychain). With the key, the hooks, the built-in questions and every `pii: false` decision go to Jev at about 0.2 s a question, and no local model is started. `SHIKII_MODEL=local` keeps a local model even with a key; `SHIKII_MODEL=hosted` forces Jev. `pii: true` decisions stay local whatever the key. How Jev compares with the local standard: [Jev against the local standard](#jev-against-the-local-standard).
+Put `TYPESAFE_API_KEY` in the environment (shikii reads it from the environment only and never from a keychain). With the key, the hooks, the built-in questions and every `pii: false` decision go to Jev at about 0.2 s a question, and no local model is started (`shikii up` refuses as well). `SHIKII_MODEL=local` keeps a local model even with a key; `SHIKII_MODEL=hosted` forces Jev. `pii: true` decisions stay local whatever the key. How Jev compares with the local standard: [Jev against the local standard](#jev-against-the-local-standard).
 
 ### Without a key: the local model runtime
 
@@ -273,7 +273,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 315 Go tests across 10 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 316 Go tests across 10 packages; the demo runs in CI.
 
 ## What you can connect
 

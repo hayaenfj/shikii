@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.7.1 — unreleased
+
+- While a key is set and Jev is used (`SHIKII_MODEL` is not `local`), `shikii up` no longer starts the local model (llama-server on :8086); it explains why and points to `SHIKII_MODEL=local`. `shikii doctor` no longer reports a missing local model in that state. The hooks and `hook install` have not started one since 0.7.0.
+
 ## 0.7.0 — Back to the line and the bands
 
 - **Updating to 0.7.0 erases the contents of `.shikii/` in every initialized project and initializes them again** (a project decision). Conversations, lessons, provisional assessments, truths and calibration recorded by earlier versions are removed; the built-in questions, the wiki templates and the project link are recreated. Back up anything you want to keep before running `shikii update`. The shared `~/.shikii/agent` is kept. The wipe runs in the new binary's first `hook install --yes` (called automatically at the end of the update) when the shared marker `~/.shikii/agent/version` is older than 0.7.0 (0.6.0 and earlier wrote none); installations without hooks are wiped the next time `shikii hook install --yes` runs.

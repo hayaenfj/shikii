@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md) · **日本語**
 
+## 0.7.1 — 未公開
+
+- 鍵があって Jev を使う間(`SHIKII_MODEL=local` でない)は、`shikii up` も手元のモデル(llama-server :8086)を起こさず、理由と `SHIKII_MODEL=local` を案内する。`shikii doctor` も、その状態では手元のモデルが無くても足りない扱いにしない。hook と `hook install` は 0.7.0 から起こしていない。
+
 ## 0.7.0 — 線と帯の原点へ
 
 - **0.7.0 への更新は、初期化済みの各プロジェクトの `.shikii/` の中を全部消して初期化し直す**(プロジェクトの決定)。以前の版が残した会話・教訓・仮採点・正解・較正は消え、既製の問い・wiki の雛形・プロジェクトの印は作り直される。残したいものは `shikii update` の前に控える。共通の `~/.shikii/agent` は残る。消すのは新しい本体が最初に実行する `hook install --yes`(update の最後に自動で呼ばれる)で、共通側の印 `~/.shikii/agent/version` が 0.7.0 より前(0.6.0 以前は印が無い)の時だけ。hook を入れていない導入では、次に `shikii hook install --yes` を実行した時に消える。
