@@ -11,6 +11,34 @@
   let lessons = $derived(selected ? [selected] : wiki.lessons || []);
   let effect = $derived(wiki.memory_effect);
 
+  // AI が何を蓄積しているか(0.7.6): 記事を関連リンクで繋がる群にまとめて階層で見せる。群の名は、群の中でいちばん多く指されている記事の題。
+  // 繋がりの無い記事は「単独の記事」。各群は畳め、記事を押すと本文・出典へ(既存の表示)
+  let all = $derived(wiki.lessons || []);
+  let groups = $derived.by(() => {
+    const byId = new Map(all.map(p => [p.id, p]));
+    const parent = new Map(all.map(p => [p.id, p.id]));
+    const find = id => { while (parent.get(id) !== id) { parent.set(id, parent.get(parent.get(id))); id = parent.get(id); } return id; };
+    const union = (a, b) => { if (byId.has(a) && byId.has(b)) parent.set(find(a), find(b)); };
+    const inbound = new Map();
+    for (const p of all) for (const r of p.related || []) { union(p.id, r); inbound.set(r, (inbound.get(r) || 0) + 1); }
+    const members = new Map();
+    for (const p of all) { const root = find(p.id); if (!members.has(root)) members.set(root, []); members.get(root).push(p); }
+    const out = [], single = [];
+    for (const pages of members.values()) {
+      if (pages.length === 1) { single.push(pages[0]); continue; }
+      pages.sort((a, b) => (inbound.get(b.id) || 0) - (inbound.get(a.id) || 0) || a.title.localeCompare(b.title));
+      out.push({ id: pages[0].id, title: pages[0].title, pages });
+    }
+    out.sort((a, b) => b.pages.length - a.pages.length || a.title.localeCompare(b.title));
+    if (single.length) out.push({ id: 'single', title: t('notebookSingle'), pages: single.sort((a, b) => a.title.localeCompare(b.title)) });
+    return out;
+  });
+  let sourceCount = $derived(new Set(all.flatMap(p => (p.sources || []).map(s => s.id))).size);
+  let linkCount = $derived(all.reduce((n, p) => n + (p.related || []).length, 0));
+  let open = $state(new Set());
+  function toggle(id) { const next = new Set(open); if (next.has(id)) next.delete(id); else next.add(id); open = next; }
+  function show(id) { related(id); }
+
   async function related(id) {
     const request = ++navigation;
     busy = id;
@@ -103,6 +131,26 @@
   {#if wiki.pending_sources_count}<p class="k">{t('notebookPending')(wiki.pending_sources_count)}</p>{/if}
   {#if (wiki.notebook_issues || []).length}<p class="audit">{t('notebookIssues')}</p>{/if}
   {#if !lessons.length}<div class="empty">{t('notebookEmpty')}</div>{/if}
+  {#if !selected && all.length}
+    <div class="memory-effect wiki-tree" data-wiki-tree>
+      <h3>{t('notebookTreeTitle')}</h3>
+      <p class="k">{t('notebookTreeHow')(all.length, sourceCount, linkCount, groups.filter(g => g.id !== 'single').length)}</p>
+      <ul class="tree">
+        {#each groups as g (g.id)}
+          <li class="tree-group" data-tree-group={g.id}>
+            <button type="button" class="weak tree-toggle" aria-expanded={open.has(g.id)} onclick={() => toggle(g.id)}><span class="tree-arrow" aria-hidden="true">{open.has(g.id) ? '▾' : '▸'}</span> {g.title} <span class="badge">{g.pages.length}</span></button>
+            {#if open.has(g.id)}
+              <ul>
+                {#each g.pages as p (p.id)}
+                  <li><button type="button" class="weak tree-page" data-tree-page={p.id} disabled={!!busy} onclick={() => show(p.id)}>{p.title}</button> <span class="k">{p.applies_to}</span></li>
+                {/each}
+              </ul>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
   {#if selected}<button type="button" class="weak" data-notebook-back onclick={back}>{t('notebookBack')}</button>{/if}
   {#each lessons as page (page.id)}
     <div class="item lesson">

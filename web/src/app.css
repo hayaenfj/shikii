@@ -103,3 +103,10 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.7 ui-monospace,m
 
 /* 人が答えない判定の案内(0.7.6) */
 .decision-phase.machine-only { color: var(--muted, #666); }
+
+/* 知識の階層表示(0.7.6) */
+.wiki-tree ul.tree { list-style: none; padding: 0; margin: 0; }
+.wiki-tree ul.tree ul { list-style: none; padding-left: 1.4rem; margin: .2rem 0 .6rem; }
+.wiki-tree .tree-toggle { font-weight: 600; }
+.wiki-tree .tree-page { text-align: left; }
+.wiki-tree li { margin: .15rem 0; }
