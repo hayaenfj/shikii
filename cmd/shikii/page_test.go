@@ -147,3 +147,45 @@ func TestPageRestartsSoonAfterItDied(t *testing.T) {
 		t.Fatalf("30 秒の中では起こし直さない: %v", spawned)
 	}
 }
+
+// 監査 R5-3: 応答コードを見る(503 は立っていない)、hub は印を書かない、shikii page は起こして待ち、二度目は up。
+func TestPageProbeHubAndCommand(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
+	defer bad.Close()
+	writePageRecord(common, repo, bad.Listener.Addr().(*net.TCPAddr).Port, os.Getpid())
+	if livePage(repo) != "" {
+		t.Fatal("503 で応える口は立っていない")
+	}
+	os.Remove(pagePath(common, repo))
+	ln, err := listenPage(common, repo, true, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.Close()
+	if _, ok := readPageRecord(common, repo); ok {
+		t.Fatal("共通の入口(hub)は印を書かない")
+	}
+	// shikii page: 起こして(偽の spawn が印を書く)待ち、二度目は up
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer good.Close()
+	port := good.Listener.Addr().(*net.TCPAddr).Port
+	hookSpawn = func(agent, logName string, args ...string) int {
+		spawned = append(spawned, strings.Join(args, " "))
+		writePageRecord(common, repo, port, os.Getpid())
+		return os.Getpid()
+	}
+	spawned = nil
+	t.Chdir(repo)
+	out := capture(t, func() error { return cmdPage(nil) })
+	if len(spawned) != 1 || !strings.Contains(out, "started now") || !strings.Contains(out, strconv.Itoa(port)) {
+		t.Fatalf("page は立っていなければ起こして待つ: spawned=%v\n%s", spawned, out)
+	}
+	if out = capture(t, func() error { return cmdPage(nil) }); len(spawned) != 1 || !strings.Contains(out, ", up)") {
+		t.Fatalf("二度目は up で起こさない: spawned=%v\n%s", spawned, out)
+	}
+}

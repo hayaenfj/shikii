@@ -163,3 +163,59 @@ func TestUndecidedConflictJudgmentsLeaveTheQueueOnceTheDraftIsSaved(t *testing.T
 		t.Fatalf("判断つかずの記録は列に出さない: %s", q.Body.String()[:200])
 	}
 }
+
+// 監査 R5-3: 抜き取り(act の 20 件に 1 件)は人待ち、AI だけの問いの抜き取りは結果待ち。status の rituals の数と model の名。
+func TestStatusCountsSpotChecksRitualsAndModel(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	repo := gitRepo(t)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	st := store.Store{Dir: root}
+	var samples []string
+	for i := 0; i < 2000 && len(samples) < 2; i++ {
+		if id := fmt.Sprintf("s%d", i); store.AuditSample(id) {
+			samples = append(samples, id)
+		}
+	}
+	if len(samples) < 2 {
+		t.Fatal("抜き取りに当たる trace が見つからない")
+	}
+	sampled, sampledWiki := samples[0], samples[1]
+	st.AppendRecord(store.Record{TraceID: sampled, SpecID: "needs-plan", SpecHash: "h", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": "o"}, InputsHash: "a1", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
+	st.AppendRecord(store.Record{TraceID: sampledWiki, SpecID: "wiki-conflict", SpecHash: "h", Type: "noul", Model: "m", Inputs: map[string]string{"lesson": "a", "new_lesson": "b"}, InputsHash: "a2", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
+	appendGuardRecords(root, []guardRecord{{Session: "s", Turn: "t1", Guard: ritualPlan, Pass: false}, {Session: "s", Turn: "t1", Guard: ritualPlan, Pass: true, Recheck: true}, {Session: "s", Turn: "t2", Guard: ritualReflect, Pass: true}})
+	h := newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+	var body struct {
+		Specs   []map[string]any `json:"specs"`
+		Model   map[string]any   `json:"model"`
+		Summary struct {
+			Guards struct {
+				Rituals map[string]map[string]float64 `json:"rituals"`
+			} `json:"guards"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]map[string]any{}
+	for _, sp := range body.Specs {
+		got[sp["id"].(string)] = sp
+	}
+	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["settled_by_ai"] != float64(0) {
+		t.Fatalf("抜き取りに当たった act は人待ち: %v", np)
+	}
+	if wc := got["wiki-conflict"]; wc["waiting_for_person"] != float64(0) || wc["awaiting_results"] != float64(1) {
+		t.Fatalf("AI だけの問いは抜き取りでも人待ちにしない: %v", wc)
+	}
+	if body.Model["name"] != "TypeSafe Jev" {
+		t.Fatalf("鍵があれば判定モデルは Jev: %v", body.Model)
+	}
+	r := body.Summary.Guards.Rituals
+	if r["plan"]["asked"] != 1 || r["plan"]["done"] != 0 || r["plan"]["fixed"] != 1 || r["reflect"]["asked"] != 1 || r["reflect"]["done"] != 1 {
+		t.Fatalf("作法の実施の数: %v", r)
+	}
+}

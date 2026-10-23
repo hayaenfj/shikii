@@ -195,6 +195,34 @@ async function checkNotebookTree(target) {
   return ok;
 }
 
+
+// 監査 R5-3: 人が答える問いの列。「あなたがやること」は人待ちの合計(未回答の合計ではない)で、AI だけの問いは数えない。
+// 最初に開く欄は人待ちのある問い。印は人待ちの数。「未回答(あなた)」にはボタン付きのカード、「次の依頼・振り返りで確定する」には読むだけのカード。
+async function checkLanesForPersonSpec(target) {
+  const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
+  const mk = (id, unlabeled, waiting, person) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 5, labels: 0, unlabeled, waiting_for_person: waiting, awaiting_results: unlabeled - waiting, person_answers: person, truth_source: person ? 'person' : 'results' });
+  const specs = [mk('wiki-conflict', 4, 0, false), mk('prompt-kind', 2, 1, true), mk('needs-plan', 3, 2, true)];
+  const item = (id, waits, audit) => ({ trace_id: id, at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: id, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, audit, waits_for_person: waits, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal' });
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs, summary: { person: {}, memory: {}, guards: {} }, model: { name: 'TypeSafe Jev' } } : url.startsWith('v1/queue?spec=prompt-kind') ? { items: [item('r1', false, false), item('y1', true, true)] } : { items: [] } });
+  Object.assign(ui, { tab: '', advanced: false, done: false, results: false, pinned: '', view: 'list', filter: 'all' });
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  const app = mount(App, { target }); await settle(); await settle();
+  const line = target.querySelector('#summary .summary-line')?.textContent || '';
+  const you = line.startsWith('あなたがやること: 3 件') && line.includes('0 / 2');
+  const first = !!target.querySelector('[data-tab="prompt-kind"].active');
+  const badges = [...target.querySelectorAll('#tabs .badge')].map(b => b.textContent).join(',') === '1,2';
+  const youCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0;
+  target.querySelector('.answer-tabs [data-lane="results"]')?.click(); flushSync(); await settle();
+  const resultsCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length === 0 && (target.querySelector('.lane-results')?.textContent || '').includes('次の依頼') && !!target.querySelector('.readonly-note');
+  let clicked = 0;
+  for (const b of target.querySelectorAll('.item button')) b.addEventListener('click', () => { clicked++; });
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); flushSync();
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  const ok = you && first && badges && youCards && resultsCards && clicked === 0;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答える問いの列: あなたがやること=' + you + ', 最初は人待ちの問い=' + first + ', 印=' + badges + ', 未回答にボタン=' + youCards + ', 結果待ちは読むだけ=' + resultsCards + ', キーで押さない=' + (clicked === 0) + ')');
+  return ok;
+}
+
 // 監査 R2: キー操作(1〜9 / Enter / →)は判定の欄の未回答でだけ効く。知識の欄では最初の .item のボタン(関連する知識・主張にする)を押さない。
 async function checkKeysOnlyOnDecisions(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
@@ -246,7 +274,8 @@ export async function run() {
   const keysOK = await checkKeysOnlyOnDecisions(target);
   const machineOnlyOK = await checkMachineOnlySpec(target);
   const treeOK = await checkNotebookTree(target);
-  const ok = summaryOK && keysOK && machineOnlyOK && treeOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const lanesOK = await checkLanesForPersonSpec(target);
+  const ok = summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
