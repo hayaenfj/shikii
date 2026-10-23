@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.7.2 — unreleased
+## 0.7.2 — Open the page while Jev is used
 
 - While a key is set and Jev is used, `shikii serve` (including the answer page the hooks start in the background) kept waiting for the local model at `--local` and never opened its port. With a key it now opens without waiting (`SHIKII_MODEL=local` still waits).
 
