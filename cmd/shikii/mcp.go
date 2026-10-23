@@ -186,7 +186,7 @@ var mcpTools = []map[string]any{
 				"body":          map[string]any{"type": "string", "description": "背景・根拠・適用条件・未確定点を出典から統合した知識本文。最大16KB。省略は既存本文を保持、空文字は解除"},
 				"related":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "同じプロジェクトの関連ページID。省略は保持、空配列は解除"},
 				"applies_to":    map[string]any{"type": "string", "description": "この教訓が当てはまる条件"},
-				"replaces":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この教訓で更新する、同じ仕事の古い教訓のID。最大4件。更新時の省略は既存の指定を保ち、空配列は置き換えを解除する"},
+				"replaces":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この教訓で更新する、同じ仕事の古い教訓のID。更新時の省略は既存の指定を保ち、空配列は置き換えを解除する"},
 			},
 			"required": []string{"operation"},
 		},

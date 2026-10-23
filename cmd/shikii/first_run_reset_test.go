@@ -19,9 +19,12 @@ func TestFirstHookInstallAfter070WipesRegisteredProjectsOnce(t *testing.T) {
 	if len(registeredProjects(common)) != 2 { // hookEnv が初期化した 1 件 + この repo
 		t.Fatal("init でプロジェクトが登録される")
 	}
-	// hookEnv の hook install が印を書いているので、0.6.0 以前の状態(印なし)に戻す
+	// hookEnv の hook install が印を書いているので、0.6.0 以前の状態(印なし、project.json は version 1)に戻す
 	if err := os.Remove(installedVersionPath(common)); err != nil {
 		t.Fatal("新しい本体の hook install は印を書く: ", err)
+	}
+	for _, p := range registeredProjects(common) {
+		os.WriteFile(filepath.Join(p.Path, ".shikii", "project.json"), []byte(`{"version":1,"scope":"`+p.Path+`"}`), 0o600)
 	}
 	store := filepath.Join(repo, ".shikii")
 	leftover := filepath.Join(store, "records", "prompt-kind.jsonl")
@@ -91,7 +94,10 @@ func TestFirstHookInstallAfter070WipesRegisteredProjectsOnce(t *testing.T) {
 		t.Fatal("跨がない更新は記録を残す")
 	}
 
-	// 印が 0.6.0(将来、古い本体が印を書いていた場合)→ 消す
+	// 印が 0.6.0(将来、古い本体が印を書いていた場合)→ 0.7.3 以前の印(version 1)のプロジェクトは消す
+	for _, p := range registeredProjects(common) {
+		write(filepath.Join(p.Path, ".shikii", "project.json"), `{"version":1,"scope":"`+p.Path+`"}`)
+	}
 	write(installedVersionPath(common), "0.6.0\n")
 	if !run("0.7.0") {
 		t.Fatal("印が 0.7.0 より前なら消す")

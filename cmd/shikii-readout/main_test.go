@@ -473,4 +473,12 @@ func TestPassesThroughToADecisionModelUpstream(t *testing.T) {
 	if err := s3.detectUpstream(context.Background()); err != nil || !s3.passThrough {
 		t.Fatalf("a decision model that rejects the probe with 4xx must still be passed through: err=%v passThrough=%v", err, s3.passThrough)
 	}
+	// 401(認証)や 405 は決定モデルの印ではないので、黙って素通しにせず起動を止める(監査 R2)
+	for _, code := range []int{401, 403, 405, 429} {
+		locked := &fakeUpstream{decision: true, rejectProbe: code, top: []tokenProb{{Token: "A", Prob: 0.9}}}
+		s4, _ := newTestServer(t, locked)
+		if err := s4.detectUpstream(context.Background()); err == nil || s4.passThrough {
+			t.Fatalf("%d must fail startup with the reason, not pass through: err=%v passThrough=%v", code, err, s4.passThrough)
+		}
+	}
 }

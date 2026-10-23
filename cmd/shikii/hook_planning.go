@@ -295,6 +295,9 @@ func planningSessionRoot(root string) (*os.Root, error) {
 func readPlanningSession(dir *os.Root, name string) (*hookSession, error) {
 	f, err := dir.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, errors.New("そのセッションの記録がありません(session_id を確かめてください)")
+		}
 		return nil, err
 	}
 	defer f.Close()

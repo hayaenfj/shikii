@@ -146,6 +146,26 @@ async function checkSummary(target) {
   return ok;
 }
 
+// 監査 R2: キー操作(1〜9 / Enter / →)は判定の欄の未回答でだけ効く。知識の欄では最初の .item のボタン(関連する知識・主張にする)を押さない。
+async function checkKeysOnlyOnDecisions(target) {
+  const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
+  const lesson = { id: 'l1', revision: 'r1', title: '教訓', lesson: '教訓の本文', applies_to: '条件', sources: [], related: [], status: 'hypothesis' };
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [lesson], sources: [] } : { items: [] } });
+  Object.assign(ui, { tab: 'wiki', advanced: true, done: false, pinned: '' });
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  const app = mount(App, { target }); await settle(); await settle();
+  const item = target.querySelector('.item');
+  let clicked = 0;
+  for (const b of target.querySelectorAll('.item .btns button')) b.addEventListener('click', () => { clicked++; });
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true }));
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  flushSync();
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  const ok = !!item && clicked === 0;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (知識の欄でキー操作が何も押さない: item=' + !!item + ', clicked=' + clicked + ')');
+  return ok;
+}
+
 export async function run() {
   const target = document.getElementById('app');
   const articleOK = await checkNotebookArticle(target);
@@ -161,7 +181,8 @@ export async function run() {
   const orderingOK = await checkLoadOrdering();
   const lazyNavOK = await checkLazyNavigation(target);
   const summaryOK = await checkSummary(target);
-  const ok = summaryOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const keysOK = await checkKeysOnlyOnDecisions(target);
+  const ok = summaryOK && keysOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 

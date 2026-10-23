@@ -63,30 +63,39 @@ func searchTerms(text string) map[string]bool {
 	return out
 }
 
-// isContentTerm は内容を担う語: 識別子か、仮名だけではない 2 文字の組(漢字・カタカナ・英字を含む)。「する」「える」「く時」のような仮名だけの組は文法の語なので数えない。
+// isContentTerm は内容を担う語: 識別子か、仮名だけでもなく助詞(を に の が は で と も へ)も含まない 2 文字の組。
+// 「する」「える」「を直」「直す」「の説」のような文法の境界の組は数えない(監査 R2: それだけで関係ない記事が届いた)。
 func isContentTerm(term string) bool {
 	if isIdentifierTerm(term) {
 		return true
 	}
+	content := false
 	for _, r := range term {
+		if strings.ContainsRune("をにのがはでともへ", r) {
+			return false
+		}
 		if !unicode.In(r, unicode.Hiragana) {
-			return true
+			content = true
 		}
 	}
-	return false
+	return content
 }
 
-// isIdentifierTerm は英数字だけの 3 文字以上の語(ファイル名・コマンド名・識別子)。日本語の 2 文字の組や短い語は含めない。
+// isIdentifierTerm は英字を含む英数字だけの 3 文字以上の語(ファイル名・コマンド名・識別子)。数字だけ(年など)や日本語の 2 文字の組は含めない。
 func isIdentifierTerm(term string) bool {
 	if len(term) < 3 {
 		return false
 	}
+	letter := false
 	for _, r := range term {
 		if !(r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_')) {
 			return false
 		}
+		if unicode.IsLetter(r) {
+			letter = true
+		}
 	}
-	return true
+	return letter
 }
 
 type searchDocument struct {
@@ -143,36 +152,58 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 		coverage := float64(len(matched)) / float64(max(len(terms), 1))
 		minMatched := 2
 		if recall {
-			// 自動配送は依頼文が長い(語が多い)ほど一致の割合が薄まるので、記事側(題と適用条件)の語がどれだけ依頼に現れたかでも門を通す。
-			// 0.7.3 までは依頼側の割合だけで、長い依頼には届かなかった(2026-10-23 の実験で 6 回中 0 回)。
-			// ただし、どの記事にもある語(例: プロジェクト名)と仮名だけの 2 文字の組は数えない(監査の指摘: それだけで関係ない記事が届いた)。
-			threshold = .35
-			informative := func(term string) bool { return len(docs) < 4 || frequency[term]*2 <= len(docs) } // 記事の半分より少ない記事にしか無い語
-			pageTerms, matchedContent := 0, 0
-			for _, f := range d.fields {
-				for term := range f {
-					if isContentTerm(term) && informative(term) {
-						pageTerms++
+			// 自動配送の門(0.7.4): 数えるのは「内容を担う語」(識別子か、仮名だけでも助詞を含むでもない 2 文字の組)だけ。
+			// 依頼側の一致率(内容語の 0.35)か記事側の一致率(題と適用条件の内容語の 0.15)で通し、どちらも内容語 2 語以上。
+			// 珍しい識別子(CHANGELOG, Makefile: 記事の半分以下にしか無い英字の語)は 1 語でも通す。プロジェクト名のようにどの記事にも
+			// ある識別子は 1 語では通さない(記事が 1 本の wiki では比べようが無いので通す)。
+			// 0.7.3 までは依頼の全部の語の割合で決めていて、長い依頼には届かず、短い依頼には遍在する語と文法の組で関係ない記事が届いた。
+			// 「珍しい語」= 記事の半分以下にしか無い語(記事が 1 本なら全部)。プロジェクト名のようにどの記事にもある語は、
+			// 一致しても根拠にしない(それだけで関係ない記事が届いた)。ただし依頼の内容語がほぼ全部(0.8 以上)記事に合うなら、
+			// 遍在する語でも届ける(全記事が同じ話題の wiki で、その話題の依頼が来た時)。
+			rare := func(term string) bool { return len(docs) == 1 || frequency[term]*2 <= len(docs) }
+			requestTerms, rareRequestTerms, rarePageTerms := 0, 0, 0
+			matchedContent, rareMatched := 0, 0
+			for term := range terms {
+				if isContentTerm(term) {
+					requestTerms++
+					if rare(term) {
+						rareRequestTerms++
 					}
 				}
 			}
-			strong := false // 珍しい識別子(CHANGELOG, Makefile のような 3 文字以上の英数字の語)が合えば、それ 1 語でも届ける価値がある
+			for _, f := range d.fields {
+				for term := range f {
+					if isContentTerm(term) && rare(term) {
+						rarePageTerms++
+					}
+				}
+			}
+			strong := false
 			for term := range matched {
-				if isContentTerm(term) && informative(term) {
-					matchedContent++
+				if !isContentTerm(term) {
+					continue
+				}
+				matchedContent++
+				if rare(term) {
+					rareMatched++
 					if isIdentifierTerm(term) {
 						strong = true
 					}
 				}
 			}
+			coverage, minMatched = 0, 2
 			switch {
 			case strong:
-				coverage, minMatched = math.Max(coverage, threshold), 1
-			case pageTerms > 0 && matchedContent >= 2 && float64(matchedContent)/float64(pageTerms) >= .15:
-				coverage = math.Max(coverage, threshold)
+				coverage, minMatched = threshold, 1
+			case rareMatched >= 2 && ((rareRequestTerms > 0 && float64(rareMatched)/float64(rareRequestTerms) >= .35) || (rarePageTerms > 0 && float64(rareMatched)/float64(rarePageTerms) >= .15)):
+				coverage = threshold
+			case matchedContent >= 2 && requestTerms > 0 && float64(matchedContent)/float64(requestTerms) >= .8:
+				coverage = threshold
 			}
-		}
-		if len(terms) == 0 || (len(terms) > 1 && len(matched) < minMatched) || coverage < threshold {
+			if len(matched) < minMatched || coverage < threshold {
+				continue
+			}
+		} else if len(terms) == 0 || (len(terms) > 1 && len(matched) < minMatched) || coverage < threshold {
 			continue
 		}
 		for term := range matched {

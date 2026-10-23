@@ -7,7 +7,7 @@
 モデルは確率を返します。shikiiは、その確率で動いてよいかを答えます。人と結果が付けた正解から線を引き、すべての判断を帯（`act` / `ask` / `discard`）にし、学んだことをエージェントが仕事中に使うwikiに貯め、人の訂正は次の仕事で機械が止める検査にします。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-334%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-344%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.7.4-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -94,7 +94,7 @@ macOS以外は[llama.cppの公式の手順](https://github.com/ggml-org/llama.cp
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-cloneした中なら `sh install.sh` です。実行ファイル、hook（依頼の前・作業の後・サブエージェントの開始）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは一度 `/hooks` でhookを信頼してください。
+インストーラーはソースから組むので、Go 1.27以上とGitが要ります。cloneした中なら `sh install.sh` です。実行ファイル、hook（依頼の前・作業の後・サブエージェントの開始）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは一度 `/hooks` でhookを信頼してください。
 
 ### 3. 利用するプロジェクトを初期化する
 
@@ -102,7 +102,7 @@ cloneした中なら `sh install.sh` です。実行ファイル、hook（依頼
 
 > このプロジェクトでshikiiを使って
 
-エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。既製の問い・wiki・止める検査の置き場・MCPの設定・エージェントの作法・プロジェクトの画面が用意されます。`shikii doctor` で状態を確かめ、http://127.0.0.1:8096 でプロジェクトの画面を開きます。
+エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。既製の問い・wiki・止める検査の置き場・MCPの設定（プロジェクトに `.mcp.json`・`.cursor/mcp.json`・`opencode.json` と `AGENTS.md` の節が足されます。Gitの除外に入るのは `.shikii/` だけです）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。画面 http://127.0.0.1:8096 は最初の答え待ちが出た時にhookが立てます。先に開くなら `shikii serve --store ~/.shikii/agent --port 8096` を実行します。
 
 ### 更新
 
@@ -114,7 +114,10 @@ shikii update
 
 ## 一周の流れ
 
+cloneした中で（例の判定はインストーラーには入っていません）:
+
 ```sh
+shikii new same-issue --from decisions/same-issue.yaml              # 例の判定を .shikii/decisions/ に写す
 SHIKII_MODEL=local shikii up                                     # この例の問いは pii: true なので手元のモデルが要る。鍵があると up は SHIKII_MODEL=local の時だけ起こす
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask   （線がまだ無いので人が決める）

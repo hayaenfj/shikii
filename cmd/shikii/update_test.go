@@ -27,6 +27,7 @@ type updateFixture struct {
 	tag                                   string
 	files                                 map[string][]byte
 	badHash, unsafeURL, draft, prerelease bool
+	badDigest                             bool // GitHub の添付の digest が中身と食い違う(監査 R2 の変異 M7: digest の照合が一度も走っていなかった)
 	entryType                             byte
 	extraPath                             string
 	requests                              atomic.Int32
@@ -66,8 +67,12 @@ func fixtureUpdate(t *testing.T) *updateFixture {
 		}
 		switch {
 		case r.URL.Path == "/latest":
+			asset := map[string]any{"name": name, "browser_download_url": prefix + name}
+			if f.badDigest {
+				asset["digest"] = "sha256:" + strings.Repeat("0", 64)
+			}
 			json.NewEncoder(w).Encode(map[string]any{"tag_name": f.tag, "draft": f.draft, "prerelease": f.prerelease, "assets": []any{
-				map[string]any{"name": name, "browser_download_url": prefix + name},
+				asset,
 				map[string]any{"name": "SHA256SUMS", "browser_download_url": prefix + "SHA256SUMS"},
 			}})
 		case strings.HasSuffix(r.URL.Path, "/SHA256SUMS"):
@@ -285,6 +290,7 @@ func TestUpdateDoesNotDowngradeOrRedownload(t *testing.T) {
 func TestUpdateRejectsUnverifiedReleases(t *testing.T) {
 	cases := map[string]func(*updateFixture){
 		"ハッシュ不一致":   func(f *updateFixture) { f.badHash = true },
+		"digest不一致": func(f *updateFixture) { f.badDigest = true },
 		"readout不足": func(f *updateFixture) { delete(f.files, "shikii-readout") },
 		"リンク":       func(f *updateFixture) { f.entryType = tar.TypeSymlink },
 		"ハードリンク":    func(f *updateFixture) { f.entryType = tar.TypeLink },

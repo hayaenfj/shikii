@@ -1,11 +1,11 @@
 <script>
   // 効き目の要約(0.7.4): `shikii status` と同じ数を画面の先頭に 1 行で出し、クリックで詳細(届いた教訓・止める検査・人が答える判定)を開く。
-  import { t } from '../lib/i18n.svelte.js';
+  import { t, fmtDateTime } from '../lib/i18n.svelte.js';
   let { summary } = $props();
   let m = $derived(summary.memory || {});
   let g = $derived(summary.guards || {});
   let p = $derived(summary.person || {});
-  const when = s => (s ? new Date(s).toLocaleString() : '');
+  const when = s => (s ? fmtDateTime(s) : '');
 </script>
 
 <details class="summary-card" id="summary">

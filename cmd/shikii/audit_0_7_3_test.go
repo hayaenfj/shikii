@@ -34,6 +34,7 @@ func TestStoresWithoutGuardsDirStayRegisteredAndAreWiped(t *testing.T) {
 	if err := os.WriteFile(leftover, []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	os.WriteFile(filepath.Join(root, "project.json"), []byte(`{"version":1,"scope":"`+repo+`"}`), 0o600) // 0.7.3 以前の --init の印
 	os.Remove(installedVersionPath(common))
 	v, _ := updateVersion("0.7.3")
 	wiped, err := resetStoresOnFirstRun(common, v, func(path string) error {
@@ -128,6 +129,7 @@ func TestHookInstallPreviewListsTheProjectsItWouldWipe(t *testing.T) {
 	t.Chdir(repo)
 	capture(t, func() error { return cmdInit(nil) })
 	common, _ := agentHome()
+	os.WriteFile(filepath.Join(repo, ".shikii", "project.json"), []byte(`{"version":1,"scope":"`+repo+`"}`), 0o600) // 0.7.3 以前の --init の印
 	os.Remove(installedVersionPath(common))
 	out := capture(t, func() error { return cmdHook([]string{"install"}) })
 	if !strings.Contains(out, "消して初期化し直します") || !strings.Contains(out, repo) {

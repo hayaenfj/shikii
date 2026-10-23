@@ -1852,6 +1852,10 @@ func cmdStatus(args []string) error {
 	sort.Strings(ids)
 	if len(ids) == 0 {
 		fmt.Fprintln(stdout, "no records, no labels, no specs")
+		if scope := storeScope(*storeDir); scope != "" {
+			printMemoryEffect(stdout, st, scope, time.Now())
+		}
+		printGuardStats(stdout, *storeDir)
 		return nil
 	}
 	var total personWork

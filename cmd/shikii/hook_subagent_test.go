@@ -132,3 +132,36 @@ func TestRecallCutsToTwoAfterRemovingAlreadyDeliveredRevisions(t *testing.T) {
 		t.Fatalf("届けた 2 件を除いた後の 3 本目が届く: %v %q", err, ctx)
 	}
 }
+
+// 監査 R2: サブエージェントへの配送は、振り返りの出力にある source_id(配送 id)で評価を保存でき、観察待ちから消える。
+// 親の会話(返答と次の発言)が揃っていれば、配送 id 自体が会話の id でなくてもよい。submit の会話数の数え方も親に畳む。
+func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
+	st, scope, h, draft, revision := memoryEffectFixture(t)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub3", "cwd": scope, "prompt": "README の導入手順を更新してください"})
+	parent := loadSession(st.Dir, "sub3").TurnID
+	runHook(t, "subagent-start", map[string]any{"session_id": "sub3", "cwd": scope, "agent_id": "agent-y", "agent_type": "Explore"})
+	runHook(t, "stop", map[string]any{"session_id": "sub3", "cwd": scope, "last_assistant_message": "更新しました。"})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub3", "cwd": scope, "prompt": "次は画面の色を直して。"})
+	deliveries, _ := st.MemoryDeliveries(scope)
+	var subID string
+	for _, d := range deliveries {
+		if d.Parent == parent {
+			subID = d.ID
+		}
+	}
+	if subID == "" {
+		t.Fatal("サブエージェントへの配送がある")
+	}
+	key := "lesson:" + draft.ID + ":" + revision
+	out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]any{
+		{"source_id": parent, "key": key, "result": "helpful", "decision": "手順に確認を足した", "evidence": "返答に確認の手順が入った"},
+		{"source_id": subID, "key": key, "result": "unused", "decision": "サブエージェントは手順を読まなかった", "evidence": "返答に手順への言及が無い"},
+	}})
+	if out["complete"] != true {
+		t.Fatalf("親とサブエージェントの配送を同じ会話として一度に評価できる: %v", out)
+	}
+	rep, err := st.MemoryReport(scope)
+	if err != nil || rep.Stats.Pending != 0 || rep.Stats.AwaitingFeedback != 0 || rep.Stats.Helpful != 1 || rep.Stats.Unused != 1 {
+		t.Fatalf("評価が付けば観察待ちから消える: %+v %v", rep.Stats, err)
+	}
+}

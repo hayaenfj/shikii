@@ -66,7 +66,13 @@ func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) err
 		return nil
 	}
 	fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(projects))
-	if err := wipeProjectStores(projects, reinitWith(ctx, exe)); err != nil {
+	var targets []projectEntry
+	for _, p := range planWipe(projects) {
+		if p.Action == wipeDo {
+			targets = append(targets, p.Project)
+		}
+	}
+	if err := wipeProjectStores(targets, reinitWith(ctx, exe)); err != nil {
 		return err
 	}
 	// 印も新しい版にしておく(続いて呼ばれる新しい本体の hook install がもう一度消さないように)。
@@ -76,16 +82,20 @@ func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) err
 // installedVersionPath は共通側に置く「最後に入れた版」の印。0.7.0 から書く(0.6.0 以前は書かないので、無ければ 0.0.0 とみなす)。
 func installedVersionPath(common string) string { return filepath.Join(common, "version") }
 
-func installedVersion(common string) [3]uint64 {
+// installedVersion は共通の印を読む。無ければ 0.0.0(0.6.0 以前)、読めない・壊れていれば broken=true(監査 R2: 0.0.0 とみなして全部消してはいけない)。
+func installedVersion(common string) (v [3]uint64, broken bool) {
 	b, err := os.ReadFile(installedVersionPath(common))
 	if err != nil {
-		return [3]uint64{}
+		if os.IsNotExist(err) {
+			return [3]uint64{}, false
+		}
+		return [3]uint64{}, true
 	}
-	v, err := updateVersion(strings.TrimSpace(string(b)))
+	v, err = updateVersion(strings.TrimSpace(string(b)))
 	if err != nil {
-		return [3]uint64{}
+		return [3]uint64{}, true
 	}
-	return v
+	return v, false
 }
 
 func writeInstalledVersion(common string, v [3]uint64) error {
@@ -100,15 +110,34 @@ func writeInstalledVersion(common string, v [3]uint64) error {
 // 全部消して初期化し直し、今の版を印に書く。update の reset は update を実行している古い本体の中で動くので、
 // 0.6.0 からの更新ではこちらが消す(2026-10-23 に気付いた)。消した時 true。
 func resetStoresOnFirstRun(common string, to [3]uint64, reinit func(path string) error) (bool, error) {
-	from := installedVersion(common)
+	from, broken := installedVersion(common)
+	if broken {
+		return false, fmt.Errorf("%s: 版の印を読めないので、各プロジェクトの .shikii/ は消しません。中身を確かめ、今の版(%s)を書き直すか、消してから shikii hook install --yes", installedVersionPath(common), versionString(to))
+	}
 	wiped := false
 	if crossesStoreReset(from, to) {
-		if projects := registeredProjects(common); len(projects) > 0 {
-			fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(projects))
-			if err := wipeProjectStores(projects, reinit); err != nil {
+		plan := planWipe(registeredProjects(common))
+		var targets []projectEntry
+		for _, p := range plan {
+			if p.Action == wipeDo {
+				targets = append(targets, p.Project)
+			}
+		}
+		if len(targets) > 0 {
+			fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(targets))
+			if err := wipeProjectStores(targets, reinit); err != nil {
 				return false, err
 			}
 			wiped = true
+		}
+		var refused []string
+		for _, p := range plan {
+			if p.Action == wipeRefuse {
+				refused = append(refused, filepath.Join(p.Project.Path, ".shikii")+": "+p.Reason)
+			}
+		}
+		if len(refused) > 0 { // 拒んだものが残る間は印を書かない(片付けてもう一度流せば、済んだ方は各プロジェクトの印で飛ばし、残りだけ消す)
+			return wiped, errors.New(strings.Join(refused, "\n"))
 		}
 	}
 	if from != to {
@@ -117,6 +146,61 @@ func resetStoresOnFirstRun(common string, to [3]uint64, reinit func(path string)
 		}
 	}
 	return wiped, nil
+}
+
+// wipeAction は 0.7.0 を跨ぐ消去での各プロジェクトの扱い。表示(hook install)と実行で同じ判断を使う(監査 R2: 表示と実際が食い違っていた)。
+type wipeAction int
+
+const (
+	wipeDo     wipeAction = iota // 消して初期化し直す
+	wipeDone                     // 0.7.4 以降の --init で作った(または初期化し直した)ので済み
+	wipeRefuse                   // 消さない(共通の置き場、通常のフォルダでない、知らない項目がある)
+)
+
+type wipePlan struct {
+	Project projectEntry
+	Action  wipeAction
+	Reason  string
+}
+
+func planWipe(projects []projectEntry) []wipePlan {
+	var out []wipePlan
+	for _, p := range projects {
+		store := filepath.Join(p.Path, ".shikii")
+		item := wipePlan{Project: p, Action: wipeDo}
+		switch {
+		case p.InitVersion >= projectInitVersionNow:
+			item.Action, item.Reason = wipeDone, "この版で初期化済み"
+		case isSharedPlaceScope(p.Path):
+			item.Action, item.Reason = wipeRefuse, "共通の置き場(ホーム)なので消しません"
+		default:
+			info, err := os.Lstat(store)
+			if err != nil {
+				item.Action, item.Reason = wipeRefuse, err.Error()
+				break
+			}
+			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+				item.Action, item.Reason = wipeRefuse, "通常のフォルダではないので消しません"
+				break
+			}
+			entries, err := os.ReadDir(store)
+			if err != nil {
+				item.Action, item.Reason = wipeRefuse, err.Error()
+				break
+			}
+			var unknown []string
+			for _, e := range entries {
+				if !storeEntries[e.Name()] && e.Name() != "project.json" {
+					unknown = append(unknown, e.Name())
+				}
+			}
+			if len(unknown) > 0 {
+				item.Action, item.Reason = wipeRefuse, "shikii の作った項目ではないものがあるので消しません("+strings.Join(unknown, ", ")+")。手で片付けてから shikii hook install --yes"
+			}
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 // reinitWith は path で `exe --init` を実行して初期化し直す。
@@ -136,13 +220,19 @@ func reinitWith(ctx context.Context, exe string) func(path string) error {
 var storeEntries = map[string]bool{"decisions": true, "wiki": true, "records": true, "labels": true, "sessions": true, "guards": true}
 
 // isSharedPlaceScope は scope が共通の置き場(~/.shikii/agent)の親、つまりホームか。ここを消すと hook・索引・印ごと消えるので、初期化も消去もしない(監査 2026-10-23)。
+// 比べるのは実体(SameFile): 大文字小文字を区別しない FS で綴りだけ違う経路や、リンク経由でも抜けない(監査 R2)。
 func isSharedPlaceScope(scope string) bool {
 	agent, err := agentHome()
 	if err != nil {
 		return false
 	}
-	shared := feedbackScope(filepath.Dir(filepath.Dir(agent)))
-	return scope == shared || feedbackScope(scope) == shared
+	shared := filepath.Dir(filepath.Dir(agent))
+	if scope == shared || feedbackScope(scope) == feedbackScope(shared) {
+		return true
+	}
+	a, err1 := os.Stat(scope)
+	b, err2 := os.Stat(shared)
+	return err1 == nil && err2 == nil && os.SameFile(a, b)
 }
 
 // wipeProjectStores は各プロジェクトの .shikii/(通常のフォルダ)の中の、shikii が作った項目(storeEntries)を消し、reinit で初期化し直す。
@@ -681,7 +771,9 @@ func finishUpdate(ctx context.Context, exe string) error {
 		}
 	}
 	if installed {
-		if err := exec.CommandContext(ctx, exe, "hook", "install", "--yes").Run(); err != nil {
+		cmd := exec.CommandContext(ctx, exe, "hook", "install", "--yes")
+		cmd.Stdout, cmd.Stderr = stdout, stdout // 新しい本体が消去する時の対象と失敗の理由を、更新の出力に通す(監査 R2: 以前は捨てていた)
+		if err := cmd.Run(); err != nil {
 			return errors.New("hookと作法を更新できません。shikii hook install --yesで再試行してください")
 		}
 		fmt.Fprintln(stdout, "hookとエージェントの作法へ反映しました。")

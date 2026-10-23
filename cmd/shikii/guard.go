@@ -52,6 +52,7 @@ type guard struct {
 	Pairs    [][]string `yaml:"pairs,omitempty" json:"pairs,omitempty"`       // paired-files
 	Words    []string   `yaml:"words,omitempty" json:"words,omitempty"`       // forbidden-words
 	Except   []string   `yaml:"except,omitempty" json:"except,omitempty"`     // forbidden-words: 見ないパス(glob。末尾 /** で配下)
+	Allow    []string   `yaml:"allow,omitempty" json:"allow,omitempty"`       // forbidden-words: 禁止語を含む普通の語(例: 根 に対する 根拠)。先に取り除いてから見る
 	Required []string   `yaml:"required,omitempty" json:"required,omitempty"` // commit-body
 	Red      *guardRed  `yaml:"red,omitempty" json:"red,omitempty"`           // enable が負例で止まったことを記録する
 }
@@ -111,6 +112,15 @@ func (g guard) validate() error {
 		for _, w := range g.Words {
 			if strings.TrimSpace(w) == "" {
 				return errors.New("words に空の語は置けない")
+			}
+		}
+		for _, a := range g.Allow {
+			ok := false
+			for _, w := range g.Words {
+				ok = ok || (a != w && strings.Contains(a, w))
+			}
+			if !ok {
+				return errors.New("allow には禁止語を含む普通の語だけを置く(例: 根 に対する 根拠)")
 			}
 		}
 	case guardKindCommitBody:
@@ -192,6 +202,9 @@ func evalGuard(g guard, in guardInput) guardResult {
 				continue
 			}
 			for _, line := range in.Added[p] {
+				for _, a := range g.Allow { // 許す語(根拠など)を先に取り除く
+					line = strings.ReplaceAll(line, a, "")
+				}
 				for _, w := range g.Words {
 					if strings.Contains(line, w) {
 						hits = append(hits, p+": 「"+w+"」")
@@ -212,6 +225,9 @@ func evalGuard(g guard, in guardInput) guardResult {
 		var bad []string
 		for _, m := range in.Commits {
 			subject, body, _ := strings.Cut(strings.TrimSpace(m), "\n")
+			if strings.TrimSpace(m) == "" {
+				subject = "(件名も本文も無い)"
+			}
 			var lack []string
 			for _, w := range g.Required {
 				if !strings.Contains(body, w) {

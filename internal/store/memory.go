@@ -285,11 +285,15 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		return err
 	}
 	delivered, correction := false, false
+	conversation := a.SourceID // 会話の id。サブエージェントへの配送なら親のターン
 	for _, d := range deliveries {
 		for _, q := range d.Quotes {
 			if d.ID == a.SourceID && q.Key == a.Key {
 				delivered = true
 				correction = q.Correction != nil
+				if d.Parent != "" {
+					conversation = d.Parent
+				}
 			}
 		}
 	}
@@ -308,7 +312,7 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	}
 	observed := false
 	for _, f := range feedback {
-		observed = observed || f.ID == a.SourceID
+		observed = observed || f.ID == conversation
 	}
 	if !observed {
 		return errors.New("依頼の返答と次の人の発言を確認してから振り返ります")
@@ -394,7 +398,7 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 			r.Stats.Delivered++
 			if a == nil {
 				r.Stats.Pending++
-				if !observed[d.ID] {
+				if conversation := d.ID; !observed[conversation] && !(d.Parent != "" && observed[d.Parent]) {
 					r.Stats.AwaitingFeedback++
 				}
 				continue

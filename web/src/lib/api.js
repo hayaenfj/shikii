@@ -1,7 +1,8 @@
 // shikii serve の HTTP の口(v1/...)への薄い包み。パスは相対(逆 proxy の prefix の下でも動く。index.html の base './' と同じ流儀)。誤りは本文の error(無ければ状態コード)を Error にして投げる
 async function j(url, opts) {
   const r = await fetch(url, opts);
-  const b = await r.json();
+  let b;
+  try { b = await r.json(); } catch (e) { throw new Error(r.ok ? e.message : String(r.status)); } // 逆 proxy の HTML など JSON でない応答は状態コードで伝える
   if (!r.ok) throw new Error(b.error || r.status);
   return b;
 }

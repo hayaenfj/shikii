@@ -2,6 +2,17 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.7.5 — unreleased
+
+- Wipe: each project's `project.json` is now version 2 (written by `--init` since 0.7.4), so the one-time wipe is judged per project. When one project is refused and the shared marker cannot be written, projects already re-initialized are not wiped again next time. A broken or empty shared marker is no longer read as 0.0.0; the wipe stops instead. `--init` writes the shared marker when it is the first project on the machine (so a `go install` user who runs `--init` before `hook install` is not wiped). The home check compares inodes (SameFile), so a differently spelled path is still refused. The `hook install` preview and the run use the same plan (wipe / already initialized by this version / refused with the reason). The output of the update's final `hook install --yes` is shown.
+- Deliveries to subagents can be assessed and saved in reflection (the conversation is checked through the parent; they used to be listed but refused on save and stayed pending).
+- Delivery gate: content terms (identifiers, or bigrams that are neither kana-only nor contain a particle) are counted among rare terms (present in at most half the pages) on every path, so short requests no longer deliver unrelated lessons through ubiquitous words and grammatical pairs, and a project name alone does not deliver in small wikis. When almost all (0.8) of a request's content terms match, ubiquitous terms still deliver (a wiki about one topic). Digit-only identifiers are ignored.
+- Guards: `commit-body` ignores merge commits and stops on commits with no subject and no body. `forbidden-words` gains `allow` (ordinary words that contain a forbidden word, such as 特色 for the forbidden 色; removed before checking).
+- `shikii-readout` passes through only upstreams that reject the probe with 400/422; 401/403/405/429 fail startup with the reason.
+- `shikii status` prints the delivered-lessons and guards lines even without records.
+- Page: keyboard shortcuts (1–9 / Enter / →) act only on the unanswered decisions; the Japanese learning line reads "n / m"; non-JSON responses (a reverse proxy's HTML) are reported by status code; summary times use the chosen language.
+- Documentation: `shikii new same-issue --from` before the README loop, Go is required by the installer, the page starts at the first pending answer, the files `--init` adds, `--specs examples` in the guide's quick start, hook counts, the number of built-in questions, the silent wipe output when updating from 0.6.0, and the skill's place step, CLI JSON shapes and the variants JSON.
+
 ## 0.7.4 — Fix the wipe and delivery bugs found by the audit
 
 - **Stores created by 0.6.0–0.7.2 had dropped out of the registry (a 0.7.3 bug).** 0.7.3 required `guards/` in the store check, so older stores without it were no longer registered: the wipe on updating from 0.6.0 did nothing while the marker advanced, and projects vanished from the page's list. Missing folders are now allowed (created when used); only links and non-folders are rejected. Environments where the 0.7.3 wipe did not run become eligible at this version's first `hook install --yes` (called automatically at the end of the update).
