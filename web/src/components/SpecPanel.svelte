@@ -31,7 +31,7 @@
   });
 
   // 件数が増えた時の見せ方: 種類ごとの数(押すと絞り込み)、1 件ずつ / 一覧、スキップ、ほかに待っている数
-  // 人が答えない判定(wiki の矛盾・差し込み先): AI が答え、正解は振り返りの結果から付く。列は「振り返りで確定する」と「確定済み」だけ(0.7.6)
+  // 人が答えない判定(wiki の矛盾・差し込み先): AI が答え、正解は振り返りの結果から付く。列は「振り返りで確定する」と「確定済み」だけ(0.8.0)
   let machineOnly = $derived(sp.person_answers === false);
   // 列(lane): you = 未回答(あなたが答える)、results = 次の依頼・振り返りで確定する(人は答えない)、done = 回答済み / 確定済み
   let lane = $derived(machineOnly ? (ui.done ? 'done' : 'results') : ui.done ? 'done' : ui.results ? 'results' : 'you');
@@ -86,7 +86,7 @@
   </div>
   <div class="question-box"><div class="question-icon" aria-hidden="true">?</div><div><div class="eyebrow">{t('questionHeading')}</div>
   {#if question}<div class="q">{question}</div>{/if}
-  {#if machineOnly}<p class="decision-phase machine-only">{t('machineOnly')(sp.awaiting_results || 0)}</p>
+  {#if machineOnly}<p class="decision-phase machine-only">{t('machineOnly')(sp.awaiting_results || 0, sp.undecided || 0)}</p>
   {:else if sp.id === 'needs-plan'}<p class="decision-phase">{t('beforeWork')}</p>
   {:else if sp.id === 'done-as-asked' || sp.id === 'changes-in-scope'}<p class="decision-phase">{t('afterWork')}</p>{/if}
   </div></div>

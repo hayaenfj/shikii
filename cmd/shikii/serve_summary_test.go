@@ -32,7 +32,7 @@ func TestStatusEndpointCarriesTheSummaryForThePage(t *testing.T) {
 	s := get()
 	mem, _ := s["memory"].(map[string]any)
 	gu, _ := s["guards"].(map[string]any)
-	if mem["delivered"] != 0.0 || gu["total"] != 0.0 || gu["enabled"] != 0.0 || gu["rituals"] == nil { // 人の検査は無く、作法の検査(組み込み)の数だけある(0.7.6)
+	if mem["delivered"] != 0.0 || gu["total"] != 0.0 || gu["enabled"] != 0.0 || gu["rituals"] == nil { // 人の検査は無く、作法の検査(組み込み)の数だけある(0.8.0)
 		t.Fatalf("最初は何も無い(作法の検査の数は別): %v", s)
 	}
 	writeGuard(t, st.Dir, guard{ID: "changelog-pair", Kind: guardKindPairedFiles, Title: "変更履歴は英語と日本語を揃える", Pairs: [][]string{{"CHANGELOG.md", "CHANGELOG_ja.md"}}})
@@ -55,7 +55,7 @@ func TestStatusEndpointCarriesTheSummaryForThePage(t *testing.T) {
 	}
 }
 
-// 0.7.6: 人が答えない判定(wiki-conflict / wiki-place)は確認待ちに数えず、結果待ちの数だけ出す。hook の判定は人の抜き取りがあるので従来どおり。
+// 0.8.0: 人が答えない判定(wiki-conflict / wiki-place)は確認待ちに数えず、結果待ちの数だけ出す。hook の判定は人の抜き取りがあるので従来どおり。
 func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -104,5 +104,56 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=prompt-kind", nil))
 	if !strings.Contains(strings.ReplaceAll(q.Body.String(), " ", ""), `"waits_for_person":false`) {
 		t.Fatalf("列の項目にも人待ちかを付ける: %s", q.Body.String()[:200])
+	}
+}
+
+// 0.8.0: 矛盾の判定は、草稿が保存済み(差し込み先に結果の正解が付いた)なら、触れなかった記事の分は「判断つかず」として
+// 結果待ちに数えず列にも出さない(保存しても 61 件が永久に結果待ちに見えた)。保存前は結果待ち。
+func TestUndecidedConflictJudgmentsLeaveTheQueueOnceTheDraftIsSaved(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	st := store.Store{Dir: root}
+	draft := "新しい教訓の文"
+	st.AppendRecord(store.Record{TraceID: "wc1", SpecID: "wiki-conflict", Type: "noul", Model: "m", Inputs: map[string]string{"lesson": "既存の記事 A", "new_lesson": draft}, InputsHash: "h1", Raw: map[string]float64{"yes": .2, "no": .8}, Top: "no", Band: "discard", At: time.Now()})
+	st.AppendRecord(store.Record{TraceID: "wp1", SpecID: "wiki-place", SpecHash: "sh", Type: "noul", Model: "m", Inputs: map[string]string{"lesson": "既存の記事 A", "new_lesson": draft}, InputsHash: "h2", Raw: map[string]float64{"yes": .2, "no": .8}, Top: "no", Band: "discard", At: time.Now()})
+	o := serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}
+	h := newServer(o)
+	status := func() map[string]any {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+		var body struct {
+			Specs []map[string]any `json:"specs"`
+		}
+		json.Unmarshal(rec.Body.Bytes(), &body)
+		for _, sp := range body.Specs {
+			if sp["id"] == "wiki-conflict" {
+				return sp
+			}
+		}
+		return nil
+	}
+	if sp := status(); sp["awaiting_results"] != float64(1) || sp["undecided"] != float64(0) {
+		t.Fatalf("保存前は結果待ち: %v", sp)
+	}
+	// 草稿を保存した(差し込み先の判定に結果の正解が付いた)
+	labels, err := store.LabelsFor(&store.Record{TraceID: "wp1", SpecID: "wiki-place", SpecHash: "sh", Type: "noul", Model: "m", InputsHash: "h2", Raw: map[string]float64{"yes": .2, "no": .8}, Top: "no"}, "no", placeOtherWeight, "outcome")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range labels {
+		if err := st.AppendLabel(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sp := status(); sp["awaiting_results"] != float64(0) || sp["undecided"] != float64(1) || sp["unlabeled"] != float64(0) {
+		t.Fatalf("保存後は判断つかず(確定)で結果待ちに数えない: %v", sp)
+	}
+	q := httptest.NewRecorder()
+	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=wiki-conflict", nil))
+	if strings.Contains(q.Body.String(), `"wc1"`) {
+		t.Fatalf("判断つかずの記録は列に出さない: %s", q.Body.String()[:200])
 	}
 }
