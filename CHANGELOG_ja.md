@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md) · **日本語**
 
+## 0.7.2 — 未公開
+
+- 鍵があって Jev を使う間、`shikii serve`(hook が裏で起こす答え合わせの画面も)が手元のモデルの口(`--local`)を待ち続けて口を開かなかったのを直した。鍵があれば待たずに開く(`SHIKII_MODEL=local` なら従来どおり待つ)。
+
 ## 0.7.1 — Jev の間は手元のモデルを起こさない
 
 - 鍵があって Jev を使う間(`SHIKII_MODEL=local` でない)は、`shikii up` も手元のモデル(llama-server :8086)を起こさず、理由と `SHIKII_MODEL=local` を案内する。`shikii doctor` も、その状態では手元のモデルが無くても足りない扱いにしない。hook と `hook install` は 0.7.0 から起こしていない。
