@@ -66,7 +66,7 @@ which shikii                 # Claude Code がそのまま `shikii` を呼ぶの
 1. `~/.shikii/agent/` に共通の型と既製の wiki を置く。各仕事の `.shikii/` は`shikii --init`（`shikii init`も同じ）が準備し、4 つの spec を埋め込みの原本から**無いものだけ**写す。他の仕事の線は写さず、既にその仕事で育てた spec は触らない。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
 2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `UserPromptSubmit` と `Stop` の 2 つ、Claude Code にはさらに `SubagentStart`(0.7.3。サブエージェントが始まる時に、親の依頼に近い教訓を同じ形で届ける。Codex には無い event なので足さない)(command は **実行ファイルの絶対パス** + ` hook <event>`。エージェントの shell の PATH に `shikii` が無くても動く。実行ファイルを動かしたら `shikii hook install --yes` を流し直すと古いパスの handler が外れて新しいものが入る。timeout は UserPromptSubmit 10 秒、Stop 15 秒。matcher は無い)。古い版が足した `PreToolUse` の shikii の hook は外す(他の hook と鍵は残す)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
-固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ records/ labels/ sessions/)、モデルは推奨が TypeSafe の Jev(環境変数 `TYPESAFE_API_KEY` がある時。`SHIKII_MODEL=local` なら手元)、鍵が無ければ手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。既製の spec は全部 `send_to: [hosted, local]`、`pii: false` で、鍵があれば依頼・返答・wiki の教訓が TypeSafe へ送られる(2026-10-23 の決定。手元の記録にも残る)。1 回の判定は Jev で約 0.2 秒、手元のモデルで 0.1〜0.6 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しには何も足されない。モデルが無ければ待たずに黙る。
+固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ guards/ records/ labels/ sessions/)、モデルは推奨が TypeSafe の Jev(環境変数 `TYPESAFE_API_KEY` がある時。`SHIKII_MODEL=local` なら手元)、鍵が無ければ手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面は `:8096`(プロジェクトの `serve` は 8095)。既製の spec は全部 `send_to: [hosted, local]`、`pii: false` で、鍵があれば依頼・返答・wiki の教訓が TypeSafe へ送られる(2026-10-23 の決定。手元の記録にも残る)。1 回の判定は Jev で約 0.2 秒、手元のモデルで 0.1〜0.6 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しには何も足されない。モデルが無ければ待たずに黙る。
 
 答え合わせの画面は hook が立てる。手で立てるなら:
 
@@ -118,6 +118,12 @@ Stop の範囲・完了の判定は全件を人への答え待ちにせず、次
 ## 失敗しても止めない
 
 モデルが無い・5 秒で返らない・store に書けない → hook は exit 0 で何も出さず、理由を `~/.shikii/agent/hook.log` に 1 行書く。hook が作業を止めることはない。Claude Code 側で `shikii` が見つからない(PATH)時は hook.log も書かれないので、`which shikii` と Claude Code の `--debug` で見る。
+
+## 訂正を止める検査にする(0.7.3)
+
+教訓を届けるだけでは、repo と CLAUDE.md を読める agent の行動は変わらなかった(2026-10-23、5 課題 × 2 条件で 4 同点)。機械で確かめられる訂正は `.shikii/guards/<id>.yaml` の「止める検査」にする。種類は `paired-files`(片方が変わったらもう片方も)、`forbidden-words`(足した行に使わない語)、`commit-body`(そのターンのコミットの本文に含む語)の 3 つで、新しいオプションは無い。Stop で、依頼の時の一覧との差(変わったファイル)、依頼の時の中身との差(足した行)、依頼の時に控えた HEAD からのコミットに当て、引っかかれば `decision: block` と理由を返す。`stop_hook_active` の Stop では止めず、直ったかを `records/guards.jsonl` に記録する(Claude Code は連続 8 回で block を無視するので、それより前に必ず止めるのをやめる)。一覧や HEAD が取れない時は通す。
+
+草稿はエージェントが `shikii guard add`(JSON を標準入力)で無効のまま置き、人が `shikii guard enable <id>` で有効にする。enable はその種類の負例で実際に止まる(RED)・正例で通る(GREEN)のを見せてから `enabled: true` にし、止まらなければ有効にしない。`shikii guard try` は今の作業ツリーに当てて見せる(コミットは見ない)。数は `shikii status` の guards の行。作法は [skill の guards.md](../skills/shikii/references/guards.md)。
 
 ## 中の形
 

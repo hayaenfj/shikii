@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.7.3 — Corrections become guards, lessons reach subagents
+
+- **Turn a person's corrections into guards that stop the turn.** They live in each project's `.shikii/guards/<id>.yaml` (created by `--init`). Three kinds and no other options: `paired-files` (when one file changed, its partner must have changed too, e.g. CHANGELOG.md and CHANGELOG_ja.md), `forbidden-words` (added lines must not contain the listed words; excepted paths are not checked), `commit-body` (every commit made in the turn must contain the required words in its body). At the end of the turn (Stop) the enabled guards are applied to the changed files, the added lines and the commits since the HEAD recorded at the request; a failing guard returns Claude Code's `decision: block` with the reason so the agent fixes the work. The continuation after a stop is never blocked again; whether it was fixed is recorded in `records/guards.jsonl`. When the listing or the HEAD is unavailable the guard passes (stop only when certain). `shikii guard list | add | enable | disable | try`: `add` writes a disabled draft from JSON, `enable` first shows the kind's negative example stopping (RED) and the positive example passing (GREEN) and refuses otherwise. The reflection notice and the skill tell the agent to draft a guard from a mechanically checkable correction and to ask the person before enabling. Delivering lessons alone did not change a repo-reading agent's behaviour (4 of 5 tasks tied in the 2026-10-23 experiment), so this adds the form that works regardless of the model.
+- **Deliver lessons to subagents.** `hook install` registers Claude Code's `SubagentStart` hook (not for Codex, which has no such event); when a subagent starts, lessons close to the parent's request are delivered in the same form. The parent's session state is untouched and the delivery is recorded under its own ID so reflection can mark it helpful or unused. Until 0.7.2 subagents received nothing.
+- **Count in production whether delivered lessons changed anything.** `shikii status` now prints the delivered quotes, the helpful / unused / harmful / unknown assessments and the ones still awaiting assessment, the last 7 days, and correction deliveries (followed / repeated). A guards line shows how many are enabled, how many turns were stopped and how many were fixed.
+- The English and Japanese READMEs are rewritten for what 0.7 does.
+
 ## 0.7.2 — Open the page while Jev is used
 
 - While a key is set and Jev is used, `shikii serve` (including the answer page the hooks start in the background) kept waiting for the local model at `--local` and never opened its port. With a key it now opens without waiting (`SHIKII_MODEL=local` still waits).

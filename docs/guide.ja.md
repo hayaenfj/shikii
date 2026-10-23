@@ -56,6 +56,20 @@ Claude Code・Codexの自動記録は、インストール後に利用するプ�
 
 依頼・返答・次の人の発言を読み、利用中のエージェントが同じ話題の知識へ統合する。検索用の短い要約と、背景・判断理由・未確定点を残す本文を分け、関連ページを結ぶ。`shikii wiki query lesson:<ページID>` で全文を読め、話題の検索では本文も対象になる。[エージェント向けの編集手順](../skills/shikii/references/wiki.md)を参照。同じプロジェクトの似た依頼へ最大2件、1800バイト以内の短い引用を届け、同じ版は同じセッションへ一時間繰り返さない。会話の整理に別のモデルは起こさない。
 
+0.7.3 から、Claude Code のサブエージェントが始まる時(`SubagentStart`)にも、親の依頼に近い教訓を同じ形で届ける(親の控えは変えず、配送は別の ID で記録。Codex には無い event なので足さない)。届いた教訓が行動を変えたかは、振り返りの観察(helpful / unused / harmful / unknown)を `shikii status` の `memory:` の行で数える(届けた数、観察待ち、直近 7 日、訂正の配送)。
+
+機械で確かめられる訂正は「止める検査」にする(`.shikii/guards/<id>.yaml`)。種類は `paired-files`(片方が変わったらもう片方も)、`forbidden-words`(足した行に使わない語)、`commit-body`(そのターンのコミットの本文に含む語)の 3 つ。Stop で有効な検査を変わったファイル・足した行・依頼の時の HEAD からのコミットに当て、引っかかれば `decision: block` と理由を返してエージェントに直させる。止めた後の Stop では止めず、直ったかを `records/guards.jsonl` に記録する。
+
+```sh
+shikii guard add < guard.json       # 草稿(無効)。JSON: id, kind, title, reason, source, pairs/words/except/required
+shikii guard enable <id>            # 負例で止まる(RED)・正例で通る(GREEN)を見せてから有効にする
+shikii guard disable <id>           # 無効に戻す(ファイルは残る)
+shikii guard list                   # 状態と最後の結果
+shikii guard try                    # 今の作業ツリーに当てて見せる(コミットは見ない)
+```
+
+草稿はエージェントが置き、有効にするのは人(作法は [skill の guards.md](../skills/shikii/references/guards.md))。`shikii status` の `guards:` の行に有効な数・止めたターン・直った数が出る。
+
 未処理が2会話、または1会話が一日経った後の依頼で、採点・wiki・記憶の振り返りをまとめる。人が普段の整理のために実行する必要はないが、CLIは次の形で呼べる。
 
 ```sh

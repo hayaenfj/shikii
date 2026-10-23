@@ -18,6 +18,20 @@ Reflection preserves the delivered quote and revision and records a decision and
 
 Conversations, lessons, provisional assessments, truths and calibration belong to the project's `.shikii/`. The common `~/.shikii/agent` holds templates, tools and the project index. The Knowledge panel shows memory observations and their evidence. People check random samples and undecided cases; AI assessments do not become truth labels or calibration automatically.
 
+Since 0.7.3, when a Claude Code subagent starts (`SubagentStart`), lessons close to the parent's request are delivered in the same form (the parent's state is untouched; the delivery is recorded under its own ID; Codex has no such event). Whether delivered lessons changed anything is counted from the reflection observations (helpful / unused / harmful / unknown) on the `memory:` line of `shikii status` (delivered, awaiting assessment, last 7 days, correction deliveries).
+
+Corrections a machine can check become **guards** (`.shikii/guards/<id>.yaml`): `paired-files` (when one file changed, its partner must have changed), `forbidden-words` (added lines must not contain the words), `commit-body` (every commit made in the turn must contain the words in its body). At `Stop` the enabled guards are applied to the changed files, the added lines and the commits since the HEAD recorded at the request; a failing guard returns `decision: block` with the reason and the agent fixes the work. The continuation after a stop is never blocked again; whether it was fixed is recorded in `records/guards.jsonl`.
+
+```sh
+shikii guard add < guard.json       # a disabled draft. JSON: id, kind, title, reason, source, pairs/words/except/required
+shikii guard enable <id>            # shows the negative example stopping (RED) and the positive one passing (GREEN), then enables
+shikii guard disable <id>           # keeps the file, stops checking
+shikii guard list                   # state and last result
+shikii guard try                    # apply to the working tree now (commits are not checked)
+```
+
+The agent drafts; a person enables ([guards.md](../skills/shikii/references/guards.md)). The `guards:` line of `shikii status` shows how many are enabled, how many turns were stopped and how many were fixed.
+
 The sections below cover the decision-model workflow and its CLI in detail.
 
 ## Update shikii
@@ -384,6 +398,7 @@ shikii init                                               # folders, wiki seed, 
 shikii hook      install [--yes] | uninstall [--yes]      # Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (project .shikii/, local model, project chooser on :8096)
                  user-prompt-submit | stop                 # run by the agent with its JSON on stdin; not for typing by hand
 shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]   # start a local model; puts shikii-readout in front of a plain GGUF
+shikii guard     list | add | enable <id> | disable <id> | try               # guards made from corrections: stop the turn when a fixed rule is broken
 shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]   # what is running, what is missing, how to fix it
 ```
 
