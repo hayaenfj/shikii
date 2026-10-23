@@ -29,6 +29,8 @@ Hooks run when a user request arrives and when the turn closes, not before every
 
 **Guards:** when a correction can be checked mechanically (two files that must change together, words never to use, words a commit body must contain), draft a guard with `shikii guard add` as described in [guards.md](references/guards.md). It is written disabled; the person decides whether to enable it (`shikii guard enable <id>` shows the negative example stopping before it turns the guard on). When a guard stops your turn, fix the work and end again; never disable a guard to get past it.
 
+**Memory import:** when the person asks to move an existing memory (Claude Code's auto memory folder, Codex notes) into shikii's wiki, follow [import-memory.md](references/import-memory.md): keep each file as a captured source, draft one lesson per rule, place and ingest, and turn the memory folder into a thin index that points at the wiki pages. One instruction from the person is enough.
+
 ## Respect the evidence boundaries
 
 - Follow the calibrated band: `act` is automatic, `ask` needs human confirmation, `discard` does not take the proposed action, and `abstain` needs usable inputs or an allowed endpoint. Raw probabilities are not a substitute for the band. An uncalibrated planning result is shadow-only and gives no advice.
@@ -45,6 +47,7 @@ Hooks run when a user request arrives and when the turn closes, not before every
 - Truths, calibration and judging: [truths.md](references/truths.md).
 - Before-work conversation and wiki context: [planning.md](references/planning.md).
 - Source-backed wiki maintenance: [wiki.md](references/wiki.md).
+- Moving an existing memory into the wiki: [import-memory.md](references/import-memory.md).
 - Batched assessment and memory effects: [review.md](references/review.md).
 
 Typical local calls: `shikii decide .shikii/decisions/<id>.yaml -i key=value --local http://127.0.0.1:8080`, `shikii status .shikii/decisions/*.yaml`, and `shikii check .shikii/decisions/*.yaml`. See `shikii --help` for the full CLI. `shikii update` updates installed binaries, hooks and skill while preserving project data (except the one-time wipe of `.shikii/` when updating from 0.6.0 or earlier).
