@@ -226,4 +226,7 @@ func guardRecheck(root string, in *hookInput) {
 	if _, err := guardStop(root, in, snapshot, string(before), changed, known, true); err != nil {
 		hookLog("guard: " + err.Error())
 	}
+	if _, err := ritualStop(root, snapshot.Scope, in, snapshot, changed, known, true); err != nil {
+		hookLog("ritual: " + err.Error())
+	}
 }

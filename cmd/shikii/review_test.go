@@ -141,14 +141,14 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 	if err != nil || len(observed) != 1 || len(observed[0].Targets) != 2 {
 		t.Fatalf("繰り返した Stop でも元の採点対象を保つ: %+v %v", observed, err)
 	}
-	ctx, err := reflectContext(agent, feedbackScope(repo))
+	ctx, _, err := reflectContext(agent, feedbackScope(repo))
 	if err != nil || len(ctx) > 1800 {
 		t.Fatal("振り返りの案内は1800バイトまで")
 	}
 	if _, err := runReview(agent, feedbackScope(gitRepo(t)), reviewRequest{Operation: "submit", SourceID: observed[0].ID, TraceID: observed[0].Targets[0].TraceID, Truth: "no", Reason: "別の仕事"}); err == nil {
 		t.Fatal("別の仕事の会話を採点しない")
 	}
-	if ctx, err := reflectContext(agent, feedbackScope(gitRepo(t))); err != nil || ctx != "" {
+	if ctx, _, err := reflectContext(agent, feedbackScope(gitRepo(t))); err != nil || ctx != "" {
 		t.Fatal("別の仕事へ採点の文脈を持ち出さない")
 	}
 	st := store.Store{Dir: agent}
@@ -162,7 +162,7 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx, err = reflectContext(agent, feedbackScope(repo))
+	ctx, _, err = reflectContext(agent, feedbackScope(repo))
 	if err != nil || len(ctx) == 0 || len(ctx) > 1800 || !json.Valid([]byte(ctx[strings.LastIndex(ctx, "\n")+1:])) {
 		t.Fatal("原文を重ねず、短い案内とJSONの境界を保つ")
 	}

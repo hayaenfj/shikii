@@ -48,10 +48,13 @@
         <p>{t('summaryMemoryRow')(m)}</p>
         {#if m.corrections?.delivered}<p>{t('summaryCorrections')(m.corrections)}</p>{/if}
       {:else}<p class="muted">{t('summaryMemoryNone')}</p>{/if}
+      {#if g.rituals}
+        <p class="summary-rituals" data-rituals>{t('summaryRituals')(g.rituals)}</p>
+      {/if}
       {#if g.items?.length}
         <ul class="summary-guards">
           {#each g.items as it (it.id)}
-            <li><code>{it.id}</code> <span class="kind">{it.kind}</span> <span class="state" class:on={it.enabled}>{t(it.enabled ? 'summaryGuardOn' : 'summaryGuardOff')}</span> {it.title}
+            <li><code>{it.id}</code> <span class="kind">{it.kind}</span> <span class="state" class:on={it.enabled}>{t(it.builtin ? 'summaryGuardBuiltin' : it.enabled ? 'summaryGuardOn' : 'summaryGuardOff')}</span> {it.title}
               {#if it.last}<div class="muted">{it.last.pass ? t('summaryGuardLastPass')(when(it.last.at)) : t('summaryGuardLastStop')(when(it.last.at), it.last.reason)}</div>{/if}
             </li>
           {/each}

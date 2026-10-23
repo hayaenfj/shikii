@@ -55,7 +55,7 @@ func TestStopIsBlockedByAnEnabledGuardAndTheFixIsRecorded(t *testing.T) {
 	if !strings.Contains(reason, "no-ne") || !strings.Contains(reason, "README.md: 「根」") || !strings.Contains(reason, "直してから終えて") {
 		t.Fatalf("理由にどの検査がどこで引っかかったかを書く: %s", reason)
 	}
-	recs := readGuardRecords(root)
+	recs := guardRecordsFor(root, "no-ne") // 組み込みの作法の検査(plan-before-work など)の記録は別に数える(0.7.6)
 	if len(recs) != 1 || recs[0].Pass || recs[0].Recheck || recs[0].Guard != "no-ne" {
 		t.Fatalf("止めた記録が残る: %+v", recs)
 	}
@@ -64,7 +64,7 @@ func TestStopIsBlockedByAnEnabledGuardAndTheFixIsRecorded(t *testing.T) {
 	if strings.Contains(out, "block") {
 		t.Fatalf("stop_hook_active の Stop では止めない: %s", out)
 	}
-	if recs = readGuardRecords(root); len(recs) != 2 || recs[1].Pass || !recs[1].Recheck {
+	if recs = guardRecordsFor(root, "no-ne"); len(recs) != 2 || recs[1].Pass || !recs[1].Recheck {
 		t.Fatalf("直っていない記録: %+v", recs)
 	}
 	sOut := capture(t, func() error { return cmdStatus([]string{"--store", root}) })
@@ -76,14 +76,17 @@ func TestStopIsBlockedByAnEnabledGuardAndTheFixIsRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	runHook(t, "stop", map[string]any{"session_id": "g", "cwd": repo, "last_assistant_message": "直した", "stop_hook_active": true})
-	if recs = readGuardRecords(root); len(recs) != 3 || !recs[2].Pass || !recs[2].Recheck {
+	if recs = guardRecordsFor(root, "no-ne"); len(recs) != 3 || !recs[2].Pass || !recs[2].Recheck {
 		t.Fatalf("直った記録: %+v", recs)
 	}
 	if sOut = capture(t, func() error { return cmdStatus([]string{"--store", root}) }); !strings.Contains(sOut, "stopped 1 turns, fixed before the turn ended 1") {
 		t.Fatalf("直った数が増える:\n%s", sOut)
 	}
-	// 次のターンで引っかからなければ、普通に終わる(block 無し)
+	// 次のターンで引っかからなければ、普通に終わる(block 無し)。作法の検査(計画の整理)は済ませておく(0.7.6)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": repo, "prompt": "README の誤字を直して"})
+	if _, err := planningCall(t, "submit", map[string]any{"session_id": "g", "turn_id": loadSession(root, "g").TurnID, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}}); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# shikii\n\n記録はプロジェクトルートに置く。\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -139,4 +142,15 @@ func TestStopIsBlockedByPairedFilesAndCommitBody(t *testing.T) {
 	if fixed != 2 {
 		t.Fatalf("直した後の記録は両方 pass: %+v", recs)
 	}
+}
+
+// guardRecordsFor は 1 つの検査の記録だけ(組み込みの作法の記録と分けて見る)。
+func guardRecordsFor(root, id string) []guardRecord {
+	var out []guardRecord
+	for _, r := range readGuardRecords(root) {
+		if r.Guard == id {
+			out = append(out, r)
+		}
+	}
+	return out
 }

@@ -436,13 +436,16 @@ type guardStats struct{ Enabled, Stopped, Fixed int }
 func countGuardStats(guards []guard, recs []guardRecord) guardStats {
 	var s guardStats
 	for _, g := range guards {
-		if g.Enabled {
+		if g.Enabled && !isBuiltinGuard(g.ID) {
 			s.Enabled++
 		}
 	}
 	stopped := map[string]bool{}           // session/turn
 	failed := map[string]map[string]bool{} // session/turn → guard → まだ直っていない
 	for _, r := range recs {
+		if isBuiltinGuard(r.Guard) {
+			continue // 作法の検査は countRitualStats で別に数える(0.7.6)
+		}
 		key := r.Session + "/" + r.Turn
 		if !r.Recheck && !r.Pass {
 			stopped[key] = true
@@ -470,12 +473,52 @@ func printGuardStats(out io.Writer, root string) {
 		fmt.Fprintf(out, "guards: %v\n", err)
 		return
 	}
+	recs := readGuardRecords(root)
 	if len(guards) == 0 {
 		fmt.Fprintln(out, "guards: none (shikii guard add turns a correction into a check that stops the turn)")
-		return
+	} else {
+		s := countGuardStats(guards, recs)
+		fmt.Fprintf(out, "guards: %d of %d enabled; stopped %d turns, fixed before the turn ended %d\n", s.Enabled, len(guards), s.Stopped, s.Fixed)
 	}
-	s := countGuardStats(guards, readGuardRecords(root))
-	fmt.Fprintf(out, "guards: %d of %d enabled; stopped %d turns, fixed before the turn ended %d\n", s.Enabled, len(guards), s.Stopped, s.Fixed)
+	// 作法の検査(0.7.6): 頼んだ回数のうち済んでいた回数と、止めてから済んだ回数。人には「AI が作法をやっているか」が見える
+	r := countRitualStats(recs)
+	fmt.Fprintf(out, "rituals: plan-before-work done %d of %d asked (after a stop %d); reflect-before-end done %d of %d asked (after a stop %d)\n", r.Plan.Done, r.Plan.Asked, r.Plan.Fixed, r.Reflect.Done, r.Reflect.Asked, r.Reflect.Fixed)
+}
+
+// ritualStat は 1 つの作法の実施の数: 頼んだ(検査した)ターン、最初から済んでいたターン、止めてから済んだターン。
+type ritualStat struct{ Asked, Done, Fixed int }
+
+type ritualStats struct{ Plan, Reflect ritualStat }
+
+func countRitualStats(recs []guardRecord) ritualStats {
+	var out ritualStats
+	for _, id := range []string{ritualPlan, ritualReflect} {
+		var st ritualStat
+		failed := map[string]bool{} // session/turn → 止めてまだ済んでいない
+		for _, r := range recs {
+			if r.Guard != id {
+				continue
+			}
+			key := r.Session + "/" + r.Turn
+			switch {
+			case !r.Recheck && r.Pass:
+				st.Asked++
+				st.Done++
+			case !r.Recheck && !r.Pass:
+				st.Asked++
+				failed[key] = true
+			case r.Recheck && r.Pass && failed[key]:
+				delete(failed, key)
+				st.Fixed++
+			}
+		}
+		if id == ritualPlan {
+			out.Plan = st
+		} else {
+			out.Reflect = st
+		}
+	}
+	return out
 }
 
 // guardSummaryJSON は画面用(/v1/status の summary.guards): 数と、各検査の状態・最後の結果。
@@ -490,15 +533,24 @@ func guardSummaryJSON(root string) map[string]any {
 	for _, r := range recs {
 		last[r.Guard] = r
 	}
+	guards = append(builtinGuards(), guards...) // 作法の検査(組み込み)も並べる(0.7.6)
 	for _, g := range guards {
-		item := map[string]any{"id": g.ID, "kind": g.Kind, "title": g.Title, "enabled": g.Enabled, "reason": g.Reason}
+		item := map[string]any{"id": g.ID, "kind": g.Kind, "title": g.Title, "enabled": g.Enabled, "reason": g.Reason, "builtin": isBuiltinGuard(g.ID)}
 		if r, ok := last[g.ID]; ok {
 			item["last"] = map[string]any{"pass": r.Pass, "at": r.At, "reason": r.Reason, "recheck": r.Recheck}
 		}
 		items = append(items, item)
 	}
 	s := countGuardStats(guards, recs)
-	return map[string]any{"total": len(guards), "enabled": s.Enabled, "stopped": s.Stopped, "fixed": s.Fixed, "items": items}
+	r := countRitualStats(recs)
+	own := 0 // 人が作った検査の数(組み込みを除く)
+	for _, g := range guards {
+		if !isBuiltinGuard(g.ID) {
+			own++
+		}
+	}
+	return map[string]any{"total": own, "enabled": s.Enabled, "stopped": s.Stopped, "fixed": s.Fixed, "items": items,
+		"rituals": map[string]any{"plan": map[string]int{"asked": r.Plan.Asked, "done": r.Plan.Done, "fixed": r.Plan.Fixed}, "reflect": map[string]int{"asked": r.Reflect.Asked, "done": r.Reflect.Done, "fixed": r.Reflect.Fixed}}}
 }
 
 // ---------------------------------------------------------------- CLI
@@ -537,9 +589,9 @@ func guardList(root string) error {
 		return err
 	}
 	if len(guards) == 0 {
-		fmt.Fprintln(stdout, "止める検査はまだ無い。人の訂正を検査にするなら: shikii guard add < 草稿.json(id, kind, title, pairs/words/except/allow/required)")
-		return nil
+		fmt.Fprintln(stdout, "人の訂正から作った止める検査はまだ無い。作るなら: shikii guard add < 草稿.json(id, kind, title, pairs/words/except/allow/required)")
 	}
+	guards = append(builtinGuards(), guards...) // 作法の検査(組み込み。外せない)
 	last := map[string]guardRecord{}
 	for _, r := range readGuardRecords(root) {
 		last[r.Guard] = r
@@ -591,6 +643,9 @@ func guardAdd(root string, in io.Reader) error {
 func guardSetEnabled(root, id string, enable bool) error {
 	if !guardIDRe.MatchString(id) {
 		return errors.New("guard の id は英小文字・数字・ハイフン")
+	}
+	if isBuiltinGuard(id) {
+		return errors.New(id + " は組み込みの作法の検査で、常に有効です(外す設定はありません)")
 	}
 	g, err := loadGuard(guardPath(root, id))
 	if err != nil {
