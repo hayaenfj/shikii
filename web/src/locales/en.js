@@ -30,6 +30,8 @@ export default {
   currentProject: 'This project',
   workspaceTitle: 'Conversation review',
   pendingCount: 'Awaiting a check',
+  awaitingResults: 'Awaiting results',
+  machineOnly: n => `The AI answers this question; the truth comes from what reflection did (replaced or extended the page). Nothing for you to answer. ${n} awaiting results.`,
   checkedCount: 'Answers checked',
   recordCount: 'Decisions recorded',
   countUnit: '',
