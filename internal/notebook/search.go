@@ -42,7 +42,7 @@ func searchTerms(text string) map[string]bool {
 	}
 	for _, r := range strings.ToLower(text) {
 		switch {
-		case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana):
+		case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana) || r == 'ー': // 長音(ー)は Script が Common なのでカタカナの語の中に入れる(監査 R4)
 			if len(word) > 0 {
 				flush()
 			}
@@ -81,38 +81,68 @@ func isContentTerm(term string) bool {
 	return content
 }
 
-// contentClusters は依頼文の中で terms が占める「連なり」の数。重なる 2 文字の組(表示+示す は「表示す」の 1 語)は 1 つに数え、
-// 識別子は 1 語ずつ数える。2 文字の組を 2 語に数えると、1 語の依頼で「内容語 2 語」を満たして関係ない記事が届いた(監査 R3)。
-func contentClusters(text string, terms map[string]bool) int {
-	n := 0
-	runes := []rune(strings.ToLower(text))
+// cluster は依頼文の中で一致した 2 文字の組が占める連なり(重なる組は 1 つ)。kana は平仮名を含むか。
+type cluster struct {
+	start, end int
+	kana       bool
+}
+
+// termClusters は runes(小文字にした依頼文)の中で terms(2 文字の組)が占める連なり。識別子は含めない。文字列を作らずに比べる(監査 R4: 性能)。
+func termClusters(runes []rune, terms map[string]bool) []cluster {
 	covered := make([]bool, len(runes))
 	for term := range terms {
 		if isIdentifierTerm(term) {
-			n++
 			continue
 		}
 		tr := []rune(term)
+		if len(tr) == 0 || len(tr) > len(runes) {
+			continue
+		}
 		for i := 0; i+len(tr) <= len(runes); i++ {
-			if string(runes[i:i+len(tr)]) == term {
-				for j := i; j < i+len(tr); j++ {
-					covered[j] = true
+			match := true
+			for j, r := range tr {
+				if runes[i+j] != r {
+					match = false
+					break
+				}
+			}
+			if match {
+				for j := range tr {
+					covered[i+j] = true
 				}
 			}
 		}
 	}
-	for i := range covered {
-		if !covered[i] || (i > 0 && covered[i-1]) {
+	var out []cluster
+	for i := 0; i < len(covered); {
+		if !covered[i] {
+			i++
 			continue
 		}
-		end, kana := i, false
-		for end < len(covered) && covered[end] {
-			kana = kana || unicode.In(runes[end], unicode.Hiragana)
-			end++
+		c := cluster{start: i}
+		for i < len(covered) && covered[i] {
+			c.kana = c.kana || unicode.In(runes[i], unicode.Hiragana)
+			i++
 		}
-		// 仮名を含まない 3 文字以上の連なり(テスト、データ、日本語)は 1 つの内容語として 2 語分。
-		// 仮名で終わる連なり(表示す、更新す)は動詞の語幹なので 1 語分(それだけで届けない)
-		if end-i >= 3 && !kana {
+		c.end = i
+		out = append(out, c)
+	}
+	return out
+}
+
+// contentClusters は依頼文の中で terms が占める「連なり」の数。重なる 2 文字の組(表示+示す は「表示す」の 1 語)は 1 つに数え、
+// 識別子は 1 語ずつ数える。2 文字の組を 2 語に数えると、1 語の依頼で「内容語 2 語」を満たして関係ない記事が届いた(監査 R3)。
+// 平仮名を含まない 3 文字以上の連なり(テスト、データ、日本語)は 1 つの内容語として 2 語分。平仮名で終わる連なり(表示す、更新す)は
+// 動詞の語幹なので 1 語分(それだけで届けない)。
+func contentClusters(runes []rune, terms map[string]bool) int {
+	n := 0
+	for term := range terms {
+		if isIdentifierTerm(term) {
+			n++
+		}
+	}
+	for _, c := range termClusters(runes, terms) {
+		if c.end-c.start >= 3 && !c.kana {
 			n += 2
 		} else {
 			n++
@@ -121,34 +151,11 @@ func contentClusters(text string, terms map[string]bool) int {
 	return n
 }
 
-// hasKanaFreeCluster は、terms が依頼文の中で占める連なりのうち、仮名を含まない 2 文字以上のもの(漢字・カタカナの語)があるか。
-// 仮名で終わる連なり(表示す、更新す)は動詞の語幹なので数えない(それだけで関係ない記事が届いた。監査 R3)。
-func hasKanaFreeCluster(text string, terms map[string]bool) bool {
-	runes := []rune(strings.ToLower(text))
-	covered := make([]bool, len(runes))
-	for term := range terms {
-		if isIdentifierTerm(term) {
-			continue
-		}
-		tr := []rune(term)
-		for i := 0; i+len(tr) <= len(runes); i++ {
-			if string(runes[i:i+len(tr)]) == term {
-				for j := i; j < i+len(tr); j++ {
-					covered[j] = true
-				}
-			}
-		}
-	}
-	for i := range covered {
-		if !covered[i] || (i > 0 && covered[i-1]) {
-			continue
-		}
-		end, kana := i, false
-		for end < len(covered) && covered[end] {
-			kana = kana || unicode.In(runes[end], unicode.Hiragana)
-			end++
-		}
-		if end-i >= 2 && !kana {
+// hasKanaFreeCluster は、terms が依頼文の中で占める連なりのうち、平仮名を含まない 2 文字以上のもの(漢字・カタカナの語)があるか。
+// 平仮名を含む連なり(表示す、更新し)は動詞の語幹なので数えない(それだけで関係ない記事が届いた。監査 R3)。
+func hasKanaFreeCluster(runes []rune, terms map[string]bool) bool {
+	for _, c := range termClusters(runes, terms) {
+		if c.end-c.start >= 2 && !c.kana {
 			return true
 		}
 	}
@@ -206,6 +213,19 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 		score float64
 	}
 	results := []ranked{}
+	// 自動配送の門の依頼側の数(内容語の連なり)は記事に依存しないので、ループの前で 1 回だけ数える(監査 R4: 性能)
+	queryRunes := []rune(strings.ToLower(query))
+	rare := func(term string) bool { return len(docs) == 1 || frequency[term]*2 <= len(docs) }
+	requestContent, rareRequest := map[string]bool{}, map[string]bool{}
+	for term := range terms {
+		if isContentTerm(term) {
+			requestContent[term] = true
+			if rare(term) {
+				rareRequest[term] = true
+			}
+		}
+	}
+	requestTerms, rareRequestTerms := contentClusters(queryRunes, requestContent), contentClusters(queryRunes, rareRequest)
 	for _, d := range docs {
 		m := Match{ID: d.page.ID, Revision: d.page.Revision, Fields: []string{}, Terms: []string{}}
 		matched, score, fields := map[string]bool{}, 0.0, map[string]bool{}
@@ -234,18 +254,7 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 			// 「珍しい語」= 記事の半分以下にしか無い語(記事が 1 本なら全部)。プロジェクト名のようにどの記事にもある語は、
 			// 一致しても根拠にしない(それだけで関係ない記事が届いた)。ただし依頼の内容語がほぼ全部(0.8 以上)記事に合うなら、
 			// 遍在する語でも届ける(全記事が同じ話題の wiki で、その話題の依頼が来た時)。
-			rare := func(term string) bool { return len(docs) == 1 || frequency[term]*2 <= len(docs) }
 			rarePageTerms := 0
-			requestContent, rareRequest := map[string]bool{}, map[string]bool{}
-			for term := range terms {
-				if isContentTerm(term) {
-					requestContent[term] = true
-					if rare(term) {
-						rareRequest[term] = true
-					}
-				}
-			}
-			requestTerms, rareRequestTerms := contentClusters(query, requestContent), contentClusters(query, rareRequest)
 			for _, f := range d.fields {
 				for term := range f {
 					if isContentTerm(term) && rare(term) {
@@ -267,7 +276,7 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 					}
 				}
 			}
-			matchedContent, rareMatched := contentClusters(query, matchedContentSet), contentClusters(query, rareMatchedSet)
+			matchedContent, rareMatched := contentClusters(queryRunes, matchedContentSet), contentClusters(queryRunes, rareMatchedSet)
 			// 「監査して」のような 1〜2 語の依頼は、仮名を含まない語(監査)が記事の題に合えば届く。適用条件だけの一致(説明、表示)では届けない
 			titleRare := map[string]bool{}
 			for term := range rareMatchedSet {
@@ -275,7 +284,7 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 					titleRare[term] = true
 				}
 			}
-			strongTitle := requestTerms <= 2 && hasKanaFreeCluster(query, titleRare)
+			strongTitle := requestTerms <= 2 && hasKanaFreeCluster(queryRunes, titleRare)
 			coverage, minMatched = 0, 2
 			switch {
 			case strongTitle, strong && (requestTerms <= 3 || (rareRequestTerms > 0 && float64(rareMatched)/float64(rareRequestTerms) >= .35)):
