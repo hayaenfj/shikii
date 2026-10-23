@@ -5,7 +5,8 @@ Use this when the person asks to move, import or migrate an existing memory into
 ## 1. Find and read the memory
 
 - Claude Code's auto memory: `~/.claude/projects/<project-slug>/memory/` (an index `MEMORY.md` with one line per fact, and one Markdown file per fact with frontmatter `name`, `description`, `metadata.type` = `user` | `feedback` | `project` | `reference`). The folder may be a link to a shared folder; follow it.
-- Other memory the person names (Codex notes, a `memory/` folder in the home directory, a handoff folder). Do not go looking for memory in unrelated projects.
+- Codex's memory: `~/.codex/memories/` (an index `MEMORY.md` and one file per topic). It is shared by all projects, so move only the files that concern this project or state a rule for every project; the hook reports the files that name this project. Leave the other projects' files alone.
+- Other memory the person names (a `memory/` folder in the home directory, a handoff folder). Do not go looking for memory in unrelated projects.
 - Read `MEMORY.md` and every file completely before moving anything. Leave secrets and raw conversation transcripts where they are; a session id or a home path is fine.
 
 ## 2. Keep each file as a source
@@ -30,7 +31,7 @@ Pass all drafts to `shikii reflect place` (`{"operation":"place","wiki":[...]}`)
 
 ## 5. Turn the memory folder into a thin index
 
-Do not delete the files; the person does that. Replace each moved file's body with one line that names the wiki page (`正本: .shikii/wiki <page_id>` / "canonical: .shikii/wiki <page_id>") and keep its frontmatter, and rewrite `MEMORY.md` so that each line points at the page id. Keep the always-on rules of step 3 as one-liners in `MEMORY.md`. Add one line at the top saying that the canonical memory is this project's `.shikii/wiki` and that new facts are written there with `shikii wiki ingest`.
+Do not delete the files; the person does that. A file shared by all projects (Codex's folder) keeps its body and gets one added line naming the wiki page (`<project> では .shikii/wiki <page_id> に写した`); add a short section to that folder's `MEMORY.md` saying that this project's canonical memory is its wiki. Replace each project-only file's body with one line that names the wiki page (`正本: .shikii/wiki <page_id>` / "canonical: .shikii/wiki <page_id>") and keep its frontmatter, and rewrite `MEMORY.md` so that each line points at the page id. Keep the always-on rules of step 3 as one-liners in `MEMORY.md`. Add one line at the top saying that the canonical memory is this project's `.shikii/wiki` and that new facts are written there with `shikii wiki ingest`.
 
 ## 6. Verify and report
 

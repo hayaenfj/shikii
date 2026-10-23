@@ -1405,11 +1405,21 @@ func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte("# index\n- [a](feedback-a.md)\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n日本語で書く\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "feedback-b.md"), []byte("---\nname: feedback-b\n---\n\n正本: .shikii/wiki 0123456789abcdef\n"), 0o644)
+	// Codex の共通のメモリ: このプロジェクト(フォルダ名)を名指しするファイルだけ数える。他のプロジェクトの物は数えない
+	codex := filepath.Join(home, ".codex", "memories")
+	os.MkdirAll(codex, 0o755)
+	os.WriteFile(filepath.Join(codex, "MEMORY.md"), []byte("# 共通\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "this-project.md"), []byte("# "+filepath.Base(repo)+" の決まり\n\nテストを先に書く\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "other-project.md"), []byte("# 別のプロジェクトの決まり\n\n関係ない\n"), 0o644)
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "m1", "cwd": repo, "prompt": "README を直して"})
-	if !strings.Contains(out, "まだ wiki へ移していないファイルが 1 件") || !strings.Contains(out, "feedback-a.md") || strings.Contains(out, "feedback-b.md") || !strings.Contains(out, "import-memory.md") {
+	if !strings.Contains(out, "に 1 件(feedback-a.md)") || strings.Contains(out, "feedback-b.md") || !strings.Contains(out, "import-memory.md") {
 		t.Fatalf("未移行のファイルだけを数えて作法の手順を示す:\n%s", out)
 	}
+	if !strings.Contains(out, "Codex の") || !strings.Contains(out, "1 件(this-project.md)") || strings.Contains(out, "other-project.md") {
+		t.Fatalf("Codex の共通のメモリはこのプロジェクトを名指しするファイルだけ数える:\n%s", out)
+	}
 	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n正本: .shikii/wiki fedcba9876543210\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "this-project.md"), []byte("# "+filepath.Base(repo)+" の決まり\n\nテストを先に書く\n\n"+filepath.Base(repo)+" では .shikii/wiki 0123456789abcdef に写した\n"), 0o644)
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "m1", "cwd": repo, "prompt": "次は画面を直して"})
 	if strings.Contains(out, "移していない") {
 		t.Fatalf("全部移したら出さない:\n%s", out)
