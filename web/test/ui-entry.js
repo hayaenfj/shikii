@@ -177,7 +177,8 @@ async function checkMachineOnlySpec(target) {
 async function checkNotebookTree(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const mk = (id, title, related = []) => ({ id, revision: 'r' + id, title, lesson: title + 'の決まり', applies_to: title + 'の時', sources: [{ id: 'src' + id }], related, status: 'hypothesis' });
-  const lessons = [mk('a1', '公開の手順', ['a2']), mk('a2', '監査', ['a3']), mk('a3', '変更履歴'), mk('b1', 'コミットの説明', ['b2']), mk('b2', 'コミットの作者'), mk('c1', '単独')];
+  // a2 は 2 本に指される(同数の時の題の順は locale 依存なので避ける)
+  const lessons = [mk('a1', '公開の手順', ['a2']), mk('a2', '監査'), mk('a3', '変更履歴', ['a2']), mk('b1', 'コミットの説明', ['b2']), mk('b2', 'コミットの作者'), mk('c1', '単独')];
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons, sources: [] } : url.startsWith('v1/wiki/notebook') ? { lessons: [lessons[1]] } : { items: [] } });
   Object.assign(ui, { tab: 'wiki', advanced: true, done: false, results: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
