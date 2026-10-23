@@ -700,6 +700,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := []map[string]any{}
+	var person personWork // 画面の先頭の要約(0.7.4): 人の手間を全 spec で合計
 	for _, sp := range specs {
 		titles := map[string]string{}
 		questions := map[string]string{} // 画面の「何を聞いているか」(人の言葉)
@@ -780,6 +781,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		funnel, _ := s.st.Funnel(sp.ID, decide.DiscardUnsure(sp))
+		person.add(countPersonWork(sp.ID, decide.DiscardUnsure(sp), records, labs, reviews, time.Now()))
 		s.mu.Lock()
 		last := s.lastCal[sp.ID]
 		s.mu.Unlock()
@@ -792,7 +794,8 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
-	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir})
+	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir,
+		"summary": statusSummary(s.st, s.o.storeDir, s.o.projectScope, person, time.Now())})
 }
 
 // handleUI は画面(web/ を Svelte で組んだもの)。ビルド結果 web/dist は実行ファイルに埋め込まれている(shikii.WebFS)ので外部の読み込みは無い。

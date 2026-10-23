@@ -11,6 +11,7 @@
   import Toast from './components/Toast.svelte';
   import LangPicker from './components/LangPicker.svelte';
   import Projects from './components/Projects.svelte';
+  import Summary from './components/Summary.svelte';
 
   let st = $derived(data.state);
   let hasWiki = $derived(!!st && !st.projects);
@@ -65,6 +66,7 @@
         <Tabs specs={st.specs} {hasWiki} active={activeTab} />
       </aside>
       <div class="workspace-content">
+        {#if st.summary}<Summary summary={st.summary} />{/if}
         {#if data.loadError}<p class="audit" role="alert">{t('error')(data.loadError)}</p>{/if}
         {#if ui.showHelp}<HowTo />{/if}
         {#if activeTab === 'wiki'}

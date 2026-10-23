@@ -1,6 +1,14 @@
 // 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
+  summaryLine: (m, g, p) => 'Lessons delivered ' + (m.delivered || 0) + ' (helpful ' + (m.helpful || 0) + ') · guards ' + (g.enabled || 0) + ' enabled (stopped ' + (g.stopped || 0) + ', fixed ' + (g.fixed || 0) + ') · decisions waiting for a person ' + (p.waits || 0) + ' / ' + (p.records || 0),
+  summaryOpen: 'Click for details',
+  summaryMemoryHead: 'Delivered lessons', summaryMemoryNone: 'Nothing delivered yet. Lessons arrive before similar requests and when a subagent starts.',
+  summaryMemoryRow: m => 'Delivered ' + m.delivered + ': helpful ' + m.helpful + ', unused ' + m.unused + ', harmful ' + m.harmful + ', unknown ' + m.unknown + ', awaiting assessment ' + m.pending + ' (' + m.awaiting_feedback + ' waiting for the next request). Last 7 days: delivered ' + m.recent_delivered + ', helpful ' + m.recent_helpful,
+  summaryCorrections: c => 'Corrections delivered ' + c.delivered + ': followed ' + c.followed + ', repeated ' + c.repeated + ', not applicable ' + c.not_applicable + ', unknown ' + c.unknown + ', pending ' + c.pending,
+  summaryGuardsHead: 'Guards', summaryGuardsNone: 'None yet. Draft one from a correction with shikii guard add and enable it with shikii guard enable.',
+  summaryGuardOn: 'enabled', summaryGuardOff: 'disabled (draft)', summaryGuardLastPass: at => 'Last: passed ' + at, summaryGuardLastStop: (at, r) => 'Last: stopped ' + at + ': ' + r,
+  summaryPersonHead: 'Decisions waiting for a person', summaryPersonRow: p => 'Waiting under the current rules ' + (p.waits || 0) + ' / ' + (p.records || 0) + ' (' + Math.round(p.per_thousand || 0) + ' per 1000; last 7 days ' + (p.recent_waits || 0) + ' / ' + (p.recent_records || 0) + '). Truths decided by a person ' + (p.by_person || 0) + ', by results ' + (p.by_result || 0),
   notebookBody: 'Read background and reasoning', notebookRelated: 'Related knowledge', notebookBack: 'Back to lessons',
   legacyPlanning: 'This answer belongs to the previous format and is not used to evaluate the new question.',
   planningLearning: n => 'Learning uses new records with agreement evidence and open questions. The ' + n + ' previous records are preserved separately.',

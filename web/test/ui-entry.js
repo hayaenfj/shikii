@@ -123,6 +123,29 @@ async function checkWording(target) {
   return ok;
 }
 
+// 効き目の要約(0.7.4): /v1/status の summary が画面の先頭に 1 行で出て、開くと止める検査の一覧と最後の結果が読める。
+async function checkSummary(target) {
+  const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
+  const summary = { person: { records: 20, waits: 2, recent_records: 20, recent_waits: 2, by_person: 1, by_result: 13, per_thousand: 100, recent_per_thousand: 100 },
+    memory: { delivered: 4, helpful: 1, unused: 2, harmful: 0, unknown: 1, pending: 0, awaiting_feedback: 0, recent_delivered: 4, recent_helpful: 1, corrections: { delivered: 0 } },
+    guards: { total: 3, enabled: 3, stopped: 1, fixed: 1, items: [{ id: 'changelog-pair', kind: 'paired-files', title: '変更履歴は英語と日本語を揃える', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'CHANGELOG_ja.md が変わっていない' } }] } };
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs(), summary } : { items: [] } });
+  Object.assign(ui, { tab: '', advanced: false, done: false, pinned: '' });
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  const app = mount(App, { target }); await settle(); await settle();
+  const details = target.querySelector('#summary');
+  const line = details?.querySelector('.summary-line')?.textContent || '';
+  const oneLine = line.includes('4') && line.includes('3') && line.includes('2 / 20');
+  const closed = !!details && !details.open;
+  details?.querySelector('summary')?.click(); flushSync();
+  const opened = !!details && details.open;
+  const body = details?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (details?.textContent || '').includes('CHANGELOG_ja.md が変わっていない');
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  const ok = oneLine && closed && opened && body;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (効き目の要約: 1行=' + oneLine + ', 閉じて始まる=' + closed + ', クリックで開く=' + opened + ', 検査の一覧と最後の結果=' + body + ')');
+  return ok;
+}
+
 export async function run() {
   const target = document.getElementById('app');
   const articleOK = await checkNotebookArticle(target);
@@ -137,7 +160,8 @@ export async function run() {
   const loadingOK = await checkFocusedLoading(target);
   const orderingOK = await checkLoadOrdering();
   const lazyNavOK = await checkLazyNavigation(target);
-  const ok = planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const summaryOK = await checkSummary(target);
+  const ok = summaryOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 

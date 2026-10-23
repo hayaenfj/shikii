@@ -86,25 +86,14 @@ func (w *personWork) add(o personWork) {
 // 届けた引用の数(サブエージェントへの配送も含む)と、振り返りが付けた helpful / unused / harmful / unknown、まだ観察の無い数。
 // 訂正の配送(followed / repeated)は別に出す。直近 7 日は配送の時刻で数える。
 func printMemoryEffect(out io.Writer, st store.Store, scope string, now time.Time) {
-	r, err := st.MemoryReport(scope)
-	if err != nil || r.Stats.Delivered == 0 {
+	m, err := memoryEffectOf(st, scope, now)
+	if err != nil || m.Delivered == 0 {
 		fmt.Fprintln(out, "memory: no lessons delivered yet (lessons reach the agent before similar requests, and subagents when they start)")
 		return
 	}
-	s := r.Stats
-	fmt.Fprintf(out, "memory: %d quotes delivered; helpful %d, unused %d, harmful %d, unknown %d, not yet assessed %d (%d waiting for the next request)\n", s.Delivered, s.Helpful, s.Unused, s.Harmful, s.Unknown, s.Pending, s.AwaitingFeedback)
-	recent, helpful := 0, 0
-	for _, o := range r.All {
-		if now.Sub(o.At) > personWorkWindow {
-			continue
-		}
-		recent++
-		if o.Assessment != nil && o.Assessment.Result == "helpful" {
-			helpful++
-		}
-	}
-	fmt.Fprintf(out, "  last 7 days: delivered %d, helpful %d\n", recent, helpful)
-	if c := r.Corrections; c.Delivered > 0 {
+	fmt.Fprintf(out, "memory: %d quotes delivered; helpful %d, unused %d, harmful %d, unknown %d, not yet assessed %d (%d waiting for the next request)\n", m.Delivered, m.Helpful, m.Unused, m.Harmful, m.Unknown, m.Pending, m.AwaitingFeedback)
+	fmt.Fprintf(out, "  last 7 days: delivered %d, helpful %d\n", m.RecentDelivered, m.RecentHelpful)
+	if c := m.Corrections; c.Delivered > 0 {
 		fmt.Fprintf(out, "  corrections delivered %d: followed %d, repeated %d, not applicable %d, unknown %d, pending %d\n", c.Delivered, c.Followed, c.Repeated, c.NotApplicable, c.Unknown, c.Pending)
 	}
 }
@@ -116,4 +105,54 @@ func storeScope(storeDir string) string {
 		return ""
 	}
 	return feedbackScope(filepath.Dir(abs))
+}
+
+// memoryEffectSummary は「届いた教訓の効果」の数(CLI の status と画面の /v1/status で同じ)。
+type memoryEffectSummary struct {
+	Delivered, Helpful, Unused, Harmful, Unknown, Pending, AwaitingFeedback int
+	RecentDelivered, RecentHelpful                                          int
+	Corrections                                                             store.CorrectionStats
+}
+
+func memoryEffectOf(st store.Store, scope string, now time.Time) (memoryEffectSummary, error) {
+	var m memoryEffectSummary
+	r, err := st.MemoryReport(scope)
+	if err != nil {
+		return m, err
+	}
+	s := r.Stats
+	m.Delivered, m.Helpful, m.Unused, m.Harmful, m.Unknown, m.Pending, m.AwaitingFeedback = s.Delivered, s.Helpful, s.Unused, s.Harmful, s.Unknown, s.Pending, s.AwaitingFeedback
+	m.Corrections = r.Corrections
+	for _, o := range r.All {
+		if now.Sub(o.At) > personWorkWindow {
+			continue
+		}
+		m.RecentDelivered++
+		if o.Assessment != nil && o.Assessment.Result == "helpful" {
+			m.RecentHelpful++
+		}
+	}
+	return m, nil
+}
+
+func (m memoryEffectSummary) json() map[string]any {
+	return map[string]any{"delivered": m.Delivered, "helpful": m.Helpful, "unused": m.Unused, "harmful": m.Harmful, "unknown": m.Unknown, "pending": m.Pending, "awaiting_feedback": m.AwaitingFeedback,
+		"recent_delivered": m.RecentDelivered, "recent_helpful": m.RecentHelpful,
+		"corrections": map[string]any{"delivered": m.Corrections.Delivered, "followed": m.Corrections.Followed, "repeated": m.Corrections.Repeated, "not_applicable": m.Corrections.NotApplicable, "unknown": m.Corrections.Unknown, "pending": m.Corrections.Pending}}
+}
+
+func (w personWork) json() map[string]any {
+	return map[string]any{"records": w.Records, "waits": w.Waits, "recent_records": w.RecentRecords, "recent_waits": w.RecentWaits, "by_person": w.ByPerson, "by_result": w.ByResult, "per_thousand": perThousand(w.Waits, w.Records), "recent_per_thousand": perThousand(w.RecentWaits, w.RecentRecords)}
+}
+
+// statusSummary は画面の先頭に出す要約(0.7.4): 人の手間、届いた教訓の効果、止める検査。
+func statusSummary(st store.Store, root, scope string, person personWork, now time.Time) map[string]any {
+	out := map[string]any{"person": person.json()}
+	if m, err := memoryEffectOf(st, scope, now); err == nil {
+		out["memory"] = m.json()
+	} else {
+		out["memory"] = memoryEffectSummary{}.json()
+	}
+	out["guards"] = guardSummaryJSON(root)
+	return out
 }
