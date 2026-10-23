@@ -55,15 +55,80 @@ func unimportedMemoryFiles(dir string) []string {
 	return out
 }
 
-// memoryImportNotice は、まだ wiki に無いメモリがあれば、作法の手順で移すようエージェントへ伝える 1 行。
-// 言われなくても気付くための通知で、消すのは人。すでに wiki のあるプロジェクト(途中の版から使っている)でも、未移行のファイルがある限り出す。
-func memoryImportNotice(scope string) string {
-	dir := agentMemoryDir(scope)
-	files := unimportedMemoryFiles(dir)
-	if len(files) == 0 {
+// codexMemoryDir は Codex のメモリの置き場(~/.codex/memories)。全プロジェクト共通なので、このプロジェクトを名指しするファイルだけを見る。
+func codexMemoryDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("shikii: このプロジェクトのエージェントのメモリ(%s)に、まだ wiki へ移していないファイルが %d 件あります(%s)。今回の依頼を終えたら、作法の references/import-memory.md の手順で各ファイルを原資料として残し、規則ごとに教訓にして移し、ファイルは wiki の記事を指す 1 行にしてください(消すのは人)。", homeTilde(dir), len(files), strings.Join(files, ", "))
+	dir := filepath.Join(home, ".codex", "memories")
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return ""
+	}
+	return dir
+}
+
+// projectNames は、このプロジェクトを名指しする語: フォルダ名と、登録した名前(リポジトリの名)。
+func projectNames(scope string) []string {
+	names := []string{filepath.Base(scope)}
+	if agent, err := agentHome(); err == nil {
+		for _, p := range registeredProjects(agent) {
+			if p.Path == scope && p.Name != "" && p.Name != names[0] {
+				names = append(names, p.Name)
+			}
+		}
+	}
+	return names
+}
+
+// unimportedCodexMemoryFiles は、Codex の共通のメモリのうち、このプロジェクトを名指しし、まだ wiki へ移されていないファイル。
+func unimportedCodexMemoryFiles(dir string, names []string) []string {
+	if dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".md") || name == "MEMORY.md" {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil || strings.Contains(string(b), memoryImportMarker) {
+			continue
+		}
+		for _, n := range names {
+			if strings.Contains(string(b), n) {
+				out = append(out, name)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// memoryImportNotice は、まだ wiki に無いメモリがあれば、作法の手順で移すようエージェントへ伝える 1 行。
+// 言われなくても気付くための通知で、消すのは人。すでに wiki のあるプロジェクト(途中の版から使っている)でも、未移行のファイルがある限り出す。
+// 見るのは Claude Code のこのプロジェクトのメモリと、Codex の共通のメモリのうちこのプロジェクトを名指しするファイル。
+func memoryImportNotice(scope string) string {
+	var parts []string
+	if dir := agentMemoryDir(scope); dir != "" {
+		if files := unimportedMemoryFiles(dir); len(files) > 0 {
+			parts = append(parts, fmt.Sprintf("%s に %d 件(%s)", homeTilde(dir), len(files), strings.Join(files, ", ")))
+		}
+	}
+	if dir := codexMemoryDir(); dir != "" {
+		if files := unimportedCodexMemoryFiles(dir, projectNames(scope)); len(files) > 0 {
+			parts = append(parts, fmt.Sprintf("Codex の %s にこのプロジェクトを名指しする %d 件(%s)", homeTilde(dir), len(files), strings.Join(files, ", ")))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("shikii: エージェントのメモリに、まだ wiki へ移していないファイルがあります: %s。今回の依頼を終えたら、作法の references/import-memory.md の手順で各ファイルを原資料として残し、規則ごとに教訓にして移し、ファイルは wiki の記事を指す 1 行にしてください(全プロジェクト共通のファイルは指す行を足すだけ。消すのは人)。", strings.Join(parts, "、"))
 }
 
 // homeTilde は家の下のパスを ~ 表記にする(表示用)。

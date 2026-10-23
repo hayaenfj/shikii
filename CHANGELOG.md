@@ -4,7 +4,8 @@
 
 ## 0.7.6 — unreleased
 
-- The request hook notices when this project's agent memory (Claude Code's `~/.claude/projects/<slug>/memory`, possibly a link to a shared folder) still has files that were not moved into the wiki (files whose body has no `.shikii/wiki` pointer), and tells the agent to follow the skill's `import-memory.md`. It counts only the remaining files, so a half-moved folder is reported too, in every project that already has a wiki.
+- Delivery gate: a rare identifier alone (`hook`, `README`) delivers only when the request has at most three content words or the request-side match is at least 0.35, so a long request no longer receives an unrelated lesson through one word in it. A kana-free word (監査, 配送) that matches a page's title delivers on a request of one or two words ("監査して"); a match in the conditions of applicability alone does not.
+- The request hook notices when this project's agent memory (Claude Code's `~/.claude/projects/<slug>/memory`, possibly a link to a shared folder) still has files that were not moved into the wiki (files whose body has no `.shikii/wiki` pointer), and tells the agent to follow the skill's `import-memory.md`. It counts only the remaining files, so a half-moved folder is reported too, in every project that already has a wiki. Codex's shared memory (`~/.codex/memories`) is checked as well, for the files that name this project (its folder name or registered name).
 
 ## 0.7.5 — Fixes from the second and third audit
 
