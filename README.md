@@ -7,7 +7,7 @@
 A model gives you a probability. shikii tells you whether you may act on it. It draws the line from the answers people and results supply, turns every decision into a band (`act` / `ask` / `discard`), keeps what it learned in a wiki that your agent uses while it works, and turns your corrections into checks that stop the agent next time.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-334%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-344%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.7.4-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -94,7 +94,7 @@ For other systems, see [llama.cpp's installation guide](https://github.com/ggml-
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-From a source checkout, run `sh install.sh` inside its folder. The installer adds the binaries, the hooks (before a turn, after it, and when a subagent starts) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, use `/hooks` once to trust the hooks.
+The installer builds from source, so it needs Go 1.27 or newer and Git. From a source checkout, run `sh install.sh` inside its folder. The installer adds the binaries, the hooks (before a turn, after it, and when a subagent starts) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, use `/hooks` once to trust the hooks.
 
 ### 3. Initialize the projects you choose
 
@@ -102,7 +102,7 @@ In a project you want to enable, ask your agent:
 
 > Use shikii in this project.
 
-The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. Initialization prepares the built-in questions, the wiki, the place for guards, the MCP setup, the agent's instructions and the project's page. `shikii doctor` checks the setup; http://127.0.0.1:8096 lists the project pages.
+The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. Initialization prepares the built-in questions, the wiki, the place for guards, the MCP setup (it adds `.mcp.json`, `.cursor/mcp.json`, `opencode.json` and a section in `AGENTS.md` to the project; only `.shikii/` is excluded from Git) and the agent's instructions. `shikii doctor` checks the setup. The page at http://127.0.0.1:8096 is started by the hooks when the first decision waits for you; to open it earlier, run `shikii serve --store ~/.shikii/agent --port 8096`.
 
 ### Updates
 
@@ -114,7 +114,10 @@ This fetches the latest stable release, verifies its hashes and replaces shikii 
 
 ## One full loop
 
+In a source checkout (the sample decision is not part of the installer):
+
 ```sh
+shikii new same-issue --from decisions/same-issue.yaml              # copies the sample decision into .shikii/decisions/
 SHIKII_MODEL=local shikii up                                     # this question is pii: true, so it needs the local model; with a key set, up only starts one under SHIKII_MODEL=local
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask   (no line yet: a person decides)

@@ -97,8 +97,9 @@ func (s *server) detectUpstream(ctx context.Context) error {
 	case code == 501 || code == 404:
 		s.passThrough = false
 		return nil
-	case code/100 == 4: // post は 2xx 以外を err にするので code だけで見る
-		// 探りの形を 400/422 で弾く決定モデル(要求は読めている)。素通しにして、本番の要求はそのモデルに答えさせる(監査 2026-10-23)
+	case code == 400 || code == 422: // post は 2xx 以外を err にするので code だけで見る
+		// 探りの形を 400/422 で弾く決定モデル(要求は読めている)。素通しにして、本番の要求はそのモデルに答えさせる(監査 2026-10-23)。
+		// 401/403/405/429 などは認証や前段の拒否なので、黙って素通しにせず起動を止めて理由を見せる(監査 R2)
 		s.passThrough = true
 		return nil
 	}

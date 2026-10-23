@@ -2,9 +2,11 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 止める検査(0.7.3)の 3 種類は、それぞれの負例で止まり、正例で通る。分からない観測(一覧やコミットが取れない)は通す。
@@ -113,5 +115,61 @@ func TestGuardEnableShowsRedThenGreen(t *testing.T) {
 	}
 	if out = capture(t, func() error { return cmdGuard([]string{"try"}) }); !strings.Contains(out, "ok   changelog-pair") {
 		t.Fatalf("両方あれば通る:\n%s", out)
+	}
+}
+
+// 監査 R2: commit-body は merge コミットを見ず、件名も本文も無いコミットは止める。
+func TestCommitBodySkipsMergesAndStopsEmptyMessages(t *testing.T) {
+	repo := gitRepo(t)
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a.txt", "a")
+	gitCommitAll(t, repo, "base\n\n元の問題: x\n変更後: y\n検証: z")
+	run := func(args ...string) {
+		if out, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("%v: %v %s", args, err, out)
+		}
+	}
+	head, since := gitHead(repo), time.Now()
+	run("checkout", "-q", "-b", "feature")
+	write("b.txt", "b")
+	gitCommitAll(t, repo, "feature work\n\n元の問題: a\n変更後: b\n検証: c")
+	run("checkout", "-q", "-")
+	write("c.txt", "c")
+	gitCommitAll(t, repo, "main work\n\n元の問題: a\n変更後: b\n検証: c")
+	run("merge", "--no-ff", "-q", "-m", "Merge branch 'feature'", "feature")
+	in := guardTurnInput(repo, "", nil, false, head, since)
+	g := guard{ID: "commit-body", Kind: guardKindCommitBody, Title: "x", Required: []string{"元の問題", "変更後", "検証"}}
+	if r := evalGuard(g, in); !r.Pass {
+		t.Fatalf("merge コミットの自動の文で止めない: %+v %+v", r, in.Commits)
+	}
+	run("commit", "-q", "--allow-empty", "--allow-empty-message", "-m", "")
+	in = guardTurnInput(repo, "", nil, false, head, since)
+	if r := evalGuard(g, in); r.Pass {
+		t.Fatalf("件名も本文も無いコミットは止める: %+v", in.Commits)
+	}
+}
+
+// 禁止語が普通の語の一部(例: 「根」と「根拠」)の時、allow に書いた語は先に取り除いてから見る。
+func TestForbiddenWordsHonourAllowedWords(t *testing.T) {
+	g := guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"根"}, Allow: []string{"根拠", "根本"}}
+	if err := g.validate(); err != nil {
+		t.Fatal(err)
+	}
+	in := guardInput{Known: true, Changed: []string{"a.md"}, Added: map[string][]string{"a.md": {"根拠にしない。根本から直す。"}}}
+	if r := evalGuard(g, in); !r.Pass {
+		t.Fatalf("許す語の中の禁止語は数えない: %+v", r)
+	}
+	in.Added["a.md"] = append(in.Added["a.md"], "プロジェクトの根に置く(根拠はある)")
+	if r := evalGuard(g, in); r.Pass {
+		t.Fatalf("許す語を除いても残れば止める: %+v", r)
+	}
+	bad := g
+	bad.Allow = []string{"拠点"} // 禁止語を含まない語は allow に置けない(書き間違い)
+	if err := bad.validate(); err == nil {
+		t.Fatal("禁止語を含まない allow は拒む")
 	}
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -27,5 +29,18 @@ func TestStatusCountsDeliveredLessonsAndTheirEffect(t *testing.T) {
 	out = capture(t, func() error { return cmdStatus([]string{"--store", st.Dir}) })
 	if !strings.Contains(out, "helpful 1, unused 0, harmful 0, unknown 0, not yet assessed 0") || !strings.Contains(out, "last 7 days: delivered 1, helpful 1") {
 		t.Fatalf("観察が付けば helpful に数え、直近 7 日も出す:\n%s", out)
+	}
+}
+
+// 監査 R2: 記録も spec も無い置き場でも、status は届いた教訓と止める検査の行を出す(README が約束している)。
+func TestStatusWithoutRecordsStillPrintsMemoryAndGuards(t *testing.T) {
+	dir := t.TempDir()
+	store := filepath.Join(dir, ".shikii")
+	if err := os.MkdirAll(store, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error { return cmdStatus([]string{"--store", store}) })
+	if !strings.Contains(out, "memory:") || !strings.Contains(out, "guards:") {
+		t.Fatalf("記録が無くても memory と guards の行は出る:\n%s", out)
 	}
 }

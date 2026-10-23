@@ -1566,7 +1566,12 @@ func hookInstall(args []string, install bool) error {
 		return err
 	}
 	home := filepath.Dir(filepath.Dir(agent))
-	tilde := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
+	tilde := func(p string) string {
+		if strings.HasPrefix(p, home+string(filepath.Separator)) {
+			return "~" + strings.TrimPrefix(p, home)
+		}
+		return p // HOME の外(例: /opt/homebrew/bin/shikii)は ~ を付けない(監査 R2)
+	}
 	if install {
 		fmt.Fprintf(stdout, "1. %s: 共通の型とwikiを準備します。利用するプロジェクトで shikii --init を一度実行すると、その .shikii/ へ会話・判定・採点・正解・較正を保存します。未初期化の場所ではhookは動きません。既製の4問（%s）とskillを準備し、既存の設定は保持します。\n", tilde(agent), strings.Join(hookSpecs, ", "))
 		for i, t := range hookTargets {
@@ -1582,11 +1587,28 @@ func hookInstall(args []string, install bool) error {
 		fmt.Fprintf(stdout, "   %s and each project's .shikii/ are kept\n", tilde(agent))
 	}
 	if install {
-		if from, to := installedVersion(agent), currentVersion(); crossesStoreReset(from, to) {
-			if projects := registeredProjects(agent); len(projects) > 0 {
-				fmt.Fprintf(stdout, "%d. %s への更新(前の版 %s): 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。残したいものは先に控えてください:\n", len(hookTargets)+2, versionString(to), versionString(from), len(projects))
-				for _, p := range projects {
-					fmt.Fprintf(stdout, "   - %s\n", p.Path)
+		from, broken := installedVersion(agent)
+		to := currentVersion()
+		switch {
+		case broken:
+			fmt.Fprintf(stdout, "%d. %s: 版の印を読めないので、各プロジェクトの .shikii/ は消しません(中身を確かめてから直してください)\n", len(hookTargets)+2, tilde(installedVersionPath(agent)))
+		case crossesStoreReset(from, to):
+			plan := planWipe(registeredProjects(agent))
+			wipes := 0
+			for _, p := range plan {
+				if p.Action == wipeDo {
+					wipes++
+				}
+			}
+			if wipes > 0 {
+				fmt.Fprintf(stdout, "%d. %s への更新(前の版 %s): 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します(project.json は残す)。残したいものは先に控えてください:\n", len(hookTargets)+2, versionString(to), versionString(from), wipes)
+			}
+			for _, p := range plan {
+				switch p.Action {
+				case wipeDo:
+					fmt.Fprintf(stdout, "   - 消す: %s\n", p.Project.Path)
+				case wipeRefuse:
+					fmt.Fprintf(stdout, "   - 消しません: %s (%s)\n", p.Project.Path, p.Reason)
 				}
 			}
 		}

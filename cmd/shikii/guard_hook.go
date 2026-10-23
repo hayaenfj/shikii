@@ -109,13 +109,14 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 		if _, ancestor := gitRun(ctx, top, "merge-base", "--is-ancestor", head, "HEAD"); !ancestor {
 			return in
 		}
-		if out, ok := gitRun(ctx, top, "log", "--format=%ct%x1f%B%x1e", head+"..HEAD"); ok {
+		if out, ok := gitRun(ctx, top, "log", "--no-merges", "--format=%ct%x1f%B%x1e", head+"..HEAD"); ok { // merge の自動の文は見ない
 			in.CommitsKnown = true
 			for _, rec := range strings.Split(out, "\x1e") {
 				ts, body, found := strings.Cut(strings.TrimSpace(rec), "\x1f")
-				if !found || strings.TrimSpace(body) == "" {
+				if !found {
 					continue
 				}
+				// 件名も本文も無いコミット(--allow-empty-message)は本文の無いコミットとして検査に出す(空文字)
 				if sec, err := strconv.ParseInt(strings.TrimSpace(ts), 10, 64); err == nil && !since.IsZero() && sec < since.Unix()-1 {
 					continue
 				}

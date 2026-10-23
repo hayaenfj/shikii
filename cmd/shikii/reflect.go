@@ -183,7 +183,19 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 			sources[id] = true
 		}
 	}
+	parents := map[string]string{} // 配送 id → 親の会話(サブエージェントへの配送)
+	if deliveries, err := (store.Store{Dir: root}).MemoryDeliveries(scope); err == nil {
+		for _, d := range deliveries {
+			if d.Parent != "" {
+				parents[d.ID] = d.Parent
+			}
+		}
+	}
 	for _, assessment := range req.Memory {
+		if parent, ok := parents[assessment.SourceID]; ok {
+			sources[parent] = true
+			continue
+		}
 		sources[assessment.SourceID] = true
 	}
 	if len(sources) > 2 {

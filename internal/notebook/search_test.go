@@ -144,3 +144,29 @@ func TestRecallIgnoresUbiquitousIdentifiersAndDeliversOnRareOnes(t *testing.T) {
 		t.Fatalf("珍しい識別子は 1 語でも届ける: %+v", p)
 	}
 }
+
+// 監査 R2: 依頼側の割合の経路も内容語だけで数える(短い依頼で「を直」「直す」と遍在する識別子だけで届いていた)。
+// 記事が 4 未満の wiki でも、全記事にある語(プロジェクト名)1 語では届けない。
+func TestRecallGateCountsOnlyContentTermsOnEveryPath(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	for i, a := range []string{"fooの画面を直す時", "fooのテストを回す時", "fooの文書を書く時"} {
+		d := draft(source, "教訓"+string(rune('A'+i)))
+		d.Lesson, d.AppliesTo = "foo の決まり "+string(rune('A'+i)), a
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{"foo の説明を直して", "README を直す", "誤字を直す", "foo のテストを回して"} {
+		p, _ := b.Recall(q)
+		if q == "foo のテストを回して" {
+			if len(p) != 1 || !strings.Contains(p[0].AppliesTo, "テスト") {
+				t.Fatalf("内容語が合えば届く: %q → %+v", q, p)
+			}
+			continue
+		}
+		if len(p) != 0 {
+			t.Fatalf("全記事にある語と文法の組だけでは届けない: %q → %+v", q, p)
+		}
+	}
+}

@@ -22,10 +22,11 @@ import (
 
 // 共通側はプロジェクトへの入口だけを持つ。会話や採点、線は各 .shikii/ に置く。
 type projectEntry struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Path string `json:"path"`
-	URL  string `json:"url"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	URL         string `json:"url"`
+	InitVersion int    `json:"-"` // project.json の版: 1 = 0.7.3 以前の --init、2 = 0.7.4 以降(0.7.0 を跨ぐ消去は済んでいる)
 }
 
 var errProjectInactive = errors.New("このプロジェクトでは shikii --init を実行してください")
@@ -34,6 +35,23 @@ var errProjectInactive = errors.New("このプロジェクトでは shikii --ini
 type projectActivation struct {
 	Version int    `json:"version"`
 	Scope   string `json:"scope"`
+}
+
+// projectInitVersionNow は --init が書く project.json の版。2 = 0.7.4 以降(0.7.0 を跨ぐ消去を各プロジェクトで「済み」と判断する印。
+// 監査 R2: 共通の印だけだと、1 件の拒否で印が書けず、消して初期化し直した方を次の実行で二度消した)。
+const projectInitVersionNow = 2
+
+// projectInitVersion は project.json の版(無ければ 0)。
+func projectInitVersion(root string) int {
+	b, err := os.ReadFile(filepath.Join(root, "project.json"))
+	if err != nil {
+		return 0
+	}
+	var a projectActivation
+	if json.Unmarshal(b, &a) != nil {
+		return 0
+	}
+	return a.Version
 }
 
 func projectActive(root, scope string) (bool, error) {
@@ -88,7 +106,7 @@ func projectActive(root, scope string) (bool, error) {
 	if decoder.Decode(&extra) != io.EOF {
 		return false, errors.New("プロジェクトの初期化の印が不正です")
 	}
-	return activation.Version == 1 && activation.Scope == scope, nil
+	return activation.Version >= 1 && activation.Scope == scope, nil
 }
 
 func finishProjectInit(root, scope string) error {
@@ -98,13 +116,29 @@ func finishProjectInit(root, scope string) error {
 			return err
 		}
 	}
+	// go install で入れて hook install の前に --init した人が、初回の hook install --yes で「0.6.0 以前からの更新」とみなされないよう、
+	// 共通の印が無ければ今の版を書く(監査 R2)
+	// ただし他のプロジェクトが登録済みの時は書かない(0.7.0 を跨ぐ消去の最中に --init が呼ばれても、消去の判断を先回りしない)
+	if agent, err := agentHome(); err == nil {
+		if _, err := os.Stat(installedVersionPath(agent)); os.IsNotExist(err) {
+			others := 0
+			for _, p := range registeredProjects(agent) {
+				if p.Path != scope {
+					others++
+				}
+			}
+			if others == 0 {
+				_ = writeInstalledVersion(agent, currentVersion())
+			}
+		}
+	}
 	marker := filepath.Join(root, "project.json")
 	if info, err := os.Lstat(marker); err == nil && !info.Mode().IsRegular() {
 		return errors.New("初期化の印にリンクは使えません")
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	data, _ := json.Marshal(projectActivation{Version: 1, Scope: scope})
+	data, _ := json.Marshal(projectActivation{Version: projectInitVersionNow, Scope: scope})
 	f, err := os.CreateTemp(root, ".project-init-*")
 	if err != nil {
 		return err
@@ -356,6 +390,7 @@ func registeredProjects(common string) []projectEntry {
 			continue
 		}
 		p.Name, p.URL = filepath.Base(p.Path), "/p/"+p.ID+"/"
+		p.InitVersion = projectInitVersion(filepath.Join(p.Path, ".shikii"))
 		projects = append(projects, p)
 	}
 	sort.Slice(projects, func(i, j int) bool {
