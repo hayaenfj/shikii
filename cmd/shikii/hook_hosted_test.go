@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/hayaenfj/shikii/internal/store"
+	"strings"
 )
 
 // 標準は TypeSafe の Jev: 鍵(TYPESAFE_API_KEY)があれば hook は手元のモデルを待たずに hosted へ送る。鍵が無ければ手元のモデルだけ。
@@ -23,8 +24,10 @@ func TestHookSendsToJevWhenKeyIsSet(t *testing.T) {
 	if err != nil || len(recs) == 0 || newest(recs).Endpoint != "hosted" {
 		t.Fatalf("with a key the built-in decisions go to Jev: %d records, err=%v, last=%+v", len(recs), err, newest(recs))
 	}
-	if len(spawned) != 0 {
-		t.Fatalf("with a key no local model is started: %v", spawned)
+	for _, s := range spawned {
+		if !strings.HasPrefix(s, "serve ") { // 画面(serve)は鍵があっても起こす。起こさないのは手元のモデル(up)
+			t.Fatalf("with a key no local model is started: %v", spawned)
+		}
 	}
 
 	// 鍵があっても SHIKII_MODEL=local なら手元のモデルを使う(設定で選べる)

@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -55,7 +57,7 @@ func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	var o serveOpts
 	o.ef.bind(fs)
-	fs.IntVar(&o.port, "port", 8095, "待ち受けるポート(127.0.0.1 のみ)")
+	fs.IntVar(&o.port, "port", 8095, "待ち受けるポート(127.0.0.1 のみ。0 なら空いているポートを取り、~/.shikii/agent/pages/ に書く。hook はこれで起こす)")
 	fs.StringVar(&o.specsDir, "specs", "", "spec(*.yaml)のフォルダ(既定は <store>/decisions)")
 	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
@@ -79,12 +81,37 @@ func cmdServe(args []string) error {
 	if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
 		return err
 	}
-	addr := fmt.Sprintf("%s:%d", bindHost(), o.port)
-	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted), o.autoCalibrate, addr)
-	if hub {
-		return http.ListenAndServe(addr, newProjectHub(common, o))
+	scope := filepath.Dir(absStore)
+	if !hub && o.port == 0 {
+		if url := livePage(scope); url != "" { // 画面はプロジェクトに 1 つ(別のエージェントの hook が先に起こしていた)
+			log.Printf("shikii serve: this project's page is already up at %s/ ; not starting another", url)
+			return nil
+		}
 	}
-	return http.ListenAndServe(addr, newServer(o))
+	ln, err := listenPage(common, scope, hub, o.port)
+	if err != nil {
+		return err
+	}
+	log.Printf("shikii serve: specs=%s store=%s local=%q hosted=%q auto-calibrate=%v  →  http://%s/", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted), o.autoCalibrate, ln.Addr())
+	if hub {
+		return http.Serve(ln, newProjectHub(common, o))
+	}
+	return http.Serve(ln, newServer(o))
+}
+
+// listenPage は待ち受けを始め(port 0 なら空いているポート)、プロジェクトの画面なら ~/.shikii/agent/pages/ にポートと pid の印を書く。
+func listenPage(common, scope string, hub bool, port int) (net.Listener, error) {
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bindHost(), port))
+	if err != nil {
+		return nil, err
+	}
+	if !hub {
+		if err := writePageRecord(common, scope, ln.Addr().(*net.TCPAddr).Port, os.Getpid()); err != nil {
+			ln.Close()
+			return nil, err
+		}
+	}
+	return ln, nil
 }
 
 // waitForLocalModel は手元のモデルの口が立つのを自分で待つ(Docker で先にモデルを起こす時。curl / wget に頼らない)。
@@ -699,6 +726,14 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
+	var page map[string]any // この画面の所在(0.7.6): エージェントが MCP からも URL とポートを答えられるように
+	if common, err := agentHome(); err == nil {
+		if abs, err := filepath.Abs(s.o.storeDir); err == nil {
+			if rec, ok := readPageRecord(common, filepath.Dir(abs)); ok {
+				page = map[string]any{"url": rec.url() + "/", "port": rec.Port, "pid": rec.PID}
+			}
+		}
+	}
 	out := []map[string]any{}
 	var person personWork // 画面の先頭の要約(0.7.4): 人の手間を全 spec で合計
 	for _, sp := range specs {
@@ -795,7 +830,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
 	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir,
-		"summary": statusSummary(s.st, s.o.storeDir, s.o.projectScope, person, time.Now())})
+		"summary": statusSummary(s.st, s.o.storeDir, s.o.projectScope, person, time.Now()), "page": page})
 }
 
 // handleUI は画面(web/ を Svelte で組んだもの)。ビルド結果 web/dist は実行ファイルに埋め込まれている(shikii.WebFS)ので外部の読み込みは無い。

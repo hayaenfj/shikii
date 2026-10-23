@@ -420,9 +420,12 @@ func registeredProjects(common string) []projectEntry {
 	return projects
 }
 
+// projectPageURL は、このプロジェクトの画面の URL(立っていれば)。立っていなければ "" (hook が次の依頼で起こす)。
 func projectPageURL(root string) string {
-	scope := filepath.Dir(root)
-	return hookPageURL + "/p/" + projectID(scope) + "/"
+	if url := livePage(filepath.Dir(root)); url != "" {
+		return url + "/"
+	}
+	return ""
 }
 
 // URL に任意の保存先を受け付けない。hook が登録したプロジェクトだけへ振り分ける。
