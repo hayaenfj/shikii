@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/store"
@@ -79,4 +80,40 @@ func (w *personWork) add(o personWork) {
 	w.RecentWaits += o.RecentWaits
 	w.ByPerson += o.ByPerson
 	w.ByResult += o.ByResult
+}
+
+// printMemoryEffect は「届いた教訓が行動を変えたか」を本番の観察で数える(0.7.3。合成実験では差が出なかったので、実使用で数える):
+// 届けた引用の数(サブエージェントへの配送も含む)と、振り返りが付けた helpful / unused / harmful / unknown、まだ観察の無い数。
+// 訂正の配送(followed / repeated)は別に出す。直近 7 日は配送の時刻で数える。
+func printMemoryEffect(out io.Writer, st store.Store, scope string, now time.Time) {
+	r, err := st.MemoryReport(scope)
+	if err != nil || r.Stats.Delivered == 0 {
+		fmt.Fprintln(out, "memory: no lessons delivered yet (lessons reach the agent before similar requests, and subagents when they start)")
+		return
+	}
+	s := r.Stats
+	fmt.Fprintf(out, "memory: %d quotes delivered; helpful %d, unused %d, harmful %d, unknown %d, not yet assessed %d (%d waiting for the next request)\n", s.Delivered, s.Helpful, s.Unused, s.Harmful, s.Unknown, s.Pending, s.AwaitingFeedback)
+	recent, helpful := 0, 0
+	for _, o := range r.All {
+		if now.Sub(o.At) > personWorkWindow {
+			continue
+		}
+		recent++
+		if o.Assessment != nil && o.Assessment.Result == "helpful" {
+			helpful++
+		}
+	}
+	fmt.Fprintf(out, "  last 7 days: delivered %d, helpful %d\n", recent, helpful)
+	if c := r.Corrections; c.Delivered > 0 {
+		fmt.Fprintf(out, "  corrections delivered %d: followed %d, repeated %d, not applicable %d, unknown %d, pending %d\n", c.Delivered, c.Followed, c.Repeated, c.NotApplicable, c.Unknown, c.Pending)
+	}
+}
+
+// storeScope は置き場(.shikii/)の親をプロジェクトとして、会話・記憶の区切り(実パス)にする。
+func storeScope(storeDir string) string {
+	abs, err := filepath.Abs(storeDir)
+	if err != nil {
+		return ""
+	}
+	return feedbackScope(filepath.Dir(abs))
 }
