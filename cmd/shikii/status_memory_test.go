@@ -44,3 +44,26 @@ func TestStatusWithoutRecordsStillPrintsMemoryAndGuards(t *testing.T) {
 		t.Fatalf("記録が無くても memory と guards の行は出る:\n%s", out)
 	}
 }
+
+// 監査 R3: records/guards.jsonl(止める検査の記録)を判定「guards」として数えない。spec のパスを省いても .shikii/decisions/*.yaml を読み、
+// 画面(/v1/status)と同じ数え方(choice の discard を迷いに数える)になる。
+func TestStatusIgnoresGuardRecordsAndReadsTheStoresSpecsByDefault(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(repo, ".shikii")
+	writeGuard(t, root, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"xyz"}})
+	if err := appendGuardRecords(root, []guardRecord{{Session: "s", Turn: "t", Guard: "no-ne", Pass: false, Reason: "r"}}); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "st", "cwd": repo, "prompt": "README を直して"})
+	out := capture(t, func() error { return cmdStatus([]string{"--store", root}) })
+	if strings.Contains(out, "guards: records=") {
+		t.Fatalf("止める検査の記録を判定として数えない:\n%s", out)
+	}
+	if !strings.Contains(out, "prompt-kind: records=1") || strings.Contains(out, "spec not given") {
+		t.Fatalf("spec のパスを省いても .shikii/decisions の既製の問いを読み、較正の状態を出す:\n%s", out)
+	}
+}

@@ -137,8 +137,8 @@ func TestHookInstallPreviewExplainsWhatItWouldSkip(t *testing.T) {
 	if !strings.Contains(out, odd) || !strings.Contains(out, "消しません") || !strings.Contains(out, "mystery") {
 		t.Fatalf("知らない項目があるプロジェクトは消さないと理由付きで出す:\n%s", out)
 	}
-	if strings.Contains(out, fresh) {
-		t.Fatalf("この版で初期化したプロジェクト(version 2)は対象に出さない:\n%s", out)
+	if !strings.Contains(out, "済み: "+fresh) {
+		t.Fatalf("この版で初期化したプロジェクト(version 2)は「済み」と出す:\n%s", out)
 	}
 }
 

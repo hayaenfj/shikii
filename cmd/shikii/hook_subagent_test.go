@@ -153,15 +153,25 @@ func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
 		t.Fatal("サブエージェントへの配送がある")
 	}
 	key := "lesson:" + draft.ID + ":" + revision
+	// 評価の前: 親の会話が揃っているので、サブエージェントへの配送も「次の依頼待ち」ではなく評価待ち(監査 R3)
+	if rep, err := st.MemoryReport(scope); err != nil || rep.Stats.Pending != 2 || rep.Stats.AwaitingFeedback != 0 {
+		t.Fatalf("親の会話が揃えばサブエージェントへの配送も次の依頼待ちではない: %+v %v", rep.Stats, err)
+	}
+	// 別のセッションの配送を 1 件足しても、親とサブは同じ会話に畳まれて「最大 2 会話」に収まる(監査 R3)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": scope, "prompt": "README の導入手順を更新してください"})
+	other := loadSession(st.Dir, "other").TurnID
+	runHook(t, "stop", map[string]any{"session_id": "other", "cwd": scope, "last_assistant_message": "更新しました。"})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": scope, "prompt": "次は画面の色を直して。"})
 	out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]any{
 		{"source_id": parent, "key": key, "result": "helpful", "decision": "手順に確認を足した", "evidence": "返答に確認の手順が入った"},
 		{"source_id": subID, "key": key, "result": "unused", "decision": "サブエージェントは手順を読まなかった", "evidence": "返答に手順への言及が無い"},
+		{"source_id": other, "key": key, "result": "helpful", "decision": "別のセッションでも手順に確認を足した", "evidence": "返答に確認の手順が入った"},
 	}})
 	if out["complete"] != true {
-		t.Fatalf("親とサブエージェントの配送を同じ会話として一度に評価できる: %v", out)
+		t.Fatalf("親とサブエージェントの配送を同じ会話として一度に評価できる(別の会話 1 件を足して 2 会話): %v", out)
 	}
 	rep, err := st.MemoryReport(scope)
-	if err != nil || rep.Stats.Pending != 0 || rep.Stats.AwaitingFeedback != 0 || rep.Stats.Helpful != 1 || rep.Stats.Unused != 1 {
+	if err != nil || rep.Stats.Pending != 0 || rep.Stats.AwaitingFeedback != 0 || rep.Stats.Helpful != 2 || rep.Stats.Unused != 1 {
 		t.Fatalf("評価が付けば観察待ちから消える: %+v %v", rep.Stats, err)
 	}
 }

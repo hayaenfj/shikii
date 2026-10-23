@@ -81,6 +81,46 @@ func isContentTerm(term string) bool {
 	return content
 }
 
+// contentClusters は依頼文の中で terms が占める「連なり」の数。重なる 2 文字の組(表示+示す は「表示す」の 1 語)は 1 つに数え、
+// 識別子は 1 語ずつ数える。2 文字の組を 2 語に数えると、1 語の依頼で「内容語 2 語」を満たして関係ない記事が届いた(監査 R3)。
+func contentClusters(text string, terms map[string]bool) int {
+	n := 0
+	runes := []rune(strings.ToLower(text))
+	covered := make([]bool, len(runes))
+	for term := range terms {
+		if isIdentifierTerm(term) {
+			n++
+			continue
+		}
+		tr := []rune(term)
+		for i := 0; i+len(tr) <= len(runes); i++ {
+			if string(runes[i:i+len(tr)]) == term {
+				for j := i; j < i+len(tr); j++ {
+					covered[j] = true
+				}
+			}
+		}
+	}
+	for i := range covered {
+		if !covered[i] || (i > 0 && covered[i-1]) {
+			continue
+		}
+		end, kana := i, false
+		for end < len(covered) && covered[end] {
+			kana = kana || unicode.In(runes[end], unicode.Hiragana)
+			end++
+		}
+		// 仮名を含まない 3 文字以上の連なり(テスト、データ、日本語)は 1 つの内容語として 2 語分。
+		// 仮名で終わる連なり(表示す、更新す)は動詞の語幹なので 1 語分(それだけで届けない)
+		if end-i >= 3 && !kana {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
+}
+
 // isIdentifierTerm は英字を含む英数字だけの 3 文字以上の語(ファイル名・コマンド名・識別子)。数字だけ(年など)や日本語の 2 文字の組は含めない。
 func isIdentifierTerm(term string) bool {
 	if len(term) < 3 {
@@ -161,16 +201,17 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 			// 一致しても根拠にしない(それだけで関係ない記事が届いた)。ただし依頼の内容語がほぼ全部(0.8 以上)記事に合うなら、
 			// 遍在する語でも届ける(全記事が同じ話題の wiki で、その話題の依頼が来た時)。
 			rare := func(term string) bool { return len(docs) == 1 || frequency[term]*2 <= len(docs) }
-			requestTerms, rareRequestTerms, rarePageTerms := 0, 0, 0
-			matchedContent, rareMatched := 0, 0
+			rarePageTerms := 0
+			requestContent, rareRequest := map[string]bool{}, map[string]bool{}
 			for term := range terms {
 				if isContentTerm(term) {
-					requestTerms++
+					requestContent[term] = true
 					if rare(term) {
-						rareRequestTerms++
+						rareRequest[term] = true
 					}
 				}
 			}
+			requestTerms, rareRequestTerms := contentClusters(query, requestContent), contentClusters(query, rareRequest)
 			for _, f := range d.fields {
 				for term := range f {
 					if isContentTerm(term) && rare(term) {
@@ -179,18 +220,20 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 				}
 			}
 			strong := false
+			matchedContentSet, rareMatchedSet := map[string]bool{}, map[string]bool{}
 			for term := range matched {
 				if !isContentTerm(term) {
 					continue
 				}
-				matchedContent++
+				matchedContentSet[term] = true
 				if rare(term) {
-					rareMatched++
+					rareMatchedSet[term] = true
 					if isIdentifierTerm(term) {
 						strong = true
 					}
 				}
 			}
+			matchedContent, rareMatched := contentClusters(query, matchedContentSet), contentClusters(query, rareMatchedSet)
 			coverage, minMatched = 0, 2
 			switch {
 			case strong:

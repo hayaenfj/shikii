@@ -1591,7 +1591,7 @@ func hookInstall(args []string, install bool) error {
 		to := currentVersion()
 		switch {
 		case broken:
-			fmt.Fprintf(stdout, "%d. %s: 版の印を読めないので、各プロジェクトの .shikii/ は消しません(中身を確かめてから直してください)\n", len(hookTargets)+2, tilde(installedVersionPath(agent)))
+			fmt.Fprintf(stdout, "%d. %s: 版の印を読めないので、各プロジェクトの .shikii/ は消しません(中身を確かめてから直してください。直すまで --yes も止まります)\n", len(hookTargets)+2, tilde(installedVersionPath(agent)))
 		case crossesStoreReset(from, to):
 			plan := planWipe(registeredProjects(agent))
 			wipes := 0
@@ -1602,11 +1602,15 @@ func hookInstall(args []string, install bool) error {
 			}
 			if wipes > 0 {
 				fmt.Fprintf(stdout, "%d. %s への更新(前の版 %s): 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します(project.json は残す)。残したいものは先に控えてください:\n", len(hookTargets)+2, versionString(to), versionString(from), wipes)
+			} else if len(plan) > 0 {
+				fmt.Fprintf(stdout, "%d. %s への更新(前の版 %s): 消す対象のプロジェクトはありません(この版で初期化済みか、消さないもの):\n", len(hookTargets)+2, versionString(to), versionString(from))
 			}
 			for _, p := range plan {
 				switch p.Action {
 				case wipeDo:
 					fmt.Fprintf(stdout, "   - 消す: %s\n", p.Project.Path)
+				case wipeDone:
+					fmt.Fprintf(stdout, "   - 済み: %s (%s)\n", p.Project.Path, p.Reason)
 				case wipeRefuse:
 					fmt.Fprintf(stdout, "   - 消しません: %s (%s)\n", p.Project.Path, p.Reason)
 				}

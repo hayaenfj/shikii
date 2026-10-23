@@ -26,7 +26,7 @@ type projectEntry struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
 	URL         string `json:"url"`
-	InitVersion int    `json:"-"` // project.json の版: 1 = 0.7.3 以前の --init、2 = 0.7.4 以降(0.7.0 を跨ぐ消去は済んでいる)
+	InitVersion int    `json:"-"` // project.json の版: 1 = 0.7.4 以前の --init、2 = 0.7.5 以降(0.7.0 を跨ぐ消去は済んでいる)
 }
 
 var errProjectInactive = errors.New("このプロジェクトでは shikii --init を実行してください")
@@ -37,7 +37,7 @@ type projectActivation struct {
 	Scope   string `json:"scope"`
 }
 
-// projectInitVersionNow は --init が書く project.json の版。2 = 0.7.4 以降(0.7.0 を跨ぐ消去を各プロジェクトで「済み」と判断する印。
+// projectInitVersionNow は --init が書く project.json の版。2 = 0.7.5 以降(0.7.0 を跨ぐ消去を各プロジェクトで「済み」と判断する印。
 // 監査 R2: 共通の印だけだと、1 件の拒否で印が書けず、消して初期化し直した方を次の実行で二度消した)。
 const projectInitVersionNow = 2
 
@@ -52,6 +52,21 @@ func projectInitVersion(root string) int {
 		return 0
 	}
 	return a.Version
+}
+
+// wipePending は、古い印(version 1 以下)のまま shikii の置き場(records/ など)が残っている = 0.7.0 を跨ぐ消去がまだ、か。
+// 消去の途中の初期化し直しでは、置き場は project.json だけになっているので偽。
+func wipePending(root string) bool {
+	v := projectInitVersion(root)
+	if v <= 0 || v >= projectInitVersionNow {
+		return false
+	}
+	for name := range storeEntries {
+		if _, err := os.Lstat(filepath.Join(root, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func projectActive(root, scope string) (bool, error) {
@@ -109,7 +124,10 @@ func projectActive(root, scope string) (bool, error) {
 	return activation.Version >= 1 && activation.Scope == scope, nil
 }
 
-func finishProjectInit(root, scope string) error {
+// version は project.json に書く版。0.7.4 以前の印(version 1)と記録のある置き場で新しい本体の --init をやり直しただけなら、
+// 呼び出し元(cmdInit)が元の版を渡す: 版を上げず共通の印も書かない(上げると次の hook install --yes が「この版で初期化済み」と
+// 飛ばし、0.7.0 を跨ぐ消去が永久に飛ぶ。監査 R3)
+func finishProjectInit(root, scope string, version int) error {
 	// 索引が先にできても、最後の印が無ければ画面にもhookにも現れない。
 	if _, err := os.UserHomeDir(); err == nil {
 		if err := registerProject(scope); err != nil {
@@ -119,7 +137,7 @@ func finishProjectInit(root, scope string) error {
 	// go install で入れて hook install の前に --init した人が、初回の hook install --yes で「0.6.0 以前からの更新」とみなされないよう、
 	// 共通の印が無ければ今の版を書く(監査 R2)
 	// ただし他のプロジェクトが登録済みの時は書かない(0.7.0 を跨ぐ消去の最中に --init が呼ばれても、消去の判断を先回りしない)
-	if agent, err := agentHome(); err == nil {
+	if agent, err := agentHome(); err == nil && version == projectInitVersionNow {
 		if _, err := os.Stat(installedVersionPath(agent)); os.IsNotExist(err) {
 			others := 0
 			for _, p := range registeredProjects(agent) {
@@ -138,7 +156,7 @@ func finishProjectInit(root, scope string) error {
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	data, _ := json.Marshal(projectActivation{Version: projectInitVersionNow, Scope: scope})
+	data, _ := json.Marshal(projectActivation{Version: version, Scope: scope})
 	f, err := os.CreateTemp(root, ".project-init-*")
 	if err != nil {
 		return err

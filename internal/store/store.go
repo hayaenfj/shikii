@@ -378,7 +378,11 @@ func (s Store) SpecIDs() ([]string, error) {
 			return nil, err
 		}
 		for _, f := range files {
-			seen[strings.TrimSuffix(filepath.Base(f), ".jsonl")] = true
+			id := strings.TrimSuffix(filepath.Base(f), ".jsonl")
+			if id == "guards" { // 止める検査の記録(records/guards.jsonl)は判定ではない(監査 R3)
+				continue
+			}
+			seen[id] = true
 		}
 	}
 	out := make([]string, 0, len(seen))

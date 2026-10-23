@@ -66,14 +66,22 @@ func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) err
 		return nil
 	}
 	fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(projects))
+	// 注: この関数は update を実行している古い本体(0.7.0 より前)でだけ 0.7.0 を跨ぐ。新しい本体では resetStoresOnFirstRun が同じ判断をする。
 	var targets []projectEntry
+	var refused []string
 	for _, p := range planWipe(projects) {
-		if p.Action == wipeDo {
+		switch p.Action {
+		case wipeDo:
 			targets = append(targets, p.Project)
+		case wipeRefuse:
+			refused = append(refused, p.Project.Path+": "+p.Reason)
 		}
 	}
 	if err := wipeProjectStores(targets, reinitWith(ctx, exe)); err != nil {
 		return err
+	}
+	if len(refused) > 0 { // 拒否が残れば印を書かない(次の hook install --yes で試す。resetStoresOnFirstRun と同じ扱い)
+		return errors.New(strings.Join(refused, "\n"))
 	}
 	// 印も新しい版にしておく(続いて呼ばれる新しい本体の hook install がもう一度消さないように)。
 	return writeInstalledVersion(common, to)
@@ -153,7 +161,7 @@ type wipeAction int
 
 const (
 	wipeDo     wipeAction = iota // 消して初期化し直す
-	wipeDone                     // 0.7.4 以降の --init で作った(または初期化し直した)ので済み
+	wipeDone                     // 0.7.5 以降の --init で作った(または初期化し直した)ので済み
 	wipeRefuse                   // 消さない(共通の置き場、通常のフォルダでない、知らない項目がある)
 )
 
@@ -190,7 +198,7 @@ func planWipe(projects []projectEntry) []wipePlan {
 			}
 			var unknown []string
 			for _, e := range entries {
-				if !storeEntries[e.Name()] && e.Name() != "project.json" {
+				if !storeEntries[e.Name()] && e.Name() != "project.json" && !disposableEntry(e.Name()) {
 					unknown = append(unknown, e.Name())
 				}
 			}
@@ -218,6 +226,11 @@ func reinitWith(ctx context.Context, exe string) func(path string) error {
 
 // storeEntries は shikii が各プロジェクトの .shikii/ に作る項目(許可リスト)。消すのはこれだけで、知らない項目があるプロジェクトは消さない。
 var storeEntries = map[string]bool{"decisions": true, "wiki": true, "records": true, "labels": true, "sessions": true, "guards": true}
+
+// disposableEntry は shikii の作った項目ではないが消してよい迷子: Finder の .DS_Store と、--init が途中で残した一時ファイル(監査 R3)。
+func disposableEntry(name string) bool {
+	return name == ".DS_Store" || strings.HasPrefix(name, ".project-init-")
+}
 
 // isSharedPlaceScope は scope が共通の置き場(~/.shikii/agent)の親、つまりホームか。ここを消すと hook・索引・印ごと消えるので、初期化も消去もしない(監査 2026-10-23)。
 // 比べるのは実体(SameFile): 大文字小文字を区別しない FS で綴りだけ違う経路や、リンク経由でも抜けない(監査 R2)。
@@ -262,7 +275,7 @@ func wipeProjectStores(projects []projectEntry, reinit func(path string) error) 
 		}
 		unknown := []string{}
 		for _, e := range entries {
-			if !storeEntries[e.Name()] && e.Name() != "project.json" {
+			if !storeEntries[e.Name()] && e.Name() != "project.json" && !disposableEntry(e.Name()) {
 				unknown = append(unknown, e.Name())
 			}
 		}

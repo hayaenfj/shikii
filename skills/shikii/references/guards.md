@@ -5,7 +5,7 @@ A guard is a deterministic check that runs at the end of every turn (the `Stop` 
 | kind | checks | fields |
 |---|---|---|
 | `paired-files` | when a file matching one pattern changed in the turn, a file matching the other must have changed too | `pairs: [[CHANGELOG.md, CHANGELOG_ja.md]]` (globs allowed, `dir/**` for a subtree) |
-| `forbidden-words` | lines added in the turn must not contain the words | `words: ["根", "指紋"]`, optional `except: ["docs/operations.md", "wiki/**"]` (paths not checked) and `allow: ["根拠", "根本"]` (ordinary words that contain a forbidden word; removed before checking) |
+| `forbidden-words` | lines added in the turn must not contain the words | `words: ["根", "指紋"]`, optional `except: ["docs/operations.md", "wiki/**"]` (paths not checked) and `allow: ["根拠", "根本"]` (ordinary words that contain a forbidden word; removed before checking. Not a forbidden word itself, nor a forbidden word with only kana or punctuation added) |
 | `commit-body` | every commit made in the turn (from the HEAD at the request) must contain all words in its body | `required: ["元の問題", "変更後", "検証"]` |
 
 Unknown observations pass: without a git listing for the turn, or without a recorded HEAD, the corresponding kind does not stop anything. After a stop, the next `Stop` (with `stop_hook_active`) never blocks again; shikii only records whether the guard now passes. `shikii status` shows how many turns were stopped and how many were fixed before the turn ended.

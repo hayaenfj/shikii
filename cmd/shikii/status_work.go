@@ -156,3 +156,9 @@ func statusSummary(st store.Store, root, scope string, person personWork, now ti
 	out["guards"] = guardSummaryJSON(root)
 	return out
 }
+
+// storeSpecPaths は置き場の decisions/*.yaml(基本構成)。status が spec のパスを省かれた時に読む。
+func storeSpecPaths(storeDir string) []string {
+	paths, _ := filepath.Glob(filepath.Join(specsDirOf(storeDir), "*.yaml"))
+	return paths
+}
