@@ -1936,6 +1936,9 @@ func cmdStatus(args []string) error {
 	if len(ids) > 1 && total.Records > 0 {
 		total.print(stdout, "all specs: ")
 	}
+	if scope := storeScope(*storeDir); scope != "" { // 届いた教訓の効果(置き場の親がプロジェクト)
+		printMemoryEffect(stdout, st, scope, time.Now())
+	}
 	return nil
 }
 
