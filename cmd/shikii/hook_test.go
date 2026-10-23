@@ -1383,45 +1383,77 @@ func treeState(cwd string) (hash, listing string, listed bool, project string) {
 }
 
 // 言われなくても気付く: このプロジェクトのエージェントのメモリ(~/.claude/projects/<slug>/memory)に wiki へ移していないファイルがあれば、
-// 依頼前の hook が作法の手順で移すよう伝える。移した印(.shikii/wiki への指し先)のあるファイルは数えない。途中まで移した置き場でも残りを出す。
+// 依頼前の hook が作法の手順で移すよう伝える(セッションに 1 回)。移した印(.shikii/wiki <記事の id>)のあるファイルは数えない。途中まで移した置き場でも残りを出す。
+// .md 以外は数えない。Codex の共通のメモリはこのプロジェクトを名指しする(経路・4 文字以上のフォルダ名を語として・origin の名)ファイルだけ数え、MEMORY.md は見ない。
 func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
-	repo := gitRepo(t)
+	home, _ := os.UserHomeDir()
+	// 置き場の経路: Claude Code の規則(英数字以外を - に)を固定の例で確かめる(本体と同じ式を写した鏡テストにしない。監査 R4)
+	os.MkdirAll(filepath.Join(home, ".claude", "projects", "-tmp-x-y-z", "memory"), 0o755)
+	if got := agentMemoryDir("/tmp/x.y_z"); got != filepath.Join(home, ".claude", "projects", "-tmp-x-y-z", "memory") {
+		t.Fatalf("置き場の経路: %q", got)
+	}
+	repo := filepath.Join(t.TempDir(), "mywork1") // フォルダ名が 4 文字以上(名指しの語になる)
+	os.MkdirAll(repo, 0o755)
+	if out, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git init: %v %s", err, out)
+	}
 	initAt(t, repo)
-	dir := agentMemoryDir(repo)
-	if dir != "" {
+	if dir := agentMemoryDir(repo); dir != "" {
 		t.Fatalf("メモリの置き場が無ければ空: %q", dir)
 	}
-	home, _ := os.UserHomeDir()
-	slug := strings.Map(func(r rune) rune {
+	exec.Command("git", "-C", repo, "remote", "add", "origin", "https://example.com/org/shikii-like.git").Run()
+	dir := filepath.Join(home, ".claude", "projects", strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
 			return r
 		}
 		return '-'
-	}, repo)
-	dir = filepath.Join(home, ".claude", "projects", slug, "memory")
+	}, repo), "memory")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte("# index\n- [a](feedback-a.md)\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n日本語で書く\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n日本語で書く。教訓は .shikii/wiki に入れる方針を決めた(移行はまだ)\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "feedback-b.md"), []byte("---\nname: feedback-b\n---\n\n正本: .shikii/wiki 0123456789abcdef\n"), 0o644)
-	// Codex の共通のメモリ: このプロジェクト(フォルダ名)を名指しするファイルだけ数える。他のプロジェクトの物は数えない
+	os.WriteFile(filepath.Join(dir, "feedback-old.md.bak"), []byte("古い\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "notes.json"), []byte("{}\n"), 0o644)
+	// Codex の共通のメモリ
+	base := filepath.Base(repo)
 	codex := filepath.Join(home, ".codex", "memories")
 	os.MkdirAll(codex, 0o755)
-	os.WriteFile(filepath.Join(codex, "MEMORY.md"), []byte("# 共通\n"), 0o644)
-	os.WriteFile(filepath.Join(codex, "this-project.md"), []byte("# "+filepath.Base(repo)+" の決まり\n\nテストを先に書く\n"), 0o644)
-	os.WriteFile(filepath.Join(codex, "other-project.md"), []byte("# 別のプロジェクトの決まり\n\n関係ない\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "MEMORY.md"), []byte("# 共通\n\n"+base+" の記憶は wiki が正本\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "this-project.md"), []byte("# "+base+" の決まり\n\nテストを先に書く\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "by-repo-name.md"), []byte("# shikii-like の決まり\n\nリポジトリの名で名指し\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "by-path.md"), []byte("# 経路で名指し\n\n"+repo+" は古い\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "other-project.md"), []byte("# 別のプロジェクトの決まり\n\n~/git/"+base+"-old/ は古い。関係ない\n"), 0o644)
+	os.WriteFile(filepath.Join(codex, "perf-"+base+".json"), []byte("{}\n"), 0o644)
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "m1", "cwd": repo, "prompt": "README を直して"})
-	if !strings.Contains(out, "に 1 件(feedback-a.md)") || strings.Contains(out, "feedback-b.md") || !strings.Contains(out, "import-memory.md") {
-		t.Fatalf("未移行のファイルだけを数えて作法の手順を示す:\n%s", out)
+	if !strings.Contains(out, "に 1 件(feedback-a.md)") || strings.Contains(out, "feedback-b.md") || strings.Contains(out, ".bak") || strings.Contains(out, "notes.json") || !strings.Contains(out, "import-memory.md") {
+		t.Fatalf("未移行の .md だけを数え(wiki に触れただけの文は印にしない)、作法の手順を示す:\n%s", out)
 	}
-	if !strings.Contains(out, "Codex の") || !strings.Contains(out, "1 件(this-project.md)") || strings.Contains(out, "other-project.md") {
-		t.Fatalf("Codex の共通のメモリはこのプロジェクトを名指しするファイルだけ数える:\n%s", out)
+	if !strings.Contains(out, "Codex の") || !strings.Contains(out, "3 件(by-path.md, by-repo-name.md, this-project.md)") || strings.Contains(out, "other-project.md") || strings.Contains(out, "perf-") {
+		t.Fatalf("Codex の共通のメモリは、経路・フォルダ名(語として)・origin の名で名指しする .md だけ数え、MEMORY.md と別のプロジェクトの物は数えない:\n%s", out)
 	}
-	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n正本: .shikii/wiki fedcba9876543210\n"), 0o644)
-	os.WriteFile(filepath.Join(codex, "this-project.md"), []byte("# "+filepath.Base(repo)+" の決まり\n\nテストを先に書く\n\n"+filepath.Base(repo)+" では .shikii/wiki 0123456789abcdef に写した\n"), 0o644)
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "m1", "cwd": repo, "prompt": "次は画面を直して"})
 	if strings.Contains(out, "移していない") {
+		t.Fatalf("同じセッションでは二度言わない:\n%s", out)
+	}
+	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n正本: .shikii/wiki fedcba9876543210\n"), 0o644)
+	for _, name := range []string{"this-project.md", "by-repo-name.md", "by-path.md"} {
+		b, _ := os.ReadFile(filepath.Join(codex, name))
+		os.WriteFile(filepath.Join(codex, name), append(b, []byte("\n"+base+" では .shikii/wiki 0123456789abcdef に写した\n")...), 0o644)
+	}
+	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "m2", "cwd": repo, "prompt": "次は画面を直して"})
+	if strings.Contains(out, "移していない") {
 		t.Fatalf("全部移したら出さない:\n%s", out)
+	}
+	// 名指しの語境界: 短いフォルダ名(app)は語としても数えず、経路だけ。「.」「/」は名指しの語にしない
+	if names := projectNames(""); names != nil {
+		t.Fatalf("空の scope は名指ししない: %v", names)
+	}
+	if names := projectNames("/work/app"); len(names) != 1 || names[0] != "/work/app" {
+		t.Fatalf("短いフォルダ名は経路だけで名指しする: %v", names)
+	}
+	if namesProject("myapp の決まり", []string{"app"}) || !namesProject("app の決まり", []string{"app"}) || !namesProject("/work/app は古い", []string{"/work/app"}) {
+		t.Fatal("名指しは語の境目で合わせ、経路は部分一致")
 	}
 }
