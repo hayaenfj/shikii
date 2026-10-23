@@ -63,6 +63,19 @@ func searchTerms(text string) map[string]bool {
 	return out
 }
 
+// isIdentifierTerm は英数字だけの 3 文字以上の語(ファイル名・コマンド名・識別子)。日本語の 2 文字の組や短い語は含めない。
+func isIdentifierTerm(term string) bool {
+	if len(term) < 3 {
+		return false
+	}
+	for _, r := range term {
+		if !(r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_')) {
+			return false
+		}
+	}
+	return true
+}
+
 type searchDocument struct {
 	page   Page
 	fields []map[string]bool
@@ -114,10 +127,28 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 			}
 		}
 		threshold := .18
+		coverage := float64(len(matched)) / float64(max(len(terms), 1))
 		if recall {
+			// 自動配送は依頼文が長い(語が多い)ほど一致の割合が薄まるので、記事側(題と適用条件)の語がどれだけ依頼に現れたかでも門を通す。
+			// 0.7.3 までは依頼側の割合だけで、長い依頼には届かなかった(2026-10-23 の実験で 6 回中 0 回)
 			threshold = .35
+			pageTerms := map[string]bool{}
+			for _, f := range d.fields {
+				for term := range f {
+					pageTerms[term] = true
+				}
+			}
+			strong := false // 識別子(CHANGELOG, main, readme のような 3 文字以上の英数字の語)が合えば、それだけで届ける価値がある
+			for term := range matched {
+				if isIdentifierTerm(term) {
+					strong = true
+				}
+			}
+			if strong || (len(pageTerms) > 0 && float64(len(matched))/float64(len(pageTerms)) >= .15) {
+				coverage = math.Max(coverage, threshold)
+			}
 		}
-		if len(terms) == 0 || (len(terms) > 1 && len(matched) < 2) || float64(len(matched))/float64(len(terms)) < threshold {
+		if len(terms) == 0 || (len(terms) > 1 && len(matched) < 2) || coverage < threshold {
 			continue
 		}
 		for term := range matched {
