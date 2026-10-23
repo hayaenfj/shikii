@@ -262,7 +262,7 @@ func decodeReflect(input io.Reader) (reflectRequest, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		return req, fmt.Errorf("振り返りのJSONを確認してください: %v", err) // どこが読めないかを返す(エージェントが直して再送できるように。0.7.6)
+		return req, fmt.Errorf("振り返りのJSONを確認してください: %v", err) // どこが読めないかを返す(エージェントが直して再送できるように。0.8.0)
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {

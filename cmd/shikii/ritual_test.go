@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// 作法の検査(0.7.6): hook が計画の整理を頼んだ依頼でファイルを変え、submit しないまま終えようとしたら Stop を一度だけ止める。
+// 作法の検査(0.8.0): hook が計画の整理を頼んだ依頼でファイルを変え、submit しないまま終えようとしたら Stop を一度だけ止める。
 // 止めた後の Stop は止めないが記録は残る。submit してあれば止めず、通った記録が残る。
 func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	repo, root, _ := planningFixture(t)
@@ -78,7 +78,7 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	}
 }
 
-// 作法の検査(0.7.6): 依頼前に振り返りの対象(会話)を挙げたのに、保存しないまま終えようとしたら Stop を一度だけ止める。保存すれば通る。
+// 作法の検査(0.8.0): 依頼前に振り返りの対象(会話)を挙げたのに、保存しないまま終えようとしたら Stop を一度だけ止める。保存すれば通る。
 func TestStopStopsOnceWhenReflectionWasAskedButNotSaved(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	repo := gitRepo(t)

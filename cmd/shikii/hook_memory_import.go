@@ -177,7 +177,7 @@ func listFiles(files []string) string {
 }
 
 // memoryImportNotice は、まだ wiki に無いメモリがあれば、作法の手順で移すようエージェントへ伝える 1 行(セッションに 1 回)。
-// 言われなくても気付くための通知で、消すのは人。0.7.6 より前から wiki のあるプロジェクトでも、未移行のファイルがある限り出す。
+// 言われなくても気付くための通知で、消すのは人。0.8.0 より前から wiki のあるプロジェクトでも、未移行のファイルがある限り出す。
 // 見るのは Claude Code のこのプロジェクトのメモリと、Codex の共通のメモリのうちこのプロジェクトを名指しするファイル。
 func memoryImportNotice(scope string) string {
 	var parts []string

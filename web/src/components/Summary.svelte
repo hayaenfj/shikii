@@ -1,5 +1,5 @@
 <script>
-  // 画面の先頭(0.7.6): まず「あなたがやること」、次に「AI の状態」。`shikii status` と同じ数。クリックで詳細。
+  // 画面の先頭(0.8.0): まず「あなたがやること」、次に「AI の状態」。`shikii status` と同じ数。クリックで詳細。
   import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
   import { setTab } from '../lib/state.svelte.js';
   let { summary, specs = [], model = null } = $props();

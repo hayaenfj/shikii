@@ -55,7 +55,7 @@ func TestStopIsBlockedByAnEnabledGuardAndTheFixIsRecorded(t *testing.T) {
 	if !strings.Contains(reason, "no-ne") || !strings.Contains(reason, "README.md: 「根」") || !strings.Contains(reason, "直してから終えて") {
 		t.Fatalf("理由にどの検査がどこで引っかかったかを書く: %s", reason)
 	}
-	recs := guardRecordsFor(root, "no-ne") // 組み込みの作法の検査(plan-before-work など)の記録は別に数える(0.7.6)
+	recs := guardRecordsFor(root, "no-ne") // 組み込みの作法の検査(plan-before-work など)の記録は別に数える(0.8.0)
 	if len(recs) != 1 || recs[0].Pass || recs[0].Recheck || recs[0].Guard != "no-ne" {
 		t.Fatalf("止めた記録が残る: %+v", recs)
 	}
@@ -82,7 +82,7 @@ func TestStopIsBlockedByAnEnabledGuardAndTheFixIsRecorded(t *testing.T) {
 	if sOut = capture(t, func() error { return cmdStatus([]string{"--store", root}) }); !strings.Contains(sOut, "stopped 1 turns, fixed before the turn ended 1") {
 		t.Fatalf("直った数が増える:\n%s", sOut)
 	}
-	// 次のターンで引っかからなければ、普通に終わる(block 無し)。作法の検査(計画の整理)は済ませておく(0.7.6)
+	// 次のターンで引っかからなければ、普通に終わる(block 無し)。作法の検査(計画の整理)は済ませておく(0.8.0)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": repo, "prompt": "README の誤字を直して"})
 	if _, err := planningCall(t, "submit", map[string]any{"session_id": "g", "turn_id": loadSession(root, "g").TurnID, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}}); err != nil {
 		t.Fatal(err)

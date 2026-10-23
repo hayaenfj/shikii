@@ -14,7 +14,7 @@ import (
 )
 
 // pageRecord は、プロジェクトの画面(shikii serve)が今どこで立っているかの印(~/.shikii/agent/pages/<プロジェクト id>.json)。
-// ポートは固定せず、serve が空いているものを取って書く。複数のエージェントが同じプロジェクトで動いても、画面は 1 つ(0.7.6)。
+// ポートは固定せず、serve が空いているものを取って書く。複数のエージェントが同じプロジェクトで動いても、画面は 1 つ(0.8.0)。
 type pageRecord struct {
 	Port  int       `json:"port"`
 	PID   int       `json:"pid"`

@@ -119,9 +119,9 @@ Stop の範囲・完了の判定は全件を人への答え待ちにせず、次
 
 モデルが無い・5 秒で返らない・store に書けない → hook は exit 0 で何も出さず、理由を `~/.shikii/agent/hook.log` に 1 行書く。hook が作業を止めることはない。Claude Code 側で `shikii` が見つからない(PATH)時は hook.log も書かれないので、`which shikii` と Claude Code の `--debug` で見る。
 
-## 作法の検査(0.7.6): 計画と振り返りをやらないと終われない
+## 作法の検査(0.8.0): 計画と振り返りをやらないと終われない
 
-hook は「計画を整理せよ」「振り返りを保存せよ」と頼むだけだったので、長い作業の中で後回しにされ、誰も気付かなかった(haya1 では needs-plan の記録 0 件、届いた教訓の評価 26 件中 6 件)。0.7.6 からは組み込みの検査が Stop で見る: (a) 計画の整理を頼んだ依頼でファイルを変え、`hook plan submit` が無ければ一度止める。(b) 依頼前に振り返りの対象(会話)を挙げたターンで、その会話の仮採点・wiki・届いた教訓の評価が submit されていなければ一度止める。止めた後の Stop は通すが、済んだかは `records/guards.jsonl` に `plan-before-work` / `reflect-before-end` として残り、`shikii status` の `rituals:` の行(頼んだ回数のうち済んでいた回数、止めてから済んだ回数)と画面の「AI の状態」に出る。`shikii guard list` に組み込みとして並び、外す設定は無い。
+hook は「計画を整理せよ」「振り返りを保存せよ」と頼むだけだったので、長い作業の中で後回しにされ、誰も気付かなかった(haya1 では needs-plan の記録 0 件、届いた教訓の評価 26 件中 6 件)。0.8.0 からは組み込みの検査が Stop で見る: (a) 計画の整理を頼んだ依頼でファイルを変え、`hook plan submit` が無ければ一度止める。(b) 依頼前に振り返りの対象(会話)を挙げたターンで、その会話の仮採点・wiki・届いた教訓の評価が submit されていなければ一度止める。止めた後の Stop は通すが、済んだかは `records/guards.jsonl` に `plan-before-work` / `reflect-before-end` として残り、`shikii status` の `rituals:` の行(頼んだ回数のうち済んでいた回数、止めてから済んだ回数)と画面の「AI の状態」に出る。`shikii guard list` に組み込みとして並び、外す設定は無い。
 
 ## 訂正を止める検査にする(0.7.3)
 
