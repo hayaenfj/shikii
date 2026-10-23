@@ -822,11 +822,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		out.Context = joinLines(out.Context, outs[i].Context)
 		out.System = joinLines(out.System, outs[i].System)
 	}
-	switch {
-	case pageStarted:
-		out.Context = joinLines(out.Context, "shikii: このプロジェクトの画面を起こしています(ブラウザで開きます。URL は shikii page か次の依頼で)")
-		muts = append(muts, func(s *hookSession) { s.PageNoticed = true })
-	case pageURL != "" && !snapshot.PageNoticed: // 立っている画面の場所をセッションに 1 回
+	_ = pageStarted                             // 起こした時は何も言わない(serve がブラウザで開く。線の無い間の hook は黙る決まり)
+	if pageURL != "" && !snapshot.PageNoticed { // 立っている画面の場所をセッションに 1 回
 		out.Context = joinLines(out.Context, "shikii: このプロジェクトの画面: "+pageURL+"/")
 		muts = append(muts, func(s *hookSession) { s.PageNoticed = true })
 	}

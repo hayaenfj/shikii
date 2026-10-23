@@ -103,8 +103,8 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	}
 	nq := httptest.NewRecorder()
 	h.ServeHTTP(nq, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=needs-plan", nil))
-	if !strings.Contains(nq.Body.String(), `"np1"`) || strings.Contains(nq.Body.String(), `"np2"`) {
-		t.Fatalf("人が正解を付ける問いの列には人待ちだけ: %s", nq.Body.String()[:300])
+	if !strings.Contains(nq.Body.String(), `"np1"`) || !strings.Contains(nq.Body.String(), `"np2"`) {
+		t.Fatalf("人が正解を付ける問いの列には act も出る(人が直せる。waits_for_person で見分ける): %s", nq.Body.String()[:300])
 	}
 	q := httptest.NewRecorder()
 	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=prompt-kind", nil))

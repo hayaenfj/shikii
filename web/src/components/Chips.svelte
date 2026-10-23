@@ -3,7 +3,7 @@
   // AI だけが答える問い(wiki)は「振り返りで確定する」「確定済み」だけ(人が答える列は無い)。絞り込みは「未回答(あなた)」でだけ
   import { t } from '../lib/i18n.svelte.js';
   import { ui, setView } from '../lib/state.svelte.js';
-  let { counts, labels, machineOnly = false, resultsCount = 0 } = $props();
+  let { counts, labels, machineOnly = false, resultsCount = 0, settledByAI = false } = $props(); // settledByAI: 人が正解を付ける問い(結果は来ない)。列の名は「AI が決めた(答えなくてよい)」
   const kinds = ['all', 'ask', 'audit'];
   const you = () => { ui.done = false; ui.results = false; };
   const results = () => { ui.done = false; ui.results = true; };
@@ -17,7 +17,7 @@
     {#if !machineOnly}
       <button type="button" data-lane="you" class:active={youActive} aria-pressed={youActive} onclick={you}>{t('viewTodo')} <span>{counts.all}</span></button>
     {/if}
-    <button type="button" data-lane="results" class:active={resultsActive} aria-pressed={resultsActive} onclick={results}>{t(machineOnly ? 'viewResultsMachine' : 'viewResults')} <span>{resultsCount}</span></button>
+    <button type="button" data-lane="results" class:active={resultsActive} aria-pressed={resultsActive} onclick={results}>{t(machineOnly ? 'viewResultsMachine' : settledByAI ? 'viewSettledByAI' : 'viewResults')} <span>{resultsCount}</span></button>
     <button type="button" data-lane="done" class:active={ui.done} aria-pressed={ui.done} onclick={done}>{t(machineOnly ? 'viewDoneMachine' : 'viewDone')} <span>{labels || 0}</span></button>
   </div>
   <div class="segmented view-switch" aria-label={t('viewLabel')}>
