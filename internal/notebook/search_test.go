@@ -226,3 +226,34 @@ func TestRecallThresholdsAndSinglePageWiki(t *testing.T) {
 		t.Fatalf("記事が 1 本の wiki では比べようが無いので、その記事の識別子 1 語で届く: %+v", p)
 	}
 }
+
+// 2026-10-23 の実測: 長い依頼の中の識別子 1 語(hook)だけで、関係ない記事(セッションへの戻り方)が届いた。
+// 珍しい識別子 1 語で届くのは、依頼の内容語が少ない時(3 つ以下)か、依頼側の一致率が 0.35 以上の時だけ。
+func TestRecallStrongIdentifierNeedsAShortRequestOrCoverage(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	for i, a := range []string{"hook の実装と監査の経緯を見直したい時", "CHANGELOG を書く時", "画面の色を決める時"} {
+		d := draft(source, "教訓"+string(rune('A'+i)))
+		d.Lesson, d.AppliesTo = "決まり "+string(rune('A'+i)), a
+		if i == 0 {
+			d.Title = "版を出す前に監査を入れる"
+		}
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, _ := b.Recall("CHANGELOG を直して"); len(p) != 1 || !strings.Contains(p[0].AppliesTo, "CHANGELOG") {
+		t.Fatalf("短い依頼なら珍しい識別子 1 語で届く: %+v", p)
+	}
+	long := "次に見ること 移した教訓が実際に依頼の前に届くかは、次の依頼で hook の memory の行を見て確かめます。公開は指示があってからです。これですね"
+	if p, _ := b.Recall(long); len(p) != 0 {
+		t.Fatalf("長い依頼の中の識別子 1 語だけでは届けない: %+v", p)
+	}
+	// 仮名を含まない漢字の語(監査)が記事の題に合えば、1〜2 語の依頼で届く。適用条件だけの一致や仮名で終わる連なり(表示す)は届かない(既存のテスト)
+	if p, _ := b.Recall("監査して"); len(p) != 1 || !strings.Contains(p[0].Title, "監査") {
+		t.Fatalf("短い依頼なら題に合う漢字の語 1 語で届く: %+v", p)
+	}
+	if p, _ := b.Recall("経緯を教えて"); len(p) != 0 {
+		t.Fatalf("適用条件だけに合う語では届けない: %+v", p)
+	}
+}
