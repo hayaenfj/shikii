@@ -1,6 +1,6 @@
 # Move an agent's memory into the wiki
 
-Use this when the person asks to move, import or migrate an existing memory into shikii's wiki ("メモリを shikii の wiki へ移して", "import my memory into the wiki"). One instruction is enough; do not ask the person to sort the files first. Work on the current project only.
+Use this when the person asks to move, import or migrate an existing memory into shikii's wiki ("メモリを shikii の wiki へ移して", "import my memory into the wiki"), or when the request hook reports that this project's agent memory still has files not moved into the wiki (it counts the files whose body has no `.shikii/wiki` pointer, so a half-moved folder is reported with the remaining files, in every project that has a wiki, whichever version first created it). One instruction is enough; do not ask the person to sort the files first. Finish the active request first, then move the memory in the same turn or the next. Work on the current project only.
 
 ## 1. Find and read the memory
 

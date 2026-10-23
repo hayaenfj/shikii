@@ -1381,3 +1381,37 @@ func treeState(cwd string) (hash, listing string, listed bool, project string) {
 	hash, listing, listed, project, _ = treeStateWithScope(cwd)
 	return
 }
+
+// 言われなくても気付く: このプロジェクトのエージェントのメモリ(~/.claude/projects/<slug>/memory)に wiki へ移していないファイルがあれば、
+// 依頼前の hook が作法の手順で移すよう伝える。移した印(.shikii/wiki への指し先)のあるファイルは数えない。途中まで移した置き場でも残りを出す。
+func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	initAt(t, repo)
+	dir := agentMemoryDir(repo)
+	if dir != "" {
+		t.Fatalf("メモリの置き場が無ければ空: %q", dir)
+	}
+	home, _ := os.UserHomeDir()
+	slug := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '-'
+	}, repo)
+	dir = filepath.Join(home, ".claude", "projects", slug, "memory")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte("# index\n- [a](feedback-a.md)\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n日本語で書く\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "feedback-b.md"), []byte("---\nname: feedback-b\n---\n\n正本: .shikii/wiki 0123456789abcdef\n"), 0o644)
+	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "m1", "cwd": repo, "prompt": "README を直して"})
+	if !strings.Contains(out, "まだ wiki へ移していないファイルが 1 件") || !strings.Contains(out, "feedback-a.md") || strings.Contains(out, "feedback-b.md") || !strings.Contains(out, "import-memory.md") {
+		t.Fatalf("未移行のファイルだけを数えて作法の手順を示す:\n%s", out)
+	}
+	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n正本: .shikii/wiki fedcba9876543210\n"), 0o644)
+	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "m1", "cwd": repo, "prompt": "次は画面を直して"})
+	if strings.Contains(out, "移していない") {
+		t.Fatalf("全部移したら出さない:\n%s", out)
+	}
+}

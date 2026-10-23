@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.7.6 — unreleased
+
+- The request hook notices when this project's agent memory (Claude Code's `~/.claude/projects/<slug>/memory`, possibly a link to a shared folder) still has files that were not moved into the wiki (files whose body has no `.shikii/wiki` pointer), and tells the agent to follow the skill's `import-memory.md`. It counts only the remaining files, so a half-moved folder is reported too, in every project that already has a wiki.
+
 ## 0.7.5 — Fixes from the second and third audit
 
 - Wipe: each project's `project.json` is now version 2 (written by `--init` since 0.7.5), so the one-time wipe is judged per project. When one project is refused and the shared marker cannot be written, projects already re-initialized are not wiped again next time. A broken or empty shared marker is no longer read as 0.0.0; the wipe stops instead. `--init` writes the shared marker when it is the first project on the machine (so a `go install` user who runs `--init` before `hook install` is not wiped). The home check compares inodes (SameFile), so a differently spelled path is still refused. The `hook install` preview and the run use the same plan (wipe / done / refused with the reason; the preview also lists the projects already done, and says when nothing is to be wiped). The output of the update's final `hook install --yes` is shown. Re-running `--init` with a new binary on a store that still carries the old marker and its records keeps the old marker, so the wipe is not skipped forever. `.DS_Store` and a leftover `.project-init-*` file no longer make a store refuse the wipe. A broken marker's preview says that `--yes` stops as well.

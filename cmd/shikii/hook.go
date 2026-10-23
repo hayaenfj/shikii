@@ -806,6 +806,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		out.Context = joinLines(out.Context, outs[i].Context)
 		out.System = joinLines(out.System, outs[i].System)
 	}
+	// 言われなくても気付く: このプロジェクトのエージェントのメモリに wiki へ移していないファイルがあれば伝える(0.7.6)
+	out.Context = joinLines(out.Context, memoryImportNotice(scope))
 	return out, muts, firstErr
 }
 
