@@ -12,7 +12,7 @@ A model gives you a probability. shikii tells you whether you may act on it. It 
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.7.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.7.0 goes back to the line and the bands. TypeSafe Jev is the standard model, Ternary-Bonsai-27B the local standard, and any chat GGUF runs at decision-model speed through `shikii-readout`. New wiki lessons are placed next to the right page and checked for contradictions by the decision model. **Updating to 0.7.0 erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
+Version 0.7.0 goes back to the line and the bands. The recommended model is TypeSafe Jev: put the key in the environment, download nothing, and get an answer in about 0.2 s. Without a key, llama.cpp with Ternary-Bonsai-27B answers the same questions locally (`shikii-readout` runs an ordinary chat GGUF at decision-model speed). New wiki lessons are placed next to the right page and checked for contradictions by the decision model. **Updating to 0.7.0 erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
 [The problem](#the-problem) · [What shikii does](#what-shikii-does) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [One full loop](#one-full-loop) · [Learn from conversations](#learn-from-conversations) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -34,7 +34,7 @@ If a person has to check every answer, there was little point in using the AI.
 1. **Collects your answers and draws the line above which the AI may act on its own.** From the truths people supply, and from results that can be observed automatically, it measures how the model's confidence relates to how often it is right. Until that line exists, no decision is `act`.
 2. **Turns every decision into a band.** `act` proceeds automatically, `ask` goes to a person, `discard` does nothing, `abstain` means an input or an endpoint is missing. Automatic decisions carry a receipt stating how many truths and human checks stand behind the line.
 3. **Tries other ways of asking and keeps the better one.** On the same truths it scores alternative questions, option descriptions and prompt layouts. A person only confirms that the meaning is unchanged before a better one is adopted.
-4. **Lets you swap the model without starting over.** Truths live apart from the model. The standard is TypeSafe Jev; the local standard is Ternary-Bonsai-27B, an ordinary chat model that `shikii-readout` turns into a decision model by reading the probability of each option letter, at about 0.6 s per question.
+4. **Lets you swap the model without starting over.** Truths live apart from the model. The recommended model is TypeSafe Jev: on this project's pages and answers it separated lesson placement, contradictions and relevant lessons more clearly than the local model ([the numbers](docs/guide.md#jev-against-the-local-standard)). Without a key, the local standard is Ternary-Bonsai-27B, an ordinary chat model that `shikii-readout` turns into a decision model by reading the probability of each option letter, at about 0.6 s per question.
 5. **Keeps what it learned in a wiki your agent uses.** Requests, replies and corrections become lessons with sources. Before a new lesson is saved, the decision model finds the page it belongs to and flags a contradiction; what the agent then saves becomes the truth for that judgement, so nobody labels it.
 
 ## What you do
@@ -51,7 +51,7 @@ Everything else is the machine's job.
 | Use case | What you need |
 |---|---|
 | Learn from ordinary conversations | Claude Code or Codex, shikii, and `shikii --init` in the projects you choose |
-| Answer the built-in questions | Standard: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment, nothing to download. Local standard: llama.cpp (`llama-server`) and Ternary-Bonsai-27B through `shikii up`, about 10 GB of memory while running |
+| Answer the built-in questions | Recommended: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment, nothing to download. Without a key: llama.cpp (`llama-server`) and Ternary-Bonsai-27B through `shikii up`, about 7.6 GB to download and 10 GB of memory while running |
 | Use another model for business decisions | Any System One endpoint from the table below |
 | Install from source | Go 1.27 or newer, Git and sh. The page is bundled; Node.js is not needed |
 | Run the business API and page in containers | Docker with Compose, or Podman with a Compose provider ([setup](integrations/docker.md)) |
@@ -59,17 +59,17 @@ Everything else is the machine's job.
 
 | Endpoint | What it needs |
 |---|---|
-| Jev (TypeSafe AI) | The standard. `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` go here when the key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
-| llama.cpp | Any chat GGUF through the included `shikii-readout` (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. Kev-4B is not supported. [Examples](integrations/readout.md) |
+| Jev (TypeSafe AI) | Recommended. `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` go here when the key is set. About 0.2 s per question. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
+| llama.cpp | Without a key. Any chat GGUF through the included `shikii-readout` (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. Kev-4B is not supported. [Examples](integrations/readout.md) |
 | Ollama / LM Studio | Their `/v1/systemone` endpoints with a decision model, for business decisions. Not tested in this release |
 
 ## Get started
 
-### 1. A key, or llama.cpp
+### 1. Put a TypeSafe key in the environment (recommended)
 
-**Standard: TypeSafe Jev.** Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded. The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with a key; `SHIKII_MODEL=hosted` forces Jev.
+Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the key, the hooks and the built-in questions go to Jev and no local model is started. The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with a key; `SHIKII_MODEL=hosted` forces Jev.
 
-**Local standard: llama.cpp.** Without a key, shikii runs a local model. On macOS with Homebrew:
+**Without a key: llama.cpp.** shikii then runs a local model. It is a 27B model that needs about 10 GB of memory while running, which can be heavy for an ordinary PC. On macOS with Homebrew:
 
 ```sh
 brew install go llama.cpp
@@ -106,7 +106,7 @@ This fetches the latest stable release, verifies its hashes and replaces shikii 
 ## One full loop
 
 ```sh
-shikii up                                                        # or: export TYPESAFE_API_KEY=…
+shikii up                                                        # this question is pii: true, so it stays on the local model. The built-in questions and pii: false decisions go to Jev when the key is set
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask   (no line yet: a person decides)
 shikii serve --local http://127.0.0.1:8080                       # answer page: http://127.0.0.1:8095
