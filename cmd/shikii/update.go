@@ -132,29 +132,74 @@ func reinitWith(ctx context.Context, exe string) func(path string) error {
 	}
 }
 
-// wipeProjectStores は各プロジェクトの .shikii/(通常のフォルダ)の中を全部消し、reinit で初期化し直す。.shikii/ の外は触らない。
+// storeEntries は shikii が各プロジェクトの .shikii/ に作る項目(許可リスト)。消すのはこれだけで、知らない項目があるプロジェクトは消さない。
+var storeEntries = map[string]bool{"decisions": true, "wiki": true, "records": true, "labels": true, "sessions": true, "guards": true}
+
+// isSharedPlaceScope は scope が共通の置き場(~/.shikii/agent)の親、つまりホームか。ここを消すと hook・索引・印ごと消えるので、初期化も消去もしない(監査 2026-10-23)。
+func isSharedPlaceScope(scope string) bool {
+	agent, err := agentHome()
+	if err != nil {
+		return false
+	}
+	shared := feedbackScope(filepath.Dir(filepath.Dir(agent)))
+	return scope == shared || feedbackScope(scope) == shared
+}
+
+// wipeProjectStores は各プロジェクトの .shikii/(通常のフォルダ)の中の、shikii が作った項目(storeEntries)を消し、reinit で初期化し直す。
+// .shikii/ の外は触らない。project.json は残す(初期化し直しに失敗しても登録から消えない)。知らない項目があれば、そのプロジェクトは消さない。
+// 1 件の失敗で止まらず全件を試し、失敗したパスを全部まとめて返す。
 func wipeProjectStores(projects []projectEntry, reinit func(path string) error) error {
+	var failed []string
 	for _, p := range projects {
 		store := filepath.Join(p.Path, ".shikii")
+		if isSharedPlaceScope(p.Path) {
+			failed = append(failed, store+": 共通の置き場(ホーム)なので消しません")
+			continue
+		}
 		info, err := os.Lstat(store)
 		if err != nil {
-			return fmt.Errorf("%s: %w", store, err)
+			failed = append(failed, store+": "+err.Error())
+			continue
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("%s: 通常のフォルダではないので消しません", store)
+			failed = append(failed, store+": 通常のフォルダではないので消しません")
+			continue
 		}
 		entries, err := os.ReadDir(store)
 		if err != nil {
-			return err
+			failed = append(failed, store+": "+err.Error())
+			continue
 		}
+		unknown := []string{}
 		for _, e := range entries {
-			if err := os.RemoveAll(filepath.Join(store, e.Name())); err != nil {
-				return fmt.Errorf("%s: %w", filepath.Join(store, e.Name()), err)
+			if !storeEntries[e.Name()] && e.Name() != "project.json" {
+				unknown = append(unknown, e.Name())
 			}
 		}
-		if err := reinit(p.Path); err != nil {
-			return err
+		if len(unknown) > 0 {
+			failed = append(failed, fmt.Sprintf("%s: shikii の作った項目ではないものがあるので消しません(%s)。手で片付けてから shikii --init", store, strings.Join(unknown, ", ")))
+			continue
 		}
+		removed := true
+		for _, e := range entries {
+			if e.Name() == "project.json" {
+				continue
+			}
+			if err := os.RemoveAll(filepath.Join(store, e.Name())); err != nil {
+				failed = append(failed, filepath.Join(store, e.Name())+": "+err.Error())
+				removed = false
+				break
+			}
+		}
+		if !removed {
+			continue
+		}
+		if err := reinit(p.Path); err != nil {
+			failed = append(failed, fmt.Sprintf("%s: 消したあと初期化し直せませんでした(%v)。そのフォルダで shikii --init を実行してください", p.Path, err))
+		}
+	}
+	if len(failed) > 0 {
+		return errors.New(strings.Join(failed, "\n"))
 	}
 	return nil
 }

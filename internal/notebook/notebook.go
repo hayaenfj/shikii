@@ -366,6 +366,9 @@ func (b Book) Live() ([]Page, error) {
 	return live, nil
 }
 
+// RecallCandidates は自動配送の候補の上限。届けるのは呼ぶ側が既に届けた版を除いてから 2 件(監査 2026-10-23: 除く前に切ると席を塞ぐ)。
+const RecallCandidates = 6
+
 func (b Book) Recall(query string) ([]Page, error) {
 	v, err := b.query(query, true)
 	return v.Lessons, err
@@ -419,8 +422,11 @@ func (b Book) query(query string, recall bool) (View, error) {
 		}
 	}
 	limit := len(v.Lessons)
-	if recall || query != "" {
+	if query != "" && !recall {
 		limit = 2
+	}
+	if recall {
+		limit = RecallCandidates // 呼ぶ側(memoryContext)が、既に届けた版を除いてから 2 件に切る
 	}
 	if query == "" && !recall {
 		v.Observations, err = b.PendingObservations()

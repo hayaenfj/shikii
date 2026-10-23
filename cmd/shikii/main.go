@@ -116,7 +116,7 @@ func usageText() string {
                    同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune / shikii_wiki / shikii_review / shikii_reflect。判定の聞き方の採用は人)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
   shikii update    最新の安定版を確認し、実行中のshikiiと同じ場所へ本体・readoutを更新する
-  shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop
+  shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | plan query|submit | variants submit
                    Claude Code / Codex の hook として AI 自身の考え方を 2 点で測る: 考える前(この依頼で結局ファイルを変えるか、着手前に方針を合わせるか)と
                    考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場はプロジェクトの .shikii/、モデルは :8080、画面は :8096。過去の会話と wiki の教訓を引用し、整理をエージェントへ渡す。判定からの助言は線を引いてから。ツールは止めない
   shikii hook plan query | submit（JSONを標準入力）
@@ -138,9 +138,9 @@ func usageText() string {
   shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
                    <store>/wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
   shikii wiki query [検索文または出典ID] | ingest (JSON を標準入力) | lint
+                   普段の会話をプロジェクトの .shikii/ にある出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
   shikii guard     list | add (JSON を標準入力) | enable <id> | disable <id> | try
                    人の訂正を「止める検査」にする(paired-files / forbidden-words / commit-body)。enable は負例で止まるのを確かめてから有効にする
-                   普段の会話をプロジェクトの .shikii/ にある出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
   shikii version                                  版を表示する
   shikii review query | submit (JSON を標準入力)    会話と結果から AI が根拠付きで仮採点。人は抜き取りと保留を確認し、訂正を次の採点へ返す。仮採点は正解・較正と分けて保存する
   shikii reflect query | submit (JSON を標準入力)   採点とwiki整理を最大2会話ずつ、一度の確認と一括保存にまとめる。reviewsとwikiを渡し、completeと項目ごとのerrorを確認する

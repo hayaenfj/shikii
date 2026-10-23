@@ -63,6 +63,19 @@ func searchTerms(text string) map[string]bool {
 	return out
 }
 
+// isContentTerm は内容を担う語: 識別子か、仮名だけではない 2 文字の組(漢字・カタカナ・英字を含む)。「する」「える」「く時」のような仮名だけの組は文法の語なので数えない。
+func isContentTerm(term string) bool {
+	if isIdentifierTerm(term) {
+		return true
+	}
+	for _, r := range term {
+		if !unicode.In(r, unicode.Hiragana) {
+			return true
+		}
+	}
+	return false
+}
+
 // isIdentifierTerm は英数字だけの 3 文字以上の語(ファイル名・コマンド名・識別子)。日本語の 2 文字の組や短い語は含めない。
 func isIdentifierTerm(term string) bool {
 	if len(term) < 3 {
@@ -128,27 +141,38 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 		}
 		threshold := .18
 		coverage := float64(len(matched)) / float64(max(len(terms), 1))
+		minMatched := 2
 		if recall {
 			// 自動配送は依頼文が長い(語が多い)ほど一致の割合が薄まるので、記事側(題と適用条件)の語がどれだけ依頼に現れたかでも門を通す。
-			// 0.7.3 までは依頼側の割合だけで、長い依頼には届かなかった(2026-10-23 の実験で 6 回中 0 回)
+			// 0.7.3 までは依頼側の割合だけで、長い依頼には届かなかった(2026-10-23 の実験で 6 回中 0 回)。
+			// ただし、どの記事にもある語(例: プロジェクト名)と仮名だけの 2 文字の組は数えない(監査の指摘: それだけで関係ない記事が届いた)。
 			threshold = .35
-			pageTerms := map[string]bool{}
+			informative := func(term string) bool { return len(docs) < 4 || frequency[term]*2 <= len(docs) } // 記事の半分より少ない記事にしか無い語
+			pageTerms, matchedContent := 0, 0
 			for _, f := range d.fields {
 				for term := range f {
-					pageTerms[term] = true
+					if isContentTerm(term) && informative(term) {
+						pageTerms++
+					}
 				}
 			}
-			strong := false // 識別子(CHANGELOG, main, readme のような 3 文字以上の英数字の語)が合えば、それだけで届ける価値がある
+			strong := false // 珍しい識別子(CHANGELOG, Makefile のような 3 文字以上の英数字の語)が合えば、それ 1 語でも届ける価値がある
 			for term := range matched {
-				if isIdentifierTerm(term) {
-					strong = true
+				if isContentTerm(term) && informative(term) {
+					matchedContent++
+					if isIdentifierTerm(term) {
+						strong = true
+					}
 				}
 			}
-			if strong || (len(pageTerms) > 0 && float64(len(matched))/float64(len(pageTerms)) >= .15) {
+			switch {
+			case strong:
+				coverage, minMatched = math.Max(coverage, threshold), 1
+			case pageTerms > 0 && matchedContent >= 2 && float64(matchedContent)/float64(pageTerms) >= .15:
 				coverage = math.Max(coverage, threshold)
 			}
 		}
-		if len(terms) == 0 || (len(terms) > 1 && len(matched) < 2) || coverage < threshold {
+		if len(terms) == 0 || (len(terms) > 1 && len(matched) < minMatched) || coverage < threshold {
 			continue
 		}
 		for term := range matched {

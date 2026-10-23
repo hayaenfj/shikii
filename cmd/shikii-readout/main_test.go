@@ -26,6 +26,7 @@ type fakeUpstream struct {
 	completions   []fakeCompletion // /completion の履歴(warm-up を含む)
 	cacheN        int              // /completion が timings.cache_n として返す値
 	decision      bool             // 学習済みの決定モデルのふり(/v1/systemone に自分で答える。Kev など)
+	rejectProbe   int              // 0 以外なら、探り(state=probe)をこの status で弾く決定モデルのふり
 	systemOneHits int              // /v1/systemone が呼ばれた数
 }
 
@@ -47,6 +48,16 @@ func (f *fakeUpstream) handler() http.Handler {
 		if !decision { // 本家 llama.cpp は普通の GGUF だと 501 を返す
 			http.Error(w, `{"error":"not a decision model"}`, 501)
 			return
+		}
+		if f.rejectProbe != 0 {
+			var in struct {
+				State string `json:"state"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			if in.State == "probe" {
+				http.Error(w, `{"error":"state too short"}`, f.rejectProbe)
+				return
+			}
 		}
 		_, _ = w.Write([]byte(`{"model":"fake-decision","answers":{"q":{"type":"noul","noul":0.91}},"usage":{"input_tokens":12}}`))
 	})
@@ -455,5 +466,11 @@ func TestPassesThroughToADecisionModelUpstream(t *testing.T) {
 	s2, _ := newTestServer(t, plain)
 	if err := s2.detectUpstream(context.Background()); err != nil || s2.passThrough {
 		t.Fatalf("a 501 upstream is a plain GGUF and is read out: err=%v passThrough=%v", err, s2.passThrough)
+	}
+	// 探りを 422 で弾く決定モデル(要求の形は読めている)も素通しにする(監査 2026-10-23: 以前は起動に失敗した)
+	strict := &fakeUpstream{decision: true, rejectProbe: 422, top: []tokenProb{{Token: "A", Prob: 0.9}}}
+	s3, _ := newTestServer(t, strict)
+	if err := s3.detectUpstream(context.Background()); err != nil || !s3.passThrough {
+		t.Fatalf("a decision model that rejects the probe with 4xx must still be passed through: err=%v passThrough=%v", err, s3.passThrough)
 	}
 }

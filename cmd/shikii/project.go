@@ -219,6 +219,9 @@ func checkProjectStore(root string, create bool) error {
 		}
 		info, err := os.Lstat(path)
 		if err != nil {
+			if os.IsNotExist(err) && part != "" && !create {
+				continue // 古い版が作った置き場(0.6.0 〜 0.7.2 には guards/ が無い)も登録済みとして扱う。無い置き場は使う時に作る
+			}
 			return err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
