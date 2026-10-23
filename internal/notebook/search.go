@@ -121,6 +121,40 @@ func contentClusters(text string, terms map[string]bool) int {
 	return n
 }
 
+// hasKanaFreeCluster は、terms が依頼文の中で占める連なりのうち、仮名を含まない 2 文字以上のもの(漢字・カタカナの語)があるか。
+// 仮名で終わる連なり(表示す、更新す)は動詞の語幹なので数えない(それだけで関係ない記事が届いた。監査 R3)。
+func hasKanaFreeCluster(text string, terms map[string]bool) bool {
+	runes := []rune(strings.ToLower(text))
+	covered := make([]bool, len(runes))
+	for term := range terms {
+		if isIdentifierTerm(term) {
+			continue
+		}
+		tr := []rune(term)
+		for i := 0; i+len(tr) <= len(runes); i++ {
+			if string(runes[i:i+len(tr)]) == term {
+				for j := i; j < i+len(tr); j++ {
+					covered[j] = true
+				}
+			}
+		}
+	}
+	for i := range covered {
+		if !covered[i] || (i > 0 && covered[i-1]) {
+			continue
+		}
+		end, kana := i, false
+		for end < len(covered) && covered[end] {
+			kana = kana || unicode.In(runes[end], unicode.Hiragana)
+			end++
+		}
+		if end-i >= 2 && !kana {
+			return true
+		}
+	}
+	return false
+}
+
 // isIdentifierTerm は英字を含む英数字だけの 3 文字以上の語(ファイル名・コマンド名・識別子)。数字だけ(年など)や日本語の 2 文字の組は含めない。
 func isIdentifierTerm(term string) bool {
 	if len(term) < 3 {
@@ -234,9 +268,19 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 				}
 			}
 			matchedContent, rareMatched := contentClusters(query, matchedContentSet), contentClusters(query, rareMatchedSet)
+			// 「監査して」のような 1〜2 語の依頼は、仮名を含まない語(監査)が記事の題に合えば届く。適用条件だけの一致(説明、表示)では届けない
+			titleRare := map[string]bool{}
+			for term := range rareMatchedSet {
+				if d.fields[0][term] {
+					titleRare[term] = true
+				}
+			}
+			strongTitle := requestTerms <= 2 && hasKanaFreeCluster(query, titleRare)
 			coverage, minMatched = 0, 2
 			switch {
-			case strong:
+			case strongTitle, strong && (requestTerms <= 3 || (rareRequestTerms > 0 && float64(rareMatched)/float64(rareRequestTerms) >= .35)):
+				// 珍しい識別子 1 語で届くのは、依頼の内容語が少ない時か、依頼側の一致率が足りる時だけ。
+				// 長い依頼の中の hook のような 1 語だけで関係ない記事が届いた(2026-10-23 の実測)
 				coverage, minMatched = threshold, 1
 			case rareMatched >= 2 && ((rareRequestTerms > 0 && float64(rareMatched)/float64(rareRequestTerms) >= .35) || (rarePageTerms > 0 && float64(rareMatched)/float64(rarePageTerms) >= .15)):
 				coverage = threshold
