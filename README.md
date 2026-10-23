@@ -10,7 +10,7 @@ A model gives you a probability. shikii tells you whether you may act on it. It 
 [![Tests](https://img.shields.io/badge/tests-316%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.7.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.7.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
 Version 0.7.0 goes back to the line and the bands. The recommended model is TypeSafe Jev: put the key in the environment, download nothing, and get an answer in about 0.2 s. Without a key, llama.cpp with Ternary-Bonsai-27B answers the same questions locally (`shikii-readout` runs an ordinary chat GGUF at decision-model speed). New wiki lessons are placed next to the right page and checked for contradictions by the decision model. **Updating to 0.7.0 erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 

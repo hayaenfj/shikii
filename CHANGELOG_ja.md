@@ -2,7 +2,7 @@
 
 [English](CHANGELOG.md) · **日本語**
 
-## 0.7.1 — 未公開
+## 0.7.1 — Jev の間は手元のモデルを起こさない
 
 - 鍵があって Jev を使う間(`SHIKII_MODEL=local` でない)は、`shikii up` も手元のモデル(llama-server :8086)を起こさず、理由と `SHIKII_MODEL=local` を案内する。`shikii doctor` も、その状態では手元のモデルが無くても足りない扱いにしない。hook と `hook install` は 0.7.0 から起こしていない。
 

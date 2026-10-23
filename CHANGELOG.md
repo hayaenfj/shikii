@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.7.1 — unreleased
+## 0.7.1 — No local model while Jev is used
 
 - While a key is set and Jev is used (`SHIKII_MODEL` is not `local`), `shikii up` no longer starts the local model (llama-server on :8086); it explains why and points to `SHIKII_MODEL=local`. `shikii doctor` no longer reports a missing local model in that state. The hooks and `hook install` have not started one since 0.7.0.
 
