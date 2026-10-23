@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -115,12 +116,8 @@ func (g guard) validate() error {
 			}
 		}
 		for _, a := range g.Allow {
-			ok := false
-			for _, w := range g.Words {
-				ok = ok || (a != w && strings.Contains(a, w))
-			}
-			if !ok {
-				return errors.New("allow には禁止語を含む普通の語だけを置く(例: 根 に対する 根拠)")
+			if err := validateAllowedWord(a, g.Words); err != nil {
+				return err
 			}
 		}
 	case guardKindCommitBody:
@@ -160,6 +157,40 @@ func anyMatch(pattern string, paths []string) bool {
 		}
 	}
 	return false
+}
+
+// validateAllowedWord は allow の 1 語を確かめる: 禁止語を含む普通の語(根 に対する 根拠)だけ。禁止語そのもの、禁止語に助詞・空白・
+// 句読点を足しただけの語(根を、「根」)は抜け道になるので拒む(監査 R3)。禁止語を除いた残りに、仮名でない文字(漢字・カタカナ・英字)が要る。
+func validateAllowedWord(a string, words []string) error {
+	if strings.TrimSpace(a) != a || a == "" {
+		return errors.New("allow の語に空白は置けない: " + a)
+	}
+	for _, r := range a {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return errors.New("allow の語に記号や句読点は置けない: " + a)
+		}
+	}
+	for _, w := range words {
+		if a == w {
+			return errors.New("allow に禁止語そのものは置けない: " + a)
+		}
+	}
+	ok := false
+	for _, w := range words {
+		if !strings.Contains(a, w) {
+			continue
+		}
+		rest := strings.ReplaceAll(a, w, "")
+		for _, r := range rest {
+			if unicode.IsLetter(r) && !unicode.In(r, unicode.Hiragana) {
+				ok = true
+			}
+		}
+	}
+	if !ok {
+		return errors.New("allow には禁止語を含む普通の語だけを置く(例: 根 に対する 根拠。助詞を足しただけの語は置けない): " + a)
+	}
+	return nil
 }
 
 // evalGuard は 1 つの検査をターンの観測に当てる。分からない観測(一覧やコミットが取れない)は通す: 止めるのは確かな時だけ。
@@ -506,7 +537,7 @@ func guardList(root string) error {
 		return err
 	}
 	if len(guards) == 0 {
-		fmt.Fprintln(stdout, "止める検査はまだ無い。人の訂正を検査にするなら: shikii guard add < 草稿.json(id, kind, title, pairs/words/required)")
+		fmt.Fprintln(stdout, "止める検査はまだ無い。人の訂正を検査にするなら: shikii guard add < 草稿.json(id, kind, title, pairs/words/except/allow/required)")
 		return nil
 	}
 	last := map[string]guardRecord{}
@@ -540,7 +571,7 @@ func guardAdd(root string, in io.Reader) error {
 	dec.DisallowUnknownFields()
 	var g guard
 	if err := dec.Decode(&g); err != nil {
-		return errors.New("guard add は JSON(id, kind, title, reason, source, pairs/words/except/required)を 1 つ読む")
+		return errors.New("guard add は JSON(id, kind, title, reason, source, pairs/words/except/allow/required)を 1 つ読む")
 	}
 	g.Enabled, g.Red = false, nil // 草稿は無効。有効にするのは enable(負例で止まるのを見てから)
 	if err := g.validate(); err != nil {

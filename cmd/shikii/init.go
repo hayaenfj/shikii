@@ -31,6 +31,10 @@ func cmdInit(args []string) error {
 	if isSharedPlaceScope(scope) {
 		return errors.New("ホームフォルダは初期化しません(~/.shikii は共通の置き場です)。プロジェクトのフォルダで実行してください")
 	}
+	version := projectInitVersionNow
+	if wipePending(root) { // 置き場を作る前に見る(作った後では、消去の途中の初期化し直しと見分けられない)
+		version = projectInitVersion(root)
+	}
 	if err := checkProjectStore(root, true); err != nil {
 		return err
 	}
@@ -92,7 +96,7 @@ func cmdInit(args []string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintln(stdout, "HOMEが無いためCodexの共通設定とskillを省略し、プロジェクト側だけ準備します")
-		return completeProjectInit(root, scope)
+		return completeProjectInit(root, scope, version)
 	}
 	codex := filepath.Join(home, ".codex", "config.toml")
 	switch did, err := addCodexServer(codex, mcpArgs); {
@@ -110,11 +114,11 @@ func cmdInit(args []string) error {
 		return fmt.Errorf("skill: %w", err)
 	}
 	fmt.Fprintf(stdout, "skill: %sを更新\n", filepath.Join("~", ".claude", "skills", "shikii"))
-	return completeProjectInit(root, scope)
+	return completeProjectInit(root, scope, version)
 }
 
-func completeProjectInit(root, scope string) error {
-	if err := finishProjectInit(root, scope); err != nil {
+func completeProjectInit(root, scope string, version int) error {
+	if err := finishProjectInit(root, scope, version); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "利用可能: %s\n画面: %s（答え合わせが必要になると自動起動）\n", scope, projectPageURL(root))

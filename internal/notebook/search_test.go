@@ -170,3 +170,59 @@ func TestRecallGateCountsOnlyContentTermsOnEveryPath(t *testing.T) {
 		}
 	}
 }
+
+// 監査 R3: 重なる 2 文字の組(表示+示す は「表示す」1 語)を 2 語に数えない。数字だけは識別子にしない。しきい値は負例で守る。
+func TestRecallCountsOverlappingBigramsOnceAndKeepsThresholds(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	for i, a := range []string{"一覧を表示する時", "2026 年の記録を読む時", "変更履歴を更新する時", "画面を直す時", "テストを書く時"} {
+		d := draft(source, "教訓"+string(rune('A'+i)))
+		d.Lesson, d.AppliesTo = "決まり "+string(rune('A'+i)), a
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{"表示する", "更新する", "2026-10-23 のログを見て"} {
+		if p, _ := b.Recall(q); len(p) != 0 {
+			t.Fatalf("重なる組や数字だけでは届けない: %q → %+v", q, p)
+		}
+	}
+	if p, _ := b.Recall("一覧の表示を直す"); len(p) == 0 || !strings.Contains(p[0].AppliesTo, "表示") {
+		t.Fatalf("別の語が 2 つ合えば届く: %+v", p)
+	}
+}
+
+// 監査 R3: 門のしきい値を負例で守る。依頼側 0.35・記事側 0.15 のどちらにも届かない一致(長い依頼の 2 語が、長い適用条件の記事に合うだけ)は届けない。
+// 記事が 1 本の wiki では、その記事にしか無い語も「珍しい語」として扱い、1 語の識別子でも届く。
+func TestRecallThresholdsAndSinglePageWiki(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	long := draft(source, "長い適用条件")
+	long.Lesson, long.AppliesTo = "決まり", "判定 画面 配送 記録 監査 公開 文書 翻訳 検証 設計 手順 索引 更新 削除 要約 分類 比較 評価 を扱う時"
+	if _, err := b.Ingest(long); err != nil {
+		t.Fatal(err)
+	}
+	for i, a := range []string{"木材を切る時", "川を渡る時", "山に登る時", "海で泳ぐ時"} {
+		d := draft(source, "他の教訓"+string(rune('A'+i)))
+		d.Lesson, d.AppliesTo = "決まり", a
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, _ := b.Recall("判定 画面 木星 土星 火星 水星 金星 天王"); len(p) != 0 {
+		t.Fatalf("依頼の 8 語のうち 2 語(0.25)、記事の 20 語のうち 2 語(0.1)では届けない: %+v", p)
+	}
+	if p, _ := b.Recall("判定 画面 翻訳"); len(p) != 1 || p[0].Title != "長い適用条件" {
+		t.Fatalf("依頼の内容語がほぼ全部合えば届く: %+v", p)
+	}
+	one := Book{Root: t.TempDir(), Scope: "/project"}
+	s1 := seed(t, one, 1)
+	d := draft(s1, "唯一の教訓")
+	d.Lesson, d.AppliesTo = "決まり", "shikii の README を直す時"
+	if _, err := one.Ingest(d); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := one.Recall("README を直して"); len(p) != 1 {
+		t.Fatalf("記事が 1 本の wiki では比べようが無いので、その記事の識別子 1 語で届く: %+v", p)
+	}
+}

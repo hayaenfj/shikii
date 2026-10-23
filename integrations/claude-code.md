@@ -59,7 +59,7 @@ shikii hook uninstall --yes  # 足した hook(Claude Code 3 つ、Codex 2 つ)�
 which shikii                 # Claude Code がそのまま `shikii` を呼ぶので、PATH に要る
 ```
 
-**インストール後、利用するプロジェクトで一度初期化する。** `shikii --init` を実行するか、エージェントに「このプロジェクトでshikiiを使いたい」と頼む。初期化は既製の4問・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を保存する。印が無い・別のプロジェクトの印・壊れた印ではhookは動かず、保存先・Gitの除外・モデルの起動にも触れない。初期化失敗では有効にせず、再実行しても既存データを保持する。 鍵が無く、モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面(:8096)は、ターンの終わりに答え待ちが出た時に立っていなければ hook が `shikii serve` を裏で起こす。起こす権利は guard(`starting-model` / `starting-page`)の flock で 1 つの hook だけが取り、前に起こした子が生きている間(長いモデルの取得中も)と 10 分の中は起こさない。出力は `~/.shikii/agent/up.log` と `serve.log`。
+**インストール後、利用するプロジェクトで一度初期化する。** `shikii --init` を実行するか、エージェントに「このプロジェクトでshikiiを使いたい」と頼む。初期化は既製の問い(hookの4問とwikiの2問)・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を保存する。印が無い・別のプロジェクトの印・壊れた印ではhookは動かず、保存先・Gitの除外・モデルの起動にも触れない。初期化失敗では有効にせず、再実行しても既存データを保持する。 鍵が無く、モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面(:8096)は、ターンの終わりに答え待ちが出た時に立っていなければ hook が `shikii serve` を裏で起こす。起こす権利は guard(`starting-model` / `starting-page`)の flock で 1 つの hook だけが取り、前に起こした子が生きている間(長いモデルの取得中も)と 10 分の中は起こさない。出力は `~/.shikii/agent/up.log` と `serve.log`。
 
 `install` がすること(2 回目は何も足さない):
 

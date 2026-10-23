@@ -1831,6 +1831,9 @@ func cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(paths) == 0 { // spec のパスを省いたら置き場の decisions/*.yaml(基本構成)を読む。画面と同じ数え方になる(監査 R3)
+		paths = storeSpecPaths(*storeDir)
+	}
 	st := store.Store{Dir: *storeDir}
 	specs := map[string]*spec.Spec{}
 	for _, path := range paths {

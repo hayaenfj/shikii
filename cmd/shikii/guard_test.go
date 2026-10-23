@@ -173,3 +173,17 @@ func TestForbiddenWordsHonourAllowedWords(t *testing.T) {
 		t.Fatal("禁止語を含まない allow は拒む")
 	}
 }
+
+// 監査 R3: 2. forbidden-words の allow は、禁止語に助詞・空白・句読点を足しただけの語や、別の禁止語そのものを置けない。
+func TestForbiddenWordsAllowCannotBeALoophole(t *testing.T) {
+	for _, a := range []string{"根を", "根の", "根 ", "「根」", "根。", "根拠"} {
+		g := guard{ID: "x", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"根", "根拠"}, Allow: []string{a}}
+		if err := g.validate(); err == nil {
+			t.Fatalf("allow %q は抜け道になるので拒む", a)
+		}
+	}
+	g := guard{ID: "x", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"根"}, Allow: []string{"根拠", "根本"}}
+	if err := g.validate(); err != nil {
+		t.Fatalf("普通の語は置ける: %v", err)
+	}
+}

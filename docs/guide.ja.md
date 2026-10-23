@@ -61,7 +61,7 @@ Claude Code・Codexの自動記録は、インストール後に利用するプ�
 機械で確かめられる訂正は「止める検査」にする(`.shikii/guards/<id>.yaml`)。種類は `paired-files`(片方が変わったらもう片方も)、`forbidden-words`(足した行に使わない語)、`commit-body`(そのターンのコミットの本文に含む語)の 3 つ。Stop で有効な検査を変わったファイル・足した行・依頼の時の HEAD からのコミットに当て、引っかかれば `decision: block` と理由を返してエージェントに直させる。止めた後の Stop では止めず、直ったかを `records/guards.jsonl` に記録する。
 
 ```sh
-shikii guard add < guard.json       # 草稿(無効)。JSON: id, kind, title, reason, source, pairs/words/except/required
+shikii guard add < guard.json       # 草稿(無効)。JSON: id, kind, title, reason, source, pairs/words/except/allow/required
 shikii guard enable <id>            # 負例で止まる(RED)・正例で通る(GREEN)を見せてから有効にする
 shikii guard disable <id>           # 無効に戻す(ファイルは残る)
 shikii guard list                   # 状態と最後の結果
@@ -106,6 +106,10 @@ shikii wiki lint
 `wiki query`の一覧や`reflect query`には最大2記事の`maintenance`対象がある。本文・原資料・関連ページを確認し、必要な編集を保存した後、最新の`page_id`・`revision`・`key`と確認理由`reason`を`maintenance.json`へ渡す。振り返りの`maintenance`配列へまとめてもよい。記事や関連する版が変われば古い見直し結果は拒否し、未変更でも30日後に再確認する。本文やリンクがないことは確認のきっかけであり、不要な文章や関係を追加する指示ではない。
 
 着手前の`hook plan query`は`pages`で必要な本文を選べる。判断には候補・読んだ記事・引用した版・当時の利用可能な版と取得量が残る。過去の比較は記録された版だけで行い、後から更新されたwikiや解決結果を混ぜない。保存・検索・引用の件数と、判断に役立ったという観察は分ける。詳しい契約は[wikiの作法](../skills/shikii/references/wiki.md)を参照する。
+
+### 今あるメモリを wiki へ移す
+
+エージェントがすでにメモリを持っている(Claude Code の自動メモリのフォルダ: `MEMORY.md` と 1 事実 1 ファイル、Codex のメモ)なら、「メモリを shikii の wiki へ移して」の一言で移せます。skill の [import-memory.md](../skills/shikii/references/import-memory.md) が手順です: 各ファイルを原資料として残し(`shikii wiki capture`)、規則ごとに適用条件付きの教訓を 1 本ずつ下書きし、振り返りの `place` で既存の記事に合流させて重複を作らず、メモリのフォルダは wiki の記事を指す薄い索引にします。どの依頼にも効く規則(見える文の言語、使わない語、push する時)は、wiki が依頼との近さで教訓を届けるため、索引にも 1 行ずつ残します。消すものはありません(古いファイルは本人が納得してから消します)。手順は `shikii --init` が置く skill の一部なので、初期化したどのプロジェクトでも使えます。
 
 ## 推奨のモデル(TypeSafe の Jev)
 
@@ -351,7 +355,7 @@ bin/shikii decide .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0
 
 ## 接続例
 
-Claude CodeとCodexは、依頼の前と作業の後の2つのhookで会話の記録・記憶の参照・4問の判定を行う。初期化したプロジェクトの `.shikii/` へ会話・仮採点・正解・線を保存し、共通の `~/.shikii/agent` には型・道具・仕事の入口を置く。線もプロジェクトごとで、別の仕事の実績は持ち込まない。
+Claude CodeとCodexは、依頼の前と作業の後のhook(Claude Codeはサブエージェントの開始にも。計3つ、Codexは2つ)で会話の記録・記憶の参照・既製の問いの判定を行う。初期化したプロジェクトの `.shikii/` へ会話・仮採点・正解・線を保存し、共通の `~/.shikii/agent` には型・道具・仕事の入口を置く。線もプロジェクトごとで、別の仕事の実績は持ち込まない。
 
 会話の整理と範囲・完了の仮採点は通常のエージェントが担当し、人は抜き取りと保留を確認する。仮採点は正解・較正とは別。判定用モデルが使えなくても、会話の記録と参照は働く。手元のモデルは `:8080`、共通画面は `:8096`。ツールを止めず、実行許可を出す仕組みではない。[hookの詳しい説明](../integrations/claude-code.md)。
 
@@ -363,4 +367,4 @@ Claude CodeとCodexは、依頼の前と作業の後の2つのhookで会話の�
 
 ## プロジェクトごとの有効化
 
-インストール後、利用するプロジェクトで `shikii --init`（`shikii init`も同じ）を一度実行する。エージェントに「このプロジェクトでshikiiを使いたい」と頼んでもよい。既製の4問・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を書く。hookはこの印がある場所だけで動き、未初期化の場所には保存先もGitの除外も作らない。サブフォルダからも同じプロジェクトルートを使い、再初期化しても既存の設定・会話・正解を保持する。
+インストール後、利用するプロジェクトで `shikii --init`（`shikii init`も同じ）を一度実行する。エージェントに「このプロジェクトでshikiiを使いたい」と頼んでもよい。既製の問い(hookの4問とwikiの2問)・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を書く。hookはこの印がある場所だけで動き、未初期化の場所には保存先もGitの除外も作らない。サブフォルダからも同じプロジェクトルートを使い、再初期化しても既存の設定・会話・正解を保持する。

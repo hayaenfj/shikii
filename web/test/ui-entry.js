@@ -149,20 +149,33 @@ async function checkSummary(target) {
 // 監査 R2: キー操作(1〜9 / Enter / →)は判定の欄の未回答でだけ効く。知識の欄では最初の .item のボタン(関連する知識・主張にする)を押さない。
 async function checkKeysOnlyOnDecisions(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
-  const lesson = { id: 'l1', revision: 'r1', title: '教訓', lesson: '教訓の本文', applies_to: '条件', sources: [], related: [], status: 'hypothesis' };
+  // 出典のある教訓: 最初の .item に「原文を見る」のボタンが出る(押す物が無い状態で「押されない」を見ても検査にならない。監査 R3)
+  const lesson = { id: 'l1', revision: 'r1', title: '教訓', lesson: '教訓の本文', applies_to: '条件', sources: [{ id: 'src1234567890ab' }], related: [], status: 'hypothesis' };
+  const answered = { trace_id: 'done1', at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: 'done1', raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, truth: 'yes', choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], rung: 'minimal', audit: false };
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  const press = () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); flushSync(); };
+  // 知識の欄
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [lesson], sources: [] } : { items: [] } });
   Object.assign(ui, { tab: 'wiki', advanced: true, done: false, pinned: '' });
-  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
-  const app = mount(App, { target }); await settle(); await settle();
-  const item = target.querySelector('.item');
+  let app = mount(App, { target }); await settle(); await settle();
+  let buttons = target.querySelectorAll('.item .btns button');
   let clicked = 0;
-  for (const b of target.querySelectorAll('.item .btns button')) b.addEventListener('click', () => { clicked++; });
-  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true }));
-  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  flushSync();
+  for (const b of buttons) b.addEventListener('click', () => { clicked++; });
+  press();
+  const wikiButtons = buttons.length, wikiClicked = clicked;
+  unmount(app);
+  // 回答済みの列
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url.startsWith('v1/answered') ? { items: [answered] } : { items: [] } });
+  Object.assign(ui, { tab: 'needs-plan', advanced: false, done: true, pinned: '' });
+  app = mount(App, { target }); await settle(); await settle();
+  buttons = target.querySelectorAll('.item .btns button');
+  clicked = 0;
+  for (const b of buttons) b.addEventListener('click', () => { clicked++; });
+  press();
+  const doneButtons = buttons.length, doneClicked = clicked;
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
-  const ok = !!item && clicked === 0;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (知識の欄でキー操作が何も押さない: item=' + !!item + ', clicked=' + clicked + ')');
+  const ok = wikiButtons > 0 && wikiClicked === 0 && doneButtons > 0 && doneClicked === 0;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (キー操作は未回答の判定だけ: 知識の欄 buttons=' + wikiButtons + ' clicked=' + wikiClicked + ', 回答済み buttons=' + doneButtons + ' clicked=' + doneClicked + ')');
   return ok;
 }
 

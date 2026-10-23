@@ -7,10 +7,10 @@
 A model gives you a probability. shikii tells you whether you may act on it. It draws the line from the answers people and results supply, turns every decision into a band (`act` / `ask` / `discard`), keeps what it learned in a wiki that your agent uses while it works, and turns your corrections into checks that stop the agent next time.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-344%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-351%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.7.4-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.7.5-00ADD8?style=flat-square)](CHANGELOG.md)
 
 Version 0.7 goes back to the line and the bands. The recommended model is TypeSafe Jev: put the key in the environment, download nothing, and get an answer in about 0.2 s. Without a key, llama.cpp answers the same questions locally. New wiki lessons are placed next to the right page and checked for contradictions by the decision model. 0.7.3 turns corrections into guards that stop the turn, delivers lessons to subagents too, and counts in production whether delivered lessons changed anything. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
@@ -102,7 +102,7 @@ In a project you want to enable, ask your agent:
 
 > Use shikii in this project.
 
-The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. Initialization prepares the built-in questions, the wiki, the place for guards, the MCP setup (it adds `.mcp.json`, `.cursor/mcp.json`, `opencode.json` and a section in `AGENTS.md` to the project; only `.shikii/` is excluded from Git) and the agent's instructions. `shikii doctor` checks the setup. The page at http://127.0.0.1:8096 is started by the hooks when the first decision waits for you; to open it earlier, run `shikii serve --store ~/.shikii/agent --port 8096`.
+The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. Initialization prepares the built-in questions, the wiki, the place for guards, the MCP setup (it adds `.mcp.json`, `.cursor/mcp.json`, `opencode.json` and a section in `AGENTS.md` (not when the project has only `CLAUDE.md`) to the project; only `.shikii/` is excluded from Git) and the agent's instructions. `shikii doctor` checks the setup. The page at http://127.0.0.1:8096 is started by the hooks when the first decision waits for you; to open it earlier, run `shikii serve --store ~/.shikii/agent --port 8096`.
 
 ### Updates
 

@@ -5,7 +5,7 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 
 ## 入れ方（Claude Code）
 
-`shikii --init`（`shikii init`も同じ）が、既製の4問・wiki・画面への入口と、Claude Code(`.mcp.json`)、Cursor(`.cursor/mcp.json`)、OpenCode(`opencode.json` の `mcp`、`type: local`)、Codex(`~/.codex/config.toml` の `[mcp_servers.shikii]`)に同じ項を足す(既にあれば触らない)。使っていないツールの設定ファイルも作られる(要らなければ消すか `.gitignore` へ。2 回目の init はあるものを触らない)。`opencode.jsonc` を使っている人には別に `opencode.json` が生まれる(OpenCode は両方を読む)。Codex の設定に `mcp_servers` がどんな書き方でもあれば足さない(末尾に足すと TOML の二重定義になるため。手で足す行を表示する)。`CLAUDE.md` だけのプロジェクトには `AGENTS.md` を作らない(OpenCode が `CLAUDE.md` を読まなくなる)。手で書くならプロジェクトの `.mcp.json`:
+`shikii --init`（`shikii init`も同じ）が、既製の問い(hookの4問とwikiの2問)・wiki・画面への入口と、Claude Code(`.mcp.json`)、Cursor(`.cursor/mcp.json`)、OpenCode(`opencode.json` の `mcp`、`type: local`)、Codex(`~/.codex/config.toml` の `[mcp_servers.shikii]`)に同じ項を足す(既にあれば触らない)。使っていないツールの設定ファイルも作られる(要らなければ消すか `.gitignore` へ。2 回目の init はあるものを触らない)。`opencode.jsonc` を使っている人には別に `opencode.json` が生まれる(OpenCode は両方を読む)。Codex の設定に `mcp_servers` がどんな書き方でもあれば足さない(末尾に足すと TOML の二重定義になるため。手で足す行を表示する)。`CLAUDE.md` だけのプロジェクトには `AGENTS.md` を作らない(OpenCode が `CLAUDE.md` を読まなくなる)。手で書くならプロジェクトの `.mcp.json`:
 
 ```json
 {
