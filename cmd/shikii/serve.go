@@ -677,8 +677,12 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		reason string
 	}
 	var pending []queued
+	settled := map[string]bool{}
+	if sp.ID == "wiki-conflict" {
+		settled = settledDrafts(s.st)
+	}
 	for _, rec := range recs {
-		if legacyPlanningRecord(sp, rec) {
+		if legacyPlanningRecord(sp, rec) || undecidedConflict(sp.ID, rec, labeled, settled) {
 			continue
 		}
 		show, audit, reason := reviewQueueState(rec, labeled, reviews)
@@ -726,7 +730,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	var page map[string]any // この画面の所在(0.7.6): エージェントが MCP からも URL とポートを答えられるように
+	var page map[string]any // この画面の所在(0.8.0): エージェントが MCP からも URL とポートを答えられるように
 	if common, err := agentHome(); err == nil {
 		if abs, err := filepath.Abs(s.o.storeDir); err == nil {
 			if rec, ok := readPageRecord(common, filepath.Dir(abs)); ok {
@@ -793,15 +797,23 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, rerr)
 			return
 		}
-		todo, reviewPending, legacyPlanning, waitingPerson := 0, 0, 0, 0
+		todo, reviewPending, legacyPlanning, waitingPerson, undecided := 0, 0, 0, 0, 0
+		settled := map[string]bool{}
+		if sp.ID == "wiki-conflict" {
+			settled = settledDrafts(s.st)
+		}
 		for _, rec := range records {
 			if legacyPlanningRecord(sp, rec) {
 				legacyPlanning++
 				continue
 			}
+			if undecidedConflict(sp.ID, rec, labeled, settled) { // 草稿は保存済みだが、この記事には触れなかった: 正解は付かないまま確定(0.8.0)
+				undecided++
+				continue
+			}
 			if show, audit, _ := reviewQueueState(rec, labeled, reviews); show {
 				todo++
-				if waitsForPersonRecord(sp.ID, rec, audit) { // 人の答えを待つのは抜き取りと、結果で正解が付かない判定の迷いだけ(0.7.6)
+				if waitsForPersonRecord(sp.ID, rec, audit) { // 人の答えを待つのは抜き取りと、結果で正解が付かない判定の迷いだけ(0.8.0)
 					waitingPerson++
 				}
 			}
@@ -827,17 +839,17 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if last.log != "" {
 			result = &last.result
 		}
-		truthSource, personAnswers := "person", !machineOnlySpecs[sp.ID] // 人は答えない判定(wiki の矛盾など): 0.7.6 に 60 件が確認待ちに見えた
+		truthSource, personAnswers := "person", !machineOnlySpecs[sp.ID] // 人は答えない判定(wiki の矛盾など): 0.8.0 に 60 件が確認待ちに見えた
 		if outcomeSpecs[sp.ID] {
 			truthSource = "results"
 		}
 		awaiting := todo - waitingPerson // 結果待ち(次の依頼・振り返りの結果が正解を付ける)
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
-			"unlabeled": todo, "waiting_for_person": waitingPerson, "awaiting_results": awaiting, "truth_source": truthSource, "person_answers": personAnswers, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
+			"unlabeled": todo, "waiting_for_person": waitingPerson, "awaiting_results": awaiting, "undecided": undecided, "truth_source": truthSource, "person_answers": personAnswers, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
-	modelName, endpoint := "local", s.o.ef.local // AI の状態(0.7.6): どのモデルで判定しているか
+	modelName, endpoint := "local", s.o.ef.local // AI の状態(0.8.0): どのモデルで判定しているか
 	if usesHosted() {
 		modelName, endpoint = "TypeSafe Jev", systemone.RedactURL(s.o.ef.hosted)
 	}

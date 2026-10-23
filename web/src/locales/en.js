@@ -40,7 +40,7 @@ export default {
   workspaceTitle: 'Conversation review',
   pendingCount: 'Awaiting a check',
   awaitingResults: 'Awaiting results',
-  machineOnly: n => `The AI answers this question; the truth comes from what reflection did (replaced or extended the page). Nothing for you to answer. ${n} awaiting results.`,
+  machineOnly: (n, u) => `The AI answers this question; the truth comes from what reflection did (replaced or extended the page). Nothing for you to answer. ${n} awaiting results` + (u ? `, ${u} settled without a truth (the draft was saved but did not touch that page)` : '') + '.',
   checkedCount: 'Answers checked',
   recordCount: 'Decisions recorded',
   countUnit: '',

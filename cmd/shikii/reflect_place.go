@@ -17,8 +17,40 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// machineOnlySpecs は、人が答えない判定(AI が答え、正解は振り返りの結果から付く)。画面は確認待ちに数えず、カードを読むだけにする(0.7.6)。
+// machineOnlySpecs は、人が答えない判定(AI が答え、正解は振り返りの結果から付く)。画面は確認待ちに数えず、カードを読むだけにする(0.8.0)。
 var machineOnlySpecs = map[string]bool{"wiki-place": true, "wiki-conflict": true}
+
+// settledDrafts は、振り返りで保存が済んだ草稿(教訓の文)。差し込み先の判定(wiki-place)に結果の正解が付いた草稿がそれ。
+// 矛盾の判定(wiki-conflict)は、草稿が触れなかった記事については正解が付かない(食い違うか分からない)ので、
+// 草稿が保存済みなら「結果待ち」ではなく「判断つかず(確定)」として列から外す(0.8.0: 61 件が永久に結果待ちに見えた)。
+func settledDrafts(st store.Store) map[string]bool {
+	out := map[string]bool{}
+	recs, err := st.Records("wiki-place", 0)
+	if err != nil {
+		return out
+	}
+	labeled, err := st.LabeledTraces("wiki-place")
+	if err != nil {
+		return out
+	}
+	for _, rec := range recs {
+		if _, ok := labeled[rec.TraceID]; ok {
+			out[strings.TrimSpace(rec.Inputs["new_lesson"])] = true
+		}
+	}
+	return out
+}
+
+// undecidedConflict は、保存済みの草稿についての矛盾の判定で、正解が付かないまま確定した物か。
+func undecidedConflict(specID string, rec store.Record, labeled map[string]store.Label, settled map[string]bool) bool {
+	if specID != "wiki-conflict" {
+		return false
+	}
+	if _, ok := labeled[rec.TraceID]; ok {
+		return false
+	}
+	return settled[strings.TrimSpace(rec.Inputs["new_lesson"])]
+}
 
 // 固定の規則(オプションは無い)。
 const (

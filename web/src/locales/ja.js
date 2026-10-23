@@ -39,7 +39,7 @@ export default {
   workspaceTitle: '会話の振り返り',
   pendingCount: '確認待ち',
   awaitingResults: '結果待ち',
-  machineOnly: n => `この問いはAIが答え、正解は振り返りの結果（記事を置き換えたか・足したか）から付きます。あなたが答える必要はありません。結果待ち ${n} 件。`,
+  machineOnly: (n, u) => `この問いはAIが答え、正解は振り返りの結果（記事を置き換えたか・足したか）から付きます。あなたが答える必要はありません。結果待ち ${n} 件` + (u ? `、判断つかずで確定 ${u} 件（草稿は保存済みで、その記事には触れなかった）` : '') + '。',
   checkedCount: '答え合わせ済み',
   recordCount: '判定の記録',
   countUnit: '件',
