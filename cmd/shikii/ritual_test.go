@@ -181,3 +181,39 @@ func TestRitualIsRecordedEvenWhenAGuardStopsTheTurnFirst(t *testing.T) {
 		t.Fatalf("頼んだ回数に数える: %+v", st.Plan)
 	}
 }
+
+// 監査 R5-3: 計画を頼んでいないターン(Planning なし)は止めない。振り返りを頼まなかったターンは前の残りで止めない。
+func TestRitualsOnlyApplyToTheTurnThatAskedThem(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	repo := gitRepo(t)
+	root := hookEnv(t, model, repo) // needs-plan は旧形式のまま → 計画の文脈は頼まれない
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "n", "cwd": repo, "prompt": "add a flag to the status command"})
+	if s := loadSession(root, "n"); s.Planning != nil {
+		t.Skip("この土台では計画を頼んでいる")
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out := runHook(t, "stop", map[string]any{"session_id": "n", "cwd": repo, "last_assistant_message": "Done."}); strings.Contains(out, "計画の整理") {
+		t.Fatalf("頼んでいないターンは止めない: %s", out)
+	}
+	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 0 {
+		t.Fatalf("頼んでいないターンは数えない: %+v", recs)
+	}
+	// 振り返り: 前のターンで頼んだ会話(まだ未整理)が控えに残っていても、このターンで頼んでいなければ止めない
+	for i, req := range []string{"README の導入手順を更新してください", "画面の色を直してください"} {
+		sid := []string{"ra", "rb"}[i]
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": sid, "cwd": repo, "prompt": req})
+		runHook(t, "stop", map[string]any{"session_id": sid, "cwd": repo, "last_assistant_message": "やりました。"})
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": sid, "cwd": repo, "prompt": "ありがとう、次は別の件です。"})
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "n", "cwd": repo, "prompt": "ガイドの quick start を直して"})
+	asked := loadSession(root, "n").ReflectAsked
+	if len(asked) == 0 {
+		t.Fatal("未整理が 2 件あれば頼む")
+	}
+	updateSession(root, "n", func(s *hookSession) { s.ReflectAskedTurn = "old-turn" }) // 前のターンの残りという状態にする
+	if out := runHook(t, "stop", map[string]any{"session_id": "n", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "振り返り") {
+		t.Fatalf("別のターンの残りで止めない: %s", out)
+	}
+}
