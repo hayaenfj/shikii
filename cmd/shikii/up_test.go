@@ -112,3 +112,23 @@ func TestDoctorReportsWhatIsMissing(t *testing.T) {
 		t.Fatalf("doctor must tell how to start a local model:\n%s", out)
 	}
 }
+
+// 鍵があって Jev を使う間は、shikii up は手元のモデル(llama-server :8086)を起こさない(本人の決定、2026-10-23)。
+// SHIKII_MODEL=local なら起こしてよい。
+func TestUpDoesNotStartTheLocalModelWhileJevIsUsed(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	t.Setenv("SHIKII_MODEL", "")
+	err := cmdUp(nil)
+	if err == nil || !strings.Contains(err.Error(), "SHIKII_MODEL=local") || !strings.Contains(err.Error(), "Jev") {
+		t.Fatalf("鍵があれば起こさず、手元を使う方法(SHIKII_MODEL=local)を伝える: %v", err)
+	}
+	t.Setenv("SHIKII_MODEL", "local")
+	if msg := upBlockedByHosted(); msg != "" {
+		t.Fatalf("SHIKII_MODEL=local なら起こしてよい: %s", msg)
+	}
+	t.Setenv("SHIKII_MODEL", "")
+	t.Setenv("TYPESAFE_API_KEY", "")
+	if msg := upBlockedByHosted(); msg != "" {
+		t.Fatalf("鍵が無ければ起こしてよい: %s", msg)
+	}
+}

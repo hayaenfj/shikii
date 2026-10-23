@@ -126,6 +126,15 @@ func probe(base string) probeResult {
 	return p
 }
 
+// upBlockedByHosted は、鍵があって判定を TypeSafe の Jev に送る設定(SHIKII_MODEL=local でない)なら、手元のモデルを起こさない理由を返す。
+// Jev が有効な間は :8086 の llama-server を立てない(本人の決定、2026-10-23)。空なら起こしてよい。
+func upBlockedByHosted() string {
+	if !usesHosted() {
+		return ""
+	}
+	return "TYPESAFE_API_KEY があるので判定は TypeSafe の Jev に送り、手元のモデル(llama-server)は起こしません。手元のモデルを使うなら SHIKII_MODEL=local を置いてから shikii up"
+}
+
 func cmdUp(args []string) error {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	var o upOpts
@@ -136,6 +145,9 @@ func cmdUp(args []string) error {
 	fs.IntVar(&o.ctx, "ctx", 4096, "文脈長(GGUF の時)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if msg := upBlockedByHosted(); msg != "" {
+		return errors.New(msg)
 	}
 	llama, _ := exec.LookPath("llama-server")
 	p := upPlan(o, llama)
@@ -264,10 +276,15 @@ func cmdDoctor(args []string) error {
 	fmt.Fprintf(stdout, "%s llama-server: %s\n", ok(llama != ""), orElse(llama, "not in PATH → brew install llama.cpp"))
 	readout, err := findReadout()
 	fmt.Fprintf(stdout, "%s shikii-readout: %s\n", ok(err == nil), orElse(readout, "not found → make install"))
-	// 2. 手元のモデル
+	// 2. 手元のモデル(鍵があれば Jev を使うので、無くても足りない扱いにしない)
+	if usesHosted() {
+		fmt.Fprintf(stdout, "ok   model: TypeSafe Jev (TYPESAFE_API_KEY があるので手元のモデルは起こさない。手元を使うなら SHIKII_MODEL=local)\n")
+	}
 	if *local != "" {
 		pr := probe(*local)
 		switch {
+		case !pr.up && usesHosted():
+			fmt.Fprintf(stdout, "ok   local model at %s: not running (not needed while Jev is used)\n", *local)
 		case !pr.up:
 			fmt.Fprintf(stdout, "MISSING local model at %s: unreachable → shikii up   (starts %s behind shikii-readout; or shikii up --gguf <file> for any GGUF)\n", *local, defaultModel)
 		case pr.decisionModel:

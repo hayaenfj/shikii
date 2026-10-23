@@ -100,7 +100,7 @@ export TYPESAFE_API_KEY=...       # 鍵は環境変数だけから読む。shiki
 shikii doctor                     # hosted に「key present」と出れば、hook・既製の問い・pii: false の判定は Jev へ
 ```
 
-推奨は TypeSafe の Jev。鍵があれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(1 問 約 0.2 秒。取得するものは無い)。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。`pii: true` の判定は鍵があっても手元にしか送らない。手元のモデルとの比較は[下の表](#jevと手元のモデルの比較)。
+推奨は TypeSafe の Jev。鍵があれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(`shikii up` も断る。1 問 約 0.2 秒。取得するものは無い)。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。`pii: true` の判定は鍵があっても手元にしか送らない。手元のモデルとの比較は[下の表](#jevと手元のモデルの比較)。
 
 ## 鍵を置けない時の手元のモデル(llama.cpp)
 
