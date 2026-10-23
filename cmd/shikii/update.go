@@ -38,6 +38,15 @@ var storeResetAt = [3]uint64{0, 7, 0}
 
 func versionString(v [3]uint64) string { return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) }
 
+// currentVersion はこの本体の版(shikii.Version)。
+func currentVersion() [3]uint64 {
+	v, err := updateVersion(shikii.Version)
+	if err != nil {
+		return [3]uint64{}
+	}
+	return v
+}
+
 // crossesStoreReset は from < storeResetAt <= to か。
 func crossesStoreReset(from, to [3]uint64) bool {
 	return updateNewer(storeResetAt, from) && !updateNewer(storeResetAt, to)
@@ -57,7 +66,62 @@ func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) err
 		return nil
 	}
 	fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(projects))
-	return wipeProjectStores(projects, func(path string) error {
+	if err := wipeProjectStores(projects, reinitWith(ctx, exe)); err != nil {
+		return err
+	}
+	// 印も新しい版にしておく(続いて呼ばれる新しい本体の hook install がもう一度消さないように)。
+	return writeInstalledVersion(common, to)
+}
+
+// installedVersionPath は共通側に置く「最後に入れた版」の印。0.7.0 から書く(0.6.0 以前は書かないので、無ければ 0.0.0 とみなす)。
+func installedVersionPath(common string) string { return filepath.Join(common, "version") }
+
+func installedVersion(common string) [3]uint64 {
+	b, err := os.ReadFile(installedVersionPath(common))
+	if err != nil {
+		return [3]uint64{}
+	}
+	v, err := updateVersion(strings.TrimSpace(string(b)))
+	if err != nil {
+		return [3]uint64{}
+	}
+	return v
+}
+
+func writeInstalledVersion(common string, v [3]uint64) error {
+	if err := os.MkdirAll(common, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(installedVersionPath(common), []byte(versionString(v)+"\n"), 0o644)
+}
+
+// resetStoresOnFirstRun は、新しい本体が初めて `hook install --yes` を実行した時(0.6.0 以前の update は最後に新しい本体の
+// hook install --yes を呼ぶ)に、前に入っていた版(共通側の印)から storeResetAt を跨いでいれば各プロジェクトの .shikii/ の中を
+// 全部消して初期化し直し、今の版を印に書く。update の reset は update を実行している古い本体の中で動くので、
+// 0.6.0 からの更新ではこちらが消す(2026-10-23 に気付いた)。消した時 true。
+func resetStoresOnFirstRun(common string, to [3]uint64, reinit func(path string) error) (bool, error) {
+	from := installedVersion(common)
+	wiped := false
+	if crossesStoreReset(from, to) {
+		if projects := registeredProjects(common); len(projects) > 0 {
+			fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(projects))
+			if err := wipeProjectStores(projects, reinit); err != nil {
+				return false, err
+			}
+			wiped = true
+		}
+	}
+	if from != to {
+		if err := writeInstalledVersion(common, to); err != nil {
+			return wiped, err
+		}
+	}
+	return wiped, nil
+}
+
+// reinitWith は path で `exe --init` を実行して初期化し直す。
+func reinitWith(ctx context.Context, exe string) func(path string) error {
+	return func(path string) error {
 		cmd := exec.CommandContext(ctx, exe, "--init")
 		cmd.Dir = path
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -65,7 +129,7 @@ func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) err
 		}
 		fmt.Fprintf(stdout, "  %s: 消して初期化し直しました\n", path)
 		return nil
-	})
+	}
 }
 
 // wipeProjectStores は各プロジェクトの .shikii/(通常のフォルダ)の中を全部消し、reinit で初期化し直す。.shikii/ の外は触らない。

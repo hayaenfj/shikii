@@ -1533,6 +1533,14 @@ func hookInstall(args []string, install bool) error {
 			return fmt.Errorf("skill: %w", err)
 		}
 		fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, ".claude", "skills", "shikii")))
+		// 0.7.0 を跨ぐ最初の実行なら各プロジェクトの .shikii/ を消して初期化し直す(update の最後に新しい本体で呼ばれるのはここ)。
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		if _, err := resetStoresOnFirstRun(agent, currentVersion(), reinitWith(context.Background(), exe)); err != nil {
+			return err
+		}
 	}
 	for _, t := range hookTargets {
 		settings := filepath.Join(home, t.rel)
