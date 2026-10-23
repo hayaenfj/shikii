@@ -93,7 +93,16 @@ shikii wiki lint
 
 着手前の`hook plan query`は`pages`で必要な本文を選べる。判断には候補・読んだ記事・引用した版・当時の利用可能な版と取得量が残る。過去の比較は記録された版だけで行い、後から更新されたwikiや解決結果を混ぜない。保存・検索・引用の件数と、判断に役立ったという観察は分ける。詳しい契約は[wikiの作法](../skills/shikii/references/wiki.md)を参照する。
 
-## ローカルの決定モデル(llama.cpp)
+## 推奨のモデル(TypeSafe の Jev)
+
+```sh
+export TYPESAFE_API_KEY=...       # 鍵は環境変数だけから読む。shikii は Keychain を読まない
+shikii doctor                     # hosted に「key present」と出れば、hook・既製の問い・pii: false の判定は Jev へ
+```
+
+推奨は TypeSafe の Jev。鍵があれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(1 問 約 0.2 秒。取得するものは無い)。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。`pii: true` の判定は鍵があっても手元にしか送らない。手元のモデルとの比較は[下の表](#jevと手元のモデルの比較)。
+
+## 鍵を置けない時の手元のモデル(llama.cpp)
 
 ```sh
 brew install llama.cpp            # Homebrewの公式formula
@@ -101,7 +110,7 @@ llama-server --version
 shikii up                         # llama-server を :8086 に、shikii-readout を :8080 に立てる(初回は約 7.6 GB を取得)
 ```
 
-基本モデルは `prism-ml/Ternary-Bonsai-27B-gguf` の `Ternary-Bonsai-27B-Q2_g64.gguf`(普通のチャット用モデル。`shikii-readout` が選択肢の文字の確率を読み、決定モデルの速さで答える。1 問 約 0.6 秒)。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookもこのモデルを使う。Kev-4B のような学習済みの決定モデルは `shikii up --hf ggml-org/Kev-4B-GGUF:Q4_K_M`(readout はその答えをそのまま通す)。
+基本モデルは `prism-ml/Ternary-Bonsai-27B-gguf` の `Ternary-Bonsai-27B-Q2_g64.gguf`(普通のチャット用モデル。`shikii-readout` が選択肢の文字の確率を読み、決定モデルの速さで答える。1 問 約 0.6 秒)。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookも、鍵が無ければこのモデルを使う。動作中のメモリは約 10 GB で、普通の PC では重いことがある。OpenJev のような学習済みの決定モデルは `shikii up --hf <repo:quant>`(readout はその答えをそのまま通す)。Kev-4B は使えない(2026-10-23 の決定)。
 
 モデル名は応答の `model`が較正の鍵になる。`--model` で送った名前ではない。
 
@@ -111,14 +120,31 @@ shikii up                         # llama-server を :8086 に、shikii-readout 
 
 | 接続先 | 条件 | URLの例 |
 |---|---|---|
-| llama.cpp | 通常のGGUF(手元の標準はTernary-Bonsai-27B)を `shikii-readout` 越しに。OpenJevなどの決定モデルはそのまま通す | `--local http://127.0.0.1:8080`(`shikii up` が立てる readout の口) |
+| Jev(推奨) | `TYPESAFE_API_KEY`、外部送信を許可するspec(`pii: false`) | 指定不要(`--hosted https://api.typesafe.ai` が既定) |
+| llama.cpp | 鍵を置けない時。通常のGGUF(手元の標準はTernary-Bonsai-27B)を `shikii-readout` 越しに。OpenJevなどの決定モデルはそのまま通す | `--local http://127.0.0.1:8080`(`shikii up` が立てる readout の口) |
 | Ollama | v0.35.0以上、System One対応の決定モデル。今回の実機推論は未検証 | `--local http://127.0.0.1:11434 --model nimble` |
 | LM Studio | Jev互換のSystem One対応API、読み込み済みの決定モデル。今回の実機推論は未検証 | `--local http://127.0.0.1:1234 --model <読み込み済みのモデルID>` |
-| Jev | `TYPESAFE_API_KEY`、外部送信を許可するspec | `--hosted https://api.typesafe.ai --model jev-latest` |
 
 参照: [OllamaのSystem One](https://docs.ollama.com/api/systemone)、[LM StudioのSystem One](https://lmstudio.ai/docs/developer/jev-compat/systemone)、[TypeSafeのAPI](https://docs.typesafe.ai/introduction/quickstart)。2026-10-21に公式仕様とクライアントを照合したもので、接続先の実機推論の成功を保証する表ではない。ローカルのクライアントはAuthorizationを付けないため、認証を必須にした構成は別途確認が必要。
 
-既製のhookは `127.0.0.1:8080` の固定構成で、OllamaやLM Studioへ自動で切り替わらない。会話の整理と参照は判定用モデルが止まっていても動く。OllamaはローカルURL経由でクラウドモデルも呼べるため、手元だけで扱う判定にはローカルのモデルを選ぶ。[Ollamaのクラウドモデルの説明](https://docs.ollama.com/capabilities/decision)。
+既製のhookは、鍵があれば Jev、無ければ `127.0.0.1:8080` の固定構成で、OllamaやLM Studioへ自動で切り替わらない。会話の整理と参照は判定用モデルが止まっていても動く。OllamaはローカルURL経由でクラウドモデルも呼べるため、手元だけで扱う判定にはローカルのモデルを選ぶ。[Ollamaのクラウドモデルの説明](https://docs.ollama.com/capabilities/decision)。
+
+## Jevと手元のモデルの比較
+
+0.7.0 の既製の問い(wiki の差し込み先・矛盾、依頼に効く教訓、着手前に聞くべきだったか)を、この repo の wiki(16 記事)と人が答えた記録で、手元の標準(Ternary-Bonsai-27B)と Jev(jev-1.14.0)に同じ入力で聞いた(2026-10-23)。数は小さく、線は実際の使用で貯めて引く。「並べ方の良さ」は正しい組を間違った組より上に置いた割合(AUC)。
+
+| 試験 | 手元の標準 | Jev |
+|---|---|---|
+| 差し込み先(古い版の草稿 4 本 × 既存 16 本)の並べ方 / 正しい先が 1 位 | 0.98 / 3 of 4 | 0.99 / 3 of 4 |
+| 矛盾(手書きの食い違い 4 + 食い違わない 4) | 完全に分離(0.75〜0.90 対 0.21〜0.37) | 完全に分離(0.94〜0.98 対 0.09〜0.33) |
+| 食い違う草稿の差し込み先が 1 位 | 3 of 4 | 4 of 4 |
+| 依頼に効く教訓(10 依頼 × 16 本)上位 2 件に効く数 / 1 件も出せない依頼 | 6 / 3(文字一致は 7 / 3) | 10 / 1 |
+| 同上、全組の並べ方 | 0.81 | 0.91 |
+| 始める前に聞くべきだったか(人の答え 59 件)の並べ方 | 0.57 | 0.63 |
+| 依頼の種類「ファイルが変わるか」(結果の正解 116 件)の並べ方 | 0.50 | 0.55 |
+| 1 問の所要 | 約 0.6 秒(Mac、Metal) | 約 0.2 秒 |
+
+差し込み先・矛盾・依頼に効く教訓は Jev の方がはっきり分かれ、依頼に効く教訓では今の文字一致も上回った。「ファイルが変わるか」はどちらも当てずっぽうに近く、依頼文からは決まらない。この表は推奨の根拠で、線の代わりではない。
 
 ## 構成
 

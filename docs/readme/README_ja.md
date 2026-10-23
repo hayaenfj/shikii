@@ -12,7 +12,7 @@
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.7.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.7.0は線と帯の原点に戻ります。標準のモデルはTypeSafeのJev、手元の標準はTernary-Bonsai-27Bで、普通のチャット用GGUFも `shikii-readout` で決定モデルの速さで動きます。wikiの新しい教訓は、決定モデルが差し込み先を探し、矛盾の疑いを出します。**0.7.0への更新は、初期化済みの各プロジェクトの `.shikii/` の中を全部消して初期化し直します。** 残したいものは先に控えてください。[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
+0.7.0は線と帯の原点に戻ります。推奨のモデルはTypeSafeのJevです。環境変数に鍵を置くだけで、取得するものは無く、1問 約0.2秒で答えます。鍵を置けない時は、手元のllama.cppとTernary-Bonsai-27Bが同じ問いに答えます（普通のチャット用GGUFを `shikii-readout` が決定モデルの速さで動かします）。wikiの新しい教訓は、決定モデルが差し込み先を探し、矛盾の疑いを出します。**0.7.0への更新は、初期化済みの各プロジェクトの `.shikii/` の中を全部消して初期化し直します。** 残したいものは先に控えてください。[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
 
 [困りごと](#困りごと) · [shikiiがすること](#shikiiがすること) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [一周の流れ](#一周の流れ) · [会話から学ぶ](#会話から学ぶ) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)
 
@@ -34,7 +34,7 @@ AIに「この問い合わせは前のと同じ案件？」と聞くと「たぶ
 1. **答えを集めて、AIが自分で動いてよい線を引きます。** 人が付けた正解と、自動で観測できる結果から、モデルの自信と当たる割合の関係を測ります。線が引けるまで `act` は出ません。
 2. **すべての判断を帯にします。** `act` は自動で進める、`ask` は人に確かめる、`discard` は動かない、`abstain` は入力か接続先が足りない。自動の判断には、何件の正解と人の確認で線を引いたかの記録が付きます。
 3. **別の聞き方を試して、良い方を残します。** 同じ正解で、質問・選択肢の説明・配置の候補を採点します。人は、意味が変わっていないかを確かめて採用か却下を押すだけです。
-4. **モデルを替えても最初からやり直しません。** 正解はモデルと別に残ります。標準はTypeSafeのJev、手元の標準はTernary-Bonsai-27Bです。普通のチャット用モデルですが、`shikii-readout` が選択肢の文字の確率を読んで決定モデルにし、1問 約0.6秒で答えます。
+4. **モデルを替えても最初からやり直しません。** 正解はモデルと別に残ります。推奨はTypeSafeのJevです。このプロジェクトの記事と答えで試すと、教訓の差し込み先・矛盾・依頼に効く教訓の見分けは、手元のモデルよりJevの方がはっきり分かれました（[測った数字](../guide.ja.md#jevと手元のモデルの比較)）。鍵を置けない時は手元のTernary-Bonsai-27Bです。普通のチャット用モデルですが、`shikii-readout` が選択肢の文字の確率を読んで決定モデルにし、1問 約0.6秒で答えます。
 5. **学んだことを、エージェントが使うwikiに貯めます。** 依頼・返答・訂正が出典付きの教訓になります。新しい教訓を保存する前に、決定モデルが差し込み先の記事を探し、食い違いの疑いを出します。エージェントがどこへ足したかが、その判定の正解として自動で残り、人は答えません。
 
 ## 人がすること
@@ -51,7 +51,7 @@ AIに「この問い合わせは前のと同じ案件？」と聞くと「たぶ
 | やりたいこと | 必要なもの |
 |---|---|
 | 普段の会話から学ぶ | Claude CodeまたはCodex、shikii、利用するプロジェクトでの `shikii --init` |
-| 既製の問いに答えさせる | 標準: TypeSafeのJev（環境変数 `TYPESAFE_API_KEY`。取得するものは無い）。手元の標準: llama.cpp（`llama-server`）とTernary-Bonsai-27Bを `shikii up` で立てる構成（動作中のメモリ約10GB） |
+| 既製の問いに答えさせる | 推奨: TypeSafeのJev（環境変数 `TYPESAFE_API_KEY`。取得するものは無い）。鍵を置けない時: llama.cpp（`llama-server`）とTernary-Bonsai-27Bを `shikii up` で立てる構成（取得 約7.6GB、動作中のメモリ約10GB） |
 | 業務の判定に別のモデルを使う | 下の表のSystem One形式の接続先 |
 | ソースからインストールする | Go 1.27以上、Git、sh。画面は同梱済みでNode.jsは不要 |
 | コンテナで業務のAPIと画面を動かす | DockerとCompose、またはPodmanとCompose provider（[準備](../../integrations/docker.md)） |
@@ -59,17 +59,17 @@ AIに「この問い合わせは前のと同じ案件？」と聞くと「たぶ
 
 | 接続先 | 準備するもの |
 |---|---|
-| Jev（TypeSafe AI） | 標準。`TYPESAFE_API_KEY`。鍵があれば、既製の問いと、`send_to` に `hosted` を含む業務の判定がここへ送られる。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
-| llama.cpp | 通常のチャットGGUFを同梱の `shikii-readout` 越しに（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。Kev-4Bは使えない。[実行例](../../integrations/readout.md) |
+| Jev（TypeSafe AI） | 推奨。`TYPESAFE_API_KEY`。鍵があれば、既製の問いと、`send_to` に `hosted` を含む業務の判定がここへ送られる。1問 約0.2秒。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
+| llama.cpp | 鍵を置けない時。通常のチャットGGUFを同梱の `shikii-readout` 越しに（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。Kev-4Bは使えない。[実行例](../../integrations/readout.md) |
 | Ollama / LM Studio | `/v1/systemone` と決定モデル。業務の判定向け。この版では未検証 |
 
 ## 始め方
 
-### 1. 鍵か、llama.cpp
+### 1. TypeSafeの鍵を置く（推奨）
 
-**標準はTypeSafeのJevです。** [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIの鍵を取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものはありません。既製の問いのために、依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jevに固定するなら `SHIKII_MODEL=hosted` を置きます。
+[TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIの鍵を取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものはなく、普通のPCで動きます。鍵があれば、hookも既製の問いもJevへ送り、手元のモデルは起こしません。既製の問いのために、依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jevに固定するなら `SHIKII_MODEL=hosted` を置きます。
 
-**手元の標準はllama.cppです。** 鍵が無ければ手元のモデルを動かします。macOSでHomebrewなら:
+**鍵を置けない時はllama.cppです。** 鍵が無ければ手元のモデルを動かします。27Bのモデルなので動作中のメモリが約10GB要り、普通のPCでは重いことがあります。macOSでHomebrewなら:
 
 ```sh
 brew install go llama.cpp
@@ -106,7 +106,7 @@ shikii update
 ## 一周の流れ
 
 ```sh
-shikii up                                                        # または export TYPESAFE_API_KEY=…
+shikii up                                                        # この例の問いは pii: true なので手元のモデルへ。既製の問いと pii: false の判定は、鍵があれば Jev へ
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask   （線がまだ無いので人が決める）
 shikii serve --local http://127.0.0.1:8080                       # 答え合わせの画面: http://127.0.0.1:8095

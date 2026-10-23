@@ -21,7 +21,7 @@ import (
 // shikii up: 手元のモデルを 1 コマンドで用意する。
 //   - llama-server を探して裏のポート(--port + 6。既定 8086)で起こす(既定は Ternary-Bonsai-27B Q2_g64。初回は取得に時間がかかる)
 //   - /health が ok になるまで待つ
-//   - 前に shikii-readout を --port(既定 8080)で立てる。後ろが普通の GGUF なら文字の確率を読み出し、学習済みの決定モデル(Kev など)なら
+//   - 前に shikii-readout を --port(既定 8080)で立てる。後ろが普通の GGUF なら文字の確率を読み出し、学習済みの決定モデル(OpenJev など)なら
 //     そのまま通す。shikii・hook・MCP は常に --port を見ればよく、モデルの種類で接続先を変えない
 //   - Ctrl-C で両方止める
 // shikii doctor: 何が動いていて何が足りないかを 1 画面で言う(足りないものには直し方)。
