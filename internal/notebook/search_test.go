@@ -257,3 +257,81 @@ func TestRecallStrongIdentifierNeedsAShortRequestOrCoverage(t *testing.T) {
 		t.Fatalf("適用条件だけに合う語では届けない: %+v", p)
 	}
 }
+
+// 監査 R4: 門の境界を両側から固定する。識別子 1 語は内容語 3 つまで(4 つで届かない)、一致率 0.35 は上下の例、
+// 題に合う漢字の語は内容語 2 つまで(3 つで届かない)、題の経路でも平仮名を含む連なり(表示す)は届けない、題の語も珍しい語に限る。
+func TestRecallGateBoundariesOnBothSides(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	add := func(title, applies string) {
+		d := draft(source, title)
+		d.Lesson, d.AppliesTo = "決まり", applies
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("版を出す前に監査を入れる", "hook の実装と監査の経緯を見直したい時")
+	add("教訓B", "CHANGELOG を書く時")
+	add("教訓C", "画面の色を決める時")
+	for _, c := range []struct {
+		q    string
+		want string
+	}{
+		{"監査を頼む", "監査"},  // 内容語 2 → 題の語で届く
+		{"監査と翻訳と索引", ""}, // 内容語 3 → 題の語では届かない
+		{"監査の結果を文書と翻訳と索引と図に反映して", ""},
+		{"CHANGELOG と翻訳と索引を見直す", ""}, // 内容語 4、一致率 0.25 → 識別子 1 語では届かない
+	} {
+		p, _ := b.Recall(c.q)
+		if (c.want == "" && len(p) != 0) || (c.want != "" && (len(p) != 1 || !strings.Contains(p[0].Title, c.want))) {
+			t.Fatalf("%q → %+v", c.q, p)
+		}
+	}
+	// 一致率 0.35 の上側: 内容語 5 つのうち 4 つが合えば、識別子が遍在していても届く
+	b2 := Book{Root: t.TempDir(), Scope: "/project"}
+	s2 := seed(t, b2, 1)
+	for i, a := range []string{"CHANGELOG を書く時(画面・文書・記録)", "画面と文書と記録の色を決める時", "画面と文書と記録の幅を決める時"} {
+		d := draft(s2, "教訓"+string(rune('A'+i)))
+		d.Lesson, d.AppliesTo = "決まり", a
+		if _, err := b2.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, _ := b2.Recall("CHANGELOG と翻訳と画面と文書と記録を決める"); len(p) == 0 || !strings.Contains(p[0].AppliesTo, "CHANGELOG") {
+		t.Fatalf("一致率が足りれば長めの依頼でも識別子で届く: %+v", p)
+	}
+	// 題の経路: 平仮名を含む連なりでは届けない。題の語も珍しい語に限る
+	b3 := Book{Root: t.TempDir(), Scope: "/project"}
+	s3 := seed(t, b3, 1)
+	for _, title := range []string{"一覧を表示する", "更新しても消えない記録", "画面の色", "画面の幅", "画面の字"} {
+		d := draft(s3, title)
+		d.Lesson, d.AppliesTo = "決まり", "その時"
+		if _, err := b3.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{"表示する", "更新して", "画面", "画面を直す"} {
+		if p, _ := b3.Recall(q); len(p) != 0 {
+			t.Fatalf("題の経路でも平仮名を含む連なりや遍在する語では届けない: %q → %+v", q, p)
+		}
+	}
+}
+
+// 監査 R4: カタカナの長音(ー)で語が切れない。「サーバーを直して」は題「サーバーの起動」に届く。
+func TestRecallKeepsKatakanaLongVowel(t *testing.T) {
+	if terms := searchTerms("サーバー"); len(terms) == 0 {
+		t.Fatal("長音を含むカタカナの語が消える")
+	}
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	for _, title := range []string{"サーバーの起動", "画面の色", "記録の形"} {
+		d := draft(source, title)
+		d.Lesson, d.AppliesTo = "決まり", "その時"
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, _ := b.Recall("サーバーを直して"); len(p) != 1 || !strings.Contains(p[0].Title, "サーバー") {
+		t.Fatalf("長音を含む語で届く: %+v", p)
+	}
+}
