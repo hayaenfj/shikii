@@ -33,7 +33,7 @@ Podmanの場合は、providerを用意して同じ `docker-compose.yml` を `pod
 ## 保存先とモデル
 
 - プロジェクトを `/work` にmountし、`.shikii/` の問い・知識・記録・正解をホストへ残す。コンテナを作り直しても同じ資料を使う。
-- Composeはllama.cppの公式サーバー、shikii-readout、shikiiを立てる。llama.cppは `0.0.0.0:8086`、readoutは `http://llama:8086` の準備を待って `8080` で答え、shikiiは `http://readout:8080` の準備ができるのを待つ。ホストの画面は `127.0.0.1:8095` に出す。OpenJevのような学習済みの決定モデルに替えてもreadoutはその答えをそのまま通すので、接続先は変えない。Kev-4Bは使えない。
+- Composeはllama.cppの公式サーバー、shikii-readout、shikiiを立てる。llama.cppは `0.0.0.0:8086`、readoutは `http://llama:8086` の準備を待って `8080` で答え、shikiiは `http://readout:8080` の準備ができるのを待つ(`TYPESAFE_API_KEY` を渡した時は待たずに立つ)。ホストの画面は `127.0.0.1:8095` に出す。OpenJevのような学習済みの決定モデルに替えてもreadoutはその答えをそのまま通すので、接続先は変えない。Kev-4Bは使えない。
 - shikiiはDockerの `/.dockerenv`、Podmanの `/run/.containerenv` などからコンテナを判別する。モデルやruntimeを替える場合は、その構成の待ち受けと接続先を確認する。
 - 推奨のTypeSafeのJevを使うなら、`TYPESAFE_API_KEY` を環境変数でshikiiのコンテナへ渡す。鍵があれば `pii: false` の判定はJevへ送られ、llamaとreadoutは `pii: true` の判定にだけ使われる。利用する判定が外部送信を許可していることも確かめる。
 - 通常のチャットGGUFを使う場合は、llama.cppとの間に `shikii-readout` を置く。[変換役の条件と実行例](readout.md)。任意のチャットAPIへそのままつながる変換役ではない。

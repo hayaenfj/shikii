@@ -1,6 +1,6 @@
 # Turn a correction into a guard
 
-A guard is a deterministic check that runs at the end of every turn (the `Stop` hook) and **stops the turn** when it fails: the agent receives the reason and must fix the work before ending. Delivering lessons did not change a capable agent's behaviour in the 2026-10-23 experiment (4 of 5 tasks tied); a guard works regardless of the model. Guards live in `.shikii/guards/<id>.yaml` of the project. There are three kinds and no other options:
+A guard is a deterministic check that runs at the end of every turn (the `Stop` hook) and **stops the turn** when it fails: the agent receives the reason and must fix the work before ending. Lessons the agent could already read in the repository changed nothing in the 2026-10-23 experiment (4 of 5 tasks tied); delivered lessons it could not know were followed 6 of 6, and guards fixed 6 of 6 turns, whatever the model knows. Guards live in `.shikii/guards/<id>.yaml` of the project. There are three kinds and no other options:
 
 | kind | checks | fields |
 |---|---|---|

@@ -21,7 +21,7 @@ services:
       - .:/work
     ports:
       - "127.0.0.1:8095:8095"
-    # 鍵は環境変数でだけ渡す(ファイルには置かない)。hosted も使うなら: environment: [DECISIONS_API_KEY]
+    # 鍵は環境変数でだけ渡す(ファイルには置かない)。hosted も使うなら: environment: [TYPESAFE_API_KEY](DECISIONS_API_KEY も読む)
 volumes:
   hf-cache:
 # 別のモデルを使うなら llama の command を替えるだけ(手元の GGUF なら -m <file>)。readout は学習済みの決定モデルの答えもそのまま通すので、他は変えない。

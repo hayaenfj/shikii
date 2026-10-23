@@ -7,7 +7,7 @@
 モデルは確率を返します。shikiiは、その確率で動いてよいかを答えます。人と結果が付けた正解から線を引き、すべての判断を帯（`act` / `ask` / `discard`）にし、学んだことをエージェントが仕事中に使うwikiに貯め、人の訂正は次の仕事で機械が止める検査にします。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-324%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-334%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.7.3-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -42,7 +42,7 @@ AIに「この問い合わせは前のと同じ案件？」と聞くと「たぶ
 3. **別の聞き方を試して、良い方を残します。** 同じ正解で、質問・選択肢の説明・配置の候補を採点します。人は、意味が変わっていないかを確かめて採用か却下を押すだけです。
 4. **モデルを替えても最初からやり直しません。** 正解はモデルと別に残ります。推奨はTypeSafeのJevです。このプロジェクトの記事と答えで試すと、教訓の差し込み先・矛盾・依頼に効く教訓の見分けは、手元のモデルよりJevの方がはっきり分かれました（[測った数字](../guide.ja.md#jevと手元のモデルの比較)）。鍵を置けない時は手元のTernary-Bonsai-27Bです。普通のチャット用モデルですが、`shikii-readout` が選択肢の文字の確率を読んで決定モデルにし、1問 約0.6秒で答えます。
 5. **学んだことを、エージェントが使うwikiに貯めます。** 依頼・返答・訂正が出典付きの教訓になります。新しい教訓を保存する前に、決定モデルが差し込み先の記事を探し、食い違いの疑いを出します。エージェントがどこへ足したかが、その判定の正解として自動で残り、人は答えません。似た依頼の前に教訓が届き、0.7.3からはサブエージェントが始まる時にも親の依頼に近い教訓が届きます。
-6. **人の訂正を「止める検査」にします。** 「変更履歴は英語と日本語を揃える」「この語は使わない」「コミット本文に元の問題と検証を書く」のように機械で確かめられる訂正は、ターンの終わりに走る検査になります。引っかかるとエージェントは終われず、直してから終えます。教訓を届けるだけでは、repoを読める賢いエージェントの行動は変わりませんでした（5課題で4つが同点）。検査なら、モデルの賢さに依らず確実に効きます。
+6. **人の訂正を「止める検査」にします。** 「変更履歴は英語と日本語を揃える」「この語は使わない」「コミット本文に元の問題と検証を書く」のように機械で確かめられる訂正は、ターンの終わりに走る検査になります。引っかかるとエージェントは終われず、直してから終えます。repoを読めば分かる教訓を届けても行動は変わりませんでした（5課題で4つが同点）が、エージェントが知り得ない決まりは届けば6回中6回守られました。検査は、モデルが決まりを知らなくても6回中6回直させました。
 7. **届いた教訓が行動を変えたかを、本番で数えます。** 振り返りで「役立った・使わなかった・害があった・不明」が付き、`shikii status` に届けた数と結果、止めた検査の数と直った数が出ます。合成の実験ではなく、実際の仕事で測ります。
 
 ## 人がすること
@@ -115,7 +115,7 @@ shikii update
 ## 一周の流れ
 
 ```sh
-shikii up                                                        # この例の問いは pii: true なので手元のモデルへ。既製の問いと pii: false の判定は、鍵があれば Jev へ
+SHIKII_MODEL=local shikii up                                     # この例の問いは pii: true なので手元のモデルが要る。鍵があると up は SHIKII_MODEL=local の時だけ起こす
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask   （線がまだ無いので人が決める）
 shikii serve --local http://127.0.0.1:8080                       # 答え合わせの画面: http://127.0.0.1:8095
