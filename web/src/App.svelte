@@ -68,7 +68,7 @@
         <Tabs specs={st.specs} {hasWiki} active={activeTab} />
       </aside>
       <div class="workspace-content">
-        {#if st.summary}<Summary summary={st.summary} />{/if}
+        {#if st.summary}<Summary summary={st.summary} specs={st.specs} model={st.model} />{/if}
         {#if data.loadError}<p class="audit" role="alert">{t('error')(data.loadError)}</p>{/if}
         {#if ui.showHelp}<HowTo />{/if}
         {#if activeTab === 'wiki'}

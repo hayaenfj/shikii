@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,29 +64,40 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// 結果で正解が付く判定の「迷い」は結果待ち、人が答える判定の「迷い」は人待ち
+	st.AppendRecord(store.Record{TraceID: "pk1", SpecID: "prompt-kind", Type: "choice", Model: "m", Inputs: map[string]string{"request": "x"}, InputsHash: "pk1", Raw: map[string]float64{"edit": .5, "explain": .5}, Top: "edit", Band: "ask", At: time.Now()})
+	st.AppendRecord(store.Record{TraceID: "np1", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": "o"}, InputsHash: "np1", Raw: map[string]float64{"yes": .5, "no": .5}, Top: "yes", Band: "ask", At: time.Now()})
 	o := serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}
 	h := newServer(o)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
 	var body struct {
 		Specs []map[string]any `json:"specs"`
+		Model map[string]any   `json:"model"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("%v: %s", err, rec.Body.String()[:200])
 	}
-	found := false
-	for _, sp := range body.Specs {
-		if sp["id"] == "wiki-conflict" {
-			found = true
-			if sp["person_answers"] != false || sp["unlabeled"] != float64(0) || sp["awaiting_results"] != float64(3) || sp["truth_source"] != "results" {
-				t.Fatalf("人が答えない判定は確認待ち 0、結果待ち 3: %v", sp)
-			}
-		}
-		if sp["id"] == "needs-plan" && sp["person_answers"] != true {
-			t.Fatalf("hook の判定は人が答える: %v", sp)
-		}
+	if body.Model["name"] == nil {
+		t.Fatalf("AI の状態: どのモデルで判定しているか: %v", body.Model)
 	}
-	if !found {
-		t.Fatal("wiki-conflict が無い")
+	got := map[string]map[string]any{}
+	for _, sp := range body.Specs {
+		got[sp["id"].(string)] = sp
+	}
+	wc := got["wiki-conflict"]
+	if wc == nil || wc["person_answers"] != false || wc["waiting_for_person"] != float64(0) || wc["awaiting_results"] != float64(3) || wc["unlabeled"] != float64(3) || wc["truth_source"] != "results" {
+		t.Fatalf("人が答えない判定は人待ち 0、結果待ち 3: %v", wc)
+	}
+	if pk := got["prompt-kind"]; pk["waiting_for_person"] != float64(0) || pk["awaiting_results"] != float64(1) {
+		t.Fatalf("結果で正解が付く判定の迷いは結果待ち: %v", pk)
+	}
+	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["person_answers"] != true {
+		t.Fatalf("人が答える判定の迷いは人待ち: %v", np)
+	}
+	q := httptest.NewRecorder()
+	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=prompt-kind", nil))
+	if !strings.Contains(strings.ReplaceAll(q.Body.String(), " ", ""), `"waits_for_person":false`) {
+		t.Fatalf("列の項目にも人待ちかを付ける: %s", q.Body.String()[:200])
 	}
 }
