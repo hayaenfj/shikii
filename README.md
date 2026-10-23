@@ -7,7 +7,7 @@
 A model gives you a probability. shikii tells you whether you may act on it. It draws the line from the answers people and results supply, turns every decision into a band (`act` / `ask` / `discard`), keeps what it learned in a wiki that your agent uses while it works, and turns your corrections into checks that stop the agent next time.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-324%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-334%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.7.3-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -42,7 +42,7 @@ If a person has to check every answer and repeat every correction, there was lit
 3. **Tries other ways of asking and keeps the better one.** On the same truths it scores alternative questions, option descriptions and prompt layouts. A person only confirms that the meaning is unchanged before a better one is adopted.
 4. **Lets you swap the model without starting over.** Truths live apart from the model. The recommended model is TypeSafe Jev: on this project's pages and answers it separated lesson placement, contradictions and relevant lessons more clearly than the local model ([the numbers](docs/guide.md#jev-against-the-local-standard)). Without a key, the local standard is Ternary-Bonsai-27B, an ordinary chat model that `shikii-readout` turns into a decision model by reading the probability of each option letter, at about 0.6 s per question.
 5. **Keeps what it learned in a wiki your agent uses.** Requests, replies and corrections become lessons with sources. Before a new lesson is saved, the decision model finds the page it belongs to and flags a contradiction; what the agent then saves becomes the truth for that judgement, so nobody labels it. Relevant lessons reach the agent before similar requests, and since 0.7.3 they reach a subagent when it starts, based on the parent's request.
-6. **Turns your corrections into guards.** Corrections that a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become checks that run at the end of every turn. When one fails, the agent cannot end the turn until it fixes the work. Delivering lessons alone did not change what a capable, repo-reading agent did (4 of 5 tasks tied); a guard works whatever the model.
+6. **Turns your corrections into guards.** Corrections that a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become checks that run at the end of every turn. When one fails, the agent cannot end the turn until it fixes the work. Lessons that merely repeat what the agent can read in the repository changed nothing (4 of 5 tasks tied), while delivered lessons the agent could not know otherwise were followed 6 times in 6; a guard works even when the model knows no rule (6 of 6).
 7. **Counts in production whether delivered lessons changed anything.** Reflection marks each delivered lesson helpful, unused, harmful or unknown, and `shikii status` shows the counts, plus how many turns guards stopped and how many were fixed before the turn ended. Measured in real work, not in synthetic experiments.
 
 ## What you do
@@ -115,7 +115,7 @@ This fetches the latest stable release, verifies its hashes and replaces shikii 
 ## One full loop
 
 ```sh
-shikii up                                                        # this question is pii: true, so it stays on the local model. The built-in questions and pii: false decisions go to Jev when the key is set
+SHIKII_MODEL=local shikii up                                     # this question is pii: true, so it needs the local model; with a key set, up only starts one under SHIKII_MODEL=local
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask   (no line yet: a person decides)
 shikii serve --local http://127.0.0.1:8080                       # answer page: http://127.0.0.1:8095
@@ -160,7 +160,7 @@ The agent drafts a guard from a correction (`shikii guard add`, disabled) and a 
 | Guards | Fixed rules; drafts by the agent | Decide whether to enable |
 | Business truths and the meaning of a wording | You | Label, and confirm the meaning before adoption |
 
-`shikii status` shows whether it is working: how many lessons were delivered and marked helpful, unused, harmful or unknown; how many turns guards stopped and how many were fixed; how many decisions waited for a person.
+`shikii status` shows whether it is working: how many lessons were delivered and marked helpful, unused, harmful or unknown; how many turns guards stopped and how many were fixed; how many decisions wait for a person.
 
 The design follows [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): raw sources are kept, and the agent ingests, searches and revises. Details: [the hooks](integrations/claude-code.md) (Japanese), [wiki editing](skills/shikii/references/wiki.md), [guards](skills/shikii/references/guards.md).
 

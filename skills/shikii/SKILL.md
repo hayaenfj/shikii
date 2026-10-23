@@ -47,4 +47,4 @@ Hooks run when a user request arrives and when the turn closes, not before every
 - Source-backed wiki maintenance: [wiki.md](references/wiki.md).
 - Batched assessment and memory effects: [review.md](references/review.md).
 
-Typical local calls: `shikii decide .shikii/decisions/<id>.yaml -i key=value --local http://127.0.0.1:8080`, `shikii status .shikii/decisions/*.yaml`, and `shikii check .shikii/decisions/*.yaml`. See `shikii --help` for the full CLI. `shikii update` updates installed binaries, hooks and skill while preserving project data.
+Typical local calls: `shikii decide .shikii/decisions/<id>.yaml -i key=value --local http://127.0.0.1:8080`, `shikii status .shikii/decisions/*.yaml`, and `shikii check .shikii/decisions/*.yaml`. See `shikii --help` for the full CLI. `shikii update` updates installed binaries, hooks and skill while preserving project data (except the one-time wipe of `.shikii/` when updating from 0.6.0 or earlier).
