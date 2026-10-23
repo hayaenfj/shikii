@@ -31,9 +31,17 @@
   });
 
   // 件数が増えた時の見せ方: 種類ごとの数(押すと絞り込み)、1 件ずつ / 一覧、スキップ、ほかに待っている数
-  const kind = it => it.waits_for_person === false ? 'other' : it.audit ? 'audit' : it.band === 'ask' ? 'ask' : 'other'; // other = 結果待ち(人は答えない)
-  let all = $derived(sp.queue?.items || []);
-  let counts = $derived({ all: ui.done ? (sp.unlabeled || 0) : all.length, ask: all.filter(i => kind(i) === 'ask').length, audit: all.filter(i => kind(i) === 'audit').length, other: all.filter(i => kind(i) === 'other').length });
+  // 人が答えない判定(wiki の矛盾・差し込み先): AI が答え、正解は振り返りの結果から付く。列は「振り返りで確定する」と「確定済み」だけ(0.7.6)
+  let machineOnly = $derived(sp.person_answers === false);
+  // 列(lane): you = 未回答(あなたが答える)、results = 次の依頼・振り返りで確定する(人は答えない)、done = 回答済み / 確定済み
+  let lane = $derived(machineOnly ? (ui.done ? 'done' : 'results') : ui.done ? 'done' : ui.results ? 'results' : 'you');
+  const forYou = it => !machineOnly && it.waits_for_person !== false;
+  const kind = it => it.audit ? 'audit' : it.band === 'ask' ? 'ask' : 'all';
+  let queued = $derived(sp.queue?.items || []);
+  let all = $derived(queued.filter(it => lane === 'results' ? !forYou(it) : forYou(it)));
+  let resultsCount = $derived(queued.filter(it => !forYou(it)).length + Math.max(0, (sp.awaiting_results || 0) - queued.filter(it => !forYou(it)).length));
+  // 未回答(あなた)の数: 列を読む前(回答済みを見ている時)は status の人待ちの数
+  let counts = $derived({ all: sp.queue ? queued.filter(forYou).length : (sp.waiting_for_person || 0), ask: queued.filter(it => forYou(it) && kind(it) === 'ask').length, audit: queued.filter(it => forYou(it) && kind(it) === 'audit').length });
   // 表示中の列から仕事の印を数える。回答済みでも、未回答の列を読む必要はない。
   let projectItems = $derived(ui.done ? (sp.answered || []) : all);
   let projects = $derived.by(() => {
@@ -43,7 +51,7 @@
   });
   // この判定に無い仕事が選ばれたまま(別の判定で選んだ)なら絞らない。回答済みにも同じ絞り込みをかける
   let activeProject = $derived(projects.some(([name]) => name === ui.project) ? ui.project : '');
-  let matching = $derived(all.filter(it => (ui.filter === 'all' || kind(it) === ui.filter) && (!activeProject || it.project === activeProject)));
+  let matching = $derived(all.filter(it => (lane !== 'you' || ui.filter === 'all' || kind(it) === ui.filter) && (!activeProject || it.project === activeProject)));
   let answeredVisible = $derived((sp.answered || []).filter(it => !activeProject || it.project === activeProject));
   // URL で指された判定(ui.pinned)は先頭に(hook の「あとで答える → URL」から来た人が、その 1 件をすぐ答えられる)
   let visible = $derived.by(() => {
@@ -52,9 +60,7 @@
     if (i > 0) v.unshift(v.splice(i, 1)[0]);
     return v;
   });
-  let extra = $derived(Math.max(0, (sp.unlabeled || 0) - all.length));
-  // 人が答えない判定(wiki の矛盾・差し込み先): AI が答え、正解は振り返りの結果から付く。カードは読むだけ(0.7.6)
-  let machineOnly = $derived(sp.person_answers === false);
+  let extra = $derived(lane === 'you' ? Math.max(0, (sp.waiting_for_person || 0) - all.length) : 0);
 </script>
 
 <section class="decision-panel">
@@ -95,7 +101,7 @@
   {/if}
   {#if sp.review_quality?.scored}<p class="k review-quality">{t('reviewQuality')(sp.review_quality)}</p>{/if}
   {#if sp.review_pending}<p class="k">{t('reviewPending')(sp.review_pending)}</p>{/if}
-  <Chips {counts} labels={sp.labels} />
+  <Chips {counts} labels={sp.labels} {machineOnly} {resultsCount} />
   {#if projects.length > 1}
     <div class="chips projects">
       <span class="k">{t('byProject')}</span>
@@ -121,20 +127,19 @@
   {:else}
     {#if !visible.length}
       <div class="empty"><span class="empty-icon" aria-hidden="true">✓</span>
-        <p>{all.length ? t('emptyFiltered') : t('empty')}</p>
+        <p>{lane === 'results' ? t('emptyResults') : all.length ? t('emptyFiltered') : t('empty')}</p>
         {#if matching.length}<button type="button" class="weak" onclick={() => skipped.clear()}>{t('unskip')(matching.length)}</button>{/if}
         {#if extra}<div>{t('more')(extra)}</div>{/if}
       </div>
     {:else if ui.view === 'one'}
-      <div class="todo">{t('todo')}</div>
-      <div class="keys">{t('keysHint')}</div>
+      {#if lane === 'you'}<div class="todo">{t('todo')}</div><div class="keys">{t('keysHint')}</div>{:else}<div class="todo lane-results">{t(machineOnly ? 'machineOnlyLane' : 'resultsLane')}</div>{/if}
       {#key visible[0].trace_id}
-        <ItemCard {sp} it={visible[0]} readonly={machineOnly || visible[0].waits_for_person === false} pos={t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')} />
+        <ItemCard {sp} it={visible[0]} readonly={lane === 'results'} pos={t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')} />
       {/key}
     {:else}
-      <div class="keys">{t('keysHint')}</div>
+      {#if lane === 'you'}<div class="keys">{t('keysHint')}</div>{:else}<div class="todo lane-results">{t(machineOnly ? 'machineOnlyLane' : 'resultsLane')}</div>{/if}
       {#each visible.slice(0, ui.listSize) as it (it.trace_id)}
-        <ItemCard {sp} {it} readonly={machineOnly || it.waits_for_person === false} />
+        <ItemCard {sp} {it} readonly={lane === 'results'} />
       {/each}
       {#if visible.length > ui.listSize || extra}
         <button type="button" class="weak" onclick={() => { ui.listSize += 30; }}>{t('showMore')(Math.max(0, visible.length - ui.listSize) + extra)}</button>

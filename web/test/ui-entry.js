@@ -161,12 +161,37 @@ async function checkMachineOnlySpec(target) {
   const buttons = target.querySelectorAll('.item .btns button').length;
   const notice = (target.querySelector('.machine-only')?.textContent || '').includes('結果');
   const badge = !!target.querySelector('[data-tab="wiki-conflict"] .badge');
+  // 列: 「未回答」の列が無く、「振り返りで確定する」の列が選ばれている(0.7.6)
+  const lanes = !target.querySelector('.answer-tabs [data-lane="you"]') && target.querySelector('.answer-tabs [data-lane="results"]')?.classList.contains('active') && (target.querySelector('.lane-results')?.textContent || '').includes('振り返り');
   let clicked = 0;
   for (const b of target.querySelectorAll('.item button')) b.addEventListener('click', () => { clicked++; });
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); flushSync();
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
-  const ok = !!card && buttons === 0 && notice && !badge && clicked === 0;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答えない判定: カード=' + !!card + ', 答えのボタン=' + buttons + ', 案内=' + notice + ', 確認待ちの印なし=' + !badge + ', キーで押さない=' + (clicked === 0) + ')');
+  const ok = !!card && buttons === 0 && notice && !badge && clicked === 0 && !!lanes;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答えない判定: カード=' + !!card + ', 答えのボタン=' + buttons + ', 案内=' + notice + ', 確認待ちの印なし=' + !badge + ', キーで押さない=' + (clicked === 0) + ', 列は振り返りで確定する=' + !!lanes + ')');
+  return ok;
+}
+
+
+// 0.7.6: 知識の欄は「AI が蓄積しているもの」を関連リンクで繋がる群に階層で見せる。群を開くと記事が並び、題を押すと本文へ。繋がりの無い記事は「単独の記事」
+async function checkNotebookTree(target) {
+  const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
+  const mk = (id, title, related = []) => ({ id, revision: 'r' + id, title, lesson: title + 'の決まり', applies_to: title + 'の時', sources: [{ id: 'src' + id }], related, status: 'hypothesis' });
+  const lessons = [mk('a1', '公開の手順', ['a2']), mk('a2', '監査', ['a3']), mk('a3', '変更履歴'), mk('b1', 'コミットの説明', ['b2']), mk('b2', 'コミットの作者'), mk('c1', '単独')];
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons, sources: [] } : url.startsWith('v1/wiki/notebook') ? { lessons: [lessons[1]] } : { items: [] } });
+  Object.assign(ui, { tab: 'wiki', advanced: true, done: false, results: false, pinned: '' });
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  const app = mount(App, { target }); await settle(); await settle();
+  const groups = [...target.querySelectorAll('[data-tree-group]')].map(g => g.dataset.treeGroup);
+  const grouped = groups.length === 3 && groups[0] === 'a2' && groups[1] === 'b2' && groups[2] === 'single'; // 大きい群から。群の名はいちばん指されている記事
+  const closed = !target.querySelector('[data-tree-page]');
+  target.querySelector('[data-tree-group="a2"] .tree-toggle')?.click(); flushSync();
+  const pages = [...target.querySelectorAll('[data-tree-group="a2"] [data-tree-page]')].map(b => b.dataset.treePage);
+  const opened = pages.length === 3 && pages.includes('a1') && pages.includes('a3');
+  const how = (target.querySelector('[data-wiki-tree] .k')?.textContent || '').includes('6');
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  const ok = grouped && closed && opened && how;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (知識の階層: 群=' + grouped + ' ' + JSON.stringify(groups) + ', 畳んで始まる=' + closed + ', 開くと記事=' + opened + ', 概要=' + how + ')');
   return ok;
 }
 
@@ -220,7 +245,8 @@ export async function run() {
   const summaryOK = await checkSummary(target);
   const keysOK = await checkKeysOnlyOnDecisions(target);
   const machineOnlyOK = await checkMachineOnlySpec(target);
-  const ok = summaryOK && keysOK && machineOnlyOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const treeOK = await checkNotebookTree(target);
+  const ok = summaryOK && keysOK && machineOnlyOK && treeOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -512,7 +538,7 @@ function checkAnswerFocus(target) {
 // 初めて開く時は確認待ちへ案内し、選択済みの判定は勝手に切り替えない。
 async function checkLanding(target) {
   const realFetch = globalThis.fetch, savedState = data.state, savedTab = ui.tab;
-  const specs = ['done-as-asked', 'needs-plan'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: id === 'needs-plan' ? 2 : 0, queue: { items: [] } }));
+  const specs = ['done-as-asked', 'needs-plan'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: id === 'needs-plan' ? 2 : 0, waiting_for_person: id === 'needs-plan' ? 2 : 0, person_answers: true, queue: { items: [] } }));
   const calls = [];
   const item = { trace_id: 'keyboard', band: 'ask', top: 'yes', p: .8, at: '2026-10-22T00:00:00Z', answerable: true, inputs: { request: '依頼' }, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
   globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push(JSON.parse(opts.body)); return { ok: true, json: async () => url === 'v1/status' ? { specs } : url.startsWith('v1/queue') ? { items: url.includes('needs-plan') ? [item] : [] } : opts?.body ? { truth: 'yes' } : {} }; };
@@ -623,10 +649,10 @@ async function checkLazyNavigation(target) {
   await settle(); const initial = calls.length === 2 && !!target.querySelector('.decision-panel');
   calls = []; target.querySelector('[data-tab="done-as-asked"]')?.click(); flushSync(); await settle();
   const switched = calls.includes('v1/queue?spec=done-as-asked&limit=200') && !!target.querySelector('.decision-panel');
-  calls = []; target.querySelectorAll('.answer-tabs button')[1]?.click(); flushSync(); await settle();
+  calls = []; target.querySelector('.answer-tabs [data-lane="done"]')?.click(); flushSync(); await settle();
   const answered = calls.length === 2 && calls.includes('v1/answered?spec=done-as-asked&limit=200') && target.querySelector('.answer-tabs button span')?.textContent === '1';
   holdQueue = true;
-  target.querySelector('.answer-tabs button')?.click(); flushSync(); await settle();
+  target.querySelector('.answer-tabs [data-lane="you"]')?.click(); flushSync(); await settle();
   const waiting = !!target.querySelector('[role="status"]') && !target.querySelector('.decision-panel');
   holdQueue = false; releaseQueue?.({ items: [] }); await settle();
   target.querySelector('#mode')?.click(); flushSync(); await settle(); calls = [];

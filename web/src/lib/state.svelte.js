@@ -19,6 +19,7 @@ export const ui = $state({
 
   listSize: 30,
   done: false,
+  results: false, // 「次の依頼・振り返りで確定する」の列を見ている(人は答えない記録。0.7.6)
 });
 export const skipped = new SvelteSet();
 export const data = $state({ state: null, loadError: '' });
@@ -33,7 +34,7 @@ export function selectedTab(st, selection = ui) {
   if (!st?.specs?.length) return null;
   if (selection.advanced && selection.tab === 'wiki') return 'wiki';
   return st.specs.find(s => s.id === selection.tab)?.id
-    || st.specs.find(s => s.unlabeled > 0)?.id || st.specs[0].id;
+    || st.specs.find(s => s.waiting_for_person > 0)?.id || st.specs[0].id;
 }
 
 let loadVersion = 0;
