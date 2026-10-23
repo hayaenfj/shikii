@@ -101,5 +101,8 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.7 ui-monospace,m
 .summary-guards .state { padding:1px 6px; border:1px solid var(--line); border-radius:5px; font-size:10px; }
 .summary-guards .state.on { border-color:var(--accent); color:var(--accent); }
 
+/* 人が答えない判定の案内(0.7.6) */
+.decision-phase.machine-only { color: var(--muted, #666); }
+
   .wiki-article.svelte-8nax8n p:where(.svelte-8nax8n) { white-space: pre-wrap; overflow-wrap: anywhere; }
   .wiki-article.svelte-8nax8n h4:where(.svelte-8nax8n) { margin-bottom: .5rem; }

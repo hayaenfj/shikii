@@ -7,7 +7,7 @@
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
 
-  let { sp, it, pos = '' } = $props();
+  let { sp, it, pos = '', readonly = false } = $props(); // readonly: 人が答えない判定(AI が答え、正解は結果から)。ボタンを出さない(0.7.6)
   let busy = $state(false);
   let redoRes = $state(null); // やり直しの結果(前・今・答えとの一致)。文は描く時に組むので、言語を切り替えても変わる
 
@@ -111,7 +111,7 @@
   {:else if it.top}
     <div class="guess prediction"><div><span class="prediction-label">{t('predictionHeading')}</span><strong>{t('aiGuess')(topName, (guess.p * 100).toFixed(0))}</strong><span class="prediction-band">{bandWord}{#if it.audit} · {t('auditShort')}{/if}</span></div><div class="confidence-ring" style="--confidence:{Math.round(guess.p * 100)}%" aria-hidden="true"><span>{Math.round(guess.p * 100)}<small>%</small></span></div></div>
   {/if}
-  {#if !it.legacy_planning}<div class="answer-area"><div class="answer-heading"><span>{t('yourDecision')}</span><small>{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small></div>
+  {#if !it.legacy_planning && !readonly}<div class="answer-area"><div class="answer-heading"><span>{t('yourDecision')}</span><small>{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small></div>
     <div class="btns" role="group" aria-label={t('yourDecision')}>
       {#each it.choices as c, i}
         <button type="button" class="answer-choice" class:top={!it.review && c.truth === guess.truth} class:active={c.truth === it.truth} aria-pressed={c.truth === it.truth} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>

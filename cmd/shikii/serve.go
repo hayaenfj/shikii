@@ -824,8 +824,15 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if last.log != "" {
 			result = &last.result
 		}
+		truthSource, personAnswers, awaiting := "person", true, 0
+		if outcomeSpecs[sp.ID] {
+			truthSource = "results"
+		}
+		if machineOnlySpecs[sp.ID] { // 人は答えない: 確認待ちは 0、結果待ちの数だけ別に出す(0.7.6: wiki の矛盾 60 件が確認待ちに見えた)
+			personAnswers, awaiting, todo = false, todo, 0
+		}
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
-			"unlabeled": todo, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
+			"unlabeled": todo, "truth_source": truthSource, "person_answers": personAnswers, "awaiting_results": awaiting, "review_pending": reviewPending, "review_quality": store.ReviewQuality(reviews, labeled), "min_n": sp.Eval.MinN, "keys": keys, "last_calibration": last.log, "calibration_result": result, "planning_context": needsPlanningContext(sp), "legacy_planning_records": legacyPlanning,
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })

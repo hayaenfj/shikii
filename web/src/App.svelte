@@ -23,7 +23,7 @@
 
   function onKey(ev) {
     // 判定の欄の未回答の列でだけ効く(知識の欄や回答済みで別のボタンを押さない。監査 R2)。入力欄やボタンに居る時は邪魔しない
-    if (activeTab === 'wiki' || ui.done) return;
+    if (activeTab === 'wiki' || ui.done || activeSpec?.person_answers === false) return;
     if (ev.target?.closest?.('input, select, textarea, button, a, summary, [contenteditable="true"]')) return;
     const first = document.querySelector('.item'); if (!first) return;
     if (/^[1-9]$/.test(ev.key)) { const b = first.querySelectorAll('.btns button')[Number(ev.key) - 1]; if (b) { ev.preventDefault(); b.click(); } }

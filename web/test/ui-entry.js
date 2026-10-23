@@ -146,6 +146,29 @@ async function checkSummary(target) {
   return ok;
 }
 
+
+// 0.7.6: 人が答えない判定(wiki の矛盾)は、確認待ちの印を出さず、カードに答えのボタンを出さず、案内を 1 行出す。キー操作も押さない。
+async function checkMachineOnlySpec(target) {
+  const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
+  const specs = loadingSpecs().concat([{ id: 'wiki-conflict', type: 'noul', titles: { ja: 'wiki の矛盾' }, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 0, awaiting_results: 3, person_answers: false, truth_source: 'results' }]);
+  const item = { trace_id: 'wc1', at: '2026-10-23T00:00:00Z', band: 'discard', top: 'no', p: 0.8, model: 'm', inputs: { lesson: 'a', new_lesson: 'b' }, inputs_hash: 'wc1', raw: { yes: 0.2, no: 0.8 }, stale: false, answerable: true, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal', audit: false };
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs } : url.startsWith('v1/queue?spec=wiki-conflict') ? { items: [item] } : { items: [] } });
+  Object.assign(ui, { tab: 'wiki-conflict', advanced: false, done: false, pinned: '', view: 'list' });
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  const app = mount(App, { target }); await settle(); await settle();
+  const card = target.querySelector('.item');
+  const buttons = target.querySelectorAll('.item .btns button').length;
+  const notice = (target.querySelector('.machine-only')?.textContent || '').includes('結果');
+  const badge = !!target.querySelector('[data-tab="wiki-conflict"] .badge');
+  let clicked = 0;
+  for (const b of target.querySelectorAll('.item button')) b.addEventListener('click', () => { clicked++; });
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); flushSync();
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  const ok = !!card && buttons === 0 && notice && !badge && clicked === 0;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答えない判定: カード=' + !!card + ', 答えのボタン=' + buttons + ', 案内=' + notice + ', 確認待ちの印なし=' + !badge + ', キーで押さない=' + (clicked === 0) + ')');
+  return ok;
+}
+
 // 監査 R2: キー操作(1〜9 / Enter / →)は判定の欄の未回答でだけ効く。知識の欄では最初の .item のボタン(関連する知識・主張にする)を押さない。
 async function checkKeysOnlyOnDecisions(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
@@ -195,7 +218,8 @@ export async function run() {
   const lazyNavOK = await checkLazyNavigation(target);
   const summaryOK = await checkSummary(target);
   const keysOK = await checkKeysOnlyOnDecisions(target);
-  const ok = summaryOK && keysOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const machineOnlyOK = await checkMachineOnlySpec(target);
+  const ok = summaryOK && keysOK && machineOnlyOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 

@@ -53,6 +53,8 @@
     return v;
   });
   let extra = $derived(Math.max(0, (sp.unlabeled || 0) - all.length));
+  // 人が答えない判定(wiki の矛盾・差し込み先): AI が答え、正解は振り返りの結果から付く。カードは読むだけ(0.7.6)
+  let machineOnly = $derived(sp.person_answers === false);
 </script>
 
 <section class="decision-panel">
@@ -67,13 +69,18 @@
     </span>
   </h2>
   <div class="overview-stats">
+    {#if machineOnly}
+    <div class="stat-tile"><span>{t('awaitingResults')}</span><strong>{sp.awaiting_results || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot record-dot" aria-hidden="true"></span></div>
+    {:else}
     <div class="stat-tile"><span>{t('pendingCount')}</span><strong>{sp.unlabeled || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot pending-dot" aria-hidden="true"></span></div>
+    {/if}
     <div class="stat-tile"><span>{t('checkedCount')}</span><strong>{sp.labels || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot checked-dot" aria-hidden="true"></span></div>
     <div class="stat-tile"><span>{t('recordCount')}</span><strong>{sp.records || 0}<small>{t('countUnit')}</small></strong><span class="stat-dot record-dot" aria-hidden="true"></span></div>
   </div>
   <div class="question-box"><div class="question-icon" aria-hidden="true">?</div><div><div class="eyebrow">{t('questionHeading')}</div>
   {#if question}<div class="q">{question}</div>{/if}
-  {#if sp.id === 'needs-plan'}<p class="decision-phase">{t('beforeWork')}</p>
+  {#if machineOnly}<p class="decision-phase machine-only">{t('machineOnly')(sp.awaiting_results || 0)}</p>
+  {:else if sp.id === 'needs-plan'}<p class="decision-phase">{t('beforeWork')}</p>
   {:else if sp.id === 'done-as-asked' || sp.id === 'changes-in-scope'}<p class="decision-phase">{t('afterWork')}</p>{/if}
   </div></div>
   <div class="status"><div class="learning-line"><span class="learning-icon" aria-hidden="true">◒</span><span>{progress.plain}</span><span class="learning-number">{Math.min(n, sp.min_n)} / {sp.min_n}</span></div><div class="bar" role="progressbar" aria-label={t('learningProgress')} aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"><div style="width:{progress.pct}%"></div></div></div>
@@ -121,12 +128,12 @@
       <div class="todo">{t('todo')}</div>
       <div class="keys">{t('keysHint')}</div>
       {#key visible[0].trace_id}
-        <ItemCard {sp} it={visible[0]} pos={t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')} />
+        <ItemCard {sp} it={visible[0]} readonly={machineOnly} pos={t('position')(1, visible.length) + (extra ? ' · ' + t('more')(extra) : '')} />
       {/key}
     {:else}
       <div class="keys">{t('keysHint')}</div>
       {#each visible.slice(0, ui.listSize) as it (it.trace_id)}
-        <ItemCard {sp} {it} />
+        <ItemCard {sp} {it} readonly={machineOnly} />
       {/each}
       {#if visible.length > ui.listSize || extra}
         <button type="button" class="weak" onclick={() => { ui.listSize += 30; }}>{t('showMore')(Math.max(0, visible.length - ui.listSize) + extra)}</button>

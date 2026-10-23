@@ -17,6 +17,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
+// machineOnlySpecs は、人が答えない判定(AI が答え、正解は振り返りの結果から付く)。画面は確認待ちに数えず、カードを読むだけにする(0.7.6)。
+var machineOnlySpecs = map[string]bool{"wiki-place": true, "wiki-conflict": true}
+
 // 固定の規則(オプションは無い)。
 const (
 	placeCandidatesMax = 24  // 突き合わせる記事の上限(多ければ検索語の一致が高い順)
