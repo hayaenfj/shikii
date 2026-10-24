@@ -194,6 +194,7 @@ type hookSession struct {
 	ReflectAskedTurn string           `json:"reflect_asked_turn,omitempty"` // ReflectAsked を頼んだターン(別のターンの残りで止めない。監査 R5)
 	RitualStopped    string           `json:"ritual_stopped,omitempty"`     // 作法の検査で止めたターン(通知の後の Stop でもう一度止めない。監査 R5)
 	PageNoticed      bool             `json:"page_noticed,omitempty"`       // 画面の場所をこのセッションで伝えた(0.8.0)
+	HabitsNoticed    bool             `json:"habits_noticed,omitempty"`     // 作業記録と決まりの残し方を、このセッションで伝えた(0.8.1)
 	At               time.Time        `json:"at"`
 }
 
@@ -703,16 +704,26 @@ func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hook
 	}
 	sub := hookSession{Scope: snapshot.Scope} // 届けた版の控えは持たない: 親が受け取っていてもサブエージェントには届ける
 	context, err := memoryContextFor(agent, snapshot.Scope, snapshot.Request, &sub, snapshot.TurnID, in.AgentID)
-	if err != nil || context == "" {
+	if err != nil {
 		return hookOut{}, err
+	}
+	// 報告の置き場はサブエージェントにも届ける(監査・調査の報告を repo の中に散らかさない。0.8.1)
+	if context == "" {
+		return hookOut{Context: subagentHandoffNotice}, nil
 	}
 	kind := in.AgentType
 	if kind == "" {
 		kind = "subagent"
 	}
 	head := "shikii: このサブエージェント(" + kind + ")に、親の依頼「" + cut(snapshot.Request, 80) + "」に近い記憶を届けます。"
-	return hookOut{Context: joinLines(head, context)}, nil
+	return hookOut{Context: joinLines(joinLines(head, context), subagentHandoffNotice)}, nil
 }
+
+// habitsNotice は作業規則が無くても届く作法の一言(セッションに 1 回)。subagentHandoffNotice はサブエージェントへの報告の置き場。
+const (
+	habitsNotice          = "shikii: 後で人や別のエージェントが読む報告・監査・調査メモ・差分・画像は、repo の中ではなく作業記録 .shikii/handoff/<仕事>/ に置きます(shikii handoff write <パス>、または shikii_wiki の handoff_write。人は画面の知識の欄で読めます)。サブエージェントにも書き先をそこで指定します。本人が今後の決まりや訂正を言ったら、次の振り返りを待たずにその場で wiki の教訓にします(shikii wiki capture → reflect place → reflect submit)。"
+	subagentHandoffNotice = "shikii: 報告や作業ファイルを残すなら、repo の中ではなく作業記録 .shikii/handoff/<仕事>/ に書きます(shikii handoff write <パス>、または shikii_wiki の handoff_write)。親が書き先を指定していればそれに従います。"
+)
 
 // hookUserPrompt は考える前の 2 つ(prompt-kind と needs-plan)を聞き、依頼と作業ツリーの状態を控える。前の依頼の結果の正解はここ(次の依頼が来た時)で決める。
 func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
@@ -826,6 +837,12 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if pageURL != "" && !snapshot.PageNoticed { // 立っている画面の場所をセッションに 1 回
 		out.Context = joinLines(out.Context, "shikii: このプロジェクトの画面: "+pageURL+"/")
 		muts = append(muts, func(s *hookSession) { s.PageNoticed = true })
+	}
+	// 作業規則(CLAUDE.md / AGENTS.md)の無いプロジェクトでも届くように、作業記録と決まりの残し方をセッションに 1 回伝える(0.8.1)。
+	// hook がこのターンで既に何か伝える時だけ添える(線の無い間に黙るターンは黙ったまま)
+	if out.Context != "" && !snapshot.HabitsNoticed {
+		out.Context = joinLines(out.Context, habitsNotice)
+		muts = append(muts, func(s *hookSession) { s.HabitsNoticed = true })
 	}
 	// 言われなくても気付く: このプロジェクトのエージェントのメモリに wiki へ移していないファイルがあれば伝える(0.8.0)。セッションに 1 回
 	if !snapshot.MemoryNoticed {
