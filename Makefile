@@ -2,7 +2,7 @@
 BIN     ?= bin/shikii
 INSTALL ?= $(HOME)/.local/bin/shikii
 STORE   ?= .shikii
-MODEL   ?= ggml-org/Kev-4B-GGUF:Q4_K_M
+MODEL   ?= jev-latest
 
 .PHONY: build test install check status drift server demo fake web
 
@@ -72,6 +72,6 @@ serve: build
 gc: build
 	$(BIN) gc --store $(STORE) $(GC_FLAGS)
 
-# ローカルの決定モデル(初回は Kev-4B 約 2.5GB を取得)
-server:
-	llama-server -hf ggml-org/Kev-4B-GGUF:Q4_K_M --port 8080 --host 127.0.0.1
+# 手元の標準の決定モデル(shikii up: llama-server :8086 と shikii-readout :8080。初回は Ternary-Bonsai-27B 約 7.6GB を取得)
+server: build
+	$(BIN) up

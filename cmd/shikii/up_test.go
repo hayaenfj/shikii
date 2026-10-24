@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -130,5 +131,21 @@ func TestUpDoesNotStartTheLocalModelWhileJevIsUsed(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "")
 	if msg := upBlockedByHosted(); msg != "" {
 		t.Fatalf("鍵が無ければ起こしてよい: %s", msg)
+	}
+}
+
+// 監査 0.8.1 の 2: 開発用の Makefile も手元の標準(shikii up)へ向け、使わない Kev-4B を取りに行かない。
+// drift のモデル名は hook が送る名(jev-latest)に揃える(較正の鍵が合わないと drift は何も比べない)。
+func TestMakefileUsesTheLocalStandard(t *testing.T) {
+	b, err := os.ReadFile("../../Makefile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := string(b)
+	if strings.Contains(strings.ToLower(mk), "kev-4b") {
+		t.Fatal("Makefile が Kev-4B を指している")
+	}
+	if !strings.Contains(mk, "MODEL   ?= jev-latest") || !strings.Contains(mk, "\t$(BIN) up") {
+		t.Fatal("drift は jev-latest、make server は shikii up で手元の標準を起こす")
 	}
 }
