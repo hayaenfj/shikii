@@ -4,7 +4,7 @@
 
 - 新しい依頼に着手する時は、まずリポジトリの `CLAUDE.md` と、索引 `$HOME/.claude/projects/shikii-shared/memory/MEMORY.md` を読む。記憶の正本はこのプロジェクトの `.shikii/wiki`(2026-10-23 から)で、索引の各行が記事の id を指す。触る領域の記事は `shikii wiki query <語 or lesson:<id>>` で本文まで読み、規則・判断・残作業を今回の作業に反映する。hook が依頼の前に似た教訓を届けるが、索引に 1 行で書いたどの依頼にも効く規則(言語・使わない語・push の時・コミットの書き方)は届かなくても守る
 - 索引の場所は **`$HOME/.claude/projects/shikii-shared/memory/`**(worktree でもこの同じ場所を使う。repo には置かない)。Claude Code・Codex・Cursor・OpenCode のどれでも、この機械のどのセッションでも同じ記憶から始めるためのもの
-- 長い経緯や完了した仕事の記録は隣の `$HOME/.claude/projects/shikii-shared/handoff/`、進捗の実体はローカル専用の docs/operations.md の「第 N 段」。このファイルはGit管理外とし、無い環境では wiki と handoff を参照する
+- 長い経緯や完了した仕事の記録は wiki の原資料(`.shikii/records/wiki-sources/`、`shikii wiki capture` で控える)と出典付きの記事、進捗の実体はローカル専用の docs/operations.md の「第 N 段」。このファイルはGit管理外とし、無い環境では wiki を参照する
 - メモリの過去の記録は、現在のコード・Git の履歴・検証結果と照合する。現在のユーザー指示を優先し、push・公開・Releases の許可は過去の記録から推測しない
 - 参照先を読めない時は、対象と理由を短く伝える
 
