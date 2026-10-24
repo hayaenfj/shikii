@@ -134,12 +134,13 @@ func TestHookInstallPreviewListsTheProjectsItWouldWipe(t *testing.T) {
 	// 監査 0.8.1-1 の 15: 作業記録(作り直せない書きかけのファイル)も消えることを件数で出す
 	os.MkdirAll(filepath.Join(repo, ".shikii", "handoff", "job"), 0o700)
 	os.WriteFile(filepath.Join(repo, ".shikii", "handoff", "job", "a.md"), []byte("a"), 0o600)
-	os.WriteFile(filepath.Join(repo, ".shikii", "handoff", "b.md"), []byte("b"), 0o600)
+	os.WriteFile(filepath.Join(repo, ".shikii", "handoff", "job", "b.md"), []byte("b"), 0o600)
+	os.WriteFile(filepath.Join(repo, ".shikii", "handoff", "c.md"), []byte("c"), 0o600) // 直下の項目は 2 つ、ファイルは 3 つ(一覧と同じくファイルを数える)
 	out := capture(t, func() error { return cmdHook([]string{"install"}) })
 	if !strings.Contains(out, "消して初期化し直します") || !strings.Contains(out, repo) {
 		t.Fatalf("表示に消す対象が出る:\n%s", out)
 	}
-	if !strings.Contains(out, "作業記録 2 件(.shikii/handoff/)も消えます") {
+	if !strings.Contains(out, "作業記録 3 件(.shikii/handoff/)も消えます") {
 		t.Fatalf("作業記録も消えることを件数で出す:\n%s", out)
 	}
 	if _, err := os.Stat(installedVersionPath(common)); err == nil {

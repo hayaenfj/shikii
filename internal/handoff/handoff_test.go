@@ -264,16 +264,17 @@ func TestWriteRemovesStaleTemporaryFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := time.Now().Add(-48 * time.Hour)
-	stale := filepath.Join(dir, "job", ".write-00aa")
-	fresh := filepath.Join(dir, "job", ".write-00bb")
+	stale := filepath.Join(dir, "job", ".write-00aa11bb22cc33dd")
+	fresh := filepath.Join(dir, "job", ".write-00bb11cc22dd33ee")
 	keep := filepath.Join(dir, "job", ".notes")
-	other := filepath.Join(dir, ".write-00cc") // 別のフォルダは触らない
-	for _, p := range []string{stale, fresh, keep, other} {
+	human := filepath.Join(dir, "job", ".write-up.md")     // 一時ファイルの名の形(.write- と 16 桁の 16 進)でない隠しファイルは人の物
+	other := filepath.Join(dir, ".write-00cc11dd22ee33ff") // 別のフォルダは触らない
+	for _, p := range []string{stale, fresh, keep, other, human} {
 		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, p := range []string{stale, keep, other} {
+	for _, p := range []string{stale, keep, other, human} {
 		os.Chtimes(p, old, old)
 	}
 	if _, err := b.Write("job/a.md", "本文", false); err != nil {
@@ -282,7 +283,51 @@ func TestWriteRemovesStaleTemporaryFiles(t *testing.T) {
 	if _, err := os.Lstat(stale); !os.IsNotExist(err) {
 		t.Error("1 日より古い一時ファイルを片付ける")
 	}
-	for _, p := range []string{fresh, keep, other} {
+	for _, p := range []string{fresh, keep, other, human} {
+		if _, err := os.Lstat(p); err != nil {
+			t.Errorf("%s は残す: %v", p, err)
+		}
+	}
+}
+
+// 監査 0.8.2-1 の 4: 一時ファイルの名のリンク・フォルダは消さず、リンクの先にも、リンクで指した置き場の外にも触らない。
+func TestStaleTemporaryCleanupLeavesLinksFoldersAndOutside(t *testing.T) {
+	b, dir := book(t)
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.MkdirAll(filepath.Join(dir, "job"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	victim := filepath.Join(outside, ".write-0011223344556677")
+	target := filepath.Join(outside, "target.md")
+	for _, p := range []string{victim, target} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		os.Chtimes(p, old, old)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "out")); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "job", ".write-aaaaaaaaaaaaaaaa")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(dir, "job", ".write-bbbbbbbbbbbbbbbb")
+	if err := os.Mkdir(folder, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	os.Chtimes(folder, old, old)
+	r, err := b.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	removeStaleTemps(r, "out") // 置き場の外を指すフォルダのリンクを渡されても外へ出ない
+	r.Close()
+	if _, err := b.Write("job/a.md", "x", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{victim, target, link, folder} {
 		if _, err := os.Lstat(p); err != nil {
 			t.Errorf("%s は残す: %v", p, err)
 		}
