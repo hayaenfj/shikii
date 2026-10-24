@@ -101,8 +101,8 @@ func TestFirstRequestStartsOneProjectPageAndOpensTheBrowser(t *testing.T) {
 	if len(opened) != 0 {
 		t.Fatalf("hook はブラウザを開かない(serve が開く): %v", opened)
 	}
-	if strings.Contains(out, "画面") {
-		t.Fatalf("起こした時は黙る(線の無い間の hook は黙る決まり):\n%s", out)
+	if strings.Contains(out, "このプロジェクトの画面") || strings.Contains(out, "画面を起こして") || strings.Contains(out, url) {
+		t.Fatalf("起こした時は画面の知らせを出さない(線の無い間の hook は黙る決まり):\n%s", out)
 	}
 	// 立っていれば(別のエージェントでも)起こさず、場所をセッションに 1 回伝える。起こす権利の guard を消しても(startOnce が許しても)起こさない
 	spawned, opened = nil, nil

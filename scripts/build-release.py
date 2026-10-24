@@ -6,18 +6,44 @@
 版は version.go の Version、ビルド元は HEAD のコミット。<出力フォルダ>/assets/ に 4 環境の tar.gz と
 SHA256SUMS を置き、go version -m の結果を <出力フォルダ>/<名前>-<実行ファイル>-build.txt に残す。
 """
-import hashlib, os, re, shutil, subprocess, sys, tarfile
+import gzip, hashlib, json, os, re, shutil, subprocess, sys, tarfile, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 if len(sys.argv) != 2:
     sys.exit("使い方: python3 -I scripts/build-release.py <出力フォルダ>")
-repo = Path.cwd()
+source = Path.cwd()
 out = Path(sys.argv[1]).resolve()
-version = re.search(r'const Version = "([^"]+)"', (repo / "version.go").read_text(encoding="utf-8")).group(1)
 commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 if subprocess.check_output(["git", "status", "--porcelain"], text=True):
     sys.exit("作業ツリーに未コミットの変更がある。先にコミットしてから組む")
+if out.exists() and any(out.iterdir()):
+    sys.exit(f"出力先 {out} が空ではない。前の版の残りを配らないよう、空のフォルダを渡す")
+# 無視されたファイル(.DS_Store など)が埋め込みに入らないよう、HEAD を一時フォルダへ複製して組む
+work = Path(tempfile.mkdtemp(prefix="shikii-release-"))
+subprocess.run(["git", "clone", "-q", "--no-local", str(source), str(work / "src")], check=True)
+subprocess.run(["git", "-C", str(work / "src"), "checkout", "-q", "--detach", commit], check=True)
+repo = work / "src"
+os.chdir(repo)
+version = re.search(r'const Version = "([^"]+)"', (repo / "version.go").read_text(encoding="utf-8")).group(1)
+problems = []
+if json.loads((repo / ".claude-plugin/plugin.json").read_text(encoding="utf-8")).get("version") != version:
+    problems.append(".claude-plugin/plugin.json の version が " + version + " ではない")
+for f in ["README.md", "docs/readme/README_ja.md"]:
+    for v in re.findall(r"badge/version-([0-9.]+)-", (repo / f).read_text(encoding="utf-8")):
+        if v != version:
+            problems.append(f"{f}: 版のバッジが {v}")
+for f in ["CHANGELOG.md", "CHANGELOG_ja.md"]:
+    head = next(l for l in (repo / f).read_text(encoding="utf-8").splitlines() if l.startswith("## "))
+    if not head.startswith(f"## {version} — ") or re.search(r"unreleased|未公開", head, re.I):
+        problems.append(f"{f}: 先頭の見出しが公開の形ではない: {head}")
+tag = subprocess.run(["git", "-C", str(source), "rev-parse", "-q", "--verify", f"refs/tags/v{version}^{{commit}}"], capture_output=True, text=True).stdout.strip()
+if tag and tag != commit:
+    problems.append(f"タグ v{version} は {tag[:7]} を指し、HEAD {commit[:7]} と違う")
+if problems:
+    shutil.rmtree(work)
+    sys.exit("公開の形が揃っていない:\n  " + "\n  ".join(problems))
+vcs_time = int(subprocess.check_output(["git", "show", "-s", "--format=%ct", commit], text=True))
 out.mkdir(parents=True, exist_ok=True)
 assets = out / "assets"
 assets.mkdir(exist_ok=True)
@@ -46,6 +72,7 @@ shikii本体のライセンスはApache-2.0 OR MITです。第三者の条件は
 BUNDLED = [("LICENSE", "LICENSE"), ("LICENSE-APACHE", "LICENSE-APACHE"), ("LICENSE-MIT", "LICENSE-MIT"),
            ("THIRD-PARTY-NOTICES", "THIRD-PARTY-NOTICES"), ("CHANGELOG.md", "CHANGELOG.md"),
            ("CHANGELOG_ja.md", "CHANGELOG_ja.md"), ("docs/readme/README_ja.md", "README_ja.md")]
+host_os, host_arch = subprocess.check_output(["go", "env", "GOHOSTOS", "GOHOSTARCH"], text=True).split()
 TARGETS = [("darwin", "arm64"), ("darwin", "amd64"), ("linux", "arm64"), ("linux", "amd64")]
 
 
@@ -61,20 +88,32 @@ def build(target):
         if r.returncode:
             raise RuntimeError(r.stderr)
         info = subprocess.check_output(["go", "version", "-m", str(stage / binary)], text=True)
-        assert "vcs.revision=" + commit in info and "vcs.modified=false" in info
-        assert "GOOS=" + system in info and "GOARCH=" + arch in info
+        if not ("vcs.revision=" + commit in info and "vcs.modified=false" in info and "GOOS=" + system in info and "GOARCH=" + arch in info):
+            raise RuntimeError(f"{name}/{binary}: ビルド元の情報が合わない\n{info}")
         (out / (name + "-" + binary + "-build.txt")).write_text(info)
     for source, dest in BUNDLED:
         shutil.copy2(repo / source, stage / dest)
     (stage / "INSTALL.txt").write_text(install)
     archive = assets / (name + ".tar.gz")
-    with tarfile.open(archive, "w:gz") as tar:
+    def normalize(info):
+        info.uid = info.gid = 0
+        info.uname = info.gname = ""
+        info.mtime = vcs_time
+        info.mode = 0o755 if info.name in ("shikii", "shikii-readout") else 0o644
+        return info
+    with open(archive, "wb") as raw, gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as gz, tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tar:
         for file in sorted(stage.iterdir()):
-            assert file.is_file() and not file.is_symlink()
-            tar.add(file, arcname=file.name, recursive=False)
+            if not file.is_file() or file.is_symlink():
+                raise RuntimeError(f"{file}: 通常のファイルではない")
+            tar.add(file, arcname=file.name, recursive=False, filter=normalize)
     with tarfile.open(archive, "r:gz") as tar:
         members = tar.getmembers()
-        assert len(members) == 10 and all(m.isfile() and "/" not in m.name for m in members)
+        if not (len(members) == 10 and all(m.isfile() and "/" not in m.name for m in members)):
+            raise RuntimeError(f"{archive}: 中身が 10 個の通常のファイルではない")
+    if (system, arch) == (host_os, host_arch):
+        got = subprocess.check_output([str(stage / "shikii"), "--version"], text=True).strip()
+        if got != "shikii " + version:
+            raise RuntimeError(f"{name}: --version が {got!r}")
     print(name + ": ビルド元と同梱物を確認", flush=True)
     return archive
 
@@ -82,4 +121,5 @@ def build(target):
 with ThreadPoolExecutor(max_workers=2) as pool:
     archives = list(pool.map(build, TARGETS))
 (assets / "SHA256SUMS").write_text("".join(hashlib.sha256(f.read_bytes()).hexdigest() + "  " + f.name + "\n" for f in sorted(archives)))
+shutil.rmtree(work)
 print(f"{version} ({commit[:7]}): 4配布物・8実行ファイル・SHA256SUMSを検証済み → {assets}", flush=True)

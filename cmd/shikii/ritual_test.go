@@ -217,3 +217,30 @@ func TestRitualsOnlyApplyToTheTurnThatAskedThem(t *testing.T) {
 		t.Fatalf("別のターンの残りで止めない: %s", out)
 	}
 }
+
+// 0.8.1(作業規則の無いプロジェクトでの実測で判明): CLAUDE.md / AGENTS.md が無くても届くように、hook が何か伝えるターンに
+// 作業記録と決まりの残し方をセッションに 1 回添える。作法の検査が止めた時は、最後の返答で元の作業の結果を伝え直すよう書く。
+func TestHooksCarryTheWorkRecordHabitsWithoutProjectInstructions(t *testing.T) {
+	repo, _, _ := planningFixture(t)
+	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "habits", "cwd": repo, "prompt": planningTestRequest})
+	ctx := feedbackContext(t, out)
+	if !strings.Contains(ctx, ".shikii/handoff/") || !strings.Contains(ctx, "wiki の教訓") {
+		t.Fatalf("最初に伝えるターンで作業記録と決まりの残し方を添える: %s", ctx)
+	}
+	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "habits", "cwd": repo, "prompt": planningTestRequest + " もう一度"})
+	if strings.Contains(feedbackContext(t, out), ".shikii/handoff/<仕事>/") {
+		t.Fatalf("同じセッションでは 2 回目は添えない: %s", out)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = runHook(t, "stop", map[string]any{"session_id": "habits", "cwd": repo, "last_assistant_message": "Done."})
+	if !strings.Contains(out, "本人が頼んだ作業の結果") {
+		t.Fatalf("止める時は、済ませた後の返答で元の作業の結果を伝えるよう書く: %s", out)
+	}
+	// サブエージェント: 届ける教訓が無くても、報告の書き先は届ける
+	sub := runHook(t, "subagent-start", map[string]any{"session_id": "habits", "cwd": repo, "agent_id": "a1", "agent_type": "general-purpose"})
+	if !strings.Contains(sub, ".shikii/handoff/") {
+		t.Fatalf("サブエージェントにも報告の書き先を届ける: %s", sub)
+	}
+}

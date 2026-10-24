@@ -74,7 +74,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		return hookOut{}, nil
 	}
 	var b strings.Builder
-	b.WriteString("shikii: 作法が済んでいません。済ませてから終えてください(組み込みの検査。二度目の Stop は止めません)。\n")
+	b.WriteString("shikii: 作法が済んでいません。済ませてから終えてください(組み込みの検査。二度目の Stop は止めません)。済ませた後の最後の返答では、作法の報告ではなく、本人が頼んだ作業の結果をもう一度短く伝えます。\n")
 	for _, f := range failed {
 		b.WriteString("- " + f + "\n")
 	}

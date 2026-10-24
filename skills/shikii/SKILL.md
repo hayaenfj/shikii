@@ -1,6 +1,6 @@
 ---
 name: shikii
-description: Operate shikii's recurring yes/no, choice and level decisions; prepare conversation and wiki context, follow calibrated bands, and keep human truths separate from AI interpretations. Use with configured shikii projects or when explicitly setting up decision workflows.
+description: Operate shikii's recurring yes/no, choice and level decisions; prepare conversation and wiki context, follow calibrated bands, and keep human truths separate from AI interpretations. Also use it in a shikii project to keep reports, audits, investigation notes and other working files in the work records (.shikii/handoff/) instead of the repository, and to save a rule or correction the person states as a wiki lesson. Use with configured shikii projects or when explicitly setting up decision workflows.
 ---
 
 # Use shikii
