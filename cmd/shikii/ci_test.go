@@ -13,8 +13,13 @@ func TestCIWorkflowIsReadOnlyAndCached(t *testing.T) {
 		t.Fatal(err)
 	}
 	ci := string(b)
+	// 監査 0.8.2-1 の 7: 書き込みの権限が混ざらない、concurrency は ref ごとの group を持つ
+	if strings.Contains(ci, ": write") || strings.Contains(ci, "write-all") {
+		t.Error("test.yml に書き込みの権限がある")
+	}
 	for _, want := range []string{
-		"permissions:\n  contents: read\n",
+		"permissions:\n  contents: read\nconcurrency:",
+		"group: test-${{ github.ref }}",
 		"cancel-in-progress: true",
 		"cache: npm",
 		"cache-dependency-path: web/package-lock.json",

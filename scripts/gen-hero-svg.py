@@ -67,11 +67,11 @@ def v2(t):  # 5 つの育つものが流れ、閾の先にその置き場が出�
 
 def generate(directory=ASSETS):
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "shikii-hero.svg").write_text(v1(T["en"]))
-    (directory / "shikii-hero-ja.svg").write_text(v1(T["ja"]))
+    (directory / "shikii-hero.svg").write_text(v1(T["en"]), encoding="utf-8", newline="\n")
+    (directory / "shikii-hero-ja.svg").write_text(v1(T["ja"]), encoding="utf-8", newline="\n")
     for name, lang in (("shikii-grows.svg", "en"), ("shikii-grows-ja.svg", "ja")):  # 「何が育つか」の図は右の帯だけを切り出す
         svg = v2(T[lang]).replace('viewBox="0 0 1600 600" width="1600" height="600"', 'viewBox="1030 60 570 440" width="1140" height="880"', 1)
-        (directory / name).write_text(svg)
+        (directory / name).write_text(svg, encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
