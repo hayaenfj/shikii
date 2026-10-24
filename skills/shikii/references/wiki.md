@@ -33,10 +33,13 @@ MCP tool: `shikii_wiki`, operations `query` / `ingest` / `lint`. CLI `shikii wik
 
 - `sources`: observed source IDs from this project, at least one. Read each source you use. Existing citations are retained; references are bounded by article size, not a fixed count.
 - `title`, `lesson`, `applies_to`: topic, short retrieval summary, applicable conditions; limits are 200 / 2000 / 1000 UTF-8 bytes.
+- `kind` and `scene` (required for a lesson since 0.9.0; inherited from the page when omitted on update): `kind` is one of `rule` (a rule to keep), `howto` (a procedure), `criteria` (how to decide), `fact` (a premise or current fact), `history` (why something came to be). `scene` is the situation in the project's own words, one line up to 24 characters, phrased like "when committing" / 「コミットする時」, 「請求書を出す時」. `place` returns the existing `scenes` with counts: reuse one when it fits instead of inventing a near-synonym. The page groups knowledge by scene and kind, so a missing or vague scene hides the lesson from the person. A save without them is refused with the allowed values.
 - `body`: edited knowledge, up to 16 KiB of UTF-8. Explicit search includes it; automatic quotations still use the summary. The UI displays headings and paragraphs as text without executing embedded HTML.
 - `related`: other page IDs in this project, each with valid sources. Links can point both ways.
 - `id`: the existing page to update. Original sources and earlier revisions remain available.
 - `replaces`: older pages superseded by this one; no supersession cycles.
+
+Pages saved before 0.9.0 have no kind or scene. Give them one with `shikii wiki classify <page id> <kind> <scene>` (MCP: `shikii_wiki` with `operation: "classify"`, `id`, `kind`, `scene`); it keeps the lesson text and makes a new revision. The request hook lists up to five such pages per turn and the Stop hook stops the turn once until those are done; `wiki query` lists them too.
 
 Omitting `body`, `related` or `replaces` on update preserves it. Explicit `body: ""`, `related: []` or `replaces: []` clears it. A summary update does not refresh a preserved body: check they still agree. Old pages without these fields remain readable without migration.
 

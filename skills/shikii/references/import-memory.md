@@ -20,9 +20,10 @@ Record the returned source ids per file. A source is evidence, not a lesson: it 
 
 ## 3. Draft lessons
 
-- `feedback` and `user` files: one lesson per file. `title` = the rule in one line; `lesson` = the fact plus the "How to apply" in at most two sentences; `applies_to` = the situation in which it applies, taken from "How to apply"; `body` = the Why, the dates, examples and exceptions; `related` = the `[[links]]` resolved to page ids once those pages exist.
+- `feedback` and `user` files: one lesson per file. `title` = the rule in one line; `lesson` = the fact plus the "How to apply" in at most two sentences; `applies_to` = the situation in which it applies, taken from "How to apply"; `body` = the Why, the dates, examples and exceptions; `related` = the `[[links]]` resolved to page ids once those pages exist; `kind` and `scene` as below.
 - `project` files: do not copy the chronology. Extract only the reusable rules (how releases are made, what was decided and why) as lessons; the rest stays reachable as the captured source (`shikii wiki query <source_id>`).
 - `reference` files: one lesson whose `applies_to` says when the pointer is needed and whose body holds the URL, session id or path.
+- Every lesson needs `kind` and `scene` (the save is refused without them; see [wiki.md](wiki.md)). Choose `kind` from what the memory says: a rule the person stated → `rule`; steps to follow → `howto`; how to choose between options → `criteria`; a fact about the project, a person or a tool → `fact`; a past event or the reason behind a decision → `history`. Write `scene` in the project's own words for when it applies (「コミットする時」, 「公開する時」, 「請求書を出す時」), taken from the memory's "How to apply" or `applies_to`. Before inventing a scene, look at the `scenes` that `place` returns and reuse one that fits, so the moved memory does not scatter into near-duplicate scenes. Rules that hold in every request get the scene 「いつも」 / "always".
 - Rules that must hold in every request regardless of topic (the language of all visible text, words never to use, when to push) still become lessons, and also stay in the index (step 5), because the wiki delivers lessons by similarity to the request and a request rarely mentions them.
 
 ## 4. Place, then ingest
@@ -35,4 +36,4 @@ Do not delete the files; the person does that. A file shared by all projects (Co
 
 ## 6. Verify and report
 
-`shikii wiki lint` reports no issues; `shikii wiki query <a term from each rule>` finds the page. Report the page ids per moved file, what was merged into an existing page, and what was left in place (secrets, transcripts) and why. Running the procedure again on the same folder merges through `place` and does not duplicate pages.
+`shikii wiki lint` reports no issues; `shikii wiki query <a term from each rule>` finds the page and every moved page has a kind and a scene (`wiki query` lists pages without them). Report the page ids per moved file, what was merged into an existing page, and what was left in place (secrets, transcripts) and why. Running the procedure again on the same folder merges through `place` and does not duplicate pages.
