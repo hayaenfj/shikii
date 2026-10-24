@@ -1,5 +1,5 @@
 {
   "name": "shikii",
   "description": "決定モデルの運用フレームワーク shikii の作法(skill)。判定は CLI か MCP に任せ、いつ・どう使うかをエージェントに教える",
-  "version": "0.8.2"
+  "version": "0.8.3"
 }
