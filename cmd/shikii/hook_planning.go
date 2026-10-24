@@ -91,7 +91,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: 着手前の判断用に会話を整理します。人に入力を頼まず、%s hook plan queryへ次のJSONを渡して今回と直近の会話を読み、必要なwikiはqueryに検索語を付けて探します。同じID・検索語とagreed・openを%s hook plan submitへ渡してください。各項目はsummaryとevidence:[{source,quote}]（原文から引用）、不明ならunknown:true。合意の根拠には人の発言が必要です。整理は仮説で、実行許可や人の正解にはしません。詳細は作法のreferences/planning.md。\n", command, command) + string(ids)
+	return fmt.Sprintf("shikii: 着手前の判断用に会話を整理します。人に入力を頼まず、%s hook plan queryへ次のJSONを渡して今回と直近の会話を読み、関係する決まりや既存の判断は、話題の語をqueryに付けて探し(依頼の文の写しにしない)、返った教訓を根拠に使ったらevidenceのsourceをlesson:<id>にします。同じID・検索語とagreed・openを%s hook plan submitへ渡してください。各項目はsummaryとevidence:[{source,quote}]（原文から引用）、不明ならunknown:true。合意の根拠には人の発言が必要です。整理は仮説で、実行許可や人の正解にはしません。詳細は作法のreferences/planning.md。\n", command, command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
@@ -212,11 +212,15 @@ func cmdHookPlan(args []string) error {
 		defer cancel()
 		d, err = decide.Decide(ctx, sp, inputs, decide.Session{}, hookEndpoints())
 		if err != nil {
-			return err
-		}
-		if d.Band == decide.Abstain {
+			// 判定モデルが混雑・停止していても整理は保存する(作法の検査に止められない)。判定は見送り、人の答えにも数えない(0.8.1)
+			hookLog("plan submit: " + err.Error())
+			d = nil
+			result.Reason = "判定モデルに届かなかったため、整理は保存し、判定は見送りました。人の答えには数えません。"
+		} else if d.Band == decide.Abstain {
 			return errors.New("判定の入力が揃っていません")
 		}
+	}
+	if d != nil {
 		trace := sha256.Sum256([]byte("planning\x00" + scope + "\x00" + req.TurnID + "\x00" + sp.Hash() + "\x00" + key))
 		d.TraceID = hex.EncodeToString(trace[:8])
 		result.Recorded, result.TraceID, result.Shadow = true, d.TraceID, !d.IsCalibrated
