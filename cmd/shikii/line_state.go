@@ -147,12 +147,16 @@ func lineSummary(agent string) string {
 		}
 		loc := hookLoc{Lang: hookLang()}
 		machine := machineOnlySpecs[id]            // 人に聞かない問い(wiki の差し込み先・矛盾)。AI が答え、正解は結果から
+		byResults := outcomeSpecs[id] && !machine  // hook の問いのうち、迷っても人に聞かず結果から正解が付く物(prompt-kind・changes-in-scope・done-as-asked)
 		wordings := slices.Contains(hookSpecs, id) // 線が引けない時に、エージェントへ別の聞き方の候補を頼む問い(hook の 4 問)
 		switch s.Kind {
 		case lineCalibrated:
 			en, ja := "From now on, decisions above the line go ahead without asking (act); the rest still ask, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは確信が線より上の判断は人に聞かずに進み(act)、それ以外は今までどおり聞きます。act の 20 件に 1 件は抜き取りで画面に出ます。"
 			if machine {
 				en, ja = "Its answers now carry a checked confidence (act) for the agent; nothing is asked of you, and lessons are never replaced silently.", "これからはその答えに、線で確かめた確信(act)が付いてエージェントへ渡ります。人に聞くことはなく、教訓を黙って置き換えることもありません。"
+			}
+			if byResults {
+				en, ja = "From now on, decisions above the line go ahead (act); the rest wait for results to supply the truth, nothing is asked of you, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは確信が線より上の判断は進み(act)、それ以外は結果から正解が付くのを待ちます。人に聞くことはありません。act の 20 件に 1 件は抜き取りで画面に出ます。"
 			}
 			lines = append(lines, bi(
 				fmt.Sprintf("shikii: a line was drawn for %s (%d truths). %s %s", id, s.N, en, projectPageURL(agent)),
@@ -161,6 +165,9 @@ func lineSummary(agent string) string {
 			en, ja := "It keeps asking until the other answer appears.", "もう片方の答えが付くまで、今までどおり聞きます。"
 			if machine {
 				en, ja = "The AI keeps answering it without a line; nothing is asked of you.", "線が無いまま AI が答え続けます。人に聞くことはありません。"
+			}
+			if byResults {
+				en, ja = "It waits for results to supply the other answer; nothing is asked of you.", "もう片方の答えが結果から付くのを待ちます。人に聞くことはありません。"
 			}
 			lines = append(lines, bi(
 				fmt.Sprintf("shikii: %s has %d truths but only one answer so far (%s), so no line can be drawn yet. %s", id, s.N, fmtCounts(s.Truths), en),
