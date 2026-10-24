@@ -16,7 +16,7 @@ Version 0.8 makes sure the agent does its routine and keeps its working files in
 
 [The problem](#the-problem) · [What shikii does](#what-shikii-does) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [One full loop](#one-full-loop) · [Learn from conversations](#learn-from-conversations) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
-<p align="center"><img src="docs/assets/shikii-hero.svg" alt="shikii: a model gives you a probability; shikii tells you whether you may act on it" width="100%"></p>
+<p align="center"><img src="docs/assets/shikii-hero.svg" alt="shikii: each turn crosses the threshold; lessons arrive, reports go to work records, guards make the agent fix its work, and decisions move from ask to act" width="100%"></p>
 
 ## The problem
 
