@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func book(t *testing.T) (Book, string) {
@@ -252,5 +253,38 @@ func TestHardLinksFolderLinksAndControlCharactersAreRefused(t *testing.T) {
 	}
 	if ents, _ := os.ReadDir(elsewhere); len(ents) != 0 {
 		t.Fatalf("a file was written through the folder link: %v", ents)
+	}
+}
+
+// 監査 0.8.1-1 の 14: 書き換えの途中で落ちて残った一時ファイル(.write-*)は、次にそのフォルダへ書く時に、
+// 1 日より古いものだけ片付ける(書き込み中の他の一時ファイルや、ふつうのファイルには触らない)。
+func TestWriteRemovesStaleTemporaryFiles(t *testing.T) {
+	b, dir := book(t)
+	if err := os.MkdirAll(filepath.Join(dir, "job"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	stale := filepath.Join(dir, "job", ".write-00aa")
+	fresh := filepath.Join(dir, "job", ".write-00bb")
+	keep := filepath.Join(dir, "job", ".notes")
+	other := filepath.Join(dir, ".write-00cc") // 別のフォルダは触らない
+	for _, p := range []string{stale, fresh, keep, other} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []string{stale, keep, other} {
+		os.Chtimes(p, old, old)
+	}
+	if _, err := b.Write("job/a.md", "本文", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(stale); !os.IsNotExist(err) {
+		t.Error("1 日より古い一時ファイルを片付ける")
+	}
+	for _, p := range []string{fresh, keep, other} {
+		if _, err := os.Lstat(p); err != nil {
+			t.Errorf("%s は残す: %v", p, err)
+		}
 	}
 }

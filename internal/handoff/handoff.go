@@ -34,6 +34,8 @@ const (
 	writeMax = 1 << 20 // 1 回に書ける大きさ
 	readMax  = 4 << 20 // 文字として返す大きさ
 	pathMax  = 256
+
+	staleTempAge = 24 * time.Hour // 落ちて残った一時ファイルを片付けるまでの時間
 )
 
 // Entry は一覧の 1 件。Path は置き場からの相対(/ 区切り)。
@@ -264,6 +266,7 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 			return Entry{}, fmt.Errorf("作業記録のフォルダ %s を作れません", dir)
 		}
 	}
+	removeStaleTemps(r, path.Dir(clean))
 	if info, err := r.Lstat(clean); err == nil && (!info.Mode().IsRegular() || linkCount(info) > 1) {
 		return Entry{}, fmt.Errorf("作業記録 %s はふつうのファイルではありません(リンク・ハードリンク・フォルダには書きません)", clean)
 	}
@@ -308,4 +311,23 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 		return Entry{}, err
 	}
 	return Entry{Path: clean, Size: info.Size(), Modified: info.ModTime().UTC(), Kind: KindOf(clean)}, nil
+}
+
+// removeStaleTemps は、書き換えの途中で落ちて残った一時ファイル(.write-*)のうち 1 日より古いものを消す。
+// 隠し名なので一覧にも画面にも出ず、gc も触らないため、次にそのフォルダへ書く時に片付ける。
+// 書き込み中の一時ファイル(新しいもの)とリンクには触らない。
+func removeStaleTemps(r *os.Root, dir string) {
+	entries, err := fs.ReadDir(r.FS(), dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-staleTempAge)
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".write-") || !e.Type().IsRegular() {
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
+			_ = r.Remove(path.Join(dir, e.Name()))
+		}
+	}
 }
