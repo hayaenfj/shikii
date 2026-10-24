@@ -45,7 +45,7 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		}
 		return b.QueryPage(req.Query, req.Cursor)
 	case "ingest":
-		return b.Ingest(req.Draft)
+		return ingestWithOutcome(root, scope, req.Draft) // 差し込み先の判定に結果の正解を付ける(0.8.3)
 	case "capture":
 		if req.Observation == nil {
 			return nil, errors.New("保存する原資料が必要です")

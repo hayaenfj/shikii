@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
+	"unicode"
 
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -206,8 +208,11 @@ func placeCandidatePages(book notebook.Book, live []notebook.Page, d notebook.Dr
 	return picked, nil
 }
 
-// placementOutcome は、この草稿について聞いた差し込み先と矛盾の判定に付ける結果の正解(submit の前に組み、保存が通ってから書く)。
+// placementOutcome は、この草稿について聞いた差し込み先と矛盾の判定に付ける結果の正解(保存の前に組み、保存が通ってから書く)。
 // 足した(id)・置き換えた(replaces)記事は同じ話題「はい」、他は「いいえ」(部分)。矛盾は置き換えたら「はい」、置き換えずに足したら「いいえ」(部分)。
+// どの草稿の判定かは、置いた時の草稿の文(new_lesson)で引く。合流では教訓の文を書き直すことが多いので、完全に同じでなくても、
+// 保存する草稿(題・教訓・本文)に置いた時の文の大半(placeMatchMin)が入っていれば同じ草稿とみなす(0.8.3。完全一致だけだと
+// 新しい記事にした時だけ正解が付き、差し込み先の正解が全部「いいえ」になった)。
 func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, error) {
 	lesson := strings.TrimSpace(d.Lesson)
 	if lesson == "" {
@@ -230,7 +235,8 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 		chosen[id], replaced[id] = true, true
 	}
 	st := store.Store{Dir: root}
-	var out []store.Label
+	recsBy := map[string][]store.Record{}
+	labeledBy := map[string]map[string]store.Label{}
 	for _, specID := range wikiSpecs {
 		recs, err := st.Records(specID, 0)
 		if err != nil {
@@ -240,9 +246,17 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 		if err != nil {
 			return nil, err
 		}
-		for i := range recs {
-			rec := &recs[i]
-			if _, done := labeled[rec.TraceID]; done || strings.TrimSpace(rec.Inputs["new_lesson"]) != lesson {
+		recsBy[specID], labeledBy[specID] = recs, labeled
+	}
+	placed := matchPlacedDraft(d, recsBy["wiki-place"], labeledBy["wiki-place"])
+	if placed == "" {
+		return nil, nil
+	}
+	var out []store.Label
+	for _, specID := range wikiSpecs {
+		for i := range recsBy[specID] {
+			rec := &recsBy[specID][i]
+			if _, done := labeledBy[specID][rec.TraceID]; done || strings.TrimSpace(rec.Inputs["new_lesson"]) != placed {
 				continue
 			}
 			page, ok := pageOf[rec.Inputs["lesson"]]
@@ -266,4 +280,85 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 		}
 	}
 	return out, nil
+}
+
+// placeMatchMin は、置いた時の草稿の文の 2 文字の並びのうち、保存する草稿(題・教訓・本文)に入っている割合の下限。
+const placeMatchMin = 0.6
+
+// matchPlacedDraft は、保存する草稿が、正解の付いていないどの置いた草稿(new_lesson)のことかを返す(無ければ "")。
+// 教訓の文が完全に同じならそれ。そうでなければ、置いた時の文が保存する草稿に最もよく入っている物(placeMatchMin 以上、同点は新しい方)。
+func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]store.Label) string {
+	lesson := strings.TrimSpace(d.Lesson)
+	text := d.Title + "\n" + d.Lesson
+	if d.Body != nil {
+		text += "\n" + *d.Body
+	}
+	have := bigrams(text)
+	best, bestScore, bestAt := "", 0.0, time.Time{}
+	for _, rec := range recs {
+		if _, done := labeled[rec.TraceID]; done {
+			continue
+		}
+		placed := strings.TrimSpace(rec.Inputs["new_lesson"])
+		if placed == "" {
+			continue
+		}
+		if placed == lesson {
+			return placed
+		}
+		want := bigrams(placed)
+		if len(want) == 0 {
+			continue
+		}
+		hit := 0
+		for g := range want {
+			if have[g] {
+				hit++
+			}
+		}
+		score := float64(hit) / float64(len(want))
+		if score >= placeMatchMin && (score > bestScore || score == bestScore && rec.At.After(bestAt)) {
+			best, bestScore, bestAt = placed, score, rec.At
+		}
+	}
+	return best
+}
+
+// bigrams は、空白を除いた文の、連続する 2 文字の集合。
+func bigrams(s string) map[string]bool {
+	var rs []rune
+	for _, r := range s {
+		if !unicode.IsSpace(r) {
+			rs = append(rs, r)
+		}
+	}
+	out := map[string]bool{}
+	for i := 0; i+1 < len(rs); i++ {
+		out[string(rs[i:i+2])] = true
+	}
+	return out
+}
+
+// ingestWithOutcome は記事を保存し、保存が通ったら、その草稿について聞いた差し込み先・矛盾の判定に結果の正解を付ける。
+// 振り返りの保存(reflect submit)と wiki ingest(CLI・MCP・HTTP)の両方がここを通る。
+func ingestWithOutcome(root, scope string, d notebook.Draft) (notebook.Result, error) {
+	outcome, oerr := placementOutcome(root, scope, d)
+	res, err := (notebook.Book{Root: root, Scope: scope}).Ingest(d)
+	if err != nil {
+		return res, err
+	}
+	if oerr != nil {
+		hookLog("wiki place: " + oerr.Error())
+		return res, nil
+	}
+	bySpec := map[string][]store.Label{} // 追記は spec ごと
+	for _, l := range outcome {
+		bySpec[l.SpecID] = append(bySpec[l.SpecID], l)
+	}
+	for _, labels := range bySpec {
+		if err := (store.Store{Dir: root}).AppendLabels(labels); err != nil {
+			hookLog("wiki place: " + err.Error())
+		}
+	}
+	return res, nil
 }
