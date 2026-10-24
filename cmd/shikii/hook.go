@@ -1711,6 +1711,18 @@ func hookInstall(args []string, install bool) error {
 			return fmt.Errorf("skill: %w", err)
 		}
 		fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, ".claude", "skills", "shikii")))
+		// 各プロジェクトの AGENTS.md(Codex・OpenCode が読む)の shikii の節も新しい中身に(0.9.0。節がある所だけ、人の部分は触らない)
+		for _, p := range registeredProjects(agent) {
+			path := filepath.Join(p.Path, "AGENTS.md")
+			if b, err := os.ReadFile(path); err != nil || !strings.Contains(string(b), agentsMarker) {
+				continue
+			}
+			if did, err := addAgentsSection(path); err != nil {
+				fmt.Fprintf(stdout, "%s: %v\n", tilde(path), err)
+			} else if did {
+				fmt.Fprintf(stdout, "%s: the shikii section updated\n", tilde(path))
+			}
+		}
 		// 0.7.0 を跨ぐ最初の実行なら各プロジェクトの .shikii/ を消して初期化し直す(update の最後に新しい本体で呼ばれるのはここ)。
 		exe, err := os.Executable()
 		if err != nil {

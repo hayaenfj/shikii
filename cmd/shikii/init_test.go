@@ -168,3 +168,56 @@ func TestInitNeverBreaksWhatPeopleWrote(t *testing.T) {
 		t.Fatalf("without HOME, the project side is still prepared and init succeeds:\n%s", out)
 	}
 }
+
+// 0.9.0: Codex は道具の返事の案内を読み流し、AGENTS.md を指示として読む(実測)。AGENTS.md の shikii の節に、教訓の種類と場面、
+// 返事の unclassified をそのターンのうちに classify で付けることを書く。前の版の節(印の間)は新しい中身に置き換え、人が書いた
+// 部分はそのまま残す。2 回目は何もしない。
+func TestAgentsSectionCarriesKindSceneAndUpdatesOldSection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "AGENTS.md")
+	old := "# 人の規則\n\n- 人が書いた行\n\n" + agentsMarker + "\n## shikii(判定の作法)\n\n- 古い作法\n" + agentsMarker + "\n\n## 後ろの人の節\n\n- 残る\n"
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	did, err := addAgentsSection(path)
+	if err != nil || !did {
+		t.Fatalf("古い節を置き換える: %v %v", did, err)
+	}
+	b, _ := os.ReadFile(path)
+	s := string(b)
+	if strings.Contains(s, "古い作法") || !strings.Contains(s, "unclassified") || !strings.Contains(s, "wiki classify") || !strings.Contains(s, "kind") ||
+		!strings.Contains(s, "- 人が書いた行") || !strings.Contains(s, "## 後ろの人の節\n\n- 残る") || strings.Count(s, agentsMarker) != 2 {
+		t.Fatalf("印の間だけを新しい中身に: %s", s)
+	}
+	if did, err := addAgentsSection(path); err != nil || did {
+		t.Fatalf("2 回目は何もしない: %v %v", did, err)
+	}
+	if b2, _ := os.ReadFile(path); string(b2) != s {
+		t.Fatal("2 回目で中身が変わった")
+	}
+}
+
+// 0.9.0: アップデートは家の skill を置き直すが、各プロジェクトの AGENTS.md は前の版の節のままだった。アップデートの最後に走る
+// hook install が、登録済みのプロジェクトの AGENTS.md に shikii の節がある時だけ新しい中身に置き換える(節の無い所には作らない)。
+func TestHookInstallRefreshesAgentsSectionOfRegisteredProjects(t *testing.T) {
+	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
+	withSection, without := gitRepo(t), gitRepo(t)
+	for _, d := range []string{withSection, without} {
+		t.Chdir(d)
+		capture(t, func() error { return cmdInit(nil) })
+	}
+	oldText := agentsMarker + "\n## shikii(判定の作法)\n\n- 古い作法\n" + agentsMarker + "\n"
+	os.WriteFile(filepath.Join(withSection, "AGENTS.md"), []byte("# 人の規則\n\n"+oldText), 0o644)
+	os.WriteFile(filepath.Join(without, "AGENTS.md"), []byte("# 人の規則だけ\n"), 0o644)
+	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	got, _ := os.ReadFile(filepath.Join(withSection, "AGENTS.md"))
+	if strings.Contains(string(got), "古い作法") || !strings.Contains(string(got), "wiki classify") || !strings.HasPrefix(string(got), "# 人の規則\n") {
+		t.Fatalf("登録済みのプロジェクトの古い節を置き換える: %s", got)
+	}
+	if !strings.Contains(out, "AGENTS.md") {
+		t.Fatalf("置き換えたことを言う: %s", out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(without, "AGENTS.md")); string(b) != "# 人の規則だけ\n" {
+		t.Fatalf("節の無い AGENTS.md には作らない: %s", b)
+	}
+}
