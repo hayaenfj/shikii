@@ -9,7 +9,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.27 AS build
+FROM golang:1.27.3 AS build   # 公式の画像は GOTOOLCHAIN=local なので go.mod の toolchain が効かない。版をここで固定する
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
