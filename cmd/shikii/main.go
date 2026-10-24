@@ -1939,10 +1939,13 @@ func cmdStatus(args []string) error {
 					note = "  (stale hash: spec wording changed since; not used)"
 				case rs.CalibrationFor(parts[0]) != nil:
 					note += "  calibrated: " + rs.CalibrationFor(parts[0]).Method
-				case n >= sp.Eval.MinN:
-					note += fmt.Sprintf("  ready to calibrate (>= min_n %d)", sp.Eval.MinN)
 				default:
-					note += fmt.Sprintf("  collecting (%d/%d)", n, sp.Eval.MinN)
+					// 件数だけで「線を引ける」と言わない(0.8.3): 片方の答えしか無い・試して分けられなかった・自動で引く途中を分ける
+					stuck := false
+					if parts[1] == sp.Hash() || parts[1] == sp.ContextHash() { // 自動の較正は文脈の段の線も同じ時に試す
+						_, stuck = stuckWording(*storeDir, id)
+					}
+					note += lineStateOf(rs, sp.Eval.MinN, parts[0], parts[1], labs, stuck).statusNote(rs, sp.Eval.MinN)
 				}
 			}
 			fmt.Fprintf(stdout, "  %-50s %4d%s\n", key, n, note)

@@ -783,7 +783,7 @@ func TestStatusInventory(t *testing.T) {
 		return cmdLabel([]string{"--store", storeDir, "--source", "outcome", traces[1], "!change_request"})
 	})
 	out = capture(t, func() error { return cmdStatus([]string{"--store", storeDir, specPath}) })
-	if !strings.Contains(out, "ready to calibrate") || !strings.Contains(out, "by truth:  !change_request=1 change_request=1") {
+	if !strings.Contains(out, "enough truths: the line is drawn automatically") || !strings.Contains(out, "by truth:  !change_request=1 change_request=1") {
 		t.Fatalf("status when enough labels:\n%s", out)
 	}
 	// 文言を変えると、溜まったラベルは stale と出る
