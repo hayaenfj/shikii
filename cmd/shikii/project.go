@@ -205,7 +205,7 @@ func projectStoreAt(cwd string) (string, string, error) {
 }
 
 func validateStoreDirectories(root string) error {
-	for _, part := range []string{"", "decisions", "wiki", "records", "labels", "sessions", "guards"} {
+	for _, part := range []string{"", "decisions", "wiki", "records", "labels", "sessions", "guards", "handoff"} {
 		info, err := os.Lstat(filepath.Join(root, part))
 		if os.IsNotExist(err) {
 			continue
@@ -262,7 +262,7 @@ func resolveStoreFlag(fs *flag.FlagSet) error {
 
 // symlink の共有先へ個別の会話や較正を書かない。
 func checkProjectStore(root string, create bool) error {
-	for _, part := range []string{"", "decisions", "wiki", "records", "labels", "sessions", "guards"} {
+	for _, part := range []string{"", "decisions", "wiki", "records", "labels", "sessions", "guards", "handoff"} {
 		path := filepath.Join(root, part)
 		if create {
 			if err := os.Mkdir(path, 0o700); err != nil && !os.IsExist(err) {

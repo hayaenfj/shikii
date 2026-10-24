@@ -7,10 +7,10 @@
 モデルは確率を返します。shikiiは、その確率で動いてよいかを答えます。人と結果が付けた正解から線を引き、すべての判断を帯（`act` / `ask` / `discard`）にし、学んだことをエージェントが仕事中に使うwikiに貯め、人の訂正は次の仕事で機械が止める検査にします。
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-373%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-380%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.8.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.8.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
 0.7は線と帯の原点に戻った版です。推奨のモデルはTypeSafeのJevで、環境変数に鍵を置くだけで取得するものは無く、1問 約0.2秒で答えます。鍵を置けない時は手元のllama.cppで同じ問いに答えます。新しい教訓はwikiのどこに差し込むか・既存の教訓と食い違わないかを決定モデルが見ます。0.7.3では、人の訂正を「止める検査」にし、サブエージェントにも教訓を届け、届いた教訓が行動を変えたかを本番で数えます。**0.6.0以前からの更新は、初期化済みの各プロジェクトの `.shikii/` の中を全部消して初期化し直します。** 残したいものは先に控えてください。[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
 
@@ -102,7 +102,7 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 > このプロジェクトでshikiiを使って
 
-エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。既製の問い・wiki・止める検査の置き場・MCPの設定（プロジェクトに `.mcp.json`・`.cursor/mcp.json`・`opencode.json` と `AGENTS.md` の節（`CLAUDE.md` だけのプロジェクトでは作りません）が足されます。Gitの除外に入るのは `.shikii/` だけです）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
+エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。既製の問い・wiki・止める検査の置き場・作業記録の置き場・MCPの設定（プロジェクトに `.mcp.json`・`.cursor/mcp.json`・`opencode.json` と `AGENTS.md` の節（`CLAUDE.md` だけのプロジェクトでは作りません）が足されます。Gitの除外に入るのは `.shikii/` だけです）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
 
 ### 更新
 
@@ -169,7 +169,7 @@ hookを入れると、毎回のターンの2つの瞬間が残ります。エー
 
 ## 記憶はプロジェクトのもの
 
-会話・教訓・仮採点・正解・較正・止める検査は、そのプロジェクトの `.shikii/` に入ります。関係ないプロジェクトとは分かれます。共通の `~/.shikii/agent` には雛形・道具・プロジェクトの一覧があります。`.shikii/` には私的な会話が入るので、初期化がGitの未追跡ファイルから除きます。
+会話・教訓・仮採点・正解・較正・止める検査・作業記録は、そのプロジェクトの `.shikii/` に入ります。関係ないプロジェクトとは分かれます。共通の `~/.shikii/agent` には雛形・道具・プロジェクトの一覧があります。`.shikii/` には私的な会話が入るので、初期化がGitの未追跡ファイルから除きます。
 
 <p align="center"><img src="../assets/shikii-architecture.svg" alt="初期化したプロジェクトは会話の教訓と仮の観察を、業務の問いと正解から分けて持ち、共通の場所には雛形・道具・プロジェクトへのリンクがある" width="100%"></p>
 

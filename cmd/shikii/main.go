@@ -109,7 +109,7 @@ func usage() { fmt.Fprint(os.Stderr, usageText()) }
 
 func usageText() string {
 	return `usage (flags may come before or after the positional arguments):
-  shikii init      （shikii --initでも同じ）このプロジェクトでの自動記録を有効にし、4種類の判定・wiki・MCP・作法と画面への入口を準備する。2回目も安全
+  shikii init      （shikii --initでも同じ）このプロジェクトでの自動記録を有効にし、4種類の判定・wiki・作業記録の置き場・MCP・作法と画面への入口を準備する。2回目も安全
   shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]
                    質問に答えるだけで .shikii/decisions/<id>.yaml を作る
   shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]

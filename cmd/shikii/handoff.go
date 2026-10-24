@@ -56,8 +56,9 @@ func cmdHandoff(args []string) error {
 			fmt.Fprintln(stdout, "作業記録はまだありません(.shikii/handoff/)")
 			return nil
 		}
+		kind := map[string]string{"text": "文字", "image": "画像", "other": "その他"}
 		for _, e := range list {
-			fmt.Fprintf(stdout, "%s\t%s\t%d\t%s\n", e.Modified.Local().Format("2006-01-02 15:04"), e.Kind, e.Size, e.Path)
+			fmt.Fprintf(stdout, "%s\t%s\t%d\t%s\n", e.Modified.Local().Format("2006-01-02 15:04"), kind[e.Kind], e.Size, e.Path)
 		}
 		return nil
 	case "read":
@@ -69,7 +70,7 @@ func cmdHandoff(args []string) error {
 			return err
 		}
 		if f.Content == "" && f.Note != "" {
-			fmt.Fprintf(stdout, "%s(%s、%d バイト): %s\n", f.Path, f.Kind, f.Size, f.Note)
+			fmt.Fprintf(stdout, "%s(%d バイト): %s\n", f.Path, f.Size, f.Note)
 			return nil
 		}
 		_, err = io.WriteString(stdout, f.Content)
@@ -81,6 +82,9 @@ func cmdHandoff(args []string) error {
 		data, err := io.ReadAll(io.LimitReader(stdin, (1<<20)+1))
 		if err != nil {
 			return err
+		}
+		if len(data) > 1<<20 {
+			return errors.New("標準入力が 1 MiB を超えます。1 MiB ずつに分けて append します")
 		}
 		req.Path, req.Content = args[1], string(data)
 		res, err := runHandoff(root, req)
@@ -97,7 +101,7 @@ func cmdHandoff(args []string) error {
 // handleHandoffFile は画面が作業記録の 1 件を読む口(GET ?path=)。画像は画像として、文字は text/plain で配る(HTML を描かせない)。
 func (s *server) handleHandoffFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeErr(w, 405, errors.New("GET only"))
+		writeErr(w, 405, errors.New("作業記録の口は GET だけです"))
 		return
 	}
 	f, e, err := (handoff.Book{Store: s.o.storeDir}).Open(r.URL.Query().Get("path"))

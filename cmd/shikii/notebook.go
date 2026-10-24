@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -139,14 +140,21 @@ func notebookMaintenance(agent, scope string) error {
 }
 
 func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
+	body := r.Body
 	if !acceptJSONPost(w, r) {
 		return
 	}
+	r.Body = http.MaxBytesReader(w, body, 8<<20) // 作業記録の本文 1 MiB は JSON の符号化で何倍にも膨らむ。本文の大きさは handoff の Write が復号後に確かめる(監査 0.8.1-1)
 	var req notebookRequest
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		writeErr(w, 400, errors.New("invalid wiki request"))
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeErr(w, 413, errors.New("wiki の要求が 8 MiB を超えます(作業記録は 1 回 1 MiB まで。分けて handoff_append します)"))
+			return
+		}
+		writeErr(w, 400, fmt.Errorf("invalid wiki request: %v", err))
 		return
 	}
 	var extra any
