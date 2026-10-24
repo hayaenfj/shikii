@@ -490,14 +490,17 @@ function checkTurnContext(target) {
   const folded = !!previous && !previous.open && previous.querySelector('summary')?.textContent.includes('この依頼より前のAIの返答') && previous.textContent.includes('末尾 <img src=x>') && !target.querySelector('img');
   if (previous) previous.open = true;
   const readable = previous?.open && previous.textContent.includes('前の仕事は完了しました。末尾');
+  // 字の大きさの class は 1 つだけ(text-[13px] と text-[15px] が並ぶと、生成順で 15px が勝つ: 監査 A-1)
+  const sizes = (previous?.querySelector('.message-body')?.className.match(/(?:^|\s)text-\[\d+px\]/g) || []);
+  const oneSize = sizes.length === 1 && sizes[0].trim() === 'text-[13px]';
   unmount(app);
   app = mount(SpecPanel, { target, props: { sp: make('done-as-asked', { files: 'changed.go', request: '今回の新しい依頼', summary: '今回の作業を終えました。' }) } });
   flushSync();
   const fields = [...target.querySelectorAll('.text [data-input]')];
   const after = fields[0]?.dataset.input === 'request' && fields[1]?.dataset.input === 'summary' && fields[1].textContent.includes('今回の最後の返答') && target.querySelector('.decision-phase')?.textContent.includes('作業後') && !target.querySelector('details.previous-context');
   unmount(app);
-  const ok = before && folded && readable && after;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (着手前の対象=' + before + ', 前の完了返答を折りたたむ=' + folded + ', 原文を読める=' + readable + ', 作業後の対象=' + after + ')');
+  const ok = before && folded && readable && oneSize && after;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (着手前の対象=' + before + ', 前の完了返答を折りたたむ=' + folded + ', 原文を読める=' + readable + ', 前の返答の字の大きさは1つ=' + oneSize + ', 作業後の対象=' + after + ')');
   return ok;
 }
 

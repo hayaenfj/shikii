@@ -17,7 +17,7 @@
   const learned = s => live(s).reduce((n, k) => Math.max(n, k.n), 0);
   let autoCount = $derived(yours.filter(auto).length);
   let resultsWait = $derived(specs.reduce((n, s) => n + (s.awaiting_results || 0), 0));
-  const head = 'mt-2.5 mb-1 text-[12px] font-normal tracking-[.04em] text-muted';
+  const head = 'mt-2.5 mb-1 text-[12px] font-bold tracking-[.04em] text-muted';
 </script>
 
 <details class="summary-card mb-4 rounded-xl border border-line bg-surface text-[13px]" id="summary">
@@ -28,7 +28,7 @@
       {#if waiting.length}
         <ul class="summary-you-list">
           {#each waiting as s (s.id)}
-            <li><button type="button" class="weak" onclick={() => setTab(s.id)}>{loc(s.titles, s.id)} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[10px] text-amber tabular-nums">{s.waiting_for_person}</span></button> <span class="text-muted">{t('summaryGoTo')}</span></li>
+            <li><button type="button" class="weak" onclick={() => setTab(s.id)}>{loc(s.titles, s.id)} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[10px] text-amber tabular-nums max-sm:px-[5px] max-sm:text-[9px]">{s.waiting_for_person}</span></button> <span class="text-muted">{t('summaryGoTo')}</span></li>
           {/each}
         </ul>
       {:else}<p>{t('summaryYouNoneLong')}</p>{/if}

@@ -75,7 +75,7 @@
   const fieldBox = k => 'input-field mb-3.5 overflow-hidden rounded-[11px] border border-line ' + (k === 'request' ? 'border-l-[3px] border-l-request bg-requestbg' : k === 'summary' ? 'border-l-[3px] border-l-accent bg-surface2' : 'bg-surface2');
   const fieldLabel = k => 'field-label flex items-center gap-[7px] px-[15px] pt-[11px] text-[10px] font-semibold tracking-[.03em] max-sm:px-3 max-sm:pt-2.5 ' + (k === 'request' ? 'text-request' : k === 'summary' ? 'text-accent' : 'text-muted');
   const fieldDot = k => 'h-[5px] w-[5px] rounded-full ' + (k === 'request' ? 'bg-request' : 'bg-accent');
-  const body = k => 'message-body px-[15px] pt-2 pb-[15px] whitespace-pre-wrap max-sm:px-3 max-sm:pb-3 ' + (k === 'files' ? 'font-mono text-[12px] leading-[1.7]' : 'text-[15px] leading-[1.9] max-sm:text-[14px]');
+  const body = k => 'message-body px-[15px] pt-2 pb-[15px] whitespace-pre-wrap max-sm:px-3 max-sm:pb-3 ' + (k === 'files' ? 'font-mono text-[12px] leading-[1.7]' : k === 'previous' ? 'text-[13px] leading-[1.9] text-fg' : 'text-[15px] leading-[1.9] max-sm:text-[14px]');
   const limit = 'text-limit mx-3 mt-1.5 mb-3 rounded-md bg-amberbg px-2.5 py-1.5 text-[11px] text-amber';
 </script>
 
@@ -99,7 +99,7 @@
         {#if sp.id === 'needs-plan' && k === 'previous'}
           <details class="previous-context mt-1.5 mb-[18px] rounded-[9px] border border-dashed border-line text-[11px] text-muted [&[open]>summary]:border-b [&[open]>summary]:border-line" data-input={k}>
             <summary class="cursor-pointer px-[13px] py-[11px]">{inputLabel(k)}</summary>
-            <div class="{body(k)} text-[13px] text-fg">{it.original_inputs?.[k] ?? v}
+            <div class={body(k)}>{it.original_inputs?.[k] ?? v}
               {#if it.text_status?.[k]}<div class={limit}>{t(it.text_status[k] === 'legacy' ? 'legacyTextLimit' : it.text_status[k] === 'limited' ? 'originalTextLimit' : 'originalTextUnavailable')}</div>{/if}
             </div>
           </details>
@@ -112,7 +112,7 @@
     {:else}<span class="k">{t('noText')(it.inputs_hash)}</span>{/if}
   </div>
   {#if it.review}
-    <div class="text followup {fieldBox('reply')}"><div class={fieldLabel('reply')}><span class={fieldDot('reply')} aria-hidden="true"></span>{t('reviewReply')}</div><div class={body('reply')}>{it.review.source_material.reply}</div></div>
+    <div class="text followup wrap-anywhere {fieldBox('reply')}"><div class={fieldLabel('reply')}><span class={fieldDot('reply')} aria-hidden="true"></span>{t('reviewReply')}</div><div class={body('reply')}>{it.review.source_material.reply}</div></div>
     <details class="review-evidence mb-[15px] text-[12px]"><summary>{t('reviewEvidence')}</summary><p>{it.review.truth}: {it.review.reason}</p></details>
   {:else if it.top}
     <div class="guess prediction flex items-center justify-between gap-[15px] border-t border-line pt-3.5 pb-[18px]"><div><span class="mb-1 block text-[9px] tracking-[.05em] text-muted">{t('predictionHeading')}</span><strong class="block text-[13px] font-[550] max-sm:text-[11px]">{t('aiGuess')(topName, (guess.p * 100).toFixed(0))}</strong><span class="mt-[3px] block text-[10px] text-muted">{bandWord}{#if it.audit} · {t('auditShort')}{/if}</span></div><div class="grid h-[46px] flex-[0_0_46px] place-items-center rounded-full bg-[conic-gradient(var(--color-accent)_var(--confidence),var(--color-line)_0)] p-[3px]" style="--confidence:{Math.round(guess.p * 100)}%" aria-hidden="true"><span class="grid h-10 w-10 grid-flow-col items-baseline justify-center rounded-full bg-surface text-[13px] leading-10 text-accent tabular-nums">{Math.round(guess.p * 100)}<small class="ml-px text-[8px]">%</small></span></div></div>
