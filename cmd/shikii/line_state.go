@@ -156,7 +156,7 @@ func lineSummary(agent string) string {
 				en, ja = "Its answers now carry a checked confidence (act) for the agent; nothing is asked of you, and lessons are never replaced silently.", "これからはその答えに、線で確かめた確信(act)が付いてエージェントへ渡ります。人に聞くことはなく、教訓を黙って置き換えることもありません。"
 			}
 			if byResults {
-				en, ja = "From now on, decisions above the line go ahead (act); the rest wait for results to supply the truth, nothing is asked of you, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは確信が線より上の判断は進み(act)、それ以外は結果から正解が付くのを待ちます。人に聞くことはありません。act の 20 件に 1 件は抜き取りで画面に出ます。"
+				en, ja = "From now on, decisions above the line go ahead (act); the rest wait for results to supply the truth instead of asking you, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは確信が線より上の判断は進み(act)、それ以外は迷っても人に聞かず、結果から正解が付くのを待ちます。act の 20 件に 1 件は抜き取りで画面に出ます。"
 			}
 			lines = append(lines, bi(
 				fmt.Sprintf("shikii: a line was drawn for %s (%d truths). %s %s", id, s.N, en, projectPageURL(agent)),
