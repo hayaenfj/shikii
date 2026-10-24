@@ -91,6 +91,17 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 		out.Observations = nil
 		out.Maintenance = nil
 	}
+	if start == 0 { // 種類と場面の無い記事(0.9.0)。続きの返事には載せない
+		if un, err := b.Unclassified(); err == nil && len(un) > 0 {
+			out.UnclassifiedCount, out.UnclassifiedHow = len(un), unclassifiedHow
+			for i, p := range un {
+				if i == unclassifiedBatch {
+					break
+				}
+				out.Unclassified = append(out.Unclassified, UnclassifiedPage{ID: p.ID, Title: p.Title, Lesson: p.Lesson, AppliesTo: p.AppliesTo})
+			}
+		}
+	}
 	if all.Search != nil {
 		out.Search = &SearchResult{Total: all.Search.Total, Candidates: []SearchCandidate{}}
 	}

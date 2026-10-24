@@ -46,6 +46,8 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		return b.QueryPage(req.Query, req.Cursor)
 	case "ingest":
 		return ingestWithOutcome(root, scope, req.Draft) // 差し込み先の判定に結果の正解を付ける(0.8.3)
+	case "classify":
+		return b.Classify(req.ID, req.Kind, req.Scene) // 版を上げる前の記事に種類と場面だけを付ける(0.9.0)
 	case "capture":
 		if req.Observation == nil {
 			return nil, errors.New("保存する原資料が必要です")
@@ -67,8 +69,8 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 // 教訓の置き場は hook と同じプロジェクトの .shikii/。呼び出した仕事だけを扱う。
 // 新しい接続先や設定は持たず、文章は利用中のエージェントから JSON で受け取る。
 func cmdNotebook(args []string) error {
-	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain") {
-		return errors.New("使い方: shikii wiki query [検索語・出典ID…・lesson:記事ID@版] [continue:続きのカーソル] | ingest | capture | maintain（JSONを標準入力）| lint | verify …")
+	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify") {
+		return errors.New("使い方: shikii wiki query [検索語・出典ID…・lesson:記事ID@版] [continue:続きのカーソル] | ingest | capture | maintain（JSONを標準入力）| classify <記事ID> <種類> <場面> | lint | verify …")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -101,6 +103,12 @@ func cmdNotebook(args []string) error {
 		if err := dec.Decode(&extra); err != io.EOF {
 			return errors.New("wiki ingest accepts exactly one JSON object")
 		}
+	} else if req.Operation == "classify" {
+		// 版を上げる前の記事に種類と場面だけを付ける(0.9.0)。種類は rule|howto|criteria|fact|history、場面は残りの引数(空白を含めてよい)
+		if len(args) < 4 {
+			return errors.New("使い方: shikii wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面(「〜する時」)>")
+		}
+		req.ID, req.Kind, req.Scene = args[1], args[2], strings.Join(args[3:], " ")
 	} else if req.Operation == "query" {
 		if len(args) > 1 && strings.HasPrefix(args[len(args)-1], "continue:") {
 			req.Cursor = strings.TrimPrefix(args[len(args)-1], "continue:")

@@ -176,7 +176,7 @@ var mcpTools = []map[string]any{
 		"inputSchema": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
-				"operation":   map[string]any{"type": "string", "enum": []string{"query", "ingest", "capture", "maintain", "lint", "handoff_list", "handoff_read", "handoff_write", "handoff_append"}},
+				"operation":   map[string]any{"type": "string", "enum": []string{"query", "ingest", "capture", "maintain", "lint", "classify", "handoff_list", "handoff_read", "handoff_write", "handoff_append"}},
 				"path":        map[string]any{"type": "string", "description": "作業記録(handoff_*)のパス。.shikii/handoff/ からの相対(例: audit-0.8.1/report-A.md)。..・隠し名・絶対パスは断る"},
 				"content":     map[string]any{"type": "string", "description": "handoff_write(置き換え)・handoff_append(末尾に足す)の本文。UTF-8 の文字で 1 回 1 MiB まで"},
 				"maintenance": maintenanceSchema,

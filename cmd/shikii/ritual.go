@@ -16,6 +16,7 @@ import (
 const (
 	ritualPlan    = "plan-before-work"
 	ritualReflect = "reflect-before-end"
+	ritualKinds   = "wiki-kinds" // 版を上げる前の記事に種類と場面を付ける(0.9.0)
 )
 
 // builtinGuards は組み込みの作法の検査(一覧・集計・画面用。評価は ritualStop が行う)。
@@ -23,10 +24,13 @@ func builtinGuards() []guard {
 	return []guard{
 		{ID: ritualPlan, Kind: "ritual", Title: "作業の前に計画を整理する(hook plan query → submit)", Reason: "hook が頼んだ依頼でファイルを変えたなら、整理を submit してから終える", Enabled: true},
 		{ID: ritualReflect, Kind: "ritual", Title: "終える前に振り返りを保存する(reflect query → submit)", Reason: "hook が対象の会話を挙げたなら、仮採点・wiki・届いた教訓の評価を submit してから終える", Enabled: true},
+		{ID: ritualKinds, Kind: "ritual", Title: "種類と場面の無い記事に種類と場面を付ける(shikii wiki classify)", Reason: "hook が版を上げる前の記事を挙げたなら、種類と場面を付けてから終える", Enabled: true},
 	}
 }
 
-func isBuiltinGuard(id string) bool { return id == ritualPlan || id == ritualReflect }
+func isBuiltinGuard(id string) bool {
+	return id == ritualPlan || id == ritualReflect || id == ritualKinds
+}
 
 // ritualStop は、このターンで頼んだ作法が済んでいるかを見る。recheck(止めた後の Stop)では記録だけして止めない。
 func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, changed []string, known bool, recheck bool) (hookOut, error) {
@@ -64,6 +68,20 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReflect, Pass: pass, Reason: reason, Recheck: recheck})
+	}
+	// 種類と場面: 依頼前に挙げた記事が、まだ種類か場面の無いまま(0.9.0)
+	if len(snapshot.ClassifyAsked) > 0 && snapshot.ClassifyAskedTurn == snapshot.TurnID {
+		left, err := classifyLeft(root, scope, snapshot.ClassifyAsked)
+		if err != nil {
+			return hookOut{}, err
+		}
+		pass := len(left) == 0
+		reason := ""
+		if !pass {
+			reason = fmt.Sprintf("種類と場面を付ける記事が %d 本残っています(%s)。%s wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面>(MCP なら shikii_wiki の operation classify)で付けてから終えてください", len(left), strings.Join(left, "、"), hookExe())
+			failed = append(failed, reason)
+		}
+		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualKinds, Pass: pass, Reason: reason, Recheck: recheck})
 	}
 	if len(recs) > 0 {
 		if err := appendGuardRecords(root, recs); err != nil {

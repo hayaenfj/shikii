@@ -13,7 +13,7 @@ export default {
   summaryMemoryRow: m => '届けた ' + m.delivered + ' 件: 役立った ' + m.helpful + '、使わなかった ' + m.unused + '、害があった ' + m.harmful + '、不明 ' + m.unknown + '、観察待ち ' + m.pending + '（次の依頼待ち ' + m.awaiting_feedback + '）。直近7日: 届けた ' + m.recent_delivered + '、役立った ' + m.recent_helpful,
   summaryCorrections: c => '訂正の配送 ' + c.delivered + ': 沿った ' + c.followed + '、再発 ' + c.repeated + '、対象外 ' + c.not_applicable + '、不明 ' + c.unknown + '、観察待ち ' + c.pending,
   summaryGuardsNone: 'まだありません。人の訂正から shikii guard add で草稿を置き、shikii guard enable で有効にします。',
-  summaryRituals: r => '作法の実施（AI がやったか）: 作業前の計画の整理 ' + r.plan.done + ' / ' + r.plan.asked + ' 回（止めてから済ませた ' + r.plan.fixed + '）、終える前の振り返りの保存 ' + r.reflect.done + ' / ' + r.reflect.asked + ' 回（止めてから済ませた ' + r.reflect.fixed + '）。済んでいないまま終えようとすると一度止めます。',
+  summaryRituals: r => '作法の実施（AI がやったか）: 作業前の計画の整理 ' + r.plan.done + ' / ' + r.plan.asked + ' 回（止めてから済ませた ' + r.plan.fixed + '）、終える前の振り返りの保存 ' + r.reflect.done + ' / ' + r.reflect.asked + ' 回（止めてから済ませた ' + r.reflect.fixed + '）' + (r.kinds && r.kinds.asked ? '、版を上げる前の記事に種類と場面を付ける ' + r.kinds.done + ' / ' + r.kinds.asked + ' 回（止めてから済ませた ' + r.kinds.fixed + '）' : '') + '。済んでいないまま終えようとすると一度止めます。',
   summaryGuardBuiltin: '組み込み（常に有効）', summaryGuardOn: '有効', summaryGuardOff: '無効（草稿）', summaryGuardLastPass: at => '最後: 通過 ' + at, summaryGuardLastStop: (at, r) => '最後: 止めた ' + at + ': ' + r,
   summaryPersonRow: p => '今の規則で人を待つ判定 ' + (p.waits || 0) + ' / ' + (p.records || 0) + '（1000件あたり ' + Math.round(p.per_thousand || 0) + '。直近7日 ' + (p.recent_waits || 0) + ' / ' + (p.recent_records || 0) + '）。正解を決めたのは 人 ' + (p.by_person || 0) + '、結果 ' + (p.by_result || 0),
   notebookBody: '背景・判断理由を読む', notebookRelated: '関連する知識', notebookBack: '知識の一覧へ戻る',

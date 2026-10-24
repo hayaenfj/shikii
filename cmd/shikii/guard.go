@@ -482,17 +482,21 @@ func printGuardStats(out io.Writer, root string) {
 	}
 	// 作法の検査(0.8.0): 頼んだ回数のうち済んでいた回数と、止めてから済んだ回数。人には「AI が作法をやっているか」が見える
 	r := countRitualStats(recs)
-	fmt.Fprintf(out, "rituals: plan-before-work done %d of %d asked (after a stop %d); reflect-before-end done %d of %d asked (after a stop %d)\n", r.Plan.Done, r.Plan.Asked, r.Plan.Fixed, r.Reflect.Done, r.Reflect.Asked, r.Reflect.Fixed)
+	kinds := ""
+	if r.Kinds.Asked > 0 { // 版を上げる前の記事が残っている間だけ(0.9.0)
+		kinds = fmt.Sprintf("; wiki-kinds done %d of %d asked (after a stop %d)", r.Kinds.Done, r.Kinds.Asked, r.Kinds.Fixed)
+	}
+	fmt.Fprintf(out, "rituals: plan-before-work done %d of %d asked (after a stop %d); reflect-before-end done %d of %d asked (after a stop %d)%s\n", r.Plan.Done, r.Plan.Asked, r.Plan.Fixed, r.Reflect.Done, r.Reflect.Asked, r.Reflect.Fixed, kinds)
 }
 
 // ritualStat は 1 つの作法の実施の数: 頼んだ(検査した)ターン、最初から済んでいたターン、止めてから済んだターン。
 type ritualStat struct{ Asked, Done, Fixed int }
 
-type ritualStats struct{ Plan, Reflect ritualStat }
+type ritualStats struct{ Plan, Reflect, Kinds ritualStat }
 
 func countRitualStats(recs []guardRecord) ritualStats {
 	var out ritualStats
-	for _, id := range []string{ritualPlan, ritualReflect} {
+	for _, id := range []string{ritualPlan, ritualReflect, ritualKinds} {
 		var st ritualStat
 		failed := map[string]bool{} // session/turn → 止めてまだ済んでいない
 		for _, r := range recs {
@@ -514,9 +518,12 @@ func countRitualStats(recs []guardRecord) ritualStats {
 				st.Fixed++
 			}
 		}
-		if id == ritualPlan {
+		switch id {
+		case ritualPlan:
 			out.Plan = st
-		} else {
+		case ritualKinds:
+			out.Kinds = st
+		default:
 			out.Reflect = st
 		}
 	}
@@ -552,7 +559,7 @@ func guardSummaryJSON(root string) map[string]any {
 		}
 	}
 	return map[string]any{"total": own, "enabled": s.Enabled, "stopped": s.Stopped, "fixed": s.Fixed, "items": items,
-		"rituals": map[string]any{"plan": map[string]int{"asked": r.Plan.Asked, "done": r.Plan.Done, "fixed": r.Plan.Fixed}, "reflect": map[string]int{"asked": r.Reflect.Asked, "done": r.Reflect.Done, "fixed": r.Reflect.Fixed}}}
+		"rituals": map[string]any{"plan": map[string]int{"asked": r.Plan.Asked, "done": r.Plan.Done, "fixed": r.Plan.Fixed}, "reflect": map[string]int{"asked": r.Reflect.Asked, "done": r.Reflect.Done, "fixed": r.Reflect.Fixed}, "kinds": map[string]int{"asked": r.Kinds.Asked, "done": r.Kinds.Done, "fixed": r.Kinds.Fixed}}}
 }
 
 // ---------------------------------------------------------------- CLI

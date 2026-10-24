@@ -101,8 +101,12 @@ type View struct {
 	Matches      []Match           `json:"matches,omitempty"`
 	Observations []Observation     `json:"observations,omitempty"`
 	Maintenance  []MaintenanceTask `json:"maintenance,omitempty"`
-	Search       *SearchResult     `json:"search,omitempty"`
-	NextCursor   string            `json:"next_cursor,omitempty"`
+	// 種類と場面の無い記事(版を上げる前に作った物。0.9.0)。最初の返事にだけ、数と unclassifiedBatch 本までと付け方を載せる
+	Unclassified      []UnclassifiedPage `json:"unclassified,omitempty"`
+	UnclassifiedCount int                `json:"unclassified_count,omitempty"`
+	UnclassifiedHow   string             `json:"unclassified_how,omitempty"`
+	Search            *SearchResult      `json:"search,omitempty"`
+	NextCursor        string             `json:"next_cursor,omitempty"`
 }
 
 type Result struct {
@@ -1062,3 +1066,81 @@ func (b Book) MaybeLint() error {
 	_, err = f.WriteAt([]byte(time.Now().UTC().Format(time.RFC3339)), 0)
 	return err
 }
+
+// Unclassified は、種類か場面の無い生きている記事(版を上げる前に作った記事。0.9.0)。id の順。
+func (b Book) Unclassified() ([]Page, error) {
+	live, err := b.Live()
+	if err != nil {
+		return nil, err
+	}
+	out := []Page{}
+	for _, p := range live {
+		if p.Kind == "" || p.Scene == "" {
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+// Classify は、記事に種類と場面だけを付けた新しい版を保存する(教訓・題・当てはまる場面・本文・関連・出典はそのまま)。
+// 版を上げる前に作った記事を埋めるための軽い操作で、教訓を書き直す時は Ingest を使う。
+func (b Book) Classify(id, kind, scene string) (Result, error) {
+	kind, scene = strings.TrimSpace(kind), strings.TrimSpace(scene)
+	if !validKindScene(kind, scene) {
+		return Result{}, errKindScene
+	}
+	live, err := b.Live()
+	if err != nil {
+		return Result{}, err
+	}
+	for _, p := range live {
+		if p.ID != id {
+			continue
+		}
+		sources := make([]string, 0, len(p.Sources))
+		for _, s := range p.Sources {
+			sources = append(sources, s.ID)
+		}
+		return b.Ingest(Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: sources, Kind: kind, Scene: scene, ChangeReason: "種類と場面を付けた(0.9.0)"})
+	}
+	return Result{}, errors.New("the page to classify is not a live lesson in this project / 種類と場面を付ける記事がこのプロジェクトにありません")
+}
+
+// RewriteWithoutKindScene は、記事を種類と場面の無い形(版を上げる前の記事)に書き直す。0.9.0 の移行(hook が埋めさせる)を
+// テストと実地の確かめで再現するためだけに使う。普段の操作からは呼ばない。
+func (b Book) RewriteWithoutKindScene(id string) error {
+	live, err := b.Live()
+	if err != nil {
+		return err
+	}
+	for _, p := range live {
+		if p.ID != id {
+			continue
+		}
+		p.Kind, p.Scene, p.Previous = "", "", ""
+		p.Revision = revision(p)
+		data, err := b.pageBytes(p)
+		if err != nil {
+			return err
+		}
+		dir, err := b.directory(false, "pages")
+		if err != nil {
+			return err
+		}
+		return writeFile(filepath.Join(dir, p.ID+".md"), data)
+	}
+	return errors.New("no such live lesson")
+}
+
+// UnclassifiedPage は、種類と場面を付けてほしい記事の短い形。
+type UnclassifiedPage struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Lesson    string `json:"lesson"`
+	AppliesTo string `json:"applies_to"`
+}
+
+const unclassifiedBatch = 5
+
+const unclassifiedHow = "これらの記事に種類と場面を付けてください: shikii wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面>(MCP なら shikii_wiki の operation classify に id・kind・scene)。種類は rule=守る決まり / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯、場面はその仕事の言葉で「〜する時」。"

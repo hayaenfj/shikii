@@ -346,9 +346,13 @@ func TestIngestRequiresKindAndScene(t *testing.T) {
 		t.Fatalf("直す時に省けば種類と場面を引き継ぐ: %+v %v", again.Page, err)
 	}
 	// 種類も場面も無い前の版の記事は、直す時に付けないと保存できない
-	legacy := *first.Page
-	legacy.ID, legacy.Title, legacy.Kind, legacy.Scene = "00000000000000aa", "前の版の記事", "", ""
-	if err := writeLegacyPage(b, legacy); err != nil {
+	legacyDraft := draft(id, "前の版の記事")
+	lres, err := b.Ingest(legacyDraft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := *lres.Page
+	if err := b.RewriteWithoutKindScene(legacy.ID); err != nil {
 		t.Fatal(err)
 	}
 	d.ID, d.Title = legacy.ID, legacy.Title
@@ -361,17 +365,63 @@ func TestIngestRequiresKindAndScene(t *testing.T) {
 	}
 }
 
-// writeLegacyPage は、種類も場面も無い前の版の記事を、置き場へそのまま書く(版を上げた直後を真似る)。
-func writeLegacyPage(b Book, p Page) error {
-	p.Previous = ""
-	p.Revision = revision(p)
-	data, err := b.pageBytes(p)
+// 0.9.0: 版を上げる前に作った記事(種類も場面も無い)は Unclassified に並び、Classify で種類と場面だけを付けられる
+// (教訓・題・本文はそのまま。新しい版になり、前の版へのリンクを持つ)。付ければ一覧から消える。
+func TestClassifyLegacyPages(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	first, err := b.Ingest(draft(id, "決まりの記事"))
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
-	dir, err := b.directory(false, "pages")
+	_ = first
+	lres, err := b.Ingest(draft(id, "前の版の記事"))
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
-	return writeFile(filepath.Join(dir, p.ID+".md"), data)
+	legacy := *lres.Page
+	if err := b.RewriteWithoutKindScene(legacy.ID); err != nil {
+		t.Fatal(err)
+	}
+	un, err := b.Unclassified()
+	if err != nil || len(un) != 1 || un[0].ID != legacy.ID {
+		t.Fatalf("種類か場面の無い記事だけを並べる: %+v %v", un, err)
+	}
+	if _, err := b.Classify(legacy.ID, "memo", "公開する時"); err == nil {
+		t.Fatal("種類は 5 つのどれか")
+	}
+	if _, err := b.Classify("00000000000000cc", "rule", "公開する時"); err == nil {
+		t.Fatal("無い記事には付けられない")
+	}
+	res, err := b.Classify(legacy.ID, "howto", "公開する時")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := res.Page; p.Kind != "howto" || p.Scene != "公開する時" || p.Lesson != legacy.Lesson || p.Title != legacy.Title || p.Previous == "" {
+		t.Fatalf("種類と場面だけを付けた新しい版にする: %+v", p)
+	}
+	if un, _ := b.Unclassified(); len(un) != 0 {
+		t.Fatalf("付ければ一覧から消える: %+v", un)
+	}
+}
+
+// 0.9.0: wiki の検索(CLI・MCP・HTTP)の最初の返事に、種類と場面の無い記事の数と 5 本までを載せる(hook の無いエージェントにも届く)。
+func TestQueryPageListsUnclassifiedPages(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	res, err := b.Ingest(draft(id, "前の版の記事"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := b.QueryPage("", "")
+	if err != nil || v.UnclassifiedCount != 0 || len(v.Unclassified) != 0 {
+		t.Fatalf("全部付いていれば出さない: %+v %v", v.Unclassified, err)
+	}
+	if err := b.RewriteWithoutKindScene(res.Page.ID); err != nil {
+		t.Fatal(err)
+	}
+	v, err = b.QueryPage("", "")
+	if err != nil || v.UnclassifiedCount != 1 || len(v.Unclassified) != 1 || v.Unclassified[0].ID != res.Page.ID || !strings.Contains(v.UnclassifiedHow, "classify") {
+		t.Fatalf("種類と場面の無い記事の数と、付け方を載せる: %+v %d %q %v", v.Unclassified, v.UnclassifiedCount, v.UnclassifiedHow, err)
+	}
 }

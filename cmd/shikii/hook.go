@@ -173,30 +173,32 @@ func (o hookOut) json(event string) []byte {
 // hookSession はプロジェクトごとの控え(.shikii/sessions/<id>.json)。transcript は読まない(形が文書化されていない)。
 // 依頼の時の作業ツリーの一覧は隣の <id>.files(大きいので JSON には入れない)。
 type hookSession struct {
-	Request          string           `json:"request,omitempty"`            // 人が最後に送った依頼(UserPromptSubmit で控える)
-	RequestText      string           `json:"request_text,omitempty"`       // 画面用の原文。判定の入力とは分けて保持する
-	RawPrompt        string           `json:"last_user_prompt,omitempty"`   // 結合せず控えた最後の人の発言。引用の出典に使う
-	TurnID           string           `json:"turn_id,omitempty"`            // 同じ文の依頼を繰り返しても別のターン
-	Scope            string           `json:"scope,omitempty"`              // repo の実パス。会話も採点も線も同じ仕事に限る
-	Completed        *completedTurn   `json:"completed,omitempty"`          // この依頼に返答した時の控え。次の人の発言と一組にする
-	Memories         []memoryDelivery `json:"memories,omitempty"`           // このセッションに届けた記憶の版(直近16件)
-	Previous         string           `json:"previous,omitempty"`           // 直前のアシスタントの発言(Stop で控える)
-	Planning         *planningFrame   `json:"planning,omitempty"`           // 現在の依頼について、エージェントが原文付きで整理する文脈
-	Pending          []pendingItem    `json:"pending,omitempty"`            // prompt-kind の結果の正解を待つ判定
-	Watch            []scopeWatch     `json:"watch,omitempty"`              // changes-in-scope の結果の正解を待つ判定(変えたファイルが戻されるか)
-	Asked            []askedItem      `json:"asked,omitempty"`              // このセッションで人の答えを待つことになった判定(ask と抜き取り)
-	Reviews          []askedItem      `json:"reviews,omitempty"`            // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
-	Reported         []string         `json:"reported_traces,omitempty"`    // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
-	Judged           bool             `json:"judged,omitempty"`             // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
-	Head             string           `json:"head,omitempty"`               // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
-	HeadAt           time.Time        `json:"head_at,omitempty"`            // 依頼の時刻。これより前にコミットされたもの(切り替え先の既存のコミット)は見ない
-	MemoryNoticed    bool             `json:"memory_noticed,omitempty"`     // まだ wiki に無いメモリがあると、このセッションで一度伝えた(0.8.0)
-	ReflectAsked     []string         `json:"reflect_asked,omitempty"`      // 依頼前に振り返りを頼んだ会話(作法の検査が Stop で見る。0.8.0)
-	ReflectAskedTurn string           `json:"reflect_asked_turn,omitempty"` // ReflectAsked を頼んだターン(別のターンの残りで止めない。監査 R5)
-	RitualStopped    string           `json:"ritual_stopped,omitempty"`     // 作法の検査で止めたターン(通知の後の Stop でもう一度止めない。監査 R5)
-	PageNoticed      bool             `json:"page_noticed,omitempty"`       // 画面の場所をこのセッションで伝えた(0.8.0)
-	HabitsNoticed    bool             `json:"habits_noticed,omitempty"`     // 作業記録と決まりの残し方を、このセッションで伝えた(0.8.1)
-	At               time.Time        `json:"at"`
+	Request           string           `json:"request,omitempty"`             // 人が最後に送った依頼(UserPromptSubmit で控える)
+	RequestText       string           `json:"request_text,omitempty"`        // 画面用の原文。判定の入力とは分けて保持する
+	RawPrompt         string           `json:"last_user_prompt,omitempty"`    // 結合せず控えた最後の人の発言。引用の出典に使う
+	TurnID            string           `json:"turn_id,omitempty"`             // 同じ文の依頼を繰り返しても別のターン
+	Scope             string           `json:"scope,omitempty"`               // repo の実パス。会話も採点も線も同じ仕事に限る
+	Completed         *completedTurn   `json:"completed,omitempty"`           // この依頼に返答した時の控え。次の人の発言と一組にする
+	Memories          []memoryDelivery `json:"memories,omitempty"`            // このセッションに届けた記憶の版(直近16件)
+	Previous          string           `json:"previous,omitempty"`            // 直前のアシスタントの発言(Stop で控える)
+	Planning          *planningFrame   `json:"planning,omitempty"`            // 現在の依頼について、エージェントが原文付きで整理する文脈
+	Pending           []pendingItem    `json:"pending,omitempty"`             // prompt-kind の結果の正解を待つ判定
+	Watch             []scopeWatch     `json:"watch,omitempty"`               // changes-in-scope の結果の正解を待つ判定(変えたファイルが戻されるか)
+	Asked             []askedItem      `json:"asked,omitempty"`               // このセッションで人の答えを待つことになった判定(ask と抜き取り)
+	Reviews           []askedItem      `json:"reviews,omitempty"`             // 会話を受けた仮採点と、その後の抜き打ち確認を待つ判定
+	Reported          []string         `json:"reported_traces,omitempty"`     // Stop で答え待ちとして伝えた trace(新顔がある時だけ言う)
+	Judged            bool             `json:"judged,omitempty"`              // 今の依頼についてターンの終わりの自己評価(changes-in-scope / done-as-asked)を済ませた(次の依頼で戻る)
+	Head              string           `json:"head,omitempty"`                // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
+	HeadAt            time.Time        `json:"head_at,omitempty"`             // 依頼の時刻。これより前にコミットされたもの(切り替え先の既存のコミット)は見ない
+	MemoryNoticed     bool             `json:"memory_noticed,omitempty"`      // まだ wiki に無いメモリがあると、このセッションで一度伝えた(0.8.0)
+	ReflectAsked      []string         `json:"reflect_asked,omitempty"`       // 依頼前に振り返りを頼んだ会話(作法の検査が Stop で見る。0.8.0)
+	ReflectAskedTurn  string           `json:"reflect_asked_turn,omitempty"`  // ReflectAsked を頼んだターン(別のターンの残りで止めない。監査 R5)
+	RitualStopped     string           `json:"ritual_stopped,omitempty"`      // 作法の検査で止めたターン(通知の後の Stop でもう一度止めない。監査 R5)
+	PageNoticed       bool             `json:"page_noticed,omitempty"`        // 画面の場所をこのセッションで伝えた(0.8.0)
+	HabitsNoticed     bool             `json:"habits_noticed,omitempty"`      // 作業記録と決まりの残し方を、このセッションで伝えた(0.8.1)
+	ClassifyAsked     []string         `json:"classify_asked,omitempty"`      // 依頼前に種類と場面を付けるよう頼んだ記事(作法の検査 wiki-kinds が Stop で見る。0.9.0)
+	ClassifyAskedTurn string           `json:"classify_asked_turn,omitempty"` // ClassifyAsked を頼んだターン
+	At                time.Time        `json:"at"`
 }
 
 type pendingItem struct {
@@ -623,6 +625,20 @@ func runHookEvent(event string) error {
 				}
 			}); uerr != nil {
 				hookLog("reflect: " + uerr.Error())
+			}
+			// 版を上げる前の記事(種類も場面も無い)を 5 本ずつ埋めさせる(0.9.0)。頼んだ記事を控えに書き、Stop の作法の検査が見る
+			kctx, kids, kerr := classifyContext(agent, current.Scope)
+			if kerr != nil {
+				hookLog("classify: " + kerr.Error())
+				kids = nil
+			}
+			out.Context = joinLines(out.Context, kctx)
+			if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
+				if s.TurnID == current.TurnID {
+					s.ClassifyAsked, s.ClassifyAskedTurn = kids, current.TurnID
+				}
+			}); uerr != nil {
+				hookLog("classify: " + uerr.Error())
 			}
 			out.Context = joinLines(out.Context, variantsContext(agent))
 		}
