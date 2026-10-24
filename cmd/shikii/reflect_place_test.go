@@ -273,3 +273,17 @@ func TestPlaceReturnsExistingScenes(t *testing.T) {
 		t.Fatalf("候補にも種類と場面を添える: %+v", c)
 	}
 }
+
+// 監査 0.9.0 の M13: 差し込み先の返事の場面は多い順に placeScenesMax まで(全部の場面を渡して返事を大きくしない)。
+func TestLiveScenesAreCappedAndOrdered(t *testing.T) {
+	var live []notebook.Page
+	for i := 0; i < placeScenesMax+5; i++ {
+		for j := 0; j <= i%3; j++ {
+			live = append(live, notebook.Page{ID: fmt.Sprintf("%016x", i*10+j), Scene: fmt.Sprintf("場面 %02d の時", i)})
+		}
+	}
+	got := liveScenes(live)
+	if len(got) != placeScenesMax || got[0].Count != 3 || got[len(got)-1].Count > got[0].Count {
+		t.Fatalf("多い順に %d 個まで: %d 個、先頭 %+v", placeScenesMax, len(got), got[0])
+	}
+}

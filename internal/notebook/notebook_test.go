@@ -425,3 +425,17 @@ func TestQueryPageListsUnclassifiedPages(t *testing.T) {
 		t.Fatalf("種類と場面の無い記事の数と、付け方を載せる: %+v %d %q %v", v.Unclassified, v.UnclassifiedCount, v.UnclassifiedHow, err)
 	}
 }
+
+// 監査 0.9.0 の M12: 教訓の無い草稿(原資料を整理済みにするだけ)に種類や場面を付けたら断る(付いても使われず、誤った保存に見える)。
+func TestReviewOnlyDraftRejectsKindAndScene(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	for _, d := range []Draft{{Sources: []string{id}, Kind: "rule"}, {Sources: []string{id}, Scene: "README を直す時"}} {
+		if _, err := b.Ingest(d); err == nil {
+			t.Fatalf("教訓の無い草稿の種類・場面は断る: %+v", d)
+		}
+	}
+	if _, err := b.Ingest(Draft{Sources: []string{id}}); err != nil {
+		t.Fatalf("原資料だけなら通る: %v", err)
+	}
+}

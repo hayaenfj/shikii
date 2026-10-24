@@ -176,3 +176,33 @@ func TestResponsesCarryRemainingUnclassifiedPages(t *testing.T) {
 		t.Fatalf("残りが無くなれば載せない: %v", m)
 	}
 }
+
+// 監査 0.9.0 の M5: 前のターンに頼んだ記事の控えは、今のターンの Stop を止めない(頼んだターンでだけ数える)。
+func TestClassifyRitualIgnoresAsksFromAnotherTurn(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(repo, ".shikii")
+	scope := feedbackScope(repo)
+	src := fmt.Sprintf("%016x", 700)
+	if err := (store.Store{Dir: root}).AppendFeedback(scope, store.Feedback{ID: src, Request: "r", Summary: "s", Reply: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "w", "cwd": repo, "prompt": "README を直して"})
+	book := notebook.Book{Root: root, Scope: scope}
+	res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "後から前の版になった記事", Lesson: "教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := book.RewriteWithoutKindScene(res.Page.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateSession(root, "w", func(s *hookSession) { s.ClassifyAsked, s.ClassifyAskedTurn = []string{res.Page.ID}, "前のターン" }); err != nil {
+		t.Fatal(err)
+	}
+	if out := runHook(t, "stop", map[string]any{"session_id": "w", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "種類と場面を付ける記事") {
+		t.Fatalf("前のターンの控えで今のターンを止めない: %s", out)
+	}
+}

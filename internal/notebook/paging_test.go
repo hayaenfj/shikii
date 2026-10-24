@@ -184,3 +184,32 @@ func TestWikiCitationsLinksAndCaptureQueueHaveNoCountCeiling(t *testing.T) {
 		t.Fatal("見直しの記録も件数や小さいファイル上限で失わない", err)
 	}
 }
+
+// 監査 0.9.0 の M4: 種類と場面の無い記事の案内は最初の返事にだけ載せ、続きの返事には載せない(同じ 5 本を何度も渡さない)。
+func TestUnclassifiedOnlyOnTheFirstPage(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	var legacy string
+	for i := range 60 {
+		d := draft(source, fmt.Sprintf("Knowledge %03d", i))
+		d.AppliesTo = strings.Repeat("Knowledge scope ", 55)
+		body := strings.Repeat("Detailed evidence. ", 100)
+		d.Body = &body
+		r, err := b.Ingest(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacy = r.Page.ID
+	}
+	if err := b.RewriteWithoutKindScene(legacy); err != nil {
+		t.Fatal(err)
+	}
+	first, err := b.QueryPage("", "")
+	if err != nil || first.NextCursor == "" || first.UnclassifiedCount != 1 {
+		t.Fatalf("最初の返事に案内があり、続きがある: count=%d cursor=%q %v", first.UnclassifiedCount, first.NextCursor, err)
+	}
+	next, err := b.QueryPage("", first.NextCursor)
+	if err != nil || next.UnclassifiedCount != 0 || len(next.Unclassified) != 0 || next.UnclassifiedHow != "" {
+		t.Fatalf("続きの返事には載せない: %+v %v", next.Remaining, err)
+	}
+}
