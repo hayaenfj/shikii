@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // 0.9.0: 知識の画面のために /v1/wiki は、記事ごとの最終更新と役立った・害があった回数(lesson_meta)、人に見てほしい例外だけの受け箱
@@ -51,5 +54,40 @@ func TestWikiListCarriesLessonMetaAndInbox(t *testing.T) {
 	}
 	if body.Unclassified == nil || *body.Unclassified != 0 {
 		t.Fatalf("種類と場面の無い記事の数(0 でも返す): %v", body.Unclassified)
+	}
+}
+
+// 監査 0.9.0 の E1 と M8: 受け箱は生きている記事ごとに 1 件へまとめ、回数を付ける。繰り返された訂正も出る。
+func TestInboxGroupsByLessonWithCount(t *testing.T) {
+	agent, scope, _, src := audit083Setup(t)
+	book := notebook.Book{Root: agent, Scope: scope}
+	a, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "害のあった記事", Lesson: "教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "訂正の記事", Lesson: "訂正の教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs := []store.MemoryObservation{}
+	for i := 0; i < 3; i++ {
+		obs = append(obs, store.MemoryObservation{Request: "r", Quote: store.MemoryQuote{ID: a.Page.ID, Lesson: "教訓。"}, Assessment: &store.MemoryAssessment{Result: "harmful"}})
+	}
+	obs = append(obs, store.MemoryObservation{Request: "r", Quote: store.MemoryQuote{ID: c.Page.ID, Lesson: "訂正の教訓。"}, Assessment: &store.MemoryAssessment{Result: "unused", CorrectionResult: "repeated"}})
+	_, inbox := knowledgeMeta(agent, scope, obs)
+	var harmful, repeated int
+	for _, it := range inbox {
+		switch it["kind"] {
+		case "harmful":
+			harmful++
+			if it["lesson_id"] != a.Page.ID || it["count"] != 3 {
+				t.Fatalf("害の 3 件は 1 件にまとめて回数 3: %v", it)
+			}
+		case "repeated":
+			repeated++
+		}
+	}
+	if harmful != 1 || repeated != 1 {
+		t.Fatalf("害は 1 件、繰り返された訂正も 1 件: %v", inbox)
 	}
 }

@@ -254,7 +254,16 @@ func knowledgeMeta(storeDir, scope string, observed []store.MemoryObservation) (
 			meta[id] = map[string]any{"updated": at.Format(time.RFC3339), "helpful": 0, "harmful": 0}
 		}
 	}
+	// 受け箱は生きている記事だけ(置き換え済みの記事は出さない)、記事と種類ごとに 1 件へまとめて回数を付ける(監査 0.9.0 の E1)。
+	// observed は新しい順なので、最初の 1 件の依頼と時刻が最新
+	alive := map[string]bool{}
+	if live, err := (notebook.Book{Root: storeDir, Scope: scope}).Live(); err == nil {
+		for _, p := range live {
+			alive[p.ID] = true
+		}
+	}
 	inbox := []map[string]any{}
+	seen := map[string]map[string]any{}
 	for _, o := range observed {
 		if o.Assessment == nil {
 			continue
@@ -267,15 +276,23 @@ func knowledgeMeta(storeDir, scope string, observed []store.MemoryObservation) (
 				m["harmful"] = m["harmful"].(int) + 1
 			}
 		}
-		item := map[string]any{"lesson_id": o.Quote.ID, "lesson": o.Quote.Lesson, "request": cut(o.Request, 300), "at": o.At.Format(time.RFC3339)}
+		kind := ""
 		switch {
 		case o.Assessment.Result == "harmful":
-			item["kind"] = "harmful"
-			inbox = append(inbox, item)
+			kind = "harmful"
 		case o.Assessment.CorrectionResult == "repeated":
-			item["kind"] = "repeated"
-			inbox = append(inbox, item)
+			kind = "repeated"
 		}
+		if kind == "" || !alive[o.Quote.ID] {
+			continue
+		}
+		if it := seen[kind+" "+o.Quote.ID]; it != nil {
+			it["count"] = it["count"].(int) + 1
+			continue
+		}
+		item := map[string]any{"kind": kind, "lesson_id": o.Quote.ID, "lesson": o.Quote.Lesson, "request": cut(o.Request, 300), "at": o.At.Format(time.RFC3339), "count": 1}
+		seen[kind+" "+o.Quote.ID] = item
+		inbox = append(inbox, item)
 	}
 	if guards, err := loadGuards(storeDir); err == nil {
 		for _, g := range guards {

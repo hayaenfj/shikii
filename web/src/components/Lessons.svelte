@@ -64,7 +64,7 @@
             {#if it.kind === 'guard_draft'}
               {it.title} <span class="k">shikii guard enable {it.guard_id}</span>
             {:else}
-              <button type="button" class="weak" data-open={it.lesson_id} onclick={() => showLesson(it.lesson_id)}>{byId.get(it.lesson_id)?.title || it.lesson}</button>
+              <button type="button" class="weak" data-open={it.lesson_id} onclick={() => showLesson(it.lesson_id)}>{byId.get(it.lesson_id)?.title || it.lesson}</button>{#if it.count > 1}<span class="k" data-inbox-count> {t('inboxTimes')(it.count)}</span>{/if}
             {/if}
           </li>
         {/each}

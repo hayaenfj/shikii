@@ -829,7 +829,7 @@ function checkLessons(target) {
   const mk = (i, kind, scene) => ({ id: String(i).padStart(16, '0'), title: '記事 ' + i, lesson: '教訓 ' + i + ' <b>太字ではない</b>', applies_to: 'a', kind, scene, sources: [], related: [] });
   const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'コミットする時'), mk(3, 'rule', '公開する時'), mk(4, 'rule', '公開する時'), mk(5, 'rule', '公開する時'), mk(6, 'howto', '公開する時'), mk(7, '', '')];
   const long = '依頼の文がとても長い。'.repeat(10);
-  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { updated: '2026-10-24T00:00:00Z', helpful: 3, harmful: 0 } }, inbox: [{ kind: 'harmful', lesson_id: lessons[0].id, lesson: '教訓 1' }],
+  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { updated: '2026-10-24T00:00:00Z', helpful: 3, harmful: 0 } }, inbox: [{ kind: 'harmful', lesson_id: lessons[0].id, lesson: '教訓 1', count: 3 }],
     memory_effect: { stats: { delivered: 5, helpful: 1, unused: 3, harmful: 1 }, corrections: {}, recent: [{ request: long, quote: { lesson: '届けた教訓' }, assessment: { result: 'harmful' } }] } };
   const app = mount(Lessons, { target, props: { wiki } }); flushSync();
   const q = sel => target.querySelector(sel);
@@ -843,7 +843,7 @@ function checkLessons(target) {
   const detail = q('[data-lesson-detail]')?.textContent.includes('<b>太字ではない</b>') && !q('[data-lesson-detail] b');
   q('[data-scene="__none__"]').click(); flushSync();
   const none = q('[data-kinds]')?.textContent.includes('記事 7') && !q('[data-kind="rule"]');
-  const inbox = q('[data-inbox-item="harmful"]')?.textContent.includes('記事 1');
+  const inbox = q('[data-inbox-item="harmful"]')?.textContent.includes('記事 1') && q('[data-inbox-count]')?.textContent.includes('3');
   const clip = q('[data-clip="req0"]');
   const short = clip && !clip.textContent.includes(long);
   clip?.click(); flushSync();
