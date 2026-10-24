@@ -12,7 +12,7 @@ Claude Code and Codex start every session from zero. They do not remember what y
 [![Tests](https://img.shields.io/badge/tests-387%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.8.1-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.8.2-00ADD8?style=flat-square)](CHANGELOG.md)
 
 Version 0.8 makes the agent do its routine before and after every piece of work, and keeps a trail of its work in `.shikii/handoff/`. Each project has one page that starts with what is waiting for you. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 

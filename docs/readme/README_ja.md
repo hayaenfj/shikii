@@ -12,7 +12,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 [![Tests](https://img.shields.io/badge/tests-387%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.8.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.8.2-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
 0.8で、エージェントが作業の前と後の手順を必ず踏むようになり、作業の跡を `.shikii/handoff/` に残すようになりました。画面はプロジェクトごとに1つで、まず人が答える分を伝えます。**0.6.0以前からの更新は、初期化済みの各プロジェクトの `.shikii/` の中を全部消して初期化し直します。** 残したいものは先に控えてください。[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
 
