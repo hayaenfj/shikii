@@ -80,6 +80,9 @@ var maintenanceSchema = map[string]any{"type": "object", "additionalProperties":
 var kindSchema = map[string]any{"type": "string", "enum": notebook.Kinds, "description": "教訓の種類(必須。直す時は省けば引き継ぐ): rule=守る決まり、howto=やり方、criteria=判断の基準、fact=前提と事実、history=経緯"}
 var sceneSchema = map[string]any{"type": "string", "maxLength": 24, "description": "当てはまる場面をその仕事の言葉で短く(必須。例「コミットする時」「請求書を出す時」。1 行 24 文字まで)。place の返事の今ある場面に近い物があれば同じ言い方を使う"}
 
+// mcpInstructions は MCP のサーバーの案内。hook の無いエージェント(Codex・OpenCode)には、これと道具の説明だけが届く。
+const mcpInstructions = "shikii turns a decision model's probability into act / ask / discard. Call shikii_specs first; decide with shikii_decide; when you learn what was true, call shikii_label with the trace_id so the spec can be calibrated. Use shikii_wiki to query, ingest and lint lessons from this project's conversations. Lessons are hypotheses with sources, never truth labels or permission to act. Your usual agent maintains this wiki without asking the user to organize it. Every lesson needs a kind (rule, howto, criteria, fact or history) and a scene written in the project's own words; reuse a scene that place returns. When shikii_wiki query lists unclassified pages (made before 0.9.0), give each one a kind and a scene with operation classify before ending the turn."
+
 var mcpTools = []map[string]any{
 	{
 		"name":        "shikii_reflect",
@@ -172,7 +175,7 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "shikii_wiki",
-		"description": "同じ仕事の原資料からwikiを育てる。captureは確認したコード・テスト・Release等を種類・版・時点・参照付きで保持する。queryのmaintenanceは最大2記事の見直し対象で、maintainへ最新のpage_id・revision・keyとreasonを渡して記録する。query で教訓と未整理の原資料を読み、sources を指定した query で原文を確かめる。原資料と既存ページを読み、短いlessonと背景・理由・未確定点を含むbodyへ統合し、relatedで関連知識を結ぶ。ingestは適用条件・出典IDとともに保存し、索引と履歴を更新する。再利用する教訓が無ければ sources だけで整理済みにする。既存の教訓の更新には id、古い教訓の置き換えには replaces を使う。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次に変える行動を結ぶ。引用の存在は意味の正しさを保証しない。全て仮説であり、正解・較正・confirmed の状態は変更しない。lint は出典やリンクを点検し、生成した索引を整える。handoff_list / handoff_read / handoff_write / handoff_append は作業記録(.shikii/handoff/)を扱う: 途中で書き換える作業ファイル(監査の報告、リリースの手順と記録、差分)を置き、人は画面の知識の欄で読む。教訓は ingest、確かめた時点の証拠は capture、書き換えながら進める物は handoff。人に画面操作を求めない。",
+		"description": "同じ仕事の原資料からwikiを育てる。captureは確認したコード・テスト・Release等を種類・版・時点・参照付きで保持する。queryのmaintenanceは最大2記事の見直し対象で、maintainへ最新のpage_id・revision・keyとreasonを渡して記録する。query で教訓と未整理の原資料を読み、sources を指定した query で原文を確かめる。原資料と既存ページを読み、短いlessonと背景・理由・未確定点を含むbodyへ統合し、relatedで関連知識を結ぶ。ingestは適用条件・出典IDとともに保存し、索引と履歴を更新する。教訓には kind(rule 守る決まり / howto やり方 / criteria 判断の基準 / fact 前提と事実 / history 経緯)と scene(その仕事の言葉で「〜する時」)が要る。query が unclassified(0.9.0 より前の、種類と場面の無い記事)を返したら、classify に id・kind・scene を渡して付けてから終える。再利用する教訓が無ければ sources だけで整理済みにする。既存の教訓の更新には id、古い教訓の置き換えには replaces を使う。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次に変える行動を結ぶ。引用の存在は意味の正しさを保証しない。全て仮説であり、正解・較正・confirmed の状態は変更しない。lint は出典やリンクを点検し、生成した索引を整える。handoff_list / handoff_read / handoff_write / handoff_append は作業記録(.shikii/handoff/)を扱う: 途中で書き換える作業ファイル(監査の報告、リリースの手順と記録、差分)を置き、人は画面の知識の欄で読む。教訓は ingest、確かめた時点の証拠は capture、書き換えながら進める物は handoff。人に画面操作を求めない。",
 		"inputSchema": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
@@ -256,7 +259,7 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 			"protocolVersion": v,
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
 			"serverInfo":      map[string]any{"name": "shikii", "version": shikii.Version},
-			"instructions":    "shikii turns a decision model's probability into act / ask / discard. Call shikii_specs first; decide with shikii_decide; when you learn what was true, call shikii_label with the trace_id so the spec can be calibrated. Use shikii_wiki to query, ingest and lint lessons from this project's conversations. Lessons are hypotheses with sources, never truth labels or permission to act. Your usual agent maintains this wiki without asking the user to organize it.",
+			"instructions":    mcpInstructions,
 		})
 	case "notifications/initialized", "notifications/cancelled":
 		return nil

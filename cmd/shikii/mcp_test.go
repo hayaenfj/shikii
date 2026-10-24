@@ -173,4 +173,16 @@ func TestMCPWikiToolsCarryKindAndScene(t *testing.T) {
 	if len(props) != 2 {
 		t.Fatalf("shikii_wiki と shikii_reflect の両方: %v", props)
 	}
+	// hook の無いエージェント(Codex・OpenCode の MCP だけ)にも、保存に種類と場面が要ることと、前の版の記事に付けることが届く
+	for _, tl := range tools {
+		if tl["name"] == "shikii_wiki" {
+			d := tl["description"].(string)
+			if !strings.Contains(d, "kind") || !strings.Contains(d, "scene") || !strings.Contains(d, "classify") || !strings.Contains(d, "unclassified") {
+				t.Fatalf("shikii_wiki の説明に、種類と場面と、前の版の記事の付け方: %s", d)
+			}
+		}
+	}
+	if !strings.Contains(mcpInstructions, "kind") || !strings.Contains(mcpInstructions, "scene") || !strings.Contains(mcpInstructions, "classify") {
+		t.Fatalf("サーバーの案内に、種類と場面と classify: %s", mcpInstructions)
+	}
 }
