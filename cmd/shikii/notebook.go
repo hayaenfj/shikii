@@ -28,6 +28,8 @@ type notebookRequest struct {
 	notebook.Draft
 	Observation *notebook.Observation       `json:"observation,omitempty"`
 	Maintenance *notebook.MaintenanceReview `json:"maintenance,omitempty"`
+	Path        string                      `json:"path,omitempty"`    // 作業記録(handoff_*)のパス。.shikii/handoff/ からの相対
+	Content     string                      `json:"content,omitempty"` // 作業記録に書く本文(handoff_write / handoff_append)
 }
 
 func runNotebook(root, scope string, req notebookRequest) (any, error) {
@@ -55,8 +57,10 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		return b.Maintain(*req.Maintenance)
 	case "lint":
 		return b.Lint()
+	case "handoff_list", "handoff_read", "handoff_write", "handoff_append":
+		return runHandoff(root, req)
 	}
-	return nil, errors.New("使い方: wiki query / ingest / capture / maintain / lint")
+	return nil, errors.New("使い方: wiki query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
 }
 
 // 教訓の置き場は hook と同じプロジェクトの .shikii/。呼び出した仕事だけを扱う。

@@ -8,6 +8,7 @@ import LangPicker from '../src/components/LangPicker.svelte';
 import SpecPanel from '../src/components/SpecPanel.svelte';
 import Wording from '../src/components/Wording.svelte';
 import Notebook from '../src/components/Notebook.svelte';
+import Handoff from '../src/components/Handoff.svelte';
 import ItemCard from '../src/components/ItemCard.svelte';
 import Tabs from '../src/components/Tabs.svelte';
 import App from '../src/App.svelte';
@@ -280,7 +281,8 @@ export async function run() {
   const treeOK = await checkNotebookTree(target);
   const lanesOK = await checkLanesForPersonSpec(target);
   const conflictsOK = await checkUtilityConflicts(target);
-  const ok = conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const handoffOK = await checkHandoff(target);
+  const ok = handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -784,5 +786,36 @@ async function checkUtilityConflicts(target) {
   const list = [...out];
   const ok = list.length === 0;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (同じ要素に同じ性質の utility を重ねない: 衝突 ' + list.length + ' 件' + (ok ? '' : '\n  ' + list.slice(0, 20).join('\n  ')) + ')');
+  return ok;
+}
+
+// 作業記録(0.8.1): フォルダごとに畳んで始まり、開くとファイル、押すと文字は文字のまま(HTML を描かない)、画像は画像で出す。空なら空と言う。
+async function checkHandoff(target) {
+  const realFetch = globalThis.fetch, lang = i18n.lang; i18n.lang = 'ja';
+  const calls = [];
+  globalThis.fetch = async url => { calls.push(url); return { ok: true, text: async () => '# 監査 A\n<script>alert(1)</script>', json: async () => ({}) }; };
+  const files = [
+    { path: 'audit-0.8.1/report-A.md', size: 2048, modified: '2026-10-24T03:00:00Z', kind: 'text' },
+    { path: 'audit-0.8.1/before 1.png', size: 148649, modified: '2026-10-24T02:00:00Z', kind: 'image' },
+    { path: 'steps.md', size: 10, modified: '2026-10-24T01:00:00Z', kind: 'text' },
+  ];
+  let app = mount(Handoff, { target, props: { files } }); flushSync();
+  const folded = !target.querySelector('[data-handoff-file]') && target.querySelectorAll('[data-handoff-group]').length === 2 && (target.querySelector('[data-handoff-group="audit-0.8.1"] .badge')?.textContent === '2');
+  target.querySelector('[data-handoff-group="audit-0.8.1"] .handoff-toggle')?.click(); flushSync();
+  const listed = [...target.querySelectorAll('[data-handoff-file]')].map(b => b.dataset.handoffFile).join(',') === 'audit-0.8.1/report-A.md,audit-0.8.1/before 1.png';
+  target.querySelector('[data-handoff-file="audit-0.8.1/report-A.md"]')?.click();
+  await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
+  const pre = target.querySelector('[data-handoff-view] pre');
+  const text = calls.includes('v1/handoff/file?path=audit-0.8.1%2Freport-A.md') && !!pre && pre.textContent.includes('<script>alert(1)</script>') && !target.querySelector('[data-handoff-view] script');
+  target.querySelector('[data-handoff-file="audit-0.8.1/before 1.png"]')?.click(); flushSync();
+  const img = target.querySelector('[data-handoff-view] img');
+  const image = !!img && img.getAttribute('src') === 'v1/handoff/file?path=audit-0.8.1%2Fbefore%201.png' && !target.querySelector('[data-handoff-view] pre');
+  unmount(app);
+  app = mount(Handoff, { target, props: { files: [] } }); flushSync();
+  const empty = !!target.querySelector('[data-handoff-empty]');
+  unmount(app);
+  globalThis.fetch = realFetch; i18n.lang = lang;
+  const ok = folded && listed && text && image && empty;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (作業記録: 畳んで始まる=' + folded + ', 開くとファイル=' + listed + ', 文字はそのまま=' + text + ', 画像は画像=' + image + ', 空と言う=' + empty + ')');
   return ok;
 }

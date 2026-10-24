@@ -71,6 +71,8 @@ func main() {
 		err = cmdGC(os.Args[2:])
 	case "wiki":
 		err = cmdWiki(os.Args[2:])
+	case "handoff":
+		err = cmdHandoff(os.Args[2:])
 	case "init", "--init":
 		err = cmdInit(os.Args[2:])
 	case "import":
@@ -142,6 +144,8 @@ func usageText() string {
                    <store>/wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
   shikii wiki query [検索文または出典ID] | ingest (JSON を標準入力) | lint
                    普段の会話をプロジェクトの .shikii/ にある出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
+  shikii handoff   list | read <パス> | write <パス> | append <パス>（本文を標準入力）
+                   作業記録(.shikii/handoff/): 途中で書き換える作業ファイル(監査の報告、リリースの手順、差分、画像)。教訓は wiki、確かめた時点の証拠は wiki の原資料
   shikii guard     list | add (JSON を標準入力) | enable <id> | disable <id> | try
                    人の訂正を「止める検査」にする(paired-files / forbidden-words / commit-body)。enable は負例で止まるのを確かめてから有効にする
   shikii version                                  版を表示する

@@ -6,6 +6,7 @@
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
   import Notebook from './Notebook.svelte';
+  import Handoff from './Handoff.svelte';
 
   let { wiki } = $props();
   let busyPath = $state('');
@@ -35,6 +36,8 @@
 </script>
 
 <Notebook {wiki} />
+
+<Handoff files={wiki.handoff || []} error={!!wiki.handoff_error} />
 
 <section>
   <h2 class="max-md:text-[23px]">{t('knowledge')} <span class="pill">{t('claimsCount')(claims.length, prose)}</span></h2>

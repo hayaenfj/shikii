@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hayaenfj/shikii/internal/handoff"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -46,7 +47,10 @@ func cmdInit(args []string) error {
 			return err
 		}
 	}
-	fmt.Fprintln(stdout, "保存先: .shikii/（decisions/・wiki/・records/・labels/）")
+	if err := (handoff.Book{Store: root}).Ensure(); err != nil { // 作業記録の置き場(0.8.1)
+		return err
+	}
+	fmt.Fprintln(stdout, "保存先: .shikii/（decisions/・wiki/・records/・labels/・handoff/）")
 	nSpecs, err := seedAgentSpecs(filepath.Join(root, "decisions"))
 	if err != nil {
 		return err

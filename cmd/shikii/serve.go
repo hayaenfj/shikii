@@ -204,6 +204,7 @@ func newServer(o serveOpts) http.Handler {
 	mux.HandleFunc("/v1/wiki", s.handleWikiList)
 	mux.HandleFunc("/v1/wiki/claim", s.handleWikiClaim)
 	mux.HandleFunc("/v1/wiki/notebook", s.handleNotebook)
+	mux.HandleFunc("/v1/handoff/file", s.handleHandoffFile)
 	mux.HandleFunc("/v1/review", s.handleReview)
 	mux.HandleFunc("/v1/reflect", s.handleReflect)
 	return mux

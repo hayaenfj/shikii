@@ -165,11 +165,13 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "shikii_wiki",
-		"description": "同じ仕事の原資料からwikiを育てる。captureは確認したコード・テスト・Release等を種類・版・時点・参照付きで保持する。queryのmaintenanceは最大2記事の見直し対象で、maintainへ最新のpage_id・revision・keyとreasonを渡して記録する。query で教訓と未整理の原資料を読み、sources を指定した query で原文を確かめる。原資料と既存ページを読み、短いlessonと背景・理由・未確定点を含むbodyへ統合し、relatedで関連知識を結ぶ。ingestは適用条件・出典IDとともに保存し、索引と履歴を更新する。再利用する教訓が無ければ sources だけで整理済みにする。既存の教訓の更新には id、古い教訓の置き換えには replaces を使う。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次に変える行動を結ぶ。引用の存在は意味の正しさを保証しない。全て仮説であり、正解・較正・confirmed の状態は変更しない。lint は出典やリンクを点検し、生成した索引を整える。人に画面操作を求めない。",
+		"description": "同じ仕事の原資料からwikiを育てる。captureは確認したコード・テスト・Release等を種類・版・時点・参照付きで保持する。queryのmaintenanceは最大2記事の見直し対象で、maintainへ最新のpage_id・revision・keyとreasonを渡して記録する。query で教訓と未整理の原資料を読み、sources を指定した query で原文を確かめる。原資料と既存ページを読み、短いlessonと背景・理由・未確定点を含むbodyへ統合し、relatedで関連知識を結ぶ。ingestは適用条件・出典IDとともに保存し、索引と履歴を更新する。再利用する教訓が無ければ sources だけで整理済みにする。既存の教訓の更新には id、古い教訓の置き換えには replaces を使う。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次に変える行動を結ぶ。引用の存在は意味の正しさを保証しない。全て仮説であり、正解・較正・confirmed の状態は変更しない。lint は出典やリンクを点検し、生成した索引を整える。handoff_list / handoff_read / handoff_write / handoff_append は作業記録(.shikii/handoff/)を扱う: 途中で書き換える作業ファイル(監査の報告、リリースの手順と記録、差分)を置き、人は画面の知識の欄で読む。教訓は ingest、確かめた時点の証拠は capture、書き換えながら進める物は handoff。人に画面操作を求めない。",
 		"inputSchema": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
-				"operation":   map[string]any{"type": "string", "enum": []string{"query", "ingest", "capture", "maintain", "lint"}},
+				"operation":   map[string]any{"type": "string", "enum": []string{"query", "ingest", "capture", "maintain", "lint", "handoff_list", "handoff_read", "handoff_write", "handoff_append"}},
+				"path":        map[string]any{"type": "string", "description": "作業記録(handoff_*)のパス。.shikii/handoff/ からの相対(例: audit-0.8.1/report-A.md)。..・隠し名・絶対パスは断る"},
+				"content":     map[string]any{"type": "string", "description": "handoff_write(置き換え)・handoff_append(末尾に足す)の本文。UTF-8 の文字で 1 回 1 MiB まで"},
 				"maintenance": maintenanceSchema,
 				"observation": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 					"kind":  map[string]any{"type": "string", "enum": []string{"human", "agent", "code", "test", "release"}},

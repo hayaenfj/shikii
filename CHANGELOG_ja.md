@@ -4,6 +4,7 @@
 
 ## 0.8.1 — 未公開
 
+- 作業記録: `shikii --init` が `.shikii/handoff/` を作る。エージェントが書き換えながら進めるファイル(監査の報告、リリースの手順と記録、差分、画像)の置き場。`shikii handoff list | read | write | append` か、MCP の `shikii_wiki` の `handoff_list`・`handoff_read`・`handoff_write`・`handoff_append` で読み書きし、人は画面の知識の欄「作業記録」で読む(文字は文字のまま、画像は画像、HTML は描かない)。パスは置き場の中だけ(`..`・絶対パス・隠し名・リンクは断る)。`shikii gc` は触らない。skill に置き場の使い分け(次に効く教訓は wiki、確かめた時点の証拠は原資料、書き換える物は作業記録)を書いた。
 - 画面: 「かんたん表示 / くわしく」の切替を廃止し、常に全部見せる(知識の欄、モデルの印、聞き方の候補、較正の詳細、採点の根拠、「AI にもう一度聞く」のボタン)。保存していた表示の好みは読まない。
 - 画面: 見た目を Tailwind CSS v4(`@tailwindcss/vite`)へ移した。色・影・幅の区切りは `web/src/app.css` の token、部品の見た目は各部品の utility class。明暗・幅ごとの見た目は同じで、検査とキー操作が頼る class 名(`.item`・`.btns`・`.top`・`.skip`・`data-lane` など)は変えていない。仕事ごとの絞り込みの行(`.chips.projects`)に一覧の `.projects` の余白が当たっていた class 名の衝突も無くなった。タブと仕事の入口の hover は、hover できる機器だけで効く。ビルドは `web/src` と `index.html` だけを読み、古い `web/dist` の class が CSS に混ざらない。
 
