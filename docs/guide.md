@@ -32,6 +32,8 @@ The licenses and third-party notices are kept in `shikii-licenses/` next to the 
 
 If hooks that use this binary are already installed, the new binary updates the hooks and the agent's instructions. Hooks that were not installed are not added. If only this last step fails, the message says that the binary itself was updated, and you can retry with `shikii hook install --yes`. A running page or MCP server is not stopped, so restart it to switch to the new version. The updated skill and hook instructions take effect in a new agent session. Existing projects keep their questions and calibration; projects initialized from now on get the new version's built-in prompts.
 
+**Updating from 0.8 to 0.9.0:** articles given a kind and scene by 0.9.0 look "changed" to a 0.8 binary, and 0.8 refuses every save to the wiki (the articles are not damaged). After updating, reopen the open agent sessions (and their MCP). Update every machine that uses the same wiki to 0.9.0. The update also prints this note at the end. The shikii section of AGENTS.md in each registered project is replaced with the new content (only when exactly one section is enclosed by marker-only lines; a link pointing outside the repo, or one marker or three or more, is left alone and the reason is printed; CRLF files stay CRLF).
+
 **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again** (a project decision). Earlier conversations, lessons, provisional assessments, truths, calibration and work records are removed, and the built-in questions, the wiki templates and the project marker are created again. Back up anything you want to keep first. Updates from 0.7.0 onwards keep everything. When you update from 0.6.0, the wipe runs inside the old binary's last step and its messages are not shown (0.6.0 throws that output away). Run `shikii hook install` without `--yes` first to see what would be erased (it also shows how many work records there are).
 
 ## Enable it per project
@@ -121,6 +123,7 @@ shikii wiki query "lesson:<page id>"
 shikii wiki query "<source id>" "<another source id>"
 shikii wiki query "lesson:<page id>@<revision>"
 shikii wiki ingest < article.json
+shikii wiki classify <page ID> <kind> <scene>
 shikii wiki maintain < maintenance.json
 shikii wiki lint
 ```
@@ -131,6 +134,22 @@ A search looks at the title, the conditions, the summary and the body, and retur
 
 In `article.json`, keep the short `lesson` apart from the detailed `body`, and merge the background, the evidence, the conditions and what is still unknown into the existing article. Connect related pages with `related`, and leave a `change_reason` for edits that change the meaning. Long conversation originals that are available are kept with their own hash when quoted, so they can still be read after the original decision record is removed. When a source or an original is missing, record that limit.
 
+### Kinds and scenes of articles
+
+From 0.9.0, an article with a lesson needs a `kind` and a `scene`. A save without them is refused, and the refusal lists the values you can use.
+
+| kind | Name on the page | What it holds |
+| --- | --- | --- |
+| `rule` | Rules to keep | What to always do |
+| `howto` | How to | Steps and ways of working |
+| `criteria` | How to decide | How to choose between options |
+| `fact` | Facts | What is true now |
+| `history` | Background | Why things became this way |
+
+`scene` is one line in the words of the work, "when …" (up to 24 characters): "when committing", "when sending an invoice", "when explaining to a patient", not limited to software words. Reflection's `place` returns the scenes in use and how many articles each has (`scenes`), so reuse the same wording when a close scene exists (similar wordings do not scatter the scenes). A rule that applies to every request uses "always". The agent sets them; a person never picks them.
+
+Articles made before 0.9.0 have no kind or scene. The request hook lists five of them at a time and has the agent set them (`shikii wiki classify <page ID> <kind> <scene>`, or `operation: "classify"` on MCP's `shikii_wiki`); if the agent tries to end without setting them, Stop blocks once (the routine check `wiki-kinds`). The lesson text is not changed, and the result is kept as a new revision. If another agent edits the same article while the kind and scene are being set, classify refuses; read it again and set them again (an edit is never undone by the old lesson). While the wiki has an unreadable or hand-edited article, every save is refused, so the hook asks for no articles and only says, in one line, to check with `shikii wiki lint`. The reply of `wiki query` starts with how many remain and the next five, and the replies of `wiki ingest`, `wiki classify` and `reflect submit` also carry what remains. Agents without hooks (Codex before it trusts the hooks, OpenCode) are told the same by the shikii section of AGENTS.md and by the MCP instructions. An update replaces the shikii section of AGENTS.md in each registered project with the new content.
+
 Listing with `wiki query` and `reflect query` include up to 2 articles to review under `maintenance`. Read the body, the sources and the related pages, save the edits that are needed, then pass the latest `page_id`, `revision` and `key` with your `reason` in `maintenance.json`. You may also put them together in the `maintenance` array of a reflection. When an article or a related revision changes, the old review is refused; an unchanged article comes back for review after 30 days. A missing body or link is a reason to look, not an instruction to add text or links that are not needed.
 
 `hook plan query` before work can pick the bodies you need with `pages`. The decision keeps the candidates, the articles read, the revisions quoted, the revisions available at the time and the amount fetched. Past comparisons use only the recorded revisions, without mixing in later wiki updates or later outcomes. The numbers of saves, searches and quotes are kept apart from observations that something helped a decision. The full contract is in [the wiki steps](../skills/shikii/references/wiki.md).
@@ -139,13 +158,13 @@ An explicit search covers all articles and returns `search.total` (the number of
 
 ### Move an existing memory into the wiki
 
-If the agent already keeps a memory (Claude Code's auto memory folder with `MEMORY.md` and one file per fact, or Codex notes), one request moves it: "move the memory into shikii's wiki". The skill's [import-memory.md](../skills/shikii/references/import-memory.md) gives the steps: keep every file as a source (`shikii wiki capture`), draft one lesson per rule with its conditions, merge them into existing articles through reflection's `place` step so nothing is duplicated, and turn the memory folder into a thin index that points at the wiki articles. Rules that apply to every request (the language of visible text, words not to use, when to push) also keep one line each in the index, because the wiki delivers lessons by how close they are to the request. Nothing is deleted (old files are deleted only once the person agrees). The steps are part of the skill that `shikii --init` places, so they work in every initialized project. When files without a pointer to `.shikii/wiki <article id>` remain in that folder (or in Codex's shared `~/.codex/memories`, among the files that name this project), the request hook notices once per session and tells the agent to move them after the current request. For files shared by all projects, the body is kept and only a line pointing at the article is added.
+If the agent already keeps a memory (Claude Code's auto memory folder with `MEMORY.md` and one file per fact, or Codex notes), one request moves it: "move the memory into shikii's wiki". The skill's [import-memory.md](../skills/shikii/references/import-memory.md) gives the steps: keep every file as a source (`shikii wiki capture`), draft one lesson per rule with its conditions, kind and scene (a rule you were told is a "rule", steps are a "howto", facts are a "fact", and so on; prefer the scenes in use that `place` returns), merge them into existing articles through reflection's `place` step so nothing is duplicated, and turn the memory folder into a thin index that points at the wiki articles. Rules that apply to every request (the language of visible text, words not to use, when to push) also keep one line each in the index, because the wiki delivers lessons by how close they are to the request. Nothing is deleted (old files are deleted only once the person agrees). The steps are part of the skill that `shikii --init` places, so they work in every initialized project. When files without a pointer to `.shikii/wiki <article id>` remain in that folder (or in Codex's shared `~/.codex/memories`, among the files that name this project), the request hook notices once per session and tells the agent to move them after the current request. For files shared by all projects, the body is kept and only a line pointing at the article is added.
 
 ## The page and the inventory
 
 There is one answer page per project. If the project's page is not running, the first request's hook starts `shikii serve --store <project>/.shikii --port 0` (it takes a free port) and opens it in the browser. The port and pid are kept in `~/.shikii/agent/pages/<project id>.json`, so several agents in the same project share one page. `shikii page` tells you where the page is (`page: http://127.0.0.1:<port>/ (port …, pid …, up)`; if it is not running, it starts it and waits). Open the page with the names `127.0.0.1`, `localhost` or `::1` (other Host names are refused with 403).
 
-The top of the page first shows what a person needs to answer ("For you: N to answer" or "For you: nothing right now"), then "The AI" (the decision model in use, how many questions it decides on its own, how far each question's learning has come, the lessons delivered and whether they helped, the guards, the routine before and after work, and the decisions that used knowledge). The Knowledge section holds the wiki's topic groups, the articles and sources, and the work records.
+The top of the page first shows what a person needs to answer ("For you: N to answer" or "For you: nothing right now"), then "The AI" (the decision model in use, how many questions it decides on its own, how far each question's learning has come, the lessons delivered and whether they helped, the guards, the routine before and after work, and the decisions that used knowledge). The Knowledge section has two tabs, "Lessons" and "Work records". On the Lessons tab, pick a scene on the left; the middle lists titles by kind, and pressing a title shows on the right the lesson, when it applies, the background, related articles and sources. With no scene picked, each kind shows its four most helpful lessons, and "show N more" opens the rest. Articles without a kind and scene are grouped under "Unclassified", which the agent reduces with every request. "For you to look at" at the top shows only the exceptions a machine cannot decide: a lesson that did harm, a repeated correction, and a guard not yet enabled. It is not built for a person to check articles one by one. The counts of searches, reviews and reflections, the tree of earlier articles and earlier claims are inside the folded "The AI in detail".
 
 ### Inventory: `shikii status`
 
@@ -358,7 +377,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii tune <spec>` | Scores candidate wordings on the stored truths (adopted only after a person confirms the meaning) |
 | `shikii import <past.csv> --spec <spec>` | Turns a table of past cases into stored truths (JSON) |
 | `shikii judge <spec> --local <URL>` | Uses another, larger model as a judge; when it agrees with people's truths often enough, it adds weighted truths to records that have none |
-| `shikii wiki query` / `capture` / `ingest` / `maintain` / `lint` / `verify` | Searching, sources, saving, reviewing and checking the wiki, and re-checking claims |
+| `shikii wiki query` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | Searching, sources, saving, setting kind and scene, reviewing and checking the wiki, and re-checking claims |
 | `shikii handoff list` / `read` / `write` / `append` | Reading and writing work records |
 | `shikii guard list` / `add` / `enable` / `disable` / `try` | Guards |
 | `shikii review query` / `submit` | Provisional assessments from conversations and results (usually done together in reflection) |
