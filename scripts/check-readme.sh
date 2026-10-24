@@ -133,4 +133,4 @@ for f in README.md docs/*.md docs/readme/README_*.md integrations/*.md skills/sh
 done
 
 if [ "$fail" -ne 0 ]; then exit 1; fi
-echo "check-readme: ok ($(wc -w <<<"$codes" | tr -d ' ') languages)"
+echo "check-readme: ok ($(( $(wc -w <<<"$codes") + 1 )) languages: English and $(tr '\n' ' ' <<<"$codes"| sed 's/ $//'))"
