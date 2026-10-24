@@ -146,11 +146,12 @@ type reflectReceipt struct {
 }
 
 type reflectResult struct {
-	Complete    bool             `json:"complete"`
-	Reviews     []reflectReceipt `json:"reviews"`
-	Wiki        []reflectReceipt `json:"wiki"`
-	Memory      []reflectReceipt `json:"memory"`
-	Maintenance []reflectReceipt `json:"maintenance,omitempty"`
+	notebook.Remaining                  // 残りの未分類(0.9.0)。hook の無いエージェントにも保存の返事で届ける
+	Complete           bool             `json:"complete"`
+	Reviews            []reflectReceipt `json:"reviews"`
+	Wiki               []reflectReceipt `json:"wiki"`
+	Memory             []reflectReceipt `json:"memory"`
+	Maintenance        []reflectReceipt `json:"maintenance,omitempty"`
 }
 
 func runReflect(root, scope string, req reflectRequest) (any, error) {
@@ -238,6 +239,7 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		}
 		result.Maintenance = append(result.Maintenance, receipt)
 	}
+	result.Remaining = notebook.Book{Root: root, Scope: scope}.RemainingUnclassified()
 	return result, nil
 }
 

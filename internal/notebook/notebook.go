@@ -95,23 +95,47 @@ type Issue struct {
 }
 
 type View struct {
+	// 種類と場面の無い記事(版を上げる前に作った物。0.9.0)。最初の返事にだけ、数と unclassifiedBatch 本までと付け方を載せる。
+	// 返事の先頭に置く(末尾だと hook の無いエージェントが読み流した)
+	Remaining
 	Lessons      []Page            `json:"lessons"`
 	Pending      []store.Feedback  `json:"pending_sources"`
 	Issues       []Issue           `json:"issues"`
 	Matches      []Match           `json:"matches,omitempty"`
 	Observations []Observation     `json:"observations,omitempty"`
 	Maintenance  []MaintenanceTask `json:"maintenance,omitempty"`
-	// 種類と場面の無い記事(版を上げる前に作った物。0.9.0)。最初の返事にだけ、数と unclassifiedBatch 本までと付け方を載せる
-	Unclassified      []UnclassifiedPage `json:"unclassified,omitempty"`
-	UnclassifiedCount int                `json:"unclassified_count,omitempty"`
-	UnclassifiedHow   string             `json:"unclassified_how,omitempty"`
-	Search            *SearchResult      `json:"search,omitempty"`
-	NextCursor        string             `json:"next_cursor,omitempty"`
+	Search       *SearchResult     `json:"search,omitempty"`
+	NextCursor   string            `json:"next_cursor,omitempty"`
 }
 
 type Result struct {
+	Remaining
 	Page     *Page    `json:"page"`
 	Reviewed []string `json:"reviewed"`
+}
+
+// Remaining は、残っている種類と場面の無い記事の付け方・数・次の unclassifiedBatch 本(0.9.0)。照会と保存の返事に載せ、
+// 無ければ何も出さない。
+type Remaining struct {
+	UnclassifiedHow   string             `json:"unclassified_how,omitempty"`
+	UnclassifiedCount int                `json:"unclassified_count,omitempty"`
+	Unclassified      []UnclassifiedPage `json:"unclassified,omitempty"`
+}
+
+// RemainingUnclassified は今の残り。読めない時は何も載せない(返事の本体を止めない)。
+func (b Book) RemainingUnclassified() Remaining {
+	un, err := b.Unclassified()
+	if err != nil || len(un) == 0 {
+		return Remaining{}
+	}
+	r := Remaining{UnclassifiedHow: unclassifiedHow, UnclassifiedCount: len(un)}
+	for i, p := range un {
+		if i == unclassifiedBatch {
+			break
+		}
+		r.Unclassified = append(r.Unclassified, UnclassifiedPage{ID: p.ID, Title: p.Title, Lesson: p.Lesson, AppliesTo: p.AppliesTo})
+	}
+	return r
 }
 
 type Report struct {

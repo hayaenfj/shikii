@@ -45,9 +45,17 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		}
 		return b.QueryPage(req.Query, req.Cursor)
 	case "ingest":
-		return ingestWithOutcome(root, scope, req.Draft) // 差し込み先の判定に結果の正解を付ける(0.8.3)
+		res, err := ingestWithOutcome(root, scope, req.Draft) // 差し込み先の判定に結果の正解を付ける(0.8.3)
+		if err == nil {
+			res.Remaining = b.RemainingUnclassified() // 残りの未分類(0.9.0。hook の無いエージェントにも届く)
+		}
+		return res, err
 	case "classify":
-		return b.Classify(req.ID, req.Kind, req.Scene) // 版を上げる前の記事に種類と場面だけを付ける(0.9.0)
+		res, err := b.Classify(req.ID, req.Kind, req.Scene) // 版を上げる前の記事に種類と場面だけを付ける(0.9.0)
+		if err == nil {
+			res.Remaining = b.RemainingUnclassified()
+		}
+		return res, err
 	case "capture":
 		if req.Observation == nil {
 			return nil, errors.New("保存する原資料が必要です")

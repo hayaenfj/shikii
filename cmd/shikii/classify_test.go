@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -111,5 +112,67 @@ func TestClassifyRitualLooksOnlyAtTheAskedPages(t *testing.T) {
 	}
 	if stop := runHook(t, "stop", map[string]any{"session_id": "m", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(stop, "種類と場面") {
 		t.Fatalf("頼んだ記事を埋めれば、頼んでいない記事が残っていても止めない: %s", stop)
+	}
+}
+
+// hook の無いエージェント(Codex で hook を信頼する前、OpenCode)は、照会の返事の末尾の未分類を読み流した(0.9.0 の実測)。
+// 照会の返事は未分類の案内を先頭に置き、保存(ingest)・付けた時(classify)・振り返りの保存(reflect submit)の返事にも、
+// 残っている未分類の数・次の 5 本・付け方を載せる。残りが無くなれば載せない。
+func TestResponsesCarryRemainingUnclassifiedPages(t *testing.T) {
+	agent, scope, st, src := audit083Setup(t)
+	_ = st
+	book := notebook.Book{Root: agent, Scope: scope}
+	var ids []string
+	for i := 0; i < 2; i++ {
+		res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("前の版 %d", i), Lesson: fmt.Sprintf("前の版の教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := book.RewriteWithoutKindScene(res.Page.ID); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, res.Page.ID)
+	}
+	enc := func(v any) map[string]any {
+		b, _ := json.Marshal(v)
+		var m map[string]any
+		json.Unmarshal(b, &m)
+		return m
+	}
+	view, err := runNotebook(agent, scope, notebookRequest{Operation: "query"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(view)
+	if !strings.HasPrefix(string(raw), `{"unclassified_how":`) {
+		t.Fatalf("照会の返事は未分類の案内から始める: %.120s", raw)
+	}
+	saved, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: notebook.Draft{Sources: []string{src}, Title: "新しい決まり", Lesson: "新しい決まりの教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := enc(saved); m["unclassified_count"] != float64(2) || m["unclassified_how"] == nil || len(m["unclassified"].([]any)) != 2 {
+		t.Fatalf("保存の返事に残りの未分類: %v", m)
+	}
+	one, err := runNotebook(agent, scope, notebookRequest{Operation: "classify", ID: ids[0], Kind: "rule", Scene: "作業する時"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := enc(one); m["unclassified_count"] != float64(1) {
+		t.Fatalf("付けた時の返事に残りの数: %v", m)
+	}
+	sub, err := runReflect(agent, scope, reflectRequest{Operation: "submit", Wiki: []notebook.Draft{{Sources: []string{src}, Title: "もう一つの決まり", Lesson: "もう一つの決まりの教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := enc(sub); m["unclassified_count"] != float64(1) {
+		t.Fatalf("振り返りの保存の返事にも残りの数: %v", m)
+	}
+	last, err := runNotebook(agent, scope, notebookRequest{Operation: "classify", ID: ids[1], Kind: "fact", Scene: "作業する時"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := enc(last); m["unclassified_count"] != nil || m["unclassified"] != nil {
+		t.Fatalf("残りが無くなれば載せない: %v", m)
 	}
 }
