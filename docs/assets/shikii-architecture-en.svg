@@ -1,13 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1150" viewBox="0 0 1200 1150" role="img" aria-labelledby="title desc" lang="en" font-family="-apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Segoe UI', sans-serif">
-<title id="title">Memory stays with the initialized project</title><desc id="desc">Conversation lessons and provisional observations stay separate from truths and calibration.</desc>
+<title id="title">Memory stays with the initialized project</title><desc id="desc">What the agent learns is kept apart from the truths and lines used to delegate decisions.</desc>
 <defs>
   <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b2d"/><stop offset="1" stop-color="#080f1b"/></linearGradient>
   <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#7d93af" stroke-width="1.5"/></marker>
 </defs>
 <rect width="1200" height="1150" rx="24" fill="url(#bg)"/>
 <text x="40" y="58" font-size="32" font-weight="700" fill="#f0f5fc">Memory stays with the initialized project</text>
-<text x="40" y="98" font-size="19" font-weight="400" fill="#b3c3d9">Conversation lessons and provisional observations stay separate from truths and</text>
-<text x="40" y="126.5" font-size="19" font-weight="400" fill="#b3c3d9">calibration.</text>
+<text x="40" y="98" font-size="19" font-weight="400" fill="#b3c3d9">What the agent learns is kept apart from the truths and lines used to delegate decisions.</text>
 <rect x="40" y="142" width="1120" height="134" rx="16" fill="#28241b" stroke="#6d5631"/>
 <text x="64" y="181" font-size="23" font-weight="700" fill="#f4c76a">People provide intent, corrections and the checks that need them</text>
 <text x="64" y="215" font-size="18" font-weight="400" fill="#b3c3d9">Keep working as usual. Check sampled assessments, undecided cases, business truths and</text>
@@ -15,23 +14,22 @@
 <rect x="40" y="310" width="1120" height="590" rx="16" fill="#0e1a2a" stroke="#4d6d96"/>
 <text x="64" y="350" font-size="23" font-weight="700" fill="#e3edfa">This project&#x27;s .shikii/</text>
 <rect x="64" y="374" width="512" height="494" rx="16" fill="#152236" stroke="#2b405b"/>
-<text x="86" y="414" font-size="22" font-weight="700" fill="#83d8b0">Conversations inform later work</text>
+<text x="86" y="414" font-size="22" font-weight="700" fill="#83d8b0">Grow the agent&#x27;s work</text>
 <text x="86" y="458" font-size="19" font-weight="700" fill="#83d8b0">1.</text>
 <text x="118" y="458" font-size="20" font-weight="600" fill="#e3edfa">Keep sources and revisions</text>
-<text x="118" y="484" font-size="18" font-weight="400" fill="#b3c3d9">records/ · conversations, code,</text>
+<text x="118" y="484" font-size="18" font-weight="400" fill="#b3c3d9">records/ · conversations, decisions,</text>
 <text x="118" y="511.0" font-size="18" font-weight="400" fill="#b3c3d9">results</text>
 <text x="86" y="548" font-size="19" font-weight="700" fill="#83d8b0">2.</text>
-<text x="118" y="548" font-size="20" font-weight="600" fill="#e3edfa">Integrate and revisit knowledge</text>
-<text x="118" y="574" font-size="18" font-weight="400" fill="#b3c3d9">wiki/ · bodies, sources, related</text>
-<text x="118" y="601.0" font-size="18" font-weight="400" fill="#b3c3d9">pages</text>
+<text x="118" y="548" font-size="20" font-weight="600" fill="#e3edfa">Merge into lessons and deliver them</text>
+<text x="118" y="574" font-size="18" font-weight="400" fill="#b3c3d9">wiki/ · bodies, sources, whether</text>
+<text x="118" y="601.0" font-size="18" font-weight="400" fill="#b3c3d9">they helped</text>
 <text x="86" y="638" font-size="19" font-weight="700" fill="#83d8b0">3.</text>
-<text x="118" y="638" font-size="20" font-weight="600" fill="#e3edfa">Select the knowledge to read</text>
-<text x="118" y="664" font-size="18" font-weight="400" fill="#b3c3d9">Short summaries lead to bodies and</text>
-<text x="118" y="691.0" font-size="18" font-weight="400" fill="#b3c3d9">sources</text>
+<text x="118" y="638" font-size="20" font-weight="600" fill="#e3edfa">Turn corrections into guards</text>
+<text x="118" y="664" font-size="18" font-weight="400" fill="#b3c3d9">guards/ · a person enables them</text>
 <text x="86" y="728" font-size="19" font-weight="700" fill="#83d8b0">4.</text>
-<text x="118" y="728" font-size="20" font-weight="600" fill="#e3edfa">Reflect on decisions and results</text>
-<text x="118" y="754" font-size="18" font-weight="400" fill="#b3c3d9">Keep quoted revisions and observed</text>
-<text x="118" y="781.0" font-size="18" font-weight="400" fill="#b3c3d9">results</text>
+<text x="118" y="728" font-size="20" font-weight="600" fill="#e3edfa">Leave a trail of the work</text>
+<text x="118" y="754" font-size="18" font-weight="400" fill="#b3c3d9">handoff/ · reports, steps,</text>
+<text x="118" y="781.0" font-size="18" font-weight="400" fill="#b3c3d9">screenshots (on the page)</text>
 <text x="86" y="826" font-size="18" font-weight="400" fill="#83d8b0">Lessons are hypotheses. Assessments are</text>
 <text x="86" y="853.0" font-size="18" font-weight="400" fill="#83d8b0">AI observations.</text>
 <rect x="624" y="374" width="512" height="494" rx="16" fill="#152236" stroke="#2b405b"/>
@@ -56,6 +54,6 @@
 <text x="64" y="967" font-size="22" font-weight="700" fill="#d2e1f5">Shared entry point: ~/.shikii/agent</text>
 <text x="64" y="1002" font-size="18" font-weight="400" fill="#b3c3d9">Templates, tools and project index. Conversations, truths and calibration belong to each</text>
 <text x="64" y="1029.0" font-size="18" font-weight="400" fill="#b3c3d9">project.</text>
-<text x="40" y="1094" font-size="18" font-weight="400" fill="#b3c3d9">The active agent organizes conversations. A local model handles the four built-in decision</text>
-<text x="40" y="1121.0" font-size="18" font-weight="400" fill="#b3c3d9">questions.</text>
+<text x="40" y="1094" font-size="18" font-weight="400" fill="#b3c3d9">The active agent organizes conversations. Jev (or a local model without a key) answers the</text>
+<text x="40" y="1121.0" font-size="18" font-weight="400" fill="#b3c3d9">built-in questions.</text>
 </svg>

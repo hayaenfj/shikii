@@ -149,7 +149,7 @@ With the hooks installed, two moments of every turn are kept: the request before
 
 Two steps of every turn are checked. Before work, the agent sums up what was agreed and what is still open, and searches the wiki with topic words. Before it ends, it reflects on the turn: it grades its own work, saves lessons and says whether the delivered lessons helped. When a step is missing, the end of the turn is stopped once with the command to run. The second stop passes, but the miss is recorded, and the page shows how many turns did the routine.
 
-<p align="center"><img src="docs/assets/shikii-conversation.svg" alt="requests and corrections become lessons with sources and next actions; observed results flow back into reflection" width="100%"></p>
+<p align="center"><img src="docs/assets/shikii-conversation.svg" alt="every turn: read before work, keep a trail while working, reflect at the end; lessons arrive with the next request" width="100%"></p>
 
 The decision model answers the built-in questions about the agent's own work (what kind of request this is, whether to agree on an approach first, whether the changes stayed in scope, whether the request was completed) and, for new lessons, where they belong and whether they contradict a page. The truths for these come from what happens next: a change undone during the next request, a request repeated, a lesson merged or replaced. Only questions that results cannot answer wait for a person, and the page shows how many.
 
@@ -180,7 +180,7 @@ The design follows [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy
 
 Conversations, lessons, provisional assessments, truths, calibration, guards and work records live in that project's `.shikii/`. Unrelated projects stay apart. The shared `~/.shikii/agent` holds the templates, the tools and the list of projects. Because `.shikii/` contains private conversations, initialization keeps it out of Git's untracked files.
 
-<p align="center"><img src="docs/assets/shikii-architecture.svg" alt="an initialized project keeps conversation lessons and provisional observations apart from business questions and truths; the shared place holds templates, tools and links to projects" width="100%"></p>
+<p align="center"><img src="docs/assets/shikii-architecture-en.svg" alt="an initialized project's .shikii/ keeps what the agent learns (records, wiki, guards, handoff) apart from the questions, truths and lines used to delegate decisions" width="100%"></p>
 
 ```text
 .shikii/

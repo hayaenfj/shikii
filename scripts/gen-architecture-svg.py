@@ -63,26 +63,26 @@ class SVG:
 
 COPY = {
     "ja": {
-        "hero_title": "一度の訂正を、次の仕事へ。",
-        "hero_sub": "いつものエージェントが教訓を育て、次の行動と確認結果を結びます。",
+        "hero_title": "毎回のターンで、プロジェクトの知識が育つ。",
+        "hero_sub": "作業の前に読み、作業中は跡を残し、終える前に振り返る。手順を飛ばすと止まります。",
         "cards": [
-            ("普段どおりに頼む", "「まだ英語が残っています」", "依頼・返答・次の発言を残す"),
-            ("教訓と次の行動へ", "原文と適用する場面を保つ", "いつものエージェントが整理"),
-            ("次の似た依頼で使う", "案内の全文を確認する", "判断と確認結果を振り返る"),
+            ("作業の前に読む", "会話を整理し、wikiを探す", "似た依頼の教訓が届く"),
+            ("作業中は跡を残す", "報告・記録・画像は作業記録へ", "repoには成果だけ"),
+            ("終える前に振り返る", "学んだことを教訓にする", "止める検査が訂正を確かめる"),
         ],
-        "return": "結果を根拠に振り返る",
-        "hero_foot": "普段の採点はAI。人は無作為の抜き取りと保留を確認します。",
+        "return": "次の依頼で届く",
+        "hero_foot": "機械で確かめられる訂正は止める検査に。正解は結果から付き、人は抜き取りと保留を見ます。",
         "arch_title": "記憶は、初期化したプロジェクトに残る",
-        "arch_sub": "会話の教訓と仮評価を、業務の正解やモデルに任せるための線と分けます。",
+        "arch_sub": "エージェントが育てる知識と、判定を任せるための正解と線を分けて持ちます。",
         "people_title": "人は意図と訂正を伝え、必要な確認をする",
         "people_body": "普段の会話に加え、採点の抜き取り・保留や、業務の正解・聞き方の意味を確認します。",
         "project": "このプロジェクトの .shikii/",
-        "memory_title": "会話を次の仕事へ",
+        "memory_title": "エージェントの仕事を育てる",
         "memory_rows": [
-            ("原資料と版を残す", "records/ · 会話・コード・確認結果"),
-            ("知識へ統合して見直す", "wiki/ · 本文・出典・関連する知識"),
-            ("必要な知識を選んで読む", "短い要約から本文・原資料へ"),
-            ("判断と確認結果を振り返る", "引用した版・判断・訂正への行動"),
+            ("原資料と版を残す", "records/ · 会話・判定・確認結果"),
+            ("教訓に統合して届ける", "wiki/ · 本文・出典・効いたかの振り返り"),
+            ("訂正を止める検査にする", "guards/ · 有効にするのは人"),
+            ("作業の跡を残す", "handoff/ · 報告・手順・画像(画面で読む)"),
         ],
         "decision_title": "業務の判定を任せる",
         "decision_rows": [
@@ -95,29 +95,29 @@ COPY = {
         "decision_foot": "会話の仮採点だけでは線を引かない。",
         "shared_title": "共通の入口: ~/.shikii/agent",
         "shared_body": "型・道具・プロジェクトの索引。会話・正解・線は各プロジェクトへ保存。",
-        "arch_foot": "会話の整理は利用中のエージェント。既製の4問の判定は手元のモデルが担当します。",
+        "arch_foot": "会話の整理は利用中のエージェント。既製の問いの判定はJev(鍵が無い時は手元のモデル)が担当します。",
     },
     "en": {
-        "hero_title": "Turn a correction into the next action.",
-        "hero_sub": "Your usual agent connects sourced lessons to decisions and observed results.",
+        "hero_title": "Every turn adds to what the project knows.",
+        "hero_sub": "Read first, keep a trail, reflect at the end. A skipped step stops the turn.",
         "cards": [
-            ("Ask and correct", '“There is still English left.”', "Keep the request, reply and next message"),
-            ("Keep a sourced lesson", "Retain the quote and conditions", "Your usual agent organizes them"),
-            ("Use it next time", "Check the whole instructions", "Reflect on the action and result"),
+            ("Read before work", "Search the wiki first", "Similar lessons arrive"),
+            ("Keep a trail", "Reports go to work records", "Not into the repository"),
+            ("Reflect at the end", "Save what was learned", "Guards check corrections"),
         ],
-        "return": "Reflect using observed results",
-        "hero_foot": "AI handles routine assessment. People check random samples and undecided cases.",
+        "return": "Delivered with the next request",
+        "hero_foot": "Checkable corrections become guards. Truths come from results; people check samples and undecided cases.",
         "arch_title": "Memory stays with the initialized project",
-        "arch_sub": "Conversation lessons and provisional observations stay separate from truths and calibration.",
+        "arch_sub": "What the agent learns is kept apart from the truths and lines used to delegate decisions.",
         "people_title": "People provide intent, corrections and the checks that need them",
         "people_body": "Keep working as usual. Check sampled assessments, undecided cases, business truths and wording meaning.",
         "project": "This project's .shikii/",
-        "memory_title": "Conversations inform later work",
+        "memory_title": "Grow the agent's work",
         "memory_rows": [
-            ("Keep sources and revisions", "records/ · conversations, code, results"),
-            ("Integrate and revisit knowledge", "wiki/ · bodies, sources, related pages"),
-            ("Select the knowledge to read", "Short summaries lead to bodies and sources"),
-            ("Reflect on decisions and results", "Keep quoted revisions and observed results"),
+            ("Keep sources and revisions", "records/ · conversations, decisions, results"),
+            ("Merge into lessons and deliver them", "wiki/ · bodies, sources, whether they helped"),
+            ("Turn corrections into guards", "guards/ · a person enables them"),
+            ("Leave a trail of the work", "handoff/ · reports, steps, screenshots (on the page)"),
         ],
         "decision_title": "Delegate a repeated decision",
         "decision_rows": [
@@ -130,7 +130,7 @@ COPY = {
         "decision_foot": "Conversation assessments alone cannot calibrate a line.",
         "shared_title": "Shared entry point: ~/.shikii/agent",
         "shared_body": "Templates, tools and project index. Conversations, truths and calibration belong to each project.",
-        "arch_foot": "The active agent organizes conversations. A local model handles the four built-in decision questions.",
+        "arch_foot": "The active agent organizes conversations. Jev (or a local model without a key) answers the built-in questions.",
     },
 }
 
@@ -152,8 +152,8 @@ def hero(lang, path):
         if i < 2:
             svg.arrow(f"M {x + 342} 324 H {x + 376}")
     bottom, return_y, footer_y = (484, 530, 608) if lang == "en" else (440, 478, 548)
-    svg.arrow(f"M 984 {bottom} V {return_y} H 600 V {bottom}")
-    svg.text(620, return_y + 30, s["return"], 18, COLORS["green"])
+    svg.arrow(f"M 984 {bottom} V {return_y} H 216 V {bottom}")  # 次の依頼で 01(作業の前)へ戻る
+    svg.text(236, return_y + 30, s["return"], 18, COLORS["green"])
     svg.text(48, footer_y, s["hero_foot"], 19, "#a8bad3")
     svg.save(path)
 
