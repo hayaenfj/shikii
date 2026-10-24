@@ -215,23 +215,10 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	}
 	for _, draft := range req.Wiki {
 		// 差し込み先・矛盾の判定への結果の正解は保存の前に組み、保存が通ってから書く(記事が変わると判定の入力と引き合わせられない)
-		outcome, oerr := placementOutcome(root, scope, draft)
-		_, err := (notebook.Book{Root: root, Scope: scope}).Ingest(draft)
+		_, err := ingestWithOutcome(root, scope, draft)
 		receipt := reflectReceipt{Sources: draft.Sources}
 		if err != nil {
 			result.Complete, receipt.Error = false, err.Error()
-		} else if oerr != nil {
-			hookLog("wiki place: " + oerr.Error())
-		} else {
-			bySpec := map[string][]store.Label{} // 追記は spec ごと
-			for _, l := range outcome {
-				bySpec[l.SpecID] = append(bySpec[l.SpecID], l)
-			}
-			for _, labels := range bySpec {
-				if err := (store.Store{Dir: root}).AppendLabels(labels); err != nil {
-					hookLog("wiki place: " + err.Error())
-				}
-			}
 		}
 		result.Wiki = append(result.Wiki, receipt)
 	}
