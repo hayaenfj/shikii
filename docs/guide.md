@@ -247,7 +247,7 @@ shikii new my-decision --type choice   # a new spec by answering a few questions
 
 What to commit: `.shikii/decisions/` and `.shikii/wiki/` always. `.shikii/labels/` holds the truths, the asset that survives a model change, so commit it. `.shikii/records/` grows with every decision; committing it is optional (`shikii gc` drops old unlabelled records).
 
-To change the answer page itself (`web/`, Svelte) you need Node 24 (`make web`); just using shikii does not: the built page is committed and embedded in the binary.
+To change the answer page itself (`web/`, Svelte + Tailwind CSS) you need Node 24 (`make web`); just using shikii does not: the built page is committed and embedded in the binary.
 
 ## How shikii works
 

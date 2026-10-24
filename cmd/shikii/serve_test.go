@@ -325,7 +325,7 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 func TestServeUIHasTabsAndScalesToManyItems(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)
-	for _, must := range []string{"#tabs {", "shikii.tab", "1 件ずつ", "一覧", "スキップ(あとで)", "ほかに ", "AI が迷った", "抜き取り", "さらに表示", "data-tab=\"wiki\"", "limit=200", "ArrowRight"} {
+	for _, must := range []string{`id="tabs"`, "shikii.tab", "1 件ずつ", "一覧", "スキップ(あとで)", "ほかに ", "AI が迷った", "抜き取り", "さらに表示", "data-tab=\"wiki\"", "limit=200", "ArrowRight"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("scalable view missing %q", must)
 		}
@@ -350,7 +350,7 @@ func TestBindHostIsLoopbackExceptInsideAContainer(t *testing.T) {
 func TestServeUIExplainsItself(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)
-	for _, must := range []string{`id="help"`, "この画面の使い方", "本当はどれだったかのボタンを押します", "わかった", "shikii.help", "本文を読んで、本当はどれだったかを押してください", `class="num"`} {
+	for _, must := range []string{`id="help"`, "この画面の使い方", "本当はどれだったかのボタンを押します", "わかった", "shikii.help", "本文を読んで、本当はどれだったかを押してください", "data-num"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("the page must explain itself; missing %q", must)
 		}

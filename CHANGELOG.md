@@ -5,6 +5,7 @@
 ## 0.8.1 — unreleased
 
 - Page: the "simple / detailed" toggle is gone; the page always shows everything (knowledge tab, model pills, wording candidates, calibration details). The stored preference is ignored.
+- Page: styles moved to Tailwind CSS v4 (`@tailwindcss/vite`). Colors, shadows and breakpoints are tokens in `web/src/app.css`; each component carries its own utility classes. Same look in light and dark, same layout at every width; class names that the tests and keyboard shortcuts rely on (`.item`, `.btns`, `.top`, `.skip`, `data-lane`, …) are unchanged.
 
 ## 0.8.0 — Rituals that must be done, one page per project, and a page that says what is for you
 

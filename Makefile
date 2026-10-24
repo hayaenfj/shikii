@@ -6,7 +6,7 @@ MODEL   ?= ggml-org/Kev-4B-GGUF:Q4_K_M
 
 .PHONY: build test install check status drift server demo fake web
 
-# 画面(web/、Svelte)のビルド。結果 web/dist は実行ファイルに埋め込まれ、repo にも commit する(使うだけなら Node は要らない)。
+# 画面(web/、Svelte + Tailwind CSS)のビルド。結果 web/dist は実行ファイルに埋め込まれ、repo にも commit する(使うだけなら Node は要らない)。
 # 画面を直したら make web → commit。Node 24 と npm が要る
 web:
 	cd web && npm ci && npm run build

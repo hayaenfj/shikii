@@ -37,23 +37,23 @@
 <Notebook {wiki} />
 
 <section>
-  <h2>{t('knowledge')} <span class="pill">{t('claimsCount')(claims.length, prose)}</span></h2>
-  {#if !claims.length}<div class="empty">{t('noClaims')}</div>{/if}
+  <h2 class="max-md:text-[23px]">{t('knowledge')} <span class="pill">{t('claimsCount')(claims.length, prose)}</span></h2>
+  {#if !claims.length}<div class="empty-state">{t('noClaims')}</div>{/if}
   {#each claims as c (c.path)}
-    <div class="item">
-      <div class="meta">
+    <div class="item mb-5 rounded-[15px] border border-line bg-surface p-[22px] shadow-card max-sm:rounded-xl max-sm:px-3.5 max-sm:py-4">
+      <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted">
         <span class="pill" class:calibrated={c.status === 'confirmed'} class:ready={c.status === 'draft'}>{c.status}</span>
         <span>{c.path}</span>
         {#if c.confirmable}<span class="audit">{t('confirmable')}</span>{/if}
       </div>
-      <div class="text">
+      <div class="text mb-3.5 wrap-anywhere">
         <b>{c.claim}</b>
         {#if c.applies_to}<div class="k">{Object.entries(c.applies_to).map(([k, v]) => k + ': ' + v).join(' · ')}</div>{/if}
         {#each c.evidence || [] as e}
           <div class="k">{evidenceText(e)}</div>
         {/each}
       </div>
-      <div class="btns">
+      <div class="btns flex flex-wrap items-center gap-2.5">
         {#if c.status === 'draft'}
           <button type="button" disabled={busyPath === c.path} onclick={() => act(c, 'promote')}>{t('promote')}</button>
           <button type="button" class="weak" disabled={busyPath === c.path} onclick={() => act(c, 'delete')}>{t('deleteDraft')}</button>
