@@ -6,11 +6,13 @@
 //   - wiki の記事: 次の依頼に効く教訓
 //
 // 固定の規則(オプションは無い): 置き場の外は読まない・書かない(os.Root で閉じる)。リンクは辿らず一覧にも出さない。
-// 隠しファイル(. で始まる名)は扱わない。書くのは UTF-8 の文字だけで 1 回 1 MiB まで。読むのは文字なら 4 MiB まで。
+// 隠しファイル(. で始まる名)・制御文字や書式の文字を含む名は扱わない。途中のフォルダのリンクとハードリンクも扱わない。書くのは UTF-8 の文字だけで 1 回 1 MiB まで。読むのは文字なら 4 MiB まで。
 // gc も update も中身を消さない(0.7.0 を跨ぐ消去の時だけ、ほかの置き場と一緒に消える)。
 package handoff
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +23,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -68,8 +71,14 @@ func KindOf(p string) string {
 
 // Clean は置き場からの相対パスを確かめて正規化する。絶対パス・..・隠し名・\・空の区切りは断る。
 func Clean(p string) (string, error) {
+	p = strings.TrimPrefix(p, ".shikii/handoff/") // 原資料の reference に書いた形(.shikii/handoff/<パス>)もそのまま読める
 	if p == "" || len(p) > pathMax || strings.ContainsAny(p, "\\\x00") || strings.HasPrefix(p, "/") {
 		return "", fmt.Errorf("作業記録のパスは置き場(.shikii/handoff/)からの相対で書きます: %q", p)
+	}
+	for _, c := range p {
+		if unicode.IsControl(c) || unicode.Is(unicode.Bidi_Control, c) || c == '\uFEFF' {
+			return "", fmt.Errorf("作業記録のパスに制御文字や書式の文字は使えません: %q", p)
+		}
 	}
 	parts := strings.Split(p, "/")
 	for _, s := range parts {
@@ -89,6 +98,9 @@ func (b Book) dir() string { return filepath.Join(b.Store, Dir) }
 func (b Book) Ensure() error { return os.MkdirAll(b.dir(), 0o700) }
 
 func (b Book) open() (*os.Root, error) {
+	if info, err := os.Lstat(b.dir()); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return nil, errors.New("作業記録の置き場(.shikii/handoff)がリンクです。リンクは辿りません")
+	}
 	r, err := os.OpenRoot(b.dir())
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fs.ErrNotExist
@@ -145,6 +157,28 @@ func (b Book) List() ([]Entry, error) {
 	return out, nil
 }
 
+// parentsAreFolders は途中のフォルダがどれもリンクでないか(置き場の中を指すリンクも辿らない)。
+func parentsAreFolders(r *os.Root, clean string) bool {
+	dir := path.Dir(clean)
+	if dir == "." {
+		return true
+	}
+	parts := strings.Split(dir, "/")
+	for i := range parts {
+		info, err := r.Lstat(strings.Join(parts[:i+1], "/"))
+		if err != nil {
+			return errors.Is(err, fs.ErrNotExist) // まだ無いフォルダは書く時に作る
+		}
+		if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// beforeOpen はテストが Lstat と Open の間に差し替えを起こすための口(本番では nil)。
+var beforeOpen func()
+
 // Open は 1 件を開く(画面がそのまま配る時に使う)。リンクと置き場の外は開かない。
 func (b Book) Open(p string) (*os.File, Entry, error) {
 	clean, err := Clean(p)
@@ -157,14 +191,22 @@ func (b Book) Open(p string) (*os.File, Entry, error) {
 	}
 	defer r.Close()
 	info, err := r.Lstat(clean)
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil || !info.Mode().IsRegular() || linkCount(info) > 1 || !parentsAreFolders(r, clean) {
 		return nil, Entry{}, fmt.Errorf("作業記録が見つかりません: %s", clean)
 	}
-	f, err := r.Open(clean)
+	if beforeOpen != nil {
+		beforeOpen()
+	}
+	f, err := r.OpenFile(clean, os.O_RDONLY|noFollow, 0)
 	if err != nil {
 		return nil, Entry{}, fmt.Errorf("作業記録が見つかりません: %s", clean)
 	}
-	return f, Entry{Path: clean, Size: info.Size(), Modified: info.ModTime().UTC(), Kind: KindOf(clean)}, nil
+	opened, err := f.Stat() // 開いた物が確かめた物と同じか(間で差し替わったら配らない)。大きさは開いた物のもの
+	if err != nil || !os.SameFile(opened, info) {
+		f.Close()
+		return nil, Entry{}, fmt.Errorf("作業記録が見つかりません: %s", clean)
+	}
+	return f, Entry{Path: clean, Size: opened.Size(), Modified: opened.ModTime().UTC(), Kind: KindOf(clean)}, nil
 }
 
 // Read は 1 件を読む。文字は中身を返し、画像などは種類と大きさだけ返す(画面で見る)。
@@ -207,23 +249,26 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 		return Entry{}, errors.New("作業記録に書けるのは UTF-8 の文字だけです。画像などはファイルとして .shikii/handoff/ に置きます")
 	}
 	if err := b.Ensure(); err != nil {
-		return Entry{}, err
+		return Entry{}, errors.New("作業記録の置き場(.shikii/handoff)を作れません")
 	}
 	r, err := b.open()
 	if err != nil {
 		return Entry{}, err
 	}
 	defer r.Close()
+	if !parentsAreFolders(r, clean) {
+		return Entry{}, fmt.Errorf("作業記録 %s の途中のフォルダがリンクかファイルです(リンクは辿りません)", clean)
+	}
 	if dir := path.Dir(clean); dir != "." {
 		if err := r.MkdirAll(dir, 0o700); err != nil {
-			return Entry{}, fmt.Errorf("作業記録のフォルダを作れません: %w", err)
+			return Entry{}, fmt.Errorf("作業記録のフォルダ %s を作れません", dir)
 		}
 	}
-	if info, err := r.Lstat(clean); err == nil && !info.Mode().IsRegular() {
-		return Entry{}, fmt.Errorf("作業記録 %s はファイルではありません(リンクやフォルダには書きません)", clean)
+	if info, err := r.Lstat(clean); err == nil && (!info.Mode().IsRegular() || linkCount(info) > 1) {
+		return Entry{}, fmt.Errorf("作業記録 %s はふつうのファイルではありません(リンク・ハードリンク・フォルダには書きません)", clean)
 	}
 	if appendMode {
-		f, err := r.OpenFile(clean, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		f, err := r.OpenFile(clean, os.O_CREATE|os.O_WRONLY|os.O_APPEND|noFollow, 0o600)
 		if err != nil {
 			return Entry{}, err
 		}
@@ -235,8 +280,12 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 			return Entry{}, err
 		}
 	} else {
-		tmp := path.Join(path.Dir(clean), ".write-"+path.Base(clean))
-		f, err := r.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		var rnd [8]byte // 一時名は毎回ちがう名(同時の書き込みが混ざらない、前もって置かれたリンクを辿らない、長い名前でも上限を超えない)
+		if _, err := rand.Read(rnd[:]); err != nil {
+			return Entry{}, err
+		}
+		tmp := path.Join(path.Dir(clean), ".write-"+hex.EncodeToString(rnd[:]))
+		f, err := r.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err != nil {
 			return Entry{}, err
 		}

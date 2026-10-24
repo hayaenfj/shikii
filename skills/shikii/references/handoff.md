@@ -1,6 +1,6 @@
 # Work records (`.shikii/handoff/`)
 
-Each project has a folder for working files that change as the work goes: audit reports, release steps and their log, diffs, screenshots, long investigation notes. `shikii --init` creates it next to `decisions/`, `wiki/`, `records/` and `labels/`. It is not committed, `shikii gc` never touches it, and `shikii update` keeps it.
+Each project has a folder for working files that change as the work goes: audit reports, release steps and their log, diffs, screenshots, long investigation notes. `shikii --init` creates it next to `decisions/`, `wiki/`, `records/` and `labels/`. Like the rest of `.shikii/` it stays out of Git (the folder is in Git's local exclude; add a file with `git add -f` only if you mean to share it). `shikii gc` never touches it and `shikii update` keeps it, except for the one-time wipe when updating from 0.6.0 or earlier.
 
 ## Which place for what
 
@@ -10,11 +10,11 @@ Each project has a folder for working files that change as the work goes: audit 
 | Evidence as it was when you checked it (a test result, a release digest, a quoted report) | wiki source | `wiki capture` (immutable, at most 32 KiB) |
 | A file you will keep editing, or anything long, binary or produced by another agent | work record | `shikii handoff write/append`, `shikii_wiki` with `handoff_*`, or write the file directly under `.shikii/handoff/` |
 
-A lesson can cite a work record: capture an observation whose `reference` is the path (`.shikii/handoff/audit-0.8.1/report-B.md`) and whose `content` quotes the part that supports the lesson. Do not paste a whole report into a lesson body.
+A lesson can cite a work record: capture an observation whose `reference` is the path (`.shikii/handoff/audit-0.8.1/report-B.md`) and whose `content` quotes the part that supports the lesson, then use that source in the lesson. `shikii handoff read` accepts that path as written. Do not paste a whole report into a lesson body.
 
 ## Using it
 
-- CLI: `shikii handoff list`, `shikii handoff read <path>`, `shikii handoff write <path>` and `shikii handoff append <path>` (body on stdin). Paths are relative to `.shikii/handoff/`; `..`, absolute paths and hidden names are refused.
+- CLI: `shikii handoff list`, `shikii handoff read <path>`, `shikii handoff write <path>` and `shikii handoff append <path>` (body on stdin). Paths are relative to `.shikii/handoff/` (a leading `.shikii/handoff/` is accepted, so the path in a source's `reference` works as is); `..`, absolute paths, hidden names, control characters and links (to files or folders, inside or outside, and hard links) are refused.
 - MCP: `shikii_wiki` with `operation` `handoff_list`, `handoff_read` (`path`), `handoff_write` or `handoff_append` (`path`, `content`). Text only, UTF-8, at most 1 MiB per call; reading returns text up to 4 MiB. For images and other binaries, write the file directly into the folder.
 - Group files by task in a first-level folder (`audit-<version>/`, `release-<version>/`, `investigation-<topic>/`). The page groups by that folder.
 - The person reads them on the answer page under Knowledge → Work records (read only; text stays text, images are shown, HTML is never rendered).

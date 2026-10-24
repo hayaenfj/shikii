@@ -216,7 +216,8 @@ shikii up                         # llama-server を :8086 に、shikii-readout 
 | `GET /v1/status` | | spec ごとの状態(線の有無、正解の数、人の言葉の質問) |
 | `GET /v1/tune?spec=<id>` · `POST /v1/tune/run` · `POST /v1/tune/variant` · `POST /v1/tune/adopt` | `{"spec","propose"}` · `{"spec","name","question","options"}` · `{"spec","run","meaning_same":true}` | 聞き方の改善の最新と今の候補・裏で回す・人が書いた候補を足す(検証してから。採用はしない)・採否 |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
-| `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説 |
+| `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ) |
+| `GET /v1/handoff/file?path=` | `path`(.shikii/handoff/ からの相対) | 作業記録の 1 件。画像は画像、文字と HTML は text/plain、それ以外は保存。置き場の外は 400 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
 | `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 最大2原資料の採点・wiki整理・届いた記憶と訂正の観察、最大2記事の見直しをまとめて確認・保存。`complete`と各`error`を確認する |
 | `GET /v1/specs` | | 読み込んでいる spec の一覧 |

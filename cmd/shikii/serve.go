@@ -97,6 +97,7 @@ func cmdServe(args []string) error {
 	if hub {
 		handler = newProjectHub(common, o)
 	}
+	handler = localHostOnly(handler) // DNS rebinding で別のサイトから記録や作業記録を読まれない(監査 0.8.1-1)
 	if !auto {
 		return http.Serve(ln, handler)
 	}
@@ -904,4 +905,21 @@ func writeUnknownSpec(w http.ResponseWriter, id string) {
 		return
 	}
 	writeErr(w, 404, fmt.Errorf("unknown spec %q", id))
+}
+
+// localHostOnly は Host が手元の名前(127.0.0.1・localhost・::1)の時だけ通す。DNS rebinding で別のサイトの名前から
+// 来た要求(GET の記録・作業記録の読み取りを含む)を断る。POST の Origin の検査(acceptJSONPost)とは別の守り。
+func localHostOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if hh, _, err := net.SplitHostPort(host); err == nil {
+			host = hh
+		}
+		switch strings.ToLower(strings.Trim(host, "[]")) {
+		case "127.0.0.1", "localhost", "::1":
+			h.ServeHTTP(w, r)
+		default:
+			writeErr(w, 403, fmt.Errorf("host %q is not allowed; open the page as http://127.0.0.1:<port>/ or http://localhost:<port>/", host))
+		}
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -132,4 +133,62 @@ func withStdin(t *testing.T, s string, fn func()) {
 	stdin = strings.NewReader(s)
 	defer func() { stdin = old }()
 	fn()
+}
+
+// 監査 0.8.1-1: Host が手元の名前でなければ断る(DNS rebinding で作業記録や記録を読まれない)。手元の名前は通す。
+func TestServeRefusesForeignHosts(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	h := localHostOnly(ok)
+	for host, want := range map[string]int{"127.0.0.1:8095": 200, "localhost:8095": 200, "[::1]:8095": 200, "LOCALHOST": 200, "evil.example": 403, "evil.example:8095": 403, "127.0.0.1.evil.example:8095": 403} {
+		req, _ := http.NewRequest(http.MethodGet, "/v1/handoff/file?path=a.md", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %q: %d, want %d", host, rec.Code, want)
+		}
+	}
+}
+
+// 監査 0.8.1-1: MCP の handoff_write の上限は復号後の本文 1 MiB(改行の多い 600000 バイトは JSON で 1 MiB を超えても書ける)。超えたら理由を返す。
+func TestMCPHandoffLimitIsTheDecodedContent(t *testing.T) {
+	send, _ := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	call := func(content string) (bool, string) {
+		r := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "shikii_wiki", "arguments": map[string]any{"operation": "handoff_write", "path": "big.md", "content": content}}}))
+		return r["isError"] == true, r["content"].([]any)[0].(map[string]any)["text"].(string)
+	}
+	if bad, text := call(strings.Repeat("\n", 600000)); bad {
+		t.Fatalf("600000 bytes of text must be accepted: %s", text)
+	}
+	if bad, text := call(strings.Repeat("a", (1<<20)+1)); !bad || !strings.Contains(text, "1 MiB") && !strings.Contains(text, "1048576") {
+		t.Fatalf("more than 1 MiB must be refused with the reason: %s", text)
+	}
+}
+
+// 監査 0.8.1-1: CLI の標準入力が 1 MiB を超えたら、黙って切らず、そう言って断る。
+func TestCLIHandoffRefusesTooLongStdin(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", filepath.Join(dir, "home"))
+	capture(t, func() error { return cmdInit(nil) })
+	var err error
+	withStdin(t, strings.Repeat("a", 5<<20), func() { err = cmdHandoff([]string{"write", "big.md"}) })
+	if err == nil || !strings.Contains(err.Error(), "1 MiB") {
+		t.Fatalf("too long stdin: %v", err)
+	}
+}
+
+// 監査 0.8.1-3: 作業記録の置き場が共有先へのリンクなら、ほかの置き場と同じくプロジェクトとして使わない。
+func TestProjectStoreRefusesALinkedHandoffFolder(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".shikii")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(root, "handoff")); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkProjectStore(root, false); err == nil {
+		t.Fatal("a linked handoff folder must be refused like the other folders")
+	}
 }

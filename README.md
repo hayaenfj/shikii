@@ -7,10 +7,10 @@
 A model gives you a probability. shikii tells you whether you may act on it. It draws the line from the answers people and results supply, turns every decision into a band (`act` / `ask` / `discard`), keeps what it learned in a wiki that your agent uses while it works, and turns your corrections into checks that stop the agent next time.
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-373%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-380%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.8.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.8.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
 Version 0.7 goes back to the line and the bands. The recommended model is TypeSafe Jev: put the key in the environment, download nothing, and get an answer in about 0.2 s. Without a key, llama.cpp answers the same questions locally. New wiki lessons are placed next to the right page and checked for contradictions by the decision model. 0.7.3 turns corrections into guards that stop the turn, delivers lessons to subagents too, and counts in production whether delivered lessons changed anything. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
@@ -102,7 +102,7 @@ In a project you want to enable, ask your agent:
 
 > Use shikii in this project.
 
-The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. The answer page is one per project: the first request's hook starts it on a free port and opens it in the browser (`shikii page` tells you the URL). Initialization prepares the built-in questions, the wiki, the place for guards, the MCP setup (it adds `.mcp.json`, `.cursor/mcp.json`, `opencode.json` and a section in `AGENTS.md` (not when the project has only `CLAUDE.md`) to the project; only `.shikii/` is excluded from Git) and the agent's instructions. `shikii doctor` checks the setup.
+The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. The answer page is one per project: the first request's hook starts it on a free port and opens it in the browser (`shikii page` tells you the URL). Initialization prepares the built-in questions, the wiki, the place for guards, the folder for work records, the MCP setup (it adds `.mcp.json`, `.cursor/mcp.json`, `opencode.json` and a section in `AGENTS.md` (not when the project has only `CLAUDE.md`) to the project; only `.shikii/` is excluded from Git) and the agent's instructions. `shikii doctor` checks the setup.
 
 ### Updates
 
@@ -169,7 +169,7 @@ The design follows [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy
 
 ## Memory belongs to a project
 
-Conversations, lessons, provisional assessments, truths, calibration and guards live in that project's `.shikii/`. Unrelated projects stay apart. The shared `~/.shikii/agent` holds the templates, the tools and the list of projects. Because `.shikii/` contains private conversations, initialization keeps it out of Git's untracked files.
+Conversations, lessons, provisional assessments, truths, calibration, guards and work records live in that project's `.shikii/`. Unrelated projects stay apart. The shared `~/.shikii/agent` holds the templates, the tools and the list of projects. Because `.shikii/` contains private conversations, initialization keeps it out of Git's untracked files.
 
 <p align="center"><img src="docs/assets/shikii-architecture.svg" alt="an initialized project keeps conversation lessons and provisional observations apart from business questions and truths; the shared place holds templates, tools and links to projects" width="100%"></p>
 
