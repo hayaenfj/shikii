@@ -88,7 +88,10 @@ func cmdInit(args []string) error {
 			fmt.Fprintf(stdout, "%s: 既存のshikii設定を保持（%s）\n", f.path, f.who)
 		}
 	}
+	var skipped agentsSkipped
 	switch did, err := addAgentsSection(filepath.Join(scope, "AGENTS.md")); {
+	case errors.As(err, &skipped):
+		fmt.Fprintln(stdout, "AGENTS.md: "+skipped.reason)
 	case err != nil:
 		return err
 	case did:
@@ -294,53 +297,129 @@ var agentsSection = agentsMarker + "\n## shikii(判定の作法)\n\n" +
 	"- wiki の教訓には種類(kind: rule / howto / criteria / fact / history)と場面(scene: その仕事の言葉で「〜する時」)を付ける。wiki の返事に unclassified(種類と場面の無い前の版の記事)があれば、そのターンのうちに `shikii wiki classify <id> <kind> <scene>`(MCP なら shikii_wiki の classify)で付ける。教訓の文は変わらない\n" +
 	"- 詳しい作法: ~/.claude/skills/shikii/SKILL.md(shikii init が置く)\n" + agentsMarker + "\n"
 
-// addAgentsSection は AGENTS.md に shikii の節を足す。前の版の節(印の間)があれば新しい中身に置き換え、人が書いた部分は触らない。
-// 同じ中身なら何もしない。
+// agentsSkipped は、AGENTS.md に触らなかった理由(人に伝えるだけで、init もアップデートも止めない)。
+type agentsSkipped struct{ reason string }
+
+func (e agentsSkipped) Error() string { return e.reason }
+
+// addAgentsSection は AGENTS.md に shikii の節を足す。前の版の節があれば新しい中身に置き換え、人が書いた部分は触らない。
+// 同じ中身なら何もしない(監査 0.9.0 の A1〜A3):
+//   - 節は「印だけの行」で始まり、次の行が「## shikii(」で、次の「印だけの行」で終わる組。人の文の中の印(`…` の中など)は数えない。
+//     その組がちょうど 1 つの時だけ置き換え、印だけの行があるのに組が 1 つでない時は触らずに理由を返す
+//   - AGENTS.md が repo の中のファイルへのリンク(CLAUDE.md へのシンボリックリンクなど)ならリンクのまま先を書き換え、外を指すなら触らない
+//   - 改行は今のファイルの形(CRLF か LF)に合わせる
 func addAgentsSection(path string) (bool, error) {
-	b, err := os.ReadFile(path)
+	target := path
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		real, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return false, agentsSkipped{"AGENTS.md のリンク先を読めないので触りません"}
+		}
+		dir, _ := filepath.EvalSymlinks(filepath.Dir(path))
+		if rel, err := filepath.Rel(dir, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return false, agentsSkipped{"AGENTS.md は repo の外を指すリンクなので触りません"}
+		}
+		target = real
+	}
+	b, err := os.ReadFile(target)
 	if err != nil && !os.IsNotExist(err) {
 		return false, err
 	}
 	text := string(b)
-	if first := strings.Index(text, agentsMarker); first >= 0 {
-		end := strings.Index(text[first+len(agentsMarker):], agentsMarker)
-		if end < 0 {
-			return false, nil // 閉じの印が無い(人が手で崩した)。触らない
+	nl := "\n"
+	if strings.Contains(text, "\r\n") {
+		nl = "\r\n"
+	}
+	section := strings.ReplaceAll(agentsSection, "\n", nl)
+	if start, end, found, ok := agentsSectionSpan(text); found {
+		if !ok {
+			return false, agentsSkipped{"AGENTS.md の shikii の印の組が 1 つに決まらないので触りません(印だけの行を確かめてください)"}
 		}
-		end += first + 2*len(agentsMarker)
-		if strings.HasPrefix(text[end:], "\n") {
-			end++
-		}
-		if text[first:end] == agentsSection {
+		if text[start:end] == section {
 			return false, nil
 		}
-		mode := os.FileMode(0o644)
-		if info, err := os.Stat(path); err == nil {
-			mode = info.Mode().Perm() // repo のファイルなので元の権限のまま
-		}
-		tmp := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
-		if err := os.WriteFile(tmp, []byte(text[:first]+agentsSection+text[end:]), mode); err != nil {
-			return false, err
-		}
-		return true, os.Rename(tmp, path)
+		return true, replaceFile(target, text[:start]+section+text[end:])
 	}
 	if os.IsNotExist(err) && fileExists(filepath.Join(filepath.Dir(path), "CLAUDE.md")) {
 		return false, nil // OpenCode は AGENTS.md があると CLAUDE.md を読まなくなる。黙って作らない(呼び出し側が言う)
 	}
-	section := agentsSection
-	if len(b) > 0 && !strings.HasSuffix(text, "\n") {
-		section = "\n" + section
-	}
 	if len(b) > 0 {
-		section = "\n" + section
+		if !strings.HasSuffix(text, "\n") {
+			section = nl + section
+		}
+		section = nl + section
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(target, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return false, err
 	}
 	defer f.Close()
 	_, err = f.WriteString(section)
 	return true, err
+}
+
+// agentsSectionSpan は shikii の節の範囲(開きの印の行の頭から、閉じの印の行の改行の後まで)。found は印だけの行があったか、
+// ok は開き(次の行が「## shikii(」)と閉じの組がちょうど 1 つだったか。
+func agentsSectionSpan(text string) (start, end int, found, ok bool) {
+	type line struct{ start, end int } // end は改行を含む
+	var marks []line
+	var lines []line
+	for pos := 0; pos < len(text); {
+		e := strings.IndexByte(text[pos:], '\n')
+		next := len(text)
+		if e >= 0 {
+			next = pos + e + 1
+		}
+		lines = append(lines, line{pos, next})
+		pos = next
+	}
+	body := func(l line) string { return strings.TrimRight(text[l.start:l.end], "\r\n") }
+	pairs := 0
+	for i, l := range lines {
+		if body(l) != agentsMarker {
+			continue
+		}
+		marks = append(marks, l)
+		if i+1 >= len(lines) || !strings.HasPrefix(body(lines[i+1]), "## shikii(") {
+			continue
+		}
+		for _, c := range lines[i+1:] {
+			if body(c) == agentsMarker {
+				pairs++
+				start, end = l.start, c.end
+				break
+			}
+		}
+	}
+	if len(marks) == 0 {
+		return 0, 0, false, false
+	}
+	return start, end, true, pairs == 1 && len(marks) == 2
+}
+
+// replaceFile は path の中身を一時ファイルからの置き換えで書き換える(元の権限のまま。一時ファイルは毎回ちがう名前)。
+func replaceFile(path, content string) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm() // repo のファイルなので元の権限のまま
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".shikii-agents-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if _, err := f.WriteString(content); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // copySkill は埋め込んだ skills/shikii を dst に置き直す(前の中身は消す。古い参照が混ざらない)。

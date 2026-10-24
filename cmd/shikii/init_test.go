@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,5 +220,28 @@ func TestHookInstallRefreshesAgentsSectionOfRegisteredProjects(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(without, "AGENTS.md")); string(b) != "# 人の規則だけ\n" {
 		t.Fatalf("節の無い AGENTS.md には作らない: %s", b)
+	}
+}
+
+// 監査 0.9.0 の A1・A2: repo の外を指すリンクと、印だけの行が 1 つしか無い AGENTS.md には触らず、理由を返す(init もアップデートも止めない)。
+func TestAgentsSectionSkipsOutsideLinkAndLoneMarker(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "shared.md")
+	os.WriteFile(outside, []byte("# 共有の規則\n\n"+agentsMarker+"\n## shikii(判定の作法)\n\n- 古い\n"+agentsMarker+"\n"), 0o644)
+	repo := t.TempDir()
+	link := filepath.Join(repo, "AGENTS.md")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	var skipped agentsSkipped
+	if did, err := addAgentsSection(link); did || !errors.As(err, &skipped) {
+		t.Fatalf("外を指すリンクは触らず理由を返す: %v %v", did, err)
+	}
+	if b, _ := os.ReadFile(outside); !strings.Contains(string(b), "- 古い") {
+		t.Fatal("外のファイルを書き換えた")
+	}
+	lone := filepath.Join(t.TempDir(), "AGENTS.md")
+	os.WriteFile(lone, []byte("# 規則\n\n"+agentsMarker+"\n## shikii(判定の作法)\n\n- 閉じの印が無い\n"), 0o644)
+	if did, err := addAgentsSection(lone); did || !errors.As(err, &skipped) {
+		t.Fatalf("印が 1 つなら触らず理由を返す: %v %v", did, err)
 	}
 }
