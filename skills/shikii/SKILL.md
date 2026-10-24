@@ -27,6 +27,8 @@ Hooks run when a user request arrives and when the turn closes, not before every
 
 **Wiki:** read [wiki.md](references/wiki.md) when searching, ingesting, revising or replacing lessons. Reuse article bodies and original sources already read in the active task at the same project and revision. Read missing evidence and reconcile it with existing topics. Keep a short retrieval summary, a supported knowledge body, related pages, source IDs and conditions of applicability. Explicit corrections can become source-backed lessons with the quoted correction and a concrete next action. Ordinary follow-up requests do not automatically establish lasting preferences. Do not change claim states or treat lessons as truth labels. Before saving a new lesson, pass the draft to reflection's `place` operation and read the returned same-topic candidates and conflict flags, then choose `id`, `replaces` or a new page.
 
+**Work records:** put files you will keep editing, long reports, diffs and screenshots in `.shikii/handoff/<task>/` (`shikii handoff` or `shikii_wiki` with `handoff_*`), not in a lesson body and not in a shared folder outside the project. Give subagents and auditors an exact report path there. The person reads them on the page. See [handoff.md](references/handoff.md) for which place holds what.
+
 **Guards:** when a correction can be checked mechanically (two files that must change together, words never to use, words a commit body must contain), draft a guard with `shikii guard add` as described in [guards.md](references/guards.md). It is written disabled; the person decides whether to enable it (`shikii guard enable <id>` shows the negative example stopping before it turns the guard on). When a guard stops your turn, fix the work and end again; never disable a guard to get past it.
 
 **Rituals are checked too (built in, always on):** when the request hook asked you to prepare the planning context and you changed files, the Stop hook stops the turn once until `hook plan submit` was called for this turn; when the hook listed conversations to reflect on, the Stop hook stops the turn once until `reflect submit` saved their reviews, wiki entries and the assessment of every delivered lesson. The second Stop passes, but the miss is recorded (`shikii status` shows `rituals:` and the page shows it under the AI's state). Do the ritual before ending; do not end twice to get past it.
@@ -50,6 +52,7 @@ Hooks run when a user request arrives and when the turn closes, not before every
 - Before-work conversation and wiki context: [planning.md](references/planning.md).
 - Source-backed wiki maintenance: [wiki.md](references/wiki.md).
 - Moving an existing memory into the wiki: [import-memory.md](references/import-memory.md).
+- Work records in `.shikii/handoff/`: [handoff.md](references/handoff.md).
 - Batched assessment and memory effects: [review.md](references/review.md).
 
 Typical local calls: `shikii decide .shikii/decisions/<id>.yaml -i key=value --local http://127.0.0.1:8080`, `shikii status .shikii/decisions/*.yaml`, and `shikii check .shikii/decisions/*.yaml`. See `shikii --help` for the full CLI. `shikii update` updates installed binaries, hooks and skill while preserving project data (except the one-time wipe of `.shikii/` when updating from 0.6.0 or earlier).

@@ -225,7 +225,7 @@ func reinitWith(ctx context.Context, exe string) func(path string) error {
 }
 
 // storeEntries は shikii が各プロジェクトの .shikii/ に作る項目(許可リスト)。消すのはこれだけで、知らない項目があるプロジェクトは消さない。
-var storeEntries = map[string]bool{"decisions": true, "wiki": true, "records": true, "labels": true, "sessions": true, "guards": true}
+var storeEntries = map[string]bool{"decisions": true, "wiki": true, "records": true, "labels": true, "sessions": true, "guards": true, "handoff": true}
 
 // disposableEntry は shikii の作った項目ではないが消してよい迷子: Finder の .DS_Store と、--init が途中で残した一時ファイル(監査 R3)。
 func disposableEntry(name string) bool {

@@ -54,7 +54,7 @@ GitHub Releasesの最新安定版から、利用中のOS・CPU向けの本体と
 
 Claude Code・Codexの自動記録は、インストール後に利用するプロジェクトで `shikii --init` を一度実行して有効にする。未初期化の場所ではhookは動かない。インストールは[日本語README](readme/README_ja.md#始め方)のcurlの1行で行う。ソースから入れる場合はcloneしたshikiiのフォルダで `sh install.sh`。Go 1.27以上が必要。
 
-コミットするもの: `.shikii/decisions/` と `.shikii/wiki/` は常に。`.shikii/labels/` は正解(モデルを替えても残る資産)なのでコミットする。`.shikii/records/` は判定のたびに増えるので、コミットは任意(`shikii gc` が古い正解なしの記録を消す)。
+コミットするもの: `.shikii/decisions/` と `.shikii/wiki/` は常に。`.shikii/labels/` は正解(モデルを替えても残る資産)なのでコミットする。`.shikii/records/` は判定のたびに増えるので、コミットは任意(`shikii gc` が古い正解なしの記録を消す)。`.shikii/handoff/` は作業記録(監査の報告、リリースの手順、差分、画像など書き換えながら進めるファイル)の置き場で、`shikii handoff` か MCP の `shikii_wiki` の `handoff_*` で読み書きし、画面の知識の欄で読む。残したい物はコミットする(`shikii gc` は触らない)。
 
 答え合わせの画面そのもの(`web/`、Svelte + Tailwind CSS)を直すには Node 24 が要る(`make web`)。使うだけなら要らない: 組んだ画面はコミットされ、実行ファイルに埋め込まれている。
 

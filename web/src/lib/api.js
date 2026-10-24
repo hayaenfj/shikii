@@ -36,4 +36,11 @@ export const api = {
   tuneVariant: body => post('v1/tune/variant', body),
   wikiClaim: body => post('v1/wiki/claim', body),
   notebook: body => post('v1/wiki/notebook', body),
+  // 作業記録(0.8.1): 1 件の口。画像は <img> がそのまま読み、文字は text で取る
+  handoffFile: p => 'v1/handoff/file?path=' + encodeURIComponent(p),
+  handoffText: async p => {
+    const r = await fetch('v1/handoff/file?path=' + encodeURIComponent(p));
+    if (!r.ok) { let m = String(r.status); try { m = (await r.json()).error || m; } catch (e) {} throw new Error(m); }
+    return r.text();
+  },
 };

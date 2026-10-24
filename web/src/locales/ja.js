@@ -91,6 +91,7 @@ export default {
   withContext: '文脈を足して聞き直した', contextRung: '文脈の段', toPerson: (h, k) => '人へ ' + h + '(1000 判定あたり ' + k + ')',
   audit: '抜き取り検査: 機械が自動で動いた判定。20 件に 1 件をここに出し、人が確かめた分で精度を測る',
   knowledge: '知識(主張)', claimsCount: (n, p) => '主張 ' + n + '、文章のページ ' + p, noClaims: 'まだ主張はありません(tune で勝った候補があれば下書きができます)',
+  handoffTitle: '作業記録', handoffCount: n => n + ' 件', handoffHow: '途中で書き換える作業ファイル（監査の報告、リリースの手順と記録、差分、画像）。置き場は .shikii/handoff/ で、AI が書き、ここでは読むだけです。次に効く教訓は上の wiki に、確かめた時点の証拠は原資料に残ります。', handoffEmpty: 'まだ作業記録はありません。', handoffError: '作業記録を読めませんでした。', handoffRoot: '（直下）', handoffOpenRaw: '別のタブで開く', handoffOther: '文字でも画像でもないファイルです。「別のタブで開く」で保存できます。',
   notebookTitle: '会話から育つ教訓', notebookHow: '普段の会話から AI がまとめ、次の似た依頼で参照します。教訓は出典付きの仮説で、今回の依頼と規則を優先します。', notebookPending: n => '次に整理する会話 ' + n + ' 件。普段使っているエージェントが整理します。', notebookIssues: '出典や記録を確かめられない教訓があります。問題のある教訓は参照対象から外します。', notebookEmpty: 'まだ教訓はありません。会話が整理されると、ここに出典と一緒に並びます。', notebookHypothesis: '仮説', notebookWhen: '当てはまる場面', notebookSource: '原文を見る',
   promote: '主張にする', deleteDraft: '下書きを消す', confirm: 'confirmed にする', reject: '却下', confirmable: '独立したモデル 2 つが支持: confirmed にできます',
   promptClaim: '一般化した主張の文(この spec に限らない言い方で):', promptSlug: 'ファイル名(英小文字・数字・ハイフン):', promptModels: '効くモデルの範囲:', claimDone: '記録しました',

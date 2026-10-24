@@ -170,7 +170,7 @@ bin/shikii tune .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1
 bin/shikii tune .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1:8080 --write  # adopts the winner as v+1 and calibrates it
 ```
 
-The layout is fixed: run shikii at the project root, and everything shikii makes lives under `.shikii/`: `decisions/` (specs), `wiki/` (how-to-ask knowledge), `guards/` (checks made from corrections), `records/` and `labels/` (records and truths). Nothing else is added to the project root. `--store` moves the whole folder; there is no separate flag for where the specs or the wiki live.
+The layout is fixed: run shikii at the project root, and everything shikii makes lives under `.shikii/`: `decisions/` (specs), `wiki/` (how-to-ask knowledge), `guards/` (checks made from corrections), `records/` and `labels/` (records and truths), `handoff/` (work records: files the agent keeps editing, such as audit reports, release steps, diffs and screenshots; `shikii handoff`, or `shikii_wiki` with `handoff_*`; read on the page under Knowledge). Nothing else is added to the project root. `--store` moves the whole folder; there is no separate flag for where the specs or the wiki live.
 
 Wording moves accuracy far more than calibration does (0.68 → 0.90 in our data; a layout change moved a 27B model by 5 points). The truths people gave do not depend on the wording, so every candidate wording can be scored on all of them with no new labels: top-1, Brier, precision and recall at `act`, plus a k-fold holdout of the selection itself. A candidate is adopted only when that holdout beats keeping the current wording; a win by one example out of 62 does not pass (we saw exactly that: 0.984 on the full bank, 0.952 on holdout, so the current 0.968 stayed). Ties keep the current wording. The winner becomes a new version file; the old one stays, and the calibration is fitted immediately by replay.
 
@@ -245,7 +245,7 @@ shikii new my-decision --type choice   # a new spec by answering a few questions
 
 `shikii init` points the four MCP entries at a local model on :8080; hosted only? Remove `--local` from all four entries by hand. Unused tool files can be deleted or gitignored. Projects with only a `CLAUDE.md` get no `AGENTS.md`. The skill folder (`~/.claude/skills/shikii`) is replaced on every init, so do not edit it by hand; your own entries in the MCP files are never rewritten.
 
-What to commit: `.shikii/decisions/` and `.shikii/wiki/` always. `.shikii/labels/` holds the truths, the asset that survives a model change, so commit it. `.shikii/records/` grows with every decision; committing it is optional (`shikii gc` drops old unlabelled records).
+What to commit: `.shikii/decisions/` and `.shikii/wiki/` always. `.shikii/labels/` holds the truths, the asset that survives a model change, so commit it. `.shikii/records/` grows with every decision; committing it is optional (`shikii gc` drops old unlabelled records). `.shikii/handoff/` holds working files; commit what you want to keep (`shikii gc` never touches it).
 
 To change the answer page itself (`web/`, Svelte + Tailwind CSS) you need Node 24 (`make web`); just using shikii does not: the built page is committed and embedded in the binary.
 
@@ -287,7 +287,7 @@ thresholds:
 
 `calibrate` compares two methods per type under 5-fold cross-validation (`identity` against `platt` for yes/no, `identity` against `vector` for choice and score), keeps the ones that meet precision@act and writes the better of those. `identity` means the raw probabilities already meet precision@act and the model is simply marked as verified. `platt` (σ((Δ−bias)/T)) is for yes/no questions. `vector` (softmax((log p + b)/T)) is for choice and score, and fixes per-option habits such as "falls back to *other*". Partial labels (`!option`, "it was not *that*") count toward precision but not toward fitting. Labels obtained from a file are persisted, so `check` and `drift` run offline afterwards.
 
-Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 366 Go tests across 9 packages; the demo runs in CI.
+Safety-relevant branches (taint routing, no act without calibration, stale-hash invalidation, label validation, inversion detection, CV-based method choice, dry-run `gc`, the adoption gates, …) have recorded mutations that made a test fail before the fix was accepted. There are 373 Go tests across 9 packages; the demo runs in CI.
 
 ## What you can connect
 

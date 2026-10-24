@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hayaenfj/shikii/internal/handoff"
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 	"net/http"
@@ -81,6 +82,11 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		claims = append(claims, c)
 	}
 	result := map[string]any{"claims": claims, "lessons": []notebook.Page{}, "notebook_issues": []notebook.Issue{}, "pending_sources_count": 0, "notebook_project": filepath.Base(s.o.projectScope)}
+	if list, err := (handoff.Book{Store: s.o.storeDir}).List(); err == nil { // 作業記録(0.8.1): 画面の知識の欄で読む
+		result["handoff"] = list
+	} else {
+		result["handoff_error"] = true
+	}
 	if stats, err := (store.Store{Dir: s.o.storeDir}).KnowledgeReport(); err == nil {
 		result["knowledge_usage"] = stats
 	}
