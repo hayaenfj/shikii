@@ -3,8 +3,10 @@ package main
 // 監査 0.8.3 の H1・M1・M2・M3・L1 を再現するテスト(監査者が写しで書いた物を取り込んだ)。
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +87,7 @@ func TestPlacementPrefersTheNewestDraftOfTheMergedPage(t *testing.T) {
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{old}}); err != nil {
 		t.Fatal(err)
 	}
+	ageRecords(t, st, "wiki-place", old.Lesson, 48*time.Hour) // 古い草稿は前の日に置いた(再監査: 同じ時に置いた 2 件は点数で選ぶ)
 	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", AppliesTo: "変更履歴を書く時"}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 	if err != nil {
@@ -178,7 +181,7 @@ func TestPlacementIgnoresEditsOfPagesThatWereNotCandidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	later := seedLessons(t, st, scope, "Status page first")["Status page first"] // 置いた後に作った記事(候補に入っていない)
-	body := "Never push anything before the person reviewed it; create the release only when the person has explicitly said so. Read the status page first, then push, then create the release, until everything is reviewed and said."
+	body := "Read the status page first. Never push or create a release until the person has reviewed it and explicitly said so; the status page shows what is waiting."
 	edit := notebook.Draft{ID: later, Sources: []string{src}, Title: "Status page first", Lesson: "Status page first.", AppliesTo: "Status page first を扱う時", Body: &body}
 	if cov := coverageOf(draft.Lesson, edit); cov < placeMatchMin {
 		t.Fatalf("この負例は被覆が下限を越えないと候補の条件を試せない: %.2f", cov)
@@ -188,5 +191,31 @@ func TestPlacementIgnoresEditsOfPagesThatWereNotCandidates(t *testing.T) {
 	}
 	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
 		t.Fatalf("候補に無かった記事の直しで、その草稿に正解を付けない: %d 件", len(place))
+	}
+}
+
+// ageRecords は、置いた草稿(new_lesson)の記録の時刻を d だけ前にずらす(古く置いた草稿を作る)。
+func ageRecords(t *testing.T, st store.Store, specID, newLesson string, d time.Duration) {
+	t.Helper()
+	path := filepath.Join(st.Dir, "records", specID+".jsonl")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		var rec store.Record
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(rec.Inputs["new_lesson"]) == strings.TrimSpace(newLesson) {
+			rec.At = rec.At.Add(-d)
+			nb, _ := json.Marshal(rec)
+			line = string(nb)
+		}
+		out = append(out, line)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(out, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
