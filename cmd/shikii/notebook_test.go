@@ -81,7 +81,7 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	}
 	for _, args := range []map[string]any{
 		{"operation": "query"},
-		{"operation": "ingest", "sources": []string{id}, "title": "モデルの起動", "lesson": "モデルの起動手順まで確認する", "applies_to": "README の導入手順", "body": "## 背景\n\nARTICLE_ONLY_MARKER", "related": []string{}},
+		{"operation": "ingest", "sources": []string{id}, "title": "モデルの起動", "lesson": "モデルの起動手順まで確認する", "kind": "rule", "scene": "テストの時", "applies_to": "README の導入手順", "body": "## 背景\n\nARTICLE_ONLY_MARKER", "related": []string{}},
 		{"operation": "query", "sources": []string{id}},
 		{"operation": "lint"},
 	} {
@@ -119,7 +119,7 @@ func TestNotebookTransportRejectsUnauthorizedFieldsAndBrowserPosts(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, body := range []string{
-		`{"operation":"ingest","sources":["../../outside"],"title":"bad","lesson":"bad","applies_to":"bad"}`,
+		`{"operation":"ingest","sources":["../../outside"],"title":"bad","lesson":"bad","kind":"rule","scene":"テストの時","applies_to":"bad"}`,
 		`{"operation":"ingest","sources":["0000000000000001"],"status":"confirmed"}`,
 		`{"operation":"query","project":"/other/project"}`,
 		`{"operation":"query"} {"operation":"ingest"}`,
@@ -171,7 +171,7 @@ func TestNotebookConversationIngestQueryLintLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ingested := notebookCommand(t, "ingest", `{"sources":["`+sourceID+`"],"title":"インストール手順の確認","lesson":"インストール手順には、モデルを起動する方法まで含めて確認する。","applies_to":"README の導入手順を書く依頼"}`)
+	ingested := notebookCommand(t, "ingest", `{"sources":["`+sourceID+`"],"title":"インストール手順の確認","lesson":"インストール手順には、モデルを起動する方法まで含めて確認する。","kind":"rule","scene":"テストの時","applies_to":"README の導入手順を書く依頼"}`)
 	page := ingested["page"].(map[string]any)
 	if page["status"] != "hypothesis" || len(page["sources"].([]any)) != 1 {
 		t.Fatalf("教訓は出典付きの仮説: %v", page)

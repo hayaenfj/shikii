@@ -20,7 +20,7 @@ func seedLessons(t *testing.T, st store.Store, scope string, titles ...string) m
 		if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "依頼 " + title, Summary: "返答", Reply: "人の返事 " + title}); err != nil {
 			t.Fatal(err)
 		}
-		res, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(notebook.Draft{Sources: []string{src}, Title: title, Lesson: title + "。", AppliesTo: title + "を扱う時"})
+		res, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(notebook.Draft{Sources: []string{src}, Title: title, Lesson: title + "。", Kind: "rule", Scene: "テストの時", AppliesTo: title + "を扱う時"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestReflectPlaceRanksPagesAndSettlesFromSubmit(t *testing.T) {
 	if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "変更履歴の日本語版は要る?", Summary: "返答", Reply: "日本語版は要りません"}); err != nil {
 		t.Fatal(err)
 	}
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の日本語版", Lesson: "変更履歴は英語だけで保ち、日本語版は作らない", AppliesTo: "変更履歴を更新する時"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の日本語版", Lesson: "変更履歴は英語だけで保ち、日本語版は作らない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を更新する時"}
 
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{{Sources: []string{src}, Title: "x"}}}); err == nil {
 		t.Fatal("lesson の無い草稿には差し込み先を聞けない")
@@ -105,7 +105,7 @@ func TestReflectPlaceRanksPagesAndSettlesFromSubmit(t *testing.T) {
 	}
 
 	// 置き換えた → 置き換えた記事は同じ話題「はい」・食い違い「はい」(重み 1)
-	draft2 := notebook.Draft{Sources: []string{src}, Title: "変更履歴は英語だけ", Lesson: "変更履歴は日本語版を作らず英語だけにする", AppliesTo: "変更履歴を更新する時"}
+	draft2 := notebook.Draft{Sources: []string{src}, Title: "変更履歴は英語だけ", Lesson: "変更履歴は日本語版を作らず英語だけにする", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を更新する時"}
 	out, err = runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft2}})
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +151,7 @@ func TestReflectPlaceWithoutPagesNeedsNoModel(t *testing.T) {
 	// CLI からも同じ(shikii reflect place、JSON を標準入力)
 	old := stdin
 	defer func() { stdin = old }()
-	stdin = strings.NewReader(fmt.Sprintf(`{"wiki":[{"sources":["%016x"],"title":"t","lesson":"l","applies_to":"a"}]}`, 300))
+	stdin = strings.NewReader(fmt.Sprintf(`{"wiki":[{"sources":["%016x"],"title":"t","lesson":"l","kind":"rule","scene":"テストの時","applies_to":"a"}]}`, 300))
 	cli := capture(t, func() error { return cmdReflect([]string{"place"}) })
 	if !strings.Contains(cli, `"placements"`) || !strings.Contains(cli, "新しい記事") {
 		t.Fatalf("shikii reflect place must answer like the MCP operation: %s", cli)
@@ -178,7 +178,7 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 	if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "変更履歴の版の見出しは?", Summary: "返答", Reply: "見出しは版と題にして"}); err != nil {
 		t.Fatal(err)
 	}
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", AppliesTo: "変更履歴を書く時"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 		t.Fatalf("一番近い記事が先頭: %+v", c)
 	}
 	// 関係ない記事を wiki ingest で保存しても、さっきの草稿の判定には正解を付けない
-	other := notebook.Draft{Sources: []string{src}, Title: "ライセンスの表記", Lesson: "配布物には 3 つのライセンスファイルと第三者の表示を入れる", AppliesTo: "配布物を組む時"}
+	other := notebook.Draft{Sources: []string{src}, Title: "ライセンスの表記", Lesson: "配布物には 3 つのライセンスファイルと第三者の表示を入れる", Kind: "rule", Scene: "テストの時", AppliesTo: "配布物を組む時"}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: other}); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 	}
 	// 同じ記事を、置いた草稿とは関係の薄い文で直す保存(被覆は 3〜6 割)では、その草稿に正解を付けない(監査 0.8.3: 下限 0.3 でも通っていた)
 	weakBody := "## 見出しの日付\n変更履歴の見出しには日付を書かない。版の形は version.go と揃える。"
-	weak := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", AppliesTo: "変更履歴を書く時", Body: &weakBody}
+	weak := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &weakBody}
 	if cov := coverageOf(draft.Lesson, weak); cov < 0.3 || cov >= placeMatchMin {
 		t.Fatalf("この負例は被覆 0.3〜0.6 の間でないと下限を試せない: %.2f", cov)
 	}
@@ -210,7 +210,7 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 	// 一番近い記事へ、教訓の文を書き直して wiki ingest で合流する(本文も草稿の文を言い換えて書く。被覆は 0.6〜0.95)
 	body := "## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。"
 	merged := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする",
-		Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", AppliesTo: "変更履歴を書く時",
+		Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時",
 		Body: &body}
 	if cov := coverageOf(draft.Lesson, merged); cov < placeMatchMin || cov >= 0.95 {
 		t.Fatalf("書き直した合流は被覆 0.6〜0.95 の間でないと下限を試せない: %.2f", cov)

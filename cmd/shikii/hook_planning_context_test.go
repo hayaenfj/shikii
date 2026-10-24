@@ -16,7 +16,7 @@ func planningWikiFixture(t *testing.T, root, scope string) notebook.Page {
 	if err := st.AppendFeedback(scope, source); err != nil {
 		t.Fatal(err)
 	}
-	result, err := (notebook.Book{Root: root, Scope: scope}).Ingest(notebook.Draft{Sources: []string{source.ID}, Title: "CSV export columns and delimiter", Lesson: "CSV export uses name and status columns with commas; preserve existing filters.", AppliesTo: "CSV export implementation and tests"})
+	result, err := (notebook.Book{Root: root, Scope: scope}).Ingest(notebook.Draft{Sources: []string{source.ID}, Title: "CSV export columns and delimiter", Lesson: "CSV export uses name and status columns with commas; preserve existing filters.", Kind: "rule", Scene: "テストの時", AppliesTo: "CSV export implementation and tests"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestPlanningWikiSearchIsExplicitAndChecksRevision(t *testing.T) {
 	for _, source := range page.Sources {
 		ids = append(ids, source.ID)
 	}
-	_, err = (notebook.Book{Root: root, Scope: feedbackScope(repo)}).Ingest(notebook.Draft{ID: page.ID, Title: page.Title, Lesson: page.Lesson + " Use the revised conditions.", AppliesTo: page.AppliesTo, Sources: ids})
+	_, err = (notebook.Book{Root: root, Scope: feedbackScope(repo)}).Ingest(notebook.Draft{ID: page.ID, Title: page.Title, Lesson: page.Lesson + " Use the revised conditions.", Kind: "rule", Scene: "テストの時", AppliesTo: page.AppliesTo, Sources: ids})
 	if err != nil {
 		t.Fatal(err)
 	}

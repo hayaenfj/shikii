@@ -26,7 +26,7 @@ func seed(t *testing.T, b Book, n int) string {
 }
 
 func draft(id, title string) Draft {
-	return Draft{Title: title, Lesson: "Check model startup instructions when updating README installation instructions.", AppliesTo: "README installation instructions", Sources: []string{id}}
+	return Draft{Title: title, Lesson: "Check model startup instructions when updating README installation instructions.", AppliesTo: "README installation instructions", Kind: "rule", Scene: "README を直す時", Sources: []string{id}}
 }
 
 func hasIssue(issues []Issue, kind string) bool {
@@ -312,4 +312,66 @@ func TestNotebookConcurrentIngestKeepsEveryLessonAndLog(t *testing.T) {
 	if err != nil || len(report.Issues) != 0 || len(report.Repaired) != 0 {
 		t.Fatalf("並列処理後も出典・索引・過去の版が整合する: %+v %v", report, err)
 	}
+}
+
+// 0.9.0: 教訓のある記事は、種類(5 つのどれか)と場面(「〜する時」、24 文字まで)が無いと保存しない。どの経路(CLI・MCP・HTTP・振り返り)も
+// ここを通るので、どのエージェントでも付く。既存の記事を直す時に省けば、その記事の種類と場面を引き継ぐ。前の版の記事(種類も場面も無い)は、
+// 直す時に付けないと保存できない(版を上げた後に埋まっていく)。
+func TestIngestRequiresKindAndScene(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	d := draft(id, "決まりの記事")
+	d.Kind, d.Scene = "", ""
+	if _, err := b.Ingest(d); err == nil || !strings.Contains(err.Error(), "kind") || !strings.Contains(err.Error(), "scene") {
+		t.Fatalf("種類と場面が無い教訓は断り、直し方を返す: %v", err)
+	}
+	for _, bad := range []struct{ kind, scene string }{{"memo", "コミットする時"}, {"rule", ""}, {"rule", strings.Repeat("あ", 25)}, {"rule", "二行\n目"}} {
+		d.Kind, d.Scene = bad.kind, bad.scene
+		if _, err := b.Ingest(d); err == nil {
+			t.Fatalf("種類は 5 つのどれか、場面は 24 文字までの 1 行: %+v", bad)
+		}
+	}
+	d.Kind, d.Scene = "rule", "コミットする時"
+	first, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Page.Kind != "rule" || first.Page.Scene != "コミットする時" {
+		t.Fatalf("種類と場面を記事に残す: %+v", first.Page)
+	}
+	// 直す時に省けば引き継ぐ
+	d.ID, d.Kind, d.Scene, d.Lesson = first.Page.ID, "", "", d.Lesson+" 追記。"
+	again, err := b.Ingest(d)
+	if err != nil || again.Page.Kind != "rule" || again.Page.Scene != "コミットする時" {
+		t.Fatalf("直す時に省けば種類と場面を引き継ぐ: %+v %v", again.Page, err)
+	}
+	// 種類も場面も無い前の版の記事は、直す時に付けないと保存できない
+	legacy := *first.Page
+	legacy.ID, legacy.Title, legacy.Kind, legacy.Scene = "00000000000000aa", "前の版の記事", "", ""
+	if err := writeLegacyPage(b, legacy); err != nil {
+		t.Fatal(err)
+	}
+	d.ID, d.Title = legacy.ID, legacy.Title
+	if _, err := b.Ingest(d); err == nil {
+		t.Fatal("種類も場面も無い前の版の記事は、直す時に付ける")
+	}
+	d.Kind, d.Scene = "howto", "公開する時"
+	if res, err := b.Ingest(d); err != nil || res.Page.Kind != "howto" {
+		t.Fatalf("付ければ保存できる: %+v %v", res.Page, err)
+	}
+}
+
+// writeLegacyPage は、種類も場面も無い前の版の記事を、置き場へそのまま書く(版を上げた直後を真似る)。
+func writeLegacyPage(b Book, p Page) error {
+	p.Previous = ""
+	p.Revision = revision(p)
+	data, err := b.pageBytes(p)
+	if err != nil {
+		return err
+	}
+	dir, err := b.directory(false, "pages")
+	if err != nil {
+		return err
+	}
+	return writeFile(filepath.Join(dir, p.ID+".md"), data)
 }

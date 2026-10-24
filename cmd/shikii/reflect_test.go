@@ -50,7 +50,7 @@ func TestReflectBatchRoundTrip(t *testing.T) {
 			{"source_id": ids[0], "trace_id": traces[0], "truth": "no", "reason": "利用者が英語の残存を明示した"},
 			{"source_id": ids[1], "trace_id": traces[1], "truth": "unknown", "reason": "結果を確認できない"},
 		},
-		"wiki": []map[string]any{{"sources": ids, "title": "READMEの言語", "lesson": "指定された言語で全体を確認する", "applies_to": "README の日本語化"}},
+		"wiki": []map[string]any{{"sources": ids, "title": "READMEの言語", "lesson": "指定された言語で全体を確認する", "kind": "rule", "scene": "テストの時", "applies_to": "README の日本語化"}},
 	}
 	payload["operation"] = "submit"
 	data, _ := json.Marshal(payload)
@@ -155,7 +155,7 @@ func TestMemoryDeliversRelevantLessonOncePerRevision(t *testing.T) {
 	st, scope := store.Store{Dir: agent}, feedbackScope(repo)
 	id, _ := reviewSeed(t, st, scope, 1)
 	b := notebook.Book{Root: agent, Scope: scope}
-	draft := notebook.Draft{Sources: []string{id}, Title: "README の導入手順", Lesson: "モデルを起動する手順まで確認する。", AppliesTo: "README の導入手順を更新する時"}
+	draft := notebook.Draft{Sources: []string{id}, Title: "README の導入手順", Lesson: "モデルを起動する手順まで確認する。", Kind: "rule", Scene: "テストの時", AppliesTo: "README の導入手順を更新する時"}
 	first, err := b.Ingest(draft)
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +200,7 @@ func TestMemoryMatchesConditionsInsteadOfIncidentalBody(t *testing.T) {
 	st, scope := store.Store{Dir: agent}, feedbackScope(repo)
 	id, _ := reviewSeed(t, st, scope, 1)
 	b := notebook.Book{Root: agent, Scope: scope}
-	_, err := b.Ingest(notebook.Draft{Sources: []string{id}, Title: "決済の監視", Lesson: "README の導入手順を更新する場合とは別の決済障害。", AppliesTo: "決済障害が発生した時"})
+	_, err := b.Ingest(notebook.Draft{Sources: []string{id}, Title: "決済の監視", Lesson: "README の導入手順を更新する場合とは別の決済障害。", Kind: "rule", Scene: "テストの時", AppliesTo: "決済障害が発生した時"})
 	if err != nil {
 		t.Fatal(err)
 	}

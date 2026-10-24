@@ -32,12 +32,12 @@ func audit083Setup(t *testing.T) (string, string, store.Store, string) {
 func TestPlacementIgnoresUnrelatedEnglishSaves(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	seedLessons(t, st, scope, "Keep both changelogs in step", "Commit author identity")
-	draft := notebook.Draft{Sources: []string{src}, Title: "Release needs consent", Lesson: "Never push or create a release until the person has reviewed it and explicitly said so.", AppliesTo: "releasing"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "Release needs consent", Lesson: "Never push or create a release until the person has reviewed it and explicitly said so.", Kind: "rule", Scene: "テストの時", AppliesTo: "releasing"}
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}}); err != nil {
 		t.Fatal(err)
 	}
 	body := "A model returns a probability. From the truths people and results supply, the tool measures how the model's confidence relates to how often it is right, and draws a line above which it may act on its own. Until the line exists, nothing is automatic. Every decision falls into a band: act proceeds automatically, ask goes to a person, discard does nothing, abstain means an input or an endpoint is missing. Truths live apart from the model, so changing models does not start you over. Alternative wordings can be scored on the same truths and the better one kept. The page and the status command show whether it is working: whether delivered lessons helped, how many turns did the routine, how many turns guards stopped and how many were fixed, how many decisions wait for a person, and which lines have been drawn."
-	other := notebook.Draft{Sources: []string{src}, Title: "Status page", Lesson: "Read the status page first when running the tool.", AppliesTo: "operating", Body: &body}
+	other := notebook.Draft{Sources: []string{src}, Title: "Status page", Lesson: "Read the status page first when running the tool.", Kind: "rule", Scene: "テストの時", AppliesTo: "operating", Body: &body}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: other}); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestPlacementLeftoverExactRecordDoesNotShadowMerge(t *testing.T) {
 		Inputs: map[string]string{"new_lesson": "変更履歴は英語と日本語を揃える。", "lesson": "今は無い記事の教訓"}}); err != nil {
 		t.Fatal(err)
 	}
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", AppliesTo: "変更履歴を書く時"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestPlacementLeftoverExactRecordDoesNotShadowMerge(t *testing.T) {
 		}
 	}
 	body := "## 見出し\n" + draft.Lesson
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", AppliesTo: "変更履歴を書く時", Body: &body}
+	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
 		t.Fatal(err)
 	}
@@ -83,12 +83,12 @@ func TestPlacementPrefersTheNewestDraftOfTheMergedPage(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
 	pid := ids["変更履歴は英語と日本語を揃える"]
-	old := notebook.Draft{Sources: []string{src}, Title: "変更履歴の両方", Lesson: "変更履歴は版ごとに英語と日本語の両方へ同じ項目を書き、片方だけに足さない", AppliesTo: "変更履歴を書く時"}
+	old := notebook.Draft{Sources: []string{src}, Title: "変更履歴の両方", Lesson: "変更履歴は版ごとに英語と日本語の両方へ同じ項目を書き、片方だけに足さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{old}}); err != nil {
 		t.Fatal(err)
 	}
 	ageRecords(t, st, "wiki-place", old.Lesson, 48*time.Hour) // 古い草稿は前の日に置いた(再監査: 同じ時に置いた 2 件は点数で選ぶ)
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", AppliesTo: "変更履歴を書く時"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestPlacementPrefersTheNewestDraftOfTheMergedPage(t *testing.T) {
 		}
 	}
 	body := "## 前に足したこと\n" + old.Lesson + "\n## 見出し\n見出しは「版 — 題」にし、未公開のまま出さない。"
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しは「版 — 題」にし、未公開のまま出さない。", AppliesTo: "変更履歴を書く時", Body: &body}
+	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しは「版 — 題」にし、未公開のまま出さない。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
 		t.Fatal(err)
 	}
@@ -176,13 +176,13 @@ func TestLineStateStuckOnlyForTheModelTried(t *testing.T) {
 func TestPlacementIgnoresEditsOfPagesThatWereNotCandidates(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	seedLessons(t, st, scope, "Keep both changelogs in step", "Commit author identity")
-	draft := notebook.Draft{Sources: []string{src}, Title: "Release needs consent", Lesson: "Never push or create a release until the person has reviewed it and explicitly said so.", AppliesTo: "releasing"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "Release needs consent", Lesson: "Never push or create a release until the person has reviewed it and explicitly said so.", Kind: "rule", Scene: "テストの時", AppliesTo: "releasing"}
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}}); err != nil {
 		t.Fatal(err)
 	}
 	later := seedLessons(t, st, scope, "Status page first")["Status page first"] // 置いた後に作った記事(候補に入っていない)
 	body := "Read the status page first. Never push or create a release until the person has reviewed it and explicitly said so; the status page shows what is waiting."
-	edit := notebook.Draft{ID: later, Sources: []string{src}, Title: "Status page first", Lesson: "Status page first.", AppliesTo: "Status page first を扱う時", Body: &body}
+	edit := notebook.Draft{ID: later, Sources: []string{src}, Title: "Status page first", Lesson: "Status page first.", Kind: "rule", Scene: "テストの時", AppliesTo: "Status page first を扱う時", Body: &body}
 	if cov := coverageOf(draft.Lesson, edit); cov < placeMatchMin {
 		t.Fatalf("この負例は被覆が下限を越えないと候補の条件を試せない: %.2f", cov)
 	}

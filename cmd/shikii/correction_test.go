@@ -104,7 +104,7 @@ func TestCorrectionKeepsDeliveredActionAfterLessonUpdate(t *testing.T) {
 	page := v.Lessons[0]
 	// 訂正を省略した通常の更新でも、既存の訂正と出典を失わない。
 	source := page.Sources[0].ID
-	updated, err := book.Ingest(notebook.Draft{ID: page.ID, Sources: []string{source}, Title: page.Title, Lesson: "新しい教訓に更新した。", AppliesTo: page.AppliesTo})
+	updated, err := book.Ingest(notebook.Draft{ID: page.ID, Sources: []string{source}, Title: page.Title, Lesson: "新しい教訓に更新した。", Kind: "rule", Scene: "テストの時", AppliesTo: page.AppliesTo})
 	if err != nil || updated.Page.Correction == nil || updated.Page.Correction.Action != page.Correction.Action {
 		t.Fatal("通常の更新で訂正を消さない", err)
 	}

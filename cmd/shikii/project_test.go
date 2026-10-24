@@ -107,7 +107,7 @@ func TestProjectHubKeepsReadsAndWritesWithinTheSelectedProject(t *testing.T) {
 	bStore, bScope := initTestProject(t, b)
 	aScope := feedbackScope(a)
 	id, trace := reviewSeed(t, store.Store{Dir: aStore}, aScope, 1)
-	if _, err := runNotebook(aStore, aScope, notebookRequest{Operation: "ingest", Draft: notebook.Draft{Sources: []string{id}, Title: "起動手順", Lesson: "モデルを起動する手順を書く", AppliesTo: "README の導入手順"}}); err != nil {
+	if _, err := runNotebook(aStore, aScope, notebookRequest{Operation: "ingest", Draft: notebook.Draft{Sources: []string{id}, Title: "起動手順", Lesson: "モデルを起動する手順を書く", Kind: "rule", Scene: "テストの時", AppliesTo: "README の導入手順"}}); err != nil {
 		t.Fatal(err)
 	}
 	common, _ := agentHome()

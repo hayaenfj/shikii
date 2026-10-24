@@ -18,7 +18,7 @@ func TestPlanningReadsFullArticleAndPinsEvidenceVersion(t *testing.T) {
 	book := notebook.Book{Root: root, Scope: feedbackScope(repo)}
 	p := planningWikiFixture(t, root, feedbackScope(repo))
 	body := "CSV exports retain the existing filter even when the list is empty."
-	d := notebook.Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: []string{p.Sources[0].ID}, Body: &body}
+	d := notebook.Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson, Kind: "rule", Scene: "テストの時", AppliesTo: p.AppliesTo, Sources: []string{p.Sources[0].ID}, Body: &body}
 	r, err := book.Ingest(d)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ func TestPlanningRejectsArticleChangesDuringDecision(t *testing.T) {
 		close(release)
 		t.Fatal("判定を開始できない")
 	}
-	d := notebook.Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson + " Recheck the delimiter.", AppliesTo: p.AppliesTo, Sources: []string{p.Sources[0].ID}}
+	d := notebook.Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson + " Recheck the delimiter.", Kind: "rule", Scene: "テストの時", AppliesTo: p.AppliesTo, Sources: []string{p.Sources[0].ID}}
 	_, editErr := (notebook.Book{Root: root, Scope: feedbackScope(repo)}).Ingest(d)
 	close(release)
 	err := <-done

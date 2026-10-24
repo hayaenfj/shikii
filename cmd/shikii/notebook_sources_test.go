@@ -40,7 +40,7 @@ func TestNotebookCapturesObservedSourcesThroughHTTPAndCLI(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), id) {
 		t.Fatal("普段の振り返りに観察を渡す", err)
 	}
-	notebookCommand(t, "ingest", `{"sources":["`+id+`"],"title":"Smoke checks","lesson":"Run package smoke checks","applies_to":"Package maintenance"}`)
+	notebookCommand(t, "ingest", `{"sources":["`+id+`"],"title":"Smoke checks","lesson":"Run package smoke checks","kind":"rule","scene":"テストの時","applies_to":"Package maintenance"}`)
 	got = notebookCommand(t, "query", "Smoke checks")
 	if len(got["lessons"].([]any)) != 1 {
 		t.Fatal("確認結果を教訓の出典にできる")
@@ -113,7 +113,7 @@ func TestNotebookContinuationAcrossCLIHTTPAndMCP(t *testing.T) {
 	}
 	for i, id := range ids {
 		body := strings.Repeat("Detailed evidence. ", 550)
-		if _, err := book.Ingest(notebook.Draft{Title: fmt.Sprint("Topic ", i), Lesson: "Checked", AppliesTo: "Topic maintenance", Sources: []string{id}, Body: &body}); err != nil {
+		if _, err := book.Ingest(notebook.Draft{Title: fmt.Sprint("Topic ", i), Lesson: "Checked", Kind: "rule", Scene: "テストの時", AppliesTo: "Topic maintenance", Sources: []string{id}, Body: &body}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -179,7 +179,7 @@ func TestNotebookCLIReadsSourcesTogether(t *testing.T) {
 	}
 	// 検索語の区切りは従来どおり。IDだけの引数と混同しない。
 	body := "送料を除いた支払額を返す。"
-	if _, err := book.Ingest(notebook.Draft{Sources: ids, Title: "返品 送料", Lesson: body, AppliesTo: "返品の対応", Body: &body}); err != nil {
+	if _, err := book.Ingest(notebook.Draft{Sources: ids, Title: "返品 送料", Lesson: body, Kind: "rule", Scene: "テストの時", AppliesTo: "返品の対応", Body: &body}); err != nil {
 		t.Fatal(err)
 	}
 	text = capture(t, func() error { return cmdWiki([]string{"query", "返品", "送料"}) })

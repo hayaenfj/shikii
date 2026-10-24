@@ -13,10 +13,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/store"
@@ -45,6 +47,30 @@ type Page struct {
 	Body         string            `json:"body,omitempty" yaml:"body,omitempty"`
 	Related      []string          `json:"related,omitempty" yaml:"related,omitempty"`
 	ChangeReason string            `json:"change_reason,omitempty" yaml:"change_reason,omitempty"`
+	Kind         string            `json:"kind,omitempty" yaml:"kind,omitempty"`   // 種類(Kinds のどれか。0.9.0)
+	Scene        string            `json:"scene,omitempty" yaml:"scene,omitempty"` // 場面(その仕事の言葉で「〜する時」、sceneMax 文字まで。0.9.0)
+}
+
+// Kinds は記事の種類。どの仕事にもある形で固定する(増やさない): 守る決まり・やり方・判断の基準・前提と事実・経緯。
+var Kinds = []string{"rule", "howto", "criteria", "fact", "history"}
+
+// sceneMax は場面の文字数の上限。
+const sceneMax = 24
+
+// errKindScene は種類と場面が無い・不正な時の返事(エージェントがそのまま直せるよう、値の選び方を書く)。
+var errKindScene = errors.New("a lesson needs kind (one of rule|howto|criteria|fact|history) and scene (the situation in the project's own words, e.g. 「コミットする時」, one line, up to 24 characters); when updating a page they are inherited if omitted / 教訓には種類 kind(rule=守る決まり / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯 のどれか)と場面 scene(その仕事の言葉で「〜する時」、1 行 24 文字まで)が要ります。既存の記事を直す時に省けば、その記事のものを引き継ぎます")
+
+// validKindScene は種類が Kinds のどれかで、場面が 1 行・制御文字無し・sceneMax 文字以内か。
+func validKindScene(kind, scene string) bool {
+	if !slices.Contains(Kinds, kind) || scene == "" || utf8.RuneCountInString(scene) > sceneMax {
+		return false
+	}
+	for _, r := range scene {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
 }
 
 type Draft struct {
@@ -58,6 +84,8 @@ type Draft struct {
 	Body         *string           `json:"body,omitempty"`
 	Related      []string          `json:"related,omitempty"`
 	ChangeReason string            `json:"change_reason,omitempty"`
+	Kind         string            `json:"kind,omitempty"`  // 種類(Kinds のどれか)。教訓のある記事は必須、直す時に省けば引き継ぐ
+	Scene        string            `json:"scene,omitempty"` // 場面(「〜する時」)。同上
 }
 
 type Issue struct {
@@ -486,6 +514,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		return result, errors.New("訂正には人の発言の出典・引用と、次に変える行動の教訓が必要です")
 	}
 	d.Title, d.Lesson, d.AppliesTo = strings.TrimSpace(d.Title), strings.TrimSpace(d.Lesson), strings.TrimSpace(d.AppliesTo)
+	d.Kind, d.Scene = strings.TrimSpace(d.Kind), strings.TrimSpace(d.Scene)
 	body := ""
 	if d.Body != nil {
 		body = strings.TrimSpace(*d.Body)
@@ -504,7 +533,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	if len(d.Title) > 200 || len(d.Lesson) > 2000 || len(d.AppliesTo) > 1000 || len(body) > 16<<10 || len(d.ChangeReason) > 1000 {
 		return result, errors.New("wiki lesson exceeds the text limits")
 	}
-	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Related != nil || d.ChangeReason != "") {
+	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Related != nil || d.ChangeReason != "" || d.Kind != "" || d.Scene != "") {
 		return result, errors.New("reviewing a source without a lesson accepts only source ids")
 	}
 	for _, id := range append(append(append([]string{}, d.Sources...), d.Replaces...), d.Related...) {
@@ -611,7 +640,18 @@ func (b Book) Ingest(d Draft) (Result, error) {
 				return result, errors.New("a replaced lesson must be another page in this project")
 			}
 		}
-		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related}
+		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related, Kind: d.Kind, Scene: d.Scene}
+		if old, ok := byID[id]; ok { // 直す時に省けば引き継ぐ(前の版の記事は持っていないので、付けないと保存できない)
+			if p.Kind == "" {
+				p.Kind = old.Kind
+			}
+			if p.Scene == "" {
+				p.Scene = old.Scene
+			}
+		}
+		if !validKindScene(p.Kind, p.Scene) {
+			return result, errKindScene
+		}
 		p.ChangeReason = d.ChangeReason
 		if old, ok := byID[id]; ok {
 			if d.ChangeReason == "" {

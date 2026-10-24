@@ -19,7 +19,7 @@ func memoryEffectFixture(t *testing.T) (store.Store, string, http.Handler, noteb
 	t.Chdir(repo)
 	st, scope := store.Store{Dir: agent}, feedbackScope(repo)
 	id, _ := reviewSeed(t, st, scope, 1)
-	draft := notebook.Draft{Sources: []string{id}, Title: "README の導入確認", Lesson: "初期化していない場所で記録されないことも確認する。", AppliesTo: "README の導入手順を更新する時"}
+	draft := notebook.Draft{Sources: []string{id}, Title: "README の導入確認", Lesson: "初期化していない場所で記録されないことも確認する。", Kind: "rule", Scene: "テストの時", AppliesTo: "README の導入手順を更新する時"}
 	page, err := (notebook.Book{Root: agent, Scope: scope}).Ingest(draft)
 	if err != nil {
 		t.Fatal(err)
