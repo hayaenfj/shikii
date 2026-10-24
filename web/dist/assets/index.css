@@ -396,6 +396,7 @@
   }
 
   h4 {
+    margin-block: 1.33em;
     font-weight: 700;
   }
 
@@ -405,7 +406,11 @@
 
   ul, ol {
     margin-block: 1em;
-    padding-inline-start: 28px;
+    padding-inline-start: 40px;
+  }
+
+  ul ul {
+    list-style: circle;
   }
 
   ul {
@@ -416,11 +421,16 @@
     list-style: decimal;
   }
 
+  code {
+    font-size: .8125em;
+  }
+
   pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font: 11px/1.7 var(--font-mono);
     color: var(--color-muted);
+    margin-block: 1em;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1666,14 +1676,14 @@
     display: grid;
   }
 
-  .before\:h-\[21px\]:before {
+  .before\:h-\[23px\]:before {
     content: var(--tw-content);
-    height: 21px;
+    height: 23px;
   }
 
-  .before\:w-\[21px\]:before {
+  .before\:w-\[23px\]:before {
     content: var(--tw-content);
-    width: 21px;
+    width: 23px;
   }
 
   .before\:place-items-center:before {
@@ -2265,6 +2275,10 @@
 
   .\[\&\>span\]\:opacity-80 > span {
     opacity: .8;
+  }
+
+  .\[\&\>td\]\:text-accent > td {
+    color: var(--accent);
   }
 
   .\[\&\[open\]\>summary\]\:border-b[open] > summary {

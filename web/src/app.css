@@ -45,12 +45,14 @@
   a { color:var(--color-accent); text-decoration:underline; text-underline-offset:4px; }
   h2 { margin:0 0 17px; font-size:27px; line-height:1.45; font-weight:650; letter-spacing:-.02em; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
   h3 { font-size:1.17em; font-weight:700; margin-block:1em; }
-  h4 { font-weight:700; }
+  h4 { font-weight:700; margin-block:1.33em; }
   p { margin-block:1em; }
-  ul, ol { margin-block:1em; padding-inline-start:28px; }
+  ul, ol { margin-block:1em; padding-inline-start:40px; }
+  ul ul { list-style:circle; }
   ul { list-style:disc; }
   ol { list-style:decimal; }
-  pre { white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.7 var(--font-mono); color:var(--color-muted); }
+  code { font-size:.8125em; }
+  pre { margin-block:1em; white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.7 var(--font-mono); color:var(--color-muted); }
   @media (prefers-reduced-motion:reduce) { *, *::before, *::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
 }
 

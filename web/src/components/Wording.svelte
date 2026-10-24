@@ -86,7 +86,7 @@
         <tbody>
           <tr>{#each t('tableHead') as h}<th>{h}</th>{/each}<th></th></tr>
           {#each latest.candidates as c}
-            <tr class={c.name === latest.winner && latest.winner !== 'current' ? 'win text-accent' : ''}>
+            <tr class={c.name === latest.winner && latest.winner !== 'current' ? 'win text-accent [&>td]:text-accent' : ''}>
               <td>{c.name}</td><td>{c.top1.toFixed(3)}</td><td>{c.brier.toFixed(4)}</td><td>{c.prec_at_act.toFixed(3)}</td><td>{c.rec_at_act.toFixed(3)}</td><td class="k">{c.change}</td>
             </tr>
           {/each}
@@ -102,7 +102,7 @@
           <div><div class="k">{latest.winner}</div><div class="text mb-3.5 wrap-anywhere">{w.question || ''}</div>{@render options(w.options, cur.options)}{@render steps(w.steps)}</div>
         </div>
         <div class="k">{t('checkHint')}</div>
-        <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top border-accent/55 bg-accentbg" onclick={() => judge(true)}>{t('sameMeaning')}</button><button type="button" class="weak" onclick={() => judge(false)}>{t('changedMeaning')}</button></div>
+        <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top" onclick={() => judge(true)}>{t('sameMeaning')}</button><button type="button" class="weak" onclick={() => judge(false)}>{t('changedMeaning')}</button></div>
       {/if}
     {/if}
     {#if tu && tu.error}<div class="k">{t('error')(tu.error)}</div>{/if}

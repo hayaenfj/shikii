@@ -143,7 +143,7 @@
       <ul class="m-0 list-none p-0 [&_li]:my-[.15rem]">
         {#each groups as g (g.id)}
           <li class="tree-group" data-tree-group={g.id}>
-            <button type="button" class="weak tree-toggle font-semibold" aria-expanded={open.has(g.id)} onclick={() => toggle(g.id)}><span aria-hidden="true">{open.has(g.id) ? '▾' : '▸'}</span> {g.title} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[10px] text-amber tabular-nums">{g.pages.length}</span></button>
+            <button type="button" class="weak tree-toggle font-semibold" aria-expanded={open.has(g.id)} onclick={() => toggle(g.id)}><span aria-hidden="true">{open.has(g.id) ? '▾' : '▸'}</span> {g.title} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[10px] text-amber tabular-nums max-sm:px-[5px] max-sm:text-[9px]">{g.pages.length}</span></button>
             {#if open.has(g.id)}
               <ul class="mt-[.2rem] mb-[.6rem] list-none pl-[1.4rem]">
                 {#each g.pages as p (p.id)}
