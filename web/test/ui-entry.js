@@ -320,7 +320,7 @@ function checkPlanningContext(target) {
   const evidence = agreedShown.startsWith('CSVとして出力する範囲は合意済み') && agreedShown.includes('今回の人の発言: AIによる整理（実行許可や人の正解ではない）: と書いた') && target.textContent.includes(it.inputs.open) && !target.querySelector('img');
   unmount(app);
   const legacy = mount(ItemCard, { target, props: { sp, it: { ...it, truth: 'no', truth_at: it.at, legacy_planning: true, record_question: '以前の質問' } } }); flushSync();
-  const separate = target.textContent.includes('以前の質問') && target.textContent.includes('過去の形式') && !target.querySelector('.answer-choice') && !target.querySelector('button.weak.adv[title]');
+  const separate = target.textContent.includes('以前の質問') && target.textContent.includes('過去の形式') && !target.querySelector('.answer-choice') && !target.querySelector('button.weak.redo[title]');
   unmount(legacy);
   i18n.lang = lang;
   const ok = named && evidence && separate;
@@ -512,7 +512,7 @@ async function checkBinaryPrediction(target) {
   flushSync();
   const guess = target.querySelector('.guess')?.textContent;
   const negative = guess?.includes('そのまま進めてよい') && guess.includes('54%') && target.querySelector('button.top')?.dataset.truth === 'no';
-  target.querySelector('.btns button.adv')?.click();
+  target.querySelector('.btns button.redo')?.click();
   await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
   const redone = target.querySelector('.redo-out')?.textContent.includes('そのまま進めてよい 70%') && target.querySelector('.redo-out')?.textContent.includes('あなたの答えと一致しました');
   target.querySelector('button.top')?.click();

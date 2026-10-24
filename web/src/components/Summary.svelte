@@ -17,24 +17,25 @@
   const learned = s => live(s).reduce((n, k) => Math.max(n, k.n), 0);
   let autoCount = $derived(yours.filter(auto).length);
   let resultsWait = $derived(specs.reduce((n, s) => n + (s.awaiting_results || 0), 0));
+  const head = 'mt-2.5 mb-1 text-[12px] font-normal tracking-[.04em] text-muted';
 </script>
 
-<details class="summary-card" id="summary">
-  <summary><span class="summary-mark" aria-hidden="true">◐</span><span class="summary-line"><strong class="summary-you">{waits ? t('summaryYou')(waits) : t('summaryYouNone')}</strong> <span class="summary-ai">{t('summaryAI')(model?.name || '', autoCount, yours.length, m, g)}</span></span><span class="summary-hint">{t('summaryOpen')}</span></summary>
-  <div class="summary-body">
+<details class="summary-card mb-4 rounded-xl border border-line bg-surface text-[13px]" id="summary">
+  <summary class="flex cursor-pointer list-none items-center gap-2.5 px-3.5 py-2.5 [&::-webkit-details-marker]:hidden"><span class="text-accent" aria-hidden="true">◐</span><span class="summary-line flex-1"><strong class="summary-you">{waits ? t('summaryYou')(waits) : t('summaryYouNone')}</strong> <span class="summary-ai">{t('summaryAI')(model?.name || '', autoCount, yours.length, m, g)}</span></span><span class="text-[11px] text-muted">{t('summaryOpen')}</span></summary>
+  <div class="grid gap-2.5 border-t border-line px-3.5 pt-1 pb-3 [&_p]:m-0">
     <section>
-      <h3>{t('summaryYouHead')}</h3>
+      <h3 class={head}>{t('summaryYouHead')}</h3>
       {#if waiting.length}
         <ul class="summary-you-list">
           {#each waiting as s (s.id)}
-            <li><button type="button" class="weak" onclick={() => setTab(s.id)}>{loc(s.titles, s.id)} <span class="badge">{s.waiting_for_person}</span></button> <span class="muted">{t('summaryGoTo')}</span></li>
+            <li><button type="button" class="weak" onclick={() => setTab(s.id)}>{loc(s.titles, s.id)} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[10px] text-amber tabular-nums">{s.waiting_for_person}</span></button> <span class="text-muted">{t('summaryGoTo')}</span></li>
           {/each}
         </ul>
       {:else}<p>{t('summaryYouNoneLong')}</p>{/if}
-      <p class="muted">{t('summaryPersonRow')(p)}</p>
+      <p class="text-muted">{t('summaryPersonRow')(p)}</p>
     </section>
     <section>
-      <h3>{t('summaryAIHead')}</h3>
+      <h3 class={head}>{t('summaryAIHead')}</h3>
       <p>{t('summaryModel')(model?.name || '', model?.endpoint || '')}</p>
       <ul class="summary-specs">
         {#each yours as s (s.id)}
@@ -47,19 +48,19 @@
       {#if m.delivered}
         <p>{t('summaryMemoryRow')(m)}</p>
         {#if m.corrections?.delivered}<p>{t('summaryCorrections')(m.corrections)}</p>{/if}
-      {:else}<p class="muted">{t('summaryMemoryNone')}</p>{/if}
+      {:else}<p class="text-muted">{t('summaryMemoryNone')}</p>{/if}
       {#if g.rituals}
         <p class="summary-rituals" data-rituals>{t('summaryRituals')(g.rituals)}</p>
       {/if}
       {#if g.items?.length}
-        <ul class="summary-guards">
+        <ul class="summary-guards m-0 grid list-none gap-1.5 p-0">
           {#each g.items as it (it.id)}
-            <li><code>{it.id}</code> <span class="kind">{it.kind}</span> <span class="state" class:on={it.enabled}>{t(it.builtin ? 'summaryGuardBuiltin' : it.enabled ? 'summaryGuardOn' : 'summaryGuardOff')}</span> {it.title}
-              {#if it.last}<div class="muted">{it.last.pass ? t('summaryGuardLastPass')(when(it.last.at)) : t('summaryGuardLastStop')(when(it.last.at), it.last.reason)}</div>{/if}
+            <li><code>{it.id}</code> <span class="text-[11px] text-muted">{it.kind}</span> <span class="rounded-[5px] border px-1.5 py-px text-[10px] {it.enabled ? 'border-accent text-accent' : 'border-line'}">{t(it.builtin ? 'summaryGuardBuiltin' : it.enabled ? 'summaryGuardOn' : 'summaryGuardOff')}</span> {it.title}
+              {#if it.last}<div class="text-muted">{it.last.pass ? t('summaryGuardLastPass')(when(it.last.at)) : t('summaryGuardLastStop')(when(it.last.at), it.last.reason)}</div>{/if}
             </li>
           {/each}
         </ul>
-      {:else}<p class="muted">{t('summaryGuardsNone')}</p>{/if}
+      {:else}<p class="text-muted">{t('summaryGuardsNone')}</p>{/if}
     </section>
   </div>
 </details>
