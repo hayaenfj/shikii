@@ -8,7 +8,8 @@
 - README languages: English and Japanese only. The 14 other translations still described 0.6 and are removed.
 - Japanese guide (`docs/guide.ja.md`) reorganized in the order a user reads it, with sections for the routine before and after work, work records and the page.
 - `make server` starts the local standard through `shikii up` (no more Kev-4B), and `make drift` defaults to the model name the hooks send (`jev-latest`).
-- CI runs with read-only permissions, cancels older runs on the same branch, and caches npm downloads.
+- CI runs with read-only permissions, cancels older runs on the same branch, and caches npm downloads. A new `security` job scans the whole history for committed secrets with gitleaks (a pinned release, checked against its SHA-256; false positives go in `.gitleaksignore` by fingerprint) and runs govulncheck for known vulnerabilities in the code paths actually called.
+- Go toolchain 1.27.3 (`toolchain go1.27.3` in `go.mod`): govulncheck found GO-2026-6809 (crypto/x509 trusted compromised intermediate certificates) in the standard library of 1.27.2, which built 0.8.1.
 - Work records: temporary files left by a crash during a replace are removed the next time that folder is written (only those older than a day).
 - The update preview of the one-time wipe says how many work records it will remove.
 
