@@ -148,7 +148,7 @@ func TestMakefileUsesTheLocalStandard(t *testing.T) {
 		t.Fatal("Makefile が Kev-4B を指している")
 	}
 	plan := func(target string) []string {
-		out, err := exec.Command("make", "-C", "../..", "-n", target).CombinedOutput()
+		out, err := exec.Command("make", "--no-print-directory", "-C", "../..", "-n", target).CombinedOutput() // GNU make 4 は -C で Entering directory の行を出す(CI の ubuntu で落ちた)
 		if err != nil {
 			t.Fatalf("make -n %s: %v\n%s", target, err, out)
 		}
