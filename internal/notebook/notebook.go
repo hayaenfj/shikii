@@ -1144,3 +1144,29 @@ type UnclassifiedPage struct {
 const unclassifiedBatch = 5
 
 const unclassifiedHow = "これらの記事に種類と場面を付けてください: shikii wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面>(MCP なら shikii_wiki の operation classify に id・kind・scene)。種類は rule=守る決まり / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯、場面はその仕事の言葉で「〜する時」。"
+
+// PageTimes は、生きている記事ごとの最終更新(記事のファイルの時刻。0.9.0 の知識の画面の並びと「最近覚えたこと」)。
+func (b Book) PageTimes() (map[string]time.Time, error) {
+	out := map[string]time.Time{}
+	dir, err := b.directory(false, "pages")
+	if os.IsNotExist(err) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		id := strings.TrimSuffix(e.Name(), ".md")
+		if !e.Type().IsRegular() || id == e.Name() || !idPattern.MatchString(id) {
+			continue
+		}
+		if info, err := e.Info(); err == nil {
+			out[id] = info.ModTime().UTC()
+		}
+	}
+	return out, nil
+}

@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // 画面から wiki を育てる口。下書き(機械が tune の run から起草)と主張(人が置いたもの)を一覧し、
@@ -90,15 +91,20 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 	if stats, err := (store.Store{Dir: s.o.storeDir}).KnowledgeReport(); err == nil {
 		result["knowledge_usage"] = stats
 	}
-	if report, err := (store.Store{Dir: s.o.storeDir}).MemoryReport(s.o.projectScope); err == nil {
+	report, rerr := (store.Store{Dir: s.o.storeDir}).MemoryReport(s.o.projectScope)
+	if rerr == nil {
 		result["memory_effect"] = report
 	} else {
 		result["memory_effect_error"] = true
+	}
+	if r.URL.Query().Get("cursor") == "" { // 知識の画面(0.9.0): 記事ごとの最終更新と効いた回数、人に見てほしい例外だけの受け箱
+		result["lesson_meta"], result["inbox"] = knowledgeMeta(s.o.storeDir, s.o.projectScope, report.All)
 	}
 	{
 		if view, err := (notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}).QueryPage("", r.URL.Query().Get("cursor")); err == nil {
 			result["lessons"], result["notebook_issues"], result["pending_sources_count"] = view.Lessons, view.Issues, len(view.Pending)
 			result["maintenance"] = view.Maintenance
+			result["unclassified_count"] = view.UnclassifiedCount
 			if view.NextCursor != "" {
 				result["next_cursor"] = view.NextCursor
 			}
@@ -236,4 +242,47 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, 400, errors.New("action must be promote, status or delete"))
 	}
+}
+
+// knowledgeMeta は、記事ごとの最終更新と、届いた教訓の評価から数えた役立った・害があった回数(lesson_meta)と、
+// 人に見てほしい例外だけの受け箱(inbox)を返す。受け箱は、害があった教訓・繰り返された訂正・有効にする前の止める検査の 3 つだけ。
+// 人が全部の記事を確かめる作りにはしない(機械が決められない物だけを出す)。
+func knowledgeMeta(storeDir, scope string, observed []store.MemoryObservation) (map[string]map[string]any, []map[string]any) {
+	meta := map[string]map[string]any{}
+	if times, err := (notebook.Book{Root: storeDir, Scope: scope}).PageTimes(); err == nil {
+		for id, at := range times {
+			meta[id] = map[string]any{"updated": at.Format(time.RFC3339), "helpful": 0, "harmful": 0}
+		}
+	}
+	inbox := []map[string]any{}
+	for _, o := range observed {
+		if o.Assessment == nil {
+			continue
+		}
+		if m := meta[o.Quote.ID]; m != nil {
+			switch o.Assessment.Result {
+			case "helpful":
+				m["helpful"] = m["helpful"].(int) + 1
+			case "harmful":
+				m["harmful"] = m["harmful"].(int) + 1
+			}
+		}
+		item := map[string]any{"lesson_id": o.Quote.ID, "lesson": o.Quote.Lesson, "request": cut(o.Request, 300), "at": o.At.Format(time.RFC3339)}
+		switch {
+		case o.Assessment.Result == "harmful":
+			item["kind"] = "harmful"
+			inbox = append(inbox, item)
+		case o.Assessment.CorrectionResult == "repeated":
+			item["kind"] = "repeated"
+			inbox = append(inbox, item)
+		}
+	}
+	if guards, err := loadGuards(storeDir); err == nil {
+		for _, g := range guards {
+			if !g.Enabled && !isBuiltinGuard(g.ID) {
+				inbox = append(inbox, map[string]any{"kind": "guard_draft", "guard_id": g.ID, "title": g.Title})
+			}
+		}
+	}
+	return meta, inbox
 }
