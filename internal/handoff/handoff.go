@@ -313,7 +313,18 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 	return Entry{Path: clean, Size: info.Size(), Modified: info.ModTime().UTC(), Kind: KindOf(clean)}, nil
 }
 
-// removeStaleTemps は、書き換えの途中で落ちて残った一時ファイル(.write-*)のうち 1 日より古いものを消す。
+// isTempName は、置き換えの一時ファイルの名(.write- と 16 桁の 16 進。Write が rand で作る)か。
+// 人が置いた .write-up.md のような隠しファイルは一時ファイルとみなさない。
+func isTempName(name string) bool {
+	hexPart, ok := strings.CutPrefix(name, ".write-")
+	if !ok || len(hexPart) != 16 {
+		return false
+	}
+	_, err := hex.DecodeString(hexPart)
+	return err == nil && strings.ToLower(hexPart) == hexPart
+}
+
+// removeStaleTemps は、書き換えの途中で落ちて残った一時ファイル(isTempName)のうち 1 日より古いものを消す。
 // 隠し名なので一覧にも画面にも出ず、gc も触らないため、次にそのフォルダへ書く時に片付ける。
 // 書き込み中の一時ファイル(新しいもの)とリンクには触らない。
 func removeStaleTemps(r *os.Root, dir string) {
@@ -323,7 +334,7 @@ func removeStaleTemps(r *os.Root, dir string) {
 	}
 	cutoff := time.Now().Add(-staleTempAge)
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), ".write-") || !e.Type().IsRegular() {
+		if !isTempName(e.Name()) || !e.Type().IsRegular() {
 			continue
 		}
 		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
