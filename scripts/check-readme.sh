@@ -109,6 +109,12 @@ from pathlib import Path
 runpy.run_path("scripts/gen-hero-svg.py")["generate"](Path(sys.argv[1]))
 PYGEN
     then err "先頭の画像を再生成できない"; fi
+    # 日本語の README だけ日本語の先頭の画像、英語と他の言語は英語の画像
+    grep -q 'assets/shikii-hero-ja.svg' docs/readme/README_ja.md || err "docs/readme/README_ja.md: 先頭の画像が日本語版(shikii-hero-ja.svg)でない"
+    for f in README.md docs/readme/README_*.md; do
+      [ "$f" = docs/readme/README_ja.md ] && continue
+      grep -q 'assets/shikii-hero.svg' "$f" || err "$f: 先頭の画像が英語版(shikii-hero.svg)でない"
+    done
     for asset in shikii-hero.svg shikii-hero-ja.svg shikii-grows.svg shikii-grows-ja.svg; do
       cmp -s "$tmp/$asset" "docs/assets/$asset" || err "docs/assets/$asset は生成スクリプトの出力と違う"
     done

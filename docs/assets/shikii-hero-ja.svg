@@ -16,36 +16,31 @@
     <text x="118" y="456" font-size="38" font-weight="700" fill="#F5B700">shikiiは、あなたのプロジェクトに合わせて育てる。</text>
     <text x="118" y="520" font-size="22" fill="#5B6B8C">覚える → 二度言わせない → 手順を踏む → 跡を残す → 任せる</text>
   </g>
-  <rect x="1060" y="130" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
-  <rect x="1070" y="130" width="230" height="34" rx="17.0" fill="url(#fade)"/>
-  <rect x="1300" y="130" width="230" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.32"/>
-  <text x="1286" y="152.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">READMEを直して</text>
-  <text x="1314" y="152.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" font-weight="500" fill="#FFD54F">教訓が2件届く</text>
-  <rect x="1060" y="188" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
-  <rect x="1100" y="188" width="200" height="34" rx="17.0" fill="url(#fade)"/>
-  <rect x="1300" y="188" width="248" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.32"/>
-  <text x="1286" y="210.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">監査して</text>
-  <text x="1314" y="210.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" font-weight="500" fill="#FFD54F">報告は handoff/ へ</text>
-  <rect x="1060" y="246" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
-  <rect x="1064" y="246" width="236" height="34" rx="17.0" fill="url(#fade)"/>
-  <rect x="1300" y="246" width="268" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.95"/>
-  <text x="1286" y="268.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">Makefileを直して</text>
-  <text x="1314" y="268.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" font-weight="700" fill="#1A1300">検査で止まり、直す</text>
-  <rect x="1060" y="304" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
-  <rect x="1110" y="304" width="190" height="34" rx="17.0" fill="url(#fade)"/>
-  <rect x="1300" y="304" width="236" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.32"/>
-  <text x="1286" y="326.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">リリースして</text>
-  <text x="1314" y="326.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" font-weight="500" fill="#FFD54F">整理 ✓ 振り返り ✓</text>
-  <rect x="1060" y="362" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
-  <rect x="1086" y="362" width="214" height="34" rx="17.0" fill="url(#fade)"/>
-  <rect x="1300" y="362" width="270" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.32"/>
-  <text x="1286" y="384.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">ヒーロー画像を</text>
-  <text x="1314" y="384.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" font-weight="500" fill="#FFD54F">使わない語を守る</text>
-  <rect x="1060" y="420" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
-  <rect x="1120" y="420" width="180" height="34" rx="17.0" fill="url(#fade)"/>
-  <rect x="1300" y="420" width="200" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.95"/>
-  <text x="1286" y="442.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">前と同じ案件？</text>
-  <text x="1314" y="442.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="16" font-weight="700" fill="#1A1300">ask → act</text>
-  <line x1="1300" y1="104" x2="1300" y2="476" stroke="#F5B700" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
-  <g font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="17"><text x="1060" y="96" fill="#8FA3C8">ターン →</text><text x="1300" y="90" text-anchor="middle" fill="#F5B700" font-weight="700">閾</text></g>
+  <rect x="1060" y="140" width="524" height="40" rx="20.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1080" y="140" width="250" height="40" rx="20.0" fill="url(#fade)"/>
+  <rect x="1330" y="140" width="220" height="40" rx="20.0" fill="url(#gold)" fill-opacity="0.32"/>
+  <text x="1316" y="166.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" fill="#F2F5FA" fill-opacity="0.92">前にも言ったよね</text>
+  <text x="1344" y="166.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" font-weight="500" fill="#FFD54F">覚えている</text>
+  <rect x="1060" y="210" width="524" height="40" rx="20.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1080" y="210" width="250" height="40" rx="20.0" fill="url(#fade)"/>
+  <rect x="1330" y="210" width="220" height="40" rx="20.0" fill="url(#gold)" fill-opacity="0.95"/>
+  <text x="1316" y="236.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" fill="#F2F5FA" fill-opacity="0.92">また同じミス</text>
+  <text x="1344" y="236.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" font-weight="700" fill="#1A1300">止めて直させる</text>
+  <rect x="1060" y="280" width="524" height="40" rx="20.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1080" y="280" width="250" height="40" rx="20.0" fill="url(#fade)"/>
+  <rect x="1330" y="280" width="220" height="40" rx="20.0" fill="url(#gold)" fill-opacity="0.32"/>
+  <text x="1316" y="306.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" fill="#F2F5FA" fill-opacity="0.92">いきなり作業</text>
+  <text x="1344" y="306.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" font-weight="500" fill="#FFD54F">先に整理する</text>
+  <rect x="1060" y="350" width="524" height="40" rx="20.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1080" y="350" width="250" height="40" rx="20.0" fill="url(#fade)"/>
+  <rect x="1330" y="350" width="220" height="40" rx="20.0" fill="url(#gold)" fill-opacity="0.32"/>
+  <text x="1316" y="376.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" fill="#F2F5FA" fill-opacity="0.92">報告はどこ？</text>
+  <text x="1344" y="376.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" font-weight="500" fill="#FFD54F">handoff/ にある</text>
+  <rect x="1060" y="420" width="524" height="40" rx="20.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1080" y="420" width="250" height="40" rx="20.0" fill="url(#fade)"/>
+  <rect x="1330" y="420" width="220" height="40" rx="20.0" fill="url(#gold)" fill-opacity="0.95"/>
+  <text x="1316" y="446.8" text-anchor="end" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" fill="#F2F5FA" fill-opacity="0.92">たぶん、0.9</text>
+  <text x="1344" y="446.8" font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="19" font-weight="700" fill="#1A1300">ask → act</text>
+  <line x1="1330" y1="114" x2="1330" y2="482" stroke="#F5B700" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
+  <g font-family="'Hiragino Sans','Noto Sans JP',Inter,sans-serif" font-size="17"><text x="1060" y="106" fill="#8FA3C8">ターン →</text><text x="1330" y="100" text-anchor="middle" fill="#F5B700" font-weight="700">閾</text></g>
 </svg>
