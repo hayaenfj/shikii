@@ -282,7 +282,7 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 	return out, nil
 }
 
-// placeMatchMin は、置いた時の草稿の文の 2 文字の並びのうち、保存する草稿(題・教訓・本文)に入っている割合の下限。
+// placeMatchMin は、置いた時の草稿の文の隣り合う 2 語(bigrams)のうち、保存する草稿(題・教訓・本文)に入っている割合の下限。
 // placeMatchWindow は、あいまいに突き合わせる置いた草稿の古さの上限(置いてから保存までは普通すぐ)。
 const (
 	placeMatchMin    = 0.6
@@ -293,7 +293,8 @@ const (
 // 正解を付けられる記録(候補の記事が今もある)を持つ置いた草稿だけを見る(候補の記事が消えた古い記録が先に当たらない。監査 0.8.3 の M1)。
 //   - 教訓の文が置いた時と同じなら、その草稿(新しい方)。
 //   - それ以外は合流・置き換えだけで、その記事を候補に持ち(新しい記事には狙う記事が無いので、あいまいには当たらない。監査 0.8.3 の H1)、placeMatchWindow 以内に置き、置いた時の文の placeMatchMin 以上が保存する草稿に
-//     入っている草稿のうち、最も新しく置いた物(本文に原文で残った古い草稿より、今の草稿。監査 0.8.3 の M2)。
+//     入っている草稿のうち、最もよく入っている物(同点は新しく置いた方。1 回に 2 件置くのは普段の手順なので、新しさで選ぶと
+//     もう 1 件に付く。再監査の新-1)。前の日に置いた古い草稿は placeMatchWindow で外れる(監査 0.8.3 の M2)。
 func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]store.Label, pageOf map[string]string, now time.Time) string {
 	lesson := strings.TrimSpace(d.Lesson)
 	targets := map[string]bool{}
@@ -332,17 +333,17 @@ func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]
 			}
 		}
 	}
-	if g := groups[lesson]; g != nil && g.labelable {
-		return lesson
+	if g := groups[lesson]; g != nil && g.labelable && !targets[pageOf[lesson]] {
+		return lesson // 教訓が合流先の今の教訓と同じ(本文に足すだけの合流)なら、その記事を作った時の古い記録と取り違えないよう使わない(再監査の残-2)
 	}
 	text := d.Title + "\n" + d.Lesson
 	if d.Body != nil {
 		text += "\n" + *d.Body
 	}
 	have := bigrams(text)
-	best, bestAt := "", time.Time{}
+	best, bestScore, bestAt := "", 0.0, time.Time{}
 	for placed, g := range groups {
-		if !g.hasTarget || now.Sub(g.at) > placeMatchWindow || !g.at.After(bestAt) && best != "" {
+		if !g.hasTarget || now.Sub(g.at) > placeMatchWindow {
 			continue
 		}
 		want := bigrams(placed)
@@ -355,24 +356,40 @@ func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]
 				hit++
 			}
 		}
-		if float64(hit)/float64(len(want)) >= placeMatchMin {
-			best, bestAt = placed, g.at
+		score := float64(hit) / float64(len(want))
+		if score >= placeMatchMin && (score > bestScore || score == bestScore && g.at.After(bestAt)) {
+			best, bestScore, bestAt = placed, score, g.at
 		}
 	}
 	return best
 }
 
-// bigrams は、空白を除いた文の、連続する 2 文字の集合。
+// bigrams は、文の隣り合う 2 つの語の集合。英数字の続きは 1 語(小文字にする)、それ以外の文字(漢字・かな)は 1 文字を 1 語とし、
+// 空白と記号で区切る。英語を 2 文字ずつで比べると、関係ない長い文でも大半が重なった(再監査の残-1)。
 func bigrams(s string) map[string]bool {
-	var rs []rune
-	for _, r := range s {
-		if !unicode.IsSpace(r) {
-			rs = append(rs, r)
+	var words []string
+	var word []rune
+	flush := func() {
+		if len(word) > 0 {
+			words = append(words, strings.ToLower(string(word)))
+			word = word[:0]
 		}
 	}
+	for _, r := range s {
+		switch {
+		case r < 0x3000 && (unicode.IsLetter(r) || unicode.IsDigit(r)):
+			word = append(word, r)
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			flush()
+			words = append(words, string(r))
+		default:
+			flush()
+		}
+	}
+	flush()
 	out := map[string]bool{}
-	for i := 0; i+1 < len(rs); i++ {
-		out[string(rs[i:i+2])] = true
+	for i := 0; i+1 < len(words); i++ {
+		out[words[i]+" "+words[i+1]] = true
 	}
 	return out
 }
