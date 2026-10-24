@@ -12,7 +12,7 @@ A model gives you a probability. shikii tells you whether you may act on it. It 
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.8.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.7 goes back to the line and the bands. The recommended model is TypeSafe Jev: put the key in the environment, download nothing, and get an answer in about 0.2 s. Without a key, llama.cpp answers the same questions locally. New wiki lessons are placed next to the right page and checked for contradictions by the decision model. 0.7.3 turns corrections into guards that stop the turn, delivers lessons to subagents too, and counts in production whether delivered lessons changed anything. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
+Version 0.8 makes sure the agent does its routine and keeps its working files in one place. Before it works, the agent sums up the conversation and searches the wiki; before it ends, it reflects on the turn. If it skips either, the turn is stopped once. Reports, release logs and screenshots go to work records in `.shikii/handoff/`, not into the repository, and you read them on the page. Each project has its own page, which opens with the agent and starts with what is waiting for you. The recommended model is TypeSafe Jev: put the key in the environment, download nothing, and get an answer in about 0.2 s. Without a key, llama.cpp answers the same questions locally. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
 [The problem](#the-problem) · [What shikii does](#what-shikii-does) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [One full loop](#one-full-loop) · [Learn from conversations](#learn-from-conversations) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -32,6 +32,8 @@ Whoever hands work to an agent has another set of problems.
 - You corrected it once and you are correcting the same thing in the next job.
 - You wrote the lesson down, but you cannot tell whether the agent read it, or whether reading it changed anything.
 - The subagents it spawns never see that lesson at all.
+- It starts work without checking what was already decided, and forgets to write down what it learned.
+- Its reports, notes and screenshots pile up in the repository, or are lost when the session ends.
 
 If a person has to check every answer and repeat every correction, there was little point in using the AI.
 
@@ -43,14 +45,17 @@ If a person has to check every answer and repeat every correction, there was lit
 4. **Lets you swap the model without starting over.** Truths live apart from the model. The recommended model is TypeSafe Jev: on this project's pages and answers it separated lesson placement, contradictions and relevant lessons more clearly than the local model ([the numbers](docs/guide.md#jev-against-the-local-standard)). Without a key, the local standard is Ternary-Bonsai-27B, an ordinary chat model that `shikii-readout` turns into a decision model by reading the probability of each option letter, at about 0.6 s per question.
 5. **Keeps what it learned in a wiki your agent uses.** Requests, replies and corrections become lessons with sources. Before a new lesson is saved, the decision model finds the page it belongs to and flags a contradiction; what the agent then saves becomes the truth for that judgement, so nobody labels it. Relevant lessons reach the agent before similar requests, and since 0.7.3 they reach a subagent when it starts, based on the parent's request.
 6. **Turns your corrections into guards.** Corrections that a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become checks that run at the end of every turn. When one fails, the agent cannot end the turn until it fixes the work. Lessons that merely repeat what the agent can read in the repository changed nothing (4 of 5 tasks tied), while delivered lessons the agent could not know otherwise were followed 6 times in 6; a guard works even when the model knows no rule (6 of 6).
-7. **Counts in production whether delivered lessons changed anything.** Reflection marks each delivered lesson helpful, unused, harmful or unknown, and `shikii status` shows the counts, plus how many turns guards stopped and how many were fixed before the turn ended. Measured in real work, not in synthetic experiments.
+7. **Makes sure the agent does its routine.** Before it changes files, the agent sums up the conversation and searches the wiki with topic words it picks. Before it ends, it reflects on the turn and saves what it learned. If it skips either step, the turn is stopped once and the agent is told the exact command to run. These checks are built in and always on. They also work in projects that have no `CLAUDE.md` or `AGENTS.md`.
+8. **Keeps the agent's working files out of the repository.** Audit reports, release steps, diffs and screenshots that the agent keeps editing go to `.shikii/handoff/<task>/`. Subagents are told to write their reports there too. These files are not committed, and you read them on the page.
+9. **Gives each project one page that starts with what is waiting for you.** The first request starts the page and opens it in the browser. The top says how many questions wait for you. Below that is the AI's state: which model it uses, how many questions it decides alone, how many lessons it delivered and whether they helped, how often guards stopped a turn, whether the routine was done, and how often the wiki was used in decisions. `shikii status` prints the same numbers. They are counted in real work, not in experiments.
 
 ## What you do
 
 - **Write down what you want decided.** A decision file holds the question, the options, the inputs and the thresholds (`shikii new`, or copy a [ready-made decision](decisions/README.md)).
-- **Answer some questions.** The page shows the decisions the model was unsure about and 1 in 20 of the ones it acted on; you press the button for what was actually true. Results that can be observed (a change undone, a request repeated, a lesson merged) are answered by the machine.
+- **Answer some questions.** The top of the page tells you how many are waiting. It shows the decisions the model was unsure about and 1 in 20 of the ones it acted on; you press the button for what was actually true. Results that can be observed (a change undone, a request repeated, a lesson merged) are answered by the machine.
 - **Now and then confirm a wording.** When a better way of asking is found, you check that it asks the same thing and press adopt or reject.
 - **Correct your agent as usual.** “There is still English left” in an ordinary conversation is enough; the agent files it as a lesson and shikii keeps it next to the right page. When the correction can be checked by a machine, the agent also drafts a guard, disabled.
+- **Read the work records when you want.** On the page, under Knowledge → Work records, you can read the agent's reports and see its screenshots.
 - **Enable guards.** Run `shikii guard enable <id>` once. shikii first shows the guard stopping on a deliberately broken example and passing on a correct one, then enables it. Disabling is also your call.
 
 Everything else is the machine's job.
@@ -142,6 +147,8 @@ Calibration belongs to one question and one model; change either and it is measu
 
 With the hooks installed, two moments of every turn are kept: the request before the agent starts, and the reply and the changed files after it ends. The next human message closes the pair. The agent writes lessons with sources from them; shikii delivers up to two relevant lessons before similar work, and delivers lessons close to the parent's request when a subagent starts. In reflection the agent reports whether a delivered lesson helped.
 
+Two steps of every turn are checked. Before work, the agent sums up what was agreed and what is still open, and searches the wiki with topic words. Before it ends, it reflects on the turn: it grades its own work, saves lessons and says whether the delivered lessons helped. When a step is missing, the end of the turn is stopped once with the command to run. The second stop passes, but the miss is recorded, and the page shows how many turns did the routine.
+
 <p align="center"><img src="docs/assets/shikii-conversation.svg" alt="requests and corrections become lessons with sources and next actions; observed results flow back into reflection" width="100%"></p>
 
 The decision model answers the built-in questions about the agent's own work (what kind of request this is, whether to agree on an approach first, whether the changes stayed in scope, whether the request was completed) and, for new lessons, where they belong and whether they contradict a page. The truths for these come from what happens next: a change undone during the next request, a request repeated, a lesson merged or replaced. Only questions that results cannot answer wait for a person, and the page shows how many.
@@ -161,9 +168,11 @@ The agent drafts a guard from a correction (`shikii guard add`, disabled) and a 
 | Lessons from conversations | Your usual agent | Correct it in ordinary conversation |
 | Lesson placement, scope, completion | The decision model; truths from results | Check the samples and the undecided ones |
 | Guards | Fixed rules; drafts by the agent | Decide whether to enable |
+| The routine before and after work | The agent; checked by built-in rules | Nothing |
+| Work records | The agent and its subagents | Read them on the page when you want |
 | Business truths and the meaning of a wording | You | Label, and confirm the meaning before adoption |
 
-`shikii status` shows whether it is working: how many lessons were delivered and marked helpful, unused, harmful or unknown; how many turns guards stopped and how many were fixed; how many decisions wait for a person.
+`shikii status` and the page show whether it is working: how many lessons were delivered and marked helpful, unused, harmful or unknown; how many turns guards stopped and how many were fixed; how many turns did the routine; how many decisions wait for a person.
 
 The design follows [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): raw sources are kept, and the agent ingests, searches and revises. Details: [the hooks](integrations/claude-code.md) (Japanese), [wiki editing](skills/shikii/references/wiki.md), [guards](skills/shikii/references/guards.md).
 
