@@ -109,11 +109,11 @@ from pathlib import Path
 runpy.run_path("scripts/gen-hero-svg.py")["generate"](Path(sys.argv[1]))
 PYGEN
     then err "先頭の画像を再生成できない"; fi
-    # 日本語の README だけ日本語の先頭の画像、英語と他の言語は英語の画像
-    grep -q 'assets/shikii-hero-ja.svg' docs/readme/README_ja.md || err "docs/readme/README_ja.md: 先頭の画像が日本語版(shikii-hero-ja.svg)でない"
+    # 先頭の画像と「何が育つか」の図は、日本語の README が日本語版の 2 枚だけ、英語(と他の言語)が英語版の 2 枚だけを指す(許可リスト。余分な 1 枚も落とす)
     for f in README.md docs/readme/README_*.md; do
-      [ "$f" = docs/readme/README_ja.md ] && continue
-      grep -q 'assets/shikii-hero.svg' "$f" || err "$f: 先頭の画像が英語版(shikii-hero.svg)でない"
+      if [ "$f" = docs/readme/README_ja.md ]; then want="shikii-grows-ja.svg shikii-hero-ja.svg"; else want="shikii-grows.svg shikii-hero.svg"; fi
+      got=$(grep -oE 'assets/shikii-(hero|grows)(-ja)?\.svg' "$f" | sed 's#assets/##' | sort -u | tr '\n' ' ' | sed 's/ $//')
+      [ "$got" = "$want" ] || err "$f: 先頭の画像と何が育つかの図は「$want」だけを指す(今は「$got」)"
     done
     for asset in shikii-hero.svg shikii-hero-ja.svg shikii-grows.svg shikii-grows-ja.svg; do
       cmp -s "$tmp/$asset" "docs/assets/$asset" || err "docs/assets/$asset は生成スクリプトの出力と違う"

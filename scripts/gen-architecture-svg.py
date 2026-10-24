@@ -58,7 +58,7 @@ class SVG:
         self.out.append(f'<path d="{path}" fill="none" stroke="#7d93af" stroke-width="2" marker-end="url(#arrow)"/>')
 
     def save(self, path):
-        path.write_text("\n".join(self.out + ["</svg>"]) + "\n")
+        path.write_text("\n".join(self.out + ["</svg>"]) + "\n", encoding="utf-8", newline="\n")
 
 
 COPY = {

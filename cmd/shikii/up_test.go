@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -136,16 +138,28 @@ func TestUpDoesNotStartTheLocalModelWhileJevIsUsed(t *testing.T) {
 
 // 監査 0.8.1 の 2: 開発用の Makefile も手元の標準(shikii up)へ向け、使わない Kev-4B を取りに行かない。
 // drift のモデル名は hook が送る名(jev-latest)に揃える(較正の鍵が合わないと drift は何も比べない)。
+// 監査 0.8.2-1 の 6: 文字列の有無ではなく、make -n で実際に走る手順を見る(build を先に組む、drift が MODEL を使う)。
 func TestMakefileUsesTheLocalStandard(t *testing.T) {
 	b, err := os.ReadFile("../../Makefile")
 	if err != nil {
 		t.Fatal(err)
 	}
-	mk := string(b)
-	if strings.Contains(strings.ToLower(mk), "kev-4b") {
+	if strings.Contains(strings.ToLower(string(b)), "kev-4b") {
 		t.Fatal("Makefile が Kev-4B を指している")
 	}
-	if !strings.Contains(mk, "MODEL   ?= jev-latest") || !strings.Contains(mk, "\t$(BIN) up") {
-		t.Fatal("drift は jev-latest、make server は shikii up で手元の標準を起こす")
+	plan := func(target string) []string {
+		out, err := exec.Command("make", "-C", "../..", "-n", target).CombinedOutput()
+		if err != nil {
+			t.Fatalf("make -n %s: %v\n%s", target, err, out)
+		}
+		return strings.Split(strings.TrimSpace(string(out)), "\n")
+	}
+	server := plan("server")
+	if last := server[len(server)-1]; last != "bin/shikii up" || !slices.Contains(server, "go build -o bin/shikii ./cmd/shikii") {
+		t.Fatalf("make server は shikii を組んでから bin/shikii up を起こす: %q", server)
+	}
+	drift := plan("drift")
+	if last := drift[len(drift)-1]; !strings.HasPrefix(last, "bin/shikii drift ") || !strings.Contains(last, "--model 'jev-latest'") {
+		t.Fatalf("make drift は hook と同じモデル名(jev-latest)で測る: %q", drift)
 	}
 }
