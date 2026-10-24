@@ -5,7 +5,7 @@
 ## 0.8.1 — 未公開
 
 - 画面: 「かんたん表示 / くわしく」の切替を廃止し、常に全部見せる(知識の欄、モデルの印、聞き方の候補、較正の詳細、採点の根拠、「AI にもう一度聞く」のボタン)。保存していた表示の好みは読まない。
-- 画面: 見た目を Tailwind CSS v4(`@tailwindcss/vite`)へ移した。色・影・幅の区切りは `web/src/app.css` の token、部品の見た目は各部品の utility class。明暗・幅ごとの見た目は同じで、検査とキー操作が頼る class 名(`.item`・`.btns`・`.top`・`.skip`・`data-lane` など)は変えていない。仕事ごとの絞り込みの行(`.chips.projects`)に一覧の `.projects` の余白が当たっていた class 名の衝突も無くなった。
+- 画面: 見た目を Tailwind CSS v4(`@tailwindcss/vite`)へ移した。色・影・幅の区切りは `web/src/app.css` の token、部品の見た目は各部品の utility class。明暗・幅ごとの見た目は同じで、検査とキー操作が頼る class 名(`.item`・`.btns`・`.top`・`.skip`・`data-lane` など)は変えていない。仕事ごとの絞り込みの行(`.chips.projects`)に一覧の `.projects` の余白が当たっていた class 名の衝突も無くなった。タブと仕事の入口の hover は、hover できる機器だけで効く。ビルドは `web/src` と `index.html` だけを読み、古い `web/dist` の class が CSS に混ざらない。
 
 ## 0.8.0 — 作法をやらないと終われない、プロジェクトごとの画面、「あなたがやること」から始まる画面
 

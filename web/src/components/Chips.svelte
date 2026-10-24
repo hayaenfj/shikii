@@ -11,7 +11,7 @@
   let youActive = $derived(!machineOnly && !ui.done && !ui.results);
   let resultsActive = $derived(!ui.done && (machineOnly || ui.results));
   // 区切りボタン(segmented)と絞り込み(chip)の見た目。選ばれている物は active(検査が見る印)
-  const seg = on => 'rounded-[7px] border bg-transparent px-3 py-1.5 text-[12px] max-sm:px-[9px] max-sm:text-[10px] [&>span]:ml-[5px] [&>span]:text-[10px] [&>span]:text-muted ' + (on ? 'active border-line bg-surface text-fg shadow-[0_2px_3px_#00000008]' : 'border-transparent text-muted');
+  const seg = on => 'rounded-[7px] border px-3 py-1.5 text-[12px] max-sm:px-[9px] max-sm:text-[10px] [&>span]:ml-[5px] [&>span]:text-[10px] [&>span]:text-muted ' + (on ? 'active border-line bg-surface text-fg shadow-[0_2px_3px_#00000008]' : 'border-transparent bg-transparent text-muted');
   const chip = on => 'flex items-center gap-1.5 rounded-[7px] px-2.5 py-[5px] text-[11px] [&>span]:text-[10px] [&>span]:opacity-80 ' + (on ? 'active border-accent/40 bg-accentbg text-accent' : 'bg-transparent text-muted');
 </script>
 
