@@ -3,7 +3,7 @@
   // 15 秒ごとに読み直す(画面が隠れている間は読まない)。キー操作: 1〜9 で先頭のカードの答えを選ぶ、Enter で AI と同じ、→ でスキップ
   import { onMount, untrack } from 'svelte';
   import { i18n, t } from './lib/i18n.svelte.js';
-  import { ui, data, load, selectedTab, setAdvanced, setShowHelp } from './lib/state.svelte.js';
+  import { ui, data, load, selectedTab, setShowHelp } from './lib/state.svelte.js';
   import HowTo from './components/HowTo.svelte';
   import Tabs from './components/Tabs.svelte';
   import SpecPanel from './components/SpecPanel.svelte';
@@ -18,7 +18,6 @@
   let activeTab = $derived(selectedTab(st));
   let activeSpec = $derived(st && activeTab !== 'wiki' ? st.specs.find(s => s.id === activeTab) : null);
 
-  $effect(() => { document.body.classList.toggle('advanced', ui.advanced); });
   $effect(() => { document.documentElement.lang = i18n.lang; });
 
   function onKey(ev) {
@@ -48,8 +47,7 @@
 <header class="app-header">
   <div class="brand"><span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span><h1>shikii <small id="tagline">{t('tagline')}</small></h1></div>
   <div class="header-actions">
-    {#if !st?.projects}<button id="help" type="button" title={t('helpTitle')} aria-label={t('helpTitle')} onclick={() => setShowHelp(!ui.showHelp)}>?</button>
-    <button id="mode" type="button" onclick={() => setAdvanced(!ui.advanced)}>{t(ui.advanced ? 'modeSimple' : 'modeAdvanced')}</button>{/if}
+    {#if !st?.projects}<button id="help" type="button" title={t('helpTitle')} aria-label={t('helpTitle')} onclick={() => setShowHelp(!ui.showHelp)}>?</button>{/if}
     <LangPicker />
   </div>
 </header>

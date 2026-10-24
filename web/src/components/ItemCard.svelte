@@ -107,7 +107,7 @@
   </div>
   {#if it.review}
     <div class="text input-field followup"><div class="field-label"><span class="field-dot" aria-hidden="true"></span>{t('reviewReply')}</div><div class="message-body">{it.review.source_material.reply}</div></div>
-    <details class="adv review-evidence"><summary>{t('reviewEvidence')}</summary><p>{it.review.truth}: {it.review.reason}</p></details>
+    <details class="review-evidence"><summary>{t('reviewEvidence')}</summary><p>{it.review.truth}: {it.review.reason}</p></details>
   {:else if it.top}
     <div class="guess prediction"><div><span class="prediction-label">{t('predictionHeading')}</span><strong>{t('aiGuess')(topName, (guess.p * 100).toFixed(0))}</strong><span class="prediction-band">{bandWord}{#if it.audit} · {t('auditShort')}{/if}</span></div><div class="confidence-ring" style="--confidence:{Math.round(guess.p * 100)}%" aria-hidden="true"><span>{Math.round(guess.p * 100)}<small>%</small></span></div></div>
   {/if}

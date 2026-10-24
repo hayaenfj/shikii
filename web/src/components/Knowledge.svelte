@@ -36,7 +36,7 @@
 
 <Notebook {wiki} />
 
-<section class="adv">
+<section>
   <h2>{t('knowledge')} <span class="pill">{t('claimsCount')(claims.length, prose)}</span></h2>
   {#if !claims.length}<div class="empty">{t('noClaims')}</div>{/if}
   {#each claims as c (c.path)}
