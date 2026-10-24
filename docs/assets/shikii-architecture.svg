@@ -1,31 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="970" viewBox="0 0 1200 970" role="img" aria-labelledby="title desc" lang="ja" font-family="-apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Segoe UI', sans-serif">
-<title id="title">記憶は、初期化したプロジェクトに残る</title><desc id="desc">会話の教訓と仮評価を、業務の正解やモデルに任せるための線と分けます。</desc>
+<title id="title">記憶は、初期化したプロジェクトに残る</title><desc id="desc">エージェントが育てる知識と、判定を任せるための正解と線を分けて持ちます。</desc>
 <defs>
   <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b2d"/><stop offset="1" stop-color="#080f1b"/></linearGradient>
   <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#7d93af" stroke-width="1.5"/></marker>
 </defs>
 <rect width="1200" height="970" rx="24" fill="url(#bg)"/>
 <text x="40" y="58" font-size="32" font-weight="700" fill="#f0f5fc">記憶は、初期化したプロジェクトに残る</text>
-<text x="40" y="98" font-size="19" font-weight="400" fill="#b3c3d9">会話の教訓と仮評価を、業務の正解やモデルに任せるための線と分けます。</text>
+<text x="40" y="98" font-size="19" font-weight="400" fill="#b3c3d9">エージェントが育てる知識と、判定を任せるための正解と線を分けて持ちます。</text>
 <rect x="40" y="142" width="1120" height="108" rx="16" fill="#28241b" stroke="#6d5631"/>
 <text x="64" y="181" font-size="23" font-weight="700" fill="#f4c76a">人は意図と訂正を伝え、必要な確認をする</text>
 <text x="64" y="215" font-size="18" font-weight="400" fill="#b3c3d9">普段の会話に加え、採点の抜き取り・保留や、業務の正解・聞き方の意味を確認します。</text>
 <rect x="40" y="282" width="1120" height="480" rx="16" fill="#0e1a2a" stroke="#4d6d96"/>
 <text x="64" y="322" font-size="23" font-weight="700" fill="#e3edfa">このプロジェクトの .shikii/</text>
 <rect x="64" y="346" width="512" height="390" rx="16" fill="#152236" stroke="#2b405b"/>
-<text x="86" y="386" font-size="22" font-weight="700" fill="#83d8b0">会話を次の仕事へ</text>
+<text x="86" y="386" font-size="22" font-weight="700" fill="#83d8b0">エージェントの仕事を育てる</text>
 <text x="86" y="430" font-size="19" font-weight="700" fill="#83d8b0">1.</text>
 <text x="118" y="430" font-size="20" font-weight="600" fill="#e3edfa">原資料と版を残す</text>
-<text x="118" y="456" font-size="18" font-weight="400" fill="#b3c3d9">records/ · 会話・コード・確認結果</text>
+<text x="118" y="456" font-size="18" font-weight="400" fill="#b3c3d9">records/ · 会話・判定・確認結果</text>
 <text x="86" y="496" font-size="19" font-weight="700" fill="#83d8b0">2.</text>
-<text x="118" y="496" font-size="20" font-weight="600" fill="#e3edfa">知識へ統合して見直す</text>
-<text x="118" y="522" font-size="18" font-weight="400" fill="#b3c3d9">wiki/ · 本文・出典・関連する知識</text>
+<text x="118" y="496" font-size="20" font-weight="600" fill="#e3edfa">教訓に統合して届ける</text>
+<text x="118" y="522" font-size="18" font-weight="400" fill="#b3c3d9">wiki/ · 本文・出典・効いたかの振り返り</text>
 <text x="86" y="562" font-size="19" font-weight="700" fill="#83d8b0">3.</text>
-<text x="118" y="562" font-size="20" font-weight="600" fill="#e3edfa">必要な知識を選んで読む</text>
-<text x="118" y="588" font-size="18" font-weight="400" fill="#b3c3d9">短い要約から本文・原資料へ</text>
+<text x="118" y="562" font-size="20" font-weight="600" fill="#e3edfa">訂正を止める検査にする</text>
+<text x="118" y="588" font-size="18" font-weight="400" fill="#b3c3d9">guards/ · 有効にするのは人</text>
 <text x="86" y="628" font-size="19" font-weight="700" fill="#83d8b0">4.</text>
-<text x="118" y="628" font-size="20" font-weight="600" fill="#e3edfa">判断と確認結果を振り返る</text>
-<text x="118" y="654" font-size="18" font-weight="400" fill="#b3c3d9">引用した版・判断・訂正への行動</text>
+<text x="118" y="628" font-size="20" font-weight="600" fill="#e3edfa">作業の跡を残す</text>
+<text x="118" y="654" font-size="18" font-weight="400" fill="#b3c3d9">handoff/ · 報告・手順・画像(画面で読む)</text>
 <text x="86" y="711" font-size="18" font-weight="400" fill="#83d8b0">教訓は仮説。評価はAIの観察。</text>
 <rect x="624" y="346" width="512" height="390" rx="16" fill="#152236" stroke="#2b405b"/>
 <text x="646" y="386" font-size="22" font-weight="700" fill="#8db8f4">業務の判定を任せる</text>
@@ -45,5 +45,5 @@
 <rect x="40" y="794" width="1120" height="100" rx="16" fill="#152236" stroke="#2b405b"/>
 <text x="64" y="831" font-size="22" font-weight="700" fill="#d2e1f5">共通の入口: ~/.shikii/agent</text>
 <text x="64" y="866" font-size="18" font-weight="400" fill="#b3c3d9">型・道具・プロジェクトの索引。会話・正解・線は各プロジェクトへ保存。</text>
-<text x="40" y="937" font-size="18" font-weight="400" fill="#b3c3d9">会話の整理は利用中のエージェント。既製の4問の判定は手元のモデルが担当します。</text>
+<text x="40" y="937" font-size="18" font-weight="400" fill="#b3c3d9">会話の整理は利用中のエージェント。既製の問いの判定はJev(鍵が無い時は手元のモデル)が担当します。</text>
 </svg>

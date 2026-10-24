@@ -1,31 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="570" viewBox="0 0 1200 570" role="img" aria-labelledby="title desc" lang="ja" font-family="-apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Segoe UI', sans-serif">
-<title id="title">一度の訂正を、次の仕事へ。</title><desc id="desc">いつものエージェントが教訓を育て、次の行動と確認結果を結びます。</desc>
+<title id="title">毎回のターンで、プロジェクトの知識が育つ。</title><desc id="desc">作業の前に読み、作業中は跡を残し、終える前に振り返る。手順を飛ばすと止まります。</desc>
 <defs>
   <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b2d"/><stop offset="1" stop-color="#080f1b"/></linearGradient>
   <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#7d93af" stroke-width="1.5"/></marker>
 </defs>
 <rect width="1200" height="570" rx="24" fill="url(#bg)"/>
 <text x="48" y="64" font-size="30" font-weight="700" fill="#f4c76a">shikii</text>
-<text x="48" y="126" font-size="38" font-weight="700" fill="#f0f5fc">一度の訂正を、次の仕事へ。</text>
-<text x="48" y="170" font-size="21" font-weight="400" fill="#b3c3d9">いつものエージェントが教訓を育て、次の行動と確認結果を結びます。</text>
+<text x="48" y="126" font-size="38" font-weight="700" fill="#f0f5fc">毎回のターンで、プロジェクトの知識が育つ。</text>
+<text x="48" y="170" font-size="21" font-weight="400" fill="#b3c3d9">作業の前に読み、作業中は跡を残し、終える前に振り返る。手順を飛ばすと止まります。</text>
 <rect x="48" y="216" width="336" height="216" rx="16" fill="#152236" stroke="#2b405b"/>
 <text x="72" y="259" font-size="20" font-weight="700" fill="#f4c76a">01</text>
-<text x="72" y="304" font-size="24" font-weight="700" fill="#f0f5fc">普段どおりに頼む</text>
-<text x="72" y="345" font-size="19" font-weight="400" fill="#b3c3d9">「まだ英語が残っています」</text>
-<text x="72" y="382.5" font-size="18" font-weight="400" fill="#a8bad3">依頼・返答・次の発言を残す</text>
+<text x="72" y="304" font-size="24" font-weight="700" fill="#f0f5fc">作業の前に読む</text>
+<text x="72" y="345" font-size="19" font-weight="400" fill="#b3c3d9">会話を整理し、wikiを探す</text>
+<text x="72" y="382.5" font-size="18" font-weight="400" fill="#a8bad3">似た依頼の教訓が届く</text>
 <path d="M 390 324 H 424" fill="none" stroke="#7d93af" stroke-width="2" marker-end="url(#arrow)"/>
 <rect x="432" y="216" width="336" height="216" rx="16" fill="#152236" stroke="#2b405b"/>
 <text x="456" y="259" font-size="20" font-weight="700" fill="#83d8b0">02</text>
-<text x="456" y="304" font-size="24" font-weight="700" fill="#f0f5fc">教訓と次の行動へ</text>
-<text x="456" y="345" font-size="19" font-weight="400" fill="#b3c3d9">原文と適用する場面を保つ</text>
-<text x="456" y="382.5" font-size="18" font-weight="400" fill="#a8bad3">いつものエージェントが整理</text>
+<text x="456" y="304" font-size="24" font-weight="700" fill="#f0f5fc">作業中は跡を残す</text>
+<text x="456" y="345" font-size="19" font-weight="400" fill="#b3c3d9">報告・記録・画像は作業記録へ</text>
+<text x="456" y="382.5" font-size="18" font-weight="400" fill="#a8bad3">repoには成果だけ</text>
 <path d="M 774 324 H 808" fill="none" stroke="#7d93af" stroke-width="2" marker-end="url(#arrow)"/>
 <rect x="816" y="216" width="336" height="216" rx="16" fill="#152236" stroke="#2b405b"/>
 <text x="840" y="259" font-size="20" font-weight="700" fill="#8db8f4">03</text>
-<text x="840" y="304" font-size="24" font-weight="700" fill="#f0f5fc">次の似た依頼で使う</text>
-<text x="840" y="345" font-size="19" font-weight="400" fill="#b3c3d9">案内の全文を確認する</text>
-<text x="840" y="382.5" font-size="18" font-weight="400" fill="#a8bad3">判断と確認結果を振り返る</text>
-<path d="M 984 440 V 478 H 600 V 440" fill="none" stroke="#7d93af" stroke-width="2" marker-end="url(#arrow)"/>
-<text x="620" y="508" font-size="18" font-weight="400" fill="#83d8b0">結果を根拠に振り返る</text>
-<text x="48" y="548" font-size="19" font-weight="400" fill="#a8bad3">普段の採点はAI。人は無作為の抜き取りと保留を確認します。</text>
+<text x="840" y="304" font-size="24" font-weight="700" fill="#f0f5fc">終える前に振り返る</text>
+<text x="840" y="345" font-size="19" font-weight="400" fill="#b3c3d9">学んだことを教訓にする</text>
+<text x="840" y="382.5" font-size="18" font-weight="400" fill="#a8bad3">止める検査が訂正を確かめる</text>
+<path d="M 984 440 V 478 H 216 V 440" fill="none" stroke="#7d93af" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="236" y="508" font-size="18" font-weight="400" fill="#83d8b0">次の依頼で届く</text>
+<text x="48" y="548" font-size="19" font-weight="400" fill="#a8bad3">機械で確かめられる訂正は止める検査に。正解は結果から付き、人は抜き取りと保留を見ます。</text>
 </svg>
