@@ -170,10 +170,47 @@ func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
 	if line := lineSummary(root); !strings.Contains(line, "wiki-place") {
 		t.Fatalf("モデルが変われば、もう一度知らせる: %q", line)
 	}
-	// hook の問い(はい/いいえ)の片方だけは「答えが付くまで線は引けない」で、人に聞く問いの文
+	// 結果から正解が付く hook の問い(changes-in-scope)は、片方だけでも人に聞かない(再監査: 人に聞くのは needs-plan だけ)
 	add("changes-in-scope", "m1", "yes", mustLoad(t, filepath.Join(root, "decisions", "changes-in-scope.yaml")).Eval.MinN)
-	if line := lineSummary(root); !strings.Contains(line, "changes-in-scope") || !strings.Contains(line, "keeps asking") {
+	if line := lineSummary(root); !strings.Contains(line, "changes-in-scope") || !strings.Contains(line, "waits for results") || strings.Contains(line, "keeps asking") {
+		t.Fatalf("結果から正解が付く問いは、結果を待つと言い、聞き続けるとは言わない: %q", line)
+	}
+	// 人に聞く問い(needs-plan)は、聞き続けると言う
+	add("needs-plan", "m1", "no", mustLoad(t, filepath.Join(root, "decisions", "needs-plan.yaml")).Eval.MinN)
+	if line := lineSummary(root); !strings.Contains(line, "needs-plan") || !strings.Contains(line, "keeps asking") {
 		t.Fatalf("人が答える問いは、聞き続けると言う: %q", line)
+	}
+	// 線が引けた時の文も問いで変わる: wiki の問いは人に聞かず、黙って置き換えない
+	sp := mustLoad(t, filepath.Join(root, "decisions", "wiki-place.yaml"))
+	sp.Calibration = []spec.Calibration{{Model: "m2", SpecHash: sp.Hash(), Method: "platt", N: sp.Eval.MinN}}
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if line := lineSummary(root); !strings.Contains(line, "a line was drawn for wiki-place") || !strings.Contains(line, "never replaced silently") || strings.Contains(line, "the rest still ask") {
+		t.Fatalf("wiki の問いで線が引けた時は、人に聞かないと言う: %q", line)
+	}
+	// 分けられない時: hook の問いは別の聞き方を頼む、wiki の問いは正解が増えたら試すだけ
+	for _, id := range []string{"changes-in-scope", "wiki-conflict"} {
+		cs := mustLoad(t, filepath.Join(root, "decisions", id+".yaml"))
+		add(id, "m3", "yes", cs.Eval.MinN)
+		add(id, "m3", "no", cs.Eval.MinN)
+		guard := filepath.Join(root, "calibrating-"+id)
+		os.WriteFile(guard, []byte(fmt.Sprintf("2026-10-24T00:00:00+09:00 m3 %d %s\n", 2*cs.Eval.MinN, cs.Hash())), 0o600)
+		old := time.Now().Add(-2 * hookCalibrateGap)
+		os.Chtimes(guard, old, old)
+	}
+	line := lineSummary(root)
+	var scope, conflict string
+	for _, l := range strings.Split(line, "\n") {
+		if strings.Contains(l, "changes-in-scope") {
+			scope = l
+		}
+		if strings.Contains(l, "wiki-conflict") {
+			conflict = l
+		}
+	}
+	if !strings.Contains(scope, "other wordings") || strings.Contains(conflict, "other wordings") || !strings.Contains(conflict, "tried again when") {
+		t.Fatalf("分けられない時、hook の問いだけ別の聞き方を頼む: %q / %q", scope, conflict)
 	}
 }
 
@@ -194,5 +231,30 @@ func TestChoiceWithOneAnswerIsNotOneAnswer(t *testing.T) {
 	out := capture(t, func() error { return cmdStatus([]string{"--store", agent, path}) })
 	if strings.Contains(out, "only one answer") || !strings.Contains(out, "enough truths: the line is drawn automatically") {
 		t.Fatalf("choice の 1 種類の正解は、自動で引く途中と出す:\n%s", out)
+	}
+}
+
+// 再監査の低: 線の状態の数え方は、入力ごとに最新の 1 件(同じ入力の付け直しを数えない)と、人と結果の正解だけ(機械の正解を数えない)の
+// どちらも自動の較正と同じ。片方だけ外しても落ちるよう、別々に確かめる。
+func TestLineStateCountsLatestPerInputAndHumanSourcesSeparately(t *testing.T) {
+	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
+	sp := mustLoad(t, filepath.Join(agent, "decisions", "changes-in-scope.yaml"))
+	mk := func(n int, src string, sameInput bool) []store.Label {
+		var labels []store.Label
+		for i := 0; i < n; i++ {
+			in := fmt.Sprintf("in%03d", i)
+			if sameInput {
+				in = fmt.Sprintf("in%d", i%3)
+			}
+			labels = append(labels, store.Label{TraceID: fmt.Sprintf("%s%03d", src, i), SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "m1", InputsHash: in, Truth: []string{"yes", "no"}[i%2], Weight: 1, Source: src, At: time.Now().Add(time.Duration(i) * time.Second)})
+		}
+		return labels
+	}
+	if s := lineStateOf(sp, sp.Eval.MinN, "m1", sp.Hash(), mk(sp.Eval.MinN, "outcome", true), false); s.Kind != lineCollecting || s.N != 3 {
+		t.Fatalf("同じ入力の付け直しは 1 件に数える: %+v", s)
+	}
+	if s := lineStateOf(sp, sp.Eval.MinN, "m1", sp.Hash(), mk(sp.Eval.MinN, "context", false), false); s.Kind != lineCollecting || s.N != 0 {
+		t.Fatalf("機械の正解(context)は数えない: %+v", s)
 	}
 }
