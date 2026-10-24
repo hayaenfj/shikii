@@ -1723,6 +1723,9 @@ func hookInstall(args []string, install bool) error {
 				fmt.Fprintf(stdout, "%s: the shikii section updated\n", tilde(path))
 			}
 		}
+		// 0.8 系は、種類と場面を付けた記事を「変更あり」と見なして保存を全部断る(記事は壊れない)。開いたままのセッションの MCP と、
+		// 同じ wiki を使う別の機械が古いまま残らないように伝える(監査 0.9.0 の B3)
+		fmt.Fprintln(stdout, "注意: 開いているエージェントのセッション(と MCP)は開き直してください。0.8 系は種類と場面を付けた wiki の記事を読めず、保存を断ります。同じ wiki を使う機械は全部 0.9.0 にします。")
 		// 0.7.0 を跨ぐ最初の実行なら各プロジェクトの .shikii/ を消して初期化し直す(update の最後に新しい本体で呼ばれるのはここ)。
 		exe, err := os.Executable()
 		if err != nil {
