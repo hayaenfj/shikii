@@ -258,3 +258,73 @@ func TestLineStateCountsLatestPerInputAndHumanSourcesSeparately(t *testing.T) {
 		t.Fatalf("機械の正解(context)は数えない: %+v", s)
 	}
 }
+
+// 再々監査のテストの穴: 結果から正解が付く問い(changes-in-scope)で線が引けた時の文と、日本語の文。日本語の設定では英語の後に
+// 日本語が続き、人に聞かない問いで「聞きます」「人に聞くことはありません」と抜き取りの話を混ぜない。
+func TestLineNoticeOutcomeCalibratedAndJapanese(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	home, _ := os.UserHomeDir()
+	os.MkdirAll(filepath.Join(home, ".claude"), 0o700)
+	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"language":"japanese"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(repo, ".shikii")
+	st := store.Store{Dir: root}
+	add := func(specID, truth string, n int) {
+		sp := mustLoad(t, filepath.Join(root, "decisions", specID+".yaml"))
+		var labels []store.Label
+		for i := 0; i < n; i++ {
+			id := fmt.Sprintf("%s-%s-%03d", specID, truth, i)
+			labels = append(labels, store.Label{TraceID: id, SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Model: "m1", InputsHash: id, Truth: truth, Weight: 1, Source: "outcome", At: time.Now()})
+		}
+		if err := st.AppendLabels(labels); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calibrate := func(id string) {
+		sp := mustLoad(t, filepath.Join(root, "decisions", id+".yaml"))
+		sp.Calibration = []spec.Calibration{{Model: "m1", SpecHash: sp.Hash(), Method: "platt", N: sp.Eval.MinN}}
+		if err := sp.Save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pick := func(all, id string) string {
+		var out []string
+		for _, l := range strings.Split(all, "\n") {
+			if strings.Contains(l, id) {
+				out = append(out, l)
+			}
+		}
+		return strings.Join(out, "\n")
+	}
+	for _, id := range []string{"changes-in-scope", "wiki-place", "needs-plan"} {
+		sp := mustLoad(t, filepath.Join(root, "decisions", id+".yaml"))
+		add(id, "yes", sp.Eval.MinN)
+	}
+	one := lineSummary(root)
+	if l := pick(one, "changes-in-scope"); !strings.Contains(l, "答えが片方だけ") || !strings.Contains(l, "結果から付くのを待ちます") || strings.Contains(l, "今までどおり聞きます") {
+		t.Fatalf("結果の問いは日本語でも結果を待つと言う: %q", l)
+	}
+	if l := pick(one, "needs-plan"); !strings.Contains(l, "今までどおり聞きます") {
+		t.Fatalf("人が答える問いは日本語でも聞き続けると言う: %q", l)
+	}
+	for _, id := range []string{"changes-in-scope", "wiki-place", "needs-plan"} {
+		calibrate(id)
+	}
+	drawn := lineSummary(root)
+	scope := pick(drawn, "changes-in-scope")
+	if !strings.Contains(scope, "a line was drawn for changes-in-scope") || !strings.Contains(scope, "wait for results to supply the truth") || strings.Contains(scope, "the rest still ask") ||
+		!strings.Contains(scope, "線が引けました") || !strings.Contains(scope, "迷っても人に聞かず、結果から正解が付くのを待ちます") || strings.Contains(scope, "今までどおり聞きます") {
+		t.Fatalf("結果の問いで線が引けた時は、残りも人に聞かず結果を待つと言う(英語と日本語): %q", scope)
+	}
+	if l := pick(drawn, "wiki-place"); !strings.Contains(l, "人に聞くことはなく") || strings.Contains(l, "抜き取り") {
+		t.Fatalf("wiki の問いは人に聞かず、抜き取りの話をしない: %q", l)
+	}
+	if l := pick(drawn, "needs-plan"); !strings.Contains(l, "それ以外は今までどおり聞きます") || !strings.Contains(l, "抜き取り") {
+		t.Fatalf("人が答える問いは、残りを聞き、抜き取りが出ると言う: %q", l)
+	}
+}

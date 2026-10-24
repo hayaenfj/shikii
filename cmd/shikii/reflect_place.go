@@ -378,12 +378,23 @@ func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]
 		text += "\n" + *d.Body
 	}
 	have := bigrams(text)
+	known := map[string]bool{} // 合流先の今の教訓に既にある語の並び。言い直しただけの草稿を、本当に足した草稿より上にしない(再々監査の新-B)
+	for l, id := range pageOf {
+		if targets[id] {
+			for b := range bigrams(l) {
+				known[b] = true
+			}
+		}
+	}
 	best, bestScore, bestAt := "", 0.0, time.Time{}
 	for placed, g := range groups {
 		if !g.hasTarget || now.Sub(g.at) > placeMatchWindow {
 			continue
 		}
 		want := bigrams(placed)
+		for b := range known {
+			delete(want, b)
+		}
 		if len(want) == 0 {
 			continue
 		}
