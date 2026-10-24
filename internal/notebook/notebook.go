@@ -86,6 +86,8 @@ type Draft struct {
 	ChangeReason string            `json:"change_reason,omitempty"`
 	Kind         string            `json:"kind,omitempty"`  // 種類(Kinds のどれか)。教訓のある記事は必須、直す時に省けば引き継ぐ
 	Scene        string            `json:"scene,omitempty"` // 場面(「〜する時」)。同上
+	// baseRevision は classify が元にした記事の版。錠の中で今の版と違えば断る(同時の直しを古い教訓で戻さない。監査 0.9.0 の B1)
+	baseRevision string
 }
 
 type Issue struct {
@@ -669,6 +671,9 @@ func (b Book) Ingest(d Draft) (Result, error) {
 			}
 		}
 		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related, Kind: d.Kind, Scene: d.Scene}
+		if d.baseRevision != "" && byID[id].Revision != d.baseRevision {
+			return result, errors.New("the page changed while classifying; read it again and classify / 種類と場面を付ける間に記事が直されました。読み直して付け直してください")
+		}
 		if old, ok := byID[id]; ok { // 直す時に省けば引き継ぐ(前の版の記事は持っていないので、付けないと保存できない)
 			if p.Kind == "" {
 				p.Kind = old.Kind
@@ -1126,7 +1131,8 @@ func (b Book) Classify(id, kind, scene string) (Result, error) {
 		for _, s := range p.Sources {
 			sources = append(sources, s.ID)
 		}
-		return b.Ingest(Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: sources, Kind: kind, Scene: scene, ChangeReason: "種類と場面を付けた(0.9.0)"})
+		// 変更理由は空にして前の理由を引き継ぐ(監査 0.9.0 の D1)。元にした版を持たせ、錠の中で比べる(B1)
+		return b.Ingest(Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: sources, Kind: kind, Scene: scene, baseRevision: p.Revision})
 	}
 	return Result{}, errors.New("the page to classify is not a live lesson in this project / 種類と場面を付ける記事がこのプロジェクトにありません")
 }
