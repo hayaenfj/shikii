@@ -65,6 +65,7 @@
   display:inline-block; border:1px solid var(--color-line); border-radius:7px; color:var(--color-muted); font-size:10px; padding:3px 8px;
   &.calibrated { color:var(--color-accent); background:var(--color-accentbg); }
   &.ready { color:var(--color-amber); background:var(--color-amberbg); }
+  &.one_answer, &.not_separable { color:var(--color-amber); border-style:dashed; } /* 正解は足りたが線を引けない(0.8.3) */
 }
 @utility empty-state {
   display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:210px; border:1px dashed var(--color-line); border-radius:15px; background:var(--color-surface); color:var(--color-muted); text-align:center; padding:30px; font-size:13px; margin:16px 0;

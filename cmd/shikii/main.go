@@ -1941,11 +1941,8 @@ func cmdStatus(args []string) error {
 					note += "  calibrated: " + rs.CalibrationFor(parts[0]).Method
 				default:
 					// 件数だけで「線を引ける」と言わない(0.8.3): 片方の答えしか無い・試して分けられなかった・自動で引く途中を分ける
-					stuck := false
-					if parts[1] == sp.Hash() || parts[1] == sp.ContextHash() { // 自動の較正は文脈の段の線も同じ時に試す
-						_, stuck = stuckWording(*storeDir, id)
-					}
-					note += lineStateOf(rs, sp.Eval.MinN, parts[0], parts[1], labs, stuck).statusNote(rs, sp.Eval.MinN)
+					tried := (parts[1] == sp.Hash() || parts[1] == sp.ContextHash()) && triedWithoutLine(*storeDir, sp, parts[0]) // 文脈の段も同じ時に試す
+					note += lineStateOf(rs, sp.Eval.MinN, parts[0], parts[1], labs, tried).statusNote(rs, sp.Eval.MinN)
 				}
 			}
 			fmt.Fprintf(stdout, "  %-50s %4d%s\n", key, n, note)

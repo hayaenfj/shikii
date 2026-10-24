@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -30,11 +32,19 @@ type lineState struct {
 	Truths map[string]int
 }
 
-// lineStateOf は、(hash, model) の正解から線の状態を決める。stuck は、その組で自動の較正を試して引けなかったか(stuckWording)。
-func lineStateOf(rs *spec.Spec, minN int, model, hash string, labs []store.Label, stuck bool) lineState {
+// lineStateOf は、(hash, model) の正解から線の状態を決める。数え方は自動の較正(hookMaybeCalibrate)と同じで、入力ごとに最新の 1 件、
+// 人と結果の正解だけ(監査 0.8.3 の M3)。tried は、そのモデルで自動の較正を試して線が引けなかったか(triedWithoutLine)。
+// 答えが片方だけで線を引けないのは noul だけ(choice は正解が 1 種類でも生の確率の確かめで線を引ける。監査 0.8.3 の L2)。
+func lineStateOf(rs *spec.Spec, minN int, model, hash string, labs []store.Label, tried bool) lineState {
 	s := lineState{Truths: map[string]int{}}
+	var mine []store.Label
 	for _, l := range labs {
 		if l.Model == model && l.SpecHash == hash {
+			mine = append(mine, l)
+		}
+	}
+	for _, l := range store.LatestPerInput(mine) {
+		if store.HumanSource(l.Source) {
 			s.N++
 			s.Truths[l.Truth]++
 		}
@@ -44,14 +54,26 @@ func lineStateOf(rs *spec.Spec, minN int, model, hash string, labs []store.Label
 		s.Kind = lineCalibrated
 	case s.N < minN:
 		s.Kind = lineCollecting
-	case len(s.Truths) < 2:
+	case rs.Type == spec.Noul && len(s.Truths) < 2:
 		s.Kind = lineOneAnswer
-	case stuck:
+	case tried:
 		s.Kind = lineNotSeparable
 	default:
 		s.Kind = lineReady
 	}
 	return s
+}
+
+// triedWithoutLine は、この文言とモデルで自動の較正を試し、線が引けなかったか(控え calibrating-<id> の時刻・モデル・文言で見る)。
+// 別のモデルで試した控えでは true にしない(監査 0.8.3 の L1)。文脈の段も同じ時に試すので、最小の質問の文言で見る。
+func triedWithoutLine(storeDir string, sp *spec.Spec, model string) bool {
+	guard := filepath.Join(storeDir, "calibrating-"+sp.ID)
+	info, err := os.Stat(guard)
+	if err != nil || time.Since(info.ModTime()) < hookCalibrateGap {
+		return false // 試していないか、まだ走っているかもしれない
+	}
+	_, ok := lastCalibrateAttempt(guard, sp.Hash(), model)
+	return ok
 }
 
 // statusNote は status の行に付ける説明(英語、status の他の行と同じ)。
@@ -64,7 +86,7 @@ func (s lineState) statusNote(rs *spec.Spec, minN int) string {
 	case lineOneAnswer:
 		return fmt.Sprintf("  only one answer so far (%s): a line needs both answers", fmtCounts(s.Truths))
 	case lineNotSeparable:
-		return "  tried: the answers could not be separated with this wording and model (no line; other wordings are being tried)"
+		return "  tried: the answers could not be separated with this wording and model (no line yet; tried again as truths grow)"
 	default:
 		return fmt.Sprintf("  enough truths: the line is drawn automatically (>= min_n %d)", minN)
 	}
@@ -96,8 +118,7 @@ func currentLineState(agent string, sp *spec.Spec) (model string, s lineState, o
 		return models[i] < models[j]
 	})
 	model = models[0]
-	_, stuck := stuckWording(agent, sp.ID)
-	return model, lineStateOf(sp, sp.Eval.MinN, model, sp.Hash(), labs, stuck), true
+	return model, lineStateOf(sp, sp.Eval.MinN, model, sp.Hash(), labs, triedWithoutLine(agent, sp, model)), true
 }
 
 // lineSummary は、本人に知らせる線の状態の変化(Stop の systemMessage)。spec ごとに、状態・文言・モデルが変わった時だけ 1 回。
@@ -125,19 +146,33 @@ func lineSummary(agent string) string {
 			name = d.Title + "(" + id + ")"
 		}
 		loc := hookLoc{Lang: hookLang()}
+		machine := machineOnlySpecs[id]            // 人に聞かない問い(wiki の差し込み先・矛盾)。AI が答え、正解は結果から
+		wordings := slices.Contains(hookSpecs, id) // 線が引けない時に、エージェントへ別の聞き方の候補を頼む問い(hook の 4 問)
 		switch s.Kind {
 		case lineCalibrated:
+			en, ja := "From now on, decisions above the line go ahead without asking (act); the rest still ask, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは確信が線より上の判断は人に聞かずに進み(act)、それ以外は今までどおり聞きます。act の 20 件に 1 件は抜き取りで画面に出ます。"
+			if machine {
+				en, ja = "Its answers now carry a checked confidence (act) for the agent; nothing is asked of you, and lessons are never replaced silently.", "これからはその答えに、線で確かめた確信(act)が付いてエージェントへ渡ります。人に聞くことはなく、教訓を黙って置き換えることもありません。"
+			}
 			lines = append(lines, bi(
-				fmt.Sprintf("shikii: a line was drawn for %s (%d truths). From now on, decisions above the line go ahead without asking (act); the rest still ask. %s", id, s.N, projectPageURL(agent)),
-				fmt.Sprintf("shikii: 判定「%s」に線が引けました(正解 %d 件)。これからは確信が線より上の判断は人に聞かずに進み(act)、それ以外は今までどおり聞きます。%s", name, s.N, pageRef(filepath.Dir(agent))), loc))
+				fmt.Sprintf("shikii: a line was drawn for %s (%d truths). %s %s", id, s.N, en, projectPageURL(agent)),
+				fmt.Sprintf("shikii: 判定「%s」に線が引けました(正解 %d 件)。%s %s", name, s.N, ja, pageRef(filepath.Dir(agent))), loc))
 		case lineOneAnswer:
+			en, ja := "It keeps asking until the other answer appears.", "もう片方の答えが付くまで、今までどおり聞きます。"
+			if machine {
+				en, ja = "The AI keeps answering it without a line; nothing is asked of you.", "線が無いまま AI が答え続けます。人に聞くことはありません。"
+			}
 			lines = append(lines, bi(
-				fmt.Sprintf("shikii: %s has %d truths but only one answer so far (%s), so no line can be drawn yet. It keeps asking until the other answer appears.", id, s.N, fmtCounts(s.Truths)),
-				fmt.Sprintf("shikii: 判定「%s」は正解が %d 件たまりましたが、答えが片方だけ(%s)なので線を引けません。もう片方の答えが付くまで、今までどおり聞きます。", name, s.N, fmtCounts(s.Truths)), loc))
+				fmt.Sprintf("shikii: %s has %d truths but only one answer so far (%s), so no line can be drawn yet. %s", id, s.N, fmtCounts(s.Truths), en),
+				fmt.Sprintf("shikii: 判定「%s」は正解が %d 件たまりましたが、答えが片方だけ(%s)なので線を引けません。%s", name, s.N, fmtCounts(s.Truths), ja), loc))
 		case lineNotSeparable:
+			en, ja := fmt.Sprintf("It is tried again when %d more truths arrive.", hookRecalibrateEvery), fmt.Sprintf("正解が %d 件増えたら、もう一度試します。", hookRecalibrateEvery)
+			if wordings {
+				en, ja = "The agent is asked for other wordings, which are scored on the same truths; it is also tried again as truths grow.", "エージェントに別の聞き方の候補を頼み、同じ正解で採点します。正解が増えた時にももう一度試します。"
+			}
 			lines = append(lines, bi(
-				fmt.Sprintf("shikii: %s has %d truths, but the answers could not be separated with this wording and model, so no line was drawn. Other wordings are being tried automatically.", id, s.N),
-				fmt.Sprintf("shikii: 判定「%s」は正解が %d 件たまりましたが、今の聞き方とモデルでは答えを分けられず、線を引けませんでした。別の聞き方を自動で試しています。", name, s.N), loc))
+				fmt.Sprintf("shikii: %s has %d truths, but the answers could not be separated with this wording and model, so no line was drawn. %s", id, s.N, en),
+				fmt.Sprintf("shikii: 判定「%s」は正解が %d 件たまりましたが、今の聞き方とモデルでは答えを分けられず、線を引けませんでした。%s", name, s.N, ja), loc))
 		}
 	}
 	return strings.Join(lines, "\n")
