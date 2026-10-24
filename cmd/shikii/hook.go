@@ -33,6 +33,7 @@ import (
 
 	shikii "github.com/hayaenfj/shikii"
 	"github.com/hayaenfj/shikii/internal/decide"
+	"github.com/hayaenfj/shikii/internal/handoff"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 	"github.com/hayaenfj/shikii/internal/systemone"
@@ -1655,7 +1656,11 @@ func hookInstall(args []string, install bool) error {
 			for _, p := range plan {
 				switch p.Action {
 				case wipeDo:
-					fmt.Fprintf(stdout, "   - 消す: %s\n", p.Project.Path)
+					note := ""
+					if files, err := (handoff.Book{Store: filepath.Join(p.Project.Path, ".shikii")}).List(); err == nil && len(files) > 0 {
+						note = fmt.Sprintf("(作業記録 %d 件(.shikii/handoff/)も消えます)", len(files))
+					}
+					fmt.Fprintf(stdout, "   - 消す: %s%s\n", p.Project.Path, note)
 				case wipeDone:
 					fmt.Fprintf(stdout, "   - 済み: %s (%s)\n", p.Project.Path, p.Reason)
 				case wipeRefuse:
