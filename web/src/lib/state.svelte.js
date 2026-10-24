@@ -9,7 +9,7 @@ import { read, write } from './prefs.js';
 // URL の ?spec=<id>&trace=<trace_id> で、その判定を開いた状態で始める(hook の「あとで答える → URL」から来る)。pinned の 1 件は列の先頭に出る
 const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 export const ui = $state({
-  advanced: read('shikii.mode') === 'advanced',
+  advanced: true, // 「かんたん表示」は廃止(0.8.1)。常に全部見せる。保存していた shikii.mode は読まない
   showHelp: read('shikii.help') !== 'hidden',
   tab: params.get('spec') || read('shikii.tab'),
   pinned: params.get('trace') || '',
@@ -24,7 +24,6 @@ export const ui = $state({
 export const skipped = new SvelteSet();
 export const data = $state({ state: null, loadError: '' });
 
-export function setAdvanced(v) { ui.advanced = v; write('shikii.mode', v ? 'advanced' : 'simple'); }
 export function setShowHelp(v) { ui.showHelp = v; write('shikii.help', v ? 'shown' : 'hidden'); }
 export function setTab(v) { ui.tab = v; write('shikii.tab', v); }
 export function setView(v) { ui.view = v; write('shikii.view', v); }
@@ -32,7 +31,7 @@ export function setView(v) { ui.view = v; write('shikii.view', v); }
 // ナビと読取りで同じ選択規則を使う。知識は未読でも、くわしく表示から開ける。
 export function selectedTab(st, selection = ui) {
   if (!st?.specs?.length) return null;
-  if (selection.advanced && selection.tab === 'wiki') return 'wiki';
+  if (selection.tab === 'wiki') return 'wiki';
   return st.specs.find(s => s.id === selection.tab)?.id
     || st.specs.find(s => s.waiting_for_person > 0)?.id || st.specs[0].id;
 }
@@ -54,7 +53,7 @@ export async function load() {
         // 回答済みでは未回答の列を読まない。
         const [rows, tune] = await Promise.all([
           selection.done ? api.answered(tab) : api.queue(tab),
-          selection.advanced && !selection.done ? api.tune(tab).catch(() => null) : null,
+          !selection.done ? api.tune(tab).catch(() => null) : null,
         ]);
         if (selection.done) sp.answered = rows.items;
         else sp.queue = rows;

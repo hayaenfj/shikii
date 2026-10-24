@@ -80,7 +80,7 @@ export default {
   langName: '日本語',
   helpTitle: '使い方', langLabel: '言語', bandAbstain: 'AI は判定しませんでした(入力が足りない)。', truthsCount: n => n + ' 件の正解', tableHead: ['候補', 'top-1', 'brier', 'act の精度', 'act の再現率'], yesTo: 'はい→', noTo: 'いいえ→',
   tagline: '会話を振り返り、次の判断へ。', loading: '読み込み中…', noSpecs: 'まだ判定が登録されていません', empty: '答え合わせ待ちはありません。AI が何かを判定すると、ここに並びます。',
-  modeSimple: 'かんたん表示', modeAdvanced: 'くわしく', keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」、→ でスキップ',
+  keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」、→ でスキップ',
   tabKnowledge: '知識', viewOne: '1 件ずつ', viewList: '一覧', skip: 'スキップ(あとで)', position: (i, n) => i + ' / ' + n + ' 件', more: m => 'ほかに ' + m + ' 件待っています', showMore: m => 'さらに表示(' + m + ' 件)', unskip: n => 'スキップした ' + n + ' 件を戻す', emptyFiltered: 'この種類の待ちはありません',
   chip_all: '全部', chip_ask: 'AI が迷った', chip_audit: '抜き取り', auditShort: '抜き取り', byProject: '仕事ごと:',
   viewTodo: '未回答（あなた）', viewDone: '回答済み', viewResults: '次の依頼・振り返りで確定する', viewResultsMachine: '振り返りで確定する', viewSettledByAI: 'AI が決めた（答えなくてよい）', settledByAILane: 'ここは AI が確信して決めた記録で、抜き取りに当たらなかったものです。答えなくてよいですが、違うと思えば直せます。', viewDoneMachine: '確定済み', emptyResults: '結果待ちはありません。', resultsLane: 'ここは AI が判定した記録で、正解は次の依頼の結果や振り返りから自動で付きます。あなたが答えるものではありません。', machineOnlyLane: 'ここは AI だけが答える問いです。振り返りで記事をどう扱ったか（置き換えた・足した）で確定します。', yourAnswer: (name, when) => 'あなたの答え: ' + name + '(' + when + ')', changeAnswer: '別のボタンを押すと答えを直せます。いちばん新しい答えが使われます。', redo: 'AI にもう一度聞く', redoHint: '今の聞き方と線で同じ本文をもう一度判定します。あなたの答えはそのまま残ります', redoResult: (b, a) => '前: ' + b + '  →  今: ' + a, redoAgree: 'あなたの答えと一致しました', redoDisagree: 'まだあなたの答えと違います', noneAnswered: '回答済みのものはまだありません', wasRedone: 'もう一度聞いた結果',

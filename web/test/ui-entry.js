@@ -617,24 +617,23 @@ function loadingSpecs() {
   return ['needs-plan', 'done-as-asked', 'prompt-kind', 'changes-in-scope'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 1, waiting_for_person: 1, person_answers: true }));
 }
 
-// 表示中の情報だけを取得する。回答済み・知識・くわしくへの切替も取りこぼさない。
+// 表示中の情報だけを取得する。回答済み・知識への切替も取りこぼさない(「かんたん表示」は 0.8.1 で廃止: 聞き方の候補も常に読む)。
 async function checkFocusedLoading() {
   const realFetch = globalThis.fetch, state = data.state;
   const saved = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
   let calls = [];
   globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [] } : url.startsWith('v1/tune') ? { variants: [] } : { items: [] } }; };
-  ui.tab = 'needs-plan'; ui.advanced = false; ui.done = false;
+  ui.tab = 'needs-plan'; ui.done = false;
   await load();
-  const simple = calls.length === 2 && calls[1] === 'v1/queue?spec=needs-plan&limit=200';
-  calls = []; ui.advanced = true; await load();
-  const advanced = calls.length === 3 && calls.includes('v1/tune?spec=needs-plan') && !calls.includes('v1/wiki');
+  const simple = calls.length === 3 && calls[1] === 'v1/queue?spec=needs-plan&limit=200' && calls.includes('v1/tune?spec=needs-plan') && !calls.includes('v1/wiki');
+  const advanced = true;
   calls = []; ui.done = true; await load();
   const answered = calls.length === 2 && calls.includes('v1/answered?spec=needs-plan&limit=200') && !calls.some(url => url.startsWith('v1/queue') || url.startsWith('v1/tune'));
   calls = []; ui.tab = 'wiki'; await load();
   const knowledge = calls.length === 2 && calls[1] === 'v1/wiki' && !!data.state.wiki;
   globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = simple && advanced && answered && knowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (必要な2要求=' + simple + ', 詳細は表示時だけ=' + advanced + ', 回答済みを取得=' + answered + ', 知識は選択時だけ=' + knowledge + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (必要な3要求=' + simple + ', 回答済みを取得=' + answered + ', 知識は選択時だけ=' + knowledge + ')');
   return ok;
 }
 
@@ -677,7 +676,7 @@ async function checkLazyNavigation(target) {
   data.state = null; ui.tab = 'needs-plan'; ui.advanced = false; ui.done = false;
   const app = mount(App, { target }); flushSync();
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
-  await settle(); const initial = calls.length === 2 && !!target.querySelector('.decision-panel');
+  await settle(); const initial = calls.length === 3 && calls.includes('v1/tune?spec=needs-plan') && !!target.querySelector('.decision-panel'); // status・列・聞き方の候補
   calls = []; target.querySelector('[data-tab="done-as-asked"]')?.click(); flushSync(); await settle();
   const switched = calls.includes('v1/queue?spec=done-as-asked&limit=200') && !!target.querySelector('.decision-panel');
   calls = []; target.querySelector('.answer-tabs [data-lane="done"]')?.click(); flushSync(); await settle();
@@ -686,11 +685,11 @@ async function checkLazyNavigation(target) {
   target.querySelector('.answer-tabs [data-lane="you"]')?.click(); flushSync(); await settle();
   const waiting = !!target.querySelector('[role="status"]') && !target.querySelector('.decision-panel');
   holdQueue = false; releaseQueue?.({ items: [] }); await settle();
-  target.querySelector('#mode')?.click(); flushSync(); await settle(); calls = [];
+  calls = [];
   const wiki = target.querySelector('[data-tab="wiki"]'); wiki?.click(); flushSync(); await settle();
   const knowledge = !!wiki && calls.filter(url => url === 'v1/wiki').length === 1 && !calls.some(url => url.startsWith('v1/queue')) && target.querySelector('.notebook h2')?.textContent.includes(t('notebookTitle'));
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = initial && switched && answered && waiting && knowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回2要求=' + initial + ', タブ切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 切替中は読込み待ち=' + waiting + ', 未読の知識を開く=' + knowledge + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回3要求=' + initial + ', タブ切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 切替中は読込み待ち=' + waiting + ', 未読の知識を開く=' + knowledge + ')');
   return ok;
 }

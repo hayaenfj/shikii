@@ -29,7 +29,7 @@
       </div>
     {/if}
   {/each}
-  {#if ui.advanced && hasWiki}
+  {#if hasWiki}
     <div class="nav-group">
       <div class="nav-group-label">{t('navKnowledge')}</div>
       <button type="button" data-tab="wiki" aria-current={active === 'wiki' ? 'page' : undefined} class:active={active === 'wiki'} onclick={() => setTab('wiki')}><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-title">{t('tabKnowledge')}</span></button>

@@ -67,7 +67,7 @@
   <div class="panel-eyebrow">{t('workspaceTitle')} <span aria-hidden="true">/</span> {t('decisionNav')}</div>
   <h2>
     {#if title}{title} <span class="k adv">{sp.id}</span>{:else}{sp.id}{/if}
-    <span class="adv">
+    <span>
       <span class="pill">{sp.type}</span>
       {#each sp.keys as k}<span class="pill {k.state}">{pillText(k)}</span> {/each}
       <span class="pill">{t('records')(sp.records)} · {t('answered')(sp.labels)}</span>
@@ -96,7 +96,7 @@
     <div class="calibration-report">
       <strong>{t('last')}</strong>{#if calibration?.at}<time>{calibration.at}</time>{/if}
       <p class="calibration-summary">{calibrationSummary}</p>
-      <details class="adv"><summary>{t('calibrationDetails')}</summary><pre>{sp.last_calibration}</pre></details>
+      <details><summary>{t('calibrationDetails')}</summary><pre>{sp.last_calibration}</pre></details>
     </div>
   {/if}
   {#if sp.review_quality?.scored}<p class="k review-quality">{t('reviewQuality')(sp.review_quality)}</p>{/if}
@@ -145,6 +145,6 @@
         <button type="button" class="weak" onclick={() => { ui.listSize += 30; }}>{t('showMore')(Math.max(0, visible.length - ui.listSize) + extra)}</button>
       {/if}
     {/if}
-    {#if ui.advanced}<Wording {sp} />{/if}
+    <Wording {sp} />
   {/if}
 </section>

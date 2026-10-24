@@ -68,7 +68,7 @@
   }
 </script>
 
-<section class="adv notebook">
+<section class="notebook">
   <h2>{t('notebookTitle')} {#if wiki.notebook_project}<span class="pill project">{wiki.notebook_project}</span>{/if}</h2>
   <p class="k">{t('notebookHow')}</p>
   {#if wiki.knowledge_usage}

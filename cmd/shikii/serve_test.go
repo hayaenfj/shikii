@@ -289,7 +289,7 @@ func TestServeQueueMarksItemsWithoutTextAsUnanswerable(t *testing.T) {
 	}
 }
 
-// IT に詳しくない人のための画面: 既定は「かんたん表示」で、主張・言い換えの案・ハッシュ・モデル名は「くわしく」に隠れる。
+// IT に詳しくない人のための画面: 人の言葉で聞き、専門語を出さない。「かんたん表示 / くわしく」の切替は 0.8.1 で廃止し、常に全部見せる(切替のボタン・保存した好み・隠す印は出ない)。
 // 判定ごとに人の言葉の質問、AI の予想と自信、「AI と同じ」ボタン、キー操作、学習の進み具合が出る。専門用語は画面に出さない。
 func TestServeUIIsBeginnerFriendly(t *testing.T) {
 	url, specPath, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
@@ -299,12 +299,12 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := uiText(t, url)
-	for _, must := range []string{`id="mode"`, "かんたん表示", "くわしく", "AI の予想", "AI と同じ", "1〜9", "まだ学習中", "class=\"adv\"", "shikii.mode"} {
+	for _, must := range []string{"AI の予想", "AI と同じ", "1〜9", "まだ学習中", "data-tab=\"wiki\""} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("beginner view missing %q", must)
 		}
 	}
-	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h"} {
+	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h", `id="mode"`, "かんたん表示", "shikii.mode", "class=\"adv\"", "body.advanced"} {
 		if strings.Contains(body, never) {
 			t.Fatalf("jargon must not appear in the page: %q", never)
 		}
@@ -321,7 +321,7 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 	}
 }
 
-// 件数が増えた時の見せ方: 判定ごとのタブ(待ち件数の印)、1 件ずつ / 一覧、種類の数で絞り込み、スキップ、ほかに待っている数。知識のタブは「くわしく」の時だけ。
+// 件数が増えた時の見せ方: 判定ごとのタブ(待ち件数の印)、1 件ずつ / 一覧、種類の数で絞り込み、スキップ、ほかに待っている数。知識のタブは常に出る(0.8.1)。
 func TestServeUIHasTabsAndScalesToManyItems(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)

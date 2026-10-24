@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.8.1 — unreleased
+
+- Page: the "simple / detailed" toggle is gone; the page always shows everything (knowledge tab, model pills, wording candidates, calibration details). The stored preference is ignored.
+
 ## 0.8.0 — Rituals that must be done, one page per project, and a page that says what is for you
 
 - Conflict judgments (`wiki-conflict`) whose draft was saved but did not touch that page get no truth; they are now counted as "settled without a truth" (`undecided` in `/v1/status`) and leave the "Settled by reflection" lane instead of waiting forever (61 of them did).
