@@ -9,6 +9,7 @@ import SpecPanel from '../src/components/SpecPanel.svelte';
 import Wording from '../src/components/Wording.svelte';
 import Notebook from '../src/components/Notebook.svelte';
 import Handoff from '../src/components/Handoff.svelte';
+import Lessons from '../src/components/Lessons.svelte';
 import ItemCard from '../src/components/ItemCard.svelte';
 import Tabs from '../src/components/Tabs.svelte';
 import App from '../src/App.svelte';
@@ -282,7 +283,8 @@ export async function run() {
   const lanesOK = await checkLanesForPersonSpec(target);
   const conflictsOK = await checkUtilityConflicts(target);
   const handoffOK = await checkHandoff(target);
-  const ok = handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const lessonsOK = checkLessons(target);
+  const ok = lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -817,5 +819,37 @@ async function checkHandoff(target) {
   globalThis.fetch = realFetch; i18n.lang = lang;
   const ok = folded && listed && text && image && empty;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (作業記録: 畳んで始まる=' + folded + ', 開くとファイル=' + listed + ', 文字はそのまま=' + text + ', 画像は画像=' + image + ', 空と言う=' + empty + ')');
+  return ok;
+}
+
+// 知識の正面(0.9.0): 場面を選ぶとその場面の題だけ、題を押すと本文、場面の無い記事は「未分類」、受け箱は例外だけ、長い依頼は押すと全文、
+// 種類ごとに 4 本と「ほか N 本」。HTML は文字のまま出す。
+function checkLessons(target) {
+  try { localStorage.removeItem('shikii.scene'); } catch { /* 無くてよい */ }
+  const mk = (i, kind, scene) => ({ id: String(i).padStart(16, '0'), title: '記事 ' + i, lesson: '教訓 ' + i + ' <b>太字ではない</b>', applies_to: 'a', kind, scene, sources: [], related: [] });
+  const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'コミットする時'), mk(3, 'rule', '公開する時'), mk(4, 'rule', '公開する時'), mk(5, 'rule', '公開する時'), mk(6, 'howto', '公開する時'), mk(7, '', '')];
+  const long = '依頼の文がとても長い。'.repeat(10);
+  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { updated: '2026-10-24T00:00:00Z', helpful: 3, harmful: 0 } }, inbox: [{ kind: 'harmful', lesson_id: lessons[0].id, lesson: '教訓 1' }],
+    memory_effect: { stats: { delivered: 5, helpful: 1, unused: 3, harmful: 1 }, corrections: {}, recent: [{ request: long, quote: { lesson: '届けた教訓' }, assessment: { result: 'harmful' } }] } };
+  const app = mount(Lessons, { target, props: { wiki } }); flushSync();
+  const q = sel => target.querySelector(sel);
+  const scenes = [...target.querySelectorAll('[data-scenes] [data-scene]')].map(b => b.dataset.scene);
+  const sceneList = scenes.length === 3 && scenes[0] === '公開する時' && scenes[2] === '__none__';
+  const ruleItems = () => [...target.querySelectorAll('[data-kind="rule"] [data-open]')].map(b => b.textContent.trim());
+  const firstFour = ruleItems().length === 4 && ruleItems()[0].startsWith('記事 5') && !!q('[data-kind-more="rule"]');
+  q('[data-scene="コミットする時"]').click(); flushSync();
+  const filtered = ruleItems().length === 2 && ruleItems().every(t => t === '記事 1' || t === '記事 2') && !q('[data-kind="howto"]');
+  q('[data-kind="rule"] [data-open]').click(); flushSync();
+  const detail = q('[data-lesson-detail]')?.textContent.includes('<b>太字ではない</b>') && !q('[data-lesson-detail] b');
+  q('[data-scene="__none__"]').click(); flushSync();
+  const none = q('[data-kinds]')?.textContent.includes('記事 7') && !q('[data-kind="rule"]');
+  const inbox = q('[data-inbox-item="harmful"]')?.textContent.includes('記事 1');
+  const clip = q('[data-clip="req0"]');
+  const short = clip && !clip.textContent.includes(long);
+  clip?.click(); flushSync();
+  const full = !!clip && q('[data-clip="req0"]').textContent.includes(long);
+  unmount(app);
+  const ok = sceneList && firstFour && filtered && detail && none && inbox && short && full;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (知識の正面: 場面の一覧=' + sceneList + ', 種類ごとに 4 本と続き=' + firstFour + ', 場面で絞る=' + filtered + ', 本文は文字のまま=' + detail + ', 未分類=' + none + ', 受け箱=' + inbox + ', 押す前は短い=' + short + ', 押すと全文=' + full + ')');
   return ok;
 }

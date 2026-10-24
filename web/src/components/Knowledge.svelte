@@ -1,15 +1,19 @@
 <script>
-  // 知識の欄: 主張と下書きの一覧(証拠、支持するモデルの数、confirmable の印)。
-  // 人がすること: 下書きを一般化して主張にする(promote)、confirmed / rejected にする(status)、下書きを消す(delete)。機械は status を変えない
+  // 知識の欄(0.9.0): 正面は教訓(場面 → 種類 → 題、Lessons)と作業記録の 2 つのタブ。AI の内部の数(検索・見直し・振り返り)と
+  // 前からの記事の木(Notebook)、以前の主張(手で確かめる物)は、畳んだ「AI の様子と詳しい記録」の中に置く(人が全部を確かめない)
   import { t } from '../lib/i18n.svelte.js';
   import { load } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
   import Notebook from './Notebook.svelte';
   import Handoff from './Handoff.svelte';
+  import Lessons from './Lessons.svelte';
 
   let { wiki } = $props();
   let busyPath = $state('');
+  const readTab = () => { try { return localStorage.getItem('shikii.knowledgeTab') || 'lessons'; } catch { return 'lessons'; } };
+  let tab = $state(readTab());
+  function setTab(v) { tab = v; try { localStorage.setItem('shikii.knowledgeTab', v); } catch { /* 表示は動く */ } }
 
   let claims = $derived((wiki.claims || []).filter(c => c.is_claim));
   let prose = $derived((wiki.claims || []).filter(c => !c.is_claim).length);
@@ -35,11 +39,19 @@
   }
 </script>
 
-<Notebook {wiki} />
+<div class="mb-4 flex gap-2" role="tablist" data-knowledge-tabs>
+  <button type="button" role="tab" aria-selected={tab === 'lessons'} class="rounded-lg border px-3 py-1 text-[13px] {tab === 'lessons' ? 'border-accent bg-accentbg text-accent' : 'border-line bg-transparent text-muted'}" data-knowledge-tab="lessons" onclick={() => setTab('lessons')}>{t('lessonsTab')}</button>
+  <button type="button" role="tab" aria-selected={tab === 'handoff'} class="rounded-lg border px-3 py-1 text-[13px] {tab === 'handoff' ? 'border-accent bg-accentbg text-accent' : 'border-line bg-transparent text-muted'}" data-knowledge-tab="handoff" onclick={() => setTab('handoff')}>{t('handoffTitle')}</button>
+</div>
 
-<Handoff files={wiki.handoff || []} error={!!wiki.handoff_error} />
-
-<section>
+{#if tab === 'handoff'}
+  <Handoff files={wiki.handoff || []} error={!!wiki.handoff_error} />
+{:else}
+  <Lessons {wiki} />
+  <details class="mt-6" data-ai-details>
+    <summary class="cursor-pointer text-muted">{t('aiDetails')}</summary>
+    <Notebook {wiki} />
+<section data-claims>
   <h2 class="max-md:text-[23px]">{t('knowledge')} <span class="pill">{t('claimsCount')(claims.length, prose)}</span></h2>
   {#if !claims.length}<div class="empty-state">{t('noClaims')}</div>{/if}
   {#each claims as c (c.path)}
@@ -68,3 +80,5 @@
     </div>
   {/each}
 </section>
+  </details>
+{/if}
