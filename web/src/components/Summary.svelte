@@ -15,6 +15,8 @@
   const live = s => (s.keys || []).filter(k => k.state !== 'stale');
   const auto = s => live(s).some(k => k.state === 'calibrated');
   const learned = s => live(s).reduce((n, k) => Math.max(n, k.n), 0);
+  // 正解は足りたのに線を引けない理由(0.8.3)。引けていれば出さない
+  const stuckLine = s => auto(s) ? '' : live(s).some(k => k.state === 'not_separable') ? t('not_separable')(learned(s), s.min_n) : live(s).some(k => k.state === 'one_answer') ? t('one_answer')(learned(s), s.min_n) : '';
   let autoCount = $derived(yours.filter(auto).length);
   let resultsWait = $derived(specs.reduce((n, s) => n + (s.awaiting_results || 0), 0));
   const head = 'mt-2.5 mb-1 text-[12px] font-bold tracking-[.04em] text-muted';
@@ -39,10 +41,10 @@
       <p>{t('summaryModel')(model?.name || '', model?.endpoint || '')}</p>
       <ul class="summary-specs">
         {#each yours as s (s.id)}
-          <li><strong>{loc(s.titles, s.id)}</strong>: {auto(s) ? t('summarySpecAuto') : t('summarySpecLearning')(learned(s), s.min_n)}{#if s.awaiting_results} · {t('summarySpecResults')(s.awaiting_results)}{/if}</li>
+          <li><strong>{loc(s.titles, s.id)}</strong>: {auto(s) ? t('summarySpecAuto') : stuckLine(s) || t('summarySpecLearning')(learned(s), s.min_n)}{#if s.awaiting_results} · {t('summarySpecResults')(s.awaiting_results)}{/if}</li>
         {/each}
         {#each machine as s (s.id)}
-          <li><strong>{loc(s.titles, s.id)}</strong>: {t('summarySpecMachine')(s.awaiting_results || 0)}</li>
+          <li><strong>{loc(s.titles, s.id)}</strong>: {t('summarySpecMachine')(s.awaiting_results || 0)}{#if stuckLine(s)} · {stuckLine(s)}{/if}</li>
         {/each}
       </ul>
       {#if m.delivered}

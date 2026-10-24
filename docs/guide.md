@@ -157,11 +157,13 @@ bin/shikii status --store .shikii .shikii/decisions/prompt-kind.yaml
 ```
 
 For each spec it prints the numbers of records and labels, where the labels came from (ask / outcome / file) and how their contents lean, and the count and state for each (model, spec_hash)
-(`calibrated: vector` / `ready to calibrate` / `collecting (n/min_n)` / `stale hash`). This is the first thing to look at when running shikii.
+(`calibrated: vector` / `collecting (n/min_n)` / `only one answer so far` (no line until both answers appear) / `tried: the answers could not be separated` / `enough truths: the line is drawn automatically` / `stale hash`). This is the first thing to look at when running shikii.
 
 The `person's work` line shows how many decisions a person answers under the current rules (unsure decisions that results do not answer, samples of automatic decisions above a line, samples and held cases of the AI's provisional assessments), in total and per 1000 decisions over the last 7 days, and counts separately whether the truth was decided by a person or by a result. `left to a person` under `rungs` is the number of unsure decisions; unsure decisions that a result answers do not wait for a person. Compare this line before and after a change to see whether it reduced people's work.
 
 There are also the `memory:` (lessons delivered and how they did), `guards:` (how many are enabled, turns stopped, how many were fixed), `rituals:` (the routine before and after work) and `page:` (the page's URL) lines.
+
+When a line is newly drawn, or when the truths reached `eval.min_n` but no line can be drawn (only one answer so far, or the answers could not be separated when tried), the Stop hook tells the person once at the end of the turn (Claude Code shows it in the terminal). It is said once per question, again only when the state, the wording or the model changes, and the page shows the same reason under the AI's state and in the question's panel.
 
 ## Decision models
 

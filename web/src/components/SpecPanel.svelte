@@ -26,6 +26,8 @@
     if (live.some(k => k.state === 'calibrated')) { plain = t('plainAuto'); pct = 100; }
     else if (live.some(isHeld)) { plain = t('calibrationHeld'); }
     else if (live.some(k => k.state === 'ready')) { plain = t('plainReady'); pct = 100; }
+    else if (live.some(k => k.state === 'not_separable')) { plain = t('plainNotSeparable'); pct = 100; }
+    else if (live.some(k => k.state === 'one_answer')) { plain = t('plainOneAnswer'); pct = 100; }
     else if (sp.keys.length && !live.length) plain = t('plainStale');
     return { plain, pct };
   });

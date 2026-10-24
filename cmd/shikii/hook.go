@@ -632,6 +632,9 @@ func runHookEvent(event string) error {
 			ensurePage(agent)
 			summary = joinLines(summary, line)
 		}
+		if line := lineSummary(agent); line != "" { // 線が引けた・引けない(0.8.3)。状態が変わった時だけ 1 回
+			summary = joinLines(summary, line)
+		}
 	}
 	if summary != "" {
 		out.System = joinLines(out.System, summary)
