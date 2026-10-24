@@ -793,11 +793,8 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				state, method = "calibrated", rs.CalibrationFor(model).Method
 			default:
 				// 件数だけで「揃った」と言わない(0.8.3): 片方の答えしか無い・試して分けられなかった・自動で引く途中を分ける
-				stuck := false
-				if hash == sp.Hash() || hash == sp.ContextHash() {
-					_, stuck = stuckWording(s.st.Dir, sp.ID)
-				}
-				switch lineStateOf(rs, sp.Eval.MinN, model, hash, labs, stuck).Kind {
+				tried := (hash == sp.Hash() || hash == sp.ContextHash()) && triedWithoutLine(s.st.Dir, sp, model)
+				switch lineStateOf(rs, sp.Eval.MinN, model, hash, labs, tried).Kind {
 				case lineReady:
 					state = "ready"
 				case lineOneAnswer:

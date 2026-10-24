@@ -157,7 +157,7 @@ bin/shikii status --store .shikii .shikii/decisions/prompt-kind.yaml
 ```
 
 spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome / file)と中身の偏り、(model, spec_hash) ごとの件数と状態
-(`calibrated: vector` / `collecting (n/min_n)` / `only one answer so far`(片方の答えしか無く線を引けない) / `tried: the answers could not be separated`(試したが分けられない) / `enough truths: the line is drawn automatically`(自動で引く途中) / `stale hash`)を出す。運用で最初に見る画面。
+(`calibrated: vector` / `collecting (n/min_n)` / `only one answer so far`(片方の答えしか無く線を引けない) / `tried: the answers could not be separated`(試したが分けられない。正解が増えたら再び試す) / `enough truths: the line is drawn automatically`(自動で引く途中) / `stale hash`)を出す。運用で最初に見る画面。
 
 `person's work` の行は、今の規則で人が答える判定(結果が答えない判定の迷い、線のある自動判定の抜き取り、AIの仮採点の抜き取りと保留)の数を、全体と直近7日の1000判定あたりで示し、正解を人と結果のどちらが決めたかを分けて数える。`rungs` の `left to a person` は迷った数で、結果が答える判定の迷いは人を待たない。人の手間を減らす変更の効果は、この行の前後で比べる。
 

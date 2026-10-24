@@ -129,3 +129,70 @@ func TestStatusAPIShowsWhyNoLineWasDrawn(t *testing.T) {
 		t.Fatalf("試して引けなかった時は not_separable: %q", got)
 	}
 }
+
+// 監査 0.8.3 の M4・テストの穴: 知らせの文は問いで変わる(wiki の問いは人に聞かない)、モデルが変わればもう一度知らせる、
+// Stop の hook から実際に本人への一言(systemMessage)として出る。
+func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(repo, ".shikii")
+	st := store.Store{Dir: root}
+	add := func(specID, m, truth string, n int) {
+		sp := mustLoad(t, filepath.Join(root, "decisions", specID+".yaml"))
+		var labels []store.Label
+		for i := 0; i < n; i++ {
+			id := fmt.Sprintf("%s-%s-%s-%03d", specID, m, truth, i)
+			labels = append(labels, store.Label{TraceID: id, SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Model: m, InputsHash: id, Truth: truth, Weight: 1, Source: "outcome", At: time.Now()})
+		}
+		if err := st.AppendLabels(labels); err != nil {
+			t.Fatal(err)
+		}
+	}
+	place := mustLoad(t, filepath.Join(root, "decisions", "wiki-place.yaml"))
+	add("wiki-place", "m1", "no", place.Eval.MinN)
+	// Stop の hook の配線: 本人への一言として出る
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "w", "cwd": repo, "prompt": "README を直して"})
+	out := runHook(t, "stop", map[string]any{"session_id": "w", "cwd": repo, "last_assistant_message": "直した"})
+	if !strings.Contains(out, "systemMessage") || !strings.Contains(out, "wiki-place") || !strings.Contains(out, "only one answer") {
+		t.Fatalf("Stop の hook が線の状態を本人に知らせる: %s", out)
+	}
+	if strings.Contains(out, "keeps asking") || !strings.Contains(out, "nothing is asked of you") {
+		t.Fatalf("人に聞かない問いに「聞き続ける」と言わない: %s", out)
+	}
+	if again := lineSummary(root); strings.Contains(again, "wiki-place") {
+		t.Fatalf("同じ状態は二度知らせない: %q", again)
+	}
+	// 今使うモデルが m2 に変わった(正解が m1 より多い)ら、もう一度知らせる
+	add("wiki-place", "m2", "no", place.Eval.MinN+5)
+	if line := lineSummary(root); !strings.Contains(line, "wiki-place") {
+		t.Fatalf("モデルが変われば、もう一度知らせる: %q", line)
+	}
+	// hook の問い(はい/いいえ)の片方だけは「答えが付くまで線は引けない」で、人に聞く問いの文
+	add("changes-in-scope", "m1", "yes", mustLoad(t, filepath.Join(root, "decisions", "changes-in-scope.yaml")).Eval.MinN)
+	if line := lineSummary(root); !strings.Contains(line, "changes-in-scope") || !strings.Contains(line, "keeps asking") {
+		t.Fatalf("人が答える問いは、聞き続けると言う: %q", line)
+	}
+}
+
+// 監査 0.8.3 の L2: choice は正解が 1 種類でも生の確率の確かめで線を引けるので、「答えが片方だけ」とは言わない。
+func TestChoiceWithOneAnswerIsNotOneAnswer(t *testing.T) {
+	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
+	path := filepath.Join(agent, "decisions", "prompt-kind.yaml")
+	sp := mustLoad(t, path)
+	var labels []store.Label
+	for i := 0; i < sp.Eval.MinN; i++ {
+		id := fmt.Sprintf("pk%03d", i)
+		labels = append(labels, store.Label{TraceID: id, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "choice", Model: "m1", InputsHash: id, Truth: "edit", Weight: 1, Source: "outcome", At: time.Now()})
+	}
+	if err := (store.Store{Dir: agent}).AppendLabels(labels); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error { return cmdStatus([]string{"--store", agent, path}) })
+	if strings.Contains(out, "only one answer") || !strings.Contains(out, "enough truths: the line is drawn automatically") {
+		t.Fatalf("choice の 1 種類の正解は、自動で引く途中と出す:\n%s", out)
+	}
+}
