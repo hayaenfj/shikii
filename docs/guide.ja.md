@@ -4,7 +4,7 @@ shikii は、エージェントをあなたのプロジェクトに合わせて�
 
 この手引きは、短い[日本語の README](readme/README_ja.md) で省いたことを全部書きます。全コマンド、HTTP API、モデルのつなぎ方、業務の判定の作り方です。英語の手引きは [guide.md](guide.md)、設計は [decision-ops-framework.md](decision-ops-framework.md)、構造の説明は [architecture.md](architecture.md)。モジュールは `github.com/hayaenfj/shikii`、ライセンスは Apache-2.0 OR MIT(どちらかを選択。[`LICENSE`](../LICENSE))。
 
-- [入れる・更新する](#入れる更新する)
+- [インストール・アップデート](#インストールアップデート)
 - [プロジェクトごとの有効化](#プロジェクトごとの有効化)
 - [普段の会話で使う](#普段の会話で使う)
 - [止める検査](#止める検査)
@@ -17,7 +17,7 @@ shikii は、エージェントをあなたのプロジェクトに合わせて�
 - [serve の HTTP API](#serve-の-http-api)
 - [構成](#構成)
 
-## 入れる・更新する
+## インストール・アップデート
 
 インストールは[日本語 README](readme/README_ja.md#始め方)の curl の 1 行。ソースから入れる場合は clone した shikii のフォルダで `sh install.sh`。どちらも Go 1.27 以上と Git が要る。
 
