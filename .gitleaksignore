@@ -1,0 +1,3 @@
+# gitleaks の誤検知(鍵ではない)。1 行に 1 つ、gitleaks が出す Fingerprint を書く。
+# 「the local standard without a key: Ternary-Bonsai-27B」を generic-api-key と読んだ(過去のコミットの docs/guide.md)
+5c97143fd04d30bc9dabded21940caec43a534cb:docs/guide.md:generic-api-key:286

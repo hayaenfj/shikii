@@ -41,3 +41,22 @@ jobs:
       - run: scripts/check-readme.sh
       # skill(エージェント向けの作法)の前書きと参照の実在
       - run: scripts/check-skill.sh
+  # 秘密の混入と既知の脆弱性。go の job と並べて走らせる
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks は履歴も全部見る
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # gitleaks: 公式の Action は組織のリポジトリで鍵が要るので、版とハッシュを固定した実行ファイルを直接使う。
+      # 誤検知は .gitleaksignore に Fingerprint で書く
+      - run: |
+          curl -fsSL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git --redact --no-banner .
+      # govulncheck: 使っている部品と標準ライブラリの既知の脆弱性のうち、実際に呼んでいる所だけを出す
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
