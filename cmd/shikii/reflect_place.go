@@ -386,27 +386,39 @@ func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]
 			}
 		}
 	}
-	best, bestScore, bestAt := "", 0.0, time.Time{}
+	// 段: 合流先の教訓に無い語の並びを持つ草稿(中身を足した)は 1、全部が既にある草稿(言い直しただけ)は 0。言い直しの草稿も
+	// 全体の被覆で点を付けて候補に残し(人が同じ決まりをもう一度言った時も正解が付く。監査 0.9.0 の C1)、中身を足した草稿より下に置く
+	best, bestTier, bestScore, bestAt := "", -1, 0.0, time.Time{}
 	for placed, g := range groups {
 		if !g.hasTarget || now.Sub(g.at) > placeMatchWindow {
 			continue
 		}
 		want := bigrams(placed)
-		for b := range known {
-			delete(want, b)
-		}
 		if len(want) == 0 {
 			continue
 		}
-		hit := 0
+		added := map[string]bool{}
 		for b := range want {
+			if !known[b] {
+				added[b] = true
+			}
+		}
+		tier := 1
+		if len(added) == 0 {
+			tier, added = 0, want
+		}
+		hit := 0
+		for b := range added {
 			if have[b] {
 				hit++
 			}
 		}
-		score := float64(hit) / float64(len(want))
-		if score >= placeMatchMin && (score > bestScore || score == bestScore && g.at.After(bestAt)) {
-			best, bestScore, bestAt = placed, score, g.at
+		score := float64(hit) / float64(len(added))
+		if score < placeMatchMin {
+			continue
+		}
+		if tier > bestTier || tier == bestTier && (score > bestScore || score == bestScore && g.at.After(bestAt)) {
+			best, bestTier, bestScore, bestAt = placed, tier, score, g.at
 		}
 	}
 	return best
