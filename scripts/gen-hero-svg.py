@@ -13,11 +13,11 @@ GOLD, GOLD2, INK, MUTE, DIM, SLATE, SLATE2 = "#F5B700", "#FFD54F", "#F2F5FA", "#
 T = {
  "en": dict(font=LAT, cap="閾 · PROJECT MEMORY FOR AGENTS", l1="Your agent starts from zero every session.", l2="shikii fits it to your project.",
    flow="remember → never twice → routine → trail → delegate", s1=40, head_l="turns →", head_r="threshold",
-   v1=[("README rewrite", "lesson ×2 arrives"), ("audit 0.8.1", "report → handoff/"), ("fix Makefile", "guard stopped → fixed"), ("release", "plan ✓ reflect ✓"), ("new hero image", "rule: banned word"), ("same issue as before?", "ask → act")],
+   v1=[("“I told you before.”", "remembered"), ("same mistake again", "stopped, fixed"), ("jumps straight in", "plans first"), ("“where's the report?”", "in handoff/"), ("“probably 0.9”", "ask → act")],
    v2=[("Remembers what you said", "wiki/"), ("Never needs telling twice", "guards/"), ("Follows the routine", "plan · reflect"), ("Leaves a trail", "handoff/"), ("Earns room to act alone", "ask → act")],),
  "ja": dict(font=JP, cap="閾 · エージェントのための、プロジェクトの記憶", l1="エージェントは、毎回まっさらから始まる。", l2="shikiiは、あなたのプロジェクトに合わせて育てる。",
    flow="覚える → 二度言わせない → 手順を踏む → 跡を残す → 任せる", s1=38, head_l="ターン →", head_r="閾",
-   v1=[("READMEを直して", "教訓が2件届く"), ("監査して", "報告は handoff/ へ"), ("Makefileを直して", "検査で止まり、直す"), ("リリースして", "整理 ✓ 振り返り ✓"), ("ヒーロー画像を", "使わない語を守る"), ("前と同じ案件？", "ask → act")],
+   v1=[("前にも言ったよね", "覚えている"), ("また同じミス", "止めて直させる"), ("いきなり作業", "先に整理する"), ("報告はどこ？", "handoff/ にある"), ("たぶん、0.9", "ask → act")],
    v2=[("言われたことを覚える", "wiki/"), ("二度言わせない", "guards/"), ("決まった手順を踏む", "整理 · 振り返り"), ("仕事の跡を残す", "handoff/"), ("任せてよい範囲が広がる", "ask → act")],),
 }
 def base(t):
@@ -59,8 +59,8 @@ def lanes(t, rows, gx, top, gap, h, hot, font, size, lw, rw):
     s += f'  <g font-family="{t["font"]}" font-size="17"><text x="{xl}" y="{top-34}" fill="{MUTE}">{e(t["head_l"])}</text>'
     s += f'<text x="{gx}" y="{top-40}" text-anchor="middle" fill="{GOLD}" font-weight="700">{e(t["head_r"])}</text></g>\n'
     return s
-def v1(t):  # 実際の依頼がターンとして流れ、閾を越えたところで起きたことが書かれる
-    return base(t) + lanes(t, t["v1"], 1300, 130, 58, 34, (2, 5), t["font"], 16, [230, 200, 236, 190, 214, 180], [230, 248, 268, 236, 270, 200]) + "</svg>\n"
+def v1(t):  # 人がつい言う一言(左)が閾を越えると片付く(右)。直させる行と ask → act の行が光る
+    return base(t) + lanes(t, t["v1"], 1330, 140, 70, 40, (1, 4), t["font"], 19, [250] * 5, [220] * 5) + "</svg>\n"
 def v2(t):  # 5 つの育つものが流れ、閾の先にその置き場が出る。任せる(act)の行だけ光る
     return base(t) + lanes(t, t["v2"], 1360, 140, 70, 40, (4,), t["font"], 18, [290, 290, 290, 290, 290], [130, 130, 200, 130, 170]) + "</svg>\n"
 
