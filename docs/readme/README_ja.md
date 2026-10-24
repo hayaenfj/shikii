@@ -199,7 +199,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 
 ## もっと読む
 
-- [ガイド](../guide.ja.md): 全コマンド、HTTP API、モデルの接続、測った数字
+- [ガイド](../guide.ja.md): 全コマンド、HTTP API、モデルの接続、業務の判定の作り方
 - [構造の説明](../architecture.md)
 - [エージェントの作法](../../skills/shikii/SKILL.md)
 - [変更履歴](../../CHANGELOG_ja.md)
