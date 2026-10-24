@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -94,5 +97,48 @@ func TestPlanningRejectsArticleChangesDuringDecision(t *testing.T) {
 	}
 	if records, _ := (store.Store{Dir: root}).Records("needs-plan", 0); len(records) != 0 {
 		t.Fatal("古い根拠の判定は保存しない")
+	}
+}
+
+// 0.8.1: 画面の「知識を判断に使った記録」がずっと 0 だった(エージェントが検索語を付けていなかった)。話題を選ぶのはエージェントのまま、
+// 検索語を付けずに query したら「まだ探していない」と返し、hook の文も「話題の語を query に付けて探す」手順にする。
+func TestPlanningTellsTheAgentWhenTheWikiWasNotSearched(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	planningWikiFixture(t, root, feedbackScope(repo))
+	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	if ctx := feedbackContext(t, out); !strings.Contains(ctx, "話題の語をqueryに付けて探し") || strings.Contains(ctx, "必要なwikiは") {
+		t.Fatalf("hook は wiki を探す手順として頼む: %s", ctx)
+	}
+	payload := planningPayload(root)
+	q, err := planningCall(t, "query", map[string]any{"session_id": "planning", "turn_id": payload["turn_id"]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fmt.Sprint(q["context_notice"]), "wiki はまだ探していません") || q["wiki_context"] != nil {
+		t.Fatalf("検索語が無ければ探さず、探していないと伝える: %v %v", q["context_notice"], q["wiki_context"])
+	}
+	q, err = planningCall(t, "query", map[string]any{"session_id": "planning", "turn_id": payload["turn_id"], "query": "CSV export columns"})
+	if err != nil || q["wiki_context"] == nil || strings.Contains(fmt.Sprint(q["context_notice"]), "まだ探していません") {
+		t.Fatalf("検索語を付ければ探す: %v %v", q, err)
+	}
+}
+
+// 0.8.1: 判定モデルが混雑・停止していても、計画の整理は保存して成功で返す(作法の検査に止められない)。判定は見送る。
+func TestPlanningSubmitSavesTheContextEvenWhenTheModelIsDown(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	hookLocalURL = "http://127.0.0.1:1" // 判定モデルに届かない
+	res, err := planningCall(t, "submit", planningPayload(root))
+	if err != nil {
+		t.Fatalf("モデルに届かなくても整理は保存する: %v", err)
+	}
+	if res["recorded"] == true || !strings.Contains(fmt.Sprint(res["reason"]), "判定モデルに届かなかった") {
+		t.Fatalf("判定は見送ったと言う: %v", res)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."}); strings.Contains(out, "計画の整理") {
+		t.Fatalf("整理を保存したので作法の検査は止めない: %s", out)
 	}
 }

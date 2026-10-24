@@ -20,7 +20,8 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		}
 	}
 	if strings.TrimSpace(req.Query) == "" && len(req.Pages) == 0 {
-		return "", nil, nil
+		// 話題を選ぶのはエージェント(依頼の文をそのまま検索語にしない。a822a63)。探していないことは伝える(0.8.1)
+		return planningNoQueryNotice, nil, nil
 	}
 	started := time.Now()
 	book := notebook.Book{Root: root, Scope: scope}
@@ -120,3 +121,7 @@ func validatePlanningKnowledge(root, scope string, context *store.KnowledgeConte
 	}
 	return nil
 }
+
+// planningNoQueryNotice は、検索語を付けずに query した時に返す一言。画面の「知識を判断に使った記録」がずっと 0 だったのは、
+// エージェントが検索語を付けていなかったため(0.8.1 で確かめた: この repo の着手前の判定 25 件中 2 件)。
+const planningNoQueryNotice = "wiki はまだ探していません。この依頼に関係しそうな話題の語(依頼の文の写しではなく、決まり・既存の判断・前の訂正の言い方)を query に付けてもう一度 query すると、教訓が lesson:<id> として返ります。根拠に使ったら evidence の source にその鍵を書き、submit にも同じ query を付けます。"
