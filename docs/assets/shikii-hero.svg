@@ -1,58 +1,51 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 600" width="1600" height="600" role="img" aria-label="shikii: a model gives you a probability, shikii tells you whether you may act on it">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 600" width="1600" height="600" role="img" aria-label="shikii fits it to your project.">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0E1424"/>
-      <stop offset="1" stop-color="#050810"/>
-    </linearGradient>
-    <linearGradient id="bar" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0" stop-color="#2A3147"/>
-      <stop offset="0.60" stop-color="#2A3147"/>
-      <stop offset="0.60" stop-color="#4B5B82"/>
-      <stop offset="0.75" stop-color="#4B5B82"/>
-      <stop offset="0.75" stop-color="#F5B700"/>
-      <stop offset="1" stop-color="#FFD54F"/>
-    </linearGradient>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="8" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M40 0 H0 V40" fill="none" stroke="#FFFFFF" stroke-opacity="0.04"/>
-    </pattern>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0E1424"/><stop offset="1" stop-color="#050810"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#F5B700"/><stop offset="1" stop-color="#FFD54F"/></linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#4B5B82" stop-opacity="0"/><stop offset="1" stop-color="#4B5B82" stop-opacity="0.9"/></linearGradient>
+    <filter id="glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="600"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0 H0 V40" fill="none" stroke="#FFFFFF" stroke-opacity="0.04"/></pattern>
   </defs>
-
   <rect width="1600" height="600" fill="url(#bg)"/>
   <rect width="1600" height="600" fill="url(#grid)"/>
-
-  <!-- giant 閾 watermark -->
   <text x="1180" y="540" text-anchor="middle" font-family="'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif" font-size="640" fill="#FFFFFF" fill-opacity="0.04">閾</text>
-
-  <!-- wordmark -->
   <g font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif">
-    <text x="110" y="250" font-size="150" font-weight="700" letter-spacing="-6" fill="#F2F5FA">shikii</text>
-    <text x="118" y="310" font-size="30" font-weight="400" letter-spacing="6" fill="#8FA3C8">閾 · THRESHOLD · DECISION MODEL OPERATIONS</text>
-    <text x="118" y="400" font-size="40" font-weight="500" fill="#F2F5FA">A model gives you a probability.</text>
-    <text x="118" y="456" font-size="40" font-weight="700" fill="#F5B700">shikii tells you whether you may act on it.</text>
-    <text x="118" y="520" font-size="22" fill="#5B6B8C">define → decide → record → label → calibrate → check → drift</text>
+    <text x="110" y="250" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="150" font-weight="700" letter-spacing="-6" fill="#F2F5FA">shikii</text>
+    <text x="118" y="310" font-size="26" letter-spacing="5" fill="#8FA3C8">閾 · PROJECT MEMORY FOR AGENTS</text>
+    <text x="118" y="400" font-size="40" font-weight="500" fill="#F2F5FA">Your agent starts from zero every session.</text>
+    <text x="118" y="456" font-size="40" font-weight="700" fill="#F5B700">shikii fits it to your project.</text>
+    <text x="118" y="520" font-size="22" fill="#5B6B8C">remember → never twice → routine → trail → delegate</text>
   </g>
-
-  <!-- probability bar with bands -->
-  <g transform="translate(1180,0)">
-    <rect x="120" y="90" width="48" height="420" rx="24" fill="url(#bar)"/>
-    <!-- thresholds -->
-    <line x1="100" y1="195" x2="300" y2="195" stroke="#F5B700" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
-    <line x1="100" y1="258" x2="300" y2="258" stroke="#8FA3C8" stroke-width="3" stroke-linecap="round" stroke-dasharray="8 8"/>
-    <g font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="22">
-      <text x="190" y="135" fill="#F5B700" font-weight="700">act</text>
-      <text x="190" y="188" fill="#F5B700" font-size="18">≥ 0.75, only if calibrated</text>
-      <text x="190" y="232" fill="#C7D2E8" font-weight="700">ask</text>
-      <text x="190" y="290" fill="#8FA3C8" font-size="18">≥ 0.60, a human decides</text>
-      <text x="190" y="440" fill="#5B6B8C" font-weight="700">discard</text>
-      <text x="190" y="100" fill="#5B6B8C" font-size="16">1.0</text>
-      <text x="190" y="515" fill="#5B6B8C" font-size="16">0.0</text>
-    </g>
-    <!-- the probability the model returned -->
-    <circle cx="144" cy="170" r="16" fill="#050810" stroke="#F2F5FA" stroke-width="4"/>
-    <circle cx="144" cy="170" r="6" fill="#F2F5FA"/>
-  </g>
+  <rect x="1060" y="130" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1070" y="130" width="230" height="34" rx="17.0" fill="url(#fade)"/>
+  <rect x="1300" y="130" width="230" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.32"/>
+  <text x="1286" y="152.8" text-anchor="end" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">README rewrite</text>
+  <text x="1314" y="152.8" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" font-weight="500" fill="#FFD54F">lesson ×2 arrives</text>
+  <rect x="1060" y="188" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1100" y="188" width="200" height="34" rx="17.0" fill="url(#fade)"/>
+  <rect x="1300" y="188" width="248" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.32"/>
+  <text x="1286" y="210.8" text-anchor="end" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">audit 0.8.1</text>
+  <text x="1314" y="210.8" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" font-weight="500" fill="#FFD54F">report → handoff/</text>
+  <rect x="1060" y="246" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1064" y="246" width="236" height="34" rx="17.0" fill="url(#fade)"/>
+  <rect x="1300" y="246" width="268" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.95"/>
+  <text x="1286" y="268.8" text-anchor="end" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">fix Makefile</text>
+  <text x="1314" y="268.8" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" font-weight="700" fill="#1A1300">guard stopped → fixed</text>
+  <rect x="1060" y="304" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1110" y="304" width="190" height="34" rx="17.0" fill="url(#fade)"/>
+  <rect x="1300" y="304" width="236" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.32"/>
+  <text x="1286" y="326.8" text-anchor="end" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">release</text>
+  <text x="1314" y="326.8" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" font-weight="500" fill="#FFD54F">plan ✓ reflect ✓</text>
+  <rect x="1060" y="362" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1086" y="362" width="214" height="34" rx="17.0" fill="url(#fade)"/>
+  <rect x="1300" y="362" width="270" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.32"/>
+  <text x="1286" y="384.8" text-anchor="end" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">new hero image</text>
+  <text x="1314" y="384.8" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" font-weight="500" fill="#FFD54F">rule: banned word</text>
+  <rect x="1060" y="420" width="524" height="34" rx="17.0" fill="#2A3147" fill-opacity="0.28"/>
+  <rect x="1120" y="420" width="180" height="34" rx="17.0" fill="url(#fade)"/>
+  <rect x="1300" y="420" width="200" height="34" rx="17.0" fill="url(#gold)" fill-opacity="0.95"/>
+  <text x="1286" y="442.8" text-anchor="end" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" fill="#F2F5FA" fill-opacity="0.92">same issue as before?</text>
+  <text x="1314" y="442.8" font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" font-weight="700" fill="#1A1300">ask → act</text>
+  <line x1="1300" y1="104" x2="1300" y2="476" stroke="#F5B700" stroke-width="5" stroke-linecap="round" filter="url(#glow)"/>
+  <g font-family="Inter,'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="17"><text x="1060" y="96" fill="#8FA3C8">turns →</text><text x="1300" y="90" text-anchor="middle" fill="#F5B700" font-weight="700">threshold</text></g>
 </svg>

@@ -102,6 +102,16 @@ PYGEN
     for asset in "${assets[@]}"; do
       cmp -s "$tmp/$asset" "docs/assets/$asset" || err "docs/assets/$asset は生成スクリプトの出力と違う"
     done
+    # 先頭の画像と「何が育つか」の図(scripts/gen-hero-svg.py)
+    if ! python3 - "$tmp" <<'PYGEN'
+import runpy, sys
+from pathlib import Path
+runpy.run_path("scripts/gen-hero-svg.py")["generate"](Path(sys.argv[1]))
+PYGEN
+    then err "先頭の画像を再生成できない"; fi
+    for asset in shikii-hero.svg shikii-hero-ja.svg shikii-grows.svg shikii-grows-ja.svg; do
+      cmp -s "$tmp/$asset" "docs/assets/$asset" || err "docs/assets/$asset は生成スクリプトの出力と違う"
+    done
     rm -rf "$tmp"
   fi
 else
