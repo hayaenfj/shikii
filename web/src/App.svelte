@@ -32,7 +32,7 @@
 
   // 選択にだけ追従し、取得したデータの更新では読み直さない。
   $effect(() => {
-    ui.tab; ui.advanced; ui.done;
+    ui.tab; ui.done;
     untrack(() => { load(); });
   });
 

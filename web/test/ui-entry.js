@@ -130,7 +130,7 @@ async function checkSummary(target) {
     memory: { delivered: 4, helpful: 1, unused: 2, harmful: 0, unknown: 1, pending: 0, awaiting_feedback: 0, recent_delivered: 4, recent_helpful: 1, corrections: { delivered: 0 } },
     guards: { total: 3, enabled: 3, stopped: 1, fixed: 1, rituals: { plan: { asked: 5, done: 2, fixed: 1 }, reflect: { asked: 4, done: 4, fixed: 0 } }, items: [{ id: 'changelog-pair', kind: 'paired-files', title: '変更履歴は英語と日本語を揃える', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'CHANGELOG_ja.md が変わっていない' } }] } };
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs(), summary, model: { name: 'TypeSafe Jev', endpoint: 'https://api.typesafe.ai' } } : { items: [] } });
-  Object.assign(ui, { tab: '', advanced: false, done: false, pinned: '' });
+  Object.assign(ui, { tab: '', done: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
   const details = target.querySelector('#summary');
@@ -154,7 +154,7 @@ async function checkMachineOnlySpec(target) {
   const specs = loadingSpecs().concat([{ id: 'wiki-conflict', type: 'noul', titles: { ja: 'wiki の矛盾' }, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 3, waiting_for_person: 0, awaiting_results: 3, person_answers: false, truth_source: 'results' }]);
   const item = { trace_id: 'wc1', at: '2026-10-23T00:00:00Z', band: 'discard', top: 'no', p: 0.8, model: 'm', inputs: { lesson: 'a', new_lesson: 'b' }, inputs_hash: 'wc1', raw: { yes: 0.2, no: 0.8 }, stale: false, answerable: true, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal', audit: false };
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs } : url.startsWith('v1/queue?spec=wiki-conflict') ? { items: [item] } : { items: [] } });
-  Object.assign(ui, { tab: 'wiki-conflict', advanced: false, done: false, pinned: '', view: 'list' });
+  Object.assign(ui, { tab: 'wiki-conflict', done: false, pinned: '', view: 'list' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
   const card = target.querySelector('.item');
@@ -180,7 +180,7 @@ async function checkNotebookTree(target) {
   // a2 は 2 本に指される(同数の時の題の順は locale 依存なので避ける)
   const lessons = [mk('a1', '公開の手順', ['a2']), mk('a2', '監査'), mk('a3', '変更履歴', ['a2']), mk('b1', 'コミットの説明', ['b2']), mk('b2', 'コミットの作者'), mk('c1', '単独')];
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons, sources: [] } : url.startsWith('v1/wiki/notebook') ? { lessons: [lessons[1]] } : { items: [] } });
-  Object.assign(ui, { tab: 'wiki', advanced: true, done: false, results: false, pinned: '' });
+  Object.assign(ui, { tab: 'wiki', done: false, results: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
   const groups = [...target.querySelectorAll('[data-tree-group]')].map(g => g.dataset.treeGroup);
@@ -205,7 +205,7 @@ async function checkLanesForPersonSpec(target) {
   const specs = [mk('wiki-conflict', 4, 0, false), mk('prompt-kind', 2, 1, true), mk('needs-plan', 3, 2, true)];
   const item = (id, waits, audit) => ({ trace_id: id, at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: id, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, audit, waits_for_person: waits, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal' });
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs, summary: { person: {}, memory: {}, guards: {} }, model: { name: 'TypeSafe Jev' } } : url.startsWith('v1/queue?spec=prompt-kind') ? { items: [item('r1', false, false), item('y1', true, true)] } : { items: [] } });
-  Object.assign(ui, { tab: '', advanced: false, done: false, results: false, pinned: '', view: 'list', filter: 'all' });
+  Object.assign(ui, { tab: '', done: false, results: false, pinned: '', view: 'list', filter: 'all' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
   const line = target.querySelector('#summary .summary-line')?.textContent || '';
@@ -235,7 +235,7 @@ async function checkKeysOnlyOnDecisions(target) {
   const press = () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); flushSync(); };
   // 知識の欄
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [lesson], sources: [] } : { items: [] } });
-  Object.assign(ui, { tab: 'wiki', advanced: true, done: false, pinned: '' });
+  Object.assign(ui, { tab: 'wiki', done: false, pinned: '' });
   let app = mount(App, { target }); await settle(); await settle();
   let buttons = target.querySelectorAll('.item .btns button');
   let clicked = 0;
@@ -245,7 +245,7 @@ async function checkKeysOnlyOnDecisions(target) {
   unmount(app);
   // 回答済みの列
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url.startsWith('v1/answered') ? { items: [answered] } : { items: [] } });
-  Object.assign(ui, { tab: 'needs-plan', advanced: false, done: true, pinned: '' });
+  Object.assign(ui, { tab: 'needs-plan', done: true, pinned: '' });
   app = mount(App, { target }); await settle(); await settle();
   buttons = target.querySelectorAll('.item .btns button');
   clicked = 0;
@@ -329,8 +329,8 @@ function checkPlanningContext(target) {
 }
 
 function checkCalibrationReport(target) {
-  const saved = { advanced: ui.advanced, done: ui.done }, lang = i18n.lang;
-  ui.advanced = true; ui.done = false; i18n.lang = 'ja';
+  const saved = { done: ui.done }, lang = i18n.lang;
+  ui.done = false; i18n.lang = 'ja';
   let summaries = true, closed = true, states = true;
   for (const reason of ['quality', 'insufficient', 'written', 'stale']) {
     const result = { reason, human_truths: reason === 'insufficient' ? 2 : 50, min_n: 50, model: 'm', hash: reason === 'stale' ? 'old' : 'current', at: '2026-10-22 00:00:00' };
@@ -620,19 +620,18 @@ function loadingSpecs() {
 // 表示中の情報だけを取得する。回答済み・知識への切替も取りこぼさない(「かんたん表示」は 0.8.1 で廃止: 聞き方の候補も常に読む)。
 async function checkFocusedLoading() {
   const realFetch = globalThis.fetch, state = data.state;
-  const saved = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
+  const saved = { tab: ui.tab, done: ui.done };
   let calls = [];
   globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [] } : url.startsWith('v1/tune') ? { variants: [] } : { items: [] } }; };
   ui.tab = 'needs-plan'; ui.done = false;
   await load();
   const simple = calls.length === 3 && calls[1] === 'v1/queue?spec=needs-plan&limit=200' && calls.includes('v1/tune?spec=needs-plan') && !calls.includes('v1/wiki');
-  const advanced = true;
   calls = []; ui.done = true; await load();
   const answered = calls.length === 2 && calls.includes('v1/answered?spec=needs-plan&limit=200') && !calls.some(url => url.startsWith('v1/queue') || url.startsWith('v1/tune'));
   calls = []; ui.tab = 'wiki'; await load();
   const knowledge = calls.length === 2 && calls[1] === 'v1/wiki' && !!data.state.wiki;
   globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
-  const ok = simple && advanced && answered && knowledge;
+  const ok = simple && answered && knowledge;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (必要な3要求=' + simple + ', 回答済みを取得=' + answered + ', 知識は選択時だけ=' + knowledge + ')');
   return ok;
 }
@@ -640,7 +639,7 @@ async function checkFocusedLoading() {
 // 遅い古い応答で切替後の情報を上書きせず、取得失敗と再試行を表示へ反映する。
 async function checkLoadOrdering() {
   const realFetch = globalThis.fetch, state = data.state;
-  const saved = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
+  const saved = { tab: ui.tab, done: ui.done };
   let release, blocked = true, version = 0;
   const wait = new Promise(resolve => { release = resolve; });
   globalThis.fetch = async url => {
@@ -648,7 +647,7 @@ async function checkLoadOrdering() {
     if (url.startsWith('v1/queue?spec=needs-plan') && blocked) { blocked = false; return { ok: true, json: async () => { await wait; return { items: [] }; } }; }
     return { ok: true, json: async () => ({ items: [] }) };
   };
-  ui.tab = 'needs-plan'; ui.advanced = false; ui.done = false;
+  ui.tab = 'needs-plan'; ui.done = false;
   const slow = load(); await new Promise(resolve => setTimeout(resolve, 0));
   ui.tab = 'done-as-asked'; await load(); release(); await slow;
   const latest = data.state.version === 2;
@@ -666,14 +665,14 @@ async function checkLoadOrdering() {
 // 実際のナビから遅延読取りを行い、未読の知識も開ける。
 async function checkLazyNavigation(target) {
   const realFetch = globalThis.fetch, state = data.state;
-  const saved = { tab: ui.tab, advanced: ui.advanced, done: ui.done };
+  const saved = { tab: ui.tab, done: ui.done };
   let calls = [], holdQueue = false, releaseQueue;
   globalThis.fetch = async url => {
     calls.push(url);
     if (holdQueue && url.startsWith('v1/queue')) return { ok: true, json: () => new Promise(resolve => { releaseQueue = resolve; }) };
     return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } };
   };
-  data.state = null; ui.tab = 'needs-plan'; ui.advanced = false; ui.done = false;
+  data.state = null; ui.tab = 'needs-plan'; ui.done = false;
   const app = mount(App, { target }); flushSync();
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   await settle(); const initial = calls.length === 3 && calls.includes('v1/tune?spec=needs-plan') && !!target.querySelector('.decision-panel'); // status・列・聞き方の候補

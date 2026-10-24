@@ -54,6 +54,10 @@ GitHub Releasesの最新安定版から、利用中のOS・CPU向けの本体と
 
 Claude Code・Codexの自動記録は、インストール後に利用するプロジェクトで `shikii --init` を一度実行して有効にする。未初期化の場所ではhookは動かない。インストールは[日本語README](readme/README_ja.md#始め方)のcurlの1行で行う。ソースから入れる場合はcloneしたshikiiのフォルダで `sh install.sh`。Go 1.27以上が必要。
 
+コミットするもの: `.shikii/decisions/` と `.shikii/wiki/` は常に。`.shikii/labels/` は正解(モデルを替えても残る資産)なのでコミットする。`.shikii/records/` は判定のたびに増えるので、コミットは任意(`shikii gc` が古い正解なしの記録を消す)。
+
+答え合わせの画面そのもの(`web/`、Svelte + Tailwind CSS)を直すには Node 24 が要る(`make web`)。使うだけなら要らない: 組んだ画面はコミットされ、実行ファイルに埋め込まれている。
+
 依頼・返答・次の人の発言を読み、利用中のエージェントが同じ話題の知識へ統合する。検索用の短い要約と、背景・判断理由・未確定点を残す本文を分け、関連ページを結ぶ。`shikii wiki query lesson:<ページID>` で全文を読め、話題の検索では本文も対象になる。[エージェント向けの編集手順](../skills/shikii/references/wiki.md)を参照。同じプロジェクトの似た依頼へ最大2件、1800バイト以内の短い引用を届け、同じ版は同じセッションへ一時間繰り返さない。会話の整理に別のモデルは起こさない。
 
 0.7.3 から、Claude Code のサブエージェントが始まる時(`SubagentStart`)にも、親の依頼に近い教訓を同じ形で届ける(親の控えは変えず、配送は別の ID で記録。Codex には無い event なので足さない)。届いた教訓が行動を変えたかは、振り返りの観察(helpful / unused / harmful / unknown)を `shikii status` の `memory:` の行で数える(届けた数、観察待ち、直近 7 日、訂正の配送)。
