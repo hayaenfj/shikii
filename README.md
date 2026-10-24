@@ -16,7 +16,7 @@ Claude Code and Codex start every session from zero. They do not remember what y
 
 Version 0.8 makes the agent do its routine before and after every piece of work, and keeps a trail of its work in `.shikii/handoff/`. Each project has one page that starts with what is waiting for you. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
-[The problem](#the-problem) · [What grows](#what-grows) · [See it in numbers](#see-it-in-numbers) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
+[The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
 <p align="center"><img src="docs/assets/shikii-hero.svg" alt="shikii: “I told you before”, “same mistake again”, “jumps straight in”, “where is the report?” and “probably 0.9” cross the threshold and become remembered, stopped and fixed, plans first, in handoff/, ask → act" width="100%"></p>
 
@@ -48,24 +48,12 @@ Like someone who has worked on the project for a long time, the agent picks up f
 | It earns room to act alone | As truths accumulate, a line is drawn above which the model is right often enough, and more decisions go ahead without asking |
 
 1. **It remembers what you said.** From the requests, replies and corrections of ordinary conversations, the agent writes lessons with sources into the wiki. Before a lesson is saved, the decision model finds the page it belongs to and checks it against earlier lessons. Up to two relevant lessons arrive before similar requests, and a subagent receives lessons close to the parent's request when it starts.
-2. **It never needs telling twice.** Corrections a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become guards. When one fails, the agent cannot end the turn until it fixes the work. Lessons that merely repeat what the agent can read in the repository changed nothing (4 of 5 tasks tied), while delivered rules the agent could not know otherwise were followed 6 times in 6; a guard made the agent fix its work 6 times in 6 even when the model knew no rule.
+2. **It never needs telling twice.** Corrections a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become guards. When one fails, the agent cannot end the turn until it fixes the work.
 3. **It follows the routine.** Before it changes files, the agent sums up what was agreed and what is still open, and searches the wiki with topic words it picks. Before it ends, it reflects on the turn, grades its own work and saves what it learned. If it skips either step, the turn is stopped once and the agent is told the exact command to run. These checks are built in and always on, also in projects without `CLAUDE.md` or `AGENTS.md`.
 4. **It leaves a trail.** Audit reports, release steps, diffs and screenshots that the agent keeps editing go to `.shikii/handoff/<task>/`, and subagents are told to write their reports there too. They are not committed; you read them on the page under Knowledge → Work records.
 5. **It earns room to act alone.** A model returns a probability, “probably 0.9”. From the truths people and results supply, shikii measures how the model's confidence relates to how often it is right, and draws a line above which it may act on its own. Until the line exists, nothing is automatic. Every decision falls into a band: `act` proceeds automatically, `ask` goes to a person, `discard` does nothing, `abstain` means an input or an endpoint is missing. Truths live apart from the model, so changing models does not start you over. Alternative wordings can be scored on the same truths and the better one kept (a person confirms the meaning first).
 
-## See it in numbers
-
-The page and `shikii status` show whether it is working. These are counts from real work, not synthetic experiments. In shikii's own development (this repository) on 2026-10-24:
-
-| What | Count |
-|---|---|
-| Lessons delivered | 69: helped 9, unused 35, harmful 0, unknown 5, not yet assessed 20 |
-| Planning before work | done in 21 of the 23 turns that asked for it |
-| Reflection before ending | done in 21 of 25 (4 after a stop) |
-| Guards | 4 enabled; stopped 1 turn, fixed within that turn |
-| Lines for acting alone | none yet. Lesson placement has 384 truths, enough to draw one. The request-type question cannot separate its answers even with 163 truths; alternative wordings are being tried |
-
-As the last row says, the room to act alone has only started to grow. Truths do not need a person: the machine takes them from what happens next (a change undone, a request repeated, a lesson merged), so they accumulate as you work.
+The page and `shikii status` show whether it is working: whether delivered lessons helped, how many turns did the routine, how many turns guards stopped and how many were fixed, how many decisions wait for a person, and which lines have been drawn.
 
 ## What you do
 
