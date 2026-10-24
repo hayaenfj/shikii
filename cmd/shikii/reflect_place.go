@@ -248,7 +248,7 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 		}
 		recsBy[specID], labeledBy[specID] = recs, labeled
 	}
-	placed := matchPlacedDraft(d, recsBy["wiki-place"], labeledBy["wiki-place"])
+	placed := matchPlacedDraft(d, recsBy["wiki-place"], labeledBy["wiki-place"], pageOf, time.Now())
 	if placed == "" {
 		return nil, nil
 	}
@@ -283,18 +283,32 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 }
 
 // placeMatchMin は、置いた時の草稿の文の 2 文字の並びのうち、保存する草稿(題・教訓・本文)に入っている割合の下限。
-const placeMatchMin = 0.6
+// placeMatchWindow は、あいまいに突き合わせる置いた草稿の古さの上限(置いてから保存までは普通すぐ)。
+const (
+	placeMatchMin    = 0.6
+	placeMatchWindow = 24 * time.Hour
+)
 
 // matchPlacedDraft は、保存する草稿が、正解の付いていないどの置いた草稿(new_lesson)のことかを返す(無ければ "")。
-// 教訓の文が完全に同じならそれ。そうでなければ、置いた時の文が保存する草稿に最もよく入っている物(placeMatchMin 以上、同点は新しい方)。
-func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]store.Label) string {
+// 正解を付けられる記録(候補の記事が今もある)を持つ置いた草稿だけを見る(候補の記事が消えた古い記録が先に当たらない。監査 0.8.3 の M1)。
+//   - 教訓の文が置いた時と同じなら、その草稿(新しい方)。
+//   - それ以外は合流・置き換えだけで、その記事を候補に持ち(新しい記事には狙う記事が無いので、あいまいには当たらない。監査 0.8.3 の H1)、placeMatchWindow 以内に置き、置いた時の文の placeMatchMin 以上が保存する草稿に
+//     入っている草稿のうち、最も新しく置いた物(本文に原文で残った古い草稿より、今の草稿。監査 0.8.3 の M2)。
+func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]store.Label, pageOf map[string]string, now time.Time) string {
 	lesson := strings.TrimSpace(d.Lesson)
-	text := d.Title + "\n" + d.Lesson
-	if d.Body != nil {
-		text += "\n" + *d.Body
+	targets := map[string]bool{}
+	if d.ID != "" {
+		targets[d.ID] = true
 	}
-	have := bigrams(text)
-	best, bestScore, bestAt := "", 0.0, time.Time{}
+	for _, id := range d.Replaces {
+		targets[id] = true
+	}
+	type group struct {
+		at        time.Time
+		labelable bool
+		hasTarget bool
+	}
+	groups := map[string]*group{}
 	for _, rec := range recs {
 		if _, done := labeled[rec.TraceID]; done {
 			continue
@@ -303,22 +317,46 @@ func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]
 		if placed == "" {
 			continue
 		}
-		if placed == lesson {
-			return placed
+		g := groups[placed]
+		if g == nil {
+			g = &group{}
+			groups[placed] = g
+		}
+		if rec.At.After(g.at) {
+			g.at = rec.At
+		}
+		if page, ok := pageOf[rec.Inputs["lesson"]]; ok {
+			g.labelable = true
+			if targets[page] {
+				g.hasTarget = true
+			}
+		}
+	}
+	if g := groups[lesson]; g != nil && g.labelable {
+		return lesson
+	}
+	text := d.Title + "\n" + d.Lesson
+	if d.Body != nil {
+		text += "\n" + *d.Body
+	}
+	have := bigrams(text)
+	best, bestAt := "", time.Time{}
+	for placed, g := range groups {
+		if !g.hasTarget || now.Sub(g.at) > placeMatchWindow || !g.at.After(bestAt) && best != "" {
+			continue
 		}
 		want := bigrams(placed)
 		if len(want) == 0 {
 			continue
 		}
 		hit := 0
-		for g := range want {
-			if have[g] {
+		for b := range want {
+			if have[b] {
 				hit++
 			}
 		}
-		score := float64(hit) / float64(len(want))
-		if score >= placeMatchMin && (score > bestScore || score == bestScore && rec.At.After(bestAt)) {
-			best, bestScore, bestAt = placed, score, rec.At
+		if float64(hit)/float64(len(want)) >= placeMatchMin {
+			best, bestAt = placed, g.at
 		}
 	}
 	return best

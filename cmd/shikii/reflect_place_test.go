@@ -195,11 +195,26 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
 		t.Fatalf("関係ない保存で正解を付けない: %+v", place)
 	}
-	// 一番近い記事へ、教訓の文を書き直して wiki ingest で合流する(本文に草稿の文が入る)
-	body := "## 見出し\n変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない(2026-10-24)。"
+	// 同じ記事を、置いた草稿とは関係の薄い文で直す保存(被覆は 3〜6 割)では、その草稿に正解を付けない(監査 0.8.3: 下限 0.3 でも通っていた)
+	weakBody := "## 見出しの日付\n変更履歴の見出しには日付を書かない。版の形は version.go と揃える。"
+	weak := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", AppliesTo: "変更履歴を書く時", Body: &weakBody}
+	if cov := coverageOf(draft.Lesson, weak); cov < 0.3 || cov >= placeMatchMin {
+		t.Fatalf("この負例は被覆 0.3〜0.6 の間でないと下限を試せない: %.2f", cov)
+	}
+	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: weak}); err != nil {
+		t.Fatal(err)
+	}
+	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
+		t.Fatalf("関係の薄い直しで正解を付けない: %+v", place)
+	}
+	// 一番近い記事へ、教訓の文を書き直して wiki ingest で合流する(本文も草稿の文を言い換えて書く。被覆は 0.6〜0.95)
+	body := "## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。"
 	merged := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする",
-		Lesson: "変更履歴は英語と日本語を揃える。見出しは「版 — 題」にし、未公開のまま出さない。", AppliesTo: "変更履歴を書く時",
+		Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", AppliesTo: "変更履歴を書く時",
 		Body: &body}
+	if cov := coverageOf(draft.Lesson, merged); cov < placeMatchMin || cov >= 0.95 {
+		t.Fatalf("書き直した合流は被覆 0.6〜0.95 の間でないと下限を試せない: %.2f", cov)
+	}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
 		t.Fatal(err)
 	}
@@ -210,4 +225,20 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 	if l := place[c[1].SameTopic.TraceID]; l.Truth != "no" || l.Weight != placeOtherWeight {
 		t.Fatalf("選ばなかった記事は「いいえ」(部分): %+v", l)
 	}
+}
+
+// coverageOf は、置いた草稿の文の 2 文字の並びのうち、保存する草稿に入っている割合(テストの見本が下限を試せる形かを確かめる)。
+func coverageOf(placed string, d notebook.Draft) float64 {
+	text := d.Title + "\n" + d.Lesson
+	if d.Body != nil {
+		text += "\n" + *d.Body
+	}
+	have, want := bigrams(text), bigrams(placed)
+	hit := 0
+	for b := range want {
+		if have[b] {
+			hit++
+		}
+	}
+	return float64(hit) / float64(len(want))
 }
