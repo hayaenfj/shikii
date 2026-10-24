@@ -14,6 +14,7 @@ This guide covers everything the short [README](../README.md) leaves out: every 
 - [The page and the inventory](#the-page-and-the-inventory)
 - [Decision models](#decision-models)
 - [Delegate business decisions](#delegate-business-decisions)
+- [Every command](#every-command)
 - [The serve HTTP API](#the-serve-http-api)
 - [Code layout](#code-layout)
 
@@ -46,6 +47,7 @@ What is inside `.shikii/`:
 | `guards/` | Guards made from people's corrections | Yes |
 | `labels/` | Truths given by people and by results (an asset that survives a change of model) | Yes |
 | `records/` | Results of conversations, decisions, assessments, deliveries, observations and guards. Grows with every decision | Optional (`shikii gc` removes old records without truths) |
+| `sessions/` | Per-session notes (lessons delivered, notices given, files changed) | No |
 | `handoff/` | Work records (audit reports, release steps, diffs, screenshots) | Only what you want to keep (`shikii gc` never touches it) |
 
 Initialization keeps `.shikii/` out of Git's untracked files, because it contains private conversations. To commit something, remove it from the exclusion and add it yourself.
@@ -76,7 +78,7 @@ The agent places the draft and a person enables it (the steps are in [the skill'
 
 ## The routine before and after work
 
-In every turn, two steps are checked by built-in rules. They are always on and cannot be turned off (`shikii guard list` shows them as "built in (always on)"). They work in projects without `CLAUDE.md` or `AGENTS.md` too.
+In every turn, two steps are checked by built-in rules. They are always on and cannot be turned off (`shikii guard list` shows them as `組み込み(常に有効)`, built in and always on). They work in projects without `CLAUDE.md` or `AGENTS.md` too.
 
 - **Planning before work (plan-before-work)**: in a turn where the request hook asked for planning, before changing files the agent reads this and the recent conversations with `shikii hook plan query`, searches the wiki with topic words it picks, and saves what was agreed and what is still open with `shikii hook plan submit`. A query without search words answers that the wiki has not been searched yet. The plan is saved even when the decision model is down.
 - **Reflection before ending (reflect-before-end)**: in a turn where the request hook named conversations to reflect on, before ending the agent reads the originals, the delivered memory, the lessons and people's corrections with `shikii reflect query`, and saves the assessments (reviews), the wiki work (wiki) and how the delivered lessons did (memory) with `shikii reflect submit`.
@@ -143,7 +145,7 @@ If the agent already keeps a memory (Claude Code's auto memory folder with `MEMO
 
 There is one answer page per project. If the project's page is not running, the first request's hook starts `shikii serve --store <project>/.shikii --port 0` (it takes a free port) and opens it in the browser. The port and pid are kept in `~/.shikii/agent/pages/<project id>.json`, so several agents in the same project share one page. `shikii page` tells you where the page is (`page: http://127.0.0.1:<port>/ (port …, pid …, up)`; if it is not running, it starts it and waits). Open the page with the names `127.0.0.1`, `localhost` or `::1` (other Host names are refused with 403).
 
-The top of the page first shows what a person needs to answer ("for you to answer: N" or "nothing right now"), then how the AI is doing (the decision model in use, how many questions it decides on its own, how far each question's learning has come, the lessons delivered and whether they helped, the guards, the routine before and after work, and the decisions that used knowledge). The Knowledge section holds the wiki's topic groups, the articles and sources, and the work records.
+The top of the page first shows what a person needs to answer ("For you: N to answer" or "For you: nothing right now"), then "The AI" (the decision model in use, how many questions it decides on its own, how far each question's learning has come, the lessons delivered and whether they helped, the guards, the routine before and after work, and the decisions that used knowledge). The Knowledge section holds the wiki's topic groups, the articles and sources, and the work records.
 
 ### Inventory: `shikii status`
 
@@ -170,7 +172,7 @@ export TYPESAFE_API_KEY=...       # the key is read from the environment only; s
 shikii doctor                     # when hosted shows "key present", the hooks, the built-in questions and pii: false decisions go to Jev
 ```
 
-The recommended model is TypeSafe's Jev. With the key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` refuses too; about 0.2 seconds a question, nothing to download). To use a local model while keeping the key set, use `SHIKII_MODEL=local`; to force Jev, use `SHIKII_MODEL=hosted` (the same for the CLI, MCP, `serve` and the hooks). `pii: true` decisions are only ever sent to a local model, key or no key, so to answer them with a local model while the key is set, start it with `SHIKII_MODEL=local shikii up`.
+The recommended model is TypeSafe's Jev. With the key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` refuses too, nothing to download). To use a local model while keeping the key set, use `SHIKII_MODEL=local`; to force Jev, use `SHIKII_MODEL=hosted` (the same for the CLI, MCP, `serve` and the hooks). `pii: true` decisions are only ever sent to a local model, key or no key, so to answer them with a local model while the key is set, start it with `SHIKII_MODEL=local shikii up`.
 
 ### The local model when you cannot set a key (llama.cpp)
 
@@ -180,7 +182,7 @@ llama-server --version
 shikii up                         # starts llama-server on :8086 and shikii-readout on :8080 (downloads about 7.6 GB the first time)
 ```
 
-The default model is `Ternary-Bonsai-27B-Q2_g64.gguf` from `prism-ml/Ternary-Bonsai-27B-gguf` (an ordinary chat model; `shikii-readout` reads the probabilities of the option letters, so it answers at the speed of a decision model, about 0.6 seconds a question). To install llama.cpp, see the [Homebrew formula](https://formulae.brew.sh/formula/llama.cpp); for other systems, see the [official instructions](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md). `shikii up` and the built-in hooks also use this model when there is no key. It uses about 10 GB of memory while running, which can be heavy for an ordinary PC. For a trained decision model such as OpenJev, use `shikii up --hf <repo:quant>` (readout passes its answers through unchanged). Kev-4B is not supported.
+The default model is `Ternary-Bonsai-27B-Q2_g64.gguf` from `prism-ml/Ternary-Bonsai-27B-gguf` (an ordinary chat model; `shikii-readout` reads the probabilities of the option letters, so it answers at the speed of a decision model). To install llama.cpp, see the [Homebrew formula](https://formulae.brew.sh/formula/llama.cpp); for other systems, see the [official instructions](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md). `shikii up` and the built-in hooks also use this model when there is no key. It uses about 10 GB of memory while running, which can be heavy for an ordinary PC. For a trained decision model such as OpenJev, use `shikii up --hf <repo:quant>` (readout passes its answers through unchanged). Kev-4B is not supported.
 
 The model name that is the calibration key is the `model` in the response, not the name you sent with `--model`.
 
@@ -268,7 +270,7 @@ bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ternary-bonsai-2
 
 `shikii new <id>` makes one by asking you questions (or with the flags `--type --question --option id=description --input name --pii true|false --send-to local`). Every field and how to write it is in [skills/shikii/references/spec.md](../skills/shikii/references/spec.md) (`shikii init` also places it at `~/.claude/skills/shikii/references/spec.md`).
 
-While the truths are fewer than `eval.min_n` (50 by default), neither `calibrate --write` nor `tune` writes anything. To try it while you have only a few, lower `eval.min_n` in the spec to the number you have. A line written with `--force` is flagged by `check` as "a line calibrate would not have written", so do not use it for trials.
+While the truths are fewer than `eval.min_n` (required in the spec; `shikii new` writes 50), neither `calibrate --write` nor `tune` writes anything. To try it while you have only a few, lower `eval.min_n` in the spec to the number you have. A line written with `--force` is flagged by `check` as "a line calibrate would not have written", so do not use it for trials.
 
 ### The whole loop in two minutes (no key, no GPU)
 
@@ -284,7 +286,7 @@ scripts/demo.sh --overconfident  # a fake model whose probabilities are pushed t
 bin/shikii check .shikii/decisions/*.yaml
 
 # on the latest N labels, warn and exit 1 when the Brier score is 0.05 or more worse than at calibration, or precision falls below act
-bin/shikii drift .shikii/decisions/prompt-intent.yaml --model jev-latest --window 50
+bin/shikii drift .shikii/decisions/prompt-intent.yaml --model jev-1.14.0 --window 50
 ```
 
 There are three calibration methods. All of them are generated by `calibrate --write`, and the key is (spec_hash, model).
@@ -330,6 +332,42 @@ Files are written in the same directory and then replaced by rename, so the orig
 
 `make status` / `make drift` / `make check` / `make gc` / `make install` / `make server` are also available (`Makefile`).
 
+## Every command
+
+In the same order as `shikii --help`. For all the flags, run `shikii <command> --help`.
+
+| Command | What it does |
+|---|---|
+| `shikii init` (`shikii --init`) | Enables this project (built-in questions, wiki, places for guards and work records, MCP, the agent's instructions, the page). Safe to run twice |
+| `shikii new <id>` | Creates `.shikii/decisions/<id>.yaml` by asking a few questions (`--from` copies a sample) |
+| `shikii up` | Starts the local model (llama-server, plus `shikii-readout` for an ordinary GGUF). Starts nothing when a key is set |
+| `shikii serve` | The HTTP API and the answer page |
+| `shikii mcp` | The same as an MCP server over stdio (`shikii_specs`, `shikii_decide`, `shikii_label`, `shikii_status`, `shikii_tune`, `shikii_wiki`, `shikii_review`, `shikii_reflect`) |
+| `shikii doctor` | Checks the key, the local model and the store |
+| `shikii update` | Updates shikii and readout to the latest stable release |
+| `shikii hook install` / `uninstall` | Adds or removes the Claude Code and Codex hooks (without `--yes` it only shows what it would do) |
+| `shikii hook plan query` / `submit` | Planning before work (used by the agent) |
+| `shikii hook variants submit` | Hands over candidate wordings (used by the agent; a person adopts) |
+| `shikii decide <spec>` | Decides and returns a band |
+| `shikii label <trace_id> <truth>` | Records a truth (`--last` for the latest record) |
+| `shikii calibrate <spec>` | Draws the line from truths (`--write` writes it into the spec) |
+| `shikii status` | Records and truths, the state of each line, and the lines for lessons, guards, the routine and the page |
+| `shikii page` | The URL of this project's page (starts it if it is not running) |
+| `shikii tune <spec>` | Scores candidate wordings on the stored truths (adopted only after a person confirms the meaning) |
+| `shikii import <past.csv> --spec <spec>` | Turns a table of past cases into stored truths (JSON) |
+| `shikii judge <spec> --local <URL>` | Uses another, larger model as a judge; when it agrees with people's truths often enough, it adds weighted truths to records that have none |
+| `shikii wiki query` / `capture` / `ingest` / `maintain` / `lint` / `verify` | Searching, sources, saving, reviewing and checking the wiki, and re-checking claims |
+| `shikii handoff list` / `read` / `write` / `append` | Reading and writing work records |
+| `shikii guard list` / `add` / `enable` / `disable` / `try` | Guards |
+| `shikii review query` / `submit` | Provisional assessments from conversations and results (usually done together in reflection) |
+| `shikii reflect query` / `submit` | Reflection before ending |
+| `shikii check <spec>...` | For CI: fails on lines whose wording changed, hand-written lines and lines with too little precision |
+| `shikii drift <spec> --model M` | Checks whether a line has worsened on recent truths |
+| `shikii bias <spec>` | Measures whether the order of options changes the answer |
+| `shikii gc` | Cleans up old records without truths (`--apply` removes them) |
+| `shikii hash <spec>` | The hash of the spec that keys calibration |
+| `shikii version` | Prints the version |
+
 ## The serve HTTP API
 
 The body is JSON. Without `-H 'Content-Type: application/json'` the request is refused with 415. `spec` is the id of `.shikii/decisions/<id>.yaml`.
@@ -343,6 +381,7 @@ The body is JSON. Without `-H 'Content-Type: application/json'` the request is r
 | `POST /v1/redo` | `{"spec","trace_id"}` | Decides the same text again with today's wording and line and returns the old and new side by side (a new record; a person's answer is carried over) |
 | `GET /v1/status` | | The state of each spec (whether it has a line, the number of truths, the question in people's words) |
 | `GET /v1/tune?spec=<id>` · `POST /v1/tune/run` · `POST /v1/tune/variant` · `POST /v1/tune/adopt` | `{"spec","propose"}` · `{"spec","name","question","options"}` · `{"spec","run","meaning_same":true}` | The latest wording improvement and the current candidates · a run in the background · add a candidate written by a person (after validation; it is never adopted by itself) · adopt or reject |
+| `POST /v1/tune/sync` | `{"spec","propose"}` | Runs the wording improvement in place and returns the result (used by the MCP tool `shikii_tune`; adopts nothing) |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | The list of the wiki's claims · change a claim's status (promote / delete; only a person changes it) |
 | `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | The project's wiki: search, store, review and lint sources and articles. Lessons are hypotheses. handoff_* read and write the work records (the same operations as MCP; the page itself only reads) |
 | `GET /v1/handoff/file?path=` | `path` (relative to .shikii/handoff/) | One work record. Images as images, text and HTML as text/plain, anything else as a download. Outside the folder is 400 |

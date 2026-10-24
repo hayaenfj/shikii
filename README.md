@@ -78,7 +78,7 @@ Everything else is the machine's job.
 
 | Endpoint | What it needs |
 |---|---|
-| Jev (TypeSafe AI) | Recommended. `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` go here when the key is set. About 0.2 s per question. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
+| Jev (TypeSafe AI) | Recommended. `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` go here when the key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
 | llama.cpp | Without a key. Any chat GGUF through the included `shikii-readout` (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. Kev-4B is not supported. [Examples](integrations/readout.md) |
 | Ollama / LM Studio | Their `/v1/systemone` endpoints with a decision model, for business decisions. Not tested in this release |
 
@@ -194,6 +194,7 @@ Conversations, lessons, provisional assessments, truths, calibration, guards and
   guards/     checks made from your corrections
   records/    conversations, decisions, assessments, deliveries, observations, guard results
   labels/     truths from people and from results
+  sessions/   per-session notes (lessons delivered, notices given, files changed)
   handoff/    work records: audit reports, release steps, diffs, screenshots (read on the page)
 ```
 

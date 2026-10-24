@@ -14,6 +14,7 @@ shikii は、エージェントをあなたのプロジェクトに合わせて�
 - [画面と棚卸し](#画面と棚卸し)
 - [判定モデル](#判定モデル)
 - [業務の判定を任せる](#業務の判定を任せる)
+- [コマンドの一覧](#コマンドの一覧)
 - [serve の HTTP API](#serve-の-http-api)
 - [構成](#構成)
 
@@ -46,6 +47,7 @@ GitHub Releases の最新安定版から、利用中の OS・CPU 向けの本体
 | `guards/` | 人の訂正から作った止める検査 | する |
 | `labels/` | 人と結果が付けた正解(モデルを替えても残る資産) | する |
 | `records/` | 会話・判定・採点・配送・観察・検査の結果。判定のたびに増える | 任意(`shikii gc` が古い正解なしの記録を消す) |
+| `sessions/` | セッションごとの控え(届けた教訓、伝えた知らせ、変わったファイル) | しない |
 | `handoff/` | 作業記録(監査の報告、リリースの手順、差分、画像) | 残したい物だけ(`shikii gc` は触らない) |
 
 初期化は `.shikii/` を Git の未追跡ファイルから除く(私的な会話が入るため)。コミットするものは、除外を外して自分で足す。
@@ -143,7 +145,7 @@ shikii wiki lint
 
 答え合わせの画面はプロジェクトごとに 1 つ。最初の依頼の hook が、そのプロジェクトの画面が立っていなければ `shikii serve --store <プロジェクト>/.shikii --port 0` を起こし(空いているポートを取る)、ブラウザで開く。ポートと pid は `~/.shikii/agent/pages/<プロジェクトの id>.json` に残り、同じプロジェクトの複数のエージェントは 1 つの画面を共有する。画面の場所は `shikii page`(`page: http://127.0.0.1:<port>/ (port …, pid …, up)`。立っていなければ起こして待つ)。画面は `127.0.0.1`・`localhost`・`::1` の名前で開く(他の Host は 403 で断る)。
 
-画面の上は、まず人が答える分(「あなたが答えるもの: N 件」か「今はありません」)、次に AI の様子(使っている判定モデル、自分で決める問いの数、問いごとの学習の進み、届けた教訓と効いたか、止める検査、作業の前と後の手順、判断に知識を使った記録)。知識の欄には wiki の話題のまとまり・記事と原資料・作業記録がある。
+画面の上は、まず人が答える分(「あなたがやること: N 件」か「あなたがやること: 今はありません」)、次に「AI の状態」(使っている判定モデル、自分で決める問いの数、問いごとの学習の進み、届けた教訓と効いたか、止める検査、作業の前と後の手順、判断に知識を使った記録)。知識の欄には wiki の話題のまとまり・記事と原資料・作業記録がある。
 
 ### 棚卸し: `shikii status`
 
@@ -170,7 +172,7 @@ export TYPESAFE_API_KEY=...       # 鍵は環境変数だけから読む。shiki
 shikii doctor                     # hosted に「key present」と出れば、hook・既製の問い・pii: false の判定は Jev へ
 ```
 
-推奨は TypeSafe の Jev。鍵があれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(`shikii up` も断る。1 問 約 0.2 秒。取得するものは無い)。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。`pii: true` の判定は鍵があっても手元にしか送らないので、鍵を置いたまま手元のモデルで答えさせるには `SHIKII_MODEL=local shikii up` で立てる。
+推奨は TypeSafe の Jev。鍵があれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(`shikii up` も断る。取得するものは無い)。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。`pii: true` の判定は鍵があっても手元にしか送らないので、鍵を置いたまま手元のモデルで答えさせるには `SHIKII_MODEL=local shikii up` で立てる。
 
 ### 鍵を置けない時の手元のモデル(llama.cpp)
 
@@ -180,7 +182,7 @@ llama-server --version
 shikii up                         # llama-server を :8086 に、shikii-readout を :8080 に立てる(初回は約 7.6 GB を取得)
 ```
 
-基本モデルは `prism-ml/Ternary-Bonsai-27B-gguf` の `Ternary-Bonsai-27B-Q2_g64.gguf`(普通のチャット用モデル。`shikii-readout` が選択肢の文字の確率を読み、決定モデルの速さで答える。1 問 約 0.6 秒)。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookも、鍵が無ければこのモデルを使う。動作中のメモリは約 10 GB で、普通の PC では重いことがある。OpenJev のような学習済みの決定モデルは `shikii up --hf <repo:quant>`(readout はその答えをそのまま通す)。Kev-4B は使えない。
+基本モデルは `prism-ml/Ternary-Bonsai-27B-gguf` の `Ternary-Bonsai-27B-Q2_g64.gguf`(普通のチャット用モデル。`shikii-readout` が選択肢の文字の確率を読み、決定モデルの速さで答える)。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookも、鍵が無ければこのモデルを使う。動作中のメモリは約 10 GB で、普通の PC では重いことがある。OpenJev のような学習済みの決定モデルは `shikii up --hf <repo:quant>`(readout はその答えをそのまま通す)。Kev-4B は使えない。
 
 モデル名は応答の `model`が較正の鍵になる。`--model` で送った名前ではない。
 
@@ -268,7 +270,7 @@ bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ternary-bonsai-2
 
 `shikii new <id>` が対話(またはフラグ `--type --question --option id=説明 --input name --pii true|false --send-to local`)で作る。項目の意味と書き方の全部は [skills/shikii/references/spec.md](../skills/shikii/references/spec.md)(`shikii init` が `~/.claude/skills/shikii/references/spec.md` にも置く)。
 
-正解が `eval.min_n`(既定 50)に足りないうちは `calibrate --write` も `tune` も書かない。手持ちが少ないうちに試すなら、spec の `eval.min_n` を手持ちの件数に下げる。`--force` で書いた線は `check` が「calibrate なら書かなかった線」として落とすので、試しの道には使わない。
+正解が `eval.min_n`(spec に必ず書く。`shikii new` の既定は 50)に足りないうちは `calibrate --write` も `tune` も書かない。手持ちが少ないうちに試すなら、spec の `eval.min_n` を手持ちの件数に下げる。`--force` で書いた線は `check` が「calibrate なら書かなかった線」として落とすので、試しの道には使わない。
 
 ### 2 分で一周(鍵も GPU も無し)
 
@@ -284,7 +286,7 @@ scripts/demo.sh --overconfident  # 確率を端に寄せた偽モデル。較正
 bin/shikii check .shikii/decisions/*.yaml
 
 # 直近 N 件のラベルで、較正時の Brier から +0.05 以上悪化 / precision が act 未満なら警告して exit 1
-bin/shikii drift .shikii/decisions/prompt-intent.yaml --model jev-latest --window 50
+bin/shikii drift .shikii/decisions/prompt-intent.yaml --model jev-1.14.0 --window 50
 ```
 
 較正の方法は 3 つ。どれも `calibrate --write` が生成し、鍵は (spec_hash, model)。
@@ -330,6 +332,42 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 
 `make status` / `make drift` / `make check` / `make gc` / `make install` / `make server` も用意した(`Makefile`)。
 
+## コマンドの一覧
+
+`shikii --help` と同じ並び。フラグの全部は `shikii <コマンド> --help`。
+
+| コマンド | すること |
+|---|---|
+| `shikii init`(`shikii --init`) | このプロジェクトを有効にする(既製の問い・wiki・止める検査と作業記録の置き場・MCP・作法・画面への入口)。2 回目も安全 |
+| `shikii new <id>` | 質問に答えるだけで `.shikii/decisions/<id>.yaml` を作る(`--from` で見本を写す) |
+| `shikii up` | 手元のモデルを起こす(llama-server と、普通の GGUF なら `shikii-readout`)。鍵がある時は起こさない |
+| `shikii serve` | HTTP の口と答え合わせの画面 |
+| `shikii mcp` | 同じ中身を stdio の MCP サーバーとして出す(`shikii_specs`・`shikii_decide`・`shikii_label`・`shikii_status`・`shikii_tune`・`shikii_wiki`・`shikii_review`・`shikii_reflect`) |
+| `shikii doctor` | 鍵・手元のモデル・置き場の状態を確かめる |
+| `shikii update` | 最新の安定版へ本体と readout を更新する |
+| `shikii hook install` / `uninstall` | Claude Code と Codex の hook を入れる・外す(`--yes` 無しは表示だけ) |
+| `shikii hook plan query` / `submit` | 作業の前の整理(エージェントが使う) |
+| `shikii hook variants submit` | 聞き方の候補を渡す(エージェントが使う。採用は人) |
+| `shikii decide <spec>` | 判定して帯を返す |
+| `shikii label <trace_id> <truth>` | 正解を付ける(`--last` で直近の記録に) |
+| `shikii calibrate <spec>` | 正解で線を引く(`--write` で spec に書く) |
+| `shikii status` | 記録と正解の数、線の状態、教訓・止める検査・手順・画面の行 |
+| `shikii page` | このプロジェクトの画面の URL(立っていなければ起こす) |
+| `shikii tune <spec>` | 聞き方の候補を正解の貯金で採点する(採用は人が意味を確かめてから) |
+| `shikii import <past.csv> --spec <spec>` | 手元の過去の表を正解の貯金(JSON)にする |
+| `shikii judge <spec> --local <URL>` | 別の大きいモデルを審判にし、人の正解と十分に一致すれば正解の無い記録に重み付きの正解を付ける |
+| `shikii wiki query` / `capture` / `ingest` / `maintain` / `lint` / `verify` | wiki の検索・原資料・登録・見直し・点検・主張の再検証 |
+| `shikii handoff list` / `read` / `write` / `append` | 作業記録の読み書き |
+| `shikii guard list` / `add` / `enable` / `disable` / `try` | 止める検査 |
+| `shikii review query` / `submit` | 会話と結果からの仮採点(振り返りでまとめて使うことが多い) |
+| `shikii reflect query` / `submit` | 終える前の振り返り |
+| `shikii check <spec>...` | CI 向け: 文言が変わった線・手書きの線・精度不足の線を落とす |
+| `shikii drift <spec> --model M` | 直近の正解で線の劣化を見る |
+| `shikii bias <spec>` | 選択肢の並びで答えが変わるかを測る |
+| `shikii gc` | 古くて正解の無い記録の掃除(`--apply` で消す) |
+| `shikii hash <spec>` | 較正の鍵になる spec のハッシュ |
+| `shikii version` | 版を表示する |
+
 ## serve の HTTP API
 
 本文は JSON。`-H 'Content-Type: application/json'` が無いと 415 で蹴る。`spec` は `.shikii/decisions/<id>.yaml` の id。
@@ -343,6 +381,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `POST /v1/redo` | `{"spec","trace_id"}` | 今の聞き方と線で同じ本文を再判定し、前と今を並べて返す(新しい記録、人の答えは写る) |
 | `GET /v1/status` | | spec ごとの状態(線の有無、正解の数、人の言葉の質問) |
 | `GET /v1/tune?spec=<id>` · `POST /v1/tune/run` · `POST /v1/tune/variant` · `POST /v1/tune/adopt` | `{"spec","propose"}` · `{"spec","name","question","options"}` · `{"spec","run","meaning_same":true}` | 聞き方の改善の最新と今の候補・裏で回す・人が書いた候補を足す(検証してから。採用はしない)・採否 |
+| `POST /v1/tune/sync` | `{"spec","propose"}` | その場で聞き方の改善を回して結果を返す(MCP の `shikii_tune` が使う。採用はしない) |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
 | `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ) |
 | `GET /v1/handoff/file?path=` | `path`(.shikii/handoff/ からの相対) | 作業記録の 1 件。画像は画像、文字と HTML は text/plain、それ以外は保存。置き場の外は 400 |

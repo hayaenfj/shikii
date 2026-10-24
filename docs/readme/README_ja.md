@@ -78,7 +78,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 
 | 接続先 | 準備するもの |
 |---|---|
-| Jev（TypeSafe AI） | 推奨。`TYPESAFE_API_KEY`。鍵があれば、既製の問いと、`send_to` に `hosted` を含む業務の判定がここへ送られる。1問 約0.2秒。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
+| Jev（TypeSafe AI） | 推奨。`TYPESAFE_API_KEY`。鍵があれば、既製の問いと、`send_to` に `hosted` を含む業務の判定がここへ送られる。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
 | llama.cpp | 鍵を置けない時。通常のチャットGGUFを同梱の `shikii-readout` 越しに（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。Kev-4Bは使えない。[実行例](../../integrations/readout.md) |
 | Ollama / LM Studio | `/v1/systemone` と決定モデル。業務の判定向け。この版では未検証 |
 
@@ -194,6 +194,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
   guards/     人の訂正から作った止める検査
   records/    会話・判定・採点・配送・観察・検査の結果
   labels/     人と結果が付けた正解
+  sessions/   セッションごとの控え(届けた教訓、伝えた知らせ、変わったファイル)
   handoff/    作業記録: 監査の報告、リリースの手順、差分、画像(画面で読む)
 ```
 
