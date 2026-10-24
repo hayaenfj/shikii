@@ -131,9 +131,16 @@ func TestHookInstallPreviewListsTheProjectsItWouldWipe(t *testing.T) {
 	common, _ := agentHome()
 	os.WriteFile(filepath.Join(repo, ".shikii", "project.json"), []byte(`{"version":1,"scope":"`+repo+`"}`), 0o600) // 0.7.3 以前の --init の印
 	os.Remove(installedVersionPath(common))
+	// 監査 0.8.1-1 の 15: 作業記録(作り直せない書きかけのファイル)も消えることを件数で出す
+	os.MkdirAll(filepath.Join(repo, ".shikii", "handoff", "job"), 0o700)
+	os.WriteFile(filepath.Join(repo, ".shikii", "handoff", "job", "a.md"), []byte("a"), 0o600)
+	os.WriteFile(filepath.Join(repo, ".shikii", "handoff", "b.md"), []byte("b"), 0o600)
 	out := capture(t, func() error { return cmdHook([]string{"install"}) })
 	if !strings.Contains(out, "消して初期化し直します") || !strings.Contains(out, repo) {
 		t.Fatalf("表示に消す対象が出る:\n%s", out)
+	}
+	if !strings.Contains(out, "作業記録 2 件(.shikii/handoff/)も消えます") {
+		t.Fatalf("作業記録も消えることを件数で出す:\n%s", out)
 	}
 	if _, err := os.Stat(installedVersionPath(common)); err == nil {
 		t.Fatal("表示だけでは印を書かない")
