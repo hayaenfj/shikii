@@ -24,9 +24,10 @@ func classifyContext(agent, scope string) (string, []string, error) {
 	if err != nil || len(un) == 0 {
 		return "", nil, err
 	}
-	// wiki に点検の問題(手で直された記事など)があると保存は全部断られ、classify も必ず失敗する。頼まず(止めず)、lint を促す 1 行だけ(監査 0.9.0 の B2)
-	if view, err := book.QueryPage("", ""); err == nil && len(view.Issues) > 0 {
-		return fmt.Sprintf("shikii: 種類と場面の無い記事が %d 本ありますが、wiki に点検の問題があるので今は付けられません。%s wiki lint で問題を確かめて直すと、付けられるようになります。", len(un), hookExe()), nil, nil
+	// wiki に読めない記事や手で直された記事があると保存は全部断られ、classify も必ず失敗する。頼まず(止めず)、lint を促す 1 行だけ(監査 0.9.0 の B2)
+	// 止めるのは保存が断られる時(記事そのものの問題)だけ。別の記事の出典の問題では保存は通るので止めない(再監査 0.9.0 の新-2)
+	if issues, err := book.PageIssues(); err == nil && len(issues) > 0 {
+		return fmt.Sprintf("shikii: 種類と場面の無い記事が %d 本ありますが、wiki に読めない記事か手で直された記事があるので今は付けられません。%s wiki lint で問題を確かめて直すと、付けられるようになります。", len(un), hookExe()), nil, nil
 	}
 	live, err := book.Live()
 	if err != nil {

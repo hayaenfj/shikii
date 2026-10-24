@@ -1714,8 +1714,10 @@ func hookInstall(args []string, install bool) error {
 		// 各プロジェクトの AGENTS.md(Codex・OpenCode が読む)の shikii の節も新しい中身に(0.9.0。節がある所だけ、人の部分は触らない)
 		for _, p := range registeredProjects(agent) {
 			path := filepath.Join(p.Path, "AGENTS.md")
-			if b, err := os.ReadFile(path); err != nil || !strings.Contains(string(b), agentsMarker) {
+			if b, err := os.ReadFile(path); err != nil {
 				continue
+			} else if _, _, found, _ := agentsSectionSpan(string(b)); !found {
+				continue // 印だけの行が無い(節の無い)AGENTS.md には作らない。人の文の中の印は数えない(再監査 0.9.0 の新-1)
 			}
 			if did, err := addAgentsSection(path); err != nil {
 				fmt.Fprintf(stdout, "%s: %v\n", tilde(path), err)

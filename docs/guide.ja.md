@@ -148,7 +148,7 @@ shikii wiki lint
 
 `scene` はその仕事の言葉で「〜する時」と書く 1 行(24 文字まで)。「コミットする時」「請求書を出す時」「患者に説明する時」のように、開発の言葉に限らない。振り返りの `place` は今ある場面と記事の数(`scenes`)を返すので、近い場面があれば同じ言い方を使う(似た言い方で場面が散らない)。どの依頼にも効く決まりは「いつも」にする。付けるのはエージェントで、人が選ぶことはない。
 
-0.9.0 より前に作った記事には種類も場面も無い。依頼前の hook が、そうした記事を 1 回に 5 本ずつ挙げてエージェントに付けさせ(`shikii wiki classify <ページID> <種類> <場面>`、MCP は `shikii_wiki` の `operation: "classify"`)、付けないまま終えようとすると Stop が一度だけ止める(作法の検査 `wiki-kinds`)。教訓の文は変えず、新しい版として残る。付ける間に同じ記事が別のエージェントに直されたら、classify は断り、読み直して付け直す(直しを古い教訓で戻さない)。wiki に点検の問題(手で直された記事など)がある間は保存が全部断られるので、hook は付ける記事を頼まず、`shikii wiki lint` で確かめるよう 1 行だけ伝える。`wiki query` の返事は残りの数と次の 5 本から始まり、`wiki ingest`・`wiki classify`・`reflect submit` の返事にも残りが載る。hook の無いエージェント(hook を信頼する前の Codex、OpenCode)には、AGENTS.md の shikii の節と MCP の案内が同じことを伝える。アップデートは、登録済みの各プロジェクトの AGENTS.md にある shikii の節を新しい中身に置き換える。
+0.9.0 より前に作った記事には種類も場面も無い。依頼前の hook が、そうした記事を 1 回に 5 本ずつ挙げてエージェントに付けさせ(`shikii wiki classify <ページID> <種類> <場面>`、MCP は `shikii_wiki` の `operation: "classify"`)、付けないまま終えようとすると Stop が一度だけ止める(作法の検査 `wiki-kinds`)。教訓の文は変えず、新しい版として残る。付ける間に同じ記事が別のエージェントに直されたら、classify は断り、読み直して付け直す(直しを古い教訓で戻さない)。wiki に読めない記事や手で直された記事がある間は保存が全部断られるので、hook は付ける記事を頼まず、`shikii wiki lint` で確かめるよう 1 行だけ伝える。`wiki query` の返事は残りの数と次の 5 本から始まり、`wiki ingest`・`wiki classify`・`reflect submit` の返事にも残りが載る。hook の無いエージェント(hook を信頼する前の Codex、OpenCode)には、AGENTS.md の shikii の節と MCP の案内が同じことを伝える。アップデートは、登録済みの各プロジェクトの AGENTS.md にある shikii の節を新しい中身に置き換える。
 
 `wiki query`の一覧や`reflect query`には最大2記事の`maintenance`対象がある。本文・原資料・関連ページを確認し、必要な編集を保存した後、最新の`page_id`・`revision`・`key`と確認理由`reason`を`maintenance.json`へ渡す。振り返りの`maintenance`配列へまとめてもよい。記事や関連する版が変われば古い見直し結果は拒否し、未変更でも30日後に再確認する。本文やリンクがないことは確認のきっかけであり、不要な文章や関係を追加する指示ではない。
 
