@@ -2,8 +2,8 @@ package main
 
 import (
 	"net/http"
-	"os"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
