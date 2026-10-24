@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -304,10 +305,18 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 			t.Fatalf("beginner view missing %q", must)
 		}
 	}
-	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h", `id="mode"`, "かんたん表示", "shikii.mode", "class=\"adv\"", "body.advanced"} {
+	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h", `id="mode"`, "かんたん表示", "shikii.mode", "body.advanced"} {
 		if strings.Contains(body, never) {
 			t.Fatalf("jargon must not appear in the page: %q", never)
 		}
+	}
+	// 隠す印 adv は class の語としてどこにも残らない(`class="k adv"` のように他の語と並ぶ形も捕まえる。文字一致の never では素通りした: 監査 C-3)
+	hiddenMark := regexp.MustCompile(`class="[^"]*\badv\b[^"]*"`)
+	if !hiddenMark.MatchString(`<span class="k adv">`) {
+		t.Fatal("the hidden-mark check must catch adv among other classes")
+	}
+	if m := hiddenMark.FindString(body); m != "" {
+		t.Fatalf("the hidden mark adv must not remain: %s", m)
 	}
 	var st struct {
 		Specs []struct {
