@@ -199,7 +199,7 @@ Conversations, lessons, provisional assessments, truths, calibration, guards and
 
 ## Read more
 
-- [The guide](docs/guide.md): every command, the HTTP API, connecting models, measured numbers
+- [The guide](docs/guide.md): every command, the HTTP API, connecting models, delegating business decisions
 - [Architecture](docs/architecture.md) (Japanese)
 - [The agent's instructions](skills/shikii/SKILL.md)
 - [Changelog](CHANGELOG.md)
