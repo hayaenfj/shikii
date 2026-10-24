@@ -242,3 +242,34 @@ func coverageOf(placed string, d notebook.Draft) float64 {
 	}
 	return float64(hit) / float64(len(want))
 }
+
+// 0.9.0: 差し込み先の返事に、今ある場面を数の多い順に返す(新しい草稿の場面を、近い物があれば同じ言い方にするため)。
+// 新しい記事になる時(記事が無い時)も返す。候補の記事にも種類と場面を添える(合流する時に引き継ぐ値が分かる)。
+func TestPlaceReturnsExistingScenes(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .3 })
+	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
+	scope := feedbackScope(repo)
+	st := store.Store{Dir: agent}
+	src := fmt.Sprintf("%016x", 400)
+	if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "r", Summary: "s", Reply: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	book := notebook.Book{Root: agent, Scope: scope}
+	for i, sc := range []string{"コミットする時", "コミットする時", "公開する時"} {
+		if _, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("記事 %d", i), Lesson: fmt.Sprintf("教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: sc}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{{Sources: []string{src}, Title: "新しい", Lesson: "新しい教訓", AppliesTo: "a"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := out.(placeResult)
+	if len(res.Scenes) != 2 || res.Scenes[0].Scene != "コミットする時" || res.Scenes[0].Count != 2 || res.Scenes[1].Scene != "公開する時" {
+		t.Fatalf("今ある場面を数の多い順に返す: %+v", res.Scenes)
+	}
+	if c := res.Placements[0].Candidates[0]; c.Kind != "rule" || c.Scene == "" {
+		t.Fatalf("候補にも種類と場面を添える: %+v", c)
+	}
+}

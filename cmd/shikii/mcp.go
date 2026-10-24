@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	shikii "github.com/hayaenfj/shikii"
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
@@ -75,6 +76,10 @@ var maintenanceSchema = map[string]any{"type": "object", "additionalProperties":
 	"page_id": map[string]any{"type": "string"}, "revision": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"},
 }, "required": []string{"page_id", "revision", "key", "reason"}}
 
+// kindSchema と sceneSchema は記事の種類と場面(0.9.0)。教訓のある記事は保存の口で必須(直す時に省けば引き継ぐ)。
+var kindSchema = map[string]any{"type": "string", "enum": notebook.Kinds, "description": "教訓の種類(必須。直す時は省けば引き継ぐ): rule=守る決まり、howto=やり方、criteria=判断の基準、fact=前提と事実、history=経緯"}
+var sceneSchema = map[string]any{"type": "string", "maxLength": 24, "description": "当てはまる場面をその仕事の言葉で短く(必須。例「コミットする時」「請求書を出す時」。1 行 24 文字まで)。place の返事の今ある場面に近い物があれば同じ言い方を使う"}
+
 var mcpTools = []map[string]any{
 	{
 		"name":        "shikii_reflect",
@@ -100,6 +105,8 @@ var mcpTools = []map[string]any{
 				"replaces": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"body":     map[string]any{"type": "string", "description": "背景・根拠・適用条件・未確定点を出典から統合した知識本文。最大16KB。省略は既存本文を保持、空文字は解除"},
 				"related":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "同じプロジェクトの関連ページID。省略は保持、空配列は解除"},
+				"kind":     kindSchema,
+				"scene":    sceneSchema,
 			}, "required": []string{"sources"}}},
 		}, "required": []string{"operation"}},
 	},
@@ -189,6 +196,8 @@ var mcpTools = []map[string]any{
 				"related":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "同じプロジェクトの関連ページID。省略は保持、空配列は解除"},
 				"applies_to":    map[string]any{"type": "string", "description": "この教訓が当てはまる条件"},
 				"replaces":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この教訓で更新する、同じ仕事の古い教訓のID。更新時の省略は既存の指定を保ち、空配列は置き換えを解除する"},
+				"kind":          kindSchema,
+				"scene":         sceneSchema,
 			},
 			"required": []string{"operation"},
 		},

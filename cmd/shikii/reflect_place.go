@@ -78,6 +78,8 @@ type placeCandidate struct {
 	Revision  string          `json:"revision"`
 	Title     string          `json:"title"`
 	AppliesTo string          `json:"applies_to"`
+	Kind      string          `json:"kind,omitempty"` // 候補の記事の種類と場面(合流すれば引き継ぐ値)
+	Scene     string          `json:"scene,omitempty"`
 	SameTopic placeJudgement  `json:"same_topic"`
 	Conflict  *placeJudgement `json:"conflict,omitempty"`
 }
@@ -90,10 +92,44 @@ type placement struct {
 }
 
 type placeResult struct {
-	Placements []placement `json:"placements"`
+	Placements []placement  `json:"placements"`
+	Scenes     []sceneCount `json:"scenes"` // 今ある場面(数の多い順、placeScenesMax まで)。新しい草稿の場面は、近い物があれば同じ言い方にする(0.9.0)
 }
 
-const placeNote = "線が引けるまでは参考です。同じ話題と見た記事は本文を読み、足すなら id を、置き換えるなら replaces を submit に書きます。食い違いの疑いがある記事は、どちらが新しい出典に基づくかを確かめてから決めます。候補に無い話題なら新しい記事にします。"
+// sceneCount は場面とその記事の数。
+type sceneCount struct {
+	Scene string `json:"scene"`
+	Count int    `json:"count"`
+}
+
+// placeScenesMax は差し込み先の返事に載せる場面の数の上限。
+const placeScenesMax = 30
+
+// liveScenes は生きている記事の場面を数の多い順(同数は名前順)に返す。
+func liveScenes(live []notebook.Page) []sceneCount {
+	n := map[string]int{}
+	for _, p := range live {
+		if p.Scene != "" {
+			n[p.Scene]++
+		}
+	}
+	out := []sceneCount{}
+	for sc, c := range n {
+		out = append(out, sceneCount{Scene: sc, Count: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Scene < out[j].Scene
+	})
+	if len(out) > placeScenesMax {
+		out = out[:placeScenesMax]
+	}
+	return out
+}
+
+const placeNote = "線が引けるまでは参考です。同じ話題と見た記事は本文を読み、足すなら id を、置き換えるなら replaces を submit に書きます。食い違いの疑いがある記事は、どちらが新しい出典に基づくかを確かめてから決めます。候補に無い話題なら新しい記事にします。保存には種類 kind(rule / howto / criteria / fact / history)と場面 scene が要ります。場面は scenes に近い物があれば同じ言い方を使います(合流なら省けば引き継ぎます)。"
 
 // placeDrafts は草稿ごとに、同じ話題の候補(p の高い順)と、上位の矛盾の疑いを返す。判定は記録に残り、submit の結果で正解が付く。
 func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, error) {
@@ -106,6 +142,7 @@ func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, erro
 	if err != nil {
 		return res, err
 	}
+	res.Scenes = liveScenes(live)
 	project := filepath.Base(scope)
 	for i, d := range drafts {
 		lesson, applies := strings.TrimSpace(d.Lesson), strings.TrimSpace(d.AppliesTo)
@@ -146,7 +183,7 @@ func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, erro
 			if judged[j] == nil || judged[j].Band == decide.Abstain {
 				continue
 			}
-			pl.Candidates = append(pl.Candidates, placeCandidate{PageID: p.ID, Revision: p.Revision, Title: p.Title, AppliesTo: p.AppliesTo, SameTopic: judgement(judged[j])})
+			pl.Candidates = append(pl.Candidates, placeCandidate{PageID: p.ID, Revision: p.Revision, Title: p.Title, AppliesTo: p.AppliesTo, Kind: p.Kind, Scene: p.Scene, SameTopic: judgement(judged[j])})
 		}
 		if len(pl.Candidates) == 0 {
 			return res, errors.New("手元のモデルが差し込み先に答えません(起動を確かめてから、もう一度 place を呼びます)")

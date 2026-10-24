@@ -143,3 +143,34 @@ func TestMCPToolErrorsAreReportedNotCrashed(t *testing.T) {
 		t.Fatalf("unknown method must be -32601: %v", resp)
 	}
 }
+
+// 0.9.0: MCP だけで使うエージェントも記事に種類と場面を付けられるよう、shikii_wiki と shikii_reflect(wiki の項目)の入力の定義に
+// kind(5 つの enum)と scene がある(shikii_reflect の wiki の項目は余計な欄を許さないので、無いと定義どおりに送れない)。
+func TestMCPWikiToolsCarryKindAndScene(t *testing.T) {
+	enc, err := json.Marshal(mcpTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tools []map[string]any
+	json.Unmarshal(enc, &tools)
+	props := map[string]map[string]any{}
+	for _, tl := range tools {
+		schema := tl["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		switch tl["name"] {
+		case "shikii_wiki":
+			props["wiki"] = schema
+		case "shikii_reflect":
+			props["reflect"] = schema["wiki"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+		}
+	}
+	for name, p := range props {
+		kind, _ := p["kind"].(map[string]any)
+		enum, _ := kind["enum"].([]any)
+		if len(enum) != 5 || enum[0] != "rule" || p["scene"] == nil || !strings.Contains(kind["description"].(string), "守る決まり") {
+			t.Fatalf("%s の入力の定義に kind(5 つ、説明付き)と scene が要る: %v", name, p)
+		}
+	}
+	if len(props) != 2 {
+		t.Fatalf("shikii_wiki と shikii_reflect の両方: %v", props)
+	}
+}
