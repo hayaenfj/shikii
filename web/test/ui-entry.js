@@ -13,6 +13,8 @@ import Tabs from '../src/components/Tabs.svelte';
 import App from '../src/App.svelte';
 import { i18n, t } from '../src/lib/i18n.svelte.js';
 import { ui } from '../src/lib/state.svelte.js';
+import Toast from '../src/components/Toast.svelte';
+import { toastState } from '../src/lib/toast.svelte.js';
 
 function checkLang(target) {
   const app = mount(LangPicker, { target });
@@ -277,7 +279,8 @@ export async function run() {
   const machineOnlyOK = await checkMachineOnlySpec(target);
   const treeOK = await checkNotebookTree(target);
   const lanesOK = await checkLanesForPersonSpec(target);
-  const ok = summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const conflictsOK = await checkUtilityConflicts(target);
+  const ok = conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -693,5 +696,93 @@ async function checkLazyNavigation(target) {
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = initial && switched && answered && waiting && knowledge;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回3要求=' + initial + ', タブ切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 切替中は読込み待ち=' + waiting + ', 未読の知識を開く=' + knowledge + ')');
+  return ok;
+}
+
+// 監査 B(0.8.1、Tailwind): 同じ要素に、同じ変体で同じ性質を違う値にする utility を重ねない。
+// Tailwind v4 は utility を「性質ごとの固定の順 → 名前の順」で生成し、class 属性の並びは勝敗に関係ない
+// (例: bg-transparent は bg-accentbg や bg-surface より後に生成されるので、条件で足しても常に透明が勝つ)。
+// 配る CSS(dist/assets/index.css)の utilities 層から class → 性質の表を作り、描いた要素の classList を全部見る。
+// 変体(max-sm: / hover: / [&>span]: …)が違えば幅や状態で上書きする意図なので見ない。--tw-* から導く値も見ない
+function utilityTable(css) {
+  const table = new Map();
+  const at = css.indexOf('@layer utilities {');
+  if (at < 0) return table;
+  const re = /\n\s*(\.[^{}]*?)\s*\{\n([^{}]*?)\n\s*\}/g;
+  let m;
+  while ((m = re.exec(css.slice(at)))) {
+    const decls = m[2].split('\n').map(l => l.trim().replace(/;$/, '')).filter(l => l.includes(':') && !l.includes('var(--tw-'));
+    for (const sel of m[1].split(/,\s*(?=\.)/)) {
+      let i = 1, name = '';
+      while (i < sel.length) {
+        const c = sel[i];
+        if (c === '\\') { name += sel[i + 1]; i += 2; continue; }
+        if (/[\s.:>[,]/.test(c)) break;
+        name += c; i++;
+      }
+      if (sel.slice(i).trim() && !name.includes(':')) continue; // .pill.calibrated、.empty-state p のような複合の規則
+      const props = table.get(name) || new Map();
+      for (const d of decls) { const k = d.indexOf(':'); props.set(d.slice(0, k).trim(), d.slice(k + 1).trim()); }
+      table.set(name, props);
+    }
+  }
+  return table;
+}
+function variantPrefix(name) {
+  let depth = 0, last = -1;
+  for (let i = 0; i < name.length; i++) { const c = name[i]; if (c === '[' || c === '(') depth++; else if (c === ']' || c === ')') depth--; else if (c === ':' && depth === 0) last = i; }
+  return last < 0 ? '' : name.slice(0, last);
+}
+function collectConflicts(target, table, out) {
+  for (const el of target.querySelectorAll('[class]')) {
+    const names = [...el.classList].filter(n => table.has(n));
+    for (let a = 0; a < names.length; a++) for (let b = a + 1; b < names.length; b++) {
+      if (variantPrefix(names[a]) !== variantPrefix(names[b])) continue;
+      for (const [prop, va] of table.get(names[a])) {
+        const vb = table.get(names[b]).get(prop);
+        if (vb !== undefined && vb !== va) out.add(el.tagName.toLowerCase() + ': ' + names[a] + ' と ' + names[b] + ' (' + prop + ')');
+      }
+    }
+  }
+}
+async function checkUtilityConflicts(target) {
+  const table = utilityTable(globalThis.__shikiiCSS || '');
+  if (table.size < 50) { console.log('check-ui: FAIL (配る CSS の utility を読めない: ' + table.size + ' 個)'); return false; }
+  const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui }; const lang = i18n.lang; i18n.lang = 'ja';
+  const out = new Set();
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  // 1. 画面の全体: 選ばれたタブ・列・絞り込み、要約、使い方、未回答のカード(AI と同じ / 一覧)
+  const mk = (id, unlabeled, waiting, person) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [{ model: 'm', hash: 'h', n: 3, state: 'collecting' }], min_n: 50, records: 5, labels: 1, unlabeled, waiting_for_person: waiting, awaiting_results: unlabeled - waiting, person_answers: person, truth_source: person ? 'person' : 'results', last_calibration: 'log', calibration_result: { reason: 'insufficient', human_truths: 2, min_n: 50, model: 'm', hash: 'h', at: '2026-10-23' }, tune: { running: false, proposer: true, variants: [{ name: 'v1' }], latest: { run: 'r', adoptable: true, adopted: false, winner: 'v1', model: 'm', truths: 3, at: '2026-10-23T00:00:00Z', have_holdout: true, holdout: 0.5, decision: 'd', candidates: [{ name: 'current', top1: 0.5, brier: 0.2, prec_at_act: 0.5, rec_at_act: 0.5, change: '' }, { name: 'v1', top1: 0.6, brier: 0.1, prec_at_act: 0.6, rec_at_act: 0.6, change: 'c' }], winner_wording: { question: 'q1', options: { a: 'x' }, steps: [{ ask: 'a', yes: 'y', no: 'n' }] }, current_wording: { question: 'q0', options: { a: 'y' } } } } });
+  const specs = [mk('wiki-conflict', 4, 0, false), mk('prompt-kind', 2, 1, true), mk('needs-plan', 3, 2, true)];
+  const item = (id, project) => ({ trace_id: id, at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: id, raw: { yes: 0.6, no: 0.4 }, stale: true, answerable: true, audit: true, waits_for_person: true, project, rung: 'context', choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }] });
+  const summary = { person: { records: 20, waits: 2 }, memory: { delivered: 4, corrections: { delivered: 1 } }, guards: { rituals: { plan: { asked: 5, done: 2, fixed: 1 }, reflect: { asked: 4, done: 4, fixed: 0 } }, items: [{ id: 'g', kind: 'k', title: 't', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'r' } }, { id: 'g2', kind: 'k', title: 't2', enabled: false }] } };
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs, summary, model: { name: 'm' } } : url.startsWith('v1/queue?spec=prompt-kind') ? { items: [item('r1', 'alpha'), item('y1', 'beta')] } : url.startsWith('v1/tune') ? specs[1].tune : { items: [] } });
+  Object.assign(ui, { tab: 'prompt-kind', done: false, results: false, pinned: '', view: 'list', filter: 'ask', project: '', showHelp: true });
+  let app = mount(App, { target }); await settle(); await settle();
+  collectConflicts(target, table, out);
+  unmount(app);
+  // 2. カード: 前の返答の折りたたみ(needs-plan)、原文の上限の注意、回答済み(答えの直し)、抜き取りの仮採点、読むだけ
+  const base = { trace_id: 'c1', at: '2026-10-23T00:00:00Z', band: 'discard', top: 'yes', p: 0.3, model: 'm', answerable: true, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], project: 'alpha' };
+  const cards = [
+    [{ id: 'needs-plan', type: 'noul' }, { ...base, inputs: { previous: 'p', request: 'r', agreed: 'a', open: 'o', files: 'f' }, original_inputs: { previous: 'pp' }, text_status: { request: 'limited', previous: 'legacy' } }],
+    [{ id: 'done-as-asked', type: 'noul' }, { ...base, inputs: { request: 'r', summary: 's' }, truth: 'yes', truth_at: base.at, redo_of: 'x' }],
+    [{ id: 'done-as-asked', type: 'noul' }, { ...base, inputs: { request: 'r' }, audit: true, review_reason: 'random', review: { truth: 'yes', reason: 'why', source_material: { reply: 'reply' } } }],
+    [{ id: 'intent', type: 'choice' }, { ...base, top: 'a', choices: [{ truth: 'a', label: 'a' }, { truth: 'b', label: 'b' }], inputs: { message: 'm' } }],
+  ];
+  for (const [sp, it] of cards) { app = mount(ItemCard, { target, props: { sp, it } }); flushSync(); collectConflicts(target, table, out); unmount(app); }
+  app = mount(ItemCard, { target, props: { sp: { id: 'wiki-conflict', type: 'noul' }, it: { ...base, inputs: { lesson: 'l' } }, readonly: true } }); flushSync(); collectConflicts(target, table, out); unmount(app);
+  // 3. 知識の欄(主張・階層・記事の本文・出典・効き目)、仕事の入口、知らせ
+  const lesson = (id, related = []) => ({ id, revision: 'r', title: 't' + id, lesson: 'l', applies_to: 'w', body: '## h\n\nbody', sources: [{ id: 'src' + id }], related, status: 'hypothesis', correction: { quote: 'q', action: 'a' } });
+  const wiki = { notebook_project: 'alpha', pending_sources_count: 1, knowledge_usage: { prepared: 1, with_matches: 1, with_citations: 1, lookup_milliseconds: 1, context_bytes: 1 }, maintenance: [{ page_id: 'a', title: 'm' }],
+    memory_effect: { window: 10, stats: { delivered: 1 }, corrections: { delivered: 1 }, recent: [{ source_id: 's', request: 'r', quote: { key: 'k', lesson: 'l', correction: { quote: 'q', action: 'a' } }, assessment: { result: 'helpful', correction_result: 'followed', decision: 'd', evidence: 'e' } }] },
+    lessons: [lesson('a', ['b']), lesson('b')], claims: [{ path: 'p/a.md', is_claim: true, status: 'draft', claim: 'c', confirmable: true, applies_to: { models: 'm' }, evidence: [{ date: 'd', model: 'm', result: 'r', verdict: 'v' }] }, { path: 'p/b.md', is_claim: true, status: 'confirmed', claim: 'c2' }, { path: 'p/c.md', is_claim: true, status: 'tentative', claim: 'c3' }] };
+  app = mount(Knowledge, { target, props: { wiki } }); flushSync(); collectConflicts(target, table, out); unmount(app);
+  app = mount(Projects, { target, props: { projects: [{ name: 'n', path: '/p', url: '/p/x/' }] } }); flushSync(); collectConflicts(target, table, out); unmount(app);
+  toastState.msg = 'x'; toastState.shown = true;
+  app = mount(Toast, { target }); flushSync(); collectConflicts(target, table, out); unmount(app); toastState.shown = false;
+  globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
+  const list = [...out];
+  const ok = list.length === 0;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (同じ要素に同じ性質の utility を重ねない: 衝突 ' + list.length + ' 件' + (ok ? '' : '\n  ' + list.slice(0, 20).join('\n  ')) + ')');
   return ok;
 }

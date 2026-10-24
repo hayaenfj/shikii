@@ -1,7 +1,9 @@
 /* shikii の画面の見た目: Tailwind CSS v4。
    色・影・字は token(@theme)、部品の見た目は各 .svelte の class(utility)。
    会話を読む領域と判断する領域を分け、明暗の両方で同じ階層を保つ(色は :root の変数を prefers-color-scheme で切り替える)。 */
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../src";
+@source "../index.html";
 
 :root { color-scheme:light dark; --fg:#23342d; --bg:#f3f5f1; --surface:#fff; --surface2:#f7f9f5; --muted:#63756b; --line:#dde6dd; --accent:#247358; --accentbg:#eaf5ee; --amber:#926122; --amberbg:#fbf2e3; --request:#926122; --requestbg:#fbf8f1; --shadow:0 8px 32px #25372c05; --blue:#567796; }
 @media (prefers-color-scheme:dark) { :root { --fg:#e6eeea; --bg:#101719; --surface:#172123; --surface2:#1d292b; --muted:#a3b5ae; --line:#2c3a3d; --accent:#80d9b3; --accentbg:#233e34; --amber:#e6bb77; --amberbg:#3c3222; --request:#e6bb77; --requestbg:#242823; --shadow:0 10px 36px #00000015; --blue:#91b8dc; } }

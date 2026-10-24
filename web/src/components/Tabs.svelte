@@ -11,7 +11,7 @@
   const builtins = stages.flatMap(s => s.ids);
   const itemsFor = stage => stage.id === 'machine' ? specs.filter(s => s.person_answers === false) : stage.id === 'other' ? specs.filter(s => !builtins.includes(s.id) && s.person_answers !== false) : stage.ids.map(id => specs.find(s => s.id === id)).filter(Boolean);
   // 見た目: 選ばれているタブは active(検査と aria-current が見る印)
-  const tab = on => 'my-0.5 flex min-h-11 w-full items-center gap-[9px] rounded-[9px] border bg-transparent px-[9px] py-2.5 text-left text-[13px] leading-normal hover:bg-surface2 max-sm:gap-1.5 max-sm:px-1.5 max-sm:py-2 max-sm:text-[11px] ' + (on ? 'active border-accent/25 bg-accentbg font-[650] text-accent' : 'border-transparent');
+  const tab = on => 'my-0.5 flex min-h-11 w-full items-center gap-[9px] rounded-[9px] border px-[9px] py-2.5 text-left text-[13px] leading-normal max-sm:gap-1.5 max-sm:px-1.5 max-sm:py-2 max-sm:text-[11px] ' + (on ? 'active border-accent/25 bg-accentbg font-[650] text-accent' : 'border-transparent bg-transparent hover:bg-surface2');
   const icon = on => 'grid h-[23px] flex-[0_0_22px] place-items-center rounded-md border text-[10px] tabular-nums max-sm:hidden ' + (on ? 'border-accent/40 text-accent' : 'border-line text-muted');
   const label = 'flex items-center gap-[7px] px-2.5 pb-[9px] text-[11px] text-muted max-md:pb-1 max-sm:pl-[7px] max-sm:text-[10px]';
 </script>
