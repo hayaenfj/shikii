@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]   # タグの push では走らせない(同じコミットの CI を 2 回回さない)
   pull_request:
+  schedule:
+    - cron: '17 3 * * 1'   # 週 1 回(月曜)、security の job だけ。公開後に見つかった脆弱性を次の push を待たずに知る
 # 読むだけ(書き込みの要る手順は無い)。同じ枝で新しい push が来たら古い実行を止める(CI の費用)
 permissions:
   contents: read
@@ -11,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   go:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,5 +61,6 @@ jobs:
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           /tmp/gitleaks git --redact --no-banner .
-      # govulncheck: 使っている部品と標準ライブラリの既知の脆弱性のうち、実際に呼んでいる所だけを出す
+      # govulncheck: 使っている部品と標準ライブラリの既知の脆弱性のうち、実際に呼んでいる所だけを出す。除外の仕組みは無いので、
+      # 出たら go.mod の toolchain か依存を直った版へ上げる(直った版が無い時は、その間だけこの手順を外し、理由をコミットに書く)
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...

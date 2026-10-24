@@ -2,7 +2,8 @@
 BIN     ?= bin/shikii
 INSTALL ?= $(HOME)/.local/bin/shikii
 STORE   ?= .shikii
-MODEL   ?= jev-latest
+# drift の鍵は応答の model(shikii status の行に出る名)。モデルを替えたら合わせる
+MODEL   ?= jev-1.14.0
 
 .PHONY: build test install check status drift server demo fake web
 
@@ -74,5 +75,6 @@ gc: build
 
 # 手元の標準の決定モデル(shikii up: llama-server :8086 と shikii-readout :8080。初回は Ternary-Bonsai-27B 約 7.6GB を取得)。
 # TYPESAFE_API_KEY があると up は手元のモデルを起こさず断る(Jev を使う)。鍵を置いたまま起こすなら SHIKII_MODEL=local make server
-server: build
+server:
+	go build -o $(BIN) ./cmd/shikii
 	$(BIN) up

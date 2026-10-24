@@ -27,6 +27,10 @@ repo = work / "src"
 os.chdir(repo)
 version = re.search(r'const Version = "([^"]+)"', (repo / "version.go").read_text(encoding="utf-8")).group(1)
 problems = []
+# 組む Go の版は go.mod の toolchain(脆弱性の直った版)。GOTOOLCHAIN=local などで別の版で組んだら止める(監査 0.8.2-2 の B1)
+toolchain = re.search(r"^toolchain (go\S+)$", (repo / "go.mod").read_text(encoding="utf-8"), re.M)
+if not toolchain:
+    problems.append("go.mod に toolchain の行が無い")
 if json.loads((repo / ".claude-plugin/plugin.json").read_text(encoding="utf-8")).get("version") != version:
     problems.append(".claude-plugin/plugin.json の version が " + version + " ではない")
 for f in ["README.md", "docs/readme/README_ja.md"]:
@@ -90,6 +94,8 @@ def build(target):
         info = subprocess.check_output(["go", "version", "-m", str(stage / binary)], text=True)
         if not ("vcs.revision=" + commit in info and "vcs.modified=false" in info and "GOOS=" + system in info and "GOARCH=" + arch in info):
             raise RuntimeError(f"{name}/{binary}: ビルド元の情報が合わない\n{info}")
+        if not info.splitlines()[0].endswith(": " + toolchain.group(1)):
+            raise RuntimeError(f"{name}/{binary}: {toolchain.group(1)} で組まれていない(go.mod の toolchain)\n{info.splitlines()[0]}")
         (out / (name + "-" + binary + "-build.txt")).write_text(info)
     for source, dest in BUNDLED:
         shutil.copy2(repo / source, stage / dest)

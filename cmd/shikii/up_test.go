@@ -137,7 +137,7 @@ func TestUpDoesNotStartTheLocalModelWhileJevIsUsed(t *testing.T) {
 }
 
 // 監査 0.8.1 の 2: 開発用の Makefile も手元の標準(shikii up)へ向け、使わない Kev-4B を取りに行かない。
-// drift のモデル名は hook が送る名(jev-latest)に揃える(較正の鍵が合わないと drift は何も比べない)。
+// drift のモデル名は較正の鍵(応答の model。jev-1.14.0)に揃える(鍵が合わないと drift は「no current calibration」で落ちる。監査 0.8.2-2 の A2)。
 // 監査 0.8.2-1 の 6: 文字列の有無ではなく、make -n で実際に走る手順を見る(build を先に組む、drift が MODEL を使う)。
 func TestMakefileUsesTheLocalStandard(t *testing.T) {
 	b, err := os.ReadFile("../../Makefile")
@@ -155,11 +155,11 @@ func TestMakefileUsesTheLocalStandard(t *testing.T) {
 		return strings.Split(strings.TrimSpace(string(out)), "\n")
 	}
 	server := plan("server")
-	if last := server[len(server)-1]; last != "bin/shikii up" || !slices.Contains(server, "go build -o bin/shikii ./cmd/shikii") {
-		t.Fatalf("make server は shikii を組んでから bin/shikii up を起こす: %q", server)
+	if !slices.Equal(server, []string{"go build -o bin/shikii ./cmd/shikii", "bin/shikii up"}) {
+		t.Fatalf("make server は Go の本体だけを組んで(画面は組み直さない)から bin/shikii up を起こす: %q", server)
 	}
 	drift := plan("drift")
-	if last := drift[len(drift)-1]; !strings.HasPrefix(last, "bin/shikii drift ") || !strings.Contains(last, "--model 'jev-latest'") {
-		t.Fatalf("make drift は hook と同じモデル名(jev-latest)で測る: %q", drift)
+	if last := drift[len(drift)-1]; !strings.HasPrefix(last, "bin/shikii drift ") || !strings.Contains(last, "--model 'jev-1.14.0'") {
+		t.Fatalf("make drift は較正の鍵になる応答の model(jev-1.14.0)で測る: %q", drift)
 	}
 }
