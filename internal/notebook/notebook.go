@@ -245,7 +245,7 @@ func immutable(path string, data []byte) error {
 		if !os.IsExist(err) {
 			return err
 		}
-		old, rerr := readFile(path)
+		old, rerr := readSourceRecord(path) // a source record can be larger than a page
 		if rerr != nil || !bytes.Equal(old, data) {
 			return errors.New("an immutable wiki source or revision has changed")
 		}
@@ -409,7 +409,7 @@ func (b Book) sourceIssues(p Page) []Issue {
 		var data []byte
 		err := dirErr
 		if err == nil {
-			data, err = readFile(filepath.Join(dir, s.ID+".json"))
+			data, err = readSourceRecord(filepath.Join(dir, s.ID+".json"))
 		}
 		if err != nil {
 			issues = append(issues, Issue{Kind: "missing-source", Page: p.ID, Source: s.ID})
@@ -687,7 +687,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	raw := map[string][]byte{}
 	texts := map[string][]byte{}
 	for _, id := range d.Sources {
-		data, err := readFile(filepath.Join(sourceDir, id+".json"))
+		data, err := readSourceRecord(filepath.Join(sourceDir, id+".json"))
 		if os.IsNotExist(err) {
 			f, ok := available[id]
 			if !ok {
@@ -1105,7 +1105,7 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 		var data []byte
 		var readErr error
 		if dir != "" {
-			data, readErr = readFile(filepath.Join(dir, id+".json"))
+			data, readErr = readSourceRecord(filepath.Join(dir, id+".json"))
 		}
 		if dir == "" || os.IsNotExist(readErr) {
 			f, ok := known[id]

@@ -130,7 +130,7 @@ shikii wiki maintain < maintenance.json
 shikii wiki lint
 ```
 
-`observation.json`には`kind`（`human`・`agent`・`code`・`test`・`release`）、`title`・`content`・`reference`・`version`・`observed_at`（RFC3339）を書く。本文は32KiB、JSON全体は64KiBまで。確認した抜粋や結果と、その対象の版を残す。`reference`は参照先の説明で、URL取得やコマンド実行は行わない。返されたIDを記事の`sources`へ使う。同じ観察は重複登録せず、変わった内容や版は別の原資料になる。
+`observation.json`には`kind`（`human`・`agent`・`code`・`test`・`release`）、`title`・`content`・`reference`・`version`・`observed_at`（RFC3339）を書く。原資料に独自の上限は無く、JSON全体が置き場の1行の上限(4MiB)までなら控えられる。確認した抜粋や結果と、その対象の版を残す。`reference`は参照先の説明で、URL取得やコマンド実行は行わない。返されたIDを記事の`sources`へ使う。同じ観察は重複登録せず、変わった内容や版は別の原資料になる。
 
 検索は題・適用条件・要約・本文を調べ、一致した欄と語、候補の版を返す。候補だけでは意味の関連性を確定できないため、本文と必要な原資料を確認する。`CURSOR`は直前の応答の`next_cursor`に置き換え、同じ検索語または出典IDで続きを取得する。末尾へ着いたことと、必要な知識を見つけたことは別。応答が大きければ分割されるが、記事数や出典数で探索を打ち切らない。同じプロジェクト・同じ版の実際に読んだ内容は作業中に再利用する。
 

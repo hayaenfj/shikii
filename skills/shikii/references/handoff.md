@@ -7,7 +7,7 @@ Each project has a folder for working files that change as the work goes: audit 
 | What | Where | How |
 |---|---|---|
 | A rule or judgement that should reach the next similar request | wiki lesson | `reflect place` then `reflect submit` (or `wiki ingest`) |
-| Evidence as it was when you checked it (a test result, a release digest, a quoted report) | wiki source | `wiki capture` (immutable, at most 32 KiB) |
+| Evidence as it was when you checked it (a test result, a release digest, a quoted report) | wiki source | `wiki capture` (immutable; no size limit of its own, up to the store's 4 MiB line limit) |
 | A file you will keep editing, or anything long, binary or produced by another agent | work record | `shikii handoff write/append`, `shikii_wiki` with `handoff_*`, or write the file directly under `.shikii/handoff/` |
 
 A lesson can cite a work record: capture an observation whose `reference` is the path (`.shikii/handoff/audit-0.8.1/report-B.md`) and whose `content` quotes the part that supports the lesson, then use that source in the lesson. `shikii handoff read` accepts that path as written. Do not paste a whole report into a lesson body.

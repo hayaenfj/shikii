@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,6 +16,20 @@ import (
 
 	"github.com/hayaenfj/shikii/internal/store"
 )
+
+// readSourceRecord reads a captured source record. A source has no size limit of its own; only the store's line limit applies.
+func readSourceRecord(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, int64(store.MaxLineBytes)+1))
+	if err == nil && len(data) > store.MaxLineBytes {
+		err = errors.New("the saved source record exceeds the store's line limit")
+	}
+	return data, err
+}
 
 func readOriginals(path string) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
@@ -76,12 +91,12 @@ func (o Observation) valid() bool {
 			return false
 		}
 	}
-	return len(o.Title) <= 200 && len(o.Content) <= 32<<10 && len(o.Reference) <= 1000 && len(o.Version) <= 200 && !o.ObservedAt.IsZero() && o.ObservedAt.Year() >= 1970 && o.ObservedAt.Year() <= 9999
+	return len(o.Title) <= 200 && len(o.Reference) <= 1000 && len(o.Version) <= 200 && !o.ObservedAt.IsZero() && o.ObservedAt.Year() >= 1970 && o.ObservedAt.Year() <= 9999
 }
 
 func (b Book) Capture(o Observation) (Observation, error) {
 	if o.ID != "" || !o.valid() {
-		return Observation{}, errors.New("a source record needs kind, title, content (up to 32KB), reference, version and observed time; do not give an ID")
+		return Observation{}, errors.New("a source record needs kind, title, content, reference, version and observed time; do not give an ID")
 	}
 	o.ObservedAt = o.ObservedAt.UTC()
 	data, _ := json.Marshal(o)
@@ -111,8 +126,8 @@ func (b Book) Capture(o Observation) (Observation, error) {
 		}
 	}
 	data, _ = json.Marshal(o)
-	if len(data) > 64<<10 {
-		return Observation{}, errors.New("the source record JSON must be 64KB or less")
+	if len(data) > store.MaxLineBytes {
+		return Observation{}, fmt.Errorf("the source record JSON must be %d MiB or less (the store's line limit)", store.MaxLineBytes>>20)
 	}
 	if err := immutable(filepath.Join(dir, o.ID+".json"), data); err != nil {
 		return Observation{}, err
@@ -146,7 +161,7 @@ func capturedIDs(dir string) ([]string, error) {
 }
 
 func (b Book) readObservation(dir, id string) (Observation, error) {
-	data, err := readFile(filepath.Join(dir, id+".json"))
+	data, err := readSourceRecord(filepath.Join(dir, id+".json"))
 	if err != nil {
 		return Observation{}, err
 	}
@@ -298,7 +313,7 @@ func notCopied(old, own string) (bool, error) {
 // fromOtherPath reports whether a source record a page cites was captured under the previous path (the path in its id differs from now, so it cannot be checked).
 // Conversation sources (those without a kind) are not counted.
 func (b Book) fromOtherPath(dir, id string) bool {
-	data, err := readFile(filepath.Join(dir, id+".json"))
+	data, err := readSourceRecord(filepath.Join(dir, id+".json"))
 	if err != nil {
 		return false
 	}

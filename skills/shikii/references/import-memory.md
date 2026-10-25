@@ -14,7 +14,7 @@ Use this when the person asks to move, import or migrate an existing memory into
 For every file, run `shikii wiki capture` (or `shikii_wiki` with `operation: "capture"`) with the file as the observation:
 
 - `kind`: `human` when the file records the person's own words or decisions (`feedback`, `user`), `agent` otherwise (`project`, `reference`).
-- `title`: the file's `name` or its first heading; `content`: the file body verbatim (at most 32 KiB; split a longer file by its `##` sections into several captures, in order); `reference`: the file path; `version`: the file's `modified` date or last-changed date; `observed_at`: now.
+- `title`: the file's `name` or its first heading; `content`: the whole file body verbatim (do not split it; a source has no size limit of its own, up to the store's 4 MiB line limit); `reference`: the file path; `version`: the file's `modified` date or last-changed date; `observed_at`: now.
 
 Record the returned source ids per file. A source is evidence, not a lesson: it never changes a claim state, never grants permission, and never becomes a truth label.
 

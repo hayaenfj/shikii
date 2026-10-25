@@ -28,11 +28,11 @@ func TestCapturedSourcesStayScopedImmutableAndBounded(t *testing.T) {
 	}
 	for _, bad := range []Observation{
 		{Kind: "confirmed", Title: o.Title, Content: o.Content, Reference: o.Reference, Version: o.Version, ObservedAt: o.ObservedAt},
-		{Kind: o.Kind, Title: o.Title, Content: strings.Repeat("x", (32<<10)+1), Reference: o.Reference, Version: o.Version, ObservedAt: o.ObservedAt},
-		{Kind: o.Kind, Title: o.Title, Content: strings.Repeat("\x01", 32<<10), Reference: o.Reference, Version: o.Version, ObservedAt: o.ObservedAt},
+		{Kind: o.Kind, Title: o.Title, Content: strings.Repeat("x", store.MaxLineBytes), Reference: o.Reference, Version: o.Version, ObservedAt: o.ObservedAt},
+		{Kind: o.Kind, Title: o.Title, Content: strings.Repeat("\x01", store.MaxLineBytes/6+1), Reference: o.Reference, Version: o.Version, ObservedAt: o.ObservedAt}, // escaped as \u0001: the JSON goes over the line limit
 	} {
 		if _, err := b.Capture(bad); err == nil {
-			t.Fatal("does not save unknown kinds or an oversized body or JSON")
+			t.Fatal("does not save unknown kinds or a record over the store's line limit")
 		}
 	}
 	dir, _ := b.directory(false, "sources")

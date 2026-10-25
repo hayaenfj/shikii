@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func currentProjectScope() string {
@@ -89,9 +90,13 @@ func cmdNotebook(args []string) error {
 		if len(args) != 1 {
 			return errors.New("wiki ingest reads one JSON object from stdin")
 		}
-		data, err := io.ReadAll(io.LimitReader(stdin, (64<<10)+1))
-		if err != nil || len(data) > 64<<10 {
-			return errors.New("wiki ingest input exceeds 64 KB or could not be read")
+		limit := 64 << 10
+		if req.Operation == "capture" {
+			limit = store.MaxLineBytes // a source has no size limit of its own (a long memory file is captured whole)
+		}
+		data, err := io.ReadAll(io.LimitReader(stdin, int64(limit)+1))
+		if err != nil || len(data) > limit {
+			return fmt.Errorf("wiki %s input exceeds %d KiB or could not be read", req.Operation, limit>>10)
 		}
 		dec := json.NewDecoder(bytes.NewReader(data))
 		dec.DisallowUnknownFields()
