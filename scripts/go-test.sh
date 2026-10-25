@@ -1,7 +1,7 @@
 #!/bin/sh
 # Go のテストを流す(make test・CI)。cmd/shikii のテストは HOME・作業フォルダ・標準入出力などの全体の値を差し替えるので、
 # 同じプロセスの中では並べられない(t.Parallel は使えない)。そこで、テストの名前で組に分け、組ごとに別のプロセスで同時に流す。
-# 組の数は決まり: CPU の数の半分(少なくとも 1)。組の中は set -e に止められないよう、終了コードを if で受けて必ずファイルに書く。他のパッケージは go test がもともと並べて流す。どれか 1 つでも落ちれば 1 で終わる。
+# 組の数は決まり: CPU の数の半分(少なくとも 1)。直接起こすので go test が付ける -test.timeout=10m と -test.paniconexit0 を自分で付け、組のログの最後の行が PASS で終わるかも見る(改行なしで文を出すテストがあると、PASS が同じ行に並ぶ)。組の中は set -e に止められないよう、終了コードを if で受けて必ずファイルに書く。他のパッケージは go test がもともと並べて流す。どれか 1 つでも落ちれば 1 で終わる。
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -11,12 +11,15 @@ n=$((cpus / 2))
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# 止められた時は、裏で流している組(SIGINT を無視して起きる)ごと止める
+trap 'trap "" TERM; kill -TERM 0 2>/dev/null; exit 130' INT TERM
 
+# 組み立てを先に(失敗して抜けた時に、裏の go test を残さない)
+go test -c -o "$tmp/shikii.test" ./cmd/shikii
 others=$(go list ./... | grep -v '/cmd/shikii$')
 (if go test $others > "$tmp/others.log" 2>&1; then echo 0; else echo 1; fi > "$tmp/others.rc") &
 
-go test -c -o "$tmp/shikii.test" ./cmd/shikii
-"$tmp/shikii.test" -test.list '.*' | grep '^Test' > "$tmp/names"
+"$tmp/shikii.test" -test.list '.*' | grep -E '^(Test|Fuzz|Example)' > "$tmp/names"
 total=$(wc -l < "$tmp/names" | tr -d ' ')
 
 i=0
@@ -24,7 +27,7 @@ while [ "$i" -lt "$n" ]; do
 	# i 番目の組: 名前の一覧の i 行目から n 行おき
 	awk -v n="$n" -v i="$i" 'NR % n == i' "$tmp/names" | paste -sd '|' - > "$tmp/shard$i"
 	if [ -s "$tmp/shard$i" ]; then
-		(cd cmd/shikii && if "$tmp/shikii.test" -test.run "^($(cat "$tmp/shard$i"))\$" > "$tmp/shard$i.log" 2>&1; then echo 0; else echo 1; fi > "$tmp/shard$i.rc") &
+		(cd cmd/shikii && if "$tmp/shikii.test" -test.timeout=10m -test.paniconexit0 -test.run "^($(cat "$tmp/shard$i"))\$" > "$tmp/shard$i.log" 2>&1 && tail -n 1 "$tmp/shard$i.log" | grep -q 'PASS$'; then echo 0; else echo 1; fi > "$tmp/shard$i.rc") &
 	else
 		echo 0 > "$tmp/shard$i.rc"
 	fi
@@ -42,7 +45,7 @@ i=0
 while [ "$i" -lt "$n" ]; do
 	if [ ! -f "$tmp/shard$i.rc" ] || [ "$(cat "$tmp/shard$i.rc")" != 0 ]; then
 		echo "--- cmd/shikii の組 $i が落ちた:"
-		grep -E -- '--- FAIL|_test.go:|panic|FAIL' "$tmp/shard$i.log" | head -40
+		tail -n 200 "$tmp/shard$i.log"
 		fail=1
 	fi
 	i=$((i + 1))
