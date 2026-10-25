@@ -24,6 +24,7 @@
 - Wording: the hook reads the highest version of a question (`<id>-v<N>.yaml`). Before, it read `<id>.yaml` directly, so adopting a wording did not change the hook's four questions.
 - Docs: the guide's update heading now reads "Updating from 0.8 to 0.9 (0.9.0 or later)", matching the note that 0.9.1 changed to "0.9.0 or later".
 - Tests: pressing a rule in the rules panel scrolls to the article even on a wide screen, and pressing from other panels such as the inbox does not. The test that the reflection request carries no original text now also checks that the request and the ids of the conversations to review appear (before, it passed when the text was empty).
+- Fixes from the translation audit, guards: `shikii guard enable` no longer refuses a forbidden-words check whose word is part of the English positive example (such as `his`, `is` or `line`); the words are taken out of the example first. When a check stops a turn, the terminal line and the reason (also shown as the last stop on the page) carry the Japanese again when the person's language is Japanese, as in 0.9.1.
 
 ## 0.9.1 — Three pages: Answer, Knowledge and The AI
 

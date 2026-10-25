@@ -181,8 +181,10 @@ func guardStop(root string, in *hookInput, snapshot *hookSession, before string,
 	var recs []guardRecord
 	var failed []guardResult
 	now := time.Now().UTC()
+	loc := hookLoc{Lang: hookLang()}
 	for _, g := range guards {
 		r := evalGuard(g, input)
+		r.Reason = bi(r.Reason, r.ReasonJA, loc) // the record's reason is what the page shows as the last stop: in the person's language too
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: r.Pass, Reason: r.Reason, Recheck: recheck})
 		if !r.Pass {
 			failed = append(failed, r)
@@ -204,7 +206,9 @@ func guardStop(root string, in *hookInput, snapshot *hookSession, before string,
 	for _, f := range failed {
 		ids = append(ids, f.ID)
 	}
-	return hookOut{Block: true, Reason: b.String(), System: "shikii: the check that stops the turn (" + strings.Join(ids, ", ") + ") failed, so the agent was told to fix it before finishing"}, nil
+	return hookOut{Block: true, Reason: b.String(), System: bi(
+		"shikii: the check that stops the turn ("+strings.Join(ids, ", ")+") failed, so the agent was told to fix it before finishing",
+		"shikii: 止める検査("+strings.Join(ids, ", ")+")に引っかかったので、直してから終えるよう伝えました", loc)}, nil
 }
 
 // guardRecheck records, on a Stop with stop_hook_active (the continuation after a block), whether the problem was fixed. It does not block.

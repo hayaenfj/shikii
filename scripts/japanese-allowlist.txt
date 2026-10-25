@@ -18,7 +18,8 @@
 21 cmd/shikii/classify_test.go
 10 cmd/shikii/correction_test.go
 1 cmd/shikii/generic_specs_test.go
-8 cmd/shikii/guard.go
+16 cmd/shikii/guard.go
+1 cmd/shikii/guard_hook.go
 18 cmd/shikii/guard_hook_test.go
 20 cmd/shikii/guard_test.go
 10 cmd/shikii/handoff_test.go
