@@ -99,21 +99,40 @@ type Observation struct {
 	ObservedAt time.Time `json:"observed_at"`
 }
 
-func (o Observation) valid() bool {
+func (o Observation) valid() bool { return o.problem() == "" }
+
+// problem says what is wrong with a source record ("" when it can be saved), naming the field.
+func (o Observation) problem() string {
 	if o.Kind != "human" && o.Kind != "agent" && o.Kind != "code" && o.Kind != "test" && o.Kind != "release" {
-		return false
+		return fmt.Sprintf("kind must be human, agent, code, test or release (got %q)", o.Kind)
 	}
-	for _, text := range []string{o.Title, o.Content, o.Reference, o.Version} {
-		if !utf8.ValidString(text) || strings.TrimSpace(text) == "" {
-			return false
+	for _, f := range []struct{ name, text string }{{"title", o.Title}, {"content", o.Content}, {"reference", o.Reference}, {"version", o.Version}} {
+		if strings.TrimSpace(f.text) == "" {
+			return f.name + " is missing"
+		}
+		if !utf8.ValidString(f.text) {
+			return f.name + " is not valid UTF-8"
 		}
 	}
-	return len(o.Title) <= 200 && len(o.Reference) <= 1000 && len(o.Version) <= 200 && !o.ObservedAt.IsZero() && o.ObservedAt.Year() >= 1970 && o.ObservedAt.Year() <= 9999
+	switch {
+	case len(o.Title) > 200:
+		return "title is longer than 200 bytes"
+	case len(o.Reference) > 1000:
+		return "reference is longer than 1000 bytes"
+	case len(o.Version) > 200:
+		return "version is longer than 200 bytes"
+	case o.ObservedAt.IsZero() || o.ObservedAt.Year() < 1970 || o.ObservedAt.Year() > 9999:
+		return "observed_at is missing or out of range (RFC3339)"
+	}
+	return ""
 }
 
 func (b Book) Capture(o Observation) (Observation, error) {
-	if o.ID != "" || !o.valid() {
-		return Observation{}, errors.New("a source record needs kind, title, content, reference, version and observed time; do not give an ID")
+	if o.ID != "" {
+		return Observation{}, errors.New("wiki capture: do not give an id (it is made from the content)")
+	}
+	if problem := o.problem(); problem != "" {
+		return Observation{}, errors.New("wiki capture: " + problem + " (a source needs kind, title, content, reference, version and observed_at)")
 	}
 	o.ObservedAt = o.ObservedAt.UTC()
 	data, _ := json.Marshal(o)

@@ -88,7 +88,7 @@ func cmdNotebook(args []string) error {
 	req := notebookRequest{Operation: args[0]}
 	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" {
 		if len(args) != 1 {
-			return errors.New("wiki ingest reads one JSON object from stdin")
+			return fmt.Errorf("wiki %s reads one JSON object from stdin", req.Operation)
 		}
 		limit := 64 << 10
 		if req.Operation == "capture" {
@@ -110,11 +110,17 @@ func cmdNotebook(args []string) error {
 			target = req.Maintenance
 		}
 		if err := dec.Decode(target); err != nil {
+			switch req.Operation {
+			case "capture":
+				return fmt.Errorf("wiki capture needs the source object itself (kind, title, content, reference, version, observed_at): %v", err)
+			case "maintain":
+				return fmt.Errorf("wiki maintain needs valid JSON with page_id, revision, key and reason: %v", err)
+			}
 			return errors.New("wiki ingest needs valid JSON with sources and, for a lesson, title, lesson and applies_to")
 		}
 		var extra any
 		if err := dec.Decode(&extra); err != io.EOF {
-			return errors.New("wiki ingest accepts exactly one JSON object")
+			return fmt.Errorf("wiki %s accepts exactly one JSON object", req.Operation)
 		}
 	} else if req.Operation == "classify" {
 		// give only a kind and a scene to a page from before the version bump (0.9.0). kind is rule|howto|criteria|fact|history; the scene is the rest of the arguments (spaces allowed)
