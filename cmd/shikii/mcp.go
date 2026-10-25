@@ -151,7 +151,7 @@ var mcpTools = []map[string]any{
 				"truth":    map[string]any{"type": "string"},
 				"spec":     map[string]any{"type": "string", "description": "optional spec id to narrow the lookup"},
 				"weight":   map[string]any{"type": "number", "description": "1 for a firm truth, lower (e.g. 0.5) for a weak one"},
-				"source":   map[string]any{"type": "string", "description": "where the truth came from, e.g. outcome, ask, manual"},
+				"source":   map[string]any{"type": "string", "description": "ignored: a truth sent through MCP is always recorded as the agent's (source mcp), never as the person's answer; a person answers on the page or with shikii label"},
 			},
 			"required": []string{"trace_id", "truth"},
 		},
@@ -314,10 +314,11 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 	var body io.Reader
 	if method == http.MethodPost {
 		if name == "shikii_label" {
-			// Mark an agent's label "mcp" when it has no source, so it can be told apart from a person's label (audit S6)
+			// A label through MCP is the agent's: mark it "mcp" whatever source it names, so it is never stored as a person's answer
+			// (audit S6; behaviour check 0.9.2: an agent passed source "ask" and its own judgment was stored as the person's answer)
 			var m map[string]any
 			if json.Unmarshal(args, &m) == nil {
-				if s, _ := m["source"].(string); s == "" {
+				if s, _ := m["source"].(string); s != "mcp" {
 					m["source"] = "mcp"
 					if b, err := json.Marshal(m); err == nil {
 						args = b
