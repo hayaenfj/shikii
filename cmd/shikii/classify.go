@@ -45,7 +45,7 @@ func classifyContext(agent, scope string) (string, []string, error) {
 		batch = batch[:classifyBatch]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "shikii: 種類と場面の無い記事が %d 本あります(版を上げる前に作った記事)。今の依頼の後に、次の %d 本の教訓を読んで種類と場面を付けます: %s wiki classify <記事ID> <種類> <場面>(MCP なら shikii_wiki の operation classify に id・kind・scene)。種類は rule=守る決まり / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯、場面はその仕事の言葉で「〜する時」(24 文字まで)。", len(un), len(batch), hookExe())
+	fmt.Fprintf(&b, "shikii: 種類と場面の無い記事が %d 本あります(版を上げる前に作った記事)。今の依頼の後に、次の %d 本の教訓を読んで種類と場面を付けます: %s wiki classify <記事ID> <種類> <場面>(MCP なら shikii_wiki の operation classify に id・kind・scene)。種類は rule=このプロジェクトで決められたルール / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯、場面はその仕事の言葉で「〜する時」(24 文字まで)。", len(un), len(batch), hookExe())
 	if len(scenes) > 0 {
 		b.WriteString("今ある場面: " + strings.Join(scenes, "、") + "。近い物があれば同じ言い方を使います。")
 	}

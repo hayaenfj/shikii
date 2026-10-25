@@ -118,7 +118,7 @@ func TestHistoryLessonsAreNotDeliveredAutomatically(t *testing.T) {
 	}
 	ctx, err := memoryContext(st.Dir, scope, "README の導入手順を更新してください", &hookSession{TurnID: "bbbbbbbbbbbbbbbb"})
 	if err != nil || !strings.Contains(ctx, draft.Lesson) || strings.Contains(ctx, hist.Lesson) {
-		t.Fatalf("経緯の記事は自動で届けず、守る決まりは届ける: %v %q", err, ctx)
+		t.Fatalf("経緯の記事は自動で届けず、このプロジェクトで決められたルールは届ける: %v %q", err, ctx)
 	}
 	v, err := book.Query("README の導入手順")
 	found := false

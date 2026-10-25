@@ -30,6 +30,12 @@
   let selected = $derived(lessons.find(l => l.id === selectedId));
   let byId = $derived(new Map(lessons.map(l => [l.id, l])));
   let inbox = $derived(wiki.inbox || []);
+  // このプロジェクトで決められたルール(0.9.1): 人や AI が決めたルールを、場面の絞り込みと関係なく全部、一番上に並べる(埋もれないように)。
+  // 「いつも」のルールが先頭、次に新しい順。最近 7 日に増えた・変わったルールに印
+  const isAlways = l => ['いつも', 'always'].includes((l.scene || '').trim().toLowerCase());
+  const updated = l => Date.parse(meta[l.id]?.updated || 0) || 0;
+  const recentRule = l => Date.now() - updated(l) < 7 * 86400000;
+  let rules = $derived(lessons.filter(l => l.kind === 'rule').sort((a, b) => (isAlways(b) - isAlways(a)) || (updated(b) - updated(a))));
   let stats = $derived(wiki.memory_effect?.stats);
   let corrections = $derived(wiki.memory_effect?.corrections);
 
@@ -71,6 +77,18 @@
         {/each}
       </ul>
     {:else}<p class="k m-0">{t('inboxEmpty')}</p>{/if}
+  </div>
+
+  <div class="{panel} mb-4" data-rules>
+    <h3 class={head}>{t('rulesTitle')}<span class="ml-auto font-normal text-muted tabular-nums">{t('kindCount')(rules.length)}</span></h3>
+    <p class="k mt-0 mb-2">{t('rulesHow')}</p>
+    {#if rules.length}
+      <ul class="m-0 grid list-none gap-0.5 p-0">
+        {#each rules as l (l.id)}
+          <li><button type="button" class="flex w-full items-baseline gap-2 rounded-md border-0 px-1.5 py-1 text-left {selectedId === l.id ? 'bg-accentbg font-bold' : 'bg-transparent'}" data-rule={l.id} onclick={() => showLesson(l.id)}><span class="min-w-0 flex-1 wrap-anywhere">{l.title}</span><span class="text-[12px] whitespace-nowrap text-muted">{l.scene}</span>{#if recentRule(l)}<span class="badge rounded-md bg-amber px-1.5 py-px text-[10px] text-bg" data-rule-new>{t('ruleNew')}</span>{/if}</button></li>
+        {/each}
+      </ul>
+    {:else}<p class="k m-0">{t('rulesEmpty')}</p>{/if}
   </div>
 
   <div class="grid grid-cols-[220px_minmax(260px,1fr)_minmax(280px,1.2fr)] items-start gap-3.5 max-lg:grid-cols-[200px_1fr] max-sm:grid-cols-1">
