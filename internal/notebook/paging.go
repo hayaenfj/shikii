@@ -13,7 +13,8 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// Split by the size of the JSON rather than the count. A single source record is returned without cutting it.
+// Split by the size of the JSON rather than the count. An observation whose body does not fit in one reply is returned in parts (observation_part);
+// a conversation source and its long text are returned whole.
 const replyBudget = 60 << 10
 
 type continuation struct {
@@ -169,13 +170,16 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 			fs = append(fs, f)
 		}
 		o, isObservation := observations[id]
-		if isObservation {
-			if i == start && from > 0 {
-				if from >= len(o.Content) {
-					return nil, errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
-				}
-				o.Content = o.Content[from:]
+		if i == start && from > 0 {
+			// a cursor inside a long source: it must point at a character boundary inside an observation's body
+			if !isObservation || from >= len(o.Content) || !utf8.RuneStart(o.Content[from]) {
+				return nil, errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
 			}
+			o.Content = o.Content[from:]
+			// the last part is a tail too: say which part it is so that it is not taken for the whole body
+			out["observation_part"] = map[string]any{"id": id, "from": from, "to": from + len(o.Content), "bytes": from + len(o.Content)}
+		}
+		if isObservation {
 			osources = append(osources, o)
 		}
 		if text, ok := originals[id]; ok {
