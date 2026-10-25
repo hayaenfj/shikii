@@ -216,3 +216,35 @@ func TestMemoryMatchesConditionsInsteadOfIncidentalBody(t *testing.T) {
 		t.Fatal("整理済みの原文は、同じ依頼でも再び引用しない")
 	}
 }
+
+// 0.9.1: 振り返りの「一度に会話 2 件まで」は、今回新しく振り返る会話だけを数える。既存の記事に足す草稿に、記事に元からある出典を
+// 書き並べても数えない(保存は元の出典を引き継ぐので、書かなくてもよい)。断る時は、数えた会話と、元の出典が引き継がれることを伝える
+func TestReflectLimitCountsOnlyNewConversations(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	ids := []string{}
+	for n := 1; n <= 5; n++ {
+		id, _ := reviewSeed(t, st, scope, n)
+		ids = append(ids, id)
+	}
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	page, err := book.Ingest(notebook.Draft{Sources: ids[:3], Title: "起動手順は日本語で書く", Lesson: "README の起動手順は日本語で書く。", AppliesTo: "README の起動手順を直す時", Kind: "rule", Scene: "README を直す時"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := map[string]any{"id": page.Page.ID, "sources": append(append([]string{}, ids[:3]...), ids[3]), "title": "起動手順は日本語で書く", "lesson": "README の起動手順は日本語で書き、コマンドの例も付ける。", "applies_to": "README の起動手順を直す時", "change_reason": "コマンドの例を足した"}
+	q := reflectCall(t, h, map[string]any{"operation": "submit", "wiki": []map[string]any{draft}})
+	if q["complete"] != true {
+		t.Fatalf("記事に元からある出典 3 つは数えず、新しい会話 1 つの振り返りとして保存する: %v", q)
+	}
+	got, err := book.Query("lesson:" + page.Page.ID)
+	if err != nil || len(got.Lessons) != 1 || len(got.Lessons[0].Sources) != 4 || !strings.Contains(got.Lessons[0].Lesson, "コマンドの例") {
+		t.Fatalf("出典 4 つで保存される: %v %+v", err, got.Lessons)
+	}
+	// 新しい会話が 3 つなら、今までどおり断る。断りの文に数えた会話と、元の出典は引き継がれることを書く
+	data, _ := json.Marshal(map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": ids[2:5]}}})
+	_, raw, _ := callTool(h, "shikii_reflect", data)
+	msg := string(raw)
+	if !strings.Contains(msg, "最大2件") || !strings.Contains(msg, ids[3]) || !strings.Contains(msg, ids[4]) || strings.Contains(msg, ids[0]) || !strings.Contains(msg, "引き継") {
+		t.Fatalf("新しい会話 3 つは断り、数えた会話と、元の出典は引き継がれることを伝える: %s", msg)
+	}
+}

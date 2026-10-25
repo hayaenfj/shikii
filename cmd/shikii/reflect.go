@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -180,9 +181,21 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		}
 		sources[review.SourceID] = true
 	}
+	// 既存の記事に足す草稿では、記事に元からある出典は今回振り返る会話ではないので数えない(保存は元の出典を引き継ぐ。0.9.1)
+	book := notebook.Book{Root: root, Scope: scope}
 	for _, draft := range req.Wiki {
+		cited := map[string]bool{}
+		if draft.ID != "" {
+			if v, err := book.Query("lesson:" + draft.ID); err == nil && len(v.Lessons) == 1 && v.Lessons[0].ID == draft.ID {
+				for _, src := range v.Lessons[0].Sources {
+					cited[src.ID] = true
+				}
+			}
+		}
 		for _, id := range draft.Sources {
-			sources[id] = true
+			if !cited[id] {
+				sources[id] = true
+			}
 		}
 	}
 	parents := map[string]string{} // 配送 id → 親の会話(サブエージェントへの配送)
@@ -201,7 +214,12 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		sources[assessment.SourceID] = true
 	}
 	if len(sources) > 2 {
-		return nil, errors.New("一度に振り返る会話は最大2件です")
+		counted := make([]string, 0, len(sources))
+		for id := range sources {
+			counted = append(counted, id)
+		}
+		sort.Strings(counted)
+		return nil, fmt.Errorf("一度に振り返る会話は最大2件です(今回数えた会話: %s)。既存の記事に足す時は、記事に元からある出典は書かなくても引き継がれ、書いても数えません。残りは次の submit で送ります", strings.Join(counted, ", "))
 	}
 	// 異なる保存先の一括処理は項目ごとの受領証を返す。失敗を隠さず、成功分は再送可能。
 	result := reflectResult{Complete: true, Reviews: []reflectReceipt{}, Wiki: []reflectReceipt{}, Memory: []reflectReceipt{}}
