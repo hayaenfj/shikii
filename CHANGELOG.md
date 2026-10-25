@@ -25,6 +25,7 @@
 - Docs: the guide's update heading now reads "Updating from 0.8 to 0.9 (0.9.0 or later)", matching the note that 0.9.1 changed to "0.9.0 or later".
 - Tests: pressing a rule in the rules panel scrolls to the article even on a wide screen, and pressing from other panels such as the inbox does not. The test that the reflection request carries no original text now also checks that the request and the ids of the conversations to review appear (before, it passed when the text was empty).
 - Fixes from the translation audit, guards: `shikii guard enable` no longer refuses a forbidden-words check whose word is part of the English positive example (such as `his`, `is` or `line`); the words are taken out of the example first. When a check stops a turn, the terminal line and the reason (also shown as the last stop on the page) carry the Japanese again when the person's language is Japanese, as in 0.9.1.
+- Fixes from the translation audit, checks: `scripts/check-english.py` also catches Japanese punctuation and brackets, full-width symbols, half-width katakana and rarer kanji, looks at new files Git does not ignore yet (so a local run sees what CI will), and makes each limit in `scripts/japanese-allowlist.txt` exact: a file with fewer Japanese lines than its limit, or a listed file that no longer exists, fails until the list is corrected. `scripts/test-check-english.py` tests the check and runs first in `make check-english` and CI.
 
 ## 0.9.1 — Three pages: Answer, Knowledge and The AI
 

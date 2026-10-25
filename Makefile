@@ -48,7 +48,7 @@ test:
 
 # What ships is in English (development may be written in Japanese first; run this before pushing. CI runs it on every push)
 check-english:
-	python3 scripts/check-english.py
+	python3 scripts/test-check-english.py && python3 scripts/check-english.py
 
 # Delete, then place (new inode). Overwriting a running binary with cp makes macOS invalidate its signature and SIGKILL it from then on (exit 137) (every hook died, 2026-10-18)
 install: build
