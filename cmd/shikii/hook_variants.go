@@ -237,6 +237,9 @@ func wordingSummary(agent string) string {
 		case res.AutoAdopted && res.Adopted:
 			state = "adopted"
 			en = fmt.Sprintf("shikii: the wording of %s was changed to %q: the agent checked it asks the same thing, and it matched more of your answers. If the meaning changed, undo it on the page: %s", id, res.Winner, url)
+			if res.Current != nil && res.WinnerWording != nil { // what changed, so the person can decide without opening the page (audit 0.9.2, low 4)
+				en += fmt.Sprintf(" (current: %s / new: %s)", trim(res.Current.Question, wordingNoticeRunes), trim(res.WinnerWording.Question, wordingNoticeRunes))
+			}
 			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方を「%s」に変えました(AI が意味は同じと確かめ、あなたの正解 %d 件で今より当たりました)。今まで: %s → これから: %s。意味が違っていたら画面で元に戻せます: %s", id, res.Winner, res.Truths, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
 		case check.Verdict == "unsure" && res.Adoptable && !res.Adopted:
 			state = "unsure"
@@ -263,6 +266,9 @@ func wordingSummary(agent string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// wordingNoticeRunes is how much of each question the English notice shows (the whole question is on the page).
+const wordingNoticeRunes = 120
 
 // agentCheck is the agent's meaning check (the last one). personChecked reports whether the person checked on the page or in the terminal.
 func agentCheck(res *tuneResult) (meaningCheck, bool) {
@@ -393,6 +399,15 @@ func cmdHookVariantsCheck() error {
 	if res.Run != req.Run {
 		return fmt.Errorf("the latest result is %s (the run differs)", res.Run)
 	}
+	// the page (serve) may be adopting or undoing the same run: hold the run's lock while checking and adopting, and read the result again under it
+	unlock, err := lockTuneRun(filepath.Join(root, "wiki"), res.Run)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if res, err = loadTuneResult(filepath.Join(root, "wiki"), req.Run); err != nil {
+		return err
+	}
 	if !res.Adoptable || res.Adopted || res.Reverted || len(res.MeaningChecks) > 0 {
 		return errors.New("this result has nothing left to check (adopted, rejected, undone, or no winning variant)")
 	}
@@ -403,11 +418,6 @@ func cmdHookVariantsCheck() error {
 			next = "not adopted"
 		}
 		return json.NewEncoder(stdout).Encode(map[string]any{"adopted": false, "verdict": req.Verdict, "next": next})
-	}
-	// the run keeps the spec's absolute path; after the project folder moved, use this project's spec of the same id
-	// (adoptWording still checks that its hash is the one that was measured)
-	if _, err := os.Stat(res.SpecPath); os.IsNotExist(err) {
-		res.SpecPath = hookSpecPath(root, res.SpecID)
 	}
 	var buf bytes.Buffer
 	path, err := wordingAdopt(res, endpointFlags{local: hookLocalURL, model: res.Model}, root, "", &buf)

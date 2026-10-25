@@ -314,8 +314,9 @@ func TestWordingSameButNotAdoptedIsToldToThePerson(t *testing.T) {
 }
 
 // A tune result keeps the spec's absolute path. After the project folder was moved or renamed, the agent's "same" could not adopt the wording
-// ("open …/old-name/.shikii/decisions/changes-in-scope.yaml: no such file", 2026-10-26). The check uses the spec of the same id in this project
-// when the recorded path is gone (adoptWording still checks that its hash is the one that was measured).
+// ("open …/old-name/.shikii/decisions/changes-in-scope.yaml: no such file", 2026-10-26). A result read from this wiki uses this project's paths
+// (the spec of the same file name, and this wiki's run page), so the adoption is read from and saved in this project (audit 0.9.2: a move changes
+// spec_path and run_page together; adoptWording still checks that the spec's hash is the one that was measured).
 func TestWordingCheckAdoptsAfterTheFolderMoved(t *testing.T) {
 	agent, _, res := wordingCheckFixture(t)
 	var adoptedFrom string
@@ -327,13 +328,18 @@ func TestWordingCheckAdoptsAfterTheFolderMoved(t *testing.T) {
 		r.Adopted, r.AdoptedPath = true, r.SpecPath+".v-next"
 		return r.AdoptedPath, nil
 	}
-	res.SpecPath = filepath.Join("/nonexistent/old-name/.shikii/decisions", res.SpecID+".yaml") // recorded before the move
-	saveTuneResult(res)
+	rewriteRunJSON(t, agent, res.Run, func(r *tuneResult) { // recorded before the move
+		r.SpecPath = filepath.Join("/nonexistent/old-name/.shikii/decisions", filepath.Base(r.SpecPath))
+		r.RunPage = filepath.Join("/nonexistent/old-name/.shikii/wiki/runs", filepath.Base(r.RunPage))
+	})
 	out, err := submitWordingCheck(t, checkBody(res, "same"))
 	if err != nil || out["adopted"] != true {
 		t.Fatalf("the wording is adopted from this project's spec after the folder moved: %v %v", out, err)
 	}
 	if adoptedFrom != hookSpecPath(agent, res.SpecID) {
 		t.Fatalf("adopted from this project's spec: %s", adoptedFrom)
+	}
+	if got, _ := loadTuneResult(filepath.Join(agent, "wiki"), res.Run); !got.Adopted || len(got.MeaningChecks) != 1 {
+		t.Fatalf("the adoption is saved in this project's wiki: %+v", got)
 	}
 }

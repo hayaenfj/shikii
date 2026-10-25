@@ -336,21 +336,43 @@ func removeAgentsSection(path string) (bool, error) {
 	if !ok {
 		return false, agentsSkipped{"AGENTS.md is left alone because shikii's markers do not form exactly one pair (check the marker-only lines)"}
 	}
-	nl := "\n"
-	if strings.Contains(text, "\r\n") {
-		nl = "\r\n"
-	}
 	before, after := text[:start], text[end:]
-	if !strings.HasSuffix(text[start:end], "\n") && strings.HasPrefix(after, nl) { // the closing marker had no newline of its own
-		after = strings.TrimPrefix(after, nl)
+	if !strings.HasSuffix(text[start:end], "\n") { // the closing marker had no newline of its own
+		after = after[leadingNewline(after):]
+	}
+	// A person's CRLF file may have had the section added with LF by 0.8, so either line ending counts as the blank line (audit 0.9.2, low 6)
+	blankBefore := 0 // length of the newline that ends the blank line just before the section
+	if n := trailingNewline(before); n > 0 && trailingNewline(before[:len(before)-n]) > 0 {
+		blankBefore = n
 	}
 	switch {
-	case after == "" && strings.HasSuffix(before, nl+nl):
-		before = strings.TrimSuffix(before, nl) // the blank line put before the section at the end of the file
-	case strings.HasSuffix(before, nl+nl) && strings.HasPrefix(after, nl):
-		after = strings.TrimPrefix(after, nl) // the section sat between two blank lines: keep one
+	case after == "" && blankBefore > 0:
+		before = before[:len(before)-blankBefore] // the blank line put before the section at the end of the file
+	case blankBefore > 0 && leadingNewline(after) > 0:
+		after = after[leadingNewline(after):] // the section sat between two blank lines: keep one
 	}
 	return true, replaceFile(target, before+after)
+}
+
+// trailingNewline and leadingNewline are the length of the line ending ("\r\n" or "\n") at the end or the start of s (0 if none).
+func trailingNewline(s string) int {
+	switch {
+	case strings.HasSuffix(s, "\r\n"):
+		return 2
+	case strings.HasSuffix(s, "\n"):
+		return 1
+	}
+	return 0
+}
+
+func leadingNewline(s string) int {
+	switch {
+	case strings.HasPrefix(s, "\r\n"):
+		return 2
+	case strings.HasPrefix(s, "\n"):
+		return 1
+	}
+	return 0
 }
 
 // agentsSectionSpan is the range of shikii's section (from the start of the opening marker line to after the newline of the closing marker line). found says whether any marker-only line exists,

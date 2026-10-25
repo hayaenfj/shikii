@@ -24,6 +24,9 @@ func TestRemoveAgentsSectionKeepsThePersonsTextAndTheFile(t *testing.T) {
 		{"ends with the closing marker, no newline", "# Rules\n\n" + strings.TrimSuffix(ja, "\n"), "# Rules\n"},
 		{"only the section (the file stays, empty)", ja, ""},
 		{"CRLF stays CRLF", strings.ReplaceAll("# Rules\n\n"+ja+"\n## After\n", "\n", "\r\n"), "# Rules\r\n\r\n## After\r\n"},
+		// audit 0.9.2 (behavior), low 6: 0.8 added the section with LF to a person's CRLF file; no stray LF blank line is left
+		{"LF section at the end of a CRLF file", "# Mine\r\n\r\nline\r\n\n" + en, "# Mine\r\n\r\nline\r\n"},
+		{"LF section between CRLF text", "# Mine\r\n\n" + en + "\n## After\r\n", "# Mine\r\n\n## After\r\n"},
 	}
 	for _, c := range cases {
 		path := filepath.Join(t.TempDir(), "AGENTS.md")

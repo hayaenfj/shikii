@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/calib"
@@ -509,8 +510,54 @@ func loadTuneResult(wikiDir, run string) (*tuneResult, error) {
 	if err := json.Unmarshal(b, &res); err != nil {
 		return nil, err
 	}
+	res.rebase(wikiDir, run)
 	return &res, nil
 }
+
+// rebase rebuilds the absolute paths kept in the json from the wiki it was read from (audit 0.9.2). After the project folder was moved, the recorded
+// paths point at a place that is gone; in a copied project they point at the original project, which still exists. Either way every reader and writer
+// must stay inside this project: run_page is the md next to the json, and a spec or adopted version that was inside the store the run was written in
+// (the store of the recorded run_page, normally <store>/decisions/<file>) is the same file in this store. An undone version keeps its recorded name
+// (only the file on disk gets ".reverted"), so it is found the same way. A spec outside that store (serve --specs, or tune on a file elsewhere) keeps its path.
+func (res *tuneResult) rebase(wikiDir, run string) {
+	if abs, err := filepath.Abs(wikiDir); err == nil {
+		wikiDir = abs
+	}
+	recorded := res.RunPage
+	res.RunPage = filepath.Join(wikiDir, "runs", run+".md")
+	if recorded == "" {
+		return
+	}
+	oldStore, store := filepath.Dir(filepath.Dir(filepath.Dir(recorded))), filepath.Dir(wikiDir)
+	for _, p := range []*string{&res.SpecPath, &res.AdoptedPath} {
+		if *p == "" {
+			continue
+		}
+		rel, err := filepath.Rel(oldStore, *p)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			continue
+		}
+		*p = filepath.Join(store, rel)
+	}
+}
+
+// lockTuneRun takes the lock of one run (a file next to its json) while it is adopted or undone. The agent's adoption (hook variants check, a separate
+// process) and the page's (serve) share it, so the same run is not adopted twice at the same time (audit 0.9.2, low 2). It does not wait: when the run
+// is held, it returns errTuneRunBusy and the caller refuses.
+func lockTuneRun(wikiDir, run string) (func(), error) {
+	run = strings.TrimSuffix(strings.TrimSuffix(filepath.Base(run), ".json"), ".md")
+	f, err := os.OpenFile(filepath.Join(wikiDir, "runs", run+".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, errTuneRunBusy
+	}
+	return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }, nil
+}
+
+var errTuneRunBusy = errors.New("this run is being adopted or undone right now (by the agent or on the page); try again after it finishes")
 
 // latestTuneResult is the json of the spec's newest run.
 func latestTuneResult(wikiDir, specID string) (*tuneResult, error) {
