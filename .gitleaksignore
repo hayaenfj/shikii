@@ -1,3 +1,3 @@
 # gitleaks false positives (not keys). One per line, using the Fingerprint gitleaks prints.
-# It read "the local standard without a key: Ternary-Bonsai-27B" as generic-api-key (docs/guide.md in a past commit)
-5c97143fd04d30bc9dabded21940caec43a534cb:docs/guide.md:generic-api-key:286
+# It read "the local standard without a key: Ternary-Bonsai-27B" as generic-api-key (docs/guide.md in a past commit; the commit hash changed when AGENTS.md and CLAUDE.md were removed from the history on 2026-10-25)
+94f14e7008b28cecc5e15ce1a85317dc415a5221:docs/guide.md:generic-api-key:286
