@@ -24,14 +24,17 @@ FULL_WIDTH = "\uff01\uff08\uff09"      # full-width exclamation mark and parenth
 EXT_A = "\u3400"                       # CJK extension A
 
 
-def run(files, allowlist="", untracked=None, ignore=""):
-    """files are committed, untracked are left as new files. Returns (exit code, output)."""
+def run(files, allowlist="", untracked=None, ignore="", raw=None):
+    """files are committed (raw ones as bytes), untracked are left as new files. Returns (exit code, output)."""
     with tempfile.TemporaryDirectory() as root:
         subprocess.run(["git", "init", "-q", root], check=True)
         for name, text in files.items():
             os.makedirs(os.path.dirname(os.path.join(root, name)) or root, exist_ok=True)
             with open(os.path.join(root, name), "w", encoding="utf-8") as f:
                 f.write(text)
+        for name, data in (raw or {}).items():
+            with open(os.path.join(root, name), "wb") as f:
+                f.write(data)
         if ignore:
             with open(os.path.join(root, ".gitignore"), "w", encoding="utf-8") as f:
                 f.write(ignore)
@@ -51,6 +54,7 @@ def run(files, allowlist="", untracked=None, ignore=""):
 CASES = [
     # (name, expected exit code, kwargs)
     ("English only passes", 0, dict(files={"a.go": "hello\n"})),
+    ("a file with a byte that is not UTF-8 is still read", 1, dict(files={}, raw={"a.md": (KANA + "\n").encode("utf-8") + b"\xff\n"})),
     ("kana fails", 1, dict(files={"a.go": KANA + "\n"})),
     ("half-width katakana fails", 1, dict(files={"a.go": "x := \"" + HALF_KANA + "\"\n"})),
     ("Japanese brackets and full stop fail", 1, dict(files={"a.go": "x := \"" + BRACKETS + "\"\n"})),

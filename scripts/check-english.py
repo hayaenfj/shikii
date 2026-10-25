@@ -40,7 +40,7 @@ def tracked(root):
 
 def japanese_lines(path):
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             return [(i, line.rstrip("\n")) for i, line in enumerate(f, 1) if JAPANESE.search(line) and not SWITCHER.match(line)]
     except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
         return []

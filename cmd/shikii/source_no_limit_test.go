@@ -75,7 +75,7 @@ func TestPendingSourcesAreListedByTheirHead(t *testing.T) {
 			heads[h.ID] = h
 		}
 		h := heads[big.ID]
-		if !h.ContentCut || h.ContentBytes != len(long) || len(h.Content) > notebook.SourceHeadBytes || !strings.HasPrefix(long, h.Content) || !utf8.ValidString(h.Content) || h.Content == "" || h.Title != "long" || h.Reference != "memory/long.md" || h.Version != "v1" {
+		if !h.ContentCut || h.ContentBytes != len(long) || len(h.Content) > notebook.SourceHeadBytes || len(h.Content) < notebook.SourceHeadBytes-3 || !strings.HasPrefix(long, h.Content) || !utf8.ValidString(h.Content) || h.Content == "" || h.Title != "long" || h.Reference != "memory/long.md" || h.Version != "v1" {
 			t.Fatalf("%s: a long source is listed by its head (cut=%v bytes=%d head=%d)", where, h.ContentCut, h.ContentBytes, len(h.Content))
 		}
 		if s := heads[small.ID]; s.ContentCut || s.Content != "PASS" || s.ContentBytes != 4 {

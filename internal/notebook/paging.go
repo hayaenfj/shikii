@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -22,6 +23,7 @@ type continuation struct {
 	Request  string `json:"request"`
 	Snapshot string `json:"snapshot"`
 	Offset   int    `json:"offset"`
+	Byte     int    `json:"byte,omitempty"` // inside one long source: where its body continues
 }
 
 func encodedSize(value any) int    { data, _ := json.Marshal(value); return len(data) }
@@ -36,27 +38,35 @@ func (b Book) continuation(kind string, request, snapshot any) continuation {
 }
 
 func (want continuation) start(token string, total int) (int, error) {
+	offset, from, err := want.startAt(token, total)
+	if err == nil && from != 0 {
+		return 0, errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
+	}
+	return offset, err
+}
+
+func (want continuation) startAt(token string, total int) (int, int, error) {
 	if token == "" {
-		return 0, nil
+		return 0, 0, nil
 	}
 	bad := errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
 	if len(token) > 2048 {
-		return 0, bad
+		return 0, 0, bad
 	}
 	data, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
-		return 0, bad
+		return 0, 0, bad
 	}
 	var got continuation
-	if json.Unmarshal(data, &got) != nil || got.Offset <= 0 || got.Offset >= total {
-		return 0, bad
+	if json.Unmarshal(data, &got) != nil || got.Offset < 0 || got.Byte < 0 || (got.Offset == 0 && got.Byte == 0) || got.Offset >= total {
+		return 0, 0, bad
 	}
-	offset := got.Offset
-	got.Offset = 0
+	offset, from := got.Offset, got.Byte
+	got.Offset, got.Byte = 0, 0
 	if got != want {
-		return 0, bad
+		return 0, 0, bad
 	}
-	return offset, nil
+	return offset, from, nil
 }
 
 func (c continuation) next(offset, total int) string {
@@ -136,7 +146,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 	}
 	ids = unique(ids)
 	state := b.continuation("sources", ids, all)
-	start, err := state.start(cursor, len(ids))
+	start, from, err := state.startAt(cursor, len(ids))
 	if err != nil {
 		return nil, err
 	}
@@ -158,17 +168,47 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 		if f, ok := feedback[id]; ok {
 			fs = append(fs, f)
 		}
-		if o, ok := observations[id]; ok {
+		o, isObservation := observations[id]
+		if isObservation {
+			if i == start && from > 0 {
+				if from >= len(o.Content) {
+					return nil, errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
+				}
+				o.Content = o.Content[from:]
+			}
 			osources = append(osources, o)
 		}
 		if text, ok := originals[id]; ok {
 			texts[id] = text
 		}
 		out["source_material"], out["observations"], out["originals"] = fs, osources, texts
-		if i > start && encodedSize(out) > replyBudget {
+		if encodedSize(out) <= replyBudget {
+			continue
+		}
+		if i > start {
 			fs, osources = fs[:nf], osources[:no]
 			delete(texts, id)
 			break
+		}
+		if isObservation && i == start { // one long source over the budget: return part of its body and continue inside it
+			body := osources[no].Content
+			end := len(body)
+			for encodedSize(out) > replyBudget-2048 && end > 1 {
+				end /= 2
+				for end > 0 && !utf8.RuneStart(body[end]) {
+					end--
+				}
+				osources[no].Content = body[:end]
+			}
+			if end < len(body) {
+				out["observation_part"] = map[string]any{"id": id, "from": from, "to": from + end, "bytes": from + len(body)}
+				out["source_material"], out["observations"], out["originals"] = fs, osources, texts
+				c := state
+				c.Offset, c.Byte = i, from+end
+				data, _ := json.Marshal(c)
+				out["next_cursor"] = base64.RawURLEncoding.EncodeToString(data)
+				return out, nil
+			}
 		}
 	}
 	out["source_material"], out["observations"], out["originals"] = fs, osources, texts

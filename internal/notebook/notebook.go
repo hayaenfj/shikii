@@ -406,14 +406,14 @@ func (b Book) sourceIssues(p Page) []Issue {
 			issues = append(issues, Issue{Kind: "invalid-source", Page: p.ID})
 			continue
 		}
-		var data []byte
+		var hash string
 		err := dirErr
 		if err == nil {
-			data, err = readSourceRecord(filepath.Join(dir, s.ID+".json"))
+			hash, err = sourceRecordDigest(filepath.Join(dir, s.ID+".json"))
 		}
 		if err != nil {
 			issues = append(issues, Issue{Kind: "missing-source", Page: p.ID, Source: s.ID})
-		} else if digest(data) != s.Hash {
+		} else if hash != s.Hash {
 			issues = append(issues, Issue{Kind: "changed-source", Page: p.ID, Source: s.ID})
 		}
 		if s.TextHash != "" {

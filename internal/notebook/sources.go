@@ -2,6 +2,8 @@ package notebook
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +31,21 @@ func readSourceRecord(path string) ([]byte, error) {
 		err = errors.New("the saved source record exceeds the store's line limit")
 	}
 	return data, err
+}
+
+// sourceRecordDigest hashes a source record without holding it in memory (the hook checks every cited source on each request).
+func sourceRecordDigest(path string) (string, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(f, int64(store.MaxLineBytes)+1))
+	if err == nil && n > int64(store.MaxLineBytes) {
+		err = errors.New("the saved source record exceeds the store's line limit")
+	}
+	return hex.EncodeToString(h.Sum(nil)), err
 }
 
 func readOriginals(path string) ([]byte, error) {
