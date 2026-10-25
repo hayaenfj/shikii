@@ -15,25 +15,25 @@ import (
 	shikii "github.com/hayaenfj/shikii"
 )
 
-// cmdInit は 1 回でエージェントの準備を済ませる(オプションは無い。基本構成と固定の規則で決める):
-//  1. プロジェクトルート(実行する場所)に .shikii/(その下に decisions/ wiki/ records/ labels/。他には何も増やさない)
-//  2. .mcp.json に shikii の MCP サーバーの項(Claude Code が読む)。既に shikii の項があれば触らない(人が --proposer などを足していても残る)。他の項と鍵も残す
-//  3. skill(作法)を ~/.claude/skills/shikii に置き直す(毎回。手で直す場所ではない。直すなら repo の skills/shikii)
+// cmdInit prepares the agent in one go (there are no options; the base layout and fixed rules decide everything):
+//  1. .shikii/ at the project root (where it runs), with decisions/ wiki/ records/ labels/ under it (nothing else is added)
+//  2. a shikii MCP server entry in .mcp.json (read by Claude Code). If a shikii entry already exists it is left alone (kept even if a person added --proposer etc.). Other entries and keys are kept
+//  3. puts the skill (working rules) back at ~/.claude/skills/shikii (every time. Not a place to edit by hand; edit skills/shikii in the repo)
 //
-// 2 回目以降は同じ結果で、人が書いたものを壊さない。
+// Running it again gives the same result and never breaks what a person wrote.
 func cmdInit(args []string) error {
 	if len(args) > 0 {
-		return errors.New("使い方: shikii init または shikii --init（追加の引数は不要です）")
+		return errors.New("usage: shikii init or shikii --init (no extra arguments needed)")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
 		return err
 	}
 	if isSharedPlaceScope(scope) {
-		return errors.New("ホームフォルダは初期化しません(~/.shikii は共通の置き場です)。プロジェクトのフォルダで実行してください")
+		return errors.New("the home folder is not initialized (~/.shikii is the shared store). Run this in a project folder")
 	}
 	version := projectInitVersionNow
-	if wipePending(root) { // 置き場を作る前に見る(作った後では、消去の途中の初期化し直しと見分けられない)
+	if wipePending(root) { // check before creating the store (once created, it cannot be told apart from a re-initialization in the middle of a wipe)
 		version = projectInitVersion(root)
 	}
 	if err := checkProjectStore(root, true); err != nil {
@@ -47,26 +47,26 @@ func cmdInit(args []string) error {
 			return err
 		}
 	}
-	if err := (handoff.Book{Store: root}).Ensure(); err != nil { // 作業記録の置き場(0.8.1)
+	if err := (handoff.Book{Store: root}).Ensure(); err != nil { // the work records folder (0.8.1)
 		return err
 	}
-	fmt.Fprintln(stdout, "保存先: .shikii/（decisions/・wiki/・records/・labels/・handoff/）")
+	fmt.Fprintln(stdout, "Store: .shikii/ (decisions/, wiki/, records/, labels/, handoff/)")
 	nSpecs, err := seedAgentSpecs(filepath.Join(root, "decisions"))
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "既製の判定: %d種類を準備（hookの%d問とwikiの%d問。新規%d件、既存の設定は保持）\n", len(hookSpecs)+len(wikiSpecs), len(hookSpecs), len(wikiSpecs), nSpecs)
-	// 既製の知識: 型・パターン・モデルのページを、無いものだけ写す(tune --propose がここを読んで候補を作る。人が直したページは触らない)
+	fmt.Fprintf(stdout, "Built-in decisions: prepared %d kinds (%d hook questions and %d wiki questions; %d new, existing settings kept)\n", len(hookSpecs)+len(wikiSpecs), len(hookSpecs), len(wikiSpecs), nSpecs)
+	// Built-in knowledge: copy the type, pattern and model pages that are missing (tune --propose reads these to make candidates. Pages a person edited are left alone)
 	n, err := seedWiki(filepath.Join(root, "wiki"))
 	if err != nil {
 		return fmt.Errorf("wiki: %w", err)
 	}
 	if n > 0 {
-		fmt.Fprintf(stdout, ".shikii/wiki/: 既製の知識を%d件追加（既存のページは保持）\n", n)
+		fmt.Fprintf(stdout, ".shikii/wiki/: added %d built-in knowledge pages (existing pages kept)\n", n)
 	}
 
-	// MCP の設定: Claude Code(.mcp.json)、Cursor(.cursor/mcp.json)、OpenCode(opencode.json の mcp)、Codex(~/.codex/config.toml)。
-	// 既に shikii の項があれば触らない(人が --proposer などを足していても残る)。他の項と鍵も残す。
+	// MCP settings: Claude Code (.mcp.json), Cursor (.cursor/mcp.json), OpenCode (mcp in opencode.json), Codex (~/.codex/config.toml).
+	// If a shikii entry already exists it is left alone (kept even if a person added --proposer etc.). Other entries and keys are kept.
 	mcpArgs := []string{"mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"}
 	claude := map[string]any{"command": "shikii", "args": mcpArgs}
 	for _, f := range []struct {
@@ -83,9 +83,9 @@ func cmdInit(args []string) error {
 			return err
 		}
 		if did {
-			fmt.Fprintf(stdout, "%s: shikiiを追加（%s）\n", f.path, f.who)
+			fmt.Fprintf(stdout, "%s: added shikii (%s)\n", f.path, f.who)
 		} else {
-			fmt.Fprintf(stdout, "%s: 既存のshikii設定を保持（%s）\n", f.path, f.who)
+			fmt.Fprintf(stdout, "%s: kept the existing shikii settings (%s)\n", f.path, f.who)
 		}
 	}
 	var skipped agentsSkipped
@@ -95,14 +95,14 @@ func cmdInit(args []string) error {
 	case err != nil:
 		return err
 	case did:
-		fmt.Fprintln(stdout, "AGENTS.md: shikiiの作法を追加（Codex・OpenCode向け）")
+		fmt.Fprintln(stdout, "AGENTS.md: added shikii's working rules (for Codex and OpenCode)")
 	case fileExists(filepath.Join(scope, "CLAUDE.md")) && !fileExists(filepath.Join(scope, "AGENTS.md")):
-		fmt.Fprintln(stdout, "AGENTS.md: 作成を省略（既存のCLAUDE.mdを優先）")
+		fmt.Fprintln(stdout, "AGENTS.md: not created (the existing CLAUDE.md takes priority)")
 	}
-	// 家のフォルダに置くもの(Codex の設定、skill)。HOME が無い環境(容れ物の CI など)では飛ばす: プロジェクトの準備は済んでいる
+	// Things placed in the home folder (Codex settings, the skill). Skipped where there is no HOME (e.g. CI in a container): the project is already prepared
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintln(stdout, "HOMEが無いためCodexの共通設定とskillを省略し、プロジェクト側だけ準備します")
+		fmt.Fprintln(stdout, "No HOME, so the shared Codex settings and the skill are skipped; only the project side is prepared")
 		return completeProjectInit(root, scope, version)
 	}
 	codex := filepath.Join(home, ".codex", "config.toml")
@@ -110,17 +110,17 @@ func cmdInit(args []string) error {
 	case err != nil:
 		return err
 	case did:
-		fmt.Fprintf(stdout, "%s: shikiiを追加（Codex）\n", filepath.Join("~", ".codex", "config.toml"))
+		fmt.Fprintf(stdout, "%s: added shikii (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
 	default:
-		fmt.Fprintf(stdout, "%s: 既存のMCP設定を保持（Codex）\n", filepath.Join("~", ".codex", "config.toml"))
+		fmt.Fprintf(stdout, "%s: kept the existing MCP settings (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
 	}
 
-	// skill: 置き直す(古いファイルも消す)
+	// skill: put it back (old files are deleted too)
 	dst := filepath.Join(home, ".claude", "skills", "shikii")
 	if err := copySkill(dst); err != nil {
 		return fmt.Errorf("skill: %w", err)
 	}
-	fmt.Fprintf(stdout, "skill: %sを更新\n", filepath.Join("~", ".claude", "skills", "shikii"))
+	fmt.Fprintf(stdout, "skill: updated %s\n", filepath.Join("~", ".claude", "skills", "shikii"))
 	return completeProjectInit(root, scope, version)
 }
 
@@ -128,13 +128,13 @@ func completeProjectInit(root, scope string, version int) error {
 	if err := finishProjectInit(root, scope, version); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "利用可能: %s\n画面: エージェントの最初の依頼で hook が起こし(空いているポート)、ブラウザで開きます。URL は shikii page\n", scope)
-	fmt.Fprintln(stdout, "次: 普段どおり、このプロジェクトで依頼してください。新しいMCP設定は次のセッションから反映されます。")
-	fmt.Fprintln(stdout, "業務の判定を追加する時は shikii new <id>。モデルの手動起動は shikii up。")
+	fmt.Fprintf(stdout, "Ready: %s\nPage: the hook starts it on the agent's first request (on a free port) and opens it in the browser. Get the URL with shikii page\n", scope)
+	fmt.Fprintln(stdout, "Next: make requests in this project as usual. New MCP settings take effect from the next session.")
+	fmt.Fprintln(stdout, "To add a business decision, run shikii new <id>. To start the model by hand, run shikii up.")
 	return nil
 }
 
-// seedWiki は埋め込みの既製の知識(shikii.WikiFS)を dst(プロジェクトの wiki/)に写す。既にあるファイルは触らない。写した数を返す。
+// seedWiki copies the embedded built-in knowledge (shikii.WikiFS) into dst (the project's wiki/). Existing files are left alone. Returns how many were copied.
 func seedWiki(dst string) (int, error) {
 	n := 0
 	err := fs.WalkDir(shikii.WikiFS, "wiki", func(p string, d fs.DirEntry, err error) error {
@@ -166,7 +166,7 @@ func seedWiki(dst string) (int, error) {
 	return n, err
 }
 
-// seedFile は書き終えた内容だけを公開し、既存の通常ファイルは保持する。
+// seedFile publishes only fully written content and keeps existing regular files.
 func seedFile(path string, data []byte) (bool, error) {
 	checkExisting := func() error {
 		info, err := os.Lstat(path)
@@ -174,7 +174,7 @@ func seedFile(path string, data []byte) (bool, error) {
 			return err
 		}
 		if !info.Mode().IsRegular() {
-			return errors.New("既製のファイルの置き場にリンクは使えません")
+			return errors.New("the destination for built-in files cannot be a link")
 		}
 		return nil
 	}
@@ -208,8 +208,8 @@ func seedFile(path string, data []byte) (bool, error) {
 	return true, nil
 }
 
-// addJSONEntry は JSON の設定ファイルの key(object)に name の項を足す。既にあれば触らず false。
-// 数字は丸めず(UseNumber)、& < > は \u に変えず、一時ファイル + rename で書く。壊れた JSON は上書きしない。並びは変わる(JSON の object に順序は無い)。
+// addJSONEntry adds a name entry under key (an object) in a JSON settings file. If it already exists, leaves it alone and returns false.
+// Numbers are not rounded (UseNumber), & < > are not turned into \u, and it writes via a temp file + rename. Broken JSON is not overwritten. Order changes (JSON objects have no order).
 func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 	cfg := map[string]any{}
 	b, err := os.ReadFile(path)
@@ -220,7 +220,7 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 		dec := json.NewDecoder(bytes.NewReader(b))
 		dec.UseNumber()
 		if err := dec.Decode(&cfg); err != nil {
-			return false, fmt.Errorf("%s: JSONを確認してください（壊れた設定は上書きしません）: %w", path, err)
+			return false, fmt.Errorf("%s: check the JSON (broken settings are not overwritten): %w", path, err)
 		}
 	}
 	section, _ := cfg[key].(map[string]any)
@@ -248,8 +248,8 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 	return true, os.Rename(path+".tmp", path)
 }
 
-// addCodexServer は Codex の ~/.codex/config.toml に [mcp_servers.shikii] を足す。TOML は読まないので、mcp_servers という語が
-// どこかにあれば(見出し、インラインテーブル、[mcp_servers] の下の鍵、引用した鍵)触らない: 末尾に足すと二重定義で Codex が設定を読めなくなる(監査 6 の 1)。
+// addCodexServer adds [mcp_servers.shikii] to Codex's ~/.codex/config.toml. It does not parse TOML, so if the word mcp_servers
+// appears anywhere (a header, an inline table, a key under [mcp_servers], a quoted key) it leaves the file alone: appending would define it twice and Codex could not read its settings (audit 6 item 1).
 func addCodexServer(path string, args []string) (bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -289,35 +289,35 @@ func fileExists(p string) bool {
 
 const agentsMarker = "<!-- shikii -->"
 
-// agentsSection は AGENTS.md(Codex と OpenCode が読む)の shikii の節。印で囲む。
-var agentsSection = agentsMarker + "\n## shikii(判定の作法)\n\n" +
-	"- 同じ種類の判断は自分で決めず `shikii decide`(MCP なら shikii_decide)を呼び、帯に従う: act だけ自動、ask は人に確かめる、discard は動かない、abstain は入力を揃える\n" +
-	"- 正解は人(または結果)が決める。人の答えは `shikii label <trace_id> <truth>`。線(calibration:)や wiki の主張の状態を手で書き換えない\n" +
-	"- 新しく作った・変えた決まり・テスト・手順(コマンドやスクリプト)は、頼まれなくてもそのターンのうちに wiki のやり方(howto)かルール(rule)の記事に書く。近い記事があれば足すか直す\n" +
-	"- wiki の教訓には種類(kind: rule / howto / criteria / fact / history)と場面(scene: その仕事の言葉で「〜する時」)を付ける。wiki の返事に unclassified(種類と場面の無い前の版の記事)があれば、そのターンのうちに `shikii wiki classify <id> <kind> <scene>`(MCP なら shikii_wiki の classify)で付ける。教訓の文は変わらない\n" +
-	"- 詳しい作法: ~/.claude/skills/shikii/SKILL.md(shikii init が置く)\n" + agentsMarker + "\n"
+// agentsSection is shikii's section in AGENTS.md (read by Codex and OpenCode), wrapped in markers. The heading must keep starting with "## shikii(" (agentsSectionSpan looks for it).
+var agentsSection = agentsMarker + "\n## shikii(decision rules)\n\n" +
+	"- For a recurring kind of decision, do not decide yourself: call `shikii decide` (shikii_decide over MCP) and follow the band: only act runs automatically, ask means check with a person, discard means do nothing, abstain means gather the inputs\n" +
+	"- A person (or the outcome) decides the truth. Record a person's answer with `shikii label <trace_id> <truth>`. Never edit the line (calibration:) or the status of a wiki claim by hand\n" +
+	"- When you create or change a rule, test or procedure (commands or scripts), write it in a wiki howto or rule page in the same turn, even if nobody asked. If a close page exists, add to it or fix it\n" +
+	"- Give every wiki lesson a kind (kind: rule / howto / criteria / fact / history) and a scene (scene: \"when ...\" in the words of that work). If a wiki reply lists unclassified pages (from older versions, without kind and scene), classify them in the same turn with `shikii wiki classify <id> <kind> <scene>` (classify of shikii_wiki over MCP). The lesson text does not change\n" +
+	"- Full working rules: ~/.claude/skills/shikii/SKILL.md (placed by shikii init)\n" + agentsMarker + "\n"
 
-// agentsSkipped は、AGENTS.md に触らなかった理由(人に伝えるだけで、init もアップデートも止めない)。
+// agentsSkipped is the reason AGENTS.md was not touched (only told to the person; it stops neither init nor the update).
 type agentsSkipped struct{ reason string }
 
 func (e agentsSkipped) Error() string { return e.reason }
 
-// addAgentsSection は AGENTS.md に shikii の節を足す。前の版の節があれば新しい中身に置き換え、人が書いた部分は触らない。
-// 同じ中身なら何もしない(監査 0.9.0 の A1〜A3):
-//   - 節は「印だけの行」で始まり、次の行が「## shikii(」で、次の「印だけの行」で終わる組。人の文の中の印(`…` の中など)は数えない。
-//     その組がちょうど 1 つの時だけ置き換え、印だけの行があるのに組が 1 つでない時は触らずに理由を返す
-//   - AGENTS.md が repo の中のファイルへのリンク(CLAUDE.md へのシンボリックリンクなど)ならリンクのまま先を書き換え、外を指すなら触らない
-//   - 改行は今のファイルの形(CRLF か LF)に合わせる
+// addAgentsSection adds shikii's section to AGENTS.md. A section from an earlier version is replaced with the new content; what a person wrote is left alone.
+// If the content is the same, it does nothing (audit 0.9.0 A1-A3):
+//   - A section is a pair that starts with a "marker-only line", has "## shikii(" on the next line, and ends at the next "marker-only line". Markers inside a person's text (e.g. inside `…`) do not count.
+//     It replaces only when there is exactly one such pair; when marker-only lines exist but not exactly one pair, it leaves the file alone and returns the reason
+//   - If AGENTS.md is a link to a file inside the repo (e.g. a symlink to CLAUDE.md), it rewrites the target and keeps the link; if it points outside, it leaves it alone
+//   - Line endings follow the current file (CRLF or LF)
 func addAgentsSection(path string) (bool, error) {
 	target := path
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		real, err := filepath.EvalSymlinks(path)
 		if err != nil {
-			return false, agentsSkipped{"AGENTS.md のリンク先を読めないので触りません"}
+			return false, agentsSkipped{"AGENTS.md is left alone because its link target cannot be read"}
 		}
 		dir, _ := filepath.EvalSymlinks(filepath.Dir(path))
 		if rel, err := filepath.Rel(dir, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return false, agentsSkipped{"AGENTS.md は repo の外を指すリンクなので触りません"}
+			return false, agentsSkipped{"AGENTS.md is left alone because it is a link pointing outside the repo"}
 		}
 		target = real
 	}
@@ -333,7 +333,7 @@ func addAgentsSection(path string) (bool, error) {
 	section := strings.ReplaceAll(agentsSection, "\n", nl)
 	if start, end, found, ok := agentsSectionSpan(text); found {
 		if !ok {
-			return false, agentsSkipped{"AGENTS.md の shikii の印の組が 1 つに決まらないので触りません(印だけの行を確かめてください)"}
+			return false, agentsSkipped{"AGENTS.md is left alone because shikii's markers do not form exactly one pair (check the marker-only lines)"}
 		}
 		if text[start:end] == section {
 			return false, nil
@@ -341,7 +341,7 @@ func addAgentsSection(path string) (bool, error) {
 		return true, replaceFile(target, text[:start]+section+text[end:])
 	}
 	if os.IsNotExist(err) && fileExists(filepath.Join(filepath.Dir(path), "CLAUDE.md")) {
-		return false, nil // OpenCode は AGENTS.md があると CLAUDE.md を読まなくなる。黙って作らない(呼び出し側が言う)
+		return false, nil // OpenCode stops reading CLAUDE.md once AGENTS.md exists. Do not create it silently (the caller reports it)
 	}
 	if len(b) > 0 {
 		if !strings.HasSuffix(text, "\n") {
@@ -358,10 +358,10 @@ func addAgentsSection(path string) (bool, error) {
 	return true, err
 }
 
-// agentsSectionSpan は shikii の節の範囲(開きの印の行の頭から、閉じの印の行の改行の後まで)。found は印だけの行があったか、
-// ok は開き(次の行が「## shikii(」)と閉じの組がちょうど 1 つだったか。
+// agentsSectionSpan is the range of shikii's section (from the start of the opening marker line to after the newline of the closing marker line). found says whether any marker-only line exists,
+// ok says whether there was exactly one pair of an opening (next line is "## shikii(") and a closing marker.
 func agentsSectionSpan(text string) (start, end int, found, ok bool) {
-	type line struct{ start, end int } // end は改行を含む
+	type line struct{ start, end int } // end includes the newline
 	var marks []line
 	var lines []line
 	for pos := 0; pos < len(text); {
@@ -397,11 +397,11 @@ func agentsSectionSpan(text string) (start, end int, found, ok bool) {
 	return start, end, true, pairs == 1 && len(marks) == 2
 }
 
-// replaceFile は path の中身を一時ファイルからの置き換えで書き換える(元の権限のまま。一時ファイルは毎回ちがう名前)。
+// replaceFile rewrites path's content by replacing it from a temp file (keeping the original permissions; the temp file gets a new name each time).
 func replaceFile(path, content string) error {
 	mode := os.FileMode(0o644)
 	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode().Perm() // repo のファイルなので元の権限のまま
+		mode = info.Mode().Perm() // it is a repo file, so keep the original permissions
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".shikii-agents-*.tmp")
 	if err != nil {
@@ -422,7 +422,7 @@ func replaceFile(path, content string) error {
 	return os.Rename(tmp, path)
 }
 
-// copySkill は埋め込んだ skills/shikii を dst に置き直す(前の中身は消す。古い参照が混ざらない)。
+// copySkill puts the embedded skills/shikii back at dst (the old content is deleted so stale references do not mix in).
 func copySkill(dst string) error {
 	if err := os.RemoveAll(dst); err != nil {
 		return err

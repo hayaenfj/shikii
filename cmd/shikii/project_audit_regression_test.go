@@ -30,7 +30,7 @@ func TestProjectDefaultCLIRejectsLinkedStore(t *testing.T) {
 	}
 	t.Chdir(a)
 	if _, _, err := currentProjectStore(); err == nil {
-		t.Fatal("検査がリンクを拒否する前提がない")
+		t.Fatal("the precondition that the check rejects links does not hold")
 	}
 	model := fakeSystemOne(t, "m", map[string]float64{"change_request": .9, "question": .1, "other": 0})
 	var output bytes.Buffer
@@ -39,17 +39,17 @@ func TestProjectDefaultCLIRejectsLinkedStore(t *testing.T) {
 	defer func() { stdout = old }()
 	err := cmdDecide([]string{".shikii/decisions/intent.yaml", "--local", model.URL, "--model", "m", "-i", "message=AUDIT_PROJECT_A_SYNTHETIC"})
 	if err == nil {
-		t.Fatal("保存先の検査エラーを拒否し、別の仕事へ保存しない")
+		t.Fatal("must reject on the store check error and not save into another work")
 	}
 	for _, command := range []func([]string) error{cmdMCP, cmdServe} {
 		err := command([]string{"--specs", filepath.Join(a, "missing-specs")})
-		if err == nil || !strings.Contains(err.Error(), "リンク") {
-			t.Fatalf("MCP と画面も保存先の拒否を引き継ぐ: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "link") {
+			t.Fatalf("MCP and the page must also carry over the store refusal: %v", err)
 		}
 	}
 	records, readErr := (store.Store{Dir: bStore}).Records("intent", 0)
 	if readErr != nil || len(records) != 0 {
-		t.Fatalf("拒否したリンク先を変更しない: records=%d err=%v", len(records), readErr)
+		t.Fatalf("must not change the refused link target: records=%d err=%v", len(records), readErr)
 	}
 
 }
@@ -73,7 +73,7 @@ func TestProjectCalibrationsKeepTheirReports(t *testing.T) {
 			close(enteredB)
 			<-releaseB
 		} else {
-			t.Errorf("予期しない合成入力")
+			t.Errorf("unexpected synthetic input")
 			return
 		}
 		ans := map[string]systemone.Answer{}
@@ -151,13 +151,13 @@ func TestProjectCalibrationsKeepTheirReports(t *testing.T) {
 	select {
 	case <-enteredA:
 	case <-time.After(5 * time.Second):
-		t.Fatal("A の較正がモデルへ来ない")
+		t.Fatal("A's calibration does not reach the model")
 	}
 	go invoke(bScope, traceB, doneB)
 	select {
 	case <-enteredB:
 	case <-time.After(5 * time.Second):
-		t.Fatal("B の較正がモデルへ来ない")
+		t.Fatal("B's calibration does not reach the model")
 	}
 	close(releaseA)
 	ra := <-doneA
@@ -168,7 +168,7 @@ func TestProjectCalibrationsKeepTheirReports(t *testing.T) {
 	leaked := strings.Contains(rb.body, filepath.Join(aStore, "decisions", "intent.yaml"))
 	ownMissing := !strings.Contains(ra.body, filepath.Join(aStore, "decisions", "intent.yaml"))
 	if ra.code != 200 || rb.code != 200 || leaked || ownMissing || wrongRestore {
-		t.Fatalf("同時較正でも報告と出力先を混ぜない: A=%d B=%d leaked=%v ownMissing=%v wrongRestore=%v", ra.code, rb.code, leaked, ownMissing, wrongRestore)
+		t.Fatalf("concurrent calibrations must not mix reports and outputs: A=%d B=%d leaked=%v ownMissing=%v wrongRestore=%v", ra.code, rb.code, leaked, ownMissing, wrongRestore)
 	}
 
 }
@@ -189,13 +189,13 @@ func TestProjectCommandsShareRootFromSubdirectories(t *testing.T) {
 					return cmdNew([]string{"audit-question", "--type", "noul", "--question", "Is the synthetic task complete?", "--input", "message", "--pii", "true", "--send-to", "local"})
 				})
 				if !fileExists(filepath.Join(root, "decisions", "audit-question.yaml")) {
-					t.Fatal("new はプロジェクトルートの spec を作る")
+					t.Fatal("new must create the spec at the project root")
 				}
 			case "init":
 				capture(t, func() error { return cmdInit(nil) })
 				for _, name := range []string{".mcp.json", ".cursor/mcp.json", "opencode.json", "AGENTS.md", ".shikii/wiki/index.md"} {
 					if !fileExists(filepath.Join(repo, name)) {
-						t.Fatalf("init はプロジェクトルートへ準備する: %s", name)
+						t.Fatalf("init must prepare at the project root: %s", name)
 					}
 				}
 			case "tune":
@@ -211,11 +211,11 @@ func TestProjectCommandsShareRootFromSubdirectories(t *testing.T) {
 				model := wordingSensitiveModel(t)
 				out := capture(t, func() error { return cmdTune([]string{path, "--labeled", "none", "--local", model.URL}) })
 				if !strings.Contains(out, "2 truths") {
-					t.Fatal("tune は同じプロジェクトの正解を使う")
+					t.Fatal("tune must use the same project's truths")
 				}
 			}
 			if fileExists(filepath.Join(sub, ".shikii")) || fileExists(filepath.Join(sub, ".mcp.json")) {
-				t.Fatal("サブフォルダへ二つ目の保存先や設定を作らない")
+				t.Fatal("must not create a second store or settings in a subfolder")
 			}
 		})
 	}
@@ -231,7 +231,7 @@ func TestProjectHubRedirectKeepsQuery(t *testing.T) {
 	rec := httptest.NewRecorder()
 	hub.ServeHTTP(rec, httptest.NewRequest("GET", path+"?"+query, nil))
 	if rec.Code != 307 || rec.Header().Get("Location") != path+"/?"+query {
-		t.Fatalf("末尾 / の補完でも開く記録を保つ: status=%d location=%s", rec.Code, rec.Header().Get("Location"))
+		t.Fatalf("the trailing / redirect must keep the record being opened: status=%d location=%s", rec.Code, rec.Header().Get("Location"))
 	}
 }
 
@@ -251,11 +251,11 @@ func TestProjectTuningKeepsProcessOutput(t *testing.T) {
 				return f
 			}
 			if !errors.Is(err, syscall.ENXIO) {
-				t.Fatalf("合成パイプを開けません: %v", err)
+				t.Fatalf("cannot open the synthetic pipe: %v", err)
 			}
 			time.Sleep(5 * time.Millisecond)
 		}
-		t.Fatal("別プロジェクトの tune の開始が間に合いません")
+		t.Fatal("the other project's tune did not start in time")
 		return nil
 	}
 	original := stdout
@@ -273,6 +273,6 @@ func TestProjectTuningKeepsProcessOutput(t *testing.T) {
 	writerB.Close()
 	<-doneB
 	if stdout != original {
-		t.Fatal("別の仕事の tune が重なってもプロセスの出力先を変えない")
+		t.Fatal("overlapping tune runs of other works must not change the process's output")
 	}
 }

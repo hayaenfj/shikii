@@ -9,13 +9,13 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// personWork は「人の手間」の数: 今の規則で人の答えを待つ判定と、正解を誰が決めたか(人か、結果か)。
-// 判定の段の数(rungs の left to a person)は迷った数で、結果から正解が付く判定の迷いは人を待たない。こちらは人が実際に答える数
-// (迷い・抜き取り・AI の仮採点の抜き取りと保留)。
+// personWork counts "the person's effort": decisions waiting for a person's answer under the current rules, and who decided the truth (a person or the outcome).
+// The per-rung counts (rungs' "left to a person") are the unsure ones, and unsure decisions whose truth comes from the outcome do not wait for a person. This is the number a person actually answers
+// (unsure ones, samples, and the samples and held items of the AI's provisional scores).
 type personWork struct {
-	Records, Waits             int // 全体
-	RecentRecords, RecentWaits int // 直近 7 日
-	ByPerson, ByResult         int // 正解の付いた判定(trace)の数。機械の正解(context / judge)は数えない
+	Records, Waits             int // all
+	RecentRecords, RecentWaits int // last 7 days
+	ByPerson, ByResult         int // number of decisions (traces) with a truth. Machine truths (context / judge) are not counted
 }
 
 const personWorkWindow = 7 * 24 * time.Hour
@@ -42,7 +42,7 @@ func countPersonWork(specID string, discardUnsure bool, recs []store.Record, lab
 		case "act":
 			waits = r.IsCalibrated && store.AuditSample(r.TraceID)
 		}
-		// AI の仮採点のうち、抜き取りと保留(unknown)は人に見せる。結果の正解が先に付いた判定は見せない(答えが出ている)
+		// Of the AI's provisional scores, samples and held items (unknown) are shown to a person. Decisions that got an outcome truth first are not shown (the answer is already in)
 		if rv, ok := reviews[r.TraceID]; ok && (rv.Sampled || rv.Truth == "unknown") && !result[r.TraceID] {
 			waits = true
 		}
@@ -82,9 +82,9 @@ func (w *personWork) add(o personWork) {
 	w.ByResult += o.ByResult
 }
 
-// printMemoryEffect は「届いた教訓が行動を変えたか」を本番の観察で数える(0.7.3。合成実験では差が出なかったので、実使用で数える):
-// 届けた引用の数(サブエージェントへの配送も含む)と、振り返りが付けた helpful / unused / harmful / unknown、まだ観察の無い数。
-// 訂正の配送(followed / repeated)は別に出す。直近 7 日は配送の時刻で数える。
+// printMemoryEffect counts from real use "whether delivered lessons changed behavior" (0.7.3. A synthetic experiment showed no difference, so count in real use):
+// the number of quotes delivered (including delivery to subagents), the helpful / unused / harmful / unknown the reviews gave, and how many have no observation yet.
+// Delivery of corrections (followed / repeated) is printed separately. The last 7 days are counted by delivery time.
 func printMemoryEffect(out io.Writer, st store.Store, scope string, now time.Time) {
 	m, err := memoryEffectOf(st, scope, now)
 	if err != nil || m.Delivered == 0 {
@@ -98,7 +98,7 @@ func printMemoryEffect(out io.Writer, st store.Store, scope string, now time.Tim
 	}
 }
 
-// storeScope は置き場(.shikii/)の親をプロジェクトとして、会話・記憶の区切り(実パス)にする。
+// storeScope takes the parent of the store (.shikii/) as the project and uses it (real path) as the boundary for conversations and memory.
 func storeScope(storeDir string) string {
 	abs, err := filepath.Abs(storeDir)
 	if err != nil {
@@ -107,7 +107,7 @@ func storeScope(storeDir string) string {
 	return feedbackScope(filepath.Dir(abs))
 }
 
-// memoryEffectSummary は「届いた教訓の効果」の数(CLI の status と画面の /v1/status で同じ)。
+// memoryEffectSummary is the "effect of delivered lessons" counts (the same for CLI status and the page's /v1/status).
 type memoryEffectSummary struct {
 	Delivered, Helpful, Unused, Harmful, Unknown, Pending, AwaitingFeedback int
 	RecentDelivered, RecentHelpful                                          int
@@ -145,7 +145,7 @@ func (w personWork) json() map[string]any {
 	return map[string]any{"records": w.Records, "waits": w.Waits, "recent_records": w.RecentRecords, "recent_waits": w.RecentWaits, "by_person": w.ByPerson, "by_result": w.ByResult, "per_thousand": perThousand(w.Waits, w.Records), "recent_per_thousand": perThousand(w.RecentWaits, w.RecentRecords)}
 }
 
-// statusSummary は画面の先頭に出す要約(0.7.4): 人の手間、届いた教訓の効果、止める検査。
+// statusSummary is the summary shown at the top of the page (0.7.4): the person's effort, the effect of delivered lessons, blocking checks.
 func statusSummary(st store.Store, root, scope string, person personWork, now time.Time) map[string]any {
 	out := map[string]any{"person": person.json()}
 	if m, err := memoryEffectOf(st, scope, now); err == nil {
@@ -157,7 +157,7 @@ func statusSummary(st store.Store, root, scope string, person personWork, now ti
 	return out
 }
 
-// storeSpecPaths は置き場の decisions/*.yaml(基本構成)。status が spec のパスを省かれた時に読む。
+// storeSpecPaths is the store's decisions/*.yaml (base layout). Read when status is given no spec paths.
 func storeSpecPaths(storeDir string) []string {
 	paths, _ := filepath.Glob(filepath.Join(specsDirOf(storeDir), "*.yaml"))
 	return paths

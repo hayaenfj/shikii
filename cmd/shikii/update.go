@@ -30,15 +30,15 @@ type updateOptions struct {
 	client                            *http.Client
 	finish                            func(context.Context, string) error
 	replace                           func(string, string) error
-	reset                             func(context.Context, string, [3]uint64, [3]uint64) error // 版を跨ぐ時にプロジェクトの記録を初期化し直す(前の版、後の版)
+	reset                             func(context.Context, string, [3]uint64, [3]uint64) error // re-initializes the projects' records when crossing a version (old version, new version)
 }
 
-// storeResetAt は、ここを跨ぐ更新で各プロジェクトの .shikii/ の中を全部消して初期化し直す版(本人の決定、2026-10-23)。
+// storeResetAt is the version at which an update crossing it deletes everything inside each project's .shikii/ and re-initializes it (the owner's decision, 2026-10-23).
 var storeResetAt = [3]uint64{0, 7, 0}
 
 func versionString(v [3]uint64) string { return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) }
 
-// currentVersion はこの本体の版(shikii.Version)。
+// currentVersion is this binary's version (shikii.Version).
 func currentVersion() [3]uint64 {
 	v, err := updateVersion(shikii.Version)
 	if err != nil {
@@ -47,12 +47,12 @@ func currentVersion() [3]uint64 {
 	return v
 }
 
-// crossesStoreReset は from < storeResetAt <= to か。
+// crossesStoreReset reports whether from < storeResetAt <= to.
 func crossesStoreReset(from, to [3]uint64) bool {
 	return updateNewer(storeResetAt, from) && !updateNewer(storeResetAt, to)
 }
 
-// resetProjectStores は 0.7.0 を跨ぐ更新で、登録済みの各プロジェクトの .shikii/ の中を全部消し、新しい本体で初期化し直す。
+// resetProjectStores, on an update crossing 0.7.0, deletes everything inside each registered project's .shikii/ and re-initializes it with the new binary.
 func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) error {
 	if !crossesStoreReset(from, to) {
 		return nil
@@ -65,8 +65,8 @@ func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) err
 	if len(projects) == 0 {
 		return nil
 	}
-	fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(projects))
-	// 注: この関数は update を実行している古い本体(0.7.0 より前)でだけ 0.7.0 を跨ぐ。新しい本体では resetStoresOnFirstRun が同じ判断をする。
+	fmt.Fprintf(stdout, "Updating to %s: deleting everything inside .shikii/ of %d initialized projects and re-initializing them.\n", versionString(to), len(projects))
+	// Note: only the old binary running update (before 0.7.0) crosses 0.7.0 in this function. In a new binary, resetStoresOnFirstRun makes the same decision.
 	var targets []projectEntry
 	var refused []string
 	for _, p := range planWipe(projects) {
@@ -80,17 +80,17 @@ func resetProjectStores(ctx context.Context, exe string, from, to [3]uint64) err
 	if err := wipeProjectStores(targets, reinitWith(ctx, exe)); err != nil {
 		return err
 	}
-	if len(refused) > 0 { // 拒否が残れば印を書かない(次の hook install --yes で試す。resetStoresOnFirstRun と同じ扱い)
+	if len(refused) > 0 { // if any were refused, do not write the mark (the next hook install --yes tries again; same as resetStoresOnFirstRun)
 		return errors.New(strings.Join(refused, "\n"))
 	}
-	// 印も新しい版にしておく(続いて呼ばれる新しい本体の hook install がもう一度消さないように)。
+	// Also set the mark to the new version (so the new binary's hook install, called next, does not delete again).
 	return writeInstalledVersion(common, to)
 }
 
-// installedVersionPath は共通側に置く「最後に入れた版」の印。0.7.0 から書く(0.6.0 以前は書かないので、無ければ 0.0.0 とみなす)。
+// installedVersionPath is the "last installed version" mark kept on the shared side. Written from 0.7.0 on (0.6.0 and earlier never wrote it, so a missing mark means 0.0.0).
 func installedVersionPath(common string) string { return filepath.Join(common, "version") }
 
-// installedVersion は共通の印を読む。無ければ 0.0.0(0.6.0 以前)、読めない・壊れていれば broken=true(監査 R2: 0.0.0 とみなして全部消してはいけない)。
+// installedVersion reads the shared mark. Missing means 0.0.0 (0.6.0 or earlier); unreadable or corrupt gives broken=true (audit R2: must not treat it as 0.0.0 and delete everything).
 func installedVersion(common string) (v [3]uint64, broken bool) {
 	b, err := os.ReadFile(installedVersionPath(common))
 	if err != nil {
@@ -113,14 +113,14 @@ func writeInstalledVersion(common string, v [3]uint64) error {
 	return os.WriteFile(installedVersionPath(common), []byte(versionString(v)+"\n"), 0o644)
 }
 
-// resetStoresOnFirstRun は、新しい本体が初めて `hook install --yes` を実行した時(0.6.0 以前の update は最後に新しい本体の
-// hook install --yes を呼ぶ)に、前に入っていた版(共通側の印)から storeResetAt を跨いでいれば各プロジェクトの .shikii/ の中を
-// 全部消して初期化し直し、今の版を印に書く。update の reset は update を実行している古い本体の中で動くので、
-// 0.6.0 からの更新ではこちらが消す(2026-10-23 に気付いた)。消した時 true。
+// resetStoresOnFirstRun runs when a new binary first runs `hook install --yes` (an update from 0.6.0 or earlier calls the new binary's
+// hook install --yes at the end). If the previously installed version (the shared mark) crosses storeResetAt, it deletes everything inside each project's .shikii/,
+// re-initializes it, and writes the current version to the mark. update's reset runs inside the old binary running update, so
+// for an update from 0.6.0 this function does the deleting (noticed on 2026-10-23). Returns true when it deleted.
 func resetStoresOnFirstRun(common string, to [3]uint64, reinit func(path string) error) (bool, error) {
 	from, broken := installedVersion(common)
 	if broken {
-		return false, fmt.Errorf("%s: 版の印を読めないので、各プロジェクトの .shikii/ は消しません。中身を確かめ、今の版(%s)を書き直すか、消してから shikii hook install --yes", installedVersionPath(common), versionString(to))
+		return false, fmt.Errorf("%s: the version mark cannot be read, so no project's .shikii/ will be deleted. Check its contents and either rewrite it with the current version (%s) or delete it, then run shikii hook install --yes", installedVersionPath(common), versionString(to))
 	}
 	wiped := false
 	if crossesStoreReset(from, to) {
@@ -132,7 +132,7 @@ func resetStoresOnFirstRun(common string, to [3]uint64, reinit func(path string)
 			}
 		}
 		if len(targets) > 0 {
-			fmt.Fprintf(stdout, "%s への更新: 初期化済みの %d プロジェクトの .shikii/ の中を全部消して初期化し直します。\n", versionString(to), len(targets))
+			fmt.Fprintf(stdout, "Updating to %s: deleting everything inside .shikii/ of %d initialized projects and re-initializing them.\n", versionString(to), len(targets))
 			if err := wipeProjectStores(targets, reinit); err != nil {
 				return false, err
 			}
@@ -144,7 +144,7 @@ func resetStoresOnFirstRun(common string, to [3]uint64, reinit func(path string)
 				refused = append(refused, filepath.Join(p.Project.Path, ".shikii")+": "+p.Reason)
 			}
 		}
-		if len(refused) > 0 { // 拒んだものが残る間は印を書かない(片付けてもう一度流せば、済んだ方は各プロジェクトの印で飛ばし、残りだけ消す)
+		if len(refused) > 0 { // do not write the mark while refused ones remain (after cleaning up and running again, finished ones are skipped by each project's mark and only the rest are deleted)
 			return wiped, errors.New(strings.Join(refused, "\n"))
 		}
 	}
@@ -156,13 +156,13 @@ func resetStoresOnFirstRun(common string, to [3]uint64, reinit func(path string)
 	return wiped, nil
 }
 
-// wipeAction は 0.7.0 を跨ぐ消去での各プロジェクトの扱い。表示(hook install)と実行で同じ判断を使う(監査 R2: 表示と実際が食い違っていた)。
+// wipeAction is how each project is handled in the deletion when crossing 0.7.0. Display (hook install) and execution use the same decision (audit R2: display and reality used to disagree).
 type wipeAction int
 
 const (
-	wipeDo     wipeAction = iota // 消して初期化し直す
-	wipeDone                     // 0.7.5 以降の --init で作った(または初期化し直した)ので済み
-	wipeRefuse                   // 消さない(共通の置き場、通常のフォルダでない、知らない項目がある)
+	wipeDo     wipeAction = iota // delete and re-initialize
+	wipeDone                     // already done: created (or re-initialized) by --init of 0.7.5 or later
+	wipeRefuse                   // do not delete (shared store, not a regular folder, or has unknown entries)
 )
 
 type wipePlan struct {
@@ -178,9 +178,9 @@ func planWipe(projects []projectEntry) []wipePlan {
 		item := wipePlan{Project: p, Action: wipeDo}
 		switch {
 		case p.InitVersion >= projectInitVersionNow:
-			item.Action, item.Reason = wipeDone, "この版で初期化済み"
+			item.Action, item.Reason = wipeDone, "already initialized by this version"
 		case isSharedPlaceScope(p.Path):
-			item.Action, item.Reason = wipeRefuse, "共通の置き場(ホーム)なので消しません"
+			item.Action, item.Reason = wipeRefuse, "not deleted because it is the shared store (home)"
 		default:
 			info, err := os.Lstat(store)
 			if err != nil {
@@ -188,7 +188,7 @@ func planWipe(projects []projectEntry) []wipePlan {
 				break
 			}
 			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-				item.Action, item.Reason = wipeRefuse, "通常のフォルダではないので消しません"
+				item.Action, item.Reason = wipeRefuse, "not deleted because it is not a regular folder"
 				break
 			}
 			entries, err := os.ReadDir(store)
@@ -203,7 +203,7 @@ func planWipe(projects []projectEntry) []wipePlan {
 				}
 			}
 			if len(unknown) > 0 {
-				item.Action, item.Reason = wipeRefuse, "shikii の作った項目ではないものがあるので消しません("+strings.Join(unknown, ", ")+")。手で片付けてから shikii hook install --yes"
+				item.Action, item.Reason = wipeRefuse, "not deleted because it has entries shikii did not create ("+strings.Join(unknown, ", ")+"). Clean them up by hand, then run shikii hook install --yes"
 			}
 		}
 		out = append(out, item)
@@ -211,29 +211,29 @@ func planWipe(projects []projectEntry) []wipePlan {
 	return out
 }
 
-// reinitWith は path で `exe --init` を実行して初期化し直す。
+// reinitWith re-initializes by running `exe --init` in path.
 func reinitWith(ctx context.Context, exe string) func(path string) error {
 	return func(path string) error {
 		cmd := exec.CommandContext(ctx, exe, "--init")
 		cmd.Dir = path
 		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("%s: 初期化し直せません: %v %s", path, err, strings.TrimSpace(string(out)))
+			return fmt.Errorf("%s: cannot re-initialize: %v %s", path, err, strings.TrimSpace(string(out)))
 		}
-		fmt.Fprintf(stdout, "  %s: 消して初期化し直しました\n", path)
+		fmt.Fprintf(stdout, "  %s: deleted and re-initialized\n", path)
 		return nil
 	}
 }
 
-// storeEntries は shikii が各プロジェクトの .shikii/ に作る項目(許可リスト)。消すのはこれだけで、知らない項目があるプロジェクトは消さない。
+// storeEntries are the entries shikii creates in each project's .shikii/ (allow list). Only these are deleted; a project with unknown entries is not deleted.
 var storeEntries = map[string]bool{"decisions": true, "wiki": true, "records": true, "labels": true, "sessions": true, "guards": true, "handoff": true}
 
-// disposableEntry は shikii の作った項目ではないが消してよい迷子: Finder の .DS_Store と、--init が途中で残した一時ファイル(監査 R3)。
+// disposableEntry is a stray that shikii did not create but that may be deleted: Finder's .DS_Store and temp files --init left behind midway (audit R3).
 func disposableEntry(name string) bool {
 	return name == ".DS_Store" || strings.HasPrefix(name, ".project-init-")
 }
 
-// isSharedPlaceScope は scope が共通の置き場(~/.shikii/agent)の親、つまりホームか。ここを消すと hook・索引・印ごと消えるので、初期化も消去もしない(監査 2026-10-23)。
-// 比べるのは実体(SameFile): 大文字小文字を区別しない FS で綴りだけ違う経路や、リンク経由でも抜けない(監査 R2)。
+// isSharedPlaceScope reports whether scope is the parent of the shared store (~/.shikii/agent), i.e. home. Deleting it would remove the hook, index and marks too, so it is neither initialized nor deleted (audit 2026-10-23).
+// Compares the real files (SameFile): a path spelled differently on a case-insensitive FS, or reached through a link, does not slip through (audit R2).
 func isSharedPlaceScope(scope string) bool {
 	agent, err := agentHome()
 	if err != nil {
@@ -248,15 +248,15 @@ func isSharedPlaceScope(scope string) bool {
 	return err1 == nil && err2 == nil && os.SameFile(a, b)
 }
 
-// wipeProjectStores は各プロジェクトの .shikii/(通常のフォルダ)の中の、shikii が作った項目(storeEntries)を消し、reinit で初期化し直す。
-// .shikii/ の外は触らない。project.json は残す(初期化し直しに失敗しても登録から消えない)。知らない項目があれば、そのプロジェクトは消さない。
-// 1 件の失敗で止まらず全件を試し、失敗したパスを全部まとめて返す。
+// wipeProjectStores deletes, inside each project's .shikii/ (a regular folder), the entries shikii created (storeEntries) and re-initializes with reinit.
+// Nothing outside .shikii/ is touched. project.json is kept (so the project stays registered even if re-initializing fails). A project with unknown entries is not deleted.
+// One failure does not stop it: it tries all of them and returns every failed path together.
 func wipeProjectStores(projects []projectEntry, reinit func(path string) error) error {
 	var failed []string
 	for _, p := range projects {
 		store := filepath.Join(p.Path, ".shikii")
 		if isSharedPlaceScope(p.Path) {
-			failed = append(failed, store+": 共通の置き場(ホーム)なので消しません")
+			failed = append(failed, store+": not deleted because it is the shared store (home)")
 			continue
 		}
 		info, err := os.Lstat(store)
@@ -265,7 +265,7 @@ func wipeProjectStores(projects []projectEntry, reinit func(path string) error) 
 			continue
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			failed = append(failed, store+": 通常のフォルダではないので消しません")
+			failed = append(failed, store+": not deleted because it is not a regular folder")
 			continue
 		}
 		entries, err := os.ReadDir(store)
@@ -280,7 +280,7 @@ func wipeProjectStores(projects []projectEntry, reinit func(path string) error) 
 			}
 		}
 		if len(unknown) > 0 {
-			failed = append(failed, fmt.Sprintf("%s: shikii の作った項目ではないものがあるので消しません(%s)。手で片付けてから shikii --init", store, strings.Join(unknown, ", ")))
+			failed = append(failed, fmt.Sprintf("%s: not deleted because it has entries shikii did not create (%s). Clean them up by hand, then run shikii --init", store, strings.Join(unknown, ", ")))
 			continue
 		}
 		removed := true
@@ -298,7 +298,7 @@ func wipeProjectStores(projects []projectEntry, reinit func(path string) error) 
 			continue
 		}
 		if err := reinit(p.Path); err != nil {
-			failed = append(failed, fmt.Sprintf("%s: 消したあと初期化し直せませんでした(%v)。そのフォルダで shikii --init を実行してください", p.Path, err))
+			failed = append(failed, fmt.Sprintf("%s: deleted but could not re-initialize (%v). Run shikii --init in that folder", p.Path, err))
 		}
 	}
 	if len(failed) > 0 {
@@ -309,11 +309,11 @@ func wipeProjectStores(projects []projectEntry, reinit func(path string) error) 
 
 func cmdUpdate(args []string) error {
 	if len(args) != 0 {
-		return errors.New("shikii update に引数やオプションは不要です")
+		return errors.New("shikii update takes no arguments or options")
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return errors.New("実行ファイルの場所を確認できません")
+		return errors.New("cannot determine where the executable is")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -323,13 +323,13 @@ func cmdUpdate(args []string) error {
 func defaultUpdateOptions(exe string) updateOptions {
 	client := &http.Client{Timeout: 2 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 || req.URL.Scheme != "https" {
-			return errors.New("配布元への転送を確認できません")
+			return errors.New("cannot verify the redirect to the release source")
 		}
 		switch req.URL.Hostname() {
 		case "api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com":
 			return nil
 		default:
-			return errors.New("配布元への転送を確認できません")
+			return errors.New("cannot verify the redirect to the release source")
 		}
 	}}
 	return updateOptions{
@@ -352,15 +352,15 @@ type updateRelease struct {
 
 func runUpdate(ctx context.Context, o updateOptions) error {
 	if (o.goos != "darwin" && o.goos != "linux") || (o.goarch != "arm64" && o.goarch != "amd64") {
-		return fmt.Errorf("この環境（%s/%s）の配布物には対応していません", o.goos, o.goarch)
+		return fmt.Errorf("no release is provided for this platform (%s/%s)", o.goos, o.goarch)
 	}
 	current, err := updateVersion(o.version)
 	if err != nil {
-		return errors.New("現在の版を確認できません")
+		return errors.New("cannot determine the current version")
 	}
 	exe, err := filepath.EvalSymlinks(o.executable)
 	if err != nil {
-		return errors.New("更新する実行ファイルの実体を確認できません")
+		return errors.New("cannot resolve the real executable to update")
 	}
 	exe, err = filepath.Abs(exe)
 	if err != nil {
@@ -368,27 +368,27 @@ func runUpdate(ctx context.Context, o updateOptions) error {
 	}
 	root, err := os.OpenRoot(filepath.Dir(exe))
 	if err != nil {
-		return errors.New("実行ファイルのフォルダを開けません")
+		return errors.New("cannot open the executable's folder")
 	}
 	defer root.Close()
-	fmt.Fprintln(stdout, "最新版を確認しています…")
+	fmt.Fprintln(stdout, "Checking for the latest version…")
 	data, err := updateGet(ctx, o, o.latestURL, 1<<20)
 	if err != nil {
 		return err
 	}
 	var release updateRelease
 	if err := json.Unmarshal(data, &release); err != nil {
-		return errors.New("最新版の案内を読み取れません")
+		return errors.New("cannot read the latest release information")
 	}
 	next, err := updateVersion(release.Tag)
 	if err != nil || !strings.HasPrefix(release.Tag, "v") || release.Draft || release.Prerelease {
-		return errors.New("安定版の案内を確認できません")
+		return errors.New("cannot find stable release information")
 	}
 	if next == current || !updateNewer(next, current) {
 		if next == current {
-			fmt.Fprintf(stdout, "shikii %s は最新版です。変更はありません。\n", o.version)
+			fmt.Fprintf(stdout, "shikii %s is the latest version. Nothing changed.\n", o.version)
 		} else {
-			fmt.Fprintf(stdout, "手元のshikii %sは公開中の安定版%sより新しいため、変更しません。\n", o.version, strings.TrimPrefix(release.Tag, "v"))
+			fmt.Fprintf(stdout, "Local shikii %s is newer than the published stable release %s, so nothing is changed.\n", o.version, strings.TrimPrefix(release.Tag, "v"))
 		}
 		return nil
 	}
@@ -407,32 +407,32 @@ func runUpdate(ctx context.Context, o updateOptions) error {
 		}
 		expected := o.downloadBase + "/hayaenfj/shikii/releases/download/" + release.Tag + "/" + asset.Name
 		if asset.URL != expected || assets[asset.Name] != "" {
-			return errors.New("公式の配布物のURLを確認できません")
+			return errors.New("cannot verify the official release URL")
 		}
 		assets[asset.Name], digests[asset.Name] = asset.URL, asset.Digest
 	}
 	if assets[filename] == "" || assets["SHA256SUMS"] == "" {
-		return errors.New("この環境の配布物とSHA256SUMSが揃っていません")
+		return errors.New("the release for this platform and SHA256SUMS are not both available")
 	}
 	sums, err := updateGet(ctx, o, assets["SHA256SUMS"], 512<<10)
 	if err != nil {
 		return err
 	}
 	if !updateDigest(sums, digests["SHA256SUMS"]) {
-		return errors.New("SHA256SUMSのハッシュが一致しません")
+		return errors.New("the SHA256SUMS hash does not match")
 	}
 	expectedHash, err := updateChecksum(sums, filename)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "shikii %s を取得しています…\n", version)
+	fmt.Fprintf(stdout, "Downloading shikii %s…\n", version)
 	archive, err := updateGet(ctx, o, assets[filename], 128<<20)
 	if err != nil {
 		return err
 	}
 	actual := sha256.Sum256(archive)
 	if hex.EncodeToString(actual[:]) != expectedHash || !updateDigest(archive, digests[filename]) {
-		return errors.New("配布物のハッシュが一致しません。既存の実行ファイルは保持しました")
+		return errors.New("the release hash does not match. The existing executable was kept")
 	}
 	files, err := updateArchive(archive)
 	if err != nil {
@@ -441,15 +441,15 @@ func runUpdate(ctx context.Context, o updateOptions) error {
 	if err := installUpdate(ctx, root, exe, version, files, o.replace); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "shikii %s → %s に更新しました。\n", o.version, version)
+	fmt.Fprintf(stdout, "Updated shikii %s → %s.\n", o.version, version)
 	if o.reset != nil {
 		if err := o.reset(ctx, exe, current, next); err != nil {
-			return fmt.Errorf("本体とreadoutは更新済みですが、プロジェクトの初期化し直しを完了できません: %w", err)
+			return fmt.Errorf("shikii and readout were updated, but re-initializing the projects could not be completed: %w", err)
 		}
 	}
 	if o.finish != nil {
 		if err := o.finish(ctx, exe); err != nil {
-			return fmt.Errorf("本体とreadoutは更新済みですが、反映を完了できません: %w", err)
+			return fmt.Errorf("shikii and readout were updated, but applying the update could not be completed: %w", err)
 		}
 	}
 	return nil
@@ -459,15 +459,15 @@ func updateVersion(value string) ([3]uint64, error) {
 	var result [3]uint64
 	parts := strings.Split(strings.TrimPrefix(value, "v"), ".")
 	if len(parts) != 3 {
-		return result, errors.New("不正な版")
+		return result, errors.New("invalid version")
 	}
 	for i, p := range parts {
 		if p == "" || (len(p) > 1 && p[0] == '0') {
-			return result, errors.New("不正な版")
+			return result, errors.New("invalid version")
 		}
 		for _, c := range p {
 			if c < '0' || c > '9' {
-				return result, errors.New("不正な版")
+				return result, errors.New("invalid version")
 			}
 		}
 		n, err := strconv.ParseUint(p, 10, 32)
@@ -491,24 +491,24 @@ func updateNewer(a, b [3]uint64) bool {
 func updateGet(ctx context.Context, o updateOptions, url string, limit int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, errors.New("配布元のURLを読み取れません")
+		return nil, errors.New("cannot parse the release source URL")
 	}
 	req.Header.Set("User-Agent", "shikii/"+o.version)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	response, err := o.client.Do(req)
 	if err != nil {
-		return nil, errors.New("配布元との通信に失敗しました。既存の実行ファイルは保持しています")
+		return nil, errors.New("communication with the release source failed. The existing executable is kept")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("配布元から取得できません（HTTP %d）。時間を置いて再試行してください", response.StatusCode)
+		return nil, fmt.Errorf("cannot download from the release source (HTTP %d). Try again later", response.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
-		return nil, errors.New("配布物を最後まで取得できません")
+		return nil, errors.New("cannot download the complete release")
 	}
 	if int64(len(data)) > limit {
-		return nil, errors.New("配布元の応答が上限を超えています")
+		return nil, errors.New("the release source's response exceeds the size limit")
 	}
 	return data, nil
 }
@@ -516,7 +516,7 @@ func updateGet(ctx context.Context, o updateOptions, url string, limit int64) ([
 func updateDigest(data []byte, digest string) bool {
 	if digest == "" {
 		return true
-	} // 古いGitHub添付にはdigestが無い。SHA256SUMSの照合は常に必須。
+	} // older GitHub assets have no digest. Checking SHA256SUMS is always required.
 	sum := sha256.Sum256(data)
 	return digest == "sha256:"+hex.EncodeToString(sum[:])
 }
@@ -529,19 +529,19 @@ func updateChecksum(data []byte, name string) (string, error) {
 		}
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
-			return "", errors.New("SHA256SUMSの形式を確認できません")
+			return "", errors.New("cannot recognize the SHA256SUMS format")
 		}
 		if strings.TrimPrefix(fields[1], "*") != name {
 			continue
 		}
 		digest, err := hex.DecodeString(fields[0])
 		if err != nil || len(digest) != sha256.Size || result != "" {
-			return "", errors.New("配布物のハッシュを一意に確認できません")
+			return "", errors.New("cannot find a unique hash for the release")
 		}
 		result = strings.ToLower(fields[0])
 	}
 	if result == "" {
-		return "", errors.New("配布物のハッシュがSHA256SUMSにありません")
+		return "", errors.New("the release hash is not in SHA256SUMS")
 	}
 	return result, nil
 }
@@ -551,7 +551,7 @@ var updateFiles = []string{"LICENSE", "LICENSE-APACHE", "LICENSE-MIT", "THIRD-PA
 func updateArchive(data []byte) (map[string][]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
-		return nil, errors.New("配布物を展開できません")
+		return nil, errors.New("cannot extract the release")
 	}
 	defer gz.Close()
 	tr := tar.NewReader(io.LimitReader(gz, 256<<20))
@@ -564,17 +564,17 @@ func updateArchive(data []byte) (map[string][]byte, error) {
 			break
 		}
 		if err != nil {
-			return nil, errors.New("配布物の内容を読み取れません")
+			return nil, errors.New("cannot read the release contents")
 		}
 		if count >= 128 || h.Size < 0 || h.Size > 64<<20 {
-			return nil, errors.New("配布物の展開量が上限を超えています")
+			return nil, errors.New("the extracted release exceeds the size limit")
 		}
 		total += h.Size + 512
 		if total > 256<<20 {
-			return nil, errors.New("配布物の展開量が上限を超えています")
+			return nil, errors.New("the extracted release exceeds the size limit")
 		}
 		if filepath.Base(h.Name) != h.Name || h.Name == "." || h.Name == ".." || strings.ContainsAny(h.Name, "/\\") || seen[h.Name] || (h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeRegA) {
-			return nil, errors.New("配布物に不正な経路・重複・リンクがあります")
+			return nil, errors.New("the release contains invalid paths, duplicates or links")
 		}
 		seen[h.Name] = true
 		if !containsString(updateFiles, h.Name) {
@@ -582,13 +582,13 @@ func updateArchive(data []byte) (map[string][]byte, error) {
 		}
 		body, err := io.ReadAll(tr)
 		if err != nil || len(body) == 0 {
-			return nil, errors.New("配布物の必要なファイルを読み取れません")
+			return nil, errors.New("cannot read the required files in the release")
 		}
 		result[h.Name] = body
 	}
 	for _, name := range updateFiles {
 		if len(result[name]) == 0 {
-			return nil, fmt.Errorf("配布物に%sがありません", name)
+			return nil, fmt.Errorf("the release has no %s", name)
 		}
 	}
 	return result, nil
@@ -597,31 +597,31 @@ func updateArchive(data []byte) (map[string][]byte, error) {
 func updateLock(root *os.Root) (*os.File, error) {
 	const name = ".shikii-update.lock"
 	if info, err := root.Lstat(name); err == nil && !info.Mode().IsRegular() {
-		return nil, errors.New("更新用のロックにリンクは使えません")
+		return nil, errors.New("the update lock cannot be a link")
 	}
 	f, err := root.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, errors.New("インストール先へ書き込めません。書き込み権限のある場所へshikiiを配置してください")
+		return nil, errors.New("cannot write to the install location. Put shikii in a place you have write permission for")
 	}
 	info, err := f.Stat()
 	named, nerr := root.Lstat(name)
 	if err != nil || nerr != nil || !named.Mode().IsRegular() || !os.SameFile(info, named) {
 		f.Close()
-		return nil, errors.New("更新用のロックを確認できません")
+		return nil, errors.New("cannot check the update lock")
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, errors.New("別のshikii updateが実行中です。完了後に再試行してください")
+		return nil, errors.New("another shikii update is running. Try again after it finishes")
 	}
 	return f, nil
 }
 
-// installUpdate は同じファイルシステムへ全てを準備し、本体を最後に置き換える。
-// 途中で失敗したら、既に置き換えたファイルをバックアップから戻す。
+// installUpdate prepares everything on the same file system and replaces the binary last.
+// If it fails midway, the files already replaced are restored from the backup.
 func installUpdate(ctx context.Context, root *os.Root, exe, version string, files map[string][]byte, replace func(string, string) error) error {
 	stage, err := os.MkdirTemp(filepath.Dir(exe), ".shikii-update-")
 	if err != nil {
-		return errors.New("インストール先へ書き込めません。既存の実行ファイルは保持しました")
+		return errors.New("cannot write to the install location. The existing executable was kept")
 	}
 	keep := false
 	defer func() {
@@ -635,23 +635,23 @@ func installUpdate(ctx context.Context, root *os.Root, exe, version string, file
 			mode = 0o755
 		}
 		if err := os.WriteFile(filepath.Join(stage, "new-"+name), files[name], mode); err != nil {
-			return errors.New("更新ファイルを準備できません")
+			return errors.New("cannot prepare the update files")
 		}
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(probeCtx, filepath.Join(stage, "new-shikii"), "--version").Output()
 	if err != nil || strings.TrimSpace(string(out)) != "shikii "+version {
-		return errors.New("取得したshikiiの起動と版を確認できません。既存の実行ファイルは保持しました")
+		return errors.New("cannot confirm that the downloaded shikii starts and has the right version. The existing executable was kept")
 	}
 	licenseCreated := false
 	if info, err := root.Lstat("shikii-licenses"); os.IsNotExist(err) {
 		if err := root.Mkdir("shikii-licenses", 0o755); err != nil {
-			return errors.New("ライセンスの保存先を用意できません")
+			return errors.New("cannot prepare the license destination")
 		}
 		licenseCreated = true
 	} else if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("ライセンスの保存先にリンクは使えません")
+		return errors.New("the license destination cannot be a link")
 	}
 	defer func() {
 		if licenseCreated {
@@ -674,17 +674,17 @@ func installUpdate(ctx context.Context, root *os.Root, exe, version string, file
 		info, err := root.Lstat(target)
 		if err == nil {
 			if !info.Mode().IsRegular() {
-				return fmt.Errorf("更新先%sは通常のファイルではありません", target)
+				return fmt.Errorf("update target %s is not a regular file", target)
 			}
 			p.info = info
 			old, err := root.Open(target)
 			if err != nil {
-				return errors.New("既存の実行ファイルを退避できません")
+				return errors.New("cannot move the existing executable aside")
 			}
 			opened, serr := old.Stat()
 			if serr != nil || !os.SameFile(info, opened) {
 				old.Close()
-				return errors.New("更新先が途中で変更されました")
+				return errors.New("the update target changed midway")
 			}
 			backup, err := root.OpenFile(p.backup, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
 			if err != nil {
@@ -696,7 +696,7 @@ func installUpdate(ctx context.Context, root *os.Root, exe, version string, file
 			syncErr := backup.Sync()
 			closeErr := backup.Close()
 			if copyErr != nil || syncErr != nil || closeErr != nil {
-				return errors.New("既存ファイルの退避を完了できません")
+				return errors.New("cannot finish moving the existing files aside")
 			}
 		} else if !os.IsNotExist(err) {
 			return err
@@ -707,10 +707,10 @@ func installUpdate(ctx context.Context, root *os.Root, exe, version string, file
 		info, err := root.Lstat(p.target)
 		if p.info == nil {
 			if !os.IsNotExist(err) {
-				return errors.New("更新先が途中で作成されました")
+				return errors.New("the update target was created midway")
 			}
 		} else if err != nil || !os.SameFile(p.info, info) {
-			return errors.New("更新先が途中で変更されました")
+			return errors.New("the update target changed midway")
 		}
 	}
 	if replace == nil {
@@ -738,9 +738,9 @@ func installUpdate(ctx context.Context, root *os.Root, exe, version string, file
 			}
 		}
 		if keep {
-			return fmt.Errorf("更新と復元に失敗しました。退避先を保持しています: %s", stage)
+			return fmt.Errorf("the update and the restore both failed. The moved-aside files are kept at: %s", stage)
 		}
-		return errors.New("更新先へ書き込めませんでした。既存の実行ファイルへ戻しました")
+		return errors.New("could not write the update target. Restored the existing executable")
 	}
 	return nil
 }
@@ -757,7 +757,7 @@ func finishUpdate(ctx context.Context, exe string) error {
 			continue
 		}
 		if err != nil {
-			return errors.New("hookの設定を確認できません")
+			return errors.New("cannot check the hook settings")
 		}
 		var config struct {
 			Hooks map[string][]struct {
@@ -767,7 +767,7 @@ func finishUpdate(ctx context.Context, exe string) error {
 			} `json:"hooks"`
 		}
 		if json.Unmarshal(body, &config) != nil {
-			return errors.New("hookの設定が読み取れません。shikii hook install --yesで確認してください")
+			return errors.New("cannot read the hook settings. Check them with shikii hook install --yes")
 		}
 		for _, groups := range config.Hooks {
 			for _, group := range groups {
@@ -785,12 +785,12 @@ func finishUpdate(ctx context.Context, exe string) error {
 	}
 	if installed {
 		cmd := exec.CommandContext(ctx, exe, "hook", "install", "--yes")
-		cmd.Stdout, cmd.Stderr = stdout, stdout // 新しい本体が消去する時の対象と失敗の理由を、更新の出力に通す(監査 R2: 以前は捨てていた)
+		cmd.Stdout, cmd.Stderr = stdout, stdout // pass the new binary's deletion targets and failure reasons through to the update output (audit R2: they used to be discarded)
 		if err := cmd.Run(); err != nil {
-			return errors.New("hookと作法を更新できません。shikii hook install --yesで再試行してください")
+			return errors.New("cannot update the hook and the working rules. Retry with shikii hook install --yes")
 		}
-		fmt.Fprintln(stdout, "hookとエージェントの作法へ反映しました。")
+		fmt.Fprintln(stdout, "Applied to the hook and the agents' working rules.")
 	}
-	fmt.Fprintln(stdout, "起動中の画面やMCPは、再起動すると新版へ切り替わります。")
+	fmt.Fprintln(stdout, "A running page or MCP switches to the new version when restarted.")
 	return nil
 }

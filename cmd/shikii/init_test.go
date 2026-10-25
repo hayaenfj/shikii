@@ -22,8 +22,8 @@ func readJSON(t *testing.T, path string) map[string]any {
 	return m
 }
 
-// shikii init は 1 回でエージェントの準備を済ませる(オプション無し): 基本構成のフォルダ、MCP の設定(Claude Code / Cursor / OpenCode / Codex)、
-// AGENTS.md の節、skill を ~/.claude/skills/shikii に置き直す。人が書いたものは触らず、2 回目も安全。
+// shikii init prepares the agent in one go (no options): the base layout folders, the MCP settings (Claude Code / Cursor / OpenCode / Codex),
+// the AGENTS.md section, and puts the skill back at ~/.claude/skills/shikii. What a person wrote is left alone, and running it again is safe.
 func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -41,7 +41,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("model = \"o3\""), 0o644); err != nil { // 末尾に改行が無い
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("model = \"o3\""), 0o644); err != nil { // no trailing newline
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# My project\n"), 0o644); err != nil {
@@ -53,7 +53,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 			t.Fatalf("%s must exist", d)
 		}
 	}
-	// Claude Code: 他の項・上位の鍵・数字・& < > がそのまま
+	// Claude Code: other entries, top-level keys, numbers and & < > stay as they are
 	b, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
 	m := readJSON(t, filepath.Join(dir, ".mcp.json"))
 	servers := m["mcpServers"].(map[string]any)
@@ -63,7 +63,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if !strings.Contains(string(b), `"a&b<c>"`) || !strings.Contains(string(b), "12345678901234567890") || !strings.Contains(string(b), `"top"`) {
 		t.Fatalf("other keys, numbers and & < > must survive untouched: %s", b)
 	}
-	// Cursor と OpenCode
+	// Cursor and OpenCode
 	if c := readJSON(t, filepath.Join(dir, ".cursor", "mcp.json")); c["mcpServers"].(map[string]any)["shikii"] == nil {
 		t.Fatalf("Cursor reads .cursor/mcp.json")
 	}
@@ -71,17 +71,17 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if e, _ := oc["mcp"].(map[string]any)["shikii"].(map[string]any); e == nil || e["type"] != "local" {
 		t.Fatalf("OpenCode reads opencode.json mcp.shikii with type local: %+v", oc)
 	}
-	// Codex: 既存の行は残り、[mcp_servers.shikii] が末尾に足される
+	// Codex: existing lines stay and [mcp_servers.shikii] is appended
 	cb, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
 	if !strings.HasPrefix(string(cb), "model = \"o3\"\n\n[mcp_servers.shikii]") || !strings.Contains(string(cb), `command = "shikii"`) {
 		t.Fatalf("Codex config must keep its lines and gain the shikii server:\n%s", cb)
 	}
-	// AGENTS.md: 節が足される
+	// AGENTS.md: the section is added
 	ab, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
 	if !strings.HasPrefix(string(ab), "# My project") || strings.Count(string(ab), "## shikii") != 1 {
 		t.Fatalf("AGENTS.md must keep its content and gain one shikii section:\n%s", ab)
 	}
-	// skill: 置き直し(古いファイルは消える)
+	// skill: put back (old files are deleted)
 	sb, err := os.ReadFile(filepath.Join(home, ".claude", "skills", "shikii", "SKILL.md"))
 	if err != nil || !strings.Contains(string(sb), "name: shikii") {
 		t.Fatalf("the skill must be installed for the agent: %v", err)
@@ -97,13 +97,13 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 			t.Fatalf("init must say what it did and what comes next; missing %q:\n%s", must, out)
 		}
 	}
-	// 2 回目: 何も重複せず、人が足した --proposer も残る
+	// Second run: nothing is duplicated and the --proposer a person added stays
 	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(`{"mcpServers":{"other":{"command":"x"},"shikii":{"command":"shikii","args":["mcp","--proposer","http://127.0.0.1:8083"]}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdInit(nil) })
 	b2, _ := os.ReadFile(filepath.Join(dir, ".mcp.json"))
-	if !strings.Contains(string(b2), "--proposer") || !strings.Contains(out, "保持") {
+	if !strings.Contains(string(b2), "--proposer") || !strings.Contains(out, "kept") {
 		t.Fatalf("an existing shikii entry must be kept as the person wrote it: %s\n%s", b2, out)
 	}
 	cb2, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
@@ -111,7 +111,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if strings.Count(string(cb2), "[mcp_servers.shikii]") != 1 || strings.Count(string(ab2), "## shikii") != 1 {
 		t.Fatalf("init must be idempotent for Codex and AGENTS.md")
 	}
-	// 壊れた JSON は上書きしない
+	// Broken JSON is not overwritten
 	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte("{broken"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -120,11 +120,11 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	}
 }
 
-// 監査 6: init が人の設定を壊す経路を閉じる。
-//  1. Codex の config.toml に mcp_servers がどんな書き方でもあれば触らない(末尾に足すと TOML の二重定義で Codex が設定を読めなくなる)
-//  2. 読めない .mcp.json は置き換えない
-//  6. CLAUDE.md だけのプロジェクトに AGENTS.md を作らない(OpenCode が CLAUDE.md を読まなくなる)
-//  9. HOME が無くてもプロジェクト側は済ませて成功で終わる
+// Audit 6: close the paths by which init breaks a person's settings.
+//  1. If Codex's config.toml has mcp_servers written in any form, leave it alone (appending would define it twice in TOML and Codex could not read its settings)
+//  2. An unreadable .mcp.json is not replaced
+//  6. Do not create AGENTS.md in a project with only CLAUDE.md (OpenCode would stop reading CLAUDE.md)
+//  9. Even without HOME, the project side is done and it ends in success
 func TestInitNeverBreaksWhatPeopleWrote(t *testing.T) {
 	for name, toml := range map[string]string{
 		"inline":  "mcp_servers = { shikii = { command = \"x\" } }\n",
@@ -162,17 +162,17 @@ func TestInitNeverBreaksWhatPeopleWrote(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error { return cmdInit(nil) })
-	if _, err := os.Stat("AGENTS.md"); !os.IsNotExist(err) || !strings.Contains(out, "AGENTS.md: 作成を省略") {
+	if _, err := os.Stat("AGENTS.md"); !os.IsNotExist(err) || !strings.Contains(out, "AGENTS.md: not created") {
 		t.Fatalf("with only CLAUDE.md, AGENTS.md must not be created and init must say why:\n%s", out)
 	}
-	if !strings.Contains(out, "HOMEが無い") || !fileExists(".mcp.json") || !fileExists("opencode.json") {
+	if !strings.Contains(out, "No HOME") || !fileExists(".mcp.json") || !fileExists("opencode.json") {
 		t.Fatalf("without HOME, the project side is still prepared and init succeeds:\n%s", out)
 	}
 }
 
-// 0.9.0: Codex は道具の返事の案内を読み流し、AGENTS.md を指示として読む(実測)。AGENTS.md の shikii の節に、教訓の種類と場面、
-// 返事の unclassified をそのターンのうちに classify で付けることを書く。前の版の節(印の間)は新しい中身に置き換え、人が書いた
-// 部分はそのまま残す。2 回目は何もしない。
+// 0.9.0: Codex skims the guidance in tool replies and reads AGENTS.md as instructions (measured). shikii's section in AGENTS.md says to give lessons a kind and a scene,
+// and to classify the unclassified ones in a reply within the same turn. A section from an earlier version (between the markers) is replaced with the new content, and what a person wrote
+// stays as is. The second run does nothing.
 func TestAgentsSectionCarriesKindSceneAndUpdatesOldSection(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "AGENTS.md")
@@ -182,24 +182,24 @@ func TestAgentsSectionCarriesKindSceneAndUpdatesOldSection(t *testing.T) {
 	}
 	did, err := addAgentsSection(path)
 	if err != nil || !did {
-		t.Fatalf("古い節を置き換える: %v %v", did, err)
+		t.Fatalf("must replace the old section: %v %v", did, err)
 	}
 	b, _ := os.ReadFile(path)
 	s := string(b)
 	if strings.Contains(s, "古い作法") || !strings.Contains(s, "unclassified") || !strings.Contains(s, "wiki classify") || !strings.Contains(s, "kind") ||
 		!strings.Contains(s, "- 人が書いた行") || !strings.Contains(s, "## 後ろの人の節\n\n- 残る") || strings.Count(s, agentsMarker) != 2 {
-		t.Fatalf("印の間だけを新しい中身に: %s", s)
+		t.Fatalf("only the part between the markers must get the new content: %s", s)
 	}
 	if did, err := addAgentsSection(path); err != nil || did {
-		t.Fatalf("2 回目は何もしない: %v %v", did, err)
+		t.Fatalf("the second run must do nothing: %v %v", did, err)
 	}
 	if b2, _ := os.ReadFile(path); string(b2) != s {
-		t.Fatal("2 回目で中身が変わった")
+		t.Fatal("the content changed on the second run")
 	}
 }
 
-// 0.9.0: アップデートは家の skill を置き直すが、各プロジェクトの AGENTS.md は前の版の節のままだった。アップデートの最後に走る
-// hook install が、登録済みのプロジェクトの AGENTS.md に shikii の節がある時だけ新しい中身に置き換える(節の無い所には作らない)。
+// 0.9.0: the update puts the skill in the home folder back, but each project's AGENTS.md kept the earlier version's section. The hook install run at the end
+// of the update replaces it with the new content only when a registered project's AGENTS.md has a shikii section (it does not create one where there is none).
 func TestHookInstallRefreshesAgentsSectionOfRegisteredProjects(t *testing.T) {
 	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
 	withSection, without := gitRepo(t), gitRepo(t)
@@ -213,20 +213,20 @@ func TestHookInstallRefreshesAgentsSectionOfRegisteredProjects(t *testing.T) {
 	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	got, _ := os.ReadFile(filepath.Join(withSection, "AGENTS.md"))
 	if strings.Contains(string(got), "古い作法") || !strings.Contains(string(got), "wiki classify") || !strings.HasPrefix(string(got), "# 人の規則\n") {
-		t.Fatalf("登録済みのプロジェクトの古い節を置き換える: %s", got)
+		t.Fatalf("must replace the old section of a registered project: %s", got)
 	}
 	if !strings.Contains(out, "AGENTS.md") {
-		t.Fatalf("置き換えたことを言う: %s", out)
+		t.Fatalf("must say it replaced it: %s", out)
 	}
-	if !strings.Contains(out, "開き直") || !strings.Contains(out, "0.9.0 以上") { // 0.9.1 から読んでも下げるように読めない(最終監査 0.9.1 低-F2)
-		t.Fatalf("開いているセッションを開き直し、同じ wiki を使う機械を全部 0.9.0 以上にすることを言う(監査 0.9.0 の B3): %s", out)
+	if !strings.Contains(out, "開き直") || !strings.Contains(out, "0.9.0 以上") { // read from 0.9.1, it must not sound like a downgrade (final audit 0.9.1 low-F2)
+		t.Fatalf("must say to reopen open sessions and bring every machine using the same wiki to 0.9.0 or later (audit 0.9.0 B3): %s", out)
 	}
 	if b, _ := os.ReadFile(filepath.Join(without, "AGENTS.md")); string(b) != "# 人の規則だけ\n" {
-		t.Fatalf("節の無い AGENTS.md には作らない: %s", b)
+		t.Fatalf("must not create a section in an AGENTS.md without one: %s", b)
 	}
 }
 
-// 監査 0.9.0 の A1・A2: repo の外を指すリンクと、印だけの行が 1 つしか無い AGENTS.md には触らず、理由を返す(init もアップデートも止めない)。
+// Audit 0.9.0 A1 and A2: an AGENTS.md that is a link pointing outside the repo, or that has only one marker-only line, is left alone and the reason returned (stopping neither init nor the update).
 func TestAgentsSectionSkipsOutsideLinkAndLoneMarker(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "shared.md")
 	os.WriteFile(outside, []byte("# 共有の規則\n\n"+agentsMarker+"\n## shikii(判定の作法)\n\n- 古い\n"+agentsMarker+"\n"), 0o644)
@@ -237,14 +237,14 @@ func TestAgentsSectionSkipsOutsideLinkAndLoneMarker(t *testing.T) {
 	}
 	var skipped agentsSkipped
 	if did, err := addAgentsSection(link); did || !errors.As(err, &skipped) {
-		t.Fatalf("外を指すリンクは触らず理由を返す: %v %v", did, err)
+		t.Fatalf("a link pointing outside must be left alone with a reason: %v %v", did, err)
 	}
 	if b, _ := os.ReadFile(outside); !strings.Contains(string(b), "- 古い") {
-		t.Fatal("外のファイルを書き換えた")
+		t.Fatal("rewrote the file outside")
 	}
 	lone := filepath.Join(t.TempDir(), "AGENTS.md")
 	os.WriteFile(lone, []byte("# 規則\n\n"+agentsMarker+"\n## shikii(判定の作法)\n\n- 閉じの印が無い\n"), 0o644)
 	if did, err := addAgentsSection(lone); did || !errors.As(err, &skipped) {
-		t.Fatalf("印が 1 つなら触らず理由を返す: %v %v", did, err)
+		t.Fatalf("with only one marker it must be left alone with a reason: %v %v", did, err)
 	}
 }

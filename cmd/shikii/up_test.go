@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// 後ろの口が決定モデルか(本家 llama.cpp は普通の GGUF だと /v1/systemone を 501 で蹴る)を見分ける。
+// Tell whether the back port is a decision model (upstream llama.cpp rejects /v1/systemone with 501 for a plain GGUF).
 func TestProbeDecisionModel(t *testing.T) {
 	decision := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -46,7 +46,7 @@ func TestProbeDecisionModel(t *testing.T) {
 	}
 }
 
-// up は何を起こすかを先に決める: 決定モデルならそのまま、普通の GGUF なら readout を前に立てる。llama-server が無ければ入れ方を言う。
+// up decides first what to start: a decision model as is, a plain GGUF with readout in front. Without llama-server it says how to install it.
 func TestUpPlan(t *testing.T) {
 	p := upPlan(upOpts{hf: defaultModel, port: 8080}, "/opt/homebrew/bin/llama-server")
 	if len(p.server) == 0 || p.server[0] != "/opt/homebrew/bin/llama-server" || !contains(p.server, "-hf") || !contains(p.server, "prism-ml/Ternary-Bonsai-27B-gguf") || !contains(p.server, "--hff") || !contains(p.server, "Ternary-Bonsai-27B-Q2_g64.gguf") || !contains(p.server, "8086") || contains(p.server, "8080") || p.llamaPort != 8086 {
@@ -84,7 +84,7 @@ func contains(xs []string, s string) bool {
 	return false
 }
 
-// doctor は、何が動いていて何が足りないかを 1 画面で言う。足りないものには直し方を添える。
+// doctor says on one screen what is running and what is missing, with how to fix what is missing.
 func TestDoctorReportsWhatIsMissing(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -107,7 +107,7 @@ func TestDoctorReportsWhatIsMissing(t *testing.T) {
 			t.Fatalf("doctor must mention %q:\n%s", must, out)
 		}
 	}
-	// local が落ちていれば、起こし方(shikii up)を言う
+	// If local is down, it says how to start it (shikii up)
 	out = capture(t, func() error {
 		return cmdDoctor([]string{"--specs", dir, "--store", dir + "/.shikii", "--local", "http://127.0.0.1:1", "--hosted", ""})
 	})
@@ -116,39 +116,39 @@ func TestDoctorReportsWhatIsMissing(t *testing.T) {
 	}
 }
 
-// 鍵があって Jev を使う間は、shikii up は手元のモデル(llama-server :8086)を起こさない(本人の決定、2026-10-23)。
-// SHIKII_MODEL=local なら起こしてよい。
+// While there is a key and Jev is used, shikii up does not start the local model (llama-server :8086) (the owner's decision, 2026-10-23).
+// With SHIKII_MODEL=local it may start it.
 func TestUpDoesNotStartTheLocalModelWhileJevIsUsed(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "test-key")
 	t.Setenv("SHIKII_MODEL", "")
 	err := cmdUp(nil)
 	if err == nil || !strings.Contains(err.Error(), "SHIKII_MODEL=local") || !strings.Contains(err.Error(), "Jev") {
-		t.Fatalf("鍵があれば起こさず、手元を使う方法(SHIKII_MODEL=local)を伝える: %v", err)
+		t.Fatalf("with a key it must not start, and must say how to use the local one (SHIKII_MODEL=local): %v", err)
 	}
 	t.Setenv("SHIKII_MODEL", "local")
 	if msg := upBlockedByHosted(); msg != "" {
-		t.Fatalf("SHIKII_MODEL=local なら起こしてよい: %s", msg)
+		t.Fatalf("with SHIKII_MODEL=local it may start: %s", msg)
 	}
 	t.Setenv("SHIKII_MODEL", "")
 	t.Setenv("TYPESAFE_API_KEY", "")
 	if msg := upBlockedByHosted(); msg != "" {
-		t.Fatalf("鍵が無ければ起こしてよい: %s", msg)
+		t.Fatalf("without a key it may start: %s", msg)
 	}
 }
 
-// 監査 0.8.1 の 2: 開発用の Makefile も手元の標準(shikii up)へ向け、使わない Kev-4B を取りに行かない。
-// drift のモデル名は較正の鍵(応答の model。jev-1.14.0)に揃える(鍵が合わないと drift は「no current calibration」で落ちる。監査 0.8.2-2 の A2)。
-// 監査 0.8.2-1 の 6: 文字列の有無ではなく、make -n で実際に走る手順を見る(build を先に組む、drift が MODEL を使う)。
+// Audit 0.8.1 item 2: the development Makefile also points to the local default (shikii up) and does not fetch the unused Kev-4B.
+// drift's model name matches the calibration key (the response's model, jev-1.14.0) (if the key does not match, drift fails with "no current calibration". Audit 0.8.2-2 A2).
+// Audit 0.8.2-1 item 6: look at the steps make -n actually runs, not whether a string is present (build first, drift uses MODEL).
 func TestMakefileUsesTheLocalStandard(t *testing.T) {
 	b, err := os.ReadFile("../../Makefile")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(strings.ToLower(string(b)), "kev-4b") {
-		t.Fatal("Makefile が Kev-4B を指している")
+		t.Fatal("the Makefile points to Kev-4B")
 	}
 	plan := func(target string) []string {
-		out, err := exec.Command("make", "--no-print-directory", "-C", "../..", "-n", target).CombinedOutput() // GNU make 4 は -C で Entering directory の行を出す(CI の ubuntu で落ちた)
+		out, err := exec.Command("make", "--no-print-directory", "-C", "../..", "-n", target).CombinedOutput() // GNU make 4 prints an Entering directory line with -C (this failed on CI's ubuntu)
 		if err != nil {
 			t.Fatalf("make -n %s: %v\n%s", target, err, out)
 		}
@@ -156,10 +156,10 @@ func TestMakefileUsesTheLocalStandard(t *testing.T) {
 	}
 	server := plan("server")
 	if !slices.Equal(server, []string{"go build -o bin/shikii ./cmd/shikii", "bin/shikii up"}) {
-		t.Fatalf("make server は Go の本体だけを組んで(画面は組み直さない)から bin/shikii up を起こす: %q", server)
+		t.Fatalf("make server must build only the Go binary (not rebuild the page) and then start bin/shikii up: %q", server)
 	}
 	drift := plan("drift")
 	if last := drift[len(drift)-1]; !strings.HasPrefix(last, "bin/shikii drift ") || !strings.Contains(last, "--model 'jev-1.14.0'") {
-		t.Fatalf("make drift は較正の鍵になる応答の model(jev-1.14.0)で測る: %q", drift)
+		t.Fatalf("make drift must measure with the response's model (jev-1.14.0), which is the calibration key: %q", drift)
 	}
 }

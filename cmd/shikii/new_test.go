@@ -9,7 +9,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/spec"
 )
 
-// フラグだけで spec ができ、そのまま Load と Validate が通る。
+// A spec can be made from flags alone, and Load and Validate pass on it as is.
 func TestNewWritesAValidSpecFromFlags(t *testing.T) {
 	dir := t.TempDir()
 	out := capture(t, func() error {
@@ -34,13 +34,13 @@ func TestNewWritesAValidSpecFromFlags(t *testing.T) {
 	if !strings.Contains(out, "shikii decide "+path) || !strings.Contains(out, "-i message=") {
 		t.Fatalf("new must tell how to try the spec:\n%s", out)
 	}
-	// 2 回目は上書きしない
+	// The second run does not overwrite
 	if err := cmdNew([]string{"--dir", dir, "--type", "noul", "--question", "x", "--input", "a", "--pii", "false", "inquiry-kind"}); err == nil {
 		t.Fatal("must refuse to overwrite an existing spec without --force")
 	}
 }
 
-// 足りないものは標準入力から聞く(質問に答えるだけで spec ができる)。
+// What is missing is asked on stdin (you get a spec just by answering questions).
 func TestNewAsksForWhatIsMissing(t *testing.T) {
 	dir := t.TempDir()
 	old := stdin
@@ -56,7 +56,7 @@ func TestNewAsksForWhatIsMissing(t *testing.T) {
 	if sp.Type != spec.Noul || !strings.HasPrefix(sp.Question, "Is this report") || sp.State.Required[0] != "report" || !sp.PIISensitive() {
 		t.Fatalf("answers must land in the spec: %+v", sp)
 	}
-	// 標準入力が尽きたら、何が足りないかを言って失敗する(黙って既定にしない)
+	// When stdin runs out, it fails saying what is missing (it never silently uses a default).
 	stdin = strings.NewReader("")
 	err = cmdNew([]string{"--dir", dir, "--type", "noul", "--send-to", "local", "another"})
 	if err == nil || !strings.Contains(err.Error(), "question") {
@@ -64,7 +64,7 @@ func TestNewAsksForWhatIsMissing(t *testing.T) {
 	}
 }
 
-// 見本から始める: --from で examples/ の spec を写し、id と足りない所だけ変える。
+// Start from a sample: --from copies a spec from examples/ and changes only the id and what is missing.
 func TestNewFromTemplate(t *testing.T) {
 	dir := t.TempDir()
 	tpl := writeSpec(t, dir, "false") // id: intent
@@ -84,7 +84,7 @@ func TestNewFromTemplate(t *testing.T) {
 	}
 }
 
-// 型ごとの最低条件は new の時点で弾く(choice は選択肢 2 つ以上、score は段階 2 つ以上)。
+// The minimum per type is rejected already at new (choice needs at least 2 options, score at least 2 levels).
 func TestNewRejectsIncompleteSpecs(t *testing.T) {
 	dir := t.TempDir()
 	if err := cmdNew([]string{"--dir", dir, "--type", "choice", "--question", "q", "--input", "m", "--pii", "false", "--option", "only=one", "one"}); err == nil {

@@ -31,27 +31,27 @@ func TestHookSeparatesProjectStores(t *testing.T) {
 			want = 2
 		}
 		if err != nil || len(recs) != want {
-			t.Fatalf("判定は各プロジェクトの .shikii に保存する: got=%d want=%d err=%v", len(recs), want, err)
+			t.Fatalf("decisions must be saved in each project's .shikii: got=%d want=%d err=%v", len(recs), want, err)
 		}
 	}
 	aStore, bStore := filepath.Join(a, ".shikii"), filepath.Join(b, ".shikii")
 	if loadSession(bStore, session).Previous != "" {
-		t.Fatal("同じ session id でも他の仕事の返答を渡さない")
+		t.Fatal("must not hand over another work's replies even with the same session id")
 	}
 	if ctx, err := memoryContext(bStore, feedbackScope(b), request, &hookSession{}); err != nil || ctx != "" {
-		t.Fatalf("他の仕事の会話を返さない: %v", err)
+		t.Fatalf("must not return another work's conversation: %v", err)
 	}
 	if ctx, err := memoryContext(aStore, feedbackScope(a), request, &hookSession{}); err != nil || !strings.Contains(ctx, "起動手順") {
-		t.Fatalf("元の仕事では会話を参照できる: %v", err)
+		t.Fatalf("the original work can refer to its conversation: %v", err)
 	}
 	status, err := exec.Command("git", "-C", a, "status", "--porcelain", "--untracked-files=all").Output()
 	if err != nil || strings.Contains(string(status), ".shikii/") {
-		t.Fatal("会話を git add -A の対象にしない")
+		t.Fatal("conversations must not be picked up by git add -A")
 	}
 	before := treeSnapshot(a)
-	// 人が意図して追跡した内部ファイルも、結果の判定には含めない。
+	// Internal files a person deliberately tracked are not counted in the outcome decisions either.
 	if out, err := exec.Command("git", "-C", a, "add", "-f", ".shikii/decisions/needs-plan.yaml").CombinedOutput(); err != nil {
-		t.Fatalf("合成の追跡設定: %v %s", err, out)
+		t.Fatalf("synthetic tracking setup: %v %s", err, out)
 	}
 	path := filepath.Join(aStore, "decisions", "needs-plan.yaml")
 	data, err := os.ReadFile(path)
@@ -62,7 +62,7 @@ func TestHookSeparatesProjectStores(t *testing.T) {
 		t.Fatal(err)
 	}
 	if after := treeSnapshot(a); before == "" || after != before {
-		t.Fatal("追跡済みの .shikii も作業の変更に数えない")
+		t.Fatal("a tracked .shikii must not count as a change of the work either")
 	}
 	sub := filepath.Join(a, "docs")
 	if err := os.Mkdir(sub, 0700); err != nil {
@@ -71,22 +71,22 @@ func TestHookSeparatesProjectStores(t *testing.T) {
 	t.Chdir(sub)
 	root, scope, err := currentProjectStore()
 	if err != nil || root != aStore || scope != feedbackScope(a) {
-		t.Fatal("サブフォルダの CLI もプロジェクトルートの保存先を使う")
+		t.Fatal("the CLI in a subfolder must also use the project root's store")
 	}
 	if q := notebookCommand(t, "query", ""); len(q["pending_sources"].([]any)) != 1 {
-		t.Fatal("CLI の検索も同じ仕事の会話へ届く")
+		t.Fatal("the CLI's search must also reach the same work's conversations")
 	}
 	global, _ := agentHome()
 	if recs, _ := (store.Store{Dir: global}).Records("prompt-kind", 0); len(recs) != 0 {
-		t.Fatal("共通側へ判定を保存しない")
+		t.Fatal("must not save decisions on the shared side")
 	}
-	// 初期化だけでファイル変更の結果ラベルを増やさない。
+	// Initialization alone must not add outcome labels for file changes.
 	if labels, err := (store.Store{Dir: aStore}).LabeledTraces("prompt-kind"); err != nil {
 		t.Fatal(err)
 	} else {
 		for _, label := range labels {
 			if label.Truth == "edit" {
-				t.Fatal("shikii 自身の保存を作業の変更に数えない")
+				t.Fatal("shikii's own saves must not count as changes of the work")
 			}
 		}
 	}
@@ -100,7 +100,7 @@ func TestProjectHubKeepsReadsAndWritesWithinTheSelectedProject(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	a := gitRepo(t)
 	aStore := hookEnv(t, model, a)
-	b := filepath.Join(t.TempDir(), filepath.Base(a)) // 同名の別プロジェクト
+	b := filepath.Join(t.TempDir(), filepath.Base(a)) // another project with the same name
 	if err := os.Mkdir(b, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -119,11 +119,11 @@ func TestProjectHubKeepsReadsAndWritesWithinTheSelectedProject(t *testing.T) {
 	}
 	aURL, bURL := "/p/"+projectID(aScope)+"/", "/p/"+projectID(bScope)+"/"
 	if code, body := get("/v1/status"); code != 200 || !strings.Contains(body, aURL) || !strings.Contains(body, bURL) || strings.Contains(body, "起動手順") {
-		t.Fatal("入口には各プロジェクトの名前とリンクだけを出す")
+		t.Fatal("the entry page must show only each project's name and link")
 	}
 	for _, path := range []string{"/v1/queue?spec=done-as-asked", "/p/unknown/v1/status"} {
 		if code, _ := get(path); code != 404 {
-			t.Fatalf("共通側と未登録の仕事から記録を開けない: %s code=%d", path, code)
+			t.Fatalf("records must not open from the shared side or an unregistered work: %s code=%d", path, code)
 		}
 	}
 	for _, prefix := range []string{aURL, bURL} {
@@ -132,26 +132,26 @@ func TestProjectHubKeepsReadsAndWritesWithinTheSelectedProject(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		if rec.Code != 200 || strings.Contains(rec.Body.String(), trace) != (prefix == aURL) {
-			t.Fatal("採点の原資料も選んだ仕事だけで読む")
+			t.Fatal("scoring sources must be read only from the chosen work")
 		}
 		req = httptest.NewRequest("POST", prefix+"v1/wiki/notebook", strings.NewReader(`{"operation":"query","sources":["`+id+`"]}`))
 		req.Header.Set("Content-Type", "application/json")
 		rec = httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		if (rec.Code == 200) != (prefix == aURL) {
-			t.Fatal("教訓の原文も選んだ仕事だけで読む")
+			t.Fatal("a lesson's original text must be read only from the chosen work")
 		}
 
 		code, body := get(prefix + "v1/wiki")
 		if code != 200 || strings.Contains(body, "モデルを起動する手順を書く") != (prefix == aURL) {
-			t.Fatal("選んだ仕事だけの教訓を読む")
+			t.Fatal("must read only the chosen work's lessons")
 		}
 		code, body = get(prefix + "v1/status")
 		if code != 200 || strings.Contains(body, `"records": 1`) != (prefix == aURL) {
-			t.Fatal("採点や線の成績もプロジェクトごとに読む")
+			t.Fatal("scoring and line results must be read per project")
 		}
 	}
-	// 同じ trace を指定しても、他の仕事から採点や正解を書けない。
+	// Even with the same trace, scores and truths cannot be written from another work.
 	for _, endpoint := range []string{"review", "label"} {
 		body := `{"operation":"submit","source_id":"` + id + `","trace_id":"` + trace + `","truth":"no","reason":"起動手順が不足"}`
 		if endpoint == "label" {
@@ -162,7 +162,7 @@ func TestProjectHubKeepsReadsAndWritesWithinTheSelectedProject(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		if rec.Code < 400 {
-			t.Fatalf("他の仕事への書き込みを拒む: %s", endpoint)
+			t.Fatalf("must refuse writes into another work: %s", endpoint)
 		}
 	}
 	if _, err := runReview(aStore, aScope, reviewRequest{Operation: "submit", SourceID: id, TraceID: trace, Truth: "no", Reason: "起動手順が不足"}); err != nil {
@@ -170,9 +170,9 @@ func TestProjectHubKeepsReadsAndWritesWithinTheSelectedProject(t *testing.T) {
 	}
 	q, err := reviewQuery(store.Store{Dir: bStore}, bScope)
 	if err != nil || q["quality"].(map[string]store.ReviewStats)["done-as-asked"].Scored != 0 {
-		t.Fatal("別の仕事の採点を信頼の実績に数えない")
+		t.Fatal("another work's scores must not count toward the trust record")
 	}
-	// 保存先を共有先へ差し替えたら、既存の handler でも開かない。
+	// After the store is swapped for a shared location, even an existing handler does not open it.
 	if err := os.RemoveAll(filepath.Join(bStore, "records")); err != nil {
 		t.Fatal(err)
 	}
@@ -180,9 +180,9 @@ func TestProjectHubKeepsReadsAndWritesWithinTheSelectedProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, err := projectStoreAt(b); err == nil {
-		t.Fatal("CLI も共有先へのリンクを使わない")
+		t.Fatal("the CLI must not use a link to a shared location either")
 	}
 	if code, _ := get(bURL + "v1/status"); code != 404 {
-		t.Fatal("保存先のリンク差し替えで別の仕事の記録を読めない")
+		t.Fatal("swapping the store for a link must not allow reading another work's records")
 	}
 }

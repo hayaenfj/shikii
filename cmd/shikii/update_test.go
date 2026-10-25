@@ -27,7 +27,7 @@ type updateFixture struct {
 	tag                                   string
 	files                                 map[string][]byte
 	badHash, unsafeURL, draft, prerelease bool
-	badDigest                             bool // GitHub の添付の digest が中身と食い違う(監査 R2 の変異 M7: digest の照合が一度も走っていなかった)
+	badDigest                             bool // the GitHub asset's digest disagrees with its content (audit R2 mutation M7: the digest check had never run)
 	entryType                             byte
 	extraPath                             string
 	requests                              atomic.Int32
@@ -92,10 +92,10 @@ func fixtureUpdate(t *testing.T) *updateFixture {
 	f.opts.finish = func(_ context.Context, exe string) error {
 		f.finished = true
 		if body, _ := os.ReadFile(exe); !bytes.Equal(body, f.files["shikii"]) {
-			return errors.New("本体が未更新")
+			return errors.New("shikii not updated")
 		}
 		if body, _ := os.ReadFile(filepath.Join(filepath.Dir(exe), "shikii-readout")); !bytes.Equal(body, f.files["shikii-readout"]) {
-			return errors.New("readoutが未更新")
+			return errors.New("readout not updated")
 		}
 		return nil
 	}
@@ -146,11 +146,11 @@ func assertUpdateUnchanged(t *testing.T, f *updateFixture) {
 	for _, name := range []string{"shikii", "shikii-readout"} {
 		b, err := os.ReadFile(filepath.Join(filepath.Dir(f.opts.executable), name))
 		if err != nil || string(b) != "old-"+name {
-			t.Fatalf("失敗時も既存の%sを保持: %q %v", name, b, err)
+			t.Fatalf("must keep the existing %s on failure: %q %v", name, b, err)
 		}
 	}
 	if f.finished {
-		t.Fatal("失敗時に更新後の処理を実行した")
+		t.Fatal("ran the post-update step on failure")
 	}
 }
 
@@ -162,29 +162,29 @@ func TestUpdateInstallsVerifiedPairAtExecutable(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !f.finished {
-		t.Fatal("更新後の反映を実行していない")
+		t.Fatal("did not run the post-update apply step")
 	}
 	for _, name := range []string{"LICENSE", "LICENSE-APACHE", "LICENSE-MIT", "THIRD-PARTY-NOTICES"} {
 		b, err := os.ReadFile(filepath.Join(filepath.Dir(f.opts.executable), "shikii-licenses", name))
 		if err != nil || !bytes.Equal(b, f.files[name]) {
-			t.Fatalf("通知の同梱: %s %v", name, err)
+			t.Fatalf("notices must be bundled: %s %v", name, err)
 		}
 	}
 	if b, _ := os.ReadFile(sentinel); string(b) != "keep-records" {
-		t.Fatal("会話の記録を変更した")
+		t.Fatal("changed the conversation records")
 	}
 	info, err := os.Stat(f.opts.executable)
 	if err != nil || info.Mode().Perm()&0o111 == 0 {
-		t.Fatal("実行権限がない")
+		t.Fatal("no execute permission")
 	}
 }
 
-// 実際の新版を配布物として通し、置換後のhook installまで実行する。
-// HOMEとプロジェクトは隔離し、公開Releaseや利用中の設定は使わない。
+// Run a real new version through as a release, all the way to hook install after the replacement.
+// HOME and the project are isolated; no published Release or settings in use are touched.
 func TestUpdateRefreshesSkillAndPreservesExistingPrompts(t *testing.T) {
 	compiled := filepath.Join(t.TempDir(), "new-shikii")
 	if out, err := exec.Command("go", "build", "-o", compiled, ".").CombinedOutput(); err != nil {
-		t.Fatalf("更新する本体を組む: %v %s", err, out)
+		t.Fatalf("build the binary to update to: %v %s", err, out)
 	}
 	body, err := os.ReadFile(compiled)
 	if err != nil {
@@ -192,7 +192,7 @@ func TestUpdateRefreshesSkillAndPreservesExistingPrompts(t *testing.T) {
 	}
 	f := fixtureUpdate(t)
 	f.tag, f.opts.version, f.files["shikii"] = "v"+shikii.Version, "0.4.3", body
-	// 実hookのcommandと同じ、空白を含まない絶対パスを使う。
+	// Use an absolute path without spaces, the same as a real hook's command.
 	f.opts.executable = filepath.Join(t.TempDir(), "shikii")
 	for _, name := range []string{"shikii", "shikii-readout"} {
 		if err := os.WriteFile(filepath.Join(filepath.Dir(f.opts.executable), name), []byte("old"), 0o755); err != nil {
@@ -201,7 +201,7 @@ func TestUpdateRefreshesSkillAndPreservesExistingPrompts(t *testing.T) {
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("PATH", t.TempDir()) // hook installからモデルを起動しない。
+	t.Setenv("PATH", t.TempDir()) // keep hook install from starting a model.
 	skill := filepath.Join(home, ".claude", "skills", "shikii")
 	if err := os.MkdirAll(skill, 0o755); err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestUpdateRefreshesSkillAndPreservesExistingPrompts(t *testing.T) {
 	if err := os.WriteFile(settingsPath, settings, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// 既存の質問・較正・人の回答を更新で書き換えない。
+	// The update must not rewrite existing questions, calibrations or human answers.
 	preserved := map[string][]byte{}
 	for _, rel := range []string{
 		".shikii/agent/decisions/needs-plan.yaml",
@@ -246,28 +246,28 @@ func TestUpdateRefreshesSkillAndPreservesExistingPrompts(t *testing.T) {
 		}
 		got, err := os.ReadFile(filepath.Join(skill, rel))
 		if err != nil || !bytes.Equal(got, want) {
-			t.Fatalf("updateから新版のskillとpromptを配置する: %s %v", rel, err)
+			t.Fatalf("update must put the new version's skill and prompts in place: %s %v", rel, err)
 		}
 	}
 	for path, want := range preserved {
 		if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, want) {
-			t.Fatalf("既存の判定文と回答を保持する: %s %v", path, err)
+			t.Fatalf("must keep the existing decision texts and answers: %s %v", path, err)
 		}
 	}
 	got, _ := os.ReadFile(settingsPath)
 	if !bytes.Contains(got, []byte("keep-other-hook")) || !bytes.Contains(got, []byte(`"fixture": "keep"`)) {
-		t.Fatal("他のhookと設定を保持する")
+		t.Fatal("must keep other hooks and settings")
 	}
-	// 新しく初期化するプロジェクトには新版の判定promptを用意する。
+	// A newly initialized project gets the new version's decision prompts.
 	fresh := t.TempDir()
 	cmd := exec.Command(f.opts.executable, "--init")
 	cmd.Dir = fresh
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("新版で新規プロジェクトを初期化: %v %s", err, out)
+		t.Fatalf("initialize a new project with the new version: %v %s", err, out)
 	}
 	want, _ := shikii.AgentSpecsFS.ReadFile("integrations/claude-code/specs/needs-plan.yaml")
 	if got, err := os.ReadFile(filepath.Join(fresh, ".shikii", "decisions", "needs-plan.yaml")); err != nil || !bytes.Equal(got, want) {
-		t.Fatal("新規プロジェクトの判定promptは新版", err)
+		t.Fatal("a new project's decision prompts must be the new version's", err)
 	}
 }
 
@@ -281,7 +281,7 @@ func TestUpdateDoesNotDowngradeOrRedownload(t *testing.T) {
 			}
 			assertUpdateUnchanged(t, f)
 			if f.downloads.Load() != 0 {
-				t.Fatal("最新版・新しい開発版でも配布物を取得した")
+				t.Fatal("downloaded a release even though already latest or a newer development version")
 			}
 		})
 	}
@@ -289,24 +289,24 @@ func TestUpdateDoesNotDowngradeOrRedownload(t *testing.T) {
 
 func TestUpdateRejectsUnverifiedReleases(t *testing.T) {
 	cases := map[string]func(*updateFixture){
-		"ハッシュ不一致":   func(f *updateFixture) { f.badHash = true },
-		"digest不一致": func(f *updateFixture) { f.badDigest = true },
-		"readout不足": func(f *updateFixture) { delete(f.files, "shikii-readout") },
-		"リンク":       func(f *updateFixture) { f.entryType = tar.TypeSymlink },
-		"ハードリンク":    func(f *updateFixture) { f.entryType = tar.TypeLink },
-		"経路の脱出":     func(f *updateFixture) { f.extraPath = "../outside" },
-		"版の不一致":     func(f *updateFixture) { f.files["shikii"] = []byte("#!/bin/sh\nprintf 'shikii 0.0.0\\n'\n") },
-		"外部のURL":    func(f *updateFixture) { f.unsafeURL = true },
-		"下書き":       func(f *updateFixture) { f.draft = true },
-		"先行版":       func(f *updateFixture) { f.prerelease = true },
-		"不正なタグ":     func(f *updateFixture) { f.tag = "v0.4.2/other" },
+		"hash mismatch":    func(f *updateFixture) { f.badHash = true },
+		"digest mismatch":  func(f *updateFixture) { f.badDigest = true },
+		"missing readout":  func(f *updateFixture) { delete(f.files, "shikii-readout") },
+		"symlink":          func(f *updateFixture) { f.entryType = tar.TypeSymlink },
+		"hard link":        func(f *updateFixture) { f.entryType = tar.TypeLink },
+		"path escape":      func(f *updateFixture) { f.extraPath = "../outside" },
+		"version mismatch": func(f *updateFixture) { f.files["shikii"] = []byte("#!/bin/sh\nprintf 'shikii 0.0.0\\n'\n") },
+		"external URL":     func(f *updateFixture) { f.unsafeURL = true },
+		"draft":            func(f *updateFixture) { f.draft = true },
+		"prerelease":       func(f *updateFixture) { f.prerelease = true },
+		"invalid tag":      func(f *updateFixture) { f.tag = "v0.4.2/other" },
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := fixtureUpdate(t)
 			change(f)
 			if err := runUpdate(context.Background(), f.opts); err == nil {
-				t.Fatal("不正な更新を受け入れた")
+				t.Fatal("accepted an invalid update")
 			}
 			assertUpdateUnchanged(t, f)
 		})
@@ -317,18 +317,18 @@ func TestUpdateRollsBackThePairOnReplacementFailure(t *testing.T) {
 	f := fixtureUpdate(t)
 	f.opts.replace = func(from, to string) error {
 		if to == "shikii" {
-			return errors.New("合成した書き込み失敗")
+			return errors.New("synthetic write failure")
 		}
 		return os.Rename(filepath.Join(filepath.Dir(f.opts.executable), from), filepath.Join(filepath.Dir(f.opts.executable), to))
 	}
 	if err := runUpdate(context.Background(), f.opts); err == nil {
-		t.Fatal("書き込み失敗が成功になった")
+		t.Fatal("a write failure turned into success")
 	}
 	assertUpdateUnchanged(t, f)
 }
 
 func TestUpdateRefusesCompanionLinksAndSupportsExecutableAlias(t *testing.T) {
-	t.Run("リンク先へ書かない", func(t *testing.T) {
+	t.Run("does not write through a link", func(t *testing.T) {
 		f := fixtureUpdate(t)
 		path := filepath.Join(filepath.Dir(f.opts.executable), "shikii-readout")
 		outside := filepath.Join(t.TempDir(), "outside")
@@ -336,16 +336,16 @@ func TestUpdateRefusesCompanionLinksAndSupportsExecutableAlias(t *testing.T) {
 		os.Remove(path)
 		os.Symlink(outside, path)
 		if err := runUpdate(context.Background(), f.opts); err == nil {
-			t.Fatal("readoutのリンクを受け入れた")
+			t.Fatal("accepted a readout link")
 		}
 		if b, _ := os.ReadFile(outside); string(b) != "keep" {
-			t.Fatal("リンク先を変更した")
+			t.Fatal("changed the link target")
 		}
 		if b, _ := os.ReadFile(f.opts.executable); string(b) != "old-shikii" {
-			t.Fatal("本体を変更した")
+			t.Fatal("changed the binary")
 		}
 	})
-	t.Run("実行ファイルの実体を更新", func(t *testing.T) {
+	t.Run("updates the real executable", func(t *testing.T) {
 		f := fixtureUpdate(t)
 		alias := filepath.Join(t.TempDir(), "shikii")
 		os.Symlink(f.opts.executable, alias)
@@ -354,22 +354,22 @@ func TestUpdateRefusesCompanionLinksAndSupportsExecutableAlias(t *testing.T) {
 			t.Fatal(err)
 		}
 		if info, _ := os.Lstat(alias); info.Mode()&os.ModeSymlink == 0 {
-			t.Fatal("呼び出し側のリンクを置き換えた")
+			t.Fatal("replaced the caller's link")
 		}
 	})
 }
 
 func TestUpdateRejectsArgumentsAndUnsupportedPlatforms(t *testing.T) {
 	if err := cmdUpdate([]string{"--yes"}); err == nil {
-		t.Fatal("不要なオプションを受け入れた")
+		t.Fatal("accepted an unneeded option")
 	}
 	f := fixtureUpdate(t)
 	f.opts.goos = "windows"
 	if err := runUpdate(context.Background(), f.opts); err == nil {
-		t.Fatal("未対応の配布物を探した")
+		t.Fatal("looked for an unsupported release")
 	}
 	if f.requests.Load() != 0 {
-		t.Fatal("未対応環境で通信した")
+		t.Fatal("made a network request on an unsupported platform")
 	}
 }
 
@@ -385,26 +385,26 @@ func TestUpdateSerializesConcurrentInstallations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err := runUpdate(context.Background(), f.opts); err == nil || !strings.Contains(err.Error(), "実行中") {
-		t.Fatalf("同時更新を拒否する: %v", err)
+	if err := runUpdate(context.Background(), f.opts); err == nil || !strings.Contains(err.Error(), "is running") {
+		t.Fatalf("must refuse concurrent updates: %v", err)
 	}
 	assertUpdateUnchanged(t, f)
 	if f.downloads.Load() != 0 {
-		t.Fatal("同時更新中に配布物を取得した")
+		t.Fatal("downloaded a release during a concurrent update")
 	}
 }
 
 func TestUpdateReportsPostInstallFailureWithoutLosingBinaries(t *testing.T) {
 	f := fixtureUpdate(t)
-	f.opts.finish = func(context.Context, string) error { return errors.New("合成したhook設定の不備") }
+	f.opts.finish = func(context.Context, string) error { return errors.New("synthetic hook settings problem") }
 	err := runUpdate(context.Background(), f.opts)
-	if err == nil || !strings.Contains(err.Error(), "更新済み") {
-		t.Fatalf("本体の更新と反映の失敗を区別: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "were updated") {
+		t.Fatalf("must tell a binary update apart from a failed apply: %v", err)
 	}
 	for _, name := range []string{"shikii", "shikii-readout"} {
 		b, _ := os.ReadFile(filepath.Join(filepath.Dir(f.opts.executable), name))
 		if !bytes.Equal(b, f.files[name]) {
-			t.Fatalf("更新済みの%sを失った", name)
+			t.Fatalf("lost the updated %s", name)
 		}
 	}
 }
@@ -412,11 +412,11 @@ func TestUpdateReportsPostInstallFailureWithoutLosingBinaries(t *testing.T) {
 func TestUpdateBoundsResponsesAndHandlesOffline(t *testing.T) {
 	f := fixtureUpdate(t)
 	if _, err := updateGet(context.Background(), f.opts, f.opts.latestURL, 8); err == nil {
-		t.Fatal("応答の上限を無視した")
+		t.Fatal("ignored the response size limit")
 	}
 	f.opts.latestURL = "http://127.0.0.1:1/latest"
 	if err := runUpdate(context.Background(), f.opts); err == nil {
-		t.Fatal("通信失敗が成功になった")
+		t.Fatal("a network failure turned into success")
 	}
 	assertUpdateUnchanged(t, f)
 }
@@ -431,7 +431,7 @@ func TestUpdateCLIEntry(t *testing.T) {
 	cmd.Env = append(os.Environ(), "SHIKII_TEST_UPDATE_ENTRY=1")
 	out, err := cmd.CombinedOutput()
 	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(out), "shikii update に引数やオプションは不要です") {
-		t.Fatalf("CLIの入口を登録する: %s %v", out, err)
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(out), "shikii update takes no arguments or options") {
+		t.Fatalf("must register the CLI entry: %s %v", out, err)
 	}
 }
