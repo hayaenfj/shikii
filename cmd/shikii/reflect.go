@@ -152,6 +152,7 @@ type reflectResult struct {
 	Wiki               []reflectReceipt `json:"wiki"`
 	Memory             []reflectReceipt `json:"memory"`
 	Maintenance        []reflectReceipt `json:"maintenance,omitempty"`
+	Left               []string         `json:"left,omitempty"` // what is still not done for the conversations this submit named (complete only says every item was saved)
 }
 
 func runReflect(root, scope string, req reflectRequest) (any, error) {
@@ -214,6 +215,21 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 			result.Complete, receipt.Error = false, err.Error()
 		}
 		result.Maintenance = append(result.Maintenance, receipt)
+	}
+	// A submit that sorted the wiki but left provisional scores or delivered lessons came back complete with nothing else,
+	// so the agent stopped while the Stop hook kept asking (behaviour check 0.9.2). Say what is still left.
+	named := []string{}
+	for _, r := range req.Reviews {
+		named = append(named, r.SourceID)
+	}
+	for _, d := range req.Wiki {
+		named = append(named, d.Sources...)
+	}
+	for _, a := range req.Memory {
+		named = append(named, a.SourceID)
+	}
+	if left, err := reflectLeft(root, scope, named); err == nil && len(left) > 0 {
+		result.Left = leftLines(left)
 	}
 	result.Remaining = notebook.Book{Root: root, Scope: scope}.RemainingUnclassified()
 	return result, nil
