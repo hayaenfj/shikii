@@ -316,19 +316,23 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 		if name == "shikii_label" {
 			// A label through MCP is the agent's: mark it "mcp" whatever source it names, so it is never stored as a person's answer
 			// (audit S6; behaviour check 0.9.2: an agent passed source "ask" and its own judgment was stored as the person's answer)
-			var m map[string]any
-			if json.Unmarshal(args, &m) == nil {
-				// the handler decodes keys case-insensitively (Unicode folding: "Source", "ſource"), so drop every key it would read as source
-				for k := range m {
-					if strings.EqualFold(k, "source") {
-						delete(m, k)
-					}
-				}
-				m["source"] = "mcp"
-				if b, err := json.Marshal(m); err == nil {
-					args = b
+			// Values stay raw so that no number can fail the read; arguments that are not an object are refused, never passed on unchanged
+			var m map[string]json.RawMessage
+			if err := json.Unmarshal(args, &m); err != nil || m == nil {
+				return http.StatusBadRequest, []byte(`{"error":"shikii_label arguments must be a JSON object"}`), nil
+			}
+			// the handler decodes keys case-insensitively (Unicode folding: "Source", "ſource"), so drop every key it would read as source
+			for k := range m {
+				if strings.EqualFold(k, "source") {
+					delete(m, k)
 				}
 			}
+			m["source"] = json.RawMessage(`"mcp"`)
+			b, err := json.Marshal(m)
+			if err != nil {
+				return http.StatusBadRequest, []byte(`{"error":"shikii_label arguments must be a JSON object"}`), nil
+			}
+			args = b
 		}
 		body = bytes.NewReader(args)
 	}

@@ -693,9 +693,13 @@ function checkPlanningContext(target) {
   const legacy = mount(ItemCard, { target, props: { sp, it: { ...it, truth: 'no', truth_at: it.at, legacy_planning: true, record_question: '以前の質問' } } }); flushSync();
   const separate = target.textContent.includes('以前の質問') && target.textContent.includes('過去の形式') && !target.querySelector('.answer-choice') && !target.querySelector('button.weak.redo[title]');
   unmount(legacy);
+  // 0.9.2: a truth an agent sent through MCP (source mcp) is not shown as the person's answer
+  const viaMCP = mount(ItemCard, { target, props: { sp, it: { ...it, trace_id: 'planning-mcp', truth: 'no', truth_at: it.at, source: 'mcp' } } }); flushSync();
+  const agentTruth = !target.textContent.includes('あなたの答え') && target.textContent.includes('エージェントが送った答え');
+  unmount(viaMCP);
   i18n.lang = lang;
-  const ok = named && evidence && englishRemoved && separate;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (order of request, agreed, open=' + named + ', summary and grounds shown as text=' + evidence + ', English preface removed=' + englishRemoved + ', old format kept distinct=' + separate + ')');
+  const ok = named && evidence && englishRemoved && separate && agentTruth;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (order of request, agreed, open=' + named + ', summary and grounds shown as text=' + evidence + ', English preface removed=' + englishRemoved + ', old format kept distinct=' + separate + ', MCP truth not shown as yours=' + agentTruth + ')');
   return ok;
 }
 
@@ -805,10 +809,13 @@ async function checkNotebook(target) {
   const realFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, opts) => {
-    calls.push({ url, body: JSON.parse(opts.body) });
+    const body = JSON.parse(opts.body);
+    calls.push({ url, body });
+    // a long source comes in two parts; the page must read the second one and show the whole body
+    if (body.sources?.[0] === '0000000000000003') return { ok: true, json: async () => body.cursor === 'part-2' ? { observations: [{ id: '0000000000000003', content: 'PART-TWO-END' }], observation_part: { id: '0000000000000003', from: 9, to: 21, bytes: 21 } } : { observations: [{ id: '0000000000000003', content: 'PART-ONE-' }], observation_part: { id: '0000000000000003', from: 0, to: 9, bytes: 21 }, next_cursor: 'part-2' } };
     return { ok: true, json: async () => ({ source_material: [{ id: '0000000000000001', request: 'README installation', reply: '<img src=x onerror=alert(1)> missing startup steps' }], originals: { '0000000000000001': [{ original_inputs: { summary: 'FULL-TEXT-END' } }] }, observations: [{ id: '0000000000000002', kind: 'test', content: 'OBSERVED-TEST-PASS', version: 'fixture-v1', observed_at: '2026-01-01T00:00:00Z' }] }) };
   };
-  const wiki = { notebook_project: 'alpha', pending_sources_count: 1, knowledge_usage: { window: 256, prepared: 3, with_matches: 2, with_citations: 1, citations: 1, context_bytes: 450, lookup_milliseconds: 2.5 }, maintenance: [{ page_id: 'a', title: 'Source review', revision: 'r1', key: 'k1' }], lessons: [{ id: 'a', title: '<img src=x onerror=alert(1)>', lesson: 'Include model startup steps', applies_to: 'README installation', sources: [{ id: '0000000000000001', hash: 'h' }, { id: '0000000000000002', hash: 'h2' }] }] };
+  const wiki = { notebook_project: 'alpha', pending_sources_count: 1, knowledge_usage: { window: 256, prepared: 3, with_matches: 2, with_citations: 1, citations: 1, context_bytes: 450, lookup_milliseconds: 2.5 }, maintenance: [{ page_id: 'a', title: 'Source review', revision: 'r1', key: 'k1' }], lessons: [{ id: 'a', title: '<img src=x onerror=alert(1)>', lesson: 'Include model startup steps', applies_to: 'README installation', sources: [{ id: '0000000000000001', hash: 'h' }, { id: '0000000000000002', hash: 'h2' }, { id: '0000000000000003', hash: 'h3' }] }] };
   const app = mount(Notebook, { target, props: { wiki } });
   flushSync();
   const hasLesson = target.textContent.includes('Include model startup steps') && target.textContent.includes('alpha');
@@ -820,13 +827,17 @@ async function checkNotebook(target) {
   if (buttons[1]) buttons[1].click();
   await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
   const observed = target.textContent.includes('FULL-TEXT-END') && target.textContent.includes('OBSERVED-TEST-PASS');
+  if (buttons[2]) buttons[2].click();
+  for (let n = 0; n < 5; n++) await new Promise(resolve => setTimeout(resolve, 0));
+  flushSync();
+  const parts = target.textContent.includes('PART-ONE-PART-TWO-END') && !target.textContent.includes('observation_part') && calls.some(c => c.body.cursor === 'part-2');
   const usage = target.querySelector('[data-knowledge="prepared"]')?.textContent.includes('3') && target.querySelector('[data-knowledge="with_citations"]')?.textContent.includes('1');
   const maintenance = target.querySelector('[data-maintenance="a"]')?.textContent.includes('Source review');
   const inertText = !target.querySelector('img') && target.textContent.includes('<img src=x onerror=alert(1)>');
   unmount(app);
   globalThis.fetch = realFetch;
-  const ok = hasLesson && readSource && observed && usage && maintenance && inertText;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (notebook lesson=' + hasLesson + ', source lookup=' + readSource + ', observed sources=' + observed + ', usage=' + usage + ', maintenance=' + maintenance + ', quoted HTML is text=' + inertText + ')');
+  const ok = hasLesson && readSource && observed && parts && usage && maintenance && inertText;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (notebook lesson=' + hasLesson + ', source lookup=' + readSource + ', observed sources=' + observed + ', long source parts joined=' + parts + ', usage=' + usage + ', maintenance=' + maintenance + ', quoted HTML is text=' + inertText + ')');
   return ok;
 }
 

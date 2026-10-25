@@ -15,7 +15,7 @@ import (
 type personWork struct {
 	Records, Waits             int // all
 	RecentRecords, RecentWaits int // last 7 days
-	ByPerson, ByResult         int // number of decisions (traces) with a truth. Machine truths (context / judge) are not counted
+	ByPerson, ByResult         int // number of decisions (traces) with a truth. Machine truths (context / judge) and truths an agent sent through MCP are not counted
 }
 
 const personWorkWindow = 7 * 24 * time.Hour
@@ -27,6 +27,7 @@ func countPersonWork(specID string, discardUnsure bool, recs []store.Record, lab
 		switch {
 		case l.Source == "outcome":
 			result[l.TraceID] = true
+		case l.Source == "mcp": // sent by an agent through MCP: a truth, but not the person's answer
 		case store.HumanSource(l.Source):
 			person[l.TraceID] = true
 		}

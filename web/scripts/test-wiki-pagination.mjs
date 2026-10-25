@@ -49,7 +49,8 @@ test('reads a long source in parts and joins them, so the page never shows a par
     assert.equal(bodies[1].cursor, 'c1');
     assert.deepEqual(bodies[1].sources, ['o1', 'o2', 's1']);
 
-    globalThis.fetch = async () => ({ ok: true, json: async () => ({ observations: [], next_cursor: 'same' }) });
+    let asked = 0; // a reader without the guard would ask forever; stop it here so the test fails instead of hanging
+    globalThis.fetch = async () => { if (++asked > 20) throw new Error('kept asking for the same part'); return { ok: true, json: async () => ({ observations: [], next_cursor: 'same' }) }; };
     await assert.rejects(api.sources(['o1']), /does not move forward/);
   } finally {
     globalThis.fetch = original;
