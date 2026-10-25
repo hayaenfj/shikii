@@ -643,7 +643,7 @@ export async function run() {
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
-  const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), checkPhoneAnswerBar(target)].every(Boolean);
+  const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), await checkWordingAskSends(target), checkPhoneAnswerBar(target), checkWordingPlain(target)].every(Boolean);
   const ok = auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }

@@ -27,6 +27,7 @@
 - Page (0.9.2 audit): a new wording the AI could not decide on, or switched to on its own, now shows on Answer even when no card waits for that question. The page reads the wording state of every question you answer (one request per question), counts each box in the marker on "Answer" and in "remaining", opens on Answer when one waits, and the AI page's list says the question waits for your check instead of "nothing for you to do".
 - Page, phones (0.9.2 audit): the answer bar sticks to the bottom again on phones. It now holds only the answers (two to a row), skip and the folded guess; the question is shown at the top of the card instead, so the stuck bar takes about a sixth of the screen.
 - Page, text size (0.9.2 audit): `code` inside smaller text is at least 12px (it was 11.7px inside 13px text). The size check accepts em only at 1 or more, and max(...) only with a px or rem part that holds 12px by itself.
+- Page, words (0.9.2 audit): the Answer explanation also covers the cards shown now and then to check; the fold of the wording box uses the same names as the box ("wording until now / from now on" after the AI switched); the fields for writing a rewording have visible labels; rewording names (such as unasked-first) are only small secondary text after a plain label.
 
 ## 0.9.1 — Three pages: Answer, Knowledge and The AI
 
