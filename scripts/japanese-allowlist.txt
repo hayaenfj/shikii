@@ -88,7 +88,7 @@
 1 internal/store/link_test.go
 6 internal/store/source_text_test.go
 3 scripts/bench/prompt-intent-rag.yaml
-2 scripts/build-release.py
+1 scripts/build-release.py
 1 scripts/demo.sh
 27 scripts/gen-architecture-svg.py
 8 scripts/gen-hero-svg.py
