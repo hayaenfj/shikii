@@ -1,13 +1,13 @@
 ---
-claim: 普通のチャット用モデルを shikii-readout で読む時、本文(state)は選択肢の後ろ・答えの直前に置く(state-last)方が、先頭に置く(state-first)より当たる
+claim: When reading an ordinary chat model with shikii-readout, putting the text (state) after the options, right before the answer (state-last), scores better than putting it first (state-first)
 status: tentative
 applies_to:
-  models: 再帰層を持つ Qwen3.5 / 3.8 系(Ternary-Bonsai-27B で確認)。Bonsai 2(fork)は変わらず
+  models: The Qwen3.5 / 3.8 family with recurrent layers (confirmed on Ternary-Bonsai-27B). No change on Bonsai 2 (fork)
   type: choice
 evidence:
   - date: "2026-10-17"
     model: ternary-bonsai-27b-q2g64
-    result: state-last 0.968 vs state-first 0.919 (top-1 on 62 truths; 日本語 23 件は 1.000 vs 0.870)
+    result: state-last 0.968 vs state-first 0.919 (top-1 on 62 truths; the 23 Japanese items 1.000 vs 0.870)
     verdict: supports
   - date: "2026-10-18"
     model: ternary-bonsai-27b-q2g64+state-first
@@ -18,24 +18,24 @@ retest:
   better: current
   than: state-first
 ---
-# 本文（state）は答えの直前に置く（普通のチャット用モデルの読み出し）
+# Put the text (state) right before the answer (readout of ordinary chat models)
 
 
-## いつ効くか
+## When it applies
 
-- モデル: 決定モデルではない普通のチャット用 GGUF を `shikii-readout` で読む時。特に Qwen3.5 / 3.6 / 3.8 系（Bonsai）
-- 型: 全部（choice で確認。noul / score でも読み出しの仕組みは同じ）
+- Models: when reading an ordinary chat GGUF that is not a decision model with `shikii-readout`. Especially the Qwen3.5 / 3.6 / 3.8 family (Bonsai)
+- Type: all (confirmed on choice; the readout works the same way for noul / score)
 
-## 書き方
+## How to write it
 
-質問 → 選択肢 → **本文** → 「Reply with one letter.」の順。本文を先頭に置かない。
-`shikii-readout` の既定がこの配置で、応答の `model` に `+state-last` が付く（配置が変わると較正の鍵も変わる）。
+Order: question → options → **text** → "Reply with one letter." Do not put the text first.
+This is `shikii-readout`'s default layout, and `+state-last` is added to the response's `model` (a different layout means a different calibration key).
 
-## 証拠
+## Evidence
 
-- Ternary-Bonsai-27B Q2_g64: state-first で top-1 0.919 / 日本語 0.870 → state-last で 0.968 / 1.000（同じ重み、62 件）。[integrations/readout.md](https://github.com/hayaenfj/shikii/blob/main/integrations/readout.md)
-- Bonsai 2 27B（fork）: 0.968 で変わらず。悪くはならない
+- Ternary-Bonsai-27B Q2_g64: state-first top-1 0.919 / Japanese 0.870 → state-last 0.968 / 1.000 (same weights, 62 items). [integrations/readout.md](https://github.com/hayaenfj/shikii/blob/main/integrations/readout.md)
+- Bonsai 2 27B (fork): unchanged at 0.968. It does not get worse
 
-## 副作用
+## Side effect
 
-同じ spec の全問で接頭辞が共通になるので `cache_prompt` が効き、1 問 4 秒 → 0.6〜0.8 秒。精度と速さが同じ変更で取れた
+Every question of the same spec shares a prefix, so `cache_prompt` helps: 4 seconds → 0.6 to 0.8 seconds per question. The same change gained both accuracy and speed

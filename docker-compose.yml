@@ -1,7 +1,7 @@
-# docker compose up  → 答え合わせの画面 http://127.0.0.1:8095
-# 3 つの容れ物: llama(llama.cpp の公式サーバー。Ternary-Bonsai-27B Q2_g64 を初回に取ってくる、約 7.6 GB)、
-# readout(shikii-readout。普通の GGUF の文字の確率を読んで決定モデルの形で答える。決定モデルならそのまま通す)、shikii(この repo の画像)。
-# プロジェクトルート(このフォルダ)を /work に mount するので、.shikii/(判定の定義、知識、記録と正解)はホストのものがそのまま使われ、育った知識も残る。
+# docker compose up  → answer-checking page at http://127.0.0.1:8095
+# Three containers: llama (the official llama.cpp server; fetches Ternary-Bonsai-27B Q2_g64 on first start, about 7.6 GB),
+# readout (shikii-readout; reads token probabilities from an ordinary GGUF and answers in decision-model form; passes a decision model through as is), and shikii (this repo's image).
+# The project root (this folder) is mounted at /work, so the host's .shikii/ (decision specs, knowledge, records and truths) is used as is, and the knowledge it gains is kept.
 services:
   llama:
     image: ghcr.io/ggml-org/llama.cpp:server
@@ -11,18 +11,18 @@ services:
   readout:
     build: .
     entrypoint: ["shikii-readout", "--upstream", "http://llama:8086", "--port", "8080"]
-    depends_on: [llama]   # readout 自身が llama の /health を待つ
+    depends_on: [llama]   # readout itself waits for llama's /health
   shikii:
     build: .
-    # Linux の bind mount はホストの所有者のまま。画像は root では動かないので、ホストの uid/gid で動かして .shikii/ に書けるようにする
+    # On Linux a bind mount keeps the host's owner. The image does not run as root, so run it as the host's uid/gid so it can write to .shikii/
     user: "${UID:-1000}:${GID:-1000}"
-    depends_on: [readout]   # healthcheck は使わない(外部コマンドに頼らない)。shikii 自身が readout の /health を待つ
+    depends_on: [readout]   # No healthcheck (to avoid relying on outside commands). shikii itself waits for readout's /health
     volumes:
       - .:/work
     ports:
       - "127.0.0.1:8095:8095"
-    # 鍵は環境変数でだけ渡す(ファイルには置かない)。hosted も使うなら: environment: [TYPESAFE_API_KEY](DECISIONS_API_KEY も読む)
+    # Pass keys only through environment variables (never in files). To also use hosted: environment: [TYPESAFE_API_KEY] (DECISIONS_API_KEY is read too)
 volumes:
   hf-cache:
-# 別のモデルを使うなら llama の command を替えるだけ(手元の GGUF なら -m <file>)。readout は学習済みの決定モデルの答えもそのまま通すので、他は変えない。
-# 手元のモデルを立てずに TypeSafe の Jev を使うなら、llama と readout を外し、shikii に environment: [TYPESAFE_API_KEY] を渡す。
+# To use another model, only change llama's command (for a local GGUF, -m <file>). readout also passes a trained decision model's answers through as is, so nothing else changes.
+# To use TypeSafe's Jev instead of running a local model, remove llama and readout and give shikii environment: [TYPESAFE_API_KEY].

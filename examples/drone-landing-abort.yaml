@@ -1,11 +1,11 @@
-# 例(ロボット・ドローン): 着陸を中止すべきか(はい/いいえ)。
-# この例は「答え合わせが済むまで自動で動かない」を説明するためのもの。
-#   act     = 自動で中止(上昇して待機)。較正が書かれ、act での precision が確かめられた後にだけ出る
-#   ask     = 操縦者に警告を出して判断を仰ぐ。較正が無いうちは、どんなに確率が高くてもここ止まり
-#   discard = 何もしない(着陸を続ける)
-#   abstain = 入力が欠けている(センサーの要約が無い)。判定していない
-# state には機体のテレメトリの要約(文)を入れる。確率は shikii が計算するのではなく、つないだ決定モデルが返す。
-# 実機に使うなら、眼前の安全装置(高度・障害物センサーの割り込み)とは別の層に置くこと。これはその代わりにはならない。
+# Example (robots and drones): should the landing be aborted (yes/no)?
+# This example shows "nothing runs automatically until the answers have been checked".
+#   act     = abort automatically (climb and hold). Only appears after calibration is written and the precision at act is confirmed
+#   ask     = warn the operator and ask for a decision. Without calibration it stops here however high the probability
+#   discard = do nothing (continue landing)
+#   abstain = input is missing (no sensor summary). No decision was made
+# The state holds a summary (text) of the aircraft's telemetry. shikii does not compute the probability; the connected decision model returns it.
+# On a real aircraft, put this in a separate layer from the immediate safety systems (altitude and obstacle sensor interrupts). It is not a replacement for them.
 id: drone-landing-abort
 version: 1
 type: noul
@@ -26,12 +26,12 @@ state:
   required: [altitude_m, descent_mps, position_error_m, drift_mps, wind_mps, gust_mps, gps_status, attitude, zone_observation]
 
 policy:
-  send_to: [local]            # 現場の機器から外の API には出さない
-  pii: false                  # 本文に個人情報は入らない(send_to が local だけなので、どのみち外には出ない)
+  send_to: [local]            # never sent from the field equipment to an outside API
+  pii: false                  # the text contains no personal data (send_to is local only, so it never leaves anyway)
 
 thresholds:
-  act: 0.90                   # 自動中止。高めに置く。較正済みでなければ出ない
-  ask: 0.40                   # 操縦者に警告。低めに置いて取りこぼしを減らす
+  act: 0.90                   # automatic abort. Set high. Never appears unless calibrated
+  ask: 0.40                   # warn the operator. Set low to miss fewer cases
 
 eval:
-  min_n: 100                  # 記録した着陸と、操縦者が実際に中止したかどうかの対応から正解を作る
+  min_n: 100                  # truths come from matching recorded landings with whether the operator actually aborted

@@ -1,29 +1,29 @@
-# other を「依頼ではないもの」と明示する
+# Spell out other as "not a request"
 
-status: tentative  <!-- 2026-10-18: 効いたのは Kev-4B の 1 組だけ。別のモデルか別の正解の組で効いたら confirmed に(人が変える) -->
+status: tentative  <!-- 2026-10-18: it helped only on one set, with Kev-4B. Make it confirmed once it helps on another model or another set of truths (a person changes this) -->
 
-## いつ効くか
+## When it applies
 
-- 型: choice。選択肢に「その他」「不明」「どれでもない」のような受け皿がある時
-- モデル: Kev-4B で確認。他の決定モデルでも同じ理屈（受け皿は説明が曖昧なほど吸い込む）
+- Type: choice. When the options include a catch-all such as "other", "unknown" or "none of these"
+- Models: confirmed on Kev-4B. The same reasoning should hold for other decision models (the vaguer a catch-all's description, the more it absorbs)
 
-## 書き方
+## How to write it
 
-受け皿の説明を「上のどれでもない」ではなく、**何がそこに入るかを具体的に**書く。例:
+Instead of describing the catch-all as "none of the above", write **concretely what belongs in it**. For example:
 
 > other: Not a request at all - greetings, thanks, acknowledgements ("ok", "了解"), small talk, or ending the session.
 
-同時に、他の選択肢の説明に短い入力の例を入れる（"fix the typo"、「直して」）。短い入力が受け皿に逃げるのを防ぐ。
+At the same time, put examples of short inputs in the other options' descriptions ("fix the typo", "直して"). This stops short inputs from drifting into the catch-all.
 
-## 証拠
+## Evidence
 
-- prompt-intent v1 → v2（Kev-4B、62 件）: 誤り 21 件のうち 19 件が other に落ちていた → 説明を具体化して top-1 0.682 → 0.903、other への誤り 0。[specs/prompt-intent](https://github.com/hayaenfj/shikii/blob/main/wiki/specs/prompt-intent.md)
-- prompt-intent v2 で other をさらに締める候補（other-tight）: Ternary-Bonsai-27B で 0.968 → 0.984 だが holdout 0.952 で不採用（62 件では有意でない）。効き方は頭打ちに近い
+- prompt-intent v1 → v2 (Kev-4B, 62 items): 19 of 21 errors had fallen into other → with concrete descriptions, top-1 went 0.682 → 0.903 and errors into other went to 0. [specs/prompt-intent](https://github.com/hayaenfj/shikii/blob/main/wiki/specs/prompt-intent.md)
+- A candidate tightening other further on prompt-intent v2 (other-tight): 0.968 → 0.984 on Ternary-Bonsai-27B, but rejected at holdout 0.952 (not significant on 62 items). The effect is close to its ceiling
 
-## 反証
+## Counter-evidence
 
-なし（2026-10-17 時点）
+None (as of 2026-10-17)
 
-## 人のメモ
+## Notes from people
 
-受け皿を締めすぎると、本当に受け皿に入るべき入力を他の選択肢に押し出す。混同表で other 行だけでなく other 列も見る。
+Tightening the catch-all too much pushes inputs that truly belong in it into other options. In the confusion table, look at the other column as well as the other row.

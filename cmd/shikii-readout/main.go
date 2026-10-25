@@ -1,13 +1,13 @@
-// shikii-readout は普通のチャット用 GGUF を System One 形式(/v1/systemone)の決定モデルにする薄いアダプタ。
+// shikii-readout is a thin adapter that turns an ordinary chat GGUF into a decision model speaking the System One format (/v1/systemone).
 //
-// 推論は持たない。後ろにいる llama-server(本家でも fork でも)の /apply-template でそのモデルの
-// chat template を当て、/completion を 1 トークンだけ回して、選択肢に割り当てた文字(A, B, …)の
-// 確率を読む。返す確率は素の softmax で、較正はしない(較正は shikii calibrate が (spec_hash, model) ごとに当てる)。
+// It does no inference of its own. It applies the model's chat template through /apply-template of the llama-server behind it
+// (upstream or a fork), runs /completion for a single token, and reads the probabilities of the letters (A, B, …)
+// assigned to the options. The probabilities it returns are a plain softmax with no calibration (shikii calibrate applies calibration per (spec_hash, model)).
 //
 //	shikii-readout --upstream http://127.0.0.1:8086 [--port 8090] [--model NAME] [--n-probs 64]
 //
-// 起動時に /tokenize で全ラベルが 1 トークンであることを確かめ、違えば起動しない。
-// Qwen3 系の <think> は chat_template_kwargs の enable_thinking=false で潰す(受け付けない upstream には送り直す)。
+// At startup it checks with /tokenize that every label is a single token, and refuses to start otherwise.
+// The <think> of Qwen3-family models is suppressed with enable_thinking=false in chat_template_kwargs (resent without it to upstreams that reject it).
 package main
 
 import (
@@ -28,11 +28,11 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// labels は選択肢に割り当てる文字。裸の 1 文字(先頭に空白なし)。chat template が改行で終わるので
-// 最初のトークンは裸の文字になる。数字は多くのトークナイザで 2 トークンになるので使わない。
+// labels are the letters assigned to options: a bare single character (no leading space). The chat template ends with a newline,
+// so the first token is the bare letter. Digits are not used because many tokenizers split them into 2 tokens.
 var labels = []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
 
-// probFloor は n_probs の上位に入らなかったラベルに与える確率(正規化前)。0 にすると log が取れず較正が壊れる。
+// probFloor is the probability (before normalizing) given to labels that did not make the n_probs top list. With 0, the log cannot be taken and calibration breaks.
 const probFloor = 1e-6
 
 type config struct {
@@ -41,13 +41,13 @@ type config struct {
 	NProbs   int
 	System   string
 	Timeout  time.Duration
-	// StateFirst は state を選択肢の前に置く(旧配置)。既定は後ろ: system・質問・選択肢が
-	// 同じ spec の全問で共通の接頭辞になり、llama-server の cache_prompt で prefill が state のぶんだけになる。
+	// StateFirst puts the state before the options (the old layout). The default puts it after: the system message, question and options
+	// form a prefix shared by every question of the same spec, so with llama-server's cache_prompt only the state needs prefill.
 	StateFirst bool
 }
 
-// layout は prompt の配置の名前。応答の model に付けて、配置が違えば較正の鍵も違うようにする
-// (同じモデルでも並びが変われば確率の出方が変わる)。
+// layout is the name of the prompt layout. It is added to the response's model so that a different layout gets a different calibration key
+// (even with the same model, a different order changes how the probabilities come out).
 func (c config) layout() string {
 	if c.StateFirst {
 		return "state-first"
@@ -55,7 +55,7 @@ func (c config) layout() string {
 	return "state-last"
 }
 
-// modelName は応答の model。--model が無ければ upstream の名前 + "+" + 配置。
+// modelName is the response's model. Without --model it is the upstream's name + "+" + the layout.
 func modelName(upstream string, c config) string {
 	if c.Model != "" {
 		return c.Model
@@ -66,27 +66,27 @@ func modelName(upstream string, c config) string {
 type server struct {
 	cfg  config
 	http *http.Client
-	base string // 配置の接尾辞を付ける前の名前(upstream の名前か --model)。既定以外の配置の応答は base+"+"+配置
+	base string // the name before the layout suffix (the upstream's name or --model). Responses for a non-default layout use base+"+"+layout
 
 	mu             sync.Mutex
-	pieces         map[string]string // plain 配置で読む、選択肢 id → 最初のトークン(/tokenize の結果を覚える)
-	thinkingKwarg  bool              // enable_thinking=false を送るか。upstream が蹴ったら false に落とす
-	missingLabels  int               // n_probs の上位に入らなかったラベルの延べ数(観測用)
+	pieces         map[string]string // for the plain layout: option id → first token (remembers the /tokenize result)
+	thinkingKwarg  bool              // whether to send enable_thinking=false. Drops to false if the upstream rejects it
+	missingLabels  int               // running count of labels that missed the n_probs top list (for monitoring)
 	totalQuestions int
 
-	// 接頭辞の warm-up。Qwen3.5/3.8 系(Bonsai の土台)は再帰層を持ち、KV を途中まで巻き戻せない。
-	// 接頭辞のちょうど末尾にチェックポイントが無いと cache_prompt が効かず全部やり直しになる
-	// (2026-10-17 の実測: cache_n=0、1 問 4 秒)。そこで接頭辞(state の手前まで)だけを n_predict=0 で
-	// 先に流しておく。すると以後は state のぶんだけの prefill になる(cache_n=137/154、1 問 0.5〜1.1 秒)。
-	warmPrefix string // 最後に warm-up した接頭辞
-	warmTokens int    // その接頭辞のトークン数(cache_n がこれに届かなければ次回また warm-up)
+	// Prefix warm-up. The Qwen3.5/3.8 family (Bonsai's base) has recurrent layers and cannot roll the KV cache back part way.
+	// Without a checkpoint exactly at the end of the prefix, cache_prompt does not help and everything is redone
+	// (measured 2026-10-17: cache_n=0, 4 seconds per question). So the prefix alone (up to just before the state) is run first
+	// with n_predict=0. After that only the state needs prefill (cache_n=137/154, 0.5 to 1.1 seconds per question).
+	warmPrefix string // the prefix warmed up last
+	warmTokens int    // token count of that prefix (if cache_n falls short of it, warm up again next time)
 
-	// passThrough は後ろが学習済みの決定モデル(/v1/systemone に自分で答える。Kev・OpenJev など)の時 true。
-	// その時は読み出さずにそのまま通す。shikii は常に readout の口を見ればよく、モデルの種類で接続先を変えない。
+	// passThrough is true when the upstream is a trained decision model (one that answers /v1/systemone itself, such as Kev or OpenJev).
+	// Then requests pass through as is with no readout. shikii can always talk to readout's endpoint and never switches endpoints by model kind.
 	passThrough bool
 }
 
-// detectUpstream は後ろが決定モデルか(/v1/systemone が答えるか)を一度だけ探る。本家 llama.cpp は普通の GGUF だと 501 を返す。
+// detectUpstream probes once whether the upstream is a decision model (whether /v1/systemone answers). Upstream llama.cpp returns 501 for an ordinary GGUF.
 func (s *server) detectUpstream(ctx context.Context) error {
 	probe := map[string]any{"state": "probe", "questions": map[string]any{"q": map[string]any{"type": "noul", "instructions": "Is this a probe?"}}}
 	code, err := s.post(ctx, "/v1/systemone", probe, nil)
@@ -97,16 +97,16 @@ func (s *server) detectUpstream(ctx context.Context) error {
 	case code == 501 || code == 404:
 		s.passThrough = false
 		return nil
-	case code == 400 || code == 422: // post は 2xx 以外を err にするので code だけで見る
-		// 探りの形を 400/422 で弾く決定モデル(要求は読めている)。素通しにして、本番の要求はそのモデルに答えさせる(監査 2026-10-23)。
-		// 401/403/405/429 などは認証や前段の拒否なので、黙って素通しにせず起動を止めて理由を見せる(監査 R2)
+	case code == 400 || code == 422: // post turns anything but 2xx into err, so look only at code
+		// a decision model that rejects the probe's shape with 400/422 (it did read the request). Pass through and let that model answer real requests (audit 2026-10-23).
+		// 401/403/405/429 and the like are auth or front-end refusals, so instead of silently passing through, stop starting up and show why (audit R2)
 		s.passThrough = true
 		return nil
 	}
 	return fmt.Errorf("upstream /v1/systemone: %v", err)
 }
 
-// forward は要求をそのまま後ろへ渡し、応答もそのまま返す(決定モデルの答えに手を加えない)。
+// forward passes the request to the upstream as is and returns the response as is (it never alters the decision model's answer).
 func (s *server) forward(w http.ResponseWriter, r *http.Request, body []byte) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.Timeout)
 	defer cancel()
@@ -132,16 +132,16 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, body []byte) {
 	_, _ = w.Write(raw)
 }
 
-// stateMarker は prompt 中で state が始まる印。ここより前が spec 内で共通の接頭辞。
+// stateMarker marks where the state starts in the prompt. Everything before it is the prefix shared within the spec.
 const stateMarker = "<state>"
 
 func main() {
-	upstream := flag.String("upstream", "http://127.0.0.1:8086", "後ろの llama-server")
-	port := flag.Int("port", 8090, "待ち受けポート")
-	model := flag.String("model", "", "応答の model(較正の鍵)。空なら upstream の /v1/models から取る")
-	nprobs := flag.Int("n-probs", 64, "/completion の n_probs。選択肢の数より十分大きく")
+	upstream := flag.String("upstream", "http://127.0.0.1:8086", "the llama-server behind it")
+	port := flag.Int("port", 8090, "port to listen on")
+	model := flag.String("model", "", "the response's model (the calibration key). If empty, taken from the upstream's /v1/models")
+	nprobs := flag.Int("n-probs", 64, "n_probs for /completion. Make it well above the number of options")
 	system := flag.String("system", defaultSystem, "system prompt")
-	stateFirst := flag.Bool("state-first", false, "state を選択肢の前に置く(旧配置。prefix cache が効かない)")
+	stateFirst := flag.Bool("state-first", false, "put the state before the options (the old layout; the prefix cache does not help)")
 	flag.Parse()
 
 	s := &server{
@@ -150,7 +150,7 @@ func main() {
 		thinkingKwarg: true,
 	}
 	ctx := context.Background()
-	// 後ろの llama-server が立つのを自分で待つ(Docker で先にモデルを起こす時。curl / wget に頼らない)
+	// wait for the llama-server behind it to come up (when Docker starts the model first; no reliance on curl / wget)
 	wctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	if err := systemone.WaitReady(wctx, s.cfg.Upstream, 3*time.Second, log.Printf); err != nil {
 		log.Fatal(err)
@@ -167,7 +167,7 @@ func main() {
 		s.base = name
 		s.cfg.Model = modelName(name, s.cfg)
 		if s.passThrough {
-			s.cfg.Model = name // 決定モデルの答えをそのまま通すので、名前(較正の鍵)も後ろのまま
+			s.cfg.Model = name // the decision model's answers pass through as is, so the name (the calibration key) stays the upstream's too
 		}
 	} else {
 		s.base = s.cfg.Model
@@ -188,7 +188,7 @@ func main() {
 
 const defaultSystem = "You are a careful classifier. Read the state, then answer the question by choosing exactly one option. Reply with the option's letter only."
 
-// ---- 要求の形 ----
+// ---- request shape ----
 
 type rawQuestion struct {
 	Type         string          `json:"type"`
@@ -200,16 +200,16 @@ type rawRequest struct {
 	State     json.RawMessage        `json:"state"`
 	Model     string                 `json:"model"`
 	Questions map[string]rawQuestion `json:"questions"`
-	Layout    string                 `json:"layout"` // 配置の名前(state-last | state-first | plain)。空なら起動時の既定
+	Layout    string                 `json:"layout"` // layout name (state-last | state-first | plain). If empty, the default set at startup
 }
 
-// layouts は知っている配置。spec の layout と同じ名前。
+// layouts are the known layouts, with the same names as the spec's layout.
 var layouts = map[string]bool{"state-last": true, "state-first": true, "plain": true}
 
-// plainMarker は plain 配置で state が始まる印(ここより前が spec 内で共通の接頭辞)。
+// plainMarker marks where the state starts in the plain layout (everything before it is the prefix shared within the spec).
 const plainMarker = "\nInput:\n"
 
-// question は解釈済みの質問。Options は提示順(choice は criteria の並び、score は level の並び、noul は yes/no)。
+// question is a parsed question. Options are in display order (choice: the criteria order; score: the level order; noul: yes/no).
 type question struct {
 	Key          string
 	Type         string
@@ -218,11 +218,11 @@ type question struct {
 }
 
 type option struct {
-	ID          string // 応答のキー(choice は選択肢 id、score は "0".."n-1"、noul は yes/no)
+	ID          string // key in the response (choice: option id; score: "0".."n-1"; noul: yes/no)
 	Description string
 }
 
-// parseRequest は本体を読んで検証する。criteria の並びは JSON の並びのまま(Go の map に入れない)。
+// parseRequest reads and validates the body. The criteria keep their JSON order (they are not put in a Go map).
 func parseRequest(body []byte) (state string, qs []question, layout string, err error) {
 	var req rawRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -236,7 +236,7 @@ func parseRequest(body []byte) (state string, qs []question, layout string, err 
 	for k := range req.Questions {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys) // 質問の順は応答に影響しない(それぞれ独立に聞く)。安定のために並べる
+	sort.Strings(keys) // question order does not affect the response (each is asked separately). Sorted for stability
 	for _, k := range keys {
 		rq := req.Questions[k]
 		q, err := parseQuestion(k, rq)
@@ -311,16 +311,16 @@ func stateText(raw json.RawMessage) string {
 	return string(raw)
 }
 
-// ---- プロンプト ----
+// ---- prompt ----
 
 type message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// buildMessages は 1 質問ぶんの会話を作る。選択肢は提示順に A, B, … を付ける。
-// stateFirst=false(既定)では state を最後に置く: 先頭の system・質問・選択肢が同じ spec の全問で
-// 共通の接頭辞になり、llama-server の cache_prompt で再利用される。
+// buildMessages builds the conversation for one question. Options get A, B, … in display order.
+// With stateFirst=false (the default) the state goes last: the leading system message, question and options form a prefix
+// shared by every question of the same spec, which llama-server's cache_prompt reuses.
 func buildMessages(system, state string, q question, layout string) []message {
 	if layout == "plain" {
 		return buildPlain(state, q)
@@ -368,9 +368,9 @@ func buildMessages(system, state string, q question, layout string) []message {
 	return []message{{Role: "system", Content: system}, {Role: "user", Content: b.String()}}
 }
 
-// buildPlain は plain 配置: system 無し、質問、選択肢を "- id: 説明"、入力を Input: の後ろ、最後に id で答えるよう頼む。
-// 文字(A, B, …)ではなく選択肢 id そのものの最初のトークンを読む。素のチャット用モデルには、決定モデル向けの並べ方より合うことがある
-// (Qwen3-4B で 13 ポイント、docs/bench.md)。
+// buildPlain is the plain layout: no system message, the question, options as "- id: description", the input after Input:, and finally a request to answer with an id.
+// It reads the first token of the option id itself, not a letter (A, B, …). For a plain chat model this can fit better than the layout meant for decision models
+// (13 points on Qwen3-4B, docs/bench.md).
 func buildPlain(state string, q question) []message {
 	var b strings.Builder
 	switch q.Type {
@@ -400,14 +400,14 @@ func buildPlain(state string, q question) []message {
 	return []message{{Role: "user", Content: b.String()}}
 }
 
-// ---- 読み出し ----
+// ---- readout ----
 
 type tokenProb struct {
 	Token string  `json:"token"`
 	Prob  float64 `json:"prob"`
 }
 
-// readProbsFor は keys(文字、または plain 配置では選択肢 id の最初のトークン)ごとの確率を上位から拾って正規化する。
+// readProbsFor picks the probability for each key (a letter, or in the plain layout the first token of an option id) from the top list and normalizes them.
 func readProbsFor(top []tokenProb, keys []string) (probs []float64, missing int) {
 	byTok := map[string]float64{}
 	for _, t := range top {
@@ -432,8 +432,8 @@ func readProbsFor(top []tokenProb, keys []string) (probs []float64, missing int)
 	return probs, missing
 }
 
-// optionKeys は配置に応じて読むトークンを返す: 既定は文字(A, B, …)、plain は各 id の最初のトークン(/tokenize で調べ、覚える)。
-// 2 つの id が同じ最初のトークンなら読み分けられないので誤り。
+// optionKeys returns the tokens to read for the layout: letters (A, B, …) by default; for plain, the first token of each id (looked up with /tokenize and remembered).
+// If two ids share the same first token they cannot be told apart, so it is an error.
 func (s *server) optionKeys(ctx context.Context, q question, layout string) ([]string, error) {
 	if layout != "plain" {
 		return labels[:len(q.Options)], nil
@@ -454,7 +454,7 @@ func (s *server) optionKeys(ctx context.Context, q question, layout string) ([]s
 	return keys, nil
 }
 
-// firstPiece は文字列の最初のトークンの文字列(/tokenize with_pieces)。
+// firstPiece is the text of a string's first token (/tokenize with_pieces).
 func (s *server) firstPiece(ctx context.Context, text string) (string, error) {
 	s.mu.Lock()
 	if p, ok := s.pieces[text]; ok {
@@ -483,7 +483,7 @@ func (s *server) firstPiece(ctx context.Context, text string) (string, error) {
 	return out.Tokens[0].Piece, nil
 }
 
-// requestLayout は要求の配置を決める: 空なら起動時の既定、知らない名前は誤り。
+// requestLayout picks the request's layout: if empty, the startup default; an unknown name is an error.
 func (s *server) requestLayout(req string) (string, error) {
 	if req == "" {
 		return s.cfg.layout(), nil
@@ -494,7 +494,7 @@ func (s *server) requestLayout(req string) (string, error) {
 	return req, nil
 }
 
-// responseModel は応答の model 名。既定の配置なら設定どおり、違う配置なら土台の名前 + "+" + 配置(較正の鍵が分かれる)。
+// responseModel is the response's model name: as configured for the default layout, otherwise the base name + "+" + the layout (so calibration keys stay separate).
 func (s *server) responseModel(layout string) string {
 	if layout == s.cfg.layout() {
 		return s.cfg.Model
@@ -502,7 +502,7 @@ func (s *server) responseModel(layout string) string {
 	return s.base + "+" + layout
 }
 
-// answerFor は System One の answer を型ごとに組む(llama.cpp の決定モデルと同じ形)。
+// answerFor assembles the System One answer per type (the same shape as llama.cpp's decision models).
 func answerFor(q question, probs []float64) map[string]any {
 	best, bp := 0, -1.0
 	for i, p := range probs {
@@ -599,7 +599,7 @@ func (s *server) upstreamModel(ctx context.Context) (string, error) {
 	return "", errors.New("no model in /v1/models")
 }
 
-// checkLabels は全ラベルが 1 トークンかを /tokenize で確かめる。
+// checkLabels checks with /tokenize that every label is a single token.
 func (s *server) checkLabels(ctx context.Context) error {
 	var bad []string
 	for _, l := range labels {
@@ -619,8 +619,8 @@ func (s *server) checkLabels(ctx context.Context) error {
 	return nil
 }
 
-// applyTemplate はそのモデルの chat template で prompt を作る。enable_thinking=false を試し、
-// 蹴られたら(kwargs を受けない upstream)以後は付けない。
+// applyTemplate builds the prompt with the model's chat template. It tries enable_thinking=false,
+// and if that is rejected (an upstream that does not accept kwargs) stops sending it.
 func (s *server) applyTemplate(ctx context.Context, msgs []message) (string, error) {
 	s.mu.Lock()
 	kw := s.thinkingKwarg
@@ -660,8 +660,8 @@ type completion struct {
 	} `json:"timings"`
 }
 
-// warmPrefixFor は prompt の接頭辞(state の手前まで)を、前回と違えば upstream に n_predict=0 で流し、
-// チェックポイントを作らせる。state-first 配置では接頭辞が state を含むので何もしない。
+// warmPrefixFor sends the prompt's prefix (up to just before the state) to the upstream with n_predict=0 when it differs from last time,
+// so that a checkpoint is made. In the state-first layout the prefix contains the state, so it does nothing.
 func (s *server) warmPrefixFor(ctx context.Context, prompt, layout string) error {
 	marker := stateMarker
 	switch layout {
@@ -692,7 +692,7 @@ func (s *server) warmPrefixFor(ctx context.Context, prompt, layout string) error
 	return nil
 }
 
-// noteCache は応答の cache_n を見て、接頭辞の再利用が崩れていたら次回 warm-up し直す印を付ける。
+// noteCache looks at the response's cache_n and, if prefix reuse broke, marks it to warm up again next time.
 func (s *server) noteCache(c *completion) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -701,7 +701,7 @@ func (s *server) noteCache(c *completion) {
 	}
 }
 
-// complete は 1 トークンだけ回して上位トークンの確率を返す。サンプラは素通し(温度 1、切り捨て無し)。
+// complete runs a single token and returns the top tokens' probabilities. The sampler is neutral (temperature 1, no truncation).
 func (s *server) complete(ctx context.Context, prompt string) (*completion, error) {
 	body := map[string]any{
 		"prompt": prompt, "n_predict": 1, "temperature": 1.0, "top_k": 0, "top_p": 1.0, "min_p": 0.0,
@@ -717,7 +717,7 @@ func (s *server) complete(ctx context.Context, prompt string) (*completion, erro
 	return &out, nil
 }
 
-// ---- ハンドラ ----
+// ---- handlers ----
 
 func (s *server) handleModels(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

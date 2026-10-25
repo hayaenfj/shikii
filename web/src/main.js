@@ -1,4 +1,4 @@
-// 画面の入口。App を #app に組み付けるだけ
+// Entry point of the page. It only mounts App on #app
 import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';

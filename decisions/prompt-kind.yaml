@@ -1,6 +1,6 @@
-# Claude Code の hook(`shikii hook user-prompt-submit`)が使う判定。この依頼を受けた AI は結局何をすることになるか。
-# 正解は結果から自動で付く: 次の依頼が来た時(無ければターンの終わり)に作業ツリーのハッシュが変わっていれば edit、変わっていなければ !edit(部分ラベル、重み 0.7)。
-# 線が引けるまで hook は何も出さない(記録だけ)。元のファイルは integrations/claude-code/specs/prompt-kind.yaml。
+# The decision used by the Claude Code hook (`shikii hook user-prompt-submit`): what will the AI that receives this request end up doing?
+# The truth is set automatically from the outcome: if the working tree's hash changed by the next request (or the end of the turn if none), edit; if not, !edit (a partial label, weight 0.7).
+# Until a line can be drawn, the hook outputs nothing (it only records). The original file is integrations/claude-code/specs/prompt-kind.yaml.
 id: prompt-kind
 version: 1
 type: choice
@@ -24,14 +24,14 @@ state:
   template: |
     request: {{ request }}
   required: [request]
-  # 迷った時だけ: 直前のアシスタントの発言(Stop の hook が控えたもの)を足して聞き直す(別のハッシュ・別の線)。短い返事(「yes please」「go ahead」)はこれで決まる
+  # Only when unsure: ask again with the assistant's previous message (saved by the Stop hook) added (a separate hash and a separate line). Short replies ("yes please", "go ahead") are settled this way
   context: |
     previous assistant turn: {{ previous }}
     request: {{ request }}
 
 policy:
-  send_to: [local]    # 依頼文は外に送らない
-  pii: true                   # 本文に個人情報が入り得る → 外の AI(hosted)には送らない。本文は手元の記録に残る
+  send_to: [local]    # the request text is not sent outside
+  pii: true                   # the text may contain personal data → not sent to an outside AI (hosted). The text stays in the local records
 
 thresholds:
   act: 0.75
@@ -39,7 +39,7 @@ thresholds:
 
 eval:
   min_n: 50
-# 画面の表示用の訳(モデルには送らない。較正の鍵にも入らない)
+# Translation shown on the page (not sent to the model, not part of the calibration key)
 display:
   ja:
     title: 依頼の種類

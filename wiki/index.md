@@ -1,50 +1,50 @@
-# 聞き方の wiki
+# The wiki of ways to ask
 
-決定モデルに**どう聞くと通るか**の知識。1 人の経験ではなく、証拠付きの共有財。`shikii tune --propose` はここを読んで候補を作り、`runs/` に結果を書き戻す。
+Knowledge of **how to ask a decision model so it gets things right**. Not one person's experience, but a shared asset with evidence. `shikii tune --propose` reads it to make candidates and writes results back to `runs/`.
 
-| 場所 | 何を書くか | 誰が書くか |
+| Place | What goes there | Who writes it |
 |---|---|---|
-| [`types/`](types/) | 質問の型（choice / noul / score）ごとの聞き方の基本 | 人 |
-| [`models/`](models/) | モデルの系統ごとの癖（較正の要否、本文の置き場所、言語） | 人（tune の run を見て） |
-| [`patterns/`](patterns/) | 1 パターン 1 ページ。いつ効くか・書き方・証拠・反証・状態 | 人。状態（confirmed / tentative / rejected）を変えるのは人だけ |
-| [`specs/`](specs/) | 判定ごとの決まり（Rules、人が書く）と run の一覧（tune が足す） | 両方 |
-| [`runs/`](runs/) | 証拠。候補・数字・holdout・採否・一行の学び | tune |
+| [`types/`](types/) | The basics of asking, per question type (choice / noul / score) | People |
+| [`models/`](models/) | Habits of each model family (whether calibration is needed, where the text goes, language) | People (after looking at tune runs) |
+| [`patterns/`](patterns/) | One pattern per page: when it applies, how to write it, evidence, counter-evidence, status | People. Only people change the status (confirmed / tentative / rejected) |
+| [`specs/`](specs/) | Each decision's rules (Rules, written by people) and its list of runs (added by tune) | Both |
+| [`runs/`](runs/) | Evidence: candidates, numbers, holdout, adopted or not, a one-line lesson | tune |
 
-決まり:
+Rules:
 
-- パターンは **2 つ以上の独立した観察（別のモデルか別の正解の組での評価、または tune の run）で効いた**ものだけ `status: confirmed`。1 つなら `tentative`。状態を変えるのは人だけで、証拠を付ける
-- 機械が書くのは runs/ と specs/ の Runs の節だけ。人の文は上書きしない
-- 例文を載せるのは `pii: false` の判定だけ。本文に個人情報が入り得る判定は数字だけ
+- A pattern is `status: confirmed` only if it **worked in 2 or more independent observations (evaluations on another model or another set of truths, or tune runs)**. With one, it is `tentative`. Only people change the status, and they attach evidence
+- The machine writes only runs/ and the Runs section of specs/. It never overwrites people's text
+- Example sentences appear only for decisions with `pii: false`. For decisions whose text may contain personal data, numbers only
 
-入口: [choice の聞き方](types/choice.md) · [noul の聞き方](types/noul.md) · [score の聞き方](types/score.md) · [パターン一覧](patterns/)
+Start here: [asking a choice](types/choice.md) · [asking a noul](types/noul.md) · [asking a score](types/score.md) · [list of patterns](patterns/)
 
-## パターンのページの形（2026-10-18 から）
+## Shape of a pattern page (since 2026-10-18)
 
-パターンは文章ではなく**検証できる主張**として書く。ページの先頭に機械が読む前書き（`---` で囲む）を置き、本文は人が書く。
+A pattern is written as a **claim that can be checked**, not as an essay. The top of the page has front matter (enclosed in `---`) that the machine reads; the body is written by people.
 
 ```yaml
 ---
-claim: 一文で言える主張
-status: tentative            # tentative / confirmed / rejected。変えるのは人だけ
-applies_to:                  # 効く範囲(型、モデルの系統、言語など。自由な文)
+claim: A claim you can state in one sentence
+status: tentative            # tentative / confirmed / rejected. Only people change it
+applies_to:                  # where it applies (type, model family, language and so on; free text)
   type: choice
-  models: 素のチャット用モデル
-evidence:                    # 機械が書き足す。1 run 1 件、日付・モデル・数字・判定(supports / contradicts / inconclusive)
+  models: plain chat models
+evidence:                    # added by the machine. One per run: date, model, numbers, verdict (supports / contradicts / inconclusive)
   - date: "2026-10-18"
     model: qwen3-4b-q8+state-last
     result: plain 0.903 vs current 0.774 (top-1 on 62 truths; 8 better / 1 worse, p=0.020)
     verdict: supports
-retest:                      # 再検証の手順: この spec で、候補 better が候補 than を top-1 で上回れば支持
+retest:                      # how to retest: on this spec, supported if candidate better beats candidate than on top-1
   spec: .shikii/decisions/prompt-intent-v2.yaml
   better: plain
   than: current
 ---
 ```
 
-前書きの機械が知らない項目（`author:` など）は読んだまま書き戻されるが、前書きの中のコメントは機械が書き直す時に残らない（コメントは本文に）。`shikii wiki verify [pattern.md ...] --local URL` が retest を今のモデルで回し（対の勝敗と片側の符号検定、p ≤ 0.05 で支持）、証拠を 1 件足す。支持するモデルが 2 つ以上あって反証が無ければ「confirmable」と言うが、状態を confirmed にするのは人。別のプロジェクトの人が自分のモデルで verify を回せば、その結果がこの主張の新しい証拠になる。これが「育った知識は人のあいだで共有される」の実体。前書きの無いページは「まだ検証できない主張」として verify が飛ばす。
+Front-matter fields the machine does not know (such as `author:`) are written back as read, but comments inside the front matter are lost when the machine rewrites it (put comments in the body). `shikii wiki verify [pattern.md ...] --local URL` runs the retest with the current model (pairwise wins and losses with a one-sided sign test; supported at p ≤ 0.05) and adds one piece of evidence. When 2 or more models support it and there is no counter-evidence, it says "confirmable", but setting the status to confirmed is up to a person. When someone in another project runs verify with their own model, that result becomes new evidence for the claim. This is what "the knowledge that grows is shared between people" actually means. verify skips pages without front matter as "claims that cannot be checked yet".
 
-### 自動で育つ
+### It grows automatically
 
-`tune` の run が終わるごとに機械が wiki を育てる（モデルは呼び直さない）: current に有意に勝った候補（対の勝敗、p ≤ 0.05）は **主張の下書き** として `patterns/drafts/<spec>-<候補>.md`（status draft）に起草され、その spec を retest に持つ既存の主張には run の採点が証拠として足される。人がすることは、下書きを一般化した主張に書き直して `patterns/` に移し、状態を付けること。要らない下書きは消す。
+Each time a `tune` run ends, the machine grows the wiki (without calling the model again): a candidate that significantly beat current (pairwise wins and losses, p ≤ 0.05) is drafted as a **draft claim** in `patterns/drafts/<spec>-<candidate>.md` (status draft), and the run's scores are added as evidence to existing claims that have that spec as their retest. What a person does is rewrite a draft as a general claim, move it to `patterns/`, and give it a status. Delete drafts that are not needed.
 
-人がすることは画面（`shikii serve` の「知識」の欄）からできる: 下書きを一般化した主張に書き直して `patterns/` に移す、confirmed / rejected にする、下書きを消す。機械は「独立したモデル 2 つが支持」の印を付けるだけ。
+What a person does can be done on the page (the "Knowledge" panel of `shikii serve`): rewrite a draft as a general claim and move it to `patterns/`, mark it confirmed / rejected, or delete the draft. The machine only adds the "supported by 2 independent models" mark.

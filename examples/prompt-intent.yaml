@@ -1,4 +1,4 @@
-# 例: AI への依頼の種類(5 択)。scripts/demo.sh が使う。較正ブロックは無い状態から始める。
+# Example: the kind of request to an AI (5 choices). Used by scripts/demo.sh. Starts with no calibration block.
 id: prompt-intent
 version: 2
 type: choice
@@ -25,8 +25,8 @@ state:
   required: [message]
 
 policy:
-  send_to: [local, hosted]    # 手元のモデルを先に、無ければホスト版(鍵があれば)
-  pii: false                  # 本文に個人情報は入らない(hosted にも送れる)
+  send_to: [local, hosted]    # the local model first; otherwise the hosted one (if there is a key)
+  pii: false                  # the text contains no personal data (it can go to hosted too)
 
 thresholds:
   act: 0.75

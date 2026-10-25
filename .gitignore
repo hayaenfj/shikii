@@ -1,22 +1,22 @@
-# ビルド成果物(make build / make install が作る)
+# Build output (made by make build / make install)
 /bin/
 *.test
 *.out
 coverage.*
 
-# 記録とラベルの置き場。較正の材料で、環境ごとに違う。eval-model.sh は .shikii-eval/<name>/ に分ける
+# Where records and labels live. They are calibration material and differ per environment. eval-model.sh keeps them apart in .shikii-eval/<name>/
 /.shikii/
 /.shikii-*/
 
-# 比較ベンチの材料(scripts/bench/rag-rows.py が正解の貯金から作る)
+# Material for the comparison bench (scripts/bench/rag-rows.py builds it from the saved truths)
 /testdata/prompt-intent-rag.json
 
-# 鍵と環境。鍵は DECISIONS_API_KEY / TYPESAFE_API_KEY の環境変数で渡す(ファイルには置かない)
+# Keys and environment. Pass keys in the DECISIONS_API_KEY / TYPESAFE_API_KEY environment variables (never in files)
 .env
 .env.*
 *.key
 
-# 道具の状態(Serena、エディタ、OS)
+# Tool state (Serena, editors, OS)
 /.serena/
 .idea/
 .vscode/
@@ -24,24 +24,24 @@ coverage.*
 *.swo
 .DS_Store
 
-# 実験の一時ファイル(スクラッチは /private/tmp 側に置くが、手元に落とした時のため)
+# Temporary files from experiments (scratch goes under /private/tmp, but in case some land here)
 *.log
 *.tmp
 /tmp/
 
-# Python のキャッシュ(scripts/bench/lora)
+# Python cache (scripts/bench/lora)
 __pycache__/
 
-# 画面(web/)の依存。ビルド結果 web/dist は commit する(Go だけで go install できるように)
+# Dependencies of the page (web/). The build output web/dist is committed (so go install works with Go alone)
 /web/node_modules/
 web/.ui-test/
 
-# 記憶は repo に置かない(正本は ~/.claude/projects/shikii-shared/。CLAUDE.md を見る)
+# Memory is not kept in the repo (the source of truth is ~/.claude/projects/shikii-shared/; see CLAUDE.md)
 /.claude/memory/
 
-# 手元の作業・検証・反映の記録。公開文書には含めない
+# Local records of work, checks and updates. Not part of the published documents
 /docs/operations.md
 
-# このプロジェクトの作業規則(エージェント向け、本人の手元だけ)。配布しない
+# This project's working rules (for agents, kept only on the owner's machine). Not shipped
 /AGENTS.md
 /CLAUDE.md

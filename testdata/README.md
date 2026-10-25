@@ -1,25 +1,25 @@
 # testdata
 
-全部**作り物**。実在の製品・注文・人物とは無関係で、本文はこのリポジトリのために書いた。
+Everything here is **made up**. It has nothing to do with real products, orders or people; the text was written for this repository.
 
 ## same-issue-labeled.json
 
-不具合報告の重複判定(`decisions/same-issue.yaml`、はい/いいえ)の較正用 32 組、日本語。
-同じ不具合 12(`truth: true`)、別の不具合 12(`false`)、同じ画面や機能だが別の不具合 8(境界。`false` に重み 0.5)。
-境界は「自動で同じと扱ってはいけない」例なので false 側に置く。`raw` が無いのでモデルに聞く。
+32 pairs, in Japanese, for calibrating duplicate detection of bug reports (`decisions/same-issue.yaml`, yes/no).
+12 same bug (`truth: true`), 12 different bugs (`false`), and 8 on the same screen or feature but different bugs (borderline; `false` with weight 0.5).
+The borderline pairs are examples that "must not be treated as the same automatically", so they sit on the false side. There is no `raw`, so the model is asked.
 
 ## same-inquiry-labeled.json
 
-問い合わせの同一判定(`decisions/same-inquiry.yaml`、はい/いいえ)の較正用 32 組、日本語。
-同じ案件 12、別の案件 12、同じ種類の問題だが別の案件 8(境界。重み 0.5)。注文番号は架空。
+32 pairs, in Japanese, for calibrating the same-inquiry decision (`decisions/same-inquiry.yaml`, yes/no).
+12 same case, 12 different cases, and 8 of the same kind of problem but different cases (borderline; weight 0.5). The order numbers are fictional.
 
 ## prompt-intent-labeled.json / -ja.json / -en.json
 
-prompt-intent(5 択)の**種集合**。英語・日本語の依頼文 62 件(日 23・英 39)、正解ラベルは作業者(Claude)が付けた。
+The **seed set** for prompt-intent (5 choices): 62 requests in English and Japanese (23 Japanese, 39 English). The truth labels were set by the worker (Claude).
 
 ## store/labels/
 
-`decisions/*.yaml` に書いてある較正ブロックの**裏付け**。`check` は (spec_hash, model) ごとに store のラベルで act での precision を測り直すので、
-手元の `.shikii/`(ignore 対象)に無い CI では、ここを `--store testdata/store` で渡す。
-中身は `calibrate --write` が永続化したラベルをそのまま写したもの(trace_id・spec_hash・model・inputs_hash・raw・truth・weight)。
-**本文は入っていない**(入力はハッシュだけ)。較正を書き直したら、同じ (spec_hash, model) の行を写し直す。
+The **backing** for the calibration blocks written in `decisions/*.yaml`. `check` re-measures the precision at act per (spec_hash, model) from the store's labels,
+so in CI, which lacks the local `.shikii/` (ignored by Git), pass this folder as `--store testdata/store`.
+The contents are copies of the labels that `calibrate --write` saved (trace_id, spec_hash, model, inputs_hash, raw, truth, weight).
+**No text is included** (inputs are hashes only). When you rewrite a calibration, copy the rows for the same (spec_hash, model) again.

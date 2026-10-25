@@ -1,4 +1,4 @@
-# claude-jev の prompt-intent(依頼が変更の依頼か)を spec で表現し直したもの。
+# claude-jev's prompt-intent (is the request a change request?) re-expressed as a spec.
 id: prompt-intent
 version: 1
 type: choice
@@ -22,7 +22,7 @@ state:
   template: |
     {{ message }}
   required: [message]
-  # 迷った時(ask、多択ではどの選択肢にも届かない discard も)だけ: 直前のアシスタントの発言を足して聞き直す(呼ぶ側が previous を渡した時だけ。別のハッシュ・別の線)
+  # Only when unsure (ask, and for multiple choice also discard, where no option is reached): ask again with the assistant's previous message added (only when the caller passes previous; a separate hash and a separate line)
   context: |
     Previous assistant turn:
     {{ previous }}
@@ -32,7 +32,7 @@ state:
 
 policy:
   send_to: [hosted, local]
-  pii: false                  # 本文に個人情報は入らない(hosted にも送れる)
+  pii: false                  # the text contains no personal data (it can go to hosted too)
 
 thresholds:
   act: 0.75
@@ -41,7 +41,7 @@ thresholds:
 eval:
   labeled: testdata/prompt-intent-labeled.json
   min_n: 50
-# 画面の表示用の訳(モデルには送らない。較正の鍵にも入らない)
+# Translation shown on the page (not sent to the model, not part of the calibration key)
 display:
   ja:
     title: 依頼の種類(v1 の文言)

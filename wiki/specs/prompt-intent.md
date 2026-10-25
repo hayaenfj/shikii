@@ -1,19 +1,19 @@
-# prompt-intent（AI への依頼の種類、5 択）
+# prompt-intent (the kind of request to an AI, 5 choices)
 
 ## Rules
-<!-- この判定のどの文言も守ること。人が書く -->
-- 選択肢の id（change_request / question / review / operation / other）は変えない。hook と較正がこの id を見ている
-- 「短い依頼も依頼」（"fix it"、「直して」）は質問文に残す
-- 分解（steps）は 27B readout では負ける（0.790 vs 0.968、2026-10-18）。提案するなら小さいモデル向け。はい/いいえ の 1 段目は肯定の定義を先に書く（否定の列挙で終わる版は 0.306）
-- 日本語と英語の両方の入力が来る。例は両方入れる
-- 文脈の段（`state.context`、2026-10-18）は直前のアシスタントの発言 `previous` を足す。呼ぶ側（hook）が渡した時だけ効く。文脈の段の線は最小の質問とは別に引かれる。文脈を足すと確信が上がるとは限らない（「and the README?」は割れた）。候補の文言を測る時は tune が文脈を外して測る
+<!-- things every wording of this decision must keep; written by people -->
+- Do not change the option ids (change_request / question / review / operation / other). The hook and the calibration rely on these ids
+- Keep "short requests are requests too" ("fix it", "直して") in the question
+- Decomposition (steps) loses on the 27B readout (0.790 vs 0.968, 2026-10-18). If proposed, aim it at small models. Write the positive definition first in the first yes/no step (a version ending with a list of negatives scored 0.306)
+- Inputs arrive in both Japanese and English. Include examples in both
+- The context step (`state.context`, 2026-10-18) adds the assistant's previous message `previous`. It only takes effect when the caller (the hook) passes it. The context step's line is drawn separately from the minimal question's. Adding context does not always raise confidence ("and the README?" split). When measuring candidate wordings, tune measures them without the context
 
-## 文言の履歴
+## Wording history
 
-- v1（`decisions/prompt-intent.yaml`）: 説明が短い。Kev-4B で top-1 0.682、誤り 21 件中 19 件が other
-- v2（`decisions/prompt-intent-v2.yaml`）: 説明を具体化、other を「依頼ではないもの」に限定。Kev-4B 0.903〜0.919、Ternary-Bonsai-27B 0.968、OpenJev 0.984
+- v1 (`decisions/prompt-intent.yaml`): short descriptions. Top-1 0.682 on Kev-4B; 19 of 21 errors went to other
+- v2 (`decisions/prompt-intent-v2.yaml`): concrete descriptions, other limited to "not a request". Kev-4B 0.903 to 0.919, Ternary-Bonsai-27B 0.968, OpenJev 0.984
 
-使っているパターン: [other-is-not-a-request](../patterns/other-is-not-a-request.md)、[state-last-for-recurrent-readout](../patterns/state-last-for-recurrent-readout.md)（readout の時）
+Patterns in use: [other-is-not-a-request](../patterns/other-is-not-a-request.md), [state-last-for-recurrent-readout](../patterns/state-last-for-recurrent-readout.md) (with readout)
 
 ## Runs
 - [2026-10-17 ternary-bonsai-27b-q2g64](../runs/2026-10-17-prompt-intent-ternary-bonsai-27b-q2g64.md) — kept current (holdout does not beat it). Lesson: tighten-review-vs-operation wins on the full bank (1.000 vs 0.968) but the holdout 0.968 does not beat keeping current 0.968: within noise on 62 truths; more truths will settle it
