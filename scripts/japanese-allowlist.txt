@@ -93,7 +93,7 @@
 8 scripts/gen-hero-svg.py
 2 skills/shikii/references/guards.md
 3 skills/shikii/references/import-memory.md
-21 web/scripts/test-glossary.mjs
+30 web/scripts/test-glossary.mjs
 1 web/scripts/test-i18n.mjs
 1 web/src/components/ItemCard.svelte
 2 web/src/components/Lessons.svelte
