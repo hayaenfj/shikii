@@ -1,5 +1,5 @@
 <script>
-  // 言語の選択。辞書(lib/i18n.js の locales)に登録した言語が自動で並ぶ。選んだ値は localStorage shikii.lang
+  // The language picker. Languages registered in the dictionaries (locales in lib/i18n.js) appear automatically. The chosen value goes to localStorage shikii.lang
   import { i18n, setLang, langOptions, t } from '../lib/i18n.svelte.js';
 </script>
 

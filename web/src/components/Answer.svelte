@@ -1,6 +1,6 @@
 <script>
-  // 答える画面(0.9.1): 人が答える問いの待ちを 1 列にまとめ、先頭の 1 件を札で出す。問いは札の先頭とボタンの上に出す。
-  // AI の内側の数(学習の進み・線・仮採点・帯)はここに出さない(AI の様子へ)。聞き方は、AI が変えた時(このままでよいか)と、AI が意味を決めきれなかった時だけここで聞く(0.9.2)
+  // The Answer screen (0.9.1): gathers the questions waiting for a person into one list and shows the first item as a card. The question appears at the top of the card and above the buttons.
+  // The AI's internal numbers (learning progress, lines, provisional scores, bands) are not shown here (they go to AI status). Ways of asking are asked about here only when the AI changed one (keep it?) and when the AI could not decide on the meaning (0.9.2)
   import { t, loc } from '../lib/i18n.svelte.js';
   import { ui, skipped, personSpecs, setPage, wordingNeedsPerson } from '../lib/state.svelte.js';
   import ItemCard from './ItemCard.svelte';
@@ -9,7 +9,7 @@
   let { st } = $props();
   let specs = $derived(personSpecs(st));
   let rows = $derived(specs.flatMap(sp => (sp.queue?.items || []).filter(it => it.waits_for_person !== false).map(it => ({ sp, it }))));
-  // URL で指された判定(ui.pinned)は先頭に(hook の「あとで答える → URL」から来た人が、その 1 件をすぐ答えられる)
+  // The decision named in the URL (ui.pinned) goes first (so a person coming from the hook's "answer later → URL" can answer that item right away)
   let visible = $derived.by(() => {
     const v = rows.filter(r => !skipped.has(r.it.trace_id));
     const i = v.findIndex(r => r.it.trace_id === ui.pinned);

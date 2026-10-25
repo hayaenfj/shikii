@@ -1,4 +1,4 @@
-// 画面の下に出る短い知らせ。toast(文, ミリ秒)。新しい知らせが来たら前のタイマーは捨てる
+// A short notice at the bottom of the page. toast(text, milliseconds). When a new notice comes, the previous timer is dropped
 export const toastState = $state({ msg: '', shown: false });
 let timer;
 

@@ -1,54 +1,56 @@
-# 接続例: 普通の LLM をロジット読み出しで使う（BonJev + Bonsai 2 27B）
+**English** · [日本語](bonjev.ja.md)
 
-学習済みの決定モデル（Kev / OpenJev）ではなく、普通のチャット LLM を決定モデルとして使う例。
-本家 llama.cpp 0.6.0 の `/v1/systemone` は普通の GGUF を `501 This model is not a decision model` で蹴るので、
-選択肢の文字の logit を 1 回の forward で読んで softmax にし、System One 形式で返す [BonJev](https://github.com/ChezRD/bonjev)（Rust、MIT）を間に置く。
-`shikii` 側の変更は無い。`--local` を向けるだけ。
+# Connection example: using an ordinary LLM through logit readout (BonJev + Bonsai 2 27B)
 
-## 入れ方（macOS Apple Silicon、2026-10-17 に確認）
+An example of using an ordinary chat LLM as the decision model, instead of a trained decision model (Kev / OpenJev).
+Upstream llama.cpp 0.6.0's `/v1/systemone` rejects an ordinary GGUF with `501 This model is not a decision model`,
+so [BonJev](https://github.com/ChezRD/bonjev) (Rust, MIT) sits in between: it reads the logits of the option letters in one forward pass, applies softmax, and answers in the System One format.
+Nothing changes on the `shikii` side. You only point `--local` at it.
+
+## Installing (macOS Apple Silicon, checked on 2026-10-17)
 
 ```sh
 git clone --depth 1 https://github.com/ChezRD/bonjev ~/git/third-party/bonjev
 cd ~/git/third-party/bonjev
-sh scripts/fetch-prism.sh cpu      # PrismML の llama.cpp fork のビルド済みライブラリ(macOS 版には Metal も入っている)
-cargo build --release               # 約 40 秒
-hf download prism-ml/Ternary-Bonsai-2-27B-gguf Ternary-Bonsai-2-27B-PQ2_0.gguf   # 7.2GB、Apache 2.0
+sh scripts/fetch-prism.sh cpu      # prebuilt libraries of PrismML's llama.cpp fork (the macOS build includes Metal too)
+cargo build --release               # about 40 seconds
+hf download prism-ml/Ternary-Bonsai-2-27B-gguf Ternary-Bonsai-2-27B-PQ2_0.gguf   # 7.2GB, Apache 2.0
 ./target/release/bonjev serve --model bonsai2 --no-vision --ctx 4096 --threads 8 --port 8083
 ```
 
 ```sh
 bin/shikii decide .shikii/decisions/prompt-kind.yaml --local http://127.0.0.1:8083 --tainted -i request='fix the typo in README'
-#  model=ternary-bonsai-2-27b  top=edit p=0.950  band=ask   ← 較正が無いので act は出ない(設計どおり)
-scripts/eval-model.sh http://127.0.0.1:8083 bonsai2       # Kev-4B / OpenJev と同じ 5 セット
+#  model=ternary-bonsai-2-27b  top=edit p=0.950  band=ask   ← no calibration yet, so act does not appear (as designed)
+scripts/eval-model.sh http://127.0.0.1:8083 bonsai2       # the same 5 sets as Kev-4B / OpenJev
 ```
 
-止めるのは `pkill -x bonjev`。モデルは `~/.cache/huggingface/hub/models--prism-ml--Ternary-Bonsai-2-27B-gguf/` に残る。
+Stop it with `pkill -x bonjev`. The model stays in `~/.cache/huggingface/hub/models--prism-ml--Ternary-Bonsai-2-27B-gguf/`.
 
-## 形の対応
+## How the shapes map
 
-| System One | BonJev | 備考 |
+| System One | BonJev | Notes |
 |---|---|---|
-| `questions` は名前をキーにした object | 同じ | 配列ではない |
-| choice の `criteria` は id → 説明 | 同じ。選択肢は W, X, Y, Z, A, … の 1 文字に割り当てて logit を読む | 並びは request の順を保つ |
-| score の `criteria` は level の配列 | 同じ | |
-| noul は `criteria` 無しでよい | 無ければ true / false の既定を使う | `true` / `false` 以外のキーは 422 |
-| 応答の `model` | 起動時に載せたモデル id（`ternary-bonsai-2-27b`） | 較正の鍵になる。request の `model` は無視される |
-| `probabilities` | 文字の logit の softmax（+ BonJev 内蔵の temperature / bias） | **較正されていない**。`calibrate` の出番 |
+| `questions` is an object keyed by name | same | not an array |
+| choice `criteria` is id → description | same. The options are assigned one letter each, W, X, Y, Z, A, …, and their logits are read | keeps the request's order |
+| score `criteria` is an array of levels | same | |
+| noul may omit `criteria` | without it, the default true / false is used | keys other than `true` / `false` give 422 |
+| the response's `model` | the model id loaded at startup (`ternary-bonsai-2-27b`) | becomes the calibration key. The request's `model` is ignored |
+| `probabilities` | softmax of the letter logits (+ BonJev's built-in temperature / bias) | **not calibrated**. This is where `calibrate` comes in |
 
-## 実測（2026-10-17、Ternary-Bonsai-2-27B PQ2_0、Metal、1 問 ≈ 2.5 秒）
+## Measured (2026-10-17, Ternary-Bonsai-2-27B PQ2_0, Metal, ≈ 2.5 seconds per question)
 
-| セット | 生 | 較正後（5-fold CV） | 選ばれた方法 |
+| Set | Raw | After calibration (5-fold CV) | Method chosen |
 |---|---|---|---|
-| prompt-intent-v2 / 62 | top-1 0.968、precision@act 1.000 / recall 0.900 | precision 0.982 / recall 0.949 | vector |
-| prompt-intent-v2 / ja 23 | top-1 1.000、recall@act 0.826 | 0.950 / 0.905 | vector |
-| prompt-intent-v2 / en 39 | top-1 0.949 | 1.000 / 0.923 | identity（生で足りる） |
-| same-issue / same-inquiry（noul、各 32 組） | 生 Brier 0.049 / 0.084、正負は分離 | Platt CV **0.019 / 0.028** | **platt** |
+| prompt-intent-v2 / 62 | top-1 0.968, precision@act 1.000 / recall 0.900 | precision 0.982 / recall 0.949 | vector |
+| prompt-intent-v2 / ja 23 | top-1 1.000, recall@act 0.826 | 0.950 / 0.905 | vector |
+| prompt-intent-v2 / en 39 | top-1 0.949 | 1.000 / 0.923 | identity (raw is enough) |
+| same-issue / same-inquiry (noul, 32 pairs each) | raw Brier 0.049 / 0.084, positives and negatives separate | Platt CV **0.019 / 0.028** | **platt** |
 
-差し替え後の題材では Kev-4B でも Platt がわずかに勝つ(0.038→0.035)が、Bonsai 2 は 0.049→0.019 と桁違いに効く。較正の要否は触れ込みではなく数字で決まる。
-「較正が要るモデル」（設計 §7.1）の最初の実例で、フレームワークの較正が初めて値を生んだ測定でもある。
+On the replaced material Platt wins slightly even for Kev-4B (0.038→0.035), but for Bonsai 2 it works on a different scale, 0.049→0.019. Whether calibration is needed is decided by numbers, not by claims.
+This is the first real example of "a model that needs calibration" (design §7.1), and also the first measurement where the framework's calibration produced value.
 
-## 注意
+## Cautions
 
-- 必要なのは Prism の fork。本家 llama.cpp の `ggml-*` と混ぜない（fork の README の警告）
-- 1-bit の Q1_0 は BonJev 非対応。ternary の PQ2_0 だけ
-- 確率は BonJev の内蔵較正を通っているが、それはモデル全体の温度であって **spec ごとの較正ではない**。(spec_hash, model) の鍵で `calibrate` を当て直す前提は変わらない
+- You need Prism's fork. Do not mix it with upstream llama.cpp's `ggml-*` (a warning in the fork's README)
+- BonJev does not support 1-bit Q1_0. Only ternary PQ2_0
+- The probabilities go through BonJev's built-in calibration, but that is a temperature for the whole model and **not calibration per spec**. The premise of re-applying `calibrate` under the (spec_hash, model) key does not change

@@ -11,8 +11,8 @@
   let lessons = $derived(selected ? [selected] : wiki.lessons || []);
   let effect = $derived(wiki.memory_effect);
 
-  // AI が何を蓄積しているか(0.8.0): 記事を関連リンクで繋がる群にまとめて階層で見せる。群の名は、群の中でいちばん多く指されている記事の題。
-  // 繋がりの無い記事は「単独の記事」。各群は畳め、記事を押すと本文・出典へ(既存の表示)
+  // What the AI is accumulating (0.8.0): articles are grouped into clusters connected by related links and shown as a hierarchy. A cluster's name is the title of the most-linked article in it.
+  // Articles with no connections are "standalone articles". Each cluster can be collapsed, and pressing an article goes to its text and sources (the existing view)
   let all = $derived(wiki.lessons || []);
   let groups = $derived.by(() => {
     const byId = new Map(all.map(p => [p.id, p]));
@@ -66,7 +66,7 @@
     } catch (e) { toast(t('error')(e.message)); }
     busy = '';
   }
-  // 見た目(Tailwind)。何度も出る箱と印だけここで名前を付ける
+  // Look (Tailwind). Only boxes and markers that appear many times are named here
   const box = 'my-6 rounded-[14px] border border-line bg-surface p-5 max-sm:p-[15px]';
   const h3 = 'mt-[22px] mb-4 text-[15px] font-bold';
   const meta = 'mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted';

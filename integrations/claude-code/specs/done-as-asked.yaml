@@ -1,8 +1,8 @@
-# AI 自身の考え方 4(考え終わった後): 頼まれたことを終えたか。ターンの終わり(Stop)に `shikii hook stop` が、
-# 依頼(UserPromptSubmit で控えたもの)・ターンの間に変わったファイルの一覧・最後の返答を揃えて 1 回聞く。依頼の控えが無い時は聞かない。同じ依頼については 1 回だけ。
-# 普段は会話と結果から AI が仮採点し、人は抜き取りと保留を画面(:8096、`shikii serve --store ~/.shikii/agent --port 8096`)で答える: 「もう一度言い直すことが残っていなかったか」。
-# 正解は結果からも自動で付く: 次の人の発言が同じ依頼の言い直し(文字の似方 0.6 以上)なら「いいえ」(重み 1)、はっきり別の依頼(0.2 以下)なら「はい」(重み 0.5)。短い返事と中間は付けない。
-# 線が引けたら、確信して「終えていない」(discard)の時だけ端末に 1 行。エージェントには渡さない(Stop で文脈を返すと会話が続く。続けるかは人が決める)。
+# The AI's own thinking, 4 (after it has finished): did it finish what was asked? At the end of the turn (Stop), `shikii hook stop`
+# asks once, with the request (saved at UserPromptSubmit), the list of files changed during the turn and the final reply. It does not ask when no saved request exists. It asks only once per request.
+# Normally the AI scores it provisionally from the conversation and the outcome, and the person answers samples and held items on the page (:8096, `shikii serve --store ~/.shikii/agent --port 8096`): "was there nothing left to say again".
+# The truth is also set automatically from the outcome: if the person's next message restates the same request (text similarity 0.6 or more), "no" (weight 1); if it is clearly a different request (0.2 or less), "yes" (weight 0.5). Short replies and the middle range get no label.
+# Once a line is drawn, it prints one line to the terminal only when it is confident the request was "not finished" (discard). It does not pass this to the agent (returning context at Stop continues the conversation; the person decides whether to continue).
 id: done-as-asked
 version: 2
 type: noul
@@ -19,8 +19,8 @@ state:
   required: [request, summary]
 
 policy:
-  # 2026-10-23 の決定: 標準は TypeSafe の Jev(鍵 TYPESAFE_API_KEY があれば hosted へ送る)、手元の標準は Ternary-Bonsai-27B。
-  # 依頼・返答・教訓の文を Jev へ送ることは本人が許可した。本文は手元の記録にも残る
+  # Decision of 2026-10-23: the default is TypeSafe's Jev (sent to hosted when the key TYPESAFE_API_KEY is set); the local default is Ternary-Bonsai-27B.
+  # The owner allowed sending request, reply and lesson text to Jev. The text is also kept in the local records
   send_to: [hosted, local]
   pii: false
 

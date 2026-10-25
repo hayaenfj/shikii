@@ -16,7 +16,7 @@ When the person corrects you with a rule that can be checked mechanically ("keep
 
 ```sh
 cat > /tmp/guard.json <<'EOF'
-{"id":"changelog-pair","kind":"paired-files","title":"変更履歴は英語と日本語を揃える","reason":"本人の訂正 2026-10-23","source":"<source id of the correction>","pairs":[["CHANGELOG.md","CHANGELOG_ja.md"]]}
+{"id":"changelog-pair","kind":"paired-files","title":"Keep the English and Japanese changelogs in step","reason":"the owner's correction 2026-10-23","source":"<source id of the correction>","pairs":[["CHANGELOG.md","CHANGELOG_ja.md"]]}
 EOF
 shikii guard add < /tmp/guard.json      # writes .shikii/guards/changelog-pair.yaml, disabled
 ```

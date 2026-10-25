@@ -1,7 +1,7 @@
 <script>
-  // 聞き方の欄: 最新の tune の結果、候補の表、勝った候補と今の文言の並べ比べ、人の「意味は同じ / 違う」、候補を測るボタン。
-  // 数字は機械が確かめる。意味が同じかはエージェントが確かめて和訳を付ける(0.9.2): 同じなら自動で採用され、人は「このままでよい / 元に戻す」を選べる。
-  // 決めきれない時と、エージェントがまだ確かめていない時は、人が「意味は同じ / 違う」を選べる
+  // The ways-of-asking section: the latest tune result, the list of candidates, the winning candidate side by side with the current wording, the person's "same meaning / different", and a button to measure candidates.
+  // The machine checks the numbers. The agent checks whether the meaning is the same and adds a translation (0.9.2): if the same, it is adopted automatically, and the person can choose "keep it / revert".
+  // When it cannot decide, and when the agent has not checked yet, the person can choose "same meaning / different"
   import { t } from '../lib/i18n.svelte.js';
   import { load } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
@@ -12,7 +12,7 @@
   let latest = $derived(tu && tu.latest);
   let check = $derived((latest?.meaning_checks || []).filter(c => c.by === 'agent').pop());
   let personDone = $derived((latest?.meaning_checks || []).some(c => c.by !== 'agent'));
-  // AI が採用し、人がまだ答えていない(このままでよい / 元に戻す)
+  // The AI adopted it and the person has not answered yet (keep it / revert)
   let review = $derived(!!(latest && latest.auto_adopted && latest.adopted && !latest.reverted && !personDone && latest.winner_wording));
   let showDiff = $derived(!!(latest && latest.winner_wording && !latest.reverted && (review || (latest.adoptable && !latest.adopted && check?.verdict !== 'different'))));
 
@@ -21,7 +21,7 @@
     catch (e) { toast(t('error')(e.message)); }
   }
 
-  // 人が自分の言葉で候補を書く。足すだけ(採点は次の tune、採用は人)。選択肢の説明は「id: 説明」の行
+  // The person writes a candidate in their own words. It is only added (scored by the next tune, adopted by a person). Option descriptions are "id: description" lines
   let candName = $state('');
   let candQuestion = $state('');
   let candOptions = $state('');

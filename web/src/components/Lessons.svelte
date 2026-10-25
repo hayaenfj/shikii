@@ -1,23 +1,23 @@
 <script>
-  // 知識の正面(0.9.0): 人が全部の記事を読まないで済むよう、場面を選び → 種類ごとに題 → 押すと本文、の順で引く。
-  // 人に見てほしいのは機械が決められない例外だけ(受け箱)。種類と場面は記事を保存する時にエージェントが付け、
-  // 付いていない記事(版を上げる前の物)は「未分類」に出る(hook が 5 本ずつ埋めさせる)。並びは役立った回数と新しさの決まった計算。
+  // The front of Knowledge (0.9.0): so a person need not read every article, look things up in the order: choose a scene → titles per kind → press for the text.
+  // What a person should look at is only the exceptions a machine cannot decide (the inbox). The agent sets the kind and scene when saving an article,
+  // and articles without them (from before the version upgrade) appear under "Unclassified" (the hook has them filled 5 at a time). The order is a fixed calculation of times helpful and recency.
   import { t } from '../lib/i18n.svelte.js';
 
   let { wiki } = $props();
   const KINDS = ['rule', 'howto', 'criteria', 'fact', 'history'];
   const NONE = '__none__';
   const read = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
-  const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* 保存できない環境でも表示は動く */ } };
+  const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* the display still works where it cannot save */ } };
 
   let lessons = $derived(wiki.lessons || []);
   let meta = $derived(wiki.lesson_meta || {});
   let scene = $state(read('shikii.scene', ''));
   let selectedId = $state('');
   let expanded = $state(new Set());
-  let opened = $state(new Set()); // 押して全文を出した行
+  let opened = $state(new Set()); // rows pressed to show the full text
 
-  const score = l => (meta[l.id]?.helpful || 0) * 1e12 + Date.parse(meta[l.id]?.updated || 0); // 役立った回数、次に新しさ
+  const score = l => (meta[l.id]?.helpful || 0) * 1e12 + Date.parse(meta[l.id]?.updated || 0); // times helpful, then recency
   let scenes = $derived.by(() => {
     const n = new Map();
     let none = 0;
@@ -30,8 +30,8 @@
   let selected = $derived(lessons.find(l => l.id === selectedId));
   let byId = $derived(new Map(lessons.map(l => [l.id, l])));
   let inbox = $derived(wiki.inbox || []);
-  // このプロジェクトで決められたルール(0.9.1): 人や AI が決めたルールを、場面の絞り込みと関係なく全部、一番上(受け箱より上)に並べる(埋もれないように)。
-  // 「いつも」のルールが先頭、次に新しい順。最近 7 日に増えた・変わったルールに印
+  // Rules decided in this project (0.9.1): all rules decided by people or the AI are listed at the very top (above the inbox), regardless of which scene is chosen (so they are not buried).
+  // "いつも" (always) rules first, then newest first. Rules added or changed in the last 7 days get a marker
   const isAlways = l => ['いつも', 'always'].includes((l.scene || '').trim().toLowerCase());
   const updated = l => Date.parse(meta[l.id]?.updated || 0) || 0;
   const recentRule = l => Date.now() - updated(l) < 7 * 86400000;
@@ -40,8 +40,8 @@
   let corrections = $derived(wiki.memory_effect?.corrections);
 
   let detailEl = $state();
-  // 狭い画面(1 列)では本文の欄が下にあるので、題を押したら本文まで送る
-  // always: ルールの欄から押した時は、広い画面でも本文まで送る(欄が長いと本文の欄が画面の外に出るため)
+  // On a narrow screen (1 column) the text section is below, so pressing a title scrolls to the text
+  // always: when pressed from the rules section, scroll to the text even on a wide screen (when the section is long, the text section is off screen)
   function showLesson(id, always = false) {
     selectedId = id;
     if (always || (typeof matchMedia === 'function' && matchMedia('(max-width: 1023px)').matches)) queueMicrotask(() => detailEl?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }));
@@ -54,7 +54,7 @@
 
   const frame = 'rounded-[14px] border border-line bg-surface';
   const panel = frame + ' p-4 max-sm:p-3';
-  // 欄の見出し(0.9.1): 薄い灰色の帯に、本文の濃い色の太字と緑の縦線。灰色の小さな字だと下の項目に溶け込んだ
+  // Section headings (0.9.1): a light gray band with bold text in the dark body color and a green vertical bar. Small gray text blended into the items below
   const head = 'section-head mt-0 mb-3 flex items-center gap-2 rounded-lg bg-surface2 px-2.5 py-2 text-[13px] font-bold tracking-[.02em] text-fg before:block before:h-3.5 before:w-1 before:rounded-sm before:bg-accent';
 </script>
 

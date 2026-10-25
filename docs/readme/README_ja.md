@@ -74,13 +74,13 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 | 既製の問いに答えさせる | 推奨: TypeSafeのJev（環境変数 `TYPESAFE_API_KEY`。取得するものは無い）。鍵を置けない時: llama.cpp（`llama-server`）とTernary-Bonsai-27Bを `shikii up` で立てる構成（取得 約7.6GB、動作中のメモリ約10GB） |
 | 業務の判定に別のモデルを使う | 下の表のSystem One形式の接続先 |
 | ソースからインストールする | Go 1.27以上、Git、sh。画面は同梱済みでNode.jsは不要 |
-| コンテナで業務のAPIと画面を動かす | DockerとCompose、またはPodmanとCompose provider（[準備](../../integrations/docker.md)） |
+| コンテナで業務のAPIと画面を動かす | DockerとCompose、またはPodmanとCompose provider（[準備](../../integrations/docker.ja.md)） |
 | 鍵やGPUなしで一周試す | Go 1.27以上と同梱の偽モデル（`scripts/demo.sh`） |
 
 | 接続先 | 準備するもの |
 |---|---|
 | Jev（TypeSafe AI） | 推奨。`TYPESAFE_API_KEY`。鍵があれば、既製の問いと、`send_to` に `hosted` を含む業務の判定がここへ送られる。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
-| llama.cpp | 鍵を置けない時。通常のチャットGGUFを同梱の `shikii-readout` 越しに（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。Kev-4Bは使えない。[実行例](../../integrations/readout.md) |
+| llama.cpp | 鍵を置けない時。通常のチャットGGUFを同梱の `shikii-readout` 越しに（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。Kev-4Bは使えない。[実行例](../../integrations/readout.ja.md) |
 | Ollama / LM Studio | `/v1/systemone` と決定モデル。業務の判定向け。この版では未検証 |
 
 ## 始め方
@@ -154,7 +154,7 @@ hookを入れると、毎回のターンの2つの瞬間が残ります。エー
 | 作業記録 | エージェントとサブエージェント | 読みたい時に画面で読む |
 | 業務の正解 | 人 | 正解を付ける。エージェントが変えた聞き方の意味が違っていたら元に戻す |
 
-[Andrej KarpathyのLLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)の考え方に沿い、原資料を残してエージェントが取り込み・検索・見直しを担います。詳しくは[hook](../../integrations/claude-code.md)、[wikiの作法](../../skills/shikii/references/wiki.md)、[止める検査の作法](../../skills/shikii/references/guards.md)。
+[Andrej KarpathyのLLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)の考え方に沿い、原資料を残してエージェントが取り込み・検索・見直しを担います。詳しくは[hook](../../integrations/claude-code.ja.md)、[wikiの作法](../../skills/shikii/references/wiki.md)、[止める検査の作法](../../skills/shikii/references/guards.md)。
 
 ## 業務の判定を任せる
 
@@ -182,7 +182,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 
 線は質問とモデルの組ごとに持ち、どちらかが変われば測り直します。`shikii tune` は貯めた正解で別の聞き方を採点し、`shikii drift` と `shikii check` はずれたモデルや弱められた線を捕まえます。鍵やGPUなしで試すなら、cloneした中で `scripts/demo.sh` を実行します。
 
-- [既製の判定](../../decisions/README.md) · [業務の例](../examples/inquiry-route.md) · [全コマンドとHTTP API](../guide.ja.md) · [MCP](../../integrations/mcp.md) · [測った数字](../bench.md)
+- [既製の判定](../../decisions/README.md) · [業務の例](../examples/inquiry-route.md) · [全コマンドとHTTP API](../guide.ja.md) · [MCP](../../integrations/mcp.ja.md) · [測った数字](../bench.md)
 
 ## 記憶はプロジェクトのもの
 

@@ -1,5 +1,5 @@
-// 今の言語(反応する状態)と、画面の文を引く t()。言語を切り替えると t() を読んでいる所が全部描き直る(再読み込み無し)。
-// 文中で言語を分岐しない: 文は全部 t(key) か t(key)(引数) を通す。日付・数は fmt* に lang を渡す
+// The current language (reactive state) and t(), which looks up the page's text. Switching the language redraws everything that reads t() (no reload).
+// Do not branch on language inside text: all text goes through t(key) or t(key)(args). Dates and numbers pass lang to fmt*
 import { locales, resolveLang, translate, localized } from './i18n.js';
 import { read, write } from './prefs.js';
 
@@ -11,22 +11,22 @@ export function setLang(code) {
   write('shikii.lang', code);
 }
 
-// 画面の文。値が関数の鍵は t(key)(args) で使う
+// The page's text. Keys whose value is a function are used as t(key)(args)
 export function t(key) {
   return translate(i18n.lang, key);
 }
 
-// spec 側の表示(titles / questions / labels)。無ければ en、それも無ければ生の値
+// The spec's display (titles / questions / labels). If missing, en; if that is missing too, the raw value
 export function loc(byLang, raw) {
   return localized(i18n.lang, byLang, raw);
 }
 
-// 日時の表示。lang を渡して、その言語の書式にする
+// Showing dates and times. Pass lang to use that language's format
 export function fmtDateTime(x) {
   return new Date(x).toLocaleString(i18n.lang);
 }
 
-// 言語の選択に並べる一覧(辞書を足せば自動で増える)
+// The list shown in the language picker (grows automatically when a dictionary is added)
 export function langOptions() {
   return Object.keys(locales).map(code => ({ code, name: translate(code, 'langName') }));
 }

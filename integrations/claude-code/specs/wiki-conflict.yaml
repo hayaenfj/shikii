@@ -1,6 +1,6 @@
-# wiki の矛盾: 同じ話題の新しい教訓は、既存の教訓と食い違うか(従うと、もう一方を破ることになるか)。
-# reflect place で、差し込み先の上位の記事についてだけ聞く。線が引けるまでは疑いとしてエージェントへ渡し、エージェントが本文を読んで決める。
-# 正解は結果から自動で付く: submit でその記事を置き換えたら「はい」(重み 1)、置き換えずに同じ記事へ足したら「いいえ」(部分、重み 0.5)。人は答えない。
+# Wiki conflict: does a new lesson on the same topic disagree with an existing lesson (would following it mean breaking the other one)?
+# reflect place asks this only for the top pages among the candidate places. Until a line is drawn, it is passed to the agent as a suspicion, and the agent reads the text and decides.
+# The truth is set automatically from the outcome: "yes" if submit replaced that page (weight 1), "no" if it added to the same page without replacing it (partial, weight 0.5). The person does not answer.
 id: wiki-conflict
 version: 1
 type: noul
@@ -11,8 +11,8 @@ state:
     new lesson: {{ new_lesson }}
   required: [lesson, new_lesson]
 policy:
-  # 2026-10-23 の決定: 標準は TypeSafe の Jev(鍵 TYPESAFE_API_KEY があれば hosted へ送る)、手元の標準は Ternary-Bonsai-27B。
-  # 依頼・返答・教訓の文を Jev へ送ることは本人が許可した。本文は手元の記録にも残る
+  # Decision of 2026-10-23: the default is TypeSafe's Jev (sent to hosted when the key TYPESAFE_API_KEY is set); the local default is Ternary-Bonsai-27B.
+  # The owner allowed sending request, reply and lesson text to Jev. The text is also kept in the local records
   send_to: [hosted, local]
   pii: false
 thresholds:

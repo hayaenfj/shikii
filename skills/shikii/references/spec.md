@@ -1,15 +1,15 @@
-# spec の書き方
+# How to write a spec
 
-1 判定 = 1 YAML(`.shikii/decisions/<id>.yaml`)。`shikii new <id> --type choice --question "…" --option id=説明 … --input name --pii true|false --send-to local` で作るのが基本(`--send-to` は送ってよい先。無ければ対話で聞かれるので、エージェントが打つ時は必ず付ける)。既製の判定は `decisions/README.md`。
+1 decision = 1 YAML (`.shikii/decisions/<id>.yaml`). The usual way to make one is `shikii new <id> --type choice --question "…" --option id=description … --input name --pii true|false --send-to local` (`--send-to` is where it may send. Without it you are asked interactively, so an agent typing the command always passes it). Ready-made decisions are in `decisions/README.md`.
 
-- 型: `noul`(はい/いいえ)、`choice`(多択。選択肢は id と説明)、`score`(段階。levels を低い順)
-- `state.template`: 入力の並べ方。`{{ name }}` が入力。`required` に必須の入力
-- `state.context`(任意): 迷った時だけ足す並べ方。required を全部使い、template に無い入力を 1 つ以上足す(例: 直前の発言 `{{ previous }}`)。文脈付きは別のハッシュで線も別
-- `policy.send_to`: `local` / `hosted`。`pii: true` なら本文は外に出ない。`pii` は必ず書く(既定なし)
-- `thresholds.act` / `ask`: 帯の境。`score` は `level` で「k 以上」の確率で帯を決められる
-- `eval.labeled`: 正解の種のファイル。`eval.min_n`: 線を書くのに要る人の正解の数(50 が目安)
-- `variants:`: 聞き方の候補。`question` / `options`(id → 説明の言い換え)/ `template` / `layout`(state-last | state-first | plain)/ `steps`(多択を はい/いいえ の列に)。tune が測る。候補を書くのはあなたでもよいが、採用は人
-- `display.<lang>`: 画面の訳(題、質問、選択肢)。モデルには送らない
-- `calibration:` は書かない。calibrate が書く
+- Type: `noul` (yes/no), `choice` (several options, each with an id and a description), `score` (levels, with levels in order from low to high)
+- `state.template`: how the inputs are laid out. `{{ name }}` is an input. Required inputs go in `required`
+- `state.context` (optional): a layout added only when unsure. It uses all of required and adds one or more inputs not in template (e.g. the previous message `{{ previous }}`). With context it has a separate hash and a separate line
+- `policy.send_to`: `local` / `hosted`. With `pii: true` the text never leaves the machine. Always write `pii` (there is no default)
+- `thresholds.act` / `ask`: the band boundaries. For `score`, `level` lets the band be decided on the probability of "k or higher"
+- `eval.labeled`: the file of seed truths. `eval.min_n`: the number of human truths needed to write a line (50 as a guide)
+- `variants:`: candidate ways of asking. `question` / `options` (id → reworded description) / `template` / `layout` (state-last | state-first | plain) / `steps` (turn a choice into a series of yes/no). tune measures them. You may write candidates, but a person adopts them
+- `display.<lang>`: translations for the page (title, question, options). Not sent to the model
+- Do not write `calibration:`. calibrate writes it
 
-ハッシュ(hash)は質問・選択肢・template・分解・配置から決まる。1 語変えると線は消え、`ask` に戻る。それが正しい。
+The hash is determined by the question, options, template, decomposition and layout. Change one word and the line disappears and it goes back to `ask`. That is correct.

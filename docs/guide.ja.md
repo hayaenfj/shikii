@@ -62,7 +62,7 @@ GitHub Releases の最新安定版から、利用中の OS・CPU 向けの本体
 
 Claude Code と Codex は、依頼の前と作業の後の hook(Claude Code はサブエージェントを起こす直前と始まる時にも。計 4 つ、Codex は 2 つ)で会話の記録・記憶の参照・既製の問いの判定を行う。依頼・返答・次の人の発言を読み、利用中のエージェントが同じ話題の知識へ統合する。検索用の短い要約と、背景・判断理由・未確定点を残す本文を分け、関連ページを結ぶ。`shikii wiki query lesson:<ページID>` で全文を読め、話題の検索では本文も対象になる。エージェントは、本人の訂正や決めたことのほか、自分で新しく作った・変えた決まり・テスト・手順(コマンドやスクリプト)も、頼まれなくてもそのターンのうちに wiki のやり方かルールの記事に書く(近い記事があれば足すか直す)。[エージェント向けの編集手順](../skills/shikii/references/wiki.md)を参照。
 
-同じプロジェクトの似た依頼へ最大 2 件、1800 バイト以内の短い引用を届け、同じ版は同じセッションへ一時間繰り返さない。経緯(`history`)の記事は自動では届けない(なぜそうなったかの話なので、探した時に読む)。Claude Code のサブエージェントにも同じ形で届ける。親が Agent ツールに渡した仕事の文を、ツールの直前(`PreToolUse` の Agent / Task だけ)で控え、サブエージェントが始まる時(`SubagentStart`)にその文で教訓を選ぶ。控えが無い時は、親の依頼では選ばず、場面が「いつも」のこのプロジェクトで決められたルールだけを届ける(親の依頼で選ぶと、子の仕事に関係ない教訓が届くため)。親の控えは、使った子への仕事の控えを外すほかは変えず、配送は別の ID で記録する。どちらも Codex には無い event。会話の整理に別のモデルは起こさない。判定用モデルが使えなくても、会話の記録と参照は働く。ツールを止める仕組みでも、実行許可を出す仕組みでもない(止めるのは次の「止める検査」と「作業の前と後の手順」だけで、どちらもターンの終わりに直させるだけ)。[hook の詳しい説明](../integrations/claude-code.md)。
+同じプロジェクトの似た依頼へ最大 2 件、1800 バイト以内の短い引用を届け、同じ版は同じセッションへ一時間繰り返さない。経緯(`history`)の記事は自動では届けない(なぜそうなったかの話なので、探した時に読む)。Claude Code のサブエージェントにも同じ形で届ける。親が Agent ツールに渡した仕事の文を、ツールの直前(`PreToolUse` の Agent / Task だけ)で控え、サブエージェントが始まる時(`SubagentStart`)にその文で教訓を選ぶ。控えが無い時は、親の依頼では選ばず、場面が「いつも」のこのプロジェクトで決められたルールだけを届ける(親の依頼で選ぶと、子の仕事に関係ない教訓が届くため)。親の控えは、使った子への仕事の控えを外すほかは変えず、配送は別の ID で記録する。どちらも Codex には無い event。会話の整理に別のモデルは起こさない。判定用モデルが使えなくても、会話の記録と参照は働く。ツールを止める仕組みでも、実行許可を出す仕組みでもない(止めるのは次の「止める検査」と「作業の前と後の手順」だけで、どちらもターンの終わりに直させるだけ)。[hook の詳しい説明](../integrations/claude-code.ja.md)。
 
 届いた教訓が行動を変えたかは、振り返りで観察する(helpful / unused / harmful / unknown)。訂正が届いた時は、それに沿ったか・再発したか(`correction_result`: followed / repeated / not_applicable / unknown)も残す。成功・追加依頼・沈黙だけで改善にしない。数は `shikii status` の `memory:` の行と画面に出る。
 
@@ -239,8 +239,8 @@ shikii up                         # llama-server を :8086 に、shikii-readout 
 | TypeSafe Jev | `--hosted https://api.typesafe.ai --model jev-latest` |
 | OpenRouter Decisions API | `--hosted https://openrouter.ai/api/alpha/decisions --model typesafe/jev-1.13` |
 | llama.cpp(ローカル) | `--local http://127.0.0.1:8080` |
-| **`shikii-readout`**(普通の GGUF。後ろは任意の llama-server) | `--local http://127.0.0.1:8090`([`integrations/readout.md`](../integrations/readout.md)) |
-| BonJev(同じ原理の外部実装。Bonsai 専用) | `--local http://127.0.0.1:8083`([`integrations/bonjev.md`](../integrations/bonjev.md)) |
+| **`shikii-readout`**(普通の GGUF。後ろは任意の llama-server) | `--local http://127.0.0.1:8090`([`integrations/readout.ja.md`](../integrations/readout.ja.md)) |
+| BonJev(同じ原理の外部実装。Bonsai 専用) | `--local http://127.0.0.1:8083`([`integrations/bonjev.ja.md`](../integrations/bonjev.ja.md)) |
 | 偽モデル | `--local http://127.0.0.1:8099`(`make fake`) |
 
 ### 普通の GGUF を本家 llama.cpp だけで決定モデルにする: `shikii-readout`
@@ -265,7 +265,7 @@ bin/shikii decide .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0
 - state は prompt の最後に置き、spec ごとの接頭辞(質問・選択肢)を先に 1 回流してチェックポイントを作る。再帰層を持つ Qwen3.5/3.8 系
   (Bonsai の土台)はこれが無いと `cache_prompt` が効かない
 
-詳しくは [`integrations/readout.md`](../integrations/readout.md)。
+詳しくは [`integrations/readout.ja.md`](../integrations/readout.ja.md)。
 
 ## 業務の判定を任せる
 

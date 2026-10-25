@@ -1,5 +1,5 @@
 <script>
-  // 画面の下の短い知らせ。出す側は lib/toast.svelte.js の toast() を呼ぶ
+  // A short notice at the bottom of the page. To show one, call toast() in lib/toast.svelte.js
   import { toastState } from '../lib/toast.svelte.js';
 </script>
 
