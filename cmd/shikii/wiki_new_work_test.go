@@ -16,7 +16,8 @@ func TestNewRulesTestsAndProceduresGoToTheWiki(t *testing.T) {
 	reflectText := reflectAsk("shikii")
 	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
 	wikiRef, _ := os.ReadFile("../../skills/shikii/references/wiki.md")
-	for name, text := range map[string]string{"作法の一言(habitsNotice)": habitsNotice, "AGENTS.md の節": agentsSection, "振り返りを頼む文": reflectText} {
+	// 着手前の整理の案内は依頼のたびに届く(作法の一言はセッションに 1 回だけで、作業規則の無いプロジェクトの Claude Code は作り終えた時に使わなかった。0.9.1 の実測)
+	for name, text := range map[string]string{"作法の一言(habitsNotice)": habitsNotice, "AGENTS.md の節": agentsSection, "振り返りを頼む文": reflectText, "着手前の整理の案内(毎回)": planningNotice("s", "t")} {
 		if !strings.Contains(text, ja) {
 			t.Errorf("%s に「%s」も wiki に書く決まりが無い", name, ja)
 		}

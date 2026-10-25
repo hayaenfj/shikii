@@ -91,7 +91,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: 着手前の判断用に会話を整理します。人に入力を頼まず、%s hook plan queryへ次のJSONを渡して今回と直近の会話を読み、関係する決まりや既存の判断は、話題の語をqueryに付けて探し(依頼の文の写しにしない)、返った教訓を根拠に使ったらevidenceのsourceをlesson:<id>にします。同じID・検索語とagreed・openを%s hook plan submitへ渡してください。各項目はsummaryとevidence:[{source,quote}]（原文から引用）、不明ならunknown:true。合意の根拠には人の発言が必要です。整理は仮説で、実行許可や人の正解にはしません。詳細は作法のreferences/planning.md。\n", command, command) + string(ids)
+	return fmt.Sprintf("shikii: 着手前の判断用に会話を整理します。人に入力を頼まず、%s hook plan queryへ次のJSONを渡して今回と直近の会話を読み、関係する決まりや既存の判断は、話題の語をqueryに付けて探し(依頼の文の写しにしない)、返った教訓を根拠に使ったらevidenceのsourceをlesson:<id>にします。同じID・検索語とagreed・openを%s hook plan submitへ渡してください。各項目はsummaryとevidence:[{source,quote}]（原文から引用）、不明ならunknown:true。合意の根拠には人の発言が必要です。整理は仮説で、実行許可や人の正解にはしません。作業の中で新しく作った・変えた決まり・テスト・手順(コマンドやスクリプト)は、頼まれなくても終える前に wiki のやり方(howto)か決まり(rule)の記事に書くか、近い記事に足すか直します。詳細は作法のreferences/planning.md。\n", command, command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
