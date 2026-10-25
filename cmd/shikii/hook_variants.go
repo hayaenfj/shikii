@@ -237,6 +237,9 @@ func wordingSummary(agent string) string {
 		case res.AutoAdopted && res.Adopted:
 			state = "adopted"
 			en = fmt.Sprintf("shikii: the wording of %s was changed to %q: the agent checked it asks the same thing, and it matched more of your answers. If the meaning changed, undo it on the page: %s", id, res.Winner, url)
+			if res.Current != nil && res.WinnerWording != nil { // what changed, so the person can decide without opening the page (audit 0.9.2, low 4)
+				en += fmt.Sprintf(" (current: %s / new: %s)", trim(res.Current.Question, wordingNoticeRunes), trim(res.WinnerWording.Question, wordingNoticeRunes))
+			}
 			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方を「%s」に変えました(AI が意味は同じと確かめ、あなたの正解 %d 件で今より当たりました)。今まで: %s → これから: %s。意味が違っていたら画面で元に戻せます: %s", id, res.Winner, res.Truths, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
 		case check.Verdict == "unsure" && res.Adoptable && !res.Adopted:
 			state = "unsure"
@@ -263,6 +266,9 @@ func wordingSummary(agent string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// wordingNoticeRunes is how much of each question the English notice shows (the whole question is on the page).
+const wordingNoticeRunes = 120
 
 // agentCheck is the agent's meaning check (the last one). personChecked reports whether the person checked on the page or in the terminal.
 func agentCheck(res *tuneResult) (meaningCheck, bool) {
