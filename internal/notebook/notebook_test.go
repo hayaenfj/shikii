@@ -439,3 +439,45 @@ func TestReviewOnlyDraftRejectsKindAndScene(t *testing.T) {
 		t.Fatalf("原資料だけなら通る: %v", err)
 	}
 }
+
+// 0.9.2(監査 0.9.1 test-speed の低-7): 記事の最終更新(知識の画面の「新」の印と並び)は、ファイルの時刻ではなく wiki の記録(log.md)の
+// 保存の時刻で決める。wiki を別の機械へ cp するとファイルの時刻は全部その時になり、全部の記事に「新」が付いていた。
+// 記録に無い記事(記録が消えた wiki)だけファイルの時刻で補う。
+func TestPageTimesUseLogNotFileTime(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	before := time.Now().UTC().Add(-time.Second)
+	res, err := b.Ingest(draft(id, "決まりの記事"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().UTC().Add(time.Second)
+	dir, err := b.directory(false, "pages")
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied := time.Date(2031, 1, 2, 3, 4, 5, 0, time.UTC) // cp した時刻
+	if err := os.Chtimes(filepath.Join(dir, res.Page.ID+".md"), copied, copied); err != nil {
+		t.Fatal(err)
+	}
+	// 記事を変えない操作(記事の見直し)の記録は最終更新に数えない
+	f, err := os.OpenFile(filepath.Join(dir, "log.md"), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(f, "- 2030-01-01T00:00:00Z | maintain %s@k\n", res.Page.ID)
+	f.Close()
+	times, err := b.PageTimes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at := times[res.Page.ID]; at.Before(before) || at.After(after) {
+		t.Fatalf("最終更新は保存の記録の時刻(%s〜%s): %s", before, after, at)
+	}
+	if err := os.Remove(filepath.Join(dir, "log.md")); err != nil {
+		t.Fatal(err)
+	}
+	if times, err := b.PageTimes(); err != nil || !times[res.Page.ID].Equal(copied) {
+		t.Fatalf("記録に無い記事はファイルの時刻で補う: %v %v", times, err)
+	}
+}

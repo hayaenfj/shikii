@@ -1235,7 +1235,9 @@ func (b Book) PageIssues() ([]Issue, error) {
 	return issues, err
 }
 
-// PageTimes は、生きている記事ごとの最終更新(記事のファイルの時刻。0.9.0 の知識の画面の並びと「最近覚えたこと」)。
+// PageTimes は、生きている記事ごとの最終更新(0.9.0 の知識の画面の並びと「最近覚えたこと」)。wiki の記録(log.md)の
+// 最後の保存(ingest。種類と場面を付けた時も含む)の時刻で決める。ファイルの時刻は wiki を別の機械へ cp すると全部その時になるので、
+// 記録に無い記事だけ補いに使う(0.9.2、監査 0.9.1 test-speed の低-7)。
 func (b Book) PageTimes() (map[string]time.Time, error) {
 	out := map[string]time.Time{}
 	dir, err := b.directory(false, "pages")
@@ -1256,6 +1258,27 @@ func (b Book) PageTimes() (map[string]time.Time, error) {
 		}
 		if info, err := e.Info(); err == nil {
 			out[id] = info.ModTime().UTC()
+		}
+	}
+	saved := map[string]time.Time{}
+	if f, err := os.OpenFile(filepath.Join(dir, "log.md"), os.O_RDONLY|syscall.O_NOFOLLOW, 0); err == nil {
+		data, _ := io.ReadAll(f)
+		f.Close()
+		for _, line := range strings.Split(string(data), "\n") {
+			at, key, ok := strings.Cut(strings.TrimPrefix(line, "- "), " | ")
+			page, ok2 := strings.CutPrefix(key, "ingest ")
+			when, err := time.Parse(time.RFC3339, at)
+			if !ok || !ok2 || err != nil {
+				continue
+			}
+			if id, _, _ := strings.Cut(page, "@"); when.After(saved[id]) {
+				saved[id] = when.UTC()
+			}
+		}
+	}
+	for id := range out {
+		if at, ok := saved[id]; ok {
+			out[id] = at
 		}
 	}
 	return out, nil
