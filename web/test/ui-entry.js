@@ -514,12 +514,16 @@ function checkPlanningContext(target) {
   const agreedShown = target.querySelector('[data-input=agreed] .message-body')?.textContent || '';
   const evidence = agreedShown.startsWith('CSVとして出力する範囲は合意済み') && agreedShown.includes('今回の人の発言: AIによる整理（実行許可や人の正解ではない）: と書いた') && target.textContent.includes(it.inputs.open) && !target.querySelector('img');
   unmount(app);
+  // 0.9.2: the preface is English from now on ("AI's organizing (…): "); records made before keep the Japanese one, and both are removed
+  const en = mount(ItemCard, { target, props: { sp, it: { ...it, trace_id: 'planning-en', inputs: { ...it.inputs, agreed: "AI's organizing (not permission to act, not the person's truth): The CSV range is agreed" } } } }); flushSync();
+  const englishRemoved = (target.querySelector('[data-input=agreed] .message-body')?.textContent || '') === 'The CSV range is agreed';
+  unmount(en);
   const legacy = mount(ItemCard, { target, props: { sp, it: { ...it, truth: 'no', truth_at: it.at, legacy_planning: true, record_question: '以前の質問' } } }); flushSync();
   const separate = target.textContent.includes('以前の質問') && target.textContent.includes('過去の形式') && !target.querySelector('.answer-choice') && !target.querySelector('button.weak.redo[title]');
   unmount(legacy);
   i18n.lang = lang;
-  const ok = named && evidence && separate;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (order of request, agreed, open=' + named + ', summary and grounds shown as text=' + evidence + ', old format kept distinct=' + separate + ')');
+  const ok = named && evidence && englishRemoved && separate;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (order of request, agreed, open=' + named + ', summary and grounds shown as text=' + evidence + ', English preface removed=' + englishRemoved + ', old format kept distinct=' + separate + ')');
   return ok;
 }
 

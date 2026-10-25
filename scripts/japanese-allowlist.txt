@@ -25,12 +25,11 @@
 15 cmd/shikii/hook_feedback_test.go
 4 cmd/shikii/hook_moved_test.go
 1 cmd/shikii/hook_outcome_test.go
-1 cmd/shikii/hook_planning.go
 2 cmd/shikii/hook_planning_context_test.go
 6 cmd/shikii/hook_planning_test.go
 61 cmd/shikii/hook_subagent_test.go
 24 cmd/shikii/hook_test.go
-3 cmd/shikii/hook_variants.go
+4 cmd/shikii/hook_variants.go
 11 cmd/shikii/init_test.go
 11 cmd/shikii/line_state.go
 8 cmd/shikii/line_state_test.go
@@ -58,7 +57,7 @@
 2 cmd/shikii/status_memory_test.go
 1 cmd/shikii/wiki_new_work_test.go
 4 cmd/shikii/wiki_test.go
-6 cmd/shikii/wording_check_test.go
+8 cmd/shikii/wording_check_test.go
 11 decisions/prompt-intent-v2.yaml
 7 decisions/prompt-intent.yaml
 7 decisions/prompt-kind.yaml
@@ -78,7 +77,7 @@
 4 integrations/claude-code/specs/wiki-conflict.yaml
 4 integrations/claude-code/specs/wiki-place.yaml
 3 internal/handoff/handoff_test.go
-5 internal/notebook/notebook.go
+3 internal/notebook/notebook.go
 18 internal/notebook/notebook_test.go
 8 internal/notebook/search.go
 72 internal/notebook/search_test.go
@@ -108,4 +107,3 @@
 3 wiki/runs/2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64.json
 1 wiki/specs/prompt-intent.md
 1 wiki/types/choice.md
-

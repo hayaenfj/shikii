@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	shikii "github.com/hayaenfj/shikii"
 )
@@ -428,7 +429,21 @@ func replaceFile(path, content string) error {
 }
 
 // copySkill puts the embedded skills/shikii back at dst (the old content is deleted so stale references do not mix in).
+// Two shikii --init at once (two projects, one HOME) rewrite the same folder, so the copy holds a lock next to it (audit 0.9.2 English, medium 6:
+// without it, a copy failed with "directory not empty" or left the skill without SKILL.md).
 func copySkill(dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(filepath.Join(filepath.Dir(dst), ".shikii-skill.lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}

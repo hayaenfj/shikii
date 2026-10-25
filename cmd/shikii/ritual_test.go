@@ -28,6 +28,10 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	if !strings.Contains(reason, "hook plan query") || !strings.Contains(reason, `"session_id":"planning"`) || !strings.Contains(reason, "rituals are not done") {
 		t.Fatalf("the reason says what to do (command and id): %s", reason)
 	}
+	// Claude Code mostly acts on the Stop block, not on the notices before the request (audit 0.9.2 English, medium 3), so the block also carries the rule to write procedures to the wiki
+	if !strings.Contains(reason, "rule, test or procedure") || !strings.Contains(reason, "howto") {
+		t.Fatalf("the block reminds the agent to write a rule, test or procedure it made to the wiki: %s", reason)
+	}
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 1 || recs[0].Pass || recs[0].Recheck {
 		t.Fatalf("the block is recorded: %+v", recs)
 	}

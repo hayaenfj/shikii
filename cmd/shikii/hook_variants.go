@@ -240,8 +240,12 @@ func wordingSummary(agent string) string {
 			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方を「%s」に変えました(AI が意味は同じと確かめ、あなたの正解 %d 件で今より当たりました)。今まで: %s → これから: %s。意味が違っていたら画面で元に戻せます: %s", id, res.Winner, res.Truths, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
 		case check.Verdict == "unsure" && res.Adoptable && !res.Adopted:
 			state = "unsure"
-			en = fmt.Sprintf("shikii: a new wording %q for %s matched more of your answers, but the agent could not decide whether it asks the same thing. Please check it on the page: %s", res.Winner, id, url)
+			en = fmt.Sprintf("shikii: a new wording %q for %s matched more of your answers, but the agent could not decide whether it asks the same thing (its view of the difference: %s). Please check it on the page: %s", res.Winner, id, check.Difference, url)
 			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方の候補「%s」は今より当たりましたが、意味が同じか AI が決めきれません(違いの見立て: %s)。今の聞き方: %s / 候補: %s。画面で意味が同じかを選んでください: %s", id, res.Winner, check.Difference, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
+		case check.Verdict == "same" && res.Adoptable && !res.Adopted && res.AdoptError != "":
+			state = "failed"
+			en = fmt.Sprintf("shikii: the agent found that the new wording %q for %s asks the same thing, but it could not be adopted (%s). The current wording stays; it is tried again as truths grow", res.Winner, id, res.AdoptError)
+			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方の候補「%s」は AI が意味は同じと確かめましたが、採用できませんでした(%s)。今の聞き方のままで、正解が増えた時にもう一度試します", id, res.Winner, res.AdoptError)
 		default:
 			continue
 		}
@@ -291,9 +295,12 @@ func wordingCheckContext(agent string) string {
 		if err != nil || !res.Adoptable || res.Adopted || res.Reverted || len(res.MeaningChecks) > 0 || res.SpecHash != sp.Hash() || res.WinnerWording == nil || res.Current == nil {
 			continue
 		}
+		// Asked at most once a day per run: if the agent's call failed (e.g. it ran the command in another folder), it is asked again on a later day
 		mark := filepath.Join(agent, "wording-check-asked-"+id)
 		if b, err := os.ReadFile(mark); err == nil && strings.TrimSpace(string(b)) == res.Run {
-			continue
+			if info, err := os.Stat(mark); err == nil && time.Since(info.ModTime()) < 24*time.Hour {
+				continue
+			}
 		}
 		if err := os.WriteFile(mark, []byte(res.Run+"\n"), 0o600); err != nil {
 			continue
@@ -400,13 +407,18 @@ func cmdHookVariantsCheck() error {
 	var buf bytes.Buffer
 	path, err := wordingAdopt(res, endpointFlags{local: hookLocalURL, model: res.Model}, root, "", &buf)
 	if err != nil {
+		res.AdoptError = strings.SplitN(err.Error(), "\n", 2)[0] // the person is told once at the end of the turn (wordingSummary)
 		saveTuneResult(res)
-		appendRunNote(res.RunPage, fmt.Sprintf("**Not adopted:** %s", strings.SplitN(err.Error(), "\n", 2)[0]))
+		appendRunNote(res.RunPage, fmt.Sprintf("**Not adopted:** %s", strings.TrimPrefix(res.AdoptError, "not adopted: ")))
 		return json.NewEncoder(stdout).Encode(map[string]any{"adopted": false, "verdict": req.Verdict, "reason": err.Error()})
 	}
 	res.AutoAdopted = true
 	saveTuneResult(res)
-	appendRunNote(res.RunPage, fmt.Sprintf("**Adopted** as %s after the agent checked the meaning; the person is told with translations and can undo it on the page.", path))
+	told := "the person is told"
+	if lang != "" {
+		told += " with translations"
+	}
+	appendRunNote(res.RunPage, fmt.Sprintf("**Adopted** as %s after the agent checked the meaning; %s and can undo it on the page.", path, told))
 	return json.NewEncoder(stdout).Encode(map[string]any{"adopted": true, "verdict": req.Verdict, "path": path, "next": "the person is told (it can be undone on the page)"})
 }
 

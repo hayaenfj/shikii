@@ -1,7 +1,6 @@
 package notebook
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -56,8 +55,7 @@ func (b Book) readRevision(query string) (Page, error) {
 	if err != nil || p.ID != parts[0] || p.Revision != parts[1] || revision(p) != p.Revision || len(b.sourceIssues(p)) > 0 {
 		return Page{}, errors.New("cannot check the page's past revision or its sources")
 	}
-	expected, err := b.pageBytes(p)
-	if err != nil || !bytes.Equal(data, expected) {
+	if !b.matchesPage(data, p) {
 		return Page{}, errors.New("the page's past revision has been modified")
 	}
 	return p, nil

@@ -46,7 +46,7 @@ func classifyContext(agent, scope string) (string, []string, error) {
 		batch = batch[:classifyBatch]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "shikii: pages without a kind or scene (made before the version bump): %d. After the current request, read the lessons of the next %d listed below and give each a kind and a scene: %s wiki classify <page ID> <kind> <scene> (on MCP, operation classify in shikii_wiki with id, kind and scene). Kinds are rule=a rule decided in this project / howto=how to do something / criteria=a criterion for judging / fact=an assumption or fact / history=how things came to be; the scene is \"when ...\" in the work's own words (up to 24 characters).", len(un), len(batch), hookExe())
+	fmt.Fprintf(&b, "shikii: pages without a kind or scene (made before the version bump): %d. After the current request, read the lessons of the next %d listed below and give each a kind and a scene: %s wiki classify <page ID> <kind> <scene> (on MCP, operation classify in shikii_wiki with id, kind and scene). Kinds are rule=a rule decided in this project / howto=how to do something / criteria=a criterion for judging / fact=an assumption or fact / history=how things came to be; the scene is \"when ...\" in the work's own words (up to 48 characters).", len(un), len(batch), hookExe())
 	if len(scenes) > 0 {
 		b.WriteString("Existing scenes: " + strings.Join(scenes, ", ") + ". If one is close, use the same wording.")
 	}

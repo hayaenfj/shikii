@@ -314,7 +314,7 @@ func TestNotebookConcurrentIngestKeepsEveryLessonAndLog(t *testing.T) {
 	}
 }
 
-// 0.9.0: a page with a lesson is not saved without a kind (one of 5) and a scene (a "when ..." phrase, up to 24 characters). Every path (CLI, MCP, HTTP, reflection)
+// 0.9.0: a page with a lesson is not saved without a kind (one of 5) and a scene (a "when ..." phrase, up to SceneMax characters; 24 before 0.9.2). Every path (CLI, MCP, HTTP, reflection)
 // goes through here, so every agent adds them. When editing an existing page they are inherited from it if omitted. A page from the previous version (no kind or scene)
 // cannot be saved when edited without them (so they fill in after the upgrade).
 func TestIngestRequiresKindAndScene(t *testing.T) {
@@ -325,10 +325,10 @@ func TestIngestRequiresKindAndScene(t *testing.T) {
 	if _, err := b.Ingest(d); err == nil || !strings.Contains(err.Error(), "kind") || !strings.Contains(err.Error(), "scene") {
 		t.Fatalf("refuses a lesson without kind and scene and says how to fix it: %v", err)
 	}
-	for _, bad := range []struct{ kind, scene string }{{"memo", "コミットする時"}, {"rule", ""}, {"rule", strings.Repeat("あ", 25)}, {"rule", "二行\n目"}} {
+	for _, bad := range []struct{ kind, scene string }{{"memo", "コミットする時"}, {"rule", ""}, {"rule", strings.Repeat("あ", SceneMax+1)}, {"rule", "二行\n目"}} {
 		d.Kind, d.Scene = bad.kind, bad.scene
 		if _, err := b.Ingest(d); err == nil {
-			t.Fatalf("kind is one of 5, scene is one line up to 24 characters: %+v", bad)
+			t.Fatalf("kind is one of 5, scene is one line up to SceneMax characters: %+v", bad)
 		}
 	}
 	d.Kind, d.Scene = "rule", "コミットする時"

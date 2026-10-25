@@ -54,15 +54,24 @@ type Page struct {
 // Kinds are the kinds of page. Fixed to shapes every kind of work has (do not add more): a rule decided in this project, a how-to, a criterion for judging, a premise or fact, and history.
 var Kinds = []string{"rule", "howto", "criteria", "fact", "history"}
 
-// sceneMax is the maximum number of characters in a scene.
-const sceneMax = 24
+// SceneMax is the maximum number of characters in a scene (48 from 0.9.2: 24 was sized for Japanese, and natural English scenes
+// such as "when checking invoice totals" were refused).
+const SceneMax = 48
 
 // errKindScene is the reply when kind or scene is missing or invalid (it says how to pick the values, so the agent can fix it as is).
-var errKindScene = errors.New("a lesson needs kind (one of rule|howto|criteria|fact|history: rule = a rule decided in this project, howto = how to do something, criteria = criteria for judging, fact = premises and facts, history = how things came to be) and scene (the situation in the project's own words, as a \"when ...\" phrase such as \"when committing\", one line, up to 24 characters); when updating an existing page they are inherited from that page if omitted")
+var errKindScene = errors.New("a lesson needs kind (one of rule|howto|criteria|fact|history: rule = a rule decided in this project, howto = how to do something, criteria = criteria for judging, fact = premises and facts, history = how things came to be) and scene (the situation in the project's own words, as a \"when ...\" phrase such as \"when committing\", one line, up to 48 characters); when updating an existing page they are inherited from that page if omitted")
 
-// validKindScene reports whether kind is one of Kinds and scene is one line, has no control characters and is at most sceneMax characters.
+// validKindScene reports whether kind is one of Kinds and scene is one line, has no control characters and is at most SceneMax characters.
+// kindSceneError is errKindScene, or a reply naming the length when only the scene is too long.
+func kindSceneError(kind, scene string) error {
+	if n := utf8.RuneCountInString(scene); slices.Contains(Kinds, kind) && n > SceneMax {
+		return fmt.Errorf("the scene is too long (%d characters; keep it to %d, a short \"when ...\" phrase)", n, SceneMax)
+	}
+	return errKindScene
+}
+
 func validKindScene(kind, scene string) bool {
-	if !slices.Contains(Kinds, kind) || scene == "" || utf8.RuneCountInString(scene) > sceneMax {
+	if !slices.Contains(Kinds, kind) || scene == "" || utf8.RuneCountInString(scene) > SceneMax {
 		return false
 	}
 	for _, r := range scene {
@@ -260,7 +269,21 @@ func lock(dir string) (func(), error) {
 	return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }, nil
 }
 
-func (b Book) pageBytes(p Page) ([]byte, error) {
+// pageLabels are the fixed words around a lesson's fields in its Markdown file. New pages are written with englishLabels (0.9.2);
+// pages written before 0.9.2 used legacyLabels, and they are still accepted as unchanged (matchesPage), so updating does not
+// turn every existing page into a changed page.
+type pageLabels struct{ correction, action, reason, related, applies, sources, note string }
+
+var englishLabels = pageLabels{"The person's correction: ", "Next action (hypothesis): ", "Reason for the change: ", "## Related", "Applies when: ", "## Sources",
+	"This lesson is a hypothesis with sources. The current request and the rules come first."}
+
+// legacyLabels are the Japanese words pages were written with before 0.9.2 (kept only to recognize those pages)
+var legacyLabels = pageLabels{"人の訂正の引用: ", "次に変える行動（仮説）: ", "変更理由: ", "## 関連する知識", "適用する場面: ", "## 出典",
+	"この教訓は出典付きの仮説です。今回の依頼と規則を優先します。"}
+
+func (b Book) pageBytes(p Page) ([]byte, error) { return b.renderPage(p, englishLabels) }
+
+func (b Book) renderPage(p Page, l pageLabels) ([]byte, error) {
 	front, err := yaml.Marshal(p)
 	if err != nil {
 		return nil, err
@@ -271,22 +294,32 @@ func (b Book) pageBytes(p Page) ([]byte, error) {
 	}
 	correction := ""
 	if p.Correction != nil {
-		correction = "\n\n人の訂正の引用: " + p.Correction.Quote + "\n\n次に変える行動（仮説）: " + p.Correction.Action
+		correction = "\n\n" + l.correction + p.Correction.Quote + "\n\n" + l.action + p.Correction.Action
 	}
 	article := ""
 	if p.ChangeReason != "" {
-		article = "\n\n変更理由: " + p.ChangeReason
+		article = "\n\n" + l.reason + p.ChangeReason
 	}
 	if p.Body != "" {
 		article += "\n\n" + p.Body
 	}
 	if len(p.Related) > 0 {
-		article += "\n\n## 関連する知識\n\n"
+		article += "\n\n" + l.related + "\n\n"
 		for _, id := range p.Related {
 			article += fmt.Sprintf("- [%s](%s.md)\n", id, id)
 		}
 	}
-	return []byte("---\n" + string(front) + "---\n\n# " + p.Title + "\n\n" + p.Lesson + "\n\n適用する場面: " + p.AppliesTo + article + correction + "\n\n## 出典\n\n" + links.String() + "\nこの教訓は出典付きの仮説です。今回の依頼と規則を優先します。\n"), nil
+	return []byte("---\n" + string(front) + "---\n\n# " + p.Title + "\n\n" + p.Lesson + "\n\n" + l.applies + p.AppliesTo + article + correction + "\n\n" + l.sources + "\n\n" + links.String() + "\n" + l.note + "\n"), nil
+}
+
+// matchesPage says whether data is exactly what shikii writes for p (with the current labels, or with the labels of before 0.9.2).
+func (b Book) matchesPage(data []byte, p Page) bool {
+	for _, l := range []pageLabels{englishLabels, legacyLabels} {
+		if expected, err := b.renderPage(p, l); err == nil && bytes.Equal(data, expected) {
+			return true
+		}
+	}
+	return false
 }
 
 func parsePage(data []byte) (Page, error) {
@@ -355,8 +388,7 @@ func (b Book) pages() ([]Page, []Issue, error) {
 			issues = append(issues, Issue{Kind: "changed-page", Page: id})
 			continue
 		}
-		expected, _ := b.pageBytes(p)
-		if !bytes.Equal(data, expected) {
+		if !b.matchesPage(data, p) {
 			issues = append(issues, Issue{Kind: "changed-page", Page: id})
 			continue
 		}
@@ -738,7 +770,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 			}
 		}
 		if !validKindScene(p.Kind, p.Scene) {
-			return result, errKindScene
+			return result, kindSceneError(p.Kind, p.Scene)
 		}
 		p.ChangeReason = d.ChangeReason
 		if old, ok := byID[id]; ok {
@@ -984,7 +1016,7 @@ func (b Book) Lint() (Report, error) {
 			report.Issues = append(report.Issues, Issue{Kind: "missing-revision", Page: p.ID})
 		} else if original, err := parsePage(data); err != nil || original.Revision != p.Revision || revision(original) != p.Revision {
 			report.Issues = append(report.Issues, Issue{Kind: "changed-revision", Page: p.ID})
-		} else if expected, _ := b.pageBytes(original); !bytes.Equal(data, expected) {
+		} else if !b.matchesPage(data, original) {
 			report.Issues = append(report.Issues, Issue{Kind: "changed-revision", Page: p.ID})
 		}
 		if p.Previous != "" {
@@ -993,7 +1025,7 @@ func (b Book) Lint() (Report, error) {
 				report.Issues = append(report.Issues, Issue{Kind: "missing-previous-revision", Page: p.ID})
 			} else if before, err := parsePage(previous); err != nil || before.ID != p.ID || before.Revision != p.Previous || revision(before) != p.Previous {
 				report.Issues = append(report.Issues, Issue{Kind: "changed-previous-revision", Page: p.ID})
-			} else if expected, _ := b.pageBytes(before); !bytes.Equal(previous, expected) {
+			} else if !b.matchesPage(previous, before) {
 				report.Issues = append(report.Issues, Issue{Kind: "changed-previous-revision", Page: p.ID})
 			}
 		}
@@ -1187,7 +1219,7 @@ func (b Book) Unclassified() ([]Page, error) {
 func (b Book) Classify(id, kind, scene string) (Result, error) {
 	kind, scene = strings.TrimSpace(kind), strings.TrimSpace(scene)
 	if !validKindScene(kind, scene) {
-		return Result{}, errKindScene
+		return Result{}, kindSceneError(kind, scene)
 	}
 	live, err := b.Live()
 	if err != nil {

@@ -91,7 +91,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: organize the conversation for the pre-start judgment. Do not ask the person for input. Pass the JSON below to %s hook plan query to read this turn and the recent conversation; look for related rules and existing decisions by putting topic words in query (not a copy of the request text), and when you use a returned lesson as grounds, set the evidence source to lesson:<id>. Pass the same IDs, search words, agreed and open to %s hook plan submit. Each item is summary and evidence:[{source,quote}] (quoted from the original text), or unknown:true if unknown. Grounds for an agreement need the person's words. The organizing is a hypothesis, never permission to act or the person's truth. When you create or change a rule, test or procedure, write it to the wiki before you finish even if nobody asked (add to or edit the closest page). Details are in the skill's references/planning.md.\n", command, command) + string(ids)
+	return fmt.Sprintf("shikii: organize the conversation for the pre-start judgment. Do not ask the person for input. Pass the JSON below to %s hook plan query to read this turn and the recent conversation; look for related rules and existing decisions by putting topic words in query (not a copy of the request text), and when you use a returned lesson as grounds, set the evidence source to lesson:<id>. Pass the same IDs, search words, agreed and open to %s hook plan submit. Each item is summary and evidence:[{source,quote}] (quoted from the original text), or unknown:true if unknown. Grounds for an agreement need the person's words. The organizing is a hypothesis, never permission to act or the person's truth. When you create or change a rule, test or procedure, write it to the wiki before you finish even if nobody asked (add to or edit the closest page). Details are in the skill's references/planning.md. "+planningShape+"\n", command, command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
@@ -250,7 +250,7 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 	if strings.TrimSpace(f.Summary) == "" || len(f.Summary) > 600 || len(f.Evidence) == 0 || len(f.Evidence) > 3 {
 		return "", errors.New("keep the organizing within 600 bytes, with 1 to 3 quoted grounds")
 	}
-	parts := []string{"AIによる整理（実行許可や人の正解ではない）: " + f.Summary}
+	parts := []string{"AI's organizing (not permission to act, not the person's truth): " + f.Summary} // web/src/components/ItemCard.svelte removes this preface (and the Japanese one of records made before 0.9.2)
 	human := false
 	for i, e := range f.Evidence {
 		text, ok := sources[e.Source]

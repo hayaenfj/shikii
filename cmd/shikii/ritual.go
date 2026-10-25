@@ -45,7 +45,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		pass := p.Result != nil
 		reason := ""
 		if !pass {
-			reason = fmt.Sprintf("The plan has not been sorted out (hook plan query → submit), yet %d files were changed and you are about to finish. Pass %s to %s hook plan query, read this and the recent conversations, submit agreed and open, then finish", len(changed), planJSON(in.SessionID, snapshot.TurnID), hookExe())
+			reason = planningBlockReason(in.SessionID, snapshot.TurnID, len(changed))
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualPlan, Pass: pass, Reason: reason, Recheck: recheck})
@@ -93,6 +93,8 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	}
 	var b strings.Builder
 	b.WriteString("shikii: rituals are not done. Do them before finishing (a built-in check; a second Stop is not blocked). In your final reply after doing them, briefly restate the result of the work the person asked for, not a report on the rituals.\n")
+	// Claude Code mostly acts on this block rather than on the notices before the request (audit 0.9.2 English, medium 3), so the rule rides along here too
+	b.WriteString("- If this turn created or changed a rule, test or procedure (a command or a script), also write it to the wiki as a howto or rule page (add to or edit the closest page) before finishing\n")
 	for _, f := range failed {
 		b.WriteString("- " + f + "\n")
 	}
@@ -159,4 +161,16 @@ func hookExe() string {
 func planJSON(session, turn string) string {
 	b, _ := json.Marshal(map[string]string{"session_id": session, "turn_id": turn})
 	return string(b)
+}
+
+// planningShape shows that agreed and open are objects (Claude first passed an array in every run of audit 0.9.2 English).
+const planningShape = `agreed and open are each one object, not an array: "agreed":{"summary":"...","evidence":[{"source":"current_user","quote":"..."}]}, "open":{"unknown":true}`
+
+// planningBlockReason is the line of the Stop block when the plan was not sorted out but files were changed.
+func planningBlockReason(sessionID, turnID string, changed int) string {
+	files := fmt.Sprintf("%d files were", changed)
+	if changed == 1 {
+		files = "1 file was"
+	}
+	return fmt.Sprintf("The plan has not been sorted out (hook plan query → submit), yet %s changed and you are about to finish. Pass %s to %s hook plan query, read this and the recent conversations, submit agreed and open, then finish. %s", files, planJSON(sessionID, turnID), hookExe(), planningShape)
 }

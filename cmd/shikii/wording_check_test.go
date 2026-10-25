@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/spec"
 )
@@ -267,5 +268,47 @@ func TestWordingCheckTranslatesIntoTheSetLanguage(t *testing.T) {
 	}
 	if s := wordingSummary(agent); !strings.Contains(s, "Lag alles im Rahmen?") || !strings.Contains(s, "Wurde etwas Ungefragtes geändert?") {
 		t.Fatalf("add the translation in the configured language to the notice: %q", s)
+	}
+}
+
+// Audit 0.9.2 (English), medium 5: the meaning check was asked only once. When the agent's call failed (it ran the command in the wrong folder),
+// nobody was asked again and the person heard nothing. A request with no check yet is asked again on a later day.
+func TestWordingCheckIsAskedAgainOnALaterDay(t *testing.T) {
+	agent, repo, res := wordingCheckFixture(t)
+	prompt := map[string]any{"session_id": "s1", "cwd": repo, "prompt": "README の誤字を直してください。"}
+	if ctx := feedbackContext(t, runHook(t, "user-prompt-submit", prompt)); !strings.Contains(ctx, "hook variants check") {
+		t.Fatalf("asked the first time: %q", ctx)
+	}
+	mark := filepath.Join(agent, "wording-check-asked-"+res.SpecID)
+	earlier := time.Now().Add(-26 * time.Hour) // asked on an earlier day, and still no check
+	if err := os.Chtimes(mark, earlier, earlier); err != nil {
+		t.Fatal(err)
+	}
+	prompt["session_id"] = "s1b"
+	if ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1c", "cwd": repo, "prompt": "Fix the typo in the guide."})); !strings.Contains(ctx, "hook variants check") {
+		t.Fatalf("an unchecked candidate is asked again on a later day: %q", ctx)
+	}
+	// asked again today: not a third time on the same day
+	prompt["session_id"], prompt["prompt"] = "s2", "CHANGELOG の誤字を直してください。"
+	if ctx := feedbackContext(t, runHook(t, "user-prompt-submit", prompt)); strings.Contains(ctx, "hook variants check") {
+		t.Fatalf("asked at most once a day: %q", ctx)
+	}
+}
+
+// Audit 0.9.2 (English), medium 5: when the agent said "same" but the new wording could not be adopted (calibration failed), the person is told once.
+func TestWordingSameButNotAdoptedIsToldToThePerson(t *testing.T) {
+	agent, _, res := wordingCheckFixture(t)
+	wordingAdopt = func(r *tuneResult, ef endpointFlags, storeDir, labeled string, reports ...io.Writer) (string, error) {
+		return "", fmt.Errorf("not adopted: the new wording could not be calibrated")
+	}
+	out, err := submitWordingCheck(t, checkBody(res, "same"))
+	if err != nil || out["adopted"] != false {
+		t.Fatalf("not adopted when calibration fails: %v %v", out, err)
+	}
+	if s := wordingSummary(agent); !strings.Contains(s, "could not be adopted") || !strings.Contains(s, "could not be calibrated") {
+		t.Fatalf("the person is told that the agreed wording could not be adopted, and why: %q", s)
+	}
+	if again := wordingSummary(agent); again != "" {
+		t.Fatalf("told once: %q", again)
 	}
 }

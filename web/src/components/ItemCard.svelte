@@ -26,10 +26,11 @@
     return { request: t('inputRequest'), agreed: t('inputAgreed'), open: t('inputOpen'), summary: t('inputSummary'), files: t('inputFiles'), previous: t('inputPrevious') }[key] || key;
   }
   // The preface at the start of the pre-work summary is part of the input passed to the model. On the page the heading says the same thing, so it is removed (only at the start)
-  const planningPrefix = 'AIによる整理（実行許可や人の正解ではない）: ';
+  // the preface Go puts in front of the agent's organizing (cmd/shikii/hook_planning.go): English from 0.9.2, Japanese in records made before
+  const planningPrefixes = ["AI's organizing (not permission to act, not the person's truth): ", 'AIによる整理（実行許可や人の正解ではない）: '];
   const shown = (k, v) => {
     const text = it.original_inputs?.[k] ?? v;
-    const s = sp.id === 'needs-plan' && (k === 'agreed' || k === 'open') && typeof text === 'string' && text.startsWith(planningPrefix) ? text.slice(planningPrefix.length) : text;
+    const s = sp.id === 'needs-plan' && (k === 'agreed' || k === 'open') && typeof text === 'string' ? planningPrefixes.reduce((rest, p) => rest.startsWith(p) ? rest.slice(p.length) : rest, text) : text;
     return plainText(s);
   };
   let inputs = $derived.by(() => {

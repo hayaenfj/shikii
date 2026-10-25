@@ -133,6 +133,7 @@ type tuneResult struct {
 	MeaningChecks []meaningCheck    `json:"meaning_checks,omitempty"`
 	AutoAdopted   bool              `json:"auto_adopted,omitempty"`
 	Reverted      bool              `json:"reverted,omitempty"`
+	AdoptError    string            `json:"adopt_error,omitempty"` // the agent said the meaning is the same, but adoption failed (e.g. calibration); told to the person once
 }
 
 type candidateResult struct {
