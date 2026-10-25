@@ -1,2 +1,2 @@
-# 圧縮した JS のテンプレート文字列では、行末の空白にも意味がある。
+# In template strings of minified JS, trailing whitespace is meaningful.
 web/dist/assets/*.js whitespace=-blank-at-eol

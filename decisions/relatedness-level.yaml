@@ -1,4 +1,4 @@
-# score 型の例。same-issue の はい/いいえ を 5 段の順序尺度にしたもの。期待値 Σ(level × p) がレベル間の値を取る。
+# An example of the score type: same-issue's yes/no turned into a 5-step ordinal scale. The expected value Σ(level × p) can fall between levels.
 id: relatedness-level
 version: 2
 type: score
@@ -22,16 +22,16 @@ state:
 
 policy:
   send_to: [local]
-  pii: true                   # 本文に個人情報が入り得る → 外の AI(hosted)には送らない。本文は手元の記録に残る
+  pii: true                   # the text may contain personal data → not sent to an outside AI (hosted). The text stays in the local records
 
 thresholds:
   act: 0.75
   ask: 0.50
-  level: 3    # 帯は P(level ≥ 3 = Directly connected)。最上位の確率ではない(隣接レベルに割れるため)
+  level: 3    # the band uses P(level ≥ 3 = Directly connected), not the top level's probability (it splits across neighboring levels)
 
 eval:
   min_n: 20
-# 画面の表示用の訳(モデルには送らない。較正の鍵にも入らない)
+# Translation shown on the page (not sent to the model, not part of the calibration key)
 display:
   ja:
     title: 関連の強さ(5 段階)

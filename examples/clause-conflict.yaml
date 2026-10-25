@@ -1,5 +1,5 @@
-# 例(法律): 2 つの契約条項が矛盾するか(はい/いいえ)。レビューの前さばきに使う。較正ブロックは無い状態から始める。
-# 注意: act は「矛盾ありとして人のレビュー待ち行列に入れる」で、契約内容を自動で変える操作ではない。
+# Example (legal): do two contract clauses conflict (yes/no)? Used to triage before review. Starts with no calibration block.
+# Note: act means "put it in the human review queue as a conflict"; it never changes the contract automatically.
 id: clause-conflict
 version: 1
 type: noul
@@ -17,12 +17,12 @@ state:
   required: [clause_a, clause_b]
 
 policy:
-  send_to: [local]            # 契約書は外に出さない
-  pii: true                   # 本文に個人情報が入り得る → 外の AI(hosted)には送らない。本文は手元の記録に残る
+  send_to: [local]            # contracts never leave this machine
+  pii: true                   # the text may contain personal data → not sent to an outside AI (hosted). The text stays in the local records
 
 thresholds:
-  act: 0.80                   # 矛盾ありとして弁護士の確認待ちに入れる
-  ask: 0.50                   # 「要確認」の印だけ付ける。それ未満は何もしない
+  act: 0.80                   # queue it for a lawyer's check as a conflict
+  ask: 0.50                   # only mark it "needs checking". Below this, do nothing
 
 eval:
   min_n: 40

@@ -1,24 +1,24 @@
-# 「語彙が似ているだけなら no」を質問文に書く（同一判定の noul）
+# Write "similar vocabulary alone is no" in the question (noul for sameness)
 
 status: tentative
 
-## いつ効くか
+## When it applies
 
-- 型: noul。2 つの記録が「同じもの」かを聞く時（重複の不具合報告、同じ案件の問い合わせ、同一の案件）
-- モデル: Kev-4B、OpenJev、Bonsai 系で確認
+- Type: noul. When asking whether two records are "the same thing" (duplicate bug reports, inquiries about the same case, the same matter)
+- Models: confirmed on Kev-4B, OpenJev and the Bonsai family
 
-## 書き方
+## How to write it
 
-「はい」の条件（同じ原因、一方が他方の続き）を書いた上で、**「いいえ」にすべき紛らわしい場合**を一文足す:
+After writing the conditions for "yes" (the same cause, one following up the other), add one sentence on **the confusing cases that should be "no"**:
 
 > Answer "no" if they merely concern the same screen, feature or technology.
 
-境界の例（同じ画面の別の不具合、同じ種類の別案件）を貯金に重み 0.5 の false として入れると、線がその側に引かれる。
+Putting borderline examples (a different bug on the same screen, a different case of the same kind) in the saved truths as false with weight 0.5 draws the line on that side.
 
-## 証拠
+## Evidence
 
-- same-issue / same-inquiry（各 32 組、境界 8 組）: 5 つの口 × 2 セットの 10 通り全部で正負が完全に分かれた（2026-10-17）。この一文が無い版との比較はまだ無いので tentative
+- same-issue / same-inquiry (32 pairs each, 8 borderline): positives and negatives separated perfectly in all 10 combinations of 5 endpoints × 2 sets (2026-10-17). There is no comparison yet with a version lacking this sentence, so it is tentative
 
-## 反証
+## Counter-evidence
 
-なし。ただし比較の run が無い
+None. But there is no comparison run

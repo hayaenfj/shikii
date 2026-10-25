@@ -1,10 +1,10 @@
-第三者のライセンス通知
+Third-party license notices
 
-shikiiの実行ファイルと同梱の画面には以下のコードが含まれます。
-これらは各著作権者の条件に従い、shikii本体のApache-2.0 OR MITの選択では変更されません。
+The shikii binaries and the bundled page include the code below.
+It is under each copyright holder's terms, which shikii's own choice of Apache-2.0 OR MIT does not change.
 
 ========================================================================
-Go標準ライブラリ（Go 1.27）
+Go standard library (Go 1.27)
 ========================================================================
 
 Copyright 2009 The Go Authors.
@@ -36,7 +36,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
-go-yaml v3.0.1（gopkg.in/yaml.v3）
+go-yaml v3.0.1 (gopkg.in/yaml.v3)
 ========================================================================
 
 This project is covered by two different licenses: MIT and Apache.
@@ -90,7 +90,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ========================================================================
-Svelte 5.57.2（同梱の画面）
+Svelte 5.57.2 (the bundled page)
 ========================================================================
 
 Copyright (c) 2016-2025 [Svelte Contributors](https://github.com/sveltejs/svelte/graphs/contributors)

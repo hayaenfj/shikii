@@ -1,4 +1,4 @@
-# 例(ビジネス): 問い合わせの種類(5 択)。受付の振り分けに使う。較正ブロックは無い状態から始める。
+# Example (business): the kind of inquiry (5 choices). Used to route incoming inquiries. Starts with no calibration block.
 id: inquiry-kind
 version: 1
 type: choice
@@ -25,12 +25,12 @@ state:
   required: [message]
 
 policy:
-  send_to: [local]            # 問い合わせ本文には個人情報が入り得る。手元の AI だけに送る
-  pii: true                   # 本文に個人情報が入り得る → 外の AI(hosted)には送らない。本文は手元の記録に残る
+  send_to: [local]            # inquiry text may contain personal data. Send it only to the local AI
+  pii: true                   # the text may contain personal data → not sent to an outside AI (hosted). The text stays in the local records
 
 thresholds:
-  act: 0.80                   # 自動で振り分ける。較正済みの時だけ
-  ask: 0.55                   # 担当者に候補を見せて選んでもらう。それ未満は「その他」の列に
+  act: 0.80                   # route automatically. Only when calibrated
+  ask: 0.55                   # show the candidates to a staff member to choose. Below this, into the "other" queue
 
 eval:
   min_n: 50

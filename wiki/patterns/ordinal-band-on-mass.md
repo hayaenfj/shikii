@@ -1,19 +1,19 @@
-# 順序尺度は P(level ≥ k) で帯を決める
+# For ordinal scales, set the band from P(level ≥ k)
 
 status: confirmed
 
-## いつ効くか
+## When it applies
 
-- 型: score。段階が 3 つ以上で、隣り合う段階に確率が割れる時（ほぼ常に）
-- モデル: 全部
+- Type: score. With 3 or more levels, when probability splits across neighboring levels (almost always)
+- Models: all
 
-## 書き方
+## How to write it
 
-spec に `thresholds.level: k` を書く。帯は最上位の段階の確率ではなく、k 以上の確率の和で決まる。正解率も「P(≥k) と正解 ≥ k」で測る。
+Write `thresholds.level: k` in the spec. The band is set by the summed probability of level k and above, not by the top level's probability. Accuracy is measured the same way: "P(≥k) against truth ≥ k".
 
-## 証拠
+## Evidence
 
-- relatedness-level、同一の不具合の組（Ternary-Bonsai-27B readout）: 最上位の確率 0.544（ask 止まり）、P(≥3) = 0.950（act）。無関係の組は 0.008
-- 旧題材でも同じ形（最上位 0.52 → P(≥3) 0.96、Kev-4B、2026-10-16）
+- relatedness-level, same-bug pairs (Ternary-Bonsai-27B readout): top level's probability 0.544 (stops at ask), P(≥3) = 0.950 (act). Unrelated pairs: 0.008
+- The same shape on the old material (top level 0.52 → P(≥3) 0.96, Kev-4B, 2026-10-16)
 
-[docs/guide.ja.md](https://github.com/hayaenfj/shikii/blob/main/docs/guide.ja.md) の「score の帯」
+"Bands for score" in [docs/guide.ja.md](https://github.com/hayaenfj/shikii/blob/main/docs/guide.ja.md)

@@ -14,20 +14,20 @@ import (
 	"time"
 )
 
-// fakeUpstream は llama-server のふり。/tokenize・/apply-template・/completion・/v1/models。
+// fakeUpstream pretends to be llama-server: /tokenize, /apply-template, /completion, /v1/models.
 type fakeUpstream struct {
 	mu            sync.Mutex
-	rejectKwargs  bool            // chat_template_kwargs を 400 で蹴る(本家の古い版の真似)
-	multiToken    map[string]bool // このラベルは 2 トークンだと答える
-	top           []tokenProb     // /completion が返す上位
-	lastTemplate  map[string]any  // 最後の /apply-template 本体
-	lastPrompt    string          // 最後の /completion の prompt
+	rejectKwargs  bool            // rejects chat_template_kwargs with 400 (mimics an old upstream version)
+	multiToken    map[string]bool // answers that this label is 2 tokens
+	top           []tokenProb     // top list returned by /completion
+	lastTemplate  map[string]any  // body of the last /apply-template
+	lastPrompt    string          // prompt of the last /completion
 	templateCalls int
-	completions   []fakeCompletion // /completion の履歴(warm-up を含む)
-	cacheN        int              // /completion が timings.cache_n として返す値
-	decision      bool             // 学習済みの決定モデルのふり(/v1/systemone に自分で答える。Kev など)
-	rejectProbe   int              // 0 以外なら、探り(state=probe)をこの status で弾く決定モデルのふり
-	systemOneHits int              // /v1/systemone が呼ばれた数
+	completions   []fakeCompletion // history of /completion (including warm-ups)
+	cacheN        int              // value /completion returns as timings.cache_n
+	decision      bool             // pretends to be a trained decision model (answers /v1/systemone itself, like Kev)
+	rejectProbe   int              // if non-zero, pretends to be a decision model that rejects the probe (state=probe) with this status
+	systemOneHits int              // number of times /v1/systemone was called
 }
 
 type fakeCompletion struct {
@@ -45,7 +45,7 @@ func (f *fakeUpstream) handler() http.Handler {
 		f.systemOneHits++
 		decision := f.decision
 		f.mu.Unlock()
-		if !decision { // 本家 llama.cpp は普通の GGUF だと 501 を返す
+		if !decision { // upstream llama.cpp returns 501 for an ordinary GGUF
 			http.Error(w, `{"error":"not a decision model"}`, 501)
 			return
 		}
@@ -70,7 +70,7 @@ func (f *fakeUpstream) handler() http.Handler {
 		f.mu.Lock()
 		multi := f.multiToken[in.Content]
 		f.mu.Unlock()
-		if in.WithPieces { // 最初のトークンは先頭 2 文字(短ければ全部)という偽のトークナイザ
+		if in.WithPieces { // a fake tokenizer whose first token is the first 2 characters (or all of it if shorter)
 			piece := in.Content
 			if len(piece) > 2 {
 				piece = piece[:2]
@@ -152,11 +152,11 @@ func ask(t *testing.T, s *server, body string) (int, map[string]any) {
 	return rec.Code, out
 }
 
-// 選択肢は JSON の並びのまま A, B, C を割り当てる。Go の map に入れて鍵がソートされると位置が変わってしまう。
+// Options get A, B, C in their JSON order. Putting them in a Go map would sort the keys and shift the positions.
 func TestChoiceKeepsCriteriaOrderAndMapsLetters(t *testing.T) {
 	f := &fakeUpstream{top: []tokenProb{{"B", 0.7}, {"A", 0.2}, {"C", 0.05}, {"The", 0.05}}}
 	s, _ := newTestServer(t, f)
-	// 鍵はアルファベット順でない: zeta, alpha, mid
+	// the keys are not in alphabetical order: zeta, alpha, mid
 	code, out := ask(t, s, `{"state":"fix the typo","questions":{"q":{"type":"choice","instructions":"what?","criteria":{"zeta":"Z desc","alpha":"A desc","mid":"M desc"}}}}`)
 	if code != 200 {
 		t.Fatalf("code %d: %v", code, out)
@@ -169,7 +169,7 @@ func TestChoiceKeepsCriteriaOrderAndMapsLetters(t *testing.T) {
 		t.Fatalf("B=0.7 must map to the second option (alpha), got %v", ans["choice"])
 	}
 	probs := ans["probabilities"].(map[string]any)
-	// 正規化はラベルの確率だけで行う: 0.2/0.95, 0.7/0.95, 0.05/0.95
+	// normalization uses only the labels' probabilities: 0.2/0.95, 0.7/0.95, 0.05/0.95
 	if math.Abs(probs["alpha"].(float64)-0.7/0.95) > 1e-9 || math.Abs(probs["zeta"].(float64)-0.2/0.95) > 1e-9 {
 		t.Fatalf("probabilities must be renormalised over labels only: %v", probs)
 	}
@@ -178,7 +178,7 @@ func TestChoiceKeepsCriteriaOrderAndMapsLetters(t *testing.T) {
 	}
 }
 
-// 上位に入らなかったラベルは床の確率を得て、合計は 1 のまま。0 にすると較正の log が壊れる。
+// A label that missed the top list gets the floor probability, and the total stays 1. With 0, calibration's log would break.
 func TestMissingLabelGetsFloorAndSumIsOne(t *testing.T) {
 	probs, missing := readProbs([]tokenProb{{"A", 0.9}, {"xyz", 0.1}}, 3)
 	if missing != 2 {
@@ -199,7 +199,7 @@ func TestMissingLabelGetsFloorAndSumIsOne(t *testing.T) {
 	}
 }
 
-// noul は P(yes)。yes が先頭(A)。
+// noul is P(yes). yes comes first (A).
 func TestNoulReturnsProbabilityOfYes(t *testing.T) {
 	f := &fakeUpstream{top: []tokenProb{{"B", 0.75}, {"A", 0.25}}}
 	s, _ := newTestServer(t, f)
@@ -214,14 +214,14 @@ func TestNoulReturnsProbabilityOfYes(t *testing.T) {
 	if !strings.Contains(f.lastPrompt, "A. yes\nB. no") {
 		t.Fatalf("noul must present yes then no:\n%s", f.lastPrompt)
 	}
-	// criteria に true/false の説明があれば使う。他のキーは 422
+	// use true/false descriptions in criteria if present. Other keys get 422
 	code, _ = ask(t, s, `{"state":"x","questions":{"same":{"type":"noul","instructions":"q","criteria":{"maybe":"?"}}}}`)
 	if code != 422 {
 		t.Fatalf("unknown noul criteria key must be 422, got %d", code)
 	}
 }
 
-// score は llama.cpp の決定モデルと同じ形: probabilities は "0".."n-1"、legend、score は期待値。
+// score has the same shape as llama.cpp's decision models: probabilities are "0".."n-1", plus legend, and score is the expected value.
 func TestScoreShapeMatchesDecisionModels(t *testing.T) {
 	f := &fakeUpstream{top: []tokenProb{{"C", 0.6}, {"B", 0.3}, {"A", 0.1}}}
 	s, _ := newTestServer(t, f)
@@ -242,7 +242,7 @@ func TestScoreShapeMatchesDecisionModels(t *testing.T) {
 	}
 }
 
-// enable_thinking=false を送る。蹴られる upstream には送り直し、以後は付けない。
+// Send enable_thinking=false. For an upstream that rejects it, resend without it and stop sending it.
 func TestThinkingKwargWithFallback(t *testing.T) {
 	f := &fakeUpstream{top: []tokenProb{{"A", 1}}}
 	s, _ := newTestServer(t, f)
@@ -269,7 +269,7 @@ func TestThinkingKwargWithFallback(t *testing.T) {
 	}
 }
 
-// 起動時のラベル検査: 1 トークンでないラベルがあれば起動しない。
+// Label check at startup: refuse to start if any label is not a single token.
 func TestLabelCheckRejectsMultiTokenLabels(t *testing.T) {
 	ok := &fakeUpstream{}
 	s, _ := newTestServer(t, ok)
@@ -284,7 +284,7 @@ func TestLabelCheckRejectsMultiTokenLabels(t *testing.T) {
 	}
 }
 
-// 要求の検証: 型・instructions・選択肢の数。
+// Request validation: type, instructions, number of options.
 func TestRequestValidation(t *testing.T) {
 	f := &fakeUpstream{top: []tokenProb{{"A", 1}}}
 	s, _ := newTestServer(t, f)
@@ -300,7 +300,7 @@ func TestRequestValidation(t *testing.T) {
 			t.Errorf("%s: want 422, got %d", name, code)
 		}
 	}
-	// 27 択は多すぎる(ラベルは 26 文字)
+	// 27 choices are too many (there are 26 labels)
 	var crit strings.Builder
 	crit.WriteByte('{')
 	for i := 0; i < 27; i++ {
@@ -313,15 +313,15 @@ func TestRequestValidation(t *testing.T) {
 	if code, _ := ask(t, s, `{"state":"x","questions":{"q":{"type":"choice","instructions":"q","criteria":`+crit.String()+`}}}`); code != 422 {
 		t.Errorf("27 options: want 422, got %d", code)
 	}
-	// object の state は整形して入れる
+	// an object state is inserted formatted
 	code, _ := ask(t, s, `{"state":{"b":1,"a":"x"},"questions":{"q":{"type":"choice","instructions":"q","criteria":{"a":"","b":""}}}}`)
 	if code != 200 || !strings.Contains(f.lastPrompt, "<state>\n{\n  \"b\": 1,\n  \"a\": \"x\"\n}\n</state>") {
 		t.Fatalf("object state must be pretty-printed in request key order:\n%s", f.lastPrompt)
 	}
 }
 
-// 既定の配置は state を最後に置く(system・質問・選択肢が共通の接頭辞になり prefix cache が効く)。
-// 配置は応答の model に付く: 並びが変われば確率の出方が変わるので、較正の鍵も変わるべき。
+// The default layout puts the state last (the system message, question and options form a shared prefix, so the prefix cache helps).
+// The layout is added to the response's model: a different order changes how probabilities come out, so the calibration key should change too.
 func TestStateLastLayoutAndModelSuffix(t *testing.T) {
 	f := &fakeUpstream{top: []tokenProb{{"A", 1}}}
 	s, _ := newTestServer(t, f)
@@ -352,8 +352,8 @@ func TestStateLastLayoutAndModelSuffix(t *testing.T) {
 	}
 }
 
-// 接頭辞の warm-up: 新しい接頭辞では state の手前までを n_predict=0 で先に流す。同じ接頭辞の 2 問目では流さない。
-// 応答の cache_n が接頭辞に届かなければ、次の問いでまた流す(チェックポイントが消えた時)。
+// Prefix warm-up: for a new prefix, send everything up to the state first with n_predict=0. Not for the second question with the same prefix.
+// If the response's cache_n falls short of the prefix, send it again on the next question (when the checkpoint is gone).
 func TestPrefixWarmUpOncePerPrefixAndAfterCacheMiss(t *testing.T) {
 	f := &fakeUpstream{top: []tokenProb{{"A", 1}}, cacheN: 100}
 	s, _ := newTestServer(t, f)
@@ -370,12 +370,12 @@ func TestPrefixWarmUpOncePerPrefixAndAfterCacheMiss(t *testing.T) {
 	if len(f.completions) != 3 {
 		t.Fatalf("same prefix must not be warmed again, got %d completions", len(f.completions))
 	}
-	// 別の spec(別の選択肢)なら接頭辞が変わるので warm-up
+	// another spec (other options) changes the prefix, so warm up
 	ask(t, s, `{"state":"x","questions":{"q":{"type":"choice","instructions":"other?","criteria":{"c":"","d":""}}}}`)
 	if len(f.completions) != 5 || f.completions[3].NPredict != 0 {
 		t.Fatalf("a new prefix must be warmed, got %+v", f.completions[3:])
 	}
-	// cache_n が落ちた(チェックポイント消失)→ 次は warm-up し直す
+	// cache_n dropped (checkpoint lost) → warm up again next time
 	f.mu.Lock()
 	f.cacheN = 3
 	f.mu.Unlock()
@@ -385,7 +385,7 @@ func TestPrefixWarmUpOncePerPrefixAndAfterCacheMiss(t *testing.T) {
 	if len(f.completions) != n+2 || f.completions[n].NPredict != 0 {
 		t.Fatalf("after a cache miss the prefix must be warmed again, got %+v", f.completions[n:])
 	}
-	// state-first 配置では warm-up しない(接頭辞に state が含まれる)
+	// no warm-up in the state-first layout (the prefix contains the state)
 	f2 := &fakeUpstream{top: []tokenProb{{"A", 1}}}
 	s2, _ := newTestServer(t, f2)
 	s2.cfg.StateFirst = true
@@ -395,10 +395,10 @@ func TestPrefixWarmUpOncePerPrefixAndAfterCacheMiss(t *testing.T) {
 	}
 }
 
-// 配置(layout)は要求ごとに選べる。plain は system 無し・選択肢を "- id: 説明"・入力を Input: の後ろに置き、
-// 文字(A, B, …)ではなく選択肢 id の最初のトークンの確率を読む。応答の model には配置が付く(較正の鍵が分かれる)。
+// The layout can be chosen per request. plain has no system message, puts options as "- id: description" and the input after Input:,
+// and reads the probability of the option id's first token instead of a letter (A, B, …). The layout is added to the response's model (calibration keys stay separate).
 func TestPlainLayoutReadsOptionIdsAndNamesTheLayout(t *testing.T) {
-	f := &fakeUpstream{top: []tokenProb{{"al", 0.7}, {"ze", 0.2}, {"mi", 0.05}, {"The", 0.05}}} // 偽トークナイザ: 最初のトークンは先頭 2 文字
+	f := &fakeUpstream{top: []tokenProb{{"al", 0.7}, {"ze", 0.2}, {"mi", 0.05}, {"The", 0.05}}} // fake tokenizer: the first token is the first 2 characters
 	s, _ := newTestServer(t, f)
 	code, out := ask(t, s, `{"state":"fix the typo","layout":"plain","questions":{"q":{"type":"choice","instructions":"what?","criteria":{"zeta":"Z desc","alpha":"A desc","mid":"M desc"}}}}`)
 	if code != 200 {
@@ -420,12 +420,12 @@ func TestPlainLayoutReadsOptionIdsAndNamesTheLayout(t *testing.T) {
 	if out["model"] != "fake-gguf+plain" {
 		t.Fatalf("the layout must be in the model name so calibration keys differ, got %v", out["model"])
 	}
-	// 既定の配置の名前は今までどおり
+	// the default layout keeps its name as before
 	code, out = ask(t, s, `{"state":"x","questions":{"q":{"type":"choice","instructions":"what?","criteria":{"a":"A","b":"B"}}}}`)
 	if code != 200 || out["model"] != "fake-gguf" {
 		t.Fatalf("default layout keeps the configured name: %d %v", code, out["model"])
 	}
-	// 知らない配置は 422。最初のトークンが重なる id も 422(読み分けられない)
+	// an unknown layout gets 422. So do ids sharing a first token (they cannot be told apart)
 	if code, _ := ask(t, s, `{"state":"x","layout":"sideways","questions":{"q":{"type":"choice","instructions":"what?","criteria":{"a":"A","b":"B"}}}}`); code != 422 {
 		t.Fatalf("unknown layout must be 422, got %d", code)
 	}
@@ -434,14 +434,14 @@ func TestPlainLayoutReadsOptionIdsAndNamesTheLayout(t *testing.T) {
 	}
 }
 
-// readProbs は上位トークンの確率からラベルの確率を拾い、正規化する。
-// 上位に入らなかったラベルには probFloor を与える(missing に数える)。
+// readProbs picks the labels' probabilities from the top tokens and normalizes them.
+// A label that missed the top list gets probFloor (counted in missing).
 func readProbs(top []tokenProb, n int) (probs []float64, missing int) {
 	return readProbsFor(top, labels[:n])
 }
 
-// 後ろが学習済みの決定モデル(/v1/systemone に自分で答える)なら、readout は読み出さずにそのまま通す。
-// これで shikii は常に readout の口(8080)を見ればよく、モデルが Kev でも普通の GGUF でも接続先は変わらない。
+// If the upstream is a trained decision model (answers /v1/systemone itself), readout passes requests through with no readout.
+// So shikii can always talk to readout's endpoint (8080), and the endpoint does not change whether the model is Kev or an ordinary GGUF.
 func TestPassesThroughToADecisionModelUpstream(t *testing.T) {
 	f := &fakeUpstream{decision: true, top: []tokenProb{{Token: "A", Prob: 0.9}, {Token: "B", Prob: 0.1}}}
 	s, _ := newTestServer(t, f)
@@ -458,7 +458,7 @@ func TestPassesThroughToADecisionModelUpstream(t *testing.T) {
 	f.mu.Lock()
 	hits, completions := f.systemOneHits, len(f.completions)
 	f.mu.Unlock()
-	if hits != 2 || completions != 0 { // 1 回は起動時の探り、1 回は本番。文字の読み出しはしない
+	if hits != 2 || completions != 0 { // once for the startup probe, once for the real request. No letter readout
 		t.Fatalf("pass-through must not read letters: systemone=%d completions=%d", hits, completions)
 	}
 
@@ -467,13 +467,13 @@ func TestPassesThroughToADecisionModelUpstream(t *testing.T) {
 	if err := s2.detectUpstream(context.Background()); err != nil || s2.passThrough {
 		t.Fatalf("a 501 upstream is a plain GGUF and is read out: err=%v passThrough=%v", err, s2.passThrough)
 	}
-	// 探りを 422 で弾く決定モデル(要求の形は読めている)も素通しにする(監査 2026-10-23: 以前は起動に失敗した)
+	// a decision model that rejects the probe with 422 (it did read the request shape) is passed through too (audit 2026-10-23: it used to fail at startup)
 	strict := &fakeUpstream{decision: true, rejectProbe: 422, top: []tokenProb{{Token: "A", Prob: 0.9}}}
 	s3, _ := newTestServer(t, strict)
 	if err := s3.detectUpstream(context.Background()); err != nil || !s3.passThrough {
 		t.Fatalf("a decision model that rejects the probe with 4xx must still be passed through: err=%v passThrough=%v", err, s3.passThrough)
 	}
-	// 401(認証)や 405 は決定モデルの印ではないので、黙って素通しにせず起動を止める(監査 R2)
+	// 401 (auth) or 405 are not signs of a decision model, so stop starting up instead of silently passing through (audit R2)
 	for _, code := range []int{401, 403, 405, 429} {
 		locked := &fakeUpstream{decision: true, rejectProbe: code, top: []tokenProb{{Token: "A", Prob: 0.9}}}
 		s4, _ := newTestServer(t, locked)

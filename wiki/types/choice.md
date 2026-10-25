@@ -1,18 +1,18 @@
-# choice（選択肢から 1 つ選ぶ）の聞き方
+# How to ask a choice (pick one option)
 
-## 基本
+## Basics
 
-- 選択肢には **id と説明**の両方を付ける。id だけだとモデルは語感で選ぶ（llama.cpp のブログも Julia-1 で同じ報告）
-- 説明は「何が入るか」と「何が入らないか」を両方書く。境界が曖昧な選択肢（other、その他、不明）ほど「入らないもの」を明示する → [other-is-not-a-request](../patterns/other-is-not-a-request.md)
-- 短い入力（「直して」「why?」）も依頼として扱う、のように**短い入力の扱いを質問文に書く**。書かないと短い入力が other に逃げる
-- 選択肢の順序による偏りは `shikii bias` で測ってから直す。学習済みの決定モデル（Kev-4B）では無視できた（100 回で反転 0）
+- Give every option **both an id and a description**. With an id alone, the model picks by how the word sounds (the llama.cpp blog reported the same with Julia-1)
+- Describe both "what belongs" and "what does not belong". The vaguer an option's boundary (other, misc, unknown), the more you should spell out what does not belong → [other-is-not-a-request](../patterns/other-is-not-a-request.md)
+- **State how short inputs are handled in the question**, for example that short inputs ("直して", "why?") still count as requests. Otherwise short inputs drift to other
+- Measure bias from option order with `shikii bias` before fixing it. For a trained decision model (Kev-4B) it was negligible (0 flips in 100 runs)
 
-## 誤りの読み方
+## Reading the errors
 
-- 混同表で誤りが**1 つの選択肢に集まっている**なら、較正ではなく文言の問題。その選択肢の説明を締める
-- 誤りが散っているなら、質問が難しいか、選択肢の切り方が悪い。分解を試す: spec の `steps:` に はい/いいえ の列を書く（各選択肢はちょうど 1 つの葉。途中の段は片方で確定、最後の段は両方で確定）。全段を 1 回で聞き、枝の確率の積が元の選択肢の分布になる。`tune` の候補（`variants[].steps`）としても書けるし、提案役にも作らせられる
+- If the confusion table shows errors **piling up on one option**, it is a wording problem, not a calibration one. Tighten that option's description
+- If the errors are spread out, the question is hard or the options are cut badly. Try decomposition: write a chain of yes/no questions in the spec's `steps:` (each option is exactly one leaf; middle steps settle one side, the last step settles both). All steps are asked in one go, and the product of the branch probabilities becomes the distribution over the original options. It can also be written as a `tune` candidate (`variants[].steps`), and the proposer can be asked to make one
 
-## 証拠
+## Evidence
 
-- [prompt-intent の v1 → v2](https://github.com/hayaenfj/shikii/blob/main/wiki/specs/prompt-intent.md): 説明を具体化して other を限定し、top-1 0.682 → 0.903（Kev-4B、62 件）
-- 分解は万能ではない: 多択が上手なモデルには要らない。Ternary-Bonsai-27B（readout）で prompt-intent を 4 段の はい/いいえ に割ると top-1 0.790（多択は 0.968）。1 段目を否定の列挙で書いた版は 0.306 → [noul-define-yes-before-contrast](../patterns/noul-define-yes-before-contrast.md)。分解が効くのは多択で崩れるモデル（小さいモデル、選択肢が多い時）と見込むが、まだ測っていない（[run](https://github.com/hayaenfj/shikii/blob/main/wiki/runs/2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64-2.md)）
+- [prompt-intent v1 → v2](https://github.com/hayaenfj/shikii/blob/main/wiki/specs/prompt-intent.md): making the descriptions concrete and limiting other took top-1 from 0.682 to 0.903 (Kev-4B, 62 items)
+- Decomposition is not a cure-all: a model that is good at multiple choice does not need it. Splitting prompt-intent into 4 yes/no steps on Ternary-Bonsai-27B (readout) gave top-1 0.790 (multiple choice: 0.968). A version whose first step was written as a list of negatives gave 0.306 → [noul-define-yes-before-contrast](../patterns/noul-define-yes-before-contrast.md). We expect decomposition to help models that break down on multiple choice (small models, many options), but this is not measured yet ([run](https://github.com/hayaenfj/shikii/blob/main/wiki/runs/2026-10-18-prompt-intent-ternary-bonsai-27b-q2g64-2.md))

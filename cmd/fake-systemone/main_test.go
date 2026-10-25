@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 偽モデルの契約: 同じ入力には同じ答え、語が重なる選択肢が上に来る、分布は正規化されている。
+// The fake model's contract: the same input gets the same answer, options with overlapping words rank higher, and the distribution is normalized.
 func TestFakeIsDeterministicAndKeywordDriven(t *testing.T) {
 	crit, _ := json.Marshal(map[string]string{
 		"change_request": "Change something - edit, fix, add, remove. Includes \"fix the typo\".",
@@ -36,7 +36,7 @@ func TestFakeIsDeterministicAndKeywordDriven(t *testing.T) {
 	if math.Abs(sum-1) > 1e-9 {
 		t.Fatalf("probabilities must sum to 1, got %f", sum)
 	}
-	// 低い temperature は同じ順位でより端に寄る(較正デモ用)
+	// a lower temperature keeps the same ranking but moves closer to the extremes (for the calibration demo)
 	c, _ := answer("Fix the typo in README.md", q, 0.35)
 	if c["probabilities"].(map[string]float64)["change_request"] <= a1["probabilities"].(map[string]float64)["change_request"] {
 		t.Fatalf("lower temperature must sharpen the distribution: %v vs %v", c, a1)

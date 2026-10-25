@@ -1,15 +1,15 @@
-# same-issue（不具合報告の重複判定、はい/いいえ）
+# same-issue (duplicate detection for bug reports, yes/no)
 
 ## Rules
-<!-- 人が書く -->
-- 「同じ画面・機能・技術というだけでは no」の一文は残す
-- 境界の例（同じ画面の別の不具合）は false・重み 0.5 のまま。自動で「同じ」と扱ってはいけない
+<!-- written by people -->
+- Keep the sentence saying "only the same screen, feature or technology is no"
+- Borderline examples (a different bug on the same screen) stay false with weight 0.5. They must not be treated as "the same" automatically
 
-## 文言の履歴
+## Wording history
 
-- v1（`decisions/same-issue.yaml`、2026-10-17）: 5 つの口全部で正負が完全に分かれた。Brier は OpenJev 0.007、Kev-4B 0.038 → platt 0.035、Ternary-Bonsai-27B 0.048 → platt 0.024
+- v1 (`decisions/same-issue.yaml`, 2026-10-17): positives and negatives separated perfectly on all 5 endpoints. Brier: OpenJev 0.007, Kev-4B 0.038 → platt 0.035, Ternary-Bonsai-27B 0.048 → platt 0.024
 
-使っているパターン: [same-vocabulary-is-no](../patterns/same-vocabulary-is-no.md)
+Patterns in use: [same-vocabulary-is-no](../patterns/same-vocabulary-is-no.md)
 
 ## Runs
 - [2026-10-18 qwen3-4b-q8](../runs/2026-10-18-same-issue-qwen3-4b-q8.md) — kept current (nothing beats it; ties keep it). Lesson: none of 1 candidates beat the current wording (top-1 0.911) on 32 truths

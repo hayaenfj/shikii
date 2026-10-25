@@ -1,6 +1,6 @@
-/* shikii の画面の見た目: Tailwind CSS v4。
-   色・影・字は token(@theme)、部品の見た目は各 .svelte の class(utility)。
-   会話を読む領域と判断する領域を分け、明暗の両方で同じ階層を保つ(色は :root の変数を prefers-color-scheme で切り替える)。 */
+/* Look of the shikii page: Tailwind CSS v4.
+   Colors, shadows and type are tokens (@theme); each part's look is the utility classes in its .svelte file.
+   The area for reading the conversation is kept apart from the area for deciding, with the same hierarchy in light and dark (colors switch the :root variables by prefers-color-scheme). */
 @import "tailwindcss" source(none);
 @source "../src";
 @source "../index.html";
@@ -8,7 +8,7 @@
 :root { color-scheme:light dark; --fg:#23342d; --bg:#f3f5f1; --surface:#fff; --surface2:#f7f9f5; --muted:#63756b; --line:#dde6dd; --accent:#247358; --accentbg:#eaf5ee; --amber:#926122; --amberbg:#fbf2e3; --request:#926122; --requestbg:#fbf8f1; --shadow:0 8px 32px #25372c05; --blue:#567796; }
 @media (prefers-color-scheme:dark) { :root { --fg:#e6eeea; --bg:#101719; --surface:#172123; --surface2:#1d292b; --muted:#a3b5ae; --line:#2c3a3d; --accent:#80d9b3; --accentbg:#233e34; --amber:#e6bb77; --amberbg:#3c3222; --request:#e6bb77; --requestbg:#242823; --shadow:0 10px 36px #00000015; --blue:#91b8dc; } }
 
-/* 画面の幅の区切り(max-sm: / max-md: / max-lg: で使う)と字 */
+/* Screen width breakpoints (used by max-sm: / max-md: / max-lg:) and type */
 @theme {
   --breakpoint-sm: 520px;
   --breakpoint-md: 800px;
@@ -16,7 +16,7 @@
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, monospace;
 }
-/* 色と影は :root の変数を指す(inline: utility が var() をそのまま使うので、明暗の切り替えが効く) */
+/* Colors and shadows point at :root variables (inline: utilities use var() as is, so light/dark switching works) */
 @theme inline {
   --color-fg: var(--fg);
   --color-bg: var(--bg);
@@ -34,7 +34,7 @@
   --shadow-card: var(--shadow);
 }
 
-/* 要素の既定(preflight の上に戻す物と、全部のボタン・見出しに共通の形) */
+/* Element defaults (what to restore on top of preflight, and the shape shared by every button and heading) */
 @layer base {
   body { padding:0 36px 48px; color:var(--color-fg); background:var(--color-bg); font:14px/1.65 var(--font-sans); -webkit-font-smoothing:antialiased; }
   @media (width < 1100px) { body { padding:0 24px 36px; } }
@@ -58,14 +58,14 @@
   @media (prefers-reduced-motion:reduce) { *, *::before, *::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
 }
 
-/* 何度も出る組み合わせだけ名前を付ける(他は .svelte の class) */
+/* Only combinations that recur get a name (the rest are classes in .svelte files) */
 @utility k { color:var(--color-muted); font-size:12px; }
 @utility weak { font-size:11px; color:var(--color-muted); background:transparent; padding:7px 10px; }
 @utility pill {
   display:inline-block; border:1px solid var(--color-line); border-radius:7px; color:var(--color-muted); font-size:10px; padding:3px 8px;
   &.calibrated { color:var(--color-accent); background:var(--color-accentbg); }
   &.ready { color:var(--color-amber); background:var(--color-amberbg); }
-  &.one_answer, &.not_separable { color:var(--color-amber); border-style:dashed; } /* 正解は足りたが線を引けない(0.8.3) */
+  &.one_answer, &.not_separable { color:var(--color-amber); border-style:dashed; } /* enough truths, but no line can be drawn (0.8.3) */
 }
 @utility empty-state {
   display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:210px; border:1px dashed var(--color-line); border-radius:15px; background:var(--color-surface); color:var(--color-muted); text-align:center; padding:30px; font-size:13px; margin:16px 0;

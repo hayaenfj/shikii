@@ -1,9 +1,9 @@
-# GitHub Action: PR で `shikii check` を回す(文言が変わった線、手書きの線、精度不足の線を落とす)。
-# 使い方(利用側のリポジトリの workflow):
+# GitHub Action: runs `shikii check` on a PR (fails lines whose wording changed, hand-written lines, and lines below their precision).
+# Usage (in the workflow of the repository that uses it):
 #   - uses: hayaenfj/shikii@main
 #     with:
-#       specs: .shikii/decisions/*.yaml      # 検査する spec
-#       store: .shikii               # 正解の置き場(リポジトリに入れている場合)。無ければ testdata/store のように正解のあるフォルダ
+#       specs: .shikii/decisions/*.yaml      # specs to check
+#       store: .shikii               # where the truths live (if kept in the repository). Otherwise a folder with truths, like testdata/store
 name: shikii check
 description: Fail the PR when a decision spec's calibration is stale, hand-written or below its act precision
 inputs:

@@ -5,7 +5,7 @@ bin/
 .serena/
 *.log
 docs/assets/
-# 画面の依存とビルド結果(画像の中で node の段が組み直す)
+# The page's dependencies and build output (the node stage rebuilds them inside the image)
 web/node_modules/
 web/dist/
 web/.ui-test
