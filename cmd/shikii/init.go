@@ -260,7 +260,12 @@ func addCodexServer(path string, args []string) (bool, error) {
 	if strings.Contains(string(b), "mcp_servers") {
 		return false, nil
 	}
-	block := "\n[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [" + quotedList(args) + "]\n"
+	// the binary's absolute path, like the hooks: Codex started from a desktop app may not have shikii on its PATH (Codex audit 0.9.2, low 3)
+	command := "shikii"
+	if exe, err := os.Executable(); err == nil {
+		command = exe
+	}
+	block := "\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n"
 	if len(b) > 0 && !strings.HasSuffix(string(b), "\n") {
 		block = "\n" + block
 	}

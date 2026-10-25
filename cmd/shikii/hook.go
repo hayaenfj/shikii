@@ -159,7 +159,7 @@ func (o hookOut) json(event string) []byte {
 	if o.System != "" {
 		out["systemMessage"] = o.System
 	}
-	if o.Block && event == "Stop" && o.Reason != "" { // stop check: Claude Code's Stop decision (Codex ignores it if it cannot read it)
+	if o.Block && event == "Stop" && o.Reason != "" { // stop check: the Stop decision; Codex (0.164) reads the same {"decision":"block","reason"} and continues the turn with the reason
 		out["decision"] = "block"
 		out["reason"] = o.Reason
 	}
@@ -1744,7 +1744,7 @@ var hookTargets = []struct {
 	rel, who, note string
 }{
 	{filepath.Join(".claude", "settings.json"), "Claude Code", ""},
-	{filepath.Join(".codex", "hooks.json"), "Codex", " Codex asks you to review new hooks once: run /hooks in Codex and trust them"},
+	{filepath.Join(".codex", "hooks.json"), "Codex", " Codex runs only hooks you trusted, and asks again whenever ~/.codex/hooks.json changes (a new path or timeout): open Codex, run /hooks and trust shikii's hooks; until then Codex skips them (codex exec says nothing)"},
 }
 
 func hookInstall(args []string, install bool) error {

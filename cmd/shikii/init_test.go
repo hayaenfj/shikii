@@ -73,7 +73,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	}
 	// Codex: existing lines stay and [mcp_servers.shikii] is appended
 	cb, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
-	if !strings.HasPrefix(string(cb), "model = \"o3\"\n\n[mcp_servers.shikii]") || !strings.Contains(string(cb), `command = "shikii"`) {
+	if !strings.HasPrefix(string(cb), "model = \"o3\"\n\n[mcp_servers.shikii]") || !strings.Contains(string(cb), `command = "/`) {
 		t.Fatalf("Codex config must keep its lines and gain the shikii server:\n%s", cb)
 	}
 	// AGENTS.md: the person's file, shikii adds nothing (0.9.2)

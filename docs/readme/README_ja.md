@@ -9,7 +9,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-477%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-480%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.9.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -105,7 +105,7 @@ macOS以外は[llama.cppの公式の手順](https://github.com/ggml-org/llama.cp
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-インストーラーはソースから組むので、Go 1.27以上とGitが要ります。cloneした中なら `sh install.sh` です。実行ファイル、hook（依頼の前・作業の後・サブエージェントを起こす時と始まる時）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは一度 `/hooks` でhookを信頼してください。
+インストーラーはソースから組むので、Go 1.27以上とGitが要ります。cloneした中なら `sh install.sh` です。実行ファイル、hook（依頼の前・作業の後・サブエージェントを起こす時と始まる時）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは `/hooks` でhookを信頼してください。hookの中身が変わるたび(実行ファイルを動かした時やshikiiを更新した時)にもう一度信頼が要り、それまでCodexはhookを飛ばします。
 
 ### 3. 利用するプロジェクトを初期化する
 
