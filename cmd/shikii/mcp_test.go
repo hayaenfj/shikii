@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// MCP のやり取りを 1 往復ずつ流す(stdio の代わりに io.Pipe 相当のバッファ)。
+// Run the MCP exchange one round trip at a time (a buffer like io.Pipe instead of stdio).
 func mcpSession(t *testing.T, pii string, probs map[string]float64, roots ...string) (send func(req map[string]any) map[string]any, specPath string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -40,7 +40,7 @@ func mcpSession(t *testing.T, pii string, probs map[string]float64, roots ...str
 		}
 		line := strings.TrimSpace(out.String())
 		if line == "" {
-			return nil // 通知には返事が無い
+			return nil // notifications get no reply
 		}
 		var resp map[string]any
 		if err := json.Unmarshal([]byte(line), &resp); err != nil {
@@ -88,7 +88,7 @@ func TestMCPInitializeAndToolList(t *testing.T) {
 	}
 }
 
-// decide → label → 自動較正 → decide が act、を道具だけで一周する。
+// Go around decide → label → automatic calibration → decide is act, using only the tools.
 func TestMCPDecideLabelLoop(t *testing.T) {
 	send, _ := mcpSession(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	call := func(id int, name string, args map[string]any) map[string]any {
@@ -127,7 +127,7 @@ func TestMCPDecideLabelLoop(t *testing.T) {
 	}
 }
 
-// 誤りは JSON-RPC のエラーではなく、道具の結果の isError で返す(エージェントが読んで直せるように)。
+// Errors are returned as isError in the tool result, not as JSON-RPC errors (so the agent can read them and fix things).
 func TestMCPToolErrorsAreReportedNotCrashed(t *testing.T) {
 	send, _ := mcpSession(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	r := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "shikii_decide", "arguments": map[string]any{"spec": "nope", "inputs": map[string]any{}}}}))
@@ -144,8 +144,8 @@ func TestMCPToolErrorsAreReportedNotCrashed(t *testing.T) {
 	}
 }
 
-// 0.9.0: MCP だけで使うエージェントも記事に種類と場面を付けられるよう、shikii_wiki と shikii_reflect(wiki の項目)の入力の定義に
-// kind(5 つの enum)と scene がある(shikii_reflect の wiki の項目は余計な欄を許さないので、無いと定義どおりに送れない)。
+// 0.9.0: so agents that use only MCP can also give pages a kind and scene, the input schemas of shikii_wiki and shikii_reflect (its wiki items)
+// have kind (an enum of 5) and scene (shikii_reflect's wiki items allow no extra fields, so without them it could not be sent as defined).
 func TestMCPWikiToolsCarryKindAndScene(t *testing.T) {
 	enc, err := json.Marshal(mcpTools)
 	if err != nil {
@@ -166,23 +166,23 @@ func TestMCPWikiToolsCarryKindAndScene(t *testing.T) {
 	for name, p := range props {
 		kind, _ := p["kind"].(map[string]any)
 		enum, _ := kind["enum"].([]any)
-		if len(enum) != 5 || enum[0] != "rule" || p["scene"] == nil || !strings.Contains(kind["description"].(string), "このプロジェクトで決められたルール") {
-			t.Fatalf("%s の入力の定義に kind(5 つ、説明付き)と scene が要る: %v", name, p)
+		if len(enum) != 5 || enum[0] != "rule" || p["scene"] == nil || !strings.Contains(kind["description"].(string), "a rule decided in this project") {
+			t.Fatalf("%s's input schema needs kind (5, with descriptions) and scene: %v", name, p)
 		}
 	}
 	if len(props) != 2 {
-		t.Fatalf("shikii_wiki と shikii_reflect の両方: %v", props)
+		t.Fatalf("both shikii_wiki and shikii_reflect: %v", props)
 	}
-	// hook の無いエージェント(Codex・OpenCode の MCP だけ)にも、保存に種類と場面が要ることと、前の版の記事に付けることが届く
+	// Agents without a hook (MCP only in Codex or OpenCode) also learn that saving needs a kind and scene, and how to give them to pages from earlier versions
 	for _, tl := range tools {
 		if tl["name"] == "shikii_wiki" {
 			d := tl["description"].(string)
 			if !strings.Contains(d, "kind") || !strings.Contains(d, "scene") || !strings.Contains(d, "classify") || !strings.Contains(d, "unclassified") {
-				t.Fatalf("shikii_wiki の説明に、種類と場面と、前の版の記事の付け方: %s", d)
+				t.Fatalf("shikii_wiki's description covers kind and scene, and how to classify pages from earlier versions: %s", d)
 			}
 		}
 	}
 	if !strings.Contains(mcpInstructions, "kind") || !strings.Contains(mcpInstructions, "scene") || !strings.Contains(mcpInstructions, "classify") {
-		t.Fatalf("サーバーの案内に、種類と場面と classify: %s", mcpInstructions)
+		t.Fatalf("the server's guidance covers kind, scene and classify: %s", mcpInstructions)
 	}
 }

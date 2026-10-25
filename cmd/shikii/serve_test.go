@@ -17,7 +17,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// serve のテスト用: spec フォルダ・store・偽モデルを揃えて、ハンドラを httptest で立てる。
+// For serve tests: set up a spec folder, a store and a fake model, and stand up the handler with httptest.
 func newServeFixture(t *testing.T, pii string, probs map[string]float64) (srvURL string, specPath string, storeDir string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -62,7 +62,7 @@ func getJSON(t *testing.T, url string, into any) int {
 	return resp.StatusCode
 }
 
-// 1 つの口で、聞く → 待ち行列に出る → ボタン相当の label → 行列から消える、が回る。
+// On one endpoint: ask → it appears in the queue → a label like a button press → it leaves the queue.
 func TestServeDecideQueueAndLabel(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	code, d := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix the typo"}})
@@ -102,7 +102,7 @@ func TestServeDecideQueueAndLabel(t *testing.T) {
 	}
 }
 
-// 正解が min_n に届いたら、サーバーが自分で線を引いて spec に書く。人は calibrate を打たない。
+// When truths reach min_n, the server draws the line itself and writes it into the spec. The person never types calibrate.
 func TestServeAutoCalibratesWhenEnoughLabels(t *testing.T) {
 	url, specPath, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	for i := 0; i < 2; i++ {
@@ -125,14 +125,14 @@ func TestServeAutoCalibratesWhenEnoughLabels(t *testing.T) {
 	if c := sp.CalibrationFor("m"); c == nil || c.Method != "identity" || c.SpecHash != sp.Hash() {
 		t.Fatalf("spec must now carry a calibration for model m: %+v", sp.Calibration)
 	}
-	// 線が引けた後の判定は act になる
+	// After the line is drawn, decisions are act
 	_, d := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix z"}})
 	if d["band"] != "act" {
 		t.Fatalf("after auto-calibration the band must reach act, got %v", d["band"])
 	}
 }
 
-// 知らない spec は 404、spec に無い正解は 400。黙って通さない。
+// An unknown spec is 404, a truth not in the spec is 400. Nothing is let through silently.
 func TestServeRejectsUnknownSpecAndBadTruth(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	if code, _ := postJSON(t, url+"/v1/decide", map[string]any{"spec": "nope", "inputs": map[string]string{"message": "x"}}); code != 404 {
@@ -147,7 +147,7 @@ func TestServeRejectsUnknownSpecAndBadTruth(t *testing.T) {
 	}
 }
 
-// 画面は外部の読み込み無しに動く(オフラインの社内でも開ける): index.html が読むのは自分の assets だけで、API は同じ口の /v1/。
+// The page works without external loads (it opens even inside an offline company network): index.html loads only its own assets, and the API is /v1/ on the same endpoint.
 func TestServeUIIsSelfContained(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	resp, err := http.Get(url + "/")
@@ -166,7 +166,7 @@ func TestServeUIIsSelfContained(t *testing.T) {
 			t.Fatalf("UI must not load anything from outside: found %q", never)
 		}
 	}
-	body := uiText(t, url) // 参照が ./ 以外なら uiText が落とす
+	body := uiText(t, url) // uiText fails if a reference is not ./
 	for _, must := range []string{"v1/queue", "v1/label", "v1/status"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("UI must talk to %s", must)
@@ -174,7 +174,7 @@ func TestServeUIIsSelfContained(t *testing.T) {
 	}
 }
 
-// 画面は言語を選べる(英語と日本語。辞書を足せば増える)。選択はブラウザに残る(shikii.lang)。
+// The page lets you choose a language (English and Japanese; adding a dictionary adds more). The choice is kept in the browser (shikii.lang).
 func TestServeUIHasLanguageSwitch(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)
@@ -185,8 +185,8 @@ func TestServeUIHasLanguageSwitch(t *testing.T) {
 	}
 }
 
-// 画面は Svelte で組んだバンドル(web/dist)を実行ファイルに埋め込んで配る: "/" が index.html、そこから読む assets は 200 で正しい種類、
-// 知らないパスは 404(全部を index.html にするような取りこぼしは無い)。言語の選択がある(保存先 shikii.lang。選択肢の名前は各言語の辞書の langName:「日本語」「English」)。
+// The page is distributed as a Svelte bundle (web/dist) embedded in the binary: "/" is index.html, the assets it loads are 200 with the right type,
+// and unknown paths are 404 (no catch-all that turns everything into index.html). There is a language choice (stored in shikii.lang; the option names are each dictionary's langName: 「日本語」「English」).
 func TestServeUIServesEmbeddedBundleWithLanguagePicker(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	index := getBody(t, url+"/")
@@ -230,7 +230,7 @@ func TestServeUIServesEmbeddedBundleWithLanguagePicker(t *testing.T) {
 	}
 }
 
-// spec に display.ja があれば、画面向けの API は題名と選択肢の日本語を一緒に返す(id と英語はそのまま)。
+// If the spec has display.ja, the page's API returns the Japanese title and choices along with them (id and English unchanged).
 func TestServeExposesDisplayTranslations(t *testing.T) {
 	url, specPath, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	b, _ := os.ReadFile(specPath)
@@ -264,7 +264,7 @@ func TestServeExposesDisplayTranslations(t *testing.T) {
 	}
 }
 
-// 本文が残っていない(本文を残す前の古い)記録は、人には答えられない。待ち行列はそれを answerable=false で言い、ボタンの材料(choices)を出さない。
+// An (old) record whose text is not kept (from before text was kept) cannot be answered by a person. The queue says so with answerable=false and gives no button material (choices).
 func TestServeQueueMarksItemsWithoutTextAsUnanswerable(t *testing.T) {
 	url, specPath, storeDir := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	sp, err := spec.Load(specPath)
@@ -273,7 +273,7 @@ func TestServeQueueMarksItemsWithoutTextAsUnanswerable(t *testing.T) {
 	}
 	old := store.Record{TraceID: store.NewTraceID(), SpecID: sp.ID, SpecHash: sp.Hash(), Type: "choice", Model: "m",
 		InputsHash: store.HashInputs(map[string]string{"message": "fix"}), Raw: map[string]float64{"change_request": 0.9},
-		Top: "change_request", P: 0.9, Band: "ask", At: time.Now()} // Inputs 無し
+		Top: "change_request", P: 0.9, Band: "ask", At: time.Now()} // no Inputs
 	if err := (store.Store{Dir: storeDir}).AppendRecord(old); err != nil {
 		t.Fatal(err)
 	}
@@ -290,8 +290,8 @@ func TestServeQueueMarksItemsWithoutTextAsUnanswerable(t *testing.T) {
 	}
 }
 
-// IT に詳しくない人のための画面: 人の言葉で聞き、専門語を出さない。「かんたん表示 / くわしく」の切替は 0.8.1 で廃止し、常に全部見せる(切替のボタン・保存した好み・隠す印は出ない)。
-// 判定ごとに人の言葉の質問、AI の予想と自信、「AI と同じ」ボタン、キー操作、学習の進み具合が出る。専門用語は画面に出さない。
+// A page for people who are not into IT: ask in people's words, show no jargon. The "simple / detailed" switch was removed in 0.8.1; everything is always shown (no switch button, saved preference or hiding mark).
+// Each decision shows the question in people's words, the AI's guess and confidence, a "same as the AI" button, key operations and learning progress. No technical terms on the page.
 func TestServeUIIsBeginnerFriendly(t *testing.T) {
 	url, specPath, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	b, _ := os.ReadFile(specPath)
@@ -310,7 +310,7 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 			t.Fatalf("jargon must not appear in the page: %q", never)
 		}
 	}
-	// 隠す印 adv は class の語としてどこにも残らない(`class="k adv"` のように他の語と並ぶ形も捕まえる。文字一致の never では素通りした: 監査 C-3)
+	// The hiding mark adv remains nowhere as a class word (also catches forms side by side with other words like `class="k adv"`. A plain text match in never let it through: audit C-3)
 	hiddenMark := regexp.MustCompile(`class="[^"]*\badv\b[^"]*"`)
 	if !hiddenMark.MatchString(`<span class="k adv">`) {
 		t.Fatal("the hidden-mark check must catch adv among other classes")
@@ -330,8 +330,8 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 	}
 }
 
-// 件数が増えた時の見せ方(0.9.1): 上は「答える(待ちの合計の印)・知識・AI の様子」の 3 つだけ。答える画面は全部の問いの待ちを 1 枚ずつ(スキップ、残りの数)、
-// AI の様子は問いごとの列(さらに表示、ほかに待っている数)。0.8 までの左の問いごとのメニュー・1 件ずつ / 一覧の切替・種類の絞り込みは無い
+// How it looks when items grow (0.9.1): the top has only 3: "answer (mark with the total waiting), knowledge, how the AI is doing". The answer page shows every question's waiting items one at a time (skip, count left),
+// and how the AI is doing is a column per question (show more, number waiting elsewhere). The per-question menu on the left, the one-at-a-time / list switch and the kind filter from up to 0.8 are gone
 func TestServeUIHasTabsAndScalesToManyItems(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)
@@ -347,7 +347,7 @@ func TestServeUIHasTabsAndScalesToManyItems(t *testing.T) {
 	}
 }
 
-// 待ち受け先は決め打ち: ホストでは 127.0.0.1 だけ(LAN に出さない)。容れ物(/.dockerenv がある)の中では全ての口(port の公開はホスト側が 127.0.0.1 に絞る)。
+// Where it listens is fixed: on a host, only 127.0.0.1 (never exposed to the LAN). Inside a container (where /.dockerenv exists), every interface (the host side limits port publishing to 127.0.0.1).
 func TestBindHostIsLoopbackExceptInsideAContainer(t *testing.T) {
 	if got := bindHostFor(filepath.Join(t.TempDir(), "no-such-file")); got != "127.0.0.1" {
 		t.Fatalf("on a host shikii must listen on loopback only, got %q", got)
@@ -361,7 +361,7 @@ func TestBindHostIsLoopbackExceptInsideAContainer(t *testing.T) {
 	}
 }
 
-// 使い方の案内: 最初に 4 手順の案内が出て、閉じれば次回から出ない(右上の ? で再表示)。答える画面の上に「今やること」、ボタンに番号(キーと同じ)。
+// Usage guide: a 4-step guide shows first, and once closed it does not show next time (shown again with ? at the top right). Above the answer page is "what to do now", and buttons have numbers (the same as the keys).
 func TestServeUIExplainsItself(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)

@@ -17,10 +17,10 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// 2026-10-17 の監査で見つかった穴を塞ぐテスト。全部、直す前に落ちるのを確認してから直した。
+// Tests that close the holes found in the audit of 2026-10-17. Each was confirmed to fail before being fixed.
 
-// 監査 C1: identity と vector の採点が別のラベル集合(部分ラベルの有無)で行われ、calibrate が書いた直後に check が落ちた。
-// 部分ラベル "!x" が外れを含むなら、vector の CV も同じ外れを数えなければならない。
+// Audit C1: identity and vector were scored on different label sets (with or without partial labels), and check failed right after calibrate wrote.
+// If a partial label "!x" contains a miss, vector's CV must count the same miss.
 func TestVectorCVScoresPartialLabelsLikeCheck(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -42,7 +42,7 @@ func TestVectorCVScoresPartialLabelsLikeCheck(t *testing.T) {
 			return cmdLabel([]string{"--store", storeDir, traceRe.FindStringSubmatch(out)[1], "!change_request"})
 		})
 	}
-	// precision@act は 10/15 = 0.667 < 0.75: identity も vector も書いてはいけない
+	// precision@act is 10/15 = 0.667 < 0.75: neither identity nor vector may be written
 	var buf bytes.Buffer
 	old := stdout
 	stdout = &buf
@@ -59,8 +59,8 @@ func TestVectorCVScoresPartialLabelsLikeCheck(t *testing.T) {
 	}
 }
 
-// 監査 C2/C3: 同じ入力に複数の正解(ファイルの行と、後から人が付けたもの / 同じ trace の訂正)があると、
-// calibrate と check で数え方が違った。どちらも「入力ごとに最新の正解 1 つ」で数える。
+// Audit C2/C3: when the same input had several truths (a file row and one a person added later / a correction on the same trace),
+// calibrate and check counted differently. Both count "the latest truth per input".
 func TestCalibrateAndCheckUseLatestTruthPerInput(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -75,17 +75,17 @@ func TestCalibrateAndCheckUseLatestTruthPerInput(t *testing.T) {
 		return cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
 	})
 	capture(t, func() error { return cmdCheck([]string{"--store", storeDir, specPath}) })
-	// 同じ本文 "fix 0" を実運用で判定し、人が「質問だった」と訂正する
+	// The same text "fix 0" is decided in real use, and a person corrects it to "it was a question"
 	out := capture(t, func() error {
 		return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix 0"})
 	})
 	tr := traceRe.FindStringSubmatch(out)[1]
 	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ask", tr, "question"}) })
-	// check: 最新の正解で "fix 0" は外れ → 1/2 = 0.5 < act → 落ちる
+	// check: with the latest truth, "fix 0" is wrong → 1/2 = 0.5 < act → fails
 	if err := cmdCheck([]string{"--store", storeDir, specPath}); err == nil {
 		t.Fatal("check must see the corrected truth and fail")
 	}
-	// calibrate も同じ集合(n=2、最新の正解)で見る。3 件に増えない
+	// calibrate looks at the same set too (n=2, latest truths). It does not grow to 3
 	var buf bytes.Buffer
 	old := stdout
 	stdout = &buf
@@ -94,7 +94,7 @@ func TestCalibrateAndCheckUseLatestTruthPerInput(t *testing.T) {
 	if !strings.Contains(buf.String(), " n=2 ") || !strings.Contains(buf.String(), "top-1 accuracy=0.500") {
 		t.Fatalf("calibrate must count one latest truth per input (n=2, accuracy 0.5):\n%s", buf.String())
 	}
-	// 同じ trace に 2 回付けても、数えるのは最新の 1 つ
+	// Labeling the same trace twice still counts only the latest one
 	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ask", tr, "change_request"}) })
 	buf.Reset()
 	stdout = &buf
@@ -105,7 +105,7 @@ func TestCalibrateAndCheckUseLatestTruthPerInput(t *testing.T) {
 	}
 }
 
-// 監査 S1: --tainted で記録した本文は、後の聞き直しでも hosted に送ってはいけない。
+// Audit S1: text recorded with --tainted must never be sent to hosted, even when asked again later.
 func TestTaintedTextIsNeverReplayedToHosted(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "k")
 	var hostedCalls, localCalls atomic.Int32
@@ -145,7 +145,7 @@ func TestTaintedTextIsNeverReplayedToHosted(t *testing.T) {
 	if err := os.WriteFile(specPath, []byte(edited), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// 聞き直し(tainted フラグ無しで呼んでも)は、tainted だった本文を hosted に送らない
+	// Asking again (even when called without the tainted flag) does not send text that was tainted to hosted
 	capture(t, func() error {
 		return cmdCalibrate([]string{specPath, "--hosted", hosted.URL, "--local", local.URL, "--store", storeDir, "--labeled", "none"})
 	})
@@ -166,7 +166,7 @@ func mustRead(t *testing.T, path string) []byte {
 	return b
 }
 
-// 監査 S2/S3: serve は他オリジンからの POST、JSON 以外の POST、大きすぎる本文を受け付けない。
+// Audit S2/S3: serve refuses POSTs from other origins, non-JSON POSTs and bodies that are too large.
 func TestServeRejectsCrossOriginWrongTypeAndOversizedPosts(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := `{"spec":"intent","inputs":{"message":"x"}}`
@@ -201,7 +201,7 @@ func TestServeRejectsCrossOriginWrongTypeAndOversizedPosts(t *testing.T) {
 	}
 }
 
-// 監査 S5: 手書きの identity ブロック(n が min_n 未満、fitted_at 無し)は check が弾く。
+// Audit S5: check rejects a hand-written identity block (n below min_n, no fitted_at).
 func TestCheckRejectsBlocksThatCalibrateWouldNotWrite(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -228,7 +228,7 @@ func TestCheckRejectsBlocksThatCalibrateWouldNotWrite(t *testing.T) {
 	}
 }
 
-// 監査 S6: MCP 経由のラベルは出どころが "mcp" と分かる。weight は 1 を超えない。
+// Audit S6: labels through MCP show their source as "mcp". weight does not exceed 1.
 func TestMCPLabelsAreMarkedAndWeightIsBounded(t *testing.T) {
 	send, specPath := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	call := func(id int, name string, args map[string]any) map[string]any {
@@ -250,7 +250,7 @@ func TestMCPLabelsAreMarkedAndWeightIsBounded(t *testing.T) {
 	}
 }
 
-// 監査 C12: 手で温度を 0 にした線は drift が NaN で ok と言ってはいけない。
+// Audit C12: drift must not say ok with NaN for a line whose temperature was set to 0 by hand.
 func TestDriftRejectsZeroTemperature(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")

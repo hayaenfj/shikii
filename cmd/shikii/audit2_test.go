@@ -17,9 +17,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// 2 回目の監査(tune / propose / 採用)で見つかった穴。どれも直す前に落ちるのを確かめてある。
+// Holes found in the second audit (tune / propose / adopt). Each was confirmed to fail before the fix.
 
-// 提案役に渡す「外した実例」に tainted な本文は、提案役が手元(loopback)でない限り入らない。
+// Tainted text never goes into the "examples it got wrong" sent to the proposer unless the proposer is local (loopback).
 func TestProposerPromptDropsTaintedExamplesUnlessLocal(t *testing.T) {
 	dir := t.TempDir()
 	sp := mustLoad(t, writeSpec(t, dir, "false"))
@@ -38,7 +38,7 @@ func TestProposerPromptDropsTaintedExamplesUnlessLocal(t *testing.T) {
 	}
 }
 
-// hosted の鍵(TypeSafe / OpenRouter)は提案役には送らない。提案役の鍵は SHIKII_PROPOSER_KEY だけ。
+// The hosted key (TypeSafe / OpenRouter) is never sent to the proposer. The proposer's key is only SHIKII_PROPOSER_KEY.
 func TestProposerNeverGetsTheHostedKey(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "sk-typesafe-SECRET")
 	t.Setenv("DECISIONS_API_KEY", "")
@@ -52,7 +52,7 @@ func TestProposerNeverGetsTheHostedKey(t *testing.T) {
 	}
 }
 
-// 手元の形はどれも loopback。遠いものは違う。
+// Every local form is loopback. Remote ones are not.
 func TestIsLoopbackForms(t *testing.T) {
 	for _, u := range []string{"http://127.0.0.1:8087", "http://localhost:8087", "http://localhost.:8087", "http://[::1]:8087", "http://127.0.0.2:1", "http://0.0.0.0:8087", "http://[::ffff:127.0.0.1]:1", "localhost:8087", "127.0.0.1:8087/v1"} {
 		if !isLoopback(u) {
@@ -66,7 +66,7 @@ func TestIsLoopbackForms(t *testing.T) {
 	}
 }
 
-// 偽モデル: 質問に strict があれば半分当てる(自信 0.9 で外す所もある)。無ければ全部外す。較正が精度を満たせない状況を作る。
+// Fake model: if the question has strict, it gets half right (some wrong with confidence 0.9). Otherwise it gets all wrong. Creates a case where calibration cannot meet precision.
 func confidentlyWrongModel(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,9 +84,9 @@ func confidentlyWrongModel(t *testing.T) *httptest.Server {
 				right = map[string]float64{"change_request": 0.1, "question": 0.9, "other": 0}
 			}
 			wrong := map[string]float64{"change_request": right["question"], "question": right["change_request"], "other": 0}
-			probs := wrong // strict でなければ全部外す
+			probs := wrong // without strict, all wrong
 			if strict && !odd {
-				probs = right // strict なら a c e の 6 件を当て、b d f の 6 件は自信を持って外す(精度 0.5 で較正が拒む)
+				probs = right // with strict, the 6 of a c e are right and the 6 of b d f are confidently wrong (precision 0.5, so calibration refuses)
 			}
 			top, _ := argmax(probs)
 			resp.Answers[k] = systemone.Answer{Type: "choice", Choice: top, Probabilities: probs, Confidence: 0.9}
@@ -97,7 +97,7 @@ func confidentlyWrongModel(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// 採用と較正は一体: 較正が精度不足で書けなければ、新しい版は残らず、run も「採用済み」にならず、やり直せる。
+// Adopting and calibrating go together: if calibration cannot write for lack of precision, no new version is left, the run is not "adopted", and it can be redone.
 func TestAdoptionIsUndoneWhenCalibrationRefuses(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -135,15 +135,15 @@ func TestAdoptionIsUndoneWhenCalibrationRefuses(t *testing.T) {
 	if st["latest"].(map[string]any)["adopted"] == true {
 		t.Fatalf("the run must not say adopted: %v", st)
 	}
-	// serve は v1 のまま
+	// serve stays on v1
 	sps, err := loadSpecs(specsDir)
 	if err != nil || len(sps) != 1 || sps["intent"] == nil || sps["intent"].Version != 1 {
 		t.Fatalf("serve must keep using v1: %v %+v", err, sps)
 	}
 }
 
-// 帰無仮説: 全部の候補が同じ実力なら、候補をいくら足しても採用はまれ(片側の符号検定 p < 0.05)。
-// 候補ごとに独立な乱数で 0.7 の確率で当てる偽モデル。20 候補 × 30 回で採用率を測る。
+// Null hypothesis: if all candidates are equally good, adoption stays rare however many candidates are added (one-sided sign test p < 0.05).
+// A fake model that gets each candidate right with probability 0.7 using independent random numbers. Measures the adoption rate over 20 candidates × 30 runs.
 func TestManyEqualCandidatesAreRarelyAdopted(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -207,7 +207,7 @@ func fnvHash(s string) uint32 {
 	return h.Sum32()
 }
 
-// 基本構成: shikii が作るものは全部 store(.shikii/)の下。wiki は常に <store>/wiki で、spec の置き場からは推測しない(親フォルダに書かない)。
+// Basic layout: everything shikii makes is under the store (.shikii/). The wiki is always <store>/wiki and is never guessed from where specs are (never written to the parent folder).
 func TestWikiLivesAtTheProjectRootNotNextToTheSpec(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "myproject")
@@ -238,7 +238,7 @@ func TestWikiLivesAtTheProjectRootNotNextToTheSpec(t *testing.T) {
 	}
 }
 
-// 端末の --propose N --write は、AI が作った文言を人が見ないまま採用しない。候補は variants に残り、見てから tune --write で採用できる。
+// --propose N --write in the terminal does not adopt AI-made wording no person has seen. The candidates stay in variants and can be adopted with tune --write after looking.
 func TestProposeWithWriteDoesNotAdoptUnseenWording(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -263,7 +263,7 @@ func TestProposeWithWriteDoesNotAdoptUnseenWording(t *testing.T) {
 	if !strings.Contains(out, "winner: proposed-strict") || !strings.Contains(out, "not adopted") {
 		t.Fatalf("the person must be told the winner and that it waits for their check:\n%s", out)
 	}
-	// 候補は残っているので、見てから採用できる
+	// The candidates remain, so they can be adopted after looking
 	capture(t, func() error {
 		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", model.URL, "--store", storeDir, "--write"})
 	})
@@ -276,8 +276,8 @@ func TestProposeWithWriteDoesNotAdoptUnseenWording(t *testing.T) {
 	}
 }
 
-// 貯金の重複解消は calibrate と同じ「入力ごとに最新の正解」。後から付けた訂正がファイルの行に勝つ。
-// 古い正解(今の spec に無い選択肢)と重み > 1 の行は数えて除く。
+// Deduplicating the bank uses the same "latest truth per input" as calibrate. A later correction beats the file row.
+// Old truths (choices not in the current spec) and rows with weight > 1 are counted and dropped.
 func TestTruthBankUsesLatestTruthAndSkipsUnknownAnswers(t *testing.T) {
 	dir := t.TempDir()
 	sp := mustLoad(t, writeSpec(t, dir, "false"))
@@ -310,7 +310,7 @@ func TestTruthBankUsesLatestTruthAndSkipsUnknownAnswers(t *testing.T) {
 	}
 }
 
-// 採点できない行(必要な入力が無い、送れる先が無い)は tune を止めず、数えて除く。
+// Rows that cannot be scored (missing required input, nowhere to send) do not stop tune; they are counted and dropped.
 func TestTuneSkipsRowsItCannotScore(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -329,7 +329,7 @@ func TestTuneSkipsRowsItCannotScore(t *testing.T) {
 	}
 }
 
-// Save は variants を触っていなければ再エンコードしない(人のコメントが消えない)。
+// Save does not re-encode if variants were not touched (so people's comments are not lost).
 func TestSaveKeepsCommentsInsideVariants(t *testing.T) {
 	dir := t.TempDir()
 	p := specWithVariants(t, dir)
@@ -348,7 +348,7 @@ func TestSaveKeepsCommentsInsideVariants(t *testing.T) {
 	}
 }
 
-// 提案役の前置きに [ があっても JSON の配列を見つける。
+// Find the JSON array even if the proposer's preamble has a [.
 func TestParseProposalsSkipsBracketsInProse(t *testing.T) {
 	props, err := parseProposals("Here are [two] ideas:\n```json\n[{\"name\":\"a\",\"question\":\"Q?\"}]\n```")
 	if err != nil || len(props) != 1 || props[0].Name != "a" {
@@ -356,7 +356,7 @@ func TestParseProposalsSkipsBracketsInProse(t *testing.T) {
 	}
 }
 
-// 人の「意味が違う」は spec のページにも残り、次の提案役が読む。
+// The person's "different meaning" also stays on the spec's page, and the next proposer reads it.
 func TestRejectionReachesTheNextProposer(t *testing.T) {
 	url, _, wiki, _ := newTuneFixture(t)
 	code, res := postJSON(t, url+"/v1/tune/sync", map[string]any{"spec": "intent"})
@@ -372,7 +372,7 @@ func TestRejectionReachesTheNextProposer(t *testing.T) {
 	}
 }
 
-// 引数無し / hash --help は使い方を出して失敗しない。使い方には今ある道具と flag が載る。
+// No arguments / hash --help print usage and do not fail. The usage lists the current tools and flags.
 func TestUsageMentionsCurrentToolsAndFlags(t *testing.T) {
 	u := usageText()
 	for _, must := range []string{"shikii_tune", "--proposer", "--propose", "shikii tune", "shikii up", "shikii doctor"} {

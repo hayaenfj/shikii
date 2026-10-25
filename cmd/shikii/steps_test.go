@@ -17,8 +17,8 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// 偽モデル: 多択で聞かれると全部 change_request と答える(下手)。はい/いいえ の段で聞かれると本文を読んで当てる(上手)。
-// 1 回の呼び出しに載った質問の数と、呼び出しの回数を数える。
+// Fake model: asked with many choices, it answers change_request to everything (bad). Asked in yes/no steps, it reads the text and gets it right (good).
+// Counts the number of questions in one call and the number of calls.
 func stepwiseModel(t *testing.T) (*httptest.Server, *int32, *int32) {
 	t.Helper()
 	var calls, questions int32
@@ -50,7 +50,7 @@ func stepwiseModel(t *testing.T) (*httptest.Server, *int32, *int32) {
 	return srv, &calls, &questions
 }
 
-// 分解した spec は、全部の段を 1 回の呼び出しに載せ、枝の確率の積で元の選択肢の分布を作る。
+// A split spec puts every step in one call and builds the original choices' distribution from the product of branch probabilities.
 func TestDecideRunsStepsInOneCallAndMultipliesBranches(t *testing.T) {
 	srv, calls, questions := stepwiseModel(t)
 	dir := t.TempDir()
@@ -77,7 +77,7 @@ func TestDecideRunsStepsInOneCallAndMultipliesBranches(t *testing.T) {
 	if d.SpecHash != sp.Hash() || d.Type != "choice" {
 		t.Fatalf("a decomposed decision is still a choice decision under the spec's key: %+v", d)
 	}
-	// yes で確定する途中の段: change 0.8 → 残り 0.2 × (work 0.9 → question 0.18, other 0.02)
+	// A middle step that settles on yes: change 0.8 → remaining 0.2 × (work 0.9 → question 0.18, other 0.02)
 	sp.Steps = []spec.Step{{Ask: "Does it ask to change files?", Yes: "change_request"}, {Ask: "Does it ask for work?", Yes: "question", No: "other"}}
 	d, err = decide.Decide(context.Background(), sp, map[string]string{"message": "fix a"}, decide.Session{}, eps)
 	if err != nil {
@@ -90,7 +90,7 @@ func TestDecideRunsStepsInOneCallAndMultipliesBranches(t *testing.T) {
 	}
 }
 
-// 提案役は分解(steps)も提案できる。形の悪い分解は却下され、理由が残る。
+// The proposer can also propose a split (steps). A badly shaped split is rejected and the reason is kept.
 func TestProposalsMayCarrySteps(t *testing.T) {
 	sp := mustLoad(t, writeSpec(t, t.TempDir(), "false"))
 	props := []proposal{
@@ -107,7 +107,7 @@ func TestProposalsMayCarrySteps(t *testing.T) {
 	}
 }
 
-// tune は分解した聞き方を候補として採点できる。多択が下手で はい/いいえ が上手なモデルでは分解が勝ち、採用した版には steps が入る。
+// tune can score a split wording as a candidate. With a model that is bad at many choices and good at yes/no, the split wins and the adopted version gets steps.
 func TestTuneScoresAndAdoptsADecomposedWording(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -146,7 +146,7 @@ func TestTuneScoresAndAdoptsADecomposedWording(t *testing.T) {
 	if len(v2.Steps) != 2 || v2.Steps[1].Yes != "change_request" || v2.CalibrationFor("m") == nil {
 		t.Fatalf("the adopted version must carry the steps and be calibrated: %+v", v2)
 	}
-	// 採用した版で聞くと、分解で答える
+	// Asking with the adopted version answers through the split
 	eps := []decide.Endpoint{{Kind: "local", Client: systemone.New(srv.URL, "", "m")}}
 	d, err := decide.Decide(context.Background(), v2, map[string]string{"message": "why c"}, decide.Session{}, eps)
 	if err != nil || d.Top != "question" {

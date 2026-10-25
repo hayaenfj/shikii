@@ -10,17 +10,17 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 0.9.0: 知識の画面のために /v1/wiki は、記事ごとの最終更新と役立った・害があった回数(lesson_meta)、人に見てほしい例外だけの受け箱
-// (inbox: 害があった教訓、繰り返された訂正、有効にする前の止める検査)、種類と場面の無い記事の数を返す。
+// 0.9.0: for the knowledge page, /v1/wiki returns each page's last update and helpful / harmful counts (lesson_meta), an inbox of only the exceptions a person should look at
+// (inbox: harmful lessons, repeated corrections, guards not yet enabled), and the number of pages with no kind or scene.
 func TestWikiListCarriesLessonMetaAndInbox(t *testing.T) {
 	st, scope, h, draft, revision := memoryEffectFixture(t)
 	memoryEffectPrompt(t, scope, "inbox")
 	id := memoryEffectComplete(t, st, scope, "inbox")
 	key := "lesson:" + draft.ID + ":" + revision
 	if out := memoryEffectSubmit(t, h, id, key, "harmful", "この教訓に従って古い手順を書いた", "本人が直した"); out["complete"] != true {
-		t.Fatalf("害があった評価を保存する: %v", out)
+		t.Fatalf("save the harmful evaluation: %v", out)
 	}
-	if err := saveGuard(st.Dir, guard{ID: "draft-one", Kind: guardKindForbiddenWords, Title: "草稿の検査", Words: []string{"x"}}); err != nil { // 草稿(無効)
+	if err := saveGuard(st.Dir, guard{ID: "draft-one", Kind: guardKindForbiddenWords, Title: "草稿の検査", Words: []string{"x"}}); err != nil { // a draft (disabled)
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
@@ -42,7 +42,7 @@ func TestWikiListCarriesLessonMetaAndInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m := body.Meta[draft.ID]; m.Updated == "" || m.Harmful != 1 {
-		t.Fatalf("記事ごとの最終更新と害があった回数: %+v", body.Meta)
+		t.Fatalf("each page's last update and harmful count: %+v", body.Meta)
 	}
 	var harmful, guardDraft bool
 	for _, it := range body.Inbox {
@@ -50,14 +50,14 @@ func TestWikiListCarriesLessonMetaAndInbox(t *testing.T) {
 		guardDraft = guardDraft || it.Kind == "guard_draft" && it.Guard == "draft-one"
 	}
 	if !harmful || !guardDraft {
-		t.Fatalf("受け箱に害があった教訓と、有効にする前の止める検査が出る: %+v", body.Inbox)
+		t.Fatalf("the inbox shows the harmful lesson and the guard not yet enabled: %+v", body.Inbox)
 	}
 	if body.Unclassified == nil || *body.Unclassified != 0 {
-		t.Fatalf("種類と場面の無い記事の数(0 でも返す): %v", body.Unclassified)
+		t.Fatalf("number of pages with no kind or scene (returned even when 0): %v", body.Unclassified)
 	}
 }
 
-// 監査 0.9.0 の E1 と M8: 受け箱は生きている記事ごとに 1 件へまとめ、回数を付ける。繰り返された訂正も出る。
+// Audit 0.9.0 E1 and M8: the inbox groups items into one per live page, with a count. Repeated corrections show too.
 func TestInboxGroupsByLessonWithCount(t *testing.T) {
 	agent, scope, _, src := audit083Setup(t)
 	book := notebook.Book{Root: agent, Scope: scope}
@@ -81,13 +81,13 @@ func TestInboxGroupsByLessonWithCount(t *testing.T) {
 		case "harmful":
 			harmful++
 			if it["lesson_id"] != a.Page.ID || it["count"] != 3 {
-				t.Fatalf("害の 3 件は 1 件にまとめて回数 3: %v", it)
+				t.Fatalf("the 3 harmful items are grouped into 1 with count 3: %v", it)
 			}
 		case "repeated":
 			repeated++
 		}
 	}
 	if harmful != 1 || repeated != 1 {
-		t.Fatalf("害は 1 件、繰り返された訂正も 1 件: %v", inbox)
+		t.Fatalf("1 harmful item and 1 repeated correction: %v", inbox)
 	}
 }

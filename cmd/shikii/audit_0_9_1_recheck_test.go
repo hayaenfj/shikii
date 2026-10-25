@@ -9,11 +9,11 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-// R1(断ってから 30 秒の内に起こし直すと 1 つずれる)は、SubagentStart に呼び出しの id が無く時刻と順番でしか結べないので直さず、
-// integrations/claude-code.md に制限として書いた
+// R1 (re-launching within 30 seconds of a refusal shifts by one) is not fixed, because SubagentStart has no call id and can only be matched by time and order;
+// it is written as a limitation in integrations/claude-code.md
 
-// R2: 種類を書かない Agent 呼び出し(general-purpose として始まる)を断り、1 分後に subagent_type: general-purpose で起こす。
-// 30 秒の捨て方は種類を生のまま比べる("" と "general-purpose" を別の種類と見る)ので、断られた控えが残り、後の子に使われる
+// R2: refuse an Agent call with no type (it starts as general-purpose), and a minute later start one with subagent_type: general-purpose.
+// The 30-second discard compares types raw (it sees "" and "general-purpose" as different types), so the refused note stays and is used by the later child
 func TestReaudit091BurstTreatsEmptyTypeAsGeneralPurpose(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "r2", "cwd": scope, "prompt": "画面の色を直して"})
@@ -27,12 +27,12 @@ func TestReaudit091BurstTreatsEmptyTypeAsGeneralPurpose(t *testing.T) {
 	}
 	ctx := subagentContext(t, startSubagent(t, "r2", scope, "child-r2", "general-purpose", "README の導入手順を更新してください"))
 	if !strings.Contains(ctx, "README の導入手順") {
-		t.Fatalf("1 分前に断られた種類なしの控えは、general-purpose の新しい控えを足す時に捨てる。見出し: %q 残り: %+v", strings.SplitN(ctx, "\n", 2)[0], loadSession(st.Dir, "r2").SubagentTasks)
+		t.Fatalf("a typeless note refused a minute ago is discarded when adding a new general-purpose note. heading: %q remaining: %+v", strings.SplitN(ctx, "\n", 2)[0], loadSession(st.Dir, "r2").SubagentTasks)
 	}
 }
 
-// R3: 経緯を並べる前に外したので、「珍しい語」(記事の半分以下にしか無い語)を数える母数からも経緯が消えた。
-// 経緯が 2 本あると README は 4 本中 2 本で珍しい語だったが、外すと 2 本中 2 本で遍在する語になり、0.9.0 で届いていた決まりが届かない
+// R3: history was removed before listing, so it also disappeared from the base used to count "rare words" (words in at most half the pages).
+// With 2 history pages, README was a rare word in 2 of 4 pages, but after removing them it is in 2 of 2, a common word, and the rule delivered in 0.9.0 is no longer delivered
 func TestReaudit091HistoryExclusionKeepsRarity(t *testing.T) {
 	st, scope, _, draft, _ := memoryEffectFixture(t)
 	book := notebook.Book{Root: st.Dir, Scope: scope}
@@ -57,6 +57,6 @@ func TestReaudit091HistoryExclusionKeepsRarity(t *testing.T) {
 		titles = append(titles, p.Title)
 	}
 	if err != nil || len(pages) == 0 {
-		t.Fatalf("経緯を除いても、珍しい語の母数は変えない(0.9.0 と同じく README の決まりが候補に入る): %v %v", err, titles)
+		t.Fatalf("even with history excluded, do not change the base for rare words (as in 0.9.0, the README rule is among the candidates): %v %v", err, titles)
 	}
 }

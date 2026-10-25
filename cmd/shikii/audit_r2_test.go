@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 監査 第 2 ラウンド(2026-10-23)の消去まわりの指摘を固定する。
+// Pins down the wipe-related findings of audit round 2 (2026-10-23).
 
 func initAt(t *testing.T, dir string) {
 	t.Helper()
@@ -19,23 +19,23 @@ func initAt(t *testing.T, dir string) {
 	capture(t, func() error { return cmdInit(nil) })
 }
 
-// 1. 消去が 1 件拒まれて印が書けなくても、消して初期化し直した方のプロジェクトは次の実行で二度消されない(各プロジェクトの印で判断)。
-// 2. --init は 0.7.4 以降の印(version 2)を書き、共通の印が無ければ今の版を書くので、go install → --init → hook install --yes の順でも消されない。
+// 1. Even if one wipe is refused and the mark cannot be written, a project that was wiped and initialized again is not wiped twice on the next run (judged by each project's mark).
+// 2. --init writes the mark from 0.7.4 on (version 2), and writes the current version if there is no shared mark, so the order go install → --init → hook install --yes does not wipe either.
 func TestWipeMarksEachProjectDoneAndInitWritesTheMarkers(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
 	common, _ := agentHome()
 	os.Remove(installedVersionPath(common))
-	os.RemoveAll(filepath.Join(common, "projects")) // hookEnv が登録した分を消し、この機械で最初の --init にする
+	os.RemoveAll(filepath.Join(common, "projects")) // remove what hookEnv registered, making this the first --init on this machine
 	a := gitRepo(t)
 	initAt(t, a)
 	if _, err := os.Stat(installedVersionPath(common)); err != nil {
-		t.Fatal("--init は共通の印が無ければ今の版を書く(go install で入れた人が初回の hook install で消されない): ", err)
+		t.Fatal("--init writes the current version if there is no shared mark (someone who installed with go install is not wiped on the first hook install): ", err)
 	}
 	if v := projectInitVersion(filepath.Join(a, ".shikii")); v < 2 {
-		t.Fatalf("--init は各プロジェクトの印を version 2 で書く: %d", v)
+		t.Fatalf("--init writes each project's mark as version 2: %d", v)
 	}
-	// 0.6.0 相当の 2 プロジェクト(version 1、共通の印なし)。片方には知らない項目
+	// 2 projects like 0.6.0 (version 1, no shared mark). One has an unknown entry
 	os.Remove(installedVersionPath(common))
 	b, c := gitRepo(t), gitRepo(t)
 	initAt(t, b)
@@ -49,31 +49,31 @@ func TestWipeMarksEachProjectDoneAndInitWritesTheMarkers(t *testing.T) {
 	v, _ := updateVersion("0.7.4")
 	reinit := func(path string) error { initAt(t, path); return nil }
 	if _, err := resetStoresOnFirstRun(common, v, reinit); err == nil || !strings.Contains(err.Error(), "mystery") {
-		t.Fatalf("知らない項目のあるプロジェクトを拒み、理由を返す: %v", err)
+		t.Fatalf("refuse the project with an unknown entry and return the reason: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(b, ".shikii", "records", "old.jsonl")); !os.IsNotExist(err) {
-		t.Fatal("拒まれなかった方は消して初期化し直す")
+		t.Fatal("the one not refused is wiped and initialized again")
 	}
 	if _, err := os.Stat(installedVersionPath(common)); err == nil {
-		t.Fatal("失敗が残れば共通の印は書かない(拒まれた方を次の実行で試すため)")
+		t.Fatal("if a failure remains, do not write the shared mark (so the refused one is tried on the next run)")
 	}
 	os.WriteFile(filepath.Join(b, ".shikii", "records", "after.jsonl"), []byte("new"), 0o600)
 	if _, err := resetStoresOnFirstRun(common, v, reinit); err == nil {
-		t.Fatal("まだ拒まれる方があるので失敗のまま")
+		t.Fatal("still a failure, since one is still refused")
 	}
 	if _, err := os.Stat(filepath.Join(b, ".shikii", "records", "after.jsonl")); err != nil {
-		t.Fatal("初期化し直したプロジェクトは二度消さない(version 2 の印があるため): ", err)
+		t.Fatal("a project that was initialized again is not wiped twice (it has a version 2 mark): ", err)
 	}
 	os.Remove(filepath.Join(c, ".shikii", "mystery"))
 	if _, err := resetStoresOnFirstRun(common, v, reinit); err != nil {
-		t.Fatalf("片付けたら残りを消して成功する: %v", err)
+		t.Fatalf("once tidied, the rest is wiped and it succeeds: %v", err)
 	}
 	if b, _ := os.ReadFile(installedVersionPath(common)); strings.TrimSpace(string(b)) != "0.7.4" {
-		t.Fatalf("全部済めば共通の印を書く: %q", b)
+		t.Fatalf("when everything is done, write the shared mark: %q", b)
 	}
 }
 
-// 3. 壊れた・空の印は 0.0.0 とみなさず、消さずに止める。
+// 3. A broken or empty mark is not taken as 0.0.0; stop without wiping.
 func TestBrokenInstalledVersionMarkerRefusesToWipe(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -88,35 +88,35 @@ func TestBrokenInstalledVersionMarkerRefusesToWipe(t *testing.T) {
 		os.WriteFile(installedVersionPath(common), []byte(broken), 0o644)
 		wiped, err := resetStoresOnFirstRun(common, v, func(string) error { return nil })
 		if err == nil || wiped {
-			t.Fatalf("印 %q は読めないので消さずに止める: wiped=%v err=%v", broken, wiped, err)
+			t.Fatalf("mark %q cannot be read, so stop without wiping: wiped=%v err=%v", broken, wiped, err)
 		}
 		if _, err := os.Stat(keep); err != nil {
-			t.Fatalf("印 %q: 記録は無事", broken)
+			t.Fatalf("mark %q: records are intact", broken)
 		}
 	}
 }
 
-// 4. HOME の判定は実体(SameFile)で: 大文字小文字の違う綴りでも拒む(大文字小文字を区別しない FS でだけ意味がある)。
+// 4. HOME is judged by the actual folder (SameFile): refuse even a spelling with different case (meaningful only on a case-insensitive FS).
 func TestInitRefusesHomeSpelledDifferently(t *testing.T) {
 	hookEnv(t, nil)
 	home, _ := os.UserHomeDir()
 	upper := strings.ToUpper(home)
 	if upper == home {
-		t.Skip("大文字の綴りが作れない")
+		t.Skip("cannot make an upper-case spelling")
 	}
 	if _, err := os.Stat(upper); err != nil {
-		t.Skip("大文字小文字を区別する FS")
+		t.Skip("case-sensitive FS")
 	}
 	if err := os.Chdir(upper); err != nil {
 		t.Skip(err)
 	}
 	t.Cleanup(func() { os.Chdir(home) })
 	if err := cmdInit(nil); err == nil || !strings.Contains(err.Error(), "ホーム") {
-		t.Fatalf("綴りが違っても HOME は初期化しない: %v", err)
+		t.Fatalf("HOME is not initialized even with a different spelling: %v", err)
 	}
 }
 
-// 5. hook install の表示(--yes 無し)は、消すものと消さないもの(知らない項目、version 2)を分けて出す。
+// 5. The hook install output (without --yes) shows what is wiped and what is not (unknown entries, version 2) separately.
 func TestHookInstallPreviewExplainsWhatItWouldSkip(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -132,28 +132,28 @@ func TestHookInstallPreviewExplainsWhatItWouldSkip(t *testing.T) {
 	os.Remove(installedVersionPath(common))
 	out := capture(t, func() error { return cmdHook([]string{"install"}) })
 	if !strings.Contains(out, old) || !strings.Contains(out, "消して初期化し直します") {
-		t.Fatalf("消す対象を出す:\n%s", out)
+		t.Fatalf("shows what will be wiped:\n%s", out)
 	}
 	if !strings.Contains(out, odd) || !strings.Contains(out, "消しません") || !strings.Contains(out, "mystery") {
-		t.Fatalf("知らない項目があるプロジェクトは消さないと理由付きで出す:\n%s", out)
+		t.Fatalf("shows, with the reason, that a project with unknown entries is not wiped:\n%s", out)
 	}
 	if !strings.Contains(out, "済み: "+fresh) {
-		t.Fatalf("この版で初期化したプロジェクト(version 2)は「済み」と出す:\n%s", out)
+		t.Fatalf("a project initialized with this version (version 2) shows as done:\n%s", out)
 	}
 }
 
-// 6. 共通の置き場の判定は単独でも効く(監査 R2 の変異 M6: 許可リストに頼らない)。planWipe は HOME を「消しません」にする。
+// 6. The shared-store check works on its own too (audit R2 mutation M6: it does not rely on the allowlist). planWipe makes HOME "not wiped".
 func TestSharedPlaceIsRefusedByItself(t *testing.T) {
 	hookEnv(t, nil)
 	home, _ := os.UserHomeDir()
 	if !isSharedPlaceScope(home) || !isSharedPlaceScope(home+string(filepath.Separator)) {
-		t.Fatal("HOME は共通の置き場")
+		t.Fatal("HOME is a shared store")
 	}
 	if isSharedPlaceScope(t.TempDir()) {
-		t.Fatal("他のフォルダは共通の置き場ではない")
+		t.Fatal("other folders are not a shared store")
 	}
 	plan := planWipe([]projectEntry{{Path: home, InitVersion: 1}})
 	if len(plan) != 1 || plan[0].Action != wipeRefuse || !strings.Contains(plan[0].Reason, "共通の置き場") {
-		t.Fatalf("HOME は許可リストを見る前に拒む: %+v", plan)
+		t.Fatalf("HOME is refused before looking at the allowlist: %+v", plan)
 	}
 }

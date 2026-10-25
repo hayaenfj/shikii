@@ -14,15 +14,15 @@ import (
 	"strings"
 )
 
-// 画面と MCP から tune を回し、結果を読み、人が「意味は同じ」と確かめた時だけ採用する。
+// Runs tune from the page and MCP, reads the results, and adopts only when a person has confirmed "the meaning is the same".
 //
 //	GET  /v1/tune?spec=id        → {running, error, latest: tuneResult}
-//	POST /v1/tune/run {spec, propose} → 202。裏で runTune。提案役は serve の --proposer
-//	POST /v1/tune/sync {spec, propose} → その場で runTune して結果(MCP が使う)
-//	POST /v1/tune/adopt {spec, run, meaning_same, note} → 採用 / 却下。meaning_same 無しは 400、採用済み・元に戻した run は 409
-//	POST /v1/tune/review {spec, run, keep} → エージェントが確かめて自動で採用した聞き方を、人が「このままでよい」か「元に戻す」(0.9.2)
+//	POST /v1/tune/run {spec, propose} → 202. runTune in the background. The proposer is serve's --proposer
+//	POST /v1/tune/sync {spec, propose} → runs runTune on the spot and returns the result (used by MCP)
+//	POST /v1/tune/adopt {spec, run, meaning_same, note} → adopt / reject. Without meaning_same 400; a run already adopted or reverted 409
+//	POST /v1/tune/review {spec, run, keep} → for wording an agent checked and adopted automatically, the person says "keep as is" or "revert" (0.9.2)
 //
-// 採用の道具は MCP には出さない。意味の確かめはエージェントが hook variants check で(和訳付き)、決めきれない時と元に戻すのは人が画面で。
+// The adopt tool is not exposed over MCP. The agent checks the meaning with hook variants check (with a Japanese translation); when it cannot decide, and for reverting, the person uses the page.
 
 func (s *server) tuneOptsFor(sp specRef, propose int) tuneOpts {
 	return tuneOpts{specPath: sp.path, ef: s.o.ef, storeDir: s.o.storeDir, folds: 5,
@@ -39,7 +39,7 @@ func (s *server) specRef(id string) (specRef, error) {
 	return specRef{id: sp.ID, path: sp.Path()}, nil
 }
 
-// runTuneCaptured は個別の報告先で runTune を回す。同じ仕事の spec の変更だけを直列にする。
+// runTuneCaptured runs runTune with its own report destination. Only changes to specs of the same work are serialized.
 func (s *server) runTuneCaptured(o tuneOpts) (*tuneResult, string, error) {
 	s.calibMu.Lock()
 	defer s.calibMu.Unlock()
@@ -75,7 +75,7 @@ func (s *server) handleTuneGet(w http.ResponseWriter, r *http.Request) {
 	if res, err := latestTuneResult(s.o.wikiDir, id); err == nil {
 		out["latest"] = res
 	}
-	// 今ある候補(人が画面か YAML で書いたもの、提案役が足したもの)。次の tune(手でも、hook の自動でも)が採点する
+	// The current candidates (written by a person on the page or in YAML, or added by the proposer). The next tune (manual or the hook's automatic one) scores them
 	variants := []map[string]any{}
 	if sp, err := s.spec(id); err == nil {
 		for _, v := range sp.Variants {
@@ -86,14 +86,14 @@ func (s *server) handleTuneGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
-// variantNameRe は候補の名前の形(wiki/runs のファイル名や表に入るので、改行や長い文を入れない)。variantTextMax は質問・説明の長さの上限(バイト)。
+// variantNameRe is the shape of a candidate name (it goes into wiki/runs file names and tables, so no line breaks or long sentences). variantTextMax is the length limit (bytes) for the question and descriptions.
 var variantNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
 
 const variantTextMax = 2000
 
-// handleTuneVariant は人が画面で書いた候補の言い方を spec の variants に 1 つ足す(POST /v1/tune/variant: spec, name, question, options{id: 説明})。
-// 書くのは variants だけ(提案役と同じ経路: ファイルを読み直して足し、Save が他の項目を触らない)。候補は spec として検証してから書く(無い選択肢の id などは 400)。
-// 足すだけで採点も採用もしない: 採点は次の tune、採用は人。
+// handleTuneVariant adds one candidate wording that a person wrote on the page to the spec's variants (POST /v1/tune/variant: spec, name, question, options{id: description}).
+// It writes only variants (the same path as the proposer: reread the file and add, so Save does not touch other fields). The candidate is checked as a spec before writing (e.g. a choice id that does not exist is 400).
+// It only adds; it neither scores nor adopts: the next tune scores, and a person adopts.
 func (s *server) handleTuneVariant(w http.ResponseWriter, r *http.Request) {
 	if !acceptJSONPost(w, r) {
 		return
@@ -119,7 +119,7 @@ func (s *server) handleTuneVariant(w http.ResponseWriter, r *http.Request) {
 	v := spec.Variant{Name: strings.TrimSpace(req.Name), Question: strings.TrimSpace(req.Question)}
 	for id, d := range req.Options {
 		id, d = strings.TrimSpace(id), strings.TrimSpace(d)
-		if id == "" || d == "" { // 空の行は無視(画面の textarea の空行)
+		if id == "" || d == "" { // ignore empty lines (blank lines in the page's textarea)
 			continue
 		}
 		if v.Options == nil {
@@ -145,7 +145,7 @@ func (s *server) handleTuneVariant(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("a rewording needs a question or at least one option description"))
 		return
 	}
-	s.calibMu.Lock() // 読んでから書くまで 1 つの鍵の中で(tune --write や採用と同時に書かない)
+	s.calibMu.Lock() // read and write under one lock (do not write at the same time as tune --write or adopt)
 	defer s.calibMu.Unlock()
 	fresh, err := spec.Load(ref.path)
 	if err != nil {
@@ -268,7 +268,7 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("run is required (from GET /v1/tune)"))
 		return
 	}
-	// 読んでから書くまで 1 つの鍵の中で(同じ run への同時の採用を 409 にする)
+	// read and write under one lock (so concurrent adopts of the same run get 409)
 	s.calibMu.Lock()
 	defer s.calibMu.Unlock()
 	res, err := loadTuneResult(s.o.wikiDir, req.Run)
@@ -316,9 +316,9 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"adopted": true, "run": res.Run, "path": newPath, "report": strings.TrimSpace(buf.String())})
 }
 
-// handleTuneReview は、エージェントが意味は同じと確かめて自動で採用した聞き方への人の答え(0.9.2)。
-// keep: true は「このままでよい」(人の確かめとして残す)。false は「元に戻す」: 採用した版を <file>.reverted に変え(消さない)、
-// hook と serve は前の版を読む。その run はもう採用できない。却下は spec のページにも残り、次の提案役が読む。
+// handleTuneReview is the person's answer to wording an agent confirmed has the same meaning and adopted automatically (0.9.2).
+// keep: true means "keep as is" (kept as the person's confirmation). false means "revert": the adopted version is renamed to <file>.reverted (not deleted),
+// and the hook and serve read the previous version. That run can no longer be adopted. The rejection also stays on the spec's page, and the next proposer reads it.
 func (s *server) handleTuneReview(w http.ResponseWriter, r *http.Request) {
 	if !acceptJSONPost(w, r) {
 		return

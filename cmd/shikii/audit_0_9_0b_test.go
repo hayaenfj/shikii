@@ -1,6 +1,6 @@
 package main
 
-// 0.9.0 の再監査(監査者が足した)。
+// The recheck of 0.9.0 (added by the auditor).
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 新-1: 人の文の中にだけ印があり節の無い AGENTS.md に、アップデート(hook install)が節を作る(「節の無いファイルには作らない」に反する)。
+// New-1: on an AGENTS.md with a marker only inside the person's text and no section, the update (hook install) creates a section (against "do not create one in a file without a section").
 func TestAudit090bHookInstallDoesNotCreateSectionForInlineMarker(t *testing.T) {
 	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
 	repo := gitRepo(t)
@@ -24,11 +24,11 @@ func TestAudit090bHookInstallDoesNotCreateSectionForInlineMarker(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte(human), 0o644)
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	if b, _ := os.ReadFile(filepath.Join(repo, "AGENTS.md")); string(b) != human {
-		t.Fatalf("節の無い AGENTS.md に節を作った:\n%s", b)
+		t.Fatalf("created a section in an AGENTS.md without one:\n%s", b)
 	}
 }
 
-// 新-2: 別の記事の出典が欠けている(点検の問題は出るが、保存は断られない)だけで、hook は付ける記事を頼まなくなる。classify は通る。
+// New-2: just because another page is missing its source (lint reports a problem, but saving is not refused), the hook stops asking for pages to classify. classify passes.
 func TestAudit090bSourceIssueElsewhereDoesNotBlockAsk(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	other := fmt.Sprintf("%016x", 778)
@@ -59,7 +59,7 @@ func TestAudit090bSourceIssueElsewhereDoesNotBlockAsk(t *testing.T) {
 		})
 	}
 	if len(m) != 1 {
-		t.Fatalf("出典のファイルが見つからない: %v", m)
+		t.Fatalf("source file not found: %v", m)
 	}
 	os.Remove(m[0])
 	text, ids, err := classifyContext(agent, scope)
@@ -68,11 +68,11 @@ func TestAudit090bSourceIssueElsewhereDoesNotBlockAsk(t *testing.T) {
 	}
 	_, cerr := book.Classify(a.Page.ID, "rule", "作業する時")
 	if cerr == nil && len(ids) == 0 {
-		t.Fatalf("classify は通る(%v)のに、hook は付ける記事を頼まず「付けられません」と言う: %s", cerr, text)
+		t.Fatalf("classify passes (%v), yet the hook asks for no pages and says it cannot classify: %s", cerr, text)
 	}
 }
 
-// 確認: hook が頼んだ 5 本を順に付けると全部通り、Stop は止めない。違う記事を同時に付けても断られない。
+// Check: classifying the 5 pages the hook asked for, one by one, all pass and Stop does not block. Classifying different pages at the same time is not refused.
 func TestAudit090bClassifyFiveInOrderAndInParallel(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -107,15 +107,15 @@ func TestAudit090bClassifyFiveInOrderAndInParallel(t *testing.T) {
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "q", "cwd": repo, "prompt": "README を直して"})
 	s := loadSession(root, "q")
 	if len(s.ClassifyAsked) != 5 {
-		t.Fatalf("5 本頼む: %v", s.ClassifyAsked)
+		t.Fatalf("asks for 5: %v", s.ClassifyAsked)
 	}
 	for _, id := range s.ClassifyAsked {
 		if _, err := book.Classify(id, "fact", "作業する時"); err != nil {
-			t.Fatalf("順に付けると通る: %s %v", id, err)
+			t.Fatalf("passes when done in order: %s %v", id, err)
 		}
 	}
 	if out := runHook(t, "stop", map[string]any{"session_id": "q", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "種類と場面を付ける記事") {
-		t.Fatalf("付け終えたのに止めた: %s", out)
+		t.Fatalf("blocked even though classifying is done: %s", out)
 	}
 	un, _ := book.Unclassified()
 	var wg sync.WaitGroup
@@ -127,27 +127,27 @@ func TestAudit090bClassifyFiveInOrderAndInParallel(t *testing.T) {
 	wg.Wait()
 	for i, err := range errs {
 		if err != nil {
-			t.Fatalf("違う記事を同時に付けても断らない: %s %v", un[i].ID, err)
+			t.Fatalf("classifying different pages at the same time is not refused: %s %v", un[i].ID, err)
 		}
 	}
-	// 教訓・関連・変更理由は変わらない
+	// Lesson, related and change reason do not change
 	live, _ := book.Live()
 	for _, p := range live {
 		if !strings.HasPrefix(p.Lesson, "前の版の教訓") || (p.Title != "前の版の記事 0" && len(p.Related) != 1) {
-			t.Fatalf("classify が教訓か関連を変えた: %+v", p)
+			t.Fatalf("classify changed the lesson or related: %+v", p)
 		}
 	}
 }
 
-// 確認: 印の組の数え方の端(空のファイル、末尾に改行の無いファイル、0.8.3 が作った節、閉じの印で終わり改行の無いファイル、2 回目は何もしない)。
+// Check: edge cases of counting marker pairs (empty file, file without a trailing newline, a section made by 0.8.3, file ending in the closing marker without a newline, the second run does nothing).
 func TestAudit090bAgentsSectionEdges(t *testing.T) {
 	old083 := agentsMarker + "\n## shikii(判定の作法)\n\n- 同じ種類の判断は自分で決めず\n- 詳しい作法: ~/.claude/skills/shikii/SKILL.md(shikii init が置く)\n" + agentsMarker + "\n"
 	cases := []struct{ name, in, wantPrefix, wantSuffix string }{
-		{"空", "", agentsMarker, agentsMarker + "\n"},
-		{"改行なし", "# 規則", "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
-		{"0.8.3 の節(改行なしに足した)", "# 規則\n\n" + old083, "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
-		{"閉じで終わり改行なし", "# 規則\n\n" + strings.TrimSuffix(old083, "\n"), "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
-		{"節の後に人の文", "# 規則\n\n" + old083 + "\n## 後ろ\n", "# 規則\n\n" + agentsMarker, agentsMarker + "\n\n## 後ろ\n"},
+		{"empty", "", agentsMarker, agentsMarker + "\n"},
+		{"no newline", "# 規則", "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
+		{"0.8.3 section (added to a file without a newline)", "# 規則\n\n" + old083, "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
+		{"ends with the closing marker, no newline", "# 規則\n\n" + strings.TrimSuffix(old083, "\n"), "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
+		{"person's text after the section", "# 規則\n\n" + old083 + "\n## 後ろ\n", "# 規則\n\n" + agentsMarker, agentsMarker + "\n\n## 後ろ\n"},
 	}
 	for _, c := range cases {
 		path := filepath.Join(t.TempDir(), "AGENTS.md")
@@ -161,13 +161,13 @@ func TestAudit090bAgentsSectionEdges(t *testing.T) {
 			t.Fatalf("%s: %q", c.name, got)
 		}
 		if did, err := addAgentsSection(path); did || err != nil {
-			t.Fatalf("%s: 2 回目は何もしない: %v %v", c.name, did, err)
+			t.Fatalf("%s: the second run does nothing: %v %v", c.name, did, err)
 		}
 		if entries, _ := os.ReadDir(filepath.Dir(path)); len(entries) != 1 {
-			t.Fatalf("%s: 一時ファイルが残った: %v", c.name, entries)
+			t.Fatalf("%s: a temporary file was left: %v", c.name, entries)
 		}
 	}
-	// repo の中のリンク(CRLF)はリンクのまま、CRLF のまま
+	// A link inside the repo (CRLF) stays a link and stays CRLF
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(strings.ReplaceAll("# 規則\n\n"+old083, "\n", "\r\n")), 0o600)
 	os.Symlink("CLAUDE.md", filepath.Join(dir, "AGENTS.md"))
@@ -178,17 +178,17 @@ func TestAudit090bAgentsSectionEdges(t *testing.T) {
 	real, _ := os.Stat(filepath.Join(dir, "CLAUDE.md"))
 	b, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
 	if info.Mode()&os.ModeSymlink == 0 || real.Mode().Perm() != 0o600 || strings.Contains(strings.ReplaceAll(string(b), "\r\n", ""), "\n") || !strings.Contains(string(b), "wiki classify") {
-		t.Fatalf("リンク・権限・CRLF: link=%v perm=%v %q", info.Mode()&os.ModeSymlink != 0, real.Mode().Perm(), b)
+		t.Fatalf("link, permissions, CRLF: link=%v perm=%v %q", info.Mode()&os.ModeSymlink != 0, real.Mode().Perm(), b)
 	}
 }
 
-// 穴: 印だけの行が 3 つ(節の中に人が印だけの行を書いた)なら触らない。len(marks) == 2 の条件を外しても今のテストは落ちない。
+// Hole: with 3 marker-only lines (a person wrote a marker-only line inside the section), do not touch it. Removing the len(marks) == 2 condition did not make the existing tests fail.
 func TestAudit090bAgentsThreeMarkerLinesUntouched(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "AGENTS.md")
 	in := "# 規則\n\n" + agentsMarker + "\n## shikii(判定の作法)\n\n- 古い\n" + agentsMarker + "\n- 人が節の中に足した大事な決まり\n" + agentsMarker + "\n"
 	os.WriteFile(path, []byte(in), 0o644)
 	addAgentsSection(path)
 	if b, _ := os.ReadFile(path); string(b) != in {
-		t.Fatalf("印だけの行が 3 つなら触らない:\n%s", b)
+		t.Fatalf("with 3 marker-only lines, do not touch it:\n%s", b)
 	}
 }

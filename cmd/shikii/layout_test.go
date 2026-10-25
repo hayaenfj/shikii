@@ -12,7 +12,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// 配置に敏感な偽モデル: 既定の配置では何でも change_request と言う(0.6)、plain なら本文を読んで当てる(0.9)。応答の model 名に配置を付ける(変換役と同じ)。
+// A layout-sensitive fake model: with the default layout it says change_request for everything (0.6); with plain it reads the text and gets it right (0.9). It adds the layout to the response model name (as the converter does).
 func layoutSensitiveModel(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +33,7 @@ func layoutSensitiveModel(t *testing.T) *httptest.Server {
 		for k, q := range req.Questions {
 			ans := truth
 			if strings.Contains(q.Instructions, "Anything goes") {
-				ans = "other" // わざと悪い文言には全部 other と答える(反証の例を作る)
+				ans = "other" // answer other to everything for deliberately bad wording (to make a counterexample)
 			}
 			probs := map[string]float64{"change_request": (1 - p) / 2, "question": (1 - p) / 2, "other": 0}
 			probs[ans] = p
@@ -45,7 +45,7 @@ func layoutSensitiveModel(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// tune は配置だけ違う候補を採点でき、勝てば採用した版に layout が入り、較正はその配置の model 名で引かれる。
+// tune can score candidates that differ only in layout; if one wins, the adopted version gets the layout, and calibration is drawn with that layout's model name.
 func TestTuneScoresAndAdoptsALayout(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -75,8 +75,8 @@ func TestTuneScoresAndAdoptsALayout(t *testing.T) {
 	}
 }
 
-// 置き場の既定: shikii が作るものは全部 store(.shikii/)の下。--specs を省けば <store>/decisions、wiki は <store>/wiki。
-// serve は newServer より前(spec の読み込み)で既定を埋める: 埋めないと `no spec (*.yaml) in ` で起動できない(2026-10-18 に実機で起きた)。
+// Store defaults: everything shikii makes is under the store (.shikii/). Omitting --specs means <store>/decisions; the wiki is <store>/wiki.
+// serve fills the defaults before newServer (loading specs): without that it cannot start with `no spec (*.yaml) in ` (happened on a real machine on 2026-10-18).
 func TestLayoutDefaultsLiveUnderTheStore(t *testing.T) {
 	o := serveOpts{storeDir: filepath.Join("x", ".shikii")}
 	o.resolve()
@@ -88,7 +88,7 @@ func TestLayoutDefaultsLiveUnderTheStore(t *testing.T) {
 	if o.specsDir != "decisions" || o.wikiDir != "w" {
 		t.Fatalf("explicit folders must stay: %+v", o)
 	}
-	// init が作る置き場と new の既定も同じ
+	// The store init creates and new's defaults are the same
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("HOME", t.TempDir())

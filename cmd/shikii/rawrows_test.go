@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// calibrate は choice / score の行でも raw(選択肢ごとの確率の object)付きなら読める。モデルを呼ばずに線を引き、
-// 比較ベンチの LoRA の腕(別の道具が出した raw)を A・B と同じ物差しで並べられる。noul の raw は今までどおり数字 1 つ。
+// calibrate can read choice / score rows too when they carry raw (an object of probabilities per choice). It draws a line without calling a model,
+// so a benchmark's LoRA arm (raw produced by another tool) can be lined up on the same scale as A and B. noul's raw stays a single number as before.
 func TestCalibrateReadsChoiceRowsWithRawDistributions(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false") // min_n 2
@@ -22,7 +22,7 @@ func TestCalibrateReadsChoiceRowsWithRawDistributions(t *testing.T) {
 	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// 送れる先は無い(--local 無し): raw があるので呼ばずに済む
+	// Nowhere to send (no --local): there is raw, so no call is needed
 	out := capture(t, func() error {
 		return cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--model", "lora-bench", "--store", filepath.Join(dir, ".shikii"), "--write"})
 	})
@@ -35,7 +35,7 @@ func TestCalibrateReadsChoiceRowsWithRawDistributions(t *testing.T) {
 	if c := sp.CalibrationFor("lora-bench"); c == nil || c.N != 4 {
 		t.Fatalf("the line is keyed by the given model name: %+v", sp.Calibration)
 	}
-	// raw の鍵が spec の選択肢に無ければ誤り(黙って 0 にしない)
+	// If a raw key is not one of the spec's choices, it is an error (not silently 0)
 	bad := strings.Replace(rows, `"other":0.02},"truth":"change_request"`, `"nope":0.02},"truth":"change_request"`, 1)
 	if err := os.WriteFile(labeledPath, []byte(bad), 0o644); err != nil {
 		t.Fatal(err)

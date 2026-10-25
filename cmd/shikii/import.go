@@ -14,19 +14,19 @@ import (
 	"github.com/hayaenfj/shikii/internal/spec"
 )
 
-// cmdImport は手元の過去の表(CSV)を正解の貯金(calibrate / tune が --labeled で読む JSON)にする。
-// 冷たい出発(線を引く前に 50 件答える)を、業務にもうある表で温めるため。
-// 列: spec の入力名(required は必須) + truth(選択肢の id。noul は yes/no/true/false) + 任意で weight (0,1]。
+// cmdImport turns a local table of past cases (CSV) into a bank of truths (the JSON that calibrate / tune read with --labeled).
+// It warms up a cold start (answering 50 cases before a line can be drawn) with a table the business already has.
+// Columns: the spec's input names (required ones must be present) + truth (a choice id; for noul, yes/no/true/false) + an optional weight in (0,1].
 func cmdImport(args []string) error {
 	fs := flag.NewFlagSet("import", flag.ContinueOnError)
-	specPath := fs.String("spec", "", "判定の spec(列名と truth の検証に使う)")
-	out := fs.String("out", "", "書く先(省略時は <csv>.json)")
+	specPath := fs.String("spec", "", "the decision spec (used to check column names and truth)")
+	out := fs.String("out", "", "where to write (default: <csv>.json)")
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 || *specPath == "" {
-		return errors.New("usage: shikii import <past.csv> --spec <spec.yaml> [--out truths.json]\n  列: spec の入力名 + truth [+ weight]。できた JSON は calibrate / tune の --labeled に渡す")
+		return errors.New("usage: shikii import <past.csv> --spec <spec.yaml> [--out truths.json]\n  columns: the spec's input names + truth [+ weight]. Pass the resulting JSON to calibrate / tune with --labeled")
 	}
 	sp, err := spec.Load(*specPath)
 	if err != nil {
@@ -44,7 +44,7 @@ func cmdImport(args []string) error {
 	}
 	col := map[string]int{}
 	for i, h := range header {
-		name := strings.TrimSpace(strings.TrimPrefix(h, "\ufeff")) // Excel の UTF-8 BOM は最初の列名に付く
+		name := strings.TrimSpace(strings.TrimPrefix(h, "\ufeff")) // Excel's UTF-8 BOM sticks to the first column name
 		if _, dup := col[name]; dup {
 			return fmt.Errorf("%s: column %q appears twice", pos[0], name)
 		}

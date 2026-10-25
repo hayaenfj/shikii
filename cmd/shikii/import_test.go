@@ -13,8 +13,8 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 冷たい出発を温める: 手元の過去の表(CSV: 入力の列 + truth [+ weight])を、calibrate / tune が読む正解の貯金(JSON)にする。
-// 列名は spec の入力名と一致していること。truth は spec の選択肢(noul は yes/no/true/false)。
+// Warming a cold start: turn a local table of past cases (CSV: input columns + truth [+ weight]) into the bank of truths (JSON) that calibrate / tune read.
+// Column names must match the spec's input names. truth is one of the spec's choices (for noul, yes/no/true/false).
 func TestImportTurnsACSVIntoTruths(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false")
@@ -36,7 +36,7 @@ func TestImportTurnsACSVIntoTruths(t *testing.T) {
 	if rows[1].Inputs["message"] != "why, though?" || string(rows[1].Truth) != `"question"` || rows[1].Weight != 0.5 || rows[0].Weight != 0 {
 		t.Fatalf("rows: %+v", rows)
 	}
-	// 知らない選択肢・足りない列は行番号付きで誤り(黙って捨てない)
+	// Unknown choices and missing columns are errors with line numbers (not silently dropped)
 	bad := "message,truth\nfix,nope\n"
 	if err := os.WriteFile(csvPath, []byte(bad), 0o644); err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestImportTurnsACSVIntoTruths(t *testing.T) {
 	}
 }
 
-// 領収書: act の判定には「何を根拠に動いてよいと言ったか」が付く。線の鍵・方法・引いた日・正解の数(人の分)・人が確かめた act の精度。線が無ければ領収書も無い。
+// Receipt: an act decision carries "on what grounds it said it may act": the line's key, method, date drawn, number of truths (the person's), and the precision of act decisions a person checked. No line, no receipt.
 func TestActDecisionsCarryAReceipt(t *testing.T) {
 	dir := t.TempDir()
 	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
@@ -69,7 +69,7 @@ func TestActDecisionsCarryAReceipt(t *testing.T) {
 	if err := sp.Save(); err != nil {
 		t.Fatal(err)
 	}
-	// 人が確かめた act の判定を 2 件(どちらも当たり)
+	// 2 act decisions a person checked (both right)
 	st := store.Store{Dir: storeDir}
 	for _, m := range []string{"fix b", "fix c"} {
 		in := map[string]string{"message": m}
@@ -99,7 +99,7 @@ func TestActDecisionsCarryAReceipt(t *testing.T) {
 	}
 }
 
-// 審判: 別の端点(より大きいモデル)に同じ spec を聞き、人の正解との一致率が act に届く時だけ、正解の無い記録に重み付きの正解(source judge)を付ける。
+// Judge: ask another endpoint (a larger model) the same spec, and only when its agreement with human truths reaches act, give weighted truths (source judge) to records without one.
 func TestJudgeLabelsOnlyWhenItAgreesWithPeople(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false") // min_n 2
@@ -120,7 +120,7 @@ func TestJudgeLabelsOnlyWhenItAgreesWithPeople(t *testing.T) {
 	if err := st.AppendRecord(unlabeled); err != nil {
 		t.Fatal(err)
 	}
-	// 良い審判: 本文を読んで当てる
+	// A good judge: reads the text and gets it right
 	good := fakeByMessage(t, "big", map[string]map[string]float64{
 		"fix a": {"change_request": 0.95, "question": 0.05, "other": 0}, "why a": {"change_request": 0.05, "question": 0.95, "other": 0}, "fix z": {"change_request": 0.9, "question": 0.1, "other": 0}})
 	out := capture(t, func() error {
@@ -142,7 +142,7 @@ func TestJudgeLabelsOnlyWhenItAgreesWithPeople(t *testing.T) {
 	if store.HumanSource("judge") {
 		t.Fatalf("a judge's truth is a machine truth")
 	}
-	// 悪い審判: 人と食い違う → 正解を書かない
+	// A bad judge: disagrees with people → writes no truths
 	bad := fakeByMessage(t, "big2", map[string]map[string]float64{
 		"fix a": {"change_request": 0.05, "question": 0.95, "other": 0}, "why a": {"change_request": 0.95, "question": 0.05, "other": 0}, "fix z": {"change_request": 0.9, "question": 0.1, "other": 0}})
 	var buf strings.Builder

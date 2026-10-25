@@ -13,9 +13,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 初めての利用者の試験(2026-10-18、問い合わせメールの振り分けを文書だけで一周)で出たつまずきの反証。
+// Counterexamples for the stumbles found in the first-time user trial (2026-10-18, one full round of sorting inquiry emails from the documents alone).
 //
-// (1) init は既製の知識(index.md、types/、patterns/、models/)を wiki/ に写す。人が既に持つページは触らない。写したページのリンクは全部その wiki の中で解ける。
+// (1) init copies the ready-made knowledge (index.md, types/, patterns/, models/) into wiki/. Pages the person already has are not touched. Every link in the copied pages resolves inside that wiki.
 func TestInitSeedsTheWikiWithSharedKnowledgeWithoutOverwriting(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -42,7 +42,7 @@ func TestInitSeedsTheWikiWithSharedKnowledgeWithoutOverwriting(t *testing.T) {
 	if b, _ := os.ReadFile(mine); string(b) != "# mine\n" {
 		t.Fatalf("a page the person already has is never overwritten: %q", b)
 	}
-	// 写したページの相対リンクは、この wiki の中で全部解ける(repo だけにある runs/ や specs/ へ張ったら落ちる)
+	// Relative links in the copied pages all resolve inside this wiki (fails if they point to runs/ or specs/, which exist only in the repo)
 	link := regexp.MustCompile(`\]\(([^)#]+)[^)]*\)`)
 	if err := filepath.Walk(filepath.Join(dir, ".shikii", "wiki"), func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(p, ".md") {
@@ -62,14 +62,14 @@ func TestInitSeedsTheWikiWithSharedKnowledgeWithoutOverwriting(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// 2 回目: 足すものが無いので黙る
+	// The second time: nothing to add, so it stays quiet
 	if out := capture(t, func() error { return cmdInit(nil) }); strings.Contains(out, "pages of shared knowledge added") {
 		t.Fatalf("second init has nothing to seed:\n%s", out)
 	}
 }
 
-// (2) 正解が eval.min_n に足りない時、calibrate と tune は「何をすればよいか」を言う: 正解を集めるか、試しなら spec の eval.min_n を下げる。
-// tune は --labeled を渡しても同じ文で蹴っていたので、--labeled を解決として勧めない(渡していない時だけ、ファイルの読み方として添える)。
+// (2) When truths are below eval.min_n, calibrate and tune say "what to do": collect truths, or, for a trial, lower the spec's eval.min_n.
+// tune rejected with the same text even when --labeled was passed, so --labeled is not suggested as the fix (it is added only as how files are read, when not passed).
 func TestTooFewTruthsSaysWhatToDoNext(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -77,7 +77,7 @@ func TestTooFewTruthsSaysWhatToDoNext(t *testing.T) {
 	specPath := writeSpec(t, dir, "false") // min_n 2
 	b, _ := os.ReadFile(specPath)
 	if err := os.WriteFile(specPath, append(b, []byte("variants:\n  - name: strict\n    question: What exactly is asked?\n")...), 0o644); err != nil {
-		t.Fatal(err) // tune は候補が無いとそこで止まるので、候補を 1 つ置く
+		t.Fatal(err) // tune stops there without candidates, so put one candidate
 	}
 	out := capture(t, func() error {
 		return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix it"})
@@ -94,7 +94,7 @@ func TestTooFewTruthsSaysWhatToDoNext(t *testing.T) {
 		t.Fatalf("tune without --labeled must name the ways out and how a file is read: %v", err)
 	}
 	rows := filepath.Join(dir, "rows.json")
-	if err := os.WriteFile(rows, []byte(`[{"inputs":{"message":"fix it"},"truth":"change_request"}]`), 0o644); err != nil { // store と同じ本文: 入力ごとに 1 件なので正解は 1 つのまま
+	if err := os.WriteFile(rows, []byte(`[{"inputs":{"message":"fix it"},"truth":"change_request"}]`), 0o644); err != nil { // the same text as the store: one per input, so there is still one truth
 		t.Fatal(err)
 	}
 	err = cmdTune([]string{specPath, "--local", srv.URL, "--store", storeDir, "--labeled", rows})
@@ -103,7 +103,7 @@ func TestTooFewTruthsSaysWhatToDoNext(t *testing.T) {
 	}
 }
 
-// (3) drift の ask agreement は、ask で答えた正解が窓に無ければ 0.000 ではなく n/a。
+// (3) drift's ask agreement is n/a, not 0.000, when no truths answered on ask are in the window.
 func TestDriftSaysNotApplicableWithoutAskLabels(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -123,7 +123,7 @@ func TestDriftSaysNotApplicableWithoutAskLabels(t *testing.T) {
 	}
 }
 
-// (4) tune の run ページは、モデルと型のページがその wiki にある時だけリンクにする(新しいプロジェクトの wiki でリンク切れを作らない)。
+// (4) tune's run page links model and type pages only when they are in that wiki (so a new project's wiki gets no broken links).
 func TestRunPageLinksOnlyToPagesTheWikiHas(t *testing.T) {
 	dir := t.TempDir()
 	sp := mustLoad(t, writeSpec(t, dir, "false"))
@@ -158,7 +158,7 @@ func TestRunPageLinksOnlyToPagesTheWikiHas(t *testing.T) {
 	}
 }
 
-// (5) /v1/redo(と spec を取る口全部)に spec が無い時は、`unknown spec ""` ではなく「spec が要る」と何を足すかを言う。
+// (5) When /v1/redo (and every endpoint that takes a spec) has no spec, it says "a spec is needed" and what to add, instead of `unknown spec ""`.
 func TestMissingSpecIdSaysSpecIsRequired(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.6, "question": 0.4, "other": 0})
 	code, d := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix the typo"}})
@@ -177,7 +177,7 @@ func TestMissingSpecIdSaysSpecIsRequired(t *testing.T) {
 	}
 }
 
-// (6) bias は calibrate / tune と同じ貯金(store の正解の本文)で回る。--labeled は無くてよい。
+// (6) bias runs on the same bank as calibrate / tune (the text of truths in the store). --labeled is not needed.
 func TestBiasReadsStatesFromTheStoreLikeCalibrate(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false")

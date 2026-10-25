@@ -14,10 +14,10 @@ import (
 	"github.com/hayaenfj/shikii/internal/spec"
 )
 
-// 0.9.2: 聞き方の候補が今の質問を上回った時、意味が同じかは人ではなくエージェント(LLM)が確かめ、和訳を付ける。
-// 同じ → 自動で採用し、人には和訳付きで知らせて元に戻せるようにする。決めきれない → 和訳と違いを付けて人に聞く。違う → 採用しない。
+// 0.9.2: when a wording candidate beats the current question, an agent (LLM), not the person, checks whether the meaning is the same and adds a Japanese translation.
+// Same → adopt automatically, tell the person with the translation, and let them revert. Cannot decide → ask the person with the translation and the difference. Different → do not adopt.
 
-// wordingCheckFixture は hook の問い changes-in-scope に、採用できる tune の結果を 1 つ置く。採用(較正)は偽物に差し替える。
+// wordingCheckFixture puts one adoptable tune result on the hook question changes-in-scope. Adoption (calibration) is swapped for a fake.
 func wordingCheckFixture(t *testing.T) (agent, repo string, res *tuneResult) {
 	t.Helper()
 	repo = gitRepo(t)
@@ -91,18 +91,18 @@ func checkBody(res *tuneResult, verdict string) map[string]any {
 func TestWordingCheckAskedOfAgentOncePerRun(t *testing.T) {
 	agent, repo, res := wordingCheckFixture(t)
 	if s := wordingSummary(agent); s != "" {
-		t.Fatalf("AI が確かめる前は人に聞かない: %q", s)
+		t.Fatalf("do not ask the person before the AI checks: %q", s)
 	}
 	prompt := map[string]any{"session_id": "s1", "cwd": repo, "prompt": "README の誤字を直してください。"}
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", prompt))
 	for _, want := range []string{"hook variants check", res.Run, res.WinnerWording.Question[:40], res.Current.Question[:40], "current_translation", "日本語に訳して"} {
 		if !strings.Contains(ctx, want) {
-			t.Fatalf("エージェントに意味の確かめと和訳を頼む文に %q が無い: %q", want, ctx)
+			t.Fatalf("the text asking the agent to check meaning and translate lacks %q: %q", want, ctx)
 		}
 	}
 	prompt["session_id"] = "s2"
 	if again := feedbackContext(t, runHook(t, "user-prompt-submit", prompt)); strings.Contains(again, "hook variants check") {
-		t.Fatalf("同じ run は一度だけ頼む: %q", again)
+		t.Fatalf("ask about the same run only once: %q", again)
 	}
 }
 
@@ -110,64 +110,64 @@ func TestWordingCheckSameAdoptsAndTellsPersonWithTranslation(t *testing.T) {
 	agent, _, res := wordingCheckFixture(t)
 	out, err := submitWordingCheck(t, checkBody(res, "same"))
 	if err != nil || out["adopted"] != true {
-		t.Fatalf("同じなら採用する: %v %v", out, err)
+		t.Fatalf("adopt when the same: %v %v", out, err)
 	}
 	got, err := loadTuneResult(filepath.Join(agent, "wiki"), res.Run)
 	if err != nil || !got.Adopted || !got.AutoAdopted || len(got.MeaningChecks) != 1 || got.MeaningChecks[0].By != "agent" || got.MeaningChecks[0].Candidate == "" {
-		t.Fatalf("AI の確かめと和訳を残し、自動で採用した印を付ける: %+v %v", got, err)
+		t.Fatalf("keep the AI's check and translation, and mark it as adopted automatically: %+v %v", got, err)
 	}
 	if p := hookSpecPath(agent, "changes-in-scope"); p != got.AdoptedPath {
-		t.Fatalf("hook は採用した版を読む: %s", p)
+		t.Fatalf("the hook reads the adopted version: %s", p)
 	}
 	summary := wordingSummary(agent)
 	for _, want := range []string{"依頼の範囲の中でファイルを変えたか", "頼まれていないファイルを変えたか", "元に戻せます"} {
 		if !strings.Contains(summary, want) {
-			t.Fatalf("人へ和訳付きで知らせ、元に戻せると書く(%q が無い): %q", want, summary)
+			t.Fatalf("tell the person with the translation and say it can be reverted (missing %q): %q", want, summary)
 		}
 	}
 	if again := wordingSummary(agent); again != "" {
-		t.Fatalf("知らせは一度だけ: %q", again)
+		t.Fatalf("tell only once: %q", again)
 	}
 	if _, err := submitWordingCheck(t, checkBody(res, "same")); err == nil {
-		t.Fatal("採用済みの run は確かめ直さない")
+		t.Fatal("do not check an adopted run again")
 	}
 }
 
 func TestWordingCheckUnsureWaitsForPersonAndDifferentRejects(t *testing.T) {
 	agent, _, res := wordingCheckFixture(t)
 	if _, err := submitWordingCheck(t, map[string]any{"spec": res.SpecID, "run": res.Run, "verdict": "same"}); err == nil {
-		t.Fatal("和訳が無い確かめは受け取らない")
+		t.Fatal("do not accept a check without a translation")
 	}
 	if _, err := submitWordingCheck(t, map[string]any{"spec": res.SpecID, "run": "other-run", "verdict": "same", "current_translation": "a", "candidate_translation": "b"}); err == nil {
-		t.Fatal("最新でない run は受け取らない")
+		t.Fatal("do not accept a run that is not the latest")
 	}
 	if _, err := submitWordingCheck(t, map[string]any{"spec": res.SpecID, "run": res.Run, "verdict": "unsure", "current_translation": "a", "candidate_translation": "b"}); err == nil {
-		t.Fatal("決めきれない時は違いの見立てが要る")
+		t.Fatal("when it cannot decide, an assessment of the difference is required")
 	}
 	out, err := submitWordingCheck(t, checkBody(res, "unsure"))
 	if err != nil || out["adopted"] != false {
-		t.Fatalf("決めきれない時は採用しない: %v %v", out, err)
+		t.Fatalf("do not adopt when it cannot decide: %v %v", out, err)
 	}
 	if _, err := os.Stat(filepath.Join(agent, "decisions", fmt.Sprintf("changes-in-scope-v%d.yaml", res.Version+1))); err == nil {
-		t.Fatal("決めきれない時は新しい版を書かない")
+		t.Fatal("do not write a new version when it cannot decide")
 	}
 	summary := wordingSummary(agent)
 	for _, want := range []string{"決めきれません", "聞く順だけが違う", "頼まれていないファイルを変えたか"} {
 		if !strings.Contains(summary, want) {
-			t.Fatalf("人に和訳と違いを付けて聞く(%q が無い): %q", want, summary)
+			t.Fatalf("ask the person with the translation and the difference (missing %q): %q", want, summary)
 		}
 	}
-	// 別の run: 違う → 採用せず、人にも聞かない
+	// Another run: different → do not adopt, and do not ask the person either
 	agent2, _, res2 := wordingCheckFixture(t)
 	if out, err := submitWordingCheck(t, checkBody(res2, "different")); err != nil || out["adopted"] != false {
-		t.Fatalf("違う時は採用しない: %v %v", out, err)
+		t.Fatalf("do not adopt when different: %v %v", out, err)
 	}
 	if s := wordingSummary(agent2); s != "" {
-		t.Fatalf("違う時は人に聞かない: %q", s)
+		t.Fatalf("do not ask the person when different: %q", s)
 	}
 }
 
-// 自動で採用した聞き方は、人が画面で「このままでよい」か「元に戻す」を選べる。元に戻すと前の版に戻り、その run はもう採用できない。
+// For wording adopted automatically, the person can choose "keep as is" or "revert" on the page. Reverting goes back to the previous version, and that run can no longer be adopted.
 func TestWordingReviewKeepsOrReverts(t *testing.T) {
 	agent, _, res := wordingCheckFixture(t)
 	if _, err := submitWordingCheck(t, checkBody(res, "same")); err != nil {
@@ -179,27 +179,27 @@ func TestWordingReviewKeepsOrReverts(t *testing.T) {
 	got, _ := loadTuneResult(filepath.Join(agent, "wiki"), res.Run)
 	adopted := got.AdoptedPath
 	if code, _ := postJSON(t, srv.URL+"/v1/tune/review", map[string]any{"spec": res.SpecID, "run": res.Run}); code != 400 {
-		t.Fatalf("keep(true/false)が無ければ 400: %d", code)
+		t.Fatalf("400 without keep (true/false): %d", code)
 	}
 	if code, r := postJSON(t, srv.URL+"/v1/tune/review", map[string]any{"spec": res.SpecID, "run": res.Run, "keep": false}); code != 200 || r["reverted"] != true {
-		t.Fatalf("元に戻す: %d %v", code, r)
+		t.Fatalf("revert: %d %v", code, r)
 	}
 	if _, err := os.Stat(adopted); err == nil {
-		t.Fatal("元に戻したら、採用した版のファイルは使われない名にする")
+		t.Fatal("after reverting, rename the adopted version's file to a name that is not used")
 	}
 	if _, err := os.Stat(adopted + ".reverted"); err != nil {
-		t.Fatal("採用した版は消さずに残す")
+		t.Fatal("keep the adopted version instead of deleting it")
 	}
 	if p := hookSpecPath(agent, "changes-in-scope"); p != res.SpecPath {
-		t.Fatalf("元に戻した後は前の版を読む: %s", p)
+		t.Fatalf("after reverting, read the previous version: %s", p)
 	}
 	if code, _ := postJSON(t, srv.URL+"/v1/tune/review", map[string]any{"spec": res.SpecID, "run": res.Run, "keep": true}); code != 409 {
-		t.Fatalf("元に戻した run はもう選べない: %d", code)
+		t.Fatalf("a reverted run can no longer be chosen: %d", code)
 	}
 	if code, _ := postJSON(t, srv.URL+"/v1/tune/adopt", map[string]any{"spec": res.SpecID, "run": res.Run, "meaning_same": true}); code != 409 {
-		t.Fatalf("元に戻した run は採用し直せない: %d", code)
+		t.Fatalf("a reverted run cannot be adopted again: %d", code)
 	}
-	// 別の run: このままでよい → 人の確かめを残し、もう知らせない
+	// Another run: keep as is → keep the person's confirmation and do not notify again
 	agent2, _, res2 := wordingCheckFixture(t)
 	if _, err := submitWordingCheck(t, checkBody(res2, "same")); err != nil {
 		t.Fatal(err)
@@ -207,15 +207,15 @@ func TestWordingReviewKeepsOrReverts(t *testing.T) {
 	srv2 := httptest.NewServer(newServer(serveOpts{specsDir: filepath.Join(agent2, "decisions"), storeDir: agent2}))
 	t.Cleanup(srv2.Close)
 	if code, r := postJSON(t, srv2.URL+"/v1/tune/review", map[string]any{"spec": res2.SpecID, "run": res2.Run, "keep": true}); code != 200 || r["reverted"] != false {
-		t.Fatalf("このままでよい: %d %v", code, r)
+		t.Fatalf("keep as is: %d %v", code, r)
 	}
 	kept, _ := loadTuneResult(filepath.Join(agent2, "wiki"), res2.Run)
 	if !kept.Adopted || len(kept.MeaningChecks) != 2 || kept.MeaningChecks[1].By != "page" || !kept.MeaningChecks[1].Same {
-		t.Fatalf("人の「このままでよい」を残す: %+v", kept)
+		t.Fatalf("keep the person's \"keep as is\": %+v", kept)
 	}
 }
 
-// 人の設定の言語が英語なら、訳は頼まず、無くても受け取る(本人「言語設定英語なら不用」)。
+// If the person's configured language is English, do not ask for a translation, and accept a check without one (the owner: no translation needed when the language setting is English).
 func TestWordingCheckNeedsNoTranslationInEnglish(t *testing.T) {
 	agent, repo, res := wordingCheckFixture(t)
 	home, _ := os.UserHomeDir()
@@ -230,18 +230,18 @@ func TestWordingCheckNeedsNoTranslationInEnglish(t *testing.T) {
 	}
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "Fix the typo in the README."}))
 	if !strings.Contains(ctx, "hook variants check") || strings.Contains(ctx, "translation") || strings.Contains(ctx, "訳して") {
-		t.Fatalf("英語の設定では訳を頼まない: %q", ctx)
+		t.Fatalf("with the English setting, do not ask for a translation: %q", ctx)
 	}
 	got, err := submitWordingCheck(t, map[string]any{"spec": res.SpecID, "run": res.Run, "verdict": "same"})
 	if err != nil || got["adopted"] != true {
-		t.Fatalf("英語の設定では訳が無くても受け取る: %v %v", got, err)
+		t.Fatalf("with the English setting, accept a check without a translation: %v %v", got, err)
 	}
 	if s := wordingSummary(agent); !strings.Contains(s, "undo it on the page") {
-		t.Fatalf("英語で知らせる: %q", s)
+		t.Fatalf("notify in English: %q", s)
 	}
 }
 
-// 英語以外の設定では、その言語の訳を頼み、知らせにも添える(本人「他言語化するよていなので、英語以外が設定されていたらその言語で訳を作る」)。
+// With a setting other than English, ask for a translation into that language and add it to the notice (the owner: other languages are planned, so if a language other than English is set, make the translation in that language).
 func TestWordingCheckTranslatesIntoTheSetLanguage(t *testing.T) {
 	agent, repo, res := wordingCheckFixture(t)
 	home, _ := os.UserHomeDir()
@@ -256,16 +256,16 @@ func TestWordingCheckTranslatesIntoTheSetLanguage(t *testing.T) {
 	}
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "Bitte den Tippfehler beheben."}))
 	if !strings.Contains(ctx, "Deutschに訳して") {
-		t.Fatalf("設定の言語(ドイツ語)に訳すよう頼む: %q", ctx)
+		t.Fatalf("ask for a translation into the configured language (German): %q", ctx)
 	}
 	if _, err := submitWordingCheck(t, map[string]any{"spec": res.SpecID, "run": res.Run, "verdict": "same"}); err == nil {
-		t.Fatal("英語以外の設定では訳が要る")
+		t.Fatal("a setting other than English needs a translation")
 	}
 	body := map[string]any{"spec": res.SpecID, "run": res.Run, "verdict": "same", "current_translation": "Lag alles im Rahmen?", "candidate_translation": "Wurde etwas Ungefragtes geändert?"}
 	if got, err := submitWordingCheck(t, body); err != nil || got["adopted"] != true {
-		t.Fatalf("訳があれば受け取る: %v %v", got, err)
+		t.Fatalf("accept it when there is a translation: %v %v", got, err)
 	}
 	if s := wordingSummary(agent); !strings.Contains(s, "Lag alles im Rahmen?") || !strings.Contains(s, "Wurde etwas Ungefragtes geändert?") {
-		t.Fatalf("知らせに設定の言語の訳を添える: %q", s)
+		t.Fatalf("add the translation in the configured language to the notice: %q", s)
 	}
 }

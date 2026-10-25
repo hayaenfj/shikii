@@ -9,14 +9,14 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-// G1: 親が Agent ツールを呼んだが子が始まらなかった(人が断った等)。10 分以内に同じ種類の子を別の仕事で起こすと、
-// その子は前の(断られた)仕事の文で選ばれる
+// G1: the parent called the Agent tool but the child never started (the person refused, etc.). When a child of the same type is started for different work within 10 minutes,
+// that child is chosen with the text of the previous (refused) work
 func TestAudit091DeniedAgentTaskShiftsLaterChild(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g1", "cwd": scope, "prompt": "画面の色を直して"})
-	// 1 回目: 断られた Agent ツール(PreToolUse だけが来る)
+	// 1st: the refused Agent tool (only PreToolUse arrives)
 	runHook(t, "agent-task", map[string]any{"session_id": "g1", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": "断られた仕事 AAA の調査", "subagent_type": "Explore"}})
-	// 人が断り、親が考え直すまでの間(1 分)。10 分の期限の内
+	// The time until the person refuses and the parent reconsiders (1 minute). Within the 10-minute limit
 	if err := updateSession(st.Dir, "g1", func(s *hookSession) {
 		for i := range s.SubagentTasks {
 			s.SubagentTasks[i].At = s.SubagentTasks[i].At.Add(-time.Minute)
@@ -24,15 +24,15 @@ func TestAudit091DeniedAgentTaskShiftsLaterChild(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// 2 回目: 実際に始まる子
+	// 2nd: the child that actually starts
 	out := startSubagent(t, "g1", scope, "child-2", "Explore", "README の導入手順を更新してください")
 	ctx := subagentContext(t, out)
 	if !strings.Contains(ctx, "README の導入手順") {
-		t.Fatalf("始まった子には、その子に渡した仕事の文で選んだと書くべき。実際の見出し: %q\n残った控え: %+v", strings.SplitN(ctx, "\n", 2)[0], loadSession(st.Dir, "g1").SubagentTasks)
+		t.Fatalf("a started child should say it was chosen by the text of the work given to that child. actual heading: %q\nremaining notes: %+v", strings.SplitN(ctx, "\n", 2)[0], loadSession(st.Dir, "g1").SubagentTasks)
 	}
 }
 
-// G2: 同じ種類の子を 2 つ並べて起こす。SubagentStart は錠の外で読んだ同じ写しから選ぶので、両方が同じ控えを選び、片方の控えが残る
+// G2: start 2 children of the same type side by side. SubagentStart chooses from the same copy read outside the lock, so both pick the same note and one note remains
 func TestAudit091ParallelSubagentsPickDistinctTasks(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g2", "cwd": scope, "prompt": "画面の色を直して"})
@@ -40,7 +40,7 @@ func TestAudit091ParallelSubagentsPickDistinctTasks(t *testing.T) {
 		runHook(t, "agent-task", map[string]any{"session_id": "g2", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": p, "subagent_type": "Explore"}})
 	}
 	agent := st.Dir
-	snapshot := loadSession(agent, "g2") // 2 つの hook が同時に読んだ写し
+	snapshot := loadSession(agent, "g2") // the copy the 2 hooks read at the same time
 	o1, m1, err1 := hookSubagentStart(agent, &hookInput{SessionID: "g2", CWD: scope, AgentID: "c1", AgentType: "Explore"}, snapshot)
 	o2, m2, err2 := hookSubagentStart(agent, &hookInput{SessionID: "g2", CWD: scope, AgentID: "c2", AgentType: "Explore"}, snapshot)
 	if err1 != nil || err2 != nil {
@@ -57,12 +57,12 @@ func TestAudit091ParallelSubagentsPickDistinctTasks(t *testing.T) {
 	}
 	h1, h2 := strings.SplitN(o1.Context, "\n", 2)[0], strings.SplitN(o2.Context, "\n", 2)[0]
 	left := loadSession(agent, "g2").SubagentTasks
-	if h1 == h2 || len(left) != 0 || !strings.Contains(h1, "ONE") || !strings.Contains(h2, "TWO") { // c1 は ONE、c2 は TWO(片方が控え無しでも通らないように。再監査 GC)
-		t.Fatalf("並べて起こした 2 つの子は別々の控えを使い、控えは残らない:\n c1=%q\n c2=%q\n 残り=%+v", h1, h2, left)
+	if h1 == h2 || len(left) != 0 || !strings.Contains(h1, "ONE") || !strings.Contains(h2, "TWO") { // c1 is ONE, c2 is TWO (so it does not pass even if one has no note; recheck GC)
+		t.Fatalf("2 children started side by side use separate notes, and no note remains:\n c1=%q\n c2=%q\n remaining=%+v", h1, h2, left)
 	}
 }
 
-// G3: 経緯(history)の除外が、候補を 6 件に切った後にかかる。依頼に近い経緯の記事が 6 件あると、このプロジェクトで決められたルール(rule)が席を失う
+// G3: excluding history applies after candidates are cut to 6. With 6 history pages close to the request, the rule decided in this project (rule) loses its seat
 func TestAudit091HistoryFilterBeforeCut(t *testing.T) {
 	st, scope, _, draft, _ := memoryEffectFixture(t)
 	book := notebook.Book{Root: st.Dir, Scope: scope}
@@ -83,6 +83,6 @@ func TestAudit091HistoryFilterBeforeCut(t *testing.T) {
 	}
 	ctx, err := memoryContext(st.Dir, scope, "README の導入手順を更新してください", &hookSession{TurnID: "cccccccccccccccc"})
 	if err != nil || !strings.Contains(ctx, draft.Lesson) {
-		t.Fatalf("経緯の記事を除いた後で 2 件を選び、このプロジェクトで決められたルールを届ける。候補の種類=%v\n届いた文=%q", kinds, ctx)
+		t.Fatalf("choose 2 after removing history pages, and deliver the rule decided in this project. candidate kinds=%v\ndelivered text=%q", kinds, ctx)
 	}
 }

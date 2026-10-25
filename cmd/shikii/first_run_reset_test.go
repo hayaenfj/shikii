@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// 0.6.0 からの update は古い本体が実行し、最後に新しい本体の `hook install --yes` を呼ぶ。update の中の reset は古い本体には無いので、
-// 0.7.0 を跨ぐ消去は新しい本体の最初の hook install が共通側の印(~/.shikii/agent/version)で判断する:
-// 印が無い(0.6.0 以前)か 0.7.0 より前なら各プロジェクトの .shikii/ の中を消して初期化し直し、印を今の版にする。二度目は消さない。
+// An update from 0.6.0 is run by the old binary, which finally calls the new binary's `hook install --yes`. The old binary has no reset inside update, so
+// the wipe across 0.7.0 is decided by the new binary's first hook install using the shared mark (~/.shikii/agent/version):
+// if there is no mark (0.6.0 or earlier) or it is before 0.7.0, wipe the inside of each project's .shikii/, initialize it again, and set the mark to the current version. The second time does not wipe.
 func TestFirstHookInstallAfter070WipesRegisteredProjectsOnce(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -16,12 +16,12 @@ func TestFirstHookInstallAfter070WipesRegisteredProjectsOnce(t *testing.T) {
 	t.Chdir(repo)
 	capture(t, func() error { return cmdInit(nil) })
 	common, _ := agentHome()
-	if len(registeredProjects(common)) != 2 { // hookEnv が初期化した 1 件 + この repo
-		t.Fatal("init でプロジェクトが登録される")
+	if len(registeredProjects(common)) != 2 { // 1 initialized by hookEnv + this repo
+		t.Fatal("init registers the project")
 	}
-	// hookEnv の hook install が印を書いているので、0.6.0 以前の状態(印なし、project.json は version 1)に戻す
+	// hookEnv's hook install wrote the mark, so go back to the state of 0.6.0 or earlier (no mark, project.json at version 1)
 	if err := os.Remove(installedVersionPath(common)); err != nil {
-		t.Fatal("新しい本体の hook install は印を書く: ", err)
+		t.Fatal("the new binary's hook install writes the mark: ", err)
 	}
 	for _, p := range registeredProjects(common) {
 		os.WriteFile(filepath.Join(p.Path, ".shikii", "project.json"), []byte(`{"version":1,"scope":"`+p.Path+`"}`), 0o600)
@@ -57,52 +57,52 @@ func TestFirstHookInstallAfter070WipesRegisteredProjectsOnce(t *testing.T) {
 		return wiped
 	}
 
-	// 印が無い(0.6.0 以前から) → 消して初期化し直し、印は 0.7.0
+	// No mark (from 0.6.0 or earlier) → wipe and initialize again; the mark becomes 0.7.0
 	if !run("0.7.0") {
-		t.Fatal("印が無ければ 0.6.0 以前からの更新として消す")
+		t.Fatal("with no mark, wipe as an update from 0.6.0 or earlier")
 	}
 	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
-		t.Fatal("古い記録は消える")
+		t.Fatal("old records are gone")
 	}
 	if _, err := os.Stat(filepath.Join(store, "project.json")); err != nil {
-		t.Fatal("消した後に初期化し直す: ", err)
+		t.Fatal("initialize again after wiping: ", err)
 	}
 	if b, _ := os.ReadFile(installedVersionPath(common)); string(b) != "0.7.0\n" {
-		t.Fatalf("印を今の版にする: %q", b)
+		t.Fatalf("set the mark to the current version: %q", b)
 	}
 	if len(reinit) != 2 || (reinit[0] != repo && reinit[1] != repo) {
-		t.Fatalf("登録済みのプロジェクトを一度ずつ初期化し直す: %v", reinit)
+		t.Fatalf("initialize each registered project again once: %v", reinit)
 	}
 
-	// 同じ版でもう一度(hook install を手で流した)→ 消さない
+	// Again with the same version (hook install run by hand) → do not wipe
 	write(leftover, "new")
 	if run("0.7.0") {
-		t.Fatal("印が今の版なら消さない")
+		t.Fatal("do not wipe if the mark is the current version")
 	}
 	if b, _ := os.ReadFile(leftover); string(b) != "new" {
-		t.Fatal("二度目は記録を残す")
+		t.Fatal("the second time keeps the records")
 	}
 
-	// 0.7.0 → 0.7.1 は跨がない → 消さず、印だけ進む
+	// 0.7.0 → 0.7.1 does not cross → do not wipe; only the mark moves forward
 	if run("0.7.1") {
-		t.Fatal("0.7.0 を跨がない更新では消さない")
+		t.Fatal("an update that does not cross 0.7.0 does not wipe")
 	}
 	if b, _ := os.ReadFile(installedVersionPath(common)); string(b) != "0.7.1\n" {
-		t.Fatalf("印は新しい版に進む: %q", b)
+		t.Fatalf("the mark moves to the new version: %q", b)
 	}
 	if b, _ := os.ReadFile(leftover); string(b) != "new" {
-		t.Fatal("跨がない更新は記録を残す")
+		t.Fatal("an update that does not cross keeps the records")
 	}
 
-	// 印が 0.6.0(将来、古い本体が印を書いていた場合)→ 0.7.3 以前の印(version 1)のプロジェクトは消す
+	// Mark is 0.6.0 (in case an old binary someday wrote a mark) → projects with a mark from 0.7.3 or earlier (version 1) are wiped
 	for _, p := range registeredProjects(common) {
 		write(filepath.Join(p.Path, ".shikii", "project.json"), `{"version":1,"scope":"`+p.Path+`"}`)
 	}
 	write(installedVersionPath(common), "0.6.0\n")
 	if !run("0.7.0") {
-		t.Fatal("印が 0.7.0 より前なら消す")
+		t.Fatal("wipe if the mark is before 0.7.0")
 	}
 	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
-		t.Fatal("印が古ければ記録は消える")
+		t.Fatal("if the mark is old, the records are gone")
 	}
 }

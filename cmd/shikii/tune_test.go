@@ -14,7 +14,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// 聞き方で答えが変わる偽モデル: 質問文に "strict" が入っていれば本文を見て正しく答え、無ければ何でも change_request。
+// A fake model whose answer changes with the wording: if the question contains "strict" it looks at the text and answers correctly; otherwise it says change_request for anything.
 func wordingSensitiveModel(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,8 +36,8 @@ func wordingSensitiveModel(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// bankRows は tune のテストで使う正解 12 件: fix a〜f は change_request、why a〜f は question。extra は足す行の JSON。
-// 12 件なのは、片側の符号検定(勝ち 6 負け 0 で p = 1/64)が通る最小に近い数だから。
+// bankRows are the 12 truths used in tune tests: fix a to f are change_request, why a to f are question. extra is JSON for additional rows.
+// 12 because it is close to the minimum at which the one-sided sign test passes (6 wins, 0 losses gives p = 1/64).
 func bankRows(extra ...string) string {
 	var rows []string
 	for _, x := range []string{"a", "b", "c", "d", "e", "f"} {
@@ -49,7 +49,7 @@ func bankRows(extra ...string) string {
 
 func specWithVariants(t *testing.T, dir string) string {
 	t.Helper()
-	sub := filepath.Join(dir, "decisions") // 標準の配置: decisions/ の隣に wiki/ ができる
+	sub := filepath.Join(dir, "decisions") // the standard layout: wiki/ is created next to decisions/
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func specWithVariants(t *testing.T, dir string) string {
 	return path
 }
 
-// 正解の貯金で聞き方の候補を全部採点し、勝った候補だけを新しい版として書く。負けた候補は書かない。
+// Score every wording candidate on the bank of truths and write only the winner as a new version. Losers are not written.
 func TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -105,24 +105,24 @@ func TestTuneRanksVariantsOnTheTruthBankAndWritesTheWinner(t *testing.T) {
 	if orig.Question != "What is asked?" {
 		t.Fatal("the original file must stay as it was")
 	}
-	// 採用と同時に線が引かれている(貯金を新しい文言で聞き直して)
+	// A line is drawn at the same time as adopting (asking the bank again with the new wording)
 	if c := v2.CalibrationFor("m"); c == nil || c.SpecHash != v2.Hash() {
 		t.Fatalf("the adopted wording must be calibrated right away: %+v", v2.Calibration)
 	}
-	// 負けた候補 "worse" はどこにも書かれていない
+	// The losing candidate "worse" is not written anywhere
 	if strings.Contains(v2.Question, "Anything goes") {
 		t.Fatal("a losing variant must not become the question")
 	}
 }
 
-// 今の文言が一番良ければ、何も書かない(「変えない」も結論)。
+// If the current wording is best, write nothing ("no change" is a conclusion too).
 func TestTuneKeepsCurrentWhenNothingBeatsIt(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := wordingSensitiveModel(t)
 	specPath := specWithVariants(t, dir)
-	// 正解が全部 change_request なら、現状(常に change_request)が満点で、strict と同点。同点なら現状を残す
+	// If every truth is change_request, the current one (always change_request) is perfect and ties with strict. On a tie, keep the current one
 	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"fix b"},"truth":"change_request"},{"inputs":{"message":"fix c"},"truth":"change_request"}]`
 	labeledPath := filepath.Join(dir, "rows.json")
 	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
@@ -139,7 +139,7 @@ func TestTuneKeepsCurrentWhenNothingBeatsIt(t *testing.T) {
 	}
 }
 
-// 貯金が min_n 未満なら測らない(少ない正解で文言を選ぶのは当てずっぽう)。
+// If the bank is below min_n, do not measure (choosing wording with few truths is a guess).
 func TestTuneRefusesWithoutEnoughTruths(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -159,14 +159,14 @@ func TestTuneRefusesWithoutEnoughTruths(t *testing.T) {
 	}
 }
 
-// 貯金全体では 1 件多く当てる候補でも、holdout(k-1 で選んで 1 で測る)が現状を上回らなければ採らない(まぐれの勝ちで文言を変えない)。
+// Even a candidate that gets one more right over the whole bank is not adopted unless holdout (choose on k-1, measure on 1) beats the current one (do not change wording on a lucky win).
 func TestTuneDoesNotAdoptAWinByNoise(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	storeDir := filepath.Join(dir, ".shikii")
-	// 現状: m1〜m3 を当て、m4 m5 を外す(3/5)。候補 "v2": m1〜m3 と m5 を当て、m4 を外す(4/5)。
-	// 5 分割の holdout: m4 を外した 4 件では候補が勝つ → m4 で外す。m5 を外した 4 件は同点 → 現状 → m5 で外す。
-	// holdout 3/5 = 現状の 3/5 と同じ → 上回らないので採らない。
+	// Current: gets m1 to m3 right, m4 and m5 wrong (3/5). Candidate "v2": gets m1 to m3 and m5 right, m4 wrong (4/5).
+	// 5-fold holdout: on the 4 without m4, the candidate wins → measured on m4, wrong. On the 4 without m5, a tie → current → measured on m5, wrong.
+	// holdout 3/5 = the current 3/5 → it does not beat it, so it is not adopted.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req systemone.Request
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -207,7 +207,7 @@ func TestTuneDoesNotAdoptAWinByNoise(t *testing.T) {
 	}
 }
 
-// 提案役(チャット用 LLM)の偽物: 受け取ったプロンプトを控え、候補 2 つを JSON で返す。
+// A fake proposer (chat LLM): keeps the prompt it received and returns 2 candidates as JSON.
 func fakeProposer(t *testing.T) (*httptest.Server, *[]string) {
 	t.Helper()
 	var prompts []string
@@ -232,7 +232,7 @@ func fakeProposer(t *testing.T) (*httptest.Server, *[]string) {
 	return srv, &prompts
 }
 
-// --propose N: 提案役に今の聞き方・混同表・外した実例・これまでの学びを渡して候補を作らせ、spec の variants に残し、採点し、学びを markdown に追記する。
+// --propose N: give the proposer the current wording, the confusion table, examples it got wrong and the learnings so far; have it make candidates, keep them in the spec's variants, score them, and append the learnings to markdown.
 func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -242,13 +242,13 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "decisions"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	specPath := writeSpec(t, filepath.Join(dir, "decisions"), "false") // 候補は書かない。提案役に作らせる。wiki は decisions/ の隣
+	specPath := writeSpec(t, filepath.Join(dir, "decisions"), "false") // write no candidates; the proposer makes them. The wiki is next to decisions/
 	rows := bankRows()
 	labeledPath := filepath.Join(dir, "rows.json")
 	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// 人が書いた決まり(wiki の spec ページの Rules)は提案役に毎回渡る
+	// Rules people wrote (Rules on the wiki's spec page) are given to the proposer every time
 	wiki := filepath.Join(dir, ".shikii", "wiki")
 	notebook := filepath.Join(wiki, "specs", "intent.md")
 	if err := os.MkdirAll(filepath.Dir(notebook), 0o755); err != nil {
@@ -273,7 +273,7 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	if !strings.Contains(out, "proposed-strict") || !strings.Contains(out, "winner: proposed-strict") {
 		t.Fatalf("proposed candidates must be scored and the good one must win:\n%s", out)
 	}
-	// 機械が作った文言は --write でも人が読む前には採用されない。読んだ人が tune --write で採用する
+	// Wording the machine made is not adopted before a person reads it, even with --write. Someone who read it adopts with tune --write
 	if _, err := os.Stat(filepath.Join(dir, "decisions", "intent-v2.yaml")); err == nil {
 		t.Fatal("a proposed wording must not be adopted unseen")
 	}
@@ -283,12 +283,12 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "decisions", "intent-v2.yaml")); err != nil {
 		t.Fatal("after reading the variants, tune --write adopts the winner")
 	}
-	// 提案は spec の variants に残る(次回は提案無しでも採点できる)
+	// Proposals stay in the spec's variants (the next run can score them without proposing)
 	sp := mustLoad(t, specPath)
 	if len(sp.Variants) != 2 || sp.Variants[0].Name != "proposed-strict" {
 		t.Fatalf("proposals must be stored in the spec: %+v", sp.Variants)
 	}
-	// wiki: run ページに数字と採否と一行の学び、spec ページに run への案内。人の決まりは残る
+	// wiki: the run page has numbers, the verdict and a one-line learning; the spec page has a pointer to the run. The person's rules remain
 	nb, _ := os.ReadFile(notebook)
 	for _, must := range []string{"## Rules", "Never mention the word banana", "proposed-strict", "adopted", "Lesson:", "runs/"} {
 		if !strings.Contains(string(nb), must) {
@@ -302,7 +302,7 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	if rp, _ := os.ReadFile(runs[0]); !strings.Contains(string(rp), "holdout") || !strings.Contains(string(rp), "proposed-strict") {
 		t.Fatalf("run page must carry the table and the holdout:\n%s", rp)
 	}
-	// 2 回目の提案は、前回の学びを読んで出す
+	// The second proposal is made after reading the previous learnings
 	capture(t, func() error {
 		return cmdTune([]string{filepath.Join(dir, "decisions", "intent-v2.yaml"), "--labeled", labeledPath, "--local", model.URL, "--store", storeDir,
 			"--propose", "2", "--proposer", proposer.URL})
@@ -312,7 +312,7 @@ func TestTuneProposeStoresVariantsScoresThemAndWritesTheNotebook(t *testing.T) {
 	}
 }
 
-// pii: true の本文は、手元(loopback)以外の提案役には渡さない。
+// Text from a pii: true spec is never given to a proposer other than a local (loopback) one.
 func TestTuneProposeRefusesRemoteProposerForPIISpecs(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
