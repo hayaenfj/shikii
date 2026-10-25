@@ -24,7 +24,13 @@ eval:
 display:
   ja:
     title: 始める前に確認してほしかったか
-    question: あなたの答えから、AI は「始める前にあなたに確認すべき依頼」を見分けることを覚えます。今回の依頼で、AI は作業を始める前にあなたに確認したほうがよかったですか？（進め方や範囲で、あなたが決めたいことが残っていたか）
+    question: 今回の依頼で、AI は作業を始める前にあなたに確認したほうがよかったですか？（進め方や範囲で、あなたが決めたいことが残っていたか）
     options:
       "yes": 確認してほしかった
       "no": 確認なしで進めてよかった
+  en:
+    title: Should it have asked you first?
+    question: With this request, should the AI have checked with you before starting? (Was something about the approach or scope still yours to decide?)
+    options:
+      "yes": It should have asked
+      "no": It was fine to go ahead

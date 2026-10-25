@@ -60,17 +60,18 @@ function checkPinned(target) {
 function checkAnswerMerge(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const item = (trace, text, project, waits = true) => ({ trace_id: trace, at: '2026-10-19T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: text }, inputs_hash: trace, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, waits_for_person: waits, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], rung: 'minimal', audit: false, project });
-  const mk = (id, q, items, person = true) => ({ id, type: 'noul', titles: {}, questions: { ja: q }, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: items.length, waiting_for_person: person ? items.filter(i => i.waits_for_person).length : 0, person_answers: person, queue: { items }, tune: null });
+  const mk = (id, q, items, person = true) => ({ id, type: 'noul', titles: { ja: '題:' + q }, questions: { ja: q }, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: items.length, waiting_for_person: person ? items.filter(i => i.waits_for_person).length : 0, person_answers: person, queue: { items }, tune: null });
   const specs = [mk('wiki-conflict', 'AI の問い', [item('w1', 'MACHINE', 'alpha')], false), mk('needs-plan', '始める前に聞くべきだったか', [item('n1', 'NEEDS-1', 'alpha'), item('n0', 'NOT-WAITING', 'alpha', false)]), mk('done-as-asked', '頼まれたことを終えたか', [item('d1', 'DONE-1', 'beta'), item('d2', 'DONE-2', 'beta')])];
   ui.pinned = ''; skipped.clear();
   const app = mount(Answer, { target, props: { st: { specs } } });
   flushSync();
   const cards = () => [...target.querySelectorAll('.item')];
   const one = cards().length === 1 && cards()[0].textContent.includes('NEEDS-1') && !target.textContent.includes('MACHINE') && !target.textContent.includes('NOT-WAITING');
-  const asked = cards()[0]?.querySelector('.card-question')?.textContent === '始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && !!cards()[0]?.querySelector('.project');
+  // the short title on top of the card and the question once, above the buttons (0.9.2 redesign P1)
+  const asked = cards()[0]?.querySelector('.card-question')?.textContent === '題:始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && !!cards()[0]?.querySelector('.project');
   const left = (target.querySelector('[data-answer-left]')?.textContent || '').includes('3');
   target.querySelector('.btns button.skip')?.click(); flushSync();
-  const next = cards().length === 1 && cards()[0].textContent.includes('DONE-1') && cards()[0].querySelector('.card-question')?.textContent === '頼まれたことを終えたか';
+  const next = cards().length === 1 && cards()[0].textContent.includes('DONE-1') && cards()[0].querySelector('.card-question')?.textContent === '題:頼まれたことを終えたか';
   unmount(app); skipped.clear(); i18n.lang = lang;
   const ok = one && asked && left && next;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen: only one card, no AI questions or records that do not wait=' + one + ', question and work marker on the card and above the buttons=' + asked + ', remaining is the total=' + left + ', skip gives the next question\'s card=' + next + ')');
@@ -106,6 +107,72 @@ async function checkWordingAgent(target) {
   const answerOnlyWhenPerson = JSON.stringify(needs) === JSON.stringify([true, true, false, false, false]);
   const ok = adoptedShows && undoSent && unsureShows && answerOnlyWhenPerson;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI adopted: translation and revert=' + adoptedShows + ', revert is sent=' + undoSent + ', cannot decide: translation and difference=' + unsureShows + ', Answer screen only when the person has something to do=' + answerOnlyWhenPerson + ' ' + JSON.stringify(needs) + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P1): the Answer card says the question once (a short title on top, the question only above the buttons), the AI's guess stays folded
+// until the person opens "see the AI's guess", the answer buttons look the same before that (only the class top for Enter differs), and "ask the AI again" is in the fold
+async function checkAnswerCardOnce(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const it = { trace_id: 'once', at: '2026-10-22T00:00:00Z', band: 'ask', top: 'yes', p: .83, model: 'm', answerable: true, inputs: { request: '依頼の本文' }, choices: [{ truth: 'yes', label: '確認してほしかった' }, { truth: 'no', label: '確認なしで進めてよかった' }] };
+  const q = '始める前に確認したほうがよかったですか？';
+  const app = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it: { ...it, top: 'yes', p: .17 }, question: q, title: '始める前に確認してほしかったか' } });
+  flushSync();
+  const card = target.querySelector('.item');
+  const count = (s, w) => s.split(w).length - 1;
+  const once = count(card?.textContent || '', q) === 1 && target.querySelector('.card-question')?.textContent === '始める前に確認してほしかったか' && (target.querySelector('.answer-heading')?.textContent || '').includes(q);
+  // what can be seen before opening the fold: the text outside closed details (summary included)
+  const seen = () => { const c = card.cloneNode(true); for (const d of c.querySelectorAll('details:not([open])')) for (const ch of [...d.children]) if (ch.tagName !== 'SUMMARY') ch.remove(); return c.textContent; };
+  const fold = target.querySelector('details.guess-fold');
+  const choices = [...target.querySelectorAll('.btns button.answer-choice')];
+  const looks = new Set(choices.map(b => [...b.classList].filter(c => c !== 'top').sort().join(' ')));
+  const hidden = !!fold && !fold.open && !!fold.querySelector('.guess') && !seen().includes('83%') && !seen().includes(t('sameAsAI')) && looks.size === 1 && !seen().includes(t('bandAsk'));
+  const enter = target.querySelector('.btns button.top')?.dataset.truth === 'no';
+  const redoInFold = !target.querySelector('.btns .redo') && !!fold?.querySelector('button.redo');
+  const noPosition = !/\d+ \/ \d+/.test(seen());
+  if (fold) { fold.open = true; fold.dispatchEvent(new window.Event('toggle')); flushSync(); }
+  const shown = seen().includes('83%') && (target.querySelector('.btns button.top')?.textContent || '').includes(t('sameAsAI'));
+  unmount(app); i18n.lang = lang;
+  const ok = once && hidden && enter && redoInFold && noPosition && shown;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer card: question once=' + once + ', guess folded and buttons look the same=' + hidden + ', Enter still means the AI guess=' + enter + ', ask again in the fold=' + redoInFold + ', no "1 / N"=' + noPosition + ', guess after opening=' + shown + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P2): on the Answer screen the wording box is only the one question for the person. Allowed inside: the translations, the AI's view,
+// the English original in a fold, and only the buttons for that question (same / different, or keep / undo). No form, table, candidate list or "measure"
+async function checkAnswerWordingBox(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const base = { run: 'r1', winner: 'unasked-first', model: 'm', truths: 50, at: '2026-10-25T00:00:00Z', have_holdout: true, holdout: 0.7, decision: 'unasked-first may be adopted (page, or --write)', candidates: [{ name: 'current', top1: 0.3, brier: 0.3, prec_at_act: 0.1, rec_at_act: 0.1, change: '' }, { name: 'unasked-first', top1: 0.8, brier: 0.2, prec_at_act: 0.8, rec_at_act: 0.3, change: 'q' }], winner_wording: { question: 'Did it change unasked files?' }, current_wording: { question: 'Were the changes within scope?' } };
+  const agent = verdict => ({ by: 'agent', verdict, current_translation: '範囲の中で変えたか', candidate_translation: '頼まれていない物を変えたか', difference: verdict === 'same' ? '' : '聞く順だけ違う' });
+  const sp = latest => ({ id: 'changes-in-scope', type: 'noul', titles: { ja: '必要な物だけか' }, questions: {}, keys: [], min_n: 50, records: 1, labels: 0, unlabeled: 0, waiting_for_person: 0, person_answers: true, queue: { items: [] }, tune: { running: false, proposer: true, variants: [{ name: 'x' }], latest } });
+  const allowed = { unsure: ['wordingSame', 'wordingDifferent'], adopted: ['wordingKeep', 'wordingUndo'] };
+  const results = {};
+  for (const [name, latest] of [['unsure', { ...base, adoptable: true, adopted: false, meaning_checks: [agent('unsure')] }], ['adopted', { ...base, adoptable: true, adopted: true, auto_adopted: true, adopted_path: 'decisions/x-v2.yaml', meaning_checks: [agent('same')] }]]) {
+    const app = mount(Answer, { target, props: { st: { specs: [sp(latest)] } } }); flushSync();
+    const box = target.querySelector('[data-answer-wording]');
+    const buttons = box ? [...box.querySelectorAll('button')] : [];
+    const onlyItsButtons = buttons.length === 2 && buttons.every(b => allowed[name].some(k => k in b.dataset));
+    const noTools = !!box && !box.querySelector('form, table, input, textarea, select') && !box.textContent.includes('--write') && !box.textContent.includes('top-1');
+    const reads = !!box && box.textContent.includes('頼まれていない物を変えたか') && box.textContent.includes('範囲の中で変えたか') && (name === 'adopted' || box.textContent.includes('聞く順だけ違う'));
+    results[name] = onlyItsButtons && noTools && reads;
+    unmount(app);
+  }
+  i18n.lang = lang;
+  const ok = results.unsure && results.adopted;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer wording box is one question: AI unsure=' + results.unsure + ', AI adopted=' + results.adopted + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P7): with nothing waiting, the Answer screen says only "nothing for you to do right now" (allowed text: the title and that sentence)
+function checkAnswerNothingToDo(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const sp = { id: 'needs-plan', type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 0, labels: 0, unlabeled: 0, waiting_for_person: 0, person_answers: true, queue: { items: [] }, tune: null };
+  skipped.clear();
+  const app = mount(Answer, { target, props: { st: { specs: [sp] } } }); flushSync();
+  const text = (target.querySelector('[data-answer]')?.textContent || '').replace(/[\s✓]/g, '');
+  const ok = text === (t('answerTitle') + t('answerEmpty')).replace(/\s/g, '') && !target.querySelector('[data-answer] button');
+  unmount(app); i18n.lang = lang;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen with nothing waiting says only that: ' + JSON.stringify(text) + ')');
   return ok;
 }
 
@@ -446,6 +513,7 @@ async function checkReloadDuringAnswerSend(target) {
 
 export async function run() {
   const target = document.getElementById('app');
+  const quietOK = checkAnswerNothingToDo(target);
   const articleOK = await checkNotebookArticle(target);
   const planningOK = checkPlanningContext(target);
   const calibrationOK = checkCalibrationReport(target);
@@ -472,7 +540,9 @@ export async function run() {
   const rulesOK = await checkRulesPanel(target);
   const advanceOK = await checkAnswerAdvances(target);
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
-  const ok = reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const onceOK = await checkAnswerCardOnce(target);
+  const wordingBoxOK = await checkAnswerWordingBox(target);
+  const ok = onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -766,9 +836,9 @@ function checkAnswerFocus(target) {
   const answerPrompt = target.querySelector('.answer-heading')?.textContent.includes('あなたの判断') && !target.querySelector('.card-question');
   unmount(app);
   // Answer screen (question passed): the question at the top of the card and above the buttons, and the button bar sticks to the bottom of the screen. The AI's internal markers (band, model) are not shown
-  const app2 = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it, question: '始める前に聞くべきだったか' } });
+  const app2 = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it, question: '始める前に聞くべきだったか', title: '始める前の確認' } });
   flushSync();
-  const asked = target.querySelector('.card-question')?.textContent === '始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && target.querySelector('.answer-bar')?.classList.contains('sticky') && !target.textContent.includes('discard');
+  const asked = target.querySelector('.card-question')?.textContent === '始める前の確認' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && target.querySelector('.answer-bar')?.classList.contains('sticky') && !target.textContent.includes('discard');
   unmount(app2);
   const ok = readingOrder && clearChoices && answerPrompt && asked;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (conversation then answer=' + readingOrder + ', yes/no without duplicates=' + clearChoices + ', where to answer=' + answerPrompt + ', Answer screen card shows the question=' + asked + ')');

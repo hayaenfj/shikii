@@ -28,3 +28,16 @@ export function localized(lang, byLang, raw) {
   if (byLang && byLang[fallback]) return byLang[fallback];
   return raw;
 }
+
+// What the page asks a person (0.9.2): the display question in the language, then the display title (in the language, en, or any).
+// The question: field is the prompt for the decision model, so it is shown only when the spec has no display at all (then it is the only text anyone wrote)
+const firstOf = o => Object.values(o || {}).find(Boolean);
+export function personQuestion(lang, sp) {
+  const q = sp.questions || {}, ti = sp.titles || {};
+  return q[lang] || ti[lang] || q[fallback] || ti[fallback] || firstOf(ti) || firstOf(q) || sp.question || sp.id;
+}
+// The short title of a question ('' when the spec has none)
+export function personTitle(lang, sp) {
+  const ti = sp.titles || {};
+  return ti[lang] || ti[fallback] || firstOf(ti) || '';
+}

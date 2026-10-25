@@ -95,7 +95,7 @@
 1 web/scripts/test-i18n.mjs
 1 web/src/components/ItemCard.svelte
 2 web/src/components/Lessons.svelte
-90 web/test/ui-entry.js
+98 web/test/ui-entry.js
 1 wiki/patterns/noul-define-yes-before-contrast.md
 2 wiki/patterns/other-is-not-a-request.md
 3 wiki/runs/2026-10-17-prompt-intent-ternary-bonsai-27b-q2g64-2.json

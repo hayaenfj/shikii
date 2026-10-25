@@ -1,6 +1,6 @@
 // The current language (reactive state) and t(), which looks up the page's text. Switching the language redraws everything that reads t() (no reload).
 // Do not branch on language inside text: all text goes through t(key) or t(key)(args). Dates and numbers pass lang to fmt*
-import { locales, resolveLang, translate, localized } from './i18n.js';
+import { locales, resolveLang, translate, localized, personQuestion, personTitle } from './i18n.js';
 import { read, write } from './prefs.js';
 
 export const i18n = $state({ lang: resolveLang(read('shikii.lang'), typeof navigator !== 'undefined' ? navigator.language : '') });
@@ -25,6 +25,10 @@ export function loc(byLang, raw) {
 export function fmtDateTime(x) {
   return new Date(x).toLocaleString(i18n.lang);
 }
+
+// What the page asks a person and the short title (the pure versions are in i18n.js)
+export function askOf(sp) { return personQuestion(i18n.lang, sp); }
+export function titleOf(sp) { return personTitle(i18n.lang, sp); }
 
 // The list shown in the language picker (grows automatically when a dictionary is added)
 export function langOptions() {

@@ -694,10 +694,6 @@
     margin-left: auto;
   }
 
-  .ml-px {
-    margin-left: 1px;
-  }
-
   .pill {
     border: 1px solid var(--color-line);
     color: var(--color-muted);
@@ -758,10 +754,6 @@
     height: 5px;
   }
 
-  .h-\[9px\] {
-    height: 9px;
-  }
-
   .h-\[27px\] {
     height: 27px;
   }
@@ -786,6 +778,10 @@
     max-height: 70vh;
   }
 
+  .min-h-\[48px\] {
+    min-height: 48px;
+  }
+
   .min-h-\[57px\] {
     min-height: 57px;
   }
@@ -800,10 +796,6 @@
 
   .w-\[5px\] {
     width: 5px;
-  }
-
-  .w-\[7px\] {
-    width: 7px;
   }
 
   .w-\[33px\] {
@@ -862,6 +854,10 @@
     flex: 0 0 46px;
   }
 
+  .flex-\[1_1_200px\] {
+    flex: 200px;
+  }
+
   .flex-\[1_1_calc\(50\%-10px\)\] {
     flex: calc(50% - 10px);
   }
@@ -885,10 +881,6 @@
 
   .list-none {
     list-style-type: none;
-  }
-
-  .grid-flow-col {
-    grid-auto-flow: column;
   }
 
   .grid-cols-2 {
@@ -933,10 +925,6 @@
 
   .justify-between {
     justify-content: space-between;
-  }
-
-  .justify-center {
-    justify-content: center;
   }
 
   .gap-0\.5 {
@@ -1009,10 +997,6 @@
 
   .overflow-hidden {
     overflow: hidden;
-  }
-
-  .rounded-\[2px\] {
-    border-radius: 2px;
   }
 
   .rounded-\[3px\] {
@@ -1132,26 +1116,12 @@
     }
   }
 
-  .border-accent\/55 {
-    border-color: var(--accent);
-  }
-
-  @supports (color: color-mix(in lab, red, red)) {
-    .border-accent\/55 {
-      border-color: color-mix(in oklab, var(--accent) 55%, transparent);
-    }
-  }
-
   .border-amber {
     border-color: var(--amber);
   }
 
   .border-line {
     border-color: var(--line);
-  }
-
-  .border-muted {
-    border-color: var(--muted);
   }
 
   .border-transparent {
@@ -1381,6 +1351,10 @@
     padding-block: 1px;
   }
 
+  .pt-1\.5 {
+    padding-top: calc(var(--spacing) * 1.5);
+  }
+
   .pt-2 {
     padding-top: calc(var(--spacing) * 2);
   }
@@ -1391,10 +1365,6 @@
 
   .pt-3 {
     padding-top: calc(var(--spacing) * 3);
-  }
-
-  .pt-3\.5 {
-    padding-top: calc(var(--spacing) * 3.5);
   }
 
   .pt-6 {
@@ -1411,6 +1381,14 @@
 
   .pt-\[17px\] {
     padding-top: 17px;
+  }
+
+  .pb-0 {
+    padding-bottom: 0;
+  }
+
+  .pb-2 {
+    padding-bottom: calc(var(--spacing) * 2);
   }
 
   .pb-2\.5 {
@@ -1433,10 +1411,6 @@
     padding-bottom: 15px;
   }
 
-  .pb-\[18px\] {
-    padding-bottom: 18px;
-  }
-
   .pl-5 {
     padding-left: calc(var(--spacing) * 5);
   }
@@ -1456,14 +1430,6 @@
   .k {
     color: var(--color-muted);
     font-size: 12px;
-  }
-
-  .text-\[8px\] {
-    font-size: 8px;
-  }
-
-  .text-\[9px\] {
-    font-size: 9px;
   }
 
   .text-\[10px\] {
@@ -1498,8 +1464,8 @@
     font-size: 17px;
   }
 
-  .text-\[18px\] {
-    font-size: 18px;
+  .text-\[19px\] {
+    font-size: 19px;
   }
 
   .text-\[20px\] {
@@ -1520,11 +1486,6 @@
 
   .text-\[32px\] {
     font-size: 32px;
-  }
-
-  .leading-10 {
-    --tw-leading: calc(var(--spacing) * 10);
-    line-height: calc(var(--spacing) * 10);
   }
 
   .leading-\[1\.6\] {
@@ -1550,6 +1511,11 @@
   .leading-\[1\.15\] {
     --tw-leading: 1.15;
     line-height: 1.15;
+  }
+
+  .leading-\[1\.55\] {
+    --tw-leading: 1.55;
+    line-height: 1.55;
   }
 
   .leading-\[1\.75\] {
@@ -1600,16 +1566,6 @@
   .tracking-\[\.03em\] {
     --tw-tracking: .03em;
     letter-spacing: .03em;
-  }
-
-  .tracking-\[\.04em\] {
-    --tw-tracking: .04em;
-    letter-spacing: .04em;
-  }
-
-  .tracking-\[\.05em\] {
-    --tw-tracking: .05em;
-    letter-spacing: .05em;
   }
 
   .tracking-\[\.08em\] {
@@ -1879,8 +1835,8 @@
       margin-top: calc(var(--spacing) * 8);
     }
 
-    .max-sm\:mb-3\.5 {
-      margin-bottom: calc(var(--spacing) * 3.5);
+    .max-sm\:mb-3 {
+      margin-bottom: calc(var(--spacing) * 3);
     }
 
     .max-sm\:hidden {
@@ -1971,6 +1927,10 @@
       padding: calc(var(--spacing) * 3);
     }
 
+    .max-sm\:p-4 {
+      padding: calc(var(--spacing) * 4);
+    }
+
     .max-sm\:p-\[6px\] {
       padding: 6px;
     }
@@ -2047,12 +2007,17 @@
       font-size: 14px;
     }
 
-    .max-sm\:text-\[16px\] {
-      font-size: 16px;
+    .max-sm\:text-\[17px\] {
+      font-size: 17px;
     }
 
     .max-sm\:text-\[19px\] {
       font-size: 19px;
+    }
+
+    .max-sm\:shadow-none {
+      --tw-shadow: 0 0 #0000;
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
     }
   }
 

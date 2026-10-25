@@ -2,7 +2,7 @@
 // how the language is chosen (saved value → browser → en), the fallback for missing keys, and the fallback of the spec's display translations (lang → en → raw).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveLang, translate, localized, locales, fallback } from '../src/lib/i18n.js';
+import { resolveLang, translate, localized, locales, fallback, personQuestion, personTitle } from '../src/lib/i18n.js';
 
 test('resolveLang: saved → navigator → fallback, unknown languages fall to en', () => {
   assert.equal(resolveLang('ja', 'en-US'), 'ja');
@@ -31,4 +31,16 @@ test('localized: spec display text falls lang → en → raw', () => {
 test('every language formats dates with its own locale', () => {
   const d = new Date(Date.UTC(2026, 9, 18, 0, 0, 0));
   assert.notEqual(d.toLocaleString('ja'), d.toLocaleString('en'));
+});
+
+// 0.9.2 redesign (E1): what the page asks a person. The display question in the language, then the display title; the model's prompt (question:) only when the spec has no display at all
+test('personQuestion: never the model prompt when the spec has a display', () => {
+  const sp = { id: 'needs-plan', question: 'Does the AI agent need the user to resolve an outstanding choice?', titles: { ja: 'ja-title' }, questions: { ja: 'ja-question' } };
+  assert.equal(personQuestion('ja', sp), 'ja-question');
+  assert.equal(personQuestion('en', sp), 'ja-title');
+  assert.equal(personQuestion('en', { ...sp, titles: { ...sp.titles, en: 'Should it have asked first?' } }), 'Should it have asked first?');
+  assert.equal(personQuestion('en', { ...sp, questions: { ...sp.questions, en: 'Should the AI have asked you first?' } }), 'Should the AI have asked you first?');
+  assert.equal(personQuestion('en', { id: 'custom', question: 'Is this spam?', titles: {}, questions: {} }), 'Is this spam?');
+  assert.equal(personTitle('en', sp), 'ja-title');
+  assert.equal(personTitle('ja', { id: 'x', titles: {} }), '');
 });
