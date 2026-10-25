@@ -404,6 +404,11 @@ func cmdHookVariantsCheck() error {
 		}
 		return json.NewEncoder(stdout).Encode(map[string]any{"adopted": false, "verdict": req.Verdict, "next": next})
 	}
+	// the run keeps the spec's absolute path; after the project folder moved, use this project's spec of the same id
+	// (adoptWording still checks that its hash is the one that was measured)
+	if _, err := os.Stat(res.SpecPath); os.IsNotExist(err) {
+		res.SpecPath = hookSpecPath(root, res.SpecID)
+	}
 	var buf bytes.Buffer
 	path, err := wordingAdopt(res, endpointFlags{local: hookLocalURL, model: res.Model}, root, "", &buf)
 	if err != nil {

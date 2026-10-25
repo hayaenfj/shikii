@@ -304,6 +304,11 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 				err = fmt.Errorf("adopt panicked: %v", r)
 			}
 		}()
+		if _, err := os.Stat(res.SpecPath); os.IsNotExist(err) { // recorded before the project folder moved: this project's spec of the same id
+			if sp, err := s.spec(res.SpecID); err == nil {
+				res.SpecPath = sp.Path()
+			}
+		}
 		return adoptWording(res, s.o.ef, s.o.storeDir, "", &buf)
 	}()
 	saveTuneResult(res)

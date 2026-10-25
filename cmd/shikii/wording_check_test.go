@@ -312,3 +312,28 @@ func TestWordingSameButNotAdoptedIsToldToThePerson(t *testing.T) {
 		t.Fatalf("told once: %q", again)
 	}
 }
+
+// A tune result keeps the spec's absolute path. After the project folder was moved or renamed, the agent's "same" could not adopt the wording
+// ("open …/old-name/.shikii/decisions/changes-in-scope.yaml: no such file", 2026-10-26). The check uses the spec of the same id in this project
+// when the recorded path is gone (adoptWording still checks that its hash is the one that was measured).
+func TestWordingCheckAdoptsAfterTheFolderMoved(t *testing.T) {
+	agent, _, res := wordingCheckFixture(t)
+	var adoptedFrom string
+	wordingAdopt = func(r *tuneResult, ef endpointFlags, storeDir, labeled string, reports ...io.Writer) (string, error) {
+		if _, err := os.Stat(r.SpecPath); err != nil {
+			return "", err
+		}
+		adoptedFrom = r.SpecPath
+		r.Adopted, r.AdoptedPath = true, r.SpecPath+".v-next"
+		return r.AdoptedPath, nil
+	}
+	res.SpecPath = filepath.Join("/nonexistent/old-name/.shikii/decisions", res.SpecID+".yaml") // recorded before the move
+	saveTuneResult(res)
+	out, err := submitWordingCheck(t, checkBody(res, "same"))
+	if err != nil || out["adopted"] != true {
+		t.Fatalf("the wording is adopted from this project's spec after the folder moved: %v %v", out, err)
+	}
+	if adoptedFrom != hookSpecPath(agent, res.SpecID) {
+		t.Fatalf("adopted from this project's spec: %s", adoptedFrom)
+	}
+}
