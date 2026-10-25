@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.9.2 — Copying the wiki to another machine no longer marks every rule as new
+
+- Knowledge: an article's last update (the order on the Knowledge page and the "new" mark in the rules panel) now comes from the save time in the wiki's record (`log.md`), not from the article file's time. Before, copying the wiki to another machine set every file's time to the moment of the copy, and every rule got the "new" mark. The file's time is used only for articles missing from the record. Article reviews (`maintain`) do not change the article and are not counted.
+- Docs: the guide's update heading now reads "Updating from 0.8 to 0.9 (0.9.0 or later)", matching the note that 0.9.1 changed to "0.9.0 or later".
+- Tests: pressing a rule in the rules panel scrolls to the article even on a wide screen, and pressing from other panels such as the inbox does not. The test that the reflection request carries no original text now also checks that the request and the ids of the conversations to review appear (before, it passed when the text was empty).
+
 ## 0.9.1 — Three pages: Answer, Knowledge and The AI
 
 - Page: the per-question menu on the left and the summary bar at the top are gone. The switch at the top has only "Answer" (with a count of the decisions waiting for you), "Knowledge" and "The AI". On first open it starts on Answer when something waits for you, otherwise on Knowledge, and the page you picked opens next time.
