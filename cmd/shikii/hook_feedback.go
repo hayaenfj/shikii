@@ -27,8 +27,8 @@ func feedbackScope(path string) string {
 	return filepath.Clean(path)
 }
 
-// observeFeedback はセッションの錠の中で、人の次の発言を直前の返答と結ぶ。
-// 返答前の追記・別の仕事・古い Stop は結ばない。正解ラベルは一切書かない。
+// observeFeedback, inside the session lock, links the person's next message to the reply just before it.
+// Additions before the reply, other work and old Stops are not linked. No truth label is ever written.
 func observeFeedback(agent string, s, snapshot *hookSession, scope, reply string) error {
 	c := linkedCompletion(s, snapshot, scope)
 	if c == nil {
@@ -39,7 +39,7 @@ func observeFeedback(agent string, s, snapshot *hookSession, scope, reply string
 	})
 }
 
-// linkedCompletion は、人の次の発言と結んでよい直前の返答(同じ仕事・同じ依頼・期限内)。無ければ nil。
+// linkedCompletion is the previous reply that may be linked to the person's next message (same work, same request, within the time limit). nil if none.
 func linkedCompletion(s, snapshot *hookSession, scope string) *completedTurn {
 	c := s.Completed
 	if scope == "" || s.Scope != scope || s.TurnID == "" || s.TurnID != snapshot.TurnID ||

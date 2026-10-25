@@ -21,7 +21,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 文脈の整理は通常のエージェントが行う。hookは原文を控えるだけで、合意や未決事項を推測しない。
+// The regular agent organizes the context. The hook only keeps the original text and does not guess agreements or open questions.
 type planningFrame struct {
 	TurnID  string            `json:"turn_id"`
 	Sources map[string]string `json:"source_material"`
@@ -91,32 +91,32 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: 着手前の判断用に会話を整理します。人に入力を頼まず、%s hook plan queryへ次のJSONを渡して今回と直近の会話を読み、関係する決まりや既存の判断は、話題の語をqueryに付けて探し(依頼の文の写しにしない)、返った教訓を根拠に使ったらevidenceのsourceをlesson:<id>にします。同じID・検索語とagreed・openを%s hook plan submitへ渡してください。各項目はsummaryとevidence:[{source,quote}]（原文から引用）、不明ならunknown:true。合意の根拠には人の発言が必要です。整理は仮説で、実行許可や人の正解にはしません。新しく作った・変えた決まり・テスト・手順は、頼まれなくても終える前に wiki に書きます(近い記事に足すか直す)。詳細は作法のreferences/planning.md。\n", command, command) + string(ids)
+	return fmt.Sprintf("shikii: organize the conversation for the pre-start judgment. Do not ask the person for input. Pass the JSON below to %s hook plan query to read this turn and the recent conversation; look for related rules and existing decisions by putting topic words in query (not a copy of the request text), and when you use a returned lesson as grounds, set the evidence source to lesson:<id>. Pass the same IDs, search words, agreed and open to %s hook plan submit. Each item is summary and evidence:[{source,quote}] (quoted from the original text), or unknown:true if unknown. Grounds for an agreement need the person's words. The organizing is a hypothesis, never permission to act or the person's truth. When you create or change a rule, test or procedure, write it to the wiki before you finish even if nobody asked (add to or edit the closest page). Details are in the skill's references/planning.md.\n", command, command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
 	if len(args) != 1 || (args[0] != "query" && args[0] != "submit") {
-		return errors.New("使い方: shikii hook plan query | submit（JSONを標準入力）")
+		return errors.New("usage: shikii hook plan query | submit (JSON on standard input)")
 	}
 	data, err := io.ReadAll(io.LimitReader(stdin, (16<<10)+1))
 	if err != nil || len(data) > 16<<10 {
-		return errors.New("着手前の文脈は16KB以内のJSONにしてください")
+		return errors.New("the pre-start context must be JSON of 16KB or less")
 	}
 	var req planningRequest
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		return fmt.Errorf("着手前の文脈を読み取れません: %v", jsonShapeError(err))
+		return fmt.Errorf("cannot read the pre-start context: %v", jsonShapeError(err))
 	}
 	var extra any
 	if decoder.Decode(&extra) != io.EOF || req.SessionID == "" || len(req.SessionID) > 200 || len(req.TurnID) != 16 {
-		return errors.New("現在のsession_idとturn_idを含むJSONを一つ渡してください")
+		return errors.New("pass one JSON object with the current session_id and turn_id")
 	}
 	if len(req.Query) > requestMax {
-		return errors.New("wikiの検索語が長すぎます")
+		return errors.New("the wiki search words are too long")
 	}
 	if _, err := hex.DecodeString(req.TurnID); err != nil {
-		return errors.New("turn_idが不正です")
+		return errors.New("turn_id is invalid")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -148,24 +148,24 @@ func cmdHookPlan(args []string) error {
 			return err
 		}
 		if req.Agreed != nil || req.Open != nil {
-			return errors.New("queryでは整理した内容を渡せません")
+			return errors.New("query does not accept organized content")
 		}
 		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": knowledge})
 	}
-	// 同時のsubmitは待たせず再試行にする。新しい人の依頼とStopは妨げない。
+	// concurrent submits do not wait; they are asked to retry. A new request from the person and Stop are not blocked.
 	busy, err := sessions.OpenFile(name+".planning.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return err
 	}
 	defer busy.Close()
 	if info, err := busy.Stat(); err != nil || !info.Mode().IsRegular() {
-		return errors.New("文脈の錠を確認できません")
+		return errors.New("cannot check the context lock")
 	}
 	if err := syscall.Flock(int(busy.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.New("同じ依頼の文脈を保存中です。再試行してください")
+		return errors.New("the context for the same request is being saved; retry")
 	}
 	defer syscall.Flock(int(busy.Fd()), syscall.LOCK_UN)
-	// 錠を取る前に別のsubmitや新しい依頼が終わった可能性を確認する。
+	// check whether another submit or a new request finished before the lock was taken.
 	s, err = readPlanningSession(sessions, name)
 	if err != nil {
 		return err
@@ -193,7 +193,7 @@ func cmdHookPlan(args []string) error {
 		return json.NewEncoder(stdout).Encode(s.Planning.Result)
 	}
 	if s.Planning.Result != nil && s.Planning.Result.Recorded {
-		return errors.New("この依頼の文脈は既に判定済みです")
+		return errors.New("the context for this request has already been judged")
 	}
 	result := &planningReceipt{Shadow: true}
 	var d *decide.Decision
@@ -202,22 +202,22 @@ func cmdHookPlan(args []string) error {
 		return err
 	}
 	if !needsPlanningContext(sp) {
-		return errors.New("現在の質問は合意と未決事項の入力を使いません")
+		return errors.New("the current question does not use agreed and open inputs")
 	}
 	inputs := map[string]string{"request": cut(s.Planning.Sources["current_user"], requestMax), "agreed": agreed, "open": open}
 	if req.Agreed.Unknown && req.Open.Unknown {
-		result.Reason = "合意と未決事項が不明なため、判定を見送りました。人の答えには数えません。"
+		result.Reason = "agreed and open are both unknown, so the decision was skipped. It does not count as the person's answer."
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), hookDecideTimeout)
 		defer cancel()
 		d, err = decide.Decide(ctx, sp, inputs, decide.Session{}, hookEndpoints())
 		if err != nil {
-			// 判定モデルが混雑・停止していても整理は保存する(作法の検査に止められない)。判定は見送り、人の答えにも数えない(0.8.1)
+			// even if the decision model is busy or down, the organizing is saved (the ritual check does not get stuck). The decision is skipped and does not count as the person's answer (0.8.1)
 			hookLog("plan submit: " + err.Error())
 			d = nil
-			result.Reason = "判定モデルに届かなかったため、整理は保存し、判定は見送りました。人の答えには数えません。"
+			result.Reason = "the decision model could not be reached, so the organizing was saved and the decision skipped. It does not count as the person's answer."
 		} else if d.Band == decide.Abstain {
-			return errors.New("判定の入力が揃っていません")
+			return errors.New("the decision inputs are incomplete")
 		}
 	}
 	if d != nil {
@@ -229,7 +229,7 @@ func cmdHookPlan(args []string) error {
 		result.Advice = joinLines(out.Context, out.System)
 		result.Advice = strings.ReplaceAll(result.Advice, hookPageURL+"/", pageRef(filepath.Dir(root)))
 	}
-	// モデルを待つ間に依頼が進んだら、古い文脈を記録も助言もせず破棄する。
+	// if the request moved on while waiting for the model, the old context is discarded without a record or advice.
 	err = savePlanningResult(sessions, name, root, scope, req, sp, d, inputs, result, key, knowledge)
 	if err != nil {
 		return err
@@ -239,16 +239,16 @@ func cmdHookPlan(args []string) error {
 
 func renderPlanningFact(f *planningFact, sources map[string]string, agreement bool) (string, error) {
 	if f == nil {
-		return "", errors.New("agreedとopenを渡してください。不明ならunknown:trueを指定します")
+		return "", errors.New("pass agreed and open. If unknown, set unknown:true")
 	}
 	if f.Unknown {
 		if f.Summary != "" || len(f.Evidence) != 0 {
-			return "", errors.New("不明な項目に合意や根拠を補わないでください")
+			return "", errors.New("do not fill in an agreement or grounds for an unknown item")
 		}
-		return "不明（現在の会話から確かめられない）", nil
+		return "unknown (cannot be confirmed from the current conversation)", nil
 	}
 	if strings.TrimSpace(f.Summary) == "" || len(f.Summary) > 600 || len(f.Evidence) == 0 || len(f.Evidence) > 3 {
-		return "", errors.New("整理は600バイト以内、根拠の引用は1〜3件にしてください")
+		return "", errors.New("keep the organizing within 600 bytes, with 1 to 3 quoted grounds")
 	}
 	parts := []string{"AIによる整理（実行許可や人の正解ではない）: " + f.Summary}
 	human := false
@@ -261,24 +261,24 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
-			return "", fmt.Errorf("根拠evidence[%d]の出典 %q はこの依頼の原文にありません。使える出典: %s", i, e.Source, strings.Join(keys, ", "))
+			return "", fmt.Errorf("the source %q of evidence[%d] is not in this request's original text. Usable sources: %s", e.Source, i, strings.Join(keys, ", "))
 		case strings.TrimSpace(e.Quote) == "" || len(e.Quote) > 240:
-			return "", fmt.Errorf("根拠evidence[%d]の引用は1〜240バイトにしてください（%dバイト）", i, len(e.Quote))
+			return "", fmt.Errorf("the quote of evidence[%d] must be 1 to 240 bytes (%d bytes)", i, len(e.Quote))
 		case !strings.Contains(text, e.Quote):
-			return "", fmt.Errorf("根拠evidence[%d]の引用が出典 %s の原文にそのまま見つかりません。書式や記号を含め、queryで返った原文から写してください", i, e.Source)
+			return "", fmt.Errorf("the quote of evidence[%d] is not found verbatim in the original text of source %s. Copy it from the original text query returned, including formatting and symbols", i, e.Source)
 		}
 		human = human || e.Source == "current_user" || e.Source == "previous_user"
-		role := map[string]string{"current_user": "今回の人の発言", "previous_user": "前の人の発言", "previous_assistant": "直前のAIの返答"}[e.Source]
+		role := map[string]string{"current_user": "the person's current message", "previous_user": "the person's previous message", "previous_assistant": "the AI's previous reply"}[e.Source]
 		if strings.HasPrefix(e.Source, "history:") {
-			role = "同じセッションの過去の会話（参考・現在の合意ではない） [" + e.Source + "]"
+			role = "a past exchange in the same session (for reference, not the current agreement) [" + e.Source + "]"
 		}
 		if strings.HasPrefix(e.Source, "lesson:") || strings.HasPrefix(e.Source, "article:") {
-			role = "wikiの教訓（出典付きの仮説・現在の合意ではない） [" + e.Source + "]"
+			role = "a wiki lesson (a hypothesis with sources, not the current agreement) [" + e.Source + "]"
 		}
 		parts = append(parts, role+": "+e.Quote)
 	}
 	if agreement && !human {
-		return "", errors.New("AIの提案だけを合意と扱えません。人の発言の根拠が必要です")
+		return "", errors.New("the AI's proposal alone cannot be treated as an agreement. Grounds from the person's words are needed")
 	}
 	return strings.Join(parts, "\n"), nil
 }
@@ -291,7 +291,7 @@ func planningSessionRoot(root string) (*os.Root, error) {
 	defer dir.Close()
 	info, err := dir.Lstat("sessions")
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("現在のセッションの保存先を確認できません")
+		return nil, errors.New("cannot check where the current session is saved")
 	}
 	return dir.OpenRoot("sessions")
 }
@@ -300,14 +300,14 @@ func readPlanningSession(dir *os.Root, name string) (*hookSession, error) {
 	f, err := dir.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, errors.New("そのセッションの記録がありません(session_id を確かめてください)")
+			return nil, errors.New("there is no record of that session (check the session_id)")
 		}
 		return nil, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
-		return nil, errors.New("セッションの記録を確認できません")
+		return nil, errors.New("cannot check the session record")
 	}
 	var s hookSession
 	decoder := json.NewDecoder(io.LimitReader(f, (1<<20)+1))
@@ -316,15 +316,15 @@ func readPlanningSession(dir *os.Root, name string) (*hookSession, error) {
 	}
 	var extra any
 	if decoder.Decode(&extra) != io.EOF {
-		return nil, errors.New("セッションは一つのJSONで保存してください")
+		return nil, errors.New("the session must be saved as one JSON object")
 	}
 	return &s, nil
 }
 
 func currentPlanningFrame(s *hookSession, turnID, scope string) error {
-	// Judged(ターンの終わりの判定が済んだ)後は受けないが、作法の検査が止めた直後(整理の submit がまだ無い)は受ける(0.8.0)
+	// after Judged (the end-of-turn decision is done) it is not accepted, but right after the ritual check stopped (no organizing submit yet) it is (0.8.0)
 	if s.Scope != scope || s.TurnID != turnID || (s.Judged && s.Planning != nil && s.Planning.Result != nil) || s.Planning == nil || s.Planning.TurnID != turnID || time.Since(s.Planning.At) > hookSessionTTL {
-		return errors.New("現在進行中の同じプロジェクト・同じ依頼の文脈だけを扱えます")
+		return errors.New("only the context of the ongoing request in the same project can be handled")
 	}
 	return nil
 }
@@ -336,10 +336,10 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 	}
 	defer lock.Close()
 	if info, err := lock.Stat(); err != nil || !info.Mode().IsRegular() {
-		return errors.New("セッションの錠を確認できません")
+		return errors.New("cannot check the session lock")
 	}
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.New("依頼の記録を更新中です。再試行してください")
+		return errors.New("the request record is being updated; retry")
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	s, err := readPlanningSession(dir, name)
@@ -354,7 +354,7 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		return err
 	}
 	if fresh.Hash() != sp.Hash() {
-		return errors.New("判定中に質問が変わりました。文脈を読み直してください")
+		return errors.New("the question changed during the decision; read the context again")
 	}
 	if err := validatePlanningKnowledge(root, scope, knowledge); err != nil {
 		return err
@@ -371,12 +371,12 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 				continue
 			}
 			if prior.SpecHash != d.SpecHash || prior.InputsHash != d.InputsHash {
-				return errors.New("同じ依頼の記録を照合できません")
+				return errors.New("cannot match the record of the same request")
 			}
 			recorded = true
-			// 記録の追記後に完了印の保存だけ失敗した再送。最初の予測を保ち、新しい助言は出さない。
+			// a resend where only saving the completion mark failed after the record was appended. Keep the first prediction and give no new advice.
 			result.Advice, result.Shadow = "", true
-			result.Reason = "保存済みの最初の判定を保持しました。"
+			result.Reason = "kept the first decision that was already saved."
 			break
 		}
 		if !recorded {
@@ -419,7 +419,7 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		return err
 	}
 	if err := dir.Rename(temp, name); err != nil {
-		return fmt.Errorf("文脈の保存: %w", err)
+		return fmt.Errorf("saving the context: %w", err)
 	}
 	return nil
 }

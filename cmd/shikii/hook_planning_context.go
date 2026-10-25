@@ -8,8 +8,8 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-// 過去の会話とwikiは判断材料。今の人の発言や現在の合意に置き換えない。
-// 直近4件の原文だけを控え、要約の再要約や会話の連結をしない。
+// Past conversations and the wiki are material for judgment. They do not replace the person's current message or the current agreement.
+// Only the original text of the latest 4 turns is kept; no re-summarizing of summaries or joining of conversations.
 type planningTurn struct {
 	ID      string    `json:"id"`
 	Request string    `json:"request"`
@@ -20,7 +20,7 @@ type planningTurn struct {
 func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 	if previous.Scope == scope && previous.Planning != nil && time.Since(previous.Planning.At) >= 0 && time.Since(previous.Planning.At) < hookSessionTTL {
 		f.Recent = append([]planningTurn{}, previous.Planning.Recent...)
-		// 更新前の形式にも残っている原文だけを参照する。過去の結合されたRequestからは作らない。
+		// only refer to original text that also exists in the pre-update format. Nothing is built from the old joined Request.
 		if len(f.Recent) == 0 && previous.Planning.Sources["previous_user"] != "" {
 			f.Recent = append(f.Recent, planningTurn{ID: previous.TurnID + "-prior", Request: cut(previous.Planning.Sources["previous_user"], 1200), At: previous.Planning.At})
 		}
@@ -46,14 +46,14 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 	}
 }
 
-// 検索語はskillを読んだエージェントが選ぶ。プログラムは話題や合意を推測しない。
+// The agent that read the skill picks the search words. The program does not guess the topic or the agreement.
 func planningWikiSources(root, scope, query string, sources map[string]string) ([]notebook.Page, string) {
 	if strings.TrimSpace(query) == "" {
 		return nil, ""
 	}
 	view, err := (notebook.Book{Root: root, Scope: scope}).Query(query)
 	if err != nil {
-		return nil, "wikiの参照を読み出せません。未知の条件を補わず、現在の依頼を優先してください。"
+		return nil, "Cannot read the wiki references. Do not fill in unknown conditions; put the current request first."
 	}
 	for _, page := range view.Lessons {
 		key := "lesson:" + page.ID + ":" + page.Revision
@@ -61,10 +61,10 @@ func planningWikiSources(root, scope, query string, sources map[string]string) (
 		for _, source := range page.Sources {
 			ids = append(ids, source.ID)
 		}
-		sources[key] = fmt.Sprintf("教訓（仮説）: %s\n適用条件: %s\n出典: %s", cut(page.Lesson, 800), cut(page.AppliesTo, 300), strings.Join(ids, ", "))
+		sources[key] = fmt.Sprintf("Lesson (hypothesis): %s\nApplies when: %s\nSources: %s", cut(page.Lesson, 800), cut(page.AppliesTo, 300), strings.Join(ids, ", "))
 	}
 	if len(view.Issues) > 0 {
-		return view.Lessons, "出典や版を確認できないwikiは参照から外しました。"
+		return view.Lessons, "Wiki pages whose sources or versions could not be checked were left out of the references."
 	}
 	return view.Lessons, ""
 }

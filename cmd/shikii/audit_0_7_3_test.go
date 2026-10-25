@@ -137,10 +137,10 @@ func TestHookInstallPreviewListsTheProjectsItWouldWipe(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, ".shikii", "handoff", "job", "b.md"), []byte("b"), 0o600)
 	os.WriteFile(filepath.Join(repo, ".shikii", "handoff", "c.md"), []byte("c"), 0o600) // 直下の項目は 2 つ、ファイルは 3 つ(一覧と同じくファイルを数える)
 	out := capture(t, func() error { return cmdHook([]string{"install"}) })
-	if !strings.Contains(out, "消して初期化し直します") || !strings.Contains(out, repo) {
+	if !strings.Contains(out, "is removed and initialized again") || !strings.Contains(out, repo) {
 		t.Fatalf("表示に消す対象が出る:\n%s", out)
 	}
-	if !strings.Contains(out, "作業記録 3 件(.shikii/handoff/)も消えます") {
+	if !strings.Contains(out, "3 work records (.shikii/handoff/) are removed too") {
 		t.Fatalf("作業記録も消えることを件数で出す:\n%s", out)
 	}
 	if _, err := os.Stat(installedVersionPath(common)); err == nil {

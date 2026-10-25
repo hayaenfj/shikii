@@ -218,7 +218,7 @@ func TestHookInstallRefreshesAgentsSectionOfRegisteredProjects(t *testing.T) {
 	if !strings.Contains(out, "AGENTS.md") {
 		t.Fatalf("置き換えたことを言う: %s", out)
 	}
-	if !strings.Contains(out, "開き直") || !strings.Contains(out, "0.9.0 以上") { // 0.9.1 から読んでも下げるように読めない(最終監査 0.9.1 低-F2)
+	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.9.0 or later") { // 0.9.1 から読んでも下げるように読めない(最終監査 0.9.1 低-F2)
 		t.Fatalf("開いているセッションを開き直し、同じ wiki を使う機械を全部 0.9.0 以上にすることを言う(監査 0.9.0 の B3): %s", out)
 	}
 	if b, _ := os.ReadFile(filepath.Join(without, "AGENTS.md")); string(b) != "# 人の規則だけ\n" {

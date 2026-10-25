@@ -131,13 +131,13 @@ func TestHookInstallPreviewExplainsWhatItWouldSkip(t *testing.T) {
 	os.WriteFile(filepath.Join(odd, ".shikii", "mystery"), []byte("?"), 0o600)
 	os.Remove(installedVersionPath(common))
 	out := capture(t, func() error { return cmdHook([]string{"install"}) })
-	if !strings.Contains(out, old) || !strings.Contains(out, "消して初期化し直します") {
+	if !strings.Contains(out, old) || !strings.Contains(out, "is removed and initialized again") {
 		t.Fatalf("消す対象を出す:\n%s", out)
 	}
-	if !strings.Contains(out, odd) || !strings.Contains(out, "消しません") || !strings.Contains(out, "mystery") {
+	if !strings.Contains(out, odd) || !strings.Contains(out, "not removed: ") || !strings.Contains(out, "mystery") {
 		t.Fatalf("知らない項目があるプロジェクトは消さないと理由付きで出す:\n%s", out)
 	}
-	if !strings.Contains(out, "済み: "+fresh) {
+	if !strings.Contains(out, "done: "+fresh) {
 		t.Fatalf("この版で初期化したプロジェクト(version 2)は「済み」と出す:\n%s", out)
 	}
 }

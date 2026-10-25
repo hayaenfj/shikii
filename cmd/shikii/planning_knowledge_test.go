@@ -106,7 +106,7 @@ func TestPlanningTellsTheAgentWhenTheWikiWasNotSearched(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	planningWikiFixture(t, root, feedbackScope(repo))
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
-	if ctx := feedbackContext(t, out); !strings.Contains(ctx, "話題の語をqueryに付けて探し") || strings.Contains(ctx, "必要なwikiは") {
+	if ctx := feedbackContext(t, out); !strings.Contains(ctx, "putting topic words in query") || strings.Contains(ctx, "必要なwikiは") {
 		t.Fatalf("hook は wiki を探す手順として頼む: %s", ctx)
 	}
 	payload := planningPayload(root)
@@ -132,7 +132,7 @@ func TestPlanningSubmitSavesTheContextEvenWhenTheModelIsDown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("モデルに届かなくても整理は保存する: %v", err)
 	}
-	if res["recorded"] == true || !strings.Contains(fmt.Sprint(res["reason"]), "判定モデルに届かなかった") {
+	if res["recorded"] == true || !strings.Contains(fmt.Sprint(res["reason"]), "the decision model could not be reached") {
 		t.Fatalf("判定は見送ったと言う: %v", res)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {

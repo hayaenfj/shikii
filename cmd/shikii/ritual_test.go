@@ -224,11 +224,11 @@ func TestHooksCarryTheWorkRecordHabitsWithoutProjectInstructions(t *testing.T) {
 	repo, _, _ := planningFixture(t)
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "habits", "cwd": repo, "prompt": planningTestRequest})
 	ctx := feedbackContext(t, out)
-	if !strings.Contains(ctx, ".shikii/handoff/") || !strings.Contains(ctx, "wiki の教訓") {
+	if !strings.Contains(ctx, ".shikii/handoff/") || !strings.Contains(ctx, "wiki lesson") {
 		t.Fatalf("最初に伝えるターンで作業記録と決まりの残し方を添える: %s", ctx)
 	}
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "habits", "cwd": repo, "prompt": planningTestRequest + " もう一度"})
-	if strings.Contains(feedbackContext(t, out), ".shikii/handoff/<仕事>/") {
+	if strings.Contains(feedbackContext(t, out), ".shikii/handoff/<work>/") {
 		t.Fatalf("同じセッションでは 2 回目は添えない: %s", out)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {

@@ -101,17 +101,17 @@ func TestFirstRequestStartsOneProjectPageAndOpensTheBrowser(t *testing.T) {
 	if len(opened) != 0 {
 		t.Fatalf("hook はブラウザを開かない(serve が開く): %v", opened)
 	}
-	if strings.Contains(out, "このプロジェクトの画面") || strings.Contains(out, "画面を起こして") || strings.Contains(out, url) {
+	if strings.Contains(out, "this project's page") || strings.Contains(out, "画面を起こして") || strings.Contains(out, url) {
 		t.Fatalf("起こした時は画面の知らせを出さない(線の無い間の hook は黙る決まり):\n%s", out)
 	}
 	// 立っていれば(別のエージェントでも)起こさず、場所をセッションに 1 回伝える。起こす権利の guard を消しても(startOnce が許しても)起こさない
 	spawned, opened = nil, nil
 	os.Remove(filepath.Join(common, "starting-page-"+projectID(repo)))
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "p2", "cwd": repo, "prompt": "次は画面の色を直して"})
-	if len(spawned) != 0 || len(opened) != 0 || strings.Contains(out, "画面を起こし") || !strings.Contains(out, "画面: "+url+"/") {
+	if len(spawned) != 0 || len(opened) != 0 || strings.Contains(out, "画面を起こし") || !strings.Contains(out, "this project's page: "+url+"/") {
 		t.Fatalf("立っていれば二つ目を起こさず、場所を伝える: spawned=%v opened=%v\n%s", spawned, opened, out)
 	}
-	if out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "p2", "cwd": repo, "prompt": "さらに色を直して"}); strings.Contains(out, "画面: ") {
+	if out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "p2", "cwd": repo, "prompt": "さらに色を直して"}); strings.Contains(out, "this project's page: ") {
 		t.Fatalf("同じセッションでは二度言わない:\n%s", out)
 	}
 	// 別のプロジェクトは自分の画面を持つ

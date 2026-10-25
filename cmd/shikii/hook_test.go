@@ -23,28 +23,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// hookEnv は仮の HOME に道具を入れ、指定した仕事の .shikii を準備してモデルと画面を差し替える。
+// hookEnv puts the tools in a temporary HOME, prepares .shikii for the given work, and replaces the model and the page.
 func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	agent = filepath.Join(home, ".shikii", "agent")
 	oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen := hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser
-	hookCalibrate = runCalibrateInProcess // テストは線を同プロセスで引く(本番は別プロセスを切り離す)
+	hookCalibrate = runCalibrateInProcess // tests draw lines in-process (production starts a detached process)
 	hookTune = runTuneInProcess
 	spawned = nil
-	hookSpawn = recordSpawn // 本物の up / serve は起こさない(記録だけ)
+	hookSpawn = recordSpawn // real up / serve are not started (only recorded)
 	opened = nil
 	openBrowser = func(url string) { opened = append(opened, url) }
-	hookLocalURL = "http://127.0.0.1:1" // 閉じている口(モデルが無い)
+	hookLocalURL = "http://127.0.0.1:1" // a closed port (no model)
 	if model != nil {
 		hookLocalURL = model.URL
 	}
 	hookPageURL = "http://127.0.0.1:1"
 	t.Cleanup(func() {
-		hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser = oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen // 戻さないと、TestMain の差し替えを確かめるテストが順に依存する(再監査 GH)
+		hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser = oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen // without restoring these, tests that check TestMain's replacements depend on test order (re-audit GH)
 	})
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	spawned = nil // install が起こした分は数えない
+	spawned = nil // what install started is not counted
 	root := t.TempDir()
 	if len(roots) > 0 {
 		root = roots[0]
@@ -67,8 +67,8 @@ func initTestProject(t *testing.T, root string) (string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 既存プロジェクトは更新しても旧形式を保持する。その回帰検査用の状態を準備する。
-	// 新形式の入力と経路はhook_planning_test.goで検証する。
+	// existing projects keep the old format even after an update. Prepare the state for that regression check.
+	// the new format's inputs and paths are checked in hook_planning_test.go.
 	path := filepath.Join(store, "decisions", "needs-plan.yaml")
 	sp := mustLoad(t, path)
 	sp.Version = 1
@@ -84,10 +84,10 @@ func initTestProject(t *testing.T, root string) (string, string) {
 	return store, scope
 }
 
-// spawned は hookSpawn の記録(テスト)。opened はブラウザで開いた URL の記録。
+// spawned is the record of hookSpawn (tests). opened is the record of URLs opened in the browser.
 var spawned, opened []string
 
-// spawnedUps は起こした中の手元のモデル(up)だけ(画面の serve を除く)。
+// spawnedUps is only the local model starts (up) among those started (excluding the page's serve).
 func spawnedUps() []string {
 	var out []string
 	for _, s := range spawned {
@@ -103,7 +103,7 @@ func recordSpawn(agent, logName string, args ...string) int {
 	return 0
 }
 
-// runHook は stdin の JSON を与えて event を走らせ、stdout を返す。hook は何があっても誤りを返さない。
+// runHook runs an event with the given JSON on stdin and returns stdout. The hook never returns an error, whatever happens.
 func runHook(t *testing.T, event string, in map[string]any) string {
 	b, _ := json.Marshal(in)
 	old := stdin
@@ -112,7 +112,7 @@ func runHook(t *testing.T, event string, in map[string]any) string {
 	return strings.TrimSpace(capture(t, func() error { return cmdHook([]string{event}) }))
 }
 
-// fakeAgentModel は hook の 4 spec に答える偽物: choice(prompt-kind)は edit 0.9、noul は state の文で決める関数 p(state)。
+// fakeAgentModel is a fake that answers the hook's 4 specs: choice (prompt-kind) is edit 0.9, noul is decided by the function p(state) of the state text.
 func fakeAgentModel(t *testing.T, p func(state string) float64) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -150,7 +150,7 @@ func readAll(r *http.Request) ([]byte, error) {
 	}
 }
 
-// gitRepo は仮の git リポジトリ(無ければ skip)。
+// gitRepo is a temporary git repository (skip if git is missing).
 func gitRepo(t *testing.T) string {
 	repo := t.TempDir()
 	if out, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput(); err != nil {
@@ -159,7 +159,7 @@ func gitRepo(t *testing.T) string {
 	return repo
 }
 
-// lowerMinN は install が写した spec の min_n を下げる(人が spec を直した、のつもり)。
+// lowerMinN lowers min_n of a spec copied by install (as if the person edited the spec).
 func lowerMinN(t *testing.T, agent, specID string, n int) string {
 	p := filepath.Join(agent, "decisions", specID+".yaml")
 	b, _ := os.ReadFile(p)
@@ -172,7 +172,7 @@ func lowerMinN(t *testing.T, agent, specID string, n int) string {
 	return p
 }
 
-// 帯 → 振る舞いの表。影(線が無い)では何も出さず、許可の判定(ask / deny)は決して出さない。
+// The band → behaviour table. In the shadow (no line) nothing is output, and a permission decision (ask / deny) is never output.
 func TestHookOutcomeTable(t *testing.T) {
 	d := func(band decide.Band, top string, p float64, calibrated bool) *decide.Decision {
 		return &decide.Decision{TraceID: "0123456789abcdef", Band: band, Top: top, P: p, IsCalibrated: calibrated}
@@ -197,14 +197,14 @@ func TestHookOutcomeTable(t *testing.T) {
 		{"changes out of scope: a line for the person, no context", "changes-in-scope", d(decide.Discard, "yes", 0.1, true), func(o hookOut) bool {
 			return o.Context == "" && strings.Contains(o.System, "outside what you asked") && strings.Contains(o.System, "0.10")
 		}},
-		{"changes unsure: 仮採点へ回す", "changes-in-scope", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
+		{"changes unsure: to provisional scoring", "changes-in-scope", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
 			return o.empty()
 		}},
 		{"done: silent", "done-as-asked", d(decide.Act, "yes", 0.9, true), func(o hookOut) bool { return o.empty() }},
 		{"not done: a line for the person", "done-as-asked", d(decide.Discard, "yes", 0.2, true), func(o hookOut) bool {
 			return o.Context == "" && strings.Contains(o.System, "unfinished") && strings.Contains(o.System, "0.20")
 		}},
-		{"done unsure: 仮採点へ回す", "done-as-asked", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
+		{"done unsure: to provisional scoring", "done-as-asked", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
 			return o.empty()
 		}},
 		{"prompt-kind: record only", "prompt-kind", d(decide.Act, "edit", 0.95, true), func(o hookOut) bool { return o.empty() }},
@@ -215,7 +215,7 @@ func TestHookOutcomeTable(t *testing.T) {
 			t.Errorf("%s: got %+v", c.name, o)
 		}
 	}
-	// hook の出力に許可の判定は無い(Stop では文脈も出さない)
+	// the hook output has no permission decision (and no context at Stop)
 	if b := (hookOut{Context: "x"}).json("Stop"); b != nil {
 		t.Fatalf("Stop must not return context (it would continue the conversation): %s", b)
 	}
@@ -224,9 +224,9 @@ func TestHookOutcomeTable(t *testing.T) {
 	}
 }
 
-// 影の期間: 依頼の直後とターンの終わりに 4 つを聞いて記録だけし、stdout には何も出さない。モデルが無ければ exit 0・無出力・hook.log に 1 行。
+// The shadow period: ask the 4 right after the request and at the end of the turn, only record, and print nothing to stdout. Without a model: exit 0, no output, one line in hook.log.
 func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
-	model := fakeAgentModel(t, func(string) float64 { return 0.1 }) // noul は確信して「いいえ」(discard: 答え待ちにならない)
+	model := fakeAgentModel(t, func(string) float64 { return 0.1 }) // noul is a confident "no" (discard: does not wait for an answer)
 	repo := gitRepo(t)
 	agent := hookEnv(t, model, repo)
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o644); err != nil {
@@ -258,14 +258,14 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if cis[0].Inputs["request"] != "fix the typo in a.go" || cis[0].Inputs["files"] != "a.go\nb.md" || cis[0].Inputs["summary"] != "Fixed the typo." {
 		t.Fatalf("changes-in-scope must see the request, the changed files and the closing message: %+v", cis[0].Inputs)
 	}
-	// 記録には仕事の印(repo のルートの名)が付く。入力ではないので inputs とハッシュには入らない
+	// records carry the work marker (the name of the repo's root). It is not an input, so it is not in inputs or the hash
 	for _, id := range hookSpecs {
 		recs, _ := st.Records(id, 0)
 		if recs[0].Project != filepath.Base(repo) || recs[0].Inputs["project"] != "" {
 			t.Fatalf("%s: the record must carry the project mark %q outside the inputs: project=%q inputs=%v", id, filepath.Base(repo), recs[0].Project, recs[0].Inputs)
 		}
 	}
-	// status は仕事ごとの数を出す
+	// status shows counts per work
 	if out := capture(t, func() error { return cmdStatus([]string{"--store", agent}) }); !strings.Contains(out, "by project: "+filepath.Base(repo)+"=1") {
 		t.Fatalf("status must count records per project: %s", out)
 	}
@@ -273,13 +273,13 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if daa[0].Inputs["summary"] != "Fixed the typo." || daa[0].Inputs["files"] != "a.go\nb.md" {
 		t.Fatalf("done-as-asked inputs: %+v", daa[0].Inputs)
 	}
-	// 確信した「いいえ」は答え待ちにならない。prompt-kind の edit 0.9 は線が無いので ask だが、結果から正解が付くので人を待たない
+	// a confident "no" does not wait for an answer. prompt-kind's edit 0.9 is ask without a line, but it gets a truth from outcomes so it does not wait for the person
 	sess := loadSession(agent, "s1")
 	if len(sess.Asked) != 0 {
 		t.Fatalf("asked: %+v", sess.Asked)
 	}
 
-	// モデルが無い: 止めない(無出力)、理由は hook.log
+	// no model: do not stop (no output); the reason goes to hook.log
 	hookLocalURL = "http://127.0.0.1:1"
 	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s2", "cwd": repo, "prompt": "and now the other file"}); out != "" {
 		t.Fatalf("a missing model must not produce output, got %q", out)
@@ -288,7 +288,7 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if !strings.Contains(string(logb), "127.0.0.1:1") {
 		t.Fatalf("hook.log must say why: %q", logb)
 	}
-	// 依頼の控えが無いセッションの Stop は、ターンの終わりの問いを聞かない
+	// a Stop in a session with no kept request does not ask the end-of-turn questions
 	hookLocalURL = model.URL
 	runHook(t, "stop", map[string]any{"session_id": "fresh", "cwd": repo, "last_assistant_message": "hello"})
 	if recs, _ := st.Records("done-as-asked", 0); len(recs) != 1 {
@@ -296,8 +296,8 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	}
 }
 
-// ターンの終わりの問いは同じ依頼について 1 回だけ。何も変えていなければ changes-in-scope は聞かず done-as-asked だけ。git の外では変わったファイルは「分からない」。
-// changedFiles は増えた・変わった・消えたを名前順に、filesInput は 30 件で切る。
+// The end-of-turn questions are asked only once per request. If nothing changed, changes-in-scope is not asked, only done-as-asked. Outside git the changed files are "unknown".
+// changedFiles lists added, changed and removed files by name; filesInput cuts at 30.
 func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
 	repo := gitRepo(t)
@@ -314,12 +314,12 @@ func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 	if recs[0].Inputs["files"] != "(none)" {
 		t.Fatalf("files must read (none): %+v", recs[0].Inputs)
 	}
-	// 同じ依頼で Stop がもう一度来ても(/ 始まりの入力や再開)聞き直さない
+	// even if Stop comes again for the same request (input starting with / or a resume), do not ask again
 	runHook(t, "stop", map[string]any{"session_id": "once", "cwd": repo, "last_assistant_message": "It builds, again."})
 	if count("done-as-asked") != 1 {
 		t.Fatalf("a second Stop on the same request must not ask again: %d", count("done-as-asked"))
 	}
-	// 新しい依頼で戻る。変えれば changes-in-scope も
+	// a new request resets it. If something changed, changes-in-scope too
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "once", "cwd": repo, "prompt": "now add a README with the same explanation"})
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("builds\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -332,7 +332,7 @@ func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 	if recs[0].Inputs["files"] != "README.md" {
 		t.Fatalf("changed files: %+v", recs[0].Inputs)
 	}
-	// git の外: changes-in-scope は聞かず、done-as-asked の files は「分からない」
+	// outside git: changes-in-scope is not asked, and done-as-asked's files is "unknown"
 	plain := t.TempDir()
 	initTestProject(t, plain)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "nogit", "cwd": plain, "prompt": "write notes.txt with three lines about the weather"})
@@ -346,7 +346,7 @@ func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 		t.Fatal("outside git no listing may be kept")
 	}
 
-	// changedFiles: 変わった・増えた・消えた(名前順)。同じ中身は入らない。filesInput は 30 件 + 残りの件数
+	// changedFiles: changed, added, removed (by name). Same content is not included. filesInput is 30 + the count of the rest
 	before := "100644 aaaa 0\tkeep.go\n100644 bbbb 0\tchanged.go\n100644 cccc 0\tgone.go\n"
 	after := "100644 aaaa 0\tkeep.go\n100644 b2b2 0\tchanged.go\n100644 dddd 0\tnew/added.md\n"
 	if got := strings.Join(changedFiles(before, after), ","); got != "changed.go,gone.go,new/added.md" {
@@ -361,14 +361,14 @@ func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 	}
 }
 
-// UserPromptSubmit は prompt-kind と needs-plan を聞き、依頼とツリーのハッシュを控える。次の依頼(無ければ Stop)はツリーが変わっていれば edit、
-// 変わっていなければ !edit(重み 0.7)を結果の正解として付け、Stop は直前のアシスタントの発言を控える。正解が min_n に届けば Stop が線を引く。
+// UserPromptSubmit asks prompt-kind and needs-plan and keeps the request and the tree hash. The next request (or Stop if none) attaches edit if the tree changed,
+// and !edit (weight 0.7) if not, as the outcome truth; Stop keeps the assistant's last message. Once truths reach min_n, Stop draws the line.
 func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.2 })
 	repo := gitRepo(t)
 	agent := hookEnv(t, model, repo)
 	pkPath := lowerMinN(t, agent, "prompt-kind", 4)
-	traceOf := map[string]string{} // session → prompt-kind の trace
+	traceOf := map[string]string{} // session → prompt-kind trace
 	run := func(session string, change bool) {
 		out := runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "fix the typo in README " + session})
 		if out != "" {
@@ -386,7 +386,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 		}
 		runHook(t, "stop", map[string]any{"session_id": session, "cwd": repo, "last_assistant_message": "Done: " + session})
 		sess = loadSession(agent, session)
-		// 変えたなら edit が付いて片付く。変えていなければ !edit(部分)を付けて次の人の依頼まで持ち越す(裏の作業が後から変えたら edit に置き換えるため)
+		// if changed, edit is attached and it is cleared. If not, !edit (partial) is attached and it is carried to the person's next request (so it can be replaced with edit if background work changes it later)
 		wantPending := 0
 		if !change {
 			wantPending = 1
@@ -406,7 +406,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	if err != nil || len(labels) != 5 {
 		t.Fatalf("five outcome labels expected: %v %v", labels, err)
 	}
-	// 正解が min_n(4)に届いたので、Stop が線を引いて spec に書く(serve を通らない正解なので hook が引く)
+	// truths reached min_n (4), so Stop draws the line and writes it to the spec (these truths do not go through serve, so the hook draws it)
 	if b, _ := os.ReadFile(pkPath); !strings.Contains(string(b), "calibration:") || !strings.Contains(string(b), "model: kev-4b") {
 		logb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 		t.Fatalf("Stop must draw the line once truths reach min_n. hook.log:\n%s", logb)
@@ -419,14 +419,14 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 			t.Fatalf("source must be outcome: %+v", l)
 		}
 	}
-	// 変えたセッションは edit(重み 1)、変えなかったセッションは !edit(重み 0.7)
+	// the session that changed gets edit (weight 1), the one that did not gets !edit (weight 0.7)
 	if l := labels[traceOf["changed"]]; l.Truth != "edit" || l.Weight != 1 {
 		t.Fatalf("the session that changed the tree must get edit w=1, got %+v", l)
 	}
 	if l := labels[traceOf["same"]]; l.Truth != "!edit" || l.Weight != 0.7 {
 		t.Fatalf("the session that left the tree alone must get !edit w=0.7, got %+v", l)
 	}
-	// 2 回目の UserPromptSubmit は previous(文脈)を持って聞く: 落ちないこと。短い返事は依頼を置き換えず前の依頼に添える(ターンの終わりの問いが「ok」を依頼として読まない)
+	// the 2nd UserPromptSubmit asks with previous (context): it must not fail. A short reply does not replace the request but is attached to the previous one (the end-of-turn questions do not read "ok" as the request)
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "same", "cwd": repo, "prompt": "and the other one"})
 	if strings.Contains(out, "systemMessage") || loadSession(agent, "same").Request != "fix the typo in README same / and the other one" || loadSession(agent, "same").Judged {
 		t.Fatalf("second prompt: out=%q sess=%+v", out, loadSession(agent, "same"))
@@ -436,7 +436,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	if loadSession(agent, "same").Request != long {
 		t.Fatalf("a full request replaces the previous one: %+v", loadSession(agent, "same"))
 	}
-	// 依頼の境目は次の依頼: 1 つ目の依頼で何も変えず、2 つ目の依頼の後で変えた時、1 つ目は !edit、2 つ目は edit(Stop まで待つと両方 edit になってしまう)
+	// the request boundary is the next request: if the 1st request changed nothing and things changed after the 2nd, the 1st is !edit and the 2nd edit (waiting for Stop would make both edit)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "two", "cwd": repo, "prompt": "what does this function do? just explain"})
 	first := loadSession(agent, "two").Pending[0].Trace
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "two", "cwd": repo, "prompt": "now fix the bug in the parser please"})
@@ -449,7 +449,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	if labels[first].Truth != "!edit" || labels[second].Truth != "edit" {
 		t.Fatalf("first request must be settled at the second request: first=%+v second=%+v", labels[first], labels[second])
 	}
-	// commit しただけでは「変えた」にならない(ハッシュは作業ツリーの中身で、HEAD や index は入れない)
+	// a commit alone does not count as "changed" (the hash is the working tree content; HEAD and index are not included)
 	before := treeSnapshot(repo)
 	if out, err := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "add", "-A").CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v %s", err, out)
@@ -466,25 +466,25 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	if treeSnapshot(repo) == before {
 		t.Fatal("changing a file's content must change the tree hash")
 	}
-	// 空と / 始まりは判定しない
+	// empty input and input starting with / are not judged
 	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "x", "cwd": repo, "prompt": "/model"}); out != "" || loadSession(agent, "x").Request != "" {
 		t.Fatal("slash commands must be skipped")
 	}
-	// 長い直前の発言は 1500 バイトに切る(多バイト文字を割らない)
+	// a long previous message is cut to 1500 bytes (without splitting multibyte characters)
 	longJa := strings.Repeat("日本語の長い説明。", 300)
 	runHook(t, "stop", map[string]any{"session_id": "same", "cwd": repo, "last_assistant_message": longJa})
 	if prev := loadSession(agent, "same").Previous; len(prev) > requestMax || !utf8.ValidString(prev) || len(prev) < requestMax-3 {
 		t.Fatalf("previous must be cut to %d bytes on a rune boundary, got %d bytes valid=%v", requestMax, len(prev), utf8.ValidString(prev))
 	}
-	// stop_hook_active なら何もしない
+	// with stop_hook_active, do nothing
 	if out := runHook(t, "stop", map[string]any{"session_id": "same", "cwd": repo, "stop_hook_active": true, "last_assistant_message": "loop"}); out != "" || loadSession(agent, "same").Previous == "loop" {
 		t.Fatal("stop_hook_active must be a no-op")
 	}
 }
 
-// 線が引けたら Stop が口を出す: 確信して「終えていない」なら端末に 1 行(hookSpecificOutput は無い)。設定の言語が日本語なら併記し、記録に display が付く。英語なら display は無い。
+// Once a line is drawn, Stop speaks up: a confident "not finished" is one line in the terminal (no hookSpecificOutput). If the configured language is Japanese it is shown alongside and the record gets a display. In English there is no display.
 func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
-	// 「Done」と言って終えたターンは終えた(0.9)、「half」は終えていない(0.1)、と答える偽物
+	// a fake that answers that a turn ending with "Done" is finished (0.9) and one with "half" is not (0.1)
 	model := fakeAgentModel(t, func(state string) float64 {
 		if strings.Contains(state, "closing message: Done") {
 			return 0.9
@@ -511,14 +511,14 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 		runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": cwd, "prompt": prompt})
 		return runHook(t, "stop", map[string]any{"session_id": session, "cwd": cwd, "last_assistant_message": last})
 	}
-	// 英語: 影の記録に display は無い
+	// English: the shadow record has no display
 	setLang("English")
 	turn("e1", "rename the config loader and update its three callers", "Done: renamed and updated the callers.")
 	recs, _ := st.Records("done-as-asked", 0)
 	if len(recs) != 1 || recs[0].Display != nil {
 		t.Fatalf("English must leave no display: %+v", recs)
 	}
-	// 日本語: 影でも質問と答えの訳が記録に付く(出した文は無い)
+	// Japanese: even in the shadow, the translated question and answer are put on the record (no output text)
 	setLang("Japanese")
 	turn("j1", "write the migration for the new users table", "half: I wrote the up migration; the down migration is still missing.")
 	turn("j2", "add retries to the HTTP client with a test", "Done: retries added, test included.")
@@ -547,7 +547,7 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 		return cmdCalibrate([]string{specPath, "--store", agent, "--model", "kev-4b", "--write"})
 	})
 
-	// 線が引けた後: 「終えていない」は端末の 1 行(英語 / 日本語の併記)、hookSpecificOutput は無い、記録の display.message にも同じ文
+	// after the line is drawn: "not finished" is one terminal line (English / Japanese side by side), no hookSpecificOutput, and the same text in the record's display.message
 	out := turn("j3", "delete the unused feature flags and their tests", "half: I removed two of the five flags so far.")
 	var got map[string]any
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
@@ -563,16 +563,16 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 	if d := bySummary("half: I removed").Display; d == nil || !strings.HasPrefix(msg, d.Message) {
 		t.Fatalf("the record must keep the message that was shown: %+v", d)
 	}
-	// 終えたターンは黙る
+	// a finished turn stays silent
 	if out := turn("j4", "bump the Go version in go.mod and CI", "Done: bumped both."); strings.Contains(out, "unfinished") {
 		t.Fatalf("a finished turn must not be flagged: %s", out)
 	}
-	// 英語に戻すと併記は消える
+	// switching back to English removes the side-by-side text
 	setLang("English")
 	if out := turn("e2", "move the helpers into their own package", "half: moved two helpers, the rest still import the old path."); strings.Contains(out, "見える") || !strings.Contains(out, "unfinished") {
 		t.Fatalf("English setting must not add Japanese: %s", out)
 	}
-	// noul の答えは display が無くても はい / いいえ。Top は常に yes で P が p(yes) なので、p<0.5 は「いいえ」
+	// a noul answer reads はい / いいえ even without a display. Top is always yes and P is p(yes), so p<0.5 is "いいえ"
 	if l := localize(&spec.Spec{Type: spec.Noul}, &decide.Decision{Top: "yes", P: 0.8}, "ja"); l.Top != "はい" {
 		t.Fatalf("noul p=0.8 must read はい in Japanese, got %+v", l)
 	}
@@ -581,15 +581,15 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 	}
 }
 
-// Stop の要約: 答え待ちがあれば 1 行(画面が立っていれば URL、無ければ起動コマンド)、無ければ無出力。答えが付けば数から外れる。同じ数を毎ターン繰り返さない。
+// The Stop summary: one line if there are waiting answers (the URL if the page is running, otherwise the start command), no output otherwise. Answered ones drop out of the count. The same count is not repeated every turn.
 func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
-	model := fakeAgentModel(t, func(string) float64 { return 0.6 }) // noul は迷い(ask): 全部答え待ち
+	model := fakeAgentModel(t, func(string) float64 { return 0.6 }) // noul is unsure (ask): all wait for an answer
 	cwd := t.TempDir()
 	agent := hookEnv(t, model, cwd)
 	if out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd}); out != "" {
 		t.Fatalf("nothing waits yet: %q", out)
 	}
-	// 人の確認は needs-plan の 1 件。prompt-kind は結果から正解が付くので迷っても人を待たない。Stop の完了判定は AI の仮採点と結果を待つ。
+	// the person checks one needs-plan item. prompt-kind gets truths from outcomes, so it does not wait for the person even when unsure. Stop's completion check waits for the AI's provisional scoring and the outcome.
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": cwd, "prompt": "add a --json flag to the status command"})
 	out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd, "last_assistant_message": "Added."})
 	if !strings.Contains(out, "1 of this session's decisions wait") || !strings.Contains(out, pageNotUp) || strings.Contains(out, "Start the page") {
@@ -601,14 +601,14 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	if strings.Contains(out, "hookSpecificOutput") {
 		t.Fatalf("Stop must not return hookSpecificOutput (it would continue the conversation): %s", out)
 	}
-	// 新しく答え待ちになった判定が無ければ、同じ数を毎ターン繰り返さない(同じ依頼の 2 回目の Stop は問いも立てない)
+	// if no decision newly started waiting, the same count is not repeated every turn (the 2nd Stop of the same request does not ask the questions either)
 	if out := runHook(t, "stop", map[string]any{"session_id": "s", "cwd": cwd}); out != "" {
 		t.Fatalf("nothing new: the line must not repeat: %s", out)
 	}
-	// 画面が立っている → 起こさない。1 件に答え、次の依頼で 1 件増えると残りは 1 件。
+	// the page is running → not started. Answer 1; when the next request adds 1, 1 remains.
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) }))
 	t.Cleanup(page.Close)
-	common, _ := agentHome() // このプロジェクトの画面の印(0.8.0: ポートは空いているもの)
+	common, _ := agentHome() // this project's page marker (0.8.0: on a free port)
 	writePageRecord(common, cwd, page.Listener.Addr().(*net.TCPAddr).Port, os.Getpid())
 	spawned = nil
 	recs, _ := (store.Store{Dir: agent}).Records("needs-plan", 0)
@@ -623,21 +623,21 @@ func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
 	}
 }
 
-// モデルが無ければ hook が `shikii up` を裏で起こす(10 分に 1 回)。install は作法(skill)も置き、モデルを起こす。人がコマンドを打つ場面を無くす。
+// Without a model the hook starts `shikii up` in the background (once per 10 minutes). install also puts the rules (skill) in place and starts the model. No moment where the person types a command.
 func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 	oldLook := lookPath
-	lookPath = func(file string) (string, error) { return "/usr/bin/" + file, nil } // llama-server がある機械、のつもり(CI でも走る)
+	lookPath = func(file string) (string, error) { return "/usr/bin/" + file, nil } // as if on a machine with llama-server (runs on CI too)
 	t.Cleanup(func() { lookPath = oldLook })
 	cwd := t.TempDir()
-	hookEnv(t, nil, cwd) // モデルの口は閉じている
+	hookEnv(t, nil, cwd) // the model port is closed
 	home, _ := os.UserHomeDir()
 	if !fileExists(filepath.Join(home, ".claude", "skills", "shikii", "SKILL.md")) {
 		t.Fatal("hook install must put the agent's skill in place")
 	}
-	// install は guard を書いているので、まず guard を消して依頼の直後の起こし方を見る
+	// install writes the guard, so remove the guard first and watch how it starts right after a request
 	_ = os.Remove(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "starting-model"))
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "add a flag to the status command"})
-	if ups := spawnedUps(); len(ups) != 1 { // 画面(serve)の起動は別に数える(0.8.0)
+	if ups := spawnedUps(); len(ups) != 1 { // starts of the page (serve) are counted separately (0.8.0)
 		t.Fatalf("a missing model must start `shikii up` once: %v", spawned)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": cwd, "prompt": "and document it in the README as well"})
@@ -645,7 +645,7 @@ func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 	if len(spawnedUps()) != 1 {
 		t.Fatalf("within %s the model must not be started again: %v", hookStartGap, spawned)
 	}
-	// 10 分過ぎれば(guard の時刻が古く、前の子も生きていなければ)もう一度
+	// after 10 minutes (the guard's time is old and the previous child is not alive), once more
 	old := time.Now().Add(-hookStartGap - time.Minute)
 	if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "starting-model"), []byte("0 "+old.Format(time.RFC3339)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -654,36 +654,36 @@ func TestHookStartsTheModelAndTheSkillByItself(t *testing.T) {
 	if len(spawnedUps()) != 2 {
 		t.Fatalf("after the gap the model may be started again: %v", spawned)
 	}
-	// install の表示に、人が打つコマンドは無い
+	// install's output has no command for the person to type
 	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	if strings.Contains(out, "shikii serve --store") || !strings.Contains(out, "started in the background") {
 		t.Fatalf("install must not tell the person to start anything by hand: %s", out)
 	}
 }
 
-// 監査で落ちなかった変異を捕まえる: needs-plan の迷いも 1 行、session_id の経路の無害化、壊れた settings.json は触らない、
-// 線が引けた後の UserPromptSubmit は正しい event 名で文脈を返す。
+// Catches mutations the audit did not kill: a needs-plan unsure is also one line, the session_id path is sanitized, a broken settings.json is not touched,
+// and after a line is drawn UserPromptSubmit returns the context with the correct event name.
 func TestHookAuditGaps(t *testing.T) {
 	if hookEventName("user-prompt-submit") != "UserPromptSubmit" || hookEventName("stop") != "Stop" {
 		t.Fatal("event names must match Claude Code's")
 	}
-	// session_id は sessions/ の中に収まる
+	// session_id stays inside sessions/
 	if p := sessionPath("/a", "../../etc/passwd"); filepath.Dir(p) != filepath.Join("/a", "sessions") {
 		t.Fatalf("session path must stay inside sessions/: %s", p)
 	}
 	if p := sessionFilesPath("/a", "s"); p != filepath.Join("/a", "sessions", "s.files") {
 		t.Fatalf("files path: %s", p)
 	}
-	// cut は多バイト文字を割らない
+	// cut does not split multibyte characters
 	if s := cut("日本語の依頼", 7); s != "日本" {
 		t.Fatalf("cut must not split a rune: %q", s)
 	}
-	// 古い版の pre-tool-use は黙って exit 0(settings に残っていても Claude Code に誤りが出ない)
+	// an old version's pre-tool-use exits 0 silently (even if left in settings, Claude Code shows no error)
 	if out := capture(t, func() error { return cmdHook([]string{"pre-tool-use"}) }); out != "" {
 		t.Fatalf("pre-tool-use must be a silent no-op: %q", out)
 	}
 
-	// 「redesign」を含む依頼だけ方針合わせが要る、と答える偽物
+	// a fake that answers that only requests containing "redesign" need the approach agreed
 	model := fakeAgentModel(t, func(state string) float64 {
 		if strings.Contains(state, "redesign") {
 			return 0.9
@@ -692,7 +692,7 @@ func TestHookAuditGaps(t *testing.T) {
 	})
 	cwd := t.TempDir()
 	agent := hookEnv(t, model, cwd)
-	// 線が引けた needs-plan は UserPromptSubmit の文脈として返る(event 名が違うと Claude Code が捨てる)
+	// a calibrated needs-plan comes back as UserPromptSubmit context (with a wrong event name Claude Code drops it)
 	np := lowerMinN(t, agent, "needs-plan", 2)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "n", "cwd": cwd, "prompt": "write the installation notes to docs/install.md"})
 	for i := 0; i < 2; i++ {
@@ -715,7 +715,7 @@ func TestHookAuditGaps(t *testing.T) {
 		t.Fatalf("calibrated needs-plan must return context under UserPromptSubmit: %s", out)
 	}
 
-	// 壊れた settings.json は触らず誤りを返す。空のファイルは {} と同じ
+	// a broken settings.json is not touched and an error is returned. An empty file is the same as {}
 	home, _ := os.UserHomeDir()
 	settings := filepath.Join(home, ".claude", "settings.json")
 	if err := os.WriteFile(settings, []byte("{ broken"), 0o600); err != nil {
@@ -742,7 +742,7 @@ func TestHookAuditGaps(t *testing.T) {
 	}
 }
 
-// install は表示だけ → --yes で書く。2 回目は増えない。他の hook は残る。古い版の PreToolUse の shikii hook は外す。uninstall は自分の分だけ外す。spec は無いものだけ写す。
+// install only shows → --yes writes. The 2nd time adds nothing. Other hooks stay. The old version's PreToolUse shikii hook is removed. uninstall removes only its own. Only missing specs are copied.
 func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -770,7 +770,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 	if len(cmds) != 4 || !strings.HasSuffix(cmds[0], " hook agent-task") || !strings.HasSuffix(cmds[1], " hook stop") || !strings.HasSuffix(cmds[2], " hook subagent-start") || !strings.HasSuffix(cmds[3], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
 		t.Fatalf("hooks after install must run the binary by its absolute path: %v", cmds)
 	}
-	// 子への仕事を控える hook(0.9.1)は PreToolUse の Agent / Task だけに付き、他の人の PreToolUse(rtk の Bash)の組には入らない
+	// the hook that keeps child tasks (0.9.1) is attached only to PreToolUse for Agent / Task, and does not join someone else's PreToolUse group (rtk's Bash)
 	{
 		var cfg map[string]any
 		b, _ := os.ReadFile(settings)
@@ -792,7 +792,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 			t.Fatalf("agent-task must be its own PreToolUse group matching Agent|Task, and the other group must stay as it was:\n%s", b)
 		}
 	}
-	// Codex には SubagentStart が無いので 2 つだけ(0.7.3)
+	// Codex has no SubagentStart, so only 2 (0.7.3)
 	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 2 || strings.Contains(strings.Join(codex, " "), "subagent-start") || strings.Contains(strings.Join(codex, " "), "agent-task") {
 		t.Fatalf("Codex gets UserPromptSubmit and Stop only: %v", codex)
 	}
@@ -817,7 +817,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal("wiki must be seeded")
 	}
 
-	// 2 回目: 増えない、人が直した spec は上書きしない
+	// 2nd time: nothing added, a spec the person edited is not overwritten
 	mine := filepath.Join(home, ".shikii", "agent", "decisions", "needs-plan.yaml")
 	if err := os.WriteFile(mine, []byte("id: needs-plan\n# mine\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -833,7 +833,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal("a spec the person edited must not be overwritten")
 	}
 
-	// 古い版が残した PreToolUse の shikii hook は install が外す(他の PreToolUse の hook は残る)
+	// a PreToolUse shikii hook left by an old version is removed by install (other PreToolUse hooks stay)
 	var cfg map[string]any
 	b, _ = os.ReadFile(settings)
 	_ = json.Unmarshal(b, &cfg)
@@ -851,7 +851,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatalf("the other PreToolUse hook must stay and the shikii group must go:\n%s", b)
 	}
 
-	// uninstall: 自分の分だけ消え、他の hook は残る
+	// uninstall: only its own are removed, other hooks stay
 	capture(t, func() error { return cmdHook([]string{"uninstall", "--yes"}) })
 	if cmds := hookCommands(settings); len(cmds) != 0 {
 		t.Fatalf("uninstall must remove shikii hooks: %v", cmds)
@@ -863,11 +863,11 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 	if !fileExists(filepath.Join(home, ".shikii", "agent", "decisions", "prompt-kind.yaml")) {
 		t.Fatal("uninstall must keep the agent's records and specs")
 	}
-	// 控えは shikii の hook が入っていない版: uninstall 後の settings.json(shikii 無し)でも bak は最初の 1 回のまま
+	// the backup is of the version without shikii hooks: even with the settings.json after uninstall (no shikii), bak stays the first one
 	if bb, _ := os.ReadFile(settings + ".bak-shikii"); string(bb) != other {
 		t.Fatalf("the backup must stay the first pre-shikii version:\n%s", bb)
 	}
-	// settings.json が元から無い時: install は控えを作らず、その後の uninstall も hook 入りの版を控えない
+	// when settings.json did not exist: install makes no backup, and the later uninstall does not back up the version with hooks
 	home2 := t.TempDir()
 	t.Setenv("HOME", home2)
 	s2 := filepath.Join(home2, ".claude", "settings.json")
@@ -876,16 +876,16 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 	if fileExists(s2 + ".bak-shikii") {
 		t.Fatal("a settings.json that shikii created must never be backed up with shikii's hooks in it")
 	}
-	// --help は stdout に usage、誤りではない
+	// --help prints usage to stdout and is not an error
 	if out := capture(t, func() error { return cmdHook([]string{"--help"}) }); !strings.Contains(out, "usage: shikii hook") || strings.Contains(out, "pre-tool-use") {
 		t.Fatalf("--help must print the current usage: %s", out)
 	}
 }
 
-// 2 回目の監査: ツリーの状態取りが repo の index と .git/objects を汚さない、並列の更新が消えない、抜き取りも答え待ちに入る、
-// 同じ入力の正解 50 件では線を引こうとしない(calibrate と同じ数え方)。
+// The 2nd audit: reading the tree state does not dirty the repo's index and .git/objects, parallel updates are not lost, spot checks also wait for an answer,
+// and 50 truths for the same input do not try to draw a line (counted like calibrate).
 func TestHookSecondAudit(t *testing.T) {
-	// treeState: 未追跡ファイルの中身が .git/objects に残らず、本物の index も触らない。一覧には path が入る
+	// treeState: untracked file contents do not stay in .git/objects, and the real index is not touched. The listing contains the path
 	repo := gitRepo(t)
 	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte("SECRET=hunter2\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -905,7 +905,7 @@ func TestHookSecondAudit(t *testing.T) {
 		t.Fatal("outside git the snapshot must be empty")
 	}
 
-	// 抜き取り(act の 20 件に 1 件)も人の答え待ちに入る
+	// spot checks (1 in 20 act decisions) also wait for the person's answer
 	audit := ""
 	for i := 0; i < 2000 && audit == ""; i++ {
 		tr := fmt.Sprintf("%016x", i)
@@ -923,7 +923,7 @@ func TestHookSecondAudit(t *testing.T) {
 		t.Fatalf("the audit sample must be asked and the plain act must not: %+v", s.Asked)
 	}
 
-	// 並列の更新が消えない(錠の中で 読む → 変える → 書く)
+	// parallel updates are not lost (read → change → write inside the lock)
 	model := fakeAgentModel(t, func(string) float64 { return 0.6 })
 	cwd := t.TempDir()
 	agent := hookEnv(t, model, cwd)
@@ -945,7 +945,7 @@ func TestHookSecondAudit(t *testing.T) {
 		t.Fatalf("no .tmp may be left behind: %v", left)
 	}
 
-	// 同じ入力(同じ依頼文)の正解が 3 件あっても、入力ごとに 1 件と数えるので線は引かない(毎 Stop に ERROR を書き続けない)
+	// even with 3 truths for the same input (the same request text), they count as one per input, so no line is drawn (no ERROR written at every Stop)
 	lowerMinN(t, agent, "needs-plan", 3)
 	same := "please run the whole test suite and tell me which packages fail"
 	for i := 0; i < 3; i++ {
@@ -964,8 +964,8 @@ func TestHookSecondAudit(t *testing.T) {
 	}
 }
 
-// Codex: ~/.codex/hooks.json にも同じ 2 つ(matcher は無い)。他の hook は残り、2 回目は増えず、古い版の PreToolUse は外れ、uninstall で自分の分だけ消える。
-// stdin の鍵は Claude Code と同じなので、Codex の Stop(turn_id つき)でも同じ記録になる。
+// Codex: the same 2 in ~/.codex/hooks.json too (no matcher). Other hooks stay, the 2nd time adds nothing, the old PreToolUse is removed, and uninstall removes only its own.
+// The stdin keys are the same as Claude Code's, so Codex's Stop (with turn_id) makes the same record.
 func TestHookCodex(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
 	home := t.TempDir()
@@ -978,7 +978,7 @@ func TestHookCodex(t *testing.T) {
 	if err := os.WriteFile(codexHooks, []byte(other), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// hookEnv と同じ差し替え(HOME は上で決めたものを使う)
+	// the same replacements as hookEnv (HOME is the one decided above)
 	agent := filepath.Join(home, ".shikii", "agent")
 	oldLocal, oldPage, oldCal, oldSpawn := hookLocalURL, hookPageURL, hookCalibrate, hookSpawn
 	hookLocalURL, hookPageURL, hookCalibrate, hookSpawn = model.URL, "http://127.0.0.1:1", runCalibrateInProcess, recordSpawn
@@ -1000,7 +1000,7 @@ func TestHookCodex(t *testing.T) {
 		t.Fatalf("second install must not duplicate in Codex: %v", cmds)
 	}
 
-	// Codex の stdin(turn_id、model つき)でも同じように記録する
+	// record the same way with Codex's stdin (with turn_id and model)
 	repo := gitRepo(t)
 	initTestProject(t, repo)
 	agent = filepath.Join(repo, ".shikii")
@@ -1014,7 +1014,7 @@ func TestHookCodex(t *testing.T) {
 		t.Fatalf("Codex Stop must be judged like Claude Code's: %+v", recs)
 	}
 
-	// uninstall は Codex 側も自分の分だけ外す
+	// uninstall also removes only its own on the Codex side
 	capture(t, func() error { return cmdHook([]string{"uninstall", "--yes"}) })
 	b, _ = os.ReadFile(codexHooks)
 	if len(hookCommands(codexHooks)) != 0 || !strings.Contains(string(b), "deny-check.sh") {
@@ -1022,8 +1022,8 @@ func TestHookCodex(t *testing.T) {
 	}
 }
 
-// 聞き方の候補(variants)がある spec は、人の正解が min_n に届き、前回から hookTuneEvery 件増えるたびに、Stop が tune を裏で回す(--write 無し。採用は人)。
-// 候補の無い spec は回さない。増えていなければ回さない。
+// For a spec with wording variants, Stop runs tune in the background (without --write; adoption is the person's call) each time the person's truths reach min_n and grew by hookTuneEvery since last time.
+// A spec without variants is not run. Nor when the truths did not grow.
 func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 	model := fakeAgentModel(t, func(state string) float64 {
 		if strings.Contains(state, "redesign") {
@@ -1041,13 +1041,13 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 	if err := os.WriteFile(np, append(b, []byte("variants:\n  - name: short\n    question: Should the agent agree on an approach with the user before changing anything for `request`?\n")...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	lowerMinN(t, agent, "prompt-kind", 2) // 候補の無い spec: 正解が溜まっても回さない
+	lowerMinN(t, agent, "prompt-kind", 2) // a spec without variants: not run even when truths pile up
 	st := store.Store{Dir: agent}
 	logHas := func(s string) int {
 		lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 		return strings.Count(string(lb), s)
 	}
-	answer := func(i int) { // 1 依頼 → needs-plan と prompt-kind に人の正解を 1 件ずつ
+	answer := func(i int) { // 1 request → one truth from the person each for needs-plan and prompt-kind
 		prompt := fmt.Sprintf("add a flag to the status command, round %d", i)
 		if i%2 == 0 {
 			prompt = fmt.Sprintf("redesign the storage layer, round %d", i)
@@ -1085,7 +1085,7 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 	if g, _ := os.ReadFile(filepath.Join(agent, "tuned-needs-plan")); !strings.HasPrefix(string(g), "2 ") || len(strings.Fields(string(g))) != 3 {
 		t.Fatalf("the guard must remember the count, the spec hash and the time of the last run: %q", g)
 	}
-	// 増えていなければ回さない(同じ Stop を繰り返しても 1 回のまま)
+	// not run if they did not grow (stays 1 even if the same Stop repeats)
 	runHook(t, "stop", map[string]any{"session_id": "t2", "cwd": cwd})
 	answer(3)
 	runHook(t, "stop", map[string]any{"session_id": "t3", "cwd": cwd})
@@ -1097,18 +1097,18 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 	if logHas("auto-tune needs-plan") != 2 {
 		t.Fatalf("after %d more truths the tune must run again", hookTuneEvery)
 	}
-	// 候補の無い spec は、正解が溜まっても回さない
+	// a spec without variants is not run even when truths pile up
 	if logHas("auto-tune prompt-kind") != 0 {
 		t.Fatal("a spec without variants has nothing to try: no auto-tune")
 	}
-	// 採用は人: spec の文言は変わっていない(variants は残る)
+	// adoption is the person's call: the spec's wording has not changed (variants stay)
 	if b, _ := os.ReadFile(np); !strings.Contains(string(b), "name: short") || strings.Contains(string(b), "version: 2") {
 		t.Fatalf("auto-tune must not adopt: %s", b)
 	}
 }
 
-// 監査の再現(2026-10-19): 依頼 A の Stop がモデル待ちの間に次の依頼 B が控えを書き終えていると、Stop A の変更は B の控えに当たってはいけない
-// (B が「評価済み」になり、B の prompt-kind に結果の正解が付き、B の Stop が何も聞かなくなる)。
+// Reproducing the audit (2026-10-19): if the next request B finished writing the record while request A's Stop waits for the model, Stop A's changes must not hit B's record
+// (B would become "judged", B's prompt-kind would get an outcome truth, and B's Stop would ask nothing).
 func TestHookStopDoesNotTouchTheNextRequest(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
 	repo := gitRepo(t)
@@ -1121,14 +1121,14 @@ func TestHookStopDoesNotTouchTheNextRequest(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a // fixed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Stop A が始まる: 錠の外で控えを読み、モデルに聞く(まだ書かない)
+	// Stop A starts: reads the record outside the lock and asks the model (does not write yet)
 	snapshot := loadSession(agent, "r")
 	in := hookInput{SessionID: "r", CWD: repo, LastAssistantMessage: "Fixed the typo."}
 	_, muts, err := hookStop(agent, &in, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// その間に依頼 B の UserPromptSubmit が終わる(控えを書く)
+	// meanwhile request B's UserPromptSubmit finishes (writes the record)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "r", "cwd": repo, "prompt": "now add a README that explains the module"})
 	traceB := loadSession(agent, "r").Pending[0].Trace
 	if err := updateSession(agent, "r", func(s *hookSession) {
@@ -1149,11 +1149,11 @@ func TestHookStopDoesNotTouchTheNextRequest(t *testing.T) {
 	if sess.Previous == "Fixed the typo." {
 		t.Fatal("A's closing message must not become B's previous")
 	}
-	// A の pending(A の trace)は決まっている
+	// A's pending (A's trace) is settled
 	if len(labels) != 1 {
 		t.Fatalf("A's prompt-kind must be settled exactly once: %v", labels)
 	}
-	// B のターン: README を足して Stop → done-as-asked は 2 件目
+	// B's turn: add README and Stop → done-as-asked is the 2nd
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1168,8 +1168,8 @@ func TestHookStopDoesNotTouchTheNextRequest(t *testing.T) {
 	}
 }
 
-// 監査の再現: サブディレクトリから起こしたセッションでも repo 全体を見る。chmod だけの変更も「変わった」。hook.log の 1 行は切る。
-// 裏で起こす guard は flock で排他(並列 30 本で 1 回)で、前の子が生きていれば 10 分を過ぎても起こさない。tune の guard は spec の文言が変わると数え直す。
+// Reproducing the audit: a session started from a subdirectory also sees the whole repo. A chmod-only change also counts as "changed". A hook.log line is cut.
+// The background start guard is exclusive by flock (once out of 30 in parallel), and does not start past 10 minutes while the previous child is alive. The tune guard counts again when the spec's wording changes.
 func TestHookSecondAuditRound(t *testing.T) {
 	repo := gitRepo(t)
 	sub := filepath.Join(repo, "sub")
@@ -1190,7 +1190,7 @@ func TestHookSecondAuditRound(t *testing.T) {
 	if got := changedFiles(before, after); strings.Join(got, ",") != "other.txt" {
 		t.Fatalf("a change outside the subdirectory must count: %v", got)
 	}
-	// mode だけの変更
+	// a mode-only change
 	if err := os.Chmod(filepath.Join(repo, "other.txt"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1201,7 +1201,7 @@ func TestHookSecondAuditRound(t *testing.T) {
 
 	cwd := t.TempDir()
 	agent := hookEnv(t, nil, cwd)
-	// hook.log の 1 行は hookLogLineMax に切られ、改行は畳まれる(モデルの応答本文を丸ごと残さない)
+	// a hook.log line is cut to hookLogLineMax and newlines are folded (the model's response body is not kept whole)
 	hookLog("line1\n" + strings.Repeat("x", 2000))
 	lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 	last := lastLine(string(lb))
@@ -1209,7 +1209,7 @@ func TestHookSecondAuditRound(t *testing.T) {
 		t.Fatalf("hook.log lines must be cut and single-line: %d bytes", len(last))
 	}
 
-	// startOnce: 並列 30 本で 1 回だけ、生きている子(自分の pid)がいれば gap を過ぎても起こさない
+	// startOnce: only once out of 30 in parallel, and with a live child (its own pid) it does not start even past the gap
 	var mu sync.Mutex
 	calls := 0
 	var wg sync.WaitGroup
@@ -1239,7 +1239,7 @@ func TestHookSecondAuditRound(t *testing.T) {
 		t.Fatal("a dead child and an old guard must allow a new start")
 	}
 
-	// tune の guard: 文言(hash)が変わると前回の数を引き継がない
+	// the tune guard: when the wording (hash) changes, the previous count is not carried over
 	oldEvery := hookTuneEvery
 	hookTuneEvery = 50
 	t.Cleanup(func() { hookTuneEvery = oldEvery })
@@ -1260,7 +1260,7 @@ func TestHookSecondAuditRound(t *testing.T) {
 	if lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); strings.Contains(string(lb), "auto-tune needs-plan") {
 		t.Fatal("same wording, 1 truth since the last run of 40: no tune")
 	}
-	// 文言が変わった(hash が違う)→ 前回の 40 は引き継がず、1 件 ≥ min_n(1) で回る
+	// the wording changed (hash differs) → the previous 40 is not carried over, and it runs at 1 ≥ min_n(1)
 	b, _ = os.ReadFile(np)
 	if err := os.WriteFile(np, []byte(strings.Replace(string(b), "should the agent first agree", "must the agent first agree", 1)), 0o644); err != nil {
 		t.Fatal(err)
@@ -1274,9 +1274,9 @@ func TestHookSecondAuditRound(t *testing.T) {
 	}
 }
 
-// 裏のエージェントの完了通知(Claude Code が「ユーザーの発言」として流す <task-notification>)は依頼ではない:
-// 考える前の 2 問は聞かず、依頼・一覧・pending は置き換えない。通知の後に作業が続いたら、そのターンの終わりで
-// 元の依頼に対してもう一度だけ判定し直す(本人の選択、2026-10-20)。実測では記録の半分近くが通知由来だった。
+// A background agent's completion notice (<task-notification>, streamed by Claude Code as a "user message") is not a request:
+// the 2 pre-thinking questions are not asked and the request, listing and pending are not replaced. If work continues after the notice, at the end of that turn
+// the original request is judged once more (the person's choice, 2026-10-20). Measured: nearly half of the records came from notifications.
 func TestHookIgnoresBackgroundNotificationsAsRequests(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
 	repo := gitRepo(t)
@@ -1304,7 +1304,7 @@ func TestHookIgnoresBackgroundNotificationsAsRequests(t *testing.T) {
 	if sess.Request != human || len(sess.Pending) != 1 {
 		t.Fatalf("a notification must not replace the request or settle its pending: request=%q pending=%d", sess.Request, len(sess.Pending))
 	}
-	// 通知の後に作業が続いた: そのターンの終わりで、元の依頼に対して範囲と完了をもう一度判定する
+	// work continued after the notice: at the end of that turn, judge scope and completion once more against the original request
 	if err := os.WriteFile(filepath.Join(repo, "README_de.md"), []byte("Deutsch\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1316,13 +1316,13 @@ func TestHookIgnoresBackgroundNotificationsAsRequests(t *testing.T) {
 	if recs[0].Inputs["request"] != human || recs[0].Inputs["files"] != "README_de.md" {
 		t.Fatalf("the re-judgement is about the human request and the files changed since it: %+v", recs[0].Inputs)
 	}
-	// 通知が無ければ、同じ依頼の 3 回目の Stop は聞き直さない
+	// without a notice, the 3rd Stop of the same request does not ask again
 	runHook(t, "stop", map[string]any{"session_id": "bg", "cwd": repo, "last_assistant_message": "German README written, again."})
 	if count("done-as-asked") != 2 {
 		t.Fatalf("without a new notification the same request is not judged again: %d", count("done-as-asked"))
 	}
-	// 結果の正解: 最初の Stop では「変わっていない」(!edit、部分)が付くが、通知の後の Stop でファイルが変わったので
-	// 同じ trace に edit(重み 1)が付き直り、新しい方が勝つ。次の人の依頼では付け足さない
+	// outcome truth: the first Stop attaches "unchanged" (!edit, partial), but the files changed by the Stop after the notice, so
+	// the same trace gets edit (weight 1) again and the newer one wins. The person's next request adds nothing
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "bg", "cwd": repo, "prompt": "thanks, now explain the Makefile"})
 	latest, _ := st.LabeledTraces("prompt-kind")
 	if len(latest) != 1 {
@@ -1341,7 +1341,7 @@ func TestHookIgnoresBackgroundNotificationsAsRequests(t *testing.T) {
 	}
 }
 
-// runTuneInProcess は hookTune の同プロセス版(テスト用)。
+// runTuneInProcess is the in-process version of hookTune (for tests).
 func runTuneInProcess(agent, path, storeDir string) {
 	var buf bytes.Buffer
 	_, err := func() (res *tuneResult, err error) {
@@ -1359,7 +1359,7 @@ func runTuneInProcess(agent, path, storeDir string) {
 	hookLog(fmt.Sprintf("auto-tune %s: %s", strings.TrimSuffix(filepath.Base(path), ".yaml"), line))
 }
 
-// runCalibrateInProcess はテストで較正を同プロセス内で実行する。
+// runCalibrateInProcess runs calibration in-process in tests.
 func runCalibrateInProcess(agent, path, storeDir, model string) {
 	var buf bytes.Buffer
 	err := func() (err error) {
@@ -1377,13 +1377,13 @@ func runCalibrateInProcess(agent, path, storeDir, model string) {
 	hookLog(fmt.Sprintf("auto-calibrate %s (%s): %s", strings.TrimSuffix(filepath.Base(path), ".yaml"), model, line))
 }
 
-// treeSnapshot は作業ツリーの中身のハッシュだけ(treeState の前半)。
+// treeSnapshot is only the hash of the working tree content (the first half of treeState).
 func treeSnapshot(cwd string) string {
 	h, _, _, _ := treeState(cwd)
 	return h
 }
 
-// hookCommands はテストで settings.json の登録内容を確かめる。
+// hookCommands checks what is registered in settings.json in tests.
 func hookCommands(path string) []string {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -1413,32 +1413,32 @@ func hookCommands(path string) []string {
 	return out
 }
 
-// treeState はテストで scope 以外の作業ツリーの状態を読む。
+// treeState reads the working tree state other than scope in tests.
 func treeState(cwd string) (hash, listing string, listed bool, project string) {
 	hash, listing, listed, project, _ = treeStateWithScope(cwd)
 	return
 }
 
-// 言われなくても気付く: このプロジェクトのエージェントのメモリ(~/.claude/projects/<slug>/memory)に wiki へ移していないファイルがあれば、
-// 依頼前の hook が作法の手順で移すよう伝える(セッションに 1 回)。移した印(.shikii/wiki <記事の id>)のあるファイルは数えない。途中まで移した置き場でも残りを出す。
-// .md 以外は数えない。Codex の共通のメモリはこのプロジェクトを名指しする(経路・4 文字以上のフォルダ名を語として・origin の名)ファイルだけ数え、MEMORY.md は見ない。
+// Noticing without being told: if this project's agent memory (~/.claude/projects/<slug>/memory) has files not moved to the wiki,
+// the hook before a request tells the agent to move them with the skill's steps (once per session). Files with the moved marker (.shikii/wiki <page id>) are not counted. In a partly moved folder the rest is shown.
+// Non-.md files are not counted. In Codex's shared memory only files that name this project (the path, a folder name of 4+ characters as a word, the origin's name) are counted, and MEMORY.md is not looked at.
 func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
 	home, _ := os.UserHomeDir()
-	// 置き場の経路: Claude Code の規則(英数字以外を - に)を固定の例で確かめる(本体と同じ式を写した鏡テストにしない。監査 R4)
+	// the folder path: check Claude Code's rule (non-alphanumerics → -) with a fixed example (not a mirror test copying the same expression as the code. audit R4)
 	os.MkdirAll(filepath.Join(home, ".claude", "projects", "-tmp-x-y-z", "memory"), 0o755)
 	if got := agentMemoryDir("/tmp/x.y_z"); got != filepath.Join(home, ".claude", "projects", "-tmp-x-y-z", "memory") {
-		t.Fatalf("置き場の経路: %q", got)
+		t.Fatalf("the memory folder path: %q", got)
 	}
-	repo := filepath.Join(t.TempDir(), "mywork1") // フォルダ名が 4 文字以上(名指しの語になる)
+	repo := filepath.Join(t.TempDir(), "mywork1") // the folder name has 4+ characters (becomes a naming word)
 	os.MkdirAll(repo, 0o755)
 	if out, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput(); err != nil {
 		t.Skipf("git init: %v %s", err, out)
 	}
 	initAt(t, repo)
 	if dir := agentMemoryDir(repo); dir != "" {
-		t.Fatalf("メモリの置き場が無ければ空: %q", dir)
+		t.Fatalf("empty if there is no memory folder: %q", dir)
 	}
 	exec.Command("git", "-C", repo, "remote", "add", "origin", "https://example.com/org/shikii-like.git").Run()
 	dir := filepath.Join(home, ".claude", "projects", strings.Map(func(r rune) rune {
@@ -1453,7 +1453,7 @@ func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "feedback-b.md"), []byte("---\nname: feedback-b\n---\n\n正本: .shikii/wiki 0123456789abcdef\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "feedback-old.md.bak"), []byte("古い\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "notes.json"), []byte("{}\n"), 0o644)
-	// Codex の共通のメモリ
+	// Codex's shared memory
 	base := filepath.Base(repo)
 	codex := filepath.Join(home, ".codex", "memories")
 	os.MkdirAll(codex, 0o755)
@@ -1464,15 +1464,15 @@ func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
 	os.WriteFile(filepath.Join(codex, "other-project.md"), []byte("# 別のプロジェクトの決まり\n\n~/git/"+base+"-old/ は古い。関係ない\n"), 0o644)
 	os.WriteFile(filepath.Join(codex, "perf-"+base+".json"), []byte("{}\n"), 0o644)
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "m1", "cwd": repo, "prompt": "README を直して"})
-	if !strings.Contains(out, "に 1 件(feedback-a.md)") || strings.Contains(out, "feedback-b.md") || strings.Contains(out, ".bak") || strings.Contains(out, "notes.json") || !strings.Contains(out, "import-memory.md") {
-		t.Fatalf("未移行の .md だけを数え(wiki に触れただけの文は印にしない)、作法の手順を示す:\n%s", out)
+	if !strings.Contains(out, "files not yet moved to the wiki: 1 in ") || !strings.Contains(out, "/memory (feedback-a.md)") || strings.Contains(out, "feedback-b.md") || strings.Contains(out, ".bak") || strings.Contains(out, "notes.json") || !strings.Contains(out, "import-memory.md") {
+		t.Fatalf("counts only unmoved .md files (text that merely mentions the wiki is not a marker) and shows the skill's steps:\n%s", out)
 	}
-	if !strings.Contains(out, "Codex の") || !strings.Contains(out, "3 件(by-path.md, by-repo-name.md, this-project.md)") || strings.Contains(out, "other-project.md") || strings.Contains(out, "perf-") {
-		t.Fatalf("Codex の共通のメモリは、経路・フォルダ名(語として)・origin の名で名指しする .md だけ数え、MEMORY.md と別のプロジェクトの物は数えない:\n%s", out)
+	if !strings.Contains(out, "; 3 in Codex's ") || !strings.Contains(out, "that name this project (by-path.md, by-repo-name.md, this-project.md)") || strings.Contains(out, "other-project.md") || strings.Contains(out, "perf-") {
+		t.Fatalf("in Codex's shared memory, only .md files naming the project by path, folder name (as a word) or origin name are counted, not MEMORY.md or other projects' files:\n%s", out)
 	}
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "m1", "cwd": repo, "prompt": "次は画面を直して"})
-	if strings.Contains(out, "移していない") {
-		t.Fatalf("同じセッションでは二度言わない:\n%s", out)
+	if strings.Contains(out, "not yet moved to the wiki") {
+		t.Fatalf("not said twice in the same session:\n%s", out)
 	}
 	os.WriteFile(filepath.Join(dir, "feedback-a.md"), []byte("---\nname: feedback-a\n---\n\n正本: .shikii/wiki fedcba9876543210\n"), 0o644)
 	for _, name := range []string{"this-project.md", "by-repo-name.md", "by-path.md"} {
@@ -1480,17 +1480,17 @@ func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
 		os.WriteFile(filepath.Join(codex, name), append(b, []byte("\n"+base+" では .shikii/wiki 0123456789abcdef に写した\n")...), 0o644)
 	}
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "m2", "cwd": repo, "prompt": "次は画面を直して"})
-	if strings.Contains(out, "移していない") {
-		t.Fatalf("全部移したら出さない:\n%s", out)
+	if strings.Contains(out, "not yet moved to the wiki") {
+		t.Fatalf("not shown once everything is moved:\n%s", out)
 	}
-	// 名指しの語境界: 短いフォルダ名(app)は語としても数えず、経路だけ。「.」「/」は名指しの語にしない
+	// naming word boundaries: a short folder name (app) is not counted even as a word, only the path. "." and "/" are not naming words
 	if names := projectNames(""); names != nil {
-		t.Fatalf("空の scope は名指ししない: %v", names)
+		t.Fatalf("an empty scope names nothing: %v", names)
 	}
 	if names := projectNames("/work/app"); len(names) != 1 || names[0] != "/work/app" {
-		t.Fatalf("短いフォルダ名は経路だけで名指しする: %v", names)
+		t.Fatalf("a short folder name names the project only by path: %v", names)
 	}
 	if namesProject("myapp の決まり", []string{"app"}) || !namesProject("app の決まり", []string{"app"}) || !namesProject("/work/app は古い", []string{"/work/app"}) {
-		t.Fatal("名指しは語の境目で合わせ、経路は部分一致")
+		t.Fatal("naming matches at word boundaries; a path matches as a substring")
 	}
 }
