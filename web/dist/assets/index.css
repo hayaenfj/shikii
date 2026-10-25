@@ -1121,16 +1121,6 @@
     }
   }
 
-  .border-accent\/30 {
-    border-color: var(--accent);
-  }
-
-  @supports (color: color-mix(in lab, red, red)) {
-    .border-accent\/30 {
-      border-color: color-mix(in oklab, var(--accent) 30%, transparent);
-    }
-  }
-
   .border-accent\/40 {
     border-color: var(--accent);
   }
@@ -1183,6 +1173,10 @@
     background-color: var(--accentbg);
   }
 
+  .bg-amber {
+    background-color: var(--amber);
+  }
+
   .bg-amberbg {
     background-color: var(--amberbg);
   }
@@ -1232,6 +1226,10 @@
 
   .p-0 {
     padding: 0;
+  }
+
+  .p-1 {
+    padding: var(--spacing);
   }
 
   .p-1\.5 {
@@ -1672,6 +1670,11 @@
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
 
+  .shadow-\[0_1px_3px_\#0002\] {
+    --tw-shadow: 0 1px 3px var(--tw-shadow-color, #0002);
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+
   .shadow-\[0_2px_3px_\#00000008\] {
     --tw-shadow: 0 2px 3px var(--tw-shadow-color, #00000008);
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
@@ -1761,6 +1764,10 @@
 
     .hover\:border-accent:hover {
       border-color: var(--accent);
+    }
+
+    .hover\:bg-surface:hover {
+      background-color: var(--surface);
     }
 
     .hover\:bg-surface2:hover {
@@ -1869,6 +1876,10 @@
       width: 30px;
     }
 
+    .max-sm\:flex-1 {
+      flex: 1;
+    }
+
     .max-sm\:flex-\[0_0_23px\] {
       flex: 0 0 23px;
     }
@@ -1887,6 +1898,10 @@
 
     .max-sm\:flex-wrap {
       flex-wrap: wrap;
+    }
+
+    .max-sm\:justify-center {
+      justify-content: center;
     }
 
     .max-sm\:gap-2 {

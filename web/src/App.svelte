@@ -41,7 +41,8 @@
     return () => clearInterval(timer);
   });
 
-  const pageBtn = on => 'flex items-center gap-2 rounded-[9px] border px-3.5 py-2 text-[14px] max-sm:px-2.5 max-sm:py-1.5 max-sm:text-[13px] ' + (on ? 'active border-accent/30 bg-accentbg font-[650] text-accent' : 'border-transparent bg-transparent text-muted hover:bg-surface2');
+  // 上の切替(0.9.1): 3 つを 1 つの枠にまとめ、選んだ画面は濃い緑の塗りに白い文字。選んでいない画面も普通の文字色で読める
+  const pageBtn = on => 'flex items-center gap-2 rounded-[9px] border-0 px-4 py-2 text-[14px] font-[650] max-sm:flex-1 max-sm:justify-center max-sm:px-2.5 max-sm:py-1.5 max-sm:text-[13px] ' + (on ? 'active bg-accent text-bg shadow-[0_1px_3px_#0002]' : 'bg-transparent text-fg hover:bg-surface');
 </script>
 
 <svelte:document onkeydown={onKey} />
@@ -49,8 +50,8 @@
 <header class="app-header mx-auto flex min-h-[72px] max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-2 border-b border-line py-2 max-sm:gap-x-2.5">
   <div class="flex items-center gap-[11px]"><span class="flex h-[36px] w-[36px] items-center gap-1 rounded-[11px] bg-accent p-2 max-sm:h-[30px] max-sm:w-[30px] max-sm:gap-[3px] max-sm:rounded-[9px] max-sm:p-[6px] [&>i]:block [&>i]:h-2.5 [&>i]:w-1 [&>i]:rounded-[3px] [&>i]:bg-bg [&>i:nth-child(2)]:h-[19px] [&>i:nth-child(3)]:h-[14px]" aria-hidden="true"><i></i><i></i><i></i></span><h1 class="m-0 text-[22px] leading-[1.15] font-[750] tracking-[-.5px] max-sm:text-[19px]">shikii{#if st?.project_name}<a class="ml-2.5 text-[15px] font-normal tracking-normal text-muted no-underline" href="../../" title={t('projectsTitle')}>{st.project_name}</a>{/if}</h1></div>
   {#if hasWiki && st.specs?.length}
-    <nav id="tabs" class="flex gap-1 max-md:order-last max-md:w-full" aria-label={t('pagesNav')}>
-      <button type="button" data-page="answer" aria-current={page === 'answer' ? 'page' : undefined} class={pageBtn(page === 'answer')} onclick={() => setPage('answer')}>{t('pageAnswer')}{#if waits}<span class="badge rounded-md bg-amberbg px-[7px] py-px text-[11px] text-amber tabular-nums">{waits}</span>{/if}</button>
+    <nav id="tabs" class="flex gap-1 rounded-xl border border-line bg-surface2 p-1 max-md:order-last max-md:w-full" aria-label={t('pagesNav')}>
+      <button type="button" data-page="answer" aria-current={page === 'answer' ? 'page' : undefined} class={pageBtn(page === 'answer')} onclick={() => setPage('answer')}>{t('pageAnswer')}{#if waits}<span class="badge rounded-md bg-amber px-[7px] py-px text-[11px] text-bg tabular-nums">{waits}</span>{/if}</button>
       <button type="button" data-page="wiki" aria-current={page === 'wiki' ? 'page' : undefined} class={pageBtn(page === 'wiki')} onclick={() => setPage('wiki')}>{t('pageKnowledge')}</button>
       <button type="button" data-page="ai" aria-current={page === 'ai' ? 'page' : undefined} class={pageBtn(page === 'ai')} onclick={() => setPage('ai')}>{t('pageAI')}</button>
     </nav>
