@@ -44,7 +44,7 @@
     <ul class="m-0 list-none p-0 [&_li]:my-[.15rem]">
       {#each groups as g (g.name)}
         <li data-handoff-group={g.name}>
-          <button type="button" class="weak handoff-toggle font-semibold" aria-expanded={open.has(g.name)} onclick={() => toggle(g.name)}><span aria-hidden="true">{open.has(g.name) ? '▾' : '▸'}</span> {g.name || t('handoffRoot')} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[10px] text-amber tabular-nums max-sm:px-[5px] max-sm:text-[9px]">{g.list.length}</span></button>
+          <button type="button" class="weak handoff-toggle font-semibold" aria-expanded={open.has(g.name)} onclick={() => toggle(g.name)}><span aria-hidden="true">{open.has(g.name) ? '▾' : '▸'}</span> {g.name || t('handoffRoot')} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[12px] text-amber tabular-nums max-sm:px-[5px]">{g.list.length}</span></button>
           {#if open.has(g.name)}
             <ul class="mt-[.2rem] mb-[.6rem] list-none pl-[1.4rem]">
               {#each g.list as f (f.path)}
@@ -57,7 +57,7 @@
     </ul>
     {#if shown}
       <div class="mt-3 rounded-[11px] border border-line bg-surface2 p-[15px]" data-handoff-view={shown.path}>
-        <div class="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-muted"><strong class="text-fg wrap-anywhere">{shown.path}</strong><a href={url(shown.path)} target="_blank" rel="noopener">{t('handoffOpenRaw')}</a></div>
+        <div class="mb-2 flex flex-wrap items-center gap-2 text-[12px] text-muted"><strong class="text-fg wrap-anywhere">{shown.path}</strong><a href={url(shown.path)} target="_blank" rel="noopener">{t('handoffOpenRaw')}</a></div>
         {#if shown.kind === 'image'}<img class="max-w-full rounded-lg border border-line" src={url(shown.path)} alt={shown.path}>
         {:else if shown.kind === 'text'}
           {#if shown.error}<p class="audit">{t('error')(shown.error)}</p>

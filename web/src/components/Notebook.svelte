@@ -69,7 +69,7 @@
   // Look (Tailwind). Only boxes and markers that appear many times are named here
   const box = 'my-6 rounded-[14px] border border-line bg-surface p-5 max-sm:p-[15px]';
   const h3 = 'mt-[22px] mb-4 text-[15px] font-bold';
-  const meta = 'mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted';
+  const meta = 'mb-3 flex flex-wrap items-center gap-[9px] text-[12px] text-muted';
   const card = 'item lesson mt-[18px] mb-5 rounded-[15px] border border-line bg-surface p-[22px] shadow-card max-sm:rounded-xl max-sm:px-3.5 max-sm:py-4 [&_.text]:text-[13px] [&_.text]:whitespace-pre-wrap [&_.text_p]:leading-[1.9] [&_b]:text-[16px]';
 </script>
 
@@ -143,7 +143,7 @@
       <ul class="m-0 list-none p-0 [&_li]:my-[.15rem]">
         {#each groups as g (g.id)}
           <li class="tree-group" data-tree-group={g.id}>
-            <button type="button" class="weak tree-toggle font-semibold" aria-expanded={open.has(g.id)} onclick={() => toggle(g.id)}><span aria-hidden="true">{open.has(g.id) ? '▾' : '▸'}</span> {g.title} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[10px] text-amber tabular-nums max-sm:px-[5px] max-sm:text-[9px]">{g.pages.length}</span></button>
+            <button type="button" class="weak tree-toggle font-semibold" aria-expanded={open.has(g.id)} onclick={() => toggle(g.id)}><span aria-hidden="true">{open.has(g.id) ? '▾' : '▸'}</span> {g.title} <span class="badge inline-block rounded-md bg-amberbg px-[7px] py-px text-[12px] text-amber tabular-nums max-sm:px-[5px]">{g.pages.length}</span></button>
             {#if open.has(g.id)}
               <ul class="mt-[.2rem] mb-[.6rem] list-none pl-[1.4rem]">
                 {#each g.pages as p (p.id)}

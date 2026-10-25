@@ -100,7 +100,7 @@
       {@const win0 = latest.candidates.find(c => c.name === latest.winner)}
       {#if cur0}<p class="mt-0 mb-3 text-[14px] font-bold" data-wording-match>{win0 && latest.winner !== 'current' ? t('wordingMatch')(Math.round(cur0.top1 * 100), Math.round(win0.top1 * 100), latest.truths) : t('wordingMatchKept')(Math.round(cur0.top1 * 100), latest.truths)}</p>{/if}
       <details class="mb-3" data-wording-details><summary class="cursor-pointer text-[12px] text-muted">{t('wordingNumbers')}</summary>
-      <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted"><span>{latest.model}</span><span>{t('truthsCount')(latest.truths)}</span><span>{latest.at.slice(0, 16).replace('T', ' ')}</span></div>
+      <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[12px] text-muted"><span>{latest.model}</span><span>{t('truthsCount')(latest.truths)}</span><span>{latest.at.slice(0, 16).replace('T', ' ')}</span></div>
       <table class="cands w-full border-collapse text-[12px] [&_td]:border-b [&_td]:border-line [&_td]:p-2 [&_td]:text-left [&_th]:border-b [&_th]:border-line [&_th]:p-2 [&_th]:text-left">
         <tbody>
           <tr>{#each t('tableHead') as h}<th>{h}</th>{/each}<th></th></tr>
@@ -112,7 +112,7 @@
         </tbody>
       </table>
       {#if latest.have_holdout}<div class="k">{t('holdoutLine')(latest.holdout.toFixed(3), latest.candidates[0].top1.toFixed(3))}</div>{/if}
-      <div class="k">{latest.decision}</div>
+      <div class="k">{t('wordingDecision')(latest.adoptable, latest.winner)}</div>
       </details>
       {#if showDiff}
         {@const w = latest.winner_wording}

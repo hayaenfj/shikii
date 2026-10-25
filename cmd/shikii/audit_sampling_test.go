@@ -79,7 +79,7 @@ func TestQueuePutsAuditSamplesRightAfterAskItems(t *testing.T) {
 		t.Fatalf("every sampled act decision is in the queue: %d vs %d", nAudit, sampled)
 	}
 	body := uiText(t, s.URL)
-	if !strings.Contains(body, "audit") || !strings.Contains(body, "抜き取り") {
+	if !strings.Contains(body, "shown to check") || !strings.Contains(body, "確かめのため") {
 		t.Fatalf("the page must name the audit sample in both languages")
 	}
 }

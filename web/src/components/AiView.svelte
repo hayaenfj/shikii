@@ -24,7 +24,7 @@
 {#snippet specRow(s)}
   <li><button type="button" data-tab={s.id} aria-current={active === s.id ? 'true' : undefined} class={row(active === s.id)} onclick={() => setTab(s.id)}>
     <span class="min-w-0 flex-1"><strong class="block text-[14px] font-semibold wrap-anywhere">{loc(s.titles, s.id)}</strong><span class="text-[12px] text-muted">{status(s)}{#if s.awaiting_results && s.person_answers !== false} · {t('summarySpecResults')(s.awaiting_results)}{/if}</span></span>
-    {#if s.waiting_for_person}<span class="badge rounded-md bg-amberbg px-[7px] py-px text-[11px] text-amber tabular-nums">{s.waiting_for_person}</span>{/if}
+    {#if s.waiting_for_person}<span class="badge rounded-md bg-amberbg px-[7px] py-px text-[12px] text-amber tabular-nums">{s.waiting_for_person}</span>{/if}
   </button></li>
 {/snippet}
 

@@ -2,7 +2,7 @@
   // The section for one question opened in AI status (0.9.1): the title and the question in the person's words, a line and bar of progress, the last automatic calibration, the list switch,
   // unanswered cards (a list) or answered ones (newest first, changing answers, asking the AI again), and the ways-of-asking section.
   // Per-model markers, number cards, filtering and view switching were removed in 0.9.1 (a person answers on the "Answer" screen; this is where to review)
-  import { t, loc } from '../lib/i18n.svelte.js';
+  import { t, askOf, titleOf } from '../lib/i18n.svelte.js';
   import { ui, skipped } from '../lib/state.svelte.js';
   import Chips from './Chips.svelte';
   import ItemCard from './ItemCard.svelte';
@@ -10,8 +10,8 @@
 
   let { sp } = $props();
 
-  let title = $derived(loc(sp.titles, ''));
-  let question = $derived(loc(sp.questions, sp.question || ''));
+  let title = $derived(titleOf(sp));
+  let question = $derived(askOf(sp));
 
   // The text of the per-model marker. The state keys (collecting / ready) are the same as the dictionary keys
   const isHeld = k => k.state !== 'calibrated' && k.state !== 'stale' && sp.calibration_result?.hash === k.hash && sp.calibration_result?.model === k.model && ['quality', 'insufficient', 'error'].includes(sp.calibration_result?.reason);
@@ -46,22 +46,22 @@
   let visible = $derived(all.filter(it => !skipped.has(it.trace_id)));
   let extra = $derived(lane === 'you' ? Math.max(0, (sp.waiting_for_person || 0) - all.length) : 0);
   // Look (Tailwind). Only things that appear many times are named here
-  const phase = 'decision-phase mt-[9px] mb-0 text-[12px] text-muted max-sm:text-[11px]';
+  const phase = 'decision-phase mt-[9px] mb-0 text-[12px] text-muted';
 </script>
 
 <section class="decision-panel">
-  <h2 class="mb-1 text-[20px] max-md:text-[18px]">{title || sp.id} <span class="k font-normal">{sp.id}</span></h2>
-  <div class="mb-3.5 flex items-start gap-3.5 rounded-[13px] border border-accent/25 bg-accentbg px-5 py-4 max-sm:gap-2.5 max-sm:px-[13px]"><div class="grid h-[27px] flex-[0_0_27px] place-items-center rounded-[9px] bg-surface text-[14px] font-semibold text-accent max-sm:h-[23px] max-sm:flex-[0_0_23px]" aria-hidden="true">?</div><div><div class="text-[10px] font-[650] tracking-[.08em] text-accent">{t('questionHeading')}</div>
+  <h2 class="mb-1 text-[20px] max-md:text-[18px]">{title || sp.id}</h2>
+  <div class="mb-3.5 flex items-start gap-3.5 rounded-[13px] border border-accent/25 bg-accentbg px-5 py-4 max-sm:gap-2.5 max-sm:px-[13px]"><div class="grid h-[27px] flex-[0_0_27px] place-items-center rounded-[9px] bg-surface text-[14px] font-semibold text-accent max-sm:h-[23px] max-sm:flex-[0_0_23px]" aria-hidden="true">?</div><div><div class="text-[12px] font-[650] tracking-[.08em] text-accent">{t('questionHeading')}</div>
   {#if question}<div class="mt-[5px] text-[16px] leading-[1.75] font-[550] max-sm:text-[14px]">{question}</div>{/if}
   {#if machineOnly}<p class="{phase} machine-only">{t('machineOnly')(sp.awaiting_results || 0, sp.undecided || 0)}</p>
   {:else if sp.id === 'needs-plan'}<p class={phase}>{t('beforeWork')}</p>
   {:else if sp.id === 'done-as-asked' || sp.id === 'changes-in-scope'}<p class={phase}>{t('afterWork')}</p>{/if}
   </div></div>
-  <div class="mb-4 px-0.5"><div class="learning-line flex items-center gap-2 text-[11px] text-muted max-sm:text-[10px]"><span class="text-[16px] text-accent" aria-hidden="true">◒</span><span>{progress.plain}</span><span class="ml-auto whitespace-nowrap tabular-nums max-sm:hidden">{Math.min(n, sp.min_n)} / {sp.min_n}</span></div><div class="mt-[9px] h-1 overflow-hidden rounded-[3px] bg-line" role="progressbar" aria-label={t('learningProgress')} aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"><div class="h-full rounded-[3px] bg-accent" style="width:{progress.pct}%"></div></div></div>
+  <div class="mb-4 px-0.5"><div class="learning-line flex items-center gap-2 text-[12px] text-muted"><span class="text-[16px] text-accent" aria-hidden="true">◒</span><span>{progress.plain}</span><span class="ml-auto whitespace-nowrap tabular-nums max-sm:hidden">{Math.min(n, sp.min_n)} / {sp.min_n}</span></div><div class="mt-[9px] h-1 overflow-hidden rounded-[3px] bg-line" role="progressbar" aria-label={t('learningProgress')} aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"><div class="h-full rounded-[3px] bg-accent" style="width:{progress.pct}%"></div></div></div>
   {#if sp.planning_context && sp.legacy_planning_records}<p class="k">{t('planningLearning')(sp.legacy_planning_records)}</p>{/if}
   {#if sp.last_calibration}
     <div class="calibration-report my-4 rounded-[11px] border border-line bg-surface px-[18px] py-4 text-[12px] [&_summary]:cursor-pointer [&_summary]:text-muted">
-      <strong>{t('last')}</strong>{#if calibration?.at}<time class="mt-1 block text-[10px] text-muted">{calibration.at}</time>{/if}
+      <strong>{t('last')}</strong>{#if calibration?.at}<time class="mt-1 block text-[12px] text-muted">{calibration.at}</time>{/if}
       <p class="calibration-summary my-2.5 leading-[1.8]">{calibrationSummary}</p>
       <details><summary>{t('calibrationDetails')}</summary><pre>{sp.last_calibration}</pre></details>
     </div>

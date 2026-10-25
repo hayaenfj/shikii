@@ -409,13 +409,13 @@
   }
 
   code {
-    font-size: .8125em;
+    font-size: .9em;
   }
 
   pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    font: 11px/1.7 var(--font-mono);
+    font: 12px/1.7 var(--font-mono);
     color: var(--color-muted);
     margin-block: 1em;
   }
@@ -450,10 +450,6 @@
 
   .sticky {
     position: sticky;
-  }
-
-  .top-1 {
-    top: var(--spacing);
   }
 
   .top-4 {
@@ -699,7 +695,7 @@
     color: var(--color-muted);
     border-radius: 7px;
     padding: 3px 8px;
-    font-size: 10px;
+    font-size: 12px;
     display: inline-block;
   }
 
@@ -1192,7 +1188,7 @@
     color: var(--color-muted);
     background: none;
     padding: 7px 10px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .p-0 {
@@ -1422,14 +1418,6 @@
   .k {
     color: var(--color-muted);
     font-size: 12px;
-  }
-
-  .text-\[10px\] {
-    font-size: 10px;
-  }
-
-  .text-\[11px\] {
-    font-size: 11px;
   }
 
   .text-\[12px\] {
@@ -2036,18 +2024,6 @@
       padding-bottom: calc(var(--spacing) * 3);
     }
 
-    .max-sm\:text-\[9px\] {
-      font-size: 9px;
-    }
-
-    .max-sm\:text-\[10px\] {
-      font-size: 10px;
-    }
-
-    .max-sm\:text-\[11px\] {
-      font-size: 11px;
-    }
-
     .max-sm\:text-\[13px\] {
       font-size: 13px;
     }
@@ -2271,8 +2247,8 @@
     margin-left: 5px;
   }
 
-  .\[\&\>span\]\:text-\[10px\] > span {
-    font-size: 10px;
+  .\[\&\>span\]\:text-\[12px\] > span {
+    font-size: 12px;
   }
 
   .\[\&\>span\]\:text-muted > span {
@@ -2299,7 +2275,7 @@
   --bg: #f3f5f1;
   --surface: #fff;
   --surface2: #f7f9f5;
-  --muted: #63756b;
+  --muted: #566a5f;
   --line: #dde6dd;
   --accent: #247358;
   --accentbg: #eaf5ee;

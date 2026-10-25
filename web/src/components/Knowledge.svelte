@@ -58,7 +58,7 @@
   {#if !claims.length}<div class="empty-state">{t('noClaims')}</div>{/if}
   {#each claims as c (c.path)}
     <div class="item mb-5 rounded-[15px] border border-line bg-surface p-[22px] shadow-card max-sm:rounded-xl max-sm:px-3.5 max-sm:py-4">
-      <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted">
+      <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[12px] text-muted">
         <span class="pill" class:calibrated={c.status === 'confirmed'} class:ready={c.status === 'draft'}>{c.status}</span>
         <span>{c.path}</span>
         {#if c.confirmable}<span class="audit">{t('confirmable')}</span>{/if}

@@ -5,7 +5,7 @@
 </script>
 
 <details class="howto mb-5 rounded-xl border border-line bg-surface px-4 text-[12px] text-muted max-md:mb-[22px] [&[open]>summary]:border-b [&[open]>summary]:border-line">
-  <summary class="flex cursor-pointer list-none items-center gap-4 py-3 before:grid before:h-[23px] before:w-[23px] before:place-items-center before:rounded-full before:border before:border-line before:text-accent before:content-['?'] [&::-webkit-details-marker]:hidden"><b class="font-semibold text-fg">{t('howToTitle')}</b><span class="ml-auto text-[11px] max-sm:hidden">{t('howToShort')}</span></summary><div class="pt-2.5 pb-3.5">
+  <summary class="flex cursor-pointer list-none items-center gap-4 py-3 before:grid before:h-[23px] before:w-[23px] before:place-items-center before:rounded-full before:border before:border-line before:text-accent before:content-['?'] [&::-webkit-details-marker]:hidden"><b class="font-semibold text-fg">{t('howToTitle')}</b><span class="ml-auto text-[12px] max-sm:hidden">{t('howToShort')}</span></summary><div class="pt-2.5 pb-3.5">
   <ol class="mt-1 mb-3.5 pl-5 [&>li]:my-[5px]">
     {#each t('howTo') as step}
       <li>{step}</li>

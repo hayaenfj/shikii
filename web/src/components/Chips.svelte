@@ -10,7 +10,7 @@
   let youActive = $derived(!machineOnly && !ui.done && !ui.results);
   let resultsActive = $derived(!ui.done && (machineOnly || ui.results));
   // The look of the segmented buttons. The selected one is active (a marker the checks look at)
-  const seg = on => 'rounded-[7px] border px-3 py-1.5 text-[12px] max-sm:px-[9px] max-sm:text-[10px] [&>span]:ml-[5px] [&>span]:text-[10px] [&>span]:text-muted ' + (on ? 'active border-line bg-surface text-fg shadow-[0_2px_3px_#00000008]' : 'border-transparent bg-transparent text-muted');
+  const seg = on => 'rounded-[7px] border px-3 py-1.5 text-[12px] max-sm:px-[9px] [&>span]:ml-[5px] [&>span]:text-[12px] [&>span]:text-muted ' + (on ? 'active border-line bg-surface text-fg shadow-[0_2px_3px_#00000008]' : 'border-transparent bg-transparent text-muted');
 </script>
 
 <div class="flex items-center justify-between gap-4 border-t border-line pt-3 pb-2.5 max-sm:flex-wrap max-sm:gap-2">
