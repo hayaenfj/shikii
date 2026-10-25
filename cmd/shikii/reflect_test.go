@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -257,5 +258,32 @@ func TestReflectSubmitHasNoConversationLimit(t *testing.T) {
 	q = reflectCall(t, h, map[string]any{"operation": "submit", "maintenance": stale})
 	if q["complete"] != false || len(q["maintenance"].([]any)) != 3 {
 		t.Fatalf("見直し 3 本も数で断らず、古い key は項目ごとの誤りで返す: %v", q)
+	}
+}
+
+// 0.9.1: 振り返りの入力は 1 MiB まで(作業記録の書き込みと同じ)。64 KB では大きな草稿 1〜3 本で一杯になり、数の上限を外しても
+// 大きさが本数の上限になっていた。超えた時は、草稿を分けて次の submit で送るよう伝える
+func TestReflectInputUpToOneMiB(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	drafts := []map[string]any{}
+	for n := 1; n <= 6; n++ {
+		id, _ := reviewSeed(t, st, scope, n)
+		body := strings.Repeat("起動手順の背景と理由を、確かめた手順とともに書く。", 300) // 約 22 KB(本文の上限 16 KB を超えない程度に下で切る)
+		body = string([]rune(body)[:5000])
+		drafts = append(drafts, map[string]any{"sources": []string{id}, "title": "起動手順の確認 " + string(rune('A'+n)), "lesson": "起動手順の確認 " + string(rune('A'+n)) + " を README に書く。", "body": body, "applies_to": "README の起動手順を直す時", "kind": "howto", "scene": "README を直す時"})
+	}
+	data, _ := json.Marshal(map[string]any{"operation": "submit", "wiki": drafts})
+	if len(data) <= 64<<10 {
+		t.Fatalf("この検査は 64 KB を超える入力で見る: %d", len(data))
+	}
+	q := reflectCall(t, h, map[string]any{"operation": "submit", "wiki": drafts})
+	if q["complete"] != true || len(q["wiki"].([]any)) != 6 {
+		t.Fatalf("64 KB を超える(1 MiB 未満の)振り返りも保存する: %d bytes %v", len(data), q)
+	}
+	// 1 MiB を超えたら断り、分けて送るよう伝える(CLI も同じ読み込み)
+	big := map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": []string{"0000000000000001"}, "body": strings.Repeat("あ", 400<<10)}}}
+	raw, _ := json.Marshal(big)
+	if _, err := decodeReflect(bytes.NewReader(raw)); err == nil || !strings.Contains(err.Error(), "1 MiB") || !strings.Contains(err.Error(), "分けて") {
+		t.Fatalf("1 MiB を超える振り返りは断り、分けて送るよう伝える: %d bytes %v", len(raw), err)
 	}
 }

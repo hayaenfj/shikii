@@ -219,11 +219,15 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	return result, nil
 }
 
+// reflectInputMax は振り返りの入力の上限(0.9.1。作業記録の書き込みと同じ 1 MiB。HTTP の口の maxBody とも同じ)。
+// 会話・項目・見直しの数は限らないので、これが唯一の上限。記事 1 本ずつの上限(本文 16 KB、ファイル全体 64 KB)は notebook が別に見る
+const reflectInputMax = 1 << 20
+
 func decodeReflect(input io.Reader) (reflectRequest, error) {
 	var req reflectRequest
-	data, err := io.ReadAll(io.LimitReader(input, (64<<10)+1))
-	if err != nil || len(data) > 64<<10 {
-		return req, errors.New("振り返りの入力は64KB以内のJSONです")
+	data, err := io.ReadAll(io.LimitReader(input, reflectInputMax+1))
+	if err != nil || len(data) > reflectInputMax {
+		return req, errors.New("振り返りの入力は 1 MiB 以内の JSON です。草稿を分けて、残りは次の submit で送ってください")
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
