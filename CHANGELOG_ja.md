@@ -27,6 +27,7 @@
 - 英語化の監査の直し(止める検査): 使わない語が英語の正例の一部(`his`・`is`・`line` など)でも、`shikii guard enable` が断らなくなった(正例から先に語を外す)。検査がターンを止めた時の端末の 1 行と理由(画面の「最後に止めた」にも出る)に、言語が日本語の人には 0.9.1 と同じく日本語が付く。
 - 英語化の監査の直し(検査): `scripts/check-english.py` が、日本語の句読点とかぎ括弧、全角の記号、半角カナ、拡張の漢字も見つけ、Git がまだ知らない(無視していない)新しいファイルも見る(手元でも CI と同じ物を見る)。`scripts/japanese-allowlist.txt` の上限はちょうどの数にする: 日本語の行が上限より少ないファイルや、もう無いファイルが載っていると、一覧を直すまで落ちる。`scripts/test-check-english.py` がこの検査を試し、`make check-english` と CI で先に走る。
 - 英語化の監査の直し(配布物と文書): 配布物に README_ja.md と並べて README.md も入れ、導入の文は README.md の "Requirements" を指す。日本語の連携の文書は mcp と readout の日本語版にリンクし、英語の guide は英語になった references/review.md を「日本語」と書かなくなった。
+- 英語化の監査のテスト: 本物の v0.9.1 が書いた wiki の置き場(`internal/notebook/testdata/v091`)を、変わっていない記事として読み、直せること。着手前の整理の前置きが、Go が書く物と画面が外す物で同じこと。文から `shikii wiki classify`・`handoff_write`・`lesson:<id>`・検査の id が消えないこと。Claude Code の言語の設定が日本語で書かれていても ja になること。日本語の文書は、日本語版がある文書なら日本語版にリンクすること。
 
 ## 0.9.1 — 画面を「答える・知識・AI の様子」の 3 つにする
 

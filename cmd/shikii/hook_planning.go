@@ -237,6 +237,10 @@ func cmdHookPlan(args []string) error {
 	return json.NewEncoder(stdout).Encode(result)
 }
 
+// planningPreface comes before the agent's organizing in the needs-plan input. web/src/components/ItemCard.svelte removes the same text
+// (and the Japanese one of records made before 0.9.2); a test checks the two match.
+const planningPreface = "AI's organizing (not permission to act, not the person's truth): "
+
 func renderPlanningFact(f *planningFact, sources map[string]string, agreement bool) (string, error) {
 	if f == nil {
 		return "", errors.New("pass agreed and open. If unknown, set unknown:true")
@@ -250,7 +254,7 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 	if strings.TrimSpace(f.Summary) == "" || len(f.Summary) > 600 || len(f.Evidence) == 0 || len(f.Evidence) > 3 {
 		return "", errors.New("keep the organizing within 600 bytes, with 1 to 3 quoted grounds")
 	}
-	parts := []string{"AI's organizing (not permission to act, not the person's truth): " + f.Summary} // web/src/components/ItemCard.svelte removes this preface (and the Japanese one of records made before 0.9.2)
+	parts := []string{planningPreface + f.Summary}
 	human := false
 	for i, e := range f.Evidence {
 		text, ok := sources[e.Source]
