@@ -89,16 +89,15 @@ func cmdInit(args []string) error {
 			fmt.Fprintf(stdout, "%s: kept the existing shikii settings (%s)\n", f.path, f.who)
 		}
 	}
+	// AGENTS.md is the person's file: shikii adds nothing (0.9.2), and removes only the section an earlier version wrote
 	var skipped agentsSkipped
-	switch did, err := addAgentsSection(filepath.Join(scope, "AGENTS.md")); {
+	switch did, err := removeAgentsSection(filepath.Join(scope, "AGENTS.md")); {
 	case errors.As(err, &skipped):
 		fmt.Fprintln(stdout, "AGENTS.md: "+skipped.reason)
 	case err != nil:
 		return err
 	case did:
-		fmt.Fprintln(stdout, "AGENTS.md: added shikii's working rules (for Codex and OpenCode)")
-	case fileExists(filepath.Join(scope, "CLAUDE.md")) && !fileExists(filepath.Join(scope, "AGENTS.md")):
-		fmt.Fprintln(stdout, "AGENTS.md: not created (the existing CLAUDE.md takes priority)")
+		fmt.Fprintln(stdout, "AGENTS.md: removed the shikii section an earlier version wrote (the rest of the file is kept)")
 	}
 	// Things placed in the home folder (Codex settings, the skill). Skipped where there is no HOME (e.g. CI in a container): the project is already prepared
 	home, err := os.UserHomeDir()
@@ -116,12 +115,14 @@ func cmdInit(args []string) error {
 		fmt.Fprintf(stdout, "%s: kept the existing MCP settings (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
 	}
 
-	// skill: put it back (old files are deleted too)
-	dst := filepath.Join(home, ".claude", "skills", "shikii")
-	if err := copySkill(dst); err != nil {
-		return fmt.Errorf("skill: %w", err)
+	// skill: put it back (old files are deleted too), where Claude Code reads it and where Codex and other agents read skills (~/.agents/skills, 0.9.2:
+	// without the AGENTS.md section, Codex without hooks found the habits only there)
+	for _, rel := range skillDirs {
+		if err := copySkill(filepath.Join(home, rel)); err != nil {
+			return fmt.Errorf("skill: %w", err)
+		}
+		fmt.Fprintf(stdout, "skill: updated %s\n", filepath.Join("~", rel))
 	}
-	fmt.Fprintf(stdout, "skill: updated %s\n", filepath.Join("~", ".claude", "skills", "shikii"))
 	return completeProjectInit(root, scope, version)
 }
 
@@ -290,26 +291,19 @@ func fileExists(p string) bool {
 
 const agentsMarker = "<!-- shikii -->"
 
-// agentsSection is shikii's section in AGENTS.md (read by Codex and OpenCode), wrapped in markers. The heading must keep starting with "## shikii (" (agentsSectionSpan looks for it; sections written before 0.9.2 start with "## shikii(").
-var agentsSection = agentsMarker + "\n## shikii (decision rules)\n\n" +
-	"- For a recurring kind of decision, do not decide yourself: call `shikii decide` (shikii_decide over MCP) and follow the band: only act runs automatically, ask means check with a person, discard means do nothing, abstain means gather the inputs\n" +
-	"- A person (or the outcome) decides the truth. Record a person's answer with `shikii label <trace_id> <truth>`. Never edit the line (calibration:) or the status of a wiki claim by hand\n" +
-	"- When you create or change a rule, test or procedure (commands or scripts), write it in a wiki howto or rule page in the same turn, even if nobody asked. If a close page exists, add to it or fix it\n" +
-	"- Give every wiki lesson a kind (kind: rule / howto / criteria / fact / history) and a scene (scene: \"when ...\" in the words of that work). If a wiki reply lists unclassified pages (from older versions, without kind and scene), classify them in the same turn with `shikii wiki classify <id> <kind> <scene>` (classify of shikii_wiki over MCP). The lesson text does not change\n" +
-	"- Full working rules: ~/.claude/skills/shikii/SKILL.md (placed by shikii init)\n" + agentsMarker + "\n"
-
 // agentsSkipped is the reason AGENTS.md was not touched (only told to the person; it stops neither init nor the update).
 type agentsSkipped struct{ reason string }
 
 func (e agentsSkipped) Error() string { return e.reason }
 
-// addAgentsSection adds shikii's section to AGENTS.md. A section from an earlier version is replaced with the new content; what a person wrote is left alone.
-// If the content is the same, it does nothing (audit 0.9.0 A1-A3):
-//   - A section is a pair that starts with a "marker-only line", has the heading ("## shikii (" or the older "## shikii(") on the next line, and ends at the next "marker-only line". Markers inside a person's text (e.g. inside `…`) do not count.
-//     It replaces only when there is exactly one such pair; when marker-only lines exist but not exactly one pair, it leaves the file alone and returns the reason
-//   - If AGENTS.md is a link to a file inside the repo (e.g. a symlink to CLAUDE.md), it rewrites the target and keeps the link; if it points outside, it leaves it alone
-//   - Line endings follow the current file (CRLF or LF)
-func addAgentsSection(path string) (bool, error) {
+// removeAgentsSection removes the shikii section an earlier version wrote into AGENTS.md (0.9.2: shikii no longer writes into a person's AGENTS.md;
+// the hooks, the MCP instructions and the skill carry the rules). Only the part between the marker-only lines goes; the person's text and the file stay.
+//   - A section is a pair that starts with a "marker-only line", has the heading ("## shikii (" or the older "## shikii(") on the next line, and ends at the
+//     next "marker-only line". Markers inside a person's text (e.g. inside `…`) do not count.
+//   - If AGENTS.md is a link to a file inside the repo (e.g. a symlink to CLAUDE.md), it edits the target and keeps the link; if it points outside, it leaves it alone
+//   - With one marker, or three or more marker-only lines, it leaves the file alone and returns the reason (it does not guess what the person meant)
+//   - CRLF files stay CRLF; the blank line the earlier version put before the section goes with it. No file is created and none is deleted
+func removeAgentsSection(path string) (bool, error) {
 	target := path
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		real, err := filepath.EvalSymlinks(path)
@@ -323,40 +317,35 @@ func addAgentsSection(path string) (bool, error) {
 		target = real
 	}
 	b, err := os.ReadFile(target)
-	if err != nil && !os.IsNotExist(err) {
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
 		return false, err
 	}
 	text := string(b)
+	start, end, found, ok := agentsSectionSpan(text)
+	if !found {
+		return false, nil
+	}
+	if !ok {
+		return false, agentsSkipped{"AGENTS.md is left alone because shikii's markers do not form exactly one pair (check the marker-only lines)"}
+	}
 	nl := "\n"
 	if strings.Contains(text, "\r\n") {
 		nl = "\r\n"
 	}
-	section := strings.ReplaceAll(agentsSection, "\n", nl)
-	if start, end, found, ok := agentsSectionSpan(text); found {
-		if !ok {
-			return false, agentsSkipped{"AGENTS.md is left alone because shikii's markers do not form exactly one pair (check the marker-only lines)"}
-		}
-		if text[start:end] == section {
-			return false, nil
-		}
-		return true, replaceFile(target, text[:start]+section+text[end:])
+	before, after := text[:start], text[end:]
+	if !strings.HasSuffix(text[start:end], "\n") && strings.HasPrefix(after, nl) { // the closing marker had no newline of its own
+		after = strings.TrimPrefix(after, nl)
 	}
-	if os.IsNotExist(err) && fileExists(filepath.Join(filepath.Dir(path), "CLAUDE.md")) {
-		return false, nil // OpenCode stops reading CLAUDE.md once AGENTS.md exists. Do not create it silently (the caller reports it)
+	switch {
+	case after == "" && strings.HasSuffix(before, nl+nl):
+		before = strings.TrimSuffix(before, nl) // the blank line put before the section at the end of the file
+	case strings.HasSuffix(before, nl+nl) && strings.HasPrefix(after, nl):
+		after = strings.TrimPrefix(after, nl) // the section sat between two blank lines: keep one
 	}
-	if len(b) > 0 {
-		if !strings.HasSuffix(text, "\n") {
-			section = nl + section
-		}
-		section = nl + section
-	}
-	f, err := os.OpenFile(target, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	_, err = f.WriteString(section)
-	return true, err
+	return true, replaceFile(target, before+after)
 }
 
 // agentsSectionSpan is the range of shikii's section (from the start of the opening marker line to after the newline of the closing marker line). found says whether any marker-only line exists,
@@ -429,6 +418,9 @@ func replaceFile(path, content string) error {
 }
 
 // copySkill puts the embedded skills/shikii back at dst (the old content is deleted so stale references do not mix in).
+// skillDirs are where the skill is put, relative to the home folder: Claude Code's, and the shared one Codex and other agents read.
+var skillDirs = []string{filepath.Join(".claude", "skills", "shikii"), filepath.Join(".agents", "skills", "shikii")}
+
 // Two shikii --init at once (two projects, one HOME) rewrite the same folder, so the copy holds a lock next to it (audit 0.9.2 English, medium 6:
 // without it, a copy failed with "directory not empty" or left the skill without SKILL.md).
 func copySkill(dst string) error {

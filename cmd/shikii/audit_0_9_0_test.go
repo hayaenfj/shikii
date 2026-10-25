@@ -14,65 +14,6 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-const oldAgentsSection = agentsMarker + "\n## shikii(判定の作法)\n\n- 古い節\n" + agentsMarker + "\n"
-
-// A1: when AGENTS.md is a link to another file (e.g. a symbolic link to CLAUDE.md), replacing turns the link into a plain file and the target stays old.
-func TestAudit090AgentsSymlinkKept(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "CLAUDE.md")
-	if err := os.WriteFile(target, []byte("# 人の規則\n\n"+oldAgentsSection), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	link := filepath.Join(dir, "AGENTS.md")
-	if err := os.Symlink("CLAUDE.md", link); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := addAgentsSection(link); err != nil {
-		t.Fatal(err)
-	}
-	info, _ := os.Lstat(link)
-	got, _ := os.ReadFile(target)
-	if info.Mode()&os.ModeSymlink == 0 || !strings.Contains(string(got), "wiki classify") {
-		t.Fatalf("the link was replaced by a plain file (still a link=%v), the target has the new section=%v", info.Mode()&os.ModeSymlink != 0, strings.Contains(string(got), "wiki classify"))
-	}
-}
-
-// A2: when the person's text mentions the marker before the section (3 markers), the text between the person's text and the section disappears.
-func TestAudit090AgentsThreeMarkersKeepHumanText(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "AGENTS.md")
-	human := "# 作業規則\n\n- shikii の節は `" + agentsMarker + "` で囲まれている(手で触らない)\n- 人の大事な決まり: 本番には手で触らない\n\n"
-	if err := os.WriteFile(path, []byte(human+oldAgentsSection), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := addAgentsSection(path); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := os.ReadFile(path)
-	if !strings.Contains(string(got), "本番には手で触らない") || strings.Contains(string(got), "古い節") {
-		t.Fatalf("the person's text disappeared / the old section remained:\n%s", got)
-	}
-}
-
-// A3: a CRLF AGENTS.md (Windows autocrlf) gains one blank line (a line with only \r) on every replacement.
-func TestAudit090AgentsCRLFNoStrayLines(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "AGENTS.md")
-	crlf := func(s string) string { return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n") }
-	if err := os.WriteFile(path, []byte(crlf("# 規則\n\n"+oldAgentsSection+"## 後ろの人の節\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < 3; i++ { // checkout turns it back to CRLF on every update
-		if _, err := addAgentsSection(path); err != nil {
-			t.Fatal(err)
-		}
-		b, _ := os.ReadFile(path)
-		os.WriteFile(path, []byte(crlf(string(b))), 0o644)
-	}
-	b, _ := os.ReadFile(path)
-	if n := strings.Count(crlf(string(b)), "\r\n\r\n## 後ろの人の節"); n != 0 || strings.Contains(crlf(string(b)), "\r\n\r\n\r\n") {
-		t.Fatalf("blank lines increased:\n%q", b)
-	}
-}
-
 // B1: if even one page in the wiki was edited by hand, Ingest refuses everything, so classify always fails. Yet the hook asks for 5 pages every time and Stop blocks every turn.
 func TestAudit090ClassifyAskedOnlyWhenPossible(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })

@@ -14,20 +14,6 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// New-1: on an AGENTS.md with a marker only inside the person's text and no section, the update (hook install) creates a section (against "do not create one in a file without a section").
-func TestAudit090bHookInstallDoesNotCreateSectionForInlineMarker(t *testing.T) {
-	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
-	repo := gitRepo(t)
-	t.Chdir(repo)
-	capture(t, func() error { return cmdInit(nil) })
-	human := "# 作業規則\n\n- shikii の節は `" + agentsMarker + "` で囲む決まりだが、この repo では節を置かない\n"
-	os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte(human), 0o644)
-	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if b, _ := os.ReadFile(filepath.Join(repo, "AGENTS.md")); string(b) != human {
-		t.Fatalf("created a section in an AGENTS.md without one:\n%s", b)
-	}
-}
-
 // New-2: just because another page is missing its source (lint reports a problem, but saving is not refused), the hook stops asking for pages to classify. classify passes.
 func TestAudit090bSourceIssueElsewhereDoesNotBlockAsk(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
@@ -136,59 +122,5 @@ func TestAudit090bClassifyFiveInOrderAndInParallel(t *testing.T) {
 		if !strings.HasPrefix(p.Lesson, "前の版の教訓") || (p.Title != "前の版の記事 0" && len(p.Related) != 1) {
 			t.Fatalf("classify changed the lesson or related: %+v", p)
 		}
-	}
-}
-
-// Check: edge cases of counting marker pairs (empty file, file without a trailing newline, a section made by 0.8.3, file ending in the closing marker without a newline, the second run does nothing).
-func TestAudit090bAgentsSectionEdges(t *testing.T) {
-	old083 := agentsMarker + "\n## shikii(判定の作法)\n\n- 同じ種類の判断は自分で決めず\n- 詳しい作法: ~/.claude/skills/shikii/SKILL.md(shikii init が置く)\n" + agentsMarker + "\n"
-	cases := []struct{ name, in, wantPrefix, wantSuffix string }{
-		{"empty", "", agentsMarker, agentsMarker + "\n"},
-		{"no newline", "# 規則", "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
-		{"0.8.3 section (added to a file without a newline)", "# 規則\n\n" + old083, "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
-		{"ends with the closing marker, no newline", "# 規則\n\n" + strings.TrimSuffix(old083, "\n"), "# 規則\n\n" + agentsMarker, agentsMarker + "\n"},
-		{"person's text after the section", "# 規則\n\n" + old083 + "\n## 後ろ\n", "# 規則\n\n" + agentsMarker, agentsMarker + "\n\n## 後ろ\n"},
-	}
-	for _, c := range cases {
-		path := filepath.Join(t.TempDir(), "AGENTS.md")
-		os.WriteFile(path, []byte(c.in), 0o644)
-		if _, err := addAgentsSection(path); err != nil {
-			t.Fatalf("%s: %v", c.name, err)
-		}
-		b, _ := os.ReadFile(path)
-		got := string(b)
-		if !strings.HasPrefix(got, c.wantPrefix) || !strings.HasSuffix(got, c.wantSuffix) || strings.Count(got, agentsMarker) != 2 || !strings.Contains(got, "wiki classify") {
-			t.Fatalf("%s: %q", c.name, got)
-		}
-		if did, err := addAgentsSection(path); did || err != nil {
-			t.Fatalf("%s: the second run does nothing: %v %v", c.name, did, err)
-		}
-		if entries, _ := os.ReadDir(filepath.Dir(path)); len(entries) != 1 {
-			t.Fatalf("%s: a temporary file was left: %v", c.name, entries)
-		}
-	}
-	// A link inside the repo (CRLF) stays a link and stays CRLF
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(strings.ReplaceAll("# 規則\n\n"+old083, "\n", "\r\n")), 0o600)
-	os.Symlink("CLAUDE.md", filepath.Join(dir, "AGENTS.md"))
-	if did, err := addAgentsSection(filepath.Join(dir, "AGENTS.md")); !did || err != nil {
-		t.Fatal(did, err)
-	}
-	info, _ := os.Lstat(filepath.Join(dir, "AGENTS.md"))
-	real, _ := os.Stat(filepath.Join(dir, "CLAUDE.md"))
-	b, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
-	if info.Mode()&os.ModeSymlink == 0 || real.Mode().Perm() != 0o600 || strings.Contains(strings.ReplaceAll(string(b), "\r\n", ""), "\n") || !strings.Contains(string(b), "wiki classify") {
-		t.Fatalf("link, permissions, CRLF: link=%v perm=%v %q", info.Mode()&os.ModeSymlink != 0, real.Mode().Perm(), b)
-	}
-}
-
-// Hole: with 3 marker-only lines (a person wrote a marker-only line inside the section), do not touch it. Removing the len(marks) == 2 condition did not make the existing tests fail.
-func TestAudit090bAgentsThreeMarkerLinesUntouched(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "AGENTS.md")
-	in := "# 規則\n\n" + agentsMarker + "\n## shikii(判定の作法)\n\n- 古い\n" + agentsMarker + "\n- 人が節の中に足した大事な決まり\n" + agentsMarker + "\n"
-	os.WriteFile(path, []byte(in), 0o644)
-	addAgentsSection(path)
-	if b, _ := os.ReadFile(path); string(b) != in {
-		t.Fatalf("with 3 marker-only lines, do not touch it:\n%s", b)
 	}
 }

@@ -17,7 +17,7 @@ func TestNewRulesTestsAndProceduresGoToTheWiki(t *testing.T) {
 	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
 	wikiRef, _ := os.ReadFile("../../skills/shikii/references/wiki.md")
 	// The pre-work sorting guidance arrives with every request (the ritual one-liner is only once per session, and Claude Code in a project without work rules did not use it when it finished making something; measured in 0.9.1)
-	for name, text := range map[string]string{"ritual one-liner (habitsNotice)": habitsNotice, "AGENTS.md section": agentsSection, "reflection text": reflectText, "pre-work sorting guidance (every time)": planningNotice("s", "t")} {
+	for name, text := range map[string]string{"ritual one-liner (habitsNotice)": habitsNotice, "reflection text": reflectText, "pre-work sorting guidance (every time)": planningNotice("s", "t")} {
 		if !strings.Contains(text, ja) && !strings.Contains(text, en) { // Japanese before the English translation, English after
 			t.Errorf("%s lacks the rule to also write %q (or %q) to the wiki", name, en, ja)
 		}

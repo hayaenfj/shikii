@@ -1835,22 +1835,20 @@ func hookInstall(args []string, install bool) error {
 			return err
 		}
 		fmt.Fprintf(stdout, "%s: %d specs and %d wiki pages added\n", tilde(agent), n, w)
-		if err := copySkill(filepath.Join(home, ".claude", "skills", "shikii")); err != nil {
-			return fmt.Errorf("skill: %w", err)
+		for _, rel := range skillDirs {
+			if err := copySkill(filepath.Join(home, rel)); err != nil {
+				return fmt.Errorf("skill: %w", err)
+			}
+			fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, rel)))
 		}
-		fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, ".claude", "skills", "shikii")))
-		// also update the shikii section of each project's AGENTS.md (read by Codex and OpenCode) to the new contents (0.9.0. Only where the section exists; the person's parts are not touched)
+		// remove the shikii section an earlier version wrote into each registered project's AGENTS.md (0.9.2: shikii no longer writes into it;
+		// only the part between the markers goes, the person's text and the file stay)
 		for _, p := range registeredProjects(agent) {
 			path := filepath.Join(p.Path, "AGENTS.md")
-			if b, err := os.ReadFile(path); err != nil {
-				continue
-			} else if _, _, found, _ := agentsSectionSpan(string(b)); !found {
-				continue // do not create one in an AGENTS.md without the marker-only line (no section). Markers inside the person's text do not count (re-audit 0.9.0 new-1)
-			}
-			if did, err := addAgentsSection(path); err != nil {
+			if did, err := removeAgentsSection(path); err != nil {
 				fmt.Fprintf(stdout, "%s: %v\n", tilde(path), err)
 			} else if did {
-				fmt.Fprintf(stdout, "%s: the shikii section updated\n", tilde(path))
+				fmt.Fprintf(stdout, "%s: removed the shikii section an earlier version wrote (the rest is kept)\n", tilde(path))
 			}
 		}
 		// 0.8.x treats pages with a kind and a scene as "changed" and refuses every save (the pages are not broken). Tell this so the MCP of open sessions and

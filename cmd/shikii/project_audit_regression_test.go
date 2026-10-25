@@ -193,7 +193,7 @@ func TestProjectCommandsShareRootFromSubdirectories(t *testing.T) {
 				}
 			case "init":
 				capture(t, func() error { return cmdInit(nil) })
-				for _, name := range []string{".mcp.json", "opencode.json", "AGENTS.md", ".shikii/wiki/index.md"} {
+				for _, name := range []string{".mcp.json", "opencode.json", ".shikii/wiki/index.md"} {
 					if !fileExists(filepath.Join(repo, name)) {
 						t.Fatalf("init must prepare at the project root: %s", name)
 					}
