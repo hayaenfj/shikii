@@ -126,6 +126,10 @@ func TestInitAndUpdateRemoveTheSectionAndAddNone(t *testing.T) {
 	if !strings.Contains(out, "AGENTS.md") {
 		t.Fatalf("the update says it removed the section: %s", out)
 	}
+	// 0.9.1 and earlier read pages written by 0.9.2 (English fixed words) as changed and refuse every save (as 0.8 did with 0.9.0's kind and scene)
+	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.9.2 or later") {
+		t.Fatalf("the update says to reopen open sessions and move every machine using the same wiki to 0.9.2 or later: %s", out)
+	}
 	if b, _ := os.ReadFile(filepath.Join(plain, "AGENTS.md")); string(b) != human {
 		t.Fatalf("the update leaves an AGENTS.md without a section alone: %q", b)
 	}

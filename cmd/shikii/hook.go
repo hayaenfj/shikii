@@ -1851,9 +1851,10 @@ func hookInstall(args []string, install bool) error {
 				fmt.Fprintf(stdout, "%s: removed the shikii section an earlier version wrote (the rest is kept)\n", tilde(path))
 			}
 		}
-		// 0.8.x treats pages with a kind and a scene as "changed" and refuses every save (the pages are not broken). Tell this so the MCP of open sessions and
+		// 0.8.x treats pages with a kind and a scene as "changed", and 0.9.1 and earlier pages written with 0.9.2's English fixed words; both refuse every save
+		// (the pages are not broken). Tell this so the MCP of open sessions and
 		// other machines using the same wiki are not left on the old version (audit 0.9.0 B3)
-		fmt.Fprintln(stdout, "Note: reopen any open agent sessions (and their MCP). 0.8.x cannot read wiki pages with a kind and a scene and refuses to save. Move every machine that uses the same wiki to 0.9.0 or later.")
+		fmt.Fprintln(stdout, "Note: reopen any open agent sessions (and their MCP). 0.9.1 and earlier read wiki pages written by 0.9.2 (English fixed words) as changed and refuse to save, as 0.8.x did with pages that have a kind and a scene. Move every machine that uses the same wiki to 0.9.2 or later.")
 		// on the first run that crosses 0.7.0, remove and reinitialize each project's .shikii/ (this is where the new binary is called at the end of update).
 		exe, err := os.Executable()
 		if err != nil {
