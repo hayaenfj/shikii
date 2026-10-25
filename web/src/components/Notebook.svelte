@@ -60,7 +60,7 @@
   async function source(id) {
     busy = id;
     try {
-      const result = await api.notebook({ operation: 'query', sources: [id] });
+      const result = await api.sources([id]);
       for (const value of result.source_material || []) material[value.id] = { ...value, originals: result.originals?.[value.id] };
       for (const value of result.observations || []) material[value.id] = value;
     } catch (e) { toast(t('error')(e.message)); }

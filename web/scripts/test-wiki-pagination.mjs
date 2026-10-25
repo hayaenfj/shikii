@@ -29,3 +29,29 @@ test('fetches the rest of the knowledge list, and does not treat a partial list 
     globalThis.fetch = original;
   }
 });
+
+test('reads a long source in parts and joins them, so the page never shows a part as the whole source', async () => {
+  const original = globalThis.fetch;
+  try {
+    const bodies = [];
+    const replies = [
+      { observations: [{ id: 'o1', content: 'abc' }], observation_part: { id: 'o1', from: 0, to: 3, bytes: 6 }, next_cursor: 'c1' },
+      { observations: [{ id: 'o1', content: 'def' }, { id: 'o2', content: 'short' }], observation_part: { id: 'o1', from: 3, to: 6, bytes: 6 }, source_material: [{ id: 's1' }], originals: { s1: [{ text: 'x' }] } },
+    ];
+    globalThis.fetch = async (url, opts) => {
+      bodies.push(JSON.parse(opts.body));
+      return { ok: true, json: async () => replies[bodies.length - 1] };
+    };
+    const result = await api.sources(['o1', 'o2', 's1']);
+    assert.deepEqual(result.observations.map(o => [o.id, o.content]), [['o1', 'abcdef'], ['o2', 'short']]);
+    assert.deepEqual(result.source_material.map(x => x.id), ['s1']);
+    assert.equal(result.originals.s1[0].text, 'x');
+    assert.equal(bodies[1].cursor, 'c1');
+    assert.deepEqual(bodies[1].sources, ['o1', 'o2', 's1']);
+
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ observations: [], next_cursor: 'same' }) });
+    await assert.rejects(api.sources(['o1']), /does not move forward/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

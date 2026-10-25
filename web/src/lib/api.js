@@ -29,6 +29,30 @@ export const api = {
     delete result.next_cursor;
     return result;
   },
+  // Sources (0.9.2): a long captured source comes in parts (observation_part) with next_cursor; join the parts by id so a part is never shown as the whole source
+  sources: async ids => {
+    const result = await post('v1/wiki/notebook', { operation: 'query', sources: ids });
+    const observations = new Map((result.observations || []).map(o => [o.id, { ...o }]));
+    let cursor = result.next_cursor;
+    const seen = new Set();
+    while (cursor) {
+      if (seen.has(cursor)) throw new Error('the next part of the source does not move forward');
+      seen.add(cursor);
+      const page = await post('v1/wiki/notebook', { operation: 'query', sources: ids, cursor });
+      for (const o of page.observations || []) {
+        const had = observations.get(o.id);
+        if (had) had.content += o.content;
+        else observations.set(o.id, { ...o });
+      }
+      result.source_material = [...(result.source_material || []), ...(page.source_material || [])];
+      result.originals = { ...(result.originals || {}), ...(page.originals || {}) };
+      cursor = page.next_cursor;
+    }
+    result.observations = [...observations.values()];
+    delete result.next_cursor;
+    delete result.observation_part;
+    return result;
+  },
   label: body => post('v1/label', body),
   redo: body => post('v1/redo', body),
   tuneRun: body => post('v1/tune/run', body),

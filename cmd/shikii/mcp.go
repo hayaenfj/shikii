@@ -86,7 +86,7 @@ const mcpInstructions = "Truths come only from the person (their answer) or from
 var mcpTools = []map[string]any{
 	{
 		"name":        "shikii_reflect",
-		"description": "Bundles scoring, wiki upkeep and tentative evaluation of how memory helped (query shows 2 conversations at a time from the oldest; submit has no limit on conversations or items). Use query to read the original text, the target, the memory delivered, the lessons and the person's corrections; pass a draft of a new lesson (wiki) to place to get candidate places to insert it and suspected contradictions; save reviews/wiki/memory with submit. memory records helpful/unused/harmful/unknown, the decision it was used for and the evidence checked. A correction lesson carries correction:{source_id,quote,action}, linking the original text of the person's reply to the next action. memory for a delivered correction also carries correction_result (followed/repeated/not_applicable/unknown). Do not count delivery or work success alone as an effect; with too little evidence, use unknown. Never mix this into truths or calibration. If complete:false, check each error and resend.",
+		"description": "Bundles scoring, wiki upkeep and tentative evaluation of how memory helped (query shows 2 conversations at a time from the oldest; submit has no limit on conversations or items). Use query to read the original text, the target, the memory delivered, the lessons and the person's corrections; pass a draft of a new lesson (wiki) to place to get candidate places to insert it and suspected contradictions; save reviews/wiki/memory with submit. memory records helpful/unused/harmful/unknown, the decision it was used for and the evidence checked. A correction lesson carries correction:{source_id,quote,action}, linking the original text of the person's reply to the next action. memory for a delivered correction also carries correction_result (followed/repeated/not_applicable/unknown). Do not count delivery or work success alone as an effect; with too little evidence, use unknown. Never mix this into truths or calibration. If complete:false, check each error and resend. complete:true only says every item was saved: while left lists a conversation, submit what it names before finishing.",
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"operation":   map[string]any{"type": "string", "enum": []string{"query", "place", "submit"}},
 			"maintenance": map[string]any{"type": "array", "items": maintenanceSchema},
@@ -151,7 +151,7 @@ var mcpTools = []map[string]any{
 				"truth":    map[string]any{"type": "string"},
 				"spec":     map[string]any{"type": "string", "description": "optional spec id to narrow the lookup"},
 				"weight":   map[string]any{"type": "number", "description": "1 for a firm truth, lower (e.g. 0.5) for a weak one"},
-				"source":   map[string]any{"type": "string", "description": "ignored: a truth sent through MCP is always recorded as the agent's (source mcp), never as the person's answer; a person answers on the page or with shikii label"},
+				"source":   map[string]any{"type": "string", "description": "ignored: a truth sent through MCP is always recorded with source mcp (sent by the agent). It still counts as a truth and takes the decision off the person's Answer page, so send only what the person said or a checked result, never your own judgment"},
 			},
 			"required": []string{"trace_id", "truth"},
 		},
@@ -318,11 +318,15 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 			// (audit S6; behaviour check 0.9.2: an agent passed source "ask" and its own judgment was stored as the person's answer)
 			var m map[string]any
 			if json.Unmarshal(args, &m) == nil {
-				if s, _ := m["source"].(string); s != "mcp" {
-					m["source"] = "mcp"
-					if b, err := json.Marshal(m); err == nil {
-						args = b
+				// the handler decodes keys case-insensitively (Unicode folding: "Source", "ſource"), so drop every key it would read as source
+				for k := range m {
+					if strings.EqualFold(k, "source") {
+						delete(m, k)
 					}
+				}
+				m["source"] = "mcp"
+				if b, err := json.Marshal(m); err == nil {
+					args = b
 				}
 			}
 		}

@@ -102,7 +102,8 @@ func auditForge(t *testing.T, cursor string, edit func(*continuation)) string {
 	return base64.RawURLEncoding.EncodeToString(data)
 }
 
-// A cursor whose byte is in the middle of a character, or points at a source that is not cut, is refused.
+// A cursor whose byte is in the middle of a character, or at or past the end of the body, is refused.
+// (A byte at a character boundary inside an observation is accepted; the reply says which part it is.)
 func TestForgedByteIsRefused(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	long := partsCapture(t, b, "long", strings.Repeat("\u9577\u3044\u30e1\u30e2\u30ea\u3002", 20000), 1)
