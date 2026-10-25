@@ -25,6 +25,7 @@
 - Docs: the guide's update heading now reads "Updating from 0.8 to 0.9 (0.9.0 or later)", matching the note that 0.9.1 changed to "0.9.0 or later".
 - Tests: pressing a rule in the rules panel scrolls to the article even on a wide screen, and pressing from other panels such as the inbox does not. The test that the reflection request carries no original text now also checks that the request and the ids of the conversations to review appear (before, it passed when the text was empty).
 - Wording after moving or copying a project (0.9.2 audit): a measured result (`wiki/runs/<run>.json`) keeps absolute paths. When it is read, its run page and the paths of the question and the adopted version are now rebuilt from the wiki it was read from (only paths that were inside the store the run was written in; a question kept elsewhere with `serve --specs` keeps its path). Before, after a folder was moved the agent's adoption was used but not saved, so the person was not told and could not undo it (undo on the page returned 500); in a copied project the adoption wrote a new version into the original project's `decisions/` and wiki.
+- Wording: the agent's adoption (`shikii hook variants check`) and the page's adopt and undo (`/v1/tune/adopt`, `/v1/tune/review`) take a lock on the run (a `.lock` file next to its json). While one adopts a run, the other is refused (409 on the page) instead of adopting it a second time.
 
 ## 0.9.1 — Three pages: Answer, Knowledge and The AI
 

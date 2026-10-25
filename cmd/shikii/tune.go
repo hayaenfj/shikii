@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/calib"
@@ -539,6 +540,24 @@ func (res *tuneResult) rebase(wikiDir, run string) {
 		*p = filepath.Join(store, rel)
 	}
 }
+
+// lockTuneRun takes the lock of one run (a file next to its json) while it is adopted or undone. The agent's adoption (hook variants check, a separate
+// process) and the page's (serve) share it, so the same run is not adopted twice at the same time (audit 0.9.2, low 2). It does not wait: when the run
+// is held, it returns errTuneRunBusy and the caller refuses.
+func lockTuneRun(wikiDir, run string) (func(), error) {
+	run = strings.TrimSuffix(strings.TrimSuffix(filepath.Base(run), ".json"), ".md")
+	f, err := os.OpenFile(filepath.Join(wikiDir, "runs", run+".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, errTuneRunBusy
+	}
+	return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }, nil
+}
+
+var errTuneRunBusy = errors.New("this run is being adopted or undone right now (by the agent or on the page); try again after it finishes")
 
 // latestTuneResult is the json of the spec's newest run.
 func latestTuneResult(wikiDir, specID string) (*tuneResult, error) {

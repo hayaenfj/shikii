@@ -393,6 +393,15 @@ func cmdHookVariantsCheck() error {
 	if res.Run != req.Run {
 		return fmt.Errorf("the latest result is %s (the run differs)", res.Run)
 	}
+	// the page (serve) may be adopting or undoing the same run: hold the run's lock while checking and adopting, and read the result again under it
+	unlock, err := lockTuneRun(filepath.Join(root, "wiki"), res.Run)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if res, err = loadTuneResult(filepath.Join(root, "wiki"), req.Run); err != nil {
+		return err
+	}
 	if !res.Adoptable || res.Adopted || res.Reverted || len(res.MeaningChecks) > 0 {
 		return errors.New("this result has nothing left to check (adopted, rejected, undone, or no winning variant)")
 	}
