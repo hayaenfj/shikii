@@ -301,7 +301,7 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		return errors.New("name a memory actually delivered to this request")
 	}
 	if !correction && a.CorrectionResult != "" {
-		return errors.New("behaviour observations can only be attached to corrections delivered to this request")
+		return errors.New("correction_result is only for a delivered correction; leave it out for this lesson (behaviour observations can only be attached to corrections delivered to this request)")
 	}
 	if correction && a.CorrectionResult == "" {
 		a.CorrectionResult = "unknown"

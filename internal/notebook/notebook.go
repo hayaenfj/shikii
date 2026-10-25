@@ -692,7 +692,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		if os.IsNotExist(err) {
 			f, ok := available[id]
 			if !ok {
-				return result, errors.New("wiki source does not belong to this project's observations")
+				return result, fmt.Errorf("wiki source %s does not belong to this project's observations or recent conversations (send the other ids again without it)", id)
 			}
 			data, err = json.Marshal(f)
 		}

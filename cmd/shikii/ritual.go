@@ -137,7 +137,7 @@ func leftLines(left []reflectLeftItem) []string {
 	for _, l := range left {
 		var parts []string
 		if l.targets > 0 {
-			parts = append(parts, fmt.Sprintf("provisional scores %d", l.targets))
+			parts = append(parts, fmt.Sprintf("provisional scores %d: send reviews with your own truth yes, no or unknown (unknown when you cannot tell; it is your provisional score, not the person's answer)", l.targets))
 		}
 		if l.wiki {
 			parts = append(parts, "wiki unsorted")
