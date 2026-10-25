@@ -26,14 +26,41 @@ func memoryContext(root, scope, request string, session *hookSession) (string, e
 
 // memoryContextFor は配送の出どころ付き。parent が空なら人の依頼(配送 id = ターン)、あれば親ターン parent からサブエージェント agent への配送
 // (id は親・agent・引用の版から決める: 同じ引用なら同じ id、版が変われば別の配送)。
+// 自動で届けるのは、経緯(history)以外の記事(0.9.1)。経緯は「なぜそうなったか」で、エージェントが探した時(wiki query)に読む物。
+// 実測(haya1、評価 70 回)では経緯の記事は 7 回届いて 7 回とも使われなかった。種類の無い記事(版を上げる前の物)は今までどおり届ける
 func memoryContextFor(root, scope, request string, session *hookSession, parent, agent string) (string, error) {
 	if scope == "" {
 		return "", nil
 	}
-	pages, err := (notebook.Book{Root: root, Scope: scope}).Recall(request)
+	recalled, err := (notebook.Book{Root: root, Scope: scope}).Recall(request)
 	if err != nil {
 		return "", err
 	}
+	pages := recalled[:0:0]
+	for _, p := range recalled {
+		if p.Kind != "history" {
+			pages = append(pages, p)
+		}
+	}
+	return deliverMemory(root, scope, request, pages, true, session, parent, agent)
+}
+
+// alwaysContextFor は、どの依頼にも効く決まり(場面が「いつも」の rule)だけを届ける(0.9.1)。仕事の文の分からないサブエージェント向け:
+// 親の依頼で選ぶと、親の会話の言葉に引かれて子の仕事に関係ない教訓が届いた(実測: 子への配送 37 回のうち役立ったのは 4 回)
+func alwaysContextFor(root, scope, request string, session *hookSession, parent, agent string) (string, error) {
+	if scope == "" {
+		return "", nil
+	}
+	pages, err := (notebook.Book{Root: root, Scope: scope}).AlwaysRules()
+	if err != nil {
+		return "", err
+	}
+	return deliverMemory(root, scope, request, pages, false, session, parent, agent)
+}
+
+// deliverMemory は選んだ記事を、既に届けた版を除いて 2 件まで短い引用にし、配送を記録して文を返す。
+// feedback: 届ける記事が無い時に、似た依頼の未整理の原文を一会話返すか(依頼との近さで選ぶ時だけ)
+func deliverMemory(root, scope, request string, pages []notebook.Page, feedback bool, session *hookSession, parent, agent string) (string, error) {
 	seen := map[string]bool{}
 	for _, previous := range session.Memories {
 		if age := time.Since(previous.At); age >= 0 && age < time.Hour {
@@ -54,7 +81,7 @@ func memoryContextFor(root, scope, request string, session *hookSession, parent,
 		keys = append(keys, key)
 	}
 	// 教訓がまだ無い話題だけ、似た依頼の原文を一会話返す。整理済みの教訓と重ねない。
-	if len(pages) == 0 {
+	if len(pages) == 0 && feedback {
 		pending, err := (notebook.Book{Root: root, Scope: scope}).PendingSources()
 		if err != nil {
 			return "", err

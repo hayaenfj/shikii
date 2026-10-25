@@ -100,7 +100,7 @@ func cmdHook(args []string) error {
 		return cmdHookPlan(args[1:])
 	case "variants":
 		return cmdHookVariants(args[1:])
-	case "user-prompt-submit", "stop", "subagent-start":
+	case "user-prompt-submit", "stop", "subagent-start", "agent-task":
 		// hook は作業を止めない: 何があっても exit 0。理由は hook.log に
 		if err := runHookEvent(args[0]); err != nil {
 			hookLog(err.Error())
@@ -110,20 +110,22 @@ func cmdHook(args []string) error {
 		// 古い版が settings に残した event。何もせず黙る(次の `shikii hook install --yes` が外す)
 		return nil
 	}
-	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start)", args[0])
+	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start | agent-task)", args[0])
 }
 
 // ---------------------------------------------------------------- Claude Code / Codex の JSON
 
 // hookInput は Claude Code と Codex が stdin に渡す JSON のうち使う所(鍵は両方同じ)。
 type hookInput struct {
-	SessionID            string `json:"session_id"`
-	AgentID              string `json:"agent_id"`   // 付いていれば人の依頼ではない(サブエージェント等)。依頼の控えを変えない
-	AgentType            string `json:"agent_type"` // SubagentStart: サブエージェントの種類(Explore など)
-	CWD                  string `json:"cwd"`
-	Prompt               string `json:"prompt"`
-	StopHookActive       bool   `json:"stop_hook_active"`
-	LastAssistantMessage string `json:"last_assistant_message"`
+	SessionID            string          `json:"session_id"`
+	AgentID              string          `json:"agent_id"`   // 付いていれば人の依頼ではない(サブエージェント等)。依頼の控えを変えない
+	AgentType            string          `json:"agent_type"` // SubagentStart: サブエージェントの種類(Explore など)
+	CWD                  string          `json:"cwd"`
+	Prompt               string          `json:"prompt"`
+	StopHookActive       bool            `json:"stop_hook_active"`
+	LastAssistantMessage string          `json:"last_assistant_message"`
+	ToolName             string          `json:"tool_name"`  // PreToolUse: 使おうとしているツール(Agent / Task だけを見る)
+	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: そのツールの入力(Agent なら prompt と subagent_type)
 }
 
 // hookOut は hook が返すもの。空なら何も出さない(判断なし)。許可の判定(allow / ask / deny)は出さない。
@@ -198,8 +200,23 @@ type hookSession struct {
 	HabitsNoticed     bool             `json:"habits_noticed,omitempty"`      // 作業記録と決まりの残し方を、このセッションで伝えた(0.8.1)
 	ClassifyAsked     []string         `json:"classify_asked,omitempty"`      // 依頼前に種類と場面を付けるよう頼んだ記事(作法の検査 wiki-kinds が Stop で見る。0.9.0)
 	ClassifyAskedTurn string           `json:"classify_asked_turn,omitempty"` // ClassifyAsked を頼んだターン
+	SubagentTasks     []subagentTask   `json:"subagent_tasks,omitempty"`      // Agent ツールに渡した仕事の文(SubagentStart がその文で教訓を選ぶ。0.9.1)
 	At                time.Time        `json:"at"`
 }
+
+// subagentTask は、親が Agent ツールで子のエージェントに渡した仕事(PreToolUse で控え、SubagentStart で同じ種類の古い物から 1 つ使う)。
+// 同じ種類の子を一度に複数起こすと、どの文がどの子の物かは順番でしか分からない(親の仕事の中の文なので、取り違えても親の依頼で選ぶよりは近い)
+type subagentTask struct {
+	Type   string    `json:"type"`
+	Prompt string    `json:"prompt"`
+	At     time.Time `json:"at"`
+}
+
+// subagentTaskTTL より古い控えは使わない(Agent ツールが断られて子が始まらなかった分を、後の別の子に使わない)。subagentTaskMax 件まで持つ
+const (
+	subagentTaskTTL = 10 * time.Minute
+	subagentTaskMax = 8
+)
 
 type pendingItem struct {
 	Trace string    `json:"trace"`
@@ -569,7 +586,9 @@ func runHookEvent(event string) error {
 	if err != nil {
 		return err
 	}
-	ensureModel(common) // 無ければ裏で起こす(この turn は記録が付かないだけ。待たない)
+	if event != "agent-task" {
+		ensureModel(common) // 無ければ裏で起こす(この turn は記録が付かないだけ。待たない)。子への仕事を控えるだけの時は起こさない
+	}
 	// モデルの呼び出しは錠の外(控えの写しを読むだけ)。控えへの変更は muts にまとめ、錠の中で読み直した控えに当てる
 	snapshot := loadSession(agent, in.SessionID)
 	var out hookOut
@@ -582,7 +601,9 @@ func runHookEvent(event string) error {
 		out, muts, err = hookStop(agent, &in, snapshot)
 		muts = append(muts, func(s *hookSession) { summary = stopSummary(agent, s) }) // 答え待ちの要約は、このターンの判定を控えに足した後の控えで数える
 	case "subagent-start":
-		out, err = hookSubagentStart(agent, &in, snapshot) // 親の控えは変えない(muts 無し)
+		out, muts, err = hookSubagentStart(agent, &in, snapshot) // 親の控えは、使った子への仕事の控えを外すだけ
+	case "agent-task":
+		muts = hookAgentTask(&in) // 何も出さない(ツールを止めない)
 	}
 	if len(muts) > 0 {
 		if serr := updateSession(agent, in.SessionID, func(sess *hookSession) {
@@ -696,6 +717,8 @@ func hookEventName(event string) string {
 		return "UserPromptSubmit"
 	case "subagent-start":
 		return "SubagentStart"
+	case "agent-task":
+		return "PreToolUse"
 	}
 	return "Stop"
 }
@@ -714,29 +737,94 @@ func isNotification(prompt string) bool {
 	return strings.Contains(head, "[SYSTEM NOTIFICATION - NOT USER INPUT]")
 }
 
-// hookSubagentStart は、サブエージェント(Claude Code の Agent ツール)が始まる時に、親の依頼に近い教訓を同じ形で届ける。
-// サブエージェントの依頼文は UserPromptSubmit に来ないので、0.7.2 まではここに何も届いていなかった(2026-10-23 の実験で判明)。
-// 親のセッションの控え(依頼・届けた記憶の版)は変えず、配送は親とは別の ID(ターンとサブエージェントのハッシュ)で記録する。
-// 親の依頼がまだ無ければ何も出さない。判定(2 問)はしない。
-func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hookOut, error) {
+// hookSubagentStart は、サブエージェント(Claude Code の Agent ツール)が始まる時に教訓を同じ形で届ける。
+// サブエージェントの依頼文は UserPromptSubmit にも SubagentStart にも来ない。0.9.1 から、親が Agent ツールに渡した仕事の文を
+// PreToolUse(agent-task)で控え、同じ種類の子の控えのうち古い物で教訓を選ぶ。控えが無ければ、どの依頼にも効く決まり(場面が「いつも」)だけを届ける。
+// 0.9.0 までは親の依頼で選んでいて、子の仕事に関係ない教訓が届いた(実測: 子への配送 37 回のうち役立ったのは 4 回)。
+// 配送は親とは別の ID(ターンとサブエージェントのハッシュ)で記録する。親の依頼がまだ無ければ何も出さない。判定(2 問)はしない。
+func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	if snapshot.Request == "" || snapshot.Scope == "" || snapshot.TurnID == "" {
-		return hookOut{}, nil
-	}
-	sub := hookSession{Scope: snapshot.Scope} // 届けた版の控えは持たない: 親が受け取っていてもサブエージェントには届ける
-	context, err := memoryContextFor(agent, snapshot.Scope, snapshot.Request, &sub, snapshot.TurnID, in.AgentID)
-	if err != nil {
-		return hookOut{}, err
-	}
-	// 報告の置き場はサブエージェントにも届ける(監査・調査の報告を repo の中に散らかさない。0.8.1)
-	if context == "" {
-		return hookOut{Context: subagentHandoffNotice}, nil
+		return hookOut{}, nil, nil
 	}
 	kind := in.AgentType
 	if kind == "" {
 		kind = "subagent"
 	}
-	head := "shikii: このサブエージェント(" + kind + ")に、親の依頼「" + cut(snapshot.Request, 80) + "」に近い記憶を届けます。"
-	return hookOut{Context: joinLines(joinLines(head, context), subagentHandoffNotice)}, nil
+	task, ok := pickSubagentTask(snapshot.SubagentTasks, in.AgentType, time.Now())
+	var muts []func(*hookSession)
+	if ok {
+		muts = append(muts, func(s *hookSession) { s.SubagentTasks = dropSubagentTask(s.SubagentTasks, task) })
+	}
+	sub := hookSession{Scope: snapshot.Scope} // 届けた版の控えは持たない: 親が受け取っていてもサブエージェントには届ける
+	var context, head string
+	var err error
+	if ok {
+		context, err = memoryContextFor(agent, snapshot.Scope, cut(task.Prompt, requestMax), &sub, snapshot.TurnID, in.AgentID)
+		head = "shikii: このサブエージェント(" + kind + ")に、頼まれた仕事「" + cut(strings.Join(strings.Fields(task.Prompt), " "), 80) + "」に近い記憶を届けます。"
+	} else {
+		context, err = alwaysContextFor(agent, snapshot.Scope, snapshot.Request, &sub, snapshot.TurnID, in.AgentID)
+		head = "shikii: このサブエージェント(" + kind + ")に、どの依頼にも効く決まりを届けます。"
+	}
+	if err != nil {
+		return hookOut{}, muts, err
+	}
+	// 報告の置き場はサブエージェントにも届ける(監査・調査の報告を repo の中に散らかさない。0.8.1)
+	if context == "" {
+		return hookOut{Context: subagentHandoffNotice}, muts, nil
+	}
+	return hookOut{Context: joinLines(joinLines(head, context), subagentHandoffNotice)}, muts, nil
+}
+
+// hookAgentTask は PreToolUse(Agent / Task ツールだけ)で、子のエージェントに渡す仕事の文と種類を親の控えに足す。ツールは止めない
+func hookAgentTask(in *hookInput) []func(*hookSession) {
+	if in.ToolName != "Agent" && in.ToolName != "Task" {
+		return nil
+	}
+	var input struct {
+		Prompt       string `json:"prompt"`
+		SubagentType string `json:"subagent_type"`
+	}
+	if json.Unmarshal(in.ToolInput, &input) != nil || strings.TrimSpace(input.Prompt) == "" {
+		return nil
+	}
+	task := subagentTask{Type: input.SubagentType, Prompt: cut(strings.TrimSpace(input.Prompt), requestMax), At: time.Now().UTC()}
+	return []func(*hookSession){func(s *hookSession) {
+		kept := []subagentTask{}
+		for _, t := range s.SubagentTasks {
+			if time.Since(t.At) < subagentTaskTTL {
+				kept = append(kept, t)
+			}
+		}
+		kept = append(kept, task)
+		if len(kept) > subagentTaskMax {
+			kept = kept[len(kept)-subagentTaskMax:]
+		}
+		s.SubagentTasks = kept
+	}}
+}
+
+// pickSubagentTask は、始まった子と同じ種類の控えのうち、古すぎない最も古い物を選ぶ。種類を書かずに起こした子は general-purpose として始まる
+func pickSubagentTask(tasks []subagentTask, agentType string, now time.Time) (subagentTask, bool) {
+	for _, t := range tasks {
+		typ := t.Type
+		if typ == "" {
+			typ = "general-purpose"
+		}
+		if typ == agentType && now.Sub(t.At) < subagentTaskTTL {
+			return t, true
+		}
+	}
+	return subagentTask{}, false
+}
+
+// dropSubagentTask は使った控えを 1 つだけ外す(同じ文の控えが 2 つあれば 1 つ残す)
+func dropSubagentTask(tasks []subagentTask, used subagentTask) []subagentTask {
+	for i, t := range tasks {
+		if t.Type == used.Type && t.Prompt == used.Prompt && t.At.Equal(used.At) {
+			return append(append([]subagentTask{}, tasks[:i]...), tasks[i+1:]...)
+		}
+	}
+	return tasks
 }
 
 // habitsNotice は作業規則が無くても届く作法の一言(セッションに 1 回)。subagentHandoffNotice はサブエージェントへの報告の置き場。
@@ -1560,14 +1648,16 @@ func ensurePage(root string) {
 
 // ---------------------------------------------------------------- install / uninstall
 
-// hookEvent は settings に足す 1 つ。command は PATH の shikii(MCP の設定と同じ流儀)。matcher は無い(どちらの event もツールを選ばない)。
+// hookEvent は settings に足す 1 つ。command は PATH の shikii(MCP の設定と同じ流儀)。matcher はツールを選ぶ event(PreToolUse)だけ。
 type hookEvent struct {
 	event, cmd string
 	timeout    int
-	claudeOnly bool // Codex に無い event(SubagentStart)は Claude Code の設定にだけ足す
+	claudeOnly bool   // Codex に無い event(SubagentStart、子のエージェントの PreToolUse)は Claude Code の設定にだけ足す
+	matcher    string // PreToolUse で見るツール(Agent / Task だけ。他のツールでは hook を起こさない)
 }
 
-// hookEvents は 3 つ: 考える前(UserPromptSubmit)、考え終わった後(Stop)、サブエージェントが始まる時(SubagentStart。Claude Code だけ)。
+// hookEvents は 4 つ: 考える前(UserPromptSubmit)、考え終わった後(Stop)、サブエージェントが始まる時(SubagentStart。Claude Code だけ)、
+// サブエージェントを起こす直前(PreToolUse の Agent / Task だけ。子に渡す仕事の文を控える。Claude Code だけ。0.9.1)。
 // command は今の実行ファイルの絶対パス + " hook <event>": エージェントの shell の PATH に `shikii` が無くても(go install 直後の ~/go/bin など)動く。
 // 実行ファイルが動いたら `shikii hook install --yes` を流し直せば、古いパスの handler は外れて新しいものが入る。
 func hookEvents() []hookEvent {
@@ -1579,9 +1669,10 @@ func hookEvents() []hookEvent {
 		exe = p
 	}
 	return []hookEvent{
-		{"UserPromptSubmit", exe + " hook user-prompt-submit", hookTimeout, false},
-		{"Stop", exe + " hook stop", hookTimeout + 5, false},
-		{"SubagentStart", exe + " hook subagent-start", hookTimeout, true}, // サブエージェントにも親の依頼に近い教訓を届ける(0.7.3)
+		{"UserPromptSubmit", exe + " hook user-prompt-submit", hookTimeout, false, ""},
+		{"Stop", exe + " hook stop", hookTimeout + 5, false, ""},
+		{"SubagentStart", exe + " hook subagent-start", hookTimeout, true, ""},    // サブエージェントにも教訓を届ける(0.7.3)
+		{"PreToolUse", exe + " hook agent-task", hookTimeout, true, "Agent|Task"}, // 子に渡す仕事の文を控える(0.9.1)
 	}
 }
 
@@ -1886,6 +1977,9 @@ func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) 
 				continue
 			}
 			group := map[string]any{"hooks": []any{map[string]any{"type": "command", "command": ev.cmd, "timeout": ev.timeout}}}
+			if ev.matcher != "" {
+				group["matcher"] = ev.matcher
+			}
 			hooks[ev.event] = append(groups, group)
 			changed = true
 		}

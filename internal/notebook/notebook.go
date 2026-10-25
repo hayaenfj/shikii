@@ -427,6 +427,46 @@ func (b Book) Live() ([]Page, error) {
 // RecallCandidates は自動配送の候補の上限。届けるのは呼ぶ側が既に届けた版を除いてから 2 件(監査 2026-10-23: 除く前に切ると席を塞ぐ)。
 const RecallCandidates = 6
 
+// AlwaysScenes は「どの依頼にも効く決まり」の場面の言い方(手引きが決めた日本語と英語)。
+var AlwaysScenes = []string{"いつも", "always"}
+
+// IsAlways は場面が AlwaysScenes のどれかか(英語は大文字小文字を見ない)。
+func IsAlways(scene string) bool {
+	for _, a := range AlwaysScenes {
+		if strings.EqualFold(strings.TrimSpace(scene), a) {
+			return true
+		}
+	}
+	return false
+}
+
+// AlwaysRules は、場面が「いつも」の守る決まり(rule)を返す(並びは記事を読んだ順)。読めない記事・出典の欠けた記事・置き換えられた記事は返さない。
+// 仕事の文の分からないサブエージェントに届ける物(0.9.1): 依頼との近さで選べないので、どの依頼にも効く決まりだけにする
+func (b Book) AlwaysRules() ([]Page, error) {
+	pages, _, err := b.pages()
+	if err != nil {
+		return nil, err
+	}
+	superseded := map[string]bool{}
+	valid := []Page{}
+	for _, p := range pages {
+		if len(b.sourceIssues(p)) > 0 {
+			continue
+		}
+		for _, id := range p.Replaces {
+			superseded[id] = true
+		}
+		valid = append(valid, p)
+	}
+	out := []Page{}
+	for _, p := range valid {
+		if !superseded[p.ID] && p.Kind == "rule" && IsAlways(p.Scene) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 func (b Book) Recall(query string) ([]Page, error) {
 	v, err := b.query(query, true)
 	return v.Lessons, err

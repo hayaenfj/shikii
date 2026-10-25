@@ -10,53 +10,123 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// サブエージェント(Claude Code の Agent ツール)の依頼文は UserPromptSubmit に来ないので、0.7.2 までは教訓が一切届かなかった。
-// 0.7.3: SubagentStart で、親の依頼に近い教訓を同じ形で届ける。親のセッションの控え(依頼・届けた記憶の版)は変えず、
-// 配送は親とは別の ID で記録する(振り返りで helpful / unused を付けられる)。親の依頼が無ければ何も出さない。
-func TestSubagentStartDeliversTheParentRequestsLessons(t *testing.T) {
-	st, scope, _, draft, _ := memoryEffectFixture(t)
-	if out := runHook(t, "subagent-start", map[string]any{"session_id": "sub", "cwd": scope, "agent_id": "agent-1", "agent_type": "Explore"}); out != "" {
-		t.Fatalf("親の依頼がまだ無ければ何も届けない: %s", out)
+// startSubagent は、親が Agent ツールで子に仕事を渡し(PreToolUse の agent-task)、その子が始まる(SubagentStart)までを流す(0.9.1)
+func startSubagent(t *testing.T, session, scope, agentID, agentType, prompt string) string {
+	t.Helper()
+	if out := runHook(t, "agent-task", map[string]any{"session_id": session, "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"description": "d", "prompt": prompt, "subagent_type": agentType}}); out != "" {
+		t.Fatalf("子への仕事を控える hook は何も出さない(ツールを止めない): %q", out)
 	}
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub", "cwd": scope, "prompt": "README の導入手順を更新してください"})
-	before := loadSession(st.Dir, "sub")
-	out := runHook(t, "subagent-start", map[string]any{"session_id": "sub", "cwd": scope, "agent_id": "agent-1", "agent_type": "Explore"})
+	return runHook(t, "subagent-start", map[string]any{"session_id": session, "cwd": scope, "agent_id": agentID, "agent_type": agentType})
+}
+
+func subagentContext(t *testing.T, out string) string {
+	t.Helper()
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
 		t.Fatalf("SubagentStart は JSON を返す: %q", out)
 	}
 	hs, _ := parsed["hookSpecificOutput"].(map[string]any)
+	if hs["hookEventName"] != "SubagentStart" {
+		t.Fatalf("SubagentStart の文脈で返す: %s", out)
+	}
 	ctx, _ := hs["additionalContext"].(string)
-	if hs["hookEventName"] != "SubagentStart" || !strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, "サブエージェント") {
-		t.Fatalf("親の依頼に近い教訓を SubagentStart の文脈で届ける: %s", out)
+	return ctx
+}
+
+// サブエージェント(Claude Code の Agent ツール)の依頼文は UserPromptSubmit にも SubagentStart にも来ない。0.7.3 から SubagentStart で教訓を届ける。
+// 0.9.1: 親が Agent ツールに渡した仕事の文を PreToolUse で控え、その文で選ぶ(親の依頼で選ぶと、子の仕事に関係ない教訓が届いた)。
+// 親のセッションの控え(依頼・届けた記憶の版)は変えず、配送は親とは別の ID で記録する(振り返りで helpful / unused を付けられる)。親の依頼が無ければ何も出さない。
+func TestSubagentStartDeliversLessonsForItsOwnTask(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	if out := runHook(t, "subagent-start", map[string]any{"session_id": "sub", "cwd": scope, "agent_id": "agent-1", "agent_type": "Explore"}); out != "" {
+		t.Fatalf("親の依頼がまだ無ければ何も届けない: %s", out)
+	}
+	// 親の依頼は README と無関係。子には README の仕事を渡す
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub", "cwd": scope, "prompt": "画面の色を直して、監査も頼みます"})
+	before := loadSession(st.Dir, "sub")
+	ctx := subagentContext(t, startSubagent(t, "sub", scope, "agent-1", "Explore", "README の導入手順を更新してください"))
+	if !strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, "頼まれた仕事") {
+		t.Fatalf("子に渡した仕事の文に近い教訓を届ける: %s", ctx)
 	}
 	after := loadSession(st.Dir, "sub")
-	if after.Request != before.Request || after.TurnID != before.TurnID || len(after.Memories) != len(before.Memories) {
-		t.Fatalf("親の控えは変えない: before=%+v after=%+v", before, after)
+	if after.Request != before.Request || after.TurnID != before.TurnID || len(after.Memories) != len(before.Memories) || len(after.SubagentTasks) != 0 {
+		t.Fatalf("親の控えは、使った子への仕事を外すほかは変えない: before=%+v after=%+v", before, after)
 	}
 	deliveries, err := st.MemoryDeliveries(scope)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := map[string]bool{}
-	for _, d := range deliveries {
-		ids[d.ID] = true
-	}
-	if len(deliveries) != 2 || len(ids) != 2 || !ids[before.TurnID] {
-		t.Fatalf("親への配送とサブエージェントへの配送を別の ID で記録する: %+v", deliveries)
-	}
-	// 同じサブエージェントがもう一度始まっても落ちない(同じ ID・同じ引用は再保存しない)
-	if out2 := runHook(t, "subagent-start", map[string]any{"session_id": "sub", "cwd": scope, "agent_id": "agent-1", "agent_type": "Explore"}); !strings.Contains(out2, draft.Lesson) {
-		t.Fatalf("二度目も届ける: %s", out2)
-	}
 	var sub store.MemoryDelivery
 	for _, d := range deliveries {
-		if d.ID != before.TurnID {
+		if d.Parent == before.TurnID {
 			sub = d
 		}
 	}
-	if len(sub.Quotes) == 0 || sub.Quotes[0].ID != draft.ID {
-		t.Fatalf("サブエージェントへの配送にも引用の版が残る: %+v", sub)
+	if sub.Agent != "agent-1" || sub.Request != "README の導入手順を更新してください" || len(sub.Quotes) == 0 || sub.Quotes[0].ID != draft.ID {
+		t.Fatalf("子への配送を、親とは別の ID で、子の仕事の文と引用の版を付けて記録する: %+v", deliveries)
+	}
+	// 同じ子がもう一度始まっても落ちない(仕事を渡し直せば、同じ ID・同じ引用は再保存しない)
+	if ctx2 := subagentContext(t, startSubagent(t, "sub", scope, "agent-1", "Explore", "README の導入手順を更新してください")); !strings.Contains(ctx2, draft.Lesson) {
+		t.Fatalf("二度目も届ける: %s", ctx2)
+	}
+}
+
+// 0.9.1: 子への仕事の控えが無い(Codex のように PreToolUse が来ない、種類が違う、古すぎる)子には、親の依頼で選ばず、
+// どの依頼にも効く決まり(場面が「いつも」の rule)だけを届ける。控えは同じ種類の古い物から 1 つずつ使う
+func TestSubagentWithoutItsTaskGetsOnlyAlwaysRules(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	always := draft
+	always.ID, always.Title, always.Lesson, always.Kind, always.Scene, always.AppliesTo = "", "見える文は日本語", "報告も含めて見える文は日本語で書く。", "rule", "いつも", "どの依頼でも"
+	page, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(always)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s4", "cwd": scope, "prompt": "README の導入手順を更新してください"})
+	ctx := subagentContext(t, runHook(t, "subagent-start", map[string]any{"session_id": "s4", "cwd": scope, "agent_id": "a1", "agent_type": "Explore"}))
+	if !strings.Contains(ctx, always.Lesson) || strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, "どの依頼にも効く決まり") {
+		t.Fatalf("仕事の控えが無い子には、親の依頼に近い教訓ではなく「いつも」の決まりだけ: %s", ctx)
+	}
+	// 別の種類の子への控えは使わない。同じ種類の控えは古い物から使う
+	runHook(t, "agent-task", map[string]any{"session_id": "s4", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": "README の導入手順を更新してください", "subagent_type": "Plan"}})
+	// WebFetch も入力に prompt を持つ。Agent / Task 以外のツールは、prompt があっても控えない
+	runHook(t, "agent-task", map[string]any{"session_id": "s4", "cwd": scope, "tool_name": "WebFetch", "tool_input": map[string]any{"url": "https://example.com", "prompt": "README の導入手順を更新してください"}})
+	if ctx := subagentContext(t, runHook(t, "subagent-start", map[string]any{"session_id": "s4", "cwd": scope, "agent_id": "a2", "agent_type": "Explore"})); strings.Contains(ctx, draft.Lesson) {
+		t.Fatalf("別の種類(Plan)の子への仕事を Explore の子に使わない: %s", ctx)
+	}
+	if got := loadSession(st.Dir, "s4").SubagentTasks; len(got) != 1 || got[0].Type != "Plan" {
+		t.Fatalf("Agent ツールの仕事だけを控え(WebFetch は控えない)、使っていない控えは残す: %+v", got)
+	}
+	if ctx := subagentContext(t, runHook(t, "subagent-start", map[string]any{"session_id": "s4", "cwd": scope, "agent_id": "a3", "agent_type": "Plan"})); !strings.Contains(ctx, draft.Lesson) {
+		t.Fatalf("同じ種類の子には控えた仕事の文で選ぶ: %s", ctx)
+	}
+	// 種類を書かずに起こした子は general-purpose として始まる
+	runHook(t, "agent-task", map[string]any{"session_id": "s4", "cwd": scope, "tool_name": "Task", "tool_input": map[string]any{"prompt": "README の導入手順を更新してください"}})
+	if ctx := subagentContext(t, runHook(t, "subagent-start", map[string]any{"session_id": "s4", "cwd": scope, "agent_id": "a4", "agent_type": "general-purpose"})); !strings.Contains(ctx, draft.Lesson) {
+		t.Fatalf("種類の無い控えは general-purpose の子に使う: %s", ctx)
+	}
+	_ = page
+}
+
+// 0.9.1: 経緯(history)の記事は自動では届けない(なぜそうなったかの話。探した時に読む)。種類の無い前の版の記事は今までどおり届ける
+func TestHistoryLessonsAreNotDeliveredAutomatically(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	hist := draft
+	hist.ID, hist.Title, hist.Lesson, hist.Kind, hist.Scene = "", "README の導入手順を変えた経緯", "README の導入手順は 2026-10 に書き直した経緯がある。", "history", "README を直す時"
+	if _, err := book.Ingest(hist); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := memoryContext(st.Dir, scope, "README の導入手順を更新してください", &hookSession{TurnID: "bbbbbbbbbbbbbbbb"})
+	if err != nil || !strings.Contains(ctx, draft.Lesson) || strings.Contains(ctx, hist.Lesson) {
+		t.Fatalf("経緯の記事は自動で届けず、守る決まりは届ける: %v %q", err, ctx)
+	}
+	v, err := book.Query("README の導入手順")
+	found := false
+	for _, p := range v.Lessons {
+		found = found || p.Lesson == hist.Lesson
+	}
+	if err != nil || !found {
+		t.Fatalf("経緯の記事も、探せば読める: %v %+v", err, v.Lessons)
 	}
 }
 
@@ -65,7 +135,7 @@ func TestSubagentDeliveriesAreAssessedWithTheParentAndSurviveRevisions(t *testin
 	st, scope, h, draft, _ := memoryEffectFixture(t)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub2", "cwd": scope, "prompt": "README の導入手順を更新してください"})
 	parent := loadSession(st.Dir, "sub2").TurnID
-	runHook(t, "subagent-start", map[string]any{"session_id": "sub2", "cwd": scope, "agent_id": "agent-x", "agent_type": "Explore"})
+	startSubagent(t, "sub2", scope, "agent-x", "Explore", "README の導入手順を更新してください")
 	deliveries, _ := st.MemoryDeliveries(scope)
 	var sub store.MemoryDelivery
 	for _, d := range deliveries {
@@ -81,7 +151,7 @@ func TestSubagentDeliveriesAreAssessedWithTheParentAndSurviveRevisions(t *testin
 	if _, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(draft); err != nil {
 		t.Fatal(err)
 	}
-	out := runHook(t, "subagent-start", map[string]any{"session_id": "sub2", "cwd": scope, "agent_id": "agent-x", "agent_type": "Explore"})
+	out := startSubagent(t, "sub2", scope, "agent-x", "Explore", "README の導入手順を更新してください")
 	if !strings.Contains(out, "変更後も確認する") {
 		t.Fatalf("版が変わった後の再開始にも届く: %q", out)
 	}
@@ -139,7 +209,7 @@ func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
 	st, scope, h, draft, revision := memoryEffectFixture(t)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub3", "cwd": scope, "prompt": "README の導入手順を更新してください"})
 	parent := loadSession(st.Dir, "sub3").TurnID
-	runHook(t, "subagent-start", map[string]any{"session_id": "sub3", "cwd": scope, "agent_id": "agent-y", "agent_type": "Explore"})
+	startSubagent(t, "sub3", scope, "agent-y", "Explore", "README の導入手順を更新してください")
 	runHook(t, "stop", map[string]any{"session_id": "sub3", "cwd": scope, "last_assistant_message": "更新しました。"})
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub3", "cwd": scope, "prompt": "次は画面の色を直して。"})
 	deliveries, _ := st.MemoryDeliveries(scope)

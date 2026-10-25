@@ -737,7 +737,7 @@ func TestHookAuditGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 3 {
+	if cmds := hookCommands(settings); len(cmds) != 4 {
 		t.Fatalf("an empty settings.json must be treated as {}: %v", cmds)
 	}
 }
@@ -767,11 +767,33 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(settings)
-	if len(cmds) != 3 || !strings.HasSuffix(cmds[0], " hook stop") || !strings.HasSuffix(cmds[1], " hook subagent-start") || !strings.HasSuffix(cmds[2], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
+	if len(cmds) != 4 || !strings.HasSuffix(cmds[0], " hook agent-task") || !strings.HasSuffix(cmds[1], " hook stop") || !strings.HasSuffix(cmds[2], " hook subagent-start") || !strings.HasSuffix(cmds[3], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
 		t.Fatalf("hooks after install must run the binary by its absolute path: %v", cmds)
 	}
+	// 子への仕事を控える hook(0.9.1)は PreToolUse の Agent / Task だけに付き、他の人の PreToolUse(rtk の Bash)の組には入らない
+	{
+		var cfg map[string]any
+		b, _ := os.ReadFile(settings)
+		_ = json.Unmarshal(b, &cfg)
+		agentGroup, rtkGroup := false, false
+		for _, g := range cfg["hooks"].(map[string]any)["PreToolUse"].([]any) {
+			gm := g.(map[string]any)
+			for _, h := range gm["hooks"].([]any) {
+				c := h.(map[string]any)["command"].(string)
+				if strings.HasSuffix(c, " hook agent-task") {
+					agentGroup = gm["matcher"] == "Agent|Task" && len(gm["hooks"].([]any)) == 1
+				}
+				if c == "rtk hook claude" {
+					rtkGroup = gm["matcher"] == "Bash" && len(gm["hooks"].([]any)) == 1
+				}
+			}
+		}
+		if !agentGroup || !rtkGroup {
+			t.Fatalf("agent-task must be its own PreToolUse group matching Agent|Task, and the other group must stay as it was:\n%s", b)
+		}
+	}
 	// Codex には SubagentStart が無いので 2 つだけ(0.7.3)
-	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 2 || strings.Contains(strings.Join(codex, " "), "subagent-start") {
+	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 2 || strings.Contains(strings.Join(codex, " "), "subagent-start") || strings.Contains(strings.Join(codex, " "), "agent-task") {
 		t.Fatalf("Codex gets UserPromptSubmit and Stop only: %v", codex)
 	}
 	b, _ := os.ReadFile(settings)
@@ -801,7 +823,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 3 {
+	if cmds := hookCommands(settings); len(cmds) != 4 {
 		t.Fatalf("second install must not duplicate: %v", cmds)
 	}
 	if !strings.Contains(out, "already there") {
@@ -822,7 +844,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 3 || !strings.Contains(out, "hooks added") {
+	if cmds := hookCommands(settings); len(cmds) != 4 || !strings.Contains(out, "hooks added") {
 		t.Fatalf("install must remove the old pre-tool-use hook: %v\n%s", cmds, out)
 	}
 	if b, _ = os.ReadFile(settings); !strings.Contains(string(b), "rtk hook claude") || strings.Contains(string(b), "Bash|Edit") {
