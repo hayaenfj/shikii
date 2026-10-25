@@ -324,3 +324,37 @@ func (b Book) fromOtherPath(dir, id string) bool {
 	_, err = b.readObservation(dir, id)
 	return err != nil
 }
+
+// SourceHeadBytes is how much of a pending source's body the reflection and the wiki listing show.
+// A source has no size limit of its own, so a long one is listed by its head; the whole body is read with wiki query <source id>.
+const SourceHeadBytes = 1500
+
+// ObservationHead is a pending source as listed for sorting: everything but the body, the body's length, and its head.
+type ObservationHead struct {
+	ID           string    `json:"id"`
+	Kind         string    `json:"kind"`
+	Title        string    `json:"title"`
+	Content      string    `json:"content"`
+	ContentBytes int       `json:"content_bytes"`
+	ContentCut   bool      `json:"content_cut,omitempty"` // true: read the whole body with wiki query <id>
+	Reference    string    `json:"reference"`
+	Version      string    `json:"version"`
+	ObservedAt   time.Time `json:"observed_at"`
+}
+
+// Heads lists sources by their head.
+func Heads(list []Observation) []ObservationHead {
+	out := make([]ObservationHead, 0, len(list))
+	for _, o := range list {
+		h := ObservationHead{ID: o.ID, Kind: o.Kind, Title: o.Title, Content: o.Content, ContentBytes: len(o.Content), Reference: o.Reference, Version: o.Version, ObservedAt: o.ObservedAt}
+		if len(h.Content) > SourceHeadBytes {
+			end := SourceHeadBytes
+			for end > 0 && !utf8.RuneStart(h.Content[end]) { // do not cut a character in half
+				end--
+			}
+			h.Content, h.ContentCut = h.Content[:end], true
+		}
+		out = append(out, h)
+	}
+	return out
+}

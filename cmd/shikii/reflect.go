@@ -45,7 +45,7 @@ type reflectView struct {
 	Lessons      []notebook.Page            `json:"lessons"`
 	Corrections  any                        `json:"human_corrections"`
 	MemoryEffect store.MemorySummary        `json:"memory_effect"`
-	Observations []notebook.Observation     `json:"observations,omitempty"`
+	Observations []notebook.ObservationHead `json:"observations,omitempty"`
 	Maintenance  []notebook.MaintenanceTask `json:"maintenance,omitempty"`
 }
 
@@ -125,7 +125,7 @@ func reflectQuery(root, scope string) (reflectView, error) {
 	if err != nil {
 		return v, err
 	}
-	v.Observations = observations
+	v.Observations = notebook.Heads(observations)
 	if len(v.Observations) > 2-len(v.Sources) {
 		v.Observations = v.Observations[:2-len(v.Sources)]
 	}

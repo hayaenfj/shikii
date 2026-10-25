@@ -114,7 +114,7 @@ type View struct {
 	Pending      []store.Feedback  `json:"pending_sources"`
 	Issues       []Issue           `json:"issues"`
 	Matches      []Match           `json:"matches,omitempty"`
-	Observations []Observation     `json:"observations,omitempty"`
+	Observations []ObservationHead `json:"observations,omitempty"`
 	Maintenance  []MaintenanceTask `json:"maintenance,omitempty"`
 	Search       *SearchResult     `json:"search,omitempty"`
 	NextCursor   string            `json:"next_cursor,omitempty"`
@@ -574,10 +574,11 @@ func (b Book) query(query string, recall bool) (View, error) {
 		limit = RecallCandidates // the caller (memoryContext) cuts to 2 after removing revisions it already delivered
 	}
 	if query == "" && !recall {
-		v.Observations, err = b.PendingObservations()
+		pending, err := b.PendingObservations()
 		if err != nil {
 			return v, err
 		}
+		v.Observations = Heads(pending)
 		v.Maintenance, err = b.Maintenance()
 		if err != nil {
 			return v, err
