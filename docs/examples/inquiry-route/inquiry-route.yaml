@@ -25,7 +25,7 @@ thresholds:
   act: 0.75
   ask: 0.6
 eval:
-  min_n: 20   # 試しの件数(手持ちの 22 件に合わせた)。業務では 50 以上に戻す
+  min_n: 20   # a trial count (set to fit the 22 items at hand). Put it back to 50 or more for business use
 display:
   ja:
     title: 問い合わせメールの振り分け

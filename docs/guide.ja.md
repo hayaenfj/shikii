@@ -2,7 +2,7 @@
 
 shikii は、エージェントをあなたのプロジェクトに合わせて育てる道具です。そのプロジェクトで言われたこと・決めたこと・確かめたことを `.shikii/` に貯め、次の仕事の前にエージェントへ渡します。機械で確かめられる訂正は止める検査にし、作業の前と後の手順を確かめ、作業の跡を作業記録に残します。正解が貯まれば、判断を人に聞かずに任せてよい線を引きます。名前は閾値の「閾」で、コマンドの名前も `shikii`。
 
-この手引きは、短い[日本語の README](readme/README_ja.md) で省いたことを全部書きます。全コマンド、HTTP API、モデルのつなぎ方、業務の判定の作り方です。英語の手引きは [guide.md](guide.md)、設計は [decision-ops-framework.md](decision-ops-framework.md)、構造の説明は [architecture.md](architecture.md)。モジュールは `github.com/hayaenfj/shikii`、ライセンスは Apache-2.0 OR MIT(どちらかを選択。[`LICENSE`](../LICENSE))。
+この手引きは、短い[日本語の README](readme/README_ja.md) で省いたことを全部書きます。全コマンド、HTTP API、モデルのつなぎ方、業務の判定の作り方です。英語の手引きは [guide.md](guide.md)、設計は [decision-ops-framework.ja.md](decision-ops-framework.ja.md)、構造の説明は [architecture.ja.md](architecture.ja.md)。モジュールは `github.com/hayaenfj/shikii`、ライセンスは Apache-2.0 OR MIT(どちらかを選択。[`LICENSE`](../LICENSE))。
 
 - [インストール・アップデート](#インストールアップデート)
 - [プロジェクトごとの有効化](#プロジェクトごとの有効化)
@@ -326,7 +326,7 @@ bin/shikii drift .shikii/decisions/prompt-intent.yaml --model jev-1.14.0 --windo
 | `vector` | choice / score | softmax((log p_k + b_k)/T)。選択肢ごとの癖(短い state で other に逃げる等)を直す |
 | `identity` | どれでも | 定数なし。生の分布で act での precision が足りると検証した印(Jev のような較正済みモデル向け) |
 
-`calibrate --write` は `calibration` キーだけを差し替え、spec のコメントと文言はそのまま残す。同じラベル付きファイルで再実行すると、store に残った同じ入力のラベルを再利用してモデルを呼ばないので、モデルを止めたままでも較正・check・drift が回る。較正が要るかはモデルの触れ込みではなく、(質問, モデル) ごとの交差検証で決まる。モデル別の数字は [`docs/model-comparison.md`](model-comparison.md)、測った数字は [`docs/bench.md`](bench.md)。
+`calibrate --write` は `calibration` キーだけを差し替え、spec のコメントと文言はそのまま残す。同じラベル付きファイルで再実行すると、store に残った同じ入力のラベルを再利用してモデルを呼ばないので、モデルを止めたままでも較正・check・drift が回る。較正が要るかはモデルの触れ込みではなく、(質問, モデル) ごとの交差検証で決まる。モデル別の数字は [`docs/model-comparison.ja.md`](model-comparison.ja.md)、測った数字は [`docs/bench.ja.md`](bench.ja.md)。
 
 ### score の帯: `thresholds.level`
 

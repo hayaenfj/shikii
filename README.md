@@ -182,7 +182,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 
 Calibration belongs to one question and one model; change either and it is measured again. `shikii tune` scores alternative wordings on the stored truths; `shikii drift` and `shikii check` catch a model that drifted or a line that was weakened. To try this without a key or GPU, run `scripts/demo.sh` in the checkout.
 
-- [Ready-made decisions](decisions/README.md) · [A business example](docs/examples/inquiry-route.md) (Japanese) · [Every command and the HTTP API](docs/guide.md) · [MCP](integrations/mcp.md) · [Measured numbers](docs/bench.md)
+- [Ready-made decisions](decisions/README.md) · [A business example](docs/examples/inquiry-route.md) · [Every command and the HTTP API](docs/guide.md) · [MCP](integrations/mcp.md) · [Measured numbers](docs/bench.md)
 
 ## Memory belongs to a project
 
@@ -204,7 +204,7 @@ Conversations, lessons, provisional assessments, truths, calibration, guards and
 ## Read more
 
 - [The guide](docs/guide.md): every command, the HTTP API, connecting models, delegating business decisions
-- [Architecture](docs/architecture.md) (Japanese)
+- [Architecture](docs/architecture.md)
 - [The agent's instructions](skills/shikii/SKILL.md)
 - [Changelog](CHANGELOG.md)
 

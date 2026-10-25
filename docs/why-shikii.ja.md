@@ -1,6 +1,6 @@
 # shikii はなぜ作ったか、何を決めたか（読み物版）
 
-2026-10-17。設計の記録そのものは [`decision-ops-framework.md`](decision-ops-framework.md) にあります。あちらは作った本人が後で見返すための書き方で、数字と用語が詰まっています。
+2026-10-17。設計の記録そのものは [`decision-ops-framework.ja.md`](decision-ops-framework.ja.md) にあります。あちらは作った本人が後で見返すための書き方で、数字と用語が詰まっています。
 この文書は同じ中身を、初めて読む人に向けて書き直したものです。
 
 ## 1. 何の話か
@@ -169,4 +169,4 @@ AI に見せる文の並べ方も鍵に入れています。普通のチャッ�
 
 ## 10. もっと詳しく
 
-数字と出典まで含めた設計の記録は [`decision-ops-framework.md`](decision-ops-framework.md)。使い方は [`guide.ja.md`](guide.ja.md)。モデルの比較表は [`model-comparison.md`](model-comparison.md)。
+数字と出典まで含めた設計の記録は [`decision-ops-framework.ja.md`](decision-ops-framework.ja.md)。使い方は [`guide.ja.md`](guide.ja.md)。モデルの比較表は [`model-comparison.ja.md`](model-comparison.ja.md)。

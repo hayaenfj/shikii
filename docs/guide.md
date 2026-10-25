@@ -2,7 +2,7 @@
 
 shikii is a tool that grows your agent to fit your project. It keeps what was said, decided and checked in a project in `.shikii/`, and hands it to the agent before the next piece of work. Corrections a machine can check become guards, the routine before and after work is checked, and the trail of the work is kept in work records. As truths accumulate, it draws a line above which decisions can be left to the model without asking a person. The name comes from the Japanese word for threshold, *shikii* (閾), and the command is `shikii` too.
 
-This guide covers everything the short [README](../README.md) leaves out: every command, the HTTP API, how to connect models and how to build business decisions. The Japanese guide is [guide.ja.md](guide.ja.md), the design is in [decision-ops-framework.md](decision-ops-framework.md) and the structure in [architecture.md](architecture.md) (Japanese). The module is `github.com/hayaenfj/shikii`; the license is Apache-2.0 OR MIT (your choice; [`LICENSE`](../LICENSE)).
+This guide covers everything the short [README](../README.md) leaves out: every command, the HTTP API, how to connect models and how to build business decisions. The Japanese guide is [guide.ja.md](guide.ja.md), the design is in [decision-ops-framework.md](decision-ops-framework.md) and the structure in [architecture.md](architecture.md). The module is `github.com/hayaenfj/shikii`; the license is Apache-2.0 OR MIT (your choice; [`LICENSE`](../LICENSE)).
 
 - [Install and update](#install-and-update)
 - [Enable it per project](#enable-it-per-project)

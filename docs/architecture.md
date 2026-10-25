@@ -1,116 +1,118 @@
-# shikiiの構造（0.7.0）
+**English** · [日本語](architecture.ja.md)
 
-目標は、普段の会話から学び、同じ説明や訂正のやり直しを減らすこと。そのために、会話から得た教訓を次の依頼へ届け、判断と確認結果まで結び付ける。繰り返す業務の判定には、人や結果の正解からモデルに任せるための線を引く。
+# How shikii is built (0.7.0)
 
-この2つは同じプロジェクトに保存するが、**会話の仮説・AIの仮採点と、正解・較正は分ける**。この文書は0.7.0の構造を説明する。会話に加え確認結果を原資料として保持し、知識を検索・見直して判断へ結ぶ。版ごとの変更は[変更履歴](../CHANGELOG_ja.md)にある。
+The goal is to learn from everyday conversation and cut down on explaining or correcting the same thing again. To do that, shikii hands lessons learned in conversation to the next request and ties them to decisions and to what was checked. For recurring business decisions, it draws a line, from truths given by people or by outcomes, above which the model can be trusted to decide.
 
-![会話の学習と業務の判定、それぞれの保存と役割](assets/shikii-architecture.svg)
+Both are kept in the same project, but **the conversation's hypotheses and the AI's provisional scores are kept apart from truths and calibration**. This document describes the 0.7.0 structure: besides conversations, checked results are kept as sources, and knowledge is searched and reviewed and tied to decisions. Changes per version are in the [changelog](../CHANGELOG.md).
 
-## 1. プロジェクトを一度初期化する
+![What conversation learning and business decisions each keep, and their roles](assets/shikii-architecture-en.svg)
 
-`shikii --init`（`shikii init`も同じ）が、プロジェクトの `.shikii/`、既製の4問・wiki・MCPの設定・作法と画面への入口を準備する。完了の印 `.shikii/project.json` は最後に書く。hookは初期化に成功した場所だけで動き、再実行しても既存の設定・記録・正解を保持する。
+## 1. Initialize a project once
 
-Gitの中は実パスのプロジェクトルート、外は実行したフォルダが単位。同じリポジトリのサブフォルダやsymlink経由は同じ保存先になり、同名の別プロジェクトとは混ぜない。共通の `~/.shikii/agent` は型・道具・プロジェクトの索引を持つ。
+`shikii --init` (`shikii init` does the same) prepares the project's `.shikii/`, the four ready-made questions, the wiki, the MCP settings, the conventions and the entry to the page. The completion mark `.shikii/project.json` is written last. Hooks run only where initialization succeeded, and running it again keeps the existing settings, records and truths.
 
-| 保存先 | 残すもの |
+Inside Git, the unit is the project root at its real path; outside Git, it is the folder you ran it in. Subfolders of the same repository and paths through a symlink use the same store, and another project with the same name is never mixed in. The shared `~/.shikii/agent` holds the types, tools and the index of projects.
+
+| Store | What it keeps |
 |---|---|
-| `.shikii/decisions/` | 判定の問い・選択肢・候補・較正 |
-| `.shikii/wiki/` | 会話の教訓、適用条件、版と索引、判定の聞き方の知識 |
-| `.shikii/records/` | 判定、保存した会話、仮採点、届けた記憶、使った判断と確認結果 |
-| `.shikii/labels/` | 人や確認できた結果の正解 |
-| `.shikii/guards/` | 人の訂正から作った止める検査(0.7.3) |
-| `.shikii/handoff/` | 作業記録: 監査の報告、リリースの手順と記録、差分、画像など書き換えながら進めるファイル(0.8.1)。画面の知識の欄で読む。`shikii gc` は触らない |
+| `.shikii/decisions/` | The questions, options, candidates and calibration of decisions |
+| `.shikii/wiki/` | Lessons from conversations, when they apply, revisions and the index, and knowledge about how to ask decisions |
+| `.shikii/records/` | Decisions, saved conversations, provisional scores, memories handed out, and the decisions they were used in with what was checked |
+| `.shikii/labels/` | Truths from people or from results that could be checked |
+| `.shikii/guards/` | Guards (checks that stop work) made from a person's corrections (0.7.3) |
+| `.shikii/handoff/` | Work records: files you keep rewriting as you go, such as audit reports, release procedures and logs, diffs and images (0.8.1). Read them in the knowledge panel of the page. `shikii gc` does not touch them |
 
-会話のセッションの控えもプロジェクト側に置く。`.shikii/` はGitのローカルな除外に登録し、通常の未追跡ファイルには出さない。共有は内容を確認して選び、別プロジェクトの会話や線を自動で持ち込まない。
+The copies of conversation sessions also live on the project side. `.shikii/` is registered in Git's local excludes, so it does not show up among ordinary untracked files. Sharing is chosen after checking the content; conversations or lines from another project are never brought in automatically.
 
-実装: `cmd/shikii/project.go`、`cmd/shikii/init.go`、`internal/store/path.go`。
+Implementation: `cmd/shikii/project.go`, `cmd/shikii/init.go`, `internal/store/path.go`.
 
-## 2. 依頼の前と作業の後に接続する
+## 2. Connect before a request and after the work
 
-自動の接続はClaude CodeとCodexのhook(依頼の前と作業の後。Claude Codeにはサブエージェントの開始も)で行う。ツールを呼ぶたびの処理は持たない。
+Automatic connection uses the Claude Code and Codex hooks (before a request and after the work; for Claude Code, also when a subagent starts). There is no processing on every tool call.
 
-| 時点 | 行うこと |
+| When | What happens |
 |---|---|
-| 依頼を受けた時 | 直前の返答と人の次の発言を結ぶ。関連する記憶を短く届ける。今回の依頼の種類・進め方の見立てを判定モデルへ聞く |
-| ターンを閉じる時 | 依頼とファイル変更・最後の返答を記録する。範囲と完了を判定モデルへ聞く。有効な止める検査(guards/)を変わったファイル・足した行・コミットに当て、引っかかれば止めて直させる。必要な案内と定期点検を行う |
-| サブエージェントを起こす直前 | 子に渡す仕事の文を控える(PreToolUse の Agent / Task だけ。Claude Code だけ。何も出さず、ツールは止めない) |
-| サブエージェントが始まる時 | 控えた仕事の文に近い教訓を同じ形で届ける。控えが無ければ場面が「いつも」のこのプロジェクトで決められたルールだけ(Claude Code だけ。親の控えは、使った子への仕事の控えを外すほかは変えない) |
+| When a request arrives | Ties the previous reply to the person's next message. Hands related memories over briefly. Asks the decision model what kind of request this is and how to proceed |
+| When the turn closes | Records the request, the file changes and the last reply. Asks the decision model about scope and completion. Applies the active guards (guards/) to the changed files, added lines and commits, and if one is hit, stops and has the agent fix it. Gives any needed guidance and runs the periodic checks |
+| Just before a subagent starts | Keeps a copy of the task text handed to the child (only PreToolUse for Agent / Task, only in Claude Code. It outputs nothing and does not stop the tool) |
+| When a subagent starts | Hands over lessons close to the saved task text, in the same form. Without a saved copy, only this project's rules whose scene is "always" (only in Claude Code. The parent's copies are left unchanged, except that the copy of the task given to the child that used it is removed) |
 
-判定用の問いは決定モデル(推奨は TypeSafe の Jev。鍵が無ければ手元のモデル)が扱い、会話の整理と根拠付きの仮採点は利用中のエージェントが扱う。判定モデルが止まっていても、初期化済みのプロジェクトでは会話の記録・記憶の参照は働く。画面はプロジェクトごとに 1 つで、最初の依頼の hook が `serve --store <プロジェクト>/.shikii --port 0` で空いているポートに立て(印は `~/.shikii/agent/pages/<id>.json`)、ブラウザで開く。共通の入口 `serve --store ~/.shikii/agent` は手で立てた時だけ。手で `serve` を起こす時の既定は `:8095`。
+Decision questions are handled by the decision model (TypeSafe's Jev is recommended; without a key, a local model), and organizing conversations and provisional scoring with reasons are handled by the agent in use. Even when the decision model is down, recording conversations and looking up memories keep working in an initialized project. There is one page per project: the first request's hook starts it on a free port with `serve --store <project>/.shikii --port 0` (the mark is `~/.shikii/agent/pages/<id>.json`) and opens it in the browser. The shared entry `serve --store ~/.shikii/agent` runs only when started by hand. When you start `serve` by hand, the default is `:8095`.
 
-実装: `cmd/shikii/hook.go`、`cmd/shikii/hook_feedback.go`。詳しくは[hookの接続](../integrations/claude-code.md)。
+Implementation: `cmd/shikii/hook.go`, `cmd/shikii/hook_feedback.go`. Details: [hook connection](../integrations/claude-code.md).
 
-着手前は通常のエージェントが現在の依頼・既に決めた方針・未決事項を原文の根拠から整理する。`hook plan query / submit` が直近の会話と必要なwikiを渡し、引用・プロジェクト・版を照合する。新規プロジェクトの既製4問は文書・調査・業務にも使う表現だが、変更ファイルの観測と外部での業務実行を混同しない。更新時は既存の質問と較正を保持する。
+Before starting work, the usual agent organizes the current request, the decisions already made and the open questions from the original text as evidence. `hook plan query / submit` hands over the recent conversation and the needed wiki pages, and checks quotes, project and revisions. The four ready-made questions for a new project are worded so they also work for documents, research and business work, but they do not confuse observing changed files with business work done elsewhere. Updates keep the existing questions and calibration.
 
-## 3. 会話から出典付きの教訓を育てる
+## 3. Grow lessons with sources from conversation
 
-依頼・AIの最後の返答・人の次の発言を一組の観察にする。通常のエージェントは原資料を読み、使い回せる教訓があれば題・適用条件・出典とともに保存する。単なる追加依頼や挨拶から、恒久的な好みや成功の正解を作らない。
+The request, the AI's last reply and the person's next message make up one observation. The usual agent reads the sources, and if there is a reusable lesson, saves it with a title, when it applies, and its sources. It does not turn a mere follow-up request or a greeting into a lasting preference or a truth of success.
 
-`wiki capture` は確認したコード・テスト・Releaseなどを種類・版・時点・参照先付きの原資料として保存する。参照先の文字列を実行したり、自動取得したりはしない。エージェントが原資料と既存記事を読み、短い検索用要約と詳しい知識本文を分けて統合し、関連ページを結ぶ。記事へ取り込んだ利用可能な長い会話原文は別のハッシュとともに保ち、元の判定記録を消した後も参照できる。
+`wiki capture` saves checked code, tests, Releases and the like as sources with a kind, version, time and reference. It never runs the reference string or fetches it automatically. The agent reads the sources and existing articles, merges them while keeping a short summary for search separate from the detailed knowledge body, and links related pages. Long original conversation text that is still available and was taken into an article is kept with its own hash, so it can be referred to even after the original decision record is deleted.
 
-原資料、教訓の過去の版、変更履歴を保つ。本文の保存には上限があり、採点の取得結果に `original_inputs` があれば保存した長文を、`text_status` があれば欠けている範囲を確かめる。切れた引用だけで断定しない。出典や版が壊れた教訓は参照から外し、一日一回の点検は索引のずれを修復する。意味の更新や置き換えは原文を読んだエージェントが行う。
+Sources, past revisions of lessons and the change history are kept. Saved bodies have a size limit; if a scoring fetch result has `original_inputs`, check the saved long text, and if it has `text_status`, check which range is missing. Do not draw conclusions from a cut-off quote alone. Lessons whose sources or revisions are broken are dropped from lookups, and the once-a-day check repairs drift in the index. Updates or replacements of meaning are done by an agent that has read the original text.
 
-新しい教訓を保存する前に、エージェントは草稿を `reflect` の `place` へ渡す。shikii は生きている記事と一本ずつ突き合わせて「同じ話題か」(`wiki-place`)を決定モデルに聞き、上位3件には「食い違うか」(`wiki-conflict`)も聞いて、候補を p の高い順に返す。線が引けるまでは参考で、エージェントが本文を読んで足す(`id`)・置き換える(`replaces`)・新しい記事にするを決める。その保存が判定の結果の正解になり(足した・置き換えた記事は同じ話題、置き換えたら食い違う)、人は答えない。正解が揃えば hook と同じ周期で自動に線を引く。
+Before saving a new lesson, the agent passes the draft to `place` in `reflect`. shikii compares it one by one with the live articles and asks the decision model "is this the same topic?" (`wiki-place`); for the top 3 it also asks "do they conflict?" (`wiki-conflict`), and returns the candidates in order of highest p. Until a line is drawn this is only for reference: the agent reads the bodies and decides whether to add to one (`id`), replace one (`replaces`) or make a new article. That save becomes the truth for the decision (an article added to or replaced is the same topic; a replaced one conflicts), and no person answers. Once enough truths have gathered, a line is drawn automatically on the same cycle as the hook.
 
-自動の参照は題と適用条件が依頼に近い教訓を最大2件、全体1800バイト以内で届ける。同じセッションへ同じ版は一時間繰り返さず、更新版はすぐ届ける。教訓がない話題だけ、未整理の似た会話を最大1件返す。手動の検索は本文も対象にする。
+Automatic lookup hands over at most 2 lessons whose title and when-it-applies are close to the request, within 1800 bytes in total. The same revision is not repeated to the same session within an hour, and an updated revision is handed over right away. Only for topics with no lesson, it returns at most 1 similar conversation that has not been organized yet. Manual search also covers the body.
 
-明示的な検索は全記事を対象にし、コマンド名を残して題・適用条件を優先する。一致総数と軽い候補を返し、必要な本文と出典を選んで読む。候補・記事一覧・原資料は固定件数で打ち切らず、応答量に応じて`next_cursor`で続きを取得する。続きのプロジェクト・条件・結果版が変わったら読み直す。同じ作業中に実際に読んだ同一版の内容は再利用する。検索は語句一致であり、話題の解釈と検索語の見直しはエージェントが担う。
+Explicit search covers all articles, keeps command names, and ranks title and when-it-applies first. It returns the total number of matches and light candidates, and you choose which bodies and sources to read. Candidates, article lists and sources are not cut at a fixed count; the rest is fetched with `next_cursor` according to the response size. If the project, conditions or result revision of the continuation have changed, read again. Content of the same revision actually read during the same work is reused. Search is word matching; interpreting the topic and revising search words is the agent's job.
 
-実装: `internal/notebook/notebook.go`、`internal/notebook/sources.go`、`internal/notebook/search.go`、`internal/notebook/paging.go`、`cmd/shikii/notebook.go`、`cmd/shikii/memory.go`。
+Implementation: `internal/notebook/notebook.go`, `internal/notebook/sources.go`, `internal/notebook/search.go`, `internal/notebook/paging.go`, `cmd/shikii/notebook.go`, `cmd/shikii/memory.go`.
 
-## 4. 訂正を次の行動と確認結果へ結ぶ
+## 4. Tie corrections to the next action and to what was checked
 
-明示的な訂正には `correction: {source_id, quote, action}` を添える。引用は同じプロジェクトの指定した出典の人の返答から、そのまま抜き出す。出典と原文の一致を検査し、具体的な次の行動がないものは受け付けない。訂正という解釈や行動の妥当性は仮説のまま。
+An explicit correction carries `correction: {source_id, quote, action}`. The quote is taken word for word from the person's reply in the named source of the same project. The source and the original text are checked to match, and a correction without a concrete next action is not accepted. Interpreting it as a correction, and whether the action is right, remain hypotheses.
 
-次の似た依頼には教訓とともに訂正・行動を短く届け、**切り詰めた後の実際の引用と版**を依頼IDへ結ぶ。後で教訓が更新されても、当時届けた内容を使って振り返る。
+For the next similar request, the correction and the action are handed over briefly together with the lesson, and **the actual quote and revision after trimming** are tied to the request ID. Even if the lesson is updated later, the review uses what was handed over at the time.
 
-| 観察 | 分類 | 一緒に残すもの |
+| Observation | Classes | Kept alongside |
 |---|---|---|
-| 記憶の判断への関わり `result` | helpful / unused / harmful / unknown | 使った判断 `decision` と確認結果 `evidence` |
-| 訂正後の行動 `correction_result` | followed / repeated / not_applicable / unknown | 訂正に沿った行動の記録、再発の指摘、対象外の理由、または不足する証拠 |
+| How the memory took part in the decision, `result` | helpful / unused / harmful / unknown | The decision it was used in, `decision`, and what was checked, `evidence` |
+| Action after the correction, `correction_result` | followed / repeated / not_applicable / unknown | A record of the action that followed the correction, the repeated complaint, the reason it does not apply, or the missing evidence |
 
-従ったという観察だけで役立ったと扱わない。成功・追加依頼・沈黙だけでも効果を決めず、分からなければ不明にする。配送のない訂正や別の仕事には評価を付けず、最初の評価を保持し、同じ再送は一度だけ数える。
+An observation that it was followed is not treated as helpful. Success, a follow-up request or silence alone do not decide the effect either; if unclear, it is unknown. Corrections that were never handed over, or other work, get no rating; the first rating is kept, and an identical resend is counted only once.
 
-集計は直近256配送ターン、ログ末尾4MB内の引用が対象。未評価や未完了も残す。これはAIの観察で、記憶なしとの比較実験による改善率ではない。検索順位や人の正解・較正を自動で変更する材料にはしない。
+The tally covers the last 256 turns with handed-over memories and quotes within the last 4 MB of the log. Unrated and unfinished ones stay too. These are the AI's observations, not an improvement rate from an experiment compared against having no memory. They are not used to change search ranking or people's truths and calibration automatically.
 
-着手前の判断には検索候補・選んだ本文・実際の引用・当時利用可能だった記事の版も残す。知識画面は検索・引用と役立ったという観察を分ける。過去の判断を比較する時は`lesson:<id>@<revision>`で当時の版を参照し、後から増えた知識や結果を混ぜない。
+For decisions before starting work, the search candidates, the chosen bodies, the actual quotes and the revisions of the articles available at the time are kept too. The knowledge page keeps search and quotes apart from the observation that something helped. When comparing past decisions, refer to the revision at the time with `lesson:<id>@<revision>`, and do not mix in knowledge or results added later.
 
-実装: `internal/store/memory.go`、`internal/store/correction.go`、`cmd/shikii/reflect.go`、`web/src/components/Notebook.svelte`。
+Implementation: `internal/store/memory.go`, `internal/store/correction.go`, `cmd/shikii/reflect.go`, `web/src/components/Notebook.svelte`.
 
-## 5. 普段の振り返りをまとめ、人は抜き取りを確認する
+## 5. Bundle everyday reviews, and people check samples
 
-採点・wiki整理・記憶の観察を `reflect query / submit` で扱う。未処理が2会話になった時、または1会話が一日経った後の依頼で、短い案内を渡す。今回の仕事を優先し、原文・対象・届いた記憶・関連する教訓・人の訂正例を一度に読んで保存する。
+Scoring, wiki organizing and observing memories are handled with `reflect query / submit`. A short guide is handed over when 2 conversations are pending, or on a request after one conversation has waited a day. The current work comes first; the original text, the target, the memories handed over, the related lessons and examples of people's corrections are read and saved in one go.
 
-確認結果の原資料も会話と同じ作業バッチで扱う。1回に原資料2件、仮採点4件、wiki整理2件、記憶の仮評価4件まで。これは一度に整理する量で、保存件数や探索の上限ではない。部分失敗では項目ごとのerrorを返し、成功分を保つ。CLI・MCP・HTTPは同じ処理を使う。
+Sources of checked results are handled in the same work batch as conversations. At most 2 sources, 4 provisional scores, 2 wiki organizations and 4 provisional memory ratings per round. This is how much is organized at once, not a limit on how much is saved or searched. On partial failure, an error is returned per item and the successful ones are kept. The CLI, MCP and HTTP use the same processing.
 
-さらに最大2記事の見直し対象を渡す。エージェントが本文・原資料・出入りする関連ページを確認し、必要な編集理由を`change_reason`に残す。その後、最新の版・関連する版を結ぶ`key`・確認理由を`wiki maintain`または振り返りの`maintenance`へ保存する。版が変われば古い見直しは無効になり、変わらない対象も30日後に戻る。整合性のlintと、意味を読む見直しは別の役割を持つ。
+It also hands over at most 2 articles to review. The agent checks the body, the sources and the related pages linking in and out, and records the reason for any needed edit in `change_reason`. It then saves the latest revision, a `key` tying the related revisions, and the reason for the check to `wiki maintain` or to the review's `maintenance`. When the revision changes, the old review becomes invalid, and a target that has not changed comes back after 30 days. The consistency lint and the review that reads meaning have different roles.
 
-範囲と完了はAIが根拠付きで仮採点し、人は無作為に選んだものと保留を確認する。最初と不一致のある種類は5件に1件、直近の無作為確認が20件続けて一致した種類は20件に1件。不一致が出たら5件に1件へ戻す。人が訂正した例を次の採点役へ返すが、元のAIの採点を書き換えない。
+The AI scores scope and completion provisionally with reasons, and people check randomly chosen ones and the ones on hold. At first, and for kinds that had a mismatch, 1 in 5; for kinds whose last 20 random checks in a row agreed, 1 in 20. When a mismatch appears, it goes back to 1 in 5. Examples a person corrected are given back to the next scorer, but the original AI score is not rewritten.
 
-0.6.0では、範囲と完了にも観測できる結果から正解（source `outcome`）が付く。変えたファイルが次の人の依頼の間に元へ戻されたら範囲の外、次の次の依頼まで残れば範囲の中（重み0.5）。次の発言が同じ依頼の言い直しなら未完了、はっきり別の依頼なら完了（重み0.5）。短い返事と中間は付けない。結果の正解が先に付いた判定は人の抜き取りに出さず、結果が答える判定は迷っても人を待たない。AIの仮採点は引き続き正解と較正に混ぜない。
+In 0.6.0, scope and completion also get a truth from observable results (source `outcome`). If a changed file is put back before the person's next request, it was out of scope; if it is still there by the request after next, it was in scope (weight 0.5). If the next message restates the same request, the work was not finished; if it is clearly a different request, it was finished (weight 0.5). Short replies and in-between cases get no truth. Decisions that got a truth from a result first are not sent to people for sampling, and decisions a result will answer do not wait for a person even when uncertain. The AI's provisional scores are still not mixed into truths and calibration.
 
-実装: `cmd/shikii/hook_outcome.go`。
+Implementation: `cmd/shikii/hook_outcome.go`.
 
-実装: `cmd/shikii/reflect.go`、`cmd/shikii/review.go`、`internal/store/review.go`。入力と分類の詳しい規則は[振り返りの作法](../skills/shikii/references/review.md)。
+Implementation: `cmd/shikii/reflect.go`, `cmd/shikii/review.go`, `internal/store/review.go`. The detailed rules for input and classification are in [how to review](../skills/shikii/references/review.md).
 
-## 6. 業務の問いには正解を貯めて線を引く
+## 6. For business questions, gather truths and draw a line
 
-業務の判定は、問い・選択肢・入力をspecへ定義し、`decide` で聞く。結果は `act / ask / discard / abstain` の帯で扱う。線は問いのハッシュとモデルごとに持ち、十分な人や結果の正解が揃うまでは `act` を出さない。
+A business decision defines the question, options and inputs in a spec and asks with `decide`. The result is handled in the bands `act / ask / discard / abstain`. Lines are kept per question hash and per model, and `act` is not given until enough truths from people or results have gathered.
 
-`calibrate` が保存された入力と正解を使って線を引く。文言・配置・モデルが変わったら測り直し、`check` で古い線や精度不足を検出する。自動の判定には線を支えた正解と人の確認の記録が付く。聞き方は `tune` が同じ正解で比較し、人が意味を確認して採用する。
+`calibrate` draws the line from the saved inputs and truths. When the wording, arrangement or model changes, it measures again, and `check` detects old lines and lack of precision. Automatic decisions carry the truths that supported the line and the record of people's checks. `tune` compares ways of asking on the same truths, and a person adopts one after checking its meaning.
 
-既製の4問で正解が揃っても線が引けない時は、同じ文言とモデルの自動較正を正解が20件増えるまで繰り返さず、エージェントに意味を変えない聞き方の候補を頼む（`shikii hook variants submit`、最大3件）。shikiiが検査して `variants:` に足し、裏で `tune` が測る。上回った候補は、次の依頼の前のhookがエージェントに意味が同じかの確かめと(英語以外の設定なら)訳を一度だけ頼む（`shikii hook variants check`）。同じならその場で採用して較正し（hookは版の一番大きい `<id>-v<N>.yaml` を読む）、終わりのhookで人へ(訳付きで)一度だけ伝え、画面で元に戻せる（`POST /v1/tune/review`、採用した版は `.reverted` に名を変えて残す）。決めきれない時は訳と違いの見立てを付けて人に聞き、違う時は採用しない。線のある `prompt-kind` が確信して「ファイルを変えない」と答えた依頼では、着手前の整理を省く。
+When truths have gathered for the four ready-made questions but no line can be drawn, shikii does not repeat automatic calibration with the same wording and model until 20 more truths arrive; instead it asks the agent for candidate ways of asking that keep the meaning (`shikii hook variants submit`, at most 3). shikii checks them, adds them to `variants:`, and `tune` measures them in the background. For a candidate that wins, the hook before the next request asks the agent once to confirm the meaning is the same and (if the setting is not English) to translate it (`shikii hook variants check`). If it is the same, it is adopted and calibrated on the spot (the hook reads the `<id>-v<N>.yaml` with the highest version), the hook at the end tells the person once (with the translation), and it can be reverted on the page (`POST /v1/tune/review`; the adopted version is renamed to `.reverted` and kept). If the agent cannot decide, the person is asked, with the translation and its view of the difference; if it is different, it is not adopted. For requests where `prompt-kind`, which has a line, answers with confidence "no files will change", the organizing before starting work is skipped.
 
-実装: `cmd/shikii/hook_variants.go`。
+Implementation: `cmd/shikii/hook_variants.go`.
 
-会話の教訓と、聞き方の知識 `wiki/patterns/` の主張も区別する。後者は主張・条件・測定結果・再検証手順を持ち、`wiki verify` で再検証する。状態（tentative / confirmed / rejected）を変えるのは人だけ。会話の教訓から状態や正解を自動で作らない。
+Lessons from conversation are also kept apart from the claims in the knowledge about how to ask, `wiki/patterns/`. The latter have a claim, conditions, measured results and a re-verification procedure, and are re-verified with `wiki verify`. Only a person changes their status (tentative / confirmed / rejected). Status and truths are never made automatically from conversation lessons.
 
-実装: `internal/decide/`、`internal/calib/`、`cmd/shikii/tune.go`、`cmd/shikii/wiki.go`。数値は[ベンチマーク](bench.md)、判定モデルの詳しい設計は[設計文書](decision-ops-framework.md)。
+Implementation: `internal/decide/`, `internal/calib/`, `cmd/shikii/tune.go`, `cmd/shikii/wiki.go`. Numbers are in the [benchmarks](bench.md), and the detailed design of decision models is in the [design document](decision-ops-framework.md).
 
-## 実装済みの範囲と、これから確かめること
+## What is implemented, and what is still to be checked
 
-初期化したプロジェクト内での記録・版付き原資料・知識本文と関連・全記事の検索と続き取得・短い自動参照・まとめた振り返りと記事見直し・AIの採点と人の抜き取り・記憶と訂正の観察まで実装している。記憶の保存数や検索到達を、訂正や手戻りが減った実績へ置き換えることはしない。
+Implemented within an initialized project: records, versioned sources, knowledge bodies and links, search of all articles with continuation, short automatic lookup, bundled reviews and article reviews, AI scoring and people's sampling, and observation of memories and corrections. The number of memories saved and search reach are not presented as proof that corrections or rework went down.
 
-次に実利用で確かめるのは、訂正に沿う行動が具体的に残るか、同じ指摘が繰り返されるか。元の目的と途中の作業を継続して管理する機能や、記憶の意味の矛盾を自動で解消する機能は今後の候補で、現在の動作としては説明しない。
+What to check next in real use is whether actions following a correction are recorded concretely, and whether the same complaint keeps coming back. Features that keep track of the original goal and the work in progress, and features that resolve contradictions in the meaning of memories automatically, are candidates for the future and are not described as current behavior.
 
-検証の手順は[CI](../.github/workflows/test.yml)にある。READMEの図は `scripts/gen-architecture-svg.py` から生成し、`scripts/check-readme.sh` で日英4枚の一致を検査する。
+The verification steps are in [CI](../.github/workflows/test.yml). The README figures are generated from `scripts/gen-architecture-svg.py`, and `scripts/check-readme.sh` checks that the four Japanese and English figures match.
