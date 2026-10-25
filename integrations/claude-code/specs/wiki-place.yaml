@@ -1,6 +1,6 @@
-# wiki の差し込み先: 新しい教訓は既存の記事と同じ話題か(同じなら、その記事へ足す・置き換える。違えば新しい記事)。
-# reflect place で、エージェントが書いた教訓と生きている記事を一本ずつ突き合わせて聞く。
-# 正解は結果から自動で付く: submit でエージェントがその記事へ足した・置き換えたら「はい」(重み 1)、別の先を選んだら「いいえ」(部分、重み 0.5)。人は答えない。
+# Wiki place: is a new lesson on the same topic as an existing page (if so, add to or replace that page; if not, a new page)?
+# reflect place asks this by pairing the lesson the agent wrote with each live page, one at a time.
+# The truth is set automatically from the outcome: "yes" if at submit the agent added to or replaced that page (weight 1), "no" if it chose a different place (partial, weight 0.5). The person does not answer.
 id: wiki-place
 version: 1
 type: noul
@@ -14,8 +14,8 @@ state:
     new lesson applies to: {{ new_applies }}
   required: [title, lesson, applies_to, new_lesson, new_applies]
 policy:
-  # 2026-10-23 の決定: 標準は TypeSafe の Jev(鍵 TYPESAFE_API_KEY があれば hosted へ送る)、手元の標準は Ternary-Bonsai-27B。
-  # 依頼・返答・教訓の文を Jev へ送ることは本人が許可した。本文は手元の記録にも残る
+  # Decision of 2026-10-23: the default is TypeSafe's Jev (sent to hosted when the key TYPESAFE_API_KEY is set); the local default is Ternary-Bonsai-27B.
+  # The owner allowed sending request, reply and lesson text to Jev. The text is also kept in the local records
   send_to: [hosted, local]
   pii: false
 thresholds:

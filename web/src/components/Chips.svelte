@@ -1,15 +1,15 @@
 <script>
-  // 列の切替(0.8.0): 人が答える問いは「未回答(あなた)」「次の依頼・振り返りで確定する」「回答済み」。
-  // AI だけが答える問い(wiki)は「振り返りで確定する」「確定済み」だけ(人が答える列は無い)。絞り込みと表示の切替は 0.9.1 で外した
+  // Switching lists (0.8.0): questions a person answers have "Unanswered (you)", "Settled by the next request or reflection" and "Answered".
+  // Questions only the AI answers (wiki) have only "Settled by reflection" and "Settled" (no list for a person to answer). Filtering and view switching were removed in 0.9.1
   import { t } from '../lib/i18n.svelte.js';
   import { ui } from '../lib/state.svelte.js';
-  let { counts, labels, machineOnly = false, resultsCount = 0, settledByAI = false } = $props(); // settledByAI: 人が正解を付ける問い(結果は来ない)。列の名は「AI が決めた(答えなくてよい)」
+  let { counts, labels, machineOnly = false, resultsCount = 0, settledByAI = false } = $props(); // settledByAI: a question a person puts truths on (no outcome comes). The list is named "AI decided (no need to answer)"
   const you = () => { ui.done = false; ui.results = false; };
   const results = () => { ui.done = false; ui.results = true; };
   const done = () => { ui.done = true; };
   let youActive = $derived(!machineOnly && !ui.done && !ui.results);
   let resultsActive = $derived(!ui.done && (machineOnly || ui.results));
-  // 区切りボタン(segmented)の見た目。選ばれている物は active(検査が見る印)
+  // The look of the segmented buttons. The selected one is active (a marker the checks look at)
   const seg = on => 'rounded-[7px] border px-3 py-1.5 text-[12px] max-sm:px-[9px] max-sm:text-[10px] [&>span]:ml-[5px] [&>span]:text-[10px] [&>span]:text-muted ' + (on ? 'active border-line bg-surface text-fg shadow-[0_2px_3px_#00000008]' : 'border-transparent bg-transparent text-muted');
 </script>
 

@@ -1,12 +1,12 @@
-// 画面の状態と、サーバーからの読み込み。
-// ui.page: 開いている画面(0.9.1)。answer = 答える(人が答える問いの待ちを 1 列に)、wiki = 知識、ai = AI の様子(問いごとの学習の進み・答えた分・聞き方)
-// ui.tab: AI の様子で開いている問い。ui.done / ui.results: その問いの列(回答済み / 結果で確定する)。保存するものは localStorage(shikii.*)
-// data: /v1/status と、表示中の画面の分(答える: 待っている問いの列と聞き方、知識: wiki、AI の様子: 開いた問いの列と聞き方)。null は読み込み前
+// The page's state, and loading from the server.
+// ui.page: the open screen (0.9.1). answer = Answer (the questions waiting for a person, in one list), wiki = Knowledge, ai = AI status (learning progress per question, what was answered, ways of asking)
+// ui.tab: the question open in AI status. ui.done / ui.results: that question's list (answered / settled by the outcome). What is saved goes to localStorage (shikii.*)
+// data: /v1/status and what the current screen needs (Answer: the waiting questions' lists and ways of asking; Knowledge: wiki; AI status: the open question's list and ways of asking). null means not loaded yet
 import { SvelteSet } from 'svelte/reactivity';
 import { api } from './api.js';
 import { read, write } from './prefs.js';
 
-// URL の ?spec=<id>&trace=<trace_id> で、その判定を答える画面の先頭に出して始める(hook の「あとで答える → URL」から来る)
+// With ?spec=<id>&trace=<trace_id> in the URL, start with that decision first on the Answer screen (comes from the hook's "answer later → URL")
 const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 const pages = ['answer', 'wiki', 'ai'];
 const savedPage = read('shikii.page');
@@ -17,7 +17,7 @@ export const ui = $state({
   pinned: params.get('trace') || '',
   listSize: 30,
   done: false,
-  results: false, // 「次の依頼・振り返りで確定する」の列を見ている(人は答えない記録。0.8.0)
+  results: false, // looking at the "settled by the next request or reflection" list (records a person does not answer; 0.8.0)
 });
 export const skipped = new SvelteSet();
 export const data = $state({ state: null, loadError: '' });
@@ -26,35 +26,35 @@ export function setShowHelp(v) { ui.showHelp = v; write('shikii.help', v ? 'show
 export function setTab(v) { ui.tab = v; write('shikii.tab', v); }
 export function setPage(v) { ui.page = v; write('shikii.page', v); }
 
-// 人が答える問い(AI だけが答える wiki の問いを除く)
+// Questions a person answers (excluding the wiki questions only the AI answers)
 export const personSpecs = st => (st?.specs || []).filter(s => s.person_answers !== false);
 
-// 開く画面: 選んだ物、無ければ待ちがあれば答える、無ければ知識(wiki の無い画面では AI の様子)
+// The screen to open: the chosen one; otherwise Answer if something is waiting; otherwise Knowledge (AI status on a page without a wiki)
 export function selectedPage(st, selection = ui) {
   if (!st?.specs?.length) return null;
   if (pages.includes(selection.page)) return selection.page === 'wiki' && st.projects ? 'ai' : selection.page;
   return personSpecs(st).some(s => s.waiting_for_person > 0) ? 'answer' : 'wiki';
 }
 
-// AI の様子で開く問い。選んだ物、無ければ待ちのある物、無ければ先頭
+// The question to open in AI status. The chosen one; otherwise one with something waiting; otherwise the first
 export function selectedTab(st, selection = ui) {
   if (!st?.specs?.length) return null;
   return st.specs.find(s => s.id === selection.tab)?.id
     || st.specs.find(s => s.waiting_for_person > 0)?.id || st.specs[0].id;
 }
 
-// 答える画面で読む問い: 人が答える問いのうち待ちがある物と、URL で指された物
+// The questions to load on the Answer screen: questions a person answers that have something waiting, and the one named in the URL
 export function answerSpecs(st, selection = ui) {
   return personSpecs(st).filter(s => s.waiting_for_person > 0 || s.id === params.get('spec') && selection.pinned);
 }
 
 let loadVersion = 0;
-// dropPendingLoads は、待っている読み直しの応答を捨てる(答えた後に、答える前の古い列で札が戻らないように)
+// dropPendingLoads drops the responses of pending reloads (so that after answering, the card does not come back from the old list from before the answer)
 export function loadMark() { return loadVersion; }
-// 答えを送っている間に別の読み込み(画面の切り替えや 15 秒の読み直し)が始まっていたら、それも捨てて今の状態で読み直す
-// (答えより前の列で札が戻らず、切り替えた画面も出る。最終監査 0.9.1 低-F1)
+// If another load (switching screens or the 15-second reload) started while the answer was being sent, drop that too and reload with the current state
+// (the card does not come back from a list older than the answer, and the screen switched to still appears. Final audit 0.9.1 low-F1)
 export function dropPendingLoads(mark = loadVersion) { const raced = loadVersion !== mark; loadVersion++; if (raced) load(); }
-// status と表示中の画面の分だけを読む。遅い古い応答は新しい選択へ反映しない。
+// Loads only status and what the current screen needs. A slow old response is not applied to a newer selection.
 export async function load() {
   const version = ++loadVersion;
   const selection = { page: ui.page, tab: ui.tab, done: ui.done, pinned: ui.pinned };
@@ -73,7 +73,7 @@ export async function load() {
       } else if (page === 'ai') {
         const tab = selectedTab(st, selection);
         const sp = st.specs.find(s => s.id === tab);
-        // 回答済みでは未回答の列を読まない。
+        // When looking at answered, the unanswered list is not loaded.
         const [rows, tune] = await Promise.all([
           selection.done ? api.answered(tab) : api.queue(tab),
           !selection.done ? api.tune(tab).catch(() => null) : null,
@@ -88,8 +88,8 @@ export async function load() {
     if (version === loadVersion) data.loadError = e.message;
   }
 }
-// 聞き方の候補で人がやることがあるか(0.9.2)。エージェントが意味は同じと確かめて自動で採用した(このままでよいか、元に戻すか)、
-// またはエージェントが決めきれなかった時だけ。まだ確かめていない・違うと言った・人が答えた・元に戻した時は出さない
+// Whether there is something for a person to do about candidate ways of asking (0.9.2). Only when the agent confirmed the meaning is the same and adopted it automatically (keep it or revert),
+// or when the agent could not decide. Not shown when it has not been checked yet, was said to differ, the person answered, or it was reverted
 export function wordingNeedsPerson(latest) {
   if (!latest || latest.reverted) return false;
   const checks = latest.meaning_checks || [];

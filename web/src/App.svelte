@@ -1,7 +1,7 @@
 <script>
-  // 画面の全体(0.9.1): ヘッダー(プロジェクト、3 つの画面の切替、?、言語)、使い方の案内、開いた画面、toast。見た目は Tailwind の class(色は app.css の token)
-  // 画面は「答える」(人が答える判定を 1 列に)・「知識」・「AI の様子」の 3 つだけ。0.8 までの左の問いごとのメニューと先頭の要約の帯はやめた
-  // 15 秒ごとに読み直す(画面が隠れている間は読まない)。キー操作(答える画面だけ): 1〜9 で札の答えを選ぶ、Enter で AI と同じ、→ でスキップ
+  // The whole page (0.9.1): the header (project, the switch between the 3 screens, ?, language), the how-to guide, the open screen, and the toast. The look is Tailwind classes (colors are tokens in app.css)
+  // There are only 3 screens: "Answer" (decisions a person answers, in one list), "Knowledge" and "AI status". The per-question menu on the left and the summary band at the top, used up to 0.8, were dropped
+  // Reloads every 15 seconds (not while the page is hidden). Keys (Answer screen only): 1 to 9 choose the card's answer, Enter means the same as the AI, → skips
   import { onMount, untrack } from 'svelte';
   import { i18n, t } from './lib/i18n.svelte.js';
   import { ui, data, load, selectedPage, setPage, setShowHelp, personSpecs } from './lib/state.svelte.js';
@@ -21,7 +21,7 @@
   $effect(() => { document.documentElement.lang = i18n.lang; });
 
   function onKey(ev) {
-    // 答える画面の先頭の札でだけ効く(知識や AI の様子で別のボタンを押さない。監査 R2)。入力欄やボタンに居る時は邪魔しない
+    // Only works on the first card of the Answer screen (so it does not press other buttons in Knowledge or AI status; audit R2). Does not interfere while in an input field or on a button
     if (page !== 'answer') return;
     if (ev.target?.closest?.('input, select, textarea, button, a, summary, [contenteditable="true"]')) return;
     const first = document.querySelector('.item'); if (!first) return;
@@ -30,7 +30,7 @@
     else if (ev.key === 'ArrowRight' || ev.key === 's') { const b = first.querySelector('.btns button.skip'); if (b) { ev.preventDefault(); b.click(); } }
   }
 
-  // 選択にだけ追従し、取得したデータの更新では読み直さない。
+  // Follows only the selection; updates of fetched data do not trigger a reload.
   $effect(() => {
     ui.page; ui.tab; ui.done;
     untrack(() => { load(); });
@@ -41,7 +41,7 @@
     return () => clearInterval(timer);
   });
 
-  // 上の切替(0.9.1): 3 つを 1 つの枠にまとめ、選んだ画面は濃い緑の塗りに白い文字。選んでいない画面も普通の文字色で読める
+  // The switch at the top (0.9.1): the 3 are grouped in one frame, and the chosen screen is filled dark green with white text. Screens not chosen are still readable in the normal text color
   const pageBtn = on => 'flex items-center gap-2 rounded-[9px] border-0 px-4 py-2 text-[14px] font-[650] max-sm:flex-1 max-sm:justify-center max-sm:px-2.5 max-sm:py-1.5 max-sm:text-[13px] ' + (on ? 'active bg-accent text-bg shadow-[0_1px_3px_#0002]' : 'bg-transparent text-fg hover:bg-surface');
 </script>
 

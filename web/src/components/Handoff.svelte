@@ -1,6 +1,6 @@
 <script>
-  // 作業記録(.shikii/handoff/、0.8.1): 途中で書き換える作業ファイル(監査の報告、リリースの手順と記録、差分、画像)を読むだけで見せる。
-  // フォルダごとに畳み、ファイルを押すと中身(文字は文字のまま、画像は画像)。書くのはエージェント(shikii handoff / MCP の handoff_*)
+  // Work records (.shikii/handoff/, 0.8.1): shows, read-only, the working files that are rewritten along the way (audit reports, release steps and records, diffs, images).
+  // Collapsed per folder; pressing a file shows what is in it (text as text, images as images). The agent writes them (shikii handoff / MCP's handoff_*)
   import { t, fmtDateTime } from '../lib/i18n.svelte.js';
   import { api } from '../lib/api.js';
 
@@ -9,7 +9,7 @@
   let shown = $state(null); // { path, kind, text?, error? }
   let request = 0;
 
-  // 先頭のフォルダでまとめる(フォルダの無いファイルは「直下」)。中は更新の新しい順(サーバーの順)
+  // Grouped by the top folder (files without a folder go under "top level"). Inside, newest update first (the server's order)
   let groups = $derived.by(() => {
     const m = new Map();
     for (const f of files) {

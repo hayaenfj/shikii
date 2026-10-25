@@ -1,6 +1,6 @@
-# AI 自身の考え方 1(考える前): この依頼を受けた AI は結局何をすることになるか。Claude Code / Codex の UserPromptSubmit で `shikii hook user-prompt-submit` が聞く。
-# 正解は結果から自動で付く: 次の依頼が来た時(無ければターンの終わり)に作業ツリーのハッシュが変わっていれば edit、変わっていなければ !edit(部分ラベル、重み 0.7)。
-# 迷った時は、直前のアシスタントの発言(Stop で hook が控えたもの)を足して聞き直す。
+# The AI's own thinking, 1 (before it thinks): what will the AI that receives this request end up doing? `shikii hook user-prompt-submit` asks this at UserPromptSubmit in Claude Code / Codex.
+# The truth is set automatically from the outcome: when the next request arrives (or at the end of the turn if none), edit if the working tree's hash changed, !edit if not (a partial label, weight 0.7).
+# When unsure, it asks again with the assistant's previous message added (the one the hook saved at Stop).
 id: prompt-kind
 version: 2
 type: choice
@@ -24,14 +24,14 @@ state:
   template: |
     request: {{ request }}
   required: [request]
-  # 迷った時だけ: 直前のアシスタントの発言(Stop の hook が控えたもの)を足して聞き直す(別のハッシュ・別の線)。短い返事(「yes please」「go ahead」)はこれで決まる
+  # Only when unsure: ask again with the assistant's previous message added (the one the Stop hook saved) (a separate hash and a separate line). Short replies ("yes please", "go ahead") are decided by this
   context: |
     previous assistant turn: {{ previous }}
     request: {{ request }}
 
 policy:
-  # 2026-10-23 の決定: 標準は TypeSafe の Jev(鍵 TYPESAFE_API_KEY があれば hosted へ送る)、手元の標準は Ternary-Bonsai-27B。
-  # 依頼・返答・教訓の文を Jev へ送ることは本人が許可した。本文は手元の記録にも残る
+  # Decision of 2026-10-23: the default is TypeSafe's Jev (sent to hosted when the key TYPESAFE_API_KEY is set); the local default is Ternary-Bonsai-27B.
+  # The owner allowed sending request, reply and lesson text to Jev. The text is also kept in the local records
   send_to: [hosted, local]
   pii: false
 
@@ -41,7 +41,7 @@ thresholds:
 
 eval:
   min_n: 50
-# 画面の表示用の訳(モデルには送らない。較正の鍵にも入らない)
+# Translations for the page (not sent to the model, and not part of the calibration key)
 display:
   ja:
     title: 依頼の種類

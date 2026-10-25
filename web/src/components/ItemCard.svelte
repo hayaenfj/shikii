@@ -1,20 +1,20 @@
 <script>
-  // 1 件のカード: AI の予想と自信、本文、答えのボタン(番号付き。AI の予想は「AI と同じ」)、「〜ではない」(部分正解 !top)、
-  // スキップ、「AI にもう一度聞く」(redo)。回答済みのカードでは別のボタンで答えを直せる(いちばん新しい答えが使われる)。
-  // キー操作(App.svelte)は .item の先頭のカードの .btns button を押すので、ここの class(top / skip)は変えない
-  // question(0.9.1): 答える画面では札の先頭とボタンの上に問いを出し、AI の内側の印(帯・モデル)は出さない。AI の様子では出す
+  // One card: the AI's prediction and confidence, the text, the answer buttons (numbered; the AI's prediction is "same as the AI"), "not …" (partial truth !top),
+  // skip, and "ask the AI again" (redo). On an answered card, another button changes the answer (the newest answer is used).
+  // Key handling (App.svelte) presses .btns button on the first .item card, so do not change the classes here (top / skip)
+  // question (0.9.1): on the Answer screen the question appears at the top of the card and above the buttons, and the AI's internal markers (band, model) are hidden. AI status shows them
   import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
   import { skipped, load, dropPendingLoads, loadMark } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
 
-  let { sp, it, pos = '', readonly = false, question = '' } = $props(); // readonly: 人が答えない判定(AI が答え、正解は結果から)。ボタンを出さない(0.8.0)
+  let { sp, it, pos = '', readonly = false, question = '' } = $props(); // readonly: a decision a person does not answer (the AI answers, and the truth comes from the outcome). No buttons (0.8.0)
   let busy = $state(false);
-  let redoRes = $state(null); // やり直しの結果(前・今・答えとの一致)。文は描く時に組むので、言語を切り替えても変わる
+  let redoRes = $state(null); // The redo result (before, now, and agreement with the answer). The text is built when drawing, so it changes when the language is switched
 
   const name = c => loc(c.labels, c.label);
   const choiceOf = truth => it.choices.find(c => c.truth === truth) || { label: truth };
-  // noulのpは「はい」の確率で、topは常にyes。画面の予想は確率の高い側にする。
+  // For noul, p is the probability of "yes" and top is always yes. The prediction on the page is the side with the higher probability.
   const prediction = x => sp.type === 'noul' && x.top === 'yes' && x.p < 0.5 ? { truth: 'no', p: 1 - x.p } : { truth: x.top, p: x.p };
   let guess = $derived(prediction(it));
   let topName = $derived(guess.truth ? name(choiceOf(guess.truth)) : '');
@@ -25,7 +25,7 @@
     if (!isHook()) return key;
     return { request: t('inputRequest'), agreed: t('inputAgreed'), open: t('inputOpen'), summary: t('inputSummary'), files: t('inputFiles'), previous: t('inputPrevious') }[key] || key;
   }
-  // 着手前の整理の先頭に付く前置きはモデルへ渡す入力の一部。画面では見出しが同じことを言うので外す(先頭だけ)
+  // The preface at the start of the pre-work summary is part of the input passed to the model. On the page the heading says the same thing, so it is removed (only at the start)
   const planningPrefix = 'AIによる整理（実行許可や人の正解ではない）: ';
   const shown = (k, v) => {
     const text = it.original_inputs?.[k] ?? v;
@@ -39,7 +39,7 @@
     return entries.sort(([a], [b]) => (order[a] ?? 4) - (order[b] ?? 4));
   });
 
-  // エージェントの返答は Markdown で書かれる。画面は文字のまま出すので、太字と見出しの記号だけ外す(HTML は描かない)
+  // The agent's replies are written in Markdown. The page shows plain text, so only the bold and heading marks are removed (no HTML is rendered)
   const plainText = v => typeof v === 'string' ? v.replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#{1,6} /gm, '') : v;
 
   async function answer(truth) {
@@ -47,10 +47,10 @@
     try {
       const mark = loadMark();
       const res = await api.label({ trace_id: it.trace_id, spec: sp.id, truth, source: it.audit ? 'audit' : 'ui' });
-      dropPendingLoads(mark); // 答える前に出た読み直しの応答は、答えた札を戻すので捨てる(監査 0.9.1 低-5)
+      dropPendingLoads(mark); // reload responses issued before answering would bring the answered card back, so drop them (audit 0.9.1 low-5)
       if (!it.truth) {
         sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++;
-        if (it.waits_for_person !== false) sp.waiting_for_person = Math.max(0, (sp.waiting_for_person || 1) - 1); // 「残り」と上の印も減らす(監査 0.9.1 低〜中-4)
+        if (it.waits_for_person !== false) sp.waiting_for_person = Math.max(0, (sp.waiting_for_person || 1) - 1); // also decrease "remaining" and the marker at the top (audit 0.9.1 low-to-medium-4)
       }
       if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); }
       else { toast(t('done')(res.truth)); }
@@ -59,7 +59,7 @@
     finally { busy = false; }
   }
 
-  // 今の聞き方と線で同じ本文をもう一度判定。前と今を並べ、あなたの答えとの一致を出す
+  // Judge the same text again with the current way of asking and line. Show before and now side by side, and the agreement with your answer
   async function redo() {
     busy = true;
     try {
@@ -81,7 +81,7 @@
     }
     return line;
   }
-  // 見た目(Tailwind): 入力の欄は種類で色が変わる(request は琥珀、summary は緑)
+  // Look (Tailwind): input fields change color by kind (request is amber, summary is green)
   const fieldBox = k => 'input-field mb-3.5 overflow-hidden rounded-[11px] border border-line ' + (k === 'request' ? 'border-l-[3px] border-l-request bg-requestbg' : k === 'summary' ? 'border-l-[3px] border-l-accent bg-surface2' : 'bg-surface2');
   const fieldLabel = k => 'field-label flex items-center gap-[7px] px-[15px] pt-[11px] text-[10px] font-semibold tracking-[.03em] max-sm:px-3 max-sm:pt-2.5 ' + (k === 'request' ? 'text-request' : k === 'summary' ? 'text-accent' : 'text-muted');
   const fieldDot = k => 'h-[5px] w-[5px] rounded-full ' + (k === 'request' ? 'bg-request' : 'bg-accent');

@@ -1,5 +1,5 @@
-// 言語の純粋な関数の検査(npm run check。CI でも回す)。画面の文字の有無を見る Go のテストでは捕まらない振る舞い:
-// 言語の決め方(保存値 → ブラウザ → en)、無い鍵の fallback、spec の表示訳の fallback(lang → en → 生)。
+// Checks the pure language functions (npm run check; CI runs it too). Behavior the Go tests that look for text on the page do not catch:
+// how the language is chosen (saved value → browser → en), the fallback for missing keys, and the fallback of the spec's display translations (lang → en → raw).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveLang, translate, localized, locales, fallback } from '../src/lib/i18n.js';

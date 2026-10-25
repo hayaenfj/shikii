@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { api } from '../src/lib/api.js';
 
-test('知識一覧の続きを取得し、失敗時に途中の一覧を完成扱いにしない', async () => {
+test('fetches the rest of the knowledge list, and does not treat a partial list as complete on failure', async () => {
   const original = globalThis.fetch;
   try {
     const calls = [];
@@ -24,7 +24,7 @@ test('知識一覧の続きを取得し、失敗時に途中の一覧を完成�
     await assert.rejects(api.wiki(), /page unavailable/);
 
     globalThis.fetch = async () => ({ ok: true, json: async () => ({ lessons: [], next_cursor: 'repeated' }) });
-    await assert.rejects(api.wiki(), /続き/);
+    await assert.rejects(api.wiki(), /does not move forward/);
   } finally {
     globalThis.fetch = original;
   }

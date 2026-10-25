@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// 辞書の鍵の揃いを検査する(npm run check。CI でも回す)。
-// 全言語の鍵の集合が en(fallback)と一致しないと 1 で終わる: 足りない鍵(en にあって無い)も、余る鍵(en に無い)も落とす。
-// 値の種類(文 / 関数 / 配列)も en と同じでないと落とす(呼び方が違えば画面が壊れるため)。
+// Checks that the dictionaries' keys line up (npm run check; CI runs it too).
+// Exits with 1 unless every language's set of keys matches en (the fallback): it fails on missing keys (in en but not here) and on extra keys (not in en).
+// It also fails unless the kind of value (string / function / array) is the same as en (a different calling style would break the page).
 import { locales, fallback } from '../src/lib/i18n.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -18,21 +18,21 @@ for (const [code, d] of Object.entries(locales)) {
   const missing = baseKeys.filter(k => !keys.has(k));
   const extra = [...keys].filter(k => !(k in base));
   const mismatched = baseKeys.filter(k => keys.has(k) && kind(d[k]) !== kind(base[k]));
-  if (missing.length) { console.error(`check-locales: ${code}: ${fallback} にあって無い鍵: ${missing.join(', ')}`); bad++; }
-  if (extra.length) { console.error(`check-locales: ${code}: ${fallback} に無い鍵: ${extra.join(', ')}`); bad++; }
-  if (mismatched.length) { console.error(`check-locales: ${code}: 値の種類が ${fallback} と違う鍵: ${mismatched.join(', ')}`); bad++; }
-  if (typeof d.langName !== 'string' || !d.langName) { console.error(`check-locales: ${code}: langName(言語の選択に出す名前)が無い`); bad++; }
+  if (missing.length) { console.error(`check-locales: ${code}: keys in ${fallback} but missing here: ${missing.join(', ')}`); bad++; }
+  if (extra.length) { console.error(`check-locales: ${code}: keys not in ${fallback}: ${extra.join(', ')}`); bad++; }
+  if (mismatched.length) { console.error(`check-locales: ${code}: keys whose kind of value differs from ${fallback}: ${mismatched.join(', ')}`); bad++; }
+  if (typeof d.langName !== 'string' || !d.langName) { console.error(`check-locales: ${code}: langName (the name shown in the language picker) is missing`); bad++; }
 }
 
-// 使われていない鍵: src(辞書以外)のどこにも 'key' の文字列が無い en の鍵は落とす。動的に組む鍵は接頭辞の許可リスト(chip_ + 種類)
+// Unused keys: fail on en keys whose 'key' string appears nowhere in src (outside the dictionaries). Keys built dynamically go in the prefix allowlist (chip_ + kind)
 const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const files = [];
 (function walk(d) { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) { if (n !== 'locales') walk(p); } else if (/\.(svelte|js)$/.test(n)) files.push(p); } })(srcDir);
 const src = files.map(f => readFileSync(f, 'utf8')).join('\n');
 const dynamicPrefixes = [];
-const dynamicKeys = ['collecting', 'ready', 'stale', 'calibrated'];  // t(k.state): /v1/status の keys[].state の値
+const dynamicKeys = ['collecting', 'ready', 'stale', 'calibrated'];  // t(k.state): the values of /v1/status's keys[].state
 const unused = baseKeys.filter(k => k !== 'langName' && !src.includes(`'${k}'`) && !dynamicKeys.includes(k) && !dynamicPrefixes.some(pre => k.startsWith(pre)));
-if (unused.length) { console.error(`check-locales: ${fallback}: 画面で使われていない鍵: ${unused.join(', ')}`); bad++; }
+if (unused.length) { console.error(`check-locales: ${fallback}: keys not used on the page: ${unused.join(', ')}`); bad++; }
 
 if (bad) process.exit(1);
 console.log(`check-locales: ok (${Object.keys(locales).length} languages, ${baseKeys.length} keys)`);

@@ -1,8 +1,8 @@
-// localStorage の読み書き。使えない環境(プライベートモードなど)では黙って無視する(画面は動き続ける)
+// Reading and writing localStorage. Where it is not available (private mode and so on), it is silently ignored (the page keeps working)
 export function read(key) {
   try { return localStorage.getItem(key); } catch (e) { return null; }
 }
 
 export function write(key, value) {
-  try { localStorage.setItem(key, value); } catch (e) { /* 保存できなくても画面は使える */ }
+  try { localStorage.setItem(key, value); } catch (e) { /* the page still works even if it cannot save */ }
 }

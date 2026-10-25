@@ -1,5 +1,5 @@
 <script>
-  // 最初に出る「この画面の使い方」(4 手順)。「わかった」で閉じると次回から出ない(localStorage shikii.help)。右上の ? で再表示
+  // "How to use this page" (4 steps), shown first. Closing it with "Got it" hides it from next time (localStorage shikii.help). The ? at the top right shows it again
   import { t } from '../lib/i18n.svelte.js';
   import { setShowHelp } from '../lib/state.svelte.js';
 </script>

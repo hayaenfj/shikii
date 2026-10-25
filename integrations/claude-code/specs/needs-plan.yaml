@@ -1,5 +1,5 @@
-# 着手前に残る判断。hookが原文を控え、通常のAIが合意・未決事項を原文付きで整理する。
-# その整理は仮説で、実行許可や人の正解にはしない。旧形式の正解は入力が不足するので流用しない。
+# A decision left before starting. The hook saves the original text, and the usual AI sorts out what was agreed and what is still open, with the original text attached.
+# That summary is a hypothesis; it is not permission to act and not the person's truth. Truths in the old format lack inputs, so they are not reused.
 id: needs-plan
 version: 3
 type: noul
@@ -11,8 +11,8 @@ state:
     Remaining questions and their evidence: {{ open }}
   required: [request, agreed, open]
 policy:
-  # 2026-10-23 の決定: 標準は TypeSafe の Jev(鍵 TYPESAFE_API_KEY があれば hosted へ送る)、手元の標準は Ternary-Bonsai-27B。
-  # 依頼・返答・教訓の文を Jev へ送ることは本人が許可した。本文は手元の記録にも残る
+  # Decision of 2026-10-23: the default is TypeSafe's Jev (sent to hosted when the key TYPESAFE_API_KEY is set); the local default is Ternary-Bonsai-27B.
+  # The owner allowed sending request, reply and lesson text to Jev. The text is also kept in the local records
   send_to: [hosted, local]
   pii: false
 thresholds:

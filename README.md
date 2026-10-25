@@ -154,7 +154,7 @@ The agent drafts a guard from a correction (`shikii guard add`, disabled) and a 
 | Work records | The agent and its subagents | Read them on the page when you want |
 | Business truths | You | Label; undo a wording the agent switched in if its meaning changed |
 
-The design follows [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): raw sources are kept, and the agent ingests, searches and revises. Details: [the hooks](integrations/claude-code.md) (Japanese), [wiki editing](skills/shikii/references/wiki.md), [guards](skills/shikii/references/guards.md).
+The design follows [Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): raw sources are kept, and the agent ingests, searches and revises. Details: [the hooks](integrations/claude-code.md), [wiki editing](skills/shikii/references/wiki.md), [guards](skills/shikii/references/guards.md).
 
 ## Delegate business decisions
 

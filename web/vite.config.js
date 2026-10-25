@@ -1,8 +1,8 @@
-// shikii の画面のビルド設定。
-// - base './': Go の実行ファイルから配るので、index.html からの参照は相対にする
-// - 出力の名前はハッシュを付けず固定にする(CI が「commit した dist と元が一致する」ことを git diff で検査するため)
-// - CSS は Tailwind CSS v4(@tailwindcss/vite)。圧縮しない(元の見た目の確認とテストの文字の照合がしやすい)
-// - 開発中(npm run dev)は /v1/ を手元の shikii serve(:8095)に流す
+// Build settings for shikii's page.
+// - base './': it is served from the Go executable, so references from index.html are relative
+// - output names are fixed, without a hash (CI checks with git diff that "the committed dist matches the source")
+// - CSS is Tailwind CSS v4 (@tailwindcss/vite). Not minified (easier to check the original look and to match text in tests)
+// - during development (npm run dev), /v1/ is forwarded to the local shikii serve (:8095)
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';

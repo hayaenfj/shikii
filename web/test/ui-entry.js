@@ -1,8 +1,8 @@
 import Knowledge from '../src/components/Knowledge.svelte';
 import Projects from '../src/components/Projects.svelte';
 import { load, data } from '../src/lib/state.svelte.js';
-// 画面の振る舞いの検査(jsdom): (1) 言語の選択を change すると、言語・文・保存値が変わる。(2) ?trace= で指された判定が列の先頭に来る。
-// 文字の有無を見る Go のテストでは、onchange が外れても気づけない(監査 7 の 2)。vite の lib ビルドで 1 つに組み、scripts/check-ui.mjs が jsdom の中で run() を呼ぶ。
+// Checks of the page's behavior (jsdom): (1) a change on the language picker changes the language, the text and the saved value. (2) the decision named by ?trace= comes first in the list.
+// The Go tests that look for text would not notice if onchange came off (audit 7-2). Built into one file with vite's lib build; scripts/check-ui.mjs calls run() inside jsdom.
 import { mount, unmount, flushSync } from 'svelte';
 import LangPicker from '../src/components/LangPicker.svelte';
 import SpecPanel from '../src/components/SpecPanel.svelte';
@@ -34,7 +34,7 @@ function checkLang(target) {
   return ok;
 }
 
-// hook の「あとで答える → …/?spec=x&trace=t」で来た人には、その 1 件が先頭に出る(無ければ元の順)
+// A person who came from the hook's "answer later → …/?spec=x&trace=t" sees that item first (otherwise the original order)
 function checkPinned(target) {
   const item = (trace, text) => ({ trace_id: trace, at: '2026-10-18T00:00:00Z', band: 'ask', top: 'a', p: 0.6, model: 'm', inputs: { message: text }, inputs_hash: trace, raw: { a: 0.6, b: 0.4 }, stale: false, answerable: true, choices: [{ truth: 'a', label: 'a' }, { truth: 'b', label: 'b' }], rung: 'minimal', audit: false });
   const sp = { id: 'x', type: 'choice', question: 'q', titles: {}, questions: {}, keys: [], min_n: 20, records: 3, labels: 0, unlabeled: 3, waiting_for_person: 3, person_answers: true, queue: { items: [item('t1', 'FIRST'), item('t2', 'SECOND'), item('t3', 'THIRD')] }, tune: null };
@@ -55,8 +55,8 @@ function checkPinned(target) {
   return ok;
 }
 
-// 0.9.1: 答える画面は、人が答える問いの待ちを 1 列にまとめ、1 枚ずつ出す。札の先頭とボタンの上にその問いの文、仕事の印。
-// AI だけが答える問いと、人を待たない記録は出さない。スキップすると次の問いの札になり、残りの数は全部の問いの合計
+// 0.9.1: the Answer screen gathers the questions waiting for a person into one list and shows one card at a time. The question's text at the top of the card and above the buttons, and the work's marker.
+// Questions only the AI answers and records that do not wait for a person are not shown. Skipping gives the next question's card, and the remaining count is the total over all questions
 function checkAnswerMerge(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const item = (trace, text, project, waits = true) => ({ trace_id: trace, at: '2026-10-19T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: text }, inputs_hash: trace, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, waits_for_person: waits, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], rung: 'minimal', audit: false, project });
@@ -73,12 +73,12 @@ function checkAnswerMerge(target) {
   const next = cards().length === 1 && cards()[0].textContent.includes('DONE-1') && cards()[0].querySelector('.card-question')?.textContent === '頼まれたことを終えたか';
   unmount(app); skipped.clear(); i18n.lang = lang;
   const ok = one && asked && left && next;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答える画面: 1 枚だけで AI の問いと待たない記録は出さない=' + one + ', 札とボタンの上に問い・仕事の印=' + asked + ', 残りは合計=' + left + ', スキップで次の問いの札=' + next + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen: only one card, no AI questions or records that do not wait=' + one + ', question and work marker on the card and above the buttons=' + asked + ', remaining is the total=' + left + ', skip gives the next question\'s card=' + next + ')');
   return ok;
 }
 
-// 0.9.2: 聞き方の意味はエージェントが確かめ、和訳を付ける。AI が採用した時は和訳と「このままでよい / 元に戻す」、
-// 決めきれない時は和訳と違いの見立てと「意味は同じ / 違う」を出す。答える画面に出すのは、この 2 つ(人がやることがある時)だけ
+// 0.9.2: the agent checks the meaning of a way of asking and adds a translation. When the AI adopted it, the translation and "keep it / revert";
+// when it cannot decide, the translation, its view of the difference, and "same meaning / different". Only these 2 (when there is something for the person to do) appear on the Answer screen
 async function checkWordingAgent(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const calls = [];
@@ -105,11 +105,11 @@ async function checkWordingAgent(target) {
   const needs = [wordingNeedsPerson(adopted), wordingNeedsPerson(unsure), wordingNeedsPerson(waiting), wordingNeedsPerson(kept), wordingNeedsPerson({ ...adopted, reverted: true, adopted: false })];
   const answerOnlyWhenPerson = JSON.stringify(needs) === JSON.stringify([true, true, false, false, false]);
   const ok = adoptedShows && undoSent && unsureShows && answerOnlyWhenPerson;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI が採用: 和訳と戻す=' + adoptedShows + ', 戻すを送る=' + undoSent + ', 決めきれない: 和訳と違い=' + unsureShows + ', 答える画面は人がやる時だけ=' + answerOnlyWhenPerson + ' ' + JSON.stringify(needs) + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI adopted: translation and revert=' + adoptedShows + ', revert is sent=' + undoSent + ', cannot decide: translation and difference=' + unsureShows + ', Answer screen only when the person has something to do=' + answerOnlyWhenPerson + ' ' + JSON.stringify(needs) + ')');
   return ok;
 }
 
-// 聞き方の欄に、人が候補を書く入力がある(多択なら選択肢の説明も)。送ると v1/tune/variant に名前・質問・「id: 説明」を解いた options が届く
+// The ways-of-asking section has inputs for a person to write a candidate (and option descriptions for a choice). Sending it delivers the name, question and options parsed from "id: description" to v1/tune/variant
 async function checkWording(target) {
   const calls = [];
   const realFetch = globalThis.fetch;
@@ -131,7 +131,7 @@ async function checkWording(target) {
     await new Promise(r => setTimeout(r, 0));
   }
   unmount(app);
-  // はい / いいえ の問いには選択肢の説明の入力は無い
+  // A yes / no question has no input for option descriptions
   const noul = mount(Wording, { target, props: { sp: { id: 'same-issue', type: 'noul', tune: { running: false, proposer: false, variants: [] } } } });
   flushSync();
   const noOptionsForNoul = !target.querySelector('textarea[name=options]');
@@ -144,8 +144,8 @@ async function checkWording(target) {
   return ok;
 }
 
-// 効き目の要約(0.9.1。0.7.4 では先頭の帯): 上の「答える」に人待ちの合計が出る。AI の様子に、届けた教訓・作業の手順・止める検査と最後の結果、
-// 問いごとの学習の進みが 1 行ずつ出る。答える画面には AI の内側の数を出さない
+// The summary of effects (0.9.1; the band at the top in 0.7.4): "Answer" at the top shows the total waiting for a person. AI status shows delivered lessons, the work routine, guards and their last results,
+// and learning progress per question, one line each. The Answer screen does not show the AI's internal numbers
 async function checkSummary(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const summary = { person: { records: 20, waits: 2, recent_records: 20, recent_waits: 2, by_person: 1, by_result: 13, per_thousand: 100, recent_per_thousand: 100 },
@@ -163,12 +163,12 @@ async function checkSummary(target) {
   const specs = target.querySelectorAll('[data-ai-specs] [data-tab]').length === 4 && (target.querySelector('[data-ai-specs]')?.textContent || '').includes('学習中 0 / 50');
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = badge && quietAnswer && body && specs;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (効き目の要約: 答えるに人待ちの合計=' + badge + ', 答える画面に内側の数を出さない=' + quietAnswer + ', AI の様子に検査と最後の結果=' + body + ', 問いごとの進み=' + specs + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (summary of effects: total waiting on Answer=' + badge + ', no internal numbers on the Answer screen=' + quietAnswer + ', guards and last results in AI status=' + body + ', progress per question=' + specs + ')');
   return ok;
 }
 
 
-// 0.8.0: 人が答えない判定(wiki の矛盾)は、確認待ちの印を出さず、カードに答えのボタンを出さず、案内を 1 行出す。キー操作も押さない。
+// 0.8.0: a decision a person does not answer (wiki conflict) shows no waiting marker and no answer buttons on the card, and shows a one-line notice. Keys do not press anything either.
 async function checkMachineOnlySpec(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const specs = loadingSpecs().concat([{ id: 'wiki-conflict', type: 'noul', titles: { ja: 'wiki の矛盾' }, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 3, waiting_for_person: 0, awaiting_results: 3, person_answers: false, truth_source: 'results' }]);
@@ -181,30 +181,30 @@ async function checkMachineOnlySpec(target) {
   const buttons = target.querySelectorAll('.item .btns button').length;
   const notice = (target.querySelector('.machine-only')?.textContent || '').includes('結果');
   const badge = !!target.querySelector('[data-tab="wiki-conflict"] .badge');
-  // 列: 「未回答」の列が無く、「振り返りで確定する」の列が選ばれている(0.8.0)
+  // Lists: there is no "Unanswered" list, and the "Settled by reflection" list is selected (0.8.0)
   const lanes = !target.querySelector('.answer-tabs [data-lane="you"]') && target.querySelector('.answer-tabs [data-lane="results"]')?.classList.contains('active') && (target.querySelector('.lane-results')?.textContent || '').includes('振り返り');
   let clicked = 0;
   for (const b of target.querySelectorAll('.item button')) b.addEventListener('click', () => { clicked++; });
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); flushSync();
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = !!card && buttons === 0 && notice && !badge && clicked === 0 && !!lanes;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答えない判定: カード=' + !!card + ', 答えのボタン=' + buttons + ', 案内=' + notice + ', 確認待ちの印なし=' + !badge + ', キーで押さない=' + (clicked === 0) + ', 列は振り返りで確定する=' + !!lanes + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (decision a person does not answer: card=' + !!card + ', answer buttons=' + buttons + ', notice=' + notice + ', no waiting marker=' + !badge + ', keys do not press=' + (clicked === 0) + ', list is settled by reflection=' + !!lanes + ')');
   return ok;
 }
 
 
-// 0.8.0: 知識の欄は「AI が蓄積しているもの」を関連リンクで繋がる群に階層で見せる。群を開くと記事が並び、題を押すと本文へ。繋がりの無い記事は「単独の記事」
+// 0.8.0: the Knowledge section shows "what the AI is accumulating" as a hierarchy of clusters connected by related links. Opening a cluster lists its articles, and pressing a title goes to the text. Articles with no connections are "standalone articles"
 async function checkNotebookTree(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const mk = (id, title, related = []) => ({ id, revision: 'r' + id, title, lesson: title + 'の決まり', applies_to: title + 'の時', sources: [{ id: 'src' + id }], related, status: 'hypothesis' });
-  // a2 は 2 本に指される(同数の時の題の順は locale 依存なので避ける)
+  // a2 is linked from 2 (avoids ties, because the order of titles on a tie depends on the locale)
   const lessons = [mk('a1', '公開の手順', ['a2']), mk('a2', '監査'), mk('a3', '変更履歴', ['a2']), mk('b1', 'コミットの説明', ['b2']), mk('b2', 'コミットの作者'), mk('c1', '単独')];
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons, sources: [] } : url.startsWith('v1/wiki/notebook') ? { lessons: [lessons[1]] } : { items: [] } });
   Object.assign(ui, { page: 'wiki', done: false, results: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
   const groups = [...target.querySelectorAll('[data-tree-group]')].map(g => g.dataset.treeGroup);
-  const grouped = groups.length === 3 && groups[0] === 'a2' && groups[1] === 'b2' && groups[2] === 'single'; // 大きい群から。群の名はいちばん指されている記事
+  const grouped = groups.length === 3 && groups[0] === 'a2' && groups[1] === 'b2' && groups[2] === 'single'; // largest cluster first. A cluster's name is its most-linked article
   const closed = !target.querySelector('[data-tree-page]');
   target.querySelector('[data-tree-group="a2"] .tree-toggle')?.click(); flushSync();
   const pages = [...target.querySelectorAll('[data-tree-group="a2"] [data-tree-page]')].map(b => b.dataset.treePage);
@@ -212,13 +212,13 @@ async function checkNotebookTree(target) {
   const how = (target.querySelector('[data-wiki-tree] .k')?.textContent || '').includes('6');
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = grouped && closed && opened && how;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (知識の階層: 群=' + grouped + ' ' + JSON.stringify(groups) + ', 畳んで始まる=' + closed + ', 開くと記事=' + opened + ', 概要=' + how + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (knowledge hierarchy: clusters=' + grouped + ' ' + JSON.stringify(groups) + ', starts collapsed=' + closed + ', opening shows articles=' + opened + ', overview=' + how + ')');
   return ok;
 }
 
 
-// 監査 R5-3: 人が答える問いの列。上の「答える」の印は人待ちの合計(未回答の合計ではない)で、AI だけの問いは数えない。
-// AI の様子で最初に開く問いは人待ちのある問い。印は人待ちの数。「未回答(あなた)」にはボタン付きのカード、「次の依頼・振り返りで確定する」には読むだけのカード。
+// Audit R5-3: the lists of questions a person answers. The marker on "Answer" at the top is the total waiting for a person (not the total unanswered), and AI-only questions are not counted.
+// The question first opened in AI status is one with something waiting for a person. The marker is the count waiting for a person. "Unanswered (you)" has cards with buttons, and "Settled by the next request or reflection" has read-only cards.
 async function checkLanesForPersonSpec(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const mk = (id, unlabeled, waiting, person) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 5, labels: 0, unlabeled, waiting_for_person: waiting, awaiting_results: unlabeled - waiting, person_answers: person, truth_source: person ? 'person' : 'results' });
@@ -233,27 +233,27 @@ async function checkLanesForPersonSpec(target) {
   const badges = [...target.querySelectorAll('[data-ai-specs] .badge')].map(b => b.textContent).join(',') === '1,2';
   const youCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0;
   target.querySelector('.answer-tabs [data-lane="results"]')?.click(); flushSync(); await settle();
-  // 人が正解を付ける問い: 「AI が決めた(答えなくてよい)」の列。読めて、違うと思えば直せる(ボタンは残る)
+  // A question a person puts truths on: the "AI decided (no need to answer)" list. It can be read, and corrected if you think it is wrong (the buttons stay)
   const resultsCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0 && (target.querySelector('.lane-results')?.textContent || '').includes('AI が確信') && (target.querySelector('.answer-tabs [data-lane="results"]')?.textContent || '').includes('AI が決めた');
   let clicked = 0;
   for (const b of target.querySelectorAll('.item button')) b.addEventListener('click', () => { clicked++; });
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); flushSync();
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = you && first && badges && youCards && resultsCards && clicked === 0;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答える問いの列: 答えるの印は人待ちの合計=' + you + ', 最初は人待ちの問い=' + first + ', 印=' + badges + ', 未回答にボタン=' + youCards + ', AI が決めた列=' + resultsCards + ', キーで押さない=' + (clicked === 0) + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (lists of questions a person answers: Answer marker is the total waiting=' + you + ', first is a question with something waiting=' + first + ', markers=' + badges + ', buttons on unanswered=' + youCards + ', AI-decided list=' + resultsCards + ', keys do not press=' + (clicked === 0) + ')');
   return ok;
 }
 
-// 監査 R2: キー操作(1〜9 / Enter / →)は答える画面でだけ効く。知識の欄では最初の .item のボタン(関連する知識・主張にする)を、
-// AI の様子では回答済みの札のボタンを押さない。
+// Audit R2: keys (1 to 9 / Enter / →) only work on the Answer screen. They do not press the first .item's buttons in the Knowledge section (related knowledge, make it a claim),
+// nor the buttons of answered cards in AI status.
 async function checkKeysOnlyOnDecisions(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
-  // 出典のある教訓: 最初の .item に「原文を見る」のボタンが出る(押す物が無い状態で「押されない」を見ても検査にならない。監査 R3)
+  // A lesson with sources: the first .item shows a "see the original" button (checking "not pressed" with nothing to press would not be a check; audit R3)
   const lesson = { id: 'l1', revision: 'r1', title: '教訓', lesson: '教訓の本文', applies_to: '条件', sources: [{ id: 'src1234567890ab' }], related: [], status: 'hypothesis' };
   const answered = { trace_id: 'done1', at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: 'done1', raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, truth: 'yes', choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], rung: 'minimal', audit: false };
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const press = () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); flushSync(); };
-  // 知識の欄
+  // the Knowledge section
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [lesson], sources: [] } : { items: [] } });
   Object.assign(ui, { page: 'wiki', done: false, pinned: '' });
   let app = mount(App, { target }); await settle(); await settle();
@@ -263,7 +263,7 @@ async function checkKeysOnlyOnDecisions(target) {
   press();
   const wikiButtons = buttons.length, wikiClicked = clicked;
   unmount(app);
-  // 回答済みの列
+  // the answered list
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url.startsWith('v1/answered') ? { items: [answered] } : { items: [] } });
   Object.assign(ui, { page: 'ai', tab: 'needs-plan', done: true, pinned: '' });
   app = mount(App, { target }); await settle(); await settle();
@@ -274,12 +274,12 @@ async function checkKeysOnlyOnDecisions(target) {
   const doneButtons = buttons.length, doneClicked = clicked;
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = wikiButtons > 0 && wikiClicked === 0 && doneButtons > 0 && doneClicked === 0;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (キー操作は答える画面だけ: 知識の欄 buttons=' + wikiButtons + ' clicked=' + wikiClicked + ', 回答済み buttons=' + doneButtons + ' clicked=' + doneClicked + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (keys only on the Answer screen: Knowledge buttons=' + wikiButtons + ' clicked=' + wikiClicked + ', answered buttons=' + doneButtons + ' clicked=' + doneClicked + ')');
   return ok;
 }
 
 
-// 監査 0.9.1(A1・M8・M9・M10): 答えると次の札に進み、「残り」と上の「答える」の印が減る。待ちが 0 なら空の表示、列を読む前は読み込み中
+// Audit 0.9.1 (A1, M8, M9, M10): answering moves on to the next card, and "remaining" and the marker on "Answer" at the top go down. With 0 waiting, the empty view; before the list is loaded, loading
 async function checkAnswerAdvances(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
@@ -293,7 +293,7 @@ async function checkAnswerAdvances(target) {
   const next = !!target.querySelector('.item')?.textContent.includes('SECOND') && !target.querySelector('.item')?.textContent.includes('FIRST');
   const left = target.querySelector('[data-answer-left]')?.textContent === '残り 1 件' && target.querySelector('[data-page="answer"] .badge')?.textContent === '1';
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
-  // 待ちが 0 なら空の表示、列をまだ読んでいなければ読み込み中
+  // with 0 waiting, the empty view; if the list is not loaded yet, loading
   let a = mount(Answer, { target, props: { st: { specs: [spec('needs-plan', 0)] } } }); flushSync();
   const empty = !!target.querySelector('[data-answer-empty]') && !target.querySelector('.item');
   unmount(a);
@@ -301,11 +301,11 @@ async function checkAnswerAdvances(target) {
   const loading = !!target.querySelector('[data-answer] [role="status"]') && !target.querySelector('[data-answer-empty]');
   unmount(a); i18n.lang = lang;
   const ok = next && left && empty && loading;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答えると次の札=' + next + ', 残りと印が減る=' + left + ', 待ち 0 は空の表示=' + empty + ', 列の前は読み込み中=' + loading + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (answering gives the next card=' + next + ', remaining and marker go down=' + left + ', 0 waiting is the empty view=' + empty + ', loading before the list=' + loading + ')');
   return ok;
 }
 
-// 監査 0.9.1(A2): 15 秒ごとの読み直しが列の応答を待っている間に答えても、その古い応答で答えた札が戻らない
+// Audit 0.9.1 (A2): even if you answer while the 15-second reload is waiting for the list's response, that old response does not bring back the answered card
 async function checkAnswerNotRevertedByOldLoad(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
@@ -325,12 +325,12 @@ async function checkAnswerNotRevertedByOldLoad(target) {
   const back = !!target.querySelector('.item')?.textContent.includes('FIRST');
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
   const ok = !back;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答えた札は古い読み直しで戻らない=' + !back + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (answered card does not come back from an old reload=' + !back + ')');
   return ok;
 }
 
 
-// 再監査 0.9.1(低-UI1): 答えを送っている間に画面を切り替えても、切り替えた画面の読み込みは捨てない(答える前から待っていた分だけ捨てる)
+// Re-audit 0.9.1 (low-UI1): switching screens while an answer is being sent does not drop the load of the screen switched to (only loads already waiting before the answer are dropped)
 async function checkSwitchDuringAnswerKeepsLoad(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
@@ -351,11 +351,11 @@ async function checkSwitchDuringAnswerKeepsLoad(target) {
   releaseWiki?.({ lessons: [], notebook_issues: [] }); await settle(); await settle(); await settle();
   const shown = !!data.state?.wiki;
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
-  console.log((shown ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答えの送信中に切り替えた画面の読み込みは捨てない=' + shown + ')');
+  console.log((shown ? 'check-ui: ok' : 'check-ui: FAIL') + ' (load of the screen switched to while sending is not dropped=' + shown + ')');
   return shown;
 }
 
-// 再監査 0.9.1(W4・W5): 答えた後に「残り」を減らすのは、まだ答えていない、人を待つ記録だけ(答えの直しと、人を待たない記録では減らさない)
+// Re-audit 0.9.1 (W4, W5): after answering, "remaining" goes down only for records not yet answered that wait for a person (not for a changed answer, nor for records that do not wait for a person)
 async function checkAnswerCountOnlyForNewWaits(target) {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ truth: 'yes' }) });
@@ -373,30 +373,30 @@ async function checkAnswerCountOnlyForNewWaits(target) {
   const fresh = await run({ ...base, trace_id: 'w6', waits_for_person: true });
   globalThis.fetch = realFetch;
   const ok = relabel === 3 && notWaiting === 3 && fresh === 2;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (残りを減らすのは新しい人待ちだけ: 答えの直し=' + relabel + ', 人を待たない=' + notWaiting + ', 新しい人待ち=' + fresh + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (remaining goes down only for new waits: changed answer=' + relabel + ', not waiting for a person=' + notWaiting + ', new wait=' + fresh + ')');
   return ok;
 }
 
 
-// 0.9.1: 知識の一番上に「ルール」の欄。AI が作ったルールも人が一覧で見られる(場面で絞っても全部出る)。「いつも」のルールが先頭、
-// 最近 7 日に増えた・変わったルールに印。押すと本文
+// 0.9.1: a "Rules" section at the top of Knowledge. A person can see the rules the AI made in one list too (all appear even when filtered by scene). "いつも" (always) rules first,
+// and rules added or changed in the last 7 days get a marker. Pressing one shows the text
 function checkRulesPanel(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
-  try { localStorage.removeItem('shikii.scene'); } catch { /* 無くてよい */ }
+  try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
   const mk = (i, kind, scene) => ({ id: String(i).padStart(16, '0'), title: 'ルール ' + i, lesson: '教訓 ' + i, applies_to: 'a', kind, scene, sources: [], related: [] });
-  const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'いつも'), mk(3, 'howto', 'コミットする時'), mk(4, 'rule', '公開する時'), mk(5, 'rule', ' Always ')]; // 英語の always と前後の空白(監査 低-4)
+  const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'いつも'), mk(3, 'howto', 'コミットする時'), mk(4, 'rule', '公開する時'), mk(5, 'rule', ' Always ')]; // English always, with surrounding spaces (audit low-4)
   const recent = new Date(Date.now() - 2 * 86400000).toISOString(), old = '2026-01-01T00:00:00Z';
   const wiki = { lessons, lesson_meta: { [lessons[0].id]: { updated: recent }, [lessons[1].id]: { updated: old }, [lessons[3].id]: { updated: old }, [lessons[4].id]: { updated: '2025-01-01T00:00:00Z' } }, inbox: [{ kind: 'harmful', lesson_id: lessons[2].id, lesson: 'x', count: 1 }] };
   const app = mount(Lessons, { target, props: { wiki } }); flushSync();
   const panel = target.querySelector('[data-rules]');
   const rows = () => [...target.querySelectorAll('[data-rules] [data-rule]')].map(b => b.dataset.rule);
-  const top = !!panel && !!(panel.compareDocumentPosition(target.querySelector('[data-scenes]')) & 4) && !!(panel.compareDocumentPosition(target.querySelector('[data-inbox]')) & 4); // 受け箱より上(監査 低-3)
+  const top = !!panel && !!(panel.compareDocumentPosition(target.querySelector('[data-scenes]')) & 4) && !!(panel.compareDocumentPosition(target.querySelector('[data-inbox]')) & 4); // above the inbox (audit low-3)
   const named = (panel?.textContent || '').includes('このプロジェクトで決められたルール');
-  const order = rows().join(',') === [lessons[1].id, lessons[4].id, lessons[0].id, lessons[3].id].join(','); // いつも(always も)が先、その中も新しい順
+  const order = rows().join(',') === [lessons[1].id, lessons[4].id, lessons[0].id, lessons[3].id].join(','); // いつも (and always) first, and newest first within them
   const fresh = !!target.querySelector('[data-rule="' + lessons[0].id + '"] [data-rule-new]') && !target.querySelector('[data-rule="' + lessons[3].id + '"] [data-rule-new]');
   target.querySelector('[data-scene="公開する時"]')?.click(); flushSync();
   const allWhenFiltered = rows().length === 4;
-  // 広い画面(最終監査 0.9.1 の T1): ルールの欄から押すと本文まで送る。受け箱など他の欄から押した時は送らない(本文の欄が横にある)
+  // Wide screen (final audit 0.9.1 T1): pressing from the rules section scrolls to the text. Pressing from other sections such as the inbox does not (the text section is beside them)
   const realMatch = globalThis.matchMedia, realScroll = Element.prototype.scrollIntoView;
   const scrolled = [];
   globalThis.matchMedia = () => ({ matches: false });
@@ -411,7 +411,7 @@ function checkRulesPanel(target) {
       const wideScroll = scrolled.length === 1 && scrolled[0];
       unmount(app); i18n.lang = lang;
       const ok = top && named && order && fresh && allWhenFiltered && opens && wideScroll && otherStays;
-      console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (ルールの欄: 一番上=' + top + ', 名前=' + named + ', いつもが先頭=' + order + ', 最近の印=' + fresh + ', 絞っても全部=' + allWhenFiltered + ', 押すと本文=' + opens + ', 広い画面でも本文へ送る=' + wideScroll + ', 他の欄からは送らない=' + otherStays + ')');
+      console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rules section: at the top=' + top + ', name=' + named + ', always first=' + order + ', recent marker=' + fresh + ', all when filtered=' + allWhenFiltered + ', pressing shows the text=' + opens + ', scrolls to the text on a wide screen=' + wideScroll + ', no scroll from other sections=' + otherStays + ')');
       return ok;
     } finally {
       globalThis.matchMedia = realMatch; Element.prototype.scrollIntoView = realScroll;
@@ -419,7 +419,7 @@ function checkRulesPanel(target) {
   })();
 }
 
-// 最終監査 0.9.1(低-F1): 答えを送っている間に始まった読み直しの古い列で、答えた札が戻らない
+// Final audit 0.9.1 (low-F1): an old list from a reload that started while the answer was being sent does not bring back the answered card
 async function checkReloadDuringAnswerSend(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
@@ -435,12 +435,12 @@ async function checkReloadDuringAnswerSend(target) {
   data.state = null; Object.assign(ui, { page: 'answer', tab: '', done: false, pinned: '' }); skipped.clear();
   const app = mount(App, { target }); await settle(); await settle();
   target.querySelector('.item .btns button[data-truth="yes"]')?.click(); await settle();
-  holdQueue = true; const reload = load(); await settle(); await settle(); // 送っている間に読み直しが始まり、列はまだ答える前の物
+  holdQueue = true; const reload = load(); await settle(); await settle(); // a reload starts while sending, and its list is still from before the answer
   releaseLabel?.({ truth: 'yes' }); await settle(); await settle();
   releaseQueue?.({ items: [item('a', 'FIRST'), item('b', 'SECOND')] }); await reload; await settle(); await settle(); await settle();
   const back = !!target.querySelector('.item')?.textContent.includes('FIRST');
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
-  console.log((!back ? 'check-ui: ok' : 'check-ui: FAIL') + ' (送っている間の読み直しで答えた札が戻らない=' + !back + ')');
+  console.log((!back ? 'check-ui: ok' : 'check-ui: FAIL') + ' (answered card does not come back from a reload during sending=' + !back + ')');
   return !back;
 }
 
@@ -499,7 +499,7 @@ async function checkNotebookArticle(target) {
   const returned = target.textContent.includes('短い検索用要約') && !target.textContent.includes('出典に残る経緯');
   unmount(app); globalThis.fetch = realFetch;
   const ok = article && escaped && followed && returned;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (知識本文=' + article + ', HTMLを文字表示=' + escaped + ', 関連を開く=' + followed + ', 一覧へ戻る=' + returned + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (knowledge text=' + article + ', HTML shown as text=' + escaped + ', opens related=' + followed + ', back to the list=' + returned + ')');
   return ok;
 }
 
@@ -510,7 +510,7 @@ function checkPlanningContext(target) {
   const app = mount(ItemCard, { target, props: { sp, it } }); flushSync();
   const labels = [...target.querySelectorAll('.field-label')].map(el => el.textContent);
   const named = labels[0] === t('inputRequest') && labels[1]?.includes('もう決まっている') && labels[2]?.includes('まだ決まっていない');
-  // モデルへ渡す前置き「AIによる整理（…）: 」は画面では外す(先頭だけ。人の発言の中の同じ文字は残す)
+  // The preface "AIによる整理（…）: " passed to the model is removed on the page (only at the start; the same text inside the person's message stays)
   const agreedShown = target.querySelector('[data-input=agreed] .message-body')?.textContent || '';
   const evidence = agreedShown.startsWith('CSVとして出力する範囲は合意済み') && agreedShown.includes('今回の人の発言: AIによる整理（実行許可や人の正解ではない）: と書いた') && target.textContent.includes(it.inputs.open) && !target.querySelector('img');
   unmount(app);
@@ -519,7 +519,7 @@ function checkPlanningContext(target) {
   unmount(legacy);
   i18n.lang = lang;
   const ok = named && evidence && separate;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (依頼・合意・未決事項の順=' + named + ', 整理と根拠を文字として表示=' + evidence + ', 過去の形式を区別=' + separate + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (order of request, agreed, open=' + named + ', summary and grounds shown as text=' + evidence + ', old format kept distinct=' + separate + ')');
   return ok;
 }
 
@@ -546,7 +546,7 @@ function checkCalibrationReport(target) {
   }
   Object.assign(ui, saved); i18n.lang = lang;
   const ok = summaries && closed && states;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (較正の理由を要約=' + summaries + ', 診断ログを折りたたむ=' + closed + ', 見送りと現在の状態を区別=' + states + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (calibration reason summarized=' + summaries + ', diagnostic log collapsed=' + closed + ', skipped kept distinct from current state=' + states + ')');
   return ok;
 }
 
@@ -672,7 +672,7 @@ async function checkProjectEntrances(target) {
   return ok;
 }
 
-// この依頼より前のAIの返答を、今回の着手前の判定対象と取り違えない。
+// Do not mistake the AI's reply from before this request for the target of this pre-work decision.
 function checkTurnContext(target) {
   i18n.lang = 'ja';
   const make = (id, inputs) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 1, labels: 0, unlabeled: 1, tune: null, queue: { items: [{ trace_id: id, answerable: true, inputs, original_inputs: { previous: '前の仕事は**完了**しました。末尾 <img src=x>' }, text_status: {}, choices: [] }] } });
@@ -684,8 +684,8 @@ function checkTurnContext(target) {
   const before = first?.dataset.input === 'request' && first.textContent.includes('今回の依頼') && first.textContent.includes('今回の新しい依頼') && target.querySelector('.decision-phase')?.textContent.includes('始める前');
   const folded = !!previous && !previous.open && previous.querySelector('summary')?.textContent.includes('この依頼より前のAIの返答') && previous.textContent.includes('末尾 <img src=x>') && !target.querySelector('img');
   if (previous) previous.open = true;
-  const readable = previous?.open && previous.textContent.includes('前の仕事は完了しました。末尾') && !previous.textContent.includes('**'); // 折り畳みの中も Markdown の記号を外す(再監査 W9)
-  // 字の大きさの class は 1 つだけ(text-[13px] と text-[15px] が並ぶと、生成順で 15px が勝つ: 監査 A-1)
+  const readable = previous?.open && previous.textContent.includes('前の仕事は完了しました。末尾') && !previous.textContent.includes('**'); // remove Markdown marks inside the fold too (re-audit W9)
+  // only one font-size class (with text-[13px] and text-[15px] together, 15px wins by generation order: audit A-1)
   const sizes = (previous?.querySelector('.message-body')?.className.match(/(?:^|\s)text-\[\d+px\]/g) || []);
   const oneSize = sizes.length === 1 && sizes[0].trim() === 'text-[13px]';
   unmount(app);
@@ -695,11 +695,11 @@ function checkTurnContext(target) {
   const after = fields[0]?.dataset.input === 'request' && fields[1]?.dataset.input === 'summary' && fields[1].textContent.includes('今回の最後の返答') && target.querySelector('.decision-phase')?.textContent.includes('作業後') && !target.querySelector('details.previous-context');
   unmount(app);
   const ok = before && folded && readable && oneSize && after;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (着手前の対象=' + before + ', 前の完了返答を折りたたむ=' + folded + ', 原文を読める=' + readable + ', 前の返答の字の大きさは1つ=' + oneSize + ', 作業後の対象=' + after + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (pre-work target=' + before + ', previous completion reply folded=' + folded + ', original text readable=' + readable + ', one font size for the previous reply=' + oneSize + ', post-work target=' + after + ')');
   return ok;
 }
 
-// noulのtop=yesは確率の対象。46%なら画面の予想と「AIと同じ」はno/54%になる。
+// For noul, top=yes is what the probability is for. At 46%, the page's prediction and "same as the AI" become no/54%.
 async function checkBinaryPrediction(target) {
   const realFetch = globalThis.fetch;
   const calls = [];
@@ -723,12 +723,12 @@ async function checkBinaryPrediction(target) {
   unmount(app);
   globalThis.fetch = realFetch;
   const ok = negative && submitted && unchangedChoice && redone;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (二択の予想=' + negative + ', 同じ答えの保存=' + submitted + ', 多択の予想=' + unchangedChoice + ', 再判定の一致=' + redone + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (yes/no prediction=' + negative + ', saving the same answer=' + submitted + ', choice prediction=' + unchangedChoice + ', redo agreement=' + redone + ')');
   return ok;
 }
 
-// 0.9.1: 上の切替は「答える・知識・AI の様子」の 3 つだけ。今の画面が分かり(aria-current)、押すと選んだ画面が保存される。
-// AI の様子では作業前・作業後の問いが並び、押すと選んだ問いが保存される
+// 0.9.1: the switch at the top has only 3, "Answer, Knowledge, AI status". The current screen is marked (aria-current), and pressing saves the chosen screen.
+// AI status lists the pre-work and post-work questions, and pressing saves the chosen question
 async function checkNavigation(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui }; const lang = i18n.lang; i18n.lang = 'ja';
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } });
@@ -744,11 +744,11 @@ async function checkNavigation(target) {
   const tab = ui.tab === 'done-as-asked' && localStorage.getItem('shikii.tab') === 'done-as-asked' && target.querySelector('[data-tab="done-as-asked"]')?.getAttribute('aria-current') === 'true';
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
   const ok = pages && current && remembered && tab;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (画面は 3 つ=' + pages + ', 現在地=' + current + ', 画面の選択を保持=' + remembered + ', 問いの選択を保持=' + tab + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (3 screens=' + pages + ', current position=' + current + ', screen choice kept=' + remembered + ', question choice kept=' + tab + ')');
   return ok;
 }
 
-// 会話を読んでから答えられ、二択では重複する「〜ではない」を出さない。
+// You can answer after reading the conversation, and a yes/no question does not show a duplicate "not …".
 function checkAnswerFocus(target) {
   const it = { trace_id: 'focus', at: '2026-10-22T00:00:00Z', band: 'discard', top: 'yes', p: .46, answerable: true, inputs: { request: '新しい依頼' }, choices: [{ truth: 'yes', label: '先に相談する' }, { truth: 'no', label: 'そのまま進める' }] };
   const app = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it } });
@@ -761,17 +761,17 @@ function checkAnswerFocus(target) {
   const clearChoices = buttons.length === 2 && buttons.every(b => ['yes', 'no'].includes(b.dataset.truth));
   const answerPrompt = target.querySelector('.answer-heading')?.textContent.includes('あなたの判断') && !target.querySelector('.card-question');
   unmount(app);
-  // 答える画面(question を渡す): 札の先頭とボタンの上に問い、ボタンの帯は画面の下に貼り付く。AI の内側の印(帯・モデル)は出さない
+  // Answer screen (question passed): the question at the top of the card and above the buttons, and the button bar sticks to the bottom of the screen. The AI's internal markers (band, model) are not shown
   const app2 = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it, question: '始める前に聞くべきだったか' } });
   flushSync();
   const asked = target.querySelector('.card-question')?.textContent === '始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && target.querySelector('.answer-bar')?.classList.contains('sticky') && !target.textContent.includes('discard');
   unmount(app2);
   const ok = readingOrder && clearChoices && answerPrompt && asked;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (会話から回答の順=' + readingOrder + ', 重複しない二択=' + clearChoices + ', 答える場所=' + answerPrompt + ', 答える画面の札は問いを出す=' + asked + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (conversation then answer=' + readingOrder + ', yes/no without duplicates=' + clearChoices + ', where to answer=' + answerPrompt + ', Answer screen card shows the question=' + asked + ')');
   return ok;
 }
 
-// 初めて開く時は、人待ちがあれば答える画面、無ければ知識。選んだ画面は勝手に切り替えない。上の切替の上で Enter を押しても答えない
+// On first open, the Answer screen if something waits for a person, otherwise Knowledge. A chosen screen is not switched on its own. Pressing Enter on the switch at the top does not answer
 async function checkLanding(target) {
   const realFetch = globalThis.fetch, savedState = data.state, saved = { ...ui };
   const mkSpecs = waits => ['done-as-asked', 'needs-plan'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: id === 'needs-plan' ? waits : 0, waiting_for_person: id === 'needs-plan' ? waits : 0, person_answers: true }));
@@ -794,17 +794,17 @@ async function checkLanding(target) {
   await new Promise(resolve => setTimeout(resolve, 0));
   const shortcutWorks = calls.length === 1 && calls[0].truth === 'yes';
   unmount(app);
-  // 人待ちが無い時は知識から始まる
+  // with nothing waiting for a person, it starts from Knowledge
   specs = mkSpecs(0); data.state = null; Object.assign(ui, { page: '', tab: '' });
   app = mount(App, { target }); await settle(); await settle();
   const quietToKnowledge = target.querySelector('[data-page="wiki"]')?.getAttribute('aria-current') === 'page' && !target.querySelector('[data-page="answer"] .badge');
   unmount(app); globalThis.fetch = realFetch; data.state = savedState; Object.assign(ui, saved);
   const ok = pendingFirst && respectedChoice && safeNavigation && shortcutWorks && quietToKnowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回は答える画面=' + pendingFirst + ', 選んだ画面は保持=' + respectedChoice + ', 切替の操作で回答しない=' + safeNavigation + ', 回答のキー操作=' + shortcutWorks + ', 待ちが無ければ知識=' + quietToKnowledge + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen first=' + pendingFirst + ', chosen screen kept=' + respectedChoice + ', switching does not answer=' + safeNavigation + ', answer keys=' + shortcutWorks + ', Knowledge when nothing waits=' + quietToKnowledge + ')');
   return ok;
 }
 
-// API の証拠を表示し、欠けた項目から undefined を作らない。
+// Shows the API's evidence, and does not make undefined out of missing items.
 function checkClaimEvidence(target) {
   i18n.lang = 'ja';
   const wiki = { claims: [{ path: 'patterns/example.md', is_claim: true, status: 'tentative', claim: '検証用の主張', evidence: [
@@ -819,7 +819,7 @@ function checkClaimEvidence(target) {
   const escaped = target.querySelectorAll('.text b').length === 1;
   unmount(app);
   const ok = complete && partial && escaped;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (証拠の表示=' + complete + ', 欠けた項目の表示=' + partial + ', 文字として表示=' + escaped + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (evidence shown=' + complete + ', missing items shown=' + partial + ', shown as text=' + escaped + ')');
   return ok;
 }
 
@@ -828,7 +828,7 @@ function loadingSpecs() {
   return ['needs-plan', 'done-as-asked', 'prompt-kind', 'changes-in-scope'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 1, waiting_for_person: 1, person_answers: true }));
 }
 
-// 表示中の画面の分だけを取得する。答える画面は待ちのある問いの列と聞き方、AI の様子は開いた問いの列(回答済みなら回答済みだけ)、知識は選んだ時だけ
+// Fetch only what the current screen needs. The Answer screen: the lists and ways of asking of questions with something waiting; AI status: the open question's list (only answered when looking at answered); Knowledge: only when chosen
 async function checkFocusedLoading() {
   const realFetch = globalThis.fetch, state = data.state;
   const saved = { page: ui.page, tab: ui.tab, done: ui.done };
@@ -847,11 +847,11 @@ async function checkFocusedLoading() {
   const knowledge = calls.length === 2 && calls[1] === 'v1/wiki' && !!data.state.wiki;
   globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = answer && simple && answered && knowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答える画面は待ちのある問いだけ=' + answer + ', AI の様子は3要求=' + simple + ', 回答済みを取得=' + answered + ', 知識は選択時だけ=' + knowledge + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen only questions with waits=' + answer + ', AI status 3 requests=' + simple + ', answered fetched=' + answered + ', Knowledge only when chosen=' + knowledge + ')');
   return ok;
 }
 
-// 遅い古い応答で切替後の情報を上書きせず、取得失敗と再試行を表示へ反映する。
+// A slow old response does not overwrite the information after a switch, and fetch failures and retries are reflected in the display.
 async function checkLoadOrdering() {
   const realFetch = globalThis.fetch, state = data.state;
   const saved = { page: ui.page, tab: ui.tab, done: ui.done };
@@ -873,11 +873,11 @@ async function checkLoadOrdering() {
   await load(); const recovered = !data.loadError && data.state.version === 3;
   globalThis.fetch = realFetch; data.state = state; data.loadError = ''; Object.assign(ui, saved);
   const ok = latest && failed && recovered;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (古い応答を無視=' + latest + ', 失敗を表示=' + failed + ', 再試行で復帰=' + recovered + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (old response ignored=' + latest + ', failure shown=' + failed + ', recovered by retry=' + recovered + ')');
   return ok;
 }
 
-// 実際の切替から遅延読取りを行い、未読の知識も開ける。AI の様子の問いの切替・列の切替でも、その分だけ読む
+// Lazy loading is driven by actual switches, and unloaded knowledge can be opened too. Switching questions or lists in AI status also loads only what is needed
 async function checkLazyNavigation(target) {
   const realFetch = globalThis.fetch, state = data.state;
   const saved = { page: ui.page, tab: ui.tab, done: ui.done };
@@ -890,7 +890,7 @@ async function checkLazyNavigation(target) {
   data.state = null; ui.page = 'ai'; ui.tab = 'needs-plan'; ui.done = false;
   const app = mount(App, { target }); flushSync();
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
-  await settle(); const initial = calls.length === 3 && calls.includes('v1/tune?spec=needs-plan') && !!target.querySelector('.decision-panel'); // status・列・聞き方の候補
+  await settle(); const initial = calls.length === 3 && calls.includes('v1/tune?spec=needs-plan') && !!target.querySelector('.decision-panel'); // status, the list, candidate ways of asking
   calls = []; target.querySelector('[data-tab="done-as-asked"]')?.click(); flushSync(); await settle();
   const switched = calls.includes('v1/queue?spec=done-as-asked&limit=200') && !!target.querySelector('.decision-panel');
   calls = []; target.querySelector('.answer-tabs [data-lane="done"]')?.click(); flushSync(); await settle();
@@ -904,15 +904,15 @@ async function checkLazyNavigation(target) {
   const knowledge = !!wiki && calls.filter(url => url === 'v1/wiki').length === 1 && !calls.some(url => url.startsWith('v1/queue')) && target.querySelector('.notebook h2')?.textContent.includes(t('notebookTitle'));
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = initial && switched && answered && waiting && knowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回3要求=' + initial + ', 問いの切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 切替中は読込み待ち=' + waiting + ', 未読の知識を開く=' + knowledge + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (3 requests at first=' + initial + ', fetched on question switch=' + switched + ', answered and unanswered counts=' + answered + ', waiting while switching=' + waiting + ', opens unloaded knowledge=' + knowledge + ')');
   return ok;
 }
 
-// 監査 B(0.8.1、Tailwind): 同じ要素に、同じ変体で同じ性質を違う値にする utility を重ねない。
-// Tailwind v4 は utility を「性質ごとの固定の順 → 名前の順」で生成し、class 属性の並びは勝敗に関係ない
-// (例: bg-transparent は bg-accentbg や bg-surface より後に生成されるので、条件で足しても常に透明が勝つ)。
-// 配る CSS(dist/assets/index.css)の utilities 層から class → 性質の表を作り、描いた要素の classList を全部見る。
-// 変体(max-sm: / hover: / [&>span]: …)が違えば幅や状態で上書きする意図なので見ない。--tw-* から導く値も見ない
+// Audit B (0.8.1, Tailwind): do not stack utilities on the same element that set the same property to different values under the same variant.
+// Tailwind v4 generates utilities in "a fixed order per property → name order", and the order in the class attribute does not decide which wins
+// (e.g. bg-transparent is generated after bg-accentbg and bg-surface, so even when added conditionally, transparent always wins).
+// Builds a table of class → property from the utilities layer of the shipped CSS (dist/assets/index.css), and looks at every classList of the rendered elements.
+// Different variants (max-sm: / hover: / [&>span]: …) are meant to override by width or state, so they are not checked. Values derived from --tw-* are not checked either
 function utilityTable(css) {
   const table = new Map();
   const at = css.indexOf('@layer utilities {');
@@ -929,7 +929,7 @@ function utilityTable(css) {
         if (/[\s.:>[,]/.test(c)) break;
         name += c; i++;
       }
-      if (sel.slice(i).trim() && !name.includes(':')) continue; // .pill.calibrated、.empty-state p のような複合の規則
+      if (sel.slice(i).trim() && !name.includes(':')) continue; // compound rules such as .pill.calibrated and .empty-state p
       const props = table.get(name) || new Map();
       for (const d of decls) { const k = d.indexOf(':'); props.set(d.slice(0, k).trim(), d.slice(k + 1).trim()); }
       table.set(name, props);
@@ -949,18 +949,18 @@ function collectConflicts(target, table, out) {
       if (variantPrefix(names[a]) !== variantPrefix(names[b])) continue;
       for (const [prop, va] of table.get(names[a])) {
         const vb = table.get(names[b]).get(prop);
-        if (vb !== undefined && vb !== va) out.add(el.tagName.toLowerCase() + ': ' + names[a] + ' と ' + names[b] + ' (' + prop + ')');
+        if (vb !== undefined && vb !== va) out.add(el.tagName.toLowerCase() + ': ' + names[a] + ' and ' + names[b] + ' (' + prop + ')');
       }
     }
   }
 }
 async function checkUtilityConflicts(target) {
   const table = utilityTable(globalThis.__shikiiCSS || '');
-  if (table.size < 50) { console.log('check-ui: FAIL (配る CSS の utility を読めない: ' + table.size + ' 個)'); return false; }
+  if (table.size < 50) { console.log('check-ui: FAIL (cannot read the utilities of the shipped CSS: ' + table.size + ')'); return false; }
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui }; const lang = i18n.lang; i18n.lang = 'ja';
   const out = new Set();
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
-  // 1. 画面の全体: 選ばれたタブ・列・絞り込み、要約、使い方、未回答のカード(AI と同じ / 一覧)
+  // 1. The whole page: selected tab, list and filter, summary, how-to, unanswered cards (same as the AI / list)
   const mk = (id, unlabeled, waiting, person) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [{ model: 'm', hash: 'h', n: 3, state: 'collecting' }], min_n: 50, records: 5, labels: 1, unlabeled, waiting_for_person: waiting, awaiting_results: unlabeled - waiting, person_answers: person, truth_source: person ? 'person' : 'results', last_calibration: 'log', calibration_result: { reason: 'insufficient', human_truths: 2, min_n: 50, model: 'm', hash: 'h', at: '2026-10-23' }, tune: { running: false, proposer: true, variants: [{ name: 'v1' }], latest: { run: 'r', adoptable: true, adopted: false, winner: 'v1', model: 'm', truths: 3, at: '2026-10-23T00:00:00Z', have_holdout: true, holdout: 0.5, decision: 'd', candidates: [{ name: 'current', top1: 0.5, brier: 0.2, prec_at_act: 0.5, rec_at_act: 0.5, change: '' }, { name: 'v1', top1: 0.6, brier: 0.1, prec_at_act: 0.6, rec_at_act: 0.6, change: 'c' }], winner_wording: { question: 'q1', options: { a: 'x' }, steps: [{ ask: 'a', yes: 'y', no: 'n' }] }, current_wording: { question: 'q0', options: { a: 'y' } }, meaning_checks: [{ by: 'agent', verdict: 'unsure', same: false, current_translation: 'j0', candidate_translation: 'j1', difference: 'd' }] } } });
   const specs = [mk('wiki-conflict', 4, 0, false), mk('prompt-kind', 2, 1, true), mk('needs-plan', 3, 2, true)];
   const item = (id, project) => ({ trace_id: id, at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: id, raw: { yes: 0.6, no: 0.4 }, stale: true, answerable: true, audit: true, waits_for_person: true, project, rung: 'context', choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }] });
@@ -970,13 +970,13 @@ async function checkUtilityConflicts(target) {
   let app = mount(App, { target }); await settle(); await settle();
   collectConflicts(target, table, out);
   unmount(app);
-  Object.assign(ui, { page: 'answer', tab: '' }); // 答える画面: 札(問い・貼り付くボタンの帯)と聞き方の候補
+  Object.assign(ui, { page: 'answer', tab: '' }); // Answer screen: the card (question, sticky button bar) and candidate ways of asking
   app = mount(App, { target }); await settle(); await settle();
   collectConflicts(target, table, out);
   const answerShown = !!target.querySelector('[data-answer] .answer-bar') && !!target.querySelector('[data-answer-wording]');
   unmount(app);
-  if (!answerShown) out.add('答える画面の札か聞き方の候補が描かれていない(検査が見ていない)');
-  // 2. カード: 前の返答の折りたたみ(needs-plan)、原文の上限の注意、回答済み(答えの直し)、抜き取りの仮採点、読むだけ
+  if (!answerShown) out.add('the Answer screen card or the candidate ways of asking were not rendered (the check is not looking at them)');
+  // 2. Cards: the folded previous reply (needs-plan), the note on the original text's limit, answered (changing the answer), the sample's provisional score, read-only
   const base = { trace_id: 'c1', at: '2026-10-23T00:00:00Z', band: 'discard', top: 'yes', p: 0.3, model: 'm', answerable: true, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], project: 'alpha' };
   const cards = [
     [{ id: 'needs-plan', type: 'noul' }, { ...base, inputs: { previous: 'p', request: 'r', agreed: 'a', open: 'o', files: 'f' }, original_inputs: { previous: 'pp' }, text_status: { request: 'limited', previous: 'legacy' } }],
@@ -986,7 +986,7 @@ async function checkUtilityConflicts(target) {
   ];
   for (const [sp, it] of cards) { app = mount(ItemCard, { target, props: { sp, it } }); flushSync(); collectConflicts(target, table, out); unmount(app); }
   app = mount(ItemCard, { target, props: { sp: { id: 'wiki-conflict', type: 'noul' }, it: { ...base, inputs: { lesson: 'l' } }, readonly: true } }); flushSync(); collectConflicts(target, table, out); unmount(app);
-  // 3. 知識の欄(主張・階層・記事の本文・出典・効き目)、仕事の入口、知らせ
+  // 3. The Knowledge section (claims, hierarchy, article text, sources, effects), the work entrances, notices
   const lesson = (id, related = []) => ({ id, revision: 'r', title: 't' + id, lesson: 'l', applies_to: 'w', body: '## h\n\nbody', sources: [{ id: 'src' + id }], related, status: 'hypothesis', correction: { quote: 'q', action: 'a' } });
   const wiki = { notebook_project: 'alpha', pending_sources_count: 1, knowledge_usage: { prepared: 1, with_matches: 1, with_citations: 1, lookup_milliseconds: 1, context_bytes: 1 }, maintenance: [{ page_id: 'a', title: 'm' }],
     memory_effect: { window: 10, stats: { delivered: 1 }, corrections: { delivered: 1 }, recent: [{ source_id: 's', request: 'r', quote: { key: 'k', lesson: 'l', correction: { quote: 'q', action: 'a' } }, assessment: { result: 'helpful', correction_result: 'followed', decision: 'd', evidence: 'e' } }] },
@@ -998,11 +998,11 @@ async function checkUtilityConflicts(target) {
   globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
   const list = [...out];
   const ok = list.length === 0;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (同じ要素に同じ性質の utility を重ねない: 衝突 ' + list.length + ' 件' + (ok ? '' : '\n  ' + list.slice(0, 20).join('\n  ')) + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (no utilities for the same property stacked on one element: ' + list.length + ' conflicts' + (ok ? '' : '\n  ' + list.slice(0, 20).join('\n  ')) + ')');
   return ok;
 }
 
-// 作業記録(0.8.1): フォルダごとに畳んで始まり、開くとファイル、押すと文字は文字のまま(HTML を描かない)、画像は画像で出す。空なら空と言う。
+// Work records (0.8.1): starts collapsed per folder; opening shows files; pressing shows text as text (no HTML rendered) and images as images. When empty, it says so.
 async function checkHandoff(target) {
   const realFetch = globalThis.fetch, lang = i18n.lang; i18n.lang = 'ja';
   const calls = [];
@@ -1029,14 +1029,14 @@ async function checkHandoff(target) {
   unmount(app);
   globalThis.fetch = realFetch; i18n.lang = lang;
   const ok = folded && listed && text && image && empty;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (作業記録: 畳んで始まる=' + folded + ', 開くとファイル=' + listed + ', 文字はそのまま=' + text + ', 画像は画像=' + image + ', 空と言う=' + empty + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (work records: starts collapsed=' + folded + ', opening shows files=' + listed + ', text as is=' + text + ', image as image=' + image + ', says empty=' + empty + ')');
   return ok;
 }
 
-// 知識の正面(0.9.0): 場面を選ぶとその場面の題だけ、題を押すと本文、場面の無い記事は「未分類」、受け箱は例外だけ、長い依頼は押すと全文、
-// 種類ごとに 4 本と「ほか N 本」。HTML は文字のまま出す。
+// The front of Knowledge (0.9.0): choosing a scene shows only that scene's titles, pressing a title shows the text, articles without a scene are "Unclassified", the inbox has only exceptions, a long request shows in full when pressed,
+// 4 per kind plus "N more". HTML is shown as text.
 function checkLessons(target) {
-  try { localStorage.removeItem('shikii.scene'); } catch { /* 無くてよい */ }
+  try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
   const mk = (i, kind, scene) => ({ id: String(i).padStart(16, '0'), title: '記事 ' + i, lesson: '教訓 ' + i + ' <b>太字ではない</b>', applies_to: 'a', kind, scene, sources: [], related: [] });
   const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'コミットする時'), mk(3, 'rule', '公開する時'), mk(4, 'rule', '公開する時'), mk(5, 'rule', '公開する時'), mk(6, 'howto', '公開する時'), mk(7, '', '')];
   const long = '依頼の文がとても長い。'.repeat(10);
@@ -1061,6 +1061,6 @@ function checkLessons(target) {
   const full = !!clip && q('[data-clip="req0"]').textContent.includes(long);
   unmount(app);
   const ok = sceneList && firstFour && filtered && detail && none && inbox && short && full;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (知識の正面: 場面の一覧=' + sceneList + ', 種類ごとに 4 本と続き=' + firstFour + ', 場面で絞る=' + filtered + ', 本文は文字のまま=' + detail + ', 未分類=' + none + ', 受け箱=' + inbox + ', 押す前は短い=' + short + ', 押すと全文=' + full + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (front of Knowledge: scene list=' + sceneList + ', 4 per kind and more=' + firstFour + ', filter by scene=' + filtered + ', text as is=' + detail + ', unclassified=' + none + ', inbox=' + inbox + ', short before pressing=' + short + ', full when pressed=' + full + ')');
   return ok;
 }

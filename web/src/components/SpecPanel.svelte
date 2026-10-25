@@ -1,7 +1,7 @@
 <script>
-  // AI の様子で開く 1 つの問いの欄(0.9.1): 題と人の言葉の質問、進み具合の 1 行とバー、最後の自動較正、列の切替、
-  // 未回答のカード(一覧)または回答済み(新しい順、答えの直し、AI にもう一度聞く)、聞き方の欄。
-  // モデルごとの印・数字のカード・絞り込み・表示の切替は 0.9.1 で外した(人が答えるのは「答える」画面で、ここは見直す所)
+  // The section for one question opened in AI status (0.9.1): the title and the question in the person's words, a line and bar of progress, the last automatic calibration, the list switch,
+  // unanswered cards (a list) or answered ones (newest first, changing answers, asking the AI again), and the ways-of-asking section.
+  // Per-model markers, number cards, filtering and view switching were removed in 0.9.1 (a person answers on the "Answer" screen; this is where to review)
   import { t, loc } from '../lib/i18n.svelte.js';
   import { ui, skipped } from '../lib/state.svelte.js';
   import Chips from './Chips.svelte';
@@ -13,10 +13,10 @@
   let title = $derived(loc(sp.titles, ''));
   let question = $derived(loc(sp.questions, sp.question || ''));
 
-  // モデルごとの印の文。状態の鍵(collecting / ready)は辞書の鍵と同じ
+  // The text of the per-model marker. The state keys (collecting / ready) are the same as the dictionary keys
   const isHeld = k => k.state !== 'calibrated' && k.state !== 'stale' && sp.calibration_result?.hash === k.hash && sp.calibration_result?.model === k.model && ['quality', 'insufficient', 'error'].includes(sp.calibration_result?.reason);
 
-  // 人の言葉の状態と進み具合
+  // The state and progress in the person's words
   let live = $derived(sp.keys.filter(k => k.state !== 'stale'));
   let calibration = $derived(live.some(k => k.hash === sp.calibration_result?.hash && k.model === sp.calibration_result?.model) ? sp.calibration_result : null);
   let calibrationSummary = $derived(calibration?.reason === 'quality' ? t('calibrationQuality')(calibration.human_truths) : calibration?.reason === 'insufficient' ? t('calibrationInsufficient')(calibration.human_truths, calibration.min_n) : calibration?.reason === 'written' ? t('calibrationWritten')(calibration.human_truths) : calibration?.reason === 'error' ? t('calibrationError') : t('calibrationDiagnostic'));
@@ -32,20 +32,20 @@
     return { plain, pct };
   });
 
-  // 人が答えない判定(wiki の矛盾・差し込み先): AI が答え、正解は振り返りの結果から付く。列は「振り返りで確定する」と「確定済み」だけ(0.8.0)
+  // Decisions a person does not answer (wiki conflict, wiki place): the AI answers, and the truth comes from the outcome of reflection. The lists are only "Settled by reflection" and "Settled" (0.8.0)
   let machineOnly = $derived(sp.person_answers === false);
-  // 列(lane): you = 未回答(あなたが答える)、results = 次の依頼・振り返りで確定する(人は答えない)、done = 回答済み / 確定済み
+  // Lists (lane): you = unanswered (you answer), results = settled by the next request or reflection (a person does not answer), done = answered / settled
   let lane = $derived(machineOnly ? (ui.done ? 'done' : 'results') : ui.done ? 'done' : ui.results ? 'results' : 'you');
   const forYou = it => !machineOnly && it.waits_for_person !== false;
   let queued = $derived(sp.queue?.items || []);
   let all = $derived(queued.filter(it => lane === 'results' ? !forYou(it) : forYou(it)));
   let resultsCount = $derived(queued.filter(it => !forYou(it)).length + Math.max(0, (sp.awaiting_results || 0) - queued.filter(it => !forYou(it)).length));
-  // 未回答(あなた)の数: 列を読む前(回答済みを見ている時)は status の人待ちの数
+  // The count of unanswered (you): before the list is loaded (while looking at answered), status's count waiting for a person
   let counts = $derived({ all: sp.queue ? queued.filter(forYou).length : (sp.waiting_for_person || 0) });
   let answeredVisible = $derived(sp.answered || []);
   let visible = $derived(all.filter(it => !skipped.has(it.trace_id)));
   let extra = $derived(lane === 'you' ? Math.max(0, (sp.waiting_for_person || 0) - all.length) : 0);
-  // 見た目(Tailwind)。何度も出る物だけここで名前を付ける
+  // Look (Tailwind). Only things that appear many times are named here
   const phase = 'decision-phase mt-[9px] mb-0 text-[12px] text-muted max-sm:text-[11px]';
 </script>
 

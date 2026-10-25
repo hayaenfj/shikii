@@ -1,4 +1,4 @@
-// 画面の振る舞いの検査(scripts/check-ui.mjs)用: test/ui-entry.js をブラウザ向け(client)に 1 ファイルに組む。--ssr では mount が使えない
+// For the page behavior check (scripts/check-ui.mjs): builds test/ui-entry.js into one file for the browser (client). mount cannot be used with --ssr
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 export default defineConfig({

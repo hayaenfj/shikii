@@ -1,8 +1,8 @@
-// shikii serve の HTTP の口(v1/...)への薄い包み。パスは相対(逆 proxy の prefix の下でも動く。index.html の base './' と同じ流儀)。誤りは本文の error(無ければ状態コード)を Error にして投げる
+// A thin wrapper around shikii serve's HTTP entry points (v1/...). Paths are relative (so it works under a reverse proxy's prefix, the same convention as index.html's base './'). Errors are thrown as an Error built from the body's error (or the status code if there is none)
 async function j(url, opts) {
   const r = await fetch(url, opts);
   let b;
-  try { b = await r.json(); } catch (e) { throw new Error(r.ok ? e.message : String(r.status)); } // 逆 proxy の HTML など JSON でない応答は状態コードで伝える
+  try { b = await r.json(); } catch (e) { throw new Error(r.ok ? e.message : String(r.status)); } // a non-JSON response such as a reverse proxy's HTML is reported by its status code
   if (!r.ok) throw new Error(b.error || r.status);
   return b;
 }
@@ -19,7 +19,7 @@ export const api = {
     let cursor = result.next_cursor;
     const seen = new Set();
     while (cursor) {
-      if (seen.has(cursor)) throw new Error('知識の続きが前進しません');
+      if (seen.has(cursor)) throw new Error('the next page of knowledge does not move forward');
       seen.add(cursor);
       const page = await j('v1/wiki?cursor=' + encodeURIComponent(cursor));
       result.lessons = [...(result.lessons || []), ...(page.lessons || [])];
@@ -37,7 +37,7 @@ export const api = {
   tuneVariant: body => post('v1/tune/variant', body),
   wikiClaim: body => post('v1/wiki/claim', body),
   notebook: body => post('v1/wiki/notebook', body),
-  // 作業記録(0.8.1): 1 件の口。画像は <img> がそのまま読み、文字は text で取る
+  // Work records (0.8.1): the entry point for one item. Images are read directly by <img>, and text is fetched as text
   handoffFile: p => 'v1/handoff/file?path=' + encodeURIComponent(p),
   handoffText: async p => {
     const r = await fetch('v1/handoff/file?path=' + encodeURIComponent(p));

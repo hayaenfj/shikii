@@ -1,6 +1,6 @@
 <script>
-  // 知識の欄(0.9.0): 正面は教訓(場面 → 種類 → 題、Lessons)と作業記録の 2 つのタブ。AI の内部の数(検索・見直し・振り返り)と
-  // 前からの記事の木(Notebook)、以前の主張(手で確かめる物)は、畳んだ「AI の様子と詳しい記録」の中に置く(人が全部を確かめない)
+  // The Knowledge section (0.9.0): the front has 2 tabs, lessons (scene → kind → title, Lessons) and work records. The AI's internal numbers (search, review, reflection),
+  // the tree of existing articles (Notebook) and older claims (checked by hand) go inside the collapsed "AI status and detailed records" (a person does not check everything)
   import { t } from '../lib/i18n.svelte.js';
   import { load } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
@@ -13,7 +13,7 @@
   let busyPath = $state('');
   const readTab = () => { try { return localStorage.getItem('shikii.knowledgeTab') || 'lessons'; } catch { return 'lessons'; } };
   let tab = $state(readTab());
-  function setTab(v) { tab = v; try { localStorage.setItem('shikii.knowledgeTab', v); } catch { /* 表示は動く */ } }
+  function setTab(v) { tab = v; try { localStorage.setItem('shikii.knowledgeTab', v); } catch { /* the display still works */ } }
 
   let claims = $derived((wiki.claims || []).filter(c => c.is_claim));
   let prose = $derived((wiki.claims || []).filter(c => !c.is_claim).length);

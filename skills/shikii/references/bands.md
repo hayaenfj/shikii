@@ -1,14 +1,14 @@
-# 帯と領収書
+# Bands and receipts
 
-`shikii decide` の答えは band(帯)で読む。生の確率で判断しない。
+Read the answer of `shikii decide` by its band. Do not decide on the raw probability.
 
-| 帯 | 意味 | あなたがすること |
+| band | meaning | what you do |
 |---|---|---|
-| `act` | 線があり、較正後の確率が act 閾値以上 | 自動で進めてよい。JSON の `receipt` に根拠(線の方法・引いた日・正解の数と人の分・人が確かめた act の判定の数と精度)が付く。説明を求められたらそれを示す。receipt の `human_checked_act` は「人が答えた正解のうち、この線なら act に入るもの」の数で、抜き取りに答えた数(`status` の audit answers)とは別 |
-| `ask` | 迷っている(線が無い時は、生の確率が ask 閾値以上なら全部ここ。それ未満は discard) | 人に確かめる。人の答えは `shikii label <trace_id> <truth>` で記録する(それが線の材料になる) |
-| `discard` | はい/いいえ では「いいえ」。多択・段階では「どれにも届かない」 | 動かない。多択の discard は迷いなので、文脈(`state.context`)があれば shikii が自分で聞き直している |
-| `abstain` | 入力が足りない、または送れる先が無い | 入力を揃える。`reason` に理由がある |
+| `act` | there is a line, and the calibrated probability is at or above the act threshold | you may go ahead automatically. The JSON `receipt` carries the grounds (the line's method, the date it was fitted, the number of truths and how many came from people, and the number and precision of act decisions a person checked). Show it when asked to explain. The receipt's `human_checked_act` is "the number of human truths that this line would put in act", which is different from the number of sampled items answered (`status`'s audit answers) |
+| `ask` | unsure (when there is no line, everything whose raw probability is at or above the ask threshold lands here; anything below is discard) | check with the person. Record the person's answer with `shikii label <trace_id> <truth>` (it becomes material for the line) |
+| `discard` | for yes/no, "no". For choice and score, "reaches none of them" | do not act. A choice discard means it is unsure, so if there is context (`state.context`), shikii has already asked again by itself |
+| `abstain` | inputs are missing, or there is nowhere it may send them | fill in the inputs. `reason` has the reason |
 
-- `rung: context` は「最小の質問で迷ったので文脈を足して聞き直した」印。`minimal` に 1 回目の答えが残る
-- `is_calibrated: false` なら線が無い。act は出ない。正解を集めるのが先
-- 抜き取り: act で自動で動いた判定の 20 件に 1 件は画面に出る。人がそれに答えると act の精度が人の正解で測られる。促されたら人に回す
+- `rung: context` marks "unsure on the minimal question, so it asked again with context added". `minimal` keeps the first answer
+- `is_calibrated: false` means there is no line. act does not appear. Collect truths first
+- Sampling: 1 in 20 decisions that went ahead automatically on act appears on the page. When a person answers it, act's precision is measured against human truths. When prompted, pass it to the person

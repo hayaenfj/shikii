@@ -1,11 +1,13 @@
-# 接続例: MCP（Claude Code などのエージェントから道具として使う）
+**English** · [日本語](mcp.ja.md)
 
-`shikii mcp` は `shikii serve` と同じ中身を、stdio の MCP サーバーとして出す。推論は持たず、後ろの決定モデル（`--local` / `--hosted`）に聞く。
-HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同じ（記録・正解・自動較正・store も共通）。
+# Connection example: MCP (used as a tool from agents such as Claude Code)
 
-## 入れ方（Claude Code）
+`shikii mcp` exposes the same content as `shikii serve` as a stdio MCP server. It has no inference of its own and asks the decision model behind it (`--local` / `--hosted`).
+It only calls the HTTP handlers internally, so it behaves the same as `serve` (records, truths, automatic calibration and the store are shared too).
 
-`shikii --init`（`shikii init`も同じ）が、既製の問い(hookの4問とwikiの2問)・wiki・画面への入口と、Claude Code(`.mcp.json`)、Cursor(`.cursor/mcp.json`)、OpenCode(`opencode.json` の `mcp`、`type: local`)、Codex(`~/.codex/config.toml` の `[mcp_servers.shikii]`)に同じ項を足す(既にあれば触らない)。使っていないツールの設定ファイルも作られる(要らなければ消すか `.gitignore` へ。2 回目の init はあるものを触らない)。`opencode.jsonc` を使っている人には別に `opencode.json` が生まれる(OpenCode は両方を読む)。Codex の設定に `mcp_servers` がどんな書き方でもあれば足さない(末尾に足すと TOML の二重定義になるため。手で足す行を表示する)。`CLAUDE.md` だけのプロジェクトには `AGENTS.md` を作らない(OpenCode が `CLAUDE.md` を読まなくなる)。手で書くならプロジェクトの `.mcp.json`:
+## Installing (Claude Code)
+
+`shikii --init` (same as `shikii init`) adds the ready-made questions (the hooks' 4 and the wiki's 2), the wiki, the entry to the page, and the same entry to Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), OpenCode (`mcp` in `opencode.json`, `type: local`) and Codex (`[mcp_servers.shikii]` in `~/.codex/config.toml`) (it leaves them alone if they already exist). Config files for tools you do not use are created too (delete them or add them to `.gitignore` if you do not need them; a second init leaves existing ones alone). People who use `opencode.jsonc` get a separate `opencode.json` (OpenCode reads both). If the Codex config has `mcp_servers` written in any form, it does not add one (appending at the end would be a duplicate TOML definition; it prints the lines to add by hand). In a project with only `CLAUDE.md`, it does not create `AGENTS.md` (OpenCode would stop reading `CLAUDE.md`). To write it by hand, use the project's `.mcp.json`:
 
 ```json
 {
@@ -18,42 +20,41 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 }
 ```
 
-`shikii` は `make install` で `~/.local/bin/shikii` に入る（PATH に無ければ絶対パスで）。ログは stderr に出る（stdout は通信路）。
+`make install` puts `shikii` in `~/.local/bin/shikii` (use the absolute path if it is not on PATH). Logs go to stderr (stdout is the channel).
 
-## 道具
+## Tools
 
-| 道具 | 何をするか | 引数 |
+| Tool | What it does | Arguments |
 |---|---|---|
-| `shikii_specs` | spec の一覧。id、型、質問、閾値、受け付ける正解（選択肢 id / yes, no / 段階の番号）。**最初に呼ぶ** | なし |
-| `shikii_decide` | spec の質問を決定モデルに聞く。帯（act / ask / discard / abstain）、最上位の答え、確率、trace_id | `spec`, `inputs`（object）, `tainted`（任意） |
-| `shikii_label` | 判定に正解を付ける。`!x`（x ではなかった）も可。正解が `eval.min_n` に届けば自動で較正し、結果に `calibrated: true` と報告が付く | `trace_id`, `truth`, `spec` / `weight` / `source`（任意） |
-| `shikii_status` | spec ごとの記録・正解・(model, hash) の状態 | なし |
-| `shikii_tune` | spec の聞き方の候補(`variants:` + 提案役が作る N 個)を正解の貯金で採点。候補ごとの数字、holdout、採用できるか | `spec`, `propose`（任意。`mcp` を `--proposer URL` 付きで起こした時だけ） |
-| `shikii_wiki` | 同じ仕事の会話から出典付きの教訓を育てる。取り込み・検索・点検 | `operation`（`query` / `ingest` / `lint`）、`sources` / `title` / `lesson` / `applies_to` / `id` / `replaces` / `correction` / `query` |
-| `shikii_review` | 会話と結果から根拠付きで仮採点。人の抜き取りと訂正例を参照 | `operation`（`query` / `submit`）、`source_id` / `trace_id` / `truth`（`yes` / `no` / `unknown`）/ `reason` |
+| `shikii_specs` | the list of specs. id, type, question, thresholds, accepted truths (option id / yes, no / level number). **Call it first** | none |
+| `shikii_decide` | asks the decision model a spec's question. band (act / ask / discard / abstain), the top answer, the probability, trace_id | `spec`, `inputs` (object), `tainted` (optional) |
+| `shikii_label` | puts a truth on a decision. `!x` (it was not x) is allowed too. When truths reach `eval.min_n` it calibrates automatically, and the result carries `calibrated: true` and a report | `trace_id`, `truth`, `spec` / `weight` / `source` (optional) |
+| `shikii_status` | the state of records, truths and (model, hash) per spec | none |
+| `shikii_tune` | scores a spec's candidate ways of asking (`variants:` + N made by the proposer) on the stored truths. Numbers per candidate, holdout, whether it can be adopted | `spec`, `propose` (optional. Only when `mcp` was started with `--proposer URL`) |
+| `shikii_wiki` | grows sourced lessons from the conversations of the same work. Ingest, search, check | `operation` (`query` / `ingest` / `lint`), `sources` / `title` / `lesson` / `applies_to` / `id` / `replaces` / `correction` / `query` |
+| `shikii_review` | provisional scoring with grounds from the conversation and outcome. Refers to the person's samples and correction examples | `operation` (`query` / `submit`), `source_id` / `trace_id` / `truth` (`yes` / `no` / `unknown`) / `reason` |
+| `shikii_reflect` | checks and saves provisional scores, wiki summaries and observations of memories and corrections together (query gives 2 at a time from the oldest conversation; submit has no count limit) | `operation` (`query` / `submit`), `reviews` / `wiki` / `memory` |
 
-| `shikii_reflect` | 仮採点・wiki整理・記憶と訂正の観察をまとめて確認・保存(query は古い会話から 2 件ずつ、submit は数を限らない) | `operation`（`query` / `submit`）、`reviews` / `wiki` / `memory` |
+To use `propose > 0`, start `shikii mcp` with `--proposer URL` (not in the `.mcp.json` example).
 
-`propose > 0` を使うには `shikii mcp` を `--proposer URL` 付きで起こす(`.mcp.json` の例には無い)。
+`shikii_wiki` was added in 0.3. The current agent writes the text; no other model is used. It is stored in each work's `.shikii/`, the same as the hooks, and only handles the project where the MCP server was started. `query` returns related lessons and unsorted conversations, and passing `sources: [source ID]` lets you read the original text. `ingest` saves the title, lesson, where it applies and the sources, and a conversation with no lesson can be marked sorted with `sources` only. Lessons are hypotheses and are not counted as truths or calibration. [Details of the rules](../skills/shikii/references/wiki.md).
 
-`shikii_wiki` は 0.3 で追加した。文章は現在のエージェントが書き、別のモデルは使わない。置き場はhookと同じ各仕事の `.shikii/` で、MCP サーバーを起こしたプロジェクトだけを扱う。`query` は関連する教訓と未整理の会話を返し、`sources: [出典ID]` を渡すと原文を読める。`ingest` で題・教訓・適用する場面・出典を保存し、教訓がない会話は `sources` だけで整理済みにできる。教訓は仮説で、正解や較正には数えない。[作法の詳細](../skills/shikii/references/wiki.md)。
+`shikii_review` first checks the same work's original text, scoring targets and the person's correction examples with `query`, then saves the provisional scores with `submit`. It does not register human truths, and does not add checks with the person for every item. shikii chooses the samples, and the person's corrections from the page come back in the next `query`. [Details of scoring](../skills/shikii/references/review.md).
 
-`shikii_review` は、まず `query` で同じ仕事の原文・採点対象・人の訂正例を確認してから `submit` で仮採点を保存する。人の正解は登録せず、人への確認を全件増やさない。抜き取りは shikii が選び、画面からの人の訂正を次の `query` に戻す。[採点の詳細](../skills/shikii/references/review.md)。
+The 0.4 hooks point to `shikii_reflect`. `query` does not repeat the original text and returns the scoring targets, related lessons and the person's correction examples together. `submit` takes up to 4 provisional scores, 2 wiki summaries and 4 provisional memory evaluations. It links a memory's `result` with the decision and check results, and for quotes with a correction also saves `correction_result` (followed / repeated / not_applicable / unknown). The wiki's `correction` holds the original text of the person's reply and the next action to change. Correction tracking from 0.4.1 is available in 0.4.1. Check `complete` in the reply and each item's `error`, fix the failed ones and send them again. The ones that succeeded are kept, and sending the same content again does not duplicate. [JSON and steps](../skills/shikii/references/review.md).
 
-0.4のhookは `shikii_reflect` を案内する。`query` は原文を重ねず、採点対象・関連する教訓・人の訂正例を一緒に返す。`submit` は仮採点4件・wiki整理2件・記憶の仮評価4件まで。記憶の`result`と判断・確認結果を結び、訂正付きの引用には`correction_result`（followed / repeated / not_applicable / unknown）も保存する。wikiの`correction`は人の返答の原文と次に変える行動を持つ。0.4.1の訂正の追跡は0.4.1で利用できる。返答の `complete` と項目ごとの `error` を確認し、失敗分は直して再送する。成功分は保持し、同じ内容の再送は重複させない。[JSONと手順](../skills/shikii/references/review.md)。
+**There is no tool for adopting.** Whether the meaning is the same is checked by the agent the hook asks, with `shikii hook variants check` (with translations when the setting is not English) (if the same, it is adopted and the person can revert it on the page). Otherwise, when a person presses "the meaning is the same" on the page (`shikii serve`), or with `tune --write` in the terminal.
 
-**採用の道具は無い。** 意味が同じかは、hook に頼まれたエージェントが `shikii hook variants check` で(英語以外の設定なら訳と一緒に)確かめる（同じなら採用され、人は画面で元に戻せる）。ほかは画面（`shikii serve`）で人が「意味は同じ」を押した時か、端末の `tune --write`。
+Errors (an unknown spec, a truth not in the spec, a missing trace) are returned not as JSON-RPC errors but as `isError: true` and text in the tool result, so the agent can read them and fix things.
 
-誤り（知らない spec、spec に無い正解、無い trace）は JSON-RPC のエラーではなく、道具の結果の `isError: true` と本文で返す。エージェントが読んで直せるように。
+## How an agent uses it (example)
 
-## エージェント側の使い方（例）
+1. Learn the spec ids and the candidate truths with `shikii_specs`
+2. At a decision point, call `shikii_decide` and look at `band`. On `act` go ahead, on `ask` ask the person, on `discard` do nothing
+3. When the outcome is known (whether it actually changed something, whether the user chose), call `shikii_label` with the `trace_id`
+4. The line is drawn automatically once enough accumulate. You can see `shikii_status`'s `keys[].state` go from `collecting` (with `n` / `min_n`) to `calibrated`
 
-1. `shikii_specs` で spec の id と正解の候補を知る
-2. 判断の場面で `shikii_decide` を呼び、`band` を見る。`act` なら進める、`ask` なら人に聞く、`discard` なら何もしない
-3. 結果が分かった時（実際に変更したか、利用者が選んだか）に `shikii_label` を `trace_id` 付きで呼ぶ
-4. 線は溜まれば自動で引かれる。`shikii_status` の `keys[].state` が `collecting`（`n` / `min_n` 付き）→ `calibrated` になるのが見える
+## Tests
 
-## テスト
-
-`cmd/shikii/mcp_test.go` の 3 本（initialize と tools/list、decide → label → 自動較正 → act の一周、誤りは isError / 未知の道具とメソッドは JSON-RPC エラー）。
-実装前に落ちるのを確認してから GREEN（2026-10-17）。
+The 3 tests in `cmd/shikii/mcp_test.go` (initialize and tools/list; one round of decide → label → automatic calibration → act; errors as isError, and unknown tools and methods as JSON-RPC errors).
+Each was seen failing before implementation, then GREEN (2026-10-17).
