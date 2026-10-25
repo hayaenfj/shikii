@@ -5,7 +5,7 @@
 Written: 2026-10-16
 Status: concept, before implementation. (Added to since then while implementing.)
 
-> A readable version for first-time readers is [`why-shikii.ja.md`](why-shikii.ja.md) (Japanese). This document is a record that keeps numbers and sources, and uses terms without explaining them.
+> A readable version for first-time readers is [`why-shikii.md`](why-shikii.md). This document is a record that keeps numbers and sources, and uses terms without explaining them.
 
 ## 1. In one sentence
 

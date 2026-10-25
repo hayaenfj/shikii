@@ -1,3 +1,5 @@
+[English](why-shikii.md) · **日本語**
+
 # shikii はなぜ作ったか、何を決めたか（読み物版）
 
 2026-10-17。設計の記録そのものは [`decision-ops-framework.ja.md`](decision-ops-framework.ja.md) にあります。あちらは作った本人が後で見返すための書き方で、数字と用語が詰まっています。
