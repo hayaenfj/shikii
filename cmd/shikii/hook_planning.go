@@ -197,7 +197,7 @@ func cmdHookPlan(args []string) error {
 	}
 	result := &planningReceipt{Shadow: true}
 	var d *decide.Decision
-	sp, err := spec.Load(filepath.Join(root, "decisions", "needs-plan.yaml"))
+	sp, err := spec.Load(hookSpecPath(root, "needs-plan"))
 	if err != nil {
 		return err
 	}

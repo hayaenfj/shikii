@@ -125,7 +125,7 @@ func currentLineState(agent string, sp *spec.Spec) (model string, s lineState, o
 func lineSummary(agent string) string {
 	var lines []string
 	for _, id := range append(append([]string{}, hookSpecs...), wikiSpecs...) {
-		sp, err := spec.Load(filepath.Join(agent, "decisions", id+".yaml"))
+		sp, err := spec.Load(hookSpecPath(agent, id))
 		if err != nil {
 			continue
 		}

@@ -201,6 +201,7 @@ func newServer(o serveOpts) http.Handler {
 	mux.HandleFunc("/v1/tune/run", s.handleTuneRun)
 	mux.HandleFunc("/v1/tune/sync", s.handleTuneSync)
 	mux.HandleFunc("/v1/tune/adopt", s.handleTuneAdopt)
+	mux.HandleFunc("/v1/tune/review", s.handleTuneReview)
 	mux.HandleFunc("/v1/tune/variant", s.handleTuneVariant)
 	mux.HandleFunc("/v1/wiki", s.handleWikiList)
 	mux.HandleFunc("/v1/wiki/claim", s.handleWikiClaim)

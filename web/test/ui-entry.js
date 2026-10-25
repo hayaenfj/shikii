@@ -15,7 +15,7 @@ import Answer from '../src/components/Answer.svelte';
 import AiView from '../src/components/AiView.svelte';
 import App from '../src/App.svelte';
 import { i18n, t } from '../src/lib/i18n.svelte.js';
-import { ui, skipped } from '../src/lib/state.svelte.js';
+import { ui, skipped, wordingNeedsPerson } from '../src/lib/state.svelte.js';
 import Toast from '../src/components/Toast.svelte';
 import { toastState } from '../src/lib/toast.svelte.js';
 
@@ -74,6 +74,38 @@ function checkAnswerMerge(target) {
   unmount(app); skipped.clear(); i18n.lang = lang;
   const ok = one && asked && left && next;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答える画面: 1 枚だけで AI の問いと待たない記録は出さない=' + one + ', 札とボタンの上に問い・仕事の印=' + asked + ', 残りは合計=' + left + ', スキップで次の問いの札=' + next + ')');
+  return ok;
+}
+
+// 0.9.2: 聞き方の意味はエージェントが確かめ、和訳を付ける。AI が採用した時は和訳と「このままでよい / 元に戻す」、
+// 決めきれない時は和訳と違いの見立てと「意味は同じ / 違う」を出す。答える画面に出すのは、この 2 つ(人がやることがある時)だけ
+async function checkWordingAgent(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => { if (opts && opts.body) calls.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({ reverted: true, specs: [] }) }; };
+  const base = { run: 'r1', winner: 'unasked-first', model: 'm', truths: 50, at: '2026-10-25T00:00:00Z', candidates: [{ name: 'current', top1: 0.3, brier: 0.3, prec_at_act: 0.1, rec_at_act: 0.1, change: '' }, { name: 'unasked-first', top1: 0.8, brier: 0.2, prec_at_act: 0.8, rec_at_act: 0.3, change: 'q' }], decision: 'd', winner_wording: { question: 'Did it change unasked files?' }, current_wording: { question: 'Were the changes within scope?' } };
+  const agent = (verdict, extra = {}) => ({ by: 'agent', verdict, same: verdict === 'same', current_translation: '範囲の中で変えたかの和訳', candidate_translation: '頼まれていない物を変えたかの和訳', difference: verdict === 'same' ? '' : '聞く順だけ違う', ...extra });
+  const adopted = { ...base, adoptable: true, adopted: true, auto_adopted: true, adopted_path: 'decisions/x-v3.yaml', meaning_checks: [agent('same')] };
+  const unsure = { ...base, adoptable: true, adopted: false, meaning_checks: [agent('unsure')] };
+  const waiting = { ...base, adoptable: true, adopted: false };
+  const kept = { ...adopted, meaning_checks: [agent('same'), { by: 'page', same: true }] };
+  const mountWith = latest => { const app = mount(Wording, { target, props: { sp: { id: 'changes-in-scope', type: 'noul', tune: { running: false, proposer: false, variants: [], latest } } } }); flushSync(); return app; };
+  let app = mountWith(adopted);
+  const text = () => target.textContent;
+  const adoptedShows = text().includes('範囲の中で変えたかの和訳') && text().includes('頼まれていない物を変えたかの和訳') && !!target.querySelector('[data-wording-keep]') && !!target.querySelector('[data-wording-undo]');
+  target.querySelector('[data-wording-undo]')?.click();
+  await new Promise(r => setTimeout(r, 0));
+  const undoSent = calls.some(c => c.url.endsWith('v1/tune/review') && c.body.run === 'r1' && c.body.keep === false);
+  unmount(app);
+  app = mountWith(unsure);
+  const unsureShows = text().includes('聞く順だけ違う') && text().includes('頼まれていない物を変えたかの和訳') && !!target.querySelector('[data-wording-same]') && !target.querySelector('[data-wording-undo]');
+  unmount(app);
+  globalThis.fetch = realFetch; i18n.lang = lang;
+  const needs = [wordingNeedsPerson(adopted), wordingNeedsPerson(unsure), wordingNeedsPerson(waiting), wordingNeedsPerson(kept), wordingNeedsPerson({ ...adopted, reverted: true, adopted: false })];
+  const answerOnlyWhenPerson = JSON.stringify(needs) === JSON.stringify([true, true, false, false, false]);
+  const ok = adoptedShows && undoSent && unsureShows && answerOnlyWhenPerson;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI が採用: 和訳と戻す=' + adoptedShows + ', 戻すを送る=' + undoSent + ', 決めきれない: 和訳と違い=' + unsureShows + ', 答える画面は人がやる時だけ=' + answerOnlyWhenPerson + ' ' + JSON.stringify(needs) + ')');
   return ok;
 }
 
@@ -440,7 +472,7 @@ export async function run() {
   const rulesOK = await checkRulesPanel(target);
   const advanceOK = await checkAnswerAdvances(target);
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
-  const ok = reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -929,7 +961,7 @@ async function checkUtilityConflicts(target) {
   const out = new Set();
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   // 1. 画面の全体: 選ばれたタブ・列・絞り込み、要約、使い方、未回答のカード(AI と同じ / 一覧)
-  const mk = (id, unlabeled, waiting, person) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [{ model: 'm', hash: 'h', n: 3, state: 'collecting' }], min_n: 50, records: 5, labels: 1, unlabeled, waiting_for_person: waiting, awaiting_results: unlabeled - waiting, person_answers: person, truth_source: person ? 'person' : 'results', last_calibration: 'log', calibration_result: { reason: 'insufficient', human_truths: 2, min_n: 50, model: 'm', hash: 'h', at: '2026-10-23' }, tune: { running: false, proposer: true, variants: [{ name: 'v1' }], latest: { run: 'r', adoptable: true, adopted: false, winner: 'v1', model: 'm', truths: 3, at: '2026-10-23T00:00:00Z', have_holdout: true, holdout: 0.5, decision: 'd', candidates: [{ name: 'current', top1: 0.5, brier: 0.2, prec_at_act: 0.5, rec_at_act: 0.5, change: '' }, { name: 'v1', top1: 0.6, brier: 0.1, prec_at_act: 0.6, rec_at_act: 0.6, change: 'c' }], winner_wording: { question: 'q1', options: { a: 'x' }, steps: [{ ask: 'a', yes: 'y', no: 'n' }] }, current_wording: { question: 'q0', options: { a: 'y' } } } } });
+  const mk = (id, unlabeled, waiting, person) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [{ model: 'm', hash: 'h', n: 3, state: 'collecting' }], min_n: 50, records: 5, labels: 1, unlabeled, waiting_for_person: waiting, awaiting_results: unlabeled - waiting, person_answers: person, truth_source: person ? 'person' : 'results', last_calibration: 'log', calibration_result: { reason: 'insufficient', human_truths: 2, min_n: 50, model: 'm', hash: 'h', at: '2026-10-23' }, tune: { running: false, proposer: true, variants: [{ name: 'v1' }], latest: { run: 'r', adoptable: true, adopted: false, winner: 'v1', model: 'm', truths: 3, at: '2026-10-23T00:00:00Z', have_holdout: true, holdout: 0.5, decision: 'd', candidates: [{ name: 'current', top1: 0.5, brier: 0.2, prec_at_act: 0.5, rec_at_act: 0.5, change: '' }, { name: 'v1', top1: 0.6, brier: 0.1, prec_at_act: 0.6, rec_at_act: 0.6, change: 'c' }], winner_wording: { question: 'q1', options: { a: 'x' }, steps: [{ ask: 'a', yes: 'y', no: 'n' }] }, current_wording: { question: 'q0', options: { a: 'y' } }, meaning_checks: [{ by: 'agent', verdict: 'unsure', same: false, current_translation: 'j0', candidate_translation: 'j1', difference: 'd' }] } } });
   const specs = [mk('wiki-conflict', 4, 0, false), mk('prompt-kind', 2, 1, true), mk('needs-plan', 3, 2, true)];
   const item = (id, project) => ({ trace_id: id, at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: id, raw: { yes: 0.6, no: 0.4 }, stale: true, answerable: true, audit: true, waits_for_person: true, project, rung: 'context', choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }] });
   const summary = { person: { records: 20, waits: 2 }, memory: { delivered: 4, corrections: { delivered: 1 } }, guards: { rituals: { plan: { asked: 5, done: 2, fixed: 1 }, reflect: { asked: 4, done: 4, fixed: 0 } }, items: [{ id: 'g', kind: 'k', title: 't', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'r' } }, { id: 'g2', kind: 'k', title: 't2', enabled: false }] } };

@@ -42,7 +42,7 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 
 0.4のhookは `shikii_reflect` を案内する。`query` は原文を重ねず、採点対象・関連する教訓・人の訂正例を一緒に返す。`submit` は仮採点4件・wiki整理2件・記憶の仮評価4件まで。記憶の`result`と判断・確認結果を結び、訂正付きの引用には`correction_result`（followed / repeated / not_applicable / unknown）も保存する。wikiの`correction`は人の返答の原文と次に変える行動を持つ。0.4.1の訂正の追跡は0.4.1で利用できる。返答の `complete` と項目ごとの `error` を確認し、失敗分は直して再送する。成功分は保持し、同じ内容の再送は重複させない。[JSONと手順](../skills/shikii/references/review.md)。
 
-**採用の道具は無い。** 言い換えてもまだ同じことを聞いているかは人にしか分からないので、採用は画面（`shikii serve`）で人が「意味は同じ」を押した時か、端末の `tune --write` だけ。エージェントは候補を作って測るところまで。
+**採用の道具は無い。** 意味が同じかは、hook に頼まれたエージェントが `shikii hook variants check` で(英語以外の設定なら訳と一緒に)確かめる（同じなら採用され、人は画面で元に戻せる）。ほかは画面（`shikii serve`）で人が「意味は同じ」を押した時か、端末の `tune --write`。
 
 誤り（知らない spec、spec に無い正解、無い trace）は JSON-RPC のエラーではなく、道具の結果の `isError: true` と本文で返す。エージェントが読んで直せるように。
 

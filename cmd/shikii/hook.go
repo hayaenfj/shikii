@@ -370,7 +370,7 @@ func usesHosted() bool {
 // hookDecide はプロジェクトの spec で判定し、帯を振る舞いに写し、記録する。線が無ければ band は act にならない(= 影の期間)。
 // 設定の言語が英語以外なら、出す文は英語と併記し、記録にも display(言語、質問、答え、出した文)を添える。
 func hookDecide(agent, specID string, inputs map[string]string, project string, originals ...map[string]string) (*decide.Decision, hookOut, error) {
-	sp, err := spec.Load(filepath.Join(agent, "decisions", specID+".yaml"))
+	sp, err := spec.Load(hookSpecPath(agent, specID))
 	if err != nil {
 		return nil, hookOut{}, err
 	}
@@ -671,6 +671,7 @@ func runHookEvent(event string) error {
 				hookLog("classify: " + uerr.Error())
 			}
 			out.Context = joinLines(out.Context, variantsContext(agent))
+			out.Context = joinLines(out.Context, wordingCheckContext(agent))
 		}
 	}
 	if event == "stop" {
@@ -897,7 +898,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	requestText = cut(requestText, store.RecordTextLimit+utf8.UTFMax)
 	turnID := store.NewTraceID()
 	var planning *planningFrame
-	if sp, err := spec.Load(filepath.Join(agent, "decisions", "needs-plan.yaml")); err == nil && needsPlanningContext(sp) {
+	if sp, err := spec.Load(hookSpecPath(agent, "needs-plan")); err == nil && needsPlanningContext(sp) {
 		planning = newPlanningFrame(snapshot, in, scope, turnID)
 	}
 	var firstErr error
@@ -1182,7 +1183,7 @@ func filesInput(changed []string, known bool) string {
 // hookMaybeCalibrate は serve の自動較正と同じ規則: 今の文言(hash)にまだ線が無いモデルについて、人の正解(入力ごとに 1 件)が eval.min_n に届いていれば線を引く。
 // 線があるモデルは触らない(引き直しは drift が悪化を言った時)。本体は hookCalibrate(既定は別プロセスを切り離す)。同じ spec は hookCalibrateGap の間は 1 回。
 func hookMaybeCalibrate(agent, specID string) error {
-	path := filepath.Join(agent, "decisions", specID+".yaml")
+	path := hookSpecPath(agent, specID)
 	sp, err := spec.Load(path)
 	if err != nil {
 		return nil // spec が無い(人が消した)なら何もしない
@@ -1274,9 +1275,9 @@ func humanTruthsFor(st store.Store, sp *spec.Spec) (int, error) {
 
 // hookMaybeTune は聞き方の候補を機械に試させる(wiki の lint に当たるゆっくりした周期): spec に variants(人が書いた候補の言い方)があり、
 // 人の正解が eval.min_n 以上で、前回の自動 tune から hookTuneEvery 件増えていれば、`shikii tune`(--write 無し)を切り離して起こす。
-// 候補が無ければ試す物が無いので何もしない。採用は人が意味を確かめてから(画面か tune --write)。前回の数は tuned-<spec> に控える。
+// 候補が無ければ試す物が無いので何もしない。上回った候補は次の依頼の前にエージェントへ意味の確かめを頼む(wordingCheckContext)。前回の数は tuned-<spec> に控える。
 func hookMaybeTune(agent, specID string) error {
-	path := filepath.Join(agent, "decisions", specID+".yaml")
+	path := hookSpecPath(agent, specID)
 	sp, err := spec.Load(path)
 	if err != nil || len(sp.Variants) == 0 {
 		return nil

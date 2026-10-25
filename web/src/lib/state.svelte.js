@@ -88,3 +88,14 @@ export async function load() {
     if (version === loadVersion) data.loadError = e.message;
   }
 }
+// 聞き方の候補で人がやることがあるか(0.9.2)。エージェントが意味は同じと確かめて自動で採用した(このままでよいか、元に戻すか)、
+// またはエージェントが決めきれなかった時だけ。まだ確かめていない・違うと言った・人が答えた・元に戻した時は出さない
+export function wordingNeedsPerson(latest) {
+  if (!latest || latest.reverted) return false;
+  const checks = latest.meaning_checks || [];
+  if (checks.some(c => c.by !== 'agent')) return false;
+  const agent = checks.filter(c => c.by === 'agent').pop();
+  if (!agent) return false;
+  if (latest.auto_adopted && latest.adopted) return true;
+  return agent.verdict === 'unsure' && !!latest.adoptable && !latest.adopted && !!latest.winner_wording;
+}

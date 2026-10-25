@@ -87,23 +87,26 @@ func TestHookAsksTheAgentForWordingsWhenNoLineCanBeDrawn(t *testing.T) {
 		t.Fatalf("a tune must start for the new candidates: %v", tuned)
 	}
 
-	// 測った結果、候補が上回った(採用できる)なら Stop で人へ一度だけ
+	// 測った結果、候補が上回った(採用できる)なら、次の依頼の前にエージェントへ意味の確かめと和訳を一度だけ頼む(0.9.2)。
+	// エージェントが確かめるまで、人には何も言わない
 	runs := filepath.Join(agent, "wiki", "runs")
 	if err := os.MkdirAll(runs, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	result, _ := json.Marshal(map[string]any{"spec": "prompt-kind", "spec_hash": sp.Hash(), "run": "prompt-kind-1", "at": "2026-10-23T01:00:00+09:00", "winner": "ends-in-files", "adoptable": true})
+	result, _ := json.Marshal(map[string]any{"spec": "prompt-kind", "spec_hash": sp.Hash(), "run": "prompt-kind-1", "at": "2026-10-23T01:00:00+09:00", "winner": "ends-in-files", "adoptable": true,
+		"winner_wording": map[string]any{"question": "Will the coding agent end up changing files?"}, "current_wording": map[string]any{"question": sp.Question}})
 	if err := os.WriteFile(filepath.Join(runs, "prompt-kind-1.json"), result, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s6", "cwd": repo, "prompt": "explain what the lexer does in detail"})
-	stop := runHook(t, "stop", map[string]any{"session_id": "s6", "cwd": repo, "last_assistant_message": "Explained."})
-	if !strings.Contains(stop, "ends-in-files") || !strings.Contains(stop, "beat the current question") {
-		t.Fatalf("an adoptable candidate must be told to the person once: %s", stop)
+	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "s6", "cwd": repo, "prompt": "explain what the lexer does in detail"}))
+	if !strings.Contains(ctx, "ends-in-files") || !strings.Contains(ctx, "hook variants check") {
+		t.Fatalf("an adoptable candidate must be handed to the agent for a meaning check once: %s", ctx)
 	}
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s6", "cwd": repo, "prompt": "and explain the token types as well please"})
 	if stop := runHook(t, "stop", map[string]any{"session_id": "s6", "cwd": repo, "last_assistant_message": "Explained."}); strings.Contains(stop, "ends-in-files") {
-		t.Fatalf("the same run must not be told twice: %s", stop)
+		t.Fatalf("the person is not asked before the agent checks the meaning: %s", stop)
+	}
+	if again := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "s6", "cwd": repo, "prompt": "and explain the token types as well please"})); strings.Contains(again, "hook variants check") {
+		t.Fatalf("the same run must not be handed over twice: %s", again)
 	}
 }
 

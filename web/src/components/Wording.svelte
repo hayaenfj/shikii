@@ -1,6 +1,7 @@
 <script>
   // 聞き方の欄: 最新の tune の結果、候補の表、勝った候補と今の文言の並べ比べ、人の「意味は同じ / 違う」、候補を測るボタン。
-  // 数字は機械が確かめる。意味が同じかは人が確かめる(採用・却下は人だけ)
+  // 数字は機械が確かめる。意味が同じかはエージェントが確かめて和訳を付ける(0.9.2): 同じなら自動で採用され、人は「このままでよい / 元に戻す」を選べる。
+  // 決めきれない時と、エージェントがまだ確かめていない時は、人が「意味は同じ / 違う」を選べる
   import { t } from '../lib/i18n.svelte.js';
   import { load } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
@@ -9,7 +10,11 @@
   let { sp } = $props();
   let tu = $derived(sp.tune);
   let latest = $derived(tu && tu.latest);
-  let showDiff = $derived(!!(latest && latest.adoptable && !latest.adopted && latest.winner_wording));
+  let check = $derived((latest?.meaning_checks || []).filter(c => c.by === 'agent').pop());
+  let personDone = $derived((latest?.meaning_checks || []).some(c => c.by !== 'agent'));
+  // AI が採用し、人がまだ答えていない(このままでよい / 元に戻す)
+  let review = $derived(!!(latest && latest.auto_adopted && latest.adopted && !latest.reverted && !personDone && latest.winner_wording));
+  let showDiff = $derived(!!(latest && latest.winner_wording && !latest.reverted && (review || (latest.adoptable && !latest.adopted && check?.verdict !== 'different'))));
 
   async function run(propose) {
     try { await api.tuneRun({ spec: sp.id, propose }); toast(t('running')); load(); }
@@ -38,6 +43,14 @@
       load();
     } catch (e) { toast(t('error')(e.message)); }
     adding = false;
+  }
+
+  async function decide(keep) {
+    try {
+      await api.tuneReview({ spec: sp.id, run: latest.run, keep });
+      toast(keep ? t('keptToast') : t('undoneToast'), 6000);
+      load();
+    } catch (e) { toast(t('error')(e.message)); }
   }
 
   async function judge(same) {
@@ -75,12 +88,18 @@
     <b>{t('wording')}</b>
     {#if tu && tu.running}<span class="pill ready">{t('running')}</span>
     {:else if latest && latest.adopted}<span class="pill calibrated">{t('adoptedLine')(latest.adopted_path.split('/').pop())}</span>
+    {:else if latest && latest.reverted}<span class="pill">{t('revertedLine')}</span>
     {:else if latest && latest.adoptable}<span class="pill ready">{t('winnerLine')(latest.winner)}</span>
     {:else if latest}<span class="pill">{t('keptLine')}</span>
     {:else}<span class="pill">{t('noRun')}</span>{/if}
   </summary>
   <div class="mt-4 [&_.k]:my-1.5">
+    <p class="mt-0 mb-3 text-[13px]" data-wording-about>{t('wordingAbout')}</p>
     {#if latest}
+      {@const cur0 = latest.candidates.find(c => c.name === 'current')}
+      {@const win0 = latest.candidates.find(c => c.name === latest.winner)}
+      {#if cur0}<p class="mt-0 mb-3 text-[14px] font-bold" data-wording-match>{win0 && latest.winner !== 'current' ? t('wordingMatch')(Math.round(cur0.top1 * 100), Math.round(win0.top1 * 100), latest.truths) : t('wordingMatchKept')(Math.round(cur0.top1 * 100), latest.truths)}</p>{/if}
+      <details class="mb-3" data-wording-details><summary class="cursor-pointer text-[12px] text-muted">{t('wordingNumbers')}</summary>
       <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted"><span>{latest.model}</span><span>{t('truthsCount')(latest.truths)}</span><span>{latest.at.slice(0, 16).replace('T', ' ')}</span></div>
       <table class="cands w-full border-collapse text-[12px] [&_td]:border-b [&_td]:border-line [&_td]:p-2 [&_td]:text-left [&_th]:border-b [&_th]:border-line [&_th]:p-2 [&_th]:text-left">
         <tbody>
@@ -94,15 +113,25 @@
       </table>
       {#if latest.have_holdout}<div class="k">{t('holdoutLine')(latest.holdout.toFixed(3), latest.candidates[0].top1.toFixed(3))}</div>{/if}
       <div class="k">{latest.decision}</div>
+      </details>
       {#if showDiff}
         {@const w = latest.winner_wording}
         {@const cur = latest.current_wording || {}}
+        {#if review}<div class="mb-2 text-[13px] font-bold" data-wording-agent>{t('wordingAgentAdopted')}</div>
+        {:else if check?.verdict === 'unsure'}<div class="mb-2 text-[13px] font-bold" data-wording-agent>{t('wordingAgentUnsure')(check.difference || '')}</div>
+        {:else if !check}<div class="k" data-wording-agent>{t('wordingWaitAgent')}</div>{/if}
         <div class="my-3 grid grid-cols-2 gap-4 max-md:grid-cols-1">
-          <div><div class="k">{t('current')}</div><div class="text mb-3.5 wrap-anywhere">{cur.question || ''}</div>{@render options(cur.options)}</div>
-          <div><div class="k">{latest.winner}</div><div class="text mb-3.5 wrap-anywhere">{w.question || ''}</div>{@render options(w.options, cur.options)}{@render steps(w.steps)}</div>
+          <div><div class="k">{review ? t('wordingBefore') : t('current')}</div>{#if check?.current_translation}<div class="text mb-1.5 wrap-anywhere" data-wording-ja>{t('translation')}: {check.current_translation}</div>{/if}<div class="text mb-3.5 wrap-anywhere text-muted">{cur.question || ''}</div>{@render options(cur.options)}</div>
+          <div><div class="k">{review ? t('wordingAfter') : latest.winner}</div>{#if check?.candidate_translation}<div class="text mb-1.5 wrap-anywhere" data-wording-ja>{t('translation')}: {check.candidate_translation}</div>{/if}<div class="text mb-3.5 wrap-anywhere text-muted">{w.question || ''}</div>{@render options(w.options, cur.options)}{@render steps(w.steps)}</div>
         </div>
-        <div class="k">{t('checkHint')}</div>
-        <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top" onclick={() => judge(true)}>{t('sameMeaning')}</button><button type="button" class="weak" onclick={() => judge(false)}>{t('changedMeaning')}</button></div>
+        {#if review}
+          <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top" data-wording-keep onclick={() => decide(true)}>{t('keepWording')}</button><button type="button" class="weak" data-wording-undo onclick={() => decide(false)}>{t('undoWording')}</button></div>
+        {:else}
+          <div class="k">{t('checkHint')}</div>
+          <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top" data-wording-same onclick={() => judge(true)}>{t('sameMeaning')}</button><button type="button" class="weak" onclick={() => judge(false)}>{t('changedMeaning')}</button></div>
+        {/if}
+      {:else if check?.verdict === 'different'}
+        <div class="k" data-wording-agent>{t('wordingAgentDifferent')(check.difference || '')}</div>
       {/if}
     {/if}
     {#if tu && tu.error}<div class="k">{t('error')(tu.error)}</div>{/if}

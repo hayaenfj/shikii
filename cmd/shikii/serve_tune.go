@@ -8,6 +8,8 @@ import (
 	"github.com/hayaenfj/shikii/internal/spec"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -17,9 +19,10 @@ import (
 //	GET  /v1/tune?spec=id        → {running, error, latest: tuneResult}
 //	POST /v1/tune/run {spec, propose} → 202。裏で runTune。提案役は serve の --proposer
 //	POST /v1/tune/sync {spec, propose} → その場で runTune して結果(MCP が使う)
-//	POST /v1/tune/adopt {spec, run, meaning_same, note} → 採用 / 却下。meaning_same 無しは 400、採用済みは 409
+//	POST /v1/tune/adopt {spec, run, meaning_same, note} → 採用 / 却下。meaning_same 無しは 400、採用済み・元に戻した run は 409
+//	POST /v1/tune/review {spec, run, keep} → エージェントが確かめて自動で採用した聞き方を、人が「このままでよい」か「元に戻す」(0.9.2)
 //
-// 採用の道具は MCP には出さない。文言の意味が変わっていないかは人にしか分からない。
+// 採用の道具は MCP には出さない。意味の確かめはエージェントが hook variants check で(和訳付き)、決めきれない時と元に戻すのは人が画面で。
 
 func (s *server) tuneOptsFor(sp specRef, propose int) tuneOpts {
 	return tuneOpts{specPath: sp.path, ef: s.o.ef, storeDir: s.o.storeDir, folds: 5,
@@ -281,6 +284,10 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, fmt.Errorf("already adopted as %s", res.AdoptedPath))
 		return
 	}
+	if res.Reverted {
+		writeErr(w, 409, errors.New("this wording was adopted and then undone by a person; run tune again"))
+		return
+	}
 	if !res.Adoptable {
 		writeErr(w, 409, errors.New("this run has nothing to adopt (the current wording was kept)"))
 		return
@@ -307,4 +314,54 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 	}
 	appendRunNote(res.RunPage, fmt.Sprintf("**Adopted** as %s via the page after a person confirmed the meaning.", newPath))
 	writeJSON(w, 200, map[string]any{"adopted": true, "run": res.Run, "path": newPath, "report": strings.TrimSpace(buf.String())})
+}
+
+// handleTuneReview は、エージェントが意味は同じと確かめて自動で採用した聞き方への人の答え(0.9.2)。
+// keep: true は「このままでよい」(人の確かめとして残す)。false は「元に戻す」: 採用した版を <file>.reverted に変え(消さない)、
+// hook と serve は前の版を読む。その run はもう採用できない。却下は spec のページにも残り、次の提案役が読む。
+func (s *server) handleTuneReview(w http.ResponseWriter, r *http.Request) {
+	if !acceptJSONPost(w, r) {
+		return
+	}
+	var req struct {
+		Spec string `json:"spec"`
+		Run  string `json:"run"`
+		Keep *bool  `json:"keep"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		return
+	}
+	if req.Keep == nil || req.Run == "" {
+		writeErr(w, 400, errors.New("run and keep (true: keep the new wording, false: undo it) are required"))
+		return
+	}
+	s.calibMu.Lock()
+	defer s.calibMu.Unlock()
+	res, err := loadTuneResult(s.o.wikiDir, req.Run)
+	if err != nil {
+		writeErr(w, 404, fmt.Errorf("unknown run %q", req.Run))
+		return
+	}
+	if req.Spec != "" && res.SpecID != req.Spec {
+		writeErr(w, 400, fmt.Errorf("run %s belongs to spec %s", req.Run, res.SpecID))
+		return
+	}
+	if !res.AutoAdopted || !res.Adopted || res.Reverted {
+		writeErr(w, 409, errors.New("this run is not a wording the agent adopted that is still in use"))
+		return
+	}
+	if *req.Keep {
+		recordMeaningCheck(res, true, "kept by a person after the agent adopted it", "page")
+		writeJSON(w, 200, map[string]any{"reverted": false, "run": res.Run})
+		return
+	}
+	if err := os.Rename(res.AdoptedPath, res.AdoptedPath+".reverted"); err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	res.Adopted, res.Reverted = false, true
+	recordMeaningCheck(res, false, "undone by a person after the agent adopted it", "page")
+	appendRunNote(res.RunPage, fmt.Sprintf("**Undone** by a person: %s was renamed to %s.reverted; the previous wording is used again.", res.AdoptedPath, filepath.Base(res.AdoptedPath)))
+	writeJSON(w, 200, map[string]any{"reverted": true, "run": res.Run})
 }

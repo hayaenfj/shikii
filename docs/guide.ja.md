@@ -168,7 +168,7 @@ shikii wiki lint
 
 画面は「答える」「知識」「AI の様子」の 3 つで、上の切替で選ぶ。初めて開く時は、人を待つ判定があれば「答える」、無ければ「知識」から始まり、選んだ画面は次も開く。
 
-「答える」は、人が答える問い(依頼の種類、始める前に確認してほしかったか、AI が変えたファイルは頼んだことに必要な物だけか、頼まれたことを終えたか)の待ちを 1 列にまとめ、1 枚ずつ出す。札の先頭とボタンの上にその問いの文、中に今回の依頼・最後の返答・変えたファイル・その後の人の返事、下に貼り付いた答えのボタン。キーでも答えられる(1〜9 で選ぶ、Enter で AI と同じ、→ でスキップ)。待っている数は「答える」の横に出る。AI だけが答える問い(wiki の矛盾・差し込み先)と、結果から正解が付く記録は出ない。聞き方の候補が採用を待つ時だけ、その「意味は同じか」もここで聞く。hook の「あとで答える」の URL で来た時は、その判定が先頭に出る。
+「答える」は、人が答える問い(依頼の種類、始める前に確認してほしかったか、AI が変えたファイルは頼んだことに必要な物だけか、頼まれたことを終えたか)の待ちを 1 列にまとめ、1 枚ずつ出す。札の先頭とボタンの上にその問いの文、中に今回の依頼・最後の返答・変えたファイル・その後の人の返事、下に貼り付いた答えのボタン。キーでも答えられる(1〜9 で選ぶ、Enter で AI と同じ、→ でスキップ)。待っている数は「答える」の横に出る。AI だけが答える問い(wiki の矛盾・差し込み先)と、結果から正解が付く記録は出ない。聞き方は、エージェントが新しい聞き方に変えた時(訳付きで「このままでよい / 元に戻す」)と、意味が同じか決めきれなかった時(訳と違いの見立て付きで「意味は同じ / 違う」)だけここに出る。hook の「あとで答える」の URL で来た時は、その判定が先頭に出る。
 
 「AI の様子」は、普段は見なくてよい物の置き場。問いごとの学習の進みが 1 行ずつ並び、押すとその問いの欄(進み具合、最後の自動較正、まだ答えていない分・結果で確定する分・答えた分の列、答えの直し、聞き方の候補)が出る。届けた教訓と効いたか、作業の前と後の手順、止める検査と最後の結果、使っている判定モデルと人を待つ判定の割合もここにある。
 
@@ -376,13 +376,14 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `shikii update` | 最新の安定版へ本体と readout を更新する |
 | `shikii hook install` / `uninstall` | Claude Code と Codex の hook を入れる・外す(`--yes` 無しは表示だけ) |
 | `shikii hook plan query` / `submit` | 作業の前の整理(エージェントが使う) |
-| `shikii hook variants submit` | 聞き方の候補を渡す(エージェントが使う。採用は人) |
+| `shikii hook variants submit` | 聞き方の候補を渡す(エージェントが使う) |
+| `shikii hook variants check` | 上回った候補の意味が同じかと(英語以外の設定なら)両方の訳を渡す(エージェントが使う。同じなら採用、人は元に戻せる) |
 | `shikii decide <spec>` | 判定して帯を返す |
 | `shikii label <trace_id> <truth>` | 正解を付ける(`--last` で直近の記録に) |
 | `shikii calibrate <spec>` | 正解で線を引く(`--write` で spec に書く) |
 | `shikii status` | 記録と正解の数、線の状態、教訓・止める検査・手順・画面の行 |
 | `shikii page` | このプロジェクトの画面の URL(立っていなければ起こす) |
-| `shikii tune <spec>` | 聞き方の候補を正解の貯金で採点する(採用は人が意味を確かめてから) |
+| `shikii tune <spec>` | 聞き方の候補を正解の貯金で採点する(採用は意味が同じと確かめてから: エージェントの `hook variants check`、画面、`--write`) |
 | `shikii import <past.csv> --spec <spec>` | 手元の過去の表を正解の貯金(JSON)にする |
 | `shikii judge <spec> --local <URL>` | 別の大きいモデルを審判にし、人の正解と十分に一致すれば正解の無い記録に重み付きの正解を付ける |
 | `shikii wiki query` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | wiki の検索・原資料・登録・種類と場面を付ける・見直し・点検・主張の再検証 |
@@ -410,6 +411,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `POST /v1/redo` | `{"spec","trace_id"}` | 今の聞き方と線で同じ本文を再判定し、前と今を並べて返す(新しい記録、人の答えは写る) |
 | `GET /v1/status` | | spec ごとの状態(線の有無、正解の数、人の言葉の質問) |
 | `GET /v1/tune?spec=<id>` · `POST /v1/tune/run` · `POST /v1/tune/variant` · `POST /v1/tune/adopt` | `{"spec","propose"}` · `{"spec","name","question","options"}` · `{"spec","run","meaning_same":true}` | 聞き方の改善の最新と今の候補・裏で回す・人が書いた候補を足す(検証してから。採用はしない)・採否 |
+| `POST /v1/tune/review` | `{"spec","run","keep":true}` | エージェントが意味を確かめて自動で採用した聞き方を、人が「このままでよい」(true)か「元に戻す」(false。採用した版は `.reverted` に名を変えて残す) |
 | `POST /v1/tune/sync` | `{"spec","propose"}` | その場で聞き方の改善を回して結果を返す(MCP の `shikii_tune` が使う。採用はしない) |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
 | `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ) |

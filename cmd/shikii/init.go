@@ -293,7 +293,7 @@ const agentsMarker = "<!-- shikii -->"
 var agentsSection = agentsMarker + "\n## shikii(判定の作法)\n\n" +
 	"- 同じ種類の判断は自分で決めず `shikii decide`(MCP なら shikii_decide)を呼び、帯に従う: act だけ自動、ask は人に確かめる、discard は動かない、abstain は入力を揃える\n" +
 	"- 正解は人(または結果)が決める。人の答えは `shikii label <trace_id> <truth>`。線(calibration:)や wiki の主張の状態を手で書き換えない\n" +
-	"- 聞き方は spec の variants: に候補として書き、`shikii tune` が測る。採用は人が意味を確かめてから\n" +
+	"- 聞き方は spec の variants: に候補として書き、`shikii tune` が測る。上回った候補は、hook に頼まれたら意味が同じかを確かめて(人の設定の言語が英語以外なら)両方をその言語に訳し、`shikii hook variants check` に渡す(同じなら採用され、人は元に戻せる。決めきれなければ人に聞く)\n" +
 	"- 新しく作った・変えた決まり・テスト・手順(コマンドやスクリプト)は、頼まれなくてもそのターンのうちに wiki のやり方(howto)かルール(rule)の記事に書く。近い記事があれば足すか直す\n" +
 	"- wiki の教訓には種類(kind: rule / howto / criteria / fact / history)と場面(scene: その仕事の言葉で「〜する時」)を付ける。wiki の返事に unclassified(種類と場面の無い前の版の記事)があれば、そのターンのうちに `shikii wiki classify <id> <kind> <scene>`(MCP なら shikii_wiki の classify)で付ける。教訓の文は変わらない\n" +
 	"- 詳しい作法: ~/.claude/skills/shikii/SKILL.md(shikii init が置く)\n" + agentsMarker + "\n"

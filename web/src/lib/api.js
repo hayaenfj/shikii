@@ -33,6 +33,7 @@ export const api = {
   redo: body => post('v1/redo', body),
   tuneRun: body => post('v1/tune/run', body),
   tuneAdopt: body => post('v1/tune/adopt', body),
+  tuneReview: body => post('v1/tune/review', body),
   tuneVariant: body => post('v1/tune/variant', body),
   wikiClaim: body => post('v1/wiki/claim', body),
   notebook: body => post('v1/wiki/notebook', body),

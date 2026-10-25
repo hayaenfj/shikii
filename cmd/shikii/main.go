@@ -135,7 +135,7 @@ func usageText() string {
   shikii status    [spec.yaml...] [--store DIR]      記録と正解の数、段ごとの数(1000 判定あたりの人の判断)、線の状態
   shikii page                                         このプロジェクトの画面の URL・ポート・pid(立っていなければ起こす)
   shikii tune      <spec.yaml> [--labeled file] [--local URL] [--store DIR] [--folds 5] [--propose N --proposer URL [--proposer-model M]] [--write]
-                   spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、人が意味を確かめた候補だけ新しい版に。結果は <store>/wiki/runs/
+                   spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、意味が同じと確かめた(エージェントか人)候補だけ新しい版に。結果は <store>/wiki/runs/
   shikii import    <past.csv> --spec <spec.yaml> [--out truths.json]
                    手元の過去の表(入力の列 + truth [+ weight])を正解の貯金(JSON)にする。線を引く前の 50 件を業務の表で埋める
   shikii judge     <spec.yaml> --local <judge URL> [--model M] [--store DIR]

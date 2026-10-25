@@ -168,7 +168,7 @@ There is one answer page per project. If the project's page is not running, the 
 
 The page has three parts, Answer, Knowledge and The AI, picked with the switch at the top. On first open it starts on Answer when a decision waits for a person, otherwise on Knowledge, and the part you picked opens next time.
 
-Answer merges what waits for a person across the questions a person answers (the kind of request, whether to ask before starting, whether the changes were in scope, whether the request was done) into one queue and shows one card at a time. The question appears at the top of the card and above the buttons; inside are the request, the last reply, the changed files and the person's next message; the answer buttons stick to the bottom of the screen. Keys work too (1-9 to pick, Enter for the same as the AI, → to skip). The count waiting is shown beside Answer. Questions only the AI answers (wiki conflicts and placement) and records whose truth comes from results are not shown. Only when a new wording waits for adoption does it also ask here whether it means the same. Arriving through the hook's "answer later" URL puts that decision first.
+Answer merges what waits for a person across the questions a person answers (the kind of request, whether to ask before starting, whether the changes were in scope, whether the request was done) into one queue and shows one card at a time. The question appears at the top of the card and above the buttons; inside are the request, the last reply, the changed files and the person's next message; the answer buttons stick to the bottom of the screen. Keys work too (1-9 to pick, Enter for the same as the AI, → to skip). The count waiting is shown beside Answer. Questions only the AI answers (wiki conflicts and placement) and records whose truth comes from results are not shown. A wording appears here only when the agent switched to a new one (keep it or undo it, with translations) or could not decide whether it means the same (with translations and its reading of the difference). Arriving through the hook's "answer later" URL puts that decision first.
 
 The AI is where things you do not need to watch live. One line per question shows how far it has learned; pressing it opens that question (progress, the last calibration, lanes for unanswered, settled-by-results and answered items, changing an answer, wording candidates). The lessons delivered and whether they helped, the routine before and after work, the guards and their last result, the decision model in use and how often decisions wait for a person are here too.
 
@@ -376,13 +376,14 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii update` | Updates shikii and readout to the latest stable release |
 | `shikii hook install` / `uninstall` | Adds or removes the Claude Code and Codex hooks (without `--yes` it only shows what it would do) |
 | `shikii hook plan query` / `submit` | Planning before work (used by the agent) |
-| `shikii hook variants submit` | Hands over candidate wordings (used by the agent; a person adopts) |
+| `shikii hook variants submit` | Hands over candidate wordings (used by the agent) |
+| `shikii hook variants check` | Hands over whether a winning wording means the same, with translations of both into the person's language when it is not English (used by the agent; adopted when the same, a person can undo it) |
 | `shikii decide <spec>` | Decides and returns a band |
 | `shikii label <trace_id> <truth>` | Records a truth (`--last` for the latest record) |
 | `shikii calibrate <spec>` | Draws the line from truths (`--write` writes it into the spec) |
 | `shikii status` | Records and truths, the state of each line, and the lines for lessons, guards, the routine and the page |
 | `shikii page` | The URL of this project's page (starts it if it is not running) |
-| `shikii tune <spec>` | Scores candidate wordings on the stored truths (adopted only after a person confirms the meaning) |
+| `shikii tune <spec>` | Scores candidate wordings on the stored truths (adopted only once the meaning is confirmed: the agent's `hook variants check`, the page, or `--write`) |
 | `shikii import <past.csv> --spec <spec>` | Turns a table of past cases into stored truths (JSON) |
 | `shikii judge <spec> --local <URL>` | Uses another, larger model as a judge; when it agrees with people's truths often enough, it adds weighted truths to records that have none |
 | `shikii wiki query` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | Searching, sources, saving, setting kind and scene, reviewing and checking the wiki, and re-checking claims |
@@ -410,6 +411,7 @@ The body is JSON. Without `-H 'Content-Type: application/json'` the request is r
 | `POST /v1/redo` | `{"spec","trace_id"}` | Decides the same text again with today's wording and line and returns the old and new side by side (a new record; a person's answer is carried over) |
 | `GET /v1/status` | | The state of each spec (whether it has a line, the number of truths, the question in people's words) |
 | `GET /v1/tune?spec=<id>` · `POST /v1/tune/run` · `POST /v1/tune/variant` · `POST /v1/tune/adopt` | `{"spec","propose"}` · `{"spec","name","question","options"}` · `{"spec","run","meaning_same":true}` | The latest wording improvement and the current candidates · a run in the background · add a candidate written by a person (after validation; it is never adopted by itself) · adopt or reject |
+| `POST /v1/tune/review` | `{"spec","run","keep":true}` | A person keeps (true) or undoes (false; the adopted file is renamed to `.reverted`, not deleted) a wording the agent adopted after checking its meaning |
 | `POST /v1/tune/sync` | `{"spec","propose"}` | Runs the wording improvement in place and returns the result (used by the MCP tool `shikii_tune`; adopts nothing) |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | The list of the wiki's claims · change a claim's status (promote / delete; only a person changes it) |
 | `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | The project's wiki: search, store, review and lint sources and articles. Lessons are hypotheses. handoff_* read and write the work records (the same operations as MCP; the page itself only reads) |

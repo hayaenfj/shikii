@@ -131,6 +131,8 @@ type tuneResult struct {
 	Adopted       bool              `json:"adopted"`
 	AdoptedPath   string            `json:"adopted_path,omitempty"`
 	MeaningChecks []meaningCheck    `json:"meaning_checks,omitempty"`
+	AutoAdopted   bool              `json:"auto_adopted,omitempty"`
+	Reverted      bool              `json:"reverted,omitempty"`
 }
 
 type candidateResult struct {
@@ -151,10 +153,15 @@ type wording struct {
 }
 
 type meaningCheck struct {
-	At   string `json:"at"`
-	Same bool   `json:"same"`
-	Note string `json:"note,omitempty"`
-	By   string `json:"by"`
+	At          string `json:"at"`
+	Same        bool   `json:"same"`
+	Note        string `json:"note,omitempty"`
+	By          string `json:"by"`
+	Verdict     string `json:"verdict,omitempty"`
+	Lang        string `json:"lang,omitempty"` // 訳の言語(設定の言語。英語なら訳は無い)
+	CurrentText string `json:"current_translation,omitempty"`
+	Candidate   string `json:"candidate_translation,omitempty"`
+	Difference  string `json:"difference,omitempty"`
 }
 
 func wordingOf(sp *spec.Spec) *wording {
@@ -351,7 +358,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		} else if o.write {
 			res.Decision = fmt.Sprintf("adopted %s as version %d (by the person at the terminal, --write)", scores[best].name, sp.Version+1)
 		} else {
-			res.Decision = fmt.Sprintf("%s may be adopted once a person confirms the meaning is unchanged (page, or --write)", scores[best].name)
+			res.Decision = fmt.Sprintf("%s may be adopted once its meaning is confirmed as unchanged (the agent via hook variants check, a person on the page, or --write)", scores[best].name)
 		}
 	}
 	runPath, err := writeRunPage(o.wikiDir, sp, current.model, cands, scores, res.Holdout, res.HaveHoldout, res.Decision, res.Lesson, rationales)
@@ -533,10 +540,22 @@ func parsedAt(s string) time.Time {
 
 // recordMeaningCheck は人の「意味は同じ / 違う」を run の md と json に残す。却下は spec のページにも残り、次の提案役が読む。
 func recordMeaningCheck(res *tuneResult, same bool, note, by string) {
-	mc := meaningCheck{At: time.Now().Format("2006-01-02 15:04"), Same: same, Note: note, By: by}
+	recordCheck(res, meaningCheck{Same: same, Note: note, By: by})
+}
+
+// recordCheck は意味の確かめ(人か、0.9.2 からはエージェント)を run の md と json に残す。エージェントが決めきれなかった時(unsure)は却下にしない。
+func recordCheck(res *tuneResult, mc meaningCheck) {
+	mc.At = time.Now().Format("2006-01-02 15:04")
 	res.MeaningChecks = append(res.MeaningChecks, mc)
+	same, note, by := mc.Same, mc.Note, mc.By
+	if mc.Difference != "" {
+		note = strings.TrimSpace(note + " " + mc.Difference)
+	}
 	verdict := "meaning confirmed as the same"
-	if !same {
+	switch {
+	case mc.Verdict == "unsure":
+		verdict = "the agent could not decide whether the meaning is the same: waiting for a person"
+	case !same:
 		verdict = "meaning judged to have CHANGED: not adopted"
 	}
 	line := fmt.Sprintf("\n**Meaning check (%s, %s):** %s", mc.At, by, verdict)
@@ -548,13 +567,17 @@ func recordMeaningCheck(res *tuneResult, same bool, note, by string) {
 			_, _ = f.WriteString(line + "\n")
 			f.Close()
 		}
-		if !same {
+		if !same && mc.Verdict != "unsure" {
 			q := ""
 			if res.WinnerWording != nil {
 				q = trim(res.WinnerWording.Question, 80)
 			}
 			specPage := filepath.Join(filepath.Dir(filepath.Dir(res.RunPage)), "specs", res.SpecID+".md")
-			appendRunNote(specPage, fmt.Sprintf("- %s: a person rejected %s (%q): the meaning changed. %s", mc.At, res.Winner, q, note))
+			who := "a person"
+			if by == "agent" {
+				who = "the agent"
+			}
+			appendRunNote(specPage, fmt.Sprintf("- %s: %s rejected %s (%q): the meaning changed. %s", mc.At, who, res.Winner, q, note))
 		}
 	}
 	saveTuneResult(res)

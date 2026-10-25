@@ -4,7 +4,8 @@ package main
 // 正解が min_n に届いても線が引けなかった判定があれば、hook が依頼の直後にエージェントへ一度だけ頼む:
 // 意味を変えない聞き方の候補を `shikii hook variants submit` へ渡す。shikii が候補を検査して spec の variants: に足し、
 // 正解の貯金で採点する(tune、--write 無し)。今の質問を上回った候補があれば、Stop で人へ一度だけ伝える。
-// 採用は従来どおり人が意味を確かめてから(画面)。候補を出すのも測るのも機械で、人がするのはその確認 1 回。
+// 上回った候補の意味が同じかは、次の依頼の前にエージェントへ一度だけ頼み、人の設定の言語が英語以外なら訳を付けて `shikii hook variants check` で受け取る(0.9.2)。
+// 同じ → その場で採用し(較正まで)、人へは(訳付きで)知らせて画面で元に戻せる。決めきれない → 和訳と違いを付けて人に聞く。違う → 採用しない。
 
 import (
 	"bytes"
@@ -44,7 +45,7 @@ type variantRequest struct {
 
 // stuckWording は、今の文言で正解が min_n に届き、自動較正を試したのに線が引けなかった判定(正解の数)。無ければ ok=false。
 func stuckWording(agent, specID string) (n int, ok bool) {
-	sp, err := spec.Load(filepath.Join(agent, "decisions", specID+".yaml"))
+	sp, err := spec.Load(hookSpecPath(agent, specID))
 	if err != nil {
 		return 0, false
 	}
@@ -75,7 +76,7 @@ func variantsContext(agent string) string {
 		if !ok {
 			continue
 		}
-		sp, err := spec.Load(filepath.Join(agent, "decisions", id+".yaml"))
+		sp, err := spec.Load(hookSpecPath(agent, id))
 		if err != nil {
 			continue
 		}
@@ -101,12 +102,15 @@ func variantsNotice(specID string, n int, path string) string {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
 	example, _ := json.Marshal(variantsRequest{Spec: specID, Variants: []variantRequest{{Name: "clearer-yes", Question: "...", Rationale: "..."}}})
-	return fmt.Sprintf("shikii: 判定「%s」は正解%d件でも線が引けません（今の質問とモデルでは答えを分けられていない）。人に頼まず、今の作業の区切りで、意味を変えない聞き方の候補を最大%d件作り、%s hook variants submit へJSONで渡してください。例: %s。questionのほかoptions（選択肢の説明の言い換え）とtemplateも使えます。今の質問は %s にあります。候補は正解の貯金で自動に測り、上回った候補の採用だけを人が意味を確かめて決めます。", specID, n, variantsMax, command, example, path)
+	return fmt.Sprintf("shikii: 判定「%s」は正解%d件でも線が引けません（今の質問とモデルでは答えを分けられていない）。人に頼まず、今の作業の区切りで、意味を変えない聞き方の候補を最大%d件作り、%s hook variants submit へJSONで渡してください。例: %s。questionのほかoptions（選択肢の説明の言い換え）とtemplateも使えます。今の質問は %s にあります。候補は正解の貯金で自動に測り、上回った候補は意味が同じかを後でもう一度確かめてもらいます。", specID, n, variantsMax, command, example, path)
 }
 
 func cmdHookVariants(args []string) error {
+	if len(args) == 1 && args[0] == "check" {
+		return cmdHookVariantsCheck()
+	}
 	if len(args) != 1 || args[0] != "submit" {
-		return errors.New("使い方: shikii hook variants submit（JSONを標準入力）")
+		return errors.New("使い方: shikii hook variants submit | check（JSONを標準入力）")
 	}
 	data, err := io.ReadAll(io.LimitReader(stdin, (16<<10)+1))
 	if err != nil || len(data) > 16<<10 {
@@ -131,7 +135,7 @@ func cmdHookVariants(args []string) error {
 	} else if !active {
 		return errProjectInactive
 	}
-	path := filepath.Join(root, "decisions", req.Spec+".yaml")
+	path := hookSpecPath(root, req.Spec)
 	sp, err := spec.Load(path)
 	if err != nil {
 		return err
@@ -161,7 +165,7 @@ func cmdHookVariants(args []string) error {
 		return err
 	}
 	startTune(root, sp)
-	return json.NewEncoder(stdout).Encode(map[string]any{"saved": names, "tune": "started", "adoption": "人が画面で意味を確かめてから"})
+	return json.NewEncoder(stdout).Encode(map[string]any{"saved": names, "tune": "started", "adoption": "上回った候補は、意味が同じかを次の依頼の前に確かめてもらってから"})
 }
 
 // decodeStrict は JSON を 1 つだけ、知らない鍵を拒んで読む。読めない時は、どの鍵がどの形であるべきかを返す。
@@ -213,29 +217,215 @@ func writeTuneGuard(agent string, sp *spec.Spec, n int) error {
 	return os.WriteFile(filepath.Join(agent, "tuned-"+sp.ID), []byte(fmt.Sprintf("%d %s %s\n", n, sp.Hash(), time.Now().Format(time.RFC3339))), 0o600)
 }
 
-// wordingSummary は、今の質問を上回り採用できる聞き方の候補を、Stop で人へ一度だけ伝える行(run ごとに 1 回)。
+// wordingSummary は、聞き方の候補について人へ伝える行を Stop で一度だけ出す(run と状態ごとに 1 回。0.9.2)。
+// エージェントが意味は同じと確かめて採用した時は(英語以外の設定なら訳付きで)知らせ、画面で元に戻せると書く。決めきれなかった時は訳と違いを付けて人に聞く。
+// エージェントがまだ確かめていない時と、違うと言った時は人に何も言わない。
 func wordingSummary(agent string) string {
 	var lines []string
 	for _, id := range hookSpecs {
-		sp, err := spec.Load(filepath.Join(agent, "decisions", id+".yaml"))
+		res, err := latestTuneResult(filepath.Join(agent, "wiki"), id)
+		if err != nil {
+			continue
+		}
+		check, ok := agentCheck(res)
+		if !ok || personChecked(res) || res.Reverted {
+			continue
+		}
+		var state, en, ja string
+		url := projectPageURL(agent)
+		switch {
+		case res.AutoAdopted && res.Adopted:
+			state = "adopted"
+			en = fmt.Sprintf("shikii: the wording of %s was changed to %q: the agent checked it asks the same thing, and it matched more of your answers. If the meaning changed, undo it on the page: %s", id, res.Winner, url)
+			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方を「%s」に変えました(AI が意味は同じと確かめ、あなたの正解 %d 件で今より当たりました)。今まで: %s → これから: %s。意味が違っていたら画面で元に戻せます: %s", id, res.Winner, res.Truths, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
+		case check.Verdict == "unsure" && res.Adoptable && !res.Adopted:
+			state = "unsure"
+			en = fmt.Sprintf("shikii: a new wording %q for %s matched more of your answers, but the agent could not decide whether it asks the same thing. Please check it on the page: %s", res.Winner, id, url)
+			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方の候補「%s」は今より当たりましたが、意味が同じか AI が決めきれません(違いの見立て: %s)。今の聞き方: %s / 候補: %s。画面で意味が同じかを選んでください: %s", id, res.Winner, check.Difference, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
+		default:
+			continue
+		}
+		if check.Lang != "" && check.Lang != "ja" && check.CurrentText != "" { // 日本語以外の設定では、英語の文に設定の言語の訳を添える
+			en += fmt.Sprintf(" (%s — current: %s / new: %s)", langName(check.Lang), check.CurrentText, check.Candidate)
+		}
+		mark := filepath.Join(agent, "wording-shown-"+id)
+		if b, err := os.ReadFile(mark); err == nil && strings.TrimSpace(string(b)) == res.Run+" "+state {
+			continue
+		}
+		if err := os.WriteFile(mark, []byte(res.Run+" "+state+"\n"), 0o600); err != nil {
+			continue
+		}
+		lines = append(lines, bi(en, ja, hookLoc{Lang: hookLang()}))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// agentCheck はエージェントの意味の確かめ(最後の 1 件)。personChecked は人が画面か端末で確かめたか。
+func agentCheck(res *tuneResult) (meaningCheck, bool) {
+	for i := len(res.MeaningChecks) - 1; i >= 0; i-- {
+		if res.MeaningChecks[i].By == "agent" {
+			return res.MeaningChecks[i], true
+		}
+	}
+	return meaningCheck{}, false
+}
+
+func personChecked(res *tuneResult) bool {
+	for _, mc := range res.MeaningChecks {
+		if mc.By != "agent" {
+			return true
+		}
+	}
+	return false
+}
+
+// wordingCheckContext は、今の質問を上回った候補がまだ誰にも確かめられていない時、意味が同じかと(英語以外の設定なら)訳をエージェントへ頼む文(run ごとに 1 回)。
+func wordingCheckContext(agent string) string {
+	var lines []string
+	for _, id := range hookSpecs {
+		sp, err := spec.Load(hookSpecPath(agent, id))
 		if err != nil {
 			continue
 		}
 		res, err := latestTuneResult(filepath.Join(agent, "wiki"), id)
-		if err != nil || !res.Adoptable || res.Adopted || len(res.MeaningChecks) > 0 || res.SpecHash != sp.Hash() {
+		if err != nil || !res.Adoptable || res.Adopted || res.Reverted || len(res.MeaningChecks) > 0 || res.SpecHash != sp.Hash() || res.WinnerWording == nil || res.Current == nil {
 			continue
 		}
-		mark := filepath.Join(agent, "wording-shown-"+id)
+		mark := filepath.Join(agent, "wording-check-asked-"+id)
 		if b, err := os.ReadFile(mark); err == nil && strings.TrimSpace(string(b)) == res.Run {
 			continue
 		}
 		if err := os.WriteFile(mark, []byte(res.Run+"\n"), 0o600); err != nil {
 			continue
 		}
-		lines = append(lines, bi(
-			fmt.Sprintf("shikii: a candidate wording %q beat the current question of %s on the stored truths. Only check that it asks the same thing, then adopt or reject: %s", res.Winner, id, projectPageURL(agent)),
-			fmt.Sprintf("shikii: 判定「%s」で聞き方の候補「%s」が今の質問を上回りました。意味が同じかだけ確かめて採用か却下を: %s", id, res.Winner, pageRef(filepath.Dir(agent))),
-			hookLoc{Lang: hookLang()}))
+		lines = append(lines, wordingCheckNotice(res, hookLang()))
 	}
 	return strings.Join(lines, "\n")
 }
+
+func wordingCheckNotice(res *tuneResult, lang string) string {
+	command := "shikii"
+	if exe, err := os.Executable(); err == nil {
+		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
+	}
+	pair, _ := json.Marshal(map[string]any{"current": res.Current, "candidate": res.WinnerWording})
+	req := wordingCheckRequest{Spec: res.SpecID, Run: res.Run, Verdict: "same | unsure | different", Difference: "意味の違い(無ければ空)"}
+	translate, told := "", "人へ知らせます"
+	if lang != "" { // 人の設定の言語が英語以外なら、両方をその言語に訳してもらう(英語なら訳は要らない)
+		req.CurrentTranslation, req.CandidateTranslation = "今の質問の訳", "候補の訳"
+		translate, told = "、両方を"+langName(lang)+"に訳して", "人へは訳付きで知らせます"
+	}
+	example, _ := json.Marshal(req)
+	return fmt.Sprintf("shikii: 判定「%s」で聞き方の候補「%s」が今の質問より人の正解に合いました。今の作業の区切りで、2 つの聞き方が同じことを聞いているか(どんな場合でも同じ答えが正しいか)を確かめ%s、%s hook variants check へJSONで渡してください。例: %s。同じなら shikii がその場で採用し、%s(画面で元に戻せる)。少しでも意味が変わる、または決めきれない時は unsure にし、difference に違いを書きます(人に聞きます)。明らかに違えば different。聞き方: %s", res.SpecID, res.Winner, translate, command, example, told, pair)
+}
+
+type wordingCheckRequest struct {
+	Spec                 string `json:"spec"`
+	Run                  string `json:"run"`
+	Verdict              string `json:"verdict"`
+	CurrentTranslation   string `json:"current_translation,omitempty"`
+	CandidateTranslation string `json:"candidate_translation,omitempty"`
+	Difference           string `json:"difference,omitempty"`
+}
+
+// langNames は訳を頼む時に書く言語の名前(無ければ言語コードのまま)。
+var langNames = map[string]string{"ja": "日本語", "zh": "简体中文", "zh-TW": "繁體中文", "ko": "한국어", "de": "Deutsch", "es": "español", "fr": "français", "it": "italiano", "pt-BR": "português", "ru": "русский", "uk": "українська", "pl": "polski", "tr": "türkçe", "vi": "tiếng việt", "id": "bahasa indonesia"}
+
+func langName(code string) string {
+	if n := langNames[code]; n != "" {
+		return n
+	}
+	return code
+}
+
+// cmdHookVariantsCheck はエージェントの意味の確かめと訳(人の設定の言語が英語以外の時は必須、英語なら使わない)を受け取り、同じなら採用する(shikii hook variants check、JSON を標準入力)。
+func cmdHookVariantsCheck() error {
+	data, err := io.ReadAll(io.LimitReader(stdin, (16<<10)+1))
+	if err != nil || len(data) > 16<<10 {
+		return errors.New("確かめは16KB以内のJSONにしてください")
+	}
+	var req wordingCheckRequest
+	if err := decodeStrict(data, &req); err != nil {
+		return err
+	}
+	if !containsString(hookSpecs, req.Spec) {
+		return fmt.Errorf("specは %s のどれかにしてください", strings.Join(hookSpecs, " / "))
+	}
+	if req.Verdict != "same" && req.Verdict != "unsure" && req.Verdict != "different" {
+		return errors.New("verdict は same / unsure / different のどれかにしてください")
+	}
+	req.CurrentTranslation, req.CandidateTranslation, req.Difference = strings.TrimSpace(req.CurrentTranslation), strings.TrimSpace(req.CandidateTranslation), strings.TrimSpace(req.Difference)
+	lang := hookLang()
+	if lang != "" && (req.CurrentTranslation == "" || req.CandidateTranslation == "") {
+		return fmt.Errorf("current_translation と candidate_translation(今の質問と候補の%sの訳)は両方要ります。人に知らせる時に使います", langName(lang))
+	}
+	if lang == "" { // 英語の設定では訳を使わない
+		req.CurrentTranslation, req.CandidateTranslation = "", ""
+	}
+	if req.Verdict != "same" && req.Difference == "" {
+		return errors.New("unsure と different の時は difference に意味の違いを書いてください")
+	}
+	for _, text := range []string{req.CurrentTranslation, req.CandidateTranslation, req.Difference} {
+		if len(text) > variantQuestionMax {
+			return fmt.Errorf("訳と違いは%dバイト以内にしてください", variantQuestionMax)
+		}
+	}
+	root, scope, err := currentProjectStore()
+	if err != nil {
+		return err
+	}
+	if active, err := projectActive(root, scope); err != nil {
+		return err
+	} else if !active {
+		return errProjectInactive
+	}
+	res, err := latestTuneResult(filepath.Join(root, "wiki"), req.Spec)
+	if err != nil {
+		return fmt.Errorf("判定「%s」の聞き方の候補を測った結果がありません", req.Spec)
+	}
+	if res.Run != req.Run {
+		return fmt.Errorf("最新の結果は %s です(run が違います)", res.Run)
+	}
+	if !res.Adoptable || res.Adopted || res.Reverted || len(res.MeaningChecks) > 0 {
+		return errors.New("この結果は、もう確かめる物がありません(採用済み・却下済み・元に戻した、または上回った候補が無い)")
+	}
+	recordCheck(res, meaningCheck{Same: req.Verdict == "same", By: "agent", Verdict: req.Verdict, Lang: lang, CurrentText: req.CurrentTranslation, Candidate: req.CandidateTranslation, Difference: req.Difference})
+	if req.Verdict != "same" {
+		next := "人に画面で聞きます"
+		if req.Verdict == "different" {
+			next = "採用しません"
+		}
+		return json.NewEncoder(stdout).Encode(map[string]any{"adopted": false, "verdict": req.Verdict, "next": next})
+	}
+	var buf bytes.Buffer
+	path, err := wordingAdopt(res, endpointFlags{local: hookLocalURL, model: res.Model}, root, "", &buf)
+	if err != nil {
+		saveTuneResult(res)
+		appendRunNote(res.RunPage, fmt.Sprintf("**Not adopted:** %s", strings.SplitN(err.Error(), "\n", 2)[0]))
+		return json.NewEncoder(stdout).Encode(map[string]any{"adopted": false, "verdict": req.Verdict, "reason": err.Error()})
+	}
+	res.AutoAdopted = true
+	saveTuneResult(res)
+	appendRunNote(res.RunPage, fmt.Sprintf("**Adopted** as %s after the agent checked the meaning; the person is told with translations and can undo it on the page.", path))
+	return json.NewEncoder(stdout).Encode(map[string]any{"adopted": true, "verdict": req.Verdict, "path": path, "next": "人へ知らせます(画面で元に戻せる)"})
+}
+
+// hookSpecPath は、プロジェクトの問い id の今の版のファイル(0.9.2)。聞き方を採用すると <id>-v<N>.yaml が増えるので、
+// 同じ id で版の一番大きいファイルを使う(serve の loadSpecs と同じ選び方)。元に戻した版(.reverted)は .yaml で終わらないので見ない。
+// 読めないファイルは飛ばし、どれも読めなければ元の <id>.yaml を返す(呼ぶ側の Load が誤りを出す)。
+func hookSpecPath(agent, id string) string {
+	base := filepath.Join(agent, "decisions", id+".yaml")
+	best, version := base, -1
+	if sp, err := spec.Load(base); err == nil {
+		version = sp.Version
+	}
+	files, _ := filepath.Glob(filepath.Join(agent, "decisions", id+"-v*.yaml"))
+	for _, f := range files {
+		if sp, err := spec.Load(f); err == nil && sp.ID == id && sp.Version > version {
+			best, version = f, sp.Version
+		}
+	}
+	return best
+}
+
+var wordingAdopt = adoptWording

@@ -1,8 +1,8 @@
 <script>
   // 答える画面(0.9.1): 人が答える問いの待ちを 1 列にまとめ、先頭の 1 件を札で出す。問いは札の先頭とボタンの上に出す。
-  // AI の内側の数(学習の進み・線・仮採点・帯)はここに出さない(AI の様子へ)。聞き方の候補が採用を待つ時だけ、その「意味は同じか」をここで聞く
+  // AI の内側の数(学習の進み・線・仮採点・帯)はここに出さない(AI の様子へ)。聞き方は、AI が変えた時(このままでよいか)と、AI が意味を決めきれなかった時だけここで聞く(0.9.2)
   import { t, loc } from '../lib/i18n.svelte.js';
-  import { ui, skipped, personSpecs, setPage } from '../lib/state.svelte.js';
+  import { ui, skipped, personSpecs, setPage, wordingNeedsPerson } from '../lib/state.svelte.js';
   import ItemCard from './ItemCard.svelte';
   import Wording from './Wording.svelte';
 
@@ -18,7 +18,7 @@
   });
   let waiting = $derived(specs.reduce((n, s) => n + (s.waiting_for_person || 0), 0));
   let loading = $derived(specs.some(s => s.waiting_for_person > 0 && !s.queue));
-  let wording = $derived(specs.filter(s => s.tune?.latest?.adoptable && !s.tune.latest.adopted && s.tune.latest.winner_wording));
+  let wording = $derived(specs.filter(s => wordingNeedsPerson(s.tune?.latest)));
   const question = sp => loc(sp.questions, sp.question || '') || loc(sp.titles, sp.id);
 </script>
 
@@ -42,7 +42,7 @@
 
   {#each wording as sp (sp.id)}
     <div class="mt-6" data-answer-wording={sp.id}>
-      <h3 class="mt-0 mb-1 text-[15px]">{t('answerWording')(loc(sp.titles, sp.id))}</h3>
+      <h3 class="mt-0 mb-1 text-[15px]">{(sp.tune.latest.adopted ? t('answerWordingAdopted') : t('answerWording'))(loc(sp.titles, sp.id))}</h3>
       <Wording {sp} />
     </div>
   {/each}
