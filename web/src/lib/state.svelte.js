@@ -51,8 +51,9 @@ export function answerSpecs(st, selection = ui) {
 let loadVersion = 0;
 // dropPendingLoads は、待っている読み直しの応答を捨てる(答えた後に、答える前の古い列で札が戻らないように)
 export function loadMark() { return loadVersion; }
-// dropPendingLoads(mark) は、mark の時に待っていた読み直しだけを捨てる(その後に画面や問いを切り替えた読み込みは捨てない)
-export function dropPendingLoads(mark = loadVersion) { if (loadVersion === mark) loadVersion++; }
+// 答えを送っている間に別の読み込み(画面の切り替えや 15 秒の読み直し)が始まっていたら、それも捨てて今の状態で読み直す
+// (答えより前の列で札が戻らず、切り替えた画面も出る。最終監査 0.9.1 低-F1)
+export function dropPendingLoads(mark = loadVersion) { const raced = loadVersion !== mark; loadVersion++; if (raced) load(); }
 // status と表示中の画面の分だけを読む。遅い古い応答は新しい選択へ反映しない。
 export async function load() {
   const version = ++loadVersion;

@@ -14,7 +14,7 @@ Claude Code and Codex start every session from zero. They do not remember what y
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.9.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.9 gives every lesson a kind (rule, how-to, criteria, fact, history) and a scene, and the Knowledge section of the page now lets you pick a scene and look things up. Only the exceptions that need you are shown at the top. The page has three parts, Answer, Knowledge and The AI, and decisions waiting for you appear one card at a time under Answer. Lessons written by earlier versions get their kind and scene from the agent, a few at a time. **When updating from 0.8, reopen your open agent sessions and update every machine that uses the same wiki to 0.9.0.** **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
+Version 0.9 gives every lesson a kind (rule, how-to, criteria, fact, history) and a scene, and the Knowledge section of the page now lets you pick a scene and look things up. Only the exceptions that need you are shown at the top. The page has three parts, Answer, Knowledge and The AI, and decisions waiting for you appear one card at a time under Answer. Lessons written by earlier versions get their kind and scene from the agent, a few at a time. **When updating from 0.8, reopen your open agent sessions and update every machine that uses the same wiki to 0.9.0 or later.** **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -123,7 +123,7 @@ shikii update
 
 This fetches the latest stable release, verifies its hashes and replaces shikii and readout. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again.** Earlier conversations, lessons, truths and calibration are removed; back up anything you want to keep. Updates from 0.7.0 onwards keep them. Restart the page and MCP afterwards.
 
-When updating from 0.8, also reopen your open agent sessions, and update every machine that uses the same wiki to 0.9.0. shikii 0.8 cannot read articles that have a kind and scene, and refuses to save to the wiki (the articles are not damaged).
+When updating from 0.8, also reopen your open agent sessions, and update every machine that uses the same wiki to 0.9.0 or later. shikii 0.8 cannot read articles that have a kind and scene, and refuses to save to the wiki (the articles are not damaged).
 
 ## How it works
 

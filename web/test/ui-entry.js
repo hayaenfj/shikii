@@ -372,6 +372,31 @@ function checkRulesPanel(target) {
   return ok;
 }
 
+// 最終監査 0.9.1(低-F1): 答えを送っている間に始まった読み直しの古い列で、答えた札が戻らない
+async function checkReloadDuringAnswerSend(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
+  const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
+  const item = (trace, text) => ({ trace_id: trace, at: '2026-10-19T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: text }, inputs_hash: trace, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, waits_for_person: true, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], rung: 'minimal', audit: false });
+  const spec = { id: 'needs-plan', type: 'noul', titles: {}, questions: { ja: 'q' }, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 2, waiting_for_person: 2, person_answers: true };
+  let holdQueue = false, releaseQueue, releaseLabel, labeled = false;
+  globalThis.fetch = async (url, opts) => {
+    if (url === 'v1/label') return { ok: true, json: () => new Promise(r => { releaseLabel = v => { labeled = true; r(v); }; }) };
+    if (holdQueue && url.startsWith('v1/queue')) { holdQueue = false; return { ok: true, json: () => new Promise(r => { releaseQueue = r; }) }; }
+    return { ok: true, json: async () => url === 'v1/status' ? { specs: [{ ...spec }] } : url.startsWith('v1/queue') ? { items: labeled ? [item('b', 'SECOND')] : [item('a', 'FIRST'), item('b', 'SECOND')] } : url.startsWith('v1/tune') ? null : {} };
+  };
+  data.state = null; Object.assign(ui, { page: 'answer', tab: '', done: false, pinned: '' }); skipped.clear();
+  const app = mount(App, { target }); await settle(); await settle();
+  target.querySelector('.item .btns button[data-truth="yes"]')?.click(); await settle();
+  holdQueue = true; const reload = load(); await settle(); await settle(); // 送っている間に読み直しが始まり、列はまだ答える前の物
+  releaseLabel?.({ truth: 'yes' }); await settle(); await settle();
+  releaseQueue?.({ items: [item('a', 'FIRST'), item('b', 'SECOND')] }); await reload; await settle(); await settle(); await settle();
+  const back = !!target.querySelector('.item')?.textContent.includes('FIRST');
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
+  console.log((!back ? 'check-ui: ok' : 'check-ui: FAIL') + ' (送っている間の読み直しで答えた札が戻らない=' + !back + ')');
+  return !back;
+}
+
 export async function run() {
   const target = document.getElementById('app');
   const articleOK = await checkNotebookArticle(target);
@@ -394,12 +419,13 @@ export async function run() {
   const conflictsOK = await checkUtilityConflicts(target);
   const handoffOK = await checkHandoff(target);
   const lessonsOK = checkLessons(target);
+  const reloadOK = await checkReloadDuringAnswerSend(target);
   const switchOK = await checkSwitchDuringAnswerKeepsLoad(target);
   const countOK = await checkAnswerCountOnlyForNewWaits(target);
   const rulesOK = checkRulesPanel(target);
   const advanceOK = await checkAnswerAdvances(target);
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
-  const ok = rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
