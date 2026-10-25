@@ -166,7 +166,7 @@ func TestMCPWikiToolsCarryKindAndScene(t *testing.T) {
 	for name, p := range props {
 		kind, _ := p["kind"].(map[string]any)
 		enum, _ := kind["enum"].([]any)
-		if len(enum) != 5 || enum[0] != "rule" || p["scene"] == nil || !strings.Contains(kind["description"].(string), "守る決まり") {
+		if len(enum) != 5 || enum[0] != "rule" || p["scene"] == nil || !strings.Contains(kind["description"].(string), "このプロジェクトで決められたルール") {
 			t.Fatalf("%s の入力の定義に kind(5 つ、説明付き)と scene が要る: %v", name, p)
 		}
 	}

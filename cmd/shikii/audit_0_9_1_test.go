@@ -62,7 +62,7 @@ func TestAudit091ParallelSubagentsPickDistinctTasks(t *testing.T) {
 	}
 }
 
-// G3: 経緯(history)の除外が、候補を 6 件に切った後にかかる。依頼に近い経緯の記事が 6 件あると、守る決まり(rule)が席を失う
+// G3: 経緯(history)の除外が、候補を 6 件に切った後にかかる。依頼に近い経緯の記事が 6 件あると、このプロジェクトで決められたルール(rule)が席を失う
 func TestAudit091HistoryFilterBeforeCut(t *testing.T) {
 	st, scope, _, draft, _ := memoryEffectFixture(t)
 	book := notebook.Book{Root: st.Dir, Scope: scope}
@@ -83,6 +83,6 @@ func TestAudit091HistoryFilterBeforeCut(t *testing.T) {
 	}
 	ctx, err := memoryContext(st.Dir, scope, "README の導入手順を更新してください", &hookSession{TurnID: "cccccccccccccccc"})
 	if err != nil || !strings.Contains(ctx, draft.Lesson) {
-		t.Fatalf("経緯の記事を除いた後で 2 件を選び、守る決まりを届ける。候補の種類=%v\n届いた文=%q", kinds, ctx)
+		t.Fatalf("経緯の記事を除いた後で 2 件を選び、このプロジェクトで決められたルールを届ける。候補の種類=%v\n届いた文=%q", kinds, ctx)
 	}
 }

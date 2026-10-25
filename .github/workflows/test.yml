@@ -31,7 +31,9 @@ jobs:
       - run: git add -N web/dist && git diff --exit-code -- web/dist
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
-      - run: go test ./...
+      # cmd/shikii のテストを組に分けて別のプロセスで同時に流す(全体の値を差し替えるので同じプロセスでは並べられない)
+      - run: scripts/go-test.sh
+        timeout-minutes: 30
       - run: go build -o bin/shikii ./cmd/shikii && go build -o bin/fake-systemone ./cmd/fake-systemone && go build -o bin/shikii-readout ./cmd/shikii-readout
       # 契約の検査: spec の較正ブロックが今の文言と合い、act での precision が足りているか。
       # 裏付けのラベルは testdata/store/labels/(較正を書いた時のものを写した。入力はハッシュだけ)

@@ -30,14 +30,21 @@
   let selected = $derived(lessons.find(l => l.id === selectedId));
   let byId = $derived(new Map(lessons.map(l => [l.id, l])));
   let inbox = $derived(wiki.inbox || []);
+  // このプロジェクトで決められたルール(0.9.1): 人や AI が決めたルールを、場面の絞り込みと関係なく全部、一番上(受け箱より上)に並べる(埋もれないように)。
+  // 「いつも」のルールが先頭、次に新しい順。最近 7 日に増えた・変わったルールに印
+  const isAlways = l => ['いつも', 'always'].includes((l.scene || '').trim().toLowerCase());
+  const updated = l => Date.parse(meta[l.id]?.updated || 0) || 0;
+  const recentRule = l => Date.now() - updated(l) < 7 * 86400000;
+  let rules = $derived(lessons.filter(l => l.kind === 'rule').sort((a, b) => (isAlways(b) - isAlways(a)) || (updated(b) - updated(a))));
   let stats = $derived(wiki.memory_effect?.stats);
   let corrections = $derived(wiki.memory_effect?.corrections);
 
   let detailEl = $state();
   // 狭い画面(1 列)では本文の欄が下にあるので、題を押したら本文まで送る
-  function showLesson(id) {
+  // always: ルールの欄から押した時は、広い画面でも本文まで送る(欄が長いと本文の欄が画面の外に出るため)
+  function showLesson(id, always = false) {
     selectedId = id;
-    if (typeof matchMedia === 'function' && matchMedia('(max-width: 1023px)').matches) queueMicrotask(() => detailEl?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }));
+    if (always || (typeof matchMedia === 'function' && matchMedia('(max-width: 1023px)').matches)) queueMicrotask(() => detailEl?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }));
   }
   function pick(s) { scene = s; write('shikii.scene', s); }
   function toggleKind(k) { const next = new Set(expanded); next.has(k) ? next.delete(k) : next.add(k); expanded = next; }
@@ -54,6 +61,18 @@
 <section class="lessons" data-lessons>
   <h2 class="text-[25px] max-md:text-[23px]">{t('lessonsTitle')} {#if wiki.notebook_project}<span class="pill project">{wiki.notebook_project}</span>{/if}</h2>
   {#if stats}<p class="k" data-lessons-summary>{t('lessonsSummary')(stats, corrections || {}, lessons.length)}</p>{/if}
+
+  <div class="{panel} mb-4" data-rules>
+    <h3 class={head}>{t('rulesTitle')}<span class="ml-auto font-normal text-muted tabular-nums">{t('kindCount')(rules.length)}</span></h3>
+    <p class="k mt-0 mb-2">{t('rulesHow')}</p>
+    {#if rules.length}
+      <ul class="m-0 grid list-none gap-0.5 p-0">
+        {#each rules as l (l.id)}
+          <li><button type="button" class="flex w-full items-baseline gap-2 rounded-md border-0 px-1.5 py-1 text-left {selectedId === l.id ? 'bg-accentbg font-bold' : 'bg-transparent'}" data-rule={l.id} onclick={() => showLesson(l.id, true)}><span class="min-w-0 flex-1 wrap-anywhere">{l.title}</span><span class="text-[12px] whitespace-nowrap text-muted">{l.scene}</span>{#if recentRule(l)}<span class="badge rounded-md bg-amber px-1.5 py-px text-[10px] text-bg" data-rule-new>{t('ruleNew')}</span>{/if}</button></li>
+        {/each}
+      </ul>
+    {:else}<p class="k m-0">{t('rulesEmpty')}</p>{/if}
+  </div>
 
   <div class="{panel} mb-4" data-inbox>
     <h3 class={head}>{t('inboxTitle')}</h3>

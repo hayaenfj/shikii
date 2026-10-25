@@ -9,12 +9,12 @@ Claude Code and Codex start every session from zero. They do not remember what y
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-456%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-458%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.9.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.9 gives every lesson a kind (rule, how-to, criteria, fact, history) and a scene, and the Knowledge section of the page now lets you pick a scene and look things up. Only the exceptions that need you are shown at the top. Lessons written by earlier versions get their kind and scene from the agent, a few at a time. **When updating from 0.8, reopen your open agent sessions and update every machine that uses the same wiki to 0.9.0.** **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
+Version 0.9 gives every lesson a kind (rule, how-to, criteria, fact, history) and a scene, and the Knowledge section of the page now lets you pick a scene and look things up. Only the exceptions that need you are shown at the top. The page has three parts, Answer, Knowledge and The AI, and decisions waiting for you appear one card at a time under Answer. Lessons written by earlier versions get their kind and scene from the agent, a few at a time. **When updating from 0.8, reopen your open agent sessions and update every machine that uses the same wiki to 0.9.0.** **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -47,20 +47,20 @@ Like someone who has worked on the project for a long time, the agent picks up f
 | It leaves a trail | Reports, release logs, diffs and screenshots go to work records you read on the page |
 | It earns room to act alone | As truths accumulate, a line is drawn above which the model is right often enough, and more decisions go ahead without asking |
 
-1. **It remembers what you said.** From the requests, replies and corrections of ordinary conversations, the agent writes lessons with sources into the wiki. Each lesson carries a kind (a rule to keep, a how-to, criteria for a choice, a fact or assumption, or history) and a scene written in the words of that work ("when committing", "when sending an invoice"). Before a lesson is saved, the decision model finds the page it belongs to and checks it against earlier lessons. Up to two relevant lessons arrive before similar requests, and a subagent receives lessons close to the parent's request when it starts.
+1. **It remembers what you said.** From the requests, replies and corrections of ordinary conversations, the agent writes lessons with sources into the wiki. Each lesson carries a kind (a rule decided in this project, a how-to, criteria for a choice, a fact or assumption, or history) and a scene written in the words of that work ("when committing", "when sending an invoice"). Before a lesson is saved, the decision model finds the page it belongs to and checks it against earlier lessons. Up to two relevant lessons arrive before similar requests. A subagent receives lessons close to the task it was given. History lessons are read only when searched for. Rules, tests and procedures the agent makes or changes itself also go into the wiki right away, without being asked.
 2. **It never needs telling twice.** Corrections a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become guards. When one fails, the agent cannot end the turn until it fixes the work.
 3. **It follows the routine.** Before it changes files, the agent sums up what was agreed and what is still open, and searches the wiki with topic words it picks. Before it ends, it reflects on the turn, grades its own work and saves what it learned. If it skips either step, the turn is stopped once and the agent is told the exact command to run. These checks are built in and always on, also in projects without `CLAUDE.md` or `AGENTS.md`.
 4. **It leaves a trail.** Audit reports, release steps, diffs and screenshots that the agent keeps editing go to `.shikii/handoff/<task>/`, and subagents are told to write their reports there too. They are not committed; you read them on the page under Knowledge → Work records.
 5. **It earns room to act alone.** A model returns a probability, “probably 0.9”. From the truths people and results supply, shikii measures how the model's confidence relates to how often it is right, and draws a line above which it may act on its own. Until the line exists, nothing is automatic. Every decision falls into a band: `act` proceeds automatically, `ask` goes to a person, `discard` does nothing, `abstain` means an input or an endpoint is missing. When a line is drawn, or when there are enough truths but no line can be drawn (only one answer so far, or the answers cannot be separated), you are told once at the end of a turn. Truths live apart from the model, so changing models does not start you over. Alternative wordings can be scored on the same truths and the better one kept (a person confirms the meaning first).
 
-The page and `shikii status` show whether it is working: whether delivered lessons helped, how many turns did the routine, how many turns guards stopped and how many were fixed, how many decisions wait for a person, and which lines have been drawn.
+The AI part of the page and `shikii status` show whether it is working: whether delivered lessons helped, how many turns did the routine, how many turns guards stopped and how many were fixed, how many decisions wait for a person, and which lines have been drawn.
 
 ## What you do
 
 - **Correct your agent as usual.** “There is still English left” in an ordinary conversation is enough. The agent files it as a lesson and shikii keeps it next to the right page. When the correction can be checked by a machine, the agent also drafts a guard, disabled.
 - **Enable guards.** Run `shikii guard enable <id>` once. shikii first shows the guard stopping on a deliberately broken example and passing on a correct one, then enables it. Disabling is also your call.
-- **Answer some questions.** The top of the page tells you how many are waiting. It shows the decisions the model was unsure about and 1 in 20 of the ones it acted on; you press the button for what was actually true.
-- **Look up knowledge when you need it.** In the page's Knowledge section, pick a scene to see the lessons for it grouped by kind, and press a title to read it. You do not need to check everything: "For you to look at" at the top shows only the exceptions, such as a lesson that did harm or a correction that was repeated.
+- **Answer some questions.** Under Answer on the page, the decisions the model was unsure about and 1 in 20 of the ones it acted on appear one card at a time. The count waiting is shown beside Answer. Read the conversation and press the button for what was actually true.
+- **Look up knowledge when you need it.** At the top of the page's Knowledge section, every rule decided in this project, by people or by the AI, is listed so none gets buried; "always" rules come first and new ones are marked. Below it, pick a scene to see the lessons for it grouped by kind, and press a title to read it. You do not need to check everything: "For you to look at" at the top shows only the exceptions, such as a lesson that did harm or a correction that was repeated.
 - **Read the work records when you want.** On the page, under Knowledge → Work records, you can read the agent's reports and see its screenshots.
 - **Now and then confirm a wording.** When a better way of asking is found, you check that it asks the same thing and press adopt or reject.
 
@@ -105,7 +105,7 @@ For other systems, see [llama.cpp's installation guide](https://github.com/ggml-
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-The installer builds from source, so it needs Go 1.27 or newer and Git. From a source checkout, run `sh install.sh` inside its folder. The installer adds the binaries, the hooks (before a turn, after it, and when a subagent starts) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, use `/hooks` once to trust the hooks.
+The installer builds from source, so it needs Go 1.27 or newer and Git. From a source checkout, run `sh install.sh` inside its folder. The installer adds the binaries, the hooks (before a turn, after it, and when a subagent is launched and starts) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, use `/hooks` once to trust the hooks.
 
 ### 3. Initialize the projects you choose
 

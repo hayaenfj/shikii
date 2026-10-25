@@ -51,14 +51,14 @@ type Page struct {
 	Scene        string            `json:"scene,omitempty" yaml:"scene,omitempty"` // 場面(その仕事の言葉で「〜する時」、sceneMax 文字まで。0.9.0)
 }
 
-// Kinds は記事の種類。どの仕事にもある形で固定する(増やさない): 守る決まり・やり方・判断の基準・前提と事実・経緯。
+// Kinds は記事の種類。どの仕事にもある形で固定する(増やさない): このプロジェクトで決められたルール・やり方・判断の基準・前提と事実・経緯。
 var Kinds = []string{"rule", "howto", "criteria", "fact", "history"}
 
 // sceneMax は場面の文字数の上限。
 const sceneMax = 24
 
 // errKindScene は種類と場面が無い・不正な時の返事(エージェントがそのまま直せるよう、値の選び方を書く)。
-var errKindScene = errors.New("a lesson needs kind (one of rule|howto|criteria|fact|history) and scene (the situation in the project's own words, e.g. 「コミットする時」, one line, up to 24 characters); when updating a page they are inherited if omitted / 教訓には種類 kind(rule=守る決まり / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯 のどれか)と場面 scene(その仕事の言葉で「〜する時」、1 行 24 文字まで)が要ります。既存の記事を直す時に省けば、その記事のものを引き継ぎます")
+var errKindScene = errors.New("a lesson needs kind (one of rule|howto|criteria|fact|history) and scene (the situation in the project's own words, e.g. 「コミットする時」, one line, up to 24 characters); when updating a page they are inherited if omitted / 教訓には種類 kind(rule=このプロジェクトで決められたルール / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯 のどれか)と場面 scene(その仕事の言葉で「〜する時」、1 行 24 文字まで)が要ります。既存の記事を直す時に省けば、その記事のものを引き継ぎます")
 
 // validKindScene は種類が Kinds のどれかで、場面が 1 行・制御文字無し・sceneMax 文字以内か。
 func validKindScene(kind, scene string) bool {
@@ -440,7 +440,7 @@ func IsAlways(scene string) bool {
 	return false
 }
 
-// AlwaysRules は、場面が「いつも」の守る決まり(rule)を返す(並びは記事を読んだ順)。読めない記事・出典の欠けた記事・置き換えられた記事は返さない。
+// AlwaysRules は、場面が「いつも」のこのプロジェクトで決められたルール(rule)を返す(並びは記事を読んだ順)。読めない記事・出典の欠けた記事・置き換えられた記事は返さない。
 // 仕事の文の分からないサブエージェントに届ける物(0.9.1): 依頼との近さで選べないので、どの依頼にも効く決まりだけにする
 func (b Book) AlwaysRules() ([]Page, error) {
 	pages, _, err := b.pages()
@@ -1227,7 +1227,7 @@ type UnclassifiedPage struct {
 
 const unclassifiedBatch = 5
 
-const unclassifiedHow = "これらの記事に種類と場面を付けてください: shikii wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面>(MCP なら shikii_wiki の operation classify に id・kind・scene)。種類は rule=守る決まり / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯、場面はその仕事の言葉で「〜する時」。"
+const unclassifiedHow = "これらの記事に種類と場面を付けてください: shikii wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面>(MCP なら shikii_wiki の operation classify に id・kind・scene)。種類は rule=このプロジェクトで決められたルール / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯、場面はその仕事の言葉で「〜する時」。"
 
 // PageIssues は、保存(Ingest)を断らせる記事そのものの問題(読めない・手で直された記事)。出典の問題は含まない。
 func (b Book) PageIssues() ([]Issue, error) {

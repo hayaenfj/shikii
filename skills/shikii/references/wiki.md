@@ -4,6 +4,8 @@ Apply Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf5559
 
 ## Read and reconcile before writing
 
+What you make yourself counts too. When you create or change a rule, test or procedure (a command to run, a script, a check, a place where files go), write it to the wiki in the same turn even if nobody asked: search for the closest page and add to or edit it, or make a new `howto` or `rule` page. A procedure that exists only in the repository or in your reply is lost to the next agent.
+
 The hook sends a reflection reminder after two pending conversations, or on a request after one has waited a day. Prioritize the current task; before finishing, process the listed conversations through [reflection](review.md) (`reflect query` shows the oldest two at a time; `submit` takes any number). Individual operations support deeper editing.
 
 1. Read each original exchange. If truncated or ambiguous, use `shikii wiki query <source_id>` or MCP `shikii_wiki` with `operation: "query", sources: [source_id]`, in the current project's directory. Use the executable supplied by the hook. Distinguish the original request, the agent's proposal or reported result, and the following human reply. A proposal is not a decision, and a historical implementation status is not the current state.
@@ -33,7 +35,7 @@ MCP tool: `shikii_wiki`, operations `query` / `ingest` / `lint`. CLI `shikii wik
 
 - `sources`: observed source IDs from this project, at least one. Read each source you use. Existing citations are retained; references are bounded by article size, not a fixed count.
 - `title`, `lesson`, `applies_to`: topic, short retrieval summary, applicable conditions; limits are 200 / 2000 / 1000 UTF-8 bytes.
-- `kind` and `scene` (required for a lesson since 0.9.0; inherited from the page when omitted on update): `kind` is one of `rule` (a rule to keep), `howto` (a procedure), `criteria` (how to decide), `fact` (a premise or current fact), `history` (why something came to be). `scene` is the situation in the project's own words, one line up to 24 characters, phrased like "when committing" / 「コミットする時」, 「請求書を出す時」. `place` returns the existing `scenes` with counts: reuse one when it fits instead of inventing a near-synonym. The page groups knowledge by scene and kind, so a missing or vague scene hides the lesson from the person. A save without them is refused with the allowed values.
+- `kind` and `scene` (required for a lesson since 0.9.0; inherited from the page when omitted on update): `kind` is one of `rule` (a rule decided in this project), `howto` (a procedure), `criteria` (how to decide), `fact` (a premise or current fact), `history` (why something came to be). `scene` is the situation in the project's own words, one line up to 24 characters, phrased like "when committing" / 「コミットする時」, 「請求書を出す時」. `place` returns the existing `scenes` with counts: reuse one when it fits instead of inventing a near-synonym. The page groups knowledge by scene and kind, so a missing or vague scene hides the lesson from the person. A save without them is refused with the allowed values.
 - `body`: edited knowledge, up to 16 KiB of UTF-8. Explicit search includes it; automatic quotations still use the summary. The UI displays headings and paragraphs as text without executing embedded HTML.
 - `related`: other page IDs in this project, each with valid sources. Links can point both ways.
 - `id`: the existing page to update. Original sources and earlier revisions remain available.
