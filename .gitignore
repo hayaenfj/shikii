@@ -41,3 +41,7 @@ web/.ui-test/
 
 # 手元の作業・検証・反映の記録。公開文書には含めない
 /docs/operations.md
+
+# このプロジェクトの作業規則(エージェント向け、本人の手元だけ)。配布しない
+/AGENTS.md
+/CLAUDE.md
