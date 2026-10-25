@@ -194,7 +194,12 @@ func memoryImportNotice(scope string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("shikii: the agent's memory has files not yet moved to the wiki: %s. When you finish the current request, follow the steps in the skill's references/import-memory.md: keep each file as a source, move it into lessons one rule at a time, and turn each file into one line that points at its wiki page (canonical: .shikii/wiki <page id>) (for files shared by all projects, only add the pointing line; deleting is the person's job).", strings.Join(parts, "; "))
+	return memoryImportText(parts)
+}
+
+// memoryImportText is the notice for the given folders and files.
+func memoryImportText(parts []string) string {
+	return fmt.Sprintf("shikii: the agent's memory has files not yet moved to the wiki: %s. When you finish the current request, follow the steps in the skill's references/import-memory.md: keep each file as a source, move it into lessons one rule at a time, then keep each file's body as it is and add one line right after its frontmatter that points at its wiki page (canonical: .shikii/wiki <page id>). Never delete, empty or rewrite a memory file; deleting is the person's job.", strings.Join(parts, "; "))
 }
 
 // homeTilde writes a path under home with ~ (for display).

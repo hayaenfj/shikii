@@ -33,7 +33,7 @@ Hooks run when a user request arrives and when the turn closes, not before every
 
 **Rituals are checked too (built in, always on):** when the request hook asked you to prepare the planning context and you changed files, the Stop hook stops the turn once until `hook plan submit` was called for this turn; when the hook listed conversations to reflect on, the Stop hook stops the turn once until `reflect submit` saved their reviews, wiki entries and the assessment of every delivered lesson; when the hook listed pages without a kind and scene, it stops once until those pages are classified. The second Stop passes, but the miss is recorded (`shikii status` shows `rituals:` and the page shows it under the AI's state). Do the ritual before ending; do not end twice to get past it.
 
-**Memory import:** when the person asks to move an existing memory (Claude Code's auto memory folder, Codex notes) into shikii's wiki, or when the request hook reports files not yet in the wiki, follow [import-memory.md](references/import-memory.md): keep each file as a captured source, draft one lesson per rule, place and ingest, and turn the memory folder into a thin index that points at the wiki pages. One instruction from the person is enough.
+**Memory import:** when the person asks to move an existing memory (Claude Code's auto memory folder, Codex notes) into shikii's wiki, or when the request hook reports files not yet in the wiki, follow [import-memory.md](references/import-memory.md): keep each file as a captured source, draft one lesson per rule, place and ingest, and keep every memory file with its body, adding only a line that points at the wiki page. One instruction from the person is enough.
 
 ## Respect the evidence boundaries
 
