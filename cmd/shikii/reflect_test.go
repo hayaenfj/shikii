@@ -280,6 +280,11 @@ func TestReflectInputUpToOneMiB(t *testing.T) {
 	if q["complete"] != true || len(q["wiki"].([]any)) != 6 {
 		t.Fatalf("64 KB を超える(1 MiB 未満の)振り返りも保存する: %d bytes %v", len(data), q)
 	}
+	// 1 MiB 近く(900 KiB)の入力も HTTP の口で受け取る(大きさでは断らず、中身の足りない評価を項目ごとの誤りで返す。再監査 GJ)
+	nearly := map[string]any{"operation": "submit", "memory": []map[string]string{{"source_id": "0000000000000001", "key": "lesson:x:y", "result": "unknown", "decision": "d", "evidence": strings.Repeat("e", 900<<10)}}}
+	if q := reflectCall(t, h, nearly); q["complete"] != false || len(q["memory"].([]any)) != 1 {
+		t.Fatalf("900 KiB の振り返りを大きさで断らない: %v", q)
+	}
 	// 1 MiB を超えたら断り、分けて送るよう伝える(CLI も同じ読み込み)
 	big := map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": []string{"0000000000000001"}, "body": strings.Repeat("あ", 400<<10)}}}
 	raw, _ := json.Marshal(big)

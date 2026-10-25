@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -270,6 +272,12 @@ func TestSubagentTasksAreOldestFirstWithinLimits(t *testing.T) {
 	if len(expired.SubagentTasks) != 1 || expired.SubagentTasks[0].Prompt != "仕事 X" {
 		t.Fatalf("足す時に期限切れの控えを捨てる: %+v", expired.SubagentTasks)
 	}
+	// 30 秒より前の控えを捨てるのは同じ種類だけ(別の種類の控えは残す。再監査 GB)
+	other := &hookSession{SubagentTasks: []subagentTask{{Type: "Explore", Prompt: "1 分前の Explore", At: now.Add(-time.Minute)}}}
+	add(other, "仕事 Y")
+	if len(other.SubagentTasks) != 2 || other.SubagentTasks[0].Prompt != "1 分前の Explore" {
+		t.Fatalf("別の種類の控えは 30 秒の捨て方で捨てない: %+v", other.SubagentTasks)
+	}
 	s := &hookSession{SubagentTasks: []subagentTask{{Type: "Plan", Prompt: "期限切れ", At: now.Add(-11 * time.Minute)}}}
 	for i := 0; i < 10; i++ {
 		in := &hookInput{ToolName: "Agent", ToolInput: json.RawMessage(`{"prompt":"仕事 ` + string(rune('A'+i)) + `","subagent_type":"Plan"}`)}
@@ -300,6 +308,28 @@ func TestAlwaysRulesAreOnlyLiveAlwaysRules(t *testing.T) {
 	mk("新しい決まり", "rule", "いつも", old.ID)
 	mk("英語の決まり", "rule", "ALWAYS")
 	mk("いつものやり方", "howto", "いつも")
+	// 出典の壊れた記事(原資料が消えた)は返さない(再監査 GI)
+	obs, err := book.Capture(notebook.Observation{Kind: "human", Title: "消える原資料", Content: "いつもの決まりの元", Reference: "r", Version: "v1", ObservedAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := draft
+	broken.ID, broken.Sources, broken.Title, broken.Lesson, broken.Kind, broken.Scene = "", []string{obs.ID}, "出典の壊れた決まり", "出典の壊れた決まりの教訓。", "rule", "いつも"
+	if _, err := book.Ingest(broken); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := filepath.Glob(filepath.Join(st.Dir, "records", "wiki-sources", "*", obs.ID+"*"))
+	if len(files) == 0 {
+		files, _ = filepath.Glob(filepath.Join(st.Dir, "records", "wiki-sources", obs.ID+"*"))
+	}
+	if len(files) == 0 {
+		t.Fatal("この検査の前提: 原資料のファイルが見つかる")
+	}
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			t.Fatal(err)
+		}
+	}
 	got, err := book.AlwaysRules()
 	titles := []string{}
 	for _, p := range got {

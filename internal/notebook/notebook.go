@@ -507,12 +507,25 @@ func (b Book) query(query string, recall bool) (View, error) {
 	}
 	for _, p := range valid {
 		// 自動の配送(recall)では経緯(history)の記事を並べる前に外す(候補を切った後に外すと、経緯が席を塞いで決まりが届かない。監査 0.9.1 中-3)
-		if !superseded[p.ID] && !exact && !(recall && p.Kind == "history") {
+		if !superseded[p.ID] && !exact {
 			v.Lessons = append(v.Lessons, p)
 		}
 	}
 	if query != "" || recall {
 		v.Lessons, v.Matches = rankPages(v.Lessons, query, recall)
+	}
+	if recall {
+		// 経緯は珍しい語の母数には入れたまま並べ、切る前に外す
+		lessons, matches := v.Lessons[:0:0], v.Matches[:0:0]
+		for i, p := range v.Lessons {
+			if p.Kind != "history" {
+				lessons = append(lessons, p)
+				if i < len(v.Matches) {
+					matches = append(matches, v.Matches[i])
+				}
+			}
+		}
+		v.Lessons, v.Matches = lessons, matches
 	}
 	if query != "" && !recall {
 		v.Search = &SearchResult{Total: len(v.Lessons), Candidates: []SearchCandidate{}}

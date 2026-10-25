@@ -297,6 +297,54 @@ async function checkAnswerNotRevertedByOldLoad(target) {
   return ok;
 }
 
+
+// 再監査 0.9.1(低-UI1): 答えを送っている間に画面を切り替えても、切り替えた画面の読み込みは捨てない(答える前から待っていた分だけ捨てる)
+async function checkSwitchDuringAnswerKeepsLoad(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
+  const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
+  const item = (trace, text) => ({ trace_id: trace, at: '2026-10-19T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: text }, inputs_hash: trace, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, waits_for_person: true, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], rung: 'minimal', audit: false });
+  const spec = { id: 'needs-plan', type: 'noul', titles: {}, questions: { ja: 'q' }, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 2, waiting_for_person: 2, person_answers: true };
+  let releaseLabel, releaseWiki;
+  globalThis.fetch = async (url, opts) => {
+    if (url === 'v1/label') return { ok: true, json: () => new Promise(r => { releaseLabel = r; }) };
+    if (url === 'v1/wiki') return { ok: true, json: () => new Promise(r => { releaseWiki = r; }) };
+    return { ok: true, json: async () => url === 'v1/status' ? { specs: [{ ...spec }] } : url.startsWith('v1/queue') ? { items: [item('a', 'FIRST'), item('b', 'SECOND')] } : url.startsWith('v1/tune') ? null : {} };
+  };
+  data.state = null; Object.assign(ui, { page: 'answer', tab: '', done: false, pinned: '' }); skipped.clear();
+  const app = mount(App, { target }); await settle(); await settle();
+  target.querySelector('.item .btns button[data-truth="yes"]')?.click(); await settle();
+  target.querySelector('[data-page="wiki"]')?.click(); await settle(); await settle();
+  releaseLabel?.({ truth: 'yes' }); await settle(); await settle();
+  releaseWiki?.({ lessons: [], notebook_issues: [] }); await settle(); await settle(); await settle();
+  const shown = !!data.state?.wiki;
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
+  console.log((shown ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答えの送信中に切り替えた画面の読み込みは捨てない=' + shown + ')');
+  return shown;
+}
+
+// 再監査 0.9.1(W4・W5): 答えた後に「残り」を減らすのは、まだ答えていない、人を待つ記録だけ(答えの直しと、人を待たない記録では減らさない)
+async function checkAnswerCountOnlyForNewWaits(target) {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ truth: 'yes' }) });
+  const base = { at: '2026-10-22T00:00:00Z', band: 'ask', top: 'yes', p: .6, answerable: true, inputs: { request: '依頼' }, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
+  const run = async it => {
+    const sp = { id: 'needs-plan', type: 'noul', queue: { items: [it] }, unlabeled: 1, labels: 0, waiting_for_person: 3 };
+    const app = mount(ItemCard, { target, props: { sp, it } }); flushSync();
+    target.querySelector('button[data-truth="no"]')?.click();
+    await new Promise(r => setTimeout(r, 0)); flushSync();
+    unmount(app);
+    return sp.waiting_for_person;
+  };
+  const relabel = await run({ ...base, trace_id: 'w4', truth: 'yes', truth_at: base.at });
+  const notWaiting = await run({ ...base, trace_id: 'w5', waits_for_person: false });
+  const fresh = await run({ ...base, trace_id: 'w6', waits_for_person: true });
+  globalThis.fetch = realFetch;
+  const ok = relabel === 3 && notWaiting === 3 && fresh === 2;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (残りを減らすのは新しい人待ちだけ: 答えの直し=' + relabel + ', 人を待たない=' + notWaiting + ', 新しい人待ち=' + fresh + ')');
+  return ok;
+}
+
 export async function run() {
   const target = document.getElementById('app');
   const articleOK = await checkNotebookArticle(target);
@@ -319,9 +367,11 @@ export async function run() {
   const conflictsOK = await checkUtilityConflicts(target);
   const handoffOK = await checkHandoff(target);
   const lessonsOK = checkLessons(target);
+  const switchOK = await checkSwitchDuringAnswerKeepsLoad(target);
+  const countOK = await checkAnswerCountOnlyForNewWaits(target);
   const advanceOK = await checkAnswerAdvances(target);
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
-  const ok = advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -524,7 +574,7 @@ async function checkProjectEntrances(target) {
 // この依頼より前のAIの返答を、今回の着手前の判定対象と取り違えない。
 function checkTurnContext(target) {
   i18n.lang = 'ja';
-  const make = (id, inputs) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 1, labels: 0, unlabeled: 1, tune: null, queue: { items: [{ trace_id: id, answerable: true, inputs, original_inputs: { previous: '前の仕事は完了しました。末尾 <img src=x>' }, text_status: {}, choices: [] }] } });
+  const make = (id, inputs) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 1, labels: 0, unlabeled: 1, tune: null, queue: { items: [{ trace_id: id, answerable: true, inputs, original_inputs: { previous: '前の仕事は**完了**しました。末尾 <img src=x>' }, text_status: {}, choices: [] }] } });
   ui.done = false; ui.filter = 'all'; ui.project = ''; ui.view = 'one'; ui.pinned = '';
   let app = mount(SpecPanel, { target, props: { sp: make('needs-plan', { previous: '前の仕事は完了しました。', request: '今回の新しい依頼' }) } });
   flushSync();
@@ -533,7 +583,7 @@ function checkTurnContext(target) {
   const before = first?.dataset.input === 'request' && first.textContent.includes('今回の依頼') && first.textContent.includes('今回の新しい依頼') && target.querySelector('.decision-phase')?.textContent.includes('始める前');
   const folded = !!previous && !previous.open && previous.querySelector('summary')?.textContent.includes('この依頼より前のAIの返答') && previous.textContent.includes('末尾 <img src=x>') && !target.querySelector('img');
   if (previous) previous.open = true;
-  const readable = previous?.open && previous.textContent.includes('前の仕事は完了しました。末尾');
+  const readable = previous?.open && previous.textContent.includes('前の仕事は完了しました。末尾') && !previous.textContent.includes('**'); // 折り畳みの中も Markdown の記号を外す(再監査 W9)
   // 字の大きさの class は 1 つだけ(text-[13px] と text-[15px] が並ぶと、生成順で 15px が勝つ: 監査 A-1)
   const sizes = (previous?.querySelector('.message-body')?.className.match(/(?:^|\s)text-\[\d+px\]/g) || []);
   const oneSize = sizes.length === 1 && sizes[0].trim() === 'text-[13px]';

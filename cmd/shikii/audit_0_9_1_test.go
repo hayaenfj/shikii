@@ -57,7 +57,7 @@ func TestAudit091ParallelSubagentsPickDistinctTasks(t *testing.T) {
 	}
 	h1, h2 := strings.SplitN(o1.Context, "\n", 2)[0], strings.SplitN(o2.Context, "\n", 2)[0]
 	left := loadSession(agent, "g2").SubagentTasks
-	if h1 == h2 || len(left) != 0 {
+	if h1 == h2 || len(left) != 0 || !strings.Contains(h1, "ONE") || !strings.Contains(h2, "TWO") { // c1 は ONE、c2 は TWO(片方が控え無しでも通らないように。再監査 GC)
 		t.Fatalf("並べて起こした 2 つの子は別々の控えを使い、控えは残らない:\n c1=%q\n c2=%q\n 残り=%+v", h1, h2, left)
 	}
 }

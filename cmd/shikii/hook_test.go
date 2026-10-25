@@ -28,7 +28,7 @@ func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent strin
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	agent = filepath.Join(home, ".shikii", "agent")
-	oldLocal, oldPage, oldCal, oldTune, oldSpawn := hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn
+	oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen := hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser
 	hookCalibrate = runCalibrateInProcess // テストは線を同プロセスで引く(本番は別プロセスを切り離す)
 	hookTune = runTuneInProcess
 	spawned = nil
@@ -41,7 +41,7 @@ func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent strin
 	}
 	hookPageURL = "http://127.0.0.1:1"
 	t.Cleanup(func() {
-		hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn = oldLocal, oldPage, oldCal, oldTune, oldSpawn
+		hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser = oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen // 戻さないと、TestMain の差し替えを確かめるテストが順に依存する(再監査 GH)
 	})
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	spawned = nil // install が起こした分は数えない

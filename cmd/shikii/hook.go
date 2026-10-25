@@ -795,7 +795,11 @@ func hookAgentTask(in *hookInput) []func(*hookSession) {
 	if json.Unmarshal(in.ToolInput, &input) != nil || strings.TrimSpace(input.Prompt) == "" {
 		return nil
 	}
-	task := subagentTask{Type: input.SubagentType, Prompt: cut(strings.TrimSpace(input.Prompt), requestMax), At: time.Now().UTC()}
+	typ := input.SubagentType
+	if typ == "" {
+		typ = "general-purpose" // 種類を書かずに起こした子は general-purpose として始まる(30 秒の捨て方で同じ種類と見る)
+	}
+	task := subagentTask{Type: typ, Prompt: cut(strings.TrimSpace(input.Prompt), requestMax), At: time.Now().UTC()}
 	return []func(*hookSession){func(s *hookSession) {
 		kept := []subagentTask{}
 		for _, t := range s.SubagentTasks {

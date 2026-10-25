@@ -4,7 +4,7 @@
   // キー操作(App.svelte)は .item の先頭のカードの .btns button を押すので、ここの class(top / skip)は変えない
   // question(0.9.1): 答える画面では札の先頭とボタンの上に問いを出し、AI の内側の印(帯・モデル)は出さない。AI の様子では出す
   import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
-  import { skipped, load, dropPendingLoads } from '../lib/state.svelte.js';
+  import { skipped, load, dropPendingLoads, loadMark } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
 
@@ -45,8 +45,9 @@
   async function answer(truth) {
     busy = true;
     try {
+      const mark = loadMark();
       const res = await api.label({ trace_id: it.trace_id, spec: sp.id, truth, source: it.audit ? 'audit' : 'ui' });
-      dropPendingLoads(); // 答える前に出た読み直しの応答は、答えた札を戻すので捨てる(監査 0.9.1 低-5)
+      dropPendingLoads(mark); // 答える前に出た読み直しの応答は、答えた札を戻すので捨てる(監査 0.9.1 低-5)
       if (!it.truth) {
         sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++;
         if (it.waits_for_person !== false) sp.waiting_for_person = Math.max(0, (sp.waiting_for_person || 1) - 1); // 「残り」と上の印も減らす(監査 0.9.1 低〜中-4)

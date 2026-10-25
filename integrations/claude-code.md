@@ -136,8 +136,10 @@ UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending 
                                                      直前の返答と今回の人の発言を一組で残す。同じ仕事の似た依頼の会話を引用
                                                      decide prompt-kind。新形式のneeds-planは原文付きの文脈整理をエージェントへ案内
                                                      └ sessions/<id>.json に request と作業ツリーのハッシュ、<id>.files に作業ツリーの一覧を控える
-PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。何も出さない。Claude Code だけ)
+PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
 SubagentStart ──── shikii hook subagent-start ───── 同じ種類の控えの文に近い教訓をサブエージェントの文脈へ。控えが無ければ「いつも」の決まりだけ(親の控えは使った子への仕事の控えを外すほかは変えず、配送は別の ID で記録。Claude Code だけ)
+                                                     (制限: 子の側には呼び出しの id が来ないので、控えは種類と時刻と順番で結ぶ。Agent ツールを断ってから
+                                                      30 秒の内に同じ種類の子を起こし直すと、断った方の文で選ぶことがある)
 Stop ───────────── shikii hook stop ──────────────── 残った pending に結果の正解(変わっていれば edit で片付け、変わっていなければ !edit を付けて持ち越す)
                                                      依頼の時の一覧と今の一覧を比べて「変わったファイル」→ decide changes-in-scope, done-as-asked(並行。同じ依頼で 1 回だけ)
                                                      └ last_assistant_message を控える(次の人の発言との対応・needs-plan の文脈)。答え待ちの要約を 1 行。4 spec の正解が min_n に届いていれば線を引く
