@@ -121,7 +121,10 @@ async function checkAnswerCardOnce(target) {
   flushSync();
   const card = target.querySelector('.item');
   const count = (s, w) => s.split(w).length - 1;
-  const once = count(card?.textContent || '', q) === 1 && target.querySelector('.card-question')?.textContent === '始める前に確認してほしかったか' && (target.querySelector('.answer-heading')?.textContent || '').includes(q);
+  // the question is in the page twice (the top of the card for phones, the stuck bar for wider screens) but shown once at each width (audit 0.9.2 ui low-1)
+  const rules = mediaUtilities(globalThis.__shikiiCSS || '');
+  const shownText = w => { const c = card.cloneNode(true); for (const e of [...c.querySelectorAll('*')]) if (!shownAt(rules, e, w)) e.remove(); return c.textContent; };
+  const once = count(shownText(1440), q) === 1 && count(shownText(390), q) === 1 && target.querySelector('.card-question')?.textContent === '始める前に確認してほしかったか' && (target.querySelector('.answer-heading')?.textContent || '').includes(q);
   // what can be seen before opening the fold: the text outside closed details (summary included)
   const seen = () => { const c = card.cloneNode(true); for (const d of c.querySelectorAll('details:not([open])')) for (const ch of [...d.children]) if (ch.tagName !== 'SUMMARY') ch.remove(); return c.textContent; };
   const fold = target.querySelector('details.guess-fold');
@@ -640,7 +643,7 @@ export async function run() {
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
-  const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target)].every(Boolean);
+  const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), checkPhoneAnswerBar(target)].every(Boolean);
   const ok = auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
