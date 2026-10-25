@@ -1,7 +1,7 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。0.9.2 から内側の言葉を言い換え表(scripts/test-glossary.mjs)のやさしい言葉にした
 export default {
   summaryModel: (name, endpoint) => '答えを出す AI(モデル): ' + (name || '不明') + (endpoint ? '（' + endpoint + '）' : ''),
-  summarySpecAuto: 'AI がひとりで決めています(あなたの答えが十分に集まりました)', summarySpecLearning: (n, min) => '学習中 ' + n + ' / ' + min + ' 件(あなたの答えが ' + min + ' 件集まると、AI がひとりで決められるか試します)',
+  summarySpecWording: '新しい聞き方の確かめが「答える」で待っています', summarySpecAuto: 'AI がひとりで決めています(あなたの答えが十分に集まりました)', summarySpecLearning: (n, min) => '学習中 ' + n + ' / ' + min + ' 件(あなたの答えが ' + min + ' 件集まると、AI がひとりで決められるか試します)',
   summarySpecResults: n => '結果待ち ' + n, summarySpecMachine: n => 'AI だけが答える問い(あなたは答えません)。結果待ち ' + n + ' 件',
   readonlyNote: 'この記録の正解は結果(次の依頼・振り返り)から付きます。あなたが答える必要はありません。',
   summaryMemoryNone: 'まだ届いていません。似た依頼の前と、サブエージェントの開始時に届きます。',
@@ -77,16 +77,16 @@ export default {
   noText: h => 'この記録は本文が残っていないので(本文を残す前の記録)、正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に問いの文が変わりました',
   done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。AI がひとりで決めてよい境目を保存しました', error: m => 'エラー: ' + m, last: '最後に境目を決めた時',
   wording: '聞き方(言い換えの案)', current: '今の言い方', noRun: 'まだ測っていません', running: '案を測っています…', runTune: '案を測る', runPropose: n => 'AI に案を ' + n + ' 個作らせて測る',
-  holdoutLine: (h, c) => '別の分で試して合った割合 ' + h + '(今のまま: ' + c + ')', winnerLine: w => '言い換えの案 ' + w + ' に変えられます', keptLine: '今の言い方のまま',
+  holdoutLine: (h, c) => '別の分で試して合った割合 ' + h + '(今のまま: ' + c + ')', winnerLine: '新しい言い方に変えられます', keptLine: '今の言い方のまま',
   adoptedLine: p => '変えた: ' + p, sameMeaning: '意味は同じ → 使う', changedMeaning: '意味が違う → 使わない', notePrompt: '意味のどこが変わりましたか？(書かなくてもよい)',
-  candidates: n => '測る前の案 ' + n + ' 件', noCandidates: '案はまだありません。下に書くか、AI に作らせてください', addWording: '言い換えの案を書く', candName: '短い名前(例: plain-words)', candQuestion: '問いをあなたの言葉で', candQuestionOrOptions: '問いをあなたの言葉で(空なら今の問いのまま。下の答えの説明だけ変える)', candOptions: '答えの説明。1 行に 1 つ、id: 説明 の形(変える物だけ)', addWordingBtn: '案を足す', candAdded: n => '足しました: ' + n + '。次に測る時に比べます',
+  candidates: n => '測る前の案 ' + n + ' 件', noCandidates: '案はまだありません。下に書くか、AI に作らせてください', addWording: '言い換えの案を書く', candNameLabel: '案の名前', candName: '短い名前(例: plain-words)', candQuestionLabel: '問い', candOptionsLabel: '答えの説明', candQuestion: '問いをあなたの言葉で', candQuestionOrOptions: '問いをあなたの言葉で(空なら今の問いのまま。下の答えの説明だけ変える)', candOptions: '答えの説明。1 行に 1 つ、id: 説明 の形(変える物だけ)', addWordingBtn: '案を足す', candAdded: n => '足しました: ' + n + '。次に測る時に比べます',
   checkHint: '言い換えても、まだあなたの聞きたいことを聞いていますか？数は機械が確かめました。和訳を見て、意味が同じかを選んでください。', rejected: '記録しました: 意味が違うので使いません', adoptedToast: p => '変えました: ' + p,
   wordingDecision: (adoptable, winner) => adoptable ? '案 ' + winner + ' に変えられます(意味が同じとあなたか AI が確かめた時)' : '今の言い方のままにします',
   // 0.9.1: 知識のいつものルールの欄
   rulesTitle: 'いつも守ること', ruleNew: '新', rulesEmpty: 'まだありません。',
   // 0.9.1: 画面は 3 つ(答える・知識・AI の様子)
   pagesNav: '画面', pageAnswer: '答える', pageKnowledge: '知識', pageAI: 'AI の様子',
-  answerTitle: '答える', answerLeft: n => '残り ' + n + ' 件', answerHow: 'AI が自信を持てなかった所です。会話を読んで、本当はどうだったかを押してください。あなたの答えから AI が覚えます。',
+  answerTitle: '答える', answerLeft: n => '残り ' + n + ' 件', answerHow: 'あなたの答えを待っている所です(AI が自信を持てなかった物と、確かめのため時々出す物)。会話を読んで、本当はどうだったかを押してください。あなたの答えから AI が覚えます。',
   wordingAgentAdopted: 'AI が「意味は同じ」と確かめて、この言い方に変えました。あなたの答えに今より合います。意味が違っていたら元に戻せます。',
   wordingAgentUnsure: d => 'AI は意味が同じか決めきれませんでした。違いの見立て: ' + d,
   wordingAgentDifferent: d => 'AI は意味が違うと見たので使いませんでした: ' + d,

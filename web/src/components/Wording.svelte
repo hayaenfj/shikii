@@ -89,7 +89,7 @@
     {#if tu && tu.running}<span class="pill ready">{t('running')}</span>
     {:else if latest && latest.adopted}<span class="pill calibrated">{t('adoptedLine')(latest.adopted_path.split('/').pop())}</span>
     {:else if latest && latest.reverted}<span class="pill">{t('revertedLine')}</span>
-    {:else if latest && latest.adoptable}<span class="pill ready">{t('winnerLine')(latest.winner)}</span>
+    {:else if latest && latest.adoptable}<span class="pill ready">{t('winnerLine')} <span class="text-muted" data-variant-name>({latest.winner})</span></span>
     {:else if latest}<span class="pill">{t('keptLine')}</span>
     {:else}<span class="pill">{t('noRun')}</span>{/if}
   </summary>
@@ -122,7 +122,7 @@
         {:else if !check}<div class="k" data-wording-agent>{t('wordingWaitAgent')}</div>{/if}
         <div class="my-3 grid grid-cols-2 gap-4 max-md:grid-cols-1">
           <div><div class="k">{review ? t('wordingBefore') : t('current')}</div>{#if check?.current_translation}<div class="text mb-1.5 wrap-anywhere" data-wording-ja>{t('translation')}: {check.current_translation}</div>{/if}<div class="text mb-3.5 wrap-anywhere text-muted">{cur.question || ''}</div>{@render options(cur.options)}</div>
-          <div><div class="k">{review ? t('wordingAfter') : latest.winner}</div>{#if check?.candidate_translation}<div class="text mb-1.5 wrap-anywhere" data-wording-ja>{t('translation')}: {check.candidate_translation}</div>{/if}<div class="text mb-3.5 wrap-anywhere text-muted">{w.question || ''}</div>{@render options(w.options, cur.options)}{@render steps(w.steps)}</div>
+          <div><div class="k">{#if review}{t('wordingAfter')}{:else}{t('wordingNew')} <span class="text-muted" data-variant-name>({latest.winner})</span>{/if}</div>{#if check?.candidate_translation}<div class="text mb-1.5 wrap-anywhere" data-wording-ja>{t('translation')}: {check.candidate_translation}</div>{/if}<div class="text mb-3.5 wrap-anywhere text-muted">{w.question || ''}</div>{@render options(w.options, cur.options)}{@render steps(w.steps)}</div>
         </div>
         {#if review}
           <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top" data-wording-keep onclick={() => decide(true)}>{t('keepWording')}</button><button type="button" class="weak" data-wording-undo onclick={() => decide(false)}>{t('undoWording')}</button></div>
@@ -136,12 +136,12 @@
     {/if}
     {#if tu && tu.error}<div class="k">{t('error')(tu.error)}</div>{/if}
     {#if tu}
-      <div class="k cands-line">{tu.variants && tu.variants.length ? t('candidates')(tu.variants.length) + ': ' + tu.variants.map(v => v.name).join(', ') : t('noCandidates')}</div>
+      <div class="k cands-line">{#if tu.variants && tu.variants.length}{t('candidates')(tu.variants.length)} <span class="text-muted" data-variant-name>({tu.variants.map(v => v.name).join(', ')})</span>{:else}{t('noCandidates')}{/if}</div>
       <form class="add-variant mt-4 flex flex-col gap-[9px] [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:border-line [&_input]:bg-surface2 [&_input]:px-3 [&_input]:py-[9px] [&_textarea]:min-h-[90px] [&_textarea]:w-full [&_textarea]:rounded-lg [&_textarea]:border [&_textarea]:border-line [&_textarea]:bg-surface2 [&_textarea]:px-3 [&_textarea]:py-[9px]" onsubmit={e => { e.preventDefault(); addVariant(); }}>
         <div class="k">{t('addWording')}</div>
-        <input name="name" placeholder={t('candName')} bind:value={candName} required>
-        <textarea name="question" rows="2" placeholder={sp.type === 'choice' ? t('candQuestionOrOptions') : t('candQuestion')} bind:value={candQuestion} required={sp.type !== 'choice'}></textarea>
-        {#if sp.type === 'choice'}<textarea name="options" rows="2" placeholder={t('candOptions')} bind:value={candOptions}></textarea>{/if}
+        <label class="grid gap-1 text-[12px] text-muted">{t('candNameLabel')}<input name="name" placeholder={t('candName')} bind:value={candName} required></label>
+        <label class="grid gap-1 text-[12px] text-muted">{t('candQuestionLabel')}<textarea name="question" rows="2" placeholder={sp.type === 'choice' ? t('candQuestionOrOptions') : t('candQuestion')} bind:value={candQuestion} required={sp.type !== 'choice'}></textarea></label>
+        {#if sp.type === 'choice'}<label class="grid gap-1 text-[12px] text-muted">{t('candOptionsLabel')}<textarea name="options" rows="2" placeholder={t('candOptions')} bind:value={candOptions}></textarea></label>{/if}
         <div class="btns flex flex-wrap items-center gap-2.5"><button type="submit" class="weak" disabled={adding}>{t('addWordingBtn')}</button></div>
       </form>
     {/if}

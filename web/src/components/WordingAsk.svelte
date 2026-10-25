@@ -51,7 +51,7 @@
     {/if}
   </div>
   <details class="mt-3 text-[13px] text-muted"><summary class="cursor-pointer">{t('wordingOriginal')}</summary>
-    <p class="mb-1">{t('current')}: {latest.current_wording?.question || ''}</p>
-    <p class="mt-1">{t('wordingNew')}: {latest.winner_wording?.question || ''}</p>
+    <p class="mb-1">{t(adopted ? 'wordingBefore' : 'current')}: {latest.current_wording?.question || ''}</p>
+    <p class="mt-1">{t(adopted ? 'wordingAfter' : 'wordingNew')}: {latest.winner_wording?.question || ''}</p>
   </details>
 </div>

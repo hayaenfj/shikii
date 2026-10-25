@@ -53,7 +53,7 @@
   ul ul { list-style:circle; }
   ul { list-style:disc; }
   ol { list-style:decimal; }
-  code { font-size:.9em; }
+  code { font-size:max(12px, .9em); } /* never below the 12px floor, also inside 13px text (audit 0.9.2 ui low-3) */
   pre { margin-block:1em; white-space:pre-wrap; overflow-wrap:anywhere; font:12px/1.7 var(--font-mono); color:var(--color-muted); }
   @media (prefers-reduced-motion:reduce) { *, *::before, *::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
 }

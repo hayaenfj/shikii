@@ -4,7 +4,7 @@
   // Reloads every 15 seconds (not while the page is hidden). Keys (Answer screen only): 1 to 9 choose the card's answer, Enter means the same as the AI, → skips
   import { onMount, untrack } from 'svelte';
   import { i18n, t } from './lib/i18n.svelte.js';
-  import { ui, data, load, selectedPage, setPage, setShowHelp, personSpecs } from './lib/state.svelte.js';
+  import { ui, data, load, selectedPage, setPage, setShowHelp, answerWaits } from './lib/state.svelte.js';
   import HowTo from './components/HowTo.svelte';
   import Answer from './components/Answer.svelte';
   import AiView from './components/AiView.svelte';
@@ -16,7 +16,7 @@
   let st = $derived(data.state);
   let hasWiki = $derived(!!st && !st.projects);
   let page = $derived(selectedPage(st));
-  let waits = $derived(personSpecs(st).reduce((n, s) => n + (s.waiting_for_person || 0), 0));
+  let waits = $derived(answerWaits(st)); // the cards and the wording boxes waiting on the Answer screen
 
   $effect(() => { document.documentElement.lang = i18n.lang; });
 

@@ -12,6 +12,7 @@ import Handoff from '../src/components/Handoff.svelte';
 import Lessons from '../src/components/Lessons.svelte';
 import ItemCard from '../src/components/ItemCard.svelte';
 import Answer from '../src/components/Answer.svelte';
+import WordingAsk from '../src/components/WordingAsk.svelte';
 import AiView from '../src/components/AiView.svelte';
 import App from '../src/App.svelte';
 import { i18n, t } from '../src/lib/i18n.svelte.js';
@@ -120,7 +121,10 @@ async function checkAnswerCardOnce(target) {
   flushSync();
   const card = target.querySelector('.item');
   const count = (s, w) => s.split(w).length - 1;
-  const once = count(card?.textContent || '', q) === 1 && target.querySelector('.card-question')?.textContent === '始める前に確認してほしかったか' && (target.querySelector('.answer-heading')?.textContent || '').includes(q);
+  // the question is in the page twice (the top of the card for phones, the stuck bar for wider screens) but shown once at each width (audit 0.9.2 ui low-1)
+  const rules = mediaUtilities(globalThis.__shikiiCSS || '');
+  const shownText = w => { const c = card.cloneNode(true); for (const e of [...c.querySelectorAll('*')]) if (!shownAt(rules, e, w)) e.remove(); return c.textContent; };
+  const once = count(shownText(1440), q) === 1 && count(shownText(390), q) === 1 && target.querySelector('.card-question')?.textContent === '始める前に確認してほしかったか' && (target.querySelector('.answer-heading')?.textContent || '').includes(q);
   // what can be seen before opening the fold: the text outside closed details (summary included)
   const seen = () => { const c = card.cloneNode(true); for (const d of c.querySelectorAll('details:not([open])')) for (const ch of [...d.children]) if (ch.tagName !== 'SUMMARY') ch.remove(); return c.textContent; };
   const fold = target.querySelector('details.guess-fold');
@@ -639,7 +643,8 @@ export async function run() {
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
-  const ok = aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), await checkAnswerKeys(target), await checkWordingAskSends(target), checkPhoneAnswerBar(target), checkWordingPlain(target)].every(Boolean);
+  const ok = auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -999,26 +1004,35 @@ function loadingSpecs() {
   return ['needs-plan', 'done-as-asked', 'prompt-kind', 'changes-in-scope'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 1, waiting_for_person: 1, person_answers: true }));
 }
 
-// Fetch only what the current screen needs. The Answer screen: the lists and ways of asking of questions with something waiting; AI status: the open question's list (only answered when looking at answered); Knowledge: only when chosen
+// every question a person answers has its way of asking fetched exactly once per load (one request per question, not per card)
+const tunesOnce = (calls, ids) => ids.every(id => calls.filter(u => u === 'v1/tune?spec=' + id).length === 1) && calls.filter(u => u.startsWith('v1/tune')).length === ids.length;
+// Fetch only what the current screen needs, plus the ways of asking of every question a person answers (the wording box on the Answer screen, the marker on "Answer" and the landing
+// screen need them; audit 0.9.2 ui middle-1). The Answer screen: the lists of questions with something waiting; AI status: the open question's list (only answered when looking at answered); Knowledge: only when chosen
 async function checkFocusedLoading() {
   const realFetch = globalThis.fetch, state = data.state;
   const saved = { page: ui.page, tab: ui.tab, done: ui.done };
   let calls = [];
-  const specs = () => loadingSpecs().map(s => s.id === 'prompt-kind' ? { ...s, waiting_for_person: 0 } : s);
+  const machine = { id: 'wiki-place', type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 1, waiting_for_person: 0, person_answers: false };
+  const specs = () => [...loadingSpecs().map(s => s.id === 'prompt-kind' ? { ...s, waiting_for_person: 0 } : s), machine];
   globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => url === 'v1/status' ? { specs: specs() } : url === 'v1/wiki' ? { claims: [] } : url.startsWith('v1/tune') ? { variants: [] } : { items: [] } }; };
+  const person = ['needs-plan', 'done-as-asked', 'prompt-kind', 'changes-in-scope'];
   ui.page = 'answer'; ui.done = false;
   await load();
   const waiting = ['needs-plan', 'done-as-asked', 'changes-in-scope'];
-  const answer = calls.length === 7 && waiting.every(id => calls.includes('v1/queue?spec=' + id + '&limit=200') && calls.includes('v1/tune?spec=' + id)) && !calls.some(u => u.includes('prompt-kind')) && !calls.includes('v1/wiki');
+  // the cards: only the questions with something waiting; the ways of asking: every question a person answers, also prompt-kind with nothing waiting (not the AI-only one)
+  const answer = calls.length === 8 && waiting.every(id => calls.includes('v1/queue?spec=' + id + '&limit=200')) && tunesOnce(calls, person) && !calls.includes('v1/queue?spec=prompt-kind&limit=200') && !calls.some(u => u.includes('wiki-place')) && !calls.includes('v1/wiki');
   calls = []; ui.page = 'ai'; ui.tab = 'needs-plan'; await load();
-  const simple = calls.length === 3 && calls[1] === 'v1/queue?spec=needs-plan&limit=200' && calls.includes('v1/tune?spec=needs-plan') && !calls.includes('v1/wiki');
-  calls = []; ui.done = true; await load();
-  const answered = calls.length === 2 && calls.includes('v1/answered?spec=needs-plan&limit=200') && !calls.some(url => url.startsWith('v1/queue') || url.startsWith('v1/tune'));
+  const simple = calls.length === 6 && calls.includes('v1/queue?spec=needs-plan&limit=200') && tunesOnce(calls, person) && !calls.includes('v1/wiki');
+  // a question only the AI answers: its own way of asking too
+  calls = []; ui.tab = 'wiki-place'; await load();
+  const machineTab = calls.length === 7 && calls.includes('v1/queue?spec=wiki-place&limit=200') && tunesOnce(calls, [...person, 'wiki-place']);
+  calls = []; ui.tab = 'needs-plan'; ui.done = true; await load();
+  const answered = calls.length === 6 && calls.includes('v1/answered?spec=needs-plan&limit=200') && !calls.some(url => url.startsWith('v1/queue')) && tunesOnce(calls, person);
   calls = []; ui.page = 'wiki'; await load();
-  const knowledge = calls.length === 2 && calls[1] === 'v1/wiki' && !!data.state.wiki;
+  const knowledge = calls.length === 6 && calls.includes('v1/wiki') && tunesOnce(calls, person) && !calls.some(url => url.startsWith('v1/queue')) && !!data.state.wiki;
   globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
-  const ok = answer && simple && answered && knowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen only questions with waits=' + answer + ', AI status 3 requests=' + simple + ', answered fetched=' + answered + ', Knowledge only when chosen=' + knowledge + ')');
+  const ok = answer && simple && machineTab && answered && knowledge;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen: cards only for questions with waits, ways of asking for every question you answer=' + answer + ', AI status=' + simple + ', AI-only question=' + machineTab + ', answered fetched=' + answered + ', Knowledge only when chosen=' + knowledge + ')');
   return ok;
 }
 
@@ -1061,11 +1075,12 @@ async function checkLazyNavigation(target) {
   data.state = null; ui.page = 'ai'; ui.tab = 'needs-plan'; ui.done = false;
   const app = mount(App, { target }); flushSync();
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
-  await settle(); const initial = calls.length === 3 && calls.includes('v1/tune?spec=needs-plan') && !!target.querySelector('.decision-panel'); // status, the list, candidate ways of asking
+  const person = loadingSpecs().map(s => s.id);
+  await settle(); const initial = calls.length === 6 && calls.includes('v1/queue?spec=needs-plan&limit=200') && tunesOnce(calls, person) && !!target.querySelector('.decision-panel'); // status, the list, the ways of asking of the questions you answer
   calls = []; target.querySelector('[data-tab="done-as-asked"]')?.click(); flushSync(); await settle();
   const switched = calls.includes('v1/queue?spec=done-as-asked&limit=200') && !!target.querySelector('.decision-panel');
   calls = []; target.querySelector('.answer-tabs [data-lane="done"]')?.click(); flushSync(); await settle();
-  const answered = calls.length === 2 && calls.includes('v1/answered?spec=done-as-asked&limit=200') && target.querySelector('.answer-tabs button span')?.textContent === '1';
+  const answered = calls.length === 6 && calls.includes('v1/answered?spec=done-as-asked&limit=200') && tunesOnce(calls, person) && target.querySelector('.answer-tabs button span')?.textContent === '1';
   holdQueue = true;
   target.querySelector('.answer-tabs [data-lane="you"]')?.click(); flushSync(); await settle();
   const waiting = !!target.querySelector('[role="status"]') && !target.querySelector('.decision-panel');
@@ -1231,5 +1246,198 @@ function checkLessons(target) {
   unmount(empty);
   const ok = sceneList && firstFour && filtered && detail && none && inbox && noInbox;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (front of Knowledge: scene list=' + sceneList + ', 4 per kind and more=' + firstFour + ', filter by scene=' + filtered + ', text as is=' + detail + ', unclassified=' + none + ', inbox=' + inbox + ', no inbox box when empty=' + noInbox + ')');
+  return ok;
+}
+
+// ---- audit 0.9.2 (ui) ----
+
+// The utilities of the shipped CSS with the media query each one is under, in CSS order: [{ name, media: [..], decls: Map }]. Only rules for one class (what the markup's classes produce)
+function mediaUtilities(css) {
+  const out = [];
+  const at = css.indexOf('@layer utilities {');
+  if (at < 0) return out;
+  const stack = [];
+  let i = at + '@layer utilities {'.length, head = '';
+  for (let depth = 1; i < css.length && depth > 0; i++) {
+    const c = css[i];
+    if (c === '{') {
+      const sel = head.trim(); head = '';
+      if (sel.startsWith('@')) { stack.push(sel); depth++; continue; }
+      const end = css.indexOf('}', i);
+      const body = css.slice(i + 1, end);
+      if (body.includes('{')) { stack.push(sel); depth++; continue; } // nested (e.g. &:hover) — not one class
+      const decls = new Map();
+      for (const d of body.split(';')) { const k = d.indexOf(':'); if (k > 0) decls.set(d.slice(0, k).trim(), d.slice(k + 1).trim()); }
+      for (const one of sel.split(/,\s*/)) {
+        const m = one.match(/^\.((?:\\.|[^\s.:>[,\\])+)$/);
+        if (m) out.push({ name: m[1].replace(/\\(.)/g, '$1'), media: stack.filter(s => s.startsWith('@media')), decls });
+      }
+      i = end;
+    } else if (c === '}') { depth--; stack.pop(); head = ''; }
+    else head += c;
+  }
+  return out;
+}
+// whether a media query holds at a width (light colors, a pointer without hover, motion allowed)
+function mediaHolds(q, width) {
+  let m;
+  if ((m = q.match(/^@media not all and \(min-width: (\d+)px\)$/))) return width < Number(m[1]);
+  if ((m = q.match(/^@media \(min-width: (\d+)px\)$/))) return width >= Number(m[1]);
+  return false;
+}
+// The properties the utilities on an element give it at a width (later rules win, as in the shipped CSS)
+function styleAt(rules, el, width) {
+  const style = new Map(), names = new Set(el.classList);
+  for (const r of rules) if (names.has(r.name) && r.media.every(q => mediaHolds(q, width))) for (const [k, v] of r.decls) style.set(k, v);
+  return style;
+}
+const shownAt = (rules, el, width) => { for (let e = el; e && e.nodeType === 1; e = e.parentElement) if (styleAt(rules, e, width).get('display') === 'none') return false; return true; };
+
+// Audit 0.9.2 ui middle-1 (the auditor's RED check): a wording the AI could not decide on, for a question with no card waiting, reaches the person on the Answer screen
+// (the hook tells the person to choose on the page)
+async function checkAuditWordingWithoutWaiting(target) {
+  const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
+  const latest = { run: 'r9', winner: 'w', adoptable: true, adopted: false, winner_wording: { question: 'new?' }, current_wording: { question: 'old?' }, meaning_checks: [{ by: 'agent', verdict: 'unsure', current_translation: 'now-ja', candidate_translation: 'new-ja', difference: 'diff-ja' }] };
+  const specs = () => [{ id: 'done-as-asked', type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 0, waiting_for_person: 0, person_answers: true }];
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: specs() } : url.startsWith('v1/tune') ? { latest } : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } });
+  const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
+  data.state = null; Object.assign(ui, { page: 'answer', tab: '', done: false, results: false, pinned: '', showHelp: false });
+  const app = mount(App, { target }); await settle(); await settle(); await settle();
+  const shown = !!target.querySelector('[data-answer-wording]');
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  console.log((shown ? 'check-ui: ok' : 'check-ui: FAIL') + ' (audit: undecided wording with no card waiting is on the Answer screen=' + shown + ')');
+  return shown;
+}
+
+// Audit 0.9.2 ui middle-1 (the rest): with no card waiting and no screen chosen, a wording box opens the page on "Answer"; the marker on "Answer" and "remaining" count it;
+// the AI page's list says that question has something for the person (not "nothing for you to do"). With the box answered (a person's check), it is Knowledge again
+async function checkWordingLanding(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
+  const unsure = { run: 'r9', winner: 'w', adoptable: true, adopted: false, winner_wording: { question: 'new?' }, current_wording: { question: 'old?' }, meaning_checks: [{ by: 'agent', verdict: 'unsure', current_translation: 'now-ja', candidate_translation: 'new-ja', difference: 'diff-ja' }] };
+  let latest = unsure;
+  const keys = [{ model: 'm', hash: 'h', n: 60, state: 'not_separable' }];
+  const specs = () => ['done-as-asked', 'needs-plan'].map(id => ({ id, type: 'noul', titles: { ja: id }, questions: {}, keys, min_n: 50, records: 60, labels: 60, unlabeled: 0, waiting_for_person: 0, person_answers: true }));
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: specs() } : url === 'v1/tune?spec=done-as-asked' ? { latest } : url.startsWith('v1/tune') ? {} : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } });
+  const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
+  data.state = null; Object.assign(ui, { page: '', tab: '', done: false, results: false, pinned: '', showHelp: false });
+  let app = mount(App, { target }); await settle(); await settle(); await settle();
+  const lands = target.querySelector('[data-page="answer"]')?.getAttribute('aria-current') === 'page' && !!target.querySelector('[data-answer-wording="done-as-asked"]');
+  const counted = target.querySelector('[data-page="answer"] .badge')?.textContent === '1' && target.querySelector('[data-answer-left]')?.textContent === t('answerLeft')(1);
+  ui.page = 'ai'; ui.tab = 'needs-plan'; flushSync(); await settle(); await settle(); await settle();
+  const row = target.querySelector('[data-tab="done-as-asked"]')?.textContent || '';
+  const aiRow = row.includes(t('summarySpecWording')) && !row.includes(t('not_separable')(60, 50)) && target.querySelector('[data-page="answer"] .badge')?.textContent === '1';
+  unmount(app);
+  latest = { ...unsure, meaning_checks: [...unsure.meaning_checks, { by: 'page', same: true }] };
+  data.state = null; Object.assign(ui, { page: '', tab: '' });
+  app = mount(App, { target }); await settle(); await settle(); await settle();
+  const quiet = target.querySelector('[data-page="wiki"]')?.getAttribute('aria-current') === 'page' && !target.querySelector('[data-page="answer"] .badge');
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
+  const ok = lands && counted && aiRow && quiet;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (a wording box with no card waiting: opens on Answer=' + lands + ', counted in the marker and remaining=' + counted + ', AI page list says it waits=' + aiRow + ', answered box is quiet again=' + quiet + ')');
+  return ok;
+}
+
+// Audit 0.9.2 ui test hole 1: the keys on the Answer screen. 1 to 9 press that numbered answer (here 3 choices, "2" is the second), Enter sends the AI's guess even when it is
+// not the first button (noul with p < 0.5: the guess is "no", the second button), → skips to the next card. Each is sent / seen as exactly that
+async function checkAnswerKeys(target) {
+  const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
+  const calls = [];
+  const choiceItem = id => ({ trace_id: id, at: '2026-10-22T00:00:00Z', band: 'ask', top: 'b', p: 0.6, model: 'm', answerable: true, waits_for_person: true, inputs: { message: 'CHOICE-' + id }, choices: [{ truth: 'a', label: 'A' }, { truth: 'b', label: 'B' }, { truth: 'c', label: 'C' }] });
+  const noulItem = id => ({ trace_id: id, at: '2026-10-22T00:00:00Z', band: 'ask', top: 'yes', p: 0.2, model: 'm', answerable: true, waits_for_person: true, inputs: { request: 'NOUL-' + id }, choices: [{ truth: 'yes', label: 'Y' }, { truth: 'no', label: 'N' }] });
+  const spec = (id, type, n) => ({ id, type, titles: {}, questions: { ja: id }, keys: [], min_n: 50, records: n, labels: 0, unlabeled: n, waiting_for_person: n, person_answers: true });
+  let specs = [spec('prompt-kind', 'choice', 2)], queue = { 'prompt-kind': [choiceItem('c1'), choiceItem('c2')] };
+  globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push(JSON.parse(opts.body)); return { ok: true, json: async () => url === 'v1/status' ? { specs } : url.startsWith('v1/queue') ? { items: queue[new URLSearchParams(url.split('?')[1]).get('spec')] || [] } : opts?.body ? { truth: 'x' } : {} }; };
+  const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
+  const key = k => { document.body.dispatchEvent(new window.KeyboardEvent('keydown', { key: k, bubbles: true })); flushSync(); };
+  data.state = null; Object.assign(ui, { page: 'answer', tab: '', done: false, pinned: '', showHelp: false }); skipped.clear();
+  let app = mount(App, { target }); await settle(); await settle();
+  key('ArrowRight'); await settle();
+  const skip = calls.length === 0 && skipped.has('c1') && (target.querySelector('.item')?.textContent || '').includes('CHOICE-c2');
+  key('2'); await settle();
+  const digit = calls.length === 1 && calls[0].trace_id === 'c2' && calls[0].truth === 'b';
+  unmount(app); skipped.clear(); calls.length = 0;
+  specs = [spec('needs-plan', 'noul', 1)]; queue = { 'needs-plan': [noulItem('n1')] }; data.state = null;
+  app = mount(App, { target }); await settle(); await settle();
+  const second = target.querySelectorAll('.item .btns button')[1]?.classList.contains('top');
+  key('Enter'); await settle();
+  const enter = second && calls.length === 1 && calls[0].trace_id === 'n1' && calls[0].truth === 'no';
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); skipped.clear();
+  const ok = skip && digit && enter;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer keys: → skips to the next card=' + skip + ', 2 sends the second answer=' + digit + ', Enter sends the AI guess (second button)=' + enter + ' ' + JSON.stringify(calls) + ')');
+  return ok;
+}
+
+// Audit 0.9.2 ui test hole 2: what the wording box on the Answer screen sends. "Keep it" → review keep:true, "undo" → keep:false, "same meaning" → adopt meaning_same:true,
+// "different" → adopt meaning_same:false with the note; every one with the latest run's id. Also (low-4) the fold's names match the box's ("wording until now / from now on" after the AI switched)
+async function checkWordingAskSends(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const realFetch = globalThis.fetch, realPrompt = globalThis.prompt;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => url.endsWith('adopt') ? { path: '/p/decisions/x-v2.yaml' } : url === 'v1/status' ? { specs: [] } : {} }; };
+  globalThis.prompt = () => 'the note';
+  const base = { run: 'r42', winner: 'w', adoptable: true, winner_wording: { question: 'new?' }, current_wording: { question: 'old?' } };
+  const agent = verdict => ({ by: 'agent', verdict, current_translation: 'now-ja', candidate_translation: 'new-ja', difference: 'diff-ja' });
+  const adopted = { ...base, adopted: true, auto_adopted: true, adopted_path: 'decisions/x-v2.yaml', meaning_checks: [agent('same')] };
+  const unsure = { ...base, adopted: false, meaning_checks: [agent('unsure')] };
+  const sp = latest => ({ id: 'changes-in-scope', titles: {}, tune: { latest } });
+  const press = async (latest, sel) => { const app = mount(WordingAsk, { target, props: { sp: sp(latest) } }); flushSync(); target.querySelector(sel)?.click(); await new Promise(r => setTimeout(r, 0)); unmount(app); return calls.pop(); };
+  const keep = await press(adopted, '[data-wording-keep]');
+  const undo = await press(adopted, '[data-wording-undo]');
+  const same = await press(unsure, '[data-wording-same]');
+  const diff = await press(unsure, '[data-wording-different]');
+  const is = (c, url, body) => !!c && c.url === url && JSON.stringify(c.body) === JSON.stringify(body);
+  const sent = is(keep, 'v1/tune/review', { spec: 'changes-in-scope', run: 'r42', keep: true }) && is(undo, 'v1/tune/review', { spec: 'changes-in-scope', run: 'r42', keep: false })
+    && is(same, 'v1/tune/adopt', { spec: 'changes-in-scope', run: 'r42', meaning_same: true, note: '' }) && is(diff, 'v1/tune/adopt', { spec: 'changes-in-scope', run: 'r42', meaning_same: false, note: 'the note' });
+  // the names in the box and in the fold "see the English original" are the same pair
+  const names = latest => { const app = mount(WordingAsk, { target, props: { sp: sp(latest) } }); flushSync(); const box = [...target.querySelectorAll('[data-answer-wording] .k')].map(e => e.textContent); const fold = [...target.querySelectorAll('[data-answer-wording] details p')].map(p => p.textContent.split(':')[0]); unmount(app); return { box, fold }; };
+  const a = names(adopted), u = names(unsure);
+  const consistent = JSON.stringify(a.box) === JSON.stringify([t('wordingBefore'), t('wordingAfter')]) && JSON.stringify(a.fold) === JSON.stringify(a.box) && JSON.stringify(u.fold) === JSON.stringify(u.box);
+  globalThis.fetch = realFetch; globalThis.prompt = realPrompt; i18n.lang = lang;
+  const ok = sent && consistent;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (wording box sends: keep / undo / same / different with the latest run=' + sent + ', the same names in the box and the fold=' + consistent + ' ' + JSON.stringify({ a, u }) + ')');
+  return ok;
+}
+
+// Audit 0.9.2 ui low-1: on a phone (390px) the answer bar on the Answer screen still sticks to the bottom, and stays small: inside it only the buttons (two to a row, no number marks),
+// skip and the closed guess fold are shown; the question is shown once, at the top of the card (at 1440px once, above the buttons, in the stuck bar). Read from the shipped CSS by width
+function checkPhoneAnswerBar(target) {
+  const rules = mediaUtilities(globalThis.__shikiiCSS || '');
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const q = 'Should it have asked first? (a long question)';
+  const it = { trace_id: 'phone', at: '2026-10-22T00:00:00Z', band: 'ask', top: 'yes', p: .8, answerable: true, inputs: { request: 'req' }, choices: [{ truth: 'yes', label: 'It should have asked' }, { truth: 'no', label: 'Fine to go ahead' }] };
+  const app = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it, question: q, title: 'Asked first?' } });
+  flushSync();
+  const bar = target.querySelector('.answer-bar');
+  const stuck = w => { const s = bar ? styleAt(rules, bar, w) : new Map(); return s.get('position') === 'sticky' && /(^0|\* 0\)$)/.test(s.get('bottom') || ''); };
+  const visibleWith = (w, text) => [...target.querySelectorAll('.item *')].filter(e => shownAt(rules, e, w) && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.includes(text)));
+  const phoneQuestion = visibleWith(390, q), wideQuestion = visibleWith(1440, q);
+  const once = phoneQuestion.length === 1 && !bar.contains(phoneQuestion[0]) && wideQuestion.length === 1 && bar.contains(wideQuestion[0]);
+  // what is visible in the bar on a phone: the answers, skip and the fold's summary
+  const shownInBar = [...bar.querySelectorAll('*')].filter(e => shownAt(rules, e, 390) && !(e.closest('details:not([open])') && !e.closest('summary')) && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+  const allowedInBar = shownInBar.every(e => e.closest('.btns button.answer-choice, .btns button.skip, details.guess-fold > summary') && !e.closest('[data-num]'));
+  const choices = [...bar.querySelectorAll('button.answer-choice')];
+  const shareRow = choices.length === 2 && choices.every(b => !/100%/.test(styleAt(rules, b, 390).get('flex') || ''));
+  unmount(app); i18n.lang = lang;
+  const ok = rules.length > 100 && stuck(390) && stuck(1440) && once && allowedInBar && shareRow;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (answer bar sticks on a phone=' + stuck(390) + ' and wide=' + stuck(1440) + ', question once at each width=' + once + ', only buttons, skip and the fold in the phone bar=' + allowedInBar + ', two answers share a row=' + shareRow + ', utilities read=' + rules.length + ')');
+  return ok;
+}
+
+// Audit 0.9.2 ui low-4: the AI page's wording section. The inputs of "write a rewording" have names a screen reader reads (a label), and the rewordings' names
+// (unasked-first) are not the words people read: they are only small secondary text after a plain label (outside the folded numbers)
+function checkWordingPlain(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const latest = { run: 'r1', winner: 'unasked-first', model: 'm', truths: 50, at: '2026-10-25T00:00:00Z', adoptable: true, adopted: false, candidates: [{ name: 'current', top1: 0.3, brier: 0.3, prec_at_act: 0.1, rec_at_act: 0.1, change: '' }, { name: 'unasked-first', top1: 0.8, brier: 0.2, prec_at_act: 0.8, rec_at_act: 0.3, change: 'q' }], decision: 'd', winner_wording: { question: 'Did it change unasked files?' }, current_wording: { question: 'Were the changes within scope?' }, meaning_checks: [{ by: 'agent', verdict: 'unsure', current_translation: 'now-ja', candidate_translation: 'new-ja', difference: 'diff-ja' }] };
+  const app = mount(Wording, { target, props: { sp: { id: 'prompt-kind', type: 'choice', tune: { running: false, proposer: false, variants: [{ name: 'each-file' }, { name: 'unasked-first' }], latest } } } });
+  flushSync();
+  const fields = [...target.querySelectorAll('input, textarea, select')];
+  const named = fields.length === 3 && fields.every(f => (f.getAttribute('aria-label') || '').trim() || (f.closest('label')?.textContent || '').trim() || (f.id && target.querySelector('label[for="' + f.id + '"]')?.textContent.trim()));
+  const names = ['unasked-first', 'each-file'];
+  const loose = [...target.querySelectorAll('*')].filter(e => !e.closest('[data-wording-details]') && !e.closest('[data-variant-name]') && [...e.childNodes].some(n => n.nodeType === 3 && names.some(v => n.textContent.includes(v))));
+  const secondary = target.querySelectorAll('[data-variant-name]').length >= 2 && [...target.querySelectorAll('[data-variant-name]')].every(e => e.classList.contains('text-muted') && e.previousSibling?.textContent?.trim());
+  unmount(app); i18n.lang = lang;
+  const ok = named && loose.length === 0 && secondary;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI page wording: inputs have labels=' + named + ', rewording names only as secondary text=' + (loose.length === 0 && secondary) + ' ' + JSON.stringify(loose.map(e => e.textContent.slice(0, 40))) + ')');
   return ok;
 }

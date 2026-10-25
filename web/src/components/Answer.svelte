@@ -4,7 +4,7 @@
   // About ways of asking, only the one question for the person is shown here (WordingAsk), and only when wordingNeedsPerson says there is something to do
   import { t } from '../lib/i18n.svelte.js';
   import { askOf, titleOf } from '../lib/i18n.svelte.js';
-  import { ui, skipped, personSpecs, wordingNeedsPerson } from '../lib/state.svelte.js';
+  import { ui, skipped, personSpecs, wordingSpecs } from '../lib/state.svelte.js';
   import ItemCard from './ItemCard.svelte';
   import WordingAsk from './WordingAsk.svelte';
 
@@ -18,13 +18,15 @@
     if (i > 0) v.unshift(v.splice(i, 1)[0]);
     return v;
   });
+  // the wording boxes (also for a question with no card waiting; audit 0.9.2 middle-1) count in "remaining" like a card
+  let wording = $derived(wordingSpecs(st));
   let waiting = $derived(specs.reduce((n, s) => n + (s.waiting_for_person || 0), 0));
+  let left = $derived(Math.max(waiting, visible.length) + wording.length);
   let loading = $derived(specs.some(s => s.waiting_for_person > 0 && !s.queue));
-  let wording = $derived(specs.filter(s => wordingNeedsPerson(s.tune?.latest)));
 </script>
 
 <section data-answer>
-  <h2 class="mb-1 flex items-baseline gap-3 text-[25px] max-md:text-[23px]">{t('answerTitle')}{#if waiting}<span class="text-[14px] font-normal text-muted" data-answer-left>{t('answerLeft')(Math.max(waiting, visible.length))}</span>{/if}</h2>
+  <h2 class="mb-1 flex items-baseline gap-3 text-[25px] max-md:text-[23px]">{t('answerTitle')}{#if left}<span class="text-[14px] font-normal text-muted" data-answer-left>{t('answerLeft')(left)}</span>{/if}</h2>
   {#if visible.length || wording.length}<p class="page-purpose mt-0 mb-5 text-[14px] text-muted">{t('answerHow')}</p>{/if}
 
   {#if loading}

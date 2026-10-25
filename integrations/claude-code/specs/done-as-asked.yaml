@@ -34,13 +34,13 @@ eval:
 display:
   ja:
     title: 頼まれたことを終えたか
-    question: このターンで AI は人の依頼を終えたか(人がもう一度言い直すことは残っていないか)？
+    question: 今回、AI はあなたの依頼を終えましたか？(あなたがもう一度言い直すことは残っていないか)
     options:
       "yes": 終えた
       "no": 終えていない
   en:
     title: Did it finish what was asked?
-    question: In this turn, did the AI finish your request (is there nothing you have to say again)?
+    question: This time, did the AI finish your request (is there nothing you have to say again)?
     options:
       "yes": Finished
       "no": Not finished

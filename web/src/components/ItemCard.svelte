@@ -3,7 +3,9 @@
   // Key handling (App.svelte) presses .btns button on the first .item card, so do not change the classes here (top = the AI's guess for Enter, skip)
   // On the Answer screen (question passed; 0.9.2): a short title on top and the question once, above the buttons. The AI's guess, "same as the AI" and "ask the AI again"
   // stay in the fold "see the AI's guess" until the person opens it, and the answer buttons look the same before that (the person is not pulled toward the AI).
-  // On the AI page (no question) the guess is shown as before, because there a person reviews what the AI did
+  // On the AI page (no question) the guess is shown as before, because there a person reviews what the AI did.
+  // Phones (below 520px; audit 0.9.2 ui low-1): the answer bar still sticks to the bottom, but holds only the buttons, skip and the folded guess. The question moves to the top of the card
+  // (shown there once, the bar's copy is hidden), the number marks are hidden and the two answers share a row, so the stuck bar stays small (about a sixth of the screen)
   import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
   import { skipped, load, dropPendingLoads, loadMark } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
@@ -106,7 +108,7 @@
 {/snippet}
 
 <article class="item {it.band} mb-5 rounded-[15px] border bg-surface shadow-card max-sm:rounded-xl max-sm:px-3.5 max-sm:py-4 {onAnswer ? 'card p-[26px]' : 'p-[22px]'} {it.band === 'ask' && !onAnswer ? 'border-[color-mix(in_srgb,var(--color-amber)_45%,var(--color-line))]' : 'border-line'}" aria-busy={busy}>
-  {#if onAnswer}<h3 class="card-question mt-0 mb-1.5 text-[19px] leading-[1.55] font-[650] max-sm:text-[17px]">{heading}</h3>{/if}
+  {#if onAnswer}<h3 class="card-question mt-0 mb-1.5 text-[19px] leading-[1.55] font-[650] max-sm:text-[17px]">{heading}</h3>{#if barQuestion}<p class="card-question-phone mt-0 mb-3 text-[15px] leading-[1.6] font-semibold sm:hidden">{barQuestion}</p>{/if}{/if}
   <div class="mb-4 flex items-center gap-2.5 text-[12px] text-muted max-sm:mb-3 max-sm:gap-[5px]">{#if !onAnswer}<span class="font-semibold">{t('conversationRecord')}</span>{/if}{#if it.project}<span class="project rounded-[5px] border border-line px-1.5 py-px">{it.project}</span>{/if}{#if it.at}<time class="ml-auto" datetime={it.at}>{fmtDateTime(it.at)}</time>{/if}</div>
   {#if it.truth}
     <div class="rounded-lg bg-accentbg px-3 py-2.5 text-[13px] text-accent"><span aria-hidden="true">✓</span> {t('yourAnswer')(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of}{' '}<span class="k">· {t('wasRedone')}</span>{/if}</div>
@@ -147,24 +149,24 @@
     <div class="border-t border-line pt-1.5 pb-2">{@render guessBlock()}</div>
   {/if}
   {#if readonly && !it.legacy_planning}<p class="k readonly-note">{t('readonlyNote')}</p>{/if}
-  {#if !it.legacy_planning && !readonly}<div class="answer-bar border-t border-line pt-[17px] {onAnswer ? 'sticky bottom-0 -mx-[26px] rounded-b-[15px] bg-surface px-[26px] pb-4 shadow-[0_-8px_12px_-10px_#0003] max-sm:static max-sm:-mx-3.5 max-sm:px-3.5 max-sm:shadow-none' : ''}">
-    <div class="answer-heading mb-3 flex items-baseline justify-between gap-3 max-lg:flex-wrap max-lg:gap-1"><span class="text-[15px] leading-[1.6] font-semibold">{onAnswer ? (barQuestion || t('chooseAnswer')) : t('yourDecision')}</span>{#if !onAnswer || barQuestion || it.truth}<small class="text-[12px] text-muted">{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small>{/if}</div>
+  {#if !it.legacy_planning && !readonly}<div class="answer-bar border-t border-line pt-[17px] {onAnswer ? 'sticky bottom-0 -mx-[26px] rounded-b-[15px] bg-surface px-[26px] pb-4 shadow-[0_-8px_12px_-10px_#0003] max-sm:-mx-3.5 max-sm:rounded-b-xl max-sm:px-3.5 max-sm:pt-2.5 max-sm:pb-2.5' : ''}">
+    <div class="answer-heading mb-3 flex items-baseline justify-between gap-3 max-lg:flex-wrap max-lg:gap-1 {onAnswer ? 'max-sm:hidden' : ''}"><span class="text-[15px] leading-[1.6] font-semibold">{onAnswer ? (barQuestion || t('chooseAnswer')) : t('yourDecision')}</span>{#if !onAnswer || barQuestion || it.truth}<small class="text-[12px] text-muted">{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small>{/if}</div>
     <div class="btns flex flex-wrap items-center gap-2.5" role="group" aria-label={t('yourDecision')}>
       {#each it.choices as c, i}
         {@const top = !it.review && c.truth === guess.truth}
         {@const chosen = c.truth === it.truth}
-        <button type="button" class="answer-choice flex min-h-[57px] flex-[1_1_calc(50%-10px)] items-center gap-3 rounded-[10px] px-[15px] py-3 text-left max-sm:min-h-[53px] max-sm:flex-[1_1_100%] max-sm:px-3 max-sm:py-2.5 {top ? 'top' : ''} {chosen ? 'active border-accent' : ''}" aria-pressed={chosen} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
-          <span data-num class="num grid h-6 flex-[0_0_24px] place-items-center rounded-md border border-line text-[12px] text-muted">{i + 1}</span><span class="flex-1 text-[15px] max-sm:text-[14px]"><span>{name(c)}</span>{#if top && showGuess}<small class="mt-0.5 block text-[12px] text-accent">{t('sameAsAI')}</small>{/if}</span><span class="text-[13px] {chosen ? 'text-accent' : 'text-muted opacity-50'}" aria-hidden="true">{chosen ? '✓' : ''}</span>
+        <button type="button" class="answer-choice flex min-h-[57px] flex-[1_1_calc(50%-10px)] items-center gap-3 rounded-[10px] px-[15px] py-3 text-left max-sm:px-3 max-sm:py-2.5 {onAnswer ? 'max-sm:min-h-[48px] max-sm:gap-2' : 'max-sm:min-h-[53px] max-sm:flex-[1_1_100%]'} {top ? 'top' : ''} {chosen ? 'active border-accent' : ''}" aria-pressed={chosen} data-truth={c.truth} title={c.description || ''} disabled={busy} onclick={() => answer(c.truth)}>
+          <span data-num class="num grid h-6 flex-[0_0_24px] place-items-center rounded-md border border-line text-[12px] text-muted {onAnswer ? 'max-sm:hidden' : ''}">{i + 1}</span><span class="flex-1 text-[15px] max-sm:text-[14px]"><span>{name(c)}</span>{#if top && showGuess}<small class="mt-0.5 block text-[12px] text-accent">{t('sameAsAI')}</small>{/if}</span><span class="text-[13px] {chosen ? 'text-accent' : 'text-muted opacity-50'}" aria-hidden="true">{chosen ? '✓' : ''}</span>
         </button>
       {/each}
       {#if it.answerable && it.top && !it.review && sp.type !== 'noul' && showGuess}
         <button type="button" class="weak partial-answer basis-full text-left" data-truth={'!' + guess.truth} disabled={busy} onclick={() => answer('!' + guess.truth)}>{t('notThat')(topName)}</button>
       {/if}
-      {#if !it.truth}<button type="button" class="weak skip ml-auto border-transparent" disabled={busy} onclick={() => skipped.add(it.trace_id)}>{t('skip')} <span aria-hidden="true">→</span></button>{/if}
+      {#if !it.truth}<button type="button" class="weak skip ml-auto border-transparent {onAnswer ? 'max-sm:py-1' : ''}" disabled={busy} onclick={() => skipped.add(it.trace_id)}>{t('skip')} <span aria-hidden="true">→</span></button>{/if}
       {#if it.answerable && !onAnswer}<button type="button" class="weak redo" title={t('redoHint')} disabled={busy} onclick={redo}>{t('redo')}</button>{/if}
     </div>
     {#if onAnswer && it.top && !it.review}
-      <details class="guess-fold mt-3 text-[13px] text-muted" bind:open={peek}>
+      <details class="guess-fold mt-3 text-[13px] text-muted max-sm:mt-1.5" bind:open={peek}>
         <summary class="cursor-pointer">{t('guessFold')}</summary>
         {@render guessBlock()}
         {#if it.answerable}<button type="button" class="weak redo" title={t('redoHint')} disabled={busy} onclick={redo}>{t('redo')}</button>{/if}
