@@ -1566,6 +1566,9 @@ func spawnShikii(agent, logName string, args ...string) int {
 		hookLog("cannot find shikii: " + err.Error())
 		return 0
 	}
+	if runningAsTestBinary() {
+		return 0 // go のテスト用の実行ファイルは、引数に関係なくテスト全体を走らせる。裏で起こすと増え続ける(0.9.1、2026-10-25 に 75 本残った)
+	}
 	logf, err := os.OpenFile(filepath.Join(agent, logName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return 0
@@ -1583,6 +1586,12 @@ func spawnShikii(agent, logName string, args ...string) int {
 	pid := cmd.Process.Pid
 	_ = cmd.Process.Release()
 	return pid
+}
+
+// runningAsTestBinary は、今の実行ファイルが go test の組んだ物(名前が .test で終わる)か。本物の裏のプロセスとブラウザの守りに使う
+func runningAsTestBinary() bool {
+	exe, err := os.Executable()
+	return err == nil && strings.HasSuffix(filepath.Base(exe), ".test")
 }
 
 // startOnce は起こす権利を guard(~/.shikii/agent/starting-<what>)の flock で 1 つの hook だけに渡し、前に起こした子がまだ生きている(pid)か

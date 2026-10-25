@@ -136,6 +136,9 @@ func waitForPage(scope string, limit time.Duration) string {
 
 // openInBrowser は URL を標準のブラウザで開く(macOS は open、Linux は xdg-open)。無ければ何もしない。hook を待たせない。
 func openInBrowser(url string) {
+	if runningAsTestBinary() {
+		return // テストからは本物のブラウザを開かない(0.9.1)
+	}
 	name := "xdg-open"
 	if runtime.GOOS == "darwin" {
 		name = "open"
