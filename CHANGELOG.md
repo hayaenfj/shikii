@@ -27,6 +27,7 @@
 - Wording after moving or copying a project (0.9.2 audit): a measured result (`wiki/runs/<run>.json`) keeps absolute paths. When it is read, its run page and the paths of the question and the adopted version are now rebuilt from the wiki it was read from (only paths that were inside the store the run was written in; a question kept elsewhere with `serve --specs` keeps its path). Before, after a folder was moved the agent's adoption was used but not saved, so the person was not told and could not undo it (undo on the page returned 500); in a copied project the adoption wrote a new version into the original project's `decisions/` and wiki.
 - Wording: the agent's adoption (`shikii hook variants check`) and the page's adopt and undo (`/v1/tune/adopt`, `/v1/tune/review`) take a lock on the run (a `.lock` file next to its json). While one adopts a run, the other is refused (409 on the page) instead of adopting it a second time.
 - Wording: with the English setting, the notice that a wording was changed shows the current and the new question (shortened to 120 characters), not only the candidate's name.
+- Wiki: saving a page written by 0.9.1 again with the same content, or classifying it again with the same kind and scene, is no longer refused with "an immutable wiki source or revision has changed" (the revision file holds the same page with the earlier fixed words and is kept as it is).
 
 ## 0.9.1 — Three pages: Answer, Knowledge and The AI
 

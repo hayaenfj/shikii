@@ -853,8 +853,13 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		if info, err := os.Lstat(history); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return result, errors.New("wiki revisions must be an ordinary directory")
 		}
-		if err := immutable(filepath.Join(history, p.ID+"-"+p.Revision+".md"), data); err != nil {
-			return result, err
+		// The same content is the same revision. A revision file written before 0.9.2 holds that page with the old fixed words; it is the same
+		// page (matchesPage), so it is kept as it is instead of being reported as changed (audit 0.9.2, low 3). Any other difference is refused.
+		revisionFile := filepath.Join(history, p.ID+"-"+p.Revision+".md")
+		if old, err := readFile(revisionFile); err != nil || !b.matchesPage(old, *p) {
+			if err := immutable(revisionFile, data); err != nil {
+				return result, err
+			}
 		}
 		if err := writeFile(filepath.Join(dir, p.ID+".md"), data); err != nil {
 			return result, err
