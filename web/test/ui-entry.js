@@ -60,17 +60,18 @@ function checkPinned(target) {
 function checkAnswerMerge(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   const item = (trace, text, project, waits = true) => ({ trace_id: trace, at: '2026-10-19T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: text }, inputs_hash: trace, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, waits_for_person: waits, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], rung: 'minimal', audit: false, project });
-  const mk = (id, q, items, person = true) => ({ id, type: 'noul', titles: {}, questions: { ja: q }, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: items.length, waiting_for_person: person ? items.filter(i => i.waits_for_person).length : 0, person_answers: person, queue: { items }, tune: null });
+  const mk = (id, q, items, person = true) => ({ id, type: 'noul', titles: { ja: '題:' + q }, questions: { ja: q }, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: items.length, waiting_for_person: person ? items.filter(i => i.waits_for_person).length : 0, person_answers: person, queue: { items }, tune: null });
   const specs = [mk('wiki-conflict', 'AI の問い', [item('w1', 'MACHINE', 'alpha')], false), mk('needs-plan', '始める前に聞くべきだったか', [item('n1', 'NEEDS-1', 'alpha'), item('n0', 'NOT-WAITING', 'alpha', false)]), mk('done-as-asked', '頼まれたことを終えたか', [item('d1', 'DONE-1', 'beta'), item('d2', 'DONE-2', 'beta')])];
   ui.pinned = ''; skipped.clear();
   const app = mount(Answer, { target, props: { st: { specs } } });
   flushSync();
   const cards = () => [...target.querySelectorAll('.item')];
   const one = cards().length === 1 && cards()[0].textContent.includes('NEEDS-1') && !target.textContent.includes('MACHINE') && !target.textContent.includes('NOT-WAITING');
-  const asked = cards()[0]?.querySelector('.card-question')?.textContent === '始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && !!cards()[0]?.querySelector('.project');
+  // the short title on top of the card and the question once, above the buttons (0.9.2 redesign P1)
+  const asked = cards()[0]?.querySelector('.card-question')?.textContent === '題:始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && !!cards()[0]?.querySelector('.project');
   const left = (target.querySelector('[data-answer-left]')?.textContent || '').includes('3');
   target.querySelector('.btns button.skip')?.click(); flushSync();
-  const next = cards().length === 1 && cards()[0].textContent.includes('DONE-1') && cards()[0].querySelector('.card-question')?.textContent === '頼まれたことを終えたか';
+  const next = cards().length === 1 && cards()[0].textContent.includes('DONE-1') && cards()[0].querySelector('.card-question')?.textContent === '題:頼まれたことを終えたか';
   unmount(app); skipped.clear(); i18n.lang = lang;
   const ok = one && asked && left && next;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen: only one card, no AI questions or records that do not wait=' + one + ', question and work marker on the card and above the buttons=' + asked + ', remaining is the total=' + left + ', skip gives the next question\'s card=' + next + ')');
@@ -106,6 +107,117 @@ async function checkWordingAgent(target) {
   const answerOnlyWhenPerson = JSON.stringify(needs) === JSON.stringify([true, true, false, false, false]);
   const ok = adoptedShows && undoSent && unsureShows && answerOnlyWhenPerson;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI adopted: translation and revert=' + adoptedShows + ', revert is sent=' + undoSent + ', cannot decide: translation and difference=' + unsureShows + ', Answer screen only when the person has something to do=' + answerOnlyWhenPerson + ' ' + JSON.stringify(needs) + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P1): the Answer card says the question once (a short title on top, the question only above the buttons), the AI's guess stays folded
+// until the person opens "see the AI's guess", the answer buttons look the same before that (only the class top for Enter differs), and "ask the AI again" is in the fold
+async function checkAnswerCardOnce(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const it = { trace_id: 'once', at: '2026-10-22T00:00:00Z', band: 'ask', top: 'yes', p: .83, model: 'm', answerable: true, inputs: { request: '依頼の本文' }, choices: [{ truth: 'yes', label: '確認してほしかった' }, { truth: 'no', label: '確認なしで進めてよかった' }] };
+  const q = '始める前に確認したほうがよかったですか？';
+  const app = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it: { ...it, top: 'yes', p: .17 }, question: q, title: '始める前に確認してほしかったか' } });
+  flushSync();
+  const card = target.querySelector('.item');
+  const count = (s, w) => s.split(w).length - 1;
+  const once = count(card?.textContent || '', q) === 1 && target.querySelector('.card-question')?.textContent === '始める前に確認してほしかったか' && (target.querySelector('.answer-heading')?.textContent || '').includes(q);
+  // what can be seen before opening the fold: the text outside closed details (summary included)
+  const seen = () => { const c = card.cloneNode(true); for (const d of c.querySelectorAll('details:not([open])')) for (const ch of [...d.children]) if (ch.tagName !== 'SUMMARY') ch.remove(); return c.textContent; };
+  const fold = target.querySelector('details.guess-fold');
+  const choices = [...target.querySelectorAll('.btns button.answer-choice')];
+  const looks = new Set(choices.map(b => [...b.classList].filter(c => c !== 'top').sort().join(' ')));
+  const hidden = !!fold && !fold.open && !!fold.querySelector('.guess') && !seen().includes('83%') && !seen().includes(t('sameAsAI')) && looks.size === 1 && !seen().includes(t('bandAsk'));
+  const enter = target.querySelector('.btns button.top')?.dataset.truth === 'no';
+  const redoInFold = !target.querySelector('.btns .redo') && !!fold?.querySelector('button.redo');
+  const noPosition = !/\d+ \/ \d+/.test(seen());
+  if (fold) { fold.open = true; fold.dispatchEvent(new window.Event('toggle')); flushSync(); }
+  const shown = seen().includes('83%') && (target.querySelector('.btns button.top')?.textContent || '').includes(t('sameAsAI'));
+  unmount(app); i18n.lang = lang;
+  const ok = once && hidden && enter && redoInFold && noPosition && shown;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer card: question once=' + once + ', guess folded and buttons look the same=' + hidden + ', Enter still means the AI guess=' + enter + ', ask again in the fold=' + redoInFold + ', no "1 / N"=' + noPosition + ', guess after opening=' + shown + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P2): on the Answer screen the wording box is only the one question for the person. Allowed inside: the translations, the AI's view,
+// the English original in a fold, and only the buttons for that question (same / different, or keep / undo). No form, table, candidate list or "measure"
+async function checkAnswerWordingBox(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const base = { run: 'r1', winner: 'unasked-first', model: 'm', truths: 50, at: '2026-10-25T00:00:00Z', have_holdout: true, holdout: 0.7, decision: 'unasked-first may be adopted (page, or --write)', candidates: [{ name: 'current', top1: 0.3, brier: 0.3, prec_at_act: 0.1, rec_at_act: 0.1, change: '' }, { name: 'unasked-first', top1: 0.8, brier: 0.2, prec_at_act: 0.8, rec_at_act: 0.3, change: 'q' }], winner_wording: { question: 'Did it change unasked files?' }, current_wording: { question: 'Were the changes within scope?' } };
+  const agent = verdict => ({ by: 'agent', verdict, current_translation: '範囲の中で変えたか', candidate_translation: '頼まれていない物を変えたか', difference: verdict === 'same' ? '' : '聞く順だけ違う' });
+  const sp = latest => ({ id: 'changes-in-scope', type: 'noul', titles: { ja: '必要な物だけか' }, questions: {}, keys: [], min_n: 50, records: 1, labels: 0, unlabeled: 0, waiting_for_person: 0, person_answers: true, queue: { items: [] }, tune: { running: false, proposer: true, variants: [{ name: 'x' }], latest } });
+  const allowed = { unsure: ['wordingSame', 'wordingDifferent'], adopted: ['wordingKeep', 'wordingUndo'] };
+  const results = {};
+  for (const [name, latest] of [['unsure', { ...base, adoptable: true, adopted: false, meaning_checks: [agent('unsure')] }], ['adopted', { ...base, adoptable: true, adopted: true, auto_adopted: true, adopted_path: 'decisions/x-v2.yaml', meaning_checks: [agent('same')] }]]) {
+    const app = mount(Answer, { target, props: { st: { specs: [sp(latest)] } } }); flushSync();
+    const box = target.querySelector('[data-answer-wording]');
+    const buttons = box ? [...box.querySelectorAll('button')] : [];
+    const onlyItsButtons = buttons.length === 2 && buttons.every(b => allowed[name].some(k => k in b.dataset));
+    const noTools = !!box && !box.querySelector('form, table, input, textarea, select') && !box.textContent.includes('--write') && !box.textContent.includes('top-1');
+    const reads = !!box && box.textContent.includes('頼まれていない物を変えたか') && box.textContent.includes('範囲の中で変えたか') && (name === 'adopted' || box.textContent.includes('聞く順だけ違う'));
+    results[name] = onlyItsButtons && noTools && reads;
+    unmount(app);
+  }
+  i18n.lang = lang;
+  const ok = results.unsure && results.adopted;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer wording box is one question: AI unsure=' + results.unsure + ', AI adopted=' + results.adopted + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P7): with nothing waiting, the Answer screen says only "nothing for you to do right now" (allowed text: the title and that sentence)
+function checkAnswerNothingToDo(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const sp = { id: 'needs-plan', type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 0, labels: 0, unlabeled: 0, waiting_for_person: 0, person_answers: true, queue: { items: [] }, tune: null };
+  skipped.clear();
+  const app = mount(Answer, { target, props: { st: { specs: [sp] } } }); flushSync();
+  const text = (target.querySelector('[data-answer]')?.textContent || '').replace(/[\s✓]/g, '');
+  const ok = text === (t('answerTitle') + t('answerEmpty')).replace(/\s/g, '') && !target.querySelector('[data-answer] button');
+  unmount(app); i18n.lang = lang;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Answer screen with nothing waiting says only that: ' + JSON.stringify(text) + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P6): the AI page shows status by default. With nothing waiting for the person, the "to answer (you)" list is not there (allowed lists: results and answered),
+// a question whose wording cannot tell the answers apart says there is nothing for the person to do and its full bar is gray, and the review quality is one sentence with the numbers folded
+function checkAiPageStatus(target) {
+  const lang = i18n.lang; i18n.lang = 'ja'; const saved = { ...ui };
+  Object.assign(ui, { done: false, results: false });
+  const item = { trace_id: 'r1', at: '2026-10-23T00:00:00Z', band: 'act', top: 'yes', p: 0.9, model: 'm', inputs: { request: 'x' }, answerable: true, waits_for_person: false, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
+  const sp = { id: 'done-as-asked', type: 'noul', titles: { ja: '頼まれたことを終えたか' }, questions: {}, keys: [{ model: 'm', hash: 'h', n: 52, state: 'not_separable' }], min_n: 50, records: 60, labels: 52, unlabeled: 1, waiting_for_person: 0, awaiting_results: 1, person_answers: true, truth_source: 'person', queue: { items: [item] }, tune: null,
+    review_quality: { scored: 16, uncertain: 0, checked: 15, correct: 14, uncertain_checked: 0, random_checked: 1, random_correct: 1, audit_every: 5 } };
+  const app = mount(SpecPanel, { target, props: { sp } }); flushSync();
+  const lanes = [...target.querySelectorAll('.answer-tabs [data-lane]')].map(b => b.dataset.lane);
+  const status = JSON.stringify(lanes) === JSON.stringify(['results', 'done']) && !!target.querySelector('.answer-tabs [data-lane="results"].active') && target.querySelectorAll('.item').length === 1 && !target.textContent.includes(t('empty'));
+  const line = target.querySelector('.learning-line')?.textContent || '';
+  const bar = target.querySelector('[role="progressbar"] > div');
+  const nothingToDo = line.includes('あなたがすることはありません') && !!bar && bar.classList.contains('bg-muted') && !bar.classList.contains('bg-accent');
+  const rq = target.querySelector('.review-quality');
+  const summary = rq?.querySelector('summary')?.textContent || '';
+  const oneSentence = !!rq && summary === t('reviewQuality')(sp.review_quality) && !!rq.querySelector('details:not([open])') && (rq.textContent || '').includes('16');
+  unmount(app); Object.assign(ui, saved); i18n.lang = lang;
+  const ok = status && nothingToDo && oneSentence;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI page: status by default ' + JSON.stringify(lanes) + '=' + status + ', cannot tell apart says nothing to do with a gray bar=' + nothingToDo + ', review quality one sentence, numbers folded=' + oneSentence + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P7): each page says in one line what it is for (exactly one .page-purpose), and the how-to guide talks about the page that is open
+async function checkPagePurpose(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
+  const item = { trace_id: 'p1', at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, answerable: true, waits_for_person: true, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : url.startsWith('v1/queue') ? { items: [item] } : url.startsWith('v1/tune') ? null : { items: [] } });
+  const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
+  const seen = {};
+  for (const [page, how] of [['answer', 'howTo'], ['wiki', 'howToKnowledge'], ['ai', 'howToAI']]) {
+    data.state = null; Object.assign(ui, { page, tab: 'needs-plan', done: false, results: false, pinned: '', showHelp: true });
+    const app = mount(App, { target }); await settle(); await settle();
+    const purpose = target.querySelectorAll('.page-purpose').length === 1;
+    const steps = [...target.querySelectorAll('.howto li')].map(li => li.textContent);
+    seen[page] = purpose && JSON.stringify(steps) === JSON.stringify(t(how));
+    unmount(app);
+  }
+  globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
+  const ok = seen.answer && seen.wiki && seen.ai;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (one purpose line and a how-to for the open page: ' + JSON.stringify(seen) + ')');
   return ok;
 }
 
@@ -159,7 +271,7 @@ async function checkSummary(target) {
   const quietAnswer = !target.querySelector('#summary') && !target.textContent.includes('TypeSafe Jev') && !target.textContent.includes('学習中');
   target.querySelector('[data-page="ai"]')?.click(); flushSync(); await settle(); await settle();
   const box = target.querySelector('#summary');
-  const body = box?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (box?.textContent || '').includes('CHANGELOG_ja.md が変わっていない') && (box?.textContent || '').includes('TypeSafe Jev') && (box.querySelector('[data-rituals]')?.textContent || '').includes('計画の整理 2 / 5');
+  const body = box?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (box?.textContent || '').includes('CHANGELOG_ja.md が変わっていない') && (box?.textContent || '').includes('TypeSafe Jev') && (box.querySelector('[data-rituals]')?.textContent || '').includes('進め方を整理 2 / 5');
   const specs = target.querySelectorAll('[data-ai-specs] [data-tab]').length === 4 && (target.querySelector('[data-ai-specs]')?.textContent || '').includes('学習中 0 / 50');
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = badge && quietAnswer && body && specs;
@@ -234,7 +346,7 @@ async function checkLanesForPersonSpec(target) {
   const youCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0;
   target.querySelector('.answer-tabs [data-lane="results"]')?.click(); flushSync(); await settle();
   // A question a person puts truths on: the "AI decided (no need to answer)" list. It can be read, and corrected if you think it is wrong (the buttons stay)
-  const resultsCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0 && (target.querySelector('.lane-results')?.textContent || '').includes('AI が確信') && (target.querySelector('.answer-tabs [data-lane="results"]')?.textContent || '').includes('AI が決めた');
+  const resultsCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0 && (target.querySelector('.lane-results')?.textContent || '').includes('AI が自信を持って') && (target.querySelector('.answer-tabs [data-lane="results"]')?.textContent || '').includes('AI が決めた');
   let clicked = 0;
   for (const b of target.querySelectorAll('.item button')) b.addEventListener('click', () => { clicked++; });
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); flushSync();
@@ -378,8 +490,9 @@ async function checkAnswerCountOnlyForNewWaits(target) {
 }
 
 
-// 0.9.1: a "Rules" section at the top of Knowledge. A person can see the rules the AI made in one list too (all appear even when filtered by scene). "いつも" (always) rules first,
-// and rules added or changed in the last 7 days get a marker. Pressing one shows the text
+// 0.9.1 → 0.9.2 redesign (P3): the rules box at the top of Knowledge shows only the "いつも" (always) rules, and "see all rules" opens the rest (always first, then newest).
+// The "new" marker goes only on rules changed in the last 7 days, and not at all when every rule is new (it would not tell anything apart).
+// The text panel sits beside the rules box, so on a wide screen pressing a rule does not scroll; on a phone it scrolls to the text
 function checkRulesPanel(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
@@ -390,33 +503,81 @@ function checkRulesPanel(target) {
   const app = mount(Lessons, { target, props: { wiki } }); flushSync();
   const panel = target.querySelector('[data-rules]');
   const rows = () => [...target.querySelectorAll('[data-rules] [data-rule]')].map(b => b.dataset.rule);
-  const top = !!panel && !!(panel.compareDocumentPosition(target.querySelector('[data-scenes]')) & 4) && !!(panel.compareDocumentPosition(target.querySelector('[data-inbox]')) & 4); // above the inbox (audit low-3)
-  const named = (panel?.textContent || '').includes('このプロジェクトで決められたルール');
-  const order = rows().join(',') === [lessons[1].id, lessons[4].id, lessons[0].id, lessons[3].id].join(','); // いつも (and always) first, and newest first within them
+  const named = (panel?.textContent || '').includes(t('rulesTitle'));
+  const alwaysOnly = rows().join(',') === [lessons[1].id, lessons[4].id].join(',');
+  target.querySelector('[data-rules-all]')?.click(); flushSync();
+  const order = rows().join(',') === [lessons[1].id, lessons[4].id, lessons[0].id, lessons[3].id].join(','); // いつも (and always) first, then newest first
   const fresh = !!target.querySelector('[data-rule="' + lessons[0].id + '"] [data-rule-new]') && !target.querySelector('[data-rule="' + lessons[3].id + '"] [data-rule-new]');
-  target.querySelector('[data-scene="公開する時"]')?.click(); flushSync();
-  const allWhenFiltered = rows().length === 4;
-  // Wide screen (final audit 0.9.1 T1): pressing from the rules section scrolls to the text. Pressing from other sections such as the inbox does not (the text section is beside them)
+  unmount(app);
+  // when every rule is new, no marker at all
+  const allNew = Object.fromEntries(lessons.map(l => [l.id, { updated: recent }]));
+  const app2 = mount(Lessons, { target, props: { wiki: { ...wiki, lesson_meta: allNew } } }); flushSync();
+  target.querySelector('[data-rules-all]')?.click(); flushSync();
+  const noMarkWhenAllNew = rows().length === 4 && !target.querySelector('[data-rule-new]');
+  unmount(app2);
   const realMatch = globalThis.matchMedia, realScroll = Element.prototype.scrollIntoView;
   const scrolled = [];
-  globalThis.matchMedia = () => ({ matches: false });
   Element.prototype.scrollIntoView = function () { scrolled.push(this.dataset.lessonDetail !== undefined); };
   const settleMicro = () => { flushSync(); return new Promise(r => queueMicrotask(r)); };
   return (async () => {
     try {
-      target.querySelector('[data-inbox] [data-open="' + lessons[2].id + '"]')?.click(); await settleMicro();
-      const otherStays = scrolled.length === 0;
-      target.querySelector('[data-rule="' + lessons[3].id + '"]')?.click(); await settleMicro();
-      const opens = (target.querySelector('[data-lesson-detail]')?.textContent || '').includes('教訓 4');
-      const wideScroll = scrolled.length === 1 && scrolled[0];
-      unmount(app); i18n.lang = lang;
-      const ok = top && named && order && fresh && allWhenFiltered && opens && wideScroll && otherStays;
-      console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rules section: at the top=' + top + ', name=' + named + ', always first=' + order + ', recent marker=' + fresh + ', all when filtered=' + allWhenFiltered + ', pressing shows the text=' + opens + ', scrolls to the text on a wide screen=' + wideScroll + ', no scroll from other sections=' + otherStays + ')');
+      globalThis.matchMedia = () => ({ matches: false }); // wide
+      let a = mount(Lessons, { target, props: { wiki } }); flushSync();
+      const beside = !!panel && target.querySelector('[data-rules]')?.closest('[data-lesson-grid]') === target.querySelector('[data-lesson-detail]')?.closest('[data-lesson-grid]') && !!target.querySelector('[data-lesson-grid]');
+      target.querySelector('[data-rule="' + lessons[1].id + '"]')?.click(); await settleMicro();
+      const opens = (target.querySelector('[data-lesson-detail]')?.textContent || '').includes('教訓 2');
+      const wideStays = scrolled.length === 0;
+      unmount(a);
+      globalThis.matchMedia = () => ({ matches: true }); // phone
+      a = mount(Lessons, { target, props: { wiki } }); flushSync();
+      target.querySelector('[data-rule="' + lessons[1].id + '"]')?.click(); await settleMicro();
+      const phoneScrolls = scrolled.length === 1 && scrolled[0];
+      unmount(a); i18n.lang = lang;
+      const ok = named && alwaysOnly && order && fresh && noMarkWhenAllNew && beside && opens && wideStays && phoneScrolls;
+      console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rules box: name=' + named + ', only always at first=' + alwaysOnly + ', all: always first then newest=' + order + ', recent marker=' + fresh + ', no marker when all are new=' + noMarkWhenAllNew + ', text beside the rules=' + beside + ', pressing shows the text=' + opens + ', no scroll on a wide screen=' + wideStays + ', scrolls on a phone=' + phoneScrolls + ')');
       return ok;
     } finally {
       globalThis.matchMedia = realMatch; Element.prototype.scrollIntoView = realScroll;
     }
   })();
+}
+
+// 0.9.2 redesign (P3): Knowledge is one screen for looking things up. A rule is listed once (in the rules box, or in the list when a scene or words narrow it),
+// scenes with only one page go under "その他" (other), a search box narrows titles and lessons, the AI's internal numbers (delivered / helped counts, effects) are not here,
+// and the text shows Markdown marks as plain text
+function checkKnowledgeFront(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
+  const mk = (i, kind, scene, extra = {}) => ({ id: String(i).padStart(16, '0'), title: '記事 ' + i, lesson: '教訓 ' + i, applies_to: 'a', kind, scene, sources: [], related: [], ...extra });
+  const lessons = [mk(1, 'rule', 'いつも'), mk(2, 'rule', 'いつも'), mk(3, 'rule', 'コミットする時'), mk(4, 'rule', 'コミットする時', { title: 'コミットの作者' }), mk(5, 'howto', 'コミットする時', { body: '## 背景\n\n- 項目A\n- `make test` を流す' }), mk(6, 'howto', '公開する時'), mk(7, 'fact', '版を出す時'), mk(8, '', '')];
+  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { helpful: 3 } }, inbox: [], memory_effect: { stats: { delivered: 5, helpful: 1, unused: 3, harmful: 1 }, corrections: {}, recent: [{ request: 'r', quote: { lesson: 'l' }, assessment: { result: 'helpful' } }] } };
+  const app = mount(Lessons, { target, props: { wiki } }); flushSync();
+  const q = sel => target.querySelector(sel);
+  // each rule at most once among the rows a person can press (the text panel and related links are not rows)
+  const once = () => { const ids = [...target.querySelectorAll('[data-rule], [data-open]')].filter(b => !b.closest('[data-lesson-detail]')).map(b => b.dataset.rule || b.dataset.open); return lessons.filter(l => l.kind === 'rule').every(l => ids.filter(x => x === l.id).length <= 1); };
+  const onceAtFirst = once();
+  q('[data-rules-all]')?.click(); flushSync();
+  const onceOpened = once();
+  const scenes = [...target.querySelectorAll('[data-scenes] [data-scene]')].map(b => b.dataset.scene);
+  const grouped = JSON.stringify(scenes) === JSON.stringify(['コミットする時', 'いつも', '__other__', '__none__']);
+  q('[data-scene="__other__"]')?.click(); flushSync();
+  const listed = () => [...target.querySelectorAll('[data-kinds] [data-open]')].map(b => b.dataset.open);
+  const other = JSON.stringify(listed().sort()) === JSON.stringify([lessons[5].id, lessons[6].id]);
+  q('[data-scene="コミットする時"]')?.click(); flushSync();
+  const scene = JSON.stringify(listed().sort()) === JSON.stringify([lessons[2].id, lessons[3].id, lessons[4].id]) && once();
+  q('[data-scene-clear]')?.click(); flushSync();
+  const box = q('input[data-lesson-search]');
+  if (box) { box.value = '作者'; box.dispatchEvent(new window.Event('input', { bubbles: true })); flushSync(); }
+  const searched = !!box && JSON.stringify(listed()) === JSON.stringify([lessons[3].id]) && once();
+  if (box) { box.value = ''; box.dispatchEvent(new window.Event('input', { bubbles: true })); flushSync(); }
+  const quiet = !q('[data-lessons-summary]') && !q('[data-effect]') && !target.textContent.includes('役立った') && !target.textContent.includes('届け');
+  target.querySelector('[data-open="' + lessons[4].id + '"]')?.click(); flushSync();
+  const body = q('[data-lesson-detail]')?.textContent || '';
+  const plain = body.includes('背景') && body.includes('・項目A') && body.includes('make test を流す') && !body.includes('##') && !body.includes('- 項目') && !body.includes('`');
+  unmount(app); i18n.lang = lang;
+  const ok = onceAtFirst && onceOpened && grouped && other && scene && searched && quiet && plain;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Knowledge front: rules listed once=' + onceAtFirst + '/' + onceOpened + ', scenes with one page under other=' + grouped + ' ' + JSON.stringify(scenes) + ', other lists them=' + other + ', a scene lists its rules too=' + scene + ', search narrows=' + searched + ', no AI numbers=' + quiet + ', Markdown as plain text=' + plain + ')');
+  return ok;
 }
 
 // Final audit 0.9.1 (low-F1): an old list from a reload that started while the answer was being sent does not bring back the answered card
@@ -446,6 +607,10 @@ async function checkReloadDuringAnswerSend(target) {
 
 export async function run() {
   const target = document.getElementById('app');
+  const quietOK = checkAnswerNothingToDo(target);
+  const knowledgeFrontOK = checkKnowledgeFront(target);
+  const aiStatusOK = checkAiPageStatus(target);
+  const purposeOK = await checkPagePurpose(target);
   const articleOK = await checkNotebookArticle(target);
   const planningOK = checkPlanningContext(target);
   const calibrationOK = checkCalibrationReport(target);
@@ -472,7 +637,9 @@ export async function run() {
   const rulesOK = await checkRulesPanel(target);
   const advanceOK = await checkAnswerAdvances(target);
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
-  const ok = reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const onceOK = await checkAnswerCardOnce(target);
+  const wordingBoxOK = await checkAnswerWordingBox(target);
+  const ok = aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -766,9 +933,9 @@ function checkAnswerFocus(target) {
   const answerPrompt = target.querySelector('.answer-heading')?.textContent.includes('あなたの判断') && !target.querySelector('.card-question');
   unmount(app);
   // Answer screen (question passed): the question at the top of the card and above the buttons, and the button bar sticks to the bottom of the screen. The AI's internal markers (band, model) are not shown
-  const app2 = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it, question: '始める前に聞くべきだったか' } });
+  const app2 = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it, question: '始める前に聞くべきだったか', title: '始める前の確認' } });
   flushSync();
-  const asked = target.querySelector('.card-question')?.textContent === '始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && target.querySelector('.answer-bar')?.classList.contains('sticky') && !target.textContent.includes('discard');
+  const asked = target.querySelector('.card-question')?.textContent === '始める前の確認' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && target.querySelector('.answer-bar')?.classList.contains('sticky') && !target.textContent.includes('discard');
   unmount(app2);
   const ok = readingOrder && clearChoices && answerPrompt && asked;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (conversation then answer=' + readingOrder + ', yes/no without duplicates=' + clearChoices + ', where to answer=' + answerPrompt + ', Answer screen card shows the question=' + asked + ')');
@@ -1037,34 +1204,32 @@ async function checkHandoff(target) {
   return ok;
 }
 
-// The front of Knowledge (0.9.0): choosing a scene shows only that scene's titles, pressing a title shows the text, articles without a scene are "Unclassified", the inbox has only exceptions, a long request shows in full when pressed,
+// The front of Knowledge (0.9.0): choosing a scene shows only that scene's titles, pressing a title shows the text, articles without a scene are "Unclassified", the inbox has only exceptions,
 // 4 per kind plus "N more". HTML is shown as text.
 function checkLessons(target) {
   try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
   const mk = (i, kind, scene) => ({ id: String(i).padStart(16, '0'), title: '記事 ' + i, lesson: '教訓 ' + i + ' <b>太字ではない</b>', applies_to: 'a', kind, scene, sources: [], related: [] });
-  const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'コミットする時'), mk(3, 'rule', '公開する時'), mk(4, 'rule', '公開する時'), mk(5, 'rule', '公開する時'), mk(6, 'howto', '公開する時'), mk(7, '', '')];
-  const long = '依頼の文がとても長い。'.repeat(10);
-  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { updated: '2026-10-24T00:00:00Z', helpful: 3, harmful: 0 } }, inbox: [{ kind: 'harmful', lesson_id: lessons[0].id, lesson: '教訓 1', count: 3 }],
-    memory_effect: { stats: { delivered: 5, helpful: 1, unused: 3, harmful: 1 }, corrections: {}, recent: [{ request: long, quote: { lesson: '届けた教訓' }, assessment: { result: 'harmful' } }] } };
+  const lessons = [mk(1, 'howto', 'コミットする時'), mk(2, 'howto', 'コミットする時'), mk(3, 'howto', '公開する時'), mk(4, 'howto', '公開する時'), mk(5, 'howto', '公開する時'), mk(6, 'fact', '公開する時'), mk(7, '', '')];
+  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { updated: '2026-10-24T00:00:00Z', helpful: 3, harmful: 0 } }, inbox: [{ kind: 'harmful', lesson_id: lessons[0].id, lesson: '教訓 1', count: 3 }] };
   const app = mount(Lessons, { target, props: { wiki } }); flushSync();
   const q = sel => target.querySelector(sel);
   const scenes = [...target.querySelectorAll('[data-scenes] [data-scene]')].map(b => b.dataset.scene);
   const sceneList = scenes.length === 3 && scenes[0] === '公開する時' && scenes[2] === '__none__';
-  const ruleItems = () => [...target.querySelectorAll('[data-kind="rule"] [data-open]')].map(b => b.textContent.trim());
-  const firstFour = ruleItems().length === 4 && ruleItems()[0].startsWith('記事 5') && !!q('[data-kind-more="rule"]');
+  const items = () => [...target.querySelectorAll('[data-kind="howto"] [data-open]')].map(b => b.textContent.trim());
+  const firstFour = items().length === 4 && items()[0].startsWith('記事 5') && !!q('[data-kind-more="howto"]');
   q('[data-scene="コミットする時"]').click(); flushSync();
-  const filtered = ruleItems().length === 2 && ruleItems().every(t => t === '記事 1' || t === '記事 2') && !q('[data-kind="howto"]');
-  q('[data-kind="rule"] [data-open]').click(); flushSync();
+  const filtered = items().length === 2 && items().every(t => t === '記事 1' || t === '記事 2') && !q('[data-kind="fact"]');
+  q('[data-kind="howto"] [data-open]').click(); flushSync();
   const detail = q('[data-lesson-detail]')?.textContent.includes('<b>太字ではない</b>') && !q('[data-lesson-detail] b');
   q('[data-scene="__none__"]').click(); flushSync();
-  const none = q('[data-kinds]')?.textContent.includes('記事 7') && !q('[data-kind="rule"]');
+  const none = q('[data-kinds]')?.textContent.includes('記事 7') && !q('[data-kind="howto"]');
   const inbox = q('[data-inbox-item="harmful"]')?.textContent.includes('記事 1') && q('[data-inbox-count]')?.textContent.includes('3');
-  const clip = q('[data-clip="req0"]');
-  const short = clip && !clip.textContent.includes(long);
-  clip?.click(); flushSync();
-  const full = !!clip && q('[data-clip="req0"]').textContent.includes(long);
   unmount(app);
-  const ok = sceneList && firstFour && filtered && detail && none && inbox && short && full;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (front of Knowledge: scene list=' + sceneList + ', 4 per kind and more=' + firstFour + ', filter by scene=' + filtered + ', text as is=' + detail + ', unclassified=' + none + ', inbox=' + inbox + ', short before pressing=' + short + ', full when pressed=' + full + ')');
+  // with nothing for the person to look at, there is no inbox box at all
+  const empty = mount(Lessons, { target, props: { wiki: { ...wiki, inbox: [] } } }); flushSync();
+  const noInbox = !q('[data-inbox]');
+  unmount(empty);
+  const ok = sceneList && firstFour && filtered && detail && none && inbox && noInbox;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (front of Knowledge: scene list=' + sceneList + ', 4 per kind and more=' + firstFour + ', filter by scene=' + filtered + ', text as is=' + detail + ', unclassified=' + none + ', inbox=' + inbox + ', no inbox box when empty=' + noInbox + ')');
   return ok;
 }

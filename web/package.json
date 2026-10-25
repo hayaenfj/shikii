@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check": "node scripts/check-locales.mjs && node --test scripts/test-i18n.mjs scripts/test-wiki-pagination.mjs && node scripts/check-ui.mjs"
+    "check": "node scripts/check-locales.mjs && node --test scripts/test-i18n.mjs scripts/test-wiki-pagination.mjs scripts/test-glossary.mjs && node scripts/check-ui.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.1",

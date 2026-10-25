@@ -27,3 +27,9 @@ display:
     options:
       "yes": 食い違う
       "no": 食い違わない（足す・言い換え）
+  en:
+    title: Wiki lessons that disagree
+    question: Does the new lesson disagree with the existing lesson on the same topic (would following one break the other)?
+    options:
+      "yes": They disagree
+      "no": They do not (adds or rephrases)

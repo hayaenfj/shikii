@@ -51,13 +51,13 @@
   <div class="flex items-center gap-[11px]"><span class="flex h-[36px] w-[36px] items-center gap-1 rounded-[11px] bg-accent p-2 max-sm:h-[30px] max-sm:w-[30px] max-sm:gap-[3px] max-sm:rounded-[9px] max-sm:p-[6px] [&>i]:block [&>i]:h-2.5 [&>i]:w-1 [&>i]:rounded-[3px] [&>i]:bg-bg [&>i:nth-child(2)]:h-[19px] [&>i:nth-child(3)]:h-[14px]" aria-hidden="true"><i></i><i></i><i></i></span><h1 class="m-0 text-[22px] leading-[1.15] font-[750] tracking-[-.5px] max-sm:text-[19px]">shikii{#if st?.project_name}<a class="ml-2.5 text-[15px] font-normal tracking-normal text-muted no-underline" href="../../" title={t('projectsTitle')}>{st.project_name}</a>{/if}</h1></div>
   {#if hasWiki && st.specs?.length}
     <nav id="tabs" class="flex gap-1 rounded-xl border border-line bg-surface2 p-1 max-md:order-last max-md:w-full" aria-label={t('pagesNav')}>
-      <button type="button" data-page="answer" aria-current={page === 'answer' ? 'page' : undefined} class={pageBtn(page === 'answer')} onclick={() => setPage('answer')}>{t('pageAnswer')}{#if waits}<span class="badge rounded-md bg-amber px-[7px] py-px text-[11px] text-bg tabular-nums">{waits}</span>{/if}</button>
+      <button type="button" data-page="answer" aria-current={page === 'answer' ? 'page' : undefined} class={pageBtn(page === 'answer')} onclick={() => setPage('answer')}>{t('pageAnswer')}{#if waits}<span class="badge rounded-md bg-amber px-[7px] py-px text-[12px] text-bg tabular-nums">{waits}</span>{/if}</button>
       <button type="button" data-page="wiki" aria-current={page === 'wiki' ? 'page' : undefined} class={pageBtn(page === 'wiki')} onclick={() => setPage('wiki')}>{t('pageKnowledge')}</button>
       <button type="button" data-page="ai" aria-current={page === 'ai' ? 'page' : undefined} class={pageBtn(page === 'ai')} onclick={() => setPage('ai')}>{t('pageAI')}</button>
     </nav>
   {/if}
   <div class="ml-auto flex items-center gap-2 max-sm:gap-[5px]">
-    {#if !st?.projects}<button id="help" class="w-[33px] rounded-full border border-line bg-transparent p-1.5 text-[12px] max-sm:w-7 max-sm:p-1 max-sm:text-[11px]" type="button" title={t('helpTitle')} aria-label={t('helpTitle')} onclick={() => setShowHelp(!ui.showHelp)}>?</button>{/if}
+    {#if !st?.projects}<button id="help" class="w-[33px] rounded-full border border-line bg-transparent p-1.5 text-[12px] max-sm:w-7 max-sm:p-1" type="button" title={t('helpTitle')} aria-label={t('helpTitle')} onclick={() => setShowHelp(!ui.showHelp)}>?</button>{/if}
     <LangPicker />
   </div>
 </header>
@@ -72,7 +72,7 @@
   {:else}
     <div class="workspace-content min-w-0 pt-6 pb-6 max-md:pt-5">
       {#if data.loadError}<p class="audit" role="alert">{t('error')(data.loadError)}</p>{/if}
-      {#if ui.showHelp}<HowTo />{/if}
+      {#if ui.showHelp}<HowTo {page} />{/if}
       {#if page === 'wiki'}
         {#if st.wiki}<Knowledge wiki={st.wiki} />
         {:else if !data.loadError}<div class="empty-state" role="status">{t('loading')}</div>{/if}

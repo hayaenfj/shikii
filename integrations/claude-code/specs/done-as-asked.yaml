@@ -38,3 +38,9 @@ display:
     options:
       "yes": 終えた
       "no": 終えていない
+  en:
+    title: Did it finish what was asked?
+    question: In this turn, did the AI finish your request (is there nothing you have to say again)?
+    options:
+      "yes": Finished
+      "no": Not finished

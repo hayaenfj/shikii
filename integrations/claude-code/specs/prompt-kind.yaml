@@ -52,3 +52,12 @@ display:
       investigate: 調べて報告する
       run: 実行して結果を報告する
       decide: 提案への返事・選択
+  en:
+    title: Kind of request
+    question: What will the AI that got this request most likely end up doing?
+    options:
+      edit: Change files
+      explain: Explain (no files touched)
+      investigate: Look into it and report
+      run: Run something and report
+      decide: Reply to a proposal or choose

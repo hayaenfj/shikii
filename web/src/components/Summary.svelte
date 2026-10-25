@@ -26,7 +26,7 @@
     {#if g.items?.length}
       <ul class="summary-guards m-0 grid list-none gap-1.5 p-0">
         {#each g.items as it (it.id)}
-          <li><code>{it.id}</code> <span class="text-[11px] text-muted">{it.kind}</span> <span class="rounded-[5px] border px-1.5 py-px text-[10px] {it.enabled ? 'border-accent text-accent' : 'border-line'}">{t(it.builtin ? 'summaryGuardBuiltin' : it.enabled ? 'summaryGuardOn' : 'summaryGuardOff')}</span> {it.title}
+          <li><span class="font-semibold">{t('guardTitle')(it.id, it.title)}</span> <span class="rounded-[5px] border px-1.5 py-px text-[12px] {it.enabled ? 'border-accent text-accent' : 'border-line'}">{t(it.builtin ? 'summaryGuardBuiltin' : it.enabled ? 'summaryGuardOn' : 'summaryGuardOff')}</span> <code class="text-muted">{it.id}</code>
             {#if it.last}<div class="text-muted">{it.last.pass ? t('summaryGuardLastPass')(when(it.last.at)) : t('summaryGuardLastStop')(when(it.last.at), it.last.reason)}</div>{/if}
           </li>
         {/each}

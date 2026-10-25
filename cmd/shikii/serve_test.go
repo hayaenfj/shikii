@@ -178,7 +178,7 @@ func TestServeUIIsSelfContained(t *testing.T) {
 func TestServeUIHasLanguageSwitch(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)
-	for _, must := range []string{`id="lang"`, "shikii.lang", "答え合わせ待ちはありません", "nothing waiting for an answer", "localStorage"} {
+	for _, must := range []string{`id="lang"`, "shikii.lang", "あなたを待っている物はありません", "nothing waiting for an answer", "localStorage"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("UI must offer a language switch with an English and a Japanese dictionary; missing %q", must)
 		}
@@ -305,7 +305,7 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 			t.Fatalf("beginner view missing %q", must)
 		}
 	}
-	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h", `id="mode"`, "かんたん表示", "shikii.mode", "body.advanced", "AI の仮採点を抜き打ちで確認"} {
+	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h", `id="mode"`, "かんたん表示", "shikii.mode", "body.advanced", "AI の仮採点を抜き打ちで確認", "抜き取り", "較正", "答え合わせ", "spot check"} {
 		if strings.Contains(body, never) {
 			t.Fatalf("jargon must not appear in the page: %q", never)
 		}

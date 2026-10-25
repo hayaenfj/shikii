@@ -30,3 +30,9 @@ display:
     options:
       "yes": 同じ話題（この記事へ）
       "no": 別の話題
+  en:
+    title: Where a wiki lesson goes
+    question: Is the new lesson about the same topic as this existing page? (If so, add to or replace that page; if not, a new page)
+    options:
+      "yes": Same topic (this page)
+      "no": A different topic

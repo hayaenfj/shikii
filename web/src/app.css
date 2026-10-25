@@ -5,7 +5,7 @@
 @source "../src";
 @source "../index.html";
 
-:root { color-scheme:light dark; --fg:#23342d; --bg:#f3f5f1; --surface:#fff; --surface2:#f7f9f5; --muted:#63756b; --line:#dde6dd; --accent:#247358; --accentbg:#eaf5ee; --amber:#926122; --amberbg:#fbf2e3; --request:#926122; --requestbg:#fbf8f1; --shadow:0 8px 32px #25372c05; --blue:#567796; }
+:root { color-scheme:light dark; --fg:#23342d; --bg:#f3f5f1; --surface:#fff; --surface2:#f7f9f5; --muted:#566a5f; --line:#dde6dd; --accent:#247358; --accentbg:#eaf5ee; --amber:#926122; --amberbg:#fbf2e3; --request:#926122; --requestbg:#fbf8f1; --shadow:0 8px 32px #25372c05; --blue:#567796; }
 @media (prefers-color-scheme:dark) { :root { --fg:#e6eeea; --bg:#101719; --surface:#172123; --surface2:#1d292b; --muted:#a3b5ae; --line:#2c3a3d; --accent:#80d9b3; --accentbg:#233e34; --amber:#e6bb77; --amberbg:#3c3222; --request:#e6bb77; --requestbg:#242823; --shadow:0 10px 36px #00000015; --blue:#91b8dc; } }
 
 /* Screen width breakpoints (used by max-sm: / max-md: / max-lg:) and type */
@@ -53,16 +53,16 @@
   ul ul { list-style:circle; }
   ul { list-style:disc; }
   ol { list-style:decimal; }
-  code { font-size:.8125em; }
-  pre { margin-block:1em; white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.7 var(--font-mono); color:var(--color-muted); }
+  code { font-size:.9em; }
+  pre { margin-block:1em; white-space:pre-wrap; overflow-wrap:anywhere; font:12px/1.7 var(--font-mono); color:var(--color-muted); }
   @media (prefers-reduced-motion:reduce) { *, *::before, *::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
 }
 
 /* Only combinations that recur get a name (the rest are classes in .svelte files) */
 @utility k { color:var(--color-muted); font-size:12px; }
-@utility weak { font-size:11px; color:var(--color-muted); background:transparent; padding:7px 10px; }
+@utility weak { font-size:12px; color:var(--color-muted); background:transparent; padding:7px 10px; }
 @utility pill {
-  display:inline-block; border:1px solid var(--color-line); border-radius:7px; color:var(--color-muted); font-size:10px; padding:3px 8px;
+  display:inline-block; border:1px solid var(--color-line); border-radius:7px; color:var(--color-muted); font-size:12px; padding:3px 8px;
   &.calibrated { color:var(--color-accent); background:var(--color-accentbg); }
   &.ready { color:var(--color-amber); background:var(--color-amberbg); }
   &.one_answer, &.not_separable { color:var(--color-amber); border-style:dashed; } /* enough truths, but no line can be drawn (0.8.3) */

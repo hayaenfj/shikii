@@ -1,5 +1,5 @@
 <script>
-  // The Knowledge section (0.9.0): the front has 2 tabs, lessons (scene → kind → title, Lessons) and work records. The AI's internal numbers (search, review, reflection),
+  // The Knowledge section (0.9.0; a one-line purpose on top from 0.9.2): the front has 2 tabs, lessons (scene → kind → title, Lessons) and work records. The AI's internal numbers (search, review, reflection),
   // the tree of existing articles (Notebook) and older claims (checked by hand) go inside the collapsed "AI status and detailed records" (a person does not check everything)
   import { t } from '../lib/i18n.svelte.js';
   import { load } from '../lib/state.svelte.js';
@@ -39,9 +39,11 @@
   }
 </script>
 
+<h2 class="mb-1 text-[25px] max-md:text-[23px]">{t('pageKnowledge')}</h2>
+<p class="page-purpose mt-0 mb-4 text-[14px] text-muted">{t('knowledgeHow')}</p>
 <div class="mb-4 flex gap-2" role="tablist" data-knowledge-tabs>
-  <button type="button" role="tab" aria-selected={tab === 'lessons'} class="rounded-lg border px-3 py-1 text-[13px] {tab === 'lessons' ? 'border-accent bg-accentbg text-accent' : 'border-line bg-transparent text-muted'}" data-knowledge-tab="lessons" onclick={() => setTab('lessons')}>{t('lessonsTab')}</button>
-  <button type="button" role="tab" aria-selected={tab === 'handoff'} class="rounded-lg border px-3 py-1 text-[13px] {tab === 'handoff' ? 'border-accent bg-accentbg text-accent' : 'border-line bg-transparent text-muted'}" data-knowledge-tab="handoff" onclick={() => setTab('handoff')}>{t('handoffTitle')}</button>
+  <button type="button" role="tab" aria-selected={tab === 'lessons'} class="rounded-lg border px-3 py-1 text-[14px] {tab === 'lessons' ? 'border-accent bg-accentbg text-accent' : 'border-line bg-transparent text-muted'}" data-knowledge-tab="lessons" onclick={() => setTab('lessons')}>{t('lessonsTab')}</button>
+  <button type="button" role="tab" aria-selected={tab === 'handoff'} class="rounded-lg border px-3 py-1 text-[14px] {tab === 'handoff' ? 'border-accent bg-accentbg text-accent' : 'border-line bg-transparent text-muted'}" data-knowledge-tab="handoff" onclick={() => setTab('handoff')}>{t('handoffTitle')}</button>
 </div>
 
 {#if tab === 'handoff'}
@@ -56,7 +58,7 @@
   {#if !claims.length}<div class="empty-state">{t('noClaims')}</div>{/if}
   {#each claims as c (c.path)}
     <div class="item mb-5 rounded-[15px] border border-line bg-surface p-[22px] shadow-card max-sm:rounded-xl max-sm:px-3.5 max-sm:py-4">
-      <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted">
+      <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[12px] text-muted">
         <span class="pill" class:calibrated={c.status === 'confirmed'} class:ready={c.status === 'draft'}>{c.status}</span>
         <span>{c.path}</span>
         {#if c.confirmable}<span class="audit">{t('confirmable')}</span>{/if}
