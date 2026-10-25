@@ -236,8 +236,9 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 		}
 	}
 	ctx, _, err = reflectContext(agent, feedbackScope(repo))
-	if err != nil || ctx == "" || len(ctx) > 1800 || !utf8.ValidString(ctx) {
-		t.Fatalf("wiki の引用も原文を重ねず1800バイト以内: bytes=%d err=%v", len(ctx), err)
+	// 振り返りを頼む文の大きさは限らない(0.9.1。作法の文を足すたびに削り合いになった)。守るのは、会話の原文を重ねずに出典の ID だけを渡すこと
+	if err != nil || ctx == "" || strings.Contains(ctx, strings.Repeat("\x01", 100)) || strings.Contains(ctx, strings.Repeat("\x02", 100)) || !utf8.ValidString(ctx) {
+		t.Fatalf("wiki の引用も会話の原文を重ねない: bytes=%d err=%v", len(ctx), err)
 	}
 	parts := strings.SplitN(ctx, "\n", 2)
 	var quoted map[string]any

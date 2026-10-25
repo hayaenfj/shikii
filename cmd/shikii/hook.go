@@ -838,7 +838,7 @@ func dropSubagentTask(tasks []subagentTask, used subagentTask) []subagentTask {
 
 // habitsNotice は作業規則が無くても届く作法の一言(セッションに 1 回)。subagentHandoffNotice はサブエージェントへの報告の置き場。
 const (
-	habitsNotice          = "shikii: 後で人や別のエージェントが読む報告・監査・調査メモ・差分・画像は、repo の中ではなく作業記録 .shikii/handoff/<仕事>/ に置きます(shikii handoff write <パス>、または shikii_wiki の handoff_write。人は画面の知識の欄で読めます)。サブエージェントにも書き先をそこで指定します。本人が今後の決まりや訂正を言ったら、次の振り返りを待たずにその場で wiki の教訓にします(shikii wiki capture → reflect place → reflect submit)。"
+	habitsNotice          = "shikii: 後で人や別のエージェントが読む報告・監査・調査メモ・差分・画像は、repo の中ではなく作業記録 .shikii/handoff/<仕事>/ に置きます(shikii handoff write <パス>、または shikii_wiki の handoff_write。人は画面の知識の欄で読めます)。サブエージェントにも書き先をそこで指定します。本人が今後の決まりや訂正を言ったら、次の振り返りを待たずにその場で wiki の教訓にします(shikii wiki capture → reflect place → reflect submit)。自分で新しく作った・変えた決まり・テスト・手順(コマンドやスクリプト)も、頼まれなくてもその場で wiki のやり方(howto)か決まり(rule)の記事に書きます(近い記事があれば足すか直す)。"
 	subagentHandoffNotice = "shikii: 報告や作業ファイルを残すなら、repo の中ではなく作業記録 .shikii/handoff/<仕事>/ に書きます(shikii handoff write <パス>、または shikii_wiki の handoff_write)。親が書き先を指定していればそれに従います。"
 )
 

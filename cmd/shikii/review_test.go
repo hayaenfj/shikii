@@ -142,8 +142,8 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 		t.Fatalf("繰り返した Stop でも元の採点対象を保つ: %+v %v", observed, err)
 	}
 	ctx, _, err := reflectContext(agent, feedbackScope(repo))
-	if err != nil || len(ctx) > 1800 {
-		t.Fatal("振り返りの案内は1800バイトまで")
+	if err != nil || ctx != "" {
+		t.Fatalf("一会話だけなら振り返りはまだ頼まない(案内の大きさは限らない。0.9.1): %q %v", ctx, err)
 	}
 	if _, err := runReview(agent, feedbackScope(gitRepo(t)), reviewRequest{Operation: "submit", SourceID: observed[0].ID, TraceID: observed[0].Targets[0].TraceID, Truth: "no", Reason: "別の仕事"}); err == nil {
 		t.Fatal("別の仕事の会話を採点しない")
@@ -163,8 +163,9 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 		}
 	}
 	ctx, _, err = reflectContext(agent, feedbackScope(repo))
-	if err != nil || len(ctx) == 0 || len(ctx) > 1800 || !json.Valid([]byte(ctx[strings.LastIndex(ctx, "\n")+1:])) {
-		t.Fatal("原文を重ねず、短い案内とJSONの境界を保つ")
+	// 振り返りを頼む文の大きさは限らない(0.9.1)。守るのは、会話の原文を重ねずに出典の ID だけを渡し、JSON の境界を保つこと
+	if err != nil || len(ctx) == 0 || strings.Contains(ctx, strings.Repeat("\x02", 100)) || strings.Contains(ctx, strings.Repeat("\x03", 100)) || !json.Valid([]byte(ctx[strings.LastIndex(ctx, "\n")+1:])) {
+		t.Fatal("原文を重ねず、案内とJSONの境界を保つ")
 	}
 }
 

@@ -92,8 +92,8 @@ func TestReflectHookWaitsAndOffersOnlyIDs(t *testing.T) {
 		if n == 1 && (strings.Contains(ctx, "submit") || strings.Contains(ctx, "ingest")) {
 			t.Fatal("一会話ごとに採点と整理の作業を割り込ませない")
 		}
-		if n == 2 && (!strings.Contains(ctx, "shikii_reflect") || !strings.Contains(ctx, "reflect query") || strings.Contains(ctx, "まだ英語が残っています") || len(ctx) > 1800) {
-			t.Fatalf("まとめる時も短い案内と出典IDだけを渡す: %s", ctx)
+		if n == 2 && (!strings.Contains(ctx, "shikii_reflect") || !strings.Contains(ctx, "reflect query") || strings.Contains(ctx, "まだ英語が残っています")) {
+			t.Fatalf("まとめる時も案内と出典IDだけを渡し、会話の原文は渡さない: %s", ctx)
 		}
 	}
 }
