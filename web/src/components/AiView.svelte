@@ -2,7 +2,7 @@
   // AI status (0.9.1): gathers here what a person normally need not look at. Learning progress per question (one line each; pressing it opens that question's section),
   // whether delivered lessons worked, guards, and the routine before and after work. The same numbers as `shikii status`
   import { t, loc } from '../lib/i18n.svelte.js';
-  import { ui, data, setTab, selectedTab } from '../lib/state.svelte.js';
+  import { ui, data, setTab, selectedTab, wordingNeedsPerson } from '../lib/state.svelte.js';
   import SpecPanel from './SpecPanel.svelte';
   import Summary from './Summary.svelte';
 
@@ -17,7 +17,8 @@
   const learned = s => live(s).reduce((n, k) => Math.max(n, k.n), 0);
   // Why no line could be drawn although there are enough truths (0.8.3). Not shown if a line was drawn
   const stuckLine = s => auto(s) ? '' : live(s).some(k => k.state === 'not_separable') ? t('not_separable')(learned(s), s.min_n) : live(s).some(k => k.state === 'one_answer') ? t('one_answer')(learned(s), s.min_n) : '';
-  const status = s => s.person_answers === false ? t('summarySpecMachine')(s.awaiting_results || 0) + (stuckLine(s) ? ' · ' + stuckLine(s) : '') : auto(s) ? t('summarySpecAuto') : stuckLine(s) || t('summarySpecLearning')(learned(s), s.min_n);
+  // a new wording waiting for the person's check on the Answer screen comes first (not "nothing for you to do"; audit 0.9.2 ui middle-1)
+  const status = s => wordingNeedsPerson(s.tune?.latest) ? t('summarySpecWording') : s.person_answers === false ? t('summarySpecMachine')(s.awaiting_results || 0) + (stuckLine(s) ? ' · ' + stuckLine(s) : '') : auto(s) ? t('summarySpecAuto') : stuckLine(s) || t('summarySpecLearning')(learned(s), s.min_n);
   const row = on => 'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left ' + (on ? 'active border-accent/40 bg-accentbg' : 'border-transparent bg-transparent hover:bg-surface2');
 </script>
 

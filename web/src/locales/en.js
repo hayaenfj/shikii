@@ -3,7 +3,7 @@
 // From 0.9.2 the words for the AI's insides follow the glossary in scripts/test-glossary.mjs
 export default {
   summaryModel: (name, endpoint) => 'The AI that answers (model): ' + (name || 'unknown') + (endpoint ? ' (' + endpoint + ')' : ''),
-  summarySpecAuto: 'The AI decides on its own (enough of your answers)', summarySpecLearning: (n, min) => 'learning ' + n + ' / ' + min + ' (with ' + min + ' of your answers the AI tries deciding on its own)',
+  summarySpecWording: 'a new wording waits for your check on "Answer"', summarySpecAuto: 'The AI decides on its own (enough of your answers)', summarySpecLearning: (n, min) => 'learning ' + n + ' / ' + min + ' (with ' + min + ' of your answers the AI tries deciding on its own)',
   summarySpecResults: n => 'awaiting results ' + n, summarySpecMachine: n => 'answered by the AI only (you do not answer). Awaiting results ' + n,
   readonlyNote: 'This record\'s truth comes from results (the next request or reflection). Nothing for you to answer.',
   summaryMemoryNone: 'Nothing delivered yet. Lessons arrive before similar requests and when a subagent starts.',

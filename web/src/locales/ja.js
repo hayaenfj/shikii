@@ -1,7 +1,7 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。0.9.2 から内側の言葉を言い換え表(scripts/test-glossary.mjs)のやさしい言葉にした
 export default {
   summaryModel: (name, endpoint) => '答えを出す AI(モデル): ' + (name || '不明') + (endpoint ? '（' + endpoint + '）' : ''),
-  summarySpecAuto: 'AI がひとりで決めています(あなたの答えが十分に集まりました)', summarySpecLearning: (n, min) => '学習中 ' + n + ' / ' + min + ' 件(あなたの答えが ' + min + ' 件集まると、AI がひとりで決められるか試します)',
+  summarySpecWording: '新しい聞き方の確かめが「答える」で待っています', summarySpecAuto: 'AI がひとりで決めています(あなたの答えが十分に集まりました)', summarySpecLearning: (n, min) => '学習中 ' + n + ' / ' + min + ' 件(あなたの答えが ' + min + ' 件集まると、AI がひとりで決められるか試します)',
   summarySpecResults: n => '結果待ち ' + n, summarySpecMachine: n => 'AI だけが答える問い(あなたは答えません)。結果待ち ' + n + ' 件',
   readonlyNote: 'この記録の正解は結果(次の依頼・振り返り)から付きます。あなたが答える必要はありません。',
   summaryMemoryNone: 'まだ届いていません。似た依頼の前と、サブエージェントの開始時に届きます。',
