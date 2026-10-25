@@ -28,6 +28,7 @@
 - Wording: the agent's adoption (`shikii hook variants check`) and the page's adopt and undo (`/v1/tune/adopt`, `/v1/tune/review`) take a lock on the run (a `.lock` file next to its json). While one adopts a run, the other is refused (409 on the page) instead of adopting it a second time.
 - Wording: with the English setting, the notice that a wording was changed shows the current and the new question (shortened to 120 characters), not only the candidate's name.
 - Wiki: saving a page written by 0.9.1 again with the same content, or classifying it again with the same kind and scene, is no longer refused with "an immutable wiki source or revision has changed" (the revision file holds the same page with the earlier fixed words and is kept as it is).
+- AGENTS.md: removing the section from a person's CRLF file that an earlier version had added with LF no longer leaves one stray blank line.
 
 ## 0.9.1 — Three pages: Answer, Knowledge and The AI
 
