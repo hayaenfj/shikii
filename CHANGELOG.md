@@ -45,6 +45,7 @@
 - Reflection (0.9.2 behaviour check): the receipt of a submit lists in `left` what is still to do for the conversations it named (provisional scores, wiki sorting, delivered lessons to assess). `complete` still only says every item was saved. Before, a wiki-only submit came back with nothing more, and Claude Code stopped while the Stop hook asked again every turn.
 - Wiki capture errors (0.9.2 behaviour check): `shikii wiki capture` errors speak of capture (not ingest) and name the field that is wrong (missing `version`, an unknown `kind`, an unknown field). The skill shows how to capture a long file whole with a script.
 - Reflection texts (0.9.2 re-check with real agents): a `left` line for provisional scores says to send reviews with the agent's own truth (yes, no, or unknown when it cannot tell; a provisional score, not the person's answer). Claude Code had read them as the person's answers and never sent them. `correction_result` on a lesson that is not a delivered correction is refused with the field named, and an unknown wiki source id is named in the error.
+- Provisional scores: a score sent for a decision that already has a truth is refused with where the truth came from (for example `source outcome`) instead of "a person answered".
 
 ## 0.9.1 — Three pages: Answer, Knowledge and The AI
 

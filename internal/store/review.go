@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -155,7 +156,7 @@ func (s Store) SaveReview(r Review) (Review, error) {
 		return r, err
 	}
 	if l, ok := labels[r.TraceID]; ok && HumanSource(l.Source) {
-		return r, errors.New("a decision a person answered is not replaced by an AI score")
+		return r, fmt.Errorf("this decision already has a truth (source %s: a person or the outcome) and is not replaced by an AI score; leave it out of reviews", l.Source)
 	}
 	r.Rubric, r.Every, r.At = ReviewRubric, ReviewQuality(all, labels).Every, time.Now().UTC()
 	r.Sampled = ReviewSample(r.TraceID, r.Every)
