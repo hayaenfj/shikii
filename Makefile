@@ -44,7 +44,7 @@ fake: build
 
 test:
 	test -z "$$(gofmt -l .)" || (gofmt -l . && echo 'gofmt: 上のファイルを整形して' && exit 1)
-	go vet ./... && go test ./... && scripts/check-readme.sh && scripts/check-skill.sh
+	go vet ./... && scripts/go-test.sh && scripts/check-readme.sh && scripts/check-skill.sh
 
 # 消してから置く(新しい inode)。使用中の実行ファイルを cp で上書きすると macOS が署名を無効にして以後 SIGKILL(exit 137)する(hook が全部死ぬ、2026-10-18)
 install: build
