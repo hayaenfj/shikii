@@ -18,8 +18,9 @@ func TestMCPLabelSourceWhenTheMapReadFails(t *testing.T) {
 	send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "shikii_label", "arguments": raw}})
 	st := store.Store{Dir: filepath.Join(filepath.Dir(filepath.Dir(specPath)), ".shikii")}
 	labs, _ := st.LabeledTraces("intent")
-	if l, ok := labs[d["trace_id"].(string)]; ok && l.Source != "mcp" {
-		t.Fatalf("an MCP label got past the rewrite: source=%q weight=%v", l.Source, l.Weight)
+	l, ok := labs[d["trace_id"].(string)]
+	if !ok || l.Source != "mcp" {
+		t.Fatalf("an MCP label with an odd extra field is saved, as the agent's: saved=%v source=%q weight=%v", ok, l.Source, l.Weight)
 	}
 }
 

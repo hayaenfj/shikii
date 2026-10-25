@@ -44,3 +44,11 @@ test('personQuestion: never the model prompt when the spec has a display', () =>
   assert.equal(personTitle('en', sp), 'ja-title');
   assert.equal(personTitle('ja', { id: 'x', titles: {} }), '');
 });
+
+// 0.9.2: the counts behind these texts take in truths an agent sent through MCP (source mcp) as well, so they must not call them the person's answers
+test('counted truths are not called the person\'s answers', () => {
+  for (const [code, words] of [['ja', /あなた/], ['en', /\byou(r)?\b/i]]) {
+    const d = locales[code];
+    for (const text of [d.plainLearning(3, 10), d.calibrationInsufficient(3, 10), d.plainAuto]) assert.doesNotMatch(text, words, code + ': ' + text);
+  }
+});

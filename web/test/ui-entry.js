@@ -697,9 +697,19 @@ function checkPlanningContext(target) {
   const viaMCP = mount(ItemCard, { target, props: { sp, it: { ...it, trace_id: 'planning-mcp', truth: 'no', truth_at: it.at, source: 'mcp' } } }); flushSync();
   const agentTruth = !target.textContent.includes('あなたの答え') && target.textContent.includes('エージェントが送った答え');
   unmount(viaMCP);
+  // a truth from the outcome (results, reflection) is not the person's answer either; a person's own answer (ui) still is
+  const viaOutcome = mount(ItemCard, { target, props: { sp, it: { ...it, trace_id: 'planning-outcome', truth: 'no', truth_at: it.at, source: 'outcome' } } }); flushSync();
+  const outcomeTruth = !target.textContent.includes('あなたの答え') && target.textContent.includes('結果から付いた答え');
+  unmount(viaOutcome);
+  const viaUnknown = mount(ItemCard, { target, props: { sp, it: { ...it, trace_id: 'planning-unknown', truth: 'no', truth_at: it.at, source: 'replay-x' } } }); flushSync();
+  const unknownTruth = !target.textContent.includes('あなたの答え') && target.textContent.includes('正解: ');
+  unmount(viaUnknown);
+  const viaPerson = mount(ItemCard, { target, props: { sp, it: { ...it, trace_id: 'planning-ui', truth: 'no', truth_at: it.at, source: 'ui' } } }); flushSync();
+  const personTruth = target.textContent.includes('あなたの答え');
+  unmount(viaPerson);
   i18n.lang = lang;
-  const ok = named && evidence && englishRemoved && separate && agentTruth;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (order of request, agreed, open=' + named + ', summary and grounds shown as text=' + evidence + ', English preface removed=' + englishRemoved + ', old format kept distinct=' + separate + ', MCP truth not shown as yours=' + agentTruth + ')');
+  const ok = named && evidence && englishRemoved && separate && agentTruth && outcomeTruth && unknownTruth && personTruth;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (order of request, agreed, open=' + named + ', summary and grounds shown as text=' + evidence + ', English preface removed=' + englishRemoved + ', old format kept distinct=' + separate + ', MCP truth not shown as yours=' + agentTruth + ', outcome truth not shown as yours=' + outcomeTruth + ', unknown source not shown as yours=' + unknownTruth + ', person truth shown as yours=' + personTruth + ')');
   return ok;
 }
 

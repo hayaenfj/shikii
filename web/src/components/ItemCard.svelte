@@ -24,6 +24,9 @@
 
   const name = c => loc(c.labels, c.label);
   const choiceOf = truth => it.choices.find(c => c.truth === truth) || { label: truth };
+  // Who gave the truth (allowlist): only sources a person answers through are "your answer"; an agent's (mcp) and the outcome's are named; any other source is just "truth"
+  const truthWho = { ui: 'yourAnswer', ask: 'yourAnswer', manual: 'yourAnswer', audit: 'yourAnswer', file: 'yourAnswer', replay: 'yourAnswer', mcp: 'agentAnswer', outcome: 'resultAnswer' };
+  const truthKey = source => Object.hasOwn(truthWho, source) ? truthWho[source] : 'truthAnswer';
   // For noul, p is the probability of "yes" and top is always yes. The prediction on the page is the side with the higher probability.
   const prediction = x => sp.type === 'noul' && x.top === 'yes' && x.p < 0.5 ? { truth: 'no', p: 1 - x.p } : { truth: x.top, p: x.p };
   let guess = $derived(prediction(it));
@@ -111,7 +114,7 @@
   {#if onAnswer}<h3 class="card-question mt-0 mb-1.5 text-[19px] leading-[1.55] font-[650] max-sm:text-[17px]">{heading}</h3>{#if barQuestion}<p class="card-question-phone mt-0 mb-3 text-[15px] leading-[1.6] font-semibold sm:hidden">{barQuestion}</p>{/if}{/if}
   <div class="mb-4 flex items-center gap-2.5 text-[12px] text-muted max-sm:mb-3 max-sm:gap-[5px]">{#if !onAnswer}<span class="font-semibold">{t('conversationRecord')}</span>{/if}{#if it.project}<span class="project rounded-[5px] border border-line px-1.5 py-px">{it.project}</span>{/if}{#if it.at}<time class="ml-auto" datetime={it.at}>{fmtDateTime(it.at)}</time>{/if}</div>
   {#if it.truth}
-    <div class="rounded-lg bg-accentbg px-3 py-2.5 text-[13px] text-accent"><span aria-hidden="true">✓</span> {t(it.source === 'mcp' ? 'agentAnswer' : 'yourAnswer')(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of}{' '}<span class="k">· {t('wasRedone')}</span>{/if}</div>
+    <div class="rounded-lg bg-accentbg px-3 py-2.5 text-[13px] text-accent"><span aria-hidden="true">✓</span> {t(truthKey(it.source))(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of}{' '}<span class="k">· {t('wasRedone')}</span>{/if}</div>
     {#if !it.legacy_planning}<div class="mt-[5px] mb-[15px] text-[12px] text-muted">{t('changeAnswer')}</div>{/if}
   {/if}
   {#if it.legacy_planning}<div class="audit legacy-planning"><strong>{t('legacyPlanning')}</strong>{#if it.record_question}<p>{it.record_question}</p>{/if}</div>{/if}
