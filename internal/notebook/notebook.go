@@ -94,6 +94,7 @@ type Issue struct {
 	Kind   string `json:"kind"`
 	Page   string `json:"page,omitempty"`
 	Source string `json:"source,omitempty"`
+	Store  string `json:"store,omitempty"` // other-path-store の置き場(Root からの相対パス)
 }
 
 type View struct {
@@ -936,6 +937,14 @@ func logEvent(dir, key string) error {
 
 func (b Book) Lint() (Report, error) {
 	report := Report{Issues: []Issue{}, Repaired: []string{}}
+	// 別のパスの名のまま残った置き場(フォルダを移した・名前を変えた後。0.9.2)。新しいパスに wiki がまだ無くても知らせる
+	others, err := b.OtherPathStores()
+	if err != nil {
+		return report, err
+	}
+	for _, s := range others {
+		report.Issues = append(report.Issues, Issue{Kind: "other-path-store", Store: s})
+	}
 	dir, err := b.directory(false, "pages")
 	if os.IsNotExist(err) {
 		return report, nil
@@ -959,6 +968,13 @@ func (b Book) Lint() (Report, error) {
 	for _, p := range pages {
 		known[p.ID] = p
 		report.Issues = append(report.Issues, b.sourceIssues(p)...)
+		if sources, err := b.directory(false, "sources"); err == nil {
+			for _, s := range p.Sources {
+				if b.fromOtherPath(sources, s.ID) {
+					report.Issues = append(report.Issues, Issue{Kind: "source-from-other-path", Page: p.ID, Source: s.ID})
+				}
+			}
+		}
 		if !validHistory {
 			report.Issues = append(report.Issues, Issue{Kind: "invalid-revisions", Page: p.ID})
 			continue

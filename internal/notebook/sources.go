@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -226,4 +227,85 @@ func validSource(data []byte, id string) bool {
 	}
 	var o Observation
 	return json.Unmarshal(data, &o) == nil && o.ID == id && o.valid()
+}
+
+// OtherPathStores は、このプロジェクトの置き場に残った、別のパスの名(sha256(パス) が今のパスと違う)の wiki の置き場を、
+// Root からの相対パスで返す(0.9.2)。フォルダを移した・名前を変えた後に古い名のまま残ると、wiki が黙って空になっていた。
+// 中のファイルが全部今の置き場に写してある置き場は数えない(古い方は消さずに残してよい)。
+func (b Book) OtherPathStores() ([]string, error) {
+	if b.Scope == "" || b.Root == "" {
+		return nil, errors.New("wiki needs a project and a store")
+	}
+	root, err := filepath.EvalSymlinks(b.Root)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	own := digest([]byte(b.Scope))
+	out := []string{}
+	for _, area := range []string{"records/wiki-sources", "wiki/lessons"} {
+		entries, err := os.ReadDir(filepath.Join(root, area))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() || e.Name() == own || !scopeName.MatchString(e.Name()) {
+				continue
+			}
+			left, err := notCopied(filepath.Join(root, area, e.Name()), filepath.Join(root, area, own))
+			if err != nil {
+				return nil, err
+			}
+			if left {
+				out = append(out, area+"/"+e.Name())
+			}
+		}
+	}
+	return out, nil
+}
+
+var scopeName = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// notCopied は、古い置き場に、今の置き場の同じ場所に無いファイルがあるか。置き場ごとに作り直す物(錠・点検の印・索引・記録)は見ない。
+func notCopied(old, own string) (bool, error) {
+	left := false
+	err := filepath.WalkDir(old, func(path string, d os.DirEntry, err error) error {
+		if err != nil || left {
+			return err
+		}
+		if !d.Type().IsRegular() || strings.HasPrefix(d.Name(), ".") || d.Name() == "index.md" || d.Name() == "log.md" {
+			return nil
+		}
+		rel, err := filepath.Rel(old, path)
+		if err != nil {
+			return err
+		}
+		if _, err := os.Lstat(filepath.Join(own, rel)); os.IsNotExist(err) {
+			left = true
+		} else if err != nil {
+			return err
+		}
+		return nil
+	})
+	return left, err
+}
+
+// fromOtherPath は、記事が出典にした原資料のうち、前のパスで控えた物(id に入るパスが今と違い、確かめられない)か。
+// 会話の出典(種類の無い物)は数えない。
+func (b Book) fromOtherPath(dir, id string) bool {
+	data, err := readFile(filepath.Join(dir, id+".json"))
+	if err != nil {
+		return false
+	}
+	var o Observation
+	if json.Unmarshal(data, &o) != nil || o.Kind == "" {
+		return false
+	}
+	_, err = b.readObservation(dir, id)
+	return err != nil
 }

@@ -193,6 +193,7 @@ type hookSession struct {
 	Head              string           `json:"head,omitempty"`                // 依頼の時の HEAD(止める検査がこのターンのコミットを見るため。0.7.3)
 	HeadAt            time.Time        `json:"head_at,omitempty"`             // 依頼の時刻。これより前にコミットされたもの(切り替え先の既存のコミット)は見ない
 	MemoryNoticed     bool             `json:"memory_noticed,omitempty"`      // まだ wiki に無いメモリがあると、このセッションで一度伝えた(0.8.0)
+	StoreNoticed      bool             `json:"store_noticed,omitempty"`       // 前のパスの名のまま残った wiki の置き場を、このセッションで伝えた(0.9.2)
 	ReflectAsked      []string         `json:"reflect_asked,omitempty"`       // 依頼前に振り返りを頼んだ会話(作法の検査が Stop で見る。0.8.0)
 	ReflectAskedTurn  string           `json:"reflect_asked_turn,omitempty"`  // ReflectAsked を頼んだターン(別のターンの残りで止めない。監査 R5)
 	RitualStopped     string           `json:"ritual_stopped,omitempty"`      // 作法の検査で止めたターン(通知の後の Stop でもう一度止めない。監査 R5)
@@ -583,7 +584,13 @@ func runHookEvent(event string) error {
 	common := agent
 	agent, _, err = prepareHookProject(in.CWD)
 	if errors.Is(err, errProjectInactive) {
-		return nil // 初期化していない場所では保存・Gitの変更・モデルの起動をしない。
+		// 初期化していない場所では保存・Gitの変更・モデルの起動をしない。フォルダを移して印が前のパスのままの時だけ、止まっていることを伝える(0.9.2)
+		if event == "user-prompt-submit" {
+			if b := (hookOut{Context: movedMarkerNotice(in.CWD)}).json(hookEventName(event)); b != nil {
+				fmt.Fprintln(stdout, string(b))
+			}
+		}
+		return nil
 	}
 	if err != nil {
 		return err
@@ -970,6 +977,13 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		if notice := memoryImportNotice(scope); notice != "" {
 			out.Context = joinLines(out.Context, notice)
 			muts = append(muts, func(s *hookSession) { s.MemoryNoticed = true })
+		}
+	}
+	// フォルダを移した・名前を変えた後に、wiki の置き場が前のパスの名のまま残っていれば伝える(0.9.2)。セッションに 1 回
+	if !snapshot.StoreNoticed {
+		if notice := otherPathNotice(agent, scope); notice != "" {
+			out.Context = joinLines(out.Context, notice)
+			muts = append(muts, func(s *hookSession) { s.StoreNoticed = true })
 		}
 	}
 	return out, muts, firstErr

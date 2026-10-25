@@ -54,6 +54,8 @@ What is inside `.shikii/`:
 
 Initialization keeps `.shikii/` out of Git's untracked files, because it contains private conversations. To commit something, remove it from the exclusion and add it yourself.
 
+**Moving or renaming the folder:** store names and the `.shikii/project.json` marker come from the project's path. After a move alone the hook stops; with only the marker fixed the wiki looks empty (articles and sources stay in the store named after the old path). From 0.9.2 the hook tells the agent which one happened before a request, and `shikii wiki lint` reports a leftover store as `other-path-store` and a source captured under the old path as `source-from-other-path`. The fix is in the habit guide's [references/wiki.md](../skills/shikii/references/wiki.md), "Moving or renaming the project folder" (copy the old stores, do not delete them).
+
 To change the answer page itself (`web/`, Svelte + Tailwind CSS) you need Node 24 (`make web`). Just using shikii does not: the built page is committed and embedded in the binary.
 
 ## Use it in ordinary conversations

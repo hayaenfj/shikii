@@ -74,3 +74,15 @@ Automatic recall selects up to two lessons by title and applicability within 180
 Assess a delivered quotation's effect on an actual decision through [reflection](review.md)'s `memory` field. Delivery, article length, passing tests and task success alone do not demonstrate usefulness. Retain the delivered revision instead of substituting a later article.
 
 Immutable sources live under `.shikii/records/wiki-sources/`; generated pages, index, log and revisions under `.shikii/wiki/lessons/`. Use the tools instead of editing generated files. Missing or changed sources exclude affected pages from retrieval. `lint` checks provenance, revisions, supersession and related links and repairs only the generated index; it also runs at most daily. Semantic maintenance belongs to the agent: inspect contradictions, stale claims, disconnected topics and missing explanations against source evidence, then revise through ingestion.
+
+## Moving or renaming the project folder
+
+Store names come from the project's absolute path (sha256 of the path), and `.shikii/project.json` records the path. After the folder moves, the hook stops (the marker still names the old path) or, when only the marker was fixed, the wiki looks empty (articles and sources still sit under the old name). The hook says which, and `lint` reports a leftover store as `other-path-store`. Ask the person before changing anything, close their agent sessions and the page, and copy the old stores instead of deleting them.
+
+1. Set `scope` in `.shikii/project.json` to the new absolute path.
+2. In `~/.shikii/agent/projects/`, replace `<sha256(old)>.json` with `<sha256(new)>.json` carrying the new `id`, `name`, `path` and `url` (`/p/<id>/`).
+3. In `.shikii/records/`, rename the `feedback/`, `memories/` (`.jsonl` and `.lock`) and `memory-reviews/` entries from `sha256(old)` to `sha256(new)`.
+4. Copy `.shikii/wiki/lessons/<sha256(old)>/` (pages, `revisions/`) and `.shikii/records/wiki-sources/<sha256(old)>/` into the new-name directories, keeping files that already exist there. Put the old `log.md` lines before the new ones. Pages and revisions embed the source directory name in their source links, so replace the old name with the new one in the copied `.md` files.
+5. Run `shikii wiki lint`. Only `source-from-other-path` may remain: observations captured under the old path have the path in their id and cannot be cited again. When you next revise such a page, capture the same evidence again and cite the new id.
+6. Move the agents' own records: Claude Code's `~/.claude/projects/<old path with dashes>` and the `projects` key in `~/.claude.json`, Codex's `[projects."<old path>"]` in `~/.codex/config.toml`.
+7. Check that `shikii wiki query <word>` returns articles and that the hook delivers lessons again.

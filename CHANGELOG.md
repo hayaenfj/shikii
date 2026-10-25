@@ -2,9 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.9.2 — Copying the wiki to another machine no longer marks every rule as new
+## 0.9.2 — No silent stop after moving the folder, and no "new" mark on every rule in a copied wiki
 
 - Knowledge: an article's last update (the order on the Knowledge page and the "new" mark in the rules panel) now comes from the save time in the wiki's record (`log.md`), not from the article file's time. Before, copying the wiki to another machine set every file's time to the moment of the copy, and every rule got the "new" mark. The file's time is used only for articles missing from the record. Article reviews (`maintain`) do not change the article and are not counted.
+- Moving or renaming the folder: store names and the `.shikii/project.json` marker come from the project's path, so a move alone silently stopped the hook, and fixing only the marker silently left the wiki empty. Before a request, the hook now tells the agent "shikii is not running" with the old path when the marker still names a path that no longer exists, and names any wiki store left under the old path's name (once per session). When the old path still exists (a copy), it stays silent as before. `shikii wiki lint` reports a leftover store as `other-path-store` and a source captured under the old path (its id contains the path, so it can no longer be cited) as `source-from-other-path`. The fix is in the habit guide's references/wiki.md and in the guide.
 - Docs: the guide's update heading now reads "Updating from 0.8 to 0.9 (0.9.0 or later)", matching the note that 0.9.1 changed to "0.9.0 or later".
 - Tests: pressing a rule in the rules panel scrolls to the article even on a wide screen, and pressing from other panels such as the inbox does not. The test that the reflection request carries no original text now also checks that the request and the ids of the conversations to review appear (before, it passed when the text was empty).
 
