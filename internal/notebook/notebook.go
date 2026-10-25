@@ -1,5 +1,5 @@
-// Package notebook は原資料から育てる wiki。文章を書くのは利用中のエージェントで、
-// shikii は出典・索引・変更履歴を管理する。教訓は正解や実行許可にはならない。
+// Package notebook is a wiki grown from source records. The agent in use writes the text;
+// shikii manages sources, the index and the change history. A lesson is never a truth label or permission to act.
 package notebook
 
 import (
@@ -47,20 +47,20 @@ type Page struct {
 	Body         string            `json:"body,omitempty" yaml:"body,omitempty"`
 	Related      []string          `json:"related,omitempty" yaml:"related,omitempty"`
 	ChangeReason string            `json:"change_reason,omitempty" yaml:"change_reason,omitempty"`
-	Kind         string            `json:"kind,omitempty" yaml:"kind,omitempty"`   // 種類(Kinds のどれか。0.9.0)
-	Scene        string            `json:"scene,omitempty" yaml:"scene,omitempty"` // 場面(その仕事の言葉で「〜する時」、sceneMax 文字まで。0.9.0)
+	Kind         string            `json:"kind,omitempty" yaml:"kind,omitempty"`   // kind (one of Kinds; 0.9.0)
+	Scene        string            `json:"scene,omitempty" yaml:"scene,omitempty"` // scene (a "when ..." phrase in the project's own words, up to sceneMax characters; 0.9.0)
 }
 
-// Kinds は記事の種類。どの仕事にもある形で固定する(増やさない): このプロジェクトで決められたルール・やり方・判断の基準・前提と事実・経緯。
+// Kinds are the kinds of page. Fixed to shapes every kind of work has (do not add more): a rule decided in this project, a how-to, a criterion for judging, a premise or fact, and history.
 var Kinds = []string{"rule", "howto", "criteria", "fact", "history"}
 
-// sceneMax は場面の文字数の上限。
+// sceneMax is the maximum number of characters in a scene.
 const sceneMax = 24
 
-// errKindScene は種類と場面が無い・不正な時の返事(エージェントがそのまま直せるよう、値の選び方を書く)。
-var errKindScene = errors.New("a lesson needs kind (one of rule|howto|criteria|fact|history) and scene (the situation in the project's own words, e.g. 「コミットする時」, one line, up to 24 characters); when updating a page they are inherited if omitted / 教訓には種類 kind(rule=このプロジェクトで決められたルール / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯 のどれか)と場面 scene(その仕事の言葉で「〜する時」、1 行 24 文字まで)が要ります。既存の記事を直す時に省けば、その記事のものを引き継ぎます")
+// errKindScene is the reply when kind or scene is missing or invalid (it says how to pick the values, so the agent can fix it as is).
+var errKindScene = errors.New("a lesson needs kind (one of rule|howto|criteria|fact|history: rule = a rule decided in this project, howto = how to do something, criteria = criteria for judging, fact = premises and facts, history = how things came to be) and scene (the situation in the project's own words, as a \"when ...\" phrase such as \"when committing\", one line, up to 24 characters); when updating an existing page they are inherited from that page if omitted")
 
-// validKindScene は種類が Kinds のどれかで、場面が 1 行・制御文字無し・sceneMax 文字以内か。
+// validKindScene reports whether kind is one of Kinds and scene is one line, has no control characters and is at most sceneMax characters.
 func validKindScene(kind, scene string) bool {
 	if !slices.Contains(Kinds, kind) || scene == "" || utf8.RuneCountInString(scene) > sceneMax {
 		return false
@@ -84,9 +84,9 @@ type Draft struct {
 	Body         *string           `json:"body,omitempty"`
 	Related      []string          `json:"related,omitempty"`
 	ChangeReason string            `json:"change_reason,omitempty"`
-	Kind         string            `json:"kind,omitempty"`  // 種類(Kinds のどれか)。教訓のある記事は必須、直す時に省けば引き継ぐ
-	Scene        string            `json:"scene,omitempty"` // 場面(「〜する時」)。同上
-	// baseRevision は classify が元にした記事の版。錠の中で今の版と違えば断る(同時の直しを古い教訓で戻さない。監査 0.9.0 の B1)
+	Kind         string            `json:"kind,omitempty"`  // kind (one of Kinds). Required for a draft with a lesson; inherited if omitted when updating
+	Scene        string            `json:"scene,omitempty"` // scene (a "when ..." phrase). Same as above
+	// baseRevision is the page revision classify started from. Inside the lock, refuse if it differs from the current revision (do not undo a concurrent edit with an old lesson; audit 0.9.0 B1)
 	baseRevision string
 }
 
@@ -94,12 +94,12 @@ type Issue struct {
 	Kind   string `json:"kind"`
 	Page   string `json:"page,omitempty"`
 	Source string `json:"source,omitempty"`
-	Store  string `json:"store,omitempty"` // other-path-store の置き場(Root からの相対パス)
+	Store  string `json:"store,omitempty"` // the store for other-path-store (relative path from Root)
 }
 
 type View struct {
-	// 種類と場面の無い記事(版を上げる前に作った物。0.9.0)。最初の返事にだけ、数と unclassifiedBatch 本までと付け方を載せる。
-	// 返事の先頭に置く(末尾だと hook の無いエージェントが読み流した)
+	// Pages without kind and scene (made before the upgrade; 0.9.0). Only the first reply carries their count, up to unclassifiedBatch of them and how to fill them in.
+	// Placed at the start of the reply (at the end, agents without a hook skimmed past it)
 	Remaining
 	Lessons      []Page            `json:"lessons"`
 	Pending      []store.Feedback  `json:"pending_sources"`
@@ -117,15 +117,15 @@ type Result struct {
 	Reviewed []string `json:"reviewed"`
 }
 
-// Remaining は、残っている種類と場面の無い記事の付け方・数・次の unclassifiedBatch 本(0.9.0)。照会と保存の返事に載せ、
-// 無ければ何も出さない。
+// Remaining is how to fill in the remaining pages without kind and scene, their count and the next unclassifiedBatch of them (0.9.0). It goes into
+// query and save replies, and shows nothing when there are none.
 type Remaining struct {
 	UnclassifiedHow   string             `json:"unclassified_how,omitempty"`
 	UnclassifiedCount int                `json:"unclassified_count,omitempty"`
 	Unclassified      []UnclassifiedPage `json:"unclassified,omitempty"`
 }
 
-// RemainingUnclassified は今の残り。読めない時は何も載せない(返事の本体を止めない)。
+// RemainingUnclassified is what remains now. When it cannot be read, nothing is added (it does not block the body of the reply).
 func (b Book) RemainingUnclassified() Remaining {
 	un, err := b.Unclassified()
 	if err != nil || len(un) == 0 {
@@ -153,7 +153,7 @@ func digest(data []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// directory は固定の配下だけを使う。生成領域の symlink はたどらない。
+// directory uses only fixed subdirectories. It does not follow symlinks in the generated area.
 func (b Book) directory(create bool, area string) (string, error) {
 	if b.Scope == "" || b.Root == "" {
 		return "", errors.New("wiki needs a project and a store")
@@ -219,7 +219,7 @@ func writeFile(path string, data []byte) error {
 }
 
 func immutable(path string, data []byte) error {
-	// 完全な一時ファイルを link して公開する。存在している原資料は置き換えない。
+	// Publish a complete temporary file by linking it. An existing source record is not replaced.
 	f, err := os.CreateTemp(filepath.Dir(path), ".source-*")
 	if err != nil {
 		return err
@@ -335,7 +335,7 @@ func (b Book) pages() ([]Page, []Issue, error) {
 		return nil, nil, err
 	}
 	defer f.Close()
-	// 全ての生成ページを対象にし、応答の分割はQueryPageで行う。
+	// Cover every generated page; splitting the reply is done by QueryPage.
 	entries, err := f.ReadDir(-1)
 	if err != nil && err != io.EOF {
 		return nil, nil, err
@@ -402,9 +402,9 @@ func (b Book) Query(query string) (View, error) {
 	return b.query(query, false)
 }
 
-// Recall は自動で届ける教訓。本文の偶然の一致より、題と適用条件を重視する。
-// 手で探す Query は従来どおり本文も検索する。
-// Live は検索に使える記事(出典が揃い、置き換えられていないもの)を、検索語で並べずに返す。差し込み先の判定の候補。
+// Recall is for lessons delivered automatically. It weighs the title and applies-to condition over chance matches in the body.
+// Query, for manual search, still searches the body as before.
+// Live returns the pages usable in search (sources intact and not replaced), without ranking by search terms. Candidates for choosing where to insert.
 func (b Book) Live() ([]Page, error) {
 	pages, _, err := b.pages()
 	if err != nil {
@@ -425,13 +425,13 @@ func (b Book) Live() ([]Page, error) {
 	return live, nil
 }
 
-// RecallCandidates は自動配送の候補の上限。届けるのは呼ぶ側が既に届けた版を除いてから 2 件(監査 2026-10-23: 除く前に切ると席を塞ぐ)。
+// RecallCandidates is the cap on automatic-delivery candidates. 2 are delivered after the caller removes revisions it already delivered (audit 2026-10-23: cutting before removing lets them take the seats).
 const RecallCandidates = 6
 
-// AlwaysScenes は「どの依頼にも効く決まり」の場面の言い方(手引きが決めた日本語と英語)。
+// AlwaysScenes are the ways to write the scene of a "rule that applies to every request" (the Japanese and English the guide fixed).
 var AlwaysScenes = []string{"いつも", "always"}
 
-// IsAlways は場面が AlwaysScenes のどれかか(英語は大文字小文字を見ない)。
+// IsAlways reports whether scene is one of AlwaysScenes (case-insensitive for English).
 func IsAlways(scene string) bool {
 	for _, a := range AlwaysScenes {
 		if strings.EqualFold(strings.TrimSpace(scene), a) {
@@ -441,8 +441,8 @@ func IsAlways(scene string) bool {
 	return false
 }
 
-// AlwaysRules は、場面が「いつも」のこのプロジェクトで決められたルール(rule)を返す(並びは記事を読んだ順)。読めない記事・出典の欠けた記事・置き換えられた記事は返さない。
-// 仕事の文の分からないサブエージェントに届ける物(0.9.1): 依頼との近さで選べないので、どの依頼にも効く決まりだけにする
+// AlwaysRules returns the rules decided in this project (rule) whose scene is "always" (in the order the pages were read). Unreadable pages, pages missing sources and replaced pages are not returned.
+// This is what goes to subagents whose task text is unknown (0.9.1): they cannot be chosen by closeness to the request, so only rules that apply to every request
 func (b Book) AlwaysRules() ([]Page, error) {
 	pages, _, err := b.pages()
 	if err != nil {
@@ -501,13 +501,13 @@ func (b Book) query(query string, recall bool) (View, error) {
 			superseded[id] = true
 		}
 		valid = append(valid, p)
-		// 直接参照は置き換え前のページも読める。出典の検証は省略しない。
+		// A direct reference can also read pages from before replacement. Source checks are not skipped.
 		if !recall && query == "lesson:"+p.ID {
 			return View{Lessons: []Page{p}, Pending: v.Pending, Issues: v.Issues}, nil
 		}
 	}
 	for _, p := range valid {
-		// 自動の配送(recall)では経緯(history)の記事を並べる前に外す(候補を切った後に外すと、経緯が席を塞いで決まりが届かない。監査 0.9.1 中-3)
+		// For automatic delivery (recall), drop history pages before ranking (dropping them after cutting the candidates lets history take the seats and rules do not arrive; audit 0.9.1 medium-3)
 		if !superseded[p.ID] && !exact {
 			v.Lessons = append(v.Lessons, p)
 		}
@@ -516,7 +516,7 @@ func (b Book) query(query string, recall bool) (View, error) {
 		v.Lessons, v.Matches = rankPages(v.Lessons, query, recall)
 	}
 	if recall {
-		// 経緯は珍しい語の母数には入れたまま並べ、切る前に外す
+		// History stays in the count for rare words, and is ranked but dropped before cutting
 		lessons, matches := v.Lessons[:0:0], v.Matches[:0:0]
 		for i, p := range v.Lessons {
 			if p.Kind != "history" {
@@ -539,7 +539,7 @@ func (b Book) query(query string, recall bool) (View, error) {
 		limit = 2
 	}
 	if recall {
-		limit = RecallCandidates // 呼ぶ側(memoryContext)が、既に届けた版を除いてから 2 件に切る
+		limit = RecallCandidates // the caller (memoryContext) cuts to 2 after removing revisions it already delivered
 	}
 	if query == "" && !recall {
 		v.Observations, err = b.PendingObservations()
@@ -567,7 +567,7 @@ func (b Book) query(query string, recall bool) (View, error) {
 	return v, err
 }
 
-// PendingSources は原資料を古いものから返す。読み出す履歴の量は Store が制限する。
+// PendingSources returns source records from oldest. Store limits how much history is read.
 func (b Book) PendingSources() ([]store.Feedback, error) {
 	recent, err := (store.Store{Dir: b.Root}).RecentFeedback(b.Scope)
 	if err != nil {
@@ -596,7 +596,7 @@ func (b Book) PendingSources() ([]store.Feedback, error) {
 func (b Book) Ingest(d Draft) (Result, error) {
 	result := Result{Reviewed: []string{}}
 	if d.Correction != nil && (!d.Correction.Valid() || d.Lesson == "") {
-		return result, errors.New("訂正には人の発言の出典・引用と、次に変える行動の教訓が必要です")
+		return result, errors.New("a correction needs the source and quote of what the person said, and a lesson stating the next behavior to change")
 	}
 	d.Title, d.Lesson, d.AppliesTo = strings.TrimSpace(d.Title), strings.TrimSpace(d.Lesson), strings.TrimSpace(d.AppliesTo)
 	d.Kind, d.Scene = strings.TrimSpace(d.Kind), strings.TrimSpace(d.Scene)
@@ -697,7 +697,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		var observed store.Feedback
 		data, ok := raw[d.Correction.SourceID]
 		if !ok || json.Unmarshal(data, &observed) != nil || !strings.Contains(observed.Reply, d.Correction.Quote) {
-			return result, errors.New("訂正の引用は指定した出典の人の返答から、そのまま抜き出します")
+			return result, errors.New("the correction quote must be copied verbatim from the person's reply in the given source")
 		}
 	}
 	pages, issues, err := b.pages()
@@ -727,9 +727,9 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		}
 		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related, Kind: d.Kind, Scene: d.Scene}
 		if d.baseRevision != "" && byID[id].Revision != d.baseRevision {
-			return result, errors.New("the page changed while classifying; read it again and classify / 種類と場面を付ける間に記事が直されました。読み直して付け直してください")
+			return result, errors.New("the page changed while classifying; read it again and classify it again")
 		}
-		if old, ok := byID[id]; ok { // 直す時に省けば引き継ぐ(前の版の記事は持っていないので、付けないと保存できない)
+		if old, ok := byID[id]; ok { // inherited if omitted when updating (pages from the previous version have none, so they cannot be saved without them)
 			if p.Kind == "" {
 				p.Kind = old.Kind
 			}
@@ -786,7 +786,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 			}
 		}
 		if old, ok := byID[id]; ok && revision(p) != old.Revision {
-			// 内容を元に戻す更新も、前の版へのリンクを持つ新しい版にする。
+			// Even an update that restores old content becomes a new revision with a link to the previous one.
 			p.Previous = old.Revision
 		}
 		p.Revision = revision(p)
@@ -894,7 +894,7 @@ func cyclic(pages map[string]Page) bool {
 
 func index(pages []Page) []byte {
 	var out strings.Builder
-	out.WriteString("# 会話から育てる wiki\n\nAI が原資料からまとめた教訓の索引です。各教訓は仮説で、実行許可や正解ではありません。\n\n")
+	out.WriteString("# Wiki grown from conversations\n\nAn index of lessons the AI summarized from source records. Each lesson is a hypothesis, not permission to act or a correct answer.\n\n")
 	replaced := map[string]bool{}
 	for _, p := range pages {
 		for _, id := range p.Replaces {
@@ -902,14 +902,14 @@ func index(pages []Page) []byte {
 		}
 	}
 	for _, p := range pages {
-		status := "仮説"
+		status := "hypothesis"
 		if replaced[p.ID] {
-			status = "後の教訓で更新"
+			status = "updated by a later lesson"
 		}
 		title, _ := json.Marshal(p.Title)
-		fmt.Fprintf(&out, "- [%s](%s.md) — %s / 出典 %d 件 / %s\n", p.ID, p.ID, string(title), len(p.Sources), status)
+		fmt.Fprintf(&out, "- [%s](%s.md) — %s / %d sources / %s\n", p.ID, p.ID, string(title), len(p.Sources), status)
 	}
-	out.WriteString("\n変更履歴: [log.md](log.md)\n")
+	out.WriteString("\nChange history: [log.md](log.md)\n")
 	return []byte(out.String())
 }
 
@@ -937,7 +937,7 @@ func logEvent(dir, key string) error {
 
 func (b Book) Lint() (Report, error) {
 	report := Report{Issues: []Issue{}, Repaired: []string{}}
-	// 別のパスの名のまま残った置き場(フォルダを移した・名前を変えた後。0.9.2)。新しいパスに wiki がまだ無くても知らせる
+	// Stores left under a different path's name (after moving or renaming the folder; 0.9.2). Report them even when the new path has no wiki yet
 	others, err := b.OtherPathStores()
 	if err != nil {
 		return report, err
@@ -1027,7 +1027,7 @@ func (b Book) Lint() (Report, error) {
 	return report, nil
 }
 
-// ReadSources は引用を確かめるための原文。識別子は同じ仕事の観察だけを指す。
+// ReadSources returns the original text for checking quotes. Identifiers point only to observations of the same work.
 func (b Book) ReadSources(ids []string) (map[string]any, error) {
 	if len(ids) == 0 {
 		return nil, errors.New("wiki source lookup needs source ids")
@@ -1096,12 +1096,12 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 				text, textErr = readOriginals(filepath.Join(dir, id+".text.json"))
 			}
 			if hash := expectedText[id]; hash != "" && (textErr != nil || digest(text) != hash) {
-				return nil, errors.New("原資料の長文のハッシュが一致しません")
+				return nil, errors.New("the hash of the long source text does not match")
 			}
 			if textErr == nil {
 				var saved []Original
 				if json.Unmarshal(text, &saved) != nil {
-					return nil, errors.New("原資料の長文を読み取れません")
+					return nil, errors.New("cannot read the long source text")
 				}
 				originals[id] = saved
 			} else if os.IsNotExist(textErr) || dir == "" {
@@ -1122,8 +1122,8 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 	return map[string]any{"source_material": out, "observations": observations, "originals": originals}, nil
 }
 
-// MaybeLint は一日一回の軽い点検。会話ごとの取り込みと、遅い周期の整備を分ける。
-// 原資料や教訓の意味は書き換えず、生成した索引のずれだけを直す。
+// MaybeLint is a light check once a day. It separates per-conversation ingestion from slower-cycle maintenance.
+// It does not rewrite the meaning of source records or lessons; it only fixes drift in the generated index.
 func (b Book) MaybeLint() error {
 	dir, err := b.directory(false, "pages")
 	if os.IsNotExist(err) {
@@ -1166,7 +1166,7 @@ func (b Book) MaybeLint() error {
 	return err
 }
 
-// Unclassified は、種類か場面の無い生きている記事(版を上げる前に作った記事。0.9.0)。id の順。
+// Unclassified lists live pages missing kind or scene (pages made before the upgrade; 0.9.0), in id order.
 func (b Book) Unclassified() ([]Page, error) {
 	live, err := b.Live()
 	if err != nil {
@@ -1182,8 +1182,8 @@ func (b Book) Unclassified() ([]Page, error) {
 	return out, nil
 }
 
-// Classify は、記事に種類と場面だけを付けた新しい版を保存する(教訓・題・当てはまる場面・本文・関連・出典はそのまま)。
-// 版を上げる前に作った記事を埋めるための軽い操作で、教訓を書き直す時は Ingest を使う。
+// Classify saves a new revision of the page with only kind and scene added (lesson, title, applies-to, body, related and sources unchanged).
+// It is a light operation to fill in pages made before the upgrade; use Ingest to rewrite a lesson.
 func (b Book) Classify(id, kind, scene string) (Result, error) {
 	kind, scene = strings.TrimSpace(kind), strings.TrimSpace(scene)
 	if !validKindScene(kind, scene) {
@@ -1201,14 +1201,14 @@ func (b Book) Classify(id, kind, scene string) (Result, error) {
 		for _, s := range p.Sources {
 			sources = append(sources, s.ID)
 		}
-		// 変更理由は空にして前の理由を引き継ぐ(監査 0.9.0 の D1)。元にした版を持たせ、錠の中で比べる(B1)
+		// Leave the change reason empty to inherit the previous reason (audit 0.9.0 D1). Carry the base revision and compare it inside the lock (B1)
 		return b.Ingest(Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: sources, Kind: kind, Scene: scene, baseRevision: p.Revision})
 	}
-	return Result{}, errors.New("the page to classify is not a live lesson in this project / 種類と場面を付ける記事がこのプロジェクトにありません")
+	return Result{}, errors.New("the page to classify is not a live lesson in this project")
 }
 
-// RewriteWithoutKindScene は、記事を種類と場面の無い形(版を上げる前の記事)に書き直す。0.9.0 の移行(hook が埋めさせる)を
-// テストと実地の確かめで再現するためだけに使う。普段の操作からは呼ばない。
+// RewriteWithoutKindScene rewrites a page into the form without kind and scene (a page from before the upgrade). Used only to reproduce
+// the 0.9.0 migration (the hook has them filled in) in tests and hands-on checks. Not called from normal operations.
 func (b Book) RewriteWithoutKindScene(id string) error {
 	live, err := b.Live()
 	if err != nil {
@@ -1233,7 +1233,7 @@ func (b Book) RewriteWithoutKindScene(id string) error {
 	return errors.New("no such live lesson")
 }
 
-// UnclassifiedPage は、種類と場面を付けてほしい記事の短い形。
+// UnclassifiedPage is the short form of a page that needs kind and scene.
 type UnclassifiedPage struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
@@ -1243,17 +1243,17 @@ type UnclassifiedPage struct {
 
 const unclassifiedBatch = 5
 
-const unclassifiedHow = "これらの記事に種類と場面を付けてください: shikii wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面>(MCP なら shikii_wiki の operation classify に id・kind・scene)。種類は rule=このプロジェクトで決められたルール / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯、場面はその仕事の言葉で「〜する時」。"
+const unclassifiedHow = "Give these pages a kind and a scene: shikii wiki classify <page ID> <rule|howto|criteria|fact|history> <scene> (over MCP, shikii_wiki operation classify with id, kind and scene). Kinds: rule = a rule decided in this project / howto = how to do something / criteria = criteria for judging / fact = premises and facts / history = how things came to be; the scene is a \"when ...\" phrase in the project's own words."
 
-// PageIssues は、保存(Ingest)を断らせる記事そのものの問題(読めない・手で直された記事)。出典の問題は含まない。
+// PageIssues are problems with the page itself that make a save (Ingest) refuse (unreadable or hand-edited pages). Source problems are not included.
 func (b Book) PageIssues() ([]Issue, error) {
 	_, issues, err := b.pages()
 	return issues, err
 }
 
-// PageTimes は、生きている記事ごとの最終更新(0.9.0 の知識の画面の並びと「最近覚えたこと」)。wiki の記録(log.md)の
-// 最後の保存(ingest。種類と場面を付けた時も含む)の時刻で決める。ファイルの時刻は wiki を別の機械へ cp すると全部その時になるので、
-// 記録に無い記事だけ補いに使う(0.9.2、監査 0.9.1 test-speed の低-7)。
+// PageTimes is the last update of each live page (the order on the 0.9.0 knowledge screen and "recently learned"). Decided by the time of
+// the last save (ingest, including adding kind and scene) in the wiki log (log.md). Copying the wiki to another machine with cp sets every file time to that moment,
+// so file times are used only for pages missing from the log (0.9.2, audit 0.9.1 test-speed low-7).
 func (b Book) PageTimes() (map[string]time.Time, error) {
 	out := map[string]time.Time{}
 	dir, err := b.directory(false, "pages")

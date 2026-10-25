@@ -1,6 +1,6 @@
 package store
 
-// 記憶の配送は判断への寄与と分けて残す。評価はAIの観察であり、正解や較正ではない。
+// Memory deliveries are kept apart from their contribution to decisions. An evaluation is the AI's observation, not a truth or a calibration.
 import (
 	"bufio"
 	"crypto/rand"
@@ -36,8 +36,8 @@ type MemoryDelivery struct {
 	Request string        `json:"request"`
 	Quotes  []MemoryQuote `json:"quotes"`
 	At      time.Time     `json:"at"`
-	Parent  string        `json:"parent,omitempty"` // サブエージェントへの配送: 親のターン(会話の出典 id)。振り返りは親の会話に添えて評価する(0.7.4)
-	Agent   string        `json:"agent,omitempty"`  // サブエージェントの id
+	Parent  string        `json:"parent,omitempty"` // delivery to a subagent: the parent turn (the conversation source id). The review is evaluated alongside the parent's conversation (0.7.4)
+	Agent   string        `json:"agent,omitempty"`  // the subagent's id
 }
 
 type MemoryAssessment struct {
@@ -62,7 +62,7 @@ type MemoryStats struct {
 
 type MemorySummary struct {
 	Corrections CorrectionStats `json:"corrections"`
-	Window      int             `json:"window"` // 直近の配送ターン数の上限。成功例だけを選ばない。
+	Window      int             `json:"window"` // upper limit on recent delivery turns. Do not pick only successful examples.
 	Stats       MemoryStats     `json:"stats"`
 }
 
@@ -133,7 +133,7 @@ func validMemoryDelivery(d MemoryDelivery) bool {
 	return true
 }
 
-// 末尾4MB・直近256ターンだけ。改行前の書き込みや壊れた行は採らない。
+// Only the last 4MB and the latest 256 turns. Writes before a newline and broken lines are not taken.
 func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 	out := []MemoryDelivery{}
 	f, err := s.openFile(s.memoryPath(scope), os.O_RDONLY)
@@ -175,7 +175,7 @@ func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 			out = out[1:]
 		}
 	}
-	// 配送は先の保存を採る。同じIDの再送で集計を増やさない。
+	// a delivery keeps the earlier save. A resend with the same ID does not increase the totals.
 	seen := map[string]bool{}
 	unique := []MemoryDelivery{}
 	for _, d := range out {
@@ -189,7 +189,7 @@ func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 
 func (s Store) memoryLock(scope string) (func(), error) {
 	path := strings.TrimSuffix(s.memoryPath(scope), ".jsonl") + ".lock"
-	// 最初の同時作成も一人に限る。既存の錠は作成せず開く。
+	// the first concurrent creation is also limited to one. An existing lock is opened, not created.
 	f, err := s.openFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR)
 	if os.IsExist(err) {
 		f, err = s.openFile(path, os.O_RDWR)
@@ -201,7 +201,7 @@ func (s Store) memoryLock(scope string) (func(), error) {
 	for syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		if time.Now().After(until) {
 			f.Close()
-			return nil, errors.New("記憶の記録が混み合っています")
+			return nil, errors.New("the memory record is busy")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -211,7 +211,7 @@ func (s Store) memoryLock(scope string) (func(), error) {
 func (s Store) SaveMemoryDelivery(d MemoryDelivery) error {
 	d.At = time.Now().UTC()
 	if !validMemoryDelivery(d) {
-		return errors.New("記憶の配送には依頼・引用・出典・版が必要です")
+		return errors.New("a memory delivery needs a request, quotes, sources and a version")
 	}
 	unlock, err := s.memoryLock(d.Scope)
 	if err != nil {
@@ -227,7 +227,7 @@ func (s Store) SaveMemoryDelivery(d MemoryDelivery) error {
 			if old.Request == d.Request && reflect.DeepEqual(old.Quotes, d.Quotes) {
 				return nil
 			}
-			return errors.New("同じ依頼へ届けた記憶を後から変更できません")
+			return errors.New("memories delivered to the same request cannot be changed later")
 		}
 	}
 	return s.appendJSONL(s.memoryPath(d.Scope), d)
@@ -266,14 +266,14 @@ func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error
 	data, err := io.ReadAll(io.LimitReader(f, (32<<10)+1))
 	var a MemoryAssessment
 	if err != nil || len(data) > 32<<10 || json.Unmarshal(data, &a) != nil || a.SourceID != id || a.Key != key || a.At.IsZero() || !validMemoryAssessment(a) {
-		return nil, errors.New("記憶の仮評価を確認できません")
+		return nil, errors.New("cannot confirm the provisional memory evaluation")
 	}
 	return &a, nil
 }
 
 func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	if scope == "" || !validMemoryAssessment(a) {
-		return errors.New("記憶の仮評価には対象・判断・結果の根拠が必要です。不明はunknownにします")
+		return errors.New("a provisional memory evaluation needs grounds for the target, the judgment and the result. Use unknown when unclear")
 	}
 	unlock, err := s.memoryLock(scope)
 	if err != nil {
@@ -285,7 +285,7 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		return err
 	}
 	delivered, correction := false, false
-	conversation := a.SourceID // 会話の id。サブエージェントへの配送なら親のターン
+	conversation := a.SourceID // the conversation id. For a delivery to a subagent, the parent turn
 	for _, d := range deliveries {
 		for _, q := range d.Quotes {
 			if d.ID == a.SourceID && q.Key == a.Key {
@@ -298,10 +298,10 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		}
 	}
 	if !delivered {
-		return errors.New("この依頼へ実際に届けた記憶を指定してください")
+		return errors.New("name a memory actually delivered to this request")
 	}
 	if !correction && a.CorrectionResult != "" {
-		return errors.New("この依頼へ届いた訂正にだけ行動の観察を付けられます")
+		return errors.New("behaviour observations can only be attached to corrections delivered to this request")
 	}
 	if correction && a.CorrectionResult == "" {
 		a.CorrectionResult = "unknown"
@@ -315,7 +315,7 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		observed = observed || f.ID == conversation
 	}
 	if !observed {
-		return errors.New("依頼の返答と次の人の発言を確認してから振り返ります")
+		return errors.New("review only after checking the reply to the request and the person's next message")
 	}
 	old, err := s.memoryAssessment(scope, a.SourceID, a.Key)
 	if err != nil {
@@ -325,14 +325,14 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		if old.Result == a.Result && old.Decision == a.Decision && old.Evidence == a.Evidence && old.CorrectionResult == a.CorrectionResult {
 			return nil
 		}
-		return errors.New("記憶の元の仮評価は塗り替えません")
+		return errors.New("the original provisional memory evaluation is not overwritten")
 	}
 	a.At = time.Now().UTC()
 	data, err := json.Marshal(a)
 	if err != nil {
 		return err
 	}
-	// 未完成の評価を最終名で残さない。錠の中で一度だけ公開する。
+	// do not leave an unfinished evaluation under the final name. Publish it once, inside the lock.
 	root, name, err := s.parentRoot(s.memoryAssessmentPath(scope, a.SourceID, a.Key), true)
 	if err != nil {
 		return err

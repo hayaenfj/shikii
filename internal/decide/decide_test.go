@@ -13,7 +13,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// fakeServer は System One 形式を返すモック。呼ばれた回数と最後のリクエストを記録する。
+// fakeServer is a mock that answers in System One form. It records the call count and the last request.
 type fakeServer struct {
 	srv      *httptest.Server
 	calls    atomic.Int32
@@ -83,7 +83,7 @@ func TestTaintedSessionNeverReachesHosted(t *testing.T) {
 		{Kind: "local", Client: systemone.New(local.srv.URL, "", "kev-4b")},
 	}
 
-	// hosted しか許されていない spec: tainted なら abstain、hosted は呼ばれない
+	// spec that allows only hosted: tainted gives abstain, and hosted is not called
 	d, err := Decide(context.Background(), noulSpec("hosted"), okInputs, Session{Tainted: true}, eps)
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestTaintedSessionNeverReachesHosted(t *testing.T) {
 		t.Fatalf("hosted endpoint was called from a tainted session (calls=%d)", hosted.calls.Load())
 	}
 
-	// hosted 優先だが local も許される spec: tainted なら local に落ちる
+	// spec that prefers hosted but also allows local: tainted falls back to local
 	d, err = Decide(context.Background(), noulSpec("hosted", "local"), okInputs, Session{Tainted: true}, eps)
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestTaintedSessionNeverReachesHosted(t *testing.T) {
 		t.Fatalf("calls hosted=%d local=%d", hosted.calls.Load(), local.calls.Load())
 	}
 
-	// 汚れていなければ hosted に行く
+	// not tainted: goes to hosted
 	d, err = Decide(context.Background(), noulSpec("hosted", "local"), okInputs, Session{}, eps)
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestTaintedSessionNeverReachesHosted(t *testing.T) {
 	}
 }
 
-// pii: true(個人情報が入り得る)の spec は、send_to が hosted を先に挙げていても hosted に行かない。hosted しか無ければ abstain。
+// A spec with pii: true (may hold personal information) never goes to hosted, even if send_to lists hosted first. With only hosted, it abstains.
 func TestPIITrueNeverReachesHosted(t *testing.T) {
 	hosted := newFake(t, "jev-1.13.0", systemone.Answer{Type: "noul", Noul: 0.99})
 	local := newFake(t, "kev-4b", systemone.Answer{Type: "noul", Noul: 0.60})
@@ -159,7 +159,7 @@ func TestUncalibratedNeverActs(t *testing.T) {
 		t.Fatalf("p=0.99 without calibration must be capped at ask, got band=%s calibrated=%v", d.Band, d.IsCalibrated)
 	}
 
-	// 恒等の較正(bias 0, T 1)を付けると act になる
+	// adding an identity calibration (bias 0, T 1) gives act
 	sp.Calibration = []spec.Calibration{{Model: "jev-1.13.0", SpecHash: sp.Hash(), Method: "platt", Bias: 0, Temperature: 1}}
 	d, err = Decide(context.Background(), sp, okInputs, Session{}, eps)
 	if err != nil {
@@ -169,7 +169,7 @@ func TestUncalibratedNeverActs(t *testing.T) {
 		t.Fatalf("calibrated p=0.99 must act, got band=%s calibrated=%v", d.Band, d.IsCalibrated)
 	}
 
-	// 質問文を 1 語変えると較正は失効して act が消える
+	// changing one word of the question expires the calibration and act disappears
 	sp.Question += " Really?"
 	d, err = Decide(context.Background(), sp, okInputs, Session{}, eps)
 	if err != nil {
@@ -179,7 +179,7 @@ func TestUncalibratedNeverActs(t *testing.T) {
 		t.Fatalf("editing the question must invalidate calibration and drop act, got band=%s calibrated=%v", d.Band, d.IsCalibrated)
 	}
 
-	// モデルが別版になっても失効する
+	// it also expires when the model changes version
 	sp.Question = noulSpec("hosted").Question
 	f.model = "jev-1.14.0"
 	d, err = Decide(context.Background(), sp, okInputs, Session{}, eps)
@@ -192,8 +192,8 @@ func TestUncalibratedNeverActs(t *testing.T) {
 }
 
 func TestCalibrationChangesTheBand(t *testing.T) {
-	// had-scorer 相当: raw 0.877(Δ≈1.96, 無関係ペアの上限)は生では ask 以上だが、
-	// bias 2.2 / T 0.3 の較正後は σ((1.96−2.2)/0.3)≈0.31 で discard。
+	// like had-scorer: raw 0.877 (Δ≈1.96, the upper bound for unrelated pairs) is ask or higher uncalibrated, but
+	// after calibration with bias 2.2 / T 0.3 it is σ((1.96−2.2)/0.3)≈0.31, so discard.
 	f := newFake(t, "m", systemone.Answer{Type: "noul", Noul: 0.877})
 	eps := []Endpoint{{Kind: "local", Client: systemone.New(f.srv.URL, "", "m")}}
 	sp := noulSpec("local")
@@ -231,7 +231,7 @@ func TestChoiceAndScoreRequestShapes(t *testing.T) {
 	if q.Type != "choice" || !ok || crit["question"] != "wants an answer" || len(crit) != 3 {
 		t.Fatalf("choice criteria must be an id→description map, got %+v", q)
 	}
-	// 並びは spec の順(アルファベット順ではない)
+	// order follows the spec (not alphabetical)
 	var got struct {
 		Questions map[string]struct {
 			Criteria systemone.OrderedCriteria `json:"criteria"`
@@ -271,7 +271,7 @@ func TestChoiceAndScoreRequestShapes(t *testing.T) {
 	}
 }
 
-// identity 較正は「検証済み」の印。定数は無いが act を許す。鍵(hash, model)が合わなければ効かない。
+// identity calibration is the "verified" mark. It has no constants but allows act. It has no effect unless the key (hash, model) matches.
 func TestIdentityCalibrationAllowsAct(t *testing.T) {
 	f := newFake(t, "jev-1.13.0", systemone.Answer{Type: "choice", Choice: "a", Confidence: 1,
 		Probabilities: map[string]float64{"a": 1, "b": 0}})
@@ -305,7 +305,7 @@ func TestIdentityCalibrationAllowsAct(t *testing.T) {
 	}
 }
 
-// vector 較正は choice の分布を作り直す。負の bias で「other に逃げる」を押し戻す。
+// vector calibration rebuilds the choice distribution. A negative bias pushes back against "escaping to other".
 func TestVectorCalibrationReshapesChoice(t *testing.T) {
 	f := newFake(t, "kev", systemone.Answer{Type: "choice", Choice: "other", Confidence: 0.3,
 		Probabilities: map[string]float64{"change_request": 0.40, "other": 0.50, "question": 0.10}})
@@ -329,7 +329,7 @@ func TestVectorCalibrationReshapesChoice(t *testing.T) {
 	if d.Raw["other"] != 0.50 {
 		t.Fatal("raw distribution must be kept untouched")
 	}
-	// noul には vector は効かない(型が合わない較正は無視され、act も出ない)
+	// vector has no effect on noul (a calibration of the wrong type is ignored, and no act appears)
 	n := noulSpec("local")
 	n.Calibration = []spec.Calibration{{Model: "kev", SpecHash: n.Hash(), Method: "vector", Temperature: 0.5}}
 	f.answer = systemone.Answer{Type: "noul", Noul: 0.99}
@@ -339,9 +339,9 @@ func TestVectorCalibrationReshapesChoice(t *testing.T) {
 	}
 }
 
-// score の帯は thresholds.level があれば P(level ≥ k)。最上位だけ見ると隣接レベルに割れて弱く見える。
+// With thresholds.level, the score band is P(level ≥ k). Looking only at the top level makes it look weak because probability splits across neighbouring levels.
 func TestScoreBandUsesMassAtOrAboveLevel(t *testing.T) {
-	// 同一の不具合の組に相当: 2:0.45 / 3:0.35 / 4:0.20。最上位は 0.45 (< ask) だが P(level≥3)=0.55 (≥ ask)
+	// like a same-issue pair: 2:0.45 / 3:0.35 / 4:0.20. The top is 0.45 (< ask) but P(level≥3)=0.55 (≥ ask)
 	f := newFake(t, "m", systemone.Answer{Type: "score", Score: 2.75, Confidence: 0.3,
 		Probabilities: map[string]float64{"0": 0, "1": 0, "2": 0.45, "3": 0.35, "4": 0.20}})
 	eps := []Endpoint{{Kind: "local", Client: systemone.New(f.srv.URL, "", "m")}}

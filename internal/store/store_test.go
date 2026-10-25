@@ -16,7 +16,7 @@ func rec(specHash, model string) Record {
 	}
 }
 
-// InputsByHash は本文が残っている記録から、入力のハッシュ → 本文 の対応を作る(聞き直しの材料)。
+// InputsByHash maps input hash → text from records that still have their text (material for re-asking).
 func TestInputsByHashOnlyFromRecordsThatKeptText(t *testing.T) {
 	st := Store{Dir: t.TempDir()}
 	withText := rec("h1", "m")
@@ -35,7 +35,7 @@ func TestInputsByHashOnlyFromRecordsThatKeptText(t *testing.T) {
 	if len(got) != 1 || got[withText.InputsHash].Inputs["a"] != "x" {
 		t.Fatalf("want only the record that kept its text, got %v", got)
 	}
-	// ファイルから較正した時のラベルは記録を持たない。ラベル側に本文があればそれも材料になる
+	// labels calibrated from a file have no record. If the label side has the text, that is material too
 	fromFile := Label{TraceID: NewTraceID(), SpecID: "s", SpecHash: "h1", Type: "noul", Model: "m",
 		InputsHash: HashInputs(map[string]string{"a": "z"}), Inputs: map[string]string{"a": "z"},
 		Raw: map[string]float64{"yes": 0.7, "no": 0.3}, Truth: "yes", Weight: 1, Source: "file", At: time.Now()}
@@ -48,7 +48,7 @@ func TestInputsByHashOnlyFromRecordsThatKeptText(t *testing.T) {
 	}
 }
 
-// Records は新しい順に limit 件。LabeledTraces はラベルの付いた trace の集合(待ち行列の「済み」判定に使う)。
+// Records returns limit records newest first. LabeledTraces is the set of labeled traces (used for the queue's "done" check).
 func TestRecentRecordsAndLabeledTraces(t *testing.T) {
 	st := Store{Dir: t.TempDir()}
 	var recs []Record
@@ -77,8 +77,8 @@ func TestRecentRecordsAndLabeledTraces(t *testing.T) {
 	}
 }
 
-// 監査 S2: 書く側に上限が無く読む側に 1 MiB の上限があり、巨大な 1 行で store 全体が読めなくなった。
-// 書く側で弾き、読む側は余裕を持つ。
+// audit S2: the writer had no limit while the reader had a 1 MiB limit, so one huge line made the whole store unreadable.
+// The writer rejects it, and the reader has headroom.
 func TestOversizedRecordIsRejectedNotWritten(t *testing.T) {
 	st := Store{Dir: t.TempDir()}
 	r := rec("h1", "m")
@@ -87,7 +87,7 @@ func TestOversizedRecordIsRejectedNotWritten(t *testing.T) {
 		t.Fatal("a record larger than MaxLineBytes must be rejected")
 	}
 	ok := rec("h1", "m")
-	ok.Inputs = map[string]string{"a": strings.Repeat("x", 1<<20+100)} // 1 MiB を少し超える(読める)
+	ok.Inputs = map[string]string{"a": strings.Repeat("x", 1<<20+100)} // a little over 1 MiB (still readable)
 	if err := st.AppendRecord(ok); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestOversizedRecordIsRejectedNotWritten(t *testing.T) {
 	}
 }
 
-// 監査 S9: 本文を含む store は持ち主だけが読める(0600 / 0700)。
+// audit S9: a store holding text is readable only by its owner (0600 / 0700).
 func TestStoreFilesAreOwnerOnly(t *testing.T) {
 	st := Store{Dir: filepath.Join(t.TempDir(), "s")}
 	if err := st.AppendRecord(rec("h1", "m")); err != nil {
@@ -160,7 +160,7 @@ func TestLabelForValidatesTruthByType(t *testing.T) {
 	if _, err := LabelFor(&ch, "question", 1, "ask"); err != nil {
 		t.Fatal(err)
 	}
-	// 部分ラベル: 知っている選択肢の否定だけ受ける
+	// partial label: only accepts the negation of a known option
 	if l, err := LabelFor(&ch, "!change_request", 0.7, "outcome"); err != nil || l.Truth != "!change_request" || l.Weight != 0.7 {
 		t.Fatalf("partial label must be accepted: %v %+v", err, l)
 	}
@@ -182,7 +182,7 @@ func TestLabelForValidatesTruthByType(t *testing.T) {
 	}
 }
 
-// 較正に使うラベルは (spec_hash, model) が一致するものだけ。
+// Labels used for calibration are only those whose (spec_hash, model) match.
 func TestLabelsFilterByHashAndModel(t *testing.T) {
 	st := Store{Dir: t.TempDir()}
 	add := func(hash, model, truth string) {
@@ -197,8 +197,8 @@ func TestLabelsFilterByHashAndModel(t *testing.T) {
 	}
 	add("h1", "jev-1.13.0", "yes")
 	add("h1", "jev-1.13.0", "no")
-	add("stale", "jev-1.13.0", "yes") // 質問文を変える前のラベル
-	add("h1", "jev-1.14.0", "yes")    // 別版のラベル
+	add("stale", "jev-1.13.0", "yes") // a label from before the question changed
+	add("h1", "jev-1.14.0", "yes")    // a label from another version
 
 	got, err := st.Labels("s", "h1", "jev-1.13.0")
 	if err != nil {
@@ -211,14 +211,14 @@ func TestLabelsFilterByHashAndModel(t *testing.T) {
 	if err != nil || len(none) != 0 {
 		t.Fatalf("no labels for unknown hash, got %v %v", none, err)
 	}
-	// 無いファイルはエラーではなく空
+	// a missing file is not an error, just empty
 	if l, err := st.Labels("other-spec", "h1", "m"); err != nil || len(l) != 0 {
 		t.Fatalf("missing label file must be empty, got %v %v", l, err)
 	}
 }
 
-// GC は「古くてラベルの無い記録」だけを消す。ラベル付きは年齢に関係なく残り、ラベル自体は触らない。
-// 読めない行は消さない(読めないものを捨てない)。既定は表示だけで、apply の時だけ書き換える。
+// GC removes only "old records without labels". Labeled ones stay regardless of age, and labels themselves are untouched.
+// Unreadable lines are not removed (unreadable things are not thrown away). By default it only shows; it rewrites only with apply.
 func TestGCRemovesOnlyOldUnlabeledRecords(t *testing.T) {
 	st := Store{Dir: t.TempDir()}
 	now := time.Now()
@@ -238,7 +238,7 @@ func TestGCRemovesOnlyOldUnlabeledRecords(t *testing.T) {
 	if err := st.AppendLabel(l); err != nil {
 		t.Fatal(err)
 	}
-	// 壊れた行を 1 つ混ぜる
+	// mix in one broken line
 	f, err := os.OpenFile(st.recordsPath("s"), os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		t.Fatal(err)
@@ -282,12 +282,12 @@ func TestGCRemovesOnlyOldUnlabeledRecords(t *testing.T) {
 	if !strings.Contains(string(b), "{not json") {
 		t.Fatal("unparsable line must be kept, not silently dropped")
 	}
-	// 2 回目は何も消さない(冪等)
+	// the second run removes nothing (idempotent)
 	again, err := st.GC("s", cutoff, true)
 	if err != nil || again.Removed != 0 {
 		t.Fatalf("second gc must remove nothing: %+v %v", again, err)
 	}
-	// 無い spec はエラーではなく 0
+	// a missing spec is not an error, just 0
 	none, err := st.GC("no-such-spec", cutoff, true)
 	if err != nil || none.Removed != 0 {
 		t.Fatalf("missing spec must be a no-op: %+v %v", none, err)

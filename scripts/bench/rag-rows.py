@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""比較ベンチの RAG の腕の材料を作る(どの spec でも)。
+"""Builds the material for the RAG arm of the comparison bench (for any spec).
 
-正解の貯金(labeled json)の各行に、似た例 k 件(正解付き)を examples として足して書く。
-似ている度は入力の文字列を全部つないだものの文字 2-gram の Jaccard(日本語と英語を同じ物差しで測るため)。
-検索の元は「その行と同じ分割(行番号 % folds)を除いた残り」。較正の 5 分割(4 つで当てて 1 つで試す)と同じ割合で、
-試す側の行が検索の元に入らないようにする。folds=1 なら leave-one-out(その行だけ除く。RAG に有利)。
+Writes each row of the saved truths (labeled json) with k similar examples (with truths) added as examples.
+Similarity is the Jaccard of character 2-grams over all input strings joined (to measure Japanese and English with the same yardstick).
+The search pool is "the rest, minus the rows in the same fold as that row (row number % folds)". With the same proportions as calibration's 5 folds (fit on 4, test on 1),
+this keeps the rows being tested out of the search pool. folds=1 means leave-one-out (only that row is removed; favors RAG).
 
-使い方: python3 scripts/bench/rag-rows.py <labeled.json> <out.json> [k=5] [folds=5]
+Usage: python3 scripts/bench/rag-rows.py <labeled.json> <out.json> [k=5] [folds=5]
 """
 import json
 import sys

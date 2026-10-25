@@ -1,5 +1,5 @@
 #!/bin/sh
-# skill の検査(CI): SKILL.md の前書きに name と description があり、本文が指す references が実在し、plugin.json が JSON として読めること。
+# Skill check (CI): SKILL.md's front matter has name and description, the references the body points to exist, and plugin.json reads as JSON.
 set -eu
 f=skills/shikii/SKILL.md
 head -1 "$f" | grep -q '^---$' || { echo "check-skill: $f must start with front matter"; exit 1; }

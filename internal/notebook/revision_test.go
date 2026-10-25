@@ -15,7 +15,7 @@ func TestRevisionLookupRejectsTamperedHistoryAndUnsafeReferences(t *testing.T) {
 	query := "lesson:" + p.Page.ID + "@" + p.Page.Revision
 	for _, q := range []string{"lesson:../../outside@" + p.Page.Revision, "lesson:" + p.Page.ID + "@../../outside", query + "@extra"} {
 		if _, err := b.Query(q); err == nil {
-			t.Fatal("版の参照にpathを指定できない")
+			t.Fatal("a revision reference cannot name a path")
 		}
 	}
 	dir, _ := b.directory(false, "pages")
@@ -25,7 +25,7 @@ func TestRevisionLookupRejectsTamperedHistoryAndUnsafeReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := b.Query(query); err == nil {
-		t.Fatal("過去の版の本文の改変を検出する")
+		t.Fatal("detects changes to the body of a past revision")
 	}
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
@@ -39,6 +39,6 @@ func TestRevisionLookupRejectsTamperedHistoryAndUnsafeReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := b.Query(query); err == nil {
-		t.Fatal("過去の版の保存先のsymlinkをたどらない")
+		t.Fatal("does not follow a symlink at the revision store")
 	}
 }

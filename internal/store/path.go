@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// parentRoot は保存先から末端の親までを通常のフォルダだけで開く。
-// 各フォルダを開いた後も同じ実体か確かめ、以後は名前の差し替えに影響されない Root を使う。
+// parentRoot opens from the storage location down to the last parent using only ordinary folders.
+// After opening each folder it checks it is still the same object, and from then on uses a Root that is not affected by renames.
 func (s Store) parentRoot(path string, create bool) (*os.Root, string, error) {
 	rootPath, err := filepath.Abs(s.Dir)
 	if err != nil {
@@ -22,7 +22,7 @@ func (s Store) parentRoot(path string, create bool) (*os.Root, string, error) {
 	}
 	relative, err := filepath.Rel(rootPath, fullPath)
 	if err != nil || relative == "." || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return nil, "", errors.New("保存先の外のファイルは開けません")
+		return nil, "", errors.New("cannot open a file outside the storage location")
 	}
 	if create {
 		if err := os.MkdirAll(rootPath, 0700); err != nil {
@@ -34,7 +34,7 @@ func (s Store) parentRoot(path string, create bool) (*os.Root, string, error) {
 		return nil, "", err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, "", errors.New("保存先にリンクは使えません")
+		return nil, "", errors.New("links cannot be used in the storage location")
 	}
 	root, err := os.OpenRoot(rootPath)
 	if err != nil {
@@ -43,7 +43,7 @@ func (s Store) parentRoot(path string, create bool) (*os.Root, string, error) {
 	actual, err := root.Stat(".")
 	if err != nil || !os.SameFile(info, actual) {
 		root.Close()
-		return nil, "", errors.New("保存先のフォルダが変わりました")
+		return nil, "", errors.New("the storage folder changed")
 	}
 	parts := strings.Split(relative, string(filepath.Separator))
 	for _, part := range parts[:len(parts)-1] {
@@ -60,7 +60,7 @@ func (s Store) parentRoot(path string, create bool) (*os.Root, string, error) {
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			root.Close()
-			return nil, "", errors.New("記録のフォルダにリンクは使えません")
+			return nil, "", errors.New("links cannot be used in the record folder")
 		}
 		child, err := root.OpenRoot(part)
 		if err != nil {
@@ -71,7 +71,7 @@ func (s Store) parentRoot(path string, create bool) (*os.Root, string, error) {
 		root.Close()
 		if err != nil || !os.SameFile(info, actual) {
 			child.Close()
-			return nil, "", errors.New("記録のフォルダが変わりました")
+			return nil, "", errors.New("the record folder changed")
 		}
 		root = child
 	}
@@ -86,13 +86,13 @@ func (s Store) openFile(path string, flags int) (*os.File, error) {
 	defer root.Close()
 	if info, err := root.Lstat(name); err == nil {
 		if !info.Mode().IsRegular() {
-			return nil, errors.New("記録はリンクではない通常のファイルにしてください")
+			return nil, errors.New("make the record an ordinary file, not a link")
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	// 同じ新しいファイルを同時に作ると(hook の並行する判定、wiki の差し込み先の並行する判定)、os.Root の作成付きの open が
-	// ENOENT を返すことがある(2026-10-23、darwin で再現: TestFirstRecordsCanBeAppendedConcurrently)。作成付きなら短く待って開き直す。
+	// When the same new file is created concurrently (parallel hook decisions, parallel decisions on wiki insertion points), os.Root's open with create can
+	// return ENOENT (2026-10-23, reproduced on darwin: TestFirstRecordsCanBeAppendedConcurrently). With create, wait briefly and open again.
 	var f *os.File
 	for attempt := 0; ; attempt++ {
 		f, err = root.OpenFile(name, flags|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
@@ -102,12 +102,12 @@ func (s Store) openFile(path string, flags int) (*os.File, error) {
 		time.Sleep(time.Duration(attempt+1) * time.Millisecond)
 	}
 	if err != nil {
-		return nil, err // 包まない(呼ぶ側が os.IsNotExist で「まだ無い」を見分ける)
+		return nil, err // not wrapped (the caller uses os.IsNotExist to tell "not there yet")
 	}
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		f.Close()
-		return nil, errors.New("記録のファイルを確かめられません")
+		return nil, errors.New("cannot verify the record file")
 	}
 	return f, nil
 }

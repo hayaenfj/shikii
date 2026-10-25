@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// 2026-10-17 の実測(shikii-readout + Bonsai 2、はい/いいえ 32 組)。正負は完全に分かれ、
-// 確率は端に寄っている(|Δ| ≈ 5〜6)。この形で Platt を当てると in-sample の Brier が
-// 生 0.0205 → 0.107 に悪化した。平滑化した目標値(y+ ≈ 0.93, y− ≈ 0.06)への最尤なら
-// 0.01 を超えるはずがない。飽和した σ で Newton 法が暴れていないか。
+// Measured on 2026-10-17 (shikii-readout + Bonsai 2, 32 yes/no pairs). Positives and negatives are fully separated,
+// and the probabilities sit at the edges (|Δ| ≈ 5–6). Fitting Platt on this shape made the in-sample Brier
+// worse, raw 0.0205 → 0.107. Maximum likelihood toward the smoothed targets (y+ ≈ 0.93, y− ≈ 0.06)
+// should never exceed 0.01. Is Newton's method going wild on a saturated σ?
 var saturatedProbs = []struct {
 	p float64
 	y bool
@@ -46,11 +46,11 @@ func TestFitDoesNotDivergeOnSaturatedSeparableData(t *testing.T) {
 	}
 	raw, fitted := Brier(rawP, truths, weights), Brier(cal, truths, weights)
 	t.Logf("platt=%+v brier raw=%.4f fitted=%.4f", pl, raw, fitted)
-	// 平滑化目標(0.93 / 0.06)に寄せる分の悪化は 0.01 程度。それ以上なら最適化が壊れている。
+	// Pulling toward the smoothed targets (0.93 / 0.06) costs about 0.01. More than that means the optimization is broken.
 	if fitted > raw+0.01 {
 		t.Fatalf("fitted Brier %.4f is far worse than raw %.4f: the optimiser did not converge (platt=%+v)", fitted, raw, pl)
 	}
-	// 正例の最低(0.9703)は較正後も act(0.70)を超えているべき。分離したデータで recall を落とすのは誤り
+	// The lowest positive (0.9703) should stay above act (0.70) after calibration. Losing recall on separated data is wrong
 	if p := pl.Apply(Logit(0.9703)); p < 0.70 {
 		t.Fatalf("weakest positive dropped to %.3f after calibration (platt=%+v)", p, pl)
 	}

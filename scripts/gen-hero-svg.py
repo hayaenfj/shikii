@@ -1,7 +1,7 @@
-"""README の先頭の画像(ヒーロー)と「何が育つか」の図を日英で生成する。外部フォントや通信は不要。
+"""Generates the README's top image (hero) and the "what grows" figure in Japanese and English. No external fonts or network needed.
 
-左は今までのヒーロー画像と同じ作り(大きな字の shikii、字間の空いた小見出し、薄い「閾」の字)。
-右は走査線: ターンの帯が光る金の縦線(閾)を越え、越えた先に起きたことや置き場が書かれる。
+The left side is built like the earlier hero image (a large shikii, a widely spaced subheading, a faint 「閾」 character).
+The right side is a scan line: turn bands cross a glowing gold vertical line (閾, threshold), and what happened or where it went is written past it.
 """
 from pathlib import Path
 from html import escape as e
@@ -59,9 +59,9 @@ def lanes(t, rows, gx, top, gap, h, hot, font, size, lw, rw):
     s += f'  <g font-family="{t["font"]}" font-size="17"><text x="{xl}" y="{top-34}" fill="{MUTE}">{e(t["head_l"])}</text>'
     s += f'<text x="{gx}" y="{top-40}" text-anchor="middle" fill="{GOLD}" font-weight="700">{e(t["head_r"])}</text></g>\n'
     return s
-def v1(t):  # 人がつい言う一言(左)が閾を越えると片付く(右)。直させる行と ask → act の行が光る
+def v1(t):  # a remark a person tends to make (left) is settled once it crosses the threshold (right). The fix row and the ask → act row glow
     return base(t) + lanes(t, t["v1"], 1330, 140, 70, 40, (1, 4), t["font"], 19, [250] * 5, [220] * 5) + "</svg>\n"
-def v2(t):  # 5 つの育つものが流れ、閾の先にその置き場が出る。任せる(act)の行だけ光る
+def v2(t):  # the 5 things that grow flow by, and their place appears past the threshold. Only the delegate (act) row glows
     return base(t) + lanes(t, t["v2"], 1360, 140, 70, 40, (4,), t["font"], 18, [290, 290, 290, 290, 290], [130, 130, 200, 130, 170]) + "</svg>\n"
 
 
@@ -69,11 +69,11 @@ def generate(directory=ASSETS):
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "shikii-hero.svg").write_text(v1(T["en"]), encoding="utf-8", newline="\n")
     (directory / "shikii-hero-ja.svg").write_text(v1(T["ja"]), encoding="utf-8", newline="\n")
-    for name, lang in (("shikii-grows.svg", "en"), ("shikii-grows-ja.svg", "ja")):  # 「何が育つか」の図は右の帯だけを切り出す
+    for name, lang in (("shikii-grows.svg", "en"), ("shikii-grows-ja.svg", "ja")):  # the "what grows" figure cuts out only the right band
         svg = v2(T[lang]).replace('viewBox="0 0 1600 600" width="1600" height="600"', 'viewBox="1030 60 570 440" width="1140" height="880"', 1)
         (directory / name).write_text(svg, encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
     generate()
-    print("図を4枚生成しました（日英のヒーロー画像・何が育つか）")
+    print("Generated 4 figures (hero image and what grows, Japanese and English)")

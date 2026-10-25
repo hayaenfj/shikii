@@ -67,7 +67,7 @@ func readCheckpoints(dir string) (map[string]maintenanceCheckpoint, error) {
 	}
 	var out map[string]maintenanceCheckpoint
 	if json.Unmarshal(data, &out) != nil {
-		return nil, errors.New("wikiの見直し記録を読み取れません")
+		return nil, errors.New("cannot read the wiki review log")
 	}
 	if out == nil {
 		out = map[string]maintenanceCheckpoint{}
@@ -136,7 +136,7 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 
 func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 	if !idPattern.MatchString(review.PageID) || !idPattern.MatchString(review.Revision) || !idPattern.MatchString(review.Key) || strings.TrimSpace(review.Reason) == "" || len(review.Reason) > 1000 || !utf8.ValidString(review.Reason) {
-		return review, errors.New("見直した記事・版・keyと根拠（1000バイト以内）が必要です")
+		return review, errors.New("a review needs the reviewed page, revision, key and a reason (up to 1000 bytes)")
 	}
 	dir, err := b.directory(false, "pages")
 	if err != nil {
@@ -149,7 +149,7 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 	defer unlock()
 	pages, issues, err := b.pages()
 	if err != nil || len(issues) > 0 {
-		return review, errors.New("記事の状態を確認できません")
+		return review, errors.New("cannot check the state of the page")
 	}
 	var selected *MaintenanceTask
 	for _, task := range maintenanceTasks(pages) {
@@ -159,12 +159,12 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 		}
 	}
 	if selected == nil || selected.Key != review.Key || selected.Revision != review.Revision {
-		return review, errors.New("記事か関連する版が変わりました。読み直してから見直しを記録します")
+		return review, errors.New("the page or a related revision changed; read it again before recording the review")
 	}
 	for _, p := range pages {
 		if p.ID == review.PageID || selected.Dependencies[p.ID] != "" {
 			if len(b.sourceIssues(p)) > 0 {
-				return review, errors.New("出典を確認できない記事は見直し済みにしません")
+				return review, errors.New("a page whose sources cannot be checked is not marked as reviewed")
 			}
 		}
 	}

@@ -6,12 +6,12 @@ import (
 	"testing"
 )
 
-// 既知の T と bias で歪めた分布から、FitVector が歪みを取り戻す。
+// From distributions distorted by a known T and bias, FitVector recovers the distortion.
 func TestFitVectorRecoversKnownDistortion(t *testing.T) {
 	rng := rand.New(rand.NewSource(7))
 	keys := []string{"a", "b", "c"}
-	// 真の分布 q を作り、観測は「q を T=2 で鈍らせて c に +1.0 の癖を乗せた」もの。
-	// 較正器は逆変換(T=0.5 相当、c に −1.0)を見つけるはず。
+	// Build the true distribution q; the observation is "q blunted with T=2, with a +1.0 habit added to c".
+	// The calibrator should find the inverse (T=0.5 or so, −1.0 on c).
 	var samples []MultiSample
 	for i := 0; i < 3000; i++ {
 		logits := []float64{rng.NormFloat64() * 2, rng.NormFloat64() * 2, rng.NormFloat64() * 2}
@@ -27,11 +27,11 @@ func TestFitVectorRecoversKnownDistortion(t *testing.T) {
 	if math.Abs(v.Temperature-0.5) > 0.08 {
 		t.Fatalf("temperature: got %.3f want ≈0.5", v.Temperature)
 	}
-	// Σb=0 に射影されるので、c と a/b の差を見る: b_c − b_a ≈ −1.0
+	// b is projected onto Σb=0, so look at the difference between c and a/b: b_c − b_a ≈ −1.0
 	if d := v.Biases["c"] - v.Biases["a"]; math.Abs(d-(-1.0)) > 0.2 {
 		t.Fatalf("bias(c)−bias(a): got %.3f want ≈−1.0 (biases=%v)", d, v.Biases)
 	}
-	// 較正後は Brier が改善する
+	// Brier improves after calibration
 	var rawB, calB float64
 	for _, s := range samples {
 		cal := v.Apply(s.Raw)
@@ -58,7 +58,7 @@ func TestVectorApplyIsIdentityAtNeutralParams(t *testing.T) {
 			t.Fatalf("neutral params must be identity: %v → %v", raw, out)
 		}
 	}
-	// bias で順位が入れ替わる(「other に逃げる」を押し戻す)
+	// the bias swaps the ranking (pushes back "escaping to other")
 	v2 := Vector{Temperature: 1, Biases: map[string]float64{"y": -2}}
 	out2 := v2.Apply(raw)
 	if out2["y"] >= out2["z"] {

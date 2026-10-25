@@ -1,5 +1,5 @@
-// Package decide は仕様 + 入力 → 帯(act / ask / discard / abstain)。
-// エンドポイントの選択・送信可否の統制・較正の適用をここで行い、業務コードには帯だけを渡す。
+// Package decide turns spec + input → band (act / ask / discard / abstain).
+// It picks the endpoint, controls whether text may be sent, and applies calibration here, handing business code only the band.
 package decide
 
 import (
@@ -16,28 +16,28 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// Band は判定の帯。
+// Band is the band of a decision.
 type Band string
 
 const (
-	Act     Band = "act"     // 自動で実行してよい
-	Ask     Band = "ask"     // 利用者に確認
-	Discard Band = "discard" // 捨てる
-	Abstain Band = "abstain" // 判定していない(入力不足・送れる先が無い)
+	Act     Band = "act"     // may run automatically
+	Ask     Band = "ask"     // confirm with the user
+	Discard Band = "discard" // drop it
+	Abstain Band = "abstain" // not decided (missing input, or nowhere it may be sent)
 )
 
-// Session は呼び出し側の状態。Tainted なら hosted に送らない。
+// Session is the caller's state. When Tainted, nothing is sent to hosted.
 type Session struct {
 	Tainted bool
 }
 
-// Endpoint は送り先。Kind は spec の policy.send_to と対応する。
+// Endpoint is a destination. Kind matches the spec's policy.send_to.
 type Endpoint struct {
 	Kind   string // "hosted" | "local"
 	Client *systemone.Client
 }
 
-// Decision は 1 回の判定の結果と来歴。
+// Decision is the result and provenance of one decision.
 type Decision struct {
 	TraceID      string             `json:"trace_id"`
 	SpecID       string             `json:"spec_id"`
@@ -55,15 +55,15 @@ type Decision struct {
 	Confidence   float64            `json:"confidence,omitempty"`
 	Band         Band               `json:"band"`
 	Reason       string             `json:"reason,omitempty"`
-	Tainted      bool               `json:"tainted,omitempty"` // 本番データを読んだセッションの判定。記録に残り、聞き直しでも hosted に送らない
-	Rung         string             `json:"rung,omitempty"`    // どの段で決まったか: minimal(最小の質問) | context(迷ったので文脈を足して聞き直した)
-	Minimal      *store.Pass        `json:"minimal,omitempty"` // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw)。人の正解はこちらにも付く
-	Receipt      *Receipt           `json:"receipt,omitempty"` // act の判定に付く領収書(何を根拠に動いてよいと言ったか)。呼ぶ側(cmd)が store を見て付ける
+	Tainted      bool               `json:"tainted,omitempty"` // a decision from a session that read production data. Recorded, and never sent to hosted even when re-asked
+	Rung         string             `json:"rung,omitempty"`    // which step decided it: minimal (the minimal question) | context (unsure, so context was added and asked again)
+	Minimal      *store.Pass        `json:"minimal,omitempty"` // when context was added, the minimal question's answer (that step's hash and raw). A person's truth is attached here too
+	Receipt      *Receipt           `json:"receipt,omitempty"` // the receipt attached to an act decision (what it relied on to say it may act). The caller (cmd) attaches it after looking at the store
 	At           time.Time          `json:"at"`
 }
 
-// Receipt は act の判定の領収書: 線の鍵と方法、引いた日、正解の数(人の分)、人が確かめた act の判定の数とその精度。
-// 「95% の確信」ではなく「この種の判定は人が検査した n 件で精度 x」と言うためのもの。線が無ければ領収書も無い。
+// Receipt is the receipt of an act decision: the line's key and method, the date it was drawn, the number of truths (from people), and the number and precision of act decisions a person checked.
+// It exists to say "people checked n decisions of this kind and precision was x" instead of "95% confident". No line, no receipt.
 type Receipt struct {
 	SpecHash        string  `json:"spec_hash"`
 	Model           string  `json:"model"`
@@ -72,20 +72,20 @@ type Receipt struct {
 	N               int     `json:"n"`
 	NHuman          int     `json:"n_human"`
 	PrecisionAtFit  float64 `json:"precision_at_fit"`
-	HumanCheckedAct int     `json:"human_checked_act"` // 人(または結果)が確かめた、線を掛けて act になる判定の数
-	HumanPrecision  float64 `json:"human_precision"`   // その精度(0 件なら 0。まだ誰も確かめていない、という意味)
+	HumanCheckedAct int     `json:"human_checked_act"` // number of decisions that become act with the line applied and that a person (or the outcome) checked
+	HumanPrecision  float64 `json:"human_precision"`   // their precision (0 when there are none, meaning nobody has checked yet)
 }
 
-// questionKey は 1 spec = 1 質問なので固定。
+// questionKey is fixed because 1 spec = 1 question.
 const questionKey = "q"
 
-// BuildQuestion は spec を System One の質問に変換する。choice の選択肢は spec の並びで送る。
+// BuildQuestion converts a spec into a System One question. Choice options are sent in spec order.
 func BuildQuestion(sp *spec.Spec) systemone.Question {
 	return BuildQuestionOrdered(sp, nil)
 }
 
-// BuildQuestionOrdered は choice の選択肢を order(spec.Options の添字の並び)で送る。
-// nil なら spec の並び。順序バイアスの測定(shikii bias)が順列を回すのに使う。
+// BuildQuestionOrdered sends the choice options in order (a list of indexes into spec.Options).
+// nil means spec order. The order-bias measurement (shikii bias) uses it to cycle through permutations.
 func BuildQuestionOrdered(sp *spec.Spec, order []int) systemone.Question {
 	q := systemone.Question{Type: string(sp.Type), Instructions: sp.Question}
 	switch sp.Type {
@@ -108,7 +108,7 @@ func BuildQuestionOrdered(sp *spec.Spec, order []int) systemone.Question {
 	return q
 }
 
-// AskOrdered は選択肢の並びを指定して 1 回聞き、生の分布を返す(較正も記録もしない)。順序バイアスの測定用。
+// AskOrdered asks once with the given option order and returns the raw distribution (no calibration, no record). For measuring order bias.
 func AskOrdered(ctx context.Context, sp *spec.Spec, state string, order []int, c *systemone.Client) (map[string]float64, string, error) {
 	resp, err := c.AskLayout(ctx, state, map[string]systemone.Question{questionKey: BuildQuestionOrdered(sp, order)}, sp.Layout)
 	if err != nil {
@@ -121,11 +121,11 @@ func AskOrdered(ctx context.Context, sp *spec.Spec, state string, order []int, c
 	return rawDistribution(sp, ans), resp.Model, nil
 }
 
-// PickEndpoint は policy.send_to の順に、送ってよい最初のエンドポイントを選ぶ。
-// tainted セッションでは hosted を飛ばす。無ければ nil。
+// PickEndpoint picks the first endpoint text may be sent to, in policy.send_to order.
+// In a tainted session hosted is skipped. nil if none.
 func PickEndpoint(sp *spec.Spec, sess Session, eps []Endpoint) *Endpoint {
 	for _, kind := range sp.Policy.SendTo {
-		// tainted なセッションと、個人情報が入り得ると宣言された spec(pii: true)は、hosted を使わない
+		// tainted sessions and specs declared as possibly holding personal information (pii: true) do not use hosted
 		if kind == "hosted" && (sess.Tainted || sp.PIISensitive()) {
 			continue
 		}
@@ -138,8 +138,8 @@ func PickEndpoint(sp *spec.Spec, sess Session, eps []Endpoint) *Endpoint {
 	return nil
 }
 
-// Decide は 1 回の判定。モデル呼び出しが失敗した時だけ error を返す。
-// 判定しないと決めた場合は error ではなく Abstain と理由を返す。
+// Decide makes one decision. It returns an error only when the model call fails.
+// When it decides not to decide, it returns Abstain and a reason instead of an error.
 func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess Session, eps []Endpoint) (*Decision, error) {
 	d := &Decision{
 		TraceID: store.NewTraceID(), SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type),
@@ -161,22 +161,22 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 	}
 	d.Endpoint = ep.Kind
 
-	// 第 1 段: 最小の質問
+	// step 1: the minimal question
 	d.Rung = "minimal"
 	if err := askOnce(ctx, sp, d, state, ep); err != nil {
 		return nil, err
 	}
-	// 第 2 段: 迷った(ask)時だけ、文脈の入力が揃っていれば文脈を足して聞き直す。
-	// 文脈を足した聞き方は別のハッシュなので、答えはそのハッシュで記録され、較正もそのハッシュの線で掛かる。最小の質問の答えは Minimal に残す。
+	// step 2: only when unsure (ask), and when the context inputs are present, add context and ask again.
+	// The context question has its own hash, so the answer is recorded under that hash and calibrated with that hash's line. The minimal question's answer stays in Minimal.
 	csp := sp.ContextSpec()
 	if !unsure(sp, d.Band) || csp == nil {
 		return d, nil
 	}
 	cstate, missing := csp.Render(inputs)
 	if len(missing) > 0 {
-		return d, nil // 足す文脈が無い: ここで止まる(人へ)
+		return d, nil // no context to add: stop here (to a person)
 	}
-	minimal := *d // 文脈の段の呼び出しが失敗したら、最小の答え(迷い)を返す。答えを捨てない
+	minimal := *d // if the context step's call fails, return the minimal answer (unsure). Do not throw the answer away
 	d.Minimal = &store.Pass{SpecHash: d.SpecHash, InputsHash: d.InputsHash, Raw: d.Raw, Calibrated: d.Calibrated, IsCalibrated: d.IsCalibrated, Top: d.Top, P: d.P, Band: string(d.Band)}
 	d.SpecHash = csp.Hash()
 	d.InputsHash = store.HashInputs(csp.StateInputs(inputs))
@@ -188,13 +188,13 @@ func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess S
 	return d, nil
 }
 
-// DiscardUnsure は、この spec で discard が「迷い」か(一番高い選択肢で帯を決める型: choice と、level 無しの score)。
-// noul と level 付きの score の discard は確信した「いいえ / 低い」。段を上げる条件と、人に回った数の数え方で同じ規則を使う。
+// DiscardUnsure reports whether discard means "unsure" for this spec (types whose band comes from the highest option: choice, and score without level).
+// For noul and score with level, discard is a confident "no / low". Moving up a step and counting what went to a person use the same rule.
 func DiscardUnsure(sp *spec.Spec) bool {
 	return sp.Type == spec.Choice || (sp.Type == spec.Score && sp.Thresholds.Level == 0)
 }
 
-// askOnce は 1 つの段を聞く: 多択(または分解した はい/いいえ の列)を 1 回の呼び出しで聞き、raw・較正・top・帯を d に書く。
+// askOnce asks one step: it asks the multi-choice (or the broken-down yes/no list) in one call and writes raw, calibration, top and band into d.
 func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *Endpoint) error {
 	if len(sp.Steps) > 0 {
 		return decideBySteps(ctx, sp, d, state, ep)
@@ -207,8 +207,8 @@ func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *
 	if !ok {
 		return fmt.Errorf("response has no answer for %q", questionKey)
 	}
-	// 較正の鍵には実際に答えたモデルを使う。"jev-latest" が別版に切り替わったら
-	// 較正は失効し、act が出なくなる(それが望む挙動)。
+	// Use the model that actually answered for the calibration key. When "jev-latest" switches to another version,
+	// the calibration expires and act stops appearing (the intended behaviour).
 	d.Model = resp.Model
 	if d.Model == "" {
 		d.Model = ep.Client.Model
@@ -230,7 +230,7 @@ func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *
 		d.Score = expectedLevel(d.Calibrated)
 		d.Confidence = ans.Confidence
 		if sp.Thresholds.Level > 0 {
-			// 順序尺度: 帯は P(level ≥ k)。隣接レベルに割れた確率を合算する
+			// ordinal scale: the band is P(level ≥ k). Sum the probability split across neighbouring levels
 			d.P = MassAtOrAbove(d.Calibrated, sp.Thresholds.Level)
 		}
 	}
@@ -238,13 +238,13 @@ func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *
 	return nil
 }
 
-// unsure は「迷った」か: ask 帯はいつでも迷い。一番高い選択肢で帯を決める型(choice と、level 無しの score)では
-// discard(どの選択肢も ask に届かない)も迷い。noul と level 付きの score の discard は確信した「いいえ / 低い」なので迷いではない。
+// unsure reports whether it is "unsure": the ask band is always unsure. For types whose band comes from the highest option (choice, and score without level),
+// discard (no option reaches ask) is unsure too. For noul and score with level, discard is a confident "no / low", so not unsure.
 func unsure(sp *spec.Spec, b Band) bool {
 	return b == Ask || (b == Discard && DiscardUnsure(sp))
 }
 
-// StepQuestions は分解の全段を 1 回の呼び出しに載せる質問の集まり(鍵は step-0, step-1, …)。
+// StepQuestions is the set of questions that puts every step of the breakdown into one call (keys step-0, step-1, …).
 func StepQuestions(sp *spec.Spec) map[string]systemone.Question {
 	qs := make(map[string]systemone.Question, len(sp.Steps))
 	for i, st := range sp.Steps {
@@ -255,8 +255,8 @@ func StepQuestions(sp *spec.Spec) map[string]systemone.Question {
 
 func stepKey(i int) string { return fmt.Sprintf("step-%d", i) }
 
-// StepDistribution は各段の P(yes) から元の選択肢の分布を作る: 枝の確率の積。
-// 途中の段で確定する選択肢は「そこまでの残り × その枝」、残りは次の段へ。
+// StepDistribution builds the original options' distribution from each step's P(yes): the product of branch probabilities.
+// An option settled at a middle step gets "remaining so far × that branch"; the rest goes on to the next step.
 func StepDistribution(sp *spec.Spec, pYes []float64) map[string]float64 {
 	dist := make(map[string]float64, len(sp.Options))
 	for _, o := range sp.Options {
@@ -281,7 +281,7 @@ func StepDistribution(sp *spec.Spec, pYes []float64) map[string]float64 {
 	return dist
 }
 
-// decideBySteps は分解した choice を 1 回の呼び出しで聞き、積の分布を多択の答えと同じ形にする(較正・帯・記録は共通)。
+// decideBySteps asks a broken-down choice in one call and shapes the product distribution like a multi-choice answer (calibration, band and record are shared).
 func decideBySteps(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *Endpoint) error {
 	resp, err := ep.Client.AskLayout(ctx, state, StepQuestions(sp), sp.Layout)
 	if err != nil {
@@ -307,7 +307,7 @@ func decideBySteps(ctx context.Context, sp *spec.Spec, d *Decision, state string
 	return nil
 }
 
-// band は閾値と較正の有無から帯を決める。較正の無い判定は act を出さない。
+// band decides the band from the thresholds and whether calibration exists. A decision without calibration never gives act.
 func band(t spec.Thresholds, p float64, calibrated bool) Band {
 	switch {
 	case p >= t.Act && calibrated:
@@ -332,10 +332,10 @@ func rawDistribution(sp *spec.Spec, ans systemone.Answer) map[string]float64 {
 	}
 }
 
-// applyCalibration は (hash, model) に一致する較正があれば当てる。
-//   - "identity": 定数なし。較正済みモデルの出力をそのまま信用してよいと検証した印(設計 §7.1)
-//   - "platt":    noul のみ。σ((Δ−bias)/T)
-//   - "vector":   choice/score。softmax((log p_k + b_k)/T)
+// applyCalibration applies the calibration matching (hash, model), if any.
+//   - "identity": no constants. A mark that the calibrated model's output was verified as trustworthy as is (design §7.1)
+//   - "platt":    noul only. σ((Δ−bias)/T)
+//   - "vector":   choice/score. softmax((log p_k + b_k)/T)
 func applyCalibration(sp *spec.Spec, model string, raw map[string]float64) (map[string]float64, bool) {
 	out := make(map[string]float64, len(raw))
 	for k, v := range raw {
@@ -364,7 +364,7 @@ func argmax(m map[string]float64) (string, float64) {
 	for k := range m {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys) // 同点時の決定性
+	sort.Strings(keys) // deterministic on ties
 	best, bp := "", -1.0
 	for _, k := range keys {
 		if m[k] > bp {
@@ -374,9 +374,9 @@ func argmax(m map[string]float64) (string, float64) {
 	return best, bp
 }
 
-// MassAtOrAbove は score の分布で level ≥ k の確率の和。キーはレベル番号("0".."n-1")。
+// MassAtOrAbove is the sum of probabilities with level ≥ k in a score distribution. Keys are level numbers ("0".."n-1").
 func MassAtOrAbove(m map[string]float64, k int) float64 {
-	// 加算は鍵の順に固定する(map の走査順は毎回変わり、閾値ちょうどで帯が揺れる)
+	// add in a fixed key order (map iteration order changes every time, and the band wobbles right at the threshold)
 	var s float64
 	for _, key := range sortedKeys(m) {
 		if i, err := strconv.Atoi(key); err == nil && i >= k {
@@ -395,7 +395,7 @@ func sortedKeys(m map[string]float64) []string {
 	return keys
 }
 
-// expectedLevel は score の期待値 Σ(level × p)。キーはレベル番号("0".."n-1")。
+// expectedLevel is the score's expected value Σ(level × p). Keys are level numbers ("0".."n-1").
 func expectedLevel(m map[string]float64) float64 {
 	var e float64
 	for _, k := range sortedKeys(m) {

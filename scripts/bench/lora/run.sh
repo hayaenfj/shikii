@@ -1,7 +1,7 @@
 #!/bin/sh
-# LoRA の腕(docs/bench.md の C)を回す。Apple silicon + mlx-lm。
+# Runs the LoRA arm (C in docs/bench.md). Apple silicon + mlx-lm.
 #   scripts/bench/lora/run.sh <venv> <work-dir> [model] [spec.yaml] [labeled.json] [act]
-# 1. 5 分割の材料  2. 分割ごとに LoRA を学習  3. その分割の test を当てる(土台だけでも当てて対照に)  4. 生の物差し  5. shikii calibrate で較正後の物差し
+# 1. 5-fold material  2. train a LoRA per fold  3. predict that fold's test (also with the base model alone, as a control)  4. raw yardstick  5. calibrated yardstick with shikii calibrate
 set -eu
 VENV="$1"; WORK="$2"; MODEL="${3:-Qwen/Qwen3-4B}"
 SPEC="${4:-decisions/prompt-intent-v2.yaml}"; LABELED="${5:-testdata/prompt-intent-labeled.json}"; ACT="${6:-0.75}"
@@ -19,7 +19,7 @@ for k in 0 1 2 3 4; do
 done
 echo "=== C: LoRA (5-fold, out-of-sample, raw)"; python3 scripts/bench/lora/report.py "$WORK/lora.jsonl" "$ACT"
 echo "=== base model, same prompt, no LoRA (control, raw)"; python3 scripts/bench/lora/report.py "$WORK/base.jsonl" "$ACT"
-# 較正後の物差し: raw 付きの行を JSON 配列にして calibrate に読ませる(モデルは呼ばない)
+# Calibrated yardstick: turn the rows with raw into a JSON array and have calibrate read it (no model is called)
 for arm in lora base; do
   python3 -c "import json; print(json.dumps([json.loads(l) for l in open('$WORK/$arm.jsonl') if l.strip()], ensure_ascii=False))" > "$WORK/$arm.json"
   echo "=== $arm: shikii calibrate on the scored raw (5-fold CV, no model calls)"

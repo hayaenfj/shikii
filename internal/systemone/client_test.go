@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// docs.typesafe.ai の Quick Start に載っている応答をそのまま読めること。
+// The response shown in the Quick Start on docs.typesafe.ai can be read as is.
 func TestParsesDocumentedResponse(t *testing.T) {
 	const raw = `{
   "model": "jev-1.13.0",
@@ -85,7 +85,7 @@ func TestAskOmitsAuthWhenNoKeyAndSurfacesErrors(t *testing.T) {
 	}
 }
 
-// OrderedCriteria は JSON オブジェクトの並びを保つ(Go の map はソートされる)。
+// OrderedCriteria keeps the order of the JSON object (Go maps are sorted).
 func TestOrderedCriteriaKeepsWireOrder(t *testing.T) {
 	oc := OrderedCriteria{{"zeta", "Z"}, {"alpha", "A"}, {"mid", "M \"quoted\""}}
 	b, err := json.Marshal(oc)
@@ -103,14 +103,14 @@ func TestOrderedCriteriaKeepsWireOrder(t *testing.T) {
 	if len(back) != 3 || back[0].ID != "zeta" || back[2].Description != `M "quoted"` {
 		t.Fatalf("round trip lost order or content: %+v", back)
 	}
-	// 比較: map だと並びが変わる
+	// comparison: with a map the order changes
 	m, _ := json.Marshal(map[string]string{"zeta": "Z", "alpha": "A"})
 	if string(m) != `{"alpha":"A","zeta":"Z"}` {
 		t.Fatalf("premise: Go map must sort keys, got %s", m)
 	}
 }
 
-// エンドポイントの URL にパスがあればそれを使う(OpenRouter の /api/alpha/decisions)。無ければ /v1/systemone。
+// If the endpoint URL has a path, it is used (OpenRouter's /api/alpha/decisions). Otherwise /v1/systemone.
 func TestEndpointPathIsHonored(t *testing.T) {
 	cases := map[string][2]string{
 		"https://api.typesafe.ai":                   {"https://api.typesafe.ai", "/v1/systemone"},

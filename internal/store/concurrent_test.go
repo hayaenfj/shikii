@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// まだ records/ の無い置き場へ、同じプロセスから同時に初めての記録を書いても、どれも失われない
-// (hook は 2 つの spec を並行して聞き、wiki の差し込み先は記事ごとに並行して聞く。初めての判定でフォルダを同時に作る)。
+// Writing the first records concurrently from the same process into a location with no records/ yet loses none of them
+// (the hook asks 2 specs in parallel, and wiki insertion points are asked in parallel per article. The first decisions create the folder at the same time).
 func TestFirstRecordsCanBeAppendedConcurrently(t *testing.T) {
 	for round := 0; round < 20; round++ {
 		st := Store{Dir: t.TempDir()}

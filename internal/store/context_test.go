@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// 文脈の段で決まった記録に人が答えると、正解は両方の段に付く: 最終の答え(文脈のハッシュ・文脈の raw)と、最小の質問(そのハッシュ・その raw)。
+// When a person answers a record decided at the context step, the truth goes to both steps: the final answer (context hash, context raw) and the minimal question (its hash, its raw).
 func TestLabelsForReachBothRungs(t *testing.T) {
 	r := rec("ctx-hash", "m")
 	r.Type, r.Rung = "choice", "context"
@@ -28,15 +28,15 @@ func TestLabelsForReachBothRungs(t *testing.T) {
 	if minimal.SpecHash != "min-hash" || minimal.Raw["change_request"] != 0.65 || minimal.Rung != "minimal" || minimal.Truth != "question" || minimal.TraceID != r.TraceID || minimal.InputsHash != r.InputsHash {
 		t.Fatalf("second label teaches the minimal rung the same truth: %+v", minimal)
 	}
-	// 最小の段だけの記録は 1 つ
+	// a record with only the minimal step gets one
 	plain := rec("min-hash", "m")
 	if ls, err := LabelsFor(&plain, "yes", 1, "ui"); err != nil || len(ls) != 1 || ls[0].Rung != "minimal" {
 		t.Fatalf("a minimal-only record yields one label: %v %+v", err, ls)
 	}
 }
 
-// 段ごとの数: 最小で決まった / 文脈で決まった / 人に回った。「人に回った」は decide の「迷い」と同じ規則:
-// ask はいつでも、discard は一番高い選択肢で帯を決める型(choice、level 無しの score)の時だけ(監査 3 回目の 4)。
+// Counts per step: decided by minimal / decided by context / sent to a person. "Sent to a person" is the same rule as decide's "unsure":
+// ask always, and discard only for types whose band comes from the highest option (choice, score without level) (audit round 3, item 4).
 func TestFunnelCountsWhereDecisionsSettle(t *testing.T) {
 	st := Store{Dir: filepath.Join(t.TempDir(), "s")}
 	add := func(rung, band string) {
@@ -46,13 +46,13 @@ func TestFunnelCountsWhereDecisionsSettle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	add("", "act") // 古い記録(rung 無し)は最小の段
+	add("", "act") // an old record (no rung) is the minimal step
 	add("minimal", "discard")
 	add("minimal", "ask")
 	add("context", "act")
 	add("context", "ask")
 	add("context", "discard")
-	// noul: discard は確信した「いいえ」= 決まった
+	// noul: discard is a confident "no" = decided
 	f, err := st.Funnel("s", false)
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestFunnelCountsWhereDecisionsSettle(t *testing.T) {
 	if f.Records != 6 || f.Minimal != 2 || f.Context != 2 || f.Human != 2 {
 		t.Fatalf("noul funnel: %+v", f)
 	}
-	// choice: discard も迷い = 人へ(README の「the tests … 0.45 → 人へ」はこちら)
+	// choice: discard is unsure too = to a person (README's "the tests … 0.45 → to a person" is this case)
 	f, _ = st.Funnel("s", true)
 	if f.Minimal != 1 || f.Context != 1 || f.Human != 4 {
 		t.Fatalf("choice funnel: %+v", f)
@@ -73,7 +73,7 @@ func TestFunnelCountsWhereDecisionsSettle(t *testing.T) {
 	}
 }
 
-// 監査 6: 1 つの答えから出る 2 件のラベルは 1 回の書き込みで追記する(途中で失敗して片方だけ残らない)。
+// audit 6: the 2 labels from one answer are appended in one write (a failure midway does not leave only one).
 func TestAppendLabelsWritesAllOrNothing(t *testing.T) {
 	dir := t.TempDir()
 	st := Store{Dir: filepath.Join(dir, "s")}
@@ -93,7 +93,7 @@ func TestAppendLabelsWritesAllOrNothing(t *testing.T) {
 	if ls, _ := st.Labels("s", "h2", "m"); len(ls) != 1 {
 		t.Fatalf("both labels land: %+v", ls)
 	}
-	// 書けない置き場: 1 件も残らない
+	// a location that cannot be written: nothing is left
 	bad := Store{Dir: filepath.Join(dir, "file")}
 	if err := os.WriteFile(bad.Dir, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)

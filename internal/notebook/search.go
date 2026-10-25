@@ -42,7 +42,7 @@ func searchTerms(text string) map[string]bool {
 	}
 	for _, r := range strings.ToLower(text) {
 		switch {
-		case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana) || r == 'ー': // 長音(ー)は Script が Common なのでカタカナの語の中に入れる(監査 R4)
+		case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana) || r == 'ー': // the long-vowel mark (ー) has Script Common, so keep it inside katakana words (audit R4)
 			if len(word) > 0 {
 				flush()
 			}
@@ -63,8 +63,8 @@ func searchTerms(text string) map[string]bool {
 	return out
 }
 
-// isContentTerm は内容を担う語: 識別子か、仮名だけでもなく助詞(を に の が は で と も へ)も含まない 2 文字の組。
-// 「する」「える」「を直」「直す」「の説」のような文法の境界の組は数えない(監査 R2: それだけで関係ない記事が届いた)。
+// isContentTerm reports a term that carries content: an identifier, or a 2-character pair that is not kana only and contains no particle (を に の が は で と も へ).
+// Pairs on grammatical boundaries such as 「する」「える」「を直」「直す」「の説」 are not counted (audit R2: they alone delivered unrelated pages).
 func isContentTerm(term string) bool {
 	if isIdentifierTerm(term) {
 		return true
@@ -81,13 +81,13 @@ func isContentTerm(term string) bool {
 	return content
 }
 
-// cluster は依頼文の中で一致した 2 文字の組が占める連なり(重なる組は 1 つ)。kana は平仮名を含むか。
+// cluster is a run in the request text covered by matched 2-character pairs (overlapping pairs form one). kana reports whether it contains hiragana.
 type cluster struct {
 	start, end int
 	kana       bool
 }
 
-// termClusters は runes(小文字にした依頼文)の中で terms(2 文字の組)が占める連なり。識別子は含めない。文字列を作らずに比べる(監査 R4: 性能)。
+// termClusters returns the runs that terms (2-character pairs) cover in runes (the lowercased request text). Identifiers are excluded. Compares without building strings (audit R4: performance).
 func termClusters(runes []rune, terms map[string]bool) []cluster {
 	covered := make([]bool, len(runes))
 	for term := range terms {
@@ -130,10 +130,10 @@ func termClusters(runes []rune, terms map[string]bool) []cluster {
 	return out
 }
 
-// contentClusters は依頼文の中で terms が占める「連なり」の数。重なる 2 文字の組(表示+示す は「表示す」の 1 語)は 1 つに数え、
-// 識別子は 1 語ずつ数える。2 文字の組を 2 語に数えると、1 語の依頼で「内容語 2 語」を満たして関係ない記事が届いた(監査 R3)。
-// 平仮名を含まない 3 文字以上の連なり(テスト、データ、日本語)は 1 つの内容語として 2 語分。平仮名で終わる連なり(表示す、更新す)は
-// 動詞の語幹なので 1 語分(それだけで届けない)。
+// contentClusters is the number of "runs" terms cover in the request text. Overlapping 2-character pairs (表示 + 示す form the one word 「表示す」) count as one,
+// and identifiers count one word each. Counting 2-character pairs as 2 words let a one-word request meet "2 content words" and deliver unrelated pages (audit R3).
+// A run of 3 or more characters without hiragana (テスト, データ, 日本語) is one content word worth 2 words. A run ending in hiragana (表示す, 更新す)
+// is a verb stem, so it is worth 1 word (not enough to deliver alone).
 func contentClusters(runes []rune, terms map[string]bool) int {
 	n := 0
 	for term := range terms {
@@ -151,8 +151,8 @@ func contentClusters(runes []rune, terms map[string]bool) int {
 	return n
 }
 
-// hasKanaFreeCluster は、terms が依頼文の中で占める連なりのうち、平仮名を含まない 2 文字以上のもの(漢字・カタカナの語)があるか。
-// 平仮名を含む連なり(表示す、更新し)は動詞の語幹なので数えない(それだけで関係ない記事が届いた。監査 R3)。
+// hasKanaFreeCluster reports whether, among the runs terms cover in the request text, one of 2 or more characters has no hiragana (a kanji or katakana word).
+// Runs containing hiragana (表示す, 更新し) are verb stems and are not counted (they alone delivered unrelated pages; audit R3).
 func hasKanaFreeCluster(runes []rune, terms map[string]bool) bool {
 	for _, c := range termClusters(runes, terms) {
 		if c.end-c.start >= 2 && !c.kana {
@@ -162,7 +162,7 @@ func hasKanaFreeCluster(runes []rune, terms map[string]bool) bool {
 	return false
 }
 
-// isIdentifierTerm は英字を含む英数字だけの 3 文字以上の語(ファイル名・コマンド名・識別子)。数字だけ(年など)や日本語の 2 文字の組は含めない。
+// isIdentifierTerm reports a word of 3 or more characters made only of letters and digits and containing a letter (file names, command names, identifiers). Digits only (such as years) and Japanese 2-character pairs are excluded.
 func isIdentifierTerm(term string) bool {
 	if len(term) < 3 {
 		return false
@@ -213,7 +213,7 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 		score float64
 	}
 	results := []ranked{}
-	// 自動配送の門の依頼側の数(内容語の連なり)は記事に依存しないので、ループの前で 1 回だけ数える(監査 R4: 性能)
+	// The request-side count for the automatic-delivery gate (runs of content words) does not depend on the page, so count it once before the loop (audit R4: performance)
 	queryRunes := []rune(strings.ToLower(query))
 	rare := func(term string) bool { return len(docs) == 1 || frequency[term]*2 <= len(docs) }
 	requestContent, rareRequest := map[string]bool{}, map[string]bool{}
@@ -246,14 +246,14 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 		coverage := float64(len(matched)) / float64(max(len(terms), 1))
 		minMatched := 2
 		if recall {
-			// 自動配送の門(0.7.4): 数えるのは「内容を担う語」(識別子か、仮名だけでも助詞を含むでもない 2 文字の組)だけ。
-			// 依頼側の一致率(内容語の 0.35)か記事側の一致率(題と適用条件の内容語の 0.15)で通し、どちらも内容語 2 語以上。
-			// 珍しい識別子(CHANGELOG, Makefile: 記事の半分以下にしか無い英字の語)は 1 語でも通す。プロジェクト名のようにどの記事にも
-			// ある識別子は 1 語では通さない(記事が 1 本の wiki では比べようが無いので通す)。
-			// 0.7.3 までは依頼の全部の語の割合で決めていて、長い依頼には届かず、短い依頼には遍在する語と文法の組で関係ない記事が届いた。
-			// 「珍しい語」= 記事の半分以下にしか無い語(記事が 1 本なら全部)。プロジェクト名のようにどの記事にもある語は、
-			// 一致しても根拠にしない(それだけで関係ない記事が届いた)。ただし依頼の内容語がほぼ全部(0.8 以上)記事に合うなら、
-			// 遍在する語でも届ける(全記事が同じ話題の wiki で、その話題の依頼が来た時)。
+			// Automatic-delivery gate (0.7.4): count only "terms that carry content" (identifiers, or 2-character pairs that are neither kana only nor contain a particle).
+			// Pass on the request-side match rate (0.35 of content words) or the page-side match rate (0.15 of content words in title and applies-to), both with 2 or more content words.
+			// A rare identifier (CHANGELOG, Makefile: an alphabetic word found in at most half the pages) passes even alone. An identifier found in every page,
+			// such as the project name, does not pass alone (in a wiki with a single page there is nothing to compare, so it passes).
+			// Up to 0.7.3 the gate used the share of all words in the request: long requests got nothing, and short ones got unrelated pages through ubiquitous words and grammatical pairs.
+			// "Rare word" = a word found in at most half the pages (all of them if there is one page). A word found in every page, such as the project name,
+			// is not evidence even when it matches (it alone delivered unrelated pages). But if almost all (0.8 or more) of the request's content words match the page,
+			// deliver even with ubiquitous words (when every page in the wiki is on the same topic and a request on that topic comes in).
 			rarePageTerms := 0
 			for _, f := range d.fields {
 				for term := range f {
@@ -277,7 +277,7 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 				}
 			}
 			matchedContent, rareMatched := contentClusters(queryRunes, matchedContentSet), contentClusters(queryRunes, rareMatchedSet)
-			// 「監査して」のような 1〜2 語の依頼は、仮名を含まない語(監査)が記事の題に合えば届く。適用条件だけの一致(説明、表示)では届けない
+			// A 1–2 word request such as 「監査して」 delivers when a word without kana (監査) matches the page title. A match only in applies-to (説明, 表示) does not deliver
 			titleRare := map[string]bool{}
 			for term := range rareMatchedSet {
 				if d.fields[0][term] {
@@ -288,8 +288,8 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 			coverage, minMatched = 0, 2
 			switch {
 			case strongTitle, strong && (requestTerms <= 3 || (rareRequestTerms > 0 && float64(rareMatched)/float64(rareRequestTerms) >= .35)):
-				// 珍しい識別子 1 語で届くのは、依頼の内容語が少ない時か、依頼側の一致率が足りる時だけ。
-				// 長い依頼の中の hook のような 1 語だけで関係ない記事が届いた(2026-10-23 の実測)
+				// A single rare identifier delivers only when the request has few content words, or the request-side match rate is enough.
+				// A single word like hook inside a long request delivered an unrelated page (measured 2026-10-23)
 				coverage, minMatched = threshold, 1
 			case rareMatched >= 2 && ((rareRequestTerms > 0 && float64(rareMatched)/float64(rareRequestTerms) >= .35) || (rarePageTerms > 0 && float64(rareMatched)/float64(rarePageTerms) >= .15)):
 				coverage = threshold

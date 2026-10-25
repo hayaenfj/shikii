@@ -2,8 +2,8 @@ package spec
 
 import "testing"
 
-// 配置(layout)は聞き方の一部: ハッシュに入り、variant で変えられ、知らない名前は弾く。
-// 同じ重みで配置だけで 13 ポイント動いたので(docs/bench.md)、人が手で選ぶのではなく tune が測って選べるようにする。
+// The arrangement (layout) is part of the wording: it goes into the hash, a variant can change it, and unknown names are rejected.
+// With the same weights, the arrangement alone moved the result by 13 points (docs/bench.md), so tune measures and picks it instead of a person choosing by hand.
 func TestLayoutIsPartOfTheWordingAndIsValidated(t *testing.T) {
 	sp := choiceSpec()
 	before := sp.Hash()

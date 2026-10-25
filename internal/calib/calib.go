@@ -1,5 +1,5 @@
-// Package calib は確率の較正と、較正の良さの指標。
-// 較正器は Platt(σ((Δ−bias)/T))のみ。Δ は生の確率のロジット。
+// Package calib calibrates probabilities and measures how good a calibration is.
+// The only calibrator is Platt (σ((Δ−bias)/T)). Δ is the logit of the raw probability.
 package calib
 
 import (
@@ -8,37 +8,37 @@ import (
 	"sort"
 )
 
-// Sample はラベル 1 件。Delta は生の確率のロジット、Weight は弱いラベルの重み(1 が通常)。
+// Sample is one label. Delta is the logit of the raw probability; Weight is the weight of a weak label (1 is normal).
 type Sample struct {
 	Delta  float64
 	Truth  bool
 	Weight float64
 }
 
-// Logit は確率をロジットに変える。0/1 は少し内側に寄せる。
+// Logit turns a probability into a logit. 0/1 are pulled slightly inward.
 func Logit(p float64) float64 {
 	const eps = 1e-6
 	p = math.Min(math.Max(p, eps), 1-eps)
 	return math.Log(p / (1 - p))
 }
 
-// Sigmoid は σ(z)。
+// Sigmoid is σ(z).
 func Sigmoid(z float64) float64 { return 1 / (1 + math.Exp(-z)) }
 
-// Platt は較正定数。Apply が σ((Δ−Bias)/Temperature)。
+// Platt holds the calibration constants. Apply computes σ((Δ−Bias)/Temperature).
 type Platt struct {
 	Bias        float64
 	Temperature float64
 }
 
-// Apply は較正後の確率。
+// Apply returns the calibrated probability.
 func (p Platt) Apply(delta float64) float64 {
 	return Sigmoid((delta - p.Bias) / p.Temperature)
 }
 
-// Fit は重み付き最尤で Platt を当てる。Platt 流の目標値の平滑化
-// (y+ = (N+ +1)/(N+ +2), y- = 1/(N- +2))で過学習を抑える。
-// 正例と負例の両方が無いと当てられない。傾きが負(確率が高いほど偽)なら誤り。
+// Fit fits Platt by weighted maximum likelihood. Platt-style smoothing of the targets
+// (y+ = (N+ +1)/(N+ +2), y- = 1/(N- +2)) keeps it from overfitting.
+// It cannot fit without both positives and negatives. A negative slope (higher probability means false) is an error.
 func Fit(samples []Sample) (Platt, error) {
 	var nPos, nNeg float64
 	for _, s := range samples {
@@ -58,9 +58,9 @@ func Fit(samples []Sample) (Platt, error) {
 	yPos := (nPos + 1) / (nPos + 2)
 	yNeg := 1 / (nNeg + 2)
 
-	// 重み付きの交差エントロピー(平滑化した目標値に対して)。Newton の歩幅はこれが下がる所まで縮める。
-	// 飽和した σ では Hessian が 0 に近づき、素の Newton は傾きを無限大に飛ばす(2026-10-17 の実測で
-	// T=5e-7 まで飛び、分離したデータの Brier が 0.02 → 0.11 に悪化した)。
+	// Weighted cross-entropy (against the smoothed targets). The Newton step is shrunk until this goes down.
+	// With a saturated σ the Hessian approaches 0 and plain Newton throws the slope toward infinity (measured on 2026-10-17:
+	// it jumped to T=5e-7 and the Brier of separated data got worse, 0.02 → 0.11).
 	loss := func(a, c float64) float64 {
 		var sum float64
 		for _, s := range samples {
@@ -73,7 +73,7 @@ func Fit(samples []Sample) (Platt, error) {
 				y = yPos
 			}
 			z := a*s.Delta + c
-			// log σ(z) と log(1−σ(z)) を桁落ちなしで
+			// log σ(z) and log(1−σ(z)) without loss of precision
 			logP := -math.Log1p(math.Exp(-z))
 			logQ := -math.Log1p(math.Exp(z))
 			if z > 30 {
@@ -86,7 +86,7 @@ func Fit(samples []Sample) (Platt, error) {
 		return sum
 	}
 
-	// z = a·Δ + c の形で Newton 法。a = 1/T, c = −bias/T。
+	// Newton's method in the form z = a·Δ + c. a = 1/T, c = −bias/T.
 	a, c := 1.0, 0.0
 	cur := loss(a, c)
 	for iter := 0; iter < 200; iter++ {
@@ -109,7 +109,7 @@ func Fit(samples []Sample) (Platt, error) {
 			h01 += q * s.Delta
 			h11 += q
 		}
-		// 小さな L2 で特異を避ける
+		// a small L2 term avoids singularity
 		const l2 = 1e-6
 		h00 += l2
 		h11 += l2
@@ -119,8 +119,8 @@ func Fit(samples []Sample) (Platt, error) {
 		}
 		da := (h11*g0 - h01*g1) / det
 		dc := (h00*g1 - h01*g0) / det
-		// 直線探索: 損失が下がる歩幅まで半分にする(傾きの符号は制約しない。逆転したデータは
-		// 負の傾きに収束し、最後の検査で拒否される)
+		// Line search: halve the step until the loss goes down (the sign of the slope is not constrained; inverted data
+		// converges to a negative slope and is rejected by the final check)
 		step := 1.0
 		improved := false
 		for k := 0; k < 40; k++ {
@@ -145,7 +145,7 @@ func Fit(samples []Sample) (Platt, error) {
 	return Platt{Bias: -c / a, Temperature: 1 / a}, nil
 }
 
-// Brier は mean(w·(p−y)²)。0 が完全。
+// Brier is mean(w·(p−y)²). 0 is perfect.
 func Brier(probs []float64, truths []bool, weights []float64) float64 {
 	var sum, wsum float64
 	for i, p := range probs {
@@ -163,15 +163,15 @@ func Brier(probs []float64, truths []bool, weights []float64) float64 {
 	return sum / wsum
 }
 
-// Bin は信頼度図の 1 本。
+// Bin is one bar of the reliability diagram.
 type Bin struct {
 	Lo, Hi     float64
-	N          float64 // 重み付き件数
-	Confidence float64 // 平均確信度
-	Accuracy   float64 // 正答率
+	N          float64 // weighted count
+	Confidence float64 // mean confidence
+	Accuracy   float64 // accuracy
 }
 
-// Reliability は確率を等幅の bin に分けて、bin ごとの平均確信度と正答率を出す。
+// Reliability splits probabilities into equal-width bins and returns the mean confidence and accuracy of each bin.
 func Reliability(probs []float64, truths []bool, weights []float64, bins int) []Bin {
 	if bins <= 0 {
 		bins = 10
@@ -206,7 +206,7 @@ func Reliability(probs []float64, truths []bool, weights []float64, bins int) []
 	return out
 }
 
-// ECE は信頼度図の bin ごとの |確信度 − 正答率| を件数で加重した和。
+// ECE is the sum of |confidence − accuracy| over the bins of the reliability diagram, weighted by count.
 func ECE(probs []float64, truths []bool, weights []float64, bins int) float64 {
 	rel := Reliability(probs, truths, weights, bins)
 	var total float64
@@ -225,19 +225,19 @@ func ECE(probs []float64, truths []bool, weights []float64, bins int) float64 {
 	return e
 }
 
-// Separation は正例の下限と負例の上限。Inverted なら単調な較正では直せない
-// (質問文かモデルを変えるしかない)。
-// 重み 1 未満の弱いラベル(境界・取り消されなかっただけ等)は判定に入れない:
-// 曖昧だと分かっている例が端に来るのは当然で、それで「逆転」と言うのは誤報になる。
+// Separation is the lowest positive and the highest negative. If Inverted, a monotonic calibration cannot fix it
+// (the only way is to change the question or the model).
+// Weak labels with weight below 1 (borderline, merely not undone, etc.) are left out of the check:
+// examples known to be ambiguous naturally land at the edges, and calling that "inverted" would be a false alarm.
 type Separation struct {
 	PosMin   float64
 	NegMax   float64
-	Overlap  int // 相手側の端を越えた件数
+	Overlap  int // count past the other side's edge
 	Inverted bool
-	Weak     int // 判定から外した弱いラベルの数
+	Weak     int // number of weak labels left out of the check
 }
 
-// CheckSeparation は Δ 上での正負の分離を見る(重み 1 以上のラベルだけ)。
+// CheckSeparation looks at how positives and negatives separate on Δ (only labels with weight 1 or more).
 func CheckSeparation(samples []Sample) Separation {
 	sep := Separation{PosMin: math.Inf(1), NegMax: math.Inf(-1)}
 	var pos, neg []float64

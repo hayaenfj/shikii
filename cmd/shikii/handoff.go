@@ -107,7 +107,7 @@ func (s *server) handleHandoffFile(w http.ResponseWriter, r *http.Request) {
 	f, e, err := (handoff.Book{Store: s.o.storeDir}).Open(r.URL.Query().Get("path"))
 	if err != nil {
 		code := 404
-		if strings.Contains(err.Error(), "相対") || strings.Contains(err.Error(), "隠し名") {
+		if strings.Contains(err.Error(), "relative") || strings.Contains(err.Error(), "hidden names") {
 			code = 400
 		}
 		writeErr(w, code, err)

@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""shikii の配布物を組む。リポジトリのルートで、作業ツリーに未コミットの変更が無い状態で実行する。
+"""Builds the shikii release files. Run at the repository root with no uncommitted changes in the working tree.
 
-  python3 -I scripts/build-release.py <出力フォルダ>
+  python3 -I scripts/build-release.py <output folder>
 
-版は version.go の Version、ビルド元は HEAD のコミット。<出力フォルダ>/assets/ に 4 環境の tar.gz と
-SHA256SUMS を置き、go version -m の結果を <出力フォルダ>/<名前>-<実行ファイル>-build.txt に残す。
+The version is Version in version.go, and the build source is the HEAD commit. Puts tar.gz files for 4 platforms and
+SHA256SUMS in <output folder>/assets/, and keeps the result of go version -m in <output folder>/<name>-<binary>-build.txt.
 """
 import gzip, hashlib, json, os, re, shutil, subprocess, sys, tarfile, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 if len(sys.argv) != 2:
-    sys.exit("使い方: python3 -I scripts/build-release.py <出力フォルダ>")
+    sys.exit("usage: python3 -I scripts/build-release.py <output folder>")
 source = Path.cwd()
 out = Path(sys.argv[1]).resolve()
 commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 if subprocess.check_output(["git", "status", "--porcelain"], text=True):
-    sys.exit("作業ツリーに未コミットの変更がある。先にコミットしてから組む")
+    sys.exit("the working tree has uncommitted changes. Commit first, then build")
 if out.exists() and any(out.iterdir()):
-    sys.exit(f"出力先 {out} が空ではない。前の版の残りを配らないよう、空のフォルダを渡す")
-# 無視されたファイル(.DS_Store など)が埋め込みに入らないよう、HEAD を一時フォルダへ複製して組む
+    sys.exit(f"the output folder {out} is not empty. Pass an empty folder so that leftovers of an earlier version are not shipped")
+# Copy HEAD into a temp folder and build there, so that ignored files (.DS_Store etc.) do not get embedded
 work = Path(tempfile.mkdtemp(prefix="shikii-release-"))
 subprocess.run(["git", "clone", "-q", "--no-local", str(source), str(work / "src")], check=True)
 subprocess.run(["git", "-C", str(work / "src"), "checkout", "-q", "--detach", commit], check=True)
@@ -27,51 +27,51 @@ repo = work / "src"
 os.chdir(repo)
 version = re.search(r'const Version = "([^"]+)"', (repo / "version.go").read_text(encoding="utf-8")).group(1)
 problems = []
-# 組む Go の版は go.mod の toolchain(脆弱性の直った版)。GOTOOLCHAIN=local などで別の版で組んだら止める(監査 0.8.2-2 の B1)
+# The Go version to build with is go.mod's toolchain (the version with vulnerabilities fixed). Stop if built with another version, e.g. via GOTOOLCHAIN=local (audit 0.8.2-2 B1)
 toolchain = re.search(r"^toolchain (go\S+)$", (repo / "go.mod").read_text(encoding="utf-8"), re.M)
 if not toolchain:
-    problems.append("go.mod に toolchain の行が無い")
+    problems.append("go.mod has no toolchain line")
 if json.loads((repo / ".claude-plugin/plugin.json").read_text(encoding="utf-8")).get("version") != version:
-    problems.append(".claude-plugin/plugin.json の version が " + version + " ではない")
+    problems.append(".claude-plugin/plugin.json's version is not " + version)
 for f in ["README.md", "docs/readme/README_ja.md"]:
     for v in re.findall(r"badge/version-([0-9.]+)-", (repo / f).read_text(encoding="utf-8")):
         if v != version:
-            problems.append(f"{f}: 版のバッジが {v}")
+            problems.append(f"{f}: the version badge says {v}")
 for f in ["CHANGELOG.md", "CHANGELOG_ja.md"]:
     head = next(l for l in (repo / f).read_text(encoding="utf-8").splitlines() if l.startswith("## "))
     if not head.startswith(f"## {version} — ") or re.search(r"unreleased|未公開", head, re.I):
-        problems.append(f"{f}: 先頭の見出しが公開の形ではない: {head}")
+        problems.append(f"{f}: the first heading is not in released form: {head}")
 tag = subprocess.run(["git", "-C", str(source), "rev-parse", "-q", "--verify", f"refs/tags/v{version}^{{commit}}"], capture_output=True, text=True).stdout.strip()
 if tag and tag != commit:
-    problems.append(f"タグ v{version} は {tag[:7]} を指し、HEAD {commit[:7]} と違う")
+    problems.append(f"tag v{version} points to {tag[:7]}, not HEAD {commit[:7]}")
 if problems:
     shutil.rmtree(work)
-    sys.exit("公開の形が揃っていない:\n  " + "\n  ".join(problems))
+    sys.exit("not ready for release:\n  " + "\n  ".join(problems))
 vcs_time = int(subprocess.check_output(["git", "show", "-s", "--format=%ct", commit], text=True))
 out.mkdir(parents=True, exist_ok=True)
 assets = out / "assets"
 assets.mkdir(exist_ok=True)
-install = f"""shikii {version} の導入・更新
+install = f"""Installing and updating shikii {version}
 
-注意: 0.6.0 以前からの更新は、初期化済みの各プロジェクトの .shikii/ の中を全部消して初期化し直します。
-以前の会話・教訓・正解・較正は消えます。残したいものは先に控えてください。
+Note: updating from 0.6.0 or earlier deletes everything inside .shikii/ of each initialized project and initializes it again.
+Earlier conversations, lessons, truths and calibrations are deleted. Save anything you want to keep first.
 
-既に shikii update が使える場合:
+If shikii update already works:
   shikii update
 
-手動で配置する場合は、同梱の shikii と shikii-readout をPATHの通った同じフォルダへ置きます。
-SHA256SUMSでアーカイブのハッシュを確かめ、使用中の実行ファイルへ直接上書きせず、別名で用意してから mv で置き換えてください（同じファイルに上書きすると、macOS では以後の起動が Killed: 9 になります）。
-ライセンス4ファイルは実行ファイルの隣の shikii-licenses/ に保管します。
-続けて次を実行します:
+To place the files by hand, put the bundled shikii and shikii-readout into the same folder on your PATH.
+Check the archive hash with SHA256SUMS, and do not overwrite a binary in use directly: prepare it under another name, then replace it with mv (overwriting the same file makes every later start fail with Killed: 9 on macOS).
+Keep the 4 license files in shikii-licenses/ next to the binaries.
+Then run:
   shikii hook install --yes
 
-利用するプロジェクトだけで一度初期化します:
+Initialize once, only in the projects that use it:
   shikii --init
 
-更新後はエージェントの新しいセッションを始め、起動中の画面・MCPを再起動します。
-今回のskillとhookを更新します。
-推奨のモデルは TypeSafe の Jev（環境変数 TYPESAFE_API_KEY）。鍵を置けない時は llama.cpp。README_ja.mdの「必要なもの」を参照してください。
-shikii本体のライセンスはApache-2.0 OR MITです。第三者の条件はTHIRD-PARTY-NOTICESを参照してください。
+After updating, start a new agent session and restart the running page and MCP.
+This updates this version's skill and hook.
+The recommended model is TypeSafe's Jev (environment variable TYPESAFE_API_KEY). If you cannot set a key, llama.cpp. See "必要なもの" (Requirements) in README_ja.md.
+shikii itself is licensed under Apache-2.0 OR MIT. For third-party terms, see THIRD-PARTY-NOTICES.
 """
 BUNDLED = [("LICENSE", "LICENSE"), ("LICENSE-APACHE", "LICENSE-APACHE"), ("LICENSE-MIT", "LICENSE-MIT"),
            ("THIRD-PARTY-NOTICES", "THIRD-PARTY-NOTICES"), ("CHANGELOG.md", "CHANGELOG.md"),
@@ -93,9 +93,9 @@ def build(target):
             raise RuntimeError(r.stderr)
         info = subprocess.check_output(["go", "version", "-m", str(stage / binary)], text=True)
         if not ("vcs.revision=" + commit in info and "vcs.modified=false" in info and "GOOS=" + system in info and "GOARCH=" + arch in info):
-            raise RuntimeError(f"{name}/{binary}: ビルド元の情報が合わない\n{info}")
+            raise RuntimeError(f"{name}/{binary}: the build source information does not match\n{info}")
         if not info.splitlines()[0].endswith(": " + toolchain.group(1)):
-            raise RuntimeError(f"{name}/{binary}: {toolchain.group(1)} で組まれていない(go.mod の toolchain)\n{info.splitlines()[0]}")
+            raise RuntimeError(f"{name}/{binary}: not built with {toolchain.group(1)} (go.mod's toolchain)\n{info.splitlines()[0]}")
         (out / (name + "-" + binary + "-build.txt")).write_text(info)
     for source, dest in BUNDLED:
         shutil.copy2(repo / source, stage / dest)
@@ -110,17 +110,17 @@ def build(target):
     with open(archive, "wb") as raw, gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as gz, tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tar:
         for file in sorted(stage.iterdir()):
             if not file.is_file() or file.is_symlink():
-                raise RuntimeError(f"{file}: 通常のファイルではない")
+                raise RuntimeError(f"{file}: not a regular file")
             tar.add(file, arcname=file.name, recursive=False, filter=normalize)
     with tarfile.open(archive, "r:gz") as tar:
         members = tar.getmembers()
         if not (len(members) == 10 and all(m.isfile() and "/" not in m.name for m in members)):
-            raise RuntimeError(f"{archive}: 中身が 10 個の通常のファイルではない")
+            raise RuntimeError(f"{archive}: the contents are not 10 regular files")
     if (system, arch) == (host_os, host_arch):
         got = subprocess.check_output([str(stage / "shikii"), "--version"], text=True).strip()
         if got != "shikii " + version:
-            raise RuntimeError(f"{name}: --version が {got!r}")
-    print(name + ": ビルド元と同梱物を確認", flush=True)
+            raise RuntimeError(f"{name}: --version says {got!r}")
+    print(name + ": checked the build source and the bundled files", flush=True)
     return archive
 
 
@@ -128,4 +128,4 @@ with ThreadPoolExecutor(max_workers=2) as pool:
     archives = list(pool.map(build, TARGETS))
 (assets / "SHA256SUMS").write_text("".join(hashlib.sha256(f.read_bytes()).hexdigest() + "  " + f.name + "\n" for f in sorted(archives)))
 shutil.rmtree(work)
-print(f"{version} ({commit[:7]}): 4配布物・8実行ファイル・SHA256SUMSを検証済み → {assets}", flush=True)
+print(f"{version} ({commit[:7]}): verified 4 archives, 8 binaries and SHA256SUMS → {assets}", flush=True)

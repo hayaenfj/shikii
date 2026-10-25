@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// Save は別のプロセスがその間に足した候補(variants)を消さない: ファイルの候補と自分の候補を名前で併合する。
-// 名前は区切り文字や空白を受けない(wiki/runs のファイル名に入る)。
+// Save does not drop candidates (variants) another process added in the meantime: it merges the file's candidates with ours by name.
+// Names reject separators and spaces (they go into wiki/runs file names).
 func TestSaveMergesVariantsWrittenByAnotherProcess(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "intent.yaml")
@@ -16,11 +16,11 @@ func TestSaveMergesVariantsWrittenByAnotherProcess(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stale, err := Load(path) // 古い写し(例: 裏の tune や calibrate --write)
+	stale, err := Load(path) // an old copy (e.g. background tune or calibrate --write)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh, err := Load(path) // 画面の口: 人が候補 A を足す
+	fresh, err := Load(path) // the page's entry: a person adds candidate A
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestSaveMergesVariantsWrittenByAnotherProcess(t *testing.T) {
 	if err := fresh.Save(); err != nil {
 		t.Fatal(err)
 	}
-	// 古い写しが候補 B を足して保存 → A が消えてはいけない
+	// the old copy adds candidate B and saves → A must not disappear
 	stale.Variants = append(stale.Variants, Variant{Name: "b-from-tune", Question: "Is this a request for work?"})
 	if err := stale.Save(); err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestSaveMergesVariantsWrittenByAnotherProcess(t *testing.T) {
 	if strings.Join(names, ",") != "a-from-page,b-from-tune" {
 		t.Fatalf("both candidates must survive, in file order then new ones: %v", names)
 	}
-	// 同じ名前は自分のが勝つ(採用後の書き換えなど)
+	// on the same name ours wins (e.g. rewriting after adoption)
 	got.Variants[0].Question = "Does it ask for anything?"
 	if err := got.Save(); err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestSaveMergesVariantsWrittenByAnotherProcess(t *testing.T) {
 	if again.Variants[0].Question != "Does it ask for anything?" || len(again.Variants) != 2 {
 		t.Fatalf("same name must be replaced, not duplicated: %+v", again.Variants)
 	}
-	// 名前の検証
+	// name validation
 	for _, bad := range []string{"", "x/../../outside", "with space", "a\nb", strings.Repeat("n", 61)} {
 		again.Variants = []Variant{{Name: bad, Question: "q"}}
 		if err := again.Validate(); err == nil {

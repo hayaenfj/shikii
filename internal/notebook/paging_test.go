@@ -19,7 +19,7 @@ func TestWikiSearchAndListingContinueBeyond128Articles(t *testing.T) {
 		d.Body = &body
 		r, err := b.Ingest(d)
 		if err != nil {
-			t.Fatalf("記事%dを件数だけで拒否しない: %v", i+1, err)
+			t.Fatalf("does not refuse page %d by count alone: %v", i+1, err)
 		}
 		last = *r.Page
 	}
@@ -28,7 +28,7 @@ func TestWikiSearchAndListingContinueBeyond128Articles(t *testing.T) {
 		var firstCursor string
 		for calls := 0; ; calls++ {
 			if calls > 140 {
-				t.Fatal("続きが前進しない")
+				t.Fatal("the cursor does not advance")
 			}
 			v, err := b.QueryPage(query, cursor)
 			if err != nil {
@@ -37,17 +37,17 @@ func TestWikiSearchAndListingContinueBeyond128Articles(t *testing.T) {
 			if query == "" {
 				for _, p := range v.Lessons {
 					if seen[p.ID] {
-						t.Fatal("一覧の重複")
+						t.Fatal("duplicate in the list")
 					}
 					seen[p.ID] = true
 				}
 			} else {
 				if v.Search == nil || v.Search.Total != 140 {
-					t.Fatal("全記事を検索対象にする")
+					t.Fatal("searches every page")
 				}
 				for _, c := range v.Search.Candidates {
 					if seen[c.ID] {
-						t.Fatal("候補の重複")
+						t.Fatal("duplicate candidate")
 					}
 					seen[c.ID] = true
 				}
@@ -61,18 +61,18 @@ func TestWikiSearchAndListingContinueBeyond128Articles(t *testing.T) {
 			cursor = v.NextCursor
 		}
 		if len(seen) != 140 || firstCursor == "" {
-			t.Fatalf("切捨てず最後まで到達: %d cursor=%q", len(seen), firstCursor)
+			t.Fatalf("reaches the end without truncating: %d cursor=%q", len(seen), firstCursor)
 		}
 		if _, err := b.QueryPage(query+" changed", firstCursor); err == nil {
-			t.Fatal("検索条件を変えた続きを拒否する")
+			t.Fatal("refuses a cursor whose search terms changed")
 		}
 		if _, err := (Book{Root: b.Root, Scope: "/another"}).QueryPage(query, firstCursor); err == nil {
-			t.Fatal("別プロジェクトの続きを拒否する")
+			t.Fatal("refuses a cursor from another project")
 		}
 	}
 	v, err := b.Query("lesson:" + last.ID)
 	if err != nil || len(v.Lessons) != 1 || v.Lessons[0].ID != last.ID {
-		t.Fatal("末尾の記事も直接読める", err)
+		t.Fatal("the last page can also be read directly", err)
 	}
 	before, _ := b.QueryPage("Knowledge", "")
 	d := draft(source, last.Title)
@@ -81,10 +81,10 @@ func TestWikiSearchAndListingContinueBeyond128Articles(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := b.QueryPage("Knowledge", before.NextCursor); err == nil {
-		t.Fatal("記事の版が変わった続きを拒否する")
+		t.Fatal("refuses a cursor after the page revision changed")
 	}
 	if _, err := b.Lint(); err != nil {
-		t.Fatal("大きい一覧も点検できる", err)
+		t.Fatal("a large list can also be checked", err)
 	}
 }
 
@@ -102,7 +102,7 @@ func TestWikiSourceContinuationUsesBytesInsteadOfCounts(t *testing.T) {
 	var first string
 	for calls := 0; ; calls++ {
 		if calls > len(ids) {
-			t.Fatal("原資料の続きが前進しない")
+			t.Fatal("the source cursor does not advance")
 		}
 		got, err := b.ReadSourcesPage(ids, cursor)
 		if err != nil {
@@ -110,7 +110,7 @@ func TestWikiSourceContinuationUsesBytesInsteadOfCounts(t *testing.T) {
 		}
 		for _, o := range got["observations"].([]Observation) {
 			if seen[o.ID] || len(o.Content) != 9000 {
-				t.Fatal("原文の欠落・重複")
+				t.Fatal("missing or duplicate original text")
 			}
 			seen[o.ID] = true
 		}
@@ -123,16 +123,16 @@ func TestWikiSourceContinuationUsesBytesInsteadOfCounts(t *testing.T) {
 		}
 	}
 	if len(seen) != 18 || first == "" {
-		t.Fatal("原資料を件数で切らない", len(seen))
+		t.Fatal("does not cut source records by count", len(seen))
 	}
 	if _, err := b.ReadSourcesPage(ids[:17], first); err == nil {
-		t.Fatal("対象を変えた続きを拒否する")
+		t.Fatal("refuses a cursor whose target changed")
 	}
 	if _, err := b.ReadSourcesPage(ids, "invalid"); err == nil {
-		t.Fatal("壊れた続きを拒否する")
+		t.Fatal("refuses a broken cursor")
 	}
 	if _, err := (Book{Root: b.Root, Scope: "/other"}).ReadSourcesPage(ids, first); err == nil {
-		t.Fatal("原資料のプロジェクト境界を保つ")
+		t.Fatal("keeps the project boundary of source records")
 	}
 }
 
@@ -142,7 +142,7 @@ func TestWikiCitationsLinksAndCaptureQueueHaveNoCountCeiling(t *testing.T) {
 	for i := range 140 {
 		o, err := b.Capture(Observation{Kind: "test", Title: fmt.Sprint("Evidence ", i), Content: "Checked", Reference: "fixture", Version: "v1", ObservedAt: time.Unix(1, 0)})
 		if err != nil {
-			t.Fatalf("未整理%d件で取り込みを拒否しない: %v", i+1, err)
+			t.Fatalf("does not refuse ingestion with %d unorganized records: %v", i+1, err)
 		}
 		ids = append(ids, o.ID)
 	}
@@ -150,13 +150,13 @@ func TestWikiCitationsLinksAndCaptureQueueHaveNoCountCeiling(t *testing.T) {
 	d.Sources = ids[:18]
 	r, err := b.Ingest(d)
 	if err != nil || len(r.Page.Sources) != 18 {
-		t.Fatal("18件の原資料を引用できる", err)
+		t.Fatal("can cite 18 source records", err)
 	}
 	d.ID = r.Page.ID
 	d.Sources = ids[18:36]
 	r, err = b.Ingest(d)
 	if err != nil || len(r.Page.Sources) != 36 {
-		t.Fatal("更新前の引用も保持する", err)
+		t.Fatal("keeps the quotes from before the update", err)
 	}
 	links := []string{}
 	for i := range 12 {
@@ -169,7 +169,7 @@ func TestWikiCitationsLinksAndCaptureQueueHaveNoCountCeiling(t *testing.T) {
 	d.Related = links
 	d.Replaces = links[:5]
 	if _, err := b.Ingest(d); err != nil {
-		t.Fatal("関連12件と置き換え5件を保持する", err)
+		t.Fatal("keeps 12 related and 5 replaced pages", err)
 	}
 	dir, _ := b.directory(false, "pages")
 	checkpoints := map[string]maintenanceCheckpoint{}
@@ -181,11 +181,11 @@ func TestWikiCitationsLinksAndCaptureQueueHaveNoCountCeiling(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, err := readCheckpoints(dir); err != nil || len(got) != 150 {
-		t.Fatal("見直しの記録も件数や小さいファイル上限で失わない", err)
+		t.Fatal("does not lose the review log to counts or small file limits", err)
 	}
 }
 
-// 監査 0.9.0 の M4: 種類と場面の無い記事の案内は最初の返事にだけ載せ、続きの返事には載せない(同じ 5 本を何度も渡さない)。
+// audit 0.9.0 M4: the guidance about pages without kind and scene is only in the first reply, not in continuation replies (do not hand over the same 5 pages again and again).
 func TestUnclassifiedOnlyOnTheFirstPage(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	source := seed(t, b, 1)
@@ -206,10 +206,10 @@ func TestUnclassifiedOnlyOnTheFirstPage(t *testing.T) {
 	}
 	first, err := b.QueryPage("", "")
 	if err != nil || first.NextCursor == "" || first.UnclassifiedCount != 1 {
-		t.Fatalf("最初の返事に案内があり、続きがある: count=%d cursor=%q %v", first.UnclassifiedCount, first.NextCursor, err)
+		t.Fatalf("the first reply has the guidance and a continuation: count=%d cursor=%q %v", first.UnclassifiedCount, first.NextCursor, err)
 	}
 	next, err := b.QueryPage("", first.NextCursor)
 	if err != nil || next.UnclassifiedCount != 0 || len(next.Unclassified) != 0 || next.UnclassifiedHow != "" {
-		t.Fatalf("続きの返事には載せない: %+v %v", next.Remaining, err)
+		t.Fatalf("not included in continuation replies: %+v %v", next.Remaining, err)
 	}
 }

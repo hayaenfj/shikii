@@ -17,7 +17,7 @@ func noulSpec() *Spec {
 	}
 }
 
-// 較正の鍵: 質問・テンプレ・選択肢が変わればハッシュが変わり、閾値・policy では変わらない。
+// Calibration key: the hash changes when the question, template or options change, and not when thresholds or policy change.
 func TestHashTracksCalibratedContract(t *testing.T) {
 	base := noulSpec()
 	h := base.Hash()
@@ -82,8 +82,8 @@ func TestCalibrationForRequiresHashAndModel(t *testing.T) {
 	}
 }
 
-// 同じモデルの線は 1 本だけ。文言を変えて引き直したら、古いハッシュの線は置き換わる(残ると check が stale で落ち続ける)。
-// 別のモデルの線はそのまま残る。
+// The same model keeps only one line. When the wording changes and a new line is drawn, the old-hash line is replaced (if it stayed, check would keep failing as stale).
+// Lines for other models stay as they are.
 func TestPutCalibrationReplacesStaleBlockOfSameModel(t *testing.T) {
 	s := noulSpec()
 	s.PutCalibration(Calibration{Model: "m", SpecHash: "old-hash", Method: "platt", Bias: 1})
@@ -103,7 +103,7 @@ func TestPutCalibrationReplacesStaleBlockOfSameModel(t *testing.T) {
 	}
 }
 
-// Save は variants も書き戻す(提案された候補を spec に残すため)。コメントと他の項目は触らない。
+// Save also writes back variants (so proposed candidates stay in the spec). Comments and other fields are untouched.
 func TestSaveWritesVariantsAndKeepsTheRest(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.yaml")
@@ -137,7 +137,7 @@ func TestSaveWritesVariantsAndKeepsTheRest(t *testing.T) {
 	}
 }
 
-// display は画面の表示用の訳。較正の鍵(Hash)には入らない。知らない選択肢や段数の合わない levels は検証で弾く。
+// display holds translations for the screen. It is not part of the calibration key (Hash). Validation rejects unknown options and levels with the wrong count.
 func TestDisplayTranslationsDoNotTouchHashButAreValidated(t *testing.T) {
 	s := noulSpec()
 	before := s.Hash()
@@ -179,8 +179,8 @@ func TestValidateRejectsBadSpecs(t *testing.T) {
 		"level too high":  func(s *Spec) { s.Type = Score; s.Levels = []string{"a", "b", "c"}; s.Thresholds.Level = 3 },
 		"level zero-ish":  func(s *Spec) { s.Type = Score; s.Levels = []string{"a", "b", "c"}; s.Thresholds.Level = -1 },
 		"no template":     func(s *Spec) { s.State.Template = "" },
-		"no pii":          func(s *Spec) { s.Policy.PII = nil }, // 既定は無い。書いた人が true / false を選ぶ
-		"min_n zero":      func(s *Spec) { s.Eval.MinN = 0 },    // 監査 S4: 0 だとラベル 1 件で線が引ける
+		"no pii":          func(s *Spec) { s.Policy.PII = nil }, // no default. The author chooses true / false
+		"min_n zero":      func(s *Spec) { s.Eval.MinN = 0 },    // audit S4: with 0, a line can be drawn from one label
 	}
 	for name, mutate := range cases {
 		s := noulSpec()
@@ -232,22 +232,22 @@ eval:
 	if c := again.CalibrationFor("m"); c == nil || c.Bias != 2.2 || c.Temperature != 0.3 {
 		t.Fatalf("calibration did not survive save/load: %+v", again.Calibration)
 	}
-	// 同じ鍵は置き換え、増えない
+	// the same key is replaced, not added
 	again.PutCalibration(Calibration{Model: "m", SpecHash: again.Hash(), Method: "platt", Bias: 9})
 	if len(again.Calibration) != 1 || again.Calibration[0].Bias != 9 {
 		t.Fatalf("PutCalibration must replace same (hash, model): %+v", again.Calibration)
 	}
 }
 
-// Save は calibration だけを差し替え、人が書いたコメントと文言はそのまま残す。
+// Save replaces only calibration and keeps the comments and wording people wrote.
 func TestSavePreservesCommentsAndOnlyTouchesCalibration(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.yaml")
-	src := `# 先頭のコメント: この質問文は 78 ペアで検証した
+	src := `# Leading comment: this question was verified on 78 pairs
 id: keep
 version: 1
 type: noul
-question: Is it?   # 行末コメント
+question: Is it?   # trailing comment
 state:
   template: "{{ a }}"
   required: [a]
@@ -274,7 +274,7 @@ eval:
 	}
 	out, _ := os.ReadFile(path)
 	text := string(out)
-	for _, want := range []string{"# 先頭のコメント: この質問文は 78 ペアで検証した", "# 行末コメント", "required: [a]", "send_to: [local]", "method: platt", "bias: 1.5"} {
+	for _, want := range []string{"# Leading comment: this question was verified on 78 pairs", "# trailing comment", "required: [a]", "send_to: [local]", "method: platt", "bias: 1.5"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("saved file lost %q:\n%s", want, text)
 		}
@@ -286,7 +286,7 @@ eval:
 	if c := again.CalibrationFor("m"); c == nil || c.Bias != 1.5 {
 		t.Fatalf("calibration not readable after save: %+v", again.Calibration)
 	}
-	// 2 回目は置き換え(キーが増えない)
+	// the second time replaces it (the key is not added again)
 	again.PutCalibration(Calibration{Model: "m", SpecHash: again.Hash(), Method: "platt", Bias: 2, Temperature: 0.4})
 	if err := again.Save(); err != nil {
 		t.Fatal(err)
@@ -295,13 +295,13 @@ eval:
 	if strings.Count(string(out), "calibration:") != 1 || !strings.Contains(string(out), "bias: 2") {
 		t.Fatalf("second save must replace, not duplicate:\n%s", out)
 	}
-	// 空にすればキーが消える
+	// emptying it removes the key
 	again.Calibration = nil
 	if err := again.Save(); err != nil {
 		t.Fatal(err)
 	}
 	out, _ = os.ReadFile(path)
-	if strings.Contains(string(out), "calibration") || !strings.Contains(string(out), "# 先頭のコメント") {
+	if strings.Contains(string(out), "calibration") || !strings.Contains(string(out), "# Leading comment") {
 		t.Fatalf("empty calibration must remove the key and keep comments:\n%s", out)
 	}
 }

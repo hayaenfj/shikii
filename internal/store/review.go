@@ -1,6 +1,6 @@
 package store
 
-// AI の仮採点は records/ に保存する。labels/ の正解と較正には混ぜない。
+// The AI's provisional scores are saved in records/. They are never mixed into the truths and calibration in labels/.
 import (
 	"crypto/sha256"
 	"encoding/json"
@@ -67,8 +67,8 @@ func (s Store) Reviews(specID string) (map[string]Review, error) {
 	return out, err
 }
 
-// ReviewQuality は人が確認した採点だけを見る。無作為の枠を分け、
-// 判断を保留したものや意図して選んだ難問で無作為の成績を置き換えない。
+// ReviewQuality looks only at scores a person confirmed. It keeps the random slot separate,
+// and does not replace the random results with held judgments or deliberately chosen hard cases.
 func ReviewQuality(reviews map[string]Review, labels map[string]Label) ReviewStats {
 	stats := ReviewStats{Scored: len(reviews), Every: 5}
 	ordered := []Review{}
@@ -114,8 +114,8 @@ func ReviewQuality(reviews map[string]Review, labels map[string]Label) ReviewSta
 			}
 		}
 	}
-	// 最初と不一致が出た種類は 5 件に 1 件。直近の無作為の確認が
-	// 20 件続けて一致した種類は 20 件に 1 件。実行許可の線は別に測る。
+	// 1 in 5 at first and for kinds that had a mismatch. 1 in 20 for kinds whose latest random checks
+	// matched 20 times in a row. The line that allows acting is measured separately.
 	if recent == 20 && errors == 0 && (lastError.IsZero() || lastError.Before(windowStart)) {
 		stats.Every = 20
 	}
@@ -124,7 +124,7 @@ func ReviewQuality(reviews map[string]Review, labels map[string]Label) ReviewSta
 
 func (s Store) SaveReview(r Review) (Review, error) {
 	if !ReviewSpec(r.Spec) || r.TraceID == "" || r.Scope == "" || r.Reason == "" || (r.Truth != "yes" && r.Truth != "no" && r.Truth != "unknown") {
-		return r, errors.New("仮採点には対象・根拠・yes / no / unknown が必要です")
+		return r, errors.New("a provisional score needs a target, grounds and yes / no / unknown")
 	}
 	dir := filepath.Join(s.Dir, "records", "reviews")
 	f, err := s.openFile(filepath.Join(dir, r.Spec+".lock"), os.O_CREATE|os.O_RDWR)
@@ -135,7 +135,7 @@ func (s Store) SaveReview(r Review) (Review, error) {
 	until := time.Now().Add(2 * time.Second)
 	for syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		if time.Now().After(until) {
-			return r, errors.New("仮採点の保存が混み合っています")
+			return r, errors.New("saving provisional scores is busy")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -148,14 +148,14 @@ func (s Store) SaveReview(r Review) (Review, error) {
 		if old.Scope == r.Scope && old.Source.ID == r.Source.ID && old.Truth == r.Truth && old.Reason == r.Reason {
 			return old, nil
 		}
-		return r, errors.New("この判定は仮採点済みです。人の確認で訂正します")
+		return r, errors.New("this decision already has a provisional score. Correct it with a person's confirmation")
 	}
 	labels, err := s.LabeledTraces(r.Spec)
 	if err != nil {
 		return r, err
 	}
 	if l, ok := labels[r.TraceID]; ok && HumanSource(l.Source) {
-		return r, errors.New("人が答えた判定を AI の採点で置き換えません")
+		return r, errors.New("a decision a person answered is not replaced by an AI score")
 	}
 	r.Rubric, r.Every, r.At = ReviewRubric, ReviewQuality(all, labels).Every, time.Now().UTC()
 	r.Sampled = ReviewSample(r.TraceID, r.Every)

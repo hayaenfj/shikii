@@ -12,7 +12,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// 監査 9: 文脈の段の呼び出しが失敗しても、最小の答え(ask)は捨てない。
+// audit 9: even if the context step's call fails, the minimal answer (ask) is not thrown away.
 func TestContextCallFailureKeepsTheMinimalAnswer(t *testing.T) {
 	var calls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

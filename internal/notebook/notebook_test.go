@@ -52,7 +52,7 @@ func TestNotebookPreservesSourcesAndRevisionHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := immutable(filepath.Join(sources, id+".json"), []byte("replacement")); err == nil {
-		t.Fatal("保存した原資料を別の内容で上書きできない")
+		t.Fatal("a saved source record cannot be overwritten with different content")
 	}
 	pages, _ := b.directory(false, "pages")
 	log, _ := os.ReadFile(filepath.Join(pages, "log.md"))
@@ -61,49 +61,49 @@ func TestNotebookPreservesSourcesAndRevisionHistory(t *testing.T) {
 	}
 	again, _ := os.ReadFile(filepath.Join(pages, "log.md"))
 	if !bytes.Equal(log, again) {
-		t.Fatal("同じ取り込みを繰り返しても履歴を増やさない")
+		t.Fatal("repeating the same ingestion does not grow the history")
 	}
 	id2 := seed(t, b, 2)
 	d.ID, d.Sources, d.Lesson = first.Page.ID, []string{id2}, "Also check model startup instructions on a fresh installation."
 	second, err := b.Ingest(d)
 	if err != nil || len(second.Page.Sources) != 2 || second.Page.Revision == first.Page.Revision {
-		t.Fatalf("更新しても前の出典を保持する: %+v %v", second, err)
+		t.Fatalf("an update keeps the previous sources: %+v %v", second, err)
 	}
 	versions, _ := filepath.Glob(filepath.Join(pages, "revisions", first.Page.ID+"-*.md"))
 	if len(versions) != 2 {
-		t.Fatalf("前の版を消さない: %v", versions)
+		t.Fatalf("does not delete the previous revision: %v", versions)
 	}
 	for i := 3; i < 265; i++ {
 		seed(t, b, i)
 	}
 	material, err := b.ReadSources([]string{id})
 	if err != nil || len(material["source_material"].([]store.Feedback)) != 1 {
-		t.Fatalf("最近の会話から外れた原文も出典として残る: %v %v", material, err)
+		t.Fatalf("an original that dropped out of recent conversations still stays as a source: %v %v", material, err)
 	}
 	after, _ := os.ReadFile(filepath.Join(sources, id+".json"))
 	if !bytes.Equal(original, after) {
-		t.Fatal("教訓を更新しても原資料を書き換えない")
+		t.Fatal("updating a lesson does not rewrite the source record")
 	}
 	view, err := b.Query("model startup instructions")
 	if err != nil || len(view.Lessons) != 1 || len(view.Issues) != 0 || len(view.Pending) != 2 {
-		t.Fatalf("教訓と未整理の会話は別々に検索する: %+v %v", view, err)
+		t.Fatalf("lessons and unorganized conversations are searched separately: %+v %v", view, err)
 	}
 	for _, query := range []string{"startup", "model startup"} {
 		view, err := b.Query(query)
 		if err != nil || len(view.Lessons) != 1 {
-			t.Fatalf("短い検索語でも長い教訓を見つける: query=%q lessons=%d err=%v", query, len(view.Lessons), err)
+			t.Fatalf("finds a long lesson with a short search term: query=%q lessons=%d err=%v", query, len(view.Lessons), err)
 		}
 	}
 	if view, err := b.Query("billing payments"); err != nil || len(view.Lessons) != 0 {
-		t.Fatal("関係のない検索語では教訓を返さない")
+		t.Fatal("returns no lesson for unrelated search terms")
 	}
 	if info, err := os.Stat(filepath.Join(sources, id+".json")); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatal("原資料は本人だけが読める")
+		t.Fatal("only the owner can read source records")
 	}
 }
 
 func TestNotebookRejectsForeignSourcesTamperingAndSymlinks(t *testing.T) {
-	t.Run("仕事の区切り", func(t *testing.T) {
+	t.Run("work boundary", func(t *testing.T) {
 		root := t.TempDir()
 		a, b := Book{Root: root, Scope: "/a/project"}, Book{Root: root, Scope: "/b/project"}
 		id := seed(t, a, 1)
@@ -111,16 +111,16 @@ func TestNotebookRejectsForeignSourcesTamperingAndSymlinks(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := b.Ingest(draft(id, "foreign")); err == nil {
-			t.Fatal("同名の別プロジェクトの観察を引用してはいけない")
+			t.Fatal("must not quote an observation from another project with the same name")
 		}
 		if _, err := b.ReadSources([]string{id}); err == nil {
-			t.Fatal("原資料の読み出しも同じ仕事に限る")
+			t.Fatal("reading source records is also limited to the same work")
 		}
 		if _, err := a.Ingest(draft("../../outside", "invalid")); err == nil {
-			t.Fatal("出典IDを path にしてはいけない")
+			t.Fatal("a source ID must not be a path")
 		}
 	})
-	t.Run("出典の変更", func(t *testing.T) {
+	t.Run("source changed", func(t *testing.T) {
 		b := Book{Root: t.TempDir(), Scope: "/project"}
 		id := seed(t, b, 1)
 		if _, err := b.Ingest(draft(id, "original")); err != nil {
@@ -132,25 +132,25 @@ func TestNotebookRejectsForeignSourcesTamperingAndSymlinks(t *testing.T) {
 		_ = os.WriteFile(path, bytes.ReplaceAll(original, []byte("missing"), []byte("present")), 0o600)
 		view, err := b.Query("")
 		if err != nil || len(view.Lessons) != 0 || !hasIssue(view.Issues, "changed-source") {
-			t.Fatalf("出典が変わった教訓を参照から外す: %+v %v", view, err)
+			t.Fatalf("drops a lesson whose source changed from the results: %+v %v", view, err)
 		}
 		if _, err := b.ReadSources([]string{id}); err == nil {
-			t.Fatal("変更された原文を確かな出典として返さない")
+			t.Fatal("does not return a modified original as a trusted source")
 		}
 		if _, err := b.Ingest(draft(id, "another title")); err == nil {
-			t.Fatal("別の題で取り込み直しても出典の変更を正当化しない")
+			t.Fatal("re-ingesting under another title does not legitimize the changed source")
 		}
 		report, err := b.Lint()
 		if err != nil || !hasIssue(report.Issues, "changed-source") {
-			t.Fatalf("点検で出典の変更が分かる: %+v %v", report, err)
+			t.Fatalf("the check shows the source changed: %+v %v", report, err)
 		}
 		_ = os.Remove(path)
 		view, _ = b.Query("")
 		if len(view.Lessons) != 0 || !hasIssue(view.Issues, "missing-source") {
-			t.Fatal("原文の消失も検出する")
+			t.Fatal("also detects a missing original")
 		}
 	})
-	t.Run("生成ページの変更", func(t *testing.T) {
+	t.Run("generated page changed", func(t *testing.T) {
 		b := Book{Root: t.TempDir(), Scope: "/project"}
 		result, err := b.Ingest(draft(seed(t, b, 1), "original"))
 		if err != nil {
@@ -165,7 +165,7 @@ func TestNotebookRejectsForeignSourcesTamperingAndSymlinks(t *testing.T) {
 		f.Close()
 		view, err := b.Query("")
 		if err != nil || len(view.Lessons) != 0 || !hasIssue(view.Issues, "changed-page") {
-			t.Fatal("本文だけを書き換えた時も検出する")
+			t.Fatal("also detects a rewrite of only the body")
 		}
 	})
 	t.Run("symlink", func(t *testing.T) {
@@ -178,11 +178,11 @@ func TestNotebookRejectsForeignSourcesTamperingAndSymlinks(t *testing.T) {
 		}
 		b := Book{Root: root, Scope: "/project"}
 		if _, err := b.Ingest(draft(seed(t, b, 1), "escaped")); err == nil {
-			t.Fatal("生成領域の symlink を通して書かない")
+			t.Fatal("does not write through a symlink in the generated area")
 		}
 		files, _ := os.ReadDir(outside)
 		if len(files) != 0 {
-			t.Fatal("生成領域の外を変更しない")
+			t.Fatal("does not change anything outside the generated area")
 		}
 	})
 }
@@ -201,13 +201,13 @@ func TestNotebookReplacesLessonsAndMaintainsIndexOnASlowCycle(t *testing.T) {
 	}
 	view, _ := b.Query("")
 	if len(view.Lessons) != 1 || view.Lessons[0].ID != newer.Page.ID {
-		t.Fatal("更新前の教訓を同時に勧めない")
+		t.Fatal("does not recommend the lesson from before the update at the same time")
 	}
 	d.ID, d.Replaces = old.Page.ID, []string{newer.Page.ID}
 	if _, err := b.Ingest(d); err == nil {
-		t.Fatal("教訓の置き換えを循環させない")
+		t.Fatal("lesson replacements must not form a cycle")
 	}
-	// 置き換えの解釈を訂正した時は解除でき、もう一度戻しても履歴を失わない。
+	// When the interpretation of a replacement is corrected it can be cleared, and restoring it again keeps the history.
 	undo := draft(newer.Page.Sources[0].ID, newer.Page.Title)
 	undo.ID, undo.Replaces = newer.Page.ID, []string{}
 	restored, err := b.Ingest(undo)
@@ -216,18 +216,18 @@ func TestNotebookReplacesLessonsAndMaintainsIndexOnASlowCycle(t *testing.T) {
 	}
 	view, _ = b.Query("")
 	if len(view.Lessons) != 2 {
-		t.Fatal("明示した空の replaces で置き換えを解除できる")
+		t.Fatal("an explicit empty replaces clears the replacement")
 	}
 	undo.Replaces = []string{old.Page.ID}
 	again, err := b.Ingest(undo)
 	if err != nil || again.Page.Previous != restored.Page.Revision || again.Page.Revision == newer.Page.Revision {
-		t.Fatal("同じ内容への復帰も、新しい変更として履歴を残す")
+		t.Fatal("returning to the same content also leaves history as a new change")
 	}
 	dir, _ := b.directory(false, "pages")
 	_ = os.Remove(filepath.Join(dir, "index.md"))
 	report, err := b.Lint()
 	if err != nil || len(report.Repaired) != 1 || len(report.Issues) != 0 {
-		t.Fatalf("索引は自動で直せる: %+v %v", report, err)
+		t.Fatalf("the index can be repaired automatically: %+v %v", report, err)
 	}
 	if err := b.MaybeLint(); err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func TestNotebookReplacesLessonsAndMaintainsIndexOnASlowCycle(t *testing.T) {
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "index.md"))
 	if string(data) != "stale index" {
-		t.Fatal("同じ日に毎ターン点検を繰り返さない")
+		t.Fatal("does not repeat the check every turn on the same day")
 	}
 	before := time.Now().Add(-25 * time.Hour)
 	_ = os.Chtimes(filepath.Join(dir, ".last-lint"), before, before)
@@ -247,12 +247,12 @@ func TestNotebookReplacesLessonsAndMaintainsIndexOnASlowCycle(t *testing.T) {
 	}
 	data, _ = os.ReadFile(filepath.Join(dir, "index.md"))
 	if string(data) == "stale index" {
-		t.Fatal("次の周期では索引を直す")
+		t.Fatal("repairs the index in the next cycle")
 	}
 	_ = os.Remove(filepath.Join(dir, old.Page.ID+".md"))
 	report, err = b.Lint()
 	if err != nil || !hasIssue(report.Issues, "missing-replaced-page") {
-		t.Fatal("消えたページへのリンクを検出する")
+		t.Fatal("detects links to pages that disappeared")
 	}
 }
 
@@ -275,7 +275,7 @@ func TestNotebookConcurrentIngestKeepsEveryLessonAndLog(t *testing.T) {
 	select {
 	case err := <-blocked:
 		unlock()
-		t.Fatalf("他の更新中は取り込みを待つ: %v", err)
+		t.Fatalf("ingestion waits while another update is running: %v", err)
 	case <-time.After(50 * time.Millisecond):
 	}
 	unlock()
@@ -301,34 +301,34 @@ func TestNotebookConcurrentIngestKeepsEveryLessonAndLog(t *testing.T) {
 	}
 	pages, issues, err := b.pages()
 	if err != nil || len(pages) != 12 || len(issues) != 0 {
-		t.Fatalf("並列の取り込みで教訓を失わない: pages=%d issues=%v err=%v", len(pages), issues, err)
+		t.Fatalf("parallel ingestion does not lose lessons: pages=%d issues=%v err=%v", len(pages), issues, err)
 	}
 	dir, _ = b.directory(false, "pages")
 	log, _ := os.ReadFile(filepath.Join(dir, "log.md"))
 	if strings.Count(string(log), " | ingest ") != 12 {
-		t.Fatal("変更履歴も失わない")
+		t.Fatal("does not lose the change history either")
 	}
 	report, err := b.Lint()
 	if err != nil || len(report.Issues) != 0 || len(report.Repaired) != 0 {
-		t.Fatalf("並列処理後も出典・索引・過去の版が整合する: %+v %v", report, err)
+		t.Fatalf("sources, index and past revisions stay consistent after parallel work: %+v %v", report, err)
 	}
 }
 
-// 0.9.0: 教訓のある記事は、種類(5 つのどれか)と場面(「〜する時」、24 文字まで)が無いと保存しない。どの経路(CLI・MCP・HTTP・振り返り)も
-// ここを通るので、どのエージェントでも付く。既存の記事を直す時に省けば、その記事の種類と場面を引き継ぐ。前の版の記事(種類も場面も無い)は、
-// 直す時に付けないと保存できない(版を上げた後に埋まっていく)。
+// 0.9.0: a page with a lesson is not saved without a kind (one of 5) and a scene (a "when ..." phrase, up to 24 characters). Every path (CLI, MCP, HTTP, reflection)
+// goes through here, so every agent adds them. When editing an existing page they are inherited from it if omitted. A page from the previous version (no kind or scene)
+// cannot be saved when edited without them (so they fill in after the upgrade).
 func TestIngestRequiresKindAndScene(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
 	id := seed(t, b, 1)
 	d := draft(id, "決まりの記事")
 	d.Kind, d.Scene = "", ""
 	if _, err := b.Ingest(d); err == nil || !strings.Contains(err.Error(), "kind") || !strings.Contains(err.Error(), "scene") {
-		t.Fatalf("種類と場面が無い教訓は断り、直し方を返す: %v", err)
+		t.Fatalf("refuses a lesson without kind and scene and says how to fix it: %v", err)
 	}
 	for _, bad := range []struct{ kind, scene string }{{"memo", "コミットする時"}, {"rule", ""}, {"rule", strings.Repeat("あ", 25)}, {"rule", "二行\n目"}} {
 		d.Kind, d.Scene = bad.kind, bad.scene
 		if _, err := b.Ingest(d); err == nil {
-			t.Fatalf("種類は 5 つのどれか、場面は 24 文字までの 1 行: %+v", bad)
+			t.Fatalf("kind is one of 5, scene is one line up to 24 characters: %+v", bad)
 		}
 	}
 	d.Kind, d.Scene = "rule", "コミットする時"
@@ -337,15 +337,15 @@ func TestIngestRequiresKindAndScene(t *testing.T) {
 		t.Fatal(err)
 	}
 	if first.Page.Kind != "rule" || first.Page.Scene != "コミットする時" {
-		t.Fatalf("種類と場面を記事に残す: %+v", first.Page)
+		t.Fatalf("keeps kind and scene on the page: %+v", first.Page)
 	}
-	// 直す時に省けば引き継ぐ
+	// Inherited if omitted when editing
 	d.ID, d.Kind, d.Scene, d.Lesson = first.Page.ID, "", "", d.Lesson+" 追記。"
 	again, err := b.Ingest(d)
 	if err != nil || again.Page.Kind != "rule" || again.Page.Scene != "コミットする時" {
-		t.Fatalf("直す時に省けば種類と場面を引き継ぐ: %+v %v", again.Page, err)
+		t.Fatalf("kind and scene are inherited if omitted when editing: %+v %v", again.Page, err)
 	}
-	// 種類も場面も無い前の版の記事は、直す時に付けないと保存できない
+	// A page from the previous version without kind or scene cannot be saved when edited without them
 	legacyDraft := draft(id, "前の版の記事")
 	lres, err := b.Ingest(legacyDraft)
 	if err != nil {
@@ -357,16 +357,16 @@ func TestIngestRequiresKindAndScene(t *testing.T) {
 	}
 	d.ID, d.Title = legacy.ID, legacy.Title
 	if _, err := b.Ingest(d); err == nil {
-		t.Fatal("種類も場面も無い前の版の記事は、直す時に付ける")
+		t.Fatal("a page from the previous version without kind or scene gets them when edited")
 	}
 	d.Kind, d.Scene = "howto", "公開する時"
 	if res, err := b.Ingest(d); err != nil || res.Page.Kind != "howto" {
-		t.Fatalf("付ければ保存できる: %+v %v", res.Page, err)
+		t.Fatalf("saves once they are given: %+v %v", res.Page, err)
 	}
 }
 
-// 0.9.0: 版を上げる前に作った記事(種類も場面も無い)は Unclassified に並び、Classify で種類と場面だけを付けられる
-// (教訓・題・本文はそのまま。新しい版になり、前の版へのリンクを持つ)。付ければ一覧から消える。
+// 0.9.0: pages made before the upgrade (no kind or scene) are listed by Unclassified, and Classify adds only kind and scene
+// (lesson, title and body unchanged; it becomes a new revision linked to the previous one). Once added, the page leaves the list.
 func TestClassifyLegacyPages(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
 	id := seed(t, b, 1)
@@ -385,27 +385,27 @@ func TestClassifyLegacyPages(t *testing.T) {
 	}
 	un, err := b.Unclassified()
 	if err != nil || len(un) != 1 || un[0].ID != legacy.ID {
-		t.Fatalf("種類か場面の無い記事だけを並べる: %+v %v", un, err)
+		t.Fatalf("lists only pages missing kind or scene: %+v %v", un, err)
 	}
 	if _, err := b.Classify(legacy.ID, "memo", "公開する時"); err == nil {
-		t.Fatal("種類は 5 つのどれか")
+		t.Fatal("kind is one of 5")
 	}
 	if _, err := b.Classify("00000000000000cc", "rule", "公開する時"); err == nil {
-		t.Fatal("無い記事には付けられない")
+		t.Fatal("cannot classify a page that does not exist")
 	}
 	res, err := b.Classify(legacy.ID, "howto", "公開する時")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if p := res.Page; p.Kind != "howto" || p.Scene != "公開する時" || p.Lesson != legacy.Lesson || p.Title != legacy.Title || p.Previous == "" {
-		t.Fatalf("種類と場面だけを付けた新しい版にする: %+v", p)
+		t.Fatalf("makes a new revision with only kind and scene added: %+v", p)
 	}
 	if un, _ := b.Unclassified(); len(un) != 0 {
-		t.Fatalf("付ければ一覧から消える: %+v", un)
+		t.Fatalf("once added, the page leaves the list: %+v", un)
 	}
 }
 
-// 0.9.0: wiki の検索(CLI・MCP・HTTP)の最初の返事に、種類と場面の無い記事の数と 5 本までを載せる(hook の無いエージェントにも届く)。
+// 0.9.0: the first reply of a wiki search (CLI, MCP, HTTP) carries the count of pages without kind and scene and up to 5 of them (it reaches agents without a hook too).
 func TestQueryPageListsUnclassifiedPages(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
 	id := seed(t, b, 1)
@@ -415,34 +415,34 @@ func TestQueryPageListsUnclassifiedPages(t *testing.T) {
 	}
 	v, err := b.QueryPage("", "")
 	if err != nil || v.UnclassifiedCount != 0 || len(v.Unclassified) != 0 {
-		t.Fatalf("全部付いていれば出さない: %+v %v", v.Unclassified, err)
+		t.Fatalf("shows nothing when all are filled in: %+v %v", v.Unclassified, err)
 	}
 	if err := b.RewriteWithoutKindScene(res.Page.ID); err != nil {
 		t.Fatal(err)
 	}
 	v, err = b.QueryPage("", "")
 	if err != nil || v.UnclassifiedCount != 1 || len(v.Unclassified) != 1 || v.Unclassified[0].ID != res.Page.ID || !strings.Contains(v.UnclassifiedHow, "classify") {
-		t.Fatalf("種類と場面の無い記事の数と、付け方を載せる: %+v %d %q %v", v.Unclassified, v.UnclassifiedCount, v.UnclassifiedHow, err)
+		t.Fatalf("carries the count of pages without kind and scene, and how to fill them in: %+v %d %q %v", v.Unclassified, v.UnclassifiedCount, v.UnclassifiedHow, err)
 	}
 }
 
-// 監査 0.9.0 の M12: 教訓の無い草稿(原資料を整理済みにするだけ)に種類や場面を付けたら断る(付いても使われず、誤った保存に見える)。
+// audit 0.9.0 M12: refuse kind or scene on a draft without a lesson (one that only marks source records as organized) (they would go unused and look like a wrong save).
 func TestReviewOnlyDraftRejectsKindAndScene(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
 	id := seed(t, b, 1)
 	for _, d := range []Draft{{Sources: []string{id}, Kind: "rule"}, {Sources: []string{id}, Scene: "README を直す時"}} {
 		if _, err := b.Ingest(d); err == nil {
-			t.Fatalf("教訓の無い草稿の種類・場面は断る: %+v", d)
+			t.Fatalf("refuses kind or scene on a draft without a lesson: %+v", d)
 		}
 	}
 	if _, err := b.Ingest(Draft{Sources: []string{id}}); err != nil {
-		t.Fatalf("原資料だけなら通る: %v", err)
+		t.Fatalf("passes with only source records: %v", err)
 	}
 }
 
-// 0.9.2(監査 0.9.1 test-speed の低-7): 記事の最終更新(知識の画面の「新」の印と並び)は、ファイルの時刻ではなく wiki の記録(log.md)の
-// 保存の時刻で決める。wiki を別の機械へ cp するとファイルの時刻は全部その時になり、全部の記事に「新」が付いていた。
-// 記録に無い記事(記録が消えた wiki)だけファイルの時刻で補う。
+// 0.9.2 (audit 0.9.1 test-speed low-7): a page's last update (the "new" mark and the order on the knowledge screen) is decided by the save time in
+// the wiki log (log.md), not by the file time. Copying the wiki to another machine with cp set every file time to that moment, and every page got "new".
+// Only pages missing from the log (a wiki whose log is gone) fall back to the file time.
 func TestPageTimesUseLogNotFileTime(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
 	id := seed(t, b, 1)
@@ -456,11 +456,11 @@ func TestPageTimesUseLogNotFileTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	copied := time.Date(2031, 1, 2, 3, 4, 5, 0, time.UTC) // cp した時刻
+	copied := time.Date(2031, 1, 2, 3, 4, 5, 0, time.UTC) // the time of the cp
 	if err := os.Chtimes(filepath.Join(dir, res.Page.ID+".md"), copied, copied); err != nil {
 		t.Fatal(err)
 	}
-	// 記事を変えない操作(記事の見直し)の記録は最終更新に数えない
+	// Logs of operations that do not change the page (page reviews) do not count as a last update
 	f, err := os.OpenFile(filepath.Join(dir, "log.md"), os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		t.Fatal(err)
@@ -472,12 +472,12 @@ func TestPageTimesUseLogNotFileTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	if at := times[res.Page.ID]; at.Before(before) || at.After(after) {
-		t.Fatalf("最終更新は保存の記録の時刻(%s〜%s): %s", before, after, at)
+		t.Fatalf("the last update is the time of the save in the log (%s to %s): %s", before, after, at)
 	}
 	if err := os.Remove(filepath.Join(dir, "log.md")); err != nil {
 		t.Fatal(err)
 	}
 	if times, err := b.PageTimes(); err != nil || !times[res.Page.ID].Equal(copied) {
-		t.Fatalf("記録に無い記事はファイルの時刻で補う: %v %v", times, err)
+		t.Fatalf("pages missing from the log fall back to the file time: %v %v", times, err)
 	}
 }

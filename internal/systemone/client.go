@@ -1,5 +1,5 @@
-// Package systemone は System One 形式(TypeSafe Jev / llama.cpp /v1/systemone 等)の
-// 薄いクライアント。形式は所有しない。ベース URL の違いだけを吸収する。
+// Package systemone is a thin client for the System One format (TypeSafe Jev / llama.cpp /v1/systemone, etc.).
+// It does not own the format. It only absorbs differences in the base URL.
 package systemone
 
 import (
@@ -15,24 +15,24 @@ import (
 	"time"
 )
 
-// Question は 1 つの質問。Criteria は choice なら OrderedCriteria(id→説明、並び順を保つ)、score なら []string。
+// Question is one question. Criteria is OrderedCriteria (id→description, order kept) for choice, and []string for score.
 type Question struct {
 	Type         string `json:"type"`
 	Instructions string `json:"instructions"`
 	Criteria     any    `json:"criteria,omitempty"`
 }
 
-// OrderedCriteria は choice の選択肢。JSON オブジェクトとして**この並びのまま**送る
-// (Go の map は鍵がソートされるので、順序バイアスの測定や spec の並びの再現ができない)。
+// OrderedCriteria are the options of a choice. They are sent as a JSON object **in this order**
+// (Go maps sort their keys, which would make it impossible to measure order bias or reproduce the spec's order).
 type OrderedCriteria []Criterion
 
-// Criterion は選択肢 1 つ。
+// Criterion is one option.
 type Criterion struct {
 	ID          string
 	Description string
 }
 
-// MarshalJSON は {"id":"desc",…} を並び順どおりに出す。
+// MarshalJSON writes {"id":"desc",…} in order.
 func (oc OrderedCriteria) MarshalJSON() ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteByte('{')
@@ -56,7 +56,7 @@ func (oc OrderedCriteria) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// UnmarshalJSON は受け取り側(テストのモック)用。JSON の並び順を保って読む。
+// UnmarshalJSON is for the receiving side (test mocks). It reads while keeping the JSON order.
 func (oc *OrderedCriteria) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	tok, err := dec.Token()
@@ -82,17 +82,17 @@ func (oc *OrderedCriteria) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Request は /v1/systemone の本体。
+// Request is the body of /v1/systemone.
 type Request struct {
 	State     string              `json:"state"`
 	Model     string              `json:"model,omitempty"`
 	Questions map[string]Question `json:"questions"`
-	// Layout は prompt の配置の名前(state-last | state-first | plain)。shikii-readout が従い、応答の model 名に付ける。
-	// 決定モデルは知らない項目として無視する。空なら相手の既定。
+	// Layout is the name of the prompt layout (state-last | state-first | plain). shikii-readout follows it and adds it to the model name in the response.
+	// Decision models ignore it as an unknown field. If empty, the server's default applies.
 	Layout string `json:"layout,omitempty"`
 }
 
-// Answer は 1 質問の答え。型ごとに使うフィールドが違う。
+// Answer is the answer to one question. Which fields are used depends on the type.
 type Answer struct {
 	Type          string             `json:"type"`
 	Choice        string             `json:"choice,omitempty"`
@@ -103,7 +103,7 @@ type Answer struct {
 	Legend        map[string]string  `json:"legend,omitempty"`
 }
 
-// Response は応答。Model は実際に答えたモデル(例: "jev-1.13.0")。
+// Response is the response. Model is the model that actually answered (e.g. "jev-1.13.0").
 type Response struct {
 	Model   string            `json:"model"`
 	Answers map[string]Answer `json:"answers"`
@@ -113,21 +113,21 @@ type Response struct {
 	} `json:"usage"`
 }
 
-// Client は 1 エンドポイントへの接続。
+// Client is a connection to one endpoint.
 type Client struct {
-	BaseURL string // 例: https://api.typesafe.ai, http://127.0.0.1:8080
-	Path    string // 既定 /v1/systemone。OpenRouter は /api/alpha/decisions
-	APIKey  string // 空なら Authorization を付けない(ローカル)
-	Model   string // 例: jev-latest、typesafe/jev-1.13(OpenRouter)
+	BaseURL string // e.g. https://api.typesafe.ai, http://127.0.0.1:8080
+	Path    string // default /v1/systemone. OpenRouter uses /api/alpha/decisions
+	APIKey  string // if empty, no Authorization header is sent (local)
+	Model   string // e.g. jev-latest, typesafe/jev-1.13 (OpenRouter)
 	HTTP    *http.Client
 }
 
-// DefaultPath は System One 形式の標準の口。TypeSafe・llama.cpp・多くの互換サーバーが使う。
+// DefaultPath is the standard endpoint of the System One format, used by TypeSafe, llama.cpp and many compatible servers.
 const DefaultPath = "/v1/systemone"
 
-// New はクライアントを作る。baseURL にパスが含まれていれば(例: https://openrouter.ai/api/alpha/decisions)
-// それをそのまま使い、無ければ /v1/systemone を足す。
-// RedactURL は URL に埋め込まれた資格情報(user:token@host)を伏せる。ログと誤り文に使う。
+// New creates a client. If baseURL contains a path (e.g. https://openrouter.ai/api/alpha/decisions),
+// it is used as is; otherwise /v1/systemone is added.
+// RedactURL hides credentials embedded in a URL (user:token@host). Used for logs and error messages.
 func RedactURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -147,7 +147,7 @@ func New(baseURL, apiKey, model string) *Client {
 	}
 }
 
-// SplitEndpoint は URL を「ホストまで」と「パス」に分ける。パスが無い("/" だけ)なら DefaultPath。
+// SplitEndpoint splits a URL into "up to the host" and "the path". If there is no path (only "/"), DefaultPath.
 func SplitEndpoint(raw string) (base, path string) {
 	raw = strings.TrimRight(raw, "/")
 	u, err := url.Parse(raw)
@@ -162,12 +162,12 @@ func SplitEndpoint(raw string) (base, path string) {
 	return u2.String(), u.Path
 }
 
-// Ask は state に対して質問群を 1 回で評価する。
+// Ask evaluates a set of questions against state in one call.
 func (c *Client) Ask(ctx context.Context, state string, qs map[string]Question) (*Response, error) {
 	return c.AskLayout(ctx, state, qs, "")
 }
 
-// AskLayout は Ask に配置の名前を添える(spec の layout。空なら相手の既定)。
+// AskLayout is Ask with a layout name (the spec's layout; if empty, the server's default).
 func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Question, layout string) (*Response, error) {
 	body, err := json.Marshal(Request{State: state, Model: c.Model, Questions: qs, Layout: layout})
 	if err != nil {
@@ -204,8 +204,8 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 	return &out, nil
 }
 
-// BindHost は待ち受け先。ホストでは 127.0.0.1 だけ(LAN に出さない)。容れ物の中(Docker の /.dockerenv、podman の /run/.containerenv、
-// k8s の KUBERNETES_SERVICE_HOST)では全ての口で待ち、外に出すかは port の公開が決める。選ぶ設定は無い。
+// BindHost is the address to listen on. On the host, only 127.0.0.1 (not exposed to the LAN). Inside a container (Docker's /.dockerenv, podman's /run/.containerenv,
+// k8s's KUBERNETES_SERVICE_HOST) it listens on all interfaces, and publishing the port decides whether it is exposed. There is no setting to choose.
 func BindHost() string {
 	return BindHostFor([]string{"/.dockerenv", "/run/.containerenv"}, "KUBERNETES_SERVICE_HOST")
 }
@@ -222,9 +222,9 @@ func BindHostFor(markers []string, kubeEnv string) string {
 	return "127.0.0.1"
 }
 
-// WaitReady はモデルの口(llama-server や shikii-readout の baseURL)が /health で 200 を返すまで待つ。
-// Docker などで先にモデルを起こす時、外部コマンド(curl / wget)の healthcheck に頼らず shikii 自身が待つための口。
-// every の間隔で繰り返し、ctx が切れたら何を待っていたかを添えて誤りを返す。進み具合は logf に出す(10 回に 1 回)。
+// WaitReady waits until the model endpoint (the baseURL of llama-server or shikii-readout) returns 200 on /health.
+// When a model is started first, as in Docker, this lets shikii wait by itself instead of relying on a healthcheck with an external command (curl / wget).
+// It retries every `every`, and when ctx ends it returns an error saying what it was waiting for. Progress goes to logf (once every 10 tries).
 func WaitReady(ctx context.Context, baseURL string, every time.Duration, logf func(string, ...any)) error {
 	url := strings.TrimRight(baseURL, "/") + "/health"
 	client := &http.Client{Timeout: 3 * time.Second}

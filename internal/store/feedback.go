@@ -1,7 +1,7 @@
 package store
 
-// 会話の続きは観察であり、正解ではない。追加依頼も訂正も原文のまま残し、
-// 後の似た依頼で参照する。通常の判定・正解とは別に records/feedback/ に置く。
+// The rest of a conversation is an observation, not a truth. Follow-up requests and corrections are kept verbatim
+// and consulted on later similar requests. Kept in records/feedback/, apart from ordinary decisions and truths.
 import (
 	"bufio"
 	"crypto/sha256"
@@ -18,10 +18,10 @@ import (
 )
 
 type Feedback struct {
-	ID      string         `json:"id"` // 元の依頼の識別子。繰り返した同じ文も別の依頼
+	ID      string         `json:"id"` // identifier of the original request. The same text repeated is still a separate request
 	Request string         `json:"request"`
 	Summary string         `json:"summary"`
-	Reply   string         `json:"reply"` // 次に人が伝えた発言。訂正か追加かは未確定
+	Reply   string         `json:"reply"` // what the person said next. Whether it is a correction or an addition is not decided
 	At      time.Time      `json:"at"`
 	Targets []ReviewTarget `json:"targets,omitempty"`
 }
@@ -33,7 +33,7 @@ type ReviewTarget struct {
 
 const (
 	feedbackTextMax = 1500
-	feedbackReadMax = 4 << 20 // 全履歴を毎ターン読まない
+	feedbackReadMax = 4 << 20 // do not read the whole history every turn
 	feedbackRecent  = 256
 	feedbackRecall  = 2
 )
@@ -56,8 +56,8 @@ func (s Store) AppendFeedback(scope string, f Feedback) error {
 	return s.appendJSONL(s.feedbackPath(scope), f)
 }
 
-// recentFeedback は同じ仕事の末尾だけ読む。先頭が行の途中ならその行を捨て、
-// 壊れた行を飛ばす。途中までの書き込みも採らない。重複した ID は最新だけ。
+// recentFeedback reads only the tail of the same work. If the start is mid-line, that line is dropped,
+// and broken lines are skipped. Partly written lines are not taken either. For duplicate IDs only the newest is kept.
 func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
 	if os.IsNotExist(err) {
@@ -88,7 +88,7 @@ func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 			if err != io.EOF {
 				return nil, err
 			}
-			break // 改行まで書かれた観察だけを使う
+			break // use only observations written up to the newline
 		}
 		var v Feedback
 		if len(line) > 32<<10 || json.Unmarshal([]byte(line), &v) != nil || v.ID == "" || v.Request == "" || v.Summary == "" || v.Reply == "" ||
@@ -113,11 +113,11 @@ func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 	return out, nil
 }
 
-// RecentFeedback は wiki に取り込む原資料。正解の一覧とは分離している。
+// RecentFeedback is source material taken into the wiki. Kept apart from the list of truths.
 func (s Store) RecentFeedback(scope string) ([]Feedback, error) { return s.recentFeedback(scope) }
 
-// TextMatch は検索語のうち、文章に含まれる語の割合。
-// 長い教訓でも短い検索語で見つけられる。確信度や実行を許す線ではない。
+// TextMatch is the share of query words that appear in the text.
+// A long lesson can still be found with short query words. It is not a confidence or a line that allows acting.
 func TextMatch(query, text string) float64 {
 	a, b := feedbackTerms(query), feedbackTerms(text)
 	common := 0
@@ -132,8 +132,8 @@ func TextMatch(query, text string) float64 {
 	return float64(common) / float64(len(a))
 }
 
-// RecallFeedback は依頼の語の重なりで最大 2 件を返す。返すのは原文で、
-// 意味の判定・成功や失敗の認定・較正はしない。送信先もモデルも増やさない。
+// RecallFeedback returns at most 2 by overlap with the request's words. It returns the original text and
+// does not judge meaning, certify success or failure, or calibrate. It adds no destinations or models.
 func (s Store) RecallFeedback(scope, request string) ([]Feedback, error) {
 	if scope == "" {
 		return nil, nil
@@ -164,7 +164,7 @@ func (s Store) RecallFeedback(scope, request string) ([]Feedback, error) {
 			matches = append(matches, match{v, score})
 		}
 	}
-	// 同点なら新しく観察したものを先に(ファイルの順を使い、時計のずれに依らない)。
+	// on ties, the newer observation comes first (uses file order, independent of clock skew).
 	sort.SliceStable(matches, func(i, j int) bool { return matches[i].score > matches[j].score })
 	var out []Feedback
 	for _, m := range matches {
@@ -176,7 +176,7 @@ func (s Store) RecallFeedback(scope, request string) ([]Feedback, error) {
 	return out, nil
 }
 
-// 英単語・識別子と、日本語の隣り合う 2 文字。分かち書き用の依存や AI は要らない。
+// English words and identifiers, and adjacent pairs of Japanese characters. No dependency or AI for word segmentation needed.
 func feedbackTerms(text string) map[string]bool {
 	out := map[string]bool{}
 	var word, japanese []rune

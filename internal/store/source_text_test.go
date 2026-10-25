@@ -15,7 +15,7 @@ func TestRecordTextPreservesOriginalAndDecisionBinding(t *testing.T) {
 	input := strings.Repeat("あ", 500)
 	rec := Record{TraceID: "0000000000000001", SpecID: "done-as-asked", Inputs: map[string]string{"summary": input}, InputsHash: HashInputs(map[string]string{"summary": input})}
 	if _, status := st.RecordText(rec); status["summary"] != "legacy" {
-		t.Fatal("以前の保存上限付近の文章には続きが無い可能性を示す")
+		t.Fatal("text near the old storage limit is shown as possibly missing its continuation")
 	}
 	full := input + "\nここまでが原文の末尾です"
 	var wg sync.WaitGroup
@@ -31,10 +31,10 @@ func TestRecordTextPreservesOriginalAndDecisionBinding(t *testing.T) {
 	wg.Wait()
 	original, status := st.RecordText(rec)
 	if original["summary"] != full || len(status) != 0 {
-		t.Fatal("原文を末尾まで読み、保存上限の表示を外す")
+		t.Fatal("reads the original text to its end and drops the storage-limit notice")
 	}
 	if err := st.SaveRecordText(rec, map[string]string{"summary": full + "別の続き"}); err == nil {
-		t.Fatal("保存した原文を後から上書きしない")
+		t.Fatal("saved original text is not overwritten later")
 	}
 	path, _ := st.recordTextPath(rec)
 	data, _ := os.ReadFile(path)
@@ -44,7 +44,7 @@ func TestRecordTextPreservesOriginalAndDecisionBinding(t *testing.T) {
 	broken, _ := json.Marshal(changed)
 	_ = os.WriteFile(path, broken, 0o600)
 	if original, status := st.RecordText(rec); len(original) != 0 || status["summary"] != "unavailable" {
-		t.Fatal("違う判定の原文を表示しない")
+		t.Fatal("original text of a different decision is not shown")
 	}
 	_ = os.WriteFile(path, data, 0o600)
 	changed.InputsHash = rec.InputsHash
@@ -52,11 +52,11 @@ func TestRecordTextPreservesOriginalAndDecisionBinding(t *testing.T) {
 	broken, _ = json.Marshal(changed)
 	_ = os.WriteFile(path, broken, 0o600)
 	if original, _ := st.RecordText(rec); len(original) != 0 {
-		t.Fatal("ハッシュだけを合わせても冒頭が違う文章は使わない")
+		t.Fatal("text whose opening differs is not used even if only the hash matches")
 	}
 	_ = os.WriteFile(path, data, 0o600)
 	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
-		t.Fatal("会話の原文は本人だけが読める")
+		t.Fatal("the conversation's original text is readable only by its owner")
 	}
 	long := rec
 	long.TraceID = "0000000000000002"
@@ -65,7 +65,7 @@ func TestRecordTextPreservesOriginalAndDecisionBinding(t *testing.T) {
 	}
 	original, status = st.RecordText(long)
 	if len(original["summary"]) > RecordTextLimit || !utf8.ValidString(original["summary"]) || status["summary"] != "limited" {
-		t.Fatal("長文の保存上限と UTF-8 の境界を守り、省略を示す")
+		t.Fatal("keeps the long-text storage limit and the UTF-8 boundary, and shows it was cut")
 	}
 	outside := t.TempDir()
 	linkStore := Store{Dir: t.TempDir()}
@@ -76,6 +76,6 @@ func TestRecordTextPreservesOriginalAndDecisionBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := linkStore.SaveRecordText(rec, map[string]string{"summary": full}); err == nil {
-		t.Fatal("原文の置き場の symlink をたどらない")
+		t.Fatal("does not follow a symlink at the original text's location")
 	}
 }

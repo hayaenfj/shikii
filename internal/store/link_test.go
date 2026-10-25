@@ -56,7 +56,7 @@ func TestStoreRejectsLinkedJSONLPaths(t *testing.T) {
 					read = func() error {
 						originals, _ := a.RecordText(record)
 						if len(originals) == 0 {
-							return errors.New("原文を読めません")
+							return errors.New("cannot read the original text")
 						}
 						return nil
 					}
@@ -90,14 +90,14 @@ func TestStoreRejectsLinkedJSONLPaths(t *testing.T) {
 					t.Fatal(err)
 				}
 				if err := read(); err == nil {
-					t.Error("リンク経由で他の保存先を読まない")
+					t.Error("does not read another storage location through a link")
 				}
 				if err := write(); err == nil {
-					t.Error("リンク経由で他の保存先へ書かない")
+					t.Error("does not write to another storage location through a link")
 				}
 				after, err := os.ReadFile(pathB)
 				if err != nil || !bytes.Equal(before, after) {
-					t.Fatal("リンク先を変更しない")
+					t.Fatal("does not change the link target")
 				}
 			})
 		}

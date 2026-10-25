@@ -5,8 +5,8 @@ import (
 	"unicode/utf8"
 )
 
-// Correction は人の発言の引用と、エージェントが次に変える行動の仮説。
-// 引用が存在することと、その解釈が正しいことは別。実行許可にはしない。
+// Correction is a quote of what a person said and the agent's hypothesis of what it will do differently next.
+// That the quote exists and that its interpretation is right are separate things. It is never a permission to act.
 type Correction struct {
 	SourceID string `json:"source_id" yaml:"source_id"`
 	Quote    string `json:"quote" yaml:"quote"`

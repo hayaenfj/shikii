@@ -13,7 +13,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// 文脈に敏感な偽モデル: 本文だけなら迷う(0.65)。直前のやりとり(Previous turn)が付くと確信する(0.9)。"why" は本文だけで確信する。
+// A context-sensitive fake model: with the body alone it is unsure (0.65). With the previous exchange (Previous turn) attached it is confident (0.9). "why" is confident from the body alone.
 func contextSensitiveModel(t *testing.T) (*httptest.Server, func() []string) {
 	t.Helper()
 	var mu sync.Mutex
@@ -31,7 +31,7 @@ func contextSensitiveModel(t *testing.T) (*httptest.Server, func() []string) {
 		case strings.Contains(req.State, "why"):
 			probs = map[string]float64{"change_request": 0.03, "question": 0.95, "other": 0.02}
 		case strings.Contains(req.State, "hmm"):
-			probs = map[string]float64{"change_request": 0.4, "question": 0.35, "other": 0.25} // どの選択肢も ask に届かない
+			probs = map[string]float64{"change_request": 0.4, "question": 0.35, "other": 0.25} // no option reaches ask
 		}
 		top, _ := argmax(probs)
 		resp := systemone.Response{Model: "m", Answers: map[string]systemone.Answer{}}
@@ -57,14 +57,14 @@ func contextSpec() *spec.Spec {
 	return sp
 }
 
-// 迷った時(ask 帯)だけ、文脈の入力が揃っていれば文脈を足して聞き直す。1 回目の答えは minimal に残り、2 回目は文脈の段のハッシュで記録される。
+// Only when unsure (ask band), and when the context inputs are present, add context and ask again. The first answer stays in minimal; the second is recorded under the context step's hash.
 func TestContextIsAddedOnlyWhenUnsureAndAvailable(t *testing.T) {
 	srv, states := contextSensitiveModel(t)
 	sp := contextSpec()
 	eps := []Endpoint{{Kind: "local", Client: systemone.New(srv.URL, "", "m")}}
 	in := map[string]string{"message": "fix a", "previous": "I renamed the module"}
 
-	// 文脈の段に線が無い: 聞き直すが、答えは較正されず ask のまま
+	// the context step has no line: asks again, but the answer is uncalibrated and stays ask
 	d, err := Decide(context.Background(), sp, in, Session{}, eps)
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func TestContextIsAddedOnlyWhenUnsureAndAvailable(t *testing.T) {
 		t.Fatalf("two calls: minimal then context: %q", got)
 	}
 
-	// 文脈の段に線がある: act になる
+	// the context step has a line: becomes act
 	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.ContextHash(), Method: "identity"})
 	d, err = Decide(context.Background(), sp, in, Session{}, eps)
 	if err != nil {
@@ -90,7 +90,7 @@ func TestContextIsAddedOnlyWhenUnsureAndAvailable(t *testing.T) {
 		t.Fatalf("with its own line the context rung may act: %+v", d)
 	}
 
-	// 文脈の入力が無い: 1 回だけ、minimal のまま ask
+	// no context input: asks once, stays minimal and ask
 	d, err = Decide(context.Background(), sp, map[string]string{"message": "fix a"}, Session{}, eps)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func TestContextIsAddedOnlyWhenUnsureAndAvailable(t *testing.T) {
 		t.Fatalf("without the added inputs there is nothing to add: %+v (calls=%d)", d, len(states()))
 	}
 
-	// 本文だけで確信した: 文脈があっても聞き直さない
+	// confident from the body alone: does not ask again even with context
 	d, err = Decide(context.Background(), sp, map[string]string{"message": "why a", "previous": "x"}, Session{}, eps)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestContextIsAddedOnlyWhenUnsureAndAvailable(t *testing.T) {
 		t.Fatalf("a confident minimal answer is final: %+v (calls=%d)", d, len(states()))
 	}
 
-	// 多択の discard(どの選択肢も ask に届かない)も迷い: 文脈があれば上がる
+	// a multi-choice discard (no option reaches ask) is unsure too: it moves up when there is context
 	d, err = Decide(context.Background(), sp, map[string]string{"message": "hmm a", "previous": "x"}, Session{}, eps)
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestContextIsAddedOnlyWhenUnsureAndAvailable(t *testing.T) {
 	}
 }
 
-// noul の discard は確信した「いいえ」なので、文脈があっても上がらない。
+// A noul discard is a confident "no", so it does not move up even with context.
 func TestNoulDiscardIsNotUnsure(t *testing.T) {
 	f := newFake(t, "m", systemone.Answer{Type: "noul", Noul: 0.05})
 	sp := noulSpec("local")

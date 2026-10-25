@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// 抜き取り: act で自動で動いた判定のうち 20 件に 1 件を人に見せる。trace_id で決まるので、同じ判定は何度見ても同じ答え。
+// Spot check: 1 in 20 of the decisions that acted automatically is shown to a person. It is decided by trace_id, so the same decision always gives the same answer.
 func TestAuditSampleIsOneInTwentyAndStable(t *testing.T) {
 	n := 0
 	for i := 0; i < 4000; i++ {
@@ -18,7 +18,7 @@ func TestAuditSampleIsOneInTwentyAndStable(t *testing.T) {
 			n++
 		}
 	}
-	if n < 140 || n > 260 { // 期待 200(1/20)。±30% の外なら比率が違う
+	if n < 140 || n > 260 { // expected 200 (1/20). Outside ±30% the ratio is wrong
 		t.Fatalf("expected about 1 in 20 sampled, got %d of 4000", n)
 	}
 	if AuditSample("") {
@@ -26,7 +26,7 @@ func TestAuditSampleIsOneInTwentyAndStable(t *testing.T) {
 	}
 }
 
-// 人の正解と機械の正解を分ける: 機械が決めた正解は上の段の答え(context)だけ。聞き直し(replay)とファイル(file)の正解は人が付けたもの。
+// Separate people's truths from machine truths: the only machine-decided truth is the upper step's answer (context). Truths from re-asking (replay) and files (file) were given by people.
 func TestHumanSourceExcludesMachineTruths(t *testing.T) {
 	for _, s := range []string{"ui", "manual", "ask", "audit", "mcp", "outcome", "replay", "file", ""} {
 		if !HumanSource(s) {
@@ -40,7 +40,7 @@ func TestHumanSourceExcludesMachineTruths(t *testing.T) {
 	}
 }
 
-// 監査 4 回目の 2: 同じ入力に人の正解と機械の正解(judge / context)があれば、新しさに関わらず人の正解が勝つ。人の正解どうしは新しい方。
+// audit round 4, item 2: if one input has both a person's truth and a machine truth (judge / context), the person's wins regardless of age. Between people's truths, the newer one.
 func TestLatestPerInputPrefersHumanTruths(t *testing.T) {
 	in := HashInputs(map[string]string{"a": "x"})
 	t0 := time.Now()

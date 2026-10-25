@@ -1,9 +1,9 @@
-// Package store は判定の記録とラベルの保管。JSONL を spec ごとに 1 ファイル。
+// Package store keeps decision records and labels. One JSONL file per spec.
 //
-//	<dir>/records/<spec_id>.jsonl  … 全判定(生の確率付き)
-//	<dir>/labels/<spec_id>.jsonl   … 正解ラベル(利用者の操作から拾う)
+//	<dir>/records/<spec_id>.jsonl  … every decision (with raw probabilities)
+//	<dir>/labels/<spec_id>.jsonl   … truth labels (picked up from the user's actions)
 //
-// 本文(inputs)は常に手元の記録に残す(人が後から正解を付け、文言やモデルを変えた時に聞き直すため)。外に送るかは spec の send_to と pii で決まる。
+// The text (inputs) is always kept in the local record (so a person can add the truth later, and it can be re-asked when the wording or model changes). Whether it is sent out is decided by the spec's send_to and pii.
 package store
 
 import (
@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-// Record は 1 回の判定。decide.Decision に来歴を足したもの。
+// Record is one decision: decide.Decision plus provenance.
 type Record struct {
 	TraceID          string             `json:"trace_id"`
 	SpecID           string             `json:"spec_id"`
@@ -31,7 +31,7 @@ type Record struct {
 	Type             string             `json:"type"`
 	Model            string             `json:"model,omitempty"`
 	Endpoint         string             `json:"endpoint,omitempty"`
-	Inputs           map[string]string  `json:"inputs,omitempty"` // 本文(古い記録には無いことがある)
+	Inputs           map[string]string  `json:"inputs,omitempty"` // the text (old records may not have it)
 	InputsHash       string             `json:"inputs_hash"`
 	Raw              map[string]float64 `json:"raw,omitempty"`
 	Calibrated       map[string]float64 `json:"calibrated,omitempty"`
@@ -39,29 +39,29 @@ type Record struct {
 	Top              string             `json:"top,omitempty"`
 	P                float64            `json:"p"`
 	Band             string             `json:"band"`
-	Tainted          bool               `json:"tainted,omitempty"`        // 本番データを読んだセッションの判定。この本文は聞き直しでも hosted に送らない
-	Rung             string             `json:"rung,omitempty"`           // どの段で決まったか: minimal(最小の質問。古い記録は空) | context(文脈を足して聞き直した)
-	Minimal          *Pass              `json:"minimal,omitempty"`        // 文脈を足した時の、最小の質問の答え(その段のハッシュと raw。人の正解はこちらにも付く)
-	Display          *RecordDisplay     `json:"display,omitempty"`        // 設定の言語での併記(hook が書く。英語なら無い): 何と言われて何をしたかを後から辿るため
-	Project          string             `json:"project,omitempty"`        // どの仕事の判定か(hook が書く: cwd の repo のルートの名、git の外なら cwd の名)。入力でもハッシュの鍵でもなく、画面と status で分けて見るための印
-	RedoOf           string             `json:"redo_of,omitempty"`        // 過去の判定(trace_id)の本文を、今の聞き方と線でもう一度判定したもの。元の記録は列から消える
-	ReviewPending    bool               `json:"review_pending,omitempty"` // 会話の続きを受けて AI が仮採点する。人への全件採点待ちにしない
+	Tainted          bool               `json:"tainted,omitempty"`        // a decision from a session that read production data. This text is never sent to hosted, even when re-asked
+	Rung             string             `json:"rung,omitempty"`           // which step decided it: minimal (the minimal question; empty in old records) | context (context was added and asked again)
+	Minimal          *Pass              `json:"minimal,omitempty"`        // when context was added, the minimal question's answer (that step's hash and raw; a person's truth is attached here too)
+	Display          *RecordDisplay     `json:"display,omitempty"`        // side-by-side text in the configured language (written by the hook; absent for English): to trace later what was asked and what was done
+	Project          string             `json:"project,omitempty"`        // which work the decision belongs to (written by the hook: the name of the repository root of cwd, or the cwd name outside git). Neither an input nor a hash key; a mark for splitting views on the page and in status
+	RedoOf           string             `json:"redo_of,omitempty"`        // a past decision's (trace_id) text decided again with the current wording and line. The original record leaves the queue
+	ReviewPending    bool               `json:"review_pending,omitempty"` // the AI provisionally scores it from the rest of the conversation. Not put in the queue for a person to score every item
 	At               time.Time          `json:"at"`
 	KnowledgeContext *KnowledgeContext  `json:"knowledge_context,omitempty"`
 }
 
-// Pass は 1 つの段の答え。文脈を足して聞き直した記録が、最小の質問の答えを持っておくのに使う。
-// RecordDisplay は判定の記録に添える、設定の言語での訳(spec の display.<lang> から)。モデルには送らず、較正の鍵にも入らない。
+// Pass is the answer of one step. A record that added context and asked again uses it to keep the minimal question's answer.
+// RecordDisplay is the translation in the configured language attached to a decision record (from the spec's display.<lang>). Never sent to the model and not part of the calibration key.
 type RecordDisplay struct {
 	Lang     string `json:"lang"`
-	Question string `json:"question,omitempty"` // 人の言葉の質問
-	Top      string `json:"top,omitempty"`      // モデルの答え(選択肢)の人の言葉
-	Message  string `json:"message,omitempty"`  // hook が人かエージェントに出した文(英語と併記)。出さなかったら無い
+	Question string `json:"question,omitempty"` // the question in people's words
+	Top      string `json:"top,omitempty"`      // the model's answer (option) in people's words
+	Message  string `json:"message,omitempty"`  // the text the hook showed to the person or agent (alongside English). Absent if nothing was shown
 }
 
 type Pass struct {
 	SpecHash     string             `json:"spec_hash"`
-	InputsHash   string             `json:"inputs_hash,omitempty"` // この段の template が使う入力だけのハッシュ(文脈の入力が違っても最小の質問では同じ入力)
+	InputsHash   string             `json:"inputs_hash,omitempty"` // hash of only the inputs this step's template uses (the minimal question sees the same input even if the context inputs differ)
 	Raw          map[string]float64 `json:"raw,omitempty"`
 	Calibrated   map[string]float64 `json:"calibrated,omitempty"`
 	IsCalibrated bool               `json:"is_calibrated"`
@@ -70,7 +70,7 @@ type Pass struct {
 	Band         string             `json:"band"`
 }
 
-// RungOf は記録の段の名前。古い記録(rung 無し)は最小の質問。
+// RungOf is the name of the record's step. Old records (no rung) are the minimal question.
 func (r Record) RungOf() string {
 	if r.Rung == "" {
 		return "minimal"
@@ -78,7 +78,7 @@ func (r Record) RungOf() string {
 	return r.Rung
 }
 
-// Label は正解 1 件。Truth は型ごとの表現: noul は "yes"/"no"、choice は選択肢 id、score はレベル番号。
+// Label is one truth. Truth's form depends on the type: "yes"/"no" for noul, an option id for choice, a level number for score.
 type Label struct {
 	TraceID    string             `json:"trace_id"`
 	SpecID     string             `json:"spec_id"`
@@ -86,36 +86,36 @@ type Label struct {
 	Type       string             `json:"type"`
 	Model      string             `json:"model"`
 	InputsHash string             `json:"inputs_hash"`
-	Inputs     map[string]string  `json:"inputs,omitempty"` // 正解と本文を一緒に持つ(聞き直しの材料)
+	Inputs     map[string]string  `json:"inputs,omitempty"` // keep the truth together with the text (material for re-asking)
 	Raw        map[string]float64 `json:"raw"`
 	Truth      string             `json:"truth"`
 	Weight     float64            `json:"weight"`
 	Source     string             `json:"source"` // ask | outcome | manual | ui | mcp | file | replay | context | …
 	Tainted    bool               `json:"tainted,omitempty"`
-	Rung       string             `json:"rung,omitempty"` // この正解が付いた段(minimal | context)。raw と spec_hash はその段のもの
+	Rung       string             `json:"rung,omitempty"` // the step this truth was attached to (minimal | context). raw and spec_hash belong to that step
 	At         time.Time          `json:"at"`
 }
 
-// MaxLineBytes は記録・ラベル 1 行の上限。書く側で弾く(読む側の上限より小さい)。
+// MaxLineBytes is the limit for one record or label line. The writer rejects longer lines (smaller than the reader's limit).
 const MaxLineBytes = 4 << 20
 
-// StoredInput は本文と、その判定が tainted だったか。
+// StoredInput is the text and whether its decision was tainted.
 type StoredInput struct {
 	Inputs  map[string]string
 	Tainted bool
 }
 
-// Store はディレクトリ 1 つ。
+// Store is one directory.
 type Store struct{ Dir string }
 
-// NewTraceID は 16 桁の乱数。
+// NewTraceID is a random 16-digit value.
 func NewTraceID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
 }
 
-// HashInputs は入力の本文を残さずに同一性だけ比べるためのハッシュ。
+// HashInputs is a hash for comparing identity only, without keeping the input text.
 func HashInputs(inputs map[string]string) string {
 	keys := make([]string, 0, len(inputs))
 	for k := range inputs {
@@ -140,7 +140,7 @@ func (s Store) labelsPath(specID string) string {
 	return filepath.Join(s.Dir, "labels", specID+".jsonl")
 }
 
-// AppendRecord は判定を追記する。
+// AppendRecord appends a decision.
 func (s Store) AppendRecord(r Record) error {
 	if r.TraceID == "" || r.SpecID == "" {
 		return errors.New("record needs trace_id and spec_id")
@@ -148,7 +148,7 @@ func (s Store) AppendRecord(r Record) error {
 	return s.appendJSONL(s.recordsPath(r.SpecID), r)
 }
 
-// FindRecord は trace_id で判定を探す。spec が分かっていれば specID で絞る(空なら全部見る)。
+// FindRecord finds a decision by trace_id. If the spec is known, specID narrows the search (empty looks everywhere).
 func (s Store) FindRecord(specID, traceID string) (*Record, error) {
 	var files []string
 	if specID != "" {
@@ -165,7 +165,7 @@ func (s Store) FindRecord(specID, traceID string) (*Record, error) {
 		err := s.scanJSONL(f, func(line []byte) error {
 			var r Record
 			if err := json.Unmarshal(line, &r); err != nil {
-				return nil // 壊れた行は飛ばす
+				return nil // skip broken lines
 			}
 			if r.TraceID == traceID {
 				found = &r
@@ -182,7 +182,7 @@ func (s Store) FindRecord(specID, traceID string) (*Record, error) {
 	return nil, fmt.Errorf("no record with trace_id %s", traceID)
 }
 
-// LabelFor は判定の記録と利用者の答えからラベルを作る。答えは型ごとの表現に合っていなければならない。
+// LabelFor builds a label from a decision record and the user's answer. The answer must match the type's form.
 func LabelFor(rec *Record, truth string, weight float64, source string) (Label, error) {
 	truth = strings.TrimSpace(truth)
 	switch rec.Type {
@@ -191,7 +191,7 @@ func LabelFor(rec *Record, truth string, weight float64, source string) (Label, 
 			return Label{}, fmt.Errorf("noul truth must be yes or no, got %q", truth)
 		}
 	case "choice", "score":
-		// "!<id>" は部分ラベル(その選択肢ではなかった、だけが分かっている)。結果から拾う時に使う。
+		// "!<id>" is a partial label (only known: it was not that option). Used when picking it up from an outcome.
 		if _, ok := rec.Raw[strings.TrimPrefix(truth, "!")]; !ok || truth == "!" {
 			keys := make([]string, 0, len(rec.Raw))
 			for k := range rec.Raw {
@@ -219,9 +219,9 @@ func LabelFor(rec *Record, truth string, weight float64, source string) (Label, 
 	}, nil
 }
 
-// LabelsFor は 1 つの正解を、その記録が通った全部の段に付ける。
-// 最小の質問で決まった記録なら 1 件。文脈を足して決まった記録なら 2 件: 最終の答え(文脈のハッシュ・raw)と、最小の質問(そのハッシュ・raw)。
-// 人の答えは聞き方に依らないので、下の段もそのまま同じ正解で学べる(上の段の答えが下の段の正解になる、の人の側)。
+// LabelsFor attaches one truth to every step the record went through.
+// One label if the record was decided by the minimal question. Two if it was decided after adding context: the final answer (context hash and raw) and the minimal question (its hash and raw).
+// A person's answer does not depend on the wording, so the lower step learns from the same truth (the person's side of "the upper step's answer becomes the lower step's truth").
 func LabelsFor(rec *Record, truth string, weight float64, source string) ([]Label, error) {
 	l, err := LabelFor(rec, truth, weight, source)
 	if err != nil {
@@ -243,15 +243,15 @@ func LabelsFor(rec *Record, truth string, weight float64, source string) ([]Labe
 	return out, nil
 }
 
-// Funnel は記録がどの段で決まったかの数。進み具合は「1000 判定あたりの人の判断(ask のまま人に回った数)」で見る。
+// Funnel counts which step decided the records. Progress is read as "person decisions per 1000 decisions (those left at ask and sent to a person)".
 type Funnel struct {
 	Records int `json:"records"`
-	Minimal int `json:"minimal"` // 最小の質問で決まった(act / discard)
-	Context int `json:"context"` // 文脈を足して決まった(act / discard)
-	Human   int `json:"human"`   // どの段でも決まらず人に回った(ask)
+	Minimal int `json:"minimal"` // decided by the minimal question (act / discard)
+	Context int `json:"context"` // decided after adding context (act / discard)
+	Human   int `json:"human"`   // not decided at any step and sent to a person (ask)
 }
 
-// HumanPerThousand は 1000 判定あたりの人の判断。記録が無ければ 0。
+// HumanPerThousand is person decisions per 1000 decisions. 0 when there are no records.
 func (f Funnel) HumanPerThousand() float64 {
 	if f.Records == 0 {
 		return 0
@@ -259,8 +259,8 @@ func (f Funnel) HumanPerThousand() float64 {
 	return math.Round(1000 * float64(f.Human) / float64(f.Records))
 }
 
-// Funnel は spec の記録を段と帯で数える。読めない行は数えない。
-// discardUnsure は decide の「迷い」と同じ規則: 一番高い選択肢で帯を決める型(choice、level 無しの score)では discard も人へ。
+// Funnel counts the spec's records by step and band. Unreadable lines are not counted.
+// discardUnsure is the same rule as decide's "unsure": for types whose band comes from the highest option (choice, score without level), discard also goes to a person.
 func (s Store) Funnel(specID string, discardUnsure bool) (Funnel, error) {
 	var f Funnel
 	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
@@ -285,8 +285,8 @@ func (s Store) Funnel(specID string, discardUnsure bool) (Funnel, error) {
 	return f, nil
 }
 
-// AuditSample は「この判定を抜き取りで人に見せるか」。act で自動で動いた判定は人が見ないので、act の精度は人の正解で測れない。
-// そこで 20 件に 1 件を trace_id で決めて(何度見ても同じ)答え合わせの列に出す。空の trace は出さない。
+// AuditSample decides "show this decision to a person as a spot check". Decisions that acted automatically are not seen by people, so act precision cannot be measured with people's truths.
+// So 1 in 20 is picked by trace_id (the same every time) and put in the answer-check queue. Empty traces are never picked.
 func AuditSample(traceID string) bool {
 	if traceID == "" {
 		return false
@@ -296,16 +296,16 @@ func AuditSample(traceID string) bool {
 	return h.Sum32()%20 == 0
 }
 
-// HumanSource は、その出どころの正解を人(または結果)が決めたか。機械が決めた正解は上の段の答え(context)と審判(judge: 別のモデルの答え)。
-// 聞き直し(replay)とファイル(file)は確率を機械が取り直しただけで、正解そのものは人が付けたもの。
+// HumanSource reports whether truths from that source were decided by a person (or the outcome). Machine-decided truths are the upper step's answer (context) and the judge (judge: another model's answer).
+// Re-asking (replay) and files (file) only had the machine fetch the probabilities again; the truth itself was given by a person.
 func HumanSource(source string) bool {
 	return source != "context" && source != "judge"
 }
 
-// Partial は "!<id>" 形式の部分ラベルか。
+// Partial reports whether it is a partial label in "!<id>" form.
 func Partial(truth string) bool { return strings.HasPrefix(truth, "!") && len(truth) > 1 }
 
-// Correct はモデルの最上位 top が正解 truth と合うか。部分ラベル "!x" は「x でなければ正しい」。
+// Correct reports whether the model's top answer top matches the truth. A partial label "!x" means "right unless it is x".
 func Correct(top, truth string) bool {
 	if Partial(truth) {
 		return top != truth[1:]
@@ -313,12 +313,12 @@ func Correct(top, truth string) bool {
 	return top == truth
 }
 
-// AppendLabel はラベルを追記する。
+// AppendLabel appends a label.
 func (s Store) AppendLabel(l Label) error {
 	return s.AppendLabels([]Label{l})
 }
 
-// AppendLabels は複数のラベル(同じ spec)を 1 回の書き込みで追記する。1 つの答えが 2 つの段に付く時、片方だけ残ることがない。
+// AppendLabels appends several labels (same spec) in one write. When one answer goes to two steps, only one of them can never be left behind.
 func (s Store) AppendLabels(ls []Label) error {
 	if len(ls) == 0 {
 		return nil
@@ -350,7 +350,7 @@ func (s Store) AppendLabels(ls []Label) error {
 	return err
 }
 
-// Labels は (spec_hash, model) に一致するラベルだけを返す。古い文言・別モデルのラベルは較正に使わない。
+// Labels returns only labels matching (spec_hash, model). Labels for old wording or other models are not used for calibration.
 func (s Store) Labels(specID, specHash, model string) ([]Label, error) {
 	var out []Label
 	err := s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
@@ -369,7 +369,7 @@ func (s Store) Labels(specID, specHash, model string) ([]Label, error) {
 	return out, nil
 }
 
-// SpecIDs は記録かラベルのある spec の id を返す。
+// SpecIDs returns the ids of specs that have records or labels.
 func (s Store) SpecIDs() ([]string, error) {
 	seen := map[string]bool{}
 	for _, sub := range []string{"records", "labels"} {
@@ -379,7 +379,7 @@ func (s Store) SpecIDs() ([]string, error) {
 		}
 		for _, f := range files {
 			id := strings.TrimSuffix(filepath.Base(f), ".jsonl")
-			if id == "guards" { // 止める検査の記録(records/guards.jsonl)は判定ではない(監査 R3)
+			if id == "guards" { // the guard records (records/guards.jsonl) are not decisions (audit R3)
 				continue
 			}
 			seen[id] = true
@@ -393,7 +393,7 @@ func (s Store) SpecIDs() ([]string, error) {
 	return out, nil
 }
 
-// Counts は spec の記録数と、全ラベル(鍵で絞らない)を返す。棚卸し用。
+// Counts returns the spec's record count and every label (not narrowed by key). For inventory.
 func (s Store) Counts(specID string) (records int, labels []Label, err error) {
 	err = s.scanJSONL(s.recordsPath(specID), func([]byte) error { records++; return nil })
 	if err != nil && !os.IsNotExist(err) {
@@ -412,8 +412,8 @@ func (s Store) Counts(specID string) (records int, labels []Label, err error) {
 	return records, labels, nil
 }
 
-// InputsByHash は本文が残っている記録から、入力のハッシュ → 本文 の対応を作る。
-// 文言やモデルを変えた後に、同じ入力を新しい (spec_hash, model) で聞き直すための材料。
+// InputsByHash maps input hash → text from records that still have their text.
+// Material for re-asking the same input with a new (spec_hash, model) after the wording or model changed.
 func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 	out := map[string]StoredInput{}
 	take := func(hash string, inputs map[string]string, tainted bool) {
@@ -425,7 +425,7 @@ func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 			out[hash] = StoredInput{Inputs: inputs, Tainted: tainted}
 			return
 		}
-		if tainted && !cur.Tainted { // 一度でも tainted で記録された本文は、以後も外に出さない
+		if tainted && !cur.Tainted { // text recorded as tainted even once is never sent out afterwards
 			cur.Tainted = true
 			out[hash] = cur
 		}
@@ -435,7 +435,7 @@ func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 		if json.Unmarshal(line, &r) == nil {
 			take(r.InputsHash, r.Inputs, r.Tainted)
 			if r.Minimal != nil {
-				take(r.Minimal.InputsHash, r.Inputs, r.Tainted) // 最小の段のハッシュからも同じ本文に届く(Render は余分な入力を無視する)
+				take(r.Minimal.InputsHash, r.Inputs, r.Tainted) // the minimal step's hash also reaches the same text (Render ignores extra inputs)
 			}
 		}
 		return nil
@@ -443,7 +443,7 @@ func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	// ファイルから較正した時のラベルは記録を持たないので、ラベル側の本文も見る
+	// labels calibrated from a file have no record, so also look at the text on the label side
 	err = s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
 		var l Label
 		if json.Unmarshal(line, &l) == nil {
@@ -457,9 +457,9 @@ func (s Store) InputsByHash(specID string) (map[string]StoredInput, error) {
 	return out, nil
 }
 
-// LatestPerInput は入力(inputs_hash)ごとに最新のラベル 1 つだけを残す。
-// 同じ入力に複数の正解(ファイルの行、後から人が付けた訂正、同じ trace への 2 回目)があれば新しい方が勝つ。
-// calibrate / check / drift は全部これを通す(数え方を揃えるため)。inputs_hash の無いラベルはそのまま残す。
+// LatestPerInput keeps only the newest label per input (inputs_hash).
+// If one input has several truths (a file row, a later correction by a person, a second answer to the same trace), the newer one wins.
+// calibrate / check / drift all go through this (so they count the same way). Labels without inputs_hash are kept as is.
 func LatestPerInput(labels []Label) []Label {
 	latest := map[string]Label{}
 	order := []string{}
@@ -475,7 +475,7 @@ func LatestPerInput(labels []Label) []Label {
 			latest[l.InputsHash] = l
 			continue
 		}
-		// 人の正解は機械の正解(context / judge)より常に強い。同じ種類どうしは新しい方(監査 4 回目の 2)
+		// a person's truth always beats a machine truth (context / judge). Within the same kind, the newer one wins (audit round 4, item 2)
 		switch {
 		case HumanSource(l.Source) && !HumanSource(cur.Source):
 			latest[l.InputsHash] = l
@@ -490,7 +490,7 @@ func LatestPerInput(labels []Label) []Label {
 	return out
 }
 
-// Records は spec の記録を新しい順に limit 件(limit <= 0 なら全部)。待ち行列の表示用。
+// Records returns the spec's records newest first, limit of them (all if limit <= 0). For showing the queue.
 func (s Store) Records(specID string, limit int) ([]Record, error) {
 	var all []Record
 	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
@@ -510,7 +510,7 @@ func (s Store) Records(specID string, limit int) ([]Record, error) {
 	return all, nil
 }
 
-// LabeledTraces は trace_id → ラベル(複数なら最新)。記録に正解が付いたかを見るため。
+// LabeledTraces maps trace_id → label (the newest if several). To see whether a record has a truth.
 func (s Store) LabeledTraces(specID string) (map[string]Label, error) {
 	out := map[string]Label{}
 	err := s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
@@ -529,7 +529,7 @@ func (s Store) LabeledTraces(specID string) (map[string]Label, error) {
 	return out, nil
 }
 
-// LastRecord は spec の最後に追記された記録。手でラベルを付けるときに trace_id を控えなくてよいようにする。
+// LastRecord is the record appended last for the spec. So you do not have to note the trace_id when labeling by hand.
 func (s Store) LastRecord(specID string) (*Record, error) {
 	var last *Record
 	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
@@ -548,17 +548,17 @@ func (s Store) LastRecord(specID string) (*Record, error) {
 	return last, nil
 }
 
-// GCResult は GC が何を残し、何を消した(消す)かの数。
+// GCResult counts what GC kept and removed (or would remove).
 type GCResult struct {
-	Removed      int // 古くてラベルの無い記録(apply なら消した数、そうでなければ消す予定の数)
-	KeptLabeled  int // ラベルが付いているので年齢に関係なく残した
-	KeptRecent   int // cutoff より新しいので残した
-	KeptUnparsed int // JSON として読めない行。読めないものは捨てない
+	Removed      int // old records without labels (removed with apply, otherwise the number that would be removed)
+	KeptLabeled  int // kept regardless of age because they have a label
+	KeptRecent   int // kept because they are newer than cutoff
+	KeptUnparsed int // lines that do not parse as JSON. Unreadable lines are never thrown away
 }
 
-// GC は spec の記録のうち「at が before より古く、ラベルが 1 つも付いていない」ものを取り除く。
-// ラベルは較正の材料なので、ラベルの付いた記録はいつまでも残す。ラベルのファイルには触らない。
-// apply が false なら数えるだけで書き換えない。apply なら同じディレクトリに書いてから rename で置き換える(途中で落ちても元のファイルは壊れない)。
+// GC removes the spec's records that "have at older than before and no label at all".
+// Labels are calibration material, so records with labels are kept forever. The label files are not touched.
+// With apply false it only counts and does not rewrite. With apply it writes into the same directory, then replaces by rename (a crash midway does not break the original file).
 func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error) {
 	var res GCResult
 	labeled := map[string]bool{}
@@ -659,7 +659,7 @@ func (s Store) scanJSONL(path string, fn func(line []byte) error) error {
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64<<10), 2*MaxLineBytes) // 書く側の上限より大きく(古い記録や手で直した行でも読める)
+	sc.Buffer(make([]byte, 64<<10), 2*MaxLineBytes) // larger than the writer's limit (so old records and hand-edited lines can still be read)
 	for sc.Scan() {
 		if len(strings.TrimSpace(sc.Text())) == 0 {
 			continue
