@@ -22,7 +22,7 @@ func readJSON(t *testing.T, path string) map[string]any {
 	return m
 }
 
-// shikii init prepares the agent in one go (no options): the base layout folders, the MCP settings (Claude Code / Cursor / OpenCode / Codex),
+// shikii init prepares the agent in one go (no options): the base layout folders, the MCP settings (Claude Code / OpenCode / Codex; Cursor is not supported from 0.9.2),
 // the AGENTS.md section, and puts the skill back at ~/.claude/skills/shikii. What a person wrote is left alone, and running it again is safe.
 func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	dir := t.TempDir()
@@ -63,10 +63,11 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if !strings.Contains(string(b), `"a&b<c>"`) || !strings.Contains(string(b), "12345678901234567890") || !strings.Contains(string(b), `"top"`) {
 		t.Fatalf("other keys, numbers and & < > must survive untouched: %s", b)
 	}
-	// Cursor and OpenCode
-	if c := readJSON(t, filepath.Join(dir, ".cursor", "mcp.json")); c["mcpServers"].(map[string]any)["shikii"] == nil {
-		t.Fatalf("Cursor reads .cursor/mcp.json")
+	// Cursor is not supported (0.9.2): init does not write .cursor/mcp.json
+	if _, err := os.Stat(filepath.Join(dir, ".cursor")); !os.IsNotExist(err) {
+		t.Fatalf("init does not write Cursor's settings: %v", err)
 	}
+	// OpenCode
 	oc := readJSON(t, filepath.Join(dir, "opencode.json"))
 	if e, _ := oc["mcp"].(map[string]any)["shikii"].(map[string]any); e == nil || e["type"] != "local" {
 		t.Fatalf("OpenCode reads opencode.json mcp.shikii with type local: %+v", oc)
@@ -92,7 +93,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "shikii", "references", "OLD.md")); !os.IsNotExist(err) {
 		t.Fatalf("stale files in the skill folder must be removed (the skill is replaced, not merged)")
 	}
-	for _, must := range []string{".mcp.json", ".cursor/mcp.json", "opencode.json", "Codex", "AGENTS.md", "skills/shikii", "shikii up"} {
+	for _, must := range []string{".mcp.json", "opencode.json", "Codex", "AGENTS.md", "skills/shikii", "shikii up"} {
 		if !strings.Contains(out, must) {
 			t.Fatalf("init must say what it did and what comes next; missing %q:\n%s", must, out)
 		}

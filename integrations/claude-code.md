@@ -6,7 +6,7 @@ Business decisions (routing inquiries and so on) are called by the agent over MC
 
 There is no hook per tool call (right before Bash or Edit). Classifying each command is not the AI's thinking but noise from the work; it runs dozens of times per request and drowns the request-level decisions (measured: 4606 command decisions against 84 request decisions). Whether something is allowed is already covered by Claude Code's permission and deny rules.
 
-**The Claude Code and Codex hooks** (both have hooks of the same shape; `install` writes to both settings). Cursor / OpenCode get MCP and the skill through `shikii init`, but have no entry point that measures thinking automatically (to add one, see "Adding it to other agents" below). The words for bands (act / ask / discard / abstain), lines (calibration) and receipts are in [bands.md](../skills/shikii/references/bands.md).
+**The Claude Code and Codex hooks** (both have hooks of the same shape; `install` writes to both settings). OpenCode gets MCP and the skill through `shikii init`, but has no entry point that measures thinking automatically (to add one, see "Adding it to other agents" below). The words for bands (act / ask / discard / abstain), lines (calibration) and receipts are in [bands.md](../skills/shikii/references/bands.md).
 
 It measures 4 things (the specs are in [`claude-code/specs/`](claude-code/specs/)). The first 2 are forecasts, the last 2 are self-evaluations:
 

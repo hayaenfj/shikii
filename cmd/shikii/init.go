@@ -66,7 +66,8 @@ func cmdInit(args []string) error {
 		fmt.Fprintf(stdout, ".shikii/wiki/: added %d built-in knowledge pages (existing pages kept)\n", n)
 	}
 
-	// MCP settings: Claude Code (.mcp.json), Cursor (.cursor/mcp.json), OpenCode (mcp in opencode.json), Codex (~/.codex/config.toml).
+	// MCP settings: Claude Code (.mcp.json), OpenCode (mcp in opencode.json), Codex (~/.codex/config.toml). Cursor is not supported from 0.9.2
+	// (a .cursor/mcp.json written by an earlier version is left as it is: it is the person's file).
 	// If a shikii entry already exists it is left alone (kept even if a person added --proposer etc.). Other entries and keys are kept.
 	mcpArgs := []string{"mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"}
 	claude := map[string]any{"command": "shikii", "args": mcpArgs}
@@ -76,7 +77,6 @@ func cmdInit(args []string) error {
 		who       string
 	}{
 		{".mcp.json", "mcpServers", claude, "Claude Code"},
-		{filepath.Join(".cursor", "mcp.json"), "mcpServers", claude, "Cursor"},
 		{"opencode.json", "mcp", map[string]any{"type": "local", "command": append([]string{"shikii"}, mcpArgs...)}, "OpenCode"},
 	} {
 		did, err := addJSONEntry(filepath.Join(scope, f.path), f.key, "shikii", f.entry)
