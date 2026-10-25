@@ -76,6 +76,8 @@ type guardResult struct {
 	ID     string `json:"guard"`
 	Pass   bool   `json:"pass"`
 	Reason string `json:"reason,omitempty"`
+	// ReasonJA is the same reason in Japanese. The hook shows it next to the English one (bi) when the person's language is Japanese
+	ReasonJA string `json:"-"`
 }
 
 // guardRecord is one line of records/guards.jsonl: which check stopped (or passed) in which turn. recheck is the Stop after a block (recording whether it was fixed).
@@ -201,21 +203,23 @@ func evalGuard(g guard, in guardInput) guardResult {
 		if !in.Known {
 			return r
 		}
-		var missing []string
+		var missing, missingJA []string
 		for _, p := range g.Pairs {
 			a, b := anyMatch(p[0], in.Changed), anyMatch(p[1], in.Changed)
 			switch {
 			case a && !b:
 				missing = append(missing, p[0]+" changed but "+p[1]+" did not")
+				missingJA = append(missingJA, p[0]+" が変わったのに "+p[1]+" が変わっていない")
 			case b && !a:
 				missing = append(missing, p[1]+" changed but "+p[0]+" did not")
+				missingJA = append(missingJA, p[1]+" が変わったのに "+p[0]+" が変わっていない")
 			}
 		}
 		if len(missing) > 0 {
-			r.Pass, r.Reason = false, strings.Join(missing, "; ")
+			r.Pass, r.Reason, r.ReasonJA = false, strings.Join(missing, "; "), strings.Join(missingJA, "; ")
 		}
 	case guardKindForbiddenWords:
-		var hits []string
+		var hits, hitsJA []string
 		paths := make([]string, 0, len(in.Added))
 		for p := range in.Added {
 			paths = append(paths, p)
@@ -239,6 +243,7 @@ func evalGuard(g guard, in guardInput) guardResult {
 				for _, w := range g.Words {
 					if strings.Contains(line, w) {
 						hits = append(hits, p+": \""+w+"\"")
+						hitsJA = append(hitsJA, p+": 「"+w+"」")
 					}
 				}
 			}
@@ -246,31 +251,35 @@ func evalGuard(g guard, in guardInput) guardResult {
 		if len(hits) > 0 {
 			if len(hits) > 5 {
 				hits = append(hits[:5], fmt.Sprintf("... and %d more", len(hits)-5))
+				hitsJA = append(hitsJA[:5], fmt.Sprintf("… ほか %d 件", len(hitsJA)-5))
 			}
-			r.Pass, r.Reason = false, "added lines contain a word not to use: "+strings.Join(hits, ", ")
+			r.Pass, r.Reason, r.ReasonJA = false, "added lines contain a word not to use: "+strings.Join(hits, ", "), "足した行に使わない語がある: "+strings.Join(hitsJA, ", ")
 		}
 	case guardKindCommitBody:
 		if !in.CommitsKnown {
 			return r
 		}
-		var bad []string
+		var bad, badJA []string
 		for _, m := range in.Commits {
 			subject, body, _ := strings.Cut(strings.TrimSpace(m), "\n")
+			subjectJA := subject
 			if strings.TrimSpace(m) == "" {
-				subject = "(no subject and no body)"
+				subject, subjectJA = "(no subject and no body)", "(件名も本文も無い)"
 			}
-			var lack []string
+			var lack, lackJA []string
 			for _, w := range g.Required {
 				if !strings.Contains(body, w) {
 					lack = append(lack, "\""+w+"\"")
+					lackJA = append(lackJA, "「"+w+"」")
 				}
 			}
 			if len(lack) > 0 {
 				bad = append(bad, "the body of commit \""+cut(subject, 60)+"\" lacks "+strings.Join(lack, ", "))
+				badJA = append(badJA, "コミット「"+cut(subjectJA, 60)+"」の本文に "+strings.Join(lackJA, "・")+" が無い")
 			}
 		}
 		if len(bad) > 0 {
-			r.Pass, r.Reason = false, strings.Join(bad, "; ")
+			r.Pass, r.Reason, r.ReasonJA = false, strings.Join(bad, "; "), strings.Join(badJA, "; ")
 		}
 	}
 	return r
@@ -312,11 +321,25 @@ func guardPositive(g guard) guardInput {
 		return guardInput{Changed: []string{g.Pairs[0][0], g.Pairs[0][1]}, Known: true}
 	case guardKindForbiddenWords:
 		path := negativePathFor(g)
-		return guardInput{Changed: []string{path}, Known: true, Added: map[string][]string{path: {"this line is clean"}}}
+		return guardInput{Changed: []string{path}, Known: true, Added: map[string][]string{path: {withoutWords("this line is clean", g.Words)}}}
 	case guardKindCommitBody:
 		return guardInput{Commits: []string{"subject\n\n" + strings.Join(g.Required, "\n") + "\n"}, CommitsKnown: true}
 	}
 	return guardInput{}
+}
+
+// withoutWords removes every forbidden word from the positive example (a word such as "his" or "line" would otherwise stop it and enable would refuse).
+// It repeats until nothing is left (each pass makes the line shorter), because removing one word can join the text around it into another.
+func withoutWords(line string, words []string) string {
+	for changed := true; changed; {
+		changed = false
+		for _, w := range words {
+			if w != "" && strings.Contains(line, w) {
+				line, changed = strings.ReplaceAll(line, w, ""), true
+			}
+		}
+	}
+	return line
 }
 
 // ---------------------------------------------------------------- storage
@@ -618,7 +641,7 @@ func guardList(root string) error {
 			if r.Pass {
 				line += fmt.Sprintf("  (last: passed %s)", r.At.Format("01-02 15:04"))
 			} else {
-				line += fmt.Sprintf("  (last: stopped %s: %s)", r.At.Format("01-02 15:04"), cut(r.Reason, 80))
+				line += fmt.Sprintf("  (last: stopped %s: %s)", r.At.Format("01-02 15:04"), cut(strings.ReplaceAll(r.Reason, "\n", " / "), 80)) // a Japanese reason is on its own line (bi): keep the list one line per check
 			}
 		}
 		fmt.Fprintln(stdout, line)

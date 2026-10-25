@@ -92,7 +92,7 @@ shikii reflect query
 shikii reflect submit < reflection.json
 ```
 
-`reflection.json` is JSON with `reviews`, `wiki`, `memory` and `maintenance` for the targets you fetched. Check `complete` and each item's `error`, fix only what failed and send it again. See [input examples and the steps](../skills/shikii/references/review.md) (Japanese); the shape of a plan is in [planning.md](../skills/shikii/references/planning.md).
+`reflection.json` is JSON with `reviews`, `wiki`, `memory` and `maintenance` for the targets you fetched. Check `complete` and each item's `error`, fix only what failed and send it again. See [input examples and the steps](../skills/shikii/references/review.md); the shape of a plan is in [planning.md](../skills/shikii/references/planning.md).
 
 When the agent tries to end with a step missing, `Stop` stops the turn once and tells it the command to run. The second time it does not stop (also after a background task's completion notice), but the miss is recorded in `records/guards.jsonl` as `plan-before-work` / `reflect-before-end`. It shows on the `rituals:` line of `shikii status` (how many of the requested steps were done, and how many were done after a stop) and on The AI page. The message on a stop asks the agent to report, in its last reply, the result of the work the person asked for rather than the routine itself.
 

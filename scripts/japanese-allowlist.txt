@@ -1,7 +1,7 @@
-# Files that may keep Japanese, with the most lines that may contain Japanese (scripts/check-english.py).
+# Files that may keep Japanese, with the exact number of lines that contain Japanese (scripts/check-english.py fails on more or fewer).
 # Only text that has to stay Japanese belongs here: Japanese UI text (display.ja, the ja side of bi(en, ja)),
 # words matched against Japanese input or Japanese documents, and test inputs that exercise Japanese handling.
-# Lower a number when Japanese is removed; raise one only for such text.
+# Lower a number when Japanese is removed (the check says so); raise one only for such text.
 4 CHANGELOG.md
 1 cmd/fake-systemone/main.go
 1 cmd/shikii/adopt_test.go
@@ -10,15 +10,16 @@
 5 cmd/shikii/audit_0_7_3_test.go
 34 cmd/shikii/audit_0_8_3_recheck_test.go
 16 cmd/shikii/audit_0_8_3_test.go
-23 cmd/shikii/audit_0_9_0_test.go
-17 cmd/shikii/audit_0_9_0b_test.go
+17 cmd/shikii/audit_0_9_0_test.go
+9 cmd/shikii/audit_0_9_0b_test.go
 10 cmd/shikii/audit_0_9_1_recheck_test.go
 12 cmd/shikii/audit_0_9_1_test.go
 1 cmd/shikii/audit_sampling_test.go
 21 cmd/shikii/classify_test.go
 10 cmd/shikii/correction_test.go
 1 cmd/shikii/generic_specs_test.go
-8 cmd/shikii/guard.go
+16 cmd/shikii/guard.go
+1 cmd/shikii/guard_hook.go
 18 cmd/shikii/guard_hook_test.go
 20 cmd/shikii/guard_test.go
 10 cmd/shikii/handoff_test.go
@@ -31,7 +32,6 @@
 61 cmd/shikii/hook_subagent_test.go
 24 cmd/shikii/hook_test.go
 4 cmd/shikii/hook_variants.go
-11 cmd/shikii/init_test.go
 11 cmd/shikii/line_state.go
 8 cmd/shikii/line_state_test.go
 1 cmd/shikii/memory.go
@@ -55,6 +55,7 @@
 16 cmd/shikii/serve_test.go
 5 cmd/shikii/serve_wiki_test.go
 4 cmd/shikii/source_text_test.go
+1 cmd/shikii/spec_display_test.go
 2 cmd/shikii/status_memory_test.go
 1 cmd/shikii/wiki_new_work_test.go
 4 cmd/shikii/wiki_test.go
@@ -87,12 +88,12 @@
 1 internal/store/link_test.go
 6 internal/store/source_text_test.go
 3 scripts/bench/prompt-intent-rag.yaml
-2 scripts/build-release.py
+1 scripts/build-release.py
 1 scripts/demo.sh
 27 scripts/gen-architecture-svg.py
 8 scripts/gen-hero-svg.py
 2 skills/shikii/references/guards.md
-3 skills/shikii/references/import-memory.md
+2 skills/shikii/references/import-memory.md
 21 web/scripts/test-glossary.mjs
 1 web/scripts/test-i18n.mjs
 1 web/src/components/ItemCard.svelte

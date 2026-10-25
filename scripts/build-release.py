@@ -70,12 +70,12 @@ Initialize once, only in the projects that use it:
 
 After updating, start a new agent session and restart the running page and MCP.
 This updates this version's skill and hook.
-The recommended model is TypeSafe's Jev (environment variable TYPESAFE_API_KEY). If you cannot set a key, llama.cpp. See "必要なもの" (Requirements) in README_ja.md.
+The recommended model is TypeSafe's Jev (environment variable TYPESAFE_API_KEY). If you cannot set a key, llama.cpp. See "Requirements" in README.md (README_ja.md is the same in Japanese).
 shikii itself is licensed under Apache-2.0 OR MIT. For third-party terms, see THIRD-PARTY-NOTICES.
 """
 BUNDLED = [("LICENSE", "LICENSE"), ("LICENSE-APACHE", "LICENSE-APACHE"), ("LICENSE-MIT", "LICENSE-MIT"),
            ("THIRD-PARTY-NOTICES", "THIRD-PARTY-NOTICES"), ("CHANGELOG.md", "CHANGELOG.md"),
-           ("CHANGELOG_ja.md", "CHANGELOG_ja.md"), ("docs/readme/README_ja.md", "README_ja.md")]
+           ("CHANGELOG_ja.md", "CHANGELOG_ja.md"), ("README.md", "README.md"), ("docs/readme/README_ja.md", "README_ja.md")]
 host_os, host_arch = subprocess.check_output(["go", "env", "GOHOSTOS", "GOHOSTARCH"], text=True).split()
 TARGETS = [("darwin", "arm64"), ("darwin", "amd64"), ("linux", "arm64"), ("linux", "amd64")]
 
@@ -114,8 +114,8 @@ def build(target):
             tar.add(file, arcname=file.name, recursive=False, filter=normalize)
     with tarfile.open(archive, "r:gz") as tar:
         members = tar.getmembers()
-        if not (len(members) == 10 and all(m.isfile() and "/" not in m.name for m in members)):
-            raise RuntimeError(f"{archive}: the contents are not 10 regular files")
+        if not (len(members) == 11 and all(m.isfile() and "/" not in m.name for m in members)):
+            raise RuntimeError(f"{archive}: the contents are not 11 regular files")
     if (system, arch) == (host_os, host_arch):
         got = subprocess.check_output([str(stage / "shikii"), "--version"], text=True).strip()
         if got != "shikii " + version:
