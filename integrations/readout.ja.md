@@ -51,7 +51,7 @@ scripts/eval-model.sh http://127.0.0.1:8090 <name>                              
 確率は配置と warm-up の前後で同じ値（0.999 / 0.996 / 0.997 / 0.998）。速くなっただけで答えは変わっていない。
 本家の方が速いのは、この Mac では Prism fork の PQ2_0 の Metal カーネルより本家の Q2_0 の方が prefill が速いため（66 vs ≈ 130 tok/s）。
 
-## 実測（2026-10-17、同じ spec・同じラベル。比較表は `../docs/model-comparison.md`）
+## 実測（2026-10-17、同じ spec・同じラベル。比較表は `../docs/model-comparison.ja.md`）
 
 ### Ternary-Bonsai-2-27B PQ2_0（PrismML fork の llama-server、Metal）
 

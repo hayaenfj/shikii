@@ -1,49 +1,51 @@
-# ローカル決定モデルの比較（同じ spec・同じ正解）
+**English** · [日本語](model-comparison.ja.md)
 
-測定日: 2026-10-16〜17。道具: `scripts/eval-model.sh <url> <name>`（報告だけ。spec には書かない。評価ごとに store を分ける）。
-環境: Mac 128GB、llama.cpp は brew の 0.6.0（Kev-4B、OpenJev）と 0.7.0（Ternary-Bonsai-27B）。各モデルは Q4_K_M（Bonsai 系は ternary）。
+# Comparing local decision models (same specs, same truths)
 
-数字は「生」（補正前）と、5-fold CV で選ばれた補正の値。llama-server の並列スロットで浮動小数が揺れ、
-同じ 62 件で 1 件ぶん（0.016）動くことがあるので、その幅で読む。
+Measured: 2026-10-16 to 17. Tool: `scripts/eval-model.sh <url> <name>` (reports only; writes nothing to the spec; a separate store per evaluation).
+Environment: Mac 128GB, llama.cpp from brew 0.6.0 (Kev-4B, OpenJev) and 0.7.0 (Ternary-Bonsai-27B). Each model is Q4_K_M (the Bonsai family is ternary).
 
-## 評価セット（全部作り物）
+The numbers are "raw" (before correction) and the value of the correction chosen by 5-fold CV. llama-server's parallel slots make floating point wobble,
+and on the same 62 items the result can move by one item (0.016), so read them within that range.
 
-| セット | 件数 | 中身 |
+## Evaluation sets (all made up)
+
+| Set | Items | Content |
 |---|---|---|
-| prompt-intent-v2 / all | 62 | AI への依頼文の 5 択（英 39・日 23）。正解は作業者が付けた |
-| prompt-intent-v2 / ja, en | 23, 39 | 上の日本語だけ、英語だけ |
-| same-issue | 32 | 不具合報告の重複判定（同じ不具合 12・別 12・同じ画面の別の不具合 8 を境界として false に重み 0.5）。はい/いいえ、日本語 |
-| same-inquiry | 32 | 問い合わせの同一判定（同じ案件 12・別 12・同じ種類の別案件 8）。はい/いいえ、日本語 |
+| prompt-intent-v2 / all | 62 | 5 options for a request text to an AI (39 English, 23 Japanese). Truths labeled by the worker |
+| prompt-intent-v2 / ja, en | 23, 39 | The above, Japanese only and English only |
+| same-issue | 32 | Duplicate detection for bug reports (12 same bug, 12 different, and 8 different bugs on the same screen as boundary cases, false with weight 0.5). Yes/no, Japanese |
+| same-inquiry | 32 | Whether two inquiries are the same (12 same case, 12 different, 8 different cases of the same kind). Yes/no, Japanese |
 
-## 結果
+## Results
 
-| モデル | 大きさ | ライセンス | all top-1 | ja | en | all 較正後 CV prec/rec@act | same-issue Brier 生 → 選ばれた補正 | same-inquiry 同左 | 1 問 | 判定 |
+| Model | Size | License | all top-1 | ja | en | all after calibration CV prec/rec@act | same-issue Brier raw → chosen correction | same-inquiry same | Per question | Verdict |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Kev-4B** | 4B | Apache 2.0 | 0.919 | 0.913 | 0.923 | 0.962 / 0.895（vector） | 0.038 → **0.035（platt）** | 0.030 → **0.020（platt）** | 0.25 秒 | 既定として妥当。速い。日本語の差はほぼ無い |
-| Julia-1 | 0.1B | Apache 2.0 | 0.129 | — | — | 0.000 / 0.000 | （旧題材で逆転 22 件） | — | — | **不可**（5 択の当て推量 0.2 未満） |
-| **OpenJev** | 27B | **CC BY-NC 4.0** | **0.984** | **1.000** | 0.974 | 1.000 / 0.952（vector） | **0.007**（identity） | 0.037（identity） | 3.8 秒 | 精度は頭一つ上。補正無しで足りる。非商用 |
-| **Bonsai 2 27B**（BonJev 経由） | 27B ternary | Apache 2.0 | 0.968 | **1.000** | 0.949 | 0.982 / 0.949（vector） | 0.049 → **0.019（platt）** | 0.084 → **0.028（platt）** | 2.5 秒 | 普通の LLM + ロジット読み出し。補正で 2.5〜3 倍良くなる |
-| **Bonsai 2 27B**（`shikii-readout` state-last、fork の llama-server） | 27B ternary | Apache 2.0 | 0.968 | 1.000 | 0.949 | identity（生で **1.000 / 1.000**） | 0.024 → **0.016（platt）** | 0.059 → **0.014（platt）** | 0.83 秒 | 自前アダプタ。順位は BonJev と同じ、確率は鋭い |
-| **Ternary-Bonsai-27B** Q2_g64（`shikii-readout` state-last、**本家 llama.cpp 0.7.0**） | 27B ternary | Apache 2.0 | **0.968** | **1.000** | 0.949 | identity（生で 1.000 / 0.983） | 0.048 → **0.024（platt）** | 0.033 → **0.020（platt）** | **0.58 秒** | **fork 無し・商用可・最速**。配置で top-1 が 5 ポイント動く（state-first は 0.919） |
+| **Kev-4B** | 4B | Apache 2.0 | 0.919 | 0.913 | 0.923 | 0.962 / 0.895 (vector) | 0.038 → **0.035 (platt)** | 0.030 → **0.020 (platt)** | 0.25 s | Reasonable as the default. Fast. Almost no gap in Japanese |
+| Julia-1 | 0.1B | Apache 2.0 | 0.129 | — | — | 0.000 / 0.000 | (22 inversions on the old material) | — | — | **Unusable** (below 0.2, the chance level for 5 options) |
+| **OpenJev** | 27B | **CC BY-NC 4.0** | **0.984** | **1.000** | 0.974 | 1.000 / 0.952 (vector) | **0.007** (identity) | 0.037 (identity) | 3.8 s | A head above in precision. Needs no correction. Non-commercial |
+| **Bonsai 2 27B** (through BonJev) | 27B ternary | Apache 2.0 | 0.968 | **1.000** | 0.949 | 0.982 / 0.949 (vector) | 0.049 → **0.019 (platt)** | 0.084 → **0.028 (platt)** | 2.5 s | An ordinary LLM + logit readout. Correction makes it 2.5 to 3 times better |
+| **Bonsai 2 27B** (`shikii-readout` state-last, forked llama-server) | 27B ternary | Apache 2.0 | 0.968 | 1.000 | 0.949 | identity (raw **1.000 / 1.000**) | 0.024 → **0.016 (platt)** | 0.059 → **0.014 (platt)** | 0.83 s | Our own adapter. Same ranking as BonJev, sharper probabilities |
+| **Ternary-Bonsai-27B** Q2_g64 (`shikii-readout` state-last, **upstream llama.cpp 0.7.0**) | 27B ternary | Apache 2.0 | **0.968** | **1.000** | 0.949 | identity (raw 1.000 / 0.983) | 0.048 → **0.024 (platt)** | 0.033 → **0.020 (platt)** | **0.58 s** | **No fork, commercial use allowed, fastest**. Arrangement moves top-1 by 5 points (state-first is 0.919) |
 
-はい/いいえ の 2 セットは、10 通り（5 つの口 × 2 セット）全部で正例と負例が完全に分かれた（逆転なし）。差は確率の質（Brier、小さいほど良い）だけ。
+On the two yes/no sets, positives and negatives separated completely in all 10 combinations (5 interfaces × 2 sets) (no inversions). The only difference is the quality of the probabilities (Brier, smaller is better).
 
-## 読み方
+## How to read it
 
-- **top-1** は順位の正しさ。文言の問題はここに出る（Kev-4B は v1 文言で 0.682 → v2 で 0.90 台）
-- **較正後 CV prec/rec@act** は「act を許してよいか」と「どれだけ act に届くか」。identity / vector / platt を 5-fold CV で比べて選んだ結果
-- **Brier 生 → 補正** は はい/いいえ の確率の素の良さと、補正でどこまで良くなるか。補正の要否は触れ込みではなく (質問, モデル) ごとに数字で決まる:
-  OpenJev は 2 セットとも identity、Kev-4B は platt がわずかに勝ち、普通の LLM は platt で 2〜4 倍良くなる
-- **逆転** は正例の下限 < 負例の上限（弱いラベルを除く）。較正で直らない。質問文かモデルを変える
+- **top-1** is whether the ranking is right. Wording problems show up here (Kev-4B goes from 0.682 with the v1 wording to the 0.90s with v2)
+- **After calibration CV prec/rec@act** is "may act be allowed" and "how much reaches act". The result of comparing identity / vector / platt with 5-fold CV and choosing
+- **Brier raw → correction** is how good the yes/no probabilities are as they come, and how far correction improves them. Whether correction is needed is decided by numbers per (question, model), not by what a model claims:
+  OpenJev is identity on both sets, Kev-4B gains slightly with platt, and ordinary LLMs get 2 to 4 times better with platt
+- An **inversion** is when the lowest positive < the highest negative (excluding weak labels). Calibration does not fix it. Change the question text or the model
 
-## 選び方（依頼の種類あての用途）
+## How to choose (for classifying request kinds)
 
-1. 商用可で速さが要るなら **Kev-4B**。ja 0.913、1 問 0.25 秒。hook の用途（依頼ごとに 1 回）に足りる
-2. 非商用でよく、精度を優先するなら **OpenJev**。ja 1.000、はい/いいえ は補正無しで足りる。ただし 1 問 ≈ 3.8 秒、常駐 16GB。バッチ向き
-3. この表そのものがフレームワークの主張: **同じ spec・同じ正解で、較正の要否まで含めて、モデルを数字で選べる**。どのモデルが良いかは用途（速さ・ライセンス・言語）次第で、ここでは決めない
-4. **普通の GGUF を本家 llama.cpp だけで使う**なら `shikii-readout`（[`../integrations/readout.md`](../integrations/readout.md)）。
-   Ternary-Bonsai-27B Q2_g64 で all 0.968 / ja 1.000、1 問 0.58 秒、Apache 2.0、fork 無し。この表の中で**用途を選ばない既定に最も近い**。
-   同じ原理の外部実装 [BonJev](https://github.com/ChezRD/bonjev)（Bonsai 専用、Prism fork に FFI）は [`../integrations/bonjev.md`](../integrations/bonjev.md)。
-   **「較正されていないモデル + フレームワークの較正」が「較正済みの決定モデル」と同じ所に届く**、というのがこれらの行の意味
+1. If commercial use and speed are needed, **Kev-4B**. ja 0.913, 0.25 s per question. Enough for the hook use (once per request)
+2. If non-commercial is fine and precision comes first, **OpenJev**. ja 1.000, yes/no needs no correction. But ≈ 3.8 s per question and 16GB resident. Suited to batches
+3. This table itself is the framework's claim: **with the same specs and the same truths, models can be chosen by numbers, including whether calibration is needed**. Which model is better depends on the use (speed, license, language) and is not decided here
+4. To **use an ordinary GGUF with upstream llama.cpp alone**, use `shikii-readout` ([`../integrations/readout.md`](../integrations/readout.md)).
+   Ternary-Bonsai-27B Q2_g64 gives all 0.968 / ja 1.000, 0.58 s per question, Apache 2.0, no fork. In this table it is **the closest to a default that fits any use**.
+   An external implementation on the same principle, [BonJev](https://github.com/ChezRD/bonjev) (Bonsai only, FFI into the Prism fork), is in [`../integrations/bonjev.md`](../integrations/bonjev.md).
+   The meaning of these rows is that **"an uncalibrated model + the framework's calibration" reaches the same place as "a calibrated decision model"**
 
-補足: 2026-10-17 に はい/いいえ の題材を差し替えた（それ以前の数字は別の題材のもので、公開物には載せない）。prompt-intent の数字は変わっていない。
+Note: on 2026-10-17 the yes/no material was replaced (earlier numbers are on different material and are not published). The prompt-intent numbers did not change.

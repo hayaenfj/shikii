@@ -1,99 +1,101 @@
-# 比較ベンチ: 測った聞き方 + 較正 / RAG / LoRA
+**English** · [日本語](bench.ja.md)
 
-README の仮説「型の付いた判定なら、測った聞き方と較正の組は、同じ土台のモデルで、微調整（LoRA）よりずっと少ない例で使える精度に届き、検索で文脈を足す方法（RAG）より確率が正直かもしれない」を確かめる場所。**まだ主張ではない。** ここにある数字は 1 課題・62 件・2 モデルの観察。
+# Comparison bench: measured wording + calibration / RAG / LoRA
 
-## 揃えるもの
+This is where we test the README's hypothesis: "for typed decisions, measured wording plus calibration, on the same base model, may reach usable precision with far fewer examples than fine-tuning (LoRA), and may give more honest probabilities than adding context by search (RAG)". **It is not a claim yet.** The numbers here are observations on 1 task, 62 items and 2 models.
 
-- 課題: `prompt-intent`（AI への依頼文の 5 択）
-- 正解: `testdata/prompt-intent-labeled.json` の 62 件（英 39・日 23、人が付けた）
-- モデル: 3 つの腕で同じもの。較正は `calibrate` の 5 分割（4 つで当てて 1 つで試す）
-- 物差し: top-1、Brier（top）、act 閾値（0.75）での precision / recall（較正後は 5 分割 CV の値）
+## What is held the same
 
-## 3 つの腕
+- Task: `prompt-intent` (5 options for a request text to an AI)
+- Truths: the 62 items in `testdata/prompt-intent-labeled.json` (39 English, 23 Japanese, labeled by a person)
+- Model: the same in all three arms. Calibration is `calibrate`'s 5 folds (fit on 4, test on 1)
+- Measures: top-1, Brier (top), precision / recall at the act threshold (0.75) (after calibration, the 5-fold CV values)
 
-| 腕 | 何をするか | 回し方 |
+## The three arms
+
+| Arm | What it does | How to run |
 |---|---|---|
-| **A. 測った聞き方 + 較正** | `tune` で選んだ v2 の文言で 1 問聞き、`calibrate` が線を引く。shikii がいつもやること | `scripts/bench/run.sh <url> <name>` |
-| **B. RAG 風** | 同じ質問に、似た例 5 件（正解付き）を本文の前に足す。似ている度は文字 2-gram の Jaccard。検索の元は**その行と同じ分割（5 分割）を除いた 4/5**で、較正の 5 分割（4 つで当てて 1 つ = 2 割で試す）と同じ割合（試す側の行は検索の元に入らない） | 同上（`scripts/bench/rag-rows.py` が材料を作り、`scripts/bench/prompt-intent-rag.yaml` で聞く） |
-| **C. LoRA** | 土台のモデルを 5 分割の 4/5（約 50 件）で微調整し、選択肢のトークンの確率を読む | `scripts/bench/lora/run.sh <venv> <work>`（mlx-lm、Apple silicon） |
+| **A. Measured wording + calibration** | Ask once with the v2 wording chosen by `tune`, and `calibrate` draws the line. What shikii always does | `scripts/bench/run.sh <url> <name>` |
+| **B. RAG-style** | For the same question, add 5 similar examples (with truths) before the body. Similarity is Jaccard over character 2-grams. The search pool is **the 4/5 excluding the row's own fold (of 5)**, the same ratio as calibration's 5 folds (fit on 4, test on 1 = 20%) (rows on the test side are not in the search pool) | Same as above (`scripts/bench/rag-rows.py` makes the material, asked with `scripts/bench/prompt-intent-rag.yaml`) |
+| **C. LoRA** | Fine-tune the base model on 4/5 of the 5 folds (about 50 items) and read the probabilities of the option tokens | `scripts/bench/lora/run.sh <venv> <work>` (mlx-lm, Apple silicon) |
 
-B の注意: 最初は検索の元を leave-one-out（その行以外の 61 件）にしていた。これは RAG に有利で、27B の Brier が 0.0092 と出た。分割の外から取る今の形では 0.0179。下の表は今の形の数字。
+Note on B: at first the search pool was leave-one-out (the 61 items other than that row). This favors RAG, and the 27B's Brier came out at 0.0092. With the current form, drawing from outside the fold, it is 0.0179. The table below uses the current form.
 
-## 結果（2026-10-18）
+## Results (2026-10-18)
 
-| モデル | 腕 | top-1（生） | Brier（生） | 較正後 CV prec / rec @act | 選ばれた線 |
+| Model | Arm | top-1 (raw) | Brier (raw) | After calibration CV prec / rec @act | Line chosen |
 |---|---|---|---|---|---|
-| Ternary-Bonsai-27B（`shikii-readout` state-last、本家 llama.cpp） | A | 0.968 | 0.0136 | 1.000 / 0.951 | identity（生で 1.000 / 0.983） |
-| 同 | B | **0.984** | 0.0179 | 1.000 / 0.951 | identity（生で 1.000 / 0.951） |
+| Ternary-Bonsai-27B (`shikii-readout` state-last, upstream llama.cpp) | A | 0.968 | 0.0136 | 1.000 / 0.951 | identity (raw 1.000 / 0.983) |
+| Same | B | **0.984** | 0.0179 | 1.000 / 0.951 | identity (raw 1.000 / 0.951) |
 | Kev-4B Q4_K_M | A | 0.919 | 0.0864 | 0.927 / 0.895 | vector |
-| 同 | B | **0.935** | **0.0813** | **0.963 / 0.929** | vector |
+| Same | B | **0.935** | **0.0813** | **0.963 / 0.929** | vector |
 
-読み方:
+How to read it:
 
-- 27B では B が 62 件中 1 件多く当てるが、Brier は A の方が良い（0.0136 対 0.0179）。較正後の CV は同じ。「測った聞き方の方が確率が正直」は 62 件で 1 回の観察で、仮説のまま。「RAG の方が当たる」も 1 件分
-- 4B では B が top-1・Brier・較正後の precision と recall の全部で上。小さいモデルほど例が効く
-- RAG が有利な条件（leave-one-out）を外すと 27B の Brier は 0.0092 → 0.0179 に動いた。検索の元の切り方は結果を動かすので、ベンチでは必ず書く
-- どちらの腕も較正は同じ道具で引けている。RAG は shikii の外の仕組みではなく、`state.template` に例を入れる聞き方の 1 つとして同じ貯金で測れる。つまり A と B は対立ではなく、同じ物差しで並べられる。ただし B は呼ぶ側が `examples` という入力を作って渡す必要があり、`tune` は入力を作らないので、今の `tune` の variant（文言と並べ方だけ）では表せない。tune の候補にするには「貯金から例を引く」段取りを tune 側に足す必要がある
-- 費用: B は本文が 5 例分長い。27B readout で 1 問 0.58 秒 → 約 1.1 秒
+- On the 27B, B gets 1 more of the 62 right, but A's Brier is better (0.0136 vs 0.0179). CV after calibration is the same. "Measured wording gives more honest probabilities" is one observation on 62 items and remains a hypothesis. "RAG is more accurate" is also by 1 item
+- On the 4B, B is ahead on all of top-1, Brier, and precision and recall after calibration. The smaller the model, the more examples help
+- Removing the condition that favored RAG (leave-one-out) moved the 27B's Brier from 0.0092 to 0.0179. How the search pool is cut moves the result, so a bench must always state it
+- Both arms can be calibrated with the same tool. RAG is not a mechanism outside shikii but one way of asking, putting examples into `state.template`, and can be measured on the same savings. So A and B are not opposed; they can be lined up on the same measure. But B needs the caller to build and pass an input called `examples`, and `tune` does not build inputs, so the current `tune` variants (wording and arrangement only) cannot express it. To make it a tune candidate, tune needs a step that "pulls examples from the savings"
+- Cost: B's body is 5 examples longer. With the 27B readout, one question goes from 0.58 s to about 1.1 s
 
-## 3 腕を同じ土台で（Qwen3-4B、2026-10-18）
+## Three arms on the same base (Qwen3-4B, 2026-10-18)
 
-三値の 27B は学習できないので、3 腕を揃える土台は普通のモデル `Qwen/Qwen3-4B`（Kev-4B の土台の系統）。A・B は同じモデルの GGUF（Q8_0）を本家 llama.cpp + `shikii-readout` で、C は HF 版（bf16）を mlx-lm で学習・採点した。手順は `scripts/bench/lora/run.sh`（分割の作成 `make_folds.py`、採点 `score.py`、物差し `report.py`）。
+The ternary 27B cannot be trained, so the base for lining up the three arms is the ordinary model `Qwen/Qwen3-4B` (the lineage Kev-4B is based on). A and B used the GGUF of the same model (Q8_0) with upstream llama.cpp + `shikii-readout`; C trained and scored the HF version (bf16) with mlx-lm. The steps are in `scripts/bench/lora/run.sh` (making folds `make_folds.py`, scoring `score.py`, measures `report.py`).
 
-- C の学習: 62 件を 5 分割、各分割で残り約 50 件を 200 歩（batch 4、LoRA 8 層、lr 1e-4）。1 分割あたり数分
-- C の採点: 生成せず、prompt の次トークンの対数確率を 5 つの id の最初のトークンで読んで softmax（`shikii-readout` と同じ考え方）。各行は「それを見ていない adapter」の答えなので 62 件全部が out-of-sample
-- 対照: 同じ prompt を LoRA 無しの土台で採点（C の prompt と A の文言・配置の違いを分けるため）
+- C's training: 62 items in 5 folds, in each fold 200 steps on the remaining ~50 (batch 4, LoRA on 8 layers, lr 1e-4). A few minutes per fold
+- C's scoring: no generation; read the log probabilities of the prompt's next token at the first token of each of the 5 ids and softmax them (the same idea as `shikii-readout`). Each row is answered by "an adapter that has not seen it", so all 62 are out-of-sample
+- Control: score the same prompt on the base without LoRA (to separate the differences between C's prompt and A's wording and arrangement)
 
-| 腕 | top-1 | Brier | act 0.75 での prec / rec | 備考 |
+| Arm | top-1 | Brier | prec / rec at act 0.75 | Notes |
 |---|---|---|---|---|
-| A: v2 の文言そのまま（readout） | 0.774 | 0.2216 | 0.774 / 1.000（線は引けない） | 全部 0.75 以上に張り付く |
-| **A: この土台で `tune` が選んだ文言**（shorter-question、readout） | **0.855** | 0.1394 | holdout 0.855、p=0.031 | 7 候補中。採用はしていない（評価用） |
-| B: 似た例 5 件（readout） | **0.855** | **0.1199** | 較正後 CV 0.931 / 0.964 | 例は分割の外から |
-| 対照: 平文の prompt、LoRA 無し（mlx） | 0.903 | 0.0967 | 0.903 / 1.000（生） | readout の配置より 13 ポイント高い |
-| **C: LoRA 約 50 件 × 5 分割（mlx）** | **0.952** | **0.0375** | 0.952 / 1.000（生、未較正） | 全部 0.75 以上 |
+| A: v2 wording as is (readout) | 0.774 | 0.2216 | 0.774 / 1.000 (no line can be drawn) | Everything sticks at 0.75 or above |
+| **A: wording `tune` chose on this base** (shorter-question, readout) | **0.855** | 0.1394 | holdout 0.855, p=0.031 | Out of 7 candidates. Not adopted (for evaluation) |
+| B: 5 similar examples (readout) | **0.855** | **0.1199** | after calibration CV 0.931 / 0.964 | Examples from outside the fold |
+| Control: plain prompt, no LoRA (mlx) | 0.903 | 0.0967 | 0.903 / 1.000 (raw) | 13 points above the readout arrangement |
+| **C: LoRA ~50 items × 5 folds (mlx)** | **0.952** | **0.0375** | 0.952 / 1.000 (raw, uncalibrated) | Everything at 0.75 or above |
 
-読み方:
+How to read it:
 
-- **この課題・この土台では仮説は支持されない。** 約 50 件の LoRA は、測った聞き方（0.855）より 10 ポイント高く、Brier も 4 分の 1。「微調整よりずっと少ない例で届く」とは言えない。LoRA の例の数（50）もすでに少ない
-- 似た例を足す B は、測った聞き方と top-1 で同じ、Brier で上。小さい土台では文言を測るより例を見せる方が効く
-- 対照（0.903）と A の v2（0.774）の差は、文言ではなく **配置**（`shikii-readout` の System One の並べ方か、平文か）。同じ重みで 13 ポイント。27B では配置で 5 ポイント動いた（model-comparison.md）。readout の配置は決定モデル向けで、素の 4B には合っていない可能性がある。A の腕を公平にするには、配置も `tune` の候補に入れる必要がある（今は template と文言だけ）
-- 公平さの注意: A・B は Q8 の GGUF、C と対照は bf16。確率の読み方も違う（readout は System One の口、C は最初のトークンの softmax）。C と対照の precision は未較正で、全部 0.75 以上に張り付いているので「act の精度」としては読めない（top-1 と同じ数になる）
-- 27B（上の表）では A と B はほぼ同じで、LoRA は測れていない（三値で学習できない）
+- **On this task and this base, the hypothesis is not supported.** LoRA on about 50 items is 10 points above the measured wording (0.855), with a quarter of the Brier. We cannot say it "reaches it with far fewer examples than fine-tuning". LoRA's number of examples (50) is already small
+- B, which adds similar examples, ties the measured wording on top-1 and is ahead on Brier. On a small base, showing examples helps more than measuring wording
+- The gap between the control (0.903) and A's v2 (0.774) is not the wording but the **arrangement** (`shikii-readout`'s System One ordering versus plain text). 13 points with the same weights. On the 27B, arrangement moved it by 5 points (model-comparison.md). The readout arrangement is meant for decision models and may not suit a bare 4B. To make arm A fair, the arrangement also has to be a `tune` candidate (now only the template and wording)
+- Fairness note: A and B are Q8 GGUF, C and the control are bf16. The way probabilities are read also differs (readout is System One's interface, C is the softmax of the first token). The precision of C and the control is uncalibrated and everything sticks at 0.75 or above, so it cannot be read as "act precision" (it equals top-1)
+- On the 27B (table above), A and B are nearly the same, and LoRA could not be measured (ternary cannot be trained)
 
-### 配置を tune の候補にした後（同日）
+### After making arrangement a tune candidate (same day)
 
-配置（`layout: plain`）を spec の候補として書けるようにし、同じ 9 候補を `tune` で測った。Qwen3-4B では **plain が 0.903（Brier 0.0959）で勝ち**、holdout 0.887 対 0.774、8 勝 1 敗、p=0.020。mlx の平文の対照（0.903 / 0.0967）と同じ数字で、13 ポイントの差は配置だったと確かめられた。これで腕 A は「この土台で tune が選んだ聞き方」として **0.903** になり、B（0.855）を上回り、C の LoRA（0.952）には 5 ポイント及ばない。
+We made the arrangement (`layout: plain`) writable as a spec candidate and measured the same 9 candidates with `tune`. On Qwen3-4B, **plain won with 0.903 (Brier 0.0959)**, holdout 0.887 vs 0.774, 8 wins 1 loss, p=0.020. These match the mlx plain-text control (0.903 / 0.0967), confirming that the 13-point gap was the arrangement. Arm A, as "the way of asking tune chose on this base", is now **0.903**, above B (0.855) and 5 points short of C's LoRA (0.952).
 
-| 腕（Qwen3-4B、更新） | top-1 | Brier | act 0.75 の prec / rec | 較正後 CV prec / rec |
+| Arm (Qwen3-4B, updated) | top-1 | Brier | prec / rec at act 0.75 | After calibration CV prec / rec |
 |---|---|---|---|---|
-| A: tune が選んだ聞き方（plain 配置） | 0.903 | 0.0959 | 0.903 / 1.000 | （tune は CV 較正を出さない） |
-| B: 似た例 5 件、state-last 配置 | 0.887 | 0.1136 | 0.883 / 0.964 | 0.931 / 0.964 |
-| **B: 似た例 5 件、plain 配置** | **0.952** | 0.0482 | 0.952 / 1.000 | （tune の候補として測定） |
-| **C: LoRA 約 50 件** | **0.952** | **0.0375** | 0.952 / 1.000 | 0.966 / 0.966（vector） |
-| 対照: 平文 prompt、LoRA 無し | 0.903 | 0.0967 | 0.903 / 1.000 | 0.934 / 1.000 |
+| A: way of asking tune chose (plain arrangement) | 0.903 | 0.0959 | 0.903 / 1.000 | (tune does not output CV calibration) |
+| B: 5 similar examples, state-last arrangement | 0.887 | 0.1136 | 0.883 / 0.964 | 0.931 / 0.964 |
+| **B: 5 similar examples, plain arrangement** | **0.952** | 0.0482 | 0.952 / 1.000 | (measured as a tune candidate) |
+| **C: LoRA ~50 items** | **0.952** | **0.0375** | 0.952 / 1.000 | 0.966 / 0.966 (vector) |
+| Control: plain prompt, no LoRA | 0.903 | 0.0967 | 0.903 / 1.000 | 0.934 / 1.000 |
 
-B の state-last が 0.855 → 0.887 になっているのは、`rag-rows.py` をどの spec でも使える形にした時に例の書き方（`message: … → truth`）が変わったため。同じ条件で測り直した数字。
+B's state-last going from 0.855 to 0.887 is because the way examples are written (`message: … → truth`) changed when `rag-rows.py` was made to work for any spec. These are numbers measured again under the same conditions.
 
-結論: **配置を揃えると、似た例を足す B は LoRA と top-1 で同じ（0.952）**。Brier は LoRA が良い（0.0375 対 0.0482）。測った聞き方だけの A は 0.903 で 5 ポイント下。人がしたことは候補を 2 行書いただけで、選んだのは機械。C と対照の較正後の数字は、`calibrate --labeled` が raw 付きの行（choice / score は `{id: p}`）を読めるようにして出した（モデルは呼ばない）。27B では plain 0.984・plain + 短い質問 1.000（現状 0.968）で害は無いが、holdout 1 勝 0 敗（p=0.5）で門を越えず現状維持。
+Conclusion: **with the arrangement lined up, B with similar examples ties LoRA on top-1 (0.952)**. LoRA has the better Brier (0.0375 vs 0.0482). A, with measured wording alone, is 0.903, 5 points below. All a person did was write 2 lines of candidates; a machine did the choosing. The after-calibration numbers for C and the control were produced by making `calibrate --labeled` read rows with raw (choice / score as `{id: p}`) (without calling the model). On the 27B, plain gives 0.984 and plain + a shorter question 1.000 (current 0.968), so no harm, but holdout was 1 win 0 losses (p=0.5), which did not pass the gate, so the current one stays.
 
-落とし穴（同日）: 変換役を新しいビルドで立て直さずに測ると、古い変換役が `layout` を知らずに無視し、plain が current と**同じ数字**になる。最初の 27B の run はそれで無効だった（消した）。同じ数字が並んだら疑うこと。パターン: [plain-layout-for-small-chat-models](../wiki/patterns/plain-layout-for-small-chat-models.md)。
+Pitfall (same day): if you measure without restarting the converter with the new build, the old converter does not know `layout` and ignores it, and plain gets **the same numbers** as current. The first 27B run was invalid for that reason (deleted). Be suspicious when identical numbers line up. Pattern: [plain-layout-for-small-chat-models](../wiki/patterns/plain-layout-for-small-chat-models.md).
 
-## はい/いいえ の課題で同じ 3 腕（same-issue、32 組、日本語、Qwen3-4B、2026-10-18）
+## The same three arms on a yes/no task (same-issue, 32 pairs, Japanese, Qwen3-4B, 2026-10-18)
 
-不具合報告の重複判定。境界の 8 組は重み 0.5（calibrate は重み付き、`report.py` の生の数字は重み無し）。act は 0.70。
+Duplicate detection for bug reports. The 8 boundary pairs have weight 0.5 (calibrate is weighted; `report.py`'s raw numbers are unweighted). act is 0.70.
 
-| 腕 | top-1 | Brier | 較正後 | 備考 |
+| Arm | top-1 | Brier | After calibration | Notes |
 |---|---|---|---|---|
-| A: 今の文言（readout、state-last） | 0.911 | 0.0786 | platt CV prec 0.952 / Brier 0.0488 | plain 配置も 0.911（配置の差なし） |
-| B: 似た例 5 件（readout） | 0.929 | 0.0686 | platt CV 0.952 / 0.0546 | plain は同 0.929、Brier 0.0500 |
-| 対照: 平文 prompt、LoRA 無し（mlx） | **0.969** | **0.0318** | identity、重み付き Brier 0.0183 | |
-| C: LoRA 約 26 件 × 5 分割（mlx） | 0.938 | 0.0513 | identity、重み付き Brier 0.0309 | **土台より悪い** |
+| A: current wording (readout, state-last) | 0.911 | 0.0786 | platt CV prec 0.952 / Brier 0.0488 | plain arrangement also 0.911 (no arrangement difference) |
+| B: 5 similar examples (readout) | 0.929 | 0.0686 | platt CV 0.952 / 0.0546 | plain also 0.929, Brier 0.0500 |
+| Control: plain prompt, no LoRA (mlx) | **0.969** | **0.0318** | identity, weighted Brier 0.0183 | |
+| C: LoRA ~26 items × 5 folds (mlx) | 0.938 | 0.0513 | identity, weighted Brier 0.0309 | **Worse than the base** |
 
-読み方:
+How to read it:
 
-- はい/いいえ では配置（文字か yes/no か）の差が出ない。choice で 13 ポイント動いたのは、5 つの id を文字に写す所に癖があったからで、2 択では写しの癖が小さい
-- **約 26 件の LoRA は土台を下回った**（0.969 → 0.938、Brier 0.0318 → 0.0513）。小さいデータで重みを動かすと壊れる側に出る例。choice（約 50 件）で勝ったのと合わせると、「LoRA が勝つ」は例の数と型に依る
-- readout 越しの A・B（0.911 / 0.929）と mlx の平文 prompt（0.969）の 6 ポイントの差は、配置では説明がつかない（plain でも同じ）。残る違いは Q8 と bf16、変換役の文の細部（「Answer with the option id only」対「Answer yes or no only」）、トークンの読み方。未解明。ここも `tune` の候補にできる種類の違い（文言）なので、次は変換役の noul の文を候補にして測る
-- 似た例を足す B は、はい/いいえ でも素の 1 問より良い（+1.8 ポイント、Brier 改善）。型を跨いで効く数少ない手
+- For yes/no, the arrangement (letters or yes/no) makes no difference. That choice moved by 13 points was because mapping the 5 ids to letters had a quirk; with 2 options, the mapping quirk is small
+- **LoRA on about 26 items fell below the base** (0.969 → 0.938, Brier 0.0318 → 0.0513). An example of moving weights on small data landing on the broken side. Together with the win on choice (about 50 items), "LoRA wins" depends on the number of examples and the type
+- The 6-point gap between A and B through readout (0.911 / 0.929) and mlx's plain prompt (0.969) cannot be explained by the arrangement (plain gives the same). The remaining differences are Q8 vs bf16, details of the converter's text ("Answer with the option id only" vs "Answer yes or no only"), and how tokens are read. Unexplained. This too is the kind of difference (wording) that can be a `tune` candidate, so next we make the converter's noul text a candidate and measure it
+- B with similar examples is better than a bare single question on yes/no too (+1.8 points, better Brier). One of the few things that helps across types
 
-次にやるなら: (1) noul の変換役の文を tune の候補にして 6 ポイントの差を割る、(2) モデル交換のベンチ（同じ spec と正解を Kev-4B / Qwen3-4B / 27B に掛け、人の正解 0 件で線が戻ることを示す。LoRA はモデルごとに学習し直し）、(3) 似た例を引くことを tune の候補の次元にする。
+What to do next: (1) make the noul converter's text a tune candidate and split the 6-point gap, (2) a model-swap bench (apply the same spec and truths to Kev-4B / Qwen3-4B / 27B, and show the line comes back with 0 human truths; LoRA would be retrained for each model), (3) make pulling similar examples a dimension of tune candidates.

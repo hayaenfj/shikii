@@ -1,49 +1,51 @@
-# 別の人の例: 問い合わせメールの振り分け（2026-10-18）
+**English** · [日本語](inquiry-route.ja.md)
 
-shikii を初めて使う人（この repo の中身を知らないエージェント）が、[日本語の README](../readme/README_ja.md) だけを頼りに、自分で決めた問題で一周した記録。
-prompt-intent のような「AI への依頼の分類」ではない分野で、文書どおりに動くかを見るための試験。ソースコードは一度も読まずに済んだ。
+# Someone else's example: routing inquiry emails (2026-10-18)
 
-## 問題
+A record of someone using shikii for the first time (an agent that did not know this repo's contents) going one full round on a problem it chose itself, relying only on the [Japanese README](../readme/README_ja.md).
+A test to see whether things work as documented in a field other than "classifying requests to an AI" such as prompt-intent. It never needed to read the source code.
 
-問い合わせメールを 4 つの窓口（請求 / 故障 / 解約 / その他）に回す。入力は日本語 22 件（各 5〜6 件）、個人情報は無し。
+## The problem
 
-- spec: [`inquiry-route/inquiry-route.yaml`](inquiry-route/inquiry-route.yaml)（`shikii new inquiry-route --type choice --question … --option billing=… ×4 --input body --pii true --send-to local` で作り、聞き方の候補 `variants:` を 3 つ手で足した。較正ブロックは外してある。線は使う人が自分のモデルで引く）
-- 過去の表: [`inquiry-route/past.csv`](inquiry-route/past.csv)（`body,truth` の 22 行。`shikii import past.csv --spec .shikii/decisions/inquiry-route.yaml --out truths.json` で答え合わせの材料になる）
+Route inquiry emails to 4 desks (billing / fault / cancel / other). The input is 22 items in Japanese (5 to 6 each), with no personal information.
 
-## 一周の結果（Kev-4B Q4_K_M、手元の llama-server）
+- spec: [`inquiry-route/inquiry-route.yaml`](inquiry-route/inquiry-route.yaml) (made with `shikii new inquiry-route --type choice --question … --option billing=… ×4 --input body --pii true --send-to local`, with 3 wording candidates `variants:` added by hand. The calibration block was removed; the user draws the line with their own model)
+- Past table: [`inquiry-route/past.csv`](inquiry-route/past.csv) (22 rows of `body,truth`. `shikii import past.csv --spec .shikii/decisions/inquiry-route.yaml --out truths.json` turns it into material for checking answers)
 
-| 段 | 結果 |
+## Results of the round (Kev-4B Q4_K_M, local llama-server)
+
+| Step | Result |
 |---|---|
-| `shikii init` → `shikii new` → `shikii decide` 1 件 | 通った。`band=ask top=billing p=0.915 calibrated=false`（線が無いので人に確かめて） |
-| `shikii serve` + `POST /v1/decide` 22 件 | top-1 は 22 件中 20 件が正解。帯は 21 件 ask、1 件 discard |
-| `POST /v1/label` 22 件 | 間違った答え（`refund`）は選択肢の一覧つきで拒否された |
-| `shikii calibrate --write` | 22 件 < `eval.min_n` 50 で書かない → spec の `eval.min_n` を 20 に下げて書けた。選ばれた方法は identity（生の確率がそのまま使える） |
-| 較正後の `decide` | `band=act`、receipt 付き。serve は再起動なしで新しい線を使った |
-| `shikii tune`（候補 3 つ） | どれも現状に勝てず `winner: current`（同点なら現状維持）。`.shikii/wiki/runs/` に表と一行の学びが残った |
-| 抜き取り（act の 20 件に 1 件）に答える | `/v1/queue` の `audit: true` の判定に `/v1/label` で答えられた |
-| MCP（`shikii mcp` に stdio で initialize / tools/list / tools/call） | 道具 5 つ、`shikii_decide` が JSON を返した。`init` が書いた 4 つの設定は文書どおり |
+| `shikii init` → `shikii new` → `shikii decide` on 1 item | Passed. `band=ask top=billing p=0.915 calibrated=false` (no line yet, so check with a person) |
+| `shikii serve` + `POST /v1/decide` on 22 items | top-1 was right on 20 of 22. Bands: 21 ask, 1 discard |
+| `POST /v1/label` on 22 items | A wrong answer (`refund`) was rejected with the list of options |
+| `shikii calibrate --write` | 22 items < `eval.min_n` 50, so nothing written → lowering the spec's `eval.min_n` to 20 let it write. The method chosen was identity (the raw probabilities can be used as is) |
+| `decide` after calibration | `band=act`, with a receipt. serve used the new line without a restart |
+| `shikii tune` (3 candidates) | None beat the current one: `winner: current` (a tie keeps the current one). A table and a one-line learning were left in `.shikii/wiki/runs/` |
+| Answering the samples (1 in 20 of act) | Decisions with `audit: true` in `/v1/queue` could be answered with `/v1/label` |
+| MCP (initialize / tools/list / tools/call to `shikii mcp` over stdio) | 5 tools; `shikii_decide` returned JSON. The 4 settings written by `init` were as documented |
 
-評点は 5 段階の 3。「README と help だけで init → new → decide → label まで迷わず進めた。50 件未満でどう始めるか、serve の API の体、spec の書き方の置き場所は README に無く、エラー文と skill を頼りに推測で越えた」。
+Rating: 3 out of 5. "With only the README and help, I got through init → new → decide → label without getting lost. How to start with fewer than 50 items, the body of serve's API, and where to find how to write a spec were not in the README; I got past them by guessing from error messages and the skill."
 
-## この試験で直したもの（同日）
+## What this test fixed (same day)
 
-- README の `curl` の例に `-H 'Content-Type: application/json'` が無く、そのまま打つと蹴られた → 例を直し、`scripts/check-readme.sh` が /v1 への curl の例に header があるかを見る
-- 正解が `eval.min_n` に足りない時の `calibrate` と `tune` の文が「何をすればよいか」を言わなかった（`tune` は `--labeled` を渡しても同じ文で蹴った） → 「正解を集めるか、試しなら spec の `eval.min_n` を下げる」と言う
-- `shikii init` が `wiki/` を空で作るので、`tune` の run ページのリンク（型・モデルのページ）が切れ、提案役が読む既製の知識も無かった → `init` が index.md・types/・patterns/・models/ を写す（あるページは触らない）。run ページは、あるページだけリンクにする
-- `shikii bias` だけ `--store` が無く `--labeled` 必須だった → calibrate / tune と同じ貯金（store の正解の本文）で回る
-- `drift` の ask agreement が該当 0 件でも `0.000` と出た → `n/a`
-- `/v1/redo` に `spec` を付けないと `unknown spec ""` → 「spec が要る。decisions/ のファイル名」と言う
-- `status` の「human-checked so far」と receipt の「human-checked act decisions」が別の数なのに同じ言葉だった → status は「audit answers so far」。receipt の数の意味は [bands.md](../../skills/shikii/references/bands.md)
-- 文書: spec の書き方の置き場所、serve の HTTP API の一覧（[guide.ja.md](../guide.ja.md#serve-の-http-api)）、`.shikii/` の何を commit するか、`shikii new` は対話でもフラグでも、コマンドの出力は英語、`wiki/` に既製の知識が写ること
+- The README's `curl` examples lacked `-H 'Content-Type: application/json'`, so typing them as is got rejected → fixed the examples, and `scripts/check-readme.sh` checks that curl examples to /v1 have the header
+- When truths were short of `eval.min_n`, the messages from `calibrate` and `tune` did not say "what to do" (`tune` rejected with the same message even when given `--labeled`) → they now say "collect truths, or for a trial, lower the spec's `eval.min_n`"
+- `shikii init` made `wiki/` empty, so the links in `tune`'s run page (the type and model pages) were broken, and there was no ready-made knowledge for the proposer to read → `init` copies index.md, types/, patterns/ and models/ (existing pages are not touched). The run page links only pages that exist
+- Only `shikii bias` lacked `--store` and required `--labeled` → it runs on the same savings as calibrate / tune (the bodies of truths in the store)
+- `drift`'s ask agreement printed `0.000` even with 0 matching items → `n/a`
+- `/v1/redo` without `spec` said `unknown spec ""` → it now says "spec is required: a file name in decisions/"
+- `status`'s "human-checked so far" and the receipt's "human-checked act decisions" were different numbers with the same words → status says "audit answers so far". The meaning of the receipt's number is in [bands.md](../../skills/shikii/references/bands.md)
+- Documents: where to find how to write a spec, the list of serve's HTTP API ([guide.md](../guide.md#the-serve-http-api)), what in `.shikii/` to commit, that `shikii new` works interactively or with flags, that command output is in English, and that ready-made knowledge is copied into `wiki/`
 
-## 自分の問題で試すには
+## To try it on your own problem
 
 ```sh
 shikii init
-cp <この repo>/docs/examples/inquiry-route/inquiry-route.yaml .shikii/decisions/   # または shikii new <id> で自分の問題を書く
-shikii import <この repo>/docs/examples/inquiry-route/past.csv --spec .shikii/decisions/inquiry-route.yaml --out truths.json
+cp <this repo>/docs/examples/inquiry-route/inquiry-route.yaml .shikii/decisions/   # or write your own problem with shikii new <id>
+shikii import <this repo>/docs/examples/inquiry-route/past.csv --spec .shikii/decisions/inquiry-route.yaml --out truths.json
 shikii calibrate .shikii/decisions/inquiry-route.yaml --labeled truths.json --local http://127.0.0.1:8080 --write
 shikii decide .shikii/decisions/inquiry-route.yaml --local http://127.0.0.1:8080 -i body='先月の請求額が二重に引き落とされているようです'
 ```
 
-22 件は試しの数。業務で使うなら `eval.min_n` を 50 以上に戻し、`shikii serve` の画面で答え合わせを続けて、線を引き直す。
+22 items is a trial number. For business use, put `eval.min_n` back to 50 or more, keep checking answers on the `shikii serve` page, and draw the line again.
