@@ -12,7 +12,7 @@ Claude Code and Codex start every session from zero. They do not remember what y
 [![Tests](https://img.shields.io/badge/tests-458%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.9.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.9.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
 Version 0.9 gives every lesson a kind (rule, how-to, criteria, fact, history) and a scene, and the Knowledge section of the page now lets you pick a scene and look things up. Only the exceptions that need you are shown at the top. The page has three parts, Answer, Knowledge and The AI, and decisions waiting for you appear one card at a time under Answer. Lessons written by earlier versions get their kind and scene from the agent, a few at a time. **When updating from 0.8, reopen your open agent sessions and update every machine that uses the same wiki to 0.9.0.** **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again**; back up first. See the [changelog](CHANGELOG.md).
 
