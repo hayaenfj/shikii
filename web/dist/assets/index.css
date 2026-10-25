@@ -887,8 +887,8 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .grid-cols-\[220px_minmax\(260px\,1fr\)_minmax\(280px\,1\.2fr\)\] {
-    grid-template-columns: 220px minmax(260px, 1fr) minmax(280px, 1.2fr);
+  .grid-cols-\[220px_minmax\(0\,1fr\)_minmax\(0\,1\.1fr\)\] {
+    grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1.1fr);
   }
 
   .grid-cols-\[minmax\(240px\,320px\)_minmax\(0\,1fr\)\] {
@@ -1247,16 +1247,8 @@
     padding: 26px;
   }
 
-  .px-0 {
-    padding-inline: 0;
-  }
-
   .px-0\.5 {
     padding-inline: calc(var(--spacing) * .5);
-  }
-
-  .px-1 {
-    padding-inline: var(--spacing);
   }
 
   .px-1\.5 {
@@ -1462,6 +1454,10 @@
 
   .text-\[17px\] {
     font-size: 17px;
+  }
+
+  .text-\[18px\] {
+    font-size: 18px;
   }
 
   .text-\[19px\] {
@@ -1771,12 +1767,28 @@
       grid-column: span 2 / span 2;
     }
 
+    .max-lg\:hidden {
+      display: none;
+    }
+
+    .max-lg\:w-auto {
+      width: auto;
+    }
+
+    .max-lg\:shrink-0 {
+      flex-shrink: 0;
+    }
+
     .max-lg\:grid-cols-1 {
       grid-template-columns: repeat(1, minmax(0, 1fr));
     }
 
-    .max-lg\:grid-cols-\[200px_1fr\] {
-      grid-template-columns: 200px 1fr;
+    .max-lg\:grid-cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .max-lg\:flex-row {
+      flex-direction: row;
     }
 
     .max-lg\:flex-wrap {
@@ -1785,6 +1797,35 @@
 
     .max-lg\:gap-1 {
       gap: var(--spacing);
+    }
+
+    .max-lg\:gap-1\.5 {
+      gap: calc(var(--spacing) * 1.5);
+    }
+
+    .max-lg\:rounded-full {
+      border-radius: 3.40282e38px;
+    }
+
+    .max-lg\:border {
+      border-style: var(--tw-border-style);
+      border-width: 1px;
+    }
+
+    .max-lg\:border-line {
+      border-color: var(--line);
+    }
+
+    .max-lg\:px-3 {
+      padding-inline: calc(var(--spacing) * 3);
+    }
+
+    .max-lg\:py-1 {
+      padding-block: var(--spacing);
+    }
+
+    .max-lg\:whitespace-nowrap {
+      white-space: nowrap;
     }
   }
 
@@ -1883,6 +1924,10 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
+    .max-sm\:flex-nowrap {
+      flex-wrap: nowrap;
+    }
+
     .max-sm\:flex-wrap {
       flex-wrap: wrap;
     }
@@ -1909,6 +1954,10 @@
 
     .max-sm\:gap-x-2\.5 {
       column-gap: calc(var(--spacing) * 2.5);
+    }
+
+    .max-sm\:overflow-x-auto {
+      overflow-x: auto;
     }
 
     .max-sm\:rounded-\[9px\] {

@@ -80,7 +80,7 @@ calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変
   withContext: '文脈を足して聞き直した', 
   audit: '抜き取り検査: 機械が自動で動いた判定。20 件に 1 件をここに出し、人が確かめた分で精度を測る',
   knowledge: '知識(主張)', claimsCount: (n, p) => '主張 ' + n + '、文章のページ ' + p, noClaims: 'まだ主張はありません(tune で勝った候補があれば下書きができます)',
-  lessonsTab: '教訓', lessonsTitle: '覚えていること', lessonsSummary: (s, c, n) => '直近 ' + (s.delivered || 0) + ' 回届けて役立った ' + (s.helpful || 0) + '・使われなかった ' + (s.unused || 0) + '・害 ' + (s.harmful || 0) + '。訂正は沿った ' + (c.followed || 0) + '・繰り返し ' + (c.repeated || 0) + '。記事 ' + n + ' 本。', inboxTitle: 'あなたに見てほしいもの', inboxTimes: n => n + ' 回', inboxEmpty: '今はありません。害があった教訓・繰り返された訂正・有効にする前の止める検査が出た時だけ、ここに出ます。', inboxKind: k => ({ harmful: '害があった', repeated: '訂正が繰り返された', guard_draft: '止める検査の草稿' })[k] || k, scenesTitle: '場面', scenesHead: n => '場面 · 記事 ' + n + ' 本', scenesClear: '絞りを外す', scenesNone: '未分類', sceneFor: s => '「' + s + '」に効く知識', unclassifiedHow: '場面と種類がまだ付いていない記事です(版を上げる前に作った物)。エージェントが依頼のたびに 5 本ずつ付けます。人がやることはありません。', kindName: k => ({ rule: 'このプロジェクトで決められたルール', howto: 'やり方', criteria: '判断の基準', fact: '前提と事実', history: '経緯' })[k] || k, kindHint: k => ({ rule: 'いつも守ること', howto: '手順と進め方', criteria: 'どちらにするかの決め方', fact: '今そうなっていること', history: 'なぜそうなったか' })[k] || '', kindCount: n => n + ' 本', kindMore: n => 'ほか ' + n + ' 本を見る', kindLess: '畳む', lessonsEmpty: 'この場面の記事はまだありません', helpfulCount: n => '役立った ' + n, appliesTo: '当てはまる時', bodyTitle: '背景と経緯', relatedTitle: '関連', lessonFoot: (n, d) => '出典 ' + n + ' 件' + (d ? ' · 最終更新 ' + d : ''), detailEmpty: '題を押すと、ここに本文・関連・出典が出ます。', effectTitle: '届いた教訓は効いたか(最近)', effectResult: r => ({ helpful: '役立った', unused: '使われなかった', harmful: '害があった', unknown: '不明' })[r] || '振り返り待ち', effectLesson: '届けた教訓:', clipMore: '全文', clipLess: '畳む', aiDetails: '記事の詳しい記録(検索・見直し・振り返り・記事の木・以前の主張)',
+  lessonsTab: '教訓', inboxTitle: 'あなたに見てほしいもの', inboxTimes: n => n + ' 回', inboxKind: k => ({ harmful: '害があった', repeated: '訂正が繰り返された', guard_draft: '止める検査の草稿' })[k] || k, scenesTitle: '場面', scenesHead: '場面で絞る', scenesClear: '絞りを外す', scenesNone: '未分類', unclassifiedHow: '場面と種類がまだ付いていない記事です(版を上げる前に作った物)。エージェントが依頼のたびに 5 本ずつ付けます。人がやることはありません。', kindName: k => ({ rule: 'ルール', howto: 'やり方', criteria: '決め方', fact: '前提と事実', history: '経緯' })[k] || k, kindHint: k => ({ rule: 'いつも守ること', howto: '手順と進め方', criteria: 'どちらにするかの決め方', fact: '今そうなっていること', history: 'なぜそうなったか' })[k] || '', kindMore: n => 'ほか ' + n + ' 本を見る', kindLess: '畳む', lessonsEmpty: 'この場面の記事はまだありません', appliesTo: '当てはまる時', bodyTitle: '背景と経緯', relatedTitle: '関連', lessonFoot: (n, d) => '出典 ' + n + ' 件' + (d ? ' · 最終更新 ' + d : ''), detailEmpty: '題を押すと、ここに本文・関連・出典が出ます。', aiDetails: 'AI 用の詳しい記録(ふだんは見なくてかまいません)',
   handoffTitle: '作業記録', handoffCount: n => n + ' 件', handoffHow: '途中で書き換える作業ファイル（監査の報告、リリースの手順と記録、差分、画像）。置き場は .shikii/handoff/ で、AI が書き、ここでは読むだけです。次に効く教訓は上の wiki に、確かめた時点の証拠は原資料に残ります。', handoffEmpty: 'まだ作業記録はありません。', handoffError: '作業記録を読めませんでした。', handoffRoot: '（直下）', handoffOpenRaw: '別のタブで開く', handoffOther: '文字でも画像でもないファイルです。「別のタブで開く」で保存できます。',
   notebookTitle: '会話から育つ教訓', notebookHow: '普段の会話から AI がまとめ、次の似た依頼で参照します。教訓は出典付きの仮説で、今回の依頼と規則を優先します。', notebookPending: n => '次に整理する会話 ' + n + ' 件。普段使っているエージェントが整理します。', notebookIssues: '出典や記録を確かめられない教訓があります。問題のある教訓は参照対象から外します。', notebookEmpty: 'まだ教訓はありません。会話が整理されると、ここに出典と一緒に並びます。', notebookHypothesis: '仮説', notebookWhen: '当てはまる場面', notebookSource: '原文を見る',
   promote: '主張にする', deleteDraft: '下書きを消す', confirm: 'confirmed にする', reject: '却下', confirmable: '独立したモデル 2 つが支持: confirmed にできます',
@@ -93,7 +93,7 @@ calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変
   candidates: n => '測る前の案 ' + n + ' 件', noCandidates: '案はまだありません。下に書くか、AI に作らせてください', addWording: '言い換えの案を書く', candName: '短い名前(例: plain-words)', candQuestion: '質問をあなたの言葉で', candQuestionOrOptions: '質問をあなたの言葉で(空なら今の質問のまま。下の選択肢の説明だけ変える)', candOptions: '選択肢の説明。1 行に 1 つ、id: 説明 の形(変えるものだけ)', addWordingBtn: '案を足す', candAdded: n => '足しました: ' + n + '。次に測る時に採点されます',
   checkHint: '言い換えても、まだあなたの聞きたいことを聞いていますか？数字は機械が確かめました。和訳を見て、意味が同じかを選んでください。', rejected: '記録しました: 意味が違うので採用しない', adoptedToast: p => '採用しました: ' + p,
   // 0.9.1: このプロジェクトで決められたルールの欄
-  rulesTitle: 'このプロジェクトで決められたルール', rulesHow: '人や AI が決めたルールです。「いつも」のルールが先頭で、最近 7 日に増えた・変わったルールには「新」の印が付きます。押すと本文が出ます。', ruleNew: '新', rulesEmpty: 'まだありません。',
+  rulesTitle: 'いつも守ること', ruleNew: '新', rulesEmpty: 'まだありません。',
   // 0.9.1: 画面は 3 つ(答える・知識・AI の様子)
   pagesNav: '画面', pageAnswer: '答える', pageKnowledge: '知識', pageAI: 'AI の様子',
   answerTitle: '答える', answerLeft: n => '残り ' + n + ' 件', answerHow: 'AI が迷った判定と、AI が自分で決めた判定の抜き打ちです。会話を読んで、本当はどうだったかを押してください。',
@@ -116,4 +116,9 @@ calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変
   guessFold: 'AI の予想を見る', aiReading: 'AI の読み(参考)を見る', noneValue: '変更なし', modelName: m => 'モデル: ' + m,
   inputTitle: '今の記事の題', inputLesson: '今の記事の教訓', inputAppliesTo: '今の記事が当てはまる時', inputNewLesson: '新しい教訓', inputNewApplies: '新しい教訓が当てはまる時',
   wordingNew: '新しい言い方', wordingOriginal: '英語の原文を見る',
+  lessonSearch: '語で探す(題・教訓・本文)',
+  scenesOther: 'その他',
+  rulesAll: n => 'ルールを全部見る(' + n + ' 本)',
+  inboxGuardHow: '有効にするなら、AI にそう頼んでください。',
+  knowledgeHow: 'AI が覚えたことを引く所です。ふだん、あなたがすることはありません。',
 };

@@ -445,8 +445,9 @@ async function checkAnswerCountOnlyForNewWaits(target) {
 }
 
 
-// 0.9.1: a "Rules" section at the top of Knowledge. A person can see the rules the AI made in one list too (all appear even when filtered by scene). "いつも" (always) rules first,
-// and rules added or changed in the last 7 days get a marker. Pressing one shows the text
+// 0.9.1 → 0.9.2 redesign (P3): the rules box at the top of Knowledge shows only the "いつも" (always) rules, and "see all rules" opens the rest (always first, then newest).
+// The "new" marker goes only on rules changed in the last 7 days, and not at all when every rule is new (it would not tell anything apart).
+// The text panel sits beside the rules box, so on a wide screen pressing a rule does not scroll; on a phone it scrolls to the text
 function checkRulesPanel(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
@@ -457,33 +458,81 @@ function checkRulesPanel(target) {
   const app = mount(Lessons, { target, props: { wiki } }); flushSync();
   const panel = target.querySelector('[data-rules]');
   const rows = () => [...target.querySelectorAll('[data-rules] [data-rule]')].map(b => b.dataset.rule);
-  const top = !!panel && !!(panel.compareDocumentPosition(target.querySelector('[data-scenes]')) & 4) && !!(panel.compareDocumentPosition(target.querySelector('[data-inbox]')) & 4); // above the inbox (audit low-3)
-  const named = (panel?.textContent || '').includes('このプロジェクトで決められたルール');
-  const order = rows().join(',') === [lessons[1].id, lessons[4].id, lessons[0].id, lessons[3].id].join(','); // いつも (and always) first, and newest first within them
+  const named = (panel?.textContent || '').includes(t('rulesTitle'));
+  const alwaysOnly = rows().join(',') === [lessons[1].id, lessons[4].id].join(',');
+  target.querySelector('[data-rules-all]')?.click(); flushSync();
+  const order = rows().join(',') === [lessons[1].id, lessons[4].id, lessons[0].id, lessons[3].id].join(','); // いつも (and always) first, then newest first
   const fresh = !!target.querySelector('[data-rule="' + lessons[0].id + '"] [data-rule-new]') && !target.querySelector('[data-rule="' + lessons[3].id + '"] [data-rule-new]');
-  target.querySelector('[data-scene="公開する時"]')?.click(); flushSync();
-  const allWhenFiltered = rows().length === 4;
-  // Wide screen (final audit 0.9.1 T1): pressing from the rules section scrolls to the text. Pressing from other sections such as the inbox does not (the text section is beside them)
+  unmount(app);
+  // when every rule is new, no marker at all
+  const allNew = Object.fromEntries(lessons.map(l => [l.id, { updated: recent }]));
+  const app2 = mount(Lessons, { target, props: { wiki: { ...wiki, lesson_meta: allNew } } }); flushSync();
+  target.querySelector('[data-rules-all]')?.click(); flushSync();
+  const noMarkWhenAllNew = rows().length === 4 && !target.querySelector('[data-rule-new]');
+  unmount(app2);
   const realMatch = globalThis.matchMedia, realScroll = Element.prototype.scrollIntoView;
   const scrolled = [];
-  globalThis.matchMedia = () => ({ matches: false });
   Element.prototype.scrollIntoView = function () { scrolled.push(this.dataset.lessonDetail !== undefined); };
   const settleMicro = () => { flushSync(); return new Promise(r => queueMicrotask(r)); };
   return (async () => {
     try {
-      target.querySelector('[data-inbox] [data-open="' + lessons[2].id + '"]')?.click(); await settleMicro();
-      const otherStays = scrolled.length === 0;
-      target.querySelector('[data-rule="' + lessons[3].id + '"]')?.click(); await settleMicro();
-      const opens = (target.querySelector('[data-lesson-detail]')?.textContent || '').includes('教訓 4');
-      const wideScroll = scrolled.length === 1 && scrolled[0];
-      unmount(app); i18n.lang = lang;
-      const ok = top && named && order && fresh && allWhenFiltered && opens && wideScroll && otherStays;
-      console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rules section: at the top=' + top + ', name=' + named + ', always first=' + order + ', recent marker=' + fresh + ', all when filtered=' + allWhenFiltered + ', pressing shows the text=' + opens + ', scrolls to the text on a wide screen=' + wideScroll + ', no scroll from other sections=' + otherStays + ')');
+      globalThis.matchMedia = () => ({ matches: false }); // wide
+      let a = mount(Lessons, { target, props: { wiki } }); flushSync();
+      const beside = !!panel && target.querySelector('[data-rules]')?.closest('[data-lesson-grid]') === target.querySelector('[data-lesson-detail]')?.closest('[data-lesson-grid]') && !!target.querySelector('[data-lesson-grid]');
+      target.querySelector('[data-rule="' + lessons[1].id + '"]')?.click(); await settleMicro();
+      const opens = (target.querySelector('[data-lesson-detail]')?.textContent || '').includes('教訓 2');
+      const wideStays = scrolled.length === 0;
+      unmount(a);
+      globalThis.matchMedia = () => ({ matches: true }); // phone
+      a = mount(Lessons, { target, props: { wiki } }); flushSync();
+      target.querySelector('[data-rule="' + lessons[1].id + '"]')?.click(); await settleMicro();
+      const phoneScrolls = scrolled.length === 1 && scrolled[0];
+      unmount(a); i18n.lang = lang;
+      const ok = named && alwaysOnly && order && fresh && noMarkWhenAllNew && beside && opens && wideStays && phoneScrolls;
+      console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rules box: name=' + named + ', only always at first=' + alwaysOnly + ', all: always first then newest=' + order + ', recent marker=' + fresh + ', no marker when all are new=' + noMarkWhenAllNew + ', text beside the rules=' + beside + ', pressing shows the text=' + opens + ', no scroll on a wide screen=' + wideStays + ', scrolls on a phone=' + phoneScrolls + ')');
       return ok;
     } finally {
       globalThis.matchMedia = realMatch; Element.prototype.scrollIntoView = realScroll;
     }
   })();
+}
+
+// 0.9.2 redesign (P3): Knowledge is one screen for looking things up. A rule is listed once (in the rules box, or in the list when a scene or words narrow it),
+// scenes with only one page go under "その他" (other), a search box narrows titles and lessons, the AI's internal numbers (delivered / helped counts, effects) are not here,
+// and the text shows Markdown marks as plain text
+function checkKnowledgeFront(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
+  const mk = (i, kind, scene, extra = {}) => ({ id: String(i).padStart(16, '0'), title: '記事 ' + i, lesson: '教訓 ' + i, applies_to: 'a', kind, scene, sources: [], related: [], ...extra });
+  const lessons = [mk(1, 'rule', 'いつも'), mk(2, 'rule', 'いつも'), mk(3, 'rule', 'コミットする時'), mk(4, 'rule', 'コミットする時', { title: 'コミットの作者' }), mk(5, 'howto', 'コミットする時', { body: '## 背景\n\n- 項目A\n- `make test` を流す' }), mk(6, 'howto', '公開する時'), mk(7, 'fact', '版を出す時'), mk(8, '', '')];
+  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { helpful: 3 } }, inbox: [], memory_effect: { stats: { delivered: 5, helpful: 1, unused: 3, harmful: 1 }, corrections: {}, recent: [{ request: 'r', quote: { lesson: 'l' }, assessment: { result: 'helpful' } }] } };
+  const app = mount(Lessons, { target, props: { wiki } }); flushSync();
+  const q = sel => target.querySelector(sel);
+  // each rule at most once among the rows a person can press (the text panel and related links are not rows)
+  const once = () => { const ids = [...target.querySelectorAll('[data-rule], [data-open]')].filter(b => !b.closest('[data-lesson-detail]')).map(b => b.dataset.rule || b.dataset.open); return lessons.filter(l => l.kind === 'rule').every(l => ids.filter(x => x === l.id).length <= 1); };
+  const onceAtFirst = once();
+  q('[data-rules-all]')?.click(); flushSync();
+  const onceOpened = once();
+  const scenes = [...target.querySelectorAll('[data-scenes] [data-scene]')].map(b => b.dataset.scene);
+  const grouped = JSON.stringify(scenes) === JSON.stringify(['コミットする時', 'いつも', '__other__', '__none__']);
+  q('[data-scene="__other__"]')?.click(); flushSync();
+  const listed = () => [...target.querySelectorAll('[data-kinds] [data-open]')].map(b => b.dataset.open);
+  const other = JSON.stringify(listed().sort()) === JSON.stringify([lessons[5].id, lessons[6].id]);
+  q('[data-scene="コミットする時"]')?.click(); flushSync();
+  const scene = JSON.stringify(listed().sort()) === JSON.stringify([lessons[2].id, lessons[3].id, lessons[4].id]) && once();
+  q('[data-scene-clear]')?.click(); flushSync();
+  const box = q('input[data-lesson-search]');
+  if (box) { box.value = '作者'; box.dispatchEvent(new window.Event('input', { bubbles: true })); flushSync(); }
+  const searched = !!box && JSON.stringify(listed()) === JSON.stringify([lessons[3].id]) && once();
+  if (box) { box.value = ''; box.dispatchEvent(new window.Event('input', { bubbles: true })); flushSync(); }
+  const quiet = !q('[data-lessons-summary]') && !q('[data-effect]') && !target.textContent.includes('役立った') && !target.textContent.includes('届け');
+  target.querySelector('[data-open="' + lessons[4].id + '"]')?.click(); flushSync();
+  const body = q('[data-lesson-detail]')?.textContent || '';
+  const plain = body.includes('背景') && body.includes('・項目A') && body.includes('make test を流す') && !body.includes('##') && !body.includes('- 項目') && !body.includes('`');
+  unmount(app); i18n.lang = lang;
+  const ok = onceAtFirst && onceOpened && grouped && other && scene && searched && quiet && plain;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (Knowledge front: rules listed once=' + onceAtFirst + '/' + onceOpened + ', scenes with one page under other=' + grouped + ' ' + JSON.stringify(scenes) + ', other lists them=' + other + ', a scene lists its rules too=' + scene + ', search narrows=' + searched + ', no AI numbers=' + quiet + ', Markdown as plain text=' + plain + ')');
+  return ok;
 }
 
 // Final audit 0.9.1 (low-F1): an old list from a reload that started while the answer was being sent does not bring back the answered card
@@ -514,6 +563,7 @@ async function checkReloadDuringAnswerSend(target) {
 export async function run() {
   const target = document.getElementById('app');
   const quietOK = checkAnswerNothingToDo(target);
+  const knowledgeFrontOK = checkKnowledgeFront(target);
   const articleOK = await checkNotebookArticle(target);
   const planningOK = checkPlanningContext(target);
   const calibrationOK = checkCalibrationReport(target);
@@ -542,7 +592,7 @@ export async function run() {
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
-  const ok = onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -1107,34 +1157,32 @@ async function checkHandoff(target) {
   return ok;
 }
 
-// The front of Knowledge (0.9.0): choosing a scene shows only that scene's titles, pressing a title shows the text, articles without a scene are "Unclassified", the inbox has only exceptions, a long request shows in full when pressed,
+// The front of Knowledge (0.9.0): choosing a scene shows only that scene's titles, pressing a title shows the text, articles without a scene are "Unclassified", the inbox has only exceptions,
 // 4 per kind plus "N more". HTML is shown as text.
 function checkLessons(target) {
   try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
   const mk = (i, kind, scene) => ({ id: String(i).padStart(16, '0'), title: '記事 ' + i, lesson: '教訓 ' + i + ' <b>太字ではない</b>', applies_to: 'a', kind, scene, sources: [], related: [] });
-  const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'コミットする時'), mk(3, 'rule', '公開する時'), mk(4, 'rule', '公開する時'), mk(5, 'rule', '公開する時'), mk(6, 'howto', '公開する時'), mk(7, '', '')];
-  const long = '依頼の文がとても長い。'.repeat(10);
-  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { updated: '2026-10-24T00:00:00Z', helpful: 3, harmful: 0 } }, inbox: [{ kind: 'harmful', lesson_id: lessons[0].id, lesson: '教訓 1', count: 3 }],
-    memory_effect: { stats: { delivered: 5, helpful: 1, unused: 3, harmful: 1 }, corrections: {}, recent: [{ request: long, quote: { lesson: '届けた教訓' }, assessment: { result: 'harmful' } }] } };
+  const lessons = [mk(1, 'howto', 'コミットする時'), mk(2, 'howto', 'コミットする時'), mk(3, 'howto', '公開する時'), mk(4, 'howto', '公開する時'), mk(5, 'howto', '公開する時'), mk(6, 'fact', '公開する時'), mk(7, '', '')];
+  const wiki = { lessons, lesson_meta: { [lessons[4].id]: { updated: '2026-10-24T00:00:00Z', helpful: 3, harmful: 0 } }, inbox: [{ kind: 'harmful', lesson_id: lessons[0].id, lesson: '教訓 1', count: 3 }] };
   const app = mount(Lessons, { target, props: { wiki } }); flushSync();
   const q = sel => target.querySelector(sel);
   const scenes = [...target.querySelectorAll('[data-scenes] [data-scene]')].map(b => b.dataset.scene);
   const sceneList = scenes.length === 3 && scenes[0] === '公開する時' && scenes[2] === '__none__';
-  const ruleItems = () => [...target.querySelectorAll('[data-kind="rule"] [data-open]')].map(b => b.textContent.trim());
-  const firstFour = ruleItems().length === 4 && ruleItems()[0].startsWith('記事 5') && !!q('[data-kind-more="rule"]');
+  const items = () => [...target.querySelectorAll('[data-kind="howto"] [data-open]')].map(b => b.textContent.trim());
+  const firstFour = items().length === 4 && items()[0].startsWith('記事 5') && !!q('[data-kind-more="howto"]');
   q('[data-scene="コミットする時"]').click(); flushSync();
-  const filtered = ruleItems().length === 2 && ruleItems().every(t => t === '記事 1' || t === '記事 2') && !q('[data-kind="howto"]');
-  q('[data-kind="rule"] [data-open]').click(); flushSync();
+  const filtered = items().length === 2 && items().every(t => t === '記事 1' || t === '記事 2') && !q('[data-kind="fact"]');
+  q('[data-kind="howto"] [data-open]').click(); flushSync();
   const detail = q('[data-lesson-detail]')?.textContent.includes('<b>太字ではない</b>') && !q('[data-lesson-detail] b');
   q('[data-scene="__none__"]').click(); flushSync();
-  const none = q('[data-kinds]')?.textContent.includes('記事 7') && !q('[data-kind="rule"]');
+  const none = q('[data-kinds]')?.textContent.includes('記事 7') && !q('[data-kind="howto"]');
   const inbox = q('[data-inbox-item="harmful"]')?.textContent.includes('記事 1') && q('[data-inbox-count]')?.textContent.includes('3');
-  const clip = q('[data-clip="req0"]');
-  const short = clip && !clip.textContent.includes(long);
-  clip?.click(); flushSync();
-  const full = !!clip && q('[data-clip="req0"]').textContent.includes(long);
   unmount(app);
-  const ok = sceneList && firstFour && filtered && detail && none && inbox && short && full;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (front of Knowledge: scene list=' + sceneList + ', 4 per kind and more=' + firstFour + ', filter by scene=' + filtered + ', text as is=' + detail + ', unclassified=' + none + ', inbox=' + inbox + ', short before pressing=' + short + ', full when pressed=' + full + ')');
+  // with nothing for the person to look at, there is no inbox box at all
+  const empty = mount(Lessons, { target, props: { wiki: { ...wiki, inbox: [] } } }); flushSync();
+  const noInbox = !q('[data-inbox]');
+  unmount(empty);
+  const ok = sceneList && firstFour && filtered && detail && none && inbox && noInbox;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (front of Knowledge: scene list=' + sceneList + ', 4 per kind and more=' + firstFour + ', filter by scene=' + filtered + ', text as is=' + detail + ', unclassified=' + none + ', inbox=' + inbox + ', no inbox box when empty=' + noInbox + ')');
   return ok;
 }
