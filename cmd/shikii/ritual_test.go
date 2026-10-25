@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-// 作法の検査(0.8.0): hook が計画の整理を頼んだ依頼でファイルを変え、submit しないまま終えようとしたら Stop を一度だけ止める。
-// 止めた後の Stop は止めないが記録は残る。submit してあれば止めず、通った記録が残る。
+// Ritual check (0.8.0): when files are changed in a request where the hook asked to sort out the plan, and the agent tries to finish without submit, Stop is blocked once.
+// The Stop after a block is not blocked, but a record stays. If submit was done it does not block, and a passing record stays.
 func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
 	if !strings.Contains(feedbackContext(t, out), "hook plan query") {
-		t.Fatalf("計画の整理を頼む: %s", out)
+		t.Fatalf("asks to sort out the plan: %s", out)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -22,47 +22,47 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
 	var parsed map[string]any
 	if json.Unmarshal([]byte(out), &parsed) != nil || parsed["decision"] != "block" {
-		t.Fatalf("計画の整理が無いままファイルを変えて終える Stop は止める: %s", out)
+		t.Fatalf("a Stop that ends after changing files without sorting out the plan is blocked: %s", out)
 	}
 	reason, _ := parsed["reason"].(string)
-	if !strings.Contains(reason, "hook plan query") || !strings.Contains(reason, `"session_id":"planning"`) || !strings.Contains(reason, "作法が済んでいません") {
-		t.Fatalf("理由に何をすればよいか(コマンドと id)を書く: %s", reason)
+	if !strings.Contains(reason, "hook plan query") || !strings.Contains(reason, `"session_id":"planning"`) || !strings.Contains(reason, "rituals are not done") {
+		t.Fatalf("the reason says what to do (command and id): %s", reason)
 	}
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 1 || recs[0].Pass || recs[0].Recheck {
-		t.Fatalf("止めた記録が残る: %+v", recs)
+		t.Fatalf("the block is recorded: %+v", recs)
 	}
-	// 直さずに止めた後の Stop(stop_hook_active): 止めないが、直っていない記録は残る
+	// The Stop after a block without a fix (stop_hook_active): not blocked, but a not-fixed record stays
 	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "まだ", "stop_hook_active": true})
 	if strings.Contains(out, "block") {
-		t.Fatalf("止めた後の Stop は直っていなくても止めない: %s", out)
+		t.Fatalf("the Stop after a block is not blocked even if not fixed: %s", out)
 	}
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 2 || recs[1].Pass || !recs[1].Recheck {
-		t.Fatalf("直っていない記録が残る: %+v", recs)
+		t.Fatalf("a not-fixed record stays: %+v", recs)
 	}
-	// 裏の作業の通知が来た後の Stop(stop_hook_active は付かない)でも、同じターンをもう一度止めない。頼んだ回数も 1 のまま
+	// Even on the Stop after a background-task notification (no stop_hook_active), the same turn is not blocked again. The ask count stays 1
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "<task-notification>裏の作業が終わりました</task-notification>"})
 	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "通知を受けた"})
 	if strings.Contains(out, "block") {
-		t.Fatalf("通知の後の Stop で同じターンを二度止めない: %s", out)
+		t.Fatalf("the Stop after a notification does not block the same turn twice: %s", out)
 	}
 	if st := countRitualStats(readGuardRecords(root)); st.Plan.Asked != 1 {
-		t.Fatalf("同じターンは 1 回だけ数える: %+v", st.Plan)
+		t.Fatalf("the same turn is counted only once: %+v", st.Plan)
 	}
-	// 止められた直後に整理を submit できる(ターンの判定が済んでいても、整理がまだなら受ける)
+	// Right after being blocked, the sorted plan can be submitted (accepted while it is still missing, even if the turn's decision is done)
 	if _, err := planningCall(t, "query", map[string]string{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID}); err != nil {
-		t.Fatalf("止められた後の query: %v", err)
+		t.Fatalf("query after the block: %v", err)
 	}
 	if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
-		t.Fatalf("止められた後の submit: %v", err)
+		t.Fatalf("submit after the block: %v", err)
 	}
 	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "整理した", "stop_hook_active": true})
 	if strings.Contains(out, "block") {
-		t.Fatalf("二度目の Stop は止めない: %s", out)
+		t.Fatalf("the second Stop is not blocked: %s", out)
 	}
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) < 3 || !recs[len(recs)-1].Pass || !recs[len(recs)-1].Recheck {
-		t.Fatalf("止めてから済ませた記録(直った)が残る: %+v", recs)
+		t.Fatalf("a record of doing it after the block (fixed) stays: %+v", recs)
 	}
-	// 次の依頼: 整理を submit してからファイルを変えて終えれば止めない
+	// Next request: if the plan is submitted and then files are changed, finishing is not blocked
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest + " (again)"})
 	if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
 		t.Fatal(err)
@@ -72,36 +72,36 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	}
 	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done again."})
 	if strings.Contains(out, "block") {
-		t.Fatalf("整理を submit した依頼は止めない: %s", out)
+		t.Fatalf("a request whose plan was submitted is not blocked: %s", out)
 	}
 	if recs := guardRecordsFor(root, ritualPlan); !recs[len(recs)-1].Pass || recs[len(recs)-1].Recheck {
-		t.Fatalf("通った記録が残る: %+v", recs)
+		t.Fatalf("a passing record stays: %+v", recs)
 	}
 	if sOut := capture(t, func() error { return cmdStatus([]string{"--store", root}) }); !strings.Contains(sOut, "rituals: plan-before-work done 1 of 2 asked (after a stop 1)") {
-		t.Fatalf("status に作法の実施の数(止めてから済ませた 1):\n%s", sOut)
+		t.Fatalf("status shows how often the ritual was done (1 done after a block):\n%s", sOut)
 	}
-	// ファイルを変えない依頼(説明など)では、整理が無くても止めない
+	// A request that changes no files (an explanation etc.) is not blocked even without a sorted plan
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "explain the parser"})
-	if out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "It parses."}); strings.Contains(out, "計画の整理") {
-		t.Fatalf("ファイルを変えない依頼は計画の整理で止めない(振り返りの検査は別): %s", out)
+	if out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "It parses."}); strings.Contains(out, "plan has not been sorted out") {
+		t.Fatalf("a request that changes no files is not blocked for the plan (the reflection check is separate): %s", out)
 	}
-	// 組み込みの検査は一覧に出て、外せない
+	// Built-in checks appear in the list and cannot be removed
 	list := capture(t, func() error { t.Chdir(repo); return cmdGuard([]string{"list"}) })
 	if !strings.Contains(list, ritualPlan) || !strings.Contains(list, ritualReflect) {
-		t.Fatalf("一覧に組み込みの作法の検査が出る:\n%s", list)
+		t.Fatalf("the built-in ritual checks appear in the list:\n%s", list)
 	}
-	if err := cmdGuard([]string{"disable", ritualPlan}); err == nil || !strings.Contains(err.Error(), "組み込み") {
-		t.Fatalf("組み込みの検査は外せない: %v", err)
+	if err := cmdGuard([]string{"disable", ritualPlan}); err == nil || !strings.Contains(err.Error(), "built-in") {
+		t.Fatalf("built-in checks cannot be removed: %v", err)
 	}
 }
 
-// 作法の検査(0.8.0): 依頼前に振り返りの対象(会話)を挙げたのに、保存しないまま終えようとしたら Stop を一度だけ止める。保存すれば通る。
+// Ritual check (0.8.0): when conversations to reflect on were listed before the request and the agent tries to finish without saving, Stop is blocked once. Saving lets it pass.
 func TestStopStopsOnceWhenReflectionWasAskedButNotSaved(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	repo := gitRepo(t)
 	root := hookEnv(t, model, repo)
 	scope := feedbackScope(repo)
-	// 2 つの会話を終えておく(振り返りの依頼は未整理が 2 件以上で出る)
+	// Finish 2 conversations first (the request to reflect appears when 2 or more are unsorted)
 	for i, req := range []string{"README の導入手順を更新してください", "画面の色を直してください"} {
 		sid := []string{"a", "b"}[i]
 		runHook(t, "user-prompt-submit", map[string]any{"session_id": sid, "cwd": repo, "prompt": req})
@@ -110,28 +110,28 @@ func TestStopStopsOnceWhenReflectionWasAskedButNotSaved(t *testing.T) {
 	}
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "c", "cwd": repo, "prompt": "ガイドの quick start を直して"})
 	ctx := feedbackContext(t, out)
-	if !strings.Contains(ctx, "振り返りをまとめます") {
-		t.Fatalf("未整理の会話が 2 件あれば振り返りを頼む: %s", ctx)
+	if !strings.Contains(ctx, "wrap up the reflection") {
+		t.Fatalf("with 2 unsorted conversations it asks for reflection: %s", ctx)
 	}
 	asked := loadSession(root, "c").ReflectAsked
 	if len(asked) == 0 {
-		t.Fatal("頼んだ会話を控えに書く")
+		t.Fatal("the asked conversations are noted")
 	}
 	out = runHook(t, "stop", map[string]any{"session_id": "c", "cwd": repo, "last_assistant_message": "直しました。"})
 	var parsed map[string]any
 	if json.Unmarshal([]byte(out), &parsed) != nil || parsed["decision"] != "block" {
-		t.Fatalf("振り返りを保存しないまま終える Stop は止める: %s", out)
+		t.Fatalf("a Stop that ends without saving the reflection is blocked: %s", out)
 	}
 	reason, _ := parsed["reason"].(string)
-	if !strings.Contains(reason, "reflect query") || !strings.Contains(reason, asked[0]) || !strings.Contains(reason, "振り返りの保存が無い") {
-		t.Fatalf("理由に対象の会話と手順を書く: %s", reason)
+	if !strings.Contains(reason, "reflect query") || !strings.Contains(reason, asked[0]) || !strings.Contains(reason, "reflection has not been saved") {
+		t.Fatalf("the reason names the target conversations and the steps: %s", reason)
 	}
 	if recs := guardRecordsFor(root, ritualReflect); len(recs) != 1 || recs[0].Pass {
-		t.Fatalf("止めた記録が残る: %+v", recs)
+		t.Fatalf("the block is recorded: %+v", recs)
 	}
-	// 振り返りを保存する(仮採点と wiki の出典)
+	// Save the reflection (provisional scores and the wiki sources)
 	h := newServer(serveOpts{storeDir: root, projectScope: scope})
-	q := reflectCall(t, h, map[string]any{"operation": "query"}) // 道具の query は対象を自分で選ぶ(hook が挙げた会話と同じ)
+	q := reflectCall(t, h, map[string]any{"operation": "query"}) // the tool's query picks its own targets (the same conversations the hook listed)
 	var reviews []map[string]any
 	var wiki []map[string]any
 	for _, s := range q["sources"].([]any) {
@@ -146,18 +146,18 @@ func TestStopStopsOnceWhenReflectionWasAskedButNotSaved(t *testing.T) {
 	}
 	res := reflectCall(t, h, map[string]any{"operation": "submit", "reviews": reviews, "wiki": wiki})
 	if res["complete"] != true {
-		t.Fatalf("振り返りの保存: %v", res)
+		t.Fatalf("saving the reflection: %v", res)
 	}
 	out = runHook(t, "stop", map[string]any{"session_id": "c", "cwd": repo, "last_assistant_message": "直しました。", "stop_hook_active": true})
 	if strings.Contains(out, "block") {
-		t.Fatalf("二度目の Stop は止めない: %s", out)
+		t.Fatalf("the second Stop is not blocked: %s", out)
 	}
 	if recs := guardRecordsFor(root, ritualReflect); len(recs) != 2 || !recs[1].Pass || !recs[1].Recheck {
-		t.Fatalf("保存した後の再検査は通る(直った記録): %+v", recs)
+		t.Fatalf("the recheck after saving passes (a fixed record): %+v", recs)
 	}
 }
 
-// 監査 R5: 人の検査(guard)が止めたターンでも、作法の検査は評価して記録し、理由を連ねる(数に出ないまま消えない)。
+// audit R5: even in a turn a person's check (guard) stopped, the ritual check is evaluated, recorded, and its reason is appended (so it does not vanish uncounted).
 func TestRitualIsRecordedEvenWhenAGuardStopsTheTurnFirst(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	writeGuard(t, root, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "根を使わない", Words: []string{"根"}, Enabled: true})
@@ -168,39 +168,39 @@ func TestRitualIsRecordedEvenWhenAGuardStopsTheTurnFirst(t *testing.T) {
 	out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
 	var parsed map[string]any
 	if json.Unmarshal([]byte(out), &parsed) != nil || parsed["decision"] != "block" {
-		t.Fatalf("guard で止まる: %s", out)
+		t.Fatalf("stopped by the guard: %s", out)
 	}
 	reason, _ := parsed["reason"].(string)
-	if !strings.Contains(reason, "no-ne") || !strings.Contains(reason, "計画の整理") {
-		t.Fatalf("理由に人の検査と作法の両方: %s", reason)
+	if !strings.Contains(reason, "no-ne") || !strings.Contains(reason, "plan has not been sorted out") {
+		t.Fatalf("the reason has both the person's check and the ritual: %s", reason)
 	}
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 1 || recs[0].Pass || recs[0].Recheck {
-		t.Fatalf("作法の記録も残る: %+v", recs)
+		t.Fatalf("the ritual record stays too: %+v", recs)
 	}
 	if st := countRitualStats(readGuardRecords(root)); st.Plan.Asked != 1 {
-		t.Fatalf("頼んだ回数に数える: %+v", st.Plan)
+		t.Fatalf("counted as asked: %+v", st.Plan)
 	}
 }
 
-// 監査 R5-3: 計画を頼んでいないターン(Planning なし)は止めない。振り返りを頼まなかったターンは前の残りで止めない。
+// audit R5-3: a turn that did not ask for a plan (no Planning) is not blocked. A turn that did not ask for reflection is not blocked by leftovers from before.
 func TestRitualsOnlyApplyToTheTurnThatAskedThem(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	repo := gitRepo(t)
-	root := hookEnv(t, model, repo) // needs-plan は旧形式のまま → 計画の文脈は頼まれない
+	root := hookEnv(t, model, repo) // needs-plan stays in the old format → no plan context is asked for
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "n", "cwd": repo, "prompt": "add a flag to the status command"})
 	if s := loadSession(root, "n"); s.Planning != nil {
-		t.Skip("この土台では計画を頼んでいる")
+		t.Skip("this setup asks for a plan")
 	}
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out := runHook(t, "stop", map[string]any{"session_id": "n", "cwd": repo, "last_assistant_message": "Done."}); strings.Contains(out, "計画の整理") {
-		t.Fatalf("頼んでいないターンは止めない: %s", out)
+	if out := runHook(t, "stop", map[string]any{"session_id": "n", "cwd": repo, "last_assistant_message": "Done."}); strings.Contains(out, "plan has not been sorted out") {
+		t.Fatalf("a turn that did not ask is not blocked: %s", out)
 	}
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 0 {
-		t.Fatalf("頼んでいないターンは数えない: %+v", recs)
+		t.Fatalf("a turn that did not ask is not counted: %+v", recs)
 	}
-	// 振り返り: 前のターンで頼んだ会話(まだ未整理)が控えに残っていても、このターンで頼んでいなければ止めない
+	// Reflection: even if conversations asked about in an earlier turn (still unsorted) remain in the notes, a turn that did not ask is not blocked
 	for i, req := range []string{"README の導入手順を更新してください", "画面の色を直してください"} {
 		sid := []string{"ra", "rb"}[i]
 		runHook(t, "user-prompt-submit", map[string]any{"session_id": sid, "cwd": repo, "prompt": req})
@@ -210,37 +210,37 @@ func TestRitualsOnlyApplyToTheTurnThatAskedThem(t *testing.T) {
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "n", "cwd": repo, "prompt": "ガイドの quick start を直して"})
 	asked := loadSession(root, "n").ReflectAsked
 	if len(asked) == 0 {
-		t.Fatal("未整理が 2 件あれば頼む")
+		t.Fatal("asks when 2 are unsorted")
 	}
-	updateSession(root, "n", func(s *hookSession) { s.ReflectAskedTurn = "old-turn" }) // 前のターンの残りという状態にする
-	if out := runHook(t, "stop", map[string]any{"session_id": "n", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "振り返り") {
-		t.Fatalf("別のターンの残りで止めない: %s", out)
+	updateSession(root, "n", func(s *hookSession) { s.ReflectAskedTurn = "old-turn" }) // make it a leftover from an earlier turn
+	if out := runHook(t, "stop", map[string]any{"session_id": "n", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "reflection has not been saved") {
+		t.Fatalf("not blocked by leftovers from another turn: %s", out)
 	}
 }
 
-// 0.8.1(作業規則の無いプロジェクトでの実測で判明): CLAUDE.md / AGENTS.md が無くても届くように、hook が何か伝えるターンに
-// 作業記録と決まりの残し方をセッションに 1 回添える。作法の検査が止めた時は、最後の返答で元の作業の結果を伝え直すよう書く。
+// 0.8.1 (found by measuring in a project without work rules): so it arrives even without CLAUDE.md / AGENTS.md, in a turn where the hook says something,
+// how to keep work records and rules is added once per session. When a ritual check blocks, it says to restate the result of the original work in the final reply.
 func TestHooksCarryTheWorkRecordHabitsWithoutProjectInstructions(t *testing.T) {
 	repo, _, _ := planningFixture(t)
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "habits", "cwd": repo, "prompt": planningTestRequest})
 	ctx := feedbackContext(t, out)
 	if !strings.Contains(ctx, ".shikii/handoff/") || !strings.Contains(ctx, "wiki の教訓") {
-		t.Fatalf("最初に伝えるターンで作業記録と決まりの残し方を添える: %s", ctx)
+		t.Fatalf("the first turn that says something adds how to keep work records and rules: %s", ctx)
 	}
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "habits", "cwd": repo, "prompt": planningTestRequest + " もう一度"})
 	if strings.Contains(feedbackContext(t, out), ".shikii/handoff/<仕事>/") {
-		t.Fatalf("同じセッションでは 2 回目は添えない: %s", out)
+		t.Fatalf("not added a second time in the same session: %s", out)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out = runHook(t, "stop", map[string]any{"session_id": "habits", "cwd": repo, "last_assistant_message": "Done."})
-	if !strings.Contains(out, "本人が頼んだ作業の結果") {
-		t.Fatalf("止める時は、済ませた後の返答で元の作業の結果を伝えるよう書く: %s", out)
+	if !strings.Contains(out, "result of the work the person asked for") {
+		t.Fatalf("when blocking, it says to give the result of the original work in the reply after doing the rituals: %s", out)
 	}
-	// サブエージェント: 届ける教訓が無くても、報告の書き先は届ける
+	// Subagents: even with no lesson to deliver, where to write reports is delivered
 	sub := runHook(t, "subagent-start", map[string]any{"session_id": "habits", "cwd": repo, "agent_id": "a1", "agent_type": "general-purpose"})
 	if !strings.Contains(sub, ".shikii/handoff/") {
-		t.Fatalf("サブエージェントにも報告の書き先を届ける: %s", sub)
+		t.Fatalf("subagents also get where to write reports: %s", sub)
 	}
 }

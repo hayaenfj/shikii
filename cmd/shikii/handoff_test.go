@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// 画面: /v1/wiki が作業記録の一覧を返し、1 件の口は画像を画像として、文字(HTML も)を text/plain で配る。置き場の外は 400、無い物は 404。
+// Page: /v1/wiki returns the list of work records, and the single-file endpoint serves images as images and text (HTML too) as text/plain. Outside the folder is 400, a missing file is 404.
 func TestServeListsHandoffAndServesFilesSafely(t *testing.T) {
 	url, _, storeDir := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	dir := filepath.Join(storeDir, "handoff")
@@ -68,7 +68,7 @@ func TestServeListsHandoffAndServesFilesSafely(t *testing.T) {
 	}
 }
 
-// MCP: shikii_wiki の handoff_* で書いて、足して、一覧して、読む。置き場の外は isError。
+// MCP: write, append, list and read with handoff_* of shikii_wiki. Outside the folder is isError.
 func TestMCPWritesAndReadsHandoff(t *testing.T) {
 	send, _ := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	call := func(args map[string]any) (bool, string) {
@@ -101,7 +101,7 @@ func TestMCPWritesAndReadsHandoff(t *testing.T) {
 	}
 }
 
-// CLI: shikii handoff write / append / list / read。
+// CLI: shikii handoff write / append / list / read.
 func TestCLIHandoff(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -135,7 +135,7 @@ func withStdin(t *testing.T, s string, fn func()) {
 	fn()
 }
 
-// 監査 0.8.1-1: Host が手元の名前でなければ断る(DNS rebinding で作業記録や記録を読まれない)。手元の名前は通す。
+// audit 0.8.1-1: refuse when Host is not a local name (so DNS rebinding cannot read work records or records). Local names pass.
 func TestServeRefusesForeignHosts(t *testing.T) {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
 	h := localHostOnly(ok)
@@ -150,7 +150,7 @@ func TestServeRefusesForeignHosts(t *testing.T) {
 	}
 }
 
-// 監査 0.8.1-1: MCP の handoff_write の上限は復号後の本文 1 MiB(改行の多い 600000 バイトは JSON で 1 MiB を超えても書ける)。超えたら理由を返す。
+// audit 0.8.1-1: the limit of MCP's handoff_write is 1 MiB of decoded content (600000 bytes full of newlines can be written even when the JSON is over 1 MiB). Over the limit, the reason is returned.
 func TestMCPHandoffLimitIsTheDecodedContent(t *testing.T) {
 	send, _ := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	call := func(content string) (bool, string) {
@@ -165,7 +165,7 @@ func TestMCPHandoffLimitIsTheDecodedContent(t *testing.T) {
 	}
 }
 
-// 監査 0.8.1-1: CLI の標準入力が 1 MiB を超えたら、黙って切らず、そう言って断る。
+// audit 0.8.1-1: when the CLI's standard input is over 1 MiB, it does not cut it silently; it says so and refuses.
 func TestCLIHandoffRefusesTooLongStdin(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -178,7 +178,7 @@ func TestCLIHandoffRefusesTooLongStdin(t *testing.T) {
 	}
 }
 
-// 監査 0.8.1-3: 作業記録の置き場が共有先へのリンクなら、ほかの置き場と同じくプロジェクトとして使わない。
+// audit 0.8.1-3: if the work record folder is a link to a shared place, the project is not used, like the other folders.
 func TestProjectStoreRefusesALinkedHandoffFolder(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, ".shikii")

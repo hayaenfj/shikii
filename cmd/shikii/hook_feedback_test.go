@@ -44,7 +44,7 @@ func TestHookRecallsConversationFeedback(t *testing.T) {
 	hookLocalURL = "http://127.0.0.1:1"
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "later", "cwd": repo, "prompt": request})
 	ctx := feedbackContext(t, out)
-	for _, want := range []string{request, summary, correction, "引用", "今回の依頼", "正解"} {
+	for _, want := range []string{request, summary, correction, "quote", "this request", "truth"} {
 		if !strings.Contains(ctx, want) {
 			t.Fatalf("過去の会話と扱い方が依頼の前に必要: missing %q in %q", want, ctx)
 		}

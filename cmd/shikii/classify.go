@@ -1,8 +1,9 @@
 package main
 
-// 版を上げる前の記事の埋め(0.9.0): 0.9.0 から記事には種類と場面が要る。前の版で作った記事には無いので、依頼の hook が見つけて
-// classifyBatch 本ずつエージェントに付けさせ、終える時に埋まっていなければ作法の検査(wiki-kinds)が一度止める。付ける操作は
-// shikii wiki classify(MCP なら shikii_wiki の classify)で、教訓の文は書き直さない。
+// Filling in pages from before the version bump (0.9.0): since 0.9.0 every page needs a kind and a scene. Pages made by earlier versions have
+// neither, so the request hook finds them and has the agent fill classifyBatch pages at a time; if they are still empty when the turn ends,
+// the ritual check (wiki-kinds) blocks once. The agent fills them with shikii wiki classify (on MCP, classify in shikii_wiki)
+// and does not rewrite the lesson text.
 
 import (
 	"fmt"
@@ -11,10 +12,10 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-// classifyBatch は 1 回の依頼で頼む記事の数。
+// classifyBatch is the number of pages asked for in one request.
 const classifyBatch = 5
 
-// classifyContext は、種類か場面の無い記事があれば、その数と classifyBatch 本(id・題・教訓)と付け方を返す。無ければ空。
+// classifyContext returns, when there are pages without a kind or scene, their count, classifyBatch of them (id, title, lesson) and how to fill them. Empty when there are none.
 func classifyContext(agent, scope string) (string, []string, error) {
 	if scope == "" {
 		return "", nil, nil
@@ -24,10 +25,10 @@ func classifyContext(agent, scope string) (string, []string, error) {
 	if err != nil || len(un) == 0 {
 		return "", nil, err
 	}
-	// wiki に読めない記事や手で直された記事があると保存は全部断られ、classify も必ず失敗する。頼まず(止めず)、lint を促す 1 行だけ(監査 0.9.0 の B2)
-	// 止めるのは保存が断られる時(記事そのものの問題)だけ。別の記事の出典の問題では保存は通るので止めない(再監査 0.9.0 の新-2)
+	// If the wiki has an unreadable page or a page edited by hand, every save is refused and classify always fails. Do not ask (or block); only add one line suggesting lint (audit 0.9.0 B2)
+	// Stop only when saving is refused (a problem in the page itself). A source problem in another page still lets saves through, so do not stop (re-audit 0.9.0 new-2)
 	if issues, err := book.PageIssues(); err == nil && len(issues) > 0 {
-		return fmt.Sprintf("shikii: 種類と場面の無い記事が %d 本ありますが、wiki に読めない記事か手で直された記事があるので今は付けられません。%s wiki lint で問題を確かめて直すと、付けられるようになります。", len(un), hookExe()), nil, nil
+		return fmt.Sprintf("shikii: pages without a kind or scene: %d. They cannot be filled now because the wiki has an unreadable page or a page edited by hand. Check and fix the problem with %s wiki lint, and then they can be filled.", len(un), hookExe()), nil, nil
 	}
 	live, err := book.Live()
 	if err != nil {
@@ -45,19 +46,19 @@ func classifyContext(agent, scope string) (string, []string, error) {
 		batch = batch[:classifyBatch]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "shikii: 種類と場面の無い記事が %d 本あります(版を上げる前に作った記事)。今の依頼の後に、次の %d 本の教訓を読んで種類と場面を付けます: %s wiki classify <記事ID> <種類> <場面>(MCP なら shikii_wiki の operation classify に id・kind・scene)。種類は rule=このプロジェクトで決められたルール / howto=やり方 / criteria=判断の基準 / fact=前提と事実 / history=経緯、場面はその仕事の言葉で「〜する時」(24 文字まで)。", len(un), len(batch), hookExe())
+	fmt.Fprintf(&b, "shikii: pages without a kind or scene (made before the version bump): %d. After the current request, read the lessons of the next %d listed below and give each a kind and a scene: %s wiki classify <page ID> <kind> <scene> (on MCP, operation classify in shikii_wiki with id, kind and scene). Kinds are rule=a rule decided in this project / howto=how to do something / criteria=a criterion for judging / fact=an assumption or fact / history=how things came to be; the scene is \"when ...\" in the work's own words (up to 24 characters).", len(un), len(batch), hookExe())
 	if len(scenes) > 0 {
-		b.WriteString("今ある場面: " + strings.Join(scenes, "、") + "。近い物があれば同じ言い方を使います。")
+		b.WriteString("Existing scenes: " + strings.Join(scenes, ", ") + ". If one is close, use the same wording.")
 	}
 	ids := make([]string, 0, len(batch))
 	for _, p := range batch {
-		fmt.Fprintf(&b, "\n- %s: %s — %s(当てはまる時: %s)", p.ID, p.Title, cut(p.Lesson, 160), cut(p.AppliesTo, 80))
+		fmt.Fprintf(&b, "\n- %s: %s — %s (applies when: %s)", p.ID, p.Title, cut(p.Lesson, 160), cut(p.AppliesTo, 80))
 		ids = append(ids, p.ID)
 	}
 	return b.String(), ids, nil
 }
 
-// classifyLeft は、頼んだ記事のうちまだ種類か場面の無い物の id。
+// classifyLeft returns the ids of the asked pages that still have no kind or scene.
 func classifyLeft(root, scope string, asked []string) ([]string, error) {
 	un, err := (notebook.Book{Root: root, Scope: scope}).Unclassified()
 	if err != nil {

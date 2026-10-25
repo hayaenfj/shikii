@@ -109,7 +109,7 @@ func TestAudit090ClassifyAskedOnlyWhenPossible(t *testing.T) {
 	stops := 0
 	for i := 0; i < 2; i++ {
 		runHook(t, "user-prompt-submit", map[string]any{"session_id": "z", "cwd": repo, "prompt": fmt.Sprintf("README を直して %d", i)})
-		if s := runHook(t, "stop", map[string]any{"session_id": "z", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(s, "種類と場面を付ける記事") {
+		if s := runHook(t, "stop", map[string]any{"session_id": "z", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(s, "need a kind and a scene") {
 			stops++
 		}
 	}

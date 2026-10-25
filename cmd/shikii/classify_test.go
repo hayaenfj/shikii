@@ -11,9 +11,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 0.9.0: 版を上げる前に作った記事(種類も場面も無い)は、依頼の hook が見つけて 5 本ずつエージェントに種類と場面を付けさせ、
-// 終える時に頼んだ記事が埋まっていなければ Stop が一度止める(組み込みの作法の検査 wiki-kinds)。埋まれば止めず、全部埋まれば頼まない。
-// どのエージェントでも、付ける操作は shikii wiki classify(MCP なら shikii_wiki の classify)。
+// 0.9.0: for pages made before the version bump (no kind or scene), the request hook finds them and has the agent give a kind and a scene 5 at a time;
+// if the asked pages are still empty when the turn ends, Stop blocks once (the built-in ritual check wiki-kinds). Once filled it does not block, and when all are filled it stops asking.
+// For every agent, filling them is done with shikii wiki classify (on MCP, classify of shikii_wiki).
 func TestHookAsksToClassifyLegacyPagesAndStopsUntilDone(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -47,39 +47,39 @@ func TestHookAsksToClassifyLegacyPagesAndStopsUntilDone(t *testing.T) {
 			asked++
 		}
 	}
-	if asked != 5 || !strings.Contains(out, "wiki classify") || !strings.Contains(out, "6 本") {
-		t.Fatalf("種類と場面の無い記事の数と、5 本の id と付け方を頼む(%d 本): %s", asked, out)
+	if asked != 5 || !strings.Contains(out, "wiki classify") || !strings.Contains(out, "version bump): 6") {
+		t.Fatalf("asks with the number of pages without a kind and scene, 5 ids and how to fill them (%d pages): %s", asked, out)
 	}
 	stop := runHook(t, "stop", map[string]any{"session_id": "k", "cwd": repo, "last_assistant_message": "直した"})
-	if !strings.Contains(stop, "block") || !strings.Contains(stop, "種類と場面") {
-		t.Fatalf("頼んだ記事が埋まっていなければ一度止める: %s", stop)
+	if !strings.Contains(stop, "block") || !strings.Contains(stop, "need a kind and a scene") {
+		t.Fatalf("blocks once if the asked pages are not filled: %s", stop)
 	}
-	// 頼んだ 5 本を埋めれば、次の依頼で残りの 1 本を頼み、埋めた後の Stop は止めない
+	// Once the 5 asked pages are filled, the next request asks for the remaining 1, and the Stop after filling it does not block
 	for _, p := range un[:5] {
 		if _, err := book.Classify(p.ID, "rule", "作業する時"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "k", "cwd": repo, "prompt": "次は画面を直して"})
-	if !strings.Contains(out, un[5].ID) || !strings.Contains(out, "1 本") {
-		t.Fatalf("残りの 1 本を頼む: %s", out)
+	if !strings.Contains(out, un[5].ID) || !strings.Contains(out, "version bump): 1") {
+		t.Fatalf("asks for the remaining 1: %s", out)
 	}
 	if _, err := book.Classify(un[5].ID, "howto", "作業する時"); err != nil {
 		t.Fatal(err)
 	}
-	if stop := runHook(t, "stop", map[string]any{"session_id": "k", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(stop, "種類と場面") {
-		t.Fatalf("埋めれば止めない: %s", stop)
+	if stop := runHook(t, "stop", map[string]any{"session_id": "k", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(stop, "need a kind and a scene") {
+		t.Fatalf("does not block once filled: %s", stop)
 	}
 	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "k", "cwd": repo, "prompt": "さらに直して"}); strings.Contains(out, "wiki classify") {
-		t.Fatalf("全部埋まれば頼まない: %s", out)
+		t.Fatalf("does not ask once all are filled: %s", out)
 	}
-	// status の作法の行に数が出る(頼んだ 2 回、最初から済んでいた 1 回、止めてから済ませた 0 回)
+	// The ritual line in status shows the counts (asked 2 times, done from the start 1, done after a block 0)
 	if out := capture(t, func() error { return cmdStatus([]string{"--store", root}) }); !strings.Contains(out, "wiki-kinds done 1 of 2 asked") {
-		t.Fatalf("status に種類と場面の作法の数が出る:\n%s", out)
+		t.Fatalf("status shows the counts of the kind-and-scene ritual:\n%s", out)
 	}
 }
 
-// 頼んだ 5 本を埋めれば、頼んでいない 6 本目が残っていても、そのターンは止めない(残りは次の依頼で頼む)。
+// Once the 5 asked pages are filled, that turn is not blocked even if a 6th, not asked for, remains (the rest is asked for in the next request).
 func TestClassifyRitualLooksOnlyAtTheAskedPages(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -110,14 +110,14 @@ func TestClassifyRitualLooksOnlyAtTheAskedPages(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if stop := runHook(t, "stop", map[string]any{"session_id": "m", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(stop, "種類と場面") {
-		t.Fatalf("頼んだ記事を埋めれば、頼んでいない記事が残っていても止めない: %s", stop)
+	if stop := runHook(t, "stop", map[string]any{"session_id": "m", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(stop, "need a kind and a scene") {
+		t.Fatalf("once the asked pages are filled, it does not block even if pages not asked for remain: %s", stop)
 	}
 }
 
-// hook の無いエージェント(Codex で hook を信頼する前、OpenCode)は、照会の返事の末尾の未分類を読み流した(0.9.0 の実測)。
-// 照会の返事は未分類の案内を先頭に置き、保存(ingest)・付けた時(classify)・振り返りの保存(reflect submit)の返事にも、
-// 残っている未分類の数・次の 5 本・付け方を載せる。残りが無くなれば載せない。
+// Agents without hooks (Codex before trusting hooks, OpenCode) skimmed past the unclassified list at the end of the query reply (measured in 0.9.0).
+// The query reply puts the unclassified guidance first, and the replies to saving (ingest), filling (classify) and saving the reflection (reflect submit)
+// also carry the number of remaining unclassified pages, the next 5 and how to fill them. Once none remain, they are left out.
 func TestResponsesCarryRemainingUnclassifiedPages(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	_ = st
@@ -145,39 +145,39 @@ func TestResponsesCarryRemainingUnclassifiedPages(t *testing.T) {
 	}
 	raw, _ := json.Marshal(view)
 	if !strings.HasPrefix(string(raw), `{"unclassified_how":`) {
-		t.Fatalf("照会の返事は未分類の案内から始める: %.120s", raw)
+		t.Fatalf("the query reply starts with the unclassified guidance: %.120s", raw)
 	}
 	saved, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: notebook.Draft{Sources: []string{src}, Title: "新しい決まり", Lesson: "新しい決まりの教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m := enc(saved); m["unclassified_count"] != float64(2) || m["unclassified_how"] == nil || len(m["unclassified"].([]any)) != 2 {
-		t.Fatalf("保存の返事に残りの未分類: %v", m)
+		t.Fatalf("the save reply carries the remaining unclassified pages: %v", m)
 	}
 	one, err := runNotebook(agent, scope, notebookRequest{Operation: "classify", ID: ids[0], Kind: "rule", Scene: "作業する時"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m := enc(one); m["unclassified_count"] != float64(1) {
-		t.Fatalf("付けた時の返事に残りの数: %v", m)
+		t.Fatalf("the reply after filling carries the remaining count: %v", m)
 	}
 	sub, err := runReflect(agent, scope, reflectRequest{Operation: "submit", Wiki: []notebook.Draft{{Sources: []string{src}, Title: "もう一つの決まり", Lesson: "もう一つの決まりの教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m := enc(sub); m["unclassified_count"] != float64(1) {
-		t.Fatalf("振り返りの保存の返事にも残りの数: %v", m)
+		t.Fatalf("the reply to saving the reflection also carries the remaining count: %v", m)
 	}
 	last, err := runNotebook(agent, scope, notebookRequest{Operation: "classify", ID: ids[1], Kind: "fact", Scene: "作業する時"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m := enc(last); m["unclassified_count"] != nil || m["unclassified"] != nil {
-		t.Fatalf("残りが無くなれば載せない: %v", m)
+		t.Fatalf("left out once none remain: %v", m)
 	}
 }
 
-// 監査 0.9.0 の M5: 前のターンに頼んだ記事の控えは、今のターンの Stop を止めない(頼んだターンでだけ数える)。
+// audit 0.9.0 M5: a note of pages asked for in an earlier turn does not block the current turn's Stop (only counted in the turn that asked).
 func TestClassifyRitualIgnoresAsksFromAnotherTurn(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -202,7 +202,7 @@ func TestClassifyRitualIgnoresAsksFromAnotherTurn(t *testing.T) {
 	if err := updateSession(root, "w", func(s *hookSession) { s.ClassifyAsked, s.ClassifyAskedTurn = []string{res.Page.ID}, "前のターン" }); err != nil {
 		t.Fatal(err)
 	}
-	if out := runHook(t, "stop", map[string]any{"session_id": "w", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "種類と場面を付ける記事") {
-		t.Fatalf("前のターンの控えで今のターンを止めない: %s", out)
+	if out := runHook(t, "stop", map[string]any{"session_id": "w", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "need a kind and a scene") {
+		t.Fatalf("a note from an earlier turn does not block the current turn: %s", out)
 	}
 }

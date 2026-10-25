@@ -30,11 +30,11 @@ func TestPlanningReadsFullArticleAndPinsEvidenceVersion(t *testing.T) {
 	payload["pages"] = []string{p.ID}
 	q, err := planningCall(t, "query", map[string]any{"session_id": "planning", "turn_id": payload["turn_id"], "query": payload["query"], "pages": payload["pages"]})
 	if err != nil {
-		t.Fatal("必要な本文を選んで判断に渡せる", err)
+		t.Fatal("the needed body can be chosen and passed to the decision", err)
 	}
 	key := "article:" + p.ID + ":" + p.Revision
 	if !strings.Contains(q["source_material"].(map[string]any)[key].(string), body) {
-		t.Fatal("選んだ本文の原文と版を渡す")
+		t.Fatal("passes the raw text and revision of the chosen body")
 	}
 	payload["agreed"] = map[string]any{"summary": "Keep filters for empty export results.", "evidence": []map[string]string{{"source": "current_user", "quote": "keep the existing filters"}, {"source": key, "quote": body}}}
 	if _, err := planningCall(t, "submit", payload); err != nil {
@@ -49,11 +49,11 @@ func TestPlanningReadsFullArticleAndPinsEvidenceVersion(t *testing.T) {
 	_ = json.Unmarshal(data, &record)
 	context, ok := record["knowledge_context"].(map[string]any)
 	if !ok || len(context["used"].([]any)) != 1 || len(context["available"].([]any)) != 1 {
-		t.Fatal("候補・実際の引用・当時の利用可能な版を別々に残す", string(data))
+		t.Fatal("keeps the candidates, the actual quotes and the revisions available at the time separately", string(data))
 	}
 	stats, err := (store.Store{Dir: root}).KnowledgeReport()
 	if err != nil || stats.Prepared != 1 || stats.WithMatches != 1 || stats.WithCitations != 1 || stats.Citations != 1 || stats.ContextBytes < len(body) {
-		t.Fatal("検索の候補と引用を効果の評価から分けて数える", stats, err)
+		t.Fatal("search candidates and quotes are counted apart from the effect assessment", stats, err)
 	}
 	newBody := "CSV exports have a revised behavior."
 	d.Body = &newBody
@@ -62,7 +62,7 @@ func TestPlanningReadsFullArticleAndPinsEvidenceVersion(t *testing.T) {
 	}
 	old, err := book.Query("lesson:" + p.ID + "@" + p.Revision)
 	if err != nil || len(old.Lessons) != 1 || old.Lessons[0].Body != body {
-		t.Fatal("評価で当時の本文へ戻れる。後の知識を混ぜない", old, err)
+		t.Fatal("the assessment can go back to the body at the time, without mixing in later knowledge", old, err)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestPlanningRejectsArticleChangesDuringDecision(t *testing.T) {
 	case <-entered:
 	case <-time.After(5 * time.Second):
 		close(release)
-		t.Fatal("判定を開始できない")
+		t.Fatal("cannot start the decision")
 	}
 	d := notebook.Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson + " Recheck the delimiter.", Kind: "rule", Scene: "テストの時", AppliesTo: p.AppliesTo, Sources: []string{p.Sources[0].ID}}
 	_, editErr := (notebook.Book{Root: root, Scope: feedbackScope(repo)}).Ingest(d)
@@ -93,52 +93,52 @@ func TestPlanningRejectsArticleChangesDuringDecision(t *testing.T) {
 		t.Fatal(editErr)
 	}
 	if err == nil {
-		t.Fatal("判定中に引用した記事の変更を検出する")
+		t.Fatal("detects a change to an article quoted during the decision")
 	}
 	if records, _ := (store.Store{Dir: root}).Records("needs-plan", 0); len(records) != 0 {
-		t.Fatal("古い根拠の判定は保存しない")
+		t.Fatal("a decision on stale evidence is not saved")
 	}
 }
 
-// 0.8.1: 画面の「知識を判断に使った記録」がずっと 0 だった(エージェントが検索語を付けていなかった)。話題を選ぶのはエージェントのまま、
-// 検索語を付けずに query したら「まだ探していない」と返し、hook の文も「話題の語を query に付けて探す」手順にする。
+// 0.8.1: the page's "records of knowledge used in decisions" stayed at 0 (agents were not giving search words). The agent still chooses the topic,
+// but a query without search words returns "not searched yet", and the hook text becomes the step "search by adding topic words to query".
 func TestPlanningTellsTheAgentWhenTheWikiWasNotSearched(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	planningWikiFixture(t, root, feedbackScope(repo))
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
 	if ctx := feedbackContext(t, out); !strings.Contains(ctx, "話題の語をqueryに付けて探し") || strings.Contains(ctx, "必要なwikiは") {
-		t.Fatalf("hook は wiki を探す手順として頼む: %s", ctx)
+		t.Fatalf("the hook asks for it as the step of searching the wiki: %s", ctx)
 	}
 	payload := planningPayload(root)
 	q, err := planningCall(t, "query", map[string]any{"session_id": "planning", "turn_id": payload["turn_id"]})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(fmt.Sprint(q["context_notice"]), "wiki はまだ探していません") || q["wiki_context"] != nil {
-		t.Fatalf("検索語が無ければ探さず、探していないと伝える: %v %v", q["context_notice"], q["wiki_context"])
+	if !strings.Contains(fmt.Sprint(q["context_notice"]), "The wiki has not been searched yet") || q["wiki_context"] != nil {
+		t.Fatalf("without search words it does not search, and says it has not searched: %v %v", q["context_notice"], q["wiki_context"])
 	}
 	q, err = planningCall(t, "query", map[string]any{"session_id": "planning", "turn_id": payload["turn_id"], "query": "CSV export columns"})
-	if err != nil || q["wiki_context"] == nil || strings.Contains(fmt.Sprint(q["context_notice"]), "まだ探していません") {
-		t.Fatalf("検索語を付ければ探す: %v %v", q, err)
+	if err != nil || q["wiki_context"] == nil || strings.Contains(fmt.Sprint(q["context_notice"]), "not been searched yet") {
+		t.Fatalf("with search words it searches: %v %v", q, err)
 	}
 }
 
-// 0.8.1: 判定モデルが混雑・停止していても、計画の整理は保存して成功で返す(作法の検査に止められない)。判定は見送る。
+// 0.8.1: even when the decision model is busy or down, sorting out the plan is saved and returns success (the ritual check does not block it). The decision is skipped.
 func TestPlanningSubmitSavesTheContextEvenWhenTheModelIsDown(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
-	hookLocalURL = "http://127.0.0.1:1" // 判定モデルに届かない
+	hookLocalURL = "http://127.0.0.1:1" // the decision model cannot be reached
 	res, err := planningCall(t, "submit", planningPayload(root))
 	if err != nil {
-		t.Fatalf("モデルに届かなくても整理は保存する: %v", err)
+		t.Fatalf("saves the sorted plan even when the model cannot be reached: %v", err)
 	}
 	if res["recorded"] == true || !strings.Contains(fmt.Sprint(res["reason"]), "判定モデルに届かなかった") {
-		t.Fatalf("判定は見送ったと言う: %v", res)
+		t.Fatalf("says the decision was skipped: %v", res)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."}); strings.Contains(out, "計画の整理") {
-		t.Fatalf("整理を保存したので作法の検査は止めない: %s", out)
+	if out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."}); strings.Contains(out, "plan has not been sorted out") {
+		t.Fatalf("the plan was saved, so the ritual check does not block: %s", out)
 	}
 }

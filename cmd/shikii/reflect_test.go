@@ -19,7 +19,7 @@ func reflectCall(t *testing.T, h http.Handler, body map[string]any) map[string]a
 	data, _ := json.Marshal(body)
 	code, raw, err := callTool(h, "shikii_reflect", data)
 	if err != nil || code != 200 {
-		t.Fatalf("振り返りを一つの道具から呼ぶ: code=%d body=%s err=%v", code, raw, err)
+		t.Fatalf("reflection is called through one tool: code=%d body=%s err=%v", code, raw, err)
 	}
 	var out map[string]any
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -38,12 +38,12 @@ func TestReflectBatchRoundTrip(t *testing.T) {
 	q := reflectCall(t, h, map[string]any{"operation": "query"})
 	sources := q["sources"].([]any)
 	if len(sources) != 2 || sources[0].(map[string]any)["source_material"].(map[string]any)["id"] != ids[0] {
-		t.Fatal("古い未処理会話から、採点とwikiの原文を一度だけ返す")
+		t.Fatal("returns the raw text for scoring and the wiki once, from the oldest unprocessed conversations")
 	}
 	for _, raw := range sources {
 		source := raw.(map[string]any)
 		if source["wiki_pending"] != true || len(source["targets"].([]any)) != 1 {
-			t.Fatal("各会話に未整理と採点対象をまとめる")
+			t.Fatal("each conversation bundles the unsorted state and the scoring targets")
 		}
 	}
 	payload := map[string]any{
@@ -64,19 +64,19 @@ func TestReflectBatchRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if receipt["complete"] != true {
-		t.Fatal("採点と教訓を一回で保存する")
+		t.Fatal("saves scores and lessons in one go")
 	}
 	if reflectCall(t, h, payload)["complete"] != true {
-		t.Fatal("再送しても同じ結果になる")
+		t.Fatal("resending gives the same result")
 	}
 	q = reflectCall(t, h, map[string]any{"operation": "query"})
 	if len(q["sources"].([]any)) != 0 {
-		t.Fatal("処理済みの会話を再度依頼しない")
+		t.Fatal("processed conversations are not asked for again")
 	}
 	grades, _ := st.Reviews("done-as-asked")
 	_, labels, err := st.Counts("done-as-asked")
 	if err != nil || len(grades) != 2 || len(labels) != 0 {
-		t.Fatal("一括保存でも仮採点を正解に混ぜない")
+		t.Fatal("even a batch save does not mix provisional scores into truths")
 	}
 }
 
@@ -90,10 +90,10 @@ func TestReflectHookWaitsAndOffersOnlyIDs(t *testing.T) {
 		reviewSeed(t, st, scope, n)
 		ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": fmt.Sprint(n), "cwd": repo, "prompt": request}))
 		if n == 1 && (strings.Contains(ctx, "submit") || strings.Contains(ctx, "ingest")) {
-			t.Fatal("一会話ごとに採点と整理の作業を割り込ませない")
+			t.Fatal("scoring and sorting work is not cut in after every single conversation")
 		}
 		if n == 2 && (!strings.Contains(ctx, "shikii_reflect") || !strings.Contains(ctx, "reflect query") || strings.Contains(ctx, "まだ英語が残っています")) {
-			t.Fatalf("まとめる時も案内と出典IDだけを渡し、会話の原文は渡さない: %s", ctx)
+			t.Fatalf("even when gathering, only the guidance and source IDs are passed, not the conversation's raw text: %s", ctx)
 		}
 	}
 }
@@ -108,7 +108,7 @@ func TestReflectSingleOldSourceIsNotForgotten(t *testing.T) {
 	}
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "old", "cwd": repo, "prompt": "新しい画面について説明してください"}))
 	if !strings.Contains(ctx, "reflect query") || !strings.Contains(ctx, "0000000000000001") {
-		t.Fatal("一件でも一日経った会話は次の依頼で整理を促す")
+		t.Fatal("even a single conversation that is a day old prompts sorting at the next request")
 	}
 }
 
@@ -123,7 +123,7 @@ func TestReflectReportsPartialFailuresAndProtectsBoundary(t *testing.T) {
 	} {
 		code, _, err := callTool(h, "shikii_reflect", json.RawMessage(body))
 		if err != nil || code < 400 {
-			t.Fatalf("出典と操作を偽装できない: code=%d err=%v", code, err)
+			t.Fatalf("sources and operations cannot be forged: code=%d err=%v", code, err)
 		}
 	}
 	r := httptest.NewRecorder()
@@ -132,20 +132,20 @@ func TestReflectReportsPartialFailuresAndProtectsBoundary(t *testing.T) {
 	req.Header.Set("Origin", "https://foreign.invalid")
 	h.ServeHTTP(r, req)
 	if r.Code != 403 {
-		t.Fatal("別サイトからの操作を拒否する")
+		t.Fatal("operations from another site are refused")
 	}
 	q := reflectCall(t, h, map[string]any{"operation": "submit", "reviews": []map[string]string{{"source_id": id, "trace_id": trace, "truth": "no", "reason": "訂正の原文"}}, "wiki": []map[string]any{{"sources": []string{"ffffffffffffffff"}}}})
 	if q["complete"] != false || q["wiki"].([]any)[0].(map[string]any)["error"] == nil {
-		t.Fatal("一部の失敗を隠さず、成功分を保持して再送可能にする")
+		t.Fatal("partial failures are not hidden; the successful part is kept and can be resent")
 	}
 	grades, _ := st.Reviews("done-as-asked")
 	if len(grades) != 1 {
-		t.Fatal("成功した仮採点は失敗したwikiと独立して残す")
+		t.Fatal("a successful provisional score stays, independent of the failed wiki item")
 	}
 	other := newServer(serveOpts{storeDir: st.Dir, projectScope: feedbackScope(gitRepo(t))})
 	q = reflectCall(t, other, map[string]any{"operation": "query"})
 	if len(q["sources"].([]any)) != 0 {
-		t.Fatal("別のプロジェクトへ原文を返さない")
+		t.Fatal("raw text is not returned to another project")
 	}
 }
 
@@ -167,20 +167,20 @@ func TestMemoryDeliversRelevantLessonOncePerRevision(t *testing.T) {
 	}
 	ctx := prompt(request)
 	if !strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, id) || strings.Contains(ctx, "まだ英語が残っています") || strings.Contains(ctx, "ingest") || len(ctx) > 1800 {
-		t.Fatalf("必要な教訓と出典だけを短く届ける: %s", ctx)
+		t.Fatalf("delivers only the needed lesson and source, briefly: %s", ctx)
 	}
 	if ctx := prompt(request); strings.Contains(ctx, draft.Lesson) {
-		t.Fatal("同じセッションに同じ版を繰り返し渡さない")
+		t.Fatal("the same revision is not passed again in the same session")
 	}
 	draft.ID, draft.Lesson = first.Page.ID, "モデルの起動と停止を確認する。"
 	if _, err := b.Ingest(draft); err != nil {
 		t.Fatal(err)
 	}
 	if ctx := prompt(request); !strings.Contains(ctx, draft.Lesson) {
-		t.Fatal("教訓が更新されたら新しい版を届ける")
+		t.Fatal("when a lesson is updated, the new revision is delivered")
 	}
 	if ctx := prompt("やりましょう。お願いします"); strings.Contains(ctx, draft.Lesson) {
-		t.Fatal("短い同意から関係のない記憶を取り出さない")
+		t.Fatal("a short agreement does not pull out unrelated memories")
 	}
 	if err := updateSession(agent, "memory", func(s *hookSession) {
 		for i := range s.Memories {
@@ -190,7 +190,7 @@ func TestMemoryDeliversRelevantLessonOncePerRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ctx := prompt(request); !strings.Contains(ctx, draft.Lesson) {
-		t.Fatal("長い作業では一時間後に必要な記憶を再び届ける")
+		t.Fatal("in long work, a needed memory is delivered again after an hour")
 	}
 }
 
@@ -207,19 +207,19 @@ func TestMemoryMatchesConditionsInsteadOfIncidentalBody(t *testing.T) {
 	}
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "conditions", "cwd": repo, "prompt": "README の導入手順を更新してください"}))
 	if strings.Contains(ctx, "決済障害") {
-		t.Fatal("本文に偶然同じ語があっても、適用する場面が違う教訓は渡さない")
+		t.Fatal("a lesson for a different scene is not passed even when its body happens to share words")
 	}
 	if strings.Contains(ctx, "まだ英語が残っています") {
-		t.Fatal("wikiで整理した原文をもう一度重ねて渡さない")
+		t.Fatal("raw text already sorted in the wiki is not passed again on top")
 	}
 	ctx = feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "archived", "cwd": repo, "prompt": "README の起動手順を日本語にする " + id}))
 	if strings.Contains(ctx, "まだ英語が残っています") {
-		t.Fatal("整理済みの原文は、同じ依頼でも再び引用しない")
+		t.Fatal("sorted raw text is not quoted again, even for the same request")
 	}
 }
 
-// 0.9.1: 振り返りの submit は、一度に扱う会話の数も項目の数も見直しの数も限らない(入力の大きさ 64 KB だけ)。0.9.0 までは会話 2 件・仮採点 4・
-// wiki 整理 2・記憶の評価 4 までで、既存の記事に元からある出典まで会話に数えて断っていた。保存は元の出典を引き継ぐ
+// 0.9.1: reflection's submit does not limit the number of conversations, items or reviews handled at once (only the input size, 64 KB). Up to 0.9.0 it allowed 2 conversations, 4 provisional scores,
+// 2 wiki sortings and 4 memory assessments, and refused by counting even the sources already on an existing page as conversations. Saving carries over the original sources
 func TestReflectSubmitHasNoConversationLimit(t *testing.T) {
 	st, scope, h := reviewFixture(t)
 	ids := []string{}
@@ -235,60 +235,60 @@ func TestReflectSubmitHasNoConversationLimit(t *testing.T) {
 	draft := map[string]any{"id": page.Page.ID, "sources": append(append([]string{}, ids[:3]...), ids[3]), "title": "起動手順は日本語で書く", "lesson": "README の起動手順は日本語で書き、コマンドの例も付ける。", "applies_to": "README の起動手順を直す時", "change_reason": "コマンドの例を足した"}
 	q := reflectCall(t, h, map[string]any{"operation": "submit", "wiki": []map[string]any{draft}})
 	if q["complete"] != true {
-		t.Fatalf("記事に元からある出典 3 つは数えず、新しい会話 1 つの振り返りとして保存する: %v", q)
+		t.Fatalf("the 3 sources already on the page are not counted; it is saved as a reflection on 1 new conversation: %v", q)
 	}
 	got, err := book.Query("lesson:" + page.Page.ID)
 	if err != nil || len(got.Lessons) != 1 || len(got.Lessons[0].Sources) != 4 || !strings.Contains(got.Lessons[0].Lesson, "コマンドの例") {
-		t.Fatalf("出典 4 つで保存される: %v %+v", err, got.Lessons)
+		t.Fatalf("saved with 4 sources: %v %+v", err, got.Lessons)
 	}
-	// 新しい会話 3 つと wiki の草稿 3 本も、一度に保存できる
+	// 3 new conversations and 3 wiki drafts can also be saved at once
 	drafts := []map[string]any{}
 	for i, id := range ids[2:5] {
 		drafts = append(drafts, map[string]any{"sources": []string{id}, "title": "起動手順の確認 " + string(rune('A'+i)), "lesson": "起動手順の確認 " + string(rune('A'+i)) + " を README に書く。", "applies_to": "README の起動手順を直す時", "kind": "howto", "scene": "README を直す時"})
 	}
 	q = reflectCall(t, h, map[string]any{"operation": "submit", "wiki": drafts})
 	if q["complete"] != true || len(q["wiki"].([]any)) != 3 {
-		t.Fatalf("新しい会話 3 つと草稿 3 本を一度に保存する: %v", q)
+		t.Fatalf("saves 3 new conversations and 3 drafts at once: %v", q)
 	}
-	// 見直し(maintenance)も数で断らない。古い key の見直しは項目ごとの誤りで返す(何も保存しない)
+	// Reviews (maintenance) are not refused for their count either. A review with a stale key returns a per-item error (nothing is saved)
 	stale := []map[string]any{}
 	for i := 0; i < 3; i++ {
 		stale = append(stale, map[string]any{"page_id": page.Page.ID, "revision": "ffffffffffffffff", "key": "stale", "reason": "古い見直し"})
 	}
 	q = reflectCall(t, h, map[string]any{"operation": "submit", "maintenance": stale})
 	if q["complete"] != false || len(q["maintenance"].([]any)) != 3 {
-		t.Fatalf("見直し 3 本も数で断らず、古い key は項目ごとの誤りで返す: %v", q)
+		t.Fatalf("3 reviews are not refused for their count either, and a stale key returns a per-item error: %v", q)
 	}
 }
 
-// 0.9.1: 振り返りの入力は 1 MiB まで(作業記録の書き込みと同じ)。64 KB では大きな草稿 1〜3 本で一杯になり、数の上限を外しても
-// 大きさが本数の上限になっていた。超えた時は、草稿を分けて次の submit で送るよう伝える
+// 0.9.1: reflection input is up to 1 MiB (the same as writing a work record). At 64 KB, 1 to 3 large drafts filled it, so even with the count limit removed,
+// the size acted as a limit on the number. When over, it says to split the drafts and send them in the next submit
 func TestReflectInputUpToOneMiB(t *testing.T) {
 	st, scope, h := reviewFixture(t)
 	drafts := []map[string]any{}
 	for n := 1; n <= 6; n++ {
 		id, _ := reviewSeed(t, st, scope, n)
-		body := strings.Repeat("起動手順の背景と理由を、確かめた手順とともに書く。", 300) // 約 22 KB(本文の上限 16 KB を超えない程度に下で切る)
+		body := strings.Repeat("起動手順の背景と理由を、確かめた手順とともに書く。", 300) // about 22 KB (cut below so it stays under the body limit of 16 KB)
 		body = string([]rune(body)[:5000])
 		drafts = append(drafts, map[string]any{"sources": []string{id}, "title": "起動手順の確認 " + string(rune('A'+n)), "lesson": "起動手順の確認 " + string(rune('A'+n)) + " を README に書く。", "body": body, "applies_to": "README の起動手順を直す時", "kind": "howto", "scene": "README を直す時"})
 	}
 	data, _ := json.Marshal(map[string]any{"operation": "submit", "wiki": drafts})
 	if len(data) <= 64<<10 {
-		t.Fatalf("この検査は 64 KB を超える入力で見る: %d", len(data))
+		t.Fatalf("this check uses input over 64 KB: %d", len(data))
 	}
 	q := reflectCall(t, h, map[string]any{"operation": "submit", "wiki": drafts})
 	if q["complete"] != true || len(q["wiki"].([]any)) != 6 {
-		t.Fatalf("64 KB を超える(1 MiB 未満の)振り返りも保存する: %d bytes %v", len(data), q)
+		t.Fatalf("a reflection over 64 KB (under 1 MiB) is also saved: %d bytes %v", len(data), q)
 	}
-	// 1 MiB 近く(900 KiB)の入力も HTTP の口で受け取る(大きさでは断らず、中身の足りない評価を項目ごとの誤りで返す。再監査 GJ)
+	// Input near 1 MiB (900 KiB) is also accepted at the HTTP endpoint (not refused for size; assessments missing content return per-item errors; re-audit GJ)
 	nearly := map[string]any{"operation": "submit", "memory": []map[string]string{{"source_id": "0000000000000001", "key": "lesson:x:y", "result": "unknown", "decision": "d", "evidence": strings.Repeat("e", 900<<10)}}}
 	if q := reflectCall(t, h, nearly); q["complete"] != false || len(q["memory"].([]any)) != 1 {
-		t.Fatalf("900 KiB の振り返りを大きさで断らない: %v", q)
+		t.Fatalf("a 900 KiB reflection is not refused for its size: %v", q)
 	}
-	// 1 MiB を超えたら断り、分けて送るよう伝える(CLI も同じ読み込み)
+	// Over 1 MiB it is refused, with a note to split and send (the CLI reads it the same way)
 	big := map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": []string{"0000000000000001"}, "body": strings.Repeat("あ", 400<<10)}}}
 	raw, _ := json.Marshal(big)
-	if _, err := decodeReflect(bytes.NewReader(raw)); err == nil || !strings.Contains(err.Error(), "1 MiB") || !strings.Contains(err.Error(), "分けて") {
-		t.Fatalf("1 MiB を超える振り返りは断り、分けて送るよう伝える: %d bytes %v", len(raw), err)
+	if _, err := decodeReflect(bytes.NewReader(raw)); err == nil || !strings.Contains(err.Error(), "1 MiB") || !strings.Contains(err.Error(), "Split") {
+		t.Fatalf("a reflection over 1 MiB is refused with a note to split and send: %d bytes %v", len(raw), err)
 	}
 }

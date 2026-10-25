@@ -114,7 +114,7 @@ func TestAudit090bClassifyFiveInOrderAndInParallel(t *testing.T) {
 			t.Fatalf("passes when done in order: %s %v", id, err)
 		}
 	}
-	if out := runHook(t, "stop", map[string]any{"session_id": "q", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "種類と場面を付ける記事") {
+	if out := runHook(t, "stop", map[string]any{"session_id": "q", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(out, "need a kind and a scene") {
 		t.Fatalf("blocked even though classifying is done: %s", out)
 	}
 	un, _ := book.Unclassified()

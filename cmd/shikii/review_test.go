@@ -53,7 +53,7 @@ func reviewCall(t *testing.T, h http.Handler, body map[string]any) map[string]an
 	req.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(r, req)
 	if r.Code != 200 {
-		t.Fatalf("採点の操作が成功する: %d %s", r.Code, r.Body.String())
+		t.Fatalf("the scoring operation succeeds: %d %s", r.Code, r.Body.String())
 	}
 	var out map[string]any
 	if err := json.Unmarshal(r.Body.Bytes(), &out); err != nil {
@@ -67,20 +67,20 @@ func TestReviewConversationScoresWithoutCreatingTruths(t *testing.T) {
 	id, trace := reviewSeed(t, st, scope, 1)
 	q := reviewCall(t, h, map[string]any{"operation": "query"})
 	if len(q["pending"].([]any)) != 1 {
-		t.Fatal("人の返答と評価する判定を届ける")
+		t.Fatal("delivers the person's reply and the decision to assess")
 	}
 	reviewCall(t, h, map[string]any{"operation": "submit", "source_id": id, "trace_id": trace, "truth": "no", "reason": "人が英語の残存を指摘したため、日本語化は未完了"})
 	q = reviewCall(t, h, map[string]any{"operation": "query"})
 	if len(q["pending"].([]any)) != 0 {
-		t.Fatal("採点済みを繰り返し求めない")
+		t.Fatal("does not keep asking for already scored items")
 	}
 	_, labels, err := st.Counts("done-as-asked")
 	if err != nil || len(labels) != 0 {
-		t.Fatal("仮採点を人の正解や較正の材料にしない")
+		t.Fatal("provisional scores are not used as a person's truth or as calibration material")
 	}
 	sp, _ := spec.Load(st.Dir + "/decisions/done-as-asked.yaml")
 	if len(sp.Calibration) != 0 {
-		t.Fatal("採点の件数だけで線を引かない")
+		t.Fatal("does not draw a line from the number of scores alone")
 	}
 }
 
@@ -101,22 +101,22 @@ func TestReviewHumanAuditsIncludeScoredAndUncertainItems(t *testing.T) {
 	found := false
 	bands := map[string]bool{}
 	if len(q.Items) < 2 || len(q.Items) >= 31 {
-		t.Fatalf("仮採点済みの一部と保留だけを人へ渡す: %d", len(q.Items))
+		t.Fatalf("only some of the provisionally scored items and the pending ones go to the person: %d", len(q.Items))
 	}
 	for _, item := range q.Items {
 		bands[item["band"].(string)] = true
 		if item["review"] == nil {
-			t.Fatal("採点の根拠も人が確かめられる")
+			t.Fatal("the person can also check the reason for the score")
 		}
 		if item["trace_id"] == unknown {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("保留は抜き取りを待たず人へ渡す")
+		t.Fatal("pending items go to the person without waiting for a spot check")
 	}
 	if !bands["act"] || !bands["discard"] {
-		t.Fatal("実行と見送りのどちらも抜き取る")
+		t.Fatal("spot checks cover both act and discard")
 	}
 }
 
@@ -135,21 +135,21 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 	}
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "review", "cwd": repo, "prompt": "まだ英語が残っています。日本語の指定を満たすように直してください。"})
 	if strings.Contains(feedbackContext(t, out), "shikii_reflect") {
-		t.Fatal("一会話だけなら仮採点をまとめるまで待つ")
+		t.Fatal("with only one conversation, it waits before asking for provisional scores")
 	}
 	observed, err := (store.Store{Dir: agent}).RecentFeedback(feedbackScope(repo))
 	if err != nil || len(observed) != 1 || len(observed[0].Targets) != 2 {
-		t.Fatalf("繰り返した Stop でも元の採点対象を保つ: %+v %v", observed, err)
+		t.Fatalf("a repeated Stop keeps the original scoring targets: %+v %v", observed, err)
 	}
 	ctx, _, err := reflectContext(agent, feedbackScope(repo))
 	if err != nil || ctx != "" {
-		t.Fatalf("一会話だけなら振り返りはまだ頼まない(案内の大きさは限らない。0.9.1): %q %v", ctx, err)
+		t.Fatalf("with only one conversation, reflection is not asked for yet (the size of the guidance is not limited; 0.9.1): %q %v", ctx, err)
 	}
 	if _, err := runReview(agent, feedbackScope(gitRepo(t)), reviewRequest{Operation: "submit", SourceID: observed[0].ID, TraceID: observed[0].Targets[0].TraceID, Truth: "no", Reason: "別の仕事"}); err == nil {
-		t.Fatal("別の仕事の会話を採点しない")
+		t.Fatal("conversations of another project are not scored")
 	}
 	if ctx, _, err := reflectContext(agent, feedbackScope(gitRepo(t))); err != nil || ctx != "" {
-		t.Fatal("別の仕事へ採点の文脈を持ち出さない")
+		t.Fatal("scoring context is not carried to another project")
 	}
 	st := store.Store{Dir: agent}
 	for n := 200; n < 202; n++ {
@@ -163,9 +163,9 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 		}
 	}
 	ctx, _, err = reflectContext(agent, feedbackScope(repo))
-	// 振り返りを頼む文の大きさは限らない(0.9.1)。守るのは、会話の原文を重ねずに出典の ID だけを渡し、JSON の境界を保つこと
+	// The size of the text asking for reflection is not limited (0.9.1). What is kept is passing only source IDs without repeating the conversation's raw text, and keeping the JSON boundary
 	if err != nil || len(ctx) == 0 || strings.Contains(ctx, strings.Repeat("\x02", 100)) || strings.Contains(ctx, strings.Repeat("\x03", 100)) || !json.Valid([]byte(ctx[strings.LastIndex(ctx, "\n")+1:])) {
-		t.Fatal("原文を重ねず、案内とJSONの境界を保つ")
+		t.Fatal("does not repeat the raw text, and keeps the boundary between guidance and JSON")
 	}
 }
 
@@ -183,7 +183,7 @@ func TestReviewTransportProtectsProvenanceAndReturnsCorrections(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		h.ServeHTTP(r, req)
 		if r.Code < 400 {
-			t.Fatal("人の出典・仕事・抜き取りの選択を偽装させない")
+			t.Fatal("the person's source, the project and the spot-check choice cannot be forged")
 		}
 	}
 	r := httptest.NewRecorder()
@@ -192,26 +192,26 @@ func TestReviewTransportProtectsProvenanceAndReturnsCorrections(t *testing.T) {
 	req.Header.Set("Origin", "https://foreign.invalid")
 	h.ServeHTTP(r, req)
 	if r.Code < 400 {
-		t.Fatal("他サイトから採点を操作させない")
+		t.Fatal("another site cannot operate scoring")
 	}
 	data, _ := json.Marshal(map[string]any{"operation": "submit", "source_id": id, "trace_id": trace, "truth": "yes", "reason": "完了したと仮採点"})
 	code, body, err := callTool(h, "shikii_review", data)
 	if err != nil || code != 200 {
-		t.Fatalf("MCP の採点の口: %d %s %v", code, body, err)
+		t.Fatalf("the MCP scoring endpoint: %d %s %v", code, body, err)
 	}
 	capture(t, func() error { return cmdLabel([]string{"--store", st.Dir, "--source", "audit", trace, "no"}) })
 	view := reviewCall(t, h, map[string]any{"operation": "query"})
 	if len(view["human_corrections"].([]any)) != 1 {
-		t.Fatal("人の訂正が次の採点役へ戻る")
+		t.Fatal("the person's correction goes back to the next scorer")
 	}
 	old := stdin
 	stdin = strings.NewReader(string(data))
 	defer func() { stdin = old }()
 	if err := cmdReview([]string{"submit"}); err != nil {
-		t.Fatal("同じ仮採点の CLI 再送は履歴を増やさない")
+		t.Fatal("resending the same provisional score through the CLI does not grow the history")
 	}
 	data, _ = json.Marshal(map[string]any{"operation": "submit", "source_id": id, "trace_id": trace, "truth": "no", "reason": "人の答えを見て採点を書き換える"})
 	if code, _, err := callTool(h, "shikii_review", data); err != nil || code < 400 {
-		t.Fatal("人の答えを見た後に元の AI の採点を変えない")
+		t.Fatal("the original AI score is not changed after seeing the person's answer")
 	}
 }
