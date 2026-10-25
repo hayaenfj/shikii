@@ -26,43 +26,43 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// shikii serve: 1 プロセスで、プログラム向けの HTTP の口と、人向けの画面を出す。
+// shikii serve: in one process, serves the HTTP endpoints for programs and the page for people.
 //
-//	POST /v1/decide  {"spec":"id","inputs":{...},"tainted":false}   → Decision(decide --json と同じ形)。記録に残る
-//	POST /v1/label   {"trace_id":"…","truth":"…","weight":1,"source":"ui"} → 付いたラベル。min_n に届けば自動で較正して書き戻す
-//	GET  /v1/queue?spec=id&limit=50                                 → 正解の付いていない記録(ask 帯を先に)。本文は残っていれば付く
-//	GET  /v1/status                                                 → spec ごとの記録・正解・(model, hash) の状態
-//	GET  /v1/specs                                                  → 読み込んでいる spec
-//	GET  /                                                          → 画面(web/dist を埋め込んだ Svelte の画面。外部の読み込み無し)
+//	POST /v1/decide  {"spec":"id","inputs":{...},"tainted":false}   → Decision (same shape as decide --json). Recorded
+//	POST /v1/label   {"trace_id":"…","truth":"…","weight":1,"source":"ui"} → the label given. Once min_n is reached it calibrates automatically and writes back
+//	GET  /v1/queue?spec=id&limit=50                                 → records without a truth (ask band first). The text is attached if it is still kept
+//	GET  /v1/status                                                 → per-spec state of records, truths and (model, hash)
+//	GET  /v1/specs                                                  → the specs loaded
+//	GET  /                                                          → the page (the Svelte page with web/dist embedded; no external loads)
 //
-// spec はフォルダから毎回読み直すので、ファイルを直せばすぐ効く。推論は持たない(--local / --hosted の先に任せる)。
+// Specs are reread from the folder every time, so editing a file takes effect at once. It does no inference itself (that is left to --local / --hosted).
 
 type serveOpts struct {
-	projectScope  string // プロセスを起こした仕事。wiki の原資料を他の仕事と混ぜない
+	projectScope  string // the work that started the process. Do not mix wiki sources with other work
 	port          int
 	specsDir      string
 	storeDir      string
 	ef            endpointFlags
 	autoCalibrate bool
-	wikiDir       string // 聞き方の wiki。空なら ./wiki。tune の結果を置き、画面と MCP が読む
-	proposer      string // 候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけ
+	wikiDir       string // the wording wiki. Empty means ./wiki. Holds tune's results, read by the page and MCP
+	proposer      string // URL of the proposer (a chat LLM) that drafts candidates. Empty means only the spec's variants
 	proposerModel string
 }
 
-// bindHost は待ち受け先。ホストでは 127.0.0.1 だけ(LAN に出さない)。容れ物(Docker、/.dockerenv がある)の中では全ての口で待ち、
-// 外に出すかはホスト側の port の公開が決める(compose は 127.0.0.1:8095 に絞っている)。選ぶ設定は無い。
+// bindHost is where to listen. On a host, only 127.0.0.1 (never exposed to the LAN). Inside a container (Docker, where /.dockerenv exists) it listens on every interface,
+// and whether it is exposed is decided by the host's port publishing (compose limits it to 127.0.0.1:8095). There is no setting to choose.
 func bindHost() string { return systemone.BindHost() }
 
 func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	var o serveOpts
 	o.ef.bind(fs)
-	fs.IntVar(&o.port, "port", 8095, "待ち受けるポート(127.0.0.1 のみ。0 なら空いているポートを取り、~/.shikii/agent/pages/ に書く。hook はこれで起こす)")
-	fs.StringVar(&o.specsDir, "specs", "", "spec(*.yaml)のフォルダ(既定は <store>/decisions)")
-	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
-	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
-	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL。空なら spec の variants だけを測る")
-	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
+	fs.IntVar(&o.port, "port", 8095, "port to listen on (127.0.0.1 only; 0 takes a free port and writes it to ~/.shikii/agent/pages/; the hook starts it this way)")
+	fs.StringVar(&o.specsDir, "specs", "", "folder of specs (*.yaml) (default: <store>/decisions)")
+	fs.StringVar(&o.storeDir, "store", ".shikii", "where records and labels are kept")
+	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "calibrate automatically and write back to the spec once truths reach eval.min_n")
+	fs.StringVar(&o.proposer, "proposer", "", "URL of the proposer (a chat LLM) that drafts wording candidates. Empty measures only the spec's variants")
+	fs.StringVar(&o.proposerModel, "proposer-model", "", "model name of the proposer")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -79,14 +79,14 @@ func cmdServe(args []string) error {
 		}
 	}
 	scope := filepath.Dir(absStore)
-	auto := !hub && o.port == 0 // hook が起こすプロジェクトの画面(0.8.0): 空いているポート、印、ブラウザ、手元のモデルは口を開けた後に待つ
+	auto := !hub && o.port == 0 // the project's page started by the hook (0.8.0): free port, mark, browser; the local model is waited for after the port opens
 	if auto {
-		if url := livePage(scope); url != "" { // 画面はプロジェクトに 1 つ(別のエージェントの hook が先に起こしていた)
+		if url := livePage(scope); url != "" { // one page per project (another agent's hook started it first)
 			log.Printf("shikii serve: this project's page is already up at %s/ ; not starting another", url)
 			return nil
 		}
 	} else if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
-		return err // 手で起こす serve(Docker など)は従来どおり、モデルが応えるまで口を開けない
+		return err // a serve started by hand (Docker etc.) keeps the old behavior: the port does not open until the model answers
 	}
 	ln, err := listenPage(common, scope, hub, o.port)
 	if err != nil {
@@ -97,13 +97,13 @@ func cmdServe(args []string) error {
 	if hub {
 		handler = newProjectHub(common, o)
 	}
-	handler = localHostOnly(handler) // DNS rebinding で別のサイトから記録や作業記録を読まれない(監査 0.8.1-1)
+	handler = localHostOnly(handler) // so another site cannot read records or work records through DNS rebinding (audit 0.8.1-1)
 	if !auto {
 		return http.Serve(ln, handler)
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- http.Serve(ln, handler) }()
-	// 口を開けてから手元のモデルを待つ(status・列・wiki はモデル無しで答えられる。hook は待たない)
+	// Wait for the local model after opening the port (status, queue and wiki can answer without a model; the hook does not wait)
 	if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
 		ln.Close()
 		return err
@@ -111,8 +111,8 @@ func cmdServe(args []string) error {
 	return <-errc
 }
 
-// listenPage は待ち受けを始める。hook が起こすプロジェクトの画面(port 0)なら、空いているポートを取り、~/.shikii/agent/pages/ に
-// ポートと pid の印を書き、ブラウザで一度開く。手で起こした serve(固定ポート)は印を書かない(hook の画面の印を上書きしない。監査 R5)。
+// listenPage starts listening. For the project's page started by the hook (port 0), it takes a free port, writes a mark with the port and pid
+// to ~/.shikii/agent/pages/, and opens it once in the browser. A serve started by hand (fixed port) writes no mark (so it never overwrites the hook page's mark; audit R5).
 func listenPage(common, scope string, hub bool, port int) (net.Listener, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bindHost(), port))
 	if err != nil {
@@ -129,10 +129,10 @@ func listenPage(common, scope string, hub bool, port int) (net.Listener, error) 
 	return ln, nil
 }
 
-// waitForLocalModel は手元のモデルの口が立つのを自分で待つ(Docker で先にモデルを起こす時。curl / wget に頼らない)。
-// --local が無い(hosted だけ)なら待たない: hosted は外のサービスで、起動を待つ対象ではない。
-// 鍵があって Jev を使う(hosted = usesHosted())時も待たない: 手元のモデルは起こさない決まり(0.7.1)なので、待つと画面が永久に開かない
-// (hook は常に --local 付きで serve を起こす。2026-10-23 に実機で観測)。最長 15 分。URL が違う時は最初の行で分かるようにする。
+// waitForLocalModel waits by itself for the local model's endpoint to come up (when Docker starts the model first; it does not rely on curl / wget).
+// Without --local (hosted only) it does not wait: hosted is an outside service, not something to wait to start.
+// It also does not wait when there is a key and Jev is used (hosted = usesHosted()): the rule is not to start a local model (0.7.1), so waiting would keep the page from ever opening
+// (the hook always starts serve with --local; observed on a real machine on 2026-10-23). At most 15 minutes. When the URL is wrong, the first line makes it clear.
 func waitForLocalModel(local string, hosted bool, wait func(context.Context, string, time.Duration, func(string, ...any)) error) error {
 	if local == "" {
 		return nil
@@ -162,17 +162,17 @@ type calibrationReport struct {
 }
 
 type server struct {
-	wikiMu  sync.Mutex // 画面からの wiki の操作を直列にする(tune の updateClaims とはプロセスが違えば別。書き込みは原子的に行う)
+	wikiMu  sync.Mutex // serializes wiki operations from the page (tune's updateClaims is separate when in another process; writes are atomic)
 	o       serveOpts
 	st      store.Store
-	calibMu sync.Mutex                   // 同じプロジェクトの spec の較正・候補の保存を直列にする
-	lastCal map[string]calibrationReport // spec id → 最後の自動較正の報告
+	calibMu sync.Mutex                   // serializes calibration and candidate saving for specs of the same project
+	lastCal map[string]calibrationReport // spec id → report of the last automatic calibration
 	mu      sync.Mutex
-	tuning  map[string]bool   // spec id → 裏で tune が走っている
-	tuneErr map[string]string // spec id → 最後の tune の失敗
+	tuning  map[string]bool   // spec id → tune is running in the background
+	tuneErr map[string]string // spec id → the last tune failure
 }
 
-// resolve は置き場の既定を埋める: spec は <store>/decisions、wiki は <store>/wiki(基本構成。別のフラグは無い)。
+// resolve fills in the store defaults: specs in <store>/decisions, the wiki in <store>/wiki (the basic layout; there are no other flags).
 func (o *serveOpts) resolve() {
 	if o.projectScope == "" {
 		o.projectScope = currentProjectScope()
@@ -212,7 +212,7 @@ func newServer(o serveOpts) http.Handler {
 	return mux
 }
 
-// loadSpecs はフォルダの *.yaml を id で引けるようにする。毎回読む(小さいファイルなので)。
+// loadSpecs makes the folder's *.yaml lookupable by id. Read every time (the files are small).
 func loadSpecs(dir string) (map[string]*spec.Spec, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
 	if err != nil {
@@ -228,7 +228,7 @@ func loadSpecs(dir string) (map[string]*spec.Spec, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
-		// 同じ id は version の大きい方(文言 v1 → v2 を同じ id で持つ運用)。同じ id・同じ version が 2 つあれば決められないので誤り
+		// For the same id, the larger version wins (the practice of keeping wording v1 → v2 under the same id). Two with the same id and the same version cannot be decided, so that is an error
 		if prev, ok := seen[sp.ID][sp.Version]; ok {
 			return nil, fmt.Errorf("duplicate spec id %q with the same version %d: %s and %s", sp.ID, sp.Version, prev, f)
 		}
@@ -298,9 +298,9 @@ func specSummary(sp *spec.Spec) map[string]any {
 		"min_n": sp.Eval.MinN, "act": sp.Thresholds.Act, "ask": sp.Thresholds.Ask, "choices": truthChoices(sp)}
 }
 
-// truthChoices は画面のボタンになる正解の候補。choice は選択肢 id、noul は yes/no、score は "0".."n-1"。
+// truthChoices are the truth candidates that become buttons on the page. For choice, choice ids; for noul, yes/no; for score, "0".."n-1".
 func truthChoices(sp *spec.Spec) []map[string]any {
-	// labels は言語ごとの表示名(display から)。無い言語は画面側で label(英語/id)に落ちる
+	// labels are display names per language (from display). For a missing language the page falls back to label (English/id)
 	labelsFor := func(id string, level int) map[string]string {
 		out := map[string]string{}
 		for lang, d := range sp.Display {
@@ -334,13 +334,13 @@ func truthChoices(sp *spec.Spec) []map[string]any {
 	return out
 }
 
-// maxBody は POST 本文の上限。store の 1 行の上限(4 MiB)より小さく。
+// maxBody is the limit for POST bodies. Smaller than the store's per-line limit (4 MiB).
 const maxBody = 1 << 20
 
-// acceptJSONPost はブラウザ上の他サイトからの書き込みを弾く(監査 S3)。
-//   - Origin があれば、この口(127.0.0.1 / localhost)のものだけ通す
-//   - Content-Type は application/json だけ(text/plain の「単純リクエスト」は preflight 無しで届くため)
-//   - 本文は maxBody まで(超えると 413)
+// acceptJSONPost rejects writes from other sites in a browser (audit S3).
+//   - If there is an Origin, only this endpoint's own (127.0.0.1 / localhost) passes
+//   - Content-Type must be application/json (a text/plain "simple request" arrives without a preflight)
+//   - Body up to maxBody (413 beyond that)
 func acceptJSONPost(w http.ResponseWriter, r *http.Request) bool {
 	if r.Method != http.MethodPost {
 		writeErr(w, 405, errors.New("POST only"))
@@ -405,7 +405,7 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, d)
 }
 
-// handleAnswered は人が答えた判定(新しい順)。答えを直す(同じ trace にもう一度 /v1/label: 新しい答えが勝つ)と、AI にもう一度聞く(/v1/redo)の材料。
+// handleAnswered lists decisions a person answered (newest first). It is the material for correcting an answer (another /v1/label on the same trace: the new answer wins) and for asking the AI again (/v1/redo).
 func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("spec")
 	limit := 50
@@ -433,7 +433,7 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	superseded := map[string]bool{} // やり直した元の記録は回答済みにも出さない(新しい記録に答えが写っている。件数の水増しと、元への訂正が新しい記録に届かない経路を防ぐ)
+	superseded := map[string]bool{} // do not show a redone original record as answered either (the answer was copied to the new record; prevents inflated counts and a path where a correction to the original never reaches the new record)
 	for _, rec := range recs {
 		if rec.RedoOf != "" {
 			superseded[rec.RedoOf] = true
@@ -466,8 +466,8 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"spec": id, "items": items})
 }
 
-// handleRedo は過去の判定の本文を、今の聞き方(spec)と線でもう一度判定する。新しい記録(redo_of = 元の trace)を残し、元の記録は列から消える。
-// 人が既に答えていれば、その答えは同じ本文の正解なので新しい記録にも写す(もう一度答えさせない)。前と今を並べて返す。
+// handleRedo decides a past decision's text again with the current wording (spec) and line. It keeps a new record (redo_of = the original trace), and the original record leaves the queue.
+// If a person already answered, that answer is the truth for the same text, so it is copied to the new record too (no need to answer again). Returns before and now side by side.
 func (s *server) handleRedo(w http.ResponseWriter, r *http.Request) {
 	if !acceptJSONPost(w, r) {
 		return
@@ -512,7 +512,7 @@ func (s *server) handleRedo(w http.ResponseWriter, r *http.Request) {
 	}
 	newRec := recordOf(sp, d, rec.Inputs)
 	newRec.RedoOf = rec.TraceID
-	if err := recordDecisionRec(s.st, sp, d, newRec); err != nil { // /v1/decide と同じ作法(文脈の段で act なら最小の段の機械の正解も)
+	if err := recordDecisionRec(s.st, sp, d, newRec); err != nil { // same manners as /v1/decide (if act on a context rung, the machine truth for the minimal rung too)
 		writeErr(w, 500, err)
 		return
 	}
@@ -570,12 +570,12 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	if err := s.st.AppendLabels(labels); err != nil { // 2 段分を 1 回で書く(片方だけ残らない)
+	if err := s.st.AppendLabels(labels); err != nil { // write both rungs in one go (so only one never remains)
 		writeErr(w, 500, err)
 		return
 	}
 	l := labels[0]
-	// 文脈を足して決まった判定への答えは、最小の質問にも付く(rungs = 2)。線は段ごとに引かれる
+	// An answer to a decision settled after adding context also goes to the minimal question (rungs = 2). Lines are drawn per rung
 	resp := map[string]any{"trace_id": l.TraceID, "spec": l.SpecID, "model": l.Model, "truth": l.Truth, "weight": l.Weight, "source": l.Source, "rungs": len(labels), "calibrated": false}
 	if s.o.autoCalibrate {
 		if report, did := s.maybeCalibrate(rec.SpecID, rec.SpecHash, rec.Model); did {
@@ -586,19 +586,19 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, resp)
 }
 
-// maybeCalibrate は (hash, model) の正解が min_n に届き、まだ線が無い(か古い)時だけ較正して書き戻す。
-// 失敗しても label の処理は成功のまま(報告に残すだけ)。
+// maybeCalibrate calibrates and writes back only when the (hash, model) truths reach min_n and there is no line yet (or it is old).
+// Even if it fails, the label handling stays successful (it is only noted in the report).
 func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 	sp, err := s.spec(specID)
 	if err != nil || !sp.LiveHash(hash) || model == "" {
 		return "", false
 	}
-	rs, rung := sp, "minimal" // この記録の段。線を引くのはこの段だけ(他の段の線は触らない)
+	rs, rung := sp, "minimal" // this record's rung. A line is drawn only for this rung (other rungs' lines are not touched)
 	if hash == sp.ContextHash() {
 		rs, rung = sp.ContextSpec(), "context"
 	}
 	if c := rs.CalibrationFor(model); c != nil && c.SpecHash == hash {
-		return "", false // もう線がある。引き直しは drift が悪化を言った時に(ここでは触らない)
+		return "", false // a line already exists. Redraw it when drift says it got worse (not touched here)
 	}
 	labels, err := s.st.Labels(specID, hash, model)
 	if err != nil || len(labels) < sp.Eval.MinN {
@@ -648,7 +648,7 @@ func lastLine(s string) string {
 	return lines[len(lines)-1]
 }
 
-// handleQueue は正解の付いていない記録。ask 帯を先に、その中では新しい順。
+// handleQueue lists records without a truth. ask band first, newest first within it.
 func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("spec")
 	limit := 50
@@ -676,13 +676,13 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	rank := map[string]int{"ask": 0, "audit": 1, "act": 2, "discard": 3} // 迷い → 抜き取り(act の 20 件に 1 件) → 残り
+	rank := map[string]int{"ask": 0, "audit": 1, "act": 2, "discard": 3} // unsure → spot checks (1 in 20 of act) → the rest
 	reviews, err := s.st.Reviews(id)
 	if err != nil {
 		writeErr(w, 500, err)
 		return
 	}
-	superseded := map[string]bool{} // やり直した元の記録は列に出さない(新しい判定が代わりに出る)
+	superseded := map[string]bool{} // do not show a redone original record in the queue (the new decision appears instead)
 	for _, rec := range recs {
 		if rec.RedoOf != "" {
 			superseded[rec.RedoOf] = true
@@ -717,11 +717,11 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	if len(pending) > limit {
 		pending = pending[:limit]
 	}
-	// 原文の読取りと表示用データの構築は、実際に返す記録だけに限る。
+	// Reading original text and building display data are limited to the records actually returned.
 	items := make([]map[string]any, 0, len(pending))
 	for _, item := range pending {
 		rec := item.record
-		// 本文が無い(古い)記録は人には答えられない。ボタンの材料は出さず、answerable=false で言う(結果を知るプログラムからの正解は別経路)
+		// A person cannot answer an (old) record without text. Give no button material and say answerable=false (truths from a program that knows the outcome come by another path)
 		answerable := len(rec.Inputs) > 0
 		choices := []map[string]any{}
 		if answerable {
@@ -747,19 +747,19 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	var page map[string]any // この画面の所在(0.8.0): エージェントが MCP からも URL とポートを答えられるように
+	var page map[string]any // where this page is (0.8.0): so an agent can answer the URL and port over MCP too
 	if common, err := agentHome(); err == nil {
 		if abs, err := filepath.Abs(s.o.storeDir); err == nil {
-			if rec, ok := readPageRecord(common, filepath.Dir(abs)); ok && rec.PID == os.Getpid() { // 自分の印だけ(手で起こした別の serve の印は答えない)
+			if rec, ok := readPageRecord(common, filepath.Dir(abs)); ok && rec.PID == os.Getpid() { // only our own mark (do not answer with the mark of another serve started by hand)
 				page = map[string]any{"url": rec.url() + "/", "port": rec.Port, "pid": rec.PID}
 			}
 		}
 	}
 	out := []map[string]any{}
-	var person personWork // 画面の先頭の要約(0.7.4): 人の手間を全 spec で合計
+	var person personWork // the summary at the top of the page (0.7.4): the person's effort summed over all specs
 	for _, sp := range specs {
 		titles := map[string]string{}
-		questions := map[string]string{} // 画面の「何を聞いているか」(人の言葉)
+		questions := map[string]string{} // the page's "what it asks" (in the person's words)
 		for lang, d := range sp.Display {
 			if d.Title != "" {
 				titles[lang] = d.Title
@@ -777,13 +777,13 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		for _, l := range labs {
 			byKey[l.Model+"\x00"+l.SpecHash]++
 		}
-		keys := []map[string]any{} // 無くても [] (null だと画面が落ちる)
+		keys := []map[string]any{} // [] even if empty (null makes the page crash)
 		for k, n := range byKey {
 			parts := strings.SplitN(k, "\x00", 2)
 			model, hash := parts[0], parts[1]
 			state := "collecting"
 			method, rung := "", "minimal"
-			rs := sp // このハッシュの段
+			rs := sp // this hash's rung
 			if hash == sp.ContextHash() {
 				rs, rung = sp.ContextSpec(), "context"
 			}
@@ -793,7 +793,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			case rs.CalibrationFor(model) != nil && rs.CalibrationFor(model).SpecHash == hash:
 				state, method = "calibrated", rs.CalibrationFor(model).Method
 			default:
-				// 件数だけで「揃った」と言わない(0.8.3): 片方の答えしか無い・試して分けられなかった・自動で引く途中を分ける
+				// Do not say "complete" from counts alone (0.8.3): separate having answers on only one side, tried and could not separate, and partway through automatic drawing
 				tried := (hash == sp.Hash() || hash == sp.ContextHash()) && triedWithoutLine(s.st.Dir, sp, model)
 				switch lineStateOf(rs, sp.Eval.MinN, model, hash, labs, tried).Kind {
 				case lineReady:
@@ -810,7 +810,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			if keys[i]["model"] != keys[j]["model"] {
 				return keys[i]["model"].(string) < keys[j]["model"].(string)
 			}
-			return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal を先に
+			return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal first
 		})
 		labeled, _ := s.st.LabeledTraces(sp.ID)
 		reviews, rerr := s.st.Reviews(sp.ID)
@@ -833,13 +833,13 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				legacyPlanning++
 				continue
 			}
-			if undecidedConflict(sp.ID, rec, labeled, settled) { // 草稿は保存済みだが、この記事には触れなかった: 正解は付かないまま確定(0.8.0)
+			if undecidedConflict(sp.ID, rec, labeled, settled) { // the draft is saved, but it did not touch this page: settled without a truth (0.8.0)
 				undecided++
 				continue
 			}
 			if show, audit, _ := reviewQueueState(rec, labeled, reviews); show {
 				todo++
-				if waitsForPersonRecord(sp.ID, rec, audit) { // 人の答えを待つのは抜き取りと、結果で正解が付かない判定の迷いだけ(0.8.0)
+				if waitsForPersonRecord(sp.ID, rec, audit) { // only spot checks and unsure decisions whose truth no outcome gives wait for a person's answer (0.8.0)
 					waitingPerson++
 				}
 			}
@@ -849,7 +849,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		// 回答済みの数 = 人が答えた本文(inputs_hash)の数。やり直しで写した答えや、同じ記録への答えの直しは数えない
+		// answered count = the number of texts (inputs_hash) a person answered. Answers copied by a redo and corrections to an answer on the same record are not counted
 		answered := map[string]bool{}
 		for _, l := range labeled {
 			if store.HumanSource(l.Source) {
@@ -865,12 +865,12 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if last.log != "" {
 			result = &last.result
 		}
-		truthSource, personAnswers := "person", !machineOnlySpecs[sp.ID] // 人は答えない判定(wiki の矛盾など): 0.8.0 に 60 件が確認待ちに見えた
+		truthSource, personAnswers := "person", !machineOnlySpecs[sp.ID] // decisions people do not answer (wiki contradictions etc.): in 0.8.0, 60 items looked like they were waiting for confirmation
 		if outcomeSpecs[sp.ID] {
 			truthSource = "results"
 		}
-		awaiting, settledByAI := todo-waitingPerson, 0 // 結果待ち(次の依頼・振り返りの結果が正解を付ける)
-		if !outcomeSpecs[sp.ID] && personAnswers {     // 人が正解を付ける問いの act(抜き取り外)は結果が来ないので「AI が決めた(確認不要)」(監査 R5)
+		awaiting, settledByAI := todo-waitingPerson, 0 // waiting for an outcome (the next request or the review's result gives the truth)
+		if !outcomeSpecs[sp.ID] && personAnswers {     // act on a question a person gives truths to (outside spot checks) gets no outcome, so it counts as "the AI decided (no check needed)" (audit R5)
 			settledByAI, awaiting = awaiting, 0
 		}
 		out = append(out, map[string]any{"id": sp.ID, "type": string(sp.Type), "hash": sp.Hash(), "titles": titles, "questions": questions, "question": strings.TrimSpace(sp.Question), "records": nRec, "labels": len(answered), "label_rows": len(labs),
@@ -878,7 +878,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
-	modelName, endpoint := "local", s.o.ef.local // AI の状態(0.8.0): どのモデルで判定しているか
+	modelName, endpoint := "local", s.o.ef.local // the AI's state (0.8.0): which model is deciding
 	if usesHosted() {
 		modelName, endpoint = "TypeSafe Jev", systemone.RedactURL(s.o.ef.hosted)
 	}
@@ -886,14 +886,14 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"summary": statusSummary(s.st, s.o.storeDir, s.o.projectScope, person, time.Now()), "page": page})
 }
 
-// handleUI は画面(web/ を Svelte で組んだもの)。ビルド結果 web/dist は実行ファイルに埋め込まれている(shikii.WebFS)ので外部の読み込みは無い。
-// "/" が index.html、"/assets/..." がその JS と CSS。それ以外の知らないパスは 404(/v1/... は mux が先に取る)。
+// handleUI serves the page (web/ built with Svelte). The build output web/dist is embedded in the binary (shikii.WebFS), so there are no external loads.
+// "/" is index.html and "/assets/..." its JS and CSS. Any other unknown path is 404 (/v1/... is taken by the mux first).
 func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") {
-		http.NotFound(w, r) // フォルダの一覧(/assets/)は出さない。"/" 以外に HTML のパスは無い
+		http.NotFound(w, r) // no folder listing (/assets/). There is no HTML path other than "/"
 		return
 	}
-	w.Header().Set("Cache-Control", "no-cache") // dist は版ごとに同じ名前(assets/index.js)なので、古い版を抱えない
+	w.Header().Set("Cache-Control", "no-cache") // dist uses the same name every version (assets/index.js), so do not hold on to an old version
 	webFiles.ServeHTTP(w, r)
 }
 
@@ -907,8 +907,8 @@ func mustSub(fsys fs.FS, dir string) fs.FS {
 	return sub
 }
 
-// writeUnknownSpec は spec の id が解決できない時の返事。id が空なら「spec が要る」と言う(初めての利用者が /v1/redo に trace_id だけ送った時、
-// `unknown spec ""` では何を足せばよいか分からなかった)。
+// writeUnknownSpec is the reply when the spec id cannot be resolved. If the id is empty, it says "a spec is needed" (when a first-time user sent only a trace_id to /v1/redo,
+// `unknown spec ""` did not tell them what to add).
 func writeUnknownSpec(w http.ResponseWriter, id string) {
 	if id == "" {
 		writeErr(w, 400, errors.New(`spec is required: the decision's spec id (the file name in decisions/ without .yaml, as in /v1/queue?spec=<id>)`))
@@ -917,8 +917,8 @@ func writeUnknownSpec(w http.ResponseWriter, id string) {
 	writeErr(w, 404, fmt.Errorf("unknown spec %q", id))
 }
 
-// localHostOnly は Host が手元の名前(127.0.0.1・localhost・::1)の時だけ通す。DNS rebinding で別のサイトの名前から
-// 来た要求(GET の記録・作業記録の読み取りを含む)を断る。POST の Origin の検査(acceptJSONPost)とは別の守り。
+// localHostOnly passes only when Host is a local name (127.0.0.1, localhost, ::1). It refuses requests that came from another site's name through DNS rebinding
+// (including GETs that read records and work records). A separate guard from the Origin check on POST (acceptJSONPost).
 func localHostOnly(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host

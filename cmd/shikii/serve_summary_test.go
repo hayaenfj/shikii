@@ -13,7 +13,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 0.7.4: `shikii status` の中身(人の手間・届いた教訓の効果・止める検査)を画面にも出す。/v1/status に summary を足す。
+// 0.7.4: show the content of `shikii status` (the person's effort, the effect of delivered lessons, guards) on the page too. Adds summary to /v1/status.
 func TestStatusEndpointCarriesTheSummaryForThePage(t *testing.T) {
 	st, scope, h, _, _ := memoryEffectFixture(t)
 	get := func() map[string]any {
@@ -25,37 +25,37 @@ func TestStatusEndpointCarriesTheSummaryForThePage(t *testing.T) {
 		}
 		s, _ := out["summary"].(map[string]any)
 		if s == nil {
-			t.Fatalf("status には summary が要る: %s", rec.Body.String())
+			t.Fatalf("status needs a summary: %s", rec.Body.String())
 		}
 		return s
 	}
 	s := get()
 	mem, _ := s["memory"].(map[string]any)
 	gu, _ := s["guards"].(map[string]any)
-	if mem["delivered"] != 0.0 || gu["total"] != 0.0 || gu["enabled"] != 0.0 || gu["rituals"] == nil { // 人の検査は無く、作法の検査(組み込み)の数だけある(0.8.0)
-		t.Fatalf("最初は何も無い(作法の検査の数は別): %v", s)
+	if mem["delivered"] != 0.0 || gu["total"] != 0.0 || gu["enabled"] != 0.0 || gu["rituals"] == nil { // no person's guards; only the count of ritual checks (built in) (0.8.0)
+		t.Fatalf("nothing at first (the count of ritual checks is separate): %v", s)
 	}
 	writeGuard(t, st.Dir, guard{ID: "changelog-pair", Kind: guardKindPairedFiles, Title: "変更履歴は英語と日本語を揃える", Pairs: [][]string{{"CHANGELOG.md", "CHANGELOG_ja.md"}}})
 	memoryEffectPrompt(t, scope, "s1")
 	s = get()
 	mem, _ = s["memory"].(map[string]any)
 	gu, _ = s["guards"].(map[string]any)
-	var items []any // 人が作った検査だけ(組み込みの作法の検査は builtin:true で並ぶ)
+	var items []any // only guards a person made (built-in ritual checks are listed with builtin:true)
 	for _, it := range gu["items"].([]any) {
 		if it.(map[string]any)["builtin"] != true {
 			items = append(items, it)
 		}
 	}
 	if mem["delivered"] != 1.0 || mem["pending"] != 1.0 || gu["total"] != 1.0 || gu["enabled"] != 1.0 || len(items) != 1 || items[0].(map[string]any)["id"] != "changelog-pair" {
-		t.Fatalf("届けた教訓と止める検査が summary に出る: %v", s)
+		t.Fatalf("delivered lessons and guards appear in summary: %v", s)
 	}
 	person, _ := s["person"].(map[string]any)
 	if person == nil || person["records"] == nil {
-		t.Fatalf("人の手間も出る: %v", s)
+		t.Fatalf("the person's effort appears too: %v", s)
 	}
 }
 
-// 0.8.0: 人が答えない判定(wiki-conflict / wiki-place)は確認待ちに数えず、結果待ちの数だけ出す。hook の判定は人の抜き取りがあるので従来どおり。
+// 0.8.0: decisions a person does not answer (wiki-conflict / wiki-place) are not counted as waiting for confirmation; only the number waiting for an outcome is shown. Hook decisions keep the old behavior, since they have spot checks for the person.
 func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -69,7 +69,7 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// 結果で正解が付く判定の「迷い」は結果待ち、人が答える判定の「迷い」は人待ち
+	// "Unsure" in decisions whose truth comes from an outcome waits for the outcome; "unsure" in decisions a person answers waits for the person
 	st.AppendRecord(store.Record{TraceID: "pk1", SpecID: "prompt-kind", Type: "choice", Model: "m", Inputs: map[string]string{"request": "x"}, InputsHash: "pk1", Raw: map[string]float64{"edit": .5, "explain": .5}, Top: "edit", Band: "ask", At: time.Now()})
 	st.AppendRecord(store.Record{TraceID: "np1", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": "o"}, InputsHash: "np1", Raw: map[string]float64{"yes": .5, "no": .5}, Top: "yes", Band: "ask", At: time.Now()})
 	st.AppendRecord(store.Record{TraceID: "np2", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "y", "agreed": "a", "open": "o"}, InputsHash: "np2", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
@@ -85,7 +85,7 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 		t.Fatalf("%v: %s", err, rec.Body.String()[:200])
 	}
 	if body.Model["name"] == nil {
-		t.Fatalf("AI の状態: どのモデルで判定しているか: %v", body.Model)
+		t.Fatalf("the AI's state: which model is deciding: %v", body.Model)
 	}
 	got := map[string]map[string]any{}
 	for _, sp := range body.Specs {
@@ -93,28 +93,28 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	}
 	wc := got["wiki-conflict"]
 	if wc == nil || wc["person_answers"] != false || wc["waiting_for_person"] != float64(0) || wc["awaiting_results"] != float64(3) || wc["unlabeled"] != float64(3) || wc["truth_source"] != "results" {
-		t.Fatalf("人が答えない判定は人待ち 0、結果待ち 3: %v", wc)
+		t.Fatalf("decisions a person does not answer: 0 waiting for a person, 3 waiting for an outcome: %v", wc)
 	}
 	if pk := got["prompt-kind"]; pk["waiting_for_person"] != float64(0) || pk["awaiting_results"] != float64(1) {
-		t.Fatalf("結果で正解が付く判定の迷いは結果待ち: %v", pk)
+		t.Fatalf("unsure decisions whose truth comes from an outcome wait for the outcome: %v", pk)
 	}
 	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["person_answers"] != true || np["awaiting_results"] != float64(0) || np["settled_by_ai"] != float64(1) {
-		t.Fatalf("人が答える判定の迷いは人待ち、抜き取り外の act は結果待ちでなく AI が決めた: %v", np)
+		t.Fatalf("unsure decisions a person answers wait for the person; act outside spot checks is not waiting for an outcome but decided by the AI: %v", np)
 	}
 	nq := httptest.NewRecorder()
 	h.ServeHTTP(nq, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=needs-plan", nil))
 	if !strings.Contains(nq.Body.String(), `"np1"`) || !strings.Contains(nq.Body.String(), `"np2"`) {
-		t.Fatalf("人が正解を付ける問いの列には act も出る(人が直せる。waits_for_person で見分ける): %s", nq.Body.String()[:300])
+		t.Fatalf("the queue of questions a person gives truths to also shows act (the person can correct it; told apart by waits_for_person): %s", nq.Body.String()[:300])
 	}
 	q := httptest.NewRecorder()
 	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=prompt-kind", nil))
 	if !strings.Contains(strings.ReplaceAll(q.Body.String(), " ", ""), `"waits_for_person":false`) {
-		t.Fatalf("列の項目にも人待ちかを付ける: %s", q.Body.String()[:200])
+		t.Fatalf("queue items also say whether they wait for a person: %s", q.Body.String()[:200])
 	}
 }
 
-// 0.8.0: 矛盾の判定は、草稿が保存済み(差し込み先に結果の正解が付いた)なら、触れなかった記事の分は「判断つかず」として
-// 結果待ちに数えず列にも出さない(保存しても 61 件が永久に結果待ちに見えた)。保存前は結果待ち。
+// 0.8.0: for contradiction decisions, once the draft is saved (the insertion place got an outcome truth), the items for pages it did not touch are "undecided"
+// and are neither counted as waiting for an outcome nor shown in the queue (even after saving, 61 items looked like they waited for an outcome forever). Before saving, they wait for an outcome.
 func TestUndecidedConflictJudgmentsLeaveTheQueueOnceTheDraftIsSaved(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -142,9 +142,9 @@ func TestUndecidedConflictJudgmentsLeaveTheQueueOnceTheDraftIsSaved(t *testing.T
 		return nil
 	}
 	if sp := status(); sp["awaiting_results"] != float64(1) || sp["undecided"] != float64(0) {
-		t.Fatalf("保存前は結果待ち: %v", sp)
+		t.Fatalf("before saving, waiting for an outcome: %v", sp)
 	}
-	// 草稿を保存した(差し込み先の判定に結果の正解が付いた)
+	// The draft was saved (the insertion-place decision got an outcome truth)
 	labels, err := store.LabelsFor(&store.Record{TraceID: "wp1", SpecID: "wiki-place", SpecHash: "sh", Type: "noul", Model: "m", InputsHash: "h2", Raw: map[string]float64{"yes": .2, "no": .8}, Top: "no"}, "no", placeOtherWeight, "outcome")
 	if err != nil {
 		t.Fatal(err)
@@ -155,16 +155,16 @@ func TestUndecidedConflictJudgmentsLeaveTheQueueOnceTheDraftIsSaved(t *testing.T
 		}
 	}
 	if sp := status(); sp["awaiting_results"] != float64(0) || sp["undecided"] != float64(1) || sp["unlabeled"] != float64(0) {
-		t.Fatalf("保存後は判断つかず(確定)で結果待ちに数えない: %v", sp)
+		t.Fatalf("after saving, undecided (settled) and not counted as waiting for an outcome: %v", sp)
 	}
 	q := httptest.NewRecorder()
 	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=wiki-conflict", nil))
 	if strings.Contains(q.Body.String(), `"wc1"`) {
-		t.Fatalf("判断つかずの記録は列に出さない: %s", q.Body.String()[:200])
+		t.Fatalf("undecided records are not shown in the queue: %s", q.Body.String()[:200])
 	}
 }
 
-// 監査 R5-3: 抜き取り(act の 20 件に 1 件)は人待ち、AI だけの問いの抜き取りは結果待ち。status の rituals の数と model の名。
+// Audit R5-3: spot checks (1 in 20 of act) wait for a person; spot checks of AI-only questions wait for an outcome. status's rituals count and the model's name.
 func TestStatusCountsSpotChecksRitualsAndModel(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -180,7 +180,7 @@ func TestStatusCountsSpotChecksRitualsAndModel(t *testing.T) {
 		}
 	}
 	if len(samples) < 2 {
-		t.Fatal("抜き取りに当たる trace が見つからない")
+		t.Fatal("no trace that hits a spot check was found")
 	}
 	sampled, sampledWiki := samples[0], samples[1]
 	st.AppendRecord(store.Record{TraceID: sampled, SpecID: "needs-plan", SpecHash: "h", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": "o"}, InputsHash: "a1", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
@@ -206,16 +206,16 @@ func TestStatusCountsSpotChecksRitualsAndModel(t *testing.T) {
 		got[sp["id"].(string)] = sp
 	}
 	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["settled_by_ai"] != float64(0) {
-		t.Fatalf("抜き取りに当たった act は人待ち: %v", np)
+		t.Fatalf("an act that hit a spot check waits for a person: %v", np)
 	}
 	if wc := got["wiki-conflict"]; wc["waiting_for_person"] != float64(0) || wc["awaiting_results"] != float64(1) {
-		t.Fatalf("AI だけの問いは抜き取りでも人待ちにしない: %v", wc)
+		t.Fatalf("AI-only questions do not wait for a person even when spot-checked: %v", wc)
 	}
 	if body.Model["name"] != "TypeSafe Jev" {
-		t.Fatalf("鍵があれば判定モデルは Jev: %v", body.Model)
+		t.Fatalf("with a key, the decision model is Jev: %v", body.Model)
 	}
 	r := body.Summary.Guards.Rituals
 	if r["plan"]["asked"] != 1 || r["plan"]["done"] != 0 || r["plan"]["fixed"] != 1 || r["reflect"]["asked"] != 1 || r["reflect"]["done"] != 1 {
-		t.Fatalf("作法の実施の数: %v", r)
+		t.Fatalf("number of rituals done: %v", r)
 	}
 }

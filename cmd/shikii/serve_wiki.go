@@ -16,11 +16,11 @@ import (
 	"time"
 )
 
-// 画面から wiki を育てる口。下書き(機械が tune の run から起草)と主張(人が置いたもの)を一覧し、
-// 人が「下書きを一般化して主張にする」「状態を変える(confirmed / rejected)」「下書きを消す」をする。
-// 状態を変えるのは人だけ。機械は confirmable(支持するモデルが 2 つ以上、反証無し)と言うだけ。
+// The endpoint that grows the wiki from the page. It lists drafts (drafted by the machine from tune runs) and claims (placed by people),
+// and a person "generalizes a draft into a claim", "changes its state (confirmed / rejected)" or "deletes a draft".
+// Only people change states. The machine only says confirmable (2 or more supporting models, no counterevidence).
 
-// wikiPages は wiki/patterns と wiki/patterns/drafts のページ(前書きの無いものも、主張ではないと分かるように載せる)。
+// wikiPages are the pages in wiki/patterns and wiki/patterns/drafts (pages without front matter are listed too, so it is clear they are not claims).
 func wikiPages(wikiRoot string) ([]string, error) {
 	a, _ := filepath.Glob(filepath.Join(wikiRoot, "patterns", "*.md"))
 	b, _ := filepath.Glob(filepath.Join(wikiRoot, "patterns", "drafts", "*.md"))
@@ -39,7 +39,7 @@ func claimSummary(path string) (map[string]any, error) {
 	for _, e := range pg.Evidence {
 		switch e.Verdict {
 		case "supports":
-			models[baseModel(e.Model)] = true // 同じ土台の配置違いは 1 つのモデル(監査 4 回目の 11)
+			models[baseModel(e.Model)] = true // layout variants on the same base are one model (audit round 4, item 11)
 		case "contradicts":
 			contra++
 		}
@@ -59,7 +59,7 @@ func claimSummary(path string) (map[string]any, error) {
 	return out, nil
 }
 
-// baseModel は応答 model 名から配置の接尾辞("+state-last" 等)を外した土台の名前。
+// baseModel is the base name of a response model name with the layout suffix ("+state-last" etc.) removed.
 func baseModel(m string) string {
 	if i := strings.Index(m, "+"); i > 0 {
 		return m[:i]
@@ -83,7 +83,7 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		claims = append(claims, c)
 	}
 	result := map[string]any{"claims": claims, "lessons": []notebook.Page{}, "notebook_issues": []notebook.Issue{}, "pending_sources_count": 0, "notebook_project": filepath.Base(s.o.projectScope)}
-	if list, err := (handoff.Book{Store: s.o.storeDir}).List(); err == nil { // 作業記録(0.8.1): 画面の知識の欄で読む
+	if list, err := (handoff.Book{Store: s.o.storeDir}).List(); err == nil { // work records (0.8.1): read in the page's knowledge section
 		result["handoff"] = list
 	} else {
 		result["handoff_error"] = true
@@ -97,7 +97,7 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 	} else {
 		result["memory_effect_error"] = true
 	}
-	if r.URL.Query().Get("cursor") == "" { // 知識の画面(0.9.0): 記事ごとの最終更新と効いた回数、人に見てほしい例外だけの受け箱
+	if r.URL.Query().Get("cursor") == "" { // the knowledge page (0.9.0): each page's last update and how often it helped, and an inbox of only the exceptions a person should look at
 		result["lesson_meta"], result["inbox"] = knowledgeMeta(s.o.storeDir, s.o.projectScope, report.All)
 	}
 	{
@@ -121,21 +121,21 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,80}$`)
 
-// insidePatterns は path が wiki/patterns(と drafts)の中の .md か。外は触らない。
-// 口の path は wiki ルートからの相対("patterns/x.md"、"patterns/drafts/x.md")。置き場(<store>/wiki)が変わっても画面と口は変わらない。
+// insidePatterns reports whether path is a .md inside wiki/patterns (or drafts). Nothing outside is touched.
+// The endpoint's path is relative to the wiki root ("patterns/x.md", "patterns/drafts/x.md"). Even if the store (<store>/wiki) moves, the page and endpoint stay the same.
 func insidePatterns(wikiRoot, p string) (string, bool) {
 	clean := filepath.Clean(filepath.FromSlash(p))
 	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") || filepath.Ext(clean) != ".md" {
 		return "", false
 	}
-	dir := filepath.Dir(clean) // 親が patterns か patterns/drafts そのもの(.. や別の場所は等しくならない)
+	dir := filepath.Dir(clean) // the parent is exactly patterns or patterns/drafts (.. or other places are not equal)
 	if dir != "patterns" && dir != filepath.Join("patterns", "drafts") {
 		return "", false
 	}
 	return filepath.Join(wikiRoot, clean), true
 }
 
-// wikiRel は wiki ルートからの相対の path(口と画面に出す形)。
+// wikiRel is the path relative to the wiki root (the form shown in the endpoint and page).
 func wikiRel(wikiRoot, p string) string {
 	if rel, err := filepath.Rel(wikiRoot, p); err == nil {
 		return filepath.ToSlash(rel)
@@ -182,7 +182,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 	isDraft := filepath.Dir(path) == filepath.Join(s.o.wikiDir, "patterns", "drafts")
 	switch req.Action {
 	case "promote":
-		// 下書きを一般化した主張に書き直して patterns/ に移す。証拠と再検証の手順は引き継ぐ。状態は tentative(人が確かめるのはこれから)
+		// Rewrite the draft as a generalized claim and move it to patterns/. Evidence and re-check steps carry over. The state is tentative (a person still has to check it)
 		if !isDraft {
 			writeErr(w, 409, errors.New("only a draft can be promoted"))
 			return
@@ -244,9 +244,9 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// knowledgeMeta は、記事ごとの最終更新と、届いた教訓の評価から数えた役立った・害があった回数(lesson_meta)と、
-// 人に見てほしい例外だけの受け箱(inbox)を返す。受け箱は、害があった教訓・繰り返された訂正・有効にする前の止める検査の 3 つだけ。
-// 人が全部の記事を確かめる作りにはしない(機械が決められない物だけを出す)。
+// knowledgeMeta returns each page's last update, the counts of helpful and harmful from the evaluations of delivered lessons (lesson_meta),
+// and an inbox of only the exceptions a person should look at. The inbox holds only three kinds: harmful lessons, repeated corrections, and guards not yet enabled.
+// It is not built so that a person checks every page (it shows only what the machine cannot decide).
 func knowledgeMeta(storeDir, scope string, observed []store.MemoryObservation) (map[string]map[string]any, []map[string]any) {
 	meta := map[string]map[string]any{}
 	if times, err := (notebook.Book{Root: storeDir, Scope: scope}).PageTimes(); err == nil {
@@ -254,8 +254,8 @@ func knowledgeMeta(storeDir, scope string, observed []store.MemoryObservation) (
 			meta[id] = map[string]any{"updated": at.Format(time.RFC3339), "helpful": 0, "harmful": 0}
 		}
 	}
-	// 受け箱は生きている記事だけ(置き換え済みの記事は出さない)、記事と種類ごとに 1 件へまとめて回数を付ける(監査 0.9.0 の E1)。
-	// observed は新しい順なので、最初の 1 件の依頼と時刻が最新
+	// The inbox has only live pages (replaced pages are not shown), grouped into one item per page and kind with a count (audit 0.9.0 E1).
+	// observed is newest first, so the first item's request and time are the latest
 	alive := map[string]bool{}
 	if live, err := (notebook.Book{Root: storeDir, Scope: scope}).Live(); err == nil {
 		for _, p := range live {

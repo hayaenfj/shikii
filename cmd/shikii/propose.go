@@ -20,14 +20,14 @@ import (
 	"github.com/hayaenfj/shikii/internal/spec"
 )
 
-// 提案役と wiki。tune --propose N が使う。
+// The proposer and the wiki. Used by tune --propose N.
 //
-//   - 提案役はチャット用の LLM(OpenAI 互換の /v1/chat/completions。本家 llama-server でも可)。
-//     渡すのは、今の聞き方、混同表、外した実例、wiki の該当ページ(型・モデルの系統・確認済みのパターン・この spec の決まりと学び)。
-//     返すのは候補の JSON。候補は spec の variants に残す(次回は提案無しでも採点できる。人も読める)。
-//   - 本文(外した実例)は、spec が pii: true なら手元(loopback)の提案役にしか渡さない。
-//   - wiki は markdown のフォルダ。tune は runs/ に証拠のページを書き、specs/<id>.md に案内を足す。
-//     パターン(patterns/)と型(types/)とモデル(models/)のページは人が育てる。機械は読むだけ。
+//   - The proposer is a chat LLM (OpenAI-compatible /v1/chat/completions; upstream llama-server works too).
+//     It is given the current wording, the confusion table, examples it got wrong, and the relevant wiki pages (types, model families, confirmed patterns, this spec's rules and learnings).
+//     It returns candidates as JSON. Candidates are kept in the spec's variants (so the next run can score them without proposing; people can read them too).
+//   - The text (the examples it got wrong) is given only to a local (loopback) proposer when the spec has pii: true.
+//   - The wiki is a folder of markdown. tune writes evidence pages to runs/ and adds a pointer to specs/<id>.md.
+//     Pattern (patterns/), type (types/) and model (models/) pages are grown by people. The machine only reads them.
 
 type proposal struct {
 	Name      string            `json:"name"`
@@ -35,12 +35,12 @@ type proposal struct {
 	Options   map[string]string `json:"options,omitempty"`
 	Levels    []string          `json:"levels,omitempty"`
 	Template  string            `json:"template,omitempty"`
-	Steps     []spec.Step       `json:"steps,omitempty"`  // choice を はい/いいえ の列に分解する提案
-	Layout    string            `json:"layout,omitempty"` // prompt の配置の提案(state-last | state-first | plain)
+	Steps     []spec.Step       `json:"steps,omitempty"`  // a proposal to split a choice into a row of yes/no steps
+	Layout    string            `json:"layout,omitempty"` // a proposal for the prompt layout (state-last | state-first | plain)
 	Rationale string            `json:"rationale,omitempty"`
 }
 
-// isLoopback は提案役が手元か(pii: true の本文を渡してよいか)。
+// isLoopback reports whether the proposer is local (whether text from a pii: true spec may be sent to it).
 func isLoopback(raw string) bool {
 	if !strings.Contains(raw, "://") {
 		raw = "http://" + raw
@@ -57,11 +57,11 @@ func isLoopback(raw string) bool {
 	if ip == nil {
 		return false
 	}
-	return ip.IsLoopback() || ip.IsUnspecified() // 0.0.0.0 / :: は「この機械の全ての口」= 手元
+	return ip.IsLoopback() || ip.IsUnspecified() // 0.0.0.0 / :: means "every port on this machine" = local
 }
 
-// proposerAuth は提案役に付ける鍵。hosted(TypeSafe / OpenRouter)の鍵は提案役には渡さない: 別の相手なので。
-// 提案役に鍵が要るなら SHIKII_PROPOSER_KEY。手元の提案役には何も付けない。
+// proposerAuth is the key sent to the proposer. The hosted (TypeSafe / OpenRouter) key is never sent to the proposer, because it is a different party.
+// If the proposer needs a key, use SHIKII_PROPOSER_KEY. Nothing is sent to a local proposer.
 func proposerAuth(base string) string {
 	if isLoopback(base) {
 		return ""
@@ -69,7 +69,7 @@ func proposerAuth(base string) string {
 	return os.Getenv("SHIKII_PROPOSER_KEY")
 }
 
-// wikiContext は提案役に渡す wiki の抜粋: 型・モデルの系統・確認済みパターン・この spec のページ。
+// wikiContext is the wiki excerpt given to the proposer: types, model families, confirmed patterns and this spec's page.
 func wikiContext(wikiDir string, sp *spec.Spec, model string) string {
 	var b strings.Builder
 	add := func(title, path string, max int) {
@@ -83,7 +83,7 @@ func wikiContext(wikiDir string, sp *spec.Spec, model string) string {
 		}
 		fmt.Fprintf(&b, "\n### %s (%s)\n%s\n", title, filepath.Base(path), s)
 	}
-	// 口の文脈は 4096 トークン程度のことが多いので、全体で 6000 文字ほどに抑える(型とモデルと spec を優先、パターンは残りで)
+	// Endpoints often have a context of about 4096 tokens, so keep the whole thing to about 6000 characters (types, models and the spec first; patterns get what is left)
 	add("How to ask this type of question", filepath.Join(wikiDir, "types", string(sp.Type)+".md"), 1500)
 	add("This model family", filepath.Join(wikiDir, "models", modelSlug(model)+".md"), 1200)
 	add("This decision's own rules and past lessons", filepath.Join(wikiDir, "specs", sp.ID+".md"), 1800)
@@ -103,8 +103,8 @@ func wikiContext(wikiDir string, sp *spec.Spec, model string) string {
 	return b.String()
 }
 
-// modelSlug はモデル名から wiki のページ名を作る(量子化と配置の接尾辞は落とす)。
-// wikiLink は wiki の rel(wiki/ からの相対)のページがあれば runs/ からの Markdown のリンク、無ければ文字だけ。
+// modelSlug makes a wiki page name from a model name (dropping quantization and layout suffixes).
+// wikiLink returns a Markdown link from runs/ if the wiki page rel (relative to wiki/) exists, or plain text if not.
 func wikiLink(wikiDir, rel, text string) string {
 	if fileExists(filepath.Join(wikiDir, filepath.FromSlash(rel))) {
 		return fmt.Sprintf("[%s](../%s)", text, rel)
@@ -128,8 +128,8 @@ func modelSlug(model string) string {
 	return strings.Trim(s, "-")
 }
 
-// buildProposerPrompt は提案役への依頼文。
-// localProposer: 提案役が手元(loopback)か。遠い提案役には pii: true の本文も tainted な本文も見せない。
+// buildProposerPrompt is the request text for the proposer.
+// localProposer: whether the proposer is local (loopback). A remote proposer is never shown text from a pii: true spec or tainted text.
 func buildProposerPrompt(sp *spec.Spec, cur candScore, bank []bankRow, wikiText string, n int, localProposer bool) (system, user string) {
 	withExamples := localProposer || !sp.PIISensitive()
 	system = "You improve how a typed question is asked to a decision model (a model that answers with probabilities, not text). " +
@@ -177,7 +177,7 @@ func buildProposerPrompt(sp *spec.Spec, cur candScore, bank []bankRow, wikiText 
 		shown := 0
 		for i, r := range bank {
 			if cur.correct[i] || shown >= 6 || (r.tainted && !localProposer) {
-				continue // tainted な本文(本番のデータに触った作業で記録した)は手元の提案役にしか見せない
+				continue // tainted text (recorded in work that touched production data) is shown only to a local proposer
 			}
 			state, _ := sp.Render(r.inputs)
 			fmt.Fprintf(&b, "- %q → truth %s\n", trim(state, 200), r.truth)
@@ -198,7 +198,7 @@ func buildProposerPrompt(sp *spec.Spec, cur candScore, bank []bankRow, wikiText 
 	return system, b.String()
 }
 
-// askProposer はチャット用の口に投げて、JSON の候補を取り出す。
+// askProposer sends the request to a chat endpoint and extracts the JSON candidates.
 func askProposer(ctx context.Context, base, model, system, user string) ([]proposal, string, error) {
 	endpoint := strings.TrimRight(base, "/")
 	if !strings.HasSuffix(endpoint, "/chat/completions") {
@@ -211,7 +211,7 @@ func askProposer(ctx context.Context, base, model, system, user string) ([]propo
 		"messages":    []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": user}},
 		"temperature": 0.8,
 		"max_tokens":  2000,
-		// Qwen 系の「考える」モードは答えの前に長い思考を吐き、JSON が切れる。llama.cpp はこの kwargs で止められる(知らない口は無視する)
+		// Qwen's "thinking" mode prints long thoughts before the answer and the JSON gets cut off. llama.cpp can stop it with these kwargs (endpoints that do not know them ignore them)
 		"chat_template_kwargs": map[string]any{"enable_thinking": false},
 	}
 	if model != "" {
@@ -249,7 +249,7 @@ func askProposer(ctx context.Context, base, model, system, user string) ([]propo
 	}
 	content := out.Choices[0].Message.Content
 	if strings.TrimSpace(content) == "" {
-		content = out.Choices[0].Message.Reasoning // 考えだけで終わった口。JSON が中にあれば拾う
+		content = out.Choices[0].Message.Reasoning // an endpoint that ended with only thoughts. Pick up the JSON if it is in there
 	}
 	props, err := parseProposals(content)
 	if err != nil && out.Choices[0].FinishReason == "length" {
@@ -258,12 +258,12 @@ func askProposer(ctx context.Context, base, model, system, user string) ([]propo
 	return props, content, err
 }
 
-// parseProposals は返事から JSON 配列を取り出す(``` で囲まれていても、前後に文があっても)。
+// parseProposals extracts a JSON array from the reply (even when wrapped in ``` or surrounded by text).
 func parseProposals(content string) ([]proposal, error) {
 	var props []proposal
 	var lastErr error
 	parsed := false
-	// 前置きに [ があっても良い: 配列として読める最初の [ … 最後の ] を探す
+	// A [ in the preamble is fine: look for the first [ ... last ] that reads as an array
 	for i := strings.Index(content, "["); i >= 0 && i < len(content); {
 		j := strings.LastIndex(content, "]")
 		if j <= i {
@@ -293,7 +293,7 @@ func parseProposals(content string) ([]proposal, error) {
 	return props, nil
 }
 
-// adoptProposals は提案を検証して spec の variants に足す(名前が重なれば番号を付ける)。通らない提案は数えて飛ばす。
+// adoptProposals checks the proposals and adds them to the spec's variants (numbering names that collide). Proposals that fail are counted and skipped.
 func adoptProposals(sp *spec.Spec, props []proposal) (added, skipped int, notes []string) {
 	names := map[string]bool{"current": true}
 	for _, v := range sp.Variants {
@@ -332,7 +332,7 @@ func adoptProposals(sp *spec.Spec, props []proposal) (added, skipped int, notes 
 	return added, skipped, notes
 }
 
-// writeRunPage は tune の結果を wiki/runs/ に書き、wiki/specs/<id>.md に案内と学びを足す。
+// writeRunPage writes tune's result to wiki/runs/ and adds a pointer and learnings to wiki/specs/<id>.md.
 func writeRunPage(wikiDir string, sp *spec.Spec, model string, cands []candidate, scores []candScore, holdout float64, haveHoldout bool, decision, lesson string, rationales []string) (string, error) {
 	if err := os.MkdirAll(filepath.Join(wikiDir, "runs"), 0o755); err != nil {
 		return "", err
@@ -353,7 +353,7 @@ func writeRunPage(wikiDir string, sp *spec.Spec, model string, cands []candidate
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# tune %s on %s (%s)\n\n", sp.ID, model, day)
-	// モデルと型のページは、あるものだけリンクにする(新しいプロジェクトの wiki に無いページへ張ると、利用者の wiki でリンク切れになる)。spec のページはこの下で必ず作る
+	// Link only the model and type pages that exist (linking to pages not in a new project's wiki would leave broken links in the user's wiki). The spec page is always created below
 	fmt.Fprintf(&b, "spec: [%s](../specs/%s.md) · model page: %s · type: %s · truths: %d · hash before: %s\n\n", sp.ID, sp.ID,
 		wikiLink(wikiDir, "models/"+slug+".md", slug), wikiLink(wikiDir, "types/"+string(sp.Type)+".md", string(sp.Type)), len(scores[0].p), sp.Hash())
 	b.WriteString("| candidate | top-1 | brier | prec@act | rec@act | what changes |\n|---|---|---|---|---|---|\n")
@@ -374,7 +374,7 @@ func writeRunPage(wikiDir string, sp *spec.Spec, model string, cands []candidate
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return "", err
 	}
-	// spec ページ: 無ければ作る(Rules は人が書く)。Runs に 1 行足す
+	// spec page: create it if missing (people write the Rules). Add one line to Runs
 	specPage := filepath.Join(wikiDir, "specs", sp.ID+".md")
 	data, err := os.ReadFile(specPage)
 	if err != nil {

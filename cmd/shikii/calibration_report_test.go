@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 件数が揃っていても分離や精度で保存を止める。理由と保存しない事実を一緒に検証する。
+// Even with enough cases, saving stops on separation or precision. Check the reason and the fact that nothing was saved together.
 func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

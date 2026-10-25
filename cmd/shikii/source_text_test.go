@@ -30,14 +30,14 @@ func TestHookKeepsFullClosingTextForPeople(t *testing.T) {
 	st := store.Store{Dir: agent}
 	records, _ := st.Records("done-as-asked", 0)
 	if len(records) != 1 || len(records[0].Inputs["summary"]) > requestMax || modelSawEnd.Load() {
-		t.Fatal("判定モデルに渡す入力の上限は保つ")
+		t.Fatal("keep the input limit for what is given to the decision model")
 	}
 	before := records[0]
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "full-text", "cwd": repo, "prompt": "画面を開いて"})
 	feedback, _ := st.RecentFeedback(feedbackScope(repo))
 	view, err := reviewQuery(st, feedbackScope(repo))
 	if err != nil || len(view["pending"].([]reviewTask)) != 1 || view["pending"].([]reviewTask)[0].Targets[0].OriginalInputs["summary"] != closing {
-		t.Fatal("仮採点をするエージェントも query で末尾まで読める")
+		t.Fatal("the agent doing tentative scoring can also read to the end with query")
 	}
 	h := newServer(serveOpts{storeDir: agent, projectScope: feedbackScope(repo)})
 	reviewCall(t, h, map[string]any{"operation": "submit", "source_id": feedback[0].ID, "trace_id": before.TraceID, "truth": "unknown", "reason": "次の発言は画面を開く追加依頼であり、完了の評価を含まない"})
@@ -48,19 +48,19 @@ func TestHookKeepsFullClosingTextForPeople(t *testing.T) {
 	}
 	_ = json.Unmarshal(r.Body.Bytes(), &queue)
 	if len(queue.Items) != 1 {
-		t.Fatal("確認する判定が画面に届く")
+		t.Fatal("the decision to check reaches the page")
 	}
 	originals, _ := queue.Items[0]["original_inputs"].(map[string]any)
 	if originals["summary"] != closing || originals["request"] != request {
-		t.Fatal("1,500 バイトを超えた返答も、末尾まで画面へ届ける")
+		t.Fatal("a reply over 1,500 bytes also reaches the page to its end")
 	}
 	after, _ := st.FindRecord(before.SpecID, before.TraceID)
 	if after.InputsHash != before.InputsHash || after.SpecHash != before.SpecHash || after.Inputs["summary"] != before.Inputs["summary"] {
-		t.Fatal("画面用の原文は元の判定・入力・ハッシュを変えない")
+		t.Fatal("the original text for the page does not change the original decision, inputs or hash")
 	}
 }
 
-// 件数を絞る前後で、優先順・やり直し元の除外・返す原文が変わらない。
+// Before and after narrowing the count, the priority order, the exclusion of redo originals and the original text returned do not change.
 func TestServeQueueLimitKeepsPriorityAndOriginals(t *testing.T) {
 	url, path, dir := newServeFixture(t, "false", map[string]float64{"change_request": 1})
 	sp, err := spec.Load(path)

@@ -16,7 +16,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// 文脈に敏感な偽モデル: "fix …" は本文だけだと迷う(0.65)。直前のやりとり(Previous turn)が付くと確信する(0.9)。"why …" は本文だけで確信する。
+// A context-sensitive fake model: "fix …" is unsure with the text alone (0.65). With the previous exchange (Previous turn) it is confident (0.9). "why …" is confident with the text alone.
 func contextModel(t *testing.T) (*httptest.Server, *int32) {
 	t.Helper()
 	var calls int32
@@ -42,7 +42,7 @@ func contextModel(t *testing.T) (*httptest.Server, *int32) {
 	return srv, &calls
 }
 
-// writeContextSpec は intent の spec に state.context(直前のやりとりを足す並べ方)を入れて decisions/ に置く。
+// writeContextSpec puts state.context (a layout that adds the previous exchange) into the intent spec and places it in decisions/.
 func writeContextSpec(t *testing.T, dir string) string {
 	t.Helper()
 	sub := filepath.Join(dir, "decisions")
@@ -75,8 +75,8 @@ func readLabels(t *testing.T, storeDir, specID string) []store.Label {
 	return out
 }
 
-// 迷った時だけ文脈を足して聞き直し、そこで確信に届いた答えは最小の質問の正解として残る(出どころ context、重みは確率)。
-// 人が答えると、その正解は両方の段に付く。status は段ごとの数と 1000 判定あたりの人の判断を出す。
+// Only when unsure, add context and ask again; an answer that becomes confident there is kept as the truth for the minimal question (source context, weight = probability).
+// When a person answers, that truth goes on both rungs. status shows counts per rung and the person's decisions per 1000 decisions.
 func TestDecideWritesTheContextAnswerAsTruthForTheMinimalRung(t *testing.T) {
 	dir := t.TempDir()
 	srv, calls := contextModel(t)
@@ -103,7 +103,7 @@ func TestDecideWritesTheContextAnswerAsTruthForTheMinimalRung(t *testing.T) {
 	if l.Source != "context" || l.Rung != "minimal" || l.SpecHash != sp.Hash() || l.Truth != "change_request" || l.Weight != 0.9 || l.Raw["change_request"] != 0.65 || l.TraceID != trace {
 		t.Fatalf("the machine truth carries the minimal rung's hash and raw, the context rung's answer and probability: %+v", l)
 	}
-	// 人の答えは両方の段に付き、同じ入力なので機械の正解より新しい方(人)が勝つ
+	// The person's answer goes on both rungs, and since it is the same input, the newer one (the person) beats the machine truth
 	out = capture(t, func() error { return cmdLabel([]string{trace, "question", "--store", storeDir, "--source", "ask"}) })
 	if strings.Count(out, "labeled ") != 2 || !strings.Contains(out, "context rung") || !strings.Contains(out, "minimal rung") {
 		t.Fatalf("a human answer on a context decision must label both rungs:\n%s", out)
@@ -112,7 +112,7 @@ func TestDecideWritesTheContextAnswerAsTruthForTheMinimalRung(t *testing.T) {
 	if len(labels) != 3 || labels[1].SpecHash != sp.ContextHash() || labels[1].Raw["change_request"] != 0.9 || labels[2].SpecHash != sp.Hash() || labels[2].Raw["change_request"] != 0.65 || labels[1].Truth != "question" || labels[2].Truth != "question" {
 		t.Fatalf("labels: %+v", labels)
 	}
-	// 文脈が無い判定は最小の段で止まり、人に回る
+	// A decision without context stops at the minimal rung and goes to the person
 	capture(t, func() error {
 		return cmdDecide([]string{specPath, "-i", "message=fix b", "--local", srv.URL, "--store", storeDir})
 	})
@@ -127,13 +127,13 @@ func TestDecideWritesTheContextAnswerAsTruthForTheMinimalRung(t *testing.T) {
 	}
 }
 
-// calibrate は段ごとに線を引く: 最小の質問の正解で 1 本、文脈の段の正解で 1 本。check は両方を検証して通す。
+// calibrate draws a line per rung: one from the minimal question's truths, one from the context rung's truths. check verifies both and passes.
 func TestCalibrateFitsEachRungOnItsOwnTruths(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)
 	specPath := writeContextSpec(t, dir)
 	storeDir := filepath.Join(dir, ".shikii")
-	// 線が無いうちは確信があっても ask なので、どの判定も文脈の段まで上がり、人に回る。人の答えが両方の段の正解になる
+	// While there is no line, even a confident answer is ask, so every decision goes up to the context rung and to the person. The person's answers become truths for both rungs
 	for _, x := range []string{"a", "b", "c"} {
 		for verb, truth := range map[string]string{"fix": "change_request", "why": "question"} {
 			out := capture(t, func() error {
@@ -167,7 +167,7 @@ func TestCalibrateFitsEachRungOnItsOwnTruths(t *testing.T) {
 	if !strings.Contains(out, "ok   intent") || !strings.Contains(out, "calibrations=2") {
 		t.Fatalf("check must accept the context rung's line as live:\n%s", out)
 	}
-	// 線が引けたので、次の判定は人に回らない。6 件の正解で「0.65 の change_request は当たる」と分かった最小の段が act を出すか、文脈の段が出す
+	// A line was drawn, so the next decision does not go to the person. Either the minimal rung, which learned from 6 truths that "change_request at 0.65 is right", gives act, or the context rung does
 	out = capture(t, func() error {
 		return cmdDecide([]string{specPath, "-i", "message=fix d", "-i", "previous=context", "--local", srv.URL, "--store", storeDir})
 	})
@@ -180,7 +180,7 @@ func TestCalibrateFitsEachRungOnItsOwnTruths(t *testing.T) {
 	}
 }
 
-// tune は聞き方の候補を最小の質問の段だけで採点する。貯金の本文に文脈の入力があっても、段を上がらない。
+// tune scores wording candidates only on the minimal question rung. Even if the bank's text has context inputs, it does not go up the rungs.
 func TestTuneScoresCandidatesOnTheMinimalRungOnly(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -193,7 +193,7 @@ func TestTuneScoresCandidatesOnTheMinimalRungOnly(t *testing.T) {
 		}
 		resp := systemone.Response{Model: "m", Answers: map[string]systemone.Answer{}}
 		for k, q := range req.Questions {
-			probs := map[string]float64{"change_request": 0.65, "question": 0.3, "other": 0.05} // 迷う答え: 段を上がる条件が揃う
+			probs := map[string]float64{"change_request": 0.65, "question": 0.3, "other": 0.05} // an unsure answer: the conditions to go up a rung are met
 			if strings.Contains(q.Instructions, "strict") && strings.Contains(req.State, "why") {
 				probs = map[string]float64{"change_request": 0.1, "question": 0.9, "other": 0}
 			}
@@ -221,7 +221,7 @@ func TestTuneScoresCandidatesOnTheMinimalRungOnly(t *testing.T) {
 	if contextCalls != 0 || !strings.Contains(out, "winner: strict") {
 		t.Fatalf("tune must never climb to the context rung while scoring (%d context calls):\n%s", contextCalls, out)
 	}
-	// 採用した版は context を引き継ぐ。採用時の calibrate は、本文に文脈があるので文脈の段の線も聞き直して引く(これは段を上がるのではなく、その段を測る)
+	// The adopted version keeps context. calibrate at adoption asks again and draws the context rung's line too, since the text has context (this measures that rung rather than going up a rung)
 	out = capture(t, func() error {
 		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
 	})
@@ -231,7 +231,7 @@ func TestTuneScoresCandidatesOnTheMinimalRungOnly(t *testing.T) {
 	}
 }
 
-// serve: 文脈を足した判定は画面にそう見え、古い文言(stale)ではない。人の答えは両方の段に付き、status は段ごとの数を出す。
+// serve: a decision with added context looks so on the page and is not old wording (stale). The person's answer goes on both rungs, and status shows counts per rung.
 func TestServeShowsTheRungAndLabelsBothRungs(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)

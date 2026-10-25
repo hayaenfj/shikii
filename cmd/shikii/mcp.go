@@ -18,23 +18,23 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// shikii mcp: serve と同じ中身を、stdio の MCP サーバー(JSON-RPC 2.0、1 行 1 メッセージ)として出す。
-// Claude Code などのエージェントが、判定・正解付け・状態の確認を道具として呼べる。推論は持たない。
+// shikii mcp: serves the same content as serve, as a stdio MCP server (JSON-RPC 2.0, one message per line).
+// Agents such as Claude Code can call deciding, labeling and checking status as tools. It does no inference itself.
 //
-//	道具: shikii_specs / shikii_decide / shikii_label / shikii_status
-//	設定例(.mcp.json): {"mcpServers":{"shikii":{"command":"shikii","args":["mcp","--specs","decisions","--local","http://127.0.0.1:8080"]}}}
+//	tools: shikii_specs / shikii_decide / shikii_label / shikii_status
+//	example config (.mcp.json): {"mcpServers":{"shikii":{"command":"shikii","args":["mcp","--specs","decisions","--local","http://127.0.0.1:8080"]}}}
 //
-// 中身は HTTP のハンドラをそのまま内部で呼ぶ(ロジックを二重に持たない)。
+// Internally it calls the HTTP handlers as they are (the logic is not kept twice).
 
 func cmdMCP(args []string) error {
 	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
 	var o serveOpts
 	o.ef.bind(fs)
-	fs.StringVar(&o.specsDir, "specs", "", "spec(*.yaml)のフォルダ(既定は <store>/decisions)")
-	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
-	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "正解が eval.min_n に届いたら自動で較正して spec に書き戻す")
-	fs.StringVar(&o.proposer, "proposer", "", "聞き方の候補を作る提案役(チャット用 LLM)の URL")
-	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名")
+	fs.StringVar(&o.specsDir, "specs", "", "folder of specs (*.yaml) (default: <store>/decisions)")
+	fs.StringVar(&o.storeDir, "store", ".shikii", "where records and labels are kept")
+	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "calibrate automatically and write back to the spec once truths reach eval.min_n")
+	fs.StringVar(&o.proposer, "proposer", "", "URL of the proposer (a chat LLM) that drafts wording candidates")
+	fs.StringVar(&o.proposerModel, "proposer-model", "", "model name of the proposer")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func cmdMCP(args []string) error {
 	if _, err := loadSpecs(o.specsDir); err != nil {
 		return err
 	}
-	log.SetOutput(os.Stderr) // stdout は MCP の通信路。ログは stderr へ
+	log.SetOutput(os.Stderr) // stdout is the MCP channel. Logs go to stderr
 	log.Printf("shikii mcp: specs=%s store=%s local=%q hosted=%q", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted))
 	return runMCP(bufio.NewReader(os.Stdin), os.Stdout, newServer(o))
 }
@@ -66,7 +66,7 @@ type rpcError struct {
 
 const mcpProtocol = "2025-03-26"
 
-// mcpTools は道具の一覧。inputSchema は JSON Schema。
+// mcpTools is the list of tools. inputSchema is JSON Schema.
 var correctionSchema = map[string]any{"type": "object", "additionalProperties": false,
 	"properties": map[string]any{"source_id": map[string]any{"type": "string"}, "quote": map[string]any{"type": "string"}, "action": map[string]any{"type": "string"}},
 	"required":   []string{"source_id", "quote", "action"},
@@ -76,17 +76,17 @@ var maintenanceSchema = map[string]any{"type": "object", "additionalProperties":
 	"page_id": map[string]any{"type": "string"}, "revision": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"},
 }, "required": []string{"page_id", "revision", "key", "reason"}}
 
-// kindSchema と sceneSchema は記事の種類と場面(0.9.0)。教訓のある記事は保存の口で必須(直す時に省けば引き継ぐ)。
-var kindSchema = map[string]any{"type": "string", "enum": notebook.Kinds, "description": "教訓の種類(必須。直す時は省けば引き継ぐ): rule=このプロジェクトで決められたルール、howto=やり方、criteria=判断の基準、fact=前提と事実、history=経緯"}
-var sceneSchema = map[string]any{"type": "string", "maxLength": 24, "description": "当てはまる場面をその仕事の言葉で短く(必須。例「コミットする時」「請求書を出す時」。1 行 24 文字まで)。place の返事の今ある場面に近い物があれば同じ言い方を使う"}
+// kindSchema and sceneSchema are a page's kind and scene (0.9.0). The save endpoint requires them on pages with a lesson (omitting them on an edit keeps the old values).
+var kindSchema = map[string]any{"type": "string", "enum": notebook.Kinds, "description": "the lesson's kind (required; omit on an edit to keep it): rule=a rule decided in this project, howto=how to do something, criteria=a basis for judging, fact=a premise or fact, history=how things came to be"}
+var sceneSchema = map[string]any{"type": "string", "maxLength": 24, "description": "the scene it applies to, short and in the work's own words (required; e.g. \"when committing\", \"when sending an invoice\"; one line, up to 24 characters). If place returns an existing scene close to it, use the same wording"}
 
-// mcpInstructions は MCP のサーバーの案内。hook の無いエージェント(Codex・OpenCode)には、これと道具の説明だけが届く。
+// mcpInstructions is the MCP server's guidance. Agents without a hook (Codex, OpenCode) get only this and the tool descriptions.
 const mcpInstructions = "shikii turns a decision model's probability into act / ask / discard. Call shikii_specs first; decide with shikii_decide; when you learn what was true, call shikii_label with the trace_id so the spec can be calibrated. Use shikii_wiki to query, ingest and lint lessons from this project's conversations. Lessons are hypotheses with sources, never truth labels or permission to act. Your usual agent maintains this wiki without asking the user to organize it. Every lesson needs a kind (rule, howto, criteria, fact or history) and a scene written in the project's own words; reuse a scene that place returns. When shikii_wiki query lists unclassified pages (made before 0.9.0), give each one a kind and a scene with operation classify before ending the turn. When you create or change a rule, test or procedure (commands, scripts) yourself, write it to the wiki in the same turn even if nobody asked: add to or edit the closest page, or make a new howto or rule page."
 
 var mcpTools = []map[string]any{
 	{
 		"name":        "shikii_reflect",
-		"description": "採点・wiki整理・記憶の寄与の仮評価をまとめる(queryは古い会話から2件ずつ見せ、submitは会話と項目の数を限らない)。queryで原文・対象・届いた記憶・教訓・人の訂正を読み、placeに新しい教訓の草稿(wiki)を渡して差し込み先の候補と矛盾の疑いを受け取り、submitでreviews/wiki/memoryを保存する。memoryはhelpful/unused/harmful/unknownと、使った判断decision・確認結果evidenceを記録する。訂正の教訓にはcorrection:{source_id,quote,action}を付け、人の返答の原文と次の行動を結ぶ。届いた訂正へのmemoryにはcorrection_result（followed/repeated/not_applicable/unknown）も付ける。配送や作業成功だけを効果とせず、根拠不足はunknown。正解・較正には混ぜない。complete:falseなら各errorを確認して再送する。",
+		"description": "Bundles scoring, wiki upkeep and tentative evaluation of how memory helped (query shows 2 conversations at a time from the oldest; submit has no limit on conversations or items). Use query to read the original text, the target, the memory delivered, the lessons and the person's corrections; pass a draft of a new lesson (wiki) to place to get candidate places to insert it and suspected contradictions; save reviews/wiki/memory with submit. memory records helpful/unused/harmful/unknown, the decision it was used for and the evidence checked. A correction lesson carries correction:{source_id,quote,action}, linking the original text of the person's reply to the next action. memory for a delivered correction also carries correction_result (followed/repeated/not_applicable/unknown). Do not count delivery or work success alone as an effect; with too little evidence, use unknown. Never mix this into truths or calibration. If complete:false, check each error and resend.",
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"operation":   map[string]any{"type": "string", "enum": []string{"query", "place", "submit"}},
 			"maintenance": map[string]any{"type": "array", "items": maintenanceSchema},
@@ -106,8 +106,8 @@ var mcpTools = []map[string]any{
 				"change_reason": map[string]any{"type": "string"},
 				"id":            map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "lesson": map[string]any{"type": "string"}, "applies_to": map[string]any{"type": "string"},
 				"replaces": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"body":     map[string]any{"type": "string", "description": "背景・根拠・適用条件・未確定点を出典から統合した知識本文。最大16KB。省略は既存本文を保持、空文字は解除"},
-				"related":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "同じプロジェクトの関連ページID。省略は保持、空配列は解除"},
+				"body":     map[string]any{"type": "string", "description": "the knowledge text, combining background, evidence, conditions and open points from the sources. Up to 16KB. Omit to keep the existing text; an empty string clears it"},
+				"related":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "ids of related pages in the same project. Omit to keep; an empty array clears"},
 				"kind":     kindSchema,
 				"scene":    sceneSchema,
 			}, "required": []string{"sources"}}},
@@ -115,12 +115,12 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "shikii_review",
-		"description": "会話と作業結果から、頼まれた範囲と完了を根拠付きで仮採点する。query で同じ仕事の未採点の原文・対象・人の訂正例を確認し、submit で source_id / trace_id / truth / reason を保存する。根拠が足りなければ unknown。追加依頼・挨拶・沈黙だけで成功や失敗にしない。人の正解や較正には混ぜない。人への抜き打ち確認は shikii が選ぶ。",
+		"description": "Tentatively scores, with evidence, whether the work stayed within what was asked and was completed, from the conversation and the work's results. Use query to check unscored original text, targets and examples of the person's corrections for the same work; save source_id / trace_id / truth / reason with submit. If the evidence is not enough, use unknown. Do not count a follow-up request, a greeting or silence alone as success or failure. Never mix this into human truths or calibration. shikii picks the spot checks for the person.",
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"operation": map[string]any{"type": "string", "enum": []string{"query", "submit"}},
 			"source_id": map[string]any{"type": "string"}, "trace_id": map[string]any{"type": "string"},
 			"truth":  map[string]any{"type": "string", "enum": []string{"yes", "no", "unknown"}},
-			"reason": map[string]any{"type": "string", "description": "原文と結果からの具体的な採点の根拠"},
+			"reason": map[string]any{"type": "string", "description": "the concrete reason for the score, from the original text and the result"},
 		}, "required": []string{"operation"}},
 	},
 	{
@@ -175,30 +175,30 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "shikii_wiki",
-		"description": "同じ仕事の原資料からwikiを育てる。captureは確認したコード・テスト・Release等を種類・版・時点・参照付きで保持する。queryのmaintenanceは最大2記事の見直し対象で、maintainへ最新のpage_id・revision・keyとreasonを渡して記録する。query で教訓と未整理の原資料を読み、sources を指定した query で原文を確かめる。原資料と既存ページを読み、短いlessonと背景・理由・未確定点を含むbodyへ統合し、relatedで関連知識を結ぶ。ingestは適用条件・出典IDとともに保存し、索引と履歴を更新する。教訓には kind(rule このプロジェクトで決められたルール / howto やり方 / criteria 判断の基準 / fact 前提と事実 / history 経緯)と scene(その仕事の言葉で「〜する時」)が要る。query が unclassified(0.9.0 より前の、種類と場面の無い記事)を返したら、classify に id・kind・scene を渡して付けてから終える。再利用する教訓が無ければ sources だけで整理済みにする。既存の教訓の更新には id、古い教訓の置き換えには replaces を使う。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次に変える行動を結ぶ。引用の存在は意味の正しさを保証しない。全て仮説であり、正解・較正・confirmed の状態は変更しない。lint は出典やリンクを点検し、生成した索引を整える。handoff_list / handoff_read / handoff_write / handoff_append は作業記録(.shikii/handoff/)を扱う: 途中で書き換える作業ファイル(監査の報告、リリースの手順と記録、差分)を置き、人は画面の知識の欄で読む。教訓は ingest、確かめた時点の証拠は capture、書き換えながら進める物は handoff。人に画面操作を求めない。",
+		"description": "Grows the wiki from the same work's sources. capture keeps code, tests, Releases and so on that you checked, with kind, version, time and reference. query's maintenance lists up to 2 pages to review; pass the latest page_id, revision, key and reason to maintain to record it. Read lessons and unprocessed sources with query, and check the original text with a query that names sources. Read the sources and existing pages, combine them into a short lesson and a body with background, reasons and open points, and link related knowledge with related. ingest saves with the conditions and source ids, and updates the index and history. A lesson needs a kind (rule a rule decided in this project / howto how to do something / criteria a basis for judging / fact a premise or fact / history how things came to be) and a scene (in the work's own words, \"when ...\"). If query returns unclassified pages (pages from before 0.9.0 with no kind or scene), pass id, kind and scene to classify before you finish. If no lesson is worth reusing, mark the sources as processed with sources only. Use id to update an existing lesson and replaces to replace an old one. For an explicit correction, use correction:{source_id,quote,action} to link the original text of the person's reply to the action that changes next. A quote existing does not guarantee its meaning is right. Everything is a hypothesis and never changes truths, calibration or the confirmed state. lint checks sources and links and tidies the generated index. handoff_list / handoff_read / handoff_write / handoff_append handle work records (.shikii/handoff/): put work files you rewrite along the way there (audit reports, release steps and records, diffs); the person reads them in the page's knowledge section. Lessons go to ingest, evidence as checked at the time goes to capture, things you rewrite as you go go to handoff. Do not ask the person to operate the page.",
 		"inputSchema": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
 				"operation":   map[string]any{"type": "string", "enum": []string{"query", "ingest", "capture", "maintain", "lint", "classify", "handoff_list", "handoff_read", "handoff_write", "handoff_append"}},
-				"path":        map[string]any{"type": "string", "description": "作業記録(handoff_*)のパス。.shikii/handoff/ からの相対(例: audit-0.8.1/report-A.md)。..・隠し名・絶対パスは断る"},
-				"content":     map[string]any{"type": "string", "description": "handoff_write(置き換え)・handoff_append(末尾に足す)の本文。UTF-8 の文字で 1 回 1 MiB まで"},
+				"path":        map[string]any{"type": "string", "description": "path of a work record (handoff_*), relative to .shikii/handoff/ (e.g. audit-0.8.1/report-A.md). Refuses .., hidden names and absolute paths"},
+				"content":     map[string]any{"type": "string", "description": "text for handoff_write (replace) or handoff_append (add to the end). UTF-8 text, up to 1 MiB per call"},
 				"maintenance": maintenanceSchema,
 				"observation": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 					"kind":  map[string]any{"type": "string", "enum": []string{"human", "agent", "code", "test", "release"}},
 					"title": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "reference": map[string]any{"type": "string"}, "version": map[string]any{"type": "string"}, "observed_at": map[string]any{"type": "string", "format": "date-time"},
-				}, "required": []string{"kind", "title", "content", "reference", "version", "observed_at"}, "description": "確認した原資料の控え。プログラムは参照先を実行・取得しない。AIの提供する観察で、実行許可や正解にはしない"},
-				"query":         map[string]any{"type": "string", "description": "検索する話題の語。search.totalと候補を返し、多い時はnext_cursorを同じ検索条件のcursorへ渡す。意味検索ではないので話題の一致を確認する"},
-				"cursor":        map[string]any{"type": "string", "description": "同じqueryまたはsourcesの応答にあるnext_cursor。件数で切らず続きを読む"},
-				"sources":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この仕事で観察された原資料のID。多い時はnext_cursorを同じsourcesのcursorへ渡して続きを読む"},
-				"id":            map[string]any{"type": "string", "description": "更新する既存の教訓のID"},
+				}, "required": []string{"kind", "title", "content", "reference", "version", "observed_at"}, "description": "a copy of a source you checked. The program never runs or fetches the reference. It is an observation the AI provides and never becomes permission to act or a truth"},
+				"query":         map[string]any{"type": "string", "description": "topic words to search for. Returns search.total and candidates; when there are many, pass next_cursor to cursor with the same search. It is not a semantic search, so check that the topic matches"},
+				"cursor":        map[string]any{"type": "string", "description": "the next_cursor from a response to the same query or sources. Read the rest instead of cutting by count"},
+				"sources":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "ids of sources observed in this work. When there are many, pass next_cursor to cursor with the same sources to read the rest"},
+				"id":            map[string]any{"type": "string", "description": "id of the existing lesson to update"},
 				"correction":    correctionSchema,
 				"change_reason": map[string]any{"type": "string"},
 				"title":         map[string]any{"type": "string"},
-				"lesson":        map[string]any{"type": "string", "description": "検索・短い引用に使う要約。最大2000バイト。機械の解釈なので仮説として保存する"},
-				"body":          map[string]any{"type": "string", "description": "背景・根拠・適用条件・未確定点を出典から統合した知識本文。最大16KB。省略は既存本文を保持、空文字は解除"},
-				"related":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "同じプロジェクトの関連ページID。省略は保持、空配列は解除"},
-				"applies_to":    map[string]any{"type": "string", "description": "この教訓が当てはまる条件"},
-				"replaces":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "この教訓で更新する、同じ仕事の古い教訓のID。更新時の省略は既存の指定を保ち、空配列は置き換えを解除する"},
+				"lesson":        map[string]any{"type": "string", "description": "a summary used for search and short quotes. Up to 2000 bytes. It is the machine's interpretation, so it is saved as a hypothesis"},
+				"body":          map[string]any{"type": "string", "description": "the knowledge text, combining background, evidence, conditions and open points from the sources. Up to 16KB. Omit to keep the existing text; an empty string clears it"},
+				"related":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "ids of related pages in the same project. Omit to keep; an empty array clears"},
+				"applies_to":    map[string]any{"type": "string", "description": "the conditions under which this lesson applies"},
+				"replaces":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "ids of old lessons from the same work that this lesson updates. Omitting it on an update keeps the existing value; an empty array removes the replacement"},
 				"kind":          kindSchema,
 				"scene":         sceneSchema,
 			},
@@ -207,7 +207,7 @@ var mcpTools = []map[string]any{
 	},
 }
 
-// runMCP は 1 行 1 メッセージの JSON-RPC を読み、答えを書く。通知(id 無し)には答えない。
+// runMCP reads JSON-RPC one message per line and writes the answers. Notifications (no id) get no answer.
 func runMCP(r *bufio.Reader, w io.Writer, h http.Handler) error {
 	enc := json.NewEncoder(w)
 	for {
@@ -285,7 +285,7 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 	}
 }
 
-// callTool は道具名を HTTP のハンドラに写す。戻りは HTTP の状態と JSON 本文。
+// callTool maps a tool name to an HTTP handler. It returns the HTTP status and the JSON body.
 func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, error) {
 	if len(args) == 0 {
 		args = []byte("{}")
@@ -314,7 +314,7 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 	var body io.Reader
 	if method == http.MethodPost {
 		if name == "shikii_label" {
-			// エージェントのラベルは人のラベルと区別できるように、出どころが無ければ "mcp" を付ける(監査 S6)
+			// Mark an agent's label "mcp" when it has no source, so it can be told apart from a person's label (audit S6)
 			var m map[string]any
 			if json.Unmarshal(args, &m) == nil {
 				if s, _ := m["source"].(string); s == "" {
@@ -334,7 +334,7 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 	return rec.Code, rec.Body.Bytes(), nil
 }
 
-// toolResult は MCP の道具の結果。誤り(4xx/5xx)は isError で返し、JSON-RPC のエラーにはしない(エージェントが読んで直せる)。
+// toolResult is an MCP tool result. Errors (4xx/5xx) are returned with isError, not as JSON-RPC errors (so the agent can read them and fix things).
 func toolResult(code int, body []byte) map[string]any {
 	text := strings.TrimSpace(string(body))
 	res := map[string]any{"content": []map[string]any{{"type": "text", "text": text}}, "isError": code >= 400}

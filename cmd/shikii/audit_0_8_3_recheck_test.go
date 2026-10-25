@@ -1,6 +1,6 @@
 package main
 
-// 0.8.3 の再監査(新-1・残-1・残-2)を再現するテスト(監査者が写しで書いた物を取り込んだ)。
+// Tests that reproduce the 0.8.3 recheck (new-1, remaining-1, remaining-2) (brought in from what the auditor wrote in a copy).
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 再監査の新-1(日本語): 同じ place で 2 件置き(A, B の順)、A を X へ書き直して合流。X の本文は長め(今までの本文 + A)。
+// Recheck new-1 (Japanese): place 2 items in the same place (A, then B), rewrite A into X and merge. X's body is long-ish (the body so far + A).
 func TestPlacementTwoDraftsInOnePlaceLabelsTheMergedOne(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
@@ -29,11 +29,11 @@ func TestPlacementTwoDraftsInOnePlaceLabelsTheMergedOne(t *testing.T) {
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if place[trA].Truth != "yes" {
-		t.Errorf("合流した A に「はい」が付かない(A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
+		t.Errorf("the merged A does not get \"yes\" (A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
 	}
 }
 
-// 再監査の新-1(英語、置いた順が逆): 英語。B を置き、その後に関係ない A を置く。B を X へ長い英語の本文で合流。
+// Recheck new-1 (English, placed in reverse order): English. Place B, then an unrelated A. Merge B into X with a long English body.
 func TestPlacementEnglishLaterUnrelatedDraftDoesNotWin(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "Status page first", "Commit author identity")
@@ -56,11 +56,11 @@ func TestPlacementEnglishLaterUnrelatedDraftDoesNotWin(t *testing.T) {
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if place[trB].Truth != "yes" || place[trA].Truth != "" {
-		t.Errorf("合流した B でなく、後に置いた関係ない A に付いた(A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
+		t.Errorf("it went to the unrelated A placed later instead of the merged B (A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
 	}
 }
 
-// 再監査で問題無し(置き換え): 置き換え(replaces)で、教訓を書き直した新しい記事。
+// No problem in the recheck (replacing): a new page that rewrote the lesson, via replaces.
 func TestPlacementReplacementWithRewrittenLesson(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
@@ -77,11 +77,11 @@ func TestPlacementReplacementWithRewrittenLesson(t *testing.T) {
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if place[tr].Truth != "yes" {
-		t.Errorf("置き換えで「はい」が付かない")
+		t.Errorf("replacing does not give \"yes\"")
 	}
 }
 
-// 再監査の残-1: 英語。関係ない A を置いた(X は候補)後、置いていない直しで X を長い英語の本文で保存(wiki ingest の直し)。
+// Recheck remaining-1: English. After placing an unrelated A (X is a candidate), save X with a long English body through an edit that was not placed (an edit through wiki ingest).
 func TestPlacementEnglishEditOfACandidatePage(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "Status page first", "Commit author identity")
@@ -97,11 +97,11 @@ func TestPlacementEnglishEditOfACandidatePage(t *testing.T) {
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if len(place) != 0 {
-		t.Errorf("関係ない英語の直しで、保存していない草稿に正解が付いた: %d 件", len(place))
+		t.Errorf("an unrelated English edit gave a truth to a draft that was not saved: %d items", len(place))
 	}
 }
 
-// 再監査で問題無し(同じ草稿を 2 回): 同じ草稿を 2 回置き、書き直して合流。
+// No problem in the recheck (the same draft twice): place the same draft twice, rewrite and merge.
 func TestPlacementSameDraftPlacedTwice(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
@@ -125,16 +125,16 @@ func TestPlacementSameDraftPlacedTwice(t *testing.T) {
 		}
 	}
 	if yes == 0 {
-		t.Errorf("2 回置いた草稿の合流に「はい」が付かない")
+		t.Errorf("merging a draft placed twice does not give \"yes\"")
 	}
 }
 
-// 再監査の残-2: 完全一致の古い記録が今も付けられても、教訓を変えない合流に当たる。
+// Recheck remaining-2: even if an old exact-match record can still be given a truth, a merge that keeps the lesson unchanged is hit.
 func TestPlacementLabelableLeftoverExactDoesNotShadowMerge(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
 	pid := ids["変更履歴は英語と日本語を揃える"]
-	// 記事を作った時の置いた記録の残り(候補の記事が今は無いので、正解が付かずに残っている物。実データでは 15 記事にある)
+	// Leftover place records from when the page was created (the candidate page no longer exists, so they stay without a truth; real data has these on 15 pages)
 	if err := st.AppendRecord(store.Record{TraceID: "leftover1", SpecID: "wiki-place", SpecHash: "x", Model: "m", InputsHash: "h1", At: time.Now().Add(-48 * time.Hour),
 		Inputs: map[string]string{"new_lesson": "変更履歴は英語と日本語を揃える。", "lesson": "コミットの説明を丁寧に残す。"}}); err != nil {
 		t.Fatal(err)
@@ -157,11 +157,11 @@ func TestPlacementLabelableLeftoverExactDoesNotShadowMerge(t *testing.T) {
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if l := place[tr]; l.Truth != "yes" {
-		t.Fatalf("教訓を変えずに本文へ足した合流に正解が付かない: %+v (付いた数 %d)", l, len(place))
+		t.Fatalf("a merge that added to the body without changing the lesson does not get a truth: %+v (count given %d)", l, len(place))
 	}
 }
 
-// 再監査の新-1(英語、1 回の place で 2 件): 英語。1 回の place で 2 件(A: 合流する、B: 関係ない別の話題)を置き、A を X へ長めの英語の本文で合流。
+// Recheck new-1 (English, 2 items in one place): English. Place 2 items in one place (A: to be merged, B: an unrelated topic), and merge A into X with a long-ish English body.
 func TestPlacementEnglishTwoDraftsInOnePlace(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "Status page first", "Commit author identity")
@@ -180,11 +180,11 @@ func TestPlacementEnglishTwoDraftsInOnePlace(t *testing.T) {
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if place[trA].Truth != "yes" || place[trB].Truth != "" {
-		t.Errorf("合流した A に付き、関係ない B には付かない(A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
+		t.Errorf("it goes to the merged A and not to the unrelated B (A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
 	}
 }
 
-// placedTrace は、置いた結果のうち draftIdx 番目の草稿の、記事 pid についての差し込み先の判定の trace。
+// placedTrace is the trace of the insertion-place decision about page pid for the draftIdx-th draft in the place result.
 func placedTrace(t *testing.T, out any, draftIdx int, pid string) string {
 	t.Helper()
 	for _, pl := range out.(placeResult).Placements {
@@ -197,11 +197,11 @@ func placedTrace(t *testing.T, out any, draftIdx int, pid string) string {
 			}
 		}
 	}
-	t.Fatalf("候補に %s が無い", pid)
+	t.Fatalf("%s is not among the candidates", pid)
 	return ""
 }
 
-// 再監査の低: 置いてから 24 時間(placeMatchWindow)を過ぎた草稿には、書き直した合流でも正解を付けない。
+// Recheck low: a draft placed more than 24 hours ago (placeMatchWindow) gets no truth, even by a rewritten merge.
 func TestPlacementWindowSkipsDraftsPlacedLongAgo(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
@@ -214,12 +214,12 @@ func TestPlacementWindowSkipsDraftsPlacedLongAgo(t *testing.T) {
 	body := "## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。"
 	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
 	if cov := coverageOf(a.Lesson, merged); cov < placeMatchMin {
-		t.Fatalf("時刻のほかは付く形でないと縛りを試せない: %.2f", cov)
+		t.Fatalf("the limit cannot be tested unless everything but the time would match: %.2f", cov)
 	}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
 		t.Fatal(err)
 	}
 	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
-		t.Fatalf("前の日に置いた草稿に、あいまいな突き合わせで正解を付けない: %d 件", len(place))
+		t.Fatalf("do not give a truth by fuzzy matching to a draft placed the day before: %d items", len(place))
 	}
 }

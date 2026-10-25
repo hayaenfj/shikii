@@ -9,16 +9,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 監査 0.8.1 の 2: CI は読むだけの権限で走り、同じ枝の古い実行を止め、npm の取得をキャッシュする(CI の費用)。
+// Audit 0.8.1 item 2: CI runs with read-only permissions, cancels older runs on the same branch, and caches npm downloads (CI cost).
 func TestCIWorkflowIsReadOnlyAndCached(t *testing.T) {
 	b, err := os.ReadFile("../../.github/workflows/test.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ci := string(b)
-	// 監査 0.8.2-1 の 7: 書き込みの権限が混ざらない、concurrency は ref ごとの group を持つ
+	// Audit 0.8.2-1 item 7: no write permissions mixed in, and concurrency has a group per ref
 	if strings.Contains(ci, ": write") || strings.Contains(ci, "write-all") {
-		t.Error("test.yml に書き込みの権限がある")
+		t.Error("test.yml has a write permission")
 	}
 	for _, want := range []string{
 		"permissions:\n  contents: read\nconcurrency:",
@@ -28,15 +28,15 @@ func TestCIWorkflowIsReadOnlyAndCached(t *testing.T) {
 		"cache-dependency-path: web/package-lock.json",
 	} {
 		if !strings.Contains(ci, want) {
-			t.Errorf("test.yml に %q が無い", want)
+			t.Errorf("test.yml does not have %q", want)
 		}
 	}
 }
 
-// 0.8.2: CI で秘密の混入(gitleaks、版とハッシュを固定し履歴も見る)と、使っている Go の部品・標準ライブラリの
-// 既知の脆弱性(govulncheck、版を固定)を見る。Go の版は go.mod の toolchain で脆弱性の直った版に揃える。
-// 監査 0.8.2-2 の B2: 文字列の有無ではなく、security の job の手順を決まった並びと完全一致で比べる(許可リスト)。
-// ハッシュの照合を外す・govulncheck をコメントにする・gitleaks の失敗を握りつぶす、のどれも落ちる。
+// 0.8.2: CI checks for leaked secrets (gitleaks, version and hash pinned, history included) and known vulnerabilities in the Go packages and standard library in use
+// (govulncheck, version pinned). The Go version is aligned through go.mod's toolchain to a version with the vulnerabilities fixed.
+// Audit 0.8.2-2 B2: compare the security job's steps to a fixed sequence by exact match (an allowlist), not by whether strings are present.
+// Removing the hash check, commenting out govulncheck, or swallowing gitleaks failures all fail.
 func TestCIScansSecretsAndVulnerabilities(t *testing.T) {
 	b, err := os.ReadFile("../../.github/workflows/test.yml")
 	if err != nil {
@@ -56,7 +56,7 @@ func TestCIScansSecretsAndVulnerabilities(t *testing.T) {
 	}
 	job, ok := wf.Jobs["security"]
 	if !ok {
-		t.Fatal("test.yml に security の job が無い")
+		t.Fatal("test.yml has no security job")
 	}
 	var got []string
 	for _, st := range job.Steps {
@@ -77,13 +77,13 @@ tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
 		"go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
 	}
 	if !slices.Equal(got, want) {
-		t.Fatalf("security の job の手順が決まった並びと違う:\n got %q\nwant %q", got, want)
+		t.Fatalf("the security job's steps differ from the fixed sequence:\n got %q\nwant %q", got, want)
 	}
 	mod, err := os.ReadFile("../../go.mod")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(mod), "\ntoolchain go1.27.3\n") {
-		t.Error("go.mod の toolchain が go1.27.3 でない(GO-2026-6809 は go1.27.3 で直った)")
+		t.Error("go.mod's toolchain is not go1.27.3 (GO-2026-6809 was fixed in go1.27.3)")
 	}
 }

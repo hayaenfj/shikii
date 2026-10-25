@@ -13,8 +13,8 @@ import (
 	"time"
 )
 
-// pageRecord は、プロジェクトの画面(shikii serve)が今どこで立っているかの印(~/.shikii/agent/pages/<プロジェクト id>.json)。
-// ポートは固定せず、serve が空いているものを取って書く。複数のエージェントが同じプロジェクトで動いても、画面は 1 つ(0.8.0)。
+// pageRecord marks where the project's page (shikii serve) is currently up (~/.shikii/agent/pages/<project id>.json).
+// The port is not fixed; serve takes a free one and writes it. Even when several agents work in the same project, there is one page (0.8.0).
 type pageRecord struct {
 	Port  int       `json:"port"`
 	PID   int       `json:"pid"`
@@ -28,7 +28,7 @@ func pagePath(common, scope string) string {
 	return filepath.Join(common, "pages", projectID(scope)+".json")
 }
 
-// writePageRecord は serve が待ち受けを始めた直後に書く。
+// writePageRecord is written by serve right after it starts listening.
 func writePageRecord(common, scope string, port, pid int) error {
 	dir := filepath.Join(common, "pages")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -51,7 +51,7 @@ func readPageRecord(common, scope string) (pageRecord, bool) {
 	return r, true
 }
 
-// pageUp は印の画面が応えるか: 起こした子が生きていて、/v1/status が 200(hookProbeTimeout)。
+// pageUp reports whether the recorded page answers: the started child is alive and /v1/status returns 200 (hookProbeTimeout).
 func pageUp(r pageRecord) bool {
 	if r.Port <= 0 || r.PID <= 0 || !processAlive(r.PID) {
 		return false
@@ -65,7 +65,7 @@ func pageUp(r pageRecord) bool {
 	return resp.StatusCode == 200
 }
 
-// livePage は、このプロジェクトの画面が立っていればその URL(http://127.0.0.1:<空いていたポート>)、無ければ ""。
+// livePage returns the URL of this project's page if it is up (http://127.0.0.1:<the free port>), or "" if not.
 func livePage(scope string) string {
 	common, err := agentHome()
 	if err != nil || scope == "" {
@@ -78,16 +78,16 @@ func livePage(scope string) string {
 }
 
 var (
-	pageStartGap   = 30 * time.Second // 前に起こした子が死んでいても、この間は起こし直さない(失敗し続ける serve を連打しない)
-	pageStaleGuard = 5 * time.Minute  // 起こす権利の印の pid が生きているのに画面が応えない時、この時間を過ぎたら印を片付ける(pid の再利用。監査 R5)
-	openBrowser    = openInBrowser    // テストは記録するだけの物に差し替える
+	pageStartGap   = 30 * time.Second // even if a previously started child died, do not start another within this time (do not hammer a serve that keeps failing)
+	pageStaleGuard = 5 * time.Minute  // when the pid in the start-right mark is alive but the page does not answer, clear the mark after this time (pid reuse; audit R5)
+	openBrowser    = openInBrowser    // tests swap in something that only records
 )
 
-// ensureProjectPage は、このプロジェクトの画面が立っていなければ `shikii serve --store <scope>/.shikii --port 0` を裏で起こす
-// (Claude Code・Codex の最初の依頼で。人に起動コマンドを打たせない)。hook は応えるのを待たない(Claude Code の制限時間の中に収める。監査 R5):
-// 印とブラウザは serve 自身が口を開けた直後に書き・開く。起こす権利は startOnceWithin の flock で 1 つの hook だけに渡し、
-// serve 自身も立っている画面があれば起きないので、複数のエージェントが同じプロジェクトで動いても画面は 1 つ。
-// 返すのは URL(立っていれば)と、今回起こしたか。
+// ensureProjectPage starts `shikii serve --store <scope>/.shikii --port 0` in the background if this project's page is not up
+// (on the first request in Claude Code or Codex, so the person never types a start command). The hook does not wait for it to answer (to stay within Claude Code's time limit; audit R5):
+// serve itself writes the mark and opens the browser right after it opens its port. The right to start is given to only one hook through startOnceWithin's flock,
+// and serve itself does not start if a page is already up, so even when several agents work in the same project there is one page.
+// It returns the URL (if up) and whether it started one this time.
 func ensureProjectPage(scope string) (string, bool) {
 	common, err := agentHome()
 	if err != nil || scope == "" {
@@ -105,7 +105,7 @@ func ensureProjectPage(scope string) (string, bool) {
 	return "", started
 }
 
-// clearStaleStartGuard は、起こす権利の印の pid が生きているのに画面が応えず、印が pageStaleGuard より古ければ印を消す(別のプロセスが pid を再利用した時に永久に起こせなくなるのを避ける)。
+// clearStaleStartGuard removes the start-right mark when its pid is alive but the page does not answer and the mark is older than pageStaleGuard (so a pid reused by another process never blocks starting forever).
 func clearStaleStartGuard(common, what string) {
 	path := filepath.Join(common, "starting-"+what)
 	b, err := os.ReadFile(path)
@@ -120,7 +120,7 @@ func clearStaleStartGuard(common, what string) {
 	}
 }
 
-// waitForPage は画面が応えるまで待つ(CLI の shikii page 用。hook では使わない)。
+// waitForPage waits until the page answers (for the CLI's shikii page; not used in the hook).
 func waitForPage(scope string, limit time.Duration) string {
 	deadline := time.Now().Add(limit)
 	for {
@@ -134,10 +134,10 @@ func waitForPage(scope string, limit time.Duration) string {
 	}
 }
 
-// openInBrowser は URL を標準のブラウザで開く(macOS は open、Linux は xdg-open)。無ければ何もしない。hook を待たせない。
+// openInBrowser opens the URL in the default browser (open on macOS, xdg-open on Linux). Does nothing if neither exists. Never makes the hook wait.
 func openInBrowser(url string) {
 	if runningAsTestBinary() {
-		return // テストからは本物のブラウザを開かない(0.9.1)
+		return // never open a real browser from tests (0.9.1)
 	}
 	name := "xdg-open"
 	if runtime.GOOS == "darwin" {
@@ -154,7 +154,7 @@ func openInBrowser(url string) {
 	}
 }
 
-// pageRef は hook の文に入れる画面の場所: 立っていれば URL(末尾に /)、無ければ起こしておき「まだ立っていない」の文(英日)。
+// pageRef is where the page is, for the hook's text: the URL (ending in /) if up, otherwise it starts the page and returns a "not up yet" text.
 func pageRef(scope string) string {
 	if url := livePage(scope); url != "" {
 		return url + "/"
@@ -163,13 +163,13 @@ func pageRef(scope string) string {
 	return pageNotUp
 }
 
-const pageNotUp = "(the page is not up yet; the next request's hook starts it / 画面はまだ立っていません。次の依頼で hook が起こします)"
+const pageNotUp = "(the page is not up yet; the next request's hook starts it)"
 
-// cmdPage は、このプロジェクトの画面がどこで立っているか(URL・ポート・pid)を言う。エージェントが人に聞かれた時にいつでも答えるための口。
-// 立っていなければ起こして(hook と同じ)から言う。
+// cmdPage says where this project's page is up (URL, port, pid). It is the entry point an agent uses to answer the person whenever asked.
+// If it is not up, it starts it (as the hook does) and then says.
 func cmdPage(args []string) error {
 	if len(args) != 0 {
-		return errors.New("shikii page に引数やオプションは不要です(初期化したプロジェクトの中で実行)")
+		return errors.New("shikii page takes no arguments or options (run it inside an initialized project)")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -184,7 +184,7 @@ func cmdPage(args []string) error {
 	}
 	url, started := ensureProjectPage(scope)
 	if url == "" {
-		url = waitForPage(scope, 5*time.Second) // CLI は待てる(hook は待たない)
+		url = waitForPage(scope, 5*time.Second) // the CLI can wait (the hook does not)
 	}
 	if url == "" {
 		fmt.Fprintln(stdout, "page: not running (could not start it; see ~/.shikii/agent/serve-"+projectID(scope)+".log)")

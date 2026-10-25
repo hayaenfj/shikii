@@ -1,6 +1,6 @@
 package main
 
-// 監査 0.8.3 の H1・M1・M2・M3・L1 を再現するテスト(監査者が写しで書いた物を取り込んだ)。
+// Tests that reproduce H1, M1, M2, M3 and L1 of audit 0.8.3 (brought in from what the auditor wrote in a copy).
 
 import (
 	"encoding/json"
@@ -28,7 +28,7 @@ func audit083Setup(t *testing.T) (string, string, store.Store, string) {
 	return agent, scope, st, src
 }
 
-// A: 英語の、置いたが保存しなかった草稿に、関係ない記事の保存で正解が付く
+// A: an English draft that was placed but not saved gets a truth when an unrelated page is saved
 func TestPlacementIgnoresUnrelatedEnglishSaves(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	seedLessons(t, st, scope, "Keep both changelogs in step", "Commit author identity")
@@ -42,16 +42,16 @@ func TestPlacementIgnoresUnrelatedEnglishSaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
-		t.Fatalf("関係ない英語の記事の保存で、保存していない草稿に正解が付いた: %d 件", len(place))
+		t.Fatalf("saving an unrelated English page gave a truth to a draft that was not saved: %d items", len(place))
 	}
 }
 
-// B: 既存の記事の教訓のまま本文に足して合流すると、その教訓と同じ文の古い(正解の付かない)置いた記録が完全一致で先に当たり、今の草稿に正解が付かない
+// B: when merging by adding to the body while keeping an existing page's lesson, an old (truthless) place record with the same sentence as that lesson hits first by exact match, and the current draft gets no truth
 func TestPlacementLeftoverExactRecordDoesNotShadowMerge(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
 	pid := ids["変更履歴は英語と日本語を揃える"]
-	// 記事を作った時の置いた記録の残り(候補の記事が今は無いので、正解が付かずに残っている物。実データでは 15 記事にある)
+	// Leftover place records from when the page was created (the candidate page no longer exists, so they stay without a truth; real data has these on 15 pages)
 	if err := st.AppendRecord(store.Record{TraceID: "leftover1", SpecID: "wiki-place", SpecHash: "x", Model: "m", InputsHash: "h1", At: time.Now().Add(-48 * time.Hour),
 		Inputs: map[string]string{"new_lesson": "変更履歴は英語と日本語を揃える。", "lesson": "今は無い記事の教訓"}}); err != nil {
 		t.Fatal(err)
@@ -74,11 +74,11 @@ func TestPlacementLeftoverExactRecordDoesNotShadowMerge(t *testing.T) {
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if l := place[tr]; l.Truth != "yes" {
-		t.Fatalf("教訓を変えずに本文へ足した合流に正解が付かない: %+v (付いた数 %d)", l, len(place))
+		t.Fatalf("a merge that added to the body without changing the lesson does not get a truth: %+v (count given %d)", l, len(place))
 	}
 }
 
-// C: 前に合流して正解の付かなかった古い置いた草稿(本文に原文のまま入っている)が、今の書き直した草稿より高い点で先に当たる
+// C: an old placed draft that was merged before without a truth (it sits in the body verbatim) hits first with a higher score than the current rewritten draft
 func TestPlacementPrefersTheNewestDraftOfTheMergedPage(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
@@ -87,7 +87,7 @@ func TestPlacementPrefersTheNewestDraftOfTheMergedPage(t *testing.T) {
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{old}}); err != nil {
 		t.Fatal(err)
 	}
-	ageRecords(t, st, "wiki-place", old.Lesson, 48*time.Hour) // 古い草稿は前の日に置いた(再監査: 同じ時に置いた 2 件は点数で選ぶ)
+	ageRecords(t, st, "wiki-place", old.Lesson, 48*time.Hour) // the old draft was placed the day before (recheck: of 2 placed at the same time, pick by score)
 	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 	if err != nil {
@@ -106,11 +106,11 @@ func TestPlacementPrefersTheNewestDraftOfTheMergedPage(t *testing.T) {
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if l := place[tr]; l.Truth != "yes" {
-		t.Fatalf("今の草稿に正解が付かず、古い草稿に付いた: %+v (付いた数 %d)", l, len(place))
+		t.Fatalf("the current draft got no truth and the old draft got one: %+v (count given %d)", l, len(place))
 	}
 }
 
-// D: 機械の正解(context)や同じ入力の付け直しも数えて「自動で線を引く途中」と言うが、自動の較正は人の正解(入力ごとに 1 件)しか数えず動かない
+// D: status counts machine truths (context) and re-labels of the same input and says "partway through automatic drawing", but automatic calibration counts only human truths (one per input) and does not run
 func TestLineStateCountsLikeTheAutoCalibration(t *testing.T) {
 	repo := gitRepo(t)
 	agent := hookEnv(t, nil, repo)
@@ -123,7 +123,7 @@ func TestLineStateCountsLikeTheAutoCalibration(t *testing.T) {
 		if i%2 == 0 {
 			truth = "yes"
 		}
-		// 入力は 5 種類だけ(同じ入力に何度も付いた)。半分は機械の正解(context)
+		// Only 5 kinds of input (the same input labeled many times). Half are machine truths (context)
 		src := "outcome"
 		inp := fmt.Sprintf("in%d", i%5)
 		if i%3 == 0 {
@@ -144,11 +144,11 @@ func TestLineStateCountsLikeTheAutoCalibration(t *testing.T) {
 	defer func() { hookCalibrate = old }()
 	hookMaybeCalibrate(agent, sp.ID)
 	if strings.Contains(out, "the line is drawn automatically") && !called {
-		t.Fatalf("status は自動で引くと言うが、自動の較正は動かない(人の正解・入力ごとの数が min_n 未満)")
+		t.Fatalf("status says it will draw automatically, but automatic calibration does not run (human truths per input are below min_n)")
 	}
 }
 
-// E: 自動の較正を試したのは m1 なのに、試していない m2 の鍵まで「試したが分けられない」と出る
+// E: automatic calibration was tried on m1, yet even m2's key, never tried, shows as "tried but could not separate"
 func TestLineStateStuckOnlyForTheModelTried(t *testing.T) {
 	repo := gitRepo(t)
 	agent := hookEnv(t, nil, repo)
@@ -168,11 +168,11 @@ func TestLineStateStuckOnlyForTheModelTried(t *testing.T) {
 	os.Chtimes(guard, old, old)
 	out := capture(t, func() error { return cmdStatus([]string{"--store", agent, path}) })
 	if strings.Contains(out, "tried: the answers could not be separated") {
-		t.Fatalf("m1 で試した控えで、m2 の鍵が「試したが分けられない」と出る:\n%s", out)
+		t.Fatalf("a note from trying on m1 makes m2's key show as \"tried but could not separate\":\n%s", out)
 	}
 }
 
-// 監査 0.8.3 の H1(合流の側): 置いた時の候補に無かった記事(置いた後に作った記事)を、関係ない英語の長い本文で直しても、その草稿に正解を付けない。
+// Audit 0.8.3 H1 (merge side): editing a page that was not among the candidates at place time (a page created after placing) with an unrelated long English body gives no truth to that draft.
 func TestPlacementIgnoresEditsOfPagesThatWereNotCandidates(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	seedLessons(t, st, scope, "Keep both changelogs in step", "Commit author identity")
@@ -180,21 +180,21 @@ func TestPlacementIgnoresEditsOfPagesThatWereNotCandidates(t *testing.T) {
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}}); err != nil {
 		t.Fatal(err)
 	}
-	later := seedLessons(t, st, scope, "Status page first")["Status page first"] // 置いた後に作った記事(候補に入っていない)
+	later := seedLessons(t, st, scope, "Status page first")["Status page first"] // a page created after placing (not among the candidates)
 	body := "Read the status page first. Never push or create a release until the person has reviewed it and explicitly said so; the status page shows what is waiting."
 	edit := notebook.Draft{ID: later, Sources: []string{src}, Title: "Status page first", Lesson: "Status page first.", Kind: "rule", Scene: "テストの時", AppliesTo: "Status page first を扱う時", Body: &body}
 	if cov := coverageOf(draft.Lesson, edit); cov < placeMatchMin {
-		t.Fatalf("この負例は被覆が下限を越えないと候補の条件を試せない: %.2f", cov)
+		t.Fatalf("this negative example cannot test the candidate condition unless coverage passes the lower bound: %.2f", cov)
 	}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: edit}); err != nil {
 		t.Fatal(err)
 	}
 	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
-		t.Fatalf("候補に無かった記事の直しで、その草稿に正解を付けない: %d 件", len(place))
+		t.Fatalf("editing a page that was not a candidate gives no truth to that draft: %d items", len(place))
 	}
 }
 
-// ageRecords は、置いた草稿(new_lesson)の記録の時刻を d だけ前にずらす(古く置いた草稿を作る)。
+// ageRecords moves the time of the placed draft's (new_lesson) records back by d (to make a draft placed long ago).
 func ageRecords(t *testing.T, st store.Store, specID, newLesson string, d time.Duration) {
 	t.Helper()
 	path := filepath.Join(st.Dir, "records", specID+".jsonl")

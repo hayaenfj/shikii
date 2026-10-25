@@ -12,9 +12,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// cmdJudge は審判: 別の端点(より大きいモデル)に同じ spec を聞き、正解の無い記録に正解を付ける。
-// 先に人の正解との一致率を測り(審判の較正)、act に届く審判だけを使う。付ける正解は source=judge、重みは一致率。
-// 人の仕事は、全部に答えることから、審判を抜き取りで検査することに縮む。審判の正解は機械の正解(HumanSource ではない)。
+// cmdJudge is the judge: it asks another endpoint (a larger model) the same spec and gives truths to records that have none.
+// It first measures agreement with the human truths (calibrating the judge) and uses only a judge that reaches act. The truths it gives have source=judge and a weight equal to the agreement rate.
+// The person's job shrinks from answering everything to spot-checking the judge. The judge's truth is a machine truth (not a HumanSource).
 func cmdJudge(args []string) error {
 	fs := flag.NewFlagSet("judge", flag.ContinueOnError)
 	var ef endpointFlags
@@ -38,7 +38,7 @@ func cmdJudge(args []string) error {
 	ask := sp.WithoutContext()
 	sess := decide.Session{Tainted: ef.tainted}
 
-	// 1. 審判の較正: 人の正解(入力ごとに最新)に審判がどれだけ一致するか
+	// 1. Calibrate the judge: how well it agrees with the human truths (latest per input)
 	_, all, err := st.Counts(sp.ID)
 	if err != nil {
 		return err
@@ -54,9 +54,9 @@ func cmdJudge(args []string) error {
 		return fmt.Errorf("judge: %d human truths with text < eval.min_n=%d; the judge cannot be calibrated yet", len(human), sp.Eval.MinN)
 	}
 	var agree, total float64
-	var agreeWrong, totalWrong float64 // 判定モデルが外した入力だけでの一致率(同じ系統の審判が穴を埋められるかの目安)
+	var agreeWrong, totalWrong float64 // agreement only on inputs the decision model got wrong (a hint whether a judge of the same family can fill the gaps)
 	judgeModel := ""
-	answered := map[string]bool{} // 人の正解がある入力: 審判は触らない(別の trace で再判定されていても)
+	answered := map[string]bool{} // inputs with a human truth: the judge does not touch them (even if they were re-decided in another trace)
 	for _, l := range human {
 		answered[l.InputsHash] = true
 		d, err := decide.Decide(ctx, ask, l.Inputs, decide.Session{Tainted: sess.Tainted || l.Tainted}, eps)
@@ -93,7 +93,7 @@ func cmdJudge(args []string) error {
 		return fmt.Errorf("judge: agreement %.3f < act %.2f; this judge is not trusted for %s", agreement, sp.Thresholds.Act, sp.ID)
 	}
 
-	// 2. 正解の無い記録に、審判が確信した答えを重み付きで付ける(記録の raw と model は判定モデルのもの。審判の答えは truth として入る)
+	// 2. Give records without a truth the answer the judge was confident about, with a weight (the record's raw and model belong to the decision model; the judge's answer goes in as truth)
 	recs, err := st.Records(sp.ID, 0)
 	if err != nil {
 		return err
@@ -108,7 +108,7 @@ func cmdJudge(args []string) error {
 			continue
 		}
 		if answered[rec.InputsHash] || (rec.Minimal != nil && answered[rec.Minimal.InputsHash]) {
-			skippedHuman++ // 人が答えた入力: 審判の答えで上書きしない
+			skippedHuman++ // an input a person answered: do not overwrite it with the judge's answer
 			continue
 		}
 		d, err := decide.Decide(ctx, ask, rec.Inputs, decide.Session{Tainted: sess.Tainted || rec.Tainted}, eps)
@@ -117,7 +117,7 @@ func cmdJudge(args []string) error {
 		}
 		top, p, _ := judge(ask, d.Raw, "")
 		if d.Band == decide.Abstain || p < sp.Thresholds.Act {
-			unsure++ // 審判も迷った: 人へ
+			unsure++ // the judge was unsure too: leave it to the person
 			continue
 		}
 		r := rec

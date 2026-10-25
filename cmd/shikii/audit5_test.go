@@ -13,7 +13,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 監査 5 の 8: serve の起動は --local があればモデルの口を待ち、無ければ(hosted だけ)待たない。待ちの失敗は起動の失敗。
+// Audit 5 item 8: serve's startup waits for the model's endpoint when there is --local, and does not wait without it (hosted only). A failure to wait is a startup failure.
 func TestServeWaitsForTheLocalModelOnlyWhenThereIsOne(t *testing.T) {
 	var asked []string
 	fake := func(ctx context.Context, url string, every time.Duration, logf func(string, ...any)) error {
@@ -29,7 +29,7 @@ func TestServeWaitsForTheLocalModelOnlyWhenThereIsOne(t *testing.T) {
 	if err := waitForLocalModel("", false, fake); err != nil || len(asked) != 0 {
 		t.Fatalf("hosted only: nothing to wait for, got %v %v", err, asked)
 	}
-	// 鍵があって Jev を使う時は、--local があっても待たない(手元のモデルは起こさない決まりなので、待つと画面が開かない。2026-10-23)
+	// When there is a key and Jev is used, it does not wait even with --local (the rule is not to start a local model, so waiting would keep the page from opening; 2026-10-23)
 	if err := waitForLocalModel("http://127.0.0.1:1", true, fake); err != nil || len(asked) != 0 {
 		t.Fatalf("with a key the page must open without a local model: %v %v", err, asked)
 	}
@@ -41,8 +41,8 @@ func TestServeWaitsForTheLocalModelOnlyWhenThereIsOne(t *testing.T) {
 	}
 }
 
-// 過去の判定をやり直す(本人の求め、2026-10-18): (1) 答えたものの一覧と答えの直し(新しい答えが勝つ)、
-// (2) AI にもう一度聞く: 今の聞き方と線で同じ本文を再判定し、redo_of 付きの新しい記録を残す。元の記録は列から消え、人の答えは新しい記録に写る。
+// Redoing past decisions (the owner's request, 2026-10-18): (1) a list of what was answered and correcting answers (the new answer wins),
+// (2) asking the AI again: decide the same text again with the current wording and line, keeping a new record with redo_of. The original leaves the queue, and the person's answer is copied to the new record.
 func TestPastDecisionsCanBeRedone(t *testing.T) {
 	url, _, storeDir := newServeFixture(t, "false", map[string]float64{"change_request": 0.6, "question": 0.4, "other": 0})
 	code, d := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix the typo"}})
@@ -50,7 +50,7 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 		t.Fatalf("decide: %d %v", code, d)
 	}
 	trace := d["trace_id"].(string)
-	// まだ答えていない記録をやり直す → 元は列から消え、新しい記録が出る
+	// Redo a record not yet answered → the original leaves the queue and a new record appears
 	code, res := postJSON(t, url+"/v1/redo", map[string]any{"spec": "intent", "trace_id": trace})
 	if code != 200 || res["recorded"] != true || res["before"].(map[string]any)["trace_id"] != trace || res["after"].(map[string]any)["trace_id"] == trace {
 		t.Fatalf("redo must decide again and record a new trace: %d %v", code, res)
@@ -65,7 +65,7 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 	if ids[trace] || !ids[newTrace] {
 		t.Fatalf("the redone record replaces the original in the queue: %v", ids)
 	}
-	// 人が答える → 答えたものに出る。答えを直すと新しい答えが使われる
+	// A person answers → it appears in answered. Correcting the answer uses the new answer
 	postJSON(t, url+"/v1/label", map[string]any{"spec": "intent", "trace_id": newTrace, "truth": "question"})
 	var a struct{ Items []map[string]any }
 	getJSON(t, url+"/v1/answered?spec=intent", &a)
@@ -77,12 +77,12 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 	if len(a.Items) != 1 || a.Items[0]["truth"] != "change_request" || a.Items[0]["correct"] != true {
 		t.Fatalf("the newest answer wins: %v", a.Items)
 	}
-	// 答えた記録をやり直す → 人の答えは新しい記録に写り、前と今の正否が返る
+	// Redo an answered record → the person's answer is copied to the new record, and right/wrong before and now are returned
 	code, res = postJSON(t, url+"/v1/redo", map[string]any{"spec": "intent", "trace_id": newTrace})
 	if code != 200 || res["truth"] != "change_request" || res["correct_before"] != true || res["correct_after"] != true {
 		t.Fatalf("redo of an answered decision carries the answer and compares: %d %v", code, res)
 	}
-	// 監査 6 の 4: 回答済みは元を出さず 1 件(redo_of 付き)、回答済みの数は人が答えた本文の数 = 1 のまま
+	// Audit 6 item 4: answered shows 1 item (with redo_of), not the original, and the answered count stays at the number of texts a person answered = 1
 	getJSON(t, url+"/v1/answered?spec=intent", &a)
 	if len(a.Items) != 1 || a.Items[0]["redo_of"] != newTrace {
 		t.Fatalf("the redone record replaces the original in the answered list too: %v", a.Items)
@@ -92,7 +92,7 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 	if stat.Specs[0]["labels"] != 1.0 {
 		t.Fatalf("answered count is the number of texts a person answered (1), got %v", stat.Specs[0]["labels"])
 	}
-	// 監査 6 の 8a: limit(2 件答えてから 1 件に絞る)
+	// Audit 6 item 8a: limit (answer 2, then narrow to 1)
 	_, d2 := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "why is it slow?"}})
 	postJSON(t, url+"/v1/label", map[string]any{"spec": "intent", "trace_id": d2["trace_id"], "truth": "question"})
 	getJSON(t, url+"/v1/answered?spec=intent", &a)
@@ -112,14 +112,14 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 	if len(q.Items) != 0 {
 		t.Fatalf("a redone answered decision does not come back to the queue: %v", q.Items)
 	}
-	// 本文が無い記録はやり直せない
+	// A record without text cannot be redone
 	if err := st.AppendRecord(store.Record{TraceID: "old", SpecID: "intent", SpecHash: "h", Type: "choice", Band: "ask", InputsHash: "x", At: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	if code, _ := postJSON(t, url+"/v1/redo", map[string]any{"spec": "intent", "trace_id": "old"}); code != 409 {
 		t.Fatalf("no text → 409, got %d", code)
 	}
-	// 機械の正解(context / judge)しか付いていない記録は「答えたもの」ではない
+	// A record with only machine truths (context / judge) is not "answered"
 	mach := store.Record{TraceID: "mach", SpecID: "intent", SpecHash: "h", Type: "choice", Band: "act", Top: "question", P: 0.9, Inputs: map[string]string{"message": "why?"}, InputsHash: "y", Model: "m", At: time.Now()}
 	if err := st.AppendRecord(mach); err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 			t.Fatalf("a machine truth is not a person's answer: %v", it)
 		}
 	}
-	// 画面に部品がある
+	// The page has the parts
 	body := uiText(t, url)
 	for _, must := range []string{"v1/answered", "v1/redo", "回答済み", "AI にもう一度聞く", "別のボタンを押すと答えを直せます"} {
 		if !strings.Contains(body, must) {
@@ -142,8 +142,8 @@ func TestPastDecisionsCanBeRedone(t *testing.T) {
 	}
 }
 
-// 監査 6 の 5・8c: やり直しは /v1/decide と同じ作法で記録する。文脈の段で act に届けば最小の段に機械の正解(source context)が残り、
-// 人の答えの写しは 2 段(文脈のハッシュと最小のハッシュ)に付く。
+// Audit 6 items 5 and 8c: a redo is recorded with the same manners as /v1/decide. If it reaches act on a context rung, a machine truth (source context) stays on the minimal rung,
+// and the copy of the person's answer goes on 2 rungs (the context hash and the minimal hash).
 func TestRedoRecordsLikeDecideOnTheContextRung(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)
@@ -175,7 +175,7 @@ func TestRedoRecordsLikeDecideOnTheContextRung(t *testing.T) {
 	if len(labels) != 2 || labels[1].Source != "context" || labels[1].Rung != "minimal" {
 		t.Fatalf("redo must record like decide: a second context truth for the minimal rung, got %+v", labels)
 	}
-	// 人が元に答えてから、やり直す → 写しは 2 段
+	// A person answers the original, then redoes it → the copy is on 2 rungs
 	postJSON(t, ts.URL+"/v1/label", map[string]any{"spec": "intent", "trace_id": d["trace_id"], "truth": "question"})
 	before := len(readLabels(t, storeDir, "intent"))
 	postJSON(t, ts.URL+"/v1/redo", map[string]any{"spec": "intent", "trace_id": d["trace_id"]})

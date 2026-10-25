@@ -12,9 +12,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 監査 4 回目の再現テスト。
+// Reproduction tests for audit round 4.
 
-// 2: 審判は、人の正解がある入力(別の trace で再判定されたもの)には正解を付けない。
+// 2: the judge gives no truth to inputs that have a human truth (re-decided in another trace).
 func TestJudgeSkipsInputsThatPeopleAlreadyAnswered(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false")
@@ -32,7 +32,7 @@ func TestJudgeSkipsInputsThatPeopleAlreadyAnswered(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// 同じ本文 "fix a" が別の trace で再判定されている(人の正解は上にある)
+	// The same text "fix a" was re-decided in another trace (the human truth is above)
 	again := store.Record{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "small", Inputs: in("fix a"), InputsHash: store.HashInputs(in("fix a")), Raw: raw, Top: "change_request", P: 0.5, Band: "ask", At: time.Now()}
 	if err := st.AppendRecord(again); err != nil {
 		t.Fatal(err)
@@ -44,13 +44,13 @@ func TestJudgeSkipsInputsThatPeopleAlreadyAnswered(t *testing.T) {
 	if !strings.Contains(out, "labeled 0") || !strings.Contains(out, "already answered by people") {
 		t.Fatalf("an input people answered must be skipped even under a new trace:\n%s", out)
 	}
-	// 判定モデルが外した入力での一致率も出す(同じ系統の審判が穴を埋められるかの目安)
+	// Also report the agreement on inputs the decision model got wrong (a hint whether a judge of the same family can fill the gaps)
 	if !strings.Contains(out, "on inputs the decision model got wrong") {
 		t.Fatalf("judge must report its agreement on the inputs the decision model missed:\n%s", out)
 	}
 }
 
-// 9: raw 付きの行は、鍵が揃っていて 0..1 で、和が 1 に近いものだけ。noul の数字も 0..1。
+// 9: rows with raw are accepted only when the keys are complete, values are in 0..1, and the sum is close to 1. noul numbers are also 0..1.
 func TestRawRowsMustBeCompleteDistributions(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false")
@@ -77,7 +77,7 @@ func TestRawRowsMustBeCompleteDistributions(t *testing.T) {
 	}
 }
 
-// 10: import は Excel の UTF-8 BOM を剥がし、同じ列名が 2 つあれば誤りにする。
+// 10: import strips Excel's UTF-8 BOM and makes two identical column names an error.
 func TestImportHandlesBOMAndDuplicateColumns(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false")
@@ -98,7 +98,7 @@ func TestImportHandlesBOMAndDuplicateColumns(t *testing.T) {
 	}
 }
 
-// 11・12・7: 画面の wiki の口。配置違いの同じ土台は 1 つのモデルとして数える。下書きのまま confirmed にはできない。前書きの知らない項目は消えない。
+// 11, 12, 7: the page's wiki endpoint. Layout variants on the same base count as one model. A draft cannot be made confirmed. Unknown front matter fields are not lost.
 func TestWikiClaimRulesFromAudit4(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

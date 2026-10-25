@@ -1,6 +1,6 @@
 package main
 
-// 0.9.0 の独立監査の再現(監査者が足した。直す前の状態で落ちることを確かめる)。
+// Reproductions from the independent audit of 0.9.0 (added by the auditor; confirmed to fail before the fix).
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ import (
 
 const oldAgentsSection = agentsMarker + "\n## shikii(判定の作法)\n\n- 古い節\n" + agentsMarker + "\n"
 
-// A1: AGENTS.md が別のファイルへのリンク(CLAUDE.md へのシンボリックリンクなど)だと、置き換えがリンクを普通のファイルにし、リンク先は古いまま。
+// A1: when AGENTS.md is a link to another file (e.g. a symbolic link to CLAUDE.md), replacing turns the link into a plain file and the target stays old.
 func TestAudit090AgentsSymlinkKept(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "CLAUDE.md")
@@ -33,11 +33,11 @@ func TestAudit090AgentsSymlinkKept(t *testing.T) {
 	info, _ := os.Lstat(link)
 	got, _ := os.ReadFile(target)
 	if info.Mode()&os.ModeSymlink == 0 || !strings.Contains(string(got), "wiki classify") {
-		t.Fatalf("リンクが普通のファイルに置き換わった(リンクのまま=%v)、リンク先に新しい節がある=%v", info.Mode()&os.ModeSymlink != 0, strings.Contains(string(got), "wiki classify"))
+		t.Fatalf("the link was replaced by a plain file (still a link=%v), the target has the new section=%v", info.Mode()&os.ModeSymlink != 0, strings.Contains(string(got), "wiki classify"))
 	}
 }
 
-// A2: 人の文が節より前で印を書いている(印が 3 つ)と、人の文と節の間が消える。
+// A2: when the person's text mentions the marker before the section (3 markers), the text between the person's text and the section disappears.
 func TestAudit090AgentsThreeMarkersKeepHumanText(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "AGENTS.md")
 	human := "# 作業規則\n\n- shikii の節は `" + agentsMarker + "` で囲まれている(手で触らない)\n- 人の大事な決まり: 本番には手で触らない\n\n"
@@ -49,18 +49,18 @@ func TestAudit090AgentsThreeMarkersKeepHumanText(t *testing.T) {
 	}
 	got, _ := os.ReadFile(path)
 	if !strings.Contains(string(got), "本番には手で触らない") || strings.Contains(string(got), "古い節") {
-		t.Fatalf("人の文が消えた/古い節が残った:\n%s", got)
+		t.Fatalf("the person's text disappeared / the old section remained:\n%s", got)
 	}
 }
 
-// A3: CRLF の AGENTS.md(Windows の autocrlf)は、置き換えのたびに空行(\r だけの行)が 1 行ずつ増える。
+// A3: a CRLF AGENTS.md (Windows autocrlf) gains one blank line (a line with only \r) on every replacement.
 func TestAudit090AgentsCRLFNoStrayLines(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "AGENTS.md")
 	crlf := func(s string) string { return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n") }
 	if err := os.WriteFile(path, []byte(crlf("# 規則\n\n"+oldAgentsSection+"## 後ろの人の節\n")), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 3; i++ { // 更新のたびに checkout が CRLF に戻す
+	for i := 0; i < 3; i++ { // checkout turns it back to CRLF on every update
 		if _, err := addAgentsSection(path); err != nil {
 			t.Fatal(err)
 		}
@@ -69,11 +69,11 @@ func TestAudit090AgentsCRLFNoStrayLines(t *testing.T) {
 	}
 	b, _ := os.ReadFile(path)
 	if n := strings.Count(crlf(string(b)), "\r\n\r\n## 後ろの人の節"); n != 0 || strings.Contains(crlf(string(b)), "\r\n\r\n\r\n") {
-		t.Fatalf("空行が増えた:\n%q", b)
+		t.Fatalf("blank lines increased:\n%q", b)
 	}
 }
 
-// B1: wiki に手で直された記事が 1 本でもあると Ingest は全部を断るので classify も必ず失敗する。それでも hook は毎回 5 本を頼み、Stop は毎ターン止める。
+// B1: if even one page in the wiki was edited by hand, Ingest refuses everything, so classify always fails. Yet the hook asks for 5 pages every time and Stop blocks every turn.
 func TestAudit090ClassifyAskedOnlyWhenPossible(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -100,7 +100,7 @@ func TestAudit090ClassifyAskedOnlyWhenPossible(t *testing.T) {
 	}
 	matches, _ := filepath.Glob(filepath.Join(root, "wiki", "lessons", "*", b.Page.ID+".md"))
 	if len(matches) != 1 {
-		t.Fatalf("記事のファイルが見つからない: %v", matches)
+		t.Fatalf("page file not found: %v", matches)
 	}
 	f, _ := os.OpenFile(matches[0], os.O_APPEND|os.O_WRONLY, 0)
 	f.WriteString("\n人のメモ\n")
@@ -114,11 +114,11 @@ func TestAudit090ClassifyAskedOnlyWhenPossible(t *testing.T) {
 		}
 	}
 	if cerr != nil && stops > 0 {
-		t.Fatalf("classify は必ず失敗する(%v)のに、Stop が %d ターン止めた", cerr, stops)
+		t.Fatalf("classify always fails (%v), yet Stop blocked %d turns", cerr, stops)
 	}
 }
 
-// C1: 置いた草稿が合流先の今の教訓の言い直し(人が同じ決まりをもう一度言った時)だと、合流しても正解が付かなくなった(0.8.3 は付いた)。
+// C1: when the placed draft restates the merge target's current lesson (a person said the same rule again), merging stopped giving a truth (0.8.3 gave one).
 func TestAudit090PlaceMatchRestatedDraftStillLabeled(t *testing.T) {
 	now := time.Now()
 	page := "変更履歴は英語と日本語を揃える。"
@@ -127,11 +127,11 @@ func TestAudit090PlaceMatchRestatedDraftStillLabeled(t *testing.T) {
 	body := "人がもう一度言った(2026-10-20)。"
 	d := notebook.Draft{ID: "p1", Title: "変更履歴", Lesson: "変更履歴は英語と日本語を必ず揃える。", Body: &body}
 	if got := matchPlacedDraft(d, recs, map[string]store.Label{}, map[string]string{page: "p1"}, now); got != restated {
-		t.Fatalf("言い直しの草稿を合流しても正解が付かない: got %q", got)
+		t.Fatalf("merging a restating draft gives no truth: got %q", got)
 	}
 }
 
-// D1: classify が記事の変更理由(change_reason)を「種類と場面を付けた(0.9.0)」で上書きし、記事の表示から前の理由が消える。
+// D1: classify overwrites the page's change reason (change_reason) with "gave kind and scene (0.9.0)", and the previous reason disappears from the page's display.
 func TestAudit090ClassifyKeepsChangeReason(t *testing.T) {
 	agent, scope, _, src := audit083Setup(t)
 	book := notebook.Book{Root: agent, Scope: scope}
@@ -150,11 +150,11 @@ func TestAudit090ClassifyKeepsChangeReason(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.Page.ChangeReason != "人の訂正で範囲を狭めた" {
-		t.Fatalf("変更理由が上書きされた: %q", res.Page.ChangeReason)
+		t.Fatalf("the change reason was overwritten: %q", res.Page.ChangeReason)
 	}
 }
 
-// E1: 受け箱は同じ教訓の害の評価を回数分並べ、置き換えられた(生きていない)記事の物も出し続ける。
+// E1: the inbox lists harmful evaluations of the same lesson once per count, and keeps showing those of replaced (no longer live) pages.
 func TestAudit090InboxDedupesAndDropsDeadLessons(t *testing.T) {
 	agent, scope, _, src := audit083Setup(t)
 	book := notebook.Book{Root: agent, Scope: scope}
@@ -171,6 +171,6 @@ func TestAudit090InboxDedupesAndDropsDeadLessons(t *testing.T) {
 	}
 	_, inbox := knowledgeMeta(agent, scope, obs)
 	if len(inbox) != 0 {
-		t.Fatalf("置き換え済みの記事の害の評価が %d 件、受け箱に並ぶ", len(inbox))
+		t.Fatalf("%d harmful evaluations of a replaced page are listed in the inbox", len(inbox))
 	}
 }

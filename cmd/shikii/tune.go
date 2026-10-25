@@ -21,24 +21,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// shikii tune: 聞き方(質問文・選択肢の説明・本文の並べ方)の候補を、正解の貯金で全部採点して、勝った候補を新しい版として書く。
-// 人が決めるのは正解だけ。候補は spec の variants: に書く(後で、モデルに提案させる --propose を足す)。
+// shikii tune: scores every candidate wording (question text, choice descriptions, how the text is laid out) against the bank of truths, and writes the winner as a new version.
+// People decide only the truths. Candidates go in the spec's variants: (later, --propose was added to have a model propose them).
 //
-//   - 貯金 = ラベル付きファイルの行 + store にある本文付きの正解(入力ごとに最新 1 つ、文言やモデルを問わない)
-//   - 候補ごとに、貯金の全入力を今のモデルに聞き、top-1 / Brier / precision@act / recall@act を出す
-//   - 同じ入力で選んで同じ入力で測る甘さを見るため、k 分割で「k-1 で選び 1 で測る」の正解率(holdout)も出す
-//   - 勝ち = top-1 が高い、同点なら Brier が低い。それでも同点なら今の文言(変えない)
-//   - --write で勝った候補を <id>-v<version+1>.yaml に書き(元のファイルは触らない)、その場で較正まで引く
+//   - bank = rows of the labeled file + truths with text in the store (the latest one per input, regardless of wording or model)
+//   - for each candidate, ask the current model about every input in the bank and report top-1 / Brier / precision@act / recall@act
+//   - to see the optimism of choosing and measuring on the same inputs, also report the accuracy of "choose on k-1, measure on 1" over k folds (holdout)
+//   - win = higher top-1; on a tie, lower Brier. Still tied, the current wording (no change)
+//   - --write writes the winner to <id>-v<version+1>.yaml (the original file is untouched) and calibrates on the spot
 
 type bankRow struct {
 	inputs  map[string]string
 	truth   string
 	weight  float64
 	tainted bool
-	human   bool // 人(または結果)が決めた正解か。機械の正解(context / judge)は false。tune と wiki の証拠は人の数を添える
+	human   bool // whether the truth was decided by a person (or an outcome). Machine truths (context / judge) are false. tune and the wiki evidence show the human count
 }
 
-// humanTruths は貯金のうち人が決めた正解の数。
+// humanTruths is the number of truths in the bank decided by a person.
 func humanTruths(bank []bankRow) int {
 	n := 0
 	for _, r := range bank {
@@ -68,13 +68,13 @@ func cmdTune(args []string) error {
 	fs := flag.NewFlagSet("tune", flag.ContinueOnError)
 	var o tuneOpts
 	o.ef.bind(fs)
-	fs.StringVar(&o.storeDir, "store", ".shikii", "記録とラベルの置き場")
-	fs.StringVar(&o.labeled, "labeled", "", "正解の貯金に足すラベル付きファイル(省略時は spec の eval.labeled。none なら使わない)")
-	fs.BoolVar(&o.write, "write", false, "勝った候補を新しい版として書き、その場で較正する")
-	fs.IntVar(&o.folds, "folds", 5, "holdout の分割数")
-	fs.IntVar(&o.propose, "propose", 0, "提案役(チャット用 LLM)に候補を N 個作らせて spec の variants に足す")
-	fs.StringVar(&o.proposer, "proposer", "", "提案役の URL(OpenAI 互換の /v1/chat/completions。本家 llama-server でも可)。pii: true の spec は手元(127.0.0.1)の提案役だけ")
-	fs.StringVar(&o.proposerModel, "proposer-model", "", "提案役のモデル名(空なら口の既定)")
+	fs.StringVar(&o.storeDir, "store", ".shikii", "where records and labels are kept")
+	fs.StringVar(&o.labeled, "labeled", "", "labeled file to add to the bank of truths (default: the spec's eval.labeled; none means do not use one)")
+	fs.BoolVar(&o.write, "write", false, "write the winner as a new version and calibrate on the spot")
+	fs.IntVar(&o.folds, "folds", 5, "number of holdout folds")
+	fs.IntVar(&o.propose, "propose", 0, "have the proposer (a chat LLM) make N candidates and add them to the spec's variants")
+	fs.StringVar(&o.proposer, "proposer", "", "URL of the proposer (OpenAI-compatible /v1/chat/completions; upstream llama-server works too). Specs with pii: true use only a local (127.0.0.1) proposer")
+	fs.StringVar(&o.proposerModel, "proposer-model", "", "model name of the proposer (empty means the endpoint's default)")
 	path, err := parseSpecPath(fs, args)
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func cmdTune(args []string) error {
 	return err
 }
 
-// tuneOpts は tune の指定。CLI と serve / mcp が同じ中身を使う。
+// tuneOpts are tune's settings. The CLI and serve / mcp use the same content.
 type tuneOpts struct {
 	output        io.Writer
 	specPath      string
@@ -96,15 +96,15 @@ type tuneOpts struct {
 	propose       int
 	proposer      string
 	proposerModel string
-	wikiDir       string // 空なら <store>/wiki(テストだけが別の場所を指す)
+	wikiDir       string // empty means <store>/wiki (only tests point elsewhere)
 }
 
-// 基本構成: shikii が作るものは全部 store(既定 .shikii/)の下。decisions/(spec)、wiki/(知識)、records/ と labels/(記録と正解)。
-// プロジェクトルートに増えるのは .shikii/ だけ。wiki と spec の置き場に別のフラグは無い(store から決まる)。
+// Basic layout: everything shikii makes is under the store (default .shikii/): decisions/ (specs), wiki/ (knowledge), records/ and labels/ (records and truths).
+// The only thing added to the project root is .shikii/. There are no separate flags for where the wiki and specs go (they follow from the store).
 func wikiDirOf(storeDir string) string  { return filepath.Join(storeDir, "wiki") }
 func specsDirOf(storeDir string) string { return filepath.Join(storeDir, "decisions") }
 
-// tuneResult は 1 回の tune の結果。wiki/runs/<name>.json にも残り、画面と MCP が読む。採用の判断もここに積む。
+// tuneResult is the result of one tune. It is also kept in wiki/runs/<name>.json and read by the page and MCP. Adoption decisions are added here too.
 type tuneResult struct {
 	SpecID        string            `json:"spec"`
 	SpecPath      string            `json:"spec_path"`
@@ -113,15 +113,15 @@ type tuneResult struct {
 	Model         string            `json:"model"`
 	Truths        int               `json:"truths"`
 	At            string            `json:"at"`
-	Run           string            `json:"run"`      // runs/ のファイル名(拡張子なし)
-	RunPage       string            `json:"run_page"` // markdown の path
+	Run           string            `json:"run"`      // file name in runs/ (no extension)
+	RunPage       string            `json:"run_page"` // path of the markdown
 	Candidates    []candidateResult `json:"candidates"`
 	Holdout       float64           `json:"holdout"`
 	HaveHoldout   bool              `json:"have_holdout"`
-	HoldoutWins   int               `json:"holdout_better"` // 測る側の fold で、選ばれた候補が当てて現状が外した行
+	HoldoutWins   int               `json:"holdout_better"` // rows in the measuring fold where the chosen candidate was right and the current one wrong
 	HoldoutLosses int               `json:"holdout_worse"`
-	PValue        float64           `json:"p_value"` // 片側の符号検定。候補が現状と同じ実力なら、これだけ勝つ確率
-	Winner        string            `json:"winner"`  // "current" か候補名
+	PValue        float64           `json:"p_value"` // one-sided sign test. If the candidate were as good as the current one, the chance of winning this much
+	Winner        string            `json:"winner"`  // "current" or a candidate name
 	Adoptable     bool              `json:"adoptable"`
 	Decision      string            `json:"decision"`
 	Lesson        string            `json:"lesson"`
@@ -158,7 +158,7 @@ type meaningCheck struct {
 	Note        string `json:"note,omitempty"`
 	By          string `json:"by"`
 	Verdict     string `json:"verdict,omitempty"`
-	Lang        string `json:"lang,omitempty"` // 訳の言語(設定の言語。英語なら訳は無い)
+	Lang        string `json:"lang,omitempty"` // language of the translation (the configured language; for English there is no translation)
 	CurrentText string `json:"current_translation,omitempty"`
 	Candidate   string `json:"candidate_translation,omitempty"`
 	Difference  string `json:"difference,omitempty"`
@@ -175,7 +175,7 @@ func wordingOf(sp *spec.Spec) *wording {
 	return w
 }
 
-// runTune は tune の本体。報告は stdout に出し、結果を返す(wiki があれば runs/ に md と json を書く)。
+// runTune is the body of tune. It prints the report to stdout and returns the result (if there is a wiki, it writes md and json to runs/).
 func runTune(o tuneOpts) (*tuneResult, error) {
 	stdout := reportWriter(o.output)
 	sp, err := spec.Load(o.specPath)
@@ -231,12 +231,12 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	// 1. 今の聞き方を採点(提案役に混同表と外した実例を渡すため、先に)
+	// 1. Score the current wording (first, so the confusion table and wrong examples can go to the proposer)
 	current, err := scoreCandidate(ctx, candidate{"current", sp.WithoutContext()}, bank, eps, o.ef.tainted)
 	if err != nil {
 		return nil, fmt.Errorf("tune: current: %w", err)
 	}
-	// 2. 提案(あれば): wiki を読ませて候補を作らせ、spec の variants に残す
+	// 2. Propose (if asked): have it read the wiki and make candidates, and keep them in the spec's variants
 	var rationales []string
 	if o.propose > 0 {
 		system, user := buildProposerPrompt(sp, current, bank, wikiContext(o.wikiDir, sp, current.model), o.propose, isLoopback(o.proposer))
@@ -251,7 +251,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 			fmt.Fprintln(stdout, "  "+n)
 		}
 		if added > 0 {
-			// 書き戻すのは variants だけ。長い採点の間に別の端末が calibrate --write した線を、古いメモリの線で潰さないよう、ファイルを読み直して足す
+			// Write back only variants. Reread the file and add, so a line another terminal wrote with calibrate --write during the long scoring is not overwritten with an old in-memory line
 			fresh, err := spec.Load(sp.Path())
 			if err != nil {
 				return nil, fmt.Errorf("tune: reload %s: %w", sp.Path(), err)
@@ -265,7 +265,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 			return nil, errors.New("tune: nothing to score (every proposal was invalid)")
 		}
 	}
-	// 候補は最小の質問の段だけで採点する(聞き方の比較。段を上がると文脈の段の答えが混ざる)。採用した版は context を引き継ぐ。
+	// Candidates are scored only on the minimal question rung (comparing wordings; going up the rungs mixes in context rung answers). The adopted version keeps context.
 	cands := []candidate{{"current", sp.WithoutContext()}}
 	for _, v := range sp.Variants {
 		cands = append(cands, candidate{v.Name, sp.WithVariant(v).WithoutContext()})
@@ -282,7 +282,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	}
 	res := &tuneResult{SpecID: sp.ID, SpecPath: sp.Path(), SpecHash: sp.Hash(), Version: sp.Version, Model: current.model, Truths: len(bank),
 		At: time.Now().Format(time.RFC3339), Current: wordingOf(sp)}
-	// 表
+	// table
 	fmt.Fprintf(stdout, "%-14s %6s %7s %9s %8s  %s\n", "candidate", "top-1", "brier", "prec@act", "rec@act", "what changes")
 	for i, s := range scores {
 		change := describeVariant(sp, cands[i].sp)
@@ -290,14 +290,14 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		res.Candidates = append(res.Candidates, candidateResult{s.name, s.acc, s.brier, s.prec, s.rec, change})
 	}
 	best := pickBest(scores, nil)
-	// holdout: k-1 で選んで 1 で測る(選び方そのものの当たり)。「今の文言のまま」は選ばないので、その holdout は現状の正解率そのもの。
+	// holdout: choose on k-1 and measure on 1 (how good the choosing itself is). "Keep the current wording" is never chosen, so its holdout is just the current accuracy.
 	k := o.folds
 	if k > len(bank) {
 		k = len(bank)
 	}
 	if k >= 2 {
 		var hit, total float64
-		wins, losses := 0, 0 // 測る側の fold で、選ばれた候補と現状の正誤が食い違った行の数
+		wins, losses := 0, 0 // number of rows in the measuring fold where the chosen candidate and the current one disagree on right/wrong
 		for fold := 0; fold < k; fold++ {
 			train := func(i int) bool { return i%k != fold }
 			chosen := pickBest(scores, train)
@@ -326,7 +326,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 				k, k-1, k, k, res.Holdout, scores[0].acc, wins, losses, res.PValue)
 		}
 	}
-	// 3. 採否
+	// 3. Adopt or not
 	res.Winner = "current"
 	switch {
 	case best == 0:
@@ -338,8 +338,8 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		res.Lesson = fmt.Sprintf("%s looked better on the full bank (%.3f vs %.3f) but %d truths are too few for a holdout", scores[best].name, scores[best].acc, scores[0].acc, len(bank))
 		fmt.Fprintf(stdout, "winner: current (too few truths for a holdout; %s looked better on the full bank but that is not enough)\n", scores[best].name)
 	case res.Holdout <= scores[0].acc+1e-12 || res.PValue >= signTestAlpha:
-		// 貯金全体では勝って見えても、選び方の当たりが現状を上回らない、または上回り方が偶然で説明できる = 変えない。
-		// 候補を増やしても誤って採る率は上がらない: 測る側の fold は選ぶ側と独立なので、符号検定の p は名目どおり
+		// Even if it looks like a win over the whole bank, if the choosing does not beat the current one, or the margin can be explained by chance, do not change.
+		// Adding candidates does not raise the rate of adopting by mistake: the measuring fold is independent of the choosing side, so the sign test's p is as nominal
 		res.Decision = fmt.Sprintf("kept current (holdout %.3f vs %.3f, %d better / %d worse, p=%.3f: not enough evidence)", res.Holdout, scores[0].acc, res.HoldoutWins, res.HoldoutLosses, res.PValue)
 		res.Lesson = fmt.Sprintf("%s wins on the full bank (%.3f vs %.3f) but the holdout (%.3f vs %.3f; %d better, %d worse, p=%.3f) does not rule out chance on %d truths; more truths will settle it", scores[best].name, scores[best].acc, scores[0].acc, res.Holdout, scores[0].acc, res.HoldoutWins, res.HoldoutLosses, res.PValue, len(bank))
 		fmt.Fprintf(stdout, "winner: current (%s is better on the full bank, %.3f vs %.3f, but the holdout %.3f vs %.3f with %d better / %d worse (p=%.3f) does not rule out chance: not enough evidence to change the wording. More truths will settle it)\n",
@@ -367,7 +367,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	}
 	res.RunPage = runPath
 	res.Run = strings.TrimSuffix(filepath.Base(runPath), ".md")
-	// 自動で育つ: 有意に勝った候補を主張の下書きに、既存の主張にはこの run を証拠として足す(モデルは呼び直さない)
+	// Grows by itself: a candidate that won significantly becomes a claim draft, and this run is added as evidence to existing claims (the model is not called again)
 	if drafted, updated, err := updateClaims(o.wikiDir, sp, cands, scores, res.Run, humanTruths(bank)); err != nil {
 		fmt.Fprintf(stdout, "note: wiki claims not updated: %v\n", err)
 	} else if drafted+updated > 0 {
@@ -384,7 +384,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		return res, nil
 	}
 	if o.propose > 0 {
-		// 機械が作った文言は、人が読む前には採用しない。候補は variants に残っているので、読んでから tune --write か画面で
+		// Wording the machine made is not adopted before a person reads it. The candidates stay in variants, so after reading use tune --write or the page
 		fmt.Fprintf(stdout, "not adopted: %s was proposed by a model in this run. Read it (variants in %s), then adopt on the page or with tune --write\n", scores[best].name, sp.Path())
 		if res.WinnerWording != nil {
 			fmt.Fprintf(stdout, "  question: %s\n", res.WinnerWording.Question)
@@ -392,7 +392,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		saveTuneResult(res)
 		return res, nil
 	}
-	// 端末の --write は「読んだ人がいる」ことの表明。意味の確認として残す
+	// --write in the terminal is a statement that someone has read it. Keep it as the meaning check
 	recordMeaningCheck(res, true, "", "terminal --write")
 	newPath, err := adoptWording(res, o.ef, o.storeDir, labeledPath, stdout)
 	saveTuneResult(res)
@@ -404,10 +404,10 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 	return res, nil
 }
 
-// signTestAlpha は採用に要る確かさ。候補と現状の実力が同じなら、採用を誤る率はこの値を超えない(候補の数に依らない)。
+// signTestAlpha is the certainty needed to adopt. If the candidate and the current one are equally good, the rate of adopting by mistake does not exceed this value (regardless of the number of candidates).
 const signTestAlpha = 0.05
 
-// signTestP は片側の符号検定: 食い違った n = wins+losses 行のうち wins 以上が候補側に出る確率(実力が同じなら 1/2 ずつ)。
+// signTestP is the one-sided sign test: among the n = wins+losses rows that disagree, the chance that wins or more fall on the candidate's side (1/2 each if equally good).
 func signTestP(wins, losses int) float64 {
 	n := wins + losses
 	if n == 0 {
@@ -428,7 +428,7 @@ func binom(n, k int) float64 {
 	return r
 }
 
-// adoptWording は勝った候補を新しい版として書き、その場で較正する。結果に採用の印を付ける(json / md の保存は呼ぶ側)。
+// adoptWording writes the winner as a new version and calibrates on the spot. It marks the result as adopted (saving json / md is the caller's job).
 func adoptWording(res *tuneResult, ef endpointFlags, storeDir, labeledPath string, reports ...io.Writer) (string, error) {
 	base, err := spec.Load(res.SpecPath)
 	if err != nil {
@@ -461,7 +461,7 @@ func adoptWording(res *tuneResult, ef endpointFlags, storeDir, labeledPath strin
 			lab = "none"
 		}
 	}
-	// 採用と較正は一体: 線が引けない文言は版にしない(残すと serve が較正無しの新版を使い、act が黙って消える)
+	// Adopting and calibrating go together: wording that cannot get a line does not become a version (if kept, serve would use a new version with no calibration and act would silently disappear)
 	if err := runCalibrate(newPath, calibrateOpts{output: reportWriter(reports...), ef: ef, storeDir: storeDir, labeled: lab, bins: 10, write: true}); err != nil {
 		_ = os.Remove(newPath)
 		return "", fmt.Errorf("not adopted: calibration of the new wording failed, so %s was not kept: %w", filepath.Base(newPath), err)
@@ -474,7 +474,7 @@ func adoptWording(res *tuneResult, ef endpointFlags, storeDir, labeledPath strin
 	return newPath, nil
 }
 
-// saveTuneResult は結果を run ページの隣の json に残す(画面と MCP が読む)。wiki が無ければ何もしない。
+// saveTuneResult keeps the result in a json next to the run page (read by the page and MCP). Does nothing without a wiki.
 func saveTuneResult(res *tuneResult) {
 	if res.RunPage == "" {
 		return
@@ -486,7 +486,7 @@ func saveTuneResult(res *tuneResult) {
 	_ = os.WriteFile(strings.TrimSuffix(res.RunPage, ".md")+".json", b, 0o644)
 }
 
-// appendRunNote は run の md に 1 行足す。
+// appendRunNote adds one line to the run's md.
 func appendRunNote(runPage, line string) {
 	if runPage == "" {
 		return
@@ -497,7 +497,7 @@ func appendRunNote(runPage, line string) {
 	}
 }
 
-// loadTuneResult は run 名から json を読む。
+// loadTuneResult reads the json for a run name.
 func loadTuneResult(wikiDir, run string) (*tuneResult, error) {
 	run = strings.TrimSuffix(strings.TrimSuffix(filepath.Base(run), ".json"), ".md")
 	b, err := os.ReadFile(filepath.Join(wikiDir, "runs", run+".json"))
@@ -511,7 +511,7 @@ func loadTuneResult(wikiDir, run string) (*tuneResult, error) {
 	return &res, nil
 }
 
-// latestTuneResult は spec の一番新しい run の json。
+// latestTuneResult is the json of the spec's newest run.
 func latestTuneResult(wikiDir, specID string) (*tuneResult, error) {
 	files, _ := filepath.Glob(filepath.Join(wikiDir, "runs", "*.json"))
 	var best *tuneResult
@@ -538,12 +538,12 @@ func parsedAt(s string) time.Time {
 	return t
 }
 
-// recordMeaningCheck は人の「意味は同じ / 違う」を run の md と json に残す。却下は spec のページにも残り、次の提案役が読む。
+// recordMeaningCheck keeps the person's "same meaning / different" in the run's md and json. A rejection also stays on the spec's page, and the next proposer reads it.
 func recordMeaningCheck(res *tuneResult, same bool, note, by string) {
 	recordCheck(res, meaningCheck{Same: same, Note: note, By: by})
 }
 
-// recordCheck は意味の確かめ(人か、0.9.2 からはエージェント)を run の md と json に残す。エージェントが決めきれなかった時(unsure)は却下にしない。
+// recordCheck keeps the meaning check (by a person, or from 0.9.2 by an agent) in the run's md and json. When the agent could not decide (unsure), it is not a rejection.
 func recordCheck(res *tuneResult, mc meaningCheck) {
 	mc.At = time.Now().Format("2006-01-02 15:04")
 	res.MeaningChecks = append(res.MeaningChecks, mc)
@@ -583,21 +583,21 @@ func recordCheck(res *tuneResult, mc meaningCheck) {
 	saveTuneResult(res)
 }
 
-// truthBank は正解の貯金。ファイルの行 + store の本文付きの正解(入力ごとに最新 1 つ。文言・モデルは問わない)。
+// truthBank is the bank of truths: rows of the file + truths with text in the store (the latest one per input, regardless of wording or model).
 func truthBank(sp *spec.Spec, st store.Store, labeledPath string) (rows []bankRow, skipped int, err error) {
 	type entry struct {
 		row bankRow
 		at  time.Time
 	}
-	latest := map[string]entry{} // 入力ごとに最新の正解(calibrate の LatestPerInput と同じ決まり)。ファイルの行は最古
+	latest := map[string]entry{} // the latest truth per input (the same rule as calibrate's LatestPerInput). File rows are the oldest
 	var order []string
 	put := func(h string, row bankRow, at time.Time) {
 		if !truthKnown(sp, row.truth) {
-			skipped++ // 今の spec に無い選択肢など。黙って捨てずに数える
+			skipped++ // e.g. a choice not in the current spec. Count it instead of silently dropping it
 			return
 		}
 		if row.weight <= 0 || row.weight > 1 {
-			row.weight = 1 // store と同じく重みは (0, 1]
+			row.weight = 1 // as in the store, the weight is in (0, 1]
 		}
 		cur, seen := latest[h]
 		if !seen {
@@ -618,7 +618,7 @@ func truthBank(sp *spec.Spec, st store.Store, labeledPath string) (rows []bankRo
 		}
 		for i, r := range file {
 			if len(r.Inputs) == 0 {
-				continue // raw だけの行は聞き直せない
+				continue // a row with only raw cannot be asked again
 			}
 			truth, err := parseTruth(sp.Type, r.Truth)
 			if err != nil {
@@ -648,7 +648,7 @@ func truthBank(sp *spec.Spec, st store.Store, labeledPath string) (rows []bankRo
 	return rows, skipped, nil
 }
 
-// truthKnown は正解が今の spec で意味を持つか(選択肢 id、!id の部分ラベル、段階名、yes/no)。
+// truthKnown reports whether a truth means something in the current spec (a choice id, a partial label !id, a level name, yes/no).
 func truthKnown(sp *spec.Spec, truth string) bool {
 	truth = strings.TrimSpace(truth)
 	switch sp.Type {
@@ -671,7 +671,7 @@ func truthKnown(sp *spec.Spec, truth string) bool {
 	}
 }
 
-// scorable は採点できる行だけを残す: 必要な入力が揃い、送れる先がある。残りは数えて除く(1 行で tune を止めない)。
+// scorable keeps only rows that can be scored: the required inputs are present and there is somewhere to send them. The rest are counted and dropped (one row does not stop tune).
 func scorable(sp *spec.Spec, bank []bankRow, eps []decide.Endpoint, tainted bool) (kept []bankRow, dropped int) {
 	for _, r := range bank {
 		if _, missing := sp.Render(r.inputs); len(missing) > 0 {
@@ -721,8 +721,8 @@ func scoreCandidate(ctx context.Context, c candidate, bank []bankRow, eps []deci
 	return s, nil
 }
 
-// pickBest は top-1 が高い候補、同点なら Brier が低い候補。それでも同点なら今の文言(添字 0)。
-// include が与えられればその行だけで比べる(holdout 用)。
+// pickBest is the candidate with the higher top-1; on a tie, lower Brier. Still tied, the current wording (index 0).
+// If include is given, compare only on those rows (for holdout).
 func pickBest(scores []candScore, include func(i int) bool) int {
 	acc := func(s candScore) (float64, float64) {
 		var hit, total, bs, bw float64
@@ -811,7 +811,7 @@ func trim(s string, n int) string {
 	return string([]rune(s)[:n]) + "…"
 }
 
-// writeTunedVersion は勝った候補を <dir>/<id>-v<N+1>.yaml に書く。元のファイルは触らない。候補の一覧は引き継ぐ(次の tune のため)。
+// writeTunedVersion writes the winner to <dir>/<id>-v<N+1>.yaml. The original file is untouched. The list of candidates carries over (for the next tune).
 func writeTunedVersion(base *spec.Spec, win candidate, before, after candidateResult, truths int) (string, error) {
 	n := *win.sp
 	n.Version = base.Version + 1

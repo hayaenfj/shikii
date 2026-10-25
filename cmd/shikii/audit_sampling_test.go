@@ -15,7 +15,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 画面の列: ask の判定の次に、act の判定の抜き取り(20 件に 1 件)が並ぶ。残りの act / discard はその後。抜き取りには印が付く。
+// The page's queue: after the ask decisions come spot checks of act decisions (1 in 20). The remaining act / discard come after. Spot checks are marked.
 func TestQueuePutsAuditSamplesRightAfterAskItems(t *testing.T) {
 	dir := t.TempDir()
 	specsDir := filepath.Join(dir, "decisions")
@@ -35,7 +35,7 @@ func TestQueuePutsAuditSamplesRightAfterAskItems(t *testing.T) {
 	s := httptest.NewServer(newServer(serveOpts{specsDir: specsDir, storeDir: storeDir, ef: ef}))
 	t.Cleanup(s.Close)
 
-	// act の記録を 60 件(抜き取りが出るまで足す)、ask の記録を 1 件(手で書く)
+	// 60 act records (added until a spot check appears) and 1 ask record (written by hand)
 	st := store.Store{Dir: storeDir}
 	sampled := 0
 	for i := 0; i < 200 && sampled < 2; i++ {
@@ -95,12 +95,12 @@ func getBody(t *testing.T, url string) string {
 	return string(b)
 }
 
-// uiAssetRef は index.html が読む自分の assets(script の src と link の href)。
+// uiAssetRef is the page's own assets that index.html loads (script src and link href).
 var uiAssetRef = regexp.MustCompile(`(?:src|href)="([^"]+)"`)
 
-// uiText は画面の文字を全部返す: index.html と、そこから読む assets を連結したもの。
-// 画面は Svelte のバンドル(web/dist を埋め込み)なので、文言は index.html ではなく assets/*.js に入っている。
-// 参照は全部 ./ からの相対(外部の読み込み無し)。それ以外があれば落とす。
+// uiText returns all text of the page: index.html joined with the assets it loads.
+// The page is a Svelte bundle (web/dist embedded), so the wording lives in assets/*.js, not index.html.
+// Every reference is relative to ./ (no external loads). Anything else fails.
 func uiText(t *testing.T, url string) string {
 	t.Helper()
 	index := getBody(t, url+"/")
@@ -116,8 +116,8 @@ func uiText(t *testing.T, url string) string {
 	return sb.String()
 }
 
-// check は、act の精度を人の正解だけでも測る。機械の正解(context / replay / file)で高く見えても、人が確かめた act の判定が
-// min_n 以上あって精度が act に届かなければ落とす。status はその数を出す。
+// check measures act's precision on human truths alone too. Even if machine truths (context / replay / file) make it look high, when there are
+// at least min_n act decisions a person checked and their precision does not reach act, it fails. status shows that count.
 func TestCheckMeasuresActPrecisionOnHumanTruthsToo(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false")
@@ -137,9 +137,9 @@ func TestCheckMeasuresActPrecisionOnHumanTruthsToo(t *testing.T) {
 		}
 	}
 	for i := 0; i < 10; i++ {
-		add(i, "change_request", "context") // 機械の正解: 全部当たり
+		add(i, "change_request", "context") // machine truths: all right
 	}
-	add(10, "question", "audit") // 人が確かめた act の判定: 2 件とも外れ
+	add(10, "question", "audit") // act decisions a person checked: both wrong
 	add(11, "question", "audit")
 	var buf strings.Builder
 	old := stdout
@@ -150,7 +150,7 @@ func TestCheckMeasuresActPrecisionOnHumanTruthsToo(t *testing.T) {
 	if err == nil || !strings.Contains(out, "human-checked") || !strings.Contains(out, "0.000") {
 		t.Fatalf("overall precision is 10/12 but the 2 human-checked act decisions were both wrong; check must say so:\nerr=%v\n%s", err, out)
 	}
-	// 人の正解が min_n に届かないうちは落とさず、数だけ言う
+	// While human truths are below min_n, do not fail; just state the count
 	if err := os.Remove(filepath.Join(storeDir, "labels", "intent.jsonl")); err != nil {
 		t.Fatal(err)
 	}

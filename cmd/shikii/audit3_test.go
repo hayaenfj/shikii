@@ -14,9 +14,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 3 回目の監査(2026-10-18)の再現テスト。
+// Reproduction tests for the third audit (2026-10-18).
 
-// 監査 1: 機械の正解(source=context)は calibrate の聞き直しで source=replay に化けてはいけない(人の正解に数えられてしまう)。
+// Audit 1: a machine truth (source=context) must not turn into source=replay when calibrate asks again (it would be counted as a human truth).
 func TestReplayNeverLaundersMachineTruths(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)
@@ -48,7 +48,7 @@ func TestReplayNeverLaundersMachineTruths(t *testing.T) {
 	}
 }
 
-// 監査 2: 線は人の正解が min_n 以上ないと書かない。機械の正解だけでは報告のみ。
+// Audit 2: a line is not written unless there are at least min_n human truths. Machine truths alone only give a report.
 func TestCalibrateWriteNeedsHumanTruths(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)
@@ -89,7 +89,7 @@ func TestCalibrateWriteNeedsHumanTruths(t *testing.T) {
 	}
 }
 
-// 監査 3: serve の自動較正は、正解が揃った段の線だけを引く。他の段の線は触らない。
+// Audit 3: serve's automatic calibration draws a line only for the rung whose truths are complete. Other rungs' lines are not touched.
 func TestAutoCalibrateWritesOnlyTheTriggeringRung(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)
@@ -124,7 +124,7 @@ func TestAutoCalibrateWritesOnlyTheTriggeringRung(t *testing.T) {
 	}
 }
 
-// 監査 5: 入力のハッシュは段ごと(その段の template が使う入力だけ)。文脈の入力が違っても最小の質問では同じ入力。
+// Audit 5: the input hash is per rung (only the inputs that rung's template uses). Even if the context input differs, it is the same input for the minimal question.
 func TestInputsHashIsPerRung(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)
@@ -145,7 +145,7 @@ func TestInputsHashIsPerRung(t *testing.T) {
 	if len(labels) != 2 || labels[1].InputsHash != d.Minimal.InputsHash {
 		t.Fatalf("the minimal rung's label carries the minimal inputs hash: %+v", labels)
 	}
-	// 同じ本文の file 行は同じ入力として 1 つに畳まれる
+	// file rows with the same text fold into one input
 	rows := `[{"inputs":{"message":"fix a"},"truth":"question"},{"inputs":{"message":"fix b"},"truth":"change_request"}]`
 	labeledPath := filepath.Join(dir, "rows.json")
 	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
@@ -157,7 +157,7 @@ func TestInputsHashIsPerRung(t *testing.T) {
 	if !strings.Contains(out, "deduplicated: 3 labels on 2 distinct inputs") {
 		t.Fatalf("the store label for {message, previous} and the file row for {message} are the same minimal input:\n%s", out)
 	}
-	// 聞き直しの材料: 最小の段のハッシュからも本文が見つかる
+	// Material for asking again: the text is found from the minimal rung's hash too
 	st := store.Store{Dir: storeDir}
 	texts, err := st.InputsByHash("intent")
 	if err != nil || texts[d.Minimal.InputsHash].Inputs["message"] != "fix a" {
@@ -165,7 +165,7 @@ func TestInputsHashIsPerRung(t *testing.T) {
 	}
 }
 
-// 監査 7・8: status の人の確認数は判定(trace)で数える。level 付きの score では機械の正解を書かない(Top と P が別の事象)。
+// Audits 7 and 8: status counts the person's confirmations by decision (trace). For score with levels, no machine truth is written (Top and P are different events).
 func TestHumanCheckedCountsTracesAndLevelScoresWriteNoMachineTruth(t *testing.T) {
 	dir := t.TempDir()
 	srv, _ := contextModel(t)
