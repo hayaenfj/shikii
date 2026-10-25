@@ -170,9 +170,9 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		}
 		return placeDrafts(root, scope, req.Wiki)
 	}
-	// submit は一度に扱う会話の数も項目の数も限らない(0.9.1。入力の大きさの上限だけ)。見直し(maintenance)は記事の最大 2 件のまま
-	if req.Operation != "submit" || len(req.Maintenance) > 2 || len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) == 0 {
-		return nil, errors.New("submit は仮採点・wiki整理・記憶の仮評価のどれか(数は限らない)と、最大2件の見直しを受け取ります")
+	// submit は一度に扱う会話の数も項目の数も見直しの数も限らない(0.9.1。入力の大きさの上限だけ)
+	if req.Operation != "submit" || len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) == 0 {
+		return nil, errors.New("submit は仮採点・wiki整理・記憶の仮評価・見直しのどれかを受け取ります(数は限らない)")
 	}
 	for _, review := range req.Reviews {
 		if review.Operation != "" && review.Operation != "submit" {

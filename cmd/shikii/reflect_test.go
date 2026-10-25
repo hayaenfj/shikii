@@ -217,7 +217,7 @@ func TestMemoryMatchesConditionsInsteadOfIncidentalBody(t *testing.T) {
 	}
 }
 
-// 0.9.1: 振り返りの submit は、一度に扱う会話の数も項目の数も限らない(入力の大きさ 64 KB だけ)。0.9.0 までは会話 2 件・仮採点 4・
+// 0.9.1: 振り返りの submit は、一度に扱う会話の数も項目の数も見直しの数も限らない(入力の大きさ 64 KB だけ)。0.9.0 までは会話 2 件・仮採点 4・
 // wiki 整理 2・記憶の評価 4 までで、既存の記事に元からある出典まで会話に数えて断っていた。保存は元の出典を引き継ぐ
 func TestReflectSubmitHasNoConversationLimit(t *testing.T) {
 	st, scope, h := reviewFixture(t)
@@ -248,5 +248,14 @@ func TestReflectSubmitHasNoConversationLimit(t *testing.T) {
 	q = reflectCall(t, h, map[string]any{"operation": "submit", "wiki": drafts})
 	if q["complete"] != true || len(q["wiki"].([]any)) != 3 {
 		t.Fatalf("新しい会話 3 つと草稿 3 本を一度に保存する: %v", q)
+	}
+	// 見直し(maintenance)も数で断らない。古い key の見直しは項目ごとの誤りで返す(何も保存しない)
+	stale := []map[string]any{}
+	for i := 0; i < 3; i++ {
+		stale = append(stale, map[string]any{"page_id": page.Page.ID, "revision": "ffffffffffffffff", "key": "stale", "reason": "古い見直し"})
+	}
+	q = reflectCall(t, h, map[string]any{"operation": "submit", "maintenance": stale})
+	if q["complete"] != false || len(q["maintenance"].([]any)) != 3 {
+		t.Fatalf("見直し 3 本も数で断らず、古い key は項目ごとの誤りで返す: %v", q)
 	}
 }
