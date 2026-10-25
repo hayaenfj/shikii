@@ -289,8 +289,8 @@ func fileExists(p string) bool {
 
 const agentsMarker = "<!-- shikii -->"
 
-// agentsSection is shikii's section in AGENTS.md (read by Codex and OpenCode), wrapped in markers. The heading must keep starting with "## shikii(" (agentsSectionSpan looks for it).
-var agentsSection = agentsMarker + "\n## shikii(decision rules)\n\n" +
+// agentsSection is shikii's section in AGENTS.md (read by Codex and OpenCode), wrapped in markers. The heading must keep starting with "## shikii (" (agentsSectionSpan looks for it; sections written before 0.9.2 start with "## shikii(").
+var agentsSection = agentsMarker + "\n## shikii (decision rules)\n\n" +
 	"- For a recurring kind of decision, do not decide yourself: call `shikii decide` (shikii_decide over MCP) and follow the band: only act runs automatically, ask means check with a person, discard means do nothing, abstain means gather the inputs\n" +
 	"- A person (or the outcome) decides the truth. Record a person's answer with `shikii label <trace_id> <truth>`. Never edit the line (calibration:) or the status of a wiki claim by hand\n" +
 	"- When you create or change a rule, test or procedure (commands or scripts), write it in a wiki howto or rule page in the same turn, even if nobody asked. If a close page exists, add to it or fix it\n" +
@@ -304,7 +304,7 @@ func (e agentsSkipped) Error() string { return e.reason }
 
 // addAgentsSection adds shikii's section to AGENTS.md. A section from an earlier version is replaced with the new content; what a person wrote is left alone.
 // If the content is the same, it does nothing (audit 0.9.0 A1-A3):
-//   - A section is a pair that starts with a "marker-only line", has "## shikii(" on the next line, and ends at the next "marker-only line". Markers inside a person's text (e.g. inside `…`) do not count.
+//   - A section is a pair that starts with a "marker-only line", has the heading ("## shikii (" or the older "## shikii(") on the next line, and ends at the next "marker-only line". Markers inside a person's text (e.g. inside `…`) do not count.
 //     It replaces only when there is exactly one such pair; when marker-only lines exist but not exactly one pair, it leaves the file alone and returns the reason
 //   - If AGENTS.md is a link to a file inside the repo (e.g. a symlink to CLAUDE.md), it rewrites the target and keeps the link; if it points outside, it leaves it alone
 //   - Line endings follow the current file (CRLF or LF)
@@ -359,7 +359,12 @@ func addAgentsSection(path string) (bool, error) {
 }
 
 // agentsSectionSpan is the range of shikii's section (from the start of the opening marker line to after the newline of the closing marker line). found says whether any marker-only line exists,
-// ok says whether there was exactly one pair of an opening (next line is "## shikii(") and a closing marker.
+// isAgentsHeading says whether a line is the heading of shikii's section: "## shikii (" from 0.9.2, "## shikii(" before (so older sections are still found and replaced).
+func isAgentsHeading(line string) bool {
+	return strings.HasPrefix(line, "## shikii (") || strings.HasPrefix(line, "## shikii(")
+}
+
+// ok says whether there was exactly one pair of an opening (next line is the heading) and a closing marker.
 func agentsSectionSpan(text string) (start, end int, found, ok bool) {
 	type line struct{ start, end int } // end includes the newline
 	var marks []line
@@ -380,7 +385,7 @@ func agentsSectionSpan(text string) (start, end int, found, ok bool) {
 			continue
 		}
 		marks = append(marks, l)
-		if i+1 >= len(lines) || !strings.HasPrefix(body(lines[i+1]), "## shikii(") {
+		if i+1 >= len(lines) || !isAgentsHeading(body(lines[i+1])) {
 			continue
 		}
 		for _, c := range lines[i+1:] {
