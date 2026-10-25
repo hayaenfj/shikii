@@ -23,7 +23,7 @@
 
 {#snippet specRow(s)}
   <li><button type="button" data-tab={s.id} aria-current={active === s.id ? 'true' : undefined} class={row(active === s.id)} onclick={() => setTab(s.id)}>
-    <span class="min-w-0 flex-1"><strong class="block text-[14px] wrap-anywhere">{loc(s.titles, s.id)}</strong><span class="text-[12px] text-muted">{status(s)}{#if s.awaiting_results && s.person_answers !== false} · {t('summarySpecResults')(s.awaiting_results)}{/if}</span></span>
+    <span class="min-w-0 flex-1"><strong class="block text-[14px] font-semibold wrap-anywhere">{loc(s.titles, s.id)}</strong><span class="text-[12px] text-muted">{status(s)}{#if s.awaiting_results && s.person_answers !== false} · {t('summarySpecResults')(s.awaiting_results)}{/if}</span></span>
     {#if s.waiting_for_person}<span class="badge rounded-md bg-amberbg px-[7px] py-px text-[11px] text-amber tabular-nums">{s.waiting_for_person}</span>{/if}
   </button></li>
 {/snippet}
@@ -33,10 +33,10 @@
   <p class="k mt-0 mb-5">{t('aiHow')}</p>
   <div class="grid grid-cols-[minmax(240px,320px)_minmax(0,1fr)] items-start gap-5 max-lg:grid-cols-1">
     <div class="rounded-[14px] border border-line bg-surface p-3" data-ai-specs>
-      <h3 class="mx-1 mt-1 mb-1.5 text-[12px] font-bold tracking-[.04em] text-muted">{t('aiYours')}</h3>
+      <h3 class="section-head mx-1 mt-1 mb-2 flex items-center gap-2 rounded-lg bg-surface2 px-2.5 py-2 text-[13px] font-bold tracking-[.02em] text-fg before:block before:h-3.5 before:w-1 before:rounded-sm before:bg-accent">{t('aiYours')}</h3>
       <ul class="m-0 grid list-none gap-0.5 p-0">{#each yours as s (s.id)}{@render specRow(s)}{/each}</ul>
       {#if machine.length}
-        <h3 class="mx-1 mt-4 mb-1.5 text-[12px] font-bold tracking-[.04em] text-muted">{t('aiMachine')}</h3>
+        <h3 class="section-head mx-1 mt-5 mb-2 flex items-center gap-2 rounded-lg bg-surface2 px-2.5 py-2 text-[13px] font-bold tracking-[.02em] text-fg before:block before:h-3.5 before:w-1 before:rounded-sm before:bg-accent">{t('aiMachine')}</h3>
         <ul class="m-0 grid list-none gap-0.5 p-0">{#each machine as s (s.id)}{@render specRow(s)}{/each}</ul>
       {/if}
     </div>

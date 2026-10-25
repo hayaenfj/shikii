@@ -43,6 +43,7 @@
     --font-weight-semibold: 600;
     --font-weight-bold: 700;
     --tracking-normal: 0em;
+    --radius-sm: .25rem;
     --radius-md: .375rem;
     --radius-lg: .5rem;
     --radius-xl: .75rem;
@@ -1591,6 +1592,11 @@
     letter-spacing: -.5px;
   }
 
+  .tracking-\[\.02em\] {
+    --tw-tracking: .02em;
+    letter-spacing: .02em;
+  }
+
   .tracking-\[\.03em\] {
     --tw-tracking: .03em;
     letter-spacing: .03em;
@@ -1701,14 +1707,29 @@
     transition-duration: .16s;
   }
 
+  .before\:block:before {
+    content: var(--tw-content);
+    display: block;
+  }
+
   .before\:grid:before {
     content: var(--tw-content);
     display: grid;
   }
 
+  .before\:h-3\.5:before {
+    content: var(--tw-content);
+    height: calc(var(--spacing) * 3.5);
+  }
+
   .before\:h-\[23px\]:before {
     content: var(--tw-content);
     height: 23px;
+  }
+
+  .before\:w-1:before {
+    content: var(--tw-content);
+    width: var(--spacing);
   }
 
   .before\:w-\[23px\]:before {
@@ -1726,6 +1747,11 @@
     border-radius: 3.40282e38px;
   }
 
+  .before\:rounded-sm:before {
+    content: var(--tw-content);
+    border-radius: var(--radius-sm);
+  }
+
   .before\:border:before {
     content: var(--tw-content);
     border-style: var(--tw-border-style);
@@ -1735,6 +1761,11 @@
   .before\:border-line:before {
     content: var(--tw-content);
     border-color: var(--line);
+  }
+
+  .before\:bg-accent:before {
+    content: var(--tw-content);
+    background-color: var(--accent);
   }
 
   .before\:text-accent:before {

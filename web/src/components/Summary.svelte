@@ -7,7 +7,8 @@
   let g = $derived(summary.guards || {});
   let p = $derived(summary.person || {});
   const when = s => (s ? fmtDateTime(s) : '');
-  const head = 'mt-0 mb-2 text-[12px] font-bold tracking-[.04em] text-muted';
+  // 欄の見出し(0.9.1): 薄い灰色の帯に、本文の濃い色の太字と緑の縦線。灰色の小さな字だと下の項目に溶け込んだ
+  const head = 'section-head mt-0 mb-3 flex items-center gap-2 rounded-lg bg-surface2 px-2.5 py-2 text-[13px] font-bold tracking-[.02em] text-fg before:block before:h-3.5 before:w-1 before:rounded-sm before:bg-accent';
   const panel = 'rounded-[14px] border border-line bg-surface p-4 max-sm:p-3 [&_p]:m-0 [&_p]:mb-1.5';
 </script>
 
