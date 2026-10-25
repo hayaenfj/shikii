@@ -11,7 +11,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 差し込み先の試験用の記事を置き、題 → id を返す。
+// Puts pages for testing insertion points and returns title → id.
 func seedLessons(t *testing.T, st store.Store, scope string, titles ...string) map[string]string {
 	t.Helper()
 	ids := map[string]string{}
@@ -29,8 +29,8 @@ func seedLessons(t *testing.T, st store.Store, scope string, titles ...string) m
 	return ids
 }
 
-// 新しい教訓を書いたら、保存の前に差し込み先(同じ話題の記事を p の高い順)と、上位の矛盾の疑いが返る。
-// 保存の結果(足した・置き換えた)が、その判定の正解として自動で付く。人は答えない。
+// After writing a new lesson, before saving, the insertion points (same-topic pages, highest p first) and the top suspected contradictions come back.
+// The result of the save (added to or replaced) is attached automatically as the truth for those decisions. People do not answer.
 func TestReflectPlaceRanksPagesAndSettlesFromSubmit(t *testing.T) {
 	model := fakeAgentModel(t, func(state string) float64 {
 		if strings.HasPrefix(state, "existing lesson:") { // wiki-conflict
@@ -59,7 +59,7 @@ func TestReflectPlaceRanksPagesAndSettlesFromSubmit(t *testing.T) {
 	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の日本語版", Lesson: "変更履歴は英語だけで保ち、日本語版は作らない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を更新する時"}
 
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{{Sources: []string{src}, Title: "x"}}}); err == nil {
-		t.Fatal("lesson の無い草稿には差し込み先を聞けない")
+		t.Fatal("a draft without a lesson cannot ask for an insertion point")
 	}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 	if err != nil {
@@ -67,44 +67,44 @@ func TestReflectPlaceRanksPagesAndSettlesFromSubmit(t *testing.T) {
 	}
 	res := out.(placeResult)
 	if len(res.Placements) != 1 || len(res.Placements[0].Candidates) != 4 {
-		t.Fatalf("生きている記事を全部突き合わせる: %+v", res)
+		t.Fatalf("compares against every live page: %+v", res)
 	}
 	c := res.Placements[0].Candidates
 	if c[0].PageID != ids["変更履歴は英語と日本語を揃える"] || c[0].SameTopic.P != 0.9 || c[1].PageID != ids["コミットの説明を丁寧に残す"] || c[1].SameTopic.P != 0.4 || c[0].SameTopic.Band != "ask" {
-		t.Fatalf("同じ話題の p が高い順に並べる: %+v", c)
+		t.Fatalf("orders by same-topic p, highest first: %+v", c)
 	}
 	if c[0].Conflict == nil || c[0].Conflict.P != 0.85 || c[2].Conflict == nil || c[3].Conflict != nil {
-		t.Fatalf("矛盾は上位 %d 件にだけ聞く: %+v", placeConflictTop, c)
+		t.Fatalf("contradiction is asked only for the top %d: %+v", placeConflictTop, c)
 	}
 	if c[0].SameTopic.Calibrated || c[0].SameTopic.Band == "act" {
-		t.Fatalf("線が無い間は act を出さない: %+v", c[0])
+		t.Fatalf("no act while there is no line: %+v", c[0])
 	}
 	if recs, _ := st.Records("wiki-place", 0); len(recs) != 4 {
-		t.Fatalf("判定を記録する: %d", len(recs))
+		t.Fatalf("the decisions are recorded: %d", len(recs))
 	}
 
-	// 置き換えずに同じ記事へ足した → その記事は同じ話題「はい」(重み 1)・食い違い「いいえ」(部分)、他の記事は同じ話題「いいえ」(部分)
+	// Added to the same page without replacing → that page is same topic "yes" (weight 1) and disagreement "no" (partial); other pages are same topic "no" (partial)
 	draft.ID = c[0].PageID
 	sub, err := runReflect(agent, scope, reflectRequest{Operation: "submit", Wiki: []notebook.Draft{draft}})
 	if err != nil || !sub.(reflectResult).Complete {
-		t.Fatalf("保存: %v %+v", err, sub)
+		t.Fatalf("save: %v %+v", err, sub)
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	conflict, _ := st.LabeledTraces("wiki-conflict")
 	if l := place[c[0].SameTopic.TraceID]; l.Truth != "yes" || l.Weight != placeChosenWeight || l.Source != "outcome" {
-		t.Fatalf("足した記事は同じ話題: %+v", l)
+		t.Fatalf("the page added to is the same topic: %+v", l)
 	}
 	if l := place[c[1].SameTopic.TraceID]; l.Truth != "no" || l.Weight != placeOtherWeight {
-		t.Fatalf("選ばなかった記事は別の話題(部分): %+v", l)
+		t.Fatalf("a page not chosen is another topic (partial): %+v", l)
 	}
 	if l := conflict[c[0].Conflict.TraceID]; l.Truth != "no" || l.Weight != placeOtherWeight {
-		t.Fatalf("置き換えずに足したなら食い違わない(部分): %+v", l)
+		t.Fatalf("added without replacing means no disagreement (partial): %+v", l)
 	}
 	if _, ok := conflict[c[1].Conflict.TraceID]; ok {
-		t.Fatal("足しも置き換えもしなかった記事と食い違うかは分からない")
+		t.Fatal("for a page neither added to nor replaced, whether it disagrees is unknown")
 	}
 
-	// 置き換えた → 置き換えた記事は同じ話題「はい」・食い違い「はい」(重み 1)
+	// Replaced → the replaced page is same topic "yes" and disagreement "yes" (weight 1)
 	draft2 := notebook.Draft{Sources: []string{src}, Title: "変更履歴は英語だけ", Lesson: "変更履歴は日本語版を作らず英語だけにする", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を更新する時"}
 	out, err = runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft2}})
 	if err != nil {
@@ -113,29 +113,29 @@ func TestReflectPlaceRanksPagesAndSettlesFromSubmit(t *testing.T) {
 	top := out.(placeResult).Placements[0].Candidates[0]
 	draft2.Replaces = []string{top.PageID}
 	if sub, err := runReflect(agent, scope, reflectRequest{Operation: "submit", Wiki: []notebook.Draft{draft2}}); err != nil || !sub.(reflectResult).Complete {
-		t.Fatalf("置き換えの保存: %v %+v", err, sub)
+		t.Fatalf("saving the replacement: %v %+v", err, sub)
 	}
 	place, _ = st.LabeledTraces("wiki-place")
 	conflict, _ = st.LabeledTraces("wiki-conflict")
 	if l := place[top.SameTopic.TraceID]; l.Truth != "yes" || l.Weight != placeChosenWeight {
-		t.Fatalf("置き換えた記事は同じ話題: %+v", l)
+		t.Fatalf("the replaced page is the same topic: %+v", l)
 	}
 	if l := conflict[top.Conflict.TraceID]; l.Truth != "yes" || l.Weight != placeChosenWeight {
-		t.Fatalf("置き換えたなら食い違う: %+v", l)
+		t.Fatalf("replaced means they disagree: %+v", l)
 	}
 	sp, err := spec.Load(filepath.Join(agent, "decisions", "wiki-place.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := humanTruthsFor(st, sp); n == 0 {
-		t.Fatal("結果の正解は線を引く正解に数える")
+		t.Fatal("truths from results count as truths for drawing the line")
 	}
 }
 
-// 記事が無いプロジェクトでは、新しい記事になることだけを返す(モデルには聞かない)。
+// In a project with no pages, it only returns that this becomes a new page (the model is not asked).
 func TestReflectPlaceWithoutPagesNeedsNoModel(t *testing.T) {
 	repo := gitRepo(t)
-	agent := hookEnv(t, nil, repo) // モデル無し
+	agent := hookEnv(t, nil, repo) // no model
 	scope := feedbackScope(repo)
 	st := store.Store{Dir: agent}
 	if err := st.AppendFeedback(scope, store.Feedback{ID: fmt.Sprintf("%016x", 300), Request: "依頼", Summary: "返答", Reply: "返事"}); err != nil {
@@ -145,23 +145,23 @@ func TestReflectPlaceWithoutPagesNeedsNoModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := out.(placeResult).Placements; len(p) != 1 || len(p[0].Candidates) != 0 || !strings.Contains(p[0].Note, "新しい記事") {
+	if p := out.(placeResult).Placements; len(p) != 1 || len(p[0].Candidates) != 0 || !strings.Contains(p[0].Note, "new page") {
 		t.Fatalf("%+v", p)
 	}
-	// CLI からも同じ(shikii reflect place、JSON を標準入力)
+	// The same from the CLI (shikii reflect place, JSON on standard input)
 	old := stdin
 	defer func() { stdin = old }()
 	stdin = strings.NewReader(fmt.Sprintf(`{"wiki":[{"sources":["%016x"],"title":"t","lesson":"l","kind":"rule","scene":"テストの時","applies_to":"a"}]}`, 300))
 	cli := capture(t, func() error { return cmdReflect([]string{"place"}) })
-	if !strings.Contains(cli, `"placements"`) || !strings.Contains(cli, "新しい記事") {
+	if !strings.Contains(cli, `"placements"`) || !strings.Contains(cli, "new page") {
 		t.Fatalf("shikii reflect place must answer like the MCP operation: %s", cli)
 	}
 }
 
-// 0.8.3: 既存の記事への合流は教訓の文を書き直すことが多く、wiki ingest で直接保存されることも多い。
-// 置いた時の草稿と文が変わっていても(本文に草稿が入っていれば)同じ草稿として突き合わせ、wiki ingest でも結果の正解を付ける。
-// これが無いと「新しい記事にした」時だけ正解が付き、差し込み先の正解が全部「いいえ」になって線が引けなかった(このプロジェクトで 384 件全部 no)。
-// 関係ない記事の保存は、その草稿の判定に正解を付けない。
+// 0.8.3: merging into an existing page often rewrites the lesson text, and it is often saved directly with wiki ingest.
+// Even when the text differs from the draft at placing time (as long as the draft is in the body), it is matched as the same draft, and wiki ingest also attaches the truth from the result.
+// Without this, truths were attached only when "a new page was made", every insertion-point truth became "no", and no line could be drawn (all 384 were no in this project).
+// Saving an unrelated page does not attach truths to that draft's decisions.
 func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 	model := fakeAgentModel(t, func(state string) float64 {
 		if strings.Contains(state, "existing page title: 変更履歴") {
@@ -185,49 +185,49 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 	}
 	c := out.(placeResult).Placements[0].Candidates
 	if c[0].PageID != ids["変更履歴は英語と日本語を揃える"] {
-		t.Fatalf("一番近い記事が先頭: %+v", c)
+		t.Fatalf("the closest page comes first: %+v", c)
 	}
-	// 関係ない記事を wiki ingest で保存しても、さっきの草稿の判定には正解を付けない
+	// Saving an unrelated page with wiki ingest does not attach truths to the earlier draft's decisions
 	other := notebook.Draft{Sources: []string{src}, Title: "ライセンスの表記", Lesson: "配布物には 3 つのライセンスファイルと第三者の表示を入れる", Kind: "rule", Scene: "テストの時", AppliesTo: "配布物を組む時"}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: other}); err != nil {
 		t.Fatal(err)
 	}
 	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
-		t.Fatalf("関係ない保存で正解を付けない: %+v", place)
+		t.Fatalf("an unrelated save attaches no truth: %+v", place)
 	}
-	// 同じ記事を、置いた草稿とは関係の薄い文で直す保存(被覆は 3〜6 割)では、その草稿に正解を付けない(監査 0.8.3: 下限 0.3 でも通っていた)
+	// A save that edits the same page with text loosely related to the placed draft (coverage 30-60%) does not attach a truth to that draft (audit 0.8.3: it passed even with a lower bound of 0.3)
 	weakBody := "## 見出しの日付\n変更履歴の見出しには日付を書かない。版の形は version.go と揃える。"
 	weak := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &weakBody}
 	if cov := coverageOf(draft.Lesson, weak); cov < 0.3 || cov >= placeMatchMin {
-		t.Fatalf("この負例は被覆 0.3〜0.6 の間でないと下限を試せない: %.2f", cov)
+		t.Fatalf("this negative example must have coverage between 0.3 and 0.6 to test the lower bound: %.2f", cov)
 	}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: weak}); err != nil {
 		t.Fatal(err)
 	}
 	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
-		t.Fatalf("関係の薄い直しで正解を付けない: %+v", place)
+		t.Fatalf("a loosely related edit attaches no truth: %+v", place)
 	}
-	// 一番近い記事へ、教訓の文を書き直して wiki ingest で合流する(本文も草稿の文を言い換えて書く。被覆は 0.6〜0.95)
+	// Merge into the closest page with wiki ingest, rewriting the lesson text (the body also rephrases the draft text; coverage 0.6-0.95)
 	body := "## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。"
 	merged := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする",
 		Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時",
 		Body: &body}
 	if cov := coverageOf(draft.Lesson, merged); cov < placeMatchMin || cov >= 0.95 {
-		t.Fatalf("書き直した合流は被覆 0.6〜0.95 の間でないと下限を試せない: %.2f", cov)
+		t.Fatalf("a rewritten merge must have coverage between 0.6 and 0.95 to test the lower bound: %.2f", cov)
 	}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
 		t.Fatal(err)
 	}
 	place, _ := st.LabeledTraces("wiki-place")
 	if l := place[c[0].SameTopic.TraceID]; l.Truth != "yes" || l.Weight != placeChosenWeight || l.Source != "outcome" {
-		t.Fatalf("書き直して合流した記事は同じ話題「はい」: %+v", l)
+		t.Fatalf("a page merged into with rewriting is same topic \"yes\": %+v", l)
 	}
 	if l := place[c[1].SameTopic.TraceID]; l.Truth != "no" || l.Weight != placeOtherWeight {
-		t.Fatalf("選ばなかった記事は「いいえ」(部分): %+v", l)
+		t.Fatalf("a page not chosen is \"no\" (partial): %+v", l)
 	}
 }
 
-// coverageOf は、置いた草稿の文の 2 文字の並びのうち、保存する草稿に入っている割合(テストの見本が下限を試せる形かを確かめる)。
+// coverageOf is the share of 2-character sequences of the placed draft text that are in the draft being saved (checks that the test samples can test the lower bound).
 func coverageOf(placed string, d notebook.Draft) float64 {
 	text := d.Title + "\n" + d.Lesson
 	if d.Body != nil {
@@ -243,8 +243,8 @@ func coverageOf(placed string, d notebook.Draft) float64 {
 	return float64(hit) / float64(len(want))
 }
 
-// 0.9.0: 差し込み先の返事に、今ある場面を数の多い順に返す(新しい草稿の場面を、近い物があれば同じ言い方にするため)。
-// 新しい記事になる時(記事が無い時)も返す。候補の記事にも種類と場面を添える(合流する時に引き継ぐ値が分かる)。
+// 0.9.0: the insertion-point reply returns the existing scenes, most used first (so a new draft's scene uses the same wording when one is close).
+// It is returned also when the draft becomes a new page (no pages). Candidate pages also carry their kind and scene (the values carried over when merging).
 func TestPlaceReturnsExistingScenes(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .3 })
 	repo := gitRepo(t)
@@ -267,14 +267,14 @@ func TestPlaceReturnsExistingScenes(t *testing.T) {
 	}
 	res := out.(placeResult)
 	if len(res.Scenes) != 2 || res.Scenes[0].Scene != "コミットする時" || res.Scenes[0].Count != 2 || res.Scenes[1].Scene != "公開する時" {
-		t.Fatalf("今ある場面を数の多い順に返す: %+v", res.Scenes)
+		t.Fatalf("returns the existing scenes, most used first: %+v", res.Scenes)
 	}
 	if c := res.Placements[0].Candidates[0]; c.Kind != "rule" || c.Scene == "" {
-		t.Fatalf("候補にも種類と場面を添える: %+v", c)
+		t.Fatalf("candidates also carry the kind and scene: %+v", c)
 	}
 }
 
-// 監査 0.9.0 の M13: 差し込み先の返事の場面は多い順に placeScenesMax まで(全部の場面を渡して返事を大きくしない)。
+// audit 0.9.0 M13: the scenes in the insertion-point reply are the most used, up to placeScenesMax (the reply is not inflated with every scene).
 func TestLiveScenesAreCappedAndOrdered(t *testing.T) {
 	var live []notebook.Page
 	for i := 0; i < placeScenesMax+5; i++ {
@@ -284,6 +284,6 @@ func TestLiveScenesAreCappedAndOrdered(t *testing.T) {
 	}
 	got := liveScenes(live)
 	if len(got) != placeScenesMax || got[0].Count != 3 || got[len(got)-1].Count > got[0].Count {
-		t.Fatalf("多い順に %d 個まで: %d 個、先頭 %+v", placeScenesMax, len(got), got[0])
+		t.Fatalf("most used first, up to %d: got %d, first %+v", placeScenesMax, len(got), got[0])
 	}
 }

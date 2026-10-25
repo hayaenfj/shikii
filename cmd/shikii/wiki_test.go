@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// wiki のパターンのページは「主張 + 条件 + 証拠 + 再検証の手順」。前書き(YAML)を機械が読み、本文は人のもの。
+// A wiki pattern page is "claim + conditions + evidence + retest procedure". The machine reads the front matter (YAML); the body belongs to people.
 func TestClaimPageFrontMatterRoundTrips(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "p.md")
@@ -30,7 +30,7 @@ func TestClaimPageFrontMatterRoundTrips(t *testing.T) {
 	if err != nil || len(again.Evidence) != 1 || body2 != body || !strings.Contains(body2, "本文はそのまま。") {
 		t.Fatalf("the body is the person's and must survive a machine write: %v %+v\n%s", err, again, body2)
 	}
-	// 前書きの無いページは主張ではない(読めるが retest 無し)
+	// A page without front matter is not a claim (readable, but no retest)
 	if err := os.WriteFile(path, []byte("# 古い形のページ\n\nstatus: tentative\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -40,11 +40,11 @@ func TestClaimPageFrontMatterRoundTrips(t *testing.T) {
 	}
 }
 
-// wiki verify は各主張の再検証を今のモデルで回し、支持 / 反証 / 不確定を返して証拠を書き足す。状態は変えない(人が変える)。
+// wiki verify runs each claim's retest with the current model, returns supports / contradicts / inconclusive and appends evidence. It does not change the status (people do).
 func TestWikiVerifyRunsRetestsAndRecordsEvidence(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	srv := layoutSensitiveModel(t) // 既定の配置では全部 change_request、plain なら当てる
+	srv := layoutSensitiveModel(t) // with the default layout everything is change_request; with plain it gets them right
 	if err := os.MkdirAll(filepath.Join(dir, "decisions"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestWikiVerifyRunsRetestsAndRecordsEvidence(t *testing.T) {
 	if len(pg.Evidence) != 1 || pg.Evidence[0].Verdict != "contradicts" {
 		t.Fatalf("contradicting evidence is recorded too: %+v", pg)
 	}
-	// 同じモデルで繰り返しても「独立した観察」は増えない。2 つ目のモデルで支持されたら confirmable と言う
+	// Repeating with the same model does not add "independent observations". When a second model supports it, it says confirmable
 	out = capture(t, func() error {
 		return cmdWiki([]string{"verify", "--local", srv.URL, "--labeled", labeledPath, "--store", filepath.Join(dir, ".shikii"), supported})
 	})
@@ -115,12 +115,12 @@ func TestWikiVerifyRunsRetestsAndRecordsEvidence(t *testing.T) {
 	}
 }
 
-// 自動で育つ: tune の run が終わるごとに、現状に有意に勝った候補を主張の下書きとして起草し、
-// その spec についての既存の主張には run の採点から証拠を足す(モデルは呼び直さない)。人は下書きを一般化して patterns/ に移すだけ。
+// Grows automatically: after each tune run, candidates that significantly beat current are drafted as claims,
+// and existing claims about that spec get evidence from the run's scoring (the model is not called again). A person only generalizes the draft and moves it to patterns/.
 func TestTuneDraftsClaimsAndFeedsEvidenceToExistingOnes(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	srv := wordingSensitiveModel(t)      // strict が why を当て、worse は current と同じ
+	srv := wordingSensitiveModel(t)      // strict gets why right; worse is the same as current
 	specPath := specWithVariants(t, dir) // variants: strict, worse
 	labeledPath := filepath.Join(dir, "rows.json")
 	if err := os.WriteFile(labeledPath, []byte(bankRows()), 0o644); err != nil {
@@ -130,7 +130,7 @@ func TestTuneDraftsClaimsAndFeedsEvidenceToExistingOnes(t *testing.T) {
 	if err := os.MkdirAll(pdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	existing := filepath.Join(pdir, "strict-beats-worse.md") // worse には主張を置かない: 勝っていない候補が下書きにならないことを見るため
+	existing := filepath.Join(pdir, "strict-beats-worse.md") // no claim for worse: to see that a candidate that did not win does not become a draft
 	if err := os.WriteFile(existing, []byte("---\nclaim: strict beats worse\nstatus: tentative\nretest:\n  spec: decisions/intent.yaml\n  better: strict\n  than: worse\n---\n# strict beats worse\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -148,14 +148,14 @@ func TestTuneDraftsClaimsAndFeedsEvidenceToExistingOnes(t *testing.T) {
 	if pg.Status != "draft" || pg.Retest == nil || pg.Retest.Better != "strict" || pg.Retest.Than != "current" || pg.Retest.Spec != "decisions/intent.yaml" || len(pg.Evidence) != 1 || pg.Evidence[0].Verdict != "supports" || pg.Evidence[0].Run == "" || pg.AppliesTo["type"] != "choice" {
 		t.Fatalf("draft front matter: %+v", pg)
 	}
-	if !strings.Contains(body, "起草") {
+	if !strings.Contains(body, "drafted") {
 		t.Fatalf("the draft body tells a person what to do with it:\n%s", body)
 	}
 	ex, _, _ := readClaimPage(existing)
 	if len(ex.Evidence) != 1 || ex.Evidence[0].Verdict != "supports" || ex.Evidence[0].Run == "" || ex.Status != "tentative" {
 		t.Fatalf("the existing claim gets this run as evidence without a model call, status untouched: %+v", ex)
 	}
-	// 2 回目の run: 下書きは重複せず証拠が 2 件に。worse は下書きにならない(有意に勝っていない)
+	// Second run: the draft is not duplicated and has 2 pieces of evidence. worse does not become a draft (it did not win significantly)
 	capture(t, func() error {
 		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii")})
 	})

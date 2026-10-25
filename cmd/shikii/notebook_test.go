@@ -26,7 +26,7 @@ func notebookCommand(t *testing.T, operation, input string) map[string]any {
 	out := capture(t, func() error { return cmdWiki(args) })
 	var result map[string]any
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
-		t.Fatalf("wiki の結果は JSON: %v %s", err, out)
+		t.Fatalf("the wiki result is JSON: %v %s", err, out)
 	}
 	return result
 }
@@ -44,14 +44,14 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(manifest, &plugin); err != nil || plugin.Version != shikii.Version || shikii.Version != "0.9.1" {
-		t.Fatalf("CLI・MCP・plugin の版を揃える: %s %+v %v", shikii.Version, plugin, err)
+		t.Fatalf("the CLI, MCP and plugin versions match: %s %+v %v", shikii.Version, plugin, err)
 	}
 	old := os.Args
 	os.Args = []string{"shikii", "--version"}
 	out := capture(t, func() error { main(); return nil })
 	os.Args = old
 	if strings.TrimSpace(out) != "shikii 0.9.1" {
-		t.Fatalf("版を確認できる: %s", out)
+		t.Fatalf("the version can be checked: %s", out)
 	}
 	repo := gitRepo(t)
 	agent := hookEnv(t, nil, repo)
@@ -63,7 +63,7 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	send, _ := mcpSession(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}, agent)
 	init := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"}))
 	if init["serverInfo"].(map[string]any)["version"] != shikii.Version {
-		t.Fatal("MCP の起動時にも同じ版を返す")
+		t.Fatal("MCP returns the same version at startup too")
 	}
 	listed := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
 	for _, item := range listed["tools"].([]any) {
@@ -76,7 +76,7 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 			properties = properties["wiki"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
 		}
 		if properties["body"] == nil || properties["related"] == nil {
-			t.Fatal("wikiとreflectの道具から本文・関連を渡せる", tool["name"])
+			t.Fatal("the wiki and reflect tools can take a body and related pages", tool["name"])
 		}
 	}
 	for _, args := range []map[string]any{
@@ -87,26 +87,26 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	} {
 		got := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "shikii_wiki", "arguments": args}}))
 		if got["isError"] == true || got["structuredContent"] == nil {
-			t.Fatalf("wiki の一周を MCP から呼べる: %v", got)
+			t.Fatalf("the whole wiki cycle can be called from MCP: %v", got)
 		}
 	}
 	material := notebookCommand(t, "query", id)
 	if len(material["source_material"].([]any)) != 1 {
-		t.Fatal("CLI からも出典の原文を確認できる")
+		t.Fatal("the raw text of the source can be checked from the CLI too")
 	}
 	h := newServer(serveOpts{storeDir: agent, projectScope: feedbackScope(repo)})
 	recorder := httptest.NewRecorder()
 	h.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/v1/wiki", nil))
 	var wiki map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &wiki); err != nil || len(wiki["lessons"].([]any)) != 1 || wiki["notebook_project"] != filepath.Base(repo) {
-		t.Fatalf("画面にも同じ仕事の教訓が届く: err=%v", err)
+		t.Fatalf("the page also gets the same project's lessons: err=%v", err)
 	}
 	if wiki["lessons"].([]any)[0].(map[string]any)["body"] != "## 背景\n\nARTICLE_ONLY_MARKER" {
-		t.Fatal("MCPで登録した本文が画面にも届く")
+		t.Fatal("the body registered through MCP reaches the page too")
 	}
 	quote, err := memoryContext(agent, feedbackScope(repo), "README の導入手順", &hookSession{})
 	if err != nil || !strings.Contains(quote, "モデルの起動手順") || strings.Contains(quote, "ARTICLE_ONLY_MARKER") {
-		t.Fatal("自動配送では本文でなく要約を引用する", err)
+		t.Fatal("automatic delivery quotes the summary, not the body", err)
 	}
 }
 
@@ -126,7 +126,7 @@ func TestNotebookTransportRejectsUnauthorizedFieldsAndBrowserPosts(t *testing.T)
 	} {
 		code, _, err := callTool(h, "shikii_wiki", json.RawMessage(body))
 		if err != nil || code < 400 {
-			t.Fatalf("仕事や信頼の状態を入力で偽装できない: code=%d err=%v", code, err)
+			t.Fatalf("the project or trust state cannot be forged from the input: code=%d err=%v", code, err)
 		}
 	}
 	for _, origin := range []string{"https://other.example", "http://localhost.other.example"} {
@@ -136,7 +136,7 @@ func TestNotebookTransportRejectsUnauthorizedFieldsAndBrowserPosts(t *testing.T)
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		if rec.Code != 403 {
-			t.Fatal("別サイトから wiki を操作させない")
+			t.Fatal("another site cannot operate the wiki")
 		}
 	}
 	old := stdin
@@ -144,13 +144,13 @@ func TestNotebookTransportRejectsUnauthorizedFieldsAndBrowserPosts(t *testing.T)
 	for _, body := range []string{`{"sources":[],"status":"confirmed"}`, `{"sources":[]}` + strings.Repeat(" ", 64<<10)} {
 		stdin = strings.NewReader(body)
 		if err := cmdWiki([]string{"ingest"}); err == nil {
-			t.Fatal("CLI でも未知の項目と大きすぎる入力は受け取らない")
+			t.Fatal("the CLI also refuses unknown fields and inputs that are too large")
 		}
 	}
 }
 
-// 普段の会話 → エージェントによる取り込み → 出典付きの教訓 → 次の依頼、を
-// 画面操作や新しいモデルなしで一周する。原文と既存の wiki は上書きしない。
+// Go around once: everyday conversation → ingest by the agent → lesson with sources → next request,
+// without page operations or a new model. The raw text and the existing wiki are not overwritten.
 func TestNotebookConversationIngestQueryLintLoop(t *testing.T) {
 	repo := gitRepo(t)
 	agent := hookEnv(t, nil, repo)
@@ -165,7 +165,7 @@ func TestNotebookConversationIngestQueryLintLoop(t *testing.T) {
 	}
 	q := notebookCommand(t, "query", "")
 	if len(q["pending_sources"].([]any)) != 1 {
-		t.Fatalf("未整理の会話を取り出せる: %v", q)
+		t.Fatalf("unsorted conversations can be taken out: %v", q)
 	}
 	before, err := os.ReadFile(filepath.Join(agent, "wiki", "index.md"))
 	if err != nil {
@@ -174,31 +174,31 @@ func TestNotebookConversationIngestQueryLintLoop(t *testing.T) {
 	ingested := notebookCommand(t, "ingest", `{"sources":["`+sourceID+`"],"title":"インストール手順の確認","lesson":"インストール手順には、モデルを起動する方法まで含めて確認する。","kind":"rule","scene":"テストの時","applies_to":"README の導入手順を書く依頼"}`)
 	page := ingested["page"].(map[string]any)
 	if page["status"] != "hypothesis" || len(page["sources"].([]any)) != 1 {
-		t.Fatalf("教訓は出典付きの仮説: %v", page)
+		t.Fatalf("a lesson is a hypothesis with sources: %v", page)
 	}
 	q = notebookCommand(t, "query", "モデルを起動する方法を説明して")
 	if len(q["lessons"].([]any)) != 1 || len(q["pending_sources"].([]any)) != 0 {
-		t.Fatalf("整理した教訓を検索して使える: %v", q)
+		t.Fatalf("sorted lessons can be searched and used: %v", q)
 	}
 	ctx, err := memoryContext(agent, feedbackScope(repo), "README の導入手順を書く依頼", &hookSession{})
 	if err != nil || !strings.Contains(ctx, "モデルを起動する方法まで含めて確認する") || !strings.Contains(ctx, sourceID) {
-		t.Fatalf("依頼の前に教訓と出典が届く: %s %v", ctx, err)
+		t.Fatalf("the lesson and its source arrive before the request: %s %v", ctx, err)
 	}
 	lint := notebookCommand(t, "lint", "")
 	if len(lint["issues"].([]any)) != 0 {
-		t.Fatalf("出典と索引が整っている: %v", lint)
+		t.Fatalf("sources and indexes are in order: %v", lint)
 	}
 	indexes, _ := filepath.Glob(filepath.Join(agent, "wiki", "lessons", "*", "index.md"))
 	logs, _ := filepath.Glob(filepath.Join(agent, "wiki", "lessons", "*", "log.md"))
 	if len(indexes) != 1 || len(logs) != 1 {
-		t.Fatalf("索引と変更履歴を自動で作る: indexes=%v logs=%v", indexes, logs)
+		t.Fatalf("the index and change log are made automatically: indexes=%v logs=%v", indexes, logs)
 	}
 	after, _ := os.ReadFile(filepath.Join(agent, "wiki", "index.md"))
 	if string(before) != string(after) {
-		t.Fatal("既存の聞き方の wiki を上書きしない")
+		t.Fatal("the existing wording wiki is not overwritten")
 	}
 	if _, labels, err := st.Counts("done-as-asked"); err != nil || len(labels) != 0 {
-		t.Fatalf("まとめた教訓を人の正解に変えない: %v %v", labels, err)
+		t.Fatalf("summarized lessons do not become a person's truth: %v %v", labels, err)
 	}
 }
 
@@ -211,38 +211,38 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 	runHook(t, "stop", map[string]any{"session_id": "wiki", "cwd": repo, "last_assistant_message": "更新しました"})
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "wiki", "cwd": repo, "prompt": "まだ終わっていない。モデルを起動する手順も書いて"}))
 	if strings.Contains(ctx, "shikii_reflect") {
-		t.Fatalf("一会話だけなら整理をまとめるまで待つ: %s", ctx)
+		t.Fatalf("with only one conversation, it waits before asking for sorting: %s", ctx)
 	}
-	// 通知では整理の仕事を増やさない。
+	// Notifications do not add sorting work.
 	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "wiki", "cwd": repo, "prompt": "<task-notification>done</task-notification>"}); out != "" {
-		t.Fatalf("通知には wiki の作業を差し込まない: %s", out)
+		t.Fatalf("wiki work is not inserted into a notification: %s", out)
 	}
-	// 追加依頼で教訓が無ければ、原文を残して整理済みにできる。
+	// When a follow-up request yields no lesson, the raw text is kept and it can be marked as sorted.
 	view := notebookCommand(t, "query", "")
 	id := view["pending_sources"].([]any)[0].(map[string]any)["id"].(string)
 	notebookCommand(t, "ingest", `{"sources":["`+id+`"]}`)
 	view = notebookCommand(t, "query", "")
 	if len(view["pending_sources"].([]any)) != 0 || len(view["lessons"].([]any)) != 0 {
-		t.Fatalf("全ての発言から教訓を捏造する必要はない: %v", view)
+		t.Fatalf("there is no need to invent a lesson from every message: %v", view)
 	}
 	ctx, _, err := reflectContext(agent, feedbackScope(repo))
 	if err != nil || ctx != "" {
-		t.Fatalf("整理済みの会話を繰り返し渡さない: %s %v", ctx, err)
+		t.Fatalf("sorted conversations are not passed again and again: %s %v", ctx, err)
 	}
-	// JSON のエスケープで長くなる原文も、引用後の上限を守る。
+	// Raw text that grows with JSON escaping still keeps the limit after quoting.
 	for _, id := range []string{"0000000000000002", "0000000000000003"} {
 		if err := (store.Store{Dir: agent}).AppendFeedback(feedbackScope(repo), store.Feedback{ID: id, Request: "README を更新して", Summary: strings.Repeat("\x01", 1500), Reply: strings.Repeat("\x02", 1500)}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	ctx, _, err = reflectContext(agent, feedbackScope(repo))
-	// 振り返りを頼む文の大きさは限らない(0.9.1。作法の文を足すたびに削り合いになった)。守るのは、会話の原文を重ねずに出典の ID だけを渡すこと
+	// The size of the text asking for reflection is not limited (0.9.1; every added ritual sentence turned into a fight over space). What is kept is passing only source IDs, without repeating the conversation's raw text
 	if err != nil || ctx == "" || strings.Contains(ctx, strings.Repeat("\x01", 100)) || strings.Contains(ctx, strings.Repeat("\x02", 100)) || !utf8.ValidString(ctx) {
-		t.Fatalf("wiki の引用も会話の原文を重ねない: bytes=%d err=%v", len(ctx), err)
+		t.Fatalf("the wiki quote does not repeat the conversation's raw text either: bytes=%d err=%v", len(ctx), err)
 	}
 	parts := strings.SplitN(ctx, "\n", 2)
 	var quoted map[string]any
 	if len(parts) != 2 || json.Unmarshal([]byte(parts[1]), &quoted) != nil || len(quoted["sources"].([]any)) != 2 {
-		t.Fatal("切り詰めても引用データと指示の境界を保つ")
+		t.Fatal("even when cut, the boundary between quoted data and instructions is kept")
 	}
 }

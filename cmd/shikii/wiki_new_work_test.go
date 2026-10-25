@@ -6,25 +6,25 @@ import (
 	"testing"
 )
 
-// 0.9.1: エージェントが自分で新しく作った・変えた決まり・テスト・手順(コマンドやスクリプト)も、その場で wiki に書く(既存の記事があれば
-// 足すか直す)。本人の訂正だけを書く作法だったので、テストの流し方(scripts/go-test.sh)を作っても wiki に残らなかった(本人「新しい何かを
-// ルールとかテストで作ったらwikiに必ず記載すること」)。skill を読まないエージェント(hook の無い Codex、OpenCode)にも届くよう、
-// 全部の入り口(作法の一言・振り返りの文・AGENTS.md の節・MCP の案内・skill)に入れる
+// 0.9.1: rules, tests and procedures (commands or scripts) the agent newly made or changed itself are also written to the wiki on the spot (adding to or fixing
+// an existing page if there is one). The ritual used to write only the person's corrections, so even the way to run tests (scripts/go-test.sh) never reached the wiki (the person: "if you
+// make something new as a rule or a test, always write it in the wiki"). So that it reaches agents that do not read the skill (Codex without hooks, OpenCode),
+// it goes into every entry point (the ritual one-liner, the reflection text, the AGENTS.md section, the MCP guidance, the skill)
 func TestNewRulesTestsAndProceduresGoToTheWiki(t *testing.T) {
 	ja := "新しく作った・変えた決まり・テスト・手順"
 	en := "rule, test or procedure"
 	reflectText := reflectAsk("shikii")
 	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
 	wikiRef, _ := os.ReadFile("../../skills/shikii/references/wiki.md")
-	// 着手前の整理の案内は依頼のたびに届く(作法の一言はセッションに 1 回だけで、作業規則の無いプロジェクトの Claude Code は作り終えた時に使わなかった。0.9.1 の実測)
-	for name, text := range map[string]string{"作法の一言(habitsNotice)": habitsNotice, "AGENTS.md の節": agentsSection, "振り返りを頼む文": reflectText, "着手前の整理の案内(毎回)": planningNotice("s", "t")} {
-		if !strings.Contains(text, ja) {
-			t.Errorf("%s に「%s」も wiki に書く決まりが無い", name, ja)
+	// The pre-work sorting guidance arrives with every request (the ritual one-liner is only once per session, and Claude Code in a project without work rules did not use it when it finished making something; measured in 0.9.1)
+	for name, text := range map[string]string{"ritual one-liner (habitsNotice)": habitsNotice, "AGENTS.md section": agentsSection, "reflection text": reflectText, "pre-work sorting guidance (every time)": planningNotice("s", "t")} {
+		if !strings.Contains(text, ja) && !strings.Contains(text, en) { // Japanese before the English translation, English after
+			t.Errorf("%s lacks the rule to also write %q (or %q) to the wiki", name, en, ja)
 		}
 	}
-	for name, text := range map[string]string{"MCP の案内": mcpInstructions, "SKILL.md": string(skill), "references/wiki.md": string(wikiRef)} {
+	for name, text := range map[string]string{"MCP guidance": mcpInstructions, "SKILL.md": string(skill), "references/wiki.md": string(wikiRef)} {
 		if !strings.Contains(text, en) {
-			t.Errorf("%s に %q も wiki に書く決まりが無い", name, en)
+			t.Errorf("%s lacks the rule to also write %q to the wiki", name, en)
 		}
 	}
 }

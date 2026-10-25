@@ -8,23 +8,23 @@ import (
 	"time"
 )
 
-// 作法の検査(0.8.0): hook が頼んだ作法(作業の前の計画の整理、終える前の振り返りの保存)をエージェントがやらないまま終えようとしたら、
-// 止める検査と同じ仕組みで Stop を一度だけ止めて理由を返す。頼むだけでは長い作業の中で後回しにされ、誰も気付かなかった
-// (haya1 では needs-plan の記録が 0 件、届いた教訓の評価が 26 件中 6 件)。組み込みで常に有効、外す設定は無い。
-// 記録は止める検査と同じ records/guards.jsonl に guard = plan-before-work / reflect-before-end で残り、status と画面に出る。
+// Ritual checks (0.8.0): when the agent tries to finish without doing a ritual the hook asked for (sorting out the plan before work, saving the reflection before finishing),
+// Stop is blocked once, with the reason, using the same mechanism as the checks that stop the turn. Merely asking got put off during long work, and nobody noticed
+// (in haya1, 0 needs-plan records, and 6 of 26 delivered lessons assessed). Built in and always enabled; there is no setting to turn it off.
+// Records go into records/guards.jsonl, the same as the checks that stop the turn, with guard = plan-before-work / reflect-before-end, and appear in status and on the page.
 
 const (
 	ritualPlan    = "plan-before-work"
 	ritualReflect = "reflect-before-end"
-	ritualKinds   = "wiki-kinds" // 版を上げる前の記事に種類と場面を付ける(0.9.0)
+	ritualKinds   = "wiki-kinds" // give a kind and a scene to pages from before the version bump (0.9.0)
 )
 
-// builtinGuards は組み込みの作法の検査(一覧・集計・画面用。評価は ritualStop が行う)。
+// builtinGuards are the built-in ritual checks (for the list, totals and the page; ritualStop does the evaluation).
 func builtinGuards() []guard {
 	return []guard{
-		{ID: ritualPlan, Kind: "ritual", Title: "作業の前に計画を整理する(hook plan query → submit)", Reason: "hook が頼んだ依頼でファイルを変えたなら、整理を submit してから終える", Enabled: true},
-		{ID: ritualReflect, Kind: "ritual", Title: "終える前に振り返りを保存する(reflect query → submit)", Reason: "hook が対象の会話を挙げたなら、仮採点・wiki・届いた教訓の評価を submit してから終える", Enabled: true},
-		{ID: ritualKinds, Kind: "ritual", Title: "種類と場面の無い記事に種類と場面を付ける(shikii wiki classify)", Reason: "hook が版を上げる前の記事を挙げたなら、種類と場面を付けてから終える", Enabled: true},
+		{ID: ritualPlan, Kind: "ritual", Title: "Sort out the plan before work (hook plan query → submit)", Reason: "if files were changed in a request the hook asked about, submit the sorted plan before finishing", Enabled: true},
+		{ID: ritualReflect, Kind: "ritual", Title: "Save the reflection before finishing (reflect query → submit)", Reason: "if the hook listed conversations, submit the provisional scores, wiki and assessments of delivered lessons before finishing", Enabled: true},
+		{ID: ritualKinds, Kind: "ritual", Title: "Give a kind and a scene to pages without them (shikii wiki classify)", Reason: "if the hook listed pages from before the version bump, give them a kind and a scene before finishing", Enabled: true},
 	}
 }
 
@@ -32,25 +32,25 @@ func isBuiltinGuard(id string) bool {
 	return id == ritualPlan || id == ritualReflect || id == ritualKinds
 }
 
-// ritualStop は、このターンで頼んだ作法が済んでいるかを見る。recheck(止めた後の Stop)では記録だけして止めない。
+// ritualStop checks whether the rituals asked for in this turn are done. On recheck (the Stop after a block) it only records and does not block.
 func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, changed []string, known bool, recheck bool) (hookOut, error) {
 	if snapshot.RitualStopped == snapshot.TurnID && snapshot.TurnID != "" {
-		recheck = true // このターンで一度止めた(通知の後の Stop は stop_hook_active が付かない): 記録だけ、もう止めない(監査 R5)
+		recheck = true // already blocked once in this turn (the Stop after a notice has no stop_hook_active): only record, do not block again (audit R5)
 	}
 	now := time.Now().UTC()
 	var recs []guardRecord
 	var failed []string
-	// 計画: 頼んだ(controls: Planning がこのターンの物)のに submit が無く、ファイルを変えた
+	// Plan: asked for (controls: Planning belongs to this turn) but no submit, and files were changed
 	if p := snapshot.Planning; p != nil && p.TurnID == snapshot.TurnID && known && len(changed) > 0 {
 		pass := p.Result != nil
 		reason := ""
 		if !pass {
-			reason = fmt.Sprintf("計画の整理(hook plan query → submit)が無いまま、%d 件のファイルを変えて終えようとしています。%s hook plan query に %s を渡して今回と直近の会話を読み、agreed・open を submit してから終えてください", len(changed), hookExe(), planJSON(in.SessionID, snapshot.TurnID))
+			reason = fmt.Sprintf("The plan has not been sorted out (hook plan query → submit), yet %d files were changed and you are about to finish. Pass %s to %s hook plan query, read this and the recent conversations, submit agreed and open, then finish", len(changed), planJSON(in.SessionID, snapshot.TurnID), hookExe())
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualPlan, Pass: pass, Reason: reason, Recheck: recheck})
 	}
-	// 振り返り: 依頼前に挙げた会話が、まだ振り返りの対象に残っている(仮採点・wiki・届いた教訓の評価のどれかが未)
+	// Reflection: conversations listed before the request are still waiting for reflection (provisional scores, wiki or assessments of delivered lessons not done)
 	if len(snapshot.ReflectAsked) > 0 && snapshot.ReflectAskedTurn == snapshot.TurnID {
 		left, err := reflectLeft(root, scope, snapshot.ReflectAsked)
 		if err != nil {
@@ -64,12 +64,12 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 				ids = append(ids, l.id)
 			}
 			data, _ := json.Marshal(map[string]any{"sources": ids})
-			reason = "振り返りの保存が無いまま終えようとしています: " + strings.Join(leftLines(left), "、") + "。" + hookExe() + " reflect query(または shikii_reflect の query。対象 " + string(data) + ")で原文・届いた記憶を読み、reviews・wiki(教訓なしは sources だけ)・memory(届いた教訓ごとの helpful / unused / harmful / unknown)を submit してから終えてください"
+			reason = "The reflection has not been saved and you are about to finish: " + strings.Join(leftLines(left), "; ") + ". Read the raw text and delivered memories with " + hookExe() + " reflect query (or query of shikii_reflect; targets " + string(data) + "), submit reviews, wiki (only sources when there is no lesson) and memory (helpful / unused / harmful / unknown for each delivered lesson), then finish"
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReflect, Pass: pass, Reason: reason, Recheck: recheck})
 	}
-	// 種類と場面: 依頼前に挙げた記事が、まだ種類か場面の無いまま(0.9.0)
+	// Kind and scene: pages listed before the request still have no kind or scene (0.9.0)
 	if len(snapshot.ClassifyAsked) > 0 && snapshot.ClassifyAskedTurn == snapshot.TurnID {
 		left, err := classifyLeft(root, scope, snapshot.ClassifyAsked)
 		if err != nil {
@@ -78,7 +78,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		pass := len(left) == 0
 		reason := ""
 		if !pass {
-			reason = fmt.Sprintf("種類と場面を付ける記事が %d 本残っています(%s)。%s wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面>(MCP なら shikii_wiki の operation classify)で付けてから終えてください", len(left), strings.Join(left, "、"), hookExe())
+			reason = fmt.Sprintf("Pages that still need a kind and a scene: %d (%s). Give them with %s wiki classify <page ID> <rule|howto|criteria|fact|history> <scene> (on MCP, operation classify of shikii_wiki), then finish", len(left), strings.Join(left, ", "), hookExe())
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualKinds, Pass: pass, Reason: reason, Recheck: recheck})
@@ -92,14 +92,14 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		return hookOut{}, nil
 	}
 	var b strings.Builder
-	b.WriteString("shikii: 作法が済んでいません。済ませてから終えてください(組み込みの検査。二度目の Stop は止めません)。済ませた後の最後の返答では、作法の報告ではなく、本人が頼んだ作業の結果をもう一度短く伝えます。\n")
+	b.WriteString("shikii: rituals are not done. Do them before finishing (a built-in check; a second Stop is not blocked). In your final reply after doing them, briefly restate the result of the work the person asked for, not a report on the rituals.\n")
 	for _, f := range failed {
 		b.WriteString("- " + f + "\n")
 	}
 	return hookOut{Block: true, Reason: strings.TrimRight(b.String(), "\n")}, nil
 }
 
-// reflectLeftItem は、頼んだ会話のうちまだ振り返りの対象に残っている物と、何が未か。
+// reflectLeftItem is a requested conversation still waiting for reflection, and what is not done yet.
 type reflectLeftItem struct {
 	id                string
 	targets, memories int
@@ -135,15 +135,15 @@ func leftLines(left []reflectLeftItem) []string {
 	for _, l := range left {
 		var parts []string
 		if l.targets > 0 {
-			parts = append(parts, fmt.Sprintf("仮採点 %d", l.targets))
+			parts = append(parts, fmt.Sprintf("provisional scores %d", l.targets))
 		}
 		if l.wiki {
-			parts = append(parts, "wiki 未整理")
+			parts = append(parts, "wiki unsorted")
 		}
 		if l.memories > 0 {
-			parts = append(parts, fmt.Sprintf("届いた教訓の評価 %d 件", l.memories))
+			parts = append(parts, fmt.Sprintf("delivered lessons to assess %d", l.memories))
 		}
-		out = append(out, l.id+"("+strings.Join(parts, "・")+")")
+		out = append(out, l.id+" ("+strings.Join(parts, ", ")+")")
 	}
 	return out
 }

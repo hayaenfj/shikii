@@ -1,8 +1,8 @@
 package main
 
-// 線の状態(0.8.3): 正解が eval.min_n に届いた後を、件数だけで「線を引ける」と言わない。
-// 片方の答えしか無い(線を引けない)・試して分けられなかった・自動で引く途中・引けた、に分け、status に出し、
-// 本人にもターンの終わりに 1 回だけ知らせる(状態が変わったらまた 1 回)。新しいオプションは足さない。
+// Line state (0.8.3): once truths reach eval.min_n, do not claim "a line can be drawn" from the count alone.
+// Split it into: only one answer so far (no line possible), tried and could not separate, being drawn automatically, and drawn; show it in status
+// and tell the person once at the end of a turn (once more when the state changes). No new options are added.
 
 import (
 	"fmt"
@@ -25,16 +25,16 @@ const (
 	lineCalibrated   = "calibrated"
 )
 
-// lineState は、spec の今の文言(hash)とモデルの組の線の状態と、その組の正解の数・答えごとの数。
+// lineState is the line state for the pair of the spec's current wording (hash) and model, with that pair's number of truths and the count per answer.
 type lineState struct {
 	Kind   string
 	N      int
 	Truths map[string]int
 }
 
-// lineStateOf は、(hash, model) の正解から線の状態を決める。数え方は自動の較正(hookMaybeCalibrate)と同じで、入力ごとに最新の 1 件、
-// 人と結果の正解だけ(監査 0.8.3 の M3)。tried は、そのモデルで自動の較正を試して線が引けなかったか(triedWithoutLine)。
-// 答えが片方だけで線を引けないのは noul だけ(choice は正解が 1 種類でも生の確率の確かめで線を引ける。監査 0.8.3 の L2)。
+// lineStateOf decides the line state from the truths for (hash, model). It counts the same way as automatic calibration (hookMaybeCalibrate): the latest one per input,
+// truths from people and results only (audit 0.8.3 M3). tried is whether automatic calibration was tried with that model and drew no line (triedWithoutLine).
+// Only noul cannot draw a line with a single answer (choice can draw a line from the raw-probability check even with one kind of truth; audit 0.8.3 L2).
 func lineStateOf(rs *spec.Spec, minN int, model, hash string, labs []store.Label, tried bool) lineState {
 	s := lineState{Truths: map[string]int{}}
 	var mine []store.Label
@@ -64,19 +64,19 @@ func lineStateOf(rs *spec.Spec, minN int, model, hash string, labs []store.Label
 	return s
 }
 
-// triedWithoutLine は、この文言とモデルで自動の較正を試し、線が引けなかったか(控え calibrating-<id> の時刻・モデル・文言で見る)。
-// 別のモデルで試した控えでは true にしない(監査 0.8.3 の L1)。文脈の段も同じ時に試すので、最小の質問の文言で見る。
+// triedWithoutLine reports whether automatic calibration was tried with this wording and model and drew no line (checked by the time, model and wording in the marker calibrating-<id>).
+// A marker from a try with another model does not make it true (audit 0.8.3 L1). The context stages are tried at the same time, so the wording of the minimal question is used.
 func triedWithoutLine(storeDir string, sp *spec.Spec, model string) bool {
 	guard := filepath.Join(storeDir, "calibrating-"+sp.ID)
 	info, err := os.Stat(guard)
 	if err != nil || time.Since(info.ModTime()) < hookCalibrateGap {
-		return false // 試していないか、まだ走っているかもしれない
+		return false // not tried, or it may still be running
 	}
 	_, ok := lastCalibrateAttempt(guard, sp.Hash(), model)
 	return ok
 }
 
-// statusNote は status の行に付ける説明(英語、status の他の行と同じ)。
+// statusNote is the note added to the status line (in English, like the other status lines).
 func (s lineState) statusNote(rs *spec.Spec, minN int) string {
 	switch s.Kind {
 	case lineCalibrated:
@@ -92,7 +92,7 @@ func (s lineState) statusNote(rs *spec.Spec, minN int) string {
 	}
 }
 
-// currentLineState は、spec の今の文言で正解の一番多いモデル(今使っているモデル)の線の状態。正解が無ければ ok=false。
+// currentLineState is the line state of the model with the most truths for the spec's current wording (the model in use). ok=false when there are no truths.
 func currentLineState(agent string, sp *spec.Spec) (model string, s lineState, ok bool) {
 	_, labs, err := (store.Store{Dir: agent}).Counts(sp.ID)
 	if err != nil || len(labs) == 0 {
@@ -121,7 +121,7 @@ func currentLineState(agent string, sp *spec.Spec) (model string, s lineState, o
 	return model, lineStateOf(sp, sp.Eval.MinN, model, sp.Hash(), labs, triedWithoutLine(agent, sp, model)), true
 }
 
-// lineSummary は、本人に知らせる線の状態の変化(Stop の systemMessage)。spec ごとに、状態・文言・モデルが変わった時だけ 1 回。
+// lineSummary is the change in line state told to the person (Stop's systemMessage). Once per spec, only when the state, wording or model changes.
 func lineSummary(agent string) string {
 	var lines []string
 	for _, id := range append(append([]string{}, hookSpecs...), wikiSpecs...) {
@@ -146,9 +146,9 @@ func lineSummary(agent string) string {
 			name = d.Title + "(" + id + ")"
 		}
 		loc := hookLoc{Lang: hookLang()}
-		machine := machineOnlySpecs[id]            // 人に聞かない問い(wiki の差し込み先・矛盾)。AI が答え、正解は結果から
-		byResults := outcomeSpecs[id] && !machine  // hook の問いのうち、迷っても人に聞かず結果から正解が付く物(prompt-kind・changes-in-scope・done-as-asked)
-		wordings := slices.Contains(hookSpecs, id) // 線が引けない時に、エージェントへ別の聞き方の候補を頼む問い(hook の 4 問)
+		machine := machineOnlySpecs[id]            // questions never asked of people (wiki insertion point, contradiction). The AI answers; the truth comes from results
+		byResults := outcomeSpecs[id] && !machine  // hook questions that, even when unsure, do not ask a person and get their truth from results (prompt-kind, changes-in-scope, done-as-asked)
+		wordings := slices.Contains(hookSpecs, id) // questions for which the agent is asked for other wordings when no line can be drawn (the 4 hook questions)
 		switch s.Kind {
 		case lineCalibrated:
 			en, ja := "From now on, decisions above the line go ahead without asking (act); the rest still ask, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは確信が線より上の判断は人に聞かずに進み(act)、それ以外は今までどおり聞きます。act の 20 件に 1 件は抜き取りで画面に出ます。"

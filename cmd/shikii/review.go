@@ -36,12 +36,12 @@ type reviewTarget struct {
 
 func reviewQuestion(spec string) string {
 	if spec == "changes-in-scope" {
-		return "変えたものは頼まれた範囲の中だったか"
+		return "Were the changes within the requested scope?"
 	}
-	return "頼まれたことを終えたか"
+	return "Was the requested work finished?"
 }
 
-// reviewQueueState は全件の仮採点と、人が確認する列を分ける。
+// reviewQueueState separates the provisional scoring of every item from the queue a person checks.
 func reviewQueueState(rec store.Record, labels map[string]store.Label, reviews map[string]store.Review) (show, audit bool, reason string) {
 	l, labeled := labels[rec.TraceID]
 	if labeled && store.HumanSource(l.Source) {
@@ -97,7 +97,7 @@ func reviewQuery(st store.Store, scope string) (map[string]any, error) {
 		}
 		qualities[id] = store.ReviewQuality(grades[id], labels[id])
 	}
-	// 古い未処理の会話を先に返し、新しい会話に押し出され続けるのを防ぐ。
+	// Return old unprocessed conversations first, so they are not pushed out forever by new ones.
 	for i := len(recent) - 1; i >= 0; i-- {
 		source := recent[i]
 		needed := false
@@ -133,7 +133,7 @@ func reviewQuery(st store.Store, scope string) (map[string]any, error) {
 			break
 		}
 	}
-	// 人が訂正した例を、次の採点役へ戻す。原文や過去の AI の採点は保持する。
+	// Return examples a person corrected to the next scorer. The raw text and the earlier AI scores are kept.
 	for _, id := range hookSpecs[2:] {
 		records, err := st.Records(id, 0)
 		if err != nil {
@@ -154,17 +154,17 @@ func reviewQuery(st store.Store, scope string) (map[string]any, error) {
 
 func runReview(root, scope string, req reviewRequest) (any, error) {
 	if scope == "" {
-		return nil, errors.New("採点するプロジェクトを確認できません")
+		return nil, errors.New("cannot determine the project to score")
 	}
 	st := store.Store{Dir: root}
 	if req.Operation == "query" {
 		return reviewQuery(st, scope)
 	}
 	if req.Operation != "submit" {
-		return nil, errors.New("採点の操作は query または submit です")
+		return nil, errors.New("the scoring operation is query or submit")
 	}
 	if !utf8.ValidString(req.Reason) || strings.TrimSpace(req.Reason) == "" || len(req.Reason) > 1500 || (req.Truth != "yes" && req.Truth != "no" && req.Truth != "unknown") {
-		return nil, errors.New("採点には yes / no / unknown と 1500 バイト以内の根拠が必要です")
+		return nil, errors.New("a score needs yes / no / unknown and a reason of at most 1500 bytes")
 	}
 	recent, err := st.RecentFeedback(scope)
 	if err != nil {
@@ -186,30 +186,30 @@ func runReview(root, scope string, req reviewRequest) (any, error) {
 			return map[string]any{"review": grade}, err
 		}
 	}
-	return nil, errors.New("この仕事の会話に結び付いた採点対象がありません")
+	return nil, errors.New("no scoring target is tied to a conversation in this project")
 }
 
 func decodeReview(input io.Reader) (reviewRequest, error) {
 	var req reviewRequest
 	data, err := io.ReadAll(io.LimitReader(input, (64<<10)+1))
 	if err != nil || len(data) > 64<<10 {
-		return req, errors.New("採点の入力は 64 KB 以内の JSON です")
+		return req, errors.New("scoring input is JSON of at most 64 KB")
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		return req, errors.New("採点の JSON を確認してください")
+		return req, errors.New("check the scoring JSON")
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return req, errors.New("採点の JSON は 1 件ずつ渡します")
+		return req, errors.New("pass scoring JSON one object at a time")
 	}
 	return req, nil
 }
 
 func cmdReview(args []string) error {
 	if len(args) != 1 || (args[0] != "query" && args[0] != "submit") {
-		return errors.New("使い方: shikii review query | submit（JSON を標準入力）")
+		return errors.New("usage: shikii review query | submit (JSON on standard input)")
 	}
 	req := reviewRequest{Operation: args[0]}
 	var err error
@@ -219,7 +219,7 @@ func cmdReview(args []string) error {
 			return err
 		}
 		if req.Operation != "" && req.Operation != "submit" {
-			return errors.New("submit では仮採点だけを保存します")
+			return errors.New("submit saves only provisional scores")
 		}
 		req.Operation = "submit"
 	}
@@ -251,8 +251,8 @@ func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, result)
 }
 
-// waitsForPersonRecord は、列に出る記録のうち人の答えを待つもの: 抜き取り(audit)か、結果で正解が付かない判定の「迷い」(ask)。
-// 結果で正解が付く判定(prompt-kind など)の迷いは次の依頼の結果が答える。AI だけが答える判定(wiki の矛盾など)は人を待たない(0.8.0)。
+// waitsForPersonRecord reports which queued records wait for a person's answer: spot checks (audit), or the "unsure" (ask) of decisions whose truth does not come from results.
+// For decisions whose truth comes from results (prompt-kind etc.), the result of the next request answers the unsure ones. Decisions only the AI answers (wiki contradictions etc.) do not wait for people (0.8.0).
 func waitsForPersonRecord(specID string, rec store.Record, audit bool) bool {
 	if machineOnlySpecs[specID] {
 		return false

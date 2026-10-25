@@ -15,8 +15,8 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 0.8.3: 正解が eval.min_n に届いた後の状態を、件数だけで「ready to calibrate」と言わず、片方の答えしか無い・分けられない・
-// 線が引けた、に分けて status に出し、本人にもターンの終わりに 1 回だけ知らせる(状態が変わったらまた 1 回)。
+// 0.8.3: once truths reach eval.min_n, do not say "ready to calibrate" from the count alone; split it into only one answer so far, cannot separate,
+// and line drawn, show it in status, and tell the person once at the end of a turn (once more when the state changes).
 func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 	repo := gitRepo(t)
 	agent := hookEnv(t, nil, repo)
@@ -38,19 +38,19 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 
 	add("no", sp.Eval.MinN)
 	if out := status(); strings.Contains(out, "ready to calibrate") || !strings.Contains(out, fmt.Sprintf("only one answer so far (no=%d)", sp.Eval.MinN)) {
-		t.Fatalf("片方の答えしか無い時は、件数が足りても線を引けないと出す:\n%s", out)
+		t.Fatalf("with only one answer, it says no line can be drawn even though the count is enough:\n%s", out)
 	}
 	first := lineSummary(agent)
 	if !strings.Contains(first, "changes-in-scope") || !strings.Contains(first, "only one answer") {
-		t.Fatalf("片方の答えしか無いことを本人に知らせる: %q", first)
+		t.Fatalf("tells the person there is only one answer: %q", first)
 	}
 	if again := lineSummary(agent); again != "" {
-		t.Fatalf("同じ状態は二度知らせない: %q", again)
+		t.Fatalf("the same state is not told twice: %q", again)
 	}
 
 	add("yes", 5)
 	if out := status(); !strings.Contains(out, "enough truths: the line is drawn automatically") {
-		t.Fatalf("両方の答えがあれば、自動で線を引く途中と出す:\n%s", out)
+		t.Fatalf("with both answers, it says the line is being drawn automatically:\n%s", out)
 	}
 	guard := filepath.Join(agent, "calibrating-changes-in-scope")
 	if err := os.WriteFile(guard, []byte(fmt.Sprintf("2026-10-24T00:00:00+09:00 m1 %d %s\n", sp.Eval.MinN+5, sp.Hash())), 0o600); err != nil {
@@ -61,10 +61,10 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out := status(); !strings.Contains(out, "tried: the answers could not be separated") {
-		t.Fatalf("試して引けなかった時は、分けられないと出す:\n%s", out)
+		t.Fatalf("when tried and no line was drawn, it says the answers cannot be separated:\n%s", out)
 	}
 	if line := lineSummary(agent); !strings.Contains(line, "could not be separated") {
-		t.Fatalf("分けられないことを本人に知らせる(状態が変わったのでもう 1 回): %q", line)
+		t.Fatalf("tells the person the answers cannot be separated (once more, since the state changed): %q", line)
 	}
 
 	sp.Calibration = []spec.Calibration{{Model: "m1", SpecHash: sp.Hash(), Method: "platt", N: sp.Eval.MinN + 5}}
@@ -72,18 +72,18 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out := status(); !strings.Contains(out, "calibrated: platt") {
-		t.Fatalf("線が引けた: \n%s", out)
+		t.Fatalf("the line was drawn: \n%s", out)
 	}
 	drawn := lineSummary(agent)
 	if !strings.Contains(drawn, "a line was drawn") || !strings.Contains(drawn, "act") {
-		t.Fatalf("線が引けたことと、これから act で進むことを本人に知らせる: %q", drawn)
+		t.Fatalf("tells the person a line was drawn and that act goes ahead from now on: %q", drawn)
 	}
 	if again := lineSummary(agent); again != "" {
-		t.Fatalf("引けた線は二度知らせない: %q", again)
+		t.Fatalf("a drawn line is not told twice: %q", again)
 	}
 }
 
-// 画面(/v1/status)も同じ区別で、問いの鍵ごとの state に one_answer / not_separable を返す(件数だけで ready にしない)。
+// The page (/v1/status) makes the same distinction and returns one_answer / not_separable in the state of each question key (not ready from the count alone).
 func TestStatusAPIShowsWhyNoLineWasDrawn(t *testing.T) {
 	repo := gitRepo(t)
 	hookEnv(t, nil)
@@ -118,7 +118,7 @@ func TestStatusAPIShowsWhyNoLineWasDrawn(t *testing.T) {
 		return ""
 	}
 	if got := state(); got != "one_answer" {
-		t.Fatalf("片方の答えしか無い時は one_answer: %q", got)
+		t.Fatalf("one_answer when there is only one answer: %q", got)
 	}
 	st.AppendLabels([]store.Label{{TraceID: "y1", SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "m1", InputsHash: "y1", Truth: "yes", Weight: 1, Source: "outcome", At: time.Now()}})
 	guard := filepath.Join(root, "calibrating-wiki-place")
@@ -126,12 +126,12 @@ func TestStatusAPIShowsWhyNoLineWasDrawn(t *testing.T) {
 	old := time.Now().Add(-2 * hookCalibrateGap)
 	os.Chtimes(guard, old, old)
 	if got := state(); got != "not_separable" {
-		t.Fatalf("試して引けなかった時は not_separable: %q", got)
+		t.Fatalf("not_separable when tried and no line was drawn: %q", got)
 	}
 }
 
-// 監査 0.8.3 の M4・テストの穴: 知らせの文は問いで変わる(wiki の問いは人に聞かない)、モデルが変わればもう一度知らせる、
-// Stop の hook から実際に本人への一言(systemMessage)として出る。
+// audit 0.8.3 M4, a test gap: the notice changes with the question (wiki questions are never asked of people), it is told again when the model changes,
+// and the Stop hook really sends it to the person as a one-liner (systemMessage).
 func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -153,43 +153,43 @@ func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
 	}
 	place := mustLoad(t, filepath.Join(root, "decisions", "wiki-place.yaml"))
 	add("wiki-place", "m1", "no", place.Eval.MinN)
-	// Stop の hook の配線: 本人への一言として出る
+	// Stop hook wiring: it goes out as a one-liner to the person
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "w", "cwd": repo, "prompt": "README を直して"})
 	out := runHook(t, "stop", map[string]any{"session_id": "w", "cwd": repo, "last_assistant_message": "直した"})
 	if !strings.Contains(out, "systemMessage") || !strings.Contains(out, "wiki-place") || !strings.Contains(out, "only one answer") {
-		t.Fatalf("Stop の hook が線の状態を本人に知らせる: %s", out)
+		t.Fatalf("the Stop hook tells the person the line state: %s", out)
 	}
 	if strings.Contains(out, "keeps asking") || !strings.Contains(out, "nothing is asked of you") {
-		t.Fatalf("人に聞かない問いに「聞き続ける」と言わない: %s", out)
+		t.Fatalf("does not say \"keeps asking\" for a question never asked of people: %s", out)
 	}
 	if again := lineSummary(root); strings.Contains(again, "wiki-place") {
-		t.Fatalf("同じ状態は二度知らせない: %q", again)
+		t.Fatalf("the same state is not told twice: %q", again)
 	}
-	// 今使うモデルが m2 に変わった(正解が m1 より多い)ら、もう一度知らせる
+	// When the model in use changes to m2 (more truths than m1), tell again
 	add("wiki-place", "m2", "no", place.Eval.MinN+5)
 	if line := lineSummary(root); !strings.Contains(line, "wiki-place") {
-		t.Fatalf("モデルが変われば、もう一度知らせる: %q", line)
+		t.Fatalf("when the model changes, tell again: %q", line)
 	}
-	// 結果から正解が付く hook の問い(changes-in-scope)は、片方だけでも人に聞かない(再監査: 人に聞くのは needs-plan だけ)
+	// A hook question whose truth comes from results (changes-in-scope) does not ask people even with one answer (re-audit: only needs-plan asks people)
 	add("changes-in-scope", "m1", "yes", mustLoad(t, filepath.Join(root, "decisions", "changes-in-scope.yaml")).Eval.MinN)
 	if line := lineSummary(root); !strings.Contains(line, "changes-in-scope") || !strings.Contains(line, "waits for results") || strings.Contains(line, "keeps asking") {
-		t.Fatalf("結果から正解が付く問いは、結果を待つと言い、聞き続けるとは言わない: %q", line)
+		t.Fatalf("a question whose truth comes from results says it waits for results and does not say it keeps asking: %q", line)
 	}
-	// 人に聞く問い(needs-plan)は、聞き続けると言う
+	// A question asked of people (needs-plan) says it keeps asking
 	add("needs-plan", "m1", "no", mustLoad(t, filepath.Join(root, "decisions", "needs-plan.yaml")).Eval.MinN)
 	if line := lineSummary(root); !strings.Contains(line, "needs-plan") || !strings.Contains(line, "keeps asking") {
-		t.Fatalf("人が答える問いは、聞き続けると言う: %q", line)
+		t.Fatalf("a question people answer says it keeps asking: %q", line)
 	}
-	// 線が引けた時の文も問いで変わる: wiki の問いは人に聞かず、黙って置き換えない
+	// The text when a line is drawn also changes with the question: wiki questions do not ask people and are never replaced silently
 	sp := mustLoad(t, filepath.Join(root, "decisions", "wiki-place.yaml"))
 	sp.Calibration = []spec.Calibration{{Model: "m2", SpecHash: sp.Hash(), Method: "platt", N: sp.Eval.MinN}}
 	if err := sp.Save(); err != nil {
 		t.Fatal(err)
 	}
 	if line := lineSummary(root); !strings.Contains(line, "a line was drawn for wiki-place") || !strings.Contains(line, "never replaced silently") || strings.Contains(line, "the rest still ask") {
-		t.Fatalf("wiki の問いで線が引けた時は、人に聞かないと言う: %q", line)
+		t.Fatalf("when a line is drawn for a wiki question, it says people are not asked: %q", line)
 	}
-	// 分けられない時: hook の問いは別の聞き方を頼む、wiki の問いは正解が増えたら試すだけ
+	// When the answers cannot be separated: hook questions ask for other wordings; wiki questions are only tried again as truths grow
 	for _, id := range []string{"changes-in-scope", "wiki-conflict"} {
 		cs := mustLoad(t, filepath.Join(root, "decisions", id+".yaml"))
 		add(id, "m3", "yes", cs.Eval.MinN)
@@ -210,11 +210,11 @@ func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
 		}
 	}
 	if !strings.Contains(scope, "other wordings") || strings.Contains(conflict, "other wordings") || !strings.Contains(conflict, "tried again when") {
-		t.Fatalf("分けられない時、hook の問いだけ別の聞き方を頼む: %q / %q", scope, conflict)
+		t.Fatalf("when the answers cannot be separated, only hook questions ask for other wordings: %q / %q", scope, conflict)
 	}
 }
 
-// 監査 0.8.3 の L2: choice は正解が 1 種類でも生の確率の確かめで線を引けるので、「答えが片方だけ」とは言わない。
+// audit 0.8.3 L2: choice can draw a line from the raw-probability check even with one kind of truth, so it does not say "only one answer".
 func TestChoiceWithOneAnswerIsNotOneAnswer(t *testing.T) {
 	repo := gitRepo(t)
 	agent := hookEnv(t, nil, repo)
@@ -230,12 +230,12 @@ func TestChoiceWithOneAnswerIsNotOneAnswer(t *testing.T) {
 	}
 	out := capture(t, func() error { return cmdStatus([]string{"--store", agent, path}) })
 	if strings.Contains(out, "only one answer") || !strings.Contains(out, "enough truths: the line is drawn automatically") {
-		t.Fatalf("choice の 1 種類の正解は、自動で引く途中と出す:\n%s", out)
+		t.Fatalf("one kind of truth for choice says the line is being drawn automatically:\n%s", out)
 	}
 }
 
-// 再監査の低: 線の状態の数え方は、入力ごとに最新の 1 件(同じ入力の付け直しを数えない)と、人と結果の正解だけ(機械の正解を数えない)の
-// どちらも自動の較正と同じ。片方だけ外しても落ちるよう、別々に確かめる。
+// re-audit, low: the line state counts the latest one per input (re-labels of the same input are not counted) and only truths from people and results (machine truths are not counted),
+// both the same as automatic calibration. They are checked separately so the test fails if either one is dropped.
 func TestLineStateCountsLatestPerInputAndHumanSourcesSeparately(t *testing.T) {
 	repo := gitRepo(t)
 	agent := hookEnv(t, nil, repo)
@@ -252,15 +252,15 @@ func TestLineStateCountsLatestPerInputAndHumanSourcesSeparately(t *testing.T) {
 		return labels
 	}
 	if s := lineStateOf(sp, sp.Eval.MinN, "m1", sp.Hash(), mk(sp.Eval.MinN, "outcome", true), false); s.Kind != lineCollecting || s.N != 3 {
-		t.Fatalf("同じ入力の付け直しは 1 件に数える: %+v", s)
+		t.Fatalf("re-labels of the same input count as one: %+v", s)
 	}
 	if s := lineStateOf(sp, sp.Eval.MinN, "m1", sp.Hash(), mk(sp.Eval.MinN, "context", false), false); s.Kind != lineCollecting || s.N != 0 {
-		t.Fatalf("機械の正解(context)は数えない: %+v", s)
+		t.Fatalf("machine truths (context) are not counted: %+v", s)
 	}
 }
 
-// 再々監査のテストの穴: 結果から正解が付く問い(changes-in-scope)で線が引けた時の文と、日本語の文。日本語の設定では英語の後に
-// 日本語が続き、人に聞かない問いで「聞きます」「人に聞くことはありません」と抜き取りの話を混ぜない。
+// re-re-audit test gap: the text when a line is drawn for a question whose truth comes from results (changes-in-scope), and the Japanese text. With the Japanese setting, Japanese
+// follows the English, and a question never asked of people does not mix in "聞きます", or "人に聞くことはありません" with the spot-check note.
 func TestLineNoticeOutcomeCalibratedAndJapanese(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -307,10 +307,10 @@ func TestLineNoticeOutcomeCalibratedAndJapanese(t *testing.T) {
 	}
 	one := lineSummary(root)
 	if l := pick(one, "changes-in-scope"); !strings.Contains(l, "答えが片方だけ") || !strings.Contains(l, "結果から付くのを待ちます") || strings.Contains(l, "今までどおり聞きます") {
-		t.Fatalf("結果の問いは日本語でも結果を待つと言う: %q", l)
+		t.Fatalf("a results question says it waits for results in Japanese too: %q", l)
 	}
 	if l := pick(one, "needs-plan"); !strings.Contains(l, "今までどおり聞きます") {
-		t.Fatalf("人が答える問いは日本語でも聞き続けると言う: %q", l)
+		t.Fatalf("a question people answer says it keeps asking in Japanese too: %q", l)
 	}
 	for _, id := range []string{"changes-in-scope", "wiki-place", "needs-plan"} {
 		calibrate(id)
@@ -319,12 +319,12 @@ func TestLineNoticeOutcomeCalibratedAndJapanese(t *testing.T) {
 	scope := pick(drawn, "changes-in-scope")
 	if !strings.Contains(scope, "a line was drawn for changes-in-scope") || !strings.Contains(scope, "wait for results to supply the truth") || strings.Contains(scope, "the rest still ask") ||
 		!strings.Contains(scope, "線が引けました") || !strings.Contains(scope, "迷っても人に聞かず、結果から正解が付くのを待ちます") || strings.Contains(scope, "今までどおり聞きます") {
-		t.Fatalf("結果の問いで線が引けた時は、残りも人に聞かず結果を待つと言う(英語と日本語): %q", scope)
+		t.Fatalf("when a line is drawn for a results question, it says the rest wait for results too instead of asking people (English and Japanese): %q", scope)
 	}
 	if l := pick(drawn, "wiki-place"); !strings.Contains(l, "人に聞くことはなく") || strings.Contains(l, "抜き取り") {
-		t.Fatalf("wiki の問いは人に聞かず、抜き取りの話をしない: %q", l)
+		t.Fatalf("a wiki question does not ask people and does not mention spot checks: %q", l)
 	}
 	if l := pick(drawn, "needs-plan"); !strings.Contains(l, "それ以外は今までどおり聞きます") || !strings.Contains(l, "抜き取り") {
-		t.Fatalf("人が答える問いは、残りを聞き、抜き取りが出ると言う: %q", l)
+		t.Fatalf("a question people answer says the rest are asked and spot checks appear: %q", l)
 	}
 }

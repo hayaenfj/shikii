@@ -18,17 +18,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// wiki のパターンのページは「主張 + 条件 + 証拠 + 再検証の手順」。
-// 前書き(--- で囲んだ YAML)を機械が読み書きし、本文は人のもの。状態(tentative / confirmed / rejected)を変えるのは人だけ。
-// `shikii wiki verify` は再検証の手順(どの spec で、どの候補がどれを上回るか)を今のモデルで回し、証拠を前書きに足す。
+// A wiki pattern page is "claim + conditions + evidence + retest procedure".
+// The machine reads and writes the front matter (YAML between ---); the body belongs to people. Only people change the status (tentative / confirmed / rejected).
+// `shikii wiki verify` runs the retest procedure (on which spec, which candidate beats which) with the current model and appends evidence to the front matter.
 type claimPage struct {
 	Claim     string            `yaml:"claim"`
 	Status    string            `yaml:"status,omitempty"`
-	AppliesTo map[string]string `yaml:"applies_to,omitempty"` // type / models / lang など、効く範囲(自由な文)
+	AppliesTo map[string]string `yaml:"applies_to,omitempty"` // where it holds: type / models / lang, etc. (free text)
 	Evidence  []claimEvidence   `yaml:"evidence,omitempty"`
 	Retest    *claimRetest      `yaml:"retest,omitempty"`
 
-	extra map[string]any // 機械が知らない前書きの項目(author: など)。読んだまま書き戻す(コメントは残らない)
+	extra map[string]any // front-matter fields the machine does not know (author: etc.). Written back as read (comments are not kept)
 }
 
 type claimEvidence struct {
@@ -39,15 +39,15 @@ type claimEvidence struct {
 	Run     string `yaml:"run,omitempty" json:"run,omitempty"`
 }
 
-// claimRetest は再検証の手順: spec の候補 better が候補 than を top-1 で上回れば主張は支持される。
-// 候補の名前は spec の variants の name か "current"。
+// claimRetest is the retest procedure: the claim is supported if spec candidate better beats candidate than at top-1.
+// A candidate name is a variant name in the spec, or "current".
 type claimRetest struct {
 	Spec   string `yaml:"spec"`
 	Better string `yaml:"better"`
 	Than   string `yaml:"than"`
 }
 
-// readClaimPage は前書きと本文を分けて読む。前書きが無ければ空の主張(retest 無し)と本文全体。
+// readClaimPage reads the front matter and body separately. Without front matter, an empty claim (no retest) and the whole body.
 func readClaimPage(path string) (claimPage, string, error) {
 	var pg claimPage
 	b, err := os.ReadFile(path)
@@ -79,7 +79,7 @@ func readClaimPage(path string) (claimPage, string, error) {
 	return pg, body, nil
 }
 
-// writeClaimPage は前書きを書き直し、本文はそのまま戻す。
+// writeClaimPage rewrites the front matter and puts the body back as is.
 func writeClaimPage(path string, pg claimPage, body string) error {
 	var buf bytes.Buffer
 	buf.WriteString("---\n")
@@ -98,7 +98,7 @@ func writeClaimPage(path string, pg claimPage, body string) error {
 	}
 	buf.WriteString("---\n")
 	buf.WriteString(body)
-	// 原子的に: 途中で切れても前書きが壊れた半端なページが残らない
+	// Atomically: even if cut off midway, no half-written page with broken front matter is left
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
 		return err
@@ -111,13 +111,13 @@ func cmdWiki(args []string) error {
 		return cmdNotebook(args)
 	}
 	if len(args) == 0 || args[0] != "verify" {
-		return errors.New("usage: shikii wiki verify [pattern.md ...] [--local URL] [--hosted URL] [--labeled file] [--store DIR]\n  再検証の手順を持つ主張(wiki/patterns/*.md の前書き)を今のモデルで回し、証拠を書き足す。状態は人が変える")
+		return errors.New("usage: shikii wiki verify [pattern.md ...] [--local URL] [--hosted URL] [--labeled file] [--store DIR]\n  runs claims that have a retest procedure (front matter of wiki/patterns/*.md) with the current model and appends evidence. People change the status")
 	}
 	fs := flag.NewFlagSet("wiki verify", flag.ContinueOnError)
 	var ef endpointFlags
 	ef.bind(fs)
 	storeDir := bindStore(fs)
-	labeled := fs.String("labeled", "", "正解の貯金のファイル(省略時は spec の eval.labeled)")
+	labeled := fs.String("labeled", "", "file of saved truths (default: the spec's eval.labeled)")
 	paths, err := parseMixed(fs, args[1:])
 	if err != nil {
 		return err
@@ -170,7 +170,7 @@ func cmdWiki(args []string) error {
 	return nil
 }
 
-// runRetest は 2 つの候補を貯金で採点し、対の勝敗と符号検定で判定する。
+// runRetest scores the 2 candidates on the saved truths and judges by pairwise wins and losses and a sign test.
 func runRetest(ctx context.Context, rt *claimRetest, labeled string, st store.Store, eps []decide.Endpoint, tainted bool) (claimEvidence, error) {
 	sp, err := spec.Load(rt.Spec)
 	if err != nil {
@@ -237,10 +237,10 @@ func runRetest(ctx context.Context, rt *claimRetest, labeled string, st store.St
 	}, nil
 }
 
-// updateClaims は tune の run の採点から wiki を育てる(モデルは呼び直さない):
-//  1. current に有意に勝った候補(対の勝敗、片側の符号検定 p ≤ 0.05)を、主張の下書き(wiki/patterns/drafts/<spec>-<候補>.md、status draft)として起草する。
-//     既に同じ下書きがあれば証拠を足す。人は下書きを一般化した主張に書き直して patterns/ に移し、状態を付ける
-//  2. この spec を retest に持つ既存の主張(patterns/*.md と drafts/*.md)で、better と than が今回の候補にあれば、今回の採点を証拠として足す
+// updateClaims grows the wiki from the scoring of a tune run (the model is not called again):
+//  1. drafts a candidate that significantly beat current (pairwise wins and losses, one-sided sign test p ≤ 0.05) as a claim draft (wiki/patterns/drafts/<spec>-<candidate>.md, status draft).
+//     If the same draft exists, evidence is appended. A person rewrites the draft into a general claim, moves it to patterns/ and sets the status
+//  2. for existing claims with this spec as retest (patterns/*.md and drafts/*.md), if better and than are among this run's candidates, this run's scoring is appended as evidence
 func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []candScore, run string, human int) (drafted, updated int, err error) {
 	byName := map[string]candScore{}
 	for i, c := range cands {
@@ -251,7 +251,7 @@ func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []can
 		return 0, 0, nil
 	}
 	specAbs, _ := filepath.Abs(sp.Path())
-	specRel := sp.Path() // 下書きに書く path はプロジェクトルート(実行する場所)からの相対。基本構成なら decisions/<id>.yaml
+	specRel := sp.Path() // the path written in the draft is relative to the project root (where it runs). In the basic layout, decisions/<id>.yaml
 	if cwd, err := os.Getwd(); err == nil {
 		if rel, err := filepath.Rel(cwd, specAbs); err == nil && !strings.HasPrefix(rel, "..") {
 			specRel = rel
@@ -284,7 +284,7 @@ func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []can
 		return claimEvidence{Date: time.Now().Format("2006-01-02"), Model: b.model, Run: run, Verdict: v,
 			Result: fmt.Sprintf("%s %.3f vs %s %.3f (top-1 on %d truths, %d human; %d better / %d worse, p=%.3f)", a.name, a.acc, b.name, b.acc, len(a.correct), human, wins, losses, p)}, v
 	}
-	// 2. 既存の主張に証拠を足す
+	// 2. append evidence to existing claims
 	pages, _ := filepath.Glob(filepath.Join(wikiDir, "patterns", "*.md"))
 	drafts, _ := filepath.Glob(filepath.Join(wikiDir, "patterns", "drafts", "*.md"))
 	seen := map[string]bool{}
@@ -306,7 +306,7 @@ func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []can
 		updated++
 		seen[pg.Retest.Better+"\x00"+pg.Retest.Than] = true
 	}
-	// 1. 有意に勝った候補を起草する(既に主張があるものは除く)
+	// 1. draft candidates that won significantly (except those that already have a claim)
 	for _, c := range cands {
 		if c.name == "current" || seen[c.name+"\x00current"] {
 			continue
@@ -317,13 +317,13 @@ func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []can
 		}
 		path := filepath.Join(wikiDir, "patterns", "drafts", sp.ID+"-"+c.name+".md")
 		pg := claimPage{
-			Claim:     fmt.Sprintf("%s では候補 %s が current より当たる(%s)", sp.ID, c.name, describeVariant(sp, c.sp)),
+			Claim:     fmt.Sprintf("in %s, candidate %s is right more often than current (%s)", sp.ID, c.name, describeVariant(sp, c.sp)),
 			Status:    "draft",
 			AppliesTo: map[string]string{"type": string(sp.Type), "models": cur.model},
 			Evidence:  []claimEvidence{ev},
 			Retest:    &claimRetest{Spec: specRel, Better: c.name, Than: "current"},
 		}
-		body := fmt.Sprintf("# 下書き: %s\n\n機械が tune の run %s から起草した主張。人がすること: 効く範囲(型・モデルの系統)を見極めて主張を一般化し、`wiki/patterns/` に移して状態を tentative にする。要らなければ消す。\n\n候補の中身: %s\n", pg.Claim, run, describeVariant(sp, c.sp))
+		body := fmt.Sprintf("# Draft: %s\n\nA claim the machine drafted from tune run %s. What a person does: work out where it holds (type, model family), generalize the claim, move it to `wiki/patterns/` and set the status to tentative. Delete it if it is not needed.\n\nThe candidate: %s\n", pg.Claim, run, describeVariant(sp, c.sp))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return drafted, updated, err
 		}

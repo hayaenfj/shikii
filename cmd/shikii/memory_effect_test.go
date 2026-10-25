@@ -46,7 +46,7 @@ func memoryEffectStats(t *testing.T, h http.Handler) map[string]any {
 	q := reflectCall(t, h, map[string]any{"operation": "query"})
 	report, ok := q["memory_effect"].(map[string]any)
 	if !ok {
-		t.Fatal("届けた記憶と判断への寄与を、振り返りから確認できる")
+		t.Fatal("the delivered memories and their effect on decisions can be checked from the reflection")
 	}
 	return report["stats"].(map[string]any)
 }
@@ -59,12 +59,12 @@ func memoryEffectItem(t *testing.T, h http.Handler, id string) map[string]any {
 		if s["source_material"].(map[string]any)["id"] == id {
 			items, ok := s["memories"].([]any)
 			if !ok || len(items) != 1 {
-				t.Fatal("その依頼へ実際に届けた引用と未評価の記憶を一緒に返す")
+				t.Fatal("returns the quote actually delivered to that request together with the unassessed memory")
 			}
 			return items[0].(map[string]any)
 		}
 	}
-	t.Fatal("採点とwikiが済んでも、記憶の未評価を忘れない")
+	t.Fatal("even after scoring and the wiki are done, the unassessed memory is not forgotten")
 	return nil
 }
 
@@ -77,11 +77,11 @@ func TestMemoryEffectPreservesDeliveredRevisionAndIndependentPending(t *testing.
 	st, scope, h, draft, revision := memoryEffectFixture(t)
 	ctx := memoryEffectPrompt(t, scope, "effect")
 	if !strings.Contains(ctx, draft.Lesson) {
-		t.Fatal("関連する教訓を実際に届ける")
+		t.Fatal("the related lesson is actually delivered")
 	}
 	key := "lesson:" + draft.ID + ":" + revision
 	id := memoryEffectComplete(t, st, scope, "effect")
-	// wikiや通常の採点を先に済ませ、記憶の評価だけが残る状態にする。
+	// Finish the wiki and the usual scoring first, so only the memory assessment is left.
 	feedback, _ := st.RecentFeedback(scope)
 	for _, f := range feedback {
 		if f.ID != id {
@@ -103,23 +103,23 @@ func TestMemoryEffectPreservesDeliveredRevisionAndIndependentPending(t *testing.
 	item := memoryEffectItem(t, h, id)
 	quote := item["quote"].(map[string]any)
 	if quote["key"] != key || quote["lesson"] == draft.Lesson || !strings.Contains(ctx, quote["lesson"].(string)) {
-		t.Fatal("後から更新された教訓ではなく、届けた時の版と引用を評価する")
+		t.Fatal("assesses the revision and quote as delivered, not the lesson updated later")
 	}
 	stats := memoryEffectStats(t, h)
 	if stats["delivered"] != float64(1) || stats["helpful"] != float64(0) || stats["pending"] != float64(1) {
-		t.Fatal("完了をyesと採点しただけで、記憶の効果を成功にしない")
+		t.Fatal("scoring completion as yes alone does not make the memory's effect a success")
 	}
 	result := memoryEffectSubmit(t, h, id, key, "helpful", "未初期化の場所の検査を追加する判断に使った", "合成の隔離フォルダで出力と記録が無いことを検査した")
 	if result["complete"] != true {
-		t.Fatalf("判断と結果を根拠に記憶の仮評価を保存する: %v", result)
+		t.Fatalf("saves a provisional assessment of the memory, backed by the decision and the result: %v", result)
 	}
 	stats = memoryEffectStats(t, h)
 	if stats["helpful"] != float64(1) || stats["pending"] != float64(0) {
-		t.Fatal("引用を届けた数と、役立ったという観察の数を分ける")
+		t.Fatal("keeps the number of quotes delivered apart from the number of observations that they helped")
 	}
 	_, labels, err := st.Counts("done-as-asked")
 	if err != nil || len(labels) != 0 {
-		t.Fatal("記憶の仮評価を正解や較正に混ぜない")
+		t.Fatal("provisional memory assessments are not mixed into truths or calibration")
 	}
 }
 
@@ -132,27 +132,27 @@ func TestMemoryEffectRequiresActualDeliveryAndKeepsFirstAssessment(t *testing.T)
 		data, _ := json.Marshal(map[string]any{"operation": "submit", "memory": []map[string]any{{"source_id": id, "key": key, "result": "unknown", "decision": "", "evidence": "不明", field: "偽装"}}})
 		code, _, err := callTool(h, "shikii_reflect", data)
 		if err != nil || code < 400 {
-			t.Fatal("出典や採点日時を入力から偽装させない")
+			t.Fatal("the source or scoring time cannot be forged from the input")
 		}
 	}
-	// 0.9.1: 数(4 件・2 会話)では断らない。中身の足りない評価は項目ごとの誤りで返し、何も保存しない。query では保存しない
+	// 0.9.1: not refused for the count (4 items, 2 conversations). Assessments missing content get a per-item error and nothing is saved. query does not save
 	for _, body := range []map[string]any{
 		{"operation": "submit", "memory": []map[string]string{{"source_id": id}, {"source_id": id}, {"source_id": id}, {"source_id": id}, {"source_id": id}}},
 		{"operation": "submit", "memory": []map[string]string{{"source_id": id}, {"source_id": "0000000000000002"}, {"source_id": "0000000000000003"}}},
 	} {
 		out := reflectCall(t, h, body)
 		if out["complete"] != false || len(out["memory"].([]any)) != len(body["memory"].([]map[string]string)) {
-			t.Fatalf("記憶の評価は数で断らず、中身の足りない項目を項目ごとの誤りで返す: %v", out)
+			t.Fatalf("memory assessments are not refused for their count; items missing content get per-item errors: %v", out)
 		}
 		for _, m := range out["memory"].([]any) {
 			if m.(map[string]any)["error"] == nil {
-				t.Fatalf("key の無い評価は保存しない: %v", out)
+				t.Fatalf("an assessment without a key is not saved: %v", out)
 			}
 		}
 	}
 	if data, _ := json.Marshal(map[string]any{"operation": "query", "memory": []map[string]string{{"source_id": id}}}); true {
 		if code, _, err := callTool(h, "shikii_reflect", data); err != nil || code < 400 {
-			t.Fatal("query では保存しない")
+			t.Fatal("query does not save")
 		}
 	}
 	for _, change := range []map[string]string{
@@ -165,24 +165,24 @@ func TestMemoryEffectRequiresActualDeliveryAndKeepsFirstAssessment(t *testing.T)
 		}
 		out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{entry}})
 		if out["complete"] != false || out["memory"].([]any)[0].(map[string]any)["error"] == nil {
-			t.Fatalf("実際の配送と具体的な根拠に結び付かない評価を拒否する: %v", change)
+			t.Fatalf("refuses an assessment not tied to an actual delivery and concrete evidence: %v", change)
 		}
 	}
 	other := newServer(serveOpts{storeDir: st.Dir, projectScope: feedbackScope(gitRepo(t))})
 	if memoryEffectSubmit(t, other, id, key, "helpful", "別の仕事", "合成テスト")["complete"] != false {
-		t.Fatal("別の仕事へ評価を書かせない")
+		t.Fatal("does not let an assessment be written into another project")
 	}
 	for n := 0; n < 2; n++ {
 		if memoryEffectSubmit(t, h, id, key, "unknown", "", "記憶を使った判断の記録が無いため")["complete"] != true {
-			t.Fatal("証拠が足りない時は保留でき、同じ内容を再送できる")
+			t.Fatal("when evidence is lacking it can be left pending, and the same content can be sent again")
 		}
 	}
 	if memoryEffectSubmit(t, h, id, key, "helpful", "後から成功扱いにする", "別の結果")["complete"] != false {
-		t.Fatal("元のAI評価を後から塗り替えない")
+		t.Fatal("the original AI assessment is not overwritten later")
 	}
 	stats := memoryEffectStats(t, h)
 	if stats["unknown"] != float64(1) || stats["helpful"] != float64(0) {
-		t.Fatal("再送や書き換えで成績を増やさない")
+		t.Fatal("resending or rewriting does not inflate the results")
 	}
 }
 
@@ -197,45 +197,45 @@ func TestMemoryEffectKeepsTheEscapedRawQuoteExactly(t *testing.T) {
 	}
 	ctx := memoryEffectPrompt(t, scope, "raw-effect")
 	if len(ctx) > 1800 || !strings.Contains(ctx, "feedback:0000000000000001") {
-		t.Fatal("未整理の原文も上限内で実際に届ける")
+		t.Fatal("unsorted raw text is also actually delivered within the limit")
 	}
 	var quotes []map[string]any
 	if err := json.Unmarshal([]byte(strings.SplitN(ctx, "\n", 2)[1]), &quotes); err != nil {
 		t.Fatal(err)
 	}
 	h := newServer(serveOpts{storeDir: agent, projectScope: scope})
-	// 次の発言がまだ無い依頼を、成功した記憶として評価させない。
+	// A request with no next message yet cannot be assessed as a successful memory.
 	id := loadSession(agent, "raw-effect").TurnID
 	if memoryEffectSubmit(t, h, id, quotes[0]["key"].(string), "helpful", "仮の判断", "確認前")["complete"] != false {
-		t.Fatal("終了前の依頼に効果を付けない")
+		t.Fatal("no effect is attached to a request that has not ended")
 	}
 	id = memoryEffectComplete(t, st, scope, "raw-effect")
 	quote := memoryEffectItem(t, h, id)["quote"].(map[string]any)
 	actual, _ := json.Marshal(quotes[0])
 	saved, _ := json.Marshal(quote)
 	if string(actual) != string(saved) || len(quote["summary"].(string)) >= 600 {
-		t.Fatal("保存するのは全原文ではなく、エスケープと切り詰め後に届いた引用そのもの")
+		t.Fatal("what is saved is not the whole raw text but exactly the quote delivered after escaping and cutting")
 	}
 }
 
 func TestMemoryEffectCountsOnlyDeliveredQuotesAndKeepsUnfinishedVisible(t *testing.T) {
 	st, scope, h, _, _ := memoryEffectFixture(t)
 	memoryEffectPrompt(t, scope, "unfinished")
-	memoryEffectPrompt(t, scope, "unfinished") // 同じ版は実際には届かない。
+	memoryEffectPrompt(t, scope, "unfinished") // the same revision is not actually delivered again.
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "unrelated", "cwd": scope, "prompt": "決済障害の監視を説明してください。"})
 	stats := memoryEffectStats(t, h)
 	if stats["delivered"] != float64(1) || stats["pending"] != float64(1) || stats["awaiting_feedback"] != float64(1) {
-		t.Fatal("重複抑止と検索に出なかった依頼を配送数へ足さず、未完了も分母に残す")
+		t.Fatal("suppressed duplicates and requests that did not match are not added to the delivery count, and unfinished ones stay in the denominator")
 	}
 	other := newServer(serveOpts{storeDir: st.Dir, projectScope: feedbackScope(gitRepo(t))})
 	if memoryEffectStats(t, other)["delivered"] != float64(0) {
-		t.Fatal("別の仕事に記憶の引用や評価を見せない")
+		t.Fatal("another project is not shown the memory quotes or assessments")
 	}
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequest("GET", "/v1/wiki", nil))
 	var view map[string]any
 	if json.Unmarshal(r.Body.Bytes(), &view) != nil || view["memory_effect"] == nil {
-		t.Fatal("知識画面にも同じ集計を返す")
+		t.Fatal("the knowledge page gets the same totals")
 	}
 }
 
@@ -247,17 +247,17 @@ func TestMemoryEffectSeparatesUsefulUnusedHarmfulAndUnknown(t *testing.T) {
 		memoryEffectPrompt(t, scope, session)
 		id := memoryEffectComplete(t, st, scope, session)
 		if memoryEffectSubmit(t, h, id, key, result, "合成の判断記録", "合成の検査結果")["complete"] != true {
-			t.Fatal("役立たなかった例や不明も同じ単位で保存する")
+			t.Fatal("examples that did not help, and unknown ones, are saved in the same unit")
 		}
 	}
 	stats := memoryEffectStats(t, h)
 	for _, name := range []string{"helpful", "unused", "harmful", "unknown"} {
 		if stats[name] != float64(1) {
-			t.Fatalf("良い例だけを集計しない: %s=%v", name, stats[name])
+			t.Fatalf("does not count only the good examples: %s=%v", name, stats[name])
 		}
 	}
 	if stats["delivered"] != float64(4) || stats["pending"] != float64(0) {
-		t.Fatal("届けた件数は全分類と未評価の合計になる")
+		t.Fatal("the delivered count is the sum of all categories and the unassessed")
 	}
 	t.Run("two-quotes", func(t *testing.T) {
 		st, scope, h, draft, _ := memoryEffectFixture(t)
@@ -280,11 +280,11 @@ func TestMemoryEffectSeparatesUsefulUnusedHarmfulAndUnknown(t *testing.T) {
 			}
 		}
 		if len(entries) != 2 || reflectCall(t, h, map[string]any{"operation": "submit", "memory": entries})["complete"] != true {
-			t.Fatal("一つの依頼に届いた二つの記憶を別々に評価する")
+			t.Fatal("two memories delivered to one request are assessed separately")
 		}
 		stats := memoryEffectStats(t, h)
 		if stats["delivered"] != float64(2) || stats["helpful"] != float64(1) || stats["unused"] != float64(1) {
-			t.Fatal("依頼数ではなく実際に届いた記憶を単位にする")
+			t.Fatal("the unit is memories actually delivered, not requests")
 		}
 	})
 }

@@ -1,9 +1,9 @@
 package main
 
-// wiki の差し込み先と矛盾。エージェントが新しい教訓を書いたら、保存(submit)の前に reflect の place へ渡す。
-// shikii は生きている記事と一本ずつ突き合わせて「同じ話題か」(wiki-place)を手元のモデルに聞き、上位 placeConflictTop 件には「食い違うか」(wiki-conflict)も聞く。
-// 正解は submit の結果から自動で付く(エージェントがどの記事へ足したか・置き換えたか)。人は答えない。
-// 線が無い間は参考で、エージェントが本文を読んで決める(食い違いは、線が引けても黙って置き換えない)。
+// Wiki insertion points and contradictions. When the agent writes a new lesson, it passes it to reflect's place before saving (submit).
+// shikii compares it with each live page one by one, asks the local model "is this the same topic?" (wiki-place), and for the top placeConflictTop also asks "do they disagree?" (wiki-conflict).
+// The truth comes automatically from the result of submit (which page the agent added to or replaced). People do not answer.
+// Until a line is drawn it is only a reference, and the agent reads the bodies and decides (a disagreement is never replaced silently, even once a line is drawn).
 
 import (
 	"errors"
@@ -19,12 +19,12 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// machineOnlySpecs は、人が答えない判定(AI が答え、正解は振り返りの結果から付く)。画面は確認待ちに数えず、カードを読むだけにする(0.8.0)。
+// machineOnlySpecs are decisions people do not answer (the AI answers; the truth comes from the result of reflection). The page does not count them as waiting for review; it only shows the cards (0.8.0).
 var machineOnlySpecs = map[string]bool{"wiki-place": true, "wiki-conflict": true}
 
-// settledDrafts は、振り返りで保存が済んだ草稿(教訓の文)。差し込み先の判定(wiki-place)に結果の正解が付いた草稿がそれ。
-// 矛盾の判定(wiki-conflict)は、草稿が触れなかった記事については正解が付かない(食い違うか分からない)ので、
-// 草稿が保存済みなら「結果待ち」ではなく「判断つかず(確定)」として列から外す(0.8.0: 61 件が永久に結果待ちに見えた)。
+// settledDrafts are drafts (lesson texts) whose save in reflection is done: drafts whose insertion-point decision (wiki-place) got a truth from the result.
+// A contradiction decision (wiki-conflict) gets no truth for pages the draft did not touch (whether they disagree is unknown), so
+// once the draft is saved, it leaves the list as "undecided (final)" rather than "waiting for results" (0.8.0: 61 items looked like they were waiting forever).
 func settledDrafts(st store.Store) map[string]bool {
 	out := map[string]bool{}
 	recs, err := st.Records("wiki-place", 0)
@@ -43,7 +43,7 @@ func settledDrafts(st store.Store) map[string]bool {
 	return out
 }
 
-// undecidedConflict は、保存済みの草稿についての矛盾の判定で、正解が付かないまま確定した物か。
+// undecidedConflict reports whether a contradiction decision about a saved draft became final without a truth.
 func undecidedConflict(specID string, rec store.Record, labeled map[string]store.Label, settled map[string]bool) bool {
 	if specID != "wiki-conflict" {
 		return false
@@ -54,16 +54,16 @@ func undecidedConflict(specID string, rec store.Record, labeled map[string]store
 	return settled[strings.TrimSpace(rec.Inputs["new_lesson"])]
 }
 
-// 固定の規則(オプションは無い)。
+// Fixed rules (there are no options).
 const (
-	placeCandidatesMax = 24  // 突き合わせる記事の上限(多ければ検索語の一致が高い順)
-	placeConflictTop   = 3   // 矛盾を聞く上位の数
-	placeParallel      = 4   // 手元のモデルへ同時に聞く数
-	placeChosenWeight  = 1.0 // 足した・置き換えた記事(はっきりした結果)
-	placeOtherWeight   = 0.5 // 選ばなかった記事(見落としもあり得るので部分の重み)
+	placeCandidatesMax = 24  // max pages compared (when there are more, the ones matching the search words best)
+	placeConflictTop   = 3   // number of top candidates asked about contradiction
+	placeParallel      = 4   // number of questions sent to the local model at once
+	placeChosenWeight  = 1.0 // pages added to or replaced (a clear result)
+	placeOtherWeight   = 0.5 // pages not chosen (could be an oversight, so a partial weight)
 )
 
-// wikiSpecs は wiki の整理で聞く 2 つ(埋め込みの spec の id)。hook と同じく自動で線を引く。
+// wikiSpecs are the 2 questions asked when sorting the wiki (ids of the embedded specs). Lines are drawn automatically, the same as for the hook.
 var wikiSpecs = []string{"wiki-place", "wiki-conflict"}
 
 type placeJudgement struct {
@@ -78,7 +78,7 @@ type placeCandidate struct {
 	Revision  string          `json:"revision"`
 	Title     string          `json:"title"`
 	AppliesTo string          `json:"applies_to"`
-	Kind      string          `json:"kind,omitempty"` // 候補の記事の種類と場面(合流すれば引き継ぐ値)
+	Kind      string          `json:"kind,omitempty"` // the candidate page's kind and scene (the values carried over when merging)
 	Scene     string          `json:"scene,omitempty"`
 	SameTopic placeJudgement  `json:"same_topic"`
 	Conflict  *placeJudgement `json:"conflict,omitempty"`
@@ -93,19 +93,19 @@ type placement struct {
 
 type placeResult struct {
 	Placements []placement  `json:"placements"`
-	Scenes     []sceneCount `json:"scenes"` // 今ある場面(数の多い順、placeScenesMax まで)。新しい草稿の場面は、近い物があれば同じ言い方にする(0.9.0)
+	Scenes     []sceneCount `json:"scenes"` // existing scenes (most used first, up to placeScenesMax). A new draft's scene uses the same wording when one is close (0.9.0)
 }
 
-// sceneCount は場面とその記事の数。
+// sceneCount is a scene and its number of pages.
 type sceneCount struct {
 	Scene string `json:"scene"`
 	Count int    `json:"count"`
 }
 
-// placeScenesMax は差し込み先の返事に載せる場面の数の上限。
+// placeScenesMax is the max number of scenes in the insertion-point reply.
 const placeScenesMax = 30
 
-// liveScenes は生きている記事の場面を数の多い順(同数は名前順)に返す。
+// liveScenes returns the scenes of live pages, most used first (ties by name).
 func liveScenes(live []notebook.Page) []sceneCount {
 	n := map[string]int{}
 	for _, p := range live {
@@ -129,13 +129,13 @@ func liveScenes(live []notebook.Page) []sceneCount {
 	return out
 }
 
-const placeNote = "線が引けるまでは参考です。同じ話題と見た記事は本文を読み、足すなら id を、置き換えるなら replaces を submit に書きます。食い違いの疑いがある記事は、どちらが新しい出典に基づくかを確かめてから決めます。候補に無い話題なら新しい記事にします。保存には種類 kind(rule / howto / criteria / fact / history)と場面 scene が要ります。場面は scenes に近い物があれば同じ言い方を使います(合流なら省けば引き継ぎます)。"
+const placeNote = "Until a line is drawn this is only a reference. Read the body of pages judged to be the same topic; to add to one, put its id in submit, and to replace one, put it in replaces. For a page suspected to disagree, check which one rests on newer sources before deciding. If the topic is not among the candidates, make a new page. Saving needs a kind (rule / howto / criteria / fact / history) and a scene. If a scene in scenes is close, use the same wording (when merging, leave it out to carry it over)."
 
-// placeDrafts は草稿ごとに、同じ話題の候補(p の高い順)と、上位の矛盾の疑いを返す。判定は記録に残り、submit の結果で正解が付く。
+// placeDrafts returns, for each draft, the same-topic candidates (highest p first) and the top suspected contradictions. The decisions are recorded and get their truth from the result of submit.
 func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, error) {
 	res := placeResult{Placements: []placement{}}
 	if len(drafts) == 0 || len(drafts) > 2 {
-		return res, errors.New("place は 1〜2 件の wiki の草稿を受け取ります")
+		return res, errors.New("place takes 1 or 2 wiki drafts")
 	}
 	book := notebook.Book{Root: root, Scope: scope}
 	live, err := book.Live()
@@ -147,7 +147,7 @@ func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, erro
 	for i, d := range drafts {
 		lesson, applies := strings.TrimSpace(d.Lesson), strings.TrimSpace(d.AppliesTo)
 		if lesson == "" || applies == "" {
-			return res, errors.New("差し込み先を聞く草稿には lesson と applies_to が要ります")
+			return res, errors.New("a draft asking for an insertion point needs lesson and applies_to")
 		}
 		pl := placement{Draft: i, Title: strings.TrimSpace(d.Title), Candidates: []placeCandidate{}, Note: placeNote}
 		pages, err := placeCandidatePages(book, live, d)
@@ -155,7 +155,7 @@ func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, erro
 			return res, err
 		}
 		if len(pages) == 0 {
-			pl.Note = "既存の記事が無いので、新しい記事になります。"
+			pl.Note = "There are no existing pages, so this becomes a new page."
 			res.Placements = append(res.Placements, pl)
 			continue
 		}
@@ -186,7 +186,7 @@ func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, erro
 			pl.Candidates = append(pl.Candidates, placeCandidate{PageID: p.ID, Revision: p.Revision, Title: p.Title, AppliesTo: p.AppliesTo, Kind: p.Kind, Scene: p.Scene, SameTopic: judgement(judged[j])})
 		}
 		if len(pl.Candidates) == 0 {
-			return res, errors.New("手元のモデルが差し込み先に答えません(起動を確かめてから、もう一度 place を呼びます)")
+			return res, errors.New("the local model does not answer about insertion points (check that it is running, then call place again)")
 		}
 		sort.SliceStable(pl.Candidates, func(a, b int) bool { return pl.Candidates[a].SameTopic.P > pl.Candidates[b].SameTopic.P })
 		for j := 0; j < len(pl.Candidates) && j < placeConflictTop; j++ {
@@ -215,7 +215,7 @@ func judgement(d *decide.Decision) placeJudgement {
 	return placeJudgement{P: d.P, Band: string(d.Band), Calibrated: d.IsCalibrated, TraceID: d.TraceID}
 }
 
-// placeCandidatePages は突き合わせる記事。上限を超えるなら、草稿の語との一致が高い順に取る。
+// placeCandidatePages are the pages to compare. Over the limit, take them in order of how well they match the draft's words.
 func placeCandidatePages(book notebook.Book, live []notebook.Page, d notebook.Draft) ([]notebook.Page, error) {
 	if len(live) <= placeCandidatesMax {
 		return live, nil
@@ -245,11 +245,11 @@ func placeCandidatePages(book notebook.Book, live []notebook.Page, d notebook.Dr
 	return picked, nil
 }
 
-// placementOutcome は、この草稿について聞いた差し込み先と矛盾の判定に付ける結果の正解(保存の前に組み、保存が通ってから書く)。
-// 足した(id)・置き換えた(replaces)記事は同じ話題「はい」、他は「いいえ」(部分)。矛盾は置き換えたら「はい」、置き換えずに足したら「いいえ」(部分)。
-// どの草稿の判定かは、置いた時の草稿の文(new_lesson)で引く。合流では教訓の文を書き直すことが多いので、完全に同じでなくても、
-// 保存する草稿(題・教訓・本文)に置いた時の文の大半(placeMatchMin)が入っていれば同じ草稿とみなす(0.8.3。完全一致だけだと
-// 新しい記事にした時だけ正解が付き、差し込み先の正解が全部「いいえ」になった)。
+// placementOutcome is the truth from the result for the insertion-point and contradiction decisions asked about this draft (built before saving, written after the save succeeds).
+// Pages added to (id) or replaced (replaces) are "yes" for same topic; others are "no" (partial). Contradiction is "yes" if replaced and "no" (partial) if added to without replacing.
+// Which draft a decision belongs to is looked up by the draft text at placing time (new_lesson). Merging often rewrites the lesson text, so even when not exactly the same,
+// a draft counts as the same if most (placeMatchMin) of the text at placing time is in the draft being saved (title, lesson, body) (0.8.3. With exact matches only,
+// truths were attached only when a new page was made, and every insertion-point truth became "no").
 func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, error) {
 	lesson := strings.TrimSpace(d.Lesson)
 	if lesson == "" {
@@ -259,7 +259,7 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 	if err != nil {
 		return nil, err
 	}
-	pageOf := map[string]string{} // 記事の教訓の文 → id(判定の入力から記事を引く)
+	pageOf := map[string]string{} // page lesson text → id (to find the page from the decision's input)
 	for _, p := range live {
 		pageOf[p.Lesson] = p.ID
 	}
@@ -307,7 +307,7 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 			case specID == "wiki-conflict" && replaced[page]:
 				truth, weight = "yes", placeChosenWeight
 			case specID == "wiki-conflict" && page != d.ID:
-				continue // 足しも置き換えもしなかった記事とは、食い違うかどうか分からない
+				continue // for pages neither added to nor replaced, whether they disagree is unknown
 			}
 			labels, err := store.LabelsFor(rec, truth, weight, "outcome")
 			if err != nil {
@@ -319,19 +319,19 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 	return out, nil
 }
 
-// placeMatchMin は、置いた時の草稿の文の隣り合う 2 語(bigrams)のうち、保存する草稿(題・教訓・本文)に入っている割合の下限。
-// placeMatchWindow は、あいまいに突き合わせる置いた草稿の古さの上限(置いてから保存までは普通すぐ)。
+// placeMatchMin is the minimum share of adjacent word pairs (bigrams) of the draft text at placing time that appear in the draft being saved (title, lesson, body).
+// placeMatchWindow is the max age of a placed draft for fuzzy matching (saving usually follows placing right away).
 const (
 	placeMatchMin    = 0.6
 	placeMatchWindow = 24 * time.Hour
 )
 
-// matchPlacedDraft は、保存する草稿が、正解の付いていないどの置いた草稿(new_lesson)のことかを返す(無ければ "")。
-// 正解を付けられる記録(候補の記事が今もある)を持つ置いた草稿だけを見る(候補の記事が消えた古い記録が先に当たらない。監査 0.8.3 の M1)。
-//   - 教訓の文が置いた時と同じなら、その草稿(新しい方)。
-//   - それ以外は合流・置き換えだけで、その記事を候補に持ち(新しい記事には狙う記事が無いので、あいまいには当たらない。監査 0.8.3 の H1)、placeMatchWindow 以内に置き、置いた時の文の placeMatchMin 以上が保存する草稿に
-//     入っている草稿のうち、最もよく入っている物(同点は新しく置いた方。1 回に 2 件置くのは普段の手順なので、新しさで選ぶと
-//     もう 1 件に付く。再監査の新-1)。前の日に置いた古い草稿は placeMatchWindow で外れる(監査 0.8.3 の M2)。
+// matchPlacedDraft returns which placed draft without a truth (new_lesson) the draft being saved refers to ("" if none).
+// Only placed drafts with records that can get a truth (the candidate page still exists) are considered (so old records whose candidate pages are gone do not match first; audit 0.8.3 M1).
+//   - If the lesson text is the same as at placing time, that draft (the newer one).
+//   - Otherwise only merges and replacements: among drafts that have that page as a candidate (a new page has no target page, so it never matches fuzzily; audit 0.8.3 H1), were placed within placeMatchWindow, and have placeMatchMin or more of the text at placing time in the draft being saved,
+//     the one that is contained best (ties go to the most recently placed. Placing 2 at once is the normal procedure, so choosing by recency alone
+//     attaches to the other one; re-audit new-1). Old drafts placed the day before drop out by placeMatchWindow (audit 0.8.3 M2).
 func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]store.Label, pageOf map[string]string, now time.Time) string {
 	lesson := strings.TrimSpace(d.Lesson)
 	targets := map[string]bool{}
@@ -371,14 +371,14 @@ func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]
 		}
 	}
 	if g := groups[lesson]; g != nil && g.labelable && !targets[pageOf[lesson]] {
-		return lesson // 教訓が合流先の今の教訓と同じ(本文に足すだけの合流)なら、その記事を作った時の古い記録と取り違えないよう使わない(再監査の残-2)
+		return lesson // if the lesson is the same as the merge target's current lesson (a merge that only adds to the body), do not use it, so it is not confused with the old record from when that page was made (re-audit remaining-2)
 	}
 	text := d.Title + "\n" + d.Lesson
 	if d.Body != nil {
 		text += "\n" + *d.Body
 	}
 	have := bigrams(text)
-	known := map[string]bool{} // 合流先の今の教訓に既にある語の並び。言い直しただけの草稿を、本当に足した草稿より上にしない(再々監査の新-B)
+	known := map[string]bool{} // word pairs already in the merge target's current lesson. A draft that only rephrases is not ranked above a draft that really added something (re-re-audit new-B)
 	for l, id := range pageOf {
 		if targets[id] {
 			for b := range bigrams(l) {
@@ -386,8 +386,8 @@ func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]
 			}
 		}
 	}
-	// 段: 合流先の教訓に無い語の並びを持つ草稿(中身を足した)は 1、全部が既にある草稿(言い直しただけ)は 0。言い直しの草稿も
-	// 全体の被覆で点を付けて候補に残し(人が同じ決まりをもう一度言った時も正解が付く。監査 0.9.0 の C1)、中身を足した草稿より下に置く
+	// Tier: a draft with word pairs not in the merge target's lesson (added content) is 1; a draft whose pairs are all already there (only rephrased) is 0. Rephrasing drafts
+	// still get a score from their overall coverage and stay as candidates (so a truth is attached when a person states the same rule again; audit 0.9.0 C1), ranked below drafts that added content
 	best, bestTier, bestScore, bestAt := "", -1, 0.0, time.Time{}
 	for placed, g := range groups {
 		if !g.hasTarget || now.Sub(g.at) > placeMatchWindow {
@@ -424,8 +424,8 @@ func matchPlacedDraft(d notebook.Draft, recs []store.Record, labeled map[string]
 	return best
 }
 
-// bigrams は、文の隣り合う 2 つの語の集合。英数字の続きは 1 語(小文字にする)、それ以外の文字(漢字・かな)は 1 文字を 1 語とし、
-// 空白と記号で区切る。英語を 2 文字ずつで比べると、関係ない長い文でも大半が重なった(再監査の残-1)。
+// bigrams is the set of adjacent word pairs in a text. A run of letters and digits is one word (lowercased); any other letter (kanji, kana) is one word per character;
+// spaces and symbols separate words. Comparing English 2 characters at a time made even long unrelated texts overlap mostly (re-audit remaining-1).
 func bigrams(s string) map[string]bool {
 	var words []string
 	var word []rune
@@ -454,8 +454,8 @@ func bigrams(s string) map[string]bool {
 	return out
 }
 
-// ingestWithOutcome は記事を保存し、保存が通ったら、その草稿について聞いた差し込み先・矛盾の判定に結果の正解を付ける。
-// 振り返りの保存(reflect submit)と wiki ingest(CLI・MCP・HTTP)の両方がここを通る。
+// ingestWithOutcome saves the page and, if the save succeeds, attaches truths from the result to the insertion-point and contradiction decisions asked about that draft.
+// Both the reflection save (reflect submit) and wiki ingest (CLI, MCP, HTTP) go through here.
 func ingestWithOutcome(root, scope string, d notebook.Draft) (notebook.Result, error) {
 	outcome, oerr := placementOutcome(root, scope, d)
 	res, err := (notebook.Book{Root: root, Scope: scope}).Ingest(d)
@@ -466,7 +466,7 @@ func ingestWithOutcome(root, scope string, d notebook.Draft) (notebook.Result, e
 		hookLog("wiki place: " + oerr.Error())
 		return res, nil
 	}
-	bySpec := map[string][]store.Label{} // 追記は spec ごと
+	bySpec := map[string][]store.Label{} // appended per spec
 	for _, l := range outcome {
 		bySpec[l.SpecID] = append(bySpec[l.SpecID], l)
 	}

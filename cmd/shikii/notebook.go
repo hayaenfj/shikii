@@ -29,8 +29,8 @@ type notebookRequest struct {
 	notebook.Draft
 	Observation *notebook.Observation       `json:"observation,omitempty"`
 	Maintenance *notebook.MaintenanceReview `json:"maintenance,omitempty"`
-	Path        string                      `json:"path,omitempty"`    // 作業記録(handoff_*)のパス。.shikii/handoff/ からの相対
-	Content     string                      `json:"content,omitempty"` // 作業記録に書く本文(handoff_write / handoff_append)
+	Path        string                      `json:"path,omitempty"`    // path of a work record (handoff_*), relative to .shikii/handoff/
+	Content     string                      `json:"content,omitempty"` // body to write to a work record (handoff_write / handoff_append)
 }
 
 func runNotebook(root, scope string, req notebookRequest) (any, error) {
@@ -45,25 +45,25 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		}
 		return b.QueryPage(req.Query, req.Cursor)
 	case "ingest":
-		res, err := ingestWithOutcome(root, scope, req.Draft) // 差し込み先の判定に結果の正解を付ける(0.8.3)
+		res, err := ingestWithOutcome(root, scope, req.Draft) // attach the truth from the result to the insertion-point decision (0.8.3)
 		if err == nil {
-			res.Remaining = b.RemainingUnclassified() // 残りの未分類(0.9.0。hook の無いエージェントにも届く)
+			res.Remaining = b.RemainingUnclassified() // remaining unclassified pages (0.9.0; also reaches agents without hooks)
 		}
 		return res, err
 	case "classify":
-		res, err := b.Classify(req.ID, req.Kind, req.Scene) // 版を上げる前の記事に種類と場面だけを付ける(0.9.0)
+		res, err := b.Classify(req.ID, req.Kind, req.Scene) // give only a kind and a scene to a page from before the version bump (0.9.0)
 		if err == nil {
 			res.Remaining = b.RemainingUnclassified()
 		}
 		return res, err
 	case "capture":
 		if req.Observation == nil {
-			return nil, errors.New("保存する原資料が必要です")
+			return nil, errors.New("a source to save is required")
 		}
 		return b.Capture(*req.Observation)
 	case "maintain":
 		if req.Maintenance == nil {
-			return nil, errors.New("見直しの記録が必要です")
+			return nil, errors.New("a review record is required")
 		}
 		return b.Maintain(*req.Maintenance)
 	case "lint":
@@ -71,14 +71,14 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	case "handoff_list", "handoff_read", "handoff_write", "handoff_append":
 		return runHandoff(root, req)
 	}
-	return nil, errors.New("使い方: wiki query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
+	return nil, errors.New("usage: wiki query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
 }
 
-// 教訓の置き場は hook と同じプロジェクトの .shikii/。呼び出した仕事だけを扱う。
-// 新しい接続先や設定は持たず、文章は利用中のエージェントから JSON で受け取る。
+// Lessons are kept in the project's .shikii/, the same as the hook. Only the calling project is handled.
+// It has no new endpoints or settings; the text comes as JSON from the agent in use.
 func cmdNotebook(args []string) error {
 	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify") {
-		return errors.New("使い方: shikii wiki query [検索語・出典ID…・lesson:記事ID@版] [continue:続きのカーソル] | ingest | capture | maintain（JSONを標準入力）| classify <記事ID> <種類> <場面> | lint | verify …")
+		return errors.New("usage: shikii wiki query [search words, source IDs..., lesson:<page ID>@<revision>] [continue:<cursor>] | ingest | capture | maintain (JSON on standard input) | classify <page ID> <kind> <scene> | lint | verify ...")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -112,16 +112,16 @@ func cmdNotebook(args []string) error {
 			return errors.New("wiki ingest accepts exactly one JSON object")
 		}
 	} else if req.Operation == "classify" {
-		// 版を上げる前の記事に種類と場面だけを付ける(0.9.0)。種類は rule|howto|criteria|fact|history、場面は残りの引数(空白を含めてよい)
+		// give only a kind and a scene to a page from before the version bump (0.9.0). kind is rule|howto|criteria|fact|history; the scene is the rest of the arguments (spaces allowed)
 		if len(args) < 4 {
-			return errors.New("使い方: shikii wiki classify <記事ID> <rule|howto|criteria|fact|history> <場面(「〜する時」)>")
+			return errors.New("usage: shikii wiki classify <page ID> <rule|howto|criteria|fact|history> <scene (\"when ...\")>")
 		}
 		req.ID, req.Kind, req.Scene = args[1], args[2], strings.Join(args[3:], " ")
 	} else if req.Operation == "query" {
 		if len(args) > 1 && strings.HasPrefix(args[len(args)-1], "continue:") {
 			req.Cursor = strings.TrimPrefix(args[len(args)-1], "continue:")
 			if req.Cursor == "" {
-				return errors.New("続きのカーソルが必要です")
+				return errors.New("a cursor to continue from is required")
 			}
 			args = args[:len(args)-1]
 		}
@@ -160,14 +160,14 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 	if !acceptJSONPost(w, r) {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, body, 8<<20) // 作業記録の本文 1 MiB は JSON の符号化で何倍にも膨らむ。本文の大きさは handoff の Write が復号後に確かめる(監査 0.8.1-1)
+	r.Body = http.MaxBytesReader(w, body, 8<<20) // 1 MiB of work record body can grow several times when encoded as JSON. The body size is checked after decoding by handoff's Write (audit 0.8.1-1)
 	var req notebookRequest
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			writeErr(w, 413, errors.New("wiki の要求が 8 MiB を超えます(作業記録は 1 回 1 MiB まで。分けて handoff_append します)"))
+			writeErr(w, 413, errors.New("the wiki request is over 8 MiB (a work record takes up to 1 MiB at a time; split it and use handoff_append)"))
 			return
 		}
 		writeErr(w, 400, fmt.Errorf("invalid wiki request: %v", err))

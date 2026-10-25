@@ -12,12 +12,12 @@ import (
 	"time"
 )
 
-// 止める検査とターンの観測(0.7.3)。
-// 変わったファイルは依頼の時の一覧(sessions/<id>.files)と今の一覧の差(hookStop と同じ)。足した行は、依頼の時の中身と今の中身を
-// 行で比べて、今にしか無い行。依頼の時の中身は一覧の blob が repo にあればそれ、無ければ HEAD の中身(依頼の時に未コミットだった
-// ファイルの blob は一覧を取った仮の置き場と共に消えるので、その分は HEAD との差になる)、それも無ければ空。
-// このターンのコミットは、依頼の時に控えた HEAD(session.Head)から今の HEAD までの log(HEAD が辿れない時は見ない)。
-// 取れない時は「分からない」として検査を通す(止めるのは確かな時だけ)。
+// Checks that stop the turn, and what was observed in the turn (0.7.3).
+// Changed files are the difference between the listing taken at the request (sessions/<id>.files) and the current listing (same as hookStop). Added lines are
+// lines found only in the current content when comparing, line by line, the content at the request with the current content. The content at the request is the listing's blob if it is in the repo,
+// otherwise the HEAD content (the blob of a file that was uncommitted at the request disappears together with the temporary store the listing was taken in, so for those it is the diff from HEAD), and otherwise empty.
+// This turn's commits are the log from the HEAD saved at the request (session.Head) to the current HEAD (not checked when HEAD cannot be followed).
+// When something cannot be read, it counts as "unknown" and the check passes (it stops only when certain).
 
 func gitRun(ctx context.Context, dir string, args ...string) (string, bool) {
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -31,7 +31,7 @@ func gitRun(ctx context.Context, dir string, args ...string) (string, bool) {
 	return out.String(), true
 }
 
-// gitHead は依頼の時の HEAD(空の repo や git の外なら "")。
+// gitHead returns HEAD at the time of the request ("" for an empty repo or outside git).
 func gitHead(cwd string) string {
 	if cwd == "" {
 		return ""
@@ -45,7 +45,7 @@ func gitHead(cwd string) string {
 	return strings.TrimSpace(out)
 }
 
-// addedLines は old に無く new にある行(多重集合の差)。
+// addedLines returns lines that are in new but not in old (multiset difference).
 func addedLines(old, new []byte) []string {
 	count := map[string]int{}
 	for _, l := range strings.Split(string(old), "\n") {
@@ -66,7 +66,7 @@ func addedLines(old, new []byte) []string {
 
 func isBinary(b []byte) bool { return bytes.IndexByte(b, 0) >= 0 }
 
-// guardTurnInput はターンの観測を組む。before は依頼の時の一覧(先頭行は依頼の印)、changed は hookStop が出した変わったファイル。
+// guardTurnInput builds what was observed in the turn. before is the listing at the request (its first line is the request marker); changed is the changed files that hookStop found.
 func guardTurnInput(cwd, before string, changed []string, known bool, head string, since time.Time) guardInput {
 	in := guardInput{Changed: changed, Known: known, Added: map[string][]string{}}
 	if cwd == "" {
@@ -104,19 +104,19 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 		}
 	}
 	if head != "" {
-		// 依頼の HEAD が今の HEAD の祖先でなければ(別の系統に切り替えた)、head..HEAD は他人や前からのコミットなので見ない。
-		// 祖先でも、依頼より前にコミットされたもの(枝を切り替えて入った既存のコミット)は見ない
+		// If the request's HEAD is not an ancestor of the current HEAD (switched to another line of history), head..HEAD is someone else's or older commits, so do not check them.
+		// Even when it is an ancestor, do not check commits made before the request (existing commits brought in by switching branches)
 		if _, ancestor := gitRun(ctx, top, "merge-base", "--is-ancestor", head, "HEAD"); !ancestor {
 			return in
 		}
-		if out, ok := gitRun(ctx, top, "log", "--no-merges", "--format=%ct%x1f%B%x1e", head+"..HEAD"); ok { // merge の自動の文は見ない
+		if out, ok := gitRun(ctx, top, "log", "--no-merges", "--format=%ct%x1f%B%x1e", head+"..HEAD"); ok { // ignore the automatic text of merges
 			in.CommitsKnown = true
 			for _, rec := range strings.Split(out, "\x1e") {
 				ts, body, found := strings.Cut(strings.TrimSpace(rec), "\x1f")
 				if !found {
 					continue
 				}
-				// 件名も本文も無いコミット(--allow-empty-message)は本文の無いコミットとして検査に出す(空文字)
+				// a commit with no subject and no body (--allow-empty-message) goes to the check as a commit with no body (empty string)
 				if sec, err := strconv.ParseInt(strings.TrimSpace(ts), 10, 64); err == nil && !since.IsZero() && sec < since.Unix()-1 {
 					continue
 				}
@@ -127,7 +127,7 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 	return in
 }
 
-// guardWorkingTreeInput は `shikii guard try` 用: HEAD との差(変更・未追跡)を変わったファイルとし、足した行は HEAD と比べる。コミットは見ない。
+// guardWorkingTreeInput is for `shikii guard try`: the diff from HEAD (modified and untracked) counts as changed files, and added lines are compared with HEAD. It does not look at commits.
 func guardWorkingTreeInput(dir string) guardInput {
 	in := guardInput{Added: map[string][]string{}}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*hookGitTimeout)
@@ -171,7 +171,7 @@ func guardWorkingTreeInput(dir string) guardInput {
 	return in
 }
 
-// guardStop は Stop で有効な検査を当て、引っかかれば止める出力(decision: block)を返す。結果は records/guards.jsonl に残す。
+// guardStop runs the enabled checks at Stop and, if one fails, returns output that blocks (decision: block). Results are kept in records/guards.jsonl.
 func guardStop(root string, in *hookInput, snapshot *hookSession, before string, changed []string, known bool, recheck bool) (hookOut, error) {
 	guards, err := enabledGuards(root)
 	if err != nil || len(guards) == 0 {
@@ -192,22 +192,22 @@ func guardStop(root string, in *hookInput, snapshot *hookSession, before string,
 		return hookOut{}, err
 	}
 	if len(failed) == 0 || recheck {
-		return hookOut{}, nil // 止めた後の Stop ではもう止めない(無限ループを避ける)。直ったかは記録に残る
+		return hookOut{}, nil // do not block again on the Stop after a block (avoids an endless loop). Whether it was fixed stays in the records
 	}
 	var b strings.Builder
-	b.WriteString("shikii: 止める検査に引っかかりました。直してから終えてください(人が決めた検査です)。\n")
+	b.WriteString("shikii: a check that stops the turn failed. Fix it before finishing (these checks were set by a person).\n")
 	for _, f := range failed {
 		b.WriteString("- " + f.ID + ": " + f.Reason + "\n")
 	}
-	b.WriteString("検査そのものを外すのは人の判断です: shikii guard disable <id>")
+	b.WriteString("Removing a check itself is the person's decision: shikii guard disable <id>")
 	ids := make([]string, 0, len(failed))
 	for _, f := range failed {
 		ids = append(ids, f.ID)
 	}
-	return hookOut{Block: true, Reason: b.String(), System: "shikii: 止める検査(" + strings.Join(ids, ", ") + ")に引っかかったので、直してから終えるよう伝えました"}, nil
+	return hookOut{Block: true, Reason: b.String(), System: "shikii: the check that stops the turn (" + strings.Join(ids, ", ") + ") failed, so the agent was told to fix it before finishing"}, nil
 }
 
-// guardRecheck は stop_hook_active の Stop(止めた後の続き)で、直ったかを記録する。止めない。
+// guardRecheck records, on a Stop with stop_hook_active (the continuation after a block), whether the problem was fixed. It does not block.
 func guardRecheck(root string, in *hookInput) {
 	snapshot := loadSession(root, in.SessionID)
 	if snapshot.Request == "" {

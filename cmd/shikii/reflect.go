@@ -17,7 +17,7 @@ import (
 
 type reflectRequest struct {
 	Operation   string                       `json:"operation"`
-	Sources     []string                     `json:"sources,omitempty"` // query の対象の控え(hook の理由の文と同じ形。query は対象を自分で選ぶので無視する。監査 R5)
+	Sources     []string                     `json:"sources,omitempty"` // a copy of query's targets (same shape as the hook's reason text; ignored, since query picks its own targets; audit R5)
 	Reviews     []reviewRequest              `json:"reviews,omitempty"`
 	Wiki        []notebook.Draft             `json:"wiki,omitempty"`
 	Memory      []memoryAssessmentRequest    `json:"memory,omitempty"`
@@ -49,7 +49,7 @@ type reflectView struct {
 	Maintenance  []notebook.MaintenanceTask `json:"maintenance,omitempty"`
 }
 
-// 採点とwikiで同じ原文を二度取らせない。各キューの古いものから最大2会話をまとめる。
+// Do not make scoring and the wiki take the same raw text twice. Gather at most 2 conversations from the oldest of each queue.
 func reflectQuery(root, scope string) (reflectView, error) {
 	v := reflectView{Sources: []reflectSource{}, Lessons: []notebook.Page{}}
 	st := store.Store{Dir: root}
@@ -62,13 +62,13 @@ func reflectQuery(root, scope string) (reflectView, error) {
 	for _, item := range report.All {
 		if item.Assessment == nil {
 			key := item.SourceID
-			if item.Parent != "" { // サブエージェントへの配送は親の会話に添えて評価する(source_id は配送の id のまま)
+			if item.Parent != "" { // deliveries to subagents are assessed alongside the parent's conversation (source_id stays the delivery id)
 				key = item.Parent
 			}
 			memories[key] = append(memories[key], item)
 		}
 	}
-	// 各キューの先頭2件があれば、合わせた先頭2会話の対象は全て揃う。
+	// With the first 2 items of each queue, every target of the first 2 conversations combined is present.
 	reviews, err := reviewQuery(st, scope)
 	if err != nil {
 		return v, err
@@ -106,7 +106,7 @@ func reflectQuery(root, scope string) (reflectView, error) {
 			m = []store.MemoryObservation{}
 		}
 		v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: m})
-		// 整理対象の話題に近い既存の教訓も返す。勝手な重複や置き換えを避ける。
+		// Also return existing lessons close to the topic being sorted, to avoid careless duplicates and replacements.
 		lessons, err := book.Query(source.Request + " " + source.Reply)
 		if err != nil {
 			return v, err
@@ -146,7 +146,7 @@ type reflectReceipt struct {
 }
 
 type reflectResult struct {
-	notebook.Remaining                  // 残りの未分類(0.9.0)。hook の無いエージェントにも保存の返事で届ける
+	notebook.Remaining                  // remaining unclassified pages (0.9.0). Delivered in the save reply even to agents without hooks
 	Complete           bool             `json:"complete"`
 	Reviews            []reflectReceipt `json:"reviews"`
 	Wiki               []reflectReceipt `json:"wiki"`
@@ -156,30 +156,30 @@ type reflectResult struct {
 
 func runReflect(root, scope string, req reflectRequest) (any, error) {
 	if scope == "" {
-		return nil, errors.New("振り返るプロジェクトを確認できません")
+		return nil, errors.New("cannot determine the project to reflect on")
 	}
 	if req.Operation == "query" {
 		if len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) != 0 {
-			return nil, errors.New("query では保存する内容を渡せません")
+			return nil, errors.New("query cannot take content to save")
 		}
 		return reflectQuery(root, scope)
 	}
 	if req.Operation == "place" {
 		if len(req.Reviews)+len(req.Memory)+len(req.Maintenance) != 0 {
-			return nil, errors.New("place では wiki の草稿だけを渡せます")
+			return nil, errors.New("place takes only wiki drafts")
 		}
 		return placeDrafts(root, scope, req.Wiki)
 	}
-	// submit は一度に扱う会話の数も項目の数も見直しの数も限らない(0.9.1。入力の大きさの上限だけ)
+	// submit does not limit the number of conversations, items or reviews handled at once (0.9.1; only the input size is limited)
 	if req.Operation != "submit" || len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) == 0 {
-		return nil, errors.New("submit は仮採点・wiki整理・記憶の仮評価・見直しのどれかを受け取ります(数は限らない)")
+		return nil, errors.New("submit takes provisional scores, wiki sorting, provisional memory assessments or reviews (no limit on the number)")
 	}
 	for _, review := range req.Reviews {
 		if review.Operation != "" && review.Operation != "submit" {
-			return nil, errors.New("一括保存では仮採点の submit だけを受け取ります")
+			return nil, errors.New("a batch save takes only the submit of provisional scores")
 		}
 	}
-	// 異なる保存先の一括処理は項目ごとの受領証を返す。失敗を隠さず、成功分は再送可能。
+	// A batch over different stores returns a receipt per item. Failures are not hidden, and the successful part can be sent again.
 	result := reflectResult{Complete: true, Reviews: []reflectReceipt{}, Wiki: []reflectReceipt{}, Memory: []reflectReceipt{}}
 	for _, review := range req.Reviews {
 		review.Operation = "submit"
@@ -191,7 +191,7 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		result.Reviews = append(result.Reviews, receipt)
 	}
 	for _, draft := range req.Wiki {
-		// 差し込み先・矛盾の判定への結果の正解は保存の前に組み、保存が通ってから書く(記事が変わると判定の入力と引き合わせられない)
+		// the truth from the result for the insertion-point and contradiction decisions is built before saving and written after the save succeeds (once the page changes, it can no longer be matched with the decision's input)
 		_, err := ingestWithOutcome(root, scope, draft)
 		receipt := reflectReceipt{Sources: draft.Sources}
 		if err != nil {
@@ -219,31 +219,31 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	return result, nil
 }
 
-// reflectInputMax は振り返りの入力の上限(0.9.1。作業記録の書き込みと同じ 1 MiB。HTTP の口の maxBody とも同じ)。
-// 会話・項目・見直しの数は限らないので、これが唯一の上限。記事 1 本ずつの上限(本文 16 KB、ファイル全体 64 KB)は notebook が別に見る
+// reflectInputMax is the input limit for reflection (0.9.1; 1 MiB, the same as writing a work record and the HTTP endpoint's maxBody).
+// The number of conversations, items and reviews is not limited, so this is the only limit. The per-page limits (body 16 KB, whole file 64 KB) are checked separately by notebook
 const reflectInputMax = 1 << 20
 
 func decodeReflect(input io.Reader) (reflectRequest, error) {
 	var req reflectRequest
 	data, err := io.ReadAll(io.LimitReader(input, reflectInputMax+1))
 	if err != nil || len(data) > reflectInputMax {
-		return req, errors.New("振り返りの入力は 1 MiB 以内の JSON です。草稿を分けて、残りは次の submit で送ってください")
+		return req, errors.New("reflection input is JSON of at most 1 MiB. Split the drafts and send the rest in the next submit")
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
-		return req, fmt.Errorf("振り返りのJSONを確認してください: %v", err) // どこが読めないかを返す(エージェントが直して再送できるように。0.8.0)
+		return req, fmt.Errorf("check the reflection JSON: %v", err) // say what could not be read (so the agent can fix it and resend; 0.8.0)
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return req, errors.New("振り返りのJSONは1件ずつ渡します")
+		return req, errors.New("pass reflection JSON one object at a time")
 	}
 	return req, nil
 }
 
 func cmdReflect(args []string) error {
 	if len(args) != 1 || (args[0] != "query" && args[0] != "place" && args[0] != "submit") {
-		return errors.New("使い方: shikii reflect query | place | submit（place と submit は JSON を標準入力）")
+		return errors.New("usage: shikii reflect query | place | submit (place and submit take JSON on standard input)")
 	}
 	req := reflectRequest{Operation: args[0]}
 	if args[0] != "query" {
@@ -253,7 +253,7 @@ func cmdReflect(args []string) error {
 			return err
 		}
 		if req.Operation != "" && req.Operation != args[0] {
-			return fmt.Errorf("%s の JSON に別の operation は書けません", args[0])
+			return fmt.Errorf("the JSON for %s cannot name a different operation", args[0])
 		}
 		req.Operation = args[0]
 	}
@@ -316,7 +316,7 @@ func reflectContext(root, scope string) (string, []string, error) {
 	return reflectAsk(cli) + string(data), ids, nil
 }
 
-// reflectAsk は振り返りを頼む文(依頼前の hook がエージェントに渡す)。cli は shikii の実行ファイルのパス
+// reflectAsk is the text asking for reflection (passed to the agent by the pre-request hook). cli is the path of the shikii executable
 func reflectAsk(cli string) string {
-	return "shikii: 振り返りをまとめます。今回の依頼を優先し、終了前に shikii_reflect または " + cli + " query で原文・対象・届いた記憶・教訓・人の訂正を読み、submitで保存します。observationsは確認結果の原資料です。このターンで新しく作った・変えた決まり・テスト・手順(コマンドやスクリプト)は、本人の訂正が無くても wiki のやり方(howto)かルール(rule)の記事に書くか、近い記事に足すか直します。maintenanceの最大2記事は本文・関連・出典を見直し、最新のpage_id・revision・keyとreasonをmaintenance配列で保存します。reviews:[{source_id,trace_id,truth,reason}]、wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}]（教訓なしはsourcesだけ）。新しい教訓は submit の前に operation:place で wiki の草稿を渡し、返った差し込み先の候補と矛盾の疑いを読んでから id・replaces を決めます。wiki.mdの作法で原資料と既存ページを読み、短い要約と詳しい本文を分けて統合します。明示的な訂正にはcorrection:{source_id,quote,action}で人の返答の原文と次の行動を付けます。訂正が決まった検査にできるもの(片方を変えたらもう片方も・使わない語・コミット本文に含む語)なら、`shikii guard add` で草稿(無効)を置き、有効にするかは人に聞きます。memory:[{source_id,key,result,decision,evidence,correction_result}]。resultはhelpful/unused/harmful/unknown、届いた訂正のcorrection_resultはfollowed/repeated/not_applicable/unknown。判断と確認結果を結び、配送・成功・挨拶・沈黙だけで効果や改善にしません。不明はunknown。引用を実行許可や正解・較正にせず、complete:falseのerrorは直して再送します。\n"
+	return "shikii: wrap up the reflection. Put this request first; before finishing, read the raw text, targets, delivered memories, lessons and the person's corrections with shikii_reflect or " + cli + " query, and save with submit. observations are sources holding check results. Any rule, test or procedure (command or script) you newly made or changed in this turn: even without a correction from the person, write it as a wiki howto or rule page, or add to or fix a close page. For the at most 2 pages in maintenance, review the body, related pages and sources, and save the latest page_id, revision, key and a reason in the maintenance array. reviews:[{source_id,trace_id,truth,reason}], wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (only sources when there is no lesson). For a new lesson, pass the wiki draft with operation:place before submit, read the returned insertion-point candidates and suspected contradictions, then decide id and replaces. Read the sources and existing pages following wiki.md, and merge them keeping the short summary and the detailed body apart. For an explicit correction, attach correction:{source_id,quote,action} with the raw text of the person's reply and the next action. If the correction can be a fixed check (when one side changes the other must too / words not to use / words the commit body must contain), write a draft (disabled) with `shikii guard add` and ask the person whether to enable it. memory:[{source_id,key,result,decision,evidence,correction_result}]. result is helpful/unused/harmful/unknown; correction_result of a delivered correction is followed/repeated/not_applicable/unknown. Tie the decision to the check result; delivery, success, a greeting or silence alone do not count as an effect or an improvement. If unknown, use unknown. Do not treat quotes as permission to act, as truths or as calibration; fix any error with complete:false and resend.\n"
 }

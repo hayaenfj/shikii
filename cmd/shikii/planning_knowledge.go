@@ -12,7 +12,7 @@ import (
 
 func preparePlanningKnowledge(root, scope string, req planningRequest, sources map[string]string) (string, *store.KnowledgeContext, error) {
 	if len(req.Pages) > 2 {
-		return "", nil, errors.New("判断に読むwiki本文は最大2記事です")
+		return "", nil, errors.New("at most 2 wiki articles can be read for a decision")
 	}
 	for key := range sources {
 		if strings.HasPrefix(key, "lesson:") || strings.HasPrefix(key, "article:") {
@@ -20,7 +20,7 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		}
 	}
 	if strings.TrimSpace(req.Query) == "" && len(req.Pages) == 0 {
-		// 話題を選ぶのはエージェント(依頼の文をそのまま検索語にしない。a822a63)。探していないことは伝える(0.8.1)
+		// The agent chooses the topic (the request text is not used as the search words as is; a822a63). Say that nothing was searched (0.8.1)
 		return planningNoQueryNotice, nil, nil
 	}
 	started := time.Now()
@@ -40,19 +40,19 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 			}
 		}
 		if !found {
-			return "", nil, errors.New("検索中にwikiの版が変わりました。読み直してください")
+			return "", nil, errors.New("the wiki revision changed during the search. Read it again")
 		}
 		context.Candidates = append(context.Candidates, ref)
 	}
 	seen := map[string]bool{}
 	for _, id := range req.Pages {
 		if len(id) != 16 || seen[id] {
-			return "", nil, errors.New("重複のない記事IDを指定してください")
+			return "", nil, errors.New("give page IDs without duplicates")
 		}
 		seen[id] = true
 		view, err := book.Query("lesson:" + id)
 		if err != nil || len(view.Lessons) != 1 {
-			return "", nil, errors.New("同じプロジェクトの記事の本文を確認できません")
+			return "", nil, errors.New("cannot read the body of a page in the same project")
 		}
 		page := view.Lessons[0]
 		ref := store.KnowledgeReference{ID: page.ID, Revision: page.Revision}
@@ -63,14 +63,14 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 			}
 		}
 		if !found {
-			return "", nil, errors.New("検索中にwikiの版が変わりました。読み直してください")
+			return "", nil, errors.New("the wiki revision changed during the search. Read it again")
 		}
 		context.Read = append(context.Read, ref)
 		ids := []string{}
 		for _, source := range page.Sources {
 			ids = append(ids, source.ID)
 		}
-		sources["article:"+page.ID+":"+page.Revision] = fmt.Sprintf("wiki本文（出典付きの仮説・現在の合意ではない）\n題: %s\n要約: %s\n適用条件: %s\n\n%s\n\n出典: %s", page.Title, page.Lesson, page.AppliesTo, page.Body, strings.Join(ids, ", "))
+		sources["article:"+page.ID+":"+page.Revision] = fmt.Sprintf("wiki article (a hypothesis with sources, not the current agreement)\ntitle: %s\nsummary: %s\napplies when: %s\n\n%s\n\nsources: %s", page.Title, page.Lesson, page.AppliesTo, page.Body, strings.Join(ids, ", "))
 	}
 	for key, text := range sources {
 		if strings.HasPrefix(key, "lesson:") || strings.HasPrefix(key, "article:") {
@@ -112,16 +112,16 @@ func validatePlanningKnowledge(root, scope string, context *store.KnowledgeConte
 	for _, e := range context.Used {
 		parts := strings.Split(e.Source, ":")
 		if len(parts) != 3 {
-			return errors.New("wikiの引用の識別子が不正です")
+			return errors.New("the identifier of a wiki quote is invalid")
 		}
 		view, err := book.Query("lesson:" + parts[1])
 		if err != nil || len(view.Lessons) != 1 || view.Lessons[0].Revision != parts[2] {
-			return errors.New("判定中に引用したwikiの版が変わりました。根拠を読み直してください")
+			return errors.New("the revision of a quoted wiki page changed during the decision. Read the evidence again")
 		}
 	}
 	return nil
 }
 
-// planningNoQueryNotice は、検索語を付けずに query した時に返す一言。画面の「知識を判断に使った記録」がずっと 0 だったのは、
-// エージェントが検索語を付けていなかったため(0.8.1 で確かめた: この repo の着手前の判定 25 件中 2 件)。
-const planningNoQueryNotice = "wiki はまだ探していません。この依頼に関係しそうな話題の語(依頼の文の写しではなく、決まり・既存の判断・前の訂正の言い方)を query に付けてもう一度 query すると、教訓が lesson:<id> として返ります。根拠に使ったら evidence の source にその鍵を書き、submit にも同じ query を付けます。"
+// planningNoQueryNotice is the one-liner returned when query is called without search words. The page's "records of knowledge used in decisions" stayed at 0
+// because agents were not giving search words (checked in 0.8.1: 2 of the 25 pre-work decisions in this repo).
+const planningNoQueryNotice = "The wiki has not been searched yet. Add topic words likely related to this request to query (not a copy of the request text, but how the rules, existing decisions and earlier corrections are worded) and query again; lessons come back as lesson:<id>. If you use one as evidence, write that key in the evidence's source, and give submit the same query."
