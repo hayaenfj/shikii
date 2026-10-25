@@ -152,7 +152,7 @@ func TestPlanningRecordSurvivesInterruptedReceiptWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 記録の追記後、セッションの完了印が保存されなかった状態を合成する。
+	// simulate the state where, after the record was appended, the session's completion mark was not saved.
 	file := sessionPath(root, "planning")
 	data, _ := os.ReadFile(file)
 	var session map[string]any
@@ -354,8 +354,8 @@ func TestPlanningKeepsOldRecordsOutOfTheNewAnswerQueue(t *testing.T) {
 	}
 }
 
-// 線のある prompt-kind が確信して「ファイルを変えない」と答えた依頼では、着手前の整理をエージェントに頼まない。
-// 線が無い時と、提案への返事・選択(decide)は従来どおり頼む。
+// For a request that a calibrated prompt-kind confidently answered "does not change files", the agent is not asked for the pre-start organizing.
+// Without a line, and for replies or choices on a proposal (decide), it is asked as before.
 func TestPlanningIsSkippedOnlyForConfidentNonEditRequests(t *testing.T) {
 	top := "explain"
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

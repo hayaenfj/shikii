@@ -218,7 +218,7 @@ func TestHookInstallRefreshesAgentsSectionOfRegisteredProjects(t *testing.T) {
 	if !strings.Contains(out, "AGENTS.md") {
 		t.Fatalf("must say it replaced it: %s", out)
 	}
-	if !strings.Contains(out, "開き直") || !strings.Contains(out, "0.9.0 以上") { // read from 0.9.1, it must not sound like a downgrade (final audit 0.9.1 low-F2)
+	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.9.0 or later") { // read from 0.9.1, it must not sound like a downgrade (final audit 0.9.1 low-F2)
 		t.Fatalf("must say to reopen open sessions and bring every machine using the same wiki to 0.9.0 or later (audit 0.9.0 B3): %s", out)
 	}
 	if b, _ := os.ReadFile(filepath.Join(without, "AGENTS.md")); string(b) != "# 人の規則だけ\n" {

@@ -101,17 +101,17 @@ func TestFirstRequestStartsOneProjectPageAndOpensTheBrowser(t *testing.T) {
 	if len(opened) != 0 {
 		t.Fatalf("the hook does not open the browser (serve does): %v", opened)
 	}
-	if strings.Contains(out, "このプロジェクトの画面") || strings.Contains(out, "画面を起こして") || strings.Contains(out, url) {
+	if strings.Contains(out, "this project's page") || strings.Contains(out, "画面を起こして") || strings.Contains(out, url) {
 		t.Fatalf("when it starts the page, no page notice is shown (the hook stays quiet while there is no line):\n%s", out)
 	}
 	// If it is up (even from another agent), do not start one; tell the location once per session. Do not start even if the start-right guard is removed (even if startOnce allows it)
 	spawned, opened = nil, nil
 	os.Remove(filepath.Join(common, "starting-page-"+projectID(repo)))
 	out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "p2", "cwd": repo, "prompt": "次は画面の色を直して"})
-	if len(spawned) != 0 || len(opened) != 0 || strings.Contains(out, "画面を起こし") || !strings.Contains(out, "画面: "+url+"/") {
+	if len(spawned) != 0 || len(opened) != 0 || strings.Contains(out, "画面を起こし") || !strings.Contains(out, "this project's page: "+url+"/") {
 		t.Fatalf("if up, do not start a second one, and tell the location: spawned=%v opened=%v\n%s", spawned, opened, out)
 	}
-	if out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "p2", "cwd": repo, "prompt": "さらに色を直して"}); strings.Contains(out, "画面: ") {
+	if out = runHook(t, "user-prompt-submit", map[string]any{"session_id": "p2", "cwd": repo, "prompt": "さらに色を直して"}); strings.Contains(out, "this project's page: ") {
 		t.Fatalf("not said twice in the same session:\n%s", out)
 	}
 	// Another project has its own page

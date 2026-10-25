@@ -10,9 +10,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 終わった後の 2 問にも結果の正解が付く: 変えたファイルが次の依頼の間に戻されたら範囲の外、同じ依頼の言い直しは終えていない。
+// The 2 end-of-turn questions also get outcome truths: if the changed files are reverted before the next request, outside the scope; a restatement of the same request, not finished.
 func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
-	model := fakeAgentModel(t, func(string) float64 { return 0.6 }) // 迷い(線の無い ask)
+	model := fakeAgentModel(t, func(string) float64 { return 0.6 }) // unsure (ask without a line)
 	repo := gitRepo(t)
 	agent := hookEnv(t, model, repo)
 	st := store.Store{Dir: agent}
@@ -38,7 +38,7 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 		return m
 	}
 
-	// A: 足したファイルを次の依頼の間に消した → 範囲の外(no、重み 1)。次の発言ははっきり別の依頼 → 終えた(yes、部分)
+	// A: the added file was removed before the next request → outside the scope (no, weight 1). The next message is clearly a different request → finished (yes, partial)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "a", "cwd": repo, "prompt": "add a greeting file named hello.txt to the repository"})
 	write("hello.txt", "hi")
 	runHook(t, "stop", map[string]any{"session_id": "a", "cwd": repo, "last_assistant_message": "Added hello.txt."})
@@ -66,7 +66,7 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 		}
 	}
 
-	// B: 同じ依頼の言い直し → 終えていない(no、重み 1)。変えたファイルが次の次の依頼まで残った → 範囲の中(yes、部分)
+	// B: a restatement of the same request → not finished (no, weight 1). The changed file stayed until the request after next → inside the scope (yes, partial)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "b", "cwd": repo, "prompt": "fix the off-by-one error in the pagination helper"})
 	write("page.go", "package page\n")
 	runHook(t, "stop", map[string]any{"session_id": "b", "cwd": repo, "last_assistant_message": "Fixed."})
@@ -84,7 +84,7 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 		t.Fatalf("a change kept through the next turn must give changes-in-scope yes w=%v: %+v", outcomeKeptWeight, l)
 	}
 
-	// D: 裏の作業の通知で同じ依頼が続き、エージェントが自分で戻したものは「人が戻した」に数えない
+	// D: when the same request continues via a background notification, what the agent reverted itself does not count as "reverted by the person"
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "d", "cwd": repo, "prompt": "draft a scratch file with ideas for the parser rewrite"})
 	write("scratch.txt", "ideas")
 	runHook(t, "stop", map[string]any{"session_id": "d", "cwd": repo, "last_assistant_message": "Drafted."})
@@ -98,7 +98,7 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 		t.Fatalf("an undo within the same request is not the person's undo: %+v", l)
 	}
 
-	// C: 短い返事は終えたかを決めない
+	// C: a short reply does not decide whether it finished
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "c", "cwd": repo, "prompt": "rename the config loader to something clearer"})
 	runHook(t, "stop", map[string]any{"session_id": "c", "cwd": repo, "last_assistant_message": "Renamed."})
 	doneC := trace("c", "done-as-asked")
@@ -124,7 +124,7 @@ func TestTextSimilarity(t *testing.T) {
 	}
 }
 
-// 人の答えを待つのは、結果から正解が付かない判定の迷いと、線のある判定の抜き取りだけ。
+// Only the unsure decisions that get no truth from outcomes and spot checks of calibrated decisions wait for the person's answer.
 func TestWaitsForPersonFor(t *testing.T) {
 	audit := ""
 	for i := 0; audit == ""; i++ {
@@ -151,7 +151,7 @@ func TestWaitsForPersonFor(t *testing.T) {
 	}
 }
 
-// 線が引けなかった spec は、正解が hookRecalibrateEvery 件増えるまで自動較正を繰り返さない(毎回の聞き直しは機械の時間を使うだけ)。
+// A spec whose line could not be drawn does not repeat auto-calibration until truths grow by hookRecalibrateEvery (replaying every time only spends machine time).
 func TestHookDoesNotRetryAFailedCalibrationUntilTruthsGrow(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.2 })
 	repo := gitRepo(t)
@@ -159,7 +159,7 @@ func TestHookDoesNotRetryAFailedCalibrationUntilTruthsGrow(t *testing.T) {
 	lowerMinN(t, agent, "prompt-kind", 2)
 	calls := 0
 	oldCal, oldGap := hookCalibrate, hookCalibrateGap
-	hookCalibrate = func(agent, path, storeDir, model string) { calls++ } // 線を引けなかった(spec は変わらない)
+	hookCalibrate = func(agent, path, storeDir, model string) { calls++ } // no line could be drawn (the spec does not change)
 	hookCalibrateGap = 0
 	t.Cleanup(func() { hookCalibrate, hookCalibrateGap = oldCal, oldGap })
 	turn := func(session string) {
@@ -178,7 +178,7 @@ func TestHookDoesNotRetryAFailedCalibrationUntilTruthsGrow(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("a failed line must not be retried before %d more truths: %d calls", hookRecalibrateEvery, calls)
 	}
-	// 文言が変わった(または控えが古い形)なら数え直す
+	// if the wording changed (or the record is in an old format), count again
 	guard := filepath.Join(agent, "calibrating-prompt-kind")
 	if err := os.WriteFile(guard, []byte("2026-10-22T08:20:03+09:00 kev-4b\n"), 0o600); err != nil {
 		t.Fatal(err)

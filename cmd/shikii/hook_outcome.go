@@ -1,10 +1,10 @@
 package main
 
-// 結果から付く正解(source outcome)。AI の解釈は使わず、作業ツリーと人の発言の形だけを見る。
-// prompt-kind: 依頼の間に作業ツリーが変わったか(settlePending)。
-// changes-in-scope: そのターンで変えたファイルが、次の人の依頼の間に元へ戻されたか(戻された = 範囲の外。戻されずに次の次の依頼まで残った = 範囲の中、部分の重み)。
-// done-as-asked: 次の人の発言が同じ依頼の言い直しか(言い直し = 終えていない。はっきり別の依頼 = 終えた、部分の重み)。短い返事と中間は付けない。
-// 観測は代わりの物差しで、人の正解と同じ重みにはしない(はっきり悪い側だけ重み 1)。
+// Truths that come from outcomes (source outcome). No AI interpretation is used; only the working tree and the shape of the person's messages are looked at.
+// prompt-kind: did the working tree change during the request (settlePending).
+// changes-in-scope: were the files changed in that turn reverted before the person's next request (reverted = outside the scope; not reverted and still there by the request after next = inside the scope, partial weight).
+// done-as-asked: is the person's next message a restatement of the same request (restatement = not finished; a clearly different request = finished, partial weight). Short replies and the in-between are not labeled.
+// Observation is a proxy measure and does not get the same weight as the person's truths (only the clearly bad side gets weight 1).
 
 import (
 	"strings"
@@ -15,20 +15,20 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 固定の規則(オプションは無い)。
+// Fixed rules (no options).
 const (
-	outcomeKeptWeight  = 0.5 // 戻されずに残った・別の依頼へ進んだ(悪くなかった印。良かった証拠ではない)
-	outcomeRepeatAbove = 0.6 // 前の依頼との似方(文字の 2 つ組の Dice)がこれ以上なら言い直し
-	outcomeMovedBelow  = 0.2 // これ以下なら別の依頼
-	scopeWatchTurns    = 2   // 変えたファイルを見張る人の依頼の数(次の依頼の間に戻されたかを、その次の依頼で決める)
-	scopeWatchFiles    = 200 // 見張るファイルの上限(超えた分は見ない)
+	outcomeKeptWeight  = 0.5 // not reverted, or moved on to another request (a sign it was not bad, not proof it was good)
+	outcomeRepeatAbove = 0.6 // at or above this similarity to the previous request (Dice on character pairs) it is a restatement
+	outcomeMovedBelow  = 0.2 // at or below this it is a different request
+	scopeWatchTurns    = 2   // number of the person's requests during which changed files are watched (whether they were reverted during the next request is decided at the one after)
+	scopeWatchFiles    = 200 // upper limit of watched files (the rest are not looked at)
 )
 
-// outcomeSpecs は結果から正解が付く判定。迷い(ask)でも人の答えを待たない(結果が答える)。
+// outcomeSpecs are the decisions that get truths from outcomes. Even when unsure (ask) they do not wait for the person's answer (the outcome answers).
 var outcomeSpecs = map[string]bool{"prompt-kind": true, "changes-in-scope": true, "done-as-asked": true, "wiki-place": true, "wiki-conflict": true}
 
-// waitsForPersonFor は、この判定が人の答えを待つか。
-// 線の無い判定は自動で何もしないので抜き取る物が無い。結果から正解が付く判定は迷っても結果を待つ。
+// waitsForPersonFor reports whether this decision waits for the person's answer.
+// Decisions without a line do nothing automatically, so there is nothing to spot-check. Decisions that get truths from outcomes wait for the outcome even when unsure.
 func waitsForPersonFor(specID string, d *decide.Decision) bool {
 	if d.Band == decide.Act {
 		return d.IsCalibrated && store.AuditSample(d.TraceID)
@@ -36,14 +36,14 @@ func waitsForPersonFor(specID string, d *decide.Decision) bool {
 	return d.Band == decide.Ask && !outcomeSpecs[specID]
 }
 
-// scopeWatch は changes-in-scope の判定と、そのターンで変えたファイルのターン前の状態("mode sha"、無かったファイルは "")。
+// scopeWatch is a changes-in-scope decision with the pre-turn state of the files changed in that turn ("mode sha"; "" for files that did not exist).
 type scopeWatch struct {
 	Trace  string            `json:"trace"`
 	Before map[string]string `json:"before"`
-	Seen   int               `json:"seen,omitempty"` // 判定の後に来た人の依頼の数
+	Seen   int               `json:"seen,omitempty"` // number of the person's requests that came after the decision
 }
 
-// newScopeWatch は変えたファイルのターン前の状態を控える。
+// newScopeWatch keeps the pre-turn state of the changed files.
 func newScopeWatch(trace, before string, changed []string) scopeWatch {
 	prior := parseListing(before)
 	w := scopeWatch{Trace: trace, Before: map[string]string{}}
@@ -56,7 +56,7 @@ func newScopeWatch(trace, before string, changed []string) scopeWatch {
 	return w
 }
 
-// reverted は、控えたファイルのどれかがターン前の状態へ戻ったか(無かったファイルは消えたか)。
+// reverted reports whether any kept file returned to its pre-turn state (for a file that did not exist: whether it was removed).
 func (w scopeWatch) reverted(now map[string]string) bool {
 	for p, before := range w.Before {
 		if now[p] == before {
@@ -66,9 +66,9 @@ func (w scopeWatch) reverted(now map[string]string) bool {
 	return false
 }
 
-// settleScope は見張っている changes-in-scope に結果の正解を付ける(錠の中)。listed が false(git の外か間に合わない)なら比べない。
-// boundary は人の依頼の境目: 見張りの数を 1 つ進め、scopeWatchTurns に届いて戻されていなければ「はい」(部分の重み)。
-// 戻されたかは、判定の後に人の依頼が 1 つ以上来てから見る(同じ依頼の続きでエージェントが自分で戻したものは数えない)。
+// settleScope attaches outcome truths to the watched changes-in-scope decisions (inside the lock). If listed is false (outside git or too slow), nothing is compared.
+// boundary is the boundary of the person's request: the watch count goes up by one, and once it reaches scopeWatchTurns without a revert, "yes" (partial weight).
+// Reverts are only looked at after at least one request from the person came after the decision (what the agent reverted itself while continuing the same request does not count).
 func settleScope(agent string, s *hookSession, listing string, listed, boundary bool) error {
 	if len(s.Watch) == 0 {
 		return nil
@@ -93,7 +93,7 @@ func settleScope(agent string, s *hookSession, listing string, listed, boundary 
 					firstErr = err
 				}
 			}
-			continue // 比べられなかった見張りは付けずに捨てる
+			continue // a watch that could not be compared is dropped without a label
 		}
 		rest = append(rest, w)
 	}
@@ -101,8 +101,8 @@ func settleScope(agent string, s *hookSession, listing string, listed, boundary 
 	return firstErr
 }
 
-// settleDone は前の依頼の done-as-asked に、次の人の発言の形から結果の正解を付ける(錠の中、依頼の境目)。
-// 短い返事(「ok」「続けて」)と、似ても似つかなくもない中間は付けない。
+// settleDone attaches an outcome truth to the previous request's done-as-asked from the shape of the person's next message (inside the lock, at the request boundary).
+// Short replies ("ok", "go on") and the in-between (neither similar nor dissimilar) are not labeled.
 func settleDone(agent string, c *completedTurn, reply string) error {
 	if c == nil || utf8.RuneCountInString(strings.TrimSpace(reply)) < shortReply {
 		return nil
@@ -126,7 +126,7 @@ func settleDone(agent string, c *completedTurn, reply string) error {
 	return nil
 }
 
-// textSimilarity は 2 つの文の似方(文字の 2 つ組の Dice 係数、0〜1)。空白・記号と大文字小文字を無視する。言語に依らない。
+// textSimilarity is how similar two texts are (the Dice coefficient on character pairs, 0 to 1). Ignores spaces, symbols and case. Language-independent.
 func textSimilarity(a, b string) float64 {
 	grams := func(s string) map[string]int {
 		var rs []rune
@@ -159,7 +159,7 @@ func textSimilarity(a, b string) float64 {
 	return 2 * float64(common) / float64(na+nb)
 }
 
-// parseListing は `git ls-files --stage` の一覧を path → "mode sha" にする。
+// parseListing turns a `git ls-files --stage` listing into path → "mode sha".
 func parseListing(listing string) map[string]string {
 	m := map[string]string{}
 	for _, line := range strings.Split(listing, "\n") {
@@ -171,7 +171,7 @@ func parseListing(listing string) map[string]string {
 		if len(meta) < 2 {
 			continue
 		}
-		m[line[tab+1:]] = meta[0] + " " + meta[1] // mode と blob の id(chmod だけの変更も「変わった」)
+		m[line[tab+1:]] = meta[0] + " " + meta[1] // mode and blob id (a chmod-only change also counts as "changed")
 	}
 	return m
 }

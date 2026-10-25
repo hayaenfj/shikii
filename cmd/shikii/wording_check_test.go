@@ -95,7 +95,7 @@ func TestWordingCheckAskedOfAgentOncePerRun(t *testing.T) {
 	}
 	prompt := map[string]any{"session_id": "s1", "cwd": repo, "prompt": "README の誤字を直してください。"}
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", prompt))
-	for _, want := range []string{"hook variants check", res.Run, res.WinnerWording.Question[:40], res.Current.Question[:40], "current_translation", "日本語に訳して"} {
+	for _, want := range []string{"hook variants check", res.Run, res.WinnerWording.Question[:40], res.Current.Question[:40], "current_translation", "translate both into 日本語"} {
 		if !strings.Contains(ctx, want) {
 			t.Fatalf("the text asking the agent to check meaning and translate lacks %q: %q", want, ctx)
 		}
@@ -255,7 +255,7 @@ func TestWordingCheckTranslatesIntoTheSetLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "Bitte den Tippfehler beheben."}))
-	if !strings.Contains(ctx, "Deutschに訳して") {
+	if !strings.Contains(ctx, "translate both into Deutsch") {
 		t.Fatalf("ask for a translation into the configured language (German): %q", ctx)
 	}
 	if _, err := submitWordingCheck(t, map[string]any{"spec": res.SpecID, "run": res.Run, "verdict": "same"}); err == nil {

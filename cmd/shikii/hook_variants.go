@@ -1,11 +1,11 @@
 package main
 
-// 線が引けない判定の聞き方を、人に頼まずに試す。
-// 正解が min_n に届いても線が引けなかった判定があれば、hook が依頼の直後にエージェントへ一度だけ頼む:
-// 意味を変えない聞き方の候補を `shikii hook variants submit` へ渡す。shikii が候補を検査して spec の variants: に足し、
-// 正解の貯金で採点する(tune、--write 無し)。今の質問を上回った候補があれば、Stop で人へ一度だけ伝える。
-// 上回った候補の意味が同じかは、次の依頼の前にエージェントへ一度だけ頼み、人の設定の言語が英語以外なら訳を付けて `shikii hook variants check` で受け取る(0.9.2)。
-// 同じ → その場で採用し(較正まで)、人へは(訳付きで)知らせて画面で元に戻せる。決めきれない → 和訳と違いを付けて人に聞く。違う → 採用しない。
+// Try other wordings for a decision whose line cannot be drawn, without asking the person.
+// If a decision could not get a line even after its truths reached min_n, the hook asks the agent once, right after a request:
+// pass wording variants that keep the meaning to `shikii hook variants submit`. shikii checks them, adds them to the spec's variants:,
+// and scores them on the saved truths (tune, without --write). If a variant beats the current question, the person is told once at Stop.
+// Whether a winning variant means the same is asked of the agent once before the next request; if the person's language setting is not English, with translations, received by `shikii hook variants check` (0.9.2).
+// Same → adopted on the spot (up to calibration), and the person is told (with translations) and can undo it on the page. Undecided → ask the person, with a translation and the difference. Different → not adopted.
 
 import (
 	"bytes"
@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	variantsMax        = 3    // 一度に受け取る候補の数
-	variantQuestionMax = 2000 // 候補の質問の長さ(バイト)
+	variantsMax        = 3    // number of variants accepted at once
+	variantQuestionMax = 2000 // length of a variant's question (bytes)
 )
 
 var variantName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
@@ -40,10 +40,10 @@ type variantRequest struct {
 	Question  string            `json:"question,omitempty"`
 	Options   map[string]string `json:"options,omitempty"`
 	Template  string            `json:"template,omitempty"`
-	Rationale string            `json:"rationale,omitempty"` // 何を変えたか(記録しない。エージェントが考えを整理するため)
+	Rationale string            `json:"rationale,omitempty"` // what was changed (not recorded; it helps the agent organize its thinking)
 }
 
-// stuckWording は、今の文言で正解が min_n に届き、自動較正を試したのに線が引けなかった判定(正解の数)。無ければ ok=false。
+// stuckWording is a decision whose truths reached min_n on the current wording and that tried auto-calibration but got no line (the number of truths). ok=false if none.
 func stuckWording(agent, specID string) (n int, ok bool) {
 	sp, err := spec.Load(hookSpecPath(agent, specID))
 	if err != nil {
@@ -52,7 +52,7 @@ func stuckWording(agent, specID string) (n int, ok bool) {
 	guard := filepath.Join(agent, "calibrating-"+specID)
 	info, err := os.Stat(guard)
 	if err != nil || time.Since(info.ModTime()) < hookCalibrateGap {
-		return 0, false // 試していないか、まだ走っているかもしれない
+		return 0, false // not tried, or it may still be running
 	}
 	b, err := os.ReadFile(guard)
 	if err != nil {
@@ -63,12 +63,12 @@ func stuckWording(agent, specID string) (n int, ok bool) {
 		return 0, false
 	}
 	if c := sp.CalibrationFor(model); c != nil && c.SpecHash == sp.Hash() {
-		return 0, false // 線が引けた
+		return 0, false // a line was drawn
 	}
 	return n, true
 }
 
-// variantsContext は依頼の直後にエージェントへ渡す頼み(線が引けない判定ごとに、文言が変わるか正解が hookRecalibrateEvery 件増えるまで一度だけ)。
+// variantsContext is the request passed to the agent right after a request (per decision without a line, once until the wording changes or truths grow by hookRecalibrateEvery).
 func variantsContext(agent string) string {
 	var lines []string
 	for _, id := range hookSpecs {
@@ -102,7 +102,7 @@ func variantsNotice(specID string, n int, path string) string {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
 	example, _ := json.Marshal(variantsRequest{Spec: specID, Variants: []variantRequest{{Name: "clearer-yes", Question: "...", Rationale: "..."}}})
-	return fmt.Sprintf("shikii: 判定「%s」は正解%d件でも線が引けません（今の質問とモデルでは答えを分けられていない）。人に頼まず、今の作業の区切りで、意味を変えない聞き方の候補を最大%d件作り、%s hook variants submit へJSONで渡してください。例: %s。questionのほかoptions（選択肢の説明の言い換え）とtemplateも使えます。今の質問は %s にあります。候補は正解の貯金で自動に測り、上回った候補は意味が同じかを後でもう一度確かめてもらいます。", specID, n, variantsMax, command, example, path)
+	return fmt.Sprintf("shikii: the decision %q has no line even with %d truths (the current question and model cannot tell the answers apart). Without asking the person, at a break in the current work, write up to %d wording variants that keep the meaning and pass them as JSON to %s hook variants submit. Example: %s. Besides question you can also use options (rewordings of the choice descriptions) and template. The current question is in %s. Variants are measured automatically on the saved truths, and a winning variant will later be checked again for the same meaning.", specID, n, variantsMax, command, example, path)
 }
 
 func cmdHookVariants(args []string) error {
@@ -110,21 +110,21 @@ func cmdHookVariants(args []string) error {
 		return cmdHookVariantsCheck()
 	}
 	if len(args) != 1 || args[0] != "submit" {
-		return errors.New("使い方: shikii hook variants submit | check（JSONを標準入力）")
+		return errors.New("usage: shikii hook variants submit | check (JSON on standard input)")
 	}
 	data, err := io.ReadAll(io.LimitReader(stdin, (16<<10)+1))
 	if err != nil || len(data) > 16<<10 {
-		return errors.New("候補は16KB以内のJSONにしてください")
+		return errors.New("variants must be JSON of 16KB or less")
 	}
 	var req variantsRequest
 	if err := decodeStrict(data, &req); err != nil {
 		return err
 	}
 	if !containsString(hookSpecs, req.Spec) {
-		return fmt.Errorf("specは %s のどれかにしてください", strings.Join(hookSpecs, " / "))
+		return fmt.Errorf("spec must be one of %s", strings.Join(hookSpecs, " / "))
 	}
 	if len(req.Variants) == 0 || len(req.Variants) > variantsMax {
-		return fmt.Errorf("variantsは1〜%d件にしてください", variantsMax)
+		return fmt.Errorf("variants must have 1 to %d items", variantsMax)
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -143,32 +143,32 @@ func cmdHookVariants(args []string) error {
 	var names []string
 	for i, v := range req.Variants {
 		if !variantName.MatchString(v.Name) {
-			return fmt.Errorf("variants[%d].name は英小文字・数字・ハイフンの40文字以内にしてください", i)
+			return fmt.Errorf("variants[%d].name must be at most 40 lowercase letters, digits and hyphens", i)
 		}
 		if strings.TrimSpace(v.Question) == "" && len(v.Options) == 0 && strings.TrimSpace(v.Template) == "" {
-			return fmt.Errorf("variants[%d] はquestion・options・templateのどれかを変えてください", i)
+			return fmt.Errorf("variants[%d] must change one of question, options or template", i)
 		}
 		if len(v.Question) > variantQuestionMax {
-			return fmt.Errorf("variants[%d].question は%dバイト以内にしてください", i, variantQuestionMax)
+			return fmt.Errorf("variants[%d].question must be %d bytes or less", i, variantQuestionMax)
 		}
 		variant := spec.Variant{Name: v.Name, Question: strings.TrimSpace(v.Question), Options: v.Options, Template: v.Template}
 		if err := sp.WithVariant(variant).Validate(); err != nil {
-			return fmt.Errorf("variants[%d] は今の判定の形に合いません: %v", i, err)
+			return fmt.Errorf("variants[%d] does not fit the current decision's shape: %v", i, err)
 		}
 		sp.Variants = append(sp.Variants, variant)
 		names = append(names, v.Name)
 	}
 	if err := sp.Validate(); err != nil {
-		return fmt.Errorf("候補を足した判定を検査できません: %v", err)
+		return fmt.Errorf("cannot check the decision with the variants added: %v", err)
 	}
 	if err := sp.Save(); err != nil {
 		return err
 	}
 	startTune(root, sp)
-	return json.NewEncoder(stdout).Encode(map[string]any{"saved": names, "tune": "started", "adoption": "上回った候補は、意味が同じかを次の依頼の前に確かめてもらってから"})
+	return json.NewEncoder(stdout).Encode(map[string]any{"saved": names, "tune": "started", "adoption": "a winning variant is adopted after its meaning is checked before the next request"})
 }
 
-// decodeStrict は JSON を 1 つだけ、知らない鍵を拒んで読む。読めない時は、どの鍵がどの形であるべきかを返す。
+// decodeStrict reads exactly one JSON value and refuses unknown keys. When it cannot read it, it says which key should have which shape.
 func decodeStrict(data []byte, v any) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -177,31 +177,31 @@ func decodeStrict(data []byte, v any) error {
 	}
 	var extra any
 	if decoder.Decode(&extra) != io.EOF {
-		return errors.New("JSONは一つだけ渡してください")
+		return errors.New("pass only one JSON value")
 	}
 	return nil
 }
 
-// jsonShapeError は JSON の読み取り失敗を、直し方の分かる文にする。
+// jsonShapeError turns a JSON read failure into text that says how to fix it.
 func jsonShapeError(err error) error {
 	var typeErr *json.UnmarshalTypeError
 	var syntaxErr *json.SyntaxError
 	switch {
 	case errors.As(err, &typeErr):
-		want := map[string]string{"struct": "オブジェクト {…}", "slice": "配列 […]", "string": "文字列", "bool": "true / false", "int": "整数", "map": "オブジェクト {…}"}[typeErr.Type.Kind().String()]
+		want := map[string]string{"struct": "an object {…}", "slice": "an array […]", "string": "a string", "bool": "true / false", "int": "an integer", "map": "an object {…}"}[typeErr.Type.Kind().String()]
 		if want == "" {
 			want = typeErr.Type.String()
 		}
-		return fmt.Errorf("JSONの %s は%sで渡してください（%sが渡されました）", typeErr.Field, want, typeErr.Value)
+		return fmt.Errorf("pass the JSON %s as %s (got %s)", typeErr.Field, want, typeErr.Value)
 	case errors.As(err, &syntaxErr):
-		return fmt.Errorf("JSONの書き方が正しくありません（%dバイト目）", syntaxErr.Offset)
+		return fmt.Errorf("the JSON is malformed (at byte %d)", syntaxErr.Offset)
 	case strings.HasPrefix(err.Error(), "json: unknown field "):
-		return fmt.Errorf("JSONに知らない鍵があります: %s", strings.TrimPrefix(err.Error(), "json: unknown field "))
+		return fmt.Errorf("the JSON has an unknown key: %s", strings.TrimPrefix(err.Error(), "json: unknown field "))
 	}
-	return fmt.Errorf("JSONを読み取れません: %v", err)
+	return fmt.Errorf("cannot read the JSON: %v", err)
 }
 
-// startTune は聞き方の候補の採点を裏で起こし、自動 tune の控え(tuned-<spec>)を今の正解の数で書く(同じ数で重ねて回さない)。
+// startTune starts scoring the wording variants in the background and writes the auto-tune record (tuned-<spec>) with the current number of truths (so it is not run again on the same number).
 func startTune(agent string, sp *spec.Spec) {
 	st := store.Store{Dir: agent}
 	n, err := humanTruthsFor(st, sp)
@@ -217,9 +217,9 @@ func writeTuneGuard(agent string, sp *spec.Spec, n int) error {
 	return os.WriteFile(filepath.Join(agent, "tuned-"+sp.ID), []byte(fmt.Sprintf("%d %s %s\n", n, sp.Hash(), time.Now().Format(time.RFC3339))), 0o600)
 }
 
-// wordingSummary は、聞き方の候補について人へ伝える行を Stop で一度だけ出す(run と状態ごとに 1 回。0.9.2)。
-// エージェントが意味は同じと確かめて採用した時は(英語以外の設定なら訳付きで)知らせ、画面で元に戻せると書く。決めきれなかった時は訳と違いを付けて人に聞く。
-// エージェントがまだ確かめていない時と、違うと言った時は人に何も言わない。
+// wordingSummary outputs, once at Stop, the line telling the person about wording variants (once per run and state. 0.9.2).
+// When the agent checked that the meaning is the same and adopted it, it says so (with translations for a non-English setting) and that it can be undone on the page. When undecided, it asks the person with the translation and the difference.
+// It says nothing to the person when the agent has not checked yet or said it is different.
 func wordingSummary(agent string) string {
 	var lines []string
 	for _, id := range hookSpecs {
@@ -245,7 +245,7 @@ func wordingSummary(agent string) string {
 		default:
 			continue
 		}
-		if check.Lang != "" && check.Lang != "ja" && check.CurrentText != "" { // 日本語以外の設定では、英語の文に設定の言語の訳を添える
+		if check.Lang != "" && check.Lang != "ja" && check.CurrentText != "" { // for a non-Japanese setting, add the translation in the configured language to the English text
 			en += fmt.Sprintf(" (%s — current: %s / new: %s)", langName(check.Lang), check.CurrentText, check.Candidate)
 		}
 		mark := filepath.Join(agent, "wording-shown-"+id)
@@ -260,7 +260,7 @@ func wordingSummary(agent string) string {
 	return strings.Join(lines, "\n")
 }
 
-// agentCheck はエージェントの意味の確かめ(最後の 1 件)。personChecked は人が画面か端末で確かめたか。
+// agentCheck is the agent's meaning check (the last one). personChecked reports whether the person checked on the page or in the terminal.
 func agentCheck(res *tuneResult) (meaningCheck, bool) {
 	for i := len(res.MeaningChecks) - 1; i >= 0; i-- {
 		if res.MeaningChecks[i].By == "agent" {
@@ -279,7 +279,7 @@ func personChecked(res *tuneResult) bool {
 	return false
 }
 
-// wordingCheckContext は、今の質問を上回った候補がまだ誰にも確かめられていない時、意味が同じかと(英語以外の設定なら)訳をエージェントへ頼む文(run ごとに 1 回)。
+// wordingCheckContext is the request to the agent, when a variant that beat the current question has not been checked by anyone yet, to check whether it means the same and (for a non-English setting) to translate it (once per run).
 func wordingCheckContext(agent string) string {
 	var lines []string
 	for _, id := range hookSpecs {
@@ -309,14 +309,14 @@ func wordingCheckNotice(res *tuneResult, lang string) string {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
 	pair, _ := json.Marshal(map[string]any{"current": res.Current, "candidate": res.WinnerWording})
-	req := wordingCheckRequest{Spec: res.SpecID, Run: res.Run, Verdict: "same | unsure | different", Difference: "意味の違い(無ければ空)"}
-	translate, told := "", "人へ知らせます"
-	if lang != "" { // 人の設定の言語が英語以外なら、両方をその言語に訳してもらう(英語なら訳は要らない)
-		req.CurrentTranslation, req.CandidateTranslation = "今の質問の訳", "候補の訳"
-		translate, told = "、両方を"+langName(lang)+"に訳して", "人へは訳付きで知らせます"
+	req := wordingCheckRequest{Spec: res.SpecID, Run: res.Run, Verdict: "same | unsure | different", Difference: "the difference in meaning (empty if none)"}
+	translate, told := "", "the person is told"
+	if lang != "" { // if the person's language setting is not English, have both translated into that language (no translation needed for English)
+		req.CurrentTranslation, req.CandidateTranslation = "translation of the current question", "translation of the variant"
+		translate, told = ", translate both into "+langName(lang)+",", "the person is told with the translations"
 	}
 	example, _ := json.Marshal(req)
-	return fmt.Sprintf("shikii: 判定「%s」で聞き方の候補「%s」が今の質問より人の正解に合いました。今の作業の区切りで、2 つの聞き方が同じことを聞いているか(どんな場合でも同じ答えが正しいか)を確かめ%s、%s hook variants check へJSONで渡してください。例: %s。同じなら shikii がその場で採用し、%s(画面で元に戻せる)。少しでも意味が変わる、または決めきれない時は unsure にし、difference に違いを書きます(人に聞きます)。明らかに違えば different。聞き方: %s", res.SpecID, res.Winner, translate, command, example, told, pair)
+	return fmt.Sprintf("shikii: for the decision %q, the wording variant %q matched the person's truths better than the current question. At a break in the current work, check whether the two wordings ask the same thing (whether the same answer is right in every case)%s and pass it as JSON to %s hook variants check. Example: %s. If they are the same, shikii adopts it on the spot and %s (it can be undone on the page). If the meaning changes even slightly, or you cannot decide, use unsure and write the difference in difference (the person is asked). If clearly different, use different. Wordings: %s", res.SpecID, res.Winner, translate, command, example, told, pair)
 }
 
 type wordingCheckRequest struct {
@@ -328,7 +328,7 @@ type wordingCheckRequest struct {
 	Difference           string `json:"difference,omitempty"`
 }
 
-// langNames は訳を頼む時に書く言語の名前(無ければ言語コードのまま)。
+// langNames is the language names written when asking for a translation (the language code if none).
 var langNames = map[string]string{"ja": "日本語", "zh": "简体中文", "zh-TW": "繁體中文", "ko": "한국어", "de": "Deutsch", "es": "español", "fr": "français", "it": "italiano", "pt-BR": "português", "ru": "русский", "uk": "українська", "pl": "polski", "tr": "türkçe", "vi": "tiếng việt", "id": "bahasa indonesia"}
 
 func langName(code string) string {
@@ -338,36 +338,36 @@ func langName(code string) string {
 	return code
 }
 
-// cmdHookVariantsCheck はエージェントの意味の確かめと訳(人の設定の言語が英語以外の時は必須、英語なら使わない)を受け取り、同じなら採用する(shikii hook variants check、JSON を標準入力)。
+// cmdHookVariantsCheck receives the agent's meaning check and translations (required when the person's language setting is not English, unused for English) and adopts the variant if it is the same (shikii hook variants check, JSON on standard input).
 func cmdHookVariantsCheck() error {
 	data, err := io.ReadAll(io.LimitReader(stdin, (16<<10)+1))
 	if err != nil || len(data) > 16<<10 {
-		return errors.New("確かめは16KB以内のJSONにしてください")
+		return errors.New("the check must be JSON of 16KB or less")
 	}
 	var req wordingCheckRequest
 	if err := decodeStrict(data, &req); err != nil {
 		return err
 	}
 	if !containsString(hookSpecs, req.Spec) {
-		return fmt.Errorf("specは %s のどれかにしてください", strings.Join(hookSpecs, " / "))
+		return fmt.Errorf("spec must be one of %s", strings.Join(hookSpecs, " / "))
 	}
 	if req.Verdict != "same" && req.Verdict != "unsure" && req.Verdict != "different" {
-		return errors.New("verdict は same / unsure / different のどれかにしてください")
+		return errors.New("verdict must be one of same / unsure / different")
 	}
 	req.CurrentTranslation, req.CandidateTranslation, req.Difference = strings.TrimSpace(req.CurrentTranslation), strings.TrimSpace(req.CandidateTranslation), strings.TrimSpace(req.Difference)
 	lang := hookLang()
 	if lang != "" && (req.CurrentTranslation == "" || req.CandidateTranslation == "") {
-		return fmt.Errorf("current_translation と candidate_translation(今の質問と候補の%sの訳)は両方要ります。人に知らせる時に使います", langName(lang))
+		return fmt.Errorf("both current_translation and candidate_translation (the %s translations of the current question and the variant) are needed. They are used when telling the person", langName(lang))
 	}
-	if lang == "" { // 英語の設定では訳を使わない
+	if lang == "" { // an English setting does not use translations
 		req.CurrentTranslation, req.CandidateTranslation = "", ""
 	}
 	if req.Verdict != "same" && req.Difference == "" {
-		return errors.New("unsure と different の時は difference に意味の違いを書いてください")
+		return errors.New("for unsure and different, write the difference in meaning in difference")
 	}
 	for _, text := range []string{req.CurrentTranslation, req.CandidateTranslation, req.Difference} {
 		if len(text) > variantQuestionMax {
-			return fmt.Errorf("訳と違いは%dバイト以内にしてください", variantQuestionMax)
+			return fmt.Errorf("translations and the difference must be %d bytes or less", variantQuestionMax)
 		}
 	}
 	root, scope, err := currentProjectStore()
@@ -381,19 +381,19 @@ func cmdHookVariantsCheck() error {
 	}
 	res, err := latestTuneResult(filepath.Join(root, "wiki"), req.Spec)
 	if err != nil {
-		return fmt.Errorf("判定「%s」の聞き方の候補を測った結果がありません", req.Spec)
+		return fmt.Errorf("there is no result of measuring wording variants for the decision %q", req.Spec)
 	}
 	if res.Run != req.Run {
-		return fmt.Errorf("最新の結果は %s です(run が違います)", res.Run)
+		return fmt.Errorf("the latest result is %s (the run differs)", res.Run)
 	}
 	if !res.Adoptable || res.Adopted || res.Reverted || len(res.MeaningChecks) > 0 {
-		return errors.New("この結果は、もう確かめる物がありません(採用済み・却下済み・元に戻した、または上回った候補が無い)")
+		return errors.New("this result has nothing left to check (adopted, rejected, undone, or no winning variant)")
 	}
 	recordCheck(res, meaningCheck{Same: req.Verdict == "same", By: "agent", Verdict: req.Verdict, Lang: lang, CurrentText: req.CurrentTranslation, Candidate: req.CandidateTranslation, Difference: req.Difference})
 	if req.Verdict != "same" {
-		next := "人に画面で聞きます"
+		next := "the person is asked on the page"
 		if req.Verdict == "different" {
-			next = "採用しません"
+			next = "not adopted"
 		}
 		return json.NewEncoder(stdout).Encode(map[string]any{"adopted": false, "verdict": req.Verdict, "next": next})
 	}
@@ -407,12 +407,12 @@ func cmdHookVariantsCheck() error {
 	res.AutoAdopted = true
 	saveTuneResult(res)
 	appendRunNote(res.RunPage, fmt.Sprintf("**Adopted** as %s after the agent checked the meaning; the person is told with translations and can undo it on the page.", path))
-	return json.NewEncoder(stdout).Encode(map[string]any{"adopted": true, "verdict": req.Verdict, "path": path, "next": "人へ知らせます(画面で元に戻せる)"})
+	return json.NewEncoder(stdout).Encode(map[string]any{"adopted": true, "verdict": req.Verdict, "path": path, "next": "the person is told (it can be undone on the page)"})
 }
 
-// hookSpecPath は、プロジェクトの問い id の今の版のファイル(0.9.2)。聞き方を採用すると <id>-v<N>.yaml が増えるので、
-// 同じ id で版の一番大きいファイルを使う(serve の loadSpecs と同じ選び方)。元に戻した版(.reverted)は .yaml で終わらないので見ない。
-// 読めないファイルは飛ばし、どれも読めなければ元の <id>.yaml を返す(呼ぶ側の Load が誤りを出す)。
+// hookSpecPath is the file of the current version of the project's question id (0.9.2). Adopting a wording adds <id>-v<N>.yaml, so
+// the file with the highest version for the same id is used (chosen like serve's loadSpecs). Undone versions (.reverted) do not end in .yaml and are not looked at.
+// Unreadable files are skipped; if none can be read, the original <id>.yaml is returned (the caller's Load reports the error).
 func hookSpecPath(agent, id string) string {
 	base := filepath.Join(agent, "decisions", id+".yaml")
 	best, version := base, -1

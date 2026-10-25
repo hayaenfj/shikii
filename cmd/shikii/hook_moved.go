@@ -12,13 +12,13 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-// フォルダを移した・名前を変えた後の知らせ(0.9.2)。置き場の名と初期化の印はプロジェクトのパスで決まるので、
-// 移しただけだと hook が黙って止まり、印だけ直すと wiki が黙って空になっていた。直し方は作法の references/wiki.md。
+// Notices after the folder was moved or renamed (0.9.2). The store name and the init marker are decided by the project's path, so
+// just moving it made the hook stop silently, and fixing only the marker made the wiki silently empty. How to fix it is in the skill's references/wiki.md.
 
-const movedHow = "作法の references/wiki.md の「Moving or renaming the project folder」の手順で直してください(人に確かめてから。古い置き場は消さずに写す)。"
+const movedHow = "fix it with the steps in \"Moving or renaming the project folder\" in the skill's references/wiki.md (check with the person first; copy the old store instead of deleting it)."
 
-// movedMarkerNotice は、このフォルダの初期化の印が前のパスのままで、そのパスがもう無い(フォルダを移した)時の知らせ。
-// 前のパスが有る(写した)時と、読めない時は黙る(写した印は有効にしない、という今までの決まりのまま)。
+// movedMarkerNotice is the notice for when this folder's init marker still has the previous path and that path no longer exists (the folder was moved).
+// It stays silent when the previous path exists (it was copied) or cannot be read (a copied marker is not made active, as before).
 func movedMarkerNotice(cwd string) string {
 	root, scope, err := projectStoreAt(cwd)
 	if err != nil {
@@ -36,14 +36,14 @@ func movedMarkerNotice(cwd string) string {
 	if _, err := os.Lstat(a.Scope); !os.IsNotExist(err) {
 		return ""
 	}
-	return fmt.Sprintf("shikii: このフォルダの .shikii/project.json は前のパス(%s)で初期化した印のままなので、shikii は動いていません(教訓の配送・判定・記録が止まっています)。フォルダを移したか名前を変えた後です。今回の依頼を終えたら、%s", a.Scope, movedHow)
+	return fmt.Sprintf("shikii: this folder's .shikii/project.json still carries the marker of an init at the previous path (%s), so shikii is not running (lesson delivery, decisions and records have stopped). The folder was moved or renamed. When you finish the current request, %s", a.Scope, movedHow)
 }
 
-// otherPathNotice は、このプロジェクトの置き場に、前のパスの名のまま残った wiki の置き場がある時の知らせ。
+// otherPathNotice is the notice for when this project's store has a wiki store left under the previous path's name.
 func otherPathNotice(agent, scope string) string {
 	stores, err := (notebook.Book{Root: agent, Scope: scope}).OtherPathStores()
 	if err != nil || len(stores) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("shikii: .shikii に、前のパスの名のまま残った wiki の置き場があります(%s)。フォルダを移したか名前を変えた後で、その記事と原資料は今の wiki に出てきません。今回の依頼を終えたら、%s", strings.Join(stores, "、"), movedHow)
+	return fmt.Sprintf("shikii: .shikii has a wiki store left under the previous path's name (%s). The folder was moved or renamed, and its pages and sources do not show up in the current wiki. When you finish the current request, %s", strings.Join(stores, ", "), movedHow)
 }

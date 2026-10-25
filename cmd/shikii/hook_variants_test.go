@@ -23,8 +23,8 @@ func variantsCall(t *testing.T, payload string) (string, error) {
 	return out.String(), err
 }
 
-// 正解が min_n に届いても線が引けない判定は、エージェントに聞き方の候補を一度だけ頼み、受け取った候補を検査して足し、裏で測る。
-// 上回った候補があれば Stop で人へ一度だけ伝える(採用は人)。
+// For a decision that gets no line even after its truths reach min_n, ask the agent once for wording variants, check and add the variants received, and measure them in the background.
+// If a variant wins, tell the person once at Stop (adoption is the person's call).
 func TestHookAsksTheAgentForWordingsWhenNoLineCanBeDrawn(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return 0.2 })
 	repo := gitRepo(t)
@@ -32,7 +32,7 @@ func TestHookAsksTheAgentForWordingsWhenNoLineCanBeDrawn(t *testing.T) {
 	lowerMinN(t, agent, "prompt-kind", 2)
 	oldCal, oldGap, oldTune := hookCalibrate, hookCalibrateGap, hookTune
 	attempts := 0
-	hookCalibrate = func(agent, path, storeDir, model string) { attempts++ } // 線を引けなかった
+	hookCalibrate = func(agent, path, storeDir, model string) { attempts++ } // no line could be drawn
 	hookCalibrateGap = 0
 	var tuned []string
 	hookTune = func(agent, path, storeDir string) { tuned = append(tuned, filepath.Base(path)) }
@@ -50,7 +50,7 @@ func TestHookAsksTheAgentForWordingsWhenNoLineCanBeDrawn(t *testing.T) {
 			continue
 		}
 		asked++
-		if before == 0 || !strings.Contains(out, "判定「prompt-kind」") {
+		if before == 0 || !strings.Contains(out, `the decision \"prompt-kind\"`) {
 			t.Fatalf("wordings must be asked only after a failed attempt (attempts before this turn=%d): %s", before, out)
 		}
 	}
@@ -58,8 +58,8 @@ func TestHookAsksTheAgentForWordingsWhenNoLineCanBeDrawn(t *testing.T) {
 		t.Fatalf("one failed attempt must lead to exactly one request for wordings: attempts=%d asked=%d", attempts, asked)
 	}
 
-	// 形の誤りは、どの鍵がどの形であるべきかを返す
-	if _, err := variantsCall(t, `{"spec":"prompt-kind","variants":{"name":"a"}}`); err == nil || !strings.Contains(err.Error(), "variants") || !strings.Contains(err.Error(), "配列") {
+	// a shape error says which key should have which shape
+	if _, err := variantsCall(t, `{"spec":"prompt-kind","variants":{"name":"a"}}`); err == nil || !strings.Contains(err.Error(), "variants") || !strings.Contains(err.Error(), "an array") {
 		t.Fatalf("a wrong shape must name the field and the shape: %v", err)
 	}
 	if _, err := variantsCall(t, `{"spec":"prompt-kind","variants":[{"name":"x","options":{"nope":"z"}}]}`); err == nil || !strings.Contains(err.Error(), "nope") {
@@ -87,8 +87,8 @@ func TestHookAsksTheAgentForWordingsWhenNoLineCanBeDrawn(t *testing.T) {
 		t.Fatalf("a tune must start for the new candidates: %v", tuned)
 	}
 
-	// 測った結果、候補が上回った(採用できる)なら、次の依頼の前にエージェントへ意味の確かめと和訳を一度だけ頼む(0.9.2)。
-	// エージェントが確かめるまで、人には何も言わない
+	// if the measured variant wins (can be adopted), ask the agent once before the next request to check the meaning and translate it into Japanese (0.9.2).
+	// until the agent has checked, nothing is said to the person
 	runs := filepath.Join(agent, "wiki", "runs")
 	if err := os.MkdirAll(runs, 0o755); err != nil {
 		t.Fatal(err)
@@ -110,13 +110,13 @@ func TestHookAsksTheAgentForWordingsWhenNoLineCanBeDrawn(t *testing.T) {
 	}
 }
 
-// 着手前の整理の提出の誤りは、どの項目をどう直すかを返す(エージェントのやり直しを減らす)。
+// Errors in the pre-start organizing submission say which item to fix and how (fewer retries for the agent).
 func TestPlanningSubmitErrorsSayWhatToFix(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
 	turn := loadSession(root, "planning").TurnID
 	_, err := planningCall(t, "submit", map[string]any{"session_id": "planning", "turn_id": turn, "agreed": []any{map[string]any{"summary": "x"}}, "open": map[string]any{"unknown": true}})
-	if err == nil || !strings.Contains(err.Error(), "agreed") || !strings.Contains(err.Error(), "オブジェクト") {
+	if err == nil || !strings.Contains(err.Error(), "agreed") || !strings.Contains(err.Error(), "an object") {
 		t.Fatalf("an array for agreed must say it should be an object: %v", err)
 	}
 	payload := planningPayload(root)
@@ -130,7 +130,7 @@ func TestPlanningSubmitErrorsSayWhatToFix(t *testing.T) {
 	}
 }
 
-// 頼むのは「試し終えて線が無い」時だけ。較正がまだ走っているかもしれない間と、線が引けた後は頼まない。採用できない結果は人へ伝えない。
+// Ask only when "tried and no line". Do not ask while calibration may still be running, nor after a line is drawn. Results that cannot be adopted are not told to the person.
 func TestStuckWordingAndWordingSummaryEdges(t *testing.T) {
 	agent := hookEnv(t, nil)
 	path := filepath.Join(agent, "decisions", "prompt-kind.yaml")

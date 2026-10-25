@@ -12,15 +12,15 @@ import (
 	"unicode"
 )
 
-// memoryImportMark は、メモリのファイルが wiki へ移された印: 「.shikii/wiki」に続けて記事の id(16 桁の hex)。
-// 移した後のファイルはこの行(正本: .shikii/wiki <id>)を本文に残す(skill の import-memory.md)。wiki に触れただけの文は印にしない(監査 R4)。
+// memoryImportMark is the marker that a memory file was moved to the wiki: ".shikii/wiki" followed by a page id (16 hex digits).
+// A moved file keeps this line (canonical: .shikii/wiki <id>) in its body (the skill's import-memory.md). Text that merely mentions the wiki is not a marker (audit R4).
 var memoryImportMark = regexp.MustCompile(`\.shikii/wiki\s+[0-9a-f]{16}`)
 
-// memoryReadLimit は印を探すために読む上限。印は本文の先頭近くに置く手順なので、巨大なファイルを毎依頼読まない(監査 R4)。
+// memoryReadLimit is how much is read to look for the marker. The steps put the marker near the top of the body, so a huge file is not read on every request (audit R4).
 const memoryReadLimit = 64 << 10
 
-// agentMemoryDir は、このプロジェクトのエージェントのメモリの置き場(Claude Code の自動メモリ:
-// ~/.claude/projects/<経路の英数字以外を - にしたもの>/memory。共有の置き場へのリンクでもよい)。無ければ空。
+// agentMemoryDir is where this project's agent memory lives (Claude Code's auto memory:
+// ~/.claude/projects/<the path with every non-alphanumeric turned into ->/memory; a link to a shared place is fine too). Empty if none.
 func agentMemoryDir(scope string) string {
 	home, err := os.UserHomeDir()
 	if err != nil || scope == "" {
@@ -39,7 +39,7 @@ func agentMemoryDir(scope string) string {
 	return dir
 }
 
-// readMemoryHead はメモリのファイルの先頭(memoryReadLimit まで)を読む。
+// readMemoryHead reads the head of a memory file (up to memoryReadLimit).
 func readMemoryHead(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -50,8 +50,8 @@ func readMemoryHead(path string) (string, error) {
 	return string(b), err
 }
 
-// unimportedMemoryFiles は、メモリの置き場にあって、まだ wiki へ移されていないファイル(索引 MEMORY.md を除く .md)。
-// 「移された」= 本文に記事の id 付きの印がある。途中まで移した置き場でも、残りだけを数える。
+// unimportedMemoryFiles is the files in the memory folder not yet moved to the wiki (.md files except the index MEMORY.md).
+// "Moved" = the body has the marker with a page id. In a folder that was partly moved, only the rest is counted.
 func unimportedMemoryFiles(dir string) []string {
 	if dir == "" {
 		return nil
@@ -75,7 +75,7 @@ func unimportedMemoryFiles(dir string) []string {
 	return out
 }
 
-// codexMemoryDir は Codex のメモリの置き場(~/.codex/memories)。全プロジェクト共通なので、このプロジェクトを名指しするファイルだけを見る。
+// codexMemoryDir is Codex's memory folder (~/.codex/memories). It is shared by all projects, so only files naming this project are looked at.
 func codexMemoryDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -88,8 +88,8 @@ func codexMemoryDir() string {
 	return dir
 }
 
-// projectNames は、このプロジェクトを名指しする語: フォルダの経路そのもの、フォルダ名(4 文字以上)、git の origin のリポジトリの名(違う時)。
-// 短いフォルダ名(app、go)は他のファイルに偶然含まれるので経路だけで見る(監査 R4)。
+// projectNames is the words that name this project: the folder path itself, the folder name (4 characters or more), and the repository name of git's origin (when different).
+// Short folder names (app, go) appear in other files by chance, so only the path is used for them (audit R4).
 func projectNames(scope string) []string {
 	base := filepath.Base(scope)
 	if scope == "" || base == "." || base == "/" || base == string(filepath.Separator) {
@@ -110,7 +110,7 @@ func projectNames(scope string) []string {
 	return names
 }
 
-// namesProject は、本文がこのプロジェクトを名指しするか: 語の境目(前後が英数字でない)で名を含む。経路は部分一致でよい。
+// namesProject reports whether the text names this project: it contains a name at a word boundary (no alphanumeric before or after). A path may match as a substring.
 func namesProject(text string, names []string) bool {
 	for _, n := range names {
 		if strings.Contains(n, string(filepath.Separator)) {
@@ -134,7 +134,7 @@ func namesProject(text string, names []string) bool {
 			}
 			wordChar := func(r rune) bool {
 				return r != 0 && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-') && r < 128
-			} // haya1-old は haya1 の名指しではない
+			} // haya1-old does not name haya1
 			if !wordChar(before) && !wordChar(after) {
 				return true
 			}
@@ -144,7 +144,7 @@ func namesProject(text string, names []string) bool {
 	return false
 }
 
-// unimportedCodexMemoryFiles は、Codex の共通のメモリのうち、このプロジェクトを名指しし、まだ wiki へ移されていないファイル。
+// unimportedCodexMemoryFiles is the files in Codex's shared memory that name this project and are not yet moved to the wiki.
 func unimportedCodexMemoryFiles(dir string, names []string) []string {
 	if dir == "" || len(names) == 0 {
 		return nil
@@ -168,36 +168,36 @@ func unimportedCodexMemoryFiles(dir string, names []string) []string {
 	return out
 }
 
-// listFiles は通知に並べるファイル名(先頭 5 件と残りの件数)。
+// listFiles is the file names listed in a notice (the first 5 and a count of the rest).
 func listFiles(files []string) string {
 	if len(files) <= 5 {
 		return strings.Join(files, ", ")
 	}
-	return strings.Join(files[:5], ", ") + fmt.Sprintf(" ほか %d 件", len(files)-5)
+	return strings.Join(files[:5], ", ") + fmt.Sprintf(" and %d more", len(files)-5)
 }
 
-// memoryImportNotice は、まだ wiki に無いメモリがあれば、作法の手順で移すようエージェントへ伝える 1 行(セッションに 1 回)。
-// 言われなくても気付くための通知で、消すのは人。0.8.0 より前から wiki のあるプロジェクトでも、未移行のファイルがある限り出す。
-// 見るのは Claude Code のこのプロジェクトのメモリと、Codex の共通のメモリのうちこのプロジェクトを名指しするファイル。
+// memoryImportNotice is one line telling the agent, if there is memory not yet in the wiki, to move it with the skill's steps (once per session).
+// It is a notice so this gets noticed without being told; deleting is the person's job. It is shown as long as unmoved files remain, even in projects that had a wiki before 0.8.0.
+// It looks at Claude Code's memory for this project and at the files in Codex's shared memory that name this project.
 func memoryImportNotice(scope string) string {
 	var parts []string
 	if dir := agentMemoryDir(scope); dir != "" {
 		if files := unimportedMemoryFiles(dir); len(files) > 0 {
-			parts = append(parts, fmt.Sprintf("%s に %d 件(%s)", homeTilde(dir), len(files), listFiles(files)))
+			parts = append(parts, fmt.Sprintf("%d in %s (%s)", len(files), homeTilde(dir), listFiles(files)))
 		}
 	}
 	if dir := codexMemoryDir(); dir != "" {
 		if files := unimportedCodexMemoryFiles(dir, projectNames(scope)); len(files) > 0 {
-			parts = append(parts, fmt.Sprintf("Codex の %s にこのプロジェクトを名指しする %d 件(%s)", homeTilde(dir), len(files), listFiles(files)))
+			parts = append(parts, fmt.Sprintf("%d in Codex's %s that name this project (%s)", len(files), homeTilde(dir), listFiles(files)))
 		}
 	}
 	if len(parts) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("shikii: エージェントのメモリに、まだ wiki へ移していないファイルがあります: %s。今回の依頼を終えたら、作法の references/import-memory.md の手順で各ファイルを原資料として残し、規則ごとに教訓にして移し、ファイルは wiki の記事を指す 1 行(正本: .shikii/wiki <記事の id>)にしてください(全プロジェクト共通のファイルは指す行を足すだけ。消すのは人)。", strings.Join(parts, "、"))
+	return fmt.Sprintf("shikii: the agent's memory has files not yet moved to the wiki: %s. When you finish the current request, follow the steps in the skill's references/import-memory.md: keep each file as a source, move it into lessons one rule at a time, and turn each file into one line that points at its wiki page (canonical: .shikii/wiki <page id>) (for files shared by all projects, only add the pointing line; deleting is the person's job).", strings.Join(parts, "; "))
 }
 
-// homeTilde は家の下のパスを ~ 表記にする(表示用)。
+// homeTilde writes a path under home with ~ (for display).
 func homeTilde(p string) string {
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, home+string(filepath.Separator)) {
 		return "~" + p[len(home):]

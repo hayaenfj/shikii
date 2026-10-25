@@ -9,11 +9,11 @@ import (
 	"strings"
 )
 
-// 標準は TypeSafe の Jev: 鍵(TYPESAFE_API_KEY)があれば hook は手元のモデルを待たずに hosted へ送る。鍵が無ければ手元のモデルだけ。
+// The standard is TypeSafe's Jev: with a key (TYPESAFE_API_KEY) the hook sends to hosted without waiting for the local model. Without a key, only the local model.
 func TestHookSendsToJevWhenKeyIsSet(t *testing.T) {
 	jev := fakeAgentModel(t, func(string) float64 { return 0.3 })
 	repo := gitRepo(t)
-	agent := hookEnv(t, nil, repo) // 手元のモデルは無い(閉じた口)
+	agent := hookEnv(t, nil, repo) // no local model (a closed port)
 	t.Setenv("TYPESAFE_API_KEY", "test-key")
 	old := hookHostedURL
 	hookHostedURL = jev.URL
@@ -25,12 +25,12 @@ func TestHookSendsToJevWhenKeyIsSet(t *testing.T) {
 		t.Fatalf("with a key the built-in decisions go to Jev: %d records, err=%v, last=%+v", len(recs), err, newest(recs))
 	}
 	for _, s := range spawned {
-		if !strings.HasPrefix(s, "serve ") { // 画面(serve)は鍵があっても起こす。起こさないのは手元のモデル(up)
+		if !strings.HasPrefix(s, "serve ") { // the page (serve) is started even with a key. What is not started is the local model (up)
 			t.Fatalf("with a key no local model is started: %v", spawned)
 		}
 	}
 
-	// 鍵があっても SHIKII_MODEL=local なら手元のモデルを使う(設定で選べる)
+	// even with a key, SHIKII_MODEL=local uses the local model (selectable by setting)
 	local := fakeAgentModel(t, func(string) float64 { return 0.3 })
 	oldLocal := hookLocalURL
 	hookLocalURL = local.URL
@@ -54,7 +54,7 @@ func TestHookSendsToJevWhenKeyIsSet(t *testing.T) {
 	}
 }
 
-// newest は Records が返す並び(新しい順)の先頭。
+// newest is the first of the order Records returns (newest first).
 func newest(recs []store.Record) *store.Record {
 	if len(recs) == 0 {
 		return nil
