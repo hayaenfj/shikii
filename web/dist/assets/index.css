@@ -409,7 +409,7 @@
   }
 
   code {
-    font-size: .9em;
+    font-size: max(12px, .9em);
   }
 
   pre {

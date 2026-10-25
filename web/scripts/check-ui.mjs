@@ -19,7 +19,8 @@ for (const must of ['(min-width: 520px)', '(min-width: 800px)', '(min-width: 110
 console.log('check-ui: ok (the shipped CSS has the 3 width breakpoints, dark mode, the confidence ring, reduced motion and hover)');
 
 // The floor for text size (0.9.2 redesign P5): every font size in the shipped CSS is at least 12px. Allowed forms: px (12 or more), rem (0.75 or more, 16px root),
-// em (0.9 or more, for code inside text) and var(--…) that resolves to one of these. Any other form fails, so a new way of writing a small size is not let through
+// em (1 or more: never smaller than the parent, which is itself held to 12px; 0.9em inside 13px text was 11.7px, audit 0.9.2 ui low-3), max(…) with a px or rem part
+// that holds the floor by itself (max(12px, .9em) is never below 12px), and var(--…) that resolves to one of these. Any other form fails, so a new way of writing a small size is not let through
 const vars = new Map([...css.matchAll(/(--[\w-]+):\s*([^;}]+)/g)].map(m => [m[1], m[2].trim()]));
 const small = [];
 const sizeOK = v => {
@@ -27,7 +28,8 @@ const sizeOK = v => {
   let m;
   if ((m = v.match(/^([\d.]+)px$/))) return Number(m[1]) >= 12;
   if ((m = v.match(/^([\d.]+)rem$/))) return Number(m[1]) >= 0.75;
-  if ((m = v.match(/^([\d.]+)em$/))) return Number(m[1]) >= 0.9;
+  if ((m = v.match(/^([\d.]+)em$/))) return Number(m[1]) >= 1;
+  if ((m = v.match(/^max\((.*)\)$/))) return m[1].split(',').map(p => p.trim()).some(p => /(px|rem)$/.test(p) && sizeOK(p));
   return false;
 };
 // inherit keeps the parent's size. The preflight's own rules for small / sub, sup (80% / 75%) are allowed only because every <small> in the page sets its size with a class (checked below)
