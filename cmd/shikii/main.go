@@ -150,7 +150,7 @@ func usageText() string {
                    人の訂正を「止める検査」にする(paired-files / forbidden-words / commit-body)。enable は負例で止まるのを確かめてから有効にする
   shikii version                                  版を表示する
   shikii review query | submit (JSON を標準入力)    会話と結果から AI が根拠付きで仮採点。人は抜き取りと保留を確認し、訂正を次の採点へ返す。仮採点は正解・較正と分けて保存する
-  shikii reflect query | submit (JSON を標準入力)   採点とwiki整理を最大2会話ずつ、一度の確認と一括保存にまとめる。reviewsとwikiを渡し、completeと項目ごとのerrorを確認する
+  shikii reflect query | submit (JSON を標準入力)   採点とwiki整理を一度の確認と一括保存にまとめる(query は古い会話から 2 件ずつ、submit は数を限らない)。reviewsとwikiを渡し、completeと項目ごとのerrorを確認する
   shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]

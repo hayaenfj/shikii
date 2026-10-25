@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -171,55 +170,14 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		}
 		return placeDrafts(root, scope, req.Wiki)
 	}
-	if req.Operation != "submit" || len(req.Reviews) > 4 || len(req.Wiki) > 2 || len(req.Memory) > 4 || len(req.Maintenance) > 2 || len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) == 0 {
-		return nil, errors.New("submit は最大4件の仮採点・2件のwiki整理・4件の記憶の仮評価を受け取ります")
+	// submit は一度に扱う会話の数も項目の数も限らない(0.9.1。入力の大きさの上限だけ)。見直し(maintenance)は記事の最大 2 件のまま
+	if req.Operation != "submit" || len(req.Maintenance) > 2 || len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) == 0 {
+		return nil, errors.New("submit は仮採点・wiki整理・記憶の仮評価のどれか(数は限らない)と、最大2件の見直しを受け取ります")
 	}
-	sources := map[string]bool{}
 	for _, review := range req.Reviews {
 		if review.Operation != "" && review.Operation != "submit" {
 			return nil, errors.New("一括保存では仮採点の submit だけを受け取ります")
 		}
-		sources[review.SourceID] = true
-	}
-	// 既存の記事に足す草稿では、記事に元からある出典は今回振り返る会話ではないので数えない(保存は元の出典を引き継ぐ。0.9.1)
-	book := notebook.Book{Root: root, Scope: scope}
-	for _, draft := range req.Wiki {
-		cited := map[string]bool{}
-		if draft.ID != "" {
-			if v, err := book.Query("lesson:" + draft.ID); err == nil && len(v.Lessons) == 1 && v.Lessons[0].ID == draft.ID {
-				for _, src := range v.Lessons[0].Sources {
-					cited[src.ID] = true
-				}
-			}
-		}
-		for _, id := range draft.Sources {
-			if !cited[id] {
-				sources[id] = true
-			}
-		}
-	}
-	parents := map[string]string{} // 配送 id → 親の会話(サブエージェントへの配送)
-	if deliveries, err := (store.Store{Dir: root}).MemoryDeliveries(scope); err == nil {
-		for _, d := range deliveries {
-			if d.Parent != "" {
-				parents[d.ID] = d.Parent
-			}
-		}
-	}
-	for _, assessment := range req.Memory {
-		if parent, ok := parents[assessment.SourceID]; ok {
-			sources[parent] = true
-			continue
-		}
-		sources[assessment.SourceID] = true
-	}
-	if len(sources) > 2 {
-		counted := make([]string, 0, len(sources))
-		for id := range sources {
-			counted = append(counted, id)
-		}
-		sort.Strings(counted)
-		return nil, fmt.Errorf("一度に振り返る会話は最大2件です(今回数えた会話: %s)。既存の記事に足す時は、記事に元からある出典は書かなくても引き継がれ、書いても数えません。残りは次の submit で送ります", strings.Join(counted, ", "))
 	}
 	// 異なる保存先の一括処理は項目ごとの受領証を返す。失敗を隠さず、成功分は再送可能。
 	result := reflectResult{Complete: true, Reviews: []reflectReceipt{}, Wiki: []reflectReceipt{}, Memory: []reflectReceipt{}}

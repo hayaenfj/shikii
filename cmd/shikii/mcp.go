@@ -86,7 +86,7 @@ const mcpInstructions = "shikii turns a decision model's probability into act / 
 var mcpTools = []map[string]any{
 	{
 		"name":        "shikii_reflect",
-		"description": "採点・wiki整理・記憶の寄与の仮評価を最大2会話ずつまとめる。queryで原文・対象・届いた記憶・教訓・人の訂正を読み、placeに新しい教訓の草稿(wiki)を渡して差し込み先の候補と矛盾の疑いを受け取り、submitでreviews/wiki/memoryを保存する。memoryはhelpful/unused/harmful/unknownと、使った判断decision・確認結果evidenceを記録する。訂正の教訓にはcorrection:{source_id,quote,action}を付け、人の返答の原文と次の行動を結ぶ。届いた訂正へのmemoryにはcorrection_result（followed/repeated/not_applicable/unknown）も付ける。配送や作業成功だけを効果とせず、根拠不足はunknown。正解・較正には混ぜない。complete:falseなら各errorを確認して再送する。",
+		"description": "採点・wiki整理・記憶の寄与の仮評価をまとめる(queryは古い会話から2件ずつ見せ、submitは会話と項目の数を限らない)。queryで原文・対象・届いた記憶・教訓・人の訂正を読み、placeに新しい教訓の草稿(wiki)を渡して差し込み先の候補と矛盾の疑いを受け取り、submitでreviews/wiki/memoryを保存する。memoryはhelpful/unused/harmful/unknownと、使った判断decision・確認結果evidenceを記録する。訂正の教訓にはcorrection:{source_id,quote,action}を付け、人の返答の原文と次の行動を結ぶ。届いた訂正へのmemoryにはcorrection_result（followed/repeated/not_applicable/unknown）も付ける。配送や作業成功だけを効果とせず、根拠不足はunknown。正解・較正には混ぜない。complete:falseなら各errorを確認して再送する。",
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"operation":   map[string]any{"type": "string", "enum": []string{"query", "place", "submit"}},
 			"maintenance": map[string]any{"type": "array", "maxItems": 2, "items": maintenanceSchema},

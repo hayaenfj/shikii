@@ -135,15 +135,24 @@ func TestMemoryEffectRequiresActualDeliveryAndKeepsFirstAssessment(t *testing.T)
 			t.Fatal("出典や採点日時を入力から偽装させない")
 		}
 	}
+	// 0.9.1: 数(4 件・2 会話)では断らない。中身の足りない評価は項目ごとの誤りで返し、何も保存しない。query では保存しない
 	for _, body := range []map[string]any{
 		{"operation": "submit", "memory": []map[string]string{{"source_id": id}, {"source_id": id}, {"source_id": id}, {"source_id": id}, {"source_id": id}}},
 		{"operation": "submit", "memory": []map[string]string{{"source_id": id}, {"source_id": "0000000000000002"}, {"source_id": "0000000000000003"}}},
-		{"operation": "query", "memory": []map[string]string{{"source_id": id}}},
 	} {
-		data, _ := json.Marshal(body)
-		code, _, err := callTool(h, "shikii_reflect", data)
-		if err != nil || code < 400 {
-			t.Fatal("記憶の評価も4件・2会話までで、queryでは保存しない")
+		out := reflectCall(t, h, body)
+		if out["complete"] != false || len(out["memory"].([]any)) != len(body["memory"].([]map[string]string)) {
+			t.Fatalf("記憶の評価は数で断らず、中身の足りない項目を項目ごとの誤りで返す: %v", out)
+		}
+		for _, m := range out["memory"].([]any) {
+			if m.(map[string]any)["error"] == nil {
+				t.Fatalf("key の無い評価は保存しない: %v", out)
+			}
+		}
+	}
+	if data, _ := json.Marshal(map[string]any{"operation": "query", "memory": []map[string]string{{"source_id": id}}}); true {
+		if code, _, err := callTool(h, "shikii_reflect", data); err != nil || code < 400 {
+			t.Fatal("query では保存しない")
 		}
 	}
 	for _, change := range []map[string]string{

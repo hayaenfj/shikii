@@ -32,7 +32,7 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 | `shikii_wiki` | 同じ仕事の会話から出典付きの教訓を育てる。取り込み・検索・点検 | `operation`（`query` / `ingest` / `lint`）、`sources` / `title` / `lesson` / `applies_to` / `id` / `replaces` / `correction` / `query` |
 | `shikii_review` | 会話と結果から根拠付きで仮採点。人の抜き取りと訂正例を参照 | `operation`（`query` / `submit`）、`source_id` / `trace_id` / `truth`（`yes` / `no` / `unknown`）/ `reason` |
 
-| `shikii_reflect` | 最大2会話の仮採点・wiki整理・記憶と訂正の観察をまとめて確認・保存 | `operation`（`query` / `submit`）、`reviews` / `wiki` / `memory` |
+| `shikii_reflect` | 仮採点・wiki整理・記憶と訂正の観察をまとめて確認・保存(query は古い会話から 2 件ずつ、submit は数を限らない) | `operation`（`query` / `submit`）、`reviews` / `wiki` / `memory` |
 
 `propose > 0` を使うには `shikii mcp` を `--proposer URL` 付きで起こす(`.mcp.json` の例には無い)。
 

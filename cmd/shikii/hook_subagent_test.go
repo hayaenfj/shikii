@@ -227,7 +227,7 @@ func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
 	if rep, err := st.MemoryReport(scope); err != nil || rep.Stats.Pending != 2 || rep.Stats.AwaitingFeedback != 0 {
 		t.Fatalf("親の会話が揃えばサブエージェントへの配送も次の依頼待ちではない: %+v %v", rep.Stats, err)
 	}
-	// 別のセッションの配送を 1 件足しても、親とサブは同じ会話に畳まれて「最大 2 会話」に収まる(監査 R3)
+	// 別のセッションの配送を 1 件足しても、親とサブの配送を一度に評価できる(0.9.0 までは「最大 2 会話」に親とサブが畳まれることを見ていた。監査 R3)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": scope, "prompt": "README の導入手順を更新してください"})
 	other := loadSession(st.Dir, "other").TurnID
 	runHook(t, "stop", map[string]any{"session_id": "other", "cwd": scope, "last_assistant_message": "更新しました。"})

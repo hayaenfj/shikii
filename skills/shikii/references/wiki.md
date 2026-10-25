@@ -4,7 +4,7 @@ Apply Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf5559
 
 ## Read and reconcile before writing
 
-The hook sends a reflection reminder after two pending conversations, or on a request after one has waited a day. Prioritize the current task; before finishing, process up to two conversations through [reflection](review.md). Individual operations support deeper editing.
+The hook sends a reflection reminder after two pending conversations, or on a request after one has waited a day. Prioritize the current task; before finishing, process the listed conversations through [reflection](review.md) (`reflect query` shows the oldest two at a time; `submit` takes any number). Individual operations support deeper editing.
 
 1. Read each original exchange. If truncated or ambiguous, use `shikii wiki query <source_id>` or MCP `shikii_wiki` with `operation: "query", sources: [source_id]`, in the current project's directory. Use the executable supplied by the hook. Distinguish the original request, the agent's proposal or reported result, and the following human reply. A proposal is not a decision, and a historical implementation status is not the current state.
 2. Search the topic with `shikii wiki query "topic words"`. Read matching pages and their sources. Follow related pages with `shikii wiki query lesson:<page_id>`, including superseded pages. Source IDs and page IDs identify different objects.

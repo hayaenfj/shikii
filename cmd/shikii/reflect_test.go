@@ -217,9 +217,9 @@ func TestMemoryMatchesConditionsInsteadOfIncidentalBody(t *testing.T) {
 	}
 }
 
-// 0.9.1: 振り返りの「一度に会話 2 件まで」は、今回新しく振り返る会話だけを数える。既存の記事に足す草稿に、記事に元からある出典を
-// 書き並べても数えない(保存は元の出典を引き継ぐので、書かなくてもよい)。断る時は、数えた会話と、元の出典が引き継がれることを伝える
-func TestReflectLimitCountsOnlyNewConversations(t *testing.T) {
+// 0.9.1: 振り返りの submit は、一度に扱う会話の数も項目の数も限らない(入力の大きさ 64 KB だけ)。0.9.0 までは会話 2 件・仮採点 4・
+// wiki 整理 2・記憶の評価 4 までで、既存の記事に元からある出典まで会話に数えて断っていた。保存は元の出典を引き継ぐ
+func TestReflectSubmitHasNoConversationLimit(t *testing.T) {
 	st, scope, h := reviewFixture(t)
 	ids := []string{}
 	for n := 1; n <= 5; n++ {
@@ -240,11 +240,13 @@ func TestReflectLimitCountsOnlyNewConversations(t *testing.T) {
 	if err != nil || len(got.Lessons) != 1 || len(got.Lessons[0].Sources) != 4 || !strings.Contains(got.Lessons[0].Lesson, "コマンドの例") {
 		t.Fatalf("出典 4 つで保存される: %v %+v", err, got.Lessons)
 	}
-	// 新しい会話が 3 つなら、今までどおり断る。断りの文に数えた会話と、元の出典は引き継がれることを書く
-	data, _ := json.Marshal(map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": ids[2:5]}}})
-	_, raw, _ := callTool(h, "shikii_reflect", data)
-	msg := string(raw)
-	if !strings.Contains(msg, "最大2件") || !strings.Contains(msg, ids[3]) || !strings.Contains(msg, ids[4]) || strings.Contains(msg, ids[0]) || !strings.Contains(msg, "引き継") {
-		t.Fatalf("新しい会話 3 つは断り、数えた会話と、元の出典は引き継がれることを伝える: %s", msg)
+	// 新しい会話 3 つと wiki の草稿 3 本も、一度に保存できる
+	drafts := []map[string]any{}
+	for i, id := range ids[2:5] {
+		drafts = append(drafts, map[string]any{"sources": []string{id}, "title": "起動手順の確認 " + string(rune('A'+i)), "lesson": "起動手順の確認 " + string(rune('A'+i)) + " を README に書く。", "applies_to": "README の起動手順を直す時", "kind": "howto", "scene": "README を直す時"})
+	}
+	q = reflectCall(t, h, map[string]any{"operation": "submit", "wiki": drafts})
+	if q["complete"] != true || len(q["wiki"].([]any)) != 3 {
+		t.Fatalf("新しい会話 3 つと草稿 3 本を一度に保存する: %v", q)
 	}
 }
