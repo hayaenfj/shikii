@@ -111,7 +111,7 @@ func TestInitRefusesHomeSpelledDifferently(t *testing.T) {
 		t.Skip(err)
 	}
 	t.Cleanup(func() { os.Chdir(home) })
-	if err := cmdInit(nil); err == nil || !strings.Contains(err.Error(), "ホーム") {
+	if err := cmdInit(nil); err == nil || !strings.Contains(err.Error(), "home folder") {
 		t.Fatalf("HOME is not initialized even with a different spelling: %v", err)
 	}
 }
@@ -153,7 +153,7 @@ func TestSharedPlaceIsRefusedByItself(t *testing.T) {
 		t.Fatal("other folders are not a shared store")
 	}
 	plan := planWipe([]projectEntry{{Path: home, InitVersion: 1}})
-	if len(plan) != 1 || plan[0].Action != wipeRefuse || !strings.Contains(plan[0].Reason, "共通の置き場") {
+	if len(plan) != 1 || plan[0].Action != wipeRefuse || !strings.Contains(plan[0].Reason, "shared store") {
 		t.Fatalf("HOME is refused before looking at the allowlist: %+v", plan)
 	}
 }

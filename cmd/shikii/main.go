@@ -1,12 +1,12 @@
-// shikii は決定モデルの運用 CLI。
+// shikii is the CLI for running decision models.
 //
 //	shikii decide    <spec.yaml> -i k=v ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR]
 //	shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|undo|manual] [--store DIR]
 //	shikii calibrate <spec.yaml> [--labeled file] [--model M] [--store DIR] [--write] [--force]
 //	shikii hash      <spec.yaml>
 //
-// ホスト版の鍵は TYPESAFE_API_KEY から読む。鍵の取り出しはこのプロセスでは行わない。
-// 判定は既定で ./.shikii/ に記録され、label がそこから正解ラベルを作り、calibrate がそれを使う。
+// The hosted key is read from TYPESAFE_API_KEY. This process never fetches keys itself.
+// Decisions are recorded in ./.shikii/ by default; label turns them into truth labels, and calibrate uses those.
 package main
 
 import (
@@ -109,71 +109,71 @@ func usage() { fmt.Fprint(os.Stderr, usageText()) }
 
 func usageText() string {
 	return `usage (flags may come before or after the positional arguments):
-  shikii init      （shikii --initでも同じ）このプロジェクトでの自動記録を有効にし、4種類の判定・wiki・作業記録の置き場・MCP・作法と画面への入口を準備する。2回目も安全
+  shikii init      (same as shikii --init) Turn on automatic recording for this project and set up the 4 kinds of decisions, the wiki, the work records folder, MCP, the working rules and the entry to the page. Safe to run again
   shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]
-                   質問に答えるだけで .shikii/decisions/<id>.yaml を作る
+                   Answer a few questions to create .shikii/decisions/<id>.yaml
   shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]
-                   手元のモデルを起こす(llama-server を探し、普通の GGUF なら shikii-readout も前に立てる)
+                   Start a local model (finds llama-server; for a plain GGUF it also puts shikii-readout in front)
   shikii serve     [--port 8095] [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL] [--auto-calibrate=false]
-                   HTTP の口 + 答え合わせと聞き方の画面。spec は <store>/decisions、wiki は <store>/wiki(基本構成: shikii が作るものは全部 .shikii/ の下)
+                   HTTP endpoint + the page for checking answers and question wordings. Specs are in <store>/decisions, the wiki in <store>/wiki (base layout: everything shikii creates lives under .shikii/)
   shikii mcp       [--specs DIR] [--store DIR] [--local URL] [--hosted URL] [--proposer URL]
-                   同じ中身を stdio の MCP サーバーとして出す(道具: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune / shikii_wiki / shikii_review / shikii_reflect。判定の聞き方の採用は人)
+                   Serve the same features as a stdio MCP server (tools: shikii_specs / shikii_decide / shikii_label / shikii_status / shikii_tune / shikii_wiki / shikii_review / shikii_reflect. A person adopts new question wordings)
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
-  shikii update    最新の安定版を確認し、実行中のshikiiと同じ場所へ本体・readoutを更新する
+  shikii update    Check the latest stable release and update shikii and readout in the same place as the running shikii
   shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | plan query|submit | variants submit
-                   Claude Code / Codex の hook として AI 自身の考え方を 2 点で測る: 考える前(この依頼で結局ファイルを変えるか、着手前に方針を合わせるか)と
-                   考え終わった後(変えたものは頼まれた範囲か、頼まれたことを終えたか)。置き場はプロジェクトの .shikii/、モデルは :8080、画面はプロジェクトごとに空いているポート(shikii page)。過去の会話と wiki の教訓を引用し、整理をエージェントへ渡す。判定からの助言は線を引いてから。ツールは止めない
-  shikii hook plan query | submit（JSONを標準入力）
-                   着手前の依頼・合意した方針・未決事項を、通常のエージェントが原文付きで整理して判定する。人の入力や正解にはしない
+                   As a Claude Code / Codex hook, measure how the AI itself thinks at 2 points: before thinking (will this request end up changing files, should the plan be agreed before starting) and
+                   after thinking (did the changes stay within what was asked, was the request finished). The store is the project's .shikii/, the model is :8080, the page uses a free port per project (shikii page). Quotes past conversations and wiki lessons and hands the organizing to the agent. Advice from decisions starts only after a line is drawn. Never blocks tools
+  shikii hook plan query | submit (JSON on stdin)
+                   Your usual agent organizes the request, the agreed plan and open questions before starting, with the original text, and decides. Not treated as a person's input or as a truth
   shikii decide   <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
-                   spec に state.context があれば、迷った時(ask。多択では discard も)だけ文脈の入力を足して聞き直す(別のハッシュ・別の線)。そこで確信に届いた答えは最小の質問の正解として残る
+                   If the spec has state.context, ask again with the context inputs added only when unsure (ask; for choice also discard) (separate hash, separate line). An answer that reaches confidence there is kept as a truth for the minimal question
   shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]
   shikii label     --last --spec-id ID <truth>
   shikii calibrate <spec.yaml> [--labeled file] [--model M] [--local URL] [--hosted URL] [--store DIR] [--bins 10] [--write] [--force]
-                   正解で線を引く。今の (hash, model) に無い正解は本文で聞き直す。state.context があれば文脈の段の線も別に引く
-                   --labeled の行に raw(noul は P(yes) の数字、choice / score は {id: p})があればモデルを呼ばずその確率で測る(別の道具の確率を同じ物差しで)
-  shikii status    [spec.yaml...] [--store DIR]      記録と正解の数、段ごとの数(1000 判定あたりの人の判断)、線の状態
-  shikii page                                         このプロジェクトの画面の URL・ポート・pid(立っていなければ起こす)
+                   Draw the line from truths. Truths missing for the current (hash, model) are asked again from the stored text. With state.context, the context rung gets its own line
+                   If a --labeled row has raw (a P(yes) number for noul, {id: p} for choice / score), measure with that probability without calling the model (to measure another tool's probabilities on the same scale)
+  shikii status    [spec.yaml...] [--store DIR]      Counts of records and truths, counts per rung (human judgments per 1000 decisions), state of the lines
+  shikii page                                         URL, port and pid of this project's page (starts it if not running)
   shikii tune      <spec.yaml> [--labeled file] [--local URL] [--store DIR] [--folds 5] [--propose N --proposer URL [--proposer-model M]] [--write]
-                   spec の variants:(聞き方の候補)を正解の貯金で採点。holdout が現状を上回り、意味が同じと確かめた(エージェントか人)候補だけ新しい版に。結果は <store>/wiki/runs/
+                   Score the spec's variants: (candidate wordings) against the saved truths. Only a candidate that beats the current one on holdout and is confirmed to mean the same (by an agent or a person) becomes the new version. Results go to <store>/wiki/runs/
   shikii import    <past.csv> --spec <spec.yaml> [--out truths.json]
-                   手元の過去の表(入力の列 + truth [+ weight])を正解の貯金(JSON)にする。線を引く前の 50 件を業務の表で埋める
+                   Turn a local table of past cases (input columns + truth [+ weight]) into saved truths (JSON). Fills the 50 cases needed before a line from your business records
   shikii judge     <spec.yaml> --local <judge URL> [--model M] [--store DIR]
-                   審判: 別の(大きい)モデルに同じ spec を聞く。人の正解との一致率が act に届けば、正解の無い記録に重み付きの正解(source judge)を付ける。審判も迷えば人へ
+                   Judge: ask another (larger) model the same spec. If its agreement with human truths reaches act, add weighted truths (source judge) to records without one. If the judge is unsure too, it goes to a person
   shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
-                   <store>/wiki/patterns の主張(前書き: claim / applies_to / evidence / retest)の再検証を今のモデルで回し、証拠を書き足す。状態を変えるのは人
-  shikii wiki query [検索文または出典ID] | ingest (JSON を標準入力) | lint
-                   普段の会話をプロジェクトの .shikii/ にある出典付きの教訓へ。AI が文章をまとめ、shikii が原文・索引・版・点検を管理する。教訓は仮説で、正解や較正には数えない
-  shikii handoff   list | read <パス> | write <パス> | append <パス>（本文を標準入力）
-                   作業記録(.shikii/handoff/): 途中で書き換える作業ファイル(監査の報告、リリースの手順、差分、画像)。教訓は wiki、確かめた時点の証拠は wiki の原資料
-  shikii guard     list | add (JSON を標準入力) | enable <id> | disable <id> | try
-                   人の訂正を「止める検査」にする(paired-files / forbidden-words / commit-body)。enable は負例で止まるのを確かめてから有効にする
-  shikii version                                  版を表示する
-  shikii review query | submit (JSON を標準入力)    会話と結果から AI が根拠付きで仮採点。人は抜き取りと保留を確認し、訂正を次の採点へ返す。仮採点は正解・較正と分けて保存する
-  shikii reflect query | submit (JSON を標準入力)   採点とwiki整理を一度の確認と一括保存にまとめる(query は古い会話から 2 件ずつ、submit は数を限らない)。reviewsとwikiを渡し、completeと項目ごとのerrorを確認する
-  shikii check     <spec.yaml>... [--store DIR]      CI: 文言が変わった線、手書きの線、精度不足の線を落とす
+                   Re-test the claims in <store>/wiki/patterns (front matter: claim / applies_to / evidence / retest) with the current model and append the evidence. Only a person changes their status
+  shikii wiki query [search text or source ID] | ingest (JSON on stdin) | lint
+                   Turn everyday conversations into sourced lessons in the project's .shikii/. The AI writes the summaries; shikii manages the original text, index, versions and checks. Lessons are hypotheses and never count as truths or calibration
+  shikii handoff   list | read <path> | write <path> | append <path> (body on stdin)
+                   Work records (.shikii/handoff/): working files you rewrite as you go (audit reports, release steps, diffs, images). Lessons go in the wiki; evidence as of when it was checked goes in the wiki's sources
+  shikii guard     list | add (JSON on stdin) | enable <id> | disable <id> | try
+                   Turn a person's correction into a "blocking check" (paired-files / forbidden-words / commit-body). enable turns it on after confirming that it blocks a negative example
+  shikii version                                  Print the version
+  shikii review query | submit (JSON on stdin)       The AI gives provisional scores with reasons from conversations and outcomes. A person checks the samples and held items, and corrections feed the next scoring. Provisional scores are stored apart from truths and calibration
+  shikii reflect query | submit (JSON on stdin)      Combine scoring and wiki organizing into one confirmation and one bulk save (query returns 2 at a time from the oldest conversations, submit takes any number). Pass reviews and wiki, then check complete and each item's error
+  shikii check     <spec.yaml>... [--store DIR]      CI: fail lines whose wording changed, hand-written lines, and lines with too little precision
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]
-                   選択肢の並びで答えが変わるかを測る。本文は calibrate と同じ正解の貯金(store、または --labeled)から
+                   Measure whether the answer changes with the order of the options. Texts come from the same saved truths as calibrate (store, or --labeled)
   shikii gc        [spec.yaml...] [--older-than 30d] [--apply] [--store DIR]
   shikii hash      <spec.yaml>
 `
 }
 
-// endpointFlags は decide / calibrate 共通のエンドポイント指定。
+// endpointFlags are the endpoint flags shared by decide / calibrate.
 type endpointFlags struct {
 	model, hosted, local string
 	tainted              bool
 }
 
 func (f *endpointFlags) bind(fs *flag.FlagSet) {
-	fs.StringVar(&f.model, "model", "jev-latest", "モデル名(リクエストに入れる。calibrate では較正の鍵にもなる)")
-	fs.StringVar(&f.hosted, "hosted", "https://api.typesafe.ai", "ホスト版の URL。パス付きならそのまま使う(例 https://openrouter.ai/api/alpha/decisions)。鍵は DECISIONS_API_KEY か TYPESAFE_API_KEY")
-	fs.StringVar(&f.local, "local", "", "ローカル(llama.cpp 等)のベース URL")
-	fs.BoolVar(&f.tainted, "tainted", false, "本番データを読んだセッション: hosted に送らない")
+	fs.StringVar(&f.model, "model", "jev-latest", "model name (sent in the request; in calibrate it is also the calibration key)")
+	fs.StringVar(&f.hosted, "hosted", "https://api.typesafe.ai", "hosted URL. A URL with a path is used as is (e.g. https://openrouter.ai/api/alpha/decisions). Key from DECISIONS_API_KEY or TYPESAFE_API_KEY")
+	fs.StringVar(&f.local, "local", "", "base URL of a local server (llama.cpp etc.)")
+	fs.BoolVar(&f.tainted, "tainted", false, "session that read production data: never send to hosted")
 }
 
-// hostedKey は hosted 用の鍵。DECISIONS_API_KEY(汎用)か TYPESAFE_API_KEY。鍵の取り出しはこのプロセスでは行わない。
+// hostedKey is the key for hosted: DECISIONS_API_KEY (generic) or TYPESAFE_API_KEY. This process never fetches keys itself.
 func hostedKey() string {
 	if k := os.Getenv("DECISIONS_API_KEY"); k != "" {
 		return k
@@ -181,7 +181,7 @@ func hostedKey() string {
 	return os.Getenv("TYPESAFE_API_KEY")
 }
 
-// modelChoice は SHIKII_MODEL(local / hosted)。鍵があっても手元のモデルを使いたい時は local。空なら両方(鍵があれば hosted が先)。
+// modelChoice is SHIKII_MODEL (local / hosted). Use local to keep the local model even when a key is set. Empty means both (hosted first if there is a key).
 func modelChoice() string {
 	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("SHIKII_MODEL"))); v {
 	case "local", "hosted":
@@ -202,7 +202,7 @@ func (f *endpointFlags) endpoints() []decide.Endpoint {
 }
 
 func bindStore(fs *flag.FlagSet) *string {
-	return fs.String("store", ".shikii", "記録とラベルの置き場")
+	return fs.String("store", ".shikii", "where records and labels are stored")
 }
 
 type kvFlag map[string]string
@@ -217,7 +217,7 @@ func (k kvFlag) Set(v string) error {
 	return nil
 }
 
-// 報告先は呼び出しごとに渡す。HTTP の処理がプロセス共通の stdout を差し替えない。
+// The report destination is passed per call. HTTP handling never swaps the process-wide stdout.
 func reportWriter(writers ...io.Writer) io.Writer {
 	if len(writers) > 0 && writers[0] != nil {
 		return writers[0]
@@ -232,10 +232,10 @@ func cmdDecide(args []string) error {
 	var ef endpointFlags
 	ef.bind(fs)
 	storeDir := bindStore(fs)
-	noRecord := fs.Bool("no-record", false, "記録しない")
+	noRecord := fs.Bool("no-record", false, "do not record")
 	inputs := kvFlag{}
-	fs.Var(inputs, "i", "入力 key=value(複数可)")
-	asJSON := fs.Bool("json", false, "Decision を JSON で出す")
+	fs.Var(inputs, "i", "input key=value (repeatable)")
+	asJSON := fs.Bool("json", false, "print the Decision as JSON")
 	path, err := parseSpecPath(fs, args)
 	if err != nil {
 		return err
@@ -285,8 +285,8 @@ func cmdDecide(args []string) error {
 	return nil
 }
 
-// recordOf は Decision を記録の形にする。本文は常に残す。
-// copyInputs は本文の写し(記録とラベルに残す)。
+// recordOf turns a Decision into a record. The text is always kept.
+// copyInputs copies the text (kept in records and labels).
 func copyInputs(inputs map[string]string) map[string]string {
 	if len(inputs) == 0 {
 		return nil
@@ -308,13 +308,13 @@ func recordOf(sp *spec.Spec, d *decide.Decision, inputs map[string]string) store
 	}
 }
 
-// recordDecision は判定を記録する。文脈を足した段で確信(act)に届いたら、その答えを最小の質問の正解として残す:
-// 上の段の答えが下の段の正解になる(重みは較正済みの確率、出どころは context)。人が後で答えればそちらが新しいので勝つ。
+// recordDecision records a decision. When the context rung reaches confidence (act), that answer is kept as a truth for the minimal question:
+// the upper rung's answer becomes the lower rung's truth (weight is the calibrated probability, source is context). If a person answers later, theirs is newer and wins.
 func recordDecision(st store.Store, sp *spec.Spec, d *decide.Decision, inputs map[string]string) error {
 	return recordDecisionRec(st, sp, d, recordOf(sp, d, inputs))
 }
 
-// recordDecisionRec は rec(recordOf に印を足したもの。やり直しなら RedoOf)を書く本体。判定の記録の作法はここ 1 か所(監査 6 の 5)。
+// recordDecisionRec writes rec (recordOf plus marks; RedoOf for a redo). This is the one place that defines how decisions are recorded (audit 6 item 5).
 func recordDecisionRec(st store.Store, sp *spec.Spec, d *decide.Decision, rec store.Record) error {
 	if err := st.AppendRecord(rec); err != nil {
 		return fmt.Errorf("record: %w", err)
@@ -323,7 +323,7 @@ func recordDecisionRec(st store.Store, sp *spec.Spec, d *decide.Decision, rec st
 		return nil
 	}
 	if sp.Type == spec.Score && sp.Thresholds.Level > 0 {
-		return nil // P は P(level ≥ k)、Top は一番高い段階。別の事象なので 1 つの正解にはできない(監査 3 回目の 8)
+		return nil // P is P(level ≥ k) and Top is the highest level. They are different events, so they cannot become one truth (audit round 3 item 8)
 	}
 	inputsHash := d.Minimal.InputsHash
 	if inputsHash == "" {
@@ -340,7 +340,7 @@ func recordDecisionRec(st store.Store, sp *spec.Spec, d *decide.Decision, rec st
 	return nil
 }
 
-// attachReceipt は act の判定に領収書を付ける: その段の線(方法・日・正解の数)と、人が確かめた act の判定の数と精度(store の人の正解だけ)。
+// attachReceipt attaches a receipt to an act decision: that rung's line (method, date, number of truths), and the number and precision of act decisions a person checked (human truths in the store only).
 func attachReceipt(sp *spec.Spec, st store.Store, d *decide.Decision) {
 	if d.Band != decide.Act {
 		return
@@ -373,10 +373,10 @@ func attachReceipt(sp *spec.Spec, st store.Store, d *decide.Decision) {
 func cmdLabel(args []string) error {
 	fs := flag.NewFlagSet("label", flag.ContinueOnError)
 	storeDir := bindStore(fs)
-	specID := fs.String("spec-id", "", "記録を探す spec(省略時は全部見る)")
-	weight := fs.Float64("weight", 1, "ラベルの重み(弱いラベルは 1 未満)")
-	source := fs.String("source", "manual", "ラベルの出どころ: ask | outcome | manual | ui | mcp など(replay と file は calibrate が付ける)")
-	last := fs.Bool("last", false, "trace_id の代わりに、--spec-id の直近の記録に付ける")
+	specID := fs.String("spec-id", "", "spec to search records in (all when omitted)")
+	weight := fs.Float64("weight", 1, "label weight (below 1 for weak labels)")
+	source := fs.String("source", "manual", "label source: ask | outcome | manual | ui | mcp etc. (calibrate sets replay and file)")
+	last := fs.Bool("last", false, "instead of a trace_id, label the latest record of --spec-id")
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
@@ -408,7 +408,7 @@ func cmdLabel(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := st.AppendLabels(labels); err != nil { // 2 段分を 1 回で書く(片方だけ残らない)
+	if err := st.AppendLabels(labels); err != nil { // write both rungs in one go (never just one of them)
 		return err
 	}
 	for _, l := range labels {
@@ -419,18 +419,18 @@ func cmdLabel(args []string) error {
 
 // ---------------------------------------------------------------- calibrate
 
-// labeled はラベル付きデータ 1 行。Truth は noul なら true/false か "yes"/"no"、choice/score なら id/番号。
-// Raw(noul の生の確率)があればモデルを呼ばない。
+// labeled is one row of labeled data. Truth is true/false or "yes"/"no" for noul, and an id/number for choice/score.
+// If Raw (noul's raw probability) is present, the model is not called.
 type labeled struct {
 	Inputs map[string]string `json:"inputs"`
 	Truth  json.RawMessage   `json:"truth"`
 	Weight float64           `json:"weight,omitempty"`
-	// Raw は確率の持ち込み(モデルを呼ばない行)。noul は P(yes) の数字 1 つ、choice / score は {id: p} の object。
-	// 比較ベンチの LoRA の腕のように、別の道具が出した確率を同じ物差しで測るのに使う。
+	// Raw brings in a probability (a row that does not call the model). For noul it is one P(yes) number; for choice / score an {id: p} object.
+	// Used to measure probabilities from another tool on the same scale, like the LoRA arm of the comparison bench.
 	Raw json.RawMessage `json:"raw,omitempty"`
 }
 
-// rawFromRow は行の raw を分布にする。無ければ nil。鍵が spec の選択肢に無ければ誤り(黙って捨てない)。
+// rawFromRow turns a row's raw into a distribution, or nil if absent. A key not among the spec's options is an error (never silently dropped).
 func rawFromRow(sp *spec.Spec, raw json.RawMessage) (map[string]float64, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil, nil
@@ -449,7 +449,7 @@ func rawFromRow(sp *spec.Spec, raw json.RawMessage) (map[string]float64, error) 
 	if err := json.Unmarshal(raw, &dist); err != nil {
 		return nil, fmt.Errorf("raw: want a number (noul) or {id: probability}: %w", err)
 	}
-	// 鍵は全部揃っていて(noul は yes が要る。no は補う)、各値は 0..1、和は 1 に近いこと。欠け・範囲外は黙って 0 にしない(監査 4 回目の 9)
+	// All keys must be present (noul needs yes; no is filled in), each value in 0..1, summing close to 1. Missing or out-of-range values are never silently set to 0 (audit round 4 item 9)
 	if sp.Type == spec.Noul {
 		if _, ok := dist["yes"]; !ok {
 			return nil, errors.New("raw: noul needs \"yes\"")
@@ -502,10 +502,10 @@ func cmdCalibrate(args []string) error {
 	var ef endpointFlags
 	ef.bind(fs)
 	storeDir := bindStore(fs)
-	labeledPath := fs.String("labeled", "", "ラベル付きデータ(省略時は spec の eval.labeled。無ければ store のラベルだけ。none なら spec の既定も使わない)")
-	bins := fs.Int("bins", 10, "信頼度図の bin 数")
-	write := fs.Bool("write", false, "較正を spec に書き戻す")
-	force := fs.Bool("force", false, "逆転・精度不足でも書き戻す")
+	labeledPath := fs.String("labeled", "", "labeled data (default: the spec's eval.labeled; without it, only store labels; none skips the spec default too)")
+	bins := fs.Int("bins", 10, "number of bins in the reliability diagram")
+	write := fs.Bool("write", false, "write the calibration back to the spec")
+	force := fs.Bool("force", false, "write back even if inverted or lacking precision")
 	path, err := parseSpecPath(fs, args)
 	if err != nil {
 		return err
@@ -513,19 +513,19 @@ func cmdCalibrate(args []string) error {
 	return runCalibrate(path, calibrateOpts{ef: ef, storeDir: *storeDir, labeled: *labeledPath, bins: *bins, write: *write, force: *force})
 }
 
-// calibrateOpts は calibrate の指定。CLI と serve(自動の較正)が同じ中身を使う。
+// calibrateOpts are the calibrate options. The CLI and serve (automatic calibration) use the same values.
 type calibrateOpts struct {
 	output   io.Writer
 	ef       endpointFlags
 	storeDir string
-	labeled  string // "" = spec の eval.labeled、"none" = ファイルを使わない
+	labeled  string // "" = the spec's eval.labeled, "none" = use no file
 	bins     int
 	write    bool
 	force    bool
-	rung     string // "" = 両方の段、"minimal" | "context" = その段だけ引く(serve の自動較正は正解が揃った段だけ)
+	rung     string // "" = both rungs, "minimal" | "context" = draw only that rung (serve's automatic calibration only does rungs with enough truths)
 }
 
-// 保存できない理由を件数不足と予測の品質に分ける。画面も同じ理由を使う。
+// Splits the reasons calibration cannot be saved into too few truths and prediction quality. The page uses the same reasons.
 type calibrationRefusal struct {
 	humanTruths int
 	minN        int
@@ -540,12 +540,12 @@ func (e *calibrationRefusal) reason() string {
 
 func (e *calibrationRefusal) Error() string {
 	if e.reason() == "insufficient" {
-		return fmt.Sprintf("較正は保存していません。人・結果による正解が%d件で、必要な%d件に届いていません。shikii serve・shikii label・shikii importで正解を追加してください。試行だけならspecのeval.min_n を下げられます。", e.humanTruths, e.minN)
+		return fmt.Sprintf("calibration not saved: there are %d truths from people or outcomes, short of the %d required. Add truths with shikii serve, shikii label or shikii import. For a trial only, you can lower the spec's eval.min_n.", e.humanTruths, e.minN)
 	}
-	return fmt.Sprintf("較正は保存していません。正解は%d件ありますが、現在の質問とモデルの予測では自動実行の条件を満たしません。質問やモデルの見直しが必要です。", e.humanTruths)
+	return fmt.Sprintf("calibration not saved: there are %d truths, but with the current question and the model's predictions the conditions for acting automatically are not met. Review the question or the model.", e.humanTruths)
 }
 
-// runCalibrate は calibrate の本体。報告は stdout に出す。
+// runCalibrate is the body of calibrate. It prints its report to stdout.
 func runCalibrate(path string, o calibrateOpts) error {
 	stdout := reportWriter(o.output)
 	sp, err := spec.Load(path)
@@ -553,7 +553,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 		return err
 	}
 	wrote := false
-	// 最小の質問の段。ここに線が引けないのは誤り(今までと同じ)。
+	// The minimal-question rung. Failing to draw a line here is an error (as before).
 	if o.rung != "context" {
 		cal, ok, err := calibrateRung(sp, o)
 		if err != nil {
@@ -567,11 +567,11 @@ func runCalibrate(path string, o calibrateOpts) error {
 			wrote = true
 		}
 	}
-	// 文脈の段(あれば)。正解は、文脈を足して決まった判定に人が答えた分だけ。まだ無ければ知らせて進む。
+	// The context rung (if any). Its truths are only those a person gave to decisions settled with added context. If there are none yet, say so and move on.
 	if csp := sp.ContextSpec(); csp != nil && o.rung != "minimal" {
 		fmt.Fprintf(stdout, "\ncontext rung: the same question asked with state.context (hash=%s)\n", csp.Hash())
 		co := o
-		co.labeled = "none" // ファイルの行は最小の質問のもの
+		co.labeled = "none" // file rows belong to the minimal question
 		ccal, cok, err := calibrateRung(csp, co)
 		switch {
 		case errors.Is(err, errNoLabels):
@@ -598,7 +598,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 
 var errNoLabels = errors.New("no labels")
 
-// calibrateRung は 1 つの段(spec のハッシュ 1 つ)の線を引く。報告は常に出し、書いてよいか(ok)を返す。線そのものは書かない(呼ぶ側がまとめて書く)。
+// calibrateRung draws the line for one rung (one spec hash). It always prints the report and returns whether it may be written (ok). It does not write the line itself (the caller writes them together).
 func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, error) {
 	stdout := reportWriter(o.output)
 	ef, storeDir, labeledPath, bins, force := o.ef, &o.storeDir, &o.labeled, &o.bins, &o.force
@@ -607,9 +607,9 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 		*bins = 10
 	}
 	if *labeledPath == "none" {
-		*labeledPath = "" // store のラベルと聞き直しだけで進む
+		*labeledPath = "" // proceed with store labels and re-asking only
 	} else if *labeledPath == "" {
-		// spec 既定のファイルは無くてもよい(store のラベルだけで進む)。--labeled で明示したら無ければ誤り。
+		// The spec's default file may be missing (proceed with store labels only). If given explicitly with --labeled, a missing file is an error.
 		if _, err := os.Stat(sp.Eval.Labeled); sp.Eval.Labeled != "" && err == nil {
 			*labeledPath = sp.Eval.Labeled
 		} else if sp.Eval.Labeled != "" {
@@ -617,7 +617,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 		}
 	}
 
-	// 1. ラベル付きファイル(あれば)。Raw の無い行は、store に同じ入力のラベルがあればそれを使い、無ければモデルに聞く。
+	// 1. The labeled file (if any). For rows without Raw, use a store label with the same inputs if there is one; otherwise ask the model.
 	st := store.Store{Dir: *storeDir}
 	labels, model, err := labelsFromFile(sp, *labeledPath, ef, st, stdout)
 	if err != nil {
@@ -629,8 +629,8 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 			seen[l.InputsHash] = true
 		}
 	}
-	// 2. 聞き直し: 古い文言・別のモデルで付いた正解を、本文が残っている記録から今の (hash, model) で聞き直す。
-	//    正解は人が決めたもので文言にもモデルにも依らない。確率だけ取り直す。
+	// 2. Re-ask: for truths given under old wording or another model, ask again with the current (hash, model) from records that still have their text.
+	//    A truth is decided by a person and does not depend on wording or model. Only the probability is fetched again.
 	replayed, replayModel, err := replayTruths(sp, st, ef, model, seen, stdout)
 	if err != nil {
 		return cal, false, err
@@ -641,8 +641,8 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	if model == "" {
 		model = ef.model
 	}
-	// 3. store に溜まったラベル。(hash, model) が一致するもの全部。ファイル側と同じ入力があっても落とさない:
-	//    後で人が付けた訂正の方が新しければ、下の LatestPerInput でそちらが勝つ(監査 C2)。
+	// 3. Labels collected in the store: all that match (hash, model). Keep them even if the file has the same input:
+	//    if a correction a person added later is newer, it wins in LatestPerInput below (audit C2).
 	stored, err := st.Labels(sp.ID, sp.Hash(), model)
 	if err != nil {
 		return cal, false, err
@@ -661,7 +661,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 		}
 		stored = append(stored, l)
 	}
-	// 4. モデルに聞いて得たファイル行のラベルは store に残す。以後 check / drift がモデル無しで検証できる。
+	// 4. Keep in the store the labels for file rows we got by asking the model, so check / drift can verify without the model later.
 	persisted := 0
 	storedSet, err := storedInputs(st, sp, model)
 	if err != nil {
@@ -669,7 +669,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	}
 	for _, l := range labels {
 		if l.Model == "" || l.InputsHash == "" {
-			continue // raw 付きの行(モデルを呼んでいない)は残さない
+			continue // rows with raw (model not called) are not kept
 		}
 		if storedSet[l.InputsHash] {
 			continue
@@ -685,7 +685,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	}
 	fileN, storedN := len(labels), len(stored)
 	labels = append(labels, stored...)
-	// 入力ごとに最新の正解 1 つ(check / drift と同じ数え方)。訂正は置き換え、同じ入力の重複は 1 件
+	// The latest truth per input (counted the same way as check / drift). A correction replaces; duplicates of one input count once
 	if before := len(labels); before > 0 {
 		labels = store.LatestPerInput(labels)
 		if len(labels) < before {
@@ -696,7 +696,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	if len(labels) == 0 {
 		return cal, false, fmt.Errorf("calibrate: %w for (hash=%s, model=%s)", errNoLabels, sp.Hash(), model)
 	}
-	// 件数不足でも報告は出す。書き戻しだけ止める。数えるのは人(または結果)が決めた正解: 機械の正解(上の段の答え)だけで線は引かない(監査 3 回目の 2)
+	// Print the report even with too few. Only writing back is stopped. Count only truths decided by people (or outcomes): never draw a line from machine truths (upper-rung answers) alone (audit round 3 item 2)
 	nHuman := 0
 	for _, l := range labels {
 		if store.HumanSource(l.Source) {
@@ -708,7 +708,7 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 		fmt.Fprintf(stdout, "WARNING: %d human truths (%d samples in all) < eval.min_n=%d; report only, will not write (collect more, or lower eval.min_n in the spec for a trial)\n", nHuman, len(labels), sp.Eval.MinN)
 	}
 
-	// 報告は常に出す。書き戻してよいか(ok)は別に返し、--write の時だけ効く。
+	// Always print the report. Whether it may be written back (ok) is returned separately and only matters with --write.
 	var ok bool
 	switch sp.Type {
 	case spec.Noul:
@@ -724,8 +724,8 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	return cal, (ok && !underMin) || *force, nil
 }
 
-// labelsFromFile はラベル付きファイルを store.Label の形に揃える。モデルに聞いた行があれば、その実モデル名も返す。
-// Raw の無い行は、store に同じ入力(inputs_hash)のラベルが --model の鍵で残っていればそれを使う(モデル無しで再較正できる)。
+// labelsFromFile converts a labeled file into store.Label form. If any rows were asked of the model, it also returns that actual model name.
+// For rows without Raw, reuse a store label with the same input (inputs_hash) under the --model key (so recalibration works without the model).
 func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store, reports ...io.Writer) ([]store.Label, string, error) {
 	stdout := reportWriter(reports...)
 	if path == "" {
@@ -744,8 +744,8 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	// 同じ入力の以前のラベル(raw と時刻の再利用に使う)。複数あれば一番古いもの = 最初に聞いた時のもの。
-	// 後から人が付けた訂正の時刻を借りると、ファイルの正解がその訂正と同時刻になり LatestPerInput で勝ってしまう(監査 C2)。
+	// Earlier labels for the same input (to reuse raw and time). If several, take the oldest = the first time it was asked.
+	// Borrowing the time of a correction a person added later would give the file's truth the same time and make it win in LatestPerInput (audit C2).
 	stored := map[string]store.Label{}
 	if prior, err := st.Labels(sp.ID, sp.Hash(), ef.model); err == nil {
 		for _, l := range prior {
@@ -754,8 +754,8 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 			}
 		}
 	}
-	// ファイルの行の時刻は「その入力を最初に取り込んだ時刻」(モデルを問わず、今の文言で一番古いラベル)。
-	// 毎回「今」にすると、人が後から付けた訂正より新しくなって勝ってしまう。
+	// A file row's time is "when that input was first brought in" (the oldest label under the current wording, any model).
+	// Using "now" every time would make it newer than a person's later correction, so it would win.
 	firstSeen := map[string]time.Time{}
 	if _, all, err := st.Counts(sp.ID); err == nil {
 		for _, l := range all {
@@ -783,7 +783,7 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 		}
 		switch {
 		case given != nil:
-			l.Raw = given // 持ち込みの確率: モデルは呼ばない
+			l.Raw = given // probability brought in: the model is not called
 		case func() bool { _, ok := stored[store.HashInputs(r.Inputs)]; return ok }():
 			prior := stored[store.HashInputs(r.Inputs)]
 			l.Raw, l.Model, l.TraceID, l.InputsHash = prior.Raw, prior.Model, prior.TraceID, prior.InputsHash
@@ -796,7 +796,7 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 			}
 			reused++
 		default:
-			d, err := decide.Decide(ctx, sp.WithoutContext(), r.Inputs, sess, eps) // ファイルの正解は最小の質問の段のもの
+			d, err := decide.Decide(ctx, sp.WithoutContext(), r.Inputs, sess, eps) // the file's truths belong to the minimal-question rung
 			if err != nil {
 				return nil, "", fmt.Errorf("row %d: %w", i, err)
 			}
@@ -804,7 +804,7 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 				return nil, "", fmt.Errorf("row %d: abstained: %s", i, d.Reason)
 			}
 			l.Raw, l.Model, l.TraceID, l.InputsHash = d.Raw, d.Model, d.TraceID, d.InputsHash
-			l.Inputs = copyInputs(r.Inputs) // 正解と一緒に本文も残す(聞き直しの材料)
+			l.Inputs = copyInputs(r.Inputs) // keep the text along with the truth (material for re-asking)
 			if model == "" {
 				model = d.Model
 			} else if model != d.Model {
@@ -825,7 +825,7 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 	return out, model, nil
 }
 
-// alreadyStored は同じ (hash, model, inputs_hash) のラベルが store にあるか。
+// alreadyStored reports whether a label with the same (hash, model, inputs_hash) is in the store.
 func storedInputs(st store.Store, sp *spec.Spec, model string) (map[string]bool, error) {
 	existing, err := st.Labels(sp.ID, sp.Hash(), model)
 	if err != nil {
@@ -838,18 +838,18 @@ func storedInputs(st store.Store, sp *spec.Spec, model string) (map[string]bool,
 	return out, nil
 }
 
-// replayTruths は「正解の貯金」を今の (spec_hash, model) に持ち込む。
-// store にある spec のラベル全部(古いハッシュ・別モデルのものを含む)から、入力ごとに最新の正解を取り、
-// 本文が残っている記録のものだけを、今の文言で今のモデルに聞き直してラベルにする。
-// seen に入っている入力(ファイル側で扱ったもの)は飛ばす。model が空なら、最初の答えのモデル名を返す。
-// 聞き直せない正解(本文が無い)は数えて理由を出す。黙って 0 件にしない。
+// replayTruths brings the "saved truths" to the current (spec_hash, model).
+// From all of the spec's labels in the store (including old hashes and other models), take the latest truth per input,
+// and for those whose record still has its text, ask the current model again with the current wording and turn them into labels.
+// Inputs in seen (handled on the file side) are skipped. If model is empty, return the model name of the first answer.
+// Truths that cannot be re-asked (no text) are counted and the reason printed. Never silently 0.
 func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string, seen map[string]bool, reports ...io.Writer) ([]store.Label, string, error) {
 	stdout := reportWriter(reports...)
 	_, all, err := st.Counts(sp.ID)
 	if err != nil {
 		return nil, model, err
 	}
-	// 入力ごとに最新の正解(同じ入力に複数付いていれば新しい方)
+	// The latest truth per input (if one input has several, the newer one)
 	type truth struct {
 		truth  string
 		weight float64
@@ -858,7 +858,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 	bank := map[string]truth{}
 	var human []store.Label
 	for _, l := range all {
-		if store.HumanSource(l.Source) { // 機械の正解(上の段の答え)は聞き直さない: 別の段で聞き直しても同じモデルの答えで、人の正解に化けてしまう(監査 3 回目の 1)
+		if store.HumanSource(l.Source) { // do not re-ask machine truths (upper-rung answers): re-asking at another rung gives the same model's answer and it would pass as a human truth (audit round 3 item 1)
 			human = append(human, l)
 		}
 	}
@@ -871,7 +871,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 	if len(bank) == 0 {
 		return nil, model, nil
 	}
-	// 今の (hash, model) に既にあるものは聞き直さない。model が未定なら、最初の答えで確定してから見る。
+	// Do not re-ask what already exists for the current (hash, model). If model is not set yet, settle it with the first answer and then check.
 	current := map[string]bool{}
 	loadCurrent := func(m string) error {
 		have, err := st.Labels(sp.ID, sp.Hash(), m)
@@ -883,7 +883,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		}
 		return nil
 	}
-	// model が未定でも --model の値(既定あり)で一度見ておく。実際のモデル名が違えば最初の答えで見直す。
+	// Even with no model set, check once with the --model value (it has a default). If the actual model name differs, check again after the first answer.
 	guess := model
 	if guess == "" {
 		guess = ef.model
@@ -901,7 +901,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 
 	var out []store.Label
 	noText, noEndpoint, noContext, invalid := 0, 0, 0, 0
-	rs := sp.WithoutContext() // この段(このハッシュ)だけで聞き直す。段を上がると別のハッシュの答えになってしまう
+	rs := sp.WithoutContext() // re-ask at this rung (this hash) only. Moving up a rung would give an answer for another hash
 	hashes := make([]string, 0, len(bank))
 	for h := range bank {
 		hashes = append(hashes, h)
@@ -921,7 +921,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 			noEndpoint++
 			continue
 		}
-		// tainted で記録された本文は、今のセッションが tainted でなくても hosted に送らない(監査 S1)
+		// Text recorded as tainted is never sent to hosted, even if the current session is not tainted (audit S1)
 		sess := decide.Session{Tainted: ef.tainted || stored.Tainted}
 		d, err := decide.Decide(ctx, rs, inputs, sess, eps)
 		if err != nil {
@@ -929,7 +929,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		}
 		if d.Band == decide.Abstain {
 			if strings.HasPrefix(d.Reason, "missing required input") {
-				noContext++ // 文脈の段の聞き直し: この本文には足す文脈が記録されていない
+				noContext++ // re-asking at the context rung: no context to add was recorded with this text
 			} else {
 				noEndpoint++
 			}
@@ -950,7 +950,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		t := bank[h]
 		l, err := store.LabelFor(&rec, t.truth, t.weight, "replay")
 		if err != nil {
-			invalid++ // 正解が今の spec に無い選択肢など。黙って捨てずに数える
+			invalid++ // e.g. the truth is an option not in the current spec. Count it instead of silently dropping it
 			continue
 		}
 		out = append(out, l)
@@ -974,7 +974,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 	return out, model, nil
 }
 
-// calibrateNoul は Platt を当てて指標を出す(設計 §7)。正負が逆転していれば ok=false。
+// calibrateNoul fits Platt and prints the metrics (design §7). If positive and negative are inverted, ok=false.
 func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writer) (spec.Calibration, bool, error) {
 	stdout := reportWriter(reports...)
 	samples := make([]calib.Sample, len(labels))
@@ -998,7 +998,7 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 	fmt.Fprintf(stdout, "ece:   raw=%.4f calibrated=%.4f (bins=%d)\n", calib.ECE(rawProbs, truths, weights, bins), calib.ECE(calProbs, truths, weights, bins), bins)
 	fmt.Fprintf(stdout, "separation(Δ, weight>=1): pos_min=%.3f neg_max=%.3f overlap=%d inverted=%v (weak labels excluded: %d)\n", sep.PosMin, sep.NegMax, sep.Overlap, sep.Inverted, sep.Weak)
 	if sep.Overlap > 0 {
-		// どの例が重なっているかを出す。本文は出さない。inputs_hash でラベルを辿れる。
+		// Show which examples overlap. The text is not printed; the label can be traced by inputs_hash.
 		fmt.Fprintln(stdout, "overlapping (truth raw weight inputs_hash):")
 		for i, l := range labels {
 			if l.Weight > 0 && l.Weight < 1 {
@@ -1020,15 +1020,15 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 			Brier: calib.Brier(calProbs, truths, weights), ECE: calib.ECE(calProbs, truths, weights, bins)}, false, nil
 	}
 
-	// identity と platt を比べる。platt は in-sample で甘いので 5-fold CV の Brier と precision@act で判定。
-	// 生の確率が既に較正されているモデル(Jev、Kev の noul 等)では platt は改善しないので identity を選ぶ。
+	// Compare identity and platt. platt looks too good in-sample, so judge by the 5-fold CV Brier and precision@act.
+	// For models whose raw probabilities are already calibrated (Jev, Kev's noul, etc.), platt does not improve, so choose identity.
 	rawPrec := precisionAt(sp.Thresholds.Act, rawProbs, truths, weights)
 	rawBrier := calib.Brier(rawProbs, truths, weights)
 	cvPrec, cvBrier := crossValidatePlatt(sp, samples, 5)
 	fmt.Fprintf(stdout, "platt 5-fold CV: precision@act=%.3f brier=%.4f (raw: precision@act=%.3f brier=%.4f)\n", cvPrec, cvBrier, rawPrec, rawBrier)
 	identityOK, plattOK := rawPrec >= sp.Thresholds.Act, cvPrec >= sp.Thresholds.Act
 	identity := spec.Calibration{Method: "identity", PrecisionAt: rawPrec, Brier: rawBrier, ECE: calib.ECE(rawProbs, truths, weights, bins)}
-	// spec に書く Brier は CV の値(in-sample は楽観側で、drift の基準線として甘い。監査 C6)
+	// The Brier written to the spec is the CV value (in-sample is optimistic and too lenient as a baseline for drift; audit C6)
 	platt := spec.Calibration{Method: "platt", Bias: pl.Bias, Temperature: pl.Temperature, PrecisionAt: cvPrec,
 		Brier: cvBrier, ECE: calib.ECE(calProbs, truths, weights, bins)}
 	switch {
@@ -1047,7 +1047,7 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 	}
 }
 
-// crossValidatePlatt は k-fold で Platt を当て、外した fold での precision@act と Brier を合算する。
+// crossValidatePlatt fits Platt with k folds and sums precision@act and Brier on the held-out folds.
 func crossValidatePlatt(sp *spec.Spec, samples []calib.Sample, k int) (precision, brier float64) {
 	if k < 2 || len(samples) < k {
 		return 0, 1
@@ -1080,15 +1080,15 @@ func crossValidatePlatt(sp *spec.Spec, samples []calib.Sample, k int) (precision
 	return precisionAt(sp.Thresholds.Act, probs, truths, weights), calib.Brier(probs, truths, weights)
 }
 
-// verifyTop は choice / score の検証と較正(設計 §7.1)。
-//  1. 生の分布で、最上位の確率に対する正答率と act 閾値での precision を測る
-//  2. precision が act 以上なら identity(= 生のまま act を許す印)で ok
-//  3. 足りなければ vector scaling を当てて測り直す。較正後に act 以上なら vector で ok、
-//     それでも足りなければ vector を返すが ok=false(書き戻しは --force が要る)
+// verifyTop verifies and calibrates choice / score (design §7.1).
+//  1. With the raw distribution, measure accuracy against the top probability and precision at the act threshold
+//  2. If precision is at least act, identity (= the mark that allows act on raw values) is ok
+//  3. If not, fit vector scaling and measure again. If at least act after calibration, vector is ok;
+//     if still not, return vector with ok=false (writing back needs --force)
 func verifyTop(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writer) (spec.Calibration, bool, error) {
 	stdout := reportWriter(reports...)
-	// 報告は全ラベルで、当てる(FitVector / CV)のは正解の選択肢が分かっているラベルだけ。
-	// 部分ラベル("!edit" = edit ではなかった)は precision の評価には効くが、分布の学習には使えない。
+	// The report uses all labels; fitting (FitVector / CV) uses only labels whose correct option is known.
+	// Partial labels ("!edit" = it was not edit) count for evaluating precision but cannot be used to learn the distribution.
 	ms := make([]calib.MultiSample, len(labels))
 	var fit []calib.MultiSample
 	partial := 0
@@ -1111,7 +1111,7 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writ
 	identityOK := rawRep.precAct >= sp.Thresholds.Act
 	identity := spec.Calibration{Method: "identity", PrecisionAt: rawRep.precAct, Brier: rawRep.brier, ECE: rawRep.ece}
 
-	// vector は in-sample だと甘く見えるので、採否は k-fold CV の指標で決める。
+	// vector looks too good in-sample, so adopt or reject it by the k-fold CV metrics.
 	v, err := calib.FitVector(fit)
 	if err != nil {
 		if identityOK {
@@ -1121,7 +1121,7 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writ
 		return spec.Calibration{}, false, fmt.Errorf("vector scaling: %w", err)
 	}
 	calRep := topReport(sp, ms, &v)
-	cvPrec, cvRec := crossValidateVector(sp, ms, 5) // 採点は全ラベル(部分ラベル込み)。当てるのは完全ラベルだけ(関数の中で分ける)
+	cvPrec, cvRec := crossValidateVector(sp, ms, 5) // score on all labels (partial ones included); fit only on complete labels (split inside the function)
 	fmt.Fprintf(stdout, "vector:     temperature=%.4f biases=%s\n", v.Temperature, fmtDist(v.Biases))
 	fmt.Fprintf(stdout, "calibrated: top-1 accuracy=%.3f brier(top)=%.4f ece(top)=%.4f (in-sample)\n", calRep.acc, calRep.brier, calRep.ece)
 	printThresholdReport(sp.Thresholds, calRep.pTop, calRep.correct, calRep.weights, stdout)
@@ -1134,7 +1134,7 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writ
 		PrecisionAt: cvPrec, Brier: calRep.brier, ECE: calRep.ece,
 	}
 
-	// 選ぶ: precision@act を満たす候補のうち recall@act が高い方。同点なら単純な identity。
+	// Choose: among candidates meeting precision@act, the one with higher recall@act. On a tie, the simpler identity.
 	switch {
 	case identityOK && vectorOK && cvRec > rawRep.recAct:
 		fmt.Fprintf(stdout, "choose vector: both satisfy act; vector recall %.3f > identity recall %.3f\n", cvRec, rawRep.recAct)
@@ -1151,10 +1151,10 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writ
 	}
 }
 
-// crossValidateVector は k-fold で vector を当て、外した fold での act 閾値の precision / recall を合算する。
+// crossValidateVector fits vector with k folds and sums precision / recall at the act threshold on the held-out folds.
 func crossValidateVector(sp *spec.Spec, ms []calib.MultiSample, k int) (precision, recall float64) {
-	// 採点は identity / check と同じ集合(部分ラベル "!x" を含む全ラベル)と同じ事象(judge)で行う。
-	// 当てる(FitVector)のは正解の選択肢が分かっている完全ラベルだけ。監査 C1 / C4。
+	// Scoring uses the same set as identity / check (all labels, including partial "!x") and the same event (judge).
+	// Fitting (FitVector) uses only complete labels whose correct option is known. Audit C1 / C4.
 	if k < 2 || len(ms) < k {
 		return 0, 0
 	}
@@ -1198,7 +1198,7 @@ func crossValidateVector(sp *spec.Spec, ms []calib.MultiSample, k int) (precisio
 	return precision, recall
 }
 
-// report は最上位の確率に対する指標の束。
+// report is a bundle of metrics against the top probability.
 type report struct {
 	pTop      []float64
 	correct   []bool
@@ -1211,7 +1211,7 @@ type report struct {
 	confusion map[string]map[string]float64
 }
 
-// topReport は(較正があれば当ててから)最上位の確率・正誤・混同表を集める。
+// topReport collects the top probability, correctness and the confusion table (after applying calibration if any).
 func topReport(sp *spec.Spec, ms []calib.MultiSample, v *calib.Vector) report {
 	r := report{
 		pTop: make([]float64, len(ms)), correct: make([]bool, len(ms)), weights: make([]float64, len(ms)),
@@ -1297,7 +1297,7 @@ func printConfusion(confusion map[string]map[string]float64, reports ...io.Write
 	}
 }
 
-// printThresholdReport は act / ask の閾値での precision / recall を出し、act での precision を返す。
+// printThresholdReport prints precision / recall at the act / ask thresholds and returns precision at act.
 func printThresholdReport(t spec.Thresholds, probs []float64, truths []bool, weights []float64, reports ...io.Writer) float64 {
 	stdout := reportWriter(reports...)
 	report := func(name string, th float64) float64 {
@@ -1367,13 +1367,13 @@ func cmdHash(args []string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------- check(契約の検査、設計 §8)
+// ---------------------------------------------------------------- check (contract check, design §8)
 
-// cmdCheck は spec の較正ブロックが今も有効かを調べる。CI で回す前提で、違反があれば exit 1。
-//   - 較正の spec_hash が現在のハッシュと一致する(文言を変えたのに定数を据え置いていない)
-//   - 較正は手で書かれていない(method が既知で、鍵が揃っている)
-//   - ラベル(store + eval.labeled の raw 行)で、較正後の act 閾値での precision が act 以上
-//   - noul は正負が逆転していない
+// cmdCheck checks whether the spec's calibration block is still valid. Meant to run in CI; exits 1 on any violation.
+//   - the calibration's spec_hash matches the current hash (the wording was not changed while keeping the constants)
+//   - the calibration was not written by hand (method is known and the keys are complete)
+//   - with the labels (store + raw rows of eval.labeled), precision at the calibrated act threshold is at least act
+//   - for noul, positive and negative are not inverted
 func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	storeDir := bindStore(fs)
@@ -1404,14 +1404,14 @@ func cmdCheck(args []string) error {
 	return nil
 }
 
-// checkSpec は 1 spec の違反を列挙する。
+// checkSpec lists the violations of one spec.
 func checkSpec(sp *spec.Spec, st store.Store) []string {
 	var out []string
 	h := sp.Hash()
 	base := sp
 	for _, c := range sp.Calibration {
 		key := fmt.Sprintf("calibration(model=%s)", c.Model)
-		sp := base // この線の段の spec(文脈の段の線は、文脈の段のハッシュと正解で検証する)
+		sp := base // the spec for this line's rung (a context-rung line is verified with the context rung's hash and truths)
 		if c.SpecHash == base.ContextHash() {
 			sp = base.ContextSpec()
 			key = fmt.Sprintf("calibration(model=%s, context rung)", c.Model)
@@ -1435,7 +1435,7 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 			out = append(out, fmt.Sprintf("%s: unknown method %q (calibration blocks are generated, not hand-written)", key, c.Method))
 			continue
 		}
-		// 手書きのブロックを弾く: calibrate が書かないもの(min_n 未満の n、日付無し)は通さない(監査 S5)
+		// Reject hand-written blocks: what calibrate never writes (n below min_n, no date) does not pass (audit S5)
 		if c.N < sp.Eval.MinN {
 			out = append(out, fmt.Sprintf("%s: n=%d < eval.min_n=%d (calibrate would not have written this block; --force or hand-written)", key, c.N, sp.Eval.MinN))
 			continue
@@ -1457,8 +1457,8 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 		if prec < sp.Thresholds.Act {
 			out = append(out, fmt.Sprintf("%s: precision at act is %.3f < thresholds.act %.2f on %d labels", key, prec, sp.Thresholds.Act, len(labels)))
 		}
-		// 人が決めた正解だけでも測る。機械の正解(context: 上の段の答え)は同じモデルと同じ方向に間違いうるので、act の精度の保証は人の分で取る。
-		// 抜き取り(act の 20 件に 1 件が答え合わせの列に出る)が母数を作る。min_n に届くまでは数だけ言い、届いたら act を割れば落とす。
+		// Also measure with human-decided truths only. Machine truths (context: upper-rung answers) can be wrong in the same direction as the same model, so the act precision guarantee comes from the human ones.
+		// Sampling (1 in 20 act decisions shows up in the answer queue) builds the sample. Until min_n is reached only the count is reported; after that, falling below act fails.
 		var human []store.Label
 		for _, l := range labels {
 			if store.HumanSource(l.Source) {
@@ -1477,14 +1477,14 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 	return out
 }
 
-// collectLabels は store のラベルと、eval.labeled の raw 付き行(noul)を合わせる。モデルは呼ばない。
-// raw 付き行はどのモデルの確率か分からないので、その較正が同じファイルで当てられた(fitted_on が一致する)時だけ使う。
+// collectLabels combines store labels with eval.labeled rows that have raw (noul). The model is not called.
+// Raw rows do not say which model's probabilities they are, so use them only when the calibration was fitted on the same file (fitted_on matches).
 func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]store.Label, error) {
 	all, err := st.Labels(sp.ID, sp.Hash(), model)
 	if err != nil {
 		return nil, err
 	}
-	labels := store.LatestPerInput(all) // calibrate と同じ数え方(入力ごとに最新の正解 1 つ)
+	labels := store.LatestPerInput(all) // counted like calibrate (the latest truth per input)
 	if sp.Eval.Labeled == "" || sp.Eval.Labeled != fittedOn {
 		return labels, nil
 	}
@@ -1505,7 +1505,7 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 			return nil, err
 		}
 		if given == nil {
-			continue // モデルを呼ばないと分からない行は check では使わない
+			continue // rows that need the model are not used in check
 		}
 		truth, err := parseTruth(sp.Type, r.Truth)
 		if err != nil {
@@ -1521,7 +1521,7 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 	return labels, nil
 }
 
-// evaluateCalibration は較正を当てた上で act 閾値での precision を出す。noul は逆転も見る。
+// evaluateCalibration applies the calibration and gives precision at the act threshold. For noul it also checks inversion.
 func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label) (precision float64, inverted bool, nAct int) {
 	probs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
 	switch sp.Type {
@@ -1550,16 +1550,16 @@ func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label
 	}
 	for _, p := range probs {
 		if p >= sp.Thresholds.Act {
-			nAct++ // 線を掛けた後に act 帯に入る判定の数(人の正解だけで精度を測る時の母数)
+			nAct++ // number of decisions in the act band after applying the line (the sample size when measuring precision on human truths only)
 		}
 	}
 	return precisionAt(sp.Thresholds.Act, probs, truths, weights), inverted, nAct
 }
 
-// judge は 1 ラベルの「帯に使う確率」と「その答えが正しかったか」。
-//   - choice: 最上位の確率、正解は top == truth("!x" は x 以外)
-//   - score で thresholds.level あり: P(level ≥ k)、正解は truth のレベル ≥ k(事象が起きたか)
-//   - score で level なし: choice と同じ
+// judge is one label's "probability used for the band" and "whether that answer was right".
+//   - choice: the top probability; correct if top == truth ("!x" means anything but x)
+//   - score with thresholds.level: P(level ≥ k); correct if the truth's level ≥ k (the event happened)
+//   - score without level: same as choice
 func judge(sp *spec.Spec, dist map[string]float64, truth string) (top string, p float64, correct bool) {
 	top, p = argmax(dist)
 	if sp.Type == spec.Score && sp.Thresholds.Level > 0 && !store.Partial(truth) {
@@ -1570,16 +1570,16 @@ func judge(sp *spec.Spec, dist map[string]float64, truth string) (top string, p 
 	return top, p, store.Correct(top, truth)
 }
 
-// ---------------------------------------------------------------- drift(劣化の監視、設計 §9)
+// ---------------------------------------------------------------- drift (watching for degradation, design §9)
 
-// cmdDrift は直近 N 件のラベルで、較正時の Brier と act での precision がどれだけ悪化したかを見る。
-// 較正時の Brier から +0.05 以上悪化、または precision が act を割ったら警告して exit 1。
+// cmdDrift checks, over the latest N labels, how much the Brier and the precision at act got worse than at calibration time.
+// It warns and exits 1 if Brier is worse by +0.05 or more than at calibration, or precision falls below act.
 func cmdDrift(args []string) error {
 	fs := flag.NewFlagSet("drift", flag.ContinueOnError)
 	storeDir := bindStore(fs)
-	model := fs.String("model", "", "較正の鍵になっているモデル名(必須)")
-	window := fs.Int("window", 50, "直近何件を見るか")
-	tol := fs.Float64("tolerance", 0.05, "Brier の悪化をどこまで許すか")
+	model := fs.String("model", "", "model name used as the calibration key (required)")
+	window := fs.Int("window", 50, "how many recent labels to look at")
+	tol := fs.Float64("tolerance", 0.05, "how much Brier degradation to allow")
 	path, err := parseSpecPath(fs, args)
 	if err != nil {
 		return err
@@ -1634,7 +1634,7 @@ func cmdDrift(args []string) error {
 	return nil
 }
 
-// driftMetrics は較正を当てた直近ラベルの precision@act・Brier・ask での一致率。
+// driftMetrics gives precision@act, Brier and agreement at ask for the latest labels with calibration applied.
 func driftMetrics(sp *spec.Spec, c spec.Calibration, labels []store.Label) (precision, brier, askAgreement, askN float64) {
 	probs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
 	var askHit float64
@@ -1668,23 +1668,23 @@ func driftMetrics(sp *spec.Spec, c spec.Calibration, labels []store.Label) (prec
 	return precisionAt(sp.Thresholds.Act, probs, truths, weights), calib.Brier(probs, truths, weights), askAgreement, askN
 }
 
-// ---------------------------------------------------------------- bias(順序バイアスの測定)
+// ---------------------------------------------------------------- bias (measuring order bias)
 
-// cmdBias は choice の選択肢の並びを入れ替えて同じ state を聞き直し、答えが並びでどれだけ動くかを測る。
-//   - flip rate: 並びを変えたら最上位が変わった割合
-//   - mean |Δp|: 選択肢ごとの確率の動き
-//   - position mass: 並びの位置ごとの平均確率(位置に偏りがあれば「先頭に寄る」等が見える)
+// cmdBias reorders a choice's options, asks the same state again, and measures how much the answer moves with the order.
+//   - flip rate: share of cases where the top changed when the order changed
+//   - mean |Δp|: how much each option's probability moved
+//   - position mass: average probability per position (shows a bias such as "leans to the first")
 //
-// 記録も較正もしない。生成しないモデルなので順列を回すのは安い。
+// Records nothing and calibrates nothing. The model does not generate text, so running permutations is cheap.
 func cmdBias(args []string) error {
 	fs := flag.NewFlagSet("bias", flag.ContinueOnError)
 	var ef endpointFlags
 	ef.bind(fs)
-	labeledPath := fs.String("labeled", "", "state を取る元(省略時は spec の eval.labeled。無ければ store の正解の本文)")
+	labeledPath := fs.String("labeled", "", "where to take states from (default: the spec's eval.labeled; without it, the text of truths in the store)")
 	storeDir := bindStore(fs)
-	rows := fs.Int("rows", 20, "使う行数の上限")
-	perms := fs.Int("permutations", 5, "行ごとに回す順列の数")
-	seed := fs.Int64("seed", 1, "順列の乱数の種")
+	rows := fs.Int("rows", 20, "maximum number of rows to use")
+	perms := fs.Int("permutations", 5, "number of permutations per row")
+	seed := fs.Int64("seed", 1, "random seed for the permutations")
 	path, err := parseSpecPath(fs, args)
 	if err != nil {
 		return err
@@ -1699,7 +1699,7 @@ func cmdBias(args []string) error {
 	if *labeledPath == "" {
 		*labeledPath = sp.Eval.Labeled
 	}
-	// state は calibrate / tune と同じ貯金から: --labeled のファイルと store の正解の本文(入力ごとに最新)
+	// States come from the same saved truths as calibrate / tune: the --labeled file and the text of truths in the store (latest per input)
 	bank, _, err := truthBank(sp, store.Store{Dir: *storeDir}, *labeledPath)
 	if err != nil {
 		return err
@@ -1753,7 +1753,7 @@ type biasReport struct {
 	positionSpread                 float64
 }
 
-// measureBias は行ごとに spec の並び + N 個の順列で聞き、並びによる揺れを集計する。
+// measureBias asks each row in the spec's order plus N permutations and tallies how much the order shakes the answer.
 func measureBias(ctx context.Context, sp *spec.Spec, lab []labeled, c *systemone.Client, perms int, seed int64) (biasReport, string, error) {
 	K := len(sp.Options)
 	rep := biasReport{meanAbsDelta: map[string]float64{}, positionMass: make([]float64, K)}
@@ -1766,8 +1766,8 @@ func measureBias(ctx context.Context, sp *spec.Spec, lab []labeled, c *systemone
 	for i := range canonical {
 		canonical[i] = i
 	}
-	// 位置の偏りは「その位置に置かれた選択肢の確率が、spec の並びで聞いた時からどれだけ動いたか」で測る。
-	// 位置ごとの平均確率そのものだと、どの選択肢が偶然その位置に来たかに引きずられる。
+	// Position bias is measured by "how much the probability of the option placed at that position moved from when it was asked in the spec's order".
+	// The raw average probability per position would be skewed by which option happened to land there.
 	addPos := func(order []int, dist, base map[string]float64) {
 		for pos, idx := range order {
 			id := sp.Options[idx].ID
@@ -1827,10 +1827,10 @@ func measureBias(ctx context.Context, sp *spec.Spec, lab []labeled, c *systemone
 	return rep, model, nil
 }
 
-// ---------------------------------------------------------------- status(店の棚卸し)
+// ---------------------------------------------------------------- status (taking stock of the store)
 
-// cmdStatus は store と spec を突き合わせて、判定ごとの記録・ラベルの数、ラベルの出どころと中身の偏り、
-// 較正の有無と鍵の一致を 1 画面に出す。運用で最初に見る画面。モデルも外部も呼ばない。
+// cmdStatus matches the store against the specs and shows on one screen: records and labels per decision, label sources and skew,
+// whether there is a calibration and whether its key matches. The first screen to look at in operation. Calls neither the model nor anything external.
 func cmdStatus(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	storeDir := bindStore(fs)
@@ -1838,7 +1838,7 @@ func cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(paths) == 0 { // spec のパスを省いたら置き場の decisions/*.yaml(基本構成)を読む。画面と同じ数え方になる(監査 R3)
+	if len(paths) == 0 { // without spec paths, read the store's decisions/*.yaml (base layout), so it counts the same way as the page (audit R3)
 		paths = storeSpecPaths(*storeDir)
 	}
 	st := store.Store{Dir: *storeDir}
@@ -1892,7 +1892,7 @@ func cmdStatus(args []string) error {
 			fmt.Fprintf(stdout, "  by source: %s\n", fmtCounts(bySource))
 			fmt.Fprintf(stdout, "  by truth:  %s\n", fmtCounts(byTruth))
 		}
-		// 仕事ごとの数(hook の記録に付く印。1 つの store に複数のプロジェクトの判定が溜まるので、どこで何件かを見る。線は全体で 1 本)
+		// Counts per work (the mark on hook records. One store collects decisions from several projects, so show how many where. There is one line overall)
 		if all, err := st.Records(id, 0); err == nil {
 			byProject := map[string]int{}
 			for _, r := range all {
@@ -1906,7 +1906,7 @@ func cmdStatus(args []string) error {
 		}
 		sp := specs[id]
 		if f, err := st.Funnel(id, sp != nil && decide.DiscardUnsure(sp)); err == nil && f.Records > 0 {
-			// 段ごとの数。進み具合は 1000 判定あたりの人の判断(ask のまま人に回った数)
+			// Counts per rung. Progress is human judgments per 1000 decisions (those that stayed ask and went to a person)
 			fmt.Fprintf(stdout, "  rungs: settled by the minimal question %d, by added context %d, left to a person %d (%.0f per 1000 decisions)\n", f.Minimal, f.Context, f.Human, f.HumanPerThousand())
 		}
 		if all, err := st.Records(id, 0); err == nil && len(all) > 0 {
@@ -1916,20 +1916,20 @@ func cmdStatus(args []string) error {
 			total.add(w)
 		}
 		if len(labs) > 0 {
-			audited := map[string]bool{} // 判定(trace)で数える。文脈を通った判定の答えは 2 段に付くが、人の確認は 1 回
+			audited := map[string]bool{} // count by decision (trace). A decision that went through context has its answer on 2 rungs, but a person checks it once
 			for _, l := range labs {
 				if l.Source == "audit" {
 					audited[l.TraceID] = true
 				}
 			}
-			// receipt の「human-checked act decisions」とは別の数: こちらは抜き取りに人が答えた判定の数。receipt は人の正解のうち、この線なら act に入るもの全部
+			// A different number from the receipt's "human-checked act decisions": this is the number of decisions a person answered in the sampling. The receipt counts all human truths that this line would put in act
 			fmt.Fprintf(stdout, "  audit: 1 in 20 act decisions is shown to a person; audit answers so far: %d\n", len(audited))
 		}
 		for key, n := range byKey {
 			note := ""
 			if sp != nil {
 				parts := strings.SplitN(key, " @ ", 2)
-				rs := sp // このハッシュの段
+				rs := sp // the rung for this hash
 				if parts[1] == sp.ContextHash() {
 					rs = sp.ContextSpec()
 					note = "  (context rung)"
@@ -1940,8 +1940,8 @@ func cmdStatus(args []string) error {
 				case rs.CalibrationFor(parts[0]) != nil:
 					note += "  calibrated: " + rs.CalibrationFor(parts[0]).Method
 				default:
-					// 件数だけで「線を引ける」と言わない(0.8.3): 片方の答えしか無い・試して分けられなかった・自動で引く途中を分ける
-					tried := (parts[1] == sp.Hash() || parts[1] == sp.ContextHash()) && triedWithoutLine(*storeDir, sp, parts[0]) // 文脈の段も同じ時に試す
+					// Do not say "a line can be drawn" from counts alone (0.8.3): separate only one kind of answer, tried but could not separate, and on the way to drawing automatically
+					tried := (parts[1] == sp.Hash() || parts[1] == sp.ContextHash()) && triedWithoutLine(*storeDir, sp, parts[0]) // the context rung is tried at the same time
 					note += lineStateOf(rs, sp.Eval.MinN, parts[0], parts[1], labs, tried).statusNote(rs, sp.Eval.MinN)
 				}
 			}
@@ -1954,11 +1954,11 @@ func cmdStatus(args []string) error {
 	if len(ids) > 1 && total.Records > 0 {
 		total.print(stdout, "all specs: ")
 	}
-	if scope := storeScope(*storeDir); scope != "" { // 届いた教訓の効果(置き場の親がプロジェクト)
+	if scope := storeScope(*storeDir); scope != "" { // effect of delivered lessons (the store's parent is the project)
 		printMemoryEffect(stdout, st, scope, time.Now())
 	}
-	printGuardStats(stdout, *storeDir)               // 止める検査(0.7.3): 有効な数、止めた数、直った数
-	if scope := storeScope(*storeDir); scope != "" { // 画面(0.8.0): プロジェクトごとに 1 つ、ポートは空いているもの
+	printGuardStats(stdout, *storeDir)               // blocking checks (0.7.3): how many are on, how many blocked, how many fixed
+	if scope := storeScope(*storeDir); scope != "" { // the page (0.8.0): one per project, on a free port
 		if url := livePage(scope); url != "" {
 			fmt.Fprintf(stdout, "page: %s/ (up)\n", url)
 		} else {
@@ -1968,13 +1968,13 @@ func cmdStatus(args []string) error {
 	return nil
 }
 
-// cmdGC は「古くてラベルの無い記録」を店じまいする。ラベル付きの記録とラベルは年齢に関係なく残す(較正の材料)。
-// 既定は表示だけ。--apply を付けた時だけ書き換える。
+// cmdGC clears out "old records with no label". Labeled records and labels are kept regardless of age (calibration material).
+// By default it only shows. It rewrites only with --apply.
 func cmdGC(args []string) error {
 	fs := flag.NewFlagSet("gc", flag.ContinueOnError)
 	storeDir := bindStore(fs)
-	olderThan := fs.String("older-than", "30d", "この年齢より古く、ラベルの無い記録を消す(例 30d, 12h, 1w。0 なら年齢を問わない)")
-	apply := fs.Bool("apply", false, "実際に消す。無ければ数えるだけ")
+	olderThan := fs.String("older-than", "30d", "delete unlabeled records older than this (e.g. 30d, 12h, 1w; 0 means any age)")
+	apply := fs.Bool("apply", false, "actually delete; without it, only count")
 	paths, err := parseMixed(fs, args)
 	if err != nil {
 		return err
@@ -2019,7 +2019,7 @@ func cmdGC(args []string) error {
 	return nil
 }
 
-// parseAge は "30d" "1w" "12h" のような年齢。time.ParseDuration は d と w を知らないので先に換える。負は拒む。
+// parseAge parses ages like "30d" "1w" "12h". time.ParseDuration does not know d and w, so convert them first. Negative values are rejected.
 func parseAge(s string) (time.Duration, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -2077,7 +2077,7 @@ func containsString(xs []string, s string) bool {
 	return false
 }
 
-// parseSpecPath は「<spec.yaml> フラグ…」と「フラグ… <spec.yaml>」の両方を受ける。
+// parseSpecPath accepts both "<spec.yaml> flags..." and "flags... <spec.yaml>".
 func parseSpecPath(fs *flag.FlagSet, args []string) (string, error) {
 	pos, err := parseMixed(fs, args)
 	if err != nil {
@@ -2089,8 +2089,8 @@ func parseSpecPath(fs *flag.FlagSet, args []string) (string, error) {
 	return pos[0], nil
 }
 
-// parseMixed はフラグを位置引数の前にも後ろにも書けるようにする(`shikii status spec.yaml --store DIR` と
-// `shikii status --store DIR spec.yaml` が同じ)。Go の flag は最初の位置引数で止まるので、残りを続けて読む。
+// parseMixed lets flags come before or after positional arguments (`shikii status spec.yaml --store DIR` and
+// `shikii status --store DIR spec.yaml` are the same). Go's flag stops at the first positional argument, so keep reading the rest.
 func parseMixed(fs *flag.FlagSet, args []string) ([]string, error) {
 	var pos []string
 	for {

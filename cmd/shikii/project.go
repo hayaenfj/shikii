@@ -20,28 +20,28 @@ import (
 	"time"
 )
 
-// 共通側はプロジェクトへの入口だけを持つ。会話や採点、線は各 .shikii/ に置く。
+// The shared side holds only the entries to projects. Conversations, scores and lines live in each .shikii/.
 type projectEntry struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Path        string `json:"path"`
 	URL         string `json:"url"`
-	InitVersion int    `json:"-"` // project.json の版: 1 = 0.7.4 以前の --init、2 = 0.7.5 以降(0.7.0 を跨ぐ消去は済んでいる)
+	InitVersion int    `json:"-"` // project.json version: 1 = --init of 0.7.4 or earlier, 2 = 0.7.5 or later (the wipe crossing 0.7.0 is done)
 }
 
-var errProjectInactive = errors.New("このプロジェクトでは shikii --init を実行してください")
+var errProjectInactive = errors.New("run shikii --init in this project")
 
-// 設定ではなく、明示的な初期化が最後まで済んだ印。別の場所へコピーしても有効にしない。
+// Not a setting: a mark that an explicit initialization finished completely. Copying it elsewhere does not activate anything.
 type projectActivation struct {
 	Version int    `json:"version"`
 	Scope   string `json:"scope"`
 }
 
-// projectInitVersionNow は --init が書く project.json の版。2 = 0.7.5 以降(0.7.0 を跨ぐ消去を各プロジェクトで「済み」と判断する印。
-// 監査 R2: 共通の印だけだと、1 件の拒否で印が書けず、消して初期化し直した方を次の実行で二度消した)。
+// projectInitVersionNow is the project.json version --init writes. 2 = 0.7.5 or later (the mark that tells each project the wipe crossing 0.7.0 is "done".
+// Audit R2: with only the shared mark, one refusal kept the mark from being written, and the next run wiped again a project that had already been wiped and re-initialized).
 const projectInitVersionNow = 2
 
-// projectInitVersion は project.json の版(無ければ 0)。
+// projectInitVersion is the project.json version (0 if missing).
 func projectInitVersion(root string) int {
 	b, err := os.ReadFile(filepath.Join(root, "project.json"))
 	if err != nil {
@@ -54,8 +54,8 @@ func projectInitVersion(root string) int {
 	return a.Version
 }
 
-// wipePending は、古い印(version 1 以下)のまま shikii の置き場(records/ など)が残っている = 0.7.0 を跨ぐ消去がまだ、か。
-// 消去の途中の初期化し直しでは、置き場は project.json だけになっているので偽。
+// wipePending reports whether shikii's store (records/ etc.) remains with an old mark (version 1 or lower), i.e. the wipe crossing 0.7.0 has not happened yet.
+// During a re-initialization in the middle of a wipe, the store holds only project.json, so it is false.
 func wipePending(root string) bool {
 	v := projectInitVersion(root)
 	if v <= 0 || v >= projectInitVersionNow {
@@ -78,7 +78,7 @@ func projectActive(root, scope string) (bool, error) {
 		return false, err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return false, errors.New("初期化の保存先は通常のフォルダにしてください")
+		return false, errors.New("the initialization store must be a regular folder")
 	}
 	dir, err := os.OpenRoot(root)
 	if err != nil {
@@ -87,7 +87,7 @@ func projectActive(root, scope string) (bool, error) {
 	defer dir.Close()
 	opened, err := dir.Stat(".")
 	if err != nil || !os.SameFile(info, opened) {
-		return false, errors.New("初期化の保存先が変わりました")
+		return false, errors.New("the initialization store changed")
 	}
 	markerInfo, err := dir.Lstat("project.json")
 	if os.IsNotExist(err) {
@@ -97,7 +97,7 @@ func projectActive(root, scope string) (bool, error) {
 		return false, err
 	}
 	if !markerInfo.Mode().IsRegular() {
-		return false, errors.New("初期化の印は通常のファイルにしてください")
+		return false, errors.New("the initialization mark must be a regular file")
 	}
 	f, err := dir.OpenFile("project.json", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
@@ -109,7 +109,7 @@ func projectActive(root, scope string) (bool, error) {
 	defer f.Close()
 	stat, err := f.Stat()
 	if err != nil || !stat.Mode().IsRegular() || !os.SameFile(markerInfo, stat) || stat.Size() > 4096 {
-		return false, errors.New("プロジェクトの初期化の印を確認できません")
+		return false, errors.New("cannot check the project's initialization mark")
 	}
 	var activation projectActivation
 	decoder := json.NewDecoder(io.LimitReader(f, 4097))
@@ -119,24 +119,24 @@ func projectActive(root, scope string) (bool, error) {
 	}
 	var extra any
 	if decoder.Decode(&extra) != io.EOF {
-		return false, errors.New("プロジェクトの初期化の印が不正です")
+		return false, errors.New("the project's initialization mark is invalid")
 	}
 	return activation.Version >= 1 && activation.Scope == scope, nil
 }
 
-// version は project.json に書く版。0.7.4 以前の印(version 1)と記録のある置き場で新しい本体の --init をやり直しただけなら、
-// 呼び出し元(cmdInit)が元の版を渡す: 版を上げず共通の印も書かない(上げると次の hook install --yes が「この版で初期化済み」と
-// 飛ばし、0.7.0 を跨ぐ消去が永久に飛ぶ。監査 R3)
+// version is the version written to project.json. If a new binary's --init was only rerun on a store with an old mark (version 1, 0.7.4 or earlier) and records,
+// the caller (cmdInit) passes the original version: it neither raises the version nor writes the shared mark (raising it would make the next hook install --yes skip it as "already initialized by this version",
+// and the wipe crossing 0.7.0 would be skipped forever. Audit R3)
 func finishProjectInit(root, scope string, version int) error {
-	// 索引が先にできても、最後の印が無ければ画面にもhookにも現れない。
+	// Even if the index is created first, the project shows up on neither the page nor the hook until the final mark exists.
 	if _, err := os.UserHomeDir(); err == nil {
 		if err := registerProject(scope); err != nil {
 			return err
 		}
 	}
-	// go install で入れて hook install の前に --init した人が、初回の hook install --yes で「0.6.0 以前からの更新」とみなされないよう、
-	// 共通の印が無ければ今の版を書く(監査 R2)
-	// ただし他のプロジェクトが登録済みの時は書かない(0.7.0 を跨ぐ消去の最中に --init が呼ばれても、消去の判断を先回りしない)
+	// So that someone who installed with go install and ran --init before hook install is not treated as "an update from 0.6.0 or earlier" on their first hook install --yes,
+	// write the current version if there is no shared mark (audit R2)
+	// But do not write it when other projects are already registered (even if --init is called during the wipe crossing 0.7.0, do not pre-empt the wipe's decision)
 	if agent, err := agentHome(); err == nil && version == projectInitVersionNow {
 		if _, err := os.Stat(installedVersionPath(agent)); os.IsNotExist(err) {
 			others := 0
@@ -152,7 +152,7 @@ func finishProjectInit(root, scope string, version int) error {
 	}
 	marker := filepath.Join(root, "project.json")
 	if info, err := os.Lstat(marker); err == nil && !info.Mode().IsRegular() {
-		return errors.New("初期化の印にリンクは使えません")
+		return errors.New("the initialization mark cannot be a link")
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -194,7 +194,7 @@ func projectID(scope string) string {
 func projectStoreAt(cwd string) (string, string, error) {
 	scope := projectScopeAt(cwd)
 	if scope == "" {
-		return "", "", errors.New("プロジェクトのフォルダを確かめられません")
+		return "", "", errors.New("cannot verify the project folder")
 	}
 	root := filepath.Join(scope, ".shikii")
 	if err := validateStoreDirectories(root); err != nil {
@@ -214,7 +214,7 @@ func validateStoreDirectories(root string) error {
 			return err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("プロジェクトの保存先に共有先へのリンクは使えません")
+			return errors.New("the project store cannot be a link to a shared location")
 		}
 	}
 	return nil
@@ -240,7 +240,7 @@ func defaultProjectStore() (string, error) {
 	return root, nil
 }
 
-// フラグを読み切ってから既定を解く。拒否した保存先へ相対パスで戻らない。
+// Resolve defaults only after reading all flags. Never fall back to a refused store through a relative path.
 func resolveStoreFlag(fs *flag.FlagSet) error {
 	f := fs.Lookup("store")
 	if f == nil {
@@ -260,7 +260,7 @@ func resolveStoreFlag(fs *flag.FlagSet) error {
 	return f.Value.Set(path)
 }
 
-// symlink の共有先へ個別の会話や較正を書かない。
+// Never write individual conversations or calibrations into a symlinked shared location.
 func checkProjectStore(root string, create bool) error {
 	for _, part := range []string{"", "decisions", "wiki", "records", "labels", "sessions", "guards", "handoff"} {
 		path := filepath.Join(root, part)
@@ -272,18 +272,18 @@ func checkProjectStore(root string, create bool) error {
 		info, err := os.Lstat(path)
 		if err != nil {
 			if os.IsNotExist(err) && part != "" && !create {
-				continue // 古い版が作った置き場(0.6.0 〜 0.7.2 には guards/ が無い)も登録済みとして扱う。無い置き場は使う時に作る
+				continue // a store made by an old version (0.6.0 - 0.7.2 have no guards/) also counts as registered. Missing folders are created when used
 			}
 			return err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("プロジェクトの .shikii と保存先は通常のフォルダにしてください（共有先へのリンクは使いません）")
+			return errors.New("the project's .shikii and store must be regular folders (links to shared locations are not used)")
 		}
 	}
 	return nil
 }
 
-// 個人の会話を git add -A に巻き込まない。追跡済みのファイルの扱いは変えない。
+// Keep personal conversations out of git add -A. The handling of already-tracked files does not change.
 func excludeProjectStore(scope string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -292,7 +292,7 @@ func excludeProjectStore(scope string) error {
 	raw, err := cmd.Output()
 	if err != nil {
 		return nil
-	} // git の外
+	} // outside git
 	path := strings.TrimSpace(string(raw))
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(scope, path)
@@ -366,7 +366,7 @@ func registerProject(scope string) error {
 	}
 	info, err := os.Lstat(dir)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("プロジェクトの索引を開けません")
+		return errors.New("cannot open the project index")
 	}
 	tmp, err := os.CreateTemp(dir, ".project-*")
 	if err != nil {
@@ -420,7 +420,7 @@ func registeredProjects(common string) []projectEntry {
 	return projects
 }
 
-// projectPageURL は、このプロジェクトの画面の URL(立っていれば)。立っていなければ "" (hook が次の依頼で起こす)。
+// projectPageURL is the URL of this project's page (if running). If not running, "" (the hook starts it on the next request).
 func projectPageURL(root string) string {
 	if url := livePage(filepath.Dir(root)); url != "" {
 		return url + "/"
@@ -428,7 +428,7 @@ func projectPageURL(root string) string {
 	return ""
 }
 
-// URL に任意の保存先を受け付けない。hook が登録したプロジェクトだけへ振り分ける。
+// Do not accept an arbitrary store in the URL. Route only to projects the hook registered.
 func newProjectHub(common string, options serveOpts) http.Handler {
 	var mu sync.Mutex
 	handlers := map[string]http.Handler{}

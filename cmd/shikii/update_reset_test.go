@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// 0.7.0 への更新は、初期化済みの各プロジェクトの .shikii/ の中を全部消して初期化し直す(本人の決定、2026-10-23)。
-// 0.7.0 を跨がない更新では消さない。
+// An update to 0.7.0 deletes everything inside each initialized project's .shikii/ and re-initializes it (the owner's decision, 2026-10-23).
+// An update that does not cross 0.7.0 deletes nothing.
 func TestUpdateResetsProjectStoresWhenCrossing070(t *testing.T) {
 	for _, c := range []struct {
 		from, to string
@@ -48,23 +48,23 @@ func TestUpdateResetsProjectStoresWhenCrossing070(t *testing.T) {
 	}
 	entries, _ := os.ReadDir(store)
 	if len(entries) != 1 || entries[0].Name() != "project.json" {
-		t.Fatalf(".shikii/ の中は全部消してから初期化し直す: %v", entries)
+		t.Fatalf("everything inside .shikii/ must be deleted before re-initializing: %v", entries)
 	}
 	if b, _ := os.ReadFile(filepath.Join(store, "project.json")); string(b) != "new" {
-		t.Fatal("初期化し直した印が新しい")
+		t.Fatal("the re-initialized mark must be new")
 	}
 	if b, _ := os.ReadFile(outside); string(b) != "keep" {
-		t.Fatal(".shikii/ の外は触らない")
+		t.Fatal("nothing outside .shikii/ may be touched")
 	}
 	if len(reinit) != 1 || reinit[0] != project {
-		t.Fatalf("各プロジェクトを一度ずつ初期化し直す: %v", reinit)
+		t.Fatalf("each project must be re-initialized exactly once: %v", reinit)
 	}
 
-	// 更新の流れの中で、版を跨ぐ時だけ reset が呼ばれる
+	// In the update flow, reset is called only when crossing the version
 	f := fixtureUpdate(t)
 	var seen [][2]string
 	f.opts.version, f.tag = "0.6.0", "v0.7.0"
-	f.files["shikii"] = []byte("#!/bin/sh\nprintf 'shikii 0.7.0\\n'\n") // 取得した本体は自分の版を言う
+	f.files["shikii"] = []byte("#!/bin/sh\nprintf 'shikii 0.7.0\\n'\n") // the downloaded binary reports its own version
 	f.opts.reset = func(_ context.Context, _ string, from, to [3]uint64) error {
 		seen = append(seen, [2]string{versionString(from), versionString(to)})
 		return nil
@@ -73,6 +73,6 @@ func TestUpdateResetsProjectStoresWhenCrossing070(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(seen) != 1 || seen[0] != [2]string{"0.6.0", "0.7.0"} {
-		t.Fatalf("更新の流れが reset に前後の版を渡す: %v", seen)
+		t.Fatalf("the update flow must pass the old and new versions to reset: %v", seen)
 	}
 }

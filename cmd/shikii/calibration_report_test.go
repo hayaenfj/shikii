@@ -20,9 +20,9 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 		choice bool
 		want   string
 	}{
-		{"overlap", 50, 50, false, "予測"},
-		{"insufficient", 2, 50, false, "届いていません"},
-		{"precision", 2, 2, true, "予測"},
+		{"overlap", 50, 50, false, "predictions"},
+		{"insufficient", 2, 50, false, "short of"},
+		{"precision", 2, 2, true, "predictions"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -73,7 +73,7 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("wrong refusal: %v\n%s", err, report.String())
 			}
-			if tc.n >= tc.min && (strings.Contains(err.Error(), "fewer human truths") || strings.Contains(err.Error(), "届いていません")) {
+			if tc.n >= tc.min && (strings.Contains(err.Error(), "fewer human truths") || strings.Contains(err.Error(), "short of the")) {
 				t.Fatalf("quality failure must not claim insufficient truths: %v", err)
 			}
 			after, _ := os.ReadFile(path)

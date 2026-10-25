@@ -14,8 +14,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// shikii new: 質問に答えるだけで spec ができる。フラグで渡したものは聞かず、足りないものだけ標準入力で聞く。
-// --from で examples/ の見本から始められる。書く前に Validate を通し、通らなければ書かない。
+// shikii new: answer a few questions and you get a spec. Anything passed as a flag is not asked; only what is missing is asked on stdin.
+// --from starts from a sample in examples/. Validate runs before writing; if it fails, nothing is written.
 
 var stdin io.Reader = os.Stdin
 
@@ -26,21 +26,21 @@ func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
 func cmdNew(args []string) error {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
-	dir := fs.String("dir", filepath.Join(".shikii", "decisions"), "書き出す先のフォルダ(既定は .shikii/decisions)")
-	from := fs.String("from", "", "見本にする spec(examples/*.yaml など)。id と、フラグで渡したものだけ変える")
+	dir := fs.String("dir", filepath.Join(".shikii", "decisions"), "folder to write to (default .shikii/decisions)")
+	from := fs.String("from", "", "spec to use as a sample (e.g. examples/*.yaml). Only the id and what you pass as flags change")
 	typ := fs.String("type", "", "choice | noul | score")
-	question := fs.String("question", "", "質問文(モデルに見せる。英語でも日本語でも)")
+	question := fs.String("question", "", "question text (shown to the model; English or Japanese)")
 	var options, levels, inputs multiFlag
-	fs.Var(&options, "option", "choice の選択肢 id=説明(複数可)")
-	fs.Var(&levels, "level", "score の段階(低い順、複数可)")
-	fs.Var(&inputs, "input", "本文に埋める入力の名前(複数可。テンプレートは名前付きで並べる)")
-	pii := fs.String("pii", "", "true: 本文に個人情報が入り得る(外の AI に送らない) | false")
-	sendTo := fs.String("send-to", "", "local | hosted | local,hosted (送ってよい先。先に書いた方を優先)")
-	act := fs.Float64("act", 0.75, "ここから上は自動で動く(較正済みの時だけ)")
-	ask := fs.Float64("ask", 0.60, "ここから上は人に聞く")
-	minN := fs.Int("min-n", 50, "線を引くのに要る正解の数")
-	titleJa := fs.String("title-ja", "", "画面に出す日本語の題名(任意)")
-	force := fs.Bool("force", false, "同名のファイルがあっても上書きする")
+	fs.Var(&options, "option", "a choice option id=description (repeatable)")
+	fs.Var(&levels, "level", "a score level (lowest first, repeatable)")
+	fs.Var(&inputs, "input", "name of an input filled into the text (repeatable; the template lists them by name)")
+	pii := fs.String("pii", "", "true: the text may contain personal information (never sent to an outside AI) | false")
+	sendTo := fs.String("send-to", "", "local | hosted | local,hosted (where it may be sent; the first one wins)")
+	act := fs.Float64("act", 0.75, "at or above this it acts automatically (only once calibrated)")
+	ask := fs.Float64("ask", 0.60, "at or above this it asks a person")
+	minN := fs.Int("min-n", 50, "number of truths needed to draw the line")
+	titleJa := fs.String("title-ja", "", "Japanese title shown on the page (optional)")
+	force := fs.Bool("force", false, "overwrite a file with the same name")
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
@@ -74,7 +74,7 @@ func cmdNew(args []string) error {
 			return fmt.Errorf("--from %s: %w", *from, err)
 		}
 		sp = base
-		sp.Calibration = nil // 見本の線は持ち込まない(別の文言・別の用途)
+		sp.Calibration = nil // do not carry over the sample's line (different wording, different use)
 		sp.Version = 1
 	}
 	sp.ID = id
@@ -102,7 +102,7 @@ func cmdNew(args []string) error {
 		return v, nil
 	}
 
-	// 型
+	// type
 	if *typ == "" && sp.Type == "" {
 		v, err := need("", "Type? (choice = pick one option / noul = yes-no / score = ordered levels):", "type")
 		if err != nil {
@@ -113,7 +113,7 @@ func cmdNew(args []string) error {
 	if *typ != "" {
 		sp.Type = spec.Type(*typ)
 	}
-	// 質問
+	// question
 	if *question == "" && sp.Question == "" {
 		v, err := need("", "Question the model should answer (one sentence; say what counts and what does not):", "question")
 		if err != nil {
@@ -124,7 +124,7 @@ func cmdNew(args []string) error {
 	if *question != "" {
 		sp.Question = *question
 	}
-	// 選択肢 / 段階
+	// options / levels
 	switch sp.Type {
 	case spec.Choice:
 		if len(options) > 0 {
@@ -153,7 +153,7 @@ func cmdNew(args []string) error {
 			sp.Levels = append([]string(nil), levels...)
 		}
 	}
-	// 入力とテンプレート
+	// inputs and template
 	if len(inputs) == 0 && len(sp.State.Required) == 0 {
 		v, err := need("", "Input name(s) the text is built from, comma-separated (e.g. message, or report1,report2):", "input")
 		if err != nil {
@@ -180,7 +180,7 @@ func cmdNew(args []string) error {
 			sp.State.Template = b.String()
 		}
 	}
-	// 送り先と pii
+	// destinations and pii
 	if *sendTo == "" && len(sp.Policy.SendTo) == 0 {
 		v, err := need("", "Where may the text be sent? (local = a model on this machine / hosted = a provider's API / local,hosted):", "send-to")
 		if err != nil {
@@ -215,7 +215,7 @@ func cmdNew(args []string) error {
 			return fmt.Errorf("--pii must be true or false, got %q", *pii)
 		}
 	}
-	// 閾値(--from が無ければフラグの値。あれば見本の値を、明示されたら上書き)
+	// thresholds (without --from, the flag values; with it, the sample's values, overridden when given explicitly)
 	if *from == "" || isSet(fs, "act") {
 		sp.Thresholds.Act = *act
 	}
@@ -247,7 +247,7 @@ func cmdNew(args []string) error {
 	if err := os.WriteFile(path, []byte(header+string(b)), 0o644); err != nil {
 		return err
 	}
-	// 次にやることを、そのまま打てる形で
+	// what to do next, in a form you can type as is
 	var example []string
 	for _, name := range sp.State.Required {
 		example = append(example, "-i "+name+"='…'")

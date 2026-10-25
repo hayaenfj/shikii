@@ -18,20 +18,20 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// shikii up: 手元のモデルを 1 コマンドで用意する。
-//   - llama-server を探して裏のポート(--port + 6。既定 8086)で起こす(既定は Ternary-Bonsai-27B Q2_g64。初回は取得に時間がかかる)
-//   - /health が ok になるまで待つ
-//   - 前に shikii-readout を --port(既定 8080)で立てる。後ろが普通の GGUF なら文字の確率を読み出し、学習済みの決定モデル(OpenJev など)なら
-//     そのまま通す。shikii・hook・MCP は常に --port を見ればよく、モデルの種類で接続先を変えない
-//   - Ctrl-C で両方止める
-// shikii doctor: 何が動いていて何が足りないかを 1 画面で言う(足りないものには直し方)。
+// shikii up: prepares the local model with one command.
+//   - finds llama-server and starts it on the back port (--port + 6, default 8086) (the default is Ternary-Bonsai-27B Q2_g64; the first download takes time)
+//   - waits until /health is ok
+//   - puts shikii-readout in front on --port (default 8080). If the back end is a plain GGUF it reads out the token probabilities; if it is a trained decision model (OpenJev etc.)
+//     it passes requests through. shikii, the hook and MCP always just look at --port and never change where they connect by model type
+//   - Ctrl-C stops both
+// shikii doctor: says on one screen what is running and what is missing (with how to fix what is missing).
 
-// defaultModel は既定のモデル(普通のチャット用 GGUF。本家 llama.cpp と shikii-readout で決定モデルの速さで使う。
-// 2026-10-17 の実測で prompt-intent top-1 0.968、日本語 1.000。約 7.6 GB)。
-// 「Q2_g64」は Hugging Face の量子化タグとして通らないので、":" の後にファイル名を書く(-hf <repo> --hff <file> に展開)。
+// defaultModel is the default model (a plain chat GGUF, used at decision-model speed with upstream llama.cpp and shikii-readout.
+// Measured on 2026-10-17: prompt-intent top-1 0.968, Japanese 1.000. About 7.6 GB).
+// "Q2_g64" does not pass as a Hugging Face quantization tag, so the file name goes after ":" (expanded to -hf <repo> --hff <file>).
 const defaultModel = "prism-ml/Ternary-Bonsai-27B-gguf:Ternary-Bonsai-27B-Q2_g64.gguf"
 
-// hfArgs は -hf の値を llama-server の引数にする。"<repo>:<file>.gguf" ならファイル名で指定し、それ以外("<repo>[:quant]")はそのまま渡す。
+// hfArgs turns the -hf value into llama-server arguments. "<repo>:<file>.gguf" is given by file name; anything else ("<repo>[:quant]") is passed as is.
 func hfArgs(hf string) []string {
 	if i := strings.LastIndex(hf, ":"); i > 0 && strings.HasSuffix(hf, ".gguf") {
 		return []string{"-hf", hf[:i], "--hff", hf[i+1:]}
@@ -39,22 +39,22 @@ func hfArgs(hf string) []string {
 	return []string{"-hf", hf}
 }
 
-// llamaPortOffset は readout の口(--port)から llama-server の裏の口までの固定の差(オプションは無い)。
+// llamaPortOffset is the fixed offset from readout's port (--port) to llama-server's back port (there is no option).
 const llamaPortOffset = 6
 
 type upOpts struct {
 	hf, gguf, alias string
-	port            int // shikii が見る口(shikii-readout)
+	port            int // the port shikii looks at (shikii-readout)
 	ctx             int
 }
 
 type plan struct {
-	server    []string // llama-server のコマンド(裏の口で起こす)
-	llamaPort int      // 裏の口
-	install   string   // llama-server が無い時の入れ方
+	server    []string // llama-server command (started on the back port)
+	llamaPort int      // back port
+	install   string   // how to install llama-server when missing
 }
 
-// upPlan は何を起こすかを決める(実行はしない。テストで確かめる部分)。
+// upPlan decides what to start (it does not run anything; this is the part tests check).
 func upPlan(o upOpts, llamaPath string) plan {
 	if llamaPath == "" {
 		return plan{install: "llama-server not found. Install llama.cpp (brew install llama.cpp, or https://github.com/ggml-org/llama.cpp/releases) and run shikii up again"}
@@ -83,7 +83,7 @@ type probeResult struct {
 	note          string
 }
 
-// probe は口が生きているか、モデル名、決定モデルか(/v1/systemone が 501 を返さないか)を見る。
+// probe checks whether the port is alive, the model name, and whether it is a decision model (/v1/systemone does not return 501).
 func probe(base string) probeResult {
 	c := &http.Client{Timeout: 3 * time.Second}
 	var p probeResult
@@ -93,7 +93,7 @@ func probe(base string) probeResult {
 		return p
 	}
 	resp.Body.Close()
-	p.up = resp.StatusCode == http.StatusOK // 4xx は「何か別のものがいる」。生きているとは言わない
+	p.up = resp.StatusCode == http.StatusOK // 4xx means "something else is there". Do not call it alive
 	if r, err := c.Get(strings.TrimRight(base, "/") + "/v1/models"); err == nil {
 		var m struct {
 			Data []struct {
@@ -126,23 +126,23 @@ func probe(base string) probeResult {
 	return p
 }
 
-// upBlockedByHosted は、鍵があって判定を TypeSafe の Jev に送る設定(SHIKII_MODEL=local でない)なら、手元のモデルを起こさない理由を返す。
-// Jev が有効な間は :8086 の llama-server を立てない(本人の決定、2026-10-23)。空なら起こしてよい。
+// upBlockedByHosted returns the reason not to start the local model when there is a key and decisions go to TypeSafe's Jev (SHIKII_MODEL is not local).
+// While Jev is active, the llama-server on :8086 is not started (the owner's decision, 2026-10-23). Empty means it may start.
 func upBlockedByHosted() string {
 	if !usesHosted() {
 		return ""
 	}
-	return "TYPESAFE_API_KEY があるので判定は TypeSafe の Jev に送り、手元のモデル(llama-server)は起こしません。手元のモデルを使うなら SHIKII_MODEL=local を置いてから shikii up"
+	return "TYPESAFE_API_KEY is set, so decisions go to TypeSafe's Jev and the local model (llama-server) is not started. To use the local model, set SHIKII_MODEL=local and then run shikii up"
 }
 
 func cmdUp(args []string) error {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	var o upOpts
-	fs.StringVar(&o.hf, "hf", defaultModel, "Hugging Face のモデル(llama-server -hf に渡す)")
-	fs.StringVar(&o.gguf, "gguf", "", "手元の GGUF ファイル(あれば -hf より優先)")
-	fs.StringVar(&o.alias, "alias", "", "GGUF の時の名前(較正の鍵になる)")
-	fs.IntVar(&o.port, "port", 8080, "shikii が見る口(shikii-readout)。llama-server はその 6 つ上の口で裏に立つ")
-	fs.IntVar(&o.ctx, "ctx", 4096, "文脈長(GGUF の時)")
+	fs.StringVar(&o.hf, "hf", defaultModel, "Hugging Face model (passed to llama-server -hf)")
+	fs.StringVar(&o.gguf, "gguf", "", "local GGUF file (takes priority over -hf)")
+	fs.StringVar(&o.alias, "alias", "", "name for a GGUF (becomes the calibration key)")
+	fs.IntVar(&o.port, "port", 8080, "the port shikii looks at (shikii-readout). llama-server runs behind it on the port 6 above")
+	fs.IntVar(&o.ctx, "ctx", 4096, "context length (for a GGUF)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -177,7 +177,7 @@ func cmdUp(args []string) error {
 	}
 	fmt.Fprintln(stdout, "waiting for /health (the first run downloads the model; this can take minutes) …")
 	exited := make(chan error, 1)
-	go func() { exited <- srv.Wait() }() // 子が死んだらすぐ分かるように(ProcessState は Wait の後にしか立たない)
+	go func() { exited <- srv.Wait() }() // so we notice right away if the child dies (ProcessState is set only after Wait)
 	var pr probeResult
 	healthy := false
 	deadline := time.After(20 * time.Minute)
@@ -198,7 +198,7 @@ wait:
 	if !healthy {
 		return errors.New("llama-server did not become healthy in 20 minutes")
 	}
-	// 前に readout を立てる。普通の GGUF なら読み出し、決定モデルならそのまま通す(readout が自分で見分ける)
+	// Put readout in front. For a plain GGUF it reads out; for a decision model it passes through (readout tells them apart itself)
 	ro := exec.CommandContext(ctx, readout, "--upstream", base, "--port", fmt.Sprint(o.port))
 	ro.Stdout, ro.Stderr = os.Stderr, os.Stderr
 	if err := ro.Start(); err != nil {
@@ -239,7 +239,7 @@ wait:
 	return nil
 }
 
-// findReadout は shikii-readout を、この実行ファイルの隣 → PATH の順で探す。
+// findReadout looks for shikii-readout next to this executable, then on PATH.
 func findReadout() (string, error) {
 	if exe, err := os.Executable(); err == nil {
 		cand := filepath.Join(filepath.Dir(exe), "shikii-readout")
@@ -255,10 +255,10 @@ func findReadout() (string, error) {
 
 func cmdDoctor(args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	specsDir := fs.String("specs", "", "spec のフォルダ(既定は <store>/decisions)")
-	storeDir := fs.String("store", ".shikii", "記録の置き場")
-	local := fs.String("local", "http://127.0.0.1:8080", "手元のモデルの URL")
-	hosted := fs.String("hosted", "https://api.typesafe.ai", "ホスト版の URL(空なら見ない)")
+	specsDir := fs.String("specs", "", "spec folder (default <store>/decisions)")
+	storeDir := fs.String("store", ".shikii", "where records are stored")
+	local := fs.String("local", "http://127.0.0.1:8080", "URL of the local model")
+	hosted := fs.String("hosted", "https://api.typesafe.ai", "hosted URL (empty to skip)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -271,14 +271,14 @@ func cmdDoctor(args []string) error {
 		}
 		return "MISSING"
 	}
-	// 1. 道具
+	// 1. tools
 	llama, _ := exec.LookPath("llama-server")
 	fmt.Fprintf(stdout, "%s llama-server: %s\n", ok(llama != ""), orElse(llama, "not in PATH → brew install llama.cpp"))
 	readout, err := findReadout()
 	fmt.Fprintf(stdout, "%s shikii-readout: %s\n", ok(err == nil), orElse(readout, "not found → make install"))
-	// 2. 手元のモデル(鍵があれば Jev を使うので、無くても足りない扱いにしない)
+	// 2. the local model (with a key Jev is used, so a missing one is not treated as lacking)
 	if usesHosted() {
-		fmt.Fprintf(stdout, "ok   model: TypeSafe Jev (TYPESAFE_API_KEY があるので手元のモデルは起こさない。手元を使うなら SHIKII_MODEL=local)\n")
+		fmt.Fprintf(stdout, "ok   model: TypeSafe Jev (TYPESAFE_API_KEY is set, so the local model is not started. To use it, set SHIKII_MODEL=local)\n")
 	}
 	if *local != "" {
 		pr := probe(*local)
@@ -293,7 +293,7 @@ func cmdDoctor(args []string) error {
 			fmt.Fprintf(stdout, "WARN local model at %s: %s is a plain chat model → put shikii-readout in front (shikii up does this)\n", *local, pr.model)
 		}
 	}
-	// 3. ホスト版
+	// 3. hosted
 	if *hosted != "" {
 		key := hostedKey()
 		c := &http.Client{Timeout: 4 * time.Second}
@@ -307,7 +307,7 @@ func cmdDoctor(args []string) error {
 			fmt.Fprintf(stdout, "ok   hosted %s: reachable, key present\n", *hosted)
 		}
 	}
-	// 4. spec と store
+	// 4. spec and store
 	if *specsDir == "" {
 		*specsDir = specsDirOf(*storeDir)
 	}

@@ -21,7 +21,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// fakeSystemOne は choice の答えを固定で返す。
+// fakeSystemOne returns a fixed choice answer.
 func fakeSystemOne(t *testing.T, model string, probs map[string]float64) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req systemone.Request
@@ -81,13 +81,13 @@ func capture(t *testing.T, fn func() error) string {
 
 var traceRe = regexp.MustCompile(`trace=([0-9a-f]{16})`)
 
-// decide → 記録 → label → calibrate(検証)の輪が閉じる。本文は pii に従って残る/残らない。
+// The decide → record → label → calibrate (verify) loop closes. The text is kept or not according to pii.
 func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	srv := fakeSystemOne(t, "kev-4b", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 
-	// pii: true でも本文は記録に残る(何を外に送るかとは別の話)
+	// Even with pii: true, the text is kept in the record (what is sent outside is a separate matter)
 	specPossible := writeSpec(t, dir, "true")
 	out := capture(t, func() error {
 		return cmdDecide([]string{specPossible, "--local", srv.URL, "--store", storeDir, "-i", "message=fix the typo"})
@@ -111,7 +111,7 @@ func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 		t.Fatalf("record: %+v", rec)
 	}
 
-	// pii: false でも同じく本文が残る
+	// With pii: false the text is kept as well
 	_ = os.MkdirAll(filepath.Join(dir, "never"), 0o755)
 	specNever := writeSpec(t, filepath.Join(dir, "never"), "false")
 	out = capture(t, func() error {
@@ -126,7 +126,7 @@ func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 		t.Fatalf("pii=false must store inputs too, got %v", rec2.Inputs)
 	}
 
-	// label: 1 件目は当たり、2 件目は外れ(モデルは change_request と言ったが question が正解)
+	// label: the first one is right, the second wrong (the model said change_request but question is the truth)
 	capture(t, func() error {
 		return cmdLabel([]string{"--store", storeDir, "--source", "ask", trace1, "change_request"})
 	})
@@ -138,7 +138,7 @@ func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 		t.Fatal("label for unknown trace must be rejected")
 	}
 
-	// calibrate(検証): 2 件とも p_top=0.9 ≥ act、正答 1/2 → precision 0.5 < 0.75 → identity を書かない
+	// calibrate (verify): both have p_top=0.9 ≥ act, 1/2 correct → precision 0.5 < 0.75 → identity is not written
 	out = capture(t, func() error {
 		return cmdCalibrate([]string{specPossible, "--store", storeDir, "--model", "kev-4b"})
 	})
@@ -149,9 +149,9 @@ func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 		t.Fatal("precision below act must refuse to write identity calibration")
 	}
 
-	// 別モデル名・別文言のラベルは数えない
+	// Labels from another model name or another wording are not counted
 	out = capture(t, func() error {
-		// min_n=2 なので件数不足で止まる前に n を見たい → エラーは許容
+		// min_n=2, so we want to see n before it stops for too few → an error is acceptable
 		var buf bytes.Buffer
 		old := stdout
 		stdout = &buf
@@ -166,7 +166,7 @@ func TestDecideRecordLabelCalibrateLoop(t *testing.T) {
 	_ = out
 }
 
-// 検証で精度が act 以上なら identity を書き、次の decide は act を出す。
+// If verification gives precision at or above act, identity is written and the next decide gives act.
 func TestVerifiedModelGetsIdentityAndActs(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -219,7 +219,7 @@ func TestParseTruth(t *testing.T) {
 	}
 }
 
-// check は契約の検査: 文言を変えたら stale、精度が落ちたら FAIL。drift は直近ラベルの劣化で警告。
+// check is the contract check: changing the wording makes it stale, a drop in precision makes it FAIL. drift warns about degradation in recent labels.
 func TestCheckAndDrift(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -238,13 +238,13 @@ func TestCheckAndDrift(t *testing.T) {
 	}
 	capture(t, func() error { return cmdCalibrate([]string{specPath, "--store", storeDir, "--model", "m1", "--write"}) })
 
-	// 契約が成り立っている
+	// The contract holds
 	out := capture(t, func() error { return cmdCheck([]string{"--store", storeDir, specPath}) })
 	if !strings.Contains(out, "ok   intent") {
 		t.Fatalf("check must pass: %s", out)
 	}
 
-	// 文言を変えると stale で落ちる
+	// Changing the wording fails it as stale
 	b, _ := os.ReadFile(specPath)
 	edited := strings.Replace(string(b), "question: What is asked?", "question: What is asked? Be strict.", 1)
 	if err := os.WriteFile(specPath, []byte(edited), 0o644); err != nil {
@@ -262,7 +262,7 @@ func TestCheckAndDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// drift: 直近が全部当たりなら ok
+	// drift: ok if all recent ones are right
 	out = capture(t, func() error {
 		return cmdDrift([]string{specPath, "--store", storeDir, "--model", "m1", "--window", "10"})
 	})
@@ -270,7 +270,7 @@ func TestCheckAndDrift(t *testing.T) {
 		t.Fatalf("drift must be ok: %s", out)
 	}
 
-	// 外れが増える(モデルは change_request と言い続けるが正解は question)→ precision が落ちて警告
+	// More misses (the model keeps saying change_request but the truth is question) → precision drops and it warns
 	for i := 0; i < 6; i++ {
 		o := capture(t, func() error {
 			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=why %d", i)})
@@ -285,7 +285,7 @@ func TestCheckAndDrift(t *testing.T) {
 	if err == nil || !strings.Contains(buf.String(), "WARNING") || !strings.Contains(buf.String(), "precision at act 0.400") {
 		t.Fatalf("drift must warn when recent precision collapses: err=%v out=%s", err, buf.String())
 	}
-	// check も同じラベルで落ちる(較正時の約束が今のラベルで成り立たない)
+	// check fails on the same labels too (the promise made at calibration does not hold with the current labels)
 	buf.Reset()
 	stdout = &buf
 	err = cmdCheck([]string{"--store", storeDir, specPath})
@@ -295,11 +295,11 @@ func TestCheckAndDrift(t *testing.T) {
 	}
 }
 
-// 生では確信が足りない choice が vector scaling で act に届く。識別子の鍵も同じ規則に従う。
+// A choice that lacks confidence raw reaches act with vector scaling. Identifier keys follow the same rule.
 func TestCalibrateWritesVectorWhenIdentityIsNotEnough(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
-	// 正解は常に change_request だが、モデルは 0.55 しか出さない(Kev-4B の「確信不足」の再現)
+	// The truth is always change_request, but the model gives only 0.55 (reproducing Kev-4B's "lack of confidence")
 	srv := fakeSystemOne(t, "kev", map[string]float64{"change_request": 0.55, "other": 0.35, "question": 0.10})
 	specPath := writeSpec(t, dir, "false")
 	for i := 0; i < 6; i++ {
@@ -334,7 +334,7 @@ func TestCalibrateWritesVectorWhenIdentityIsNotEnough(t *testing.T) {
 	}
 }
 
-// fakeByMessage は state(メッセージ)ごとに違う分布を返す。
+// fakeByMessage returns a different distribution per state (message).
 func fakeByMessage(t *testing.T, model string, table map[string]map[string]float64) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req systemone.Request
@@ -355,12 +355,12 @@ func fakeByMessage(t *testing.T, model string, table map[string]map[string]float
 	return srv
 }
 
-// identity でも act の precision は満たすが recall が低い。vector が precision を保ったまま recall を上げるなら vector を選ぶ。
+// identity also meets precision at act but has low recall. If vector raises recall while keeping precision, choose vector.
 func TestCalibratePrefersVectorWhenItRaisesRecall(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
 	table := map[string]map[string]float64{}
-	// 10 件: 半分は確信あり(0.95)、半分は確信不足(0.55 で other に 0.35 逃げる)。正解は全部 change_request。
+	// 10 cases: half confident (0.95), half not (0.55, with 0.35 leaking to other). All truths are change_request.
 	for i := 0; i < 10; i++ {
 		msg := "fix " + string(rune('a'+i))
 		if i%2 == 0 {
@@ -391,7 +391,7 @@ func TestCalibratePrefersVectorWhenItRaisesRecall(t *testing.T) {
 	if !strings.Contains(string(b), "method: vector") {
 		t.Fatalf("spec must carry vector:\n%s", b)
 	}
-	// 確信不足だった入力が act に届く
+	// The inputs that lacked confidence reach act
 	out = capture(t, func() error {
 		return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix b"})
 	})
@@ -410,15 +410,15 @@ func TestRecallAtAndCrossValidation(t *testing.T) {
 	if p := precisionAt(0.75, probs, truths, w); p != 0.5 {
 		t.Fatalf("precision: got %f want 0.5", p)
 	}
-	// CV は fold 数より少ないデータでは 0 を返して黙る(過学習した数字を出さない)
+	// CV returns 0 and stays quiet with fewer data than folds (it does not print overfitted numbers)
 	sp := &spec.Spec{Thresholds: spec.Thresholds{Act: 0.75, Ask: 0.6}}
 	if p, r := crossValidateVector(sp, []calib.MultiSample{{Raw: map[string]float64{"a": 0.6, "b": 0.4}, Truth: "a"}}, 5); p != 0 || r != 0 {
 		t.Fatalf("too few samples must yield 0,0 got %f %f", p, r)
 	}
 }
 
-// ファイルのラベルでモデルに聞いて較正したら、得たラベルは store に残り、以後 check はモデル無しで通る。
-// 同じファイルで再実行しても二重に数えない。
+// After calibrating by asking the model about a file's labels, the labels are kept in the store, and check then passes without the model.
+// Rerunning with the same file does not count twice.
 func TestCalibrateFromFilePersistsLabelsForOfflineCheck(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -453,7 +453,7 @@ func TestCalibrateFromFilePersistsLabelsForOfflineCheck(t *testing.T) {
 		}
 	}
 
-	// 2 回目: モデルを止めても、store のラベルを再利用して同じ件数で較正できる。二重に数えず、新たに残さない
+	// Second run: even with the model stopped, it reuses the store's labels and calibrates with the same count. No double counting, nothing new kept
 	srv.Close()
 	out = capture(t, func() error {
 		return cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--model", "kev"})
@@ -462,12 +462,12 @@ func TestCalibrateFromFilePersistsLabelsForOfflineCheck(t *testing.T) {
 		t.Fatalf("re-run must reuse stored labels offline without double counting: %s", out)
 	}
 
-	// check も store のラベルで通る(モデルは止まっている)
+	// check also passes on the store's labels (the model is stopped)
 	out = capture(t, func() error { return cmdCheck([]string{"--store", storeDir, specPath}) })
 	if !strings.Contains(out, "ok   intent") || strings.Contains(out, "FAIL") {
 		t.Fatalf("check must pass offline from persisted labels: %s", out)
 	}
-	// drift も同じラベルで動く(ask 由来が無いので一致率は 0)
+	// drift also works on the same labels (no labels come from ask, so agreement is 0)
 	out = capture(t, func() error { return cmdDrift([]string{specPath, "--store", storeDir, "--model", "kev"}) })
 	if !strings.Contains(out, "ok") {
 		t.Fatalf("drift must run offline: %s", out)
@@ -482,7 +482,7 @@ func mustHash(t *testing.T, specPath string) string {
 	return sp.Hash()
 }
 
-// fakeNoulByMessage は state ごとに決まった p(yes) を返す。
+// fakeNoulByMessage returns a fixed p(yes) per state.
 func fakeNoulByMessage(t *testing.T, model string, table map[string]float64) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req systemone.Request
@@ -526,14 +526,14 @@ eval:
 	return path
 }
 
-// noul でも identity と platt を比べる: 既に較正されたモデルには identity、過信するモデルには platt。
+// noul also compares identity and platt: identity for an already calibrated model, platt for an overconfident one.
 func TestNoulChoosesIdentityOrPlattByCV(t *testing.T) {
 	run := func(t *testing.T, table map[string]float64, truth func(msg string) bool, wantMethod string) string {
 		dir := t.TempDir()
 		storeDir := filepath.Join(dir, ".shikii")
 		srv := fakeNoulByMessage(t, "m", table)
 		specPath := writeNoulSpec(t, dir)
-		// map の走査順は毎回変わる。ラベルの並び(= CV の fold 割り)を固定する
+		// Map iteration order changes every time. Fix the order of labels (= how CV splits folds)
 		msgs := make([]string, 0, len(table))
 		for msg := range table {
 			msgs = append(msgs, msg)
@@ -558,7 +558,7 @@ func TestNoulChoosesIdentityOrPlattByCV(t *testing.T) {
 		return out
 	}
 
-	// 既に較正されている: 正例は 0.9 前後、負例は 0.1 前後 → platt は改善せず identity
+	// Already calibrated: positives around 0.9, negatives around 0.1 → platt does not improve, identity
 	calibrated := map[string]float64{}
 	for i := 0; i < 10; i++ {
 		calibrated[fmt.Sprintf("pos%d", i)] = 0.86 + 0.01*float64(i)
@@ -569,7 +569,7 @@ func TestNoulChoosesIdentityOrPlattByCV(t *testing.T) {
 		t.Fatalf("expected identity: %s", out)
 	}
 
-	// 過信: 正例も負例も 0.9 以上を返すが、負例は少し低い → platt が閾値を作り直して precision を回復
+	// Overconfident: both positives and negatives return 0.9 or more, negatives slightly lower → platt rebuilds the threshold and recovers precision
 	over := map[string]float64{}
 	for i := 0; i < 10; i++ {
 		over[fmt.Sprintf("pos%d", i)] = 0.985 + 0.001*float64(i)
@@ -581,7 +581,7 @@ func TestNoulChoosesIdentityOrPlattByCV(t *testing.T) {
 	}
 }
 
-// 部分ラベル "!edit"(結果から「変更ではなかった」だけ分かった)は precision の評価に効き、学習からは外れる。
+// A partial label "!edit" (the outcome only told us "it was not a change") counts in evaluating precision and is left out of fitting.
 func TestPartialLabelsCountAgainstPrecision(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -594,8 +594,8 @@ func TestPartialLabelsCountAgainstPrecision(t *testing.T) {
 		})
 		traces = append(traces, traceRe.FindStringSubmatch(out)[1])
 	}
-	// モデルは全部 change_request 0.9 と言った。2 件は本当に変更、2 件は「変更ではなかった」(外れ)、
-	// 1 件は「質問ではなかった」(change_request と矛盾しないので当たり扱い)
+	// The model said change_request 0.9 for all. 2 were really changes, 2 were "not a change" (misses),
+	// 1 was "not a question" (consistent with change_request, so counted as right)
 	capture(t, func() error {
 		return cmdLabel([]string{"--store", storeDir, "--source", "outcome", traces[0], "change_request"})
 	})
@@ -615,7 +615,7 @@ func TestPartialLabelsCountAgainstPrecision(t *testing.T) {
 	if !strings.Contains(out, "labels: 2 full, 3 partial") {
 		t.Fatalf("partial labels must be counted separately: %s", out)
 	}
-	// precision@act = (2 + 0.7) / (2 + 0.7 + 0.7·2) = 0.659 — "!change_request" は外れ、"!question" は当たり
+	// precision@act = (2 + 0.7) / (2 + 0.7 + 0.7·2) = 0.659 — "!change_request" is a miss, "!question" is a hit
 	if !strings.Contains(out, "at act>=0.75: precision=0.659") {
 		t.Fatalf("partial labels must be scored as 'anything but x': %s", out)
 	}
@@ -624,11 +624,11 @@ func TestPartialLabelsCountAgainstPrecision(t *testing.T) {
 	}
 }
 
-// score + thresholds.level: 報告の precision も P(level ≥ k) と「正解レベル ≥ k」で測る。
+// score + thresholds.level: the report's precision is also measured with P(level ≥ k) and "truth level ≥ k".
 func TestScoreLevelReports(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
-	// 分布は 2:0.10 / 3:0.45 / 4:0.45 → 最上位 0.45(同点は小さい鍵 "3")、P(≥3)=0.90
+	// Distribution 2:0.10 / 3:0.45 / 4:0.45 → top 0.45 (ties go to the smaller key "3"), P(≥3)=0.90
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req systemone.Request
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -672,19 +672,19 @@ eval:
 		}
 		traces = append(traces, traceRe.FindStringSubmatch(out)[1])
 	}
-	// 正解: 3 件は level 4(事象あり)、1 件は level 1(事象なし)
+	// Truths: 3 are level 4 (event happened), 1 is level 1 (no event)
 	for _, tr := range traces[:3] {
 		capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ask", tr, "4"}) })
 	}
 	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ask", traces[3], "1"}) })
 	out := capture(t, func() error { return cmdCalibrate([]string{specPath, "--store", storeDir, "--model", "m"}) })
-	// P(≥3)=0.90 ≥ act で 4 件とも act 側、正解は 3/4 → precision 0.750
+	// P(≥3)=0.90 ≥ act puts all 4 on the act side, 3/4 correct → precision 0.750
 	if !strings.Contains(out, "at act>=0.75: precision=0.750 recall=1.000") {
 		t.Fatalf("score-level precision must be measured on P(level>=k) vs truth>=k: %s", out)
 	}
 }
 
-// 順序バイアスの測定: 先頭の選択肢に確率を足す偏ったモデルでは flip と位置の偏りが出て、偏りの無いモデルでは出ない。
+// Measuring order bias: a biased model that adds probability to the first option shows flips and position bias; an unbiased model does not.
 func TestBiasDetectsOrderSensitivity(t *testing.T) {
 	mkServer := func(firstBonus float64) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -695,7 +695,7 @@ func TestBiasDetectsOrderSensitivity(t *testing.T) {
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			q := req.Questions["q"]
-			// 素の確率: change_request 0.45 / question 0.40 / other 0.15。先頭に firstBonus を足して正規化
+			// Base probabilities: change_request 0.45 / question 0.40 / other 0.15. Add firstBonus to the first one and normalize
 			base := map[string]float64{"change_request": 0.45, "question": 0.40, "other": 0.15}
 			probs := map[string]float64{}
 			var sum float64
@@ -759,7 +759,7 @@ func TestBiasDetectsOrderSensitivity(t *testing.T) {
 	}
 }
 
-// status は記録・ラベル・較正の棚卸し。古い文言のラベルは stale、足りなければ collecting、揃えば ready。
+// status takes stock of records, labels and calibration. Labels under old wording are stale, too few is collecting, enough is ready.
 func TestStatusInventory(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -786,7 +786,7 @@ func TestStatusInventory(t *testing.T) {
 	if !strings.Contains(out, "enough truths: the line is drawn automatically") || !strings.Contains(out, "by truth:  !change_request=1 change_request=1") {
 		t.Fatalf("status when enough labels:\n%s", out)
 	}
-	// 文言を変えると、溜まったラベルは stale と出る
+	// After changing the wording, the collected labels show as stale
 	b, _ := os.ReadFile(specPath)
 	edited := strings.Replace(string(b), "question: What is asked?", "question: What is asked? Be strict.", 1)
 	if err := os.WriteFile(specPath, []byte(edited), 0o644); err != nil {
@@ -796,14 +796,14 @@ func TestStatusInventory(t *testing.T) {
 	if !strings.Contains(out, "stale hash") {
 		t.Fatalf("status must flag labels from the old wording:\n%s", out)
 	}
-	// spec を渡さなくても数は出る
+	// Counts show even without passing a spec
 	out = capture(t, func() error { return cmdStatus([]string{"--store", storeDir}) })
 	if !strings.Contains(out, "intent: records=3 labels=2") || !strings.Contains(out, "spec not given") {
 		t.Fatalf("status without spec:\n%s", out)
 	}
 }
 
-// gc は既定で表示だけ。--apply で「古くてラベルの無い記録」だけ消し、ラベル付きは残る。
+// gc only shows by default. With --apply it deletes only "old records with no label"; labeled ones stay.
 func TestGCKeepsLabeledAndIsDryRunByDefault(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -818,12 +818,12 @@ func TestGCKeepsLabeledAndIsDryRunByDefault(t *testing.T) {
 	}
 	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, traces[0], "change_request"}) })
 
-	// 既定の 30d では今日の記録は何も対象にならない
+	// With the default 30d, nothing from today is a target
 	out := capture(t, func() error { return cmdGC([]string{"--store", storeDir, specPath}) })
 	if !strings.Contains(out, "intent: would remove 0") {
 		t.Fatalf("fresh records must not be candidates under the default age:\n%s", out)
 	}
-	// 年齢 0 なら、ラベルの無い 2 件が候補。表示だけで消えない
+	// With age 0, the 2 unlabeled records are candidates. Only shown, not deleted
 	out = capture(t, func() error { return cmdGC([]string{"--store", storeDir, "--older-than", "0", specPath}) })
 	if !strings.Contains(out, "intent: would remove 2") || !strings.Contains(out, "keep 1 labeled") || !strings.Contains(out, "--apply") {
 		t.Fatalf("dry run output:\n%s", out)
@@ -832,7 +832,7 @@ func TestGCKeepsLabeledAndIsDryRunByDefault(t *testing.T) {
 	if !strings.Contains(st, "intent: records=3 labels=1") {
 		t.Fatalf("dry run must not delete anything:\n%s", st)
 	}
-	// --apply で消える。ラベルは残る
+	// With --apply they are deleted. Labels stay
 	out = capture(t, func() error { return cmdGC([]string{"--store", storeDir, "--older-than", "0", "--apply", specPath}) })
 	if !strings.Contains(out, "intent: removed 2") {
 		t.Fatalf("apply output:\n%s", out)
@@ -841,12 +841,12 @@ func TestGCKeepsLabeledAndIsDryRunByDefault(t *testing.T) {
 	if !strings.Contains(st, "intent: records=1 labels=1") {
 		t.Fatalf("after apply:\n%s", st)
 	}
-	// spec を渡さなければ store にある全部の spec が対象
+	// Without a spec, every spec in the store is a target
 	out = capture(t, func() error { return cmdGC([]string{"--store", storeDir, "--older-than", "0"}) })
 	if !strings.Contains(out, "intent: would remove 0") {
 		t.Fatalf("gc without spec must still cover the store:\n%s", out)
 	}
-	// 変な年齢は拒む
+	// Reject a strange age
 	if err := cmdGC([]string{"--store", storeDir, "--older-than", "3 weeks", specPath}); err == nil {
 		t.Fatal("unparsable --older-than must be an error")
 	}
@@ -867,7 +867,7 @@ func TestParseAge(t *testing.T) {
 	}
 }
 
-// label --last は spec の直近の記録に付く(trace を控えなくてよい)。
+// label --last attaches to the spec's latest record (no need to note the trace).
 func TestLabelLastRecord(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -894,8 +894,8 @@ func TestLabelLastRecord(t *testing.T) {
 	}
 }
 
-// 文言を変えると較正は消えるが、人が付けた正解は消えない。pii: true で本文が残っていれば、
-// calibrate が同じ入力を新しい文言(新しいハッシュ)でモデルに聞き直し、人の手を借りずに線を引き直す。
+// Changing the wording removes the calibration but not the truths a person gave. With pii: true and the text kept,
+// calibrate asks the model again about the same inputs with the new wording (new hash) and redraws the line without a person's help.
 func TestCalibrateReplaysTruthsAfterWordingChange(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -913,7 +913,7 @@ func TestCalibrateReplaysTruthsAfterWordingChange(t *testing.T) {
 	}
 	oldHash := mustLoad(t, specPath).Hash()
 
-	// 文言を変える → ハッシュが変わる → 今の (hash, model) にはラベルが無い
+	// Change the wording → the hash changes → there are no labels for the current (hash, model)
 	b, _ := os.ReadFile(specPath)
 	edited := strings.Replace(string(b), "question: What is asked?", "question: What is asked? Be strict.", 1)
 	if err := os.WriteFile(specPath, []byte(edited), 0o644); err != nil {
@@ -940,18 +940,18 @@ func TestCalibrateReplaysTruthsAfterWordingChange(t *testing.T) {
 			t.Fatalf("replayed label must keep the human truth and say where it came from: %+v", l)
 		}
 	}
-	// 2 回目は聞き直さない(もう新しいハッシュにラベルがある)
+	// The second run does not re-ask (the new hash already has labels)
 	out = capture(t, func() error {
 		return cmdCalibrate([]string{specPath, "--local", srv.URL, "--store", storeDir})
 	})
 	if strings.Contains(out, "replayed") || !strings.Contains(out, "store=3") {
 		t.Fatalf("second run must use the persisted labels, not replay again:\n%s", out)
 	}
-	// check はモデル無しで通る(新しいハッシュのラベルが store にある)
+	// check passes without the model (the store has labels for the new hash)
 	capture(t, func() error { return cmdCheck([]string{"--store", storeDir, specPath}) })
 }
 
-// 本文が残っていない(本文を残す前の古い)記録の正解は聞き直せない。黙って 0 件にせず、理由を言う。
+// Truths of records without their text (old ones from before text was kept) cannot be re-asked. Do not silently report 0; give the reason.
 func TestCalibrateCannotReplayWithoutStoredText(t *testing.T) {
 	dir := t.TempDir()
 	storeDir := filepath.Join(dir, ".shikii")
@@ -961,7 +961,7 @@ func TestCalibrateCannotReplayWithoutStoredText(t *testing.T) {
 	st := store.Store{Dir: storeDir}
 	old := store.Record{TraceID: store.NewTraceID(), SpecID: sp.ID, SpecHash: "old-hash", Type: "choice", Model: "m",
 		InputsHash: store.HashInputs(map[string]string{"message": "fix"}), Raw: map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0},
-		Top: "change_request", P: 0.9, Band: "ask", At: time.Now()} // Inputs 無し
+		Top: "change_request", P: 0.9, Band: "ask", At: time.Now()} // no Inputs
 	if err := st.AppendRecord(old); err != nil {
 		t.Fatal(err)
 	}
@@ -994,7 +994,7 @@ func mustLoad(t *testing.T, path string) *spec.Spec {
 	return sp
 }
 
-// フラグは位置引数の後ろに書いてもよい(README の一覧がその順で書いてある)。new / status / check / gc / label の 5 つ。
+// Flags may also come after positional arguments (the README's list is written in that order). The 5 commands new / status / check / gc / label.
 func TestFlagsMayFollowPositionals(t *testing.T) {
 	dir := t.TempDir()
 	specPath := writeSpec(t, dir, "false")

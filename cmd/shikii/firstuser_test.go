@@ -28,7 +28,7 @@ func TestInitSeedsTheWikiWithSharedKnowledgeWithoutOverwriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := capture(t, func() error { return cmdInit(nil) })
-	if !strings.Contains(out, "wiki/: ") || !strings.Contains(out, "既製の知識") {
+	if !strings.Contains(out, "wiki/: ") || !strings.Contains(out, "built-in knowledge") {
 		t.Fatalf("init must say it seeded the wiki:\n%s", out)
 	}
 	for _, p := range []string{"index.md", "types/noul.md", "types/score.md", "models/kev-4b.md"} {
@@ -86,7 +86,7 @@ func TestTooFewTruthsSaysWhatToDoNext(t *testing.T) {
 	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, trace, "change_request"}) })
 
 	err := cmdCalibrate([]string{specPath, "--store", storeDir, "--model", "m1", "--write"})
-	if err == nil || !strings.Contains(err.Error(), "eval.min_n を下げ") || !strings.Contains(err.Error(), "shikii label") {
+	if err == nil || !strings.Contains(err.Error(), "lower the spec's eval.min_n") || !strings.Contains(err.Error(), "shikii label") {
 		t.Fatalf("calibrate must name both ways out (collect truths, or lower eval.min_n for a trial): %v", err)
 	}
 	err = cmdTune([]string{specPath, "--local", srv.URL, "--store", storeDir})
