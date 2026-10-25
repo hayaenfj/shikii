@@ -2,6 +2,16 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.9.1 — Three pages: Answer, Knowledge and The AI
+
+- Page: the per-question menu on the left and the summary bar at the top are gone. The switch at the top has only "Answer" (with a count of the decisions waiting for you), "Knowledge" and "The AI". On first open it starts on Answer when something waits for you, otherwise on Knowledge, and the page you picked opens next time.
+- Answer: what waits for a person across the four questions you answer is merged into one queue and shown one card at a time. The question appears at the top of the card and above the buttons, and the button bar sticks to the bottom of the screen (long conversations no longer push the buttons out of view). Bands, model marks, number cards and filters are not shown. Questions only the AI answers, and records whose truth comes from results, are not shown. Only when a new wording waits for adoption does this page ask whether it means the same. The keys (1-9, Enter, →) work only on this page.
+- The AI: one line per question with how far it has learned; pressing it opens that question (progress, the last calibration, the lane switch, reviewing and changing past answers, wording candidates). The lessons delivered and the routine, the guards, the decision model and how often it waits for a person are here too. The cluster of model and count pills beside the question title, the three number cards, the project and kind filters and the one-by-one / list switch were removed.
+- Section headings sit in a light grey band with dark bold text and a green bar, so they no longer blend into the items below.
+- Lesson delivery: a subagent (Claude Code's Agent tool) now gets lessons chosen by the task its parent handed it. A hook just before the Agent / Task tool (`PreToolUse`, `shikii hook agent-task`) keeps the task text and the subagent type, and when the subagent starts (`SubagentStart`) the oldest kept task of the same type is used. Without a kept task it does not choose by the parent's request; it delivers only rules whose scene is "いつも" (or "always"). Before, lessons were chosen by the parent's request and unrelated ones reached the subagent (in this project's records, 4 of 37 deliveries to subagents helped). The update adds a fourth hook to Claude Code (not to Codex; other people's PreToolUse groups are left alone).
+- Lesson delivery: history (`history`) articles are no longer delivered automatically, before requests or to subagents (in this project's records they were delivered 7 times and never used). They can still be read by searching (`wiki query`). Articles without a kind (from before the update) are delivered as before.
+- Cards: Markdown bold and heading marks in the agent's reply are removed for display (no HTML is rendered). "Spot-check an AI assessment" now reads "A spot check of a decision the AI made alone", and "The AI could not assess this" reads "The AI could not decide this one".
+
 ## 0.9.0 — Look up knowledge by scene and kind
 
 - **Update note:** articles given a kind and scene by 0.9.0 look "changed" to a 0.8 binary, and 0.8 refuses every save to the wiki (the articles are not damaged). After updating, reopen the open agent sessions (and their MCP), and update every machine that uses the same wiki to 0.9.0. The update prints this note at the end.
