@@ -245,3 +245,76 @@ func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
 		t.Fatalf("評価が付けば観察待ちから消える: %+v %v", rep.Stats, err)
 	}
 }
+
+// 監査 0.9.1(テストの穴 GM2〜4・14): 子への仕事の控えは、同じ種類の古い物から使い、10 分より古い物は使わない。
+// 足す時は期限切れを捨て、8 件までにする
+func TestSubagentTasksAreOldestFirstWithinLimits(t *testing.T) {
+	now := time.Now()
+	tasks := []subagentTask{
+		{Type: "Explore", Prompt: "古すぎる", At: now.Add(-11 * time.Minute)},
+		{Type: "Explore", Prompt: "古い", At: now.Add(-2 * time.Second)},
+		{Type: "Explore", Prompt: "新しい", At: now.Add(-1 * time.Second)},
+	}
+	if got, ok := pickSubagentTask(tasks, "Explore", now); !ok || got.Prompt != "古い" {
+		t.Fatalf("期限の中で最も古い控えを使う(10 分より古い物は使わない): %+v %v", got, ok)
+	}
+	add := func(s *hookSession, prompt string) {
+		in := &hookInput{ToolName: "Agent", ToolInput: json.RawMessage(`{"prompt":"` + prompt + `","subagent_type":"Plan"}`)}
+		for _, m := range hookAgentTask(in) {
+			m(s)
+		}
+	}
+	// 足す時に期限切れ(別の種類でも)を捨てる
+	expired := &hookSession{SubagentTasks: []subagentTask{{Type: "Explore", Prompt: "期限切れ", At: now.Add(-11 * time.Minute)}}}
+	add(expired, "仕事 X")
+	if len(expired.SubagentTasks) != 1 || expired.SubagentTasks[0].Prompt != "仕事 X" {
+		t.Fatalf("足す時に期限切れの控えを捨てる: %+v", expired.SubagentTasks)
+	}
+	s := &hookSession{SubagentTasks: []subagentTask{{Type: "Plan", Prompt: "期限切れ", At: now.Add(-11 * time.Minute)}}}
+	for i := 0; i < 10; i++ {
+		in := &hookInput{ToolName: "Agent", ToolInput: json.RawMessage(`{"prompt":"仕事 ` + string(rune('A'+i)) + `","subagent_type":"Plan"}`)}
+		for _, m := range hookAgentTask(in) {
+			m(s)
+		}
+	}
+	if len(s.SubagentTasks) != subagentTaskMax || s.SubagentTasks[0].Prompt != "仕事 C" || s.SubagentTasks[len(s.SubagentTasks)-1].Prompt != "仕事 J" {
+		t.Fatalf("足す時に期限切れを捨て、新しい 8 件だけ持つ: %+v", s.SubagentTasks)
+	}
+}
+
+// 監査 0.9.1(テストの穴 GM7・8・10・11): 「いつも」の決まりは、場面が「いつも」(英語の always は大文字小文字を見ない)の rule だけで、
+// 置き換えられた記事は返さない。控えの無い子には、未整理の会話の原文も返さない
+func TestAlwaysRulesAreOnlyLiveAlwaysRules(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	mk := func(title, kind, scene string, replaces ...string) *notebook.Page {
+		d := draft
+		d.ID, d.Title, d.Lesson, d.Kind, d.Scene, d.Replaces = "", title, title+"の教訓。", kind, scene, replaces
+		r, err := book.Ingest(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Page
+	}
+	old := mk("古い決まり", "rule", "いつも")
+	mk("新しい決まり", "rule", "いつも", old.ID)
+	mk("英語の決まり", "rule", "ALWAYS")
+	mk("いつものやり方", "howto", "いつも")
+	got, err := book.AlwaysRules()
+	titles := []string{}
+	for _, p := range got {
+		titles = append(titles, p.Title)
+	}
+	if err != nil || len(got) != 2 || !strings.Contains(strings.Join(titles, ","), "新しい決まり") || !strings.Contains(strings.Join(titles, ","), "英語の決まり") {
+		t.Fatalf("「いつも」の rule だけ、置き換えられた記事を除いて返す: %v %v", err, titles)
+	}
+	// 「いつも」の決まりが無ければ、未整理の会話の原文も返さず、何も届けない
+	st2, scope2, _ := reviewFixture(t) // 教訓の無い土台
+	reviewSeed(t, st2, scope2, 2)      // まだ整理していない、依頼の近い会話
+	if ctx, err := memoryContextFor(st2.Dir, scope2, "README の起動手順を日本語にする 0000000000000002", &hookSession{TurnID: "dddddddddddddddd"}, "", ""); err != nil || !strings.Contains(ctx, "0000000000000002") {
+		t.Fatalf("この検査の前提: 依頼との近さで選ぶ時は未整理の会話の原文が返る: %v %q", err, ctx)
+	}
+	if ctx, err := alwaysContextFor(st2.Dir, scope2, "README の起動手順を日本語にする 0000000000000002", &hookSession{TurnID: "cccccccccccccccc"}, "p", "a"); err != nil || ctx != "" {
+		t.Fatalf("控えの無い子に、未整理の会話の原文を返さない: %v %q", err, ctx)
+	}
+}

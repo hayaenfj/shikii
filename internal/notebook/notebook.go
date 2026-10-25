@@ -506,7 +506,8 @@ func (b Book) query(query string, recall bool) (View, error) {
 		}
 	}
 	for _, p := range valid {
-		if !superseded[p.ID] && !exact {
+		// 自動の配送(recall)では経緯(history)の記事を並べる前に外す(候補を切った後に外すと、経緯が席を塞いで決まりが届かない。監査 0.9.1 中-3)
+		if !superseded[p.ID] && !exact && !(recall && p.Kind == "history") {
 			v.Lessons = append(v.Lessons, p)
 		}
 	}

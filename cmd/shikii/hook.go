@@ -212,10 +212,12 @@ type subagentTask struct {
 	At     time.Time `json:"at"`
 }
 
-// subagentTaskTTL より古い控えは使わない(Agent ツールが断られて子が始まらなかった分を、後の別の子に使わない)。subagentTaskMax 件まで持つ
+// subagentTaskTTL より古い控えは使わない。subagentTaskMax 件まで持つ。新しい控えを足す時、同じ種類で subagentTaskBurst より前の控えは
+// 捨てる(Agent ツールが断られて子が始まらなかった控えを、後の別の子に使って 1 つずつずれないように。監査 0.9.1 中-1)
 const (
-	subagentTaskTTL = 10 * time.Minute
-	subagentTaskMax = 8
+	subagentTaskTTL   = 10 * time.Minute
+	subagentTaskMax   = 8
+	subagentTaskBurst = 30 * time.Second // 同じ種類の子を並べて起こす時の控えは、この間に続けて来る
 )
 
 type pendingItem struct {
@@ -750,11 +752,17 @@ func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hook
 	if kind == "" {
 		kind = "subagent"
 	}
-	task, ok := pickSubagentTask(snapshot.SubagentTasks, in.AgentType, time.Now())
-	var muts []func(*hookSession)
-	if ok {
-		muts = append(muts, func(s *hookSession) { s.SubagentTasks = dropSubagentTask(s.SubagentTasks, task) })
+	// 控えは錠の中で選んで外す(錠の外の写しから選ぶと、並べて起こした同じ種類の子が同じ控えを使う。監査 0.9.1 中-2)
+	var task subagentTask
+	var ok bool
+	if err := updateSession(agent, in.SessionID, func(s *hookSession) {
+		if task, ok = pickSubagentTask(s.SubagentTasks, in.AgentType, time.Now()); ok {
+			s.SubagentTasks = dropSubagentTask(s.SubagentTasks, task)
+		}
+	}); err != nil {
+		return hookOut{}, nil, err
 	}
+	var muts []func(*hookSession)
 	sub := hookSession{Scope: snapshot.Scope} // 届けた版の控えは持たない: 親が受け取っていてもサブエージェントには届ける
 	var context, head string
 	var err error
@@ -791,9 +799,10 @@ func hookAgentTask(in *hookInput) []func(*hookSession) {
 	return []func(*hookSession){func(s *hookSession) {
 		kept := []subagentTask{}
 		for _, t := range s.SubagentTasks {
-			if time.Since(t.At) < subagentTaskTTL {
-				kept = append(kept, t)
+			if time.Since(t.At) >= subagentTaskTTL || t.Type == task.Type && task.At.Sub(t.At) > subagentTaskBurst {
+				continue
 			}
+			kept = append(kept, t)
 		}
 		kept = append(kept, task)
 		if len(kept) > subagentTaskMax {

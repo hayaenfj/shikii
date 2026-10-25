@@ -32,15 +32,9 @@ func memoryContextFor(root, scope, request string, session *hookSession, parent,
 	if scope == "" {
 		return "", nil
 	}
-	recalled, err := (notebook.Book{Root: root, Scope: scope}).Recall(request)
+	pages, err := (notebook.Book{Root: root, Scope: scope}).Recall(request) // Recall が経緯を並べる前に外す
 	if err != nil {
 		return "", err
-	}
-	pages := recalled[:0:0]
-	for _, p := range recalled {
-		if p.Kind != "history" {
-			pages = append(pages, p)
-		}
 	}
 	return deliverMemory(root, scope, request, pages, true, session, parent, agent)
 }
