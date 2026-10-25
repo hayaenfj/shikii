@@ -364,12 +364,27 @@ function checkRulesPanel(target) {
   const fresh = !!target.querySelector('[data-rule="' + lessons[0].id + '"] [data-rule-new]') && !target.querySelector('[data-rule="' + lessons[3].id + '"] [data-rule-new]');
   target.querySelector('[data-scene="公開する時"]')?.click(); flushSync();
   const allWhenFiltered = rows().length === 4;
-  target.querySelector('[data-rule="' + lessons[3].id + '"]')?.click(); flushSync();
-  const opens = (target.querySelector('[data-lesson-detail]')?.textContent || '').includes('教訓 4');
-  unmount(app); i18n.lang = lang;
-  const ok = top && named && order && fresh && allWhenFiltered && opens;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (ルールの欄: 一番上=' + top + ', 名前=' + named + ', いつもが先頭=' + order + ', 最近の印=' + fresh + ', 絞っても全部=' + allWhenFiltered + ', 押すと本文=' + opens + ')');
-  return ok;
+  // 広い画面(最終監査 0.9.1 の T1): ルールの欄から押すと本文まで送る。受け箱など他の欄から押した時は送らない(本文の欄が横にある)
+  const realMatch = globalThis.matchMedia, realScroll = Element.prototype.scrollIntoView;
+  const scrolled = [];
+  globalThis.matchMedia = () => ({ matches: false });
+  Element.prototype.scrollIntoView = function () { scrolled.push(this.dataset.lessonDetail !== undefined); };
+  const settleMicro = () => { flushSync(); return new Promise(r => queueMicrotask(r)); };
+  return (async () => {
+    try {
+      target.querySelector('[data-inbox] [data-open="' + lessons[2].id + '"]')?.click(); await settleMicro();
+      const otherStays = scrolled.length === 0;
+      target.querySelector('[data-rule="' + lessons[3].id + '"]')?.click(); await settleMicro();
+      const opens = (target.querySelector('[data-lesson-detail]')?.textContent || '').includes('教訓 4');
+      const wideScroll = scrolled.length === 1 && scrolled[0];
+      unmount(app); i18n.lang = lang;
+      const ok = top && named && order && fresh && allWhenFiltered && opens && wideScroll && otherStays;
+      console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (ルールの欄: 一番上=' + top + ', 名前=' + named + ', いつもが先頭=' + order + ', 最近の印=' + fresh + ', 絞っても全部=' + allWhenFiltered + ', 押すと本文=' + opens + ', 広い画面でも本文へ送る=' + wideScroll + ', 他の欄からは送らない=' + otherStays + ')');
+      return ok;
+    } finally {
+      globalThis.matchMedia = realMatch; Element.prototype.scrollIntoView = realScroll;
+    }
+  })();
 }
 
 // 最終監査 0.9.1(低-F1): 答えを送っている間に始まった読み直しの古い列で、答えた札が戻らない
@@ -422,7 +437,7 @@ export async function run() {
   const reloadOK = await checkReloadDuringAnswerSend(target);
   const switchOK = await checkSwitchDuringAnswerKeepsLoad(target);
   const countOK = await checkAnswerCountOnlyForNewWaits(target);
-  const rulesOK = checkRulesPanel(target);
+  const rulesOK = await checkRulesPanel(target);
   const advanceOK = await checkAnswerAdvances(target);
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
   const ok = reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
