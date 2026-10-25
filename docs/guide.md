@@ -82,7 +82,7 @@ The agent places the draft and a person enables it (the steps are in [the skill'
 
 ## The routine before and after work
 
-In every turn, two steps are checked by built-in rules. They are always on and cannot be turned off (`shikii guard list` shows them as `組み込み(常に有効)`, built in and always on). They work in projects without `CLAUDE.md` or `AGENTS.md` too.
+In every turn, two steps are checked by built-in rules. They are always on and cannot be turned off (`shikii guard list` shows them as `built in (always enabled)`). They work in projects without `CLAUDE.md` or `AGENTS.md` too.
 
 - **Planning before work (plan-before-work)**: in a turn where the request hook asked for planning, before changing files the agent reads this and the recent conversations with `shikii hook plan query`, searches the wiki with topic words it picks, and saves what was agreed and what is still open with `shikii hook plan submit`. A query without search words answers that the wiki has not been searched yet. The plan is saved even when the decision model is down.
 - **Reflection before ending (reflect-before-end)**: in a turn where the request hook named conversations to reflect on, before ending the agent reads the originals, the delivered memory, the lessons and people's corrections with `shikii reflect query`, and saves the assessments (reviews), the wiki work (wiki) and how the delivered lessons did (memory) with `shikii reflect submit`.

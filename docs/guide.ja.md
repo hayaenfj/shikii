@@ -82,7 +82,7 @@ shikii guard try                    # 今の作業ツリーに当てて見せる
 
 ## 作業の前と後の手順
 
-毎回のターンで、2 つの手順を組み込みの規則で確かめる。いつも有効で、外せない(`shikii guard list` に「組み込み(常に有効)」として出る)。`CLAUDE.md` や `AGENTS.md` の無いプロジェクトでも効く。
+毎回のターンで、2 つの手順を組み込みの規則で確かめる。いつも有効で、外せない(`shikii guard list` に `built in (always enabled)` として出る)。`CLAUDE.md` や `AGENTS.md` の無いプロジェクトでも効く。
 
 - **作業の前の整理(plan-before-work)**: 依頼の hook が整理を頼んだターンで、ファイルを変える前に `shikii hook plan query` で今回と直近の会話を読み、エージェントが選んだ話題の語で wiki を探し、合意したことと未決のことを `shikii hook plan submit` で保存する。検索語の無い query には「wiki はまだ探していない」と返る。判定モデルが止まっていても整理は保存される。
 - **終える前の振り返り(reflect-before-end)**: 依頼の hook が振り返る会話を挙げたターンで、終える前に `shikii reflect query` で原文・届いた記憶・教訓・人の訂正を読み、採点(reviews)・wiki・届いた教訓の評価(memory)を `shikii reflect submit` で保存する。

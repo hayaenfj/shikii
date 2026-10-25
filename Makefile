@@ -5,7 +5,7 @@ STORE   ?= .shikii
 # The drift key is the model in the response (the name shown on the shikii status line). Change it when you switch models
 MODEL   ?= jev-1.14.0
 
-.PHONY: build test install check status drift server demo fake web
+.PHONY: build test check-english install check status drift server demo fake web
 
 # Build the page (web/, Svelte + Tailwind CSS). The result web/dist is embedded in the binary and also committed to the repo (Node is not needed just to use it).
 # After changing the page, make web → commit. Needs Node 24 and npm
@@ -45,6 +45,10 @@ fake: build
 test:
 	test -z "$$(gofmt -l .)" || (gofmt -l . && echo 'gofmt: format the files above' && exit 1)
 	go vet ./... && scripts/go-test.sh && scripts/check-readme.sh && scripts/check-skill.sh
+
+# What ships is in English (development may be written in Japanese first; run this before pushing. CI runs it on every push)
+check-english:
+	python3 scripts/check-english.py
 
 # Delete, then place (new inode). Overwriting a running binary with cp makes macOS invalidate its signature and SIGKILL it from then on (exit 137) (every hook died, 2026-10-18)
 install: build

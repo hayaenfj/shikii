@@ -46,6 +46,8 @@ jobs:
       - run: scripts/check-readme.sh
       # skill (working rules for agents): the front matter and that its references exist
       - run: scripts/check-skill.sh
+      # What ships is in English: Japanese only in the Japanese document pairs, ja.js, testdata and scripts/japanese-allowlist.txt
+      - run: python3 scripts/check-english.py
   # Leaked secrets and known vulnerabilities. Runs side by side with the go job
   security:
     runs-on: ubuntu-latest
