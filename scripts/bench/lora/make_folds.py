@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""LoRA の腕(docs/bench.md の C)の材料を作る(どの spec でも)。
+"""Builds the material for the LoRA arm (C in docs/bench.md) (for any spec).
 
-正解の貯金(labeled json)を 5 分割(行番号 % 5)し、分割ごとに
-  <out>/fold<k>/train.jsonl  … その分割以外の行。mlx_lm.lora の "text" 形式(prompt + 正解の id + <|im_end|>)
-  <out>/fold<k>/valid.jsonl  … train の末尾 4 行(損失の表示用)
-  <out>/fold<k>/test.json    … その分割の行(inputs と truth)。score.py がこれを当てる
-を書く。prompt は spec の質問・選択肢(choice は id: 説明、noul は yes/no、score は段階)・state の template を平文にしたもので、
-Qwen3 のチャット形式(thinking 無し)で囲む。学習と採点で同じ文字列を使う。
+Splits the saved truths (labeled json) into 5 folds (row number % 5) and, for each fold, writes
+  <out>/fold<k>/train.jsonl  … rows outside that fold. mlx_lm.lora "text" format (prompt + correct id + <|im_end|>)
+  <out>/fold<k>/valid.jsonl  … the last 4 rows of train (for showing the loss)
+  <out>/fold<k>/test.json    … the rows of that fold (inputs and truth). score.py predicts these
+The prompt is the spec's question, options (id: description for choice, yes/no for noul, levels for score) and the state template as plain text,
+wrapped in Qwen3's chat format (no thinking). Training and scoring use the same string.
 
-使い方: venv/bin/python scripts/bench/lora/make_folds.py <model> <out> <spec.yaml> <labeled.json>
+Usage: venv/bin/python scripts/bench/lora/make_folds.py <model> <out> <spec.yaml> <labeled.json>
 """
 import json
 import os

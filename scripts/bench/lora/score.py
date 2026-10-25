@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""LoRA の腕の採点(どの spec でも)。分割 k の adapter で、その分割の test.json を当てる。
+"""Scores the LoRA arm (for any spec). Predicts fold k's test.json with fold k's adapter.
 
-生成はしない。prompt の次のトークンの対数確率を選択肢 id(choice は id、noul は yes/no、score は番号)の最初のトークンで読み、
-softmax で分布にする(shikii-readout の plain 配置と同じ考え方)。出力は {"inputs":…, "raw":{id: p}, "truth":…} の行で、
-全部の分割をつなげると out-of-sample の raw になる。shikii calibrate --labeled がそのまま読める(raw が object の行)。
+It does not generate. It reads the log probability of the token after the prompt at the first token of each option id (id for choice, yes/no for noul, the number for score),
+and turns them into a distribution with softmax (the same idea as shikii-readout's plain layout). The output is rows of {"inputs":…, "raw":{id: p}, "truth":…};
+joining all folds gives out-of-sample raw values. shikii calibrate --labeled reads it as is (rows whose raw is an object).
 
-使い方: venv/bin/python scripts/bench/lora/score.py <model> <adapter-path or -> <fold-dir> <out.jsonl(追記)> <spec.yaml>
-adapter に - を渡すと土台だけ(LoRA 無し)で採点する(腕 C の対照)。
+Usage: venv/bin/python scripts/bench/lora/score.py <model> <adapter-path or -> <fold-dir> <out.jsonl (appended)> <spec.yaml>
+Passing - as the adapter scores with the base model only (no LoRA) (the control for arm C).
 """
 import json
 import sys

@@ -12,7 +12,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 件数ではなくJSONの量を目安に分割する。単一の原資料は切らずに返す。
+// Split by the size of the JSON rather than the count. A single source record is returned without cutting it.
 const replyBudget = 60 << 10
 
 type continuation struct {
@@ -39,7 +39,7 @@ func (want continuation) start(token string, total int) (int, error) {
 	if token == "" {
 		return 0, nil
 	}
-	bad := errors.New("wikiの続きが検索条件・プロジェクト・版と一致しません。先頭から読み直してください")
+	bad := errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
 	if len(token) > 2048 {
 		return 0, bad
 	}
@@ -92,7 +92,7 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 		out.Maintenance = nil
 	}
 	out.Remaining = Remaining{}
-	if start == 0 { // 種類と場面の無い記事(0.9.0)。続きの返事には載せない
+	if start == 0 { // pages without kind and scene (0.9.0); not included in continuation replies
 		out.Remaining = b.RemainingUnclassified()
 	}
 	if all.Search != nil {
@@ -178,7 +178,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 	return out, nil
 }
 
-// 件数とともに育つ索引・見直し記録。個々の記事と原資料の本文上限とは分ける。
+// Index and review log that grow with the count. Kept separate from the body limits of each page and source record.
 func readRegistry(path string) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
@@ -190,7 +190,7 @@ func readRegistry(path string) ([]byte, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("wikiの索引は通常ファイルである必要があります")
+		return nil, errors.New("the wiki index must be a regular file")
 	}
 	return io.ReadAll(f)
 }

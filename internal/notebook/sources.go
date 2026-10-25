@@ -24,13 +24,13 @@ func readOriginals(path string) ([]byte, error) {
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, (2<<20)+1))
 	if len(data) > 2<<20 {
-		return nil, errors.New("原資料の長文は2MB以内です")
+		return nil, errors.New("the long source text must be 2MB or less")
 	}
 	return data, err
 }
 
 func immutableLarge(path string, data []byte) error {
-	// 同じ原文の再送でも、途中のファイルや別の内容で置き換えない。
+	// Even when the same original is sent again, do not replace it with a partial file or different content.
 	f, err := os.CreateTemp(filepath.Dir(path), ".source-text-*")
 	if err != nil {
 		return err
@@ -49,7 +49,7 @@ func immutableLarge(path string, data []byte) error {
 		}
 		old, e := readOriginals(path)
 		if e != nil || !bytes.Equal(old, data) {
-			return errors.New("保存済みの原文は変更できません")
+			return errors.New("a saved original cannot be changed")
 		}
 	}
 	return nil
@@ -81,7 +81,7 @@ func (o Observation) valid() bool {
 
 func (b Book) Capture(o Observation) (Observation, error) {
 	if o.ID != "" || !o.valid() {
-		return Observation{}, errors.New("原資料には種類・題・本文（32KB以内）・参照箇所・版・確認時点が必要です。IDは指定しません")
+		return Observation{}, errors.New("a source record needs kind, title, content (up to 32KB), reference, version and observed time; do not give an ID")
 	}
 	o.ObservedAt = o.ObservedAt.UTC()
 	data, _ := json.Marshal(o)
@@ -112,7 +112,7 @@ func (b Book) Capture(o Observation) (Observation, error) {
 	}
 	data, _ = json.Marshal(o)
 	if len(data) > 64<<10 {
-		return Observation{}, errors.New("原資料のJSONは64KB以内です")
+		return Observation{}, errors.New("the source record JSON must be 64KB or less")
 	}
 	if err := immutable(filepath.Join(dir, o.ID+".json"), data); err != nil {
 		return Observation{}, err
@@ -135,11 +135,11 @@ func capturedIDs(dir string) ([]string, error) {
 	}
 	var ids []string
 	if json.Unmarshal(data, &ids) != nil {
-		return nil, errors.New("原資料の待ち行列を読み取れません")
+		return nil, errors.New("cannot read the source record queue")
 	}
 	for _, id := range ids {
 		if !idPattern.MatchString(id) {
-			return nil, errors.New("原資料のIDが不正です")
+			return nil, errors.New("invalid source record ID")
 		}
 	}
 	return ids, nil
@@ -152,14 +152,14 @@ func (b Book) readObservation(dir, id string) (Observation, error) {
 	}
 	var o Observation
 	if json.Unmarshal(data, &o) != nil || o.ID != id || !o.valid() {
-		return Observation{}, errors.New("保存された原資料が不正です")
+		return Observation{}, errors.New("the saved source record is invalid")
 	}
 	want := o.ID
 	o.ID = ""
 	canonical, _ := json.Marshal(o)
 	o.ID = want
 	if digest(append([]byte(b.Scope+"\n"), canonical...))[:16] != id {
-		return Observation{}, errors.New("保存された原資料のハッシュが一致しません")
+		return Observation{}, errors.New("the hash of the saved source record does not match")
 	}
 	return o, nil
 }
@@ -229,9 +229,9 @@ func validSource(data []byte, id string) bool {
 	return json.Unmarshal(data, &o) == nil && o.ID == id && o.valid()
 }
 
-// OtherPathStores は、このプロジェクトの置き場に残った、別のパスの名(sha256(パス) が今のパスと違う)の wiki の置き場を、
-// Root からの相対パスで返す(0.9.2)。フォルダを移した・名前を変えた後に古い名のまま残ると、wiki が黙って空になっていた。
-// 中のファイルが全部今の置き場に写してある置き場は数えない(古い方は消さずに残してよい)。
+// OtherPathStores returns, as paths relative to Root, the wiki stores left in this project's store under a different path's name
+// (sha256(path) differs from the current path) (0.9.2). Left under the old name after moving or renaming the folder, the wiki silently became empty.
+// A store whose files have all been copied to the current store is not counted (the old one may be kept, not deleted).
 func (b Book) OtherPathStores() ([]string, error) {
 	if b.Scope == "" || b.Root == "" {
 		return nil, errors.New("wiki needs a project and a store")
@@ -271,7 +271,7 @@ func (b Book) OtherPathStores() ([]string, error) {
 
 var scopeName = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-// notCopied は、古い置き場に、今の置き場の同じ場所に無いファイルがあるか。置き場ごとに作り直す物(錠・点検の印・索引・記録)は見ない。
+// notCopied reports whether the old store has a file missing at the same place in the current store. Things rebuilt per store (lock, check marker, index, log) are ignored.
 func notCopied(old, own string) (bool, error) {
 	left := false
 	err := filepath.WalkDir(old, func(path string, d os.DirEntry, err error) error {
@@ -295,8 +295,8 @@ func notCopied(old, own string) (bool, error) {
 	return left, err
 }
 
-// fromOtherPath は、記事が出典にした原資料のうち、前のパスで控えた物(id に入るパスが今と違い、確かめられない)か。
-// 会話の出典(種類の無い物)は数えない。
+// fromOtherPath reports whether a source record a page cites was captured under the previous path (the path in its id differs from now, so it cannot be checked).
+// Conversation sources (those without a kind) are not counted.
 func (b Book) fromOtherPath(dir, id string) bool {
 	data, err := readFile(filepath.Join(dir, id+".json"))
 	if err != nil {

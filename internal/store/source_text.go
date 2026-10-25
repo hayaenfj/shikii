@@ -1,6 +1,6 @@
 package store
 
-// 判定モデルへ渡す短い入力と、人が読む原文を分ける。
+// Keeps the short input passed to the decision model apart from the original text people read.
 import (
 	"bytes"
 	"encoding/json"
@@ -16,7 +16,7 @@ import (
 
 const RecordTextLimit = 64 << 10
 
-// 以前の上限 1,500 バイトで、最後の UTF-8 の文字を除くとこの長さになることがある。
+// Under the old 1,500-byte limit, dropping the last UTF-8 character can give this length.
 const legacyTextFloor = 1500 - utf8.UTFMax + 1
 
 type recordText struct {
@@ -29,14 +29,14 @@ var textTrace = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 func (s Store) recordTextPath(rec Record) (string, error) {
 	if !textTrace.MatchString(rec.TraceID) || rec.InputsHash == "" {
-		return "", errors.New("原文には判定の識別子と入力のハッシュが必要です")
+		return "", errors.New("original text needs the decision's identifier and the input hash")
 	}
 	return filepath.Join(s.Dir, "records", "text", rec.TraceID+".json"), nil
 }
 
 func (s Store) SaveRecordText(rec Record, originals map[string]string) error {
 	if len(originals) > 4 {
-		return errors.New("原文の欄が多すぎます")
+		return errors.New("too many original text fields")
 	}
 	text := recordText{InputsHash: rec.InputsHash, Inputs: map[string]string{}}
 	for key, value := range originals {
@@ -45,7 +45,7 @@ func (s Store) SaveRecordText(rec Record, originals map[string]string) error {
 		}
 		input, ok := rec.Inputs[key]
 		if !ok || !utf8.ValidString(value) || !strings.HasPrefix(value, input) {
-			return errors.New("原文と判定に保存した冒頭が一致しません")
+			return errors.New("the original text does not match the opening saved with the decision")
 		}
 		if value == input && len(value) < legacyTextFloor {
 			continue
@@ -96,7 +96,7 @@ func (s Store) SaveRecordText(rec Record, originals map[string]string) error {
 		}
 		old, err := s.readRecordText(path)
 		if err != nil || !bytes.Equal(old, data) {
-			return errors.New("保存済みの原文は上書きできません")
+			return errors.New("saved original text cannot be overwritten")
 		}
 	}
 	return nil
@@ -110,13 +110,13 @@ func (s Store) readRecordText(path string) ([]byte, error) {
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, (2<<20)+1))
 	if len(data) > 2<<20 {
-		return nil, errors.New("原文の保存上限を超えています")
+		return nil, errors.New("the original text exceeds the storage limit")
 	}
 	return data, err
 }
 
-// RecordText は表示用の原文と、保存上限に達した欄の状態。
-// 元の inputs やハッシュ、正解のラベルには書き戻さない。
+// RecordText is the original text for display and the state of fields that reached the storage limit.
+// Nothing is written back to the original inputs, hashes or truth labels.
 func (s Store) RecordText(rec Record) (map[string]string, map[string]string) {
 	originals, status := map[string]string{}, map[string]string{}
 	if rec.SpecID == "prompt-kind" || rec.SpecID == "needs-plan" || ReviewSpec(rec.SpecID) {

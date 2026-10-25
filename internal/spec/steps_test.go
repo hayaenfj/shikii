@@ -16,7 +16,7 @@ func choiceSpec() *Spec {
 	}
 }
 
-// 分解(steps): はい/いいえ の列。各選択肢はちょうど 1 つの葉。途中の段は yes か no の片方だけで確定し、最後の段は両方で確定する。
+// Breakdown (steps): a list of yes/no questions. Each option is exactly one leaf. A middle step settles on only one of yes or no; the last step settles on both.
 func TestStepsMustCoverEveryOptionExactlyOnce(t *testing.T) {
 	good := []Step{{Ask: "Does it ask for work?", No: "other"}, {Ask: "Does it ask to change files?", Yes: "change_request", No: "question"}}
 	sp := choiceSpec()
@@ -45,7 +45,7 @@ func TestStepsMustCoverEveryOptionExactlyOnce(t *testing.T) {
 	}
 }
 
-// 分解は聞き方なので鍵(hash)に入る。steps の無い spec の鍵は変わらない。
+// The breakdown is part of the wording, so it goes into the key (hash). Specs without steps keep their key.
 func TestStepsChangeTheHashAndTravelWithVariants(t *testing.T) {
 	sp := choiceSpec()
 	flat := sp.Hash()

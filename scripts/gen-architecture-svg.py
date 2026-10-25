@@ -1,4 +1,4 @@
-"""READMEの会話の流れと構造の図を日英で生成する。外部フォントや通信は不要。"""
+"""Generates the README's conversation-flow and structure figures in Japanese and English. No external fonts or network needed."""
 from html import escape
 from pathlib import Path
 import unicodedata
@@ -10,7 +10,7 @@ COLORS = {"gold": "#f4c76a", "green": "#83d8b0", "blue": "#8db8f4"}
 
 
 def width(text, size):
-    """折り返し用の余裕を持った文字幅。画像を作った後にも描画して確認する。"""
+    """Text width with room for wrapping. Render and check again after making the image."""
     return sum(size * (1.05 if unicodedata.east_asian_width(c) in "WF" else .66) for c in text)
 
 
@@ -152,7 +152,7 @@ def hero(lang, path):
         if i < 2:
             svg.arrow(f"M {x + 342} 324 H {x + 376}")
     bottom, return_y, footer_y = (484, 530, 608) if lang == "en" else (440, 478, 548)
-    svg.arrow(f"M 984 {bottom} V {return_y} H 216 V {bottom}")  # 次の依頼で 01(作業の前)へ戻る
+    svg.arrow(f"M 984 {bottom} V {return_y} H 216 V {bottom}")  # back to 01 (before the work) on the next request
     svg.text(236, return_y + 30, s["return"], 18, COLORS["green"])
     svg.text(48, footer_y, s["hero_foot"], 19, "#a8bad3")
     svg.save(path)
@@ -199,4 +199,4 @@ def generate(directory=ASSETS):
 
 if __name__ == "__main__":
     generate()
-    print("図を4枚生成しました（日英の会話の流れ・構造）")
+    print("Generated 4 figures (conversation flow and structure, Japanese and English)")

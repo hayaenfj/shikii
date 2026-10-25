@@ -1,5 +1,5 @@
-# 比較ベンチの RAG の腕(はい/いいえ): same-issue と同じ質問に、似た例(正解付き)を本文の前に足す。
-# examples は scripts/bench/rag-rows.py が正解の貯金から作る(その行の分割の外から)。
+# The RAG arm of the comparison bench (yes/no): the same question as same-issue, with similar examples (with truths) added before the body.
+# examples are built by scripts/bench/rag-rows.py from the saved truths (from outside the row's fold).
 id: same-issue-rag
 version: 1
 type: noul

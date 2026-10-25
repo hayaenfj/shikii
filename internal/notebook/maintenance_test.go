@@ -23,7 +23,7 @@ func TestNotebookOffersBoundedMaintenanceWork(t *testing.T) {
 	var tasks []map[string]any
 	_ = json.Unmarshal(obj["maintenance"], &tasks)
 	if len(tasks) != 2 || tasks[0]["key"] == nil || tasks[0]["revision"] == nil {
-		t.Fatal("意味の見直しを最大2件、版と依存する版付きで提示する", string(data))
+		t.Fatal("offers at most 2 meaning reviews, with revision and dependent revisions", string(data))
 	}
 }
 
@@ -55,7 +55,7 @@ func TestMaintenanceTracksRelatedVersionsAndRejectsStaleReviews(t *testing.T) {
 		}
 	}
 	if tasks, _ := b.Maintenance(); len(tasks) != 0 {
-		t.Fatal("同じ版を毎回見直さない")
+		t.Fatal("does not review the same revision every time")
 	}
 	d.ID = z.Page.ID
 	d.Lesson += " Keep the current version."
@@ -65,18 +65,18 @@ func TestMaintenanceTracksRelatedVersionsAndRejectsStaleReviews(t *testing.T) {
 		t.Fatal(err)
 	}
 	if updated.Page.ChangeReason != d.ChangeReason {
-		t.Fatal("編集の理由を版とともに残す")
+		t.Fatal("keeps the reason for an edit with the revision")
 	}
 	if _, err := b.Maintain(stale); err == nil {
-		t.Fatal("関連する版が変わった後に古い見直しを記録しない")
+		t.Fatal("does not record an old review after a related revision changed")
 	}
 	tasks, err = b.Maintenance()
 	if err != nil || len(tasks) != 2 {
-		t.Fatal("変更した記事と参照先を再確認する", tasks, err)
+		t.Fatal("rechecks the changed page and the pages it references", tasks, err)
 	}
 	for _, task := range tasks {
 		if !strings.Contains(strings.Join(task.Reasons, ","), "changed") {
-			t.Fatal("変更による再確認と分かる")
+			t.Fatal("shows that the recheck is due to a change")
 		}
 	}
 }

@@ -16,7 +16,7 @@ func ordinaryDirectory(path string) (string, error) {
 		return "", err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("wikiの版の保存先を確認できません")
+		return "", errors.New("cannot check where wiki revisions are stored")
 	}
 	return path, nil
 }
@@ -38,7 +38,7 @@ func (b Book) References() ([]store.KnowledgeReference, error) {
 func (b Book) readRevision(query string) (Page, error) {
 	parts := strings.Split(strings.TrimPrefix(query, "lesson:"), "@")
 	if len(parts) != 2 || !idPattern.MatchString(parts[0]) || !idPattern.MatchString(parts[1]) {
-		return Page{}, errors.New("記事IDと版の参照が不正です")
+		return Page{}, errors.New("invalid page ID or revision reference")
 	}
 	dir, err := b.directory(false, "pages")
 	if err != nil {
@@ -54,11 +54,11 @@ func (b Book) readRevision(query string) (Page, error) {
 	}
 	p, err := parsePage(data)
 	if err != nil || p.ID != parts[0] || p.Revision != parts[1] || revision(p) != p.Revision || len(b.sourceIssues(p)) > 0 {
-		return Page{}, errors.New("記事の過去の版か出典を確認できません")
+		return Page{}, errors.New("cannot check the page's past revision or its sources")
 	}
 	expected, err := b.pageBytes(p)
 	if err != nil || !bytes.Equal(data, expected) {
-		return Page{}, errors.New("記事の過去の版が変更されています")
+		return Page{}, errors.New("the page's past revision has been modified")
 	}
 	return p, nil
 }

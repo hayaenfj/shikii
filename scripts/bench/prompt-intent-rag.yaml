@@ -1,5 +1,5 @@
-# 比較ベンチの RAG の腕: v2 と同じ質問・同じ選択肢に、似た例(正解付き)を本文に足して聞く。
-# examples は scripts/bench/rag-rows.py が正解の貯金から作る(その行自身は除く)。較正の鍵は v2 とは別のハッシュになる。
+# The RAG arm of the comparison bench: asks the same question with the same options as v2, adding similar examples (with truths) to the body.
+# examples are built by scripts/bench/rag-rows.py from the saved truths (excluding the row itself). The calibration key is a different hash from v2's.
 id: prompt-intent-rag
 version: 1
 type: choice
@@ -34,7 +34,7 @@ thresholds:
 eval:
   labeled: testdata/prompt-intent-rag.json
   min_n: 50
-# 配置の候補: tune でこの spec を測ると、既定(state-last)と plain の両方の数字が出る(腕 B を公平にするため)
+# Layout candidates: measuring this spec with tune gives numbers for both the default (state-last) and plain (to make arm B fair)
 variants:
   - name: plain
     layout: plain

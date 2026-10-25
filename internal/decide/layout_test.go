@@ -7,7 +7,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
-// spec の layout は System One の要求に載る(変換役が並べ方を変える。決定モデルは知らない項目として無視する)。
+// The spec's layout goes into the System One request (the converter changes the arrangement; decision models ignore it as an unknown field).
 func TestLayoutTravelsInTheRequest(t *testing.T) {
 	f := newFake(t, "m", systemone.Answer{Type: "noul", Noul: 0.9})
 	sp := noulSpec("local")

@@ -1,8 +1,8 @@
 #!/bin/sh
-# 鍵も GPU も無しで、decide → label → calibrate → check → drift → status → gc の輪を一周する。
-# 偽のモデル(cmd/fake-systemone)を使うので、数字は本物ではない。手順と出力の形を見るためのもの。
-#   scripts/demo.sh            # 普通の偽モデル
-#   scripts/demo.sh --overconfident   # 確率を端に寄せた偽モデル(生と較正後の混同表を見比べる)
+# Goes once around the decide → label → calibrate → check → drift → status → gc loop with no key and no GPU.
+# It uses a fake model (cmd/fake-systemone), so the numbers are not real. It is for seeing the steps and the shape of the output.
+#   scripts/demo.sh            # the normal fake model
+#   scripts/demo.sh --overconfident   # a fake model with probabilities pushed to the edges (compare the raw and calibrated confusion tables)
 set -eu
 cd "$(dirname "$0")/.."
 go build -o bin/shikii ./cmd/shikii
@@ -21,44 +21,44 @@ SERVER=$!
 until curl -sf "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; do sleep 0.2; done
 
 SPEC="$WORK/intent.yaml"
-cp examples/prompt-intent.yaml "$SPEC"   # 較正無しの例から始める(書き戻しはこのコピーに入る)
+cp examples/prompt-intent.yaml "$SPEC"   # start from the example without calibration (write-backs go into this copy)
 STORE="$WORK/store"
 D="bin/shikii"
 L="--local http://127.0.0.1:$PORT --store $STORE"
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
-step "1. 判定(較正が無いので act は出ない)"
+step "1. decide (no calibration yet, so act does not appear)"
 $D decide "$SPEC" $L -i 'message=Fix the typo in README.md'
 $D decide "$SPEC" $L -i 'message=この関数は何をしているのか説明して'
 
-step "2. 正解を付ける(直近の記録に。本番では利用者の操作や結果から拾う)"
+step "2. give the truth (to the latest record; in production it is picked up from the user's actions or results)"
 $D label --store "$STORE" --spec-id prompt-intent --last --source ask question
 
-step "3. ラベル付きファイル(62 件)で較正。identity / vector を 5-fold CV で比べて spec に書き戻す"
+step "3. calibrate with the labeled file (62 items). Compare identity / vector with 5-fold CV and write back to the spec"
 $D calibrate "$SPEC" --labeled testdata/prompt-intent-labeled.json $L --model fake-systemone/1 --write | grep -E '^(spec=|raw:|at act|calibrated:|vector 5-fold|choose|wrote|WARNING)'
 
-step "4. 較正後の判定(act が出るようになる)"
+step "4. decide after calibration (act now appears)"
 $D decide "$SPEC" $L -i 'message=Fix the typo in README.md' | head -2
 
-step "5. 契約の検査(CI 向け)"
+step "5. contract check (for CI)"
 $D check --store "$STORE" "$SPEC"
 
-step "6. 文言を 1 語変えると較正は失効し、check が落ちる"
+step "6. changing one word of the wording invalidates the calibration, and check fails"
 sed -i.bak 's/What is the user asking the assistant to do?/What is the user asking the assistant to do? Be strict./' "$SPEC" && rm -f "$SPEC.bak"
 $D check --store "$STORE" "$SPEC" || true
 $D decide "$SPEC" $L -i 'message=Fix the typo in README.md' | head -2
 
-step "6b. 人が付けた正解は消えていない。ファイル無しで calibrate を回すと、残っている本文を新しい文言で聞き直して線が戻る"
+step "6b. the truths people gave are not gone. Running calibrate without a file re-asks the stored texts with the new wording and the line comes back"
 $D calibrate "$SPEC" --labeled none $L --model fake-systemone/1 --write | grep -E '^(replayed|spec=|choose|wrote|WARNING|note:)'
 $D check --store "$STORE" "$SPEC"
 $D decide "$SPEC" $L -i 'message=Fix the typo in README.md' | head -2
 
-step "7. 棚卸しと劣化の監視(6b で引き直した線に対して、直近の正解で劣化していないか)"
+step "7. inventory and drift monitoring (whether the line redrawn in 6b has degraded on recent truths)"
 $D status --store "$STORE" "$SPEC"
 $D drift "$SPEC" --store "$STORE" --model fake-systemone/1
 
-step "8. 掃除(表示だけ。ラベル付きの記録は残る)"
+step "8. clean up (display only; labeled records are kept)"
 $D gc --store "$STORE" --older-than 0 "$SPEC"
 
-printf '\n完了。偽モデルなので数字に意味はない。本物に向けるには --local に llama.cpp(/v1/systemone)か、鍵を置いて --hosted を使う。\n'
+printf '\nDone. This is a fake model, so the numbers mean nothing. To point at a real one, use --local with llama.cpp (/v1/systemone), or set a key and use --hosted.\n'

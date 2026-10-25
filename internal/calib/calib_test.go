@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 既知の bias/T で生成したデータから、Fit がその値を取り戻す。
+// From data generated with a known bias/T, Fit recovers those values.
 func TestFitRecoversKnownPlatt(t *testing.T) {
 	truth := Platt{Bias: 2.2, Temperature: 0.3}
 	rng := rand.New(rand.NewSource(1))
@@ -29,7 +29,7 @@ func TestFitRejectsDegenerateData(t *testing.T) {
 	if _, err := Fit([]Sample{{Delta: 1, Truth: true}, {Delta: 2, Truth: true}}); err == nil {
 		t.Fatal("single-class data must not fit")
 	}
-	// 確率が高いほど偽: 傾きが負になるので誤りとして返す
+	// Higher probability means false: the slope is negative, so it is returned as an error
 	inv := []Sample{{Delta: 3, Truth: false}, {Delta: 2.5, Truth: false}, {Delta: -2, Truth: true}, {Delta: -3, Truth: true}}
 	if _, err := Fit(inv); err == nil {
 		t.Fatal("negative slope must be rejected")
@@ -45,7 +45,7 @@ func TestBrierAndECE(t *testing.T) {
 	if e := ECE(probs, truths, nil, 10); e != 0 {
 		t.Fatalf("perfect predictions must have ECE 0, got %f", e)
 	}
-	// 全部 0.9 と言って半分しか当たらない: 過信。ECE ≈ 0.4、Brier = 0.5·0.01 + 0.5·0.81 = 0.41
+	// Says 0.9 every time and is right only half the time: overconfident. ECE ≈ 0.4, Brier = 0.5·0.01 + 0.5·0.81 = 0.41
 	over := []float64{0.9, 0.9, 0.9, 0.9}
 	half := []bool{true, false, true, false}
 	if e := ECE(over, half, nil, 10); math.Abs(e-0.4) > 1e-9 {
@@ -54,7 +54,7 @@ func TestBrierAndECE(t *testing.T) {
 	if b := Brier(over, half, nil); math.Abs(b-0.41) > 1e-9 {
 		t.Fatalf("overconfident Brier want 0.41, got %f", b)
 	}
-	// 重み: 2 件目を重さ 0 相当(=1 に落ちる)ではなく 3 にすると Brier は (0.01+3·0.81+0.01+0.81)/6
+	// Weights: making the 2nd item weigh 3 (rather than 0, which falls back to 1) gives Brier (0.01+3·0.81+0.01+0.81)/6
 	w := []float64{1, 3, 1, 1}
 	if b := Brier(over, half, w); math.Abs(b-(0.01+3*0.81+0.01+0.81)/6) > 1e-9 {
 		t.Fatalf("weighted Brier wrong: %f", b)
@@ -68,7 +68,7 @@ func TestReliabilityBins(t *testing.T) {
 	if rel[0].N != 1 || rel[0].Accuracy != 0 || rel[0].Confidence != 0.05 {
 		t.Fatalf("bin 0: %+v", rel[0])
 	}
-	// p=1.0 は最後の bin に入る
+	// p=1.0 goes into the last bin
 	last := rel[9]
 	if last.N != 3 || math.Abs(last.Accuracy-2.0/3) > 1e-9 || math.Abs(last.Confidence-(0.95+0.95+1.0)/3) > 1e-9 {
 		t.Fatalf("bin 9: %+v", last)
@@ -80,18 +80,18 @@ func TestCheckSeparationDetectsInversion(t *testing.T) {
 	if s := CheckSeparation(clean); s.Inverted || s.Overlap != 0 || s.PosMin != 2.54 || s.NegMax != 1.96 {
 		t.Fatalf("clean data flagged: %+v", s)
 	}
-	// had-scorer で実測した逆転: 関連の下限 1.80 < 境界 1.82
+	// Inversion measured with had-scorer: lowest related 1.80 < borderline 1.82
 	inverted := []Sample{{Delta: 1.80, Truth: true}, {Delta: 4, Truth: true}, {Delta: 1.82, Truth: false}, {Delta: 0, Truth: false}}
 	if s := CheckSeparation(inverted); !s.Inverted || s.Overlap != 2 {
 		t.Fatalf("inversion not detected: %+v", s)
 	}
-	// 境界(重み 0.5)の負例が正例より上に来ても逆転とは言わない。曖昧と分かっている例だから。
+	// A borderline negative (weight 0.5) above the positives is not called an inversion, because it is known to be ambiguous.
 	weak := []Sample{{Delta: 2.54, Truth: true, Weight: 1}, {Delta: 4, Truth: true, Weight: 1},
 		{Delta: 3.0, Truth: false, Weight: 0.5}, {Delta: 1.96, Truth: false, Weight: 1}}
 	if s := CheckSeparation(weak); s.Inverted || s.Weak != 1 || s.NegMax != 1.96 {
 		t.Fatalf("weak labels must not drive the inversion verdict: %+v", s)
 	}
-	// 同じ負例が重み 1 なら逆転
+	// The same negative with weight 1 is an inversion
 	weak[2].Weight = 1
 	if s := CheckSeparation(weak); !s.Inverted {
 		t.Fatalf("full-weight negative above pos_min must be an inversion: %+v", s)

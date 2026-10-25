@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// モデルの口が立つのを shikii 自身が待つ(curl / wget などの外部コマンドに頼らない)。
-// /health が 200 を返すまで繰り返し、締め切りで諦める。進み具合は logf に出る。
+// shikii itself waits for the model endpoint to come up (without relying on external commands such as curl / wget).
+// It retries until /health returns 200 and gives up at the deadline. Progress goes to logf.
 func TestWaitReadyPollsUntilHealthy(t *testing.T) {
 	var calls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +36,7 @@ func TestWaitReadyPollsUntilHealthy(t *testing.T) {
 	if calls != 3 {
 		t.Fatalf("polled %d times, want 3", calls)
 	}
-	// 締め切り: 立たないまま ctx が切れたら誤り(何を待っていたかが分かる文で)
+	// Deadline: if ctx ends while the endpoint is still down, it is an error (with a message saying what it was waiting for)
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "no", 503) }))
 	t.Cleanup(dead.Close)
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Millisecond)

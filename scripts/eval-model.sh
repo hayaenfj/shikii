@@ -1,8 +1,8 @@
 #!/bin/sh
-# 同じ spec・同じラベルで別のモデルを測る(報告だけ。spec には書かない)。
+# Measure another model with the same spec and the same labels (report only; nothing is written to the spec).
 #   scripts/eval-model.sh <base-url> <short-name>
-# 例: scripts/eval-model.sh http://127.0.0.1:8082 openjev
-# ラベルは評価ごとに別の store に残す(合算されて数字が混ざらないように)。
+# Example: scripts/eval-model.sh http://127.0.0.1:8082 openjev
+# Labels are kept in a separate store per evaluation (so the numbers do not get added up and mixed).
 set -eu
 URL="$1"; NAME="$2"
 BIN="${BIN:-bin/shikii}"

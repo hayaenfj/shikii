@@ -1,13 +1,13 @@
-// Package handoff は各プロジェクトの .shikii/handoff/ (作業記録の置き場)を扱う。
+// Package handoff handles each project's .shikii/handoff/ (the place for work records).
 //
-// 3 つの置き場の役割(0.8.1):
-//   - handoff: 途中で書き換える作業ファイル(監査の報告、リリースの手順と記録、差分、画像)。人もエージェントも読み書きする
-//   - wiki の原資料(records/wiki-sources): 確かめた時点の証拠。書いた後は変えない
-//   - wiki の記事: 次の依頼に効く教訓
+// The roles of the three places (0.8.1):
+//   - handoff: work files rewritten along the way (audit reports, release steps and notes, diffs, images). Both people and agents read and write them
+//   - wiki sources (records/wiki-sources): evidence as of when it was checked. Not changed after writing
+//   - wiki articles: lessons that help the next request
 //
-// 固定の規則(オプションは無い): 置き場の外は読まない・書かない(os.Root で閉じる)。リンクは辿らず一覧にも出さない。
-// 隠しファイル(. で始まる名)・制御文字や書式の文字を含む名は扱わない。途中のフォルダのリンクとハードリンクも扱わない。書くのは UTF-8 の文字だけで 1 回 1 MiB まで。読むのは文字なら 4 MiB まで。
-// gc も update も中身を消さない(0.7.0 を跨ぐ消去の時だけ、ほかの置き場と一緒に消える)。
+// Fixed rules (there are no options): never read or write outside the place (closed with os.Root). Links are not followed and not listed.
+// Hidden files (names starting with .) and names containing control or format characters are not handled. Links in intermediate folders and hard links are not handled either. Only UTF-8 text is written, up to 1 MiB per call. Text is read up to 4 MiB.
+// Neither gc nor update deletes the contents (only the wipe across 0.7.0 removes them, together with the other places).
 package handoff
 
 import (
@@ -27,18 +27,18 @@ import (
 	"unicode/utf8"
 )
 
-// Dir は .shikii/ の下の作業記録の置き場の名前。
+// Dir is the name of the work-record place under .shikii/.
 const Dir = "handoff"
 
 const (
-	writeMax = 1 << 20 // 1 回に書ける大きさ
-	readMax  = 4 << 20 // 文字として返す大きさ
+	writeMax = 1 << 20 // size that can be written in one call
+	readMax  = 4 << 20 // size returned as text
 	pathMax  = 256
 
-	staleTempAge = 24 * time.Hour // 落ちて残った一時ファイルを片付けるまでの時間
+	staleTempAge = 24 * time.Hour // time before a leftover temp file from a crash is cleaned up
 )
 
-// Entry は一覧の 1 件。Path は置き場からの相対(/ 区切り)。
+// Entry is one item of the list. Path is relative to the place (separated by /).
 type Entry struct {
 	Path     string    `json:"path"`
 	Size     int64     `json:"size"`
@@ -46,7 +46,7 @@ type Entry struct {
 	Kind     string    `json:"kind"` // text / image / other
 }
 
-// File は読んだ 1 件。文字でない物は Content を空にし、Kind と Size だけ返す。
+// File is one item that was read. For non-text items Content is empty and only Kind and Size are returned.
 type File struct {
 	Entry
 	Content string `json:"content,omitempty"`
@@ -56,10 +56,10 @@ type File struct {
 var textExt = map[string]bool{".md": true, ".txt": true, ".json": true, ".jsonl": true, ".patch": true, ".diff": true, ".log": true, ".csv": true, ".tsv": true,
 	".yaml": true, ".yml": true, ".toml": true, ".go": true, ".js": true, ".mjs": true, ".ts": true, ".py": true, ".sh": true, ".html": true, ".css": true, ".svelte": true, ".sql": true, ".xml": true}
 
-// ImageTypes は画面が画像として出す拡張子と Content-Type。svg は中に script を持てるので画像として出さない。
+// ImageTypes are the extensions and Content-Types the page serves as images. svg can hold scripts, so it is not served as an image.
 var ImageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
-// KindOf は拡張子から種類を決める。
+// KindOf decides the kind from the extension.
 func KindOf(p string) string {
 	ext := strings.ToLower(path.Ext(p))
 	if _, ok := ImageTypes[ext]; ok {
@@ -71,37 +71,37 @@ func KindOf(p string) string {
 	return "other"
 }
 
-// Clean は置き場からの相対パスを確かめて正規化する。絶対パス・..・隠し名・\・空の区切りは断る。
+// Clean checks a path relative to the place and normalizes it. Absolute paths, .., hidden names, \ and empty segments are refused.
 func Clean(p string) (string, error) {
-	p = strings.TrimPrefix(p, ".shikii/handoff/") // 原資料の reference に書いた形(.shikii/handoff/<パス>)もそのまま読める
+	p = strings.TrimPrefix(p, ".shikii/handoff/") // the form written in a source's reference (.shikii/handoff/<path>) can be read as is
 	if p == "" || len(p) > pathMax || strings.ContainsAny(p, "\\\x00") || strings.HasPrefix(p, "/") {
-		return "", fmt.Errorf("作業記録のパスは置き場(.shikii/handoff/)からの相対で書きます: %q", p)
+		return "", fmt.Errorf("write a work-record path relative to the place (.shikii/handoff/): %q", p)
 	}
 	for _, c := range p {
 		if unicode.IsControl(c) || unicode.Is(unicode.Bidi_Control, c) || c == '\uFEFF' {
-			return "", fmt.Errorf("作業記録のパスに制御文字や書式の文字は使えません: %q", p)
+			return "", fmt.Errorf("a work-record path cannot contain control or format characters: %q", p)
 		}
 	}
 	parts := strings.Split(p, "/")
 	for _, s := range parts {
 		if s == "" || s == "." || s == ".." || strings.HasPrefix(s, ".") {
-			return "", fmt.Errorf("作業記録のパスに空・.・..・隠し名は使えません: %q", p)
+			return "", fmt.Errorf("a work-record path cannot contain empty, ., .. or hidden names: %q", p)
 		}
 	}
 	return strings.Join(parts, "/"), nil
 }
 
-// Book は 1 つのプロジェクトの置き場。Store は .shikii/ のパス。
+// Book is the place of one project. Store is the path of .shikii/.
 type Book struct{ Store string }
 
 func (b Book) dir() string { return filepath.Join(b.Store, Dir) }
 
-// Ensure は置き場を作る(init が呼ぶ)。
+// Ensure creates the place (called by init).
 func (b Book) Ensure() error { return os.MkdirAll(b.dir(), 0o700) }
 
 func (b Book) open() (*os.Root, error) {
 	if info, err := os.Lstat(b.dir()); err == nil && info.Mode()&fs.ModeSymlink != 0 {
-		return nil, errors.New("作業記録の置き場(.shikii/handoff)がリンクです。リンクは辿りません")
+		return nil, errors.New("the work-record place (.shikii/handoff) is a link. Links are not followed")
 	}
 	r, err := os.OpenRoot(b.dir())
 	if errors.Is(err, fs.ErrNotExist) {
@@ -110,7 +110,7 @@ func (b Book) open() (*os.Root, error) {
 	return r, err
 }
 
-// List は置き場の全部のファイルを、更新の新しい順に返す(件数で切らない)。置き場が無ければ空。
+// List returns every file in the place, newest update first (no limit on the count). Empty if the place does not exist.
 func (b Book) List() ([]Entry, error) {
 	out := []Entry{}
 	r, err := b.open()
@@ -135,7 +135,7 @@ func (b Book) List() ([]Entry, error) {
 			return nil
 		}
 		if d.Type()&fs.ModeSymlink != 0 || !d.Type().IsRegular() && !d.IsDir() {
-			return nil // リンクと特殊なファイルは出さない(辿らない)
+			return nil // links and special files are not listed (not followed)
 		}
 		if d.IsDir() {
 			return nil
@@ -159,7 +159,7 @@ func (b Book) List() ([]Entry, error) {
 	return out, nil
 }
 
-// parentsAreFolders は途中のフォルダがどれもリンクでないか(置き場の中を指すリンクも辿らない)。
+// parentsAreFolders reports whether none of the intermediate folders is a link (links pointing inside the place are not followed either).
 func parentsAreFolders(r *os.Root, clean string) bool {
 	dir := path.Dir(clean)
 	if dir == "." {
@@ -169,7 +169,7 @@ func parentsAreFolders(r *os.Root, clean string) bool {
 	for i := range parts {
 		info, err := r.Lstat(strings.Join(parts[:i+1], "/"))
 		if err != nil {
-			return errors.Is(err, fs.ErrNotExist) // まだ無いフォルダは書く時に作る
+			return errors.Is(err, fs.ErrNotExist) // folders that do not exist yet are created when writing
 		}
 		if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
 			return false
@@ -178,10 +178,10 @@ func parentsAreFolders(r *os.Root, clean string) bool {
 	return true
 }
 
-// beforeOpen はテストが Lstat と Open の間に差し替えを起こすための口(本番では nil)。
+// beforeOpen is a hook for tests to swap the file between Lstat and Open (nil in production).
 var beforeOpen func()
 
-// Open は 1 件を開く(画面がそのまま配る時に使う)。リンクと置き場の外は開かない。
+// Open opens one item (used when the page serves it as is). Links and anything outside the place are not opened.
 func (b Book) Open(p string) (*os.File, Entry, error) {
 	clean, err := Clean(p)
 	if err != nil {
@@ -189,29 +189,29 @@ func (b Book) Open(p string) (*os.File, Entry, error) {
 	}
 	r, err := b.open()
 	if err != nil {
-		return nil, Entry{}, fmt.Errorf("作業記録が見つかりません: %s", clean)
+		return nil, Entry{}, fmt.Errorf("work record not found: %s", clean)
 	}
 	defer r.Close()
 	info, err := r.Lstat(clean)
 	if err != nil || !info.Mode().IsRegular() || linkCount(info) > 1 || !parentsAreFolders(r, clean) {
-		return nil, Entry{}, fmt.Errorf("作業記録が見つかりません: %s", clean)
+		return nil, Entry{}, fmt.Errorf("work record not found: %s", clean)
 	}
 	if beforeOpen != nil {
 		beforeOpen()
 	}
 	f, err := r.OpenFile(clean, os.O_RDONLY|noFollow, 0)
 	if err != nil {
-		return nil, Entry{}, fmt.Errorf("作業記録が見つかりません: %s", clean)
+		return nil, Entry{}, fmt.Errorf("work record not found: %s", clean)
 	}
-	opened, err := f.Stat() // 開いた物が確かめた物と同じか(間で差し替わったら配らない)。大きさは開いた物のもの
+	opened, err := f.Stat() // whether the opened item is the one that was checked (not served if swapped in between). The size is that of the opened item
 	if err != nil || !os.SameFile(opened, info) {
 		f.Close()
-		return nil, Entry{}, fmt.Errorf("作業記録が見つかりません: %s", clean)
+		return nil, Entry{}, fmt.Errorf("work record not found: %s", clean)
 	}
 	return f, Entry{Path: clean, Size: opened.Size(), Modified: opened.ModTime().UTC(), Kind: KindOf(clean)}, nil
 }
 
-// Read は 1 件を読む。文字は中身を返し、画像などは種類と大きさだけ返す(画面で見る)。
+// Read reads one item. Text returns its contents; images and others return only kind and size (view them on the page).
 func (b Book) Read(p string) (File, error) {
 	f, e, err := b.Open(p)
 	if err != nil {
@@ -220,38 +220,38 @@ func (b Book) Read(p string) (File, error) {
 	defer f.Close()
 	out := File{Entry: e}
 	if e.Kind != "text" {
-		out.Note = "文字ではないので中身は返しません。画面の知識の欄「作業記録」で見るか、ファイルを直接開きます"
+		out.Note = "Not text, so the contents are not returned. View it under \"Work records\" in the knowledge section of the page, or open the file directly"
 		return out, nil
 	}
 	if e.Size > readMax {
-		return File{}, fmt.Errorf("作業記録 %s は %d バイトで、文字として返せる %d バイトを超えます。ファイルを直接読みます", e.Path, e.Size, readMax)
+		return File{}, fmt.Errorf("work record %s is %d bytes, more than the %d bytes that can be returned as text. Read the file directly", e.Path, e.Size, readMax)
 	}
 	data, err := io.ReadAll(io.LimitReader(f, readMax+1))
 	if err != nil {
 		return File{}, err
 	}
 	if !utf8.Valid(data) {
-		out.Note = "UTF-8 の文字ではないので中身は返しません"
+		out.Note = "Not UTF-8 text, so the contents are not returned"
 		return out, nil
 	}
 	out.Content = string(data)
 	return out, nil
 }
 
-// Write は 1 件を書く(appendMode なら末尾に足す)。親のフォルダは作る。書き換えは一時ファイルから置き換える。
+// Write writes one item (appends to the end in appendMode). Parent folders are created. Rewrites replace the file from a temp file.
 func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 	clean, err := Clean(p)
 	if err != nil {
 		return Entry{}, err
 	}
 	if len(content) > writeMax {
-		return Entry{}, fmt.Errorf("1 回に書ける作業記録は %d バイトまでです(%d バイト)。分けて append します", writeMax, len(content))
+		return Entry{}, fmt.Errorf("a work record can be written up to %d bytes per call (got %d bytes). Split it and append", writeMax, len(content))
 	}
 	if !utf8.ValidString(content) {
-		return Entry{}, errors.New("作業記録に書けるのは UTF-8 の文字だけです。画像などはファイルとして .shikii/handoff/ に置きます")
+		return Entry{}, errors.New("only UTF-8 text can be written to a work record. Put images and other files under .shikii/handoff/ as files")
 	}
 	if err := b.Ensure(); err != nil {
-		return Entry{}, errors.New("作業記録の置き場(.shikii/handoff)を作れません")
+		return Entry{}, errors.New("cannot create the work-record place (.shikii/handoff)")
 	}
 	r, err := b.open()
 	if err != nil {
@@ -259,16 +259,16 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 	}
 	defer r.Close()
 	if !parentsAreFolders(r, clean) {
-		return Entry{}, fmt.Errorf("作業記録 %s の途中のフォルダがリンクかファイルです(リンクは辿りません)", clean)
+		return Entry{}, fmt.Errorf("an intermediate folder of work record %s is a link or a file (links are not followed)", clean)
 	}
 	if dir := path.Dir(clean); dir != "." {
 		if err := r.MkdirAll(dir, 0o700); err != nil {
-			return Entry{}, fmt.Errorf("作業記録のフォルダ %s を作れません", dir)
+			return Entry{}, fmt.Errorf("cannot create the work-record folder %s", dir)
 		}
 	}
 	removeStaleTemps(r, path.Dir(clean))
 	if info, err := r.Lstat(clean); err == nil && (!info.Mode().IsRegular() || linkCount(info) > 1) {
-		return Entry{}, fmt.Errorf("作業記録 %s はふつうのファイルではありません(リンク・ハードリンク・フォルダには書きません)", clean)
+		return Entry{}, fmt.Errorf("work record %s is not a regular file (links, hard links and folders are not written)", clean)
 	}
 	if appendMode {
 		f, err := r.OpenFile(clean, os.O_CREATE|os.O_WRONLY|os.O_APPEND|noFollow, 0o600)
@@ -283,7 +283,7 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 			return Entry{}, err
 		}
 	} else {
-		var rnd [8]byte // 一時名は毎回ちがう名(同時の書き込みが混ざらない、前もって置かれたリンクを辿らない、長い名前でも上限を超えない)
+		var rnd [8]byte // the temp name differs every time (concurrent writes do not mix, a link placed in advance is not followed, and long names stay within the limit)
 		if _, err := rand.Read(rnd[:]); err != nil {
 			return Entry{}, err
 		}
@@ -313,8 +313,8 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 	return Entry{Path: clean, Size: info.Size(), Modified: info.ModTime().UTC(), Kind: KindOf(clean)}, nil
 }
 
-// isTempName は、置き換えの一時ファイルの名(.write- と 16 桁の 16 進。Write が rand で作る)か。
-// 人が置いた .write-up.md のような隠しファイルは一時ファイルとみなさない。
+// isTempName reports whether name is a replacement temp file name (.write- and 16 hex digits, made by Write with rand).
+// Hidden files placed by a person, such as .write-up.md, are not treated as temp files.
 func isTempName(name string) bool {
 	hexPart, ok := strings.CutPrefix(name, ".write-")
 	if !ok || len(hexPart) != 16 {
@@ -324,9 +324,9 @@ func isTempName(name string) bool {
 	return err == nil && strings.ToLower(hexPart) == hexPart
 }
 
-// removeStaleTemps は、書き換えの途中で落ちて残った一時ファイル(isTempName)のうち 1 日より古いものを消す。
-// 隠し名なので一覧にも画面にも出ず、gc も触らないため、次にそのフォルダへ書く時に片付ける。
-// 書き込み中の一時ファイル(新しいもの)とリンクには触らない。
+// removeStaleTemps deletes temp files (isTempName) older than one day that were left by a crash during a rewrite.
+// They have hidden names, so they appear neither in the list nor on the page, and gc does not touch them; they are cleaned up the next time that folder is written.
+// Temp files being written (new ones) and links are not touched.
 func removeStaleTemps(r *os.Root, dir string) {
 	entries, err := fs.ReadDir(r.FS(), dir)
 	if err != nil {

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""score.py の出力(raw 付きの行)を手早く読む: top-1、Brier(top)、act 閾値での precision / recall(生、未較正)。
+"""Quickly reads score.py's output (rows with raw): top-1, Brier (top), precision / recall at the act threshold (raw, uncalibrated).
 
-較正後の数字(5 分割 CV の prec / rec、選ばれた線)は shikii calibrate --labeled <この出力を JSON 配列にしたもの> で出す
-(scripts/bench/lora/run.sh がやる)。ここは生の確認用。
+Calibrated numbers (prec / rec from 5-fold CV, the chosen line) come from shikii calibrate --labeled <this output as a JSON array>
+(scripts/bench/lora/run.sh does this). This script is for checking the raw numbers.
 
-使い方: python3 scripts/bench/lora/report.py <scored.jsonl> [act=0.75]
+Usage: python3 scripts/bench/lora/report.py <scored.jsonl> [act=0.75]
 """
 import json
 import sys

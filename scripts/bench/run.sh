@@ -1,11 +1,11 @@
 #!/bin/sh
-# 比較ベンチ: 同じ課題・同じモデルで、聞き方を変えた腕を並べる(報告だけ。spec には書かない)。
+# Comparison bench: same task, same model, arms that ask in different ways side by side (report only; nothing is written to the spec).
 #   scripts/bench/run.sh <base-url> <short-name> [base-spec] [rag-spec] [labeled.json]
-#   既定: decisions/prompt-intent-v2.yaml  scripts/bench/prompt-intent-rag.yaml  testdata/prompt-intent-labeled.json
-#   例(はい/いいえ): scripts/bench/run.sh http://127.0.0.1:8092 qwen3-4b decisions/same-issue.yaml scripts/bench/same-issue-rag.yaml testdata/same-issue-labeled.json
-# 腕 A: 測った聞き方 + 較正。spec に variants(例: layout: plain)があれば tune が全部の候補を測る(勝者の数字が A)
-# 腕 B: RAG 風。同じ質問に、似た例 5 件(正解付き)を本文に足す(scripts/bench/rag-rows.py が作る。例はその行の分割の外から)。rag spec の variants も測る
-# 腕 C: LoRA は scripts/bench/lora/run.sh(docs/bench.md)。この script では回さない。
+#   defaults: decisions/prompt-intent-v2.yaml  scripts/bench/prompt-intent-rag.yaml  testdata/prompt-intent-labeled.json
+#   example (yes/no): scripts/bench/run.sh http://127.0.0.1:8092 qwen3-4b decisions/same-issue.yaml scripts/bench/same-issue-rag.yaml testdata/same-issue-labeled.json
+# Arm A: the measured wording + calibration. If the spec has variants (e.g. layout: plain), tune measures every candidate (the winner's numbers are A)
+# Arm B: RAG style. The same question with 5 similar examples (with truths) added to the body (built by scripts/bench/rag-rows.py; examples come from outside the row's fold). The rag spec's variants are measured too
+# Arm C: LoRA is scripts/bench/lora/run.sh (docs/bench.md). This script does not run it.
 set -eu
 URL="$1"; NAME="$2"
 BASE="${3:-decisions/prompt-intent-v2.yaml}"

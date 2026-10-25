@@ -18,14 +18,14 @@ func book(t *testing.T) (Book, string) {
 	return b, filepath.Join(store, Dir)
 }
 
-// 置き場の外・隠し名・.. を含むパスは断る(書きも読みも)。
+// Paths outside the place, with hidden names, or containing .. are refused (both writing and reading).
 func TestCleanRefusesPathsOutsideTheFolder(t *testing.T) {
 	for _, bad := range []string{"", "/etc/passwd", "../x.md", "a/../../b.md", "a//b.md", "./a.md", ".hidden", "a/.git/config", "a\\b.md", strings.Repeat("a", 300)} {
 		if _, err := Clean(bad); err == nil {
 			t.Errorf("must refuse %q", bad)
 		}
 	}
-	// 原資料の reference に書いた形(.shikii/handoff/<パス>)もそのまま受ける(監査 0.8.1-3)
+	// The form written in a source's reference (.shikii/handoff/<path>) is accepted as is too (audit 0.8.1-3)
 	if got, err := Clean(".shikii/handoff/audit/report-B.md"); err != nil || got != "audit/report-B.md" {
 		t.Errorf("a path written as a source reference must be accepted: %q %v", got, err)
 	}
@@ -39,23 +39,23 @@ func TestCleanRefusesPathsOutsideTheFolder(t *testing.T) {
 	}
 }
 
-// 書いて、足して、読む。親のフォルダは作る。一時ファイルは残らない。
+// Write, append, read. Parent folders are created. No temp files are left.
 func TestWriteAppendAndRead(t *testing.T) {
 	b, dir := book(t)
-	if _, err := b.Write("audit/report.md", "# 監査\n", false); err != nil {
+	if _, err := b.Write("audit/report.md", "# Audit\n", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Write("audit/report.md", "- 指摘 1\n", true); err != nil {
+	if _, err := b.Write("audit/report.md", "- Finding 1\n", true); err != nil {
 		t.Fatal(err)
 	}
 	f, err := b.Read("audit/report.md")
-	if err != nil || f.Content != "# 監査\n- 指摘 1\n" || f.Kind != "text" {
+	if err != nil || f.Content != "# Audit\n- Finding 1\n" || f.Kind != "text" {
 		t.Fatalf("read back: %+v %v", f, err)
 	}
-	if _, err := b.Write("audit/report.md", "置き換え\n", false); err != nil {
+	if _, err := b.Write("audit/report.md", "replaced\n", false); err != nil {
 		t.Fatal(err)
 	}
-	if f, _ := b.Read("audit/report.md"); f.Content != "置き換え\n" {
+	if f, _ := b.Read("audit/report.md"); f.Content != "replaced\n" {
 		t.Fatalf("write must replace: %q", f.Content)
 	}
 	ents, _ := os.ReadDir(filepath.Join(dir, "audit"))
@@ -76,11 +76,11 @@ func TestWriteAppendAndRead(t *testing.T) {
 	}
 }
 
-// 一覧は全部のファイル(件数で切らない)、リンクと隠し名は出さない。リンクの先は読まない。
+// The list holds every file (no limit on the count); links and hidden names are not listed. Link targets are not read.
 func TestListSkipsLinksAndHiddenAndReadRefusesLinks(t *testing.T) {
 	b, dir := book(t)
 	outside := filepath.Join(t.TempDir(), "secret.txt")
-	if err := os.WriteFile(outside, []byte("秘密"), 0o600); err != nil {
+	if err := os.WriteFile(outside, []byte("secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 120; i++ {
@@ -117,19 +117,19 @@ func TestListSkipsLinksAndHiddenAndReadRefusesLinks(t *testing.T) {
 	if kinds["shot.png"] != "image" {
 		t.Fatalf("png is an image: %v", kinds["shot.png"])
 	}
-	if f, err := b.Read("link.txt"); err == nil || strings.Contains(f.Content, "秘密") {
+	if f, err := b.Read("link.txt"); err == nil || strings.Contains(f.Content, "secret") {
 		t.Fatalf("a link must not be read: %+v %v", f, err)
 	}
-	if f, err := b.Read("linkdir/secret.txt"); err == nil || strings.Contains(f.Content, "秘密") {
+	if f, err := b.Read("linkdir/secret.txt"); err == nil || strings.Contains(f.Content, "secret") {
 		t.Fatalf("a linked folder must not be read: %+v %v", f, err)
 	}
-	if _, err := b.Write("link.txt", "上書き", false); err == nil {
+	if _, err := b.Write("link.txt", "overwrite", false); err == nil {
 		t.Fatal("must not write through a link")
 	}
-	if data, _ := os.ReadFile(outside); string(data) != "秘密" {
+	if data, _ := os.ReadFile(outside); string(data) != "secret" {
 		t.Fatal("the file behind the link was changed")
 	}
-	// 置き場の中を指すリンクも辿らない(外へ向くリンクは os.Root が断るので、決まりはこちらで確かめる)
+	// Links pointing inside the place are not followed either (os.Root refuses links pointing outside, so this rule is checked here)
 	if err := os.Symlink("shot.png", filepath.Join(dir, "inner-link.png")); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestListSkipsLinksAndHiddenAndReadRefusesLinks(t *testing.T) {
 	}
 }
 
-// 置き場が無いプロジェクトでも一覧は空で、誤りにしない。
+// Even in a project without the place, the list is empty and not an error.
 func TestListWithoutFolderIsEmpty(t *testing.T) {
 	list, err := (Book{Store: filepath.Join(t.TempDir(), ".shikii")}).List()
 	if err != nil || len(list) != 0 {
@@ -149,23 +149,23 @@ func TestListWithoutFolderIsEmpty(t *testing.T) {
 	}
 }
 
-// 監査 0.8.1-1: 置き換えの一時名が固定だと、前もって置かれた一時名のリンクを辿って置き場の中の別のファイルを書き換え、
-// 同時の書き込みが混ざり、長い名前は一時名が上限を超えて書けない。
+// Audit 0.8.1-1: with a fixed temp name for replacement, a temp-name link planted in advance would be followed to rewrite another file in the place,
+// concurrent writes would mix, and with long names the temp name would exceed the limit and could not be written.
 func TestReplaceUsesAFreshTemporaryName(t *testing.T) {
 	b, dir := book(t)
-	if err := os.WriteFile(filepath.Join(dir, "important.md"), []byte("大事"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "important.md"), []byte("important"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("important.md", filepath.Join(dir, ".write-a.md")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Write("a.md", "上書き", false); err != nil {
+	if _, err := b.Write("a.md", "overwrite", false); err != nil {
 		t.Fatal(err)
 	}
-	if data, _ := os.ReadFile(filepath.Join(dir, "important.md")); string(data) != "大事" {
+	if data, _ := os.ReadFile(filepath.Join(dir, "important.md")); string(data) != "important" {
 		t.Fatalf("another file was rewritten through a planted temporary link: %q", data)
 	}
-	long := strings.Repeat("長", 83) + ".md" // 252 バイト
+	long := strings.Repeat("長", 83) + ".md" // 252 bytes
 	if _, err := b.Write(long, "x", false); err != nil {
 		t.Fatalf("a long name accepted by Clean must be writable: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestReplaceUsesAFreshTemporaryName(t *testing.T) {
 	}
 }
 
-// 監査 0.8.1-1: 確かめた後に差し替わったら配らない。大きさは開いた物のもの。
+// Audit 0.8.1-1: if the file is swapped after the check, it is not served. The size is that of the opened item.
 func TestOpenRefusesAFileSwappedAfterTheCheck(t *testing.T) {
 	b, dir := book(t)
 	if _, err := b.Write("swap.md", strings.Repeat("a", 30), false); err != nil {
@@ -204,26 +204,26 @@ func TestOpenRefusesAFileSwappedAfterTheCheck(t *testing.T) {
 	}
 }
 
-// 監査 0.8.1-1: ハードリンク・途中のフォルダのリンク・置き場そのもののリンク・制御文字の名前は扱わない。
+// Audit 0.8.1-1: hard links, links in intermediate folders, a link for the place itself and names with control characters are not handled.
 func TestHardLinksFolderLinksAndControlCharactersAreRefused(t *testing.T) {
 	b, dir := book(t)
 	outside := filepath.Join(t.TempDir(), "secret.txt")
-	if err := os.WriteFile(outside, []byte("外の秘密"), 0o600); err != nil {
+	if err := os.WriteFile(outside, []byte("outside secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Link(outside, filepath.Join(dir, "hard.txt")); err != nil {
 		t.Fatal(err)
 	}
-	if f, err := b.Read("hard.txt"); err == nil || strings.Contains(f.Content, "秘密") {
+	if f, err := b.Read("hard.txt"); err == nil || strings.Contains(f.Content, "secret") {
 		t.Fatalf("a hard link to a file outside must not be read: %+v %v", f, err)
 	}
-	if _, err := b.Write("hard.txt", "追記", true); err == nil {
+	if _, err := b.Write("hard.txt", "append", true); err == nil {
 		t.Fatal("a hard link must not be appended to")
 	}
-	if data, _ := os.ReadFile(outside); string(data) != "外の秘密" {
+	if data, _ := os.ReadFile(outside); string(data) != "outside secret" {
 		t.Fatalf("the file outside was changed: %q", data)
 	}
-	if _, err := b.Write("audit/r.md", "中", false); err != nil {
+	if _, err := b.Write("audit/r.md", "inside", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("audit", filepath.Join(dir, "indir")); err != nil {
@@ -256,8 +256,8 @@ func TestHardLinksFolderLinksAndControlCharactersAreRefused(t *testing.T) {
 	}
 }
 
-// 監査 0.8.1-1 の 14: 書き換えの途中で落ちて残った一時ファイル(.write-*)は、次にそのフォルダへ書く時に、
-// 1 日より古いものだけ片付ける(書き込み中の他の一時ファイルや、ふつうのファイルには触らない)。
+// Audit 0.8.1-1 item 14: temp files (.write-*) left by a crash during a rewrite are cleaned up the next time that folder is written,
+// only those older than one day (other temp files being written and regular files are not touched).
 func TestWriteRemovesStaleTemporaryFiles(t *testing.T) {
 	b, dir := book(t)
 	if err := os.MkdirAll(filepath.Join(dir, "job"), 0o700); err != nil {
@@ -267,8 +267,8 @@ func TestWriteRemovesStaleTemporaryFiles(t *testing.T) {
 	stale := filepath.Join(dir, "job", ".write-00aa11bb22cc33dd")
 	fresh := filepath.Join(dir, "job", ".write-00bb11cc22dd33ee")
 	keep := filepath.Join(dir, "job", ".notes")
-	human := filepath.Join(dir, "job", ".write-up.md")     // 一時ファイルの名の形(.write- と 16 桁の 16 進)でない隠しファイルは人の物
-	other := filepath.Join(dir, ".write-00cc11dd22ee33ff") // 別のフォルダは触らない
+	human := filepath.Join(dir, "job", ".write-up.md")     // hidden files not in the temp-name form (.write- and 16 hex digits) belong to a person
+	other := filepath.Join(dir, ".write-00cc11dd22ee33ff") // other folders are not touched
 	for _, p := range []string{stale, fresh, keep, other, human} {
 		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
@@ -277,20 +277,20 @@ func TestWriteRemovesStaleTemporaryFiles(t *testing.T) {
 	for _, p := range []string{stale, keep, other, human} {
 		os.Chtimes(p, old, old)
 	}
-	if _, err := b.Write("job/a.md", "本文", false); err != nil {
+	if _, err := b.Write("job/a.md", "body", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Lstat(stale); !os.IsNotExist(err) {
-		t.Error("1 日より古い一時ファイルを片付ける")
+		t.Error("temp files older than one day must be cleaned up")
 	}
 	for _, p := range []string{fresh, keep, other, human} {
 		if _, err := os.Lstat(p); err != nil {
-			t.Errorf("%s は残す: %v", p, err)
+			t.Errorf("%s must be kept: %v", p, err)
 		}
 	}
 }
 
-// 監査 0.8.2-1 の 4: 一時ファイルの名のリンク・フォルダは消さず、リンクの先にも、リンクで指した置き場の外にも触らない。
+// Audit 0.8.2-1 item 4: links and folders with temp-file names are not deleted, and neither the link targets nor anything outside the place a link points to is touched.
 func TestStaleTemporaryCleanupLeavesLinksFoldersAndOutside(t *testing.T) {
 	b, dir := book(t)
 	old := time.Now().Add(-48 * time.Hour)
@@ -322,14 +322,14 @@ func TestStaleTemporaryCleanupLeavesLinksFoldersAndOutside(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	removeStaleTemps(r, "out") // 置き場の外を指すフォルダのリンクを渡されても外へ出ない
+	removeStaleTemps(r, "out") // does not go outside even when given a folder link pointing outside the place
 	r.Close()
 	if _, err := b.Write("job/a.md", "x", false); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range []string{victim, target, link, folder} {
 		if _, err := os.Lstat(p); err != nil {
-			t.Errorf("%s は残す: %v", p, err)
+			t.Errorf("%s must be kept: %v", p, err)
 		}
 	}
 }

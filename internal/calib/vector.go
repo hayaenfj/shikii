@@ -6,14 +6,14 @@ import (
 	"sort"
 )
 
-// Vector は多クラスの較正(vector scaling): softmax((log p_k + b_k) / T)。
-// T が全体の確信の強さ、b_k が選択肢ごとの癖(例: 短い state で "other" に逃げる)を直す。
+// Vector is multi-class calibration (vector scaling): softmax((log p_k + b_k) / T).
+// T fixes the overall strength of confidence; b_k fixes each choice's habit (e.g. escaping to "other" on a short state).
 type Vector struct {
 	Temperature float64
 	Biases      map[string]float64
 }
 
-// Apply は較正後の分布。raw に無い鍵の bias は無視し、raw の鍵だけを返す。
+// Apply returns the calibrated distribution. Biases for keys not in raw are ignored, and only raw's keys are returned.
 func (v Vector) Apply(raw map[string]float64) map[string]float64 {
 	keys := sortedKeys(raw)
 	z := make([]float64, len(keys))
@@ -28,16 +28,16 @@ func (v Vector) Apply(raw map[string]float64) map[string]float64 {
 	return out
 }
 
-// MultiSample はラベル 1 件。Raw は選択肢→確率、Truth は正解の鍵。
+// MultiSample is one label. Raw maps choice → probability; Truth is the correct key.
 type MultiSample struct {
 	Raw    map[string]float64
 	Truth  string
 	Weight float64
 }
 
-// FitVector は重み付き最尤で T と b を当てる。b は Σb=0 に射影して一意にする。
-// ラベルの無い選択肢の bias が −∞ に飛ばないよう、正解を 1−ε で平滑化する(ε = 1/(N+K))。
-// 全選択肢の集合は samples の Raw の鍵の和。
+// FitVector fits T and b by weighted maximum likelihood. b is projected onto Σb=0 to make it unique.
+// The correct answer is smoothed to 1−ε (ε = 1/(N+K)) so that biases of choices without labels do not fly to −∞.
+// The set of all choices is the union of the keys of the samples' Raw.
 func FitVector(samples []MultiSample) (Vector, error) {
 	if len(samples) == 0 {
 		return Vector{}, errors.New("no samples")
@@ -68,7 +68,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 	}
 	eps := 1 / (totalW + float64(K))
 
-	// パラメータ: alpha = log(1/T), b[K]
+	// parameters: alpha = log(1/T), b[K]
 	alpha := 0.0
 	b := make([]float64, K)
 	const l2 = 1e-3
@@ -133,7 +133,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 	step := 0.5
 	for iter := 0; iter < 2000; iter++ {
 		ga, gb := grad(alpha, b)
-		// 後退直線探索
+		// backtracking line search
 		var nAlpha float64
 		nb := make([]float64, K)
 		improved := false
@@ -166,7 +166,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 	if T <= 0 || math.IsNaN(T) || math.IsInf(T, 0) {
 		return Vector{}, errors.New("fitted temperature is not finite")
 	}
-	// 当てたのは z = a·log p + b。Apply は (log p + b')/T なので b' = b/a = b·T に直す。
+	// What was fitted is z = a·log p + b. Apply uses (log p + b')/T, so convert to b' = b/a = b·T.
 	biases := make(map[string]float64, K)
 	for i, k := range keys {
 		biases[k] = b[i] * T
@@ -174,7 +174,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 	return Vector{Temperature: T, Biases: biases}, nil
 }
 
-// project は Σb = 0 にする(softmax の平行移動不変性で生じる自由度を潰す)。
+// project makes Σb = 0 (removes the degree of freedom that comes from softmax's shift invariance).
 func project(b []float64) {
 	var mean float64
 	for _, v := range b {

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// state.context は「迷った時だけ文脈を足して聞き直す」並べ方。required の入力を全部使い、template に無い入力を 1 つ以上足す。
+// state.context is a layout that "adds context and asks again only when unsure". It uses every required input and adds one or more inputs not in template.
 func TestContextTemplateMustAddAnInputAndKeepRequired(t *testing.T) {
 	sp := choiceSpec()
 	sp.State.Context = "Previous turn:\n{{ previous }}\n\nMessage:\n{{ message }}"
@@ -29,8 +29,8 @@ func TestContextTemplateMustAddAnInputAndKeepRequired(t *testing.T) {
 	}
 }
 
-// 文脈を足した聞き方は別のハッシュを持つ。最小の質問のハッシュは context を足しても変わらない(今ある線は消えない)。
-// 較正は両方の段を 1 つの spec に持て、古いハッシュの線だけが置き換わる。
+// The context question has its own hash. The minimal question's hash does not change when context is added (existing lines stay).
+// One spec can hold calibration for both steps, and only lines for old hashes are replaced.
 func TestContextRungHasItsOwnHashAndCalibration(t *testing.T) {
 	sp := choiceSpec()
 	before := sp.Hash()
@@ -51,7 +51,7 @@ func TestContextRungHasItsOwnHashAndCalibration(t *testing.T) {
 	if !sp.LiveHash(sp.Hash()) || !sp.LiveHash(sp.ContextHash()) || sp.LiveHash("stale") {
 		t.Fatalf("both rungs' hashes are live; others are stale")
 	}
-	// WithVariant は context を引き継ぐ(採用した版も 2 段で聞く)。WithoutContext は最小の質問だけ。
+	// WithVariant carries context over (the adopted version also asks in two steps). WithoutContext asks only the minimal question.
 	v := sp.WithVariant(Variant{Name: "t", Template: "msg: {{ message }}"})
 	if v.State.Context != sp.State.Context {
 		t.Fatalf("a template variant must keep the context template: %+v", v.State)
@@ -59,7 +59,7 @@ func TestContextRungHasItsOwnHashAndCalibration(t *testing.T) {
 	if m := sp.WithoutContext(); m.HasContext() || m.Hash() != sp.Hash() {
 		t.Fatalf("WithoutContext is the minimal question under the same hash: %+v", m.State)
 	}
-	// 較正: 同じモデルで 2 段の線が共存し、古いハッシュの線は置き換わる
+	// calibration: two step lines coexist for the same model, and the old-hash line is replaced
 	sp.PutCalibration(Calibration{Model: "m", SpecHash: "stale", Method: "identity"})
 	sp.PutCalibration(Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity"})
 	sp.PutCalibration(Calibration{Model: "m", SpecHash: sp.ContextHash(), Method: "identity"})
