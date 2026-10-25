@@ -304,18 +304,18 @@ function checkRulesPanel(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   try { localStorage.removeItem('shikii.scene'); } catch { /* 無くてよい */ }
   const mk = (i, kind, scene) => ({ id: String(i).padStart(16, '0'), title: 'ルール ' + i, lesson: '教訓 ' + i, applies_to: 'a', kind, scene, sources: [], related: [] });
-  const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'いつも'), mk(3, 'howto', 'コミットする時'), mk(4, 'rule', '公開する時')];
+  const lessons = [mk(1, 'rule', 'コミットする時'), mk(2, 'rule', 'いつも'), mk(3, 'howto', 'コミットする時'), mk(4, 'rule', '公開する時'), mk(5, 'rule', ' Always ')]; // 英語の always と前後の空白(監査 低-4)
   const recent = new Date(Date.now() - 2 * 86400000).toISOString(), old = '2026-01-01T00:00:00Z';
-  const wiki = { lessons, lesson_meta: { [lessons[0].id]: { updated: recent }, [lessons[1].id]: { updated: old }, [lessons[3].id]: { updated: old } }, inbox: [] };
+  const wiki = { lessons, lesson_meta: { [lessons[0].id]: { updated: recent }, [lessons[1].id]: { updated: old }, [lessons[3].id]: { updated: old }, [lessons[4].id]: { updated: '2025-01-01T00:00:00Z' } }, inbox: [{ kind: 'harmful', lesson_id: lessons[2].id, lesson: 'x', count: 1 }] };
   const app = mount(Lessons, { target, props: { wiki } }); flushSync();
   const panel = target.querySelector('[data-rules]');
   const rows = () => [...target.querySelectorAll('[data-rules] [data-rule]')].map(b => b.dataset.rule);
-  const top = !!panel && !!(panel.compareDocumentPosition(target.querySelector('[data-scenes]')) & 4);
+  const top = !!panel && !!(panel.compareDocumentPosition(target.querySelector('[data-scenes]')) & 4) && !!(panel.compareDocumentPosition(target.querySelector('[data-inbox]')) & 4); // 受け箱より上(監査 低-3)
   const named = (panel?.textContent || '').includes('このプロジェクトで決められたルール');
-  const order = rows().join(',') === [lessons[1].id, lessons[0].id, lessons[3].id].join(',');
+  const order = rows().join(',') === [lessons[1].id, lessons[4].id, lessons[0].id, lessons[3].id].join(','); // いつも(always も)が先、その中も新しい順
   const fresh = !!target.querySelector('[data-rule="' + lessons[0].id + '"] [data-rule-new]') && !target.querySelector('[data-rule="' + lessons[3].id + '"] [data-rule-new]');
   target.querySelector('[data-scene="公開する時"]')?.click(); flushSync();
-  const allWhenFiltered = rows().length === 3;
+  const allWhenFiltered = rows().length === 4;
   target.querySelector('[data-rule="' + lessons[3].id + '"]')?.click(); flushSync();
   const opens = (target.querySelector('[data-lesson-detail]')?.textContent || '').includes('教訓 4');
   unmount(app); i18n.lang = lang;
