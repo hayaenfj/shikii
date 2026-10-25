@@ -1,14 +1,11 @@
 // 日本語の辞書。鍵は en.js と同じ(npm run check が揃いを見る)。文言は画面の以前の版からそのまま
 export default {
-  summaryOpen: 'クリックで詳細',
-  summaryYou: n => 'あなたがやること: ' + n + ' 件', summaryYouNone: 'あなたがやること: 今はありません',
-  summaryYouNoneLong: '今は答えるものがありません。AI が判定し、正解は作業の結果と振り返りから付きます。AI が迷った時と、20 件に 1 件の抜き取りだけがここに出ます。',
-  summaryYouHead: 'あなたがやること', summaryGoTo: '押すとその問いへ',
-  summaryAI: (name, autoN, total, m, g) => 'AI: ' + (name || '判定モデル') + ' で判定中 · 自分で判断できる問い ' + autoN + ' / ' + total + ' · 届いた教訓 ' + (m.delivered || 0) + '（役立った ' + (m.helpful || 0) + '）· 止める検査 ' + (g.enabled || 0) + ' 有効',
-  summaryAIHead: 'AI の状態', summaryModel: (name, endpoint) => '判定モデル: ' + (name || '不明') + (endpoint ? '（' + endpoint + '）' : ''),
+
+
+summaryModel: (name, endpoint) => '判定モデル: ' + (name || '不明') + (endpoint ? '（' + endpoint + '）' : ''),
   summarySpecAuto: '自分で判断中（答え合わせ済みで線が引けた）', summarySpecLearning: (n, min) => '学習中 ' + n + ' / ' + min + ' 件（答え合わせが ' + min + ' 件たまると自分で判断）',
   summarySpecResults: n => '結果待ち ' + n, summarySpecMachine: n => 'AI だけが答える問い（人は答えない）。結果待ち ' + n + ' 件',
-  navMachine: 'AI だけが答える問い', readonlyNote: 'この記録の正解は結果（次の依頼・振り返り）から付きます。あなたが答える必要はありません。',
+readonlyNote: 'この記録の正解は結果（次の依頼・振り返り）から付きます。あなたが答える必要はありません。',
   summaryMemoryNone: 'まだ届いていません。似た依頼の前と、サブエージェントの開始時に届きます。',
   summaryMemoryRow: m => '届けた ' + m.delivered + ' 件: 役立った ' + m.helpful + '、使わなかった ' + m.unused + '、害があった ' + m.harmful + '、不明 ' + m.unknown + '、観察待ち ' + m.pending + '（次の依頼待ち ' + m.awaiting_feedback + '）。直近7日: 届けた ' + m.recent_delivered + '、役立った ' + m.recent_helpful,
   summaryCorrections: c => '訂正の配送 ' + c.delivered + ': 沿った ' + c.followed + '、再発 ' + c.repeated + '、対象外 ' + c.not_applicable + '、不明 ' + c.unknown + '、観察待ち ' + c.pending,
@@ -29,20 +26,15 @@ export default {
   calibrationError: '較正の処理に失敗しました。答え合わせは保存されています。診断ログで原因を確認できます。',
   calibrationDiagnostic: '過去の自動較正の記録です。診断ログで内容を確認できます。',
   calibrationDetails: '診断ログを開く',
-  decisionNav: '確認すること',
-  navBefore: '作業前',
-  navAfter: '作業後',
-  navOther: '業務の判定',
-  navKnowledge: '蓄えた知識',
-  navNote: 'AIが普段の採点を担当。人は抜き取りと保留を確認します。',
-  currentProject: 'このプロジェクト',
+
+
+
   workspaceTitle: '会話の振り返り',
-  pendingCount: '確認待ち',
-  awaitingResults: '結果待ち',
+
+
   machineOnly: (n, u) => `この問いはAIが答え、正解は振り返りの結果（記事を置き換えたか・足したか）から付きます。あなたが答える必要はありません。結果待ち ${n} 件` + (u ? `、判断つかずで確定 ${u} 件（草稿は保存済みで、その記事には触れなかった）` : '') + '。',
-  checkedCount: '答え合わせ済み',
-  recordCount: '判定の記録',
-  countUnit: '件',
+
+
   questionHeading: '今回、確かめること',
   learningProgress: '学習の進み具合',
   conversationRecord: '確認する記録',
@@ -50,8 +42,8 @@ export default {
   yourDecision: 'あなたの判断',
   chooseAnswer: '会話を読んで、当てはまる答えを選んでください',
   changeAnswerShort: '別の答えを選ぶと変更できます',
-  viewLabel: '表示方法',
-  filterLabel: '記録の絞り込み',
+
+
   howToShort: '読む → 答える。その繰り返しで育ちます。',
   openProject: 'このプロジェクトを見る',
   beforeWork: '作業を始める前の判断です。下の依頼を受けたAIが、そのまま始めてよかったか、先にあなたへ確かめるべきだったかを選んでください。AIの読みは参考で、答えはあなたが決めます。',
@@ -75,20 +67,18 @@ export default {
   projectsTitle: 'プロジェクト', projectsHow: '仕事を選ぶと、その会話・教訓・答え合わせだけを表示します。', projectsEmpty: 'まだプロジェクトはありません。利用するプロジェクトで shikii --init を実行するか、エージェントにこの場所での利用を頼んでください。',
   legacyTextLimit: 'この欄は保存上限付近で終わっています。以前の版では続きが保存されていない場合があります。', originalTextLimit: '長文のため、原文の保存上限（64 KB）まで表示しています。', originalTextUnavailable: '原文を読み出せません。判定に保存された冒頭を表示しています。',
 
-  reviewRandom: 'AI の仮採点を抜き打ちで確認', reviewUncertain: 'AI が採点を保留したため確認', reviewReply: 'その後の人の返事', reviewEvidence: 'AI の仮採点と根拠を見る', reviewPending: n => `会話の続きを受けて AI が仮採点する判定: ${n} 件`, reviewQuality: q => `AI の仮採点 ${q.scored} 件（保留 ${q.uncertain} 件） · 採点の比較 ${q.checked} 件中 ${q.correct} 件一致 · 保留の確認 ${q.uncertain_checked} 件 · 無作為の確認 ${q.random_checked} 件中 ${q.random_correct} 件一致 · 抜き取りは ${q.audit_every} 件に 1 件`,
+  reviewRandom: 'AI が自分で決めた判定の抜き打ちです', reviewUncertain: 'AI が決めきれなかった判定です', reviewReply: 'その後の人の返事', reviewEvidence: 'AI が付けた答えと理由を見る', reviewPending: n => `会話の続きを受けて AI が仮採点する判定: ${n} 件`, reviewQuality: q => `AI の仮採点 ${q.scored} 件（保留 ${q.uncertain} 件） · 採点の比較 ${q.checked} 件中 ${q.correct} 件一致 · 保留の確認 ${q.uncertain_checked} 件 · 無作為の確認 ${q.random_checked} 件中 ${q.random_correct} 件一致 · 抜き取りは ${q.audit_every} 件に 1 件`,
 
   langName: '日本語',
   helpTitle: '使い方', langLabel: '言語', bandAbstain: 'AI は判定しませんでした(入力が足りない)。', truthsCount: n => n + ' 件の正解', tableHead: ['候補', 'top-1', 'brier', 'act の精度', 'act の再現率'], yesTo: 'はい→', noTo: 'いいえ→',
-  tagline: '会話を振り返り、次の判断へ。', loading: '読み込み中…', noSpecs: 'まだ判定が登録されていません', empty: '答え合わせ待ちはありません。AI が何かを判定すると、ここに並びます。',
-  keysHint: 'キー操作: 1〜9 で答えを選ぶ、Enter で「AI と同じ」、→ でスキップ',
-  tabKnowledge: '知識', viewOne: '1 件ずつ', viewList: '一覧', skip: 'スキップ(あとで)', position: (i, n) => i + ' / ' + n + ' 件', more: m => 'ほかに ' + m + ' 件待っています', showMore: m => 'さらに表示(' + m + ' 件)', unskip: n => 'スキップした ' + n + ' 件を戻す', emptyFiltered: 'この種類の待ちはありません',
-  chip_all: '全部', chip_ask: 'AI が迷った', chip_audit: '抜き取り', auditShort: '抜き取り', byProject: '仕事ごと:',
+loading: '読み込み中…', noSpecs: 'まだ判定が登録されていません', empty: '答え合わせ待ちはありません。AI が何かを判定すると、ここに並びます。',
+skip: 'スキップ(あとで)', position: (i, n) => i + ' / ' + n + ' 件', more: m => 'ほかに ' + m + ' 件待っています', showMore: m => 'さらに表示(' + m + ' 件)', unskip: n => 'スキップした ' + n + ' 件を戻す', auditShort: '抜き取り', 
   viewTodo: '未回答（あなた）', viewDone: '回答済み', viewResults: '次の依頼・振り返りで確定する', viewResultsMachine: '振り返りで確定する', viewSettledByAI: 'AI が決めた（答えなくてよい）', settledByAILane: 'ここは AI が確信して決めた記録で、抜き取りに当たらなかったものです。答えなくてよいですが、違うと思えば直せます。', viewDoneMachine: '確定済み', emptyResults: '結果待ちはありません。', resultsLane: 'ここは AI が判定した記録で、正解は次の依頼の結果や振り返りから自動で付きます。あなたが答えるものではありません。', machineOnlyLane: 'ここは AI だけが答える問いです。振り返りで記事をどう扱ったか（置き換えた・足した）で確定します。', yourAnswer: (name, when) => 'あなたの答え: ' + name + '(' + when + ')', changeAnswer: '別のボタンを押すと答えを直せます。いちばん新しい答えが使われます。', redo: 'AI にもう一度聞く', redoHint: '今の聞き方と線で同じ本文をもう一度判定します。あなたの答えはそのまま残ります', redoResult: (b, a) => '前: ' + b + '  →  今: ' + a, redoAgree: 'あなたの答えと一致しました', redoDisagree: 'まだあなたの答えと違います', noneAnswered: '回答済みのものはまだありません', wasRedone: 'もう一度聞いた結果',
   plainAuto: 'この判定は AI が自分で動いてよい状態です(答え合わせが十分に揃いました)。', plainReady: '答えは揃いました。自動実行できるか、予測の精度を検証する必要があります。', plainOneAnswer: '正解は足りていますが、答えが片方だけなので、もう片方の答えが付くまで線を引けません。', plainNotSeparable: '正解は足りていますが、今の聞き方とモデルでは答えを分けられず線を引けませんでした。正解が増えたら、もう一度試します。', plainLearning: (n, m) => 'まだ学習中: 答え合わせ ' + n + ' / ' + m + ' 件(AI が自分で動けるようになるには ' + m + ' 件)。', plainStale: '質問の文が変わったので、学び直しています。',
   aiGuess: (name, p) => 'AI の予想: ' + name + '(自信 ' + p + '%)', bandAsk: '人の確認が必要な判定', bandAct: '自動で進められる判定', bandDiscard: '自動では進めない判定', sameAsAI: 'AI と同じ',
-  records: n => '判定 ' + n + ' 件', answered: n => '答え合わせ済み ' + n + ' 件', calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変わったので学び直し', collecting: (n, m) => '学習中 ' + n + '/' + m, ready: (n, m) => '件数は揃いました ' + n + '/' + m, one_answer: (n, m) => '答えが片方だけ ' + n + ' 件(線には両方の答えが要る)', not_separable: (n, m) => '分けられない ' + n + ' 件(正解が増えたら再び試す)',
-  howToTitle: 'この画面の使い方', howTo: ['上のタブで判定の種類を選びます。', 'カードの本文を読みます。AI の予想は「AI と同じ」と書いたボタンです。', '本当はどれだったかのボタンを押します(キー 1〜9、AI と同じなら Enter)。押すと次のカードが出ます。', '分からなければ → でスキップして、あとで戻れます。答え合わせが揃うと、AI が自分で動けるようになります。'], gotIt: 'わかった', todo: '本文を読んで、本当はどれだったかを押してください。',
-  withContext: '文脈を足して聞き直した', contextRung: '文脈の段', toPerson: (h, k) => '人へ ' + h + '(1000 判定あたり ' + k + ')',
+calibrated: m => '自分で動けます (' + m + ')', stale: '質問の文が変わったので学び直し', collecting: (n, m) => '学習中 ' + n + '/' + m, ready: (n, m) => '件数は揃いました ' + n + '/' + m, one_answer: (n, m) => '答えが片方だけ ' + n + ' 件(線には両方の答えが要る)', not_separable: (n, m) => '分けられない ' + n + ' 件(正解が増えたら再び試す)',
+  howToTitle: 'この画面の使い方', howTo: ['上の「答える」を開きます。あなたを待っている分だけが、1 枚ずつ出ます。', '札の会話を読みます。AI の予想は「AI と同じ」と書いたボタンです。', '本当はどれだったかのボタンを押します(キー 1〜9、AI と同じなら Enter)。押すと次のカードが出ます。', '分からなければ → でスキップして、あとで戻れます。答え合わせが揃うと、AI が自分で動けるようになります。'], gotIt: 'わかった', 
+  withContext: '文脈を足して聞き直した', 
   audit: '抜き取り検査: 機械が自動で動いた判定。20 件に 1 件をここに出し、人が確かめた分で精度を測る',
   knowledge: '知識(主張)', claimsCount: (n, p) => '主張 ' + n + '、文章のページ ' + p, noClaims: 'まだ主張はありません(tune で勝った候補があれば下書きができます)',
   lessonsTab: '教訓', lessonsTitle: '覚えていること', lessonsSummary: (s, c, n) => '直近 ' + (s.delivered || 0) + ' 回届けて役立った ' + (s.helpful || 0) + '・使われなかった ' + (s.unused || 0) + '・害 ' + (s.harmful || 0) + '。訂正は沿った ' + (c.followed || 0) + '・繰り返し ' + (c.repeated || 0) + '。記事 ' + n + ' 本。', inboxTitle: 'あなたに見てほしいもの', inboxTimes: n => n + ' 回', inboxEmpty: '今はありません。害があった教訓・繰り返された訂正・有効にする前の止める検査が出た時だけ、ここに出ます。', inboxKind: k => ({ harmful: '害があった', repeated: '訂正が繰り返された', guard_draft: '止める検査の草稿' })[k] || k, scenesTitle: '場面', scenesHead: n => '場面 · 記事 ' + n + ' 本', scenesClear: '絞りを外す', scenesNone: '未分類', sceneFor: s => '「' + s + '」に効く知識', unclassifiedHow: '場面と種類がまだ付いていない記事です(版を上げる前に作った物)。エージェントが依頼のたびに 5 本ずつ付けます。人がやることはありません。', kindName: k => ({ rule: '守る決まり', howto: 'やり方', criteria: '判断の基準', fact: '前提と事実', history: '経緯' })[k] || k, kindHint: k => ({ rule: 'いつも守ること', howto: '手順と進め方', criteria: 'どちらにするかの決め方', fact: '今そうなっていること', history: 'なぜそうなったか' })[k] || '', kindCount: n => n + ' 本', kindMore: n => 'ほか ' + n + ' 本を見る', kindLess: '畳む', lessonsEmpty: 'この場面の記事はまだありません', helpfulCount: n => '役立った ' + n, appliesTo: '当てはまる時', bodyTitle: '背景と経緯', relatedTitle: '関連', lessonFoot: (n, d) => '出典 ' + n + ' 件' + (d ? ' · 最終更新 ' + d : ''), detailEmpty: '題を押すと、ここに本文・関連・出典が出ます。', effectTitle: '届いた教訓は効いたか(最近)', effectResult: r => ({ helpful: '役立った', unused: '使われなかった', harmful: '害があった', unknown: '不明' })[r] || '振り返り待ち', effectLesson: '届けた教訓:', clipMore: '全文', clipLess: '畳む', aiDetails: 'AI の様子と詳しい記録(検索・見直し・振り返り・記事の木・以前の主張)',
@@ -103,4 +93,11 @@ export default {
   adoptedLine: p => '採用済み: ' + p, sameMeaning: '意味は同じ → 採用', changedMeaning: '意味が違う → 却下', notePrompt: '意味のどこが変わりましたか？(任意)',
   candidates: n => '測る前の案 ' + n + ' 件', noCandidates: '案はまだありません。下に書くか、AI に作らせてください', addWording: '言い換えの案を書く', candName: '短い名前(例: plain-words)', candQuestion: '質問をあなたの言葉で', candQuestionOrOptions: '質問をあなたの言葉で(空なら今の質問のまま。下の選択肢の説明だけ変える)', candOptions: '選択肢の説明。1 行に 1 つ、id: 説明 の形(変えるものだけ)', addWordingBtn: '案を足す', candAdded: n => '足しました: ' + n + '。次に測る時に採点されます',
   checkHint: '言い換えても、まだあなたの聞きたいことを聞いていますか？数字は機械が確かめました。意味はあなたが確かめてください。', rejected: '記録しました: 意味が違うので採用しない', adoptedToast: p => '採用しました: ' + p,
+  // 0.9.1: 画面は 3 つ(答える・知識・AI の様子)
+  pagesNav: '画面', pageAnswer: '答える', pageKnowledge: '知識', pageAI: 'AI の様子',
+  answerTitle: '答える', answerLeft: n => '残り ' + n + ' 件', answerHow: 'AI が迷った判定と、AI が自分で決めた判定の抜き打ちです。会話を読んで、本当はどうだったかを押してください。',
+  answerEmpty: '今はありません。AI は自分で進めています。', answerToKnowledge: '知識を見る', answerWording: name => '「' + name + '」の聞き方の候補: 意味は同じですか',
+  aiTitle: 'AI の様子', aiHow: '普段は見なくてかまいません。問いごとの学習の進み、答えた分の見直し、届けた教訓、止める検査がここにあります。',
+  aiYours: 'あなたが答える問い', aiMachine: 'AI だけが答える問い(人は答えない)',
+  summaryMemoryHead: '届けた教訓と作業の手順', summaryGuardsHead: '止める検査', summaryModelHead: '判定モデルと人を待つ割合',
 };

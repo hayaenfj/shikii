@@ -1,21 +1,20 @@
 // 画面の状態と、サーバーからの読み込み。
-// ui: 開いているタブ(判定ごと、または知識)、見せ方(1 件ずつ / 一覧)、絞り込み(全部 / 迷い / 抜き取り / その他)、
-//     未回答 / 回答済み、あとで答える(スキップ)、使い方の案内。保存するものは localStorage(shikii.*)。「かんたん表示 / くわしく」の切替は 0.8.1 で廃止(常に全部見せる)
-// data: /v1/status と、表示中の列・聞き方または知識。null は読み込み前
+// ui.page: 開いている画面(0.9.1)。answer = 答える(人が答える問いの待ちを 1 列に)、wiki = 知識、ai = AI の様子(問いごとの学習の進み・答えた分・聞き方)
+// ui.tab: AI の様子で開いている問い。ui.done / ui.results: その問いの列(回答済み / 結果で確定する)。保存するものは localStorage(shikii.*)
+// data: /v1/status と、表示中の画面の分(答える: 待っている問いの列と聞き方、知識: wiki、AI の様子: 開いた問いの列と聞き方)。null は読み込み前
 import { SvelteSet } from 'svelte/reactivity';
 import { api } from './api.js';
 import { read, write } from './prefs.js';
 
-// URL の ?spec=<id>&trace=<trace_id> で、その判定を開いた状態で始める(hook の「あとで答える → URL」から来る)。pinned の 1 件は列の先頭に出る
+// URL の ?spec=<id>&trace=<trace_id> で、その判定を答える画面の先頭に出して始める(hook の「あとで答える → URL」から来る)
 const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+const pages = ['answer', 'wiki', 'ai'];
+const savedPage = read('shikii.page');
 export const ui = $state({
   showHelp: read('shikii.help') !== 'hidden',
+  page: params.get('trace') ? 'answer' : pages.includes(savedPage) ? savedPage : '',
   tab: params.get('spec') || read('shikii.tab'),
   pinned: params.get('trace') || '',
-  view: read('shikii.view') || 'one',
-  filter: 'all',
-  project: '', // 仕事(記録の project の印)での絞り込み。'' は全部。一つのプロジェクトの中で付けた印だけを絞る
-
   listSize: 30,
   done: false,
   results: false, // 「次の依頼・振り返りで確定する」の列を見ている(人は答えない記録。0.8.0)
@@ -25,29 +24,49 @@ export const data = $state({ state: null, loadError: '' });
 
 export function setShowHelp(v) { ui.showHelp = v; write('shikii.help', v ? 'shown' : 'hidden'); }
 export function setTab(v) { ui.tab = v; write('shikii.tab', v); }
-export function setView(v) { ui.view = v; write('shikii.view', v); }
+export function setPage(v) { ui.page = v; write('shikii.page', v); }
 
-// ナビと読取りで同じ選択規則を使う。知識は未読でも開ける。
+// 人が答える問い(AI だけが答える wiki の問いを除く)
+export const personSpecs = st => (st?.specs || []).filter(s => s.person_answers !== false);
+
+// 開く画面: 選んだ物、無ければ待ちがあれば答える、無ければ知識(wiki の無い画面では AI の様子)
+export function selectedPage(st, selection = ui) {
+  if (!st?.specs?.length) return null;
+  if (pages.includes(selection.page)) return selection.page === 'wiki' && st.projects ? 'ai' : selection.page;
+  return personSpecs(st).some(s => s.waiting_for_person > 0) ? 'answer' : 'wiki';
+}
+
+// AI の様子で開く問い。選んだ物、無ければ待ちのある物、無ければ先頭
 export function selectedTab(st, selection = ui) {
   if (!st?.specs?.length) return null;
-  if (selection.tab === 'wiki') return 'wiki';
   return st.specs.find(s => s.id === selection.tab)?.id
     || st.specs.find(s => s.waiting_for_person > 0)?.id || st.specs[0].id;
 }
 
+// 答える画面で読む問い: 人が答える問いのうち待ちがある物と、URL で指された物
+export function answerSpecs(st, selection = ui) {
+  return personSpecs(st).filter(s => s.waiting_for_person > 0 || s.id === params.get('spec') && selection.pinned);
+}
+
 let loadVersion = 0;
-// statusと表示中の欄だけを更新する。遅い古い応答は新しい選択へ反映しない。
+// status と表示中の画面の分だけを読む。遅い古い応答は新しい選択へ反映しない。
 export async function load() {
   const version = ++loadVersion;
-  const selection = { tab: ui.tab, done: ui.done };
+  const selection = { page: ui.page, tab: ui.tab, done: ui.done, pinned: ui.pinned };
   try {
     const st = await api.status();
     if (version !== loadVersion) return;
     if (!Array.isArray(st.projects)) {
-      const tab = selectedTab(st, selection);
-      if (tab === 'wiki') {
+      const page = selectedPage(st, selection);
+      if (page === 'wiki') {
         st.wiki = await api.wiki();
-      } else if (tab) {
+      } else if (page === 'answer') {
+        await Promise.all(answerSpecs(st, selection).map(async sp => {
+          const [rows, tune] = await Promise.all([api.queue(sp.id), api.tune(sp.id).catch(() => null)]);
+          sp.queue = rows; sp.tune = tune;
+        }));
+      } else if (page === 'ai') {
+        const tab = selectedTab(st, selection);
         const sp = st.specs.find(s => s.id === tab);
         // 回答済みでは未回答の列を読まない。
         const [rows, tune] = await Promise.all([

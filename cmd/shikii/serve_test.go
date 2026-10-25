@@ -300,12 +300,12 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := uiText(t, url)
-	for _, must := range []string{"AI の予想", "AI と同じ", "1〜9", "まだ学習中", "data-tab=\"wiki\""} {
+	for _, must := range []string{"AI の予想", "AI と同じ", "1〜9", "まだ学習中", "data-page=\"wiki\""} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("beginner view missing %q", must)
 		}
 	}
-	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h", `id="mode"`, "かんたん表示", "shikii.mode", "body.advanced"} {
+	for _, never := range []string{"'線あり (", "'文言が古い'", "'holdout ' + h", `id="mode"`, "かんたん表示", "shikii.mode", "body.advanced", "AI の仮採点を抜き打ちで確認"} {
 		if strings.Contains(body, never) {
 			t.Fatalf("jargon must not appear in the page: %q", never)
 		}
@@ -330,13 +330,19 @@ func TestServeUIIsBeginnerFriendly(t *testing.T) {
 	}
 }
 
-// 件数が増えた時の見せ方: 判定ごとのタブ(待ち件数の印)、1 件ずつ / 一覧、種類の数で絞り込み、スキップ、ほかに待っている数。知識のタブは常に出る(0.8.1)。
+// 件数が増えた時の見せ方(0.9.1): 上は「答える(待ちの合計の印)・知識・AI の様子」の 3 つだけ。答える画面は全部の問いの待ちを 1 枚ずつ(スキップ、残りの数)、
+// AI の様子は問いごとの列(さらに表示、ほかに待っている数)。0.8 までの左の問いごとのメニュー・1 件ずつ / 一覧の切替・種類の絞り込みは無い
 func TestServeUIHasTabsAndScalesToManyItems(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)
-	for _, must := range []string{`id="tabs"`, "shikii.tab", "1 件ずつ", "一覧", "スキップ(あとで)", "ほかに ", "AI が迷った", "抜き取り", "さらに表示", "data-tab=\"wiki\"", "limit=200", "ArrowRight"} {
+	for _, must := range []string{`id="tabs"`, `data-page="answer"`, `data-page="wiki"`, `data-page="ai"`, "shikii.page", "shikii.tab", "スキップ(あとで)", "残り ", "ほかに ", "さらに表示", "limit=200", "ArrowRight"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("scalable view missing %q", must)
+		}
+	}
+	for _, never := range []string{"'1 件ずつ'", "queue-filters", "view-switch", "chips projects", "summary-line"} {
+		if strings.Contains(body, never) {
+			t.Fatalf("the 0.8 navigation must be gone: %q", never)
 		}
 	}
 }
@@ -355,11 +361,11 @@ func TestBindHostIsLoopbackExceptInsideAContainer(t *testing.T) {
 	}
 }
 
-// 使い方の案内: 最初に 4 手順の案内が出て、閉じれば次回から出ない(右上の ? で再表示)。カードの上に「今やること」、ボタンに番号(キーと同じ)。
+// 使い方の案内: 最初に 4 手順の案内が出て、閉じれば次回から出ない(右上の ? で再表示)。答える画面の上に「今やること」、ボタンに番号(キーと同じ)。
 func TestServeUIExplainsItself(t *testing.T) {
 	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	body := uiText(t, url)
-	for _, must := range []string{`id="help"`, "この画面の使い方", "本当はどれだったかのボタンを押します", "わかった", "shikii.help", "本文を読んで、本当はどれだったかを押してください", "data-num"} {
+	for _, must := range []string{`id="help"`, "この画面の使い方", "本当はどれだったかのボタンを押します", "わかった", "shikii.help", "会話を読んで、本当はどうだったかを押してください", "data-num"} {
 		if !strings.Contains(body, must) {
 			t.Fatalf("the page must explain itself; missing %q", must)
 		}

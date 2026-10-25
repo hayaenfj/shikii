@@ -1,28 +1,28 @@
 <script>
-  // 画面の全体: ヘッダー(?、言語)、使い方の案内、タブ、判定の欄か知識の欄、toast。見た目は Tailwind の class(色は app.css の token)
-  // 15 秒ごとに読み直す(画面が隠れている間は読まない)。キー操作: 1〜9 で先頭のカードの答えを選ぶ、Enter で AI と同じ、→ でスキップ
+  // 画面の全体(0.9.1): ヘッダー(プロジェクト、3 つの画面の切替、?、言語)、使い方の案内、開いた画面、toast。見た目は Tailwind の class(色は app.css の token)
+  // 画面は「答える」(人が答える判定を 1 列に)・「知識」・「AI の様子」の 3 つだけ。0.8 までの左の問いごとのメニューと先頭の要約の帯はやめた
+  // 15 秒ごとに読み直す(画面が隠れている間は読まない)。キー操作(答える画面だけ): 1〜9 で札の答えを選ぶ、Enter で AI と同じ、→ でスキップ
   import { onMount, untrack } from 'svelte';
   import { i18n, t } from './lib/i18n.svelte.js';
-  import { ui, data, load, selectedTab, setShowHelp } from './lib/state.svelte.js';
+  import { ui, data, load, selectedPage, setPage, setShowHelp, personSpecs } from './lib/state.svelte.js';
   import HowTo from './components/HowTo.svelte';
-  import Tabs from './components/Tabs.svelte';
-  import SpecPanel from './components/SpecPanel.svelte';
+  import Answer from './components/Answer.svelte';
+  import AiView from './components/AiView.svelte';
   import Knowledge from './components/Knowledge.svelte';
   import Toast from './components/Toast.svelte';
   import LangPicker from './components/LangPicker.svelte';
   import Projects from './components/Projects.svelte';
-  import Summary from './components/Summary.svelte';
 
   let st = $derived(data.state);
   let hasWiki = $derived(!!st && !st.projects);
-  let activeTab = $derived(selectedTab(st));
-  let activeSpec = $derived(st && activeTab !== 'wiki' ? st.specs.find(s => s.id === activeTab) : null);
+  let page = $derived(selectedPage(st));
+  let waits = $derived(personSpecs(st).reduce((n, s) => n + (s.waiting_for_person || 0), 0));
 
   $effect(() => { document.documentElement.lang = i18n.lang; });
 
   function onKey(ev) {
-    // 判定の欄の未回答の列でだけ効く(知識の欄や回答済みで別のボタンを押さない。監査 R2)。入力欄やボタンに居る時は邪魔しない
-    if (activeTab === 'wiki' || ui.done || ui.results || activeSpec?.person_answers === false) return;
+    // 答える画面の先頭の札でだけ効く(知識や AI の様子で別のボタンを押さない。監査 R2)。入力欄やボタンに居る時は邪魔しない
+    if (page !== 'answer') return;
     if (ev.target?.closest?.('input, select, textarea, button, a, summary, [contenteditable="true"]')) return;
     const first = document.querySelector('.item'); if (!first) return;
     if (/^[1-9]$/.test(ev.key)) { const b = first.querySelectorAll('.btns button')[Number(ev.key) - 1]; if (b) { ev.preventDefault(); b.click(); } }
@@ -32,7 +32,7 @@
 
   // 選択にだけ追従し、取得したデータの更新では読み直さない。
   $effect(() => {
-    ui.tab; ui.done;
+    ui.page; ui.tab; ui.done;
     untrack(() => { load(); });
   });
 
@@ -40,13 +40,22 @@
     const timer = setInterval(() => { if (!document.hidden) load(); }, 15000);
     return () => clearInterval(timer);
   });
+
+  const pageBtn = on => 'flex items-center gap-2 rounded-[9px] border px-3.5 py-2 text-[14px] max-sm:px-2.5 max-sm:py-1.5 max-sm:text-[13px] ' + (on ? 'active border-accent/30 bg-accentbg font-[650] text-accent' : 'border-transparent bg-transparent text-muted hover:bg-surface2');
 </script>
 
 <svelte:document onkeydown={onKey} />
 
-<header class="app-header mx-auto flex min-h-[84px] max-w-[1440px] items-center justify-between gap-6 border-b border-line max-md:min-h-[86px] max-sm:gap-2.5">
-  <div class="flex items-center gap-[13px] max-sm:gap-[9px]"><span class="flex h-[42px] w-[42px] items-center gap-1 rounded-[13px] bg-accent p-2.5 max-sm:h-[34px] max-sm:w-[34px] max-sm:gap-[3px] max-sm:rounded-[10px] max-sm:p-[7px] [&>i]:block [&>i]:h-3 [&>i]:w-[5px] [&>i]:rounded-[3px] [&>i]:bg-bg [&>i:nth-child(2)]:h-[23px] [&>i:nth-child(3)]:h-[17px] max-sm:[&>i]:w-1" aria-hidden="true"><i></i><i></i><i></i></span><h1 class="m-0 text-[26px] leading-[1.15] font-[750] tracking-[-1px] max-sm:text-[22px]">shikii <small id="tagline" class="mt-[7px] block text-[11px] font-normal tracking-[.05em] text-muted max-sm:hidden">{t('tagline')}</small></h1></div>
-  <div class="flex items-center gap-2 max-sm:gap-[5px]">
+<header class="app-header mx-auto flex min-h-[72px] max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-2 border-b border-line py-2 max-sm:gap-x-2.5">
+  <div class="flex items-center gap-[11px]"><span class="flex h-[36px] w-[36px] items-center gap-1 rounded-[11px] bg-accent p-2 max-sm:h-[30px] max-sm:w-[30px] max-sm:gap-[3px] max-sm:rounded-[9px] max-sm:p-[6px] [&>i]:block [&>i]:h-2.5 [&>i]:w-1 [&>i]:rounded-[3px] [&>i]:bg-bg [&>i:nth-child(2)]:h-[19px] [&>i:nth-child(3)]:h-[14px]" aria-hidden="true"><i></i><i></i><i></i></span><h1 class="m-0 text-[22px] leading-[1.15] font-[750] tracking-[-.5px] max-sm:text-[19px]">shikii{#if st?.project_name}<a class="ml-2.5 text-[15px] font-normal tracking-normal text-muted no-underline" href="../../" title={t('projectsTitle')}>{st.project_name}</a>{/if}</h1></div>
+  {#if hasWiki && st.specs?.length}
+    <nav id="tabs" class="flex gap-1 max-md:order-last max-md:w-full" aria-label={t('pagesNav')}>
+      <button type="button" data-page="answer" aria-current={page === 'answer' ? 'page' : undefined} class={pageBtn(page === 'answer')} onclick={() => setPage('answer')}>{t('pageAnswer')}{#if waits}<span class="badge rounded-md bg-amberbg px-[7px] py-px text-[11px] text-amber tabular-nums">{waits}</span>{/if}</button>
+      <button type="button" data-page="wiki" aria-current={page === 'wiki' ? 'page' : undefined} class={pageBtn(page === 'wiki')} onclick={() => setPage('wiki')}>{t('pageKnowledge')}</button>
+      <button type="button" data-page="ai" aria-current={page === 'ai' ? 'page' : undefined} class={pageBtn(page === 'ai')} onclick={() => setPage('ai')}>{t('pageAI')}</button>
+    </nav>
+  {/if}
+  <div class="ml-auto flex items-center gap-2 max-sm:gap-[5px]">
     {#if !st?.projects}<button id="help" class="w-[33px] rounded-full border border-line bg-transparent p-1.5 text-[12px] max-sm:w-7 max-sm:p-1 max-sm:text-[11px]" type="button" title={t('helpTitle')} aria-label={t('helpTitle')} onclick={() => setShowHelp(!ui.showHelp)}>?</button>{/if}
     <LangPicker />
   </div>
@@ -60,24 +69,17 @@
   {:else if !st.specs.length}
     <div class="empty-state">{t('noSpecs')}</div>
   {:else}
-    <div class="workspace grid grid-cols-[238px_minmax(0,1fr)] items-start gap-9 pt-6 max-lg:grid-cols-[210px_minmax(0,1fr)] max-lg:gap-6 max-md:block max-md:pt-5">
-      <aside class="sidebar sticky top-6 rounded-2xl border border-line bg-surface px-[13px] pt-[22px] pb-3 shadow-card max-lg:px-[9px] max-md:static max-md:mb-6 max-md:p-[15px] max-sm:px-2 max-sm:py-3">
-        <div class="mb-[22px] border-b border-line px-2.5 pb-5 max-md:mb-3.5 max-md:flex max-md:items-center max-md:gap-3.5 max-md:px-0 max-md:pb-3"><a class="flex justify-between text-[11px] text-muted no-underline max-md:gap-2" href="../../">{t('projectsTitle')} <span aria-hidden="true">↗</span></a><strong class="mt-1 block text-[19px] wrap-anywhere max-md:m-0 max-md:text-[16px]">{st.project_name || t('currentProject')}</strong></div>
-        <Tabs specs={st.specs} {hasWiki} active={activeTab} />
-      </aside>
-      <div class="workspace-content min-w-0 pb-6">
-        {#if st.summary}<Summary summary={st.summary} specs={st.specs} model={st.model} />{/if}
-        {#if data.loadError}<p class="audit" role="alert">{t('error')(data.loadError)}</p>{/if}
-        {#if ui.showHelp}<HowTo />{/if}
-        {#if activeTab === 'wiki'}
-          {#if st.wiki}<Knowledge wiki={st.wiki} />
-          {:else if !data.loadError}<div class="empty-state" role="status">{t('loading')}</div>{/if}
-        {:else if activeSpec}
-          {#if ui.done ? !!activeSpec.answered : !!activeSpec.queue}
-            {#key activeSpec.id}<SpecPanel sp={activeSpec} />{/key}
-          {:else if !data.loadError}<div class="empty-state" role="status">{t('loading')}</div>{/if}
-        {/if}
-      </div>
+    <div class="workspace-content min-w-0 pt-6 pb-6 max-md:pt-5">
+      {#if data.loadError}<p class="audit" role="alert">{t('error')(data.loadError)}</p>{/if}
+      {#if ui.showHelp}<HowTo />{/if}
+      {#if page === 'wiki'}
+        {#if st.wiki}<Knowledge wiki={st.wiki} />
+        {:else if !data.loadError}<div class="empty-state" role="status">{t('loading')}</div>{/if}
+      {:else if page === 'ai'}
+        <AiView {st} />
+      {:else}
+        <Answer {st} />
+      {/if}
     </div>
   {/if}
 </main>

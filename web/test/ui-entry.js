@@ -11,10 +11,11 @@ import Notebook from '../src/components/Notebook.svelte';
 import Handoff from '../src/components/Handoff.svelte';
 import Lessons from '../src/components/Lessons.svelte';
 import ItemCard from '../src/components/ItemCard.svelte';
-import Tabs from '../src/components/Tabs.svelte';
+import Answer from '../src/components/Answer.svelte';
+import AiView from '../src/components/AiView.svelte';
 import App from '../src/App.svelte';
 import { i18n, t } from '../src/lib/i18n.svelte.js';
-import { ui } from '../src/lib/state.svelte.js';
+import { ui, skipped } from '../src/lib/state.svelte.js';
 import Toast from '../src/components/Toast.svelte';
 import { toastState } from '../src/lib/toast.svelte.js';
 
@@ -36,16 +37,15 @@ function checkLang(target) {
 // hook の「あとで答える → …/?spec=x&trace=t」で来た人には、その 1 件が先頭に出る(無ければ元の順)
 function checkPinned(target) {
   const item = (trace, text) => ({ trace_id: trace, at: '2026-10-18T00:00:00Z', band: 'ask', top: 'a', p: 0.6, model: 'm', inputs: { message: text }, inputs_hash: trace, raw: { a: 0.6, b: 0.4 }, stale: false, answerable: true, choices: [{ truth: 'a', label: 'a' }, { truth: 'b', label: 'b' }], rung: 'minimal', audit: false });
-  const sp = { id: 'x', type: 'choice', question: 'q', titles: {}, questions: {}, keys: [], min_n: 20, records: 3, labels: 0, unlabeled: 3, queue: { items: [item('t1', 'FIRST'), item('t2', 'SECOND'), item('t3', 'THIRD')] }, tune: null };
+  const sp = { id: 'x', type: 'choice', question: 'q', titles: {}, questions: {}, keys: [], min_n: 20, records: 3, labels: 0, unlabeled: 3, waiting_for_person: 3, person_answers: true, queue: { items: [item('t1', 'FIRST'), item('t2', 'SECOND'), item('t3', 'THIRD')] }, tune: null };
   ui.pinned = 't3';
-  ui.view = 'one';
-  let app = mount(SpecPanel, { target, props: { sp } });
+  let app = mount(Answer, { target, props: { st: { specs: [sp] } } });
   flushSync();
   const first = target.querySelector('.item');
   const pinnedFirst = !!first && first.textContent.includes('THIRD');
   unmount(app);
   ui.pinned = '';
-  app = mount(SpecPanel, { target, props: { sp } });
+  app = mount(Answer, { target, props: { st: { specs: [sp] } } });
   flushSync();
   const plain = target.querySelector('.item');
   const originalOrder = !!plain && plain.textContent.includes('FIRST');
@@ -55,40 +55,25 @@ function checkPinned(target) {
   return ok;
 }
 
-// hook の記録には仕事の印(project)が付く。2 つ以上の仕事があれば絞り込みが出て、押すとその仕事のカードだけになり、カードに印が見える
-function checkProject(target) {
-  const item = (trace, text, project) => ({ trace_id: trace, at: '2026-10-19T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: text }, inputs_hash: trace, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal', audit: false, project });
-  const sp = { id: 'done-as-asked', type: 'noul', question: 'q', titles: {}, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 3, queue: { items: [item('p1', 'ALPHA-1', 'alpha'), item('p2', 'ALPHA-2', 'alpha'), item('p3', 'BETA-1', 'beta')] }, tune: null };
-  ui.pinned = '';
-  ui.project = '';
-  ui.view = 'list';
-  const app = mount(SpecPanel, { target, props: { sp } });
+// 0.9.1: 答える画面は、人が答える問いの待ちを 1 列にまとめ、1 枚ずつ出す。札の先頭とボタンの上にその問いの文、仕事の印。
+// AI だけが答える問いと、人を待たない記録は出さない。スキップすると次の問いの札になり、残りの数は全部の問いの合計
+function checkAnswerMerge(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const item = (trace, text, project, waits = true) => ({ trace_id: trace, at: '2026-10-19T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: text }, inputs_hash: trace, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, waits_for_person: waits, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], rung: 'minimal', audit: false, project });
+  const mk = (id, q, items, person = true) => ({ id, type: 'noul', titles: {}, questions: { ja: q }, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: items.length, waiting_for_person: person ? items.filter(i => i.waits_for_person).length : 0, person_answers: person, queue: { items }, tune: null });
+  const specs = [mk('wiki-conflict', 'AI の問い', [item('w1', 'MACHINE', 'alpha')], false), mk('needs-plan', '始める前に聞くべきだったか', [item('n1', 'NEEDS-1', 'alpha'), item('n0', 'NOT-WAITING', 'alpha', false)]), mk('done-as-asked', '頼まれたことを終えたか', [item('d1', 'DONE-1', 'beta'), item('d2', 'DONE-2', 'beta')])];
+  ui.pinned = ''; skipped.clear();
+  const app = mount(Answer, { target, props: { st: { specs } } });
   flushSync();
-  const chips = [...target.querySelectorAll('.chips.projects button')];
-  const beta = chips.find(b => b.textContent.startsWith('beta'));
-  const hasChips = chips.length === 3 && !!beta;
-  if (beta) beta.click();
-  flushSync();
-  const items = [...target.querySelectorAll('.item')];
-  const onlyBeta = items.length === 1 && items[0].textContent.includes('BETA-1') && !!items[0].querySelector('.project');
-  unmount(app);
-  // 別の判定に切り替えて、そこに beta が無ければ絞らない(空の列にならない)
-  const other = { ...sp, id: 'needs-plan', queue: { items: [item('q1', 'ALPHA-ONLY', 'alpha')] }, records: 1, unlabeled: 1 };
-  const app2 = mount(SpecPanel, { target, props: { sp: other } });
-  flushSync();
-  const notStranded = target.querySelectorAll('.item').length === 1;
-  unmount(app2);
-  ui.done = true; ui.project = '';
-  const app3 = mount(SpecPanel, { target, props: { sp: { ...sp, queue: { items: [] }, answered: [item('a1', 'ANSWERED-ALPHA', 'alpha'), item('b1', 'ANSWERED-BETA', 'beta')] } } });
-  flushSync();
-  [...target.querySelectorAll('.chips.projects button')].find(b => b.textContent.startsWith('beta'))?.click();
-  flushSync();
-  const answeredProject = target.querySelectorAll('.item').length === 1 && target.querySelector('.item').textContent.includes('ANSWERED-BETA');
-  unmount(app3);
-  ui.project = ''; ui.done = false;
-  ui.view = 'one';
-  const ok = hasChips && onlyBeta && notStranded && answeredProject;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (project chips=' + chips.length + ', filtered to beta=' + onlyBeta + ', other spec not stranded=' + notStranded + ', answered project=' + answeredProject + ')');
+  const cards = () => [...target.querySelectorAll('.item')];
+  const one = cards().length === 1 && cards()[0].textContent.includes('NEEDS-1') && !target.textContent.includes('MACHINE') && !target.textContent.includes('NOT-WAITING');
+  const asked = cards()[0]?.querySelector('.card-question')?.textContent === '始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && !!cards()[0]?.querySelector('.project');
+  const left = (target.querySelector('[data-answer-left]')?.textContent || '').includes('3');
+  target.querySelector('.btns button.skip')?.click(); flushSync();
+  const next = cards().length === 1 && cards()[0].textContent.includes('DONE-1') && cards()[0].querySelector('.card-question')?.textContent === '頼まれたことを終えたか';
+  unmount(app); skipped.clear(); i18n.lang = lang;
+  const ok = one && asked && left && next;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答える画面: 1 枚だけで AI の問いと待たない記録は出さない=' + one + ', 札とボタンの上に問い・仕事の印=' + asked + ', 残りは合計=' + left + ', スキップで次の問いの札=' + next + ')');
   return ok;
 }
 
@@ -127,27 +112,26 @@ async function checkWording(target) {
   return ok;
 }
 
-// 効き目の要約(0.7.4): /v1/status の summary が画面の先頭に 1 行で出て、開くと止める検査の一覧と最後の結果が読める。
+// 効き目の要約(0.9.1。0.7.4 では先頭の帯): 上の「答える」に人待ちの合計が出る。AI の様子に、届けた教訓・作業の手順・止める検査と最後の結果、
+// 問いごとの学習の進みが 1 行ずつ出る。答える画面には AI の内側の数を出さない
 async function checkSummary(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const summary = { person: { records: 20, waits: 2, recent_records: 20, recent_waits: 2, by_person: 1, by_result: 13, per_thousand: 100, recent_per_thousand: 100 },
     memory: { delivered: 4, helpful: 1, unused: 2, harmful: 0, unknown: 1, pending: 0, awaiting_feedback: 0, recent_delivered: 4, recent_helpful: 1, corrections: { delivered: 0 } },
     guards: { total: 3, enabled: 3, stopped: 1, fixed: 1, rituals: { plan: { asked: 5, done: 2, fixed: 1 }, reflect: { asked: 4, done: 4, fixed: 0 } }, items: [{ id: 'changelog-pair', kind: 'paired-files', title: '変更履歴は英語と日本語を揃える', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'CHANGELOG_ja.md が変わっていない' } }] } };
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs(), summary, model: { name: 'TypeSafe Jev', endpoint: 'https://api.typesafe.ai' } } : { items: [] } });
-  Object.assign(ui, { tab: '', done: false, pinned: '' });
+  Object.assign(ui, { page: 'answer', tab: '', done: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
-  const details = target.querySelector('#summary');
-  const line = details?.querySelector('.summary-line')?.textContent || '';
-  // 先頭はまず「あなたがやること」(人待ちの合計 4 = 4 問 × 1)、次に AI の状態(モデル名・自分で判断できる問い 0 / 4・教訓 4・検査 3)
-  const oneLine = line.startsWith('あなたがやること: 4 件') && line.includes('TypeSafe Jev') && line.includes('0 / 4') && line.includes('届いた教訓 4') && line.includes('検査 3');
-  const closed = !!details && !details.open;
-  details?.querySelector('summary')?.click(); flushSync();
-  const opened = !!details && details.open;
-  const body = details?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (details?.textContent || '').includes('CHANGELOG_ja.md が変わっていない') && details.querySelectorAll('.summary-you-list button').length === 4 && (details.textContent || '').includes('学習中 0 / 50') && (details.querySelector('[data-rituals]')?.textContent || '').includes('計画の整理 2 / 5');
+  const badge = target.querySelector('[data-page="answer"] .badge')?.textContent === '4';
+  const quietAnswer = !target.querySelector('#summary') && !target.textContent.includes('TypeSafe Jev') && !target.textContent.includes('学習中');
+  target.querySelector('[data-page="ai"]')?.click(); flushSync(); await settle(); await settle();
+  const box = target.querySelector('#summary');
+  const body = box?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (box?.textContent || '').includes('CHANGELOG_ja.md が変わっていない') && (box?.textContent || '').includes('TypeSafe Jev') && (box.querySelector('[data-rituals]')?.textContent || '').includes('計画の整理 2 / 5');
+  const specs = target.querySelectorAll('[data-ai-specs] [data-tab]').length === 4 && (target.querySelector('[data-ai-specs]')?.textContent || '').includes('学習中 0 / 50');
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
-  const ok = oneLine && closed && opened && body;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (効き目の要約: 1行=' + oneLine + ', 閉じて始まる=' + closed + ', クリックで開く=' + opened + ', 検査の一覧と最後の結果=' + body + ')');
+  const ok = badge && quietAnswer && body && specs;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (効き目の要約: 答えるに人待ちの合計=' + badge + ', 答える画面に内側の数を出さない=' + quietAnswer + ', AI の様子に検査と最後の結果=' + body + ', 問いごとの進み=' + specs + ')');
   return ok;
 }
 
@@ -158,7 +142,7 @@ async function checkMachineOnlySpec(target) {
   const specs = loadingSpecs().concat([{ id: 'wiki-conflict', type: 'noul', titles: { ja: 'wiki の矛盾' }, questions: {}, keys: [], min_n: 50, records: 3, labels: 0, unlabeled: 3, waiting_for_person: 0, awaiting_results: 3, person_answers: false, truth_source: 'results' }]);
   const item = { trace_id: 'wc1', at: '2026-10-23T00:00:00Z', band: 'discard', top: 'no', p: 0.8, model: 'm', inputs: { lesson: 'a', new_lesson: 'b' }, inputs_hash: 'wc1', raw: { yes: 0.2, no: 0.8 }, stale: false, answerable: true, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal', audit: false };
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs } : url.startsWith('v1/queue?spec=wiki-conflict') ? { items: [item] } : { items: [] } });
-  Object.assign(ui, { tab: 'wiki-conflict', done: false, pinned: '', view: 'list' });
+  Object.assign(ui, { page: 'ai', tab: 'wiki-conflict', done: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
   const card = target.querySelector('.item');
@@ -184,7 +168,7 @@ async function checkNotebookTree(target) {
   // a2 は 2 本に指される(同数の時の題の順は locale 依存なので避ける)
   const lessons = [mk('a1', '公開の手順', ['a2']), mk('a2', '監査'), mk('a3', '変更履歴', ['a2']), mk('b1', 'コミットの説明', ['b2']), mk('b2', 'コミットの作者'), mk('c1', '単独')];
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons, sources: [] } : url.startsWith('v1/wiki/notebook') ? { lessons: [lessons[1]] } : { items: [] } });
-  Object.assign(ui, { tab: 'wiki', done: false, results: false, pinned: '' });
+  Object.assign(ui, { page: 'wiki', done: false, results: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
   const groups = [...target.querySelectorAll('[data-tree-group]')].map(g => g.dataset.treeGroup);
@@ -201,21 +185,20 @@ async function checkNotebookTree(target) {
 }
 
 
-// 監査 R5-3: 人が答える問いの列。「あなたがやること」は人待ちの合計(未回答の合計ではない)で、AI だけの問いは数えない。
-// 最初に開く欄は人待ちのある問い。印は人待ちの数。「未回答(あなた)」にはボタン付きのカード、「次の依頼・振り返りで確定する」には読むだけのカード。
+// 監査 R5-3: 人が答える問いの列。上の「答える」の印は人待ちの合計(未回答の合計ではない)で、AI だけの問いは数えない。
+// AI の様子で最初に開く問いは人待ちのある問い。印は人待ちの数。「未回答(あなた)」にはボタン付きのカード、「次の依頼・振り返りで確定する」には読むだけのカード。
 async function checkLanesForPersonSpec(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const mk = (id, unlabeled, waiting, person) => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 5, labels: 0, unlabeled, waiting_for_person: waiting, awaiting_results: unlabeled - waiting, person_answers: person, truth_source: person ? 'person' : 'results' });
   const specs = [mk('wiki-conflict', 4, 0, false), mk('prompt-kind', 2, 1, true), mk('needs-plan', 3, 2, true)];
   const item = (id, waits, audit) => ({ trace_id: id, at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: id, raw: { yes: 0.6, no: 0.4 }, stale: false, answerable: true, audit, waits_for_person: waits, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }], rung: 'minimal' });
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs, summary: { person: {}, memory: {}, guards: {} }, model: { name: 'TypeSafe Jev' } } : url.startsWith('v1/queue?spec=prompt-kind') ? { items: [item('r1', false, false), item('y1', true, true)] } : { items: [] } });
-  Object.assign(ui, { tab: '', done: false, results: false, pinned: '', view: 'list', filter: 'all' });
+  Object.assign(ui, { page: 'ai', tab: '', done: false, results: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   const app = mount(App, { target }); await settle(); await settle();
-  const line = target.querySelector('#summary .summary-line')?.textContent || '';
-  const you = line.startsWith('あなたがやること: 3 件') && line.includes('0 / 2');
+  const you = target.querySelector('[data-page="answer"] .badge')?.textContent === '3';
   const first = !!target.querySelector('[data-tab="prompt-kind"].active');
-  const badges = [...target.querySelectorAll('#tabs .badge')].map(b => b.textContent).join(',') === '1,2';
+  const badges = [...target.querySelectorAll('[data-ai-specs] .badge')].map(b => b.textContent).join(',') === '1,2';
   const youCards = target.querySelectorAll('.item').length === 1 && target.querySelectorAll('.item .btns button').length > 0;
   target.querySelector('.answer-tabs [data-lane="results"]')?.click(); flushSync(); await settle();
   // 人が正解を付ける問い: 「AI が決めた(答えなくてよい)」の列。読めて、違うと思えば直せる(ボタンは残る)
@@ -225,11 +208,12 @@ async function checkLanesForPersonSpec(target) {
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); flushSync();
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = you && first && badges && youCards && resultsCards && clicked === 0;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答える問いの列: あなたがやること=' + you + ', 最初は人待ちの問い=' + first + ', 印=' + badges + ', 未回答にボタン=' + youCards + ', AI が決めた列=' + resultsCards + ', キーで押さない=' + (clicked === 0) + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (人が答える問いの列: 答えるの印は人待ちの合計=' + you + ', 最初は人待ちの問い=' + first + ', 印=' + badges + ', 未回答にボタン=' + youCards + ', AI が決めた列=' + resultsCards + ', キーで押さない=' + (clicked === 0) + ')');
   return ok;
 }
 
-// 監査 R2: キー操作(1〜9 / Enter / →)は判定の欄の未回答でだけ効く。知識の欄では最初の .item のボタン(関連する知識・主張にする)を押さない。
+// 監査 R2: キー操作(1〜9 / Enter / →)は答える画面でだけ効く。知識の欄では最初の .item のボタン(関連する知識・主張にする)を、
+// AI の様子では回答済みの札のボタンを押さない。
 async function checkKeysOnlyOnDecisions(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   // 出典のある教訓: 最初の .item に「原文を見る」のボタンが出る(押す物が無い状態で「押されない」を見ても検査にならない。監査 R3)
@@ -239,7 +223,7 @@ async function checkKeysOnlyOnDecisions(target) {
   const press = () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', bubbles: true })); document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); flushSync(); };
   // 知識の欄
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [lesson], sources: [] } : { items: [] } });
-  Object.assign(ui, { tab: 'wiki', done: false, pinned: '' });
+  Object.assign(ui, { page: 'wiki', done: false, pinned: '' });
   let app = mount(App, { target }); await settle(); await settle();
   let buttons = target.querySelectorAll('.item .btns button');
   let clicked = 0;
@@ -249,7 +233,7 @@ async function checkKeysOnlyOnDecisions(target) {
   unmount(app);
   // 回答済みの列
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url.startsWith('v1/answered') ? { items: [answered] } : { items: [] } });
-  Object.assign(ui, { tab: 'needs-plan', done: true, pinned: '' });
+  Object.assign(ui, { page: 'ai', tab: 'needs-plan', done: true, pinned: '' });
   app = mount(App, { target }); await settle(); await settle();
   buttons = target.querySelectorAll('.item .btns button');
   clicked = 0;
@@ -258,7 +242,7 @@ async function checkKeysOnlyOnDecisions(target) {
   const doneButtons = buttons.length, doneClicked = clicked;
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = wikiButtons > 0 && wikiClicked === 0 && doneButtons > 0 && doneClicked === 0;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (キー操作は未回答の判定だけ: 知識の欄 buttons=' + wikiButtons + ' clicked=' + wikiClicked + ', 回答済み buttons=' + doneButtons + ' clicked=' + doneClicked + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (キー操作は答える画面だけ: 知識の欄 buttons=' + wikiButtons + ' clicked=' + wikiClicked + ', 回答済み buttons=' + doneButtons + ' clicked=' + doneClicked + ')');
   return ok;
 }
 
@@ -269,7 +253,7 @@ export async function run() {
   const calibrationOK = checkCalibrationReport(target);
   const contextOK = checkTurnContext(target);
   const binaryOK = await checkBinaryPrediction(target);
-  const navigationOK = checkNavigation(target);
+  const navigationOK = await checkNavigation(target);
   const focusOK = checkAnswerFocus(target);
   const landingOK = await checkLanding(target);
   const evidenceOK = checkClaimEvidence(target);
@@ -284,7 +268,7 @@ export async function run() {
   const conflictsOK = await checkUtilityConflicts(target);
   const handoffOK = await checkHandoff(target);
   const lessonsOK = checkLessons(target);
-  const ok = lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkProject(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -539,22 +523,24 @@ async function checkBinaryPrediction(target) {
   return ok;
 }
 
-// 着手前・作業後を分け、選んだ判定が保存され、キーボードでも現在地が分かる。
-function checkNavigation(target) {
-  i18n.lang = 'ja';
-  const specs = ['changes-in-scope', 'done-as-asked', 'needs-plan', 'prompt-kind'].map(id => ({ id, titles: {}, unlabeled: id === 'needs-plan' ? 3 : 0 }));
-  const app = mount(Tabs, { target, props: { specs, active: 'needs-plan', hasWiki: false } });
-  flushSync();
-  const before = target.querySelector('[data-stage="before"]');
-  const after = target.querySelector('[data-stage="after"]');
-  const grouped = before?.querySelectorAll('[data-tab]').length === 2 && after?.querySelectorAll('[data-tab]').length === 2 && before.textContent.includes('作業前') && after.textContent.includes('作業後');
-  const selected = target.querySelector('[data-tab="needs-plan"]')?.getAttribute('aria-current') === 'page';
-  target.querySelector('[data-tab="done-as-asked"]')?.click();
-  flushSync();
-  const remembered = ui.tab === 'done-as-asked' && localStorage.getItem('shikii.tab') === 'done-as-asked';
-  unmount(app);
-  const ok = grouped && selected && remembered;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (判定の時点を区別=' + grouped + ', 現在地=' + selected + ', 選択を保持=' + remembered + ')');
+// 0.9.1: 上の切替は「答える・知識・AI の様子」の 3 つだけ。今の画面が分かり(aria-current)、押すと選んだ画面が保存される。
+// AI の様子では作業前・作業後の問いが並び、押すと選んだ問いが保存される
+async function checkNavigation(target) {
+  const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui }; const lang = i18n.lang; i18n.lang = 'ja';
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } });
+  Object.assign(ui, { page: 'answer', tab: '', done: false, pinned: '' });
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  const app = mount(App, { target }); await settle(); await settle();
+  const pages = [...target.querySelectorAll('#tabs [data-page]')].map(b => b.dataset.page).join(',') === 'answer,wiki,ai' && !target.querySelector('#tabs [data-tab]');
+  const current = target.querySelector('[data-page="answer"]')?.getAttribute('aria-current') === 'page';
+  target.querySelector('[data-page="wiki"]')?.click(); await settle(); await settle();
+  const remembered = ui.page === 'wiki' && localStorage.getItem('shikii.page') === 'wiki' && target.querySelector('[data-page="wiki"]')?.getAttribute('aria-current') === 'page';
+  target.querySelector('[data-page="ai"]')?.click(); await settle(); await settle();
+  target.querySelector('[data-tab="done-as-asked"]')?.click(); await settle();
+  const tab = ui.tab === 'done-as-asked' && localStorage.getItem('shikii.tab') === 'done-as-asked' && target.querySelector('[data-tab="done-as-asked"]')?.getAttribute('aria-current') === 'true';
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
+  const ok = pages && current && remembered && tab;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (画面は 3 つ=' + pages + ', 現在地=' + current + ', 画面の選択を保持=' + remembered + ', 問いの選択を保持=' + tab + ')');
   return ok;
 }
 
@@ -569,37 +555,48 @@ function checkAnswerFocus(target) {
   const readingOrder = !!conversation && !!guess && !!answers && !!(conversation.compareDocumentPosition(guess) & 4) && !!(guess.compareDocumentPosition(answers) & 4);
   const buttons = [...target.querySelectorAll('button[data-truth]')];
   const clearChoices = buttons.length === 2 && buttons.every(b => ['yes', 'no'].includes(b.dataset.truth));
-  const answerPrompt = target.querySelector('.answer-heading')?.textContent.includes('あなたの判断');
+  const answerPrompt = target.querySelector('.answer-heading')?.textContent.includes('あなたの判断') && !target.querySelector('.card-question');
   unmount(app);
-  const ok = readingOrder && clearChoices && answerPrompt;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (会話から回答の順=' + readingOrder + ', 重複しない二択=' + clearChoices + ', 答える場所=' + answerPrompt + ')');
+  // 答える画面(question を渡す): 札の先頭とボタンの上に問い、ボタンの帯は画面の下に貼り付く。AI の内側の印(帯・モデル)は出さない
+  const app2 = mount(ItemCard, { target, props: { sp: { id: 'needs-plan', type: 'noul' }, it, question: '始める前に聞くべきだったか' } });
+  flushSync();
+  const asked = target.querySelector('.card-question')?.textContent === '始める前に聞くべきだったか' && target.querySelector('.answer-heading')?.textContent.includes('始める前に聞くべきだったか') && target.querySelector('.answer-bar')?.classList.contains('sticky') && !target.textContent.includes('discard');
+  unmount(app2);
+  const ok = readingOrder && clearChoices && answerPrompt && asked;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (会話から回答の順=' + readingOrder + ', 重複しない二択=' + clearChoices + ', 答える場所=' + answerPrompt + ', 答える画面の札は問いを出す=' + asked + ')');
   return ok;
 }
 
-// 初めて開く時は確認待ちへ案内し、選択済みの判定は勝手に切り替えない。
+// 初めて開く時は、人待ちがあれば答える画面、無ければ知識。選んだ画面は勝手に切り替えない。上の切替の上で Enter を押しても答えない
 async function checkLanding(target) {
-  const realFetch = globalThis.fetch, savedState = data.state, savedTab = ui.tab;
-  const specs = ['done-as-asked', 'needs-plan'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: id === 'needs-plan' ? 2 : 0, waiting_for_person: id === 'needs-plan' ? 2 : 0, person_answers: true, queue: { items: [] } }));
+  const realFetch = globalThis.fetch, savedState = data.state, saved = { ...ui };
+  const mkSpecs = waits => ['done-as-asked', 'needs-plan'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: id === 'needs-plan' ? waits : 0, waiting_for_person: id === 'needs-plan' ? waits : 0, person_answers: true }));
+  let specs = mkSpecs(2);
   const calls = [];
-  const item = { trace_id: 'keyboard', band: 'ask', top: 'yes', p: .8, at: '2026-10-22T00:00:00Z', answerable: true, inputs: { request: '依頼' }, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
-  globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push(JSON.parse(opts.body)); return { ok: true, json: async () => url === 'v1/status' ? { specs } : url.startsWith('v1/queue') ? { items: url.includes('needs-plan') ? [item] : [] } : opts?.body ? { truth: 'yes' } : {} }; };
-  data.state = { specs }; ui.tab = 'missing'; ui.done = false;
-  const app = mount(App, { target }); flushSync();
-  await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
-  const pendingFirst = target.querySelector('.decision-panel h2')?.textContent.includes('needs-plan');
-  ui.tab = 'done-as-asked'; flushSync();
-  const respectedChoice = target.querySelector('.decision-panel h2')?.textContent.includes('done-as-asked');
-  ui.tab = 'needs-plan'; flushSync();
-  const navButton = target.querySelector('[data-tab="needs-plan"]'); navButton.focus();
+  const item = { trace_id: 'keyboard', band: 'ask', top: 'yes', p: .8, at: '2026-10-22T00:00:00Z', answerable: true, waits_for_person: true, inputs: { request: '依頼' }, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
+  globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push(JSON.parse(opts.body)); return { ok: true, json: async () => url === 'v1/status' ? { specs } : url === 'v1/wiki' ? { claims: [], lessons: [] } : url.startsWith('v1/queue') ? { items: url.includes('needs-plan') ? [item] : [] } : opts?.body ? { truth: 'yes' } : {} }; };
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  data.state = null; Object.assign(ui, { page: '', tab: 'missing', done: false, pinned: '' });
+  let app = mount(App, { target }); await settle(); await settle();
+  const pendingFirst = !!target.querySelector('[data-answer] .item') && target.querySelector('[data-page="answer"]')?.getAttribute('aria-current') === 'page';
+  ui.page = 'ai'; flushSync(); await settle(); await settle();
+  const respectedChoice = !!target.querySelector('[data-ai]') && !target.querySelector('[data-answer]');
+  ui.page = 'answer'; flushSync(); await settle(); await settle();
+  const navButton = target.querySelector('[data-page="answer"]'); navButton.focus();
   navButton.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await new Promise(resolve => setTimeout(resolve, 0));
   const safeNavigation = calls.length === 0;
   document.body.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await new Promise(resolve => setTimeout(resolve, 0));
   const shortcutWorks = calls.length === 1 && calls[0].truth === 'yes';
-  unmount(app); globalThis.fetch = realFetch; data.state = savedState; ui.tab = savedTab;
-  const ok = pendingFirst && respectedChoice && safeNavigation && shortcutWorks;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回は確認待ち=' + pendingFirst + ', 選択済みは保持=' + respectedChoice + ', ナビ操作で回答しない=' + safeNavigation + ', 回答のキー操作=' + shortcutWorks + ')');
+  unmount(app);
+  // 人待ちが無い時は知識から始まる
+  specs = mkSpecs(0); data.state = null; Object.assign(ui, { page: '', tab: '' });
+  app = mount(App, { target }); await settle(); await settle();
+  const quietToKnowledge = target.querySelector('[data-page="wiki"]')?.getAttribute('aria-current') === 'page' && !target.querySelector('[data-page="answer"] .badge');
+  unmount(app); globalThis.fetch = realFetch; data.state = savedState; Object.assign(ui, saved);
+  const ok = pendingFirst && respectedChoice && safeNavigation && shortcutWorks && quietToKnowledge;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回は答える画面=' + pendingFirst + ', 選んだ画面は保持=' + respectedChoice + ', 切替の操作で回答しない=' + safeNavigation + ', 回答のキー操作=' + shortcutWorks + ', 待ちが無ければ知識=' + quietToKnowledge + ')');
   return ok;
 }
 
@@ -627,29 +624,33 @@ function loadingSpecs() {
   return ['needs-plan', 'done-as-asked', 'prompt-kind', 'changes-in-scope'].map(id => ({ id, type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: 2, labels: 0, unlabeled: 1, waiting_for_person: 1, person_answers: true }));
 }
 
-// 表示中の情報だけを取得する。回答済み・知識への切替も取りこぼさない(「かんたん表示」は 0.8.1 で廃止: 聞き方の候補も常に読む)。
+// 表示中の画面の分だけを取得する。答える画面は待ちのある問いの列と聞き方、AI の様子は開いた問いの列(回答済みなら回答済みだけ)、知識は選んだ時だけ
 async function checkFocusedLoading() {
   const realFetch = globalThis.fetch, state = data.state;
-  const saved = { tab: ui.tab, done: ui.done };
+  const saved = { page: ui.page, tab: ui.tab, done: ui.done };
   let calls = [];
-  globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [] } : url.startsWith('v1/tune') ? { variants: [] } : { items: [] } }; };
-  ui.tab = 'needs-plan'; ui.done = false;
+  const specs = () => loadingSpecs().map(s => s.id === 'prompt-kind' ? { ...s, waiting_for_person: 0 } : s);
+  globalThis.fetch = async url => { calls.push(url); return { ok: true, json: async () => url === 'v1/status' ? { specs: specs() } : url === 'v1/wiki' ? { claims: [] } : url.startsWith('v1/tune') ? { variants: [] } : { items: [] } }; };
+  ui.page = 'answer'; ui.done = false;
   await load();
+  const waiting = ['needs-plan', 'done-as-asked', 'changes-in-scope'];
+  const answer = calls.length === 7 && waiting.every(id => calls.includes('v1/queue?spec=' + id + '&limit=200') && calls.includes('v1/tune?spec=' + id)) && !calls.some(u => u.includes('prompt-kind')) && !calls.includes('v1/wiki');
+  calls = []; ui.page = 'ai'; ui.tab = 'needs-plan'; await load();
   const simple = calls.length === 3 && calls[1] === 'v1/queue?spec=needs-plan&limit=200' && calls.includes('v1/tune?spec=needs-plan') && !calls.includes('v1/wiki');
   calls = []; ui.done = true; await load();
   const answered = calls.length === 2 && calls.includes('v1/answered?spec=needs-plan&limit=200') && !calls.some(url => url.startsWith('v1/queue') || url.startsWith('v1/tune'));
-  calls = []; ui.tab = 'wiki'; await load();
+  calls = []; ui.page = 'wiki'; await load();
   const knowledge = calls.length === 2 && calls[1] === 'v1/wiki' && !!data.state.wiki;
   globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
-  const ok = simple && answered && knowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (必要な3要求=' + simple + ', 回答済みを取得=' + answered + ', 知識は選択時だけ=' + knowledge + ')');
+  const ok = answer && simple && answered && knowledge;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (答える画面は待ちのある問いだけ=' + answer + ', AI の様子は3要求=' + simple + ', 回答済みを取得=' + answered + ', 知識は選択時だけ=' + knowledge + ')');
   return ok;
 }
 
 // 遅い古い応答で切替後の情報を上書きせず、取得失敗と再試行を表示へ反映する。
 async function checkLoadOrdering() {
   const realFetch = globalThis.fetch, state = data.state;
-  const saved = { tab: ui.tab, done: ui.done };
+  const saved = { page: ui.page, tab: ui.tab, done: ui.done };
   let release, blocked = true, version = 0;
   const wait = new Promise(resolve => { release = resolve; });
   globalThis.fetch = async url => {
@@ -657,7 +658,7 @@ async function checkLoadOrdering() {
     if (url.startsWith('v1/queue?spec=needs-plan') && blocked) { blocked = false; return { ok: true, json: async () => { await wait; return { items: [] }; } }; }
     return { ok: true, json: async () => ({ items: [] }) };
   };
-  ui.tab = 'needs-plan'; ui.done = false;
+  ui.page = 'ai'; ui.tab = 'needs-plan'; ui.done = false;
   const slow = load(); await new Promise(resolve => setTimeout(resolve, 0));
   ui.tab = 'done-as-asked'; await load(); release(); await slow;
   const latest = data.state.version === 2;
@@ -672,17 +673,17 @@ async function checkLoadOrdering() {
   return ok;
 }
 
-// 実際のナビから遅延読取りを行い、未読の知識も開ける。
+// 実際の切替から遅延読取りを行い、未読の知識も開ける。AI の様子の問いの切替・列の切替でも、その分だけ読む
 async function checkLazyNavigation(target) {
   const realFetch = globalThis.fetch, state = data.state;
-  const saved = { tab: ui.tab, done: ui.done };
+  const saved = { page: ui.page, tab: ui.tab, done: ui.done };
   let calls = [], holdQueue = false, releaseQueue;
   globalThis.fetch = async url => {
     calls.push(url);
     if (holdQueue && url.startsWith('v1/queue')) return { ok: true, json: () => new Promise(resolve => { releaseQueue = resolve; }) };
     return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : { items: [] } };
   };
-  data.state = null; ui.tab = 'needs-plan'; ui.done = false;
+  data.state = null; ui.page = 'ai'; ui.tab = 'needs-plan'; ui.done = false;
   const app = mount(App, { target }); flushSync();
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
   await settle(); const initial = calls.length === 3 && calls.includes('v1/tune?spec=needs-plan') && !!target.querySelector('.decision-panel'); // status・列・聞き方の候補
@@ -695,11 +696,11 @@ async function checkLazyNavigation(target) {
   const waiting = !!target.querySelector('[role="status"]') && !target.querySelector('.decision-panel');
   holdQueue = false; releaseQueue?.({ items: [] }); await settle();
   calls = [];
-  const wiki = target.querySelector('[data-tab="wiki"]'); wiki?.click(); flushSync(); await settle();
+  const wiki = target.querySelector('[data-page="wiki"]'); wiki?.click(); flushSync(); await settle();
   const knowledge = !!wiki && calls.filter(url => url === 'v1/wiki').length === 1 && !calls.some(url => url.startsWith('v1/queue')) && target.querySelector('.notebook h2')?.textContent.includes(t('notebookTitle'));
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = initial && switched && answered && waiting && knowledge;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回3要求=' + initial + ', タブ切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 切替中は読込み待ち=' + waiting + ', 未読の知識を開く=' + knowledge + ')');
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (初回3要求=' + initial + ', 問いの切替で取得=' + switched + ', 回答済みと未回答件数=' + answered + ', 切替中は読込み待ち=' + waiting + ', 未読の知識を開く=' + knowledge + ')');
   return ok;
 }
 
@@ -761,10 +762,16 @@ async function checkUtilityConflicts(target) {
   const item = (id, project) => ({ trace_id: id, at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, inputs_hash: id, raw: { yes: 0.6, no: 0.4 }, stale: true, answerable: true, audit: true, waits_for_person: true, project, rung: 'context', choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }] });
   const summary = { person: { records: 20, waits: 2 }, memory: { delivered: 4, corrections: { delivered: 1 } }, guards: { rituals: { plan: { asked: 5, done: 2, fixed: 1 }, reflect: { asked: 4, done: 4, fixed: 0 } }, items: [{ id: 'g', kind: 'k', title: 't', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'r' } }, { id: 'g2', kind: 'k', title: 't2', enabled: false }] } };
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs, summary, model: { name: 'm' } } : url.startsWith('v1/queue?spec=prompt-kind') ? { items: [item('r1', 'alpha'), item('y1', 'beta')] } : url.startsWith('v1/tune') ? specs[1].tune : { items: [] } });
-  Object.assign(ui, { tab: 'prompt-kind', done: false, results: false, pinned: '', view: 'list', filter: 'ask', project: '', showHelp: true });
+  Object.assign(ui, { page: 'ai', tab: 'prompt-kind', done: false, results: false, pinned: '', showHelp: true });
   let app = mount(App, { target }); await settle(); await settle();
   collectConflicts(target, table, out);
   unmount(app);
+  Object.assign(ui, { page: 'answer', tab: '' }); // 答える画面: 札(問い・貼り付くボタンの帯)と聞き方の候補
+  app = mount(App, { target }); await settle(); await settle();
+  collectConflicts(target, table, out);
+  const answerShown = !!target.querySelector('[data-answer] .answer-bar') && !!target.querySelector('[data-answer-wording]');
+  unmount(app);
+  if (!answerShown) out.add('答える画面の札か聞き方の候補が描かれていない(検査が見ていない)');
   // 2. カード: 前の返答の折りたたみ(needs-plan)、原文の上限の注意、回答済み(答えの直し)、抜き取りの仮採点、読むだけ
   const base = { trace_id: 'c1', at: '2026-10-23T00:00:00Z', band: 'discard', top: 'yes', p: 0.3, model: 'm', answerable: true, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }], project: 'alpha' };
   const cards = [

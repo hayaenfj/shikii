@@ -1,15 +1,12 @@
 // 英語の辞書。鍵の一覧の元(他の言語はこの鍵を全部持つ。npm run check が揃いを見る)。
 // 値は文か、引数を取って文を返す関数。langName は言語の選択に並ぶ自分の言語の名前
 export default {
-  summaryOpen: 'Click for details',
-  summaryYou: n => 'For you: ' + n + ' to answer', summaryYouNone: 'For you: nothing right now',
-  summaryYouNoneLong: 'Nothing to answer right now. The AI decides; truths come from the work\'s results and from reflection. Only its doubts and a 1-in-20 spot check appear here.',
-  summaryYouHead: 'For you', summaryGoTo: 'opens that question',
-  summaryAI: (name, autoN, total, m, g) => 'AI: deciding with ' + (name || 'the decision model') + ' · decides alone on ' + autoN + ' / ' + total + ' questions · lessons delivered ' + (m.delivered || 0) + ' (helpful ' + (m.helpful || 0) + ') · guards ' + (g.enabled || 0) + ' enabled',
-  summaryAIHead: 'The AI', summaryModel: (name, endpoint) => 'Decision model: ' + (name || 'unknown') + (endpoint ? ' (' + endpoint + ')' : ''),
+
+
+summaryModel: (name, endpoint) => 'Decision model: ' + (name || 'unknown') + (endpoint ? ' (' + endpoint + ')' : ''),
   summarySpecAuto: 'decides alone (enough checked answers to draw the line)', summarySpecLearning: (n, min) => 'learning ' + n + ' / ' + min + ' (decides alone after ' + min + ' checked answers)',
   summarySpecResults: n => 'awaiting results ' + n, summarySpecMachine: n => 'answered by the AI only (no human answer). Awaiting results ' + n,
-  navMachine: 'AI-only questions', readonlyNote: 'This record\'s truth comes from results (the next request or reflection). Nothing for you to answer.',
+readonlyNote: 'This record\'s truth comes from results (the next request or reflection). Nothing for you to answer.',
   summaryMemoryNone: 'Nothing delivered yet. Lessons arrive before similar requests and when a subagent starts.',
   summaryMemoryRow: m => 'Delivered ' + m.delivered + ': helpful ' + m.helpful + ', unused ' + m.unused + ', harmful ' + m.harmful + ', unknown ' + m.unknown + ', awaiting assessment ' + m.pending + ' (' + m.awaiting_feedback + ' waiting for the next request). Last 7 days: delivered ' + m.recent_delivered + ', helpful ' + m.recent_helpful,
   summaryCorrections: c => 'Corrections delivered ' + c.delivered + ': followed ' + c.followed + ', repeated ' + c.repeated + ', not applicable ' + c.not_applicable + ', unknown ' + c.unknown + ', pending ' + c.pending,
@@ -30,20 +27,15 @@ export default {
   calibrationError: 'Calibration failed. Your answers are saved. Open the diagnostic log to check the cause.',
   calibrationDiagnostic: 'This is a previous automatic calibration report. Open the diagnostic log for details.',
   calibrationDetails: 'Open diagnostic log',
-  decisionNav: 'Decisions to check',
-  navBefore: 'Before work',
-  navAfter: 'After work',
-  navOther: 'Business decisions',
-  navKnowledge: 'Knowledge',
-  navNote: 'AI handles routine assessment. People check samples and undecided cases.',
-  currentProject: 'This project',
+
+
+
   workspaceTitle: 'Conversation review',
-  pendingCount: 'Awaiting a check',
-  awaitingResults: 'Awaiting results',
+
+
   machineOnly: (n, u) => `The AI answers this question; the truth comes from what reflection did (replaced or extended the page). Nothing for you to answer. ${n} awaiting results` + (u ? `, ${u} settled without a truth (the draft was saved but did not touch that page)` : '') + '.',
-  checkedCount: 'Answers checked',
-  recordCount: 'Decisions recorded',
-  countUnit: '',
+
+
   questionHeading: 'What you are checking',
   learningProgress: 'Learning progress',
   conversationRecord: 'Record to review',
@@ -51,8 +43,8 @@ export default {
   yourDecision: 'Your judgment',
   chooseAnswer: 'Read the conversation, then choose what was true',
   changeAnswerShort: 'Choose another answer to change it',
-  viewLabel: 'View',
-  filterLabel: 'Filter records',
+
+
   howToShort: 'Read, answer, and help it learn.',
   openProject: 'Open project',
   beforeWork: 'Before work: when the AI got the request below, could it just start, or should it have checked with you first? The AI reading is for reference; you decide the answer.',
@@ -76,20 +68,18 @@ export default {
   projectsTitle: 'Projects', projectsHow: 'Choose a project to see its conversations, lessons and reviews.', projectsEmpty: 'No projects yet. Run shikii --init in a project, or ask your agent to use shikii there.',
   legacyTextLimit: 'This field ends near the old storage limit. Earlier versions may not have kept the rest.', originalTextLimit: 'This long text is shown up to the 64 KB source storage limit.', originalTextUnavailable: 'The original text could not be read. Showing the beginning kept with the decision.',
 
-  reviewRandom: 'Spot-check an AI assessment', reviewUncertain: 'The AI could not assess this', reviewReply: 'The person’s follow-up', reviewEvidence: 'Show the AI assessment and evidence', reviewPending: n => `${n} decisions await AI assessment after the next reply`, reviewQuality: q => `${q.scored} AI assessments (${q.uncertain} undecided) · ${q.correct}/${q.checked} scored checks agree · ${q.uncertain_checked} undecided cases checked · ${q.random_correct}/${q.random_checked} random checks agree · sampling 1 in ${q.audit_every}`,
+  reviewRandom: 'A spot check of a decision the AI made alone', reviewUncertain: 'The AI could not decide this one', reviewReply: 'The person’s follow-up', reviewEvidence: 'Show the answer the AI gave and why', reviewPending: n => `${n} decisions await AI assessment after the next reply`, reviewQuality: q => `${q.scored} AI assessments (${q.uncertain} undecided) · ${q.correct}/${q.checked} scored checks agree · ${q.uncertain_checked} undecided cases checked · ${q.random_correct}/${q.random_checked} random checks agree · sampling 1 in ${q.audit_every}`,
 
   langName: 'English',
   helpTitle: 'how to use', langLabel: 'language', bandAbstain: 'The AI did not decide (not enough input).', truthsCount: n => n + ' truths', tableHead: ['candidate', 'top-1', 'brier', 'prec@act', 'rec@act'], yesTo: 'yes→', noTo: 'no→',
-  tagline: 'Better decisions start with reflection.', loading: 'loading…', noSpecs: 'no decisions set up yet', empty: 'nothing waiting for an answer. When the AI decides something, it shows up here.',
-  keysHint: 'Keys: 1-9 choose an answer, Enter = same as the AI, → = skip',
-  tabKnowledge: 'Knowledge', viewOne: 'one at a time', viewList: 'list', skip: 'skip (later)', position: (i, n) => i + ' / ' + n, more: m => m + ' more waiting', showMore: m => 'show more (' + m + ')', unskip: n => 'bring back ' + n + ' skipped', emptyFiltered: 'nothing in this group',
-  chip_all: 'all', chip_ask: 'AI unsure', chip_audit: 'spot check', auditShort: 'spot check', byProject: 'by project:',
+loading: 'loading…', noSpecs: 'no decisions set up yet', empty: 'nothing waiting for an answer. When the AI decides something, it shows up here.',
+skip: 'skip (later)', position: (i, n) => i + ' / ' + n, more: m => m + ' more waiting', showMore: m => 'show more (' + m + ')', unskip: n => 'bring back ' + n + ' skipped', auditShort: 'spot check', 
   viewTodo: 'To answer (you)', viewDone: 'Answered', viewResults: 'Settled by the next request / reflection', viewResultsMachine: 'Settled by reflection', viewSettledByAI: 'Decided by the AI (nothing to answer)', settledByAILane: 'The AI decided these with confidence and they were not sampled for a spot check. Nothing to answer, but you can correct one if it is wrong.', viewDoneMachine: 'Settled', emptyResults: 'Nothing awaiting results.', resultsLane: 'These are the AI\'s decisions; their truths come from the next request\'s result or from reflection. Nothing for you to answer.', machineOnlyLane: 'Only the AI answers this question. It settles by what reflection did with the page (replaced or extended).', yourAnswer: (name, when) => 'Your answer: ' + name + ' (' + when + ')', changeAnswer: 'Press another button to change your answer. The newest answer counts.', redo: 'ask the AI again', redoHint: 'asks the AI again with today\'s wording and line, keeps your answer', redoResult: (b, a) => 'before: ' + b + '  →  now: ' + a, redoAgree: 'now matches your answer', redoDisagree: 'still differs from your answer', noneAnswered: 'nothing answered yet', wasRedone: 'asked again',
   plainAuto: 'The AI may act on its own here (enough answers were checked).', plainReady: 'Enough answers have been collected. Prediction quality still needs to be checked before automatic action.', plainOneAnswer: 'There are enough truths, but only one answer so far, so no line can be drawn until the other answer appears.', plainNotSeparable: 'There are enough truths, but this wording and model could not separate the answers, so no line was drawn. It is tried again as truths grow.', plainLearning: (n, m) => 'Still learning: ' + n + ' of ' + m + ' answers checked before the AI may act on its own.', plainStale: 'The question changed; it is learning again.',
   aiGuess: (name, p) => 'AI guess: ' + name + ' (' + p + '% sure)', bandAsk: 'Needs a human check', bandAct: 'Eligible for automatic action', bandDiscard: 'Not for automatic action', sameAsAI: 'same as the AI',
-  records: n => n + ' decisions', answered: n => n + ' checked', calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'enough answers ' + n + '/' + m, one_answer: (n, m) => 'only one answer ' + n + ' (a line needs both)', not_separable: (n, m) => 'cannot separate ' + n + ' (tried again as truths grow)',
-  howToTitle: 'How to use this page', howTo: ['Pick a decision in the tabs at the top.', 'Read the text on the card. The AI already guessed; its guess is marked "same as the AI".', 'Press the answer that was actually true (keys 1-9, or Enter for "same as the AI"). The next card appears.', 'Not sure? Skip it with → and come back later. When enough answers are checked, the AI is allowed to act on its own.'], gotIt: 'got it', todo: 'Read the text, then press what was actually true.',
-  withContext: 'asked again with context', contextRung: 'context rung', toPerson: (h, k) => 'to a person ' + h + ' (' + k + ' per 1000)',
+calibrated: m => 'may act on its own (' + m + ')', stale: 'question changed, learning again', collecting: (n, m) => 'learning ' + n + '/' + m, ready: (n, m) => 'enough answers ' + n + '/' + m, one_answer: (n, m) => 'only one answer ' + n + ' (a line needs both)', not_separable: (n, m) => 'cannot separate ' + n + ' (tried again as truths grow)',
+  howToTitle: 'How to use this page', howTo: ['Open "Answer" at the top. Only what waits for you is there, one card at a time.', 'Read the conversation on the card. The AI already guessed; its guess is marked "same as the AI".', 'Press the answer that was actually true (keys 1-9, or Enter for "same as the AI"). The next card appears.', 'Not sure? Skip it with → and come back later. When enough answers are checked, the AI is allowed to act on its own.'], gotIt: 'got it', 
+  withContext: 'asked again with context', 
   audit: 'audit sample: the machine acted on this; 1 in 20 is shown here so its precision is measured on what people checked',
   knowledge: 'Knowledge (claims)', claimsCount: (n, p) => n + ' claims, ' + p + ' prose pages', noClaims: 'no claims yet (tune drafts one when a candidate wins)',
   lessonsTab: 'Lessons', lessonsTitle: 'What it remembers', lessonsSummary: (s, c, n) => 'Recently delivered ' + (s.delivered || 0) + ' times: helped ' + (s.helpful || 0) + ', unused ' + (s.unused || 0) + ', harmful ' + (s.harmful || 0) + '. Corrections followed ' + (c.followed || 0) + ', repeated ' + (c.repeated || 0) + '. ' + n + ' pages.', inboxTitle: 'For you to look at', inboxTimes: n => n + ' times', inboxEmpty: 'Nothing right now. Only harmful lessons, repeated corrections and guards waiting to be enabled show up here.', inboxKind: k => ({ harmful: 'harmful', repeated: 'correction repeated', guard_draft: 'guard draft' })[k] || k, scenesTitle: 'Scenes', scenesHead: n => 'Scenes · ' + n + ' pages', scenesClear: 'clear', scenesNone: 'Unclassified', sceneFor: s => 'Knowledge for "' + s + '"', unclassifiedHow: 'Pages without a scene and kind yet (made before the update). The agent classifies five of them per request; nothing for you to do.', kindName: k => ({ rule: 'Rules to keep', howto: 'How to', criteria: 'How to decide', fact: 'Facts', history: 'Background' })[k] || k, kindHint: k => ({ rule: 'always keep', howto: 'steps and procedures', criteria: 'choosing between options', fact: 'how things are now', history: 'why it came to be' })[k] || '', kindCount: n => n + (n === 1 ? ' page' : ' pages'), kindMore: n => 'show ' + n + ' more', kindLess: 'show less', lessonsEmpty: 'No pages for this scene yet', helpfulCount: n => 'helped ' + n, appliesTo: 'Applies when', bodyTitle: 'Background', relatedTitle: 'Related', lessonFoot: (n, d) => n + (n === 1 ? ' source' : ' sources') + (d ? ' · updated ' + d : ''), detailEmpty: 'Press a title to see its lesson, related pages and sources here.', effectTitle: 'Did delivered lessons help (recent)', effectResult: r => ({ helpful: 'helped', unused: 'unused', harmful: 'harmful', unknown: 'unknown' })[r] || 'awaiting reflection', effectLesson: 'Lesson delivered:', clipMore: 'full text', clipLess: 'less', aiDetails: 'The AI in detail (search, reviews, reflection, the page tree, older claims)',
@@ -104,4 +94,11 @@ export default {
   adoptedLine: p => 'adopted as ' + p, sameMeaning: 'same meaning → adopt', changedMeaning: 'meaning changed → reject', notePrompt: 'What changed in the meaning? (optional)',
   candidates: n => n + ' rewordings waiting to be measured', noCandidates: 'no rewordings yet: write one below, or let the AI propose some', addWording: 'write a rewording', candName: 'short name (e.g. plain-words)', candQuestion: 'the question, said your way', candQuestionOrOptions: 'the question, said your way (leave empty to change only the option descriptions below)', candOptions: 'option descriptions, one per line as id: description (only the ones you change)', addWordingBtn: 'add the rewording', candAdded: n => 'added: ' + n + '. It will be measured on the next run',
   checkHint: 'Does the new wording still ask what you mean? Numbers are checked by the machine; the meaning is yours to check.', rejected: 'recorded: meaning changed, not adopted', adoptedToast: p => 'adopted: ' + p,
+  // 0.9.1: three pages (answer, knowledge, the AI)
+  pagesNav: 'Pages', pageAnswer: 'Answer', pageKnowledge: 'Knowledge', pageAI: 'The AI',
+  answerTitle: 'Answer', answerLeft: n => n + ' left', answerHow: 'Decisions the AI was unsure about, and spot checks of decisions it made alone. Read the conversation and press what was actually true.',
+  answerEmpty: 'Nothing right now. The AI is working on its own.', answerToKnowledge: 'Look at knowledge', answerWording: name => 'A new wording for "' + name + '": does it mean the same?',
+  aiTitle: 'The AI', aiHow: 'You do not need to look here day to day. It shows how far each question has learned, what you answered, the lessons delivered and the guards.',
+  aiYours: 'Questions you answer', aiMachine: 'Questions only the AI answers (no person answers)',
+  summaryMemoryHead: 'Lessons delivered and the routine', summaryGuardsHead: 'Guards', summaryModelHead: 'Decision model and how often it waits for a person',
 };

@@ -29,7 +29,7 @@ const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const files = [];
 (function walk(d) { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) { if (n !== 'locales') walk(p); } else if (/\.(svelte|js)$/.test(n)) files.push(p); } })(srcDir);
 const src = files.map(f => readFileSync(f, 'utf8')).join('\n');
-const dynamicPrefixes = ['chip_'];                                   // t('chip_' + 種類)
+const dynamicPrefixes = [];
 const dynamicKeys = ['collecting', 'ready', 'stale', 'calibrated'];  // t(k.state): /v1/status の keys[].state の値
 const unused = baseKeys.filter(k => k !== 'langName' && !src.includes(`'${k}'`) && !dynamicKeys.includes(k) && !dynamicPrefixes.some(pre => k.startsWith(pre)));
 if (unused.length) { console.error(`check-locales: ${fallback}: 画面で使われていない鍵: ${unused.join(', ')}`); bad++; }

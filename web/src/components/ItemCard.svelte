@@ -2,12 +2,13 @@
   // 1 件のカード: AI の予想と自信、本文、答えのボタン(番号付き。AI の予想は「AI と同じ」)、「〜ではない」(部分正解 !top)、
   // スキップ、「AI にもう一度聞く」(redo)。回答済みのカードでは別のボタンで答えを直せる(いちばん新しい答えが使われる)。
   // キー操作(App.svelte)は .item の先頭のカードの .btns button を押すので、ここの class(top / skip)は変えない
+  // question(0.9.1): 答える画面では札の先頭とボタンの上に問いを出し、AI の内側の印(帯・モデル)は出さない。AI の様子では出す
   import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
-  import { ui, skipped, load } from '../lib/state.svelte.js';
+  import { skipped, load } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
 
-  let { sp, it, pos = '', readonly = false } = $props(); // readonly: 人が答えない判定(AI が答え、正解は結果から)。ボタンを出さない(0.8.0)
+  let { sp, it, pos = '', readonly = false, question = '' } = $props(); // readonly: 人が答えない判定(AI が答え、正解は結果から)。ボタンを出さない(0.8.0)
   let busy = $state(false);
   let redoRes = $state(null); // やり直しの結果(前・今・答えとの一致)。文は描く時に組むので、言語を切り替えても変わる
 
@@ -28,7 +29,8 @@
   const planningPrefix = 'AIによる整理（実行許可や人の正解ではない）: ';
   const shown = (k, v) => {
     const text = it.original_inputs?.[k] ?? v;
-    return sp.id === 'needs-plan' && (k === 'agreed' || k === 'open') && typeof text === 'string' && text.startsWith(planningPrefix) ? text.slice(planningPrefix.length) : text;
+    const s = sp.id === 'needs-plan' && (k === 'agreed' || k === 'open') && typeof text === 'string' && text.startsWith(planningPrefix) ? text.slice(planningPrefix.length) : text;
+    return plainText(s);
   };
   let inputs = $derived.by(() => {
     const entries = Object.entries(it.inputs || {});
@@ -36,6 +38,9 @@
     const order = { request: 0, agreed: 1, open: 2, summary: 3, files: 4, previous: 5 };
     return entries.sort(([a], [b]) => (order[a] ?? 4) - (order[b] ?? 4));
   });
+
+  // エージェントの返答は Markdown で書かれる。画面は文字のまま出すので、太字と見出しの記号だけ外す(HTML は描かない)
+  const plainText = v => typeof v === 'string' ? v.replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#{1,6} /gm, '') : v;
 
   async function answer(truth) {
     busy = true;
@@ -79,20 +84,21 @@
   const limit = 'text-limit mx-3 mt-1.5 mb-3 rounded-md bg-amberbg px-2.5 py-1.5 text-[11px] text-amber';
 </script>
 
-<article class="item {it.band} mb-5 rounded-[15px] border bg-surface shadow-card max-sm:rounded-xl max-sm:px-3.5 max-sm:py-4 {ui.view === 'one' ? 'card p-[26px]' : 'p-[22px]'} {it.band === 'ask' ? 'border-[color-mix(in_srgb,var(--color-amber)_45%,var(--color-line))]' : 'border-line'}" aria-busy={busy}>
-  <div class="mb-5 flex items-center gap-2.5 text-[10px] text-muted max-sm:mb-3.5 max-sm:gap-[5px]"><span class="flex items-center gap-[7px] font-semibold tracking-[.04em] max-sm:text-[9px]"><span class="h-[9px] w-[7px] rounded-[2px] border border-muted" aria-hidden="true"></span>{t('conversationRecord')}</span><span class="text-accent">{pos}</span>{#if it.project}<span class="project rounded-[5px] border border-line px-1.5 py-px text-[9px]">{it.project}</span>{/if}{#if it.at}<time class="ml-auto text-[10px] max-sm:text-[9px]" datetime={it.at}>{fmtDateTime(it.at)}</time>{/if}</div>
+<article class="item {it.band} mb-5 rounded-[15px] border bg-surface shadow-card max-sm:rounded-xl max-sm:px-3.5 max-sm:py-4 {question ? 'card p-[26px]' : 'p-[22px]'} {it.band === 'ask' ? 'border-[color-mix(in_srgb,var(--color-amber)_45%,var(--color-line))]' : 'border-line'}" aria-busy={busy}>
+  {#if question}<h3 class="card-question mt-0 mb-1.5 text-[18px] leading-[1.6] font-[650] max-sm:text-[16px]">{question}</h3>{/if}
+  <div class="mb-5 flex items-center gap-2.5 text-[10px] text-muted max-sm:mb-3.5 max-sm:gap-[5px]">{#if !question}<span class="flex items-center gap-[7px] font-semibold tracking-[.04em] max-sm:text-[9px]"><span class="h-[9px] w-[7px] rounded-[2px] border border-muted" aria-hidden="true"></span>{t('conversationRecord')}</span>{/if}<span class="text-accent">{pos}</span>{#if it.project}<span class="project rounded-[5px] border border-line px-1.5 py-px text-[9px]">{it.project}</span>{/if}{#if it.at}<time class="ml-auto text-[10px] max-sm:text-[9px]" datetime={it.at}>{fmtDateTime(it.at)}</time>{/if}</div>
   {#if it.truth}
     <div class="rounded-lg bg-accentbg px-3 py-2.5 text-[12px] text-accent"><span aria-hidden="true">✓</span> {t('yourAnswer')(name(choiceOf(it.truth)), fmtDateTime(it.truth_at))}{#if it.redo_of}{' '}<span class="k">· {t('wasRedone')}</span>{/if}</div>
     {#if !it.legacy_planning}<div class="mt-[5px] mb-[15px] text-[10px] text-muted">{t('changeAnswer')}</div>{/if}
   {/if}
   {#if it.legacy_planning}<div class="audit legacy-planning"><strong>{t('legacyPlanning')}</strong>{#if it.record_question}<p>{it.record_question}</p>{/if}</div>{/if}
   {#if it.review}<div class="audit mb-[15px] rounded-[9px] border border-amber bg-amberbg px-3.5 py-2.5 text-[12px]">{it.review_reason === 'uncertain' ? t('reviewUncertain') : t('reviewRandom')}</div>{/if}
-  <div class="mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted">
+  {#if !question}<div class="mb-3 flex flex-wrap items-center gap-[9px] text-[11px] text-muted">
     <span>{it.band}</span><span>{it.model || ''}</span>
     {#if it.rung === 'context'}<span>{t('withContext')}</span>{/if}
     {#if it.audit}<span class="audit">{t('audit')}</span>{/if}
     {#if it.stale}<span>{t('changed')}</span>{/if}
-  </div>
+  </div>{/if}
   <div class="text conversation mb-3.5 wrap-anywhere">
     {#if it.answerable}
       {#each inputs as [k, v]}
@@ -112,13 +118,13 @@
     {:else}<span class="k">{t('noText')(it.inputs_hash)}</span>{/if}
   </div>
   {#if it.review}
-    <div class="text followup wrap-anywhere {fieldBox('reply')}"><div class={fieldLabel('reply')}><span class={fieldDot('reply')} aria-hidden="true"></span>{t('reviewReply')}</div><div class={body('reply')}>{it.review.source_material.reply}</div></div>
+    <div class="text followup wrap-anywhere {fieldBox('reply')}"><div class={fieldLabel('reply')}><span class={fieldDot('reply')} aria-hidden="true"></span>{t('reviewReply')}</div><div class={body('reply')}>{plainText(it.review.source_material.reply)}</div></div>
     <details class="review-evidence mb-[15px] text-[12px]"><summary>{t('reviewEvidence')}</summary><p>{it.review.truth}: {it.review.reason}</p></details>
   {:else if it.top}
     <div class="guess prediction flex items-center justify-between gap-[15px] border-t border-line pt-3.5 pb-[18px]"><div><span class="mb-1 block text-[9px] tracking-[.05em] text-muted">{t('predictionHeading')}</span><strong class="block text-[13px] font-[550] max-sm:text-[11px]">{t('aiGuess')(topName, (guess.p * 100).toFixed(0))}</strong><span class="mt-[3px] block text-[10px] text-muted">{bandWord}{#if it.audit} · {t('auditShort')}{/if}</span></div><div class="grid h-[46px] flex-[0_0_46px] place-items-center rounded-full bg-[conic-gradient(var(--color-accent)_var(--confidence),var(--color-line)_0)] p-[3px]" style="--confidence:{Math.round(guess.p * 100)}%" aria-hidden="true"><span class="grid h-10 w-10 grid-flow-col items-baseline justify-center rounded-full bg-surface text-[13px] leading-10 text-accent tabular-nums">{Math.round(guess.p * 100)}<small class="ml-px text-[8px]">%</small></span></div></div>
   {/if}
   {#if readonly && !it.legacy_planning}<p class="k readonly-note">{t('readonlyNote')}</p>{/if}
-  {#if !it.legacy_planning && !readonly}<div class="border-t border-line pt-[17px]"><div class="answer-heading mb-3 flex items-baseline justify-between gap-3 max-lg:flex-wrap max-lg:gap-1"><span class="text-[13px] font-semibold">{t('yourDecision')}</span><small class="text-[10px] text-muted max-sm:text-[9px]">{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small></div>
+  {#if !it.legacy_planning && !readonly}<div class="answer-bar border-t border-line pt-[17px] {question ? 'sticky bottom-0 -mx-[26px] rounded-b-[15px] bg-surface px-[26px] pb-4 shadow-[0_-8px_12px_-10px_#0003] max-sm:-mx-3.5 max-sm:px-3.5' : ''}"><div class="answer-heading mb-3 flex items-baseline justify-between gap-3 max-lg:flex-wrap max-lg:gap-1"><span class="text-[13px] font-semibold">{question || t('yourDecision')}</span><small class="text-[10px] text-muted max-sm:text-[9px]">{it.truth ? t('changeAnswerShort') : t('chooseAnswer')}</small></div>
     <div class="btns flex flex-wrap items-center gap-2.5" role="group" aria-label={t('yourDecision')}>
       {#each it.choices as c, i}
         {@const top = !it.review && c.truth === guess.truth}
