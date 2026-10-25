@@ -49,6 +49,8 @@ export function answerSpecs(st, selection = ui) {
 }
 
 let loadVersion = 0;
+// dropPendingLoads は、待っている読み直しの応答を捨てる(答えた後に、答える前の古い列で札が戻らないように)
+export function dropPendingLoads() { loadVersion++; }
 // status と表示中の画面の分だけを読む。遅い古い応答は新しい選択へ反映しない。
 export async function load() {
   const version = ++loadVersion;

@@ -4,7 +4,7 @@
   // キー操作(App.svelte)は .item の先頭のカードの .btns button を押すので、ここの class(top / skip)は変えない
   // question(0.9.1): 答える画面では札の先頭とボタンの上に問いを出し、AI の内側の印(帯・モデル)は出さない。AI の様子では出す
   import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
-  import { skipped, load } from '../lib/state.svelte.js';
+  import { skipped, load, dropPendingLoads } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
 
@@ -46,7 +46,11 @@
     busy = true;
     try {
       const res = await api.label({ trace_id: it.trace_id, spec: sp.id, truth, source: it.audit ? 'audit' : 'ui' });
-      if (!it.truth) { sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++; }
+      dropPendingLoads(); // 答える前に出た読み直しの応答は、答えた札を戻すので捨てる(監査 0.9.1 低-5)
+      if (!it.truth) {
+        sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++;
+        if (it.waits_for_person !== false) sp.waiting_for_person = Math.max(0, (sp.waiting_for_person || 1) - 1); // 「残り」と上の印も減らす(監査 0.9.1 低〜中-4)
+      }
       if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); }
       else { toast(t('done')(res.truth)); }
       if (it.truth || it.review || res.calibrated) await load();
@@ -105,7 +109,7 @@
         {#if sp.id === 'needs-plan' && k === 'previous'}
           <details class="previous-context mt-1.5 mb-[18px] rounded-[9px] border border-dashed border-line text-[11px] text-muted [&[open]>summary]:border-b [&[open]>summary]:border-line" data-input={k}>
             <summary class="cursor-pointer px-[13px] py-[11px]">{inputLabel(k)}</summary>
-            <div class={body(k)}>{it.original_inputs?.[k] ?? v}
+            <div class={body(k)}>{plainText(it.original_inputs?.[k] ?? v)}
               {#if it.text_status?.[k]}<div class={limit}>{t(it.text_status[k] === 'legacy' ? 'legacyTextLimit' : it.text_status[k] === 'limited' ? 'originalTextLimit' : 'originalTextUnavailable')}</div>{/if}
             </div>
           </details>
