@@ -31,13 +31,17 @@
     else if (sp.keys.length && !live.length) plain = t('plainStale');
     return { plain, pct };
   });
+  // Enough truths but no way forward yet (the wording cannot tell the answers apart, or only one answer so far): the full bar is gray, not a success color (0.9.2)
+  let stuck = $derived(!live.some(k => ['calibrated', 'ready'].includes(k.state)) && live.some(k => k.state === 'not_separable' || k.state === 'one_answer'));
 
   // Decisions a person does not answer (wiki conflict, wiki place): the AI answers, and the truth comes from the outcome of reflection. The lists are only "Settled by reflection" and "Settled" (0.8.0)
   let machineOnly = $derived(sp.person_answers === false);
   // Lists (lane): you = unanswered (you answer), results = settled by the next request or reflection (a person does not answer), done = answered / settled
-  let lane = $derived(machineOnly ? (ui.done ? 'done' : 'results') : ui.done ? 'done' : ui.results ? 'results' : 'you');
   const forYou = it => !machineOnly && it.waits_for_person !== false;
   let queued = $derived(sp.queue?.items || []);
+  // With nothing waiting for the person, the AI page opens on what the AI did (the "you" list is not shown; 0.9.2)
+  let noneForYou = $derived(!machineOnly && (sp.queue ? !queued.some(forYou) : true) && !(sp.waiting_for_person > 0));
+  let lane = $derived(machineOnly ? (ui.done ? 'done' : 'results') : ui.done ? 'done' : ui.results || noneForYou ? 'results' : 'you');
   let all = $derived(queued.filter(it => lane === 'results' ? !forYou(it) : forYou(it)));
   let resultsCount = $derived(queued.filter(it => !forYou(it)).length + Math.max(0, (sp.awaiting_results || 0) - queued.filter(it => !forYou(it)).length));
   // The count of unanswered (you): before the list is loaded (while looking at answered), status's count waiting for a person
@@ -57,7 +61,7 @@
   {:else if sp.id === 'needs-plan'}<p class={phase}>{t('beforeWork')}</p>
   {:else if sp.id === 'done-as-asked' || sp.id === 'changes-in-scope'}<p class={phase}>{t('afterWork')}</p>{/if}
   </div></div>
-  <div class="mb-4 px-0.5"><div class="learning-line flex items-center gap-2 text-[12px] text-muted"><span class="text-[16px] text-accent" aria-hidden="true">◒</span><span>{progress.plain}</span><span class="ml-auto whitespace-nowrap tabular-nums max-sm:hidden">{Math.min(n, sp.min_n)} / {sp.min_n}</span></div><div class="mt-[9px] h-1 overflow-hidden rounded-[3px] bg-line" role="progressbar" aria-label={t('learningProgress')} aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"><div class="h-full rounded-[3px] bg-accent" style="width:{progress.pct}%"></div></div></div>
+  <div class="mb-4 px-0.5"><div class="learning-line flex items-center gap-2 text-[12px] text-muted"><span class="text-[16px] text-accent" aria-hidden="true">◒</span><span>{progress.plain}</span><span class="ml-auto whitespace-nowrap tabular-nums max-sm:hidden">{Math.min(n, sp.min_n)} / {sp.min_n}</span></div><div class="mt-[9px] h-1 overflow-hidden rounded-[3px] bg-line" role="progressbar" aria-label={t('learningProgress')} aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"><div class="h-full rounded-[3px] {stuck ? 'bg-muted' : 'bg-accent'}" style="width:{progress.pct}%"></div></div></div>
   {#if sp.planning_context && sp.legacy_planning_records}<p class="k">{t('planningLearning')(sp.legacy_planning_records)}</p>{/if}
   {#if sp.last_calibration}
     <div class="calibration-report my-4 rounded-[11px] border border-line bg-surface px-[18px] py-4 text-[12px] [&_summary]:cursor-pointer [&_summary]:text-muted">
@@ -66,9 +70,9 @@
       <details><summary>{t('calibrationDetails')}</summary><pre>{sp.last_calibration}</pre></details>
     </div>
   {/if}
-  {#if sp.review_quality?.scored}<p class="k review-quality">{t('reviewQuality')(sp.review_quality)}</p>{/if}
+  {#if sp.review_quality?.scored}<div class="review-quality my-3 text-[13px]"><details><summary class="cursor-pointer" title={t('reviewQualityMore')}>{t('reviewQuality')(sp.review_quality)}</summary><p class="k mt-1.5 mb-0">{t('reviewQualityDetails')(sp.review_quality)}</p></details></div>{/if}
   {#if sp.review_pending}<p class="k">{t('reviewPending')(sp.review_pending)}</p>{/if}
-  <Chips {counts} labels={sp.labels} {machineOnly} {resultsCount} settledByAI={!machineOnly && sp.truth_source === 'person'} />
+  <Chips {counts} labels={sp.labels} {machineOnly} hideYou={noneForYou} {resultsCount} settledByAI={!machineOnly && sp.truth_source === 'person'} />
 
   {#if ui.done}
     {#if !sp.answered}

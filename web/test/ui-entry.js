@@ -176,6 +176,51 @@ function checkAnswerNothingToDo(target) {
   return ok;
 }
 
+// 0.9.2 redesign (P6): the AI page shows status by default. With nothing waiting for the person, the "to answer (you)" list is not there (allowed lists: results and answered),
+// a question whose wording cannot tell the answers apart says there is nothing for the person to do and its full bar is gray, and the review quality is one sentence with the numbers folded
+function checkAiPageStatus(target) {
+  const lang = i18n.lang; i18n.lang = 'ja'; const saved = { ...ui };
+  Object.assign(ui, { done: false, results: false });
+  const item = { trace_id: 'r1', at: '2026-10-23T00:00:00Z', band: 'act', top: 'yes', p: 0.9, model: 'm', inputs: { request: 'x' }, answerable: true, waits_for_person: false, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
+  const sp = { id: 'done-as-asked', type: 'noul', titles: { ja: '頼まれたことを終えたか' }, questions: {}, keys: [{ model: 'm', hash: 'h', n: 52, state: 'not_separable' }], min_n: 50, records: 60, labels: 52, unlabeled: 1, waiting_for_person: 0, awaiting_results: 1, person_answers: true, truth_source: 'person', queue: { items: [item] }, tune: null,
+    review_quality: { scored: 16, uncertain: 0, checked: 15, correct: 14, uncertain_checked: 0, random_checked: 1, random_correct: 1, audit_every: 5 } };
+  const app = mount(SpecPanel, { target, props: { sp } }); flushSync();
+  const lanes = [...target.querySelectorAll('.answer-tabs [data-lane]')].map(b => b.dataset.lane);
+  const status = JSON.stringify(lanes) === JSON.stringify(['results', 'done']) && !!target.querySelector('.answer-tabs [data-lane="results"].active') && target.querySelectorAll('.item').length === 1 && !target.textContent.includes(t('empty'));
+  const line = target.querySelector('.learning-line')?.textContent || '';
+  const bar = target.querySelector('[role="progressbar"] > div');
+  const nothingToDo = line.includes('あなたがすることはありません') && !!bar && bar.classList.contains('bg-muted') && !bar.classList.contains('bg-accent');
+  const rq = target.querySelector('.review-quality');
+  const summary = rq?.querySelector('summary')?.textContent || '';
+  const oneSentence = !!rq && summary === t('reviewQuality')(sp.review_quality) && !!rq.querySelector('details:not([open])') && (rq.textContent || '').includes('16');
+  unmount(app); Object.assign(ui, saved); i18n.lang = lang;
+  const ok = status && nothingToDo && oneSentence;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI page: status by default ' + JSON.stringify(lanes) + '=' + status + ', cannot tell apart says nothing to do with a gray bar=' + nothingToDo + ', review quality one sentence, numbers folded=' + oneSentence + ')');
+  return ok;
+}
+
+// 0.9.2 redesign (P7): each page says in one line what it is for (exactly one .page-purpose), and the how-to guide talks about the page that is open
+async function checkPagePurpose(target) {
+  const lang = i18n.lang; i18n.lang = 'ja';
+  const realFetch = globalThis.fetch, state = data.state, saved = { ...ui };
+  const item = { trace_id: 'p1', at: '2026-10-23T00:00:00Z', band: 'ask', top: 'yes', p: 0.6, model: 'm', inputs: { request: 'x' }, answerable: true, waits_for_person: true, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs() } : url === 'v1/wiki' ? { claims: [], lessons: [] } : url.startsWith('v1/queue') ? { items: [item] } : url.startsWith('v1/tune') ? null : { items: [] } });
+  const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
+  const seen = {};
+  for (const [page, how] of [['answer', 'howTo'], ['wiki', 'howToKnowledge'], ['ai', 'howToAI']]) {
+    data.state = null; Object.assign(ui, { page, tab: 'needs-plan', done: false, results: false, pinned: '', showHelp: true });
+    const app = mount(App, { target }); await settle(); await settle();
+    const purpose = target.querySelectorAll('.page-purpose').length === 1;
+    const steps = [...target.querySelectorAll('.howto li')].map(li => li.textContent);
+    seen[page] = purpose && JSON.stringify(steps) === JSON.stringify(t(how));
+    unmount(app);
+  }
+  globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang;
+  const ok = seen.answer && seen.wiki && seen.ai;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (one purpose line and a how-to for the open page: ' + JSON.stringify(seen) + ')');
+  return ok;
+}
+
 // The ways-of-asking section has inputs for a person to write a candidate (and option descriptions for a choice). Sending it delivers the name, question and options parsed from "id: description" to v1/tune/variant
 async function checkWording(target) {
   const calls = [];
@@ -564,6 +609,8 @@ export async function run() {
   const target = document.getElementById('app');
   const quietOK = checkAnswerNothingToDo(target);
   const knowledgeFrontOK = checkKnowledgeFront(target);
+  const aiStatusOK = checkAiPageStatus(target);
+  const purposeOK = await checkPagePurpose(target);
   const articleOK = await checkNotebookArticle(target);
   const planningOK = checkPlanningContext(target);
   const calibrationOK = checkCalibrationReport(target);
@@ -592,7 +639,7 @@ export async function run() {
   const revertOK = await checkAnswerNotRevertedByOldLoad(target);
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
-  const ok = knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 

@@ -111,4 +111,8 @@ export default {
   rulesAll: n => 'ルールを全部見る(' + n + ' 本)',
   inboxGuardHow: '有効にするなら、AI にそう頼んでください。',
   knowledgeHow: 'AI が覚えたことを引く所です。ふだん、あなたがすることはありません。',
+  reviewQualityDetails: q => `AI の仮の答え ${q.scored} 件(決めきれない ${q.uncertain} 件)。決めきれない物を確かめた ${q.uncertain_checked} 件。無作為に確かめた ${q.random_checked} 件中 ${q.random_correct} 件が合っていた。確かめのため ${q.audit_every} 件に 1 件を出す`,
+  reviewQualityMore: '詳しい数を見る',
+  howToKnowledge: ['AI が覚えたことを引く画面です。ふだん、あなたがすることはありません。', '上の欄に語を書くか、場面を選ぶと絞れます。題を押すと右(スマホでは下)に本文が出ます。'],
+  howToAI: ['AI がどこまで学んだかを見る画面です。ふだんは見なくてかまいません。', '左で問いを選ぶと、AI が答えた記録とあなたの答えが見られます。違うと思えば直せます。'],
 };

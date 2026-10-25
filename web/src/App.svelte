@@ -72,7 +72,7 @@
   {:else}
     <div class="workspace-content min-w-0 pt-6 pb-6 max-md:pt-5">
       {#if data.loadError}<p class="audit" role="alert">{t('error')(data.loadError)}</p>{/if}
-      {#if ui.showHelp}<HowTo />{/if}
+      {#if ui.showHelp}<HowTo {page} />{/if}
       {#if page === 'wiki'}
         {#if st.wiki}<Knowledge wiki={st.wiki} />
         {:else if !data.loadError}<div class="empty-state" role="status">{t('loading')}</div>{/if}

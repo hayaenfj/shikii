@@ -1160,6 +1160,10 @@
     background-color: var(--line);
   }
 
+  .bg-muted {
+    background-color: var(--muted);
+  }
+
   .bg-request {
     background-color: var(--request);
   }

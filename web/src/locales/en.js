@@ -113,4 +113,8 @@ export default {
   rulesAll: n => 'See all rules (' + n + ')',
   inboxGuardHow: 'To turn it on, ask the AI to.',
   knowledgeHow: 'Where you look up what the AI has learned. Usually there is nothing for you to do here.',
+  reviewQualityDetails: q => `${q.scored} first answers by the AI (${q.uncertain} undecided). ${q.uncertain_checked} undecided ones checked. ${q.random_correct} of ${q.random_checked} checked at random matched. 1 in ${q.audit_every} is shown to check`,
+  reviewQualityMore: 'Show the numbers',
+  howToKnowledge: ['Where you look up what the AI has learned. Usually there is nothing for you to do.', 'Type words in the box or choose a scene to narrow it. Press a title to read it on the right (below on a phone).'],
+  howToAI: ['How far the AI has learned. You do not need to look here day to day.', 'Choose a question on the left to see what the AI answered and your answers. If one is wrong, you can correct it.'],
 };
