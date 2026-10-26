@@ -263,36 +263,54 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 }
 
 var (
-	codexInlineServers = regexp.MustCompile(`(?m)^[ \t]*"?mcp_servers"?[ \t]*=`)                                       // mcp_servers = { ... }: an inline table cannot be extended
-	codexShikiiServer  = regexp.MustCompile(`(?m)^[ \t]*\[?[ \t]*"?mcp_servers"?[ \t]*\.[ \t]*"?shikii"?[ \t]*[\].=]`) // [mcp_servers.shikii], [mcp_servers."shikii"], mcp_servers.shikii.command = ...
-	codexServersTable  = regexp.MustCompile(`(?m)^[ \t]*\[[ \t]*"?mcp_servers"?[ \t]*\][ \t]*$`)
-	codexShikiiKey     = regexp.MustCompile(`(?m)^[ \t]*"?shikii"?[ \t]*[.=]`) // shikii = {...} or shikii.command = ... under [mcp_servers]
+	codexInlineServers = regexp.MustCompile(`(?m)^[ \t]*["']?mcp_servers["']?[ \t]*=`)                                             // mcp_servers = { ... }: an inline table cannot be extended
+	codexShikiiServer  = regexp.MustCompile(`(?m)^[ \t]*\[?[ \t]*["']?mcp_servers["']?[ \t]*\.[ \t]*["']?shikii["']?[ \t]*[\].=]`) // [mcp_servers.shikii], [mcp_servers.'shikii'], mcp_servers.shikii.command = ...
+	codexServersTable  = regexp.MustCompile(`(?m)^[ \t]*\[[ \t]*["']?mcp_servers["']?[ \t]*\][ \t]*$`)
+	codexShikiiKey     = regexp.MustCompile(`(?m)^[ \t]*["']?shikii["']?[ \t]*[.=]`) // shikii = {...} or shikii.command = ... (under [mcp_servers])
 )
 
-// codexServerState says whether shikii's server can be appended to Codex's config.toml without parsing TOML: "add" (no shikii yet and nothing
-// that appending would break), "has" (shikii is defined in some form) or "inline" (mcp_servers is an inline table, which cannot be extended).
-// Comments are ignored. Appending next to a person's own [mcp_servers.<name>] tables is fine (0.9.5 check: before, any mention of mcp_servers
-// left the file alone, so a person with one server of their own never got shikii's).
-func codexServerState(b []byte) string {
+// codexConfigText is config.toml without carriage returns, comment lines and end-of-line comments outside quotes, for codexServerState.
+func codexConfigText(b []byte) string {
 	var lines []string
-	for _, line := range strings.Split(string(b), "\n") {
-		if t := strings.TrimSpace(line); !strings.HasPrefix(t, "#") {
+	for _, line := range strings.Split(strings.ReplaceAll(string(b), "\r", ""), "\n") {
+		var quote rune
+		for i, r := range line {
+			switch {
+			case quote == 0 && (r == '"' || r == '\''):
+				quote = r
+			case quote != 0 && r == quote:
+				quote = 0
+			case quote == 0 && r == '#':
+				line = line[:i]
+			}
+			if quote == 0 && r == '#' {
+				break
+			}
+		}
+		if strings.TrimSpace(line) != "" {
 			lines = append(lines, line)
 		}
 	}
-	text := strings.Join(lines, "\n")
+	return strings.Join(lines, "\n")
+}
+
+// codexServerState says whether shikii's server can be appended to Codex's config.toml without parsing TOML: "add" (no shikii yet and nothing
+// that appending would break), "has" (shikii may be defined in some form) or "inline" (mcp_servers is an inline table, which cannot be extended).
+// When unsure it says "has", so the file is left alone and init shows the block to add by hand: appending a second [mcp_servers.shikii] makes Codex
+// refuse the whole file (0.9.6 audit, middle 1). Appending next to a person's own [mcp_servers.<name>] tables is fine (0.9.5 check).
+func codexServerState(b []byte) string {
+	text := codexConfigText(b)
 	if codexShikiiServer.MatchString(text) {
 		return "has"
 	}
 	if codexInlineServers.MatchString(text) {
 		return "inline"
 	}
-	if loc := codexServersTable.FindStringIndex(text); loc != nil { // keys directly under [mcp_servers], up to the next table header
-		rest := text[loc[1]:]
-		if next := regexp.MustCompile(`(?m)^[ \t]*\[`).FindStringIndex(rest); next != nil {
-			rest = rest[:next[0]]
-		}
-		if codexShikiiKey.MatchString(rest) {
+	if codexServersTable.MatchString(text) && codexShikiiKey.MatchString(text) { // a key shikii anywhere, when [mcp_servers] exists (a multi-line string can hide where its table ends)
+		return "has"
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "mcp_servers") && strings.Contains(line, "shikii") {
 			return "has"
 		}
 	}
@@ -682,5 +700,5 @@ func codexServerNote(path string) string {
 	if codexServerState(b) == "inline" {
 		return "did not add shikii: mcp_servers is written as an inline table (mcp_servers = { ... }), which cannot be extended. Add shikii to it, or rewrite it as tables and add:\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + " (Codex)"
 	}
-	return "kept the existing MCP settings (Codex)"
+	return "kept the existing MCP settings; if they do not register shikii, add:\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + " (Codex)"
 }

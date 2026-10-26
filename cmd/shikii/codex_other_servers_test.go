@@ -39,3 +39,27 @@ func TestCodexServerAddedNextToAPersonsOwnServers(t *testing.T) {
 		t.Fatalf("the person is told shikii was not added and what to add: %q", note)
 	}
 }
+
+// 0.9.6 audit, middle 1: shapes where shikii is already registered but the first codexServerState missed it and appended a second
+// [mcp_servers.shikii] (TOML then refuses the file: "Cannot declare ('mcp_servers', 'shikii') twice"). None of them may be appended to.
+func TestCodexServerNotAppendedWhenShikiiIsWrittenAnotherWay(t *testing.T) {
+	for name, toml := range map[string]string{
+		"comment after the header": "[mcp_servers] # mine\nshikii = { command = \"x\" }\n",
+		"CRLF lines":               "[mcp_servers]\r\nshikii = { command = \"x\" }\r\n",
+		"single-quoted table":      "[mcp_servers.'shikii']\ncommand = \"x\"\n",
+		"single-quoted parent":     "['mcp_servers'.shikii]\ncommand = \"x\"\n",
+		"single-quoted key":        "[mcp_servers]\n'shikii' = { command = \"x\" }\n",
+		"single-quoted inline":     "'mcp_servers' = { }\n",
+		"multi-line string first":  "[mcp_servers]\nnote = '''\n[x]\n'''\nshikii = { command = \"x\" }\n",
+	} {
+		p := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(p, []byte(toml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		did, err := addCodexServer(p, []string{"mcp"})
+		b, _ := os.ReadFile(p)
+		if err != nil || did || string(b) != toml {
+			t.Errorf("%s: a file that already has shikii (or an inline mcp_servers) is left alone: did=%v err=%v\n%s", name, did, err, b)
+		}
+	}
+}
