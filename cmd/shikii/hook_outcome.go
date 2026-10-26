@@ -288,8 +288,8 @@ func settleDone(agent string, c *completedTurn, reply string) error {
 // restateDone settles the done-as-asked of the earlier request the agent named in restates (inside the lock, at plan submit; 0.9.3
 // real-agent check low 4: a restatement of a request older than the previous one used to give nothing to it and "done" to the previous one).
 // The agent only names the turn; the truth comes from the fixed rule on the person's own texts: similarity >= outcomeRepeatAbove gives that
-// request "no" (weight 1), anything else gives nothing. Only a turn among this session's recent turns (same project, within the time limit)
-// is used, and a request that already has a truth (the person's or an outcome) is left alone. It reports whether the message restates it.
+// request "no" (weight 1), anything else gives nothing. Only a request this session recorded itself (Recent or Earlier: same session and
+// project, within the time limit, however far back) is used, and a request that already has a truth (the person's or an outcome) is left alone. It reports whether the message restates it.
 func restateDone(agent string, s *hookSession, turn string) bool {
 	if s.Planning == nil {
 		return false
@@ -298,7 +298,7 @@ func restateDone(agent string, s *hookSession, turn string) bool {
 	if isAckReply(reply) {
 		return false
 	}
-	for _, t := range s.Planning.Recent {
+	for _, t := range append(append([]planningTurn{}, s.Planning.Recent...), s.Planning.Earlier...) {
 		if t.ID != turn || t.Done == "" || time.Since(t.At) < 0 || time.Since(t.At) > hookSessionTTL {
 			continue
 		}

@@ -9,7 +9,8 @@ import (
 )
 
 // Past conversations and the wiki are material for judgment. They do not replace the person's current message or the current agreement.
-// Only the original text of the latest 4 turns is kept; no re-summarizing of summaries or joining of conversations.
+// Only the original text of the latest 4 turns is shown; no re-summarizing of summaries or joining of conversations. Older requests of the
+// session move to Earlier, which only restates looks up.
 type planningTurn struct {
 	ID      string    `json:"id"`
 	Request string    `json:"request"`
@@ -23,6 +24,7 @@ type planningTurn struct {
 func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 	if previous.Scope == scope && previous.Planning != nil && time.Since(previous.Planning.At) >= 0 && time.Since(previous.Planning.At) < hookSessionTTL {
 		f.Recent = append([]planningTurn{}, previous.Planning.Recent...)
+		f.Earlier = append([]planningTurn{}, previous.Planning.Earlier...) // the same session and project only, like Recent
 		// only refer to original text that also exists in the pre-update format. Nothing is built from the old joined Request.
 		if len(f.Recent) == 0 && previous.Planning.Sources["previous_user"] != "" {
 			f.Recent = append(f.Recent, planningTurn{ID: previous.TurnID + "-prior", Request: cut(previous.Planning.Sources["previous_user"], 1200), At: previous.Planning.At})
@@ -49,8 +51,16 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 		}
 	}
 	if len(f.Recent) > 4 {
+		f.Earlier = append(f.Earlier, f.Recent[:len(f.Recent)-4]...)
 		f.Recent = f.Recent[len(f.Recent)-4:]
 	}
+	kept := f.Earlier[:0]
+	for _, turn := range f.Earlier {
+		if time.Since(turn.At) >= 0 && time.Since(turn.At) <= hookSessionTTL {
+			kept = append(kept, turn)
+		}
+	}
+	f.Earlier = kept
 	for _, turn := range f.Recent {
 		if time.Since(turn.At) < 0 || time.Since(turn.At) > hookSessionTTL {
 			continue
