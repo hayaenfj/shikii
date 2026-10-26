@@ -114,7 +114,7 @@ func cmdServe(args []string) error {
 	go func() { errc <- httpServer.Serve(ln) }()
 	go func() { // stop when this is no longer the project's page (its record was removed, or its store is gone)
 		for range time.Tick(pageOwnerCheck) {
-			if !pageStillOwned(common, scope, os.Getpid()) {
+			if !pageStillOwned(common, scope, absStore, os.Getpid()) {
 				log.Printf("shikii serve: this is no longer the project's page (its record or store is gone); stopping")
 				ln.Close()
 				return
@@ -130,7 +130,10 @@ func cmdServe(args []string) error {
 			ln.Close()
 			return err
 		}
-		return <-errc
+		if err := <-errc; !errors.Is(err, net.ErrClosed) {
+			return err
+		}
+		return nil // stopped by the check above (re-audit C-6)
 	case err := <-errc:
 		if errors.Is(err, net.ErrClosed) {
 			return nil // stopped by the check above

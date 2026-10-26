@@ -1,12 +1,14 @@
 package store
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -41,8 +43,12 @@ func (s Store) projectPath(area, ext, scope string) string {
 	return s.adopt(area, ext, from)
 }
 
-// merge adds the records in from to fixed and removes from. A file is first renamed aside, so lines the older shikii appends meanwhile go
-// to a new file and are merged next time; a folder's files are moved in unless the same name is already there.
+// merge adds what an older shikii (before 0.9.7, still running) wrote under the scope's hash after the move to the fixed name.
+// A file is never moved or removed, since the older shikii may hold it open: only its complete lines (ending in a newline) after the
+// offset kept in <file>.merged are appended, so a half-written line waits for its end (re-audit C-2, C-3). If this stops between the
+// append and the offset, the lines are appended again next time (a repeated conversation, never a lost one).
+// A folder's files are moved in; a file whose name is already in the fixed folder is that same record (records there are written once),
+// so the leftover is removed and the folder goes (re-audit C-5).
 func (s Store) merge(from, fixed, ext string) {
 	info, err := os.Lstat(from)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 {
@@ -54,33 +60,55 @@ func (s Store) merge(from, fixed, ext string) {
 			return
 		}
 		for _, e := range entries {
-			if _, err := os.Lstat(filepath.Join(fixed, e.Name())); os.IsNotExist(err) && e.Type().IsRegular() {
+			if !e.Type().IsRegular() {
+				continue
+			}
+			if _, err := os.Lstat(filepath.Join(fixed, e.Name())); err == nil {
+				_ = os.Remove(filepath.Join(from, e.Name()))
+			} else if os.IsNotExist(err) {
 				_ = os.Rename(filepath.Join(from, e.Name()), filepath.Join(fixed, e.Name()))
 			}
 		}
 		_ = os.Remove(from) // only when emptied
 		return
 	}
-	aside := fmt.Sprintf("%s.merging-%d", from, os.Getpid())
-	if os.Rename(from, aside) != nil {
-		return
-	}
-	data, err := os.ReadFile(aside)
+	mark, err := os.OpenFile(from+".merged", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return
 	}
-	if len(data) > 0 && data[len(data)-1] != '\n' {
-		data = append(data, '\n')
-	}
-	f, err := os.OpenFile(fixed, os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		_ = os.Rename(aside, from)
+	defer mark.Close()
+	if syscall.Flock(int(mark.Fd()), syscall.LOCK_EX) != nil {
 		return
 	}
-	_, werr := f.Write(data)
-	if cerr := f.Close(); werr == nil && cerr == nil {
-		_ = os.Remove(aside)
+	defer syscall.Flock(int(mark.Fd()), syscall.LOCK_UN)
+	raw, _ := io.ReadAll(io.LimitReader(mark, 32))
+	offset, _ := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
+	f, err := os.OpenFile(from, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return
 	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || st.Size() < offset {
+		return
+	}
+	data, err := io.ReadAll(io.NewSectionReader(f, offset, MaxLineBytes*16))
+	if err != nil {
+		return
+	}
+	end := bytes.LastIndexByte(data, '\n')
+	if end < 0 {
+		return // nothing complete yet
+	}
+	out, err := os.OpenFile(fixed, os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return
+	}
+	_, werr := out.Write(data[:end+1])
+	if cerr := out.Close(); werr != nil || cerr != nil {
+		return
+	}
+	_ = mark.Truncate(0)
+	_, _ = mark.WriteAt([]byte(strconv.FormatInt(offset+int64(end+1), 10)), 0)
 }
 
 // MigrateLayout moves the records written before 0.9.7 under scope's hash to the fixed names. Reconnecting a moved project calls it with

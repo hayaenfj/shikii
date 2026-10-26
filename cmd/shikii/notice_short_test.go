@@ -55,7 +55,7 @@ func TestPlanningNoticeIsShortAfterTheFirstRequest(t *testing.T) {
 // asked last time are still waiting (missed), and every noticeFullEvery requests; a short form in between.
 func TestReflectionNoticeIsShortAfterTheFirstAsk(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
-	const full = "only sources when there is no lesson"
+	const full = "keep the short lesson and the detailed body apart"
 	prompt := func(text string) string {
 		t.Helper()
 		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": scope, "prompt": text}))
@@ -73,13 +73,49 @@ func TestReflectionNoticeIsShortAfterTheFirstAsk(t *testing.T) {
 	if again := prompt("README \u306e\u898b\u51fa\u3057\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044"); !strings.Contains(again, full) {
 		t.Fatalf("the conversations asked last time are still waiting (missed): the full text again: %q", again)
 	}
+	// re-audit S3: a request in between that asked nothing (ReflectAsked cleared) does not hide that the same conversations still wait
+	if err := updateSession(st.Dir, "s1", func(s *hookSession) { s.ReflectAsked, s.ReflectShortTurns = nil, 1 }); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "stop", map[string]any{"session_id": "s1", "cwd": scope, "last_assistant_message": "README \u3092\u76f4\u3057\u307e\u3057\u305f\u3002"})
+	if sticky := prompt("README \u306e\u5e8f\u6587\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044"); !strings.Contains(sticky, full) {
+		t.Fatalf("the conversations asked before still wait: the full text again: %q", sticky)
+	}
 	// the last ask was handled (other conversations were asked) and the full text came one request ago: the short form
-	if err := updateSession(st.Dir, "s1", func(s *hookSession) { s.ReflectAsked, s.ReflectShortTurns = []string{"ffffffffffffffff"}, 1 }); err != nil {
+	if err := updateSession(st.Dir, "s1", func(s *hookSession) { s.ReflectLastAsked, s.ReflectShortTurns = []string{"ffffffffffffffff"}, 1 }); err != nil {
 		t.Fatal(err)
 	}
 	runHook(t, "stop", map[string]any{"session_id": "s1", "cwd": scope, "last_assistant_message": "README \u3092\u76f4\u3057\u307e\u3057\u305f\u3002"})
 	short := prompt("README \u306e\u8868\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044")
 	if !strings.Contains(short, "wrap up the reflection") || strings.Contains(short, full) || !strings.Contains(short, `{"sources":[`) || !strings.Contains(short, "reflect query") {
 		t.Fatalf("the short form names the command and the conversations: %q", short)
+	}
+}
+
+// 0.9.7 re-audit S2: only the request right before was looked at, so a missed organizing followed by a request that needs none (a calibrated
+// "explain" or "run") made the next request get the short form. The miss is kept as PlanningMissed until the full text is given; here the
+// record is set as such a skipped request leaves it.
+func TestMissedOrganizingIsRememberedAcrossARequestWithoutOne(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	const full = "putting topic words in query"
+	turn := func(prompt string) string {
+		t.Helper()
+		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
+	}
+	turn(planningTestRequest)
+	if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateSession(root, "planning", func(s *hookSession) { s.Planning, s.PlanningShortTurns, s.PlanningMissed = nil, 2, true }); err != nil {
+		t.Fatal(err)
+	}
+	if next := turn("Then sort the agreed CSV columns by date and keep the existing filters."); !strings.Contains(next, full) {
+		t.Fatalf("the missed organizing is remembered: the full text: %q", next)
+	}
+	if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
+		t.Fatal(err)
+	}
+	if after := turn("Now add a tax rate to the agreed CSV columns and keep the existing filters."); strings.Contains(after, full) {
+		t.Fatalf("given once, the mark is cleared: %q", after)
 	}
 }

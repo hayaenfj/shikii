@@ -184,11 +184,32 @@ func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 }
 
 func (s Store) memoryLock(scope string) (func(), error) {
-	path := strings.TrimSuffix(s.memoryPath(scope), ".jsonl") + ".lock"
-	// the first concurrent creation is also limited to one. An existing lock is opened, not created.
-	f, err := s.openFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR)
-	if os.IsExist(err) {
-		f, err = s.openFile(path, os.O_RDWR)
+	unlock, err := s.lockFile(strings.TrimSuffix(s.memoryPath(scope), ".jsonl")+".lock", true)
+	if err != nil {
+		return nil, err
+	}
+	// an older shikii (before 0.9.7) still running locks the record under the path's hash: take that lock too, when it is there (re-audit S4)
+	legacy := filepath.Join(s.Dir, "records", "memories", scopeKey(scope)+".lock")
+	if _, err := os.Lstat(legacy); err != nil {
+		return unlock, nil
+	}
+	unlockLegacy, err := s.lockFile(legacy, false)
+	if err != nil {
+		unlock()
+		return nil, err
+	}
+	return func() { unlockLegacy(); unlock() }, nil
+}
+
+// lockFile takes an exclusive lock on path, waiting up to 2 seconds. With create, the first concurrent creation is limited to one; an
+// existing lock is opened, not created.
+func (s Store) lockFile(path string, create bool) (func(), error) {
+	f, err := s.openFile(path, os.O_RDWR)
+	if create && os.IsNotExist(err) {
+		f, err = s.openFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR)
+		if os.IsExist(err) {
+			f, err = s.openFile(path, os.O_RDWR)
+		}
 	}
 	if err != nil {
 		return nil, err

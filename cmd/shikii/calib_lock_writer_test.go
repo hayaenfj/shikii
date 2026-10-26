@@ -82,34 +82,59 @@ var nilWriterAllowed = map[string]string{"handleTuneRun": "runTuneCaptured"}
 // through a recorder, which has no connection and no write deadline.
 var writerArgAllowed = map[string]string{"callTool → ServeHTTP": "rec"}
 
+// handlerRegistrations are the calls a writer-taking function may be passed to as a value: net/http gives it the connection's writer.
+var handlerRegistrations = map[string]bool{"HandleFunc": true, "HandlerFunc": true}
+
 // nilWriters returns "function → callee" for every call that passes something other than the enclosing function's writer parameter to a
-// function's http.ResponseWriter parameter, except a literal nil at an allowed place inside a go statement.
+// function's http.ResponseWriter parameter, except a literal nil at an allowed place inside a go statement. It also returns the ways around
+// that check (0.9.7 re-audit C-4): a writer parameter that is assigned, a writer-taking function used as a value outside a handler
+// registration, and an immediately called function literal (checked like any call). A type alias of http.ResponseWriter is a writer too.
 func nilWriters(t *testing.T, srcs map[string]string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
 	var parsed []*ast.File
-	writerAt := map[string]int{} // function name → index of its http.ResponseWriter parameter
-	isWriter := func(e ast.Expr) bool {
-		sel, ok := e.(*ast.SelectorExpr)
-		return ok && sel.Sel.Name == "ResponseWriter"
-	}
+	writerTypes := map[string]bool{} // local names of http.ResponseWriter (type aliases and defined types)
 	for file, src := range srcs {
 		f, err := parser.ParseFile(fset, file, src, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		parsed = append(parsed, f)
-		for _, d := range f.Decls {
-			fn, ok := d.(*ast.FuncDecl)
-			if !ok {
-				continue
+		ast.Inspect(f, func(n ast.Node) bool {
+			if ts, ok := n.(*ast.TypeSpec); ok {
+				if sel, ok := ts.Type.(*ast.SelectorExpr); ok && sel.Sel.Name == "ResponseWriter" {
+					writerTypes[ts.Name.Name] = true
+				}
 			}
-			i := 0
-			for _, p := range fn.Type.Params.List {
-				if isWriter(p.Type) {
+			return true
+		})
+	}
+	isWriter := func(e ast.Expr) bool {
+		switch x := e.(type) {
+		case *ast.SelectorExpr:
+			return x.Sel.Name == "ResponseWriter"
+		case *ast.Ident:
+			return writerTypes[x.Name]
+		}
+		return false
+	}
+	writerIndex := func(ft *ast.FuncType) int {
+		i := 0
+		for _, p := range ft.Params.List {
+			if isWriter(p.Type) {
+				return i
+			}
+			i += max(1, len(p.Names))
+		}
+		return -1
+	}
+	writerAt := map[string]int{} // function name → index of its http.ResponseWriter parameter
+	for _, f := range parsed {
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok {
+				if i := writerIndex(fn.Type); i >= 0 {
 					writerAt[fn.Name.Name] = i
 				}
-				i += max(1, len(p.Names))
 			}
 		}
 	}
@@ -140,6 +165,64 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 				}
 				return true
 			})
+			// a writer parameter that is assigned is no longer the connection's writer
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.AssignStmt:
+					for _, l := range x.Lhs {
+						if id, ok := l.(*ast.Ident); ok && own[id.Name] {
+							out = append(out, fn.Name.Name+" assigns its writer "+id.Name)
+						}
+					}
+				case *ast.ValueSpec:
+					for _, id := range x.Names {
+						if own[id.Name] {
+							out = append(out, fn.Name.Name+" declares another "+id.Name)
+						}
+					}
+				}
+				return true
+			})
+			// a writer-taking function used as a value (not called) can be called with anything later
+			called, registered := map[ast.Node]bool{}, map[ast.Node]bool{}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if c, ok := n.(*ast.CallExpr); ok {
+					called[c.Fun] = true
+					var callee string
+					switch fun := c.Fun.(type) {
+					case *ast.SelectorExpr:
+						callee = fun.Sel.Name
+					case *ast.Ident:
+						callee = fun.Name
+					}
+					if handlerRegistrations[callee] {
+						for _, a := range c.Args {
+							registered[a] = true
+						}
+					}
+				}
+				return true
+			})
+			inner := map[ast.Node]bool{} // the name inside x.name, judged with the selector itself
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				var name string
+				switch x := n.(type) {
+				case *ast.SelectorExpr:
+					name = x.Sel.Name
+					inner[x.Sel] = true
+				case *ast.Ident:
+					if inner[x] {
+						return true
+					}
+					name = x.Name
+				default:
+					return true
+				}
+				if _, ok := writerAt[name]; ok && !called[n] && !registered[n] {
+					out = append(out, fn.Name.Name+" uses "+name+" as a value")
+				}
+				return true
+			})
 			var walk func(n ast.Node, inGo bool)
 			walk = func(n ast.Node, inGo bool) {
 				ast.Inspect(n, func(m ast.Node) bool {
@@ -152,19 +235,24 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 						return true
 					}
 					var name string
+					i := -1
 					switch fun := c.Fun.(type) {
 					case *ast.SelectorExpr:
 						name = fun.Sel.Name
 					case *ast.Ident:
 						name = fun.Name
+					case *ast.FuncLit:
+						name, i = "a function literal", writerIndex(fun.Type)
 					}
-					i, ok := writerAt[name]
-					if !ok || i >= len(c.Args) {
+					if j, ok := writerAt[name]; ok {
+						i = j
+					}
+					if i < 0 || i >= len(c.Args) {
 						return true
 					}
 					id, _ := c.Args[i].(*ast.Ident)
 					switch {
-					case id != nil && own[id.Name]:
+					case id != nil && own[id.Name] && id.Name != "nil":
 					case id != nil && id.Name == "nil" && inGo && nilWriterAllowed[fn.Name.Name] == name:
 					case id != nil && writerArgAllowed[fn.Name.Name+" → "+name] == id.Name:
 					default:

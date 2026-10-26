@@ -110,10 +110,11 @@ func holdPageLock(common, scope string) (*os.File, bool) {
 
 const pageLockRetry = 250 * time.Millisecond
 
-// pageStillOwned reports whether this process is still the project's page: its store exists and the page record names this pid.
-// Reconnecting a moved project and uninstall remove the old record; a page that lost it stops instead of running on as an orphan (0.9.7 audit B-b).
-func pageStillOwned(common, scope string, pid int) bool {
-	if _, err := os.Stat(filepath.Join(scope, ".shikii")); err != nil {
+// pageStillOwned reports whether this process is still the project's page: the store it serves (root, as given to serve) exists and the
+// page record names this pid. Reconnecting a moved project and uninstall remove the old record; a page that lost it stops instead of
+// running on as an orphan (0.9.7 audit B-b). A store not named .shikii (started by hand) counts by its own path (re-audit C-1).
+func pageStillOwned(common, scope, root string, pid int) bool {
+	if _, err := os.Stat(root); err != nil {
 		return false
 	}
 	r, ok := readPageRecord(common, scope)
