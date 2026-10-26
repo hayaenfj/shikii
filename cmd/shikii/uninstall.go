@@ -311,13 +311,10 @@ func removeJSONEntry(path, key, name string, write bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	cfg := map[string]any{}
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.UseNumber()
-	if err := dec.Decode(&cfg); err != nil {
-		return false, fmt.Errorf("check the JSON (broken settings are not overwritten): %w", err)
+	cfg, section, err := readJSONSettings(b, key)
+	if err != nil {
+		return false, err
 	}
-	section, _ := cfg[key].(map[string]any)
 	if _, ok := section[name]; !ok {
 		return false, nil
 	}

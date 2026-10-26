@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/handoff"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/hayaenfj/shikii/internal/handoff"
 
 	shikii "github.com/hayaenfj/shikii"
 )
@@ -237,20 +239,42 @@ func seedFile(path string, data []byte) (bool, error) {
 
 // addJSONEntry adds a name entry under key (an object) in a JSON settings file. If it already exists, leaves it alone and returns false.
 // Numbers are not rounded (UseNumber), & < > are not turned into \u, and it writes via a temp file + rename. Broken JSON is not overwritten. Order changes (JSON objects have no order).
+// readJSONSettings reads a person's JSON settings: one JSON object and nothing after it, whose key, when present, is an object. Anything
+// else is broken settings, which are never rewritten (a value after the first, or a key holding an array or a string, was dropped by the
+// rewrite; 0.9.7 final audit AE-2).
+func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, error) {
+	cfg := map[string]any{}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&cfg); err != nil {
+		return nil, nil, fmt.Errorf("check the JSON (broken settings are not overwritten): %w", err)
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, nil, errors.New("check the JSON (broken settings are not overwritten): something follows the settings object")
+	}
+	raw, ok := cfg[key]
+	if !ok || raw == nil {
+		return cfg, nil, nil
+	}
+	section, ok := raw.(map[string]any)
+	if !ok {
+		return nil, nil, fmt.Errorf("check the JSON (broken settings are not overwritten): %q is not an object", key)
+	}
+	return cfg, section, nil
+}
+
 func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 	cfg := map[string]any{}
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return false, fmt.Errorf("%s: %w (init does not replace a file it cannot read)", path, err)
 	}
+	var section map[string]any
 	if err == nil {
-		dec := json.NewDecoder(bytes.NewReader(b))
-		dec.UseNumber()
-		if err := dec.Decode(&cfg); err != nil {
-			return false, fmt.Errorf("%s: check the JSON (broken settings are not overwritten): %w", path, err)
+		if cfg, section, err = readJSONSettings(b, key); err != nil {
+			return false, fmt.Errorf("%s: %w", path, err)
 		}
 	}
-	section, _ := cfg[key].(map[string]any)
 	if section == nil {
 		section = map[string]any{}
 	}
