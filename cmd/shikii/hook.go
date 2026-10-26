@@ -1888,11 +1888,35 @@ func hookEvents() []hookEvent {
 		exe = p
 	}
 	return []hookEvent{
-		{"UserPromptSubmit", exe + " hook user-prompt-submit", hookTimeout, false, ""},
-		{"Stop", exe + " hook stop", hookTimeout + 5, false, ""},
-		{"SubagentStart", exe + " hook subagent-start", hookTimeout, true, ""},    // deliver lessons to subagents too (0.7.3)
-		{"PreToolUse", exe + " hook agent-task", hookTimeout, true, "Agent|Task"}, // keep the task text passed to the child (0.9.1)
+		{"UserPromptSubmit", hookCommand(exe, "user-prompt-submit"), hookTimeout, false, ""},
+		{"Stop", hookCommand(exe, "stop"), hookTimeout + 5, false, ""},
+		{"SubagentStart", hookCommand(exe, "subagent-start"), hookTimeout, true, ""},    // deliver lessons to subagents too (0.7.3)
+		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"}, // keep the task text passed to the child (0.9.1)
 	}
+}
+
+// hookCommand is the command line of one hook. The agents run it through a shell, so a path with a space or a quote is quoted
+// (0.9.3 and earlier wrote it bare: with a space in the path the shell ran only the part before it, and the hook never worked).
+func hookCommand(exe, event string) string { return shellQuote(exe) + " hook " + event }
+
+// hookBinary is the binary of a hook command `<binary> hook <event>`: a bare path (also one with spaces, as 0.9.3 and earlier wrote it),
+// or a path in single quotes as hookCommand writes it. ok is false when the command is not of that form.
+func hookBinary(command string) (string, bool) {
+	c := strings.TrimSpace(command)
+	i := strings.LastIndex(c, " hook ")
+	if i <= 0 || strings.TrimSpace(c[i+len(" hook "):]) == "" {
+		return "", false
+	}
+	bin := strings.TrimSpace(c[:i])
+	if len(bin) >= 2 && bin[0] == '\'' && bin[len(bin)-1] == '\'' {
+		bin = strings.ReplaceAll(bin[1:len(bin)-1], `'\''`, "'")
+	} else if strings.ContainsAny(bin, "'\"") {
+		return "", false
+	}
+	if strings.ContainsAny(bin, " \t") && !filepath.IsAbs(bin) {
+		return "", false // `env shikii`, `shikii-tool run`: not a path to a binary
+	}
+	return bin, true
 }
 
 // hookEventsFor is the hooks added per settings file. Codex has no SubagentStart, so it is left out.
@@ -1917,8 +1941,8 @@ func hookEventNames(evs []hookEvent) string {
 
 // isShikiiHook reports whether a handler's command is a shikii hook: `<…/>shikii[…] hook <event>` (the `shikii` on PATH or an absolute path, and also the old pre-tool-use).
 func isShikiiHook(command string) bool {
-	f := strings.Fields(command)
-	return len(f) >= 3 && f[1] == "hook" && strings.HasPrefix(filepath.Base(f[0]), "shikii")
+	bin, ok := hookBinary(command)
+	return ok && strings.HasPrefix(filepath.Base(bin), "shikii")
 }
 
 // hookTargets are the settings files the hooks are written to (under home, fixed). The same 2 are added to both. Settings files for tools that are not installed are also created (same style as init; delete them if not needed).
@@ -1953,7 +1977,7 @@ func hookInstall(args []string, install bool) error {
 		fmt.Fprintf(stdout, "1. %s: prepare the shared templates and wiki. Run shikii --init once in each project that uses it; from then on conversations, decisions, scores, truths and calibrations are saved in its .shikii/. The hooks do not run in uninitialized places. Prepares the 4 ready-made questions (%s) and the skill, and keeps existing settings.\n", tilde(agent), strings.Join(hookSpecs, ", "))
 		for i, t := range hookTargets {
 			evs := hookEventsFor(t.who)
-			fmt.Fprintf(stdout, "%d. %s: add %d hooks (%s) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), len(evs), hookEventNames(evs), tilde(strings.Fields(evs[0].cmd)[0]), t.who, filepath.Base(t.rel), t.note)
+			fmt.Fprintf(stdout, "%d. %s: add %d hooks (%s) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), len(evs), hookEventNames(evs), tilde(func() string { bin, _ := hookBinary(evs[0].cmd); return bin }()), t.who, filepath.Base(t.rel), t.note)
 		}
 		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool. Claude Code and Codex.\n")
 		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page is one per project: the first request's hook starts it on a free port, records it in ~/.shikii/agent/pages/, and opens it in the browser\n", hookLocalURL)
@@ -2124,6 +2148,12 @@ func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) 
 
 // editHooksTo is editHooks; with write false it only reports whether it would change anything (shikii uninstall without --yes).
 func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) (bool, error) {
+	// a settings file kept elsewhere through a link (dotfiles): write the file it points at, so the link stays a link and its mode stays
+	// (the backup stays next to the link). Before 0.9.3 the rename below replaced the link with a regular 0600 file (audit 0.9.3 uninstall)
+	backup := path + ".bak-shikii"
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
 	cfg := map[string]any{}
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -2230,8 +2260,8 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 	} else {
 		delete(cfg, "hooks")
 	}
-	if len(b) > 0 && !fileExists(path+".bak-shikii") && !strings.Contains(string(b), " hook user-prompt-submit") && !strings.Contains(string(b), " hook pre-tool-use") && !strings.Contains(string(b), " hook stop") { // the backup is made only the first time, of a version without shikii hooks (a settings.json created by install is not backed up)
-		if err := os.WriteFile(path+".bak-shikii", b, 0o600); err != nil {
+	if len(b) > 0 && !fileExists(backup) && !strings.Contains(string(b), " hook user-prompt-submit") && !strings.Contains(string(b), " hook pre-tool-use") && !strings.Contains(string(b), " hook stop") { // the backup is made only the first time, of a version without shikii hooks (a settings.json created by install is not backed up)
+		if err := os.WriteFile(backup, b, 0o600); err != nil {
 			return false, err
 		}
 	}
@@ -2241,6 +2271,9 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(cfg); err != nil {
 		return false, err
+	}
+	if fileExists(path) {
+		return true, replaceKeepingMode(path, buf.Bytes())
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return false, err

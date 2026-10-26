@@ -773,8 +773,8 @@ func finishUpdate(ctx context.Context, exe string) error {
 			for _, group := range groups {
 				for _, hook := range group.Hooks {
 					if isShikiiHook(hook.Command) {
-						fields := strings.Fields(hook.Command)
-						actual, _ := filepath.EvalSymlinks(fields[0])
+						bin, _ := hookBinary(hook.Command)
+						actual, _ := filepath.EvalSymlinks(bin)
 						if actual == exe {
 							installed = true
 						}

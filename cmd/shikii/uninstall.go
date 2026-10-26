@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -74,8 +75,8 @@ func cmdUninstall(args []string) error {
 	}
 	projects := registeredProjects(agent)
 	var steps []uninstallStep
-	var left []string // what is left alone and why (not an error: it is not shikii's, or the person chose it)
-	var failed []string
+	var left []string   // what is left alone and why (not an error: it is not shikii's, or the person chose it)
+	var failed []string // shikii's parts that could not be checked or removed: they are still there, so the run is not a success
 
 	// 1) hooks: the same editing as hook uninstall (only handlers whose command is `… shikii hook <event>`)
 	for _, t := range hookTargets {
@@ -94,15 +95,16 @@ func cmdUninstall(args []string) error {
 	codex := filepath.Join(home, ".codex", "config.toml")
 	switch found, err := removeCodexServer(codex, false); {
 	case err != nil:
-		left = append(left, fmt.Sprintf("%s: %v", tilde(codex), err))
+		failed = append(failed, fmt.Sprintf("%s: %v", tilde(codex), err)) // shikii's own table stays: Codex keeps starting shikii (audit 0.9.3 uninstall)
 	case found:
 		steps = append(steps, uninstallStep{fmt.Sprintf("%s: the [mcp_servers.shikii] table (Codex; every other line and the file stay)", tilde(codex)), func() error {
 			_, err := removeCodexServer(codex, true)
 			return err
 		}})
 	}
-	// 3) each registered project's MCP entries (the same files init writes)
-	for _, p := range projects {
+	// 3) each registered project's MCP entries (the same files init writes), also in a registered project whose .shikii/ the person removed:
+	// init wrote the entries there too (audit 0.9.3 uninstall)
+	for _, p := range mcpProjects(agent, projects) {
 		for _, f := range []struct{ file, key, who string }{{".mcp.json", "mcpServers", "Claude Code"}, {"opencode.json", "mcp", "OpenCode"}} {
 			path, key, file := filepath.Join(p.Path, f.file), f.key, f.file
 			switch found, err := removeJSONEntry(path, key, "shikii", false); {
@@ -171,10 +173,35 @@ func cmdUninstall(args []string) error {
 	}
 	fmt.Fprintf(stdout, "  - %s%c\n", agent, filepath.Separator)
 	fmt.Fprintln(stdout, "AGENTS.md and CLAUDE.md are not touched. The local model (llama-server) is not stopped: other tools may use it.")
+	if len(failed) > 0 {
+		fmt.Fprintln(stdout, "Some of shikii is still there (\"could not check or change\" above). Remove it by hand first: once the binaries are gone, an agent that still finds shikii's hooks or MCP entry fails to start it.")
+	}
 	if exe, err := executablePath(); err == nil {
-		bins := []string{shellQuote(exe)}
-		if readout := filepath.Join(filepath.Dir(exe), "shikii-readout"); fileExists(readout) {
-			bins = append(bins, shellQuote(readout))
+		// run through a link (~/.local/bin/shikii -> the real binary), rm of the link alone leaves the binaries: name what it points at too
+		paths := []string{exe}
+		if info, err := os.Lstat(exe); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			if real, err := filepath.EvalSymlinks(exe); err == nil {
+				paths = append(paths, real)
+			}
+		}
+		for _, p := range append([]string{}, paths...) {
+			paths = append(paths, filepath.Join(filepath.Dir(p), "shikii-readout"))
+		}
+		var bins []string
+		var seen []os.FileInfo
+	next:
+		for _, p := range paths {
+			info, err := os.Lstat(p)
+			if err != nil {
+				continue
+			}
+			for _, s := range seen {
+				if os.SameFile(s, info) {
+					continue next // the same file reached through a linked folder (/tmp and /private/tmp) is named once
+				}
+			}
+			seen = append(seen, info)
+			bins = append(bins, shellQuote(p))
 		}
 		fmt.Fprintf(stdout, "The binaries are not removed (removing a running binary does not work the same way everywhere). To remove them:\n  rm %s\n", strings.Join(bins, " "))
 	}
@@ -408,7 +435,7 @@ func withoutCodexServer(text string) (string, bool, error) {
 		}
 		full := append(append([]string{}, table...), keys...)
 		value := strings.TrimSpace(rest)[1:]
-		if len(full) == 1 && full[0] == "mcp_servers" && strings.Contains(value, "shikii") {
+		if len(full) == 1 && full[0] == "mcp_servers" && inlineShikiiKey.MatchString(value) {
 			return text, false, errors.New("holds an inline mcp_servers = { … } table with shikii in it, which cannot be cut line by line; remove shikii from it by hand")
 		}
 		cont = inShikii || isShikiiServerKey(full)
@@ -446,6 +473,36 @@ func withoutCodexServer(text string) (string, bool, error) {
 		out += "\n"
 	}
 	return out, true, nil
+}
+
+// inlineShikiiKey finds a shikii key in an inline table ({ shikii = …, "shikii".command = … }), not the word inside a value such as a path.
+var inlineShikiiKey = regexp.MustCompile(`[{,]\s*(shikii|"shikii"|'shikii')\s*[.=]`)
+
+// mcpProjects are the projects whose .mcp.json and opencode.json uninstall looks at: the registered ones, and the projects still in
+// ~/.shikii/agent/projects/ whose .shikii/ is gone or not initialized (registeredProjects leaves those out). Only shikii's entry in those two
+// files is touched there; the folder itself is not.
+func mcpProjects(agent string, registered []projectEntry) []projectEntry {
+	out := append([]projectEntry{}, registered...)
+	seen := map[string]bool{}
+	for _, p := range registered {
+		seen[p.Path] = true
+	}
+	files, _ := filepath.Glob(filepath.Join(agent, "projects", "*.json"))
+	for _, path := range files {
+		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			continue
+		}
+		var p projectEntry
+		err = json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p)
+		f.Close()
+		if err != nil || !filepath.IsAbs(p.Path) || seen[p.Path] || feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID || filepath.Base(path) != p.ID+".json" {
+			continue
+		}
+		seen[p.Path] = true
+		out = append(out, p)
+	}
+	return out
 }
 
 // isShikiiServerKey reports whether a dotted key path is mcp_servers.shikii or below it.
