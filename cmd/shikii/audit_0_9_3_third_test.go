@@ -46,7 +46,8 @@ func TestAudit3AgentCannotMakeDoneFromAck(t *testing.T) {
 // an organizing submitted while the Stop of the same turn is waiting for the model must not make that Stop drop the turn
 func TestAudit3SubmitDuringStopKeepsTheJudgment(t *testing.T) {
 	repo, root, _ := planningFixture(t)
-	continuesTurn(t, repo, root, "main取り込んで")
+	// a message of 40 characters or more: the Stop judges at once (a shorter one outside the list is first asked for continues_previous)
+	continuesTurn(t, repo, root, "main を取り込んで、衝突があれば直し、テストが全部通ることを確かめてから知らせてください。")
 	in := &hookInput{SessionID: "planning", CWD: repo, LastAssistantMessage: "Merged main."}
 	snapshot := loadSession(root, "planning")
 	_, muts, err := hookStop(root, in, snapshot) // the Stop has read its snapshot and asked the model (outside the lock)

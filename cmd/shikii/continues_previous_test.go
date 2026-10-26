@@ -110,6 +110,8 @@ func TestNoPlanKeepsListDecision(t *testing.T) {
 		repo, root, _ := planningFixture(t)
 		done := continuesTurn(t, repo, root, "main取り込んで")
 		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Merged main."})
+		// the first Stop asked for continues_previous; the Stop after the block judges with the list's decision when none came
+		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Merged main.", "stop_hook_active": true})
 		if s := loadSession(root, "planning"); s.Request != "main取り込んで" {
 			t.Fatalf("no organizing: the list keeps it as its own request, got %q", s.Request)
 		}

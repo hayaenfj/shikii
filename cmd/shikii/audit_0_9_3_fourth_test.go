@@ -61,6 +61,8 @@ func TestAudit4ShortRestatementIsNotDone(t *testing.T) {
 	done := doneTraceAfter(t, repo, root, "planning", ask)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": ask})
 	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done again."})
+	// the first Stop asks for continues_previous (a short message outside the list); without it, the Stop after the block settles
+	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done again.", "stop_hook_active": true})
 	if l, ok := doneLabel(t, root, done); !ok || l.Truth != "no" || l.Weight != 1 {
 		t.Fatalf("a short restatement must label the previous request as not done: %+v %v", l, ok)
 	}

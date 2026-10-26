@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -42,12 +43,21 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	now := time.Now().UTC()
 	var recs []guardRecord
 	var failed []string
-	// Plan: asked for (controls: Planning belongs to this turn) but no submit, and files were changed
-	if p := snapshot.Planning; p != nil && p.TurnID == snapshot.TurnID && known && len(changed) > 0 {
+	// Plan: asked for (controls: Planning belongs to this turn) but no submit, and files were changed, or the message is short and
+	// outside the acknowledgement list so its grouping is still open (0.9.3: then only continues_previous is asked for)
+	grouping := groupingAsk(snapshot) || (snapshot.TurnID != "" && snapshot.GroupingAsked == snapshot.TurnID)
+	if p := snapshot.Planning; p != nil && p.TurnID == snapshot.TurnID && ((known && len(changed) > 0) || grouping) {
 		pass := p.Result != nil
 		reason := ""
 		if !pass {
-			reason = planningBlockReason(in.SessionID, snapshot.TurnID, len(changed))
+			if known && len(changed) > 0 {
+				reason = planningBlockReason(in.SessionID, snapshot.TurnID, len(changed))
+				if grouping {
+					reason += " Include continues_previous (true or false) for this short message."
+				}
+			} else {
+				reason = groupingBlockReason(in.SessionID, snapshot.TurnID)
+			}
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualPlan, Pass: pass, Reason: reason, Recheck: recheck})
@@ -177,6 +187,24 @@ func planJSON(session, turn string) string {
 
 // planningShape shows that agreed and open are objects (Claude first passed an array in every run of audit 0.9.2 English).
 const planningShape = `agreed and open are each one object, not an array: "agreed":{"summary":"...","evidence":[{"source":"current_user","quote":"..."}]}, "open":{"unknown":true}; continues_previous is true, false or left out`
+
+// groupingAsk reports whether this turn's Stop asks only for continues_previous (0.9.3 real-agent check medium 3): the hook asked for the
+// organizing, none came, and the message is short (under outcomeMovedMinRunes) and not in the acknowledgement list, so the list's
+// provisional "new request" may be wrong. Claude Code skips the organizing in turns that change no files. Once per turn, like the other rituals.
+func groupingAsk(s *hookSession) bool {
+	p := s.Planning
+	if p == nil || s.TurnID == "" || p.TurnID != s.TurnID || p.Result != nil || s.Judged || s.RitualStopped == s.TurnID {
+		return false
+	}
+	g := p.Grouping
+	return g != nil && !g.Settled && !isAckReply(g.Reply) && utf8.RuneCountInString(strings.TrimSpace(g.Reply)) < outcomeMovedMinRunes
+}
+
+// groupingBlockReason is the one line of the Stop block that asks only for continues_previous, with the minimal JSON hook plan submit accepts.
+func groupingBlockReason(sessionID, turnID string) string {
+	b, _ := json.Marshal(map[string]any{"session_id": sessionID, "turn_id": turnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}, "continues_previous": true})
+	return fmt.Sprintf("The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: pass %s to %s hook plan submit (continues_previous false when it asks for anything new), then finish", b, hookExe())
+}
 
 // planningBlockReason is the line of the Stop block when the plan was not sorted out but files were changed.
 func planningBlockReason(sessionID, turnID string, changed int) string {

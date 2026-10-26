@@ -198,6 +198,7 @@ type hookSession struct {
 	ReflectAsked      []string         `json:"reflect_asked,omitempty"`       // conversations asked to be reflected on before the request (the ritual check looks at it at Stop. 0.8.0)
 	ReflectAskedTurn  string           `json:"reflect_asked_turn,omitempty"`  // the turn ReflectAsked was asked in (do not stop on leftovers from another turn. audit R5)
 	RitualStopped     string           `json:"ritual_stopped,omitempty"`      // the turn stopped by the ritual check (do not stop again at the Stop after a notification. audit R5)
+	GroupingAsked     string           `json:"grouping_asked,omitempty"`      // the turn whose Stop asked only for continues_previous and left the judgment to the next Stop (0.9.3)
 	PageNoticed       bool             `json:"page_noticed,omitempty"`        // told the page location in this session (0.8.0)
 	HabitsNoticed     bool             `json:"habits_noticed,omitempty"`      // told in this session how to keep work records and rules (0.8.1)
 	ClassifyAsked     []string         `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
@@ -615,11 +616,16 @@ func runHookEvent(event string) error {
 		return fmt.Errorf("stdin is not the agent's hook JSON: %w", err)
 	}
 	if event == "stop" && in.StopHookActive {
-		// the Stop after a stop: do not stop again (avoid an infinite loop). Only run the stop checks once more and record whether it was fixed (0.7.3)
-		if root, _, perr := prepareHookProject(in.CWD); perr == nil {
-			guardRecheck(root, &in)
+		// the Stop after a stop: do not stop again (avoid an infinite loop). Only run the stop checks once more and record whether it was fixed (0.7.3).
+		// A turn whose first Stop only asked for continues_previous was not judged yet: this Stop judges it (without blocking) with the grouping the organizing gave (0.9.3)
+		root, _, perr := prepareHookProject(in.CWD)
+		if perr != nil {
+			return nil
 		}
-		return nil
+		if s := loadSession(root, in.SessionID); s.TurnID == "" || s.GroupingAsked != s.TurnID || s.Judged {
+			guardRecheck(root, &in)
+			return nil
+		}
 	}
 	common := agent
 	agent, _, err = prepareHookProject(in.CWD)
@@ -1095,10 +1101,14 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	last := cut(strings.TrimSpace(in.LastAssistantMessage), requestMax)
 	req := snapshot.Request // the request this Stop evaluates. If the kept request changed inside the lock (the next request came first), this Stop's marks are not applied
 	pendingNow := snapshot.Pending
+	recheck := in.StopHookActive // only the Stop after a Stop that asked for continues_previous comes here with it: judge, never block
+	// a short message outside the acknowledgement list, in a turn that was not organized: ask once for continues_previous and keep the
+	// grouping open for it (Claude Code does not organize turns that change no files, 0.9.3 real-agent check medium 3)
+	askGroup := !recheck && groupingAsk(snapshot)
 	var firstErr error
 	muts := []func(*hookSession){
 		func(s *hookSession) {
-			if s.TurnID == snapshot.TurnID {
+			if s.TurnID == snapshot.TurnID && !askGroup {
 				settleGrouping(agent, s) // the Stop judges this turn with the grouping it has: a later organizing no longer moves it
 				// an organizing that landed while this Stop was asking the model (after its snapshot) regrouped the request this Stop judged:
 				// the Stop's grouping wins, as for an organizing after the Stop, so the judgment and the reply are kept (0.9.3 audit 3)
@@ -1154,12 +1164,12 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		}
 	}
 	// stop checks (0.7.3): apply enabled guards to the changed files, added lines and this turn's commits. If one is hit, stop the Stop and return the reason
-	out, gerr := guardStop(agent, in, snapshot, string(before), changed, known, false)
+	out, gerr := guardStop(agent, in, snapshot, string(before), changed, known, recheck)
 	if gerr != nil && firstErr == nil {
 		firstErr = gerr
 	}
 	if out.Block { // even in a turn stopped by the person's check, evaluate and record the ritual check and chain its reasons (audit R5: they used to vanish without showing in the counts)
-		if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, false); rerr != nil && firstErr == nil {
+		if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck); rerr != nil && firstErr == nil {
 			firstErr = rerr
 		} else if rout.Block {
 			out.Reason = joinLines(out.Reason, rout.Reason)
@@ -1170,6 +1180,18 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	}
 	if snapshot.Judged {
 		return out, muts, firstErr // a stopped turn is not judged on the changes and reply before the fix (the next request looks at the fixed tree and reply)
+	}
+	if askGroup {
+		// not judged yet: the request depends on the grouping. The Stop after this block judges it with the grouping the organizing gave
+		if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, false); rerr != nil && firstErr == nil {
+			firstErr = rerr
+		} else if rout.Block {
+			out.Block, out.Reason = true, rout.Reason
+			turn := snapshot.TurnID
+			muts = append(muts, func(s *hookSession) { s.RitualStopped, s.GroupingAsked = turn, turn })
+			return out, muts, firstErr
+		}
+		askGroup = false // the check could not run: judge now with the provisional grouping, as before
 	}
 	inputs := map[string]string{"request": snapshot.Request, "files": filesInput(changed, known), "summary": last}
 	if inputs["summary"] == "" {
@@ -1216,7 +1238,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		}
 	})
 	// ritual check (0.8.0): after recording the decisions, stop once if the asked plan or reflection is not done
-	if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, false); rerr != nil && firstErr == nil {
+	if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck); rerr != nil && firstErr == nil {
 		firstErr = rerr
 	} else if rout.Block {
 		out.Block, out.Reason = true, joinLines(out.Reason, rout.Reason)
