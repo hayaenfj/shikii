@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,8 +54,10 @@ func TestStopAsksContinuesPreviousForShortUnlistedMessage(t *testing.T) {
 			if s := loadSession(root, "planning"); s.Judged || s.Request != reply {
 				t.Fatalf("the turn is not judged before the grouping is known: judged=%v request=%q", s.Judged, s.Request)
 			}
-			// the JSON in the block is accepted as it is, and its continues_previous still moves the grouping
-			if _, err := planningCall(t, "submit", askedJSON(t, reason)); err != nil {
+			// the JSON in the block is accepted with the agent's answer in it, and its continues_previous still moves the grouping
+			payload := askedJSON(t, reason)
+			payload["continues_previous"] = true
+			if _, err := planningCall(t, "submit", payload); err != nil {
 				t.Fatalf("the asked submit must be accepted: %v", err)
 			}
 			if s := loadSession(root, "planning"); s.Request != continuesFirst+" / "+reply {
@@ -239,5 +242,36 @@ func TestRestatesKeepsThePersonsTruth(t *testing.T) {
 	}
 	if l, _ := doneLabel(t, root, done); n != 1 || l.Source != "human" {
 		t.Fatalf("the person's truth stays the only label of that request: %d labels, %+v", n, l)
+	}
+}
+
+// 0.9.3 audit 5 (test hole M23): with an enabled guard that fails, a short unlisted message still makes only one block; the Stop after
+// the block is not blocked by the guard either (a second Stop is never blocked), and it judges the turn.
+func TestGuardAndGroupingAskStillBlockOnlyOnce(t *testing.T) {
+	for name, reply := range map[string]string{
+		"short": "\u305d\u308c\u3067\u3044\u3053\u3046",
+		"long":  "please also add a section about the archive format to the README and link it from the install steps",
+	} {
+		t.Run(name, func(t *testing.T) { guardAndGroupingOnce(t, reply) })
+	}
+}
+
+func guardAndGroupingOnce(t *testing.T, reply string) {
+	repo, root, _ := planningFixture(t)
+	writeGuard(t, root, guard{ID: "no-word", Kind: guardKindForbiddenWords, Title: "no forbidden word", Words: []string{"forbidden"}})
+	continuesTurn(t, repo, root, reply)
+	if err := os.WriteFile(filepath.Join(repo, "NOTES.md"), []byte("a forbidden word\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Went ahead."})
+	if _, block := stopReason(t, out); !block {
+		t.Fatalf("the first Stop blocks (guard and grouping ask): %s", out)
+	}
+	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Went ahead.", "stop_hook_active": true})
+	if _, block := stopReason(t, out); block {
+		t.Fatalf("the Stop after the block is not blocked, even with the guard still failing: %s", out)
+	}
+	if s := loadSession(root, "planning"); !s.Judged {
+		t.Fatalf("the Stop after the block judges the turn: %+v", s)
 	}
 }

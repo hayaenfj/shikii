@@ -644,6 +644,9 @@ func runHookEvent(event string) error {
 	if event != "agent-task" {
 		ensureModel(common) // start it in the background if missing (this turn just gets no record; do not wait). Not started when only keeping a task for a child
 	}
+	if event == "user-prompt-submit" {
+		judgeAskedTurn(agent, &in, loadSession(agent, in.SessionID)) // the turn that waited for the Stop after its block, when that Stop never came
+	}
 	// model calls are outside the lock (they only read a copy of the record). Changes to the record are collected in muts and applied to the record re-read inside the lock
 	snapshot := loadSession(agent, in.SessionID)
 	var out hookOut
@@ -1175,7 +1178,15 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			out.Reason = joinLines(out.Reason, rout.Reason)
 		}
 		turn := snapshot.TurnID
-		muts = append(muts, func(s *hookSession) { s.RitualStopped = turn })
+		judged := snapshot.Judged
+		// the turn is judged by the Stop after this block, on the fixed tree and reply (or at the next request if that Stop never comes):
+		// before 0.9.3 a turn stopped by the person's check was never judged
+		muts = append(muts, func(s *hookSession) {
+			s.RitualStopped = turn
+			if !judged && s.TurnID == turn {
+				s.GroupingAsked = turn
+			}
+		})
 		return out, muts, firstErr
 	}
 	if snapshot.Judged {
@@ -1246,6 +1257,28 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		muts = append(muts, func(s *hookSession) { s.RitualStopped = turn })
 	}
 	return out, muts, firstErr
+}
+
+// judgeAskedTurn judges, at the person's next request, a turn whose Stop asked only for continues_previous and whose Stop after the
+// block never came (the person stopped the continuation, or the agent did not continue). It is that Stop run late: it never blocks, and
+// the turn is judged with the grouping it has (the organizing's, or the list's). Notifications, slash commands and children are left alone.
+func judgeAskedTurn(agent string, in *hookInput, snapshot *hookSession) {
+	prompt := strings.TrimSpace(in.Prompt)
+	if snapshot.TurnID == "" || snapshot.GroupingAsked != snapshot.TurnID || snapshot.Judged || in.AgentID != "" || prompt == "" || strings.HasPrefix(prompt, "/") || isNotification(prompt) {
+		return
+	}
+	stop := hookInput{SessionID: in.SessionID, CWD: in.CWD, StopHookActive: true, LastAssistantMessage: snapshot.Previous}
+	_, muts, err := hookStop(agent, &stop, snapshot)
+	if err != nil {
+		hookLog("grouping: " + err.Error())
+	}
+	if err := updateSession(agent, in.SessionID, func(s *hookSession) {
+		for _, m := range muts {
+			m(s)
+		}
+	}); err != nil {
+		hookLog("grouping: " + err.Error())
+	}
 }
 
 // listingHeader is the first line of the working tree listing: which request's listing it is (a hash of the request). changedFiles does not read lines without a tab, so it is not compared.

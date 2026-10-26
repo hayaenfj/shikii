@@ -295,7 +295,9 @@ func restateDone(agent string, s *hookSession, turn string) bool {
 		return false
 	}
 	reply := s.Planning.Sources["current_user"]
-	if isAckReply(reply) {
+	// a short message (a command said again after other work, such as "commit it") names no earlier request: an older turn is only
+	// named by a message long enough to restate it (the same fixed length as a different request's "done")
+	if isAckReply(reply) || utf8.RuneCountInString(strings.TrimSpace(reply)) < outcomeMovedMinRunes {
 		return false
 	}
 	for _, t := range append(append([]planningTurn{}, s.Planning.Recent...), s.Planning.Earlier...) {

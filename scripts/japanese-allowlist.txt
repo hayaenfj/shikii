@@ -15,6 +15,7 @@
 10 cmd/shikii/audit_0_9_1_recheck_test.go
 12 cmd/shikii/audit_0_9_1_test.go
 5 cmd/shikii/audit_0_9_3_test.go
+6 cmd/shikii/audit_0_9_3_fifth_test.go
 5 cmd/shikii/audit_0_9_3_third_test.go
 3 cmd/shikii/audit_0_9_3_fourth_test.go
 1 cmd/shikii/audit_sampling_test.go

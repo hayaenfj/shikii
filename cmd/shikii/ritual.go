@@ -202,8 +202,8 @@ func groupingAsk(s *hookSession) bool {
 
 // groupingBlockReason is the one line of the Stop block that asks only for continues_previous, with the minimal JSON hook plan submit accepts.
 func groupingBlockReason(sessionID, turnID string) string {
-	b, _ := json.Marshal(map[string]any{"session_id": sessionID, "turn_id": turnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}, "continues_previous": true})
-	return fmt.Sprintf("The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: pass %s to %s hook plan submit (continues_previous false when it asks for anything new), then finish", b, hookExe())
+	b, _ := json.Marshal(map[string]any{"session_id": sessionID, "turn_id": turnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}, "continues_previous": false})
+	return fmt.Sprintf("The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: pass %s on standard input to %s hook plan submit (continues_previous true when it only continues or answers the previous request and asks for nothing new), then finish", b, hookExe())
 }
 
 // planningBlockReason is the line of the Stop block when the plan was not sorted out but files were changed.

@@ -38,7 +38,7 @@ For a comparison with and without memory, freeze the task inputs and this availa
 
 ## Submit grounded interpretations
 
-Submit is not optional: when the hook asked for this planning and the turn changed files, the Stop hook stops the turn once until `hook plan submit` was called for the turn (agreed and open may be `unknown:true` when the conversation gives no evidence). The miss is recorded either way. The Stop hook also stops once when the person's message is short (under 40 characters) and not a bare acknowledgement and nothing was submitted, even if no file changed: it then asks only for `continues_previous`, and the minimal submit `{"session_id":…,"turn_id":…,"agreed":{"unknown":true},"open":{"unknown":true},"continues_previous":true}` (or `false`) is enough. The turn is judged at the Stop after that, with the grouping you gave.
+Submit is not optional: when the hook asked for this planning and the turn changed files, the Stop hook stops the turn once until `hook plan submit` was called for the turn (agreed and open may be `unknown:true` when the conversation gives no evidence). The miss is recorded either way. The Stop hook also stops once when the person's message is short (under 40 characters) and not a bare acknowledgement and nothing was submitted, even if no file changed: it then asks only for `continues_previous`, and the minimal submit `{"session_id":…,"turn_id":…,"agreed":{"unknown":true},"open":{"unknown":true},"continues_previous":false}` (or `true`) is enough. The turn is judged at the Stop after that, with the grouping you gave.
 
 Pass the same IDs, the wiki query used for any cited lesson, and `agreed` / `open` to `shikii hook plan submit`:
 
