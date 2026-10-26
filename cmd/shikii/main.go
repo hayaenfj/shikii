@@ -1934,6 +1934,9 @@ func cmdStatus(args []string) error {
 					rs = sp.ContextSpec()
 					note = "  (context rung)"
 				}
+				// the count is the page's (keys[].n) and calibration's: the latest truth per input, from people and results only (audit 0.9.3).
+				// Without a spec it stays the number of labels for the key
+				n = lineStateOf(rs, sp.Eval.MinN, parts[0], parts[1], labs, false).N
 				switch {
 				case !sp.LiveHash(parts[1]):
 					note = "  (stale hash: spec wording changed since; not used)"

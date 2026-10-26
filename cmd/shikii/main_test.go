@@ -776,7 +776,7 @@ func TestStatusInventory(t *testing.T) {
 		return cmdLabel([]string{"--store", storeDir, "--source", "ask", traces[0], "change_request"})
 	})
 	out := capture(t, func() error { return cmdStatus([]string{"--store", storeDir, specPath}) })
-	if !strings.Contains(out, "intent: records=3 labels=1") || !strings.Contains(out, "collecting (1/2)") || !strings.Contains(out, "by source: ask=1") {
+	if !strings.Contains(out, "intent: records=3 labels=1") || !regexp.MustCompile(`@ \S+\s+1  collecting \(min_n 2\)`).MatchString(out) || !strings.Contains(out, "by source: ask=1") {
 		t.Fatalf("status before enough labels:\n%s", out)
 	}
 	capture(t, func() error {

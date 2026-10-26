@@ -17,6 +17,7 @@
 - Tune: a run tuned with a relative spec path (for example `shikii tune .shikii/decisions/x.yaml` from the project folder) saves `spec_path` as an absolute path, so the page and the hook can adopt it when they run from another folder. A moved project folder is still followed as before.
 - Wiki sources: the long text of a conversation (`originals`, up to 2 MB) that does not fit in one reply now comes in parts with `original_part` (`id`, `from`, `to`, `bytes`, `json`) and `next_cursor`, like a long captured source. Before, it came whole in one reply, far over the reply size. The `json` pieces joined in order are the JSON of that conversation's originals.
 - Hook, the other lines for the person: the unsure line and the end-of-turn lines for "changes outside what you asked" and "not finished" now name the question by its title on the page (as the other notices do since 0.9.3) and give the AI's confidence as a percent instead of the spec id and `p(yes)=0.10`; the Japanese lines and the waiting-answers line use the page's plain words. The context for the agent keeps the id and p.
+- `shikii status`: the count on each (model, wording) line is now the page's learning count, the truths calibration uses (the latest per input, from people and results only), instead of every label; machine truths and a re-label no longer raise it. The line shows one number: `3  collecting (min_n 50)` instead of `6  collecting (3/50)`.
 
 ## 0.9.2 — Nothing written into your AGENTS.md, wordings adopted by the agent, and a lighter page
 

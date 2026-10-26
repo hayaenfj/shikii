@@ -82,7 +82,7 @@ func (s lineState) statusNote(rs *spec.Spec, minN int) string {
 	case lineCalibrated:
 		return "  calibrated"
 	case lineCollecting:
-		return fmt.Sprintf("  collecting (%d/%d)", s.N, minN)
+		return fmt.Sprintf("  collecting (min_n %d)", minN) // the count itself is in the column before the note (one number per line)
 	case lineOneAnswer:
 		return fmt.Sprintf("  only one answer so far (%s): a line needs both answers", fmtCounts(s.Truths))
 	case lineNotSeparable:
