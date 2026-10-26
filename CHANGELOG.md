@@ -5,6 +5,7 @@
 ## 0.9.3 — Small fixes after 0.9.2
 
 - Page and hook, words: texts that count or keep every truth (the learning count, the wording match, "on hold" and "failed" when setting the point, "ask the AI again", the how-to guides, the wording notices of the hook) no longer call them "your answers", since truths sent by the agent and from results are counted too. "Your answer" stays only on a card the person answered and on Answer. The Japanese wording notices name the question by its title on the page instead of its id and the candidate's name, and no longer use the inner word for a decision.
+- Page, learning count: the number of truths shown for each question (`keys[].n` in `/v1/status`) is now the number the AI's point is set from: the newest truth per conversation, from people and results only. Before, it counted every label, including the machine's own (context, judge) and each re-answer of the same conversation, so it could read "enough" while no point could be set.
 
 ## 0.9.2 — Nothing written into your AGENTS.md, wordings adopted by the agent, and a lighter page
 
