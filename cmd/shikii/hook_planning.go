@@ -437,6 +437,9 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 	if err := dir.Rename(temp, name); err != nil {
 		return fmt.Errorf("saving the context: %w", err)
 	}
+	if !openDeferral(s) { // the organizing settled the grouping: drop its marker (a marker left behind is only cleaned by the next sweep)
+		_ = dir.Remove(strings.TrimSuffix(name, ".json") + ".deferred")
+	}
 	return nil
 }
 

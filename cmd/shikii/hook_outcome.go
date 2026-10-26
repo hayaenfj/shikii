@@ -7,7 +7,10 @@ package main
 // Observation is a proxy measure and does not get the same weight as the person's truths (only the clearly bad side gets weight 1).
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -138,6 +141,90 @@ func settleGrouping(agent string, s *hookSession) {
 		hookLog("outcome: " + err.Error())
 	}
 	g.Settled, g.Previous = true, nil
+}
+
+// deferralStale is how long a deferred outcome waits for its organizing or Stop. Past it (or once the record shows the session moved on),
+// any later hook of the project or a reflect query settles it with the provisional grouping: a session closed or killed mid-turn never
+// sends its Stop or next request. A fixed rule, not an option.
+const deferralStale = 30 * time.Minute
+
+// deferralMarkerPath is the empty marker <id>.deferred kept next to a session record while its grouping still waits with an outcome to settle.
+// The markers are the small index of open deferrals: a sweep reads only the records that have one.
+func deferralMarkerPath(agent, id string) string {
+	return strings.TrimSuffix(sessionPath(agent, id), ".json") + ".deferred"
+}
+
+// openDeferral reports whether the record's grouping still waits with a previous outcome to settle.
+func openDeferral(s *hookSession) bool {
+	g := groupingOf(s)
+	return g != nil && !g.Settled && g.Previous != nil
+}
+
+// deferralDue reports whether an open deferral no longer waits for its own session: older than deferralStale, or the record moved on
+// (the turn was judged, or the record is on another turn).
+func deferralDue(s *hookSession, now time.Time) bool {
+	return now.Sub(s.Planning.At) >= deferralStale || s.Judged || s.TurnID != s.Planning.TurnID
+}
+
+// syncDeferral keeps the marker in step with the record (inside the session's lock, before the record is saved).
+func syncDeferral(agent, id string, s *hookSession) {
+	p := deferralMarkerPath(agent, id)
+	if !openDeferral(s) {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			hookLog("deferral: " + err.Error())
+		}
+		return
+	}
+	if _, err := os.Lstat(p); err == nil {
+		return
+	}
+	if err := os.WriteFile(p, nil, 0o600); err != nil {
+		hookLog("deferral: " + err.Error())
+	}
+}
+
+// sweepPeeked runs between a sweep's unlocked read and its lock (tests make the session settle itself there). Only tests replace it.
+var sweepPeeked = func(id string) {}
+
+// sweepDeferrals settles other sessions' deferrals that no longer wait (deferralDue) with the provisional grouping, once each.
+// It runs outside any session lock and takes one session's lock at a time without waiting (a busy session is left for the next sweep),
+// so it never holds two locks. The record is read again inside the lock: a deferral its own session settled meanwhile is left alone,
+// and its own session later finds the grouping settled and adds nothing. except is the calling session (its own path settles it).
+func sweepDeferrals(agent, except string) {
+	entries, err := os.ReadDir(filepath.Join(agent, "sessions"))
+	if err != nil {
+		return
+	}
+	skip := ""
+	if except != "" {
+		skip = filepath.Base(deferralMarkerPath(agent, except))
+	}
+	for _, e := range entries {
+		id, ok := strings.CutSuffix(e.Name(), ".deferred")
+		if !ok || id == "" || e.Name() == skip || !e.Type().IsRegular() || filepath.Base(deferralMarkerPath(agent, id)) != e.Name() {
+			continue
+		}
+		peek := loadSession(agent, id)
+		if openDeferral(peek) && !deferralDue(peek, time.Now()) {
+			continue // still waiting within the time: not even locked
+		}
+		sweepPeeked(id)
+		unlock, ok := lockSessionWithin(agent, id, 0)
+		if !ok {
+			continue
+		}
+		s := loadSession(agent, id) // read again inside the lock: another sweep or the session itself may have settled it meanwhile
+		if openDeferral(s) && deferralDue(s, time.Now()) {
+			settleGrouping(agent, s)
+			if err := saveSession(agent, id, s); err != nil {
+				hookLog("deferral: " + err.Error())
+				unlock()
+				continue
+			}
+		}
+		syncDeferral(agent, id, s)
+		unlock()
+	}
 }
 
 // regroup applies the agent's continues_previous to this turn (inside the lock, for the current turn only) and makes the grouping final.

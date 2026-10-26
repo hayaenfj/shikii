@@ -164,6 +164,7 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		if len(req.Reviews)+len(req.Wiki)+len(req.Memory)+len(req.Maintenance) != 0 {
 			return nil, errors.New("query cannot take content to save")
 		}
+		sweepDeferrals(root, "") // settle outcomes left waiting by sessions closed mid-turn before reading what is left to reflect on
 		return reflectQuery(root, scope)
 	}
 	if req.Operation == "place" {

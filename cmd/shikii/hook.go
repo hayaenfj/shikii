@@ -257,31 +257,39 @@ func sessionFilesPath(agent, id string) string {
 // lockSession is the lock (flock) on the session record. Claude Code runs hooks in parallel (Stop and the next request overlap), so
 // read → change → write is done one process at a time. The lock is held briefly (model calls are outside it). If it is not acquired within hookLockWait, go on without it (the hook never stops).
 func lockSession(agent, id string) (unlock func()) {
+	unlock, ok := lockSessionWithin(agent, id, hookLockWait)
+	if !ok {
+		hookLog(fmt.Sprintf("session %s: lock busy for %s; proceeding without it", id, hookLockWait))
+	}
+	return unlock
+}
+
+// lockSessionWithin takes the session lock, waiting at most wait (0: one try). ok is false when it was not taken (unlock is then a no-op).
+func lockSessionWithin(agent, id string, wait time.Duration) (unlock func(), ok bool) {
 	p := sessionPath(agent, id) + ".lock"
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return func() {}
+		return func() {}, false
 	}
 	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return func() {}
+		return func() {}, false
 	}
-	deadline := time.Now().Add(hookLockWait)
+	deadline := time.Now().Add(wait)
 	for {
 		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
 			break
 		}
-		if time.Now().After(deadline) {
-			hookLog(fmt.Sprintf("session %s: lock busy for %s; proceeding without it", id, hookLockWait))
+		if !time.Now().Before(deadline) {
 			f.Close()
-			return func() {}
+			return func() {}, false
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	return func() {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		f.Close()
-	}
+	}, true
 }
 
 // updateSession reads the record → changes it with fn → writes it, inside the lock. The only write path, so parallel hooks do not erase each other's changes.
@@ -290,6 +298,7 @@ func updateSession(agent, id string, fn func(s *hookSession)) error {
 	defer unlock()
 	s := loadSession(agent, id)
 	fn(s)
+	syncDeferral(agent, id, s)
 	return saveSession(agent, id, s)
 }
 
@@ -653,6 +662,9 @@ func runHookEvent(event string) error {
 		}); serr != nil && err == nil {
 			err = serr
 		}
+	}
+	if event == "user-prompt-submit" || event == "stop" {
+		sweepDeferrals(agent, in.SessionID) // other sessions' outcomes left waiting by a session that was closed mid-turn (outside this session's lock)
 	}
 	if event == "user-prompt-submit" && len(muts) > 0 {
 		// only when the person's request moved on. A notification has the same TurnID, so it adds no wiki work.
