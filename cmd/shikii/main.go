@@ -992,6 +992,15 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 	}
 	sep := calib.CheckSeparation(samples)
 	pl, err := calib.Fit(samples)
+	if errors.Is(err, calib.ErrOneSided) {
+		fmt.Fprintln(stdout, "WARNING: every truth is on one side; a line needs both answers. Not written (tried again as truths grow).")
+		return spec.Calibration{}, false, nil
+	}
+	if errors.Is(err, calib.ErrSlopeNotPositive) {
+		// a higher probability goes with "no": the answers cannot be told apart, the same as an overlap (not written; the caller says why)
+		fmt.Fprintln(stdout, "WARNING: a higher probability goes with \"no\" (fitted slope is not positive); this question and model cannot tell the answers apart. Change the question or the model.")
+		return spec.Calibration{}, false, nil
+	}
 	if err != nil {
 		return spec.Calibration{}, false, fmt.Errorf("calibrate: %w", err)
 	}

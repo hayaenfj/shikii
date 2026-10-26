@@ -53,7 +53,7 @@ func Fit(samples []Sample) (Platt, error) {
 		}
 	}
 	if nPos == 0 || nNeg == 0 {
-		return Platt{}, errors.New("need both positive and negative samples")
+		return Platt{}, ErrOneSided
 	}
 	yPos := (nPos + 1) / (nPos + 2)
 	yNeg := 1 / (nNeg + 2)
@@ -140,10 +140,17 @@ func Fit(samples []Sample) (Platt, error) {
 		}
 	}
 	if a <= 0 {
-		return Platt{}, errors.New("fitted slope is not positive: higher probability predicts false")
+		return Platt{}, ErrSlopeNotPositive
 	}
 	return Platt{Bias: -c / a, Temperature: 1 / a}, nil
 }
+
+// ErrSlopeNotPositive: the fitted slope is not positive, so a higher probability goes with false. Like an overlap, the answers cannot be
+// told apart with this question and model; callers report it as that, not as a failure.
+// ErrOneSided: every truth is on one side, so no line can be fitted yet (callers report it as a refusal, not as a failure).
+var ErrOneSided = errors.New("need both positive and negative samples")
+
+var ErrSlopeNotPositive = errors.New("fitted slope is not positive: higher probability predicts false")
 
 // Brier is mean(w·(p−y)²). 0 is perfect.
 func Brier(probs []float64, truths []bool, weights []float64) float64 {

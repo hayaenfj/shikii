@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,10 +20,16 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 		n, min int
 		choice bool
 		want   string
+		// reversed: a higher probability goes with "no" (the fitted slope is not positive). It is the same "cannot tell the answers apart" as an overlap,
+		// so the page shows it as a quality refusal, not as a failure with the English fitting message (0.9.3: a person saw it after answering on the page)
+		reversed bool
+		oneSided bool // every truth is "yes": also a quality refusal (the page says only one kind of answer), not the English "need both" failure
 	}{
-		{"overlap", 50, 50, false, "predictions"},
-		{"insufficient", 2, 50, false, "short of"},
-		{"precision", 2, 2, true, "predictions"},
+		{"overlap", 50, 50, false, "predictions", false, false},
+		{"insufficient", 2, 50, false, "short of", false, false},
+		{"precision", 2, 2, true, "predictions", false, false},
+		{"reversed", 50, 50, false, "predictions", true, false},
+		{"one-sided", 50, 50, false, "predictions", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -46,6 +53,15 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 				inputs := map[string]string{"a": fmt.Sprint(i)}
 				if i%2 == 0 {
 					truth, raw = "yes", 0.7
+				}
+				if tc.oneSided {
+					truth = "yes"
+				}
+				if tc.reversed {
+					raw = 0.9
+					if truth == "yes" {
+						raw = 0.1
+					}
 				}
 				if tc.n >= tc.min && !tc.choice && i == 0 {
 					raw = 0.4
@@ -72,6 +88,10 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 			err = runCalibrate(path, calibrateOpts{output: &report, storeDir: filepath.Join(dir, "store"), labeled: file, write: true})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("wrong refusal: %v\n%s", err, report.String())
+			}
+			var refused *calibrationRefusal
+			if !errors.As(err, &refused) || (tc.n >= tc.min && refused.reason() != "quality") {
+				t.Fatalf("a refusal must be a calibrationRefusal (quality when there are enough truths), not a failure: %T %v", err, err)
 			}
 			if tc.n >= tc.min && (strings.Contains(err.Error(), "fewer human truths") || strings.Contains(err.Error(), "short of the")) {
 				t.Fatalf("quality failure must not claim insufficient truths: %v", err)

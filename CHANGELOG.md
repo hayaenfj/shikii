@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- Page: after an answer, when the answers cannot be told apart yet (a higher probability goes with "no", or every truth is on one side), the page now says so in plain words instead of "the line could not be drawn" with the English fitting message (`fitted slope is not positive`, `need both positive and negative samples`). The answer was always saved.
+
 ## 0.9.3 — Codex across projects, one conversation per request, and plain-word notices
 
 - Codex MCP, one shared server: Codex reads shikii's MCP server only from the shared `~/.codex/config.toml` and starts it in the folder its background service started in. The form init wrote (`args = ["mcp", "--store", ".shikii", ...]`) stopped before the handshake when that folder had no shikii project ("no spec (*.yaml) in .shikii/decisions"), and an absolute store made every session use one project. Now `shikii mcp` always answers the handshake and the tool list, even without a project, store or specs; every tool takes `project`, the absolute path of the agent's working folder, and uses that project's `.shikii/` for the call (only projects initialized on this machine whose store passes the usual checks; others are refused with a tool error). Without `project` it uses the store it was started with (Claude Code and OpenCode, unchanged), and without one the tool error says to pass `project`. init writes Codex's registration as `command = <this binary>`, `args = ["mcp", "--local", "http://127.0.0.1:8080"]`, and init and the update rewrite the blocks 0.9.1 and 0.9.2 wrote to it. A block a person edited is left alone; when it names one project's store by an absolute path, the update says so and suggests `args = ["mcp", "--local", "http://127.0.0.1:8080"]`. The MCP instructions and the skill tell agents to pass `project`.

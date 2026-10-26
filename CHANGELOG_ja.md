@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md) · **日本語**
 
+## 未公開
+
+- 画面: 答えた後、まだ答えを見分けられない時(確率が高いほど「いいえ」になる、または正解が片方だけの時)、「境目を決める処理に失敗しました」と英語の当てはめの文(`fitted slope is not positive`・`need both positive and negative samples`)を出さず、その事情をやさしい言葉で出す。答えはもともと保存されていた。
+
 ## 0.9.3 — Codex を複数のプロジェクトで、依頼ごとの会話、やさしい言葉の知らせ
 
 - Codex の MCP を 1 つの共通の登録で使う: Codex は shikii の MCP を共通の `~/.codex/config.toml` からしか読まず、裏で動く Codex の仕組みを起こしたフォルダで起こす。init が書いた形(`args = ["mcp", "--store", ".shikii", ...]`)は、そのフォルダに shikii のプロジェクトが無いと handshake の前に終わり(「no spec (*.yaml) in .shikii/decisions」)、置き場を絶対パスで書くとどのセッションも 1 つのプロジェクトを使った。今は `shikii mcp` が、プロジェクト・置き場・spec が無くても handshake と道具の一覧に必ず答える。どの道具も `project`(エージェントの作業フォルダの絶対パス)を受け取り、その呼び出しにはそのプロジェクトの `.shikii/` を使う(この機械で初期化したプロジェクトで、置き場がいつもの検査を通るものだけ。ほかは道具のエラーで断る)。`project` が無ければ起動した時の置き場を使い(Claude Code と OpenCode は今まで通り)、それも無ければ `project` を渡すよう道具のエラーで言う。init は Codex の登録を `command = <この本体>`、`args = ["mcp", "--local", "http://127.0.0.1:8080"]` で書き、init と更新は 0.9.1 と 0.9.2 が書いた節をこの形に直す。人が直した節は触らず、それが 1 つのプロジェクトの置き場を絶対パスで指していれば、更新がそう伝えて `args = ["mcp", "--local", "http://127.0.0.1:8080"]` を勧める。MCP の案内と作法(skill)は、エージェントに `project` を渡すよう伝える。
