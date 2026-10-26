@@ -328,3 +328,44 @@ func TestTuneProposeRefusesRemoteProposerForPIISpecs(t *testing.T) {
 		t.Fatalf("a pii:true spec must not send example texts to a remote proposer, got %v", err)
 	}
 }
+
+// Audit 0.9.2 (re-audit, relative tune): a run tuned from the project folder with a relative spec path kept spec_path relative,
+// so serve or the hook, started from another folder, could not find the spec and could not adopt the run. spec_path is saved absolute.
+func TestTuneSavesAnAbsoluteSpecPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	storeDir := filepath.Join(dir, ".shikii")
+	srv := wordingSensitiveModel(t)
+	specPath := specWithVariants(t, storeDir) // the standard layout: .shikii/decisions, wiki in .shikii/wiki
+	labeledPath := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(labeledPath, []byte(bankRows()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(dir, specPath)
+	if err != nil || filepath.IsAbs(rel) {
+		t.Fatal(rel, err)
+	}
+	capture(t, func() error {
+		return cmdTune([]string{rel, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir})
+	})
+	runs, _ := filepath.Glob(filepath.Join(storeDir, "wiki", "runs", "*.json"))
+	if len(runs) != 1 {
+		t.Fatalf("one run is saved: %v", runs)
+	}
+	t.Chdir(t.TempDir()) // serve and the hook may run from another folder
+	res, err := loadTuneResult(filepath.Join(storeDir, "wiki"), filepath.Base(runs[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(res.SpecPath) {
+		t.Fatalf("spec_path is saved as an absolute path: %q", res.SpecPath)
+	}
+	got, err1 := os.Stat(res.SpecPath)
+	want, err2 := os.Stat(specPath)
+	if err1 != nil || err2 != nil || !os.SameFile(got, want) {
+		t.Fatalf("spec_path names the tuned spec from any folder: %q (%v %v)", res.SpecPath, err1, err2)
+	}
+	if _, err := spec.Load(res.SpecPath); err != nil {
+		t.Fatalf("the run can be adopted from another folder: %v", err)
+	}
+}

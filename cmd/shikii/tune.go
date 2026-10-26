@@ -282,7 +282,13 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		}
 		scores[i] = s
 	}
-	res := &tuneResult{SpecID: sp.ID, SpecPath: sp.Path(), SpecHash: sp.Hash(), Version: sp.Version, Model: current.model, Truths: len(bank),
+	// spec_path is saved absolute: serve and the hook adopt the run from another folder, where a path relative to this tune's folder names nothing (re-audit 0.9.2).
+	// rebase still rebuilds it from the wiki folder after the project folder is moved.
+	specPath := sp.Path()
+	if abs, err := filepath.Abs(specPath); err == nil {
+		specPath = abs
+	}
+	res := &tuneResult{SpecID: sp.ID, SpecPath: specPath, SpecHash: sp.Hash(), Version: sp.Version, Model: current.model, Truths: len(bank),
 		At: time.Now().Format(time.RFC3339), Current: wordingOf(sp)}
 	// table
 	fmt.Fprintf(stdout, "%-14s %6s %7s %9s %8s  %s\n", "candidate", "top-1", "brier", "prec@act", "rec@act", "what changes")

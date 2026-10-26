@@ -152,7 +152,8 @@ type reflectResult struct {
 	Wiki               []reflectReceipt `json:"wiki"`
 	Memory             []reflectReceipt `json:"memory"`
 	Maintenance        []reflectReceipt `json:"maintenance,omitempty"`
-	Left               []string         `json:"left,omitempty"` // what is still not done for the conversations this submit named (complete only says every item was saved)
+	Left               []string         `json:"left,omitempty"`       // what is still not done for the conversations this submit named (complete only says every item was saved)
+	LeftError          string           `json:"left_error,omitempty"` // left could not be worked out (it is not empty because nothing is left)
 }
 
 func runReflect(root, scope string, req reflectRequest) (any, error) {
@@ -228,7 +229,10 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	for _, a := range req.Memory {
 		named = append(named, a.SourceID)
 	}
-	if left, err := reflectLeft(root, scope, named); err == nil && len(left) > 0 {
+	// Do not let left vanish silently: a failure to work it out is said, so the agent runs query instead of stopping.
+	if left, err := reflectLeft(root, scope, named); err != nil {
+		result.LeftError = "could not work out what is left (" + err.Error() + "). Run query to see the conversations still pending"
+	} else if len(left) > 0 {
 		result.Left = leftLines(left)
 	}
 	result.Remaining = notebook.Book{Root: root, Scope: scope}.RemainingUnclassified()

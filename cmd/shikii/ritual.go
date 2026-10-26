@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // Ritual checks (0.8.0): when the agent tries to finish without doing a ritual the hook asked for (sorting out the plan before work, saving the reflection before finishing),
@@ -116,6 +118,16 @@ func reflectLeft(root, scope string, asked []string) ([]reflectLeftItem, error) 
 	want := map[string]bool{}
 	for _, id := range asked {
 		want[id] = true
+	}
+	// A lesson delivered to a subagent is assessed under the delivery's own source_id; the view gathers it under the parent conversation.
+	deliveries, err := (store.Store{Dir: root}).MemoryDeliveries(scope)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range deliveries {
+		if d.Parent != "" && want[d.ID] {
+			want[d.Parent] = true
+		}
 	}
 	var out []reflectLeftItem
 	for _, s := range view.Sources {
