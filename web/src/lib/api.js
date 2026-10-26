@@ -33,6 +33,17 @@ export const api = {
   sources: async ids => {
     const result = await post('v1/wiki/notebook', { operation: 'query', sources: ids });
     const observations = new Map((result.observations || []).map(o => [o.id, { ...o }]));
+    // A long conversation's originals (0.9.3) come as pieces of their JSON (original_part); join them in order and parse once the last piece is in
+    const pieces = new Map();
+    const joinOriginal = page => {
+      const part = page.original_part;
+      if (!part) return;
+      const text = (pieces.get(part.id) || '') + part.json;
+      if (part.to < part.bytes) { pieces.set(part.id, text); return; }
+      pieces.delete(part.id);
+      result.originals = { ...(result.originals || {}), [part.id]: JSON.parse(text) };
+    };
+    joinOriginal(result);
     let cursor = result.next_cursor;
     const seen = new Set();
     while (cursor) {
@@ -46,11 +57,14 @@ export const api = {
       }
       result.source_material = [...(result.source_material || []), ...(page.source_material || [])];
       result.originals = { ...(result.originals || {}), ...(page.originals || {}) };
+      joinOriginal(page);
       cursor = page.next_cursor;
     }
     result.observations = [...observations.values()];
     delete result.next_cursor;
     delete result.observation_part;
+    delete result.original_part;
+    if (pieces.size) throw new Error('the long original of a conversation ended before its last part');
     return result;
   },
   label: body => post('v1/label', body),

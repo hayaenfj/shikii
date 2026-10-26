@@ -56,3 +56,22 @@ test('reads a long source in parts and joins them, so the page never shows a par
     globalThis.fetch = original;
   }
 });
+
+test('joins a long conversation original that comes in original_part pieces, so the page does not drop it (0.9.3 audit)', async () => {
+  const original = globalThis.fetch;
+  try {
+    const json = JSON.stringify([{ trace_id: 't1', inputs: { request: 'long café text' } }]);
+    const cut = 9;
+    const replies = [
+      { source_material: [{ id: 's1' }], originals: {}, original_part: { id: 's1', from: 0, to: cut, bytes: json.length, json: json.slice(0, cut) }, next_cursor: 'c1' },
+      { source_material: [], originals: {}, original_part: { id: 's1', from: cut, to: json.length, bytes: json.length, json: json.slice(cut) } },
+    ];
+    let n = 0;
+    globalThis.fetch = async () => ({ ok: true, json: async () => replies[n++] });
+    const result = await api.sources(['s1']);
+    assert.deepEqual(result.originals.s1, JSON.parse(json));
+    assert.equal(result.original_part, undefined);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

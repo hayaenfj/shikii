@@ -315,6 +315,10 @@ func mcpCommand() string {
 // command is the bare name or a path that no longer exists. A block a person edited, the current form on another existing binary, or more than
 // one shikii block is left alone.
 func fixCodexServer(path string, args []string) (bool, error) {
+	// a config.toml kept elsewhere through a link (dotfiles): write the file it points at, so the link stays a link
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return false, nil
@@ -368,6 +372,9 @@ func fixCodexServer(path string, args []string) (bool, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return false, err
+	}
+	if fi.Mode().Perm()&0o200 == 0 {
+		return false, nil // the person made it read-only: do not replace it
 	}
 	tmp := path + ".shikii-tmp"
 	if err := os.WriteFile(tmp, []byte(fixed), fi.Mode().Perm()); err != nil {

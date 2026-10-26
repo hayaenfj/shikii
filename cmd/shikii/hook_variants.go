@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -295,6 +296,23 @@ func questionTitle(sp *spec.Spec, lang string) string {
 			if q := strings.TrimSpace(d.Question); q != "" {
 				return q
 			}
+		}
+		// like the page (personTitle): the title in English, then in any language; a project copy from 0.9.1 has display.ja only
+		if t := strings.TrimSpace(sp.Display["en"].Title); t != "" {
+			return t
+		}
+		langs := make([]string, 0, len(sp.Display))
+		for l := range sp.Display {
+			langs = append(langs, l)
+		}
+		sort.Strings(langs)
+		for _, l := range langs {
+			if t := strings.TrimSpace(sp.Display[l].Title); t != "" {
+				return t
+			}
+		}
+		if sp.ID != "" {
+			return sp.ID // the page shows the id when nothing else was written
 		}
 	}
 	if lang == "ja" {
