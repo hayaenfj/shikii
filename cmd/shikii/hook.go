@@ -898,6 +898,26 @@ func isAckReply(s string) bool {
 	return t == "" || ackReplies[t]
 }
 
+// groupedRequest is this message's request and page text, attached to the previous request (joined) or standing alone.
+func groupedRequest(snapshot *hookSession, req, prompt, scope string, joined bool) (string, string) {
+	request := req
+	if joined && snapshot.Request != "" {
+		request = cut(snapshot.Request+" / "+req, requestMax)
+	}
+	text := strings.TrimSpace(prompt)
+	if joined && snapshot.Request != "" && snapshot.Scope == scope {
+		previous := snapshot.RequestText
+		if previous == "" {
+			previous = snapshot.Request
+		}
+		text = previous + " / " + text
+	}
+	if !strings.HasPrefix(text, request) {
+		text = ""
+	}
+	return request, cut(text, store.RecordTextLimit+utf8.UTFMax)
+}
+
 func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	req := cut(strings.TrimSpace(in.Prompt), requestMax)
 	if req == "" || strings.HasPrefix(req, "/") || in.AgentID != "" {
@@ -915,11 +935,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 		}}, nil
 	}
-	// a bare acknowledgement ("ok", "continue") does not replace the request but is attached to the previous one: so the end-of-turn questions do not read "ok" as the request
-	request := req
-	if isAckReply(req) && snapshot.Request != "" {
-		request = cut(snapshot.Request+" / "+req, requestMax)
-	}
+	// a bare acknowledgement ("ok", "continue") does not replace the request but is attached to the previous one: so the end-of-turn questions do not read "ok" as the request.
+	// The list is the provisional decision: when the agent organizes this turn, its continues_previous corrects it (hook plan submit, 0.9.3)
+	joined := isAckReply(req)
 	inputs := map[string]string{"request": req}
 	if snapshot.Previous != "" {
 		inputs["previous"] = snapshot.Previous // the context stage (used only when unsure)
@@ -927,18 +945,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	tree, listing, listed, project, scope := treeStateWithScope(in.CWD) // the current tree: both the "now" that settles the previous request's outcome and this request's record (both in one go)
 	pageURL, pageStarted := ensureProjectPage(scope)                    // when the agent starts working (first request), start one page for this project (serve opens it in the browser; the hook does not wait. 0.8.0)
 	head := gitHead(in.CWD)                                             // the starting point the stop check uses to see this turn's commits
-	requestText := strings.TrimSpace(in.Prompt)
-	if isAckReply(req) && snapshot.Request != "" && snapshot.Scope == scope {
-		previous := snapshot.RequestText
-		if previous == "" {
-			previous = snapshot.Request
-		}
-		requestText = previous + " / " + requestText
-	}
-	if !strings.HasPrefix(requestText, request) {
-		requestText = ""
-	}
-	requestText = cut(requestText, store.RecordTextLimit+utf8.UTFMax)
+	request, requestText := groupedRequest(snapshot, req, in.Prompt, scope, joined)
 	turnID := store.NewTraceID()
 	var planning *planningFrame
 	if sp, err := spec.Load(hookSpecPath(agent, "needs-plan")); err == nil && needsPlanningContext(sp) {
@@ -951,7 +958,19 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			if ferr := observeFeedback(agent, s, snapshot, scope, req); ferr != nil {
 				hookLog("feedback: " + ferr.Error())
 			}
-			if derr := settleDone(agent, linkedCompletion(s, snapshot, scope), req); derr != nil {
+			settleGrouping(agent, s) // the previous turn's grouping, if its organizing and Stop never came
+			previous := linkedCompletion(s, snapshot, scope)
+			if planning != nil && snapshot.Request != "" {
+				// the agent is asked to organize this turn: settling the previous outcome waits for its continues_previous (or this turn's Stop)
+				g := &requestGrouping{Joined: joined, Reply: req}
+				g.Alone, g.AloneText = groupedRequest(snapshot, req, in.Prompt, scope, false)
+				g.Together, g.TogetherText = groupedRequest(snapshot, req, in.Prompt, scope, true)
+				if previous != nil {
+					c := *previous
+					g.Previous = &c
+				}
+				planning.Grouping = g
+			} else if derr := settleDone(agent, previous, req, joined); derr != nil {
 				hookLog("outcome: " + derr.Error())
 			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
@@ -1057,6 +1076,9 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	var firstErr error
 	muts := []func(*hookSession){
 		func(s *hookSession) {
+			if s.TurnID == snapshot.TurnID {
+				settleGrouping(agent, s) // the Stop judges this turn with the grouping it has: a later organizing no longer moves it
+			}
 			if last != "" && s.Request == req && s.TurnID == snapshot.TurnID {
 				s.Previous = last
 				if s.TurnID != "" && scope != "" && s.Scope == scope {
