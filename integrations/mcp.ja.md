@@ -22,6 +22,18 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 
 `shikii` は `make install` で `~/.local/bin/shikii` に入る（PATH に無ければ絶対パスで）。ログは stderr に出る（stdout は通信路）。
 
+## Codex
+
+Codex は MCP の登録を共通の `~/.codex/config.toml` からしか読まず(プロジェクトの `.codex/config.toml` の `mcp_servers` は読まない)、裏で動く Codex の仕組みを起こしたフォルダで shikii を起こす。そこはプロジェクトでないことが多い。そこで `shikii init` は、置き場を書かない登録を 1 つだけ書き、全部のプロジェクトで使う:
+
+```toml
+[mcp_servers.shikii]
+command = "/Users/you/.local/bin/shikii"
+args = ["mcp"]
+```
+
+どの道具も `project`(エージェントの作業フォルダの絶対パス)を受け取る。その呼び出しにはそのプロジェクトの `.shikii/` を使い、この機械で `shikii init` したプロジェクトの中のフォルダだけを受け付ける。`project` が無ければ、起動した時の置き場を使う(Claude Code と OpenCode は、そのプロジェクトの `.mcp.json` / `opencode.json` でプロジェクトの中に起こす)。起動した時の置き場も無ければ、`project` を渡すよう言う道具のエラーを返す。0.9.3 から、プロジェクトの外で起こされても handshake に答える。`shikii init` と更新は、0.9.1 と 0.9.2 が書いた形(`args = ["mcp", "--store", ".shikii", ...]`。プロジェクトの外では handshake の前に終わっていた)を上の形に直す。人が直した登録は触らない。それが 1 つのプロジェクトの置き場を絶対パスで指していれば、どの Codex のセッションもその 1 つを使うことを更新が伝え、`args = ["mcp"]` を勧める。
+
 ## 道具
 
 | 道具 | 何をするか | 引数 |
@@ -36,9 +48,11 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 
 | `shikii_reflect` | 仮採点・wiki整理・記憶と訂正の観察をまとめて確認・保存(query は古い会話から 2 件ずつ、submit は数を限らない) | `operation`（`query` / `submit`）、`reviews` / `wiki` / `memory` |
 
+どの道具も `project`(任意。エージェントの作業フォルダの絶対パス。[Codex](#codex) を参照)も受け取る。
+
 `propose > 0` を使うには `shikii mcp` を `--proposer URL` 付きで起こす(`.mcp.json` の例には無い)。
 
-`shikii_wiki` は 0.3 で追加した。文章は現在のエージェントが書き、別のモデルは使わない。置き場はhookと同じ各仕事の `.shikii/` で、MCP サーバーを起こしたプロジェクトだけを扱う。`query` は関連する教訓と未整理の会話を返し、`sources: [出典ID]` を渡すと原文を読める。`ingest` で題・教訓・適用する場面・出典を保存し、教訓がない会話は `sources` だけで整理済みにできる。教訓は仮説で、正解や較正には数えない。[作法の詳細](../skills/shikii/references/wiki.md)。
+`shikii_wiki` は 0.3 で追加した。文章は現在のエージェントが書き、別のモデルは使わない。置き場はhookと同じ各仕事の `.shikii/` で、呼び出しが `project` で名指すプロジェクト(無ければ MCP サーバーを起こしたプロジェクト)だけを扱う。`query` は関連する教訓と未整理の会話を返し、`sources: [出典ID]` を渡すと原文を読める。`ingest` で題・教訓・適用する場面・出典を保存し、教訓がない会話は `sources` だけで整理済みにできる。教訓は仮説で、正解や較正には数えない。[作法の詳細](../skills/shikii/references/wiki.md)。
 
 `shikii_review` は、まず `query` で同じ仕事の原文・採点対象・人の訂正例を確認してから `submit` で仮採点を保存する。人の正解は登録せず、人への確認を全件増やさない。抜き取りは shikii が選び、画面からの人の訂正を次の `query` に戻す。[採点の詳細](../skills/shikii/references/review.md)。
 

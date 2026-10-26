@@ -41,11 +41,17 @@ func TestProjectDefaultCLIRejectsLinkedStore(t *testing.T) {
 	if err == nil {
 		t.Fatal("must reject on the store check error and not save into another work")
 	}
-	for _, command := range []func([]string) error{cmdMCP, cmdServe} {
-		err := command([]string{"--specs", filepath.Join(a, "missing-specs")})
-		if err == nil || !strings.Contains(err.Error(), "link") {
-			t.Fatalf("MCP and the page must also carry over the store refusal: %v", err)
-		}
+	if err := cmdServe([]string{"--specs", filepath.Join(a, "missing-specs")}); err == nil || !strings.Contains(err.Error(), "link") {
+		t.Fatalf("the page must also carry over the store refusal: %v", err)
+	}
+	// MCP answers the handshake (0.9.3: it never exits before it), and each tool call carries over the store refusal
+	answers, err := runMCPProcess(t, []string{"--specs", filepath.Join(bStore, "decisions"), "--local", model.URL, "--model", "m"}, mcpInit(1),
+		mcpCall(2, "shikii_decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "AUDIT_PROJECT_A_SYNTHETIC"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, isErr := toolText(t, answers, 2); !isErr || !strings.Contains(text, "link") {
+		t.Fatalf("MCP must also carry over the store refusal: %v %s", isErr, text)
 	}
 	records, readErr := (store.Store{Dir: bStore}).Records("intent", 0)
 	if readErr != nil || len(records) != 0 {

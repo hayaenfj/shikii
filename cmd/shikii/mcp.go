@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 
 	shikii "github.com/hayaenfj/shikii"
@@ -31,25 +33,166 @@ func cmdMCP(args []string) error {
 	var o serveOpts
 	o.ef.bind(fs)
 	fs.StringVar(&o.specsDir, "specs", "", "folder of specs (*.yaml) (default: <store>/decisions)")
-	fs.StringVar(&o.storeDir, "store", ".shikii", "where records and labels are kept")
+	fs.StringVar(&o.storeDir, "store", ".shikii", "where records and labels are kept (a tool call can name another project with project)")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "calibrate automatically and write back to the spec once truths reach eval.min_n")
 	fs.StringVar(&o.proposer, "proposer", "", "URL of the proposer (a chat LLM) that drafts wording candidates")
 	fs.StringVar(&o.proposerModel, "proposer-model", "", "model name of the proposer")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if err := resolveStoreFlag(fs); err != nil {
-		return err
-	}
-	if o.specsDir == "" {
-		o.specsDir = specsDirOf(o.storeDir)
-	}
-	if _, err := loadSpecs(o.specsDir); err != nil {
-		return err
-	}
 	log.SetOutput(os.Stderr) // stdout is the MCP channel. Logs go to stderr
-	log.Printf("shikii mcp: specs=%s store=%s local=%q hosted=%q", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted))
-	return runMCP(bufio.NewReader(os.Stdin), os.Stdout, newServer(o))
+	// A missing or unreadable project never stops the server before the handshake (0.9.3: Codex starts it in the folder its daemon started in,
+	// which often has no shikii project). Tool calls then name their project with project, or get a tool error that says to.
+	r := &mcpRouter{opts: o}
+	if err := resolveStoreFlag(fs); err != nil {
+		r.startErr = err
+	} else {
+		if o.specsDir == "" {
+			o.specsDir = specsDirOf(o.storeDir)
+		}
+		if _, err := loadSpecs(o.specsDir); err != nil {
+			r.startErr = err
+		} else {
+			r.start = newServer(o)
+			r.startStore = feedbackScope(o.storeDir)
+		}
+	}
+	if r.startErr != nil {
+		log.Printf("shikii mcp: no start project (%v); each tool call must name its project", r.startErr)
+	} else {
+		log.Printf("shikii mcp: specs=%s store=%s local=%q hosted=%q", o.specsDir, o.storeDir, systemone.RedactURL(o.ef.local), systemone.RedactURL(o.ef.hosted))
+	}
+	return runMCP(bufio.NewReader(os.Stdin), os.Stdout, r)
+}
+
+// mcpRouter picks the handler for each tool call: the project named by the call's project argument, or the store the server started with.
+type mcpRouter struct {
+	opts       serveOpts    // the start options (model endpoints and so on), reused for every project
+	start      http.Handler // the start store's server; nil when the server started without a usable project
+	startStore string       // the start store, resolved, to reuse start for a call naming the same project
+	startErr   error        // why there is no start store
+	projects   map[string]http.Handler
+}
+
+func (r *mcpRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if r.start == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": r.noProject().Error()})
+		return
+	}
+	r.start.ServeHTTP(w, req)
+}
+
+func (r *mcpRouter) noProject() error {
+	msg := "this shikii MCP server has no project"
+	if r.startErr != nil {
+		msg += " (" + r.startErr.Error() + ")"
+	}
+	return errors.New(msg + ": pass project, the absolute path of your working folder (a folder where shikii init was run on this machine)")
+}
+
+// handler returns the server for a call. Without project it is the start store; with project it is that registered project's own server (kept per project).
+func (r *mcpRouter) handler(project string, named bool) (http.Handler, error) {
+	if !named {
+		if r.start == nil {
+			return nil, r.noProject()
+		}
+		return r.start, nil
+	}
+	root, scope, err := mcpProjectStore(project)
+	if err != nil {
+		return nil, err
+	}
+	if r.start != nil && r.startStore == feedbackScope(root) {
+		return r.start, nil
+	}
+	if h := r.projects[scope]; h != nil {
+		return h, nil
+	}
+	o := r.opts
+	o.storeDir, o.specsDir, o.wikiDir, o.projectScope = root, "", "", scope
+	h := newServer(o)
+	if r.projects == nil {
+		r.projects = map[string]http.Handler{}
+	}
+	r.projects[scope] = h
+	return h, nil
+}
+
+// mcpProjectStore resolves a tool call's project: an absolute folder inside a shikii project registered on this machine (the index init writes
+// under ~/.shikii/agent/projects), whose store passes the same checks as the hook's. Anything else is refused, never created.
+func mcpProjectStore(project string) (string, string, error) {
+	if !filepath.IsAbs(project) {
+		return "", "", fmt.Errorf("project must be the absolute path of your working folder, got %q", project)
+	}
+	if info, err := os.Stat(project); err != nil || !info.IsDir() {
+		return "", "", fmt.Errorf("project %q is not a folder on this machine", project)
+	}
+	agent, err := agentHome()
+	if err != nil {
+		return "", "", err
+	}
+	registered := map[string]bool{}
+	for _, p := range registeredProjects(agent) {
+		registered[p.Path] = true
+	}
+	// the project folder, found as the hook finds it (the git top folder), or the nearest registered folder above it (outside git)
+	scope := projectScopeAt(project)
+	if !registered[scope] {
+		scope = ""
+		for dir := feedbackScope(project); dir != "" && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+			if registered[dir] {
+				scope = dir
+				break
+			}
+		}
+	}
+	if scope == "" {
+		return "", "", fmt.Errorf("project %q is not in a shikii project registered on this machine: run shikii init in that project's folder, and pass the absolute path of your working folder", project)
+	}
+	root := filepath.Join(scope, ".shikii")
+	if err := validateStoreDirectories(root); err != nil {
+		return "", "", fmt.Errorf("project %q: %w", project, err)
+	}
+	return root, scope, nil
+}
+
+// takeProject removes the project argument (any key the handlers would read as project) from a tool call's arguments.
+// Arguments that are not an object are passed on unchanged.
+func takeProject(args json.RawMessage) (project string, named bool, rest json.RawMessage, err error) {
+	if len(args) == 0 {
+		return "", false, args, nil
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(args, &m) != nil || m == nil {
+		return "", false, args, nil
+	}
+	for k, v := range m {
+		if !strings.EqualFold(k, "project") {
+			continue
+		}
+		if named {
+			return "", false, nil, errors.New("pass project only once")
+		}
+		if json.Unmarshal(v, &project) != nil {
+			return "", false, nil, errors.New("project must be a string: the absolute path of your working folder")
+		}
+		named = true
+		delete(m, k)
+	}
+	if !named {
+		return "", false, args, nil
+	}
+	b, err := json.Marshal(m)
+	return project, true, b, err
+}
+
+// mcpProjectSchema is the project argument every tool takes.
+var mcpProjectSchema = map[string]any{"type": "string", "description": "the absolute path of your working folder. shikii uses that project's .shikii/ for this call; it must be inside a folder where shikii init was run on this machine. Codex shares one shikii server among all projects, so pass it on every call; omit it only when the server was started in the project (Claude Code, OpenCode)"}
+
+func init() {
+	for _, tl := range mcpTools {
+		tl["inputSchema"].(map[string]any)["properties"].(map[string]any)["project"] = mcpProjectSchema
+	}
 }
 
 type rpcRequest struct {
@@ -81,7 +224,7 @@ var kindSchema = map[string]any{"type": "string", "enum": notebook.Kinds, "descr
 var sceneSchema = map[string]any{"type": "string", "maxLength": notebook.SceneMax, "description": "the scene it applies to, short and in the work's own words (required; e.g. \"when committing\", \"when sending an invoice\"; one line, up to 48 characters). If place returns an existing scene close to it, use the same wording"}
 
 // mcpInstructions is the MCP server's guidance. Agents without a hook (Codex, OpenCode) get only this and the tool descriptions.
-const mcpInstructions = "Truths come only from the person (their answer) or from a checked result: never call shikii_label with your own judgment, and never pass your own guess as the person's answer. When you create or change a rule, test or procedure (commands, scripts) yourself, write it to the wiki in the same turn even if nobody asked. shikii turns a decision model's probability into act / ask / discard. Call shikii_specs first; decide with shikii_decide; when the person tells you what was true, or a result shows it, call shikii_label with the trace_id so the spec can be calibrated. Use shikii_wiki to query, ingest and lint lessons from this project's conversations. Lessons are hypotheses with sources, never truth labels or permission to act. Your usual agent maintains this wiki without asking the user to organize it. Every lesson needs a kind (rule, howto, criteria, fact or history) and a scene written in the project's own words; reuse a scene that place returns. When shikii_wiki query lists unclassified pages (made before 0.9.0), give each one a kind and a scene with operation classify before ending the turn. When you create or change a rule, test or procedure (commands, scripts) yourself, write it to the wiki in the same turn even if nobody asked: add to or edit the closest page, or make a new howto or rule page."
+const mcpInstructions = "Pass the absolute path of your working folder as project on every shikii tool call (Codex shares one shikii server among all projects and needs it). Truths come only from the person (their answer) or from a checked result: never call shikii_label with your own judgment, and never pass your own guess as the person's answer. When you create or change a rule, test or procedure (commands, scripts) yourself, write it to the wiki in the same turn even if nobody asked. shikii turns a decision model's probability into act / ask / discard. Call shikii_specs first; decide with shikii_decide; when the person tells you what was true, or a result shows it, call shikii_label with the trace_id so the spec can be calibrated. Use shikii_wiki to query, ingest and lint lessons from this project's conversations. Lessons are hypotheses with sources, never truth labels or permission to act. Your usual agent maintains this wiki without asking the user to organize it. Every lesson needs a kind (rule, howto, criteria, fact or history) and a scene written in the project's own words; reuse a scene that place returns. When shikii_wiki query lists unclassified pages (made before 0.9.0), give each one a kind and a scene with operation classify before ending the turn. When you create or change a rule, test or procedure (commands, scripts) yourself, write it to the wiki in the same turn even if nobody asked: add to or edit the closest page, or make a new howto or rule page."
 
 var mcpTools = []map[string]any{
 	{
@@ -275,7 +418,23 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			return fail(-32602, "bad params: "+err.Error())
 		}
-		code, body, err := callTool(h, p.Name, p.Arguments)
+		if !knownTool(p.Name) {
+			return fail(-32602, fmt.Sprintf("unknown tool %q", p.Name))
+		}
+		// project names the caller's project (0.9.3: Codex shares one server among all projects). It is taken out before the handlers read the arguments
+		project, named, args, perr := takeProject(p.Arguments)
+		if perr != nil {
+			return reply(toolError(perr))
+		}
+		rt, ok := h.(*mcpRouter)
+		if !ok {
+			rt = &mcpRouter{start: h}
+		}
+		target, herr := rt.handler(project, named)
+		if herr != nil {
+			return reply(toolError(herr))
+		}
+		code, body, err := callTool(target, p.Name, args)
 		if err != nil {
 			return fail(-32602, err.Error())
 		}
@@ -341,6 +500,21 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec.Code, rec.Body.Bytes(), nil
+}
+
+func knownTool(name string) bool {
+	for _, tl := range mcpTools {
+		if tl["name"] == name {
+			return true
+		}
+	}
+	return false
+}
+
+// toolError is a tool result with isError, so the agent reads why and what to pass.
+func toolError(err error) map[string]any {
+	b, _ := json.Marshal(map[string]any{"error": err.Error()})
+	return toolResult(http.StatusBadRequest, b)
 }
 
 // toolResult is an MCP tool result. Errors (4xx/5xx) are returned with isError, not as JSON-RPC errors (so the agent can read them and fix things).

@@ -1844,10 +1844,14 @@ func hookInstall(args []string, install bool) error {
 		// point the Codex MCP server shikii wrote at this binary while the block is still shikii's (0.9.1 and earlier wrote the bare name "shikii",
 		// which Codex started from a desktop app may not find on its PATH; 0.9.3). A block a person edited is left alone
 		codex := filepath.Join(home, ".codex", "config.toml")
-		if fixed, err := fixCodexServer(codex, codexMCPArgs); err != nil {
+		// 0.9.1 and 0.9.2 also wrote --store .shikii, which exits before the handshake when Codex starts the server outside a shikii project; the shared
+		// registration becomes args = ["mcp"] and each call passes project (0.9.3)
+		if fixed, err := fixCodexServer(codex, codexServerArgs); err != nil {
 			fmt.Fprintf(stdout, "%s: %v\n", tilde(codex), err)
 		} else if fixed {
-			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s (Codex; reopen Codex)\n", tilde(codex), mcpCommand())
+			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s with args = [\"mcp\"] (Codex; reopen Codex)\n", tilde(codex), mcpCommand())
+		} else if codexServerPinsAProject(codex) {
+			fmt.Fprintf(stdout, "%s: %s\n", tilde(codex), codexPinnedNote)
 		}
 		// remove the shikii section an earlier version wrote into each registered project's AGENTS.md (0.9.2: shikii no longer writes into it;
 		// only the part between the markers goes, the person's text and the file stay)
