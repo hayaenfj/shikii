@@ -206,9 +206,6 @@ type hookSession struct {
 	HabitsNoticed    bool             `json:"habits_noticed,omitempty"`     // told in this session how to keep work records and rules (0.8.1)
 	// requests since the full organizing and reflection notices (0 = none yet in this session); the short form is used in between (0.9.7)
 	PlanningShortTurns int            `json:"planning_short_turns,omitempty"`
-	PlanningMissed     bool           `json:"planning_missed,omitempty"`    // an organizing was asked and not submitted; the next notice is the full text
-	ReflectLastAsked   []string       `json:"reflect_last_asked,omitempty"` // the conversations of the last reflection ask (unlike ReflectAsked, not cleared by a request that asks nothing)
-	ReflectMissed      bool           `json:"reflect_missed,omitempty"`     // a turn ended with the reflection it was asked for not done; the next ask is the full text
 	ReflectShortTurns  int            `json:"reflect_short_turns,omitempty"`
 	ClassifyAsked      []string       `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
 	ClassifyAskedTurn  string         `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
@@ -724,8 +721,9 @@ func runHookEvent(event string) error {
 				hookLog("reflect: " + rerr.Error())
 				ids = nil // a turn where asking failed does not stop on the previous turn's leftovers (audit R5)
 			} else if context != "" {
-				// the full text the first time in the session, when the conversations asked last time are still waiting, and every noticeFullEvery asks (0.9.7)
-				if shortTurns == 0 || shortTurns >= noticeFullEvery || current.ReflectMissed || overlap(ids, current.ReflectLastAsked) {
+				// the full text the first time in the session and every noticeFullEvery asks; the short form alone is enough to submit, and a
+				// turn that ends without the reflection is told the steps again by the Stop check, so no miss is tracked (0.9.7)
+				if shortTurns == 0 || shortTurns >= noticeFullEvery {
 					shortTurns = 1
 				} else {
 					context, shortTurns = reflectAskShort(reflectCLI(), ids), shortTurns+1
@@ -736,12 +734,6 @@ func runHookEvent(event string) error {
 			if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
 				if s.TurnID == current.TurnID {
 					s.ReflectAsked, s.ReflectAskedTurn, s.ReflectShortTurns = ids, current.TurnID, shortTurns
-					if shortTurns == 1 {
-						s.ReflectMissed = false // the full text was given
-					}
-					if len(ids) > 0 {
-						s.ReflectLastAsked = ids // kept across a request that asks nothing or fails to ask, so a miss is still seen (re-audit S3)
-					}
 				}
 			}); uerr != nil {
 				hookLog("reflect: " + uerr.Error())
@@ -1077,17 +1069,14 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		planning = nil // a calibrated prompt-kind is confident it "does not change files": do not ask for the pre-start organizing (the first mut writes nil to the record)
 	}
 	var out hookOut
-	// the full text on the session's first request, after an organizing that was not submitted (remembered across requests that need
-	// none; re-audit S2), and every noticeFullEvery requests (0.9.7)
-	missed := snapshot.PlanningMissed || snapshot.Planning != nil && snapshot.Planning.TurnID != turnID && snapshot.Planning.Result == nil
+	// the full text on the session's first request and every noticeFullEvery requests (0.9.7). The short form alone is enough to submit,
+	// and a turn that ends without the organizing is told the steps again by the Stop check, so no miss is tracked: the tracking that was
+	// here kept being found wrong by the audits, and the structure was simplified instead (2026-10-27)
 	switch {
 	case planning == nil:
-		if missed {
-			muts = append(muts, func(s *hookSession) { s.PlanningMissed = true })
-		}
-	case snapshot.PlanningShortTurns == 0 || snapshot.PlanningShortTurns >= noticeFullEvery || missed:
+	case snapshot.PlanningShortTurns == 0 || snapshot.PlanningShortTurns >= noticeFullEvery:
 		out.Context = planningNotice(in.SessionID, turnID)
-		muts = append(muts, func(s *hookSession) { s.PlanningShortTurns, s.PlanningMissed = 1, false })
+		muts = append(muts, func(s *hookSession) { s.PlanningShortTurns = 1 })
 	default:
 		out.Context = planningNoticeShort(in.SessionID, turnID)
 		muts = append(muts, func(s *hookSession) { s.PlanningShortTurns++ })

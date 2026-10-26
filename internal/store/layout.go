@@ -1,315 +1,81 @@
 package store
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 )
 
-// projectName is the fixed name of the project's conversations, memory deliveries and memory reviews under records/ (0.9.7). Before, they
-// were named by sha256 of the project's path, so moving or renaming the folder hid them. A store belongs to one project.
-const projectName = "project"
+// The store's name (0.9.7): the wiki, its sources, the conversations, the memory deliveries and the memory reviews of a project are kept
+// under one name inside its .shikii, written once in records/store-name and never changed. It is the hash of the path the store was first
+// opened at, the same name 0.9.6 used, so an older shikii at that path uses the same files. Moving the folder renames nothing: shikii
+// never moves or merges records. Before this, 0.9.7 moved them to a fixed name and merged what older versions kept writing, and every
+// audit found another way that lost or broke a line; the structure was changed instead (the person's review, 2026-10-27).
 
-var hashName = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var storeNamePattern = regexp.MustCompile(`^([0-9a-f]{64}|project)$`)
 
 func scopeKey(scope string) string {
 	h := sha256.Sum256([]byte(scope))
 	return hex.EncodeToString(h[:])
 }
 
-// projectPath is records/<area>/project<ext> (a file, or a folder when ext is ""). The records written before 0.9.7 under the scope's hash,
-// or the only hash-named ones there when the fixed name is still empty (written under the path the project had then), are brought in:
-// a file's complete lines are copied (merge), never the file moved, because an older shikii still running may be writing to it (moving it
-// sealed a half-written line and sent the rest to a new file; found by the property test, 0.9.7); a folder of records written once is moved.
-// Once a hash-named file or folder has been brought in, it keeps being merged on every use (an older shikii may still write to it; 0.9.7
-// full audit 1-7): a file by its .merged mark, a folder by its name kept in the fixed folder's .adopted list.
-func (s Store) projectPath(area, ext, scope string) string {
-	dir := filepath.Join(s.Dir, "records", area)
-	fixed := filepath.Join(dir, projectName+ext)
-	var froms []string
-	if from := filepath.Join(dir, scopeKey(scope)+ext); exists(from) {
-		froms = append(froms, from)
+// StoreName returns the store's name, recording it the first time: the hash of scope, or "project" for a store a 0.9.7 build in
+// development already moved there.
+func StoreName(dir, scope string) string {
+	if name := readStoreName(dir); name != "" {
+		return name
 	}
-	for _, name := range s.broughtIn(dir, ext) {
-		if p := filepath.Join(dir, name); exists(p) && p != filepath.Join(dir, scopeKey(scope)+ext) {
-			froms = append(froms, p)
+	name := scopeKey(scope)
+	for _, p := range []string{filepath.Join(dir, "wiki", "lessons", "project"), filepath.Join(dir, "records", "feedback", "project.jsonl")} {
+		if _, err := os.Lstat(p); err == nil {
+			name = "project"
 		}
 	}
-	if len(froms) == 0 && empty(fixed) {
-		if only := onlyHashNamed(dir, ext); only != "" {
-			froms = append(froms, only)
-		}
-	}
-	for _, from := range froms {
-		if ext == "" {
-			if empty(fixed) {
-				s.adopt(area, ext, from)
-				rememberAdopted(fixed, filepath.Base(from))
-				continue
-			}
-			rememberAdopted(fixed, filepath.Base(from))
-			s.merge(from, fixed, ext)
-			continue
-		}
-		if !exists(fixed) {
-			if f, err := os.OpenFile(fixed, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600); err == nil {
-				f.Close()
-			}
-		}
-		s.merge(from, fixed, ext)
-	}
-	return fixed
+	return recordStoreName(dir, name)
 }
 
-func exists(path string) bool {
-	_, err := os.Lstat(path)
-	return err == nil
+// RecordStoreNameFrom records the name of a store opened at another path before (scope): reconnecting a moved project calls it before
+// pointing the project at its new path, so the records written at the old path keep being used.
+func RecordStoreNameFrom(dir, scope string) string {
+	if name := readStoreName(dir); name != "" {
+		return name
+	}
+	return recordStoreName(dir, scopeKey(scope))
 }
 
-// broughtIn are the hash-named records merged or adopted before: files with a .merged mark, folders named in the fixed folder's .adopted.
-func (s Store) broughtIn(dir, ext string) []string {
-	var out []string
-	if ext == "" {
-		data, _ := os.ReadFile(filepath.Join(dir, projectName, ".adopted"))
-		for _, name := range strings.Fields(string(data)) {
-			if hashName.MatchString(name) {
-				out = append(out, name)
-			}
-		}
-		return out
-	}
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		if name, ok := strings.CutSuffix(e.Name(), ext+".merged"); ok && hashName.MatchString(name) {
-			out = append(out, name+ext)
-		}
-	}
-	return out
-}
-
-func rememberAdopted(fixed, name string) {
-	path := filepath.Join(fixed, ".adopted")
-	data, _ := os.ReadFile(path)
-	for _, n := range strings.Fields(string(data)) {
-		if n == name {
-			return
-		}
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	f.WriteString(name + "\n")
-}
-
-// merge adds what an older shikii (before 0.9.7, still running) wrote under the scope's hash after the move to the fixed name.
-// A file is never moved or removed, since the older shikii may hold it open: only its complete lines (ending in a newline) after the
-// offset kept in <file>.merged are appended, so a half-written line waits for its end (re-audit C-2, C-3). If this stops between the
-// append and the offset, the lines are appended again next time (a repeated conversation, never a lost one).
-// A folder's files are moved in; a file whose name is already in the fixed folder is that same record (records there are written once),
-// so the leftover is removed and the folder goes (re-audit C-5).
-func (s Store) merge(from, fixed, ext string) {
-	info, err := os.Lstat(from)
-	if err != nil || info.Mode()&os.ModeSymlink != 0 {
-		return
-	}
-	if ext == "" {
-		entries, err := os.ReadDir(from)
-		if err != nil {
-			return
-		}
-		for _, e := range entries {
-			if !e.Type().IsRegular() || strings.HasPrefix(e.Name(), ".") { // an older shikii's file being written (.<random>.tmp) is left to it
-				continue
-			}
-			if _, err := os.Lstat(filepath.Join(fixed, e.Name())); err == nil {
-				_ = os.Remove(filepath.Join(from, e.Name()))
-			} else if os.IsNotExist(err) {
-				_ = os.Rename(filepath.Join(from, e.Name()), filepath.Join(fixed, e.Name()))
-			}
-		}
-		_ = os.Remove(from) // only when emptied
-		return
-	}
-	mark, err := os.OpenFile(from+".merged", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		return
-	}
-	defer mark.Close()
-	if syscall.Flock(int(mark.Fd()), syscall.LOCK_EX) != nil {
-		return
-	}
-	defer syscall.Flock(int(mark.Fd()), syscall.LOCK_UN)
-	f, err := os.OpenFile(from, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return
-	}
-	// the mark is "<offset> <hash of the bytes just before it>": the file is known by its content, not its inode, so a copied store
-	// goes on where it was (audit E-3), and another file (the older file removed and made again, even with the same inode; D-1, E-2)
-	// or a broken mark starts from the beginning (D-2). A mark of the number only (9b77d07) is taken as it is (E-4).
-	raw, _ := io.ReadAll(io.LimitReader(mark, 128))
-	at, sum, _ := strings.Cut(strings.TrimSpace(string(raw)), " ")
-	if strings.Contains(at, ":") { // "<device>:<inode> <offset>", written by 855865f: the offset holds only for that same file (audit F-4, G-2)
-		same := false
-		if sys, ok := st.Sys().(*syscall.Stat_t); ok {
-			same = at == fmt.Sprintf("%d:%d", sys.Dev, sys.Ino)
-		}
-		at, sum = sum, ""
-		if !same {
-			at = "0"
-		}
-	}
-	offset, err := strconv.ParseInt(at, 10, 64)
-	if err != nil || offset < 0 || offset > st.Size() || (sum != "" && tailHash(f, offset) != sum) || !atLineStart(f, offset) {
-		offset = 0 // a mark not at the start of a line is broken too (marks without a hash, 0.9.7 full audit 1-9)
-	}
-	data, err := io.ReadAll(io.NewSectionReader(f, offset, MaxLineBytes*16))
-	if err != nil {
-		return
-	}
-	end := bytes.LastIndexByte(data, '\n')
-	if end < 0 {
-		return // nothing complete yet
-	}
-	next := offset + int64(end+1)
-	nextSum := tailHash(f, next)
-	if nextSum == "" { // the mark could not be checked next time: do not append now (audit F, S-1)
-		return
-	}
-	out, err := os.OpenFile(fixed, os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return
-	}
-	_, werr := out.Write(wholeRecords(data[:end+1]))
-	if cerr := out.Close(); werr != nil || cerr != nil {
-		return
-	}
-	_ = mark.Truncate(0)
-	_, _ = mark.WriteAt([]byte(strconv.FormatInt(next, 10)+" "+nextSum), 0)
-}
-
-// wholeRecords keeps the lines that are whole JSON records. A line an older shikii stopped in the middle of, followed by the next record on
-// the same line, keeps that record (the part from its last "{\"" that reads as JSON); a line with no whole record is left out, so no
-// broken line reaches the fixed name (0.9.7 full audit 1-8, 1-9).
-func wholeRecords(data []byte) []byte {
-	var out bytes.Buffer
-	for _, line := range bytes.SplitAfter(data, []byte("\n")) {
-		body := bytes.TrimRight(line, "\n")
-		if len(body) == 0 {
-			continue
-		}
-		if json.Valid(body) && body[0] == '{' {
-			out.Write(body)
-			out.WriteByte('\n')
-			continue
-		}
-		for i := bytes.LastIndex(body, []byte(`{"`)); i > 0; i = bytes.LastIndex(body[:i], []byte(`{"`)) {
-			if json.Valid(body[i:]) {
-				out.Write(body[i:])
-				out.WriteByte('\n')
-				break
-			}
-		}
-	}
-	return out.Bytes()
-}
-
-// atLineStart reports whether offset is 0 or right after a newline in f.
-func atLineStart(f *os.File, offset int64) bool {
-	if offset == 0 {
-		return true
-	}
-	b := make([]byte, 1)
-	_, err := f.ReadAt(b, offset-1)
-	return err == nil && b[0] == '\n'
-}
-
-// tailHash is the hash of up to 4 KiB of f just before offset.
-func tailHash(f *os.File, offset int64) string {
-	start := max(0, offset-4096)
-	b := make([]byte, offset-start)
-	if _, err := f.ReadAt(b, start); err != nil && offset > start {
-		return ""
-	}
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:8])
-}
-
-// MigrateLayout moves the records written before 0.9.7 under scope's hash to the fixed names. Reconnecting a moved project calls it with
-// the old path, which tells this project's files apart even when files from still earlier paths sit beside them.
-func (s Store) MigrateLayout(scope string) {
-	for _, a := range []struct{ area, ext string }{{"feedback", ".jsonl"}, {"memories", ".jsonl"}, {"memory-reviews", ""}} {
-		s.projectPath(a.area, a.ext, scope)
-	}
-}
-
-// adopt moves from to records/<area>/project<ext> unless that already holds records (an empty file or folder made before is replaced).
-func (s Store) adopt(area, ext, from string) string {
-	fixed := filepath.Join(s.Dir, "records", area, projectName+ext)
-	if !empty(fixed) {
-		return fixed
-	}
-	if from == "" {
-		return fixed
-	}
-	if info, err := os.Lstat(from); err != nil || info.Mode()&os.ModeSymlink != 0 {
-		return fixed // records are never links (openFile refuses them too)
-	}
-	_ = os.Remove(from + ".merged")                // the moved file's merge mark belongs to it no more (re-audit D-1)
-	if err := os.Rename(from, fixed); err != nil { // replaces an empty file or folder in one step (0.9.7 audit B-a)
-		if _, statErr := os.Lstat(fixed); statErr != nil { // not moved by another process either
-			return from
-		}
-	}
-	return fixed
-}
-
-// empty reports whether path is missing, an empty file or an empty folder.
-func empty(path string) bool {
-	info, err := os.Lstat(path)
-	if os.IsNotExist(err) {
-		return true
-	}
-	if err != nil || info.Mode()&os.ModeSymlink != 0 {
-		return false
-	}
-	if info.IsDir() {
-		entries, err := os.ReadDir(path)
-		return err == nil && len(entries) == 0
-	}
-	return info.Size() == 0
-}
-
-func onlyHashNamed(dir, ext string) string {
-	entries, err := os.ReadDir(dir)
+func readStoreName(dir string) string {
+	b, err := os.ReadFile(filepath.Join(dir, "records", "store-name"))
 	if err != nil {
 		return ""
 	}
-	only := ""
-	for _, e := range entries {
-		name, ok := strings.CutSuffix(e.Name(), ext)
-		if !ok || !hashName.MatchString(name) || e.IsDir() != (ext == "") {
-			continue
-		}
-		if only != "" {
-			return ""
-		}
-		only = filepath.Join(dir, e.Name())
+	if name := strings.TrimSpace(string(b)); storeNamePattern.MatchString(name) {
+		return name
 	}
-	return only
+	return ""
+}
+
+func recordStoreName(dir, name string) string {
+	path := filepath.Join(dir, "records", "store-name")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return name
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		if existing := readStoreName(dir); existing != "" {
+			return existing // recorded by another process just now
+		}
+		return name
+	}
+	defer f.Close()
+	_, _ = f.WriteString(name + "\n")
+	return name
+}
+
+// recordPath is records/<area>/<store name><ext>.
+func (s Store) recordPath(area, ext, scope string) string {
+	return filepath.Join(s.Dir, "records", area, StoreName(s.Dir, scope)+ext)
 }

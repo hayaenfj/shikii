@@ -126,7 +126,7 @@ func projectActive(root, scope string) (bool, error) {
 	if decoder.Decode(&extra) != io.EOF {
 		return false, errors.New("the project's initialization mark is invalid")
 	}
-	return activation.Version >= 1 && activation.Scope == scope, nil
+	return activation.Version >= 1 && (activation.Scope == scope || sameFolder(activation.Scope, scope)), nil
 }
 
 // version is the version written to project.json. If a new binary's --init was only rerun on a store with an old mark (version 1, 0.7.4 or earlier) and records,
@@ -185,10 +185,28 @@ func projectScopeAt(cwd string) string {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
 	cmd.Dir = cwd
+	scope := feedbackScope(cwd)
 	if top, err := cmd.Output(); err == nil {
-		return feedbackScope(strings.TrimSpace(string(top)))
+		scope = feedbackScope(strings.TrimSpace(string(top)))
 	}
-	return feedbackScope(cwd)
+	return canonicalScope(scope)
+}
+
+// canonicalScope is the spelling of the project's path that its project.json records, when scope reaches that same folder by another
+// spelling (another case on a case-insensitive disk): every key made from the path (the page, its lock, the index) is then one (re-audit 1-3).
+func canonicalScope(scope string) string {
+	b, err := os.ReadFile(filepath.Join(scope, ".shikii", "project.json"))
+	if err != nil {
+		return scope
+	}
+	var a projectActivation
+	if json.Unmarshal(b, &a) != nil || a.Scope == "" || a.Scope == scope || !filepath.IsAbs(a.Scope) {
+		return scope
+	}
+	if sameFolder(a.Scope, scope) {
+		return a.Scope
+	}
+	return scope
 }
 
 func projectID(scope string) string {
@@ -358,13 +376,16 @@ func prepareHookProject(cwd string) (string, string, error) {
 	return root, scope, nil
 }
 
+// registerProject writes this project's entry in the shared index, named by its store's id (0.9.7): the entry follows the store, so a
+// path reused by another project, two folders swapped, or another spelling of the same path never mixes two stores' entries (re-audit 1).
+// A store whose id is already the entry of another store folder that is still in place (a copy, for instance put back where the original
+// was) gets an id of its own first. Entries written before 0.9.7 (named by the path) for this path or this store are removed.
 func registerProject(scope string) error {
 	common, err := agentHome()
 	if err != nil {
 		return err
 	}
-	entry := projectEntry{ID: projectID(scope), Name: filepath.Base(scope), Path: scope, URL: "/p/" + projectID(scope) + "/", StoreID: storeID(filepath.Join(scope, ".shikii"), true), StoreDir: storeDir(filepath.Join(scope, ".shikii"))}
-	data, _ := json.Marshal(entry)
+	root := filepath.Join(scope, ".shikii")
 	dir := filepath.Join(common, "projects")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -373,6 +394,15 @@ func registerProject(scope string) error {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("cannot open the project index")
 	}
+	if e, ok := ownEntry(root); ok && e.StoreDir != "" && e.StoreDir != storeDir(root) && storeDir(filepath.Join(e.Path, ".shikii")) == e.StoreDir {
+		_ = os.Remove(filepath.Join(root, "records", "store-id")) // another store folder holds this id and is still in place
+	}
+	entry := projectEntry{ID: projectID(scope), Name: filepath.Base(scope), Path: scope, URL: "/p/" + projectID(scope) + "/", StoreID: storeID(root, true), StoreDir: storeDir(root)}
+	name := entry.ID + ".json"
+	if entry.StoreID != "" {
+		name = entry.StoreID + ".json"
+	}
+	data, _ := json.Marshal(entry)
 	tmp, err := os.CreateTemp(dir, ".project-*")
 	if err != nil {
 		return err
@@ -386,36 +416,68 @@ func registerProject(scope string) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err := os.Rename(tmp.Name(), filepath.Join(dir, entry.ID+".json")); err != nil {
+	if err := os.Rename(tmp.Name(), filepath.Join(dir, name)); err != nil {
 		return err
-	}
-	forgetStaleEntries(dir, entry)
-	return nil
-}
-
-// forgetStaleEntries removes the entries with this store's id whose folder is gone: a reconnection that stopped before forgetting the old
-// path left one (0.9.7 full audit 1, C8). An entry whose folder still exists is never touched.
-func forgetStaleEntries(dir string, entry projectEntry) {
-	if entry.StoreID == "" {
-		return
 	}
 	files, _ := filepath.Glob(filepath.Join(dir, "*.json"))
 	for _, path := range files {
-		if filepath.Base(path) == entry.ID+".json" {
-			continue
-		}
-		b, err := os.ReadFile(path)
-		if err != nil {
+		if filepath.Base(path) == name {
 			continue
 		}
 		var p projectEntry
-		if json.Unmarshal(b, &p) != nil || p.StoreID != entry.StoreID {
+		if b, err := os.ReadFile(path); err != nil || json.Unmarshal(b, &p) != nil {
 			continue
 		}
-		if _, err := os.Lstat(p.Path); os.IsNotExist(err) {
-			_ = os.Remove(path)
+		pathNamed := filepath.Base(path) == p.ID+".json"
+		if pathNamed && ((p.StoreID != "" && p.StoreID == entry.StoreID) || (p.StoreID == "" && p.Path == scope)) {
+			_ = os.Remove(path) // this store's or this path's entry written before 0.9.7
 		}
 	}
+	return nil
+}
+
+// ownEntry is the shared index's entry for the store at root: named by its id, or, written before, naming its id.
+func ownEntry(root string) (projectEntry, bool) {
+	id := storeID(root, false)
+	common, err := agentHome()
+	if err != nil || id == "" {
+		return projectEntry{}, false
+	}
+	read := func(path string) (projectEntry, bool) {
+		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			return projectEntry{}, false
+		}
+		defer f.Close()
+		var p projectEntry
+		if json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p) != nil || p.StoreID != id || !filepath.IsAbs(p.Path) {
+			return projectEntry{}, false
+		}
+		return p, true
+	}
+	if p, ok := read(filepath.Join(common, "projects", id+".json")); ok {
+		return p, true
+	}
+	files, _ := filepath.Glob(filepath.Join(common, "projects", "*.json"))
+	for _, path := range files {
+		if p, ok := read(path); ok {
+			return p, true
+		}
+	}
+	return projectEntry{}, false
+}
+
+// sameFolder reports whether two paths reach the same folder (another spelling, a link, another case on a case-insensitive disk).
+func sameFolder(a, b string) bool {
+	if a == b {
+		return true
+	}
+	x, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	y, err := os.Stat(b)
+	return err == nil && os.SameFile(x, y)
 }
 
 // storeID is the store's random id (records/store-id), made the first time the project is registered. The shared index keeps it with the
@@ -473,28 +535,15 @@ func storeDir(root string) string {
 	return fmt.Sprintf("%d:%d", st.Dev, st.Ino)
 }
 
-// registeredHere reports whether this machine's shared index has old as the project of this very store: the entry for old exists, and
-// both its store id and its store folder are this store's. An entry written before 0.9.7 has neither, so it never matches: a project moved
-// before updating, or a copy, or a .shikii brought in from elsewhere, is reconnected only by the person's shikii --init (0.9.7 audit B-1, B-2).
-func registeredHere(old, root string) bool {
-	common, err := agentHome()
-	if err != nil {
-		return false
-	}
-	f, err := os.OpenFile(filepath.Join(common, "projects", projectID(old)+".json"), os.O_RDONLY|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	var p projectEntry
-	if json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p) != nil || p.Path != old || p.ID != projectID(old) {
-		return false
-	}
-	return p.StoreID != "" && p.StoreID == storeID(root, false) && p.StoreDir != "" && p.StoreDir == storeDir(root)
+// entryFileName reports whether an index file is named as shikii names it: by the store's id (0.9.7), or by the path (before).
+func entryFileName(path string, p projectEntry) bool {
+	base := filepath.Base(path)
+	return (p.StoreID != "" && base == p.StoreID+".json") || base == p.ID+".json"
 }
 
 func registeredProjects(common string) []projectEntry {
 	projects := []projectEntry{}
+	seen := map[string]bool{}
 	files, _ := filepath.Glob(filepath.Join(common, "projects", "*.json"))
 	for _, path := range files {
 		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
@@ -504,7 +553,7 @@ func registeredProjects(common string) []projectEntry {
 		var p projectEntry
 		err = json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p)
 		f.Close()
-		if err != nil || !filepath.IsAbs(p.Path) || feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID || filepath.Base(path) != p.ID+".json" {
+		if err != nil || !filepath.IsAbs(p.Path) || feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID || !entryFileName(path, p) || seen[p.Path] {
 			continue
 		}
 		if checkProjectStore(filepath.Join(p.Path, ".shikii"), false) != nil {
@@ -515,6 +564,7 @@ func registeredProjects(common string) []projectEntry {
 		}
 		p.Name, p.URL = filepath.Base(p.Path), "/p/"+p.ID+"/"
 		p.InitVersion = projectInitVersion(filepath.Join(p.Path, ".shikii"))
+		seen[p.Path] = true
 		projects = append(projects, p)
 	}
 	sort.Slice(projects, func(i, j int) bool {

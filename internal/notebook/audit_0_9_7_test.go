@@ -20,14 +20,14 @@ func TestAuditHandEditedLinkToAnyHashIsUnchanged(t *testing.T) {
 	if _, err := b.Ingest(Draft{Title: "page", Lesson: "Check.", AppliesTo: "a", Kind: "rule", Scene: "when writing", Sources: []string{o.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(root, "wiki", "lessons", storeDirName)
+	dir := filepath.Join(root, "wiki", "lessons", b.storeName())
 	entries, _ := os.ReadDir(dir)
 	n := 0
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".md") {
 			p := filepath.Join(dir, e.Name())
 			data, _ := os.ReadFile(p)
-			edited := strings.ReplaceAll(string(data), "wiki-sources/"+storeDirName+"/", "wiki-sources/"+strings.Repeat("e", 64)+"/")
+			edited := strings.ReplaceAll(string(data), "wiki-sources/"+b.storeName()+"/", "wiki-sources/"+strings.Repeat("e", 64)+"/")
 			if edited != string(data) {
 				n++
 				_ = os.WriteFile(p, []byte(edited), 0o600)

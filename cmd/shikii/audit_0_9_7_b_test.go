@@ -58,13 +58,16 @@ func TestAuditCopyThenMoveOriginal(t *testing.T) {
 // 0.9.7 audit B-2: an index entry written before 0.9.7 has no store id. A .shikii brought in from elsewhere without a store id, naming the
 // same path, matched it ("" equals "") and switched itself on. An entry without a store id never reconnects by itself.
 func TestAuditForeignLegacyStoreActivatesItself(t *testing.T) {
-	_, old, _ := movedProject(t)
+	_, old, moved := movedProject(t)
 	common, _ := agentHome()
-	entry := filepath.Join(common, "projects", projectID(old)+".json")
-	data, err := os.ReadFile(entry)
+	// the index as 0.9.6 left it: the entry named by the path, with no store id
+	own := filepath.Join(common, "projects", storeID(filepath.Join(moved, ".shikii"), false)+".json")
+	data, err := os.ReadFile(own)
 	if err != nil {
 		t.Fatal(err)
 	}
+	os.Remove(own)
+	entry := filepath.Join(common, "projects", projectID(old)+".json")
 	var p map[string]any
 	_ = json.Unmarshal(data, &p)
 	delete(p, "store_id") // the shape 0.9.6 wrote

@@ -83,7 +83,7 @@ type MemoryReport struct {
 }
 
 func (s Store) memoryPath(scope string) string {
-	return s.projectPath("memories", ".jsonl", scope)
+	return s.recordPath("memories", ".jsonl", scope)
 }
 
 func validMemoryDelivery(d MemoryDelivery) bool {
@@ -184,21 +184,8 @@ func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 }
 
 func (s Store) memoryLock(scope string) (func(), error) {
-	unlock, err := s.lockFile(strings.TrimSuffix(s.memoryPath(scope), ".jsonl")+".lock", true)
-	if err != nil {
-		return nil, err
-	}
-	// an older shikii (before 0.9.7) still running locks the record under the path's hash: take that lock too, when it is there (re-audit S4)
-	legacy := filepath.Join(s.Dir, "records", "memories", scopeKey(scope)+".lock")
-	if _, err := os.Lstat(legacy); err != nil {
-		return unlock, nil
-	}
-	unlockLegacy, err := s.lockFile(legacy, false)
-	if err != nil {
-		unlock()
-		return nil, err
-	}
-	return func() { unlockLegacy(); unlock() }, nil
+	// the same lock file an older shikii at this path takes, since the store's name is the one it uses
+	return s.lockFile(strings.TrimSuffix(s.memoryPath(scope), ".jsonl")+".lock", true)
 }
 
 // lockFile takes an exclusive lock on path, waiting up to 2 seconds. With create, the first concurrent creation is limited to one; an
@@ -268,7 +255,7 @@ func validMemoryAssessment(a MemoryAssessment) bool {
 
 func (s Store) memoryAssessmentPath(scope, id, key string) string {
 	h := sha256.Sum256([]byte(id + ":" + key))
-	return filepath.Join(s.projectPath("memory-reviews", "", scope), hex.EncodeToString(h[:])+".json")
+	return filepath.Join(s.recordPath("memory-reviews", "", scope), hex.EncodeToString(h[:])+".json")
 }
 
 func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error) {

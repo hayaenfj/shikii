@@ -154,10 +154,13 @@ func TestStoreFromElsewhereIsNotReconnectedByItself(t *testing.T) {
 			root := filepath.Join(moved, ".shikii")
 			marker := filepath.Join(root, "project.json")
 			switch kind {
-			case "path not in the index":
+			case "path not in the index": // a store from another machine: its own id, naming a path this machine never had
 				data, _ := os.ReadFile(marker)
 				data = []byte(strings.Replace(string(data), old, filepath.Join(t.TempDir(), "from-another-machine"), 1))
 				if err := os.WriteFile(marker, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, "records", "store-id"), []byte("fedcba9876543210fedcba9876543210\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			case "another store at that path":

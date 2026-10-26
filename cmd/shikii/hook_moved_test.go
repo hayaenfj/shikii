@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // 0.9.2: after the folder was renamed, a wiki store left under the old path's name made the wiki silently empty.
@@ -29,7 +30,7 @@ func TestHookTellsWikiLeftUnderOldPath(t *testing.T) {
 	}
 	sum := sha256.Sum256([]byte("/work/old-name"))
 	place := "records/wiki-sources/" + hex.EncodeToString(sum[:])
-	if err := os.Rename(filepath.Join(elsewhere, "records", "wiki-sources", "project"), filepath.Join(agent, place)); err != nil {
+	if err := os.Rename(filepath.Join(elsewhere, "records", "wiki-sources", store.StoreName(elsewhere, "/work/old-name")), filepath.Join(agent, place)); err != nil {
 		t.Fatal(err)
 	}
 	prompt := map[string]any{"session_id": "s1", "cwd": repo, "prompt": "README の誤字を直してください。"}

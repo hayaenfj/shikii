@@ -167,9 +167,9 @@ func (b Book) directory(create bool, area string) (string, error) {
 	if b.Scope == "" || b.Root == "" {
 		return "", errors.New("wiki needs a project and a store")
 	}
-	parts := []string{"wiki", "lessons", storeDirName}
+	parts := []string{"wiki", "lessons", b.storeName()}
 	if area == "sources" {
-		parts = []string{"records", "wiki-sources", storeDirName}
+		parts = []string{"records", "wiki-sources", b.storeName()}
 	}
 	if create {
 		if err := os.MkdirAll(b.Root, 0o700); err != nil {
@@ -178,9 +178,6 @@ func (b Book) directory(create bool, area string) (string, error) {
 	}
 	path, err := filepath.EvalSymlinks(b.Root)
 	if err != nil {
-		return "", err
-	}
-	if err := MigrateLayout(path, b.Scope); err != nil {
 		return "", err
 	}
 	for _, part := range parts {
@@ -293,7 +290,7 @@ func (b Book) renderPage(p Page, l pageLabels) ([]byte, error) {
 	}
 	var links strings.Builder
 	for _, source := range p.Sources {
-		fmt.Fprintf(&links, "- [%s](../../../records/wiki-sources/%s/%s.json)\n", source.ID, storeDirName, source.ID)
+		fmt.Fprintf(&links, "- [%s](../../../records/wiki-sources/%s/%s.json)\n", source.ID, b.storeName(), source.ID)
 	}
 	correction := ""
 	if p.Correction != nil {

@@ -1,6 +1,7 @@
 package notebook
 
 import (
+	"github.com/hayaenfj/shikii/internal/store"
 	"path/filepath"
 	"testing"
 	"time"
@@ -49,11 +50,13 @@ func TestWikiNeedsNoFixingAfterTheFolderMoves(t *testing.T) {
 	}
 }
 
-// A store written by the real v0.9.1 (testdata/v091, under /work/project) is read as it is at its own path and after a move, and can be updated.
+// A store written by the real v0.9.1 (testdata/v091, under /work/project) is read as it is at its own path and after a move, and can be
+// updated. A store moved before 0.9.7 ever opened it is reconnected first (the hook or --init), which records its name from the old path.
 func TestStoreWrittenByV091NeedsNoFixingAfterAMove(t *testing.T) {
 	for _, scope := range []string{"/work/project", "/moved/somewhere/project"} {
 		root := t.TempDir()
 		copyTree(t, filepath.Join("testdata", "v091"), root)
+		store.RecordStoreNameFrom(root, "/work/project")
 		b := Book{Root: root, Scope: scope}
 		if live, err := b.Live(); err != nil || len(live) != 2 {
 			t.Fatalf("%s: both pages written by v0.9.1 are found: %+v %v", scope, live, err)

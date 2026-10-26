@@ -57,7 +57,7 @@ func TestExactlyOnePageWinsEvenWhilePeeked(t *testing.T) {
 	}
 }
 
-// Properties F1 to F3 over random sequences of requests where the agent sometimes submits its organizing and sometimes does not.
+// Properties F1 to F3 (F2 as decided on 2026-10-27: no miss is tracked, and the short form alone is enough) over random sequences of requests where the agent sometimes submits its organizing and sometimes does not.
 func TestPlanningNoticeFormOverRandomSessions(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	r := rand.New(rand.NewSource(97))
@@ -74,8 +74,8 @@ func TestPlanningNoticeFormOverRandomSessions(t *testing.T) {
 		switch {
 		case i == 0 && !isFull:
 			t.Fatalf("F1: the session's first notice is the full text\nhistory: %v", history)
-		case missedBefore && !isFull:
-			t.Fatalf("F2: after a missed organizing the notice is the full text\nhistory: %v", history)
+		case missedBefore && !strings.Contains(notice, "hook plan submit"):
+			t.Fatalf("F2: after a missed organizing the notice alone is enough to submit\nhistory: %v", history)
 		}
 		if isShort {
 			shortsInARow++

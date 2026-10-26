@@ -125,10 +125,9 @@ func TestRelinkPropertiesOverRandomFolderHistories(t *testing.T) {
 	}
 }
 
-// copiedOver reports whether f's project.json names a folder that is still that same legitimate project: f was then a copy before it
-// was initialized, and relinking it would take over (only the person's --init does). Used only to skip the liveness check.
+// copiedOver reports whether f holds a copy whose original is still where this machine's index has it: relinking it would take over (only
+// the person's --init does). Used only to skip the liveness check.
 func copiedOver(identity map[string]string, f string) bool {
-	root := filepath.Join(f, ".shikii")
-	old, _, ok := previousScope(root, f)
-	return ok && copiedFrom(old, f)
+	_, copied := originalElsewhere(filepath.Join(f, ".shikii"))
+	return copied
 }

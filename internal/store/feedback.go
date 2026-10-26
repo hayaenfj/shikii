@@ -36,7 +36,7 @@ const (
 )
 
 func (s Store) feedbackPath(scope string) string {
-	return s.projectPath("feedback", ".jsonl", scope)
+	return s.recordPath("feedback", ".jsonl", scope)
 }
 
 func (s Store) AppendFeedback(scope string, f Feedback) error {

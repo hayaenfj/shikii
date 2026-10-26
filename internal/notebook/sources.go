@@ -299,10 +299,7 @@ func (b Book) OtherPathStores() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := MigrateLayout(root, b.Scope); err != nil {
-		return nil, err
-	}
-	own := storeDirName
+	own := b.storeName()
 	out := []string{}
 	for _, area := range []string{"records/wiki-sources", "wiki/lessons"} {
 		entries, err := os.ReadDir(filepath.Join(root, area))
@@ -313,7 +310,7 @@ func (b Book) OtherPathStores() ([]string, error) {
 			return nil, err
 		}
 		for _, e := range entries {
-			if !e.IsDir() || e.Name() == own || !scopeName.MatchString(e.Name()) {
+			if !e.IsDir() || e.Name() == own || !(scopeName.MatchString(e.Name()) || e.Name() == "project") {
 				continue
 			}
 			left, err := notCopied(filepath.Join(root, area, e.Name()), filepath.Join(root, area, own))

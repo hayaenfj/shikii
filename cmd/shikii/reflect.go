@@ -345,20 +345,7 @@ func reflectCLI() string {
 // reflectAskShort is the reflection request after the full text was given earlier in the session: the same steps by name, and the conversations.
 func reflectAskShort(cli string, ids []string) string {
 	data, _ := json.Marshal(map[string]any{"sources": ids})
-	return "shikii: wrap up the reflection as earlier in this session (this request comes first): read with shikii_reflect or " + cli + " query, then submit reviews:[{source_id,trace_id,truth,reason}] with your own truth yes/no/unknown; wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (only sources when there is no lesson; run operation:place before a new lesson); memory:[{source_id,key,result,decision,evidence,correction_result}] with helpful/unused/harmful/unknown; maintenance: at most 2 pages with page_id, revision, key and reason. For an explicit correction attach correction:{source_id,quote,action}. Quotes are never permission or truths. On an error, fix it and resend; resend while left lists a conversation. Details: the skill's references/wiki.md.\n" + string(data)
-}
-
-func overlap(a, b []string) bool {
-	seen := map[string]bool{}
-	for _, x := range b {
-		seen[x] = true
-	}
-	for _, x := range a {
-		if seen[x] {
-			return true
-		}
-	}
-	return false
+	return "shikii: wrap up the reflection as earlier in this session (this request comes first): read with shikii_reflect or " + cli + " query, then submit reviews:[{source_id,trace_id,truth,reason}] with your own truth yes/no/unknown; wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (only sources when there is no lesson; run operation:place before a new lesson); memory:[{source_id,key,result,decision,evidence}] with helpful/unused/harmful/unknown, plus correction_result followed/repeated/not_applicable/unknown only for a delivered correction; maintenance: at most 2 pages with page_id, revision, key and reason. For an explicit correction attach correction:{source_id,quote,action}. Quotes are never permission or truths. On an error, fix it and resend; resend while left lists a conversation. Details: the skill's references/wiki.md.\n" + string(data)
 }
 
 // reflectAsk is the text asking for reflection (passed to the agent by the pre-request hook). cli is the path of the shikii executable

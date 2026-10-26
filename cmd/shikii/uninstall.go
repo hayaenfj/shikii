@@ -464,7 +464,7 @@ func mcpProjects(agent string, registered []projectEntry) []projectEntry {
 		var p projectEntry
 		err = json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p)
 		f.Close()
-		if err != nil || !filepath.IsAbs(p.Path) || seen[p.Path] || feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID || filepath.Base(path) != p.ID+".json" {
+		if err != nil || !filepath.IsAbs(p.Path) || seen[p.Path] || feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID || !entryFileName(path, p) {
 			continue
 		}
 		seen[p.Path] = true

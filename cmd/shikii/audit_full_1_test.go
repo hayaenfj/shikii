@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -135,31 +134,3 @@ func TestFull1MoveToAnotherDiskIsLeftToThePerson(t *testing.T) {
 }
 
 func firstLine(s string) string { l, _, _ := strings.Cut(s, "\n"); return l }
-
-// 0.9.7 full audit 1, C8: a reconnection that stopped after pointing project.json here but before forgetting the old path left the old
-// entry with this store's id. Registering the project forgets such entries whose folder is gone, and never one whose folder exists.
-func TestRegisteringForgetsStaleEntriesOfTheSameStore(t *testing.T) {
-	p := gitRepo(t)
-	hookEnv(t, nil, p)
-	common, _ := agentHome()
-	P := feedbackScope(p)
-	id := storeID(filepath.Join(P, ".shikii"), false)
-	gone := filepath.Join(t.TempDir(), "gone")
-	alive := feedbackScope(t.TempDir())
-	for _, path := range []string{gone, alive} {
-		e := projectEntry{ID: projectID(path), Name: filepath.Base(path), Path: path, StoreID: id}
-		b, _ := json.Marshal(e)
-		if err := os.WriteFile(filepath.Join(common, "projects", e.ID+".json"), b, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := registerProject(P); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(common, "projects", projectID(gone)+".json")); !os.IsNotExist(err) {
-		t.Fatal("C8: the entry of a gone folder with this store's id is forgotten")
-	}
-	if _, err := os.Stat(filepath.Join(common, "projects", projectID(alive)+".json")); err != nil {
-		t.Fatal("an entry whose folder exists is kept")
-	}
-}

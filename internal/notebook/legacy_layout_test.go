@@ -7,26 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-)
 
-// toLegacyLayout turns a store into what versions before 0.9.7 wrote: both areas named by sha256 of the project's path, and the pages'
-// source links through that name.
-func toLegacyLayout(t *testing.T, root, scope string) {
-	t.Helper()
-	h := digest([]byte(scope))
-	for _, area := range storeAreas {
-		if err := os.Rename(filepath.Join(root, area, storeDirName), filepath.Join(root, area, h)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	_ = filepath.Walk(filepath.Join(root, "wiki", "lessons", h), func(p string, info os.FileInfo, err error) error {
-		if err == nil && info.Mode().IsRegular() && strings.HasSuffix(p, ".md") {
-			data, _ := os.ReadFile(p)
-			_ = os.WriteFile(p, []byte(strings.ReplaceAll(string(data), "wiki-sources/"+storeDirName+"/", "wiki-sources/"+h+"/")), 0o600)
-		}
-		return nil
-	})
-}
+	"github.com/hayaenfj/shikii/internal/store"
+)
 
 // legacySource saves a waiting source record with the id versions before 0.9.7 gave it: the hash of the path it was captured under and its content.
 func legacySource(t *testing.T, b Book, capturedAt string, o Observation) string {
@@ -50,36 +33,30 @@ func legacySource(t *testing.T, b Book, capturedAt string, o Observation) string
 	return o.ID
 }
 
-// A store written before 0.9.7 is moved to the fixed names the first time it is opened, at its own path or after the folder moved, and
-// its pages stay unchanged pages.
-func TestStoreWrittenBefore097MovesToTheFixedNames(t *testing.T) {
-	for _, openAt := range []string{"/work/old", "/work/new"} {
-		root := t.TempDir()
-		old := Book{Root: root, Scope: "/work/old"}
-		o, err := old.Capture(Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := old.Ingest(Draft{Title: "page citing a source", Lesson: "Check.", AppliesTo: "a", Kind: "rule", Scene: "when writing", Sources: []string{o.ID}}); err != nil {
-			t.Fatal(err)
-		}
-		toLegacyLayout(t, root, old.Scope)
-		b := Book{Root: root, Scope: openAt}
-		if live, err := b.Live(); err != nil || len(live) != 1 {
-			t.Fatalf("%s: the page is found: %+v %v", openAt, live, err)
-		}
-		if report, err := b.Lint(); err != nil || len(report.Issues) != 0 {
-			t.Fatalf("%s: nothing to fix: %+v %v", openAt, report.Issues, err)
-		}
-		for _, area := range storeAreas {
-			if _, err := os.Lstat(filepath.Join(root, area, digest([]byte(old.Scope)))); !os.IsNotExist(err) {
-				t.Fatalf("%s: %s was moved to the fixed name", openAt, area)
-			}
-		}
+// 0.9.7: the store keeps the names 0.9.6 gave it (the hash of the path it was first opened at), so a store 0.9.6 wrote is read as it is,
+// at its own path and, once its name is recorded, after a move; nothing is moved or renamed.
+func TestStoreWrittenBy096KeepsItsNames(t *testing.T) {
+	root := t.TempDir()
+	copyTree(t, filepath.Join("testdata", "v091"), root)
+	before, _ := os.ReadDir(filepath.Join(root, "wiki", "lessons"))
+	at := Book{Root: root, Scope: "/work/project"}
+	if live, err := at.Live(); err != nil || len(live) != 2 {
+		t.Fatalf("read at its own path: %+v %v", live, err)
+	}
+	moved := Book{Root: root, Scope: "/moved/somewhere/project"}
+	if live, err := moved.Live(); err != nil || len(live) != 2 {
+		t.Fatalf("read after a move: %+v %v", live, err)
+	}
+	if report, err := moved.Lint(); err != nil || len(report.Issues) != 0 {
+		t.Fatalf("nothing to fix after a move: %+v %v", report.Issues, err)
+	}
+	after, _ := os.ReadDir(filepath.Join(root, "wiki", "lessons"))
+	if len(before) != len(after) || before[0].Name() != after[0].Name() || after[0].Name() != digest([]byte("/work/project")) {
+		t.Fatalf("nothing is moved or renamed: %v -> %v", before, after)
 	}
 }
 
-// A waiting source captured before 0.9.7 under a path the store no longer knows cannot be checked: it is not offered for sorting and lint
+// A waiting source captured before 0.9.7 under a path the store does not know cannot be checked: it is not offered for sorting and lint
 // names it. Once the path is remembered (a move found by the hook remembers the previous path), it checks and is offered again.
 func TestOldSourceIDsCheckWithTheRememberedPath(t *testing.T) {
 	root := t.TempDir()
@@ -102,46 +79,29 @@ func TestOldSourceIDsCheckWithTheRememberedPath(t *testing.T) {
 	}
 }
 
-// Two stores written before 0.9.7 under different paths (a rename fixed by hand by copying): the current path's becomes the store, and the
-// other is named until every file in it has been copied.
-func TestLeftoverStoreFromAnotherPathIsNamedUntilCopied(t *testing.T) {
+// A store under another name beside this one (written at another path by an older shikii, or copied in by hand) is named until every
+// file in it is in this store.
+func TestStoreUnderAnotherNameIsNamedUntilCopied(t *testing.T) {
 	root := t.TempDir()
-	old := Book{Root: root, Scope: "/work/old"}
-	conv := seed(t, old, 1)
-	if _, err := old.Ingest(draft(conv, "page citing a conversation")); err != nil {
+	b := Book{Root: root, Scope: "/work/p"}
+	if _, err := b.Capture(Observation{Kind: "test", Title: "here", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := old.Capture(Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}); err != nil {
+	other := filepath.Join(root, "records", "wiki-sources", digest([]byte("/work/elsewhere")))
+	if err := os.MkdirAll(other, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	toLegacyLayout(t, root, old.Scope)
-	h, n := digest([]byte(old.Scope)), digest([]byte("/work/new"))
-	var skipped string
-	for _, area := range storeAreas {
-		_ = filepath.Walk(filepath.Join(root, area, h), func(p string, info os.FileInfo, err error) error {
-			if err != nil || strings.HasPrefix(info.Name(), ".") && !info.IsDir() {
-				return err
-			}
-			rel, _ := filepath.Rel(filepath.Join(root, area, h), p)
-			if info.IsDir() {
-				return os.MkdirAll(filepath.Join(root, area, n, rel), 0o700)
-			}
-			if skipped == "" && area == "records/wiki-sources" {
-				skipped = p // one file left uncopied
-				return nil
-			}
-			data, _ := os.ReadFile(p)
-			return os.WriteFile(filepath.Join(root, area, n, rel), []byte(strings.ReplaceAll(string(data), h, n)), 0o600)
-		})
+	if err := os.WriteFile(filepath.Join(other, "0000000000000001.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	moved := Book{Root: root, Scope: "/work/new"}
-	if stores, err := moved.OtherPathStores(); err != nil || strings.Join(stores, ",") != "records/wiki-sources/"+h {
-		t.Fatalf("the old store with a file left uncopied is named: %v %v", stores, err)
+	if stores, err := b.OtherPathStores(); err != nil || len(stores) != 1 || !strings.HasSuffix(stores[0], filepath.Base(other)) {
+		t.Fatalf("the other store is named: %v %v", stores, err)
 	}
-	data, _ := os.ReadFile(skipped)
-	rel, _ := filepath.Rel(filepath.Join(root, "records/wiki-sources", h), skipped)
-	_ = os.WriteFile(filepath.Join(root, "records/wiki-sources", storeDirName, rel), data, 0o600)
-	if stores, err := moved.OtherPathStores(); err != nil || len(stores) != 0 {
-		t.Fatalf("a fully copied old store is not named: %v %v", stores, err)
+	own := filepath.Join(root, "records", "wiki-sources", store.StoreName(root, b.Scope))
+	if err := os.WriteFile(filepath.Join(own, "0000000000000001.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if stores, err := b.OtherPathStores(); err != nil || len(stores) != 0 {
+		t.Fatalf("once copied it is not named: %v %v", stores, err)
 	}
 }
