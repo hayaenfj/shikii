@@ -54,7 +54,7 @@ GitHub Releases の最新安定版から、利用中の OS・CPU 向けの本体
 
 初期化は `.shikii/` を Git の未追跡ファイルから除く(私的な会話が入るため)。コミットするものは、除外を外して自分で足す。
 
-**フォルダを移す・名前を変える時:** 置き場の名と `.shikii/project.json` の印はプロジェクトのパスで決まる。移しただけだと hook が止まり、印だけ直すと wiki が空に見える(記事と原資料が前のパスの名の置き場に残る)。0.9.2 からは依頼の前の hook がどちらかをエージェントに伝え、`shikii wiki lint` は残った置き場を `other-path-store` と出す。前のパスで控えた原資料は、移した後もそのまま使える(記事の出典のハッシュで確かめるので、控え直さなくてよい。0.9.5)。直し方は作法の [references/wiki.md](../skills/shikii/references/wiki.md) の「Moving or renaming the project folder」(古い置き場は消さずに写す)。
+**フォルダを移す・名前を変える時:** 置き場の名と `.shikii/project.json` の印はプロジェクトのパスで決まる。移しただけだと hook が止まり、印だけ直すと wiki が空に見える(記事と原資料が前のパスの名の置き場に残る)。0.9.2 からは依頼の前の hook がどちらかをエージェントに伝え、`shikii wiki lint` は残った置き場を `other-path-store` と出す。前のパスで控えた原資料は、移した後もそのまま使える(記事の出典のハッシュで確かめるので、控え直さなくてよい。0.9.5)。まだどの記事も出典にしていない前のパスの原資料だけは `source-from-other-path` と出るので、使う時は控え直す。直し方は作法の [references/wiki.md](../skills/shikii/references/wiki.md) の「Moving or renaming the project folder」(古い置き場は消さずに写す)。
 
 答え合わせの画面そのもの(`web/`、Svelte + Tailwind CSS)を直すには Node 24 が要る(`make web`)。使うだけなら要らない: 組んだ画面はコミットされ、実行ファイルに埋め込まれている。
 

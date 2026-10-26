@@ -1000,6 +1000,11 @@ func (b Book) Lint() (Report, error) {
 	for _, s := range others {
 		report.Issues = append(report.Issues, Issue{Kind: "other-path-store", Store: s})
 	}
+	if waiting, err := b.UncheckedWaiting(); err == nil { // waiting sources captured under the previous path (cited ones are checked by the citation)
+		for _, id := range waiting {
+			report.Issues = append(report.Issues, Issue{Kind: "source-from-other-path", Source: id})
+		}
+	}
 	dir, err := b.directory(false, "pages")
 	if os.IsNotExist(err) {
 		return report, nil

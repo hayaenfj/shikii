@@ -263,8 +263,50 @@ func TestSourcesCapturedUnderThePreviousPathStayUsable(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, issue := range report.Issues {
-		if issue.Kind != "other-path-store" || !strings.HasSuffix(issue.Store, digest([]byte(old.Scope))) {
-			t.Errorf("after the move only the old stores are reported, never a source to capture again: %+v", issue)
+		switch {
+		case issue.Kind == "other-path-store" && strings.HasSuffix(issue.Store, digest([]byte(old.Scope))):
+		case issue.Kind == "source-from-other-path" && issue.Source == stray.ID: // only the waiting source no page cites
+		default:
+			t.Errorf("a cited source captured under the previous path is never reported as one to capture again: %+v", issue)
 		}
+	}
+}
+
+// 0.9.5 audit, middle 1: a source captured under the previous path that no page cites yet (still waiting to be sorted) cannot be checked by its id
+// or by a citation. It made every wiki query fail after the move ("the hash of the saved source record does not match"), so the knowledge page was
+// empty. It is now left out of the waiting sources, and lint names it as source-from-other-path (capture the same evidence again to use it).
+func TestPendingSourceFromThePreviousPathDoesNotBreakTheWiki(t *testing.T) {
+	root := t.TempDir()
+	old := Book{Root: root, Scope: "/work/old"}
+	conv := seed(t, old, 1)
+	if _, err := old.Ingest(draft(conv, "a page")); err != nil {
+		t.Fatal(err)
+	}
+	waiting, err := old.Capture(Observation{Kind: "test", Title: "not sorted yet", Content: "x", Reference: "r", Version: "v1", ObservedAt: time.Unix(3, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	moveWikiStores(t, root, old.Scope, "/work/new")
+	moved := Book{Root: root, Scope: "/work/new"}
+	v, err := moved.Query("")
+	if err != nil || len(v.Lessons) != 1 {
+		t.Fatalf("the wiki stays readable after the move: %v %d", err, len(v.Lessons))
+	}
+	for _, o := range v.Observations {
+		if o.ID == waiting.ID {
+			t.Fatal("a source that cannot be checked is not offered for sorting")
+		}
+	}
+	report, err := moved.Lint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasIssue(report.Issues, "source-from-other-path") {
+		t.Fatalf("lint names the waiting source captured under the previous path: %+v", report.Issues)
+	}
+	if fresh, err := moved.Capture(Observation{Kind: "test", Title: "new", Content: "y", Reference: "r", Version: "v1", ObservedAt: time.Unix(4, 0)}); err != nil {
+		t.Fatal(err)
+	} else if v, err := moved.Query(""); err != nil || len(v.Observations) == 0 || v.Observations[0].ID != fresh.ID {
+		t.Fatalf("a source captured under the new path is offered as before: %v %+v", err, v.Observations)
 	}
 }

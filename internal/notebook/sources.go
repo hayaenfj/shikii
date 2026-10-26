@@ -236,6 +236,9 @@ func (b Book) PendingObservations() ([]Observation, error) {
 		} else if !os.IsNotExist(err) {
 			return nil, err
 		}
+		if b.fromOtherPath(dir, id) { // no page cites it, so nothing can check it: lint names it, and it is not offered for sorting
+			continue
+		}
 		o, err := b.readObservation(dir, id, "")
 		if err != nil {
 			return nil, err
@@ -346,6 +349,46 @@ func notCopied(old, own string) (bool, error) {
 		return nil
 	})
 	return left, err
+}
+
+// fromOtherPath reports whether a captured source record is whole but was captured under another path (its id no longer matches this path).
+func (b Book) fromOtherPath(dir, id string) bool {
+	data, err := readSourceRecord(filepath.Join(dir, id+".json"))
+	if err != nil {
+		return false
+	}
+	var o Observation
+	if json.Unmarshal(data, &o) != nil || o.ID != id || !o.valid() {
+		return false
+	}
+	_, err = b.readObservation(dir, id, "")
+	return err != nil
+}
+
+// UncheckedWaiting lists the waiting source records captured under another path: no page cites them, so they cannot be checked or sorted
+// until the same evidence is captured again under this path.
+func (b Book) UncheckedWaiting() ([]string, error) {
+	dir, err := b.directory(false, "sources")
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	ids, err := capturedIDs(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, id := range ids {
+		if _, err := os.Lstat(filepath.Join(dir, id+".reviewed")); err == nil {
+			continue
+		}
+		if b.fromOtherPath(dir, id) {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // sameEvidence reports whether two captured source records hold the same evidence (everything but the id): the same observation captured again
