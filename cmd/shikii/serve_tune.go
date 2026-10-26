@@ -40,9 +40,8 @@ func (s *server) specRef(id string) (specRef, error) {
 }
 
 // runTuneCaptured runs runTune with its own report destination. Only changes to specs of the same work are serialized.
-func (s *server) runTuneCaptured(o tuneOpts) (*tuneResult, string, error) {
-	s.calibMu.Lock()
-	defer s.calibMu.Unlock()
+func (s *server) runTuneCaptured(w http.ResponseWriter, o tuneOpts) (*tuneResult, string, error) {
+	defer s.lockCalibration(w)()
 	var buf bytes.Buffer
 	o.output = &buf
 	var res *tuneResult
@@ -145,8 +144,7 @@ func (s *server) handleTuneVariant(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("a rewording needs a question or at least one option description"))
 		return
 	}
-	s.calibMu.Lock() // read and write under one lock (do not write at the same time as tune --write or adopt)
-	defer s.calibMu.Unlock()
+	defer s.lockCalibration(w)() // read and write under one lock (do not write at the same time as tune --write or adopt)
 	fresh, err := spec.Load(ref.path)
 	if err != nil {
 		writeErr(w, 500, err)
@@ -217,7 +215,7 @@ func (s *server) handleTuneRun(w http.ResponseWriter, r *http.Request) {
 	s.tuneErr[ref.id] = ""
 	s.mu.Unlock()
 	go func() {
-		_, report, err := s.runTuneCaptured(s.tuneOptsFor(ref, propose))
+		_, report, err := s.runTuneCaptured(nil, s.tuneOptsFor(ref, propose)) // no reply waits: the route answered 202
 		s.mu.Lock()
 		s.tuning[ref.id] = false
 		if err != nil {
@@ -238,7 +236,7 @@ func (s *server) handleTuneSync(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	res, report, err := s.runTuneCaptured(s.tuneOptsFor(ref, propose))
+	res, report, err := s.runTuneCaptured(w, s.tuneOptsFor(ref, propose))
 	if err != nil {
 		writeErr(w, 422, fmt.Errorf("%v\n%s", err, report))
 		return
@@ -269,8 +267,7 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// read and write under one lock (so concurrent adopts of the same run get 409); the run's own lock is shared with the agent's adoption (hook variants check)
-	s.calibMu.Lock()
-	defer s.calibMu.Unlock()
+	defer s.lockCalibration(w)()
 	res, err := loadTuneResult(s.o.wikiDir, req.Run)
 	if err != nil {
 		writeErr(w, 404, fmt.Errorf("unknown run %q", req.Run))
@@ -346,8 +343,7 @@ func (s *server) handleTuneReview(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("run and keep (true: keep the new wording, false: undo it) are required"))
 		return
 	}
-	s.calibMu.Lock()
-	defer s.calibMu.Unlock()
+	defer s.lockCalibration(w)()
 	res, err := loadTuneResult(s.o.wikiDir, req.Run)
 	if err != nil {
 		writeErr(w, 404, fmt.Errorf("unknown run %q", req.Run))

@@ -140,16 +140,16 @@ func allowLongResponse(w http.ResponseWriter) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(longResponseLimit))
 }
 
-// longRoutes take or wait for the calibration lock (a background tune holds it up to 30 minutes) or calibrate themselves, so their replies may
-// come after newHTTPServer's WriteTimeout. They are registered through longWork (0.9.6 audit of the HTTP limits).
-var longRoutes = []string{"/v1/label", "/v1/tune", "/v1/tune/run", "/v1/tune/sync", "/v1/tune/adopt", "/v1/tune/review", "/v1/tune/variant"}
-
-// longWork extends the write deadline before the handler runs; reading the request is still bounded by ReadTimeout.
-func longWork(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+// lockCalibration takes the calibration lock and returns its release. A background tune can hold the lock for its model run and the
+// calibration after it, so the reply waiting here (w) first gets its write deadline extended past newHTTPServer's WriteTimeout. The extension
+// belongs to the lock, not to a list of routes: before 0.9.7 every audit found a route that reached the lock without being on the list.
+// w is nil only in a goroutine no reply waits for. Only this function touches calibMu (calib_lock_writer_test.go).
+func (s *server) lockCalibration(w http.ResponseWriter) func() {
+	if w != nil {
 		allowLongResponse(w)
-		h(w, r)
 	}
+	s.calibMu.Lock()
+	return s.calibMu.Unlock
 }
 
 // longResponseLimit bounds a long handler's reply: a calibration that asks the model again for many earlier truths, or a tune over every fold.
@@ -239,24 +239,29 @@ func (o *serveOpts) resolve() {
 	}
 }
 
-func newServer(o serveOpts) http.Handler {
+func newServer(o serveOpts) http.Handler { return newServerState(o).handler() }
+
+func newServerState(o serveOpts) *server {
 	o.resolve()
-	s := &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]calibrationReport{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
+	return &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]calibrationReport{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
+}
+
+func (s *server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleUI)
 	mux.HandleFunc("/v1/specs", s.handleSpecs)
 	mux.HandleFunc("/v1/decide", s.handleDecide)
-	mux.HandleFunc("/v1/label", longWork(s.handleLabel))
+	mux.HandleFunc("/v1/label", s.handleLabel)
 	mux.HandleFunc("/v1/queue", s.handleQueue)
 	mux.HandleFunc("/v1/answered", s.handleAnswered)
 	mux.HandleFunc("/v1/redo", s.handleRedo)
 	mux.HandleFunc("/v1/status", s.handleStatus)
-	mux.HandleFunc("/v1/tune", longWork(s.handleTuneGet))
-	mux.HandleFunc("/v1/tune/run", longWork(s.handleTuneRun))
-	mux.HandleFunc("/v1/tune/sync", longWork(s.handleTuneSync))
-	mux.HandleFunc("/v1/tune/adopt", longWork(s.handleTuneAdopt))
-	mux.HandleFunc("/v1/tune/review", longWork(s.handleTuneReview))
-	mux.HandleFunc("/v1/tune/variant", longWork(s.handleTuneVariant))
+	mux.HandleFunc("/v1/tune", s.handleTuneGet)
+	mux.HandleFunc("/v1/tune/run", s.handleTuneRun)
+	mux.HandleFunc("/v1/tune/sync", s.handleTuneSync)
+	mux.HandleFunc("/v1/tune/adopt", s.handleTuneAdopt)
+	mux.HandleFunc("/v1/tune/review", s.handleTuneReview)
+	mux.HandleFunc("/v1/tune/variant", s.handleTuneVariant)
 	mux.HandleFunc("/v1/wiki", s.handleWikiList)
 	mux.HandleFunc("/v1/wiki/claim", s.handleWikiClaim)
 	mux.HandleFunc("/v1/wiki/notebook", s.handleNotebook)
@@ -632,7 +637,7 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 	// An answer to a decision settled after adding context also goes to the minimal question (rungs = 2). Lines are drawn per rung
 	resp := map[string]any{"trace_id": l.TraceID, "spec": l.SpecID, "model": l.Model, "truth": l.Truth, "weight": l.Weight, "source": l.Source, "rungs": len(labels), "calibrated": false}
 	if s.o.autoCalibrate {
-		if report, did := s.maybeCalibrate(rec.SpecID, rec.SpecHash, rec.Model); did {
+		if report, did := s.maybeCalibrate(w, rec.SpecID, rec.SpecHash, rec.Model); did {
 			resp["calibrated"] = true
 			resp["calibration"] = report
 		}
@@ -642,7 +647,7 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 
 // maybeCalibrate calibrates and writes back only when the (hash, model) truths reach min_n and there is no line yet (or it is old).
 // Even if it fails, the label handling stays successful (it is only noted in the report).
-func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
+func (s *server) maybeCalibrate(w http.ResponseWriter, specID, hash, model string) (string, bool) {
 	sp, err := s.spec(specID)
 	if err != nil || !sp.LiveHash(hash) || model == "" {
 		return "", false
@@ -658,8 +663,7 @@ func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 	if err != nil || len(labels) < sp.Eval.MinN {
 		return "", false
 	}
-	s.calibMu.Lock()
-	defer s.calibMu.Unlock()
+	defer s.lockCalibration(w)()
 	var buf bytes.Buffer
 	ef := s.o.ef
 	ef.model = model

@@ -268,10 +268,10 @@ func TestProjectTuningKeepsProcessOutput(t *testing.T) {
 	defer func() { stdout = original }()
 	a, b := &server{}, &server{}
 	doneA, doneB := make(chan struct{}), make(chan struct{})
-	go func() { defer close(doneA); a.runTuneCaptured(tuneOpts{specPath: paths[0]}) }()
+	go func() { defer close(doneA); a.runTuneCaptured(nil, tuneOpts{specPath: paths[0]}) }()
 	writerA := openWriter(paths[0])
 	defer writerA.Close()
-	go func() { defer close(doneB); b.runTuneCaptured(tuneOpts{specPath: paths[1]}) }()
+	go func() { defer close(doneB); b.runTuneCaptured(nil, tuneOpts{specPath: paths[1]}) }()
 	writerB := openWriter(paths[1])
 	defer writerB.Close()
 	writerA.Close()

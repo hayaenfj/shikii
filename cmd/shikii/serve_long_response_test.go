@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,21 +47,70 @@ func TestLongHandlersOutliveTheWriteTimeout(t *testing.T) {
 	}
 }
 
-// The answer handler (with the automatic calibration) and the synchronous tune extend their deadline. A middleware waits past the write
-// timeout before the handler runs, standing in for long work: only a handler that extends its own deadline still gets its reply through.
-func TestAnswerAndSyncTuneExtendTheirDeadline(t *testing.T) {
+// An answer that brings the truths to min_n calibrates in the same request, so it waits for the calibration lock. While a background tune holds
+// the lock past the write timeout, that reply still arrives (the answer was saved; before 0.9.6 the page showed a connection error).
+func TestAnswerThatCalibratesBehindATuneStillReplies(t *testing.T) {
+	dir := t.TempDir()
+	specsDir := filepath.Join(dir, "decisions")
+	if err := os.MkdirAll(specsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSpec(t, specsDir, "true") // min_n 2
+	model := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	var ef endpointFlags
+	ef.model, ef.local = "m", model.URL
+	s := newServerState(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), ef: ef, autoCalibrate: true})
+	h := s.handler()
+	ts := httptest.NewUnstartedServer(h)
+	ts.Config = newHTTPServer(h)
+	ts.Config.WriteTimeout = 100 * time.Millisecond
+	ts.Start()
+	defer ts.Close()
+	label := func(trace any) (map[string]any, error) {
+		resp, err := http.Post(ts.URL+"/v1/label", "application/json", strings.NewReader(fmt.Sprintf(`{"trace_id":%q,"truth":"change_request"}`, trace)))
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		return out, json.NewDecoder(resp.Body).Decode(&out)
+	}
+	var traces []any
+	for _, m := range []string{"x", "y"} {
+		code, d := postJSON(t, ts.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": m}})
+		if code != 200 {
+			t.Fatalf("decide: %d %v", code, d)
+		}
+		traces = append(traces, d["trace_id"])
+	}
+	if _, err := label(traces[0]); err != nil {
+		t.Fatal(err)
+	}
+	release := s.lockCalibration(nil) // a background tune holds the lock
+	time.AfterFunc(300*time.Millisecond, release)
+	out, err := label(traces[1])
+	if err != nil {
+		t.Fatalf("the answer's reply arrives after waiting for the lock past the write timeout: %v", err)
+	}
+	if out["calibrated"] != true {
+		t.Fatalf("precondition: the second answer calibrates (so it waited for the lock): %v", out)
+	}
+}
+
+// 0.9.6 audit of the HTTP limits, middle 1, made structural in 0.9.7: a reply that waits for the calibration lock (a background tune holds it
+// up to 40 minutes) is not cut by the write timeout, because taking the lock extends the reply's deadline. The test holds the lock past the
+// write timeout, as a background tune would, and every route that waits for it still answers; status, which does not wait, is still cut.
+func TestEveryRouteWaitingForTheLockOutlivesTheWriteTimeout(t *testing.T) {
 	dir := t.TempDir()
 	specsDir := filepath.Join(dir, "decisions")
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeSpec(t, specsDir, "true")
-	model := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	var ef endpointFlags
-	ef.model, ef.local = "m", model.URL
-	h := newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), ef: ef, autoCalibrate: true})
+	s := newServerState(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), autoCalibrate: true})
+	h := s.handler()
 	late := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/label" || r.URL.Path == "/v1/tune/sync" {
+		if r.URL.Path == "/v1/status" {
 			time.Sleep(300 * time.Millisecond)
 		}
 		h.ServeHTTP(w, r)
@@ -70,63 +120,28 @@ func TestAnswerAndSyncTuneExtendTheirDeadline(t *testing.T) {
 	ts.Config.WriteTimeout = 100 * time.Millisecond
 	ts.Start()
 	defer ts.Close()
-	post := func(path, body string) (int, error) {
+	reply := func(path, body string) error {
 		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(body))
-		if err != nil {
-			return 0, err
-		}
-		defer resp.Body.Close()
-		_, err = io.ReadAll(resp.Body)
-		return resp.StatusCode, err
-	}
-	code, d := postJSON(t, ts.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "x"}})
-	if code != 200 {
-		t.Fatalf("decide: %d %v", code, d)
-	}
-	if code, err := post("/v1/label", fmt.Sprintf(`{"trace_id":%q,"truth":"change_request"}`, d["trace_id"])); err != nil || code != 200 {
-		t.Fatalf("the answer's reply arrives after the write timeout: %d %v", code, err)
-	}
-	if code, err := post("/v1/tune/sync", `{"spec":"intent"}`); err != nil || code == 0 {
-		t.Fatalf("the synchronous tune's reply arrives after the write timeout: %d %v", code, err)
-	}
-}
-
-// 0.9.6 audit of the HTTP limits, middle 1: the handlers under /v1/tune and /v1/label all take or wait for the calibration lock (a background
-// tune holds it up to 30 minutes), and adopting a wording calibrates again; only two of them extended their deadline, so adding, keeping or
-// adopting a wording behind a running tune lost its reply after 2 minutes although it was saved. Every route in longRoutes extends its
-// deadline at registration; a route outside it (status) is still cut, which shows the check would catch a missing one.
-func TestEveryLongRouteOutlivesTheWriteTimeout(t *testing.T) {
-	dir := t.TempDir()
-	specsDir := filepath.Join(dir, "decisions")
-	if err := os.MkdirAll(specsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeSpec(t, specsDir, "true")
-	h := newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), autoCalibrate: true})
-	late := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(300 * time.Millisecond) // past the write timeout before the handler runs
-		h.ServeHTTP(w, r)
-	})
-	ts := httptest.NewUnstartedServer(late)
-	ts.Config = newHTTPServer(late)
-	ts.Config.WriteTimeout = 100 * time.Millisecond
-	ts.Start()
-	defer ts.Close()
-	reply := func(path string) error {
-		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(`{"spec":"intent"}`))
 		if err == nil {
 			_, err = io.ReadAll(resp.Body)
 			resp.Body.Close()
 		}
 		return err
 	}
-	for _, path := range longRoutes {
-		if err := reply(path); err != nil {
-			t.Errorf("%s answers after the write timeout: %v", path, err)
+	for path, body := range map[string]string{
+		"/v1/tune/sync":    `{"spec":"intent"}`,
+		"/v1/tune/variant": `{"spec":"intent","name":"v2","question":"q"}`,
+		"/v1/tune/adopt":   `{"spec":"intent","run":"r","meaning_same":true}`,
+		"/v1/tune/review":  `{"spec":"intent","run":"r","keep":true}`,
+	} {
+		release := s.lockCalibration(nil) // a background tune holds the lock
+		time.AfterFunc(300*time.Millisecond, release)
+		if err := reply(path, body); err != nil {
+			t.Errorf("%s answers after waiting for the lock past the write timeout: %v", path, err)
 		}
 	}
-	if err := reply("/v1/status"); err == nil {
-		t.Error("precondition: a route outside longRoutes is cut by the write timeout")
+	if err := reply("/v1/status", ""); err == nil {
+		t.Error("precondition: a reply that does not wait for the lock is still cut by the write timeout")
 	}
 }
 
