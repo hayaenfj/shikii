@@ -398,7 +398,7 @@ func hookDecide(agent, specID string, inputs map[string]string, project string, 
 	attachReceipt(sp, st, d)
 	l := localize(sp, d, hookLang())
 	out := hookOutcome(specID, d, l)
-	page := pageRef(filepath.Dir(agent))
+	page := pageRef(feedbackScope(filepath.Dir(agent))) // absolute: MCP started with --store .shikii would look up and start a second page under "."
 	out.Context = strings.ReplaceAll(out.Context, hookPageURL+"/", page)
 	out.System = strings.ReplaceAll(out.System, hookPageURL+"/", page)
 	if d.Band != decide.Abstain {
@@ -1314,7 +1314,7 @@ func stopSummary(agent string, sess *hookSession) string {
 		return ""
 	}
 	sess.Reported = waiting
-	page := pageRef(filepath.Dir(agent)) // start it in the background if not running. The person never types a start command
+	page := pageRef(feedbackScope(filepath.Dir(agent))) // absolute: MCP started with --store .shikii would look up and start a second page under "." // start it in the background if not running. The person never types a start command
 	return waitingNotice(n, page, hookLoc{Lang: hookLang()})
 }
 
