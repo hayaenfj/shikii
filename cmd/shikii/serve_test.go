@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -373,3 +375,38 @@ func TestServeUIExplainsItself(t *testing.T) {
 }
 
 func bindHostFor(marker string) string { return systemone.BindHostFor([]string{marker}, "") }
+
+func TestHTTPServerLimitsSlowConnections(t *testing.T) {
+	srv := newHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	if srv.ReadHeaderTimeout <= 0 || srv.ReadTimeout <= 0 || srv.WriteTimeout <= 0 || srv.IdleTimeout <= 0 || srv.MaxHeaderBytes <= 0 {
+		t.Fatalf("the HTTP server must bound headers, reads, writes, idle connections and header size: %+v", srv)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	srv.ReadHeaderTimeout = 50 * time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ln) }()
+	defer srv.Close()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := io.WriteString(conn, "GET / HTTP/1.1\r\nHost: localhost\r\nX-Slow:"); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1)
+	if _, err := conn.Read(buf); err != io.EOF {
+		t.Fatalf("an incomplete header must be closed after ReadHeaderTimeout, got %v", err)
+	}
+}

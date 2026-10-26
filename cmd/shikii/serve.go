@@ -99,17 +99,32 @@ func cmdServe(args []string) error {
 		handler = newProjectHub(common, o)
 	}
 	handler = localHostOnly(handler) // so another site cannot read records or work records through DNS rebinding (audit 0.8.1-1)
+	httpServer := newHTTPServer(handler)
 	if !auto {
-		return http.Serve(ln, handler)
+		return httpServer.Serve(ln)
 	}
 	errc := make(chan error, 1)
-	go func() { errc <- http.Serve(ln, handler) }()
+	go func() { errc <- httpServer.Serve(ln) }()
 	// Wait for the local model after opening the port (status, queue and wiki can answer without a model; the hook does not wait)
 	if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
 		ln.Close()
 		return err
 	}
 	return <-errc
+}
+
+// newHTTPServer bounds every phase of an HTTP connection. The longest handler operation is a
+// model decision with a 60-second context deadline, so the write deadline leaves another minute
+// for the response while slow request headers and bodies are cut off much earlier.
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      2 * time.Minute,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    64 << 10,
+	}
 }
 
 // listenPage starts listening. For the project's page started by the hook (port 0), it takes a free port, writes a mark with the port and pid
