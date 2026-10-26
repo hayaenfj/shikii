@@ -1572,6 +1572,9 @@ func labelTrace(st store.Store, specID, trace, truth string, weight float64, sou
 	if err != nil {
 		return err
 	}
+	if source == "outcome" {
+		return st.AppendLabelsOnce(labels) // decided by hooks that can race or retry: each outcome truth lands once (0.9.3)
+	}
 	return st.AppendLabels(labels)
 }
 

@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -669,4 +670,43 @@ func (s Store) scanJSONL(path string, fn func(line []byte) error) error {
 		}
 	}
 	return sc.Err()
+}
+
+// AppendLabelsOnce appends labels that are not already there with the same trace, spec hash, model, truth and source, under a lock on
+// the spec's labels (0.9.3). Outcome truths are decided by hooks that can race (the original session's hook gives up its lock after
+// 2 seconds) or retry after a failed save; this makes each one land once. A different truth for the same trace is still written.
+func (s Store) AppendLabelsOnce(ls []Label) error {
+	if len(ls) == 0 {
+		return nil
+	}
+	lock, err := s.openFile(s.labelsPath(ls[0].SpecID)+".lock", os.O_CREATE|os.O_RDWR)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	key := func(l Label) string {
+		return l.TraceID + "\x00" + l.SpecHash + "\x00" + l.Model + "\x00" + l.Truth + "\x00" + l.Source
+	}
+	have := map[string]bool{}
+	if err := s.scanJSONL(s.labelsPath(ls[0].SpecID), func(line []byte) error {
+		var l Label
+		if json.Unmarshal(line, &l) == nil {
+			have[key(l)] = true
+		}
+		return nil
+	}); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var fresh []Label
+	for _, l := range ls {
+		if !have[key(l)] {
+			have[key(l)] = true
+			fresh = append(fresh, l)
+		}
+	}
+	return s.AppendLabels(fresh)
 }

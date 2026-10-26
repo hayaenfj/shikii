@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // 0.9.3: a deferred outcome whose session was closed or killed mid-turn (no organizing, no Stop, no next request) is settled
@@ -237,5 +239,36 @@ func TestStaleStopLeavesNewTurnGrouping(t *testing.T) {
 	}
 	if l, ok := doneLabel(t, root, done2); ok {
 		t.Fatalf("a late Stop must not settle the new turn's outcome: %+v", l)
+	}
+}
+
+// 0.9.3: the outcome truth goes through AppendLabelsOnce, so a hook that proceeds without the session lock (after waiting 2 seconds)
+// or retries after a failed save cannot add the same outcome twice.
+func TestOutcomeTruthIsWrittenOnceThroughLabelTrace(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	repo := gitRepo(t)
+	agent := hookEnv(t, model, repo)
+	t.Chdir(repo)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "once", "cwd": repo, "prompt": "update the README install steps for macOS and Linux users"})
+	runHook(t, "stop", map[string]any{"session_id": "once", "cwd": repo, "last_assistant_message": "done"})
+	st := store.Store{Dir: agent}
+	recs, _ := st.Records("done-as-asked", 0)
+	if len(recs) != 1 {
+		t.Fatalf("one done-as-asked record, got %d", len(recs))
+	}
+	for i := 0; i < 3; i++ {
+		if err := labelTrace(st, "done-as-asked", recs[0].TraceID, "yes", outcomeKeptWeight, "outcome"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := 0
+	all, _ := st.Labels("done-as-asked", recs[0].SpecHash, recs[0].Model)
+	for _, l := range all {
+		if l.TraceID == recs[0].TraceID && l.Source == "outcome" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("the same outcome truth lands once, got %d", n)
 	}
 }
