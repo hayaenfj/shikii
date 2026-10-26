@@ -29,6 +29,8 @@ type planningFrame struct {
 	Digest  string            `json:"digest,omitempty"`
 	Result  *planningReceipt  `json:"result,omitempty"`
 	Recent  []planningTurn    `json:"recent,omitempty"`
+	// how this message is grouped with the previous request; continues_previous in the submit corrects it (0.9.3)
+	Grouping *requestGrouping `json:"grouping,omitempty"`
 }
 
 type planningQuote struct {
@@ -49,6 +51,9 @@ type planningRequest struct {
 	Agreed    *planningFact `json:"agreed,omitempty"`
 	Open      *planningFact `json:"open,omitempty"`
 	Pages     []string      `json:"pages,omitempty"`
+	// ContinuesPrevious is the agent's reading of whether this message only continues or answers the previous request.
+	// It only decides how messages are grouped (never a truth); omitted when unsure (the acknowledgement list decides then)
+	ContinuesPrevious *bool `json:"continues_previous,omitempty"`
 }
 
 type planningReceipt struct {
@@ -91,7 +96,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: organize the conversation for the pre-start judgment. Do not ask the person for input. Pass the JSON below on standard input (for example %[1]s hook plan query <<'JSON') to %[1]s hook plan query to read this turn and the recent conversation; look for related rules and existing decisions by putting topic words in query (not a copy of the request text), and when you use a returned lesson as grounds, set the evidence source to lesson:<id>. Pass the same IDs, search words, agreed and open to %s hook plan submit. Each item is summary and evidence:[{source,quote}] (quoted from the original text), or unknown:true if unknown. Grounds for an agreement need the person's words. The organizing is a hypothesis, never permission to act or the person's truth. When you create or change a rule, test or procedure, write it to the wiki before you finish even if nobody asked (add to or edit the closest page). Details are in the skill's references/planning.md. "+planningShape+"\n", command, command) + string(ids)
+	return fmt.Sprintf("shikii: organize the conversation for the pre-start judgment. Do not ask the person for input. Pass the JSON below on standard input (for example %[1]s hook plan query <<'JSON') to %[1]s hook plan query to read this turn and the recent conversation; look for related rules and existing decisions by putting topic words in query (not a copy of the request text), and when you use a returned lesson as grounds, set the evidence source to lesson:<id>. Pass the same IDs, search words, agreed and open to %s hook plan submit. Each item is summary and evidence:[{source,quote}] (quoted from the original text), or unknown:true if unknown. Grounds for an agreement need the person's words. Set continues_previous to true when this message only continues or answers the previous request (an acknowledgement, a go-ahead, a short follow-up on the same work), false when it is a new request; omit it when unsure (it only decides how messages are grouped). The organizing is a hypothesis, never permission to act or the person's truth. When you create or change a rule, test or procedure, write it to the wiki before you finish even if nobody asked (add to or edit the closest page). Details are in the skill's references/planning.md. "+planningShape+"\n", command, command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
@@ -147,7 +152,7 @@ func cmdHookPlan(args []string) error {
 		if err != nil {
 			return err
 		}
-		if req.Agreed != nil || req.Open != nil {
+		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil {
 			return errors.New("query does not accept organized content")
 		}
 		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": knowledge})
@@ -406,6 +411,13 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 			s.Asked = append(s.Asked, askedItem{Spec: "needs-plan", Trace: d.TraceID})
 		}
 	}
+	if req.ContinuesPrevious != nil {
+		if old := regroup(root, s, *req.ContinuesPrevious); old != "" {
+			if err := moveListingHeader(dir, name, old, s.Request); err != nil {
+				return err
+			}
+		}
+	}
 	s.Planning.Digest, s.Planning.Result = digest, result
 	s.At = time.Now()
 	b, _ := json.MarshalIndent(s, "", "  ")
@@ -426,4 +438,45 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		return fmt.Errorf("saving the context: %w", err)
 	}
 	return nil
+}
+
+// moveListingHeader rewrites the header of this session's working tree listing to the regrouped request, so the Stop still
+// compares with it (the header is the hash of the request it belongs to). Nothing is done without a listing or when it belongs to another request.
+func moveListingHeader(dir *os.Root, name, from, to string) error {
+	files := strings.TrimSuffix(name, ".json") + ".files"
+	f, err := dir.OpenFile(files, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > listingMax+1024 {
+		f.Close()
+		return errors.New("cannot check the working tree listing")
+	}
+	b, err := io.ReadAll(f)
+	f.Close()
+	if err != nil {
+		return err
+	}
+	if !bytes.HasPrefix(b, []byte(listingHeader(from))) {
+		return nil
+	}
+	b = append([]byte(listingHeader(to)), b[len(listingHeader(from)):]...)
+	temp := ".planning-" + store.NewTraceID() + ".tmp"
+	w, err := dir.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer dir.Remove(temp)
+	if _, err := w.Write(b); err != nil {
+		w.Close()
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return dir.Rename(temp, files)
 }

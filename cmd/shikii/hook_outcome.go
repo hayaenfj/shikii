@@ -100,10 +100,62 @@ func settleScope(agent string, s *hookSession, listing string, listed, boundary 
 	return firstErr
 }
 
+// requestGrouping is how this turn's message is grouped with the previous request (0.9.3). The hook decides provisionally with the
+// acknowledgement list; when the agent organizes the turn, its continues_previous (hook plan submit) corrects it in either direction.
+// Settling the previous request's outcome from this message waits until the grouping is final: the organizing, this turn's Stop,
+// or the next request, whichever comes first. The organizing is the agent's hypothesis: it only decides the grouping, never a truth.
+type requestGrouping struct {
+	Joined       bool           `json:"joined"`            // attached to the previous request (now)
+	Settled      bool           `json:"settled,omitempty"` // final: a later organizing no longer moves it
+	Alone        string         `json:"alone"`             // the request when it stands alone
+	AloneText    string         `json:"alone_text,omitempty"`
+	Together     string         `json:"together"` // the request when attached to the previous one
+	TogetherText string         `json:"together_text,omitempty"`
+	Reply        string         `json:"reply"`              // this message (settles the previous outcome when it stands alone)
+	Previous     *completedTurn `json:"previous,omitempty"` // the previous request's reply, kept until the grouping is final
+}
+
+// settleGrouping makes the grouping final and settles the previous request's outcome from this message when it stands alone (inside the lock).
+func settleGrouping(agent string, s *hookSession) {
+	if s.Planning == nil || s.Planning.Grouping == nil || s.Planning.Grouping.Settled {
+		return
+	}
+	g := s.Planning.Grouping
+	if err := settleDone(agent, g.Previous, g.Reply, g.Joined); err != nil {
+		hookLog("outcome: " + err.Error())
+	}
+	g.Settled, g.Previous = true, nil
+}
+
+// regroup applies the agent's continues_previous to this turn (inside the lock, for the current turn only) and makes the grouping final.
+// It returns the request before the change ("" when unchanged), so the caller can move the listing header with it.
+// Ignored once the grouping is final (the Stop already judged this turn with it) or when there is no previous request.
+func regroup(agent string, s *hookSession, continues bool) string {
+	if s.Planning == nil || s.Planning.Grouping == nil || s.Planning.Grouping.Settled || s.Judged {
+		return ""
+	}
+	g := s.Planning.Grouping
+	old := ""
+	if g.Joined != continues && s.Request == map[bool]string{true: g.Together, false: g.Alone}[g.Joined] {
+		old = s.Request
+		g.Joined = continues
+		if continues {
+			s.Request, s.RequestText = g.Together, g.TogetherText
+		} else {
+			s.Request, s.RequestText = g.Alone, g.AloneText
+		}
+	}
+	settleGrouping(agent, s)
+	if old == s.Request {
+		return ""
+	}
+	return old
+}
+
 // settleDone attaches an outcome truth to the previous request's done-as-asked from the shape of the person's next message (inside the lock, at the request boundary).
-// Short replies ("ok", "go on") and the in-between (neither similar nor dissimilar) are not labeled.
-func settleDone(agent string, c *completedTurn, reply string) error {
-	if c == nil || isAckReply(reply) {
+// A message that continues the previous request ("ok", "go on"; continues) and the in-between (neither similar nor dissimilar) are not labeled.
+func settleDone(agent string, c *completedTurn, reply string, continues bool) error {
+	if c == nil || continues {
 		return nil
 	}
 	trace := ""

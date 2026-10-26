@@ -176,7 +176,7 @@ func planJSON(session, turn string) string {
 }
 
 // planningShape shows that agreed and open are objects (Claude first passed an array in every run of audit 0.9.2 English).
-const planningShape = `agreed and open are each one object, not an array: "agreed":{"summary":"...","evidence":[{"source":"current_user","quote":"..."}]}, "open":{"unknown":true}`
+const planningShape = `agreed and open are each one object, not an array: "agreed":{"summary":"...","evidence":[{"source":"current_user","quote":"..."}]}, "open":{"unknown":true}; continues_previous is true, false or left out`
 
 // planningBlockReason is the line of the Stop block when the plan was not sorted out but files were changed.
 func planningBlockReason(sessionID, turnID string, changed int) string {
