@@ -105,7 +105,7 @@ func TestNotebookPreservesSourcesAndRevisionHistory(t *testing.T) {
 func TestNotebookRejectsForeignSourcesTamperingAndSymlinks(t *testing.T) {
 	t.Run("work boundary", func(t *testing.T) {
 		root := t.TempDir()
-		a, b := Book{Root: root, Scope: "/a/project"}, Book{Root: root, Scope: "/b/project"}
+		a, b := Book{Root: root, Scope: "/a/project"}, Book{Root: t.TempDir(), Scope: "/b/project"} // each project has its own store
 		id := seed(t, a, 1)
 		if _, err := a.Ingest(draft(id, "local lesson")); err != nil {
 			t.Fatal(err)

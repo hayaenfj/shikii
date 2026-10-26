@@ -142,7 +142,7 @@ func TestReflectReportsPartialFailuresAndProtectsBoundary(t *testing.T) {
 	if len(grades) != 1 {
 		t.Fatal("a successful provisional score stays, independent of the failed wiki item")
 	}
-	other := newServer(serveOpts{storeDir: st.Dir, projectScope: feedbackScope(gitRepo(t))})
+	other := newServer(serveOpts{storeDir: t.TempDir(), projectScope: feedbackScope(gitRepo(t))}) // another project has its own store
 	q = reflectCall(t, other, map[string]any{"operation": "query"})
 	if len(q["sources"].([]any)) != 0 {
 		t.Fatal("raw text is not returned to another project")

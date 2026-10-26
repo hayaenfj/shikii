@@ -120,7 +120,7 @@ func TestNotebookRelatedPagesAndExactLookup(t *testing.T) {
 	if _, err := b.Ingest(articleDraft(t, reverse, map[string]any{"related": []string{linked.Page.ID}})); err != nil {
 		t.Fatal("allows mutual related links", err)
 	}
-	other := Book{Root: b.Root, Scope: "/other"}
+	other := Book{Root: t.TempDir(), Scope: "/other"} // another project has its own store
 	foreign, err := other.Ingest(draft(seed(t, other, 3), "Foreign"))
 	if err != nil {
 		t.Fatal(err)

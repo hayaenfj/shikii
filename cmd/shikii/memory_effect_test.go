@@ -168,7 +168,7 @@ func TestMemoryEffectRequiresActualDeliveryAndKeepsFirstAssessment(t *testing.T)
 			t.Fatalf("refuses an assessment not tied to an actual delivery and concrete evidence: %v", change)
 		}
 	}
-	other := newServer(serveOpts{storeDir: st.Dir, projectScope: feedbackScope(gitRepo(t))})
+	other := newServer(serveOpts{storeDir: t.TempDir(), projectScope: feedbackScope(gitRepo(t))}) // another project has its own store
 	if memoryEffectSubmit(t, other, id, key, "helpful", "別の仕事", "合成テスト")["complete"] != false {
 		t.Fatal("does not let an assessment be written into another project")
 	}
@@ -219,7 +219,7 @@ func TestMemoryEffectKeepsTheEscapedRawQuoteExactly(t *testing.T) {
 }
 
 func TestMemoryEffectCountsOnlyDeliveredQuotesAndKeepsUnfinishedVisible(t *testing.T) {
-	st, scope, h, _, _ := memoryEffectFixture(t)
+	_, scope, h, _, _ := memoryEffectFixture(t)
 	memoryEffectPrompt(t, scope, "unfinished")
 	memoryEffectPrompt(t, scope, "unfinished") // the same revision is not actually delivered again.
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "unrelated", "cwd": scope, "prompt": "決済障害の監視を説明してください。"})
@@ -227,7 +227,7 @@ func TestMemoryEffectCountsOnlyDeliveredQuotesAndKeepsUnfinishedVisible(t *testi
 	if stats["delivered"] != float64(1) || stats["pending"] != float64(1) || stats["awaiting_feedback"] != float64(1) {
 		t.Fatal("suppressed duplicates and requests that did not match are not added to the delivery count, and unfinished ones stay in the denominator")
 	}
-	other := newServer(serveOpts{storeDir: st.Dir, projectScope: feedbackScope(gitRepo(t))})
+	other := newServer(serveOpts{storeDir: t.TempDir(), projectScope: feedbackScope(gitRepo(t))}) // another project has its own store
 	if memoryEffectStats(t, other)["delivered"] != float64(0) {
 		t.Fatal("another project is not shown the memory quotes or assessments")
 	}

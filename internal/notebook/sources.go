@@ -136,7 +136,7 @@ func (b Book) Capture(o Observation) (Observation, error) {
 	}
 	o.ObservedAt = o.ObservedAt.UTC()
 	data, _ := json.Marshal(o)
-	o.ID = digest(append([]byte(b.Scope+"\n"), data...))[:16]
+	o.ID = digest(data)[:16] // the content alone: the same evidence has the same id wherever the folder is (0.9.7)
 	dir, err := b.directory(true, "sources")
 	if err != nil {
 		return Observation{}, err
@@ -211,7 +211,7 @@ func (b Book) readObservation(dir, id, cited string) (Observation, error) {
 	o.ID = ""
 	canonical, _ := json.Marshal(o)
 	o.ID = want
-	if digest(append([]byte(b.Scope+"\n"), canonical...))[:16] != id && (cited == "" || digest(data) != cited) {
+	if !b.sourceIDMatches(dir, id, canonical) && (cited == "" || digest(data) != cited) {
 		return Observation{}, errors.New("the hash of the saved source record does not match")
 	}
 	return o, nil
@@ -299,7 +299,10 @@ func (b Book) OtherPathStores() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	own := digest([]byte(b.Scope))
+	if err := MigrateLayout(root, b.Scope); err != nil {
+		return nil, err
+	}
+	own := storeDirName
 	out := []string{}
 	for _, area := range []string{"records/wiki-sources", "wiki/lessons"} {
 		entries, err := os.ReadDir(filepath.Join(root, area))

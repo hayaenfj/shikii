@@ -29,8 +29,8 @@ func TestFeedbackRecallUsesObservedConversations(t *testing.T) {
 	if err != nil || len(items) != 2 || items[0].ID != "0000000000000002" || !strings.Contains(items[1].Reply, "その後の訂正") {
 		t.Fatalf("returns only the new observations of the close request: %+v err=%v", items, err)
 	}
-	if items, err := s.RecallFeedback("/work/beta/project", request); err != nil || len(items) != 0 {
-		t.Fatalf("same name but different work: %+v err=%v", items, err)
+	if items, err := (Store{Dir: t.TempDir()}).RecallFeedback("/work/beta/project", request); err != nil || len(items) != 0 {
+		t.Fatalf("same name but different work (each project has its own store): %+v err=%v", items, err)
 	}
 	if items, err := s.RecallFeedback(scope, "network timeout retry policy"); err != nil || len(items) != 0 {
 		t.Fatalf("returns nothing for an unrelated request: %+v err=%v", items, err)

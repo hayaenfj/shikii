@@ -145,10 +145,11 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 	if err != nil || ctx != "" {
 		t.Fatalf("with only one conversation, reflection is not asked for yet (the size of the guidance is not limited; 0.9.1): %q %v", ctx, err)
 	}
-	if _, err := runReview(agent, feedbackScope(gitRepo(t)), reviewRequest{Operation: "submit", SourceID: observed[0].ID, TraceID: observed[0].Targets[0].TraceID, Truth: "no", Reason: "別の仕事"}); err == nil {
+	otherStore := t.TempDir() // another project has its own store
+	if _, err := runReview(otherStore, feedbackScope(gitRepo(t)), reviewRequest{Operation: "submit", SourceID: observed[0].ID, TraceID: observed[0].Targets[0].TraceID, Truth: "no", Reason: "別の仕事"}); err == nil {
 		t.Fatal("conversations of another project are not scored")
 	}
-	if ctx, _, err := reflectContext(agent, feedbackScope(gitRepo(t))); err != nil || ctx != "" {
+	if ctx, _, err := reflectContext(otherStore, feedbackScope(gitRepo(t))); err != nil || ctx != "" {
 		t.Fatal("scoring context is not carried to another project")
 	}
 	st := store.Store{Dir: agent}

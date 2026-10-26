@@ -19,12 +19,20 @@ func TestHookTellsWikiLeftUnderOldPath(t *testing.T) {
 	repo := gitRepo(t)
 	agent := hookEnv(t, nil, repo)
 	t.Chdir(repo)
-	old := notebook.Book{Root: agent, Scope: "/work/old-name"}
-	if _, err := old.Capture(notebook.Observation{Kind: "test", Title: "確かめた", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}); err != nil {
+	// a store written before 0.9.7 under the old path's name, next to the current one (half copied by hand): a single old store is adopted
+	// by itself, so only a leftover beside the current store is told
+	if _, err := (notebook.Book{Root: agent, Scope: feedbackScope(repo)}).Capture(notebook.Observation{Kind: "test", Title: "now", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(2, 0)}); err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256([]byte(old.Scope))
+	elsewhere := t.TempDir()
+	if _, err := (notebook.Book{Root: elsewhere, Scope: "/work/old-name"}).Capture(notebook.Observation{Kind: "test", Title: "確かめた", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte("/work/old-name"))
 	place := "records/wiki-sources/" + hex.EncodeToString(sum[:])
+	if err := os.Rename(filepath.Join(elsewhere, "records", "wiki-sources", "project"), filepath.Join(agent, place)); err != nil {
+		t.Fatal(err)
+	}
 	prompt := map[string]any{"session_id": "s1", "cwd": repo, "prompt": "README の誤字を直してください。"}
 	first := feedbackContext(t, runHook(t, "user-prompt-submit", prompt))
 	if !strings.Contains(first, "wiki store left under the previous path's name") || !strings.Contains(first, place) {

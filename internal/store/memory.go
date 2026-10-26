@@ -82,13 +82,8 @@ type MemoryReport struct {
 	All    []MemoryObservation `json:"-"`
 }
 
-func memoryScopeKey(scope string) string {
-	h := sha256.Sum256([]byte(scope))
-	return hex.EncodeToString(h[:])
-}
-
 func (s Store) memoryPath(scope string) string {
-	return filepath.Join(s.Dir, "records", "memories", memoryScopeKey(scope)+".jsonl")
+	return s.projectPath("memories", ".jsonl", scope)
 }
 
 func validMemoryDelivery(d MemoryDelivery) bool {
@@ -252,7 +247,7 @@ func validMemoryAssessment(a MemoryAssessment) bool {
 
 func (s Store) memoryAssessmentPath(scope, id, key string) string {
 	h := sha256.Sum256([]byte(id + ":" + key))
-	return filepath.Join(s.Dir, "records", "memory-reviews", memoryScopeKey(scope), hex.EncodeToString(h[:])+".json")
+	return filepath.Join(s.projectPath("memory-reviews", "", scope), hex.EncodeToString(h[:])+".json")
 }
 
 func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error) {

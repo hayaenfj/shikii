@@ -4,13 +4,10 @@ package store
 // and consulted on later similar requests. Kept in records/feedback/, apart from ordinary decisions and truths.
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -39,8 +36,7 @@ const (
 )
 
 func (s Store) feedbackPath(scope string) string {
-	sum := sha256.Sum256([]byte(scope))
-	return filepath.Join(s.Dir, "records", "feedback", hex.EncodeToString(sum[:])+".jsonl")
+	return s.projectPath("feedback", ".jsonl", scope)
 }
 
 func (s Store) AppendFeedback(scope string, f Feedback) error {
