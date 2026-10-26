@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.9.4 — plain words when the answers cannot be told apart yet
 
 - Page: after an answer, when the answers cannot be told apart yet (a higher probability goes with "no", or every truth is on one side), the page now says so in plain words instead of "the line could not be drawn" with the English fitting message (`fitted slope is not positive`, `need both positive and negative samples`). The answer was always saved. The note on the page now says the AI will try other wordings and that there is nothing for you to do, instead of asking you to review the question or model.
 
