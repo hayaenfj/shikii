@@ -66,15 +66,54 @@ func pageUp(r pageRecord) bool {
 }
 
 // livePage returns the URL of this project's page if it is up (http://127.0.0.1:<the free port>), or "" if not.
+// A recorded page whose pid is alive and which holds the page lock is up even when it answers slower than the probe (a busy page; 0.9.7).
 func livePage(scope string) string {
 	common, err := agentHome()
 	if err != nil || scope == "" {
 		return ""
 	}
-	if r, ok := readPageRecord(common, scope); ok && pageUp(r) {
+	if r, ok := readPageRecord(common, scope); ok && (pageUp(r) || (r.PID > 0 && processAlive(r.PID) && pageLockHeld(common, scope))) {
 		return r.url()
 	}
 	return ""
+}
+
+// pageLockPath is the lock (flock) the project's page holds for as long as it runs (~/.shikii/agent/pages/<project id>.lock).
+// One page per project rests on it, not on the probe's timing: a second serve of the same project cannot take it and exits (0.9.7;
+// after the 0.9.6 swap two pages per project were running because a slow /v1/status made the hook start another).
+func pageLockPath(common, scope string) string {
+	return filepath.Join(common, "pages", projectID(scope)+".lock")
+}
+
+// holdPageLock takes the page lock without waiting. The caller keeps the file open while it serves; the kernel drops the lock when the process ends.
+func holdPageLock(common, scope string) (*os.File, bool) {
+	path := pageLockPath(common, scope)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, false
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, false
+	}
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		f.Close()
+		return nil, false
+	}
+	return f, true
+}
+
+// pageLockHeld reports whether a page holds the page lock now.
+func pageLockHeld(common, scope string) bool {
+	f, err := os.OpenFile(pageLockPath(common, scope), os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB) != nil {
+		return true
+	}
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return false
 }
 
 var (

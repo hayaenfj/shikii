@@ -82,8 +82,15 @@ func cmdServe(args []string) error {
 	scope := filepath.Dir(absStore)
 	auto := !hub && o.port == 0 // the project's page started by the hook (0.8.0): free port, mark, browser; the local model is waited for after the port opens
 	if auto {
-		if url := livePage(scope); url != "" { // one page per project (another agent's hook started it first)
-			log.Printf("shikii serve: this project's page is already up at %s/ ; not starting another", url)
+		lock, ok := holdPageLock(common, scope)
+		if !ok { // one page per project: another page of this project holds the lock
+			log.Printf("shikii serve: another page of this project is running (it holds %s); not starting another", pageLockPath(common, scope))
+			return nil
+		}
+		defer lock.Close()
+		// A page of an earlier version (no lock) that answers. Not livePage: this serve holds the lock itself, so a recorded pid reused by another process would look up
+		if r, ok := readPageRecord(common, scope); ok && pageUp(r) {
+			log.Printf("shikii serve: this project's page is already up at %s/ ; not starting another", r.url())
 			return nil
 		}
 	} else if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
