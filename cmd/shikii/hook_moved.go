@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -84,7 +86,7 @@ func relinkMovedProject(cwd string, takeOver bool) string {
 		return fmt.Sprintf("Made this folder a project of its own (its .shikii came from %s; the wiki and records are kept)", old)
 	}
 	forgetProject(old)
-	return fmt.Sprintf("shikii: this project's folder was moved or renamed from %s. shikii reconnected it here by itself: its wiki, records and settings are kept, and nothing needs fixing. Tell the person this once.", old)
+	return fmt.Sprintf("shikii: this project's folder was moved or renamed from %s. shikii reconnected it here by itself: its wiki, records and settings are kept, and nothing needs fixing. Tell the person this once, in your final reply.", old)
 }
 
 // forgetProject removes the old path's entry from the shared index and stops the page shikii started for it (only that serve, checked by its command line).
@@ -120,9 +122,9 @@ func copiedNotice(cwd string) string {
 		return ""
 	}
 	if copiedFrom(old, scope) {
-		return fmt.Sprintf("shikii: this folder's .shikii was copied from %s, which is still a shikii project, so shikii is not running here. To use this copy as a project of its own, ask the person, then run `shikii --init` here (its wiki and records are kept).", old)
+		return fmt.Sprintf("shikii: this folder's .shikii was copied from %s, which is still a shikii project, so shikii is not running here (its records keep going to the original). Tell the person this in your final reply, and ask whether to make this copy a project of its own with `shikii --init` here (its wiki and records are kept).", old)
 	}
-	return fmt.Sprintf("shikii: this folder's .shikii was initialized at %s, and shikii cannot confirm that this folder is that project moved here (it may be a copy, or brought in from elsewhere), so shikii is not running here. Ask the person; `shikii --init` here makes it a project here (its wiki and records are kept).", old)
+	return fmt.Sprintf("shikii: this folder's .shikii was initialized at %s, and shikii cannot confirm that this folder is that project moved here (it may be a copy, or brought in from elsewhere), so shikii is not running here. Tell the person this in your final reply, and ask whether to make it a project here with `shikii --init` (its wiki and records are kept).", old)
 }
 
 // otherPathNotice is the notice for when this project's store has a wiki store left under the previous path's name.
@@ -132,4 +134,41 @@ func otherPathNotice(agent, scope string) string {
 		return ""
 	}
 	return fmt.Sprintf("shikii: .shikii has a wiki store left under the previous path's name (%s). The folder was moved or renamed, and its pages and sources do not show up in the current wiki. When you finish the current request, %s", strings.Join(stores, ", "), movedHow)
+}
+
+// noticeOnce reports whether this session has not been told yet about the folder at scope (a copy or an unconfirmed store). That folder is
+// not a project, so nothing is written into its store: the shared side keeps the last few hundred (session, folder) pairs (0.9.7 real-agent check).
+func noticeOnce(session, scope string) bool {
+	common, err := agentHome()
+	if err != nil || session == "" {
+		return true
+	}
+	path := filepath.Join(common, "told.json")
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return true
+	}
+	defer lock.Close()
+	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX) != nil {
+		return true
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	sum := sha256.Sum256([]byte(session + "\n" + scope))
+	key := hex.EncodeToString(sum[:8])
+	var told []string
+	if b, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(b, &told)
+	}
+	for _, k := range told {
+		if k == key {
+			return false
+		}
+	}
+	told = append(told, key)
+	if len(told) > 500 {
+		told = told[len(told)-500:]
+	}
+	b, _ := json.Marshal(told)
+	_ = writeAtomic(path, b)
+	return true
 }

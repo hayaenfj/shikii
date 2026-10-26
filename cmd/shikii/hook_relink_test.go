@@ -207,3 +207,36 @@ func TestReconnectingKeepsConversationsWrittenBefore097(t *testing.T) {
 		t.Fatalf("the conversations written under the old path are kept: %+v %v", got, err)
 	}
 }
+
+// 0.9.7 real-agent check: Codex told the person about the move only in a message during the turn, and neither Claude Code nor Codex told
+// the person about a copy at all (the copy notice read as background). Both notices ask for the final reply; the copy notice comes once per
+// session (the copy is not a project, so nothing is written into its store).
+func TestMoveAndCopyNoticesReachThePerson(t *testing.T) {
+	_, _, moved := movedProject(t)
+	if n := relinkMovedProject(moved, false); !strings.Contains(n, "in your final reply") {
+		t.Fatalf("the move notice asks for the final reply: %q", n)
+	}
+	repo := gitRepo(t)
+	hookEnv(t, nil, repo)
+	copied := filepath.Join(t.TempDir(), "copy")
+	if out, err := exec.Command("cp", "-R", feedbackScope(repo), copied).CombinedOutput(); err != nil {
+		t.Fatalf("cp: %v %s", err, out)
+	}
+	copied = feedbackScope(copied)
+	t.Chdir(copied)
+	ask := func(session string) string {
+		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": copied, "prompt": "README \u306e\u8aa4\u5b57\u3092\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002"}))
+	}
+	if n := ask("s1"); !strings.Contains(n, "copied from") || !strings.Contains(n, "in your final reply") {
+		t.Fatalf("the copy notice asks for the final reply: %q", n)
+	}
+	if n := ask("s1"); n != "" {
+		t.Fatalf("once per session: %q", n)
+	}
+	if n := ask("s2"); !strings.Contains(n, "copied from") {
+		t.Fatalf("again in another session: %q", n)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(copied, ".shikii", "sessions")); len(entries) != 0 {
+		t.Fatalf("nothing is written into the copy's store: %d session files", len(entries))
+	}
+}

@@ -642,7 +642,11 @@ func runHookEvent(event string) error {
 	if errors.Is(err, errProjectInactive) {
 		// in an uninitialized place, do not save, change Git or start the model. Only when this .shikii was copied from a project still in place, say so
 		if event == "user-prompt-submit" {
-			if b := (hookOut{Context: copiedNotice(in.CWD)}).json(hookEventName(event)); b != nil {
+			notice := copiedNotice(in.CWD)
+			if notice != "" && !noticeOnce(in.SessionID, projectScopeAt(in.CWD)) {
+				notice = "" // told once in this session
+			}
+			if b := (hookOut{Context: notice}).json(hookEventName(event)); b != nil {
 				fmt.Fprintln(stdout, string(b))
 			}
 		}
