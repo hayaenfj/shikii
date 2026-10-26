@@ -2,8 +2,9 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.9.6 — lessons from long-lived pages arrive again, and shorter notices
 
+- Hook and MCP, shorter texts for the agent: the notices added to every request (organizing before work, wrapping up the reflection) are about a fifth shorter, and the MCP instructions and tool descriptions lost their repetitions (the `project` field's description was repeated in all 8 tools), with the same instructions. The reflection notice no longer asks to resend with `complete:false`, a field submit refuses.
 - Hook, lessons: a page that kept its earlier sources over many updates passes 16 sources, and a delivery record allows at most 16 per quote, so saving it failed and that request got no lesson at all (hook.log: "a memory delivery needs a request, quotes, sources and a version"). A quote now carries at most 16 source ids (a correction's source first), and the lesson arrives.
 - After moving the project folder, the lessons delivered before the move were dropped when read (each line still names the old path), so the reflection asked to assess none of them and the effect counts went to zero. The file already belongs to one project by its name; lines are no longer compared by path.
 - Status: truths that `shikii calibrate` saves after asking the model again with an earlier truth's text (source `replay`) were counted as answers by the person; one run turned 2 into 13. They are no longer counted as the person's work.
