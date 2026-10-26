@@ -54,15 +54,39 @@ test('counted truths are not called the person\'s answers', () => {
 });
 
 // 0.9.3: the same holds for every other text that counts or keeps all truths (the learning count, the wording match, the held/failed setting, redo's comparison).
-// Only texts about the person's own answer (the answer queue, "Your answer:" on a card the person answered) may say so
-test('texts about all truths do not say "your answers"', () => {
-  for (const [code, words] of [['ja', /あなた(の|が)答え/], ['en', /\byour\b/i]]) {
-    const d = locales[code];
-    const texts = [d.summarySpecAuto, d.summarySpecLearning(3, 10), d.calibrationHeld, d.calibrationError, d.wordingMatch(40, 60, 12), d.wordingMatchKept(40, 12),
-      d.wordingAgentAdopted, d.wordingAbout, d.redoHint, d.redoAgree, d.redoDisagree, d.projectsHow, d.howTo[3], d.howToAI[1]];
-    for (const text of texts) assert.doesNotMatch(text, words, code + ': ' + text);
+// Audit 0.9.3 (test hole): an allowlist, not a list of texts to look at, so a new key cannot slip through. Every text of every dictionary is rendered
+// (functions called with stand-in values) and only the keys below may speak of "your answer(s)" (in Japanese too): they are about the person's own answer
+// (the answer queue, "Your answer:" on a card the person answered, changing that answer). "You need not answer" is not an answer and is not matched.
+export const yourAnswerKeys = { ja: ['yourAnswer', 'answerHow'], en: ['yourAnswer', 'answerHow', 'changeAnswer'] };
+const yourAnswerWords = { ja: /あなた(の答え|が答えた)/, en: /\byour answers?\b|\byou answered\b/i };
+
+// a stand-in for any argument: a number, a string, or an object whose every field is again a stand-in (summaryRituals reads r.plan.done)
+const standIn = new Proxy({}, { get: (_, k) => (k === Symbol.toPrimitive ? () => 1 : standIn) });
+export function rendered(v) {
+  if (typeof v === 'function') {
+    for (const arg of [1, standIn]) {
+      try { return String(v(...Array.from({ length: Math.max(v.length, 3) }, () => arg))); } catch { /* try the next stand-in */ }
+    }
+    throw new Error('a dictionary function could not be rendered with stand-in values: ' + v);
   }
-  // the person's own answer keeps its name
+  if (Array.isArray(v)) return v.map(rendered).join(' | ');
+  if (v && typeof v === 'object') return Object.values(v).map(rendered).join(' | ');
+  return String(v);
+}
+
+export function unlistedYourAnswers(code, dict) {
+  return Object.entries(dict).filter(([k, v]) => !yourAnswerKeys[code].includes(k) && yourAnswerWords[code].test(rendered(v))).map(([k]) => k);
+}
+
+test('only the allowlisted texts say "your answers"', () => {
+  for (const code of ['ja', 'en']) assert.deepEqual(unlistedYourAnswers(code, locales[code]), [], code);
+  // a new key that calls the counted truths the person's answers fails (the allowlist's negative example)
+  assert.deepEqual(unlistedYourAnswers('ja', { ...locales.ja, newCount: n => 'あなたの答え ' + n + ' 件' }), ['newCount']);
+  assert.deepEqual(unlistedYourAnswers('en', { ...locales.en, newCount: n => n + ' of your answers' }), ['newCount']);
+  // "you need not answer" is not an answer
+  assert.deepEqual(unlistedYourAnswers('ja', { ...locales.ja, x: 'あなたが答える必要はありません' }), []);
+  // the person's own answer keeps its name, and every allowlisted key exists and really says so
   assert.match(locales.ja.yourAnswer('はい', 'x'), /あなたの答え/);
   assert.match(locales.en.yourAnswer('yes', 'x'), /Your answer/);
+  for (const code of ['ja', 'en']) for (const k of yourAnswerKeys[code]) assert.match(rendered(locales[code][k]), yourAnswerWords[code], code + '.' + k + ' is on the allowlist');
 });
