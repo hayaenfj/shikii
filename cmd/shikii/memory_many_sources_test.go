@@ -30,7 +30,7 @@ func TestLessonWithManySourcesIsStillDelivered(t *testing.T) {
 	if err != nil || len(r.Page.Sources) <= 16 {
 		t.Fatalf("the page has more than 16 sources: %v %d", err, len(r.Page.Sources))
 	}
-	ctx, err := memoryContext(st.Dir, scope, "README の導入手順を更新してください", &hookSession{TurnID: "dddddddddddddddd"})
+	ctx, err := memoryContext(st.Dir, scope, "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044", &hookSession{TurnID: "dddddddddddddddd"})
 	if err != nil || !strings.Contains(ctx, draft.Lesson) {
 		t.Fatalf("a lesson with many sources is still delivered: %v\n%q", err, ctx)
 	}
@@ -57,8 +57,8 @@ func TestCorrectionSourceKeptAmongDeliveredSources(t *testing.T) {
 		}
 	}
 	d := draft
-	d.ID, d.Title, d.Sources = "", "README の導入確認(訂正)", sources
-	d.Correction = &store.Correction{SourceID: conv, Quote: "まだ英語が残っています", Action: "英語が残っていないかを確かめてから終える"}
+	d.ID, d.Title, d.Sources = "", "README \u306e\u5c0e\u5165\u78ba\u8a8d(\u8a02\u6b63)", sources
+	d.Correction = &store.Correction{SourceID: conv, Quote: "\u307e\u3060\u82f1\u8a9e\u304c\u6b8b\u3063\u3066\u3044\u307e\u3059", Action: "\u82f1\u8a9e\u304c\u6b8b\u3063\u3066\u3044\u306a\u3044\u304b\u3092\u78ba\u304b\u3081\u3066\u304b\u3089\u7d42\u3048\u308b"}
 	r, err := book.Ingest(d)
 	if err != nil {
 		t.Fatal(err)
@@ -72,8 +72,8 @@ func TestCorrectionSourceKeptAmongDeliveredSources(t *testing.T) {
 	if at < 16 {
 		t.Fatalf("precondition: the correction's source sorts after the 16th source (at %d)", at)
 	}
-	ctx, err := memoryContext(st.Dir, scope, "README の導入手順を更新してください", &hookSession{TurnID: "eeeeeeeeeeeeeeee"})
-	if err != nil || !strings.Contains(ctx, "英語が残っていないか") {
+	ctx, err := memoryContext(st.Dir, scope, "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044", &hookSession{TurnID: "eeeeeeeeeeeeeeee"})
+	if err != nil || !strings.Contains(ctx, "\u82f1\u8a9e\u304c\u6b8b\u3063\u3066\u3044\u306a\u3044\u304b") {
 		t.Fatalf("the corrected lesson is delivered: %v\n%q", err, ctx)
 	}
 }
