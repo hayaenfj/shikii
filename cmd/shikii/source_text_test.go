@@ -33,14 +33,14 @@ func TestHookKeepsFullClosingTextForPeople(t *testing.T) {
 		t.Fatal("keep the input limit for what is given to the decision model")
 	}
 	before := records[0]
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "full-text", "cwd": repo, "prompt": "画面を開いて"})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "full-text", "cwd": repo, "prompt": "ok"}) // a bare acknowledgement: no outcome truth, so the score stays with the agent
 	feedback, _ := st.RecentFeedback(feedbackScope(repo))
 	view, err := reviewQuery(st, feedbackScope(repo))
 	if err != nil || len(view["pending"].([]reviewTask)) != 1 || view["pending"].([]reviewTask)[0].Targets[0].OriginalInputs["summary"] != closing {
 		t.Fatal("the agent doing tentative scoring can also read to the end with query")
 	}
 	h := newServer(serveOpts{storeDir: agent, projectScope: feedbackScope(repo)})
-	reviewCall(t, h, map[string]any{"operation": "submit", "source_id": feedback[0].ID, "trace_id": before.TraceID, "truth": "unknown", "reason": "次の発言は画面を開く追加依頼であり、完了の評価を含まない"})
+	reviewCall(t, h, map[string]any{"operation": "submit", "source_id": feedback[0].ID, "trace_id": before.TraceID, "truth": "unknown", "reason": "次の発言は相づちだけで、完了の評価を含まない"})
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequest("GET", "/v1/queue?spec=done-as-asked", nil))
 	var queue struct {

@@ -30,6 +30,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	shikii "github.com/hayaenfj/shikii"
@@ -66,7 +67,6 @@ var (
 const (
 	hookTimeout    = 15      // seconds. git 3s + model 5s (the two questions run in parallel) + writing (audit R5: does not wait for the page to start)
 	requestMax     = 1500    // length (bytes) of text kept as request / summary
-	shortReply     = 40      // a request shorter than this is a reply and is attached to the previous request (characters)
 	filesMax       = 30      // upper limit of "changed files" listed in the Stop question (the rest only as a count)
 	listingMax     = 4 << 20 // upper limit (bytes) of the kept working tree listing. Past it, changed files count as unknown
 	hookLogLineMax = 400     // upper limit (bytes) of one hook.log line. Error text can carry the model's response body
@@ -886,6 +886,18 @@ const (
 )
 
 // hookUserPrompt asks the two pre-thinking questions (prompt-kind and needs-plan) and keeps the request and the working tree state. The outcome truth of the previous request is decided here (when the next request arrives).
+// ackReplies are the bare acknowledgements that are attached to the previous request (0.9.3). An allowlist: anything else, however short,
+// is a request of its own and starts a new conversation (Japanese requests are short, and the old 40-character rule merged a Codex
+// session's 19 requests into one conversation, so reflection almost never ran). Compared after lowercasing and trimming punctuation and spaces.
+var ackReplies = map[string]bool{"y": true, "yes": true, "yeah": true, "yep": true, "yup": true, "ok": true, "okay": true, "k": true, "sure": true, "go": true, "go on": true, "go ahead": true, "continue": true, "next": true, "proceed": true, "do it": true, "lgtm": true, "sounds good": true, "thanks": true, "thank you": true, "please": true, "please do": true, "yes please": true, "ok go": true, "ok thanks": true, "agreed": true, "fine": true, "はい": true, "うん": true, "ええ": true, "了解": true, "了解です": true, "承知しました": true, "わかりました": true, "分かりました": true, "いいよ": true, "いいです": true, "いいですよ": true, "大丈夫": true, "大丈夫です": true, "どうぞ": true, "お願い": true, "お願いします": true, "おねがい": true, "おねがいします": true, "よろしく": true, "よろしくお願いします": true, "続けて": true, "続けてください": true, "続けましょう": true, "では続けましょう": true, "じゃあ続けて": true, "次へ": true, "次": true, "次に進んで": true, "進めて": true, "進めてください": true, "進めましょう": true, "やって": true, "やってください": true, "やりましょう": true, "ではやりましょう": true, "それで": true, "それでお願いします": true, "それでいい": true, "それでいいよ": true, "ありがとう": true, "ありがとうございます": true, "いいね": true, "そうして": true, "そうしましょう": true}
+
+func isAckReply(s string) bool {
+	t := strings.ToLower(strings.TrimSpace(s))
+	t = strings.TrimFunc(t, func(r rune) bool { return unicode.IsPunct(r) || unicode.IsSpace(r) || unicode.IsSymbol(r) })
+	t = strings.Join(strings.Fields(t), " ")
+	return t == "" || ackReplies[t]
+}
+
 func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	req := cut(strings.TrimSpace(in.Prompt), requestMax)
 	if req == "" || strings.HasPrefix(req, "/") || in.AgentID != "" {
@@ -903,9 +915,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 		}}, nil
 	}
-	// a short reply ("ok", "yes go ahead") does not replace the request but is attached to the previous one: so the end-of-turn questions do not read "ok" as the request
+	// a bare acknowledgement ("ok", "continue") does not replace the request but is attached to the previous one: so the end-of-turn questions do not read "ok" as the request
 	request := req
-	if utf8.RuneCountInString(req) < shortReply && snapshot.Request != "" {
+	if isAckReply(req) && snapshot.Request != "" {
 		request = cut(snapshot.Request+" / "+req, requestMax)
 	}
 	inputs := map[string]string{"request": req}
@@ -916,7 +928,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	pageURL, pageStarted := ensureProjectPage(scope)                    // when the agent starts working (first request), start one page for this project (serve opens it in the browser; the hook does not wait. 0.8.0)
 	head := gitHead(in.CWD)                                             // the starting point the stop check uses to see this turn's commits
 	requestText := strings.TrimSpace(in.Prompt)
-	if utf8.RuneCountInString(req) < shortReply && snapshot.Request != "" && snapshot.Scope == scope {
+	if isAckReply(req) && snapshot.Request != "" && snapshot.Scope == scope {
 		previous := snapshot.RequestText
 		if previous == "" {
 			previous = snapshot.Request

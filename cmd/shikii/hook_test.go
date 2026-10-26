@@ -426,9 +426,9 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	if l := labels[traceOf["same"]]; l.Truth != "!edit" || l.Weight != 0.7 {
 		t.Fatalf("the session that left the tree alone must get !edit w=0.7, got %+v", l)
 	}
-	// the 2nd UserPromptSubmit asks with previous (context): it must not fail. A short reply does not replace the request but is attached to the previous one (the end-of-turn questions do not read "ok" as the request)
-	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "same", "cwd": repo, "prompt": "and the other one"})
-	if strings.Contains(out, "systemMessage") || loadSession(agent, "same").Request != "fix the typo in README same / and the other one" || loadSession(agent, "same").Judged {
+	// the 2nd UserPromptSubmit asks with previous (context): it must not fail. A bare acknowledgement does not replace the request but is attached to the previous one (the end-of-turn questions do not read "ok" as the request)
+	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "same", "cwd": repo, "prompt": "ok"})
+	if strings.Contains(out, "systemMessage") || loadSession(agent, "same").Request != "fix the typo in README same / ok" || loadSession(agent, "same").Judged {
 		t.Fatalf("second prompt: out=%q sess=%+v", out, loadSession(agent, "same"))
 	}
 	long := "please also rewrite the README section about installation so that it mentions Docker"

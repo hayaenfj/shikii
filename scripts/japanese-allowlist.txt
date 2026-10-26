@@ -24,7 +24,7 @@
 18 cmd/shikii/guard_hook_test.go
 20 cmd/shikii/guard_test.go
 10 cmd/shikii/handoff_test.go
-11 cmd/shikii/hook.go
+12 cmd/shikii/hook.go
 15 cmd/shikii/hook_feedback_test.go
 4 cmd/shikii/hook_moved_test.go
 3 cmd/shikii/hook_notice_words_test.go
@@ -56,7 +56,7 @@
 4 cmd/shikii/serve_summary_test.go
 16 cmd/shikii/serve_test.go
 5 cmd/shikii/serve_wiki_test.go
-4 cmd/shikii/source_text_test.go
+3 cmd/shikii/source_text_test.go
 1 cmd/shikii/spec_display_test.go
 2 cmd/shikii/status_memory_test.go
 1 cmd/shikii/wiki_new_work_test.go

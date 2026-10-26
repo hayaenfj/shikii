@@ -9,7 +9,6 @@ package main
 import (
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -104,7 +103,7 @@ func settleScope(agent string, s *hookSession, listing string, listed, boundary 
 // settleDone attaches an outcome truth to the previous request's done-as-asked from the shape of the person's next message (inside the lock, at the request boundary).
 // Short replies ("ok", "go on") and the in-between (neither similar nor dissimilar) are not labeled.
 func settleDone(agent string, c *completedTurn, reply string) error {
-	if c == nil || utf8.RuneCountInString(strings.TrimSpace(reply)) < shortReply {
+	if c == nil || isAckReply(reply) {
 		return nil
 	}
 	trace := ""
