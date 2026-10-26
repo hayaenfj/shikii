@@ -22,6 +22,18 @@ It only calls the HTTP handlers internally, so it behaves the same as `serve` (r
 
 `make install` puts `shikii` in `~/.local/bin/shikii` (use the absolute path if it is not on PATH). Logs go to stderr (stdout is the channel).
 
+## Codex
+
+Codex reads MCP servers only from the shared `~/.codex/config.toml` (it does not read `mcp_servers` from a project's `.codex/config.toml`), and starts the server in the folder its background service started in, which is often not your project. So `shikii init` writes one registration with no store, used by every project:
+
+```toml
+[mcp_servers.shikii]
+command = "/Users/you/.local/bin/shikii"
+args = ["mcp"]
+```
+
+Every tool takes `project`: the absolute path of the agent's working folder. The server uses that project's `.shikii/` for the call, and accepts only folders inside a project where `shikii init` was run on this machine. Without `project`, it uses the store it was started with (Claude Code and OpenCode start it in the project, with the `.mcp.json` / `opencode.json` of that project); if it has none, the tool returns an error that says to pass `project`. From 0.9.3 the server answers the handshake even when it is started outside a project. `shikii init` and the update rewrite the forms 0.9.1 and 0.9.2 wrote (`args = ["mcp", "--store", ".shikii", ...]`, which stopped before the handshake outside a project) to the one above. A block you edited is left alone; if it names one project's store by its absolute path, the update says that every Codex session uses that one project and suggests `args = ["mcp"]`.
+
 ## Tools
 
 | Tool | What it does | Arguments |
@@ -35,9 +47,11 @@ It only calls the HTTP handlers internally, so it behaves the same as `serve` (r
 | `shikii_review` | provisional scoring with grounds from the conversation and outcome. Refers to the person's samples and correction examples | `operation` (`query` / `submit`), `source_id` / `trace_id` / `truth` (`yes` / `no` / `unknown`) / `reason` |
 | `shikii_reflect` | checks and saves provisional scores, wiki summaries and observations of memories and corrections together (query gives 2 at a time from the oldest conversation; submit has no count limit) | `operation` (`query` / `submit`), `reviews` / `wiki` / `memory` |
 
+Every tool also takes `project` (optional; the absolute path of the agent's working folder, see [Codex](#codex)).
+
 To use `propose > 0`, start `shikii mcp` with `--proposer URL` (not in the `.mcp.json` example).
 
-`shikii_wiki` was added in 0.3. The current agent writes the text; no other model is used. It is stored in each work's `.shikii/`, the same as the hooks, and only handles the project where the MCP server was started. `query` returns related lessons and unsorted conversations, and passing `sources: [source ID]` lets you read the original text. `ingest` saves the title, lesson, where it applies and the sources, and a conversation with no lesson can be marked sorted with `sources` only. Lessons are hypotheses and are not counted as truths or calibration. [Details of the rules](../skills/shikii/references/wiki.md).
+`shikii_wiki` was added in 0.3. The current agent writes the text; no other model is used. It is stored in each work's `.shikii/`, the same as the hooks, and only handles the project the call names with `project` (or, without it, the project where the MCP server was started). `query` returns related lessons and unsorted conversations, and passing `sources: [source ID]` lets you read the original text. `ingest` saves the title, lesson, where it applies and the sources, and a conversation with no lesson can be marked sorted with `sources` only. Lessons are hypotheses and are not counted as truths or calibration. [Details of the rules](../skills/shikii/references/wiki.md).
 
 `shikii_review` first checks the same work's original text, scoring targets and the person's correction examples with `query`, then saves the provisional scores with `submit`. It does not register human truths, and does not add checks with the person for every item. shikii chooses the samples, and the person's corrections from the page come back in the next `query`. [Details of scoring](../skills/shikii/references/review.md).
 

@@ -76,6 +76,13 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 	if !strings.HasPrefix(string(cb), "model = \"o3\"\n\n[mcp_servers.shikii]") || !strings.Contains(string(cb), `command = "/`) {
 		t.Fatalf("Codex config must keep its lines and gain the shikii server:\n%s", cb)
 	}
+	// Codex's registration is shared by every project, so it names no store (each tool call passes project; 0.9.3)
+	if !strings.HasSuffix(string(cb), "\nargs = [\"mcp\"]\n") || strings.Contains(string(cb), "--store") {
+		t.Fatalf("Codex's shared registration must be args = [\"mcp\"] with no store:\n%s", cb)
+	}
+	if args, _ := servers["shikii"].(map[string]any)["args"].([]any); len(args) != len(codexMCPArgs) || args[1] != "--store" {
+		t.Fatalf("Claude Code's per-project .mcp.json keeps its store: %v", args)
+	}
 	// AGENTS.md: the person's file, shikii adds nothing (0.9.2)
 	ab, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
 	if !strings.HasPrefix(string(ab), "# My project") || strings.Contains(string(ab), "## shikii") || strings.Contains(string(ab), agentsMarker) {

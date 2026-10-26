@@ -107,16 +107,20 @@ func cmdInit(args []string) error {
 		return completeProjectInit(root, scope, version)
 	}
 	codex := filepath.Join(home, ".codex", "config.toml")
-	switch did, err := addCodexServer(codex, mcpArgs); {
+	// Codex reads only this shared registration and starts the server in the folder its daemon started in, so it names no store:
+	// each tool call passes its project (0.9.3)
+	switch did, err := addCodexServer(codex, codexServerArgs); {
 	case err != nil:
 		return err
 	case did:
 		fmt.Fprintf(stdout, "%s: added shikii (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
 	default:
-		if fixed, err := fixCodexServer(codex, mcpArgs); err != nil {
+		if fixed, err := fixCodexServer(codex, codexServerArgs); err != nil {
 			return err
 		} else if fixed {
-			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s (Codex)\n", filepath.Join("~", ".codex", "config.toml"), mcpCommand())
+			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s with args = [\"mcp\"] (Codex)\n", filepath.Join("~", ".codex", "config.toml"), mcpCommand())
+		} else if codexServerPinsAProject(codex) {
+			fmt.Fprintf(stdout, "%s: %s\n", filepath.Join("~", ".codex", "config.toml"), codexPinnedNote)
 		} else {
 			fmt.Fprintf(stdout, "%s: kept the existing MCP settings (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
 		}
@@ -285,8 +289,13 @@ func addCodexServer(path string, args []string) (bool, error) {
 	return true, err
 }
 
-// codexMCPArgs are the MCP server arguments init writes (Claude Code, OpenCode and Codex).
+// codexMCPArgs are the MCP server arguments init writes for Claude Code and OpenCode (per-project files, started in the project),
+// and the form 0.9.1 and 0.9.2 wrote for Codex.
 var codexMCPArgs = []string{"mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"}
+
+// codexServerArgs are the arguments of Codex's shared registration (0.9.3): no store, because Codex reads only ~/.codex/config.toml and starts the
+// server in the folder its daemon started in; each tool call names its project with project.
+var codexServerArgs = []string{"mcp"}
 
 // mcpCommand is the command written for the MCP server: this binary's own path, like the hooks (os.Executable, not resolved through
 // symlinks, so a package manager's link keeps working after an upgrade). The PATH lookup is only a fallback.
@@ -300,9 +309,11 @@ func mcpCommand() string {
 	return "shikii"
 }
 
-// fixCodexServer points Codex's [mcp_servers.shikii] at this binary when the block is still exactly what shikii wrote
-// (its three lines, with the same args) and its command is the bare name "shikii" (0.9.1 and earlier) or a path that no longer exists.
-// A block a person edited, an existing other binary, or more than one shikii block is left alone (0.9.3).
+// fixCodexServer rewrites Codex's [mcp_servers.shikii] to `command = <this binary>`, `args = [<args>]` while the block is still exactly what
+// shikii wrote (its three lines): the 0.9.1 form (command "shikii", args mcp --store .shikii --local ...) and the 0.9.2 form (an absolute command,
+// the same args), which exit before the handshake when Codex starts them in a folder without a shikii project (0.9.3), and the current form whose
+// command is the bare name or a path that no longer exists. A block a person edited, the current form on another existing binary, or more than
+// one shikii block is left alone.
 func fixCodexServer(path string, args []string) (bool, error) {
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -316,31 +327,44 @@ func fixCodexServer(path string, args []string) (bool, error) {
 		return false, nil
 	}
 	head := "[mcp_servers.shikii]\ncommand = "
-	tail := "\nargs = [" + quotedList(args) + "]\n"
 	i := strings.Index(text, head)
+	if i < 0 {
+		return false, nil
+	}
 	rest := text[i+len(head):]
 	line, after, ok := strings.Cut(rest, "\n")
 	if !ok {
 		return false, nil
 	}
 	cmd, err := strconv.Unquote(line)
-	if err != nil || !strings.HasPrefix("\n"+after, tail) {
+	if err != nil {
 		return false, nil
 	}
-	end := i + len(head) + len(line) + len(tail)
+	argsLine, _, ok := strings.Cut(after, "\n")
+	if !ok {
+		return false, nil
+	}
+	current := argsLine == "args = ["+quotedList(args)+"]"
+	earlier := argsLine == "args = ["+quotedList(codexMCPArgs)+"]"
+	if !current && !earlier {
+		return false, nil // args a person changed
+	}
+	end := i + len(head) + len(line) + 1 + len(argsLine) + 1
 	if next := text[end:]; next != "" && !strings.HasPrefix(next, "\n") && !strings.HasPrefix(next, "[") {
 		return false, nil // a line a person added to the block
 	}
-	if cmd != "shikii" {
-		if !filepath.IsAbs(cmd) || fileExists(cmd) {
-			return false, nil
-		}
+	switch {
+	case cmd == "shikii":
+	case !filepath.IsAbs(cmd):
+		return false, nil
+	case current && fileExists(cmd):
+		return false, nil // the current form on another binary someone chose
 	}
 	command := mcpCommand()
-	if command == cmd {
+	if command == cmd && current {
 		return false, nil
 	}
-	fixed := text[:i] + head + quotedList([]string{command}) + tail + text[end:]
+	fixed := text[:i] + head + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n" + text[end:]
 	fi, err := os.Stat(path)
 	if err != nil {
 		return false, err
@@ -354,6 +378,51 @@ func fixCodexServer(path string, args []string) (bool, error) {
 	}
 	return true, os.Rename(tmp, path)
 }
+
+// codexServerPinsAProject reports whether a [mcp_servers.shikii] block in Codex's config names a store by its absolute path
+// (--store /... or --store=/...). Codex shares that one registration among all sessions, so every session then uses that one project.
+func codexServerPinsAProject(path string) bool {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	sections := strings.Split(string(b), "[mcp_servers.shikii]")
+	for _, section := range sections[1:] {
+		if j := strings.Index(section, "\n["); j >= 0 {
+			section = section[:j]
+		}
+		for _, line := range strings.Split(section, "\n") {
+			key, value, ok := strings.Cut(line, "=")
+			if !ok || strings.TrimSpace(key) != "args" {
+				continue
+			}
+			// the array may span lines up to its closing bracket
+			start := strings.Index(section, line) + len(key) + 1
+			value = section[start:]
+			if k := strings.Index(value, "]"); k >= 0 {
+				value = value[:k]
+			}
+			var args []string
+			for _, part := range strings.Split(strings.TrimLeft(strings.TrimSpace(value), "["), ",") {
+				if s, err := strconv.Unquote(strings.TrimSpace(part)); err == nil {
+					args = append(args, s)
+				}
+			}
+			for k, a := range args {
+				if (a == "--store" || a == "-store") && k+1 < len(args) && filepath.IsAbs(args[k+1]) {
+					return true
+				}
+				if v, ok := strings.CutPrefix(strings.TrimLeft(a, "-"), "store="); ok && strings.HasPrefix(a, "-") && filepath.IsAbs(v) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// codexPinnedNote tells a person whose hand-edited Codex block names one project's store what that does and what to write instead.
+const codexPinnedNote = "the shikii MCP server was edited by hand, so it was left as it is. It names one project's store (--store with an absolute path), so every Codex session uses that one project. To let each session use its own project, set args = [\"mcp\"]: the agent then passes its working folder as project on each call (Codex)"
 
 func quotedList(args []string) string {
 	quoted := make([]string, len(args))
