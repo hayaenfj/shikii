@@ -8,6 +8,9 @@
 - フォルダを移した後、移す前に届けた教訓の記録を読み捨てていた(各行に前のパスが残るため)。そのため、振り返りで評価を頼まれず、効き目の数も 0 になっていた。記録のファイルは名前で 1 つのプロジェクトのものなので、行ごとのパスは比べない。
 - 状態: `shikii calibrate` が、前の正解の文でモデルに聞き直して保存する正解(source `replay`)を、人が答えた数に数えていた。1 回流すだけで 2 が 13 になった。今は人の作業に数えない。
 - MCP: プロジェクトの中から起こした MCP(`--store .shikii`、Claude Code と OpenCode)の判定が、画面を「.」の名で探し、同じプロジェクトの 2 つ目の画面を起こすことがあった。今は hook と同じく、プロジェクトの絶対パスを使う。
+- `shikii init`、Codex: `~/.codex/config.toml` のどこかに `mcp_servers` の語があると(自分で入れた MCP、またはコメントだけでも)、init は shikii を足さず「既存の MCP の設定を残しました」と出していた。そのため Codex から shikii の道具が使えなかった。今は、あなたの MCP の横に `[mcp_servers.shikii]` を足す。ファイルを触らないのは、shikii が既にある時と、`mcp_servers` が一行の形(`mcp_servers = { … }`)の時だけで、その時はそう知らせ、手で足す行を示す。
+- MCP と画面: wiki の判定(新しい教訓の差し込み先)が、起動の時に渡した `--local`・`--hosted` ではなく、hook の決まった URL(`http://127.0.0.1:8080`)を使っていた。今は渡した URL を使う。
+- wiki: 記事が文字の上限を超えた時、「wiki lesson exceeds the text limits」とだけ断っていた。今は、どの欄が何バイトで上限がいくつかを示し、短くするか、古い部分を新しい記事に移して `related` でつなぐよう伝える(長く使う記事は直すたびに節が増える。本物の記事で本文が 16,384 バイトのうち 15,838 バイトに達していた)。
 - wiki: 記事を id で直す時に lesson を省くと、「reviewing a source without a lesson accepts only source ids」ではなく、lesson・title・applies_to をもう一度送るよう伝える。
 
 ## 0.9.5 — フォルダを移した後の wiki と、エージェントが動いている間の知識の画面

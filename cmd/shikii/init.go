@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -122,7 +123,7 @@ func cmdInit(args []string) error {
 		} else if codexServerPinsAProject(codex) {
 			fmt.Fprintf(stdout, "%s: %s\n", filepath.Join("~", ".codex", "config.toml"), codexPinnedNote)
 		} else {
-			fmt.Fprintf(stdout, "%s: kept the existing MCP settings (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
+			fmt.Fprintf(stdout, "%s: %s\n", filepath.Join("~", ".codex", "config.toml"), codexServerNote(codex))
 		}
 	}
 
@@ -261,14 +262,51 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 	return true, os.Rename(path+".tmp", path)
 }
 
-// addCodexServer adds [mcp_servers.shikii] to Codex's ~/.codex/config.toml. It does not parse TOML, so if the word mcp_servers
-// appears anywhere (a header, an inline table, a key under [mcp_servers], a quoted key) it leaves the file alone: appending would define it twice and Codex could not read its settings (audit 6 item 1).
+var (
+	codexInlineServers = regexp.MustCompile(`(?m)^[ \t]*"?mcp_servers"?[ \t]*=`)                                       // mcp_servers = { ... }: an inline table cannot be extended
+	codexShikiiServer  = regexp.MustCompile(`(?m)^[ \t]*\[?[ \t]*"?mcp_servers"?[ \t]*\.[ \t]*"?shikii"?[ \t]*[\].=]`) // [mcp_servers.shikii], [mcp_servers."shikii"], mcp_servers.shikii.command = ...
+	codexServersTable  = regexp.MustCompile(`(?m)^[ \t]*\[[ \t]*"?mcp_servers"?[ \t]*\][ \t]*$`)
+	codexShikiiKey     = regexp.MustCompile(`(?m)^[ \t]*"?shikii"?[ \t]*[.=]`) // shikii = {...} or shikii.command = ... under [mcp_servers]
+)
+
+// codexServerState says whether shikii's server can be appended to Codex's config.toml without parsing TOML: "add" (no shikii yet and nothing
+// that appending would break), "has" (shikii is defined in some form) or "inline" (mcp_servers is an inline table, which cannot be extended).
+// Comments are ignored. Appending next to a person's own [mcp_servers.<name>] tables is fine (0.9.5 check: before, any mention of mcp_servers
+// left the file alone, so a person with one server of their own never got shikii's).
+func codexServerState(b []byte) string {
+	var lines []string
+	for _, line := range strings.Split(string(b), "\n") {
+		if t := strings.TrimSpace(line); !strings.HasPrefix(t, "#") {
+			lines = append(lines, line)
+		}
+	}
+	text := strings.Join(lines, "\n")
+	if codexShikiiServer.MatchString(text) {
+		return "has"
+	}
+	if codexInlineServers.MatchString(text) {
+		return "inline"
+	}
+	if loc := codexServersTable.FindStringIndex(text); loc != nil { // keys directly under [mcp_servers], up to the next table header
+		rest := text[loc[1]:]
+		if next := regexp.MustCompile(`(?m)^[ \t]*\[`).FindStringIndex(rest); next != nil {
+			rest = rest[:next[0]]
+		}
+		if codexShikiiKey.MatchString(rest) {
+			return "has"
+		}
+	}
+	return "add"
+}
+
+// addCodexServer adds [mcp_servers.shikii] to Codex's ~/.codex/config.toml unless codexServerState says shikii is there already or the file
+// cannot be extended (appending would define it twice, or extend an inline table, and Codex could not read its settings: audit 6 item 1).
 func addCodexServer(path string, args []string) (bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return false, err
 	}
-	if strings.Contains(string(b), "mcp_servers") {
+	if codexServerState(b) != "add" {
 		return false, nil
 	}
 	// the binary's absolute path, like the hooks: Codex started from a desktop app may not have shikii on its PATH (Codex audit 0.9.2, low 3)
@@ -636,4 +674,13 @@ func copySkill(dst string) error {
 		}
 		return os.WriteFile(target, b, 0o644)
 	})
+}
+
+// codexServerNote is what init says about Codex's config.toml when it did not add shikii there.
+func codexServerNote(path string) string {
+	b, _ := os.ReadFile(path)
+	if codexServerState(b) == "inline" {
+		return "did not add shikii: mcp_servers is written as an inline table (mcp_servers = { ... }), which cannot be extended. Add shikii to it, or rewrite it as tables and add:\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + " (Codex)"
+	}
+	return "kept the existing MCP settings (Codex)"
 }
