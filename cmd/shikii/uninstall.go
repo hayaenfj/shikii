@@ -357,7 +357,7 @@ func removeCodexServer(path string, write bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if fi.Mode().Perm()&0o200 == 0 {
+	if fi.Mode().Perm()&0o200 == 0 || !personFileWritable(path) {
 		return false, errors.New("is read-only, so its [mcp_servers.shikii] table was left; remove it by hand")
 	}
 	if !write {

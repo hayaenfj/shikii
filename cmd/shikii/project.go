@@ -389,7 +389,33 @@ func registerProject(scope string) error {
 	if err := os.Rename(tmp.Name(), filepath.Join(dir, entry.ID+".json")); err != nil {
 		return err
 	}
+	forgetStaleEntries(dir, entry)
 	return nil
+}
+
+// forgetStaleEntries removes the entries with this store's id whose folder is gone: a reconnection that stopped before forgetting the old
+// path left one (0.9.7 full audit 1, C8). An entry whose folder still exists is never touched.
+func forgetStaleEntries(dir string, entry projectEntry) {
+	if entry.StoreID == "" {
+		return
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "*.json"))
+	for _, path := range files {
+		if filepath.Base(path) == entry.ID+".json" {
+			continue
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var p projectEntry
+		if json.Unmarshal(b, &p) != nil || p.StoreID != entry.StoreID {
+			continue
+		}
+		if _, err := os.Lstat(p.Path); os.IsNotExist(err) {
+			_ = os.Remove(path)
+		}
+	}
 }
 
 // storeID is the store's random id (records/store-id), made the first time the project is registered. The shared index keeps it with the

@@ -81,6 +81,13 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReflect, Pass: pass, Reason: reason, Recheck: recheck})
+		// this session's own record of whether it did the reflection it was asked for: the next ask is the full text after a miss, even if
+		// another session handles those conversations meanwhile (0.9.7 full audit 3-2)
+		_ = updateSession(root, in.SessionID, func(s *hookSession) {
+			if s.TurnID == snapshot.TurnID {
+				s.ReflectMissed = !pass
+			}
+		})
 	}
 	// Kind and scene: pages listed before the request still have no kind or scene (0.9.0)
 	if len(snapshot.ClassifyAsked) > 0 && snapshot.ClassifyAskedTurn == snapshot.TurnID {

@@ -34,7 +34,7 @@ func cmdInit(args []string) error {
 	if isSharedPlaceScope(scope) {
 		return errors.New("the home folder is not initialized (~/.shikii is the shared store). Run this in a project folder")
 	}
-	if notice := relinkMovedProject(root, true); strings.HasPrefix(notice, "shikii:") { // a moved folder (0.9.7)
+	if notice := relinkMovedProject(scope, true); strings.HasPrefix(notice, "shikii:") { // a moved folder (0.9.7)
 		fmt.Fprintln(stdout, "Reconnected this project at its new path (its wiki and records are kept)")
 	} else if notice != "" { // a copy, or a .shikii from elsewhere, the person makes a project of its own
 		fmt.Fprintln(stdout, notice)
@@ -86,8 +86,9 @@ func cmdInit(args []string) error {
 		{"opencode.json", "mcp", map[string]any{"type": "local", "command": append([]string{"shikii"}, mcpArgs...)}, "OpenCode"},
 	} {
 		did, err := addJSONEntry(filepath.Join(scope, f.path), f.key, "shikii", f.entry)
-		if errors.Is(err, errPersonFileReadOnly) { // left as it is, like a read-only AGENTS.md; the rest of init goes on (0.9.7 audit A-1)
-			fmt.Fprintf(stdout, "%s: read-only, so shikii did not add itself; add the shikii entry by hand to use it from %s\n", f.path, f.who)
+		var unwritable *personFileError
+		if errors.As(err, &unwritable) { // left as it is, like a read-only AGENTS.md; the rest of init goes on (0.9.7 audit A-1, full audit 2-7)
+			fmt.Fprintf(stdout, "%s: shikii did not add itself (%v); add the shikii entry by hand to use it from %s\n", f.path, err, f.who)
 			continue
 		}
 		if err != nil {
@@ -119,8 +120,8 @@ func cmdInit(args []string) error {
 	// Codex reads only this shared registration and starts the server in the folder its daemon started in, so it names no store:
 	// each tool call passes its project (0.9.3)
 	switch did, err := addCodexServer(codex, codexServerArgs); {
-	case errors.Is(err, errPersonFileReadOnly):
-		fmt.Fprintf(stdout, "%s: read-only, so shikii did not add itself; add:\n[mcp_servers.shikii]\ncommand = %s\n%s (Codex)\n", filepath.Join("~", ".codex", "config.toml"), quotedList([]string{mcpCommand()}), codexServerArgsLine)
+	case errors.As(err, new(*personFileError)): // the rest of init goes on (0.9.7 full audit 2-7)
+		fmt.Fprintf(stdout, "%s: shikii did not add itself (%v); add:\n[mcp_servers.shikii]\ncommand = %s\n%s (Codex)\n", filepath.Join("~", ".codex", "config.toml"), err, quotedList([]string{mcpCommand()}), codexServerArgsLine)
 	case err != nil:
 		return err
 	case did:

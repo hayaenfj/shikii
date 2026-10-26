@@ -81,11 +81,14 @@ func TestReflectionNoticeIsShortAfterTheFirstAsk(t *testing.T) {
 	if sticky := prompt("README \u306e\u5e8f\u6587\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044"); !strings.Contains(sticky, full) {
 		t.Fatalf("the conversations asked before still wait: the full text again: %q", sticky)
 	}
-	// the last ask was handled (other conversations were asked) and the full text came one request ago: the short form
-	if err := updateSession(st.Dir, "s1", func(s *hookSession) { s.ReflectLastAsked, s.ReflectShortTurns = []string{"ffffffffffffffff"}, 1 }); err != nil {
+	// the last ask was handled (other conversations were asked, the turn ended with it done) and the full text came one request ago: the
+	// short form. The record is set after the Stop, as a Stop that saw the reflection done leaves it.
+	runHook(t, "stop", map[string]any{"session_id": "s1", "cwd": scope, "last_assistant_message": "README \u3092\u76f4\u3057\u307e\u3057\u305f\u3002"})
+	if err := updateSession(st.Dir, "s1", func(s *hookSession) {
+		s.ReflectLastAsked, s.ReflectShortTurns, s.ReflectMissed = []string{"ffffffffffffffff"}, 1, false
+	}); err != nil {
 		t.Fatal(err)
 	}
-	runHook(t, "stop", map[string]any{"session_id": "s1", "cwd": scope, "last_assistant_message": "README \u3092\u76f4\u3057\u307e\u3057\u305f\u3002"})
 	short := prompt("README \u306e\u8868\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044")
 	if !strings.Contains(short, "wrap up the reflection") || strings.Contains(short, full) || !strings.Contains(short, `{"sources":[`) || !strings.Contains(short, "reflect query") {
 		t.Fatalf("the short form names the command and the conversations: %q", short)

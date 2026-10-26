@@ -27,6 +27,10 @@ func TestOlderShikiisLinesArriveWhateverHappens(t *testing.T) {
 		s := Store{Dir: t.TempDir()}
 		scope := "/work/p"
 		upgrade := r.Intn(2) == 0 // the update moment: the older shikii wrote first and the fixed name does not exist yet
+		oldScope := scope
+		if upgrade && r.Intn(2) == 0 {
+			oldScope = "/work/before-a-move" // the older shikii writes under the path it started at; the only hash-named file is brought in
+		}
 		if !upgrade {
 			if err := s.AppendFeedback(scope, Feedback{ID: "f000000000000000", Request: "a", Summary: "b", Reply: "c"}); err != nil {
 				t.Fatal(err)
@@ -36,7 +40,7 @@ func TestOlderShikiisLinesArriveWhateverHappens(t *testing.T) {
 		}
 		path := func() (string, string) {
 			dir := filepath.Join(s.Dir, "records", "feedback")
-			return filepath.Join(dir, scopeKey(scope)+".jsonl"), filepath.Join(dir, projectName+".jsonl")
+			return filepath.Join(dir, scopeKey(oldScope)+".jsonl"), filepath.Join(dir, projectName+".jsonl")
 		}
 		written := map[string]bool{} // ids the older shikii finished writing
 		partial := ""                // the line it is in the middle of writing
@@ -56,7 +60,7 @@ func TestOlderShikiisLinesArriveWhateverHappens(t *testing.T) {
 		var steps []string
 		for step := 0; step < 30; step++ {
 			from, _ := path()
-			switch op := r.Intn(8); op {
+			switch op := r.Intn(9); op {
 			case 0, 1: // the older shikii writes a whole line
 				if partial != "" {
 					break
@@ -86,10 +90,20 @@ func TestOlderShikiisLinesArriveWhateverHappens(t *testing.T) {
 				written[id] = true
 				partial = ""
 				steps = append(steps, "finish "+id)
+			case 6: // it stops in the middle of a line for good (a crash) and later writes the next record after it
+				if partial == "" {
+					break
+				}
+				partial = "" // that record never finishes
+				id := fmt.Sprintf("%016x", next)
+				next++
+				appendRaw(line(id))
+				written[id] = true
+				steps = append(steps, "crash, then "+id)
 			case 4: // the merge mark is broken
 				os.WriteFile(from+".merged", []byte([]string{"-1", "x", "99999999 abc", "", "1:1 5"}[r.Intn(5)]), 0o600)
 				steps = append(steps, "mark broken")
-			case 5: // the store is copied and work goes on in the copy
+			case 5, 7: // the store is copied and work goes on in the copy
 				dst := filepath.Join(t.TempDir(), "copy")
 				if out, err := exec.Command("cp", "-Rp", s.Dir, dst).CombinedOutput(); err != nil {
 					t.Fatal(err, string(out))

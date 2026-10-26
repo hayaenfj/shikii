@@ -81,7 +81,11 @@ func cmdServe(args []string) error {
 		}
 	}
 	scope := filepath.Dir(absStore)
-	auto := !hub && o.port == 0 // the project's page started by the hook (0.8.0): free port, mark, browser; the local model is waited for after the port opens
+	if real, err := filepath.EvalSymlinks(scope); err == nil {
+		scope = real // the same key for the page lock and record, whatever path reached the folder (0.9.7 full audit 1, D4)
+	}
+	// the project's page is a serve of a project's .shikii on a free port; a store under another name started by hand is not (D4)
+	auto := !hub && o.port == 0 && filepath.Base(absStore) == ".shikii" // the project's page started by the hook (0.8.0): free port, mark, browser; the local model is waited for after the port opens
 	if auto {
 		lock, ok := holdPageLock(common, scope)
 		if !ok { // one page per project: another page of this project holds the lock
@@ -164,23 +168,20 @@ var calibrationsActive atomic.Int64
 // replyCheck is how often a reply in flight looks whether a calibration is active; it is well under WriteTimeout.
 var replyCheck = 20 * time.Second
 
-// keepRepliesAliveDuringCalibration extends the write deadline of every reply in flight while a calibration holds or waits for the lock
-// (a background tune holds it for its model run and the calibration after it, up to 40 minutes). It works at the connection, whatever
-// path the handler took to the lock, so no handler has to remember it. Before, each handler passed its writer to the lock, and audits A
-// to G of 0.9.7 kept finding paths that passed none or another; the static checks that tried to prove every path were dropped.
-// While no calibration is active, the write timeout stays as it is.
+// keepRepliesAliveDuringCalibration keeps a reply that has not started writing alive while a calibration holds or waits for the lock (a
+// background tune holds it for its model run and the calibration after it, up to 40 minutes): it works at the connection, whatever path the
+// handler took to the lock, so no handler has to remember it. Before, each handler passed its writer to the lock, and audits A to G of
+// 0.9.7 kept finding paths that passed none or another.
+// The write timeout still bounds writing (eaf2c9b): once the handler starts writing, its deadline is the write timeout from then on, so a
+// client that reads slowly is cut even during a calibration; and when no calibration is active any more, a reply that has not started
+// writing gets the write timeout from then on (0.9.7 full audit 2-1, 2-2).
 func keepRepliesAliveDuringCalibration(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var mu sync.Mutex
-		finished := false
-		rc := http.NewResponseController(w)
-		extend := func() {
-			mu.Lock()
-			defer mu.Unlock()
-			if !finished && calibrationsActive.Load() > 0 {
-				_ = rc.SetWriteDeadline(time.Now().Add(longResponseLimit))
-			}
+		limit := 2 * time.Minute
+		if srv, ok := r.Context().Value(http.ServerContextKey).(*http.Server); ok && srv.WriteTimeout > 0 {
+			limit = srv.WriteTimeout
 		}
+		tw := &trackedWriter{ResponseWriter: w, rc: http.NewResponseController(w), limit: limit}
 		done := make(chan struct{})
 		go func() {
 			t := time.NewTicker(replyCheck)
@@ -190,18 +191,73 @@ func keepRepliesAliveDuringCalibration(h http.Handler) http.Handler {
 				case <-done:
 					return
 				case <-t.C:
-					extend()
+					tw.check()
 				}
 			}
 		}()
 		defer func() {
-			mu.Lock()
-			finished = true // the response is not touched after the handler returns
-			mu.Unlock()
+			tw.finish()
 			close(done)
 		}()
-		h.ServeHTTP(w, r)
+		h.ServeHTTP(tw, r)
 	})
+}
+
+// trackedWriter is the writer of a reply in flight: it knows whether the handler started writing, and whether its deadline was extended.
+type trackedWriter struct {
+	http.ResponseWriter
+	rc       *http.ResponseController
+	limit    time.Duration
+	mu       sync.Mutex
+	started  bool // the handler wrote a header or a byte: the write timeout runs from then on
+	extended bool
+	finished bool
+}
+
+func (w *trackedWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *trackedWriter) start() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.started && !w.finished {
+		w.started = true
+		if w.extended {
+			_ = w.rc.SetWriteDeadline(time.Now().Add(w.limit))
+		}
+	}
+}
+
+func (w *trackedWriter) WriteHeader(code int) {
+	w.start()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *trackedWriter) Write(b []byte) (int, error) {
+	w.start()
+	return w.ResponseWriter.Write(b)
+}
+
+// check runs every replyCheck: while a calibration is active, a reply that has not started writing is kept alive; once none is, a reply
+// that was kept alive gets the write timeout from now.
+func (w *trackedWriter) check() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.started || w.finished {
+		return
+	}
+	if calibrationsActive.Load() > 0 {
+		_ = w.rc.SetWriteDeadline(time.Now().Add(longResponseLimit))
+		w.extended = true
+	} else if w.extended {
+		_ = w.rc.SetWriteDeadline(time.Now().Add(w.limit))
+		w.extended = false
+	}
+}
+
+func (w *trackedWriter) finish() {
+	w.mu.Lock()
+	w.finished = true // the response is not touched after the handler returns
+	w.mu.Unlock()
 }
 
 // lockCalibration takes the calibration lock and returns its release. While it is held or waited for, replies in flight are kept alive

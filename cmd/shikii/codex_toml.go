@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -18,7 +19,11 @@ import (
 // TOML, hold the shikii server shikii meant (or none, for uninstall), and keep everything else Codex reads exactly as it was.
 // The text itself is still edited by appending or cutting lines, so the person's comments and layout stay.
 
+// utf8BOM starts a file some editors save; Codex reads such a config.toml, and go-toml does not (0.9.7 full audit 2-6).
+var utf8BOM = []byte("\xef\xbb\xbf")
+
 func readCodexConfig(b []byte) (map[string]any, error) {
+	b = bytes.TrimPrefix(b, utf8BOM)
 	m := map[string]any{}
 	if err := toml.Unmarshal(b, &m); err != nil {
 		return nil, err
@@ -131,7 +136,7 @@ func codexWithServer(b []byte, command string, args []string) []byte {
 
 // codexServerState says what init can do with Codex's config.toml: "add" (no shikii server, and appending one keeps every other setting),
 // "has" (a shikii server is defined, in any form), "inline" (mcp_servers cannot be extended by a table, e.g. mcp_servers = { … }) or
-// "unreadable" (not TOML; Codex cannot read it either). Only "add" changes the file; otherwise init shows the block to add by hand.
+// "unreadable" (not TOML, apart from a leading byte order mark; Codex cannot read it either). Only "add" changes the file; otherwise init shows the block to add by hand.
 func codexServerState(b []byte, command string, args []string) string {
 	m, err := readCodexConfig(b)
 	if err != nil {
@@ -160,7 +165,10 @@ func addCodexServer(path string, args []string) (bool, error) {
 	if codexServerState(b, command, args) != "add" {
 		return false, nil
 	}
-	return true, writePersonFile(path, codexWithServer(b, command, args), 0o644)
+	if err := writePersonFile(path, codexWithServer(b, command, args), 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // codexServerPinsAProject reports whether the shikii server in Codex's config names a store by its absolute path
@@ -200,7 +208,7 @@ func codexServerNote(path string) string {
 	block := "[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + " (Codex)"
 	switch codexServerState(b, mcpCommand(), codexServerArgs) {
 	case "inline":
-		return "did not add shikii: mcp_servers is written as an inline table (mcp_servers = { ... }), which cannot be extended. Add shikii to it, or rewrite it as tables and add:\n" + block
+		return "did not add shikii: mcp_servers is written in a form a [mcp_servers.shikii] table cannot be added to (such as mcp_servers = { ... }). Add shikii to it, or rewrite it as tables and add:\n" + block
 	case "unreadable":
 		if _, err := readCodexConfig(b); err != nil {
 			return fmt.Sprintf("did not add shikii: the file could not be read as TOML (%v), so it was left as it is. Fix it, then add:\n%s", err, block)
@@ -221,7 +229,12 @@ func withoutCodexServer(text string) (string, bool, error) {
 	if _, ok := codexShikiiServer(before); !ok {
 		return text, false, nil
 	}
+	bom := ""
+	if strings.HasPrefix(text, string(utf8BOM)) {
+		bom, text = string(utf8BOM), strings.TrimPrefix(text, string(utf8BOM))
+	}
 	out, _, err := cutCodexServer(text)
+	text, out = bom+text, bom+out
 	if err != nil {
 		return text, false, err
 	}

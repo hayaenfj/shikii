@@ -208,6 +208,7 @@ type hookSession struct {
 	PlanningShortTurns int            `json:"planning_short_turns,omitempty"`
 	PlanningMissed     bool           `json:"planning_missed,omitempty"`    // an organizing was asked and not submitted; the next notice is the full text
 	ReflectLastAsked   []string       `json:"reflect_last_asked,omitempty"` // the conversations of the last reflection ask (unlike ReflectAsked, not cleared by a request that asks nothing)
+	ReflectMissed      bool           `json:"reflect_missed,omitempty"`     // a turn ended with the reflection it was asked for not done; the next ask is the full text
 	ReflectShortTurns  int            `json:"reflect_short_turns,omitempty"`
 	ClassifyAsked      []string       `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
 	ClassifyAskedTurn  string         `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
@@ -655,6 +656,11 @@ func runHookEvent(event string) error {
 		return nil
 	}
 	if err != nil {
+		if moved != "" { // reconnected, but the hook could not go on: still tell the move, it is not told again (0.9.7 full audit 3, doubt 6)
+			if b := (hookOut{Context: moved}).json(hookEventName(event)); b != nil {
+				fmt.Fprintln(stdout, string(b))
+			}
+		}
 		return err
 	}
 	if event != "agent-task" {
@@ -719,7 +725,7 @@ func runHookEvent(event string) error {
 				ids = nil // a turn where asking failed does not stop on the previous turn's leftovers (audit R5)
 			} else if context != "" {
 				// the full text the first time in the session, when the conversations asked last time are still waiting, and every noticeFullEvery asks (0.9.7)
-				if shortTurns == 0 || shortTurns >= noticeFullEvery || overlap(ids, current.ReflectLastAsked) {
+				if shortTurns == 0 || shortTurns >= noticeFullEvery || current.ReflectMissed || overlap(ids, current.ReflectLastAsked) {
 					shortTurns = 1
 				} else {
 					context, shortTurns = reflectAskShort(reflectCLI(), ids), shortTurns+1
@@ -730,6 +736,9 @@ func runHookEvent(event string) error {
 			if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
 				if s.TurnID == current.TurnID {
 					s.ReflectAsked, s.ReflectAskedTurn, s.ReflectShortTurns = ids, current.TurnID, shortTurns
+					if shortTurns == 1 {
+						s.ReflectMissed = false // the full text was given
+					}
 					if len(ids) > 0 {
 						s.ReflectLastAsked = ids // kept across a request that asks nothing or fails to ask, so a miss is still seen (re-audit S3)
 					}

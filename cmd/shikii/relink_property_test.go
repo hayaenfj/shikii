@@ -22,7 +22,10 @@ func TestRelinkPropertiesOverRandomFolderHistories(t *testing.T) {
 	for run := 0; run < runs; run++ {
 		t.Run(fmt.Sprint(run), func(t *testing.T) {
 			r := rand.New(rand.NewSource(int64(970 + run)))
-			repo := gitRepo(t)
+			repo := t.TempDir() // half of the runs outside Git: the project is the folder itself (0.9.7 full audit 1-1)
+			if run%2 == 0 {
+				repo = gitRepo(t)
+			}
 			hookEnv(t, nil, repo)
 			common, _ := agentHome()
 			base := t.TempDir()

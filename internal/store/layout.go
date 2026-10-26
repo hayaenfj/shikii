@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -29,33 +30,86 @@ func scopeKey(scope string) string {
 // or the only hash-named ones there when the fixed name is still empty (written under the path the project had then), are brought in:
 // a file's complete lines are copied (merge), never the file moved, because an older shikii still running may be writing to it (moving it
 // sealed a half-written line and sent the rest to a new file; found by the property test, 0.9.7); a folder of records written once is moved.
+// Once a hash-named file or folder has been brought in, it keeps being merged on every use (an older shikii may still write to it; 0.9.7
+// full audit 1-7): a file by its .merged mark, a folder by its name kept in the fixed folder's .adopted list.
 func (s Store) projectPath(area, ext, scope string) string {
 	dir := filepath.Join(s.Dir, "records", area)
-	from := filepath.Join(dir, scopeKey(scope)+ext)
 	fixed := filepath.Join(dir, projectName+ext)
-	if _, err := os.Lstat(from); err != nil {
-		from = ""
-		if empty(fixed) {
-			from = onlyHashNamed(dir, ext)
+	var froms []string
+	if from := filepath.Join(dir, scopeKey(scope)+ext); exists(from) {
+		froms = append(froms, from)
+	}
+	for _, name := range s.broughtIn(dir, ext) {
+		if p := filepath.Join(dir, name); exists(p) && p != filepath.Join(dir, scopeKey(scope)+ext) {
+			froms = append(froms, p)
 		}
 	}
-	if from == "" {
-		return fixed
+	if len(froms) == 0 && empty(fixed) {
+		if only := onlyHashNamed(dir, ext); only != "" {
+			froms = append(froms, only)
+		}
 	}
-	if ext == "" {
-		if empty(fixed) {
-			return s.adopt(area, ext, from)
+	for _, from := range froms {
+		if ext == "" {
+			if empty(fixed) {
+				s.adopt(area, ext, from)
+				rememberAdopted(fixed, filepath.Base(from))
+				continue
+			}
+			rememberAdopted(fixed, filepath.Base(from))
+			s.merge(from, fixed, ext)
+			continue
+		}
+		if !exists(fixed) {
+			if f, err := os.OpenFile(fixed, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600); err == nil {
+				f.Close()
+			}
 		}
 		s.merge(from, fixed, ext)
-		return fixed
 	}
-	if _, err := os.Lstat(fixed); os.IsNotExist(err) {
-		if f, err := os.OpenFile(fixed, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600); err == nil {
-			f.Close()
+	return fixed
+}
+
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+// broughtIn are the hash-named records merged or adopted before: files with a .merged mark, folders named in the fixed folder's .adopted.
+func (s Store) broughtIn(dir, ext string) []string {
+	var out []string
+	if ext == "" {
+		data, _ := os.ReadFile(filepath.Join(dir, projectName, ".adopted"))
+		for _, name := range strings.Fields(string(data)) {
+			if hashName.MatchString(name) {
+				out = append(out, name)
+			}
+		}
+		return out
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if name, ok := strings.CutSuffix(e.Name(), ext+".merged"); ok && hashName.MatchString(name) {
+			out = append(out, name+ext)
 		}
 	}
-	s.merge(from, fixed, ext)
-	return fixed
+	return out
+}
+
+func rememberAdopted(fixed, name string) {
+	path := filepath.Join(fixed, ".adopted")
+	data, _ := os.ReadFile(path)
+	for _, n := range strings.Fields(string(data)) {
+		if n == name {
+			return
+		}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(name + "\n")
 }
 
 // merge adds what an older shikii (before 0.9.7, still running) wrote under the scope's hash after the move to the fixed name.
@@ -121,8 +175,8 @@ func (s Store) merge(from, fixed, ext string) {
 		}
 	}
 	offset, err := strconv.ParseInt(at, 10, 64)
-	if err != nil || offset < 0 || offset > st.Size() || (sum != "" && tailHash(f, offset) != sum) {
-		offset = 0
+	if err != nil || offset < 0 || offset > st.Size() || (sum != "" && tailHash(f, offset) != sum) || !atLineStart(f, offset) {
+		offset = 0 // a mark not at the start of a line is broken too (marks without a hash, 0.9.7 full audit 1-9)
 	}
 	data, err := io.ReadAll(io.NewSectionReader(f, offset, MaxLineBytes*16))
 	if err != nil {
@@ -141,12 +195,48 @@ func (s Store) merge(from, fixed, ext string) {
 	if err != nil {
 		return
 	}
-	_, werr := out.Write(data[:end+1])
+	_, werr := out.Write(wholeRecords(data[:end+1]))
 	if cerr := out.Close(); werr != nil || cerr != nil {
 		return
 	}
 	_ = mark.Truncate(0)
 	_, _ = mark.WriteAt([]byte(strconv.FormatInt(next, 10)+" "+nextSum), 0)
+}
+
+// wholeRecords keeps the lines that are whole JSON records. A line an older shikii stopped in the middle of, followed by the next record on
+// the same line, keeps that record (the part from its last "{\"" that reads as JSON); a line with no whole record is left out, so no
+// broken line reaches the fixed name (0.9.7 full audit 1-8, 1-9).
+func wholeRecords(data []byte) []byte {
+	var out bytes.Buffer
+	for _, line := range bytes.SplitAfter(data, []byte("\n")) {
+		body := bytes.TrimRight(line, "\n")
+		if len(body) == 0 {
+			continue
+		}
+		if json.Valid(body) && body[0] == '{' {
+			out.Write(body)
+			out.WriteByte('\n')
+			continue
+		}
+		for i := bytes.LastIndex(body, []byte(`{"`)); i > 0; i = bytes.LastIndex(body[:i], []byte(`{"`)) {
+			if json.Valid(body[i:]) {
+				out.Write(body[i:])
+				out.WriteByte('\n')
+				break
+			}
+		}
+	}
+	return out.Bytes()
+}
+
+// atLineStart reports whether offset is 0 or right after a newline in f.
+func atLineStart(f *os.File, offset int64) bool {
+	if offset == 0 {
+		return true
+	}
+	b := make([]byte, 1)
+	_, err := f.ReadAt(b, offset-1)
+	return err == nil && b[0] == '\n'
 }
 
 // tailHash is the hash of up to 4 KiB of f just before offset.

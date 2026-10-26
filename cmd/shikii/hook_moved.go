@@ -57,11 +57,24 @@ func relinkMovedProject(cwd string, takeOver bool) string {
 	if err != nil {
 		return ""
 	}
-	old, version, ok := previousScope(root, scope)
+	if _, _, ok := previousScope(root, scope); !ok {
+		return ""
+	}
+	// one reconnection at a time per store: two hooks (two sessions) at once told the move twice (0.9.7 full audit 1-3, 3-3)
+	unlock, err := lockRelink(root)
+	if err != nil {
+		return ""
+	}
+	defer unlock()
+	old, version, ok := previousScope(root, scope) // read again under the lock: another hook may have reconnected it
 	if !ok {
 		return ""
 	}
-	moved := !copiedFrom(old, scope) && registeredHere(old, root)
+	copied := copiedFrom(old, scope)
+	moved := !copied && registeredHere(old, root)
+	// A move to another disk (mv copies there, so the store folder changed) cannot be told from a copy of a moved original that has not
+	// been reconnected yet: both have this store's id and a gone old path. --init there makes a project of its own with a new id and keeps
+	// the old entry, so the original, wherever it is, can still reconnect (the property test found the takeover, 0.9.7 full audit 1-6).
 	if !moved && !takeOver {
 		return "" // only the person's shikii --init activates it
 	}
@@ -87,6 +100,27 @@ func relinkMovedProject(cwd string, takeOver bool) string {
 	}
 	forgetProject(old)
 	return fmt.Sprintf("shikii: this project's folder was moved or renamed from %s. shikii reconnected it here by itself: its wiki, records and settings are kept, and nothing needs fixing. Tell the person this once, in your final reply.", old)
+}
+
+// lockRelink takes the reconnection lock of the store at root, waiting for another hook. It lives on the shared side
+// (~/.shikii/agent/relink-<id>.lock), since nothing is written into a store that may be a copy.
+func lockRelink(root string) (func(), error) {
+	common, err := agentHome()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(common, 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(common, "relink-"+projectID(root)+".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
 }
 
 // forgetProject removes the old path's entry from the shared index and stops the page shikii started for it (only that serve, checked by its command line).
@@ -133,7 +167,7 @@ func otherPathNotice(agent, scope string) string {
 	if err != nil || len(stores) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("shikii: .shikii has a wiki store left under the previous path's name (%s). The folder was moved or renamed, and its pages and sources do not show up in the current wiki. When you finish the current request, %s", strings.Join(stores, ", "), movedHow)
+	return fmt.Sprintf("shikii: .shikii has a wiki store under another name (%s), left by a copy made by hand before 0.9.7 or written by an older shikii; some of its pages and sources do not show up in the current wiki. When you finish the current request, %s Tell the person this in your final reply.", strings.Join(stores, ", "), movedHow)
 }
 
 // noticeOnce reports whether this session has not been told yet about the folder at scope (a copy or an unconfirmed store). That folder is

@@ -34,7 +34,7 @@ func TestHookTellsWikiLeftUnderOldPath(t *testing.T) {
 	}
 	prompt := map[string]any{"session_id": "s1", "cwd": repo, "prompt": "README の誤字を直してください。"}
 	first := feedbackContext(t, runHook(t, "user-prompt-submit", prompt))
-	if !strings.Contains(first, "wiki store left under the previous path's name") || !strings.Contains(first, place) {
+	if !strings.Contains(first, "wiki store under another name") || !strings.Contains(first, place) {
 		t.Fatalf("tells about the leftover store: %q", first)
 	}
 	prompt["prompt"] = "次は CHANGELOG の誤字を直してください。"

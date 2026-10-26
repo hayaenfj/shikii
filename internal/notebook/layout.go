@@ -26,6 +26,7 @@ func MigrateLayout(root, scope string) error {
 	for _, area := range storeAreas {
 		fixed := filepath.Join(root, area, storeDirName)
 		if _, err := os.Lstat(fixed); err == nil {
+			mergeLater(root, area, fixed, scope)
 			continue
 		} else if !os.IsNotExist(err) {
 			return err
@@ -56,6 +57,86 @@ func MigrateLayout(root, scope string) error {
 		}
 	}
 	return nil
+}
+
+// mergeLater brings in what an older shikii (before 0.9.7, still running) wrote under the path's hash after the area moved to the fixed
+// name: a file missing from the fixed area is moved in, one already there with the same content is dropped, and the sources registry is
+// joined. The page links and source ids it wrote under that name are accepted (rememberName, RememberPath). It is skipped when the area
+// is busy and tried again on the next use; files that differ stay, and OtherPathStores names them (0.9.7 full audit 1-2).
+func mergeLater(root, area, fixed, scope string) {
+	from := filepath.Join(root, area, digest([]byte(scope)))
+	if info, err := os.Lstat(from); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return
+	}
+	unlock, err := lock(fixed)
+	if err != nil {
+		return
+	}
+	defer unlock()
+	var captured []string
+	_ = filepath.WalkDir(from, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !d.Type().IsRegular() {
+			return nil
+		}
+		rel, _ := filepath.Rel(from, path)
+		target := filepath.Join(fixed, rel)
+		switch name := d.Name(); {
+		case name == ".captured.json":
+			if ids, err := capturedIDs(filepath.Dir(path)); err == nil {
+				captured = append(captured, ids...)
+			}
+			_ = os.Remove(path)
+		case name == ".lock" || name == "index.md" || name == "log.md":
+			_ = os.Remove(path) // made again per store
+		default:
+			old, err := os.ReadFile(target)
+			switch {
+			case os.IsNotExist(err):
+				if os.MkdirAll(filepath.Dir(target), 0o700) == nil {
+					_ = os.Rename(path, target)
+				}
+			case err == nil:
+				if now, err := os.ReadFile(path); err == nil && bytes.Equal(old, now) {
+					_ = os.Remove(path)
+				}
+			}
+		}
+		return nil
+	})
+	if len(captured) > 0 {
+		ids, _ := capturedIDs(fixed)
+		seen := map[string]bool{}
+		for _, id := range ids {
+			seen[id] = true
+		}
+		for _, id := range captured {
+			if !seen[id] {
+				ids, seen[id] = append(ids, id), true
+			}
+		}
+		if data, err := json.Marshal(ids); err == nil {
+			_ = writeFile(filepath.Join(fixed, ".captured.json"), data)
+		}
+	}
+	if area == "wiki/lessons" {
+		_ = rememberName(fixed, filepath.Base(from))
+	} else {
+		_ = RememberPath(root, scope)
+	}
+	removeEmptyDirs(from)
+}
+
+func removeEmptyDirs(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			removeEmptyDirs(filepath.Join(dir, e.Name()))
+		}
+	}
+	_ = os.Remove(dir) // only when empty
 }
 
 // RememberPath records a path the project had before 0.9.7 (or before a move), so its uncited source ids still check.
