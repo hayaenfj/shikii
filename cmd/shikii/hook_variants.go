@@ -233,22 +233,27 @@ func wordingSummary(agent string) string {
 		}
 		var state, en, ja string
 		url := projectPageURL(agent)
-		title := jaQuestionTitle(agent, id)
+		title, enTitle := jaQuestionTitle(agent, id), enQuestionTitle(agent, id)
+		// what changed, so the person can decide without opening the page (audit 0.9.2, low 4). The candidate is shown by its question, not its internal name (0.9.3)
+		var both, onlyNew string
+		if res.WinnerWording != nil {
+			onlyNew = fmt.Sprintf(" (new: %s)", trim(res.WinnerWording.Question, wordingNoticeRunes))
+			if res.Current != nil {
+				both = fmt.Sprintf(" (current: %s / new: %s)", trim(res.Current.Question, wordingNoticeRunes), trim(res.WinnerWording.Question, wordingNoticeRunes))
+			}
+		}
 		switch {
 		case res.AutoAdopted && res.Adopted:
 			state = "adopted"
-			en = fmt.Sprintf("shikii: the wording of %s was changed to %q: the agent checked it asks the same thing, and it matched more of the truths so far. If the meaning changed, undo it on the page: %s", id, res.Winner, url)
-			if res.Current != nil && res.WinnerWording != nil { // what changed, so the person can decide without opening the page (audit 0.9.2, low 4)
-				en += fmt.Sprintf(" (current: %s / new: %s)", trim(res.Current.Question, wordingNoticeRunes), trim(res.WinnerWording.Question, wordingNoticeRunes))
-			}
+			en = fmt.Sprintf("shikii: the wording of %q was changed: the agent checked it asks the same thing, and it matched more of the truths so far. If the meaning changed, undo it on the page: %s", enTitle, url) + both
 			ja = fmt.Sprintf("shikii: 問い「%s」の聞き方を変えました(AI が意味は同じと確かめ、正解 %d 件で今より当たりました)。今まで: %s → これから: %s。意味が違っていたら画面で元に戻せます: %s", title, res.Truths, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
 		case check.Verdict == "unsure" && res.Adoptable && !res.Adopted:
 			state = "unsure"
-			en = fmt.Sprintf("shikii: a new wording %q for %s matched more of the truths so far, but the agent could not decide whether it asks the same thing (its view of the difference: %s). Please check it on the page: %s", res.Winner, id, check.Difference, url)
+			en = fmt.Sprintf("shikii: a new wording for %q matched more of the truths so far, but the agent could not decide whether it asks the same thing (its view of the difference: %s). Please check it on the page: %s", enTitle, check.Difference, url) + both
 			ja = fmt.Sprintf("shikii: 問い「%s」の聞き方の候補は今より当たりましたが、意味が同じか AI が決めきれません(違いの見立て: %s)。今の聞き方: %s / 候補: %s。画面で意味が同じかを選んでください: %s", title, check.Difference, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
 		case check.Verdict == "same" && res.Adoptable && !res.Adopted && res.AdoptError != "":
 			state = "failed"
-			en = fmt.Sprintf("shikii: the agent found that the new wording %q for %s asks the same thing, but it could not be adopted (%s). The current wording stays; it is tried again as truths grow", res.Winner, id, res.AdoptError)
+			en = fmt.Sprintf("shikii: the agent found that a new wording for %q asks the same thing, but it could not be adopted (%s). The current wording stays; it is tried again as truths grow", enTitle, res.AdoptError) + onlyNew
 			ja = fmt.Sprintf("shikii: 問い「%s」の聞き方の候補は AI が意味は同じと確かめましたが、採用できませんでした(%s)。今の聞き方のままで、正解が増えた時にもう一度試します", title, res.AdoptError)
 		default:
 			continue
@@ -268,10 +273,22 @@ func wordingSummary(agent string) string {
 	return strings.Join(lines, "\n")
 }
 
-// jaQuestionTitle is how the Japanese notices name a question: the page's title (display.ja.title), else its Japanese question, never the spec id (audit 0.9.2 ui).
-func jaQuestionTitle(agent, id string) string {
-	if sp, err := spec.Load(hookSpecPath(agent, id)); err == nil {
-		if d, ok := sp.Display["ja"]; ok {
+// jaQuestionTitle / enQuestionTitle are how the notices to the person name a question: the page's title (display.<lang>.title), else the page's question,
+// never the spec id (audit 0.9.2 ui; English since 0.9.3).
+func jaQuestionTitle(agent, id string) string { return questionTitle(loadOrNil(agent, id), "ja") }
+func enQuestionTitle(agent, id string) string { return questionTitle(loadOrNil(agent, id), "en") }
+
+func loadOrNil(agent, id string) *spec.Spec {
+	sp, err := spec.Load(hookSpecPath(agent, id))
+	if err != nil {
+		return nil
+	}
+	return sp
+}
+
+func questionTitle(sp *spec.Spec, lang string) string {
+	if sp != nil {
+		if d, ok := sp.Display[lang]; ok {
 			if t := strings.TrimSpace(d.Title); t != "" {
 				return t
 			}
@@ -280,7 +297,10 @@ func jaQuestionTitle(agent, id string) string {
 			}
 		}
 	}
-	return "この問い"
+	if lang == "ja" {
+		return "この問い"
+	}
+	return "this question"
 }
 
 // wordingNoticeRunes is how much of each question the English notice shows (the whole question is on the page).

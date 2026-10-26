@@ -141,46 +141,65 @@ func lineSummary(agent string) string {
 		if err := os.WriteFile(mark, []byte(key+"\n"), 0o600); err != nil {
 			continue
 		}
-		name := id
-		if d, ok := sp.Display["ja"]; ok && d.Title != "" {
-			name = d.Title + "(" + id + ")"
-		}
+		// the notices name the question by its title on the page, never by the spec id (0.9.3); the Japanese text uses the page's plain words (glossary)
+		name, enName := questionTitle(sp, "ja"), questionTitle(sp, "en")
 		loc := hookLoc{Lang: hookLang()}
 		machine := machineOnlySpecs[id]            // questions never asked of people (wiki insertion point, contradiction). The AI answers; the truth comes from results
 		byResults := outcomeSpecs[id] && !machine  // hook questions that, even when unsure, do not ask a person and get their truth from results (prompt-kind, changes-in-scope, done-as-asked)
 		wordings := slices.Contains(hookSpecs, id) // questions for which the agent is asked for other wordings when no line can be drawn (the 4 hook questions)
 		switch s.Kind {
 		case lineCalibrated:
-			en, ja := "From now on, decisions above the line go ahead without asking (act); the rest still ask, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは確信が線より上の判断は人に聞かずに進み(act)、それ以外は今までどおり聞きます。act の 20 件に 1 件は抜き取りで画面に出ます。"
+			en, ja := "From now on, decisions above the line go ahead without asking (act); the rest still ask, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは AI の自信が境目より上なら人に聞かずに進み、それ以外は今までどおり聞きます。AI が自分で進めた物の 20 件に 1 件は、確かめのため画面に出ます。"
 			if machine {
-				en, ja = "Its answers now carry a checked confidence (act) for the agent; nothing is asked of you, and lessons are never replaced silently.", "これからはその答えに、線で確かめた確信(act)が付いてエージェントへ渡ります。人に聞くことはなく、教訓を黙って置き換えることもありません。"
+				en, ja = "Its answers now carry a checked confidence (act) for the agent; nothing is asked of you, and lessons are never replaced silently.", "これからはその答えに、確かめた自信が付いてエージェントへ渡ります。人に聞くことはなく、教訓を黙って置き換えることもありません。"
 			}
 			if byResults {
-				en, ja = "From now on, decisions above the line go ahead (act); the rest wait for results to supply the truth instead of asking you, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは確信が線より上の判断は進み(act)、それ以外は迷っても人に聞かず、結果から正解が付くのを待ちます。act の 20 件に 1 件は抜き取りで画面に出ます。"
+				en, ja = "From now on, decisions above the line go ahead (act); the rest wait for results to supply the truth instead of asking you, and 1 in 20 of the act decisions is shown to you as a spot check.", "これからは AI の自信が境目より上なら進み、それ以外は迷っても人に聞かず、結果から正解が付くのを待ちます。AI が自分で進めた物の 20 件に 1 件は、確かめのため画面に出ます。"
 			}
 			lines = append(lines, bi(
-				fmt.Sprintf("shikii: a line was drawn for %s (%d truths). %s %s", id, s.N, en, projectPageURL(agent)),
-				fmt.Sprintf("shikii: 判定「%s」に線が引けました(正解 %d 件)。%s %s", name, s.N, ja, pageRef(filepath.Dir(agent))), loc))
+				fmt.Sprintf("shikii: a line was drawn for %q (%d truths). %s %s", enName, s.N, en, projectPageURL(agent)),
+				fmt.Sprintf("shikii: 問い「%s」で、AI がひとりで決めてよい境目が決まりました(正解 %d 件)。%s %s", name, s.N, ja, pageRef(filepath.Dir(agent))), loc))
 		case lineOneAnswer:
 			en, ja := "It keeps asking until the other answer appears.", "もう片方の答えが付くまで、今までどおり聞きます。"
 			if machine {
-				en, ja = "The AI keeps answering it without a line; nothing is asked of you.", "線が無いまま AI が答え続けます。人に聞くことはありません。"
+				en, ja = "The AI keeps answering it without a line; nothing is asked of you.", "境目が無いまま AI が答え続けます。人に聞くことはありません。"
 			}
 			if byResults {
 				en, ja = "It waits for results to supply the other answer; nothing is asked of you.", "もう片方の答えが結果から付くのを待ちます。人に聞くことはありません。"
 			}
 			lines = append(lines, bi(
-				fmt.Sprintf("shikii: %s has %d truths but only one answer so far (%s), so no line can be drawn yet. %s", id, s.N, fmtCounts(s.Truths), en),
-				fmt.Sprintf("shikii: 判定「%s」は正解が %d 件たまりましたが、答えが片方だけ(%s)なので線を引けません。%s", name, s.N, fmtCounts(s.Truths), ja), loc))
+				fmt.Sprintf("shikii: %q has %d truths but only one answer so far (%s), so no line can be drawn yet. %s", enName, s.N, fmtCounts(s.Truths), en),
+				fmt.Sprintf("shikii: 問い「%s」は正解が %d 件たまりましたが、答えが片方だけ(%s)なので、AI がひとりで決めてよい境目をまだ決められません。%s", name, s.N, jaCounts(sp, s.Truths), ja), loc))
 		case lineNotSeparable:
 			en, ja := fmt.Sprintf("It is tried again when %d more truths arrive.", hookRecalibrateEvery), fmt.Sprintf("正解が %d 件増えたら、もう一度試します。", hookRecalibrateEvery)
 			if wordings {
 				en, ja = "The agent is asked for other wordings, which are scored on the same truths; it is also tried again as truths grow.", "エージェントに別の聞き方の候補を頼み、同じ正解で採点します。正解が増えた時にももう一度試します。"
 			}
 			lines = append(lines, bi(
-				fmt.Sprintf("shikii: %s has %d truths, but the answers could not be separated with this wording and model, so no line was drawn. %s", id, s.N, en),
-				fmt.Sprintf("shikii: 判定「%s」は正解が %d 件たまりましたが、今の聞き方とモデルでは答えを分けられず、線を引けませんでした。%s", name, s.N, ja), loc))
+				fmt.Sprintf("shikii: %q has %d truths, but the answers could not be separated with this wording and model, so no line was drawn. %s", enName, s.N, en),
+				fmt.Sprintf("shikii: 問い「%s」は正解が %d 件たまりましたが、今の聞き方では答えを見分けられず、AI がひとりで決めてよい境目を決められませんでした。%s", name, s.N, ja), loc))
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// jaCounts is the count per answer in the page's Japanese answer names (display.ja.options; plain Japanese yes / no for a noul without them), not raw ids like no=10.
+func jaCounts(sp *spec.Spec, truths map[string]int) string {
+	keys := make([]string, 0, len(truths))
+	for k := range truths {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		name := sp.Display["ja"].Options[k]
+		if name == "" {
+			name = map[string]string{"yes": "はい", "no": "いいえ"}[k]
+		}
+		if name == "" {
+			name = k
+		}
+		parts = append(parts, fmt.Sprintf("%s %d 件", name, truths[k]))
+	}
+	return strings.Join(parts, "・")
 }

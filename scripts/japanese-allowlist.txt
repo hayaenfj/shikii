@@ -32,8 +32,8 @@
 61 cmd/shikii/hook_subagent_test.go
 24 cmd/shikii/hook_test.go
 5 cmd/shikii/hook_variants.go
-11 cmd/shikii/line_state.go
-8 cmd/shikii/line_state_test.go
+14 cmd/shikii/line_state.go
+11 cmd/shikii/line_state_test.go
 1 cmd/shikii/memory.go
 19 cmd/shikii/memory_effect_test.go
 2 cmd/shikii/new_test.go
