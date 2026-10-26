@@ -19,7 +19,7 @@ export default {
   inputAgreed: 'AI の読み: もう決まっていること',
   inputOpen: 'AI の読み: まだ決まっていないこと',
   calibrationHeld: 'AI がひとりで決めるのは見送り中です。付いた正解は保存されています。',
-  calibrationQuality: n => '正解は ' + n + ' 件ありますが、今の問いとモデルの予測では、AI がひとりで決めてよい境目を置けませんでした。問いやモデルの見直しが要ります。',
+  calibrationQuality: n => '正解は ' + n + ' 件ありますが、今の聞き方では、AI の見立てで答えを見分けられません。AI が別の聞き方を試します(あなたがすることはありません)。',
   calibrationInsufficient: (n, min) => '人・結果・エージェントが送った正解が ' + n + ' 件で、必要な ' + min + ' 件に届いていません。境目はまだ置いていません。',
   calibrationWritten: n => n + ' 件の正解を確かめ、AI がひとりで決めてよい境目を保存しました。',
   calibrationError: '境目を決める処理に失敗しました。付いた正解は保存されています。詳しい記録で原因を確かめられます。',

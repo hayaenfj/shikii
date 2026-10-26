@@ -21,7 +21,7 @@ export default {
   inputAgreed: 'AI reading: already decided',
   inputOpen: 'AI reading: still undecided',
   calibrationHeld: 'Deciding on its own is on hold. The truths are saved.',
-  calibrationQuality: n => 'There are ' + n + ' truths, but predictions from the current question and model could not set the point where the AI may decide alone. Review the question or model.',
+  calibrationQuality: n => 'There are ' + n + ' truths, but with this wording the AI cannot tell the answers apart yet. The AI will try other wordings (nothing for you to do).',
   calibrationInsufficient: (n, min) => 'There are ' + n + ' truths from a person, a result or an agent; ' + min + ' are required. No point is set yet.',
   calibrationWritten: n => 'Checked ' + n + ' truths and saved the point where the AI may decide alone.',
   calibrationError: 'Setting the point failed. The truths are saved. Open the detailed record to see why.',

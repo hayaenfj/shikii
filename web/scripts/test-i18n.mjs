@@ -90,3 +90,14 @@ test('only the allowlisted texts say "your answers"', () => {
   assert.match(locales.en.yourAnswer('yes', 'x'), /Your answer/);
   for (const code of ['ja', 'en']) for (const k of yourAnswerKeys[code]) assert.match(rendered(locales[code][k]), yourAnswerWords[code], code + '.' + k + ' is on the allowlist');
 });
+
+// 0.9.3+: when the answers cannot be told apart, the AI tries other ways of asking by itself. The page says so and that the person has nothing to do,
+// instead of "could not set the point … Review the question or model" (which read as a failure the person must fix)
+test('a quality refusal says the AI tries other wordings and the person has nothing to do', () => {
+  const ja = locales.ja.calibrationQuality(64), en = locales.en.calibrationQuality(64);
+  assert.match(ja, /64/); assert.match(en, /64/);
+  assert.match(ja, /\u898b\u5206\u3051\u3089\u308c\u307e\u305b\u3093/); assert.match(ja, /\u3042\u306a\u305f\u304c\u3059\u308b\u3053\u3068\u306f\u3042\u308a\u307e\u305b\u3093/); assert.match(ja, /\u5225\u306e\u805e\u304d\u65b9/);
+  assert.doesNotMatch(ja, /\u898b\u76f4\u3057\u304c\u8981\u308a\u307e\u3059|\u7f6e\u3051\u307e\u305b\u3093\u3067\u3057\u305f/);
+  assert.match(en, /cannot tell the answers apart/); assert.match(en, /nothing for you to do/); assert.match(en, /other wordings/);
+  assert.doesNotMatch(en, /Review the question/);
+});

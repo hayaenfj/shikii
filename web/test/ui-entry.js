@@ -725,7 +725,7 @@ function checkCalibrationReport(target) {
     const detail = report?.querySelector('details');
     closed &&= !!detail && !detail.open && detail.querySelector('pre')?.textContent.includes('diagnostic marker') && !target.querySelector('.decision-panel > pre');
     const text = report?.querySelector('.calibration-summary')?.textContent || '';
-    if (reason === 'quality') summaries &&= text.includes('50') && text.includes('予測') && !text.includes('不足');
+    if (reason === 'quality') summaries &&= text.includes('50') && text.includes('見分けられません') && text.includes('あなたがすることはありません') && !text.includes('不足');
     if (reason === 'insufficient') summaries &&= text.includes('2') && text.includes('50') && text.includes('届いていません');
     if (reason === 'written') summaries &&= text.includes('保存しました');
     const progress = target.querySelector('.learning-line')?.textContent || '';
