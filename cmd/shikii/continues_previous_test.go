@@ -95,8 +95,8 @@ func TestPlanNewSplitsAcknowledgement(t *testing.T) {
 	if s.Request != "ok" || s.RequestText != "ok" {
 		t.Fatalf("the agent said it is new: must stand alone, got %q / %q", s.Request, s.RequestText)
 	}
-	if l, ok := doneLabel(t, root, done); !ok || l.Truth != "yes" || l.Source != "outcome" {
-		t.Fatalf("a new request settles the previous outcome as for any new request: %+v %v", l, ok)
+	if l, ok := doneLabel(t, root, done); ok {
+		t.Fatalf("the grouping never decides a truth: an acknowledgement does not settle the previous outcome (audit 3): %+v", l)
 	}
 	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
 	if s := loadSession(root, "planning"); !s.Judged || s.Completed == nil || s.Completed.Request != "ok" {
@@ -113,14 +113,22 @@ func TestNoPlanKeepsListDecision(t *testing.T) {
 		if s := loadSession(root, "planning"); s.Request != "main取り込んで" {
 			t.Fatalf("no organizing: the list keeps it as its own request, got %q", s.Request)
 		}
-		if l, ok := doneLabel(t, root, done); !ok || l.Truth != "yes" {
-			t.Fatalf("no organizing: the previous outcome is settled from a new request by the Stop: %+v %v", l, ok)
+		if l, ok := doneLabel(t, root, done); ok {
+			t.Fatalf("a short new request is too short to show the person moved on (audit 3): %+v", l)
 		}
 		// an organizing that arrives after the Stop judged the turn no longer moves the request
 		if _, err := planningCall(t, "submit", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}, "continues_previous": true}); err == nil {
 			if s := loadSession(root, "planning"); s.Request != "main取り込んで" {
 				t.Fatalf("a late organizing must not regroup a judged turn: %q", s.Request)
 			}
+		}
+	})
+	t.Run("long", func(t *testing.T) {
+		repo, root, _ := planningFixture(t)
+		done := continuesTurn(t, repo, root, "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。")
+		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Wrote them."})
+		if l, ok := doneLabel(t, root, done); !ok || l.Truth != "yes" || l.Source != "outcome" {
+			t.Fatalf("a long, different request settles the previous outcome by the Stop: %+v %v", l, ok)
 		}
 	})
 	t.Run("ack", func(t *testing.T) {

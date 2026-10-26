@@ -33,7 +33,7 @@ func cmdMCP(args []string) error {
 	var o serveOpts
 	o.ef.bind(fs)
 	fs.StringVar(&o.specsDir, "specs", "", "folder of specs (*.yaml) (default: <store>/decisions)")
-	fs.StringVar(&o.storeDir, "store", ".shikii", "where records and labels are kept (a tool call can name another project with project)")
+	fs.StringVar(&o.storeDir, "store", ".shikii", "where records and labels are kept; .shikii is the project of the folder it starts in. Without --store or --specs there is no start project and every tool call must name project")
 	fs.BoolVar(&o.autoCalibrate, "auto-calibrate", true, "calibrate automatically and write back to the spec once truths reach eval.min_n")
 	fs.StringVar(&o.proposer, "proposer", "", "URL of the proposer (a chat LLM) that drafts wording candidates")
 	fs.StringVar(&o.proposerModel, "proposer-model", "", "model name of the proposer")

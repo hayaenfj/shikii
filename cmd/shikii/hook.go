@@ -889,10 +889,20 @@ const (
 // ackReplies are the bare acknowledgements that are attached to the previous request (0.9.3). An allowlist: anything else, however short,
 // is a request of its own and starts a new conversation (Japanese requests are short, and the old 40-character rule merged a Codex
 // session's 19 requests into one conversation, so reflection almost never ran). Compared after lowercasing and trimming punctuation and spaces.
-var ackReplies = map[string]bool{"y": true, "yes": true, "yeah": true, "yep": true, "yup": true, "ok": true, "okay": true, "k": true, "sure": true, "go": true, "go on": true, "go ahead": true, "continue": true, "next": true, "proceed": true, "do it": true, "lgtm": true, "sounds good": true, "thanks": true, "thank you": true, "please": true, "please do": true, "yes please": true, "ok go": true, "ok thanks": true, "agreed": true, "fine": true, "はい": true, "うん": true, "ええ": true, "了解": true, "了解です": true, "承知しました": true, "わかりました": true, "分かりました": true, "いいよ": true, "いいです": true, "いいですよ": true, "大丈夫": true, "大丈夫です": true, "どうぞ": true, "お願い": true, "お願いします": true, "おねがい": true, "おねがいします": true, "よろしく": true, "よろしくお願いします": true, "続けて": true, "続けてください": true, "続けましょう": true, "では続けましょう": true, "じゃあ続けて": true, "次へ": true, "次": true, "次に進んで": true, "進めて": true, "進めてください": true, "進めましょう": true, "やって": true, "やってください": true, "やりましょう": true, "ではやりましょう": true, "それで": true, "それでお願いします": true, "それでいい": true, "それでいいよ": true, "ありがとう": true, "ありがとうございます": true, "いいね": true, "そうして": true, "そうしましょう": true}
+var ackReplies = map[string]bool{"y": true, "yes": true, "yeah": true, "yep": true, "yup": true, "ok": true, "okay": true, "k": true, "sure": true, "go": true, "go on": true, "go ahead": true, "continue": true, "next": true, "proceed": true, "do it": true, "lgtm": true, "sounds good": true, "thanks": true, "thank you": true, "please": true, "please do": true, "yes please": true, "ok go": true, "ok thanks": true, "agreed": true, "fine": true, "はい": true, "うん": true, "ええ": true, "了解": true, "了解です": true, "承知しました": true, "わかりました": true, "分かりました": true, "いいよ": true, "いいです": true, "いいですよ": true, "大丈夫": true, "大丈夫です": true, "どうぞ": true, "お願い": true, "お願いします": true, "おねがい": true, "おねがいします": true, "よろしく": true, "よろしくお願いします": true, "続けて": true, "続けてください": true, "続けましょう": true, "では続けましょう": true, "じゃあ続けて": true, "次へ": true, "次": true, "次に進んで": true, "進めて": true, "進めてください": true, "進めましょう": true, "やって": true, "やってください": true, "やりましょう": true, "ではやりましょう": true, "それで": true, "それでお願いします": true, "それでいい": true, "それでいいよ": true, "ありがとう": true, "ありがとうございます": true, "いいね": true, "そうして": true, "そうしましょう": true, "了解しました": true, "わかった": true, "分かった": true}
 
 func isAckReply(s string) bool {
-	t := strings.ToLower(strings.TrimSpace(s))
+	// full-width letters and digits as their ASCII forms (an IME types a full-width OK), and no variation selectors or joiners (an emoji picker adds U+FE0F after a thumbs-up)
+	t := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 0xFF01 && r <= 0xFF5E:
+			return r - 0xFEE0
+		case r >= 0xFE00 && r <= 0xFE0F, r == 0x200D:
+			return -1
+		}
+		return r
+	}, s)
+	t = strings.ToLower(strings.TrimSpace(t))
 	t = strings.TrimFunc(t, func(r rune) bool { return unicode.IsPunct(r) || unicode.IsSpace(r) || unicode.IsSymbol(r) })
 	t = strings.Join(strings.Fields(t), " ")
 	return t == "" || ackReplies[t]
@@ -970,7 +980,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 					g.Previous = &c
 				}
 				planning.Grouping = g
-			} else if derr := settleDone(agent, previous, req, joined); derr != nil {
+			} else if derr := settleDone(agent, previous, req); derr != nil {
 				hookLog("outcome: " + derr.Error())
 			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
@@ -1078,6 +1088,22 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		func(s *hookSession) {
 			if s.TurnID == snapshot.TurnID {
 				settleGrouping(agent, s) // the Stop judges this turn with the grouping it has: a later organizing no longer moves it
+				// an organizing that landed while this Stop was asking the model (after its snapshot) regrouped the request this Stop judged:
+				// the Stop's grouping wins, as for an organizing after the Stop, so the judgment and the reply are kept (0.9.3 audit 3)
+				if g := groupingOf(s); g != nil && req != "" && s.Request != req && (req == g.Alone || req == g.Together) {
+					moved := s.Request
+					g.Joined = req == g.Together
+					s.Request, s.RequestText = req, g.AloneText
+					if g.Joined {
+						s.RequestText = g.TogetherText
+					}
+					p := sessionFilesPath(agent, in.SessionID)
+					if b, err := os.ReadFile(p); err == nil && strings.HasPrefix(string(b), listingHeader(moved)) {
+						if err := writeAtomic(p, []byte(listingHeader(req)+string(b[len(listingHeader(moved)):]))); err != nil {
+							hookLog("grouping: " + err.Error())
+						}
+					}
+				}
 			}
 			if last != "" && s.Request == req && s.TurnID == snapshot.TurnID {
 				s.Previous = last

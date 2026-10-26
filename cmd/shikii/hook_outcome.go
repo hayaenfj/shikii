@@ -9,6 +9,7 @@ package main
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -19,8 +20,12 @@ const (
 	outcomeKeptWeight  = 0.5 // not reverted, or moved on to another request (a sign it was not bad, not proof it was good)
 	outcomeRepeatAbove = 0.6 // at or above this similarity to the previous request (Dice on character pairs) it is a restatement
 	outcomeMovedBelow  = 0.2 // at or below this it is a different request
-	scopeWatchTurns    = 2   // number of the person's requests during which changed files are watched (whether they were reverted during the next request is decided at the one after)
-	scopeWatchFiles    = 200 // upper limit of watched files (the rest are not looked at)
+	// a message shorter than this does not show the person moved on: an answer, a choice ("2") or a correction ("wrong", "no") is short and
+	// dissimilar too. Grouping (the acknowledgement list, continues_previous) never decides a truth: the agent being judged must not erase a
+	// restatement or turn its own grouping into a "done" truth (0.9.3 audit 3)
+	outcomeMovedMinRunes = 40
+	scopeWatchTurns      = 2   // number of the person's requests during which changed files are watched (whether they were reverted during the next request is decided at the one after)
+	scopeWatchFiles      = 200 // upper limit of watched files (the rest are not looked at)
 )
 
 // outcomeSpecs are the decisions that get truths from outcomes. Even when unsure (ask) they do not wait for the person's answer (the outcome answers).
@@ -115,13 +120,21 @@ type requestGrouping struct {
 	Previous     *completedTurn `json:"previous,omitempty"` // the previous request's reply, kept until the grouping is final
 }
 
+// groupingOf is this turn's grouping, or nil.
+func groupingOf(s *hookSession) *requestGrouping {
+	if s.Planning == nil {
+		return nil
+	}
+	return s.Planning.Grouping
+}
+
 // settleGrouping makes the grouping final and settles the previous request's outcome from this message when it stands alone (inside the lock).
 func settleGrouping(agent string, s *hookSession) {
 	if s.Planning == nil || s.Planning.Grouping == nil || s.Planning.Grouping.Settled {
 		return
 	}
 	g := s.Planning.Grouping
-	if err := settleDone(agent, g.Previous, g.Reply, g.Joined); err != nil {
+	if err := settleDone(agent, g.Previous, g.Reply); err != nil {
 		hookLog("outcome: " + err.Error())
 	}
 	g.Settled, g.Previous = true, nil
@@ -153,9 +166,10 @@ func regroup(agent string, s *hookSession, continues bool) string {
 }
 
 // settleDone attaches an outcome truth to the previous request's done-as-asked from the shape of the person's next message (inside the lock, at the request boundary).
-// A message that continues the previous request ("ok", "go on"; continues) and the in-between (neither similar nor dissimilar) are not labeled.
-func settleDone(agent string, c *completedTurn, reply string, continues bool) error {
-	if c == nil || continues {
+// Only the person's message decides it, by fixed rules: a bare acknowledgement ("ok", "go on"), a short message and the in-between
+// (neither similar nor dissimilar) are not labeled. How the message is grouped (continues_previous) does not change it.
+func settleDone(agent string, c *completedTurn, reply string) error {
+	if c == nil || isAckReply(reply) {
 		return nil
 	}
 	trace := ""
@@ -171,7 +185,7 @@ func settleDone(agent string, c *completedTurn, reply string, continues bool) er
 	switch sim := textSimilarity(c.Request, reply); {
 	case sim >= outcomeRepeatAbove:
 		return labelTrace(st, "done-as-asked", trace, "no", 1, "outcome")
-	case sim <= outcomeMovedBelow:
+	case sim <= outcomeMovedBelow && utf8.RuneCountInString(strings.TrimSpace(reply)) >= outcomeMovedMinRunes:
 		return labelTrace(st, "done-as-asked", trace, "yes", outcomeKeptWeight, "outcome")
 	}
 	return nil
