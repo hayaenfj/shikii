@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -95,8 +96,15 @@ func (s Store) merge(from, fixed, ext string) {
 	// or a broken mark starts from the beginning (D-2). A mark of the number only (9b77d07) is taken as it is (E-4).
 	raw, _ := io.ReadAll(io.LimitReader(mark, 128))
 	at, sum, _ := strings.Cut(strings.TrimSpace(string(raw)), " ")
-	if strings.Contains(at, ":") { // "<device>:<inode> <offset>", written by 855865f: take the offset as it is (audit F-4)
+	if strings.Contains(at, ":") { // "<device>:<inode> <offset>", written by 855865f: the offset holds only for that same file (audit F-4, G-2)
+		same := false
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+			same = at == fmt.Sprintf("%d:%d", sys.Dev, sys.Ino)
+		}
 		at, sum = sum, ""
+		if !same {
+			at = "0"
+		}
 	}
 	offset, err := strconv.ParseInt(at, 10, 64)
 	if err != nil || offset < 0 || offset > st.Size() || (sum != "" && tailHash(f, offset) != sum) {

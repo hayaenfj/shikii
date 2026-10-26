@@ -2,10 +2,12 @@ package store
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"testing"
 )
 
@@ -75,10 +77,26 @@ func TestReauditERemadeLongerFileKeepsEveryLine(t *testing.T) {
 func TestReauditFInodeMarkIsTakenAsAnOffset(t *testing.T) {
 	s, scope, from, fixed := auditESetup(t)
 	st, _ := os.Stat(from)
-	os.WriteFile(from+".merged", []byte("16777231:12345 "+strconv.FormatInt(st.Size(), 10)), 0o600)
+	sys := st.Sys().(*syscall.Stat_t) // the identity of this same file, as 855865f wrote it
+	os.WriteFile(from+".merged", []byte(fmt.Sprintf("%d:%d %d", sys.Dev, sys.Ino, st.Size())), 0o600)
 	s.RecentFeedback(scope)
 	s.RecentFeedback(scope)
 	if n := auditELines(t, fixed); n != 3 {
 		t.Errorf("a mark of 855865f: lines in fixed %d (want 3)", n)
+	}
+}
+
+// 0.9.7 audit G-2: a mark of 855865f ("<device>:<inode> <offset>") was read as an offset without looking at the inode, so a file removed
+// and made again (another inode) had its first lines skipped. The inode in the mark is compared with the file's.
+func TestReauditGInodeMarkOnARemadeFile(t *testing.T) {
+	s, scope, from, fixed := auditESetup(t)
+	st, _ := os.Stat(from)
+	old := st.Size()
+	os.Remove(from)
+	auditDAppend(t, from, auditCLine("0000000000000004")+auditCLine("0000000000000005")+auditCLine("0000000000000006"))
+	os.WriteFile(from+".merged", []byte("1:1 "+strconv.FormatInt(old, 10)), 0o600) // an identity that is not this file's
+	s.RecentFeedback(scope)
+	if n := auditELines(t, fixed); n != 6 {
+		t.Errorf("a remade file with a mark of another inode: lines in fixed %d (want 6)", n)
 	}
 }

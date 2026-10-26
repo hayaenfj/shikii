@@ -92,7 +92,16 @@ var lockCallers = map[string]map[string]string{
 	"handleTuneReview":  {"handler": "registered"},
 }
 
-// nilWriters returns the places that mention a lock-waiting function other than as allowed by lockCallers.
+// serveHTTPAllowed are the only places that run an http.Handler with a writer other than their own: function → the variable passed.
+// MCP calls the server in process through a recorder, which has no write deadline (audit G-1: without this, running the whole server
+// with a recorder or nil reached the listed handlers again, above the registration).
+var serveHTTPAllowed = map[string]string{"callTool": "rec"}
+
+// nilWriters returns the places that mention a lock-waiting function other than as allowed by lockCallers, and the places that run an
+// http.Handler (ServeHTTP) with a writer other than their own outside serveHTTPAllowed.
+// What it covers: every path inside this package from a connection to the calibration lock. What it does not: code outside the package
+// (there is none that imports package main) and what a handler does at run time beyond these calls (the lock itself extends the deadline
+// of the writer it is given; a recorder has none).
 func nilWriters(t *testing.T, srcs map[string]string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -126,6 +135,14 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 			if fn.Body == nil {
 				continue
 			}
+			onServer := false // a method of *server (the registration counts only in (*server).handler; audit G-1)
+			if fn.Recv != nil && len(fn.Recv.List) == 1 {
+				if st, ok := fn.Recv.List[0].Type.(*ast.StarExpr); ok {
+					if id, ok := st.X.(*ast.Ident); ok && id.Name == "server" {
+						onServer = true
+					}
+				}
+			}
 			writer := "" // the function's own http.ResponseWriter parameter
 			for _, p := range fn.Type.Params.List {
 				if sel, ok := p.Type.(*ast.SelectorExpr); ok && sel.Sel.Name == "ResponseWriter" && len(p.Names) == 1 {
@@ -154,6 +171,46 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 				}
 				return true
 			})
+			// the writer parameters of the function literals in it (a returned handler such as http.HandlerFunc(func(w, r) {...})), unless
+			// assigned, ranged over or taken by address
+			litWriters := map[string]bool{}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if lit, ok := n.(*ast.FuncLit); ok {
+					for _, p := range lit.Type.Params.List {
+						if sel, ok := p.Type.(*ast.SelectorExpr); ok && sel.Sel.Name == "ResponseWriter" {
+							for _, id := range p.Names {
+								litWriters[id.Name] = true
+							}
+						}
+					}
+				}
+				return true
+			})
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				drop := func(e ast.Expr) {
+					if id, ok := unparen(e).(*ast.Ident); ok {
+						delete(litWriters, id.Name)
+					}
+				}
+				switch x := n.(type) {
+				case *ast.AssignStmt:
+					for _, l := range x.Lhs {
+						drop(l)
+					}
+				case *ast.RangeStmt:
+					if x.Key != nil {
+						drop(x.Key)
+					}
+					if x.Value != nil {
+						drop(x.Value)
+					}
+				case *ast.UnaryExpr:
+					if x.Op == token.AND {
+						drop(x.X)
+					}
+				}
+				return true
+			})
 			allowedCall := map[ast.Node]bool{}
 			var walk func(n ast.Node, inGo, inLit bool)
 			walk = func(n ast.Node, inGo, inLit bool) {
@@ -178,7 +235,21 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 						case *ast.Ident:
 							name, callee = fun, fun.Name
 						}
-						if callee == "HandleFunc" && !inGo && !inLit { // a registration: the handler gets the connection's writer
+						if callee == "ServeHTTP" && len(x.Args) > 0 { // running a handler: with its own writer, or at an allowed place
+							arg, _ := unparen(x.Args[0]).(*ast.Ident)
+							ownWriter := arg != nil && (writer != "" && arg.Name == writer && !changed || litWriters[arg.Name])
+							allowedArg := arg != nil && serveHTTPAllowed[fn.Name.Name] == arg.Name
+							if !ownWriter && !allowedArg {
+								out = append(out, fn.Name.Name+" runs ServeHTTP with a writer other than its own")
+							}
+						}
+						mux := false
+						if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+							if id, ok := sel.X.(*ast.Ident); ok && id.Name == "mux" {
+								mux = true
+							}
+						}
+						if callee == "HandleFunc" && mux && onServer && !inGo && !inLit { // a registration: the handler gets the connection's writer
 							for _, a := range x.Args {
 								var arg *ast.Ident
 								switch v := unparen(a).(type) {

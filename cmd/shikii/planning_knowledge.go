@@ -124,4 +124,4 @@ func validatePlanningKnowledge(root, scope string, context *store.KnowledgeConte
 
 // planningNoQueryNotice is the one-liner returned when query is called without search words. The page's "records of knowledge used in decisions" stayed at 0
 // because agents were not giving search words (checked in 0.8.1: 2 of the 25 pre-work decisions in this repo).
-const planningNoQueryNotice = "The wiki has not been searched yet. Add topic words likely related to this request to query (not a copy of the request text, but how the rules, existing decisions and earlier corrections are worded) and query again; lessons come back as lesson:<id>. If you use one as evidence, write that key in the evidence's source, and give submit the same query."
+const planningNoQueryNotice = "The wiki has not been searched yet. Add topic words likely related to this request to query (not a copy of the request text, but how the rules, existing decisions and earlier corrections are worded) and query again; lessons come back as lesson:<id>:<revision>. If you use one as evidence, write that key in the evidence's source, and give submit the same query."
