@@ -187,7 +187,7 @@ func planJSON(session, turn string) string {
 }
 
 // planningShape shows that agreed and open are objects (Claude first passed an array in every run of audit 0.9.2 English).
-const planningShape = `agreed and open are each one object, not an array: "agreed":{"summary":"...","evidence":[{"source":"current_user","quote":"..."}]}, "open":{"unknown":true}; continues_previous is true, false or left out; restates is the turn id of any earlier request of this session (history:<id>:user, however far back) or left out`
+const planningShape = `agreed and open are each one object, not an array: "agreed":{"summary":"...","evidence":[{"source":"current_user","quote":"..."}]}, "open":{"unknown":true}; continues_previous is true, false or left out; restates is the turn id of any earlier request of this session (the <id> in history:<id>:user, however far back) or left out`
 
 // groupingAsk reports whether this turn's Stop asks only for continues_previous (0.9.3 real-agent check medium 3): the hook asked for the
 // organizing, none came, and the message is short (under outcomeMovedMinRunes) and not in the acknowledgement list, so the list's

@@ -13,6 +13,8 @@ import (
 // It returns the answers by id and cmdMCP's error.
 func runMCPProcess(t *testing.T, args []string, reqs ...map[string]any) (map[float64]map[string]any, error) {
 	t.Helper()
+	oldLocal, oldHosted := hookLocalURL, hookHostedURL // cmdMCP points hookDecide at its --local / --hosted (useForHookDecisions)
+	t.Cleanup(func() { hookLocalURL, hookHostedURL = oldLocal, oldHosted })
 	dir := t.TempDir()
 	in, err := os.Create(filepath.Join(dir, "in"))
 	if err != nil {
