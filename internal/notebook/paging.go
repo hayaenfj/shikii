@@ -14,7 +14,7 @@ import (
 )
 
 // Split by the size of the JSON rather than the count. An observation whose body does not fit in one reply is returned in parts (observation_part);
-// a conversation source and its long text are returned whole.
+// a conversation source is returned whole, and its long text (originals, up to 2 MB) that does not fit comes in parts of its JSON (original_part).
 const replyBudget = 60 << 10
 
 type continuation struct {
@@ -140,6 +140,32 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 	return out, nil
 }
 
+// originalPart returns the part of one conversation's originals that fits from byte from: original_part carries a piece of the JSON
+// of that conversation's originals list (json) and says which piece it is. Joined in order, the pieces are that JSON whole.
+func originalPart(out map[string]any, state continuation, fs []store.Feedback, osources []Observation, texts map[string][]Original, i, total int, id string, raw []byte, from int) map[string]any {
+	out["source_material"], out["observations"], out["originals"] = fs, osources, texts
+	end := len(raw)
+	for {
+		out["original_part"] = map[string]any{"id": id, "from": from, "to": end, "bytes": len(raw), "json": string(raw[from:end])}
+		if encodedSize(out) <= replyBudget-2048 || end-from <= 1 {
+			break
+		}
+		end = from + (end-from)/2
+		for end > from+1 && !utf8.RuneStart(raw[end]) { // do not cut a character in half
+			end--
+		}
+	}
+	if end < len(raw) {
+		c := state
+		c.Offset, c.Byte = i, end
+		data, _ := json.Marshal(c)
+		out["next_cursor"] = base64.RawURLEncoding.EncodeToString(data)
+	} else if next := state.next(i+1, total); next != "" {
+		out["next_cursor"] = next
+	}
+	return out
+}
+
 func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, error) {
 	all, err := b.ReadSources(ids)
 	if err != nil {
@@ -166,10 +192,19 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 	for ; i < len(ids); i++ {
 		id := ids[i]
 		nf, no := len(fs), len(osources)
+		o, isObservation := observations[id]
+		text, hasText := originals[id]
+		if i == start && from > 0 && !isObservation {
+			// a cursor inside the long originals of a conversation (the conversation itself came with the first part)
+			raw, _ := json.Marshal(text)
+			if !hasText || from >= len(raw) || !utf8.RuneStart(raw[from]) {
+				return nil, errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
+			}
+			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, from), nil
+		}
 		if f, ok := feedback[id]; ok {
 			fs = append(fs, f)
 		}
-		o, isObservation := observations[id]
 		if i == start && from > 0 {
 			// a cursor inside a long source: it must point at a character boundary inside an observation's body
 			if !isObservation || from >= len(o.Content) || !utf8.RuneStart(o.Content[from]) {
@@ -182,7 +217,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 		if isObservation {
 			osources = append(osources, o)
 		}
-		if text, ok := originals[id]; ok {
+		if hasText {
 			texts[id] = text
 		}
 		out["source_material"], out["observations"], out["originals"] = fs, osources, texts
@@ -213,6 +248,11 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 				out["next_cursor"] = base64.RawURLEncoding.EncodeToString(data)
 				return out, nil
 			}
+		}
+		if hasText && !isObservation && i == start { // a conversation whose originals (up to 2 MB) do not fit: the conversation now, its originals in parts
+			delete(texts, id)
+			raw, _ := json.Marshal(text)
+			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, 0), nil
 		}
 	}
 	out["source_material"], out["observations"], out["originals"] = fs, osources, texts
