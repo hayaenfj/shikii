@@ -116,7 +116,7 @@ func cmdNotebook(args []string) error {
 			case "maintain":
 				return fmt.Errorf("wiki maintain needs valid JSON with page_id, revision, key and reason: %v", err)
 			}
-			return errors.New("wiki ingest needs valid JSON with sources and, for a lesson, title, lesson and applies_to")
+			return fmt.Errorf("wiki ingest needs valid JSON with sources and, for a lesson, title, lesson and applies_to (all strings except sources): %v", err)
 		}
 		var extra any
 		if err := dec.Decode(&extra); err != io.EOF {

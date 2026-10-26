@@ -269,10 +269,17 @@ func settleDone(agent string, c *completedTurn, reply string) error {
 		return nil
 	}
 	st := store.Store{Dir: agent}
-	switch sim := textSimilarity(c.Request, reply); {
+	// a request with messages attached to it (" / ") is compared part by part too: the agent's grouping must not make a
+	// restatement of the last message look new (or a new request look like a restatement)
+	sim, low := textSimilarity(c.Request, reply), textSimilarity(c.Request, reply)
+	for _, part := range strings.Split(c.Request, " / ") {
+		v := textSimilarity(part, reply)
+		sim, low = max(sim, v), max(low, v)
+	}
+	switch {
 	case sim >= outcomeRepeatAbove:
 		return labelTrace(st, "done-as-asked", trace, "no", 1, "outcome")
-	case sim <= outcomeMovedBelow && utf8.RuneCountInString(strings.TrimSpace(reply)) >= outcomeMovedMinRunes:
+	case low <= outcomeMovedBelow && utf8.RuneCountInString(strings.TrimSpace(reply)) >= outcomeMovedMinRunes:
 		return labelTrace(st, "done-as-asked", trace, "yes", outcomeKeptWeight, "outcome")
 	}
 	return nil

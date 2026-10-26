@@ -638,7 +638,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		body = strings.TrimSpace(*d.Body)
 	}
 	if len(d.Sources) < 1 {
-		return result, errors.New("wiki ingest needs source ids")
+		return result, errors.New("wiki ingest needs sources: an array of source ids (from wiki capture or reflect query)")
 	}
 	if d.Lesson != "" && (strings.TrimSpace(d.Title) == "" || strings.TrimSpace(d.AppliesTo) == "") {
 		return result, errors.New("a lesson needs a title and the conditions where it applies")
