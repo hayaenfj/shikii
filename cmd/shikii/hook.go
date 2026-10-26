@@ -1841,6 +1841,14 @@ func hookInstall(args []string, install bool) error {
 			}
 			fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, rel)))
 		}
+		// point the Codex MCP server shikii wrote at this binary while the block is still shikii's (0.9.1 and earlier wrote the bare name "shikii",
+		// which Codex started from a desktop app may not find on its PATH; 0.9.3). A block a person edited is left alone
+		codex := filepath.Join(home, ".codex", "config.toml")
+		if fixed, err := fixCodexServer(codex, codexMCPArgs); err != nil {
+			fmt.Fprintf(stdout, "%s: %v\n", tilde(codex), err)
+		} else if fixed {
+			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s (Codex; reopen Codex)\n", tilde(codex), mcpCommand())
+		}
 		// remove the shikii section an earlier version wrote into each registered project's AGENTS.md (0.9.2: shikii no longer writes into it;
 		// only the part between the markers goes, the person's text and the file stay)
 		for _, p := range registeredProjects(agent) {

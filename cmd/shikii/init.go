@@ -8,6 +8,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/handoff"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -69,7 +70,7 @@ func cmdInit(args []string) error {
 	// MCP settings: Claude Code (.mcp.json), OpenCode (mcp in opencode.json), Codex (~/.codex/config.toml). Cursor is not supported from 0.9.2
 	// (a .cursor/mcp.json written by an earlier version is left as it is: it is the person's file).
 	// If a shikii entry already exists it is left alone (kept even if a person added --proposer etc.). Other entries and keys are kept.
-	mcpArgs := []string{"mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"}
+	mcpArgs := codexMCPArgs
 	claude := map[string]any{"command": "shikii", "args": mcpArgs}
 	for _, f := range []struct {
 		path, key string
@@ -112,7 +113,13 @@ func cmdInit(args []string) error {
 	case did:
 		fmt.Fprintf(stdout, "%s: added shikii (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
 	default:
-		fmt.Fprintf(stdout, "%s: kept the existing MCP settings (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
+		if fixed, err := fixCodexServer(codex, mcpArgs); err != nil {
+			return err
+		} else if fixed {
+			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s (Codex)\n", filepath.Join("~", ".codex", "config.toml"), mcpCommand())
+		} else {
+			fmt.Fprintf(stdout, "%s: kept the existing MCP settings (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
+		}
 	}
 
 	// skill: put it back (old files are deleted too), where Claude Code reads it and where Codex and other agents read skills (~/.agents/skills, 0.9.2:
@@ -261,10 +268,7 @@ func addCodexServer(path string, args []string) (bool, error) {
 		return false, nil
 	}
 	// the binary's absolute path, like the hooks: Codex started from a desktop app may not have shikii on its PATH (Codex audit 0.9.2, low 3)
-	command := "shikii"
-	if exe, err := os.Executable(); err == nil {
-		command = exe
-	}
+	command := mcpCommand()
 	block := "\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n"
 	if len(b) > 0 && !strings.HasSuffix(string(b), "\n") {
 		block = "\n" + block
@@ -279,6 +283,76 @@ func addCodexServer(path string, args []string) (bool, error) {
 	defer f.Close()
 	_, err = f.WriteString(block)
 	return true, err
+}
+
+// codexMCPArgs are the MCP server arguments init writes (Claude Code, OpenCode and Codex).
+var codexMCPArgs = []string{"mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"}
+
+// mcpCommand is the command written for the MCP server: this binary's own path, like the hooks (os.Executable, not resolved through
+// symlinks, so a package manager's link keeps working after an upgrade). The PATH lookup is only a fallback.
+func mcpCommand() string {
+	if exe, err := os.Executable(); err == nil {
+		return exe
+	}
+	if p, err := exec.LookPath("shikii"); err == nil {
+		return p
+	}
+	return "shikii"
+}
+
+// fixCodexServer points Codex's [mcp_servers.shikii] at this binary when the block is still exactly what shikii wrote
+// (its three lines, with the same args) and its command is the bare name "shikii" (0.9.1 and earlier) or a path that no longer exists.
+// A block a person edited, an existing other binary, or more than one shikii block is left alone (0.9.3).
+func fixCodexServer(path string, args []string) (bool, error) {
+	b, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	text := string(b)
+	if strings.Count(text, "[mcp_servers.shikii]") != 1 {
+		return false, nil
+	}
+	head := "[mcp_servers.shikii]\ncommand = "
+	tail := "\nargs = [" + quotedList(args) + "]\n"
+	i := strings.Index(text, head)
+	rest := text[i+len(head):]
+	line, after, ok := strings.Cut(rest, "\n")
+	if !ok {
+		return false, nil
+	}
+	cmd, err := strconv.Unquote(line)
+	if err != nil || !strings.HasPrefix("\n"+after, tail) {
+		return false, nil
+	}
+	end := i + len(head) + len(line) + len(tail)
+	if next := text[end:]; next != "" && !strings.HasPrefix(next, "\n") && !strings.HasPrefix(next, "[") {
+		return false, nil // a line a person added to the block
+	}
+	if cmd != "shikii" {
+		if !filepath.IsAbs(cmd) || fileExists(cmd) {
+			return false, nil
+		}
+	}
+	command := mcpCommand()
+	if command == cmd {
+		return false, nil
+	}
+	fixed := text[:i] + head + quotedList([]string{command}) + tail + text[end:]
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	tmp := path + ".shikii-tmp"
+	if err := os.WriteFile(tmp, []byte(fixed), fi.Mode().Perm()); err != nil {
+		return false, err
+	}
+	if err := os.Chmod(tmp, fi.Mode().Perm()); err != nil {
+		return false, err
+	}
+	return true, os.Rename(tmp, path)
 }
 
 func quotedList(args []string) string {

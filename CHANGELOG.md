@@ -4,6 +4,8 @@
 
 ## 0.9.3 — Small fixes after 0.9.2
 
+- Codex MCP server: the update and init point `[mcp_servers.shikii]` at the running binary's path (as the hooks do) when the block is still exactly what shikii wrote and its command is the bare name `shikii` (0.9.1 and earlier) or a path that no longer exists. Codex started from a desktop app may not have `shikii` on its PATH. A block a person edited, another existing binary, or two shikii blocks are left alone. The PATH lookup is only a fallback when the binary's own path cannot be read.
+
 ## 0.9.2 — Nothing written into your AGENTS.md, wordings adopted by the agent, and a lighter page
 
 - Page, lighter to read: the Answer card has a short title, what to read, the question once above two answer buttons that look the same until you answer, and the AI's guess, "same as the AI" and "ask the AI again" folded under "See the AI's guess" (keys 1-9, Enter and → still work). The preface "from your answer the AI learns ..." is gone from the shipped questions (existing projects keep their copy in `.shikii/decisions/`), and the shipped questions now have English text, so the English page no longer shows the prompt for the model. On Answer, a new wording asks only "does it mean the same?" (or keep / undo); the numbers, candidates and the form stay on The AI. With nothing waiting, Answer says only "Nothing for you to do right now".
