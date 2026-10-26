@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- Hook, lessons: a page that kept its earlier sources over many updates passes 16 sources, and a delivery record allows at most 16 per quote, so saving it failed and that request got no lesson at all (hook.log: "a memory delivery needs a request, quotes, sources and a version"). A quote now carries at most 16 source ids (a correction's source first), and the lesson arrives.
+- After moving the project folder, the lessons delivered before the move were dropped when read (each line still names the old path), so the reflection asked to assess none of them and the effect counts went to zero. The file already belongs to one project by its name; lines are no longer compared by path.
+- Status: truths that `shikii calibrate` saves after asking the model again with an earlier truth's text (source `replay`) were counted as answers by the person; one run turned 2 into 13. They are no longer counted as the person's work.
+- MCP: a decision made through MCP started from inside a project (`--store .shikii`, Claude Code and OpenCode) looked up the page under "." and could start a second page for the same project. It now uses the project's absolute path, like the hook.
+- Wiki: updating a page by id without its lesson now says to send the lesson, title and applies_to again, instead of "reviewing a source without a lesson accepts only source ids".
+
 ## 0.9.5 — the wiki after moving the folder, and the knowledge page while an agent works
 
 - Wiki, after moving or renaming the folder: a source record's id holds the path it was captured under, so every source captured before the move could no longer be read (`wiki query`) or cited when revising its page ("the hash of the saved source record does not match"), and each revision needed the same evidence captured again. The recaptured copy then sat beside the old id on the page, because a revision keeps every earlier source. A source a page already cites is now checked by the hash in that citation, so it stays readable and citable; a source no page cites is still refused. When the same evidence was captured again under the new path, the new copy takes the old id's place. `shikii wiki lint` reports `source-from-other-path` only for a source captured under the old path that no page cites yet (it cannot be checked, so it is left out of the sources waiting to be sorted instead of making every wiki query fail; capture the same evidence again to use it).

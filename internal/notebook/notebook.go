@@ -651,6 +651,9 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	if len(d.Title) > 200 || len(d.Lesson) > 2000 || len(d.AppliesTo) > 1000 || len(body) > 16<<10 || len(d.ChangeReason) > 1000 {
 		return result, errors.New("wiki lesson exceeds the text limits")
 	}
+	if d.Lesson == "" && d.ID != "" {
+		return result, errors.New("updating a page by id sends its lesson, title and applies_to again (read them with wiki query lesson:<id>), with sources and change_reason")
+	}
 	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Related != nil || d.ChangeReason != "" || d.Kind != "" || d.Scene != "") {
 		return result, errors.New("reviewing a source without a lesson accepts only source ids")
 	}

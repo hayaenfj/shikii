@@ -310,3 +310,17 @@ func TestPendingSourceFromThePreviousPathDoesNotBreakTheWiki(t *testing.T) {
 		t.Fatalf("a source captured under the new path is offered as before: %v %+v", err, v.Observations)
 	}
 }
+
+// 0.9.5 check: updating a page by id without its lesson was refused with "reviewing a source without a lesson accepts only source ids",
+// which did not tell the agent what to send. It now says that an update sends the lesson, title and applies_to again.
+func TestUpdateWithoutLessonSaysWhatToSend(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	r, err := b.Ingest(draft(seed(t, b, 1), "a page"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.Ingest(Draft{ID: r.Page.ID, Sources: []string{seed(t, b, 2)}, ChangeReason: "check"})
+	if err == nil || !strings.Contains(err.Error(), "title") || !strings.Contains(err.Error(), "applies_to") {
+		t.Fatalf("the refusal says to send the lesson, title and applies_to: %v", err)
+	}
+}
