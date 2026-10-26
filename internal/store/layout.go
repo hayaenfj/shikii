@@ -25,23 +25,37 @@ func scopeKey(scope string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// projectPath is records/<area>/project<ext> (a file, or a folder when ext is ""). One written before 0.9.7 under the scope's hash, or
-// the only hash-named one there (written under the path the project had then), is moved to it first. If it cannot be moved, it is used
-// where it is. What an older shikii still running writes under the scope's hash afterwards is merged in (0.9.7 audit B-3).
+// projectPath is records/<area>/project<ext> (a file, or a folder when ext is ""). The records written before 0.9.7 under the scope's hash,
+// or the only hash-named ones there when the fixed name is still empty (written under the path the project had then), are brought in:
+// a file's complete lines are copied (merge), never the file moved, because an older shikii still running may be writing to it (moving it
+// sealed a half-written line and sent the rest to a new file; found by the property test, 0.9.7); a folder of records written once is moved.
 func (s Store) projectPath(area, ext, scope string) string {
 	dir := filepath.Join(s.Dir, "records", area)
 	from := filepath.Join(dir, scopeKey(scope)+ext)
 	fixed := filepath.Join(dir, projectName+ext)
-	if !empty(fixed) {
-		if _, err := os.Lstat(from); err == nil {
-			s.merge(from, fixed, ext)
+	if _, err := os.Lstat(from); err != nil {
+		from = ""
+		if empty(fixed) {
+			from = onlyHashNamed(dir, ext)
 		}
+	}
+	if from == "" {
 		return fixed
 	}
-	if _, err := os.Lstat(from); err != nil {
-		from = onlyHashNamed(dir, ext)
+	if ext == "" {
+		if empty(fixed) {
+			return s.adopt(area, ext, from)
+		}
+		s.merge(from, fixed, ext)
+		return fixed
 	}
-	return s.adopt(area, ext, from)
+	if _, err := os.Lstat(fixed); os.IsNotExist(err) {
+		if f, err := os.OpenFile(fixed, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600); err == nil {
+			f.Close()
+		}
+	}
+	s.merge(from, fixed, ext)
+	return fixed
 }
 
 // merge adds what an older shikii (before 0.9.7, still running) wrote under the scope's hash after the move to the fixed name.
@@ -150,7 +164,7 @@ func tailHash(f *os.File, offset int64) string {
 // the old path, which tells this project's files apart even when files from still earlier paths sit beside them.
 func (s Store) MigrateLayout(scope string) {
 	for _, a := range []struct{ area, ext string }{{"feedback", ".jsonl"}, {"memories", ".jsonl"}, {"memory-reviews", ""}} {
-		s.adopt(a.area, a.ext, filepath.Join(s.Dir, "records", a.area, scopeKey(scope)+a.ext))
+		s.projectPath(a.area, a.ext, scope)
 	}
 }
 
