@@ -392,6 +392,15 @@ func TestWordingNoticesUsePlainWordsAndTitle(t *testing.T) {
 			if regexp.MustCompile(`(?i)\byour answers?\b`).MatchString(en) {
 				t.Fatalf("the English notice calls the counted truths the person's answers: %q", en)
 			}
+			// 0.9.3: the English notice names the question by its English title and gives the candidate's question, not the spec id or the candidate's internal name
+			for _, bad := range []string{res.SpecID, res.Winner} {
+				if strings.Contains(en, bad) {
+					t.Fatalf("the English notice holds %q: %q", bad, en)
+				}
+			}
+			if !strings.Contains(en, `"Were the changed files all needed?"`) || !strings.Contains(en, "Did the agent change any file nobody asked for?") {
+				t.Fatalf("the English notice names the question by its title and shows the candidate's question: %q", en)
+			}
 		})
 	}
 }
