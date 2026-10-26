@@ -6,6 +6,7 @@
 
 - Reflection, `left`: a submit that only assesses a lesson delivered to a subagent now says what is left for the parent conversation (the delivery has its own id). When shikii cannot work out what is left, the reply says so in `left_error` instead of dropping `left` as if nothing were left.
 - Wiki, corrections: a refused `correction` now says why. A correction must quote the person's reply in a conversation the hook recorded; a captured source (even `kind: "human"`) is refused with a line saying to save the lesson without `correction` and cite the source, which is what an agent without hooks can do. The check itself is unchanged.
+- Tune: a run tuned with a relative spec path (for example `shikii tune .shikii/decisions/x.yaml` from the project folder) saves `spec_path` as an absolute path, so the page and the hook can adopt it when they run from another folder. A moved project folder is still followed as before.
 
 ## 0.9.2 — Nothing written into your AGENTS.md, wordings adopted by the agent, and a lighter page
 
