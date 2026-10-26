@@ -4,6 +4,8 @@
 
 ## 0.9.3 — Small fixes after 0.9.2
 
+- Reflection, `left`: a submit that only assesses a lesson delivered to a subagent now says what is left for the parent conversation (the delivery has its own id). When shikii cannot work out what is left, the reply says so in `left_error` instead of dropping `left` as if nothing were left.
+
 ## 0.9.2 — Nothing written into your AGENTS.md, wordings adopted by the agent, and a lighter page
 
 - Page, lighter to read: the Answer card has a short title, what to read, the question once above two answer buttons that look the same until you answer, and the AI's guess, "same as the AI" and "ask the AI again" folded under "See the AI's guess" (keys 1-9, Enter and → still work). The preface "from your answer the AI learns ..." is gone from the shipped questions (existing projects keep their copy in `.shikii/decisions/`), and the shipped questions now have English text, so the English page no longer shows the prompt for the model. On Answer, a new wording asks only "does it mean the same?" (or keep / undo); the numbers, candidates and the form stay on The AI. With nothing waiting, Answer says only "Nothing for you to do right now".
