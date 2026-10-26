@@ -85,6 +85,7 @@ func cmdServe(args []string) error {
 	if real, err := filepath.EvalSymlinks(scope); err == nil {
 		scope = real // the same key for the page lock and record, whatever path reached the folder (0.9.7 full audit 1, D4)
 	}
+	scope = canonicalScope(scope) // and whatever case spelled it on a case-insensitive disk, as the hook does (final audit DF-1)
 	// the project's page is a serve of a project's .shikii on a free port; a store under another name started by hand is not (D4)
 	auto := !hub && o.port == 0 && filepath.Base(absStore) == ".shikii" // the project's page started by the hook (0.8.0): free port, mark, browser; the local model is waited for after the port opens
 	if auto {
