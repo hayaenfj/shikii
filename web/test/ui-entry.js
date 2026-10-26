@@ -717,19 +717,23 @@ function checkCalibrationReport(target) {
   const saved = { done: ui.done }, lang = i18n.lang;
   ui.done = false; i18n.lang = 'ja';
   let summaries = true, closed = true, states = true;
-  for (const reason of ['quality', 'insufficient', 'written', 'stale']) {
-    const result = { reason, human_truths: reason === 'insufficient' ? 2 : 50, min_n: 50, model: 'm', hash: reason === 'stale' ? 'old' : 'current', at: '2026-10-22 00:00:00' };
+  // quality-own: a question whose other wordings nothing tries (not one of the hook's questions); one_answer: every truth on one side (0.9.4 audit)
+  for (const kind of ['quality', 'quality-own', 'one_answer', 'insufficient', 'written', 'stale']) {
+    const reason = kind === 'quality-own' ? 'quality' : kind;
+    const result = { reason, tries_wordings: kind !== 'quality-own', human_truths: reason === 'insufficient' ? 2 : 50, min_n: 50, model: 'm', hash: reason === 'stale' ? 'old' : 'current', at: '2026-10-22 00:00:00' };
     const sp = { id: 'needs-plan', type: 'noul', min_n: 50, keys: [{ model: 'm', hash: 'current', n: 50, state: reason === 'written' ? 'calibrated' : 'ready', method: 'identity' }], records: 50, labels: 50, queue: { items: [] }, calibration_result: result, last_calibration: 'diagnostic marker: long technical log' };
     const app = mount(SpecPanel, { target, props: { sp } }); flushSync();
     const report = target.querySelector('.calibration-report');
     const detail = report?.querySelector('details');
     closed &&= !!detail && !detail.open && detail.querySelector('pre')?.textContent.includes('diagnostic marker') && !target.querySelector('.decision-panel > pre');
     const text = report?.querySelector('.calibration-summary')?.textContent || '';
-    if (reason === 'quality') summaries &&= text.includes('50') && text.includes('見分けられません') && text.includes('あなたがすることはありません') && !text.includes('不足');
+    if (kind === 'quality') summaries &&= text.includes('50') && text.includes('見分けられません') && text.includes('別の聞き方を試します') && text.includes('あなたがすることはありません') && !text.includes('不足');
+    if (kind === 'quality-own') summaries &&= text.includes('50') && text.includes('見分けられません') && !text.includes('別の聞き方を試します') && !text.includes('あなたがすることはありません');
+    if (kind === 'one_answer') summaries &&= text.includes('50') && text.includes('片方だけ') && !text.includes('見分けられません') && !text.includes('別の聞き方');
     if (reason === 'insufficient') summaries &&= text.includes('2') && text.includes('50') && text.includes('届いていません');
     if (reason === 'written') summaries &&= text.includes('保存しました');
     const progress = target.querySelector('.learning-line')?.textContent || '';
-    if (reason === 'quality') states &&= progress.includes('見送り') && !progress.includes('線を引けます') && !target.querySelector('.pill.ready')?.textContent.includes('線を引けます');
+    if (reason === 'quality' || reason === 'one_answer') states &&= progress.includes('見送り') && !progress.includes('線を引けます') && !target.querySelector('.pill.ready')?.textContent.includes('線を引けます');
     if (reason === 'stale') states &&= progress.includes(t('plainReady')) && !progress.includes('線を引けます');
     if (reason === 'written') states &&= progress.includes(t('plainAuto'));
     unmount(app);

@@ -101,3 +101,15 @@ test('a quality refusal says the AI tries other wordings and the person has noth
   assert.match(en, /cannot tell the answers apart/); assert.match(en, /nothing for you to do/); assert.match(en, /other wordings/);
   assert.doesNotMatch(en, /Review the question/);
 });
+
+// 0.9.4 audit: only the hook's questions get other wordings tried. For other questions the note does not promise it, and every truth on one side
+// is told as one kind of answer, not as "this wording cannot tell the answers apart"
+test('the note promises other wordings only where they are tried, and tells one kind of answer apart', () => {
+  const ja = locales.ja.calibrationQualityOwn(64), en = locales.en.calibrationQualityOwn(64);
+  assert.match(ja, /64/); assert.match(en, /64/);
+  assert.match(ja, /\u898b\u5206\u3051\u3089\u308c\u307e\u305b\u3093/); assert.doesNotMatch(ja, /\u8a66\u3057\u307e\u3059|\u3042\u306a\u305f\u304c\u3059\u308b\u3053\u3068\u306f\u3042\u308a\u307e\u305b\u3093/);
+  assert.match(en, /cannot tell the answers apart/); assert.doesNotMatch(en, /will try|nothing for you to do/);
+  const ja1 = locales.ja.calibrationOneAnswer(64), en1 = locales.en.calibrationOneAnswer(64);
+  assert.match(ja1, /64/); assert.match(ja1, /\u7247\u65b9\u3060\u3051/); assert.doesNotMatch(ja1, /\u898b\u5206\u3051\u3089\u308c\u307e\u305b\u3093|\u5225\u306e\u805e\u304d\u65b9/);
+  assert.match(en1, /64/); assert.match(en1, /only one kind of answer/); assert.doesNotMatch(en1, /tell the answers apart|other wordings/);
+});

@@ -500,6 +500,10 @@ func parseTruth(t spec.Type, raw json.RawMessage) (string, error) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return "", fmt.Errorf("truth must be bool or string, got %s", raw)
 	}
+	// a noul truth is yes or no, as in store.LabelFor. Any other string ("true", "Yes") used to count as "no" (0.9.4 audit)
+	if t == spec.Noul && s != "yes" && s != "no" {
+		return "", fmt.Errorf("noul truth must be yes or no (or true / false), got %q", s)
+	}
 	return s, nil
 }
 
@@ -727,7 +731,9 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	}
 	cal.Model, cal.SpecHash, cal.N, cal.NHuman = model, sp.Hash(), len(labels), nHuman
 	cal.FittedOn, cal.FittedAt = *labeledPath, time.Now().Format("2006-01-02")
-	return cal, (ok && !underMin) || *force, nil
+	// --force overrides a refusal of a fitted line, never the lack of one: calibrateNoul returns no method when no line fits (one side only, or a
+	// higher probability goes with "no"), and writing that empty block would replace this model's line with one nothing can use (0.9.4 audit)
+	return cal, ((ok && !underMin) || *force) && cal.Method != "", nil
 }
 
 // labelsFromFile converts a labeled file into store.Label form. If any rows were asked of the model, it also returns that actual model name.

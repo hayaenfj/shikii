@@ -154,6 +154,9 @@ type calibrationResult struct {
 	Hash        string `json:"hash"`
 	Model       string `json:"model"`
 	At          string `json:"at"`
+	// TriesWordings: when no line fits, the agent is asked for other wordings (the hook's questions only: variantsContext, hook variants submit).
+	// The page says "the AI will try other wordings" only then (0.9.4 audit)
+	TriesWordings bool `json:"tries_wordings"`
 }
 
 type calibrationReport struct {
@@ -618,13 +621,17 @@ func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 		return runCalibrate(sp.Path(), calibrateOpts{output: &buf, ef: ef, storeDir: s.o.storeDir, labeled: "none", bins: 10, write: true, rung: rung})
 	}()
 	report := strings.TrimSpace(buf.String())
-	result := calibrationResult{Reason: "written", MinN: rs.Eval.MinN, Hash: hash, Model: model, At: time.Now().Format("2006-01-02 15:04:05")}
+	result := calibrationResult{Reason: "written", MinN: rs.Eval.MinN, Hash: hash, Model: model, At: time.Now().Format("2006-01-02 15:04:05"), TriesWordings: containsString(hookSpecs, specID)}
 	if err != nil {
 		report += "\nERROR: " + err.Error()
 		result.Reason = "error"
 		var refused *calibrationRefusal
 		if errors.As(err, &refused) {
 			result.Reason, result.HumanTruths, result.MinN = refused.reason(), refused.humanTruths, refused.minN
+			// every truth on one side is told as one kind of answer (as the per-model marker one_answer), not as "this wording cannot tell them apart"
+			if result.Reason == "quality" && lineStateOf(rs, rs.Eval.MinN, model, hash, labels, false).Kind == lineOneAnswer {
+				result.Reason = "one_answer"
+			}
 		}
 	} else if after, loadErr := s.spec(specID); loadErr == nil {
 		if rung == "context" {

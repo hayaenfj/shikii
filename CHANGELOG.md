@@ -4,7 +4,9 @@
 
 ## 0.9.4 — plain words when the answers cannot be told apart yet
 
-- Page: after an answer, when the answers cannot be told apart yet (a higher probability goes with "no", or every truth is on one side), the page now says so in plain words instead of "the line could not be drawn" with the English fitting message (`fitted slope is not positive`, `need both positive and negative samples`). The answer was always saved. The note on the page now says the AI will try other wordings and that there is nothing for you to do, instead of asking you to review the question or model.
+- Page: after an answer, when the answers cannot be told apart yet (a higher probability goes with "no", or every truth is on one side), the page now says so in plain words instead of "the line could not be drawn" with the English fitting message (`fitted slope is not positive`, `need both positive and negative samples`). The answer was always saved. For the questions shikii asks in the agent's turns, the note now says the AI will try other wordings and that there is nothing for you to do, instead of asking you to review the question or model; for your own questions, where nothing tries other wordings, it says that rewording the question is what lets the AI decide alone. When every truth is on one side, the note says there is only one kind of answer so far and that it tries again once the other answer appears.
+- `shikii calibrate --write --force`: when no line fits at all (every truth on one side, or a higher probability goes with "no"), it is refused like any other refusal instead of writing an empty calibration block over the model's line.
+- `shikii calibrate --labeled`: a yes/no question's truth in the file must be `"yes"` or `"no"` (or JSON `true` / `false`). Any other string (`"Yes"`, `"true"`) used to count as "no"; it is now an error that names the row.
 
 ## 0.9.3 — Codex across projects, one conversation per request, and plain-word notices
 

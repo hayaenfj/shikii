@@ -14,12 +14,12 @@
   let question = $derived(askOf(sp));
 
   // The text of the per-model marker. The state keys (collecting / ready) are the same as the dictionary keys
-  const isHeld = k => k.state !== 'calibrated' && k.state !== 'stale' && sp.calibration_result?.hash === k.hash && sp.calibration_result?.model === k.model && ['quality', 'insufficient', 'error'].includes(sp.calibration_result?.reason);
+  const isHeld = k => k.state !== 'calibrated' && k.state !== 'stale' && sp.calibration_result?.hash === k.hash && sp.calibration_result?.model === k.model && ['quality', 'one_answer', 'insufficient', 'error'].includes(sp.calibration_result?.reason);
 
   // The state and progress in the person's words
   let live = $derived(sp.keys.filter(k => k.state !== 'stale'));
   let calibration = $derived(live.some(k => k.hash === sp.calibration_result?.hash && k.model === sp.calibration_result?.model) ? sp.calibration_result : null);
-  let calibrationSummary = $derived(calibration?.reason === 'quality' ? t('calibrationQuality')(calibration.human_truths) : calibration?.reason === 'insufficient' ? t('calibrationInsufficient')(calibration.human_truths, calibration.min_n) : calibration?.reason === 'written' ? t('calibrationWritten')(calibration.human_truths) : calibration?.reason === 'error' ? t('calibrationError') : t('calibrationDiagnostic'));
+  let calibrationSummary = $derived(calibration?.reason === 'quality' ? t(calibration.tries_wordings ? 'calibrationQuality' : 'calibrationQualityOwn')(calibration.human_truths) : calibration?.reason === 'one_answer' ? t('calibrationOneAnswer')(calibration.human_truths) : calibration?.reason === 'insufficient' ? t('calibrationInsufficient')(calibration.human_truths, calibration.min_n) : calibration?.reason === 'written' ? t('calibrationWritten')(calibration.human_truths) : calibration?.reason === 'error' ? t('calibrationError') : t('calibrationDiagnostic'));
   let n = $derived(live.reduce((m, k) => Math.max(m, k.n), 0));
   let progress = $derived.by(() => {
     let plain = t('plainLearning')(n, sp.min_n), pct = Math.min(100, Math.round(100 * n / Math.max(1, sp.min_n)));
