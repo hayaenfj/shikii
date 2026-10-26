@@ -773,12 +773,12 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err)
 			return
 		}
-		byKey := map[string]int{}
+		byKey := map[string]bool{}
 		for _, l := range labs {
-			byKey[l.Model+"\x00"+l.SpecHash]++
+			byKey[l.Model+"\x00"+l.SpecHash] = true
 		}
 		keys := []map[string]any{} // [] even if empty (null makes the page crash)
-		for k, n := range byKey {
+		for k := range byKey {
 			parts := strings.SplitN(k, "\x00", 2)
 			model, hash := parts[0], parts[1]
 			state := "collecting"
@@ -787,6 +787,8 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			if hash == sp.ContextHash() {
 				rs, rung = sp.ContextSpec(), "context"
 			}
+			// n is the count calibration uses (0.9.3): the latest truth per input, from people and results only (machine truths and re-labels do not raise it)
+			n := lineStateOf(rs, sp.Eval.MinN, model, hash, labs, false).N
 			switch {
 			case !sp.LiveHash(hash):
 				state = "stale"

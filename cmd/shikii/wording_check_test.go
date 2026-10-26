@@ -343,3 +343,55 @@ func TestWordingCheckAdoptsAfterTheFolderMoved(t *testing.T) {
 		t.Fatalf("the adoption is saved in this project's wiki: %+v", got)
 	}
 }
+
+// Audit 0.9.2 (ui): the person reads the Japanese wording notices outside the page, so they use the page's plain words: the question's Japanese title instead of
+// the spec id and the candidate's name, no inner word 判定 (glossary), and the count is of truths, not "your" answers (0.9.2 counts the agent's truths too).
+func TestWordingNoticesUsePlainWordsAndTitle(t *testing.T) {
+	notices := map[string]func(t *testing.T) (string, *tuneResult){
+		"adopted": func(t *testing.T) (string, *tuneResult) {
+			agent, _, res := wordingCheckFixture(t)
+			if _, err := submitWordingCheck(t, checkBody(res, "same")); err != nil {
+				t.Fatal(err)
+			}
+			return wordingSummary(agent), res
+		},
+		"unsure": func(t *testing.T) (string, *tuneResult) {
+			agent, _, res := wordingCheckFixture(t)
+			if _, err := submitWordingCheck(t, checkBody(res, "unsure")); err != nil {
+				t.Fatal(err)
+			}
+			return wordingSummary(agent), res
+		},
+		"failed": func(t *testing.T) (string, *tuneResult) {
+			agent, _, res := wordingCheckFixture(t)
+			wordingAdopt = func(r *tuneResult, ef endpointFlags, storeDir, labeled string, reports ...io.Writer) (string, error) {
+				return "", fmt.Errorf("not adopted: the new wording could not be calibrated")
+			}
+			if _, err := submitWordingCheck(t, checkBody(res, "same")); err != nil {
+				t.Fatal(err)
+			}
+			return wordingSummary(agent), res
+		},
+	}
+	title := "AI が変えたファイルは、頼んだことに必要な物だけか" // display.ja.title of changes-in-scope
+	for state, make := range notices {
+		t.Run(state, func(t *testing.T) {
+			summary, res := make(t)
+			en, ja, ok := strings.Cut(summary, "\n")
+			if !ok || ja == "" {
+				t.Fatalf("a Japanese notice is shown: %q", summary)
+			}
+			for _, bad := range []string{"判定", res.SpecID, res.Winner, "あなたの"} {
+				if strings.Contains(ja, bad) {
+					t.Fatalf("the Japanese notice holds %q: %q", bad, ja)
+				}
+			}
+			if !strings.Contains(ja, "「"+title+"」") {
+				t.Fatalf("the Japanese notice names the question by its title: %q", ja)
+			}
+			if regexp.MustCompile(`(?i)\byour answers?\b`).MatchString(en) {
+				t.Fatalf("the English notice calls the counted truths the person's answers: %q", en)
+			}
+		})
+	}
+}

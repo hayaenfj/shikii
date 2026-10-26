@@ -130,6 +130,50 @@ func TestStatusAPIShowsWhyNoLineWasDrawn(t *testing.T) {
 	}
 }
 
+// 0.9.3: the page's learning count (keys[].n) is the N that calibration uses (lineStateOf: the latest truth per input, truths from people and results only).
+// Machine truths (context / judge) and a re-label of the same input must not raise it, or the page says "learning 12 / 10" while no line can be drawn.
+func TestStatusKeyCountIsCalibrationN(t *testing.T) {
+	repo := gitRepo(t)
+	hookEnv(t, nil)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	sp := mustLoad(t, filepath.Join(root, "decisions", "needs-plan.yaml"))
+	st := store.Store{Dir: root}
+	lab := func(trace, inputs, truth, source string) store.Label {
+		return store.Label{TraceID: trace, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "m1", InputsHash: inputs, Truth: truth, Weight: 1, Source: source, At: time.Now()}
+	}
+	labels := []store.Label{lab("a", "a", "yes", "ui"), lab("b", "b", "no", "ask"), lab("c", "c", "no", "outcome"),
+		lab("a", "a", "no", "ui"),                                     // a re-label of input a: still one truth
+		lab("x", "x", "yes", "context"), lab("y", "y", "no", "judge")} // machine truths: not counted
+	if err := st.AppendLabels(labels); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+	var body struct {
+		Specs []struct {
+			ID   string           `json:"id"`
+			Keys []map[string]any `json:"keys"`
+		} `json:"specs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	want := lineStateOf(sp, sp.Eval.MinN, "m1", sp.Hash(), labels, false).N
+	if want != 3 {
+		t.Fatalf("fixture: calibration counts 3 truths, got %d", want)
+	}
+	for _, s := range body.Specs {
+		if s.ID == sp.ID {
+			if len(s.Keys) != 1 || s.Keys[0]["n"] != float64(want) {
+				t.Fatalf("keys[].n is calibration's N (%d): %v", want, s.Keys)
+			}
+			return
+		}
+	}
+	t.Fatalf("no %s in the status: %s", sp.ID, rec.Body.String())
+}
+
 // audit 0.8.3 M4, a test gap: the notice changes with the question (wiki questions are never asked of people), it is told again when the model changes,
 // and the Stop hook really sends it to the person as a one-liner (systemMessage).
 func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {

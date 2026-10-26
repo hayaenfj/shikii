@@ -31,7 +31,7 @@
 6 cmd/shikii/hook_planning_test.go
 61 cmd/shikii/hook_subagent_test.go
 24 cmd/shikii/hook_test.go
-4 cmd/shikii/hook_variants.go
+5 cmd/shikii/hook_variants.go
 11 cmd/shikii/line_state.go
 8 cmd/shikii/line_state_test.go
 1 cmd/shikii/memory.go
@@ -59,7 +59,7 @@
 2 cmd/shikii/status_memory_test.go
 1 cmd/shikii/wiki_new_work_test.go
 4 cmd/shikii/wiki_test.go
-8 cmd/shikii/wording_check_test.go
+12 cmd/shikii/wording_check_test.go
 11 decisions/prompt-intent-v2.yaml
 7 decisions/prompt-intent.yaml
 7 decisions/prompt-kind.yaml
@@ -92,10 +92,9 @@
 1 scripts/demo.sh
 27 scripts/gen-architecture-svg.py
 8 scripts/gen-hero-svg.py
-2 skills/shikii/references/guards.md
 2 skills/shikii/references/import-memory.md
 30 web/scripts/test-glossary.mjs
-2 web/scripts/test-i18n.mjs
+4 web/scripts/test-i18n.mjs
 1 web/src/components/ItemCard.svelte
 2 web/src/components/Lessons.svelte
 110 web/test/ui-entry.js

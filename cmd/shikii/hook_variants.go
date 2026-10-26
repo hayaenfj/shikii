@@ -233,22 +233,23 @@ func wordingSummary(agent string) string {
 		}
 		var state, en, ja string
 		url := projectPageURL(agent)
+		title := jaQuestionTitle(agent, id)
 		switch {
 		case res.AutoAdopted && res.Adopted:
 			state = "adopted"
-			en = fmt.Sprintf("shikii: the wording of %s was changed to %q: the agent checked it asks the same thing, and it matched more of your answers. If the meaning changed, undo it on the page: %s", id, res.Winner, url)
+			en = fmt.Sprintf("shikii: the wording of %s was changed to %q: the agent checked it asks the same thing, and it matched more of the truths so far. If the meaning changed, undo it on the page: %s", id, res.Winner, url)
 			if res.Current != nil && res.WinnerWording != nil { // what changed, so the person can decide without opening the page (audit 0.9.2, low 4)
 				en += fmt.Sprintf(" (current: %s / new: %s)", trim(res.Current.Question, wordingNoticeRunes), trim(res.WinnerWording.Question, wordingNoticeRunes))
 			}
-			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方を「%s」に変えました(AI が意味は同じと確かめ、あなたの正解 %d 件で今より当たりました)。今まで: %s → これから: %s。意味が違っていたら画面で元に戻せます: %s", id, res.Winner, res.Truths, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
+			ja = fmt.Sprintf("shikii: 問い「%s」の聞き方を変えました(AI が意味は同じと確かめ、正解 %d 件で今より当たりました)。今まで: %s → これから: %s。意味が違っていたら画面で元に戻せます: %s", title, res.Truths, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
 		case check.Verdict == "unsure" && res.Adoptable && !res.Adopted:
 			state = "unsure"
-			en = fmt.Sprintf("shikii: a new wording %q for %s matched more of your answers, but the agent could not decide whether it asks the same thing (its view of the difference: %s). Please check it on the page: %s", res.Winner, id, check.Difference, url)
-			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方の候補「%s」は今より当たりましたが、意味が同じか AI が決めきれません(違いの見立て: %s)。今の聞き方: %s / 候補: %s。画面で意味が同じかを選んでください: %s", id, res.Winner, check.Difference, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
+			en = fmt.Sprintf("shikii: a new wording %q for %s matched more of the truths so far, but the agent could not decide whether it asks the same thing (its view of the difference: %s). Please check it on the page: %s", res.Winner, id, check.Difference, url)
+			ja = fmt.Sprintf("shikii: 問い「%s」の聞き方の候補は今より当たりましたが、意味が同じか AI が決めきれません(違いの見立て: %s)。今の聞き方: %s / 候補: %s。画面で意味が同じかを選んでください: %s", title, check.Difference, check.CurrentText, check.Candidate, pageRef(filepath.Dir(agent)))
 		case check.Verdict == "same" && res.Adoptable && !res.Adopted && res.AdoptError != "":
 			state = "failed"
 			en = fmt.Sprintf("shikii: the agent found that the new wording %q for %s asks the same thing, but it could not be adopted (%s). The current wording stays; it is tried again as truths grow", res.Winner, id, res.AdoptError)
-			ja = fmt.Sprintf("shikii: 判定「%s」の聞き方の候補「%s」は AI が意味は同じと確かめましたが、採用できませんでした(%s)。今の聞き方のままで、正解が増えた時にもう一度試します", id, res.Winner, res.AdoptError)
+			ja = fmt.Sprintf("shikii: 問い「%s」の聞き方の候補は AI が意味は同じと確かめましたが、採用できませんでした(%s)。今の聞き方のままで、正解が増えた時にもう一度試します", title, res.AdoptError)
 		default:
 			continue
 		}
@@ -265,6 +266,21 @@ func wordingSummary(agent string) string {
 		lines = append(lines, bi(en, ja, hookLoc{Lang: hookLang()}))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// jaQuestionTitle is how the Japanese notices name a question: the page's title (display.ja.title), else its Japanese question, never the spec id (audit 0.9.2 ui).
+func jaQuestionTitle(agent, id string) string {
+	if sp, err := spec.Load(hookSpecPath(agent, id)); err == nil {
+		if d, ok := sp.Display["ja"]; ok {
+			if t := strings.TrimSpace(d.Title); t != "" {
+				return t
+			}
+			if q := strings.TrimSpace(d.Question); q != "" {
+				return q
+			}
+		}
+	}
+	return "この問い"
 }
 
 // wordingNoticeRunes is how much of each question the English notice shows (the whole question is on the page).

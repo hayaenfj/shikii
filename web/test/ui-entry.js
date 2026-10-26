@@ -909,7 +909,7 @@ async function checkBinaryPrediction(target) {
   const negative = guess?.includes('そのまま進めてよい') && guess.includes('54%') && target.querySelector('button.top')?.dataset.truth === 'no';
   target.querySelector('.btns button.redo')?.click();
   await new Promise(resolve => setTimeout(resolve, 0)); flushSync();
-  const redone = target.querySelector('.redo-out')?.textContent.includes('そのまま進めてよい 70%') && target.querySelector('.redo-out')?.textContent.includes('あなたの答えと一致しました');
+  const redone = target.querySelector('.redo-out')?.textContent.includes('そのまま進めてよい 70%') && target.querySelector('.redo-out')?.textContent.includes('正解と一致しました');
   target.querySelector('button.top')?.click();
   await new Promise(resolve => setTimeout(resolve, 0));
   const submitted = calls.some(c => c.trace_id === 'binary' && c.truth === 'no');
