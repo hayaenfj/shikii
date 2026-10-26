@@ -127,6 +127,15 @@ func newHTTPServer(handler http.Handler) *http.Server {
 	}
 }
 
+// allowLongResponse lets one handler that starts long work (the automatic calibration after an answer, a synchronous tune) answer after
+// newHTTPServer's WriteTimeout; the header and read limits still cut slow clients. A recorder (MCP calls handlers in process) has no deadline.
+func allowLongResponse(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(longResponseLimit))
+}
+
+// longResponseLimit bounds a long handler's reply: a calibration that asks the model again for many earlier truths, or a tune over every fold.
+const longResponseLimit = 30 * time.Minute
+
 // listenPage starts listening. For the project's page started by the hook (port 0), it takes a free port, writes a mark with the port and pid
 // to ~/.shikii/agent/pages/, and opens it once in the browser. A serve started by hand (fixed port) writes no mark (so it never overwrites the hook page's mark; audit R5).
 func listenPage(common, scope string, hub bool, port int) (net.Listener, error) {
@@ -597,6 +606,7 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 	// An answer to a decision settled after adding context also goes to the minimal question (rungs = 2). Lines are drawn per rung
 	resp := map[string]any{"trace_id": l.TraceID, "spec": l.SpecID, "model": l.Model, "truth": l.Truth, "weight": l.Weight, "source": l.Source, "rungs": len(labels), "calibrated": false}
 	if s.o.autoCalibrate {
+		allowLongResponse(w) // the calibration can ask the model again for every earlier truth
 		if report, did := s.maybeCalibrate(rec.SpecID, rec.SpecHash, rec.Model); did {
 			resp["calibrated"] = true
 			resp["calibration"] = report
