@@ -240,3 +240,17 @@ func TestMoveAndCopyNoticesReachThePerson(t *testing.T) {
 		t.Fatalf("nothing is written into the copy's store: %d session files", len(entries))
 	}
 }
+
+// 0.9.7 second real-agent check: after the copy notice, both agents asked the person again at the end of every later reply while no answer
+// came. The notice asks once.
+func TestCopyNoticeAsksOnce(t *testing.T) {
+	repo := gitRepo(t)
+	hookEnv(t, nil, repo)
+	copied := filepath.Join(t.TempDir(), "copy")
+	if out, err := exec.Command("cp", "-R", feedbackScope(repo), copied).CombinedOutput(); err != nil {
+		t.Fatalf("cp: %v %s", err, out)
+	}
+	if n := copiedNotice(copied); !strings.Contains(n, "ask once") {
+		t.Fatalf("the copy notice asks the person once: %q", n)
+	}
+}

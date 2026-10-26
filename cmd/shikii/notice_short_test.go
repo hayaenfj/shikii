@@ -119,3 +119,13 @@ func TestMissedOrganizingIsRememberedAcrossARequestWithoutOne(t *testing.T) {
 		t.Fatalf("given once, the mark is cleared: %q", after)
 	}
 }
+
+// 0.9.7 second real-agent check: Claude Code wrote hook plan query and hook plan submit in one command from the second request on, so it
+// submitted before reading what query returned (the lessons it could rely on). Both forms of the notice say to read the query result first.
+func TestPlanningNoticeSaysToReadTheQueryFirst(t *testing.T) {
+	for name, notice := range map[string]string{"full": planningNotice("s", "0123456789abcdef"), "short": planningNoticeShort("s", "0123456789abcdef")} {
+		if !strings.Contains(notice, "after reading what query returned") {
+			t.Errorf("%s form: says to submit after reading the query result: %q", name, notice)
+		}
+	}
+}

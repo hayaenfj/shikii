@@ -122,9 +122,9 @@ func copiedNotice(cwd string) string {
 		return ""
 	}
 	if copiedFrom(old, scope) {
-		return fmt.Sprintf("shikii: this folder's .shikii was copied from %s, which is still a shikii project, so shikii is not running here (its records keep going to the original). Tell the person this in your final reply, and ask whether to make this copy a project of its own with `shikii --init` here (its wiki and records are kept).", old)
+		return fmt.Sprintf("shikii: this folder's .shikii was copied from %s, which is still a shikii project, so shikii is not running here (its records keep going to the original). Tell the person this in your final reply, and ask once whether to make this copy a project of its own with `shikii --init` here (its wiki and records are kept); do not ask again in later replies.", old)
 	}
-	return fmt.Sprintf("shikii: this folder's .shikii was initialized at %s, and shikii cannot confirm that this folder is that project moved here (it may be a copy, or brought in from elsewhere), so shikii is not running here. Tell the person this in your final reply, and ask whether to make it a project here with `shikii --init` (its wiki and records are kept).", old)
+	return fmt.Sprintf("shikii: this folder's .shikii was initialized at %s, and shikii cannot confirm that this folder is that project moved here (it may be a copy, or brought in from elsewhere), so shikii is not running here. Tell the person this in your final reply, and ask once whether to make it a project here with `shikii --init` (its wiki and records are kept); do not ask again in later replies.", old)
 }
 
 // otherPathNotice is the notice for when this project's store has a wiki store left under the previous path's name.
