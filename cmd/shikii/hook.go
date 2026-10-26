@@ -631,11 +631,15 @@ func runHookEvent(event string) error {
 		}
 	}
 	common := agent
+	moved := ""
+	if event == "user-prompt-submit" {
+		moved = relinkMovedProject(in.CWD, false) // the folder was moved or renamed: reconnect it here and say so once (0.9.7)
+	}
 	agent, _, err = prepareHookProject(in.CWD)
 	if errors.Is(err, errProjectInactive) {
-		// in an uninitialized place, do not save, change Git or start the model. Only when the folder was moved and the marker still has the old path, say that it has stopped (0.9.2)
+		// in an uninitialized place, do not save, change Git or start the model. Only when this .shikii was copied from a project still in place, say so
 		if event == "user-prompt-submit" {
-			if b := (hookOut{Context: movedMarkerNotice(in.CWD)}).json(hookEventName(event)); b != nil {
+			if b := (hookOut{Context: copiedNotice(in.CWD)}).json(hookEventName(event)); b != nil {
 				fmt.Fprintln(stdout, string(b))
 			}
 		}
@@ -665,6 +669,9 @@ func runHookEvent(event string) error {
 		out, muts, err = hookSubagentStart(agent, &in, snapshot) // the parent's record only drops the used task for the child
 	case "agent-task":
 		muts = hookAgentTask(&in) // output nothing (do not stop the tool)
+	}
+	if moved != "" {
+		out.Context = joinLines(moved, out.Context)
 	}
 	if len(muts) > 0 {
 		if serr := updateSession(agent, in.SessionID, func(sess *hookSession) {

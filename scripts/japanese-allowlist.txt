@@ -32,7 +32,7 @@
 10 cmd/shikii/handoff_test.go
 12 cmd/shikii/hook.go
 15 cmd/shikii/hook_feedback_test.go
-4 cmd/shikii/hook_moved_test.go
+3 cmd/shikii/hook_moved_test.go
 3 cmd/shikii/hook_notice_words_test.go
 1 cmd/shikii/hook_outcome_test.go
 2 cmd/shikii/hook_planning_context_test.go

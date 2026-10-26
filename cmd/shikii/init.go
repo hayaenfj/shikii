@@ -34,6 +34,9 @@ func cmdInit(args []string) error {
 	if isSharedPlaceScope(scope) {
 		return errors.New("the home folder is not initialized (~/.shikii is the shared store). Run this in a project folder")
 	}
+	if notice := relinkMovedProject(root, true); notice != "" { // a moved folder, or a copy the person makes a project of its own (0.9.7)
+		fmt.Fprintln(stdout, "Reconnected this project at its new path (its wiki and records are kept)")
+	}
 	version := projectInitVersionNow
 	if wipePending(root) { // check before creating the store (once created, it cannot be told apart from a re-initialization in the middle of a wipe)
 		version = projectInitVersion(root)

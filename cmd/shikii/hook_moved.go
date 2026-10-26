@@ -12,31 +12,100 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-// Notices after the folder was moved or renamed (0.9.2). The store name and the init marker are decided by the project's path, so
-// just moving it made the hook stop silently, and fixing only the marker made the wiki silently empty. How to fix it is in the skill's references/wiki.md.
+// After the project folder is moved or renamed (0.9.7). Its .shikii keeps everything under fixed names, so only project.json (the path it
+// was initialized at) and the shared index (~/.shikii/agent) still point at the old path. Before, this stopped shikii until a person followed
+// eleven manual steps; now the request's hook (and shikii --init) reconnects the project by itself.
 
 const movedHow = "fix it with the steps in \"Moving or renaming the project folder\" in the skill's references/wiki.md (check with the person first; copy the old store instead of deleting it)."
 
-// movedMarkerNotice is the notice for when this folder's init marker still has the previous path and that path no longer exists (the folder was moved).
-// It stays silent when the previous path exists (it was copied) or cannot be read (a copied marker is not made active, as before).
-func movedMarkerNotice(cwd string) string {
+// previousScope is the path in this store's project.json when it differs from the current one, and the project.json version.
+func previousScope(root, scope string) (string, int, bool) {
+	f, err := os.OpenFile(filepath.Join(root, "project.json"), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", 0, false
+	}
+	defer f.Close()
+	var a projectActivation
+	if json.NewDecoder(io.LimitReader(f, 4096)).Decode(&a) != nil || a.Version < 1 || a.Scope == "" || a.Scope == scope || !filepath.IsAbs(a.Scope) {
+		return "", 0, false
+	}
+	return a.Scope, a.Version, true
+}
+
+// copiedFrom reports whether the previous path is still that same project: the folder was copied, not moved. The same folder reached by
+// another path (a link) is not a copy.
+func copiedFrom(old, scope string) bool {
+	if a, err := os.Stat(old); err == nil {
+		if b, err := os.Stat(scope); err == nil && os.SameFile(a, b) {
+			return false
+		}
+	}
+	active, err := projectActive(filepath.Join(old, ".shikii"), old)
+	return err == nil && active
+}
+
+// relinkMovedProject reconnects the project at cwd when its folder was moved or renamed, and returns what to tell the person once ("" when
+// nothing was done). The old path is remembered (source ids captured before 0.9.7 hold it), project.json and the shared index are pointed
+// here, and the old path's page is stopped. A copy is left alone (copiedNotice); after shikii --init it is a project of its own.
+func relinkMovedProject(cwd string, takeOverCopy bool) string {
 	root, scope, err := projectStoreAt(cwd)
 	if err != nil {
 		return ""
 	}
-	f, err := os.OpenFile(filepath.Join(root, "project.json"), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	old, version, ok := previousScope(root, scope)
+	if !ok || (!takeOverCopy && (copiedFrom(old, scope) || !registeredHere(old, root))) {
+		return "" // a copy, or a store this machine did not initialize at that path: only the person's shikii --init activates it
+	}
+	if err := notebook.MigrateLayout(root, old); err != nil {
+		hookLog("relink: " + err.Error())
+		return ""
+	}
+	if err := notebook.RememberPath(root, old); err != nil {
+		hookLog("relink: " + err.Error())
+		return ""
+	}
+	if err := finishProjectInit(root, scope, version); err != nil {
+		hookLog("relink: " + err.Error())
+		return ""
+	}
+	if !copiedFrom(old, scope) {
+		forgetProject(old)
+	}
+	return fmt.Sprintf("shikii: this project's folder was moved or renamed from %s. shikii reconnected it here by itself: its wiki, records and settings are kept, and nothing needs fixing. Tell the person this once.", old)
+}
+
+// forgetProject removes the old path's entry from the shared index and stops the page shikii started for it (only that serve, checked by its command line).
+func forgetProject(old string) {
+	common, err := agentHome()
+	if err != nil {
+		return
+	}
+	entry := filepath.Join(common, "projects", projectID(old)+".json")
+	if b, err := os.ReadFile(entry); err == nil {
+		var p projectEntry
+		if json.Unmarshal(b, &p) == nil && p.Path == old {
+			_ = os.Remove(entry)
+		}
+	}
+	if r, ok := readPageRecord(common, old); ok && r.Scope == old {
+		if r.PID > 0 && r.PID != os.Getpid() && processAlive(r.PID) && isShikiiServe(processCommand(r.PID), filepath.Join(old, ".shikii")) {
+			_ = stopProcess(r.PID)
+		}
+		_ = os.Remove(pagePath(common, old))
+	}
+}
+
+// copiedNotice is the notice for a folder whose .shikii was copied from a project that is still there: shikii is not running here.
+func copiedNotice(cwd string) string {
+	root, scope, err := projectStoreAt(cwd)
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
-	var a projectActivation
-	if json.NewDecoder(io.LimitReader(f, 4096)).Decode(&a) != nil || a.Scope == "" || a.Scope == scope || !filepath.IsAbs(a.Scope) {
+	old, _, ok := previousScope(root, scope)
+	if !ok || !copiedFrom(old, scope) {
 		return ""
 	}
-	if _, err := os.Lstat(a.Scope); !os.IsNotExist(err) {
-		return ""
-	}
-	return fmt.Sprintf("shikii: this folder's .shikii/project.json still carries the marker of an init at the previous path (%s), so shikii is not running (lesson delivery, decisions and records have stopped). The folder was moved or renamed. When you finish the current request, %s", a.Scope, movedHow)
+	return fmt.Sprintf("shikii: this folder's .shikii was copied from %s, which is still a shikii project, so shikii is not running here. To use this copy as a project of its own, ask the person, then run `shikii --init` here (its wiki and records are kept).", old)
 }
 
 // otherPathNotice is the notice for when this project's store has a wiki store left under the previous path's name.

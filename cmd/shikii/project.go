@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -26,7 +28,8 @@ type projectEntry struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
 	URL         string `json:"url"`
-	InitVersion int    `json:"-"` // project.json version: 1 = --init of 0.7.4 or earlier, 2 = 0.7.5 or later (the wipe crossing 0.7.0 is done)
+	StoreID     string `json:"store_id,omitempty"` // the store's own id (records/store-id): a move is reconnected only for the store initialized here (0.9.7)
+	InitVersion int    `json:"-"`                  // project.json version: 1 = --init of 0.7.4 or earlier, 2 = 0.7.5 or later (the wipe crossing 0.7.0 is done)
 }
 
 var errProjectInactive = errors.New("run shikii --init in this project")
@@ -358,7 +361,7 @@ func registerProject(scope string) error {
 	if err != nil {
 		return err
 	}
-	entry := projectEntry{ID: projectID(scope), Name: filepath.Base(scope), Path: scope, URL: "/p/" + projectID(scope) + "/"}
+	entry := projectEntry{ID: projectID(scope), Name: filepath.Base(scope), Path: scope, URL: "/p/" + projectID(scope) + "/", StoreID: storeID(filepath.Join(scope, ".shikii"), true)}
 	data, _ := json.Marshal(entry)
 	dir := filepath.Join(common, "projects")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -385,6 +388,66 @@ func registerProject(scope string) error {
 		return err
 	}
 	return nil
+}
+
+// storeID is the store's random id (records/store-id), made the first time the project is registered. The shared index keeps it with the
+// path, so after a move the store is reconnected only on the machine where it was initialized: a .shikii brought in from elsewhere (an
+// archive, another machine) never matches and stays inactive until the person runs shikii --init (0.9.7).
+func storeID(root string, create bool) string {
+	path := filepath.Join(root, "records", "store-id")
+	read := func() string {
+		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+		if err != nil {
+			return ""
+		}
+		defer f.Close()
+		b, _ := io.ReadAll(io.LimitReader(f, 64))
+		if id := strings.TrimSpace(string(b)); storeIDPattern.MatchString(id) {
+			return id
+		}
+		return ""
+	}
+	if id := read(); id != "" || !create {
+		return id
+	}
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return ""
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return ""
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return read() // made by another process just now
+	}
+	defer f.Close()
+	id := hex.EncodeToString(raw[:])
+	if _, err := f.WriteString(id + "\n"); err != nil {
+		return ""
+	}
+	return id
+}
+
+var storeIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+// registeredHere reports whether this machine's shared index has old as the project of this store: the entry for old exists, and its store
+// id is this store's (an entry written before 0.9.7 has none; it then matches only a store that has none either).
+func registeredHere(old, root string) bool {
+	common, err := agentHome()
+	if err != nil {
+		return false
+	}
+	f, err := os.OpenFile(filepath.Join(common, "projects", projectID(old)+".json"), os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var p projectEntry
+	if json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p) != nil || p.Path != old || p.ID != projectID(old) {
+		return false
+	}
+	return p.StoreID == storeID(root, false)
 }
 
 func registeredProjects(common string) []projectEntry {
