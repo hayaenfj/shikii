@@ -43,14 +43,14 @@ func TestNotebookVersionAndMCPContract(t *testing.T) {
 	var plugin struct {
 		Version string `json:"version"`
 	}
-	if err := json.Unmarshal(manifest, &plugin); err != nil || plugin.Version != shikii.Version || shikii.Version != "0.9.2" {
+	if err := json.Unmarshal(manifest, &plugin); err != nil || plugin.Version != shikii.Version || shikii.Version != "0.9.3" {
 		t.Fatalf("the CLI, MCP and plugin versions match: %s %+v %v", shikii.Version, plugin, err)
 	}
 	old := os.Args
 	os.Args = []string{"shikii", "--version"}
 	out := capture(t, func() error { main(); return nil })
 	os.Args = old
-	if strings.TrimSpace(out) != "shikii 0.9.2" {
+	if strings.TrimSpace(out) != "shikii 0.9.3" {
 		t.Fatalf("the version can be checked: %s", out)
 	}
 	repo := gitRepo(t)
