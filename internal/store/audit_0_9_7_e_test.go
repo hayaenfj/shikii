@@ -69,3 +69,16 @@ func TestReauditERemadeLongerFileKeepsEveryLine(t *testing.T) {
 		t.Errorf("remade older file: lines in fixed %d (want 6)", n)
 	}
 }
+
+// 0.9.7 audit F-4: a mark in the form 855865f wrote ("<device>:<inode> <offset>") was not read as an offset, so every merged line was
+// appended once more. It is taken as an offset, like the number-only form.
+func TestReauditFInodeMarkIsTakenAsAnOffset(t *testing.T) {
+	s, scope, from, fixed := auditESetup(t)
+	st, _ := os.Stat(from)
+	os.WriteFile(from+".merged", []byte("16777231:12345 "+strconv.FormatInt(st.Size(), 10)), 0o600)
+	s.RecentFeedback(scope)
+	s.RecentFeedback(scope)
+	if n := auditELines(t, fixed); n != 3 {
+		t.Errorf("a mark of 855865f: lines in fixed %d (want 3)", n)
+	}
+}

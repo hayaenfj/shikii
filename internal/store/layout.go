@@ -95,6 +95,9 @@ func (s Store) merge(from, fixed, ext string) {
 	// or a broken mark starts from the beginning (D-2). A mark of the number only (9b77d07) is taken as it is (E-4).
 	raw, _ := io.ReadAll(io.LimitReader(mark, 128))
 	at, sum, _ := strings.Cut(strings.TrimSpace(string(raw)), " ")
+	if strings.Contains(at, ":") { // "<device>:<inode> <offset>", written by 855865f: take the offset as it is (audit F-4)
+		at, sum = sum, ""
+	}
 	offset, err := strconv.ParseInt(at, 10, 64)
 	if err != nil || offset < 0 || offset > st.Size() || (sum != "" && tailHash(f, offset) != sum) {
 		offset = 0
@@ -107,6 +110,11 @@ func (s Store) merge(from, fixed, ext string) {
 	if end < 0 {
 		return // nothing complete yet
 	}
+	next := offset + int64(end+1)
+	nextSum := tailHash(f, next)
+	if nextSum == "" { // the mark could not be checked next time: do not append now (audit F, S-1)
+		return
+	}
 	out, err := os.OpenFile(fixed, os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return
@@ -115,9 +123,8 @@ func (s Store) merge(from, fixed, ext string) {
 	if cerr := out.Close(); werr != nil || cerr != nil {
 		return
 	}
-	next := offset + int64(end+1)
 	_ = mark.Truncate(0)
-	_, _ = mark.WriteAt([]byte(strconv.FormatInt(next, 10)+" "+tailHash(f, next)), 0)
+	_, _ = mark.WriteAt([]byte(strconv.FormatInt(next, 10)+" "+nextSum), 0)
 }
 
 // tailHash is the hash of up to 4 KiB of f just before offset.

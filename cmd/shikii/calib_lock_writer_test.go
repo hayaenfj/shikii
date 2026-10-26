@@ -78,10 +78,18 @@ func TestOnlyLockCalibrationTouchesTheCalibrationLock(t *testing.T) {
 // "w" is the calling function's own http.ResponseWriter parameter, never assigned, ranged over or taken by address in it; "nil in go" is a
 // literal nil inside a go statement (no reply waits). Any other mention of these names, anywhere in the package (a value, a function
 // literal, a package-level variable, another caller), fails. A new path that waits for the lock is added here on purpose.
+// Every function that waits for the lock, directly or through another, is a key, so its own callers are bound all the way up (audit F-1,
+// F-3); a handler is reached only through its HTTP registration ("registered": passed to HandleFunc in that function).
 var lockCallers = map[string]map[string]string{
-	"lockCalibration": {"runTuneCaptured": "w", "maybeCalibrate": "w", "handleTuneVariant": "w", "handleTuneAdopt": "w", "handleTuneReview": "w"},
-	"runTuneCaptured": {"handleTuneSync": "w", "handleTuneRun": "nil in go"},
-	"maybeCalibrate":  {"handleLabel": "w"},
+	"lockCalibration":   {"runTuneCaptured": "w", "maybeCalibrate": "w", "handleTuneVariant": "w", "handleTuneAdopt": "w", "handleTuneReview": "w"},
+	"runTuneCaptured":   {"handleTuneSync": "w", "handleTuneRun": "nil in go"},
+	"maybeCalibrate":    {"handleLabel": "w"},
+	"handleLabel":       {"handler": "registered"},
+	"handleTuneSync":    {"handler": "registered"},
+	"handleTuneRun":     {"handler": "registered"},
+	"handleTuneVariant": {"handler": "registered"},
+	"handleTuneAdopt":   {"handler": "registered"},
+	"handleTuneReview":  {"handler": "registered"},
 }
 
 // nilWriters returns the places that mention a lock-waiting function other than as allowed by lockCallers.
@@ -170,8 +178,22 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 						case *ast.Ident:
 							name, callee = fun, fun.Name
 						}
+						if callee == "HandleFunc" && !inGo && !inLit { // a registration: the handler gets the connection's writer
+							for _, a := range x.Args {
+								var arg *ast.Ident
+								switch v := unparen(a).(type) {
+								case *ast.SelectorExpr:
+									arg = v.Sel
+								case *ast.Ident:
+									arg = v
+								}
+								if arg != nil && lockCallers[arg.Name][fn.Name.Name] == "registered" {
+									allowedCall[arg] = true
+								}
+							}
+						}
 						how, listed := lockCallers[callee][fn.Name.Name]
-						if !listed || len(x.Args) == 0 {
+						if !listed || how == "registered" || len(x.Args) == 0 {
 							return true
 						}
 						arg, _ := unparen(x.Args[0]).(*ast.Ident)
