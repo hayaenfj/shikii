@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -60,7 +61,7 @@ func (s Store) merge(from, fixed, ext string) {
 			return
 		}
 		for _, e := range entries {
-			if !e.Type().IsRegular() {
+			if !e.Type().IsRegular() || strings.HasPrefix(e.Name(), ".") { // an older shikii's file being written (.<random>.tmp) is left to it
 				continue
 			}
 			if _, err := os.Lstat(filepath.Join(fixed, e.Name())); err == nil {
@@ -81,15 +82,25 @@ func (s Store) merge(from, fixed, ext string) {
 		return
 	}
 	defer syscall.Flock(int(mark.Fd()), syscall.LOCK_UN)
-	raw, _ := io.ReadAll(io.LimitReader(mark, 32))
-	offset, _ := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
 	f, err := os.OpenFile(from, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	if st, err := f.Stat(); err != nil || st.Size() < offset {
+	st, err := f.Stat()
+	if err != nil {
 		return
+	}
+	// the mark is "<file identity> <offset>": an offset of another file (the older file removed and made again) or a broken mark
+	// starts from the beginning (re-audit D-1, D-2)
+	id := fileIdentity(st)
+	raw, _ := io.ReadAll(io.LimitReader(mark, 64))
+	var offset int64
+	if markID, at, ok := strings.Cut(strings.TrimSpace(string(raw)), " "); ok && markID == id {
+		offset, _ = strconv.ParseInt(at, 10, 64)
+	}
+	if offset < 0 || offset > st.Size() {
+		offset = 0
 	}
 	data, err := io.ReadAll(io.NewSectionReader(f, offset, MaxLineBytes*16))
 	if err != nil {
@@ -108,7 +119,14 @@ func (s Store) merge(from, fixed, ext string) {
 		return
 	}
 	_ = mark.Truncate(0)
-	_, _ = mark.WriteAt([]byte(strconv.FormatInt(offset+int64(end+1), 10)), 0)
+	_, _ = mark.WriteAt([]byte(id+" "+strconv.FormatInt(offset+int64(end+1), 10)), 0)
+}
+
+func fileIdentity(st os.FileInfo) string {
+	if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+		return fmt.Sprintf("%d:%d", sys.Dev, sys.Ino)
+	}
+	return ""
 }
 
 // MigrateLayout moves the records written before 0.9.7 under scope's hash to the fixed names. Reconnecting a moved project calls it with
@@ -131,6 +149,7 @@ func (s Store) adopt(area, ext, from string) string {
 	if info, err := os.Lstat(from); err != nil || info.Mode()&os.ModeSymlink != 0 {
 		return fixed // records are never links (openFile refuses them too)
 	}
+	_ = os.Remove(from + ".merged")                // the moved file's merge mark belongs to it no more (re-audit D-1)
 	if err := os.Rename(from, fixed); err != nil { // replaces an empty file or folder in one step (0.9.7 audit B-a)
 		if _, statErr := os.Lstat(fixed); statErr != nil { // not moved by another process either
 			return from

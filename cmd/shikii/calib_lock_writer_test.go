@@ -128,12 +128,37 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 		}
 		return -1
 	}
-	writerAt := map[string]int{} // function name → index of its http.ResponseWriter parameter
+	// a handler type: http.HandlerFunc, or a function type taking a writer
+	isHandlerType := func(e ast.Expr) bool {
+		switch x := e.(type) {
+		case *ast.SelectorExpr:
+			return x.Sel.Name == "HandlerFunc"
+		case *ast.Ident:
+			return x.Name == "HandlerFunc"
+		case *ast.FuncType:
+			return writerIndex(x) >= 0
+		}
+		return false
+	}
+	writerAt := map[string]int{}               // function name → index of its http.ResponseWriter parameter
+	handlerParams := map[string]map[int]bool{} // function name → indexes of its handler-typed parameters (a middleware)
 	for _, f := range parsed {
 		for _, d := range f.Decls {
 			if fn, ok := d.(*ast.FuncDecl); ok {
 				if i := writerIndex(fn.Type); i >= 0 {
 					writerAt[fn.Name.Name] = i
+				}
+				i := 0
+				for _, p := range fn.Type.Params.List {
+					for k := 0; k < max(1, len(p.Names)); k++ {
+						if isHandlerType(p.Type) {
+							if handlerParams[fn.Name.Name] == nil {
+								handlerParams[fn.Name.Name] = map[int]bool{}
+							}
+							handlerParams[fn.Name.Name][i] = true
+						}
+						i++
+					}
 				}
 			}
 		}
@@ -165,9 +190,19 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 				}
 				return true
 			})
-			// a writer parameter that is assigned is no longer the connection's writer
+			// a writer parameter that is assigned (by =, :=, range or through its address) is no longer the connection's writer
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				switch x := n.(type) {
+				case *ast.RangeStmt:
+					for _, e := range []ast.Expr{x.Key, x.Value} {
+						if id, ok := e.(*ast.Ident); ok && own[id.Name] {
+							out = append(out, fn.Name.Name+" assigns its writer "+id.Name+" by range")
+						}
+					}
+				case *ast.UnaryExpr:
+					if id, ok := x.X.(*ast.Ident); ok && x.Op == token.AND && own[id.Name] {
+						out = append(out, fn.Name.Name+" takes the address of its writer "+id.Name)
+					}
 				case *ast.AssignStmt:
 					for _, l := range x.Lhs {
 						if id, ok := l.(*ast.Ident); ok && own[id.Name] {
@@ -195,11 +230,30 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 					case *ast.Ident:
 						callee = fun.Name
 					}
-					if handlerRegistrations[callee] {
-						for _, a := range c.Args {
+					for i, a := range c.Args {
+						if handlerRegistrations[callee] || handlerParams[callee][i] {
 							registered[a] = true
 						}
 					}
+				}
+				return true
+			})
+			// a function literal taking a writer can be called with anything: only as a handler registration argument or a returned handler
+			returned := map[ast.Node]bool{}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if r, ok := n.(*ast.ReturnStmt); ok {
+					for _, e := range r.Results {
+						returned[e] = true
+						if c, ok := e.(*ast.CallExpr); ok && len(c.Args) == 1 { // return http.HandlerFunc(func(w, r) {...})
+							returned[c.Args[0]] = true
+						}
+					}
+				}
+				return true
+			})
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if lit, ok := n.(*ast.FuncLit); ok && writerIndex(lit.Type) >= 0 && !registered[n] && !returned[n] {
+					out = append(out, fn.Name.Name+" has a function literal taking a writer outside a handler registration")
 				}
 				return true
 			})

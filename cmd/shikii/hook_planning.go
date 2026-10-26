@@ -120,7 +120,7 @@ func planningNoticeShort(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: organize this turn before starting, as earlier in this session; do not ask the person. Pipe the JSON below to %[1]s hook plan query with topic words in query (not the request text), then pass the same IDs, query, agreed and open to %[1]s hook plan submit. agreed and open are each one object: {summary, evidence:[{source,quote}]} quoting the original text (source current_user, or lesson:<id> for a lesson you rely on), or {unknown:true}; an agreement needs the person's own words. Set continues_previous and restates as before. It is a hypothesis, never permission. Details: the skill's references/planning.md.\n", command) + string(ids)
+	return fmt.Sprintf("shikii: organize this turn before starting, as earlier in this session; do not ask the person. Pipe the JSON below to %[1]s hook plan query with topic words in query (not the request text), then pass the same IDs, query, agreed and open to %[1]s hook plan submit. agreed and open are each one object: {summary, evidence:[{source,quote}]} quoting the original text (source current_user or previous_user; lesson:<id> for a lesson you rely on, never for an agreement), or {unknown:true}; an agreement needs the person's own words. Set continues_previous and restates as before. It is a hypothesis, never permission. Details: the skill's references/planning.md.\n", command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {

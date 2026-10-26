@@ -31,7 +31,7 @@ func TestPlanningNoticeIsShortAfterTheFirstRequest(t *testing.T) {
 	if strings.Contains(second, full) || !strings.Contains(second, "hook plan query") || !strings.Contains(second, "hook plan submit") || !strings.Contains(second, id) {
 		t.Fatalf("after an organized request the short form names the commands and this turn's id %s: %q", id, second)
 	}
-	if len(second) >= len(first)/3 {
+	if len(second) >= len(first)/2 { // the short form keeps the essential rules (re-audit S1)
 		t.Fatalf("the short form is short: %d of %d characters", len(second), len(first))
 	}
 	// the second request's organizing is not submitted: the next request gets the full text again
