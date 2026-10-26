@@ -92,7 +92,6 @@
 1 scripts/demo.sh
 27 scripts/gen-architecture-svg.py
 8 scripts/gen-hero-svg.py
-2 skills/shikii/references/guards.md
 2 skills/shikii/references/import-memory.md
 30 web/scripts/test-glossary.mjs
 4 web/scripts/test-i18n.mjs
