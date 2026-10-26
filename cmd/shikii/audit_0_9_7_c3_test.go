@@ -9,7 +9,7 @@ func TestReauditCNilWriterLoopholes(t *testing.T) {
 		"the parameter set to nil":         "func (s *server) handleA(w http.ResponseWriter) { w = nil; defer s.lockCalibration(w)() }\n",
 		"nil passed to a function literal": "func (s *server) handleA(w http.ResponseWriter) { func(x http.ResponseWriter) { defer s.lockCalibration(x)() }(nil) }\n",
 		"a method value called with nil":   "func (s *server) handleA(w http.ResponseWriter) { f := s.lockCalibration; defer f(nil)() }\n",
-		"a parameter typed by an alias":    "type rw = http.ResponseWriter\nfunc (s *server) lockB(w rw) func() { return nil }\nfunc (s *server) handleA(w http.ResponseWriter) { defer s.lockB(nil)() }\n",
+		"a parameter typed by an alias":    "type rw = http.ResponseWriter\nfunc (s *server) lockB(w rw) func() { return s.lockCalibration(w) }\nfunc (s *server) handleA(w http.ResponseWriter) { defer s.lockB(nil)() }\n",
 	} {
 		src := head + body
 		if name == "a parameter typed by an alias" {

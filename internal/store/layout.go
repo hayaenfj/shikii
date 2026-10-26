@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -91,15 +90,13 @@ func (s Store) merge(from, fixed, ext string) {
 	if err != nil {
 		return
 	}
-	// the mark is "<file identity> <offset>": an offset of another file (the older file removed and made again) or a broken mark
-	// starts from the beginning (re-audit D-1, D-2)
-	id := fileIdentity(st)
-	raw, _ := io.ReadAll(io.LimitReader(mark, 64))
-	var offset int64
-	if markID, at, ok := strings.Cut(strings.TrimSpace(string(raw)), " "); ok && markID == id {
-		offset, _ = strconv.ParseInt(at, 10, 64)
-	}
-	if offset < 0 || offset > st.Size() {
+	// the mark is "<offset> <hash of the bytes just before it>": the file is known by its content, not its inode, so a copied store
+	// goes on where it was (audit E-3), and another file (the older file removed and made again, even with the same inode; D-1, E-2)
+	// or a broken mark starts from the beginning (D-2). A mark of the number only (9b77d07) is taken as it is (E-4).
+	raw, _ := io.ReadAll(io.LimitReader(mark, 128))
+	at, sum, _ := strings.Cut(strings.TrimSpace(string(raw)), " ")
+	offset, err := strconv.ParseInt(at, 10, 64)
+	if err != nil || offset < 0 || offset > st.Size() || (sum != "" && tailHash(f, offset) != sum) {
 		offset = 0
 	}
 	data, err := io.ReadAll(io.NewSectionReader(f, offset, MaxLineBytes*16))
@@ -118,15 +115,20 @@ func (s Store) merge(from, fixed, ext string) {
 	if cerr := out.Close(); werr != nil || cerr != nil {
 		return
 	}
+	next := offset + int64(end+1)
 	_ = mark.Truncate(0)
-	_, _ = mark.WriteAt([]byte(id+" "+strconv.FormatInt(offset+int64(end+1), 10)), 0)
+	_, _ = mark.WriteAt([]byte(strconv.FormatInt(next, 10)+" "+tailHash(f, next)), 0)
 }
 
-func fileIdentity(st os.FileInfo) string {
-	if sys, ok := st.Sys().(*syscall.Stat_t); ok {
-		return fmt.Sprintf("%d:%d", sys.Dev, sys.Ino)
+// tailHash is the hash of up to 4 KiB of f just before offset.
+func tailHash(f *os.File, offset int64) string {
+	start := max(0, offset-4096)
+	b := make([]byte, offset-start)
+	if _, err := f.ReadAt(b, start); err != nil && offset > start {
+		return ""
 	}
-	return ""
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:8])
 }
 
 // MigrateLayout moves the records written before 0.9.7 under scope's hash to the fixed names. Reconnecting a moved project calls it with
