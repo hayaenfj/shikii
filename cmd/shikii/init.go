@@ -246,6 +246,9 @@ func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, err
 	if _, err := dec.Token(); err != io.EOF {
 		return nil, nil, errors.New("check the JSON (broken settings are not overwritten): something follows the settings object")
 	}
+	if cfg == nil { // a bare null decodes into a nil map (confirmation audit 1)
+		return nil, nil, errors.New("check the JSON (broken settings are not overwritten): the settings are not an object")
+	}
 	raw, ok := cfg[key]
 	if !ok || raw == nil {
 		return cfg, nil, nil
