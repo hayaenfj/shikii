@@ -102,17 +102,9 @@ func cmdInit(args []string) error {
 			fmt.Fprintf(stdout, "%s: kept the existing shikii settings (%s)\n", f.path, f.who)
 		}
 	}
-	// AGENTS.md is the person's file: shikii adds nothing (0.9.2), and removes only the section an earlier version wrote
-	var skipped agentsSkipped
-	switch did, err := removeAgentsSection(filepath.Join(scope, "AGENTS.md")); {
-	case errors.As(err, &skipped):
-		fmt.Fprintln(stdout, "AGENTS.md: "+skipped.reason)
-	case errors.As(err, new(*personFileError)): // left to the person; the rest of init goes on (0.9.7 re-audit 2-3)
-		fmt.Fprintf(stdout, "AGENTS.md: shikii could not remove the section an earlier version wrote (%v); remove it by hand\n", err)
-	case err != nil:
-		return err
-	case did:
-		fmt.Fprintln(stdout, "AGENTS.md: removed the shikii section an earlier version wrote (the rest of the file is kept)")
+	// AGENTS.md is the person's file: shikii adds nothing (0.9.2) and changes nothing (0.9.7); a section an older version added is only told
+	if agentsSectionLeft(filepath.Join(scope, "AGENTS.md")) {
+		fmt.Fprintln(stdout, "AGENTS.md: "+agentsSectionNote)
 	}
 	// Things placed in the home folder (Codex settings, the skill). Skipped where there is no HOME (e.g. CI in a container): the project is already prepared
 	home, err := os.UserHomeDir()
@@ -135,6 +127,8 @@ func cmdInit(args []string) error {
 			return err
 		} else if fixed {
 			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s with %s (Codex)\n", filepath.Join("~", ".codex", "config.toml"), mcpCommand(), codexServerArgsLine)
+		} else if codexServerOlder(codex) {
+			fmt.Fprintf(stdout, "%s: %s\n", filepath.Join("~", ".codex", "config.toml"), codexOlderNote())
 		} else if codexServerPinsAProject(codex) {
 			fmt.Fprintf(stdout, "%s: %s\n", filepath.Join("~", ".codex", "config.toml"), codexPinnedNote)
 		} else {
@@ -294,7 +288,7 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 }
 
 // codexMCPArgs are the MCP server arguments init writes for Claude Code and OpenCode (per-project files, started in the project),
-// and the form 0.9.1 and 0.9.2 wrote for Codex.
+// and the form 0.9.1 and 0.9.2 wrote for Codex (codexServerOlder).
 var codexMCPArgs = []string{"mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"}
 
 // codexServerArgs are the arguments of Codex's shared registration (0.9.3): no store, because Codex reads only ~/.codex/config.toml and starts the
@@ -317,11 +311,9 @@ func mcpCommand() string {
 	return "shikii"
 }
 
-// fixCodexServer rewrites Codex's [mcp_servers.shikii] to `command = <this binary>`, `args = [<args>]` while the block is still exactly what
-// shikii wrote (its three lines): the 0.9.1 form (command "shikii", args mcp --store .shikii --local ...) and the 0.9.2 form (an absolute command,
-// the same args), which exit before the handshake when Codex starts them in a folder without a shikii project (0.9.3), and the current form whose
-// command is the bare name or a path that no longer exists. A block a person edited, the current form on another existing binary, or more than
-// one shikii block is left alone.
+// fixCodexServer points Codex's [mcp_servers.shikii] at this binary while the block is still exactly the current form shikii writes (its
+// three lines) and its command is the bare name or a path that no longer exists. A block a person edited, an older version's form (told by
+// codexServerOlder, 0.9.7), the current form on another existing binary, or more than one shikii block is left alone.
 func fixCodexServer(path string, args []string) (bool, error) {
 	// a config.toml kept elsewhere through a link (dotfiles): write the file it points at, so the link stays a link
 	if real, err := filepath.EvalSymlinks(path); err == nil {
@@ -356,11 +348,8 @@ func fixCodexServer(path string, args []string) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	current := argsLine == "args = ["+quotedList(args)+"]"
-	// the 0.9.1 / 0.9.2 form, and args = ["mcp"] that builds of 0.9.3 before its second audit wrote (no --local)
-	earlier := argsLine == "args = ["+quotedList(codexMCPArgs)+"]" || argsLine == `args = ["mcp"]`
-	if !current && !earlier {
-		return false, nil // args a person changed
+	if argsLine != "args = ["+quotedList(args)+"]" {
+		return false, nil // args a person changed, or an older version's form (codexServerOlder; only told, 0.9.7)
 	}
 	end := i + len(head) + len(line) + 1 + len(argsLine) + 1
 	if next := text[end:]; next != "" && !strings.HasPrefix(next, "\n") && !strings.HasPrefix(next, "[") {
@@ -370,11 +359,11 @@ func fixCodexServer(path string, args []string) (bool, error) {
 	case cmd == "shikii":
 	case !filepath.IsAbs(cmd):
 		return false, nil
-	case current && fileExists(cmd):
+	case fileExists(cmd):
 		return false, nil // the current form on another binary someone chose
 	}
 	command := mcpCommand()
-	if command == cmd && current {
+	if command == cmd {
 		return false, nil
 	}
 	fixed := text[:i] + head + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n" + text[end:]
@@ -408,133 +397,27 @@ func fileExists(p string) bool {
 
 const agentsMarker = "<!-- shikii -->"
 
-// agentsSkipped is the reason AGENTS.md was not touched (only told to the person; it stops neither init nor the update).
-type agentsSkipped struct{ reason string }
-
-func (e agentsSkipped) Error() string { return e.reason }
-
-// removeAgentsSection removes the shikii section an earlier version wrote into AGENTS.md (0.9.2: shikii no longer writes into a person's AGENTS.md;
-// the hooks, the MCP instructions and the skill carry the rules). Only the part between the marker-only lines goes; the person's text and the file stay.
-//   - A section is a pair that starts with a "marker-only line", has the heading ("## shikii (" or the older "## shikii(") on the next line, and ends at the
-//     next "marker-only line". Markers inside a person's text (e.g. inside `…`) do not count.
-//   - If AGENTS.md is a link to a file inside the repo (e.g. a symlink to CLAUDE.md), it edits the target and keeps the link; if it points outside, it leaves it alone
-//   - With one marker, or three or more marker-only lines, it leaves the file alone and returns the reason (it does not guess what the person meant)
-//   - CRLF files stay CRLF; the blank line the earlier version put before the section goes with it. No file is created and none is deleted
-func removeAgentsSection(path string) (bool, error) {
-	target := path
-	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		real, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			return false, agentsSkipped{"AGENTS.md is left alone because its link target cannot be read"}
-		}
-		dir, _ := filepath.EvalSymlinks(filepath.Dir(path))
-		if rel, err := filepath.Rel(dir, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return false, agentsSkipped{"AGENTS.md is left alone because it is a link pointing outside the repo"}
-		}
-		target = real
+// agentsSectionLeft reports whether AGENTS.md still has the section shikii 0.9.1 and earlier added: a marker-only line followed by the
+// heading "## shikii (" or "## shikii(". shikii no longer writes or edits AGENTS.md (0.9.7): init and the update only tell the person.
+func agentsSectionLeft(path string) bool {
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
+		return false
 	}
-	b, err := os.ReadFile(target)
-	if os.IsNotExist(err) {
-		return false, nil
-	}
+	b, err := os.ReadFile(path)
 	if err != nil {
-		return false, err
+		return false
 	}
-	text := string(b)
-	start, end, found, ok := agentsSectionSpan(text)
-	if !found {
-		return false, nil
-	}
-	if !ok {
-		return false, agentsSkipped{"AGENTS.md is left alone because shikii's markers do not form exactly one pair (check the marker-only lines)"}
-	}
-	before, after := text[:start], text[end:]
-	if !strings.HasSuffix(text[start:end], "\n") { // the closing marker had no newline of its own
-		after = after[leadingNewline(after):]
-	}
-	// A person's CRLF file may have had the section added with LF by 0.8, so either line ending counts as the blank line (audit 0.9.2, low 6)
-	blankBefore := 0 // length of the newline that ends the blank line just before the section
-	if n := trailingNewline(before); n > 0 && trailingNewline(before[:len(before)-n]) > 0 {
-		blankBefore = n
-	}
-	switch {
-	case after == "" && blankBefore > 0:
-		before = before[:len(before)-blankBefore] // the blank line put before the section at the end of the file
-	case blankBefore > 0 && leadingNewline(after) > 0:
-		after = after[leadingNewline(after):] // the section sat between two blank lines: keep one
-	}
-	return true, replaceFile(target, before+after)
-}
-
-// trailingNewline and leadingNewline are the length of the line ending ("\r\n" or "\n") at the end or the start of s (0 if none).
-func trailingNewline(s string) int {
-	switch {
-	case strings.HasSuffix(s, "\r\n"):
-		return 2
-	case strings.HasSuffix(s, "\n"):
-		return 1
-	}
-	return 0
-}
-
-func leadingNewline(s string) int {
-	switch {
-	case strings.HasPrefix(s, "\r\n"):
-		return 2
-	case strings.HasPrefix(s, "\n"):
-		return 1
-	}
-	return 0
-}
-
-// agentsSectionSpan is the range of shikii's section (from the start of the opening marker line to after the newline of the closing marker line). found says whether any marker-only line exists,
-// isAgentsHeading says whether a line is the heading of shikii's section: "## shikii (" from 0.9.2, "## shikii(" before (so older sections are still found and replaced).
-func isAgentsHeading(line string) bool {
-	return strings.HasPrefix(line, "## shikii (") || strings.HasPrefix(line, "## shikii(")
-}
-
-// ok says whether there was exactly one pair of an opening (next line is the heading) and a closing marker.
-func agentsSectionSpan(text string) (start, end int, found, ok bool) {
-	type line struct{ start, end int } // end includes the newline
-	var marks []line
-	var lines []line
-	for pos := 0; pos < len(text); {
-		e := strings.IndexByte(text[pos:], '\n')
-		next := len(text)
-		if e >= 0 {
-			next = pos + e + 1
-		}
-		lines = append(lines, line{pos, next})
-		pos = next
-	}
-	body := func(l line) string { return strings.TrimRight(text[l.start:l.end], "\r\n") }
-	pairs := 0
-	for i, l := range lines {
-		if body(l) != agentsMarker {
-			continue
-		}
-		marks = append(marks, l)
-		if i+1 >= len(lines) || !isAgentsHeading(body(lines[i+1])) {
-			continue
-		}
-		for _, c := range lines[i+1:] {
-			if body(c) == agentsMarker {
-				pairs++
-				start, end = l.start, c.end
-				break
-			}
+	lines := strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+	for i := 0; i+1 < len(lines); i++ {
+		if lines[i] == agentsMarker && (strings.HasPrefix(lines[i+1], "## shikii (") || strings.HasPrefix(lines[i+1], "## shikii(")) {
+			return true
 		}
 	}
-	if len(marks) == 0 {
-		return 0, 0, false, false
-	}
-	return start, end, true, pairs == 1 && len(marks) == 2
+	return false
 }
 
-// replaceFile rewrites a file of the person's (AGENTS.md) through writePersonFile.
-func replaceFile(path, content string) error {
-	return writePersonFile(path, []byte(content), 0o644)
-}
+// agentsSectionNote tells the person how to remove that section.
+const agentsSectionNote = "an older shikii added a section between two " + agentsMarker + " lines; shikii no longer reads or changes AGENTS.md. Remove that part by hand, from the " + agentsMarker + " line above \"## shikii\" to the next " + agentsMarker + " line (the rest of the file is yours)"
 
 // copySkill puts the embedded skills/shikii back at dst (the old content is deleted so stale references do not mix in).
 // skillDirs are where the skill is put, relative to the home folder: Claude Code's, and the shared one Codex and other agents read.

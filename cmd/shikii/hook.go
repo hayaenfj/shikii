@@ -198,6 +198,7 @@ type hookSession struct {
 	HeadAt           time.Time        `json:"head_at,omitempty"`            // request time. Commits before it (existing commits of a checked-out branch) are not looked at
 	MemoryNoticed    bool             `json:"memory_noticed,omitempty"`     // told once in this session that there is memory not yet in the wiki (0.8.0)
 	StoreNoticed     bool             `json:"store_noticed,omitempty"`      // told in this session that a wiki store is left under the old path's name (0.9.2)
+	OlderNoticed     bool             `json:"older_noticed,omitempty"`      // told in this session that an older shikii registered this project again (0.9.7)
 	ReflectAsked     []string         `json:"reflect_asked,omitempty"`      // conversations asked to be reflected on before the request (the ritual check looks at it at Stop. 0.8.0)
 	ReflectAskedTurn string           `json:"reflect_asked_turn,omitempty"` // the turn ReflectAsked was asked in (do not stop on leftovers from another turn. audit R5)
 	RitualStopped    string           `json:"ritual_stopped,omitempty"`     // the turn stopped by the ritual check (do not stop again at the Stop after a notification. audit R5)
@@ -1117,6 +1118,13 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		if notice := otherPathNotice(agent, scope); notice != "" {
 			out.Context = joinLines(out.Context, notice)
 			muts = append(muts, func(s *hookSession) { s.StoreNoticed = true })
+		}
+	}
+	// an older shikii on this machine registered this project again: only told, once per session (0.9.7)
+	if !snapshot.OlderNoticed {
+		if notice := olderShikiiNotice(scope); notice != "" {
+			out.Context = joinLines(out.Context, notice)
+			muts = append(muts, func(s *hookSession) { s.OlderNoticed = true })
 		}
 	}
 	return out, muts, firstErr
@@ -2083,26 +2091,26 @@ func hookInstall(args []string, install bool) error {
 			}
 			fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, rel)))
 		}
-		// point the Codex MCP server shikii wrote at this binary while the block is still shikii's (0.9.1 and earlier wrote the bare name "shikii",
-		// which Codex started from a desktop app may not find on its PATH; 0.9.3). A block a person edited is left alone
+		// convert, once, the index entries released versions wrote (named by the path) into the store id's entries (0.9.7)
+		for _, p := range upgradeIndex(agent) {
+			fmt.Fprintf(stdout, "%s: %s\n", tilde(p), olderShikiiNote)
+		}
+		// point the Codex MCP server shikii wrote at this binary while the block is still the current form and its binary is gone (0.9.3).
+		// A block a person edited, or in an older version's form, is left alone and only told (0.9.7)
 		codex := filepath.Join(home, ".codex", "config.toml")
-		// 0.9.1 and 0.9.2 also wrote --store .shikii, which exits before the handshake when Codex starts the server outside a shikii project; the shared
-		// registration becomes args = ["mcp", "--local", ...] with no store and each call passes project (0.9.3)
 		if fixed, err := fixCodexServer(codex, codexServerArgs); err != nil {
 			fmt.Fprintf(stdout, "%s: %v\n", tilde(codex), err)
 		} else if fixed {
 			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s with %s (Codex; reopen Codex)\n", tilde(codex), mcpCommand(), codexServerArgsLine)
+		} else if codexServerOlder(codex) {
+			fmt.Fprintf(stdout, "%s: %s\n", tilde(codex), codexOlderNote())
 		} else if codexServerPinsAProject(codex) {
 			fmt.Fprintf(stdout, "%s: %s\n", tilde(codex), codexPinnedNote)
 		}
-		// remove the shikii section an earlier version wrote into each registered project's AGENTS.md (0.9.2: shikii no longer writes into it;
-		// only the part between the markers goes, the person's text and the file stay)
+		// a section an older version added to a registered project's AGENTS.md is only told: shikii does not change the person's file (0.9.7)
 		for _, p := range registeredProjects(agent) {
-			path := filepath.Join(p.Path, "AGENTS.md")
-			if did, err := removeAgentsSection(path); err != nil {
-				fmt.Fprintf(stdout, "%s: %v\n", tilde(path), err)
-			} else if did {
-				fmt.Fprintf(stdout, "%s: removed the shikii section an earlier version wrote (the rest is kept)\n", tilde(path))
+			if path := filepath.Join(p.Path, "AGENTS.md"); agentsSectionLeft(path) {
+				fmt.Fprintf(stdout, "%s: %s\n", tilde(path), agentsSectionNote)
 			}
 		}
 		// 0.8.x treats pages with a kind and a scene as "changed", and 0.9.1 and earlier pages written with 0.9.2's English fixed words; both refuse every save

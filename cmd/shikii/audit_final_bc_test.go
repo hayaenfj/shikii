@@ -65,10 +65,10 @@ func finalBC1(t *testing.T, query bool) {
 	}
 }
 
-// Final audit BC-2 (C1, decided 2026-10-27): a store 0.9.6 initialized on this machine, moved after the update but before 0.9.7 ever opened
-// it. The index entry 0.9.6 wrote has no store id or store folder, so the move cannot be told from a copy whose original is gone: the hook
-// does not take it over, and says shikii is not running there (C1 covers stores 0.9.7 has opened). The person's --init then keeps the
-// wiki 0.9.6 wrote.
+// Final audit BC-2 (C1, decided 2026-10-27): a store 0.9.6 initialized on this machine, moved before the update converted the index (G1
+// covers a move after it). The index entry 0.9.6 wrote has no store id or store folder, so the move cannot be told from a copy whose
+// original is gone: the hook does not take it over, and says shikii is not running there. The person's --init then keeps the wiki 0.9.6
+// wrote.
 func TestFinalBC2MovedBy096StoreIsNotReconnected(t *testing.T) {
 	common, old, moved := movedProject(t)
 	asIf096(t, common, old, moved)

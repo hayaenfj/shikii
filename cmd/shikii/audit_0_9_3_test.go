@@ -10,7 +10,7 @@ import (
 )
 
 func probeBlock(cmd string) string {
-	return "[mcp_servers.shikii]\ncommand = " + quotedList([]string{cmd}) + "\nargs = [" + quotedList(codexMCPArgs) + "]\n"
+	return "[mcp_servers.shikii]\ncommand = " + quotedList([]string{cmd}) + "\nargs = [" + quotedList(codexServerArgs) + "]\n"
 }
 
 // symlinked config.toml (dotfiles): the link must stay a link and the target gets the fix
@@ -23,7 +23,7 @@ func TestAuditProbeSymlinkKept(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	did, err := fixCodexServer(link, codexMCPArgs)
+	did, err := fixCodexServer(link, codexServerArgs)
 	if err != nil || !did {
 		t.Fatalf("did=%v err=%v", did, err)
 	}
@@ -44,7 +44,7 @@ func TestAuditProbeNoHeadNoPanic(t *testing.T) {
 			t.Fatalf("fixCodexServer panicked: %v", r)
 		}
 	}()
-	did, err := fixCodexServer(path, codexMCPArgs)
+	did, err := fixCodexServer(path, codexServerArgs)
 	b, _ := os.ReadFile(path)
 	if did || err != nil || string(b) != text {
 		t.Fatalf("a file without shikii's block must stay: did=%v err=%v\n%q", did, err, b)
@@ -56,7 +56,7 @@ func TestAuditProbeReadOnlyKept(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	text := probeBlock("shikii")
 	os.WriteFile(path, []byte(text), 0o400)
-	did, err := fixCodexServer(path, codexMCPArgs)
+	did, err := fixCodexServer(path, codexServerArgs)
 	b, _ := os.ReadFile(path)
 	if did || err != nil || string(b) != text {
 		t.Fatalf("a read-only config is left alone: did=%v err=%v\n%s", did, err, b)

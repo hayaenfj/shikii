@@ -123,18 +123,12 @@ func lockRelink(root string) (func(), error) {
 	return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
 }
 
-// forgetProject removes the old path's entry from the shared index and stops the page shikii started for it (only that serve, checked by its command line).
+// forgetProject stops the page shikii started for the old path (only that serve, checked by its command line). The index needs nothing:
+// the store's entry is named by its id and already points here.
 func forgetProject(old string) {
 	common, err := agentHome()
 	if err != nil {
 		return
-	}
-	entry := filepath.Join(common, "projects", projectID(old)+".json")
-	if b, err := os.ReadFile(entry); err == nil {
-		var p projectEntry
-		if json.Unmarshal(b, &p) == nil && p.Path == old {
-			_ = os.Remove(entry)
-		}
 	}
 	if r, ok := readPageRecord(common, old); ok && r.Scope == old {
 		if r.PID > 0 && r.PID != os.Getpid() && processAlive(r.PID) && isShikiiServe(processCommand(r.PID), filepath.Join(old, ".shikii")) {

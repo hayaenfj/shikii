@@ -27,7 +27,7 @@ func TestEveryWriterOfAPersonsSettingsKeepsLinksModesAndReadOnly(t *testing.T) {
 			_, err := addCodexServer(p, []string{"mcp"})
 			return err
 		}},
-		"fixCodexServer": {"[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [" + quotedList(codexMCPArgs) + "]\n", func(p string) error {
+		"fixCodexServer": {"[mcp_servers.shikii]\ncommand = \"shikii\"\n" + codexServerArgsLine + "\n", func(p string) error {
 			_, err := fixCodexServer(p, codexServerArgs)
 			return err
 		}},
@@ -35,7 +35,6 @@ func TestEveryWriterOfAPersonsSettingsKeepsLinksModesAndReadOnly(t *testing.T) {
 			_, err := removeCodexServer(p, true)
 			return err
 		}},
-		"replaceFile (AGENTS.md)": {"# rules\n", func(p string) error { return replaceFile(p, "# rules, changed\n") }},
 	}
 	for name, w := range writers {
 		dir := t.TempDir()

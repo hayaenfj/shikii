@@ -71,8 +71,8 @@ func TestRe3OtherPathNoticeAsksWhenTheSkillDoes(t *testing.T) {
 }
 
 // re3-5 (docs, redone with the index keyed by the store's id): an older shikii rewrote the old path's entry in the shape 0.9.6 writes (no
-// store id). The store's own entry is named by its id and is untouched, so the hook still reconnects the move by itself, once, and the old
-// path's entry is removed.
+// store id). The store's own entry is named by its id and is untouched, so the hook still reconnects the move by itself, once; the old
+// path's entry is not read (G2: an older shikii's entry is left as it is).
 func TestRe3InitAfterOldShikiiRewroteTheEntry(t *testing.T) {
 	guides := map[string]string{}
 	for _, guide := range []string{"../../docs/guide.md", "../../docs/guide.ja.md"} {
@@ -99,7 +99,7 @@ func TestRe3InitAfterOldShikiiRewroteTheEntry(t *testing.T) {
 	}
 	for _, p := range registeredPaths(common) {
 		if p == old {
-			t.Fatalf("the old path's entry is removed: %v", registeredPaths(common))
+			t.Fatalf("the old path's entry is not read: %v", registeredPaths(common))
 		}
 	}
 	for guide, b := range guides {

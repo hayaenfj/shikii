@@ -21,6 +21,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // The shared side holds only the entries to projects. Conversations, scores and lines live in each .shikii/.
@@ -379,7 +381,8 @@ func prepareHookProject(cwd string) (string, string, error) {
 // registerProject writes this project's entry in the shared index, named by its store's id (0.9.7): the entry follows the store, so a
 // path reused by another project, two folders swapped, or another spelling of the same path never mixes two stores' entries (re-audit 1).
 // A store whose id is already the entry of another store folder that is still in place (a copy, for instance put back where the original
-// was) gets an id of its own first. Entries written before 0.9.7 (named by the path) for this path or this store are removed.
+// was) gets an id of its own first. When the store gets its id here, the entry a released version wrote for this path (named by the path)
+// is converted: it is removed. One written later, by an older shikii next to this one, is left and told (olderShikiiNotice).
 func registerProject(scope string) error {
 	common, err := agentHome()
 	if err != nil {
@@ -397,6 +400,7 @@ func registerProject(scope string) error {
 	if e, ok := ownEntry(root); ok && e.StoreDir != "" && e.StoreDir != storeDir(root) && storeDir(filepath.Join(e.Path, ".shikii")) == e.StoreDir {
 		_ = os.Remove(filepath.Join(root, "records", "store-id")) // another store folder holds this id and is still in place
 	}
+	converting := storeID(root, false) == ""
 	entry := projectEntry{ID: projectID(scope), Name: filepath.Base(scope), Path: scope, URL: "/p/" + projectID(scope) + "/", StoreID: storeID(root, true), StoreDir: storeDir(root)}
 	name := entry.ID + ".json"
 	if entry.StoreID != "" {
@@ -419,50 +423,80 @@ func registerProject(scope string) error {
 	if err := os.Rename(tmp.Name(), filepath.Join(dir, name)); err != nil {
 		return err
 	}
-	files, _ := filepath.Glob(filepath.Join(dir, "*.json"))
-	for _, path := range files {
-		if filepath.Base(path) == name {
-			continue
-		}
-		var p projectEntry
-		if b, err := os.ReadFile(path); err != nil || json.Unmarshal(b, &p) != nil {
-			continue
-		}
-		pathNamed := filepath.Base(path) == p.ID+".json"
-		if pathNamed && ((p.StoreID != "" && p.StoreID == entry.StoreID) || (p.StoreID == "" && p.Path == scope)) {
-			_ = os.Remove(path) // this store's or this path's entry written before 0.9.7
+	if legacy := filepath.Join(dir, entry.ID+".json"); converting && legacy != filepath.Join(dir, name) {
+		if p, ok := readEntry(legacy); ok && p.StoreID == "" && p.Path == scope {
+			_ = os.Remove(legacy)
 		}
 	}
 	return nil
 }
 
-// ownEntry is the shared index's entry for the store at root: named by its id, or, written before, naming its id.
+// upgradeIndex converts, once when shikii is updated (hook install --yes), the entries released versions wrote, named by the path (0.9.6
+// and earlier): every such project gets its store id, store folder and store name now, so a move after the update is reconnected by
+// itself. An entry by the path for a store that already has its id was written by an older shikii on this machine: it is left as it is,
+// and its project is returned so the update can say so.
+func upgradeIndex(common string) (older []string) {
+	files, _ := filepath.Glob(filepath.Join(common, "projects", "*.json"))
+	for _, path := range files {
+		p, ok := readEntry(path)
+		if !ok || p.StoreID != "" || filepath.Base(path) != p.ID+".json" || projectID(p.Path) != p.ID {
+			continue
+		}
+		root := filepath.Join(p.Path, ".shikii")
+		if active, err := projectActive(root, p.Path); err != nil || !active || checkProjectStore(root, false) != nil {
+			continue
+		}
+		if storeID(root, false) != "" {
+			older = append(older, p.Path)
+			continue
+		}
+		store.StoreName(root, p.Path)
+		if err := registerProject(p.Path); err != nil {
+			fmt.Fprintf(stdout, "%s: %v\n", p.Path, err)
+		}
+	}
+	return older
+}
+
+// olderShikiiNote says what to do when an older shikii (0.9.6 or earlier) registered a project again next to this one.
+const olderShikiiNote = "an older shikii (0.9.6 or earlier) registered this project again on this machine, and it does not know this version's store and index. Update every shikii on this machine and reopen the agent sessions that use it; shikii left that entry alone"
+
+// olderShikiiNotice is the hook's notice for olderShikiiNote: this project has its store id, and the index has an entry by its path again.
+func olderShikiiNotice(scope string) string {
+	common, err := agentHome()
+	if err != nil {
+		return ""
+	}
+	p, ok := readEntry(filepath.Join(common, "projects", projectID(scope)+".json"))
+	if !ok || p.StoreID != "" || p.Path != scope || storeID(filepath.Join(scope, ".shikii"), false) == "" {
+		return ""
+	}
+	return "shikii: " + olderShikiiNote + " (update every shikii). Tell the person this once, in your final reply."
+}
+
+// readEntry reads one index file (not through a link).
+func readEntry(path string) (projectEntry, bool) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return projectEntry{}, false
+	}
+	defer f.Close()
+	var p projectEntry
+	if json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p) != nil || !filepath.IsAbs(p.Path) {
+		return projectEntry{}, false
+	}
+	return p, true
+}
+
+// ownEntry is the shared index's entry for the store at root, named by its id.
 func ownEntry(root string) (projectEntry, bool) {
 	id := storeID(root, false)
 	common, err := agentHome()
 	if err != nil || id == "" {
 		return projectEntry{}, false
 	}
-	read := func(path string) (projectEntry, bool) {
-		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
-		if err != nil {
-			return projectEntry{}, false
-		}
-		defer f.Close()
-		var p projectEntry
-		if json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p) != nil || p.StoreID != id || !filepath.IsAbs(p.Path) {
-			return projectEntry{}, false
-		}
+	if p, ok := readEntry(filepath.Join(common, "projects", id+".json")); ok && p.StoreID == id {
 		return p, true
-	}
-	if p, ok := read(filepath.Join(common, "projects", id+".json")); ok {
-		return p, true
-	}
-	files, _ := filepath.Glob(filepath.Join(common, "projects", "*.json"))
-	for _, path := range files {
-		if p, ok := read(path); ok {
-			return p, true
-		}
 	}
 	return projectEntry{}, false
 }
@@ -546,14 +580,12 @@ func registeredProjects(common string) []projectEntry {
 	seen := map[string]bool{}
 	files, _ := filepath.Glob(filepath.Join(common, "projects", "*.json"))
 	for _, path := range files {
-		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
-		if err != nil {
+		p, ok := readEntry(path)
+		if !ok || feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID || seen[p.Path] {
 			continue
 		}
-		var p projectEntry
-		err = json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p)
-		f.Close()
-		if err != nil || !filepath.IsAbs(p.Path) || feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID || !entryFileName(path, p) || seen[p.Path] {
+		// the store id's entry, or the entry a released version wrote by the path for a store not converted yet (upgradeIndex)
+		if byID := p.StoreID != "" && filepath.Base(path) == p.StoreID+".json"; !byID && (p.StoreID != "" || filepath.Base(path) != p.ID+".json" || storeID(filepath.Join(p.Path, ".shikii"), false) != "") {
 			continue
 		}
 		if checkProjectStore(filepath.Join(p.Path, ".shikii"), false) != nil {

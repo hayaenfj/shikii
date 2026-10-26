@@ -5,7 +5,6 @@
 4 CHANGELOG.md
 1 cmd/fake-systemone/main.go
 1 cmd/shikii/adopt_test.go
-6 cmd/shikii/agents_section_remove_test.go
 1 cmd/shikii/audit5_test.go
 5 cmd/shikii/audit_0_7_3_test.go
 34 cmd/shikii/audit_0_8_3_recheck_test.go

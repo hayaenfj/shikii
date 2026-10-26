@@ -8,9 +8,9 @@ import (
 )
 
 // 0.9.3: Codex reads shikii's MCP server only from the shared ~/.codex/config.toml and starts it in the folder its daemon started in, so the shared
-// registration names no store: `command = <this binary>`, `args = ["mcp", "--local", ...]`, and each tool call passes project. The update and init rewrite the
-// blocks shikii itself wrote in earlier forms (0.9.1: command "shikii" with mcp --store .shikii --local ...; 0.9.2: an absolute command with the same args)
-// and point a bare name or a path that no longer exists at this binary. A block a person edited is left alone.
+// registration names no store: `command = <this binary>`, `args = ["mcp", "--local", ...]`, and each tool call passes project. The update and init
+// point a bare name or a path that no longer exists in that form at this binary. A block a person edited, or in an older version's form (0.9.1:
+// command "shikii" with mcp --store .shikii --local ...; 0.9.2: an absolute command with the same args), is left alone (0.9.7: only told).
 func TestCodexServerCommandIsFixedOnlyInShikiisOwnBlock(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -31,10 +31,10 @@ func TestCodexServerCommandIsFixedOnlyInShikiisOwnBlock(t *testing.T) {
 		before string
 		fixed  bool
 	}{
-		"0.9.1 form (bare name, relative store)":      {other + block("shikii", old), true},
-		"0.9.2 form (this binary, relative store)":    {other + block(exe, old), true},
-		"0.9.2 form (another binary, relative store)": {other + block(existing, old), true},
-		"0.9.2 form (a path that no longer exists)":   {other + block(gone, old), true},
+		"0.9.1 form (only told)":                      {other + block("shikii", old), false},
+		"0.9.2 form (only told)":                      {other + block(exe, old), false},
+		"0.9.2 form, another binary (only told)":      {other + block(existing, old), false},
+		"0.9.2 form, a path that is gone (only told)": {other + block(gone, old), false},
 		"new form with a bare name":                   {other + block("shikii", codexServerArgs), true},
 		"new form with a path that no longer exists":  {other + block(gone, codexServerArgs), true},
 		"new form, another existing binary (kept)":    {other + block(existing, codexServerArgs), false},
@@ -68,7 +68,7 @@ func TestCodexServerCommandIsFixedOnlyInShikiisOwnBlock(t *testing.T) {
 	}
 }
 
-// The update (hook install) fixes the block too, so a machine updated from 0.9.1 or 0.9.2 gets a Codex MCP server that starts in any folder.
+// The update (hook install) leaves an older version's block (0.9.1, 0.9.2) and says what to write (TestOlderCodexFormIsOnlyTold).
 // A block a person edited to name one project's store is left alone, and the update says that every Codex session uses that project.
 func TestUpdateFixesCodexServerCommand(t *testing.T) {
 	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
@@ -81,8 +81,9 @@ func TestUpdateFixesCodexServerCommand(t *testing.T) {
 		before         string
 		fixed, warning bool
 	}{
-		"0.9.1":                       {"[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [" + quotedList(codexMCPArgs) + "]\n", true, false},
-		"0.9.2":                       {"[mcp_servers.shikii]\ncommand = " + quotedList([]string{exe}) + "\nargs = [" + quotedList(codexMCPArgs) + "]\n", true, false},
+		"0.9.1":                       {"[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [" + quotedList(codexMCPArgs) + "]\n", false, false},
+		"0.9.2":                       {"[mcp_servers.shikii]\ncommand = " + quotedList([]string{exe}) + "\nargs = [" + quotedList(codexMCPArgs) + "]\n", false, false},
+		"current form, bare name":     {"[mcp_servers.shikii]\ncommand = \"shikii\"\n" + codexServerArgsLine + "\n", true, false},
 		"absolute store by hand":      {"[mcp_servers.shikii]\ncommand = " + quotedList([]string{exe}) + "\nargs = [\"mcp\", \"--store\", \"/w/a/.shikii\", \"--specs\", \"/w/a/.shikii/decisions\"]\n", false, true},
 		"absolute store, = form":      {"[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [\"mcp\", \"--store=/w/a/.shikii\"]\nenv = { A = \"1\" }\n", false, true},
 		"edited, no absolute store":   {"[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [\"mcp\", \"--proposer\", \"http://127.0.0.1:8083\"]\n", false, false},

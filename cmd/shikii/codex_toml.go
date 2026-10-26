@@ -202,6 +202,43 @@ func codexServerPinsAProject(path string) bool {
 	return false
 }
 
+// codexServerOlder reports whether Codex's shikii server has the arguments an older version wrote: mcp --store .shikii --local ... (0.9.1,
+// 0.9.2), which exits before the handshake when Codex starts it outside a shikii project, or a bare mcp (builds of 0.9.3). shikii leaves it as
+// it is and tells the person what to write instead (0.9.7).
+func codexServerOlder(path string) bool {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	m, err := readCodexConfig(b)
+	if err != nil {
+		return false
+	}
+	v, _ := codexShikiiServer(m)
+	server, _ := v.(map[string]any)
+	got, _ := server["args"].([]any)
+	for _, older := range [][]string{codexMCPArgs, {"mcp"}} {
+		if len(got) != len(older) {
+			continue
+		}
+		same := true
+		for i := range older {
+			if got[i] != older[i] {
+				same = false
+			}
+		}
+		if same {
+			return true
+		}
+	}
+	return false
+}
+
+// codexOlderNote tells the person what to write in place of an older version's shikii server.
+func codexOlderNote() string {
+	return "the shikii MCP server is in the form an older shikii wrote, which stops before the handshake when Codex starts it outside a shikii project; shikii left it as it is. Replace it with:\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + " (Codex; reopen Codex)"
+}
+
 // codexServerNote is what init says about Codex's config.toml when it did not add shikii there.
 func codexServerNote(path string) string {
 	b, _ := os.ReadFile(path)

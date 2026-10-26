@@ -15,23 +15,11 @@ func TestAudit2CodexRegistrationKeepsTheLocalModel(t *testing.T) {
 	if did, err := addCodexServer(fresh, codexServerArgs); err != nil || !did {
 		t.Fatalf("did=%v err=%v", did, err)
 	}
-	old := filepath.Join(dir, "old.toml")
-	os.WriteFile(old, []byte("[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = ["+quotedList(codexMCPArgs)+"]\n"), 0o600)
-	if did, err := fixCodexServer(old, codexServerArgs); err != nil || !did {
-		t.Fatalf("the 0.9.2 form must be fixed: did=%v err=%v", did, err)
+	b, _ := os.ReadFile(fresh)
+	if !strings.Contains(string(b), `"--local", "`+hookLocalURL+`"`) || strings.Contains(string(b), "--store") {
+		t.Fatalf("Codex's registration must keep the local model and name no store:\n%s", b)
 	}
-	for _, p := range []string{fresh, old} {
-		b, _ := os.ReadFile(p)
-		if !strings.Contains(string(b), `"--local", "`+hookLocalURL+`"`) || strings.Contains(string(b), "--store") {
-			t.Fatalf("%s: Codex's registration must keep the local model and name no store:\n%s", filepath.Base(p), b)
-		}
-	}
-	// the form written before this fix (args = ["mcp"], in unreleased 0.9.3 builds) is brought up to date as well
-	dev := filepath.Join(dir, "dev.toml")
-	os.WriteFile(dev, []byte("[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [\"mcp\"]\n"), 0o600)
-	if did, err := fixCodexServer(dev, codexServerArgs); err != nil || !did {
-		t.Fatalf("the args = [\"mcp\"] form must be fixed: did=%v err=%v", did, err)
-	}
+	// older forms (the 0.9.2 one, args = ["mcp"] of 0.9.3 builds) are only told since 0.9.7: TestOlderCodexFormIsOnlyTold
 }
 
 // Second 0.9.3 audit: a tune run through the MCP server for a named project (Codex: the server's folder is not the project) did not find the
