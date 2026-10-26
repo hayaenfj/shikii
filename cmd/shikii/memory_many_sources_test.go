@@ -46,12 +46,15 @@ func TestCorrectionSourceKeptAmongDeliveredSources(t *testing.T) {
 	book := notebook.Book{Root: st.Dir, Scope: scope}
 	conv, _ := reviewSeed(t, st, scope, 0x7ffffffffffff000)
 	sources := []string{conv}
-	for i := range 40 {
+	// source ids depend on the temporary folder, so capture until 17 of them sort before the conversation's id
+	for i, before := 0, 0; before < 17 && i < 400; i++ {
 		o, err := book.Capture(notebook.Observation{Kind: "test", Title: fmt.Sprint("check ", i), Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(int64(i+1), 0)})
 		if err != nil {
 			t.Fatal(err)
 		}
-		sources = append(sources, o.ID)
+		if o.ID < conv {
+			sources, before = append(sources, o.ID), before+1
+		}
 	}
 	d := draft
 	d.ID, d.Title, d.Sources = "", "README の導入確認(訂正)", sources
