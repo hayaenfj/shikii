@@ -134,6 +134,7 @@ func reviewQuery(st store.Store, scope string) (map[string]any, error) {
 		}
 	}
 	// Return examples a person corrected to the next scorer. The raw text and the earlier AI scores are kept.
+	// The scores are in this project's own store, so a score's path is not compared: one given before the folder was moved counts too (0.9.7).
 	for _, id := range hookSpecs[2:] {
 		records, err := st.Records(id, 0)
 		if err != nil {
@@ -142,7 +143,7 @@ func reviewQuery(st store.Store, scope string) (map[string]any, error) {
 		for _, rec := range records {
 			grade, ok := grades[id][rec.TraceID]
 			l, human := labels[id][rec.TraceID]
-			if !ok || !human || !store.HumanSource(l.Source) || grade.Scope != scope || l.At.Before(grade.At) || store.Partial(l.Truth) || grade.Truth == l.Truth {
+			if !ok || !human || !store.HumanSource(l.Source) || l.At.Before(grade.At) || store.Partial(l.Truth) || grade.Truth == l.Truth {
 				continue
 			}
 			examples = append(examples, map[string]any{"spec": id, "source_material": grade.Source, "ai_truth": grade.Truth, "ai_reason": grade.Reason, "human_truth": l.Truth})

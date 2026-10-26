@@ -145,8 +145,8 @@ func (s Store) SaveReview(r Review) (Review, error) {
 	if err != nil {
 		return r, err
 	}
-	if old, ok := all[r.TraceID]; ok {
-		if old.Scope == r.Scope && old.Source.ID == r.Source.ID && old.Truth == r.Truth && old.Reason == r.Reason {
+	if old, ok := all[r.TraceID]; ok { // the path is not compared: the same score resent after the folder was moved is the same (0.9.7)
+		if old.Source.ID == r.Source.ID && old.Truth == r.Truth && old.Reason == r.Reason {
 			return old, nil
 		}
 		return r, errors.New("this decision already has a provisional score. Correct it with a person's confirmation")
