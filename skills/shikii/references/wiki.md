@@ -77,12 +77,9 @@ Immutable sources live under `.shikii/records/wiki-sources/`; generated pages, i
 
 ## Moving or renaming the project folder
 
-Store names come from the project's absolute path (sha256 of the path), and `.shikii/project.json` records the path. After the folder moves, the hook stops (the marker still names the old path) or, when only the marker was fixed, the wiki looks empty (articles and sources still sit under the old name). The hook says which, and `lint` reports a leftover store as `other-path-store`. Ask the person before changing anything, close their agent sessions and the page, and copy the old stores instead of deleting them.
+Nothing to fix (0.9.7). Inside `.shikii/` everything has fixed names, so moving the folder keeps the wiki, its sources and the records. The next request's hook reconnects the project at its new path by itself (`.shikii/project.json`, the shared index, the old path's page) and says so once: tell the person. `shikii --init` in the moved folder does the same.
 
-1. Set `scope` in `.shikii/project.json` to the new absolute path.
-2. In `~/.shikii/agent/projects/`, replace `<sha256(old)>.json` with `<sha256(new)>.json` carrying the new `id`, `name`, `path` and `url` (`/p/<id>/`).
-3. In `.shikii/records/`, rename the `feedback/`, `memories/` (`.jsonl` and `.lock`) and `memory-reviews/` entries from `sha256(old)` to `sha256(new)`.
-4. Copy `.shikii/wiki/lessons/<sha256(old)>/` (pages, `revisions/`) and `.shikii/records/wiki-sources/<sha256(old)>/` into the new-name directories, keeping files that already exist there. Put the old `log.md` lines before the new ones. Pages and revisions embed the source directory name in their source links, so replace the old name with the new one in the copied `.md` files.
-5. Run `shikii wiki lint` and see no issues. Observations captured under the old path have the old path in their id; a page that cites them checks them by the hash in its citation, so they stay readable and can be cited again when you revise the page. Do not capture them again. Only `source-from-other-path` may remain: a source captured under the old path that no page cites yet; capture the same evidence again if you still need it.
-6. Move the agents' own records: Claude Code's `~/.claude/projects/<old path with dashes>` and the `projects` key in `~/.claude.json`, Codex's `[projects."<old path>"]` in `~/.codex/config.toml`.
-7. Check that `shikii wiki query <word>` returns articles and that the hook delivers lessons again.
+- A copy (`cp -r`, the original still in place) is not taken over: records keep going to the original, and the hook says so. Ask the person; `shikii --init` in the copy makes it a project of its own, with the copied wiki and records.
+- A `.shikii` this machine did not initialize at the old path (from an archive or another machine) stays inactive until `shikii --init`.
+- Stores written before 0.9.7 move to the fixed names the first time they are opened. When an old store sits beside the current one (half copied by hand before 0.9.7), `lint` reports it as `other-path-store` until every file in it has been copied into `.shikii/wiki/lessons/project/` or `.shikii/records/wiki-sources/project/`; copy the missing files, keep the old store, and ask the person before deleting it.
+- The agents' own records are keyed by the path and are not shikii's: Claude Code's `~/.claude/projects/<path with dashes>` and the `projects` key in `~/.claude.json`, Codex's `[projects."<path>"]` in `~/.codex/config.toml`. Move them only if the person wants the old conversations there.

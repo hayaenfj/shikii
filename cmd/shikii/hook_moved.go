@@ -16,7 +16,7 @@ import (
 // was initialized at) and the shared index (~/.shikii/agent) still point at the old path. Before, this stopped shikii until a person followed
 // eleven manual steps; now the request's hook (and shikii --init) reconnects the project by itself.
 
-const movedHow = "fix it with the steps in \"Moving or renaming the project folder\" in the skill's references/wiki.md (check with the person first; copy the old store instead of deleting it)."
+const movedHow = "copy its missing files into the store's project folder as \"Moving or renaming the project folder\" in the skill's references/wiki.md says (check with the person first; keep the old store, do not delete it)."
 
 // previousScope is the path in this store's project.json when it differs from the current one, and the project.json version.
 func previousScope(root, scope string) (string, int, bool) {
