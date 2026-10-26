@@ -90,3 +90,42 @@ func TestAnswerAndSyncTuneExtendTheirDeadline(t *testing.T) {
 		t.Fatalf("the synchronous tune's reply arrives after the write timeout: %d %v", code, err)
 	}
 }
+
+// 0.9.6 audit of the HTTP limits, middle 1: the handlers under /v1/tune and /v1/label all take or wait for the calibration lock (a background
+// tune holds it up to 30 minutes), and adopting a wording calibrates again; only two of them extended their deadline, so adding, keeping or
+// adopting a wording behind a running tune lost its reply after 2 minutes although it was saved. Every route in longRoutes extends its
+// deadline at registration; a route outside it (status) is still cut, which shows the check would catch a missing one.
+func TestEveryLongRouteOutlivesTheWriteTimeout(t *testing.T) {
+	dir := t.TempDir()
+	specsDir := filepath.Join(dir, "decisions")
+	if err := os.MkdirAll(specsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSpec(t, specsDir, "true")
+	h := newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), autoCalibrate: true})
+	late := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond) // past the write timeout before the handler runs
+		h.ServeHTTP(w, r)
+	})
+	ts := httptest.NewUnstartedServer(late)
+	ts.Config = newHTTPServer(late)
+	ts.Config.WriteTimeout = 100 * time.Millisecond
+	ts.Start()
+	defer ts.Close()
+	reply := func(path string) error {
+		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(`{"spec":"intent"}`))
+		if err == nil {
+			_, err = io.ReadAll(resp.Body)
+			resp.Body.Close()
+		}
+		return err
+	}
+	for _, path := range longRoutes {
+		if err := reply(path); err != nil {
+			t.Errorf("%s answers after the write timeout: %v", path, err)
+		}
+	}
+	if err := reply("/v1/status"); err == nil {
+		t.Error("precondition: a route outside longRoutes is cut by the write timeout")
+	}
+}

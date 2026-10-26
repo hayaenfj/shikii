@@ -238,7 +238,6 @@ func (s *server) handleTuneSync(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	allowLongResponse(w) // a tune runs the model over every fold and wording
 	res, report, err := s.runTuneCaptured(s.tuneOptsFor(ref, propose))
 	if err != nil {
 		writeErr(w, 422, fmt.Errorf("%v\n%s", err, report))
