@@ -52,3 +52,17 @@ test('counted truths are not called the person\'s answers', () => {
     for (const text of [d.plainLearning(3, 10), d.calibrationInsufficient(3, 10), d.plainAuto]) assert.doesNotMatch(text, words, code + ': ' + text);
   }
 });
+
+// 0.9.3: the same holds for every other text that counts or keeps all truths (the learning count, the wording match, the held/failed setting, redo's comparison).
+// Only texts about the person's own answer (the answer queue, "Your answer:" on a card the person answered) may say so
+test('texts about all truths do not say "your answers"', () => {
+  for (const [code, words] of [['ja', /あなた(の|が)答え/], ['en', /\byour\b/i]]) {
+    const d = locales[code];
+    const texts = [d.summarySpecAuto, d.summarySpecLearning(3, 10), d.calibrationHeld, d.calibrationError, d.wordingMatch(40, 60, 12), d.wordingMatchKept(40, 12),
+      d.wordingAgentAdopted, d.wordingAbout, d.redoHint, d.redoAgree, d.redoDisagree, d.projectsHow, d.howTo[3], d.howToAI[1]];
+    for (const text of texts) assert.doesNotMatch(text, words, code + ': ' + text);
+  }
+  // the person's own answer keeps its name
+  assert.match(locales.ja.yourAnswer('はい', 'x'), /あなたの答え/);
+  assert.match(locales.en.yourAnswer('yes', 'x'), /Your answer/);
+});

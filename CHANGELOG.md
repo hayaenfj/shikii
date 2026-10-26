@@ -4,6 +4,8 @@
 
 ## 0.9.3 — Small fixes after 0.9.2
 
+- Page and hook, words: texts that count or keep every truth (the learning count, the wording match, "on hold" and "failed" when setting the point, "ask the AI again", the how-to guides, the wording notices of the hook) no longer call them "your answers", since truths sent by the agent and from results are counted too. "Your answer" stays only on a card the person answered and on Answer. The Japanese wording notices name the question by its title on the page instead of its id and the candidate's name, and no longer use the inner word for a decision.
+
 ## 0.9.2 — Nothing written into your AGENTS.md, wordings adopted by the agent, and a lighter page
 
 - Page, lighter to read: the Answer card has a short title, what to read, the question once above two answer buttons that look the same until you answer, and the AI's guess, "same as the AI" and "ask the AI again" folded under "See the AI's guess" (keys 1-9, Enter and → still work). The preface "from your answer the AI learns ..." is gone from the shipped questions (existing projects keep their copy in `.shikii/decisions/`), and the shipped questions now have English text, so the English page no longer shows the prompt for the model. On Answer, a new wording asks only "does it mean the same?" (or keep / undo); the numbers, candidates and the form stay on The AI. With nothing waiting, Answer says only "Nothing for you to do right now".
