@@ -2,8 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // 0.9.3 real-agent check, medium 3: Claude Code does not organize turns that change no files, so a short acknowledgement outside the
@@ -123,5 +126,118 @@ func TestStopDoesNotAskContinuesPreviousOtherwise(t *testing.T) {
 				t.Fatalf("the Stop judges at once: %+v", s)
 			}
 		})
+	}
+}
+
+// 0.9.3 real-agent check, low 4: the agent names the earlier request a message restates (restates in hook plan submit), and shikii compares
+// the message with that request's own text by the fixed rule.
+
+const (
+	restateFirst  = "invoices/ の請求書ごとに合計を検算するスクリプトを check-totals.sh に書いて、ずれていたら直し、全部通ることを見せて"
+	restateSecond = "合計の検算も足して" // short (under 40 characters): request 1 gets no outcome from them, as in the real-agent check
+	restateThird  = "READMEにも書いて"
+	restateAgain  = "最初に頼んだ、invoices/ の請求書ごとに合計を検算するスクリプトを check-totals.sh に書いて、ずれていたら直し、全部通ることを見せてください。"
+	restateOther  = "来週の打ち合わせの議題を、今週の作業の振り返りと、次の版で入れたいことの二つに分けて、箇条書きで用意してください。"
+)
+
+// restateTurns runs three requests with their Stops in the session and returns the first one's turn id and done-as-asked trace.
+func restateTurns(t *testing.T, repo, root, session string) (string, string) {
+	t.Helper()
+	turn, done := "", ""
+	for i, prompt := range []string{restateFirst, restateSecond, restateThird} {
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": prompt})
+		if i > 0 { // each short request is its own (the agent organizes the turn)
+			restateSubmit(t, root, session, "")
+		}
+		out := runHook(t, "stop", map[string]any{"session_id": session, "cwd": repo, "last_assistant_message": "Done."})
+		if reason, block := stopReason(t, out); block && strings.Contains(reason, "continues_previous") {
+			t.Fatalf("request %d must not be asked for continues_previous: %s", i+1, out)
+		}
+		if i == 0 {
+			s := loadSession(root, session)
+			turn = s.TurnID
+			for _, r := range s.Reviews {
+				if r.Spec == "done-as-asked" {
+					done = r.Trace
+				}
+			}
+		}
+	}
+	if turn == "" || done == "" {
+		t.Fatal("the first request must have a turn and a done-as-asked decision")
+	}
+	return turn, done
+}
+
+func restateSubmit(t *testing.T, root, session, restates string) {
+	t.Helper()
+	payload := map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}, "continues_previous": false, "restates": restates}
+	if _, err := planningCall(t, "submit", payload); err != nil {
+		t.Fatalf("plan submit with restates: %v", err)
+	}
+}
+
+func TestRestatesNamesTheEarlierRequest(t *testing.T) {
+	t.Run("similar", func(t *testing.T) {
+		repo, root, _ := planningFixture(t)
+		turn, done := restateTurns(t, repo, root, "planning")
+		third := loadSession(root, "planning").Completed.Targets
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateAgain})
+		restateSubmit(t, root, "planning", turn)
+		if l, ok := doneLabel(t, root, done); !ok || l.Truth != "no" || l.Weight != 1 || l.Source != "outcome" {
+			t.Fatalf("a restatement of request 1 named by restates must give request 1 \"no\": %+v %v", l, ok)
+		}
+		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
+		for _, target := range third {
+			if l, ok := doneLabel(t, root, target.TraceID); target.Spec == "done-as-asked" && ok {
+				t.Fatalf("the previous request is not credited as done by a restatement of an older one: %+v", l)
+			}
+		}
+	})
+	t.Run("not similar", func(t *testing.T) {
+		repo, root, _ := planningFixture(t)
+		turn, done := restateTurns(t, repo, root, "planning")
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateOther})
+		restateSubmit(t, root, "planning", turn)
+		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
+		if l, ok := doneLabel(t, root, done); ok {
+			t.Fatalf("a message not similar to the named request gives it nothing: %+v", l)
+		}
+	})
+}
+
+func TestRestatesIgnoresOtherSessionsAndUnknownTurns(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	turn, done := restateTurns(t, repo, root, "planning")
+	restateTurns(t, repo, root, "other")
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": repo, "prompt": restateAgain})
+	restateSubmit(t, root, "other", turn) // a turn of another session
+	if l, ok := doneLabel(t, root, done); ok {
+		t.Fatalf("restates naming another session's turn is ignored: %+v", l)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateAgain})
+	restateSubmit(t, root, "planning", "0123456789abcdef") // an unknown turn
+	if l, ok := doneLabel(t, root, done); ok {
+		t.Fatalf("restates naming an unknown turn is ignored: %+v", l)
+	}
+}
+
+// a request that already has the person's truth is not labeled again by a restatement
+func TestRestatesKeepsThePersonsTruth(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	turn, done := restateTurns(t, repo, root, "planning")
+	if err := labelTrace(store.Store{Dir: root}, "done-as-asked", done, "yes", 1, "human"); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateAgain})
+	restateSubmit(t, root, "planning", turn)
+	n := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(mustRead(t, filepath.Join(root, "labels", "done-as-asked.jsonl")))), "\n") {
+		if strings.Contains(line, done) {
+			n++
+		}
+	}
+	if l, _ := doneLabel(t, root, done); n != 1 || l.Source != "human" {
+		t.Fatalf("the person's truth stays the only label of that request: %d labels, %+v", n, l)
 	}
 }

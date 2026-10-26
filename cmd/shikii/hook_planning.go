@@ -54,6 +54,9 @@ type planningRequest struct {
 	// ContinuesPrevious is the agent's reading of whether this message only continues or answers the previous request.
 	// It only decides how messages are grouped (never a truth); omitted when unsure (the acknowledgement list decides then)
 	ContinuesPrevious *bool `json:"continues_previous,omitempty"`
+	// Restates is the agent's reading of which earlier request this message restates: a turn id of the recent turns query returned
+	// (history:<id>:user). shikii compares the message with that request's own text by the fixed rule; a wrong or unknown id falls back (0.9.3)
+	Restates string `json:"restates,omitempty"`
 }
 
 type planningReceipt struct {
@@ -96,7 +99,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: organize the conversation for the pre-start judgment. Do not ask the person for input. Pass the JSON below on standard input (for example %[1]s hook plan query <<'JSON') to %[1]s hook plan query to read this turn and the recent conversation; look for related rules and existing decisions by putting topic words in query (not a copy of the request text), and when you use a returned lesson as grounds, set the evidence source to lesson:<id>. Pass the same IDs, search words, agreed and open to %s hook plan submit. Each item is summary and evidence:[{source,quote}] (quoted from the original text), or unknown:true if unknown. Grounds for an agreement need the person's words. Set continues_previous to true when this message only continues or answers the previous request (an acknowledgement or a go-ahead that asks for nothing new), false when it is a new request, including a short addition to the same work (\"add a check too\", \"write it in the README too\") and a restatement of an earlier request; omit it when unsure (it only decides how messages are grouped). The organizing is a hypothesis, never permission to act or the person's truth. When you create or change a rule, test or procedure, write it to the wiki before you finish even if nobody asked (add to or edit the closest page). Details are in the skill's references/planning.md. "+planningShape+"\n", command, command) + string(ids)
+	return fmt.Sprintf("shikii: organize the conversation for the pre-start judgment. Do not ask the person for input. Pass the JSON below on standard input (for example %[1]s hook plan query <<'JSON') to %[1]s hook plan query to read this turn and the recent conversation; look for related rules and existing decisions by putting topic words in query (not a copy of the request text), and when you use a returned lesson as grounds, set the evidence source to lesson:<id>. Pass the same IDs, search words, agreed and open to %s hook plan submit. Each item is summary and evidence:[{source,quote}] (quoted from the original text), or unknown:true if unknown. Grounds for an agreement need the person's words. Set continues_previous to true when this message only continues or answers the previous request (an acknowledgement or a go-ahead that asks for nothing new), false when it is a new request, including a short addition to the same work (\"add a check too\", \"write it in the README too\") and a restatement of an earlier request; omit it when unsure (it only decides how messages are grouped). When this message restates an earlier request of this session, set restates to that turn's id (the <id> of history:<id>:user); shikii compares the two texts by a fixed rule, so a wrong id only falls back. The organizing is a hypothesis, never permission to act or the person's truth. When you create or change a rule, test or procedure, write it to the wiki before you finish even if nobody asked (add to or edit the closest page). Details are in the skill's references/planning.md. "+planningShape+"\n", command, command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
@@ -119,6 +122,9 @@ func cmdHookPlan(args []string) error {
 	}
 	if len(req.Query) > requestMax {
 		return errors.New("the wiki search words are too long")
+	}
+	if len(req.Restates) > 64 {
+		return errors.New("restates must be one turn id from the recent turns (history:<id>:user in query)")
 	}
 	if _, err := hex.DecodeString(req.TurnID); err != nil {
 		return errors.New("turn_id is invalid")
@@ -152,7 +158,7 @@ func cmdHookPlan(args []string) error {
 		if err != nil {
 			return err
 		}
-		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil {
+		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || req.Restates != "" {
 			return errors.New("query does not accept organized content")
 		}
 		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": knowledge})
@@ -409,6 +415,11 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		}
 		if !alreadyAsked && waitsForPersonFor("needs-plan", d) {
 			s.Asked = append(s.Asked, askedItem{Spec: "needs-plan", Trace: d.TraceID})
+		}
+	}
+	if req.Restates != "" && restateDone(root, s, req.Restates) {
+		if g := groupingOf(s); g != nil && !g.Settled {
+			g.Previous = nil // the message restates an earlier request: it does not show the previous one was done either
 		}
 	}
 	if req.ContinuesPrevious != nil {

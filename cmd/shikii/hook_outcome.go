@@ -285,6 +285,42 @@ func settleDone(agent string, c *completedTurn, reply string) error {
 	return nil
 }
 
+// restateDone settles the done-as-asked of the earlier request the agent named in restates (inside the lock, at plan submit; 0.9.3
+// real-agent check low 4: a restatement of a request older than the previous one used to give nothing to it and "done" to the previous one).
+// The agent only names the turn; the truth comes from the fixed rule on the person's own texts: similarity >= outcomeRepeatAbove gives that
+// request "no" (weight 1), anything else gives nothing. Only a turn among this session's recent turns (same project, within the time limit)
+// is used, and a request that already has a truth (the person's or an outcome) is left alone. It reports whether the message restates it.
+func restateDone(agent string, s *hookSession, turn string) bool {
+	if s.Planning == nil {
+		return false
+	}
+	reply := s.Planning.Sources["current_user"]
+	if isAckReply(reply) {
+		return false
+	}
+	for _, t := range s.Planning.Recent {
+		if t.ID != turn || t.Done == "" || time.Since(t.At) < 0 || time.Since(t.At) > hookSessionTTL {
+			continue
+		}
+		if textSimilarity(t.Request, reply) < outcomeRepeatAbove {
+			return false
+		}
+		st := store.Store{Dir: agent}
+		labeled, err := st.LabeledTraces("done-as-asked")
+		if err != nil {
+			hookLog("outcome: " + err.Error())
+			return true
+		}
+		if _, ok := labeled[t.Done]; !ok {
+			if err := labelTrace(st, "done-as-asked", t.Done, "no", 1, "outcome"); err != nil {
+				hookLog("outcome: " + err.Error())
+			}
+		}
+		return true
+	}
+	return false
+}
+
 // textSimilarity is how similar two texts are (the Dice coefficient on character pairs, 0 to 1). Ignores spaces, symbols and case. Language-independent.
 func textSimilarity(a, b string) float64 {
 	grams := func(s string) map[string]int {

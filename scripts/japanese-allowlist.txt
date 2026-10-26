@@ -22,7 +22,7 @@
 9 cmd/shikii/continues_previous_test.go
 10 cmd/shikii/correction_test.go
 1 cmd/shikii/generic_specs_test.go
-7 cmd/shikii/grouping_ask_test.go
+12 cmd/shikii/grouping_ask_test.go
 16 cmd/shikii/guard.go
 1 cmd/shikii/guard_hook.go
 18 cmd/shikii/guard_hook_test.go

@@ -15,6 +15,9 @@ type planningTurn struct {
 	Request string    `json:"request"`
 	Summary string    `json:"summary,omitempty"`
 	At      time.Time `json:"at"`
+	// Done is that turn's done-as-asked decision: restates in hook plan submit names the turn, and its outcome is settled from the
+	// comparison with Request (the person's own text). Kept in this session's record only (0.9.3)
+	Done string `json:"done,omitempty"`
 }
 
 func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
@@ -28,6 +31,11 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 			turn := planningTurn{ID: previous.TurnID, Request: cut(previous.Planning.Sources["current_user"], 1200), At: previous.Planning.At}
 			if previous.Completed != nil && previous.Completed.TurnID == previous.TurnID {
 				turn.Summary = cut(previous.Completed.Summary, 1200)
+				for _, t := range previous.Completed.Targets {
+					if t.Spec == "done-as-asked" {
+						turn.Done = t.TraceID
+					}
+				}
 			}
 			f.Recent = append(f.Recent, turn)
 		}
