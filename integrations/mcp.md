@@ -24,15 +24,15 @@ It only calls the HTTP handlers internally, so it behaves the same as `serve` (r
 
 ## Codex
 
-Codex reads MCP servers only from the shared `~/.codex/config.toml` (it does not read `mcp_servers` from a project's `.codex/config.toml`), and starts the server in the folder its background service started in, which is often not your project. So `shikii init` writes one registration with no store, used by every project:
+Codex reads MCP servers only from the shared `~/.codex/config.toml` (it does not read `mcp_servers` from a project's `.codex/config.toml`), and starts the server in the folder its background service started in, which is often not your project. So `shikii init` writes one registration with no store, used by every project (with the local model, like the hooks and the other registrations):
 
 ```toml
 [mcp_servers.shikii]
 command = "/Users/you/.local/bin/shikii"
-args = ["mcp"]
+args = ["mcp", "--local", "http://127.0.0.1:8080"]
 ```
 
-Every tool takes `project`: the absolute path of the agent's working folder. The server uses that project's `.shikii/` for the call, and accepts only folders inside a project where `shikii init` was run on this machine. Without `project`, it uses the store it was started with (Claude Code and OpenCode start it in the project, with the `.mcp.json` / `opencode.json` of that project); if it has none, the tool returns an error that says to pass `project`. From 0.9.3 the server answers the handshake even when it is started outside a project. `shikii init` and the update rewrite the forms 0.9.1 and 0.9.2 wrote (`args = ["mcp", "--store", ".shikii", ...]`, which stopped before the handshake outside a project) to the one above. A block you edited is left alone; if it names one project's store by its absolute path, the update says that every Codex session uses that one project and suggests `args = ["mcp"]`.
+Every tool takes `project`: the absolute path of the agent's working folder. The server uses that project's `.shikii/` for the call, and accepts only folders inside a project where `shikii init` was run on this machine. Without `project`, it uses the store it was started with (Claude Code and OpenCode start it in the project, with the `.mcp.json` / `opencode.json` of that project); if it has none, the tool returns an error that says to pass `project`. From 0.9.3 the server answers the handshake even when it is started outside a project. `shikii init` and the update rewrite the forms 0.9.1 and 0.9.2 wrote (`args = ["mcp", "--store", ".shikii", ...]`, which stopped before the handshake outside a project) to the one above. A block you edited is left alone; if it names one project's store by its absolute path, the update says that every Codex session uses that one project and suggests `args = ["mcp", "--local", "http://127.0.0.1:8080"]`.
 
 ## Tools
 

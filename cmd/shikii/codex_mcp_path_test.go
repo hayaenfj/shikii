@@ -8,7 +8,7 @@ import (
 )
 
 // 0.9.3: Codex reads shikii's MCP server only from the shared ~/.codex/config.toml and starts it in the folder its daemon started in, so the shared
-// registration names no store: `command = <this binary>`, `args = ["mcp"]`, and each tool call passes project. The update and init rewrite the
+// registration names no store: `command = <this binary>`, `args = ["mcp", "--local", ...]`, and each tool call passes project. The update and init rewrite the
 // blocks shikii itself wrote in earlier forms (0.9.1: command "shikii" with mcp --store .shikii --local ...; 0.9.2: an absolute command with the same args)
 // and point a bare name or a path that no longer exists at this binary. A block a person edited is left alone.
 func TestCodexServerCommandIsFixedOnlyInShikiisOwnBlock(t *testing.T) {
@@ -57,7 +57,7 @@ func TestCodexServerCommandIsFixedOnlyInShikiisOwnBlock(t *testing.T) {
 		}
 		want := c.before
 		if c.fixed {
-			want = other + block(exe, []string{"mcp"})
+			want = other + block(exe, codexServerArgs)
 		}
 		if string(after) != want {
 			t.Fatalf("%s: the file must become\n%s\ngot\n%s", name, want, after)
@@ -95,7 +95,7 @@ func TestUpdateFixesCodexServerCommand(t *testing.T) {
 		b, _ := os.ReadFile(path)
 		want := c.before
 		if c.fixed {
-			want = "[mcp_servers.shikii]\ncommand = " + quotedList([]string{exe}) + "\nargs = [\"mcp\"]\n"
+			want = "[mcp_servers.shikii]\ncommand = " + quotedList([]string{exe}) + "\n" + codexServerArgsLine + "\n"
 		}
 		if string(b) != want {
 			t.Fatalf("%s: the file must become\n%s\ngot\n%s\n%s", name, want, b, out)
@@ -103,7 +103,7 @@ func TestUpdateFixesCodexServerCommand(t *testing.T) {
 		if c.fixed != strings.Contains(out, "pointed the shikii MCP server") {
 			t.Fatalf("%s: the update says it fixed the block only when it did:\n%s", name, out)
 		}
-		if c.warning != strings.Contains(out, "every Codex session uses that one project") || c.warning != strings.Contains(out, `set args = ["mcp"]`) {
+		if c.warning != strings.Contains(out, "every Codex session uses that one project") || c.warning != strings.Contains(out, "set "+codexServerArgsLine) {
 			t.Fatalf("%s: the update warns about a hand-edited block that pins one project (and only then):\n%s", name, out)
 		}
 	}

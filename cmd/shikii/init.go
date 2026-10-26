@@ -118,7 +118,7 @@ func cmdInit(args []string) error {
 		if fixed, err := fixCodexServer(codex, codexServerArgs); err != nil {
 			return err
 		} else if fixed {
-			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s with args = [\"mcp\"] (Codex)\n", filepath.Join("~", ".codex", "config.toml"), mcpCommand())
+			fmt.Fprintf(stdout, "%s: pointed the shikii MCP server shikii wrote at %s with %s (Codex)\n", filepath.Join("~", ".codex", "config.toml"), mcpCommand(), codexServerArgsLine)
 		} else if codexServerPinsAProject(codex) {
 			fmt.Fprintf(stdout, "%s: %s\n", filepath.Join("~", ".codex", "config.toml"), codexPinnedNote)
 		} else {
@@ -295,7 +295,11 @@ var codexMCPArgs = []string{"mcp", "--store", ".shikii", "--local", "http://127.
 
 // codexServerArgs are the arguments of Codex's shared registration (0.9.3): no store, because Codex reads only ~/.codex/config.toml and starts the
 // server in the folder its daemon started in; each tool call names its project with project.
-var codexServerArgs = []string{"mcp"}
+// It keeps --local like every other registration and the hook: without it (and without a key) shikii_decide on Codex had no endpoint (audit 0.9.3, second).
+var codexServerArgs = []string{"mcp", "--local", hookLocalURL}
+
+// codexServerArgsLine is that registration's args line, as written and as told to the person.
+var codexServerArgsLine = "args = [" + quotedList(codexServerArgs) + "]"
 
 // mcpCommand is the command written for the MCP server: this binary's own path, like the hooks (os.Executable, not resolved through
 // symlinks, so a package manager's link keeps working after an upgrade). The PATH lookup is only a fallback.
@@ -349,7 +353,8 @@ func fixCodexServer(path string, args []string) (bool, error) {
 		return false, nil
 	}
 	current := argsLine == "args = ["+quotedList(args)+"]"
-	earlier := argsLine == "args = ["+quotedList(codexMCPArgs)+"]"
+	// the 0.9.1 / 0.9.2 form, and args = ["mcp"] that builds of 0.9.3 before its second audit wrote (no --local)
+	earlier := argsLine == "args = ["+quotedList(codexMCPArgs)+"]" || argsLine == `args = ["mcp"]`
 	if !current && !earlier {
 		return false, nil // args a person changed
 	}
@@ -429,7 +434,7 @@ func codexServerPinsAProject(path string) bool {
 }
 
 // codexPinnedNote tells a person whose hand-edited Codex block names one project's store what that does and what to write instead.
-const codexPinnedNote = "the shikii MCP server was edited by hand, so it was left as it is. It names one project's store (--store with an absolute path), so every Codex session uses that one project. To let each session use its own project, set args = [\"mcp\"]: the agent then passes its working folder as project on each call (Codex)"
+var codexPinnedNote = "the shikii MCP server was edited by hand, so it was left as it is. It names one project's store (--store with an absolute path), so every Codex session uses that one project. To let each session use its own project, set " + codexServerArgsLine + ": the agent then passes its working folder as project on each call (Codex)"
 
 func quotedList(args []string) string {
 	quoted := make([]string, len(args))

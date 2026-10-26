@@ -24,15 +24,15 @@ HTTP のハンドラを内部で呼ぶだけなので、`serve` と挙動は同�
 
 ## Codex
 
-Codex は MCP の登録を共通の `~/.codex/config.toml` からしか読まず(プロジェクトの `.codex/config.toml` の `mcp_servers` は読まない)、裏で動く Codex の仕組みを起こしたフォルダで shikii を起こす。そこはプロジェクトでないことが多い。そこで `shikii init` は、置き場を書かない登録を 1 つだけ書き、全部のプロジェクトで使う:
+Codex は MCP の登録を共通の `~/.codex/config.toml` からしか読まず(プロジェクトの `.codex/config.toml` の `mcp_servers` は読まない)、裏で動く Codex の仕組みを起こしたフォルダで shikii を起こす。そこはプロジェクトでないことが多い。そこで `shikii init` は、置き場を書かない登録を 1 つだけ書き、全部のプロジェクトで使う(hook とほかの登録と同じく、手元のモデルを指す):
 
 ```toml
 [mcp_servers.shikii]
 command = "/Users/you/.local/bin/shikii"
-args = ["mcp"]
+args = ["mcp", "--local", "http://127.0.0.1:8080"]
 ```
 
-どの道具も `project`(エージェントの作業フォルダの絶対パス)を受け取る。その呼び出しにはそのプロジェクトの `.shikii/` を使い、この機械で `shikii init` したプロジェクトの中のフォルダだけを受け付ける。`project` が無ければ、起動した時の置き場を使う(Claude Code と OpenCode は、そのプロジェクトの `.mcp.json` / `opencode.json` でプロジェクトの中に起こす)。起動した時の置き場も無ければ、`project` を渡すよう言う道具のエラーを返す。0.9.3 から、プロジェクトの外で起こされても handshake に答える。`shikii init` と更新は、0.9.1 と 0.9.2 が書いた形(`args = ["mcp", "--store", ".shikii", ...]`。プロジェクトの外では handshake の前に終わっていた)を上の形に直す。人が直した登録は触らない。それが 1 つのプロジェクトの置き場を絶対パスで指していれば、どの Codex のセッションもその 1 つを使うことを更新が伝え、`args = ["mcp"]` を勧める。
+どの道具も `project`(エージェントの作業フォルダの絶対パス)を受け取る。その呼び出しにはそのプロジェクトの `.shikii/` を使い、この機械で `shikii init` したプロジェクトの中のフォルダだけを受け付ける。`project` が無ければ、起動した時の置き場を使う(Claude Code と OpenCode は、そのプロジェクトの `.mcp.json` / `opencode.json` でプロジェクトの中に起こす)。起動した時の置き場も無ければ、`project` を渡すよう言う道具のエラーを返す。0.9.3 から、プロジェクトの外で起こされても handshake に答える。`shikii init` と更新は、0.9.1 と 0.9.2 が書いた形(`args = ["mcp", "--store", ".shikii", ...]`。プロジェクトの外では handshake の前に終わっていた)を上の形に直す。人が直した登録は触らない。それが 1 つのプロジェクトの置き場を絶対パスで指していれば、どの Codex のセッションもその 1 つを使うことを更新が伝え、`args = ["mcp", "--local", "http://127.0.0.1:8080"]` を勧める。
 
 ## 道具
 

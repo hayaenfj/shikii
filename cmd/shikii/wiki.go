@@ -251,15 +251,21 @@ func updateClaims(wikiDir string, sp *spec.Spec, cands []candidate, scores []can
 		return 0, 0, nil
 	}
 	specAbs, _ := filepath.Abs(sp.Path())
-	specRel := sp.Path() // the path written in the draft is relative to the project root (where it runs). In the basic layout, decisions/<id>.yaml
-	if cwd, err := os.Getwd(); err == nil {
-		if rel, err := filepath.Rel(cwd, specAbs); err == nil && !strings.HasPrefix(rel, "..") {
-			specRel = rel
-		}
+	specRel := sp.Path() // the path written in the draft is relative to the project root. In the basic layout, .shikii/decisions/<id>.yaml
+	// the project root is the folder above the store (<root>/.shikii/wiki), not the process's folder: the MCP server runs a named project's tune
+	// from another folder (Codex, 0.9.3), and must find the drafts a run from the project folder wrote (audit 0.9.3, second)
+	base, err := filepath.Abs(filepath.Dir(filepath.Dir(wikiDir)))
+	if err != nil {
+		return 0, 0, err
+	}
+	if rel, err := filepath.Rel(base, specAbs); err == nil && !strings.HasPrefix(rel, "..") {
+		specRel = rel
 	}
 	sameSpec := func(p string) bool {
-		abs, err := filepath.Abs(p)
-		return err == nil && abs == specAbs
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(base, p)
+		}
+		return filepath.Clean(p) == specAbs
 	}
 	verdictOf := func(a, b candScore) (claimEvidence, string) {
 		wins, losses := 0, 0
