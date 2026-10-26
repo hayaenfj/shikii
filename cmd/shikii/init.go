@@ -300,6 +300,9 @@ func codexConfigText(b []byte) string {
 // refuse the whole file (0.9.6 audit, middle 1). Appending next to a person's own [mcp_servers.<name>] tables is fine (0.9.5 check).
 func codexServerState(b []byte) string {
 	text := codexConfigText(b)
+	if strings.Contains(text, `\u`) || strings.Contains(text, `\U`) { // an escaped key may be shikii or mcp_servers once unescaped (0.9.6 recheck)
+		return "has"
+	}
 	if codexShikiiServer.MatchString(text) {
 		return "has"
 	}

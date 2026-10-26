@@ -63,3 +63,24 @@ func TestCodexServerNotAppendedWhenShikiiIsWrittenAnotherWay(t *testing.T) {
 		}
 	}
 }
+
+// 0.9.6 recheck, low 1: a key written with \u escapes ([mcp_servers."\u0073hikii"], "shik\u0069i" = ..., "mcp\u005fservers" = {...}) is shikii
+// or an inline mcp_servers once unescaped, but the checks read the raw text and appended a second [mcp_servers.shikii]. Any \u or \U outside
+// comments now leaves the file alone (the note shows what to add).
+func TestCodexServerNotAppendedWithEscapedKeys(t *testing.T) {
+	for name, toml := range map[string]string{
+		"escaped table":  "[mcp_servers.\"\\u0073hikii\"]\ncommand = \"x\"\n",
+		"escaped key":    "[mcp_servers]\n\"shik\\u0069i\" = { command = \"x\" }\n",
+		"escaped inline": "\"mcp\\u005fservers\" = { other = { command = \"x\" } }\n",
+	} {
+		p := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(p, []byte(toml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		did, err := addCodexServer(p, []string{"mcp"})
+		b, _ := os.ReadFile(p)
+		if err != nil || did || string(b) != toml {
+			t.Errorf("%s: left alone: did=%v err=%v\n%s", name, did, err, b)
+		}
+	}
+}
