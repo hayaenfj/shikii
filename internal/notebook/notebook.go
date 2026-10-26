@@ -684,6 +684,16 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	for _, f := range recent {
 		available[f.ID] = f
 	}
+	pages, issues, err := b.pages()
+	if err != nil || len(issues) > 0 {
+		return result, errors.New("wiki has unreadable or changed pages; inspect wiki lint before ingesting")
+	}
+	cited := map[string]string{} // a source a page already cites is checked by that citation's hash (it may have been captured under the previous path)
+	for _, p := range pages {
+		for _, ref := range p.Sources {
+			cited[ref.ID] = ref.Hash
+		}
+	}
 	refs := []Source{}
 	raw := map[string][]byte{}
 	texts := map[string][]byte{}
@@ -704,7 +714,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		}
 		var observation Observation
 		if json.Unmarshal(data, &observation) == nil && observation.Kind != "" {
-			if _, err := b.readObservation(sourceDir, id); err != nil {
+			if _, err := b.readObservation(sourceDir, id, cited[id]); err != nil {
 				return result, err
 			}
 		}
@@ -743,10 +753,6 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		case !strings.Contains(observed.Reply, d.Correction.Quote):
 			return result, fmt.Errorf("the correction quote must be copied verbatim from the person's reply (the reply field) in conversation %s", id)
 		}
-	}
-	pages, issues, err := b.pages()
-	if err != nil || len(issues) > 0 {
-		return result, errors.New("wiki has unreadable or changed pages; inspect wiki lint before ingesting")
 	}
 	byID := map[string]Page{}
 	for _, p := range pages {
@@ -802,7 +808,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 						found = true
 					}
 				}
-				if !found {
+				if !found && !b.recaptured(sourceDir, ref, raw) {
 					p.Sources = append(p.Sources, ref)
 				}
 			}
@@ -1017,13 +1023,6 @@ func (b Book) Lint() (Report, error) {
 	for _, p := range pages {
 		known[p.ID] = p
 		report.Issues = append(report.Issues, b.sourceIssues(p)...)
-		if sources, err := b.directory(false, "sources"); err == nil {
-			for _, s := range p.Sources {
-				if b.fromOtherPath(sources, s.ID) {
-					report.Issues = append(report.Issues, Issue{Kind: "source-from-other-path", Page: p.ID, Source: s.ID})
-				}
-			}
-		}
 		if !validHistory {
 			report.Issues = append(report.Issues, Issue{Kind: "invalid-revisions", Page: p.ID})
 			continue
@@ -1161,7 +1160,7 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 				return nil, textErr
 			}
 		} else {
-			o, err := b.readObservation(dir, id)
+			o, err := b.readObservation(dir, id, expected[id])
 			if err != nil {
 				return nil, err
 			}

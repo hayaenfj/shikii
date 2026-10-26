@@ -153,7 +153,7 @@ func (b Book) Capture(o Observation) (Observation, error) {
 	kept := []string{}
 	for _, id := range ids {
 		if id == o.ID {
-			return b.readObservation(dir, id)
+			return b.readObservation(dir, id, "")
 		}
 		if _, err := os.Lstat(filepath.Join(dir, id+".reviewed")); os.IsNotExist(err) {
 			kept = append(kept, id)
@@ -196,7 +196,9 @@ func capturedIDs(dir string) ([]string, error) {
 	return ids, nil
 }
 
-func (b Book) readObservation(dir, id string) (Observation, error) {
+// readObservation reads a captured source record and checks it against its id. The id holds the path it was captured under, so a record captured
+// before the folder was renamed no longer matches; when a page already cites it (cited is the hash in that citation), the citation's hash checks it instead.
+func (b Book) readObservation(dir, id, cited string) (Observation, error) {
 	data, err := readSourceRecord(filepath.Join(dir, id+".json"))
 	if err != nil {
 		return Observation{}, err
@@ -209,7 +211,7 @@ func (b Book) readObservation(dir, id string) (Observation, error) {
 	o.ID = ""
 	canonical, _ := json.Marshal(o)
 	o.ID = want
-	if digest(append([]byte(b.Scope+"\n"), canonical...))[:16] != id {
+	if digest(append([]byte(b.Scope+"\n"), canonical...))[:16] != id && (cited == "" || digest(data) != cited) {
 		return Observation{}, errors.New("the hash of the saved source record does not match")
 	}
 	return o, nil
@@ -234,7 +236,7 @@ func (b Book) PendingObservations() ([]Observation, error) {
 		} else if !os.IsNotExist(err) {
 			return nil, err
 		}
-		o, err := b.readObservation(dir, id)
+		o, err := b.readObservation(dir, id, "")
 		if err != nil {
 			return nil, err
 		}
@@ -346,19 +348,33 @@ func notCopied(old, own string) (bool, error) {
 	return left, err
 }
 
-// fromOtherPath reports whether a source record a page cites was captured under the previous path (the path in its id differs from now, so it cannot be checked).
-// Conversation sources (those without a kind) are not counted.
-func (b Book) fromOtherPath(dir, id string) bool {
-	data, err := readSourceRecord(filepath.Join(dir, id+".json"))
-	if err != nil {
+// sameEvidence reports whether two captured source records hold the same evidence (everything but the id): the same observation captured again
+// after the folder was renamed gets the new path's id.
+func sameEvidence(a, b []byte) bool {
+	var x, y Observation
+	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil || x.Kind == "" || y.Kind == "" {
 		return false
 	}
-	var o Observation
-	if json.Unmarshal(data, &o) != nil || o.Kind == "" {
+	x.ID, y.ID = "", ""
+	return x == y
+}
+
+// recaptured reports whether a page's earlier source was captured under the previous path and the same evidence, captured again under this path,
+// is among the sources sent now (raw): the new copy takes its place instead of sitting beside it.
+func (b Book) recaptured(dir string, ref Source, raw map[string][]byte) bool {
+	if _, err := b.readObservation(dir, ref.ID, ""); err == nil {
 		return false
 	}
-	_, err = b.readObservation(dir, id)
-	return err != nil
+	data, err := readSourceRecord(filepath.Join(dir, ref.ID+".json"))
+	if err != nil || digest(data) != ref.Hash {
+		return false
+	}
+	for id, sent := range raw {
+		if id != ref.ID && sameEvidence(data, sent) {
+			return true
+		}
+	}
+	return false
 }
 
 // SourceHeadBytes is how much of a pending source's body the reflection and the wiki listing show.

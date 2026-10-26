@@ -102,7 +102,7 @@ func TestSourceOriginalsSurviveRecordRemovalAndDetectChanges(t *testing.T) {
 
 // 0.9.2: after moving or renaming the folder, a wiki store (named by sha256(path)) left under the old name silently emptied the wiki.
 // lint reports a store under the old name as other-path-store. Even after moving the store to the new name, source records captured under the previous path (the path is in the id)
-// cannot be checked under the new path and cannot be used as sources when editing that page. lint reports them as source-from-other-path (conversation sources are not reported).
+// cannot be checked by their id under the new path; since 0.9.5 the page's citation checks them, so lint has nothing more to report.
 func TestLintFindsWikiLeftUnderOldPath(t *testing.T) {
 	root := t.TempDir()
 	old := Book{Root: root, Scope: "/work/old"}
@@ -114,8 +114,7 @@ func TestLintFindsWikiLeftUnderOldPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cited, err := old.Ingest(Draft{Title: "page citing a source record", Lesson: "Check before writing.", AppliesTo: "a", Kind: "rule", Scene: "when writing", Sources: []string{o.ID}})
-	if err != nil {
+	if _, err := old.Ingest(Draft{Title: "page citing a source record", Lesson: "Check before writing.", AppliesTo: "a", Kind: "rule", Scene: "when writing", Sources: []string{o.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	moved := Book{Root: root, Scope: "/work/new"} // after renaming the folder
@@ -177,15 +176,95 @@ func TestLintFindsWikiLeftUnderOldPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var fromOther []Issue
-	for _, issue := range report.Issues {
-		if issue.Kind == "source-from-other-path" {
-			fromOther = append(fromOther, issue)
-		} else {
-			t.Errorf("the only finding left after the move is source records captured under the previous path: %+v", issue)
-		}
+	if len(report.Issues) != 0 { // 0.9.5: a cited source captured under the previous path is checked by its citation, so nothing is left to capture again
+		t.Fatalf("nothing is reported after the move: %+v", report.Issues)
 	}
-	if len(fromOther) != 1 || fromOther[0].Page != cited.Page.ID || fromOther[0].Source != o.ID {
-		t.Fatalf("reports source records captured under the previous path: %+v", report.Issues)
+	if _, err := moved.ReadSources([]string{o.ID}); err != nil {
+		t.Fatalf("the page's source captured under the previous path is still readable: %v", err)
+	}
+}
+
+// moveWikiStores does what the how-to page says after renaming the folder: copy both stores to the new path's name (the old ones are kept) and
+// rewrite the store's name in the pages' source links.
+func moveWikiStores(t *testing.T, root, from, to string) {
+	t.Helper()
+	h, n := digest([]byte(from)), digest([]byte(to))
+	for _, area := range []string{"records/wiki-sources", "wiki/lessons"} {
+		_ = filepath.Walk(filepath.Join(root, area, h), func(p string, info os.FileInfo, err error) error {
+			if err != nil || strings.HasPrefix(info.Name(), ".lock") {
+				return err
+			}
+			rel, _ := filepath.Rel(filepath.Join(root, area, h), p)
+			target := filepath.Join(root, area, n, rel)
+			if info.IsDir() {
+				return os.MkdirAll(target, 0o700)
+			}
+			data, _ := os.ReadFile(p)
+			if strings.HasSuffix(p, ".md") {
+				data = []byte(strings.ReplaceAll(string(data), h, n))
+			}
+			return os.WriteFile(target, data, 0o600)
+		})
+	}
+}
+
+// 0.9.5: a source record's id holds the path it was captured under, so after renaming the folder every source captured before could not be read
+// (wiki query) or cited again (ingest: "the hash of the saved source record does not match"), and each update of a page needed the same evidence
+// captured again. The recaptured copy then sat beside the old id on the page, because an update keeps every earlier source.
+// A record a page already cites is checked by the hash in that citation instead, and a recaptured copy (same content, the current path's id)
+// takes the old id's place.
+func TestSourcesCapturedUnderThePreviousPathStayUsable(t *testing.T) {
+	root := t.TempDir()
+	old := Book{Root: root, Scope: "/work/old"}
+	obs := Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}
+	o, err := old.Capture(obs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stray, err := old.Capture(Observation{Kind: "test", Title: "never cited", Content: "x", Reference: "r", Version: "v1", ObservedAt: time.Unix(2, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := Draft{Title: "page citing a source record", Lesson: "Check before writing.", AppliesTo: "a", Kind: "rule", Scene: "when writing", Sources: []string{o.ID}}
+	cited, err := old.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moveWikiStores(t, root, old.Scope, "/work/new")
+	moved := Book{Root: root, Scope: "/work/new"}
+
+	got, err := moved.ReadSources([]string{o.ID})
+	if err != nil || len(got["observations"].([]Observation)) != 1 {
+		t.Fatalf("a cited source captured under the previous path is still readable: %v %v", got, err)
+	}
+	d.ID, d.Lesson = cited.Page.ID, "Check before writing, twice."
+	if _, err := moved.Ingest(d); err != nil {
+		t.Fatalf("a cited source captured under the previous path can be cited again when updating its page: %v", err)
+	}
+	if _, err := moved.Ingest(Draft{Title: "other", Lesson: "l", AppliesTo: "a", Kind: "rule", Scene: "when writing", Sources: []string{stray.ID}}); err == nil {
+		t.Fatal("a source captured under the previous path that no page cites still cannot be checked, so it is refused")
+	}
+
+	again, err := moved.Capture(obs)
+	if err != nil || again.ID == o.ID {
+		t.Fatalf("capturing the same evidence under the new path gives a new id: %v %v", again.ID, err)
+	}
+	d.Lesson, d.Sources = "Check before writing, three times.", []string{again.ID}
+	updated, err := moved.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Page.Sources) != 1 || updated.Page.Sources[0].ID != again.ID {
+		t.Fatalf("the recaptured copy takes the old id's place instead of sitting beside it: %+v", updated.Page.Sources)
+	}
+
+	report, err := moved.Lint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, issue := range report.Issues {
+		if issue.Kind != "other-path-store" || !strings.HasSuffix(issue.Store, digest([]byte(old.Scope))) {
+			t.Errorf("after the move only the old stores are reported, never a source to capture again: %+v", issue)
+		}
 	}
 }
