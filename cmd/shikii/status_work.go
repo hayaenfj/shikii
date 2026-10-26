@@ -28,6 +28,7 @@ func countPersonWork(specID string, discardUnsure bool, recs []store.Record, lab
 		case l.Source == "outcome":
 			result[l.TraceID] = true
 		case l.Source == "mcp": // sent by an agent through MCP: a truth, but not the person's answer
+		case l.Source == "replay": // calibrate asked the model again with an earlier truth's text: not new work by the person
 		case store.HumanSource(l.Source):
 			person[l.TraceID] = true
 		}
