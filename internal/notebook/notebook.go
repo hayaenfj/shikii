@@ -727,10 +727,21 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		refs = append(refs, ref)
 	}
 	if d.Correction != nil {
+		// A correction quotes the person's own next message, which only the hook records with a conversation. A captured source
+		// (even kind "human") is written by an agent, so it cannot carry a correction: the refusal says so and what to do instead.
+		id := d.Correction.SourceID
 		var observed store.Feedback
-		data, ok := raw[d.Correction.SourceID]
-		if !ok || json.Unmarshal(data, &observed) != nil || !strings.Contains(observed.Reply, d.Correction.Quote) {
-			return result, errors.New("the correction quote must be copied verbatim from the person's reply in the given source")
+		var captured Observation
+		data, ok := raw[id]
+		switch {
+		case !ok:
+			return result, fmt.Errorf("correction.source_id %s must also be one of sources (cite the conversation the quote comes from)", id)
+		case json.Unmarshal(data, &captured) == nil && captured.Kind != "":
+			return result, fmt.Errorf("correction.source_id %s is a captured source, not a conversation recorded by the hook; a correction must quote the person's message from a recorded conversation. Without hooks there is none: save the lesson without correction and cite the source in sources", id)
+		case json.Unmarshal(data, &observed) != nil || observed.Reply == "":
+			return result, fmt.Errorf("conversation %s has no recorded reply from the person yet; a correction must quote the person's message. Save the lesson without correction, or add the correction after the person replies", id)
+		case !strings.Contains(observed.Reply, d.Correction.Quote):
+			return result, fmt.Errorf("the correction quote must be copied verbatim from the person's reply (the reply field) in conversation %s", id)
 		}
 	}
 	pages, issues, err := b.pages()

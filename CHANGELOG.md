@@ -5,6 +5,7 @@
 ## 0.9.3 — Small fixes after 0.9.2
 
 - Reflection, `left`: a submit that only assesses a lesson delivered to a subagent now says what is left for the parent conversation (the delivery has its own id). When shikii cannot work out what is left, the reply says so in `left_error` instead of dropping `left` as if nothing were left.
+- Wiki, corrections: a refused `correction` now says why. A correction must quote the person's reply in a conversation the hook recorded; a captured source (even `kind: "human"`) is refused with a line saying to save the lesson without `correction` and cite the source, which is what an agent without hooks can do. The check itself is unchanged.
 
 ## 0.9.2 — Nothing written into your AGENTS.md, wordings adopted by the agent, and a lighter page
 
