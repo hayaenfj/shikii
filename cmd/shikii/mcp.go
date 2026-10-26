@@ -41,6 +41,7 @@ func cmdMCP(args []string) error {
 		return err
 	}
 	log.SetOutput(os.Stderr) // stdout is the MCP channel. Logs go to stderr
+	o.ef.useForHookDecisions()
 	// A missing or unreadable project never stops the server before the handshake (0.9.3: Codex starts it in the folder its daemon started in,
 	// which often has no shikii project). Tool calls then name their project with project, or get a tool error that says to.
 	r := &mcpRouter{opts: o}

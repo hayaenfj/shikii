@@ -179,6 +179,17 @@ func (f *endpointFlags) bind(fs *flag.FlagSet) {
 	fs.BoolVar(&f.tainted, "tainted", false, "session that read production data: never send to hosted")
 }
 
+// useForHookDecisions makes decisions this process makes through hookDecide (reflect place, a page it starts) use the URLs given to mcp or
+// serve instead of the hook's fixed ones (0.9.5).
+func (f endpointFlags) useForHookDecisions() {
+	if f.local != "" {
+		hookLocalURL = f.local
+	}
+	if f.hosted != "" {
+		hookHostedURL = f.hosted
+	}
+}
+
 // hostedKey is the key for hosted: DECISIONS_API_KEY (generic) or TYPESAFE_API_KEY. This process never fetches keys itself.
 func hostedKey() string {
 	if k := os.Getenv("DECISIONS_API_KEY"); k != "" {

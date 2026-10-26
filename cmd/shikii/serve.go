@@ -69,6 +69,7 @@ func cmdServe(args []string) error {
 	if err := resolveStoreFlag(fs); err != nil {
 		return err
 	}
+	o.ef.useForHookDecisions()
 	o.resolve()
 	common, _ := agentHome()
 	absStore, _ := filepath.Abs(o.storeDir)
