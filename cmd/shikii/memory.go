@@ -67,9 +67,16 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 		if seen[key] {
 			continue
 		}
+		// a delivery record carries at most 16 source ids per quote; a page that kept its earlier sources over many updates has more.
+		// Keep the correction's source first so the record still names it
 		ids := []string{}
+		if p.Correction != nil {
+			ids = append(ids, p.Correction.SourceID)
+		}
 		for _, source := range p.Sources {
-			ids = append(ids, source.ID)
+			if len(ids) < 16 && (p.Correction == nil || source.ID != p.Correction.SourceID) {
+				ids = append(ids, source.ID)
+			}
 		}
 		quotes = append(quotes, memoryQuote{Key: key, ID: p.ID, Revision: p.Revision, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids, Correction: p.Correction})
 		keys = append(keys, key)
