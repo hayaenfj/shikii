@@ -127,6 +127,9 @@ type hookInput struct {
 	LastAssistantMessage string          `json:"last_assistant_message"`
 	ToolName             string          `json:"tool_name"`  // PreToolUse: the tool about to be used (only Agent / Task are looked at)
 	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: that tool's input (for Agent: prompt and subagent_type)
+	// late is the Stop after a block run at the person's next request (judgeAskedTurn): it judges only. No Stop happened, so the stop
+	// checks and rituals are not rechecked (a tree that passes at the next request is not "fixed before the turn ended", 0.9.3 audit 6)
+	late bool
 }
 
 // hookOut is what the hook returns. Empty means output nothing (no judgment). No permission decision (allow / ask / deny) is output.
@@ -1167,9 +1170,12 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		}
 	}
 	// stop checks (0.7.3): apply enabled guards to the changed files, added lines and this turn's commits. If one is hit, stop the Stop and return the reason
-	out, gerr := guardStop(agent, in, snapshot, string(before), changed, known, recheck)
-	if gerr != nil && firstErr == nil {
-		firstErr = gerr
+	var out hookOut
+	if !in.late {
+		var gerr error
+		if out, gerr = guardStop(agent, in, snapshot, string(before), changed, known, recheck); gerr != nil && firstErr == nil {
+			firstErr = gerr
+		}
 	}
 	if out.Block { // even in a turn stopped by the person's check, evaluate and record the ritual check and chain its reasons (audit R5: they used to vanish without showing in the counts)
 		if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck); rerr != nil && firstErr == nil {
@@ -1243,12 +1249,18 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	muts = append(muts, func(s *hookSession) {
 		if s.Request == req && s.TurnID == snapshot.TurnID {
 			s.Judged = true
+			if s.GroupingAsked == s.TurnID {
+				s.GroupingAsked = "" // judged: from here the turn is like any other (a notice whose Stop never comes is not judged late, 0.9.3 audit 6)
+			}
 			if s.Completed != nil && s.Completed.TurnID == s.TurnID {
 				s.Completed.Targets = targets
 			}
 		}
 	})
 	// ritual check (0.8.0): after recording the decisions, stop once if the asked plan or reflection is not done
+	if in.late {
+		return out, muts, firstErr
+	}
 	if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck); rerr != nil && firstErr == nil {
 		firstErr = rerr
 	} else if rout.Block {
@@ -1267,7 +1279,12 @@ func judgeAskedTurn(agent string, in *hookInput, snapshot *hookSession) {
 	if snapshot.TurnID == "" || snapshot.GroupingAsked != snapshot.TurnID || snapshot.Judged || in.AgentID != "" || prompt == "" || strings.HasPrefix(prompt, "/") || isNotification(prompt) {
 		return
 	}
-	stop := hookInput{SessionID: in.SessionID, CWD: in.CWD, StopHookActive: true, LastAssistantMessage: snapshot.Previous}
+	// the reply is this turn's, kept by its first Stop: Previous still holds the previous turn's reply when that Stop came without one
+	reply := ""
+	if c := snapshot.Completed; c != nil && c.TurnID == snapshot.TurnID {
+		reply = c.Summary
+	}
+	stop := hookInput{SessionID: in.SessionID, CWD: in.CWD, StopHookActive: true, LastAssistantMessage: reply, late: true}
 	_, muts, err := hookStop(agent, &stop, snapshot)
 	if err != nil {
 		hookLog("grouping: " + err.Error())

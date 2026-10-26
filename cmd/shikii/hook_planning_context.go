@@ -51,7 +51,10 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 		}
 	}
 	if len(f.Recent) > 4 {
-		f.Earlier = append(f.Earlier, f.Recent[:len(f.Recent)-4]...)
+		for _, turn := range f.Recent[:len(f.Recent)-4] {
+			turn.Summary = "" // restates reads only the person's text: the agent's reply is not kept for the session's lifetime
+			f.Earlier = append(f.Earlier, turn)
+		}
 		f.Recent = f.Recent[len(f.Recent)-4:]
 	}
 	kept := f.Earlier[:0]

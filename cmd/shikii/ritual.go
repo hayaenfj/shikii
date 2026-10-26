@@ -45,7 +45,8 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	var failed []string
 	// Plan: asked for (controls: Planning belongs to this turn) but no submit, and files were changed, or the message is short and
 	// outside the acknowledgement list so its grouping is still open (0.9.3: then only continues_previous is asked for)
-	grouping := groupingAsk(snapshot) || (snapshot.TurnID != "" && snapshot.GroupingAsked == snapshot.TurnID)
+	// a turn the person's guard stopped is also GroupingAsked (so the Stop after the block judges it): only a short message's grouping was asked for
+	grouping := groupingAsk(snapshot) || (snapshot.TurnID != "" && snapshot.GroupingAsked == snapshot.TurnID && groupingShort(groupingOf(snapshot)))
 	if p := snapshot.Planning; p != nil && p.TurnID == snapshot.TurnID && ((known && len(changed) > 0) || grouping) {
 		pass := p.Result != nil
 		reason := ""
@@ -196,8 +197,12 @@ func groupingAsk(s *hookSession) bool {
 	if p == nil || s.TurnID == "" || p.TurnID != s.TurnID || p.Result != nil || s.Judged || s.RitualStopped == s.TurnID {
 		return false
 	}
-	g := p.Grouping
-	return g != nil && !g.Settled && !isAckReply(g.Reply) && utf8.RuneCountInString(strings.TrimSpace(g.Reply)) < outcomeMovedMinRunes
+	return p.Grouping != nil && !p.Grouping.Settled && groupingShort(p.Grouping)
+}
+
+// groupingShort reports whether the message is short (under outcomeMovedMinRunes) and not in the acknowledgement list.
+func groupingShort(g *requestGrouping) bool {
+	return g != nil && !isAckReply(g.Reply) && utf8.RuneCountInString(strings.TrimSpace(g.Reply)) < outcomeMovedMinRunes
 }
 
 // groupingBlockReason is the one line of the Stop block that asks only for continues_previous, with the minimal JSON hook plan submit accepts.
