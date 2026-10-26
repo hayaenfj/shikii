@@ -22,11 +22,11 @@ func (e *personFileError) Error() string { return e.err.Error() }
 func (e *personFileError) Unwrap() error { return e.err }
 
 // writePersonFile is the one way shikii changes a file of the person's (agent settings, config.toml, AGENTS.md; 0.9.7). Before, each writer
-// did it its own way, and audits kept finding one that replaced a link with a regular file, dropped the file's permissions or wrote over a
-// read-only file. It writes the file at the end of any chain of links (dotfiles stay links, even when that file does not exist yet), keeps
-// the existing permissions (newMode is for a new file), refuses a file the person cannot write (its mode, an ACL, an immutable flag), and
-// replaces the content through a temp file next to it, so a reader never sees half a file. A file with hard links is rewritten in place
-// instead, so every name keeps showing the same file (0.9.7 full audit 2-3 to 2-5).
+// did it its own way, and then the one writer replaced the file through a temp file and added a fix for each kind of file the audits found
+// (links, chains of links, hard links, ACLs, groups, extended attributes, immutable flags, a relative link under a linked folder).
+// Now it never replaces the file: it writes into the very file the OS opens at that path, so whatever the person set on it or around
+// it stays as it is. A file it cannot open for writing (its mode, an ACL, an immutable flag) is refused as read-only. If writing stops
+// halfway, the old content is written back, so the file does not end up empty or mixed (0.9.7 re-audit 2).
 func writePersonFile(path string, content []byte, newMode os.FileMode) error {
 	if err := writePersonFileTo(path, content, newMode); err != nil {
 		return &personFileError{err}
@@ -35,74 +35,51 @@ func writePersonFile(path string, content []byte, newMode os.FileMode) error {
 }
 
 func writePersonFileTo(path string, content []byte, newMode os.FileMode) error {
-	path, err := endOfLinks(path)
-	if err != nil {
-		return err
-	}
-	mode := newMode
-	hardLinked := false
-	if fi, err := os.Stat(path); err == nil {
-		mode = fi.Mode().Perm()
-		if !personFileWritable(path) {
-			return readOnlyError(path)
+	old, err := os.ReadFile(path) // through any links, as the agent reads it
+	if os.IsNotExist(err) {
+		if _, lerr := os.Lstat(path); os.IsNotExist(lerr) {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return err
+			}
 		}
-		if st, ok := fi.Sys().(*syscall.Stat_t); ok && st.Nlink > 1 {
-			hardLinked = true
-		}
-	} else if !os.IsNotExist(err) {
-		return err
-	} else if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".shikii-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
-	if _, err := f.Write(content); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if hardLinked {
-		out, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|syscall.O_NOFOLLOW, 0)
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, newMode) // a new file, or the missing file at the end of a link
 		if err != nil {
+			if os.IsPermission(err) || errors.Is(err, syscall.EPERM) {
+				return readOnlyError(path)
+			}
 			return err
 		}
-		_, werr := out.Write(content)
-		if cerr := out.Close(); werr != nil {
-			return werr
-		} else if cerr != nil {
-			return cerr
+		_, werr := f.Write(content)
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
 		}
-		return nil
+		return werr
 	}
-	if err := os.Chmod(tmp, mode); err != nil {
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
-}
-
-// endOfLinks follows a chain of links to the file at its end (which may not exist yet).
-func endOfLinks(path string) (string, error) {
-	for range 40 {
-		info, err := os.Lstat(path)
-		if err != nil || info.Mode()&os.ModeSymlink == 0 {
-			return path, nil
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		if os.IsPermission(err) || errors.Is(err, syscall.EPERM) {
+			return readOnlyError(path)
 		}
-		target, err := os.Readlink(path)
-		if err != nil {
-			return "", err
-		}
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(filepath.Dir(path), target)
-		}
-		path = target
+		return err
 	}
-	return "", errors.New("too many links")
+	_, werr := f.WriteAt(content, 0)
+	if werr == nil {
+		werr = f.Truncate(int64(len(content)))
+	}
+	if werr == nil {
+		werr = f.Sync()
+	}
+	if werr != nil { // put the old content back: the old size fitted before
+		_, _ = f.WriteAt(old, 0)
+		_ = f.Truncate(int64(len(old)))
+	}
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	return werr
 }
 
 // personFileWritable reports whether the person can write the file: access(2) looks at the mode, the owner, ACLs and immutable flags.

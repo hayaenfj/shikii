@@ -236,10 +236,10 @@ func withoutCodexServer(text string) (string, bool, error) {
 	out, _, err := cutCodexServer(text)
 	text, out = bom+text, bom+out
 	if err != nil {
-		return text, false, err
+		return text, true, err // Codex reads a shikii server here; it is not cut (found is about what Codex reads, 0.9.7 re-audit 2-6)
 	}
 	if !codexEditKeepsTheRest([]byte(text), []byte(out), nil) {
-		return text, false, errors.New("holds shikii's server in a form that cannot be cut out line by line without changing other settings (such as an inline mcp_servers = { … } table); remove shikii from it by hand")
+		return text, true, errors.New("holds shikii's server in a form that cannot be cut out line by line without changing other settings (such as an inline mcp_servers = { … } table); remove shikii from it by hand")
 	}
 	return out, true, nil
 }

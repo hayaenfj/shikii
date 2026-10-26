@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -252,6 +253,20 @@ func (w *trackedWriter) check() {
 		_ = w.rc.SetWriteDeadline(time.Now().Add(w.limit))
 		w.extended = false
 	}
+}
+
+// Flush and ReadFrom keep what the connection's writer can do for a handler that asks (0.9.7 re-audit 2-7); both start the reply.
+func (w *trackedWriter) Flush() {
+	w.start()
+	_ = w.rc.Flush()
+}
+
+func (w *trackedWriter) ReadFrom(r io.Reader) (int64, error) {
+	w.start()
+	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return rf.ReadFrom(r)
+	}
+	return io.Copy(w.ResponseWriter, r)
 }
 
 func (w *trackedWriter) finish() {

@@ -105,6 +105,8 @@ func cmdInit(args []string) error {
 	switch did, err := removeAgentsSection(filepath.Join(scope, "AGENTS.md")); {
 	case errors.As(err, &skipped):
 		fmt.Fprintln(stdout, "AGENTS.md: "+skipped.reason)
+	case errors.As(err, new(*personFileError)): // left to the person; the rest of init goes on (0.9.7 re-audit 2-3)
+		fmt.Fprintf(stdout, "AGENTS.md: shikii could not remove the section an earlier version wrote (%v); remove it by hand\n", err)
 	case err != nil:
 		return err
 	case did:
