@@ -230,7 +230,7 @@ func runTune(o tuneOpts) (*tuneResult, error) {
 		}
 		return nil, fmt.Errorf("tune: %d truths < eval.min_n=%d; choosing a wording on fewer truths is guesswork. %s", len(bank), sp.Eval.MinN, hint)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), tuneRunLimit)
 	defer cancel()
 
 	// 1. Score the current wording (first, so the confusion table and wrong examples can go to the proposer)

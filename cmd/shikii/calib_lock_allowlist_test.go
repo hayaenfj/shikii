@@ -65,12 +65,112 @@ func TestOnlyAllowedFunctionsTakeTheCalibrationLock(t *testing.T) {
 		got = append(got, fn)
 	}
 	sort.Strings(got)
-	if len(got) != len(calibLockAllowed) {
-		t.Errorf("calibLockAllowed lists a function that no longer takes the lock (keep the list exact): found %v", got)
+	for fn := range calibLockAllowed {
+		if !seen[fn] {
+			t.Errorf("calibLockAllowed lists %s, which no longer takes the lock (keep the list exact): found %v", fn, got)
+		}
 	}
 	// negative example: a function outside the list that takes the lock is found
 	bad := "package main\nfunc (s *server) handleNew() { s.calibMu.Lock(); defer s.calibMu.Unlock() }\n"
 	if holders := calibLockHolders(t, fset, "bad.go", bad); len(holders) != 1 || calibLockAllowed[holders[0]] {
 		t.Fatalf("the check finds a lock taken outside the list: %v", holders)
+	}
+}
+
+// callGraph maps each function or method name in the package to the names it calls (s.x(...) and x(...)), and returns the routes registered
+// with mux.HandleFunc: path -> handler name, and whether it goes through longWork.
+func callGraph(t *testing.T, srcs map[string]string) (map[string][]string, map[string]string, map[string]bool) {
+	t.Helper()
+	fset := token.NewFileSet()
+	calls := map[string][]string{}
+	routes, wrapped := map[string]string{}, map[string]bool{}
+	name := func(e ast.Expr) string {
+		switch f := e.(type) {
+		case *ast.SelectorExpr:
+			return f.Sel.Name
+		case *ast.Ident:
+			return f.Name
+		}
+		return ""
+	}
+	for file, src := range srcs {
+		f, err := parser.ParseFile(fset, file, src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range f.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				c, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				if n := name(c.Fun); n != "" {
+					calls[fn.Name.Name] = append(calls[fn.Name.Name], n)
+				}
+				if n := name(c.Fun); n == "HandleFunc" && len(c.Args) == 2 {
+					if lit, ok := c.Args[0].(*ast.BasicLit); ok {
+						path := strings.Trim(lit.Value, "\"")
+						h := c.Args[1]
+						if w, ok := h.(*ast.CallExpr); ok && name(w.Fun) == "longWork" && len(w.Args) == 1 {
+							wrapped[path], h = true, w.Args[0]
+						}
+						routes[path] = name(h)
+					}
+				}
+				return true
+			})
+		}
+	}
+	return calls, routes, wrapped
+}
+
+// reachesLock reports whether fn takes the calibration lock directly or through the functions it calls.
+func reachesLock(fn string, calls map[string][]string, seen map[string]bool) bool {
+	if calibLockAllowed[fn] {
+		return true
+	}
+	if seen[fn] {
+		return false
+	}
+	seen[fn] = true
+	for _, c := range calls[fn] {
+		if reachesLock(c, calls, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// 0.9.6 recheck, low 1: the allowlist above only sees functions that take the lock themselves. Every registered route whose handler reaches
+// the lock through any call is registered through longWork; a route that reaches it without longWork fails (negative example below).
+func TestEveryRouteThatReachesTheLockIsLongWork(t *testing.T) {
+	files, _ := filepath.Glob("*.go")
+	srcs := map[string]string{}
+	for _, file := range files {
+		if !strings.HasSuffix(file, "_test.go") {
+			b, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			srcs[file] = string(b)
+		}
+	}
+	calls, routes, wrapped := callGraph(t, srcs)
+	if len(routes) < 10 {
+		t.Fatalf("precondition: the routes are found (%d)", len(routes))
+	}
+	for path, h := range routes {
+		if reachesLock(h, calls, map[string]bool{}) && !wrapped[path] {
+			t.Errorf("%s (%s) reaches the calibration lock but is not registered through longWork", path, h)
+		}
+	}
+	bad := map[string]string{"bad.go": "package main\nfunc (s *server) handleBad(w, r any) { s.maybeCalibrate(\"\", \"\", \"\") }\nfunc reg(mux *x) { mux.HandleFunc(\"/v1/bad\", s.handleBad) }\n"}
+	calls, routes, wrapped = callGraph(t, bad)
+	if !reachesLock(routes["/v1/bad"], calls, map[string]bool{}) || wrapped["/v1/bad"] {
+		t.Fatalf("negative example: a route that reaches the lock without longWork is found: %v %v", routes, wrapped)
 	}
 }

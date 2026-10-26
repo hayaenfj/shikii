@@ -129,3 +129,11 @@ func TestEveryLongRouteOutlivesTheWriteTimeout(t *testing.T) {
 		t.Error("precondition: a route outside longRoutes is cut by the write timeout")
 	}
 }
+
+// 0.9.6 recheck, low 2: a background tune holds the calibration lock for its model run and then a calibration that may ask the model again, so
+// a reply waiting behind it needs longResponseLimit longer than both together (it was 30 minutes, the same as the tune alone).
+func TestLongResponseLimitCoversATuneAndItsCalibration(t *testing.T) {
+	if longResponseLimit <= tuneRunLimit+replayLimit {
+		t.Fatalf("longResponseLimit %v must exceed a tune (%v) plus its calibration (%v)", longResponseLimit, tuneRunLimit, replayLimit)
+	}
+}

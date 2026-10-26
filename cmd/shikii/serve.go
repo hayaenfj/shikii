@@ -146,7 +146,14 @@ func longWork(h http.HandlerFunc) http.HandlerFunc {
 }
 
 // longResponseLimit bounds a long handler's reply: a calibration that asks the model again for many earlier truths, or a tune over every fold.
-const longResponseLimit = 30 * time.Minute
+// A background tune can hold the calibration lock for its 30-minute model run plus up to 10 minutes of calibration, so a reply waiting behind
+// it needs more than 40 minutes (0.9.6 recheck, low 2).
+const longResponseLimit = 45 * time.Minute
+
+const (
+	tuneRunLimit = 30 * time.Minute // a tune's model run
+	replayLimit  = 10 * time.Minute // a calibration asking the model again for earlier truths
+)
 
 // listenPage starts listening. For the project's page started by the hook (port 0), it takes a free port, writes a mark with the port and pid
 // to ~/.shikii/agent/pages/, and opens it once in the browser. A serve started by hand (fixed port) writes no mark (so it never overwrites the hook page's mark; audit R5).

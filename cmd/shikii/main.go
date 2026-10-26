@@ -919,7 +919,7 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 		return nil, model, err
 	}
 	eps := ef.endpoints()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), replayLimit)
 	defer cancel()
 
 	var out []store.Label
