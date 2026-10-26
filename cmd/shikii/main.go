@@ -93,6 +93,8 @@ func main() {
 		err = cmdTune(os.Args[2:])
 	case "hook":
 		err = cmdHook(os.Args[2:])
+	case "uninstall":
+		err = cmdUninstall(os.Args[2:])
 	case "guard":
 		err = cmdGuard(os.Args[2:])
 	default:
@@ -125,6 +127,10 @@ func usageText() string {
                    after thinking (did the changes stay within what was asked, was the request finished). The store is the project's .shikii/, the model is :8080, the page uses a free port per project (shikii page). Quotes past conversations and wiki lessons and hands the organizing to the agent. Advice from decisions starts only after a line is drawn. Never blocks tools
   shikii hook plan query | submit (JSON on stdin)
                    Your usual agent organizes the request, the agreed plan and open questions before starting, with the original text, and decides. Not treated as a person's input or as a truth
+  shikii uninstall [--yes]
+                   Remove what shikii put into the agents: its hooks (~/.claude/settings.json, ~/.codex/hooks.json), [mcp_servers.shikii] in ~/.codex/config.toml,
+                   the shikii entry in each registered project's .mcp.json and opencode.json, the skill (~/.claude/skills/shikii, ~/.agents/skills/shikii), and stop its pages.
+                   Without --yes it only lists them. The data (each project's .shikii/ and ~/.shikii/agent) stays; the binaries stay and it prints the rm command for them
   shikii decide   <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]
                    If the spec has state.context, ask again with the context inputs added only when unsure (ask; for choice also discard) (separate hash, separate line). An answer that reaches confidence there is kept as a truth for the minimal question
   shikii label     <trace_id> <truth> [--spec-id ID] [--weight W] [--source ask|outcome|manual] [--store DIR]

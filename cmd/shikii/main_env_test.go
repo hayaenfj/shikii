@@ -18,6 +18,8 @@ func TestMain(m *testing.M) {
 	// No test starts real background processes (up, serve) or a browser (a test that skipped the harness forgot a stub, and a real one was left running. 0.9.1)
 	hookSpawn = recordSpawn
 	openBrowser = func(url string) { opened = append(opened, url) }
+	stopProcess = func(int) error { return nil } // uninstall never signals a real process from tests (0.9.3)
+	processCommand = func(int) string { return "" }
 	os.Exit(m.Run())
 }
 

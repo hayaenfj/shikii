@@ -375,6 +375,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `shikii doctor` | 鍵・手元のモデル・置き場の状態を確かめる |
 | `shikii update` | 最新の安定版へ本体と readout を更新する |
 | `shikii hook install` / `uninstall` | Claude Code と Codex の hook を入れる・外す(`--yes` 無しは表示だけ) |
+| `shikii uninstall` | shikii がエージェントに入れた物(hook・MCP の項目・エージェントの作法)を外し、画面を止める。データ(`.shikii/`・`~/.shikii/agent`)と実行ファイルは残し、実行ファイルを消す `rm` のコマンドを出す(`--yes` 無しは表示だけ) |
 | `shikii hook plan query` / `submit` | 作業の前の整理(エージェントが使う) |
 | `shikii hook variants submit` | 聞き方の候補を渡す(エージェントが使う) |
 | `shikii hook variants check` | 上回った候補の意味が同じかと(英語以外の設定なら)両方の訳を渡す(エージェントが使う。同じなら採用、人は元に戻せる) |

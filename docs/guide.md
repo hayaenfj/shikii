@@ -375,6 +375,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii doctor` | Checks the key, the local model and the store |
 | `shikii update` | Updates shikii and readout to the latest stable release |
 | `shikii hook install` / `uninstall` | Adds or removes the Claude Code and Codex hooks (without `--yes` it only shows what it would do) |
+| `shikii uninstall` | Removes what shikii put into the agents (hooks, MCP entries, the agent's instructions) and stops the pages. The data (`.shikii/`, `~/.shikii/agent`) and the binaries stay; it prints the `rm` command for them (without `--yes` it only shows what it would do) |
 | `shikii hook plan query` / `submit` | Planning before work (used by the agent) |
 | `shikii hook variants submit` | Hands over candidate wordings (used by the agent) |
 | `shikii hook variants check` | Hands over whether a winning wording means the same, with translations of both into the person's language when it is not English (used by the agent; adopted when the same, a person can undo it) |

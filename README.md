@@ -9,7 +9,7 @@ Claude Code and Codex start every session from zero. They do not remember what y
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-601%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-610%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.9.3-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -126,6 +126,15 @@ This fetches the latest stable release, verifies its hashes and replaces shikii 
 When updating from 0.8, also reopen your open agent sessions, and update every machine that uses the same wiki to 0.9.0 or later. shikii 0.8 cannot read articles that have a kind and scene, and refuses to save to the wiki (the articles are not damaged). In the same way, 0.9.1 and earlier read articles written by 0.9.2 (English fixed words in the article file) as changed, so update every machine that uses the same wiki to 0.9.2 or later.
 
 When updating to 0.9.3, the update rewrites the Codex registration shikii wrote earlier to `args = ["mcp", "--local", "http://127.0.0.1:8080"]` (one registration for every project); reopen Codex afterwards. A block you edited yourself is left alone; if it names one project with `--store`, the update tells you, and every Codex session keeps using that one project until you change it to the form above.
+
+### Uninstall
+
+```sh
+shikii uninstall        # lists what it would remove; changes nothing
+shikii uninstall --yes  # removes it
+```
+
+This removes what shikii put into your agents: its hooks in `~/.claude/settings.json` and `~/.codex/hooks.json`, `[mcp_servers.shikii]` in `~/.codex/config.toml`, the shikii entry in each initialized project's `.mcp.json` and `opencode.json`, and the agent's instructions in `~/.claude/skills/shikii` and `~/.agents/skills/shikii`. It also stops the projects' answer pages. Your other hooks, MCP servers and settings, the files themselves, `AGENTS.md` and `CLAUDE.md` stay. The data stays too: each project's `.shikii/` and `~/.shikii/agent` are kept, and installing again continues from them. The binaries are not removed; the last lines print the `rm` command with their paths. Reopen any open Claude Code and Codex sessions afterwards.
 
 ## How it works
 

@@ -2102,6 +2102,11 @@ func seedAgentSpecs(dst string) (int, error) {
 // editHooks fixes the hooks in settings.json. For install, it aligns shikii's handlers to the current set (adds to missing events, removes `shikii hook …` not in this version, such as the old PreToolUse).
 // For uninstall, it removes every handler starting with `shikii hook `. Other hooks and other keys stay. Before writing, it backs up to .bak-shikii. Returns whether it changed anything.
 func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) {
+	return editHooksTo(path, install, hookEvents, true)
+}
+
+// editHooksTo is editHooks; with write false it only reports whether it would change anything (shikii uninstall without --yes).
+func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) (bool, error) {
 	cfg := map[string]any{}
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -2199,6 +2204,9 @@ func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) 
 	}
 	if !changed {
 		return false, nil
+	}
+	if !write {
+		return true, nil
 	}
 	if len(hooks) > 0 {
 		cfg["hooks"] = hooks
