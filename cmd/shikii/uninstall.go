@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -333,32 +332,7 @@ func removeJSONEntry(path, key, name string, write bool) (bool, error) {
 	if err := enc.Encode(cfg); err != nil {
 		return false, err
 	}
-	return true, replaceKeepingMode(path, buf.Bytes())
-}
-
-// replaceKeepingMode writes content to path through a temp file next to it, keeping the file's permissions.
-func replaceKeepingMode(path string, content []byte) error {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".shikii-uninstall-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
-	if _, err := f.Write(content); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, fi.Mode().Perm()); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return true, writePersonFile(path, buf.Bytes(), 0o600)
 }
 
 // removeCodexServer removes [mcp_servers.shikii] from Codex's config.toml (withoutCodexServer). A config.toml kept elsewhere through a link
@@ -389,15 +363,15 @@ func removeCodexServer(path string, write bool) (bool, error) {
 	if !write {
 		return true, nil
 	}
-	return true, replaceKeepingMode(path, []byte(out))
+	return true, writePersonFile(path, []byte(out), 0o600)
 }
 
-// withoutCodexServer returns the TOML text without shikii's MCP server, in any form shikii or a person wrote: the [mcp_servers.shikii]
+// cutCodexServer returns the TOML text without shikii's MCP server, in any form shikii or a person wrote: the [mcp_servers.shikii]
 // table and its sub-tables ([mcp_servers.shikii.env] …, quoted keys and spaces too), a shikii key under [mcp_servers], and dotted keys
 // mcp_servers.shikii.… at any level, with their multi-line values. Every other line stays, comments and blank lines included; only the blank
 // line shikii put before the table it appended (followed by the end of the file or another blank line) goes with it.
-// An inline mcp_servers = { shikii = … } cannot be cut line by line, so it is an error (nothing is changed).
-func withoutCodexServer(text string) (string, bool, error) {
+// withoutCodexServer checks the cut with a TOML reader; an inline mcp_servers = { shikii = … } is not cut here.
+func cutCodexServer(text string) (string, bool, error) {
 	lines := strings.SplitAfter(text, "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
@@ -435,9 +409,6 @@ func withoutCodexServer(text string) (string, bool, error) {
 		}
 		full := append(append([]string{}, table...), keys...)
 		value := strings.TrimSpace(rest)[1:]
-		if len(full) == 1 && full[0] == "mcp_servers" && inlineShikiiKey.MatchString(value) {
-			return text, false, errors.New("holds an inline mcp_servers = { … } table with shikii in it, which cannot be cut line by line; remove shikii from it by hand")
-		}
 		cont = inShikii || isShikiiServerKey(full)
 		remove[i] = cont
 		depth, multi = tomlScan(value, 0, "")
@@ -474,9 +445,6 @@ func withoutCodexServer(text string) (string, bool, error) {
 	}
 	return out, true, nil
 }
-
-// inlineShikiiKey finds a shikii key in an inline table ({ shikii = …, "shikii".command = … }), not the word inside a value such as a path.
-var inlineShikiiKey = regexp.MustCompile(`[{,]\s*(shikii|"shikii"|'shikii')\s*[.=]`)
 
 // mcpProjects are the projects whose .mcp.json and opencode.json uninstall looks at: the registered ones, and the projects still in
 // ~/.shikii/agent/projects/ whose .shikii/ is gone or not initialized (registeredProjects leaves those out). Only shikii's entry in those two

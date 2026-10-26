@@ -1,0 +1,48 @@
+package main
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+)
+
+// errPersonFileReadOnly is returned for a settings file the person made read-only: shikii does not replace it.
+var errPersonFileReadOnly = errors.New("is read-only, so shikii left it as it is; make the change by hand")
+
+// writePersonFile is the one way shikii changes a file of the person's (agent settings, config.toml, AGENTS.md; 0.9.7). Before, each writer
+// did it its own way, and audits kept finding one that replaced a link with a regular file, dropped the file's permissions or wrote over a
+// read-only file. It writes the file a link points at (dotfiles stay links), keeps the existing permissions (newMode is for a new file),
+// refuses a read-only file, and replaces the content through a temp file next to it, so a reader never sees half a file.
+func writePersonFile(path string, content []byte, newMode os.FileMode) error {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
+	mode := newMode
+	if fi, err := os.Stat(path); err == nil {
+		mode = fi.Mode().Perm()
+		if mode&0o200 == 0 {
+			return errPersonFileReadOnly
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	} else if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".shikii-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if _, err := f.Write(content); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}

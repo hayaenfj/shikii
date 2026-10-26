@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -253,99 +252,7 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 	if err := enc.Encode(cfg); err != nil {
 		return false, err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return false, err
-	}
-	if err := os.WriteFile(path+".tmp", buf.Bytes(), 0o644); err != nil {
-		return false, err
-	}
-	return true, os.Rename(path+".tmp", path)
-}
-
-var (
-	codexInlineServers = regexp.MustCompile(`(?m)^[ \t]*["']?mcp_servers["']?[ \t]*=`)                                             // mcp_servers = { ... }: an inline table cannot be extended
-	codexShikiiServer  = regexp.MustCompile(`(?m)^[ \t]*\[?[ \t]*["']?mcp_servers["']?[ \t]*\.[ \t]*["']?shikii["']?[ \t]*[\].=]`) // [mcp_servers.shikii], [mcp_servers.'shikii'], mcp_servers.shikii.command = ...
-	codexServersTable  = regexp.MustCompile(`(?m)^[ \t]*\[[ \t]*["']?mcp_servers["']?[ \t]*\][ \t]*$`)
-	codexShikiiKey     = regexp.MustCompile(`(?m)^[ \t]*["']?shikii["']?[ \t]*[.=]`) // shikii = {...} or shikii.command = ... (under [mcp_servers])
-)
-
-// codexConfigText is config.toml without carriage returns, comment lines and end-of-line comments outside quotes, for codexServerState.
-func codexConfigText(b []byte) string {
-	var lines []string
-	for _, line := range strings.Split(strings.ReplaceAll(string(b), "\r", ""), "\n") {
-		var quote rune
-		for i, r := range line {
-			switch {
-			case quote == 0 && (r == '"' || r == '\''):
-				quote = r
-			case quote != 0 && r == quote:
-				quote = 0
-			case quote == 0 && r == '#':
-				line = line[:i]
-			}
-			if quote == 0 && r == '#' {
-				break
-			}
-		}
-		if strings.TrimSpace(line) != "" {
-			lines = append(lines, line)
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-// codexServerState says whether shikii's server can be appended to Codex's config.toml without parsing TOML: "add" (no shikii yet and nothing
-// that appending would break), "has" (shikii may be defined in some form) or "inline" (mcp_servers is an inline table, which cannot be extended).
-// When unsure it says "has", so the file is left alone and init shows the block to add by hand: appending a second [mcp_servers.shikii] makes Codex
-// refuse the whole file (0.9.6 audit, middle 1). Appending next to a person's own [mcp_servers.<name>] tables is fine (0.9.5 check).
-func codexServerState(b []byte) string {
-	text := codexConfigText(b)
-	if strings.Contains(text, `\u`) || strings.Contains(text, `\U`) { // an escaped key may be shikii or mcp_servers once unescaped (0.9.6 recheck)
-		return "has"
-	}
-	if codexShikiiServer.MatchString(text) {
-		return "has"
-	}
-	if codexInlineServers.MatchString(text) {
-		return "inline"
-	}
-	if codexServersTable.MatchString(text) && codexShikiiKey.MatchString(text) { // a key shikii anywhere, when [mcp_servers] exists (a multi-line string can hide where its table ends)
-		return "has"
-	}
-	for _, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, "mcp_servers") && strings.Contains(line, "shikii") {
-			return "has"
-		}
-	}
-	return "add"
-}
-
-// addCodexServer adds [mcp_servers.shikii] to Codex's ~/.codex/config.toml unless codexServerState says shikii is there already or the file
-// cannot be extended (appending would define it twice, or extend an inline table, and Codex could not read its settings: audit 6 item 1).
-func addCodexServer(path string, args []string) (bool, error) {
-	b, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return false, err
-	}
-	if codexServerState(b) != "add" {
-		return false, nil
-	}
-	// the binary's absolute path, like the hooks: Codex started from a desktop app may not have shikii on its PATH (Codex audit 0.9.2, low 3)
-	command := mcpCommand()
-	block := "\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n"
-	if len(b) > 0 && !strings.HasSuffix(string(b), "\n") {
-		block = "\n" + block
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return false, err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	_, err = f.WriteString(block)
-	return true, err
+	return true, writePersonFile(path, buf.Bytes(), 0o644)
 }
 
 // codexMCPArgs are the MCP server arguments init writes for Claude Code and OpenCode (per-project files, started in the project),
@@ -433,63 +340,16 @@ func fixCodexServer(path string, args []string) (bool, error) {
 		return false, nil
 	}
 	fixed := text[:i] + head + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n" + text[end:]
-	fi, err := os.Stat(path)
-	if err != nil {
-		return false, err
+	if !codexEditKeepsTheRest(b, []byte(fixed), map[string]any{"command": command, "args": stringsAsTOML(args)}) {
+		return false, nil // the text edit would change something else Codex reads: leave it
 	}
-	if fi.Mode().Perm()&0o200 == 0 {
-		return false, nil // the person made it read-only: do not replace it
-	}
-	tmp := path + ".shikii-tmp"
-	if err := os.WriteFile(tmp, []byte(fixed), fi.Mode().Perm()); err != nil {
-		return false, err
-	}
-	if err := os.Chmod(tmp, fi.Mode().Perm()); err != nil {
-		return false, err
-	}
-	return true, os.Rename(tmp, path)
-}
-
-// codexServerPinsAProject reports whether a [mcp_servers.shikii] block in Codex's config names a store by its absolute path
-// (--store /... or --store=/...). Codex shares that one registration among all sessions, so every session then uses that one project.
-func codexServerPinsAProject(path string) bool {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	sections := strings.Split(string(b), "[mcp_servers.shikii]")
-	for _, section := range sections[1:] {
-		if j := strings.Index(section, "\n["); j >= 0 {
-			section = section[:j]
+	if err := writePersonFile(path, []byte(fixed), 0o644); err != nil {
+		if errors.Is(err, errPersonFileReadOnly) {
+			return false, nil // the person made it read-only: do not replace it
 		}
-		for _, line := range strings.Split(section, "\n") {
-			key, value, ok := strings.Cut(line, "=")
-			if !ok || strings.TrimSpace(key) != "args" {
-				continue
-			}
-			// the array may span lines up to its closing bracket
-			start := strings.Index(section, line) + len(key) + 1
-			value = section[start:]
-			if k := strings.Index(value, "]"); k >= 0 {
-				value = value[:k]
-			}
-			var args []string
-			for _, part := range strings.Split(strings.TrimLeft(strings.TrimSpace(value), "["), ",") {
-				if s, err := strconv.Unquote(strings.TrimSpace(part)); err == nil {
-					args = append(args, s)
-				}
-			}
-			for k, a := range args {
-				if (a == "--store" || a == "-store") && k+1 < len(args) && filepath.IsAbs(args[k+1]) {
-					return true
-				}
-				if v, ok := strings.CutPrefix(strings.TrimLeft(a, "-"), "store="); ok && strings.HasPrefix(a, "-") && filepath.IsAbs(v) {
-					return true
-				}
-			}
-		}
+		return false, err
 	}
-	return false
+	return true, nil
 }
 
 // codexPinnedNote tells a person whose hand-edited Codex block names one project's store what that does and what to write instead.
@@ -633,29 +493,9 @@ func agentsSectionSpan(text string) (start, end int, found, ok bool) {
 	return start, end, true, pairs == 1 && len(marks) == 2
 }
 
-// replaceFile rewrites path's content by replacing it from a temp file (keeping the original permissions; the temp file gets a new name each time).
+// replaceFile rewrites a file of the person's (AGENTS.md) through writePersonFile.
 func replaceFile(path, content string) error {
-	mode := os.FileMode(0o644)
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode().Perm() // it is a repo file, so keep the original permissions
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".shikii-agents-*.tmp")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
-	if _, err := f.WriteString(content); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, mode); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return writePersonFile(path, []byte(content), 0o644)
 }
 
 // copySkill puts the embedded skills/shikii back at dst (the old content is deleted so stale references do not mix in).
@@ -695,13 +535,4 @@ func copySkill(dst string) error {
 		}
 		return os.WriteFile(target, b, 0o644)
 	})
-}
-
-// codexServerNote is what init says about Codex's config.toml when it did not add shikii there.
-func codexServerNote(path string) string {
-	b, _ := os.ReadFile(path)
-	if codexServerState(b) == "inline" {
-		return "did not add shikii: mcp_servers is written as an inline table (mcp_servers = { ... }), which cannot be extended. Add shikii to it, or rewrite it as tables and add:\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + " (Codex)"
-	}
-	return "kept the existing MCP settings; if they do not register shikii, add:\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + " (Codex)"
 }

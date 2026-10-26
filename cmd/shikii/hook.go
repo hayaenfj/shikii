@@ -2272,16 +2272,7 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 	if err := enc.Encode(cfg); err != nil {
 		return false, err
 	}
-	if fileExists(path) {
-		return true, replaceKeepingMode(path, buf.Bytes())
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return false, err
-	}
-	if err := os.WriteFile(path+".tmp", buf.Bytes(), 0o600); err != nil {
-		return false, err
-	}
-	return true, os.Rename(path+".tmp", path)
+	return true, writePersonFile(path, buf.Bytes(), 0o600)
 }
 
 // pct is a probability as a whole percent, as the page shows the AI's confidence.
