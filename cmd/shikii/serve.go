@@ -112,12 +112,31 @@ func cmdServe(args []string) error {
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- httpServer.Serve(ln) }()
+	go func() { // stop when this is no longer the project's page (its record was removed, or its store is gone)
+		for range time.Tick(pageOwnerCheck) {
+			if !pageStillOwned(common, scope, os.Getpid()) {
+				log.Printf("shikii serve: this is no longer the project's page (its record or store is gone); stopping")
+				ln.Close()
+				return
+			}
+		}
+	}()
 	// Wait for the local model after opening the port (status, queue and wiki can answer without a model; the hook does not wait)
-	if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
-		ln.Close()
+	waited := make(chan error, 1)
+	go func() { waited <- waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady) }()
+	select {
+	case err := <-waited:
+		if err != nil {
+			ln.Close()
+			return err
+		}
+		return <-errc
+	case err := <-errc:
+		if errors.Is(err, net.ErrClosed) {
+			return nil // stopped by the check above
+		}
 		return err
 	}
-	return <-errc
 }
 
 // newHTTPServer bounds every phase of an HTTP connection. The longest handler operation is a

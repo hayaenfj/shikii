@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -28,8 +29,9 @@ type projectEntry struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
 	URL         string `json:"url"`
-	StoreID     string `json:"store_id,omitempty"` // the store's own id (records/store-id): a move is reconnected only for the store initialized here (0.9.7)
-	InitVersion int    `json:"-"`                  // project.json version: 1 = --init of 0.7.4 or earlier, 2 = 0.7.5 or later (the wipe crossing 0.7.0 is done)
+	StoreID     string `json:"store_id,omitempty"`  // the store's own id (records/store-id): a move is reconnected only for the store initialized here (0.9.7)
+	StoreDir    string `json:"store_dir,omitempty"` // the .shikii folder itself (device:inode): mv on one disk keeps it, a copy never has it (0.9.7 audit B-1)
+	InitVersion int    `json:"-"`                   // project.json version: 1 = --init of 0.7.4 or earlier, 2 = 0.7.5 or later (the wipe crossing 0.7.0 is done)
 }
 
 var errProjectInactive = errors.New("run shikii --init in this project")
@@ -361,7 +363,7 @@ func registerProject(scope string) error {
 	if err != nil {
 		return err
 	}
-	entry := projectEntry{ID: projectID(scope), Name: filepath.Base(scope), Path: scope, URL: "/p/" + projectID(scope) + "/", StoreID: storeID(filepath.Join(scope, ".shikii"), true)}
+	entry := projectEntry{ID: projectID(scope), Name: filepath.Base(scope), Path: scope, URL: "/p/" + projectID(scope) + "/", StoreID: storeID(filepath.Join(scope, ".shikii"), true), StoreDir: storeDir(filepath.Join(scope, ".shikii"))}
 	data, _ := json.Marshal(entry)
 	dir := filepath.Join(common, "projects")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -431,8 +433,23 @@ func storeID(root string, create bool) string {
 
 var storeIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
-// registeredHere reports whether this machine's shared index has old as the project of this store: the entry for old exists, and its store
-// id is this store's (an entry written before 0.9.7 has none; it then matches only a store that has none either).
+// storeDir is the .shikii folder's device and inode. A folder moved with mv on the same disk keeps it; a copy (cp -R) or a .shikii brought
+// in from elsewhere never has the registered one.
+func storeDir(root string) string {
+	info, err := os.Lstat(root)
+	if err != nil {
+		return ""
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d", st.Dev, st.Ino)
+}
+
+// registeredHere reports whether this machine's shared index has old as the project of this very store: the entry for old exists, and
+// both its store id and its store folder are this store's. An entry written before 0.9.7 has neither, so it never matches: a project moved
+// before updating, or a copy, or a .shikii brought in from elsewhere, is reconnected only by the person's shikii --init (0.9.7 audit B-1, B-2).
 func registeredHere(old, root string) bool {
 	common, err := agentHome()
 	if err != nil {
@@ -447,7 +464,7 @@ func registeredHere(old, root string) bool {
 	if json.NewDecoder(io.LimitReader(f, 8192)).Decode(&p) != nil || p.Path != old || p.ID != projectID(old) {
 		return false
 	}
-	return p.StoreID == storeID(root, false)
+	return p.StoreID != "" && p.StoreID == storeID(root, false) && p.StoreDir != "" && p.StoreDir == storeDir(root)
 }
 
 func registeredProjects(common string) []projectEntry {

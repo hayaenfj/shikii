@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -75,10 +76,44 @@ func codexEditKeepsTheRest(before, after []byte, want map[string]any) bool {
 		return false
 	}
 	got, has := codexShikiiServer(a)
-	if want == nil && has || want != nil && (!has || !reflect.DeepEqual(got, want)) {
+	if want == nil && has || want != nil && (!has || !tomlEqual(got, want)) {
 		return false
 	}
-	return reflect.DeepEqual(withoutCodexShikii(a), withoutCodexShikii(b))
+	return tomlEqual(withoutCodexShikii(a), withoutCodexShikii(b))
+}
+
+// tomlEqual compares parsed TOML values, taking nan as equal to nan (reflect.DeepEqual does not, so a config.toml holding nan could never
+// be changed; 0.9.7 audit A-5).
+func tomlEqual(a, b any) bool {
+	switch x := a.(type) {
+	case map[string]any:
+		y, ok := b.(map[string]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for k, v := range x {
+			w, ok := y[k]
+			if !ok || !tomlEqual(v, w) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		y, ok := b.([]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !tomlEqual(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	case float64:
+		y, ok := b.(float64)
+		return ok && (x == y || math.IsNaN(x) && math.IsNaN(y))
+	}
+	return reflect.DeepEqual(a, b)
 }
 
 func codexServerWant(command string, args []string) map[string]any {
@@ -167,8 +202,10 @@ func codexServerNote(path string) string {
 	case "inline":
 		return "did not add shikii: mcp_servers is written as an inline table (mcp_servers = { ... }), which cannot be extended. Add shikii to it, or rewrite it as tables and add:\n" + block
 	case "unreadable":
-		_, err := readCodexConfig(b)
-		return fmt.Sprintf("did not add shikii: the file could not be read as TOML (%v), so it was left as it is. Fix it, then add:\n%s", err, block)
+		if _, err := readCodexConfig(b); err != nil {
+			return fmt.Sprintf("did not add shikii: the file could not be read as TOML (%v), so it was left as it is. Fix it, then add:\n%s", err, block)
+		}
+		return "did not add shikii: appending it would change how the other settings read, so the file was left as it is. Add:\n" + block
 	}
 	return "kept the existing MCP settings; if they do not register shikii, add:\n" + block
 }

@@ -46,16 +46,22 @@ func copiedFrom(old, scope string) bool {
 }
 
 // relinkMovedProject reconnects the project at cwd when its folder was moved or renamed, and returns what to tell the person once ("" when
-// nothing was done). The old path is remembered (source ids captured before 0.9.7 hold it), project.json and the shared index are pointed
-// here, and the old path's page is stopped. A copy is left alone (copiedNotice); after shikii --init it is a project of its own.
-func relinkMovedProject(cwd string, takeOverCopy bool) string {
+// nothing was done). It acts only when this machine's index has the old path as this very store (registeredHere) and the old path is not a
+// shikii project any more. The old path is remembered (source ids captured before 0.9.7 hold it), project.json and the shared index are
+// pointed here, and the old path's page is stopped. Anything else (a copy, a project moved before 0.9.7, a .shikii brought in) is left to
+// the person: notRunningNotice says so, and shikii --init (takeOver) makes it a project here.
+func relinkMovedProject(cwd string, takeOver bool) string {
 	root, scope, err := projectStoreAt(cwd)
 	if err != nil {
 		return ""
 	}
 	old, version, ok := previousScope(root, scope)
-	if !ok || (!takeOverCopy && (copiedFrom(old, scope) || !registeredHere(old, root))) {
-		return "" // a copy, or a store this machine did not initialize at that path: only the person's shikii --init activates it
+	if !ok {
+		return ""
+	}
+	moved := !copiedFrom(old, scope) && registeredHere(old, root)
+	if !moved && !takeOver {
+		return "" // only the person's shikii --init activates it
 	}
 	if err := notebook.MigrateLayout(root, old); err != nil {
 		hookLog("relink: " + err.Error())
@@ -66,13 +72,18 @@ func relinkMovedProject(cwd string, takeOverCopy bool) string {
 		hookLog("relink: " + err.Error())
 		return ""
 	}
+	if !moved {
+		// a copy or a .shikii from elsewhere becomes a project of its own: a new store id, so it never matches the original's entry
+		_ = os.Remove(filepath.Join(root, "records", "store-id"))
+	}
 	if err := finishProjectInit(root, scope, version); err != nil {
 		hookLog("relink: " + err.Error())
 		return ""
 	}
-	if !copiedFrom(old, scope) {
-		forgetProject(old)
+	if !moved {
+		return fmt.Sprintf("Made this folder a project of its own (its .shikii came from %s; the wiki and records are kept)", old)
 	}
+	forgetProject(old)
 	return fmt.Sprintf("shikii: this project's folder was moved or renamed from %s. shikii reconnected it here by itself: its wiki, records and settings are kept, and nothing needs fixing. Tell the person this once.", old)
 }
 
@@ -97,17 +108,21 @@ func forgetProject(old string) {
 	}
 }
 
-// copiedNotice is the notice for a folder whose .shikii was copied from a project that is still there: shikii is not running here.
+// copiedNotice is the notice for a folder whose .shikii names another path that relinkMovedProject did not take: a copy whose original
+// is still there, or a store this machine cannot confirm as that project moved here. shikii is not running in it.
 func copiedNotice(cwd string) string {
 	root, scope, err := projectStoreAt(cwd)
 	if err != nil {
 		return ""
 	}
 	old, _, ok := previousScope(root, scope)
-	if !ok || !copiedFrom(old, scope) {
+	if !ok {
 		return ""
 	}
-	return fmt.Sprintf("shikii: this folder's .shikii was copied from %s, which is still a shikii project, so shikii is not running here. To use this copy as a project of its own, ask the person, then run `shikii --init` here (its wiki and records are kept).", old)
+	if copiedFrom(old, scope) {
+		return fmt.Sprintf("shikii: this folder's .shikii was copied from %s, which is still a shikii project, so shikii is not running here. To use this copy as a project of its own, ask the person, then run `shikii --init` here (its wiki and records are kept).", old)
+	}
+	return fmt.Sprintf("shikii: this folder's .shikii was initialized at %s, and shikii cannot confirm that this folder is that project moved here (it may be a copy, or brought in from elsewhere), so shikii is not running here. Ask the person; `shikii --init` here makes it a project here (its wiki and records are kept).", old)
 }
 
 // otherPathNotice is the notice for when this project's store has a wiki store left under the previous path's name.

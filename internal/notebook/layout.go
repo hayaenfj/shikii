@@ -1,10 +1,10 @@
 package notebook
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 )
 
 // storeDirName is the fixed name of the project's wiki pages and sources inside its store (0.9.7). Before, both were named by sha256 of the
@@ -42,6 +42,10 @@ func MigrateLayout(root, scope string) error {
 		}
 		if err := os.Rename(from, fixed); err != nil {
 			if _, statErr := os.Lstat(fixed); statErr != nil { // another process moved it first
+				return err
+			}
+		} else if area == "wiki/lessons" {
+			if err := rememberName(fixed, filepath.Base(from)); err != nil {
 				return err
 			}
 		}
@@ -113,5 +117,47 @@ func (b Book) sourceIDMatches(dir, id string, canonical []byte) bool {
 	return false
 }
 
-// legacySourceLink is a page's link to a source as written before 0.9.7, through the hash-named store. A page written then is still unchanged.
-var legacySourceLink = regexp.MustCompile(`\]\(\.\./\.\./\.\./records/wiki-sources/[0-9a-f]{64}/`)
+// legacyNamesFile, in the pages store, lists the hash names the store had before 0.9.7. Pages written then link their sources through that
+// name, and only those links are read as unchanged (a link edited to any other folder is a changed page; 0.9.7 audit B-4).
+const legacyNamesFile = ".legacy-names.json"
+
+func rememberName(dir, name string) error {
+	names := legacyNames(dir)
+	for _, n := range names {
+		if n == name {
+			return nil
+		}
+	}
+	data, _ := json.Marshal(append(names, name))
+	return writeFile(filepath.Join(dir, legacyNamesFile), data)
+}
+
+func legacyNames(dir string) []string {
+	data, err := os.ReadFile(filepath.Join(dir, legacyNamesFile))
+	if err != nil {
+		return nil
+	}
+	var names []string
+	if json.Unmarshal(data, &names) != nil {
+		return nil
+	}
+	out := names[:0]
+	for _, n := range names {
+		if scopeName.MatchString(n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// withCurrentSourceLinks turns a page's source links through a name the store had before 0.9.7 into links through the fixed name.
+func (b Book) withCurrentSourceLinks(data []byte) []byte {
+	dir, err := b.directory(false, "pages")
+	if err != nil {
+		return data
+	}
+	for _, name := range legacyNames(dir) {
+		data = bytes.ReplaceAll(data, []byte("](../../../records/wiki-sources/"+name+"/"), []byte("](../../../records/wiki-sources/"+storeDirName+"/"))
+	}
+	return data
+}

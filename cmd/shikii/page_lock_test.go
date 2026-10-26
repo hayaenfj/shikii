@@ -103,3 +103,37 @@ func TestPageStartsWhenTheOldRecordsPidWasReused(t *testing.T) {
 	}
 	t.Fatal("the page did not start: the old record with a reused pid looked up through the page's own lock")
 }
+
+// 0.9.7 audit B-b: a page whose record no longer points at it (reconnecting a moved project removes the old path's record, uninstall too)
+// or whose store is gone stops by itself instead of running on as an orphan.
+func TestOrphanPageStopsByItself(t *testing.T) {
+	hookEnv(t, nil)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	old := pageOwnerCheck
+	pageOwnerCheck = 50 * time.Millisecond
+	t.Cleanup(func() { pageOwnerCheck = old })
+	done := make(chan error, 1)
+	go func() {
+		done <- cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", "http://127.0.0.1:1"})
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, ok := readPageRecord(common, repo); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("precondition: the page started")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := os.Remove(pagePath(common, repo)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("a page whose record is gone keeps running")
+	}
+}

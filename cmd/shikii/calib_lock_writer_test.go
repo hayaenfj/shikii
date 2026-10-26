@@ -73,12 +73,26 @@ func TestOnlyLockCalibrationTouchesTheCalibrationLock(t *testing.T) {
 	}
 }
 
-// nilWriters returns the calls that pass nil as an http.ResponseWriter parameter outside a go statement.
+// nilWriterAllowed are the only places that pass no writer (nil) to a function taking an http.ResponseWriter: enclosing function → callee,
+// and only inside a go statement there (the background tune after the route answered 202). Everywhere else the writer passed must be the
+// handler's own writer parameter (0.9.7 audit A-2: a nil held in a variable, or a go statement the reply then waits for, slipped through).
+var nilWriterAllowed = map[string]string{"handleTuneRun": "runTuneCaptured"}
+
+// writerArgAllowed are the other writers allowed by name: "function → callee" → the variable passed. MCP calls the handlers in process
+// through a recorder, which has no connection and no write deadline.
+var writerArgAllowed = map[string]string{"callTool → ServeHTTP": "rec"}
+
+// nilWriters returns "function → callee" for every call that passes something other than the enclosing function's writer parameter to a
+// function's http.ResponseWriter parameter, except a literal nil at an allowed place inside a go statement.
 func nilWriters(t *testing.T, srcs map[string]string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
 	var parsed []*ast.File
 	writerAt := map[string]int{} // function name → index of its http.ResponseWriter parameter
+	isWriter := func(e ast.Expr) bool {
+		sel, ok := e.(*ast.SelectorExpr)
+		return ok && sel.Sel.Name == "ResponseWriter"
+	}
 	for file, src := range srcs {
 		f, err := parser.ParseFile(fset, file, src, 0)
 		if err != nil {
@@ -92,7 +106,7 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 			}
 			i := 0
 			for _, p := range fn.Type.Params.List {
-				if sel, ok := p.Type.(*ast.SelectorExpr); ok && sel.Sel.Name == "ResponseWriter" {
+				if isWriter(p.Type) {
 					writerAt[fn.Name.Name] = i
 				}
 				i += max(1, len(p.Names))
@@ -101,43 +115,85 @@ func nilWriters(t *testing.T, srcs map[string]string) []string {
 	}
 	var out []string
 	for _, f := range parsed {
-		var walk func(n ast.Node, inGo bool)
-		walk = func(n ast.Node, inGo bool) {
-			ast.Inspect(n, func(m ast.Node) bool {
-				if g, ok := m.(*ast.GoStmt); ok && !inGo {
-					walk(g.Call, true)
-					return false
+		for _, d := range f.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			own := map[string]bool{} // the writer parameters of this function and of the function literals in it
+			ast.Inspect(fn, func(n ast.Node) bool {
+				var ft *ast.FuncType
+				switch x := n.(type) {
+				case *ast.FuncDecl:
+					ft = x.Type
+				case *ast.FuncLit:
+					ft = x.Type
 				}
-				c, ok := m.(*ast.CallExpr)
-				if !ok || inGo {
-					return true
-				}
-				var name string
-				switch fun := c.Fun.(type) {
-				case *ast.SelectorExpr:
-					name = fun.Sel.Name
-				case *ast.Ident:
-					name = fun.Name
-				}
-				if i, ok := writerAt[name]; ok && i < len(c.Args) {
-					if id, ok := c.Args[i].(*ast.Ident); ok && id.Name == "nil" {
-						out = append(out, name)
+				if ft != nil {
+					for _, p := range ft.Params.List {
+						if isWriter(p.Type) {
+							for _, name := range p.Names {
+								own[name.Name] = true
+							}
+						}
 					}
 				}
 				return true
 			})
+			var walk func(n ast.Node, inGo bool)
+			walk = func(n ast.Node, inGo bool) {
+				ast.Inspect(n, func(m ast.Node) bool {
+					if g, ok := m.(*ast.GoStmt); ok && !inGo {
+						walk(g.Call, true)
+						return false
+					}
+					c, ok := m.(*ast.CallExpr)
+					if !ok {
+						return true
+					}
+					var name string
+					switch fun := c.Fun.(type) {
+					case *ast.SelectorExpr:
+						name = fun.Sel.Name
+					case *ast.Ident:
+						name = fun.Name
+					}
+					i, ok := writerAt[name]
+					if !ok || i >= len(c.Args) {
+						return true
+					}
+					id, _ := c.Args[i].(*ast.Ident)
+					switch {
+					case id != nil && own[id.Name]:
+					case id != nil && id.Name == "nil" && inGo && nilWriterAllowed[fn.Name.Name] == name:
+					case id != nil && writerArgAllowed[fn.Name.Name+" → "+name] == id.Name:
+					default:
+						out = append(out, fn.Name.Name+" → "+name)
+					}
+					return true
+				})
+			}
+			walk(fn.Body, false)
 		}
-		walk(f, false)
 	}
 	return out
 }
 
 func TestOnlyBackgroundWorkWaitsForTheLockWithoutAWriter(t *testing.T) {
-	for _, name := range nilWriters(t, packageSources(t)) {
-		t.Errorf("%s is called with a nil writer outside a go statement: a reply waiting for the lock must pass its writer", name)
+	for _, call := range nilWriters(t, packageSources(t)) {
+		t.Errorf("%s passes something other than the handler's own writer: a reply waiting for the lock must pass its writer (a nil writer only at a place in nilWriterAllowed, inside a go statement)", call)
 	}
-	bad := map[string]string{"bad.go": "package main\nimport \"net/http\"\nfunc (s *server) lockCalibration(w http.ResponseWriter) func() { return nil }\nfunc (s *server) handleA() { defer s.lockCalibration(nil)(); go func() { s.lockCalibration(nil)() }() }\n"}
-	if got := nilWriters(t, bad); len(got) != 1 || got[0] != "lockCalibration" {
-		t.Fatalf("negative example: a nil writer outside a go statement is found, inside one it is not: %v", got)
+	allowed := "package main\nimport \"net/http\"\nfunc (s *server) runTuneCaptured(w http.ResponseWriter) {}\nfunc (s *server) handleTuneRun(w http.ResponseWriter) { go func() { s.runTuneCaptured(nil) }(); s.runTuneCaptured(w) }\n"
+	if got := nilWriters(t, map[string]string{"ok.go": allowed}); len(got) != 0 {
+		t.Fatalf("the allowed background tune and the handler's own writer pass: %v", got)
+	}
+	for name, src := range map[string]string{
+		"nil outside go": "package main\nimport \"net/http\"\nfunc (s *server) lockCalibration(w http.ResponseWriter) func() { return nil }\nfunc (s *server) handleA(w http.ResponseWriter) { defer s.lockCalibration(nil)() }\n",
+		"nil in a go statement at a place not allowed": "package main\nimport \"net/http\"\nfunc (s *server) lockCalibration(w http.ResponseWriter) func() { return nil }\nfunc (s *server) handleA(w http.ResponseWriter) { done := make(chan bool); go func() { s.lockCalibration(nil)(); done <- true }(); <-done }\n",
+		"nil held in a variable":                       "package main\nimport \"net/http\"\nfunc (s *server) lockCalibration(w http.ResponseWriter) func() { return nil }\nfunc (s *server) handleA(w http.ResponseWriter) { var none http.ResponseWriter; defer s.lockCalibration(none)() }\n",
+	} {
+		if got := nilWriters(t, map[string]string{"bad.go": src}); len(got) != 1 {
+			t.Errorf("negative example %q is found: %v", name, got)
+		}
 	}
 }

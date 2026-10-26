@@ -54,7 +54,7 @@ GitHub Releases の最新安定版から、利用中の OS・CPU 向けの本体
 
 初期化は `.shikii/` を Git の未追跡ファイルから除く(私的な会話が入るため)。コミットするものは、除外を外して自分で足す。
 
-**フォルダを移す・名前を変える時:** 直す物はありません(0.9.7)。`.shikii/` の中は決まった名前なので、wiki・原資料・記録はフォルダと一緒に移ります。次の依頼の hook が、新しいパスでプロジェクトを自分でつなぎ直し、1 回だけ知らせます(そこで `shikii --init` しても同じです)。元が残っている写し(`cp -r`)は乗っ取らず、記録は元に入り続けます。写しの中で `shikii --init` すると、別のプロジェクトになります。この機械が前のパスで初期化していない `.shikii`(アーカイブや別の機械から持ち込んだ物)は、`shikii --init` するまで有効になりません。0.9.7 より前に書いた置き場は、最初に開いた時に決まった名前へ移ります。エージェント自身の記録(Claude Code の `~/.claude/projects/`、Codex の `[projects]`)はパスで呼ばれ、shikii は移しません。作法の [references/wiki.md](../skills/shikii/references/wiki.md) の「Moving or renaming the project folder」を見てください。
+**フォルダを移す・名前を変える時:** 直す物はありません(0.9.7)。`.shikii/` の中は決まった名前なので、wiki・原資料・記録はフォルダと一緒に移ります。次の依頼の hook が、新しいパスでプロジェクトを自分でつなぎ直し、1 回だけ知らせます(そこで `shikii --init` しても同じです)。元が残っている写し(`cp -r`)は乗っ取らず、記録は元に入り続けます。写しの中で `shikii --init` すると、別のプロジェクトになります。この機械が前のパスで初期化していない `.shikii`(アーカイブや別の機械から持ち込んだ物)は、`shikii --init` するまで有効になりません。0.9.7 より前に書いた置き場は、最初に開いた時に決まった名前へ移ります。0.9.7 より前に、この置き場が知らないパスで控えた原資料のうち、まだどの記事も引いていない物は、`shikii wiki lint` が `source-from-other-path` と出します。まだ要る時は、控え直してください。エージェント自身の記録(Claude Code の `~/.claude/projects/`、Codex の `[projects]`)はパスで呼ばれ、shikii は移しません。作法の [references/wiki.md](../skills/shikii/references/wiki.md) の「Moving or renaming the project folder」を見てください。
 
 答え合わせの画面そのもの(`web/`、Svelte + Tailwind CSS)を直すには Node 24 が要る(`make web`)。使うだけなら要らない: 組んだ画面はコミットされ、実行ファイルに埋め込まれている。
 

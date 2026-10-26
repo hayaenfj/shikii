@@ -95,12 +95,33 @@ func holdPageLock(common, scope string) (*os.File, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
-		f.Close()
-		return nil, false
+	// pageLockHeld peeks with a shared lock for an instant (another hook, the project list, shikii page), so a start that meets a peek
+	// tries again for a moment; a running page holds the lock for its whole life (0.9.7 audit A-3)
+	for deadline := time.Now().Add(pageLockRetry); ; time.Sleep(5 * time.Millisecond) {
+		if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) == nil {
+			return f, true
+		}
+		if time.Now().After(deadline) {
+			f.Close()
+			return nil, false
+		}
 	}
-	return f, true
 }
+
+const pageLockRetry = 250 * time.Millisecond
+
+// pageStillOwned reports whether this process is still the project's page: its store exists and the page record names this pid.
+// Reconnecting a moved project and uninstall remove the old record; a page that lost it stops instead of running on as an orphan (0.9.7 audit B-b).
+func pageStillOwned(common, scope string, pid int) bool {
+	if _, err := os.Stat(filepath.Join(scope, ".shikii")); err != nil {
+		return false
+	}
+	r, ok := readPageRecord(common, scope)
+	return ok && r.PID == pid
+}
+
+// pageOwnerCheck is how often a page started by the hook checks that it is still this project's page (see pageStillOwned).
+var pageOwnerCheck = time.Minute
 
 // pageLockHeld reports whether a page holds the page lock now.
 func pageLockHeld(common, scope string) bool {
