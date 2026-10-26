@@ -89,17 +89,17 @@ shikii は線(較正)が無いうちは `act` を出さない。判定に基づ�
 | どれでも | 線が無い(影) | 判定からの助言は出さない(過去の会話の引用は別) |
 | needs-plan | act | エージェントに文脈 `shikii: this request looks like one to agree on an approach with the user before changing anything (needs-plan p=0.88; line on 61 truths, human-checked precision 0.96). Consider EnterPlanMode or a one-line confirmation first` |
 | needs-plan | discard(合わせなくてよい) | 何も出さない |
-| changes-in-scope | discard(確信して「範囲の外」) | 端末の人に 1 行 `shikii: this turn's changes look outside what you asked for (changes-in-scope p(yes)=0.12…). Check the changed files before going on` |
-| done-as-asked | discard(確信して「終えていない」) | 端末の人に 1 行 `shikii: this turn looks unfinished against what you asked (done-as-asked p(yes)=0.15…). Something may be left to ask for again` |
+| changes-in-scope | discard(確信して「範囲の外」) | 端末の人に 1 行 `shikii: the changes this time look outside what you asked for ("Were the changed files all needed?": the AI is 88% sure…). Check the changed files before going on` |
+| done-as-asked | discard(確信して「終えていない」) | 端末の人に 1 行 `shikii: what you asked looks unfinished this time ("Did it finish what was asked?": the AI is 85% sure…). Something may be left to ask for again` |
 | changes-in-scope / done-as-asked | act(範囲の中 / 終えた) | 何も出さない |
-| needs-plan | ask(線はあるが迷った) | 端末に 1 行 `shikii: unsure (done-as-asked yes p=0.62). Answer later: http://127.0.0.1:<空いていたポート>/?spec=done-as-asked&trace=…` |
+| needs-plan | ask(線はあるが迷った) | 端末に 1 行 `shikii: the AI is unsure about "Should it have asked you first?" (leaning to "yes"). Answer later: http://127.0.0.1:<空いていたポート>/?spec=needs-plan&trace=…` |
 | changes-in-scope / done-as-asked | ask | 次の会話で AI の仮採点へ回す。人は抜き取りと保留を確認 |
 | prompt-kind | 何でも | 何も出さない(結果の正解のためにツリーのハッシュを控える) |
 | (Stop) | 線が無くても | 新しく答え待ちになった判定があれば 1 行(件数と URL)。無ければ黙る |
 
 **ツールは止めない。許可の判定(allow / ask / deny)も出さない。** 考える前の問い(needs-plan)はエージェントへの文脈になり、考え終わった後の問いは端末の人への文になる: Stop で文脈を返すと会話が勝手に続いてしまうので、続けるかどうか(「まだ終わってないよ」)は人が決める。hook が出すのは「黙る / エージェントに文脈 / 人に 1 行 / 止める検査に引っかかった時だけ Stop を止めて理由(decision: block)」の 4 つ。
 
-文は英語。`~/.claude/settings.json` の `language` が日本語なら、同じ文を日本語で併記する。他の言語は文は英語のままで、記録の `display` に spec の `display.<lang>` の質問と答えの名前(あれば)と言語だけが入る。例: `shikii: this turn looks unfinished against what you asked (done-as-asked p(yes)=0.15)` の下に `shikii: このターンは頼んだことを終えていないように見える(done-as-asked p(はい)=0.15)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。はい / いいえの問い(noul)の答えの名前は p(yes) が 0.5 未満なら「いいえ」側(終えていない、範囲の外)。英語の設定なら英語だけで、`display` は付かない(spec に `display.<lang>` が無く出した文も無い時も付かない)。
+文は英語。`~/.claude/settings.json` の `language` が日本語なら、同じ文を日本語で併記する。他の言語は文は英語のままで、記録の `display` に spec の `display.<lang>` の質問と答えの名前(あれば)と言語だけが入る。人に出す行は、問いを画面の題で呼び、AI の自信を百分率で言う(spec の id と p は出さない。エージェントへの文脈には残す)。例: `shikii: what you asked looks unfinished this time ("Did it finish what was asked?": the AI is 85% sure)` の下に `shikii: 今回は頼んだことを終えていないように見えます(問い「頼まれたことを終えたか」、AI の自信 85%)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。はい / いいえの問い(noul)の答えの名前は p(yes) が 0.5 未満なら「いいえ」側(終えていない、範囲の外)。英語の設定なら英語だけで、`display` は付かない(spec に `display.<lang>` が無く出した文も無い時も付かない)。
 
 ターンの終わり(Stop)には、そのセッションの判定で人の答えを待つもの(迷った判定と、act の 20 件に 1 件の抜き取り。線が無い間は、生の確率が spec の `thresholds.ask` 以上の判定が「迷った」になり、それ未満の discard は記録だけ)が新しく増えていれば 1 行だけ出す: `shikii: 3 of this session's decisions wait for your answer: http://127.0.0.1:<空いていたポート>/`。行にはそのプロジェクトの画面の URL が入り、立っていなければ hook が裏で起こして「まだ立っていない」と書く。同じ数を毎ターン繰り返さない。URL の `?spec=<id>&trace=<trace_id>` で開くと、その 1 件が先頭に来る(答え済み・列に無い trace は元の順のまま)。
 

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -463,18 +464,27 @@ func hookLang() string {
 }
 
 // hookLoc is the wording in the configured language: the language code, and the question and answer from the spec's display.<lang> (empty if none). Lang "" means English only.
+// Name / EnName are the question's title on the page (questionTitle) and EnTop the answer in English, for the notices the person reads (never the spec id).
 type hookLoc struct {
 	Lang, Question, Top string
+	Name, EnName, EnTop string
 }
 
 func localize(sp *spec.Spec, d *decide.Decision, lang string) hookLoc {
 	l := hookLoc{Lang: lang}
-	if lang == "" || sp == nil || d == nil {
+	if sp == nil || d == nil {
 		return l
 	}
 	id := d.Top
 	if sp.Type == spec.Noul && id == "yes" && d.P < 0.5 { // a noul decision always has Top yes with P = p(yes): in the person's words p<0.5 is the "no" side
 		id = "no"
+	}
+	l.Name, l.EnName = questionTitle(sp, "ja"), questionTitle(sp, "en")
+	if l.EnTop = strings.TrimSpace(sp.Display["en"].Options[id]); l.EnTop == "" {
+		l.EnTop = id
+	}
+	if lang == "" {
+		return l
 	}
 	if disp, ok := sp.Display[lang]; ok {
 		l.Question = strings.TrimSpace(disp.Question)
@@ -514,16 +524,37 @@ func hookOutcome(specID string, d *decide.Decision, l hookLoc) hookOut {
 		return hookOut{}
 	}
 	url := answerURL(specID, d.TraceID)
+	// the texts in System are read by the person in the terminal: the question by its title on the page and the page's plain words (web/scripts/test-glossary.mjs),
+	// the probability as the AI's confidence, never the spec id or p= (audit 0.9.3). Context is for the agent and keeps the id and p
+	name, enName := l.Name, l.EnName
+	if name == "" {
+		name = questionTitle(nil, "ja")
+	}
+	if enName == "" {
+		enName = questionTitle(nil, "en")
+	}
+	enTop := l.EnTop
+	if enTop == "" {
+		enTop = d.Top
+	}
 	unsure := func() hookOut {
 		return hookOut{System: bi(
-			fmt.Sprintf("shikii: unsure (%s %s p=%.2f). Answer later: %s", specID, d.Top, d.P, url),
-			fmt.Sprintf("shikii: 迷っている(%s「%s」p=%.2f)。あとで答える: %s", specID, l.topName(d.Top), d.P, url), l)}
+			fmt.Sprintf("shikii: the AI is unsure about %q (leaning to %q). Answer later: %s", enName, enTop, url),
+			fmt.Sprintf("shikii: 問い「%s」で AI が迷っています(「%s」寄り)。あとで答える: %s", name, l.topName(d.Top), url), l)}
 	}
 	receipt, receiptJA := "", ""
+	personReceipt, personReceiptJA := "", ""
 	if r := d.Receipt; r != nil {
 		receipt = fmt.Sprintf("; line on %d truths, human-checked precision %.2f", r.N, r.HumanPrecision)
 		receiptJA = fmt.Sprintf("。線は正解 %d 件、人が確かめた精度 %.2f", r.N, r.HumanPrecision)
+		personReceipt = fmt.Sprintf("; the point where the AI may decide alone was set from %d truths", r.N)
+		personReceiptJA = fmt.Sprintf("。AI がひとりで決めてよい境目は正解 %d 件から決めました", r.N)
+		if r.HumanCheckedAct > 0 {
+			personReceipt += fmt.Sprintf(", and %d%% of the %d checked were right", pct(r.HumanPrecision), r.HumanCheckedAct)
+			personReceiptJA += fmt.Sprintf("(確かめた %d 件のうち %d%% が合っていた)", r.HumanCheckedAct, pct(r.HumanPrecision))
+		}
 	}
+	sure := pct(1 - d.P) // a Discard of a yes / no question is confident of the "no" side; P is p(yes)
 	switch specID {
 	case "needs-plan":
 		switch d.Band {
@@ -538,8 +569,8 @@ func hookOutcome(specID string, d *decide.Decision, l hookLoc) hookOut {
 		switch d.Band {
 		case decide.Discard: // confident "outside the scope"
 			return hookOut{System: bi(
-				fmt.Sprintf("shikii: this turn's changes look outside what you asked for (changes-in-scope p(yes)=%.2f%s). Check the changed files before going on", d.P, receipt),
-				fmt.Sprintf("shikii: このターンで変えたものは頼まれた範囲の外に見える(changes-in-scope p(はい)=%.2f%s)。続ける前に変わったファイルを確かめる", d.P, receiptJA), l)}
+				fmt.Sprintf("shikii: the changes this time look outside what you asked for (%q: the AI is %d%% sure%s). Check the changed files before going on", enName, sure, personReceipt),
+				fmt.Sprintf("shikii: 今回変えたものは頼まれた範囲の外に見えます(問い「%s」、AI の自信 %d%%%s)。続ける前に変わったファイルを確かめてください", name, sure, personReceiptJA), l)}
 		case decide.Ask:
 			return hookOut{} // to provisional scoring from the conversation. The person checks spot checks and holds
 		}
@@ -547,8 +578,8 @@ func hookOutcome(specID string, d *decide.Decision, l hookLoc) hookOut {
 		switch d.Band {
 		case decide.Discard: // confident "not finished"
 			return hookOut{System: bi(
-				fmt.Sprintf("shikii: this turn looks unfinished against what you asked (done-as-asked p(yes)=%.2f%s). Something may be left to ask for again", d.P, receipt),
-				fmt.Sprintf("shikii: このターンは頼んだことを終えていないように見える(done-as-asked p(はい)=%.2f%s)。言い直すことが残っているかもしれない", d.P, receiptJA), l)}
+				fmt.Sprintf("shikii: what you asked looks unfinished this time (%q: the AI is %d%% sure%s). Something may be left to ask for again", enName, sure, personReceipt),
+				fmt.Sprintf("shikii: 今回は頼んだことを終えていないように見えます(問い「%s」、AI の自信 %d%%%s)。言い直すことが残っているかもしれません", name, sure, personReceiptJA), l)}
 		case decide.Ask:
 			return hookOut{}
 		}
@@ -1139,11 +1170,15 @@ func stopSummary(agent string, sess *hookSession) string {
 		return ""
 	}
 	sess.Reported = waiting
-	l := hookLoc{Lang: hookLang()}
 	page := pageRef(filepath.Dir(agent)) // start it in the background if not running. The person never types a start command
+	return waitingNotice(n, page, hookLoc{Lang: hookLang()})
+}
+
+// waitingNotice is the waiting-answers line the person reads at the end of the turn (in the page's plain words, see web/scripts/test-glossary.mjs).
+func waitingNotice(n int, page string, l hookLoc) string {
 	return bi(
 		fmt.Sprintf("shikii: %d of this session's decisions wait for your answer: %s", n, page),
-		fmt.Sprintf("shikii: このセッションの判定 %d 件が答え待ち: %s", n, page), l)
+		fmt.Sprintf("shikii: このセッションで、あなたの答えを待っている物が %d 件あります: %s", n, page), l)
 }
 
 // changedFiles compares two listings (`git ls-files --stage`: "mode sha stage\tpath") and returns, sorted by name, the paths of files whose content or mode changed, or that were added or removed.
@@ -2060,3 +2095,6 @@ func editHooks(path string, install bool, hookEvents []hookEvent) (bool, error) 
 	}
 	return true, os.Rename(path+".tmp", path)
 }
+
+// pct is a probability as a whole percent, as the page shows the AI's confidence.
+func pct(p float64) int { return int(math.Round(p * 100)) }

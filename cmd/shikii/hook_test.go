@@ -195,14 +195,14 @@ func TestHookOutcomeTable(t *testing.T) {
 		}},
 		{"changes in scope: silent", "changes-in-scope", d(decide.Act, "yes", 0.9, true), func(o hookOut) bool { return o.empty() }},
 		{"changes out of scope: a line for the person, no context", "changes-in-scope", d(decide.Discard, "yes", 0.1, true), func(o hookOut) bool {
-			return o.Context == "" && strings.Contains(o.System, "outside what you asked") && strings.Contains(o.System, "0.10")
+			return o.Context == "" && strings.Contains(o.System, "outside what you asked") && strings.Contains(o.System, "90%")
 		}},
 		{"changes unsure: to provisional scoring", "changes-in-scope", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
 			return o.empty()
 		}},
 		{"done: silent", "done-as-asked", d(decide.Act, "yes", 0.9, true), func(o hookOut) bool { return o.empty() }},
 		{"not done: a line for the person", "done-as-asked", d(decide.Discard, "yes", 0.2, true), func(o hookOut) bool {
-			return o.Context == "" && strings.Contains(o.System, "unfinished") && strings.Contains(o.System, "0.20")
+			return o.Context == "" && strings.Contains(o.System, "unfinished") && strings.Contains(o.System, "80%")
 		}},
 		{"done unsure: to provisional scoring", "done-as-asked", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
 			return o.empty()
@@ -557,7 +557,7 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 		t.Fatalf("Stop must not return hookSpecificOutput: %s", out)
 	}
 	msg := fmt.Sprint(got["systemMessage"])
-	if !strings.Contains(msg, "looks unfinished") || !strings.Contains(msg, "終えていないように見える") {
+	if !strings.Contains(msg, "looks unfinished") || !strings.Contains(msg, "終えていないように見えます") {
 		t.Fatalf("message must carry English and Japanese: %s", out)
 	}
 	if d := bySummary("half: I removed").Display; d == nil || !strings.HasPrefix(msg, d.Message) {
@@ -569,7 +569,7 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 	}
 	// switching back to English removes the side-by-side text
 	setLang("English")
-	if out := turn("e2", "move the helpers into their own package", "half: moved two helpers, the rest still import the old path."); strings.Contains(out, "見える") || !strings.Contains(out, "unfinished") {
+	if out := turn("e2", "move the helpers into their own package", "half: moved two helpers, the rest still import the old path."); strings.Contains(out, "見えます") || !strings.Contains(out, "unfinished") {
 		t.Fatalf("English setting must not add Japanese: %s", out)
 	}
 	// a noul answer reads はい / いいえ even without a display. Top is always yes and P is p(yes), so p<0.5 is "いいえ"
