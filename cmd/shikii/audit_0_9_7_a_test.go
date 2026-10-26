@@ -90,18 +90,6 @@ func TestAuditCodexConfigWithNaN(t *testing.T) {
 	}
 }
 
-// E: loopholes in the nil-writer rule.
-func TestAuditNilWriterLoopholes(t *testing.T) {
-	for name, src := range map[string]string{
-		"nil variable": "package main\nimport \"net/http\"\nfunc (s *server) lockCalibration(w http.ResponseWriter) func() { return nil }\nfunc (s *server) handleA(w http.ResponseWriter) { var none http.ResponseWriter; defer s.lockCalibration(none)() }\n",
-		"go then wait": "package main\nimport \"net/http\"\nfunc (s *server) lockCalibration(w http.ResponseWriter) func() { return nil }\nfunc (s *server) handleA(w http.ResponseWriter) { done := make(chan bool); go func() { s.lockCalibration(nil)(); done <- true }(); <-done }\n",
-	} {
-		if got := nilWriters(t, map[string]string{"bad.go": src}); len(got) == 0 {
-			t.Errorf("%s: a reply waits for the lock without an extended deadline, and the rule does not see it", name)
-		}
-	}
-}
-
 // F: a read-only .mcp.json in the project: init goes on with the rest (Codex, the skill), as it does for a read-only AGENTS.md / fixCodexServer.
 func TestAuditInitGoesOnPastAReadOnlyMCPJSON(t *testing.T) {
 	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))

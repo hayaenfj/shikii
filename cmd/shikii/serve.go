@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	shikii "github.com/hayaenfj/shikii"
@@ -144,10 +145,11 @@ func cmdServe(args []string) error {
 
 // newHTTPServer bounds every phase of an HTTP connection. The longest handler operation is a
 // model decision with a 60-second context deadline, so the write deadline leaves another minute
-// for the response while slow request headers and bodies are cut off much earlier.
+// for the response while slow request headers and bodies are cut off much earlier. Replies in flight
+// while a calibration holds or waits for the lock are kept alive (keepRepliesAliveDuringCalibration).
 func newHTTPServer(handler http.Handler) *http.Server {
 	return &http.Server{
-		Handler:           handler,
+		Handler:           keepRepliesAliveDuringCalibration(handler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      2 * time.Minute,
@@ -156,22 +158,61 @@ func newHTTPServer(handler http.Handler) *http.Server {
 	}
 }
 
-// allowLongResponse lets one handler that starts long work (the automatic calibration after an answer, a synchronous tune) answer after
-// newHTTPServer's WriteTimeout; the header and read limits still cut slow clients. A recorder (MCP calls handlers in process) has no deadline.
-func allowLongResponse(w http.ResponseWriter) {
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(longResponseLimit))
+// calibrationsActive counts the holders and waiters of every calibration lock in this process (lockCalibration keeps it).
+var calibrationsActive atomic.Int64
+
+// replyCheck is how often a reply in flight looks whether a calibration is active; it is well under WriteTimeout.
+var replyCheck = 20 * time.Second
+
+// keepRepliesAliveDuringCalibration extends the write deadline of every reply in flight while a calibration holds or waits for the lock
+// (a background tune holds it for its model run and the calibration after it, up to 40 minutes). It works at the connection, whatever
+// path the handler took to the lock, so no handler has to remember it. Before, each handler passed its writer to the lock, and audits A
+// to G of 0.9.7 kept finding paths that passed none or another; the static checks that tried to prove every path were dropped.
+// While no calibration is active, the write timeout stays as it is.
+func keepRepliesAliveDuringCalibration(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var mu sync.Mutex
+		finished := false
+		rc := http.NewResponseController(w)
+		extend := func() {
+			mu.Lock()
+			defer mu.Unlock()
+			if !finished && calibrationsActive.Load() > 0 {
+				_ = rc.SetWriteDeadline(time.Now().Add(longResponseLimit))
+			}
+		}
+		done := make(chan struct{})
+		go func() {
+			t := time.NewTicker(replyCheck)
+			defer t.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-t.C:
+					extend()
+				}
+			}
+		}()
+		defer func() {
+			mu.Lock()
+			finished = true // the response is not touched after the handler returns
+			mu.Unlock()
+			close(done)
+		}()
+		h.ServeHTTP(w, r)
+	})
 }
 
-// lockCalibration takes the calibration lock and returns its release. A background tune can hold the lock for its model run and the
-// calibration after it, so the reply waiting here (w) first gets its write deadline extended past newHTTPServer's WriteTimeout. The extension
-// belongs to the lock, not to a list of routes: before 0.9.7 every audit found a route that reached the lock without being on the list.
-// w is nil only in a goroutine no reply waits for. Only this function touches calibMu (calib_lock_writer_test.go).
-func (s *server) lockCalibration(w http.ResponseWriter) func() {
-	if w != nil {
-		allowLongResponse(w)
-	}
+// lockCalibration takes the calibration lock and returns its release. While it is held or waited for, replies in flight are kept alive
+// (keepRepliesAliveDuringCalibration). Only this function touches calibMu (calib_lock_writer_test.go).
+func (s *server) lockCalibration() func() {
+	calibrationsActive.Add(1)
 	s.calibMu.Lock()
-	return s.calibMu.Unlock
+	return func() {
+		s.calibMu.Unlock()
+		calibrationsActive.Add(-1)
+	}
 }
 
 // longResponseLimit bounds a long handler's reply: a calibration that asks the model again for many earlier truths, or a tune over every fold.
@@ -659,7 +700,7 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 	// An answer to a decision settled after adding context also goes to the minimal question (rungs = 2). Lines are drawn per rung
 	resp := map[string]any{"trace_id": l.TraceID, "spec": l.SpecID, "model": l.Model, "truth": l.Truth, "weight": l.Weight, "source": l.Source, "rungs": len(labels), "calibrated": false}
 	if s.o.autoCalibrate {
-		if report, did := s.maybeCalibrate(w, rec.SpecID, rec.SpecHash, rec.Model); did {
+		if report, did := s.maybeCalibrate(rec.SpecID, rec.SpecHash, rec.Model); did {
 			resp["calibrated"] = true
 			resp["calibration"] = report
 		}
@@ -669,7 +710,7 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 
 // maybeCalibrate calibrates and writes back only when the (hash, model) truths reach min_n and there is no line yet (or it is old).
 // Even if it fails, the label handling stays successful (it is only noted in the report).
-func (s *server) maybeCalibrate(w http.ResponseWriter, specID, hash, model string) (string, bool) {
+func (s *server) maybeCalibrate(specID, hash, model string) (string, bool) {
 	sp, err := s.spec(specID)
 	if err != nil || !sp.LiveHash(hash) || model == "" {
 		return "", false
@@ -685,7 +726,7 @@ func (s *server) maybeCalibrate(w http.ResponseWriter, specID, hash, model strin
 	if err != nil || len(labels) < sp.Eval.MinN {
 		return "", false
 	}
-	defer s.lockCalibration(w)()
+	defer s.lockCalibration()()
 	var buf bytes.Buffer
 	ef := s.o.ef
 	ef.model = model

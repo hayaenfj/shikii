@@ -13,36 +13,39 @@ import (
 	"time"
 )
 
-// 0.9.6 audit of the HTTP limits (eaf2c9b): the server now cuts every response after WriteTimeout (2 minutes). Answering on the page runs the
-// automatic calibration in the same request, and it can ask the model again for every earlier truth, so a long run would cut the reply and the
-// page would show a connection error although the answer was saved. Handlers that start long work extend their own write deadline first.
-func TestLongHandlersOutliveTheWriteTimeout(t *testing.T) {
-	slow := func(extend bool) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			if extend {
-				allowLongResponse(w)
-			}
-			time.Sleep(300 * time.Millisecond) // the long work
-			io.WriteString(w, "done")
-		})
-	}
-	for _, extend := range []bool{false, true} {
-		ts := httptest.NewUnstartedServer(slow(extend))
-		ts.Config = newHTTPServer(slow(extend))
+// 0.9.6 audit of the HTTP limits (eaf2c9b): the server cuts every response after WriteTimeout (2 minutes). While no calibration is active a
+// slow reply is still cut (the limit stays); while a calibration holds or waits for the lock, replies in flight are kept alive (0.9.7).
+func TestSlowRepliesAreCutUnlessACalibrationIsActive(t *testing.T) {
+	quickReplyCheck(t)
+	slow := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(300 * time.Millisecond) // the long work
+		io.WriteString(w, "done")
+	})
+	s := newServerState(serveOpts{storeDir: t.TempDir(), specsDir: t.TempDir()})
+	for _, active := range []bool{false, true} {
+		ts := httptest.NewUnstartedServer(slow)
+		ts.Config = newHTTPServer(slow)
 		ts.Config.WriteTimeout = 100 * time.Millisecond
 		ts.Start()
+		var release func()
+		if active {
+			release = s.lockCalibration()
+		}
 		resp, err := http.Get(ts.URL)
 		var body []byte
 		if err == nil {
 			body, err = io.ReadAll(resp.Body)
 			resp.Body.Close()
 		}
-		ts.Close()
-		if extend && (err != nil || string(body) != "done") {
-			t.Fatalf("a handler that extends its deadline answers after the write timeout: %v %q", err, body)
+		if release != nil {
+			release()
 		}
-		if !extend && err == nil && string(body) == "done" {
-			t.Fatal("precondition: without extending, the write timeout cuts the reply")
+		ts.Close()
+		if active && (err != nil || string(body) != "done") {
+			t.Fatalf("while a calibration is active the reply arrives after the write timeout: %v %q", err, body)
+		}
+		if !active && err == nil && string(body) == "done" {
+			t.Fatal("while no calibration is active the write timeout still cuts a slow reply")
 		}
 	}
 }
@@ -50,6 +53,7 @@ func TestLongHandlersOutliveTheWriteTimeout(t *testing.T) {
 // An answer that brings the truths to min_n calibrates in the same request, so it waits for the calibration lock. While a background tune holds
 // the lock past the write timeout, that reply still arrives (the answer was saved; before 0.9.6 the page showed a connection error).
 func TestAnswerThatCalibratesBehindATuneStillReplies(t *testing.T) {
+	quickReplyCheck(t)
 	dir := t.TempDir()
 	specsDir := filepath.Join(dir, "decisions")
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {
@@ -86,7 +90,7 @@ func TestAnswerThatCalibratesBehindATuneStillReplies(t *testing.T) {
 	if _, err := label(traces[0]); err != nil {
 		t.Fatal(err)
 	}
-	release := s.lockCalibration(nil) // a background tune holds the lock
+	release := s.lockCalibration() // a background tune holds the lock
 	time.AfterFunc(300*time.Millisecond, release)
 	out, err := label(traces[1])
 	if err != nil {
@@ -101,6 +105,7 @@ func TestAnswerThatCalibratesBehindATuneStillReplies(t *testing.T) {
 // up to 40 minutes) is not cut by the write timeout, because taking the lock extends the reply's deadline. The test holds the lock past the
 // write timeout, as a background tune would, and every route that waits for it still answers; status, which does not wait, is still cut.
 func TestEveryRouteWaitingForTheLockOutlivesTheWriteTimeout(t *testing.T) {
+	quickReplyCheck(t)
 	dir := t.TempDir()
 	specsDir := filepath.Join(dir, "decisions")
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {
@@ -134,7 +139,7 @@ func TestEveryRouteWaitingForTheLockOutlivesTheWriteTimeout(t *testing.T) {
 		"/v1/tune/adopt":   `{"spec":"intent","run":"r","meaning_same":true}`,
 		"/v1/tune/review":  `{"spec":"intent","run":"r","keep":true}`,
 	} {
-		release := s.lockCalibration(nil) // a background tune holds the lock
+		release := s.lockCalibration() // a background tune holds the lock
 		time.AfterFunc(300*time.Millisecond, release)
 		if err := reply(path, body); err != nil {
 			t.Errorf("%s answers after waiting for the lock past the write timeout: %v", path, err)
