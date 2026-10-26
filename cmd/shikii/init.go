@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/handoff"
 
@@ -249,6 +250,9 @@ func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, err
 	if cfg == nil { // a bare null decodes into a nil map (confirmation audit 1)
 		return nil, nil, errors.New("check the JSON (broken settings are not overwritten): the settings are not an object")
 	}
+	if !readAsWritten(b, cfg) {
+		return nil, nil, errors.New("check the JSON (broken settings are not overwritten): it has text that is not UTF-8 or an unpaired \\u surrogate, which shikii cannot keep as written")
+	}
 	raw, ok := cfg[key]
 	if !ok || raw == nil {
 		return cfg, nil, nil
@@ -258,6 +262,39 @@ func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, err
 		return nil, nil, fmt.Errorf("check the JSON (broken settings are not overwritten): %q is not an object", key)
 	}
 	return cfg, section, nil
+}
+
+// readAsWritten reports whether the decoded settings hold the file's text unchanged. Go's decoder never fails on bytes that are not UTF-8
+// or on an unpaired \u surrogate: it reads them as U+FFFD, so a rewrite would replace the person's text (and could merge two keys). Any
+// U+FFFD the file did not write itself means the read lost something (confirmation audit 2).
+func readAsWritten(b []byte, v any) bool {
+	if !utf8.Valid(b) {
+		return false
+	}
+	if bytes.Contains(b, []byte("\uFFFD")) || bytes.Contains(bytes.ToLower(b), []byte(`\ufffd`)) {
+		return true // the file writes U+FFFD itself; an unpaired surrogate next to it is not told apart
+	}
+	var has func(any) bool
+	has = func(v any) bool {
+		switch x := v.(type) {
+		case string:
+			return strings.ContainsRune(x, utf8.RuneError)
+		case []any:
+			for _, e := range x {
+				if has(e) {
+					return true
+				}
+			}
+		case map[string]any:
+			for k, e := range x {
+				if strings.ContainsRune(k, utf8.RuneError) || has(e) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return !has(v)
 }
 
 func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
