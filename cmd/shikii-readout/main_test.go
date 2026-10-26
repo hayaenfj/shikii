@@ -482,3 +482,13 @@ func TestPassesThroughToADecisionModelUpstream(t *testing.T) {
 		}
 	}
 }
+
+// 0.9.6 audit of the HTTP limits, low 1: shikii-readout ships with shikii but listened with http.ListenAndServe and no limits, so a client
+// that sent headers very slowly could hold its connections. It now bounds the header phase and size; model replies can take long, so the
+// write phase stays open.
+func TestReadoutServerLimitsSlowHeaders(t *testing.T) {
+	srv := newReadoutServer("127.0.0.1:0", http.NewServeMux())
+	if srv.ReadHeaderTimeout <= 0 || srv.MaxHeaderBytes <= 0 || srv.WriteTimeout != 0 {
+		t.Fatalf("readout bounds headers but not writes: %+v", srv)
+	}
+}

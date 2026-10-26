@@ -183,7 +183,13 @@ func main() {
 	mux.HandleFunc("/v1/systemone", s.handleSystemOne)
 	addr := fmt.Sprintf("%s:%d", systemone.BindHost(), *port)
 	log.Printf("shikii-readout: model=%s upstream=%s listening on http://%s (POST /v1/systemone)", s.cfg.Model, s.cfg.Upstream, addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	log.Fatal(newReadoutServer(addr, mux).ListenAndServe())
+}
+
+// newReadoutServer is the HTTP server readout listens with. Slow request headers are cut off and their size is bounded; reading a request and
+// writing the model's reply stay open, since a large model's reply can take minutes (0.9.6 audit of the HTTP limits).
+func newReadoutServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 64 << 10}
 }
 
 const defaultSystem = "You are a careful classifier. Read the state, then answer the question by choosing exactly one option. Reply with the option's letter only."
