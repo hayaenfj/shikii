@@ -109,6 +109,10 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 				result["next_cursor"] = view.NextCursor
 			}
 		} else {
+			if errors.Is(err, notebook.ErrStaleCursor) { // the page reads the list again from the start
+				writeErr(w, http.StatusConflict, err)
+				return
+			}
 			if r.URL.Query().Get("cursor") != "" {
 				writeErr(w, 400, err)
 				return

@@ -63,7 +63,7 @@
       const result = await api.sources([id]);
       for (const value of result.source_material || []) material[value.id] = { ...value, originals: result.originals?.[value.id] };
       for (const value of result.observations || []) material[value.id] = value;
-    } catch (e) { toast(t('error')(e.message)); }
+    } catch (e) { toast(t('error')(e.status === 409 ? t('wikiStale') : e.message)); }
     busy = '';
   }
   // Look (Tailwind). Only boxes and markers that appear many times are named here

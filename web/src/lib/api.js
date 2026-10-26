@@ -3,9 +3,16 @@ async function j(url, opts) {
   const r = await fetch(url, opts);
   let b;
   try { b = await r.json(); } catch (e) { throw new Error(r.ok ? e.message : String(r.status)); } // a non-JSON response such as a reverse proxy's HTML is reported by its status code
-  if (!r.ok) throw new Error(b.error || r.status);
+  if (!r.ok) throw Object.assign(new Error(b.error || r.status), { status: r.status });
   return b;
 }
+
+// 409: the cursor was made before what it splits changed (an agent saved a page while the list was read on). Read again from the start, a few times
+const fromTheStart = async read => {
+  for (let tries = 1; ; tries++) {
+    try { return await read(); } catch (e) { if (e.status !== 409 || tries >= 3) throw e; }
+  }
+};
 
 const post = (url, body) => j(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -14,7 +21,7 @@ export const api = {
   queue: id => j('v1/queue?spec=' + encodeURIComponent(id) + '&limit=200'),
   answered: id => j('v1/answered?spec=' + encodeURIComponent(id) + '&limit=200'),
   tune: id => j('v1/tune?spec=' + encodeURIComponent(id)),
-  wiki: async () => {
+  wiki: () => fromTheStart(async () => {
     const result = await j('v1/wiki');
     let cursor = result.next_cursor;
     const seen = new Set();
@@ -28,9 +35,9 @@ export const api = {
     }
     delete result.next_cursor;
     return result;
-  },
+  }),
   // Sources (0.9.2): a long captured source comes in parts (observation_part) with next_cursor; join the parts by id so a part is never shown as the whole source
-  sources: async ids => {
+  sources: ids => fromTheStart(async () => {
     const result = await post('v1/wiki/notebook', { operation: 'query', sources: ids });
     const observations = new Map((result.observations || []).map(o => [o.id, { ...o }]));
     // A long conversation's originals (0.9.3) come as pieces of their JSON (original_part); join them in order and parse once the last piece is in
@@ -66,7 +73,7 @@ export const api = {
     delete result.original_part;
     if (pieces.size) throw new Error('the long original of a conversation ended before its last part');
     return result;
-  },
+  }),
   label: body => post('v1/label', body),
   redo: body => post('v1/redo', body),
   tuneRun: body => post('v1/tune/run', body),

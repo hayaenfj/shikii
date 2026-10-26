@@ -4,6 +4,7 @@
 // data: /v1/status, the ways of asking of the questions a person answers, and what the current screen needs (Answer: the waiting questions' lists; Knowledge: wiki; AI status: the open question's list). null means not loaded yet
 import { SvelteSet } from 'svelte/reactivity';
 import { api } from './api.js';
+import { t } from './i18n.svelte.js';
 import { read, write } from './prefs.js';
 
 // With ?spec=<id>&trace=<trace_id> in the URL, start with that decision first on the Answer screen (comes from the hook's "answer later → URL")
@@ -93,7 +94,7 @@ export async function load() {
     }
     if (version === loadVersion) { data.state = st; data.loadError = ''; }
   } catch (e) {
-    if (version === loadVersion) data.loadError = e.message;
+    if (version === loadVersion) data.loadError = e.status === 409 ? t('wikiStale') : e.message; // 409: still changing after reading again from the start
   }
 }
 // Whether there is something for a person to do about candidate ways of asking (0.9.2). Only when the agent confirmed the meaning is the same and adopted it automatically (keep it or revert),

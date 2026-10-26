@@ -79,7 +79,7 @@ export default {
   promote: 'make it a claim (promote)', deleteDraft: 'delete draft', confirm: 'mark as checked', reject: 'reject', confirmable: 'two separate models support it: you may mark it as checked',
   promptClaim: 'The generalized claim (not tied to this question):', promptSlug: 'File name (lowercase, digits, dashes):', promptModels: 'Which models does it apply to?', claimDone: 'recorded',
   noText: h => 'No text was kept for this record (recorded before text was kept), so nobody can tell what was true here. Only a program that knows the outcome can answer it. Hash: ' + h, notThat: t => 'not ' + t + ' (that is all I know)', changed: 'wording changed since',
-  done: t => 'answered: ' + t, calibratedToast: 'enough answers: saved the point where the AI may decide alone', error: m => 'error: ' + m, last: 'last time the point was set',
+  done: t => 'answered: ' + t, calibratedToast: 'enough answers: saved the point where the AI may decide alone', error: m => 'error: ' + m, wikiStale: 'the knowledge kept changing while it was read; wait a moment and open it again', last: 'last time the point was set',
   wording: 'Wording (rewordings)', current: 'current wording', noRun: 'not measured yet', running: 'measuring rewordings…', runTune: 'measure the rewordings', runPropose: n => 'ask the AI for ' + n + ' rewordings and measure',
   holdoutLine: (h, c) => 'share that matched on a held-back part: ' + h + ' (keeping current: ' + c + ')', winnerLine: 'can switch to a new wording', keptLine: 'current wording kept',
   adoptedLine: p => 'switched: ' + p, sameMeaning: 'same meaning → use it', changedMeaning: 'meaning changed → do not use', notePrompt: 'What changed in the meaning? (optional)',

@@ -190,6 +190,10 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := runNotebook(s.o.storeDir, s.o.projectScope, req)
+	if errors.Is(err, notebook.ErrStaleCursor) { // the page reads again from the start
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
 	if err != nil {
 		writeErr(w, 400, err)
 		return

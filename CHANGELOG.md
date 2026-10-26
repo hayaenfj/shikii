@@ -5,6 +5,7 @@
 ## Unreleased
 
 - Wiki, after moving or renaming the folder: a source record's id holds the path it was captured under, so every source captured before the move could no longer be read (`wiki query`) or cited when revising its page ("the hash of the saved source record does not match"), and each revision needed the same evidence captured again. The recaptured copy then sat beside the old id on the page, because a revision keeps every earlier source. A source a page already cites is now checked by the hash in that citation, so it stays readable and citable; a source no page cites is still refused. When the same evidence was captured again under the new path, the new copy takes the old id's place. `shikii wiki lint` no longer reports `source-from-other-path`.
+- Page, knowledge: opening the knowledge page while an agent was working could fail with "the wiki cursor does not match the search terms, project or revision". A long list is read in parts, and the cursor for the next part held a hash of the whole reply, including the conversations waiting for reflection, which grow by one with every agent turn. The hash now covers only what is split into parts (the pages, or the search candidates). When a page does change while the list is read, serve answers 409 and the page reads the list (and a source) again from the start, up to 3 times, then says in plain words that the knowledge kept changing.
 
 ## 0.9.4 — plain words when the answers cannot be told apart yet
 

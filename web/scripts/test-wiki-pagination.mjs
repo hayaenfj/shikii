@@ -75,3 +75,44 @@ test('joins a long conversation original that comes in original_part pieces, so 
     globalThis.fetch = original;
   }
 });
+
+test('reads the knowledge list and the sources again from the start when the server says the cursor is stale (409, 0.9.5)', async () => {
+  const original = globalThis.fetch;
+  try {
+    const stale = { ok: false, status: 409, json: async () => ({ error: 'the wiki cursor does not match the search terms, project or revision; read again from the start' }) };
+    let calls = [];
+    globalThis.fetch = async url => {
+      calls.push(url);
+      if (calls.length === 1) return { ok: true, json: async () => ({ lessons: [{ id: 'old' }], next_cursor: 'c-old' }) };
+      if (calls.length === 2) return stale; // a page changed while reading on
+      if (calls.length === 3) return { ok: true, json: async () => ({ lessons: [{ id: 'one' }], next_cursor: 'c-new' }) };
+      return { ok: true, json: async () => ({ lessons: [{ id: 'two' }] }) };
+    };
+    const result = await api.wiki();
+    assert.deepEqual(result.lessons.map(x => x.id), ['one', 'two'], 'the list before the change is dropped, not joined');
+    assert.equal(calls[2], 'v1/wiki');
+
+    calls = [];
+    globalThis.fetch = async (url, opts) => {
+      calls.push(JSON.parse(opts.body));
+      if (calls.length === 1) return { ok: true, json: async () => ({ observations: [{ id: 'o1', content: 'OLD' }], observation_part: { id: 'o1', from: 0, to: 3, bytes: 6 }, next_cursor: 'c1' }) };
+      if (calls.length === 2) return stale;
+      return { ok: true, json: async () => ({ observations: [{ id: 'o1', content: 'NEW' }] }) };
+    };
+    const sources = await api.sources(['o1']);
+    assert.deepEqual(sources.observations.map(o => o.content), ['NEW']);
+    assert.equal(calls[2].cursor, undefined);
+
+    let n = 0; // a list that keeps changing: stop after a few tries with the server's words, never loop forever
+    globalThis.fetch = async () => (++n % 2 === 1 ? { ok: true, json: async () => ({ lessons: [], next_cursor: 'c' + n }) } : stale);
+    await assert.rejects(api.wiki(), e => /cursor does not match/.test(e.message) && e.status === 409); // the page shows wikiStale for it
+    assert.ok(n <= 10, `tried ${n} times`);
+
+    n = 0; // any other refusal is not retried
+    globalThis.fetch = async () => (++n === 1 ? { ok: true, json: async () => ({ lessons: [], next_cursor: 'c' }) } : { ok: false, status: 400, json: async () => ({ error: 'bad' }) });
+    await assert.rejects(api.wiki(), /bad/);
+    assert.equal(n, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

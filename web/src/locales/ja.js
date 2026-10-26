@@ -77,7 +77,7 @@ export default {
   promote: '主張にする', deleteDraft: '下書きを消す', confirm: '確かめ済みにする', reject: '却下', confirmable: '別々のモデル 2 つが支持しています: 確かめ済みにできます',
   promptClaim: '一般化した主張の文(この問いに限らない言い方で):', promptSlug: 'ファイル名(英小文字・数字・ハイフン):', promptModels: '効くモデルの範囲:', claimDone: '記録しました',
   noText: h => 'この記録は本文が残っていないので(本文を残す前の記録)、正解が分かりません。結果を知っているプログラムだけが答えられます。ハッシュ: ' + h, notThat: t => t + ' ではない(それしか分からない)', changed: 'この後に問いの文が変わりました',
-  done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。AI がひとりで決めてよい境目を保存しました', error: m => 'エラー: ' + m, last: '最後に境目を決めた時',
+  done: t => '答えました: ' + t, calibratedToast: '答えが揃いました。AI がひとりで決めてよい境目を保存しました', error: m => 'エラー: ' + m, wikiStale: '読んでいる間に知識が何度も書き換わりました。少し待ってから開き直してください', last: '最後に境目を決めた時',
   wording: '聞き方(言い換えの案)', current: '今の言い方', noRun: 'まだ測っていません', running: '案を測っています…', runTune: '案を測る', runPropose: n => 'AI に案を ' + n + ' 個作らせて測る',
   holdoutLine: (h, c) => '別の分で試して合った割合 ' + h + '(今のまま: ' + c + ')', winnerLine: '新しい言い方に変えられます', keptLine: '今の言い方のまま',
   adoptedLine: p => '変えた: ' + p, sameMeaning: '意味は同じ → 使う', changedMeaning: '意味が違う → 使わない', notePrompt: '意味のどこが変わりましたか？(書かなくてもよい)',

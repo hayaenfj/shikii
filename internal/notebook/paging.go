@@ -17,6 +17,10 @@ import (
 // a conversation source is returned whole, and its long text (originals, up to 2 MB) that does not fit comes in parts of its JSON (original_part).
 const replyBudget = 60 << 10
 
+// ErrStaleCursor: the cursor was made for other search terms, another project, or before what it splits changed. Read again from the start
+// (the page does so by itself: serve answers it with 409).
+var ErrStaleCursor = errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
+
 type continuation struct {
 	Version  int    `json:"v"`
 	Kind     string `json:"kind"`
@@ -41,7 +45,7 @@ func (b Book) continuation(kind string, request, snapshot any) continuation {
 func (want continuation) start(token string, total int) (int, error) {
 	offset, from, err := want.startAt(token, total)
 	if err == nil && from != 0 {
-		return 0, errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
+		return 0, ErrStaleCursor
 	}
 	return offset, err
 }
@@ -50,7 +54,7 @@ func (want continuation) startAt(token string, total int) (int, int, error) {
 	if token == "" {
 		return 0, 0, nil
 	}
-	bad := errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
+	bad := ErrStaleCursor
 	if len(token) > 2048 {
 		return 0, 0, bad
 	}
@@ -84,7 +88,12 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 	if err != nil {
 		return all, err
 	}
-	state := b.continuation("query", query, all)
+	// the snapshot covers only what is split into parts: conversations waiting for reflection grow by one each agent turn and must not
+	// invalidate the cursor of a page reading on (the first reply carries them alone)
+	state := b.continuation("query", query, struct {
+		Lessons []Page
+		Search  *SearchResult
+	}{all.Lessons, all.Search})
 	total := len(all.Lessons)
 	if all.Search != nil {
 		total = len(all.Search.Candidates)
@@ -198,7 +207,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 			// a cursor inside the long originals of a conversation (the conversation itself came with the first part)
 			raw, _ := json.Marshal(text)
 			if !hasText || from >= len(raw) || !utf8.RuneStart(raw[from]) {
-				return nil, errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
+				return nil, ErrStaleCursor
 			}
 			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, from), nil
 		}
@@ -208,7 +217,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 		if i == start && from > 0 {
 			// a cursor inside a long source: it must point at a character boundary inside an observation's body
 			if !isObservation || from >= len(o.Content) || !utf8.RuneStart(o.Content[from]) {
-				return nil, errors.New("the wiki cursor does not match the search terms, project or revision; read again from the start")
+				return nil, ErrStaleCursor
 			}
 			o.Content = o.Content[from:]
 			// the last part is a tail too: say which part it is so that it is not taken for the whole body

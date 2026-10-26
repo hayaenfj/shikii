@@ -2,6 +2,7 @@ package notebook
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -211,5 +212,44 @@ func TestUnclassifiedOnlyOnTheFirstPage(t *testing.T) {
 	next, err := b.QueryPage("", first.NextCursor)
 	if err != nil || next.UnclassifiedCount != 0 || len(next.Unclassified) != 0 || next.UnclassifiedHow != "" {
 		t.Fatalf("not included in continuation replies: %+v %v", next.Remaining, err)
+	}
+}
+
+// 0.9.5: the cursor's snapshot covered the whole reply, including the conversations waiting for reflection, which grow by one each turn of any
+// agent. Reading the rest of the knowledge list while an agent worked failed with "the wiki cursor does not match ..." although no page changed.
+// The snapshot now covers only what is split into parts (the pages, or the search candidates); a changed page still refuses the cursor.
+func TestCursorSurvivesANewConversation(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	source := seed(t, b, 1)
+	var last Page
+	for i := range 80 {
+		d := draft(source, fmt.Sprintf("Knowledge %03d", i))
+		d.AppliesTo = strings.Repeat("Knowledge scope ", 60)
+		body := strings.Repeat("Detailed evidence. ", 200)
+		d.Body = &body
+		r, err := b.Ingest(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		last = *r.Page
+	}
+	for _, query := range []string{"", "Knowledge"} {
+		first, err := b.QueryPage(query, "")
+		if err != nil || first.NextCursor == "" {
+			t.Fatalf("the list comes in parts: %v %q", err, first.NextCursor)
+		}
+		seed(t, b, 100) // an agent's turn records a conversation while the page reads on
+		if _, err := b.QueryPage(query, first.NextCursor); err != nil {
+			t.Fatalf("query %q: a new conversation does not invalidate the cursor: %v", query, err)
+		}
+	}
+	first, _ := b.QueryPage("", "")
+	d := draft(source, last.Title)
+	d.ID, d.Lesson = last.ID, "Revised knowledge"
+	if _, err := b.Ingest(d); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.QueryPage("", first.NextCursor); !errors.Is(err, ErrStaleCursor) {
+		t.Fatalf("a changed page still refuses the cursor, with ErrStaleCursor: %v", err)
 	}
 }
