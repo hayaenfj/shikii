@@ -44,7 +44,13 @@ func cmdMCP(args []string) error {
 	// A missing or unreadable project never stops the server before the handshake (0.9.3: Codex starts it in the folder its daemon started in,
 	// which often has no shikii project). Tool calls then name their project with project, or get a tool error that says to.
 	r := &mcpRouter{opts: o}
-	if err := resolveStoreFlag(fs); err != nil {
+	storeNamed := false
+	fs.Visit(func(f *flag.Flag) { storeNamed = storeNamed || f.Name == "store" || f.Name == "specs" })
+	if !storeNamed {
+		// started without --store: a shared registration (Codex's, started in its daemon's folder). A call that forgets project must not land in
+		// whatever project that folder is, so there is no start store (0.9.3 audit 2, low 1)
+		r.startErr = errors.New("started without --store (a shared registration such as Codex's)")
+	} else if err := resolveStoreFlag(fs); err != nil {
 		r.startErr = err
 	} else {
 		if o.specsDir == "" {

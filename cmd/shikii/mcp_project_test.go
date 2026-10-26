@@ -221,3 +221,29 @@ func TestMCPWithoutProjectUsesTheStartStore(t *testing.T) {
 		t.Fatalf("without project the start store is used: %q", got)
 	}
 }
+
+// 0.9.3 audit 2, low 1: a server started without --store (Codex's shared registration, started in its daemon's folder) does not fall back to
+// that folder's project when a call forgets project: the call is refused, so nothing lands in another project. With project it works.
+func TestMCPWithoutStoreFlagRequiresProject(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	a := gitRepo(t)
+	hookEnv(t, model, a)
+	t.Chdir(a) // the daemon happens to have started in a registered project
+	answers, err := runMCPProcess(t, []string{"--local", model.URL},
+		mcpInit(1),
+		mcpCall(2, "shikii_wiki", map[string]any{"operation": "handoff_write", "path": "forgot.md", "content": "x"}),
+		mcpCall(3, "shikii_wiki", map[string]any{"operation": "handoff_write", "path": "named.md", "content": "y", "project": a}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, isErr := toolText(t, answers, 2); !isErr || !strings.Contains(text, "project") {
+		t.Fatalf("a call without project is refused when the server was started without --store: %q", text)
+	}
+	if _, err := os.Stat(filepath.Join(a, ".shikii", "handoff", "forgot.md")); !os.IsNotExist(err) {
+		t.Fatal("nothing is written into the daemon folder's project")
+	}
+	if text, isErr := toolText(t, answers, 3); isErr {
+		t.Fatalf("with project the call works: %s", text)
+	}
+}

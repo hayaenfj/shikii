@@ -75,8 +75,8 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 		t.Fatalf("the line was drawn: \n%s", out)
 	}
 	drawn := lineSummary(agent)
-	if !strings.Contains(drawn, "a line was drawn") || !strings.Contains(drawn, "act") {
-		t.Fatalf("tells the person a line was drawn and that act goes ahead from now on: %q", drawn)
+	if !strings.Contains(drawn, "a line was drawn") || !strings.Contains(drawn, "goes ahead") {
+		t.Fatalf("tells the person a line was drawn and that the AI goes ahead when confident from now on: %q", drawn)
 	}
 	if again := lineSummary(agent); again != "" {
 		t.Fatalf("a drawn line is not told twice: %q", again)
@@ -187,6 +187,13 @@ func TestLineNoticesUseTitlesAndPlainWords(t *testing.T) {
 				for _, w := range inner {
 					if strings.Contains(l, w) {
 						t.Fatalf("%s: the Japanese notice holds the inner word %q: %q", stage, w, l)
+					}
+				}
+			} else {
+				// the English notice too names answers by their names on the page and does not use the inner word act (0.9.3 audit 2, low 3)
+				for _, w := range []string{"(act)", "="} {
+					if strings.Contains(l, w) {
+						t.Fatalf("%s: the English notice holds the inner %q: %q", stage, w, l)
 					}
 				}
 			}
