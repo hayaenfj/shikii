@@ -133,7 +133,7 @@ With the hooks installed, two moments of every turn are kept: the request before
 
 <p align="center"><img src="docs/assets/shikii-conversation.svg" alt="every turn: read before work, keep a trail while working, reflect at the end; lessons arrive with the next request" width="100%"></p>
 
-Two steps of every turn are checked: planning before work and reflection before ending. When a step is missing, the end of the turn is stopped once with the command to run. The second stop passes, but the miss is recorded, and the page shows how many turns did the routine.
+Two steps of every turn are checked: planning before work and reflection before ending. When a step is missing, the end of the turn is stopped once with the command to run. The second stop passes, but the miss is recorded, and the page shows how many turns did the routine. After a short message that is not a plain acknowledgement, a turn without the organizing is also stopped once to ask only whether the message continues the previous request. A stopped turn is judged by the stop after it, or at the next request if that never comes.
 
 The decision model answers the built-in questions about the agent's own work (what kind of request this is, whether to agree on an approach first, whether the changes stayed in scope, whether the request was completed) and, for new lessons, where they belong and whether they contradict a page. The truths for these come from what happens next: a change undone during the next request, a request repeated, a lesson merged or replaced. Only questions that results cannot answer wait for a person, and the page shows how many.
 
