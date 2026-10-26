@@ -324,3 +324,17 @@ func TestUpdateWithoutLessonSaysWhatToSend(t *testing.T) {
 		t.Fatalf("the refusal says to send the lesson, title and applies_to: %v", err)
 	}
 }
+
+// 0.9.5 check: long-lived pages grow by a section per update (a real page reached 15,838 of 16,384 bytes of body). Going over was refused with
+// "wiki lesson exceeds the text limits", which named neither the field nor what to do. The refusal now names the field, its size and the limit,
+// and says to move older parts to a new page linked with related.
+func TestTextLimitRefusalNamesTheField(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	d := draft(seed(t, b, 1), "a long page")
+	body := strings.Repeat("x", 16<<10+1)
+	d.Body = &body
+	_, err := b.Ingest(d)
+	if err == nil || !strings.Contains(err.Error(), "body") || !strings.Contains(err.Error(), "16385") || !strings.Contains(err.Error(), "related") {
+		t.Fatalf("the refusal names the field, its size and how to split: %v", err)
+	}
+}

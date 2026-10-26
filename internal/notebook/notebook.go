@@ -648,8 +648,14 @@ func (b Book) Ingest(d Draft) (Result, error) {
 			return result, errors.New("wiki text must be UTF-8")
 		}
 	}
-	if len(d.Title) > 200 || len(d.Lesson) > 2000 || len(d.AppliesTo) > 1000 || len(body) > 16<<10 || len(d.ChangeReason) > 1000 {
-		return result, errors.New("wiki lesson exceeds the text limits")
+	for _, f := range []struct {
+		name  string
+		size  int
+		limit int
+	}{{"title", len(d.Title), 200}, {"lesson", len(d.Lesson), 2000}, {"applies_to", len(d.AppliesTo), 1000}, {"body", len(body), 16 << 10}, {"change_reason", len(d.ChangeReason), 1000}} {
+		if f.size > f.limit {
+			return result, fmt.Errorf("wiki %s is %d bytes, over the limit of %d bytes: shorten it, or move older parts to a new page and link it with related", f.name, f.size, f.limit)
+		}
 	}
 	if d.Lesson == "" && d.ID != "" {
 		return result, errors.New("updating a page by id sends its lesson, title and applies_to again (read them with wiki query lesson:<id>), with sources and change_reason")
