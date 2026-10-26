@@ -310,7 +310,7 @@ func (b Book) OtherPathStores() ([]string, error) {
 			return nil, err
 		}
 		for _, e := range entries {
-			if !e.IsDir() || e.Name() == own || !(scopeName.MatchString(e.Name()) || e.Name() == "project") {
+			if !e.IsDir() || e.Name() == own || !scopeName.MatchString(e.Name()) {
 				continue
 			}
 			left, err := notCopied(filepath.Join(root, area, e.Name()), filepath.Join(root, area, own))

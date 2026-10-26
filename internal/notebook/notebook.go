@@ -314,7 +314,6 @@ func (b Book) renderPage(p Page, l pageLabels) ([]byte, error) {
 
 // matchesPage says whether data is exactly what shikii writes for p (with the current labels, or with the labels of before 0.9.2).
 func (b Book) matchesPage(data []byte, p Page) bool {
-	data = b.withCurrentSourceLinks(data)
 	for _, l := range []pageLabels{englishLabels, legacyLabels} {
 		if expected, err := b.renderPage(p, l); err == nil && bytes.Equal(data, expected) {
 			return true

@@ -16,7 +16,7 @@ import (
 // never moves or merges records. Before this, 0.9.7 moved them to a fixed name and merged what older versions kept writing, and every
 // audit found another way that lost or broke a line; the structure was changed instead (the person's review, 2026-10-27).
 
-var storeNamePattern = regexp.MustCompile(`^([0-9a-f]{64}|project)$`)
+var storeNamePattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func scopeKey(scope string) string {
 	h := sha256.Sum256([]byte(scope))
@@ -24,8 +24,7 @@ func scopeKey(scope string) string {
 }
 
 // StoreName returns the store's name, recording it the first time: the hash of the path in the store's project.json (the path it was
-// initialized at, the name 0.9.6 used even when the folder was moved before 0.9.7 opened it; final audit BC-1), else of scope, or
-// "project" for a store a 0.9.7 build in development already moved there.
+// initialized at, the name 0.9.6 used even when the folder was moved before 0.9.7 opened it; final audit BC-1), else of scope.
 func StoreName(dir, scope string) string {
 	if name := readStoreName(dir); name != "" {
 		return name
@@ -33,11 +32,6 @@ func StoreName(dir, scope string) string {
 	name := scopeKey(scope)
 	if initialized := initializedAt(dir); initialized != "" {
 		name = scopeKey(initialized)
-	}
-	for _, p := range []string{filepath.Join(dir, "wiki", "lessons", "project"), filepath.Join(dir, "records", "feedback", "project.jsonl")} {
-		if _, err := os.Lstat(p); err == nil {
-			name = "project"
-		}
 	}
 	return recordStoreName(dir, name)
 }

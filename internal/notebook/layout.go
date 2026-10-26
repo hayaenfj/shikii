@@ -1,7 +1,6 @@
 package notebook
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -57,38 +56,4 @@ func (b Book) sourceIDMatches(dir, id string, canonical []byte) bool {
 		}
 	}
 	return false
-}
-
-// legacyNamesFile, in the pages area of a store a 0.9.7 build in development moved to "project", lists the names it had before; pages
-// written then link their sources through those names, and only those links are read as unchanged (audit B-4).
-const legacyNamesFile = ".legacy-names.json"
-
-func legacyNames(dir string) []string {
-	data, err := os.ReadFile(filepath.Join(dir, legacyNamesFile))
-	if err != nil {
-		return nil
-	}
-	var names []string
-	if json.Unmarshal(data, &names) != nil {
-		return nil
-	}
-	out := names[:0]
-	for _, n := range names {
-		if scopeName.MatchString(n) {
-			out = append(out, n)
-		}
-	}
-	return out
-}
-
-// withCurrentSourceLinks turns a page's source links through a name the store had before 0.9.7 into links through the fixed name.
-func (b Book) withCurrentSourceLinks(data []byte) []byte {
-	dir, err := b.directory(false, "pages")
-	if err != nil {
-		return data
-	}
-	for _, name := range legacyNames(dir) {
-		data = bytes.ReplaceAll(data, []byte("](../../../records/wiki-sources/"+name+"/"), []byte("](../../../records/wiki-sources/"+b.storeName()+"/"))
-	}
-	return data
 }
