@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // After the project folder is moved or renamed (0.9.7). Its .shikii keeps everything under fixed names, so only project.json (the path it
@@ -60,6 +61,7 @@ func relinkMovedProject(cwd string, takeOverCopy bool) string {
 		hookLog("relink: " + err.Error())
 		return ""
 	}
+	(store.Store{Dir: root}).MigrateLayout(old)
 	if err := notebook.RememberPath(root, old); err != nil {
 		hookLog("relink: " + err.Error())
 		return ""

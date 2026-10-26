@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // movedProject sets up a project with a wiki page, then moves its folder (os.Rename, as mv does) and returns the old and new paths.
@@ -175,5 +176,34 @@ func TestStoreFromElsewhereIsNotReconnectedByItself(t *testing.T) {
 				t.Fatal("it stays inactive")
 			}
 		})
+	}
+}
+
+// The conversations, memory deliveries and memory reviews written before 0.9.7 under the old path's name move with the project when it is
+// reconnected, even when an older file from a still earlier path sits beside them (so "the only old file" cannot tell which is this project's).
+func TestReconnectingKeepsConversationsWrittenBefore097(t *testing.T) {
+	repo := gitRepo(t)
+	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .6 }), repo)
+	old := feedbackScope(repo)
+	dir := filepath.Join(old, ".shikii", "records", "feedback")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"id":"0000000000000abc","request":"fix the readme","summary":"fixed","reply":"thanks","at":"2026-10-01T00:00:00Z"}` + "\n"
+	for _, scope := range []string{old, "/an/even/older/path"} {
+		if err := os.WriteFile(filepath.Join(dir, projectID(scope)+".jsonl"), []byte(line), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	moved := filepath.Join(t.TempDir(), "renamed")
+	if err := os.Rename(old, moved); err != nil {
+		t.Fatal(err)
+	}
+	moved = feedbackScope(moved)
+	if relinkMovedProject(moved, false) == "" {
+		t.Fatal("precondition: reconnected")
+	}
+	if got, err := (store.Store{Dir: filepath.Join(moved, ".shikii")}).RecentFeedback(moved); err != nil || len(got) != 1 {
+		t.Fatalf("the conversations written under the old path are kept: %+v %v", got, err)
 	}
 }
