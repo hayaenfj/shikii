@@ -167,7 +167,8 @@ func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 			return nil, err
 		}
 		var d MemoryDelivery
-		if len(line) > 32<<10 || json.Unmarshal([]byte(line), &d) != nil || d.Scope != scope || !validMemoryDelivery(d) {
+		// the file belongs to one project by its name; a line may name the path before the folder was moved (0.9.5), so it is not compared
+		if len(line) > 32<<10 || json.Unmarshal([]byte(line), &d) != nil || !validMemoryDelivery(d) {
 			continue
 		}
 		out = append(out, d)

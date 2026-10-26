@@ -122,3 +122,21 @@ func TestMemoryStoreBoundsHistoryAndRejectsLinkedRecords(t *testing.T) {
 		})
 	}
 }
+
+// 0.9.5 check: after moving the project folder the how-to renames records/memories/<sha256(old)>.jsonl to the new name, but each line still
+// names the old path, and reading dropped every such line: the reflection asked to assess nothing and the effect counts went to zero.
+// The file already belongs to one project by its name, so a line is not dropped for naming an earlier path.
+func TestMemoryDeliveriesSurviveAFolderMove(t *testing.T) {
+	s, d, _ := memoryStoreFixture(t)
+	if err := s.SaveMemoryDelivery(d); err != nil {
+		t.Fatal(err)
+	}
+	moved := "/synthetic/renamed"
+	if err := os.Rename(s.memoryPath(d.Scope), s.memoryPath(moved)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.MemoryDeliveries(moved)
+	if err != nil || len(got) != 1 || got[0].ID != d.ID {
+		t.Fatalf("a delivery saved under the previous path is read after the move: %v %+v", err, got)
+	}
+}
