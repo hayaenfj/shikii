@@ -100,6 +100,10 @@ func newPlanningFrame(previous *hookSession, in *hookInput, scope, turnID string
 	return f
 }
 
+// noticeFullEvery is how many requests after the full organizing and reflection notices the full text comes again: a long session's context
+// is compacted, and the short form leans on the full text seen earlier (0.9.7).
+const noticeFullEvery = 8
+
 func planningNotice(sessionID, turnID string) string {
 	ids, _ := json.Marshal(map[string]string{"session_id": sessionID, "turn_id": turnID})
 	command := "shikii"
@@ -107,6 +111,16 @@ func planningNotice(sessionID, turnID string) string {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
 	return fmt.Sprintf("shikii: organize this turn before starting; do not ask the person. Pipe the JSON below on standard input to %[1]s hook plan query (e.g. <<'JSON') to read this turn and the recent conversation; find related rules and decisions by putting topic words in query (not the request text), and when a returned lesson is your grounds, set the evidence source to lesson:<id>. Then pass the same IDs, query, agreed and open to %[1]s hook plan submit. Each item is {summary, evidence:[{source,quote}]} quoting the original text, or {unknown:true}; an agreement needs the person's own words. Set continues_previous to true when this message only continues or answers the previous request (an acknowledgement or go-ahead asking nothing new), false when it is a new request (even a short addition such as \"add a check too\", or a restatement); omit it when unsure. If it restates an earlier request of this session, set restates to that request's turn id (the <id> in history:<id>:user); a wrong id only falls back. The organizing is a hypothesis, never permission or the person's truth. If you create or change a rule, test or procedure, write it to the wiki before you finish (edit the closest page). Details: the skill's references/planning.md. "+planningShape+"\n", command) + string(ids)
+}
+
+// planningNoticeShort is the organizing notice after the full text was given earlier in the session: the same commands and this turn's IDs.
+func planningNoticeShort(sessionID, turnID string) string {
+	ids, _ := json.Marshal(map[string]string{"session_id": sessionID, "turn_id": turnID})
+	command := "shikii"
+	if exe, err := os.Executable(); err == nil {
+		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
+	}
+	return fmt.Sprintf("shikii: organize this turn before starting, as earlier in this session: pipe the JSON below to %[1]s hook plan query with topic words in query, then pass the same IDs, query, agreed and open (one object each) to %[1]s hook plan submit, with continues_previous and restates when they apply. Details: the skill's references/planning.md.\n", command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {

@@ -179,35 +179,38 @@ func (o hookOut) json(event string) []byte {
 // hookSession is the per-project record (.shikii/sessions/<id>.json). The transcript is not read (its shape is undocumented).
 // The working tree listing at request time is the neighbouring <id>.files (too large for the JSON).
 type hookSession struct {
-	Request           string           `json:"request,omitempty"`             // the person's last request (kept at UserPromptSubmit)
-	RequestText       string           `json:"request_text,omitempty"`        // original text for the page. Kept apart from the decision input
-	RawPrompt         string           `json:"last_user_prompt,omitempty"`    // the person's last message kept without joining. Used as the source of quotes
-	TurnID            string           `json:"turn_id,omitempty"`             // a repeated request with the same text is still a different turn
-	Scope             string           `json:"scope,omitempty"`               // the repo's real path. Conversations, scoring and lines are limited to the same work
-	Completed         *completedTurn   `json:"completed,omitempty"`           // record of the reply to this request. Paired with the person's next message
-	Memories          []memoryDelivery `json:"memories,omitempty"`            // versions of memories delivered to this session (latest 16)
-	Previous          string           `json:"previous,omitempty"`            // the assistant's previous message (kept at Stop)
-	Planning          *planningFrame   `json:"planning,omitempty"`            // context for the current request that the agent organizes with the original text
-	Pending           []pendingItem    `json:"pending,omitempty"`             // prompt-kind decisions waiting for their outcome truth
-	Watch             []scopeWatch     `json:"watch,omitempty"`               // changes-in-scope decisions waiting for their outcome truth (are the changed files reverted)
-	Asked             []askedItem      `json:"asked,omitempty"`               // decisions in this session that ended up waiting for the person's answer (ask and spot checks)
-	Reviews           []askedItem      `json:"reviews,omitempty"`             // decisions waiting for provisional scoring from the conversation and the later spot check
-	Reported          []string         `json:"reported_traces,omitempty"`     // traces reported at Stop as waiting for an answer (only mention when there is a new one)
-	Judged            bool             `json:"judged,omitempty"`              // the end-of-turn self-review (changes-in-scope / done-as-asked) for the current request is done (reset on the next request)
-	Head              string           `json:"head,omitempty"`                // HEAD at request time (so the stop check can see this turn's commits. 0.7.3)
-	HeadAt            time.Time        `json:"head_at,omitempty"`             // request time. Commits before it (existing commits of a checked-out branch) are not looked at
-	MemoryNoticed     bool             `json:"memory_noticed,omitempty"`      // told once in this session that there is memory not yet in the wiki (0.8.0)
-	StoreNoticed      bool             `json:"store_noticed,omitempty"`       // told in this session that a wiki store is left under the old path's name (0.9.2)
-	ReflectAsked      []string         `json:"reflect_asked,omitempty"`       // conversations asked to be reflected on before the request (the ritual check looks at it at Stop. 0.8.0)
-	ReflectAskedTurn  string           `json:"reflect_asked_turn,omitempty"`  // the turn ReflectAsked was asked in (do not stop on leftovers from another turn. audit R5)
-	RitualStopped     string           `json:"ritual_stopped,omitempty"`      // the turn stopped by the ritual check (do not stop again at the Stop after a notification. audit R5)
-	GroupingAsked     string           `json:"grouping_asked,omitempty"`      // the turn whose Stop asked only for continues_previous and left the judgment to the next Stop (0.9.3)
-	PageNoticed       bool             `json:"page_noticed,omitempty"`        // told the page location in this session (0.8.0)
-	HabitsNoticed     bool             `json:"habits_noticed,omitempty"`      // told in this session how to keep work records and rules (0.8.1)
-	ClassifyAsked     []string         `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
-	ClassifyAskedTurn string           `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
-	SubagentTasks     []subagentTask   `json:"subagent_tasks,omitempty"`      // task text passed to the Agent tool (SubagentStart picks lessons with that text. 0.9.1)
-	At                time.Time        `json:"at"`
+	Request          string           `json:"request,omitempty"`            // the person's last request (kept at UserPromptSubmit)
+	RequestText      string           `json:"request_text,omitempty"`       // original text for the page. Kept apart from the decision input
+	RawPrompt        string           `json:"last_user_prompt,omitempty"`   // the person's last message kept without joining. Used as the source of quotes
+	TurnID           string           `json:"turn_id,omitempty"`            // a repeated request with the same text is still a different turn
+	Scope            string           `json:"scope,omitempty"`              // the repo's real path. Conversations, scoring and lines are limited to the same work
+	Completed        *completedTurn   `json:"completed,omitempty"`          // record of the reply to this request. Paired with the person's next message
+	Memories         []memoryDelivery `json:"memories,omitempty"`           // versions of memories delivered to this session (latest 16)
+	Previous         string           `json:"previous,omitempty"`           // the assistant's previous message (kept at Stop)
+	Planning         *planningFrame   `json:"planning,omitempty"`           // context for the current request that the agent organizes with the original text
+	Pending          []pendingItem    `json:"pending,omitempty"`            // prompt-kind decisions waiting for their outcome truth
+	Watch            []scopeWatch     `json:"watch,omitempty"`              // changes-in-scope decisions waiting for their outcome truth (are the changed files reverted)
+	Asked            []askedItem      `json:"asked,omitempty"`              // decisions in this session that ended up waiting for the person's answer (ask and spot checks)
+	Reviews          []askedItem      `json:"reviews,omitempty"`            // decisions waiting for provisional scoring from the conversation and the later spot check
+	Reported         []string         `json:"reported_traces,omitempty"`    // traces reported at Stop as waiting for an answer (only mention when there is a new one)
+	Judged           bool             `json:"judged,omitempty"`             // the end-of-turn self-review (changes-in-scope / done-as-asked) for the current request is done (reset on the next request)
+	Head             string           `json:"head,omitempty"`               // HEAD at request time (so the stop check can see this turn's commits. 0.7.3)
+	HeadAt           time.Time        `json:"head_at,omitempty"`            // request time. Commits before it (existing commits of a checked-out branch) are not looked at
+	MemoryNoticed    bool             `json:"memory_noticed,omitempty"`     // told once in this session that there is memory not yet in the wiki (0.8.0)
+	StoreNoticed     bool             `json:"store_noticed,omitempty"`      // told in this session that a wiki store is left under the old path's name (0.9.2)
+	ReflectAsked     []string         `json:"reflect_asked,omitempty"`      // conversations asked to be reflected on before the request (the ritual check looks at it at Stop. 0.8.0)
+	ReflectAskedTurn string           `json:"reflect_asked_turn,omitempty"` // the turn ReflectAsked was asked in (do not stop on leftovers from another turn. audit R5)
+	RitualStopped    string           `json:"ritual_stopped,omitempty"`     // the turn stopped by the ritual check (do not stop again at the Stop after a notification. audit R5)
+	GroupingAsked    string           `json:"grouping_asked,omitempty"`     // the turn whose Stop asked only for continues_previous and left the judgment to the next Stop (0.9.3)
+	PageNoticed      bool             `json:"page_noticed,omitempty"`       // told the page location in this session (0.8.0)
+	HabitsNoticed    bool             `json:"habits_noticed,omitempty"`     // told in this session how to keep work records and rules (0.8.1)
+	// requests since the full organizing and reflection notices (0 = none yet in this session); the short form is used in between (0.9.7)
+	PlanningShortTurns int            `json:"planning_short_turns,omitempty"`
+	ReflectShortTurns  int            `json:"reflect_short_turns,omitempty"`
+	ClassifyAsked      []string       `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
+	ClassifyAskedTurn  string         `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
+	SubagentTasks      []subagentTask `json:"subagent_tasks,omitempty"`      // task text passed to the Agent tool (SubagentStart picks lessons with that text. 0.9.1)
+	At                 time.Time      `json:"at"`
 }
 
 // subagentTask is a task the parent passed to a child agent with the Agent tool (kept at PreToolUse; at SubagentStart the oldest one of the same type is used).
@@ -704,16 +707,23 @@ func runHookEvent(event string) error {
 				hookLog("memory: " + merr.Error())
 			}
 			context, ids, rerr := reflectContext(agent, current.Scope)
+			shortTurns := current.ReflectShortTurns
 			if rerr != nil {
 				hookLog("reflect: " + rerr.Error())
 				ids = nil // a turn where asking failed does not stop on the previous turn's leftovers (audit R5)
-			} else {
+			} else if context != "" {
+				// the full text the first time in the session, when the conversations asked last time are still waiting, and every noticeFullEvery asks (0.9.7)
+				if shortTurns == 0 || shortTurns >= noticeFullEvery || overlap(ids, current.ReflectAsked) {
+					shortTurns = 1
+				} else {
+					context, shortTurns = reflectAskShort(reflectCLI(), ids), shortTurns+1
+				}
 				out.Context = joinLines(out.Context, context)
 			}
 			// write the asked conversations and turn to the record (the ritual check looks at it at Stop: was the reflection done). A turn that did not ask is cleared
 			if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
 				if s.TurnID == current.TurnID {
-					s.ReflectAsked, s.ReflectAskedTurn = ids, current.TurnID
+					s.ReflectAsked, s.ReflectAskedTurn, s.ReflectShortTurns = ids, current.TurnID, shortTurns
 				}
 			}); uerr != nil {
 				hookLog("reflect: " + uerr.Error())
@@ -1050,7 +1060,15 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	}
 	var out hookOut
 	if planning != nil {
-		out.Context = planningNotice(in.SessionID, turnID)
+		// the full text on the session's first request, after a request whose organizing was not submitted, and every noticeFullEvery requests (0.9.7)
+		missed := snapshot.Planning != nil && snapshot.Planning.TurnID != turnID && snapshot.Planning.Result == nil
+		if snapshot.PlanningShortTurns == 0 || snapshot.PlanningShortTurns >= noticeFullEvery || missed {
+			out.Context = planningNotice(in.SessionID, turnID)
+			muts = append(muts, func(s *hookSession) { s.PlanningShortTurns = 1 })
+		} else {
+			out.Context = planningNoticeShort(in.SessionID, turnID)
+			muts = append(muts, func(s *hookSession) { s.PlanningShortTurns++ })
+		}
 	}
 	for i, d := range ds {
 		if d == nil || d.Band == decide.Abstain {

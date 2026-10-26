@@ -321,11 +321,7 @@ func reflectContext(root, scope string) (string, []string, error) {
 	if len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
 		return "", nil, nil
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		executable = "shikii"
-	}
-	cli := "'" + strings.ReplaceAll(executable, "'", "'\\''") + "' reflect"
+	cli := reflectCLI()
 	ids := []string{}
 	for _, task := range view.Sources {
 		ids = append(ids, task.Source.ID)
@@ -335,6 +331,34 @@ func reflectContext(root, scope string) (string, []string, error) {
 	}
 	data, _ := json.Marshal(map[string]any{"sources": ids})
 	return reflectAsk(cli) + string(data), ids, nil
+}
+
+// reflectCLI is the reflect command of this shikii executable, quoted for the shell.
+func reflectCLI() string {
+	executable, err := os.Executable()
+	if err != nil {
+		executable = "shikii"
+	}
+	return "'" + strings.ReplaceAll(executable, "'", "'\\''") + "' reflect"
+}
+
+// reflectAskShort is the reflection request after the full text was given earlier in the session: the same steps by name, and the conversations.
+func reflectAskShort(cli string, ids []string) string {
+	data, _ := json.Marshal(map[string]any{"sources": ids})
+	return "shikii: wrap up the reflection as earlier in this session (this request comes first): read with shikii_reflect or " + cli + " query, then submit reviews, wiki, memory and maintenance as before, and resend while left lists a conversation. Details: the skill's references/wiki.md.\n" + string(data)
+}
+
+func overlap(a, b []string) bool {
+	seen := map[string]bool{}
+	for _, x := range b {
+		seen[x] = true
+	}
+	for _, x := range a {
+		if seen[x] {
+			return true
+		}
+	}
+	return false
 }
 
 // reflectAsk is the text asking for reflection (passed to the agent by the pre-request hook). cli is the path of the shikii executable
