@@ -37,7 +37,15 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 					}
 				}
 			}
-			f.Recent = append(f.Recent, turn)
+			// a message the agent attached to the previous request (an acknowledgement, a go-ahead) is not a request of its own: it does not
+			// take a place among the 4 turns, so an earlier request stays nameable in restates; its judgment of the joined request is that request's
+			if g := previous.Planning.Grouping; g != nil && g.Joined && len(f.Recent) > 0 {
+				if turn.Done != "" {
+					f.Recent[len(f.Recent)-1].Done = turn.Done
+				}
+			} else {
+				f.Recent = append(f.Recent, turn)
+			}
 		}
 	}
 	if len(f.Recent) > 4 {

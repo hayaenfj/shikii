@@ -65,6 +65,9 @@ type planningReceipt struct {
 	Advice   string `json:"advice"`
 	Shadow   bool   `json:"shadow"`
 	Reason   string `json:"reason,omitempty"`
+	// Grouping says what continues_previous did (0.9.3): recorded is about the decision only, so a minimal organizing that only
+	// groups the message answered recorded:false although its grouping was applied
+	Grouping string `json:"grouping,omitempty"`
 }
 
 func needsPlanningContext(sp *spec.Spec) bool {
@@ -427,6 +430,13 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 			if err := moveListingHeader(dir, name, old, s.Request); err != nil {
 				return err
 			}
+		}
+		if g := groupingOf(s); g != nil && g.Settled && g.Joined != *req.ContinuesPrevious {
+			result.Grouping = "kept as decided at the end of the turn (the turn was already judged)"
+		} else if *req.ContinuesPrevious {
+			result.Grouping = "attached to the previous request"
+		} else {
+			result.Grouping = "kept as a request of its own"
 		}
 	}
 	s.Planning.Digest, s.Planning.Result = digest, result

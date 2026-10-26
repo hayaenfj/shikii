@@ -182,3 +182,28 @@ func TestPlanContinuesOtherTurnOrSessionIgnored(t *testing.T) {
 		t.Fatalf("another session's organizing must not regroup this one: %q", s.Request)
 	}
 }
+
+// 0.9.3 re-check: the minimal organizing (agreed and open unknown, continues_previous set) answered "recorded": false … skipped,
+// which reads as a failure though the grouping was applied. The receipt says what happened to the grouping.
+func TestPlanSubmitSaysHowTheMessageWasGrouped(t *testing.T) {
+	for _, c := range []struct {
+		reply     string
+		continues bool
+		want      string
+	}{{"\u305d\u308c\u3067\u3044\u3053\u3046", true, "attached"}, {"ok", false, "own"}} {
+		t.Run(c.want, func(t *testing.T) {
+			repo, root, _ := planningFixture(t)
+			continuesTurn(t, repo, root, c.reply)
+			out, err := planningCall(t, "submit", map[string]any{
+				"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID,
+				"agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}, "continues_previous": c.continues,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g, _ := out["grouping"].(string); !strings.Contains(g, c.want) {
+				t.Fatalf("the receipt says how the message was grouped (%q): %v", c.want, out)
+			}
+		})
+	}
+}
