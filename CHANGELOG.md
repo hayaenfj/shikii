@@ -2,9 +2,9 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.9.10 — a built-in file cut short on a disk without hard links is written again
 
-- Built-in files on a disk without hard links (exFAT, FAT): they are written in place there, so a stop in the middle left a part of a built-in decision or wiki page, and every later init kept that part. A part left over (older than 10 seconds, and only the start of the built-in text) is now written again in full; a part another init is writing now, and any text of the person's, stay.
+- Built-in files on a disk without hard links (exFAT, FAT): they are written in place there, so a stop in the middle left a part of a built-in decision or wiki page, and every later init and request kept that part. While shikii writes a built-in file in place, a file beside it (`<name>.placing`) shows the write is going on; it goes when the write is whole. When a stop left it (older than 10 seconds), the next init or request writes the built-in file again in full, keeping its mode, if what is there is the start of the built-in text. A file you shortened or emptied has no such file beside it and stays, and so does any text of yours. When the folder cannot be written, the part stays and nothing stops.
 
 ## 0.9.9 — commented settings files stay as written, and init works on disks without hard links
 
