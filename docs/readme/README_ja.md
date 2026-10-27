@@ -9,7 +9,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-770%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-774%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.9.8-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -136,7 +136,7 @@ shikii uninstall        # 外す物の一覧を出すだけで、何も変えな
 shikii uninstall --yes  # 外す
 ```
 
-shikiiがエージェントに入れた物を外します。`~/.claude/settings.json` と `~/.codex/hooks.json` のshikiiのhook、`~/.codex/config.toml` の `[mcp_servers.shikii]`、初期化した各プロジェクトの `.mcp.json` と `opencode.json` のshikiiの項目、`~/.claude/skills/shikii` と `~/.agents/skills/shikii` のエージェントの作法です。プロジェクトの答え合わせの画面も止めます。ほかのhook・MCP・設定、ファイルそのもの、`AGENTS.md` と `CLAUDE.md` は残ります。データも残ります。各プロジェクトの `.shikii/` と `~/.shikii/agent` は消さず(止めた画面の記録と錠だけは消します)、もう一度インストールすればその続きから使えます。実行ファイルは消しません。最後に、そのパスを入れた `rm` のコマンドを出します。外した後は、開いているClaude CodeとCodexのセッションを開き直してください。
+shikiiがエージェントに入れた物を外します。`~/.claude/settings.json` と `~/.codex/hooks.json` のshikiiのhook、`~/.codex/config.toml` の `[mcp_servers.shikii]`、初期化した各プロジェクトの `.mcp.json` と `opencode.json` のshikiiの項目、`~/.claude/skills/shikii` と `~/.agents/skills/shikii` のエージェントの作法です。プロジェクトの答え合わせの画面も止めます。ほかのhook・MCP・設定、ファイルそのもの、`AGENTS.md` と `CLAUDE.md` は残ります。データも残ります。各プロジェクトの `.shikii/` と `~/.shikii/agent` は消さず(止めた画面の記録だけは消します)、もう一度インストールすればその続きから使えます。実行ファイルは消しません。最後に、そのパスを入れた `rm` のコマンドを出します。外した後は、開いているClaude CodeとCodexのセッションを開き直してください。
 
 ## 仕組み
 

@@ -204,36 +204,16 @@ func TestPatch099CodexConfigOnAReadOnlyDiskLetsInitGoOn(t *testing.T) {
 	}
 }
 
-// C SB-1, SB-2: uninstall removed the skill folders but left their lock files (~/.claude/skills/.shikii-skill.lock and the same under
-// ~/.agents/skills), and stopped the pages but left their records and locks in ~/.shikii/agent/pages. They are shikii's, not data.
-// A lock another page still holds, and the record of a page uninstall did not stop, stay.
-func TestPatch099UninstallRemovesTheLocksAndRecordsOfWhatItRemoved(t *testing.T) {
+// C SB-2: uninstall stopped the pages but left their records in ~/.shikii/agent/pages. They are shikii's, not data. The record of a page
+// uninstall did not stop stays. (SB-1 and the page locks: lock files stay, see TestPatch099ConfirmUninstallLeavesLockFiles.)
+func TestPatch099UninstallRemovesTheRecordsOfThePagesItStopped(t *testing.T) {
 	b := newUninstallBox(t)
-	locks := []string{filepath.Join(b.home, ".claude", "skills", ".shikii-skill.lock"), filepath.Join(b.home, ".agents", "skills", ".shikii-skill.lock")}
-	for _, l := range locks {
-		if _, err := os.Stat(l); err != nil {
-			t.Fatalf("precondition: hook install leaves the skill lock %s: %v", l, err)
-		}
-	}
-	pageLock := pageLockPath(b.agent, b.repo)
-	writeFileT(t, pageLock, "")
-	takePageLock(t, b.agent, "/held/elsewhere") // a page that still runs holds its lock
 	out := capture(t, func() error { return cmdUninstall([]string{"--yes"}) })
 	if len(b.stopped) == 0 {
 		t.Fatalf("precondition: the project's page is stopped:\n%s", out)
 	}
-	for _, l := range locks {
-		if _, err := os.Lstat(l); !os.IsNotExist(err) {
-			t.Fatalf("the skill lock is removed with the skill folder: %s (%v)\n%s", l, err, out)
-		}
-	}
-	for _, f := range []string{pagePath(b.agent, b.repo), pageLock} {
-		if _, err := os.Lstat(f); !os.IsNotExist(err) {
-			t.Fatalf("the record and lock of the stopped page are removed: %s (%v)\n%s", f, err, out)
-		}
-	}
-	if _, err := os.Stat(pageLockPath(b.agent, "/held/elsewhere")); err != nil {
-		t.Fatalf("control: a lock a running page holds stays: %v", err)
+	if _, err := os.Lstat(pagePath(b.agent, b.repo)); !os.IsNotExist(err) {
+		t.Fatalf("the record of the stopped page is removed: %v\n%s", err, out)
 	}
 	if _, err := os.Stat(pagePath(b.agent, "/somewhere/else")); err != nil {
 		t.Fatalf("control: the record of a page uninstall did not stop stays: %v", err)

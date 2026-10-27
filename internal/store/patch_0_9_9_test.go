@@ -50,3 +50,24 @@ func TestPatch099StoreNameThatIsAFIFODoesNotBlock(t *testing.T) {
 		t.Fatal("reading a FIFO at records/store-name blocks")
 	}
 }
+
+// Confirmation u-0: nothing checked that a name file another process is writing just now is not replaced (on a disk without hard links
+// PlaceOnce makes it first and writes it then).
+func TestPatch099StoreNameBeingWrittenIsNotReplaced(t *testing.T) {
+	Link = func(string, string) error { return &os.LinkError{Op: "link", Err: syscall.ENOTSUP} }
+	t.Cleanup(func() { Link = os.Link })
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "records"), 0o700)
+	path := filepath.Join(dir, "records", "store-name")
+	a, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // A: made, not yet written
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := scopeKey("/work/first")
+	StoreName(dir, "/work/second") // B, in between
+	a.WriteString(first + "\n")
+	a.Close()
+	if got := readStoreName(dir); got != first {
+		t.Fatalf("the first writer's name stays: %q", got)
+	}
+}

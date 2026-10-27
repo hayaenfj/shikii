@@ -115,7 +115,16 @@ func recordStoreName(dir, name string) string {
 // process is writing just now (on a disk without hard links PlaceOnce makes it first and writes it then; audit of 0.9.9, finding 4).
 func LeftOver(path string) bool {
 	info, err := os.Lstat(path)
-	return err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > 10*time.Second
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	f, err := os.Open(path) // a file that cannot be read now may hold a valid value: keep it (confirmation audit of 0.9.9)
+	if err != nil {
+		return false
+	}
+	f.Close()
+	age := time.Since(info.ModTime())
+	return age > 10*time.Second || age < -10*time.Second // a time in the future: copied from another machine, or a clock set back
 }
 
 // PlaceOnce puts data at path only when nothing is there, and only in full: it is written to a temp file beside path and linked into place,

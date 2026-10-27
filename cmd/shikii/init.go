@@ -17,6 +17,7 @@ import (
 
 	"github.com/hayaenfj/shikii/internal/handoff"
 	"github.com/hayaenfj/shikii/internal/store"
+	"github.com/tailscale/hujson"
 
 	shikii "github.com/hayaenfj/shikii"
 )
@@ -231,9 +232,9 @@ func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, err
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
 	if err := dec.Decode(&cfg); err != nil {
-		// OpenCode reads JSONC: valid JSON once its comments are taken out. A rewrite would drop the comments, so the file is the person's to
+		// OpenCode reads JSONC (comments and trailing commas; hujson reads the same, after a hand-made reader broke twice in audits). A rewrite would drop the comments, so the file is the person's to
 		// change (0.9.9); a file that is broken anyway is broken settings (audit of 0.9.9, finding 2)
-		if plain, ok := withoutJSONComments(b); ok && json.Valid(plain) {
+		if plain, err := hujson.Standardize(append([]byte(nil), b...)); err == nil && json.Valid(plain) {
 			jc := &jsoncSettings{personFileError{errors.New("it has comments (JSONC), which a rewrite would drop, so shikii left it as written")}, nil}
 			var c map[string]any
 			if json.Unmarshal(plain, &c) == nil {
@@ -277,43 +278,6 @@ type jsoncSettings struct {
 
 // Unwrap lets init and uninstall treat it like any file they leave as written (errors.As with *personFileError).
 func (j *jsoncSettings) Unwrap() error { return &j.personFileError }
-
-// withoutJSONComments is b with its // and /* */ comments outside strings taken out; ok is false when b has none.
-func withoutJSONComments(b []byte) ([]byte, bool) {
-	var out []byte
-	in, esc, found := false, false, false
-	for i := 0; i < len(b); i++ {
-		c := b[i]
-		switch {
-		case in && esc:
-			esc = false
-		case in && c == '\\':
-			esc = true
-		case c == '"':
-			in = !in
-		case !in && c == '/' && i+1 < len(b) && b[i+1] == '/':
-			found = true
-			for i < len(b) && b[i] != '\n' {
-				i++
-			}
-			if i < len(b) {
-				out = append(out, '\n')
-			}
-			continue
-		case !in && c == '/' && i+1 < len(b) && b[i+1] == '*':
-			found = true
-			end := bytes.Index(b[i+2:], []byte("*/"))
-			if end < 0 {
-				return nil, false
-			}
-			i += 2 + end + 1
-			out = append(out, ' ')
-			continue
-		}
-		out = append(out, c)
-	}
-	return out, found
-}
 
 // duplicateJSONKey returns a key written twice in one object of b (valid JSON).
 func duplicateJSONKey(b []byte) (string, bool) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,28 +13,6 @@ import (
 )
 
 // The audit of the 0.9.9 changes (v0.9.8..34451f3, .shikii/handoff/plan-0.9.9/audit.md). Each test failed on 34451f3.
-
-// finding 1: uninstall signals the page and looked at its lock at once, while the stopping serve still held it, so the lock stayed (50 of 50
-// tries in the audit). It now waits a little for the lock to be let go.
-func TestPatch099AuditUninstallWaitsForTheStoppedPagesLock(t *testing.T) {
-	b := newUninstallBox(t)
-	f, err := os.OpenFile(pageLockPath(b.agent, b.repo), os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
-	stop := stopProcess
-	stopProcess = func(pid int) error { // the serve exits a moment after the signal
-		go func() { time.Sleep(300 * time.Millisecond); f.Close() }()
-		return stop(pid)
-	}
-	out := capture(t, func() error { return cmdUninstall([]string{"--yes"}) })
-	if _, err := os.Lstat(pageLockPath(b.agent, b.repo)); !os.IsNotExist(err) {
-		t.Fatalf("the lock of the page uninstall stopped goes once the serve lets it go (%v)\n%s", err, out)
-	}
-}
 
 // finding 2: a broken JSON with "//" outside a string (a URL without quotes) was called JSONC, and init went on as if the file were fine.
 // Only a file that is valid JSON once its comments are taken out is JSONC; a broken one is refused as broken.
@@ -82,21 +61,74 @@ func TestPatch099AuditStoreIDBeingWrittenIsNotReplaced(t *testing.T) {
 	}
 }
 
-// finding 5: uninstall removed the skill lock without looking whether an init held it.
-func TestPatch099AuditHeldSkillLockStays(t *testing.T) {
-	p := filepath.Join(t.TempDir(), ".shikii-skill.lock")
-	f, _ := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0o600)
-	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		t.Fatal(err)
+// The confirmation audit of the audit's fixes (7d7646c, 02e3feb). The comments in JSON broke twice, so the hand-made reader was replaced
+// by a JSONC reader (hujson), and removing lock files raced with a holder twice, so uninstall no longer removes them (an empty lock file is
+// harmless and the next holder uses it).
+
+// confirmation i-1: a JSONC opencode.json without shikii made uninstall fail with "shikii is still there".
+func TestPatch099ConfirmUninstallJSONCWithoutShikiiHasNothingToRemove(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "opencode.json")
+	os.WriteFile(p, []byte("{\n // mine\n \"mcp\": {\"other\": {\"type\": \"local\"}}\n}\n"), 0o644)
+	if found, err := removeJSONEntry(p, "mcp", "shikii", false); err != nil || found {
+		t.Fatalf("no shikii in a file with comments: nothing to remove: %v %v", found, err)
 	}
-	removeEmptyLock(p)
-	if _, err := os.Lstat(p); os.IsNotExist(err) {
-		t.Fatal("a skill lock an init still holds is not removed")
+}
+
+// confirmation i-2: OpenCode's JSONC also allows trailing commas; with comments and a trailing comma init stopped as if it were broken.
+func TestPatch099ConfirmJSONCWithTrailingCommaLetsInitGoOn(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "opencode.json")
+	text := "{\n // mine\n \"mcp\": {\"other\": {\"type\": \"local\"},},\n}\n"
+	os.WriteFile(p, []byte(text), 0o644)
+	_, err := addJSONEntry(p, "mcp", "shikii", map[string]any{"type": "local"})
+	if !errors.As(err, new(*personFileError)) || !strings.Contains(err.Error(), "comments") {
+		t.Fatalf("JSONC with a trailing comma is left as written and init goes on: %v", err)
 	}
-	f.Close()
-	removeEmptyLock(p)
-	if _, err := os.Lstat(p); !os.IsNotExist(err) {
-		t.Fatal("control: a lock nobody holds is removed")
+}
+
+// confirmation u-1: uninstall removed a lock file between a holder's open and its flock, and two holders then held two files. Lock files
+// are not removed; uninstall still removes the page record.
+func TestPatch099ConfirmUninstallLeavesLockFiles(t *testing.T) {
+	b := newUninstallBox(t)
+	locks := []string{filepath.Join(b.home, ".claude", "skills", ".shikii-skill.lock"), pageLockPath(b.agent, b.repo)}
+	writeFileT(t, locks[1], "")
+	capture(t, func() error { return cmdUninstall([]string{"--yes"}) })
+	for _, l := range locks {
+		if _, err := os.Stat(l); err != nil {
+			t.Fatalf("a lock file stays (removing it races with a holder): %s %v", l, err)
+		}
+	}
+	if _, err := os.Lstat(pagePath(b.agent, b.repo)); !os.IsNotExist(err) {
+		t.Fatalf("the stopped page's record still goes: %v", err)
+	}
+}
+
+// confirmation u-2: a valid store-id that could not be opened for a moment (mode 000) was taken for an invalid one and replaced.
+func TestPatch099ConfirmUnreadableValidStoreIDIsKept(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".shikii")
+	os.MkdirAll(filepath.Join(root, "records"), 0o700)
+	path := filepath.Join(root, "records", "store-id")
+	id := strings.Repeat("b", 32)
+	os.WriteFile(path, []byte(id+"\n"), 0o600)
+	old := time.Now().Add(-time.Minute)
+	os.Chtimes(path, old, old)
+	os.Chmod(path, 0)
+	t.Cleanup(func() { os.Chmod(path, 0o600) })
+	storeID(root, true)
+	os.Chmod(path, 0o600)
+	if b, _ := os.ReadFile(path); strings.TrimSpace(string(b)) != id {
+		t.Fatalf("a valid id that could not be read for a moment is kept: %q", b)
+	}
+}
+
+// confirmation u-3: an empty id whose time is in the future (copied from another machine, a clock set back) was never made again.
+func TestPatch099ConfirmFutureEmptyStoreIDIsMadeAgain(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".shikii")
+	os.MkdirAll(filepath.Join(root, "records"), 0o700)
+	path := filepath.Join(root, "records", "store-id")
+	os.WriteFile(path, nil, 0o600)
+	future := time.Now().Add(24 * time.Hour)
+	os.Chtimes(path, future, future)
+	if id := storeID(root, true); id == "" {
+		t.Fatal("an empty id with a future time is a leftover: it is made again")
 	}
 }
