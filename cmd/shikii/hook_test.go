@@ -937,12 +937,11 @@ func TestHookSecondAudit(t *testing.T) {
 	if !ok {
 		t.Fatal("the other hook's lock must be taken")
 	}
-	waited := false
+	calls := 0 // the first busy notice only shows it waits; the other finishes at the second, so giving up after one wait is caught
 	sessionLockBusy = func() {
-		if waited {
+		if calls++; calls != 2 {
 			return
 		}
-		waited = true
 		other := loadSession(agent, "par")
 		other.Asked = append(other.Asked, askedItem{Spec: "done-as-asked", Trace: "0000000000000001"})
 		if err := saveSession(agent, "par", other); err != nil {
@@ -957,7 +956,7 @@ func TestHookSecondAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionLockBusy = nil
-	if !waited {
+	if calls < 2 {
 		unlockOther()
 		t.Fatal("an update must wait while another hook holds the session lock")
 	}

@@ -274,12 +274,11 @@ func TestNotebookConcurrentIngestKeepsEveryLessonAndLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waited := false
+	calls := 0 // the first busy notice only shows it waits; the other finishes at the second, so giving up after one wait is caught
 	lockBusy = func() {
-		if waited {
+		if calls++; calls != 2 {
 			return
 		}
-		waited = true
 		unlock()
 		if _, err := b.Ingest(draft(ids[1], "Instructions 1")); err != nil {
 			t.Error(err)
@@ -290,7 +289,7 @@ func TestNotebookConcurrentIngestKeepsEveryLessonAndLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	lockBusy = nil
-	if !waited {
+	if calls < 2 {
 		unlock()
 		t.Fatal("ingestion waits while another update is running")
 	}

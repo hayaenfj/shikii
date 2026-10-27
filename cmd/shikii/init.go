@@ -209,7 +209,7 @@ func seedFile(path string, data []byte) (bool, error) {
 	} else if !os.IsNotExist(err) {
 		return false, err
 	}
-	placed, err := store.PlaceOnce(path, data, 0o644) // a temp file linked into place, or O_EXCL on a disk without hard links (0.9.9)
+	placed, err := store.PlaceOnce(path, data, 0o644) // a temp file linked into place, or renamed into place under a folder lock on a disk without hard links (0.9.10)
 	if err != nil {
 		return false, err
 	}

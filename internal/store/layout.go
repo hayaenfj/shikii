@@ -113,7 +113,7 @@ func recordStoreName(dir, name string) string {
 }
 
 // LeftOver reports whether path is a regular file old enough (over 10 seconds) to be left by a stop while it was written, not a file another
-// process is writing just now (on a disk without hard links PlaceOnce makes it first and writes it then; audit of 0.9.9, finding 4).
+// process is writing just now (an older shikii on a disk without hard links made it first and wrote it then; audit of 0.9.9, finding 4).
 func LeftOver(path string) bool {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {

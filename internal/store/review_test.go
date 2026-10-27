@@ -83,12 +83,11 @@ func TestReviewKeepsFirstScoreAndHumanTruth(t *testing.T) {
 	// Another save holds the history's lock and writes the same provisional score at the moment this save finds the lock busy
 	// (reviewLockBusy). This save must wait, then read the history, find the score there and not write it again.
 	path := filepath.Join(st.Dir, "records", "reviews", r.Spec+".jsonl")
-	waited := false
+	calls := 0 // the first busy notice only shows it waits; the other finishes at the second, so giving up after one wait is caught
 	reviewLockBusy = func() {
-		if waited {
+		if calls++; calls != 2 {
 			return
 		}
-		waited = true
 		other := r
 		other.Rubric, other.At = ReviewRubric, time.Now().UTC()
 		if err := st.appendJSONL(path, other); err != nil {
@@ -101,7 +100,7 @@ func TestReviewKeepsFirstScoreAndHumanTruth(t *testing.T) {
 		t.Fatal(err)
 	}
 	reviewLockBusy = nil
-	if !waited {
+	if calls < 2 {
 		t.Fatal("while another score is being saved, an update to the same history waits")
 	}
 	if _, err := st.SaveReview(r); err != nil {

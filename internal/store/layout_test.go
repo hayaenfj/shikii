@@ -232,3 +232,19 @@ func TestTheDevelopmentNameProjectIsNotUsed(t *testing.T) {
 		t.Fatalf("the name is the hash of the path, not %q", got)
 	}
 }
+
+// Only EPERM (Linux's exFAT and FAT refusing modes) is let pass: any other failure to set the temp file's mode stops PlaceOnce, and nothing
+// is placed (0.9.10 final audit u-2).
+func TestPatch0910OtherChmodFailureStops(t *testing.T) {
+	withoutHardLinks(t)
+	old := ChmodTemp
+	t.Cleanup(func() { ChmodTemp = old })
+	ChmodTemp = func(*os.File, os.FileMode) error { return &os.PathError{Op: "chmod", Err: syscall.EIO} }
+	dir := t.TempDir()
+	if placed, err := PlaceOnce(filepath.Join(dir, "store-id"), []byte("id\n"), 0o600); err == nil || placed {
+		t.Fatalf("a chmod failure other than EPERM stops it: %v %v", placed, err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("nothing is left in the folder: %v", entries)
+	}
+}
