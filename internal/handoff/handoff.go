@@ -238,6 +238,9 @@ func (b Book) Read(p string) (File, error) {
 	return out, nil
 }
 
+// beforeReplace runs after a rewrite has filled its temp file and right before renaming it into place; a test makes another write happen there.
+var beforeReplace = func() {}
+
 // Write writes one item (appends to the end in appendMode). Parent folders are created. Rewrites replace the file from a temp file.
 func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 	clean, err := Clean(p)
@@ -301,6 +304,7 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 			_ = r.Remove(tmp)
 			return Entry{}, err
 		}
+		beforeReplace()
 		if err := r.Rename(tmp, clean); err != nil {
 			_ = r.Remove(tmp)
 			return Entry{}, err

@@ -169,18 +169,37 @@ func TestReplaceUsesAFreshTemporaryName(t *testing.T) {
 	if _, err := b.Write(long, "x", false); err != nil {
 		t.Fatalf("a long name accepted by Clean must be writable: %v", err)
 	}
+}
+
+// Audit 0.8.1-1: two replaces of one item at once do not mix or fail. Checked in one run, without waiting on a race: while one write has
+// filled its temp file and is about to rename it into place, the other write runs from start to end.
+func TestReplaceWhileAnotherReplaceIsAboutToRename(t *testing.T) {
+	b, dir := book(t)
 	big, small := strings.Repeat("大", 100000), "小"
-	for i := 0; i < 50; i++ {
-		done := make(chan error, 2)
-		go func() { _, err := b.Write("race.md", big, false); done <- err }()
-		go func() { _, err := b.Write("race.md", small, false); done <- err }()
-		for j := 0; j < 2; j++ {
-			if err := <-done; err != nil {
-				t.Fatalf("round %d: a concurrent replace failed: %v", i, err)
-			}
-		}
-		if f, _ := b.Read("race.md"); f.Content != big && f.Content != small {
-			t.Fatalf("round %d: the contents were mixed (%d bytes)", i, len(f.Content))
+	t.Cleanup(func() { beforeReplace = func() {} })
+	var inner error
+	met := 0
+	beforeReplace = func() {
+		beforeReplace = func() {}
+		met++
+		_, inner = b.Write("race.md", small, false)
+	}
+	if _, err := b.Write("race.md", big, false); err != nil {
+		t.Fatalf("the outer replace failed: %v", err)
+	}
+	if met != 1 || inner != nil {
+		t.Fatalf("the other replace ran right before the rename and succeeded: met %d, %v", met, inner)
+	}
+	if f, _ := b.Read("race.md"); f.Content != big {
+		t.Fatalf("the last rename wins with its whole contents: got %d bytes", len(f.Content))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if isTempName(e.Name()) {
+			t.Fatalf("a temp file was left: %s", e.Name())
 		}
 	}
 }
