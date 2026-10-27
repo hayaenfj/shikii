@@ -4,7 +4,7 @@
 
 ## 0.9.10 — init stopped on a disk without hard links no longer leaves a part of a built-in file
 
-- Disks without hard links (exFAT, FAT): a stop in the middle of init no longer leaves a part of a built-in file (a decision or wiki page) or of the store's id and name; the whole file is written first, then put in place. A part of a built-in file left by an earlier version stays (the store's id and name are made again as before): remove it and run `shikii --init`. On Linux, init no longer stops when these disks refuse to change a file's mode.
+- Disks without hard links (exFAT, FAT): a stop in the middle of init no longer leaves a part of a built-in file (a decision or wiki page) or of the store's id and name; the whole file is written first, then put in place. A part of a built-in file left by an earlier version stays (the store's id and name are made again as before): remove it and run `shikii --init`. On Linux, init, adopting a wording and `shikii tune` no longer stop when these disks refuse to change a file's mode. A network disk without hard links that does not support locks (some SMB mounts) gets the files without the lock instead of stopping init.
 
 ## 0.9.9 — commented settings files stay as written, and init works on disks without hard links
 

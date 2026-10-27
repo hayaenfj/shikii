@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -649,12 +651,15 @@ func (s *Spec) Save() error {
 		os.Remove(tmp.Name())
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+	if err := chmodSaved(tmp.Name(), 0o644); err != nil && !errors.Is(err, syscall.EPERM) { // Linux's exFAT and FAT refuse modes (0.9.10)
 		os.Remove(tmp.Name())
 		return err
 	}
 	return os.Rename(tmp.Name(), s.path)
 }
+
+// chmodSaved sets the saved spec's mode; tests swap it to refuse like Linux's exFAT and FAT drivers.
+var chmodSaved = os.Chmod
 
 // setMappingKey replaces root's key with value (appends it if missing, removes it if empty).
 // variantsChanged reports whether the variants in the file differ from the current value.

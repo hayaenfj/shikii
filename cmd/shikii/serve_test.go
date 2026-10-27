@@ -869,18 +869,30 @@ func TestQueuePutsAuditSamplesRightAfterAskItems(t *testing.T) {
 	s := httptest.NewServer(newServer(serveOpts{specsDir: specsDir, storeDir: storeDir, ef: ef}))
 	t.Cleanup(s.Close)
 
-	// 60 act records (added until a spot check appears) and 1 ask record (written by hand)
+	// act records with fixed trace ids, 2 of them spot-check samples, written plain, sampled, plain, sampled, plain so the queue has to move
+	// the samples forward; and 1 ask record. Fixed ids: the case is there on every run (random ids left it out about 1 run in 30,000).
 	st := store.Store{Dir: storeDir}
-	sampled := 0
-	for i := 0; i < 200 && sampled < 2; i++ {
-		code, d := postJSON(t, s.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix " + string(rune('a'+i%26)) + string(rune('a'+i/26))}})
-		if code != 200 || d["band"] != "act" {
-			t.Fatalf("decide: %d %v", code, d)
-		}
-		if store.AuditSample(d["trace_id"].(string)) {
-			sampled++
+	var samples, plains []string
+	for i := 0; len(samples) < 2 || len(plains) < 3; i++ {
+		id := fmt.Sprintf("%016x", i)
+		if store.AuditSample(id) {
+			if len(samples) < 2 {
+				samples = append(samples, id)
+			}
+		} else if len(plains) < 3 {
+			plains = append(plains, id)
 		}
 	}
+	at := time.Now().Add(-time.Hour)
+	for n, id := range []string{plains[0], samples[0], plains[1], samples[1], plains[2]} {
+		in := map[string]string{"message": fmt.Sprintf("fix %d", n)}
+		rec := store.Record{TraceID: id, SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "m", Inputs: in, InputsHash: store.HashInputs(in),
+			Raw: map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}, Top: "change_request", P: 0.9, Band: "act", At: at.Add(time.Duration(n) * time.Minute)}
+		if err := st.AppendRecord(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sampled := len(samples)
 	askRec := store.Record{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "m", Inputs: map[string]string{"message": "hmm"},
 		InputsHash: store.HashInputs(map[string]string{"message": "hmm"}), Raw: map[string]float64{"change_request": 0.65, "question": 0.3, "other": 0.05}, Top: "change_request", P: 0.65, Band: "ask", At: time.Now()}
 	if err := st.AppendRecord(askRec); err != nil {

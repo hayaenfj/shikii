@@ -135,6 +135,9 @@ var WriteTemp = func(f *os.File, b []byte) (int, error) { return f.Write(b) }
 // milliseconds; the cmd/shikii tests swap it for nothing, as eight groups doing it at once made every test several times slower.
 var SyncTemp = (*os.File).Sync
 
+// FlockDir locks PlaceOnce's folder; tests swap it to refuse like a network disk without locks.
+var FlockDir = syscall.Flock
+
 // BeforeRename runs right before PlaceOnce renames its temp file into place on a disk without hard links; a test checks the folder is
 // locked there.
 var BeforeRename = func() {}
@@ -177,10 +180,13 @@ func PlaceOnce(path string, data []byte, perm os.FileMode) (bool, error) {
 		return false, err
 	}
 	defer dir.Close()
-	if err := syscall.Flock(int(dir.Fd()), syscall.LOCK_EX); err != nil {
+	// a network disk may not support locks (ENOTSUP, ENOLCK on some SMB mounts): place it without the lock rather than stop init (0.9.10)
+	switch err := FlockDir(int(dir.Fd()), syscall.LOCK_EX); {
+	case err == nil:
+		defer FlockDir(int(dir.Fd()), syscall.LOCK_UN)
+	case !errors.Is(err, syscall.ENOTSUP) && !errors.Is(err, syscall.EOPNOTSUPP) && !errors.Is(err, syscall.ENOLCK):
 		return false, err
 	}
-	defer syscall.Flock(int(dir.Fd()), syscall.LOCK_UN)
 	if _, err := os.Lstat(path); err == nil {
 		return false, nil
 	} else if !os.IsNotExist(err) {

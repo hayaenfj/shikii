@@ -372,12 +372,6 @@ func TestRemoveCodexServerWritesThroughLinksAndKeepsPermissions(t *testing.T) {
 	}
 }
 
-func TestUsageListsUninstall(t *testing.T) {
-	if !strings.Contains(usageText(), "shikii uninstall [--yes]") {
-		t.Fatal("the usage must list shikii uninstall")
-	}
-}
-
 // A2: removing shikii from a file Codex reads it from leaves no shikii and the rest unchanged; found is never false while there is one.
 func TestFinalAEA2UninstallFromCodexReadableTOML11(t *testing.T) {
 	rest := "[mcp_servers.other]\ncommand = \"x\"\nenv = {\n  A = \"1\",\n}\n"

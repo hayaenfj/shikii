@@ -248,3 +248,25 @@ func TestPatch0910OtherChmodFailureStops(t *testing.T) {
 		t.Fatalf("nothing is left in the folder: %v", entries)
 	}
 }
+
+// A network disk without hard links may not support locks (flock gives ENOTSUP or ENOLCK on some SMB mounts): PlaceOnce places the file
+// without the lock instead of stopping init there (0.9.10 final audit, suspicion 1). The check that nothing is there still comes first.
+func TestPatch0910FolderWithoutLocksStillPlaces(t *testing.T) {
+	withoutHardLinks(t)
+	old := FlockDir
+	t.Cleanup(func() { FlockDir = old })
+	for _, refusal := range []error{syscall.ENOTSUP, syscall.EOPNOTSUPP, syscall.ENOLCK} {
+		FlockDir = func(int, int) error { return refusal }
+		path := filepath.Join(t.TempDir(), "store-id")
+		if placed, err := PlaceOnce(path, []byte("id\n"), 0o600); err != nil || !placed {
+			t.Fatalf("%v: a folder without locks still gets the file: %v %v", refusal, placed, err)
+		}
+		if placed, err := PlaceOnce(path, []byte("other\n"), 0o600); err != nil || placed {
+			t.Fatalf("%v: a file already there is kept: %v %v", refusal, placed, err)
+		}
+	}
+	FlockDir = func(int, int) error { return syscall.EIO }
+	if _, err := PlaceOnce(filepath.Join(t.TempDir(), "store-id"), []byte("id\n"), 0o600); err == nil {
+		t.Fatal("any other lock failure stops it")
+	}
+}

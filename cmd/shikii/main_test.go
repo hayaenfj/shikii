@@ -1035,7 +1035,7 @@ func TestFlagsMayFollowPositionals(t *testing.T) {
 // No arguments / hash --help print usage and do not fail. The usage lists the current tools and flags.
 func TestUsageMentionsCurrentToolsAndFlags(t *testing.T) {
 	u := usageText()
-	for _, must := range []string{"shikii_tune", "--proposer", "--propose", "shikii tune", "shikii up", "shikii doctor"} {
+	for _, must := range []string{"shikii_tune", "--proposer", "--propose", "shikii tune", "shikii up", "shikii doctor", "shikii uninstall [--yes]"} {
 		if !strings.Contains(u, must) {
 			t.Fatalf("usage must mention %q", must)
 		}

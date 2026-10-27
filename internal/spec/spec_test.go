@@ -1,9 +1,11 @@
 package spec
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -541,5 +543,37 @@ func TestStepsChangeTheHashAndTravelWithVariants(t *testing.T) {
 	sp.Variants = []Variant{{Name: "bad", Steps: []Step{{Ask: "x?", No: "other"}}}}
 	if err := sp.Validate(); err == nil || !strings.Contains(err.Error(), "steps") {
 		t.Fatalf("a variant's steps are validated like the spec's: %v", err)
+	}
+}
+
+// Linux's exFAT and FAT drivers refuse to change a file's mode (EPERM): saving a spec (adopting a wording, tune, calibrate --write) goes
+// on there, as PlaceOnce does (0.9.10 final audit, suspicion 2). Any other chmod failure still stops the save, and the spec stays as it was.
+func TestSaveGoesOnWhenTheDiskRefusesModes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "intent.yaml")
+	src := "id: intent\nversion: 1\ntype: noul\nquestion: Is it a request?\nstate:\n  template: \"{{ message }}\"\n  required: [message]\npolicy:\n  send_to: [local]\n  pii: true\nthresholds:\n  act: 0.75\n  ask: 0.55\neval:\n  min_n: 2\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := chmodSaved
+	t.Cleanup(func() { chmodSaved = old })
+	for _, c := range []struct {
+		refusal error
+		saved   bool
+	}{{syscall.EPERM, true}, {syscall.EIO, false}} {
+		s, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before, _ := os.ReadFile(path)
+		s.Variants = append(s.Variants, Variant{Name: fmt.Sprintf("v-%v", c.saved), Question: "Does it ask for something?"})
+		chmodSaved = func(string, os.FileMode) error { return &os.PathError{Op: "chmod", Err: c.refusal} }
+		err = s.Save()
+		after, _ := os.ReadFile(path)
+		if c.saved && (err != nil || string(after) == string(before)) {
+			t.Fatalf("%v: the spec is saved: %v", c.refusal, err)
+		}
+		if !c.saved && (err == nil || string(after) != string(before)) {
+			t.Fatalf("%v: the save stops and the spec stays: %v", c.refusal, err)
+		}
 	}
 }
