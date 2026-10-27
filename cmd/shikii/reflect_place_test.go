@@ -293,26 +293,55 @@ func TestLiveScenesAreCappedAndOrdered(t *testing.T) {
 
 // Tests that reproduce the 0.8.3 recheck (new-1, remaining-1, remaining-2) (brought in from what the auditor wrote in a copy).
 
-// Recheck new-1 (Japanese): place 2 items in the same place (A, then B), rewrite A into X and merge. X's body is long-ish (the body so far + A).
+// Recheck new-1: place 2 items in one place (A: to be merged, B: another draft), rewrite A into X and merge it with a long-ish body.
+// The truth goes to the merged A, in Japanese and in English; in English B is an unrelated topic and gets none.
 func TestPlacementTwoDraftsInOnePlaceLabelsTheMergedOne(t *testing.T) {
-	agent, scope, st, src := audit083Setup(t)
-	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
-	pid := ids["変更履歴は英語と日本語を揃える"]
-	a := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
-	b := notebook.Draft{Sources: []string{src}, Title: "変更履歴の項目", Lesson: "変更履歴は英語と日本語の両方に、版ごとに同じ項目を同じ順で書く", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
-	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{a, b}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	trA, trB := placedTrace(t, out, 0, pid), placedTrace(t, out, 1, pid)
-	body := "## 揃え方\n変更履歴は英語と日本語の両方に、版ごとに同じ項目を書く。片方だけに足さない。順も同じにする。\n## 見出し\n見出しは「版 — 題」の形にし、未公開の見出しのまま出さない。"
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しは「版 — 題」にし、未公開のまま出さない。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
-	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
-		t.Fatal(err)
-	}
-	place, _ := st.LabeledTraces("wiki-place")
-	if place[trA].Truth != "yes" {
-		t.Errorf("the merged A does not get \"yes\" (A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
+	type draft struct{ title, lesson, appliesTo string }
+	for _, tc := range []struct {
+		name               string
+		page, other        string
+		a, b               draft
+		merged             draft
+		body               string
+		unrelatedBGetsNone bool
+	}{
+		{
+			name: "Japanese", page: "変更履歴は英語と日本語を揃える", other: "コミットの説明を丁寧に残す",
+			a:      draft{"変更履歴の見出し", "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", "変更履歴を書く時"},
+			b:      draft{"変更履歴の項目", "変更履歴は英語と日本語の両方に、版ごとに同じ項目を同じ順で書く", "変更履歴を書く時"},
+			merged: draft{"変更履歴は英語と日本語を揃え、見出しは版と題にする", "変更履歴は英語と日本語を揃える。見出しは「版 — 題」にし、未公開のまま出さない。", "変更履歴を書く時"},
+			body:   "## 揃え方\n変更履歴は英語と日本語の両方に、版ごとに同じ項目を書く。片方だけに足さない。順も同じにする。\n## 見出し\n見出しは「版 — 題」の形にし、未公開の見出しのまま出さない。",
+		},
+		{
+			name: "English", page: "Status page first", other: "Commit author identity",
+			a:                  draft{"Read status", "Read the status page before changing any decision spec.", "operating"},
+			b:                  draft{"Release needs consent", "Never push or create a release until the person has reviewed it and explicitly said so.", "releasing"},
+			merged:             draft{"Status page first", "Read the status page first, and before changing any decision spec.", "operating"},
+			body:               "The status page shows whether the tool is working: which lines have been drawn, how many decisions wait for a person, whether delivered lessons helped, and how many turns the guards stopped. Read it first when something looks wrong, and read it before changing any decision spec, since a change of wording starts the truths over for that spec. It also says when the answers could not be separated with the current wording and model, and when there is only one answer so far.",
+			unrelatedBGetsNone: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agent, scope, st, src := audit083Setup(t)
+			pid := seedLessons(t, st, scope, tc.page, tc.other)[tc.page]
+			mk := func(d draft) notebook.Draft {
+				return notebook.Draft{Sources: []string{src}, Title: d.title, Lesson: d.lesson, Kind: "rule", Scene: "テストの時", AppliesTo: d.appliesTo}
+			}
+			out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{mk(tc.a), mk(tc.b)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			trA, trB := placedTrace(t, out, 0, pid), placedTrace(t, out, 1, pid)
+			merged := mk(tc.merged)
+			merged.ID, merged.Body = pid, &tc.body
+			if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
+				t.Fatal(err)
+			}
+			place, _ := st.LabeledTraces("wiki-place")
+			if place[trA].Truth != "yes" || tc.unrelatedBGetsNone && place[trB].Truth != "" {
+				t.Errorf("it goes to the merged A (and not to an unrelated B) (A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
+			}
+		})
 	}
 }
 
@@ -412,61 +441,6 @@ func TestPlacementSameDraftPlacedTwice(t *testing.T) {
 	}
 }
 
-// Recheck remaining-2: even if an old exact-match record can still be given a truth, a merge that keeps the lesson unchanged is hit.
-func TestPlacementLabelableLeftoverExactDoesNotShadowMerge(t *testing.T) {
-	agent, scope, st, src := audit083Setup(t)
-	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
-	pid := ids["変更履歴は英語と日本語を揃える"]
-	// Leftover place records from when the page was created (the candidate page no longer exists, so they stay without a truth; real data has these on 15 pages)
-	if err := st.AppendRecord(store.Record{TraceID: "leftover1", SpecID: "wiki-place", SpecHash: "x", Model: "m", InputsHash: "h1", At: time.Now().Add(-48 * time.Hour),
-		Inputs: map[string]string{"new_lesson": "変更履歴は英語と日本語を揃える。", "lesson": "コミットの説明を丁寧に残す。"}}); err != nil {
-		t.Fatal(err)
-	}
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
-	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var tr string
-	for _, c := range out.(placeResult).Placements[0].Candidates {
-		if c.PageID == pid {
-			tr = c.SameTopic.TraceID
-		}
-	}
-	body := "## 見出し\n" + draft.Lesson
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
-	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
-		t.Fatal(err)
-	}
-	place, _ := st.LabeledTraces("wiki-place")
-	if l := place[tr]; l.Truth != "yes" {
-		t.Fatalf("a merge that added to the body without changing the lesson does not get a truth: %+v (count given %d)", l, len(place))
-	}
-}
-
-// Recheck new-1 (English, 2 items in one place): English. Place 2 items in one place (A: to be merged, B: an unrelated topic), and merge A into X with a long-ish English body.
-func TestPlacementEnglishTwoDraftsInOnePlace(t *testing.T) {
-	agent, scope, st, src := audit083Setup(t)
-	ids := seedLessons(t, st, scope, "Status page first", "Commit author identity")
-	pid := ids["Status page first"]
-	a := notebook.Draft{Sources: []string{src}, Title: "Read status", Lesson: "Read the status page before changing any decision spec.", Kind: "rule", Scene: "テストの時", AppliesTo: "operating"}
-	b := notebook.Draft{Sources: []string{src}, Title: "Release needs consent", Lesson: "Never push or create a release until the person has reviewed it and explicitly said so.", Kind: "rule", Scene: "テストの時", AppliesTo: "releasing"}
-	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{a, b}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	trA, trB := placedTrace(t, out, 0, pid), placedTrace(t, out, 1, pid)
-	body := "The status page shows whether the tool is working: which lines have been drawn, how many decisions wait for a person, whether delivered lessons helped, and how many turns the guards stopped. Read it first when something looks wrong, and read it before changing any decision spec, since a change of wording starts the truths over for that spec. It also says when the answers could not be separated with the current wording and model, and when there is only one answer so far."
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "Status page first", Lesson: "Read the status page first, and before changing any decision spec.", Kind: "rule", Scene: "テストの時", AppliesTo: "operating", Body: &body}
-	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
-		t.Fatal(err)
-	}
-	place, _ := st.LabeledTraces("wiki-place")
-	if place[trA].Truth != "yes" || place[trB].Truth != "" {
-		t.Errorf("it goes to the merged A and not to the unrelated B (A=%q, B=%q)", place[trA].Truth, place[trB].Truth)
-	}
-}
-
 // placedTrace is the trace of the insertion-place decision about page pid for the draftIdx-th draft in the place result.
 func placedTrace(t *testing.T, out any, draftIdx int, pid string) string {
 	t.Helper()
@@ -507,53 +481,41 @@ func TestPlacementWindowSkipsDraftsPlacedLongAgo(t *testing.T) {
 	}
 }
 
-// A: an English draft that was placed but not saved gets a truth when an unrelated page is saved
-func TestPlacementIgnoresUnrelatedEnglishSaves(t *testing.T) {
-	agent, scope, st, src := audit083Setup(t)
-	seedLessons(t, st, scope, "Keep both changelogs in step", "Commit author identity")
-	draft := notebook.Draft{Sources: []string{src}, Title: "Release needs consent", Lesson: "Never push or create a release until the person has reviewed it and explicitly said so.", Kind: "rule", Scene: "テストの時", AppliesTo: "releasing"}
-	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}}); err != nil {
-		t.Fatal(err)
-	}
-	body := "A model returns a probability. From the truths people and results supply, the tool measures how the model's confidence relates to how often it is right, and draws a line above which it may act on its own. Until the line exists, nothing is automatic. Every decision falls into a band: act proceeds automatically, ask goes to a person, discard does nothing, abstain means an input or an endpoint is missing. Truths live apart from the model, so changing models does not start you over. Alternative wordings can be scored on the same truths and the better one kept. The page and the status command show whether it is working: whether delivered lessons helped, how many turns did the routine, how many turns guards stopped and how many were fixed, how many decisions wait for a person, and which lines have been drawn."
-	other := notebook.Draft{Sources: []string{src}, Title: "Status page", Lesson: "Read the status page first when running the tool.", Kind: "rule", Scene: "テストの時", AppliesTo: "operating", Body: &body}
-	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: other}); err != nil {
-		t.Fatal(err)
-	}
-	if place, _ := st.LabeledTraces("wiki-place"); len(place) != 0 {
-		t.Fatalf("saving an unrelated English page gave a truth to a draft that was not saved: %d items", len(place))
-	}
-}
-
-// B: when merging by adding to the body while keeping an existing page's lesson, an old (truthless) place record with the same sentence as that lesson hits first by exact match, and the current draft gets no truth
+// B and recheck remaining-2: when merging by adding to the body while keeping an existing page's lesson, an old (truthless) place record with the same
+// sentence as that lesson must not hit first by exact match and leave the current draft without a truth, whether the old record's candidate page is gone
+// (it can no longer get a truth) or still exists (it could still get one).
 func TestPlacementLeftoverExactRecordDoesNotShadowMerge(t *testing.T) {
-	agent, scope, st, src := audit083Setup(t)
-	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
-	pid := ids["変更履歴は英語と日本語を揃える"]
-	// Leftover place records from when the page was created (the candidate page no longer exists, so they stay without a truth; real data has these on 15 pages)
-	if err := st.AppendRecord(store.Record{TraceID: "leftover1", SpecID: "wiki-place", SpecHash: "x", Model: "m", InputsHash: "h1", At: time.Now().Add(-48 * time.Hour),
-		Inputs: map[string]string{"new_lesson": "変更履歴は英語と日本語を揃える。", "lesson": "今は無い記事の教訓"}}); err != nil {
-		t.Fatal(err)
-	}
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
-	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var tr string
-	for _, c := range out.(placeResult).Placements[0].Candidates {
-		if c.PageID == pid {
-			tr = c.SameTopic.TraceID
-		}
-	}
-	body := "## 見出し\n" + draft.Lesson
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
-	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
-		t.Fatal(err)
-	}
-	place, _ := st.LabeledTraces("wiki-place")
-	if l := place[tr]; l.Truth != "yes" {
-		t.Fatalf("a merge that added to the body without changing the lesson does not get a truth: %+v (count given %d)", l, len(place))
+	for _, tc := range []struct {
+		name, candidate string // the leftover record's candidate page lesson
+	}{
+		{"candidate page gone", "今は無い記事の教訓"},
+		{"candidate page still there", "コミットの説明を丁寧に残す。"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agent, scope, st, src := audit083Setup(t)
+			ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
+			pid := ids["変更履歴は英語と日本語を揃える"]
+			// Leftover place records from when the page was created (they stay without a truth; real data has these on 15 pages)
+			if err := st.AppendRecord(store.Record{TraceID: "leftover1", SpecID: "wiki-place", SpecHash: "x", Model: "m", InputsHash: "h1", At: time.Now().Add(-48 * time.Hour),
+				Inputs: map[string]string{"new_lesson": "変更履歴は英語と日本語を揃える。", "lesson": tc.candidate}}); err != nil {
+				t.Fatal(err)
+			}
+			draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+			out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tr := placedTrace(t, out, 0, pid)
+			body := "## 見出し\n" + draft.Lesson
+			merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
+			if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
+				t.Fatal(err)
+			}
+			place, _ := st.LabeledTraces("wiki-place")
+			if l := place[tr]; l.Truth != "yes" {
+				t.Fatalf("a merge that added to the body without changing the lesson does not get a truth: %+v (count given %d)", l, len(place))
+			}
+		})
 	}
 }
 

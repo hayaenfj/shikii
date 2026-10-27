@@ -501,14 +501,24 @@ func leftDelivery(t *testing.T, st store.Store, scope, id, parent string) string
 }
 
 // A submit that only assesses delivered lessons names that conversation, so left says what else is left for it.
+// A lesson delivered to a subagent is assessed with the delivery's own source_id, which is not the parent conversation's id;
+// left still names the parent conversation (the reflect view gathers the delivery under its parent).
 func TestReflectSubmitLeftNamesAssessedConversations(t *testing.T) {
-	st, scope, h := reviewFixture(t)
-	id, _ := reviewSeed(t, st, scope, 1)
-	key := leftDelivery(t, st, scope, id, "")
-	out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{{"source_id": id, "key": key, "result": "unknown", "evidence": "not checked"}}})
-	left, _ := out["left"].([]any)
-	if out["complete"] != true || len(left) != 1 || !strings.Contains(left[0].(string), id) || !strings.Contains(left[0].(string), "provisional scores 1") {
-		t.Fatalf("a memory-only submit says what is left for its conversation: %v", out)
+	for _, subagent := range []bool{false, true} {
+		t.Run(fmt.Sprint("subagent=", subagent), func(t *testing.T) {
+			st, scope, h := reviewFixture(t)
+			conv, _ := reviewSeed(t, st, scope, 1)
+			delivery, parent := conv, ""
+			if subagent {
+				delivery, parent = "00000000000000bb", conv
+			}
+			key := leftDelivery(t, st, scope, delivery, parent)
+			out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{{"source_id": delivery, "key": key, "result": "unknown", "evidence": "not checked"}}})
+			left, _ := out["left"].([]any)
+			if out["complete"] != true || len(left) != 1 || !strings.Contains(left[0].(string), conv) || !strings.Contains(left[0].(string), "provisional scores 1") {
+				t.Fatalf("a memory-only submit says what is left for the conversation %s: %v", conv, out)
+			}
+		})
 	}
 }
 
@@ -530,20 +540,6 @@ func TestReflectSubmitSaysWhenLeftFails(t *testing.T) {
 	msg, _ := out["left_error"].(string)
 	if out["complete"] != true || out["left"] != nil || !strings.Contains(msg, "could not work out what is left") || !strings.Contains(msg, "query") {
 		t.Fatalf("a failure to work out left is said, not swallowed: %v", out)
-	}
-}
-
-// A lesson delivered to a subagent is assessed with the delivery's own source_id, which is not the parent conversation's id.
-// left still names the parent conversation (the reflect view gathers the delivery under its parent).
-func TestReflectSubmitLeftMapsSubagentDeliveryToParent(t *testing.T) {
-	st, scope, h := reviewFixture(t)
-	parent, _ := reviewSeed(t, st, scope, 1)
-	delivery := "00000000000000bb"
-	key := leftDelivery(t, st, scope, delivery, parent)
-	out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{{"source_id": delivery, "key": key, "result": "unknown", "evidence": "not checked"}}})
-	left, _ := out["left"].([]any)
-	if out["complete"] != true || len(left) != 1 || !strings.Contains(left[0].(string), parent) || !strings.Contains(left[0].(string), "provisional scores 1") {
-		t.Fatalf("assessing a subagent's delivery says what is left for the parent conversation: %v", out)
 	}
 }
 

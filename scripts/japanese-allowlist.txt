@@ -4,7 +4,7 @@
 # Lower a number when Japanese is removed (the check says so); raise one only for such text.
 4 CHANGELOG.md
 1 cmd/fake-systemone/main.go
-30 cmd/shikii/classify_test.go
+26 cmd/shikii/classify_test.go
 16 cmd/shikii/guard.go
 1 cmd/shikii/guard_hook.go
 22 cmd/shikii/guard_hook_test.go
@@ -31,7 +31,7 @@
 6 cmd/shikii/page_test.go
 3 cmd/shikii/planning_knowledge_test.go
 12 cmd/shikii/project_test.go
-89 cmd/shikii/reflect_place_test.go
+80 cmd/shikii/reflect_place_test.go
 31 cmd/shikii/reflect_test.go
 15 cmd/shikii/review_test.go
 19 cmd/shikii/ritual_test.go

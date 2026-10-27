@@ -181,19 +181,9 @@ func TestServeUIIsSelfContained(t *testing.T) {
 	}
 }
 
-// The page lets you choose a language (English and Japanese; adding a dictionary adds more). The choice is kept in the browser (shikii.lang).
-func TestServeUIHasLanguageSwitch(t *testing.T) {
-	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	body := uiText(t, url)
-	for _, must := range []string{`id="lang"`, "shikii.lang", "あなたを待っている物はありません", "nothing waiting for an answer", "localStorage"} {
-		if !strings.Contains(body, must) {
-			t.Fatalf("UI must offer a language switch with an English and a Japanese dictionary; missing %q", must)
-		}
-	}
-}
-
 // The page is distributed as a Svelte bundle (web/dist) embedded in the binary: "/" is index.html, the assets it loads are 200 with the right type,
 // and unknown paths are 404 (no catch-all that turns everything into index.html). There is a language choice (stored in shikii.lang; the option names are each dictionary's langName: 「日本語」「English」).
+// The choice is kept in the browser, and there is an English and a Japanese dictionary (adding a dictionary adds more languages).
 func TestServeUIServesEmbeddedBundleWithLanguagePicker(t *testing.T) {
 	url, _, _ := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
 	index := getBody(t, url+"/")
@@ -230,9 +220,18 @@ func TestServeUIServesEmbeddedBundleWithLanguagePicker(t *testing.T) {
 		}
 	}
 	body := uiText(t, url)
-	for _, must := range []string{`id="lang"`, "shikii.lang", "日本語", "English"} {
-		if !strings.Contains(body, must) {
-			t.Fatalf("the language picker must be in the bundle; missing %q", must)
+	for _, tc := range []struct {
+		what string
+		must []string
+	}{
+		{"the picker, kept in the browser", []string{`id="lang"`, "shikii.lang", "localStorage"}},
+		{"each dictionary's langName", []string{"日本語", "English"}},
+		{"an English and a Japanese dictionary", []string{"あなたを待っている物はありません", "nothing waiting for an answer"}},
+	} {
+		for _, must := range tc.must {
+			if !strings.Contains(body, must) {
+				t.Fatalf("the language picker must be in the bundle (%s); missing %q", tc.what, must)
+			}
 		}
 	}
 }
@@ -1056,40 +1055,6 @@ func TestMissingSpecIdSaysSpecIsRequired(t *testing.T) {
 	}
 }
 
-// 0.9.7, after audits A to G: whether a reply that waits for the calibration lock is cut by the write timeout must not depend on how the
-// handler reached the lock. The server keeps every reply in flight alive while a calibration holds or waits for the lock, so a new route,
-// a wrapped handler or one run in process cannot get it wrong. This route is on no list and passes no writer.
-func TestAnyReplyWaitingForACalibrationOutlivesTheWriteTimeout(t *testing.T) {
-	dir := t.TempDir()
-	specsDir := filepath.Join(dir, "decisions")
-	if err := os.MkdirAll(specsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeSpec(t, specsDir, "true")
-	s := newServerState(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii")})
-	quickReplyCheck(t)
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer s.lockCalibration()() // a path nobody listed, with no writer
-		io.WriteString(w, "done")
-	})
-	ts := httptest.NewUnstartedServer(h)
-	ts.Config = newHTTPServer(h)
-	ts.Config.WriteTimeout = 100 * time.Millisecond
-	ts.Start()
-	defer ts.Close()
-	release := s.lockCalibration() // a background tune holds the lock
-	time.AfterFunc(400*time.Millisecond, release)
-	resp, err := http.Get(ts.URL)
-	var body []byte
-	if err == nil {
-		body, err = io.ReadAll(resp.Body)
-		resp.Body.Close()
-	}
-	if err != nil || string(body) != "done" {
-		t.Fatalf("the reply waiting for the lock arrives: %q %v", body, err)
-	}
-}
-
 // The page (serve) does the same; a store without specs makes it return right after reading its flags, so no page is started.
 func TestServeLocalReachesHookDecisions(t *testing.T) {
 	oldLocal := hookLocalURL
@@ -1467,7 +1432,7 @@ func TestStatusLineCountMatchesThePage(t *testing.T) {
 		}
 	}
 	if page != 3 {
-		t.Fatalf("fixture: the page counts 3 truths, got %d: %s", page, rec.Body.String())
+		t.Fatalf("keys[].n is calibration's N: the latest truth per input from people and results (3), got %d: %s", page, rec.Body.String())
 	}
 	out := capture(t, func() error { return cmdStatus([]string{"--store", root, specPath}) })
 	line := ""

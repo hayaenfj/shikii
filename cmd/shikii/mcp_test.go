@@ -268,21 +268,6 @@ func TestMCPLabelsAreMarkedAndWeightIsBounded(t *testing.T) {
 	}
 }
 
-// The MCP rewrite reads the arguments as a map first. When that read fails (a number too large for float64 in a field
-// the handler does not know), the arguments must not reach the handler unchanged with the person's source in them.
-func TestMCPLabelSourceWhenTheMapReadFails(t *testing.T) {
-	send, specPath := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	d := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "shikii_decide", "arguments": map[string]any{"spec": "intent", "inputs": map[string]any{"message": "fix"}}}}))["structuredContent"].(map[string]any)
-	raw := json.RawMessage(fmt.Sprintf(`{"trace_id":%q,"truth":"change_request","source":"ask","weight":1,"x":1e400}`, d["trace_id"]))
-	send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "shikii_label", "arguments": raw}})
-	st := store.Store{Dir: filepath.Join(filepath.Dir(filepath.Dir(specPath)), ".shikii")}
-	labs, _ := st.LabeledTraces("intent")
-	l, ok := labs[d["trace_id"].(string)]
-	if !ok || l.Source != "mcp" {
-		t.Fatalf("an MCP label with an odd extra field is saved, as the agent's: saved=%v source=%q weight=%v", ok, l.Source, l.Weight)
-	}
-}
-
 // arguments null decodes into a nil map without an error; the rewrite must not panic on it.
 func TestMCPLabelNullArguments(t *testing.T) {
 	send, _ := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
@@ -294,38 +279,27 @@ func TestMCPLabelNullArguments(t *testing.T) {
 	send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "shikii_label", "arguments": json.RawMessage("null")}})
 }
 
-// Behaviour check 0.9.2 (OpenCode, glm-5.3): the agent called shikii_label on its own needs-plan trace with source "ask",
-// taking "Don't ask me questions" as the person's answer. The label was stored as a person's answer (source ask, weight 1).
-// A label that comes through MCP is the agent's, whatever source it names.
+// A label through MCP is the agent's: whatever source it names, in any spelling the handler would read as source, and even with an extra field
+// whose number cannot be read into a map, it is saved with source "mcp" and never as the person's answer.
 func TestMCPLabelCannotClaimThePersonsAnswer(t *testing.T) {
-	send, specPath := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	call := func(id int, name string, args map[string]any) map[string]any {
-		return result(t, send(map[string]any{"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}}))
-	}
-	d := call(1, "shikii_decide", map[string]any{"spec": "intent", "inputs": map[string]any{"message": "fix"}})["structuredContent"].(map[string]any)
-	call(2, "shikii_label", map[string]any{"trace_id": d["trace_id"], "truth": "change_request", "source": "ask", "weight": 1})
-	st := store.Store{Dir: filepath.Join(filepath.Dir(filepath.Dir(specPath)), ".shikii")}
-	labs, _ := st.LabeledTraces("intent")
-	if l, ok := labs[d["trace_id"].(string)]; ok && l.Source == "ask" {
-		t.Fatalf("an MCP label was stored as the person's answer: source=%q weight=%v", l.Source, l.Weight)
-	}
-}
-
-// Go's JSON decoder matches field names without case and with Unicode folding, so "Source" or "ſource" (U+017F) is read as source too.
-// None of them may carry the person's source past the MCP rewrite.
-func TestMCPLabelSourceInAnySpelling(t *testing.T) {
-	for _, key := range []string{"ſource", "Source", "SOURCE"} {
-		send, specPath := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-		call := func(id int, name string, args map[string]any) map[string]any {
-			return result(t, send(map[string]any{"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}}))
-		}
-		d := call(1, "shikii_decide", map[string]any{"spec": "intent", "inputs": map[string]any{"message": "fix"}})["structuredContent"].(map[string]any)
-		call(2, "shikii_label", map[string]any{"trace_id": d["trace_id"], "truth": "change_request", key: "ask", "weight": 1})
-		st := store.Store{Dir: filepath.Join(filepath.Dir(filepath.Dir(specPath)), ".shikii")}
-		labs, _ := st.LabeledTraces("intent")
-		if l, ok := labs[d["trace_id"].(string)]; !ok || l.Source != "mcp" {
-			t.Errorf("key %q: the MCP label was stored as %+v (want source mcp)", key, l)
-		}
+	for _, tc := range []struct{ name, key, extra string }{
+		{"source", "source", ""},
+		{"long s", "ſource", ""},
+		{"capitalized", "Source", ""},
+		{"upper case", "SOURCE", ""},
+		{"odd extra field", "source", `,"x":1e400`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			send, specPath := mcpSession(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+			d := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "shikii_decide", "arguments": map[string]any{"spec": "intent", "inputs": map[string]any{"message": "fix"}}}}))["structuredContent"].(map[string]any)
+			raw := json.RawMessage(fmt.Sprintf(`{"trace_id":%q,"truth":"change_request",%q:"ask","weight":1%s}`, d["trace_id"], tc.key, tc.extra))
+			send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "shikii_label", "arguments": raw}})
+			st := store.Store{Dir: filepath.Join(filepath.Dir(filepath.Dir(specPath)), ".shikii")}
+			labs, _ := st.LabeledTraces("intent")
+			if l, ok := labs[d["trace_id"].(string)]; !ok || l.Source != "mcp" {
+				t.Fatalf("the MCP label must be saved as the agent's (source mcp): saved=%v source=%q weight=%v", ok, l.Source, l.Weight)
+			}
+		})
 	}
 }
 

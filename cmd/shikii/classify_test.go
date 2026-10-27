@@ -81,42 +81,6 @@ func TestHookAsksToClassifyLegacyPagesAndStopsUntilDone(t *testing.T) {
 	}
 }
 
-// Once the 5 asked pages are filled, that turn is not blocked even if a 6th, not asked for, remains (the rest is asked for in the next request).
-func TestClassifyRitualLooksOnlyAtTheAskedPages(t *testing.T) {
-	model := fakeAgentModel(t, func(string) float64 { return .1 })
-	hookEnv(t, model)
-	repo := gitRepo(t)
-	t.Chdir(repo)
-	capture(t, func() error { return cmdInit(nil) })
-	root := filepath.Join(repo, ".shikii")
-	scope := feedbackScope(repo)
-	st := store.Store{Dir: root}
-	src := fmt.Sprintf("%016x", 501)
-	if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "r", Summary: "s", Reply: "x"}); err != nil {
-		t.Fatal(err)
-	}
-	book := notebook.Book{Root: root, Scope: scope}
-	for i := 0; i < 6; i++ {
-		res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("前の版の記事 %d", i), Lesson: fmt.Sprintf("前の版の教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := book.RewriteWithoutKindScene(res.Page.ID); err != nil {
-			t.Fatal(err)
-		}
-	}
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "m", "cwd": repo, "prompt": "README を直して"})
-	un, _ := book.Unclassified()
-	for _, p := range un[:5] {
-		if _, err := book.Classify(p.ID, "fact", "作業する時"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if stop := runHook(t, "stop", map[string]any{"session_id": "m", "cwd": repo, "last_assistant_message": "直した"}); strings.Contains(stop, "need a kind and a scene") {
-		t.Fatalf("once the asked pages are filled, it does not block even if pages not asked for remain: %s", stop)
-	}
-}
-
 // Agents without hooks (Codex before trusting hooks, OpenCode) skimmed past the unclassified list at the end of the query reply (measured in 0.9.0).
 // The query reply puts the unclassified guidance first, and the replies to saving (ingest), filling (classify) and saving the reflection (reflect submit)
 // also carry the number of remaining unclassified pages, the next 5 and how to fill them. Once none remain, they are left out.

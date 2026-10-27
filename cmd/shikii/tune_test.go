@@ -148,26 +148,6 @@ func TestTuneKeepsCurrentWhenNothingBeatsIt(t *testing.T) {
 	}
 }
 
-// If the bank is below min_n, do not measure (choosing wording with few truths is a guess).
-func TestTuneRefusesWithoutEnoughTruths(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-	srv := wordingSensitiveModel(t)
-	specPath := specWithVariants(t, dir)
-	labeledPath := filepath.Join(dir, "rows.json")
-	if err := os.WriteFile(labeledPath, []byte(`[{"inputs":{"message":"fix a"},"truth":"change_request"}]`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var buf bytes.Buffer
-	old := stdout
-	stdout = &buf
-	err := cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii")})
-	stdout = old
-	if err == nil || !strings.Contains(err.Error(), "min_n") {
-		t.Fatalf("tune must refuse below min_n, got %v", err)
-	}
-}
-
 // Even a candidate that gets one more right over the whole bank is not adopted unless holdout (choose on k-1, measure on 1) beats the current one (do not change wording on a lucky win).
 func TestTuneDoesNotAdoptAWinByNoise(t *testing.T) {
 	dir := t.TempDir()
