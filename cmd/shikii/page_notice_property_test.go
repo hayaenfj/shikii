@@ -4,56 +4,34 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 )
 
-// Properties D1 and D2 of .shikii/handoff/audit-0.9.7/invariants.md (0.9.7 quality bar): pages of one project started at the same time,
-// with other hooks peeking at the lock meanwhile, end with exactly one holding it.
-func TestExactlyOnePageWinsEvenWhilePeeked(t *testing.T) {
-	for round := 0; round < 40; round++ {
-		common, scope := t.TempDir(), fmt.Sprintf("/work/p%d", round)
-		var stop atomic.Bool
-		var peeks sync.WaitGroup
-		for i := 0; i < 3; i++ {
-			peeks.Add(1)
-			go func() {
-				defer peeks.Done()
-				for !stop.Load() {
-					pageLockHeld(common, scope)
-				}
-			}()
-		}
-		var wins, losses atomic.Int32
-		var starts sync.WaitGroup
-		release := make(chan struct{})
-		for i := 0; i < 8; i++ {
-			starts.Add(1)
-			go func() {
-				defer starts.Done()
-				if f, ok := holdPageLock(common, scope); ok {
-					wins.Add(1)
-					<-release // a page holds the lock for its whole life
-					f.Close()
-				} else {
-					losses.Add(1)
-				}
-			}()
-		}
-		// the winner holds on until every other start has given up after its short retry
-		for wins.Load()+losses.Load() < 8 && losses.Load() < 8 {
-			if wins.Load() > 1 {
-				break
-			}
-		}
-		stop.Store(true)
-		peeks.Wait()
-		close(release)
-		starts.Wait()
-		if wins.Load() != 1 {
-			t.Fatalf("round %d: %d pages took the lock of one project", round, wins.Load())
-		}
+// Property D1 of .shikii/handoff/audit-0.9.7/invariants.md (0.9.7 quality bar): while a page holds the project's lock, another start cannot
+// take it, even when another hook peeks at the lock at the very moment of that start, and the peek sees the page as running. Checked in one
+// run, without waiting on a race: the peek is made right at the second start's try (beforePageLockTry).
+func TestSecondPageCannotTakeTheLockEvenWhilePeeked(t *testing.T) {
+	common, scope := t.TempDir(), "/work/p"
+	oldRetry, oldTry := pageLockRetry, beforePageLockTry
+	t.Cleanup(func() { pageLockRetry, beforePageLockTry = oldRetry, oldTry })
+	pageLockRetry = 0 // a start that cannot take the lock gives up after one try
+	first, ok := holdPageLock(common, scope)
+	if !ok {
+		t.Fatal("the first page takes the free lock")
+	}
+	defer first.Close()
+	var peeks []bool
+	beforePageLockTry = func(int) { peeks = append(peeks, pageLockHeld(common, scope)) }
+	if second, ok := holdPageLock(common, scope); ok {
+		second.Close()
+		t.Fatal("a second page of the same project took the lock the first page holds")
+	}
+	beforePageLockTry = oldTry
+	if len(peeks) != 1 || !peeks[0] {
+		t.Fatalf("the peek at the second start sees the first page running: %v", peeks)
+	}
+	if !pageLockHeld(common, scope) {
+		t.Fatal("after the peek and the failed start, the first page still holds the lock")
 	}
 }
 

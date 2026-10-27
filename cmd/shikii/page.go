@@ -97,18 +97,25 @@ func holdPageLock(common, scope string) (*os.File, bool) {
 	}
 	// pageLockHeld peeks with a shared lock for an instant (another hook, the project list, shikii page), so a start that meets a peek
 	// tries again for a moment; a running page holds the lock for its whole life (0.9.7 audit A-3)
-	for deadline := time.Now().Add(pageLockRetry); ; time.Sleep(5 * time.Millisecond) {
+	deadline := time.Now().Add(pageLockRetry)
+	for attempt := 0; ; attempt++ {
+		beforePageLockTry(attempt)
 		if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) == nil {
 			return f, true
 		}
-		if time.Now().After(deadline) {
+		if !time.Now().Before(deadline) {
 			f.Close()
 			return nil, false
 		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
-const pageLockRetry = 250 * time.Millisecond
+// pageLockRetry is how long a start keeps trying; tests set it to 0 so a start that cannot take the lock gives up after one try.
+var pageLockRetry = 250 * time.Millisecond
+
+// beforePageLockTry runs right before each try to take the page lock; a test peeks or holds a shared lock there to meet the start.
+var beforePageLockTry = func(attempt int) {}
 
 // pageStillOwned reports whether this process is still the project's page: the store it serves (root, as given to serve) exists and the
 // page record names this pid. Reconnecting a moved project and uninstall remove the old record; a page that lost it stops instead of

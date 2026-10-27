@@ -4,11 +4,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
+	"syscall"
 	"testing"
+	"time"
 )
 
-// 0.9.7 audit A-3: a probe (pageLockHeld) must not make a starting page fail to take the lock when no page holds it.
+// 0.9.7 audit A-3: a probe (pageLockHeld) must not make a starting page fail to take the lock when no page holds it (it would log
+// 'another page is running' and exit). Checked in one run: the start's first try meets a peek's shared lock, taken right then in
+// beforePageLockTry with the same flock a peek uses, and the peek ends before the next try.
 func TestAuditProbeDoesNotMakeAStartingPageExit(t *testing.T) {
 	common, scope := t.TempDir(), "/tmp/audit-project"
 	f, ok := holdPageLock(common, scope) // create the lock file, then release (the earlier page ended)
@@ -16,26 +19,33 @@ func TestAuditProbeDoesNotMakeAStartingPageExit(t *testing.T) {
 		t.Fatal("precondition")
 	}
 	f.Close()
-	var stop atomic.Bool
-	done := make(chan struct{})
-	go func() {
-		for !stop.Load() {
-			pageLockHeld(common, scope) // another hook / the hub / shikii page probing
-		}
-		close(done)
-	}()
-	fails := 0
-	for i := 0; i < 5000; i++ {
-		if f, ok := holdPageLock(common, scope); ok {
-			f.Close()
-		} else {
-			fails++
+	peek, err := os.OpenFile(pageLockPath(common, scope), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peek.Close()
+	oldRetry, oldTry := pageLockRetry, beforePageLockTry
+	t.Cleanup(func() { pageLockRetry, beforePageLockTry = oldRetry, oldTry })
+	pageLockRetry = time.Hour // the result must not depend on how fast this machine is
+	var tries []int
+	beforePageLockTry = func(attempt int) {
+		tries = append(tries, attempt)
+		switch attempt {
+		case 0:
+			if err := syscall.Flock(int(peek.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
+				t.Errorf("the peek takes the shared lock: %v", err)
+			}
+		case 1:
+			_ = syscall.Flock(int(peek.Fd()), syscall.LOCK_UN) // the peek ends
 		}
 	}
-	stop.Store(true)
-	<-done
-	if fails > 0 {
-		t.Fatalf("no page held the lock, but a starting page could not take it %d of 5000 times (it would log 'another page is running' and exit)", fails)
+	got, ok := holdPageLock(common, scope)
+	if !ok {
+		t.Fatalf("no page held the lock, but a start that met a peek could not take it (tries %v)", tries)
+	}
+	got.Close()
+	if len(tries) != 2 {
+		t.Fatalf("the first try meets the peek and the second takes the lock: tries %v", tries)
 	}
 }
 
