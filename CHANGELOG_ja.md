@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.md) · **日本語**
 
+## 未公開
+
+- 人の設定ファイル: 1 つのオブジェクトに同じ鍵が 2 回ある JSON の設定と、コメントのある設定(OpenCode が JSONC として読む `opencode.json`)は、書き直すと人の文が消えるので、書いたまま残す。init は shikii の項目を手で足すよう言って先へ進み(コメントがあると止まっていた)、uninstall は外さずに理由を出す。空の設定ファイルはこれまでどおり断るが、「EOF」ではなく「the file is empty; write {} in it, or remove it」と言う。読み取り専用でつないだディスク(EROFS)の設定ファイルも、読み取り専用のファイルと同じに扱い、init は止まらずに直す所を言って先へ進む。
+- 置き場のファイル: 置き場の名前(`records/store-name`)・id(`records/store-id`)・既製のファイルは、書き終えてから置く。ハードリンクの無いディスク(exFAT・FAT)ではその場で作るので、そこでも init が動き、移した後も名前が残る(前は init が「operation not supported」で止まり、名前が書かれなかった)。前の版が途中で止まって残した空の id や名前は、作り直す。名前は、リンクを辿らず FIFO で待たずに読むので、よそから持ち込んだ `.shikii` で `shikii wiki query` が止まり続けることは無い。
+- uninstall: 消した作法のフォルダの隣の錠のファイルと、止めた画面の記録と錠も消す。動いている画面が握る錠と、止めなかった画面の記録は残す。
+- フォルダを移した時: 前のパスに別のプロジェクトが移ってきていたら、移したプロジェクトのつなぎ直しは、そこにあるプロジェクトの画面を止めない。
+- エージェントへの知らせ: 短い整理の知らせに、`continues_previous: false` の意味と、作った・変えた規則・テスト・手順を wiki に書くことを足した。短い振り返りの頼みに、`shikii guard add` で無効の検査を足す時、`complete:true` の意味、observations が何かを足した。全文と短い形の振り返りの頼みの両方に、memory の `source_id` は query の `memories[]` のものだと書いた(子のエージェントに届けた教訓は、自分の id を持つ)。
+
 ## 0.9.8 — Codex に shikii が登録済みの時、init がそう言う
 
 - `shikii init`、Codex: `~/.codex/config.toml` に init が書くのと同じ command と args だけで shikii が登録済みの時(別のプロジェクトで init した後。書き方は問わない)、「kept the existing MCP settings; if they do not register shikii, add」と足す節を出さず、「shikii is already registered」と出す。
