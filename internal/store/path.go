@@ -78,6 +78,9 @@ func (s Store) parentRoot(path string, create bool) (*os.Root, string, error) {
 	return root, parts[len(parts)-1], nil
 }
 
+// openInRoot opens a record file; a test swaps it to return ENOENT once on a create, as darwin did when two goroutines created the same file.
+var openInRoot = (*os.Root).OpenFile
+
 func (s Store) openFile(path string, flags int) (*os.File, error) {
 	root, name, err := s.parentRoot(path, flags&os.O_CREATE != 0)
 	if err != nil {
@@ -92,10 +95,10 @@ func (s Store) openFile(path string, flags int) (*os.File, error) {
 		return nil, err
 	}
 	// When the same new file is created concurrently (parallel hook decisions, parallel decisions on wiki insertion points), os.Root's open with create can
-	// return ENOENT (2026-10-23, reproduced on darwin: TestFirstRecordsCanBeAppendedConcurrently). With create, wait briefly and open again.
+	// return ENOENT (2026-10-23, reproduced on darwin; TestFirstRecordSurvivesACreateThatSaysNotThere). With create, wait briefly and open again.
 	var f *os.File
 	for attempt := 0; ; attempt++ {
-		f, err = root.OpenFile(name, flags|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+		f, err = openInRoot(root, name, flags|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 		if err == nil || flags&os.O_CREATE == 0 || !os.IsNotExist(err) || attempt >= 3 {
 			break
 		}
