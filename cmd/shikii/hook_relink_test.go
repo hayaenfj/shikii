@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -255,5 +256,43 @@ func TestCopyNoticeAsksOnce(t *testing.T) {
 	}
 	if n := copiedNotice(copied); !strings.Contains(n, "ask once") {
 		t.Fatalf("the copy notice asks the person once: %q", n)
+	}
+}
+
+// A reconnection that stopped after writing project.json and before the index (finishProjectInit) leaves the index at the path the folder
+// had before, with that path's page still running. The next reconnection reads the old path from project.json, so only the index's
+// path names that page: it is stopped too.
+func TestReconnectingAfterAStoppedReconnectionStopsTheIndexPathsPage(t *testing.T) {
+	common, old, moved := movedProject(t)
+	page := os.Getppid()
+	oldCommand, oldStop := processCommand, stopProcess
+	t.Cleanup(func() { processCommand, stopProcess = oldCommand, oldStop })
+	processCommand = func(pid int) string {
+		return "/usr/local/bin/shikii serve --store " + filepath.Join(old, ".shikii") + " --port 0"
+	}
+	var stopped []int
+	stopProcess = func(pid int) error { stopped = append(stopped, pid); return nil }
+	if err := writePageRecord(common, old, 1, page); err != nil {
+		t.Fatal(err)
+	}
+	// the stopped reconnection: project.json names the folder's middle path, the index still names old
+	marker := filepath.Join(moved, ".shikii", "project.json")
+	var a projectActivation
+	b, err := os.ReadFile(marker)
+	if err != nil || json.Unmarshal(b, &a) != nil {
+		t.Fatal(err)
+	}
+	a.Scope = filepath.Join(t.TempDir(), "middle")
+	if b, err = json.Marshal(a); err != nil || os.WriteFile(marker, b, 0o644) != nil {
+		t.Fatal(err)
+	}
+	if notice := relinkMovedProject(moved, false); notice == "" {
+		t.Fatal("the folder is reconnected")
+	}
+	if len(stopped) != 1 || stopped[0] != page {
+		t.Fatalf("the index path's page is stopped: %v", stopped)
+	}
+	if _, ok := readPageRecord(common, old); ok {
+		t.Fatal("the index path's page record is removed")
 	}
 }
