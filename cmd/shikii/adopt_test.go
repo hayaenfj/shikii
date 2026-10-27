@@ -44,21 +44,42 @@ func newTuneFixture(t *testing.T) (srvURL, specsDir, wiki, labeledPath string) {
 	return s.URL, specsDir, wiki, labeledPath
 }
 
+// tuneDone returns a channel that receives the spec id once a background tune has finished and updated its state (tuneFinished).
+func tuneDone(t *testing.T) <-chan string {
+	t.Helper()
+	ch := make(chan string, 1)
+	old := tuneFinished
+	tuneFinished = func(spec string) { ch <- spec }
+	t.Cleanup(func() { tuneFinished = old })
+	return ch
+}
+
+// waitTune waits for the one signal of a finished tune. The bound only turns a tune that never finishes into a failure instead of a hang.
+func waitTune(t *testing.T, done <-chan string, spec string) {
+	t.Helper()
+	select {
+	case got := <-done:
+		if got != spec {
+			t.Fatalf("finished tune for %q, want %q", got, spec)
+		}
+	case <-time.After(time.Minute):
+		t.Fatal("the background tune never finished")
+	}
+}
+
 // Run tune from the page, read the latest result, and adopt on the person's "same meaning". On "different", it is not adopted and stays in the run.
 func TestServeRunsTuneAndAdoptsOnlyWithHumanMeaningCheck(t *testing.T) {
 	url, specsDir, wiki, _ := newTuneFixture(t)
+	done := tuneDone(t)
 	code, r := postJSON(t, url+"/v1/tune/run", map[string]any{"spec": "intent"})
 	if code != 202 {
 		t.Fatalf("tune/run must be accepted and run in the background: %d %v", code, r)
 	}
-	// Wait until it finishes (instant, since it is a fake model)
+	waitTune(t, done, "intent")
 	var st map[string]any
-	for i := 0; i < 200; i++ {
-		getJSON(t, url+"/v1/tune?spec=intent", &st)
-		if st["running"] == false && st["latest"] != nil {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	getJSON(t, url+"/v1/tune?spec=intent", &st)
+	if st["running"] != false {
+		t.Fatalf("a finished tune must not be reported as running: %v", st)
 	}
 	latest, _ := st["latest"].(map[string]any)
 	if latest == nil || latest["adoptable"] != true || latest["winner"] != "strict" {
@@ -211,15 +232,14 @@ func TestServeAddsAPersonsRewordingToVariants(t *testing.T) {
 		t.Fatalf("unknown spec must be 404: %d", code)
 	}
 	// The next tune scores the person's candidate too
+	done := tuneDone(t)
 	if code, r := postJSON(t, url+"/v1/tune/run", map[string]any{"spec": "intent"}); code != 202 {
 		t.Fatalf("tune/run: %d %v", code, r)
 	}
-	for i := 0; i < 200; i++ {
-		getJSON(t, url+"/v1/tune?spec=intent", &st)
-		if st["running"] == false && st["latest"] != nil {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	waitTune(t, done, "intent")
+	getJSON(t, url+"/v1/tune?spec=intent", &st)
+	if st["running"] != false {
+		t.Fatalf("a finished tune must not be reported as running: %v", st)
 	}
 	latest, _ := st["latest"].(map[string]any)
 	cands, _ := latest["candidates"].([]any)

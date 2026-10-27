@@ -200,6 +200,10 @@ func (s *server) decodeTuneReq(w http.ResponseWriter, r *http.Request) (specRef,
 	return ref, req.Propose, true
 }
 
+// tuneFinished, when set (tests), is called by a background tune after its state (running, error) is updated, so a test waits for that
+// one moment instead of polling GET /v1/tune.
+var tuneFinished func(spec string)
+
 func (s *server) handleTuneRun(w http.ResponseWriter, r *http.Request) {
 	ref, propose, ok := s.decodeTuneReq(w, r)
 	if !ok {
@@ -226,6 +230,9 @@ func (s *server) handleTuneRun(w http.ResponseWriter, r *http.Request) {
 			log.Printf("tune %s: FAILED: %v", ref.id, err)
 		} else {
 			log.Printf("tune %s: %s", ref.id, lastLine(report))
+		}
+		if tuneFinished != nil {
+			tuneFinished(ref.id)
 		}
 	}()
 	writeJSON(w, 202, map[string]any{"spec": ref.id, "running": true})
