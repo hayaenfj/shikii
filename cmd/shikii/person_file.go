@@ -12,6 +12,9 @@ import (
 var errPersonFileReadOnly = errors.New("is read-only, so shikii left it as it is; make the change by hand")
 
 // readOnlyError names the file (0.9.7 audit A-1: the refusal did not say which file).
+// openPersonFile opens a file of the person's to write it; tests replace it to act like a disk mounted read-only.
+var openPersonFile = os.OpenFile
+
 func readOnlyError(path string) error { return fmt.Errorf("%s %w", path, errPersonFileReadOnly) }
 
 // personFileError is a failure to write a file of the person's (its mode, an ACL, an immutable flag, the folder). init leaves that file
@@ -44,7 +47,7 @@ func writePersonFileTo(path string, content []byte, newMode os.FileMode) error {
 		}
 		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, newMode) // a new file, or the missing file at the end of a link
 		if err != nil {
-			if os.IsPermission(err) || errors.Is(err, syscall.EPERM) {
+			if os.IsPermission(err) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EROFS) { // EROFS: a disk mounted read-only (0.9.9)
 				return readOnlyError(path)
 			}
 			return err
@@ -58,9 +61,9 @@ func writePersonFileTo(path string, content []byte, newMode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	f, err := openPersonFile(path, os.O_WRONLY, 0)
 	if err != nil {
-		if os.IsPermission(err) || errors.Is(err, syscall.EPERM) {
+		if os.IsPermission(err) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EROFS) { // EROFS: a disk mounted read-only (0.9.9)
 			return readOnlyError(path)
 		}
 		return err
