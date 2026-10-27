@@ -4,10 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 )
 
 // The store's name (0.9.7): the wiki, its sources, the conversations, the memory deliveries and the memory reviews of a project are kept
@@ -17,6 +19,9 @@ import (
 // audit found another way that lost or broke a line; the structure was changed instead (the person's review, 2026-10-27).
 
 var storeNamePattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// Link puts a file written in full at its path (os.Link); tests replace it to act like a disk without hard links.
+var Link = os.Link
 
 func scopeKey(scope string) string {
 	h := sha256.Sum256([]byte(scope))
@@ -46,14 +51,25 @@ func RecordStoreNameFrom(dir, scope string) string {
 }
 
 func readStoreName(dir string) string {
-	b, err := os.ReadFile(filepath.Join(dir, "records", "store-name"))
-	if err != nil {
-		return ""
-	}
-	if name := strings.TrimSpace(string(b)); storeNamePattern.MatchString(name) {
+	if name := strings.TrimSpace(readSmallFile(filepath.Join(dir, "records", "store-name"), 128)); storeNamePattern.MatchString(name) {
 		return name
 	}
 	return ""
+}
+
+// readSmallFile reads at most limit bytes of a regular file, without following a link or waiting on a FIFO (a .shikii brought in from
+// elsewhere can hold anything; 0.9.9).
+func readSmallFile(path string, limit int64) string {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		return ""
+	}
+	b, _ := io.ReadAll(io.LimitReader(f, limit))
+	return string(b)
 }
 
 // initializedAt is the path in the store's project.json, when it holds one.
@@ -79,31 +95,65 @@ func recordStoreName(dir, name string) string {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return name
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".store-name-*")
-	if err != nil {
-		return name
-	}
-	defer os.Remove(tmp.Name())
-	_, werr := tmp.WriteString(name + "\n")
-	if serr := tmp.Sync(); werr == nil {
-		werr = serr
-	}
-	if cerr := tmp.Close(); werr == nil {
-		werr = cerr
-	}
-	if werr != nil {
-		return name
-	}
-	if err := os.Link(tmp.Name(), path); err == nil {
-		return name
-	}
-	if existing := readStoreName(dir); existing != "" {
-		return existing // recorded by another process
-	}
-	if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
-		_ = os.Rename(tmp.Name(), path) // a name file without a valid name
+	for try := 0; try < 2; try++ {
+		if placed, err := PlaceOnce(path, []byte(name+"\n"), 0o600); err != nil || placed {
+			return name
+		}
+		if existing := readStoreName(dir); existing != "" {
+			return existing // recorded by another process
+		}
+		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+			return name
+		}
+		_ = os.Remove(path) // a name file without a valid name (a stop while writing it)
 	}
 	return name
+}
+
+// PlaceOnce puts data at path only when nothing is there, and only in full: it is written to a temp file beside path and linked into place,
+// so a reader never sees a part of it and the first writer wins. On a disk without hard links (exFAT, FAT) the file is made with O_EXCL and
+// written in place instead (0.9.9). It reports whether it placed the file.
+func PlaceOnce(path string, data []byte, perm os.FileMode) (bool, error) {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".place-*")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(tmp.Name())
+	_, werr := tmp.Write(data)
+	if err := tmp.Chmod(perm); werr == nil {
+		werr = err
+	}
+	if err := tmp.Sync(); werr == nil {
+		werr = err
+	}
+	if err := tmp.Close(); werr == nil {
+		werr = err
+	}
+	if werr != nil {
+		return false, werr
+	}
+	err = Link(tmp.Name(), path)
+	switch {
+	case err == nil:
+		return true, nil
+	case os.IsExist(err):
+		return false, nil
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, perm)
+	if os.IsExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	_, werr = f.Write(data)
+	if err := f.Sync(); werr == nil {
+		werr = err
+	}
+	if err := f.Close(); werr == nil {
+		werr = err
+	}
+	return werr == nil, werr
 }
 
 // recordPath is records/<area>/<store name><ext>.

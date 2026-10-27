@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/handoff"
+	"github.com/hayaenfj/shikii/internal/store"
 
 	shikii "github.com/hayaenfj/shikii"
 )
@@ -207,27 +208,12 @@ func seedFile(path string, data []byte) (bool, error) {
 	} else if !os.IsNotExist(err) {
 		return false, err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".seed-*")
+	placed, err := store.PlaceOnce(path, data, 0o644) // a temp file linked into place, or O_EXCL on a disk without hard links (0.9.9)
 	if err != nil {
 		return false, err
 	}
-	defer os.Remove(f.Name())
-	if err := f.Chmod(0644); err != nil {
-		f.Close()
-		return false, err
-	}
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return false, err
-	}
-	if err := f.Close(); err != nil {
-		return false, err
-	}
-	if err := os.Link(f.Name(), path); err != nil {
-		if os.IsExist(err) {
-			return false, checkExisting()
-		}
-		return false, err
+	if !placed {
+		return false, checkExisting()
 	}
 	return true, nil
 }

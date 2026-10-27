@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // 0.9.9: the small items the 0.9.7 audits left (.shikii/handoff/plan-0.9.9/triage.md, C). Each test is checked to fail before its fix.
@@ -85,6 +88,43 @@ func TestPatch099EmptySettingsFileSaysItIsEmpty(t *testing.T) {
 		}
 		if b, _ := os.ReadFile(p); string(b) != text {
 			t.Fatalf("and left as it is: %q", b)
+		}
+	}
+}
+
+// C confirm1-2: records/store-id was made with O_EXCL and then written; a stop in between left an empty file that was never made again
+// (read gave "" and O_EXCL failed), so the store kept its path-named entry and a later move was not reconnected.
+func TestPatch099EmptyStoreIDIsMadeAgain(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".shikii")
+	if err := os.MkdirAll(filepath.Join(root, "records"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "records", "store-id"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := storeID(root, true)
+	if b, _ := os.ReadFile(filepath.Join(root, "records", "store-id")); id == "" || strings.TrimSpace(string(b)) != id {
+		t.Fatalf("an empty store-id is made again: id=%q, file=%q", id, b)
+	}
+	if again := storeID(root, true); again != id {
+		t.Fatalf("and then kept: %q, then %q", id, again)
+	}
+}
+
+// C confirm1-1: on a disk without hard links, init stopped at the built-in decisions with "operation not supported" (seedFile used
+// os.Link). It now writes the file in place there.
+func TestPatch099InitOnADiskWithoutHardLinks(t *testing.T) {
+	store.Link = func(string, string) error { return &os.LinkError{Op: "link", Err: syscall.ENOTSUP} }
+	t.Cleanup(func() { store.Link = os.Link })
+	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	if err := cmdInit(nil); err != nil {
+		t.Fatalf("init works on a disk without hard links: %v", err)
+	}
+	for _, f := range []string{"decisions/needs-plan.yaml", "records/store-id"} {
+		if b, err := os.ReadFile(filepath.Join(repo, ".shikii", f)); err != nil || len(b) == 0 {
+			t.Fatalf("%s is written: %v", f, err)
 		}
 	}
 }

@@ -541,16 +541,23 @@ func storeID(root string, create bool) string {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return ""
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		return read() // made by another process just now
-	}
-	defer f.Close()
 	id := hex.EncodeToString(raw[:])
-	if _, err := f.WriteString(id + "\n"); err != nil {
-		return ""
+	for try := 0; try < 2; try++ {
+		// written in full before it is in place, so a stop never leaves an empty id (confirmation audit 1, G1; 0.9.9)
+		if placed, err := store.PlaceOnce(path, []byte(id+"\n"), 0o600); err != nil {
+			return ""
+		} else if placed {
+			return id
+		}
+		if existing := read(); existing != "" {
+			return existing // made by another process just now
+		}
+		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+			return ""
+		}
+		_ = os.Remove(path) // an id file without a valid id, left by a stop in an earlier version
 	}
-	return id
+	return ""
 }
 
 var storeIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
