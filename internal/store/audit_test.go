@@ -1,25 +1,29 @@
 package store
 
 import (
+	"fmt"
+	"hash/fnv"
 	"testing"
 	"time"
 )
 
 // Spot check: 1 in 20 of the decisions that acted automatically is shown to a person. It is decided by trace_id, so the same decision always gives the same answer.
 func TestAuditSampleIsOneInTwentyAndStable(t *testing.T) {
+	// Fixed ids, so the count is exact on every run: fnv-1a (32 bits) of the id is a multiple of 20 for 218 of these 4000 ids.
 	n := 0
 	for i := 0; i < 4000; i++ {
-		id := NewTraceID()
-		a := AuditSample(id)
-		if a != AuditSample(id) {
-			t.Fatalf("sampling must be a function of the trace id")
+		id := fmt.Sprintf("%016x", i)
+		h := fnv.New32a()
+		h.Write([]byte(id))
+		if want := h.Sum32()%20 == 0; AuditSample(id) != want {
+			t.Fatalf("AuditSample(%q) = %v, want %v (fnv-1a of the id modulo 20 is 0)", id, !want, want)
 		}
-		if a {
+		if AuditSample(id) {
 			n++
 		}
 	}
-	if n < 140 || n > 260 { // expected 200 (1/20). Outside ±30% the ratio is wrong
-		t.Fatalf("expected about 1 in 20 sampled, got %d of 4000", n)
+	if n != 218 {
+		t.Fatalf("218 of the 4000 fixed ids are sampled (about 1 in 20), got %d", n)
 	}
 	if AuditSample("") {
 		t.Fatalf("an empty trace is never sampled")
