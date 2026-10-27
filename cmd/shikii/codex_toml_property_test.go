@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,9 +14,10 @@ import (
 
 // The oracle below is written here, apart from codex_toml.go, so a mistake there is not repeated by the test (go-toml is called directly).
 
+// oracleParse reads b as Codex does: a leading byte order mark is skipped, the rest must be TOML.
 func oracleParse(b []byte) (map[string]any, bool) {
 	m := map[string]any{}
-	return m, toml.Unmarshal(b, &m) == nil
+	return m, toml.Unmarshal([]byte(strings.TrimPrefix(string(b), "\xef\xbb\xbf")), &m) == nil
 }
 
 func oracleEqual(a, b any) bool {
@@ -98,136 +98,166 @@ func oracleWant(args []string) map[string]any {
 	return map[string]any{"command": mcpCommand(), "args": list}
 }
 
-// Properties A1 to A3 of .shikii/handoff/audit-0.9.7/invariants.md, over generated config.toml files rather than one example per finding
-// (0.9.7 quality bar): whatever a person wrote, adding, fixing or removing shikii leaves TOML Codex can read, with exactly the intended
-// shikii server (or none), and every other setting as it was; when that cannot be done, the file is not changed.
+// codexOutcome is what the properties saw shikii do with one config.toml: whether init added the server, what removing it from the result
+// did ("cut", "none" or "refused"), what fixing shikii's own form appended to the person's text did ("fixed", "left", or "skipped" when
+// that form cannot be appended), and the text the removal returned.
+type codexOutcome struct {
+	added   bool
+	removal string
+	fix     string
+	removed string
+}
 
-// tomlPiece returns one random piece of a config.toml, sometimes naming mcp_servers or shikii in the many ways TOML allows.
-func tomlPiece(r *rand.Rand) string {
-	key := []string{"shikii", `"shikii"`, "'shikii'", `"shikii"`, "mytool", `"my-tool"`, "other"}[r.Intn(7)]
-	servers := []string{"mcp_servers", `"mcp_servers"`, "'mcp_servers'"}[r.Intn(3)]
-	value := []string{`"x"`, `'x'`, "1", "nan", "true", `["a", 'b']`, `"""` + "\nline [mcp_servers.shikii]\n" + `"""`, `"mcp_servers.shikii # not a comment"`}[r.Intn(8)]
-	comment := []string{"", " # mcp_servers.shikii", " # note"}[r.Intn(3)]
-	switch r.Intn(11) {
-	case 0:
-		return fmt.Sprintf("model = %s%s\n", value, comment)
-	case 1:
-		return fmt.Sprintf("[%s.%s]%s\ncommand = %s\n", servers, key, comment, value)
-	case 2:
-		return fmt.Sprintf("[%s]\n%s = { command = %s }\n", servers, key, value)
-	case 3:
-		return fmt.Sprintf("%s.%s.command = %s\n", servers, key, value)
-	case 4:
-		return fmt.Sprintf("%s = { %s = { command = %s } }\n", servers, key, value)
-	case 5:
-		return fmt.Sprintf("# %s.%s\n", servers, key)
-	case 6:
-		return fmt.Sprintf("[%s.%s.env]\nX = %s\n", servers, key, value)
-	case 7:
-		return fmt.Sprintf("[profiles.p%d]\nmodel = %s\n", r.Intn(3), value)
-	case 8:
-		return "[broken\n" // not TOML
-	case 9:
-		return "\r\n"
+// checkCodexConfigProperties checks A1 to A3 on one config.toml text with the oracle above and reports what happened.
+func checkCodexConfigProperties(t *testing.T, path, text string) codexOutcome {
+	t.Helper()
+	var got codexOutcome
+	before, parses := oracleParse([]byte(text))
+	_, _, hadShikii := oracleSplit(before)
+	// addable: appending shikii's table to the text keeps every other setting (checked here, not by codex_toml.go)
+	appended := text
+	if appended != "" && !strings.HasSuffix(appended, "\n") {
+		appended += "\n"
+	}
+	appended += "\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\nargs = [\"mcp\"]\n"
+	addable := parses && !hadShikii && oracleKeeps([]byte(text), []byte(appended), oracleWant([]string{"mcp"}))
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A1: add
+	did, err := addCodexServer(path, []string{"mcp"})
+	after, _ := os.ReadFile(path)
+	switch {
+	case err != nil:
+		if string(after) != text {
+			t.Fatalf("A1: an error changed the file:\n%q\n->\n%q", text, after)
+		}
+	case did:
+		if !addable || !oracleKeeps([]byte(text), after, oracleWant([]string{"mcp"})) {
+			t.Fatalf("A1: the added file is not the person's settings plus one shikii:\n%q\n->\n%q", text, after)
+		}
 	default:
-		return fmt.Sprintf("notes = %s\n", value)
+		if string(after) != text {
+			t.Fatalf("A1: not added, yet the file changed:\n%q\n->\n%q", text, after)
+		}
+		if addable {
+			t.Fatalf("A1: addable but not added:\n%q", text)
+		}
 	}
+	got.added = did && err == nil
+	// A2: remove (from what is there now)
+	current, _ := os.ReadFile(path)
+	out, found, rerr := withoutCodexServer(string(current))
+	parsed, currentParses := oracleParse(current)
+	_, _, has := oracleSplit(parsed)
+	switch {
+	case rerr != nil:
+		if out != string(current) {
+			t.Fatalf("A2: a refusal changed the text:\n%q", current)
+		}
+		got.removal = "refused"
+	case found:
+		if !oracleKeeps(current, []byte(out), nil) {
+			t.Fatalf("A2: the removal changed other settings or left shikii:\n%q\n->\n%q", current, out)
+		}
+		got.removal = "cut"
+	default:
+		if currentParses && has {
+			t.Fatalf("A2: reported missing while Codex reads a shikii server:\n%q", current)
+		}
+		if out != string(current) {
+			t.Fatalf("A2: not found, yet the text changed:\n%q", current)
+		}
+		got.removal = "none"
+	}
+	got.removed = out
+	// A3: fix the form shikii wrote (command "shikii"), appended after the person's settings
+	got.fix = "skipped"
+	if !parses || hadShikii {
+		return got
+	}
+	written := text
+	if written != "" && !strings.HasSuffix(written, "\n") {
+		written += "\n"
+	}
+	written += "\n[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [" + quotedList(codexServerArgs) + "]\n"
+	if _, ok := oracleParse([]byte(written)); !ok {
+		return got
+	}
+	if err := os.WriteFile(path, []byte(written), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fixed, err := fixCodexServer(path, codexServerArgs)
+	fixedText, _ := os.ReadFile(path)
+	if err != nil || (fixed && !oracleKeeps([]byte(written), fixedText, oracleWant(codexServerArgs))) || (!fixed && string(fixedText) != written) {
+		t.Fatalf("A3: fixing shikii's own form: fixed=%v err=%v\n%q\n->\n%q", fixed, err, written, fixedText)
+	}
+	got.fix = "left"
+	if fixed {
+		got.fix = "fixed"
+	}
+	return got
 }
 
-func randomCodexConfig(r *rand.Rand) string {
-	var b strings.Builder
-	for i := r.Intn(5); i >= 0; i-- {
-		b.WriteString(tomlPiece(r))
-	}
-	if r.Intn(4) == 0 {
-		return strings.TrimSuffix(b.String(), "\n") // no newline at the end
-	}
-	return b.String()
-}
-
-func TestCodexConfigPropertiesOverGeneratedFiles(t *testing.T) {
-	r := rand.New(rand.NewSource(97))
+// TestCodexConfigShapes checks properties A1 to A3 of .shikii/handoff/audit-0.9.7/invariants.md (whatever a person wrote, adding, fixing
+// or removing shikii leaves TOML Codex can read, with exactly the intended shikii server or none, and every other setting as it was; when
+// that cannot be done, the file is not changed) on one fixed config.toml per way of writing it that an audit found to matter, and pins what
+// shikii does with each (added or not, cut / none / refused, fixed / left / skipped). A text shikii added to and then removed from comes back
+// as it was (only a missing last newline is added). Every case runs on every run, so a broken shape fails on the first run.
+// It replaces 3000 random texts: those missed a byte order mark, a \u escape, multi-line values a cut must follow, dotted keys under
+// [mcp_servers] and the blank line shikii adds, because a refusal always passed and the generator never wrote the first two.
+func TestCodexConfigShapes(t *testing.T) {
 	dir := t.TempDir()
-	runs := 3000
-	if testing.Short() {
-		runs = 300
+	bom := "\xef\xbb\xbf"
+	cases := []struct {
+		name, text string
+		want       codexOutcome // removed is not compared here; the round trip below covers it
+	}{
+		{"empty file", "", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"plain setting", "model = \"x\"\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"no newline at the end", "model = \"x\"", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"comment without newline at the end", "model = \"x\" # note", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"CRLF line ends", "model = \"x\"\r\n[profiles.p0]\r\nmodel = 'x'\r\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"byte order mark", bom + "model = \"x\"\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"nan value", "model = nan\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"nan in another server", "[mcp_servers.mytool]\ncommand = nan\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"comment naming shikii's table", "model = \"x\" # mcp_servers.shikii\n# [mcp_servers.shikii]\n", codexOutcome{added: true, removal: "cut", fix: "left"}},
+		{"string naming shikii's table", "notes = \"mcp_servers.shikii # not a comment\"\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"multi-line string holding shikii's header", "notes = \"\"\"\n[mcp_servers.shikii]\n\"\"\"\n", codexOutcome{added: true, removal: "cut", fix: "left"}},
+		{"array value", "notes = [\"a\", 'b']\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"not TOML", "[broken\n", codexOutcome{removal: "refused", fix: "skipped"}},
+		{"another server as a table", "[mcp_servers.mytool]\ncommand = \"x\"\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"another server under [mcp_servers]", "[mcp_servers]\nmytool = { command = \"x\" }\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"another server as dotted keys", "mcp_servers.mytool.command = \"x\"\n", codexOutcome{added: true, removal: "cut", fix: "fixed"}},
+		{"another server inline", "mcp_servers = { mytool = { command = \"x\" } }\n", codexOutcome{removal: "none", fix: "skipped"}},
+		{"mcp_servers not a table", "mcp_servers = 1\n", codexOutcome{removal: "none", fix: "skipped"}},
+		{"shikii as a table", "[mcp_servers.shikii]\ncommand = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii with a basic quoted key", "[mcp_servers.\"shikii\"]\ncommand = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii with literal quoted keys", "['mcp_servers'.'shikii']\ncommand = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii with a \\u escape", "[mcp_servers.\"\\u0073hikii\"]\ncommand = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii as dotted keys", "mcp_servers.shikii.command = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii as dotted keys with a multi-line value", "mcp_servers.shikii.args = [\n  \"a\",\n]\nmodel = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii under [mcp_servers]", "[mcp_servers]\nshikii = { command = \"x\" }\nmytool = { command = \"y\" }\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii only by its sub-table", "[mcp_servers.shikii.env]\nX = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii with multi-line values", "[mcp_servers.shikii]\ncommand = \"\"\"\nline [mcp_servers.other]\n\"\"\"\nargs = [\n  \"a\",\n]\n[profiles.p0]\nmodel = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii in an inline mcp_servers", "mcp_servers = { shikii = { command = \"x\" } }\n", codexOutcome{removal: "refused", fix: "skipped"}},
+		{"shikii after a byte order mark", bom + "[mcp_servers.shikii]\ncommand = \"x\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"shikii between other tables", "[profiles.p0]\nmodel = 1\n['mcp_servers'.\"shikii\"] # mcp_servers.shikii\ncommand = 'x'\n[mcp_servers.shikii.env]\nX = nan\n\r\n[mcp_servers.mytool]\ncommand = \"y\"\n", codexOutcome{removal: "cut", fix: "skipped"}},
+		{"not TOML after a table", "[mcp_servers.mytool]\ncommand = \"x\"\n[broken\n", codexOutcome{removal: "refused", fix: "skipped"}},
 	}
-	for i := 0; i < runs; i++ {
-		text := randomCodexConfig(r)
-		before, parses := oracleParse([]byte(text))
-		_, _, hadShikii := oracleSplit(before)
-		// addable: appending shikii's table to the text keeps every other setting (checked here, not by codex_toml.go)
-		appended := text
-		if appended != "" && !strings.HasSuffix(appended, "\n") {
-			appended += "\n"
-		}
-		appended += "\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\nargs = [\"mcp\"]\n"
-		addable := parses && !hadShikii && oracleKeeps([]byte(text), []byte(appended), oracleWant([]string{"mcp"}))
-		path := filepath.Join(dir, fmt.Sprintf("config-%d.toml", i))
-		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		// A1: add
-		did, err := addCodexServer(path, []string{"mcp"})
-		after, _ := os.ReadFile(path)
-		switch {
-		case err != nil:
-			if string(after) != text {
-				t.Fatalf("A1: an error changed the file:\n%q\n->\n%q", text, after)
+	for i, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := checkCodexConfigProperties(t, filepath.Join(dir, fmt.Sprintf("config-%d.toml", i)), c.text)
+			if got.added != c.want.added || got.removal != c.want.removal || got.fix != c.want.fix {
+				t.Fatalf("added=%v removal=%s fix=%s, want added=%v removal=%s fix=%s\n%q", got.added, got.removal, got.fix, c.want.added, c.want.removal, c.want.fix, c.text)
 			}
-		case did:
-			if !addable || !oracleKeeps([]byte(text), after, oracleWant([]string{"mcp"})) {
-				t.Fatalf("A1: the added file is not the person's settings plus one shikii:\n%q\n->\n%q", text, after)
+			restored := c.text
+			if restored != "" && !strings.HasSuffix(restored, "\n") {
+				restored += "\n"
 			}
-		default:
-			if string(after) != text {
-				t.Fatalf("A1: not added, yet the file changed:\n%q\n->\n%q", text, after)
+			if got.added && got.removed != restored {
+				t.Fatalf("adding and then removing shikii must give the text back:\n%q\n->\n%q", c.text, got.removed)
 			}
-			if addable {
-				t.Fatalf("A1: addable but not added:\n%q", text)
-			}
-		}
-		// A2: remove (from what is there now)
-		current, _ := os.ReadFile(path)
-		out, found, rerr := withoutCodexServer(string(current))
-		parsed, currentParses := oracleParse(current)
-		_, _, has := oracleSplit(parsed)
-		switch {
-		case rerr != nil:
-			if out != string(current) {
-				t.Fatalf("A2: a refusal changed the text:\n%q", current)
-			}
-		case found:
-			if !oracleKeeps(current, []byte(out), nil) {
-				t.Fatalf("A2: the removal changed other settings or left shikii:\n%q\n->\n%q", current, out)
-			}
-		default:
-			if currentParses && has {
-				t.Fatalf("A2: reported missing while Codex reads a shikii server:\n%q", current)
-			}
-			if out != string(current) {
-				t.Fatalf("A2: not found, yet the text changed:\n%q", current)
-			}
-		}
-		// A3: fix the form shikii wrote, appended after the person's settings
-		if parses {
-			if !hadShikii {
-				written := text
-				if written != "" && !strings.HasSuffix(written, "\n") {
-					written += "\n"
-				}
-				written += "\n[mcp_servers.shikii]\ncommand = \"shikii\"\nargs = [" + quotedList(codexMCPArgs) + "]\n"
-				if _, ok := oracleParse([]byte(written)); ok {
-					if err := os.WriteFile(path, []byte(written), 0o600); err != nil {
-						t.Fatal(err)
-					}
-					fixed, err := fixCodexServer(path, codexServerArgs)
-					got, _ := os.ReadFile(path)
-					if err != nil || (fixed && !oracleKeeps([]byte(written), got, oracleWant(codexServerArgs))) || (!fixed && string(got) != written) {
-						t.Fatalf("A3: fixing shikii's own form: fixed=%v err=%v\n%q\n->\n%q", fixed, err, written, got)
-					}
-				}
-			}
-		}
+		})
 	}
 }
