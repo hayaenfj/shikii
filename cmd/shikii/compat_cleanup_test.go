@@ -151,8 +151,12 @@ func TestOlderAgentsSectionIsOnlyTold(t *testing.T) {
 		t.Fatalf("control: nothing said about an AGENTS.md without the section: %s", out)
 	}
 	t.Chdir(withOld)
-	for name, run := range map[string]func() error{"init": func() error { return cmdInit(nil) }, "update": func() error { return cmdHook([]string{"install", "--yes"}) }} {
-		out := capture(t, run)
+	// init first: the update tells only the projects registered on this machine (a map here ran the update first about 1 time in 8)
+	for _, step := range []struct {
+		name string
+		run  func() error
+	}{{"init", func() error { return cmdInit(nil) }}, {"update", func() error { return cmdHook([]string{"install", "--yes"}) }}} {
+		name, out := step.name, capture(t, step.run)
 		if b, _ := os.ReadFile(filepath.Join(withOld, "AGENTS.md")); string(b) != old {
 			t.Fatalf("G4 %s: AGENTS.md is left as it is: %q", name, b)
 		}
