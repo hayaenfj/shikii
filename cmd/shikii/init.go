@@ -238,10 +238,16 @@ func seedFile(path string, data []byte) (bool, error) {
 // else is broken settings, which are never rewritten (a value after the first, or a key holding an array or a string, was dropped by the
 // rewrite; 0.9.7 final audit AE-2).
 func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, error) {
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil, nil, errors.New("check the JSON (broken settings are not overwritten): the file is empty; write {} in it, or remove it")
+	}
 	cfg := map[string]any{}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
 	if err := dec.Decode(&cfg); err != nil {
+		if jsonHasComments(b) { // OpenCode reads JSONC; a rewrite would drop the comments, so the file is the person's to change (0.9.9)
+			return nil, nil, &personFileError{errors.New("it has comments (JSONC), which a rewrite would drop, so shikii left it as written")}
+		}
 		return nil, nil, fmt.Errorf("check the JSON (broken settings are not overwritten): %w", err)
 	}
 	if _, err := dec.Token(); err != io.EOF {
@@ -249,6 +255,9 @@ func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, err
 	}
 	if cfg == nil { // a bare null decodes into a nil map (confirmation audit 1)
 		return nil, nil, errors.New("check the JSON (broken settings are not overwritten): the settings are not an object")
+	}
+	if k, twice := duplicateJSONKey(b); twice { // Go keeps the last one and a rewrite drops the person's first text; agents read the last (0.9.9)
+		return nil, nil, &personFileError{fmt.Errorf("it has the key %q written twice in one object, which a rewrite would turn into one, so shikii left it as written", k)}
 	}
 	if !readAsWritten(b, cfg) {
 		return nil, nil, errors.New("check the JSON (broken settings are not overwritten): it has text that is not UTF-8 or an unpaired \\u surrogate, which shikii cannot keep as written")
@@ -267,6 +276,66 @@ func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, err
 // readAsWritten reports whether the decoded settings hold the file's text unchanged. Go's decoder never fails on bytes that are not UTF-8
 // or on an unpaired \u surrogate: it reads them as U+FFFD, so a rewrite would replace the person's text (and could merge two keys). Any
 // U+FFFD the file did not write itself means the read lost something (confirmation audit 2).
+// jsonHasComments reports whether b has a // or /* comment outside its strings.
+func jsonHasComments(b []byte) bool {
+	in, esc := false, false
+	for i := 0; i < len(b); i++ {
+		switch c := b[i]; {
+		case in && esc:
+			esc = false
+		case in && c == '\\':
+			esc = true
+		case c == '"':
+			in = !in
+		case !in && c == '/' && i+1 < len(b) && (b[i+1] == '/' || b[i+1] == '*'):
+			return true
+		}
+	}
+	return false
+}
+
+// duplicateJSONKey returns a key written twice in one object of b (valid JSON).
+func duplicateJSONKey(b []byte) (string, bool) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	type frame struct {
+		object bool
+		keys   map[string]bool
+		key    bool // the next string token in this object is a key
+	}
+	var stack []*frame
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return "", false
+		}
+		var top *frame
+		if len(stack) > 0 {
+			top = stack[len(stack)-1]
+		}
+		if s, ok := tok.(string); ok && top != nil && top.object && top.key {
+			if top.keys[s] {
+				return s, true
+			}
+			top.keys[s] = true
+			top.key = false
+			continue
+		}
+		switch tok {
+		case json.Delim('{'):
+			stack = append(stack, &frame{object: true, keys: map[string]bool{}, key: true})
+			continue
+		case json.Delim('['):
+			stack = append(stack, &frame{})
+			continue
+		case json.Delim('}'), json.Delim(']'):
+			stack = stack[:len(stack)-1]
+		}
+		if len(stack) > 0 && stack[len(stack)-1].object {
+			stack[len(stack)-1].key = true // a value ended: a key comes next
+		}
+	}
+}
+
 func readAsWritten(b []byte, v any) bool {
 	if !utf8.Valid(b) {
 		return false
