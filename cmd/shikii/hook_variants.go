@@ -474,7 +474,7 @@ func cmdHookVariantsCheck() error {
 		return json.NewEncoder(stdout).Encode(map[string]any{"adopted": false, "verdict": req.Verdict, "next": next})
 	}
 	var buf bytes.Buffer
-	path, err := wordingAdopt(res, endpointFlags{local: hookLocalURL, model: res.Model}, root, "", &buf)
+	path, err := wordingAdopt(res, endpointFlags{hosted: hookHostedURL, local: hookLocalURL, model: res.Model}, root, "", &buf) // the hook's endpoints: Jev with a key, then local (0.9.9)
 	if err != nil {
 		res.AdoptError = strings.SplitN(err.Error(), "\n", 2)[0] // the person is told once at the end of the turn (wordingSummary)
 		saveTuneResult(res)

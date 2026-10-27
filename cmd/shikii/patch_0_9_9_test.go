@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -296,5 +297,26 @@ func TestPatch099HookAndServeSpellThePageTheSameWay(t *testing.T) {
 		if !isShikiiServe("/bin/shikii serve --store "+root+" --port 0 --local x", filepath.Join(pageScope(root), ".shikii")) {
 			t.Fatalf("DF-2: uninstall finds the page the hook started from %s", cwd)
 		}
+	}
+}
+
+// Found while doing 0.9.9 (2026-10-27): the hook adopted an agent-checked wording with only the local model's URL, so with a TypeSafe key
+// and no local model the calibration's replay failed ("dial tcp 127.0.0.1:8080: connection refused") and a wording measured on Jev was
+// never adopted. The adoption uses the same endpoints the hook decides with.
+func TestPatch099WordingAdoptionUsesTheHooksEndpoints(t *testing.T) {
+	_, _, res := wordingCheckFixture(t)
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	t.Setenv("SHIKII_MODEL", "")
+	var got endpointFlags
+	adopt := wordingAdopt
+	wordingAdopt = func(r *tuneResult, ef endpointFlags, storeDir, labeled string, reports ...io.Writer) (string, error) {
+		got = ef
+		return adopt(r, ef, storeDir, labeled, reports...)
+	}
+	if out, err := submitWordingCheck(t, checkBody(res, "same")); err != nil || out["adopted"] != true {
+		t.Fatalf("precondition: adopted: %v %v", out, err)
+	}
+	if got.hosted != hookHostedURL || got.local != hookLocalURL {
+		t.Fatalf("the adoption calibrates with the hook's endpoints (hosted %q, local %q): %+v", hookHostedURL, hookLocalURL, got)
 	}
 }

@@ -9,6 +9,7 @@
 - Uninstall: it also removes the lock files beside the skill folders it removes, and the records and locks of the pages it stops. A lock a running page holds, and the record of a page it did not stop, stay.
 - Moving the project folder: when another project has been moved to the old path, reconnecting the moved project no longer stops the page of the project now there.
 - Notices for the agent: the short organizing notice says what `continues_previous: false` means and to write a rule, test or procedure it made or changed to the wiki; the short reflection request says when to add a disabled check with `shikii guard add`, what `complete:true` means and what observations are. Both reflection requests say memory's `source_id` is the one query gives in `memories[]` (a lesson delivered to a subagent has its own).
+- Wordings: a wording variant the agent checked as meaning the same is adopted with the endpoints the hook decides with (TypeSafe Jev when the key is set, then the local model). It used the local model's URL only, so with a key and no local model the adoption failed ("connection refused") and a wording measured on Jev was never adopted.
 
 ## 0.9.8 — init says when Codex already has shikii
 
