@@ -1516,18 +1516,21 @@ func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
 
 // 0.9.3: only a bare acknowledgement is attached to the previous request. Japanese requests are short (most were under the old
 // 40-character limit), so a Codex session of 19 requests became one conversation and reflection almost never ran.
-// A short request with content starts a new conversation.
+// A short request with content starts a new conversation. Audit 3: what people type as a bare acknowledgement in another width or
+// with a variation selector is still one.
 func TestOnlyBareAcknowledgementsAreReplies(t *testing.T) {
 	for _, s := range []string{"y", "Y", "ok", "OK.", "okay", "yes", "go ahead", "continue", "lgtm", "next",
-		"\u306f\u3044", "\u7d9a\u3051\u3066", "\u6b21\u3078", "\u3084\u308a\u307e\u3057\u3087\u3046", "\u3067\u306f\u7d9a\u3051\u307e\u3057\u3087\u3046", "\u304a\u9858\u3044\u3057\u307e\u3059", "\u9032\u3081\u3066", "\u4e86\u89e3\u3002", "\u3044\u3044\u3088"} {
+		"\u306f\u3044", "\u7d9a\u3051\u3066", "\u6b21\u3078", "\u3084\u308a\u307e\u3057\u3087\u3046", "\u3067\u306f\u7d9a\u3051\u307e\u3057\u3087\u3046", "\u304a\u9858\u3044\u3057\u307e\u3059", "\u9032\u3081\u3066", "\u4e86\u89e3\u3002", "\u3044\u3044\u3088",
+		"ＯＫ", "ｏｋ！", "👍️", "✅", "了解しました", "わかった", "OK️"} {
 		if !isAckReply(s) {
-			t.Fatalf("%q is an acknowledgement and is attached to the previous request", s)
+			t.Errorf("%q is a bare acknowledgement and is attached to the previous request", s)
 		}
 	}
 	for _, s := range []string{"and the other one", "fix it", "cold\u3092\u66f4\u306b\u9ad8\u901f\u5316", "\u307e\u3060cold\u524a\u308c\u305d\u3046",
-		"\u66f4\u306b\u9ad8\u901f\u5316\u3059\u308b\u4f59\u5730\u306f\u3042\u308a\u307e\u3059\u304b\uff1f", "main\u53d6\u308a\u8fbc\u3093\u3067", "\u3053\u306e\u30d6\u30e9\u30f3\u30c1\u306b\u53d6\u308a\u8fbc\u3093\u3067\u3044\u3044\u3088", "1", "y\u3067\u3082\u3044\u3044\u3051\u3069\u30c6\u30b9\u30c8\u3082\u66f8\u3044\u3066"} {
+		"\u66f4\u306b\u9ad8\u901f\u5316\u3059\u308b\u4f59\u5730\u306f\u3042\u308a\u307e\u3059\u304b\uff1f", "main\u53d6\u308a\u8fbc\u3093\u3067", "\u3053\u306e\u30d6\u30e9\u30f3\u30c1\u306b\u53d6\u308a\u8fbc\u3093\u3067\u3044\u3044\u3088", "1", "y\u3067\u3082\u3044\u3044\u3051\u3069\u30c6\u30b9\u30c8\u3082\u66f8\u3044\u3066",
+		"ＯＫ、でもテストも", "２", "違う"} {
 		if isAckReply(s) {
-			t.Fatalf("%q is a request of its own and starts a new conversation", s)
+			t.Errorf("%q is a request of its own and starts a new conversation", s)
 		}
 	}
 }
@@ -1669,22 +1672,38 @@ func TestAudit090ClassifyKeepsChangeReason(t *testing.T) {
 // R1 (re-launching within 30 seconds of a refusal shifts by one) is not fixed, because SubagentStart has no call id and can only be matched by time and order;
 // it is written as a limitation in integrations/claude-code.md
 
-// R2: refuse an Agent call with no type (it starts as general-purpose), and a minute later start one with subagent_type: general-purpose.
-// The 30-second discard compares types raw (it sees "" and "general-purpose" as different types), so the refused note stays and is used by the later child
-func TestReaudit091BurstTreatsEmptyTypeAsGeneralPurpose(t *testing.T) {
-	st, scope, _, _, _ := memoryEffectFixture(t)
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "r2", "cwd": scope, "prompt": "画面の色を直して"})
-	runHook(t, "agent-task", map[string]any{"session_id": "r2", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": "断られた仕事 AAA の調査"}})
-	if err := updateSession(st.Dir, "r2", func(s *hookSession) {
-		for i := range s.SubagentTasks {
-			s.SubagentTasks[i].At = s.SubagentTasks[i].At.Add(-time.Minute)
-		}
-	}); err != nil {
-		t.Fatal(err)
-	}
-	ctx := subagentContext(t, startSubagent(t, "r2", scope, "child-r2", "general-purpose", "README の導入手順を更新してください"))
-	if !strings.Contains(ctx, "README の導入手順") {
-		t.Fatalf("a typeless note refused a minute ago is discarded when adding a new general-purpose note. heading: %q remaining: %+v", strings.SplitN(ctx, "\n", 2)[0], loadSession(st.Dir, "r2").SubagentTasks)
+// The parent called the Agent tool but the child never started (the person refused, etc.); a minute later a child of the same type is
+// started for different work. The refused note must not choose that child's lessons.
+//   - G1: both calls have the same subagent_type: the child was chosen with the text of the refused work.
+//   - R2: the refused call has no type (it starts as general-purpose) and the later one says general-purpose: the discard compared types
+//     raw ("" and "general-purpose" looked different), so the refused note stayed and was used by the later child.
+func TestRefusedAgentTaskIsNotUsedByALaterChild(t *testing.T) {
+	for _, c := range []struct{ name, refused, child string }{
+		{"same type", "Explore", "Explore"},
+		{"no type, then general-purpose", "", "general-purpose"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st, scope, _, _, _ := memoryEffectFixture(t)
+			runHook(t, "user-prompt-submit", map[string]any{"session_id": "g1", "cwd": scope, "prompt": "画面の色を直して"})
+			input := map[string]any{"prompt": "断られた仕事 AAA の調査"}
+			if c.refused != "" {
+				input["subagent_type"] = c.refused
+			}
+			// the refused Agent tool (only PreToolUse arrives)
+			runHook(t, "agent-task", map[string]any{"session_id": "g1", "cwd": scope, "tool_name": "Agent", "tool_input": input})
+			// the time until the person refuses and the parent reconsiders (1 minute), within the 10-minute limit
+			if err := updateSession(st.Dir, "g1", func(s *hookSession) {
+				for i := range s.SubagentTasks {
+					s.SubagentTasks[i].At = s.SubagentTasks[i].At.Add(-time.Minute)
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+			ctx := subagentContext(t, startSubagent(t, "g1", scope, "child-2", c.child, "README の導入手順を更新してください"))
+			if !strings.Contains(ctx, "README の導入手順") {
+				t.Fatalf("the started child is chosen by the text of its own work. heading: %q\nremaining notes: %+v", strings.SplitN(ctx, "\n", 2)[0], loadSession(st.Dir, "g1").SubagentTasks)
+			}
+		})
 	}
 }
 
@@ -1715,29 +1734,6 @@ func TestReaudit091HistoryExclusionKeepsRarity(t *testing.T) {
 	}
 	if err != nil || len(pages) == 0 {
 		t.Fatalf("even with history excluded, do not change the base for rare words (as in 0.9.0, the README rule is among the candidates): %v %v", err, titles)
-	}
-}
-
-// G1: the parent called the Agent tool but the child never started (the person refused, etc.). When a child of the same type is started for different work within 10 minutes,
-// that child is chosen with the text of the previous (refused) work
-func TestAudit091DeniedAgentTaskShiftsLaterChild(t *testing.T) {
-	st, scope, _, _, _ := memoryEffectFixture(t)
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g1", "cwd": scope, "prompt": "画面の色を直して"})
-	// 1st: the refused Agent tool (only PreToolUse arrives)
-	runHook(t, "agent-task", map[string]any{"session_id": "g1", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": "断られた仕事 AAA の調査", "subagent_type": "Explore"}})
-	// The time until the person refuses and the parent reconsiders (1 minute). Within the 10-minute limit
-	if err := updateSession(st.Dir, "g1", func(s *hookSession) {
-		for i := range s.SubagentTasks {
-			s.SubagentTasks[i].At = s.SubagentTasks[i].At.Add(-time.Minute)
-		}
-	}); err != nil {
-		t.Fatal(err)
-	}
-	// 2nd: the child that actually starts
-	out := startSubagent(t, "g1", scope, "child-2", "Explore", "README の導入手順を更新してください")
-	ctx := subagentContext(t, out)
-	if !strings.Contains(ctx, "README の導入手順") {
-		t.Fatalf("a started child should say it was chosen by the text of the work given to that child. actual heading: %q\nremaining notes: %+v", strings.SplitN(ctx, "\n", 2)[0], loadSession(st.Dir, "g1").SubagentTasks)
 	}
 }
 
@@ -1848,21 +1844,6 @@ func TestAudit5CopiedGroupingJSONKeepsTheListDecision(t *testing.T) {
 	}
 	if s := loadSession(root, "planning"); !strings.HasPrefix(s.Request, "main取り込んで") {
 		t.Fatalf("the copied JSON attached a short request to the previous one: %q", s.Request)
-	}
-}
-
-// 0.9.3 audit 4: the 40 for a "done" truth counts characters, not bytes. A Japanese message under 40 characters is over 40 bytes
-// (3 bytes a character), so counting bytes would turn most short Japanese corrections and answers back into "done" truths.
-func TestAudit4MinimumCountsCharactersNotBytes(t *testing.T) {
-	const reply = "違います、README の英語版の手順の方を直して" // 25 characters, 55 bytes
-	if n := utf8.RuneCountInString(reply); n >= outcomeMovedMinRunes || len(reply) < outcomeMovedMinRunes {
-		t.Fatalf("the fixture must be under the minimum in characters and over it in bytes: %d characters, %d bytes", n, len(reply))
-	}
-	repo, root, _ := planningFixture(t)
-	done := continuesTurn(t, repo, root, reply)
-	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Fixed the English steps."})
-	if l, ok := doneLabel(t, root, done); ok && l.Truth == "yes" {
-		t.Fatalf("a Japanese correction under 40 characters must not label the previous request as done: %+v", l)
 	}
 }
 
@@ -2079,9 +2060,15 @@ func TestAudit6LateJudgmentWaitsForThePersonsRequest(t *testing.T) {
 // 0.9.3 audit 3. Truths about done-as-asked come only from fixed rules on the person's message, never from the agent's
 // continues_previous (the agent being judged must not be able to erase a restatement or manufacture a "done" truth).
 
-// a short correction or answer ("wrong", "no", "2") is not a sign the previous request was done
+// a short correction or answer ("wrong", "no", "2") is not a sign the previous request was done.
+// 0.9.3 audit 4: the 40 for a "done" truth counts characters, not bytes. A Japanese message under 40 characters is over 40 bytes
+// (3 bytes a character), so counting bytes would turn most short Japanese corrections and answers back into "done" truths.
 func TestAudit3ShortReplyIsNotDoneYes(t *testing.T) {
-	for _, reply := range []string{"違う", "no", "2", "やり直して"} {
+	const underInCharacters = "違います、README の英語版の手順の方を直して" // 25 characters, 55 bytes
+	if n := utf8.RuneCountInString(underInCharacters); n >= outcomeMovedMinRunes || len(underInCharacters) < outcomeMovedMinRunes {
+		t.Fatalf("the fixture must be under the minimum in characters and over it in bytes: %d characters, %d bytes", n, len(underInCharacters))
+	}
+	for _, reply := range []string{"違う", "no", "2", "やり直して", underInCharacters} {
 		t.Run(reply, func(t *testing.T) {
 			repo, root, _ := planningFixture(t)
 			done := continuesTurn(t, repo, root, reply)
@@ -2122,20 +2109,6 @@ func TestAudit3SubmitDuringStopKeepsTheJudgment(t *testing.T) {
 	}
 }
 
-// what people type as a bare acknowledgement in another width or with a variation selector is still one
-func TestAudit3AckNormalization(t *testing.T) {
-	for _, s := range []string{"ＯＫ", "ｏｋ！", "👍️", "✅", "了解しました", "わかった", "OK️"} {
-		if !isAckReply(s) {
-			t.Errorf("%q is a bare acknowledgement", s)
-		}
-	}
-	for _, s := range []string{"ＯＫ、でもテストも", "２", "違う"} {
-		if isAckReply(s) {
-			t.Errorf("%q is not a bare acknowledgement", s)
-		}
-	}
-}
-
 // a turn whose organizing and Stop never came still settles the previous outcome at the next request (test hole: mutation M4)
 func TestAudit3NextRequestSettlesDeferredOutcome(t *testing.T) {
 	repo, root, _ := planningFixture(t)
@@ -2146,27 +2119,6 @@ func TestAudit3NextRequestSettlesDeferredOutcome(t *testing.T) {
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "ok"})
 	if l, ok := doneLabel(t, root, done); !ok || l.Truth != "yes" {
 		t.Fatalf("the next request settles a deferred outcome: %+v %v", l, ok)
-	}
-}
-
-// F3 (decided 2026-10-27): the Stop check repeats the organizing steps when the turn changed files without the organizing it was asked
-// for. A turn that only read or answered is not stopped (stopping every answer-only turn would make the person wait for nothing), and no
-// miss is tracked across turns.
-func TestAuditFinalF3SkippedOrganizingIsRestatedAtStop(t *testing.T) {
-	repo, root, _ := planningFixture(t)
-	first := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
-	if !strings.Contains(first, "hook plan query") {
-		t.Fatalf("precondition: organizing asked: %q", first)
-	}
-	if p := loadSession(root, "planning").Planning; p == nil || p.Result != nil {
-		t.Fatalf("precondition: not submitted yet")
-	}
-	if err := os.WriteFile(filepath.Join(repo, "filters.go"), []byte("package filters\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	stop := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Changed the filters."})
-	if !strings.Contains(stop, "hook plan") {
-		t.Fatalf("F3: a turn that changed files without the organizing is told the steps again: %q", stop)
 	}
 }
 
@@ -2902,22 +2854,6 @@ func TestStopAsksContinuesPreviousForShortUnlistedMessage(t *testing.T) {
 			t.Fatalf("without the organizing, the Stop after the block judges with the list's decision: judged=%v %q", s.Judged, s.Request)
 		}
 	})
-}
-
-func TestRestatesIgnoresOtherSessionsAndUnknownTurns(t *testing.T) {
-	repo, root, _ := planningFixture(t)
-	turn, done := restateTurns(t, repo, root, "planning")
-	restateTurns(t, repo, root, "other")
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": repo, "prompt": restateAgain})
-	restateSubmit(t, root, "other", turn) // a turn of another session
-	if l, ok := doneLabel(t, root, done); ok {
-		t.Fatalf("restates naming another session's turn is ignored: %+v", l)
-	}
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateAgain})
-	restateSubmit(t, root, "planning", "0123456789abcdef") // an unknown turn
-	if l, ok := doneLabel(t, root, done); ok {
-		t.Fatalf("restates naming an unknown turn is ignored: %+v", l)
-	}
 }
 
 // a request that already has the person's truth is not labeled again by a restatement

@@ -17,7 +17,7 @@
 1 cmd/shikii/hook_outcome_test.go
 2 cmd/shikii/hook_planning_context_test.go
 11 cmd/shikii/hook_planning_test.go
-153 cmd/shikii/hook_test.go
+149 cmd/shikii/hook_test.go
 5 cmd/shikii/hook_variants.go
 13 cmd/shikii/hook_variants_test.go
 3 cmd/shikii/init_test.go

@@ -258,17 +258,33 @@ func TestRestatesReachesRequestEightTurnsBack(t *testing.T) {
 	})
 }
 
-func TestRestatesFarIgnoresForeignTurns(t *testing.T) {
-	t.Run("another session", func(t *testing.T) {
-		repo, root, _ := planningFixture(t)
-		turn, done := restateFarTurns(t, repo, root, "planning")
-		restateFarTurns(t, repo, root, "other")
-		runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": repo, "prompt": restateAgain})
-		restateSubmit(t, root, "other", turn)
-		if l, ok := doneLabel(t, root, done); ok {
-			t.Fatalf("restates naming another session's request is ignored: %+v", l)
-		}
-	})
+// restates names only a request this session recorded in this project: another session's, another project's or a made-up id gives
+// nothing, whether the named request is among the recent turns or eight turns back.
+func TestRestatesIgnoresForeignTurns(t *testing.T) {
+	for _, f := range []struct {
+		name  string
+		turns func(t *testing.T, repo, root, session string) (string, string)
+	}{{"recent", restateTurns}, {"eight turns back", restateFarTurns}} {
+		t.Run("another session, "+f.name, func(t *testing.T) {
+			repo, root, _ := planningFixture(t)
+			turn, done := f.turns(t, repo, root, "planning")
+			f.turns(t, repo, root, "other")
+			runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": repo, "prompt": restateAgain})
+			restateSubmit(t, root, "other", turn)
+			if l, ok := doneLabel(t, root, done); ok {
+				t.Fatalf("restates naming another session's request is ignored: %+v", l)
+			}
+		})
+		t.Run("made-up id, "+f.name, func(t *testing.T) {
+			repo, root, _ := planningFixture(t)
+			_, done := f.turns(t, repo, root, "planning")
+			runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateAgain})
+			restateSubmit(t, root, "planning", "0123456789abcdef")
+			if l, ok := doneLabel(t, root, done); ok {
+				t.Fatalf("restates naming an unknown request is ignored: %+v", l)
+			}
+		})
+	}
 	t.Run("another project", func(t *testing.T) {
 		repo, root, _ := planningFixture(t)
 		turn, done := restateFarTurns(t, repo, root, "planning")
@@ -304,15 +320,6 @@ func TestRestatesFarIgnoresForeignTurns(t *testing.T) {
 		addPlanningContext(previous.Scope, previous, f)
 		if !restateDone(root, &hookSession{Scope: previous.Scope, Planning: f}, turn) {
 			t.Fatal("restates must find request 1 in the same session and project")
-		}
-	})
-	t.Run("made-up id", func(t *testing.T) {
-		repo, root, _ := planningFixture(t)
-		_, done := restateFarTurns(t, repo, root, "planning")
-		runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateAgain})
-		restateSubmit(t, root, "planning", "0123456789abcdef")
-		if l, ok := doneLabel(t, root, done); ok {
-			t.Fatalf("restates naming an unknown request is ignored: %+v", l)
 		}
 	})
 }

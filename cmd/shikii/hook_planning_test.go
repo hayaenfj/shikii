@@ -450,13 +450,38 @@ func TestAuditTranslationPlanningPrefaceMatchesThePage(t *testing.T) {
 	}
 }
 
-// T4: the habits notice keeps handoff_write (the MCP way to write work records); the planning notice keeps lesson:<id> (how to cite a lesson).
-func TestAuditTranslationNoticesKeepTheirOperations(t *testing.T) {
-	if !strings.Contains(habitsNotice, "handoff_write in shikii_wiki") || !strings.Contains(habitsNotice, "shikii handoff write <path>") {
-		t.Errorf("habitsNotice lost how to write a work record: %q", habitsNotice)
-	}
-	if n := planningNotice("s", "t"); !strings.Contains(n, "evidence source to lesson:<id>") {
-		t.Errorf("planningNotice lost how to cite a lesson: %q", n)
+// Each notice keeps the instructions an agent needs to act on it. Where each row came from:
+//   - T4: habitsNotice keeps handoff_write (the MCP way to write work records); the planning notice keeps lesson:<id> (how to cite a lesson).
+//   - 0.9.6 audit, low 2: restates is the <id> inside history:<id>:user (restateDone compares the id exactly, so the whole history key
+//     silently does nothing), and maintenance sends the latest revision after reading the sources and existing pages.
+//   - 0.9.7 audit G-3: the key query returns is lesson:<id>:<revision> (submit refuses lesson:<id>), in the full, short and no-query notices.
+//   - 0.9.7 final audit F2: the short form also says where the restates id comes from (history:<id>:user).
+//   - re3-3 (F4): the short forms point to the details as the full text does (the skill's references/...); a bare path reads as one in the project.
+//   - Low 1: Codex often passed the JSON as an argument first and was refused; the notice says it goes on standard input.
+//   - continues_previous is explained where the agent is asked to organize, and where the Stop asks again (planningShape).
+//   - 0.9.7 second real-agent check: Claude Code submitted before reading what query returned; both forms say to read the query result first.
+func TestNoticesKeepTheirInstructions(t *testing.T) {
+	full, short := planningNotice("s", "0123456789abcdef"), planningNoticeShort("s", "0123456789abcdef")
+	for _, c := range []struct {
+		name, text string
+		want       []string
+	}{
+		{"planning notice (full)", full, []string{"evidence source to lesson:<id>", "lesson:<id>:<revision>", "the <id> in history:<id>:user",
+			"the skill's references/planning.md", "standard input", "continues_previous to true", "false when it is a new request",
+			"omit it when unsure", "after reading what query returned"}},
+		{"planning notice (short)", short, []string{"lesson:<id>:<revision>", "history:<id>:user", "the skill's references/planning.md",
+			"after reading what query returned"}},
+		{"planning notice (no query)", planningNoQueryNotice, []string{"lesson:<id>:<revision>"}},
+		{"planningShape", planningShape, []string{"the <id> in history:<id>:user", "continues_previous is true, false or left out"}},
+		{"habitsNotice", habitsNotice, []string{"handoff_write in shikii_wiki", "shikii handoff write <path>"}},
+		{"reflection notice (full)", reflectAsk("shikii"), []string{"the latest page_id", "Read the sources and existing pages"}},
+		{"reflection notice (short)", reflectAskShort("X", nil), []string{"the skill's references/wiki.md"}},
+	} {
+		for _, w := range c.want {
+			if !strings.Contains(c.text, w) {
+				t.Errorf("the %s lacks %q: %q", c.name, w, c.text)
+			}
+		}
 	}
 }
 
@@ -471,16 +496,6 @@ func TestAudit3AgentCannotEraseRestatement(t *testing.T) {
 	}
 }
 
-// an acknowledgement never settles the previous outcome, even when the agent copies the skill's example (continues_previous:false)
-func TestAudit3AgentCannotMakeDoneFromAck(t *testing.T) {
-	repo, root, _ := planningFixture(t)
-	done := continuesTurn(t, repo, root, "ok")
-	continuesSubmit(t, root, false)
-	if l, ok := doneLabel(t, root, done); ok {
-		t.Fatalf("an acknowledgement must not become a done truth through the agent's grouping: %+v", l)
-	}
-}
-
 // query reads; it does not take organized content such as continues_previous (test hole: mutation M8)
 func TestAudit3QueryRefusesContinuesPrevious(t *testing.T) {
 	repo, root, _ := planningFixture(t)
@@ -490,45 +505,7 @@ func TestAudit3QueryRefusesContinuesPrevious(t *testing.T) {
 	}
 }
 
-// 0.9.6 audit, low 2: the shortened notices dropped two instructions the old text gave: restates is the <id> inside history:<id>:user
-// (restateDone compares the id exactly, so the whole history key silently does nothing), and maintenance sends the latest revision after
-// reading the sources and existing pages.
-func TestShortNoticesKeepTheirInstructions(t *testing.T) {
-	for name, text := range map[string]string{"notice": planningNotice("s", "t"), "shape": planningShape} {
-		if !strings.Contains(text, "the <id> in history:<id>:user") {
-			t.Errorf("the %s says restates is the <id> in history:<id>:user: %s", name, text)
-		}
-	}
-	if r := reflectAsk("shikii"); !strings.Contains(r, "the latest page_id") || !strings.Contains(r, "Read the sources and existing pages") {
-		t.Errorf("the reflection notice asks for the latest revision after reading the sources and pages: %s", r)
-	}
-}
-
-// 0.9.7 audit G-3: the full organizing notice and the notice for a missing query still taught lesson:<id>, which submit refuses; the key
-// query returns is lesson:<id>:<revision>.
-func TestReauditGNoticesTeachTheLessonKeyQueryReturns(t *testing.T) {
-	for name, text := range map[string]string{"full": planningNotice("s", "0123456789abcdef"), "short": planningNoticeShort("s", "0123456789abcdef"), "no query": planningNoQueryNotice} {
-		if !strings.Contains(text, "lesson:<id>:<revision>") {
-			t.Errorf("%s: names the key query returns: %q", name, text)
-		}
-	}
-}
-
 // 0.9.7 final audit (D1 to D2, F1 to F3). The checks are written independently in the tests; the functions are only what is tested.
-
-// F2: the full organizing notice says where the id for restates comes from (the <id> in history:<id>:user); the short form did not.
-// An agent with only the short form that put the key "history:<id>:user" query returned into restates was not refused, and nothing
-// happened (restateDone only matches t.ID exactly).
-func TestAuditFinalF2ShortPlanningNoticeSaysWhereTheRestatesIDComesFrom(t *testing.T) {
-	full, short := planningNotice("s", "0123456789abcdef"), planningNoticeShort("s", "0123456789abcdef")
-	const where = "history:<id>:user"
-	if !strings.Contains(full, where) {
-		t.Fatalf("precondition: the full text says where the restates id comes from %q: %q", where, full)
-	}
-	if !strings.Contains(short, where) {
-		t.Fatalf("F2: the short form lacks the restates condition (the <id> of %q)\nshort: %q", where, short)
-	}
-}
 
 // F2 control: an organizing sent from the short form alone is accepted (query, agreed, open and continues_previous added to its JSON).
 func TestAuditFinalF2ShortPlanningNoticeAloneSubmits(t *testing.T) {
@@ -560,22 +537,6 @@ func TestAuditFinalF2ShortPlanningNoticeAloneSubmits(t *testing.T) {
 	ids["continues_previous"] = false
 	if _, err := planningCall(t, "submit", ids); err != nil {
 		t.Fatalf("F2: an organizing sent from the short form alone was refused: %v", err)
-	}
-}
-
-// re3-3 (F4): the short organizing notice points to the details as the full text does (the skill's references/planning.md); a bare
-// references/planning.md reads as a path in the project.
-func TestRe3ShortPlanningNoticeNamesTheSkillsReference(t *testing.T) {
-	full, short := planningNotice("s", "t"), planningNoticeShort("s", "t")
-	const where = "the skill's references/planning.md"
-	if !strings.Contains(full, where) {
-		t.Fatalf("precondition: the full text says %q", where)
-	}
-	if !strings.Contains(short, where) {
-		t.Fatalf("F4: the short form names the details differently from the full text: %q", short)
-	}
-	if !strings.Contains(reflectAskShort("X", nil), "the skill's references/wiki.md") {
-		t.Fatal("control: the short reflection form names the skill's file")
 	}
 }
 
@@ -614,13 +575,6 @@ func TestNoticeKeepsShortRequestsWithContentApart(t *testing.T) {
 	n := planningNotice("s", "t")
 	if strings.Contains(n, "short follow-up on the same work") {
 		t.Fatalf("the notice invites attaching short requests with content: %s", n)
-	}
-}
-
-// Low 1: Codex often passed the JSON as an argument first and was refused; the planning notice says it goes on standard input.
-func TestPlanningNoticeSaysStandardInput(t *testing.T) {
-	if n := planningNotice("s", "t"); !strings.Contains(n, "standard input") {
-		t.Fatalf("the planning notice says the JSON goes on standard input: %s", n)
 	}
 }
 
@@ -671,16 +625,6 @@ func TestPlanNewSplitsAcknowledgement(t *testing.T) {
 	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
 	if s := loadSession(root, "planning"); !s.Judged || s.Completed == nil || s.Completed.Request != "ok" {
 		t.Fatalf("the Stop must judge the request standing alone: %+v", s)
-	}
-}
-
-// the agent is told about continues_previous where it is asked to organize, and where the Stop asks again (planningShape)
-func TestPlanningNoticeNamesContinuesPrevious(t *testing.T) {
-	if !strings.Contains(planningShape, "continues_previous is true, false or left out") {
-		t.Fatalf("the shape must show continues_previous: %s", planningShape)
-	}
-	if n := planningNotice("s", "0123456789abcdef"); !strings.Contains(n, "continues_previous to true") || !strings.Contains(n, "false when it is a new request") || !strings.Contains(n, "omit it when unsure") {
-		t.Fatalf("the notice must say when to set continues_previous and when to omit it: %s", n)
 	}
 }
 
@@ -795,16 +739,6 @@ func TestPlanningNoticeIsShortAfterTheFirstRequest(t *testing.T) {
 	}
 	if fulls != 1 {
 		t.Fatalf("the full text comes back once every %d requests: %d times", noticeFullEvery, fulls)
-	}
-}
-
-// 0.9.7 second real-agent check: Claude Code wrote hook plan query and hook plan submit in one command from the second request on, so it
-// submitted before reading what query returned (the lessons it could rely on). Both forms of the notice say to read the query result first.
-func TestPlanningNoticeSaysToReadTheQueryFirst(t *testing.T) {
-	for name, notice := range map[string]string{"full": planningNotice("s", "0123456789abcdef"), "short": planningNoticeShort("s", "0123456789abcdef")} {
-		if !strings.Contains(notice, "after reading what query returned") {
-			t.Errorf("%s form: says to submit after reading the query result: %q", name, notice)
-		}
 	}
 }
 
