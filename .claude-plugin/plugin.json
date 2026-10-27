@@ -1,5 +1,5 @@
 {
   "name": "shikii",
   "description": "The working method (skill) for shikii, a framework for running decision models. It leaves the judging to the CLI or MCP and teaches the agent when and how to use them",
-  "version": "0.9.7"
+  "version": "0.9.8"
 }

@@ -2,9 +2,9 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.9.8 — init says when Codex already has shikii
 
-- `shikii init`, Codex: when `~/.codex/config.toml` already registers shikii exactly as init writes it (after init in another project), init now says "shikii is already registered" instead of "kept the existing MCP settings; if they do not register shikii, add" with the block.
+- `shikii init`, Codex: when `~/.codex/config.toml` already registers shikii with the same command and args init writes, and nothing else (after init in another project; the way it is written does not matter), init now says "shikii is already registered" instead of "kept the existing MCP settings; if they do not register shikii, add" with the block.
 
 ## 0.9.7 — moving the project folder needs no fixing, and your settings files stay as you wrote them
 

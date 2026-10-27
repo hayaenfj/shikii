@@ -2,9 +2,9 @@
 
 [English](CHANGELOG.md) · **日本語**
 
-## 未公開
+## 0.9.8 — Codex に shikii が登録済みの時、init がそう言う
 
-- `shikii init`、Codex: `~/.codex/config.toml` に init が書く形のまま shikii が登録済みの時(別のプロジェクトで init した後)、「kept the existing MCP settings; if they do not register shikii, add」と足す節を出さず、「shikii is already registered」と出す。
+- `shikii init`、Codex: `~/.codex/config.toml` に init が書くのと同じ command と args だけで shikii が登録済みの時(別のプロジェクトで init した後。書き方は問わない)、「kept the existing MCP settings; if they do not register shikii, add」と足す節を出さず、「shikii is already registered」と出す。
 
 ## 0.9.7 — プロジェクトのフォルダを移しても直す物が無くなり、人の設定ファイルは書いたとおりに残る
 
