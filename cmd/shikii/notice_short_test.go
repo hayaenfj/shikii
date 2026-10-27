@@ -1,6 +1,7 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -33,8 +34,15 @@ func TestPlanningNoticeIsShortAfterTheFirstRequest(t *testing.T) {
 	if strings.Contains(second, full) || !strings.Contains(second, "hook plan query") || !strings.Contains(second, "hook plan submit") || !strings.Contains(second, id) {
 		t.Fatalf("after an organized request the short form names the commands and this turn's id %s: %q", id, second)
 	}
-	if len(second)*5 >= len(first)*2 { // under two fifths: the short form keeps the essential rules (re-audit S1, audit E)
-		t.Fatalf("the short form is short: %d of %d characters", len(second), len(first))
+	// under two fifths: the short form keeps the essential rules (re-audit S1, audit E). Measured with the binary's path taken out: the full
+	// text names it twice and the short form once, so a long install path (a coverage build in a deep folder) broke the ratio, not the text.
+	command := regexp.MustCompile(`Pipe the JSON below to (.+?) hook plan query`).FindStringSubmatch(second)
+	if command == nil {
+		t.Fatalf("the short form names the binary: %q", second)
+	}
+	short, long := strings.ReplaceAll(second, command[1], "shikii"), strings.ReplaceAll(first, command[1], "shikii")
+	if len(short)*5 >= len(long)*2 {
+		t.Fatalf("the short form is short: %d of %d characters", len(short), len(long))
 	}
 	// the second request's organizing is not submitted: the next request still gets the short form, which is enough to submit
 	if third := turn("Then sort the agreed CSV columns by date and keep the existing filters."); strings.Contains(third, full) || !strings.Contains(third, "hook plan submit") {
