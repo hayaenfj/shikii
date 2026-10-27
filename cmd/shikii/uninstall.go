@@ -131,15 +131,28 @@ func cmdUninstall(args []string) error {
 				if present, err := shikiiSkillDir(dir); err != nil || !present { // check again right before removing
 					return err
 				}
-				return os.RemoveAll(dir)
+				if err := os.RemoveAll(dir); err != nil {
+					return err
+				}
+				removeEmptyLock(filepath.Join(filepath.Dir(dir), ".shikii-skill.lock")) // init's lock beside the skill folder (0.9.9)
+				return nil
 			}})
 		}
 	}
-	// 5) the running pages the hooks started (their marks in ~/.shikii/agent/pages/; the marks themselves are data and stay)
+	// 5) the running pages the hooks started, with their records and locks in ~/.shikii/agent/pages/ (shikii's, not data; 0.9.9)
 	for _, pg := range runningPages(agent) {
 		pg := pg
 		steps = append(steps, uninstallStep{fmt.Sprintf("stop the page of %s (shikii serve, pid %d, port %d)", pg.Scope, pg.PID, pg.Port), func() error {
-			return stopProcess(pg.PID)
+			if err := stopProcess(pg.PID); err != nil {
+				return err
+			}
+			if r, ok := readPageRecord(agent, pg.Scope); ok && r.PID == pg.PID {
+				_ = os.Remove(pagePath(agent, pg.Scope))
+			}
+			if !pageLockHeld(agent, pg.Scope) {
+				removeEmptyLock(pageLockPath(agent, pg.Scope))
+			}
+			return nil
 		}})
 	}
 
@@ -560,4 +573,11 @@ func tomlScan(s string, depth int, multi string) (int, string) {
 		}
 	}
 	return depth, multi
+}
+
+// removeEmptyLock removes a lock file shikii made (an empty regular file), and nothing else.
+func removeEmptyLock(path string) {
+	if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() && info.Size() == 0 {
+		_ = os.Remove(path)
+	}
 }

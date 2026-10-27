@@ -207,7 +207,15 @@ func TestUninstallRemovesOnlyShikiisPartsAndIsIdempotent(t *testing.T) {
 			t.Fatalf("the skill folder must be gone: %s (%v)", p, err)
 		}
 	}
-	if d := diffTrees(keep, snapshotTree(t, stores...)); len(d) > 0 {
+	// the record of the page uninstall stopped is shikii's, not data, and goes with it (0.9.9); everything else stays byte for byte
+	stoppedRecord := "gone: " + pagePath(b.agent, b.repo)
+	var d []string
+	for _, x := range diffTrees(keep, snapshotTree(t, stores...)) {
+		if x != stoppedRecord {
+			d = append(d, x)
+		}
+	}
+	if len(d) > 0 {
 		t.Fatalf("the data (.shikii/ and ~/.shikii/agent) must stay byte for byte: %v", d)
 	}
 	if !reflect.DeepEqual(b.stopped, []int{os.Getppid()}) {
