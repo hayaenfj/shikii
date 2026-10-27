@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- `shikii init`, Codex: when `~/.codex/config.toml` already registers shikii exactly as init writes it (after init in another project), init now says "shikii is already registered" instead of "kept the existing MCP settings; if they do not register shikii, add" with the block.
+
 ## 0.9.7 — moving the project folder needs no fixing, and your settings files stay as you wrote them
 
 - Moving or renaming the project folder: nothing to fix by hand any more. The next request's hook (and `shikii --init`) reconnects the project at its new path by itself and says so once. The records inside `.shikii/` keep the name the store got when it was first opened (the name 0.9.6 used), and shikii never moves or renames them. Each store has a random id (`records/store-id`); shikii reconnects a store only when this machine's index names it by that id and by the same folder (device and inode), so a move on the same disk is followed. A copy is not taken over (its records keep going to the original), and the hook asks once per session whether to make it a project of its own with `shikii --init`. A move to another disk, or a `.shikii` brought from an archive or another machine, cannot be told from a copy: the hook says shikii is not running there, and `shikii --init` makes it a project of its own with its wiki and records. A `.shikii` at the very path it was initialized at is that project.

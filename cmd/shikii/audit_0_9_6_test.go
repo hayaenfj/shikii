@@ -48,3 +48,24 @@ func TestShortNoticesKeepTheirInstructions(t *testing.T) {
 		t.Errorf("the reflection notice asks for the latest revision after reading the sources and pages: %s", r)
 	}
 }
+
+// After the 0.9.7 release (init in a second project): when config.toml already registers shikii exactly as init would write it, init said
+// "kept the existing MCP settings; if they do not register shikii, add" with the block, as if it might be missing. It now says shikii is
+// already registered. A shikii entry in another form still shows the block.
+func TestCodexNoteSaysShikiiIsAlreadyRegistered(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.toml")
+	current := "[mcp_servers.other]\ncommand = \"x\"\n\n[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + "\n"
+	if err := os.WriteFile(p, []byte(current), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if note := codexServerNote(p); !strings.Contains(note, "already registered") || strings.Contains(note, "if they do not register") {
+		t.Fatalf("the note says shikii is already registered: %q", note)
+	}
+	other := "[mcp_servers.shikii]\ncommand = \"/somewhere/else\"\nargs = [\"mcp\"]\n"
+	if err := os.WriteFile(p, []byte(other), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if note := codexServerNote(p); strings.Contains(note, "already registered") || !strings.Contains(note, codexServerArgsLine) {
+		t.Fatalf("control: a shikii entry in another form still shows the block: %q", note)
+	}
+}

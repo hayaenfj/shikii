@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md) · **日本語**
 
+## 未公開
+
+- `shikii init`、Codex: `~/.codex/config.toml` に init が書く形のまま shikii が登録済みの時(別のプロジェクトで init した後)、「kept the existing MCP settings; if they do not register shikii, add」と足す節を出さず、「shikii is already registered」と出す。
+
 ## 0.9.7 — プロジェクトのフォルダを移しても直す物が無くなり、人の設定ファイルは書いたとおりに残る
 
 - プロジェクトのフォルダを移す・名前を変える: 手で直す物は無くなった。次の依頼の hook(と `shikii --init`)が、新しいパスでプロジェクトを自分でつなぎ直し、1 回だけ知らせる。`.shikii/` の中の記録は、置き場を最初に開いた時の名前(0.9.6 と同じ名前)のままで、shikii は移さず名前も変えない。置き場ごとに乱数の id(`records/store-id`)を持ち、この機械の登録がその id と同じフォルダ(デバイスと inode)で指している時だけつなぎ直すので、同じディスクの中の移動を追える。写しは乗っ取らず(記録は元のプロジェクトに入り続ける)、`shikii --init` で別のプロジェクトにするかを、hook がセッションに 1 回聞く。別のディスクへの移動や、アーカイブ・別の機械から持ち込んだ `.shikii` は写しと見分けられないので、hook は shikii がそこで動いていないと知らせ、`shikii --init` で wiki と記録を持った別のプロジェクトになる。初期化した時のパスそのものにある `.shikii` は、そのプロジェクトとみなす。

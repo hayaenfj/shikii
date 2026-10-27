@@ -251,6 +251,12 @@ func codexServerNote(path string) string {
 			return fmt.Sprintf("did not add shikii: the file could not be read as TOML (%v), so it was left as it is. Fix it, then add:\n%s", err, block)
 		}
 		return "did not add shikii: appending it would change how the other settings read, so the file was left as it is. Add:\n" + block
+	case "has":
+		if m, err := readCodexConfig(b); err == nil {
+			if v, _ := codexShikiiServer(m); reflect.DeepEqual(v, codexServerWant(mcpCommand(), codexServerArgs)) {
+				return "shikii is already registered (Codex)"
+			}
+		}
 	}
 	return "kept the existing MCP settings; if they do not register shikii, add:\n" + block
 }
