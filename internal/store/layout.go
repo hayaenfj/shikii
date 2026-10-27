@@ -135,6 +135,10 @@ var WriteTemp = func(f *os.File, b []byte) (int, error) { return f.Write(b) }
 // milliseconds; the cmd/shikii tests swap it for nothing, as eight groups doing it at once made every test several times slower.
 var SyncTemp = (*os.File).Sync
 
+// BeforeRename runs right before PlaceOnce renames its temp file into place on a disk without hard links; a test checks the folder is
+// locked there.
+var BeforeRename = func() {}
+
 // ChmodTemp sets the temp file's mode; tests swap it to refuse like Linux's exFAT and FAT drivers.
 var ChmodTemp = (*os.File).Chmod
 
@@ -182,6 +186,7 @@ func PlaceOnce(path string, data []byte, perm os.FileMode) (bool, error) {
 	} else if !os.IsNotExist(err) {
 		return false, err
 	}
+	BeforeRename()
 	if err := os.Rename(tmp.Name(), path); err != nil {
 		return false, err
 	}

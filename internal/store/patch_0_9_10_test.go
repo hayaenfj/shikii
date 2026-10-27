@@ -3,7 +3,6 @@ package store
 import (
 	"os"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"testing"
 )
@@ -42,32 +41,47 @@ func TestPatch0910StoppedWriteWithoutHardLinksLeavesNothing(t *testing.T) {
 	}
 }
 
-// Two writers at once on a disk without hard links (two inits making the store id): only one places its file, and the other sees it.
-func TestPatch0910TwoWritersWithoutHardLinksPlaceOne(t *testing.T) {
+// Two writers at once on a disk without hard links (two inits making the store id) must not both place a file: the check that nothing is
+// there and the rename happen while the folder is locked. Checked in one run, without waiting on a race: right before the rename the
+// folder's lock cannot be taken from outside.
+func TestPatch0910RenameHappensUnderTheFolderLock(t *testing.T) {
 	withoutHardLinks(t)
-	for i := 0; i < 200; i++ {
-		path := filepath.Join(t.TempDir(), "store-id")
-		var start sync.WaitGroup
-		start.Add(2)
-		Link = func(string, string) error {
-			start.Done()
-			start.Wait() // both writers leave Link together
-			return &os.LinkError{Op: "link", Err: syscall.ENOTSUP}
+	dir := t.TempDir()
+	var tried error
+	old := BeforeRename
+	t.Cleanup(func() { BeforeRename = old })
+	BeforeRename = func() {
+		f, err := os.Open(dir)
+		if err != nil {
+			tried = err
+			return
 		}
-		placed := make([]bool, 2)
-		var done sync.WaitGroup
-		for w := range placed {
-			done.Add(1)
-			go func() {
-				defer done.Done()
-				placed[w], _ = PlaceOnce(path, []byte{'a' + byte(w), '\n'}, 0o600)
-			}()
+		defer f.Close()
+		tried = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if tried == nil {
+			syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		}
-		done.Wait()
-		b, _ := os.ReadFile(path)
-		if placed[0] == placed[1] || placed[0] && string(b) != "a\n" || placed[1] && string(b) != "b\n" {
-			t.Fatalf("round %d: placed %v, file %q", i, placed, b)
-		}
+	}
+	if placed, err := PlaceOnce(filepath.Join(dir, "store-id"), []byte("a\n"), 0o600); err != nil || !placed {
+		t.Fatal(placed, err)
+	}
+	if tried != syscall.EWOULDBLOCK {
+		t.Fatalf("the folder is locked right before the rename: taking the lock from outside gave %v", tried)
+	}
+}
+
+// A file already there when the lock is taken is kept, and the writer says it did not place one.
+func TestPatch0910FileAlreadyThereWithoutHardLinksStays(t *testing.T) {
+	withoutHardLinks(t)
+	path := filepath.Join(t.TempDir(), "store-id")
+	if err := os.WriteFile(path, []byte("b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if placed, err := PlaceOnce(path, []byte("a\n"), 0o600); err != nil || placed {
+		t.Fatalf("nothing is placed over it: %v %v", placed, err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "b\n" {
+		t.Fatalf("got %q", b)
 	}
 }
 
