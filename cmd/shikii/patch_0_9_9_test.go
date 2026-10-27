@@ -262,3 +262,39 @@ func TestPatch099ForgettingAPathDoesNotStopTheProjectNowThere(t *testing.T) {
 		t.Fatalf("control: the moved project's old page is stopped: %v", b.stopped)
 	}
 }
+
+// B DF-1, DF-2 (expected fixed by 37424df, checked here): the hook and serve spelled the project path differently when it was reached
+// through a link, so the hook did not find the page (and restarted serve every 30 seconds) and uninstall did not stop it. Both now key by the
+// same spelling: the hook's scope, the scope serve keys its page by, and the store serve's command line names are one string.
+func TestPatch099HookAndServeSpellThePageTheSameWay(t *testing.T) {
+	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
+	real := gitRepo(t)
+	link := filepath.Join(t.TempDir(), "via-link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(link)
+	if err := cmdInit(nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, cwd := range []string{link, real, filepath.Join(link, ".")} {
+		hook := projectScopeAt(cwd)
+		root := filepath.Join(hook, ".shikii") // what ensureProjectPage passes as serve --store
+		stores := []string{root, filepath.Join(link, ".shikii"), filepath.Join(real, ".shikii")}
+		if upper := strings.ToUpper(real); upper != real {
+			if a, err := os.Stat(real); err == nil {
+				if b, err := os.Stat(upper); err == nil && os.SameFile(a, b) { // a case-insensitive disk
+					stores = append(stores, filepath.Join(upper, ".shikii"))
+				}
+			}
+		}
+		for _, store := range stores {
+			if got := pageScope(store); got != hook {
+				t.Fatalf("DF-1: serve --store %s keys its page by %q, the hook (cwd %s) by %q", store, got, cwd, hook)
+			}
+		}
+		if !isShikiiServe("/bin/shikii serve --store "+root+" --port 0 --local x", filepath.Join(pageScope(root), ".shikii")) {
+			t.Fatalf("DF-2: uninstall finds the page the hook started from %s", cwd)
+		}
+	}
+}

@@ -81,11 +81,7 @@ func cmdServe(args []string) error {
 			return err
 		}
 	}
-	scope := filepath.Dir(absStore)
-	if real, err := filepath.EvalSymlinks(scope); err == nil {
-		scope = real // the same key for the page lock and record, whatever path reached the folder (0.9.7 full audit 1, D4)
-	}
-	scope = canonicalScope(scope) // and whatever case spelled it on a case-insensitive disk, as the hook does (final audit DF-1)
+	scope := pageScope(absStore)
 	// the project's page is a serve of a project's .shikii on a free port; a store under another name started by hand is not (D4)
 	auto := !hub && o.port == 0 && filepath.Base(absStore) == ".shikii" // the project's page started by the hook (0.8.0): free port, mark, browser; the local model is waited for after the port opens
 	if auto {
@@ -1131,4 +1127,14 @@ func localHostOnly(h http.Handler) http.Handler {
 			writeErr(w, 403, fmt.Errorf("host %q is not allowed; open the page as http://127.0.0.1:<port>/ or http://localhost:<port>/", host))
 		}
 	})
+}
+
+// pageScope is the project path a serve of absStore keys its page lock and record by: the same spelling the hook uses, whatever path
+// reached the folder (links resolved: 0.9.7 full audit 1, D4) and whatever case spelled it on a case-insensitive disk (final audit DF-1).
+func pageScope(absStore string) string {
+	scope := filepath.Dir(absStore)
+	if real, err := filepath.EvalSymlinks(scope); err == nil {
+		scope = real
+	}
+	return canonicalScope(scope)
 }
