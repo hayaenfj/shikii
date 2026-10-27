@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"net/http"
@@ -680,20 +679,25 @@ func TestProjectTuningKeepsProcessOutput(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	openWriter := func(path string) *os.File {
-		deadline := time.Now().Add(2 * time.Second)
-		for time.Now().Before(deadline) {
-			f, err := os.OpenFile(path, os.O_WRONLY|syscall.O_NONBLOCK, 0600)
-			if err == nil {
-				return f
+	openWriter := func(path string) *os.File { // opening a pipe to write returns once the tune opened it to read its spec
+		opened := make(chan *os.File, 1)
+		go func() {
+			f, err := os.OpenFile(path, os.O_WRONLY, 0600)
+			if err != nil {
+				t.Errorf("cannot open the synthetic pipe: %v", err)
 			}
-			if !errors.Is(err, syscall.ENXIO) {
-				t.Fatalf("cannot open the synthetic pipe: %v", err)
+			opened <- f
+		}()
+		select {
+		case f := <-opened:
+			if f == nil {
+				t.FailNow()
 			}
-			time.Sleep(5 * time.Millisecond)
+			return f
+		case <-time.After(5 * time.Second): // only turns a tune that never reads its spec into a failure
+			t.Fatal("the other project's tune never opened its spec")
+			return nil
 		}
-		t.Fatal("the other project's tune did not start in time")
-		return nil
 	}
 	original := stdout
 	defer func() { stdout = original }()

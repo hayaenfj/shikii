@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -497,18 +498,24 @@ func TestReadoutServerLimitsSlowHeaders(t *testing.T) {
 }
 
 // 0.9.7 full audit 2-8 (eaf2c9b: a slow connection must not hold resources): a request body sent one byte at a time was never cut by
-// readout. Reading the request is bounded; here the bound is shortened to see that a dribbled body is cut by it.
+// readout. Reading the request is bounded; a body whose rest arrives after that bound is cut by it. The server's connections judge their
+// read deadline against a clock the test moves past the bound, so the bound passes without waiting for it.
 func TestAuditReadoutSlowBodyHeld(t *testing.T) {
-	var done atomic.Bool
+	reading := make(chan struct{})
+	read := make(chan error, 1)
 	srv := newReadoutServer("", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.ReadAll(io.LimitReader(r.Body, 4<<20))
-		done.Store(true)
+		close(reading)
+		_, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
+		read <- err
 	}))
 	if srv.ReadTimeout <= 0 || srv.ReadTimeout > time.Minute {
 		t.Fatalf("reading a request is bounded: %v", srv.ReadTimeout)
 	}
-	srv.ReadTimeout = 500 * time.Millisecond
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	inner, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln := &movedClockListener{Listener: inner}
 	go srv.Serve(ln)
 	defer srv.Close()
 	c, err := net.Dial("tcp", ln.Addr().String())
@@ -516,14 +523,72 @@ func TestAuditReadoutSlowBodyHeld(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	fmt.Fprintf(c, "POST /v1/systemone HTTP/1.1\r\nHost: x\r\nContent-Length: 1000\r\n\r\n")
-	for i := 0; i < 30; i++ { // 3 seconds, one byte every 100ms
-		if _, err := c.Write([]byte("x")); err != nil {
-			return // cut: fine
-		}
-		time.Sleep(100 * time.Millisecond)
+	fmt.Fprintf(c, "POST /v1/systemone HTTP/1.1\r\nHost: x\r\nContent-Length: 1000\r\n\r\nx")
+	<-reading
+	ln.move(srv.ReadTimeout + time.Second) // the client dribbles the body past the read bound
+	c.Write(bytes.Repeat([]byte("x"), 999))
+	if err := <-read; err == nil {
+		t.Fatal("a body whose rest arrived past the read bound was read whole: a client that dribbles its body holds the handler")
 	}
-	if !done.Load() {
-		t.Fatal("a body dribbled for 3s, past the read bound, still holds the handler")
+}
+
+// movedClockListener hands out connections that judge their read deadline against a clock the test moves forward (move), instead of
+// the time that passes.
+type movedClockListener struct {
+	net.Listener
+	now atomic.Pointer[time.Time] // nil until moved: no deadline has passed
+}
+
+func (l *movedClockListener) move(by time.Duration) {
+	at := time.Now().Add(by)
+	l.now.Store(&at)
+}
+
+func (l *movedClockListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
 	}
+	return &movedClockConn{Conn: c, l: l}, nil
+}
+
+type movedClockConn struct {
+	net.Conn
+	l        *movedClockListener
+	mu       sync.Mutex
+	deadline time.Time
+}
+
+func (c *movedClockConn) SetDeadline(d time.Time) error {
+	c.setRead(d)
+	return c.Conn.SetDeadline(d)
+}
+
+func (c *movedClockConn) SetReadDeadline(d time.Time) error {
+	c.setRead(d)
+	return c.Conn.SetReadDeadline(d)
+}
+
+func (c *movedClockConn) setRead(d time.Time) {
+	c.mu.Lock()
+	c.deadline = d
+	c.mu.Unlock()
+}
+
+func (c *movedClockConn) passed() bool {
+	now := c.l.now.Load()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return now != nil && !c.deadline.IsZero() && c.deadline.Before(*now)
+}
+
+func (c *movedClockConn) Read(b []byte) (int, error) {
+	if c.passed() {
+		return 0, os.ErrDeadlineExceeded
+	}
+	n, err := c.Conn.Read(b)
+	if c.passed() {
+		return 0, os.ErrDeadlineExceeded
+	}
+	return n, err
 }

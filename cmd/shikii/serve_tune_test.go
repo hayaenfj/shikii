@@ -172,8 +172,10 @@ func TestServeAddsAPersonsRewordingToVariants(t *testing.T) {
 // 0.9.6 audit of the HTTP limits, middle 1, made structural in 0.9.7: a reply that waits for the calibration lock (a background tune holds it
 // up to 40 minutes) is not cut by the write timeout, because taking the lock extends the reply's deadline. The test holds the lock past the
 // write timeout, as a background tune would, and every route that waits for it still answers; status, which does not wait, is still cut.
+// Each reply first runs past the write timeout (its deadline is set in the past), and the test runs the replies' check by hand while
+// the lock is held.
 func TestEveryRouteWaitingForTheLockOutlivesTheWriteTimeout(t *testing.T) {
-	quickReplyCheck(t)
+	tick := tickReplies(t)
 	dir := t.TempDir()
 	specsDir := filepath.Join(dir, "decisions")
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {
@@ -182,24 +184,30 @@ func TestEveryRouteWaitingForTheLockOutlivesTheWriteTimeout(t *testing.T) {
 	writeSpec(t, specsDir, "true")
 	s := newServerState(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), autoCalibrate: true})
 	h := s.handler()
+	waiting, goOn := make(chan struct{}), make(chan struct{})
 	late := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/status" {
-			time.Sleep(300 * time.Millisecond)
-		}
+		expireWrite(t, w) // waiting behind the tune has run past the write timeout
+		waiting <- struct{}{}
+		<-goOn
 		h.ServeHTTP(w, r)
 	})
 	ts := httptest.NewUnstartedServer(late)
 	ts.Config = newHTTPServer(late)
-	ts.Config.WriteTimeout = 100 * time.Millisecond
 	ts.Start()
 	defer ts.Close()
-	reply := func(path, body string) error {
-		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(body))
-		if err == nil {
-			_, err = io.ReadAll(resp.Body)
-			resp.Body.Close()
+	reply := func(path, body string, calibrating bool) error {
+		release := func() {}
+		if calibrating {
+			release = s.lockCalibration() // a background tune holds the lock
 		}
-		return err
+		got := fetchAsync(func() (*http.Response, error) {
+			return http.Post(ts.URL+path, "application/json", strings.NewReader(body))
+		})
+		<-waiting
+		tick()
+		goOn <- struct{}{}
+		release()
+		return (<-got).err
 	}
 	for path, body := range map[string]string{
 		"/v1/tune/sync":    `{"spec":"intent"}`,
@@ -207,14 +215,12 @@ func TestEveryRouteWaitingForTheLockOutlivesTheWriteTimeout(t *testing.T) {
 		"/v1/tune/adopt":   `{"spec":"intent","run":"r","meaning_same":true}`,
 		"/v1/tune/review":  `{"spec":"intent","run":"r","keep":true}`,
 	} {
-		release := s.lockCalibration() // a background tune holds the lock
-		time.AfterFunc(300*time.Millisecond, release)
-		if err := reply(path, body); err != nil {
+		if err := reply(path, body, true); err != nil {
 			t.Errorf("%s answers after waiting for the lock past the write timeout: %v", path, err)
 		}
 	}
-	if err := reply("/v1/status", ""); err == nil {
-		t.Error("precondition: a reply that does not wait for the lock is still cut by the write timeout")
+	if err := reply("/v1/status", "", false); err == nil {
+		t.Error("precondition: a reply while no calibration is active is still cut by the write timeout")
 	}
 }
 

@@ -83,7 +83,7 @@ func cmdServe(args []string) error {
 	}
 	scope := pageScope(absStore)
 	// the project's page is a serve of a project's .shikii on a free port; a store under another name started by hand is not (D4)
-	auto := !hub && o.port == 0 && filepath.Base(absStore) == ".shikii" // the project's page started by the hook (0.8.0): free port, mark, browser; the local model is waited for after the port opens
+	auto := startedByHook(hub, o.port, absStore)
 	if auto {
 		lock, ok := holdPageLock(common, scope)
 		if !ok { // one page per project: another page of this project holds the lock
@@ -113,10 +113,8 @@ func cmdServe(args []string) error {
 	if !auto {
 		return httpServer.Serve(ln)
 	}
-	errc := make(chan error, 1)
-	go func() { errc <- httpServer.Serve(ln) }()
 	go func() { // stop when this is no longer the project's page (its record was removed, or its store is gone)
-		for range time.Tick(pageOwnerCheck) {
+		for range pageOwnerTicks() {
 			if !pageStillOwned(common, scope, absStore, os.Getpid()) {
 				log.Printf("shikii serve: this is no longer the project's page (its record or store is gone); stopping")
 				ln.Close()
@@ -124,25 +122,31 @@ func cmdServe(args []string) error {
 			}
 		}
 	}()
-	// Wait for the local model after opening the port (status, queue and wiki can answer without a model; the hook does not wait)
-	waited := make(chan error, 1)
-	go func() { waited <- waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady) }()
-	select {
-	case err := <-waited:
-		if err != nil {
+	// Wait for the local model after opening the port (status, queue and wiki can answer without a model; the hook does not wait).
+	// A model that never comes up closes the listener with its error; whichever closes it, Serve ends the same way (re-audit C-6).
+	modelErr := make(chan error, 1)
+	go func() {
+		if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
+			modelErr <- err
 			ln.Close()
-			return err
 		}
-		if err := <-errc; !errors.Is(err, net.ErrClosed) {
-			return err
-		}
-		return nil // stopped by the check above (re-audit C-6)
-	case err := <-errc:
-		if errors.Is(err, net.ErrClosed) {
-			return nil // stopped by the check above
-		}
+	}()
+	if err := httpServer.Serve(ln); !errors.Is(err, net.ErrClosed) {
 		return err
 	}
+	select {
+	case err := <-modelErr:
+		return err
+	default:
+		return nil // stopped by the check above
+	}
+}
+
+// startedByHook tells the project's page started by the hook (0.8.0: free port, mark, browser; the local model is waited for after the port
+// opens) from a serve started by hand. A store under another name started by hand is not the project's page (D4), so the owner check never
+// stops it (re-audit C-1).
+func startedByHook(hub bool, port int, absStore string) bool {
+	return !hub && port == 0 && filepath.Base(absStore) == ".shikii"
 }
 
 // newHTTPServer bounds every phase of an HTTP connection. The longest handler operation is a
@@ -164,7 +168,30 @@ func newHTTPServer(handler http.Handler) *http.Server {
 var calibrationsActive atomic.Int64
 
 // replyCheck is how often a reply in flight looks whether a calibration is active; it is well under WriteTimeout.
-var replyCheck = 20 * time.Second
+const replyCheck = 20 * time.Second
+
+// watchReply runs check every replyCheck until the returned stop is called; tests replace it to run check at the moment they choose.
+var watchReply = func(check func()) (stop func()) {
+	t := time.NewTicker(replyCheck)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				check()
+			}
+		}
+	}()
+	return func() {
+		t.Stop()
+		close(done)
+	}
+}
+
+// replyNow is the clock a reply in flight sets its write deadline from; tests move it so a deadline is already past instead of waiting.
+var replyNow = time.Now
 
 // keepRepliesAliveDuringCalibration keeps a reply that has not started writing alive while a calibration holds or waits for the lock (a
 // background tune holds it for its model run and the calibration after it, up to 40 minutes): it works at the connection, whatever path the
@@ -180,22 +207,10 @@ func keepRepliesAliveDuringCalibration(h http.Handler) http.Handler {
 			limit = srv.WriteTimeout
 		}
 		tw := &trackedWriter{ResponseWriter: w, rc: http.NewResponseController(w), limit: limit}
-		done := make(chan struct{})
-		go func() {
-			t := time.NewTicker(replyCheck)
-			defer t.Stop()
-			for {
-				select {
-				case <-done:
-					return
-				case <-t.C:
-					tw.check()
-				}
-			}
-		}()
+		stop := watchReply(tw.check)
 		defer func() {
 			tw.finish()
-			close(done)
+			stop()
 		}()
 		h.ServeHTTP(tw, r)
 	})
@@ -220,7 +235,7 @@ func (w *trackedWriter) start() {
 	if !w.started && !w.finished {
 		w.started = true
 		if w.extended {
-			_ = w.rc.SetWriteDeadline(time.Now().Add(w.limit))
+			_ = w.rc.SetWriteDeadline(replyNow().Add(w.limit))
 		}
 	}
 }
@@ -244,10 +259,10 @@ func (w *trackedWriter) check() {
 		return
 	}
 	if calibrationsActive.Load() > 0 {
-		_ = w.rc.SetWriteDeadline(time.Now().Add(longResponseLimit))
+		_ = w.rc.SetWriteDeadline(replyNow().Add(longResponseLimit))
 		w.extended = true
 	} else if w.extended {
-		_ = w.rc.SetWriteDeadline(time.Now().Add(w.limit))
+		_ = w.rc.SetWriteDeadline(replyNow().Add(w.limit))
 		w.extended = false
 	}
 }

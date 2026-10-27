@@ -129,7 +129,10 @@ func pageStillOwned(common, scope, root string, pid int) bool {
 }
 
 // pageOwnerCheck is how often a page started by the hook checks that it is still this project's page (see pageStillOwned).
-var pageOwnerCheck = time.Minute
+const pageOwnerCheck = time.Minute
+
+// pageOwnerTicks gives the moments of that check; tests replace it to check at the moment they choose instead of waiting.
+var pageOwnerTicks = func() <-chan time.Time { return time.Tick(pageOwnerCheck) }
 
 // pageLockHeld reports whether a page holds the page lock now.
 func pageLockHeld(common, scope string) bool {

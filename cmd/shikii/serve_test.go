@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -674,27 +673,21 @@ func TestReauditCOwnerStopAfterModelReadyReturnsError(t *testing.T) {
 	common, _ := agentHome()
 	repo := gitRepo(t)
 	initAt(t, repo)
-	old := pageOwnerCheck
-	pageOwnerCheck = 50 * time.Millisecond
-	t.Cleanup(func() { pageOwnerCheck = old })
+	ticks := pageOwnerTicksByHand(t)
+	up := pageListening(t)
 	done := make(chan error, 1)
-	go func() {
+	go func() { // no --local: the model is ready at once
 		done <- cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", ""})
 	}()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if _, ok := readPageRecord(common, repo); ok {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("precondition: the page started")
-		}
-		time.Sleep(20 * time.Millisecond)
+	select {
+	case <-up:
+	case err := <-done:
+		t.Fatalf("precondition: the page started: %v", err)
 	}
-	time.Sleep(20 * time.Millisecond)
 	if err := os.Remove(pagePath(common, repo)); err != nil {
 		t.Fatal(err)
 	}
+	ticks <- time.Now() // the owner check runs now
 	select {
 	case err := <-done:
 		if err != nil {
@@ -706,25 +699,22 @@ func TestReauditCOwnerStopAfterModelReadyReturnsError(t *testing.T) {
 }
 
 // 0.9.7 re-audit C-1: a page started by hand with --port 0 and a store not named .shikii was stopped by the minute check, although its record pointed at it.
-func TestReauditCHandServeWithOtherStoreNameStops(t *testing.T) {
-	hookEnv(t, nil)
-	repo := gitRepo(t)
-	initAt(t, repo)
-	other := filepath.Join(t.TempDir(), "data")
-	if out, err := exec.Command("cp", "-R", filepath.Join(repo, ".shikii"), other).CombinedOutput(); err != nil {
-		t.Fatalf("%v %s", err, out)
-	}
-	old := pageOwnerCheck
-	pageOwnerCheck = 50 * time.Millisecond
-	t.Cleanup(func() { pageOwnerCheck = old })
-	done := make(chan error, 1)
-	go func() {
-		done <- cmdServe([]string{"--store", other, "--port", "0", "--local", "http://127.0.0.1:1"})
-	}()
-	select {
-	case err := <-done:
-		t.Fatalf("a page started by hand stopped: %v", err)
-	case <-time.After(1 * time.Second):
+// Only the hook's page (a project's .shikii on a free port) runs that check, so a serve started by hand is never stopped by it.
+func TestReauditCHandServeWithOtherStoreNameIsNotStopped(t *testing.T) {
+	for _, c := range []struct {
+		hub   bool
+		port  int
+		store string
+		want  bool
+	}{
+		{false, 0, "/work/p/.shikii", true},     // the hook's page
+		{false, 0, "/data/other", false},        // by hand, a store under another name (C-1)
+		{false, 8095, "/work/p/.shikii", false}, // by hand, a fixed port
+		{true, 0, "/home/.shikii/agent", false}, // the hub
+	} {
+		if got := startedByHook(c.hub, c.port, c.store); got != c.want {
+			t.Errorf("startedByHook(%v, %d, %s) = %v, want %v: only the hook's page is stopped by the owner check", c.hub, c.port, c.store, got, c.want)
+		}
 	}
 }
 
@@ -757,74 +747,65 @@ func TestAuditFinalD1OnePageAcrossCaseSpellings(t *testing.T) {
 	}
 }
 
-// E2: once the lock is released, a reply in flight is cut by the write timeout again (here 100ms) - not kept for longResponseLimit.
+// E2: once the lock is released, a reply in flight is cut by the write timeout again - not kept for longResponseLimit.
+// The test runs the reply's check by hand and moves its clock, so the write timeout after the release is already over when the handler writes.
 func TestAuditE2DeadlineReturnsAfterRelease(t *testing.T) {
-	quickReplyCheck(t)
+	tick := tickReplies(t)
 	s := newServerState(serveOpts{storeDir: t.TempDir(), specsDir: t.TempDir()})
+	working, finish := make(chan struct{}), make(chan struct{})
 	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(700 * time.Millisecond) // long work that does not use the lock
+		close(working)
+		<-finish // long work that does not use the lock
 		io.WriteString(w, "done")
 	})
 	ts := httptest.NewUnstartedServer(h)
 	ts.Config = newHTTPServer(h)
-	ts.Config.WriteTimeout = 100 * time.Millisecond
 	ts.Start()
 	defer ts.Close()
-	release := s.lockCalibration() // a short calibration elsewhere, over by 150ms
-	time.AfterFunc(150*time.Millisecond, release)
-	resp, err := http.Get(ts.URL)
-	var body []byte
-	if err == nil {
-		body, err = io.ReadAll(resp.Body)
-		resp.Body.Close()
-	}
-	if err == nil && string(body) == "done" {
-		t.Fatal("E2: the lock was free for 550ms (5x the write timeout), yet the reply was not cut: the 45-minute deadline set during the calibration stayed")
+	release := s.lockCalibration() // a short calibration elsewhere
+	got := fetchAsync(func() (*http.Response, error) { return http.Get(ts.URL) })
+	<-working
+	tick() // during the calibration the reply is kept alive
+	release()
+	back := pastReplyClock(t)
+	tick() // the write timeout the reply gets back at this check is over before the handler writes
+	back()
+	close(finish)
+	if r := <-got; r.err == nil && r.body == "done" {
+		t.Fatal("E2: the lock was free past the write timeout, yet the reply was not cut: the 45-minute deadline set during the calibration stayed")
 	}
 }
 
-// eaf2c9b: a slow reader must not hold a connection past the write timeout. While a calibration is active, it is held without bound.
+// eaf2c9b: a slow reader must not hold a connection past the write timeout. While a calibration is active, it was held without bound:
+// once the handler starts writing, the write timeout runs from then on, even though the calibration had extended the reply's deadline.
+// The reader's slowness is the clock: when the handler writes, the write timeout from its first byte is already over.
 func TestAuditSlowReaderHeldDuringCalibration(t *testing.T) {
-	quickReplyCheck(t)
+	tick := tickReplies(t)
 	s := newServerState(serveOpts{storeDir: t.TempDir(), specsDir: t.TempDir()})
-	var finished atomic.Int64 // 1: write failed (cut), 2: write succeeded
-	big := bytes.Repeat([]byte("x"), 64<<20)
+	working, finish := make(chan struct{}), make(chan struct{})
+	wrote := make(chan error, 1)
+	big := bytes.Repeat([]byte("x"), 1<<20)
 	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if _, err := w.Write(big); err != nil {
-			finished.Store(1)
-			return
-		}
-		finished.Store(2)
+		close(working)
+		<-finish
+		_, err := w.Write(big)
+		wrote <- err
 	})
 	ts := httptest.NewUnstartedServer(h)
 	ts.Config = newHTTPServer(h)
-	ts.Config.WriteTimeout = 100 * time.Millisecond
 	ts.Start()
 	defer ts.Close()
-	release := func() {}
-	if os.Getenv("AUDIT_NO_CALIB") == "" {
-		release = s.lockCalibration() // a background tune
+	release := s.lockCalibration() // a background tune
+	defer release()
+	got := fetchAsync(func() (*http.Response, error) { return http.Get(ts.URL) })
+	<-working
+	tick() // the calibration extends the reply's deadline
+	pastReplyClock(t)
+	close(finish)
+	if err := <-wrote; err == nil {
+		t.Fatal("a reply that started writing during a calibration kept the calibration's deadline: a client that reads slowly holds it without bound")
 	}
-	defer func() {
-		if release != nil {
-			release()
-		}
-	}()
-	c, err := net.Dial("tcp", ts.Listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	fmt.Fprintf(c, "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n") // and never read
-	time.Sleep(1 * time.Second)
-	during := finished.Load()
-	release()
-	release = nil
-	time.Sleep(1 * time.Second)
-	after := finished.Load()
-	if during == 0 || after == 0 {
-		t.Fatalf("a client that reads nothing held the reply: 10x the write timeout during the calibration (cut=%v), and 10x more after it ended (cut=%v)", during == 1, after == 1)
-	}
+	<-got
 }
 
 // R5 (E): trackedWriter hides http.Flusher and io.ReaderFrom of the connection's writer.
@@ -1119,15 +1100,29 @@ func TestPageStartsWhenTheOldRecordsPidWasReused(t *testing.T) {
 	if err := writePageRecord(common, repo, 1, os.Getpid()); err != nil { // a live pid, a port that does not answer
 		t.Fatal(err)
 	}
-	go cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", "http://127.0.0.1:1"})
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if rec, ok := readPageRecord(common, repo); ok && rec.Port != 1 {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	ticks := pageOwnerTicksByHand(t)
+	up := pageListening(t)
+	done := make(chan error, 1)
+	go func() {
+		done <- cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", "http://127.0.0.1:1"})
+	}()
+	select {
+	case <-up:
+	case err := <-done:
+		t.Fatalf("the page did not start: the old record with a reused pid looked up through the page's own lock (%v)", err)
 	}
-	t.Fatal("the page did not start: the old record with a reused pid looked up through the page's own lock")
+	if rec, ok := readPageRecord(common, repo); !ok || rec.Port == 1 {
+		t.Fatalf("the page that started writes its own record: %+v", rec)
+	}
+	if err := os.Remove(pagePath(common, repo)); err != nil { // stop the page
+		t.Fatal(err)
+	}
+	ticks <- time.Now()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second): // only turns a page that never stops into a failure
+		t.Fatal("the page does not stop once its record is gone")
+	}
 }
 
 // 0.9.7 audit B-b: a page whose record no longer points at it (reconnecting a moved project removes the old path's record, uninstall too)
@@ -1137,26 +1132,21 @@ func TestOrphanPageStopsByItself(t *testing.T) {
 	common, _ := agentHome()
 	repo := gitRepo(t)
 	initAt(t, repo)
-	old := pageOwnerCheck
-	pageOwnerCheck = 50 * time.Millisecond
-	t.Cleanup(func() { pageOwnerCheck = old })
+	ticks := pageOwnerTicksByHand(t)
+	up := pageListening(t)
 	done := make(chan error, 1)
 	go func() {
 		done <- cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", "http://127.0.0.1:1"})
 	}()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if _, ok := readPageRecord(common, repo); ok {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("precondition: the page started")
-		}
-		time.Sleep(20 * time.Millisecond)
+	select {
+	case <-up:
+	case err := <-done:
+		t.Fatalf("precondition: the page started: %v", err)
 	}
 	if err := os.Remove(pagePath(common, repo)); err != nil {
 		t.Fatal(err)
 	}
+	ticks <- time.Now() // the owner check runs now
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
@@ -1167,35 +1157,37 @@ func TestOrphanPageStopsByItself(t *testing.T) {
 // 0.9.6 audit of the HTTP limits (eaf2c9b): the server cuts every response after WriteTimeout (2 minutes). While no calibration is active a
 // slow reply is still cut (the limit stays); while a calibration holds or waits for the lock, replies in flight are kept alive (0.9.7).
 func TestSlowRepliesAreCutUnlessACalibrationIsActive(t *testing.T) {
-	quickReplyCheck(t)
-	slow := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(300 * time.Millisecond) // the long work
-		io.WriteString(w, "done")
-	})
+	tick := tickReplies(t)
 	s := newServerState(serveOpts{storeDir: t.TempDir(), specsDir: t.TempDir()})
 	for _, active := range []bool{false, true} {
+		working, finish := make(chan struct{}), make(chan struct{})
+		slow := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			expireWrite(t, w) // the long work has run past the write timeout
+			close(working)
+			<-finish
+			io.WriteString(w, "done")
+		})
 		ts := httptest.NewUnstartedServer(slow)
 		ts.Config = newHTTPServer(slow)
-		ts.Config.WriteTimeout = 100 * time.Millisecond
 		ts.Start()
 		var release func()
 		if active {
 			release = s.lockCalibration()
 		}
-		resp, err := http.Get(ts.URL)
-		var body []byte
-		if err == nil {
-			body, err = io.ReadAll(resp.Body)
-			resp.Body.Close()
-		}
+		got := fetchAsync(func() (*http.Response, error) { return http.Get(ts.URL) })
+		<-working
+		tick()
 		if release != nil {
 			release()
 		}
+		close(finish)
+		r := <-got
 		ts.Close()
-		if active && (err != nil || string(body) != "done") {
+		err, body := r.err, r.body
+		if active && (err != nil || body != "done") {
 			t.Fatalf("while a calibration is active the reply arrives after the write timeout: %v %q", err, body)
 		}
-		if !active && err == nil && string(body) == "done" {
+		if !active && err == nil && body == "done" {
 			t.Fatal("while no calibration is active the write timeout still cuts a slow reply")
 		}
 	}
@@ -1204,7 +1196,7 @@ func TestSlowRepliesAreCutUnlessACalibrationIsActive(t *testing.T) {
 // An answer that brings the truths to min_n calibrates in the same request, so it waits for the calibration lock. While a background tune holds
 // the lock past the write timeout, that reply still arrives (the answer was saved; before 0.9.6 the page showed a connection error).
 func TestAnswerThatCalibratesBehindATuneStillReplies(t *testing.T) {
-	quickReplyCheck(t)
+	tick := tickReplies(t)
 	dir := t.TempDir()
 	specsDir := filepath.Join(dir, "decisions")
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {
@@ -1216,9 +1208,18 @@ func TestAnswerThatCalibratesBehindATuneStillReplies(t *testing.T) {
 	ef.model, ef.local = "m", model.URL
 	s := newServerState(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), ef: ef, autoCalibrate: true})
 	h := s.handler()
-	ts := httptest.NewUnstartedServer(h)
-	ts.Config = newHTTPServer(h)
-	ts.Config.WriteTimeout = 100 * time.Millisecond
+	var behind atomic.Bool // the next answer waits behind the tune
+	waiting, goOn := make(chan struct{}), make(chan struct{})
+	late := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if behind.Load() {
+			expireWrite(t, w) // waiting behind the tune has run past the write timeout
+			close(waiting)
+			<-goOn
+		}
+		h.ServeHTTP(w, r)
+	})
+	ts := httptest.NewUnstartedServer(late)
+	ts.Config = newHTTPServer(late)
 	ts.Start()
 	defer ts.Close()
 	label := func(trace any) (map[string]any, error) {
@@ -1242,8 +1243,19 @@ func TestAnswerThatCalibratesBehindATuneStillReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	release := s.lockCalibration() // a background tune holds the lock
-	time.AfterFunc(300*time.Millisecond, release)
-	out, err := label(traces[1])
+	behind.Store(true)
+	type labeled struct {
+		out map[string]any
+		err error
+	}
+	got := make(chan labeled, 1)
+	go func() { out, err := label(traces[1]); got <- labeled{out, err} }()
+	<-waiting
+	tick() // the reply's check sees the tune
+	close(goOn)
+	release()
+	r := <-got
+	out, err := r.out, r.err
 	if err != nil {
 		t.Fatalf("the answer's reply arrives after waiting for the lock past the write timeout: %v", err)
 	}

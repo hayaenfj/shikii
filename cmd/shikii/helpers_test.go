@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -474,12 +475,94 @@ func layoutSensitiveModel(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// quickReplyCheck makes replies in flight look for an active calibration often enough for a test's short write timeout.
-func quickReplyCheck(t *testing.T) {
+// tickReplies replaces the periodic check of replies in flight with one the test runs by hand: each call of the returned function runs
+// the check of every reply in flight once, so the test decides when a calibration is looked at.
+func tickReplies(t *testing.T) func() {
 	t.Helper()
-	old := replyCheck
-	replyCheck = 20 * time.Millisecond
-	t.Cleanup(func() { replyCheck = old })
+	var mu sync.Mutex
+	live := map[*int]func(){}
+	old := watchReply
+	watchReply = func(check func()) func() {
+		k := new(int)
+		mu.Lock()
+		live[k] = check
+		mu.Unlock()
+		return func() {
+			mu.Lock()
+			delete(live, k)
+			mu.Unlock()
+		}
+	}
+	t.Cleanup(func() { watchReply = old })
+	return func() {
+		mu.Lock()
+		checks := make([]func(), 0, len(live))
+		for _, c := range live {
+			checks = append(checks, c)
+		}
+		mu.Unlock()
+		for _, c := range checks {
+			c()
+		}
+	}
+}
+
+// pastReplyClock makes every write deadline a reply in flight sets from now on already past, as if its write timeout had run out
+// before the reply writes. The returned function puts the clock back.
+func pastReplyClock(t *testing.T) (back func()) {
+	t.Helper()
+	old := replyNow
+	replyNow = func() time.Time { return time.Unix(1, 0) }
+	back = func() { replyNow = old }
+	t.Cleanup(back)
+	return back
+}
+
+// expireWrite sets the reply's write deadline in the past, as if the server's write timeout had run out while the handler worked.
+func expireWrite(t *testing.T, w http.ResponseWriter) {
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Unix(1, 0)); err != nil {
+		t.Error(err)
+	}
+}
+
+type fetched struct {
+	body string
+	err  error
+}
+
+// fetchAsync sends a request and reads the whole reply in the background; the result arrives on the returned channel.
+func fetchAsync(req func() (*http.Response, error)) <-chan fetched {
+	got := make(chan fetched, 1)
+	go func() {
+		resp, err := req()
+		var body []byte
+		if err == nil {
+			body, err = io.ReadAll(resp.Body)
+			resp.Body.Close()
+		}
+		got <- fetched{string(body), err}
+	}()
+	return got
+}
+
+// pageOwnerTicksByHand makes a page started by the hook check that it is still the project's page only when the test sends a tick.
+func pageOwnerTicksByHand(t *testing.T) chan<- time.Time {
+	t.Helper()
+	ticks := make(chan time.Time)
+	old := pageOwnerTicks
+	pageOwnerTicks = func() <-chan time.Time { return ticks }
+	t.Cleanup(func() { pageOwnerTicks = old })
+	return ticks
+}
+
+// pageListening tells when a page started by the hook listens and has written its record (listenPage opens the browser right after).
+func pageListening(t *testing.T) <-chan struct{} {
+	t.Helper()
+	up := make(chan struct{}, 1)
+	old := openBrowser
+	openBrowser = func(string) { up <- struct{}{} }
+	t.Cleanup(func() { openBrowser = old })
+	return up
 }
 
 func memoryEffectFixture(t *testing.T) (store.Store, string, http.Handler, notebook.Draft, string) {
