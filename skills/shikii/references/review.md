@@ -40,7 +40,7 @@ submit does not limit the number of conversations and items (provisional scores,
 }
 ```
 
-Use `source_id` and `key` exactly as query returned them. `result` is one of these 4.
+Use `source_id` and `key` exactly as query returned them in `memories[]`: for a lesson delivered to a subagent, `source_id` is the delivery's own id, not the conversation's. `result` is one of these 4.
 
 | value | meaning | what to record |
 |---|---|---|
