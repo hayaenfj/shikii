@@ -230,3 +230,35 @@ func TestPatch099UninstallRemovesTheLocksAndRecordsOfWhatItRemoved(t *testing.T)
 		t.Fatalf("control: the record of a page uninstall did not stop stays: %v", err)
 	}
 }
+
+// C BC-1: proj is moved to proj-old, another project is moved to proj and reconnected first, then a request comes at proj-old. The relink
+// forgot proj and stopped the page recorded under proj, which now serves the other project. A path where a .shikii is again is someone's
+// project: its page is left alone.
+func TestPatch099ForgettingAPathDoesNotStopTheProjectNowThere(t *testing.T) {
+	b := newUninstallBox(t)
+	old := filepath.Join(t.TempDir(), "proj")
+	if err := os.MkdirAll(filepath.Join(old, ".shikii"), 0o700); err != nil { // the other project now at the old path
+		t.Fatal(err)
+	}
+	if err := writePageRecord(b.agent, old, 40003, os.Getppid()); err != nil {
+		t.Fatal(err)
+	}
+	processCommand = func(pid int) string {
+		return "/bin/shikii serve --store " + filepath.Join(old, ".shikii") + " --port 0"
+	}
+	forgetProject(old)
+	if len(b.stopped) != 0 {
+		t.Fatalf("the page of the project now at the old path is not stopped: %v", b.stopped)
+	}
+	if _, ok := readPageRecord(b.agent, old); !ok {
+		t.Fatal("and its record stays")
+	}
+	// control: after a real move nothing is at the old path, and the old page is stopped
+	if err := os.RemoveAll(filepath.Join(old, ".shikii")); err != nil {
+		t.Fatal(err)
+	}
+	forgetProject(old)
+	if len(b.stopped) != 1 {
+		t.Fatalf("control: the moved project's old page is stopped: %v", b.stopped)
+	}
+}

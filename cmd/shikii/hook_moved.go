@@ -130,6 +130,9 @@ func forgetProject(old string) {
 	if err != nil {
 		return
 	}
+	if _, err := os.Lstat(filepath.Join(old, ".shikii")); err == nil {
+		return // a .shikii is at the old path again: another project moved there, and the page recorded there is its own (final audit BC-1)
+	}
 	if r, ok := readPageRecord(common, old); ok && r.Scope == old {
 		if r.PID > 0 && r.PID != os.Getpid() && processAlive(r.PID) && isShikiiServe(processCommand(r.PID), filepath.Join(old, ".shikii")) {
 			_ = stopProcess(r.PID)
