@@ -1,12 +1,18 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // Each of the 3 kinds of checks that stop the turn (0.7.3) stops on its negative example and passes its positive example. Unknown observations (the file list or commits cannot be read) pass.
@@ -185,5 +191,207 @@ func TestForbiddenWordsAllowCannotBeALoophole(t *testing.T) {
 	g := guard{ID: "x", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"根"}, Allow: []string{"根拠", "根本"}}
 	if err := g.validate(); err != nil {
 		t.Fatalf("ordinary words are allowed: %v", err)
+	}
+}
+
+// 6. enable works even when except is a broad glob (the negative example's path uses a name except does not match).
+func TestGuardEnableWorksWhenExceptIsBroad(t *testing.T) {
+	hookEnv(t, nil)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(repo, ".shikii")
+	if err := saveGuard(root, guard{ID: "no-todo", Kind: guardKindForbiddenWords, Title: "Leave no TODO", Words: []string{"TODO"}, Except: []string{"*.txt", "docs/**"}}); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error { return cmdGuard([]string{"enable", "no-todo"}) })
+	if !strings.Contains(out, "RED:") {
+		t.Fatalf("blocks on the negative example even when except is broad: %s", out)
+	}
+}
+
+// 7. Path matching also matches on the name alone (audit mutation B).
+func TestMatchPathMatchesByBaseName(t *testing.T) {
+	if !matchPath("CHANGELOG.md", "docs/CHANGELOG.md") || matchPath("CHANGELOG.md", "docs/CHANGELOG_ja.md") || !matchPath("docs/**", "docs/a/b.md") || matchPath("docs/**", "src/docs.md") {
+		t.Fatal("matching on the name alone and under a folder")
+	}
+}
+
+// audit 6 (0.9.3): a turn the person's guard stopped, whose Stop after the block never came, does not count as "fixed before the turn
+// ended" because the tree at the person's next request passes (the person may have fixed it; the late judgment is not a Stop)
+func TestAudit6LateJudgmentDoesNotCountAGuardAsFixed(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	writeGuard(t, root, guard{ID: "no-word", Kind: guardKindForbiddenWords, Title: "no forbidden word", Words: []string{"forbidden"}})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": continuesFirst})
+	notes := filepath.Join(repo, "NOTES.md")
+	if err := os.WriteFile(notes, []byte("a forbidden word\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Wrote the notes."})
+	if _, block := stopReason(t, out); !block {
+		t.Fatalf("premise: the guard stops the turn: %s", out)
+	}
+	// Esc: no Stop after the block. The person fixes the file and asks the next thing
+	if err := os.WriteFile(notes, []byte("a fine word\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
+	guards, err := loadGuards(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := countGuardStats(guards, readGuardRecords(root)); s.Stopped != 1 || s.Fixed != 0 {
+		t.Fatalf("a guard that was not rechecked at a Stop must not count as fixed: %+v", s)
+	}
+}
+
+// Low 1: a forbidden-words guard can be enabled even when a word is part of the English positive example ("his" is inside "this", "is", "line").
+func TestAuditTranslationGuardEnableWithEnglishWords(t *testing.T) {
+	for _, words := range [][]string{{"his"}, {"is"}, {"line"}, {"clean"}, {"t", "h", "i", "s", "l", "n", "e", "c", "a"}, {"ab", "aab"}} {
+		g := guard{ID: "w", Kind: guardKindForbiddenWords, Title: "w", Words: words}
+		if r := evalGuard(g, guardPositive(g)); !r.Pass {
+			t.Errorf("words %v: the positive example must pass, but it stopped: %s", words, r.Reason)
+		}
+		neg, _ := guardNegative(g)
+		if r := evalGuard(g, neg); r.Pass {
+			t.Errorf("words %v: the negative example must stop", words)
+		}
+	}
+	root := t.TempDir()
+	if err := saveGuard(root, guard{ID: "no-his", Kind: guardKindForbiddenWords, Title: "his", Words: []string{"his"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := captureErr(func() error { return guardSetEnabled(root, "no-his", true) }); err != nil {
+		t.Fatalf("guard enable refused a guard whose word is inside the positive example: %v", err)
+	}
+}
+
+func captureErr(fn func() error) (string, error) {
+	old := stdout
+	var b strings.Builder
+	stdout = &b
+	defer func() { stdout = old }()
+	err := fn()
+	return b.String(), err
+}
+
+// 0.7.4: show the content of `shikii status` (the person's effort, the effect of delivered lessons, guards) on the page too. Adds summary to /v1/status.
+func TestStatusEndpointCarriesTheSummaryForThePage(t *testing.T) {
+	st, scope, h, _, _ := memoryEffectFixture(t)
+	get := func() map[string]any {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+		var out map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("status JSON: %v %s", err, rec.Body.String())
+		}
+		s, _ := out["summary"].(map[string]any)
+		if s == nil {
+			t.Fatalf("status needs a summary: %s", rec.Body.String())
+		}
+		return s
+	}
+	s := get()
+	mem, _ := s["memory"].(map[string]any)
+	gu, _ := s["guards"].(map[string]any)
+	if mem["delivered"] != 0.0 || gu["total"] != 0.0 || gu["enabled"] != 0.0 || gu["rituals"] == nil { // no person's guards; only the count of ritual checks (built in) (0.8.0)
+		t.Fatalf("nothing at first (the count of ritual checks is separate): %v", s)
+	}
+	writeGuard(t, st.Dir, guard{ID: "changelog-pair", Kind: guardKindPairedFiles, Title: "変更履歴は英語と日本語を揃える", Pairs: [][]string{{"CHANGELOG.md", "CHANGELOG_ja.md"}}})
+	memoryEffectPrompt(t, scope, "s1")
+	s = get()
+	mem, _ = s["memory"].(map[string]any)
+	gu, _ = s["guards"].(map[string]any)
+	var items []any // only guards a person made (built-in ritual checks are listed with builtin:true)
+	for _, it := range gu["items"].([]any) {
+		if it.(map[string]any)["builtin"] != true {
+			items = append(items, it)
+		}
+	}
+	if mem["delivered"] != 1.0 || mem["pending"] != 1.0 || gu["total"] != 1.0 || gu["enabled"] != 1.0 || len(items) != 1 || items[0].(map[string]any)["id"] != "changelog-pair" {
+		t.Fatalf("delivered lessons and guards appear in summary: %v", s)
+	}
+	person, _ := s["person"].(map[string]any)
+	if person == nil || person["records"] == nil {
+		t.Fatalf("the person's effort appears too: %v", s)
+	}
+}
+
+// Audit R5-3: spot checks (1 in 20 of act) wait for a person; spot checks of AI-only questions wait for an outcome. status's rituals count and the model's name.
+func TestStatusCountsSpotChecksRitualsAndModel(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	repo := gitRepo(t)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	st := store.Store{Dir: root}
+	var samples []string
+	for i := 0; i < 2000 && len(samples) < 2; i++ {
+		if id := fmt.Sprintf("s%d", i); store.AuditSample(id) {
+			samples = append(samples, id)
+		}
+	}
+	if len(samples) < 2 {
+		t.Fatal("no trace that hits a spot check was found")
+	}
+	sampled, sampledWiki := samples[0], samples[1]
+	st.AppendRecord(store.Record{TraceID: sampled, SpecID: "needs-plan", SpecHash: "h", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": "o"}, InputsHash: "a1", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
+	st.AppendRecord(store.Record{TraceID: sampledWiki, SpecID: "wiki-conflict", SpecHash: "h", Type: "noul", Model: "m", Inputs: map[string]string{"lesson": "a", "new_lesson": "b"}, InputsHash: "a2", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
+	appendGuardRecords(root, []guardRecord{{Session: "s", Turn: "t1", Guard: ritualPlan, Pass: false}, {Session: "s", Turn: "t1", Guard: ritualPlan, Pass: true, Recheck: true}, {Session: "s", Turn: "t2", Guard: ritualReflect, Pass: true}})
+	h := newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+	var body struct {
+		Specs   []map[string]any `json:"specs"`
+		Model   map[string]any   `json:"model"`
+		Summary struct {
+			Guards struct {
+				Rituals map[string]map[string]float64 `json:"rituals"`
+			} `json:"guards"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]map[string]any{}
+	for _, sp := range body.Specs {
+		got[sp["id"].(string)] = sp
+	}
+	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["settled_by_ai"] != float64(0) {
+		t.Fatalf("an act that hit a spot check waits for a person: %v", np)
+	}
+	if wc := got["wiki-conflict"]; wc["waiting_for_person"] != float64(0) || wc["awaiting_results"] != float64(1) {
+		t.Fatalf("AI-only questions do not wait for a person even when spot-checked: %v", wc)
+	}
+	if body.Model["name"] != "TypeSafe Jev" {
+		t.Fatalf("with a key, the decision model is Jev: %v", body.Model)
+	}
+	r := body.Summary.Guards.Rituals
+	if r["plan"]["asked"] != 1 || r["plan"]["done"] != 0 || r["plan"]["fixed"] != 1 || r["reflect"]["asked"] != 1 || r["reflect"]["done"] != 1 {
+		t.Fatalf("number of rituals done: %v", r)
+	}
+}
+
+// Audit R3: records/guards.jsonl (the blocking checks' record) is not counted as a decision "guards". Even without spec paths it reads .shikii/decisions/*.yaml,
+// counting the same way as the page (/v1/status) (a choice's discard counts as unsure).
+func TestStatusIgnoresGuardRecordsAndReadsTheStoresSpecsByDefault(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(repo, ".shikii")
+	writeGuard(t, root, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"xyz"}})
+	if err := appendGuardRecords(root, []guardRecord{{Session: "s", Turn: "t", Guard: "no-ne", Pass: false, Reason: "r"}}); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "st", "cwd": repo, "prompt": "README を直して"})
+	out := capture(t, func() error { return cmdStatus([]string{"--store", root}) })
+	if strings.Contains(out, "guards: records=") {
+		t.Fatalf("the blocking checks' record must not be counted as a decision:\n%s", out)
+	}
+	if !strings.Contains(out, "prompt-kind: records=1") || strings.Contains(out, "spec not given") {
+		t.Fatalf("even without spec paths it must read the built-in questions in .shikii/decisions and show the calibration state:\n%s", out)
 	}
 }

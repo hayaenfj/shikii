@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	shikii "github.com/hayaenfj/shikii"
+	"github.com/hayaenfj/shikii"
 )
 
 type updateFixture struct {
@@ -433,5 +433,432 @@ func TestUpdateCLIEntry(t *testing.T) {
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(out), "shikii update takes no arguments or options") {
 		t.Fatalf("must register the CLI entry: %s %v", out, err)
+	}
+}
+
+// Tests that pin down the findings of the audit (2026-10-23, 0.7.3).
+
+// 1. A .shikii/ made by 0.6.0 to 0.7.2 has no guards/. Treat it as registered anyway, and wiping across 0.7.0 still works (missing places are created later).
+func TestStoresWithoutGuardsDirStayRegisteredAndAreWiped(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	common, _ := agentHome()
+	root := filepath.Join(repo, ".shikii")
+	if err := os.RemoveAll(filepath.Join(root, "guards")); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range registeredProjects(common) {
+		found = found || p.Path == repo
+	}
+	if !found {
+		t.Fatal("a store without guards/ (from an old version) is also treated as registered")
+	}
+	leftover := filepath.Join(root, "records", "old.jsonl")
+	if err := os.WriteFile(leftover, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(root, "project.json"), []byte(`{"version":1,"scope":"`+repo+`"}`), 0o600) // the --init mark from 0.7.3 and earlier
+	os.Remove(installedVersionPath(common))
+	v, _ := updateVersion("0.7.3")
+	wiped, err := resetStoresOnFirstRun(common, v, func(path string) error {
+		prev, _ := os.Getwd()
+		if err := os.Chdir(path); err != nil {
+			return err
+		}
+		defer os.Chdir(prev)
+		return cmdInit(nil)
+	})
+	if err != nil || !wiped {
+		t.Fatalf("an old store is also wiped and initialized again: wiped=%v err=%v", wiped, err)
+	}
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Fatal("old records are gone")
+	}
+	if _, err := os.Stat(filepath.Join(root, "guards")); err != nil {
+		t.Fatal("initializing again creates guards/")
+	}
+}
+
+// 2. Do not initialize HOME. Wiping never touches the shared store (the parent of ~/.shikii/agent), does not wipe when there are unknown entries, keeps project.json, and does not stop at one failure.
+func TestWipeNeverTouchesTheSharedPlaceAndKeepsUnknownEntries(t *testing.T) {
+	hookEnv(t, nil)
+	home, _ := os.UserHomeDir()
+	t.Chdir(home)
+	if err := cmdInit(nil); err == nil {
+		t.Fatal("do not initialize HOME (wiping would take ~/.shikii/agent with it)")
+	}
+	common, _ := agentHome()
+	if err := wipeProjectStores([]projectEntry{{Path: home}}, func(string) error { return nil }); err == nil {
+		t.Fatal("do not wipe the parent of the shared store")
+	}
+	if _, err := os.Stat(filepath.Join(common, "decisions")); err != nil {
+		t.Fatal("the shared store is intact: ", err)
+	}
+	// Do not wipe a project with unknown entries. Do not delete project.json. Move on to the next even after a failure
+	known := t.TempDir()
+	for _, d := range []string{"decisions", "records", "wiki"} {
+		os.MkdirAll(filepath.Join(known, ".shikii", d), 0o700)
+	}
+	os.WriteFile(filepath.Join(known, ".shikii", "records", "x.jsonl"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(known, ".shikii", "project.json"), []byte(`{"version":1}`), 0o600)
+	odd := t.TempDir()
+	os.MkdirAll(filepath.Join(odd, ".shikii", "records"), 0o700)
+	os.WriteFile(filepath.Join(odd, ".shikii", "shikii_aside"), []byte("?"), 0o600)
+	failing := t.TempDir()
+	os.MkdirAll(filepath.Join(failing, ".shikii", "records"), 0o700)
+	var reinit []string
+	err := wipeProjectStores([]projectEntry{{Path: failing}, {Path: odd}, {Path: known}}, func(path string) error {
+		reinit = append(reinit, path)
+		if path == failing {
+			return os.ErrPermission
+		}
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), failing) || !strings.Contains(err.Error(), odd) {
+		t.Fatalf("report every failed and refused project: %v", err)
+	}
+	if _, e := os.Stat(filepath.Join(odd, ".shikii", "shikii_aside")); e != nil {
+		t.Fatal("a project with unknown entries has nothing wiped")
+	}
+	if _, e := os.Stat(filepath.Join(known, ".shikii", "records", "x.jsonl")); !os.IsNotExist(e) {
+		t.Fatal("known entries are wiped")
+	}
+	if _, e := os.Stat(filepath.Join(known, ".shikii", "project.json")); e != nil {
+		t.Fatal("keep project.json (so a failed re-initialization does not drop it from the registry)")
+	}
+	if len(reinit) != 2 || reinit[1] != known {
+		t.Fatalf("do not stop at one failure; move on to the next: %v", reinit)
+	}
+	// Do not wipe .shikii if it is a link (audit mutation A)
+	linked := t.TempDir()
+	target := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(linked, ".shikii")); err != nil {
+		t.Skip(err)
+	}
+	os.WriteFile(filepath.Join(target, "keep"), []byte("k"), 0o600)
+	if err := wipeProjectStores([]projectEntry{{Path: linked}}, func(string) error { return nil }); err == nil {
+		t.Fatal("a .shikii that is a link is not wiped")
+	}
+	if _, e := os.Stat(filepath.Join(target, "keep")); e != nil {
+		t.Fatal("the link target is intact")
+	}
+}
+
+// 1. Even if one wipe is refused and the mark cannot be written, a project that was wiped and initialized again is not wiped twice on the next run (judged by each project's mark).
+// 2. --init writes the mark from 0.7.4 on (version 2), and writes the current version if there is no shared mark, so the order go install → --init → hook install --yes does not wipe either.
+func TestWipeMarksEachProjectDoneAndInitWritesTheMarkers(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	common, _ := agentHome()
+	os.Remove(installedVersionPath(common))
+	os.RemoveAll(filepath.Join(common, "projects")) // remove what hookEnv registered, making this the first --init on this machine
+	a := gitRepo(t)
+	initAt(t, a)
+	if _, err := os.Stat(installedVersionPath(common)); err != nil {
+		t.Fatal("--init writes the current version if there is no shared mark (someone who installed with go install is not wiped on the first hook install): ", err)
+	}
+	if v := projectInitVersion(filepath.Join(a, ".shikii")); v < 2 {
+		t.Fatalf("--init writes each project's mark as version 2: %d", v)
+	}
+	// 2 projects like 0.6.0 (version 1, no shared mark). One has an unknown entry
+	os.Remove(installedVersionPath(common))
+	b, c := gitRepo(t), gitRepo(t)
+	initAt(t, b)
+	initAt(t, c)
+	for _, d := range []string{b, c} {
+		os.WriteFile(filepath.Join(d, ".shikii", "project.json"), []byte(`{"version":1,"scope":"`+d+`"}`), 0o600)
+		os.WriteFile(filepath.Join(d, ".shikii", "records", "old.jsonl"), []byte("old"), 0o600)
+	}
+	os.WriteFile(filepath.Join(c, ".shikii", "mystery"), []byte("?"), 0o600)
+	os.Remove(installedVersionPath(common))
+	v, _ := updateVersion("0.7.4")
+	reinit := func(path string) error { initAt(t, path); return nil }
+	if _, err := resetStoresOnFirstRun(common, v, reinit); err == nil || !strings.Contains(err.Error(), "mystery") {
+		t.Fatalf("refuse the project with an unknown entry and return the reason: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(b, ".shikii", "records", "old.jsonl")); !os.IsNotExist(err) {
+		t.Fatal("the one not refused is wiped and initialized again")
+	}
+	if _, err := os.Stat(installedVersionPath(common)); err == nil {
+		t.Fatal("if a failure remains, do not write the shared mark (so the refused one is tried on the next run)")
+	}
+	os.WriteFile(filepath.Join(b, ".shikii", "records", "after.jsonl"), []byte("new"), 0o600)
+	if _, err := resetStoresOnFirstRun(common, v, reinit); err == nil {
+		t.Fatal("still a failure, since one is still refused")
+	}
+	if _, err := os.Stat(filepath.Join(b, ".shikii", "records", "after.jsonl")); err != nil {
+		t.Fatal("a project that was initialized again is not wiped twice (it has a version 2 mark): ", err)
+	}
+	os.Remove(filepath.Join(c, ".shikii", "mystery"))
+	if _, err := resetStoresOnFirstRun(common, v, reinit); err != nil {
+		t.Fatalf("once tidied, the rest is wiped and it succeeds: %v", err)
+	}
+	if b, _ := os.ReadFile(installedVersionPath(common)); strings.TrimSpace(string(b)) != "0.7.4" {
+		t.Fatalf("when everything is done, write the shared mark: %q", b)
+	}
+}
+
+// 3. A broken or empty mark is not taken as 0.0.0; stop without wiping.
+func TestBrokenInstalledVersionMarkerRefusesToWipe(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	os.WriteFile(filepath.Join(repo, ".shikii", "project.json"), []byte(`{"version":1,"scope":"`+repo+`"}`), 0o600)
+	keep := filepath.Join(repo, ".shikii", "records", "keep.jsonl")
+	os.WriteFile(keep, []byte("k"), 0o600)
+	v, _ := updateVersion("0.7.4")
+	for _, broken := range []string{"", "garbage\n", "0.7\n"} {
+		os.WriteFile(installedVersionPath(common), []byte(broken), 0o644)
+		wiped, err := resetStoresOnFirstRun(common, v, func(string) error { return nil })
+		if err == nil || wiped {
+			t.Fatalf("mark %q cannot be read, so stop without wiping: wiped=%v err=%v", broken, wiped, err)
+		}
+		if _, err := os.Stat(keep); err != nil {
+			t.Fatalf("mark %q: records are intact", broken)
+		}
+	}
+}
+
+// 6. The shared-store check works on its own too (audit R2 mutation M6: it does not rely on the allowlist). planWipe makes HOME "not wiped".
+func TestSharedPlaceIsRefusedByItself(t *testing.T) {
+	hookEnv(t, nil)
+	home, _ := os.UserHomeDir()
+	if !isSharedPlaceScope(home) || !isSharedPlaceScope(home+string(filepath.Separator)) {
+		t.Fatal("HOME is a shared store")
+	}
+	if isSharedPlaceScope(t.TempDir()) {
+		t.Fatal("other folders are not a shared store")
+	}
+	plan := planWipe([]projectEntry{{Path: home, InitVersion: 1}})
+	if len(plan) != 1 || plan[0].Action != wipeRefuse || !strings.Contains(plan[0].Reason, "shared store") {
+		t.Fatalf("HOME is refused before looking at the allowlist: %+v", plan)
+	}
+}
+
+// Pins down the findings of audit round 3 (2026-10-23).
+
+// 1. Even if --init is redone with a new binary on a store with a mark from 0.7.3 or earlier (version 1), do not write version 2 while the wipe across 0.7.0 is still pending (so the wipe is never skipped forever).
+func TestReinitDoesNotMarkAnOldStoreDoneWhileTheWipeIsPending(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	os.WriteFile(filepath.Join(root, "project.json"), []byte(`{"version":1,"scope":"`+repo+`"}`), 0o600)
+	os.WriteFile(filepath.Join(root, "records", "old.jsonl"), []byte("old"), 0o600)
+	os.Remove(installedVersionPath(common))
+	initAt(t, repo) // redo --init with the new binary (the README steps)
+	if v := projectInitVersion(root); v != 1 {
+		t.Fatalf("a store whose wipe is not done stays at version 1: %d", v)
+	}
+	v, _ := updateVersion("0.7.5")
+	wiped, err := resetStoresOnFirstRun(common, v, func(path string) error { initAt(t, path); return nil })
+	if err != nil || !wiped {
+		t.Fatalf("the following hook install wipes it: wiped=%v err=%v", wiped, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "records", "old.jsonl")); !os.IsNotExist(err) {
+		t.Fatal("old records are gone")
+	}
+	if v := projectInitVersion(root); v != 2 {
+		t.Fatalf("after wiping, version 2: %d", v)
+	}
+}
+
+// 3. Stray files such as .DS_Store do not make the wipe refuse (treated as strays that may be wiped).
+func TestWipeTreatsFinderJunkAsDisposable(t *testing.T) {
+	hookEnv(t, nil)
+	repo := gitRepo(t)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	os.WriteFile(filepath.Join(root, ".DS_Store"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(root, ".project-init-123"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(root, "project.json"), []byte(`{"version":1,"scope":"`+repo+`"}`), 0o600)
+	plan := planWipe([]projectEntry{{Path: repo, InitVersion: 1}})
+	if len(plan) != 1 || plan[0].Action != wipeDo {
+		t.Fatalf("not refused for .DS_Store and init leftovers: %+v", plan)
+	}
+	if err := wipeProjectStores([]projectEntry{{Path: repo}}, func(string) error { return nil }); err != nil {
+		t.Fatalf("can be wiped: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".DS_Store")); !os.IsNotExist(err) {
+		t.Fatal("the strays are gone too")
+	}
+}
+
+// An update from 0.6.0 is run by the old binary, which finally calls the new binary's `hook install --yes`. The old binary has no reset inside update, so
+// the wipe across 0.7.0 is decided by the new binary's first hook install using the shared mark (~/.shikii/agent/version):
+// if there is no mark (0.6.0 or earlier) or it is before 0.7.0, wipe the inside of each project's .shikii/, initialize it again, and set the mark to the current version. The second time does not wipe.
+func TestFirstHookInstallAfter070WipesRegisteredProjectsOnce(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	common, _ := agentHome()
+	if len(registeredProjects(common)) != 2 { // 1 initialized by hookEnv + this repo
+		t.Fatal("init registers the project")
+	}
+	// hookEnv's hook install wrote the mark, so go back to the state of 0.6.0 or earlier (no mark, project.json at version 1)
+	if err := os.Remove(installedVersionPath(common)); err != nil {
+		t.Fatal("the new binary's hook install writes the mark: ", err)
+	}
+	for _, p := range registeredProjects(common) {
+		os.WriteFile(filepath.Join(p.Path, ".shikii", "project.json"), []byte(`{"version":1,"scope":"`+p.Path+`"}`), 0o600)
+	}
+	store := filepath.Join(repo, ".shikii")
+	leftover := filepath.Join(store, "records", "prompt-kind.jsonl")
+	write := func(path, body string) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(leftover, "old")
+	var reinit []string
+	run := func(to string) bool {
+		v, _ := updateVersion(to)
+		var wiped bool
+		capture(t, func() error {
+			var err error
+			wiped, err = resetStoresOnFirstRun(common, v, func(path string) error {
+				reinit = append(reinit, path)
+				prev, _ := os.Getwd()
+				if err := os.Chdir(path); err != nil {
+					return err
+				}
+				defer os.Chdir(prev)
+				return cmdInit(nil)
+			})
+			return err
+		})
+		return wiped
+	}
+
+	// No mark (from 0.6.0 or earlier) → wipe and initialize again; the mark becomes 0.7.0
+	if !run("0.7.0") {
+		t.Fatal("with no mark, wipe as an update from 0.6.0 or earlier")
+	}
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Fatal("old records are gone")
+	}
+	if _, err := os.Stat(filepath.Join(store, "project.json")); err != nil {
+		t.Fatal("initialize again after wiping: ", err)
+	}
+	if b, _ := os.ReadFile(installedVersionPath(common)); string(b) != "0.7.0\n" {
+		t.Fatalf("set the mark to the current version: %q", b)
+	}
+	if len(reinit) != 2 || (reinit[0] != repo && reinit[1] != repo) {
+		t.Fatalf("initialize each registered project again once: %v", reinit)
+	}
+
+	// Again with the same version (hook install run by hand) → do not wipe
+	write(leftover, "new")
+	if run("0.7.0") {
+		t.Fatal("do not wipe if the mark is the current version")
+	}
+	if b, _ := os.ReadFile(leftover); string(b) != "new" {
+		t.Fatal("the second time keeps the records")
+	}
+
+	// 0.7.0 → 0.7.1 does not cross → do not wipe; only the mark moves forward
+	if run("0.7.1") {
+		t.Fatal("an update that does not cross 0.7.0 does not wipe")
+	}
+	if b, _ := os.ReadFile(installedVersionPath(common)); string(b) != "0.7.1\n" {
+		t.Fatalf("the mark moves to the new version: %q", b)
+	}
+	if b, _ := os.ReadFile(leftover); string(b) != "new" {
+		t.Fatal("an update that does not cross keeps the records")
+	}
+
+	// Mark is 0.6.0 (in case an old binary someday wrote a mark) → projects with a mark from 0.7.3 or earlier (version 1) are wiped
+	for _, p := range registeredProjects(common) {
+		write(filepath.Join(p.Path, ".shikii", "project.json"), `{"version":1,"scope":"`+p.Path+`"}`)
+	}
+	write(installedVersionPath(common), "0.6.0\n")
+	if !run("0.7.0") {
+		t.Fatal("wipe if the mark is before 0.7.0")
+	}
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Fatal("if the mark is old, the records are gone")
+	}
+}
+
+// An update to 0.7.0 deletes everything inside each initialized project's .shikii/ and re-initializes it (the owner's decision, 2026-10-23).
+// An update that does not cross 0.7.0 deletes nothing.
+func TestUpdateResetsProjectStoresWhenCrossing070(t *testing.T) {
+	for _, c := range []struct {
+		from, to string
+		want     bool
+	}{
+		{"0.6.0", "0.7.0", true}, {"0.5.0", "0.7.2", true}, {"0.6.9", "0.8.0", true},
+		{"0.7.0", "0.7.1", false}, {"0.6.0", "0.6.1", false}, {"0.7.1", "0.8.0", false},
+	} {
+		from, _ := updateVersion(c.from)
+		to, _ := updateVersion(c.to)
+		if got := crossesStoreReset(from, to); got != c.want {
+			t.Errorf("%s → %s: reset=%v, want %v", c.from, c.to, got, c.want)
+		}
+	}
+
+	project := t.TempDir()
+	store := filepath.Join(project, ".shikii")
+	for _, p := range []string{"decisions/prompt-kind.yaml", "records/prompt-kind.jsonl", "labels/prompt-kind.jsonl", "wiki/lessons/x/y.md", "project.json", "sessions/a.json"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(store, p)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(store, p), []byte("old"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outside := filepath.Join(project, "README.md")
+	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var reinit []string
+	err := wipeProjectStores([]projectEntry{{Path: project}}, func(path string) error {
+		reinit = append(reinit, path)
+		return os.WriteFile(filepath.Join(path, ".shikii", "project.json"), []byte("new"), 0o600)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(store)
+	if len(entries) != 1 || entries[0].Name() != "project.json" {
+		t.Fatalf("everything inside .shikii/ must be deleted before re-initializing: %v", entries)
+	}
+	if b, _ := os.ReadFile(filepath.Join(store, "project.json")); string(b) != "new" {
+		t.Fatal("the re-initialized mark must be new")
+	}
+	if b, _ := os.ReadFile(outside); string(b) != "keep" {
+		t.Fatal("nothing outside .shikii/ may be touched")
+	}
+	if len(reinit) != 1 || reinit[0] != project {
+		t.Fatalf("each project must be re-initialized exactly once: %v", reinit)
+	}
+
+	// In the update flow, reset is called only when crossing the version
+	f := fixtureUpdate(t)
+	var seen [][2]string
+	f.opts.version, f.tag = "0.6.0", "v0.7.0"
+	f.files["shikii"] = []byte("#!/bin/sh\nprintf 'shikii 0.7.0\\n'\n") // the downloaded binary reports its own version
+	f.opts.reset = func(_ context.Context, _ string, from, to [3]uint64) error {
+		seen = append(seen, [2]string{versionString(from), versionString(to)})
+		return nil
+	}
+	if err := runUpdate(context.Background(), f.opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 || seen[0] != [2]string{"0.6.0", "0.7.0"} {
+		t.Fatalf("the update flow must pass the old and new versions to reset: %v", seen)
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -12,13 +13,16 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/calib"
+	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 	"github.com/hayaenfj/shikii/internal/systemone"
+	"gopkg.in/yaml.v3"
 )
 
 // fakeSystemOne returns a fixed choice answer.
@@ -1026,4 +1030,1139 @@ func TestFlagsMayFollowPositionals(t *testing.T) {
 	if err == nil || strings.Contains(err.Error(), "usage") {
 		t.Fatalf("label <trace> <truth> --store DIR must parse the flag, got %v", err)
 	}
+}
+
+// No arguments / hash --help print usage and do not fail. The usage lists the current tools and flags.
+func TestUsageMentionsCurrentToolsAndFlags(t *testing.T) {
+	u := usageText()
+	for _, must := range []string{"shikii_tune", "--proposer", "--propose", "shikii tune", "shikii up", "shikii doctor"} {
+		if !strings.Contains(u, must) {
+			t.Fatalf("usage must mention %q", must)
+		}
+	}
+	if err := cmdHash([]string{"--help"}); err == nil || !strings.Contains(err.Error(), "usage") {
+		t.Fatalf("hash --help must print usage, got %v", err)
+	}
+}
+
+// Reproduction tests for the third audit (2026-10-18).
+
+// Audit 1: a machine truth (source=context) must not turn into source=replay when calibrate asks again (it would be counted as a human truth).
+func TestReplayNeverLaundersMachineTruths(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	specPath := writeContextSpec(t, dir)
+	sp := mustLoad(t, specPath)
+	storeDir := filepath.Join(dir, ".shikii")
+	st := store.Store{Dir: storeDir}
+	in := map[string]string{"message": "fix a", "previous": "ctx"}
+	rec := store.Record{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: sp.ContextHash(), Type: "choice", Model: "m", Inputs: in,
+		InputsHash: store.HashInputs(in), Raw: map[string]float64{"change_request": 0.9, "question": 0.08, "other": 0.02}, Top: "change_request", P: 0.9, Band: "act", Rung: "context",
+		Minimal: &store.Pass{SpecHash: sp.Hash(), InputsHash: store.HashInputs(map[string]string{"message": "fix a"}), Raw: map[string]float64{"change_request": 0.65, "question": 0.3, "other": 0.05}, Top: "change_request", P: 0.65, Band: "ask"}, At: time.Now()}
+	if err := st.AppendRecord(rec); err != nil {
+		t.Fatal(err)
+	}
+	machine := store.Label{TraceID: rec.TraceID, SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "m", InputsHash: rec.Minimal.InputsHash, Inputs: in,
+		Raw: rec.Minimal.Raw, Truth: "change_request", Weight: 0.9, Source: "context", Rung: "minimal", At: time.Now()}
+	if err := st.AppendLabel(machine); err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	old := stdout
+	stdout = &buf
+	_ = cmdCalibrate([]string{specPath, "--local", srv.URL, "--store", storeDir, "--labeled", "none"})
+	stdout = old
+	for _, l := range readLabels(t, storeDir, "intent") {
+		if l.Source == "replay" {
+			t.Fatalf("a machine truth must not be replayed into a human-looking label: %+v\n%s", l, buf.String())
+		}
+	}
+}
+
+// Audit 2: a line is not written unless there are at least min_n human truths. Machine truths alone only give a report.
+func TestCalibrateWriteNeedsHumanTruths(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	specPath := writeSpec(t, dir, "false") // min_n 2
+	sp := mustLoad(t, specPath)
+	storeDir := filepath.Join(dir, ".shikii")
+	st := store.Store{Dir: storeDir}
+	add := func(i int, source string) {
+		in := map[string]string{"message": "fix " + string(rune('a'+i))}
+		l := store.Label{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "m", InputsHash: store.HashInputs(in), Inputs: in,
+			Raw: map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}, Truth: "change_request", Weight: 1, Source: source, At: time.Now()}
+		if err := st.AppendLabel(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		add(i, "context")
+	}
+	var buf strings.Builder
+	old := stdout
+	stdout = &buf
+	err := cmdCalibrate([]string{specPath, "--local", srv.URL, "--store", storeDir, "--labeled", "none", "--write", "--model", "m"})
+	stdout = old
+	if err == nil || !strings.Contains(buf.String(), "human") {
+		t.Fatalf("3 machine truths and 0 human truths must not write a line (err=%v):\n%s", err, buf.String())
+	}
+	if len(mustLoad(t, specPath).Calibration) != 0 {
+		t.Fatalf("no line may be written from machine truths alone")
+	}
+	add(3, "ui")
+	add(4, "audit")
+	out := capture(t, func() error {
+		return cmdCalibrate([]string{specPath, "--local", srv.URL, "--store", storeDir, "--labeled", "none", "--write", "--model", "m"})
+	})
+	cal := mustLoad(t, specPath).Calibration
+	if len(cal) != 1 || cal[0].N != 5 || cal[0].NHuman != 2 || !strings.Contains(out, "wrote calibration") {
+		t.Fatalf("with 2 human truths (min_n 2) the line is written and records both counts: %+v\n%s", cal, out)
+	}
+}
+
+// Audit 3: serve's automatic calibration draws a line only for the rung whose truths are complete. Other rungs' lines are not touched.
+func TestAutoCalibrateWritesOnlyTheTriggeringRung(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	specPath := writeContextSpec(t, dir)
+	sp := mustLoad(t, specPath)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", N: 2, NHuman: 2, FittedAt: "2020-01-01"})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	storeDir := filepath.Join(dir, ".shikii")
+	var ef endpointFlags
+	ef.model, ef.local = "m", srv.URL
+	s := httptest.NewServer(newServer(serveOpts{specsDir: filepath.Join(dir, "decisions"), storeDir: storeDir, ef: ef, autoCalibrate: true}))
+	t.Cleanup(s.Close)
+	var last map[string]any
+	for _, x := range []string{"a", "b"} {
+		_, d := postJSON(t, s.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix " + x, "previous": "ctx"}})
+		if d["rung"] != "context" {
+			t.Fatalf("decide: %v", d)
+		}
+		_, last = postJSON(t, s.URL+"/v1/label", map[string]any{"trace_id": d["trace_id"], "spec": "intent", "truth": "change_request", "source": "ui"})
+	}
+	if last["calibrated"] != true {
+		t.Fatalf("2 human truths on the context rung (min_n 2) must trigger its calibration: %v", last)
+	}
+	after := mustLoad(t, specPath)
+	if after.ContextSpec().CalibrationFor("m") == nil {
+		t.Fatalf("the context rung's line must be written: %+v", after.Calibration)
+	}
+	if c := after.CalibrationFor("m"); c == nil || c.FittedAt != "2020-01-01" {
+		t.Fatalf("the minimal rung's existing line must be left alone: %+v", after.Calibration)
+	}
+}
+
+// Audit 5: the input hash is per rung (only the inputs that rung's template uses). Even if the context input differs, it is the same input for the minimal question.
+func TestInputsHashIsPerRung(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	specPath := writeContextSpec(t, dir)
+	storeDir := filepath.Join(dir, ".shikii")
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "-i", "message=fix a", "-i", "previous=ctx one", "--local", srv.URL, "--store", storeDir, "--json"})
+	})
+	var d decide.Decision
+	if err := json.Unmarshal([]byte(out), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.InputsHash != store.HashInputs(map[string]string{"message": "fix a", "previous": "ctx one"}) || d.Minimal == nil || d.Minimal.InputsHash != store.HashInputs(map[string]string{"message": "fix a"}) {
+		t.Fatalf("each rung hashes the inputs its template uses: %s / %+v", d.InputsHash, d.Minimal)
+	}
+	capture(t, func() error { return cmdLabel([]string{d.TraceID, "question", "--store", storeDir}) })
+	labels := readLabels(t, storeDir, "intent")
+	if len(labels) != 2 || labels[1].InputsHash != d.Minimal.InputsHash {
+		t.Fatalf("the minimal rung's label carries the minimal inputs hash: %+v", labels)
+	}
+	// file rows with the same text fold into one input
+	rows := `[{"inputs":{"message":"fix a"},"truth":"question"},{"inputs":{"message":"fix b"},"truth":"change_request"}]`
+	labeledPath := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = capture(t, func() error {
+		return cmdCalibrate([]string{specPath, "--local", srv.URL, "--store", storeDir, "--labeled", labeledPath})
+	})
+	if !strings.Contains(out, "deduplicated: 3 labels on 2 distinct inputs") {
+		t.Fatalf("the store label for {message, previous} and the file row for {message} are the same minimal input:\n%s", out)
+	}
+	// Material for asking again: the text is found from the minimal rung's hash too
+	st := store.Store{Dir: storeDir}
+	texts, err := st.InputsByHash("intent")
+	if err != nil || texts[d.Minimal.InputsHash].Inputs["message"] != "fix a" {
+		t.Fatalf("texts must be reachable by the minimal inputs hash too: %v %+v", err, texts)
+	}
+}
+
+// Audits 7 and 8: status counts the person's confirmations by decision (trace). For score with levels, no machine truth is written (Top and P are different events).
+func TestHumanCheckedCountsTracesAndLevelScoresWriteNoMachineTruth(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	specPath := writeContextSpec(t, dir)
+	storeDir := filepath.Join(dir, ".shikii")
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "-i", "message=fix a", "-i", "previous=ctx", "--local", srv.URL, "--store", storeDir})
+	})
+	trace := traceRe.FindStringSubmatch(out)[1]
+	capture(t, func() error {
+		return cmdLabel([]string{trace, "change_request", "--store", storeDir, "--source", "audit"})
+	})
+	out = capture(t, func() error { return cmdStatus([]string{specPath, "--store", storeDir}) })
+	if !strings.Contains(out, "audit answers so far: 1") {
+		t.Fatalf("one audited decision is one human check, not two labels:\n%s", out)
+	}
+
+	sc := &spec.Spec{ID: "sev", Type: spec.Score, Question: "q", Levels: []string{"low", "mid", "high"}, State: spec.State{Template: "{{ m }}", Required: []string{"m"}, Context: "{{ c }} {{ m }}"},
+		Policy: spec.Policy{SendTo: []string{"local"}, PII: boolPtrMain(false)}, Thresholds: spec.Thresholds{Act: 0.75, Ask: 0.6, Level: 1}, Eval: spec.Eval{MinN: 2}}
+	d := &decide.Decision{TraceID: "t1", SpecID: "sev", SpecHash: sc.ContextHash(), Type: "score", Rung: "context", Band: decide.Act, Top: "mid", P: 0.85,
+		Minimal: &store.Pass{SpecHash: sc.Hash(), Raw: map[string]float64{"low": 0.3, "mid": 0.4, "high": 0.3}}, At: time.Now()}
+	st := store.Store{Dir: filepath.Join(dir, ".sev")}
+	if err := recordDecision(st, sc, d, map[string]string{"m": "x", "c": "y"}); err != nil {
+		t.Fatal(err)
+	}
+	if ls := readLabels(t, st.Dir, "sev"); len(ls) != 0 {
+		t.Fatalf("P is P(level >= 1) but Top is the argmax; they are different events, so no machine truth: %+v", ls)
+	}
+}
+
+func boolPtrMain(b bool) *bool { return &b }
+
+// 9: rows with raw are accepted only when the keys are complete, values are in 0..1, and the sum is close to 1. noul numbers are also 0..1.
+func TestRawRowsMustBeCompleteDistributions(t *testing.T) {
+	dir := t.TempDir()
+	specPath := writeSpec(t, dir, "false")
+	sp := mustLoad(t, specPath)
+	bad := []string{`{"change_request":0.9}`, `{"change_request":1.5,"question":-0.5,"other":0}`, `{"change_request":0.5,"question":0.5,"other":0.5}`}
+	for _, raw := range bad {
+		if _, err := rawFromRow(sp, json.RawMessage(raw)); err == nil {
+			t.Fatalf("raw %s must be rejected", raw)
+		}
+	}
+	if d, err := rawFromRow(sp, json.RawMessage(`{"change_request":0.9,"question":0.08,"other":0.02}`)); err != nil || d["other"] != 0.02 {
+		t.Fatalf("a complete distribution is accepted: %v %v", err, d)
+	}
+	noul := sp
+	noul.Type = "noul"
+	noul.Options = nil
+	for _, raw := range []string{`1.5`, `-0.1`, `{"no":0.3}`} {
+		if _, err := rawFromRow(noul, json.RawMessage(raw)); err == nil {
+			t.Fatalf("noul raw %s must be rejected", raw)
+		}
+	}
+	if d, err := rawFromRow(noul, json.RawMessage(`{"yes":0.7,"no":0.3}`)); err != nil || d["yes"] != 0.7 {
+		t.Fatalf("noul object with yes is accepted: %v %v", err, d)
+	}
+}
+
+// D: status counts machine truths (context) and re-labels of the same input and says "partway through automatic drawing", but automatic calibration counts only human truths (one per input) and does not run
+func TestLineStateCountsLikeTheAutoCalibration(t *testing.T) {
+	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
+	path := agent + "/decisions/changes-in-scope.yaml"
+	sp := mustLoad(t, path)
+	st := store.Store{Dir: agent}
+	var labels []store.Label
+	for i := 0; i < sp.Eval.MinN; i++ {
+		truth := "no"
+		if i%2 == 0 {
+			truth = "yes"
+		}
+		// Only 5 kinds of input (the same input labeled many times). Half are machine truths (context)
+		src := "outcome"
+		inp := fmt.Sprintf("in%d", i%5)
+		if i%3 == 0 {
+			src = "context"
+		}
+		labels = append(labels, store.Label{TraceID: fmt.Sprintf("t%03d", i), SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "m1", InputsHash: inp, Truth: truth, Weight: 1, Source: src, At: time.Now()})
+	}
+	if err := st.AppendLabels(labels); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendRecord(store.Record{TraceID: "r1", SpecID: sp.ID, SpecHash: sp.Hash(), Model: "m1", InputsHash: "in0", At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error { return cmdStatus([]string{"--store", agent, path}) })
+	called := false
+	old := hookCalibrate
+	hookCalibrate = func(agent, path, storeDir, model string) { called = true }
+	defer func() { hookCalibrate = old }()
+	hookMaybeCalibrate(agent, sp.ID)
+	if strings.Contains(out, "the line is drawn automatically") && !called {
+		t.Fatalf("status says it will draw automatically, but automatic calibration does not run (human truths per input are below min_n)")
+	}
+}
+
+// E: automatic calibration was tried on m1, yet even m2's key, never tried, shows as "tried but could not separate"
+func TestLineStateStuckOnlyForTheModelTried(t *testing.T) {
+	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
+	path := agent + "/decisions/changes-in-scope.yaml"
+	sp := mustLoad(t, path)
+	st := store.Store{Dir: agent}
+	var labels []store.Label
+	for i := 0; i < sp.Eval.MinN+2; i++ {
+		truth := []string{"yes", "no"}[i%2]
+		labels = append(labels, store.Label{TraceID: fmt.Sprintf("t%03d", i), SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "m2", InputsHash: fmt.Sprintf("in%d", i), Truth: truth, Weight: 1, Source: "outcome", At: time.Now()})
+	}
+	st.AppendLabels(labels)
+	guardModel := "m1"
+	guard := agent + "/calibrating-changes-in-scope"
+	os.WriteFile(guard, []byte(fmt.Sprintf("2026-10-24T00:00:00+09:00 %s %d %s\n", guardModel, sp.Eval.MinN, sp.Hash())), 0o600)
+	old := time.Now().Add(-2 * hookCalibrateGap)
+	os.Chtimes(guard, old, old)
+	out := capture(t, func() error { return cmdStatus([]string{"--store", agent, path}) })
+	if strings.Contains(out, "tried: the answers could not be separated") {
+		t.Fatalf("a note from trying on m1 makes m2's key show as \"tried but could not separate\":\n%s", out)
+	}
+}
+
+// 0.9.4 audit: when no line fits (every truth on one side, or a higher probability goes with "no"), --force must not write an empty
+// calibration block (method "") over the spec; it is refused like any other refusal and the spec stays as it was.
+func TestForceDoesNotWriteAnEmptyLineWhenNoneFits(t *testing.T) {
+	for _, name := range []string{"one-sided", "reversed"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeNoulSpec(t, dir) // min_n 4
+			before, _ := os.ReadFile(path)
+			rows := []map[string]any{}
+			for i := 0; i < 8; i++ {
+				truth, raw := "no", 0.9
+				if i%2 == 0 {
+					truth, raw = "yes", 0.1
+				}
+				if name == "one-sided" {
+					truth, raw = "yes", 0.2+0.05*float64(i)
+				}
+				rows = append(rows, map[string]any{"inputs": map[string]string{"a": fmt.Sprint(i)}, "truth": truth, "raw": raw})
+			}
+			file := filepath.Join(dir, "labels.json")
+			data, _ := json.Marshal(rows)
+			if err := os.WriteFile(file, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var report bytes.Buffer
+			err := runCalibrate(path, calibrateOpts{output: &report, storeDir: filepath.Join(dir, "store"), labeled: file, write: true, force: true})
+			var refused *calibrationRefusal
+			if !errors.As(err, &refused) {
+				t.Fatalf("--force with no fitted line must be refused, got %v\n%s", err, report.String())
+			}
+			if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
+				t.Fatalf("--force wrote a block although no line fits:\n%s", after)
+			}
+		})
+	}
+}
+
+// 0.9.4 audit: a noul label file whose truth is a string other than yes / no (e.g. "true", "Yes") is a broken file, not "the answers cannot be told apart".
+// Before, such rows counted as "no", so a file of "true" strings became a one-sided refusal.
+func TestNoulLabelFileRejectsTruthOtherThanYesNo(t *testing.T) {
+	dir := t.TempDir()
+	path := writeNoulSpec(t, dir)
+	rows := []map[string]any{}
+	for i := 0; i < 6; i++ {
+		rows = append(rows, map[string]any{"inputs": map[string]string{"a": fmt.Sprint(i)}, "truth": "true", "raw": 0.8})
+	}
+	file := filepath.Join(dir, "labels.json")
+	data, _ := json.Marshal(rows)
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var report bytes.Buffer
+	err := runCalibrate(path, calibrateOpts{output: &report, storeDir: filepath.Join(dir, "store"), labeled: file, write: true})
+	var refused *calibrationRefusal
+	if err == nil || errors.As(err, &refused) || !strings.Contains(err.Error(), "yes or no") {
+		t.Fatalf("a noul truth of \"true\" must be an error that names yes / no, got %T %v\n%s", err, err, report.String())
+	}
+}
+
+// check measures act's precision on human truths alone too. Even if machine truths (context / replay / file) make it look high, when there are
+// at least min_n act decisions a person checked and their precision does not reach act, it fails. status shows that count.
+func TestCheckMeasuresActPrecisionOnHumanTruthsToo(t *testing.T) {
+	dir := t.TempDir()
+	specPath := writeSpec(t, dir, "false")
+	sp := mustLoad(t, specPath)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", N: 2, FittedAt: "2026-10-18", PrecisionAt: 1})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	storeDir := filepath.Join(dir, ".shikii")
+	st := store.Store{Dir: storeDir}
+	add := func(i int, truth, source string) {
+		in := map[string]string{"message": "m" + string(rune('a'+i))}
+		l := store.Label{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "m", InputsHash: store.HashInputs(in), Inputs: in,
+			Raw: map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}, Truth: truth, Weight: 1, Source: source, At: time.Now()}
+		if err := st.AppendLabel(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 10; i++ {
+		add(i, "change_request", "context") // machine truths: all right
+	}
+	add(10, "question", "audit") // act decisions a person checked: both wrong
+	add(11, "question", "audit")
+	var buf strings.Builder
+	old := stdout
+	stdout = &buf
+	err := cmdCheck([]string{specPath, "--store", storeDir})
+	stdout = old
+	out := buf.String()
+	if err == nil || !strings.Contains(out, "human-checked") || !strings.Contains(out, "0.000") {
+		t.Fatalf("overall precision is 10/12 but the 2 human-checked act decisions were both wrong; check must say so:\nerr=%v\n%s", err, out)
+	}
+	// While human truths are below min_n, do not fail; just state the count
+	if err := os.Remove(filepath.Join(storeDir, "labels", "intent.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10; i++ {
+		add(i, "change_request", "context")
+	}
+	add(10, "question", "audit")
+	out = capture(t, func() error { return cmdCheck([]string{specPath, "--store", storeDir}) })
+	if !strings.Contains(out, "human-checked act decisions: 1") {
+		t.Fatalf("below min_n check reports the count without failing:\n%s", out)
+	}
+	out = capture(t, func() error { return cmdStatus([]string{specPath, "--store", storeDir}) })
+	if !strings.Contains(out, "audit: 1 in 20 act decisions is shown to a person; audit answers so far: 1") {
+		t.Fatalf("status must show the audit sampling state:\n%s", out)
+	}
+}
+
+// Tests that close the holes found in the audit of 2026-10-17. Each was confirmed to fail before being fixed.
+
+// Audit C1: identity and vector were scored on different label sets (with or without partial labels), and check failed right after calibrate wrote.
+// If a partial label "!x" contains a miss, vector's CV must count the same miss.
+func TestVectorCVScoresPartialLabelsLikeCheck(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	specPath := writeSpec(t, dir, "false") // act 0.75, min_n 2
+	for i := 0; i < 10; i++ {
+		out := capture(t, func() error {
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=full %d", i)})
+		})
+		capture(t, func() error {
+			return cmdLabel([]string{"--store", storeDir, traceRe.FindStringSubmatch(out)[1], "change_request"})
+		})
+	}
+	for i := 0; i < 5; i++ {
+		out := capture(t, func() error {
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=partial %d", i)})
+		})
+		capture(t, func() error {
+			return cmdLabel([]string{"--store", storeDir, traceRe.FindStringSubmatch(out)[1], "!change_request"})
+		})
+	}
+	// precision@act is 10/15 = 0.667 < 0.75: neither identity nor vector may be written
+	var buf bytes.Buffer
+	old := stdout
+	stdout = &buf
+	err := cmdCalibrate([]string{specPath, "--store", storeDir, "--model", "m", "--write"})
+	stdout = old
+	if err == nil {
+		t.Fatalf("calibrate must refuse to write when partial labels pull precision below act:\n%s", buf.String())
+	}
+	if sp := mustLoad(t, specPath); len(sp.Calibration) != 0 {
+		t.Fatalf("nothing may be written: %+v", sp.Calibration)
+	}
+	if !strings.Contains(buf.String(), "vector 5-fold CV at act: precision=0.667") {
+		t.Fatalf("vector CV must be scored on the same 15 labels (precision 0.667):\n%s", buf.String())
+	}
+}
+
+// Audit C2/C3: when the same input had several truths (a file row and one a person added later / a correction on the same trace),
+// calibrate and check counted differently. Both count "the latest truth per input".
+func TestCalibrateAndCheckUseLatestTruthPerInput(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	specPath := writeSpec(t, dir, "false")
+	rows := `[{"inputs":{"message":"fix 0"},"truth":"change_request"},{"inputs":{"message":"fix 1"},"truth":"change_request"}]`
+	labeledPath := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	capture(t, func() error {
+		return cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
+	})
+	capture(t, func() error { return cmdCheck([]string{"--store", storeDir, specPath}) })
+	// The same text "fix 0" is decided in real use, and a person corrects it to "it was a question"
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix 0"})
+	})
+	tr := traceRe.FindStringSubmatch(out)[1]
+	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ask", tr, "question"}) })
+	// check: with the latest truth, "fix 0" is wrong → 1/2 = 0.5 < act → fails
+	if err := cmdCheck([]string{"--store", storeDir, specPath}); err == nil {
+		t.Fatal("check must see the corrected truth and fail")
+	}
+	// calibrate looks at the same set too (n=2, latest truths). It does not grow to 3
+	var buf bytes.Buffer
+	old := stdout
+	stdout = &buf
+	_ = cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir})
+	stdout = old
+	if !strings.Contains(buf.String(), " n=2 ") || !strings.Contains(buf.String(), "top-1 accuracy=0.500") {
+		t.Fatalf("calibrate must count one latest truth per input (n=2, accuracy 0.5):\n%s", buf.String())
+	}
+	// Labeling the same trace twice still counts only the latest one
+	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ask", tr, "change_request"}) })
+	buf.Reset()
+	stdout = &buf
+	_ = cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir})
+	stdout = old
+	if !strings.Contains(buf.String(), " n=2 ") || !strings.Contains(buf.String(), "top-1 accuracy=1.000") {
+		t.Fatalf("a corrected label must replace, not add:\n%s", buf.String())
+	}
+}
+
+// Audit S1: text recorded with --tainted must never be sent to hosted, even when asked again later.
+func TestTaintedTextIsNeverReplayedToHosted(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "k")
+	var hostedCalls, localCalls atomic.Int32
+	answer := func(model string, calls *atomic.Int32) *httptest.Server {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			var req systemone.Request
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			resp := systemone.Response{Model: model, Answers: map[string]systemone.Answer{}}
+			for k := range req.Questions {
+				resp.Answers[k] = systemone.Answer{Type: "choice", Choice: "change_request", Probabilities: map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}}
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		t.Cleanup(s.Close)
+		return s
+	}
+	hosted := answer("m", &hostedCalls)
+	local := answer("m", &localCalls)
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	specPath := filepath.Join(dir, "intent.yaml")
+	src := strings.Replace(strings.Replace(string(mustRead(t, writeSpec(t, dir, "false"))), "send_to: [local]", "send_to: [hosted, local]", 1), "min_n: 2", "min_n: 1", 1)
+	if err := os.WriteFile(specPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "--hosted", hosted.URL, "--local", local.URL, "--tainted", "--store", storeDir, "-i", "message=PROD ROW"})
+	})
+	if hostedCalls.Load() != 0 || localCalls.Load() != 1 {
+		t.Fatalf("tainted decide must go local: hosted=%d local=%d", hostedCalls.Load(), localCalls.Load())
+	}
+	capture(t, func() error {
+		return cmdLabel([]string{"--store", storeDir, traceRe.FindStringSubmatch(out)[1], "change_request"})
+	})
+	edited := strings.Replace(src, "question: What is asked?", "question: What is asked? Be strict.", 1)
+	if err := os.WriteFile(specPath, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Asking again (even when called without the tainted flag) does not send text that was tainted to hosted
+	capture(t, func() error {
+		return cmdCalibrate([]string{specPath, "--hosted", hosted.URL, "--local", local.URL, "--store", storeDir, "--labeled", "none"})
+	})
+	if hostedCalls.Load() != 0 {
+		t.Fatalf("replay sent tainted text to hosted (%d calls)", hostedCalls.Load())
+	}
+	if localCalls.Load() != 2 {
+		t.Fatalf("replay must have asked local once more, got %d", localCalls.Load())
+	}
+}
+
+// Audit S5: check rejects a hand-written identity block (n below min_n, no fitted_at).
+func TestCheckRejectsBlocksThatCalibrateWouldNotWrite(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	specPath := writeSpec(t, dir, "false") // min_n 2
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix"})
+	})
+	capture(t, func() error {
+		return cmdLabel([]string{"--store", storeDir, traceRe.FindStringSubmatch(out)[1], "change_request"})
+	})
+	sp := mustLoad(t, specPath)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", PrecisionAt: 1, N: 1})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	old := stdout
+	stdout = &buf
+	err := cmdCheck([]string{"--store", storeDir, specPath})
+	stdout = old
+	if err == nil || !strings.Contains(buf.String(), "min_n") {
+		t.Fatalf("check must reject n=1 < min_n=2 and say so: err=%v\n%s", err, buf.String())
+	}
+}
+
+// Audit C12: drift must not say ok with NaN for a line whose temperature was set to 0 by hand.
+func TestDriftRejectsZeroTemperature(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	srv := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	specPath := writeSpec(t, dir, "false")
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix"})
+	})
+	capture(t, func() error {
+		return cmdLabel([]string{"--store", storeDir, traceRe.FindStringSubmatch(out)[1], "change_request"})
+	})
+	sp := mustLoad(t, specPath)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "vector", Temperature: 0, Biases: map[string]float64{}, N: 2, FittedAt: "2026-10-17"})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdDrift([]string{specPath, "--store", storeDir, "--model", "m"}); err == nil || !strings.Contains(err.Error(), "temperature") {
+		t.Fatalf("drift must refuse a block with temperature 0, got %v", err)
+	}
+}
+
+// Even with enough cases, saving stops on separation or precision. Check the reason and the fact that nothing was saved together.
+func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		n, min int
+		choice bool
+		want   string
+		// reversed: a higher probability goes with "no" (the fitted slope is not positive). It is the same "cannot tell the answers apart" as an overlap,
+		// so the page shows it as a quality refusal, not as a failure with the English fitting message (0.9.3: a person saw it after answering on the page)
+		reversed bool
+		oneSided bool // every truth is "yes": also a quality refusal (the page says only one kind of answer), not the English "need both" failure
+	}{
+		{"overlap", 50, 50, false, "predictions", false, false},
+		{"insufficient", 2, 50, false, "short of", false, false},
+		{"precision", 2, 2, true, "predictions", false, false},
+		{"reversed", 50, 50, false, "predictions", true, false},
+		{"one-sided", 50, 50, false, "predictions", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeNoulSpec(t, dir)
+			if tc.choice {
+				path = writeSpec(t, dir, "false")
+			}
+			sp := mustLoad(t, path)
+			sp.Eval.MinN = tc.min
+			specData, err := yaml.Marshal(sp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, specData, 0600); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(path)
+			rows := []map[string]any{}
+			for i := 0; i < tc.n; i++ {
+				truth, raw := "no", any(0.2)
+				inputs := map[string]string{"a": fmt.Sprint(i)}
+				if i%2 == 0 {
+					truth, raw = "yes", 0.7
+				}
+				if tc.oneSided {
+					truth = "yes"
+				}
+				if tc.reversed {
+					raw = 0.9
+					if truth == "yes" {
+						raw = 0.1
+					}
+				}
+				if tc.n >= tc.min && !tc.choice && i == 0 {
+					raw = 0.4
+				}
+				if tc.n >= tc.min && !tc.choice && i == 1 {
+					raw = 0.6
+				}
+				if tc.choice {
+					inputs = map[string]string{"message": fmt.Sprint(i)}
+					truth = "question"
+					if i%2 == 0 {
+						truth = "change_request"
+					}
+					raw = map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}
+				}
+				rows = append(rows, map[string]any{"inputs": inputs, "truth": truth, "raw": raw})
+			}
+			file := filepath.Join(dir, "labels.json")
+			data, _ := json.Marshal(rows)
+			if err := os.WriteFile(file, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			var report bytes.Buffer
+			err = runCalibrate(path, calibrateOpts{output: &report, storeDir: filepath.Join(dir, "store"), labeled: file, write: true})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("wrong refusal: %v\n%s", err, report.String())
+			}
+			var refused *calibrationRefusal
+			if !errors.As(err, &refused) || (tc.n >= tc.min && refused.reason() != "quality") {
+				t.Fatalf("a refusal must be a calibrationRefusal (quality when there are enough truths), not a failure: %T %v", err, err)
+			}
+			if tc.n >= tc.min && (strings.Contains(err.Error(), "fewer human truths") || strings.Contains(err.Error(), "short of the")) {
+				t.Fatalf("quality failure must not claim insufficient truths: %v", err)
+			}
+			after, _ := os.ReadFile(path)
+			if !bytes.Equal(before, after) {
+				t.Fatal("refused calibration changed spec")
+			}
+		})
+	}
+}
+
+// Only when unsure, add context and ask again; an answer that becomes confident there is kept as the truth for the minimal question (source context, weight = probability).
+// When a person answers, that truth goes on both rungs. status shows counts per rung and the person's decisions per 1000 decisions.
+func TestDecideWritesTheContextAnswerAsTruthForTheMinimalRung(t *testing.T) {
+	dir := t.TempDir()
+	srv, calls := contextModel(t)
+	specPath := writeContextSpec(t, dir)
+	sp := mustLoad(t, specPath)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", N: 2, FittedAt: "2026-10-18"})
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.ContextHash(), Method: "identity", N: 2, FittedAt: "2026-10-18"})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	storeDir := filepath.Join(dir, ".shikii")
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "-i", "message=fix a", "-i", "previous=I renamed the module", "--local", srv.URL, "--store", storeDir})
+	})
+	if !strings.Contains(out, "band=act top=change_request p=0.900") || !strings.Contains(out, "rung=context") || !strings.Contains(out, "p=0.650 band=ask") || *calls != 2 {
+		t.Fatalf("the unsure minimal answer must be asked again with context (2 calls) and say so:\n%s (calls=%d)", out, *calls)
+	}
+	trace := traceRe.FindStringSubmatch(out)[1]
+	labels := readLabels(t, storeDir, "intent")
+	if len(labels) != 1 {
+		t.Fatalf("the confident context answer must become one truth for the minimal rung, got %d labels", len(labels))
+	}
+	l := labels[0]
+	if l.Source != "context" || l.Rung != "minimal" || l.SpecHash != sp.Hash() || l.Truth != "change_request" || l.Weight != 0.9 || l.Raw["change_request"] != 0.65 || l.TraceID != trace {
+		t.Fatalf("the machine truth carries the minimal rung's hash and raw, the context rung's answer and probability: %+v", l)
+	}
+	// The person's answer goes on both rungs, and since it is the same input, the newer one (the person) beats the machine truth
+	out = capture(t, func() error { return cmdLabel([]string{trace, "question", "--store", storeDir, "--source", "ask"}) })
+	if strings.Count(out, "labeled ") != 2 || !strings.Contains(out, "context rung") || !strings.Contains(out, "minimal rung") {
+		t.Fatalf("a human answer on a context decision must label both rungs:\n%s", out)
+	}
+	labels = readLabels(t, storeDir, "intent")
+	if len(labels) != 3 || labels[1].SpecHash != sp.ContextHash() || labels[1].Raw["change_request"] != 0.9 || labels[2].SpecHash != sp.Hash() || labels[2].Raw["change_request"] != 0.65 || labels[1].Truth != "question" || labels[2].Truth != "question" {
+		t.Fatalf("labels: %+v", labels)
+	}
+	// A decision without context stops at the minimal rung and goes to the person
+	capture(t, func() error {
+		return cmdDecide([]string{specPath, "-i", "message=fix b", "--local", srv.URL, "--store", storeDir})
+	})
+	out = capture(t, func() error { return cmdStatus([]string{specPath, "--store", storeDir}) })
+	for _, must := range []string{"settled by the minimal question 0, by added context 1, left to a person 1 (500 per 1000 decisions)", "(context rung)  calibrated: identity"} {
+		if !strings.Contains(out, must) {
+			t.Fatalf("status must show where decisions settle and the context rung's line; missing %q:\n%s", must, out)
+		}
+	}
+	if strings.Contains(out, "stale hash") {
+		t.Fatalf("the context rung's hash is live, not stale:\n%s", out)
+	}
+}
+
+// calibrate draws a line per rung: one from the minimal question's truths, one from the context rung's truths. check verifies both and passes.
+func TestCalibrateFitsEachRungOnItsOwnTruths(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	specPath := writeContextSpec(t, dir)
+	storeDir := filepath.Join(dir, ".shikii")
+	// While there is no line, even a confident answer is ask, so every decision goes up to the context rung and to the person. The person's answers become truths for both rungs
+	for _, x := range []string{"a", "b", "c"} {
+		for verb, truth := range map[string]string{"fix": "change_request", "why": "question"} {
+			out := capture(t, func() error {
+				return cmdDecide([]string{specPath, "-i", "message=" + verb + " " + x, "-i", "previous=context", "--local", srv.URL, "--store", storeDir})
+			})
+			if !strings.Contains(out, "rung=context") || !strings.Contains(out, "band=ask") {
+				t.Fatalf("uncalibrated: both rungs ask, the decision still goes to a person:\n%s", out)
+			}
+			trace := traceRe.FindStringSubmatch(out)[1]
+			capture(t, func() error { return cmdLabel([]string{trace, truth, "--store", storeDir}) })
+		}
+	}
+	out := capture(t, func() error {
+		return cmdCalibrate([]string{specPath, "--local", srv.URL, "--store", storeDir, "--write", "--labeled", "none"})
+	})
+	sp := mustLoad(t, specPath)
+	if !strings.Contains(out, "context rung") || len(sp.Calibration) != 2 {
+		t.Fatalf("calibrate must fit a line per rung:\n%s\n%+v", out, sp.Calibration)
+	}
+	hashes := map[string]bool{}
+	for _, c := range sp.Calibration {
+		hashes[c.SpecHash] = true
+		if c.Model != "m" || c.N != 6 {
+			t.Fatalf("each line is fitted on its own rung's 6 truths: %+v", c)
+		}
+	}
+	if !hashes[sp.Hash()] || !hashes[sp.ContextHash()] {
+		t.Fatalf("one line per rung: %+v", sp.Calibration)
+	}
+	out = capture(t, func() error { return cmdCheck([]string{specPath, "--store", storeDir}) })
+	if !strings.Contains(out, "ok   intent") || !strings.Contains(out, "calibrations=2") {
+		t.Fatalf("check must accept the context rung's line as live:\n%s", out)
+	}
+	// A line was drawn, so the next decision does not go to the person. Either the minimal rung, which learned from 6 truths that "change_request at 0.65 is right", gives act, or the context rung does
+	out = capture(t, func() error {
+		return cmdDecide([]string{specPath, "-i", "message=fix d", "-i", "previous=context", "--local", srv.URL, "--store", storeDir})
+	})
+	if !strings.Contains(out, "band=act top=change_request") {
+		t.Fatalf("with both lines the decision settles without a person:\n%s", out)
+	}
+	out = capture(t, func() error { return cmdStatus([]string{specPath, "--store", storeDir}) })
+	if !strings.Contains(out, "left to a person 6 (857 per 1000 decisions)") {
+		t.Fatalf("status counts the 6 uncalibrated decisions that went to a person and the 1 that did not:\n%s", out)
+	}
+}
+
+// tune scores wording candidates only on the minimal question rung. Even if the bank's text has context inputs, it does not go up the rungs.
+func TestTuneScoresCandidatesOnTheMinimalRungOnly(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	var contextCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req systemone.Request
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if strings.Contains(req.State, "Previous turn") {
+			atomic.AddInt32(&contextCalls, 1)
+		}
+		resp := systemone.Response{Model: "m", Answers: map[string]systemone.Answer{}}
+		for k, q := range req.Questions {
+			probs := map[string]float64{"change_request": 0.65, "question": 0.3, "other": 0.05} // an unsure answer: the conditions to go up a rung are met
+			if strings.Contains(q.Instructions, "strict") && strings.Contains(req.State, "why") {
+				probs = map[string]float64{"change_request": 0.1, "question": 0.9, "other": 0}
+			}
+			top, _ := argmax(probs)
+			resp.Answers[k] = systemone.Answer{Type: "choice", Choice: top, Probabilities: probs, Confidence: 0.9}
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	t.Cleanup(srv.Close)
+	specPath := specWithVariants(t, dir)
+	b, _ := os.ReadFile(specPath)
+	src := strings.Replace(string(b), "  required: [message]\n", "  required: [message]\n  context: \"Previous turn: {{ previous }}\\nMessage: {{ message }}\"\n", 1)
+	if err := os.WriteFile(specPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rows := regexp.MustCompile(`"message":"([^"]+)"`).ReplaceAllString(bankRows(), `"message":"$1","previous":"p"`)
+	labeledPath := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	storeDir := filepath.Join(dir, ".shikii")
+	out := capture(t, func() error {
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir})
+	})
+	if contextCalls != 0 || !strings.Contains(out, "winner: strict") {
+		t.Fatalf("tune must never climb to the context rung while scoring (%d context calls):\n%s", contextCalls, out)
+	}
+	// The adopted version keeps context. calibrate at adoption asks again and draws the context rung's line too, since the text has context (this measures that rung rather than going up a rung)
+	out = capture(t, func() error {
+		return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", storeDir, "--write"})
+	})
+	v2 := mustLoad(t, filepath.Join(dir, "decisions", "intent-v2.yaml"))
+	if !v2.HasContext() || !strings.Contains(out, "context rung") || contextCalls == 0 {
+		t.Fatalf("the adopted version must keep state.context and get a line for its context rung from the replayed truths:\n%s\n%+v", out, v2.State)
+	}
+}
+
+// (2) When truths are below eval.min_n, calibrate and tune say "what to do": collect truths, or, for a trial, lower the spec's eval.min_n.
+// tune rejected with the same text even when --labeled was passed, so --labeled is not suggested as the fix (it is added only as how files are read, when not passed).
+func TestTooFewTruthsSaysWhatToDoNext(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	srv := fakeSystemOne(t, "m1", map[string]float64{"change_request": 0.9, "question": 0.08, "other": 0.02})
+	specPath := writeSpec(t, dir, "false") // min_n 2
+	b, _ := os.ReadFile(specPath)
+	if err := os.WriteFile(specPath, append(b, []byte("variants:\n  - name: strict\n    question: What exactly is asked?\n")...), 0o644); err != nil {
+		t.Fatal(err) // tune stops there without candidates, so put one candidate
+	}
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", "message=fix it"})
+	})
+	trace := traceRe.FindStringSubmatch(out)[1]
+	capture(t, func() error { return cmdLabel([]string{"--store", storeDir, trace, "change_request"}) })
+
+	err := cmdCalibrate([]string{specPath, "--store", storeDir, "--model", "m1", "--write"})
+	if err == nil || !strings.Contains(err.Error(), "lower the spec's eval.min_n") || !strings.Contains(err.Error(), "shikii label") {
+		t.Fatalf("calibrate must name both ways out (collect truths, or lower eval.min_n for a trial): %v", err)
+	}
+	err = cmdTune([]string{specPath, "--local", srv.URL, "--store", storeDir})
+	if err == nil || !strings.Contains(err.Error(), "lower eval.min_n") || !strings.Contains(err.Error(), "--labeled FILE") {
+		t.Fatalf("tune without --labeled must name the ways out and how a file is read: %v", err)
+	}
+	rows := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(rows, []byte(`[{"inputs":{"message":"fix it"},"truth":"change_request"}]`), 0o644); err != nil { // the same text as the store: one per input, so there is still one truth
+		t.Fatal(err)
+	}
+	err = cmdTune([]string{specPath, "--local", srv.URL, "--store", storeDir, "--labeled", rows})
+	if err == nil || strings.Contains(err.Error(), "--labeled") || !strings.Contains(err.Error(), "lower eval.min_n") {
+		t.Fatalf("tune with --labeled already given must not suggest --labeled as the way out: %v", err)
+	}
+}
+
+// (3) drift's ask agreement is n/a, not 0.000, when no truths answered on ask are in the window.
+func TestDriftSaysNotApplicableWithoutAskLabels(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	srv := fakeSystemOne(t, "m1", map[string]float64{"change_request": 0.95, "question": 0.03, "other": 0.02})
+	specPath := writeSpec(t, dir, "false")
+	for i := 0; i < 3; i++ {
+		out := capture(t, func() error {
+			return cmdDecide([]string{specPath, "--local", srv.URL, "--store", storeDir, "-i", fmt.Sprintf("message=fix %d", i)})
+		})
+		tr := traceRe.FindStringSubmatch(out)[1]
+		capture(t, func() error { return cmdLabel([]string{"--store", storeDir, "--source", "ui", tr, "change_request"}) })
+	}
+	capture(t, func() error { return cmdCalibrate([]string{specPath, "--store", storeDir, "--model", "m1", "--write"}) })
+	out := capture(t, func() error { return cmdDrift([]string{specPath, "--store", storeDir, "--model", "m1"}) })
+	if !strings.Contains(out, "ask agreement:    n/a (no ask-sourced labels") || strings.Contains(out, "ask agreement:    0.000") {
+		t.Fatalf("no ask labels means n/a, not 0.000:\n%s", out)
+	}
+}
+
+// (6) bias runs on the same bank as calibrate / tune (the text of truths in the store). --labeled is not needed.
+func TestBiasReadsStatesFromTheStoreLikeCalibrate(t *testing.T) {
+	dir := t.TempDir()
+	specPath := writeSpec(t, dir, "false")
+	sp := mustLoad(t, specPath)
+	storeDir := filepath.Join(dir, ".shikii")
+	st := store.Store{Dir: storeDir}
+	for i := 0; i < 4; i++ {
+		in := map[string]string{"message": fmt.Sprintf("m%d", i)}
+		l := store.Label{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "m", InputsHash: store.HashInputs(in), Inputs: in,
+			Raw: map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}, Truth: "change_request", Weight: 1, Source: "ui", At: time.Now()}
+		if err := st.AppendLabel(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fair := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.45, "question": 0.40, "other": 0.15})
+	out := capture(t, func() error {
+		return cmdBias([]string{specPath, "--store", storeDir, "--local", fair.URL, "--permutations", "2"})
+	})
+	if !strings.Contains(out, "rows=4") || !strings.Contains(out, "\nok") {
+		t.Fatalf("bias must take its states from the store's truths:\n%s", out)
+	}
+	err := cmdBias([]string{specPath, "--store", filepath.Join(dir, "empty"), "--local", fair.URL})
+	if err == nil || !strings.Contains(err.Error(), "no states to ask") || !strings.Contains(err.Error(), "shikii label") {
+		t.Fatalf("with nothing to ask, bias says where states come from: %v", err)
+	}
+	_ = spec.Choice
+}
+
+func TestProjectCalibrationsKeepTheirReports(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	a, b := gitRepo(t), gitRepo(t)
+	aStore, aScope := initTestProject(t, a)
+	bStore, bScope := initTestProject(t, b)
+	enteredA, enteredB, releaseA, releaseB := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req systemone.Request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+			return
+		}
+		if strings.Contains(req.State, "AUDIT_REPLAY_A") {
+			close(enteredA)
+			<-releaseA
+		} else if strings.Contains(req.State, "AUDIT_REPLAY_B") {
+			close(enteredB)
+			<-releaseB
+		} else {
+			t.Errorf("unexpected synthetic input")
+			return
+		}
+		ans := map[string]systemone.Answer{}
+		for key := range req.Questions {
+			ans[key] = systemone.Answer{Type: "choice", Choice: "change_request", Probabilities: map[string]float64{"change_request": .9, "question": .1, "other": 0}, Confidence: .9}
+		}
+		_ = json.NewEncoder(w).Encode(systemone.Response{Model: "m", Answers: ans})
+	}))
+	defer func() {
+		select {
+		case <-releaseA:
+		default:
+			close(releaseA)
+		}
+		select {
+		case <-releaseB:
+		default:
+			close(releaseB)
+		}
+		model.Close()
+	}()
+	seed := func(root, name string) string {
+		path := writeSpec(t, filepath.Join(root, "decisions"), "true")
+		sp := mustLoad(t, path)
+		st := store.Store{Dir: root}
+		target := ""
+		for i := 0; i < 3; i++ {
+			input := map[string]string{"message": fmt.Sprintf("AUDIT_CURRENT_%s_%d", name, i)}
+			hash := sp.Hash()
+			if i == 2 {
+				input["message"] = "AUDIT_REPLAY_" + name
+				hash = "old-wording"
+			}
+			rec := store.Record{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: hash, Model: "m", Type: "choice", Inputs: input, InputsHash: store.HashInputs(input), Raw: map[string]float64{"change_request": .9, "question": .1, "other": 0}, Top: "change_request", P: .9, Band: "ask", At: time.Now()}
+			if err := st.AppendRecord(rec); err != nil {
+				t.Fatal(err)
+			}
+			if i == 1 {
+				target = rec.TraceID
+				continue
+			}
+			label, err := store.LabelFor(&rec, "change_request", 1, "ui")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = st.AppendLabel(label); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return target
+	}
+	traceA, traceB := seed(aStore, "A"), seed(bStore, "B")
+	common, _ := agentHome()
+	var ef endpointFlags
+	ef.local, ef.model = model.URL, "m"
+	hub := newProjectHub(common, serveOpts{ef: ef, autoCalibrate: true})
+	var initial bytes.Buffer
+	old := stdout
+	stdout = &initial
+	defer func() { stdout = old }()
+	type result struct {
+		code int
+		body string
+	}
+	doneA, doneB := make(chan result, 1), make(chan result, 1)
+	invoke := func(scope, trace string, ch chan result) {
+		body := `{"trace_id":"` + trace + `","truth":"change_request","source":"ui"}`
+		r := httptest.NewRequest("POST", "/p/"+projectID(scope)+"/v1/label", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		hub.ServeHTTP(w, r)
+		ch <- result{w.Code, w.Body.String()}
+	}
+	go invoke(aScope, traceA, doneA)
+	select {
+	case <-enteredA:
+	case <-time.After(5 * time.Second):
+		t.Fatal("A's calibration does not reach the model")
+	}
+	go invoke(bScope, traceB, doneB)
+	select {
+	case <-enteredB:
+	case <-time.After(5 * time.Second):
+		t.Fatal("B's calibration does not reach the model")
+	}
+	close(releaseA)
+	ra := <-doneA
+	close(releaseB)
+	rb := <-doneB
+	wrongRestore := stdout != &initial
+	stdout = &initial
+	leaked := strings.Contains(rb.body, filepath.Join(aStore, "decisions", "intent.yaml"))
+	ownMissing := !strings.Contains(ra.body, filepath.Join(aStore, "decisions", "intent.yaml"))
+	if ra.code != 200 || rb.code != 200 || leaked || ownMissing || wrongRestore {
+		t.Fatalf("concurrent calibrations must not mix reports and outputs: A=%d B=%d leaked=%v ownMissing=%v wrongRestore=%v", ra.code, rb.code, leaked, ownMissing, wrongRestore)
+	}
+
+}
+
+// calibrate can read choice / score rows too when they carry raw (an object of probabilities per choice). It draws a line without calling a model,
+// so a benchmark's LoRA arm (raw produced by another tool) can be lined up on the same scale as A and B. noul's raw stays a single number as before.
+func TestCalibrateReadsChoiceRowsWithRawDistributions(t *testing.T) {
+	dir := t.TempDir()
+	specPath := writeSpec(t, dir, "false") // min_n 2
+	rows := `[
+	 {"inputs":{"message":"fix a"},"raw":{"change_request":0.9,"question":0.08,"other":0.02},"truth":"change_request"},
+	 {"inputs":{"message":"fix b"},"raw":{"change_request":0.85,"question":0.1,"other":0.05},"truth":"change_request"},
+	 {"inputs":{"message":"why a"},"raw":{"change_request":0.1,"question":0.88,"other":0.02},"truth":"question"},
+	 {"inputs":{"message":"why b"},"raw":{"change_request":0.2,"question":0.75,"other":0.05},"truth":"question"}
+	]`
+	labeledPath := filepath.Join(dir, "rows.json")
+	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Nowhere to send (no --local): there is raw, so no call is needed
+	out := capture(t, func() error {
+		return cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--model", "lora-bench", "--store", filepath.Join(dir, ".shikii"), "--write"})
+	})
+	for _, must := range []string{"n=4", "top-1 accuracy=1.000", "wrote calibration"} {
+		if !strings.Contains(out, must) {
+			t.Fatalf("calibrate must score the given raw without a model; missing %q:\n%s", must, out)
+		}
+	}
+	sp := mustLoad(t, specPath)
+	if c := sp.CalibrationFor("lora-bench"); c == nil || c.N != 4 {
+		t.Fatalf("the line is keyed by the given model name: %+v", sp.Calibration)
+	}
+	// If a raw key is not one of the spec's choices, it is an error (not silently 0)
+	bad := strings.Replace(rows, `"other":0.02},"truth":"change_request"`, `"nope":0.02},"truth":"change_request"`, 1)
+	if err := os.WriteFile(labeledPath, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	old := stdout
+	stdout = &buf
+	err := cmdCalibrate([]string{specPath, "--labeled", labeledPath, "--model", "lora-bench", "--store", filepath.Join(dir, ".shikii2")})
+	stdout = old
+	if err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Fatalf("a raw key that is not an option must be an error, got %v", err)
+	}
+}
+
+// 0.7.3: whether delivered lessons changed behavior is counted from real-use observation, not a synthetic experiment. status shows the number of quotes delivered,
+// the helpful / unused / harmful / unknown the reviews gave, and how many have no observation yet. Delivery of corrections is counted separately.
+func TestStatusCountsDeliveredLessonsAndTheirEffect(t *testing.T) {
+	st, scope, _, draft, revision := memoryEffectFixture(t)
+	out := capture(t, func() error { return cmdStatus([]string{"--store", st.Dir}) })
+	if !strings.Contains(out, "memory: no lessons delivered yet") {
+		t.Fatalf("with no deliveries it must say so:\n%s", out)
+	}
+	memoryEffectPrompt(t, scope, "s1")
+	out = capture(t, func() error { return cmdStatus([]string{"--store", st.Dir}) })
+	if !strings.Contains(out, "memory: 1 quotes delivered") || !strings.Contains(out, "not yet assessed 1") {
+		t.Fatalf("must count delivered quotes and show those awaiting observation:\n%s", out)
+	}
+	turn := memoryEffectComplete(t, st, scope, "s1") // an observation can be attached once the reply and the person's next message are both in
+	if err := st.SaveMemoryAssessment(scope, store.MemoryAssessment{SourceID: turn, Key: "lesson:" + draft.ID + ":" + revision, Result: "helpful", Decision: "未初期化の場所の確認を手順に足した", Evidence: "返答に確認の手順が入った"}); err != nil {
+		t.Fatal(err)
+	}
+	out = capture(t, func() error { return cmdStatus([]string{"--store", st.Dir}) })
+	if !strings.Contains(out, "helpful 1, unused 0, harmful 0, unknown 0, not yet assessed 0") || !strings.Contains(out, "last 7 days: delivered 1, helpful 1") {
+		t.Fatalf("once observed it counts as helpful and also shows the last 7 days:\n%s", out)
+	}
+}
+
+// Audit R2: even in a store with no records and no specs, status shows the lines for delivered lessons and blocking checks (the README promises it).
+func TestStatusWithoutRecordsStillPrintsMemoryAndGuards(t *testing.T) {
+	dir := t.TempDir()
+	store := filepath.Join(dir, ".shikii")
+	if err := os.MkdirAll(store, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error { return cmdStatus([]string{"--store", store}) })
+	if !strings.Contains(out, "memory:") || !strings.Contains(out, "guards:") {
+		t.Fatalf("the memory and guards lines show even without records:\n%s", out)
+	}
+}
+
+// TestMain removes the developer's keys (TYPESAFE_API_KEY / DECISIONS_API_KEY) and SHIKII_MODEL before the tests.
+// Otherwise tests that assume the local fake model send requests to the real api.typesafe.ai,
+// and the store's records, calibrations and bands change and the tests fail (2026-10-23: 6 failed right after the key was put in an environment variable).
+// Tests that try Jev (hook_hosted_test.go) call t.Setenv themselves.
+func TestMain(m *testing.M) {
+	for _, k := range []string{"TYPESAFE_API_KEY", "DECISIONS_API_KEY", "SHIKII_MODEL"} {
+		os.Unsetenv(k)
+	}
+	// No test starts real background processes (up, serve) or a browser (a test that skipped the harness forgot a stub, and a real one was left running. 0.9.1)
+	hookSpawn = recordSpawn
+	openBrowser = func(url string) { opened = append(opened, url) }
+	stopProcess = func(int) error { return nil } // uninstall never signals a real process from tests (0.9.3)
+	processCommand = func(int) string { return "" }
+	// Writing files out to the disk (on macOS a flush of the disk's cache) made the eight test groups wait on each other: a test that
+	// takes 0.3 s alone took 1 to 2 s. Tests do not need the data to survive a power cut.
+	store.SyncTemp = func(*os.File) error { return nil }
+	syncPersonFile = func(*os.File) error { return nil }
+	os.Exit(m.Run())
 }

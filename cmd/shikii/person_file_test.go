@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -75,5 +78,170 @@ func TestEveryWriterOfAPersonsSettingsKeepsLinksModesAndReadOnly(t *testing.T) {
 				t.Fatalf("%s: a temp file was left: %s", name, e.Name())
 			}
 		}
+	}
+}
+
+// A5 for init: shikii is added to a file Codex reads (it is not reported as unreadable).
+func TestFinalAEA5InitAddsToCodexReadableTOML11(t *testing.T) {
+	text := "[mcp_servers.other]\ncommand = \"x\"\nenv = {\n  A = \"1\",\n}\n"
+	p := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	did, err := addCodexServer(p, []string{"mcp"})
+	b, _ := os.ReadFile(p)
+	if err != nil || !did {
+		t.Errorf("A5: shikii is not added to a file Codex reads: did=%v err=%v\n%s", did, err, b)
+	}
+	if !bytes.HasPrefix(b, []byte(text)) || strings.Count(string(b), "\n[mcp_servers.shikii]\n") != 1 {
+		t.Errorf("A1: not exactly one shikii table after the original text:\n%s", b)
+	}
+}
+
+// A4: a hard-linked config.toml (dotfiles kept by hard link) must stay one file: both names see shikii's change.
+func TestAuditA4HardLinkStaysOneFile(t *testing.T) {
+	dir := t.TempDir()
+	keep := filepath.Join(dir, "dotfiles-config.toml")
+	if err := os.WriteFile(keep, []byte("model = \"m\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.toml")
+	if err := os.Link(keep, path); err != nil {
+		t.Fatal(err)
+	}
+	did, err := addCodexServer(path, []string{"mcp"})
+	if err != nil || !did {
+		t.Fatalf("did=%v err=%v", did, err)
+	}
+	a, _ := os.ReadFile(path)
+	b, _ := os.ReadFile(keep)
+	if string(a) != string(b) {
+		t.Fatalf("A4: the hard link was split: config.toml=%q, the other name=%q", a, b)
+	}
+}
+
+// A4: a file the person cannot write (macOS ACL deny write; the mode bits still say 0644) is not replaced.
+func TestAuditA4ACLDenyWriteIsReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("model = \"m\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	user := os.Getenv("USER")
+	if out, err := exec.Command("chmod", "+a", user+" deny write", path).CombinedOutput(); err != nil {
+		t.Skip(string(out))
+	}
+	defer exec.Command("chmod", "-N", path).Run()
+	if f, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
+		f.Close()
+		t.Skip("the ACL did not take")
+	}
+	did, err := addCodexServer(path, []string{"mcp"})
+	b, _ := os.ReadFile(path)
+	out, _ := exec.Command("ls", "-le", path).CombinedOutput()
+	if did || strings.Contains(string(b), "shikii") {
+		t.Fatalf("A4: a file the person cannot write was replaced: did=%v err=%v\n%s\n%s", did, err, b, out)
+	}
+}
+
+// A4: an immutable (chflags uchg) config.toml: init should treat it as read-only, not stop init with an error.
+func TestAuditA4ImmutableFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("model = \"m\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("chflags", "uchg", path).CombinedOutput(); err != nil {
+		t.Skip(string(out))
+	}
+	defer exec.Command("chflags", "nouchg", path).Run()
+	did, err := addCodexServer(path, []string{"mcp"})
+	ents, _ := os.ReadDir(dir)
+	t.Logf("did=%v err=%v readOnly=%v entries=%d", did, err, err != nil && strings.Contains(err.Error(), "read-only"), len(ents))
+	if len(ents) != 1 {
+		t.Errorf("A4: a temp file was left: %v", ents)
+	}
+	if did && err != nil {
+		t.Errorf("A4: a failed write is not reported as added: did=%v err=%v", did, err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "model = \"m\"\n" {
+		t.Errorf("A4: an immutable file is not changed: %q", b)
+	}
+}
+
+// R1 (A4): a relative link whose ".." crosses a linked folder. The kernel resolves ".." from the real folder; endOfLinks joins it lexically.
+func TestRe2RelativeLinkThroughLinkedFolder(t *testing.T) {
+	dir := t.TempDir()
+	realDir := filepath.Join(dir, "real", "codex")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shared := filepath.Join(dir, "real", "shared.toml")
+	if err := os.WriteFile(shared, []byte("model = \"m\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../shared.toml", filepath.Join(realDir, "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realDir, filepath.Join(home, ".codex")); err != nil {
+		t.Fatal(err)
+	}
+	// an unrelated file of the person's at the place the lexical join lands on
+	stray := filepath.Join(home, "shared.toml")
+	if err := os.WriteFile(stray, []byte("# my other notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".codex", "config.toml")
+	did, err := addCodexServer(path, []string{"mcp"})
+	got, _ := os.ReadFile(shared)
+	other, _ := os.ReadFile(stray)
+	viaLink, _ := os.ReadFile(path)
+	if !strings.Contains(string(viaLink), "[mcp_servers.shikii]") || string(other) != "# my other notes\n" {
+		t.Fatalf("A4: did=%v err=%v\nthe file Codex reads (%s):\n%s\nan unrelated file (%s):\n%s", did, err, shared, got, stray, other)
+	}
+}
+
+// R4 (A4 "\u6a29\u9650\u306f\u4fdd\u3064"): the group, an ACL entry and an extended attribute of the file.
+func TestRe2KeepsGroupACLAndXattr(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("model = \"m\"\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("chgrp", "admin", path).CombinedOutput(); err != nil {
+		t.Skip(string(out))
+	}
+	if out, err := exec.Command("chmod", "+a", "group:admin allow write", path).CombinedOutput(); err != nil {
+		t.Skip(string(out))
+	}
+	if out, err := exec.Command("xattr", "-w", "com.example.keep", "yes", path).CombinedOutput(); err != nil {
+		t.Skip(string(out))
+	}
+	before, _ := exec.Command("ls", "-le", path).CombinedOutput()
+	did, err := addCodexServer(path, []string{"mcp"})
+	if err != nil || !did {
+		t.Fatalf("did=%v err=%v", did, err)
+	}
+	after, _ := exec.Command("ls", "-le", path).CombinedOutput()
+	x, xerr := exec.Command("xattr", "-p", "com.example.keep", path).CombinedOutput()
+	var bad []string
+	if !strings.Contains(string(after), "admin") || !strings.Contains(string(after), " ") {
+	}
+	fi, _ := os.Stat(path)
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && st.Gid != 80 {
+		bad = append(bad, "group changed")
+	}
+	if !strings.Contains(string(after), "allow write") {
+		bad = append(bad, "ACL dropped")
+	}
+	if xerr != nil {
+		bad = append(bad, "xattr dropped: "+strings.TrimSpace(string(x)))
+	}
+	if len(bad) > 0 {
+		t.Fatalf("A4: %v\nbefore:\n%s\nafter:\n%s", bad, before, after)
 	}
 }

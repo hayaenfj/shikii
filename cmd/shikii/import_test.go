@@ -157,3 +157,24 @@ func TestJudgeLabelsOnlyWhenItAgreesWithPeople(t *testing.T) {
 		t.Fatalf("the bad judge must not have written labels")
 	}
 }
+
+// 10: import strips Excel's UTF-8 BOM and makes two identical column names an error.
+func TestImportHandlesBOMAndDuplicateColumns(t *testing.T) {
+	dir := t.TempDir()
+	specPath := writeSpec(t, dir, "false")
+	csvPath := filepath.Join(dir, "past.csv")
+	out := filepath.Join(dir, "truths.json")
+	if err := os.WriteFile(csvPath, []byte("\xef\xbb\xbfmessage,truth\nfix a,change_request\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := capture(t, func() error { return cmdImport([]string{csvPath, "--spec", specPath, "--out", out}) })
+	if !strings.Contains(got, "1 truths") {
+		t.Fatalf("a BOM must not hide the first column:\n%s", got)
+	}
+	if err := os.WriteFile(csvPath, []byte("message,truth,message\nfix a,change_request,fix b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdImport([]string{csvPath, "--spec", specPath, "--out", out}); err == nil || !strings.Contains(err.Error(), "twice") {
+		t.Fatalf("a duplicated column must be an error, got %v", err)
+	}
+}

@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
-	shikii "github.com/hayaenfj/shikii"
+	"github.com/hayaenfj/shikii"
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -244,5 +246,192 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 	var quoted map[string]any
 	if len(parts) != 2 || json.Unmarshal([]byte(parts[1]), &quoted) != nil || len(quoted["sources"].([]any)) != 2 {
 		t.Fatal("even when cut, the boundary between quoted data and instructions is kept")
+	}
+}
+
+// 3. wiki ingest (CLI) hides the JSON error: Claude sent applies_to as an array and a lesson object and got the same
+// generic line 3 times. capture and maintain already pass the decoder's reason on.
+func TestIngestErrorSaysWhatIsWrong(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", filepath.Join(dir, "home"))
+	capture(t, func() error { return cmdInit(nil) })
+	for input, want := range map[string]string{
+		`{"sources":["x"],"title":"t","lesson":"l","applies_to":["a"]}`:            "cannot unmarshal array",  // applies_to must be a string
+		`{"sources":["x"],"title":"t","lesson":{"kind":"howto"},"applies_to":"a"}`: "cannot unmarshal object", // lesson must be a string
+		`{"title":"t","lesson":"l","applies_to":"a"}`:                              "sources",                 // MCP said "needs source ids"; Claude tried source_ids
+	} {
+		var err error
+		withStdin(t, input, func() { err = cmdNotebook([]string{"ingest"}) })
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("the ingest error must say %q: %v (input %s)", want, err, input)
+		}
+	}
+}
+
+// Behaviour check 0.9.2 (Claude Code): a wrong wiki capture input was answered with ingest's error and no field name,
+// and the agent gave up keeping the whole log. The errors now name capture and say what is wrong.
+func TestCaptureErrorsSayWhatIsWrong(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", filepath.Join(dir, "home"))
+	capture(t, func() error { return cmdInit(nil) })
+	for input, want := range map[string][]string{
+		`{"kind":"test","title":"t","content":"c","reference":"r","observed_at":"2026-10-26T00:00:00Z"}`:                 {"capture", "version"},
+		`{"kind":"result","title":"t","content":"c","reference":"r","version":"v","observed_at":"2026-10-26T00:00:00Z"}`: {"capture", "kind"},
+		`{"kind":"test","title":"t","body":"c"}`: {"capture", "body"},
+	} {
+		var err error
+		withStdin(t, input, func() { err = cmdNotebook([]string{"capture"}) })
+		for _, w := range want {
+			if err == nil || !strings.Contains(err.Error(), w) {
+				t.Fatalf("the capture error says %q: %v (input %s)", w, err, input)
+			}
+		}
+		if strings.Contains(err.Error(), "ingest") {
+			t.Fatalf("a capture error does not speak of ingest: %v", err)
+		}
+	}
+}
+
+func TestNotebookCapturesObservedSourcesThroughHTTPAndCLI(t *testing.T) {
+	repo := gitRepo(t)
+	root := hookEnv(t, nil, repo)
+	t.Chdir(repo)
+	h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
+	request := `{"operation":"capture","observation":{"kind":"test","title":"Package smoke check","content":"go test ./...: PASS","reference":"go test ./...","version":"fixture-v1","observed_at":"2026-01-01T00:00:00Z"}}`
+	r := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/v1/wiki/notebook", strings.NewReader(request))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(r, req)
+	if r.Code != 200 {
+		t.Fatalf("a check result can be saved with its kind, version and time: %d %s", r.Code, r.Body.String())
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(r.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	id := saved["id"].(string)
+	got := notebookCommand(t, "query", id)
+	if got["observations"].([]any)[0].(map[string]any)["kind"] != "test" {
+		t.Fatal("keeps the kind of the source")
+	}
+	view, err := reflectQuery(root, feedbackScope(repo))
+	data, _ := json.Marshal(view)
+	if err != nil || !strings.Contains(string(data), id) {
+		t.Fatal("passes observations to the usual reflection", err)
+	}
+	notebookCommand(t, "ingest", `{"sources":["`+id+`"],"title":"Smoke checks","lesson":"Run package smoke checks","kind":"rule","scene":"テストの時","applies_to":"Package maintenance"}`)
+	got = notebookCommand(t, "query", "Smoke checks")
+	if len(got["lessons"].([]any)) != 1 {
+		t.Fatal("a check result can be the source of a lesson")
+	}
+	all := notebookCommand(t, "query", "")
+	task := all["maintenance"].([]any)[0].(map[string]any)
+	review := map[string]any{"page_id": task["page_id"], "revision": task["revision"], "key": task["key"], "reason": "Checked the captured smoke result against the article."}
+	data, _ = json.Marshal(review)
+	notebookCommand(t, "maintain", string(data))
+	after, err := reflectQuery(root, feedbackScope(repo))
+	if err != nil || len(after.Maintenance) != 0 {
+		t.Fatal("saves the review result through the CLI and removes it from the reflection", err)
+	}
+	cli := notebookCommand(t, "capture", `{"kind":"code","title":"Source excerpt","content":"package fixture","reference":"example.go:1","version":"fixture-v1","observed_at":"2026-01-01T00:00:00Z"}`)
+	if cli["kind"] != "code" {
+		t.Fatal("the same save operation can be used from the CLI too")
+	}
+}
+
+func TestNotebookCLIReadsSourcesTogether(t *testing.T) {
+	repo := gitRepo(t)
+	root := hookEnv(t, nil, repo)
+	t.Chdir(repo)
+	book := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	ids := []string{}
+	for _, content := range []string{"返品の承認済み規定", "送料を除くという確認結果"} {
+		source, err := book.Capture(notebook.Observation{Kind: "test", Title: content, Content: content, Reference: "fixture", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, source.ID)
+	}
+	text := capture(t, func() error { return cmdWiki([]string{"query", ids[0], ids[1], ids[0]}) })
+	var got struct {
+		Observations []notebook.Observation `json:"observations"`
+	}
+	if err := json.Unmarshal([]byte(text), &got); err != nil || len(got.Observations) != 2 {
+		t.Fatalf("one CLI call reads the sources with duplicates removed: %s %v", text, err)
+	}
+	seen := map[string]bool{}
+	for _, source := range got.Observations {
+		if (source.ID != ids[0] && source.ID != ids[1]) || seen[source.ID] || source.Content == "" || source.Version != "v1" {
+			t.Fatalf("returns each given raw text and version once: %+v", source)
+		}
+		seen[source.ID] = true
+	}
+	// Search words are split as before. Do not confuse them with arguments that are only IDs.
+	body := "送料を除いた支払額を返す。"
+	if _, err := book.Ingest(notebook.Draft{Sources: ids, Title: "返品 送料", Lesson: body, Kind: "rule", Scene: "テストの時", AppliesTo: "返品の対応", Body: &body}); err != nil {
+		t.Fatal(err)
+	}
+	text = capture(t, func() error { return cmdWiki([]string{"query", "返品", "送料"}) })
+	if !strings.Contains(text, `"lessons":[{`) {
+		t.Fatalf("several search words keep searching: %s", text)
+	}
+	for _, args := range [][]string{
+		{"query", ids[0], "0000000000000000"},
+	} {
+		if err := cmdWiki(args); err == nil {
+			t.Fatal("sources of another project are not let through to the search")
+		}
+	}
+	// Reading several at once still detects tampering with the cited source.
+	paths, err := filepath.Glob(filepath.Join(root, "records", "wiki-sources", "*", ids[0]+".json"))
+	if err != nil || len(paths) != 1 {
+		t.Fatal("cannot find the saved source", err)
+	}
+	data, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths[0], append(data, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdWiki([]string{"query", ids[0], ids[1]}); err == nil {
+		t.Fatal("reading several at once does not skip the hash check of the cited source")
+	}
+}
+
+// A source record has no size limit of its own: a long memory file is captured whole (not split by its sections),
+// read back, and listed for sorting. Only the store's line limit (store.MaxLineBytes) still applies to the record.
+func TestLongSourceIsCapturedWhole(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", filepath.Join(dir, "home"))
+	capture(t, func() error { return cmdInit(nil) })
+	content := strings.Repeat("A long memory file, kept verbatim. ", 6000) + "END-OF-MEMORY" // about 210 KiB
+	in, _ := json.Marshal(notebook.Observation{Kind: "agent", Title: "long memory", Content: content, Reference: "memory/long.md", Version: "2026-10-26", ObservedAt: time.Now()})
+	var out string
+	withStdin(t, string(in), func() { out = capture(t, func() error { return cmdNotebook([]string{"capture"}) }) })
+	var saved notebook.Observation
+	if err := json.Unmarshal([]byte(out), &saved); err != nil || saved.ID == "" {
+		t.Fatalf("the CLI must capture a long source whole: %v\n%.300s", err, out)
+	}
+	root, scope, err := currentProjectStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	book := notebook.Book{Root: root, Scope: scope}
+	got, err := book.ReadSources([]string{saved.ID})
+	obs, _ := got["observations"].([]notebook.Observation)
+	if err != nil || len(obs) != 1 || obs[0].Content != content {
+		t.Fatalf("the long source must be read back whole: %v", err)
+	}
+	pending, err := book.PendingObservations()
+	if err != nil || len(pending) != 1 || !strings.HasSuffix(pending[0].Content, "END-OF-MEMORY") {
+		t.Fatalf("the long source must be listed for sorting: %v", err)
+	}
+	huge := notebook.Observation{Kind: "agent", Title: "huge", Content: strings.Repeat("x", store.MaxLineBytes), Reference: "memory/huge.md", Version: "v", ObservedAt: time.Now()}
+	if _, err := book.Capture(huge); err == nil || !strings.Contains(err.Error(), "MiB") {
+		t.Fatalf("a record over the store's line limit is still refused, saying the limit: %v", err)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeGuard(t *testing.T, root string, g guard) {
@@ -153,4 +154,98 @@ func guardRecordsFor(root, id string) []guardRecord {
 		}
 	}
 	return out
+}
+
+// 4. commit-body does not look at commits when the current HEAD cannot be reached from the HEAD at request time (switched branches or pulled).
+func TestCommitBodyIgnoresCommitsNotMadeInTheTurn(t *testing.T) {
+	repo := gitRepo(t)
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a.txt", "a")
+	gitCommitAll(t, repo, "base")
+	if out, err := exec.Command("git", "-C", repo, "checkout", "-q", "-b", "feature").CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	write("b.txt", "b")
+	if out, err := exec.Command("git", "-C", repo, "add", "-A").CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	old := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "feature: subject only")
+	old.Env = append(os.Environ(), "GIT_COMMITTER_DATE=2026-10-21T00:00:00Z", "GIT_AUTHOR_DATE=2026-10-21T00:00:00Z")
+	if out, err := old.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	if out, err := exec.Command("git", "-C", repo, "checkout", "-q", "-").CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	head, since := gitHead(repo), time.Now()
+	if out, err := exec.Command("git", "-C", repo, "checkout", "-q", "feature").CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	in := guardTurnInput(repo, "", nil, false, head, since)
+	if len(in.Commits) != 0 {
+		t.Fatalf("do not treat existing commits on the switched-to branch as this turn's: %+v", in.Commits)
+	}
+	// Commits stacked on top of the request's HEAD are looked at
+	head, since = gitHead(repo), time.Now()
+	write("c.txt", "c")
+	gitCommitAll(t, repo, "made in this turn")
+	if in = guardTurnInput(repo, "", nil, false, head, since); !in.CommitsKnown || len(in.Commits) != 1 {
+		t.Fatalf("this turn's commits are looked at: %+v", in)
+	}
+}
+
+// 5. A Stop that was blocked does not self-assess scope and completion (do not judge on the changes and reply from before the fix).
+func TestBlockedStopDoesNotJudgeTheUnfinishedTurn(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(repo, ".shikii")
+	os.WriteFile(filepath.Join(repo, "README.md"), []byte("# x\n"), 0o644)
+	gitCommitAll(t, repo, "init")
+	writeGuard(t, root, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"根"}})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "j", "cwd": repo, "prompt": "README を直して"})
+	os.WriteFile(filepath.Join(repo, "README.md"), []byte("# x\n根\n"), 0o644)
+	out := runHook(t, "stop", map[string]any{"session_id": "j", "cwd": repo, "last_assistant_message": "直した"})
+	if !strings.Contains(out, "block") {
+		t.Fatalf("blocks: %s", out)
+	}
+	if loadSession(root, "j").Judged {
+		t.Fatal("a blocked turn is not marked as decided")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "records", "done-as-asked.jsonl")); strings.TrimSpace(string(b)) != "" {
+		t.Fatal("do not judge completion on the reply from before the fix")
+	}
+}
+
+// With the English setting the terminal line and the reason stay English only.
+func TestAuditTranslationGuardStopLineInEnglish(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(repo, ".shikii")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# shikii\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, repo, "init")
+	writeGuard(t, root, guard{ID: "no-foo", Kind: guardKindForbiddenWords, Title: "no foo", Words: []string{"foo"}})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": repo, "prompt": "add a line to the README"})
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# shikii\n\nfoo bar\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := runHook(t, "stop", map[string]any{"session_id": "g", "cwd": repo, "last_assistant_message": "done"})
+	var parsed map[string]any
+	_ = json.Unmarshal([]byte(out), &parsed)
+	sys, _ := parsed["systemMessage"].(string)
+	recs := guardRecordsFor(root, "no-foo")
+	if !strings.Contains(sys, "(no-foo)") || strings.Contains(sys, "\u6b62") || len(recs) != 1 || strings.Contains(recs[0].Reason, "\u4f7f") {
+		t.Errorf("with the English setting there is no Japanese: %q %+v", sys, recs)
+	}
 }

@@ -2,15 +2,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -408,5 +413,1077 @@ func TestHTTPServerLimitsSlowConnections(t *testing.T) {
 	buf := make([]byte, 1)
 	if _, err := conn.Read(buf); err != io.EOF {
 		t.Fatalf("an incomplete header must be closed after ReadHeaderTimeout, got %v", err)
+	}
+}
+
+// The page has a "wording" section: read results, run tune, and a person checks meaning and adopts / rejects. Both languages.
+func TestServeUIHasWordingSection(t *testing.T) {
+	url, _, _, _ := newTuneFixture(t)
+	html := uiText(t, url)
+	for _, must := range []string{"v1/tune?spec=", "v1/tune/run", "v1/tune/adopt", "meaning_same", "意味は同じ", "意味が違う", "same meaning", "meaning changed", "v1/tune/variant", "言い換えの案を書く", "write a rewording"} {
+		if !strings.Contains(html, must) {
+			t.Fatalf("UI must have the wording section; missing %q", must)
+		}
+	}
+}
+
+// Audit 5 item 8: serve's startup waits for the model's endpoint when there is --local, and does not wait without it (hosted only). A failure to wait is a startup failure.
+func TestServeWaitsForTheLocalModelOnlyWhenThereIsOne(t *testing.T) {
+	var asked []string
+	fake := func(ctx context.Context, url string, every time.Duration, logf func(string, ...any)) error {
+		asked = append(asked, url)
+		if dl, ok := ctx.Deadline(); !ok || time.Until(dl) < 14*time.Minute {
+			t.Fatalf("the wait must have a deadline of about 15 minutes")
+		}
+		if url == "http://127.0.0.1:1" {
+			return errors.New("not ready")
+		}
+		return nil
+	}
+	if err := waitForLocalModel("", false, fake); err != nil || len(asked) != 0 {
+		t.Fatalf("hosted only: nothing to wait for, got %v %v", err, asked)
+	}
+	// When there is a key and Jev is used, it does not wait even with --local (the rule is not to start a local model, so waiting would keep the page from opening; 2026-10-23)
+	if err := waitForLocalModel("http://127.0.0.1:1", true, fake); err != nil || len(asked) != 0 {
+		t.Fatalf("with a key the page must open without a local model: %v %v", err, asked)
+	}
+	if err := waitForLocalModel("http://127.0.0.1:8080", false, fake); err != nil || len(asked) != 1 || asked[0] != "http://127.0.0.1:8080" {
+		t.Fatalf("a local model is waited for at its URL: %v %v", err, asked)
+	}
+	if err := waitForLocalModel("http://127.0.0.1:1", false, fake); err == nil {
+		t.Fatalf("a model that never answers must fail the start")
+	}
+}
+
+// Redoing past decisions (the owner's request, 2026-10-18): (1) a list of what was answered and correcting answers (the new answer wins),
+// (2) asking the AI again: decide the same text again with the current wording and line, keeping a new record with redo_of. The original leaves the queue, and the person's answer is copied to the new record.
+func TestPastDecisionsCanBeRedone(t *testing.T) {
+	url, _, storeDir := newServeFixture(t, "false", map[string]float64{"change_request": 0.6, "question": 0.4, "other": 0})
+	code, d := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix the typo"}})
+	if code != 200 {
+		t.Fatalf("decide: %d %v", code, d)
+	}
+	trace := d["trace_id"].(string)
+	// Redo a record not yet answered → the original leaves the queue and a new record appears
+	code, res := postJSON(t, url+"/v1/redo", map[string]any{"spec": "intent", "trace_id": trace})
+	if code != 200 || res["recorded"] != true || res["before"].(map[string]any)["trace_id"] != trace || res["after"].(map[string]any)["trace_id"] == trace {
+		t.Fatalf("redo must decide again and record a new trace: %d %v", code, res)
+	}
+	newTrace := res["after"].(map[string]any)["trace_id"].(string)
+	var q struct{ Items []map[string]any }
+	getJSON(t, url+"/v1/queue?spec=intent", &q)
+	ids := map[string]bool{}
+	for _, it := range q.Items {
+		ids[it["trace_id"].(string)] = true
+	}
+	if ids[trace] || !ids[newTrace] {
+		t.Fatalf("the redone record replaces the original in the queue: %v", ids)
+	}
+	// A person answers → it appears in answered. Correcting the answer uses the new answer
+	postJSON(t, url+"/v1/label", map[string]any{"spec": "intent", "trace_id": newTrace, "truth": "question"})
+	var a struct{ Items []map[string]any }
+	getJSON(t, url+"/v1/answered?spec=intent", &a)
+	if len(a.Items) != 1 || a.Items[0]["truth"] != "question" || a.Items[0]["correct"] != false || a.Items[0]["redo_of"] != trace {
+		t.Fatalf("answered list shows the person's answer and whether the AI matched: %v", a.Items)
+	}
+	postJSON(t, url+"/v1/label", map[string]any{"spec": "intent", "trace_id": newTrace, "truth": "change_request"})
+	getJSON(t, url+"/v1/answered?spec=intent", &a)
+	if len(a.Items) != 1 || a.Items[0]["truth"] != "change_request" || a.Items[0]["correct"] != true {
+		t.Fatalf("the newest answer wins: %v", a.Items)
+	}
+	// Redo an answered record → the person's answer is copied to the new record, and right/wrong before and now are returned
+	code, res = postJSON(t, url+"/v1/redo", map[string]any{"spec": "intent", "trace_id": newTrace})
+	if code != 200 || res["truth"] != "change_request" || res["correct_before"] != true || res["correct_after"] != true {
+		t.Fatalf("redo of an answered decision carries the answer and compares: %d %v", code, res)
+	}
+	// Audit 6 item 4: answered shows 1 item (with redo_of), not the original, and the answered count stays at the number of texts a person answered = 1
+	getJSON(t, url+"/v1/answered?spec=intent", &a)
+	if len(a.Items) != 1 || a.Items[0]["redo_of"] != newTrace {
+		t.Fatalf("the redone record replaces the original in the answered list too: %v", a.Items)
+	}
+	var stat struct{ Specs []map[string]any }
+	getJSON(t, url+"/v1/status", &stat)
+	if stat.Specs[0]["labels"] != 1.0 {
+		t.Fatalf("answered count is the number of texts a person answered (1), got %v", stat.Specs[0]["labels"])
+	}
+	// Audit 6 item 8a: limit (answer 2, then narrow to 1)
+	_, d2 := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "why is it slow?"}})
+	postJSON(t, url+"/v1/label", map[string]any{"spec": "intent", "trace_id": d2["trace_id"], "truth": "question"})
+	getJSON(t, url+"/v1/answered?spec=intent", &a)
+	if len(a.Items) != 2 {
+		t.Fatalf("two texts answered: %d", len(a.Items))
+	}
+	getJSON(t, url+"/v1/answered?spec=intent&limit=1", &a)
+	if len(a.Items) != 1 {
+		t.Fatalf("limit must cap the answered list: %d", len(a.Items))
+	}
+	st := store.Store{Dir: storeDir}
+	labeled, _ := st.LabeledTraces("intent")
+	if l, ok := labeled[res["after"].(map[string]any)["trace_id"].(string)]; !ok || l.Truth != "change_request" || !store.HumanSource(l.Source) {
+		t.Fatalf("the person's answer must be carried to the new record as a human truth: %+v", l)
+	}
+	getJSON(t, url+"/v1/queue?spec=intent", &q)
+	if len(q.Items) != 0 {
+		t.Fatalf("a redone answered decision does not come back to the queue: %v", q.Items)
+	}
+	// A record without text cannot be redone
+	if err := st.AppendRecord(store.Record{TraceID: "old", SpecID: "intent", SpecHash: "h", Type: "choice", Band: "ask", InputsHash: "x", At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := postJSON(t, url+"/v1/redo", map[string]any{"spec": "intent", "trace_id": "old"}); code != 409 {
+		t.Fatalf("no text → 409, got %d", code)
+	}
+	// A record with only machine truths (context / judge) is not "answered"
+	mach := store.Record{TraceID: "mach", SpecID: "intent", SpecHash: "h", Type: "choice", Band: "act", Top: "question", P: 0.9, Inputs: map[string]string{"message": "why?"}, InputsHash: "y", Model: "m", At: time.Now()}
+	if err := st.AppendRecord(mach); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLabel(store.Label{TraceID: "mach", SpecID: "intent", SpecHash: "h", Type: "choice", Model: "m", InputsHash: "y", Truth: "question", Weight: 0.9, Source: "judge", At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	getJSON(t, url+"/v1/answered?spec=intent", &a)
+	for _, it := range a.Items {
+		if it["trace_id"] == "mach" {
+			t.Fatalf("a machine truth is not a person's answer: %v", it)
+		}
+	}
+	// The page has the parts
+	body := uiText(t, url)
+	for _, must := range []string{"v1/answered", "v1/redo", "回答済み", "AI にもう一度聞く", "別のボタンを押すと答えを直せます"} {
+		if !strings.Contains(body, must) {
+			t.Fatalf("UI must offer the redo: missing %q", must)
+		}
+	}
+}
+
+// Audit 6 items 5 and 8c: a redo is recorded with the same manners as /v1/decide. If it reaches act on a context rung, a machine truth (source context) stays on the minimal rung,
+// and the copy of the person's answer goes on 2 rungs (the context hash and the minimal hash).
+func TestRedoRecordsLikeDecideOnTheContextRung(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	specPath := writeContextSpec(t, dir)
+	sp := mustLoad(t, specPath)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", N: 2, FittedAt: "2026-10-18"})
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.ContextHash(), Method: "identity", N: 2, FittedAt: "2026-10-18"})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	storeDir := filepath.Join(dir, ".shikii")
+	var ef endpointFlags
+	ef.model, ef.local = "m", srv.URL
+	ts := httptest.NewServer(newServer(serveOpts{specsDir: filepath.Join(dir, "decisions"), storeDir: storeDir, ef: ef}))
+	defer ts.Close()
+	inputs := map[string]string{"message": "fix a", "previous": "I renamed the module"}
+	code, d := postJSON(t, ts.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": inputs})
+	if code != 200 || d["rung"] != "context" || d["band"] != "act" {
+		t.Fatalf("fixture: context act expected, got %d %v", code, d)
+	}
+	if n := len(readLabels(t, storeDir, "intent")); n != 1 {
+		t.Fatalf("decide on the context rung leaves one machine truth, got %d", n)
+	}
+	code, res := postJSON(t, ts.URL+"/v1/redo", map[string]any{"spec": "intent", "trace_id": d["trace_id"]})
+	if code != 200 || res["recorded"] != true {
+		t.Fatalf("redo: %d %v", code, res)
+	}
+	labels := readLabels(t, storeDir, "intent")
+	if len(labels) != 2 || labels[1].Source != "context" || labels[1].Rung != "minimal" {
+		t.Fatalf("redo must record like decide: a second context truth for the minimal rung, got %+v", labels)
+	}
+	// A person answers the original, then redoes it → the copy is on 2 rungs
+	postJSON(t, ts.URL+"/v1/label", map[string]any{"spec": "intent", "trace_id": d["trace_id"], "truth": "question"})
+	before := len(readLabels(t, storeDir, "intent"))
+	postJSON(t, ts.URL+"/v1/redo", map[string]any{"spec": "intent", "trace_id": d["trace_id"]})
+	after := readLabels(t, storeDir, "intent")
+	copied := 0
+	for _, l := range after[before:] {
+		if l.Source == "ui" && l.Truth == "question" {
+			copied++
+		}
+	}
+	if copied != 2 {
+		t.Fatalf("the person's answer is carried to both rungs of the new record (2 labels), got %d of %+v", copied, after[before:])
+	}
+}
+
+// writeNamedNoulSpec writes a noul spec with the given id (min_n 4) into dir.
+func writeNamedNoulSpec(t *testing.T, dir, id string) string {
+	t.Helper()
+	path := filepath.Join(dir, id+".yaml")
+	src := "id: " + id + "\nversion: 1\ntype: noul\nquestion: Same case?\nstate:\n  template: \"{{ a }}\"\n  required: [a]\npolicy:\n  send_to: [local]\n  pii: false\nthresholds:\n  act: 0.70\n  ask: 0.50\neval:\n  min_n: 4\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// 0.9.4 audit: the page's quality note says "the AI will try other wordings". Only the hook's questions get other wordings tried
+// (variantsContext / hook variants submit accept hookSpecs only), so the result says whether that is so, and a one-sided set of truths
+// is told as one kind of answer, not as "this wording cannot tell the answers apart".
+func TestServeRefusalSaysWhetherWordingsAreTriedAndOneAnswer(t *testing.T) {
+	for _, tc := range []struct {
+		name, id, want  string
+		oneSided, tries bool
+	}{
+		{"own question, reversed", "own-check", "quality", false, false},
+		{"hook question, reversed", "needs-plan", "quality", false, true},
+		{"hook question, one-sided", "needs-plan", "one_answer", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			specsDir := filepath.Join(dir, "decisions")
+			if err := os.MkdirAll(specsDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeNamedNoulSpec(t, specsDir, tc.id)
+			table := map[string]float64{}
+			for i := 0; i < 4; i++ {
+				table[fmt.Sprint(i)] = 0.9
+				if i%2 == 0 {
+					table[fmt.Sprint(i)] = 0.1
+				}
+			}
+			model := fakeNoulByMessage(t, "m", table)
+			var ef endpointFlags
+			ef.model, ef.local = "m", model.URL
+			srv := httptest.NewServer(newServer(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), ef: ef, autoCalibrate: true}))
+			t.Cleanup(srv.Close)
+			for i := 0; i < 4; i++ {
+				_, d := postJSON(t, srv.URL+"/v1/decide", map[string]any{"spec": tc.id, "inputs": map[string]string{"a": fmt.Sprint(i)}})
+				truth := "no"
+				if i%2 == 0 || tc.oneSided {
+					truth = "yes"
+				}
+				if code, l := postJSON(t, srv.URL+"/v1/label", map[string]any{"trace_id": d["trace_id"], "truth": truth}); code != 200 {
+					t.Fatalf("label: %d %v", code, l)
+				}
+			}
+			var status struct {
+				Specs []map[string]any `json:"specs"`
+			}
+			getJSON(t, srv.URL+"/v1/status", &status)
+			result, _ := status.Specs[0]["calibration_result"].(map[string]any)
+			if result["reason"] != tc.want || result["tries_wordings"] != tc.tries {
+				t.Fatalf("want reason %s, tries_wordings %v: %v", tc.want, tc.tries, result)
+			}
+		})
+	}
+}
+
+// 0.9.7 re-audit C-6: a page whose model answered first (the usual case), stopped by the check, returned "use of closed network connection".
+func TestReauditCOwnerStopAfterModelReadyReturnsError(t *testing.T) {
+	hookEnv(t, nil)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	old := pageOwnerCheck
+	pageOwnerCheck = 50 * time.Millisecond
+	t.Cleanup(func() { pageOwnerCheck = old })
+	done := make(chan error, 1)
+	go func() {
+		done <- cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", ""})
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, ok := readPageRecord(common, repo); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("precondition: the page started")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if err := os.Remove(pagePath(common, repo)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("a page stopped by the check ends with an error: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("it does not stop")
+	}
+}
+
+// 0.9.7 re-audit C-1: a page started by hand with --port 0 and a store not named .shikii was stopped by the minute check, although its record pointed at it.
+func TestReauditCHandServeWithOtherStoreNameStops(t *testing.T) {
+	hookEnv(t, nil)
+	repo := gitRepo(t)
+	initAt(t, repo)
+	other := filepath.Join(t.TempDir(), "data")
+	if out, err := exec.Command("cp", "-R", filepath.Join(repo, ".shikii"), other).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	old := pageOwnerCheck
+	pageOwnerCheck = 50 * time.Millisecond
+	t.Cleanup(func() { pageOwnerCheck = old })
+	done := make(chan error, 1)
+	go func() {
+		done <- cmdServe([]string{"--store", other, "--port", "0", "--local", "http://127.0.0.1:1"})
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("a page started by hand stopped: %v", err)
+	case <-time.After(1 * time.Second):
+	}
+}
+
+// D1: a serve pointed at the same project with another case spelling (--port 0, store named .shikii) took another lock and kept running
+// as a second page while the page the hook started held the lock (case-insensitive disk).
+func TestAuditFinalD1OnePageAcrossCaseSpellings(t *testing.T) {
+	hookEnv(t, nil)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	if real, err := filepath.EvalSymlinks(repo); err == nil {
+		repo = real
+	}
+	initAt(t, repo)
+	other := strings.ToUpper(repo)
+	a, errA := os.Stat(repo)
+	b, errB := os.Stat(other)
+	if other == repo || errA != nil || errB != nil || !os.SameFile(a, b) {
+		t.Skip("on a case-sensitive disk the two spellings are not the same folder")
+	}
+	takePageLock(t, common, repo) // the page the hook started (the recorded spelling) is running
+	done := make(chan error, 1)
+	go func() {
+		done <- cmdServe([]string{"--store", filepath.Join(other, ".shikii"), "--port", "0", "--local", "http://127.0.0.1:1"})
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		rec, ok := readPageRecord(common, other)
+		t.Fatalf("D1: a second page of the same project (%s and %s are the same folder) keeps running (record under the other spelling %v: %+v)", repo, other, ok, rec)
+	}
+}
+
+// E2: once the lock is released, a reply in flight is cut by the write timeout again (here 100ms) - not kept for longResponseLimit.
+func TestAuditE2DeadlineReturnsAfterRelease(t *testing.T) {
+	quickReplyCheck(t)
+	s := newServerState(serveOpts{storeDir: t.TempDir(), specsDir: t.TempDir()})
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(700 * time.Millisecond) // long work that does not use the lock
+		io.WriteString(w, "done")
+	})
+	ts := httptest.NewUnstartedServer(h)
+	ts.Config = newHTTPServer(h)
+	ts.Config.WriteTimeout = 100 * time.Millisecond
+	ts.Start()
+	defer ts.Close()
+	release := s.lockCalibration() // a short calibration elsewhere, over by 150ms
+	time.AfterFunc(150*time.Millisecond, release)
+	resp, err := http.Get(ts.URL)
+	var body []byte
+	if err == nil {
+		body, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
+	if err == nil && string(body) == "done" {
+		t.Fatal("E2: the lock was free for 550ms (5x the write timeout), yet the reply was not cut: the 45-minute deadline set during the calibration stayed")
+	}
+}
+
+// eaf2c9b: a slow reader must not hold a connection past the write timeout. While a calibration is active, it is held without bound.
+func TestAuditSlowReaderHeldDuringCalibration(t *testing.T) {
+	quickReplyCheck(t)
+	s := newServerState(serveOpts{storeDir: t.TempDir(), specsDir: t.TempDir()})
+	var finished atomic.Int64 // 1: write failed (cut), 2: write succeeded
+	big := bytes.Repeat([]byte("x"), 64<<20)
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := w.Write(big); err != nil {
+			finished.Store(1)
+			return
+		}
+		finished.Store(2)
+	})
+	ts := httptest.NewUnstartedServer(h)
+	ts.Config = newHTTPServer(h)
+	ts.Config.WriteTimeout = 100 * time.Millisecond
+	ts.Start()
+	defer ts.Close()
+	release := func() {}
+	if os.Getenv("AUDIT_NO_CALIB") == "" {
+		release = s.lockCalibration() // a background tune
+	}
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
+	c, err := net.Dial("tcp", ts.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	fmt.Fprintf(c, "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n") // and never read
+	time.Sleep(1 * time.Second)
+	during := finished.Load()
+	release()
+	release = nil
+	time.Sleep(1 * time.Second)
+	after := finished.Load()
+	if during == 0 || after == 0 {
+		t.Fatalf("a client that reads nothing held the reply: 10x the write timeout during the calibration (cut=%v), and 10x more after it ended (cut=%v)", during == 1, after == 1)
+	}
+}
+
+// R5 (E): trackedWriter hides http.Flusher and io.ReaderFrom of the connection's writer.
+func TestRe2TrackedWriterKeepsFlusher(t *testing.T) {
+	var flusher, readerFrom bool
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, flusher = w.(http.Flusher)
+		_, readerFrom = w.(io.ReaderFrom)
+		io.WriteString(w, "ok")
+	})
+	ts := httptest.NewUnstartedServer(h)
+	ts.Config = newHTTPServer(h)
+	ts.Start()
+	defer ts.Close()
+	resp, err := http.Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if !flusher || !readerFrom {
+		t.Fatalf("E: the writer handed to handlers lost http.Flusher=%v io.ReaderFrom=%v", flusher, readerFrom)
+	}
+}
+
+// The page's queue: after the ask decisions come spot checks of act decisions (1 in 20). The remaining act / discard come after. Spot checks are marked.
+func TestQueuePutsAuditSamplesRightAfterAskItems(t *testing.T) {
+	dir := t.TempDir()
+	specsDir := filepath.Join(dir, "decisions")
+	if err := os.MkdirAll(specsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	specPath := writeSpec(t, specsDir, "false")
+	sp := mustLoad(t, specPath)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", N: 2, FittedAt: "2026-10-18"})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	storeDir := filepath.Join(dir, ".shikii")
+	model := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	var ef endpointFlags
+	ef.model, ef.local = "m", model.URL
+	s := httptest.NewServer(newServer(serveOpts{specsDir: specsDir, storeDir: storeDir, ef: ef}))
+	t.Cleanup(s.Close)
+
+	// 60 act records (added until a spot check appears) and 1 ask record (written by hand)
+	st := store.Store{Dir: storeDir}
+	sampled := 0
+	for i := 0; i < 200 && sampled < 2; i++ {
+		code, d := postJSON(t, s.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix " + string(rune('a'+i%26)) + string(rune('a'+i/26))}})
+		if code != 200 || d["band"] != "act" {
+			t.Fatalf("decide: %d %v", code, d)
+		}
+		if store.AuditSample(d["trace_id"].(string)) {
+			sampled++
+		}
+	}
+	askRec := store.Record{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "m", Inputs: map[string]string{"message": "hmm"},
+		InputsHash: store.HashInputs(map[string]string{"message": "hmm"}), Raw: map[string]float64{"change_request": 0.65, "question": 0.3, "other": 0.05}, Top: "change_request", P: 0.65, Band: "ask", At: time.Now()}
+	if err := st.AppendRecord(askRec); err != nil {
+		t.Fatal(err)
+	}
+	var q struct {
+		Items []map[string]any `json:"items"`
+	}
+	getJSON(t, s.URL+"/v1/queue?spec=intent&limit=1000", &q)
+	if len(q.Items) < 3 || q.Items[0]["band"] != "ask" || q.Items[0]["audit"] != false {
+		t.Fatalf("ask first: %+v", q.Items[:3])
+	}
+	seenPlain := false
+	nAudit := 0
+	for _, it := range q.Items[1:] {
+		audit := it["audit"] == true
+		if audit != (it["band"] == "act" && store.AuditSample(it["trace_id"].(string))) {
+			t.Fatalf("audit flag must be the 1-in-20 sample of act decisions: %+v", it)
+		}
+		if audit {
+			nAudit++
+			if seenPlain {
+				t.Fatalf("audit samples must come before the unsampled act decisions: %+v", q.Items)
+			}
+		} else {
+			seenPlain = true
+		}
+	}
+	if nAudit != sampled {
+		t.Fatalf("every sampled act decision is in the queue: %d vs %d", nAudit, sampled)
+	}
+	body := uiText(t, s.URL)
+	if !strings.Contains(body, "shown to check") || !strings.Contains(body, "確かめのため") {
+		t.Fatalf("the page must name the audit sample in both languages")
+	}
+}
+
+// Audit S2/S3: serve refuses POSTs from other origins, non-JSON POSTs and bodies that are too large.
+func TestServeRejectsCrossOriginWrongTypeAndOversizedPosts(t *testing.T) {
+	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	body := `{"spec":"intent","inputs":{"message":"x"}}`
+	post := func(ctype, origin string, b string) int {
+		req, _ := http.NewRequest(http.MethodPost, url+"/v1/decide", strings.NewReader(b))
+		req.Header.Set("Content-Type", ctype)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if c := post("application/json", "https://evil.example", body); c != 403 {
+		t.Fatalf("cross-origin POST must be 403, got %d", c)
+	}
+	if c := post("text/plain", "", body); c != 415 {
+		t.Fatalf("non-JSON POST must be 415, got %d", c)
+	}
+	big := `{"spec":"intent","inputs":{"message":"` + strings.Repeat("x", 2<<20) + `"}}`
+	if c := post("application/json", "", big); c != 413 {
+		t.Fatalf("oversized POST must be 413, got %d", c)
+	}
+	if c := post("application/json", "http://127.0.0.1:8095", body); c != 200 {
+		t.Fatalf("same-host origin must pass, got %d", c)
+	}
+	if c := post("application/json", "", body); c != 200 {
+		t.Fatalf("no origin (curl, programs) must pass, got %d", c)
+	}
+}
+
+func TestAutoCalibrationReportsQualityWithoutLosingAnswers(t *testing.T) {
+	for _, success := range []bool{false, true} {
+		t.Run(fmt.Sprint(success), func(t *testing.T) {
+			url, path, dir := newServeFixture(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+			for i := 0; i < 2; i++ {
+				_, d := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": fmt.Sprint(i)}})
+				truth := "change_request"
+				if i == 1 && !success {
+					truth = "question"
+				}
+				code, l := postJSON(t, url+"/v1/label", map[string]any{"trace_id": d["trace_id"], "truth": truth})
+				if code != 200 || (i == 1 && l["calibrated"] != success) {
+					t.Fatalf("label: %v", l)
+				}
+			}
+			var status struct {
+				Specs []map[string]any `json:"specs"`
+			}
+			getJSON(t, url+"/v1/status", &status)
+			s := status.Specs[0]
+			result, ok := s["calibration_result"].(map[string]any)
+			want := "quality"
+			if success {
+				want = "written"
+			}
+			if !ok || result["reason"] != want || result["human_truths"] != float64(2) || result["min_n"] != float64(2) {
+				t.Fatalf("structured calibration result: %v", s)
+			}
+			if result["hash"] != s["hash"] || result["model"] != "m" || result["at"] == "" {
+				t.Fatalf("calibration identity: %v", result)
+			}
+			if len(readLabels(t, dir, "intent")) != 2 || (len(mustLoad(t, path).Calibration) > 0) != success {
+				t.Fatal("answers or calibration changed incorrectly")
+			}
+		})
+	}
+}
+
+// serve: a decision with added context looks so on the page and is not old wording (stale). The person's answer goes on both rungs, and status shows counts per rung.
+func TestServeShowsTheRungAndLabelsBothRungs(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := contextModel(t)
+	writeContextSpec(t, dir)
+	storeDir := filepath.Join(dir, ".shikii")
+	var ef endpointFlags
+	ef.model, ef.local = "m", srv.URL
+	h := newServer(serveOpts{specsDir: filepath.Join(dir, "decisions"), storeDir: storeDir, ef: ef})
+	s := httptest.NewServer(h)
+	t.Cleanup(s.Close)
+
+	code, d := postJSON(t, s.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix a", "previous": "I renamed the module"}})
+	if code != 200 || d["rung"] != "context" || d["minimal"] == nil {
+		t.Fatalf("decide: %d %v", code, d)
+	}
+	var q struct {
+		Items []map[string]any `json:"items"`
+	}
+	getJSON(t, s.URL+"/v1/queue?spec=intent", &q)
+	if len(q.Items) != 1 || q.Items[0]["rung"] != "context" || q.Items[0]["stale"] != false {
+		t.Fatalf("the queue must say the decision was asked again with context and is not stale: %+v", q.Items)
+	}
+	code, l := postJSON(t, s.URL+"/v1/label", map[string]any{"trace_id": d["trace_id"], "spec": "intent", "truth": "question", "source": "ui"})
+	if code != 200 || l["rungs"] != 2.0 {
+		t.Fatalf("label must reach both rungs: %d %v", code, l)
+	}
+	if labels := readLabels(t, storeDir, "intent"); len(labels) != 2 || labels[0].Rung != "context" || labels[1].Rung != "minimal" {
+		t.Fatalf("labels: %+v", labels)
+	}
+	var st struct {
+		Specs []struct {
+			Keys   []map[string]any `json:"keys"`
+			Funnel map[string]any   `json:"funnel"`
+		} `json:"specs"`
+	}
+	getJSON(t, s.URL+"/v1/status", &st)
+	if len(st.Specs) != 1 || len(st.Specs[0].Keys) != 2 || st.Specs[0].Keys[0]["rung"] != "minimal" || st.Specs[0].Keys[1]["rung"] != "context" || st.Specs[0].Keys[1]["state"] != "collecting" {
+		t.Fatalf("status must list a key per rung, both live: %+v", st.Specs)
+	}
+	if f := st.Specs[0].Funnel; f["human"] != 1.0 || f["human_per_thousand"] != 1000.0 {
+		t.Fatalf("funnel: %+v", f)
+	}
+}
+
+// (5) When /v1/redo (and every endpoint that takes a spec) has no spec, it says "a spec is needed" and what to add, instead of `unknown spec ""`.
+func TestMissingSpecIdSaysSpecIsRequired(t *testing.T) {
+	url, _, _ := newServeFixture(t, "false", map[string]float64{"change_request": 0.6, "question": 0.4, "other": 0})
+	code, d := postJSON(t, url+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": "fix the typo"}})
+	if code != 200 {
+		t.Fatalf("decide: %d %v", code, d)
+	}
+	for _, path := range []string{"/v1/redo", "/v1/decide", "/v1/tune/run"} {
+		code, res := postJSON(t, url+path, map[string]any{"trace_id": d["trace_id"], "inputs": map[string]string{"message": "x"}})
+		if code != 400 || !strings.Contains(fmt.Sprint(res["error"]), "spec is required") || !strings.Contains(fmt.Sprint(res["error"]), "decisions/") {
+			t.Fatalf("%s without spec must say spec is required and where the id comes from: %d %v", path, code, res)
+		}
+	}
+	code, res := postJSON(t, url+"/v1/redo", map[string]any{"spec": "nope", "trace_id": d["trace_id"]})
+	if code != 404 || !strings.Contains(fmt.Sprint(res["error"]), `unknown spec "nope"`) {
+		t.Fatalf("a wrong id is still unknown: %d %v", code, res)
+	}
+}
+
+// 0.9.7, after audits A to G: whether a reply that waits for the calibration lock is cut by the write timeout must not depend on how the
+// handler reached the lock. The server keeps every reply in flight alive while a calibration holds or waits for the lock, so a new route,
+// a wrapped handler or one run in process cannot get it wrong. This route is on no list and passes no writer.
+func TestAnyReplyWaitingForACalibrationOutlivesTheWriteTimeout(t *testing.T) {
+	dir := t.TempDir()
+	specsDir := filepath.Join(dir, "decisions")
+	if err := os.MkdirAll(specsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSpec(t, specsDir, "true")
+	s := newServerState(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii")})
+	quickReplyCheck(t)
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer s.lockCalibration()() // a path nobody listed, with no writer
+		io.WriteString(w, "done")
+	})
+	ts := httptest.NewUnstartedServer(h)
+	ts.Config = newHTTPServer(h)
+	ts.Config.WriteTimeout = 100 * time.Millisecond
+	ts.Start()
+	defer ts.Close()
+	release := s.lockCalibration() // a background tune holds the lock
+	time.AfterFunc(400*time.Millisecond, release)
+	resp, err := http.Get(ts.URL)
+	var body []byte
+	if err == nil {
+		body, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
+	if err != nil || string(body) != "done" {
+		t.Fatalf("the reply waiting for the lock arrives: %q %v", body, err)
+	}
+}
+
+// The page (serve) does the same; a store without specs makes it return right after reading its flags, so no page is started.
+func TestServeLocalReachesHookDecisions(t *testing.T) {
+	oldLocal := hookLocalURL
+	t.Cleanup(func() { hookLocalURL = oldLocal })
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	hookLocalURL = "http://127.0.0.1:8080"
+	if err := cmdServe([]string{"--store", t.TempDir(), "--local", "http://127.0.0.1:47392"}); err == nil {
+		t.Fatal("a store without specs is refused before a page starts")
+	}
+	if hookLocalURL != "http://127.0.0.1:47392" {
+		t.Fatalf("serve's --local reaches the decisions made through hookDecide: %s", hookLocalURL)
+	}
+}
+
+// 0.9.7: a second page of the same project exits while the first holds the page lock, even when the first answered /v1/status too slowly
+// for the hook's probe (two pages per project were found running after the 0.9.6 swap). It neither listens nor writes the page record.
+func TestSecondPageOfTheSameProjectExitsWhileTheFirstHoldsTheLock(t *testing.T) {
+	hookEnv(t, nil)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	takePageLock(t, common, repo)
+	done := make(chan error, 1)
+	go func() {
+		done <- cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", "http://127.0.0.1:1"})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("a second page exits quietly: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a second page of the same project kept running while the first held the page lock")
+	}
+	if rec, ok := readPageRecord(common, repo); ok {
+		t.Fatalf("the second page must not overwrite the first page's record: %+v", rec)
+	}
+	if len(opened) != 0 {
+		t.Fatalf("the second page must not open the browser: %v", opened)
+	}
+}
+
+// The page that holds the lock starts even when the old record's pid is alive (now another process): its own lock must not make that record look up.
+func TestPageStartsWhenTheOldRecordsPidWasReused(t *testing.T) {
+	hookEnv(t, nil)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	if err := writePageRecord(common, repo, 1, os.Getpid()); err != nil { // a live pid, a port that does not answer
+		t.Fatal(err)
+	}
+	go cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", "http://127.0.0.1:1"})
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if rec, ok := readPageRecord(common, repo); ok && rec.Port != 1 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the page did not start: the old record with a reused pid looked up through the page's own lock")
+}
+
+// 0.9.7 audit B-b: a page whose record no longer points at it (reconnecting a moved project removes the old path's record, uninstall too)
+// or whose store is gone stops by itself instead of running on as an orphan.
+func TestOrphanPageStopsByItself(t *testing.T) {
+	hookEnv(t, nil)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	old := pageOwnerCheck
+	pageOwnerCheck = 50 * time.Millisecond
+	t.Cleanup(func() { pageOwnerCheck = old })
+	done := make(chan error, 1)
+	go func() {
+		done <- cmdServe([]string{"--store", filepath.Join(repo, ".shikii"), "--port", "0", "--local", "http://127.0.0.1:1"})
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, ok := readPageRecord(common, repo); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("precondition: the page started")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := os.Remove(pagePath(common, repo)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("a page whose record is gone keeps running")
+	}
+}
+
+// 0.9.6 audit of the HTTP limits (eaf2c9b): the server cuts every response after WriteTimeout (2 minutes). While no calibration is active a
+// slow reply is still cut (the limit stays); while a calibration holds or waits for the lock, replies in flight are kept alive (0.9.7).
+func TestSlowRepliesAreCutUnlessACalibrationIsActive(t *testing.T) {
+	quickReplyCheck(t)
+	slow := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(300 * time.Millisecond) // the long work
+		io.WriteString(w, "done")
+	})
+	s := newServerState(serveOpts{storeDir: t.TempDir(), specsDir: t.TempDir()})
+	for _, active := range []bool{false, true} {
+		ts := httptest.NewUnstartedServer(slow)
+		ts.Config = newHTTPServer(slow)
+		ts.Config.WriteTimeout = 100 * time.Millisecond
+		ts.Start()
+		var release func()
+		if active {
+			release = s.lockCalibration()
+		}
+		resp, err := http.Get(ts.URL)
+		var body []byte
+		if err == nil {
+			body, err = io.ReadAll(resp.Body)
+			resp.Body.Close()
+		}
+		if release != nil {
+			release()
+		}
+		ts.Close()
+		if active && (err != nil || string(body) != "done") {
+			t.Fatalf("while a calibration is active the reply arrives after the write timeout: %v %q", err, body)
+		}
+		if !active && err == nil && string(body) == "done" {
+			t.Fatal("while no calibration is active the write timeout still cuts a slow reply")
+		}
+	}
+}
+
+// An answer that brings the truths to min_n calibrates in the same request, so it waits for the calibration lock. While a background tune holds
+// the lock past the write timeout, that reply still arrives (the answer was saved; before 0.9.6 the page showed a connection error).
+func TestAnswerThatCalibratesBehindATuneStillReplies(t *testing.T) {
+	quickReplyCheck(t)
+	dir := t.TempDir()
+	specsDir := filepath.Join(dir, "decisions")
+	if err := os.MkdirAll(specsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSpec(t, specsDir, "true") // min_n 2
+	model := fakeSystemOne(t, "m", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
+	var ef endpointFlags
+	ef.model, ef.local = "m", model.URL
+	s := newServerState(serveOpts{specsDir: specsDir, storeDir: filepath.Join(dir, ".shikii"), ef: ef, autoCalibrate: true})
+	h := s.handler()
+	ts := httptest.NewUnstartedServer(h)
+	ts.Config = newHTTPServer(h)
+	ts.Config.WriteTimeout = 100 * time.Millisecond
+	ts.Start()
+	defer ts.Close()
+	label := func(trace any) (map[string]any, error) {
+		resp, err := http.Post(ts.URL+"/v1/label", "application/json", strings.NewReader(fmt.Sprintf(`{"trace_id":%q,"truth":"change_request"}`, trace)))
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		return out, json.NewDecoder(resp.Body).Decode(&out)
+	}
+	var traces []any
+	for _, m := range []string{"x", "y"} {
+		code, d := postJSON(t, ts.URL+"/v1/decide", map[string]any{"spec": "intent", "inputs": map[string]string{"message": m}})
+		if code != 200 {
+			t.Fatalf("decide: %d %v", code, d)
+		}
+		traces = append(traces, d["trace_id"])
+	}
+	if _, err := label(traces[0]); err != nil {
+		t.Fatal(err)
+	}
+	release := s.lockCalibration() // a background tune holds the lock
+	time.AfterFunc(300*time.Millisecond, release)
+	out, err := label(traces[1])
+	if err != nil {
+		t.Fatalf("the answer's reply arrives after waiting for the lock past the write timeout: %v", err)
+	}
+	if out["calibrated"] != true {
+		t.Fatalf("precondition: the second answer calibrates (so it waited for the lock): %v", out)
+	}
+}
+
+// 0.8.0: decisions a person does not answer (wiki-conflict / wiki-place) are not counted as waiting for confirmation; only the number waiting for an outcome is shown. Hook decisions keep the old behavior, since they have spot checks for the person.
+func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	st := store.Store{Dir: root}
+	for i := 0; i < 3; i++ {
+		rec := store.Record{TraceID: fmt.Sprintf("wc%d", i), SpecID: "wiki-conflict", Type: "noul", Model: "m", Inputs: map[string]string{"lesson": "a", "new_lesson": "b"}, InputsHash: fmt.Sprintf("h%d", i), Raw: map[string]float64{"yes": .2, "no": .8}, Top: "no", Band: "discard", At: time.Now()}
+		if err := st.AppendRecord(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// "Unsure" in decisions whose truth comes from an outcome waits for the outcome; "unsure" in decisions a person answers waits for the person
+	st.AppendRecord(store.Record{TraceID: "pk1", SpecID: "prompt-kind", Type: "choice", Model: "m", Inputs: map[string]string{"request": "x"}, InputsHash: "pk1", Raw: map[string]float64{"edit": .5, "explain": .5}, Top: "edit", Band: "ask", At: time.Now()})
+	st.AppendRecord(store.Record{TraceID: "np1", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": "o"}, InputsHash: "np1", Raw: map[string]float64{"yes": .5, "no": .5}, Top: "yes", Band: "ask", At: time.Now()})
+	st.AppendRecord(store.Record{TraceID: "np2", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "y", "agreed": "a", "open": "o"}, InputsHash: "np2", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
+	o := serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}
+	h := newServer(o)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+	var body struct {
+		Specs []map[string]any `json:"specs"`
+		Model map[string]any   `json:"model"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("%v: %s", err, rec.Body.String()[:200])
+	}
+	if body.Model["name"] == nil {
+		t.Fatalf("the AI's state: which model is deciding: %v", body.Model)
+	}
+	got := map[string]map[string]any{}
+	for _, sp := range body.Specs {
+		got[sp["id"].(string)] = sp
+	}
+	wc := got["wiki-conflict"]
+	if wc == nil || wc["person_answers"] != false || wc["waiting_for_person"] != float64(0) || wc["awaiting_results"] != float64(3) || wc["unlabeled"] != float64(3) || wc["truth_source"] != "results" {
+		t.Fatalf("decisions a person does not answer: 0 waiting for a person, 3 waiting for an outcome: %v", wc)
+	}
+	if pk := got["prompt-kind"]; pk["waiting_for_person"] != float64(0) || pk["awaiting_results"] != float64(1) {
+		t.Fatalf("unsure decisions whose truth comes from an outcome wait for the outcome: %v", pk)
+	}
+	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["person_answers"] != true || np["awaiting_results"] != float64(0) || np["settled_by_ai"] != float64(1) {
+		t.Fatalf("unsure decisions a person answers wait for the person; act outside spot checks is not waiting for an outcome but decided by the AI: %v", np)
+	}
+	nq := httptest.NewRecorder()
+	h.ServeHTTP(nq, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=needs-plan", nil))
+	if !strings.Contains(nq.Body.String(), `"np1"`) || !strings.Contains(nq.Body.String(), `"np2"`) {
+		t.Fatalf("the queue of questions a person gives truths to also shows act (the person can correct it; told apart by waits_for_person): %s", nq.Body.String()[:300])
+	}
+	q := httptest.NewRecorder()
+	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=prompt-kind", nil))
+	if !strings.Contains(strings.ReplaceAll(q.Body.String(), " ", ""), `"waits_for_person":false`) {
+		t.Fatalf("queue items also say whether they wait for a person: %s", q.Body.String()[:200])
+	}
+}
+
+// 0.8.0: for contradiction decisions, once the draft is saved (the insertion place got an outcome truth), the items for pages it did not touch are "undecided"
+// and are neither counted as waiting for an outcome nor shown in the queue (even after saving, 61 items looked like they waited for an outcome forever). Before saving, they wait for an outcome.
+func TestUndecidedConflictJudgmentsLeaveTheQueueOnceTheDraftIsSaved(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	repo := gitRepo(t)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	st := store.Store{Dir: root}
+	draft := "新しい教訓の文"
+	st.AppendRecord(store.Record{TraceID: "wc1", SpecID: "wiki-conflict", Type: "noul", Model: "m", Inputs: map[string]string{"lesson": "既存の記事 A", "new_lesson": draft}, InputsHash: "h1", Raw: map[string]float64{"yes": .2, "no": .8}, Top: "no", Band: "discard", At: time.Now()})
+	st.AppendRecord(store.Record{TraceID: "wp1", SpecID: "wiki-place", SpecHash: "sh", Type: "noul", Model: "m", Inputs: map[string]string{"lesson": "既存の記事 A", "new_lesson": draft}, InputsHash: "h2", Raw: map[string]float64{"yes": .2, "no": .8}, Top: "no", Band: "discard", At: time.Now()})
+	o := serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}
+	h := newServer(o)
+	status := func() map[string]any {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+		var body struct {
+			Specs []map[string]any `json:"specs"`
+		}
+		json.Unmarshal(rec.Body.Bytes(), &body)
+		for _, sp := range body.Specs {
+			if sp["id"] == "wiki-conflict" {
+				return sp
+			}
+		}
+		return nil
+	}
+	if sp := status(); sp["awaiting_results"] != float64(1) || sp["undecided"] != float64(0) {
+		t.Fatalf("before saving, waiting for an outcome: %v", sp)
+	}
+	// The draft was saved (the insertion-place decision got an outcome truth)
+	labels, err := store.LabelsFor(&store.Record{TraceID: "wp1", SpecID: "wiki-place", SpecHash: "sh", Type: "noul", Model: "m", InputsHash: "h2", Raw: map[string]float64{"yes": .2, "no": .8}, Top: "no"}, "no", placeOtherWeight, "outcome")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range labels {
+		if err := st.AppendLabel(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sp := status(); sp["awaiting_results"] != float64(0) || sp["undecided"] != float64(1) || sp["unlabeled"] != float64(0) {
+		t.Fatalf("after saving, undecided (settled) and not counted as waiting for an outcome: %v", sp)
+	}
+	q := httptest.NewRecorder()
+	h.ServeHTTP(q, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=wiki-conflict", nil))
+	if strings.Contains(q.Body.String(), `"wc1"`) {
+		t.Fatalf("undecided records are not shown in the queue: %s", q.Body.String()[:200])
+	}
+}
+
+// Before and after narrowing the count, the priority order, the exclusion of redo originals and the original text returned do not change.
+func TestServeQueueLimitKeepsPriorityAndOriginals(t *testing.T) {
+	url, path, dir := newServeFixture(t, "false", map[string]float64{"change_request": 1})
+	sp, err := spec.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := store.Store{Dir: dir}
+	ids := []string{"0000000000000001", "0000000000000002", "0000000000000003", "0000000000000004"}
+	for i, id := range ids {
+		inputs := map[string]string{"message": "fixture"}
+		rec := store.Record{TraceID: id, SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Band: "ask", Inputs: inputs, InputsHash: store.HashInputs(inputs), At: time.Unix(int64(i), 0)}
+		if i == 1 {
+			rec.Band = "discard"
+		}
+		if i == 3 {
+			rec.RedoOf = ids[2]
+		}
+		if err := st.AppendRecord(rec); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.SaveRecordText(rec, map[string]string{"message": "fixture original " + id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, check := range []struct {
+		query string
+		want  []string
+	}{{"&limit=1", []string{ids[3]}}, {"&limit=2", []string{ids[3], ids[0]}}, {"", []string{ids[3], ids[0], ids[1]}}} {
+		var result struct {
+			Items []struct {
+				TraceID   string            `json:"trace_id"`
+				Originals map[string]string `json:"original_inputs"`
+			} `json:"items"`
+		}
+		if code := getJSON(t, url+"/v1/queue?spec=intent"+check.query, &result); code != 200 || len(result.Items) != len(check.want) {
+			t.Fatalf("queue %s: status=%d rows=%+v", check.query, code, result.Items)
+		}
+		for i, item := range result.Items {
+			if item.TraceID != check.want[i] || item.Originals["message"] != "fixture original "+item.TraceID {
+				t.Fatalf("queue %s row %d: got %+v, want %s with its original", check.query, i, item, check.want[i])
+			}
+		}
+	}
+}
+
+// Audit 0.9.3 low 5: `shikii status` shows the same learning count as the page (keys[].n, lineStateOf's N) and one number per line.
+// Machine truths (context / judge) and a re-label of the same input must not raise it; the page's AI view says it has "the same numbers as `shikii status`".
+func TestStatusLineCountMatchesThePage(t *testing.T) {
+	repo := gitRepo(t)
+	hookEnv(t, nil)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	specPath := filepath.Join(root, "decisions", "needs-plan.yaml")
+	sp := mustLoad(t, specPath)
+	st := store.Store{Dir: root}
+	lab := func(trace, inputs, truth, source string) store.Label {
+		return store.Label{TraceID: trace, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "m1", InputsHash: inputs, Truth: truth, Weight: 1, Source: source, At: time.Now()}
+	}
+	labels := []store.Label{lab("a", "a", "yes", "ui"), lab("b", "b", "no", "ask"), lab("c", "c", "no", "outcome"),
+		lab("a", "a", "no", "ui"),                                     // a re-label of input a: still one truth
+		lab("x", "x", "yes", "context"), lab("y", "y", "no", "judge")} // machine truths: not counted
+	if err := st.AppendLabels(labels); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+	var body struct {
+		Specs []struct {
+			ID   string           `json:"id"`
+			Keys []map[string]any `json:"keys"`
+		} `json:"specs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	page := -1
+	for _, s := range body.Specs {
+		if s.ID == sp.ID && len(s.Keys) == 1 {
+			page = int(s.Keys[0]["n"].(float64))
+		}
+	}
+	if page != 3 {
+		t.Fatalf("fixture: the page counts 3 truths, got %d: %s", page, rec.Body.String())
+	}
+	out := capture(t, func() error { return cmdStatus([]string{"--store", root, specPath}) })
+	line := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "m1 @ "+sp.Hash()) {
+			line = l
+		}
+	}
+	m := regexp.MustCompile(`^\s*m1 @ \S+\s+(\d+)(.*)$`).FindStringSubmatch(line)
+	if m == nil {
+		t.Fatalf("no status line for m1:\n%s", out)
+	}
+	if m[1] != fmt.Sprint(page) {
+		t.Fatalf("status says %s where the page says %d:\n%s", m[1], page, line)
+	}
+	if regexp.MustCompile(`\d+/\d+`).MatchString(m[2]) {
+		t.Fatalf("the status line shows one count, not a second n/min_n beside it: %q", line)
 	}
 }

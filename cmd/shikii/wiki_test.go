@@ -167,3 +167,40 @@ func TestTuneDraftsClaimsAndFeedsEvidenceToExistingOnes(t *testing.T) {
 		t.Fatalf("a candidate that does not beat current must not become a claim")
 	}
 }
+
+// Second 0.9.3 audit: a tune run through the MCP server for a named project (Codex: the server's folder is not the project) did not find the
+// claim draft a tune from the project folder wrote (its retest spec is relative to the project folder), so it wrote the draft again over it:
+// the earlier evidence and the person's notes in the draft were lost.
+func TestAudit2TuneFromAnotherFolderKeepsTheClaimDraft(t *testing.T) {
+	proj := t.TempDir()
+	decisions := filepath.Join(proj, ".shikii", "decisions")
+	os.MkdirAll(decisions, 0o755)
+	abs := writeSpec(t, decisions, "false")
+	scores := func(sp0 string) ([]candidate, []candScore) {
+		sp := mustLoad(t, sp0)
+		cands := []candidate{{"current", sp}, {"c1", sp}}
+		f, tr := make([]bool, 8), []bool{true, true, true, true, true, true, true, true}
+		w := []float64{1, 1, 1, 1, 1, 1, 1, 1}
+		return cands, []candScore{{name: "current", model: "m", correct: f, weights: w, acc: 0}, {name: "c1", model: "m", correct: tr, weights: w, acc: 1}}
+	}
+	// 1. from the project folder (the CLI, or Claude Code's server started there)
+	t.Chdir(proj)
+	cands, sc := scores(filepath.Join(".shikii", "decisions", "intent.yaml"))
+	if drafted, _, err := updateClaims(filepath.Join(".shikii", "wiki"), cands[0].sp, cands, sc, "run1", 8); err != nil || drafted != 1 {
+		t.Fatalf("drafted=%d err=%v", drafted, err)
+	}
+	draft := filepath.Join(proj, ".shikii", "wiki", "patterns", "drafts", "intent-c1.md")
+	b, _ := os.ReadFile(draft)
+	os.WriteFile(draft, append(b, []byte("\nNOTE BY THE PERSON\n")...), 0o644)
+	// 2. from another folder, with the absolute paths the MCP server uses for a named project
+	t.Chdir(t.TempDir())
+	cands, sc = scores(abs)
+	drafted, updated, err := updateClaims(filepath.Join(proj, ".shikii", "wiki"), cands[0].sp, cands, sc, "run2", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(draft)
+	if drafted != 0 || updated != 1 || !strings.Contains(string(b), "NOTE BY THE PERSON") || strings.Count(string(b), "run: run") != 2 {
+		t.Fatalf("the second run must add its evidence to the same draft: drafted=%d updated=%d\n%s", drafted, updated, b)
+	}
+}

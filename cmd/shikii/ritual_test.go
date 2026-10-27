@@ -248,3 +248,19 @@ func TestHooksCarryTheWorkRecordHabitsWithoutProjectInstructions(t *testing.T) {
 		t.Fatalf("subagents also get where to write reports: %s", sub)
 	}
 }
+
+// Audit 0.9.2 (English), low 8: Claude first passed agreed as an array in 7 runs out of 7. The notice before the request and the Stop block
+// show that agreed and open are objects, with the shape.
+func TestPlanningTextsSayAgreedAndOpenAreObjects(t *testing.T) {
+	for name, text := range map[string]string{"notice": planningNotice("s", "t"), "block": planningBlockReason("s", "t", 1)} {
+		if !strings.Contains(text, "not an array") || !strings.Contains(text, `"agreed":{"summary"`) {
+			t.Errorf("the %s shows that agreed and open are objects: %s", name, text)
+		}
+	}
+	if b := planningBlockReason("s", "t", 1); !strings.Contains(b, "1 file was changed") {
+		t.Errorf("one file is \"1 file was changed\": %s", b)
+	}
+	if b := planningBlockReason("s", "t", 3); !strings.Contains(b, "3 files were changed") {
+		t.Errorf("several files: %s", b)
+	}
+}

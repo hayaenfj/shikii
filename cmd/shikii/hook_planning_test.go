@@ -4,16 +4,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	shikii "github.com/hayaenfj/shikii"
+	"github.com/hayaenfj/shikii"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -404,5 +406,526 @@ func TestPlanningIsSkippedOnlyForConfidentNonEditRequests(t *testing.T) {
 	top = "edit"
 	if out := ask("edit"); !strings.Contains(out, "hook plan query") {
 		t.Fatalf("an edit must keep the planning context: %s", out)
+	}
+}
+
+// The agent's organizing becomes the needs-plan decision's input (sent to the decision model and kept in records). For an English user it starts with a Japanese label.
+func TestAuditEnglishPlanningInputHasNoJapanese(t *testing.T) {
+	out, err := renderPlanningFact(&planningFact{Summary: "Write scripts/check-totals.sh and run it", Evidence: []planningQuote{{Source: "current_user", Quote: "Write a script"}}},
+		map[string]string{"current_user": "Write a script at scripts/check-totals.sh"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auditJapanese.MatchString(out) {
+		t.Fatalf("the decision input for an English user contains Japanese: %q", out)
+	}
+}
+
+// Audit 0.9.2 (translation): what moving the texts to English broke or left untested.
+
+// T2: the preface Go puts in front of the pre-work organizing is the one the page removes (web/src/components/ItemCard.svelte).
+func TestAuditTranslationPlanningPrefaceMatchesThePage(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "components", "ItemCard.svelte"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line string
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.Contains(l, "planningPrefixes =") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatal("ItemCard.svelte no longer has planningPrefixes")
+	}
+	if !strings.Contains(line, `"`+planningPreface+`"`) && !strings.Contains(line, `'`+planningPreface+`'`) {
+		t.Fatalf("the page removes a different preface than Go writes.\nGo:   %q\npage: %s", planningPreface, line)
+	}
+	got, err := renderPlanningFact(&planningFact{Summary: "s", Evidence: []planningQuote{{Source: "current_user", Quote: "q"}}}, map[string]string{"current_user": "q"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, planningPreface+"s") {
+		t.Fatalf("renderPlanningFact starts with planningPreface: %q", got)
+	}
+}
+
+// T4: the habits notice keeps handoff_write (the MCP way to write work records); the planning notice keeps lesson:<id> (how to cite a lesson).
+func TestAuditTranslationNoticesKeepTheirOperations(t *testing.T) {
+	if !strings.Contains(habitsNotice, "handoff_write in shikii_wiki") || !strings.Contains(habitsNotice, "shikii handoff write <path>") {
+		t.Errorf("habitsNotice lost how to write a work record: %q", habitsNotice)
+	}
+	if n := planningNotice("s", "t"); !strings.Contains(n, "evidence source to lesson:<id>") {
+		t.Errorf("planningNotice lost how to cite a lesson: %q", n)
+	}
+}
+
+// a restatement of the same request labels the previous request as not done, whatever the agent says about grouping
+func TestAudit3AgentCannotEraseRestatement(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	done := continuesTurn(t, repo, root, "Please use the agreed CSV columns and keep the existing filters.")
+	continuesSubmit(t, root, true)
+	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done again."})
+	if l, ok := doneLabel(t, root, done); !ok || l.Truth != "no" {
+		t.Fatalf("a restatement must label the previous request as not done even when the agent says it continues: %+v %v", l, ok)
+	}
+}
+
+// an acknowledgement never settles the previous outcome, even when the agent copies the skill's example (continues_previous:false)
+func TestAudit3AgentCannotMakeDoneFromAck(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	done := continuesTurn(t, repo, root, "ok")
+	continuesSubmit(t, root, false)
+	if l, ok := doneLabel(t, root, done); ok {
+		t.Fatalf("an acknowledgement must not become a done truth through the agent's grouping: %+v", l)
+	}
+}
+
+// query reads; it does not take organized content such as continues_previous (test hole: mutation M8)
+func TestAudit3QueryRefusesContinuesPrevious(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": continuesFirst})
+	if _, err := planningCall(t, "query", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "continues_previous": true}); err == nil {
+		t.Fatal("query must refuse continues_previous")
+	}
+}
+
+// 0.9.6 audit, low 2: the shortened notices dropped two instructions the old text gave: restates is the <id> inside history:<id>:user
+// (restateDone compares the id exactly, so the whole history key silently does nothing), and maintenance sends the latest revision after
+// reading the sources and existing pages.
+func TestShortNoticesKeepTheirInstructions(t *testing.T) {
+	for name, text := range map[string]string{"notice": planningNotice("s", "t"), "shape": planningShape} {
+		if !strings.Contains(text, "the <id> in history:<id>:user") {
+			t.Errorf("the %s says restates is the <id> in history:<id>:user: %s", name, text)
+		}
+	}
+	if r := reflectAsk("shikii"); !strings.Contains(r, "the latest page_id") || !strings.Contains(r, "Read the sources and existing pages") {
+		t.Errorf("the reflection notice asks for the latest revision after reading the sources and pages: %s", r)
+	}
+}
+
+// 0.9.7 audit G-3: the full organizing notice and the notice for a missing query still taught lesson:<id>, which submit refuses; the key
+// query returns is lesson:<id>:<revision>.
+func TestReauditGNoticesTeachTheLessonKeyQueryReturns(t *testing.T) {
+	for name, text := range map[string]string{"full": planningNotice("s", "0123456789abcdef"), "short": planningNoticeShort("s", "0123456789abcdef"), "no query": planningNoQueryNotice} {
+		if !strings.Contains(text, "lesson:<id>:<revision>") {
+			t.Errorf("%s: names the key query returns: %q", name, text)
+		}
+	}
+}
+
+// 0.9.7 final audit (D1 to D2, F1 to F3). The checks are written independently in the tests; the functions are only what is tested.
+
+// F2: the full organizing notice says where the id for restates comes from (the <id> in history:<id>:user); the short form did not.
+// An agent with only the short form that put the key "history:<id>:user" query returned into restates was not refused, and nothing
+// happened (restateDone only matches t.ID exactly).
+func TestAuditFinalF2ShortPlanningNoticeSaysWhereTheRestatesIDComesFrom(t *testing.T) {
+	full, short := planningNotice("s", "0123456789abcdef"), planningNoticeShort("s", "0123456789abcdef")
+	const where = "history:<id>:user"
+	if !strings.Contains(full, where) {
+		t.Fatalf("precondition: the full text says where the restates id comes from %q: %q", where, full)
+	}
+	if !strings.Contains(short, where) {
+		t.Fatalf("F2: the short form lacks the restates condition (the <id> of %q)\nshort: %q", where, short)
+	}
+}
+
+// F2 control: an organizing sent from the short form alone is accepted (query, agreed, open and continues_previous added to its JSON).
+func TestAuditFinalF2ShortPlanningNoticeAloneSubmits(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	turn := func(prompt string) string {
+		t.Helper()
+		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
+	}
+	turn(planningTestRequest)
+	if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
+		t.Fatal(err)
+	}
+	short := turn("Now add a tax rate to the agreed CSV columns and keep the existing filters.")
+	if !strings.Contains(short, "as earlier in this session") {
+		t.Fatalf("precondition: the second notice is the short form: %q", short)
+	}
+	var ids map[string]any
+	if err := json.Unmarshal([]byte(regexp.MustCompile(`\{"session_id":"[^"]*","turn_id":"[0-9a-f]{16}"\}`).FindString(short)), &ids); err != nil {
+		t.Fatalf("the JSON at the end of the short form: %v", err)
+	}
+	ids["query"] = "CSV columns filters"
+	q, err := planningCall(t, "query", ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := q["source_material"].(map[string]any)["current_user"].(string)
+	ids["agreed"] = map[string]any{"summary": "\u7a0e\u7387\u3092 CSV \u306e\u5217\u306b\u8db3\u3059\u3002", "evidence": []map[string]string{{"source": "current_user", "quote": src[:20]}}}
+	ids["open"] = map[string]any{"unknown": true}
+	ids["continues_previous"] = false
+	if _, err := planningCall(t, "submit", ids); err != nil {
+		t.Fatalf("F2: an organizing sent from the short form alone was refused: %v", err)
+	}
+}
+
+// re3-3 (F4): the short organizing notice points to the details as the full text does (the skill's references/planning.md); a bare
+// references/planning.md reads as a path in the project.
+func TestRe3ShortPlanningNoticeNamesTheSkillsReference(t *testing.T) {
+	full, short := planningNotice("s", "t"), planningNoticeShort("s", "t")
+	const where = "the skill's references/planning.md"
+	if !strings.Contains(full, where) {
+		t.Fatalf("precondition: the full text says %q", where)
+	}
+	if !strings.Contains(short, where) {
+		t.Fatalf("F4: the short form names the details differently from the full text: %q", short)
+	}
+	if !strings.Contains(reflectAskShort("X", nil), "the skill's references/wiki.md") {
+		t.Fatal("control: the short reflection form names the skill's file")
+	}
+}
+
+// RED tests from the 0.9.3 behaviour check with real agents (ba89f21). Each fails on ba89f21.
+
+// 1. The agent's continues_previous changes the previous request's outcome truth: attaching a short request to the one before
+// makes the previous request text long, so the person's restatement of the short request is no longer similar enough and the
+// "no" is lost (Codex attached every short request and the restatement; Claude attached "write it in the README too").
+func TestGroupingDoesNotEraseRestatement(t *testing.T) {
+	for _, continues := range []bool{false, true} {
+		repo, root, _ := planningFixture(t)
+		continuesTurn(t, repo, root, "README\u306b\u3082\u66f8\u3044\u3066")
+		continuesSubmit(t, root, continues)
+		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Wrote the README."})
+		done := ""
+		for _, r := range loadSession(root, "planning").Reviews {
+			if r.Spec == "done-as-asked" {
+				done = r.Trace
+			}
+		}
+		if done == "" {
+			t.Fatalf("continues=%v: the README turn must have a done-as-asked decision", continues)
+		}
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "README\u306b\u3082\u66f8\u3044\u3066\u304f\u3060\u3055\u3044"})
+		continuesSubmit(t, root, false)
+		if l, ok := doneLabel(t, root, done); !ok || l.Truth != "no" || l.Source != "outcome" {
+			t.Errorf("continues_previous=%v: the person restated the README request, so its outcome must be no whatever the grouping: %+v %v", continues, l, ok)
+		}
+	}
+}
+
+// 2. The organizing notice tells the agent to attach "a short follow-up on the same work". Codex then attached
+// "also check the totals", "write it in the README too" and the restatement of request 1, and the whole session became one request.
+// A short request that asks for new work must be its own request (e3ac97e).
+func TestNoticeKeepsShortRequestsWithContentApart(t *testing.T) {
+	n := planningNotice("s", "t")
+	if strings.Contains(n, "short follow-up on the same work") {
+		t.Fatalf("the notice invites attaching short requests with content: %s", n)
+	}
+}
+
+// Low 1: Codex often passed the JSON as an argument first and was refused; the planning notice says it goes on standard input.
+func TestPlanningNoticeSaysStandardInput(t *testing.T) {
+	if n := planningNotice("s", "t"); !strings.Contains(n, "standard input") {
+		t.Fatalf("the planning notice says the JSON goes on standard input: %s", n)
+	}
+}
+
+// a short request with content (the list treats it as new) that the agent says continues the previous one is attached to it,
+// and the previous request's outcome is not settled from it (not at plan submit, not at the turn's Stop)
+func TestPlanContinuesMergesShortRequest(t *testing.T) {
+	for _, reply := range []string{"main取り込んで", "それでいこう"} { // "merge main", "let's go with that" (not in the list)
+		t.Run(reply, func(t *testing.T) {
+			repo, root, _ := planningFixture(t)
+			done := continuesTurn(t, repo, root, reply)
+			if s := loadSession(root, "planning"); s.Request != reply {
+				t.Fatalf("provisional decision: the list treats %q as new, got %q", reply, s.Request)
+			}
+			continuesSubmit(t, root, true)
+			s := loadSession(root, "planning")
+			if s.Request != continuesFirst+" / "+reply || s.RequestText != continuesFirst+" / "+reply {
+				t.Fatalf("the agent said it continues: must be attached to the previous request, got %q / %q", s.Request, s.RequestText)
+			}
+			if l, ok := doneLabel(t, root, done); ok {
+				t.Fatalf("a continuation must not settle the previous request's outcome: %+v", l)
+			}
+			runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Merged."})
+			if s := loadSession(root, "planning"); !s.Judged || s.Completed == nil || s.Completed.Request != continuesFirst+" / "+reply {
+				t.Fatalf("the Stop must judge the attached request (listing kept for it): %+v", s)
+			}
+			if l, ok := doneLabel(t, root, done); ok {
+				t.Fatalf("the Stop must not settle the previous outcome from a continuation: %+v", l)
+			}
+		})
+	}
+}
+
+// a list acknowledgement that the agent says is a new request becomes its own request, and the previous outcome is settled from it
+func TestPlanNewSplitsAcknowledgement(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	done := continuesTurn(t, repo, root, "ok")
+	if s := loadSession(root, "planning"); s.Request != continuesFirst+" / ok" {
+		t.Fatalf("provisional decision: the list attaches ok, got %q", s.Request)
+	}
+	continuesSubmit(t, root, false)
+	s := loadSession(root, "planning")
+	if s.Request != "ok" || s.RequestText != "ok" {
+		t.Fatalf("the agent said it is new: must stand alone, got %q / %q", s.Request, s.RequestText)
+	}
+	if l, ok := doneLabel(t, root, done); ok {
+		t.Fatalf("the grouping never decides a truth: an acknowledgement does not settle the previous outcome (audit 3): %+v", l)
+	}
+	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
+	if s := loadSession(root, "planning"); !s.Judged || s.Completed == nil || s.Completed.Request != "ok" {
+		t.Fatalf("the Stop must judge the request standing alone: %+v", s)
+	}
+}
+
+// the agent is told about continues_previous where it is asked to organize, and where the Stop asks again (planningShape)
+func TestPlanningNoticeNamesContinuesPrevious(t *testing.T) {
+	if !strings.Contains(planningShape, "continues_previous is true, false or left out") {
+		t.Fatalf("the shape must show continues_previous: %s", planningShape)
+	}
+	if n := planningNotice("s", "0123456789abcdef"); !strings.Contains(n, "continues_previous to true") || !strings.Contains(n, "false when it is a new request") || !strings.Contains(n, "omit it when unsure") {
+		t.Fatalf("the notice must say when to set continues_previous and when to omit it: %s", n)
+	}
+}
+
+// 0.9.3 re-check: the minimal organizing (agreed and open unknown, continues_previous set) answered "recorded": false … skipped,
+// which reads as a failure though the grouping was applied. The receipt says what happened to the grouping.
+func TestPlanSubmitSaysHowTheMessageWasGrouped(t *testing.T) {
+	for _, c := range []struct {
+		reply     string
+		continues bool
+		want      string
+	}{{"\u305d\u308c\u3067\u3044\u3053\u3046", true, "attached"}, {"ok", false, "own"}} {
+		t.Run(c.want, func(t *testing.T) {
+			repo, root, _ := planningFixture(t)
+			continuesTurn(t, repo, root, c.reply)
+			out, err := planningCall(t, "submit", map[string]any{
+				"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID,
+				"agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}, "continues_previous": c.continues,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g, _ := out["grouping"].(string); !strings.Contains(g, c.want) {
+				t.Fatalf("the receipt says how the message was grouped (%q): %v", c.want, out)
+			}
+		})
+	}
+}
+
+func TestStopDoesNotAskContinuesPreviousOtherwise(t *testing.T) {
+	cases := map[string]struct {
+		reply  string
+		submit bool
+		bare   bool // organized, but continues_previous left out (unsure): not asked again
+	}{
+		"organizing without continues_previous": {reply: "OKです", bare: true},
+		"listed acknowledgement":                {reply: "ok"},
+		"long message":                          {reply: "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"},
+		"organizing came":                       {reply: "OKです", submit: true},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo, root, _ := planningFixture(t)
+			continuesTurn(t, repo, root, c.reply)
+			if c.submit {
+				continuesSubmit(t, root, true)
+			}
+			if c.bare {
+				if _, err := planningCall(t, "submit", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})
+			if _, block := stopReason(t, out); block {
+				t.Fatalf("the Stop must not ask for continues_previous here: %s", out)
+			}
+			if s := loadSession(root, "planning"); !s.Judged {
+				t.Fatalf("the Stop judges at once: %+v", s)
+			}
+		})
+	}
+}
+
+// 0.9.7: the pre-start organizing notice (about 1,700 characters) was added in full to every request. The full text now comes on the
+// session's first request and every noticeFullEvery requests (so it survives context compaction); in between a short form names the same
+// commands and this turn's IDs. A request whose organizing was not submitted does not bring the full text back: the short form alone is
+// enough to submit, and the Stop check repeats the steps. (Tracking misses across requests was tried first; every audit found another way
+// it went wrong, and the structure was simplified instead, 2026-10-27.)
+func TestPlanningNoticeIsShortAfterTheFirstRequest(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	const full = "putting topic words in query"
+	turn := func(prompt string) string {
+		t.Helper()
+		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
+	}
+	submit := func() {
+		t.Helper()
+		if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := turn(planningTestRequest)
+	if !strings.Contains(first, full) {
+		t.Fatalf("the session's first request gets the full text: %q", first)
+	}
+	submit()
+	second := turn("Now add a tax rate to the agreed CSV columns and keep the existing filters.")
+	id := loadSession(root, "planning").TurnID
+	if strings.Contains(second, full) || !strings.Contains(second, "hook plan query") || !strings.Contains(second, "hook plan submit") || !strings.Contains(second, id) {
+		t.Fatalf("after an organized request the short form names the commands and this turn's id %s: %q", id, second)
+	}
+	// under two fifths: the short form keeps the essential rules (re-audit S1, audit E). Measured with the binary's path taken out: the full
+	// text names it twice and the short form once, so a long install path (a coverage build in a deep folder) broke the ratio, not the text.
+	command := regexp.MustCompile(`Pipe the JSON below to (.+?) hook plan query`).FindStringSubmatch(second)
+	if command == nil {
+		t.Fatalf("the short form names the binary: %q", second)
+	}
+	short, long := strings.ReplaceAll(second, command[1], "shikii"), strings.ReplaceAll(first, command[1], "shikii")
+	if len(short)*5 >= len(long)*2 {
+		t.Fatalf("the short form is short: %d of %d characters", len(short), len(long))
+	}
+	// the second request's organizing is not submitted: the next request still gets the short form, which is enough to submit
+	if third := turn("Then sort the agreed CSV columns by date and keep the existing filters."); strings.Contains(third, full) || !strings.Contains(third, "hook plan submit") {
+		t.Fatalf("after a missed organizing, the short form: %q", third)
+	}
+	submit()
+	fulls := 0
+	for i := 0; i < noticeFullEvery; i++ {
+		if strings.Contains(turn("Request "+strings.Repeat("x", i+1)+": use the agreed CSV columns and keep the existing filters."), full) {
+			fulls++
+		}
+		submit()
+	}
+	if fulls != 1 {
+		t.Fatalf("the full text comes back once every %d requests: %d times", noticeFullEvery, fulls)
+	}
+}
+
+// 0.9.7 second real-agent check: Claude Code wrote hook plan query and hook plan submit in one command from the second request on, so it
+// submitted before reading what query returned (the lessons it could rely on). Both forms of the notice say to read the query result first.
+func TestPlanningNoticeSaysToReadTheQueryFirst(t *testing.T) {
+	for name, notice := range map[string]string{"full": planningNotice("s", "0123456789abcdef"), "short": planningNoticeShort("s", "0123456789abcdef")} {
+		if !strings.Contains(notice, "after reading what query returned") {
+			t.Errorf("%s form: says to submit after reading the query result: %q", name, notice)
+		}
+	}
+}
+
+// Properties F1 to F3 (F2 as decided on 2026-10-27: no miss is tracked, and the short form alone is enough) over random sequences of requests where the agent sometimes submits its organizing and sometimes does not.
+func TestPlanningNoticeFormOverRandomSessions(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	r := rand.New(rand.NewSource(97))
+	const full, short = "putting topic words in query", "as earlier in this session"
+	missedBefore, shortsInARow := false, 0
+	var history []string
+	for i := 0; i < 40; i++ {
+		prompt := fmt.Sprintf("Request %d: use the agreed CSV columns and keep the existing filters.", i)
+		notice := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
+		isFull, isShort := strings.Contains(notice, full), strings.Contains(notice, short)
+		if isFull == isShort {
+			t.Fatalf("request %d: one form of the organizing notice: %q", i, notice)
+		}
+		switch {
+		case i == 0 && !isFull:
+			t.Fatalf("F1: the session's first notice is the full text\nhistory: %v", history)
+		case missedBefore && !strings.Contains(notice, "hook plan submit"):
+			t.Fatalf("F2: after a missed organizing the notice alone is enough to submit\nhistory: %v", history)
+		}
+		if isShort {
+			shortsInARow++
+		} else {
+			shortsInARow = 0
+		}
+		if shortsInARow >= noticeFullEvery {
+			t.Fatalf("F3: %d short notices in a row\nhistory: %v", shortsInARow, history)
+		}
+		submitted := r.Intn(4) != 0
+		if submitted {
+			if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		missedBefore = !submitted
+		form := "short"
+		if isFull {
+			form = "full"
+		}
+		history = append(history, fmt.Sprintf("%s/submitted=%v", form, submitted))
+	}
+}
+
+// 0.9.3 re-check (5ca36c5): the real sequence of the behaviour check has five turns between request 1 and its restatement
+// ("continue", "OK", "let's go with that", "also check the totals", "write it in the README too"). restates must still reach request 1.
+func TestRestatesReachesRequestSixTurnsBack(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	session := "planning"
+	turn, done := "", ""
+	var group []string // done-as-asked of request 1 and of the acknowledgements attached to it
+	prompts := []string{restateFirst, "\u7d9a\u3051\u3066", "OK\u3067\u3059", "\u305d\u308c\u3067\u3044\u3053\u3046", restateSecond, restateThird}
+	for i, prompt := range prompts {
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": prompt})
+		if i > 0 {
+			payload := map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}, "continues_previous": i <= 3}
+			if _, err := planningCall(t, "submit", payload); err != nil {
+				t.Fatalf("plan submit: %v", err)
+			}
+		}
+		runHook(t, "stop", map[string]any{"session_id": session, "cwd": repo, "last_assistant_message": "Done."})
+		if i <= 3 {
+			s := loadSession(root, session)
+			if i == 0 {
+				turn = s.TurnID
+			}
+			for _, r := range s.Reviews {
+				if r.Spec == "done-as-asked" {
+					if i == 0 {
+						done = r.Trace
+					}
+					group = append(group, r.Trace)
+				}
+			}
+		}
+	}
+	if turn == "" || done == "" {
+		t.Fatal("request 1 must have a turn and a done-as-asked decision")
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": restateAgain})
+	out, err := planningCall(t, "query", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID})
+	if err != nil {
+		t.Fatalf("plan query: %v", err)
+	}
+	raw, _ := json.Marshal(out)
+	if !strings.Contains(string(raw), "history:"+turn+":user") {
+		t.Errorf("plan query must still list request 1 (history:%s:user) so the agent can name it in restates; got %.600s", turn, raw)
+	}
+	restateSubmit(t, root, session, turn)
+	found := false
+	for _, tr := range group {
+		if l, ok := doneLabel(t, root, tr); ok && l.Truth == "no" && l.Source == "outcome" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("a restatement of request 1 five turns later, named by restates, must give request 1 (or the acknowledgements joined to it) \"no\": traces %v", group)
+	}
+}
+
+// 0.9.1: rules, tests and procedures (commands or scripts) the agent newly made or changed itself are also written to the wiki on the spot (adding to or fixing
+// an existing page if there is one). The ritual used to write only the person's corrections, so even the way to run tests (scripts/go-test.sh) never reached the wiki (the person: "if you
+// make something new as a rule or a test, always write it in the wiki"). So that it reaches agents that do not read the skill (Codex without hooks, OpenCode),
+// it goes into every entry point (the ritual one-liner, the reflection text, the AGENTS.md section, the MCP guidance, the skill)
+func TestNewRulesTestsAndProceduresGoToTheWiki(t *testing.T) {
+	ja := "新しく作った・変えた決まり・テスト・手順"
+	en := "rule, test or procedure"
+	reflectText := reflectAsk("shikii")
+	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
+	wikiRef, _ := os.ReadFile("../../skills/shikii/references/wiki.md")
+	// The pre-work sorting guidance arrives with every request (the ritual one-liner is only once per session, and Claude Code in a project without work rules did not use it when it finished making something; measured in 0.9.1)
+	for name, text := range map[string]string{"ritual one-liner (habitsNotice)": habitsNotice, "reflection text": reflectText, "pre-work sorting guidance (every time)": planningNotice("s", "t")} {
+		if !strings.Contains(text, ja) && !strings.Contains(text, en) { // Japanese before the English translation, English after
+			t.Errorf("%s lacks the rule to also write %q (or %q) to the wiki", name, en, ja)
+		}
+	}
+	for name, text := range map[string]string{"MCP guidance": mcpInstructions, "SKILL.md": string(skill), "references/wiki.md": string(wikiRef)} {
+		if !strings.Contains(text, en) {
+			t.Errorf("%s lacks the rule to also write %q to the wiki", name, en)
+		}
 	}
 }

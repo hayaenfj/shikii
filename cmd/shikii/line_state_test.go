@@ -467,3 +467,14 @@ func TestLineNoticeOutcomeCalibratedAndJapanese(t *testing.T) {
 		t.Fatalf("a question people answer says the rest are asked and spot checks appear: %q", l)
 	}
 }
+
+// jaCounts uses the page's answer names
+func TestAuditProbeJaCounts(t *testing.T) {
+	sp := &spec.Spec{Display: map[string]spec.Display{"ja": {Options: map[string]string{"edit": "変更"}}}}
+	if got := jaCounts(sp, map[string]int{"edit": 2}); got != "変更 2 件" {
+		t.Fatalf("display.ja.options name: %q", got)
+	}
+	if got := jaCounts(&spec.Spec{}, map[string]int{"no": 10, "yes": 1}); got != "いいえ 10 件・はい 1 件" {
+		t.Fatalf("yes/no in plain Japanese: %q", got)
+	}
+}

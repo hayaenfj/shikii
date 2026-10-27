@@ -2,10 +2,15 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -290,5 +295,274 @@ func TestReflectInputUpToOneMiB(t *testing.T) {
 	raw, _ := json.Marshal(big)
 	if _, err := decodeReflect(bytes.NewReader(raw)); err == nil || !strings.Contains(err.Error(), "1 MiB") || !strings.Contains(err.Error(), "Split") {
 		t.Fatalf("a reflection over 1 MiB is refused with a note to split and send: %d bytes %v", len(raw), err)
+	}
+}
+
+// F2: the field names and conditions the full reflection request gives (wiki id and replaces; memory results tied to a check result) were
+// missing from the short form. The earlier TestAuditF4ReflectionShortKeepsSubmitFields only looked at the names inside [{...}].
+func TestAuditFinalF2ShortReflectionNamesEveryFieldOfTheFullText(t *testing.T) {
+	full, short := reflectAsk("X reflect"), reflectAskShort("X reflect", []string{"a"})
+	var missing []string
+	for name, re := range map[string]*regexp.Regexp{
+		"wiki id":                regexp.MustCompile(`\bid\b`),
+		"wiki replaces":          regexp.MustCompile(`\breplaces\b`),
+		"result tied to a check": regexp.MustCompile(`check result`),
+	} {
+		if !re.MatchString(full) {
+			t.Fatalf("precondition: the full text gives %s", name)
+		}
+		if !re.MatchString(short) {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("F2: the short reflection request lacks fields and conditions the full text gives: %v\nshort: %q", missing, short)
+	}
+}
+
+// F4 (reflection): every field name the full reflection request gives for the submit shape is also in the short form.
+func TestAuditF4ReflectionShortKeepsSubmitFields(t *testing.T) {
+	full, short := reflectAsk("X reflect"), reflectAskShort("X reflect", []string{"a"})
+	re := regexp.MustCompile(`\[\{([^}]*)\}\]`)
+	var missing []string
+	for _, m := range re.FindAllStringSubmatch(full, -1) {
+		for _, f := range strings.Split(m[1], ",") {
+			if !strings.Contains(short, f) {
+				missing = append(missing, f)
+			}
+		}
+	}
+	for _, f := range []string{"page_id", "revision"} { // maintenance's fields in the full text
+		if strings.Contains(full, f) && !strings.Contains(short, f) {
+			missing = append(missing, f)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("the short reflection request lacks submit fields of the full text: %v\nshort: %q", missing, short)
+	}
+}
+
+func TestMemoryEffectRequiresActualDeliveryAndKeepsFirstAssessment(t *testing.T) {
+	st, scope, h, draft, revision := memoryEffectFixture(t)
+	memoryEffectPrompt(t, scope, "boundary")
+	id := memoryEffectComplete(t, st, scope, "boundary")
+	key := "lesson:" + draft.ID + ":" + revision
+	for _, field := range []string{"project", "at", "sampled", "source"} {
+		data, _ := json.Marshal(map[string]any{"operation": "submit", "memory": []map[string]any{{"source_id": id, "key": key, "result": "unknown", "decision": "", "evidence": "不明", field: "偽装"}}})
+		code, _, err := callTool(h, "shikii_reflect", data)
+		if err != nil || code < 400 {
+			t.Fatal("the source or scoring time cannot be forged from the input")
+		}
+	}
+	// 0.9.1: not refused for the count (4 items, 2 conversations). Assessments missing content get a per-item error and nothing is saved. query does not save
+	for _, body := range []map[string]any{
+		{"operation": "submit", "memory": []map[string]string{{"source_id": id}, {"source_id": id}, {"source_id": id}, {"source_id": id}, {"source_id": id}}},
+		{"operation": "submit", "memory": []map[string]string{{"source_id": id}, {"source_id": "0000000000000002"}, {"source_id": "0000000000000003"}}},
+	} {
+		out := reflectCall(t, h, body)
+		if out["complete"] != false || len(out["memory"].([]any)) != len(body["memory"].([]map[string]string)) {
+			t.Fatalf("memory assessments are not refused for their count; items missing content get per-item errors: %v", out)
+		}
+		for _, m := range out["memory"].([]any) {
+			if m.(map[string]any)["error"] == nil {
+				t.Fatalf("an assessment without a key is not saved: %v", out)
+			}
+		}
+	}
+	if data, _ := json.Marshal(map[string]any{"operation": "query", "memory": []map[string]string{{"source_id": id}}}); true {
+		if code, _, err := callTool(h, "shikii_reflect", data); err != nil || code < 400 {
+			t.Fatal("query does not save")
+		}
+	}
+	for _, change := range []map[string]string{
+		{"source_id": "ffffffffffffffff"}, {"key": "lesson:" + draft.ID + ":ffffffffffffffff"},
+		{"result": "certain"}, {"decision": ""}, {"evidence": ""},
+	} {
+		entry := map[string]string{"source_id": id, "key": key, "result": "helpful", "decision": "確認を追加した", "evidence": "合成テストの結果"}
+		for k, v := range change {
+			entry[k] = v
+		}
+		out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{entry}})
+		if out["complete"] != false || out["memory"].([]any)[0].(map[string]any)["error"] == nil {
+			t.Fatalf("refuses an assessment not tied to an actual delivery and concrete evidence: %v", change)
+		}
+	}
+	other := newServer(serveOpts{storeDir: t.TempDir(), projectScope: feedbackScope(gitRepo(t))}) // another project has its own store
+	if memoryEffectSubmit(t, other, id, key, "helpful", "別の仕事", "合成テスト")["complete"] != false {
+		t.Fatal("does not let an assessment be written into another project")
+	}
+	for n := 0; n < 2; n++ {
+		if memoryEffectSubmit(t, h, id, key, "unknown", "", "記憶を使った判断の記録が無いため")["complete"] != true {
+			t.Fatal("when evidence is lacking it can be left pending, and the same content can be sent again")
+		}
+	}
+	if memoryEffectSubmit(t, h, id, key, "helpful", "後から成功扱いにする", "別の結果")["complete"] != false {
+		t.Fatal("the original AI assessment is not overwritten later")
+	}
+	stats := memoryEffectStats(t, h)
+	if stats["unknown"] != float64(1) || stats["helpful"] != float64(0) {
+		t.Fatal("resending or rewriting does not inflate the results")
+	}
+}
+
+// C DF-4, DF-5, DF-6: the short notices lacked instructions the full text gives, and neither said where memory's source_id comes from (a
+// lesson delivered to a subagent has its own id, not the conversation's). The checks are the words each text must hold.
+func TestPatch099ShortNoticesKeepTheFullTextsInstructions(t *testing.T) {
+	short := planningNoticeShort("s", "0123456789abcdef")
+	for _, w := range []string{"write it to the wiki", "false"} {
+		if !strings.Contains(short, w) {
+			t.Errorf("DF-4: the short organizing notice says %q: %q", w, short)
+		}
+	}
+	shortReflect, fullReflect := reflectAskShort("X reflect", []string{"a"}), reflectAsk("X reflect")
+	for _, w := range []string{"shikii guard add", "complete:true", "observations"} {
+		if !strings.Contains(shortReflect, w) {
+			t.Errorf("DF-5: the short reflection request says %q: %q", w, shortReflect)
+		}
+	}
+	for name, text := range map[string]string{"full": fullReflect, "short": shortReflect} {
+		if !strings.Contains(text, "memories[].source_id") {
+			t.Errorf("DF-6: the %s reflection request says memory's source_id is query's memories[].source_id: %q", name, text)
+		}
+	}
+}
+
+// 0.9.5 check: the reflection notice said "fix any error with complete:false and resend", but submit has no complete field and refuses it
+// ("json: unknown field \"complete\""), so an agent that followed the notice was refused. The notice says to fix the error and resend.
+func TestReflectNoticeDoesNotAskForACompleteField(t *testing.T) {
+	if n := reflectAsk("shikii"); strings.Contains(n, "complete:false") || !strings.Contains(n, "fix it and resend") {
+		t.Fatalf("the notice must not ask to send complete:false (submit refuses that field): %s", n)
+	}
+}
+
+// Behaviour check 0.9.2 (Claude Code): a submit that sorted the wiki but sent no provisional scores came back complete:true,
+// so the agent stopped while the same two conversations stayed pending and the Stop hook blocked every turn.
+// The receipt now says what is still left for the conversations it named (complete still only says every item was saved).
+func TestReflectSubmitSaysWhatIsStillLeft(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	id, trace := reviewSeed(t, st, scope, 1)
+	out := reflectCall(t, h, map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": []string{id}}}})
+	left, _ := out["left"].([]any)
+	if out["complete"] != true || len(left) != 1 || !strings.Contains(left[0].(string), id) || !strings.Contains(left[0].(string), "provisional scores 1") {
+		t.Fatalf("a submit that leaves provisional scores says so in left: %v", out)
+	}
+	out = reflectCall(t, h, map[string]any{"operation": "submit", "reviews": []map[string]string{{"source_id": id, "trace_id": trace, "truth": "yes", "reason": "checked"}}})
+	if out["complete"] != true || out["left"] != nil {
+		t.Fatalf("once nothing is left, left is gone: %v", out)
+	}
+}
+
+// A submit that names a conversation only through its reviews still says what is left (here, the wiki).
+func TestReflectSubmitLeftNamesReviewedConversations(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	id, trace := reviewSeed(t, st, scope, 1)
+	out := reflectCall(t, h, map[string]any{"operation": "submit", "reviews": []map[string]string{{"source_id": id, "trace_id": trace, "truth": "yes", "reason": "checked"}}})
+	left, _ := out["left"].([]any)
+	if out["complete"] != true || len(left) != 1 || !strings.Contains(left[0].(string), id) || !strings.Contains(left[0].(string), "wiki unsorted") {
+		t.Fatalf("a reviews-only submit says the wiki is still left: %v", out)
+	}
+}
+
+// complete:true only says every item was saved. Every text an agent reads about submit must say to do what left lists,
+// or the agent stops on complete:true as before (behaviour check 0.9.2).
+func TestReflectTextsSayToDoWhatIsLeft(t *testing.T) {
+	texts := map[string]string{"hook notice": reflectAsk("shikii")}
+	for _, tool := range mcpTools {
+		if tool["name"] == "shikii_reflect" {
+			texts["MCP description"], _ = tool["description"].(string)
+		}
+	}
+	for _, path := range []string{"../../skills/shikii/SKILL.md", "../../skills/shikii/references/review.md"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		texts[path] = string(data)
+	}
+	for name, text := range texts {
+		if !strings.Contains(text, "left") || !strings.Contains(text, "complete") {
+			t.Errorf("%s does not say that complete:true is not the end while left lists a conversation", name)
+		}
+	}
+}
+
+// leftDelivery saves a delivery of one lesson (a past conversation quoted as feedback) to the delivery id, with parent when it went to a subagent.
+func leftDelivery(t *testing.T, st store.Store, scope, id, parent string) string {
+	t.Helper()
+	key := "feedback:00000000000000aa"
+	d := store.MemoryDelivery{ID: id, Scope: scope, Request: "fix the README", Parent: parent, Quotes: []store.MemoryQuote{{Key: key, ID: "00000000000000aa", Request: "earlier request", Summary: "earlier summary", Reply: "earlier reply"}}}
+	if parent != "" {
+		d.Agent = "subagent-1"
+	}
+	if err := st.SaveMemoryDelivery(d); err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
+// A submit that only assesses delivered lessons names that conversation, so left says what else is left for it.
+func TestReflectSubmitLeftNamesAssessedConversations(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	id, _ := reviewSeed(t, st, scope, 1)
+	key := leftDelivery(t, st, scope, id, "")
+	out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{{"source_id": id, "key": key, "result": "unknown", "evidence": "not checked"}}})
+	left, _ := out["left"].([]any)
+	if out["complete"] != true || len(left) != 1 || !strings.Contains(left[0].(string), id) || !strings.Contains(left[0].(string), "provisional scores 1") {
+		t.Fatalf("a memory-only submit says what is left for its conversation: %v", out)
+	}
+}
+
+// When left cannot be worked out, the receipt says so in left_error instead of dropping left as if nothing were left.
+func TestReflectSubmitSaysWhenLeftFails(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	id, _ := reviewSeed(t, st, scope, 1)
+	key := leftDelivery(t, st, scope, id, "")
+	// a broken provisional memory assessment makes the reflect view (and so left) fail; the wiki-only submit itself does not read it
+	sum := func(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+	dir := filepath.Join(st.Dir, "records", "memory-reviews", sum(scope))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, sum(id+":"+key)+".json"), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := reflectCall(t, h, map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": []string{id}}}})
+	msg, _ := out["left_error"].(string)
+	if out["complete"] != true || out["left"] != nil || !strings.Contains(msg, "could not work out what is left") || !strings.Contains(msg, "query") {
+		t.Fatalf("a failure to work out left is said, not swallowed: %v", out)
+	}
+}
+
+// A lesson delivered to a subagent is assessed with the delivery's own source_id, which is not the parent conversation's id.
+// left still names the parent conversation (the reflect view gathers the delivery under its parent).
+func TestReflectSubmitLeftMapsSubagentDeliveryToParent(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	parent, _ := reviewSeed(t, st, scope, 1)
+	delivery := "00000000000000bb"
+	key := leftDelivery(t, st, scope, delivery, parent)
+	out := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{{"source_id": delivery, "key": key, "result": "unknown", "evidence": "not checked"}}})
+	left, _ := out["left"].([]any)
+	if out["complete"] != true || len(left) != 1 || !strings.Contains(left[0].(string), parent) || !strings.Contains(left[0].(string), "provisional scores 1") {
+		t.Fatalf("assessing a subagent's delivery says what is left for the parent conversation: %v", out)
+	}
+}
+
+// Behaviour check 0.9.2 re-check (claude-ja, claude-en): after a wiki-only submit the receipt said
+// left: ["<id> (provisional scores 1)"]. Claude read the target question "Was the requested work finished?" as the person's
+// question and refused to answer it for them three turns in a row, so the conversations never left the queue.
+// The left line has to say how to clear it: send reviews with the agent's own provisional truth, unknown when it cannot tell.
+func TestLeftSaysHowToClearProvisionalScores(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	id, _ := reviewSeed(t, st, scope, 1)
+	out := reflectCall(t, h, map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": []string{id}}}})
+	left, _ := out["left"].([]any)
+	if len(left) != 1 {
+		t.Fatalf("expected one left line: %v", out)
+	}
+	l := left[0].(string)
+	for _, w := range []string{"reviews", "unknown"} {
+		if !strings.Contains(l, w) {
+			t.Fatalf("the left line does not say how to clear the provisional scores (missing %q): %q", w, l)
+		}
 	}
 }

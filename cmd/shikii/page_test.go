@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -187,5 +188,102 @@ func TestPageProbeHubAndCommand(t *testing.T) {
 	}
 	if out = capture(t, func() error { return cmdPage(nil) }); len(spawned) != 1 || !strings.Contains(out, ", up)") {
 		t.Fatalf("the second time is up and does not start: spawned=%v\n%s", spawned, out)
+	}
+}
+
+// 0.9.7 audit A-3: a probe (pageLockHeld) must not make a starting page fail to take the lock when no page holds it (it would log
+// 'another page is running' and exit). Checked in one run: the start's first try meets a peek's shared lock, taken right then in
+// beforePageLockTry with the same flock a peek uses, and the peek ends before the next try.
+func TestAuditProbeDoesNotMakeAStartingPageExit(t *testing.T) {
+	common, scope := t.TempDir(), "/tmp/audit-project"
+	f, ok := holdPageLock(common, scope) // create the lock file, then release (the earlier page ended)
+	if !ok {
+		t.Fatal("precondition")
+	}
+	f.Close()
+	peek, err := os.OpenFile(pageLockPath(common, scope), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peek.Close()
+	oldRetry, oldTry := pageLockRetry, beforePageLockTry
+	t.Cleanup(func() { pageLockRetry, beforePageLockTry = oldRetry, oldTry })
+	pageLockRetry = time.Hour // the result must not depend on how fast this machine is
+	var tries []int
+	beforePageLockTry = func(attempt int) {
+		tries = append(tries, attempt)
+		switch attempt {
+		case 0:
+			if err := syscall.Flock(int(peek.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
+				t.Errorf("the peek takes the shared lock: %v", err)
+			}
+		case 1:
+			_ = syscall.Flock(int(peek.Fd()), syscall.LOCK_UN) // the peek ends
+		}
+	}
+	got, ok := holdPageLock(common, scope)
+	if !ok {
+		t.Fatalf("no page held the lock, but a start that met a peek could not take it (tries %v)", tries)
+	}
+	got.Close()
+	if len(tries) != 2 {
+		t.Fatalf("the first try meets the peek and the second takes the lock: tries %v", tries)
+	}
+}
+
+// A recorded page whose pid is alive and which holds the page lock is up even when /v1/status does not answer within the hook's probe
+// (a busy page); the hook then does not start another one.
+func TestPageHoldingTheLockIsUpEvenWhenItAnswersSlowly(t *testing.T) {
+	hookEnv(t, nil)
+	common, _ := agentHome()
+	repo := gitRepo(t)
+	initAt(t, repo)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close() // accepts (the kernel backlog) but never answers
+	port := ln.Addr().(*net.TCPAddr).Port
+	if err := writePageRecord(common, repo, port, os.Getpid()); err != nil {
+		t.Fatal(err)
+	}
+	if livePage(repo) != "" {
+		t.Fatal("without the page lock, a page that does not answer is not up")
+	}
+	takePageLock(t, common, repo)
+	if url := livePage(repo); url != "http://127.0.0.1:"+strconv.Itoa(port) {
+		t.Fatalf("a slow page holding the lock is up: %q", url)
+	}
+	spawned = nil
+	if _, started := ensureProjectPage(repo); started || len(spawned) != 0 {
+		t.Fatalf("the hook does not start a second page: %v", spawned)
+	}
+}
+
+// Property D1 of .shikii/handoff/audit-0.9.7/invariants.md (0.9.7 quality bar): while a page holds the project's lock, another start cannot
+// take it, even when another hook peeks at the lock at the very moment of that start, and the peek sees the page as running. Checked in one
+// run, without waiting on a race: the peek is made right at the second start's try (beforePageLockTry).
+func TestSecondPageCannotTakeTheLockEvenWhilePeeked(t *testing.T) {
+	common, scope := t.TempDir(), "/work/p"
+	oldRetry, oldTry := pageLockRetry, beforePageLockTry
+	t.Cleanup(func() { pageLockRetry, beforePageLockTry = oldRetry, oldTry })
+	pageLockRetry = 0 // a start that cannot take the lock gives up after one try
+	first, ok := holdPageLock(common, scope)
+	if !ok {
+		t.Fatal("the first page takes the free lock")
+	}
+	defer first.Close()
+	var peeks []bool
+	beforePageLockTry = func(int) { peeks = append(peeks, pageLockHeld(common, scope)) }
+	if second, ok := holdPageLock(common, scope); ok {
+		second.Close()
+		t.Fatal("a second page of the same project took the lock the first page holds")
+	}
+	beforePageLockTry = oldTry
+	if len(peeks) != 1 || !peeks[0] {
+		t.Fatalf("the peek at the second start sees the first page running: %v", peeks)
+	}
+	if !pageLockHeld(common, scope) {
+		t.Fatal("after the peek and the failed start, the first page still holds the lock")
 	}
 }

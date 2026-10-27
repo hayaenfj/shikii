@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hayaenfj/shikii/internal/spec"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // A spec can be made from flags alone, and Load and Validate pass on it as is.
@@ -98,5 +99,89 @@ func TestNewRejectsIncompleteSpecs(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "one.yaml")); err == nil {
 		t.Fatal("a rejected spec must not be written")
+	}
+}
+
+// Store defaults: everything shikii makes is under the store (.shikii/). Omitting --specs means <store>/decisions; the wiki is <store>/wiki.
+// serve fills the defaults before newServer (loading specs): without that it cannot start with `no spec (*.yaml) in ` (happened on a real machine on 2026-10-18).
+func TestLayoutDefaultsLiveUnderTheStore(t *testing.T) {
+	o := serveOpts{storeDir: filepath.Join("x", ".shikii")}
+	o.resolve()
+	if o.specsDir != filepath.Join("x", ".shikii", "decisions") || o.wikiDir != filepath.Join("x", ".shikii", "wiki") {
+		t.Fatalf("defaults must live under the store: %+v", o)
+	}
+	o = serveOpts{storeDir: ".shikii", specsDir: "decisions", wikiDir: "w"}
+	o.resolve()
+	if o.specsDir != "decisions" || o.wikiDir != "w" {
+		t.Fatalf("explicit folders must stay: %+v", o)
+	}
+	// The store init creates and new's defaults are the same
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", t.TempDir())
+	capture(t, func() error { return cmdInit(nil) })
+	for _, p := range []string{"decisions", "wiki", "records", "labels", filepath.Join("wiki", "index.md")} {
+		if !fileExists(filepath.Join(dir, ".shikii", p)) {
+			t.Fatalf("init must create .shikii/%s", p)
+		}
+	}
+	for _, p := range []string{"decisions", "wiki"} {
+		if fileExists(filepath.Join(dir, p)) {
+			t.Fatalf("init must not add %s/ to the project root", p)
+		}
+	}
+	capture(t, func() error {
+		return cmdNew([]string{"my-id", "--type", "noul", "--question", "Is it?", "--input", "text", "--pii", "true", "--send-to", "local"})
+	})
+	if !fileExists(filepath.Join(dir, ".shikii", "decisions", "my-id.yaml")) {
+		t.Fatal("new must write under .shikii/decisions")
+	}
+}
+
+func TestProjectCommandsShareRootFromSubdirectories(t *testing.T) {
+	for _, operation := range []string{"new", "init", "tune"} {
+		t.Run(operation, func(t *testing.T) {
+			repo := gitRepo(t)
+			root := hookEnv(t, nil, repo)
+			sub := filepath.Join(repo, "docs")
+			if err := os.Mkdir(sub, 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(sub)
+			switch operation {
+			case "new":
+				capture(t, func() error {
+					return cmdNew([]string{"audit-question", "--type", "noul", "--question", "Is the synthetic task complete?", "--input", "message", "--pii", "true", "--send-to", "local"})
+				})
+				if !fileExists(filepath.Join(root, "decisions", "audit-question.yaml")) {
+					t.Fatal("new must create the spec at the project root")
+				}
+			case "init":
+				capture(t, func() error { return cmdInit(nil) })
+				for _, name := range []string{".mcp.json", "opencode.json", ".shikii/wiki/index.md"} {
+					if !fileExists(filepath.Join(repo, name)) {
+						t.Fatalf("init must prepare at the project root: %s", name)
+					}
+				}
+			case "tune":
+				path := specWithVariants(t, root)
+				sp := mustLoad(t, path)
+				st := store.Store{Dir: root}
+				for _, id := range []string{"00000000000000a1", "00000000000000a2"} {
+					input := map[string]string{"message": "fix " + id}
+					if err := st.AppendLabel(store.Label{TraceID: id, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "choice", Model: "m", Inputs: input, InputsHash: store.HashInputs(input), Truth: "change_request", Weight: 1, Source: "manual", Raw: map[string]float64{"change_request": .9, "question": .1, "other": 0}}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				model := wordingSensitiveModel(t)
+				out := capture(t, func() error { return cmdTune([]string{path, "--labeled", "none", "--local", model.URL}) })
+				if !strings.Contains(out, "2 truths") {
+					t.Fatal("tune must use the same project's truths")
+				}
+			}
+			if fileExists(filepath.Join(sub, ".shikii")) || fileExists(filepath.Join(sub, ".mcp.json")) {
+				t.Fatal("must not create a second store or settings in a subfolder")
+			}
+		})
 	}
 }
