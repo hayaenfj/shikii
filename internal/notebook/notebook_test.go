@@ -2,9 +2,12 @@ package notebook
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -476,5 +479,572 @@ func TestPageTimesUseLogNotFileTime(t *testing.T) {
 	}
 	if times, err := b.PageTimes(); err != nil || !times[res.Page.ID].Equal(copied) {
 		t.Fatalf("pages missing from the log fall back to the file time: %v %v", times, err)
+	}
+}
+
+// Also runs through JSON with an old-format reader, to detect unknown fields being silently dropped.
+func articleDraft(t *testing.T, d Draft, fields map[string]any) Draft {
+	t.Helper()
+	data, _ := json.Marshal(d)
+	var obj map[string]any
+	_ = json.Unmarshal(data, &obj)
+	for k, v := range fields {
+		obj[k] = v
+	}
+	data, _ = json.Marshal(obj)
+	if err := json.Unmarshal(data, &d); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func articleField(t *testing.T, p *Page, key string) any {
+	t.Helper()
+	data, _ := json.Marshal(p)
+	var obj map[string]any
+	_ = json.Unmarshal(data, &obj)
+	return obj[key]
+}
+
+func TestNotebookArticleKeepsSummaryAndVersions(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	d := draft(seed(t, b, 1), "Installation")
+	legacy, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := b.directory(false, "pages")
+	legacyPath := filepath.Join(dir, "revisions", legacy.Page.ID+"-"+legacy.Page.Revision+".md")
+	before, _ := os.ReadFile(legacyPath)
+	body := "## Background\n\n" + strings.Repeat("Model lifecycle evidence. ", 120) + "\n\n## Unresolved\n\nquartzretention remains unverified."
+	rich := articleDraft(t, d, map[string]any{"body": body})
+	got, err := b.Ingest(rich)
+	if err != nil || articleField(t, got.Page, "body") != body || got.Page.Lesson != d.Lesson || got.Page.Previous != legacy.Page.Revision {
+		t.Fatalf("keeps the search summary and the long knowledge body separately: %+v %v", got, err)
+	}
+	v, err := b.Query("quartzretention")
+	if err != nil || len(v.Lessons) != 1 || articleField(t, &v.Lessons[0], "body") != body {
+		t.Fatalf("finds words that appear only in the body: %+v %v", v, err)
+	}
+	if recalled, err := b.Recall("quartzretention"); err != nil || len(recalled) != 0 {
+		t.Fatal("does not deliver automatically on a chance match in a long body")
+	}
+	update := draft(d.Sources[0], d.Title)
+	update.ID, update.Lesson = got.Page.ID, "Check startup and shutdown."
+	next, err := b.Ingest(update)
+	if err != nil || articleField(t, next.Page, "body") != body || next.Page.Previous != got.Page.Revision {
+		t.Fatal("an old-format update does not erase the body", err)
+	}
+	cleared, err := b.Ingest(articleDraft(t, update, map[string]any{"body": ""}))
+	if err != nil || articleField(t, cleared.Page, "body") != nil {
+		t.Fatal("an explicit empty body clears it", err)
+	}
+	after, _ := os.ReadFile(legacyPath)
+	if !bytes.Equal(before, after) {
+		t.Fatal("does not rewrite an existing revision")
+	}
+	if report, err := b.Lint(); err != nil || len(report.Issues) != 0 {
+		t.Fatalf("checks old-format and new-format revisions together: %+v %v", report, err)
+	}
+	for _, body := range []string{strings.Repeat("x", (16<<10)+1), string([]byte{0xff})} {
+		update.Body = &body
+		if _, err := b.Ingest(update); err == nil {
+			t.Fatal("rejects an oversized body and invalid UTF-8")
+		}
+	}
+	empty := ""
+	if _, err := b.Ingest(Draft{Sources: d.Sources, Body: &empty}); err == nil {
+		t.Fatal("passing only a body does not mark the sources as organized")
+	}
+}
+
+func TestNotebookRelatedPagesAndExactLookup(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	a, err := b.Ingest(draft(seed(t, b, 1), "Startup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := draft(seed(t, b, 2), "Shutdown")
+	linked, err := b.Ingest(articleDraft(t, d, map[string]any{"related": []string{a.Page.ID}}))
+	if err != nil || articleField(t, linked.Page, "related") == nil {
+		t.Fatal("saves relations between knowledge pages", err)
+	}
+	v, err := b.Query("lesson:" + linked.Page.ID)
+	if err != nil || len(v.Lessons) != 1 || v.Lessons[0].ID != linked.Page.ID {
+		t.Fatal("reads a page directly from a related link", err)
+	}
+	if view, err := b.Query("lesson:ffffffffffffffff"); err != nil || len(view.Lessons) != 0 {
+		t.Fatal("does not return another search result in place of a missing page")
+	}
+	dir, _ := b.directory(false, "pages")
+	markdown, _ := os.ReadFile(filepath.Join(dir, linked.Page.ID+".md"))
+	if !bytes.Contains(markdown, []byte("]("+a.Page.ID+".md)")) {
+		t.Fatal("related pages open from the generated Markdown too")
+	}
+	d.ID = linked.Page.ID
+	d.Lesson = "New shutdown summary."
+	kept, err := b.Ingest(d)
+	if err != nil || articleField(t, kept.Page, "related") == nil {
+		t.Fatal("keeps omitted relations", err)
+	}
+	// Relations may be mutual. This means something different from a replacement cycle.
+	reverse := draft(a.Page.Sources[0].ID, a.Page.Title)
+	reverse.ID = a.Page.ID
+	if _, err := b.Ingest(articleDraft(t, reverse, map[string]any{"related": []string{linked.Page.ID}})); err != nil {
+		t.Fatal("allows mutual related links", err)
+	}
+	other := Book{Root: t.TempDir(), Scope: "/other"} // another project has its own store
+	foreign, err := other.Ingest(draft(seed(t, other, 3), "Foreign"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, related := range [][]string{{d.ID}, {foreign.Page.ID}, {"ffffffffffffffff"}, {"../outside"}} {
+		if _, err := b.Ingest(articleDraft(t, d, map[string]any{"related": related})); err == nil {
+			t.Fatalf("relates only other pages of the same project: %v", related)
+		}
+	}
+	duplicates := make([]string, 12)
+	for i := range duplicates {
+		duplicates[i] = a.Page.ID
+	}
+	merged, err := b.Ingest(articleDraft(t, d, map[string]any{"related": duplicates}))
+	if err != nil || len(merged.Page.Related) != 1 {
+		t.Fatal("relations are not refused by count; duplicates are removed", err)
+	}
+	_ = os.Remove(filepath.Join(dir, a.Page.ID+".md"))
+	if report, err := b.Lint(); err != nil || !hasIssue(report.Issues, "missing-related-page") {
+		t.Fatalf("detects related pages that disappeared later: %+v %v", report, err)
+	}
+	if _, err := b.Ingest(articleDraft(t, d, map[string]any{"related": []string{}})); err != nil {
+		t.Fatal("an explicit empty array clears broken relations", err)
+	}
+}
+
+func TestNotebookLegacyRevisionCompatibility(t *testing.T) {
+	p := Page{ID: "0000000000000001", Title: "Example", Lesson: "Summary", AppliesTo: "Installation", Status: "hypothesis", Sources: []Source{{ID: "0000000000000002", Hash: "example"}}}
+	legacyJSON := `{"id":"0000000000000001","title":"Example","lesson":"Summary","applies_to":"Installation","status":"hypothesis","sources":[{"id":"0000000000000002","hash":"example"}],"revision":""}`
+	if revision(p) != digest([]byte(legacyJSON))[:16] {
+		t.Fatal("does not change the hash of existing pages without body or relations")
+	}
+}
+
+// When another agent edits a lesson while classify runs, classify must not overwrite it with the old lesson it read (the edit would silently
+// revert). Checked in one run, without waiting on a race: the edit is saved right after classify has read the page and before it saves.
+func TestAudit090ClassifyDoesNotRevertConcurrentEdit(t *testing.T) {
+	root := t.TempDir()
+	scope := "/audit/race"
+	if err := (store.Store{Dir: root}).AppendFeedback(scope, store.Feedback{ID: "00000000000003e7", Request: "r", Summary: "s", Reply: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	b := Book{Root: root, Scope: scope}
+	draft := Draft{Sources: []string{"00000000000003e7"}, Title: "contested page", Lesson: "Old lesson.", AppliesTo: "a", Kind: "rule", Scene: "when working"}
+	res, err := b.Ingest(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Page.ID
+	if err := b.RewriteWithoutKindScene(id); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { classifyRead = func() {} })
+	var editErr error
+	met := 0
+	classifyRead = func() {
+		classifyRead = func() {}
+		met++
+		edit := draft
+		edit.ID, edit.Lesson = id, "Edited lesson."
+		_, editErr = b.Ingest(edit)
+	}
+	_, classifyErr := b.Classify(id, "fact", "when working")
+	if met != 1 || editErr != nil {
+		t.Fatalf("the edit is saved between classify's read and its save: met %d, %v", met, editErr)
+	}
+	live, err := b.Live()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range live {
+		if p.ID == id && p.Lesson != "Edited lesson." {
+			t.Fatalf("a successfully saved lesson edit was reverted by classify to %q (classify gave %v)", p.Lesson, classifyErr)
+		}
+	}
+	if classifyErr == nil {
+		t.Fatal("classify refuses to save over a page edited after it read it")
+	}
+}
+
+// Audit 0.9.2 (English): what shikii writes for an English user must be English.
+var japanese = regexp.MustCompile("[\u3040-\u30ff\u4e00-\u9fff]")
+
+// Every wiki page markdown (read by agents that open .shikii/wiki, and by people) carries Japanese labels on main.
+func TestAuditEnglishWikiPageMarkdownHasNoJapanese(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	body := "Exit 1 means a mismatch."
+	d := Draft{Title: "Check invoice totals", Lesson: "Run scripts/check-totals.sh before sending invoices.", AppliesTo: "invoices in invoices/",
+		Kind: "howto", Scene: "when checking invoices", Sources: []string{id}, ChangeReason: "the script was added", Body: &body}
+	res, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, _ := b.directory(false, "pages")
+	md, err := os.ReadFile(filepath.Join(pages, res.Page.ID+".md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loc := japanese.FindIndex(md); loc != nil {
+		t.Fatalf("an English page contains Japanese: %q", md[max(0, loc[0]-40):min(len(md), loc[1]+80)])
+	}
+}
+
+// The scene limit (24 characters) was sized for Japanese scenes. The English rendering of a typical scene is longer.
+func TestAuditEnglishSceneOfTypicalLengthIsAccepted(t *testing.T) {
+	for _, scene := range []string{"when checking invoice totals", "when sending an invoice to a client"} {
+		if !validKindScene("howto", scene) {
+			t.Errorf("an ordinary English scene is refused (%d characters): %q", len([]rune(scene)), scene)
+		}
+	}
+}
+
+// Pages written before 0.9.2 (with the Japanese labels) stay readable and can be updated after the labels became English.
+// Without this, updating shikii would turn every existing page into a changed page (left out of search, refusing saves).
+func TestPagesWrittenWithOldLabelsStayValid(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	body := "Exit 1 means a mismatch."
+	res, err := b.Ingest(Draft{Title: "Check invoice totals", Lesson: "Run the check before sending invoices.", AppliesTo: "invoices", Kind: "howto", Scene: "when checking invoices",
+		Sources: []string{id}, ChangeReason: "the script was added", Body: &body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := b.renderPage(*res.Page, legacyLabels) // what 0.9.1 wrote for the same page
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := b.directory(false, "pages")
+	for _, f := range []string{filepath.Join(dir, res.Page.ID+".md"), filepath.Join(dir, "revisions", res.Page.ID+"-"+res.Page.Revision+".md")} {
+		if err := os.WriteFile(f, old, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report, err := b.Lint()
+	if err != nil || len(report.Issues) != 0 {
+		t.Fatalf("a page with the old labels is not a changed page: %+v %v", report.Issues, err)
+	}
+	if live, _ := b.Live(); len(live) != 1 {
+		t.Fatalf("a page with the old labels is still found: %+v", live)
+	}
+	if _, err := b.Classify(res.Page.ID, "rule", "when checking invoices"); err != nil {
+		t.Fatalf("a page with the old labels can be updated: %v", err)
+	}
+	md, _ := os.ReadFile(filepath.Join(dir, res.Page.ID+".md"))
+	if japanese.Match(md) {
+		t.Fatalf("the updated page is written with the English labels: %s", md)
+	}
+}
+
+// A scene that is too long says so (with its length and the limit), instead of the general "a lesson needs kind and scene" (audit 0.9.2 English, medium 2).
+func TestTooLongSceneSaysItIsTooLong(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	d := draft(id, "A rule page")
+	d.Scene = "when " + strings.Repeat("checking the invoices ", 4)
+	_, err := b.Ingest(d)
+	if err == nil || !strings.Contains(err.Error(), "too long") || !strings.Contains(err.Error(), fmt.Sprint(SceneMax)) {
+		t.Fatalf("a too-long scene says it is too long and gives the limit: %v", err)
+	}
+}
+
+// Audit 0.9.2 (translation): tests that tie the English texts to what other code and older stores rely on.
+
+// copyTree copies testdata into a fresh store (the testdata itself is never written).
+func copyTree(t *testing.T, from, to string) {
+	t.Helper()
+	err := filepath.WalkDir(from, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(from, path)
+		if d.IsDir() {
+			return os.MkdirAll(filepath.Join(to, rel), 0o700)
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(to, rel), b, 0o600)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// T1: testdata/v091 is a store written by the real v0.9.1 (a page with a correction, a related page, a reason for the change, a body and
+// two revisions; built from the v0.9.1 tag with its internal/notebook). main reads its pages as unchanged and can update them.
+// TestPagesWrittenWithOldLabelsStayValid renders the old page with legacyLabels itself, so it cannot notice when legacyLabels drifts from 0.9.1.
+func TestAuditTranslationStoreWrittenByV091(t *testing.T) {
+	root := t.TempDir()
+	copyTree(t, filepath.Join("testdata", "v091"), root)
+	b := Book{Root: root, Scope: "/work/project"}
+	const invoice, install = "4961f1812030f9d6", "d9aa97698883d93e"
+	report, err := b.Lint()
+	if err != nil || len(report.Issues) != 0 {
+		t.Fatalf("pages written by v0.9.1 are not changed pages: %+v %v", report.Issues, err)
+	}
+	live, err := b.Live()
+	if err != nil || len(live) != 2 {
+		t.Fatalf("both pages written by v0.9.1 are found: %+v %v", live, err)
+	}
+	for _, p := range live {
+		if p.ID == invoice && (p.Correction == nil || len(p.Related) != 1 || p.ChangeReason == "" || p.Body == "") {
+			t.Fatalf("the v0.9.1 page keeps its correction, related page, reason and body: %+v", p)
+		}
+	}
+	res, err := b.Classify(invoice, "rule", "when sending invoices")
+	if err != nil {
+		t.Fatalf("a page written by v0.9.1 can be updated: %v", err)
+	}
+	dir, _ := b.directory(false, "pages")
+	md, _ := os.ReadFile(filepath.Join(dir, invoice+".md"))
+	if japanese.Match(md) || !strings.Contains(string(md), "The person's correction: always run the check script") || !strings.Contains(string(md), "## Related") {
+		t.Fatalf("the updated page is written with the English labels and keeps its fields: %s", md)
+	}
+	if res.Page == nil || res.Page.Previous != "25162fe9c6010c36" {
+		t.Fatalf("the update follows the v0.9.1 revision: %+v", res.Page)
+	}
+	if report, err = b.Lint(); err != nil || len(report.Issues) != 0 {
+		t.Fatalf("after the update the store is clean: %+v %v", report.Issues, err)
+	}
+}
+
+// T3: the guidance for pages without a kind and a scene keeps the command and its arguments (not only the word "classify").
+func TestAuditTranslationUnclassifiedHowKeepsTheCommand(t *testing.T) {
+	for _, must := range []string{"shikii wiki classify <page ID> <rule|howto|criteria|fact|history> <scene>", "shikii_wiki operation classify with id, kind and scene"} {
+		if !strings.Contains(unclassifiedHow, must) {
+			t.Errorf("unclassifiedHow lost %q: %s", must, unclassifiedHow)
+		}
+	}
+}
+
+// 0.9.7 audit B-4: a page's source links through any hash-named folder were taken as unchanged. Only the names this store had before
+// 0.9.7 are accepted; a link edited to another folder is a changed page.
+func TestAuditHandEditedLinkToAnyHashIsUnchanged(t *testing.T) {
+	root := t.TempDir()
+	b := Book{Root: root, Scope: "/work/p"}
+	o, err := b.Capture(Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Ingest(Draft{Title: "page", Lesson: "Check.", AppliesTo: "a", Kind: "rule", Scene: "when writing", Sources: []string{o.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "wiki", "lessons", b.storeName())
+	entries, _ := os.ReadDir(dir)
+	n := 0
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".md") {
+			p := filepath.Join(dir, e.Name())
+			data, _ := os.ReadFile(p)
+			edited := strings.ReplaceAll(string(data), "wiki-sources/"+b.storeName()+"/", "wiki-sources/"+strings.Repeat("e", 64)+"/")
+			if edited != string(data) {
+				n++
+				_ = os.WriteFile(p, []byte(edited), 0o600)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("precondition: %d", n)
+	}
+	if report, err := b.Lint(); err != nil || !hasIssue(report.Issues, "changed-page") {
+		t.Fatalf("a link edited by hand is a changed page: %+v %v", report.Issues, err)
+	}
+}
+
+// Behaviour check 0.9.2 (low 8 / low 4): agents without hooks captured the person's rule as a kind:"human" source, cited it as
+// correction.source_id and were refused three times by "the correction quote must be copied verbatim ...", which did not say why.
+// The check stays as strict as before (a correction quotes the person's next message in a conversation the hook recorded);
+// the refusal now says what is needed and what to do without hooks.
+func TestCorrectionRefusalSaysWhatIsNeeded(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	conversation := seed(t, b, 1)
+	captured, err := b.Capture(Observation{Kind: "human", Title: "the person's rule", Content: "Always write invoices in yen.", Reference: "chat", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name    string
+		sources []string
+		c       store.Correction
+		want    []string
+	}{
+		{"a captured source is not a recorded message", []string{captured.ID}, store.Correction{SourceID: captured.ID, Quote: "Always write invoices in yen.", Action: "write yen"},
+			[]string{captured.ID, "conversation recorded by the hook", "without correction", "sources"}},
+		{"the quote is not in the person's reply", []string{conversation}, store.Correction{SourceID: conversation, Quote: "words nobody said", Action: "check"},
+			[]string{conversation, "verbatim", "reply"}},
+		{"the correction source is not cited", []string{conversation}, store.Correction{SourceID: captured.ID, Quote: "Always write invoices in yen.", Action: "write yen"},
+			[]string{captured.ID, "sources"}},
+	}
+	for _, tc := range cases {
+		d := draft(tc.sources[0], "invoice rule")
+		d.Sources, d.Correction = tc.sources, &tc.c
+		_, err := b.Ingest(d)
+		if err == nil {
+			t.Fatalf("%s: a correction that does not quote a recorded person's message is refused", tc.name)
+		}
+		for _, w := range tc.want {
+			if !strings.Contains(err.Error(), w) {
+				t.Errorf("%s: the refusal says %q: %v", tc.name, w, err)
+			}
+		}
+	}
+	// the right quote from the recorded conversation is still accepted (the check is not weakened, and not closed either)
+	d := draft(conversation, "startup rule")
+	d.Correction = &store.Correction{SourceID: conversation, Quote: "model startup instructions are missing", Action: "check model startup instructions"}
+	if _, err := b.Ingest(d); err != nil {
+		t.Fatalf("a verbatim quote from the person's reply is accepted: %v", err)
+	}
+}
+
+// 0.9.7: the store keeps the names 0.9.6 gave it (the hash of the path it was first opened at), so a store 0.9.6 wrote is read as it is,
+// at its own path and, once its name is recorded, after a move; nothing is moved or renamed.
+func TestStoreWrittenBy096KeepsItsNames(t *testing.T) {
+	root := t.TempDir()
+	copyTree(t, filepath.Join("testdata", "v091"), root)
+	before, _ := os.ReadDir(filepath.Join(root, "wiki", "lessons"))
+	at := Book{Root: root, Scope: "/work/project"}
+	if live, err := at.Live(); err != nil || len(live) != 2 {
+		t.Fatalf("read at its own path: %+v %v", live, err)
+	}
+	moved := Book{Root: root, Scope: "/moved/somewhere/project"}
+	if live, err := moved.Live(); err != nil || len(live) != 2 {
+		t.Fatalf("read after a move: %+v %v", live, err)
+	}
+	if report, err := moved.Lint(); err != nil || len(report.Issues) != 0 {
+		t.Fatalf("nothing to fix after a move: %+v %v", report.Issues, err)
+	}
+	after, _ := os.ReadDir(filepath.Join(root, "wiki", "lessons"))
+	if len(before) != len(after) || before[0].Name() != after[0].Name() || after[0].Name() != digest([]byte("/work/project")) {
+		t.Fatalf("nothing is moved or renamed: %v -> %v", before, after)
+	}
+}
+
+// Other readers refuse a cursor that carries a byte.
+func TestQueryRefusesByteCursor(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	for i := 0; i < 120; i++ {
+		o := partsCapture(t, b, fmt.Sprintf("m%d", i), strings.Repeat("x", 10), int64(i+1))
+		d := draft(o.ID, fmt.Sprintf("Lesson %d about memories", i))
+		d.Lesson = strings.Repeat(fmt.Sprintf("lesson %d text ", i), 40)
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v, err := b.QueryPage("", "")
+	if err != nil || v.NextCursor == "" {
+		t.Fatalf("expected a second page: %v", err)
+	}
+	if _, err := b.QueryPage("", auditForge(t, v.NextCursor, func(c *continuation) { c.Byte = 5 })); err == nil {
+		t.Fatal("QueryPage accepted a cursor with a byte offset")
+	}
+}
+
+// A store written by the real v0.9.1 (testdata/v091, under /work/project) is read as it is at its own path and after a move, and can be
+// updated. A store moved before 0.9.7 ever opened it is reconnected first (the hook or --init), which records its name from the old path.
+func TestStoreWrittenByV091NeedsNoFixingAfterAMove(t *testing.T) {
+	for _, scope := range []string{"/work/project", "/moved/somewhere/project"} {
+		root := t.TempDir()
+		copyTree(t, filepath.Join("testdata", "v091"), root)
+		store.RecordStoreNameFrom(root, "/work/project")
+		b := Book{Root: root, Scope: scope}
+		if live, err := b.Live(); err != nil || len(live) != 2 {
+			t.Fatalf("%s: both pages written by v0.9.1 are found: %+v %v", scope, live, err)
+		}
+		if report, err := b.Lint(); err != nil || len(report.Issues) != 0 {
+			t.Fatalf("%s: pages written by v0.9.1 are not changed pages: %+v %v", scope, report.Issues, err)
+		}
+		if _, err := b.Classify("4961f1812030f9d6", "rule", "when sending invoices"); err != nil {
+			t.Fatalf("%s: a page written by v0.9.1 can be updated: %v", scope, err)
+		}
+		if report, err := b.Lint(); err != nil || len(report.Issues) != 0 {
+			t.Fatalf("%s: after the update the store is clean: %+v %v", scope, report.Issues, err)
+		}
+	}
+}
+
+// 0.9.2 re-audit, test hole: a page made from a long source stays live (its source can be read by ingest, query and lint),
+// and capturing the same long source again is not refused.
+func TestLessonFromLongSourceStaysLive(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	long := Observation{Kind: "agent", Title: "long memory", Content: strings.Repeat("A long memory file, kept verbatim. ", 6000), Reference: "memory/long.md", Version: "v", ObservedAt: time.Unix(1, 0)}
+	o, err := b.Capture(long)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Ingest(draft(o.ID, "Lesson from a long memory")); err != nil {
+		t.Fatalf("a page can be made from a long source: %v", err)
+	}
+	v, err := b.Query("")
+	if err != nil || len(v.Lessons) != 1 || len(v.Issues) != 0 {
+		t.Fatalf("a page citing a long source is listed without issues: %v lessons=%d issues=%+v", err, len(v.Lessons), v.Issues)
+	}
+	if again, err := b.Capture(long); err != nil || again.ID != o.ID {
+		t.Fatalf("capturing a sorted long source again is not refused: %v", err)
+	}
+}
+
+// Audit 0.9.2 (behavior), low 3: a page written by 0.9.1 (with the fixed words of before 0.9.2) and saved again by 0.9.2 with the same content
+// (or classified again with the same kind and scene) was refused with "an immutable wiki source or revision has changed": the content is the same,
+// so the revision is the same, but the revision file's bytes use the old words. A revision file that is the same page (matchesPage) is accepted.
+func TestAuditResaveUnchangedLegacyPage(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	id := seed(t, b, 1)
+	body := "Exit 1 means a mismatch."
+	d := Draft{Title: "Check invoice totals", Lesson: "Run the check before sending invoices.", AppliesTo: "invoices", Kind: "howto", Scene: "when checking invoices",
+		Sources: []string{id}, ChangeReason: "the script was added", Body: &body}
+	res, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, _ := b.renderPage(*res.Page, legacyLabels)
+	dir, _ := b.directory(false, "pages")
+	revisionFile := filepath.Join(dir, "revisions", res.Page.ID+"-"+res.Page.Revision+".md")
+	for _, f := range []string{filepath.Join(dir, res.Page.ID+".md"), revisionFile} {
+		if err := os.WriteFile(f, old, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.ID = res.Page.ID
+	if _, err := b.Ingest(d); err != nil {
+		t.Errorf("saving the same content again: %v", err)
+	}
+	if _, err := b.Classify(res.Page.ID, "howto", "when checking invoices"); err != nil {
+		t.Errorf("classifying again with the same kind and scene: %v", err)
+	}
+	if kept, _ := os.ReadFile(revisionFile); !bytes.Equal(kept, old) {
+		t.Error("the revision file written by the earlier version is not rewritten")
+	}
+	// a revision file that is not the same page is still refused
+	if err := os.WriteFile(revisionFile, append(append([]byte{}, old...), []byte("tampered\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Ingest(d); err == nil || !strings.Contains(err.Error(), "immutable") {
+		t.Errorf("a changed revision file is refused: %v", err)
+	}
+}
+
+// Behaviour check 0.9.2 re-check (claude-en): a wiki-only sort named two conversations and, by mistake, the turn id
+// 911c2872465d2337. The whole item was refused with "wiki source does not belong to this project's observations",
+// which does not say which id, so the agent never resent the two good ids and both conversations stayed "wiki unsorted".
+func TestWikiSourceErrorNamesTheUnknownID(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	good := seed(t, b, 1)
+	bad := "911c2872465d2337"
+	_, err := b.Ingest(Draft{Sources: []string{good, bad}})
+	if err == nil {
+		t.Fatal("an unknown source id was accepted")
+	}
+	if !strings.Contains(err.Error(), bad) {
+		t.Fatalf("the error does not name the unknown id %s: %v", bad, err)
 	}
 }

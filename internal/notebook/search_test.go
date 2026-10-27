@@ -2,8 +2,11 @@ package notebook
 
 import (
 	"encoding/json"
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSearchKeepsCommandsAndRanksApplicableFields(t *testing.T) {
@@ -333,5 +336,32 @@ func TestRecallKeepsKatakanaLongVowel(t *testing.T) {
 	}
 	if p, _ := b.Recall("サーバーを直して"); len(p) != 1 || !strings.Contains(p[0].Title, "サーバー") {
 		t.Fatalf("delivers on a word containing the long-vowel mark: %+v", p)
+	}
+}
+
+// 0.9.2 re-audit 1: the hook before each request (Recall) checks the hash of every source a page cites. Sources can now be up to 4 MiB,
+// so the hash is taken while streaming the file instead of holding it in memory (the hash value stays the same).
+func TestRecallDoesNotHoldCitedSourcesInMemory(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	const pages, size = 20, 3 << 20
+	for i := 0; i < pages; i++ {
+		o, err := b.Capture(Observation{Kind: "agent", Title: fmt.Sprintf("memory %d", i), Content: strings.Repeat(fmt.Sprintf("line %d of a long memory file. ", i), size/32), Reference: "memory.md", Version: "v", ObservedAt: time.Unix(int64(i+1), 0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := b.Ingest(draft(o.ID, fmt.Sprintf("Lesson number %d about memories", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	got, err := b.Recall("README installation instructions")
+	if err != nil || len(got) == 0 {
+		t.Fatal(err, len(got))
+	}
+	runtime.ReadMemStats(&after)
+	if alloc := (after.TotalAlloc - before.TotalAlloc) >> 20; alloc > 16 {
+		t.Fatalf("Recall read every cited source whole: allocated %d MiB (%d pages x %d MiB sources)", alloc, pages, size>>20)
 	}
 }

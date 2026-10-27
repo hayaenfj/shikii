@@ -307,3 +307,239 @@ eval:
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+// state.context is a layout that "adds context and asks again only when unsure". It uses every required input and adds one or more inputs not in template.
+func TestContextTemplateMustAddAnInputAndKeepRequired(t *testing.T) {
+	sp := choiceSpec()
+	sp.State.Context = "Previous turn:\n{{ previous }}\n\nMessage:\n{{ message }}"
+	if err := sp.Validate(); err != nil {
+		t.Fatalf("a context template that adds an input must validate: %v", err)
+	}
+	if got := sp.State.ContextInputs(); len(got) != 1 || got[0] != "previous" {
+		t.Fatalf("the added inputs are the placeholders beyond required: %v", got)
+	}
+	bad := map[string]string{
+		"drops the required input": "Previous turn:\n{{ previous }}",
+		"adds nothing":             "Message again:\n{{ message }}",
+		"adds only text":           "Think carefully.\n{{ message }}",
+	}
+	for name, tpl := range bad {
+		sp := choiceSpec()
+		sp.State.Context = tpl
+		if err := sp.Validate(); err == nil || !strings.Contains(err.Error(), "state.context") {
+			t.Fatalf("%s must be rejected with a state.context error, got %v", name, err)
+		}
+	}
+}
+
+// The context question has its own hash. The minimal question's hash does not change when context is added (existing lines stay).
+// One spec can hold calibration for both steps, and only lines for old hashes are replaced.
+func TestContextRungHasItsOwnHashAndCalibration(t *testing.T) {
+	sp := choiceSpec()
+	before := sp.Hash()
+	if sp.HasContext() || sp.ContextHash() != "" || sp.ContextSpec() != nil {
+		t.Fatalf("a spec without state.context has no context rung")
+	}
+	sp.State.Context = "Previous turn:\n{{ previous }}\n\nMessage:\n{{ message }}"
+	if sp.Hash() != before {
+		t.Fatalf("adding state.context must not change the minimal question's hash: %s → %s", before, sp.Hash())
+	}
+	csp := sp.ContextSpec()
+	if csp == nil || csp.Hash() != sp.ContextHash() || csp.Hash() == sp.Hash() {
+		t.Fatalf("the context rung is the spec asked with the context template, under its own hash: %+v", csp)
+	}
+	if csp.State.Template != sp.State.Context || csp.State.Context != "" || strings.Join(csp.State.Required, ",") != "message,previous" {
+		t.Fatalf("the context spec asks with the context template and requires the added inputs: %+v", csp.State)
+	}
+	if !sp.LiveHash(sp.Hash()) || !sp.LiveHash(sp.ContextHash()) || sp.LiveHash("stale") {
+		t.Fatalf("both rungs' hashes are live; others are stale")
+	}
+	// WithVariant carries context over (the adopted version also asks in two steps). WithoutContext asks only the minimal question.
+	v := sp.WithVariant(Variant{Name: "t", Template: "msg: {{ message }}"})
+	if v.State.Context != sp.State.Context {
+		t.Fatalf("a template variant must keep the context template: %+v", v.State)
+	}
+	if m := sp.WithoutContext(); m.HasContext() || m.Hash() != sp.Hash() {
+		t.Fatalf("WithoutContext is the minimal question under the same hash: %+v", m.State)
+	}
+	// calibration: two step lines coexist for the same model, and the old-hash line is replaced
+	sp.PutCalibration(Calibration{Model: "m", SpecHash: "stale", Method: "identity"})
+	sp.PutCalibration(Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity"})
+	sp.PutCalibration(Calibration{Model: "m", SpecHash: sp.ContextHash(), Method: "identity"})
+	sp.PutCalibration(Calibration{Model: "other", SpecHash: sp.Hash(), Method: "identity"})
+	if len(sp.Calibration) != 3 {
+		t.Fatalf("one line per (model, rung), stale lines replaced: %+v", sp.Calibration)
+	}
+	if sp.CalibrationFor("m") == nil || sp.CalibrationFor("m").SpecHash != sp.Hash() {
+		t.Fatalf("the minimal spec finds its own line")
+	}
+	if c := sp.ContextSpec().CalibrationFor("m"); c == nil || c.SpecHash != sp.ContextHash() {
+		t.Fatalf("the context spec finds the context line")
+	}
+	sp.PutCalibration(Calibration{Model: "m", SpecHash: sp.ContextHash(), Method: "vector", Temperature: 1})
+	if len(sp.Calibration) != 3 || sp.ContextSpec().CalibrationFor("m").Method != "vector" {
+		t.Fatalf("re-fitting a rung replaces that rung's line only: %+v", sp.Calibration)
+	}
+}
+
+// The arrangement (layout) is part of the wording: it goes into the hash, a variant can change it, and unknown names are rejected.
+// With the same weights, the arrangement alone moved the result by 13 points (docs/bench.md), so tune measures and picks it instead of a person choosing by hand.
+func TestLayoutIsPartOfTheWordingAndIsValidated(t *testing.T) {
+	sp := choiceSpec()
+	before := sp.Hash()
+	if err := sp.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	sp.Layout = "plain"
+	if err := sp.Validate(); err != nil {
+		t.Fatalf("plain is a known layout: %v", err)
+	}
+	if sp.Hash() == before {
+		t.Fatalf("the layout changes how the model is asked, so it must change the hash")
+	}
+	sp.Layout = "sideways"
+	if err := sp.Validate(); err == nil {
+		t.Fatalf("an unknown layout must be rejected")
+	}
+	sp.Layout = ""
+	v := sp.WithVariant(Variant{Name: "p", Layout: "plain"})
+	if v.Layout != "plain" || v.Hash() == sp.Hash() {
+		t.Fatalf("a variant may change only the layout: %+v", v)
+	}
+	sp.Variants = []Variant{{Name: "bad", Layout: "sideways"}}
+	if err := sp.Validate(); err == nil {
+		t.Fatalf("a variant with an unknown layout must be rejected")
+	}
+	sp.Variants = []Variant{{Name: "only-layout", Layout: "state-first"}}
+	if err := sp.Validate(); err != nil {
+		t.Fatalf("a layout-only variant changes something: %v", err)
+	}
+}
+
+// Save does not drop candidates (variants) another process added in the meantime: it merges the file's candidates with ours by name.
+// Names reject separators and spaces (they go into wiki/runs file names).
+func TestSaveMergesVariantsWrittenByAnotherProcess(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "intent.yaml")
+	src := "id: intent\nversion: 1\ntype: noul\nquestion: Is it a request?\nstate:\n  template: \"{{ message }}\"\n  required: [message]\npolicy:\n  send_to: [local]\n  pii: true\nthresholds:\n  act: 0.75\n  ask: 0.55\neval:\n  min_n: 2\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := Load(path) // an old copy (e.g. background tune or calibrate --write)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := Load(path) // the page's entry: a person adds candidate A
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.Variants = append(fresh.Variants, Variant{Name: "a-from-page", Question: "Does it ask for something?"})
+	if err := fresh.Save(); err != nil {
+		t.Fatal(err)
+	}
+	// the old copy adds candidate B and saves → A must not disappear
+	stale.Variants = append(stale.Variants, Variant{Name: "b-from-tune", Question: "Is this a request for work?"})
+	if err := stale.Save(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{}
+	for _, v := range got.Variants {
+		names = append(names, v.Name)
+	}
+	if strings.Join(names, ",") != "a-from-page,b-from-tune" {
+		t.Fatalf("both candidates must survive, in file order then new ones: %v", names)
+	}
+	// on the same name ours wins (e.g. rewriting after adoption)
+	got.Variants[0].Question = "Does it ask for anything?"
+	if err := got.Save(); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := Load(path)
+	if again.Variants[0].Question != "Does it ask for anything?" || len(again.Variants) != 2 {
+		t.Fatalf("same name must be replaced, not duplicated: %+v", again.Variants)
+	}
+	// name validation
+	for _, bad := range []string{"", "x/../../outside", "with space", "a\nb", strings.Repeat("n", 61)} {
+		again.Variants = []Variant{{Name: bad, Question: "q"}}
+		if err := again.Validate(); err == nil {
+			t.Fatalf("variant name %q must be refused", bad)
+		}
+	}
+}
+
+func choiceSpec() *Spec {
+	return &Spec{
+		ID: "intent", Type: Choice, Question: "What is asked?",
+		Options:    []Option{{"change_request", "wants a change"}, {"question", "wants an answer"}, {"other", "none"}},
+		State:      State{Template: "{{ message }}", Required: []string{"message"}},
+		Policy:     Policy{SendTo: []string{"local"}, PII: boolPtr(false)},
+		Thresholds: Thresholds{Act: 0.75, Ask: 0.6},
+		Eval:       Eval{MinN: 2},
+	}
+}
+
+// Breakdown (steps): a list of yes/no questions. Each option is exactly one leaf. A middle step settles on only one of yes or no; the last step settles on both.
+func TestStepsMustCoverEveryOptionExactlyOnce(t *testing.T) {
+	good := []Step{{Ask: "Does it ask for work?", No: "other"}, {Ask: "Does it ask to change files?", Yes: "change_request", No: "question"}}
+	sp := choiceSpec()
+	sp.Steps = good
+	if err := sp.Validate(); err != nil {
+		t.Fatalf("a well-formed chain must validate: %v", err)
+	}
+	bad := map[string][]Step{
+		"option missing":        {{Ask: "work?", No: "other"}, {Ask: "change?", Yes: "change_request"}},
+		"option twice":          {{Ask: "work?", No: "other"}, {Ask: "change?", Yes: "change_request", No: "other"}},
+		"middle step with both": {{Ask: "work?", Yes: "change_request", No: "other"}, {Ask: "x?", Yes: "question"}},
+		"unknown option":        {{Ask: "work?", No: "nope"}, {Ask: "change?", Yes: "change_request", No: "question"}},
+		"empty ask":             {{Ask: "", No: "other"}, {Ask: "change?", Yes: "change_request", No: "question"}},
+	}
+	for name, steps := range bad {
+		sp := choiceSpec()
+		sp.Steps = steps
+		if err := sp.Validate(); err == nil {
+			t.Fatalf("%s must be rejected", name)
+		}
+	}
+	n := &Spec{ID: "n", Type: Noul, Question: "Is it?", State: State{Template: "{{ a }}", Required: []string{"a"}}, Policy: Policy{SendTo: []string{"local"}, PII: boolPtr(false)}, Thresholds: Thresholds{Act: 0.75, Ask: 0.6}, Eval: Eval{MinN: 2},
+		Steps: []Step{{Ask: "x?", Yes: "yes", No: "no"}}}
+	if err := n.Validate(); err == nil {
+		t.Fatal("steps are for choice specs only")
+	}
+}
+
+// The breakdown is part of the wording, so it goes into the key (hash). Specs without steps keep their key.
+func TestStepsChangeTheHashAndTravelWithVariants(t *testing.T) {
+	sp := choiceSpec()
+	flat := sp.Hash()
+	withSteps := choiceSpec()
+	withSteps.Steps = []Step{{Ask: "work?", No: "other"}, {Ask: "change?", Yes: "change_request", No: "question"}}
+	if withSteps.Hash() == flat {
+		t.Fatal("adding steps must change the calibration key")
+	}
+	reworded := choiceSpec()
+	reworded.Steps = []Step{{Ask: "any work?", No: "other"}, {Ask: "change?", Yes: "change_request", No: "question"}}
+	if reworded.Hash() == withSteps.Hash() {
+		t.Fatal("rewording a step must change the key")
+	}
+	v := Variant{Name: "two-step", Steps: withSteps.Steps}
+	sp.Variants = []Variant{v}
+	if err := sp.Validate(); err != nil {
+		t.Fatalf("a steps-only variant changes something and must validate: %v", err)
+	}
+	c := sp.WithVariant(v)
+	if len(c.Steps) != 2 || c.Hash() != withSteps.Hash() {
+		t.Fatalf("WithVariant must apply the steps: %+v", c.Steps)
+	}
+	c.Steps[0].Ask = "mutated"
+	if sp.Variants[0].Steps[0].Ask == "mutated" {
+		t.Fatal("WithVariant must copy the steps, not share them")
+	}
+	sp.Variants = []Variant{{Name: "bad", Steps: []Step{{Ask: "x?", No: "other"}}}}
+	if err := sp.Validate(); err == nil || !strings.Contains(err.Error(), "steps") {
+		t.Fatalf("a variant's steps are validated like the spec's: %v", err)
+	}
+}
