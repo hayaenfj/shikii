@@ -1357,72 +1357,6 @@ func TestPatch099InitOnADiskWithoutHardLinks(t *testing.T) {
 	}
 }
 
-// C AE-2: a read-only ~/.codex/config.toml whose shikii server still points at a binary that is gone: fixCodexServer's error stopped init,
-// while every other read-only settings file is only told. init now says what to change by hand and goes on.
-func TestPatch099ReadOnlyCodexConfigLetsInitGoOn(t *testing.T) {
-	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
-	home, _ := os.UserHomeDir()
-	repo := gitRepo(t)
-	t.Chdir(repo)
-	path := filepath.Join(home, ".codex", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	text := "[mcp_servers.shikii]\ncommand = \"/nowhere/shikii\"\n" + codexServerArgsLine + "\n"
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, 0o444); err != nil { // WriteFile keeps the mode of a file that is already there
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chmod(path, 0o644) })
-	var err error
-	out := capture(t, func() error { err = cmdInit(nil); return nil })
-	if err != nil {
-		t.Fatalf("init goes on with a read-only config.toml: %v\n%s", err, out)
-	}
-	if b, _ := os.ReadFile(path); string(b) != text {
-		t.Fatalf("the read-only file is left as it is: %q", b)
-	}
-	if !strings.Contains(out, "config.toml") || !strings.Contains(out, "command = "+quotedList([]string{mcpCommand()})) || !strings.Contains(out, "Ready:") {
-		t.Fatalf("init says what to change by hand:\n%s", out)
-	}
-}
-
-// C AE-2, on a disk mounted read-only (EROFS): the error was not the read-only one, so fixCodexServer returned it and init stopped.
-func TestPatch099CodexConfigOnAReadOnlyDiskLetsInitGoOn(t *testing.T) {
-	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
-	home, _ := os.UserHomeDir()
-	repo := gitRepo(t)
-	t.Chdir(repo)
-	path := filepath.Join(home, ".codex", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	text := "[mcp_servers.shikii]\ncommand = \"/nowhere/shikii\"\n" + codexServerArgsLine + "\n"
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	openPersonFile = func(name string, flag int, perm os.FileMode) (*os.File, error) {
-		if strings.HasSuffix(name, "config.toml") {
-			return nil, &os.PathError{Op: "open", Path: name, Err: syscall.EROFS}
-		}
-		return os.OpenFile(name, flag, perm)
-	}
-	t.Cleanup(func() { openPersonFile = os.OpenFile })
-	var err error
-	out := capture(t, func() error { err = cmdInit(nil); return nil })
-	if err != nil {
-		t.Fatalf("init goes on when config.toml is on a read-only disk: %v\n%s", err, out)
-	}
-	if b, _ := os.ReadFile(path); string(b) != text {
-		t.Fatalf("the file is left as it is: %q", b)
-	}
-	if !strings.Contains(out, "command = "+quotedList([]string{mcpCommand()})) || !strings.Contains(out, "Ready:") {
-		t.Fatalf("init says what to change by hand:\n%s", out)
-	}
-}
-
 func TestFailedInitDoesNotEnableHooks(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -1715,5 +1649,51 @@ func TestDecideRunsStepsInOneCallAndMultipliesBranches(t *testing.T) {
 		if math.Abs(d.Raw[k]-v) > 1e-9 {
 			t.Fatalf("yes-settling middle step: raw[%s]=%v want %v (all: %v)", k, d.Raw[k], v, d.Raw)
 		}
+	}
+}
+
+// A ~/.codex/config.toml shikii cannot write, whose shikii server still points at a binary that is gone: init says what to change by hand
+// and goes on, and the file is left as it is (0.9.9, AE-2). Either cause: a read-only file, or a disk mounted read-only (EROFS).
+func TestUnwritableCodexConfigLetsInitGoOn(t *testing.T) {
+	for _, cause := range []string{"read-only file", "read-only disk"} {
+		t.Run(cause, func(t *testing.T) {
+			hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
+			home, _ := os.UserHomeDir()
+			repo := gitRepo(t)
+			t.Chdir(repo)
+			path := filepath.Join(home, ".codex", "config.toml")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			text := "[mcp_servers.shikii]\ncommand = \"/nowhere/shikii\"\n" + codexServerArgsLine + "\n"
+			if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if cause == "read-only file" {
+				if err := os.Chmod(path, 0o444); err != nil { // WriteFile keeps the mode of a file that is already there
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { os.Chmod(path, 0o644) })
+			} else {
+				openPersonFile = func(name string, flag int, perm os.FileMode) (*os.File, error) {
+					if strings.HasSuffix(name, "config.toml") {
+						return nil, &os.PathError{Op: "open", Path: name, Err: syscall.EROFS}
+					}
+					return os.OpenFile(name, flag, perm)
+				}
+				t.Cleanup(func() { openPersonFile = os.OpenFile })
+			}
+			var err error
+			out := capture(t, func() error { err = cmdInit(nil); return nil })
+			if err != nil {
+				t.Fatalf("init goes on: %v\n%s", err, out)
+			}
+			if b, _ := os.ReadFile(path); string(b) != text {
+				t.Fatalf("the file is left as it is: %q", b)
+			}
+			if !strings.Contains(out, "config.toml") || !strings.Contains(out, "command = "+quotedList([]string{mcpCommand()})) || !strings.Contains(out, "Ready:") {
+				t.Fatalf("init says what to change by hand:\n%s", out)
+			}
+		})
 	}
 }

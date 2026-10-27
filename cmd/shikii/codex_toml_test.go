@@ -73,35 +73,6 @@ func TestAuditNaNNote(t *testing.T) {
 // Codex 0.164.0 reads every config.toml below (checked with `CODEX_HOME=<temp folder> codex mcp list`): its TOML reader accepts
 // TOML 1.1 forms (multi-line inline tables, trailing commas, the \x escape, times without seconds).
 
-// A5: a file Codex reads, shikii reads too.
-func TestFinalAEA5CodexReadableTOML11(t *testing.T) {
-	other := func(server map[string]any) map[string]any {
-		return map[string]any{"mcp_servers": map[string]any{"other": server}}
-	}
-	cases := []struct {
-		name string
-		text string
-		want map[string]any // nil: only that it is read
-	}{
-		{"\u8907\u6570\u884c\u306e\u30a4\u30f3\u30e9\u30a4\u30f3\u30c6\u30fc\u30d6\u30eb\u3068\u672b\u5c3e\u306e\u30ab\u30f3\u30de", "[mcp_servers.other]\ncommand = \"x\"\nenv = {\n  A = \"1\",\n}\n",
-			other(map[string]any{"command": "x", "env": map[string]any{"A": "1"}})},
-		{"1 \u884c\u306e\u30a4\u30f3\u30e9\u30a4\u30f3\u30c6\u30fc\u30d6\u30eb\u306e\u672b\u5c3e\u306e\u30ab\u30f3\u30de", "[mcp_servers.other]\ncommand = \"x\"\nenv = { A = \"1\", }\n",
-			other(map[string]any{"command": "x", "env": map[string]any{"A": "1"}})},
-		{"\\x \u306e\u30a8\u30b9\u30b1\u30fc\u30d7", "[mcp_servers.other]\ncommand = \"x\\x41\"\n", other(map[string]any{"command": "xA"})},
-		{"\u79d2\u306e\u7121\u3044\u6642\u523b", "[mcp_servers.other]\ncommand = \"x\"\nt = 07:32\n", nil},
-	}
-	for _, c := range cases {
-		m, err := readCodexConfig([]byte(c.text))
-		if err != nil {
-			t.Errorf("A5 (%s): Codex reads it but shikii does not: %v\n%s", c.name, err, c.text)
-			continue
-		}
-		if c.want != nil && !reflect.DeepEqual(m, c.want) {
-			t.Errorf("A5 (%s): the values read differ: %#v", c.name, m)
-		}
-	}
-}
-
 // A4: a chain of links whose last file does not exist yet: every link stays a link.
 func TestAuditA4DanglingLinkChainStaysLinks(t *testing.T) {
 	dir := t.TempDir()
@@ -363,19 +334,6 @@ func TestCodexPinnedProjectFoundInAnyQuoting(t *testing.T) {
 	}
 }
 
-// Confirmation audit 1 (A5): more TOML 1.1 forms Codex 0.164.0 reads (checked with `CODEX_HOME=<temp folder> codex mcp list`).
-func TestConfirm1A5MoreCodexReadableTOML11(t *testing.T) {
-	for name, text := range map[string]string{
-		"escape e":                             "[mcp_servers.other]\ncommand = \"x\\e\"\n",
-		"offset date-time without seconds":     "[mcp_servers.other]\ncommand = \"x\"\nt = 1979-05-27 07:32Z\n",
-		"comment in a multi-line inline table": "[mcp_servers.other]\ncommand = \"x\"\nenv = {\n  # comment\n  A = \"1\"\n}\n",
-	} {
-		if _, err := readCodexConfig([]byte(text)); err != nil {
-			t.Errorf("A5 (%s): Codex reads it but shikii does not: %v", name, err)
-		}
-	}
-}
-
 // The oracle below is written here, apart from codex_toml.go, so a mistake there is not repeated by the test (go-toml is called directly).
 
 // oracleParse reads b as Codex does: a leading byte order mark is skipped, the rest must be TOML.
@@ -460,4 +418,35 @@ func oracleWant(args []string) map[string]any {
 		list[i] = a
 	}
 	return map[string]any{"command": mcpCommand(), "args": list}
+}
+
+// A file Codex reads, shikii reads too (0.9.7 final audit A5): TOML 1.1 forms Codex 0.164.0 reads, checked with
+// `CODEX_HOME=<temp folder> codex mcp list`. want nil: only that it is read.
+func TestCodexReadableTOML11FormsAreRead(t *testing.T) {
+	other := func(server map[string]any) map[string]any {
+		return map[string]any{"mcp_servers": map[string]any{"other": server}}
+	}
+	for _, c := range []struct {
+		name, text string
+		want       map[string]any
+	}{
+		{"multi-line inline table with a trailing comma", "[mcp_servers.other]\ncommand = \"x\"\nenv = {\n  A = \"1\",\n}\n",
+			other(map[string]any{"command": "x", "env": map[string]any{"A": "1"}})},
+		{"one-line inline table with a trailing comma", "[mcp_servers.other]\ncommand = \"x\"\nenv = { A = \"1\", }\n",
+			other(map[string]any{"command": "x", "env": map[string]any{"A": "1"}})},
+		{"escape x", "[mcp_servers.other]\ncommand = \"x\\x41\"\n", other(map[string]any{"command": "xA"})},
+		{"time without seconds", "[mcp_servers.other]\ncommand = \"x\"\nt = 07:32\n", nil},
+		{"escape e", "[mcp_servers.other]\ncommand = \"x\\e\"\n", nil},
+		{"offset date-time without seconds", "[mcp_servers.other]\ncommand = \"x\"\nt = 1979-05-27 07:32Z\n", nil},
+		{"comment in a multi-line inline table", "[mcp_servers.other]\ncommand = \"x\"\nenv = {\n  # comment\n  A = \"1\"\n}\n", nil},
+	} {
+		m, err := readCodexConfig([]byte(c.text))
+		if err != nil {
+			t.Errorf("A5 (%s): Codex reads it but shikii does not: %v\n%s", c.name, err, c.text)
+			continue
+		}
+		if c.want != nil && !reflect.DeepEqual(m, c.want) {
+			t.Errorf("A5 (%s): the values read differ: %#v", c.name, m)
+		}
+	}
 }
