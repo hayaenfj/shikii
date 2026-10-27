@@ -2,7 +2,7 @@
 
 [English](CHANGELOG.md) · **日本語**
 
-## 未公開
+## 0.9.9 — コメントのある設定ファイルを書いたまま残し、ハードリンクの無いディスクでも init が動く
 
 - 人の設定ファイル: 1 つのオブジェクトに同じ鍵が 2 回ある JSON の設定と、コメントのある設定(OpenCode が JSONC として読む `opencode.json`)は、書き直すと人の文が消えるので、書いたまま残す。init は shikii の項目を手で足すよう言って先へ進み(コメントがあると止まっていた)、人が足した後は「残した」と言う。shikii の無いそのようなファイルでは、uninstall は外す物が無いとみなす。JSONC は OpenCode と同じ読み方(コメントと末尾のコンマ。github.com/tailscale/hujson)で読み、それでも壊れているファイルは壊れた設定として断る、uninstall は外さずに理由を出す。空の設定ファイルはこれまでどおり断るが、「EOF」ではなく「the file is empty; write {} in it, or remove it」と言う。読み取り専用でつないだディスク(EROFS)の設定ファイルも、読み取り専用のファイルと同じに扱い、init は止まらずに直す所を言って先へ進む。
 - 置き場のファイル: 置き場の名前(`records/store-name`)・id(`records/store-id`)・既製のファイルは、書き終えてから置く。ハードリンクの無いディスク(exFAT・FAT)ではその場で作るので、そこでも init が動き、移した後も名前が残る(前は init が「operation not supported」で止まり、名前が書かれなかった)。前の版が途中で止まって残した空の id や名前は、作り直す。名前は、リンクを辿らず FIFO で待たずに読むので、よそから持ち込んだ `.shikii` で `shikii wiki query` が止まり続けることは無い。

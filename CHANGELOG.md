@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.9.9 — commented settings files stay as written, and init works on disks without hard links
 
 - Your settings files: a JSON settings file with a key written twice in one object, or with comments (`opencode.json` read as JSONC by OpenCode), is left as written, because a rewrite would drop the person's text; init says to add the shikii entry by hand and goes on (it stopped on comments), or that it kept shikii once the person added it there; uninstall finds nothing to remove in such a file without shikii. It is read as JSONC the way OpenCode reads it (comments and trailing commas, with github.com/tailscale/hujson); a file that is broken anyway is refused as broken, and uninstall leaves it and says why. An empty settings file is still refused, now with "the file is empty; write {} in it, or remove it" instead of "EOF". A settings file on a disk mounted read-only (EROFS) is treated like a read-only file: init says what to change and goes on instead of stopping.
 - Store files: the store's name (`records/store-name`), its id (`records/store-id`) and the built-in files are placed only once they are written in full. On a disk without hard links (exFAT, FAT) they are made in place, so init works there and the name is kept after a move (before, init stopped with "operation not supported" and the name was never written). An empty id or name left by a stop in an earlier version is made again. The name is read without following a link or waiting on a FIFO, so a `.shikii` brought in from elsewhere cannot keep `shikii wiki query` waiting.
