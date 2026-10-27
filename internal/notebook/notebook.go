@@ -1244,6 +1244,9 @@ func (b Book) Unclassified() ([]Page, error) {
 	return out, nil
 }
 
+// classifyRead runs after Classify has read the page and before it saves; a test makes another agent edit the lesson there.
+var classifyRead = func() {}
+
 // Classify saves a new revision of the page with only kind and scene added (lesson, title, applies-to, body, related and sources unchanged).
 // It is a light operation to fill in pages made before the upgrade; use Ingest to rewrite a lesson.
 func (b Book) Classify(id, kind, scene string) (Result, error) {
@@ -1263,6 +1266,7 @@ func (b Book) Classify(id, kind, scene string) (Result, error) {
 		for _, s := range p.Sources {
 			sources = append(sources, s.ID)
 		}
+		classifyRead()
 		// Leave the change reason empty to inherit the previous reason (audit 0.9.0 D1). Carry the base revision and compare it inside the lock (B1)
 		return b.Ingest(Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: sources, Kind: kind, Scene: scene, baseRevision: p.Revision})
 	}
