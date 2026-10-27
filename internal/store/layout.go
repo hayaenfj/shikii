@@ -1,10 +1,10 @@
 package store
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -128,23 +128,24 @@ func LeftOver(path string) bool {
 	return age > 10*time.Second || age < -10*time.Second // a time in the future: copied from another machine, or a clock set back
 }
 
-// WriteInPlace writes PlaceOnce's in-place copy; tests swap it to stop a write in the middle.
-var WriteInPlace = func(f *os.File, b []byte) (int, error) { return f.Write(b) }
+// WriteTemp writes PlaceOnce's temp file; tests swap it to stop a write in the middle.
+var WriteTemp = func(f *os.File, b []byte) (int, error) { return f.Write(b) }
 
-// PlacingMark is the file beside path that PlaceOnce keeps while it writes path in place.
-func PlacingMark(path string) string { return path + ".placing" }
+// ChmodTemp sets the temp file's mode; tests swap it to refuse like Linux's exFAT and FAT drivers.
+var ChmodTemp = (*os.File).Chmod
 
 // PlaceOnce puts data at path only when nothing is there, and only in full: it is written to a temp file beside path and linked into place,
-// so a reader never sees a part of it and the first writer wins. On a disk without hard links (exFAT, FAT) the file is made with O_EXCL and
-// written in place instead (0.9.9), with PlacingMark beside it until it is whole (0.9.10). It reports whether it placed the file.
+// so a reader never sees a part of it and the first writer wins. On a disk without hard links (exFAT, FAT) the temp file is renamed into
+// place instead, while the folder is locked, so two shikii writers do not both place one; a stop never leaves a part at path (0.9.10).
+// It reports whether it placed the file.
 func PlaceOnce(path string, data []byte, perm os.FileMode) (bool, error) {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".place-*")
 	if err != nil {
 		return false, err
 	}
 	defer os.Remove(tmp.Name())
-	_, werr := tmp.Write(data)
-	if err := tmp.Chmod(perm); werr == nil {
+	_, werr := WriteTemp(tmp, data)
+	if err := ChmodTemp(tmp, perm); werr == nil && !errors.Is(err, syscall.EPERM) { // Linux's exFAT and FAT refuse modes (0.9.10)
 		werr = err
 	}
 	if err := tmp.Sync(); werr == nil {
@@ -163,70 +164,24 @@ func PlaceOnce(path string, data []byte, perm os.FileMode) (bool, error) {
 	case os.IsExist(err):
 		return false, nil
 	}
-	// the mark says a write is in place until it is whole: a stop leaves both, and FinishPlaced finishes the file later (0.9.10)
-	mark := PlacingMark(path)
-	m, merr := os.OpenFile(mark, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o644)
-	if merr == nil {
-		m.Close()
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, perm)
+	dir, err := os.Open(filepath.Dir(path))
 	if err != nil {
-		if merr == nil {
-			os.Remove(mark)
-		}
-		if os.IsExist(err) {
-			return false, nil
-		}
 		return false, err
 	}
-	_, werr = WriteInPlace(f, data)
-	if err := f.Sync(); werr == nil {
-		werr = err
+	defer dir.Close()
+	if err := syscall.Flock(int(dir.Fd()), syscall.LOCK_EX); err != nil {
+		return false, err
 	}
-	if err := f.Close(); werr == nil {
-		werr = err
+	defer syscall.Flock(int(dir.Fd()), syscall.LOCK_UN)
+	if _, err := os.Lstat(path); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
 	}
-	if werr != nil {
-		return false, werr
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return false, err
 	}
-	os.Remove(mark)
 	return true, nil
-}
-
-// FinishPlaced writes data at path again in full when PlaceOnce's in-place write there stopped in the middle: its mark is still there and
-// older than LeftOver's limit (a younger one is a write going on now), and what is at path is a part of data. Any other text is the
-// person's and stays; an old mark goes either way. The file keeps its mode. It is best effort: when the folder cannot be written the part
-// stays as it is and nothing stops (0.9.10 audit u-2). It reports whether it wrote the file.
-func FinishPlaced(path string, data []byte) bool {
-	mark := PlacingMark(path)
-	if !LeftOver(mark) {
-		return false
-	}
-	defer os.Remove(mark)
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return false
-	}
-	b, err := os.ReadFile(path)
-	if err != nil || len(b) >= len(data) || !bytes.HasPrefix(data, b) {
-		return false
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".place-*")
-	if err != nil {
-		return false
-	}
-	defer os.Remove(tmp.Name())
-	_, werr := tmp.Write(data)
-	if err := tmp.Chmod(info.Mode().Perm()); werr == nil {
-		werr = err
-	}
-	if err := tmp.Sync(); werr == nil {
-		werr = err
-	}
-	if err := tmp.Close(); werr == nil {
-		werr = err
-	}
-	return werr == nil && os.Rename(tmp.Name(), path) == nil
 }
 
 // recordPath is records/<area>/<store name><ext>.

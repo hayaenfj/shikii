@@ -205,7 +205,7 @@ func seedFile(path string, data []byte) (bool, error) {
 		return nil
 	}
 	if err := checkExisting(); err == nil {
-		return store.FinishPlaced(path, data), nil // a write stopped in the middle on a disk without hard links (0.9.10)
+		return false, nil
 	} else if !os.IsNotExist(err) {
 		return false, err
 	}
