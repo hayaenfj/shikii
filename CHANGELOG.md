@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- Built-in files on a disk without hard links (exFAT, FAT): they are written in place there, so a stop in the middle left a part of a built-in decision or wiki page, and every later init kept that part. A part left over (older than 10 seconds, and only the start of the built-in text) is now written again in full; a part another init is writing now, and any text of the person's, stay.
+
 ## 0.9.9 — commented settings files stay as written, and init works on disks without hard links
 
 - Your settings files: a JSON settings file with a key written twice in one object, or with comments (`opencode.json` read as JSONC by OpenCode), is left as written, because a rewrite would drop the person's text; init says to add the shikii entry by hand and goes on (it stopped on comments), or that it kept shikii once the person added it there; uninstall finds nothing to remove in such a file without shikii. It is read as JSONC the way OpenCode reads it (comments and trailing commas, with github.com/tailscale/hujson); a file that is broken anyway is refused as broken, and uninstall leaves it and says why. An empty settings file is still refused, now with "the file is empty; write {} in it, or remove it" instead of "EOF". A settings file on a disk mounted read-only (EROFS) is treated like a read-only file: init says what to change and goes on instead of stopping.

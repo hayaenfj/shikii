@@ -205,7 +205,7 @@ func seedFile(path string, data []byte) (bool, error) {
 		return nil
 	}
 	if err := checkExisting(); err == nil {
-		return false, nil
+		return writeLeftOverPart(path, data)
 	} else if !os.IsNotExist(err) {
 		return false, err
 	}
@@ -215,6 +215,35 @@ func seedFile(path string, data []byte) (bool, error) {
 	}
 	if !placed {
 		return false, checkExisting()
+	}
+	return true, nil
+}
+
+// writeLeftOverPart writes a built-in file again in full when what is there is a part of it (empty too) left by a stop in the middle: on a
+// disk without hard links PlaceOnce writes in place (0.9.10). Only a part older than store.LeftOver's limit is replaced, so a part another
+// init is writing now stays; any other text is the person's and stays. The full text goes to a temp file renamed over it.
+func writeLeftOverPart(path string, data []byte) (bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil || len(b) >= len(data) || !bytes.HasPrefix(data, b) || !store.LeftOver(path) {
+		return false, nil
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".place-*")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(tmp.Name())
+	_, werr := tmp.Write(data)
+	if err := tmp.Chmod(0o644); werr == nil {
+		werr = err
+	}
+	if err := tmp.Close(); werr == nil {
+		werr = err
+	}
+	if werr != nil {
+		return false, werr
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return false, err
 	}
 	return true, nil
 }
