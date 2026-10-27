@@ -60,6 +60,7 @@ func relinkMovedProject(cwd string, takeOver bool) string {
 	if _, _, ok := previousScope(root, scope); !ok {
 		return ""
 	}
+	beforeRelinkLock()
 	// one reconnection at a time per store: two hooks (two sessions) at once told the move twice (0.9.7 full audit 1-3, 3-3)
 	unlock, err := lockRelink(root)
 	if err != nil {
@@ -70,6 +71,7 @@ func relinkMovedProject(cwd string, takeOver bool) string {
 	if !ok {
 		return ""
 	}
+	whileRelinking()
 	e, registered := ownEntry(root)
 	moved := registered && e.StoreDir != "" && e.StoreDir == storeDir(root)
 	if !moved && !takeOver {
@@ -97,6 +99,11 @@ func relinkMovedProject(cwd string, takeOver bool) string {
 	}
 	return fmt.Sprintf("shikii: this project's folder was moved or renamed from %s. shikii reconnected it here by itself: its wiki, records and settings are kept, and nothing needs fixing. Tell the person this once, in your final reply.", old)
 }
+
+// beforeRelinkLock runs after relinkMovedProject saw a previous path and before it takes the reconnection lock, where another hook may
+// reconnect the store first; whileRelinking runs once the marker was read again under the lock, before anything is written. Tests swap
+// them to check that window in one run instead of waiting for two hooks to race.
+var beforeRelinkLock, whileRelinking = func() {}, func() {}
 
 // lockRelink takes the reconnection lock of the store at root, waiting for another hook. It lives on the shared side
 // (~/.shikii/agent/relink-<id>.lock), since nothing is written into a store that may be a copy.

@@ -29,30 +29,8 @@ func TestAuditF4ReflectionShortKeepsSubmitFields(t *testing.T) {
 	}
 }
 
-// C1/C5: two sessions send their first request in the moved folder at the same time. The move is told once.
-func TestAuditC5MovedNoticeOnceUnderTwoSessions(t *testing.T) {
-	for round := 0; round < 20; round++ {
-		_, _, moved := movedProject(t)
-		var wg sync.WaitGroup
-		var mu sync.Mutex
-		told := 0
-		for i := 0; i < 2; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if relinkMovedProject(moved, false) != "" {
-					mu.Lock()
-					told++
-					mu.Unlock()
-				}
-			}()
-		}
-		wg.Wait()
-		if told != 1 {
-			t.Fatalf("round %d: the move was told %d times", round, told)
-		}
-	}
-}
+// C1/C5 (two sessions send their first request in the moved folder at the same time; the move is told once) is checked in one run by
+// TestFull1RelinkAfterAnotherHookReconnectedSaysNothing and TestFull1RelinkWritesUnderTheLock.
 
 // controls: the same F2 scenario without the other session (the missed conversations still wait) gives the full text; the move told by one
 // request alone is told once and a second request says nothing; after the concurrent relink the project is active at the new path only.

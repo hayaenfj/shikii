@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
+	"syscall"
 	"testing"
 )
 
@@ -51,26 +52,26 @@ func TestAuditEnglishUnsureNoticeCarriesTheDifference(t *testing.T) {
 	}
 }
 
-// Two `shikii --init` at once (two projects, one HOME) rewrite ~/.claude/skills/shikii at the same time. On main this fails, or leaves the skill without SKILL.md.
-func TestAuditConcurrentSkillCopyKeepsSkill(t *testing.T) {
+// Two `shikii --init` at once (two projects, one HOME) rewrite ~/.claude/skills/shikii at the same time. Before the lock, a copy failed with
+// "directory not empty" or left the skill without SKILL.md. Checked in one run instead of waiting for copies to race: right before the old
+// skill is deleted, the lock next to it cannot be taken from outside, so another copy waits until this one has put every file back.
+func TestAuditSkillCopyHoldsTheLock(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "skills", "shikii")
-	for round := 0; round < 30; round++ {
-		var wg sync.WaitGroup
-		errs := make(chan error, 4)
-		for i := 0; i < 4; i++ {
-			wg.Add(1)
-			go func() { defer wg.Done(); errs <- copySkill(dst) }()
-		}
-		wg.Wait()
-		close(errs)
-		for err := range errs {
-			if err != nil {
-				t.Fatalf("round %d: a concurrent skill copy failed: %v", round, err)
-			}
-		}
-		if _, err := os.Stat(filepath.Join(dst, "SKILL.md")); err != nil {
-			t.Fatalf("round %d: the skill was left without SKILL.md", round)
-		}
+	if err := copySkill(dst); err != nil { // a skill already there, as on every --init after the first
+		t.Fatal(err)
+	}
+	tried := errors.New("whileCopyingSkill did not run")
+	old := whileCopyingSkill
+	t.Cleanup(func() { whileCopyingSkill = old })
+	whileCopyingSkill = func() { tried = tryLockFromOutside(filepath.Join(filepath.Dir(dst), ".shikii-skill.lock")) }
+	if err := copySkill(dst); err != nil {
+		t.Fatal(err)
+	}
+	if tried != syscall.EWOULDBLOCK {
+		t.Fatalf("the skill is rewritten while its lock is held: taking it from outside gave %v", tried)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "SKILL.md")); err != nil {
+		t.Fatal("the skill was left without SKILL.md")
 	}
 }
 

@@ -520,6 +520,9 @@ const agentsSectionNote = "an older shikii added a section between two " + agent
 // skillDirs are where the skill is put, relative to the home folder: Claude Code's, and the shared one Codex and other agents read.
 var skillDirs = []string{filepath.Join(".claude", "skills", "shikii"), filepath.Join(".agents", "skills", "shikii")}
 
+// whileCopyingSkill runs right before copySkill deletes the old skill; a test checks the lock is held there.
+var whileCopyingSkill = func() {}
+
 // Two shikii --init at once (two projects, one HOME) rewrite the same folder, so the copy holds a lock next to it (audit 0.9.2 English, medium 6:
 // without it, a copy failed with "directory not empty" or left the skill without SKILL.md).
 func copySkill(dst string) error {
@@ -535,6 +538,7 @@ func copySkill(dst string) error {
 		return err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	whileCopyingSkill()
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}

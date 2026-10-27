@@ -1,11 +1,12 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
+	"syscall"
 	"testing"
 )
 
@@ -67,36 +68,72 @@ func TestFull1InitInNonGitMovedFolderForgetsOldEntry(t *testing.T) {
 	}
 }
 
-// C1 "say it once": two hooks of the same moved folder at the same time (a prompt and a subagent, two agents).
-func TestFull1ConcurrentRelinkTellsOnce(t *testing.T) {
-	for round := 0; round < 10; round++ {
-		p := gitRepo(t)
-		hookEnv(t, nil, p)
-		P := feedbackScope(p)
-		r := filepath.Join(t.TempDir(), "moved")
-		if err := os.Rename(P, r); err != nil {
-			t.Fatal(err)
-		}
-		R := feedbackScope(r)
-		var mu sync.Mutex
-		told := 0
-		var wg sync.WaitGroup
-		for i := 0; i < 4; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if strings.HasPrefix(relinkMovedProject(R, false), "shikii:") {
-					mu.Lock()
-					told++
-					mu.Unlock()
-				}
-			}()
-		}
-		wg.Wait()
-		if told != 1 {
-			t.Fatalf("round %d: C1: the move was told %d times", round, told)
+// C1 "say it once": two hooks of the same moved folder at the same time (a prompt and a subagent, two agents, two sessions). Checked in
+// one run instead of waiting for two hooks to race: right after this hook saw the old path and before it takes the lock, another hook
+// reconnects the folder all the way; this hook then says nothing.
+func TestFull1RelinkAfterAnotherHookReconnectedSaysNothing(t *testing.T) {
+	R := full1Moved(t)
+	other, ran := "", false
+	old := beforeRelinkLock
+	t.Cleanup(func() { beforeRelinkLock = old })
+	beforeRelinkLock = func() {
+		if !ran {
+			ran = true
+			other = relinkMovedProject(R, false)
 		}
 	}
+	this := relinkMovedProject(R, false)
+	if !strings.HasPrefix(other, "shikii:") {
+		t.Fatalf("precondition: the other hook reconnects the moved folder: %q", other)
+	}
+	if this != "" {
+		t.Fatalf("C1: the move was told twice; the second hook said %q", this)
+	}
+}
+
+// The reconnection is written while its lock is held, so two hooks never both get past the second look at project.json: right after that
+// look, the lock cannot be taken from outside.
+func TestFull1RelinkWritesUnderTheLock(t *testing.T) {
+	R := full1Moved(t)
+	common, _ := agentHome()
+	lock := filepath.Join(common, "relink-"+storeID(filepath.Join(R, ".shikii"), false)+".lock")
+	tried := errors.New("whileRelinking did not run")
+	old := whileRelinking
+	t.Cleanup(func() { whileRelinking = old })
+	whileRelinking = func() { tried = tryLockFromOutside(lock) }
+	if n := relinkMovedProject(R, false); !strings.HasPrefix(n, "shikii:") {
+		t.Fatalf("precondition: the moved folder is reconnected: %q", n)
+	}
+	if tried != syscall.EWOULDBLOCK {
+		t.Fatalf("the reconnection lock is held while reconnecting: taking it from outside gave %v", tried)
+	}
+}
+
+// full1Moved makes a project in a Git repository, moves its folder (mv) and returns the new path.
+func full1Moved(t *testing.T) string {
+	t.Helper()
+	p := gitRepo(t)
+	hookEnv(t, nil, p)
+	r := filepath.Join(t.TempDir(), "moved")
+	if err := os.Rename(feedbackScope(p), r); err != nil {
+		t.Fatal(err)
+	}
+	return feedbackScope(r)
+}
+
+// tryLockFromOutside tries to take the flock of the file at path without waiting, and lets it go again when it got it: nil means nobody
+// held it, syscall.EWOULDBLOCK means someone does.
+func tryLockFromOutside(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if err == nil {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	}
+	return err
 }
 
 // Docs: "The next request's hook reconnects the project at its new path by itself". mv to another disk is a copy and a removal; the
