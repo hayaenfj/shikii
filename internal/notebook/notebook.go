@@ -253,6 +253,10 @@ func immutable(path string, data []byte) error {
 	return nil
 }
 
+// lockBusy, when set (tests), is called each time lock finds the wiki's lock held and is about to wait: the moment another update is in
+// progress.
+var lockBusy func()
+
 func lock(dir string) (func(), error) {
 	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
@@ -263,6 +267,9 @@ func lock(dir string) (func(), error) {
 		if time.Now().After(until) {
 			f.Close()
 			return nil, errors.New("wiki is busy; retry later")
+		}
+		if lockBusy != nil {
+			lockBusy()
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

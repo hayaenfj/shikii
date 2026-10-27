@@ -272,6 +272,10 @@ func lockSession(agent, id string) (unlock func()) {
 	return unlock
 }
 
+// sessionLockBusy, when set (tests), is called each time lockSessionWithin finds the lock held and is about to wait: the moment another
+// hook's read → change → write is in progress.
+var sessionLockBusy func()
+
 // lockSessionWithin takes the session lock, waiting at most wait (0: one try). ok is false when it was not taken (unlock is then a no-op).
 func lockSessionWithin(agent, id string, wait time.Duration) (unlock func(), ok bool) {
 	p := sessionPath(agent, id) + ".lock"
@@ -291,6 +295,9 @@ func lockSessionWithin(agent, id string, wait time.Duration) (unlock func(), ok 
 		if !time.Now().Before(deadline) {
 			f.Close()
 			return func() {}, false
+		}
+		if sessionLockBusy != nil {
+			sessionLockBusy()
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

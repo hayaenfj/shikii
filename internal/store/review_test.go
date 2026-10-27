@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -80,29 +79,33 @@ func TestReviewKeepsFirstScoreAndHumanTruth(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer syscall.Flock(int(guard.Fd()), syscall.LOCK_UN)
-	finished := make(chan error, 1)
-	go func() { _, err := st.SaveReview(r); finished <- err }()
-	select {
-	case <-finished:
-		t.Fatal("while another score is being saved, an update to the same history waits")
-	case <-time.After(75 * time.Millisecond):
+	// Another save holds the history's lock and writes the same provisional score at the moment this save finds the lock busy
+	// (reviewLockBusy). This save must wait, then read the history, find the score there and not write it again.
+	path := filepath.Join(st.Dir, "records", "reviews", r.Spec+".jsonl")
+	waited := false
+	reviewLockBusy = func() {
+		if waited {
+			return
+		}
+		waited = true
+		other := r
+		other.Rubric, other.At = ReviewRubric, time.Now().UTC()
+		if err := st.appendJSONL(path, other); err != nil {
+			t.Error(err)
+		}
+		_ = syscall.Flock(int(guard.Fd()), syscall.LOCK_UN)
 	}
-	_ = syscall.Flock(int(guard.Fd()), syscall.LOCK_UN)
-	if err := <-finished; err != nil {
+	t.Cleanup(func() { reviewLockBusy = nil })
+	if _, err := st.SaveReview(r); err != nil {
 		t.Fatal(err)
 	}
-	var wg sync.WaitGroup
-	for i := 0; i < 12; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, err := st.SaveReview(r); err != nil {
-				t.Error(err)
-			}
-		}()
+	reviewLockBusy = nil
+	if !waited {
+		t.Fatal("while another score is being saved, an update to the same history waits")
 	}
-	wg.Wait()
-	path := filepath.Join(st.Dir, "records", "reviews", r.Spec+".jsonl")
+	if _, err := st.SaveReview(r); err != nil {
+		t.Fatal(err)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

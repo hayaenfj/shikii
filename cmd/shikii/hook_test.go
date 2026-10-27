@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -923,23 +922,41 @@ func TestHookSecondAudit(t *testing.T) {
 		t.Fatalf("the audit sample must be asked and the plain act must not: %+v", s.Asked)
 	}
 
-	// parallel updates are not lost (read → change → write inside the lock)
+	// parallel updates are not lost (read → change → write inside the lock): another hook holds the lock and saves its change at the
+	// moment this one finds the lock busy (sessionLockBusy); this one must wait, then read, so both changes stay
 	model := fakeAgentModel(t, func(string) float64 { return 0.6 })
 	cwd := t.TempDir()
 	agent := hookEnv(t, model, cwd)
-	var wg sync.WaitGroup
-	for i := 0; i < 30; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			_ = updateSession(agent, "par", func(s *hookSession) {
-				s.Asked = append(s.Asked, askedItem{Spec: "done-as-asked", Trace: fmt.Sprintf("%016x", i)})
-			})
-		}(i)
+	unlockOther, ok := lockSessionWithin(agent, "par", 0)
+	if !ok {
+		t.Fatal("the other hook's lock must be taken")
 	}
-	wg.Wait()
-	if got := len(loadSession(agent, "par").Asked); got != 30 {
-		t.Fatalf("30 parallel updates must all survive, got %d", got)
+	waited := false
+	sessionLockBusy = func() {
+		if waited {
+			return
+		}
+		waited = true
+		other := loadSession(agent, "par")
+		other.Asked = append(other.Asked, askedItem{Spec: "done-as-asked", Trace: "0000000000000001"})
+		if err := saveSession(agent, "par", other); err != nil {
+			t.Error(err)
+		}
+		unlockOther()
+	}
+	t.Cleanup(func() { sessionLockBusy = nil })
+	if err := updateSession(agent, "par", func(s *hookSession) {
+		s.Asked = append(s.Asked, askedItem{Spec: "done-as-asked", Trace: "0000000000000002"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sessionLockBusy = nil
+	if !waited {
+		unlockOther()
+		t.Fatal("an update must wait while another hook holds the session lock")
+	}
+	if got := loadSession(agent, "par").Asked; len(got) != 2 || got[0].Trace != "0000000000000001" || got[1].Trace != "0000000000000002" {
+		t.Fatalf("both updates must survive, the waiting one read after the other's write: %+v", got)
 	}
 	if left, _ := filepath.Glob(filepath.Join(agent, "sessions", "*.tmp")); len(left) != 0 {
 		t.Fatalf("no .tmp may be left behind: %v", left)
@@ -1209,20 +1226,16 @@ func TestHookSecondAuditRound(t *testing.T) {
 		t.Fatalf("hook.log lines must be cut and single-line: %d bytes", len(last))
 	}
 
-	// startOnce: only once out of 30 in parallel, and with a live child (its own pid) it does not start even past the gap
-	var mu sync.Mutex
-	calls := 0
-	var wg sync.WaitGroup
-	for i := 0; i < 30; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			startOnce(agent, "thing", func() int { mu.Lock(); calls++; mu.Unlock(); return os.Getpid() })
-		}()
-	}
-	wg.Wait()
-	if calls != 1 {
-		t.Fatalf("30 parallel hooks must start the thing once, got %d", calls)
+	// startOnce: a second hook that arrives while the first is starting the thing (inside fn, before the pid is written) does not start it
+	// again, and with a live child (its own pid) it does not start even past the gap
+	calls, second := 0, true
+	startOnce(agent, "thing", func() int {
+		calls++
+		second = startOnce(agent, "thing", func() int { calls++; return os.Getpid() })
+		return os.Getpid()
+	})
+	if calls != 1 || second {
+		t.Fatalf("a hook arriving while another starts the thing must not start it again: %d starts, second=%v", calls, second)
 	}
 	old := time.Now().Add(-hookStartGap - time.Minute)
 	_ = os.Chtimes(filepath.Join(agent, "starting-thing"), old, old)

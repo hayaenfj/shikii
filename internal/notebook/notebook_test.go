@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -266,36 +265,34 @@ func TestNotebookConcurrentIngestKeepsEveryLessonAndLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Another update holds the wiki's lock and ingests a lesson at the moment this ingestion finds the lock busy (lockBusy). This one must
+	// wait, then read the pages and the log, so neither lesson nor log line is lost.
 	unlock, err := lock(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocked := make(chan error, 1)
-	go func() { _, err := b.Ingest(draft(ids[0], "Instructions 0")); blocked <- err }()
-	select {
-	case err := <-blocked:
+	waited := false
+	lockBusy = func() {
+		if waited {
+			return
+		}
+		waited = true
 		unlock()
-		t.Fatalf("ingestion waits while another update is running: %v", err)
-	case <-time.After(50 * time.Millisecond):
+		if _, err := b.Ingest(draft(ids[1], "Instructions 1")); err != nil {
+			t.Error(err)
+		}
 	}
-	unlock()
-	if err := <-blocked; err != nil {
+	t.Cleanup(func() { lockBusy = nil })
+	if _, err := b.Ingest(draft(ids[0], "Instructions 0")); err != nil {
 		t.Fatal(err)
 	}
-	var wg sync.WaitGroup
-	errors := make(chan error, len(ids))
-	for i, id := range ids {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, err := b.Ingest(draft(id, fmt.Sprintf("Instructions %d", i)))
-			errors <- err
-		}()
+	lockBusy = nil
+	if !waited {
+		unlock()
+		t.Fatal("ingestion waits while another update is running")
 	}
-	wg.Wait()
-	close(errors)
-	for err := range errors {
-		if err != nil {
+	for i, id := range ids[2:] {
+		if _, err := b.Ingest(draft(id, fmt.Sprintf("Instructions %d", i+2))); err != nil {
 			t.Fatal(err)
 		}
 	}

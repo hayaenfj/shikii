@@ -123,6 +123,10 @@ func ReviewQuality(reviews map[string]Review, labels map[string]Label) ReviewSta
 	return stats
 }
 
+// reviewLockBusy, when set (tests), is called each time SaveReview finds the history's lock held and is about to wait: the moment another
+// save is in progress.
+var reviewLockBusy func()
+
 func (s Store) SaveReview(r Review) (Review, error) {
 	if !ReviewSpec(r.Spec) || r.TraceID == "" || r.Scope == "" || r.Reason == "" || (r.Truth != "yes" && r.Truth != "no" && r.Truth != "unknown") {
 		return r, errors.New("a provisional score needs a target, grounds and yes / no / unknown")
@@ -137,6 +141,9 @@ func (s Store) SaveReview(r Review) (Review, error) {
 	for syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		if time.Now().After(until) {
 			return r, errors.New("saving provisional scores is busy")
+		}
+		if reviewLockBusy != nil {
+			reviewLockBusy()
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
