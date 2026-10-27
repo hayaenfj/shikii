@@ -15,6 +15,9 @@ var errPersonFileReadOnly = errors.New("is read-only, so shikii left it as it is
 // openPersonFile opens a file of the person's to write it; tests replace it to act like a disk mounted read-only.
 var openPersonFile = os.OpenFile
 
+// syncPersonFile writes a person's file out to the disk; the tests swap it for nothing (see store.SyncTemp).
+var syncPersonFile = (*os.File).Sync
+
 func readOnlyError(path string) error { return fmt.Errorf("%s %w", path, errPersonFileReadOnly) }
 
 // personFileError is a failure to write a file of the person's (its mode, an ACL, an immutable flag, the folder). init leaves that file
@@ -73,7 +76,7 @@ func writePersonFileTo(path string, content []byte, newMode os.FileMode) error {
 		werr = f.Truncate(int64(len(content)))
 	}
 	if werr == nil {
-		werr = f.Sync()
+		werr = syncPersonFile(f)
 	}
 	if werr != nil { // put the old content back: the old size fitted before
 		_, _ = f.WriteAt(old, 0)

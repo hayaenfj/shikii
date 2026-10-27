@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/hayaenfj/shikii/internal/store"
 	"os"
 	"reflect"
 	"syscall"
@@ -20,6 +21,10 @@ func TestMain(m *testing.M) {
 	openBrowser = func(url string) { opened = append(opened, url) }
 	stopProcess = func(int) error { return nil } // uninstall never signals a real process from tests (0.9.3)
 	processCommand = func(int) string { return "" }
+	// Writing files out to the disk (on macOS a flush of the disk's cache) made the eight test groups wait on each other: a test that
+	// takes 0.3 s alone took 1 to 2 s. Tests do not need the data to survive a power cut.
+	store.SyncTemp = func(*os.File) error { return nil }
+	syncPersonFile = func(*os.File) error { return nil }
 	os.Exit(m.Run())
 }
 

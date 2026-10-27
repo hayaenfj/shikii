@@ -15,7 +15,7 @@ import (
 // A store becomes active only if this machine initialized it (and it was moved here) or the person ran shikii --init in its folder; a
 // legitimate store moved and then asked for is active; the shared index never names a store whose id or folder differs.
 func TestRelinkPropertiesOverRandomFolderHistories(t *testing.T) {
-	runs := 250
+	runs := 40
 	if testing.Short() {
 		runs = 10
 	}

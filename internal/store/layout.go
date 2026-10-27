@@ -131,6 +131,10 @@ func LeftOver(path string) bool {
 // WriteTemp writes PlaceOnce's temp file; tests swap it to stop a write in the middle.
 var WriteTemp = func(f *os.File, b []byte) (int, error) { return f.Write(b) }
 
+// SyncTemp writes PlaceOnce's temp file out to the disk before it is put in place. On macOS it flushes the disk's cache and takes
+// milliseconds; the cmd/shikii tests swap it for nothing, as eight groups doing it at once made every test several times slower.
+var SyncTemp = (*os.File).Sync
+
 // ChmodTemp sets the temp file's mode; tests swap it to refuse like Linux's exFAT and FAT drivers.
 var ChmodTemp = (*os.File).Chmod
 
@@ -148,7 +152,7 @@ func PlaceOnce(path string, data []byte, perm os.FileMode) (bool, error) {
 	if err := ChmodTemp(tmp, perm); werr == nil && !errors.Is(err, syscall.EPERM) { // Linux's exFAT and FAT refuse modes (0.9.10)
 		werr = err
 	}
-	if err := tmp.Sync(); werr == nil {
+	if err := SyncTemp(tmp); werr == nil {
 		werr = err
 	}
 	if err := tmp.Close(); werr == nil {
