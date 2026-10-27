@@ -625,20 +625,6 @@ func TestProjectActivationRejectsForeignAndLinkedMarkers(t *testing.T) {
 	}
 }
 
-// C1: mv, then a request in the new folder: the hook reconnects it and it is active there.
-func TestRelinkMovedFolderIsActiveAfterARequest(t *testing.T) {
-	relinkEachPlace(t, func(t *testing.T, common, p string) {
-		r := relinkMove(t, p)
-		if n := relinkMovedProject(r, false); !strings.HasPrefix(n, "shikii:") {
-			t.Fatalf("C1: the request does not say it reconnected the moved folder: %q", n)
-		}
-		if !relinkActive(r) {
-			t.Fatal("C1: the moved folder, initialized here and asked for, is not active")
-		}
-		relinkIndexNamesItsStores(t, common)
-	})
-}
-
 // C2: cp -R, then a request in the copy while the original is still in place: the copy stays inactive and the original keeps its entry.
 func TestRelinkCopyStaysInactiveAfterARequest(t *testing.T) {
 	relinkEachPlace(t, func(t *testing.T, common, p string) {

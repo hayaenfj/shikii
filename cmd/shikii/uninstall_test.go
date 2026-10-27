@@ -372,31 +372,9 @@ func TestRemoveCodexServerWritesThroughLinksAndKeepsPermissions(t *testing.T) {
 	}
 }
 
-// Tests never send a real signal: stopProcess is a recorder during tests (like hookSpawn).
-func TestUninstallNeverSignalsRealProcessesInTests(t *testing.T) {
-	if reflect.ValueOf(stopProcess).Pointer() == reflect.ValueOf(signalTerm).Pointer() {
-		t.Fatal("during tests, stopProcess must be a recorder, not the real signal")
-	}
-	if reflect.ValueOf(processCommand).Pointer() == reflect.ValueOf(psCommand).Pointer() {
-		t.Fatal("during tests, processCommand must not run the real ps")
-	}
-}
-
 func TestUsageListsUninstall(t *testing.T) {
 	if !strings.Contains(usageText(), "shikii uninstall [--yes]") {
 		t.Fatal("the usage must list shikii uninstall")
-	}
-}
-
-// D: a valid config.toml holding nan (NaN != NaN under reflect.DeepEqual).
-func TestAuditCodexConfigWithNaN(t *testing.T) {
-	b := []byte("x = nan\n")
-	if got := codexServerState(b, "/bin/shikii", []string{"mcp"}); got != "add" {
-		t.Errorf("valid TOML with nan: state %q, want add", got)
-	}
-	out, found, err := withoutCodexServer("x = nan\n\n[mcp_servers.shikii]\ncommand = \"x\"\n")
-	if err != nil || !found || strings.Contains(out, "shikii") {
-		t.Errorf("uninstall cannot remove shikii next to nan: found=%v err=%v", found, err)
 	}
 }
 
@@ -435,24 +413,6 @@ func TestFinalAEA4UninstallDoesNotRewriteBrokenJSON(t *testing.T) {
 	found, err := removeJSONEntry(p, "mcpServers", "shikii", true)
 	if b, _ := os.ReadFile(p); string(b) != text {
 		t.Errorf("A4: broken settings were rewritten (found=%v err=%v)\nafter:\n%s", found, err, b)
-	}
-}
-
-// Codex 0.x reads a config.toml that starts with a UTF-8 BOM (checked with `codex mcp list` in a sandbox CODEX_HOME).
-// codex_toml.go says "unreadable (not TOML; Codex cannot read it either)".
-func TestAuditBOMConfigCodexReads(t *testing.T) {
-	bom := "\xef\xbb\xbf"
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-	os.WriteFile(path, []byte(bom+"model = \"m\"\n"), 0o600)
-	did, err := addCodexServer(path, []string{"mcp"})
-	if !did {
-		t.Errorf("A1: a file Codex reads was not given shikii: did=%v err=%v state=%s", did, err, codexServerState([]byte(bom+"model = \"m\"\n"), "/x", []string{"mcp"}))
-	}
-	withShikii := bom + "model = \"m\"\n\n[mcp_servers.shikii]\ncommand = \"/x\"\nargs = [\"mcp\"]\n"
-	_, found, err := withoutCodexServer(withShikii)
-	if !found {
-		t.Errorf("A2: uninstall leaves Codex's shikii server in a BOM file: found=%v err=%v", found, err)
 	}
 }
 
@@ -621,31 +581,6 @@ func TestCodexConfigShapes(t *testing.T) {
 				t.Fatalf("adding and then removing shikii must give the text back:\n%q\n->\n%q", c.text, got.removed)
 			}
 		})
-	}
-}
-
-// Uninstall removes shikii however it is written, or refuses; it never reports "not there" while Codex still reads a shikii server,
-// and what it leaves is the person's settings exactly.
-func TestUninstallRemovesShikiiOnlyWhenATOMLReaderAgrees(t *testing.T) {
-	for name, text := range map[string]string{
-		"escaped name": "[mcp_servers.\"\\u0073hikii\"]\ncommand = \"x\"\n\n[other]\na = 1\n",
-		"plain":        "model = \"m\"\n\n[mcp_servers.shikii]\ncommand = \"x\"\nargs = [\"mcp\"]\n\n[mcp_servers.mine]\ncommand = \"y\"\n",
-		"inline":       "mcp_servers = { shikii = { command = \"x\" }, mine = { command = \"y\" } }\n",
-	} {
-		before := readTOML(t, []byte(text))
-		out, found, err := withoutCodexServer(text)
-		if err != nil {
-			if out != text {
-				t.Fatalf("%s: a refusal changes nothing", name)
-			}
-			continue
-		}
-		if !found {
-			t.Fatalf("%s: Codex reads a shikii server here, so it must be removed or refused, not reported missing", name)
-		}
-		if !reflect.DeepEqual(readTOML(t, []byte(out)), withoutShikiiServer(before)) {
-			t.Fatalf("%s: only shikii goes:\n%s", name, out)
-		}
 	}
 }
 

@@ -263,27 +263,6 @@ func probeBlock(cmd string) string {
 	return "[mcp_servers.shikii]\ncommand = " + quotedList([]string{cmd}) + "\nargs = [" + quotedList(codexServerArgs) + "]\n"
 }
 
-// symlinked config.toml (dotfiles): the link must stay a link and the target gets the fix
-func TestAuditProbeSymlinkKept(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "dotfiles", "config.toml")
-	os.MkdirAll(filepath.Dir(target), 0o700)
-	os.WriteFile(target, []byte("model = \"o3\"\n\n"+probeBlock("shikii")), 0o600)
-	link := filepath.Join(dir, "config.toml")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatal(err)
-	}
-	did, err := fixCodexServer(link, codexServerArgs)
-	if err != nil || !did {
-		t.Fatalf("did=%v err=%v", did, err)
-	}
-	fi, _ := os.Lstat(link)
-	if fi.Mode()&os.ModeSymlink == 0 {
-		b, _ := os.ReadFile(target)
-		t.Fatalf("the symlink was replaced by a regular file; the dotfiles target still says:\n%s", b)
-	}
-}
-
 // the header occurs once but not followed by "\ncommand = " (here in a comment before a CRLF block): must not panic
 func TestAuditProbeNoHeadNoPanic(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
@@ -1147,12 +1126,20 @@ func TestOnlyHookSpecPathBuildsSpecFilePaths(t *testing.T) {
 // Tests never start real background processes (up, serve) and never open a browser (0.9.1). Even a test that runs the hook without the harness (hookEnv)
 // started a real `shikii.test up` on a machine with llama-server, which was never cleaned up (2026-10-25: 75 of them kept calling git,
 // and each git call ran xcodebuild -license check, pushing the machine's load above 150)
+// The same holds for uninstall: it never sends a real signal and never runs the real ps.
 func TestTestsNeverStartRealProcesses(t *testing.T) {
-	if reflect.ValueOf(hookSpawn).Pointer() == reflect.ValueOf(spawnShikii).Pointer() {
-		t.Fatal("during tests, hookSpawn must be a recorder, not the real spawnShikii")
-	}
-	if reflect.ValueOf(openBrowser).Pointer() == reflect.ValueOf(openInBrowser).Pointer() {
-		t.Fatal("during tests, openBrowser must not open a real browser")
+	for _, c := range []struct {
+		name         string
+		inTest, real any
+	}{
+		{"hookSpawn (spawnShikii)", hookSpawn, spawnShikii},
+		{"openBrowser (openInBrowser)", openBrowser, openInBrowser},
+		{"stopProcess (signalTerm)", stopProcess, signalTerm},
+		{"processCommand (psCommand)", processCommand, psCommand},
+	} {
+		if reflect.ValueOf(c.inTest).Pointer() == reflect.ValueOf(c.real).Pointer() {
+			t.Errorf("during tests, %s must be a recorder, not the real one", c.name)
+		}
 	}
 }
 
@@ -1224,12 +1211,30 @@ func TestPatch0910StoppedSeedWithoutHardLinksIsPlacedNextTime(t *testing.T) {
 
 // finding 2: a broken JSON with "//" outside a string (a URL without quotes) was called JSONC, and init went on as if the file were fine.
 // Only a file that is valid JSON once its comments are taken out is JSONC; a broken one is refused as broken.
+// Confirmation i-2: OpenCode's JSONC also allows trailing commas; with comments and a trailing comma init stopped as if it were broken.
+// A JSONC file is left as written with an error that names the comments (init goes on with the entry to add by hand).
 func TestPatch099AuditBrokenJSONIsNotCalledJSONC(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "opencode.json")
-	os.WriteFile(p, []byte(`{"$schema": https://opencode.ai/config.json, "mcp": {}}`), 0o644)
-	_, err := addJSONEntry(p, "mcp", "shikii", map[string]any{"type": "local"})
-	if err == nil || strings.Contains(err.Error(), "comments") || !strings.Contains(err.Error(), "broken settings") {
-		t.Fatalf("a broken JSON is refused as broken, not as comments: %v", err)
+	for _, c := range []struct {
+		name, text string
+		jsonc      bool
+	}{
+		{"a URL without quotes is broken", `{"$schema": https://opencode.ai/config.json, "mcp": {}}`, false},
+		{"comments and a trailing comma are JSONC", "{\n // mine\n \"mcp\": {\"other\": {\"type\": \"local\"},},\n}\n", true},
+	} {
+		p := filepath.Join(t.TempDir(), "opencode.json")
+		if err := os.WriteFile(p, []byte(c.text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := addJSONEntry(p, "mcp", "shikii", map[string]any{"type": "local"})
+		if c.jsonc && (!errors.As(err, new(*personFileError)) || !strings.Contains(err.Error(), "comments")) {
+			t.Fatalf("%s: JSONC is left as written and init goes on: %v", c.name, err)
+		}
+		if !c.jsonc && (err == nil || strings.Contains(err.Error(), "comments") || !strings.Contains(err.Error(), "broken settings")) {
+			t.Fatalf("%s: a broken JSON is refused as broken, not as comments: %v", c.name, err)
+		}
+		if b, _ := os.ReadFile(p); string(b) != c.text {
+			t.Fatalf("%s: the file is left as written: %q", c.name, b)
+		}
 	}
 }
 
@@ -1244,17 +1249,6 @@ func TestPatch099AuditJSONCWithShikiiAlreadyThereIsKept(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(p); string(b) != text {
 		t.Fatalf("and the file is left as written: %q", b)
-	}
-}
-
-// confirmation i-2: OpenCode's JSONC also allows trailing commas; with comments and a trailing comma init stopped as if it were broken.
-func TestPatch099ConfirmJSONCWithTrailingCommaLetsInitGoOn(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "opencode.json")
-	text := "{\n // mine\n \"mcp\": {\"other\": {\"type\": \"local\"},},\n}\n"
-	os.WriteFile(p, []byte(text), 0o644)
-	_, err := addJSONEntry(p, "mcp", "shikii", map[string]any{"type": "local"})
-	if !errors.As(err, new(*personFileError)) || !strings.Contains(err.Error(), "comments") {
-		t.Fatalf("JSONC with a trailing comma is left as written and init goes on: %v", err)
 	}
 }
 

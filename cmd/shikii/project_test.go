@@ -413,42 +413,46 @@ func TestPatch099ConfirmUnreadableValidStoreIDIsKept(t *testing.T) {
 	}
 }
 
-// confirmation u-3: an empty id whose time is in the future (copied from another machine, a clock set back) was never made again.
-func TestPatch099ConfirmFutureEmptyStoreIDIsMadeAgain(t *testing.T) {
-	root := filepath.Join(t.TempDir(), ".shikii")
-	os.MkdirAll(filepath.Join(root, "records"), 0o700)
-	path := filepath.Join(root, "records", "store-id")
-	os.WriteFile(path, nil, 0o600)
-	future := time.Now().Add(24 * time.Hour)
-	os.Chtimes(path, future, future)
-	if id := storeID(root, true); id == "" {
-		t.Fatal("an empty id with a future time is a leftover: it is made again")
-	}
-}
-
 // C confirm1-2: records/store-id was made with O_EXCL and then written; a stop in between left an empty file that was never made again
 // (read gave "" and O_EXCL failed), so the store kept its path-named entry and a later move was not reconnected.
+// Confirmation u-3: an empty id whose time is in the future (copied from another machine, a clock set back) is a leftover too.
 func TestPatch099EmptyStoreIDIsMadeAgain(t *testing.T) {
-	root := filepath.Join(t.TempDir(), ".shikii")
-	if err := os.MkdirAll(filepath.Join(root, "records"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "records", "store-id"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if storeID(root, true) != "" {
-		t.Fatal("an empty id just made is another process's, being written: it is not replaced")
-	}
-	old := time.Now().Add(-time.Minute) // left by a stop in an earlier version
-	if err := os.Chtimes(filepath.Join(root, "records", "store-id"), old, old); err != nil {
-		t.Fatal(err)
-	}
-	id := storeID(root, true)
-	if b, _ := os.ReadFile(filepath.Join(root, "records", "store-id")); id == "" || strings.TrimSpace(string(b)) != id {
-		t.Fatalf("an empty store-id is made again: id=%q, file=%q", id, b)
-	}
-	if again := storeID(root, true); again != id {
-		t.Fatalf("and then kept: %q, then %q", id, again)
+	for _, c := range []struct {
+		name   string
+		age    time.Duration // how long ago the empty file was last written (negative: in the future)
+		remade bool
+	}{
+		{"just made: another process is writing it", 0, false},
+		{"left by a stop in an earlier version", time.Minute, true},
+		{"a time in the future", -24 * time.Hour, true},
+	} {
+		root := filepath.Join(t.TempDir(), ".shikii")
+		if err := os.MkdirAll(filepath.Join(root, "records"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(root, "records", "store-id")
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if c.age != 0 {
+			at := time.Now().Add(-c.age)
+			if err := os.Chtimes(path, at, at); err != nil {
+				t.Fatal(err)
+			}
+		}
+		id := storeID(root, true)
+		if !c.remade {
+			if id != "" {
+				t.Fatalf("%s: an empty id just made is another process's, being written: it is not replaced, got %q", c.name, id)
+			}
+			continue
+		}
+		if b, _ := os.ReadFile(path); id == "" || strings.TrimSpace(string(b)) != id {
+			t.Fatalf("%s: an empty store-id is made again: id=%q, file=%q", c.name, id, b)
+		}
+		if again := storeID(root, true); again != id {
+			t.Fatalf("%s: and then kept: %q, then %q", c.name, id, again)
+		}
 	}
 }
 

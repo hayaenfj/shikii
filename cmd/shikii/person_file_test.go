@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,23 +77,6 @@ func TestEveryWriterOfAPersonsSettingsKeepsLinksModesAndReadOnly(t *testing.T) {
 				t.Fatalf("%s: a temp file was left: %s", name, e.Name())
 			}
 		}
-	}
-}
-
-// A5 for init: shikii is added to a file Codex reads (it is not reported as unreadable).
-func TestFinalAEA5InitAddsToCodexReadableTOML11(t *testing.T) {
-	text := "[mcp_servers.other]\ncommand = \"x\"\nenv = {\n  A = \"1\",\n}\n"
-	p := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	did, err := addCodexServer(p, []string{"mcp"})
-	b, _ := os.ReadFile(p)
-	if err != nil || !did {
-		t.Errorf("A5: shikii is not added to a file Codex reads: did=%v err=%v\n%s", did, err, b)
-	}
-	if !bytes.HasPrefix(b, []byte(text)) || strings.Count(string(b), "\n[mcp_servers.shikii]\n") != 1 {
-		t.Errorf("A1: not exactly one shikii table after the original text:\n%s", b)
 	}
 }
 
