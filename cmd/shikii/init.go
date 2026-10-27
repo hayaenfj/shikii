@@ -231,8 +231,15 @@ func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, err
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
 	if err := dec.Decode(&cfg); err != nil {
-		if jsonHasComments(b) { // OpenCode reads JSONC; a rewrite would drop the comments, so the file is the person's to change (0.9.9)
-			return nil, nil, &personFileError{errors.New("it has comments (JSONC), which a rewrite would drop, so shikii left it as written")}
+		// OpenCode reads JSONC: valid JSON once its comments are taken out. A rewrite would drop the comments, so the file is the person's to
+		// change (0.9.9); a file that is broken anyway is broken settings (audit of 0.9.9, finding 2)
+		if plain, ok := withoutJSONComments(b); ok && json.Valid(plain) {
+			jc := &jsoncSettings{personFileError{errors.New("it has comments (JSONC), which a rewrite would drop, so shikii left it as written")}, nil}
+			var c map[string]any
+			if json.Unmarshal(plain, &c) == nil {
+				jc.section, _ = c[key].(map[string]any)
+			}
+			return nil, nil, jc
 		}
 		return nil, nil, fmt.Errorf("check the JSON (broken settings are not overwritten): %w", err)
 	}
@@ -262,22 +269,50 @@ func readJSONSettings(b []byte, key string) (map[string]any, map[string]any, err
 // readAsWritten reports whether the decoded settings hold the file's text unchanged. Go's decoder never fails on bytes that are not UTF-8
 // or on an unpaired \u surrogate: it reads them as U+FFFD, so a rewrite would replace the person's text (and could merge two keys). Any
 // U+FFFD the file did not write itself means the read lost something (confirmation audit 2).
-// jsonHasComments reports whether b has a // or /* comment outside its strings.
-func jsonHasComments(b []byte) bool {
-	in, esc := false, false
+// jsonc is settings with comments that shikii leaves as written; section is what the key holds, read without the comments.
+type jsoncSettings struct {
+	personFileError
+	section map[string]any
+}
+
+// Unwrap lets init and uninstall treat it like any file they leave as written (errors.As with *personFileError).
+func (j *jsoncSettings) Unwrap() error { return &j.personFileError }
+
+// withoutJSONComments is b with its // and /* */ comments outside strings taken out; ok is false when b has none.
+func withoutJSONComments(b []byte) ([]byte, bool) {
+	var out []byte
+	in, esc, found := false, false, false
 	for i := 0; i < len(b); i++ {
-		switch c := b[i]; {
+		c := b[i]
+		switch {
 		case in && esc:
 			esc = false
 		case in && c == '\\':
 			esc = true
 		case c == '"':
 			in = !in
-		case !in && c == '/' && i+1 < len(b) && (b[i+1] == '/' || b[i+1] == '*'):
-			return true
+		case !in && c == '/' && i+1 < len(b) && b[i+1] == '/':
+			found = true
+			for i < len(b) && b[i] != '\n' {
+				i++
+			}
+			if i < len(b) {
+				out = append(out, '\n')
+			}
+			continue
+		case !in && c == '/' && i+1 < len(b) && b[i+1] == '*':
+			found = true
+			end := bytes.Index(b[i+2:], []byte("*/"))
+			if end < 0 {
+				return nil, false
+			}
+			i += 2 + end + 1
+			out = append(out, ' ')
+			continue
 		}
+		out = append(out, c)
 	}
-	return false
+	return out, found
 }
 
 // duplicateJSONKey returns a key written twice in one object of b (valid JSON).
@@ -361,6 +396,9 @@ func addJSONEntry(path, key, name string, entry map[string]any) (bool, error) {
 	var section map[string]any
 	if err == nil {
 		if cfg, section, err = readJSONSettings(b, key); err != nil {
+			if jc := (*jsoncSettings)(nil); errors.As(err, &jc) && jc.section != nil && jc.section[name] != nil {
+				return false, nil // the person added it by hand to a file with comments, as init told them (audit of 0.9.9, finding 3)
+			}
 			return false, fmt.Errorf("%s: %w", path, err)
 		}
 	}

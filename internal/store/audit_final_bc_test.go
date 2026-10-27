@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Final audit BC-3 (B1): records/store-name was created with O_EXCL and then written. A stop between the two (kill -9, power loss) or a
@@ -26,6 +27,11 @@ func finalBC3(t *testing.T, empty bool) {
 	// the state after O_EXCL created the file and the write did not happen
 	if empty {
 		if err := os.WriteFile(filepath.Join(dir, "records", "store-name"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// left by a stop some time ago: a file younger than 10 seconds may be another process's, being written (audit of 0.9.9, finding 4)
+		old := time.Now().Add(-time.Minute)
+		if err := os.Chtimes(filepath.Join(dir, "records", "store-name"), old, old); err != nil {
 			t.Fatal(err)
 		}
 	}

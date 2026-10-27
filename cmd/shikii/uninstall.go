@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // shikii uninstall (0.9.3) takes out what shikii put into the agents' settings and stops its pages, and keeps everything else:
@@ -149,9 +150,10 @@ func cmdUninstall(args []string) error {
 			if r, ok := readPageRecord(agent, pg.Scope); ok && r.PID == pg.PID {
 				_ = os.Remove(pagePath(agent, pg.Scope))
 			}
-			if !pageLockHeld(agent, pg.Scope) {
-				removeEmptyLock(pageLockPath(agent, pg.Scope))
+			for wait := 0; wait < 30 && pageLockHeld(agent, pg.Scope); wait++ {
+				time.Sleep(100 * time.Millisecond) // the signal returns before the serve exits and lets go of its lock (audit of 0.9.9, finding 1)
 			}
+			removeEmptyLock(pageLockPath(agent, pg.Scope))
 			return nil
 		}})
 	}
@@ -577,7 +579,17 @@ func tomlScan(s string, depth int, multi string) (int, string) {
 
 // removeEmptyLock removes a lock file shikii made (an empty regular file), and nothing else.
 func removeEmptyLock(path string) {
-	if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() && info.Size() == 0 {
-		_ = os.Remove(path)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() != 0 {
+		return
 	}
+	f, err := os.OpenFile(path, os.O_RDWR|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		return // someone (an init, a page) holds it
+	}
+	_ = os.Remove(path)
 }

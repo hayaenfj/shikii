@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // The store's name (0.9.7): the wiki, its sources, the conversations, the memory deliveries and the memory reviews of a project are kept
@@ -102,12 +103,19 @@ func recordStoreName(dir, name string) string {
 		if existing := readStoreName(dir); existing != "" {
 			return existing // recorded by another process
 		}
-		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
-			return name
+		if !LeftOver(path) {
+			return name // a name file being written just now, or not a regular file
 		}
 		_ = os.Remove(path) // a name file without a valid name (a stop while writing it)
 	}
 	return name
+}
+
+// LeftOver reports whether path is a regular file old enough (over 10 seconds) to be left by a stop while it was written, not a file another
+// process is writing just now (on a disk without hard links PlaceOnce makes it first and writes it then; audit of 0.9.9, finding 4).
+func LeftOver(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > 10*time.Second
 }
 
 // PlaceOnce puts data at path only when nothing is there, and only in full: it is written to a temp file beside path and linked into place,

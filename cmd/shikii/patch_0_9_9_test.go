@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -101,6 +102,13 @@ func TestPatch099EmptyStoreIDIsMadeAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "records", "store-id"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if storeID(root, true) != "" {
+		t.Fatal("an empty id just made is another process's, being written: it is not replaced")
+	}
+	old := time.Now().Add(-time.Minute) // left by a stop in an earlier version
+	if err := os.Chtimes(filepath.Join(root, "records", "store-id"), old, old); err != nil {
 		t.Fatal(err)
 	}
 	id := storeID(root, true)

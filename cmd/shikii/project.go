@@ -552,8 +552,8 @@ func storeID(root string, create bool) string {
 		if existing := read(); existing != "" {
 			return existing // made by another process just now
 		}
-		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
-			return ""
+		if !store.LeftOver(path) {
+			return "" // being written by another process just now: it wins
 		}
 		_ = os.Remove(path) // an id file without a valid id, left by a stop in an earlier version
 	}
