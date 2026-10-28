@@ -2348,3 +2348,41 @@ func TestChoiceLineNeedsAClearSignal(t *testing.T) {
 		t.Fatalf("no line without a clear signal: %v\n%s", err, report.String())
 	}
 }
+
+// 0.11: when the person's checks show an outcome's truths are clearly less right than act asks, calibrate does not use them and says so,
+// status says so, and the line state counts like calibrate.
+func TestUntrustedOutcomeTruthsAreNotUsed(t *testing.T) {
+	root, sampled := outcomeFixture(t, 60)
+	st := store.Store{Dir: root}
+	for _, r := range sampled[:3] {
+		labels, err := store.LabelsFor(&r, "no", 1, "audit")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AppendLabels(labels); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(root, "decisions", "changes-in-scope.yaml")
+	var report bytes.Buffer
+	_ = runCalibrate(path, calibrateOpts{output: &report, storeDir: root, labeled: "none", ef: endpointFlags{model: "m"}})
+	if !strings.Contains(report.String(), "outcome truths checked by a person: 3, agreed 0") || !strings.Contains(report.String(), "not used") || !strings.Contains(report.String(), " n=3 ") {
+		t.Fatalf("calibrate drops the untrusted outcome truths and says so (3 person truths left):\n%s", report.String())
+	}
+	out := capture(t, func() error { return cmdStatus([]string{"--store", root, path}) })
+	if !strings.Contains(out, "outcome truths checked by a person: 3, agreed 0") || !strings.Contains(out, "not used to draw lines") {
+		t.Fatalf("status says the outcome truths are not used:\n%s", out)
+	}
+	sp := mustLoad(t, path)
+	_, labs, _ := st.Counts(sp.ID)
+	if n := lineStateOf(sp, sp.Eval.MinN, "m", sp.Hash(), labs, false).N; n != 3 {
+		t.Fatalf("the line state counts like calibrate: %d", n)
+	}
+	// the hook's automatic calibration counts the same way: 3 truths are below min_n, so it does not start (60 with the outcome's)
+	if err := hookMaybeCalibrate(root, sp.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "calibrating-"+sp.ID)); !os.IsNotExist(err) {
+		t.Fatalf("the hook does not start a calibration on the untrusted outcome's truths: %v", err)
+	}
+}

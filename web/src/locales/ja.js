@@ -57,7 +57,7 @@ export default {
   memoryEffectError: '記憶を届けた記録と見立てを読み出せません。記録を確かめてください。',
   projectsTitle: 'プロジェクト', projectsHow: '仕事を選ぶと、その会話・教訓・正解だけを出します。', projectsEmpty: 'まだプロジェクトはありません。使いたいプロジェクトで、エージェントに「ここで shikii を使って」と頼んでください。',
   legacyTextLimit: 'この欄は保存の上限の近くで終わっています。前の版では続きが保存されていない場合があります。', originalTextLimit: '長い文なので、原文を保存できる上限(64 KB)まで出しています。', originalTextUnavailable: '原文を読み出せません。記録に保存された冒頭を出しています。',
-  reviewRandom: 'AI が自分で決めた物を、確かめのため時々出しています', reviewUncertain: 'AI が決めきれなかった物です', reviewReply: 'その後のあなたの返事', reviewEvidence: 'AI が付けた答えと理由を見る', reviewPending: n => `会話の続きを受けて AI が仮の答えを付ける物: ${n} 件`,
+  reviewOutcome: 'この答えは、その後の作業の結果から自動で付けました。その付け方が当たっているかを確かめるため、時々あなたに聞いています', reviewRandom: 'AI が自分で決めた物を、確かめのため時々出しています', reviewUncertain: 'AI が決めきれなかった物です', reviewReply: 'その後のあなたの返事', reviewEvidence: 'AI が付けた答えと理由を見る', reviewPending: n => `会話の続きを受けて AI が仮の答えを付ける物: ${n} 件`,
   reviewQuality: q => `AI の仮の答えは、あなたが確かめた ${q.checked} 件中 ${q.correct} 件が合っていました`,
   langName: '日本語',
   helpTitle: '使い方', langLabel: '言語', bandAbstain: 'AI は答えませんでした(入力が足りない)。', truthsCount: n => n + ' 件の正解', tableHead: ['案', '一致した割合', 'ずれ(小さいほど良い)', 'AI が進めた時に正しかった割合', '正しく進められた割合'], yesTo: 'はい→', noTo: 'いいえ→',

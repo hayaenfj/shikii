@@ -1455,6 +1455,9 @@ func hookMaybeCalibrate(agent, specID string) error {
 		if err != nil {
 			continue
 		}
+		if _, all, err := st.Counts(specID); err == nil { // counted like calibrate: an untrusted outcome's truths are not counted (0.11)
+			labels = store.WithoutUntrustedOutcome(labels, store.OutcomeAgreement(all), sp.Thresholds.Act)
+		}
 		var human []store.Label
 		for _, l := range store.LatestPerInput(labels) { // counted like calibrate: one per input, the person's truths only
 			if store.HumanSource(l.Source) {

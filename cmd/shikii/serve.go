@@ -906,11 +906,24 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	if sp.ID == "wiki-conflict" {
 		settled = settledDrafts(s.st)
 	}
+	// a few decisions an outcome answered go to the person while that outcome's agreement is unsettled (0.11)
+	checkOutcome := false
+	if outcomeSpecs[id] && !machineOnlySpecs[id] {
+		_, all, err := s.st.Counts(id)
+		if err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		checkOutcome = !store.OutcomeAgreement(all).Settled(sp.Thresholds.Act)
+	}
 	for _, rec := range recs {
 		if legacyPlanningRecord(sp, rec) || undecidedConflict(sp.ID, rec, labeled, settled) {
 			continue
 		}
 		show, audit, reason := reviewQueueState(rec, labeled, reviews)
+		if l, ok := labeled[rec.TraceID]; checkOutcome && !show && ok && l.Source == "outcome" && store.OutcomeCheckSample(rec.TraceID) && len(rec.Inputs) > 0 {
+			show, audit, reason = true, true, "outcome"
+		}
 		if show && !superseded[rec.TraceID] {
 			pending = append(pending, queued{rec, audit, reason})
 		}

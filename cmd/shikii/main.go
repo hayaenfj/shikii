@@ -717,6 +717,13 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 			fmt.Fprintf(stdout, "deduplicated: %d labels on %d distinct inputs (latest truth per input wins)\n", before, len(labels))
 		}
 	}
+	// the outcome's truths are not used when people checked them and they are clearly less right than act asks (0.11)
+	if _, all, err := st.Counts(sp.ID); err == nil {
+		if check := store.OutcomeAgreement(all); check.Checked > 0 {
+			fmt.Fprintf(stdout, "outcome truths checked by a person: %d, agreed %d (95%%: %.2f-%.2f)%s\n", check.Checked, check.Agree, check.Low, check.High, map[bool]string{true: "; below act, so not used", false: ""}[check.Untrusted(sp.Thresholds.Act)])
+			labels = store.WithoutUntrustedOutcome(labels, check, sp.Thresholds.Act)
+		}
+	}
 	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s n=%d (file=%d store=%d replay=%d)\n", sp.ID, sp.Hash(), model, len(labels), fileN, storedN, len(replayed))
 	if len(labels) == 0 {
 		return cal, false, fmt.Errorf("calibrate: %w for (hash=%s, model=%s)", errNoLabels, sp.Hash(), model)
@@ -1999,6 +2006,9 @@ func cmdStatus(args []string) error {
 			fmt.Fprintf(stdout, "  last label: %s\n", last.Format("2006-01-02 15:04"))
 			fmt.Fprintf(stdout, "  by source: %s\n", fmtCounts(bySource))
 			fmt.Fprintf(stdout, "  by truth:  %s\n", fmtCounts(byTruth))
+			if sp := specs[id]; bySource["outcome"] > 0 && outcomeSpecs[id] && !machineOnlySpecs[id] && sp != nil {
+				fmt.Fprintln(stdout, outcomeCheckLine(store.OutcomeAgreement(labs), sp.Thresholds.Act))
+			}
 		}
 		// Counts per work (the mark on hook records. One store collects decisions from several projects, so show how many where. There is one line overall)
 		if all, err := st.Records(id, 0); err == nil {
@@ -2227,4 +2237,18 @@ func parseMixed(fs *flag.FlagSet, args []string) ([]string, error) {
 func fmtDist(m map[string]float64) string {
 	b, _ := json.Marshal(m)
 	return string(b)
+}
+
+// outcomeCheckLine is the status line on how often an outcome's truths agreed with a person who checked them (0.11).
+func outcomeCheckLine(c store.OutcomeCheck, act float64) string {
+	switch {
+	case c.Checked == 0:
+		return fmt.Sprintf("  outcome truths checked by a person: none yet (1 in %d is shown on the page)", store.OutcomeCheckEvery)
+	case c.Untrusted(act):
+		return fmt.Sprintf("  outcome truths checked by a person: %d, agreed %d (95%% %.2f-%.2f): below act %.2f, so they are not used to draw lines", c.Checked, c.Agree, c.Low, c.High, act)
+	case c.Settled(act):
+		return fmt.Sprintf("  outcome truths checked by a person: %d, agreed %d (95%% %.2f-%.2f): at or above act %.2f, used; no more checks are asked", c.Checked, c.Agree, c.Low, c.High, act)
+	default:
+		return fmt.Sprintf("  outcome truths checked by a person: %d, agreed %d (95%% %.2f-%.2f): still measuring (1 in %d is shown on the page)", c.Checked, c.Agree, c.Low, c.High, store.OutcomeCheckEvery)
+	}
 }

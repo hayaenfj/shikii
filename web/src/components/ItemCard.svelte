@@ -118,7 +118,7 @@
     {#if !it.legacy_planning}<div class="mt-[5px] mb-[15px] text-[12px] text-muted">{t('changeAnswer')}</div>{/if}
   {/if}
   {#if it.legacy_planning}<div class="audit legacy-planning"><strong>{t('legacyPlanning')}</strong>{#if it.record_question}<p>{it.record_question}</p>{/if}</div>{/if}
-  {#if it.review}<div class="audit mb-[15px] rounded-[9px] border border-amber bg-amberbg px-3.5 py-2.5 text-[13px]">{it.review_reason === 'uncertain' ? t('reviewUncertain') : t('reviewRandom')}</div>{/if}
+  {#if it.review}<div class="audit mb-[15px] rounded-[9px] border border-amber bg-amberbg px-3.5 py-2.5 text-[13px]">{it.review_reason === 'uncertain' ? t('reviewUncertain') : t('reviewRandom')}</div>{:else if it.review_reason === 'outcome'}<div class="audit mb-[15px] rounded-[9px] border border-amber bg-amberbg px-3.5 py-2.5 text-[13px]">{t('reviewOutcome')}</div>{/if}
   {#if !onAnswer && (it.rung === 'context' || it.audit || it.stale || it.model)}<div class="mb-3 flex flex-wrap items-center gap-[9px] text-[12px] text-muted">
     {#if it.rung === 'context'}<span>{t('withContext')}</span>{/if}
     {#if it.audit}<span class="audit">{t('audit')}</span>{/if}

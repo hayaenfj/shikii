@@ -40,6 +40,7 @@ type lineState struct {
 func lineStateOf(rs *spec.Spec, minN int, model, hash string, labs []store.Label, tried bool) lineState {
 	s := lineState{Truths: map[string]int{}}
 	var mine []store.Label
+	labs = store.WithoutUntrustedOutcome(labs, store.OutcomeAgreement(labs), rs.Thresholds.Act) // counted like calibrate (0.11)
 	for _, l := range labs {
 		if l.Model == model && l.SpecHash == hash {
 			mine = append(mine, l)

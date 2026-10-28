@@ -1476,3 +1476,75 @@ func TestStatusLineCountMatchesThePage(t *testing.T) {
 		t.Fatalf("the status line shows one count, not a second n/min_n beside it: %q", line)
 	}
 }
+
+// outcomeFixture is a project whose changes-in-scope has n decisions an outcome answered "yes", and the ones OutcomeCheckSample picks.
+func outcomeFixture(t *testing.T, n int) (root string, sampled []store.Record) {
+	t.Helper()
+	repo := gitRepo(t)
+	hookEnv(t, nil)
+	initAt(t, repo)
+	root = filepath.Join(repo, ".shikii")
+	sp := mustLoad(t, filepath.Join(root, "decisions", "changes-in-scope.yaml"))
+	st := store.Store{Dir: root}
+	for i := 0; i < n; i++ {
+		inputs := map[string]string{"request": fmt.Sprint("change ", i), "files": "a.go"}
+		r := store.Record{TraceID: fmt.Sprintf("%016x", i+1), SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Inputs: inputs, InputsHash: store.HashInputs(inputs), Model: "m", Raw: map[string]float64{"yes": .6, "no": .4}, Top: "yes", P: .6, Band: "ask", At: time.Now()}
+		if err := st.AppendRecord(r); err != nil {
+			t.Fatal(err)
+		}
+		labels, err := store.LabelsFor(&r, "yes", 0.5, "outcome")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AppendLabels(labels); err != nil {
+			t.Fatal(err)
+		}
+		if store.OutcomeCheckSample(r.TraceID) {
+			sampled = append(sampled, r)
+		}
+	}
+	return root, sampled
+}
+
+// 0.11: 1 in 10 decisions an outcome answered goes to the person while that outcome's agreement is unsettled, marked as an outcome
+// check; the others stay out; once the person's answers settle it (here: clearly below act), none is asked any more.
+func TestQueueAsksThePersonToCheckSomeOutcomeTruths(t *testing.T) {
+	root, sampled := outcomeFixture(t, 60)
+	if len(sampled) < 4 {
+		t.Fatalf("the fixed sample picks some of 60: %d", len(sampled))
+	}
+	h := newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions")})
+	queue := func() []map[string]any {
+		r := httptest.NewRecorder()
+		h.ServeHTTP(r, httptest.NewRequest("GET", "/v1/queue?spec=changes-in-scope&limit=1000", nil))
+		var body struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := json.Unmarshal(r.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body.Items
+	}
+	items := queue()
+	if len(items) != len(sampled) {
+		t.Fatalf("only the sampled outcome truths are shown: %d of %d", len(items), len(sampled))
+	}
+	for _, it := range items {
+		if it["review_reason"] != "outcome" || it["audit"] != true || it["waits_for_person"] != true {
+			t.Fatalf("an outcome check waits for the person and says why: %v", it)
+		}
+	}
+	st := store.Store{Dir: root}
+	for _, r := range sampled[:3] { // the person says the outcome was wrong 3 times: 0 of 3 agree, the interval's upper end 0.56 < act 0.75
+		labels, err := store.LabelsFor(&r, "no", 1, "audit")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AppendLabels(labels); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if items := queue(); len(items) != 0 {
+		t.Fatalf("once settled, no more outcome checks are asked: %d", len(items))
+	}
+}

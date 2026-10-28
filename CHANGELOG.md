@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.11.0 (in progress)
+
+- Truths from outcomes are checked by the person: a truth set from what happened afterwards (a file reverted, the request restated, the working tree changed) stood in for a person's answer and was never compared with one. Now 1 in 10 of those decisions is shown on the page to check (marked as such) while the agreement is unsettled. When the person's answers show the outcome's truths are clearly less right than the act threshold asks (the upper end of the 95% Wilson interval below it), they are not used to draw lines (calibrate, the hook's automatic calibration and the line state count the same way); when they are clearly at or above it, no more checks are asked. `shikii status` and `calibrate` say how many were checked and how many agreed.
+
 ## 0.10.0 — lines can be drawn for real questions, questions that cannot be answered are stopped, and the one-line installer needs no Go
 
 - Lines: whether a line may be drawn is now decided by how well the probabilities rank the truths (AUC, with its 95% interval; for a yes/no question p(yes) against the truth, for the other types the probability the line acts on against whether it was right: the top answer's, or for a score with a level threshold the probability of reaching that level), not by whether any "yes" sits below any "no". Before, a single overlapping pair refused the line, and a real model's answers always overlap somewhere, so only a question whose answers separated perfectly could ever get one (a question a person answered, ranked well at AUC 0.84, could not). A line is now refused when the interval reaches 0.5 (no clear signal), which also refuses a question answered "yes" nine times in ten whose probabilities say almost nothing, though the share of "yes" alone passed the precision at act. The precision at act still guards the line. `calibrate` reports the AUC, and `shikii check` fails a line with no clear signal instead of one with an overlap.
