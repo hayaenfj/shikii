@@ -363,3 +363,45 @@ func TestDeliveredPersonAnswerIsAssessedAndCounted(t *testing.T) {
 		t.Fatalf("status counts the delivered answer:\n%s", b.String())
 	}
 }
+
+// 0.11: a person's answer reaches the agent with the two answers the person judged between, so the agent learns how its own reasoning
+// was judged in this project: the agent's answer with its reason (its organizing before starting, or its provisional score) and the
+// decision model's answer. The bare "yes" or "no" delivered before told the agent nothing it could act on (the person, 2026-10-28).
+func TestPersonAnswerCarriesTheAgentsReasonAndTheModelsAnswer(t *testing.T) {
+	st, scope, _ := reviewFixture(t)
+	setHookLanguage(t, "Japanese")
+	sp, err := spec.Load(hookSpecPath(st.Dir, "needs-plan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const reason = "whether the install commands are checked on Windows too"
+	trace := store.NewTraceID()
+	inputs := map[string]string{"request": pastSetupRequest, "agreed": "translate the setup steps", "open": planningPreface + reason}
+	at := time.Now().UTC()
+	rec := store.Record{TraceID: trace, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "test-model", Inputs: inputs, InputsHash: store.HashInputs(inputs), Top: "no", P: .3, Band: "ask", AgentPaired: true, At: at}
+	if err := st.AppendRecord(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLabel(store.Label{TraceID: trace, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "test-model", InputsHash: rec.InputsHash, Inputs: inputs, Truth: "yes", Weight: 1, Source: "ui", At: at}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := memoryContext(st.Dir, scope, similarSetupRequest, &hookSession{TurnID: "aaaaaaaaaaaaaaa2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	no := strings.TrimSpace(sp.Display["en"].Options["no"])
+	noJA := strings.TrimSpace(sp.Display["ja"].Options["no"])
+	// the agent had answered yes (open filled) because of its reason; the decision model (p .3) said no; the person said yes
+	// the quotes are delivered as JSON, so a quotation mark inside a text is escaped
+	for _, want := range []string{"decision:" + trace, "It should have asked", "the agent had answered", `It should have asked\" because: ` + reason, `the decision model said \"` + no + `\"`, jaShouldHaveAsked, "\u7406\u7531: " + reason, noJA} {
+		if !strings.Contains(ctx, want) {
+			t.Fatalf("the person's answer carries the agent's answer with its reason and the model's answer (missing %q):\n%s", want, ctx)
+		}
+	}
+	// a decision the agent did not answer (not paired) carries only the person's and the model's answers
+	bare := seedPersonAnswer(t, st, "done-as-asked", "rename the status page buttons to plain words", "no", "ui", false)
+	ctx, err = memoryContext(st.Dir, scope, "rename the status page buttons to plain words again", &hookSession{TurnID: "aaaaaaaaaaaaaaa3"})
+	if err != nil || !strings.Contains(ctx, "decision:"+bare) || strings.Contains(ctx, "the agent had answered") || !strings.Contains(ctx, "the decision model said") {
+		t.Fatalf("an unpaired decision carries the person's and the model's answers only: %v\n%s", err, ctx)
+	}
+}

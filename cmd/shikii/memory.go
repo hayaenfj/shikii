@@ -203,12 +203,16 @@ func clipQuotes(quotes []memoryQuote, budget int) []memoryQuote {
 // answerSpecs are the hook questions whose answers the person gives about their own requests (prompt-kind is the AI's sorting, not asked of the person).
 var answerSpecs = []string{"needs-plan", "changes-in-scope", "done-as-asked"}
 
-// personAnswerQuotes returns, at most 2 and closest first, the person's own past answers (page, spot check, hand label) to the hook
+// personAnswerQuotes returns, at most 2 and closest first, the person's own answers (page, spot check, hand label) to the hook
 // questions, for past requests similar to request, leaving out those already delivered (seen). Similar means the same bar as a past
 // conversation (TextMatch >= 0.5: at least half of this request's words, and 2 or more, appear in the past request). Each quote carries
-// the past request and what the person said, in the page's words: English first, the configured language alongside (0.11).
+// the past request and what the person said, in the page's words: English first, the configured language alongside (0.11), together with
+// the two answers the person judged between: the agent's own answer with its reason (its organizing before starting, or its provisional
+// score; only when the decision was paired under 0.11's rule) and the decision model's answer. A bare "yes" or "no" told the agent
+// nothing it could act on; with the reasons it learns how its own reasoning is judged in this project.
 func personAnswerQuotes(root, request string, seen map[string]bool) ([]memoryQuote, error) {
-	answers, err := (store.Store{Dir: root}).PersonAnswers(answerSpecs)
+	st := store.Store{Dir: root}
+	answers, err := st.PersonAnswers(answerSpecs)
 	if err != nil {
 		return nil, err
 	}
@@ -233,6 +237,7 @@ func personAnswerQuotes(root, request string, seen map[string]bool) ([]memoryQuo
 	})
 	lang := hookLang()
 	specs := map[string]*spec.Spec{}
+	reviews := map[string]map[string]store.Review{}
 	out := []memoryQuote{}
 	for _, m := range matches {
 		sp, ok := specs[m.answer.SpecID]
@@ -240,7 +245,24 @@ func personAnswerQuotes(root, request string, seen map[string]bool) ([]memoryQuo
 			sp = loadOrNil(root, m.answer.SpecID)
 			specs[m.answer.SpecID] = sp
 		}
-		said := personAnswerSaid(sp, m.answer.Truth, lang)
+		var pair *aiPair
+		var model modelAnswer
+		if rec, err := st.FindRecord(m.answer.SpecID, m.answer.TraceID); err == nil && rec != nil {
+			model = modelAnswerOf(*rec)
+			if store.ReviewSpec(m.answer.SpecID) {
+				if _, ok := reviews[m.answer.SpecID]; !ok {
+					r, err := st.Reviews(m.answer.SpecID)
+					if err != nil {
+						return nil, err
+					}
+					reviews[m.answer.SpecID] = r
+				}
+			}
+			if p, ok := pairOf(m.answer.SpecID, *rec, reviews[m.answer.SpecID]); ok {
+				pair = &p
+			}
+		}
+		said := personAnswerSaid(sp, m.answer.Truth, lang, pair, model)
 		if said == "" {
 			continue
 		}
@@ -252,20 +274,45 @@ func personAnswerQuotes(root, request string, seen map[string]bool) ([]memoryQuo
 	return out, nil
 }
 
-// personAnswerSaid is what the person answered, in the page's words: the question's title and the chosen answer, never the spec id.
-// Empty when the question's answers cannot be named (a spec that is gone).
-func personAnswerSaid(sp *spec.Spec, truth, lang string) string {
+// personAnswerSaid is what the person answered, in the page's words: the question's title and the chosen answer, never the spec id, then
+// the agent's answer with its reason (when it gave one) and the decision model's answer. Empty when the question's answers cannot be
+// named (a spec that is gone).
+func personAnswerSaid(sp *spec.Spec, truth, lang string, pair *aiPair, model modelAnswer) string {
 	if sp == nil {
 		return ""
 	}
-	option := func(l string) string { return strings.TrimSpace(sp.Display[l].Options[truth]) }
-	en := option("en")
-	if en == "" {
-		en = truth
+	name := func(l, truth string) string {
+		if o := strings.TrimSpace(sp.Display[l].Options[truth]); o != "" {
+			return o
+		}
+		return truth
 	}
-	text := "In a similar request (above), you answered \"" + en + "\" to \"" + questionTitle(sp, "en") + "\""
-	if ja := option("ja"); ja != "" {
-		text = bi(text, "似た依頼(上)で、あなたは「"+questionTitle(sp, "ja")+"」に『"+ja+"』と答えた", hookLoc{Lang: lang})
+	text := "In a similar request (above), you answered \"" + name("en", truth) + "\" to \"" + questionTitle(sp, "en") + "\""
+	ja := ""
+	if strings.TrimSpace(sp.Display["ja"].Options[truth]) != "" {
+		ja = "\u4f3c\u305f\u4f9d\u983c(\u4e0a)\u3067\u3001\u3042\u306a\u305f\u306f\u300c" + questionTitle(sp, "ja") + "\u300d\u306b\u300e" + name("ja", truth) + "\u300f\u3068\u7b54\u3048\u305f"
 	}
-	return cut(text, 400)
+	if pair != nil && pair.Agent != "" {
+		reason := cut(strings.TrimSpace(pair.AgentReason), 160)
+		text += "; the agent had answered \"" + name("en", pair.Agent) + "\""
+		if reason != "" {
+			text += " because: " + reason
+		}
+		if ja != "" {
+			ja += "\u3002\u30a8\u30fc\u30b8\u30a7\u30f3\u30c8\u306f\u300e" + name("ja", pair.Agent) + "\u300f"
+			if reason != "" {
+				ja += "(\u7406\u7531: " + reason + ")"
+			}
+		}
+	}
+	if model.Answer != "" {
+		text += "; the decision model said \"" + name("en", model.Answer) + "\""
+		if ja != "" {
+			ja += "\u3001\u5224\u5b9a\u30e2\u30c7\u30eb\u306f\u300e" + name("ja", model.Answer) + "\u300f"
+		}
+	}
+	if ja != "" {
+		text = bi(text, ja, hookLoc{Lang: lang})
+	}
+	return cut(text, 600)
 }
