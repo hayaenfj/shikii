@@ -289,12 +289,8 @@ func TestDoctorSaysAHandWrittenShikiiHookWasNotChecked(t *testing.T) {
 		if len(lines) != 2 {
 			t.Fatalf("%s: doctor must say one line for each hook file, said %q", command, lines)
 		}
-		bare := strings.HasPrefix(command, "~") || strings.HasPrefix(command, "$") // ~/…, $HOME/…: a shikii hook by a relative path, which install rewrites
 		for _, line := range lines {
 			said := strings.Contains(line, "by hand") && strings.Contains(line, "two")
-			if bare {
-				said = strings.Contains(line, "relative path") && strings.Contains(line, "replaces it")
-			}
 			if !strings.HasPrefix(line, "note ") || !strings.Contains(line, command) || !said {
 				t.Fatalf("%s: doctor must say it did not check the hook, and what hook install does with it: %s", command, line)
 			}
@@ -437,4 +433,17 @@ func TestDoctorGivesTheRightReasonForACodexBlockNamingAFolder(t *testing.T) {
 		}
 	}
 	t.Fatal("doctor says something about the Codex block")
+}
+
+// doctor names a chained command that runs shikii as written by hand, never as a shikii binary that does not exist.
+func TestDoctorNamesAChainedCommandAsWrittenByHand(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	command := "/usr/bin/true && " + filepath.Join(home, "bin", "shikii") + " hook stop"
+	writeHookFiles(t, home, command)
+	for _, line := range registeredBinaryLines(home, mcpCommand()) {
+		if strings.HasPrefix(line, "MISSING") || !strings.Contains(line, "by hand") {
+			t.Fatalf("doctor names the chained command as written by hand: %s", line)
+		}
+	}
 }

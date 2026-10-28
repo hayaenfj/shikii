@@ -790,9 +790,9 @@ func TestUninstAuditHooksWithASpaceInThePath(t *testing.T) {
 		"/opt/tools/shikii-notify hook done":             false,
 		`"/opt/tools/shikii-notify" hook done`:           false,
 		"'/a b/shikii' hook done":                        false,
-		"~/.local/bin/shikii hook stop":                  true, // bare, as 0.9.10 read it: a shikii hook (doctor says it did not check it)
-		"$HOME/.local/bin/shikii hook stop":              true,
-		"/Users/a/com~apple/shikii hook stop":            true,  // 0.9.2 and earlier wrote any path bare
+		"~/.local/bin/shikii hook stop":                  false, // ~, $ and other symbols are not in a path shikii writes (0.10.1): a person\'s hook, named by doctor and uninstall
+		"$HOME/.local/bin/shikii hook stop":              false, // ~, $ and other symbols are not in a path shikii writes (0.10.1): a person\'s hook, named by doctor and uninstall
+		"/Users/a/com~apple/shikii hook stop":            false, // ~, $ and other symbols are not in a path shikii writes (0.10.1): a person\'s hook, named by doctor and uninstall
 		"/opt/tools/shikii-notify hook stop":             false, // another tool using one of shikii's event names (0.10's last audit)
 		"'/opt/my tools/shikii-guard' hook pre-tool-use": false,
 		"/gone/shikii hook stop 2>/dev/null":             false,
@@ -868,5 +868,22 @@ func TestUninstallNamesAHandWrittenShikiiHookItLeaves(t *testing.T) {
 	}
 	if !readHookCommands(t, filepath.Join(home, ".claude", "settings.json"))[hand] {
 		t.Fatal("the hand-written hook stays")
+	}
+}
+
+// uninstall names the hand-written shikii hooks it leaves also when another event in the file has a shape it does not read.
+func TestUninstallNamesHandWrittenHooksBesideAnOddEvent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hand := `"$HOME"/bin/shikii hook stop`
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"hooks":{"Other":{"x":1},"Stop":[{"hooks":[{"type":"command","command":` + strconv.Quote(hand) + `}]}]}}`
+	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := handWrittenShikiiHooksIn(filepath.Join(home, ".claude", "settings.json")); len(got) != 1 || got[0] != hand {
+		t.Fatalf("the hand-written hook is named: %v", got)
 	}
 }
