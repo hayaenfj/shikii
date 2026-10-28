@@ -3,7 +3,7 @@ package main
 // hook tool-lesson (0.11 item H): right before Claude Code edits a file or runs a command (PreToolUse), deliver at most one lesson
 // whose page names that file or that command. Lessons chosen once by the words of the request helped in about 1 of 6 deliveries;
 // the moments that mattered were "right before editing version.go" and "right before git commit". This runs before every edit and
-// command, so it calls no model, reads only the pages that name the target, and only adds context: it never allows, denies or asks.
+// command, so it calls no model, reads only the pages that name the target, and only adds context: it never allows, denies or asks (the deny of an enabled forbidden-commands guard comes from guardToolCall, before this).
 
 import (
 	"crypto/sha256"

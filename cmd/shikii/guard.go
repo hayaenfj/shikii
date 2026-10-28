@@ -7,7 +7,7 @@ package main
 // can be made a deterministic check, which works reliably regardless of how smart the model is. At the end of a turn (Stop) the enabled guards run; if one fails, Stop is blocked and
 // the reason is returned (Claude Code's decision: block. On a Stop with stop_hook_active it does not block; it only records whether the problem was fixed).
 //
-// Guards live in each project's .shikii/guards/<id>.yaml (fixed location). There are 3 kinds and no new options:
+// Guards live in each project's .shikii/guards/<id>.yaml (fixed location). There are 4 kinds and no new options (forbidden-commands, 0.11: a command about to run must match none of the patterns; refused right before it runs):
 //   paired-files    when one file changes, the other must change too (e.g. CHANGELOG.md and CHANGELOG_ja.md)
 //   forbidden-words words that must not appear in added lines (e.g. 根, 指紋). Paths in except are not checked
 //   commit-body     words that the body of every commit in this turn must contain (e.g. 元の問題, 変更後, 検証)

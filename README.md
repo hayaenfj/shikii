@@ -9,12 +9,12 @@ Claude Code and Codex start every session from zero. They do not remember what y
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-847%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-840%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.11.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.11.0 makes what the project knows reach the agent at the moment it acts, and be usable. The hook's text each request is short and the knowledge takes the room (the shape of what to send back comes in the tool's reply). A lesson that names the file or command arrives right before the agent touches it. Your answers on similar requests arrive with the agent's own reason and the decision model's answer. The agent can consult the decision model in the middle of the work and gets your similar decisions with the band. A guard you enabled refuses a change or a command right before it happens, not at the end of the turn. At the session's start, and right after a summary, the agent gets the rules for every request and where the work stands. And you are asked only when the decision model and the agent disagree; truths that came from outcomes are checked against your answers. 0.10 let shikii draw lines for real questions and installed without Go; 0.10.1 fixed its hook handling and the knowledge page.
+Version 0.11.0 makes what the project knows reach the agent at the moment it acts, and be usable. The hook's text each request is short and the knowledge takes the room (the shape of what to send back comes in the tool's reply). A lesson that names the file or command arrives right before the agent touches it. Your answers on similar requests arrive with the agent's own reason and the decision model's answer. The agent can consult the decision model in the middle of the work and gets your similar decisions with the band. A guard you enabled can refuse a command right before it runs, not only at the end of the turn. At the session's start, and right after a summary, the agent gets the rules for every request and where the work stands. And you are asked only when the decision model and the agent disagree; truths that came from outcomes are checked against your answers. 0.10 let shikii draw lines for real questions and installed without Go; 0.10.1 fixed its hook handling and the knowledge page.
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -42,7 +42,7 @@ Like someone who has worked on the project for a long time, the agent picks up f
 | What grows | What shikii does |
 |---|---|
 | It remembers what you said | Corrections and decisions become lessons with sources and arrive before similar work |
-| It never needs telling twice | Corrections a machine can check become guards that refuse the change or the command right before it, and check the turn at its end |
+| It never needs telling twice | Corrections a machine can check become guards that check the turn at its end, and refuse a command right before it runs |
 | It follows the routine | Before work it sums up the conversation and searches the wiki; before it ends it reflects. Skipping a step stops the turn |
 | It leaves a trail | Reports, release logs, diffs and screenshots go to work records you read on the page |
 | It earns room to act alone | As truths accumulate, a line is drawn above which the model is right often enough, and more decisions go ahead without asking |
@@ -154,7 +154,7 @@ Two steps of every turn are checked: planning before work and reflection before 
 
 The decision model answers the built-in questions about the agent's own work (what kind of request this is, whether to agree on an approach first, whether the changes stayed in scope, whether the request was completed) and, for new lessons, where they belong and whether they contradict a page. The truths for these come from what happens next: a change undone during the next request, a request repeated, a lesson merged or replaced. Only questions that results cannot answer wait for a person, and the page shows how many.
 
-**Guards** are fixed rules, not the decision model. At the end of a turn they are applied to the changed files, the added lines and the commits of that turn; a `forbidden-words` guard also refuses a file change, and a `forbidden-commands` guard a command, right before it happens (0.11). There are four kinds.
+**Guards** are fixed rules, not the decision model. At the end of a turn they are applied to the changed files, the added lines and the commits of that turn; a `forbidden-commands` guard also refuses a command right before it runs (0.11). There are four kinds.
 
 | Kind | Stops when | Example |
 |---|---|---|

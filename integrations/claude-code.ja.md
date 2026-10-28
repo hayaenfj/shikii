@@ -4,7 +4,7 @@
 
 業務の判定(問い合わせの振り分けなど)はエージェントが MCP で呼ぶ([mcp.ja.md](mcp.ja.md))。これとは別に、**会話の記録・記憶の参照と、AI自身の考え方の判定**をshikiiへ接続するのがこのhook。測る瞬間は 2 つだけ: 人の依頼を受けて考える前と、考え終わってターンを閉じる時。Claude Code / Codex の hook が記録を開始する。新形式の着手前の判定は、その案内を受けた通常のエージェントが文脈を整理してから呼ぶ。
 
-ツール呼び出しごと(Bash や Edit の直前)の判定は持たない。そこで走る hook(0.11)は、そのファイル・コマンドを名指しした教訓を届けるか、人が有効にした止める検査が言う時だけ変更やコマンドを断る。コマンド 1 つ 1 つの分類は AI の考え方ではなく作業の雑音で、1 依頼に何十回も走って依頼まわりの判定を沈める(実測: コマンドの判定 4606 件に対し依頼の判定 84 件)。許可の是非は Claude Code の permission と deny の規則が既に見ている。
+ツール呼び出しごと(Bash や Edit の直前)の判定は持たない。そこで走る hook(0.11)は、そのファイル・コマンドを名指しした教訓を届けるか、人が有効にした `forbidden-commands` の検査が言う時だけコマンドを断る。コマンド 1 つ 1 つの分類は AI の考え方ではなく作業の雑音で、1 依頼に何十回も走って依頼まわりの判定を沈める(実測: コマンドの判定 4606 件に対し依頼の判定 84 件)。許可の是非は Claude Code の permission と deny の規則が既に見ている。
 
 **Claude Code と Codex の hook**(両方とも同じ形の hook を持つ。`install` は両方の設定に書く)。OpenCode には `shikii init` で MCP と skill が入るが、考え方を自動で測る口は無い(付けるなら下の「他のエージェントに付けるとき」)。帯(act / ask / discard / abstain)・線(較正)・receipt の言葉は [bands.md](../skills/shikii/references/bands.md)。
 
@@ -66,9 +66,9 @@ which shikii                 # Claude Code がそのまま `shikii` を呼ぶの
 `install` がすること(2 回目は何も足さない):
 
 1. `~/.shikii/agent/` に共通の型と既製の wiki を置く。各仕事の `.shikii/` は`shikii --init`（`shikii init`も同じ）が準備し、4 つの spec を埋め込みの原本から**無いものだけ**写す。他の仕事の線は写さず、既にその仕事で育てた spec は触らない。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
-2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `UserPromptSubmit`・`Stop`・`SessionStart`(0.11。セッションの始めと要約の直後にプロジェクトの要点)の 3 つ、Claude Code にはさらに `SubagentStart`(0.7.3。サブエージェントが始まる時に教訓を同じ形で届ける)と、`PreToolUse` の `Agent|Task` だけ(0.9.1。子に渡す仕事の文を控える。何も出さずツールも止めない)と、`PreToolUse` の `Edit|Write|MultiEdit|NotebookEdit|Bash`(0.11。`hook tool-lesson`。ファイルを書き換える直前とコマンドを流す直前に、そのファイルかコマンドを書いた教訓を最大 1 件、文脈として足すだけで、拒否は人が有効にした止める検査が断る時だけ(許可と確認は出さない))の 3 つ(どれも Codex には足さない。Codex には SubagentStart が無く、PreToolUse で文脈がモデルに渡ることを確かめられなかったため。`~/.codex/hooks.json` も `SessionStart` で変わるので、Codex では `/hooks` で hook を信頼し直す)(command は **実行ファイルの絶対パス** + ` hook <event>`。エージェントの shell の PATH に `shikii` が無くても動く。実行ファイルを動かしたら `shikii hook install --yes` を流し直すと古いパスの handler が外れて新しいものが入る。timeout は UserPromptSubmit・SubagentStart・PreToolUse 15 秒、Stop 20 秒。Codex は `~/.codex/hooks.json` が変わるたび(パスや timeout が変わった時)に hook の信頼をやり直させ、`/hooks` で信頼するまで hook を飛ばす(`codex exec` は何も言わない)。matcher は PreToolUse の `Agent|Task` と `Edit|Write|MultiEdit|NotebookEdit|Bash` だけ)。古い版が足した `PreToolUse` の shikii の hook(`hook pre-tool-use`)は外す(他の hook と鍵は残す)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
+2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `UserPromptSubmit`・`Stop`・`SessionStart`(0.11。セッションの始めと要約の直後にプロジェクトの要点)の 3 つ、Claude Code にはさらに `SubagentStart`(0.7.3。サブエージェントが始まる時に教訓を同じ形で届ける)と、`PreToolUse` の `Agent|Task` だけ(0.9.1。子に渡す仕事の文を控える。何も出さずツールも止めない)と、`PreToolUse` の `Edit|Write|MultiEdit|NotebookEdit|Bash`(0.11。`hook tool-lesson`。ファイルを書き換える直前とコマンドを流す直前に、そのファイルかコマンドを書いた教訓を最大 1 件、文脈として足すだけで、拒否は有効な forbidden-commands の検査がコマンドを断る時だけ(許可と確認は出さない))の 3 つ(どれも Codex には足さない。Codex には SubagentStart が無く、PreToolUse で文脈がモデルに渡ることを確かめられなかったため。`~/.codex/hooks.json` も `SessionStart` で変わるので、Codex では `/hooks` で hook を信頼し直す)(command は **実行ファイルの絶対パス** + ` hook <event>`。エージェントの shell の PATH に `shikii` が無くても動く。実行ファイルを動かしたら `shikii hook install --yes` を流し直すと古いパスの handler が外れて新しいものが入る。timeout は UserPromptSubmit・SubagentStart・PreToolUse 15 秒、Stop 20 秒。Codex は `~/.codex/hooks.json` が変わるたび(パスや timeout が変わった時)に hook の信頼をやり直させ、`/hooks` で信頼するまで hook を飛ばす(`codex exec` は何も言わない)。matcher は PreToolUse の `Agent|Task` と `Edit|Write|MultiEdit|NotebookEdit|Bash` だけ)。古い版が足した `PreToolUse` の shikii の hook(`hook pre-tool-use`)は外す(他の hook と鍵は残す)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
-固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ guards/ records/ labels/ sessions/ handoff/)、モデルは推奨が TypeSafe の Jev(環境変数 `TYPESAFE_API_KEY` がある時。`SHIKII_MODEL=local` なら手元)、鍵が無ければ手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面はプロジェクトごとに空いているポート(`shikii page` で分かる)。手で `serve` を起こす時の既定は 8095。既製の spec は全部 `send_to: [hosted, local]`、`pii: false` で、鍵があれば依頼・返答・wiki の教訓が TypeSafe へ送られる(2026-10-23 の決定。手元の記録にも残る)。1 回の判定は Jev で約 0.2 秒、手元のモデルで 0.1〜0.6 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しに足すのは、そのファイル・コマンドを名指しした教訓 1 件か、有効な止める検査の断りだけ。モデルが無ければ待たずに黙る。
+固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ guards/ records/ labels/ sessions/ handoff/)、モデルは推奨が TypeSafe の Jev(環境変数 `TYPESAFE_API_KEY` がある時。`SHIKII_MODEL=local` なら手元)、鍵が無ければ手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面はプロジェクトごとに空いているポート(`shikii page` で分かる)。手で `serve` を起こす時の既定は 8095。既製の spec は全部 `send_to: [hosted, local]`、`pii: false` で、鍵があれば依頼・返答・wiki の教訓が TypeSafe へ送られる(2026-10-23 の決定。手元の記録にも残る)。1 回の判定は Jev で約 0.2 秒、手元のモデルで 0.1〜0.6 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しに足すのは、そのファイル・コマンドを名指しした教訓 1 件か、有効な forbidden-commands の検査の断りだけ。モデルが無ければ待たずに黙る。
 
 答え合わせの画面は hook が立てる。手で立てるなら:
 
@@ -78,7 +78,7 @@ shikii serve --store <プロジェクト>/.shikii --port 0 --local http://127.0.
 
 ## 影の期間 → 帯で振る舞う
 
-shikii は線(較正)が無いうちは `act` を出さない。判定に基づく助言も線が引けてから出す。過去の会話は正誤を判定せず引用として返せるので、線が無い間から着手前に届く。ツールは、人が有効にした止める検査が変更やコマンドを直前に断る時(0.11)のほかは止めない。ターンの終わりには「答え待ち N 件 → URL」が 1 行出る(下)。
+shikii は線(較正)が無いうちは `act` を出さない。判定に基づく助言も線が引けてから出す。過去の会話は正誤を判定せず引用として返せるので、線が無い間から着手前に届く。ツールは、人が有効にした `forbidden-commands` の検査がコマンドを直前に断る時(0.11)のほかは止めない。ターンの終わりには「答え待ち N 件 → URL」が 1 行出る(下)。
 
 **聞き方を試すのも機械**(wiki の lint に当たる、ゆっくりした周期): spec に `variants:`(人が書いた候補の言い方)があり、人の正解が `eval.min_n` 以上で、前回の自動 tune から正解が 50 件増えていれば、Stop が `shikii tune`(`--write` 無し)を切り離した別プロセスで回し、結果を `wiki/runs/` と `hook.log` の `auto-tune …` の行に残す。候補が無い spec では何もしない(試す物が無い)。上回った候補は、次の依頼の前に hook がエージェントへ、意味が同じかの確かめと(英語以外の設定なら)両方の訳を一度だけ頼む(`shikii hook variants check`)。同じならその場で採用して較正し、Stop で人へ訳付きで知らせる(画面の「このままでよい / 元に戻す」)。決めきれない時は訳と違いを付けて人に聞き、違う時は採用しない。端末の `tune --write` と画面の「意味は同じ」でも採用できる。前回の数は `tuned-<spec>` に控える。候補は画面の「聞き方」の欄で人が自分の言葉で書ける(短い名前と質問の言い換え。多択なら選択肢の説明も「id: 説明」の行で)。送ると `POST /v1/tune/variant` が spec として検証してから `variants:` に足す(採点も採用もしない)。YAML を開かなくても、人が書く → 機械が 50 件ごとに測る → エージェントが意味を確かめて採用し、人は元に戻せる、が画面で回る。
 
@@ -97,7 +97,7 @@ shikii は線(較正)が無いうちは `act` を出さない。判定に基づ�
 | prompt-kind | 何でも | 何も出さない(結果の正解のためにツリーのハッシュを控える) |
 | (Stop) | 線が無くても | 新しく答え待ちになった判定があれば 1 行(件数と URL)。無ければ黙る |
 
-**ツールは止めず、許可の判定(allow / ask / deny)を出すのは、人が有効にした止める検査がファイルの変更やコマンドを直前に断る時だけ(permissionDecision deny、0.11)。** 考える前の問い(needs-plan)はエージェントへの文脈になり、考え終わった後の問いは端末の人への文になる: Stop で文脈を返すと会話が勝手に続いてしまうので、続けるかどうか(「まだ終わってないよ」)は人が決める。hook が出すのは「黙る / エージェントに文脈 / 人に 1 行 / 止める検査に引っかかった時だけ Stop を止めて理由(decision: block)/ 有効な止める検査が変更やコマンドを直前に断る(permissionDecision deny)」の 5 つ。
+**ツールは止めず、許可の判定(allow / ask / deny)を出すのは、人が有効にした `forbidden-commands` の検査がコマンドを直前に断る時だけ(permissionDecision deny、0.11)。** 考える前の問い(needs-plan)はエージェントへの文脈になり、考え終わった後の問いは端末の人への文になる: Stop で文脈を返すと会話が勝手に続いてしまうので、続けるかどうか(「まだ終わってないよ」)は人が決める。hook が出すのは「黙る / エージェントに文脈 / 人に 1 行 / 止める検査に引っかかった時だけ Stop を止めて理由(decision: block)/ 有効な forbidden-commands の検査がコマンドを直前に断る(permissionDecision deny)」の 5 つ。
 
 文は英語。`~/.claude/settings.json` の `language` が日本語なら、同じ文を日本語で併記する。他の言語は文は英語のままで、記録の `display` に spec の `display.<lang>` の質問と答えの名前(あれば)と言語だけが入る。人に出す行は、問いを画面の題で呼び、AI の自信を百分率で言う(spec の id と p は出さない。エージェントへの文脈には残す)。例: `shikii: what you asked looks unfinished this time ("Did it finish what was asked?": the AI is 85% sure)` の下に `shikii: 今回は頼んだことを終えていないように見えます(問い「頼まれたことを終えたか」、AI の自信 85%)`。記録(`records/<spec>.jsonl`)にも `display` として言語・質問・答え・出した文が残るので、「何と言われて何をしたか」を後から辿れる。はい / いいえの問い(noul)の答えの名前は p(yes) が 0.5 未満なら「いいえ」側(終えていない、範囲の外)。英語の設定なら英語だけで、`display` は付かない(spec に `display.<lang>` が無く出した文も無い時も付かない)。
 
@@ -140,11 +140,11 @@ UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending 
                                                      └ sessions/<id>.json に request と作業ツリーのハッシュ、<id>.files に作業ツリーの一覧を控える
 SessionStart ───── shikii hook session-start ────── セッションの始めと要約の直後(source compact)に、どの依頼にも効く規則(scene いつも)と、.shikii/handoff/ のいちばん新しい作業記録の最後の節を文脈に入れる。伝えることが無ければ何も出さない。両方のエージェント(0.11)
 PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
-PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前。まず人が有効にした止める検査: forbidden-words は足す行にその語がある
-                                                     ファイルの変更を、forbidden-commands は形に当たるコマンドを断る(permissionDecision deny と理由。そのターンの記録に残す。0.11)。
-                                                     それ以外は、題・教訓・applies_to がそのファイル(パスの末尾か、語として切れた名前)かコマンド(プログラムと最初の語。git commit など。
-                                                     オプションは飛ばす)を書いた教訓を最大 1 件、文脈へ。モデルは使わず、セッションの最初の依頼の前は届けず、同じ版はセッションへ
-                                                     一時間に 1 回(依頼の時の配送と同じ記録)。turn を親にした別の ID で記録し、振り返りで評価する。Claude Code だけ
+PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前。Bash ではまず人が有効にした forbidden-commands の検査: 形に当たる
+                                                     コマンドを断る(permissionDecision deny と理由。そのターンの記録に残す。0.11)。それ以外は、題・教訓・applies_to がそのファイル
+                                                     (パスの末尾か、語として切れた名前)かコマンド(プログラムと最初の語。git commit など。オプションは飛ばす)を書いた教訓を
+                                                     最大 1 件、文脈へ。モデルは使わず、セッションの最初の依頼の前は届けず、同じ版はセッションへ一時間に 1 回(依頼の時の配送と
+                                                     同じ記録)。turn を親にした別の ID で記録し、振り返りで評価する。Claude Code だけ
 SubagentStart ──── shikii hook subagent-start ───── 同じ種類の控えの文に近い教訓をサブエージェントの文脈へ。控えが無ければ「いつも」の決まりだけ(親の控えは使った子への仕事の控えを外すほかは変えず、配送は別の ID で記録。Claude Code だけ)
                                                      (制限: 子の側には呼び出しの id が来ないので、控えは種類と時刻と順番で結ぶ。Agent ツールを断ってから
                                                       30 秒の内に同じ種類の子を起こし直すと、断った方の文で選ぶことがある)

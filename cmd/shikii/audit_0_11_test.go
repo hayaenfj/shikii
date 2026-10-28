@@ -25,51 +25,6 @@ func auditToolCall(t *testing.T, scope, session, cwd, tool string, input map[str
 	return out, spec
 }
 
-// Property 9: a MultiEdit that adds a line with the forbidden word is refused. Claude Code's MultiEdit edits carry an optional boolean
-// replace_all; toolAddedLines decodes the edits into []map[string]string, so one edit with replace_all makes the whole decode fail and
-// the guard silently sees nothing to check.
-func TestAudit011MultiEditWithReplaceAllIsStillRefused(t *testing.T) {
-	st, scope, _, _ := toolLessonFixture(t)
-	writeGuard(t, st.Dir, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "\u6839\u3092\u4f7f\u308f\u306a\u3044", Words: []string{"\u6839"}})
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": scope, "prompt": "README \u306b\u7f6e\u304d\u5834\u306e\u8aac\u660e\u3092\u8db3\u3057\u3066"})
-	readme := filepath.Join(scope, "README.md")
-	withWord := "\u8a18\u9332\u306f\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u306e\u6839\u306b\u7f6e\u304f"
-	out, spec := auditToolCall(t, scope, "g", scope, "MultiEdit", map[string]any{"file_path": readme, "edits": []map[string]any{{"old_string": "# shikii", "new_string": withWord, "replace_all": true}}})
-	if spec["permissionDecision"] != "deny" {
-		t.Fatalf("a MultiEdit with replace_all that adds the word is refused like any other:\n%q", out)
-	}
-	if recs := guardRecordsFor(st.Dir, "no-ne"); len(recs) != 1 || recs[0].Pass || !recs[0].Tool {
-		t.Fatalf("and the stop is recorded for the turn: %+v", recs)
-	}
-}
-
-// Property 9: an excepted path is not checked. Before the session's first request (a slash command, for instance) the session has no
-// scope, and the file is then made relative to the agent's cwd; when claude was started in a subfolder of the project, the path no longer
-// matches the except pattern written against the project root, and the change is refused.
-func TestAudit011ExceptedPathIsNotCheckedWhenTheSessionHasNoScopeAndCWDIsASubfolder(t *testing.T) {
-	st, scope, _, _ := toolLessonFixture(t)
-	writeGuard(t, st.Dir, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "\u6839\u3092\u4f7f\u308f\u306a\u3044", Words: []string{"\u6839"}, Except: []string{"docs/**"}})
-	sub := filepath.Join(scope, "web")
-	if err := os.MkdirAll(sub, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// the session's first message was a slash command: the request hook kept nothing
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "slash", "cwd": sub, "prompt": "/review"})
-	if s := loadSession(st.Dir, "slash"); s.Scope != "" {
-		t.Fatalf("precondition: no scope kept for a slash command: %+v", s)
-	}
-	target := filepath.Join(scope, "docs", "operations.md")
-	out, spec := auditToolCall(t, scope, "slash", sub, "Write", map[string]any{"file_path": target, "content": "\u8a18\u9332\u306f\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u306e\u6839\u306b\u7f6e\u304f\n"})
-	if spec["permissionDecision"] != nil {
-		t.Fatalf("docs/** is excepted, so a write under docs/ is not refused, whatever the cwd:\n%q", out)
-	}
-	// the same call with the session's scope known passes (the control)
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "known", "cwd": sub, "prompt": "update the docs"})
-	if out, spec := auditToolCall(t, scope, "known", sub, "Write", map[string]any{"file_path": target, "content": "\u8a18\u9332\u306f\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u306e\u6839\u306b\u7f6e\u304f\n"}); spec["permissionDecision"] != nil {
-		t.Fatalf("control: with the scope known the excepted path passes:\n%q", out)
-	}
-}
-
 // Property 15: the documents do not contradict what the hooks and guards do. Each statement below was read from the files at the
 // audited HEAD; the number of hooks comes from hookEventsFor, the kinds from guardKinds.
 func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {

@@ -182,7 +182,7 @@ func guardStop(root string, in *hookInput, snapshot *hookSession, before string,
 	var failed []guardResult
 	now := time.Now().UTC()
 	loc := hookLoc{Lang: hookLang()}
-	toolStopped := toolStoppedGuards(root, in.SessionID, snapshot.TurnID) // stopped before a change this turn (0.11): passing now is the fix
+	toolStopped := toolStoppedGuards(root, in.SessionID, snapshot.TurnID) // stopped a command before it ran this turn (0.11): passing now is the fix
 	for _, g := range guards {
 		r := evalGuard(g, input)
 		r.Reason = bi(r.Reason, r.ReasonJA, loc) // the record's reason is what the page shows as the last stop: in the person's language too
