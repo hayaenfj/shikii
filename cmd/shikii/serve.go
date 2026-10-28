@@ -613,10 +613,9 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 	if request := strings.TrimSpace(req.Inputs["request"]); request != "" && s.o.projectScope != "" {
 		similar, lessons, kerr := decideKnowledge(s.st.Dir, s.o.projectScope, request)
 		if kerr != nil {
-			writeErr(w, 500, kerr)
-			return
+			log.Printf("shikii serve: decide: what the project knows could not be read, the decision is returned alone: %v", kerr) // audit 0.11
 		}
-		if len(similar) > 0 || len(lessons) > 0 {
+		if kerr == nil && (len(similar) > 0 || len(lessons) > 0) {
 			var reply map[string]any
 			raw, _ := json.Marshal(d)
 			if json.Unmarshal(raw, &reply) == nil {

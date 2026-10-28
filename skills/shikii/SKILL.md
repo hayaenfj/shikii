@@ -29,7 +29,7 @@ New projects receive domain-neutral built-in questions. `prompt-kind` still mean
 
 ## Before and after a request
 
-Hooks run when a user request arrives and when the turn closes, not before every tool. They record the request's likely work type, the need for approach agreement, scope, and completion. They never replace the host agent's permission rules.
+Hooks run when a user request arrives, when the turn closes, at the session's start, and right before a file edit or a command (a lesson naming it, or an enabled guard's refusal). They record the request's likely work type, the need for approach agreement, scope, and completion. They never replace the host agent's permission rules.
 
 **Before work:** when the hook supplies `hook plan query / submit` and request IDs, read [planning.md](references/planning.md). Recover the current task and existing decisions, search the wiki by topic, and read selected article bodies and sources when needed. When the work moves to another area mid-task, search the wiki again by that area's topic before acting there. Submit grounded agreement and blocking choices; retain used revisions for evaluation. Distinguish answering a question from needing the person to choose an implementation. Do not add human input work or another model.
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,8 +14,8 @@ import (
 // can be judged from one tool call; paired-files and commit-body still run at Stop, and so does forbidden-words for text written another
 // way (a command). Unknown shapes pass: it stops only when certain.
 
-// toolAddedLines returns, for a file-changing tool call, the file (relative to the project when it is inside it) and the lines it adds:
-// the lines of the new text that are not in the text it replaces.
+// toolAddedLines returns, for a file-changing tool call on a file inside the project scope, the file relative to the project and the
+// lines it adds: the lines of the new text that are not in the text it replaces (nor, for a whole-file write, already in the file).
 func toolAddedLines(in *hookInput, scope string) (string, []string, bool) {
 	field, ok := toolLessonEdits[in.ToolName]
 	if !ok {
@@ -42,17 +43,27 @@ func toolAddedLines(in *hookInput, scope string) (string, []string, bool) {
 	case "NotebookEdit":
 		now = strings.Split(text("new_source"), "\n")
 	case "MultiEdit":
-		var edits []struct{ Old, New string }
-		var raw []map[string]string
-		if json.Unmarshal(input["edits"], &raw) != nil {
-			return "", nil, false
+		var edits []struct { // an edit also carries replace_all (a boolean): only the two strings are read (audit 0.11)
+			Old string `json:"old_string"`
+			New string `json:"new_string"`
 		}
-		for _, e := range raw {
-			edits = append(edits, struct{ Old, New string }{e["old_string"], e["new_string"]})
+		if json.Unmarshal(input["edits"], &edits) != nil {
+			return "", nil, false
 		}
 		for _, e := range edits {
 			old = append(old, strings.Split(e.Old, "\n")...)
 			now = append(now, strings.Split(e.New, "\n")...)
+		}
+	}
+	// only files inside the project are checked: the Stop check looks at the project's files, and a guard's except patterns are written
+	// against the project root. A file elsewhere (the person's memory index in HOME, for instance) is not the project's (audit 0.11)
+	rel, err := filepath.Rel(scope, file)
+	if scope == "" || err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", nil, false
+	}
+	if in.ToolName == "Write" || in.ToolName == "NotebookEdit" { // the whole text is replaced: lines the file already holds are not added
+		if b, rerr := os.ReadFile(file); rerr == nil && len(b) <= guardFileBytesMax && !isBinary(b) {
+			old = append(old, strings.Split(string(b), "\n")...)
 		}
 	}
 	kept := map[string]bool{}
@@ -65,19 +76,17 @@ func toolAddedLines(in *hookInput, scope string) (string, []string, bool) {
 			added = append(added, l)
 		}
 	}
-	shown := filepath.ToSlash(file)
-	for _, dir := range []string{scope, in.CWD} {
-		if rel, err := filepath.Rel(dir, file); dir != "" && err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			shown = filepath.ToSlash(rel)
-			break
-		}
-	}
-	return shown, added, true
+	return filepath.ToSlash(rel), added, true
 }
 
 // guardToolCall applies the enabled forbidden-words guards to the lines a tool call is about to add. A hit refuses the call (Deny) with
 // the reason and records the stop for the turn (marked Tool), which the Stop check closes as fixed when the guard passes at the end.
-func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, error) {
+// scope is the project's folder from the hook's own lookup: the session's scope when the session has one, else the project the cwd is in
+// (a session whose first message was a slash command has none; the cwd may be a subfolder, which would make the paths wrong. audit 0.11)
+func guardToolCall(root string, in *hookInput, snapshot *hookSession, scope string) (hookOut, error) {
+	if snapshot.Scope != "" {
+		scope = snapshot.Scope
+	}
 	var input guardInput
 	kind := ""
 	if in.ToolName == "Bash" { // a command about to run: forbidden-commands (0.11)
@@ -88,7 +97,7 @@ func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, 
 		}
 		input, kind = guardInput{Commands: []string{command}, CommandsKnown: true}, guardKindForbiddenCommands
 	} else {
-		file, added, ok := toolAddedLines(in, snapshot.Scope)
+		file, added, ok := toolAddedLines(in, scope)
 		if !ok || len(added) == 0 {
 			return hookOut{}, nil
 		}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,5 +130,40 @@ func TestEnabledForbiddenCommandsGuardStopsTheCommandBeforeItRuns(t *testing.T) 
 	guards, _ := loadGuards(st.Dir)
 	if s := countGuardStats(guards, readGuardRecords(st.Dir)); s.Stopped != 1 || s.Fixed != 1 {
 		t.Fatalf("a refused command counts as stopped and, the command never having run, as fixed: %+v", s)
+	}
+}
+
+// Audit 0.11, a note outside the list: a whole-file write (Write, NotebookEdit) replaces the text, so a line the file already holds is not an added line;
+// only a line new to the file is. And a file outside the project (the person's memory index in HOME) is not the project's: not checked.
+func TestWholeFileWritesCountOnlyNewLinesAndOnlyInsideTheProject(t *testing.T) {
+	st, scope, _, _ := toolLessonFixture(t)
+	writeGuard(t, st.Dir, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"\u6839"}})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": scope, "prompt": "README \u3092\u76f4\u3057\u3066"})
+	call := func(tool string, input map[string]any) map[string]any {
+		t.Helper()
+		out := runHook(t, "tool-lesson", map[string]any{"session_id": "g", "cwd": scope, "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": input})
+		var v map[string]any
+		if out != "" {
+			if err := json.Unmarshal([]byte(out), &v); err != nil {
+				t.Fatalf("one JSON object: %v\n%s", err, out)
+			}
+		}
+		spec, _ := v["hookSpecificOutput"].(map[string]any)
+		return spec
+	}
+	readme := filepath.Join(scope, "README.md")
+	existing := "# shikii\n\n\u8a18\u9332\u306f\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u306e\u6839\u306b\u7f6e\u304f\n"
+	if err := os.WriteFile(readme, []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if spec := call("Write", map[string]any{"file_path": readme, "content": existing + "\nmore\n"}); spec["permissionDecision"] != nil {
+		t.Fatalf("a line the file already holds is not added: %v", spec)
+	}
+	if spec := call("Write", map[string]any{"file_path": readme, "content": existing + "\n\u6839\u3092\u8db3\u3059\n"}); spec["permissionDecision"] != "deny" {
+		t.Fatalf("a line new to the file with the word is refused: %v", spec)
+	}
+	outside := filepath.Join(t.TempDir(), "MEMORY.md")
+	if spec := call("Write", map[string]any{"file_path": outside, "content": "\u6839\n"}); spec["permissionDecision"] != nil {
+		t.Fatalf("a file outside the project is not the project's: %v", spec)
 	}
 }

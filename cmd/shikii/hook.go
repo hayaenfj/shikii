@@ -672,7 +672,8 @@ func runHookEvent(event string) error {
 	if event == "user-prompt-submit" {
 		moved = relinkMovedProject(in.CWD, false) // the folder was moved or renamed: reconnect it here and say so once (0.9.7)
 	}
-	agent, _, err = prepareHookProject(in.CWD)
+	var projectScope string
+	agent, projectScope, err = prepareHookProject(in.CWD)
 	if errors.Is(err, errProjectInactive) {
 		// in an uninitialized place, do not save, change Git or start the model. Only when this .shikii was copied from a project still in place, say so
 		if event == "user-prompt-submit" {
@@ -718,7 +719,7 @@ func runHookEvent(event string) error {
 	case "tool-lesson":
 		// a guard the person enabled refuses a change with a forbidden word before it is written (0.11); otherwise a lesson naming the
 		// file or command: context only (never stops the tool); records the delivery under the session lock itself
-		if out, err = guardToolCall(agent, &in, snapshot); err == nil && !out.Deny {
+		if out, err = guardToolCall(agent, &in, snapshot, projectScope); err == nil && !out.Deny {
 			out, err = hookToolLesson(agent, &in, snapshot)
 		}
 	}
@@ -2144,7 +2145,7 @@ func hookInstall(args []string, install bool) error {
 			evs := hookEventsFor(t.who)
 			fmt.Fprintf(stdout, "%d. %s: add %d hooks (%s) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), len(evs), hookEventNames(evs), tilde(func() string { bin, _ := hookBinary(evs[0].cmd); return bin }()), t.who, filepath.Base(t.rel), t.note)
 		}
-		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool. Claude Code and Codex.\n")
+		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool, except that a guard the person enabled refuses a file change or a command right before it. Claude Code and Codex.\n")
 		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page is one per project: the first request's hook starts it on a free port, records it in ~/.shikii/agent/pages/, and opens it in the browser\n", hookLocalURL)
 	} else {
 		for i, t := range hookTargets {
