@@ -101,7 +101,14 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		result["lesson_meta"], result["inbox"] = knowledgeMeta(s.o.storeDir, s.o.projectScope, report.All)
 	}
 	{
-		if view, err := (notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}).QueryPage("", r.URL.Query().Get("cursor")); err == nil {
+		book := notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}
+		cursor := r.URL.Query().Get("cursor")
+		view, err := book.QueryPage("", cursor)
+		if cursor == "" { // the page reads the whole list in one reply (0.11): splitting it as MCP replies are split made dozens of calls, each reading the whole wiki again
+			view, err = book.Query("")
+			view.Remaining = book.RemainingUnclassified()
+		}
+		if err == nil {
 			result["lessons"], result["notebook_issues"], result["pending_sources_count"] = view.Lessons, view.Issues, len(view.Pending)
 			result["maintenance"] = view.Maintenance
 			result["unclassified_count"] = view.UnclassifiedCount
