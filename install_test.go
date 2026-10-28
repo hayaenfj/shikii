@@ -164,3 +164,154 @@ func TestInstallShRefusesAnArchiveThatDoesNotMatchSHA256SUMS(t *testing.T) {
 		t.Fatal("hook install must not run after a hash mismatch")
 	}
 }
+
+// runWith feeds script to shell like run does, with extraPath (stand-ins for commands) put first on PATH.
+func (f installFixture) runWith(t *testing.T, shell string, script []byte, extraPath string) (string, error) {
+	t.Helper()
+	cmd := exec.Command(shell)
+	cmd.Dir = f.work
+	cmd.Stdin = bytes.NewReader(script)
+	path := f.path
+	if extraPath != "" {
+		path = extraPath + ":" + path
+	}
+	cmd.Env = []string{"HOME=" + f.home, "PATH=" + path, "FAKE_RELEASES=" + f.releases}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func readInstallSh(t *testing.T) []byte {
+	t.Helper()
+	script, err := os.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+// standIn writes an executable stand-in for a command into a new folder and returns the folder (to put first on PATH).
+func standIn(t *testing.T, name, body string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// Ctrl-C while the archive downloads (the terminal sends SIGINT to the shell and to curl) leaves no working folder in ~/.local/bin,
+// in every shell `curl | sh` may run: dash and zsh do not run the EXIT trap when a signal stops the script, bash does.
+func TestInstallShRemovesItsWorkingFolderWhenInterrupted(t *testing.T) {
+	ran := 0
+	for _, shell := range []string{"/bin/sh", "/bin/dash", "/bin/bash", "/bin/zsh"} {
+		if _, err := os.Stat(shell); err != nil {
+			t.Logf("%s is not on this machine", shell)
+			continue
+		}
+		ran++
+		f := newInstallFixture(t, "0.10.0")
+		fakebin := strings.SplitN(f.path, ":", 2)[0]
+		curl := standIn(t, "curl", "#!/bin/sh\ncase \"$*\" in *tar.gz*) kill -INT $PPID; kill -INT $$; exit 130;; esac\nexec "+filepath.Join(fakebin, "curl")+" \"$@\"\n")
+		out, err := f.runWith(t, shell, readInstallSh(t), curl)
+		if err == nil {
+			t.Errorf("%s: an interrupted install.sh must not succeed:\n%s", shell, out)
+		}
+		if entries, _ := os.ReadDir(filepath.Join(f.home, ".local", "bin")); len(entries) != 0 {
+			t.Errorf("%s: an interrupted install.sh must not leave its working folder in ~/.local/bin, left %v\n%s", shell, entries, out)
+		}
+	}
+	if ran == 0 {
+		t.Skip("no shell to run install.sh with")
+	}
+}
+
+// When `curl | sh` gets only part of install.sh (the connection drops), the shell runs none of it: no folder is made and nothing is
+// downloaded. Every cut at a line end is tried.
+func TestInstallShRunsNothingWhenOnlyPartOfItArrives(t *testing.T) {
+	lines := strings.SplitAfter(string(readInstallSh(t)), "\n")
+	for n := 1; n < len(lines); n++ {
+		if strings.TrimSpace(strings.Join(lines[n:], "")) == "" {
+			break // the rest is only blank lines: this is the whole script
+		}
+		f := newInstallFixture(t, "0.10.0")
+		out, _ := f.runWith(t, "/bin/sh", []byte(strings.Join(lines[:n], "")), "")
+		if _, err := os.Stat(filepath.Join(f.home, ".local")); err == nil {
+			t.Fatalf("install.sh cut after line %d made ~/.local; a part of the script must run nothing\n%s", n, out)
+		}
+		if _, err := os.Stat(filepath.Join(f.releases, "requests")); err == nil {
+			t.Fatalf("install.sh cut after line %d downloaded something; a part of the script must run nothing\n%s", n, out)
+		}
+	}
+}
+
+// When shikii cannot be moved into place after shikii-readout was, the old shikii-readout is put back: the two never mix versions.
+func TestInstallShPutsTheOldReadoutBackWhenShikiiCannotBeMoved(t *testing.T) {
+	f := newInstallFixture(t, "0.10.0")
+	bin := filepath.Join(f.home, ".local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(bin, "shikii"), fakeShikii("0.9.10"))
+	writeFile(t, filepath.Join(bin, "shikii-readout"), "#!/bin/sh\n# readout 0.9.10\n")
+	mv := standIn(t, "mv", "#!/bin/sh\nfor last; do :; done\ncase \"$last\" in */.local/bin/shikii) echo \"mv: cannot move\" >&2; exit 1;; esac\nexec /bin/mv \"$@\"\n")
+	out, err := f.runWith(t, "/bin/sh", readInstallSh(t), mv)
+	if err == nil {
+		t.Fatalf("install.sh must fail when shikii cannot be moved into place:\n%s", out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(bin, "shikii-readout")); string(b) != "#!/bin/sh\n# readout 0.9.10\n" {
+		t.Fatalf("the old shikii-readout must be put back when shikii cannot be moved, it is %q\n%s", b, out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(bin, "shikii")); string(b) != fakeShikii("0.9.10") {
+		t.Fatalf("the old shikii must stay, it is %q\n%s", b, out)
+	}
+	if entries, _ := os.ReadDir(bin); len(entries) != 3 {
+		t.Fatalf("only shikii, shikii-readout and shikii-licenses may be in ~/.local/bin, there are %v\n%s", entries, out)
+	}
+}
+
+// A release whose archive holds a link instead of a file is refused before anything runs or is placed: chmod 755 would otherwise change
+// the mode of the person's file the link points at, and ~/.local/bin would get a link to it.
+func TestInstallShRefusesAnArchiveWithALinkInsteadOfAFile(t *testing.T) {
+	f := newInstallFixture(t, "0.10.0")
+	secret := filepath.Join(f.home, "secret")
+	writeFile(t, secret, "key\n")
+	if err := os.Chmod(secret, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, name := range []string{"LICENSE", "LICENSE-APACHE", "LICENSE-MIT", "THIRD-PARTY-NOTICES", "shikii"} {
+		body := "text\n"
+		if name == "shikii" {
+			body = fakeShikii("0.10.0")
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		tw.Write([]byte(body))
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "shikii-readout", Mode: 0o777, Typeflag: tar.TypeSymlink, Linkname: secret}); err != nil {
+		t.Fatal(err)
+	}
+	tw.Close()
+	gz.Close()
+	asset := "shikii_0.10.0_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
+	dl := filepath.Join(f.releases, "download", "v0.10.0")
+	sum := sha256.Sum256(buf.Bytes())
+	writeFile(t, filepath.Join(dl, asset), buf.String())
+	writeFile(t, filepath.Join(dl, "SHA256SUMS"), hex.EncodeToString(sum[:])+"  "+asset+"\n")
+	out, err := f.run(t)
+	if err == nil {
+		t.Fatalf("install.sh must refuse an archive with a link in it:\n%s", out)
+	}
+	if info, _ := os.Stat(secret); info.Mode().Perm() != 0o600 {
+		t.Fatalf("install.sh changed the mode of the file a link in the archive points at to %o", info.Mode().Perm())
+	}
+	if entries, _ := os.ReadDir(filepath.Join(f.home, ".local", "bin")); len(entries) != 0 {
+		t.Fatalf("nothing may be placed from an archive with a link in it, there are %v\n%s", entries, out)
+	}
+	if _, err := os.Stat(filepath.Join(f.home, "shikii-calls")); err == nil {
+		t.Fatal("hook install must not run after the archive was refused")
+	}
+}
