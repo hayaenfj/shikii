@@ -275,16 +275,15 @@ func ECE(probs []float64, truths []bool, weights []float64, bins int) float64 {
 	return e
 }
 
-// Separation is the lowest positive and the highest negative. If Inverted, a monotonic calibration cannot fix it
-// (the only way is to change the question or the model).
+// Separation is the lowest positive and the highest negative, and how many cross the other side's edge. It is reported to show
+// which examples overlap; an overlap alone does not refuse a line (0.10: AUC decides whether the probabilities tell the answers apart).
 // Weak labels with weight below 1 (borderline, merely not undone, etc.) are left out of the check:
 // examples known to be ambiguous naturally land at the edges, and calling that "inverted" would be a false alarm.
 type Separation struct {
-	PosMin   float64
-	NegMax   float64
-	Overlap  int // count past the other side's edge
-	Inverted bool
-	Weak     int // number of weak labels left out of the check
+	PosMin  float64
+	NegMax  float64
+	Overlap int // count past the other side's edge
+	Weak    int // number of weak labels left out of the check
 }
 
 // CheckSeparation looks at how positives and negatives separate on Δ (only labels with weight 1 or more).
@@ -319,7 +318,6 @@ func CheckSeparation(samples []Sample) Separation {
 			sep.Overlap++
 		}
 	}
-	sep.Inverted = sep.PosMin < sep.NegMax
 	return sep
 }
 

@@ -1053,7 +1053,7 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 	fmt.Fprintf(stdout, "platt: bias=%.4f temperature=%.4f\n", pl.Bias, pl.Temperature)
 	fmt.Fprintf(stdout, "brier: raw=%.4f calibrated=%.4f\n", calib.Brier(rawProbs, truths, weights), calib.Brier(calProbs, truths, weights))
 	fmt.Fprintf(stdout, "ece:   raw=%.4f calibrated=%.4f (bins=%d)\n", calib.ECE(rawProbs, truths, weights, bins), calib.ECE(calProbs, truths, weights, bins), bins)
-	fmt.Fprintf(stdout, "separation(Δ, weight>=1): pos_min=%.3f neg_max=%.3f overlap=%d inverted=%v (weak labels excluded: %d)\n", sep.PosMin, sep.NegMax, sep.Overlap, sep.Inverted, sep.Weak)
+	fmt.Fprintf(stdout, "separation(Δ, weight>=1): pos_min=%.3f neg_max=%.3f overlap=%d (weak labels excluded: %d; an overlap alone does not refuse the line)\n", sep.PosMin, sep.NegMax, sep.Overlap, sep.Weak)
 	if sep.Overlap > 0 {
 		// Show which examples overlap. The text is not printed; the label can be traced by inputs_hash.
 		fmt.Fprintln(stdout, "overlapping (truth raw weight inputs_hash):")

@@ -75,26 +75,26 @@ func TestReliabilityBins(t *testing.T) {
 	}
 }
 
-func TestCheckSeparationDetectsInversion(t *testing.T) {
+func TestCheckSeparationCountsOverlaps(t *testing.T) {
 	clean := []Sample{{Delta: 2.54, Truth: true}, {Delta: 4, Truth: true}, {Delta: 1.96, Truth: false}, {Delta: 0, Truth: false}}
-	if s := CheckSeparation(clean); s.Inverted || s.Overlap != 0 || s.PosMin != 2.54 || s.NegMax != 1.96 {
+	if s := CheckSeparation(clean); s.Overlap != 0 || s.PosMin != 2.54 || s.NegMax != 1.96 {
 		t.Fatalf("clean data flagged: %+v", s)
 	}
-	// Inversion measured with had-scorer: lowest related 1.80 < borderline 1.82
+	// An overlap measured with had-scorer: lowest related 1.80 < borderline 1.82
 	inverted := []Sample{{Delta: 1.80, Truth: true}, {Delta: 4, Truth: true}, {Delta: 1.82, Truth: false}, {Delta: 0, Truth: false}}
-	if s := CheckSeparation(inverted); !s.Inverted || s.Overlap != 2 {
-		t.Fatalf("inversion not detected: %+v", s)
+	if s := CheckSeparation(inverted); s.Overlap != 2 {
+		t.Fatalf("overlap not counted: %+v", s)
 	}
-	// A borderline negative (weight 0.5) above the positives is not called an inversion, because it is known to be ambiguous.
+	// A borderline negative (weight 0.5) above the positives is not counted, because it is known to be ambiguous.
 	weak := []Sample{{Delta: 2.54, Truth: true, Weight: 1}, {Delta: 4, Truth: true, Weight: 1},
 		{Delta: 3.0, Truth: false, Weight: 0.5}, {Delta: 1.96, Truth: false, Weight: 1}}
-	if s := CheckSeparation(weak); s.Inverted || s.Weak != 1 || s.NegMax != 1.96 {
-		t.Fatalf("weak labels must not drive the inversion verdict: %+v", s)
+	if s := CheckSeparation(weak); s.Overlap > 0 || s.Weak != 1 || s.NegMax != 1.96 {
+		t.Fatalf("weak labels are not counted as overlaps: %+v", s)
 	}
-	// The same negative with weight 1 is an inversion
+	// The same negative with weight 1 is counted
 	weak[2].Weight = 1
-	if s := CheckSeparation(weak); !s.Inverted {
-		t.Fatalf("full-weight negative above pos_min must be an inversion: %+v", s)
+	if s := CheckSeparation(weak); s.Overlap == 0 {
+		t.Fatalf("a full-weight negative above pos_min is an overlap: %+v", s)
 	}
 }
 
