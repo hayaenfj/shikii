@@ -8,8 +8,8 @@
 
 ## 0.10.1 — shikii の hook をつないだ command を install と uninstall が触らず、知識の欄は 1 回で読む
 
-- hook: `shikii hook install` と `uninstall` が変えるのは、shikii が書く形ちょうどの hook(単引用符のパスか、パスに使う文字だけの裸のパスの後に ` hook <出来事>`、本体の名が `shikii`)だけにした。0.10.0 は、別の command の後に shikii の hook をつないだ command(`/usr/local/bin/notify-done hook stop; …/shikii hook stop`、`/usr/bin/env X=1 …/shikii hook stop`、`… && …/shikii hook stop`)を、中の別の command ごと消していた。そういう command と、`~`・`$HOME`・引用符で書いた物はそのまま残し、`shikii doctor` と `uninstall` が手で書かれた物として名前を出す(doctor はつないだ物を「本体が無い」と言っていた)。shikii という名のフォルダを口にするだけの道具は shikii の hook と言わず、設定の中に別の形の出来事があっても `uninstall` が手で書かれた hook を言わなくなることは無くなった。
-- インストーラー: `shikii`・`shikii-readout`・ライセンスのファイルを置く所が、フォルダなどファイルでない時は、取る前に止まり、何も変えない(前はライセンスを先に置き、ライセンスの名のフォルダの中に移していた)。
+- hook: `shikii hook install` と `uninstall` が変えるのは、shikii が書く形ちょうどで動く hook(単引用符のパスか、空白の無い裸のパスの後に ` hook <出来事>`、本体の名が `shikii`)だけにした。0.10.0 は、別の command の後につないだ・別の command で包んだ command(`/usr/local/bin/notify-done hook stop; …/shikii hook stop`、`/usr/bin/env X=1 …/shikii hook stop`、`/usr/bin/nice -n 10 …/shikii hook stop`、`… && …/shikii hook stop`)を、中の別の command ごと消していた。0.9.3 以前が書いた空白入りの裸のパスの hook は、シェルが空白で分けるので元々動いておらず、残して名前を出す。0.9.2 以前が書いた、途中に `~`・`=`・`#` のある裸のパス(iCloud の `com~apple` など)は動くので、今までどおり入れ替える。そういう command と、`~`・`$HOME`・引用符で書いた物はそのまま残し、`shikii doctor` と `uninstall` が手で書かれた物として名前を出す(doctor はつないだ物を「本体が無い」と言っていた)。shikii という名のフォルダを口にするだけの道具は shikii の hook と言わず、設定の中に別の形の出来事があっても `uninstall` が手で書かれた hook を言わなくなることは無くなった。
+- インストーラー: `shikii`・`shikii-readout`・ライセンスのファイルを置く所が、フォルダなどファイルでない時と、`shikii-licenses` がリンクなど自分のフォルダでない時は、取る前に止まり、何も変えない(前はライセンスを先に置き、ライセンスの名のフォルダの中に移し、リンクの先の人の LICENSE を上書きしていた)。
 - 画面の知識の欄: 一覧を 1 回の返事で読むようにした。MCP の返事と同じく約 60KB ごとに区切って返し、区切るたびに wiki 全体を読み直していたので、長い記事 477 件で 55 回・約 30 秒かかり、終わるまで何も出ず、途中でエージェントが記事を保存すると最初からやり直していた。
 
 ## 0.10.0 — 本物の問いに線が引けるようになり、見分けられない問いは止め、1 行のインストーラーは Go 無しで入れる

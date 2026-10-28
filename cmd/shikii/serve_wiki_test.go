@@ -402,7 +402,7 @@ func TestStaleWikiCursorIs409(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
 		return rec.Code, out
 	}
-	// the page reads the whole list in one reply (0.11); a cursor still comes from the notebook query MCP uses, and an older page may send it
+	// the page reads the whole list in one reply (0.10.1); a cursor still comes from the notebook query MCP uses, and an older page may send it
 	first := httptest.NewRecorder()
 	firstReq := httptest.NewRequest(http.MethodPost, "/v1/wiki/notebook", strings.NewReader(`{"operation":"query"}`))
 	firstReq.Header.Set("Content-Type", "application/json")
@@ -430,7 +430,7 @@ func TestStaleWikiCursorIs409(t *testing.T) {
 	}
 }
 
-// The page reads the whole knowledge list in one request (0.11): it is a local page, and splitting the list into ~60KB parts the way
+// The page reads the whole knowledge list in one request (0.10.1): it is a local page, and splitting the list into ~60KB parts the way
 // MCP replies are split made the page call /v1/wiki dozens of times, each reading the whole wiki again (477 long pages took 55 calls
 // and about 30 seconds, and a save in between restarted it).
 func TestWikiListGivesThePageEveryLessonInOneReply(t *testing.T) {

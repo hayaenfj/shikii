@@ -1971,10 +1971,12 @@ func hookEvents() []hookEvent {
 // (0.9.3 and earlier wrote it bare: with a space in the path the shell ran only the part before it, and the hook never worked).
 func hookCommand(exe, event string) string { return shellQuote(exe) + " hook " + event }
 
-// hookBinary is the binary of a hook command `<binary> hook <event>` in exactly a form shikii writes (0.10.1): a path in single quotes as
-// hookCommand writes it (quoting it again gives the same text, and it is absolute), or a bare word of only the characters a path
-// has (letters, digits, non-ASCII letters and ./-_+@:,%, and spaces in an absolute path, as 0.9.3 and earlier wrote paths). Anything
-// else (; & | = $ ~ quotes, a backslash) means a person wrote or chained something, and ok is false: install and uninstall then leave
+// hookBinary is the binary of a hook command `<binary> hook <event>` in exactly a form shikii writes and that runs (0.10.1): a path in
+// single quotes as hookCommand writes it (quoting it again gives the same text, and it is absolute), or one bare word of only the
+// characters a path has (letters, digits, non-ASCII letters and ./-_+@:,%; inside an absolute path also ~ = #, which the shell keeps
+// as they are, as 0.9.2 and earlier wrote paths such as iCloud's com~apple). No space: a space means another command wraps or comes
+// before shikii (nice, timeout, a chain), and the paths with spaces 0.9.3 and earlier wrote bare never ran (the shell split them).
+// Anything else (; & | $ quotes, a backslash, a leading ~) means a person wrote it, and ok is false: install and uninstall then leave
 // the whole command as it is. Reading more forms kept deleting people's commands (0.10's audits), so shikii reads only its own.
 func hookBinary(command string) (string, bool) {
 	c := strings.TrimSpace(command)
@@ -1991,7 +1993,7 @@ func hookBinary(command string) (string, bool) {
 		return path, true
 	}
 	for _, r := range bin {
-		if r < 0x80 && !strings.ContainsRune(shellPlain, r) && !(r == ' ' && filepath.IsAbs(bin)) {
+		if r < 0x80 && !strings.ContainsRune(shellPlain, r) && !(strings.ContainsRune("~=#", r) && filepath.IsAbs(bin)) {
 			return "", false
 		}
 	}

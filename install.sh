@@ -20,7 +20,7 @@ main() {
   for f in shikii shikii-readout; do
     if [ -e "$BIN/$f" ] && [ ! -f "$BIN/$f" ]; then fail "$BIN/$f is not a file; nothing was installed (move it away and run this again)"; fi
   done
-  if [ -e "$BIN/shikii-licenses" ] && [ ! -d "$BIN/shikii-licenses" ]; then fail "$BIN/shikii-licenses is not a folder; nothing was installed (move it away and run this again)"; fi
+  if [ -L "$BIN/shikii-licenses" ] || { [ -e "$BIN/shikii-licenses" ] && [ ! -d "$BIN/shikii-licenses" ]; }; then fail "$BIN/shikii-licenses is not a folder of its own (a link or a file); nothing was installed (move it away and run this again)"; fi
   for f in LICENSE LICENSE-APACHE LICENSE-MIT THIRD-PARTY-NOTICES; do
     if [ -e "$BIN/shikii-licenses/$f" ] && [ ! -f "$BIN/shikii-licenses/$f" ]; then fail "$BIN/shikii-licenses/$f is not a file; nothing was installed (move it away and run this again)"; fi
   done
