@@ -589,7 +589,7 @@ func runCalibrate(path string, o calibrateOpts) error {
 		if o.write {
 			sp.PutCalibration(cal)
 			wrote = true
-			clearStopped(o.storeDir, sp.ID)
+			clearStopped(o.storeDir, sp.ID, cal.SpecHash)
 		}
 	}
 	// The context rung (if any). Its truths are only those a person gave to decisions settled with added context. If there are none yet, say so and move on.
@@ -1195,10 +1195,24 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writ
 	printConfusion(rawRep.confusion, stdout)
 	identityOK := rawRep.precAct >= sp.Thresholds.Act
 	identity := spec.Calibration{Method: "identity", PrecisionAt: rawRep.precAct, Brier: rawRep.brier, ECE: rawRep.ece}
+	// the same rule as yes/no questions (0.10): when the top answer's probability does not tell right from wrong (the AUC's 95% interval
+	// reaches 0.5), no line, even when the share of right answers alone passes the precision at act
+	noSignal := false
+	if disc, ok := calib.AUC(rawRep.pTop, rawRep.correct, rawRep.weights); ok {
+		fmt.Fprintf(stdout, "discrimination (top answer right or wrong): AUC=%.3f (95%%: %.3f-%.3f) on %d right / %d wrong\n", disc.AUC, disc.Low, disc.High, disc.Pos, disc.Neg)
+		noSignal = disc.Low <= 0.5
+	}
+	refuseNoSignal := func(c spec.Calibration) (spec.Calibration, bool, error) { // after the whole report, so the numbers are still shown
+		fmt.Fprintln(stdout, "WARNING: the top answer's probability does not tell right from wrong (the AUC's 95% interval reaches 0.5); a calibration cannot fix this. Change the question or the model.")
+		return c, false, nil
+	}
 
 	// vector looks too good in-sample, so adopt or reject it by the k-fold CV metrics.
 	v, err := calib.FitVector(fit)
 	if err != nil {
+		if noSignal {
+			return refuseNoSignal(identity)
+		}
 		if identityOK {
 			fmt.Fprintf(stdout, "identity: raw precision at act %.3f >= act (vector scaling could not be fitted: %v)\n", rawRep.precAct, err)
 			return identity, true, nil
@@ -1221,6 +1235,8 @@ func verifyTop(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writ
 
 	// Choose: among candidates meeting precision@act, the one with higher recall@act. On a tie, the simpler identity.
 	switch {
+	case noSignal:
+		return refuseNoSignal(identity)
 	case identityOK && vectorOK && cvRec > rawRep.recAct:
 		fmt.Fprintf(stdout, "choose vector: both satisfy act; vector recall %.3f > identity recall %.3f\n", cvRec, rawRep.recAct)
 		return vector, true, nil
@@ -1633,6 +1649,8 @@ func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label
 			_, p, correct := judge(sp, dist, l.Truth)
 			probs[i], truths[i], weights[i] = p, correct, l.Weight
 		}
+		disc, ok := calib.AUC(probs, truths, weights)
+		inverted = ok && disc.Low <= 0.5 // the top answer's probability does not tell right from wrong (0.10, as for noul)
 	}
 	for _, p := range probs {
 		if p >= sp.Thresholds.Act {

@@ -268,9 +268,7 @@ shikii calibrate <spec> --model <id>
    - Constants (written back to the spec's `calibration` block)
    - Brier, ECE, reliability diagram (confidence vs accuracy; the same graph d1-ultra shows)
    - precision / recall at `thresholds.act` / `ask`
-   - **Detecting failures calibration cannot fix**: if the lowest positive and the highest negative are inverted, output no constants and say "change the question text" (a reproduction of had-scorer's Δ=1.80 vs 1.82).
-     Weak labels with weight below 1 (boundary cases, "it was just not undone", and so on) are left out of the inversion check. In measurement (32 yes/no pairs),
-     the negatives at the edge were all boundary pairs with w=0.5 (examples like "a different bug on the same screen"). Calling "inversion" on examples known to be ambiguous is a false alarm
+   - **Detecting failures calibration cannot fix**: when the probabilities do not tell the answers apart (the AUC's 95% interval reaches 0.5; for a choice, the top answer's probability against whether it was right), output no constants and say "change the question text". Since 0.10 an overlap alone (the lowest positive below the highest negative, as in had-scorer's Δ=1.80 vs 1.82) no longer refuses the line: a real model's answers always overlap somewhere, and the precision at act guards the line. The overlapping examples are still listed, leaving out weak labels with weight below 1 (boundary cases, "it was just not undone", and so on)
    - **Comparison with identity**: platt / vector look good in-sample, so they are measured with 5-fold CV, and if keeping the raw distribution (identity) satisfies act and is no worse on Brier, identity is chosen.
      On the old material, Kev-4B's noul had raw Brier 0.046, platt got worse in CV, and it was identity. On the replaced same-issue / same-inquiry, platt wins slightly (0.038→0.035, 0.030→0.020). Whether it is needed is decided per (question, model)
 5. Generate contract tests (§8)
@@ -326,7 +324,7 @@ In the prototype, this became **a check command `shikii check <spec>...` instead
 - The calibration's `spec_hash` matches the current hash (the wording changed but the constants were kept → stale)
 - `method` is known and its keys are complete (rejects hand-written calibration blocks)
 - On the labels (store + raw rows of `eval.labeled`), precision at the calibrated act threshold is at or above `thresholds.act`
-- noul has no inversion of positives and negatives
+- the probabilities tell the answers apart (the AUC's 95% interval does not reach 0.5; for a choice, the top answer's probability against whether it was right)
 
 Below is the original plan (generating tests). The content maps to the above.
 

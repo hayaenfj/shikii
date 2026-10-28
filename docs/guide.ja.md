@@ -184,13 +184,13 @@ bin/shikii status --store .shikii .shikii/decisions/prompt-kind.yaml
 ```
 
 spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome / file)と中身の偏り、(model, spec_hash) ごとの、線を引く時に数える正解の数(入力ごとに最新、人と結果の正解だけ。画面と同じ数)と状態
-(`calibrated: vector` / `collecting (min_n …)` / `only one answer so far`(片方の答えしか無く線を引けない) / `tried: the answers could not be separated`(試したが分けられない。正解が増えたら再び試す) / `stopped: the probabilities do not tell the answers apart (AUC …)`(見分ける力が足りず止めた。依頼の 20 回に 1 回だけ聞き、聞き方かモデルが変わるとまた試す) / `enough truths: the line is drawn automatically`(自動で引く途中) / `stale hash`)を出す。運用で最初に見る画面。
+(`calibrated: vector` / `collecting (min_n …)` / `only one answer so far`(片方の答えしか無く線を引けない) / `tried: the answers could not be separated`(試したが分けられない。正解が増えたら再び試す) / `stopped: the probabilities do not tell the answers apart (AUC …)`(線が 1 つも無い hook の問いで、見分ける力が足りず止めた。依頼の 20 回に 1 回だけ聞き、聞き方が変わるか、その 1 回に別のモデルが答えるとまた試す) / `enough truths: the line is drawn automatically`(自動で引く途中) / `stale hash`)を出す。運用で最初に見る画面。
 
 `person's work` の行は、今の規則で人が答える判定(結果が答えない判定の迷い、線のある自動判定の抜き取り、AIの仮採点の抜き取りと保留)の数を、全体と直近7日の1000判定あたりで示し、正解を人と結果のどちらが決めたかを分けて数える。`rungs` の `left to a person` は迷った数で、結果が答える判定の迷いは人を待たない。人の手間を減らす変更の効果は、この行の前後で比べる。
 
 `memory:`(届けた教訓と評価)、`guards:`(有効な数・止めたターン・直った数)、`rituals:`(作業の前と後の手順)、`page:`(画面の URL)の行も出る。
 
-線が新しく引けた時と、正解が `eval.min_n` に届いたのに線を引けない時(答えが片方だけ、または試して答えを分けられなかった)は、Stop の hook がターンの終わりに本人へ一言知らせる(Claude Code では端末に出る)。問いごとに、状態・文言・モデルが変わった時だけ 1 回で、画面の「AI の様子」にも同じ理由が出る。
+線が新しく引けた時と、正解が `eval.min_n` に届いたのに線を引けない時(答えが片方だけ、試して答えを分けられなかった、または問いを止めた)は、Stop の hook がターンの終わりに本人へ一言知らせる(Claude Code では端末に出る)。問いごとに、状態・文言・モデルが変わった時だけ 1 回で、画面の「AI の様子」にも同じ理由が出る。
 
 ## 判定モデル
 
@@ -433,7 +433,7 @@ curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec"
 | `internal/spec` | Decision Spec の読み書き。較正の鍵 `Hash()`(質問・テンプレ・選択肢から。閾値・policy は含めない) |
 | `internal/systemone` | System One 形式(`POST /v1/systemone`)の薄いクライアント。Jev / llama.cpp はベース URL の差だけ |
 | `internal/decide` | 仕様 + 入力 → 帯。required 欠落は abstain、tainted は hosted を外す、**較正が無い判定は act を出さない** |
-| `internal/calib` | Platt 較正(`calib.go`)、vector scaling(`vector.go`)、Brier / ECE / 信頼度図、正負の逆転検出 |
+| `internal/calib` | Platt 較正(`calib.go`)、vector scaling(`vector.go`)、Brier / ECE / 信頼度図、AUC と 95% 区間(答えを見分ける力) |
 | `cmd/shikii` | CLI |
 | `cmd/shikii-readout` | **普通の GGUF を System One にするアダプタ** `shikii-readout`。後ろの llama-server の `/apply-template` と `/completion` で選択肢の文字の確率を読む。推論も較正も持たない |
 | `cmd/fake-systemone` | 鍵も GPU も無しで輪を回すための偽モデル |

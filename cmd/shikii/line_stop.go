@@ -1,10 +1,12 @@
 package main
 
-// Stopping a question no line can be drawn for (0.10). When calibrate, with enough truths, draws no line and the probabilities do not
-// rank the answers acceptably (the upper end of the AUC's 95% interval is below 0.7, the lower end of "acceptable discrimination" in
-// Hosmer and Lemeshow's guide), asking the model on every request only adds time and records. calibrate keeps the reason in
-// stopped-<spec>, the hook then asks that question on 1 request in 20 (the spot-check rate) so a new model is noticed and truths still
-// come in, and status and the page say why. Changing the wording gives a new hash, which is not stopped; a line drawn later removes it.
+// Stopping a question no line can be drawn for (0.10). When calibrate, with enough truths, draws no line for one of the hook's
+// questions and the probabilities do not rank the answers acceptably (the upper end of the AUC's 95% interval is below 0.7, the lower
+// end of "acceptable discrimination" in Hosmer and Lemeshow's guide), asking the model on every request only adds time and records.
+// calibrate keeps the reason in stopped-<spec>-<wording hash>; the hook then asks that question on 1 request in 20 (the spot-check
+// rate) so a new model is noticed and truths still come in, and status and the page say why. A stop applies only while the question
+// has no line at all (for any model, on either rung): a line is never silenced by a stop. Each wording has its own stop, so trying
+// another wording leaves the current one's alone; a line drawn later removes it.
 
 import (
 	"encoding/json"
@@ -12,6 +14,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -36,32 +39,51 @@ type stoppedLine struct {
 	At       time.Time `json:"at"`
 }
 
-func stoppedPath(storeDir, specID string) string { return filepath.Join(storeDir, "stopped-"+specID) }
+func stoppedPath(storeDir, specID, hash string) string {
+	return filepath.Join(storeDir, "stopped-"+specID+"-"+hash)
+}
 
-// noteStopped keeps the stop when a refused calibration had enough truths and the answers could not be told apart acceptably.
-// A refusal for another reason (too few truths, one side only, the precision at act) is not a stop.
+// stoppable reports whether the question is one the hook asks (only the hook asks a stopped question on 1 request in 20).
+func stoppable(specID string) bool { return slices.Contains(hookSpecs, specID) }
+
+// hasLine reports whether the question has a line for its current wording on either rung, for any model.
+func hasLine(sp *spec.Spec) bool {
+	for _, c := range sp.Calibration {
+		if sp.LiveHash(c.SpecHash) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteStopped keeps the stop when a refused calibration of a hook question without any line had enough truths and the probabilities
+// did not tell the answers apart acceptably, whatever else refused it (the precision at act included). Too few truths, or one side
+// only (no AUC), is not a stop.
 func noteStopped(storeDir string, sp *spec.Spec, cal spec.Calibration) error {
 	d := cal.Discrimination
-	if storeDir == "" || d == nil || cal.NHuman < sp.Eval.MinN || d.High >= stopBelowAUC {
+	if storeDir == "" || !stoppable(sp.ID) || hasLine(sp) || d == nil || cal.NHuman < sp.Eval.MinN || d.High >= stopBelowAUC {
 		return nil
 	}
 	b, err := json.Marshal(stoppedLine{Model: cal.Model, SpecHash: cal.SpecHash, AUC: d.AUC, Low: d.Low, High: d.High, Pos: d.Pos, Neg: d.Neg, At: time.Now().UTC()})
 	if err != nil {
 		return err
 	}
-	return writeAtomic(stoppedPath(storeDir, sp.ID), append(b, '\n'))
+	return writeAtomic(stoppedPath(storeDir, sp.ID, cal.SpecHash), append(b, '\n'))
 }
 
-func clearStopped(storeDir, specID string) {
+func clearStopped(storeDir, specID, hash string) {
 	if storeDir != "" {
-		_ = os.Remove(stoppedPath(storeDir, specID))
+		_ = os.Remove(stoppedPath(storeDir, specID, hash))
 	}
 }
 
-// readStopped returns the stop kept for the spec's current wording (a stop measured on another wording does not apply).
+// readStopped returns the stop in force for the spec's current wording: a hook question without any line whose wording was stopped.
 func readStopped(storeDir string, sp *spec.Spec) (stoppedLine, bool) {
 	var s stoppedLine
-	b, err := os.ReadFile(stoppedPath(storeDir, sp.ID))
+	if !stoppable(sp.ID) || hasLine(sp) {
+		return stoppedLine{}, false
+	}
+	b, err := os.ReadFile(stoppedPath(storeDir, sp.ID, sp.Hash()))
 	if err != nil || json.Unmarshal(b, &s) != nil || s.SpecHash != sp.Hash() {
 		return stoppedLine{}, false
 	}
@@ -96,15 +118,16 @@ func hookSkipsStopped(agent, specID string, inputs map[string]string) bool {
 
 // resumeOnNewModel removes the stop when a question asked anyway was answered by another model than the one it was measured on.
 func resumeOnNewModel(agent, specID, model string) {
-	var s stoppedLine
-	b, err := os.ReadFile(stoppedPath(agent, specID))
-	if err != nil || json.Unmarshal(b, &s) != nil || model == "" || s.Model == model {
+	sp, err := spec.Load(hookSpecPath(agent, specID))
+	if err != nil || model == "" {
 		return
 	}
-	_ = os.Remove(stoppedPath(agent, specID))
+	if s, ok := readStopped(agent, sp); ok && s.Model != model {
+		clearStopped(agent, specID, sp.Hash())
+	}
 }
 
 // stopNote is the status line for a stopped question.
 func (s stoppedLine) stopNote() string {
-	return fmt.Sprintf("  stopped: the probabilities do not tell the answers apart (AUC %.2f, 95%% %.2f-%.2f, on %d and %d); asked on 1 request in %d to notice a new model. Change the wording or the model to try again", s.AUC, s.Low, s.High, s.Pos, s.Neg, stoppedEvery)
+	return fmt.Sprintf("  stopped: the probabilities do not tell the answers apart (AUC %.2f, 95%% %.2f-%.2f, on %d yes or right / %d no or wrong); asked on 1 request in %d, where a new model is noticed. Change the wording or the model to try again", s.AUC, s.Low, s.High, s.Pos, s.Neg, stoppedEvery)
 }

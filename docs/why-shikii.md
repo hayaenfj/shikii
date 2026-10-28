@@ -132,7 +132,7 @@ One more: if the lowest score of the right pairs falls below the highest score o
 
 ### The check fails in CI
 
-`shikii check` looks at whether the line's hash matches the current question text, whether a hand-written line is mixed in, whether accuracy above the line is high enough, and whether yes/no has flipped, and if not, it ends in failure.
+`shikii check` looks at whether the line's hash matches the current question text, whether a hand-written line is mixed in, whether accuracy above the line is high enough, and whether the probabilities tell the answers apart at all, and if not, it ends in failure.
 It turns the "test that fixes the pair of question text and constants" that was originally in had-scorer into a command that can be used from any language.
 
 ### Watch for decline, and remove

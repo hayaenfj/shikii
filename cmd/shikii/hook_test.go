@@ -119,6 +119,11 @@ func runHook(t *testing.T, event string, in map[string]any) string {
 
 // fakeAgentModel is a fake that answers the hook's 4 specs: choice (prompt-kind) is edit 0.9, noul is decided by the function p(state) of the state text.
 func fakeAgentModel(t *testing.T, p func(state string) float64) *httptest.Server {
+	return fakeAgentModelEdit(t, p, func(string) float64 { return 0.9 })
+}
+
+// fakeAgentModelEdit is fakeAgentModel whose choice answer gives edit the probability edit(state) (the rest share what is left).
+func fakeAgentModelEdit(t *testing.T, p func(state string) float64, edit func(state string) float64) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			State     string `json:"state"`
@@ -133,7 +138,9 @@ func fakeAgentModel(t *testing.T, p func(state string) float64) *httptest.Server
 			if q.Type == "noul" {
 				ans[k] = map[string]any{"type": "noul", "noul": p(req.State)}
 			} else {
-				ans[k] = map[string]any{"type": "choice", "choice": "edit", "probabilities": map[string]float64{"edit": 0.9, "explain": 0.04, "investigate": 0.03, "run": 0.02, "decide": 0.01}, "confidence": 0.9}
+				e := edit(req.State)
+				rest := (1 - e) / 10
+				ans[k] = map[string]any{"type": "choice", "choice": "edit", "probabilities": map[string]float64{"edit": e, "explain": 4 * rest, "investigate": 3 * rest, "run": 2 * rest, "decide": rest}, "confidence": e}
 			}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"model": "kev-4b", "answers": ans})
@@ -369,7 +376,14 @@ func TestHookStopJudgesEachRequestOnce(t *testing.T) {
 // UserPromptSubmit asks prompt-kind and needs-plan and keeps the request and the tree hash. The next request (or Stop if none) attaches edit if the tree changed,
 // and !edit (weight 0.7) if not, as the outcome truth; Stop keeps the assistant's last message. Once truths reach min_n, Stop draws the line.
 func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
-	model := fakeAgentModel(t, func(string) float64 { return 0.2 })
+	// the request that changes nothing (session "same", truth !edit) gets a lower edit probability, so the probabilities tell the
+	// answers apart and a line can be drawn (0.10: probabilities that say nothing draw no line)
+	model := fakeAgentModelEdit(t, func(string) float64 { return 0.2 }, func(state string) float64 {
+		if strings.Contains(state, "README same") {
+			return 0.5
+		}
+		return 0.9
+	})
 	repo := gitRepo(t)
 	agent := hookEnv(t, model, repo)
 	pkPath := lowerMinN(t, agent, "prompt-kind", 4)

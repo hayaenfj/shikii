@@ -184,7 +184,7 @@ bin/shikii status --store .shikii .shikii/decisions/prompt-kind.yaml
 ```
 
 For each spec it prints the numbers of records and labels, where the labels came from (ask / outcome / file) and how their contents lean, and for each (model, spec_hash) the count of truths that calibration uses (the latest per input, from people and results; the same number as the page) and the state
-(`calibrated: vector` / `collecting (min_n …)` / `only one answer so far` (no line until both answers appear) / `tried: the answers could not be separated` (tried again as truths grow) / `stopped: the probabilities do not tell the answers apart (AUC …)` (asked on 1 request in 20 only; a new wording or model tries again) / `enough truths: the line is drawn automatically` / `stale hash`). This is the first thing to look at when running shikii.
+(`calibrated: vector` / `collecting (min_n …)` / `only one answer so far` (no line until both answers appear) / `tried: the answers could not be separated` (tried again as truths grow) / `stopped: the probabilities do not tell the answers apart (AUC …)` (one of the hook's questions without any line; asked on 1 request in 20 only, and a new wording, or another model answering one of those requests, tries again) / `enough truths: the line is drawn automatically` / `stale hash`). This is the first thing to look at when running shikii.
 
 The `person's work` line shows how many decisions a person answers under the current rules (unsure decisions that results do not answer, samples of automatic decisions above a line, samples and held cases of the AI's provisional assessments), in total and per 1000 decisions over the last 7 days, and counts separately whether the truth was decided by a person or by a result. `left to a person` under `rungs` is the number of unsure decisions; unsure decisions that a result answers do not wait for a person. Compare this line before and after a change to see whether it reduced people's work.
 
@@ -433,7 +433,7 @@ curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec"
 | `internal/spec` | Reads and writes Decision Specs. The calibration key `Hash()` (from the question, template and options; thresholds and policy are not included) |
 | `internal/systemone` | A thin client for the System One format (`POST /v1/systemone`). Jev and llama.cpp differ only in the base URL |
 | `internal/decide` | Spec + inputs → band. A missing required input gives abstain, tainted removes hosted, **a decision without calibration never gives act** |
-| `internal/calib` | Platt calibration (`calib.go`), vector scaling (`vector.go`), Brier / ECE / reliability diagram, detection of flipped positives and negatives |
+| `internal/calib` | Platt calibration (`calib.go`), vector scaling (`vector.go`), Brier / ECE / reliability diagram, AUC with its 95% interval (how well the answers are told apart) |
 | `cmd/shikii` | The CLI |
 | `cmd/shikii-readout` | **The adapter that turns an ordinary GGUF into System One**, `shikii-readout`. Reads the option letters' probabilities through the llama-server's `/apply-template` and `/completion` behind it. Has no inference and no calibration of its own |
 | `cmd/fake-systemone` | A fake model to run the loop without a key or a GPU |

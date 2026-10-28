@@ -52,7 +52,30 @@ func clearRows() []map[string]any {
 	return rows
 }
 
-func calibrateRows(t *testing.T, path, storeDir string, rows []map[string]any) (string, error) {
+// writeHookNoulSpec is writeNoulSpec as one of the hook's questions (needs-plan): only those are stopped.
+func writeHookNoulSpec(t *testing.T, dir string) string {
+	t.Helper()
+	src, err := os.ReadFile(writeNoulSpec(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "needs-plan.yaml")
+	if err := os.WriteFile(path, bytes.Replace(src, []byte("id: same\n"), []byte("id: needs-plan\n"), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// writeStop keeps a stop as calibrate would, under the wording it names.
+func writeStop(dir, specID string, b []byte) error {
+	var s stoppedLine
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	return os.WriteFile(stoppedPath(dir, specID, s.SpecHash), b, 0o600)
+}
+
+func calibrateRows(t *testing.T, path, storeDir string, rows []map[string]any, model ...string) (string, error) {
 	t.Helper()
 	file := filepath.Join(filepath.Dir(path), "labels.json")
 	data, _ := json.Marshal(rows)
@@ -60,14 +83,18 @@ func calibrateRows(t *testing.T, path, storeDir string, rows []map[string]any) (
 		t.Fatal(err)
 	}
 	var report bytes.Buffer
-	err := runCalibrate(path, calibrateOpts{output: &report, storeDir: storeDir, labeled: file, write: true})
+	o := calibrateOpts{output: &report, storeDir: storeDir, labeled: file, write: true}
+	if len(model) > 0 {
+		o.ef.model = model[0]
+	}
+	err := runCalibrate(path, o)
 	return report.String(), err
 }
 
 // A refused calibration with enough truths and no acceptable signal keeps the stop with the measured AUC; a line drawn later removes it.
 func TestCalibrateKeepsTheStopOfAQuestionThatCannotTellTheAnswersApart(t *testing.T) {
 	dir := t.TempDir()
-	path := writeNoulSpec(t, dir)
+	path := writeHookNoulSpec(t, dir)
 	storeDir := filepath.Join(dir, "store")
 	report, err := calibrateRows(t, path, storeDir, noSignalRows())
 	if err == nil {
@@ -80,8 +107,8 @@ func TestCalibrateKeepsTheStopOfAQuestionThatCannotTellTheAnswersApart(t *testin
 	if _, err := calibrateRows(t, path, storeDir, clearRows()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(stoppedPath(storeDir, "same")); !os.IsNotExist(err) {
-		t.Fatalf("a line drawn later removes the stop: %v", err)
+	if _, ok := readStopped(storeDir, mustLoad(t, path)); ok {
+		t.Fatal("a line drawn later removes the stop")
 	}
 }
 
@@ -97,7 +124,7 @@ func TestCalibrateDoesNotStopForOtherRefusals(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			path := writeNoulSpec(t, dir)
+			path := writeHookNoulSpec(t, dir)
 			src, _ := os.ReadFile(path)
 			if err := os.WriteFile(path, bytes.Replace(src, []byte("min_n: 4"), []byte(tc.minN), 1), 0o644); err != nil {
 				t.Fatal(err)
@@ -106,8 +133,8 @@ func TestCalibrateDoesNotStopForOtherRefusals(t *testing.T) {
 			if _, err := calibrateRows(t, path, storeDir, tc.rows); err == nil {
 				t.Fatal("no line for these truths")
 			}
-			if _, err := os.Stat(stoppedPath(storeDir, "same")); !os.IsNotExist(err) {
-				t.Fatalf("not a stop: %v", err)
+			if _, ok := readStopped(storeDir, mustLoad(t, path)); ok {
+				t.Fatal("not a stop")
 			}
 		})
 	}
@@ -120,18 +147,18 @@ func TestHookAsksAStoppedQuestionOnOneRequestInTwenty(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(agent, "decisions"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := writeNoulSpec(t, filepath.Join(agent, "decisions"))
+	path := writeHookNoulSpec(t, filepath.Join(agent, "decisions"))
 	sp := mustLoad(t, path)
 	b, _ := json.Marshal(stoppedLine{Model: "m", SpecHash: sp.Hash(), AUC: 0.5, Low: 0.4, High: 0.6, Pos: 360, Neg: 40, At: time.Now()})
-	if err := os.WriteFile(stoppedPath(agent, "same"), b, 0o600); err != nil {
+	if err := writeStop(agent, "needs-plan", b); err != nil {
 		t.Fatal(err)
 	}
 	asked := 0
 	for i := 0; i < 400; i++ {
 		inputs := map[string]string{"a": fmt.Sprint(i)}
-		if !hookSkipsStopped(agent, "same", inputs) {
+		if !hookSkipsStopped(agent, "needs-plan", inputs) {
 			asked++
-			if !stoppedAsk("same", inputs) {
+			if !stoppedAsk("needs-plan", inputs) {
 				t.Fatalf("only the requests stoppedAsk picks are asked: %v", inputs)
 			}
 		}
@@ -139,19 +166,19 @@ func TestHookAsksAStoppedQuestionOnOneRequestInTwenty(t *testing.T) {
 	if asked == 0 || asked == 400 {
 		t.Fatalf("some requests are still asked, most are not: %d of 400", asked)
 	}
-	resumeOnNewModel(agent, "same", "m")
+	resumeOnNewModel(agent, "needs-plan", "m")
 	if _, ok := readStopped(agent, sp); !ok {
 		t.Fatal("an answer from the same model keeps the stop")
 	}
-	resumeOnNewModel(agent, "same", "m2")
+	resumeOnNewModel(agent, "needs-plan", "m2")
 	if _, ok := readStopped(agent, sp); ok {
 		t.Fatal("an answer from another model removes the stop")
 	}
 	other, _ := json.Marshal(stoppedLine{Model: "m", SpecHash: "another-wording"})
-	if err := os.WriteFile(stoppedPath(agent, "same"), other, 0o600); err != nil {
+	if err := writeStop(agent, "needs-plan", other); err != nil {
 		t.Fatal(err)
 	}
-	if hookSkipsStopped(agent, "same", map[string]string{"a": "1"}) || hookSkipsStopped(agent, "same", map[string]string{"a": "2"}) {
+	if hookSkipsStopped(agent, "needs-plan", map[string]string{"a": "1"}) || hookSkipsStopped(agent, "needs-plan", map[string]string{"a": "2"}) {
 		t.Fatal("a stop measured on another wording does not stop the current one")
 	}
 }
@@ -162,7 +189,7 @@ func TestLineStateSaysAQuestionIsStopped(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(agent, "decisions"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := writeNoulSpec(t, filepath.Join(agent, "decisions"))
+	path := writeHookNoulSpec(t, filepath.Join(agent, "decisions"))
 	sp := mustLoad(t, path)
 	st := store.Store{Dir: agent}
 	for i := 0; i < 6; i++ {
@@ -170,12 +197,12 @@ func TestLineStateSaysAQuestionIsStopped(t *testing.T) {
 		if i%2 == 1 {
 			truth = "no"
 		}
-		if err := st.AppendLabel(store.Label{TraceID: fmt.Sprintf("%016x", i), SpecID: "same", SpecHash: sp.Hash(), Model: "m", InputsHash: fmt.Sprint(i), Raw: map[string]float64{"yes": 0.5}, Truth: truth, Weight: 1, Source: "ui", At: time.Now()}); err != nil {
+		if err := st.AppendLabel(store.Label{TraceID: fmt.Sprintf("%016x", i), SpecID: "needs-plan", SpecHash: sp.Hash(), Model: "m", InputsHash: fmt.Sprint(i), Raw: map[string]float64{"yes": 0.5}, Truth: truth, Weight: 1, Source: "ui", At: time.Now()}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	b, _ := json.Marshal(stoppedLine{Model: "m", SpecHash: sp.Hash(), AUC: 0.35, Low: 0.19, High: 0.51, Pos: 3, Neg: 3})
-	if err := os.WriteFile(stoppedPath(agent, "same"), b, 0o600); err != nil {
+	if err := writeStop(agent, "needs-plan", b); err != nil {
 		t.Fatal(err)
 	}
 	_, s, ok := currentLineState(agent, sp)
@@ -183,7 +210,7 @@ func TestLineStateSaysAQuestionIsStopped(t *testing.T) {
 		t.Fatalf("the line state is stopped with the reason: %+v %q", s, s.statusNote(sp, sp.Eval.MinN))
 	}
 	other, _ := json.Marshal(stoppedLine{Model: "m2", SpecHash: sp.Hash()})
-	if err := os.WriteFile(stoppedPath(agent, "same"), other, 0o600); err != nil {
+	if err := writeStop(agent, "needs-plan", other); err != nil {
 		t.Fatal(err)
 	}
 	if _, s, _ := currentLineState(agent, sp); s.Kind == lineStopped {
@@ -206,26 +233,26 @@ func TestHookDoesNotAskTheModelForAStoppedQuestion(t *testing.T) {
 	}))
 	t.Cleanup(model.Close)
 	agent := hookEnv(t, model)
-	sp := mustLoad(t, writeNoulSpec(t, filepath.Join(agent, "decisions")))
+	sp := mustLoad(t, writeHookNoulSpec(t, filepath.Join(agent, "decisions")))
 	b, _ := json.Marshal(stoppedLine{Model: "m", SpecHash: sp.Hash(), AUC: 0.5, Low: 0.4, High: 0.6})
-	if err := os.WriteFile(stoppedPath(agent, "same"), b, 0o600); err != nil {
+	if err := writeStop(agent, "needs-plan", b); err != nil {
 		t.Fatal(err)
 	}
 	var skipped, picked map[string]string
 	for i := 0; skipped == nil || picked == nil; i++ { // the first input of each kind (stoppedAsk is a fixed hash, so these are always the same)
 		in := map[string]string{"a": fmt.Sprint(i)}
-		if stoppedAsk("same", in) {
+		if stoppedAsk("needs-plan", in) {
 			picked = in
 		} else if skipped == nil {
 			skipped = in
 		}
 	}
 	calls = 0 // only the calls below count (setting up the project may reach the model)
-	ds, _, err := hookDecideAll(agent, []string{"same"}, skipped, "p", nil)
+	ds, _, err := hookDecideAll(agent, []string{"needs-plan"}, skipped, "p", nil)
 	if err != nil || ds[0] != nil || calls != 0 {
 		t.Fatalf("a stopped question is not asked: d=%v calls=%d err=%v", ds[0], calls, err)
 	}
-	ds, _, err = hookDecideAll(agent, []string{"same"}, picked, "p", nil)
+	ds, _, err = hookDecideAll(agent, []string{"needs-plan"}, picked, "p", nil)
 	if err != nil || ds[0] == nil || calls != 1 {
 		t.Fatalf("1 request in 20 still asks it: d=%v calls=%d err=%v", ds[0], calls, err)
 	}
@@ -279,4 +306,156 @@ func TestDiscardNoticeNeedsTheShareOfNoToReachAct(t *testing.T) {
 			t.Fatalf("share %.2f: notice %v, want %v: %q", tc.share, got, tc.notice, out.System)
 		}
 	}
+}
+
+// skippedOf counts the requests (inputs a=0..n-1) on which the hook leaves the question unasked.
+func skippedOf(agent, specID string, n int) int {
+	k := 0
+	for i := 0; i < n; i++ {
+		if hookSkipsStopped(agent, specID, map[string]string{"a": fmt.Sprint(i)}) {
+			k++
+		}
+	}
+	return k
+}
+
+func hookStopAgent(t *testing.T) (agent, path string) {
+	t.Helper()
+	agent = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(agent, "decisions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return agent, writeHookNoulSpec(t, filepath.Join(agent, "decisions"))
+}
+
+// A question with a line for one model is never stopped by another model's refused calibration (the stop would silence the line).
+func TestStopOfAnotherModelLeavesAQuestionWithALineAsked(t *testing.T) {
+	agent, path := hookStopAgent(t)
+	if r, err := calibrateRows(t, path, agent, clearRows(), "a"); err != nil {
+		t.Fatalf("a line for model a: %v\n%s", err, r)
+	}
+	if _, err := calibrateRows(t, path, agent, noSignalRows(), "b"); err == nil {
+		t.Fatal("model b is refused")
+	}
+	if n := skippedOf(agent, "needs-plan", 100); n != 0 {
+		t.Fatalf("model a has a line, so the question is asked on every request: skipped %d of 100", n)
+	}
+}
+
+// A later refused calibration of the same model keeps its earlier line in the spec: no stop is kept, and status keeps saying calibrated.
+func TestNoStopWhileTheQuestionHasALine(t *testing.T) {
+	agent, path := hookStopAgent(t)
+	if r, err := calibrateRows(t, path, agent, clearRows(), "a"); err != nil {
+		t.Fatalf("a line: %v\n%s", err, r)
+	}
+	if _, err := calibrateRows(t, path, agent, noSignalRows(), "a"); err == nil {
+		t.Fatal("refused")
+	}
+	sp := mustLoad(t, path)
+	if _, ok := readStopped(agent, sp); ok || skippedOf(agent, "needs-plan", 100) != 0 {
+		t.Fatal("a question with a line is not stopped")
+	}
+	if _, err := os.Stat(stoppedPath(agent, "needs-plan", sp.Hash())); !os.IsNotExist(err) {
+		t.Fatalf("no stop is kept for a question with a line: %v", err)
+	}
+}
+
+// Trying another wording of the same question (tune calibrates <id>-v2.yaml) keeps the current wording's stop.
+func TestStopOfAnotherWordingKeepsTheCurrentStop(t *testing.T) {
+	agent, path := hookStopAgent(t)
+	if _, err := calibrateRows(t, path, agent, noSignalRows(), "a"); err == nil {
+		t.Fatal("refused")
+	}
+	src, _ := os.ReadFile(path)
+	v2 := filepath.Join(t.TempDir(), "needs-plan-v2.yaml")
+	if err := os.WriteFile(v2, bytes.Replace(src, []byte("Same case?"), []byte("Is it the same case?"), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := calibrateRows(t, v2, agent, noSignalRows(), "a"); err == nil {
+		t.Fatal("the other wording is refused too")
+	}
+	if _, ok := readStopped(agent, mustLoad(t, path)); !ok {
+		t.Fatal("the current wording stays stopped")
+	}
+}
+
+// A line on the context rung keeps the question asked even when the minimal rung was stopped.
+func TestStopOnTheMinimalRungLeavesAContextLineUsed(t *testing.T) {
+	agent, path := hookStopAgent(t)
+	src, _ := os.ReadFile(path)
+	if err := os.WriteFile(path, bytes.Replace(src, []byte("  required: [a]\n"), []byte("  required: [a]\n  context: \"{{ a }} {{ conversation }}\"\n"), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := calibrateRows(t, path, agent, noSignalRows(), "a"); err == nil {
+		t.Fatal("the minimal rung is refused")
+	}
+	sp := mustLoad(t, path)
+	if _, ok := readStopped(agent, sp); !ok {
+		t.Fatal("the minimal rung's stop is kept")
+	}
+	sp.PutCalibration(spec.Calibration{Model: "a", SpecHash: sp.ContextSpec().Hash(), Method: "identity", N: 100, PrecisionAt: 0.9, FittedAt: "2026-10-28"})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if n := skippedOf(agent, "needs-plan", 100); n != 0 {
+		t.Fatalf("the context rung has a line, so the question is asked: skipped %d of 100", n)
+	}
+	if _, s, _ := currentLineState(agent, mustLoad(t, path)); s.Kind == lineStopped {
+		t.Fatal("status does not call a question with a line stopped")
+	}
+}
+
+// Only the hook's questions are stopped: the hook is what asks a stopped question on 1 request in 20, so a question asked elsewhere
+// (the wiki's, a person's own) is never called stopped.
+func TestOnlyTheHooksQuestionsAreStopped(t *testing.T) {
+	dir := t.TempDir()
+	path := writeNoulSpec(t, dir)
+	storeDir := filepath.Join(dir, "store")
+	if _, err := calibrateRows(t, path, storeDir, noSignalRows()); err == nil {
+		t.Fatal("refused")
+	}
+	if entries, _ := os.ReadDir(storeDir); len(entries) > 0 {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), "stopped-") {
+				t.Fatalf("no stop for a question the hook does not ask: %s", e.Name())
+			}
+		}
+	}
+}
+
+// The page says stopped for a stopped hook question.
+func TestStatusAPISaysAHookQuestionIsStopped(t *testing.T) {
+	repo := gitRepo(t)
+	hookEnv(t, nil)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	sp := mustLoad(t, filepath.Join(root, "decisions", "needs-plan.yaml"))
+	st := store.Store{Dir: root}
+	if err := st.AppendLabels([]store.Label{{TraceID: "y1", SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "m1", InputsHash: "y1", Truth: "yes", Weight: 1, Source: "ui", At: time.Now()}}); err != nil {
+		t.Fatal(err)
+	}
+	stop, _ := json.Marshal(stoppedLine{Model: "m1", SpecHash: sp.Hash(), AUC: 0.5, Low: 0.3, High: 0.6})
+	if err := writeStop(root, "needs-plan", stop); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+	var body struct {
+		Specs []struct {
+			ID   string           `json:"id"`
+			Keys []map[string]any `json:"keys"`
+		} `json:"specs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range body.Specs {
+		if s.ID == "needs-plan" {
+			if len(s.Keys) != 1 || s.Keys[0]["state"] != "stopped" {
+				t.Fatalf("the page says stopped: %+v", s.Keys)
+			}
+			return
+		}
+	}
+	t.Fatal("needs-plan is on the page")
 }

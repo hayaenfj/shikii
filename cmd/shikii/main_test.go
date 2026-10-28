@@ -1391,8 +1391,12 @@ func TestCheckMeasuresActPrecisionOnHumanTruthsToo(t *testing.T) {
 	st := store.Store{Dir: storeDir}
 	add := func(i int, truth, source string) {
 		in := map[string]string{"message": "m" + string(rune('a'+i))}
+		top := 0.95 // the probability tells right from wrong (0.10: check fails a line whose probabilities say nothing), and both are above act
+		if truth != "change_request" {
+			top = 0.9
+		}
 		l := store.Label{TraceID: store.NewTraceID(), SpecID: "intent", SpecHash: sp.Hash(), Type: "choice", Model: "m", InputsHash: store.HashInputs(in), Inputs: in,
-			Raw: map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}, Truth: truth, Weight: 1, Source: source, At: time.Now()}
+			Raw: map[string]float64{"change_request": top, "question": 1 - top, "other": 0}, Truth: truth, Weight: 1, Source: source, At: time.Now()}
 		if err := st.AppendLabel(l); err != nil {
 			t.Fatal(err)
 		}
@@ -2265,4 +2269,64 @@ func TestMain(m *testing.M) {
 	store.SyncTemp = func(*os.File) error { return nil }
 	syncPersonFile = func(*os.File) error { return nil }
 	os.Exit(m.Run())
+}
+
+// check fails a choice line whose top answer's probability does not tell right from wrong (0.10, the same rule as yes/no questions).
+func TestCheckFailsAChoiceLineWithNoClearSignal(t *testing.T) {
+	dir := t.TempDir()
+	path := writeSpec(t, dir, "false")
+	rows := []map[string]any{}
+	for i := 0; i < 200; i++ {
+		truth := "question"
+		if i%10 == 0 {
+			truth = "other"
+		}
+		rows = append(rows, map[string]any{"inputs": map[string]string{"message": fmt.Sprint(i)}, "truth": truth,
+			"raw": map[string]float64{"question": 0.9, "change_request": 0.05, "other": 0.05}})
+	}
+	file := filepath.Join(dir, "labels.json")
+	data, _ := json.Marshal(rows)
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src, _ := os.ReadFile(path)
+	if err := os.WriteFile(path, bytes.Replace(src, []byte("eval:\n"), []byte("eval:\n  labeled: "+file+"\n"), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sp := mustLoad(t, path)
+	sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", FittedOn: file, N: 200, FittedAt: "2026-10-28"})
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	out := capture(t, func() error { err = cmdCheck([]string{"--store", filepath.Join(dir, "store"), path}); return nil })
+	if err == nil || !strings.Contains(out+err.Error(), "do not tell the answers apart") {
+		t.Fatalf("check fails the choice line with no clear signal: err=%v\n%s", err, out)
+	}
+}
+
+// 0.10: a choice question whose top answer's probability says nothing about whether it is right (always 0.9, right 9 times in 10)
+// gets no line, though the share of right answers alone passes the precision at act (the same rule as yes/no questions).
+func TestChoiceLineNeedsAClearSignal(t *testing.T) {
+	dir := t.TempDir()
+	path := writeSpec(t, dir, "false")
+	rows := []map[string]any{}
+	for i := 0; i < 200; i++ {
+		truth := "question"
+		if i%10 == 0 {
+			truth = "other"
+		}
+		rows = append(rows, map[string]any{"inputs": map[string]string{"message": fmt.Sprint(i)}, "truth": truth,
+			"raw": map[string]float64{"question": 0.9, "change_request": 0.05, "other": 0.05}})
+	}
+	file := filepath.Join(dir, "labels.json")
+	data, _ := json.Marshal(rows)
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var report bytes.Buffer
+	err := runCalibrate(path, calibrateOpts{output: &report, storeDir: filepath.Join(dir, "store"), labeled: file, write: true})
+	if err == nil || len(mustLoad(t, path).Calibration) > 0 {
+		t.Fatalf("no line without a clear signal: %v\n%s", err, report.String())
+	}
 }

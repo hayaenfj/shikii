@@ -68,7 +68,7 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 	}
 	// 0.10: the stop rule kept a stop for this wording and model (line_stop.go): status gives the reason and the person is told once
 	stop, _ := json.Marshal(stoppedLine{Model: "m1", SpecHash: sp.Hash(), AUC: 0.35, Low: 0.19, High: 0.51, Pos: 5, Neg: sp.Eval.MinN})
-	if err := os.WriteFile(stoppedPath(agent, "changes-in-scope"), stop, 0o600); err != nil {
+	if err := writeStop(agent, "changes-in-scope", stop); err != nil {
 		t.Fatal(err)
 	}
 	if out := status(); !strings.Contains(out, "stopped: the probabilities do not tell the answers apart (AUC 0.35") {
@@ -77,9 +77,7 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 	if line := lineSummary(agent); !strings.Contains(line, "so it is stopped") {
 		t.Fatalf("tells the person the question is stopped: %q", line)
 	}
-	if err := os.Remove(stoppedPath(agent, "changes-in-scope")); err != nil {
-		t.Fatal(err)
-	}
+	clearStopped(agent, "changes-in-scope", sp.Hash())
 
 	sp.Calibration = []spec.Calibration{{Model: "m1", SpecHash: sp.Hash(), Method: "platt", N: sp.Eval.MinN + 5}}
 	if err := sp.Save(); err != nil {
@@ -143,9 +141,9 @@ func TestStatusAPIShowsWhyNoLineWasDrawn(t *testing.T) {
 		t.Fatalf("not_separable when tried and no line was drawn: %q", got)
 	}
 	stop, _ := json.Marshal(stoppedLine{Model: "m1", SpecHash: sp.Hash(), AUC: 0.5, Low: 0.3, High: 0.6})
-	os.WriteFile(stoppedPath(root, "wiki-place"), stop, 0o600)
-	if got := state(); got != "stopped" {
-		t.Fatalf("stopped when the stop rule stopped the question (0.10): %q", got)
+	writeStop(root, "wiki-place", stop)
+	if got := state(); got != "not_separable" {
+		t.Fatalf("only the hook's questions are stopped (asked on 1 request in 20), so a stop kept for wiki-place does not apply: %q", got)
 	}
 }
 

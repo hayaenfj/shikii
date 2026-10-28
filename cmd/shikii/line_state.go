@@ -180,8 +180,8 @@ func lineSummary(agent string) string {
 				fmt.Sprintf("shikii: 問い「%s」は正解が %d 件たまりましたが、答えが片方だけ(%s)なので、AI がひとりで決めてよい境目をまだ決められません。%s", name, s.N, jaCounts(sp, s.Truths), ja), loc))
 		case lineStopped:
 			lines = append(lines, bi(
-				fmt.Sprintf("shikii: %q could not tell the answers apart well enough with this wording and model (checked on %d truths), so it is stopped: the AI is asked it on 1 request in %d only. Nothing for you to do; a new wording or model tries it again.", enName, s.N, stoppedEvery),
-				fmt.Sprintf("shikii: 問い「%s」は、今の聞き方とモデルでは答えを見分ける力が足りなかった(正解 %d 件で確かめた)ので止めました。これからは依頼の %d 回に 1 回だけ AI に聞きます。あなたがすることはありません。聞き方かモデルが変わると、また試します。", name, s.N, stoppedEvery), loc))
+				fmt.Sprintf("shikii: %q could not tell the answers apart well enough with this wording and model (checked on %d truths), so it is stopped: the AI is asked it on 1 request in %d only. Nothing for you to do; a new wording, or another model answering one of those requests, tries it again.", enName, s.N, stoppedEvery),
+				fmt.Sprintf("shikii: 問い「%s」は、今の聞き方とモデルでは答えを見分ける力が足りなかった(正解 %d 件で確かめた)ので止めました。これからは依頼の %d 回に 1 回だけ AI に聞きます。あなたがすることはありません。聞き方が変わるか、その 1 回に別のモデルが答えると、また試します。", name, s.N, stoppedEvery), loc))
 		case lineNotSeparable:
 			en, ja := fmt.Sprintf("It is tried again when %d more truths arrive.", hookRecalibrateEvery), fmt.Sprintf("正解が %d 件増えたら、もう一度試します。", hookRecalibrateEvery)
 			if wordings {
