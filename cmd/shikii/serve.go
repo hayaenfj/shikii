@@ -906,22 +906,18 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	if sp.ID == "wiki-conflict" {
 		settled = settledDrafts(s.st)
 	}
-	// a few decisions an outcome answered go to the person while that outcome's agreement is unsettled (0.11)
-	checkOutcome := false
-	if outcomeCheckSpecs[id] {
-		_, all, err := s.st.Counts(id)
-		if err != nil {
-			writeErr(w, 500, err)
-			return
-		}
-		checkOutcome = !store.OutcomeAgreement(all).Settled(sp.Thresholds.Act)
+	_, all, err := s.st.Counts(id)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
 	}
+	checkOutcome := outcomeChecksOpen(sp, all)
 	for _, rec := range recs {
 		if legacyPlanningRecord(sp, rec) || undecidedConflict(sp.ID, rec, labeled, settled) {
 			continue
 		}
 		show, audit, reason := reviewQueueState(rec, labeled, reviews)
-		if l, ok := labeled[rec.TraceID]; checkOutcome && !show && ok && l.Source == "outcome" && store.OutcomeCheckSample(rec.TraceID) && len(rec.Inputs) > 0 {
+		if !show && outcomeCheckShown(checkOutcome, rec, labeled) {
 			show, audit, reason = true, true, "outcome"
 		}
 		if show && !superseded[rec.TraceID] {
@@ -994,6 +990,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err)
 			return
 		}
+		checkOutcome := outcomeChecksOpen(sp, labs)
 		byKey := map[string]bool{}
 		for _, l := range labs {
 			byKey[l.Model+"\x00"+l.SpecHash] = true
@@ -1069,6 +1066,9 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				if waitsForPersonRecord(sp.ID, rec, audit) { // only spot checks and unsure decisions whose truth no outcome gives wait for a person's answer (0.8.0)
 					waitingPerson++
 				}
+			} else if outcomeCheckShown(checkOutcome, rec, labeled) { // an outcome check waits for the person as the queue shows it (0.11)
+				todo++
+				waitingPerson++
 			}
 			if _, graded := reviews[rec.TraceID]; rec.ReviewPending && !graded {
 				if _, answered := labeled[rec.TraceID]; !answered {

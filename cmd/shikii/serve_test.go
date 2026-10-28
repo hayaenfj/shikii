@@ -1591,3 +1591,26 @@ func TestQueueDoesNotAskToCheckPromptKindOutcomes(t *testing.T) {
 		t.Fatalf("no outcome check is asked for prompt-kind: %d", len(body.Items))
 	}
 }
+
+// The Answer screen loads only the questions whose /v1/status waiting_for_person is above 0, so the outcome checks the queue shows
+// are counted there too (0.11: they were only in the queue, and the Answer screen said nothing was waiting).
+func TestStatusCountsOutcomeChecksAsWaitingForThePerson(t *testing.T) {
+	root, sampled := outcomeFixture(t, 60)
+	r := httptest.NewRecorder()
+	newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions")}).ServeHTTP(r, httptest.NewRequest("GET", "/v1/status", nil))
+	var body struct {
+		Specs []map[string]any `json:"specs"`
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range body.Specs {
+		if s["id"] == "changes-in-scope" {
+			if s["waiting_for_person"] != float64(len(sampled)) {
+				t.Fatalf("the outcome checks wait for the person on the Answer screen: %v, want %d", s["waiting_for_person"], len(sampled))
+			}
+			return
+		}
+	}
+	t.Fatal("changes-in-scope is in the status")
+}

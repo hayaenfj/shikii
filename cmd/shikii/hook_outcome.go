@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/decide"
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -375,4 +376,17 @@ func parseListing(listing string) map[string]string {
 		m[line[tab+1:]] = meta[0] + " " + meta[1] // mode and blob id (a chmod-only change also counts as "changed")
 	}
 	return m
+}
+
+// outcomeChecksOpen reports whether the question's outcome truths are still being checked by the person (0.11): one of
+// outcomeCheckSpecs whose agreement is not settled yet. all are the question's labels.
+func outcomeChecksOpen(sp *spec.Spec, all []store.Label) bool {
+	return outcomeCheckSpecs[sp.ID] && !store.OutcomeAgreement(all).Settled(sp.Thresholds.Act)
+}
+
+// outcomeCheckShown reports whether a decision is shown to the person as an outcome check: checks are open, an outcome gave its
+// latest truth, it is one of the fixed sample, and it has text to answer. The queue and the status count use this one rule.
+func outcomeCheckShown(open bool, rec store.Record, labeled map[string]store.Label) bool {
+	l, ok := labeled[rec.TraceID]
+	return open && ok && l.Source == "outcome" && store.OutcomeCheckSample(rec.TraceID) && len(rec.Inputs) > 0
 }
