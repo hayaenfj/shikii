@@ -1967,46 +1967,56 @@ func hookEvents() []hookEvent {
 // (0.9.3 and earlier wrote it bare: with a space in the path the shell ran only the part before it, and the hook never worked).
 func hookCommand(exe, event string) string { return shellQuote(exe) + " hook " + event }
 
-// hookBinary is the binary of a hook command `<binary> hook <event>`: a bare path (also one with spaces, as 0.9.3 and earlier wrote it),
-// a path in single quotes as hookCommand writes it, or a path in double quotes as a person may write it. ok is false when the command is
-// not of that form. The path is as written: ~ and $HOME are not expanded (hookBinaryWord says whether the shell expands them).
+// hookBinary is the binary of a hook command in a form shikii writes, `<binary> hook <event>`: the binary is a path in single quotes as
+// hookCommand writes it, or bare as hookCommand writes it (an absolute path, or `shikii` on PATH as older versions wrote it; 0.9.3 and
+// earlier also wrote an absolute path with spaces bare). Nothing is read as a shell would: a command written another way (~, $HOME,
+// double quotes, a backslash) is not of this form, ok is false, and shikii neither checks nor changes it (handWrittenShikiiHook).
 func hookBinary(command string) (string, bool) {
-	bin, _, ok := hookBinaryWord(command)
-	return bin, ok
-}
-
-// shellExpands is what the shell expands in the binary's word: nothing (single quotes), $VAR (double quotes), or also a leading ~ (bare).
-type shellExpands int
-
-const (
-	expandsNothing shellExpands = iota
-	expandsVars
-	expandsVarsAndTilde
-)
-
-func hookBinaryWord(command string) (string, shellExpands, bool) {
 	c := strings.TrimSpace(command)
 	i := strings.LastIndex(c, " hook ")
 	if i <= 0 || strings.TrimSpace(c[i+len(" hook "):]) == "" {
-		return "", expandsNothing, false
+		return "", false
 	}
 	bin := strings.TrimSpace(c[:i])
-	expands := expandsVarsAndTilde
-	switch {
-	case len(bin) >= 2 && bin[0] == '\'' && bin[len(bin)-1] == '\'':
-		bin, expands = strings.ReplaceAll(bin[1:len(bin)-1], `'\''`, "'"), expandsNothing
-	case len(bin) >= 2 && bin[0] == '"' && bin[len(bin)-1] == '"':
-		bin, expands = bin[1:len(bin)-1], expandsVars
-		if strings.ContainsAny(bin, "\"\\`") {
-			return "", expandsNothing, false // escapes or a command inside: not a plain path
+	if len(bin) >= 2 && bin[0] == '\'' && bin[len(bin)-1] == '\'' {
+		path := strings.ReplaceAll(bin[1:len(bin)-1], `'\''`, "'")
+		if "'"+strings.ReplaceAll(path, "'", `'\''`)+"'" != bin || !filepath.IsAbs(path) {
+			return "", false
 		}
-	case strings.ContainsAny(bin, "'\""):
-		return "", expandsNothing, false
+		return path, true
 	}
-	if strings.ContainsAny(bin, " \t") && !filepath.IsAbs(bin) && !(expands == expandsVars && strings.HasPrefix(bin, "$")) {
-		return "", expandsNothing, false // `env shikii`, `shikii-tool run`: not a path to a binary
+	for _, r := range bin {
+		if r < 0x80 && !strings.ContainsRune(shellPlain, r) && !(r == ' ' && filepath.IsAbs(bin)) {
+			return "", false // a character the shell reads specially: not a form shikii writes
+		}
 	}
-	return bin, expands, true
+	if !filepath.IsAbs(bin) && strings.Contains(bin, "/") {
+		return "", false // a relative path (or ~/…): not a form shikii writes
+	}
+	return bin, true
+}
+
+// shikiiHookEvent reports whether event is one of shikii's own hook events (hookEvents), or the pre-tool-use older versions added.
+func shikiiHookEvent(event string) bool {
+	if event == "pre-tool-use" {
+		return true
+	}
+	for _, ev := range hookEvents() {
+		if strings.HasSuffix(ev.cmd, " hook "+event) {
+			return true
+		}
+	}
+	return false
+}
+
+// hookEventOf is the event a hook command `… hook <event>` runs, or "".
+func hookEventOf(command string) string {
+	c := strings.TrimSpace(command)
+	i := strings.LastIndex(c, " hook ")
+	if i <= 0 {
+		return ""
+	}
+	return c[i+len(" hook "):]
 }
 
 // hookEventsFor is the hooks added per settings file. Codex has no SubagentStart, so it is left out.
@@ -2029,10 +2039,20 @@ func hookEventNames(evs []hookEvent) string {
 	return strings.Join(names, ", ")
 }
 
-// isShikiiHook reports whether a handler's command is a shikii hook: `<…/>shikii[…] hook <event>` (the `shikii` on PATH or an absolute path, and also the old pre-tool-use).
+// isShikiiHook reports whether a handler's command is a shikii hook: in a form shikii writes (hookBinary), the binary's name starts
+// with shikii, and the event is one of shikii's own (shikiiHookEvent). Another tool named shikii-… with its own events is not shikii's.
 func isShikiiHook(command string) bool {
 	bin, ok := hookBinary(command)
-	return ok && strings.HasPrefix(filepath.Base(bin), "shikii")
+	return ok && strings.HasPrefix(filepath.Base(bin), "shikii") && shikiiHookEvent(hookEventOf(command))
+}
+
+// handWrittenShikiiHook reports whether a command runs one of shikii's hook events with shikii in it, but not in a form shikii writes
+// (a person wrote it with ~, $HOME, double quotes, a backslash…). shikii does not read it as a shell would: doctor says it was not
+// checked, and hook install leaves it as it is.
+func handWrittenShikiiHook(command string) bool {
+	c := strings.TrimSpace(command)
+	i := strings.LastIndex(c, " hook ")
+	return i > 0 && strings.Contains(c[:i], "shikii") && shikiiHookEvent(hookEventOf(c)) && !isShikiiHook(c)
 }
 
 // hookTargets are the settings files the hooks are written to (under home, fixed). The same 2 are added to both. Settings files for tools that are not installed are also created (same style as init; delete them if not needed).

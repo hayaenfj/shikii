@@ -3811,34 +3811,95 @@ func TestWordingCheckNotAskedAfterTheQuestionChanged(t *testing.T) {
 	_ = agent
 }
 
-// A shikii hook a person wrote with the path in double quotes is shikii's too: install replaces it with the current one instead of
-// leaving both (each turn would then run two shikii hooks), and a double-quoted command that is not a plain path is not taken for one.
-func TestHookInstallReplacesAnOldHookWrittenInDoubleQuotes(t *testing.T) {
+// hookSettingsWith writes a settings file with one handler per command, each under its event, and returns its path.
+func hookSettingsWith(t *testing.T, commands map[string]string) string {
+	t.Helper()
 	settings := filepath.Join(t.TempDir(), "settings.json")
-	old := filepath.Join(t.TempDir(), "Application Support", "go", "bin", "shikii")
-	body := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":` + fmt.Sprintf("%q", fmt.Sprintf("%q hook stop", old)) + `}]}]}}`
-	if err := os.WriteFile(settings, []byte(body), 0o644); err != nil {
+	hooks := map[string]any{}
+	for command, event := range commands {
+		group := map[string]any{"hooks": []any{map[string]any{"type": "command", "command": command}}}
+		list, _ := hooks[event].([]any)
+		hooks[event] = append(list, group)
+	}
+	b, err := json.Marshal(map[string]any{"hooks": hooks})
+	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(settings, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return settings
+}
+
+// readHookCommands is every handler's command in a settings file.
+func readHookCommands(t *testing.T, settings string) map[string]bool {
+	t.Helper()
+	b, err := os.ReadFile(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, groups := range cfg.Hooks {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				got[h.Command] = true
+			}
+		}
+	}
+	return got
+}
+
+// Another tool whose name starts with shikii (shikii-notify) has its own hooks: install keeps them whatever way they are written,
+// because a hook is shikii's only when it also runs one of shikii's own hook events.
+func TestHookInstallKeepsAnotherToolsHookWhoseNameStartsWithShikii(t *testing.T) {
+	others := []string{`"/opt/tools/shikii-notify" hook done`, "shikii-notify hook done", "/opt/tools/shikii-notify hook done", "'/opt/my tools/shikii-notify' hook done"}
+	commands := map[string]string{}
+	for _, c := range others {
+		commands[c] = "Notification"
+	}
+	settings := hookSettingsWith(t, commands)
 	if _, err := editHooks(settings, true, hookEventsFor("Claude Code")); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(settings)
-	if strings.Contains(string(b), "Application Support") {
-		t.Fatalf("install must remove the old shikii hook written in double quotes, the settings are:\n%s", b)
+	got := readHookCommands(t, settings)
+	for _, c := range others {
+		if !got[c] {
+			t.Fatalf("install must keep the other tool's hook %s, the hooks are %v", c, got)
+		}
 	}
-	if n := strings.Count(string(b), " hook stop"); n != 1 {
-		t.Fatalf("install must leave one Stop hook of shikii, left %d:\n%s", n, b)
+}
+
+// A shikii hook a person wrote by hand (with ~, $HOME, double quotes or a backslash) is not in the form shikii writes, so install
+// leaves the person's line as it is and adds shikii's own hook next to it (doctor tells the person they may now have two).
+func TestHookInstallLeavesAHandWrittenShikiiHookAlone(t *testing.T) {
+	hand := []string{`"$HOME"/go/bin/shikii hook stop`, "~/.local/bin/shikii hook stop", "$HOME/.local/bin/shikii hook stop", `"/a b/shikii" hook stop`, `/a\ b/shikii hook stop`}
+	commands := map[string]string{}
+	for _, c := range hand {
+		commands[c] = "Stop"
 	}
-	for cmd, want := range map[string]bool{
-		`"/a b/shikii" hook stop`:             true,
-		`"$HOME/.local/bin/shikii" hook stop`: true,
-		`"/a \"b\"/shikii" hook stop`:         false,
-		"\"/a `b`/shikii\" hook stop":         false,
-		`"/x/other" hook stop`:                false,
-	} {
-		if got := isShikiiHook(cmd); got != want {
-			t.Fatalf("isShikiiHook(%q) = %v, want %v", cmd, got, want)
+	settings := hookSettingsWith(t, commands)
+	if _, err := editHooks(settings, true, hookEventsFor("Claude Code")); err != nil {
+		t.Fatal(err)
+	}
+	got := readHookCommands(t, settings)
+	for _, c := range hand {
+		if !got[c] {
+			t.Fatalf("install must leave the hand-written hook %s, the hooks are %v", c, got)
+		}
+	}
+	for _, ev := range hookEventsFor("Claude Code") {
+		if !got[ev.cmd] {
+			t.Fatalf("install must add shikii's own %s hook, the hooks are %v", ev.event, got)
 		}
 	}
 }

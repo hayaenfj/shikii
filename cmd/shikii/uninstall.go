@@ -226,8 +226,11 @@ func cmdUninstall(args []string) error {
 }
 
 // shellQuote quotes a path for the shell with single quotes when it needs them (a path with spaces stays one argument).
+// shellPlain is the characters a shell reads as themselves: shellQuote leaves a word of only these bare.
+const shellPlain = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./-+@:,%"
+
 func shellQuote(s string) string {
-	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./-+@:,%") == "" {
+	if s != "" && strings.Trim(s, shellPlain) == "" {
 		return s // nothing the shell reads specially
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"

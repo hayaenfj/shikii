@@ -345,18 +345,15 @@ func cmdDoctor(args []string) error {
 // registeredBinaryLines says, for the hooks (hookTargets) and Codex's MCP registration (~/.codex/config.toml), which shikii binary they
 // run, and when that binary is gone (a Go version manager removed its per-version folder, or the binary was moved), how to point them
 // at one that exists: hook install --yes rewrites the hooks, and the Codex block shikii wrote, to the binary that runs it.
-// A hook is run by a shell, so ~ and $HOME in its path are expanded as the shell would (in double quotes only $VAR, in single quotes
-// nothing), a folder or a file without permission to run is not ok, and a settings file that cannot be read is named, not skipped.
+// Only the hooks in a form shikii writes are checked (hookBinary: nothing is read as a shell would). A folder or a file without
+// permission to run is not ok, and a settings file that cannot be read is named, not skipped. A shikii hook a person wrote another way
+// (handWrittenShikiiHook) gets one note with its command: doctor did not check it, and hook install leaves it next to shikii's own.
 // A Codex block that hook install leaves alone (a person edited it, or an older version's form) gets the hand edit as its fix.
 func registeredBinaryLines(home, exe string) []string {
 	fix := "run " + shellQuote(exe) + " hook install --yes to point them at this shikii, or install again with the one line in the README (it puts shikii in ~/.local/bin)"
 	var lines []string
-	report := func(where, written, bin, fix string) {
-		shown := written
-		if bin != written {
-			shown += " (" + bin + ")"
-		}
-		switch exists, runs := hookBinaryRuns(bin); {
+	report := func(where, shown, fix string) {
+		switch exists, runs := hookBinaryRuns(shown); {
 		case runs:
 			lines = append(lines, fmt.Sprintf("ok   %s: %s", where, shown))
 		case exists:
@@ -379,7 +376,7 @@ func registeredBinaryLines(home, exe string) []string {
 			lines = append(lines, fmt.Sprintf("WARN %s: cannot read it (%v) → fix it by hand; hook install --yes stops on it too", where, err))
 			continue
 		}
-		var written []string
+		var bins, hand []string
 		seen := map[string]bool{}
 		hooks, _ := config["hooks"].(map[string]any)
 		for _, groups := range hooks {
@@ -392,15 +389,21 @@ func registeredBinaryLines(home, exe string) []string {
 					command, _ := handler["command"].(string)
 					if bin, ok := hookBinary(command); ok && isShikiiHook(command) && !seen[bin] {
 						seen[bin] = true
-						written = append(written, command)
+						bins = append(bins, bin)
+					} else if handWrittenShikiiHook(command) && !seen[command] {
+						seen[command] = true
+						hand = append(hand, command)
 					}
 				}
 			}
 		}
-		sort.Strings(written) // the same order on every run
-		for _, command := range written {
-			bin, expands, _ := hookBinaryWord(command)
-			report(where, bin, shellExpand(bin, expands, home), fix)
+		sort.Strings(bins) // the same order on every run
+		for _, bin := range bins {
+			report(where, bin, fix)
+		}
+		sort.Strings(hand)
+		for _, command := range hand {
+			lines = append(lines, fmt.Sprintf("note %s: %s was written by hand, so doctor did not check what it runs; hook install --yes leaves it as it is and adds shikii's own hook, so you may have two: remove yours if so", where, command))
 		}
 	}
 	codex := "Codex's MCP server in ~/.codex/config.toml"
@@ -421,7 +424,7 @@ func registeredBinaryLines(home, exe string) []string {
 			if _, fixable := codexServerFixed(b, codexServerArgs, exe); !fixable {
 				codexFix = "the block was edited by hand or is in an older version's form, so hook install leaves it as it is: set command = " + quotedList([]string{exe}) + " under [mcp_servers.shikii] in ~/.codex/config.toml by hand (Codex; reopen Codex)"
 			}
-			report(codex, bin, bin, codexFix)
+			report(codex, bin, codexFix)
 		}
 	}
 	return lines
@@ -439,26 +442,6 @@ func hookBinaryRuns(bin string) (exists, runs bool) {
 		return false, false
 	}
 	return true, info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
-}
-
-// shellExpand expands a hook's binary word as the shell does: a leading ~ to home (bare words only), and $HOME, ${HOME} and other
-// variables (not in single quotes). HOME is home; other variables come from this environment, which the agents pass on to their hooks.
-func shellExpand(bin string, expands shellExpands, home string) string {
-	if expands == expandsNothing {
-		return bin
-	}
-	vars := func(s string) string {
-		return os.Expand(s, func(name string) string {
-			if name == "HOME" {
-				return home
-			}
-			return os.Getenv(name)
-		})
-	}
-	if expands == expandsVarsAndTilde && (bin == "~" || strings.HasPrefix(bin, "~/")) {
-		return home + vars(bin[1:])
-	}
-	return vars(bin)
 }
 
 func orElse(s, fallback string) string {

@@ -785,6 +785,16 @@ func TestUninstAuditHooksWithASpaceInThePath(t *testing.T) {
 		"node /x/shikii.mjs":                    false,
 		"/usr/bin/env shikii hook stop":         false,
 		"bash -c 'cd /x && shikii hook stop'":   false,
+		// only the forms shikii writes, and only shikii's own hook events
+		"/opt/tools/shikii-notify hook done":   false,
+		`"/opt/tools/shikii-notify" hook done`: false,
+		"'/a b/shikii' hook done":              false,
+		"~/.local/bin/shikii hook stop":        false,
+		"$HOME/.local/bin/shikii hook stop":    false,
+		`"/a b/shikii" hook stop`:              false,
+		`/a\ b/shikii hook stop`:               false,
+		"bin/shikii hook stop":                 false,
+		"'/a/shikii'x hook stop":               false,
 	} {
 		if got := isShikiiHook(cmd); got != want {
 			t.Fatalf("isShikiiHook(%q) = %v, want %v", cmd, got, want)

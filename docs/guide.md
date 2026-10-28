@@ -372,7 +372,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii up` | Starts the local model (llama-server, plus `shikii-readout` for an ordinary GGUF). Starts nothing when a key is set |
 | `shikii serve` | The HTTP API and the answer page |
 | `shikii mcp` | The same as an MCP server over stdio (`shikii_specs`, `shikii_decide`, `shikii_label`, `shikii_status`, `shikii_tune`, `shikii_wiki`, `shikii_review`, `shikii_reflect`) |
-| `shikii doctor` | Checks the key, the local model and the store, and whether the shikii binary the hooks and Codex's MCP registration run still exists and can run (with how to fix it when it does not) |
+| `shikii doctor` | Checks the key, the local model and the store, and whether the shikii binary the hooks and Codex's MCP registration run still exists and can run (with how to fix it when it does not). It reads only the hook commands shikii writes; a shikii hook written by hand (with `~`, `$HOME` or double quotes) is shown with a note that it was not checked, and `hook install` leaves it as it is |
 | `shikii update` | Updates shikii and readout to the latest stable release |
 | `shikii hook install` / `uninstall` | Adds or removes the Claude Code and Codex hooks (without `--yes` it only shows what it would do) |
 | `shikii uninstall` | Removes what shikii put into the agents (hooks, MCP entries, the agent's instructions) and stops the pages. The data (`.shikii/`, `~/.shikii/agent`) and the binaries stay; it prints the `rm` command for them (without `--yes` it only shows what it would do) |

@@ -257,53 +257,84 @@ func TestDoctorNamesAFixForCodexThatWorksForThatBlock(t *testing.T) {
 	}
 }
 
-// A hook written with ~ or $HOME runs the binary the shell expands it to, so doctor checks that file; in single quotes the shell does
-// not expand them, so that hook runs nothing.
-func TestDoctorExpandsTildeAndHomeInAHookLikeTheShell(t *testing.T) {
-	home := t.TempDir()
+// doctor reads only the forms shikii writes (a bare absolute path, or a path in single quotes, then " hook <event>"). A shikii hook a
+// person wrote another way (~, $HOME, double quotes, a backslash) gets one line saying it was written by hand and not checked, with its
+// command: never ok or MISSING, which doctor cannot know without reading it as a shell would. After hook install --yes the person's
+// line is still there next to shikii's own hook, and the line says so (they may now have two). Another tool's hook says nothing.
+func TestDoctorSaysAHandWrittenShikiiHookWasNotChecked(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "a b")
 	t.Setenv("HOME", home)
 	bin := filepath.Join(home, ".local", "bin", "shikii")
-	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
-		t.Fatal(err)
+	spaced := filepath.Join(home, "my dir", "shikii")
+	for _, b := range []string{bin, spaced} {
+		if err := os.MkdirAll(filepath.Dir(b), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(b, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for command, want := range map[string]string{
-		"~/.local/bin/shikii hook stop":       "ok   ",
-		"$HOME/.local/bin/shikii hook stop":   "ok   ",
-		"${HOME}/.local/bin/shikii hook stop": "ok   ",
-		`"$HOME/.local/bin/shikii" hook stop`: "ok   ",
-		"'~/.local/bin/shikii' hook stop":     "MISSING ",
-		`"~/.local/bin/shikii" hook stop`:     "MISSING ",
-		"'$HOME/.local/bin/shikii' hook stop": "MISSING ",
+	for _, command := range []string{
+		"~/.local/bin/shikii hook stop",
+		"$HOME/.local/bin/shikii hook stop", // with a space in HOME the shell splits it: it does not run
+		"${HOME}/.local/bin/shikii hook stop",
+		`"$HOME/.local/bin/shikii" hook stop`,
+		`"$HOME"/go/bin/shikii hook stop`,                    // the binary is gone
+		strings.ReplaceAll(spaced, " ", `\ `) + " hook stop", // the binary exists
+		strconv.Quote(spaced) + " hook stop",
 	} {
 		writeHookFiles(t, home, command)
 		lines := registeredBinaryLines(home, mcpCommand())
 		if len(lines) != 2 {
-			t.Fatalf("%s: doctor must report both hook files, reported %q", command, lines)
+			t.Fatalf("%s: doctor must say one line for each hook file, said %q", command, lines)
+		}
+		for _, line := range lines {
+			if !strings.HasPrefix(line, "note ") || !strings.Contains(line, command) || !strings.Contains(line, "by hand") || !strings.Contains(line, "two") {
+				t.Fatalf("%s: doctor must say that the hook was written by hand and not checked, and that there may be two: %s", command, line)
+			}
+		}
+	}
+	writeHookFiles(t, home, `"$HOME"/go/bin/shikii hook stop`)
+	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	got := readHookCommands(t, filepath.Join(home, ".claude", "settings.json"))
+	if !got[`"$HOME"/go/bin/shikii hook stop`] {
+		t.Fatalf("hook install must leave the person's hand-written hook, the hooks are %v", got)
+	}
+	notes, oks := 0, 0
+	for _, line := range registeredBinaryLines(home, mcpCommand()) {
+		switch {
+		case strings.HasPrefix(line, "note "):
+			notes++
+		case strings.HasPrefix(line, "ok   "):
+			oks++
+		default:
+			t.Fatalf("after hook install --yes doctor must say ok for shikii's hook and note the hand-written one: %s", line)
+		}
+	}
+	if notes != 2 || oks != 2 {
+		t.Fatalf("doctor must say ok for shikii's hook and note the hand-written one in each file, said %d ok and %d notes", oks, notes)
+	}
+	for command, want := range map[string]string{
+		`"/opt/tools/shikii-notify" hook done`: "",         // another tool
+		"shikii-notify hook done":              "",         // another tool
+		"'" + spaced + "' hook stop":           "ok   ",    // shikii's form
+		"'/gone dir/shikii' hook stop":         "MISSING ", // shikii's form, gone
+	} {
+		writeHookFiles(t, home, command)
+		lines := registeredBinaryLines(home, mcpCommand())
+		if want == "" {
+			if len(lines) != 0 {
+				t.Fatalf("%s: another tool's hook must say nothing, said %q", command, lines)
+			}
+			continue
+		}
+		if len(lines) != 2 {
+			t.Fatalf("%s: doctor must report both hook files, said %q", command, lines)
 		}
 		for _, line := range lines {
 			if !strings.HasPrefix(line, want) {
 				t.Fatalf("%s: doctor must say %q, says %s", command, want, line)
 			}
-		}
-	}
-}
-
-// A hook whose path is in double quotes and whose binary is gone is reported like any other.
-func TestDoctorSaysWhenADoubleQuotedHookRunsAGoneBinary(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	gone := filepath.Join(home, "Application Support", "go", "bin", "shikii")
-	writeHookFiles(t, home, strconv.Quote(gone)+" hook stop")
-	lines := registeredBinaryLines(home, mcpCommand())
-	if len(lines) != 2 {
-		t.Fatalf("doctor must say that both hook files run %s, said %q", gone, lines)
-	}
-	for _, line := range lines {
-		if !strings.HasPrefix(line, "MISSING ") || !strings.Contains(line, gone) {
-			t.Fatalf("doctor must say the hooks run %s, which is gone: %s", gone, line)
 		}
 	}
 }
