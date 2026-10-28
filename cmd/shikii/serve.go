@@ -908,7 +908,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	// a few decisions an outcome answered go to the person while that outcome's agreement is unsettled (0.11)
 	checkOutcome := false
-	if outcomeSpecs[id] && !machineOnlySpecs[id] {
+	if outcomeCheckSpecs[id] {
 		_, all, err := s.st.Counts(id)
 		if err != nil {
 			writeErr(w, 500, err)

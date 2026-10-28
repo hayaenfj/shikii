@@ -2006,7 +2006,7 @@ func cmdStatus(args []string) error {
 			fmt.Fprintf(stdout, "  last label: %s\n", last.Format("2006-01-02 15:04"))
 			fmt.Fprintf(stdout, "  by source: %s\n", fmtCounts(bySource))
 			fmt.Fprintf(stdout, "  by truth:  %s\n", fmtCounts(byTruth))
-			if sp := specs[id]; bySource["outcome"] > 0 && outcomeSpecs[id] && !machineOnlySpecs[id] && sp != nil {
+			if sp := specs[id]; bySource["outcome"] > 0 && outcomeCheckSpecs[id] && sp != nil {
 				fmt.Fprintln(stdout, outcomeCheckLine(store.OutcomeAgreement(labs), sp.Thresholds.Act))
 			}
 		}

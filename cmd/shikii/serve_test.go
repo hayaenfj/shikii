@@ -1548,3 +1548,46 @@ func TestQueueAsksThePersonToCheckSomeOutcomeTruths(t *testing.T) {
 		t.Fatalf("once settled, no more outcome checks are asked: %d", len(items))
 	}
 }
+
+// prompt-kind's outcome truths are not checked by the person (0.11): the request alone cannot tell what the agent will do, so the
+// question is left stopped and the person's time goes to the questions whose outcome rule is in doubt.
+func TestQueueDoesNotAskToCheckPromptKindOutcomes(t *testing.T) {
+	repo := gitRepo(t)
+	hookEnv(t, nil)
+	initAt(t, repo)
+	root := filepath.Join(repo, ".shikii")
+	sp := mustLoad(t, filepath.Join(root, "decisions", "prompt-kind.yaml"))
+	st := store.Store{Dir: root}
+	sampled := 0
+	for i := 0; i < 60; i++ {
+		inputs := map[string]string{"request": fmt.Sprint("do ", i)}
+		r := store.Record{TraceID: fmt.Sprintf("%016x", i+1), SpecID: sp.ID, SpecHash: sp.Hash(), Type: "choice", Inputs: inputs, InputsHash: store.HashInputs(inputs), Model: "m", Raw: map[string]float64{"edit": .6, "explain": .4}, Top: "edit", P: .6, Band: "ask", At: time.Now()}
+		if err := st.AppendRecord(r); err != nil {
+			t.Fatal(err)
+		}
+		labels, err := store.LabelsFor(&r, "edit", 1, "outcome")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AppendLabels(labels); err != nil {
+			t.Fatal(err)
+		}
+		if store.OutcomeCheckSample(r.TraceID) {
+			sampled++
+		}
+	}
+	if sampled == 0 {
+		t.Fatal("the fixed sample picks some of 60")
+	}
+	r := httptest.NewRecorder()
+	newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions")}).ServeHTTP(r, httptest.NewRequest("GET", "/v1/queue?spec=prompt-kind&limit=1000", nil))
+	var body struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Items) != 0 {
+		t.Fatalf("no outcome check is asked for prompt-kind: %d", len(body.Items))
+	}
+}

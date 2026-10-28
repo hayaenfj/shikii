@@ -31,6 +31,10 @@ const (
 	scopeWatchFiles      = 200 // upper limit of watched files (the rest are not looked at)
 )
 
+// outcomeCheckSpecs are the questions whose outcome truths the person spot-checks on the page (0.11). prompt-kind is left out: the
+// request alone cannot tell what the agent will do, so it stays stopped and the person's time goes to rules in doubt.
+var outcomeCheckSpecs = map[string]bool{"changes-in-scope": true, "done-as-asked": true}
+
 // outcomeSpecs are the decisions that get truths from outcomes. Even when unsure (ask) they do not wait for the person's answer (the outcome answers).
 var outcomeSpecs = map[string]bool{"prompt-kind": true, "changes-in-scope": true, "done-as-asked": true, "wiki-place": true, "wiki-conflict": true}
 
