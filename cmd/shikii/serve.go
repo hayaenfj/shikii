@@ -607,6 +607,30 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// with the band, what this project already knows about such a request (0.11): the person's answers on similar requests with the two
+	// answers they judged between, and the closest lessons. An agent consulting the decision model mid-task reads these as the project's
+	// own judgment, not only a probability
+	if request := strings.TrimSpace(req.Inputs["request"]); request != "" && s.o.projectScope != "" {
+		similar, lessons, kerr := decideKnowledge(s.st.Dir, s.o.projectScope, request)
+		if kerr != nil {
+			writeErr(w, 500, kerr)
+			return
+		}
+		if len(similar) > 0 || len(lessons) > 0 {
+			var reply map[string]any
+			raw, _ := json.Marshal(d)
+			if json.Unmarshal(raw, &reply) == nil {
+				if len(similar) > 0 {
+					reply["similar_decisions"] = similar
+				}
+				if len(lessons) > 0 {
+					reply["lessons"] = lessons
+				}
+				writeJSON(w, 200, reply)
+				return
+			}
+		}
+	}
 	writeJSON(w, 200, d)
 }
 

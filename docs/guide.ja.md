@@ -409,7 +409,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 
 | 口 | 体 | 返すもの |
 |---|---|---|
-| `POST /v1/decide` | `{"spec","inputs":{…},"tainted":false}` | 判定(band、top、p、trace_id、receipt) |
+| `POST /v1/decide` | `{"spec","inputs":{…},"tainted":false}` | 判定(band、top、p、trace_id、receipt)。入力に `request` がある時は、あれば `similar_decisions`(似た依頼への本人の答え。エージェントと判定モデルの答え付き)と `lessons`(いちばん近い wiki の教訓)も付く(0.11) |
 | `POST /v1/label` | `{"spec","trace_id","truth","weight":1,"source":"ui"}` | 付けた正解(文脈の段を通った判定は 2 段に付く) |
 | `GET /v1/queue?spec=<id>` | | 未回答(人待ちの記録と、結果待ちの記録。各項目に `waits_for_person`。やり直した元は出ない) |
 | `GET /v1/answered?spec=<id>&limit=30` | | 回答済み(人の正解だけ) |

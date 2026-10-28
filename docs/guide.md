@@ -409,7 +409,7 @@ The body is JSON. Without `-H 'Content-Type: application/json'` the request is r
 
 | Endpoint | Body | Returns |
 |---|---|---|
-| `POST /v1/decide` | `{"spec","inputs":{…},"tainted":false}` | The decision (band, top, p, trace_id, receipt) |
+| `POST /v1/decide` | `{"spec","inputs":{…},"tainted":false}` | With a `request` input, also `similar_decisions` (the person's answers on similar requests, with the agent's and the model's) and `lessons` (the closest wiki lessons), when there are any (0.11). The decision (band, top, p, trace_id, receipt) |
 | `POST /v1/label` | `{"spec","trace_id","truth","weight":1,"source":"ui"}` | The truth stored (a decision that went through the context rung gets it on both rungs) |
 | `GET /v1/queue?spec=<id>` | | Unanswered (records waiting for a person and records waiting for a result; each item has `waits_for_person`; records that were redone are not listed) |
 | `GET /v1/answered?spec=<id>&limit=30` | | Answered (people's truths only) |

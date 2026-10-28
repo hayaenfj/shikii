@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -404,4 +405,33 @@ func TestPersonAnswerCarriesTheAgentsReasonAndTheModelsAnswer(t *testing.T) {
 	if err != nil || !strings.Contains(ctx, "decision:"+bare) || strings.Contains(ctx, "the agent had answered") || !strings.Contains(ctx, "the decision model said") {
 		t.Fatalf("an unpaired decision carries the person's and the model's answers only: %v\n%s", err, ctx)
 	}
+}
+
+// 0.11: the agent can consult the decision model in the middle of the work (shikii_decide with the request as input: should it ask first,
+// is this change in scope, is the work done) and the reply carries, with the band, what this project already knows about such a request:
+// the person's answers on similar requests with the two answers they judged between (similar_decisions), and the closest lessons
+// (lessons). A bare band gave the agent nothing of the project to reason with.
+func TestDecideReplyCarriesSimilarDecisionsAndLessons(t *testing.T) {
+	st, scope, h, draft, revision := memoryEffectFixture(t)
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	trace := seedPersonAnswer(t, st, "needs-plan", "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044", "yes", "ui", false)
+	_, d := postJSON(t, srv.URL+"/v1/decide", map[string]any{"spec": "needs-plan", "inputs": map[string]string{"request": "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044 \u3082\u3046\u4e00\u5ea6"}})
+	if d["band"] == nil || d["trace_id"] == nil {
+		t.Fatalf("the decision itself is unchanged: %v", d)
+	}
+	similar, _ := d["similar_decisions"].([]any)
+	if len(similar) != 1 || similar[0].(map[string]any)["key"] != "decision:"+trace || !strings.Contains(fmt.Sprint(similar[0].(map[string]any)["said"]), "the decision model said") {
+		t.Fatalf("the person's answer on the similar request comes with the band, with the answers judged between: %v", d["similar_decisions"])
+	}
+	lessons, _ := d["lessons"].([]any)
+	if len(lessons) != 1 || lessons[0].(map[string]any)["key"] != "lesson:"+draft.ID+":"+revision {
+		t.Fatalf("the closest lesson comes with the band: %v", d["lessons"])
+	}
+	// a request nothing is known about, and a question without a request input, add nothing
+	_, far := postJSON(t, srv.URL+"/v1/decide", map[string]any{"spec": "needs-plan", "inputs": map[string]string{"request": "tune the colour of the status page buttons"}})
+	if far["similar_decisions"] != nil || far["lessons"] != nil {
+		t.Fatalf("nothing known: nothing added: %v", far)
+	}
+	_ = scope
 }

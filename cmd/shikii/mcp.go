@@ -280,7 +280,7 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "shikii_decide",
-		"description": "Ask a decision model one typed question defined by a spec. Returns the band (act = safe to act automatically, ask = a human should confirm, discard = do nothing, abstain = not decided), the top answer, probabilities and a trace_id. act only appears when the spec is calibrated for this model.",
+		"description": "Ask a decision model one typed question defined by a spec. Returns the band (act = safe to act automatically, ask = a human should confirm, discard = do nothing, abstain = not decided), the top answer, probabilities and a trace_id. act only appears when the spec is calibrated for this model. Consult it in the middle of the work too, with the request as an input (needs-plan: should I ask first; changes-in-scope with files: is this change within what was asked; done-as-asked with summary: is it finished): the reply then also carries similar_decisions, the person's answers on similar requests with the agent's and the model's answers, and lessons, the closest wiki lessons, so you reason with this project's judgment and not only a probability.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{

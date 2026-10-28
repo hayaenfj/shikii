@@ -316,3 +316,23 @@ func personAnswerSaid(sp *spec.Spec, truth, lang string, pair *aiPair, model mod
 	}
 	return cut(text, 600)
 }
+
+// decideKnowledge is what the project knows about a request an agent consults the decision model about (0.11): the person's answers on
+// similar requests (with the agent's and the model's answers, as the request hook quotes them) and the closest lessons, at most 2 each.
+// Nothing is recorded as a delivery: the agent asked, and the reflection assesses what the hook delivered.
+func decideKnowledge(root, scope, request string) (similar, lessons []memoryQuote, err error) {
+	if similar, err = personAnswerQuotes(root, request, nil); err != nil {
+		return nil, nil, err
+	}
+	pages, err := (notebook.Book{Root: root, Scope: scope}).Recall(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, p := range pages {
+		if len(lessons) == 2 {
+			break
+		}
+		lessons = append(lessons, lessonQuote(p))
+	}
+	return clipQuotes(similar, 400), clipQuotes(lessons, 400), nil
+}
