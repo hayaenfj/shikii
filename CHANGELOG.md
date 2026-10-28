@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.11.0 (in progress)
+## 0.11.0 — what the project knows reaches the agent when it acts, guards refuse a change or a command right before it, and the person is asked only when the two AIs disagree
 
 - A `SessionStart` hook (Claude Code and Codex; it also runs right after a summary of a long conversation) gives the agent what the project itself says: the rules that apply to every request (scene `always`) and the last section of the newest work record under `.shikii/handoff/`, so the agent does not continue from the summary alone. Nothing to tell means no output, and it never stops the session. `~/.codex/hooks.json` changes, so Codex users trust the hooks again with `/hooks` after `shikii hook install --yes`.
 - A fourth kind of guard, `forbidden-commands`: regular expressions no command about to run may match. It is checked right before the command runs (Claude Code's `PreToolUse` for Bash) and refuses it with the reason, so the agent runs a corrected command at once; commands are not observed at `Stop`. A guard carries an `example` command the check must stop, which `enable` shows stopping (RED) before the harmless command `true` passes (GREEN). The skill asks the agent to draft such a guard for its own repeated mechanical mistake too (a check piped into `tail` before `git commit`), telling the person, who enables it.
