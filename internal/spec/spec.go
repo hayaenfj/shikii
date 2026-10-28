@@ -125,12 +125,15 @@ type Calibration struct {
 	Temperature float64            `yaml:"temperature,omitempty"`
 	Biases      map[string]float64 `yaml:"biases,omitempty"`           // vector: bias per option
 	PrecisionAt float64            `yaml:"precision_at_act,omitempty"` // precision at the act threshold (after calibration)
-	FittedOn    string             `yaml:"fitted_on,omitempty"`
-	N           int                `yaml:"n"`
-	NHuman      int                `yaml:"n_human,omitempty"` // how many of them are truths decided by a person (or by the outcome). Written back only when this is at least min_n
-	Brier       float64            `yaml:"brier"`
-	ECE         float64            `yaml:"ece"`
-	FittedAt    string             `yaml:"fitted_at"`
+	// PrecisionAtDiscard is the share of "no" below the ask threshold (noul, after calibration). A "this looks wrong" notice on the
+	// discard side is given only when it reaches act (0.10; a line written before has none, so it gives none)
+	PrecisionAtDiscard float64 `yaml:"precision_at_discard,omitempty"`
+	FittedOn           string  `yaml:"fitted_on,omitempty"`
+	N                  int     `yaml:"n"`
+	NHuman             int     `yaml:"n_human,omitempty"` // how many of them are truths decided by a person (or by the outcome). Written back only when this is at least min_n
+	Brier              float64 `yaml:"brier"`
+	ECE                float64 `yaml:"ece"`
+	FittedAt           string  `yaml:"fitted_at"`
 	// Discrimination is how well the probabilities ranked the truths in this calibration (calibrate fills it for its report and for
 	// stopping a question that cannot be answered; it is not written to the spec, 0.10)
 	Discrimination *calib.Discrimination `yaml:"-"`

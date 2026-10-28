@@ -1085,12 +1085,16 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 	// For models whose raw probabilities are already calibrated (Jev, Kev's noul, etc.), platt does not improve, so choose identity.
 	rawPrec := precisionAt(sp.Thresholds.Act, rawProbs, truths, weights)
 	rawBrier := calib.Brier(rawProbs, truths, weights)
-	cvPrec, cvBrier := crossValidatePlatt(sp, samples, 5)
+	cvPrec, cvBrier, cvDiscard := crossValidatePlatt(sp, samples, 5)
 	fmt.Fprintf(stdout, "platt 5-fold CV: precision@act=%.3f brier=%.4f (raw: precision@act=%.3f brier=%.4f)\n", cvPrec, cvBrier, rawPrec, rawBrier)
+	// the confident "no" side (p < ask): the share of real "no" among those. A question answered "yes" nine times in ten can rank well and
+	// still put many "yes" below ask, so a "this looks wrong" notice is only given when this share reaches act too (hookDecide, 0.10)
+	rawDiscard := precisionBelow(sp.Thresholds.Ask, rawProbs, truths, weights)
+	fmt.Fprintf(stdout, "discard (p < ask): share of \"no\" raw=%.3f platt CV=%.3f\n", rawDiscard, cvDiscard)
 	identityOK, plattOK := rawPrec >= sp.Thresholds.Act, cvPrec >= sp.Thresholds.Act
-	identity := spec.Calibration{Method: "identity", PrecisionAt: rawPrec, Brier: rawBrier, ECE: calib.ECE(rawProbs, truths, weights, bins)}
+	identity := spec.Calibration{Method: "identity", PrecisionAt: rawPrec, PrecisionAtDiscard: rawDiscard, Brier: rawBrier, ECE: calib.ECE(rawProbs, truths, weights, bins)}
 	// The Brier written to the spec is the CV value (in-sample is optimistic and too lenient as a baseline for drift; audit C6)
-	platt := spec.Calibration{Method: "platt", Bias: pl.Bias, Temperature: pl.Temperature, PrecisionAt: cvPrec,
+	platt := spec.Calibration{Method: "platt", Bias: pl.Bias, Temperature: pl.Temperature, PrecisionAt: cvPrec, PrecisionAtDiscard: cvDiscard,
 		Brier: cvBrier, ECE: calib.ECE(calProbs, truths, weights, bins)}
 	switch {
 	case identityOK && plattOK && cvBrier < rawBrier:
@@ -1108,10 +1112,10 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 	}
 }
 
-// crossValidatePlatt fits Platt with k folds and sums precision@act and Brier on the held-out folds.
-func crossValidatePlatt(sp *spec.Spec, samples []calib.Sample, k int) (precision, brier float64) {
+// crossValidatePlatt fits Platt with k folds and sums precision@act, Brier and the share of "no" below ask on the held-out folds.
+func crossValidatePlatt(sp *spec.Spec, samples []calib.Sample, k int) (precision, brier, discard float64) {
 	if k < 2 || len(samples) < k {
-		return 0, 1
+		return 0, 1, 0
 	}
 	var probs []float64
 	var truths []bool
@@ -1136,9 +1140,29 @@ func crossValidatePlatt(sp *spec.Spec, samples []calib.Sample, k int) (precision
 		}
 	}
 	if len(probs) == 0 {
-		return 0, 1
+		return 0, 1, 0
 	}
-	return precisionAt(sp.Thresholds.Act, probs, truths, weights), calib.Brier(probs, truths, weights)
+	return precisionAt(sp.Thresholds.Act, probs, truths, weights), calib.Brier(probs, truths, weights), precisionBelow(sp.Thresholds.Ask, probs, truths, weights)
+}
+
+// precisionBelow is the weighted share of "no" among the probabilities below th (the discard band). 0 when none is below: a band
+// never seen is not trusted.
+func precisionBelow(th float64, probs []float64, truths []bool, weights []float64) float64 {
+	var tn, fn float64
+	for i, p := range probs {
+		if p >= th {
+			continue
+		}
+		if truths[i] {
+			fn += weights[i]
+		} else {
+			tn += weights[i]
+		}
+	}
+	if tn+fn == 0 {
+		return 0
+	}
+	return tn / (tn + fn)
 }
 
 // verifyTop verifies and calibrates choice / score (design §7.1).

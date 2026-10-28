@@ -409,6 +409,9 @@ func hookDecide(agent, specID string, inputs map[string]string, project string, 
 	attachReceipt(sp, st, d)
 	l := localize(sp, d, hookLang())
 	out := hookOutcome(specID, d, l)
+	if d.Band == decide.Discard && sp.Type == spec.Noul && !discardTrusted(sp, d) {
+		out = hookOut{} // the confident "no" was not right often enough when the line was drawn (0.10)
+	}
 	page := pageRef(feedbackScope(filepath.Dir(agent))) // absolute: MCP started with --store .shikii would look up and start a second page under "."
 	out.Context = strings.ReplaceAll(out.Context, hookPageURL+"/", page)
 	out.System = strings.ReplaceAll(out.System, hookPageURL+"/", page)
@@ -429,6 +432,17 @@ func hookDecide(agent, specID string, inputs map[string]string, project string, 
 		}
 	}
 	return d, out, nil
+}
+
+// discardTrusted reports whether the line the decision used put real "no" answers below ask at least as often as act asks of the
+// confident side (measured when the line was drawn; PrecisionAtDiscard).
+func discardTrusted(sp *spec.Spec, d *decide.Decision) bool {
+	rs := sp
+	if d.Rung == "context" && sp.ContextSpec() != nil {
+		rs = sp.ContextSpec()
+	}
+	c := rs.CalibrationFor(d.Model)
+	return c != nil && c.PrecisionAtDiscard >= sp.Thresholds.Act
 }
 
 // hookDecideAll asks several specs with the same input in parallel (waiting for each in turn inside one hook gets close to the timeout).

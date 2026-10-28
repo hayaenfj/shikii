@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hayaenfj/shikii/internal/decide"
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 	"github.com/hayaenfj/shikii/internal/systemone"
 )
@@ -225,5 +228,55 @@ func TestHookDoesNotAskTheModelForAStoppedQuestion(t *testing.T) {
 	ds, _, err = hookDecideAll(agent, []string{"same"}, picked, "p", nil)
 	if err != nil || ds[0] == nil || calls != 1 {
 		t.Fatalf("1 request in 20 still asks it: d=%v calls=%d err=%v", ds[0], calls, err)
+	}
+}
+
+// 0.10: calibrate keeps the share of real "no" below ask. 20 "yes" at 0.9, and 7 "yes" and 13 "no" at 0.1: the ranking is good (a line
+// is drawn) and the 20 at 0.1 stay together below ask after any calibration (mostly "no"), but only 13 of them, 0.65, are "no": less than act (0.70).
+func TestCalibrateKeepsTheShareOfNoBelowAsk(t *testing.T) {
+	dir := t.TempDir()
+	path := writeNoulSpec(t, dir)
+	rows := []map[string]any{}
+	for i := 0; i < 40; i++ {
+		truth, raw := "yes", 0.9
+		switch {
+		case i >= 27:
+			truth, raw = "no", 0.1
+		case i >= 20:
+			raw = 0.1
+		}
+		rows = append(rows, map[string]any{"inputs": map[string]string{"a": fmt.Sprint(i)}, "truth": truth, "raw": raw})
+	}
+	report, err := calibrateRows(t, path, filepath.Join(dir, "store"), rows)
+	if err != nil {
+		t.Fatalf("the ranking is good enough for a line: %v\n%s", err, report)
+	}
+	c := mustLoad(t, path).Calibration
+	if len(c) != 1 || math.Abs(c[0].PrecisionAtDiscard-0.65) > 1e-9 {
+		t.Fatalf("13 of the 20 below ask are a real no: %+v\n%s", c, report)
+	}
+}
+
+// The "this looks outside what you asked for" notice on the discard side is given only when the line put real "no" answers there at
+// least as often as act requires (before 0.10 any calibrated discard gave it).
+func TestDiscardNoticeNeedsTheShareOfNoToReachAct(t *testing.T) {
+	agent := hookEnv(t, fakeAgentModel(t, func(string) float64 { return 0.1 }))
+	path := filepath.Join(agent, "decisions", "changes-in-scope.yaml")
+	for _, tc := range []struct {
+		share  float64
+		notice bool
+	}{{0.5, false}, {0.95, true}} {
+		sp := mustLoad(t, path)
+		sp.Calibration = []spec.Calibration{{Model: "kev-4b", SpecHash: sp.Hash(), Method: "identity", N: 100, PrecisionAtDiscard: tc.share, FittedAt: "2026-10-28"}}
+		if err := sp.Save(); err != nil {
+			t.Fatal(err)
+		}
+		d, out, err := hookDecide(agent, "changes-in-scope", map[string]string{"request": fmt.Sprint("fix ", tc.share), "files": "a.go"}, "p")
+		if err != nil || d.Band != decide.Discard {
+			t.Fatalf("a confident no: %+v %v", d, err)
+		}
+		if got := strings.Contains(out.System, "outside what you asked for"); got != tc.notice {
+			t.Fatalf("share %.2f: notice %v, want %v: %q", tc.share, got, tc.notice, out.System)
+		}
 	}
 }
