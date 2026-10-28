@@ -266,7 +266,7 @@ async function checkSummary(target) {
   const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
   const summary = { person: { records: 20, waits: 2, recent_records: 20, recent_waits: 2, by_person: 1, by_result: 13, per_thousand: 100, recent_per_thousand: 100 },
     memory: { delivered: 4, helpful: 1, unused: 2, harmful: 0, unknown: 1, pending: 0, awaiting_feedback: 0, recent_delivered: 4, recent_helpful: 1, corrections: { delivered: 0 } },
-    guards: { total: 3, enabled: 3, stopped: 1, fixed: 1, rituals: { plan: { asked: 5, done: 2, fixed: 1 }, reflect: { asked: 4, done: 4, fixed: 0 } }, items: [{ id: 'changelog-pair', kind: 'paired-files', title: '変更履歴は英語と日本語を揃える', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'CHANGELOG_ja.md が変わっていない' } }] } };
+    guards: { total: 3, enabled: 3, stopped: 1, fixed: 1, rituals: { plan: { asked: 5, done: 2, fixed: 1 }, reflect: { asked: 4, done: 4, fixed: 0 }, language: { asked: 4, done: 3, fixed: 1 } }, items: [{ id: 'changelog-pair', kind: 'paired-files', title: '変更履歴は英語と日本語を揃える', enabled: true, last: { pass: false, at: '2026-10-23T00:00:00Z', reason: 'CHANGELOG_ja.md が変わっていない' } }] } };
   globalThis.fetch = async url => ({ ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs(), summary, model: { name: 'TypeSafe Jev', endpoint: 'https://api.typesafe.ai' } } : { items: [] } });
   Object.assign(ui, { page: 'answer', tab: '', done: false, pinned: '' });
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
@@ -275,7 +275,7 @@ async function checkSummary(target) {
   const quietAnswer = !target.querySelector('#summary') && !target.textContent.includes('TypeSafe Jev') && !target.textContent.includes('学習中');
   target.querySelector('[data-page="ai"]')?.click(); flushSync(); await settle(); await settle();
   const box = target.querySelector('#summary');
-  const body = box?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (box?.textContent || '').includes('CHANGELOG_ja.md が変わっていない') && (box?.textContent || '').includes('TypeSafe Jev') && (box.querySelector('[data-rituals]')?.textContent || '').includes('進め方を整理 2 / 5');
+  const body = box?.querySelector('.summary-guards code')?.textContent === 'changelog-pair' && (box?.textContent || '').includes('CHANGELOG_ja.md が変わっていない') && (box?.textContent || '').includes('TypeSafe Jev') && (box.querySelector('[data-rituals]')?.textContent || '').includes('進め方を整理 2 / 5') && (box.querySelector('[data-rituals]')?.textContent || '').includes('最後の返事を人の言葉で書く 3 / 4 回(止めてから書き直した 1)');
   const specs = target.querySelectorAll('[data-ai-specs] [data-tab]').length === 4 && (target.querySelector('[data-ai-specs]')?.textContent || '').includes('学習中 0 / 50');
   unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
   const ok = badge && quietAnswer && body && specs;

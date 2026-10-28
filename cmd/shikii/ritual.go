@@ -19,7 +19,8 @@ import (
 const (
 	ritualPlan    = "plan-before-work"
 	ritualReflect = "reflect-before-end"
-	ritualKinds   = "wiki-kinds" // give a kind and a scene to pages from before the version bump (0.9.0)
+	ritualKinds   = "wiki-kinds"     // give a kind and a scene to pages from before the version bump (0.9.0)
+	ritualLang    = "reply-language" // write the final reply in the person's language (0.11)
 )
 
 // builtinGuards are the built-in ritual checks (for the list, totals and the page; ritualStop does the evaluation).
@@ -28,11 +29,12 @@ func builtinGuards() []guard {
 		{ID: ritualPlan, Kind: "ritual", Title: "Sort out the plan before work (hook plan query → submit)", Reason: "if files were changed in a request the hook asked about, submit the sorted plan before finishing", Enabled: true},
 		{ID: ritualReflect, Kind: "ritual", Title: "Save the reflection before finishing (reflect query → submit)", Reason: "if the hook listed conversations, submit the provisional scores, wiki and assessments of delivered lessons before finishing", Enabled: true},
 		{ID: ritualKinds, Kind: "ritual", Title: "Give a kind and a scene to pages without them (shikii wiki classify)", Reason: "if the hook listed pages from before the version bump, give them a kind and a scene before finishing", Enabled: true},
+		{ID: ritualLang, Kind: "ritual", Title: "Write the final reply in the person's language", Reason: "if Claude Code's language is one written in its own script (Japanese, Chinese, Korean, Russian, Ukrainian) and the final reply is written mostly in Latin letters, write it again in that language before finishing", Enabled: true},
 	}
 }
 
 func isBuiltinGuard(id string) bool {
-	return id == ritualPlan || id == ritualReflect || id == ritualKinds
+	return id == ritualPlan || id == ritualReflect || id == ritualKinds || id == ritualLang
 }
 
 // ritualStop checks whether the rituals asked for in this turn are done. On recheck (the Stop after a block) it only records and does not block.
@@ -96,13 +98,32 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualKinds, Pass: pass, Reason: reason, Recheck: recheck})
 	}
+	// Reply language (0.11): every turn while the language is one written in its own script and the reply is long enough to tell
+	langFailed := ""
+	if snapshot.TurnID != "" {
+		lang := hookLang()
+		if checked, pass, share := replyLanguageCheck(lang, in.LastAssistantMessage); checked {
+			reason := ""
+			if !pass {
+				reason = replyLanguageReason(lang, share)
+				langFailed = reason
+			}
+			recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualLang, Pass: pass, Reason: reason, Recheck: recheck})
+		}
+	}
 	if len(recs) > 0 {
 		if err := appendGuardRecords(root, recs); err != nil {
 			return hookOut{}, err
 		}
 	}
-	if len(failed) == 0 || recheck {
+	if recheck || len(failed) == 0 && langFailed == "" {
 		return hookOut{}, nil
+	}
+	if len(failed) == 0 { // only the language: a short block that asks for the reply again, without the ritual wording
+		return hookOut{Block: true, Reason: "shikii: the final reply is not in the person's language (the built-in check " + ritualLang + "; a second Stop is not blocked).\n- " + langFailed}, nil
+	}
+	if langFailed != "" {
+		failed = append(failed, langFailed) // with other rituals: one more line of the same block
 	}
 	var b strings.Builder
 	b.WriteString("shikii: rituals are not done. Do them before finishing (a built-in check; a second Stop is not blocked). In your final reply after doing them, briefly restate the result of the work the person asked for, not a report on the rituals.\n")

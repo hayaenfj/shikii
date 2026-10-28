@@ -509,17 +509,20 @@ func printGuardStats(out io.Writer, root string) {
 	if r.Kinds.Asked > 0 { // only while pages from before the version bump remain (0.9.0)
 		kinds = fmt.Sprintf("; wiki-kinds done %d of %d asked (after a stop %d)", r.Kinds.Done, r.Kinds.Asked, r.Kinds.Fixed)
 	}
+	if r.Lang.Asked > 0 { // only where the language is one written in its own script (0.11)
+		kinds += fmt.Sprintf("; reply-language in the person's language %d of %d checked (after a stop %d)", r.Lang.Done, r.Lang.Asked, r.Lang.Fixed)
+	}
 	fmt.Fprintf(out, "rituals: plan-before-work done %d of %d asked (after a stop %d); reflect-before-end done %d of %d asked (after a stop %d)%s\n", r.Plan.Done, r.Plan.Asked, r.Plan.Fixed, r.Reflect.Done, r.Reflect.Asked, r.Reflect.Fixed, kinds)
 }
 
 // ritualStat counts how one ritual was carried out: turns asked (checked), turns done from the start, and turns done after a block.
 type ritualStat struct{ Asked, Done, Fixed int }
 
-type ritualStats struct{ Plan, Reflect, Kinds ritualStat }
+type ritualStats struct{ Plan, Reflect, Kinds, Lang ritualStat }
 
 func countRitualStats(recs []guardRecord) ritualStats {
 	var out ritualStats
-	for _, id := range []string{ritualPlan, ritualReflect, ritualKinds} {
+	for _, id := range []string{ritualPlan, ritualReflect, ritualKinds, ritualLang} {
 		var st ritualStat
 		failed := map[string]bool{} // session/turn → blocked and not done yet
 		for _, r := range recs {
@@ -546,6 +549,8 @@ func countRitualStats(recs []guardRecord) ritualStats {
 			out.Plan = st
 		case ritualKinds:
 			out.Kinds = st
+		case ritualLang:
+			out.Lang = st
 		default:
 			out.Reflect = st
 		}
@@ -582,7 +587,7 @@ func guardSummaryJSON(root string) map[string]any {
 		}
 	}
 	return map[string]any{"total": own, "enabled": s.Enabled, "stopped": s.Stopped, "fixed": s.Fixed, "items": items,
-		"rituals": map[string]any{"plan": map[string]int{"asked": r.Plan.Asked, "done": r.Plan.Done, "fixed": r.Plan.Fixed}, "reflect": map[string]int{"asked": r.Reflect.Asked, "done": r.Reflect.Done, "fixed": r.Reflect.Fixed}, "kinds": map[string]int{"asked": r.Kinds.Asked, "done": r.Kinds.Done, "fixed": r.Kinds.Fixed}}}
+		"rituals": map[string]any{"plan": map[string]int{"asked": r.Plan.Asked, "done": r.Plan.Done, "fixed": r.Plan.Fixed}, "reflect": map[string]int{"asked": r.Reflect.Asked, "done": r.Reflect.Done, "fixed": r.Reflect.Fixed}, "kinds": map[string]int{"asked": r.Kinds.Asked, "done": r.Kinds.Done, "fixed": r.Kinds.Fixed}, "language": map[string]int{"asked": r.Lang.Asked, "done": r.Lang.Done, "fixed": r.Lang.Fixed}}}
 }
 
 // ---------------------------------------------------------------- CLI
