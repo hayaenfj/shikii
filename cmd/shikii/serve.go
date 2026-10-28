@@ -911,7 +911,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	checkOutcome := outcomeChecksOpen(sp, all)
+	checkOutcome := outcomeChecksOf(sp, all)
 	for _, rec := range recs {
 		if legacyPlanningRecord(sp, rec) || undecidedConflict(sp.ID, rec, labeled, settled) {
 			continue
@@ -990,7 +990,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err)
 			return
 		}
-		checkOutcome := outcomeChecksOpen(sp, labs)
+		checkOutcome := outcomeChecksOf(sp, labs)
 		byKey := map[string]bool{}
 		for _, l := range labs {
 			byKey[l.Model+"\x00"+l.SpecHash] = true

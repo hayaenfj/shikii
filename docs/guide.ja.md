@@ -186,7 +186,7 @@ bin/shikii status --store .shikii .shikii/decisions/prompt-kind.yaml
 ```
 
 spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome / file)と中身の偏り、(model, spec_hash) ごとの、線を引く時に数える正解の数(入力ごとに最新、人と結果の正解だけ。画面と同じ数)と状態
-(`calibrated: vector` / `collecting (min_n …)` / `only one answer so far`(片方の答えしか無く線を引けない) / `tried: the answers could not be separated`(試したが分けられない。正解が増えたら再び試す) / `stopped: the probabilities do not tell the answers apart (AUC …)`(線が 1 つも無い hook の問いで、見分ける力が足りず止めた。依頼の 20 回に 1 回だけ聞き、聞き方が変わるか、その 1 回に別のモデルが答えるとまた試す) / `enough truths: the line is drawn automatically`(自動で引く途中) / `stale hash`)を出す。運用で最初に見る画面。結果から正解を付ける問いには `outcome truths checked by a person: …` の行が出て、画面で人が確かめた数(一致が決まらない間は 10 件に 1 件を出す)、合った数、線を引くのに使うかを言う。
+(`calibrated: vector` / `collecting (min_n …)` / `only one answer so far`(片方の答えしか無く線を引けない) / `tried: the answers could not be separated`(試したが分けられない。正解が増えたら再び試す) / `stopped: the probabilities do not tell the answers apart (AUC …)`(線が 1 つも無い hook の問いで、見分ける力が足りず止めた。依頼の 20 回に 1 回だけ聞き、聞き方が変わるか、その 1 回に別のモデルが答えるとまた試す) / `enough truths: the line is drawn automatically`(自動で引く途中) / `stale hash`)を出す。運用で最初に見る画面。結果から正解を付ける問いには `outcome truths checked by a person: …` の行が出て、結果の答えごとに、画面で人が確かめた数(一致が決まらない間、正解が 50 件以下の答えは全部、多い答えは 10 件に 1 件を出す)、合った数、線を引くのに使うかを言う。
 
 `person's work` の行は、今の規則で人が答える判定(結果が答えない判定の迷い、線のある自動判定の抜き取り、AIの仮採点の抜き取りと保留)の数を、全体と直近7日の1000判定あたりで示し、正解を人と結果のどちらが決めたかを分けて数える。`rungs` の `left to a person` は迷った数で、結果が答える判定の迷いは人を待たない。人の手間を減らす変更の効果は、この行の前後で比べる。
 

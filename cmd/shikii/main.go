@@ -719,9 +719,9 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	}
 	// the outcome's truths are not used when people checked them and they are clearly less right than act asks (0.11)
 	if _, all, err := st.Counts(sp.ID); err == nil {
-		if check := store.OutcomeAgreement(all); check.Checked > 0 {
-			fmt.Fprintf(stdout, "outcome truths checked by a person: %d, agreed %d (95%%: %.2f-%.2f)%s\n", check.Checked, check.Agree, check.Low, check.High, map[bool]string{true: "; below act, so not used", false: ""}[check.Untrusted(sp.Thresholds.Act)])
-			labels = store.WithoutUntrustedOutcome(labels, check, sp.Thresholds.Act)
+		if report := store.OutcomeAgreement(all); report.Total().Checked > 0 {
+			fmt.Fprintln(stdout, strings.TrimSpace(outcomeCheckLine(report, sp.Thresholds.Act)))
+			labels = store.WithoutUntrustedOutcome(labels, report, sp.Thresholds.Act)
 		}
 	}
 	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s n=%d (file=%d store=%d replay=%d)\n", sp.ID, sp.Hash(), model, len(labels), fileN, storedN, len(replayed))
@@ -2239,16 +2239,27 @@ func fmtDist(m map[string]float64) string {
 	return string(b)
 }
 
-// outcomeCheckLine is the status line on how often an outcome's truths agreed with a person who checked them (0.11).
-func outcomeCheckLine(c store.OutcomeCheck, act float64) string {
-	switch {
-	case c.Checked == 0:
-		return fmt.Sprintf("  outcome truths checked by a person: none yet (1 in %d is shown on the page)", store.OutcomeCheckEvery)
-	case c.Untrusted(act):
-		return fmt.Sprintf("  outcome truths checked by a person: %d, agreed %d (95%% %.2f-%.2f): below act %.2f, so they are not used to draw lines", c.Checked, c.Agree, c.Low, c.High, act)
-	case c.Settled(act):
-		return fmt.Sprintf("  outcome truths checked by a person: %d, agreed %d (95%% %.2f-%.2f): at or above act %.2f, used; no more checks are asked", c.Checked, c.Agree, c.Low, c.High, act)
-	default:
-		return fmt.Sprintf("  outcome truths checked by a person: %d, agreed %d (95%% %.2f-%.2f): still measuring (1 in %d is shown on the page)", c.Checked, c.Agree, c.Low, c.High, store.OutcomeCheckEvery)
+// outcomeCheckLine is the status line on how often an outcome's truths agreed with a person who checked them, by the outcome's
+// answer (0.11): each answer is measured, used or not, on its own.
+func outcomeCheckLine(r store.OutcomeReport, act float64) string {
+	truths := make([]string, 0, len(r.Sides))
+	for truth := range r.Sides {
+		truths = append(truths, truth)
 	}
+	sort.Strings(truths)
+	parts := make([]string, 0, len(truths))
+	for _, truth := range truths {
+		c := r.Sides[truth]
+		state := fmt.Sprintf("still measuring (%s shown)", map[bool]string{true: "all", false: fmt.Sprintf("1 in %d", store.OutcomeCheckEvery)}[c.Truths <= store.OutcomeCheckAll])
+		switch {
+		case c.Checked == 0:
+			state = "none checked yet; " + state
+		case c.OutcomeCheck.Untrusted(act):
+			state = fmt.Sprintf("below act %.2f, not used to draw lines", act)
+		case c.OutcomeCheck.Settled(act):
+			state = fmt.Sprintf("at or above act %.2f, used; no more checks", act)
+		}
+		parts = append(parts, fmt.Sprintf("%q of %d: checked %d, agreed %d (95%% %.2f-%.2f), %s", truth, c.Truths, c.Checked, c.Agree, c.Low, c.High, state))
+	}
+	return "  outcome truths checked by a person, by the outcome's answer: " + strings.Join(parts, "; ")
 }

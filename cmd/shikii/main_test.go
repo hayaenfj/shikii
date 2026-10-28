@@ -2366,11 +2366,11 @@ func TestUntrustedOutcomeTruthsAreNotUsed(t *testing.T) {
 	path := filepath.Join(root, "decisions", "changes-in-scope.yaml")
 	var report bytes.Buffer
 	_ = runCalibrate(path, calibrateOpts{output: &report, storeDir: root, labeled: "none", ef: endpointFlags{model: "m"}})
-	if !strings.Contains(report.String(), "outcome truths checked by a person: 3, agreed 0") || !strings.Contains(report.String(), "not used") || !strings.Contains(report.String(), " n=3 ") {
+	if !strings.Contains(report.String(), `"yes" of 60: checked 3, agreed 0`) || !strings.Contains(report.String(), "not used") || !strings.Contains(report.String(), " n=3 ") {
 		t.Fatalf("calibrate drops the untrusted outcome truths and says so (3 person truths left):\n%s", report.String())
 	}
 	out := capture(t, func() error { return cmdStatus([]string{"--store", root, path}) })
-	if !strings.Contains(out, "outcome truths checked by a person: 3, agreed 0") || !strings.Contains(out, "not used to draw lines") {
+	if !strings.Contains(out, `"yes" of 60: checked 3, agreed 0`) || !strings.Contains(out, "not used to draw lines") {
 		t.Fatalf("status says the outcome truths are not used:\n%s", out)
 	}
 	sp := mustLoad(t, path)

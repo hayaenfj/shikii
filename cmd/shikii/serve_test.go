@@ -1614,3 +1614,53 @@ func TestStatusCountsOutcomeChecksAsWaitingForThePerson(t *testing.T) {
 	}
 	t.Fatal("changes-in-scope is in the status")
 }
+
+// The outcome's rare answer is shown whole: with 60 "yes" (1 in 10 shown) and 5 "no", all 5 "no" wait for the person, and the "yes"
+// side's agreement does not stop them (0.11: 12 of 12 "yes" settled changes-in-scope while its "no" were never checked).
+func TestQueueShowsEveryOutcomeOfTheRareAnswer(t *testing.T) {
+	root, sampled := outcomeFixture(t, 60)
+	sp := mustLoad(t, filepath.Join(root, "decisions", "changes-in-scope.yaml"))
+	st := store.Store{Dir: root}
+	var rare []string
+	for i := 0; i < 5; i++ {
+		inputs := map[string]string{"request": fmt.Sprint("odd change ", i), "files": "b.go"}
+		r := store.Record{TraceID: fmt.Sprintf("%016x", 1000+i), SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Inputs: inputs, InputsHash: store.HashInputs(inputs), Model: "m", Raw: map[string]float64{"yes": .6, "no": .4}, Top: "yes", P: .6, Band: "ask", At: time.Now()}
+		if err := st.AppendRecord(r); err != nil {
+			t.Fatal(err)
+		}
+		labels, err := store.LabelsFor(&r, "no", 1, "outcome")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AppendLabels(labels); err != nil {
+			t.Fatal(err)
+		}
+		rare = append(rare, r.TraceID)
+	}
+	for _, r := range sampled { // the person agrees with every sampled "yes"
+		labels, err := store.LabelsFor(&r, "yes", 1, "audit")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AppendLabels(labels); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := httptest.NewRecorder()
+	newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions")}).ServeHTTP(rec, httptest.NewRequest("GET", "/v1/queue?spec=changes-in-scope&limit=1000", nil))
+	var body struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	shown := map[string]bool{}
+	for _, it := range body.Items {
+		shown[it["trace_id"].(string)] = true
+	}
+	for _, id := range rare {
+		if !shown[id] {
+			t.Fatalf("every outcome \"no\" waits for the person: %s missing from %v", id, shown)
+		}
+	}
+}

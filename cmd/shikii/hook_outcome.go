@@ -378,15 +378,24 @@ func parseListing(listing string) map[string]string {
 	return m
 }
 
-// outcomeChecksOpen reports whether the question's outcome truths are still being checked by the person (0.11): one of
-// outcomeCheckSpecs whose agreement is not settled yet. all are the question's labels.
-func outcomeChecksOpen(sp *spec.Spec, all []store.Label) bool {
-	return outcomeCheckSpecs[sp.ID] && !store.OutcomeAgreement(all).Settled(sp.Thresholds.Act)
+// outcomeChecks is how the question's outcome truths are checked by the person (0.11), or nil when it is not one of
+// outcomeCheckSpecs. all are the question's labels.
+type outcomeChecks struct {
+	report store.OutcomeReport
+	act    float64
 }
 
-// outcomeCheckShown reports whether a decision is shown to the person as an outcome check: checks are open, an outcome gave its
-// latest truth, it is one of the fixed sample, and it has text to answer. The queue and the status count use this one rule.
-func outcomeCheckShown(open bool, rec store.Record, labeled map[string]store.Label) bool {
+func outcomeChecksOf(sp *spec.Spec, all []store.Label) *outcomeChecks {
+	if !outcomeCheckSpecs[sp.ID] {
+		return nil
+	}
+	return &outcomeChecks{report: store.OutcomeAgreement(all), act: sp.Thresholds.Act}
+}
+
+// outcomeCheckShown reports whether a decision is shown to the person as an outcome check: an outcome gave its latest truth, the
+// side of that answer is unsettled, the decision is picked (a small side whole, a large one 1 in 10), and it has text to answer.
+// The queue and the status count use this one rule.
+func outcomeCheckShown(c *outcomeChecks, rec store.Record, labeled map[string]store.Label) bool {
 	l, ok := labeled[rec.TraceID]
-	return open && ok && l.Source == "outcome" && store.OutcomeCheckSample(rec.TraceID) && len(rec.Inputs) > 0
+	return c != nil && ok && l.Source == "outcome" && c.report.Shown(rec.TraceID, l.Truth, c.act) && len(rec.Inputs) > 0
 }

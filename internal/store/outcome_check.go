@@ -15,6 +15,10 @@ import (
 // OutcomeCheckEvery: 1 in this many decisions an outcome answered is shown to the person while the agreement is still unsettled.
 const OutcomeCheckEvery = 10
 
+// OutcomeCheckAll: a side (the outcome's answer, such as "no") with this many truths or fewer is shown whole, not 1 in 10. The rare
+// side is the one in doubt (changes-in-scope's "no" was 14 of 173), and sampling 1 in 10 checked only the common side (0.11).
+const OutcomeCheckAll = 50
+
 // OutcomeCheckSample reports whether the decision is one of the 1 in OutcomeCheckEvery shown for checking (fixed by the trace, so the
 // same decision is always in or out, also for truths given before 0.11).
 func OutcomeCheckSample(traceID string) bool {
@@ -36,9 +40,21 @@ type OutcomeCheck struct {
 	Low, High      float64
 }
 
+// OutcomeSide is the check of the outcome's truths with one answer ("yes", "no", "!edit"): how many there are, and how they agreed.
+type OutcomeSide struct {
+	Truths int
+	OutcomeCheck
+}
+
+// OutcomeReport is the check by the outcome's answer. Each answer is measured on its own: a rule can be right on the common answer
+// and wrong on the rare one.
+type OutcomeReport struct {
+	Sides map[string]OutcomeSide
+}
+
 // OutcomeAgreement compares, for each decision that has an outcome's truth and a later answer of the person, the two (a partial truth
-// "!x" agrees with any answer but x). labels are all of a question's labels, in the order they were written.
-func OutcomeAgreement(labels []Label) OutcomeCheck {
+// "!x" agrees with any answer but x), by the outcome's answer. labels are all of a question's labels, in the order they were written.
+func OutcomeAgreement(labels []Label) OutcomeReport {
 	outcome := map[string]Label{}
 	person := map[string]Label{}
 	for _, l := range labels {
@@ -50,19 +66,57 @@ func OutcomeAgreement(labels []Label) OutcomeCheck {
 			person[l.TraceID] = l
 		}
 	}
-	var c OutcomeCheck
+	r := OutcomeReport{Sides: map[string]OutcomeSide{}}
 	for trace, o := range outcome {
-		p, ok := person[trace]
-		if !ok || p.At.Before(o.At) {
-			continue // the person answered before the outcome came (not a check of it)
+		side := r.Sides[o.Truth]
+		side.Truths++
+		if p, ok := person[trace]; ok && !p.At.Before(o.At) { // the person answered after the outcome came: a check of it
+			side.Checked++
+			if truthsAgree(o.Truth, p.Truth) {
+				side.Agree++
+			}
 		}
-		c.Checked++
-		if truthsAgree(o.Truth, p.Truth) {
-			c.Agree++
-		}
+		r.Sides[o.Truth] = side
+	}
+	for truth, side := range r.Sides {
+		side.Low, side.High = wilson(side.Agree, side.Checked)
+		r.Sides[truth] = side
+	}
+	return r
+}
+
+// Total is the check over every side, for a one-line summary.
+func (r OutcomeReport) Total() OutcomeCheck {
+	var c OutcomeCheck
+	for _, side := range r.Sides {
+		c.Checked += side.Checked
+		c.Agree += side.Agree
 	}
 	c.Low, c.High = wilson(c.Agree, c.Checked)
 	return c
+}
+
+// Untrusted reports whether the outcome's truths with this answer are clearly less right than act asks: they are not used.
+func (r OutcomeReport) Untrusted(truth string, act float64) bool {
+	side, ok := r.Sides[truth]
+	return ok && side.OutcomeCheck.Untrusted(act)
+}
+
+// Settled reports whether every side is settled, so no more checks are asked.
+func (r OutcomeReport) Settled(act float64) bool {
+	for _, side := range r.Sides {
+		if !side.OutcomeCheck.Settled(act) {
+			return false
+		}
+	}
+	return true
+}
+
+// Shown reports whether the decision the outcome answered with truth is shown to the person to check: its side is unsettled, and it is
+// one of the 1 in OutcomeCheckEvery, or its side is small enough to show whole.
+func (r OutcomeReport) Shown(traceID, truth string, act float64) bool {
+	side, ok := r.Sides[truth]
+	return ok && !side.OutcomeCheck.Settled(act) && (side.Truths <= OutcomeCheckAll || OutcomeCheckSample(traceID))
 }
 
 func truthsAgree(outcome, person string) bool {
@@ -85,7 +139,7 @@ func wilson(k, n int) (low, high float64) {
 	return math.Max(0, mid-half), math.Min(1, mid+half)
 }
 
-// Untrusted reports whether the outcome's truths are clearly less right than act asks: they are not used to draw lines.
+// Untrusted reports whether the outcome's truths are clearly less right than act asks.
 func (c OutcomeCheck) Untrusted(act float64) bool { return c.Checked > 0 && c.High < act }
 
 // Settled reports whether more checks would not change the decision either way.
@@ -93,16 +147,14 @@ func (c OutcomeCheck) Settled(act float64) bool {
 	return c.Untrusted(act) || (c.Checked > 0 && c.Low >= act)
 }
 
-// WithoutUntrustedOutcome drops the outcome's truths from labels when check says they are untrusted.
-func WithoutUntrustedOutcome(labels []Label, check OutcomeCheck, act float64) []Label {
-	if !check.Untrusted(act) {
-		return labels
-	}
+// WithoutUntrustedOutcome drops the outcome's truths whose answer's side is untrusted.
+func WithoutUntrustedOutcome(labels []Label, r OutcomeReport, act float64) []Label {
 	out := make([]Label, 0, len(labels))
 	for _, l := range labels {
-		if l.Source != "outcome" {
-			out = append(out, l)
+		if l.Source == "outcome" && r.Untrusted(l.Truth, act) {
+			continue
 		}
+		out = append(out, l)
 	}
 	return out
 }
