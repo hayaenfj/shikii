@@ -26,13 +26,14 @@
     if (live.some(k => k.state === 'calibrated')) { plain = t('plainAuto'); pct = 100; }
     else if (live.some(isHeld)) { plain = t('calibrationHeld'); }
     else if (live.some(k => k.state === 'ready')) { plain = t('plainReady'); pct = 100; }
+    else if (live.some(k => k.state === 'stopped')) { plain = t('plainStopped'); pct = 100; }
     else if (live.some(k => k.state === 'not_separable')) { plain = t('plainNotSeparable'); pct = 100; }
     else if (live.some(k => k.state === 'one_answer')) { plain = t('plainOneAnswer'); pct = 100; }
     else if (sp.keys.length && !live.length) plain = t('plainStale');
     return { plain, pct };
   });
   // Enough truths but no way forward yet (the wording cannot tell the answers apart, or only one answer so far): the full bar is gray, not a success color (0.9.2)
-  let stuck = $derived(!live.some(k => ['calibrated', 'ready'].includes(k.state)) && live.some(k => k.state === 'not_separable' || k.state === 'one_answer'));
+  let stuck = $derived(!live.some(k => ['calibrated', 'ready'].includes(k.state)) && live.some(k => ['not_separable', 'one_answer', 'stopped'].includes(k.state)));
 
   // Decisions a person does not answer (wiki conflict, wiki place): the AI answers, and the truth comes from the outcome of reflection. The lists are only "Settled by reflection" and "Settled" (0.8.0)
   let machineOnly = $derived(sp.person_answers === false);

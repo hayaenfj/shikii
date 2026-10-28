@@ -1005,6 +1005,10 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			default:
 				// Do not say "complete" from counts alone (0.8.3): separate having answers on only one side, tried and could not separate, and partway through automatic drawing
 				tried := (hash == sp.Hash() || hash == sp.ContextHash()) && triedWithoutLine(s.st.Dir, sp, model)
+				if stop, ok := readStopped(s.st.Dir, sp); ok && stop.Model == model && hash == sp.Hash() {
+					state = "stopped" // the stop rule asks it on 1 request in 20 only (0.10)
+					break
+				}
 				switch lineStateOf(rs, sp.Eval.MinN, model, hash, labs, tried).Kind {
 				case lineReady:
 					state = "ready"

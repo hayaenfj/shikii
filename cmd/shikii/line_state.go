@@ -21,6 +21,7 @@ const (
 	lineCollecting   = "collecting"
 	lineOneAnswer    = "one-answer"
 	lineNotSeparable = "not-separable"
+	lineStopped      = "stopped" // not separable, and the stop rule asks it on 1 request in 20 only (line_stop.go, 0.10)
 	lineReady        = "ready"
 	lineCalibrated   = "calibrated"
 )
@@ -30,6 +31,7 @@ type lineState struct {
 	Kind   string
 	N      int
 	Truths map[string]int
+	Stop   stoppedLine // the kept stop when Kind is lineStopped
 }
 
 // lineStateOf decides the line state from the truths for (hash, model). It counts the same way as automatic calibration (hookMaybeCalibrate): the latest one per input,
@@ -87,6 +89,8 @@ func (s lineState) statusNote(rs *spec.Spec, minN int) string {
 		return fmt.Sprintf("  only one answer so far (%s): a line needs both answers", fmtCounts(s.Truths))
 	case lineNotSeparable:
 		return "  tried: the answers could not be separated with this wording and model (no line yet; tried again as truths grow)"
+	case lineStopped:
+		return s.Stop.stopNote()
 	default:
 		return fmt.Sprintf("  enough truths: the line is drawn automatically (>= min_n %d)", minN)
 	}
@@ -118,7 +122,11 @@ func currentLineState(agent string, sp *spec.Spec) (model string, s lineState, o
 		return models[i] < models[j]
 	})
 	model = models[0]
-	return model, lineStateOf(sp, sp.Eval.MinN, model, sp.Hash(), labs, triedWithoutLine(agent, sp, model)), true
+	s = lineStateOf(sp, sp.Eval.MinN, model, sp.Hash(), labs, triedWithoutLine(agent, sp, model))
+	if stop, ok := readStopped(agent, sp); ok && stop.Model == model && s.Kind != lineCalibrated {
+		s.Kind, s.Stop = lineStopped, stop
+	}
+	return model, s, true
 }
 
 // lineSummary is the change in line state told to the person (Stop's systemMessage). Once per spec, only when the state, wording or model changes.
@@ -170,6 +178,10 @@ func lineSummary(agent string) string {
 			lines = append(lines, bi(
 				fmt.Sprintf("shikii: %q has %d truths but only one answer so far (%s), so no line can be drawn yet. %s", enName, s.N, enCounts(sp, s.Truths), en),
 				fmt.Sprintf("shikii: 問い「%s」は正解が %d 件たまりましたが、答えが片方だけ(%s)なので、AI がひとりで決めてよい境目をまだ決められません。%s", name, s.N, jaCounts(sp, s.Truths), ja), loc))
+		case lineStopped:
+			lines = append(lines, bi(
+				fmt.Sprintf("shikii: %q could not tell the answers apart well enough with this wording and model (checked on %d truths), so it is stopped: the AI is asked it on 1 request in %d only. Nothing for you to do; a new wording or model tries it again.", enName, s.N, stoppedEvery),
+				fmt.Sprintf("shikii: 問い「%s」は、今の聞き方とモデルでは答えを見分ける力が足りなかった(正解 %d 件で確かめた)ので止めました。これからは依頼の %d 回に 1 回だけ AI に聞きます。あなたがすることはありません。聞き方かモデルが変わると、また試します。", name, s.N, stoppedEvery), loc))
 		case lineNotSeparable:
 			en, ja := fmt.Sprintf("It is tried again when %d more truths arrive.", hookRecalibrateEvery), fmt.Sprintf("正解が %d 件増えたら、もう一度試します。", hookRecalibrateEvery)
 			if wordings {

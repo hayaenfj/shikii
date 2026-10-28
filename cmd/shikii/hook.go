@@ -439,13 +439,16 @@ func hookDecideAll(agent string, specIDs []string, inputs map[string]string, pro
 	errs := make([]error, len(specIDs))
 	var wg sync.WaitGroup
 	for i, id := range specIDs {
-		if skip != nil && skip(id) {
+		if (skip != nil && skip(id)) || hookSkipsStopped(agent, id, inputs) {
 			continue
 		}
 		wg.Add(1)
 		go func(i int, id string) {
 			defer wg.Done()
 			ds[i], outs[i], errs[i] = hookDecide(agent, id, inputs, project, originals...)
+			if ds[i] != nil {
+				resumeOnNewModel(agent, id, ds[i].Model)
+			}
 		}(i, id)
 	}
 	wg.Wait()

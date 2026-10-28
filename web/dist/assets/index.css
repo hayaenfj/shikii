@@ -709,7 +709,7 @@
     background: var(--color-amberbg);
   }
 
-  .pill.one_answer, .pill.not_separable {
+  .pill.one_answer, .pill.not_separable, .pill.stopped {
     color: var(--color-amber);
     border-style: dashed;
   }

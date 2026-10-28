@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/hayaenfj/shikii/internal/calib"
 	"gopkg.in/yaml.v3"
 )
 
@@ -130,6 +131,9 @@ type Calibration struct {
 	Brier       float64            `yaml:"brier"`
 	ECE         float64            `yaml:"ece"`
 	FittedAt    string             `yaml:"fitted_at"`
+	// Discrimination is how well the probabilities ranked the truths in this calibration (calibrate fills it for its report and for
+	// stopping a question that cannot be answered; it is not written to the spec, 0.10)
+	Discrimination *calib.Discrimination `yaml:"-"`
 }
 
 // Spec is the spec of one decision.

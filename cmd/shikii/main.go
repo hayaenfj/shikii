@@ -581,11 +581,15 @@ func runCalibrate(path string, o calibrateOpts) error {
 			return err
 		}
 		if o.write && !ok {
+			if err := noteStopped(o.storeDir, sp, cal); err != nil {
+				fmt.Fprintf(stdout, "note: could not keep the stop of %s: %v\n", sp.ID, err)
+			}
 			return &calibrationRefusal{humanTruths: cal.NHuman, minN: sp.Eval.MinN}
 		}
 		if o.write {
 			sp.PutCalibration(cal)
 			wrote = true
+			clearStopped(o.storeDir, sp.ID)
 		}
 	}
 	// The context rung (if any). Its truths are only those a person gave to decisions settled with added context. If there are none yet, say so and move on.
@@ -739,6 +743,9 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	}
 	if err != nil {
 		return cal, false, err
+	}
+	if d, ok := discriminationOf(sp, labels); ok {
+		cal.Discrimination = &d
 	}
 	cal.Model, cal.SpecHash, cal.N, cal.NHuman = model, sp.Hash(), len(labels), nHuman
 	cal.FittedOn, cal.FittedAt = *labeledPath, time.Now().Format("2006-01-02")
@@ -997,6 +1004,24 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 	return out, model, nil
 }
 
+// discriminationOf is how well the raw probabilities rank the truths: p(yes) against the truth for noul, and the top answer's
+// probability against whether it was right for the other types (the line acts on the top answer). ok=false with one side only.
+func discriminationOf(sp *spec.Spec, labels []store.Label) (calib.Discrimination, bool) {
+	if sp.Type == spec.Noul {
+		probs, truths, weights := make([]float64, len(labels)), make([]bool, len(labels)), make([]float64, len(labels))
+		for i, l := range labels {
+			probs[i], truths[i], weights[i] = l.Raw["yes"], l.Truth == "yes", l.Weight
+		}
+		return calib.AUC(probs, truths, weights)
+	}
+	ms := make([]calib.MultiSample, len(labels))
+	for i, l := range labels {
+		ms[i] = calib.MultiSample{Raw: l.Raw, Truth: l.Truth, Weight: l.Weight}
+	}
+	rep := topReport(sp, ms, nil)
+	return calib.AUC(rep.pTop, rep.correct, rep.weights)
+}
+
 // calibrateNoul fits Platt and prints the metrics (design §7). If positive and negative are inverted, ok=false.
 func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.Writer) (spec.Calibration, bool, error) {
 	stdout := reportWriter(reports...)
@@ -1048,7 +1073,7 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 	printReliability("calibrated", calProbs, truths, weights, bins, stdout)
 	// Overlapping answers are normal for a real model; the calibration and the precision at act below handle them. What no line can fix
 	// is a ranking with no clear signal: the AUC's 95% interval reaches 0.5 (before 0.10 a single overlapping pair refused the line)
-	disc, _ := calib.AUC(rawProbs, truths, weights)
+	disc, _ := discriminationOf(sp, labels)
 	fmt.Fprintf(stdout, "discrimination: AUC=%.3f (95%%: %.3f-%.3f) on %d yes / %d no\n", disc.AUC, disc.Low, disc.High, disc.Pos, disc.Neg)
 	if disc.Low <= 0.5 {
 		fmt.Fprintln(stdout, "WARNING: the probabilities do not tell the answers apart (the AUC's 95% interval reaches 0.5); a calibration cannot fix this. Change the question or the model.")
@@ -1982,6 +2007,10 @@ func cmdStatus(args []string) error {
 				default:
 					// Do not say "a line can be drawn" from counts alone (0.8.3): separate only one kind of answer, tried but could not separate, and on the way to drawing automatically
 					tried := (parts[1] == sp.Hash() || parts[1] == sp.ContextHash()) && triedWithoutLine(*storeDir, sp, parts[0]) // the context rung is tried at the same time
+					if stop, ok := readStopped(*storeDir, sp); ok && stop.Model == parts[0] && parts[1] == sp.Hash() {
+						note += stop.stopNote()
+						break
+					}
 					note += lineStateOf(rs, sp.Eval.MinN, parts[0], parts[1], labs, tried).statusNote(rs, sp.Eval.MinN)
 				}
 			}

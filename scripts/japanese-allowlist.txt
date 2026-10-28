@@ -21,7 +21,7 @@
 5 cmd/shikii/hook_variants.go
 13 cmd/shikii/hook_variants_test.go
 3 cmd/shikii/init_test.go
-14 cmd/shikii/line_state.go
+15 cmd/shikii/line_state.go
 14 cmd/shikii/line_state_test.go
 1 cmd/shikii/main_test.go
 1 cmd/shikii/memory.go
