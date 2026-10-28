@@ -4,6 +4,7 @@
 
 ## 0.11.0 (in progress)
 
+- Page, knowledge: the list is read in one reply. It was split into parts of about 60KB the way MCP replies are, and each part read the whole wiki again: 477 long pages took 55 calls and about 30 seconds, with nothing shown until the end, and an agent saving a page in between started it over.
 - Truths from outcomes are checked by the person: a truth set from what happened afterwards (a file reverted, the request restated, the working tree changed) stood in for a person's answer and was never compared with one. Now 1 in 10 of those decisions is shown on the page to check (marked as such) while the agreement is unsettled. When the person's answers show the outcome's truths are clearly less right than the act threshold asks (the upper end of the 95% Wilson interval below it), they are not used to draw lines (calibrate, the hook's automatic calibration and the line state count the same way); when they are clearly at or above it, no more checks are asked. `shikii status` and `calibrate` say how many were checked and how many agreed.
 
 ## 0.10.0 — lines can be drawn for real questions, questions that cannot be answered are stopped, and the one-line installer needs no Go

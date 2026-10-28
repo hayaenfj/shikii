@@ -402,10 +402,16 @@ func TestStaleWikiCursorIs409(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
 		return rec.Code, out
 	}
-	code, first := get("/v1/wiki")
-	cursor, _ := first["next_cursor"].(string)
-	if code != 200 || cursor == "" {
-		t.Fatalf("the list comes in parts: %d %q", code, cursor)
+	// the page reads the whole list in one reply (0.11); a cursor still comes from the notebook query MCP uses, and an older page may send it
+	first := httptest.NewRecorder()
+	firstReq := httptest.NewRequest(http.MethodPost, "/v1/wiki/notebook", strings.NewReader(`{"operation":"query"}`))
+	firstReq.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(first, firstReq)
+	var firstOut map[string]any
+	_ = json.Unmarshal(first.Body.Bytes(), &firstOut)
+	cursor, _ := firstOut["next_cursor"].(string)
+	if first.Code != 200 || cursor == "" {
+		t.Fatalf("the notebook query comes in parts: %d %q", first.Code, cursor)
 	}
 	d := draft
 	d.ID, d.Title, d.Lesson = last.ID, last.Title, "Revised knowledge"
@@ -421,5 +427,34 @@ func TestStaleWikiCursorIs409(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("/v1/wiki/notebook: a cursor from before a page changed is 409: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The page reads the whole knowledge list in one request (0.11): it is a local page, and splitting the list into ~60KB parts the way
+// MCP replies are split made the page call /v1/wiki dozens of times, each reading the whole wiki again (477 long pages took 55 calls
+// and about 30 seconds, and a save in between restarted it).
+func TestWikiListGivesThePageEveryLessonInOneReply(t *testing.T) {
+	st, scope, h, draft, _ := memoryEffectFixture(t)
+	b := notebook.Book{Root: st.Dir, Scope: scope}
+	for i := range 40 {
+		d := draft
+		d.ID, d.Title = "", fmt.Sprintf("Knowledge %03d", i)
+		body := strings.Repeat("Detailed evidence. ", 600)
+		d.Body = &body
+		if _, err := b.Ingest(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/wiki", nil))
+	var out struct {
+		Lessons []notebook.Page `json:"lessons"`
+		Next    string          `json:"next_cursor"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Next != "" || len(out.Lessons) < 40 {
+		t.Fatalf("one reply carries every lesson (%d) with no continuation (%q)", len(out.Lessons), out.Next)
 	}
 }
