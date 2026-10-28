@@ -106,7 +106,7 @@ func TestPlanningTellsTheAgentWhenTheWikiWasNotSearched(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	planningWikiFixture(t, root, feedbackScope(repo))
 	out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
-	if ctx := feedbackContext(t, out); !strings.Contains(ctx, "putting topic words in query") || strings.Contains(ctx, "必要なwikiは") {
+	if ctx := feedbackContext(t, out); !strings.Contains(ctx, "topic words in query") || strings.Contains(ctx, "必要なwikiは") {
 		t.Fatalf("the hook asks for it as the step of searching the wiki: %s", ctx)
 	}
 	payload := planningPayload(root)

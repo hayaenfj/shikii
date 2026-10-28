@@ -100,27 +100,21 @@ func newPlanningFrame(previous *hookSession, in *hookInput, scope, turnID string
 	return f
 }
 
-// noticeFullEvery is how many requests after the full organizing and reflection notices the full text comes again: a long session's context
-// is compacted, and the short form leans on the full text seen earlier (0.9.7).
-const noticeFullEvery = 8
+// planningHowToSubmit comes back in the reply of hook plan query as how_to_submit: the exact shape of submit, read at the moment it is
+// needed (0.11). The text every request gets (planningNotice) carries only the command and this turn's ids, so the room in front of the
+// agent goes to the knowledge (the lessons and the person's decisions), not to the procedure. Before, every request carried the shape
+// (855 bytes; 1,900 in the full form every 8th request) and the lessons were one or two quotes behind it.
+const planningHowToSubmit = "Pass the same session_id, turn_id and query, plus agreed and open, to hook plan submit. " + planningShape + ". Each is {summary, evidence:[{source,quote}]} quoting the original text verbatim (source: current_user, previous_user, previous_assistant, or the lesson:<id>:<revision> key of a lesson in this reply when it is your grounds), or {unknown:true}; an agreement needs the person's own words; open is only a concrete choice that blocks the current task (nothing blocks, or no evidence: unknown). continues_previous: true when this message only continues or answers the previous request (an acknowledgement or go-ahead asking nothing new), false when it is a new request (even a short addition such as \"add a check too\", or a restatement); omit it when unsure. restates: the <id> in history:<id>:user of an earlier request this one restates; a wrong id only falls back. The organizing is a hypothesis, never permission or the person's truth. Details: the skill's references/planning.md."
 
+// planningNotice is the text every request gets: the one command to run and this turn's ids (one form, 0.11; the shape of submit is in
+// the reply of hook plan query).
 func planningNotice(sessionID, turnID string) string {
 	ids, _ := json.Marshal(map[string]string{"session_id": sessionID, "turn_id": turnID})
 	command := "shikii"
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: organize this turn before starting; do not ask the person. Pipe the JSON below on standard input to %[1]s hook plan query (e.g. <<'JSON') to read this turn and the recent conversation; find related rules and decisions by putting topic words in query (not the request text), and when a returned lesson is your grounds, set the evidence source to lesson:<id>:<revision> (the key query returned). Then, after reading what query returned, pass the same IDs, query, agreed and open to %[1]s hook plan submit. Each item is {summary, evidence:[{source,quote}]} quoting the original text, or {unknown:true}; an agreement needs the person's own words. Set continues_previous to true when this message only continues or answers the previous request (an acknowledgement or go-ahead asking nothing new), false when it is a new request (even a short addition such as \"add a check too\", or a restatement); omit it when unsure. If it restates an earlier request of this session, set restates to that request's turn id (the <id> in history:<id>:user); a wrong id only falls back. The organizing is a hypothesis, never permission or the person's truth. If you create or change a rule, test or procedure, write it to the wiki before you finish (edit the closest page). Details: the skill's references/planning.md. "+planningShape+"\n", command) + string(ids)
-}
-
-// planningNoticeShort is the organizing notice after the full text was given earlier in the session: the same commands and this turn's IDs.
-func planningNoticeShort(sessionID, turnID string) string {
-	ids, _ := json.Marshal(map[string]string{"session_id": sessionID, "turn_id": turnID})
-	command := "shikii"
-	if exe, err := os.Executable(); err == nil {
-		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
-	}
-	return fmt.Sprintf("shikii: organize this turn before starting, as earlier in this session; do not ask the person. Pipe the JSON below to %[1]s hook plan query with topic words in query; after reading what query returned, send the same IDs, query, agreed and open to that binary's hook plan submit. agreed and open are one object each: {summary, evidence:[{source,quote}]} quoting the text (current_user, previous_user, previous_assistant or a lesson:<id>:<revision> key from query), or {unknown:true}; an agreement needs the person's own words. continues_previous: true only if this message just continues or answers the previous request, false if new (even a short addition); restates: the <id> in history:<id>:user of an earlier request it restates; omit when unsure. A hypothesis, never permission. Made or changed a rule, test or procedure? write it to the wiki before you finish. Details: the skill's references/planning.md.\n", command) + string(ids)
+	return fmt.Sprintf("shikii: organize this turn before starting; do not ask the person. Pipe the JSON below to %s hook plan query with topic words in query (how this project's rules and decisions are worded, not the request text); the reply carries this turn, the recent conversation, the related lessons and how_to_submit, the shape for hook plan submit. A rule, test or procedure you make or change goes to the wiki before you finish.\n", command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
@@ -182,7 +176,7 @@ func cmdHookPlan(args []string) error {
 		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || req.Restates != "" {
 			return errors.New("query does not accept organized content")
 		}
-		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": knowledge})
+		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": knowledge, "how_to_submit": planningHowToSubmit})
 	}
 	// concurrent submits do not wait; they are asked to retry. A new request from the person and Stop are not blocked.
 	busy, err := sessions.OpenFile(name+".planning.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)

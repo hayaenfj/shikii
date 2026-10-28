@@ -298,47 +298,20 @@ func TestReflectInputUpToOneMiB(t *testing.T) {
 	}
 }
 
-// F2: the field names and conditions the full reflection request gives (wiki id and replaces; memory results tied to a check result) were
-// missing from the short form. The earlier TestAuditF4ReflectionShortKeepsSubmitFields only looked at the names inside [{...}].
-func TestAuditFinalF2ShortReflectionNamesEveryFieldOfTheFullText(t *testing.T) {
-	full, short := reflectAsk("X reflect"), reflectAskShort("X reflect", []string{"a"})
-	var missing []string
+// 0.11: the shape of submit comes back in the reply of reflect query as how_to_submit, one text (0.9.x kept a full and a short form that
+// kept drifting apart: audits F2 and F4). It names every field and condition: the wiki's id and replaces, results tied to a check result,
+// maintenance's page_id and revision.
+func TestReflectHowToSubmitNamesEveryFieldAndCondition(t *testing.T) {
 	for name, re := range map[string]*regexp.Regexp{
 		"wiki id":                regexp.MustCompile(`\bid\b`),
 		"wiki replaces":          regexp.MustCompile(`\breplaces\b`),
 		"result tied to a check": regexp.MustCompile(`check result`),
+		"maintenance page_id":    regexp.MustCompile(`page_id`),
+		"maintenance revision":   regexp.MustCompile(`revision`),
 	} {
-		if !re.MatchString(full) {
-			t.Fatalf("precondition: the full text gives %s", name)
+		if !re.MatchString(reflectHowToSubmit) {
+			t.Errorf("how_to_submit lacks %s", name)
 		}
-		if !re.MatchString(short) {
-			missing = append(missing, name)
-		}
-	}
-	if len(missing) > 0 {
-		t.Fatalf("F2: the short reflection request lacks fields and conditions the full text gives: %v\nshort: %q", missing, short)
-	}
-}
-
-// F4 (reflection): every field name the full reflection request gives for the submit shape is also in the short form.
-func TestAuditF4ReflectionShortKeepsSubmitFields(t *testing.T) {
-	full, short := reflectAsk("X reflect"), reflectAskShort("X reflect", []string{"a"})
-	re := regexp.MustCompile(`\[\{([^}]*)\}\]`)
-	var missing []string
-	for _, m := range re.FindAllStringSubmatch(full, -1) {
-		for _, f := range strings.Split(m[1], ",") {
-			if !strings.Contains(short, f) {
-				missing = append(missing, f)
-			}
-		}
-	}
-	for _, f := range []string{"page_id", "revision"} { // maintenance's fields in the full text
-		if strings.Contains(full, f) && !strings.Contains(short, f) {
-			missing = append(missing, f)
-		}
-	}
-	if len(missing) > 0 {
-		t.Fatalf("the short reflection request lacks submit fields of the full text: %v\nshort: %q", missing, short)
 	}
 }
 
@@ -405,24 +378,18 @@ func TestMemoryEffectRequiresActualDeliveryAndKeepsFirstAssessment(t *testing.T)
 	}
 }
 
-// C DF-4, DF-5, DF-6: the short notices lacked instructions the full text gives, and neither said where memory's source_id comes from (a
-// lesson delivered to a subagent has its own id, not the conversation's). The checks are the words each text must hold.
-func TestPatch099ShortNoticesKeepTheFullTextsInstructions(t *testing.T) {
-	short := planningNoticeShort("s", "0123456789abcdef")
-	for _, w := range []string{"write it to the wiki", "false"} {
-		if !strings.Contains(short, w) {
-			t.Errorf("DF-4: the short organizing notice says %q: %q", w, short)
-		}
+// C DF-4, DF-5, DF-6 (0.9.9): the texts the agent reads say where memory's source_id comes from (a lesson delivered to a subagent has
+// its own id), name shikii guard add, complete:true and observations, and the organizing notice sends rules to the wiki. 0.11: in how_to_submit.
+func TestNoticesAndHowToSubmitKeepTheInstructions(t *testing.T) {
+	if n := planningNotice("s", "0123456789abcdef"); !strings.Contains(n, "wiki") {
+		t.Errorf("DF-4: the organizing notice sends rules to the wiki: %q", n)
 	}
-	shortReflect, fullReflect := reflectAskShort("X reflect", []string{"a"}), reflectAsk("X reflect")
-	for _, w := range []string{"shikii guard add", "complete:true", "observations"} {
-		if !strings.Contains(shortReflect, w) {
-			t.Errorf("DF-5: the short reflection request says %q: %q", w, shortReflect)
-		}
+	if !strings.Contains(planningHowToSubmit, "false") {
+		t.Errorf("DF-4: how_to_submit says continues_previous can be false: %q", planningHowToSubmit)
 	}
-	for name, text := range map[string]string{"full": fullReflect, "short": shortReflect} {
-		if !strings.Contains(text, "memories[].source_id") {
-			t.Errorf("DF-6: the %s reflection request says memory's source_id is query's memories[].source_id: %q", name, text)
+	for _, w := range []string{"shikii guard add", "complete:true", "observations", "memories[].source_id"} {
+		if !strings.Contains(reflectHowToSubmit, w) {
+			t.Errorf("DF-5/DF-6: how_to_submit of reflect query says %q: %q", w, reflectHowToSubmit)
 		}
 	}
 }
@@ -430,7 +397,7 @@ func TestPatch099ShortNoticesKeepTheFullTextsInstructions(t *testing.T) {
 // 0.9.5 check: the reflection notice said "fix any error with complete:false and resend", but submit has no complete field and refuses it
 // ("json: unknown field \"complete\""), so an agent that followed the notice was refused. The notice says to fix the error and resend.
 func TestReflectNoticeDoesNotAskForACompleteField(t *testing.T) {
-	if n := reflectAsk("shikii"); strings.Contains(n, "complete:false") || !strings.Contains(n, "fix it and resend") {
+	if n := reflectHowToSubmit; strings.Contains(n, "complete:false") || !strings.Contains(n, "fix it and resend") {
 		t.Fatalf("the notice must not ask to send complete:false (submit refuses that field): %s", n)
 	}
 }
@@ -466,7 +433,7 @@ func TestReflectSubmitLeftNamesReviewedConversations(t *testing.T) {
 // complete:true only says every item was saved. Every text an agent reads about submit must say to do what left lists,
 // or the agent stops on complete:true as before (behaviour check 0.9.2).
 func TestReflectTextsSayToDoWhatIsLeft(t *testing.T) {
-	texts := map[string]string{"hook notice": reflectAsk("shikii")}
+	texts := map[string]string{"how_to_submit": reflectHowToSubmit}
 	for _, tool := range mcpTools {
 		if tool["name"] == "shikii_reflect" {
 			texts["MCP description"], _ = tool["description"].(string)

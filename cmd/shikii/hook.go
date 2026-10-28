@@ -207,12 +207,10 @@ type hookSession struct {
 	PageNoticed      bool             `json:"page_noticed,omitempty"`       // told the page location in this session (0.8.0)
 	HabitsNoticed    bool             `json:"habits_noticed,omitempty"`     // told in this session how to keep work records and rules (0.8.1)
 	// requests since the full organizing and reflection notices (0 = none yet in this session); the short form is used in between (0.9.7)
-	PlanningShortTurns int            `json:"planning_short_turns,omitempty"`
-	ReflectShortTurns  int            `json:"reflect_short_turns,omitempty"`
-	ClassifyAsked      []string       `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
-	ClassifyAskedTurn  string         `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
-	SubagentTasks      []subagentTask `json:"subagent_tasks,omitempty"`      // task text passed to the Agent tool (SubagentStart picks lessons with that text. 0.9.1)
-	At                 time.Time      `json:"at"`
+	ClassifyAsked     []string       `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
+	ClassifyAskedTurn string         `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
+	SubagentTasks     []subagentTask `json:"subagent_tasks,omitempty"`      // task text passed to the Agent tool (SubagentStart picks lessons with that text. 0.9.1)
+	At                time.Time      `json:"at"`
 }
 
 // subagentTask is a task the parent passed to a child agent with the Agent tool (kept at PreToolUse; at SubagentStart the oldest one of the same type is used).
@@ -744,24 +742,16 @@ func runHookEvent(event string) error {
 				hookLog("memory: " + merr.Error())
 			}
 			context, ids, rerr := reflectContext(agent, current.Scope)
-			shortTurns := current.ReflectShortTurns
 			if rerr != nil {
 				hookLog("reflect: " + rerr.Error())
 				ids = nil // a turn where asking failed does not stop on the previous turn's leftovers (audit R5)
 			} else if context != "" {
-				// the full text the first time in the session and every noticeFullEvery asks; the short form alone is enough to submit, and a
-				// turn that ends without the reflection is told the steps again by the Stop check, so no miss is tracked (0.9.7)
-				if shortTurns == 0 || shortTurns >= noticeFullEvery {
-					shortTurns = 1
-				} else {
-					context, shortTurns = reflectAskShort(reflectCLI(), ids), shortTurns+1
-				}
-				out.Context = joinLines(out.Context, context)
+				out.Context = joinLines(out.Context, context) // one form every time; the shape of submit comes back in the reply of reflect query (0.11)
 			}
 			// write the asked conversations and turn to the record (the ritual check looks at it at Stop: was the reflection done). A turn that did not ask is cleared
 			if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
 				if s.TurnID == current.TurnID {
-					s.ReflectAsked, s.ReflectAskedTurn, s.ReflectShortTurns = ids, current.TurnID, shortTurns
+					s.ReflectAsked, s.ReflectAskedTurn = ids, current.TurnID
 				}
 			}); uerr != nil {
 				hookLog("reflect: " + uerr.Error())
@@ -1097,17 +1087,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		planning = nil // a calibrated prompt-kind is confident it "does not change files": do not ask for the pre-start organizing (the first mut writes nil to the record)
 	}
 	var out hookOut
-	// the full text on the session's first request and every noticeFullEvery requests (0.9.7). The short form alone is enough to submit,
-	// and a turn that ends without the organizing is told the steps again by the Stop check, so no miss is tracked: the tracking that was
-	// here kept being found wrong by the audits, and the structure was simplified instead (2026-10-27)
-	switch {
-	case planning == nil:
-	case snapshot.PlanningShortTurns == 0 || snapshot.PlanningShortTurns >= noticeFullEvery:
-		out.Context = planningNotice(in.SessionID, turnID)
-		muts = append(muts, func(s *hookSession) { s.PlanningShortTurns = 1 })
-	default:
-		out.Context = planningNoticeShort(in.SessionID, turnID)
-		muts = append(muts, func(s *hookSession) { s.PlanningShortTurns++ })
+	if planning != nil {
+		out.Context = planningNotice(in.SessionID, turnID) // one form every time; the shape of submit comes back in the reply of hook plan query (0.11)
 	}
 	for i, d := range ds {
 		if d == nil || d.Band == decide.Abstain {

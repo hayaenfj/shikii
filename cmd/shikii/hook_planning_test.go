@@ -450,32 +450,20 @@ func TestAuditTranslationPlanningPrefaceMatchesThePage(t *testing.T) {
 	}
 }
 
-// Each notice keeps the instructions an agent needs to act on it. Where each row came from:
-//   - T4: habitsNotice keeps handoff_write (the MCP way to write work records); the planning notice keeps lesson:<id> (how to cite a lesson).
-//   - 0.9.6 audit, low 2: restates is the <id> inside history:<id>:user (restateDone compares the id exactly, so the whole history key
-//     silently does nothing), and maintenance sends the latest revision after reading the sources and existing pages.
-//   - 0.9.7 audit G-3: the key query returns is lesson:<id>:<revision> (submit refuses lesson:<id>), in the full, short and no-query notices.
-//   - 0.9.7 final audit F2: the short form also says where the restates id comes from (history:<id>:user).
-//   - re3-3 (F4): the short forms point to the details as the full text does (the skill's references/...); a bare path reads as one in the project.
-//   - Low 1: Codex often passed the JSON as an argument first and was refused; the notice says it goes on standard input.
-//   - continues_previous is explained where the agent is asked to organize, and where the Stop asks again (planningShape).
-//   - 0.9.7 second real-agent check: Claude Code submitted before reading what query returned; both forms say to read the query result first.
+// The texts the agent reads keep their instructions (0.11: the notices name the command and the reply's how_to_submit; the shape itself is in how_to_submit).
 func TestNoticesKeepTheirInstructions(t *testing.T) {
-	full, short := planningNotice("s", "0123456789abcdef"), planningNoticeShort("s", "0123456789abcdef")
 	for _, c := range []struct {
 		name, text string
 		want       []string
 	}{
-		{"planning notice (full)", full, []string{"evidence source to lesson:<id>", "lesson:<id>:<revision>", "the <id> in history:<id>:user",
-			"the skill's references/planning.md", "standard input", "continues_previous to true", "false when it is a new request",
-			"omit it when unsure", "after reading what query returned"}},
-		{"planning notice (short)", short, []string{"lesson:<id>:<revision>", "history:<id>:user", "the skill's references/planning.md",
-			"after reading what query returned"}},
+		{"planning notice", planningNotice("s", "0123456789abcdef"), []string{"hook plan query", "hook plan submit", "how_to_submit", "topic words in query", "do not ask the person"}},
+		{"planning how_to_submit", planningHowToSubmit, []string{"lesson:<id>:<revision>", "the <id> in history:<id>:user", "the skill's references/planning.md",
+			"continues_previous", "false when it is a new request", "omit it when unsure", "person's own words"}},
 		{"planning notice (no query)", planningNoQueryNotice, []string{"lesson:<id>:<revision>"}},
 		{"planningShape", planningShape, []string{"the <id> in history:<id>:user", "continues_previous is true, false or left out"}},
 		{"habitsNotice", habitsNotice, []string{"handoff_write in shikii_wiki", "shikii handoff write <path>"}},
-		{"reflection notice (full)", reflectAsk("shikii"), []string{"the latest page_id", "Read the sources and existing pages"}},
-		{"reflection notice (short)", reflectAskShort("X", nil), []string{"the skill's references/wiki.md"}},
+		{"reflection notice", reflectAsk("'shikii' reflect", nil), []string{"reflect query", "how_to_submit", "this request comes first"}},
+		{"reflection how_to_submit", reflectHowToSubmit, []string{"the latest page_id", "Read the sources and existing pages", "the skill's references/wiki.md"}},
 	} {
 		for _, w := range c.want {
 			if !strings.Contains(c.text, w) {
@@ -519,9 +507,6 @@ func TestAuditFinalF2ShortPlanningNoticeAloneSubmits(t *testing.T) {
 		t.Fatal(err)
 	}
 	short := turn("Now add a tax rate to the agreed CSV columns and keep the existing filters.")
-	if !strings.Contains(short, "as earlier in this session") {
-		t.Fatalf("precondition: the second notice is the short form: %q", short)
-	}
 	var ids map[string]any
 	if err := json.Unmarshal([]byte(regexp.MustCompile(`\{"session_id":"[^"]*","turn_id":"[0-9a-f]{16}"\}`).FindString(short)), &ids); err != nil {
 		t.Fatalf("the JSON at the end of the short form: %v", err)
@@ -687,101 +672,51 @@ func TestStopDoesNotAskContinuesPreviousOtherwise(t *testing.T) {
 	}
 }
 
-// 0.9.7: the pre-start organizing notice (about 1,700 characters) was added in full to every request. The full text now comes on the
-// session's first request and every noticeFullEvery requests (so it survives context compaction); in between a short form names the same
-// commands and this turn's IDs. A request whose organizing was not submitted does not bring the full text back: the short form alone is
-// enough to submit, and the Stop check repeats the steps. (Tracking misses across requests was tried first; every audit found another way
-// it went wrong, and the structure was simplified instead, 2026-10-27.)
-func TestPlanningNoticeIsShortAfterTheFirstRequest(t *testing.T) {
+// 0.11: every request gets the same short organizing notice (the command and this turn's ids), also after a request whose organizing was
+// not submitted; the shape of submit comes back in the reply of hook plan query as how_to_submit. (0.9.7 alternated a 1,900-byte full
+// text and an 855-byte short form: both were procedure in front of the knowledge the hook is for.)
+func TestPlanningNoticeIsOneFormEveryRequest(t *testing.T) {
 	repo, root, _ := planningFixture(t)
-	const full = "putting topic words in query"
+	exe := regexp.MustCompile(`'[^']*'`)
+	noticeOf := regexp.MustCompile(`shikii: organize this turn[^\n]*\n\{"session_id":"[^"]*","turn_id":"[0-9a-f]{16}"\}`) // the hook's text also carries quotes from memory and other asks
 	turn := func(prompt string) string {
 		t.Helper()
 		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
 	}
-	submit := func() {
-		t.Helper()
-		if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
-			t.Fatal(err)
-		}
-	}
 	first := turn(planningTestRequest)
-	if !strings.Contains(first, full) {
-		t.Fatalf("the session's first request gets the full text: %q", first)
+	if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
+		t.Fatal(err)
 	}
-	submit()
 	second := turn("Now add a tax rate to the agreed CSV columns and keep the existing filters.")
 	id := loadSession(root, "planning").TurnID
-	if strings.Contains(second, full) || !strings.Contains(second, "hook plan query") || !strings.Contains(second, "hook plan submit") || !strings.Contains(second, id) {
-		t.Fatalf("after an organized request the short form names the commands and this turn's id %s: %q", id, second)
-	}
-	// under two fifths: the short form keeps the essential rules (re-audit S1, audit E). Measured with the binary's path taken out: the full
-	// text names it twice and the short form once, so a long install path (a coverage build in a deep folder) broke the ratio, not the text.
-	command := regexp.MustCompile(`Pipe the JSON below to (.+?) hook plan query`).FindStringSubmatch(second)
-	if command == nil {
-		t.Fatalf("the short form names the binary: %q", second)
-	}
-	short, long := strings.ReplaceAll(second, command[1], "shikii"), strings.ReplaceAll(first, command[1], "shikii")
-	if len(short)*5 >= len(long)*2 {
-		t.Fatalf("the short form is short: %d of %d characters", len(short), len(long))
-	}
-	// the second request's organizing is not submitted: the next request still gets the short form, which is enough to submit
-	if third := turn("Then sort the agreed CSV columns by date and keep the existing filters."); strings.Contains(third, full) || !strings.Contains(third, "hook plan submit") {
-		t.Fatalf("after a missed organizing, the short form: %q", third)
-	}
-	submit()
-	fulls := 0
-	for i := 0; i < noticeFullEvery; i++ {
-		if strings.Contains(turn("Request "+strings.Repeat("x", i+1)+": use the agreed CSV columns and keep the existing filters."), full) {
-			fulls++
+	third := turn("Then sort the agreed CSV columns by date and keep the existing filters.") // the second request's organizing was not submitted
+	for name, notice := range map[string]string{"first": first, "second": second, "third": third} {
+		short := exe.ReplaceAllString(noticeOf.FindString(notice), "'shikii'")
+		if !strings.Contains(short, "hook plan query") || !strings.Contains(short, "hook plan submit") || !strings.Contains(short, "how_to_submit") || len(short) > 560 {
+			t.Fatalf("the %s request gets the one short form naming the commands (%d bytes): %q", name, len(short), short)
 		}
-		submit()
 	}
-	if fulls != 1 {
-		t.Fatalf("the full text comes back once every %d requests: %d times", noticeFullEvery, fulls)
+	if !strings.Contains(second, id) {
+		t.Fatalf("the notice carries this turn's id %s: %q", id, second)
 	}
 }
 
-// Properties F1 to F3 (F2 as decided on 2026-10-27: no miss is tracked, and the short form alone is enough) over random sequences of requests where the agent sometimes submits its organizing and sometimes does not.
+// Over random sequences of requests where the agent sometimes submits its organizing and sometimes does not (F2 as decided on 2026-10-27: no
+// miss is tracked), every notice is the one form, names the commands and this turn's id, and is enough to submit.
 func TestPlanningNoticeFormOverRandomSessions(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	r := rand.New(rand.NewSource(97))
-	const full, short = "putting topic words in query", "as earlier in this session"
-	missedBefore, shortsInARow := false, 0
-	var history []string
 	for i := 0; i < 40; i++ {
 		prompt := fmt.Sprintf("Request %d: use the agreed CSV columns and keep the existing filters.", i)
 		notice := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
-		isFull, isShort := strings.Contains(notice, full), strings.Contains(notice, short)
-		if isFull == isShort {
-			t.Fatalf("request %d: one form of the organizing notice: %q", i, notice)
+		if !strings.Contains(notice, "hook plan query") || !strings.Contains(notice, "hook plan submit") || !strings.Contains(notice, loadSession(root, "planning").TurnID) {
+			t.Fatalf("request %d: the one form names the commands and this turn's id: %q", i, notice)
 		}
-		switch {
-		case i == 0 && !isFull:
-			t.Fatalf("F1: the session's first notice is the full text\nhistory: %v", history)
-		case missedBefore && !strings.Contains(notice, "hook plan submit"):
-			t.Fatalf("F2: after a missed organizing the notice alone is enough to submit\nhistory: %v", history)
-		}
-		if isShort {
-			shortsInARow++
-		} else {
-			shortsInARow = 0
-		}
-		if shortsInARow >= noticeFullEvery {
-			t.Fatalf("F3: %d short notices in a row\nhistory: %v", shortsInARow, history)
-		}
-		submitted := r.Intn(4) != 0
-		if submitted {
+		if r.Intn(4) != 0 {
 			if _, err := planningCall(t, "submit", planningPayload(root)); err != nil {
 				t.Fatal(err)
 			}
 		}
-		missedBefore = !submitted
-		form := "short"
-		if isFull {
-			form = "full"
-		}
-		history = append(history, fmt.Sprintf("%s/submitted=%v", form, submitted))
 	}
 }
 
@@ -848,7 +783,7 @@ func TestRestatesReachesRequestSixTurnsBack(t *testing.T) {
 func TestNewRulesTestsAndProceduresGoToTheWiki(t *testing.T) {
 	ja := "新しく作った・変えた決まり・テスト・手順"
 	en := "rule, test or procedure"
-	reflectText := reflectAsk("shikii")
+	reflectText := reflectAsk("shikii", nil)
 	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
 	wikiRef, _ := os.ReadFile("../../skills/shikii/references/wiki.md")
 	// The pre-work sorting guidance arrives with every request (the ritual one-liner is only once per session, and Claude Code in a project without work rules did not use it when it finished making something; measured in 0.9.1)

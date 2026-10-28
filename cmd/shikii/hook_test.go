@@ -2153,8 +2153,8 @@ func TestAuditFinalF2ShortReflectionAloneSubmits(t *testing.T) {
 	}
 	stop()
 	short := prompt("README \u306e\u8868\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044")
-	if !strings.Contains(short, "as earlier in this session") || !strings.Contains(short, "wrap up the reflection") {
-		t.Fatalf("precondition: the second ask is the short form: %q", short)
+	if !strings.Contains(short, "wrap up the reflection") {
+		t.Fatalf("precondition: the second ask: %q", short)
 	}
 	q := reflectCall(t, h, map[string]any{"operation": "query"})
 	submit := map[string]any{"operation": "submit"}
@@ -2250,8 +2250,7 @@ func TestRe3ShortFormCorrectionResultOnlyForCorrections(t *testing.T) {
 		}
 		return reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{item}})
 	}
-	short := reflectAskShort("X reflect", []string{id})
-	qualified := strings.Contains(short, "delivered correction")
+	qualified := strings.Contains(reflectHowToSubmit, "delivered correction")
 	refused := submit(true)
 	t.Logf("with correction_result: %v", refused)
 	if refused["complete"] == true {
@@ -2261,7 +2260,7 @@ func TestRe3ShortFormCorrectionResultOnlyForCorrections(t *testing.T) {
 		t.Fatalf("control: without the field the same item is saved: %v", ok)
 	}
 	if !qualified {
-		t.Fatalf("F4: the short form lists correction_result for every memory item, but an ordinary lesson refuses it (%v); the full text says it is for a delivered correction\nshort: %q", refused["errors"], short)
+		t.Fatalf("F4: how_to_submit lists correction_result for every memory item, but an ordinary lesson refuses it (%v); it must say it is for a delivered correction\nhow_to_submit: %q", refused["errors"], reflectHowToSubmit)
 	}
 }
 
@@ -3593,11 +3592,10 @@ func TestMemoryEffectSeparatesUsefulUnusedHarmfulAndUnknown(t *testing.T) {
 	})
 }
 
-// The reflection request (about 1,700 characters) follows the same rule: the full text the first time in a session and every
-// noticeFullEvery asks, a short form in between, also after a turn that ended without the reflection (the Stop check repeats the steps).
-func TestReflectionNoticeIsShortAfterTheFirstAsk(t *testing.T) {
+// 0.11: the reflection request is one short form (the command and the conversations); the shape of submit comes back in the reply of
+// reflect query. A turn that ends without the reflection is told the steps again by the Stop check, and the next ask is the same form.
+func TestReflectionNoticeIsOneFormAndTheStopCheckRepeatsTheSteps(t *testing.T) {
 	_, scope, _, _, _ := memoryEffectFixture(t)
-	const full = "keep the short lesson and the detailed body apart"
 	prompt := func(text string) string {
 		t.Helper()
 		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": scope, "prompt": text}))
@@ -3608,17 +3606,17 @@ func TestReflectionNoticeIsShortAfterTheFirstAsk(t *testing.T) {
 		runHook(t, "stop", map[string]any{"session_id": "s1", "cwd": scope, "last_assistant_message": "README \u3092\u76f4\u3057\u307e\u3057\u305f\u3002"})
 		first = prompt("README \u306e\u5225\u306e\u7bc0\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044 " + strings.Repeat("x", i+1))
 	}
-	if !strings.Contains(first, "wrap up the reflection") || !strings.Contains(first, full) {
-		t.Fatalf("precondition and the first ask: the full text: %q", first)
+	if !strings.Contains(first, "wrap up the reflection") || !strings.Contains(first, "reflect query") || !strings.Contains(first, `{"sources":[`) || strings.Contains(first, "reviews:[") {
+		t.Fatalf("the ask names the command and the conversations and leaves the shape to the reply: %q", first)
 	}
-	// the turn ends without the reflection: the Stop check repeats the steps, and the next ask is the short form
+	// the turn ends without the reflection: the Stop check repeats the steps, and the next ask is the same form
 	stop := runHook(t, "stop", map[string]any{"session_id": "s1", "cwd": scope, "last_assistant_message": "README \u3092\u76f4\u3057\u307e\u3057\u305f\u3002"})
 	if !strings.Contains(string(stop), "reflect query") || !strings.Contains(string(stop), "submit reviews") {
 		t.Fatalf("the Stop check repeats the steps of the missed reflection: %s", stop)
 	}
-	short := prompt("README \u306e\u8868\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044")
-	if !strings.Contains(short, "wrap up the reflection") || strings.Contains(short, full) || !strings.Contains(short, `{"sources":[`) || !strings.Contains(short, "reflect query") {
-		t.Fatalf("the short form names the command and the conversations: %q", short)
+	again := prompt("README \u306e\u8868\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044")
+	if !strings.Contains(again, "wrap up the reflection") || !strings.Contains(again, `{"sources":[`) || !strings.Contains(again, "reflect query") {
+		t.Fatalf("the next ask is the same form naming the command and the conversations: %q", again)
 	}
 }
 

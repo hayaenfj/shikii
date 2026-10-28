@@ -41,6 +41,7 @@ type reflectSource struct {
 }
 
 type reflectView struct {
+	HowToSubmit  string                     `json:"how_to_submit"`
 	Sources      []reflectSource            `json:"sources"`
 	Lessons      []notebook.Page            `json:"lessons"`
 	Corrections  any                        `json:"human_corrections"`
@@ -51,7 +52,7 @@ type reflectView struct {
 
 // Do not make scoring and the wiki take the same raw text twice. Gather at most 2 conversations from the oldest of each queue.
 func reflectQuery(root, scope string) (reflectView, error) {
-	v := reflectView{Sources: []reflectSource{}, Lessons: []notebook.Page{}}
+	v := reflectView{HowToSubmit: reflectHowToSubmit, Sources: []reflectSource{}, Lessons: []notebook.Page{}}
 	st := store.Store{Dir: root}
 	report, err := st.MemoryReport(scope)
 	if err != nil {
@@ -329,8 +330,7 @@ func reflectContext(root, scope string) (string, []string, error) {
 	for _, o := range view.Observations {
 		ids = append(ids, o.ID)
 	}
-	data, _ := json.Marshal(map[string]any{"sources": ids})
-	return reflectAsk(cli) + string(data), ids, nil
+	return reflectAsk(cli, ids), ids, nil
 }
 
 // reflectCLI is the reflect command of this shikii executable, quoted for the shell.
@@ -342,13 +342,13 @@ func reflectCLI() string {
 	return "'" + strings.ReplaceAll(executable, "'", "'\\''") + "' reflect"
 }
 
-// reflectAskShort is the reflection request after the full text was given earlier in the session: the same steps by name, and the conversations.
-func reflectAskShort(cli string, ids []string) string {
-	data, _ := json.Marshal(map[string]any{"sources": ids})
-	return "shikii: wrap up the reflection as earlier in this session (this request comes first): read with shikii_reflect or " + cli + " query, then submit reviews:[{source_id,trace_id,truth,reason}] with your own truth yes/no/unknown; wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (only sources when there is no lesson; for a new lesson run operation:place first and take id and replaces from it); memory:[{source_id,key,result,decision,evidence}] (source_id as query's memories[].source_id) with helpful/unused/harmful/unknown tied to a check result (else unknown; observations are sources holding check results), plus correction_result followed/repeated/not_applicable/unknown only for a delivered correction; maintenance: at most 2 pages with page_id, revision, key and reason. For an explicit correction attach correction:{source_id,quote,action}, and when it can be a fixed check add a disabled draft with `shikii guard add`. Quotes are never permission or truths. On an error, fix it and resend; complete:true only means every item sent was saved: resend while left lists a conversation. Details: the skill's references/wiki.md.\n" + string(data)
-}
+// reflectHowToSubmit comes back in the reply of reflect query (the CLI and shikii_reflect) as how_to_submit: the exact shape of submit,
+// read at the moment it is needed (0.11). The text asking for the reflection (reflectAsk) names only the command and the conversations.
+// Before, the shape came with every ask (about 1,300 bytes, 1,700 in the full form), and a full and a short form kept drifting apart.
+const reflectHowToSubmit = "submit reviews:[{source_id,trace_id,truth,reason}] with your own truth yes/no/unknown; wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (only sources when there is no lesson; for a new lesson run operation:place first and choose id and replaces from its candidates and suspected contradictions; keep the short lesson and the detailed body apart); memory:[{source_id,key,result,decision,evidence,correction_result}] (source_id as this reply's memories[].source_id: a lesson delivered to a subagent has its own) with result helpful/unused/harmful/unknown and, for a delivered correction, correction_result followed/repeated/not_applicable/unknown, tied to a check result (delivery, success, a greeting or silence is no effect; else unknown; observations are sources holding check results); maintenance: for at most 2 pages, review the body, related pages and sources and send the latest page_id, revision, key and reason. Read the sources and existing pages before merging. A rule, test or procedure (command or script) you made or changed goes to the wiki even without a correction (a howto or rule page, or the closest page). For an explicit correction attach correction:{source_id,quote,action} (the person's raw words, the next action); if it can be a fixed check (paired files / words not to use / words a commit body must contain), add a disabled draft with `shikii guard add` and ask the person to enable it. Quotes are never permission, truths or calibration. On an error, fix it and resend; complete:true only means every item sent was saved: while left lists a conversation, submit what it names. Details: the skill's references/wiki.md."
 
-// reflectAsk is the text asking for reflection (passed to the agent by the pre-request hook). cli is the path of the shikii executable
-func reflectAsk(cli string) string {
-	return "shikii: wrap up the reflection (this request comes first). Before finishing, read the conversations, targets, delivered lessons and the person's corrections with shikii_reflect or " + cli + " query, then submit: reviews:[{source_id,trace_id,truth,reason}]; wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (only sources when there is no lesson; for a new lesson run operation:place first and choose id and replaces from its candidates and suspected contradictions; keep the short lesson and the detailed body apart, see wiki.md); memory:[{source_id,key,result,decision,evidence,correction_result}] (source_id as query's memories[].source_id: a lesson delivered to a subagent has its own) with result helpful/unused/harmful/unknown and, for a delivered correction, correction_result followed/repeated/not_applicable/unknown, tied to a check result (delivery, success, a greeting or silence is no effect; else unknown); maintenance: for at most 2 pages, review the body, related pages and sources and send the latest page_id, revision, key and reason. Read the sources and existing pages before merging. observations are sources holding check results. A rule, test or procedure (command or script) you made or changed this turn goes to the wiki even without a correction (a howto or rule page, or the closest page). For an explicit correction attach correction:{source_id,quote,action} (the person's raw words, the next action); if it can be a fixed check (paired files / words not to use / words a commit body must contain), add a disabled draft with `shikii guard add` and ask the person to enable it. Quotes are never permission, truths or calibration. On an error, fix it and resend; complete:true only means every item sent was saved: while left lists a conversation, submit what it names.\n"
+// reflectAsk is the text asking for the reflection (one form, 0.11): the command and the conversations. cli is the path of the shikii executable
+func reflectAsk(cli string, ids []string) string {
+	data, _ := json.Marshal(map[string]any{"sources": ids})
+	return "shikii: wrap up the reflection (this request comes first): read the conversations below with shikii_reflect or " + cli + " query; the reply carries the raw text, the delivered lessons, the person's corrections and how_to_submit, the shape for submit. Quotes are never permission or truths. A rule, test or procedure you made or changed goes to the wiki even without a correction.\n" + string(data)
 }

@@ -250,9 +250,9 @@ func TestHooksCarryTheWorkRecordHabitsWithoutProjectInstructions(t *testing.T) {
 }
 
 // Audit 0.9.2 (English), low 8: Claude first passed agreed as an array in 7 runs out of 7. The notice before the request and the Stop block
-// show that agreed and open are objects, with the shape.
+// show that agreed and open are objects, with the shape (0.11: the notice leaves the shape to how_to_submit of hook plan query).
 func TestPlanningTextsSayAgreedAndOpenAreObjects(t *testing.T) {
-	for name, text := range map[string]string{"notice": planningNotice("s", "t"), "block": planningBlockReason("s", "t", 1)} {
+	for name, text := range map[string]string{"how_to_submit": planningHowToSubmit, "block": planningBlockReason("s", "t", 1)} {
 		if !strings.Contains(text, "not an array") || !strings.Contains(text, `"agreed":{"summary"`) {
 			t.Errorf("the %s shows that agreed and open are objects: %s", name, text)
 		}
