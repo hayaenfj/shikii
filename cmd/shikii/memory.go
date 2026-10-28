@@ -85,18 +85,7 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 		if seen[key] {
 			continue
 		}
-		// a delivery record carries at most 16 source ids per quote; a page that kept its earlier sources over many updates has more.
-		// Keep the correction's source first so the record still names it
-		ids := []string{}
-		if p.Correction != nil {
-			ids = append(ids, p.Correction.SourceID)
-		}
-		for _, source := range p.Sources {
-			if len(ids) < 16 && (p.Correction == nil || source.ID != p.Correction.SourceID) {
-				ids = append(ids, source.ID)
-			}
-		}
-		quotes = append(quotes, memoryQuote{Key: key, ID: p.ID, Revision: p.Revision, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids, Correction: p.Correction})
+		quotes = append(quotes, lessonQuote(p))
 		keys = append(keys, key)
 	}
 	for _, a := range answers {
@@ -140,23 +129,7 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 		}
 	}
 	for budget := 400; budget >= 25; budget /= 2 {
-		clipped := append([]memoryQuote{}, quotes...)
-		text := func(s string) string {
-			if len(s) > budget {
-				return cut(s, budget) + "…"
-			}
-			return s
-		}
-		for i := range clipped {
-			q := &clipped[i]
-			q.Lesson, q.AppliesTo = text(q.Lesson), text(q.AppliesTo)
-			q.Request, q.Summary, q.Reply = text(q.Request), text(q.Summary), text(q.Reply)
-			if q.Correction != nil {
-				c := *q.Correction
-				c.Quote, c.Action = text(c.Quote), text(c.Action)
-				q.Correction = &c
-			}
-		}
+		clipped := clipQuotes(quotes, budget)
 		data, err := json.Marshal(clipped)
 		if err != nil {
 			return "", err
@@ -184,6 +157,44 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 		return prefix + strings.TrimSpace(string(data)), nil
 	}
 	return "", nil
+}
+
+// lessonQuote is the short quote of a lesson page as it is delivered and recorded (key lesson:<id>:<revision>).
+// A delivery record carries at most 16 source ids per quote; a page that kept its earlier sources over many updates has more.
+// The correction's source comes first so the record still names it.
+func lessonQuote(p notebook.Page) memoryQuote {
+	ids := []string{}
+	if p.Correction != nil {
+		ids = append(ids, p.Correction.SourceID)
+	}
+	for _, source := range p.Sources {
+		if len(ids) < 16 && (p.Correction == nil || source.ID != p.Correction.SourceID) {
+			ids = append(ids, source.ID)
+		}
+	}
+	return memoryQuote{Key: "lesson:" + p.ID + ":" + p.Revision, ID: p.ID, Revision: p.Revision, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids, Correction: p.Correction}
+}
+
+// clipQuotes returns a copy of quotes with each text cut to budget bytes (an ellipsis marks a cut).
+func clipQuotes(quotes []memoryQuote, budget int) []memoryQuote {
+	clipped := append([]memoryQuote{}, quotes...)
+	text := func(s string) string {
+		if len(s) > budget {
+			return cut(s, budget) + "…"
+		}
+		return s
+	}
+	for i := range clipped {
+		q := &clipped[i]
+		q.Lesson, q.AppliesTo = text(q.Lesson), text(q.AppliesTo)
+		q.Request, q.Summary, q.Reply = text(q.Request), text(q.Summary), text(q.Reply)
+		if q.Correction != nil {
+			c := *q.Correction
+			c.Quote, c.Action = text(c.Quote), text(c.Action)
+			q.Correction = &c
+		}
+	}
+	return clipped
 }
 
 // answerSpecs are the hook questions whose answers the person gives about their own requests (prompt-kind is the AI's sorting, not asked of the person).

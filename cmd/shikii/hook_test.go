@@ -756,7 +756,7 @@ func TestHookAuditGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 4 {
+	if cmds := hookCommands(settings); len(cmds) != 5 {
 		t.Fatalf("an empty settings.json must be treated as {}: %v", cmds)
 	}
 }
@@ -786,7 +786,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(settings)
-	if len(cmds) != 4 || !strings.HasSuffix(cmds[0], " hook agent-task") || !strings.HasSuffix(cmds[1], " hook stop") || !strings.HasSuffix(cmds[2], " hook subagent-start") || !strings.HasSuffix(cmds[3], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
+	if len(cmds) != 5 || !strings.HasSuffix(cmds[0], " hook agent-task") || !strings.HasSuffix(cmds[1], " hook stop") || !strings.HasSuffix(cmds[2], " hook subagent-start") || !strings.HasSuffix(cmds[3], " hook tool-lesson") || !strings.HasSuffix(cmds[4], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
 		t.Fatalf("hooks after install must run the binary by its absolute path: %v", cmds)
 	}
 	// the hook that keeps child tasks (0.9.1) is attached only to PreToolUse for Agent / Task, and does not join someone else's PreToolUse group (rtk's Bash)
@@ -842,7 +842,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 4 {
+	if cmds := hookCommands(settings); len(cmds) != 5 {
 		t.Fatalf("second install must not duplicate: %v", cmds)
 	}
 	if !strings.Contains(out, "already there") {
@@ -863,7 +863,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 4 || !strings.Contains(out, "hooks added") {
+	if cmds := hookCommands(settings); len(cmds) != 5 || !strings.Contains(out, "hooks added") {
 		t.Fatalf("install must remove the old pre-tool-use hook: %v\n%s", cmds, out)
 	}
 	if b, _ = os.ReadFile(settings); !strings.Contains(string(b), "rtk hook claude") || strings.Contains(string(b), "Bash|Edit") {

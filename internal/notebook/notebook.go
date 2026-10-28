@@ -445,6 +445,12 @@ func (b Book) Query(query string) (View, error) {
 // Query, for manual search, still searches the body as before.
 // Live returns the pages usable in search (sources intact and not replaced), without ranking by search terms. Candidates for choosing where to insert.
 func (b Book) Live() ([]Page, error) {
+	return b.LiveWhere(nil)
+}
+
+// LiveWhere is Live limited to the pages keep accepts (nil keeps all). keep runs before the sources are checked, so a narrow keep
+// reads and hashes only the sources of the pages it accepts (the delivery right before a tool call runs on every edit, 0.11).
+func (b Book) LiveWhere(keep func(Page) bool) ([]Page, error) {
 	pages, _, err := b.pages()
 	if err != nil {
 		return nil, err
@@ -457,7 +463,7 @@ func (b Book) Live() ([]Page, error) {
 	}
 	live := []Page{}
 	for _, p := range pages {
-		if !superseded[p.ID] && len(b.sourceIssues(p)) == 0 {
+		if !superseded[p.ID] && (keep == nil || keep(p)) && len(b.sourceIssues(p)) == 0 {
 			live = append(live, p)
 		}
 	}

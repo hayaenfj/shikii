@@ -100,6 +100,9 @@ func printMemoryEffect(out io.Writer, st store.Store, scope string, now time.Tim
 	if m.Answers > 0 { // the person's own past answers on similar requests (0.11), counted inside the quotes above
 		fmt.Fprintf(out, "  of them your past answers %d (helpful %d)\n", m.Answers, m.AnswersHelpful)
 	}
+	if m.AtTool > 0 { // lessons delivered right before an edit or a command (0.11), counted inside the quotes above
+		fmt.Fprintf(out, "  of them right before an edit or a command %d (helpful %d)\n", m.AtTool, m.AtToolHelpful)
+	}
 	if c := m.Corrections; c.Delivered > 0 {
 		fmt.Fprintf(out, "  corrections delivered %d: followed %d, repeated %d, not applicable %d, unknown %d, pending %d\n", c.Delivered, c.Followed, c.Repeated, c.NotApplicable, c.Unknown, c.Pending)
 	}
@@ -119,6 +122,7 @@ type memoryEffectSummary struct {
 	Delivered, Helpful, Unused, Harmful, Unknown, Pending, AwaitingFeedback int
 	RecentDelivered, RecentHelpful                                          int
 	Answers, AnswersHelpful                                                 int
+	AtTool, AtToolHelpful                                                   int // delivered right before an edit or a command (0.11)
 	Corrections                                                             store.CorrectionStats
 }
 
@@ -132,6 +136,7 @@ func memoryEffectOf(st store.Store, scope string, now time.Time) (memoryEffectSu
 	m.Delivered, m.Helpful, m.Unused, m.Harmful, m.Unknown, m.Pending, m.AwaitingFeedback = s.Delivered, s.Helpful, s.Unused, s.Harmful, s.Unknown, s.Pending, s.AwaitingFeedback
 	m.Corrections = r.Corrections
 	m.Answers, m.AnswersHelpful = s.Answers, s.AnswersHelpful
+	m.AtTool, m.AtToolHelpful = s.AtTool, s.AtToolHelpful
 	for _, o := range r.All {
 		if now.Sub(o.At) > personWorkWindow {
 			continue
@@ -146,7 +151,7 @@ func memoryEffectOf(st store.Store, scope string, now time.Time) (memoryEffectSu
 
 func (m memoryEffectSummary) json() map[string]any {
 	return map[string]any{"delivered": m.Delivered, "helpful": m.Helpful, "unused": m.Unused, "harmful": m.Harmful, "unknown": m.Unknown, "pending": m.Pending, "awaiting_feedback": m.AwaitingFeedback,
-		"recent_delivered": m.RecentDelivered, "recent_helpful": m.RecentHelpful, "answers": m.Answers, "answers_helpful": m.AnswersHelpful,
+		"recent_delivered": m.RecentDelivered, "recent_helpful": m.RecentHelpful, "answers": m.Answers, "answers_helpful": m.AnswersHelpful, "at_tool": m.AtTool, "at_tool_helpful": m.AtToolHelpful,
 		"corrections": map[string]any{"delivered": m.Corrections.Delivered, "followed": m.Corrections.Followed, "repeated": m.Corrections.Repeated, "not_applicable": m.Corrections.NotApplicable, "unknown": m.Corrections.Unknown, "pending": m.Corrections.Pending}}
 }
 

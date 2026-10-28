@@ -85,7 +85,7 @@ func agentHome() (string, error) {
 }
 
 func cmdHook(args []string) error {
-	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
+	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | agent-task | tool-lesson | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
 	if len(args) == 0 {
 		return errors.New(strings.TrimSpace(usage))
 	}
@@ -102,7 +102,7 @@ func cmdHook(args []string) error {
 		return cmdHookPlan(args[1:])
 	case "variants":
 		return cmdHookVariants(args[1:])
-	case "user-prompt-submit", "stop", "subagent-start", "agent-task":
+	case "user-prompt-submit", "stop", "subagent-start", "agent-task", "tool-lesson":
 		// the hook never stops the work: exit 0 no matter what. The reason goes to hook.log
 		if err := runHookEvent(args[0]); err != nil {
 			hookLog(err.Error())
@@ -112,7 +112,7 @@ func cmdHook(args []string) error {
 		// an event an older version left in settings. Do nothing, silently (the next `shikii hook install --yes` removes it)
 		return nil
 	}
-	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start | agent-task)", args[0])
+	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start | agent-task | tool-lesson)", args[0])
 }
 
 // ---------------------------------------------------------------- Claude Code / Codex JSON
@@ -126,8 +126,8 @@ type hookInput struct {
 	Prompt               string          `json:"prompt"`
 	StopHookActive       bool            `json:"stop_hook_active"`
 	LastAssistantMessage string          `json:"last_assistant_message"`
-	ToolName             string          `json:"tool_name"`  // PreToolUse: the tool about to be used (only Agent / Task are looked at)
-	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: that tool's input (for Agent: prompt and subagent_type)
+	ToolName             string          `json:"tool_name"`  // PreToolUse: the tool about to be used (Agent / Task; the edit tools and Bash for tool-lesson)
+	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: that tool's input (for Agent: prompt and subagent_type; file_path, notebook_path or command)
 	// late is the Stop after a block run at the person's next request (judgeAskedTurn): it judges only. No Stop happened, so the stop
 	// checks and rituals are not rechecked (a tree that passes at the next request is not "fixed before the turn ended", 0.9.3 audit 6)
 	late bool
@@ -686,8 +686,8 @@ func runHookEvent(event string) error {
 		}
 		return err
 	}
-	if event != "agent-task" {
-		ensureModel(common) // start it in the background if missing (this turn just gets no record; do not wait). Not started when only keeping a task for a child
+	if event != "agent-task" && event != "tool-lesson" {
+		ensureModel(common) // start it in the background if missing (this turn just gets no record; do not wait). Not started when only keeping a task for a child or matching a lesson to a tool call
 	}
 	if event == "user-prompt-submit" {
 		judgeAskedTurn(agent, &in, loadSession(agent, in.SessionID)) // the turn that waited for the Stop after its block, when that Stop never came
@@ -707,6 +707,8 @@ func runHookEvent(event string) error {
 		out, muts, err = hookSubagentStart(agent, &in, snapshot) // the parent's record only drops the used task for the child
 	case "agent-task":
 		muts = hookAgentTask(&in) // output nothing (do not stop the tool)
+	case "tool-lesson":
+		out, err = hookToolLesson(agent, &in, snapshot) // context only (never stops the tool); records the delivery under the session lock itself
 	}
 	if moved != "" {
 		out.Context = joinLines(moved, out.Context)
@@ -835,7 +837,7 @@ func hookEventName(event string) string {
 		return "UserPromptSubmit"
 	case "subagent-start":
 		return "SubagentStart"
-	case "agent-task":
+	case "agent-task", "tool-lesson":
 		return "PreToolUse"
 	}
 	return "Stop"
@@ -1944,11 +1946,14 @@ type hookEvent struct {
 	event, cmd string
 	timeout    int
 	claudeOnly bool   // events Codex lacks (SubagentStart, the PreToolUse for child agents) are added only to Claude Code's settings
-	matcher    string // tools PreToolUse looks at (Agent / Task only. Other tools do not trigger the hook)
+	matcher    string // tools PreToolUse looks at (Agent / Task for agent-task, the edit tools and Bash for tool-lesson. Other tools do not trigger the hook)
 }
 
-// hookEvents are 4: before thinking (UserPromptSubmit), after thinking (Stop), when a subagent starts (SubagentStart. Claude Code only),
-// and right before a subagent is started (PreToolUse for Agent / Task only. Keeps the task text passed to the child. Claude Code only. 0.9.1).
+// hookEvents are 5: before thinking (UserPromptSubmit), after thinking (Stop), when a subagent starts (SubagentStart. Claude Code only),
+// right before a subagent is started (PreToolUse for Agent / Task only. Keeps the task text passed to the child. Claude Code only. 0.9.1),
+// and right before a file edit or a command (PreToolUse for the edit tools and Bash. One lesson naming that file or command. Claude Code
+// only: Codex's PreToolUse could not be shown to pass additionalContext to the model, and every change to hooks.json makes Codex users
+// trust the hooks again. 0.11).
 // command is the current executable's absolute path + " hook <event>": it works even if the agent's shell PATH has no `shikii` (e.g. ~/go/bin right after go install).
 // If the executable moves, rerunning `shikii hook install --yes` removes the handlers with the old path and adds new ones.
 func hookEvents() []hookEvent {
@@ -1962,8 +1967,9 @@ func hookEvents() []hookEvent {
 	return []hookEvent{
 		{"UserPromptSubmit", hookCommand(exe, "user-prompt-submit"), hookTimeout, false, ""},
 		{"Stop", hookCommand(exe, "stop"), hookTimeout + 5, false, ""},
-		{"SubagentStart", hookCommand(exe, "subagent-start"), hookTimeout, true, ""},    // deliver lessons to subagents too (0.7.3)
-		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"}, // keep the task text passed to the child (0.9.1)
+		{"SubagentStart", hookCommand(exe, "subagent-start"), hookTimeout, true, ""},          // deliver lessons to subagents too (0.7.3)
+		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"},       // keep the task text passed to the child (0.9.1)
+		{"PreToolUse", hookCommand(exe, "tool-lesson"), hookTimeout, true, toolLessonMatcher}, // a lesson naming the file or command, right before it (0.11)
 	}
 }
 

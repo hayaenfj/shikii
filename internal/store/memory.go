@@ -39,7 +39,11 @@ type MemoryDelivery struct {
 	At      time.Time     `json:"at"`
 	Parent  string        `json:"parent,omitempty"` // delivery to a subagent: the parent turn (the conversation source id). The review is evaluated alongside the parent's conversation (0.7.4)
 	Agent   string        `json:"agent,omitempty"`  // the subagent's id
+	Tool    string        `json:"tool,omitempty"`   // delivered right before a tool call (0.11): the tool and the file or command words it matched; Parent is the turn
 }
+
+// toolMax is the longest Tool a delivery keeps (a file path or a command's leading words).
+const toolMax = 512
 
 type MemoryAssessment struct {
 	CorrectionResult string    `json:"correction_result,omitempty"`
@@ -61,6 +65,8 @@ type MemoryStats struct {
 	AwaitingFeedback int `json:"awaiting_feedback"`
 	Answers          int `json:"answers"`         // of Delivered, the person's past answers (decision:<trace>, 0.11)
 	AnswersHelpful   int `json:"answers_helpful"` // of Answers, those the reflection found helpful
+	AtTool           int `json:"at_tool"`         // of Delivered, those delivered right before an edit or a command (0.11)
+	AtToolHelpful    int `json:"at_tool_helpful"` // of AtTool, those the reflection found helpful
 }
 
 type MemorySummary struct {
@@ -73,6 +79,7 @@ type MemoryObservation struct {
 	SourceID   string            `json:"source_id"`
 	Parent     string            `json:"parent,omitempty"`
 	Agent      string            `json:"agent,omitempty"`
+	Tool       string            `json:"tool,omitempty"`
 	Request    string            `json:"request"`
 	At         time.Time         `json:"at"`
 	Quote      MemoryQuote       `json:"quote"`
@@ -91,6 +98,9 @@ func (s Store) memoryPath(scope string) string {
 
 func validMemoryDelivery(d MemoryDelivery) bool {
 	if !textTrace.MatchString(d.ID) || d.Scope == "" || d.Request == "" || len(d.Request) > feedbackTextMax || len(d.Quotes) == 0 || len(d.Quotes) > 2 || d.At.IsZero() {
+		return false
+	}
+	if d.Tool != "" && (d.Parent == "" || len(d.Tool) > toolMax || len(d.Quotes) != 1) { // a delivery at a tool call is one quote within a turn
 		return false
 	}
 	data, _ := json.Marshal(d.Quotes)
@@ -393,7 +403,7 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 			if err != nil {
 				return r, err
 			}
-			item := MemoryObservation{SourceID: d.ID, Parent: d.Parent, Agent: d.Agent, Request: d.Request, At: d.At, Quote: q, Assessment: a}
+			item := MemoryObservation{SourceID: d.ID, Parent: d.Parent, Agent: d.Agent, Tool: d.Tool, Request: d.Request, At: d.At, Quote: q, Assessment: a}
 			if q.Correction != nil {
 				r.Corrections.Delivered++
 				if a == nil {
@@ -417,6 +427,12 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 				r.Stats.Answers++
 				if a != nil && a.Result == "helpful" {
 					r.Stats.AnswersHelpful++
+				}
+			}
+			if d.Tool != "" {
+				r.Stats.AtTool++
+				if a != nil && a.Result == "helpful" {
+					r.Stats.AtToolHelpful++
 				}
 			}
 			if a == nil {

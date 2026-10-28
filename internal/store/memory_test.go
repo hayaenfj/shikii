@@ -195,3 +195,36 @@ func TestMemoryDeliveryTakesPersonAnswerQuotes(t *testing.T) {
 		}
 	}
 }
+
+// 0.11: a delivery right before a tool call is one quote within a turn (a parent) and names the tool and target; status counts it.
+func TestMemoryDeliveryAtToolCall(t *testing.T) {
+	s, d, _ := memoryStoreFixture(t)
+	at := d
+	at.ID, at.Parent, at.Tool = NewTraceID(), "00000000000000a1", "Edit cmd/shikii/version.go"
+	if err := s.SaveMemoryDelivery(at); err != nil {
+		t.Fatalf("a delivery at a tool call within a turn is recorded: %v", err)
+	}
+	for name, bad := range map[string]func(*MemoryDelivery){
+		"no turn": func(c *MemoryDelivery) { c.Parent = "" },
+		"two quotes": func(c *MemoryDelivery) {
+			q := c.Quotes[0]
+			q.Key, q.ID = "lesson:0000000000000009:0000000000000002", "0000000000000009"
+			c.Quotes = append(c.Quotes, q)
+		},
+		"a long target": func(c *MemoryDelivery) { c.Tool = strings.Repeat("x", toolMax+1) },
+	} {
+		c := at
+		c.ID, c.Quotes = NewTraceID(), append([]MemoryQuote{}, at.Quotes...)
+		bad(&c)
+		if s.SaveMemoryDelivery(c) == nil {
+			t.Errorf("%s: refused", name)
+		}
+	}
+	if err := s.SaveMemoryDelivery(d); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.MemoryReport(d.Scope)
+	if err != nil || r.Stats.Delivered != 2 || r.Stats.AtTool != 1 {
+		t.Fatalf("the delivery at a tool call is counted apart inside the total: %+v %v", r.Stats, err)
+	}
+}
