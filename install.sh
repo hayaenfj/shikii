@@ -15,6 +15,15 @@ main() {
   mkdir -p "$BIN"
   # Prepare everything in a folder next to the destination, then move each file into place with mv
   # (overwriting a binary in use makes it fail with Killed: 9 on macOS).
+  # what is where the files go must be a file (or a link to one): a folder or anything else there is a person's, and is never moved
+  # into or removed. Checked before anything is downloaded or placed, so a stop here changes nothing
+  for f in shikii shikii-readout; do
+    if [ -e "$BIN/$f" ] && [ ! -f "$BIN/$f" ]; then fail "$BIN/$f is not a file; nothing was installed (move it away and run this again)"; fi
+  done
+  if [ -e "$BIN/shikii-licenses" ] && [ ! -d "$BIN/shikii-licenses" ]; then fail "$BIN/shikii-licenses is not a folder; nothing was installed (move it away and run this again)"; fi
+  for f in LICENSE LICENSE-APACHE LICENSE-MIT THIRD-PARTY-NOTICES; do
+    if [ -e "$BIN/shikii-licenses/$f" ] && [ ! -f "$BIN/shikii-licenses/$f" ]; then fail "$BIN/shikii-licenses/$f is not a file; nothing was installed (move it away and run this again)"; fi
+  done
   STAGE=$(mktemp -d "$BIN/.shikii-install-XXXXXX")
   trap 'rm -rf "$STAGE"' EXIT
   # dash and zsh skip the EXIT trap when a signal (Ctrl-C) stops the script; exiting from the signal runs it
@@ -70,10 +79,6 @@ main() {
     mv -f "$STAGE/files/shikii" "$STAGE/files/shikii-readout" "$STAGE/"
   fi
   chmod 755 "$STAGE/shikii" "$STAGE/shikii-readout"
-  # what is there must be a file (or a link to one): a folder or anything else there is a person's, and is never moved into or removed
-  for f in shikii shikii-readout; do
-    if [ -e "$BIN/$f" ] && [ ! -f "$BIN/$f" ]; then fail "$BIN/$f is not a file; nothing was installed (move it away and run this again)"; fi
-  done
   mv -f "$STAGE/shikii-readout" "$BIN/shikii-readout" || fail "cannot put shikii-readout in $BIN; nothing was changed"
   mv -f "$STAGE/shikii" "$BIN/shikii" || fail "cannot put shikii in $BIN: only shikii-readout was updated; run this again"
   echo "Installed: $BIN/shikii $BIN/shikii-readout"

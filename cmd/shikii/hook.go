@@ -1971,11 +1971,11 @@ func hookEvents() []hookEvent {
 // (0.9.3 and earlier wrote it bare: with a space in the path the shell ran only the part before it, and the hook never worked).
 func hookCommand(exe, event string) string { return shellQuote(exe) + " hook " + event }
 
-// hookBinary is the binary of a hook command `<binary> hook <event>`, read as shikii has written it (0.9.10's reading, 0.10 keeps it
-// as it is): a path in single quotes as hookCommand writes it, or a bare path (also one with spaces, as 0.9.3 and earlier wrote it,
-// and any character but a quote, as 0.9.2 and earlier wrote paths). ok is false when the command is not of that form. Nothing is
-// read as a shell would (~ and $HOME are not expanded): an attempt to (0.10's audits) kept being broken, and once deleted another
-// tool's hook.
+// hookBinary is the binary of a hook command `<binary> hook <event>` in exactly a form shikii writes (0.10.1): a path in single quotes as
+// hookCommand writes it (quoting it again gives the same text, and it is absolute), or a bare word of only the characters a path
+// has (letters, digits, non-ASCII letters and ./-_+@:,%, and spaces in an absolute path, as 0.9.3 and earlier wrote paths). Anything
+// else (; & | = $ ~ quotes, a backslash) means a person wrote or chained something, and ok is false: install and uninstall then leave
+// the whole command as it is. Reading more forms kept deleting people's commands (0.10's audits), so shikii reads only its own.
 func hookBinary(command string) (string, bool) {
 	c := strings.TrimSpace(command)
 	i := strings.LastIndex(c, " hook ")
@@ -1984,12 +1984,16 @@ func hookBinary(command string) (string, bool) {
 	}
 	bin := strings.TrimSpace(c[:i])
 	if len(bin) >= 2 && bin[0] == '\'' && bin[len(bin)-1] == '\'' {
-		bin = strings.ReplaceAll(bin[1:len(bin)-1], `'\''`, "'")
-	} else if strings.ContainsAny(bin, "'\"\\") {
-		return "", false // a quote or a backslash in a bare word: shikii never wrote either (a person escaped something)
+		path := strings.ReplaceAll(bin[1:len(bin)-1], `'\''`, "'")
+		if shellQuote(path) != bin || !filepath.IsAbs(path) {
+			return "", false
+		}
+		return path, true
 	}
-	if strings.ContainsAny(bin, " \t") && !filepath.IsAbs(bin) {
-		return "", false // `env shikii`, `shikii-tool run`: not a path to a binary
+	for _, r := range bin {
+		if r < 0x80 && !strings.ContainsRune(shellPlain, r) && !(r == ' ' && filepath.IsAbs(bin)) {
+			return "", false
+		}
 	}
 	return bin, true
 }
@@ -2053,40 +2057,44 @@ func isShikiiHook(command string) bool {
 	return err == nil && name == filepath.Base(exe)
 }
 
-// shikiiWord finds shikii as a word of its own (not shikii-notify) in the part of a command before " hook ".
-var shikiiWord = regexp.MustCompile(`(^|[/'"\s])shikii(['"\s]|$)`)
+// shikiiBefore finds a shikii binary right before " hook " (…/shikii, 'shikii', "…/shikii"), not a folder or a tool named shikii-….
+var shikiiBefore = regexp.MustCompile(`(^|[/'"\s])shikii['"]?$`)
 
-// handWrittenShikiiHook reports whether a command looks like it runs shikii (`… shikii … hook …`) but is not a shikii hook as shikii
-// writes it (~, $HOME, double quotes, a backslash, more words after the event…). install and uninstall leave it as it is, and doctor
-// and uninstall name it, since shikii cannot tell what it runs.
+// handWrittenShikiiHook reports whether a command runs a shikii binary for one of shikii's events (the first word after " hook ") but
+// is not in a form shikii writes (~, $HOME, quotes, chained after another command, more words after the event…). install and
+// uninstall leave it as it is, and doctor and uninstall name it, since shikii cannot tell what it runs.
 func handWrittenShikiiHook(command string) bool {
 	c := strings.TrimSpace(command)
 	i := strings.LastIndex(c, " hook ")
-	return i > 0 && shikiiWord.MatchString(c[:i]) && !isShikiiHook(c)
+	if i <= 0 || isShikiiHook(c) {
+		return false
+	}
+	event, _, _ := strings.Cut(strings.TrimSpace(c[i+len(" hook "):]), " ")
+	return shikiiBefore.MatchString(strings.TrimSpace(c[:i])) && shikiiHookEvent(event)
 }
 
 // handWrittenShikiiHooksIn lists the hand-written shikii hooks (handWrittenShikiiHook) in a hook settings file, sorted; none when the
 // file cannot be read.
 func handWrittenShikiiHooksIn(path string) []string {
 	body, err := os.ReadFile(path)
-	var config struct {
-		Hooks map[string][]struct {
-			Hooks []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
+	var config map[string]any
 	if err != nil || json.Unmarshal(body, &config) != nil {
 		return nil
 	}
 	seen := map[string]bool{}
 	var out []string
-	for _, groups := range config.Hooks {
+	hooks, _ := config["hooks"].(map[string]any)
+	for _, groups := range hooks { // read leniently, as editHooks does: an event of another shape is skipped, not the whole file
+		groups, _ := groups.([]any)
 		for _, g := range groups {
-			for _, h := range g.Hooks {
-				if handWrittenShikiiHook(h.Command) && !seen[h.Command] {
-					seen[h.Command] = true
-					out = append(out, h.Command)
+			g, _ := g.(map[string]any)
+			handlers, _ := g["hooks"].([]any)
+			for _, h := range handlers {
+				h, _ := h.(map[string]any)
+				c, _ := h["command"].(string)
+				if handWrittenShikiiHook(c) && !seen[c] {
+					seen[c] = true
+					out = append(out, c)
 				}
 			}
 		}

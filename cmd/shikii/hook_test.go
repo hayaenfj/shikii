@@ -3905,3 +3905,48 @@ func TestHookInstallLeavesAHandWrittenShikiiHookAlone(t *testing.T) {
 		}
 	}
 }
+
+// A hook that chains shikii's hook after another command (or sets a variable for it) is the person's: hook install and uninstall
+// leave the whole command as it is, doctor names it as written by hand instead of calling it missing, and a tool that only mentions a
+// folder named shikii is not called a shikii hook at all (0.10.0's audit of a0942d5).
+func TestHookInstallLeavesAChainedCommandAlone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bin := filepath.Join(home, ".local", "bin", "shikii")
+	chained := []string{
+		"/usr/local/bin/notify-done hook stop; " + bin + " hook stop",
+		"/usr/bin/env SHIKII_X=1 " + bin + " hook stop",
+		"/usr/bin/afplay /System/Library/Sounds/Glass.aiff && " + bin + " hook stop",
+		"'/opt/a' && '" + bin + "' hook stop",
+		"/Users/a/com~apple/shikii hook stop",
+	}
+	for _, c := range chained {
+		if isShikiiHook(c) {
+			t.Fatalf("%q is not in a form shikii writes", c)
+		}
+		if !handWrittenShikiiHook(c) {
+			t.Fatalf("%q runs shikii, so doctor and uninstall name it", c)
+		}
+	}
+	commands := map[string]string{}
+	for _, c := range chained {
+		commands[c] = "Stop"
+	}
+	settings := hookSettingsWith(t, commands)
+	for _, install := range []bool{true, false} {
+		if _, err := editHooks(settings, install, hookEventsFor("Claude Code")); err != nil {
+			t.Fatal(err)
+		}
+		got := readHookCommands(t, settings)
+		for _, c := range chained {
+			if !got[c] {
+				t.Fatalf("install=%v removed the person's command %q: %v", install, c, got)
+			}
+		}
+	}
+	for _, other := range []string{"python3 -m mytool --project ~/git/shikii hook done", "/opt/tools/shikii-notify hook stop", "mytool --dir ~/shikii-data hook stop"} {
+		if handWrittenShikiiHook(other) {
+			t.Fatalf("%q is another tool, not a shikii hook", other)
+		}
+	}
+}

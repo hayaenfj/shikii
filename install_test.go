@@ -306,6 +306,9 @@ func TestInstallShLeavesAFolderWhereABinaryGoes(t *testing.T) {
 			if b, _ := os.ReadFile(filepath.Join(dir, "notes.txt")); string(b) != "mine\n" {
 				t.Fatalf("the person's file in the folder must stay, it is %q\n%s", b, out)
 			}
+			if _, err := os.Lstat(filepath.Join(f.home, ".local", "bin", "shikii-licenses")); err == nil {
+				t.Fatalf("nothing is placed when it stops, but the licenses are there\n%s", out)
+			}
 			for _, other := range []string{"shikii", "shikii-readout"} {
 				if fi, err := os.Lstat(filepath.Join(f.home, ".local", "bin", other)); err == nil && fi.Mode().IsRegular() {
 					t.Fatalf("nothing is placed when it stops, but %s is there\n%s", other, out)
@@ -362,5 +365,24 @@ func TestInstallShRefusesAnArchiveWithALinkInsteadOfAFile(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.home, "shikii-calls")); err == nil {
 		t.Fatal("hook install must not run after the archive was refused")
+	}
+}
+
+// A folder where a license file goes is a person's too: install.sh stops before placing anything, and never moves a file into it.
+func TestInstallShLeavesAFolderWhereALicenseGoes(t *testing.T) {
+	f := newInstallFixture(t, "0.10.0")
+	dir := filepath.Join(f.home, ".local", "bin", "shikii-licenses", "LICENSE")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.runWith(t, "/bin/sh", readInstallSh(t), "")
+	if err == nil || !strings.Contains(out, "is not a file; nothing was installed") {
+		t.Fatalf("install.sh must stop on a folder where a license goes: %v\n%s", err, out)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("nothing is moved into the person's folder: %v\n%s", entries, out)
+	}
+	if _, err := os.Lstat(filepath.Join(f.home, ".local", "bin", "shikii")); err == nil {
+		t.Fatalf("nothing is placed when it stops\n%s", out)
 	}
 }
