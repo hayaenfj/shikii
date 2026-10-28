@@ -57,7 +57,7 @@ Following a correction and being helpful are separate observations. Success or s
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 shikii hook install          # only shows what it would do (the same as install.sh runs with --yes)
 shikii hook install --yes    # do it. Takes effect when you restart claude in a new terminal
-shikii hook uninstall --yes  # removes only the hooks it added (4 for Claude Code, 2 for Codex). Each project's records and truths (.shikii/) stay
+shikii hook uninstall --yes  # removes only the hooks it added (6 for Claude Code, 3 for Codex). Each project's records and truths (.shikii/) stay
 which shikii                 # Claude Code calls `shikii` as is, so it needs to be on PATH
 ```
 
@@ -140,6 +140,7 @@ UserPromptSubmit ─ shikii hook user-prompt-submit ─ outcome truths for the p
                                                      keeps the previous reply and this message from the person as one set. Quotes conversations of similar requests in the same work
                                                      decide prompt-kind. For the new-format needs-plan, points the agent to sorting out the context with the original text
                                                      └ saves the request and the working tree's hash in sessions/<id>.json, and the working tree's list in <id>.files
+SessionStart ───── shikii hook session-start ────── at the session's start and right after a summary (source compact): the rules for every request (scene always) and the last section of the newest work record under .shikii/handoff/ go into the context. Nothing to tell, nothing printed. Both agents (0.11)
 PreToolUse(Agent) ─ shikii hook agent-task ──────── puts the task text and kind passed to the child in the parent's saved state (up to 10 minutes and 8 items. When adding one of the same kind, saved items of the same kind older than 30 seconds are dropped (for a child that was refused and never started). Items without a kind are treated as general-purpose. Outputs nothing. Claude Code only)
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── right before Edit / Write / MultiEdit / NotebookEdit / Bash: at most 1 lesson whose title, lesson or applies_to names the file First, an enabled forbidden-words guard refuses the change (permissionDecision deny) when the lines about to be added contain the word (0.11).
                                                      (the end of its path, or its name as a whole word) or the command (program + first word, such as git commit; options skipped)

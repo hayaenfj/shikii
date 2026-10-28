@@ -57,7 +57,7 @@
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 shikii hook install          # 何をするかを表示するだけ(install.sh が --yes で流すのと同じ)
 shikii hook install --yes    # 実行。新しいターミナルで claude を起こし直すと効く
-shikii hook uninstall --yes  # 足した hook(Claude Code 4 つ、Codex 2 つ)だけ外す。各プロジェクトの記録と正解(.shikii/)は残る
+shikii hook uninstall --yes  # 足した hook(Claude Code 6 つ、Codex 3 つ)だけ外す。各プロジェクトの記録と正解(.shikii/)は残る
 which shikii                 # Claude Code がそのまま `shikii` を呼ぶので、PATH に要る
 ```
 
@@ -138,6 +138,7 @@ UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending 
                                                      直前の返答と今回の人の発言を一組で残す。同じ仕事の似た依頼の会話を引用
                                                      decide prompt-kind。新形式のneeds-planは原文付きの文脈整理をエージェントへ案内
                                                      └ sessions/<id>.json に request と作業ツリーのハッシュ、<id>.files に作業ツリーの一覧を控える
+SessionStart ───── shikii hook session-start ────── セッションの始めと要約の直後(source compact)に、どの依頼にも効く規則(scene いつも)と、.shikii/handoff/ のいちばん新しい作業記録の最後の節を文脈に入れる。伝えることが無ければ何も出さない。両方のエージェント(0.11)
 PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前に、題・教訓・applies_to がそのファイル(パスの末尾か、語として切れた名前) その前に、有効な forbidden-words の検査が、足そうとしている行にその語があれば変更を断る(permissionDecision deny、0.11)。
                                                      かコマンド(プログラムと最初の語。git commit など。オプションは飛ばす)を書いた教訓を最大 1 件、文脈へ。モデルは使わず、

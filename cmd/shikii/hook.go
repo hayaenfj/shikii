@@ -85,7 +85,7 @@ func agentHome() (string, error) {
 }
 
 func cmdHook(args []string) error {
-	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | agent-task | tool-lesson | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
+	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | session-start | agent-task | tool-lesson | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
 	if len(args) == 0 {
 		return errors.New(strings.TrimSpace(usage))
 	}
@@ -108,11 +108,17 @@ func cmdHook(args []string) error {
 			hookLog(err.Error())
 		}
 		return nil
+	case "session-start":
+		// the project's own brief at the start and right after a summary (0.11). Never stops the session: exit 0, the reason goes to hook.log
+		if err := runSessionStart(); err != nil {
+			hookLog(err.Error())
+		}
+		return nil
 	case "pre-tool-use":
 		// an event an older version left in settings. Do nothing, silently (the next `shikii hook install --yes` removes it)
 		return nil
 	}
-	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start | agent-task | tool-lesson)", args[0])
+	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start | session-start | agent-task | tool-lesson)", args[0])
 }
 
 // ---------------------------------------------------------------- Claude Code / Codex JSON
@@ -837,6 +843,8 @@ func hookEventName(event string) string {
 		return "SubagentStart"
 	case "agent-task", "tool-lesson":
 		return "PreToolUse"
+	case "session-start":
+		return "SessionStart"
 	}
 	return "Stop"
 }
@@ -1938,7 +1946,8 @@ type hookEvent struct {
 	matcher    string // tools PreToolUse looks at (Agent / Task for agent-task, the edit tools and Bash for tool-lesson. Other tools do not trigger the hook)
 }
 
-// hookEvents are 5: before thinking (UserPromptSubmit), after thinking (Stop), when a subagent starts (SubagentStart. Claude Code only),
+// hookEvents are 6: before thinking (UserPromptSubmit), after thinking (Stop), at the session's start and after a summary (SessionStart.
+// Both agents. 0.11), when a subagent starts (SubagentStart. Claude Code only),
 // right before a subagent is started (PreToolUse for Agent / Task only. Keeps the task text passed to the child. Claude Code only. 0.9.1),
 // and right before a file edit or a command (PreToolUse for the edit tools and Bash. One lesson naming that file or command. Claude Code
 // only: Codex's PreToolUse could not be shown to pass additionalContext to the model, and every change to hooks.json makes Codex users
@@ -1955,6 +1964,7 @@ func hookEvents() []hookEvent {
 	}
 	return []hookEvent{
 		{"UserPromptSubmit", hookCommand(exe, "user-prompt-submit"), hookTimeout, false, ""},
+		{"SessionStart", hookCommand(exe, "session-start"), hookTimeout, false, ""}, // the project's brief at the start and right after a summary (source compact). Both agents read its additionalContext (0.11)
 		{"Stop", hookCommand(exe, "stop"), hookTimeout + 5, false, ""},
 		{"SubagentStart", hookCommand(exe, "subagent-start"), hookTimeout, true, ""},          // deliver lessons to subagents too (0.7.3)
 		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"},       // keep the task text passed to the child (0.9.1)

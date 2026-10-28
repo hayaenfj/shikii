@@ -756,7 +756,7 @@ func TestHookAuditGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 5 {
+	if cmds := hookCommands(settings); len(cmds) != 6 {
 		t.Fatalf("an empty settings.json must be treated as {}: %v", cmds)
 	}
 }
@@ -786,7 +786,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(settings)
-	if len(cmds) != 5 || !strings.HasSuffix(cmds[0], " hook agent-task") || !strings.HasSuffix(cmds[1], " hook stop") || !strings.HasSuffix(cmds[2], " hook subagent-start") || !strings.HasSuffix(cmds[3], " hook tool-lesson") || !strings.HasSuffix(cmds[4], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
+	if len(cmds) != 6 || !strings.HasSuffix(cmds[0], " hook agent-task") || !strings.HasSuffix(cmds[1], " hook session-start") || !strings.HasSuffix(cmds[2], " hook stop") || !strings.HasSuffix(cmds[3], " hook subagent-start") || !strings.HasSuffix(cmds[4], " hook tool-lesson") || !strings.HasSuffix(cmds[5], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
 		t.Fatalf("hooks after install must run the binary by its absolute path: %v", cmds)
 	}
 	// the hook that keeps child tasks (0.9.1) is attached only to PreToolUse for Agent / Task, and does not join someone else's PreToolUse group (rtk's Bash)
@@ -811,13 +811,13 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 			t.Fatalf("agent-task must be its own PreToolUse group matching Agent|Task, and the other group must stay as it was:\n%s", b)
 		}
 	}
-	// Codex has no SubagentStart, so only 2 (0.7.3)
-	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 2 || strings.Contains(strings.Join(codex, " "), "subagent-start") || strings.Contains(strings.Join(codex, " "), "agent-task") {
-		t.Fatalf("Codex gets UserPromptSubmit and Stop only: %v", codex)
+	// Codex has no SubagentStart and no PreToolUse hooks, so 3: UserPromptSubmit, Stop and SessionStart (0.7.3; 0.11)
+	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 3 || strings.Contains(strings.Join(codex, " "), "subagent-start") || strings.Contains(strings.Join(codex, " "), "agent-task") {
+		t.Fatalf("Codex gets UserPromptSubmit, Stop and SessionStart only: %v", codex)
 	}
 	b, _ := os.ReadFile(settings)
-	if !strings.Contains(string(b), "node other.mjs") || !strings.Contains(string(b), "rtk hook claude") || !strings.Contains(string(b), `"language": "Japanese"`) || !strings.Contains(string(b), `"SessionStart": []`) {
-		t.Fatalf("other hooks and keys must stay:\n%s", b)
+	if !strings.Contains(string(b), "node other.mjs") || !strings.Contains(string(b), "rtk hook claude") || !strings.Contains(string(b), `"language": "Japanese"`) || !strings.Contains(string(b), `"SessionStart"`) {
+		t.Fatalf("other hooks and keys must stay (SessionStart now holds shikii's hook, 0.11):\n%s", b)
 	}
 	if !fileExists(settings + ".bak-shikii") {
 		t.Fatal("a backup must be written before changing settings.json")
@@ -842,7 +842,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 5 {
+	if cmds := hookCommands(settings); len(cmds) != 6 {
 		t.Fatalf("second install must not duplicate: %v", cmds)
 	}
 	if !strings.Contains(out, "already there") {
@@ -863,7 +863,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 5 || !strings.Contains(out, "hooks added") {
+	if cmds := hookCommands(settings); len(cmds) != 6 || !strings.Contains(out, "hooks added") {
 		t.Fatalf("install must remove the old pre-tool-use hook: %v\n%s", cmds, out)
 	}
 	if b, _ = os.ReadFile(settings); !strings.Contains(string(b), "rtk hook claude") || strings.Contains(string(b), "Bash|Edit") {
@@ -1021,8 +1021,8 @@ func TestHookCodex(t *testing.T) {
 	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate, hookSpawn = oldLocal, oldPage, oldCal, oldSpawn })
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(codexHooks)
-	if len(cmds) != 2 || !strings.HasSuffix(cmds[0], " hook stop") || !strings.HasSuffix(cmds[1], " hook user-prompt-submit") {
-		t.Fatalf("Codex must get the 2 hooks and lose the old one: %v", cmds)
+	if len(cmds) != 3 || !strings.HasSuffix(cmds[0], " hook session-start") || !strings.HasSuffix(cmds[1], " hook stop") || !strings.HasSuffix(cmds[2], " hook user-prompt-submit") {
+		t.Fatalf("Codex must get the 3 hooks and lose the old one: %v", cmds)
 	}
 	b, _ := os.ReadFile(codexHooks)
 	if strings.Contains(string(b), "apply_patch") || !strings.Contains(string(b), "deny-check.sh") || !strings.Contains(string(b), `"description": "mine"`) {
@@ -1032,7 +1032,7 @@ func TestHookCodex(t *testing.T) {
 		t.Fatal("a file that already had shikii hooks in it must not be backed up")
 	}
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(codexHooks); len(cmds) != 2 {
+	if cmds := hookCommands(codexHooks); len(cmds) != 3 {
 		t.Fatalf("second install must not duplicate in Codex: %v", cmds)
 	}
 
