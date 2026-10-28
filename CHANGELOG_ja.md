@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.md) · **日本語**
 
+## 0.10.0 — 1 行のインストーラーが、Go 無しで公開した版を入れる
+
+- インストール: `curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh` は、GitHub Releases からこの機械向け(macOS か Linux、amd64 か arm64)の最新版を取ってきて、版の `SHA256SUMS` と照らし、`shikii` と `shikii-readout` を `~/.local/bin` に(ライセンスのファイルは `~/.local/bin/shikii-licenses` に)置いてから、`shikii hook install --yes` を流す。Go は要らなくなった。どれが最新版かを GitHub の `/releases/latest` に聞くので、出したばかりの版もすぐ入る(前に使っていた `go install …@latest` の Go のモジュールのプロキシは、版を出してから約 30 分、前の版を返した)。ハッシュが合わない書庫は入れず、何も残さない。`~/.local/bin` が PATH に無ければそう言う。
+- 置き場: Go や Go の版の管理ツールを上げても、実行ファイルは `~/.local/bin` に残る。前は `go install` が Go の側のフォルダに置き、mise のような版の管理ツールはそれを Go の版ごとに持つので、Go を上げると hook と Codex の登録が動かす実行ファイルが消え、hook が黙って止まった。
+- `shikii doctor`: hook(`~/.claude/settings.json`・`~/.codex/hooks.json`)と Codex の MCP の登録(`~/.codex/config.toml`)がどの shikii の実行ファイルを動かすかを出し、それがもう無い時はそう言って直し方(ある shikii から `shikii hook install --yes`、または 1 行のインストーラーをもう一度)を出す。
+- ソースから: リポジトリを clone した中の `sh install.sh` は、これまでどおり今のソースを Go 1.27 以上で組み、置き場は同じ `~/.local/bin` になった。
+
 ## 0.9.10 — ハードリンクの無いディスクで init が止まっても、既製のファイルを途中まで残さない
 
 - ハードリンクの無いディスク(exFAT・FAT): init が途中で止まっても、既製のファイル(問いや wiki の記事)と置き場の id・名前が途中まで残らない。全部を書いてから置く。前の版が途中まで残した既製のファイルは残るので、消して `shikii --init` を流す(置き場の id と名前は、これまでどおり作り直す)。Linux で、これらのディスクが権限の変更を断っても、init・聞き方の採用・`shikii tune` が止まらない。錠を使えないハードリンクの無いネットワークのディスク(SMB の一部)でも、init を止めずに錠なしで置く。

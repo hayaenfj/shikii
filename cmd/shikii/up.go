@@ -276,6 +276,11 @@ func cmdDoctor(args []string) error {
 	fmt.Fprintf(stdout, "%s llama-server: %s\n", ok(llama != ""), orElse(llama, "not in PATH → brew install llama.cpp"))
 	readout, err := findReadout()
 	fmt.Fprintf(stdout, "%s shikii-readout: %s\n", ok(err == nil), orElse(readout, "not found → make install"))
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, line := range registeredBinaryLines(home, mcpCommand()) {
+			fmt.Fprintln(stdout, line)
+		}
+	}
 	// 2. the local model (with a key Jev is used, so a missing one is not treated as lacking)
 	if usesHosted() {
 		fmt.Fprintf(stdout, "ok   model: TypeSafe Jev (TYPESAFE_API_KEY is set, so the local model is not started. To use it, set SHIKII_MODEL=local)\n")
@@ -334,6 +339,67 @@ func cmdDoctor(args []string) error {
 		fmt.Fprintf(stdout, "ok   store %s\n", *storeDir)
 	}
 	return nil
+}
+
+// registeredBinaryLines says, for the hooks (hookTargets) and Codex's MCP registration (~/.codex/config.toml), which shikii binary they
+// run, and when that binary is gone (a Go version manager removed its per-version folder, or the binary was moved), how to point them
+// at one that exists: hook install --yes rewrites the hooks, and the Codex block shikii wrote, to the binary that runs it.
+func registeredBinaryLines(home, exe string) []string {
+	type use struct{ where, bin string }
+	var uses []use
+	for _, target := range hookTargets {
+		body, err := os.ReadFile(filepath.Join(home, target.rel))
+		if err != nil {
+			continue
+		}
+		var config struct {
+			Hooks map[string][]struct {
+				Hooks []struct {
+					Command string `json:"command"`
+				} `json:"hooks"`
+			} `json:"hooks"`
+		}
+		if json.Unmarshal(body, &config) != nil {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, groups := range config.Hooks {
+			for _, group := range groups {
+				for _, hook := range group.Hooks {
+					if bin, ok := hookBinary(hook.Command); ok && isShikiiHook(hook.Command) && !seen[bin] {
+						seen[bin] = true
+						uses = append(uses, use{"hooks in ~/" + filepath.ToSlash(target.rel), bin})
+					}
+				}
+			}
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml")); err == nil {
+		if m, err := readCodexConfig(b); err == nil {
+			if server, ok := codexShikiiServer(m); ok {
+				if t, ok := server.(map[string]any); ok {
+					if bin, ok := t["command"].(string); ok {
+						uses = append(uses, use{"Codex's MCP server in ~/.codex/config.toml", bin})
+					}
+				}
+			}
+		}
+	}
+	fix := "run " + shellQuote(exe) + " hook install --yes to point them at this shikii, or install again with the one line in the README (it puts shikii in ~/.local/bin)"
+	var lines []string
+	for _, u := range uses {
+		found := fileExists(u.bin)
+		if !filepath.IsAbs(u.bin) {
+			_, err := exec.LookPath(u.bin)
+			found = err == nil
+		}
+		if found {
+			lines = append(lines, fmt.Sprintf("ok   %s: %s", u.where, u.bin))
+		} else {
+			lines = append(lines, fmt.Sprintf("MISSING %s: they run %s, which does not exist → %s", u.where, u.bin, fix))
+		}
+	}
+	return lines
 }
 
 func orElse(s, fallback string) string {

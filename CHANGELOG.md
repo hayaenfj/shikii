@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.10.0 — the one-line installer installs the published release, without Go
+
+- Install: `curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh` now downloads the latest release for your machine (macOS or Linux, amd64 or arm64) from GitHub Releases, checks it against the release's `SHA256SUMS`, and puts `shikii` and `shikii-readout` in `~/.local/bin` (the license files in `~/.local/bin/shikii-licenses`), then runs `shikii hook install --yes`. Go is no longer needed. It asks GitHub's `/releases/latest` which release is the newest, so a release installs as soon as it is published (the Go module proxy that `go install …@latest` used gave the previous version for about 30 minutes after a release). An archive whose hash does not match is not installed, and nothing is left behind. When `~/.local/bin` is not on PATH, the installer says so.
+- Install location: the binary stays in `~/.local/bin` when Go or a Go version manager is upgraded. Before, `go install` put it in Go's own folder, which a version manager such as mise keeps per Go version, so upgrading Go removed the binary the hooks and the Codex registration ran, and the hooks stopped without saying so.
+- `shikii doctor`: says which shikii binary the hooks (`~/.claude/settings.json`, `~/.codex/hooks.json`) and Codex's MCP registration (`~/.codex/config.toml`) run, and when that binary no longer exists, says so with the fix (`shikii hook install --yes` from a shikii that exists, or the one-line installer again).
+- From source: in a clone of the repository, `sh install.sh` still builds the current source with Go 1.27 or newer, now into the same `~/.local/bin`.
+
 ## 0.9.10 — init stopped on a disk without hard links no longer leaves a part of a built-in file
 
 - Disks without hard links (exFAT, FAT): a stop in the middle of init no longer leaves a part of a built-in file (a decision or wiki page) or of the store's id and name; the whole file is written first, then put in place. A part of a built-in file left by an earlier version stays (the store's id and name are made again as before): remove it and run `shikii --init`. On Linux, init, adopting a wording and `shikii tune` no longer stop when these disks refuse to change a file's mode. A network disk without hard links that does not support locks (some SMB mounts) gets the files without the lock instead of stopping init.

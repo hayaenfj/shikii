@@ -20,7 +20,7 @@ shikii は、エージェントをあなたのプロジェクトに合わせて�
 
 ## インストール・アップデート
 
-インストールは[日本語 README](readme/README_ja.md#始め方)の curl の 1 行。ソースから入れる場合は clone した shikii のフォルダで `sh install.sh`。どちらも Go 1.27 以上と Git が要る。
+インストールは[日本語 README](readme/README_ja.md#始め方)の curl の 1 行。ソースから入れる場合は clone した shikii のフォルダで `sh install.sh`。curl の 1 行は最新の版を取ってくるので Go は要らない。ソースから入れる時は Go 1.27 以上と Git が要る。
 
 ```sh
 shikii update

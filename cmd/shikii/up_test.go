@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -161,5 +163,43 @@ func TestMakefileUsesTheLocalStandard(t *testing.T) {
 	drift := plan("drift")
 	if last := drift[len(drift)-1]; !strings.HasPrefix(last, "bin/shikii drift ") || !strings.Contains(last, "--model 'jev-1.14.0'") {
 		t.Fatalf("make drift must measure with the response's model (jev-1.14.0), which is the calibration key: %q", drift)
+	}
+}
+
+// When the binary the hooks and Codex's registration run is gone (a Go version manager removed its per-version folder), doctor says
+// so for each of them and how to fix it; after the fix it names was followed (hook install --yes), it reports them as ok.
+func TestDoctorSaysWhenTheRegisteredBinaryIsGone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	gone := filepath.Join(home, "go-1.27.2", "bin", "shikii")
+	for _, target := range hookTargets {
+		path := filepath.Join(home, target.rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":` + strconv.Quote(hookCommand(gone, "stop")) + `}]}]}}`
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), codexWithServer(nil, gone, codexServerArgs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t, func() error {
+		return cmdDoctor([]string{"--specs", home, "--store", home + "/.shikii", "--local", "", "--hosted", ""})
+	})
+	for _, where := range []string{"hooks in ~/.claude/settings.json", "hooks in ~/.codex/hooks.json", "Codex's MCP server in ~/.codex/config.toml"} {
+		if !strings.Contains(out, "MISSING "+where+": they run "+gone+", which does not exist → run ") || !strings.Contains(out, "hook install --yes") {
+			t.Fatalf("doctor must say that the %s run a binary that is gone, and how to fix it:\n%s", where, out)
+		}
+	}
+	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	for _, line := range registeredBinaryLines(home, mcpCommand()) {
+		if !strings.HasPrefix(line, "ok   ") {
+			t.Fatalf("after hook install --yes every registration must run a binary that exists: %s", line)
+		}
+	}
+	if n := len(registeredBinaryLines(home, mcpCommand())); n != 3 {
+		t.Fatalf("doctor must report the 2 hook files and Codex's registration, reported %d", n)
 	}
 }

@@ -20,7 +20,7 @@ This guide covers everything the short [README](../README.md) leaves out: every 
 
 ## Install and update
 
-To install, use the one-line curl command in the [README](../README.md#get-started). To install from source, run `sh install.sh` in the folder where you cloned shikii. Both need Go 1.27 or newer and Git.
+To install, use the one-line curl command in the [README](../README.md#get-started); it downloads the latest release and does not need Go. To install from source, run `sh install.sh` in the folder where you cloned shikii; that needs Go 1.27 or newer and Git.
 
 ```sh
 shikii update
