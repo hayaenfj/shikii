@@ -28,6 +28,8 @@ The optional `query` searches this project's wiki, including lesson bodies, and 
 
 Choose short topic terms and plausible alternative wording rather than copying the whole request into keyword search. For example, a receipt question can concern a refund policy, while a personal-name correction can concern publication rules. If the returned topic is wrong, refine the query before citing it. For comparing more candidates and reusing retrieved evidence, follow [wiki.md](wiki.md#search-and-reuse-evidence).
 
+When the work moves to another area mid-task (another part of the code, a release, a document), search the wiki again with that area's topic words (`shikii wiki query <topic>`) before acting there: the lessons delivered before work were chosen by the first request's words.
+
 Read each lesson's applicability. Planning returns a short summary; use `shikii wiki query lesson:<page_id>` for its full knowledge body and related pages. If its meaning or origin is unclear, use `shikii wiki query <source_id>` to inspect the original exchange. Prefer current instructions over historical agreements; a wiki lesson is a hypothesis, never current approval. If no usable evidence exists, keep the missing context unknown.
 
 When the article body is needed as decision evidence, add `pages: ["<page_id>"]` to planning query (up to two). It returns the selected full text as `article:<id>:<revision>` in `source_material`; cite an exact quote and pass the same `pages` and search text during submit. Follow related pages selectively instead of loading the entire wiki. The quote still needs current human evidence to support agreement. A changed cited revision during the decision is rejected; re-read the source rather than carrying its old meaning forward.

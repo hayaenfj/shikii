@@ -863,3 +863,15 @@ func TestNewRulesTestsAndProceduresGoToTheWiki(t *testing.T) {
 		}
 	}
 }
+
+// 0.11: the skill asks the agent to search the wiki again by the new topic when the work moves to another area mid-task, not only
+// before work (the person agreed to add it; lessons delivered before work were chosen by the first request's words).
+func TestSkillAsksToSearchTheWikiAgainWhenTheWorkMoves(t *testing.T) {
+	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
+	planning, _ := os.ReadFile("../../skills/shikii/references/planning.md")
+	for name, text := range map[string]string{"SKILL.md": string(skill), "references/planning.md": string(planning)} {
+		if !strings.Contains(text, "moves to another area") {
+			t.Errorf("%s asks to search the wiki again by the new topic when the work moves to another area", name)
+		}
+	}
+}
