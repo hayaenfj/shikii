@@ -8,6 +8,8 @@
 16 cmd/shikii/guard.go
 1 cmd/shikii/guard_hook.go
 22 cmd/shikii/guard_hook_test.go
+2 cmd/shikii/guard_tool.go
+8 cmd/shikii/guard_tool_test.go
 23 cmd/shikii/guard_test.go
 10 cmd/shikii/handoff_test.go
 10 cmd/shikii/helpers_test.go

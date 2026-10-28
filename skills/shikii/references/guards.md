@@ -8,7 +8,7 @@ A guard is a deterministic check that runs at the end of every turn (the `Stop` 
 | `forbidden-words` | lines added in the turn must not contain the words | `words: ["root", "fingerprint"]`, optional `except: ["docs/operations.md", "wiki/**"]` (paths not checked) and `allow: ["grassroots", "uproot"]` (ordinary words that contain a forbidden word; removed before checking. Not a forbidden word itself, nor a forbidden word with only kana or punctuation added) |
 | `commit-body` | every commit made in the turn (from the HEAD at the request) must contain all words in its body | `required: ["Problem", "Change", "Verification"]` |
 
-Unknown observations pass: without a git listing for the turn, or without a recorded HEAD, the corresponding kind does not stop anything. After a stop, the next `Stop` (with `stop_hook_active`) never blocks again; shikii only records whether the guard now passes. `shikii status` shows how many turns were stopped and how many were fixed before the turn ended.
+A `forbidden-words` guard also runs right before you change a file in Claude Code (`PreToolUse` of Edit, Write, MultiEdit, NotebookEdit): when the lines you are about to add contain the word, the change is refused with the reason. Fix the text and change the file again at once; lines you keep are not added lines, and text written by a command is caught at `Stop` instead. Unknown observations pass: without a git listing for the turn, or without a recorded HEAD, the corresponding kind does not stop anything. After a stop, the next `Stop` (with `stop_hook_active`) never blocks again; shikii only records whether the guard now passes. `shikii status` shows how many turns were stopped and how many were fixed before the turn ended.
 
 ## When to draft one
 

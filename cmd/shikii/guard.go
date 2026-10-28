@@ -89,6 +89,8 @@ type guardRecord struct {
 	Pass    bool      `json:"pass"`
 	Reason  string    `json:"reason,omitempty"`
 	Recheck bool      `json:"recheck,omitempty"`
+	// Tool marks a stop right before a file change (PreToolUse, 0.11), not at the end of the turn
+	Tool bool `json:"tool,omitempty"`
 }
 
 func (g guard) validate() error {

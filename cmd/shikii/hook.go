@@ -138,6 +138,7 @@ type hookOut struct {
 	Context string // text passed to the agent (additionalContext. UserPromptSubmit and SubagentStart)
 	System  string // text shown to the person in the terminal (systemMessage)
 	Block   bool   // stop the Stop (a stop check was hit. 0.7.3). Claude Code passes the reason and continues
+	Deny    bool   // refuse the tool call (PreToolUse; a guard the person enabled stopped a file change before it was written, 0.11). The reason goes to the agent
 	Reason  string // the reason for stopping (to the agent)
 }
 
@@ -163,6 +164,9 @@ func (o hookOut) json(event string) []byte {
 	}
 	if o.System != "" {
 		out["systemMessage"] = o.System
+	}
+	if o.Deny && event == "PreToolUse" && o.Reason != "" {
+		out["hookSpecificOutput"] = map[string]any{"hookEventName": event, "permissionDecision": "deny", "permissionDecisionReason": o.Reason}
 	}
 	if o.Block && event == "Stop" && o.Reason != "" { // stop check: the Stop decision; Codex (0.164) reads the same {"decision":"block","reason"} and continues the turn with the reason
 		out["decision"] = "block"
@@ -706,7 +710,11 @@ func runHookEvent(event string) error {
 	case "agent-task":
 		muts = hookAgentTask(&in) // output nothing (do not stop the tool)
 	case "tool-lesson":
-		out, err = hookToolLesson(agent, &in, snapshot) // context only (never stops the tool); records the delivery under the session lock itself
+		// a guard the person enabled refuses a change with a forbidden word before it is written (0.11); otherwise a lesson naming the
+		// file or command: context only (never stops the tool); records the delivery under the session lock itself
+		if out, err = guardToolCall(agent, &in, snapshot); err == nil && !out.Deny {
+			out, err = hookToolLesson(agent, &in, snapshot)
+		}
 	}
 	if moved != "" {
 		out.Context = joinLines(moved, out.Context)

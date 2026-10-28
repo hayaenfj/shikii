@@ -139,7 +139,7 @@ UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending 
                                                      decide prompt-kind。新形式のneeds-planは原文付きの文脈整理をエージェントへ案内
                                                      └ sessions/<id>.json に request と作業ツリーのハッシュ、<id>.files に作業ツリーの一覧を控える
 PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
-PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前に、題・教訓・applies_to がそのファイル(パスの末尾か、語として切れた名前)
+PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前に、題・教訓・applies_to がそのファイル(パスの末尾か、語として切れた名前) その前に、有効な forbidden-words の検査が、足そうとしている行にその語があれば変更を断る(permissionDecision deny、0.11)。
                                                      かコマンド(プログラムと最初の語。git commit など。オプションは飛ばす)を書いた教訓を最大 1 件、文脈へ。モデルは使わず、
                                                      セッションの最初の依頼の前は届けず、同じ版はセッションへ一時間に 1 回(依頼の時の配送と同じ記録)。turn を親にした別の ID で
                                                      記録し、振り返りで評価する。許可も拒否も確認もしない。Claude Code だけ
