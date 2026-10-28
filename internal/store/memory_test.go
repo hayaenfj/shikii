@@ -163,3 +163,35 @@ func TestCorrectionResultOnPlainLessonNamesTheField(t *testing.T) {
 		}
 	}
 }
+
+// 0.11: a person's past answer is a quote of its own kind ("decision:<trace>", the past request and what the person said). The record
+// takes it only in that exact shape, so a lesson's or a conversation's fields never ride on it.
+func TestMemoryDeliveryTakesPersonAnswerQuotes(t *testing.T) {
+	s, d, _ := memoryStoreFixture(t)
+	quote := func(js string) MemoryDelivery {
+		var q MemoryQuote
+		if err := json.Unmarshal([]byte(js), &q); err != nil {
+			t.Fatal(err)
+		}
+		c := d
+		c.ID = NewTraceID()
+		c.Quotes = []MemoryQuote{q}
+		return c
+	}
+	good := `{"key":"decision:00000000000000d1","id":"00000000000000d1","request":"past request","said":"In a similar request, you answered \"Not finished\" to \"Did it finish what was asked?\""}`
+	if err := s.SaveMemoryDelivery(quote(good)); err != nil {
+		t.Fatalf("a person's answer is a delivered quote: %v", err)
+	}
+	for name, js := range map[string]string{
+		"another trace in the key": `{"key":"decision:00000000000000d2","id":"00000000000000d1","request":"past request","said":"x"}`,
+		"no past request":          `{"key":"decision:00000000000000d1","id":"00000000000000d1","said":"x"}`,
+		"nothing said":             `{"key":"decision:00000000000000d1","id":"00000000000000d1","request":"past request"}`,
+		"a lesson riding on it":    `{"key":"decision:00000000000000d1","id":"00000000000000d1","request":"past request","said":"x","lesson":"l"}`,
+		"a reply riding on it":     `{"key":"decision:00000000000000d1","id":"00000000000000d1","request":"past request","said":"x","reply":"r"}`,
+		"said on a conversation":   `{"key":"feedback:00000000000000d1","id":"00000000000000d1","request":"r","summary":"s","reply":"r","said":"x"}`,
+	} {
+		if err := s.SaveMemoryDelivery(quote(js)); err == nil {
+			t.Errorf("%s: the record refuses a malformed answer quote", name)
+		}
+	}
+}

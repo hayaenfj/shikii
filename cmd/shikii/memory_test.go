@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -210,5 +211,155 @@ func TestCorrectionSourceKeptAmongDeliveredSources(t *testing.T) {
 	ctx, err := memoryContext(st.Dir, scope, "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044", &hookSession{TurnID: "eeeeeeeeeeeeeeee"})
 	if err != nil || !strings.Contains(ctx, "\u82f1\u8a9e\u304c\u6b8b\u3063\u3066\u3044\u306a\u3044\u304b") {
 		t.Fatalf("the corrected lesson is delivered: %v\n%q", err, ctx)
+	}
+}
+
+// seedPersonAnswer saves one decision of a hook question on request and its truth from source, as the page (ui), a spot check (audit),
+// a hand label (manual), a result (outcome) or the machine (judge, context, replay, mcp) writes it. It returns the decision's trace.
+func seedPersonAnswer(t *testing.T, st store.Store, specID, request, truth, source string, tainted bool) string {
+	t.Helper()
+	sp, err := spec.Load(hookSpecPath(st.Dir, specID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace := store.NewTraceID()
+	inputs := map[string]string{"request": request}
+	at := time.Now().UTC()
+	rec := store.Record{TraceID: trace, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "test-model", Inputs: inputs, InputsHash: store.HashInputs(inputs), Top: "yes", P: .6, Band: "ask", Tainted: tainted, At: at}
+	if err := st.AppendRecord(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLabel(store.Label{TraceID: trace, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "test-model", InputsHash: rec.InputsHash, Inputs: inputs, Truth: truth, Weight: 1, Source: source, Tainted: tainted, At: at}); err != nil {
+		t.Fatal(err)
+	}
+	return trace
+}
+
+const (
+	pastSetupRequest    = "translate the README setup steps into Japanese and check the install commands"
+	similarSetupRequest = "translate the README setup steps into Japanese once more"
+	jaShouldHaveAsked   = "\u78ba\u8a8d\u3057\u3066\u307b\u3057\u304b\u3063\u305f"                                     // the page's words for needs-plan "yes"
+	jaAskFirstTitle     = "\u59cb\u3081\u308b\u524d\u306b\u78ba\u8a8d\u3057\u3066\u307b\u3057\u304b\u3063\u305f\u304b" // needs-plan's title on the page
+)
+
+// 0.11 end condition 6-1: a person's own answer to a hook question reaches the next similar request's hook text, in the page's words
+// (English first, the configured language alongside), without any line drawn. The same session does not get it again within the hour.
+func TestPersonAnswerReachesSimilarRequest(t *testing.T) {
+	st, scope, _ := reviewFixture(t)
+	setHookLanguage(t, "Japanese")
+	trace := seedPersonAnswer(t, st, "needs-plan", pastSetupRequest, "yes", "ui", false)
+	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "answers", "cwd": scope, "prompt": similarSetupRequest}))
+	for _, want := range []string{"decision:" + trace, "It should have asked", "Should it have asked you first?", jaShouldHaveAsked, jaAskFirstTitle, "README setup steps"} {
+		if !strings.Contains(ctx, want) {
+			t.Fatalf("the person's answer to a similar request reaches the hook text (missing %q):\n%s", want, ctx)
+		}
+	}
+	again := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "answers", "cwd": scope, "prompt": similarSetupRequest + " now"}))
+	if strings.Contains(again, "decision:"+trace) {
+		t.Fatalf("the same answer is not quoted again in the same session within the hour:\n%s", again)
+	}
+}
+
+// 0.11 end condition 6-2: a dissimilar request gets no answer, and only the person's own answers (page, spot check, hand label) are
+// quoted: truths from results, the agent, re-asking, the judge or the added context never are, nor answers on a tainted decision.
+// A truth a result wrote after the person's answer does not hide the person's answer.
+func TestOnlyPersonAnswersToSimilarRequestsAreQuoted(t *testing.T) {
+	st, scope, _ := reviewFixture(t)
+	person := seedPersonAnswer(t, st, "done-as-asked", pastSetupRequest, "no", "manual", false)
+	ctx, err := memoryContext(st.Dir, scope, "tune the colour of the status page buttons", &hookSession{TurnID: "aaaaaaaaaaaaaaa1"})
+	if err != nil || strings.Contains(ctx, "decision:") {
+		t.Fatalf("a dissimilar request gets no answer: %v\n%s", err, ctx)
+	}
+	others := []string{}
+	for _, source := range []string{"outcome", "agreed", "mcp", "replay", "judge", "context", "file", "ask"} {
+		others = append(others, seedPersonAnswer(t, st, "changes-in-scope", pastSetupRequest, "no", source, false))
+	}
+	tainted := seedPersonAnswer(t, st, "needs-plan", pastSetupRequest, "yes", "ui", true)
+	// a result's truth after the person's answer on the same decision: the person's answer is still the one quoted
+	sp, err := spec.Load(hookSpecPath(st.Dir, "done-as-asked"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLabel(store.Label{TraceID: person, SpecID: sp.ID, SpecHash: sp.Hash(), Model: "test-model", Type: "noul", Truth: "yes", Weight: 1, Source: "outcome", Inputs: map[string]string{"request": pastSetupRequest}, At: time.Now().UTC().Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err = memoryContext(st.Dir, scope, similarSetupRequest, &hookSession{TurnID: "aaaaaaaaaaaaaaa2"})
+	if err != nil || !strings.Contains(ctx, "decision:"+person) || !strings.Contains(ctx, "Not finished") {
+		t.Fatalf("the person's own answer to a similar request is quoted, as the person gave it: %v\n%s", err, ctx)
+	}
+	for _, trace := range append(others, tainted) {
+		if strings.Contains(ctx, trace) {
+			t.Fatalf("only the person's own answers are quoted (found %s):\n%s", trace, ctx)
+		}
+	}
+	// the person changed the answer later on the page: the later answer is the one quoted
+	if err := st.AppendLabel(store.Label{TraceID: person, SpecID: sp.ID, SpecHash: sp.Hash(), Model: "test-model", Type: "noul", Truth: "yes", Weight: 1, Source: "ui", Inputs: map[string]string{"request": pastSetupRequest}, At: time.Now().UTC().Add(2 * time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err = memoryContext(st.Dir, scope, similarSetupRequest, &hookSession{TurnID: "aaaaaaaaaaaaaaa3"})
+	if err != nil || !strings.Contains(ctx, `\"Finished\"`) || strings.Contains(ctx, "Not finished") {
+		t.Fatalf("the person's later answer is the one quoted: %v\n%s", err, ctx)
+	}
+}
+
+// Seats: the delivery keeps at most 2 quotes. When a person's answer fits, it keeps one of them even if lessons could fill both;
+// with no lesson, answers take both seats. A subagent's delivery gets no answers.
+func TestPersonAnswerKeepsOneOfTwoSeats(t *testing.T) {
+	st, scope, _ := reviewFixture(t)
+	first := seedPersonAnswer(t, st, "needs-plan", pastSetupRequest, "yes", "ui", false)
+	second := seedPersonAnswer(t, st, "done-as-asked", pastSetupRequest+" today", "no", "audit", false)
+	page := func(id, lesson string) notebook.Page {
+		return notebook.Page{ID: id, Revision: "00000000000000a1", Lesson: lesson, AppliesTo: "when translating the README", Sources: []notebook.Source{{ID: "00000000000000b1"}}}
+	}
+	pages := []notebook.Page{page("00000000000000c1", "first lesson"), page("00000000000000c2", "second lesson")}
+	ctx, err := deliverMemory(st.Dir, scope, similarSetupRequest, pages, true, &hookSession{TurnID: "bbbbbbbbbbbbbbb1"}, "", "")
+	if err != nil || !strings.Contains(ctx, "first lesson") || strings.Contains(ctx, "second lesson") || strings.Count(ctx, `"key":"decision:`) != 1 {
+		t.Fatalf("lessons first, and one seat kept for the person's answer: %v\n%s", err, ctx)
+	}
+	ctx, err = deliverMemory(st.Dir, scope, similarSetupRequest, nil, true, &hookSession{TurnID: "bbbbbbbbbbbbbbb2"}, "", "")
+	if err != nil || !strings.Contains(ctx, "decision:"+first) || !strings.Contains(ctx, "decision:"+second) {
+		t.Fatalf("with no lesson, the person's answers take both seats: %v\n%s", err, ctx)
+	}
+	// the person answered about the person's own requests, not a child's task
+	ctx, err = deliverMemory(st.Dir, scope, similarSetupRequest, pages[:1], true, &hookSession{}, "bbbbbbbbbbbbbbb3", "child")
+	if err != nil || strings.Contains(ctx, "decision:") {
+		t.Fatalf("a subagent gets no answers: %v\n%s", err, ctx)
+	}
+}
+
+// 0.11 end condition 6-3: a delivered answer shows in the reflection's memories, can be assessed, and status counts it.
+func TestDeliveredPersonAnswerIsAssessedAndCounted(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	trace := seedPersonAnswer(t, st, "needs-plan", pastSetupRequest, "yes", "ui", false)
+	ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "assess", "cwd": scope, "prompt": similarSetupRequest}))
+	key := "decision:" + trace
+	if !strings.Contains(ctx, key) {
+		t.Fatalf("precondition: the answer is delivered:\n%s", ctx)
+	}
+	id := loadSession(st.Dir, "assess").TurnID
+	runHook(t, "stop", map[string]any{"session_id": "assess", "cwd": scope, "last_assistant_message": "I asked which install commands to keep before translating."})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "assess", "cwd": scope, "prompt": "now adjust the colours of the page"})
+	q := reflectCall(t, h, map[string]any{"operation": "query"})
+	found := false
+	sources, _ := q["sources"].([]any)
+	for _, s := range sources {
+		memories, _ := s.(map[string]any)["memories"].([]any)
+		for _, m := range memories {
+			quote, _ := m.(map[string]any)["quote"].(map[string]any)
+			found = found || (quote["key"] == key && quote["request"] != nil && quote["said"] != nil)
+		}
+	}
+	if !found {
+		t.Fatalf("the delivered answer is in the reflection's memories, with the past request and what the person said: %v", q)
+	}
+	result := memoryEffectSubmit(t, h, id, key, "helpful", "asked which install commands to keep before starting", "the reply asked first, as the person had wanted")
+	receipts, _ := result["memory"].([]any)
+	if result["complete"] != true || len(receipts) != 1 || receipts[0].(map[string]any)["error"] != nil {
+		t.Fatalf("the delivered answer can be assessed: %v", result)
+	}
+	var b strings.Builder
+	printMemoryEffect(&b, st, scope, time.Now())
+	if !strings.Contains(b.String(), "memory: 1 quotes delivered; helpful 1") || !strings.Contains(b.String(), "your past answers 1 (helpful 1)") {
+		t.Fatalf("status counts the delivered answer:\n%s", b.String())
 	}
 }

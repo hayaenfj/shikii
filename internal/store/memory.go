@@ -28,6 +28,7 @@ type MemoryQuote struct {
 	Request    string      `json:"request,omitempty"`
 	Summary    string      `json:"summary,omitempty"`
 	Reply      string      `json:"reply,omitempty"`
+	Said       string      `json:"said,omitempty"` // a person's past answer (key decision:<trace>): what the person answered, in the page's words; Request is that request
 }
 
 type MemoryDelivery struct {
@@ -58,6 +59,8 @@ type MemoryStats struct {
 	Unknown          int `json:"unknown"`
 	Pending          int `json:"pending"`
 	AwaitingFeedback int `json:"awaiting_feedback"`
+	Answers          int `json:"answers"`         // of Delivered, the person's past answers (decision:<trace>, 0.11)
+	AnswersHelpful   int `json:"answers_helpful"` // of Answers, those the reflection found helpful
 }
 
 type MemorySummary struct {
@@ -100,6 +103,16 @@ func validMemoryDelivery(d MemoryDelivery) bool {
 			return false
 		}
 		seen[q.Key] = true
+		if strings.HasPrefix(q.Key, "decision:") {
+			// a person's past answer: the past request and what the person said, nothing of a lesson or a conversation
+			if q.Key != "decision:"+q.ID || q.Request == "" || q.Said == "" || q.Correction != nil || q.Revision != "" || q.Lesson != "" || q.AppliesTo != "" || len(q.Sources) != 0 || q.Summary != "" || q.Reply != "" {
+				return false
+			}
+			continue
+		}
+		if q.Said != "" {
+			return false
+		}
 		if q.Correction != nil {
 			if !q.Correction.Valid() || q.Revision == "" {
 				return false
@@ -400,6 +413,12 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 			}
 			r.All = append(r.All, item)
 			r.Stats.Delivered++
+			if strings.HasPrefix(q.Key, "decision:") {
+				r.Stats.Answers++
+				if a != nil && a.Result == "helpful" {
+					r.Stats.AnswersHelpful++
+				}
+			}
 			if a == nil {
 				r.Stats.Pending++
 				if conversation := d.ID; !observed[conversation] && !(d.Parent != "" && observed[d.Parent]) {
@@ -423,4 +442,63 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 		}
 	}
 	return r, nil
+}
+
+// PersonAnswer is the person's own latest answer to one decision of a question, with the decision's request text.
+type PersonAnswer struct {
+	TraceID, SpecID, Request, Truth string
+	At                              time.Time
+}
+
+// PersonAnswers returns, for the questions specIDs, the person's own answers (the page, a spot check, a hand label: personChecks), the
+// latest per decision; a truth a result or the machine wrote later does not hide it (0.11). Truths from results, the agent (mcp), re-asking
+// (replay), the judge or the added context are never returned: they are not what the person said. A decision from a session that read
+// production data (tainted) is left out, since the answer goes into the agent's context, which may be sent out. Request is the decision's
+// original text when it was kept (SaveRecordText), else the request input.
+func (s Store) PersonAnswers(specIDs []string) ([]PersonAnswer, error) {
+	out := []PersonAnswer{}
+	for _, id := range specIDs {
+		latest := map[string]Label{}
+		hashes := map[string][]string{}
+		tainted := map[string]bool{}
+		order := []string{}
+		err := s.scanJSONL(s.labelsPath(id), func(line []byte) error {
+			var l Label
+			if json.Unmarshal(line, &l) != nil || l.TraceID == "" {
+				return nil
+			}
+			tainted[l.TraceID] = tainted[l.TraceID] || l.Tainted
+			if !personChecks[l.Source] || Partial(l.Truth) || strings.TrimSpace(l.Inputs["request"]) == "" {
+				return nil
+			}
+			cur, ok := latest[l.TraceID]
+			if !ok {
+				order = append(order, l.TraceID)
+			}
+			if !ok || !l.At.Before(cur.At) {
+				latest[l.TraceID] = l
+			}
+			hashes[l.TraceID] = append(hashes[l.TraceID], l.InputsHash)
+			return nil
+		})
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		for _, trace := range order {
+			l := latest[trace]
+			if tainted[trace] {
+				continue
+			}
+			request := l.Inputs["request"]
+			for _, hash := range hashes[trace] { // a decision that added context has a label per step; the kept text is under the record's hash
+				originals, _ := s.RecordText(Record{TraceID: trace, SpecID: l.SpecID, InputsHash: hash, Inputs: l.Inputs})
+				if text := originals["request"]; text != "" {
+					request = text
+					break
+				}
+			}
+			out = append(out, PersonAnswer{TraceID: trace, SpecID: l.SpecID, Request: strings.TrimSpace(request), Truth: l.Truth, At: l.At})
+		}
+	}
+	return out, nil
 }

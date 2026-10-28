@@ -30,7 +30,7 @@ submit does not limit the number of conversations and items (provisional scores,
 
 ## Did a delivered memory help the decision
 
-`memories` are the saved quotes and versions the hook actually returned for that request. Do not re-explain the decision of that time with lessons updated later. For each memory, add up to 4 `memory` items to the usual reflection's `submit`.
+`memories` are the saved quotes and versions the hook actually returned for that request. Do not re-explain the decision of that time with lessons updated later. A quote whose key is `decision:<trace_id>` is the person's own earlier answer to a hook question: `request` is that earlier request and `said` what the person answered, in the page's words. Assess it like a lesson: `helpful` when it changed what you did for this request (for example you asked first because the person had wanted that), `unused` when it did not apply. For each memory, add up to 4 `memory` items to the usual reflection's `submit`.
 
 ```json
 {
