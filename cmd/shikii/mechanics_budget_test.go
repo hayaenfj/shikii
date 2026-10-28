@@ -37,7 +37,7 @@ func TestEveryRequestTextIsShortAndTheReplyCarriesTheShape(t *testing.T) {
 		}
 	}
 	for _, w := range []string{"reviews:[", "wiki:[", "memory:[", "maintenance", "correction:{", "shikii guard add", "the latest page_id", "Read the sources and existing pages",
-		"memories[].source_id", "check result", "observations", "complete:true", "fix it and resend", "the skill's references/wiki.md", "operation:place"} {
+		"memories[].source_id", "check result", "observations", "complete:true", "fix it and resend", "the skill's references/wiki.md", "operation:place", "applies_to names the command or file"} {
 		if !strings.Contains(reflectHowToSubmit, w) {
 			t.Errorf("how_to_submit of reflect query lacks %q", w)
 		}
