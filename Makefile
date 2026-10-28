@@ -43,7 +43,8 @@ fake: build
 	bin/fake-systemone --port 8099
 
 test:
-	test -z "$$(gofmt -l .)" || (gofmt -l . && echo 'gofmt: format the files above' && exit 1)
+	# only the repository's Go files: agents' worktrees under .claude/ (ignored by Git) hold someone else's work in progress
+	test -z "$$(git ls-files -co --exclude-standard '*.go' | xargs gofmt -l)" || (git ls-files -co --exclude-standard '*.go' | xargs gofmt -l && echo 'gofmt: format the files above' && exit 1)
 	go vet ./... && scripts/go-test.sh && scripts/check-readme.sh && scripts/check-skill.sh
 
 # What ships is in English (development may be written in Japanese first; run this before pushing. CI runs it on every push)
