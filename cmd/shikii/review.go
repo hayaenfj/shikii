@@ -68,8 +68,6 @@ func (p aiPair) agree() bool { return p.Agent == p.Model }
 // for the person to decide". Records from before 0.9.2 kept the Japanese text.
 const planningOpenUnknown = "unknown (cannot be confirmed from the current conversation)"
 
-const planningOpenUnknownJA = "\u4e0d\u660e\uff08\u73fe\u5728\u306e\u4f1a\u8a71\u304b\u3089\u78ba\u304b\u3081\u3089\u308c\u306a\u3044\uff09"
-
 // modelYes is the decision model's p(yes) of a noul record.
 func modelYes(rec store.Record) float64 {
 	if p, ok := rec.Calibrated["yes"]; ok {
@@ -97,10 +95,10 @@ func pairOf(specID string, rec store.Record, reviews map[string]store.Review) (a
 	switch {
 	case specID == "needs-plan":
 		open := strings.TrimSpace(rec.Inputs["open"])
-		if open == "" || strings.TrimSpace(rec.Inputs["agreed"]) == "" {
+		if !rec.AgentPaired || open == "" || strings.TrimSpace(rec.Inputs["agreed"]) == "" {
 			return pair, false
 		}
-		if open == planningOpenUnknown || open == planningOpenUnknownJA {
+		if open == planningOpenUnknown {
 			pair.Agent = "no"
 		} else {
 			pair.Agent, pair.AgentReason = "yes", strings.TrimPrefix(open, planningPreface)
@@ -108,7 +106,7 @@ func pairOf(specID string, rec store.Record, reviews map[string]store.Review) (a
 		return pair, true
 	case store.ReviewSpec(specID):
 		grade, ok := reviews[rec.TraceID]
-		if !ok {
+		if !ok || !grade.ModelShown {
 			return pair, false
 		}
 		pair.Agent, pair.AgentReason = grade.Truth, grade.Reason
@@ -304,7 +302,7 @@ func runReview(root, scope string, req reviewRequest) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			grade, err := st.SaveReview(store.Review{TraceID: req.TraceID, Spec: target.Spec, Scope: scope, InputsHash: rec.InputsHash, Truth: req.Truth, Reason: strings.TrimSpace(req.Reason), Source: source})
+			grade, err := st.SaveReview(store.Review{TraceID: req.TraceID, Spec: target.Spec, Scope: scope, InputsHash: rec.InputsHash, Truth: req.Truth, Reason: strings.TrimSpace(req.Reason), Source: source, ModelShown: modelAnswerOf(*rec).Answer != ""})
 			if err != nil {
 				return nil, err
 			}

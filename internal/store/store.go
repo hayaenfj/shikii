@@ -49,6 +49,9 @@ type Record struct {
 	ReviewPending    bool               `json:"review_pending,omitempty"` // the AI provisionally scores it from the rest of the conversation. Not put in the queue for a person to score every item
 	At               time.Time          `json:"at"`
 	KnowledgeContext *KnowledgeContext  `json:"knowledge_context,omitempty"`
+	// AgentPaired is set on a needs-plan decision organized under 0.11's rule (open filled only when something blocks): only such a
+	// decision is compared with the agent's answer. One organized before filled open with reasons too, and comparing it asked the person
+	AgentPaired bool `json:"agent_paired,omitempty"`
 }
 
 // Pass is the answer of one step. A record that added context and asked again uses it to keep the minimal question's answer.

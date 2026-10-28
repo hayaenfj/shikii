@@ -24,8 +24,8 @@ func TestCountPersonWork(t *testing.T) {
 		{TraceID: "d1", Band: "discard", At: now},
 		{TraceID: audit, Band: "act", IsCalibrated: true, At: now},
 		// 0.11: a needs-plan with the agent's organizing waits only when the decision model (p .6: yes) and the agent disagree, even in the ask band
-		{TraceID: "pa", Band: "ask", P: .6, Inputs: map[string]string{"agreed": "a", "open": "AI's organizing (not permission to act, not the person's truth): the column order is open"}, At: now},
-		{TraceID: "pd", Band: "ask", P: .6, Inputs: map[string]string{"agreed": "a", "open": "unknown (cannot be confirmed from the current conversation)"}, At: now},
+		{TraceID: "pa", Band: "ask", P: .6, AgentPaired: true, Inputs: map[string]string{"agreed": "a", "open": "AI's organizing (not permission to act, not the person's truth): the column order is open"}, At: now},
+		{TraceID: "pd", Band: "ask", P: .6, AgentPaired: true, Inputs: map[string]string{"agreed": "a", "open": "unknown (cannot be confirmed from the current conversation)"}, At: now},
 	}
 	labs := []store.Label{{TraceID: "a1", Source: "ui"}, {TraceID: "a2", Source: "outcome"}, {TraceID: "r3", Source: "outcome"}, {TraceID: "d1", Source: "judge"}, {TraceID: "pa", Source: "agreed"}}
 
@@ -51,7 +51,7 @@ func TestCountPersonWork(t *testing.T) {
 	// The AI's provisional scores (0.11): an agreement with the decision model (p .8: yes) does not wait, a disagreement and an undecided score do,
 	// unless the outcome answered first (r3)
 	scored := []store.Record{{TraceID: "r1", Band: "discard", P: .8, At: now}, {TraceID: "r2", Band: "discard", P: .8, At: now}, {TraceID: "r3", Band: "discard", P: .8, At: now}, {TraceID: "r4", Band: "act", P: .8, At: now}}
-	reviews := map[string]store.Review{"r1": {Truth: "yes"}, "r2": {Truth: "unknown"}, "r3": {Truth: "no"}, "r4": {Truth: "no"}}
+	reviews := map[string]store.Review{"r1": {Truth: "yes", ModelShown: true}, "r2": {Truth: "unknown", ModelShown: true}, "r3": {Truth: "no", ModelShown: true}, "r4": {Truth: "no", ModelShown: true}}
 	if got := countPersonWork("done-as-asked", false, scored, labs, reviews, now).Waits; got != 2 {
 		t.Fatalf("done-as-asked: the undecided r2 and the disagreement r4 wait: %d", got)
 	}

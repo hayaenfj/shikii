@@ -283,15 +283,24 @@ func TestCorrectedScoreFromBeforeAFolderMoveStillReturns(t *testing.T) {
 	}
 }
 
-// Records made before 0.9.2 kept the Japanese text for an unknown open: the agent's answer is still "no", and the decision model's answer is
-// the side of p(yes) at 0.5 with that side's probability as its confidence.
-func TestPairReadsTheOldJapaneseUnknownOpen(t *testing.T) {
-	rec := store.Record{TraceID: "old", P: .3, Inputs: map[string]string{"request": "r", "agreed": "a", "open": "\u4e0d\u660e\uff08\u73fe\u5728\u306e\u4f1a\u8a71\u304b\u3089\u78ba\u304b\u3081\u3089\u308c\u306a\u3044\uff09"}}
-	pair, ok := pairOf("needs-plan", rec, nil)
-	if !ok || pair.Agent != "no" || pair.Model != "no" || fmt.Sprintf("%.2f", pair.ModelConfidence) != "0.70" || !pair.agree() {
-		t.Fatalf("%+v %v", pair, ok)
+// Decisions scored or organized before 0.11 are not compared: the provisional score was given without seeing the decision model's
+// answer, and the organizing filled open with a reason even when nothing blocked. Comparing them put 101 done-as-asked and 41
+// needs-plan decisions in front of the person on this machine; only decisions made under the 0.11 rules are paired.
+func TestDecisionsBeforeTheComparisonAreNotPutBeforeThePerson(t *testing.T) {
+	rec := store.Record{TraceID: "0000000000000001", Band: "ask", Raw: map[string]float64{"yes": 0.3, "no": 0.7}, Inputs: map[string]string{"request": "r", "agreed": "a", "open": "a reason why nothing blocks"}}
+	if _, ok := pairOf("needs-plan", rec, nil); ok {
+		t.Fatal("a needs-plan record organized before 0.11 is not paired")
 	}
-	if _, ok := pairOf("needs-plan", store.Record{Inputs: map[string]string{"request": "r"}}, nil); ok {
-		t.Fatal("a record without the organizing has no answer of the agent")
+	rec.AgentPaired = true
+	if _, ok := pairOf("needs-plan", rec, nil); !ok {
+		t.Fatal("a needs-plan record organized under 0.11 is paired")
+	}
+	old := map[string]store.Review{rec.TraceID: {TraceID: rec.TraceID, Truth: "yes"}}
+	if _, ok := pairOf("done-as-asked", rec, old); ok {
+		t.Fatal("a score given before 0.11 (without the model's answer) is not paired")
+	}
+	shown := map[string]store.Review{rec.TraceID: {TraceID: rec.TraceID, Truth: "yes", ModelShown: true}}
+	if _, ok := pairOf("done-as-asked", rec, shown); !ok {
+		t.Fatal("a score given after seeing the model's answer is paired")
 	}
 }

@@ -24,6 +24,9 @@ type Review struct {
 	Source     Feedback  `json:"source_material"`
 	Rubric     string    `json:"rubric"`
 	At         time.Time `json:"at"`
+	// ModelShown is set when the agent gave this score after seeing the decision model's answer (0.11): only such a score is compared
+	// with the model. One given before was not made against it, and comparing it put old disagreements in front of the person
+	ModelShown bool `json:"model_shown,omitempty"`
 }
 
 type ReviewStats struct {

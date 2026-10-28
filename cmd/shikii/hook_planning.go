@@ -417,6 +417,7 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		}
 		if !recorded {
 			rec := recordOf(sp, d, inputs)
+			rec.AgentPaired = true // organized under 0.11's rule: compared with the agent's answer
 			rec.KnowledgeContext = knowledge
 			rec.Project = filepath.Base(scope)
 			l := localize(sp, d, hookLang())
@@ -433,6 +434,7 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		// the agent's organizing is its own answer, given before it saw the model's (0.11): the same answer is settled as an agreed machine
 		// truth without the person; a different one waits for the person. The 1-in-20 spot check of a calibrated act stays either way
 		rec := recordOf(sp, d, inputs)
+		rec.AgentPaired = true
 		waits := waitsForPersonFor("needs-plan", d)
 		if pair, ok := pairOf("needs-plan", rec, nil); ok {
 			waits = !pair.agree() || (d.Band == decide.Act && d.IsCalibrated && store.AuditSample(d.TraceID))
