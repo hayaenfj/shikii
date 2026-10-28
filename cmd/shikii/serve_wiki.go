@@ -103,10 +103,13 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 	{
 		book := notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}
 		cursor := r.URL.Query().Get("cursor")
-		view, err := book.QueryPage("", cursor)
-		if cursor == "" { // the page reads the whole list in one reply (0.11): splitting it as MCP replies are split made dozens of calls, each reading the whole wiki again
+		var view notebook.View
+		var err error
+		if cursor == "" { // the page reads the whole list in one reply (0.10.1): splitting it as MCP replies are split made dozens of calls, each reading the whole wiki again
 			view, err = book.Query("")
 			view.Remaining = book.RemainingUnclassified()
+		} else {
+			view, err = book.QueryPage("", cursor)
 		}
 		if err == nil {
 			result["lessons"], result["notebook_issues"], result["pending_sources_count"] = view.Lessons, view.Issues, len(view.Pending)

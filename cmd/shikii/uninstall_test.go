@@ -776,7 +776,7 @@ func TestUninstAuditHolesCommand(t *testing.T) {
 // and uninstall did not see it as shikii's. The hook command is now quoted, both forms are shikii's, and uninstall removes both.
 func TestUninstAuditHooksWithASpaceInThePath(t *testing.T) {
 	for cmd, want := range map[string]bool{
-		"/a b/shikii hook stop":                 true,
+		"/a b/shikii hook stop":                 false, // 0.9.3 wrote it bare, and the shell split it: it never ran (0.10.1: named, not removed)
 		"'/a b/shikii' hook user-prompt-submit": true,
 		"'/o'\\''neil/shikii' hook stop":        true,
 		"/opt/bin/shikii hook stop":             true,
@@ -792,7 +792,7 @@ func TestUninstAuditHooksWithASpaceInThePath(t *testing.T) {
 		"'/a b/shikii' hook done":                        false,
 		"~/.local/bin/shikii hook stop":                  false, // ~, $ and other symbols are not in a path shikii writes (0.10.1): a person\'s hook, named by doctor and uninstall
 		"$HOME/.local/bin/shikii hook stop":              false, // ~, $ and other symbols are not in a path shikii writes (0.10.1): a person\'s hook, named by doctor and uninstall
-		"/Users/a/com~apple/shikii hook stop":            false, // ~, $ and other symbols are not in a path shikii writes (0.10.1): a person\'s hook, named by doctor and uninstall
+		"/Users/a/com~apple/shikii hook stop":            true,  // ~ inside an absolute path is kept as it is by the shell: a hook 0.9.2 wrote, which runs
 		"/opt/tools/shikii-notify hook stop":             false, // another tool using one of shikii's event names (0.10's last audit)
 		"'/opt/my tools/shikii-guard' hook pre-tool-use": false,
 		"/gone/shikii hook stop 2>/dev/null":             false,
@@ -818,8 +818,8 @@ func TestUninstAuditHooksWithASpaceInThePath(t *testing.T) {
 	writeFileT(t, settings, `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/a b/shikii hook stop"},{"type":"command","command":"'/a b/shikii' hook stop"},{"type":"command","command":"rtk hook claude"}]}]}}`)
 	out2 := capture(t, func() error { return cmdUninstall([]string{"--yes"}) })
 	got, _ := os.ReadFile(settings)
-	if strings.Contains(string(got), "shikii") || !strings.Contains(string(got), "rtk hook claude") {
-		t.Fatalf("both forms of shikii's hook go, the person's stays:\n%s\n%s", got, out2)
+	if strings.Contains(string(got), "'/a b/shikii' hook stop") || !strings.Contains(string(got), "rtk hook claude") || !strings.Contains(string(got), "/a b/shikii hook stop") || !strings.Contains(out2, "/a b/shikii hook stop") {
+		t.Fatalf("the quoted shikii hook goes, the person's stays, and the bare one 0.9.3 wrote (which never ran) stays and is named:\n%s\n%s", got, out2)
 	}
 }
 

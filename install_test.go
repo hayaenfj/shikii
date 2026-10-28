@@ -386,3 +386,31 @@ func TestInstallShLeavesAFolderWhereALicenseGoes(t *testing.T) {
 		t.Fatalf("nothing is placed when it stops\n%s", out)
 	}
 }
+
+// shikii-licenses that is a link (to a person's folder, say) is the person's: install.sh stops before placing anything, and the files
+// there stay as they are.
+func TestInstallShLeavesALicensesLinkAlone(t *testing.T) {
+	f := newInstallFixture(t, "0.10.0")
+	mine := filepath.Join(f.home, "myproject")
+	if err := os.MkdirAll(mine, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(mine, "LICENSE"), "my own license\n")
+	bin := filepath.Join(f.home, ".local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(mine, filepath.Join(bin, "shikii-licenses")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.runWith(t, "/bin/sh", readInstallSh(t), "")
+	if err == nil || !strings.Contains(out, "nothing was installed") {
+		t.Fatalf("install.sh must stop on a link where the licenses go: %v\n%s", err, out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(mine, "LICENSE")); string(b) != "my own license\n" {
+		t.Fatalf("the person's file stays: %q\n%s", b, out)
+	}
+	if entries, _ := os.ReadDir(mine); len(entries) != 1 {
+		t.Fatalf("nothing is added to the person's folder: %v\n%s", entries, out)
+	}
+}

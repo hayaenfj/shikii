@@ -3918,7 +3918,6 @@ func TestHookInstallLeavesAChainedCommandAlone(t *testing.T) {
 		"/usr/bin/env SHIKII_X=1 " + bin + " hook stop",
 		"/usr/bin/afplay /System/Library/Sounds/Glass.aiff && " + bin + " hook stop",
 		"'/opt/a' && '" + bin + "' hook stop",
-		"/Users/a/com~apple/shikii hook stop",
 	}
 	for _, c := range chained {
 		if isShikiiHook(c) {
@@ -3947,6 +3946,58 @@ func TestHookInstallLeavesAChainedCommandAlone(t *testing.T) {
 	for _, other := range []string{"python3 -m mytool --project ~/git/shikii hook done", "/opt/tools/shikii-notify hook stop", "mytool --dir ~/shikii-data hook stop"} {
 		if handWrittenShikiiHook(other) {
 			t.Fatalf("%q is another tool, not a shikii hook", other)
+		}
+	}
+}
+
+// A command that wraps shikii's hook in another command (nice, timeout, caffeinate) is the person's: shikii's own hooks never have
+// a space in a bare word (0.9.3 and earlier wrote a path with spaces bare, and the shell split it: those hooks never ran). A path
+// 0.9.2 and earlier wrote bare with ~ = # inside (iCloud's com~apple) still runs, and is still shikii's (0.10.1's audit).
+func TestHookInstallLeavesAWrappedCommandAndKeepsOldPaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bin := filepath.Join(home, ".local", "bin", "shikii")
+	wrapped := []string{
+		"/usr/bin/nice -n 10 " + bin + " hook stop",
+		"/usr/bin/timeout 30 " + bin + " hook stop",
+		"/usr/bin/caffeinate -i " + bin + " hook stop",
+		"/usr/local/bin/notify-done hook stop " + bin + " hook stop",
+	}
+	for _, c := range wrapped {
+		if isShikiiHook(c) || !handWrittenShikiiHook(c) {
+			t.Fatalf("%q is the person's command that runs shikii (isShikiiHook=%v)", c, isShikiiHook(c))
+		}
+	}
+	for _, c := range []string{
+		"/Users/a/Library/Mobile/com~apple~CloudDocs/bin/shikii hook stop",
+		"/Users/a/com~apple/shikii hook user-prompt-submit",
+		"/Users/a/x=y/bin/shikii hook stop",
+		"/Users/a/#tools/bin/shikii hook stop",
+	} {
+		if !isShikiiHook(c) {
+			t.Fatalf("%q is a hook shikii 0.9.2 wrote, which still runs", c)
+		}
+	}
+	commands := map[string]string{}
+	for _, c := range wrapped {
+		commands[c] = "Stop"
+	}
+	settings := hookSettingsWith(t, commands)
+	for _, install := range []bool{true, false} {
+		if _, err := editHooks(settings, install, hookEventsFor("Claude Code")); err != nil {
+			t.Fatal(err)
+		}
+		got := readHookCommands(t, settings)
+		for _, c := range wrapped {
+			if !got[c] {
+				t.Fatalf("install=%v removed the person's command %q", install, c)
+			}
+		}
+	}
+	writeHookFiles(t, home, wrapped[0])
+	for _, line := range registeredBinaryLines(home, mcpCommand()) {
+		if strings.HasPrefix(line, "MISSING") || !strings.Contains(line, "by hand") {
+			t.Fatalf("doctor names the wrapped command as written by hand: %s", line)
 		}
 	}
 }
