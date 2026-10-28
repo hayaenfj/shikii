@@ -876,7 +876,6 @@ func TestSkillAsksToSearchTheWikiAgainWhenTheWorkMoves(t *testing.T) {
 	}
 }
 
-
 // pagePeek reads the page's /v1/status entry and /v1/queue items for one question, through the handler (no listening port).
 func pagePeek(t *testing.T, root, repo, specID string) (map[string]any, []map[string]any) {
 	t.Helper()
@@ -983,5 +982,15 @@ func TestPlanningDisagreementWaitsForThePerson(t *testing.T) {
 		if c.openFilled && !strings.Contains(fmt.Sprint(pair["agent_reason"]), "keep the existing filters") {
 			t.Fatalf("p=%.1f: the agent's reason is its organizing of what is open: %v", c.p, pair)
 		}
+	}
+}
+
+// 0.11: the planning guidance tells the agent to leave open unknown when nothing blocks the task, since a filled open is read as the
+// agent's answer "the person has something to decide first" (a written reason why nothing blocks was read as yes).
+func TestPlanningGuidanceLeavesOpenUnknownWhenNothingBlocks(t *testing.T) {
+	planning, _ := os.ReadFile("../../skills/shikii/references/planning.md")
+	text := string(planning)
+	if !strings.Contains(text, "When nothing blocks it") || strings.Contains(text, "explain why the specified task can start without one") {
+		t.Fatal("planning.md asks for open unknown when nothing blocks, and no longer asks to explain why nothing blocks")
 	}
 }
