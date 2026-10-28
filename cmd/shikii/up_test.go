@@ -203,3 +203,175 @@ func TestDoctorSaysWhenTheRegisteredBinaryIsGone(t *testing.T) {
 		t.Fatalf("doctor must report the 2 hook files and Codex's registration, reported %d", n)
 	}
 }
+
+// writeHookFiles writes both hook settings files with one Stop hook running command.
+func writeHookFiles(t *testing.T, home, command string) {
+	t.Helper()
+	for _, target := range hookTargets {
+		path := filepath.Join(home, target.rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":` + strconv.Quote(command) + `}]}]}}`
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A Codex block a person edited (here a line added to it) that runs a gone binary is left alone by hook install --yes, so doctor
+// does not name that as the fix: it says what to change by hand. The block shikii wrote still gets hook install --yes as its fix.
+func TestDoctorNamesAFixForCodexThatWorksForThatBlock(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	gone := filepath.Join(home, "go-1.27.2", "bin", "shikii")
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(home, ".codex", "config.toml")
+	edited := string(codexWithServer(nil, gone, codexServerArgs)) + "env = { SHIKII_MODEL = \"local\" }\n"
+	if err := os.WriteFile(config, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	codexLine := func() string {
+		for _, line := range registeredBinaryLines(home, mcpCommand()) {
+			if strings.Contains(line, "Codex's MCP server") {
+				return line
+			}
+		}
+		return ""
+	}
+	before := codexLine()
+	if !strings.HasPrefix(before, "MISSING ") || strings.Contains(before, "hook install --yes") || !strings.Contains(before, "command = "+strconv.Quote(mcpCommand())) {
+		t.Fatalf("for a block hook install leaves alone, doctor must say what to write by hand (command = %q), not hook install --yes: %s", mcpCommand(), before)
+	}
+	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	if b, _ := os.ReadFile(config); string(b) != edited {
+		t.Fatalf("hook install must leave the edited block alone (so the hand edit is the fix):\n%s", b)
+	}
+	if err := os.WriteFile(config, codexWithServer(nil, gone, codexServerArgs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if line := codexLine(); !strings.Contains(line, "hook install --yes") {
+		t.Fatalf("for the block shikii wrote, doctor must name hook install --yes: %s", line)
+	}
+}
+
+// A hook written with ~ or $HOME runs the binary the shell expands it to, so doctor checks that file; in single quotes the shell does
+// not expand them, so that hook runs nothing.
+func TestDoctorExpandsTildeAndHomeInAHookLikeTheShell(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bin := filepath.Join(home, ".local", "bin", "shikii")
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for command, want := range map[string]string{
+		"~/.local/bin/shikii hook stop":       "ok   ",
+		"$HOME/.local/bin/shikii hook stop":   "ok   ",
+		"${HOME}/.local/bin/shikii hook stop": "ok   ",
+		`"$HOME/.local/bin/shikii" hook stop`: "ok   ",
+		"'~/.local/bin/shikii' hook stop":     "MISSING ",
+		`"~/.local/bin/shikii" hook stop`:     "MISSING ",
+		"'$HOME/.local/bin/shikii' hook stop": "MISSING ",
+	} {
+		writeHookFiles(t, home, command)
+		lines := registeredBinaryLines(home, mcpCommand())
+		if len(lines) != 2 {
+			t.Fatalf("%s: doctor must report both hook files, reported %q", command, lines)
+		}
+		for _, line := range lines {
+			if !strings.HasPrefix(line, want) {
+				t.Fatalf("%s: doctor must say %q, says %s", command, want, line)
+			}
+		}
+	}
+}
+
+// A hook whose path is in double quotes and whose binary is gone is reported like any other.
+func TestDoctorSaysWhenADoubleQuotedHookRunsAGoneBinary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	gone := filepath.Join(home, "Application Support", "go", "bin", "shikii")
+	writeHookFiles(t, home, strconv.Quote(gone)+" hook stop")
+	lines := registeredBinaryLines(home, mcpCommand())
+	if len(lines) != 2 {
+		t.Fatalf("doctor must say that both hook files run %s, said %q", gone, lines)
+	}
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "MISSING ") || !strings.Contains(line, gone) {
+			t.Fatalf("doctor must say the hooks run %s, which is gone: %s", gone, line)
+		}
+	}
+}
+
+// A hook that points at a folder, or at a file without permission to run, does not run shikii: doctor does not report it as ok.
+func TestDoctorDoesNotCallAFolderOrAFileThatCannotRunOk(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, "shikii-dir")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plain := filepath.Join(home, "shikii-plain")
+	if err := os.WriteFile(plain, []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runs := filepath.Join(home, "shikii-runs")
+	if err := os.WriteFile(runs, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for bin, want := range map[string]string{dir: "MISSING ", plain: "MISSING ", runs: "ok   "} {
+		writeHookFiles(t, home, bin+" hook stop")
+		for _, line := range registeredBinaryLines(home, mcpCommand()) {
+			if !strings.HasPrefix(line, want) {
+				t.Fatalf("a hook running %s: doctor must say %q, says %s", bin, want, line)
+			}
+			if want == "MISSING " && !strings.Contains(line, "cannot run") {
+				t.Fatalf("doctor must say that %s exists but cannot run: %s", bin, line)
+			}
+		}
+	}
+}
+
+// A hook settings file doctor cannot read (not JSON, or no permission to read) is named instead of passed over in silence; an empty
+// file, which the agents read as no settings, is not.
+func TestDoctorSaysWhenItCannotReadTheHookSettings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeHookFiles(t, home, "/gone/shikii hook stop")
+	settings := filepath.Join(home, ".claude", "settings.json")
+	b, _ := os.ReadFile(settings)
+	if err := os.WriteFile(settings, append([]byte("// my settings\n"), b...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("[mcp_servers.shikii\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wants := []string{"WARN hooks in ~/.claude/settings.json: cannot read it", "WARN Codex's MCP server in ~/.codex/config.toml: cannot read it"}
+	if os.Getuid() != 0 { // root reads a file without permission bits
+		if err := os.Chmod(filepath.Join(home, ".codex", "hooks.json"), 0); err != nil {
+			t.Fatal(err)
+		}
+		wants = append(wants, "WARN hooks in ~/.codex/hooks.json: cannot read it")
+	}
+	lines := strings.Join(registeredBinaryLines(home, mcpCommand()), "\n")
+	for _, want := range wants {
+		if !strings.Contains(lines, want) {
+			t.Fatalf("doctor must say %q, says:\n%s", want, lines)
+		}
+	}
+	os.Chmod(filepath.Join(home, ".codex", "hooks.json"), 0o644)
+	for _, target := range hookTargets {
+		if err := os.WriteFile(filepath.Join(home, target.rel), []byte("\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.Remove(filepath.Join(home, ".codex", "config.toml"))
+	if lines := registeredBinaryLines(home, mcpCommand()); len(lines) != 0 {
+		t.Fatalf("empty settings files have no hooks and nothing to warn about: %q", lines)
+	}
+}

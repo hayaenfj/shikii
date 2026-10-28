@@ -423,57 +423,66 @@ func fixCodexServer(path string, args []string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	text := string(b)
-	if strings.Count(text, "[mcp_servers.shikii]") != 1 {
-		return false, nil
-	}
-	head := "[mcp_servers.shikii]\ncommand = "
-	i := strings.Index(text, head)
-	if i < 0 {
-		return false, nil
-	}
-	rest := text[i+len(head):]
-	line, after, ok := strings.Cut(rest, "\n")
+	fixed, ok := codexServerFixed(b, args, mcpCommand())
 	if !ok {
 		return false, nil
 	}
-	cmd, err := strconv.Unquote(line)
-	if err != nil {
-		return false, nil
-	}
-	argsLine, _, ok := strings.Cut(after, "\n")
-	if !ok {
-		return false, nil
-	}
-	if argsLine != "args = ["+quotedList(args)+"]" {
-		return false, nil // args a person changed, or an older version's form (codexServerOlder; only told, 0.9.7)
-	}
-	end := i + len(head) + len(line) + 1 + len(argsLine) + 1
-	if next := text[end:]; next != "" && !strings.HasPrefix(next, "\n") && !strings.HasPrefix(next, "[") {
-		return false, nil // a line a person added to the block
-	}
-	switch {
-	case cmd == "shikii":
-	case !filepath.IsAbs(cmd):
-		return false, nil
-	case fileExists(cmd):
-		return false, nil // the current form on another binary someone chose
-	}
-	command := mcpCommand()
-	if command == cmd {
-		return false, nil
-	}
-	fixed := text[:i] + head + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n" + text[end:]
-	if !codexEditKeepsTheRest(b, []byte(fixed), map[string]any{"command": command, "args": stringsAsTOML(args)}) {
-		return false, nil // the text edit would change something else Codex reads: leave it
-	}
-	if err := writePersonFile(path, []byte(fixed), 0o644); err != nil {
+	if err := writePersonFile(path, fixed, 0o644); err != nil {
 		if errors.Is(err, errPersonFileReadOnly) {
 			return false, nil // the person made it read-only: do not replace it
 		}
 		return false, err
 	}
 	return true, nil
+}
+
+// codexServerFixed is config.toml's text b with the shikii block pointed at command, when fixCodexServer rewrites it; ok is false when
+// it leaves the block alone. doctor uses it to name a fix that works for the block as it is.
+func codexServerFixed(b []byte, args []string, command string) ([]byte, bool) {
+	text := string(b)
+	if strings.Count(text, "[mcp_servers.shikii]") != 1 {
+		return nil, false
+	}
+	head := "[mcp_servers.shikii]\ncommand = "
+	i := strings.Index(text, head)
+	if i < 0 {
+		return nil, false
+	}
+	rest := text[i+len(head):]
+	line, after, ok := strings.Cut(rest, "\n")
+	if !ok {
+		return nil, false
+	}
+	cmd, err := strconv.Unquote(line)
+	if err != nil {
+		return nil, false
+	}
+	argsLine, _, ok := strings.Cut(after, "\n")
+	if !ok {
+		return nil, false
+	}
+	if argsLine != "args = ["+quotedList(args)+"]" {
+		return nil, false // args a person changed, or an older version's form (codexServerOlder; only told, 0.9.7)
+	}
+	end := i + len(head) + len(line) + 1 + len(argsLine) + 1
+	if next := text[end:]; next != "" && !strings.HasPrefix(next, "\n") && !strings.HasPrefix(next, "[") {
+		return nil, false // a line a person added to the block
+	}
+	switch {
+	case cmd == "shikii":
+	case !filepath.IsAbs(cmd):
+		return nil, false
+	case fileExists(cmd):
+		return nil, false // the current form on another binary someone chose
+	}
+	if command == cmd {
+		return nil, false
+	}
+	fixed := text[:i] + head + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n" + text[end:]
+	if !codexEditKeepsTheRest(b, []byte(fixed), map[string]any{"command": command, "args": stringsAsTOML(args)}) {
+		return nil, false // the text edit would change something else Codex reads: leave it
+	}
+	return []byte(fixed), true
 }
 
 // codexPinnedNote tells a person whose hand-edited Codex block names one project's store what that does and what to write instead.

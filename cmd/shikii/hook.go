@@ -1968,23 +1968,45 @@ func hookEvents() []hookEvent {
 func hookCommand(exe, event string) string { return shellQuote(exe) + " hook " + event }
 
 // hookBinary is the binary of a hook command `<binary> hook <event>`: a bare path (also one with spaces, as 0.9.3 and earlier wrote it),
-// or a path in single quotes as hookCommand writes it. ok is false when the command is not of that form.
+// a path in single quotes as hookCommand writes it, or a path in double quotes as a person may write it. ok is false when the command is
+// not of that form. The path is as written: ~ and $HOME are not expanded (hookBinaryWord says whether the shell expands them).
 func hookBinary(command string) (string, bool) {
+	bin, _, ok := hookBinaryWord(command)
+	return bin, ok
+}
+
+// shellExpands is what the shell expands in the binary's word: nothing (single quotes), $VAR (double quotes), or also a leading ~ (bare).
+type shellExpands int
+
+const (
+	expandsNothing shellExpands = iota
+	expandsVars
+	expandsVarsAndTilde
+)
+
+func hookBinaryWord(command string) (string, shellExpands, bool) {
 	c := strings.TrimSpace(command)
 	i := strings.LastIndex(c, " hook ")
 	if i <= 0 || strings.TrimSpace(c[i+len(" hook "):]) == "" {
-		return "", false
+		return "", expandsNothing, false
 	}
 	bin := strings.TrimSpace(c[:i])
-	if len(bin) >= 2 && bin[0] == '\'' && bin[len(bin)-1] == '\'' {
-		bin = strings.ReplaceAll(bin[1:len(bin)-1], `'\''`, "'")
-	} else if strings.ContainsAny(bin, "'\"") {
-		return "", false
+	expands := expandsVarsAndTilde
+	switch {
+	case len(bin) >= 2 && bin[0] == '\'' && bin[len(bin)-1] == '\'':
+		bin, expands = strings.ReplaceAll(bin[1:len(bin)-1], `'\''`, "'"), expandsNothing
+	case len(bin) >= 2 && bin[0] == '"' && bin[len(bin)-1] == '"':
+		bin, expands = bin[1:len(bin)-1], expandsVars
+		if strings.ContainsAny(bin, "\"\\`") {
+			return "", expandsNothing, false // escapes or a command inside: not a plain path
+		}
+	case strings.ContainsAny(bin, "'\""):
+		return "", expandsNothing, false
 	}
-	if strings.ContainsAny(bin, " \t") && !filepath.IsAbs(bin) {
-		return "", false // `env shikii`, `shikii-tool run`: not a path to a binary
+	if strings.ContainsAny(bin, " \t") && !filepath.IsAbs(bin) && !(expands == expandsVars && strings.HasPrefix(bin, "$")) {
+		return "", expandsNothing, false // `env shikii`, `shikii-tool run`: not a path to a binary
 	}
-	return bin, true
+	return bin, expands, true
 }
 
 // hookEventsFor is the hooks added per settings file. Codex has no SubagentStart, so it is left out.

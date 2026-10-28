@@ -3810,3 +3810,35 @@ func TestWordingCheckNotAskedAfterTheQuestionChanged(t *testing.T) {
 	}
 	_ = agent
 }
+
+// A shikii hook a person wrote with the path in double quotes is shikii's too: install replaces it with the current one instead of
+// leaving both (each turn would then run two shikii hooks), and a double-quoted command that is not a plain path is not taken for one.
+func TestHookInstallReplacesAnOldHookWrittenInDoubleQuotes(t *testing.T) {
+	settings := filepath.Join(t.TempDir(), "settings.json")
+	old := filepath.Join(t.TempDir(), "Application Support", "go", "bin", "shikii")
+	body := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":` + fmt.Sprintf("%q", fmt.Sprintf("%q hook stop", old)) + `}]}]}}`
+	if err := os.WriteFile(settings, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := editHooks(settings, true, hookEventsFor("Claude Code")); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(settings)
+	if strings.Contains(string(b), "Application Support") {
+		t.Fatalf("install must remove the old shikii hook written in double quotes, the settings are:\n%s", b)
+	}
+	if n := strings.Count(string(b), " hook stop"); n != 1 {
+		t.Fatalf("install must leave one Stop hook of shikii, left %d:\n%s", n, b)
+	}
+	for cmd, want := range map[string]bool{
+		`"/a b/shikii" hook stop`:             true,
+		`"$HOME/.local/bin/shikii" hook stop`: true,
+		`"/a \"b\"/shikii" hook stop`:         false,
+		"\"/a `b`/shikii\" hook stop":         false,
+		`"/x/other" hook stop`:                false,
+	} {
+		if got := isShikiiHook(cmd); got != want {
+			t.Fatalf("isShikiiHook(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}

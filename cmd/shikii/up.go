@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -344,62 +345,120 @@ func cmdDoctor(args []string) error {
 // registeredBinaryLines says, for the hooks (hookTargets) and Codex's MCP registration (~/.codex/config.toml), which shikii binary they
 // run, and when that binary is gone (a Go version manager removed its per-version folder, or the binary was moved), how to point them
 // at one that exists: hook install --yes rewrites the hooks, and the Codex block shikii wrote, to the binary that runs it.
+// A hook is run by a shell, so ~ and $HOME in its path are expanded as the shell would (in double quotes only $VAR, in single quotes
+// nothing), a folder or a file without permission to run is not ok, and a settings file that cannot be read is named, not skipped.
+// A Codex block that hook install leaves alone (a person edited it, or an older version's form) gets the hand edit as its fix.
 func registeredBinaryLines(home, exe string) []string {
-	type use struct{ where, bin string }
-	var uses []use
-	for _, target := range hookTargets {
-		body, err := os.ReadFile(filepath.Join(home, target.rel))
-		if err != nil {
-			continue
-		}
-		var config struct {
-			Hooks map[string][]struct {
-				Hooks []struct {
-					Command string `json:"command"`
-				} `json:"hooks"`
-			} `json:"hooks"`
-		}
-		if json.Unmarshal(body, &config) != nil {
-			continue
-		}
-		seen := map[string]bool{}
-		for _, groups := range config.Hooks {
-			for _, group := range groups {
-				for _, hook := range group.Hooks {
-					if bin, ok := hookBinary(hook.Command); ok && isShikiiHook(hook.Command) && !seen[bin] {
-						seen[bin] = true
-						uses = append(uses, use{"hooks in ~/" + filepath.ToSlash(target.rel), bin})
-					}
-				}
-			}
-		}
-	}
-	if b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml")); err == nil {
-		if m, err := readCodexConfig(b); err == nil {
-			if server, ok := codexShikiiServer(m); ok {
-				if t, ok := server.(map[string]any); ok {
-					if bin, ok := t["command"].(string); ok {
-						uses = append(uses, use{"Codex's MCP server in ~/.codex/config.toml", bin})
-					}
-				}
-			}
-		}
-	}
 	fix := "run " + shellQuote(exe) + " hook install --yes to point them at this shikii, or install again with the one line in the README (it puts shikii in ~/.local/bin)"
 	var lines []string
-	for _, u := range uses {
-		found := fileExists(u.bin)
-		if !filepath.IsAbs(u.bin) {
-			_, err := exec.LookPath(u.bin)
-			found = err == nil
+	report := func(where, written, bin, fix string) {
+		shown := written
+		if bin != written {
+			shown += " (" + bin + ")"
 		}
-		if found {
-			lines = append(lines, fmt.Sprintf("ok   %s: %s", u.where, u.bin))
-		} else {
-			lines = append(lines, fmt.Sprintf("MISSING %s: they run %s, which does not exist → %s", u.where, u.bin, fix))
+		switch exists, runs := hookBinaryRuns(bin); {
+		case runs:
+			lines = append(lines, fmt.Sprintf("ok   %s: %s", where, shown))
+		case exists:
+			lines = append(lines, fmt.Sprintf("MISSING %s: they run %s, which cannot run (a folder, or a file without permission to run) → %s", where, shown, fix))
+		default:
+			lines = append(lines, fmt.Sprintf("MISSING %s: they run %s, which does not exist → %s", where, shown, fix))
+		}
+	}
+	for _, target := range hookTargets {
+		where := "hooks in ~/" + filepath.ToSlash(target.rel)
+		body, err := os.ReadFile(filepath.Join(home, target.rel))
+		if os.IsNotExist(err) {
+			continue
+		}
+		var config map[string]any
+		if err == nil && strings.TrimSpace(string(body)) != "" { // an empty file is the same as {} (as editHooks reads it)
+			err = json.NewDecoder(strings.NewReader(string(body))).Decode(&config)
+		}
+		if err != nil {
+			lines = append(lines, fmt.Sprintf("WARN %s: cannot read it (%v) → fix it by hand; hook install --yes stops on it too", where, err))
+			continue
+		}
+		var written []string
+		seen := map[string]bool{}
+		hooks, _ := config["hooks"].(map[string]any)
+		for _, groups := range hooks {
+			groups, _ := groups.([]any)
+			for _, group := range groups {
+				group, _ := group.(map[string]any)
+				handlers, _ := group["hooks"].([]any)
+				for _, handler := range handlers {
+					handler, _ := handler.(map[string]any)
+					command, _ := handler["command"].(string)
+					if bin, ok := hookBinary(command); ok && isShikiiHook(command) && !seen[bin] {
+						seen[bin] = true
+						written = append(written, command)
+					}
+				}
+			}
+		}
+		sort.Strings(written) // the same order on every run
+		for _, command := range written {
+			bin, expands, _ := hookBinaryWord(command)
+			report(where, bin, shellExpand(bin, expands, home), fix)
+		}
+	}
+	codex := "Codex's MCP server in ~/.codex/config.toml"
+	b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	var m map[string]any
+	if err == nil {
+		m, err = readCodexConfig(b)
+	}
+	switch {
+	case os.IsNotExist(err):
+	case err != nil:
+		lines = append(lines, fmt.Sprintf("WARN %s: cannot read it (%v) → fix it by hand; Codex cannot read it either", codex, err))
+	default:
+		server, _ := codexShikiiServer(m)
+		t, _ := server.(map[string]any)
+		if bin, ok := t["command"].(string); ok {
+			codexFix := fix
+			if _, fixable := codexServerFixed(b, codexServerArgs, exe); !fixable {
+				codexFix = "the block was edited by hand or is in an older version's form, so hook install leaves it as it is: set command = " + quotedList([]string{exe}) + " under [mcp_servers.shikii] in ~/.codex/config.toml by hand (Codex; reopen Codex)"
+			}
+			report(codex, bin, bin, codexFix)
 		}
 	}
 	return lines
+}
+
+// hookBinaryRuns says whether bin exists, and whether it is a file the shell can run: a regular file with permission to run. A bare name
+// is looked up on PATH.
+func hookBinaryRuns(bin string) (exists, runs bool) {
+	if !strings.Contains(bin, "/") {
+		_, err := exec.LookPath(bin)
+		return err == nil, err == nil
+	}
+	info, err := os.Stat(bin)
+	if err != nil {
+		return false, false
+	}
+	return true, info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
+}
+
+// shellExpand expands a hook's binary word as the shell does: a leading ~ to home (bare words only), and $HOME, ${HOME} and other
+// variables (not in single quotes). HOME is home; other variables come from this environment, which the agents pass on to their hooks.
+func shellExpand(bin string, expands shellExpands, home string) string {
+	if expands == expandsNothing {
+		return bin
+	}
+	vars := func(s string) string {
+		return os.Expand(s, func(name string) string {
+			if name == "HOME" {
+				return home
+			}
+			return os.Getenv(name)
+		})
+	}
+	if expands == expandsVarsAndTilde && (bin == "~" || strings.HasPrefix(bin, "~/")) {
+		return home + vars(bin[1:])
+	}
+	return vars(bin)
 }
 
 func orElse(s, fallback string) string {
