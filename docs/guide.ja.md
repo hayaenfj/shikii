@@ -372,7 +372,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `shikii up` | 手元のモデルを起こす(llama-server と、普通の GGUF なら `shikii-readout`)。鍵がある時は起こさない |
 | `shikii serve` | HTTP の口と答え合わせの画面 |
 | `shikii mcp` | 同じ中身を stdio の MCP サーバーとして出す(`shikii_specs`・`shikii_decide`・`shikii_label`・`shikii_status`・`shikii_tune`・`shikii_wiki`・`shikii_review`・`shikii_reflect`) |
-| `shikii doctor` | 鍵・手元のモデル・置き場の状態を確かめる |
+| `shikii doctor` | 鍵・手元のモデル・置き場の状態と、hook と Codex の MCP の登録が動かす shikii の実行ファイルが今もあって動かせるかを確かめる(無い時は直し方を出す) |
 | `shikii update` | 最新の安定版へ本体と readout を更新する |
 | `shikii hook install` / `uninstall` | Claude Code と Codex の hook を入れる・外す(`--yes` 無しは表示だけ) |
 | `shikii uninstall` | shikii がエージェントに入れた物(hook・MCP の項目・エージェントの作法)を外し、画面を止める。データ(`.shikii/`・`~/.shikii/agent`)と実行ファイルは残し、実行ファイルを消す `rm` のコマンドを出す(`--yes` 無しは表示だけ) |

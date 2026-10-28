@@ -73,7 +73,7 @@ Everything else is the machine's job.
 | Learn from ordinary conversations and turn corrections into guards | Claude Code or Codex, shikii, and `shikii --init` in the projects you choose. Delivery to subagents is Claude Code only |
 | Answer the built-in questions | Recommended: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment, nothing to download. Without a key: llama.cpp (`llama-server`) and Ternary-Bonsai-27B through `shikii up`, about 7.6 GB to download and 10 GB of memory while running |
 | Use another model for business decisions | Any System One endpoint from the table below |
-| Install | macOS or Linux (amd64 or arm64), sh and curl. Go is not needed |
+| Install | macOS or Linux (amd64 or arm64), sh, curl, tar, awk, and shasum or sha256sum (both systems have them). Go is not needed |
 | Install from source | Go 1.27 or newer, Git and sh. The page is bundled; Node.js is not needed |
 | Run the business API and page in containers | Docker with Compose, or Podman with a Compose provider ([setup](integrations/docker.md)) |
 | Try the whole loop without a key or GPU | Go 1.27 or newer and the included fake model (`scripts/demo.sh`) |
@@ -107,7 +107,9 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 The installer downloads the latest release for your machine (macOS or Linux, amd64 or arm64) from GitHub Releases, checks it against the release's `SHA256SUMS`, and puts `shikii` and `shikii-readout` in `~/.local/bin`. It asks GitHub which release is the latest, so it gets a release as soon as it is published, and it does not need Go. It adds the binaries, the hooks (before a turn, after it, and when a subagent is launched and starts) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, trust the hooks with `/hooks`, and again whenever they change (after moving the binary or updating shikii); until then Codex skips them.
 
-If the hooks stop working after you upgrade Go or move the binary, run `shikii doctor`: it says when the hooks or the Codex registration point to a shikii binary that no longer exists, and how to fix it.
+If the hooks stop working after you upgrade Go or move the binary, run the one line above again: the binary itself is often what is gone (a Go upgrade removes the folder `go install` put it in), and `shikii doctor` with it. When `shikii` still runs, `shikii doctor` says when the hooks or the Codex registration point to a shikii binary that no longer exists or cannot run, and how to fix it.
+
+**If you installed with `go install` before.** That binary stays in Go's folder (`$(go env GOPATH)/bin`, or `GOBIN`), and `shikii update` updates it there; it does not move it to `~/.local/bin`. Run the one line above once: the hooks then run `~/.local/bin/shikii`. Then remove the old `shikii` and `shikii-readout` from Go's folder by hand, and run `shikii hook install --yes` once more. Until you do, two binaries are installed: `shikii` typed in a terminal, and Claude Code's MCP server (which runs `shikii` by name), run whichever comes first on PATH (`command -v shikii` shows which), `shikii update` updates only that one, and Codex's MCP registration keeps the old binary while it exists.
 
 **Building from source (for developers).** In a clone of this repository, `sh install.sh` builds the current source with Go 1.27 or newer and puts the binaries in the same `~/.local/bin`, then installs the hooks the same way (`make install` builds and copies the binaries only).
 

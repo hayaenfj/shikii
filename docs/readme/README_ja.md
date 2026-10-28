@@ -73,7 +73,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 | 普段の会話から学び、訂正を検査にする | Claude CodeまたはCodex、shikii、利用するプロジェクトでの `shikii --init`。サブエージェントへの配送はClaude Codeだけ |
 | 既製の問いに答えさせる | 推奨: TypeSafeのJev（環境変数 `TYPESAFE_API_KEY`。取得するものは無い）。鍵を置けない時: llama.cpp（`llama-server`）とTernary-Bonsai-27Bを `shikii up` で立てる構成（取得 約7.6GB、動作中のメモリ約10GB） |
 | 業務の判定に別のモデルを使う | 下の表のSystem One形式の接続先 |
-| インストールする | macOSかLinux（amd64かarm64）、sh、curl。Goは不要 |
+| インストールする | macOSかLinux（amd64かarm64）、sh、curl、tar、awk、shasumかsha256sum（どちらのOSにも初めからある）。Goは不要 |
 | ソースからインストールする | Go 1.27以上、Git、sh。画面は同梱済みでNode.jsは不要 |
 | コンテナで業務のAPIと画面を動かす | DockerとCompose、またはPodmanとCompose provider（[準備](../../integrations/docker.ja.md)） |
 | 鍵やGPUなしで一周試す | Go 1.27以上と同梱の偽モデル（`scripts/demo.sh`） |
@@ -107,7 +107,9 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 インストーラーは、GitHub Releasesからこの機械向け（macOSかLinux、amd64かarm64）の最新版を取ってきて、版の `SHA256SUMS` と照らしてから、`shikii` と `shikii-readout` を `~/.local/bin` に置きます。どれが最新版かをGitHubに聞くので、出したばかりの版もすぐ入り、Goは要りません。実行ファイル、hook（依頼の前・作業の後・サブエージェントを起こす時と始まる時）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは `/hooks` でhookを信頼してください。hookの中身が変わるたび(実行ファイルを動かした時やshikiiを更新した時)にもう一度信頼が要り、それまでCodexはhookを飛ばします。
 
-Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、`shikii doctor` を流してください。hookやCodexの登録が、もう無いshikiiの実行ファイルを指している時はそう言い、直し方を出します。
+Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上の1行をもう一度流してください。多くは実行ファイルそのものが消えていて(Goを上げると `go install` が置いたフォルダごと消えます)、`shikii doctor` も一緒に消えています。`shikii` がまだ動く時は `shikii doctor` を流すと、hookやCodexの登録が、もう無い・動かせないshikiiの実行ファイルを指している時はそう言い、直し方を出します。
+
+**前に `go install` で入れた人へ。** その実行ファイルはGoのフォルダ(`$(go env GOPATH)/bin` か `GOBIN`)に残り、`shikii update` もそこで更新するだけで、`~/.local/bin` へは移しません。上の1行を一度流すと、hookは `~/.local/bin/shikii` を動かすようになります。そのあとGoのフォルダの古い `shikii` と `shikii-readout` を手で消し、もう一度 `shikii hook install --yes` を流してください。それまでは実行ファイルが2つあり、端末で打つ `shikii` と、Claude CodeのMCP(`shikii` を名前で動かす)は、PATHで先に見つかる方を動かし(`command -v shikii` でどちらかわかります)、`shikii update` はその1つだけを更新し、CodexのMCPの登録は古い実行ファイルが残る間はそちらを指したままです。
 
 **ソースから組む（開発する人向け）。** このリポジトリをcloneした中で `sh install.sh` を流すと、今のソースをGo 1.27以上で組んで同じ `~/.local/bin` に置き、hookも同じように入れます（`make install` は組んで実行ファイルを写すだけです）。
 
