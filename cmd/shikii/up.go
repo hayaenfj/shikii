@@ -251,7 +251,7 @@ func findReadout() (string, error) {
 	if p, err := exec.LookPath("shikii-readout"); err == nil {
 		return p, nil
 	}
-	return "", errors.New("shikii-readout not found next to shikii or in PATH (make install puts both in ~/.local/bin)")
+	return "", errors.New("shikii-readout not found next to shikii or in PATH (the one-line installer in the README puts both in ~/.local/bin; make install does from a source checkout)")
 }
 
 func cmdDoctor(args []string) error {
@@ -276,7 +276,7 @@ func cmdDoctor(args []string) error {
 	llama, _ := exec.LookPath("llama-server")
 	fmt.Fprintf(stdout, "%s llama-server: %s\n", ok(llama != ""), orElse(llama, "not in PATH → brew install llama.cpp"))
 	readout, err := findReadout()
-	fmt.Fprintf(stdout, "%s shikii-readout: %s\n", ok(err == nil), orElse(readout, "not found → make install"))
+	fmt.Fprintf(stdout, "%s shikii-readout: %s\n", ok(err == nil), orElse(readout, "not found → install again with the one line in the README (it puts it in ~/.local/bin; make install from a source checkout)"))
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, line := range registeredBinaryLines(home, mcpCommand()) {
 			fmt.Fprintln(stdout, line)
@@ -376,7 +376,7 @@ func registeredBinaryLines(home, exe string) []string {
 			lines = append(lines, fmt.Sprintf("WARN %s: cannot read it (%v) → fix it by hand; hook install --yes stops on it too", where, err))
 			continue
 		}
-		var bins, hand []string
+		var bins, relative, hand []string
 		seen := map[string]bool{}
 		hooks, _ := config["hooks"].(map[string]any)
 		for _, groups := range hooks {
@@ -387,12 +387,23 @@ func registeredBinaryLines(home, exe string) []string {
 				for _, handler := range handlers {
 					handler, _ := handler.(map[string]any)
 					command, _ := handler["command"].(string)
-					if bin, ok := hookBinary(command); ok && isShikiiHook(command) && !seen[bin] {
-						seen[bin] = true
-						bins = append(bins, bin)
-					} else if handWrittenShikiiHook(command) && !seen[command] {
-						seen[command] = true
-						hand = append(hand, command)
+					bin, _ := hookBinary(command)
+					switch {
+					case isShikiiHook(command) && (filepath.IsAbs(bin) || !strings.Contains(bin, "/")):
+						if !seen[bin] {
+							seen[bin] = true
+							bins = append(bins, bin)
+						}
+					case isShikiiHook(command): // ~/… or another relative path: the shell decides what it runs, and install rewrites it
+						if !seen[command] {
+							seen[command] = true
+							relative = append(relative, command)
+						}
+					case handWrittenShikiiHook(command):
+						if !seen[command] {
+							seen[command] = true
+							hand = append(hand, command)
+						}
 					}
 				}
 			}
@@ -400,6 +411,10 @@ func registeredBinaryLines(home, exe string) []string {
 		sort.Strings(bins) // the same order on every run
 		for _, bin := range bins {
 			report(where, bin, fix)
+		}
+		sort.Strings(relative)
+		for _, command := range relative {
+			lines = append(lines, fmt.Sprintf("note %s: %s names shikii by a relative path, so doctor did not check what it runs; hook install --yes replaces it with this shikii's absolute path", where, command))
 		}
 		sort.Strings(hand)
 		for _, command := range hand {
@@ -422,7 +437,7 @@ func registeredBinaryLines(home, exe string) []string {
 		if bin, ok := t["command"].(string); ok {
 			codexFix := fix
 			if _, fixable := codexServerFixed(b, codexServerArgs, exe); !fixable {
-				codexFix = "the block was edited by hand or is in an older version's form, so hook install leaves it as it is: set command = " + quotedList([]string{exe}) + " under [mcp_servers.shikii] in ~/.codex/config.toml by hand (Codex; reopen Codex)"
+				codexFix = "hook install --yes does not rewrite this block (it was edited by hand, is in an older version's form, or names a path that exists but cannot run): set command = " + quotedList([]string{exe}) + " under [mcp_servers.shikii] in ~/.codex/config.toml by hand (Codex; reopen Codex)"
 			}
 			report(codex, bin, codexFix)
 		}

@@ -3882,7 +3882,9 @@ func TestHookInstallKeepsAnotherToolsHookWhoseNameStartsWithShikii(t *testing.T)
 // A shikii hook a person wrote by hand (with ~, $HOME, double quotes or a backslash) is not in the form shikii writes, so install
 // leaves the person's line as it is and adds shikii's own hook next to it (doctor tells the person they may now have two).
 func TestHookInstallLeavesAHandWrittenShikiiHookAlone(t *testing.T) {
-	hand := []string{`"$HOME"/go/bin/shikii hook stop`, "~/.local/bin/shikii hook stop", "$HOME/.local/bin/shikii hook stop", `"/a b/shikii" hook stop`, `/a\ b/shikii hook stop`}
+	// with quotes or a backslash: not a form shikii writes, so shikii cannot tell what it runs. (A bare ~/… or $HOME/… path has no
+	// quote, so it is read as shikii wrote paths up to 0.9.10 and replaced; TestUninstAuditHooksWithASpaceInThePath.)
+	hand := []string{`"$HOME"/go/bin/shikii hook stop`, `"/a b/shikii" hook stop`, `/a\ b/shikii hook stop`, "/gone/shikii hook stop 2>/dev/null"}
 	commands := map[string]string{}
 	for _, c := range hand {
 		commands[c] = "Stop"

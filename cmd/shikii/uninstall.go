@@ -90,6 +90,12 @@ func cmdUninstall(args []string) error {
 			}})
 		}
 	}
+	for _, t := range hookTargets {
+		path := filepath.Join(home, t.rel)
+		for _, c := range handWrittenShikiiHooksIn(path) { // shikii cannot tell what a hook written another way runs, so it stays: say so (0.10)
+			left = append(left, fmt.Sprintf("%s: the hook %q looks like it runs shikii but was written by hand, so it is left as it is; remove it by hand if it is shikii's", tilde(path), c))
+		}
+	}
 	// 2) Codex's MCP server
 	codex := filepath.Join(home, ".codex", "config.toml")
 	switch found, err := removeCodexServer(codex, false); {

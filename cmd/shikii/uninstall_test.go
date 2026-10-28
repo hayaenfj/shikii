@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -786,15 +787,19 @@ func TestUninstAuditHooksWithASpaceInThePath(t *testing.T) {
 		"/usr/bin/env shikii hook stop":         false,
 		"bash -c 'cd /x && shikii hook stop'":   false,
 		// only the forms shikii writes, and only shikii's own hook events
-		"/opt/tools/shikii-notify hook done":   false,
-		`"/opt/tools/shikii-notify" hook done`: false,
-		"'/a b/shikii' hook done":              false,
-		"~/.local/bin/shikii hook stop":        false,
-		"$HOME/.local/bin/shikii hook stop":    false,
-		`"/a b/shikii" hook stop`:              false,
-		`/a\ b/shikii hook stop`:               false,
-		"bin/shikii hook stop":                 false,
-		"'/a/shikii'x hook stop":               false,
+		"/opt/tools/shikii-notify hook done":             false,
+		`"/opt/tools/shikii-notify" hook done`:           false,
+		"'/a b/shikii' hook done":                        false,
+		"~/.local/bin/shikii hook stop":                  true, // bare, as 0.9.10 read it: a shikii hook (doctor says it did not check it)
+		"$HOME/.local/bin/shikii hook stop":              true,
+		"/Users/a/com~apple/shikii hook stop":            true,  // 0.9.2 and earlier wrote any path bare
+		"/opt/tools/shikii-notify hook stop":             false, // another tool using one of shikii's event names (0.10's last audit)
+		"'/opt/my tools/shikii-guard' hook pre-tool-use": false,
+		"/gone/shikii hook stop 2>/dev/null":             false,
+		`"/a b/shikii" hook stop`:                        false,
+		`/a\ b/shikii hook stop`:                         false,
+		"bin/shikii hook stop":                           true,
+		"'/a/shikii'x hook stop":                         false,
 	} {
 		if got := isShikiiHook(cmd); got != want {
 			t.Fatalf("isShikiiHook(%q) = %v, want %v", cmd, got, want)
@@ -847,5 +852,21 @@ func TestUninstAuditRmNamesABinaryOnce(t *testing.T) {
 	want := "  rm " + shellQuote(filepath.Join(via, "shikii")) + " " + shellQuote(filepath.Join(via, "shikii-readout")) + "\n"
 	if !strings.Contains(out, want) {
 		t.Fatalf("the binary and readout are named once each (%q):\n%s", want, out)
+	}
+}
+
+// uninstall leaves a shikii hook written by hand (shikii cannot tell what it runs) and says so with its command, so the person can
+// remove it (0.10's last audit: it stayed silently and shikii kept running).
+func TestUninstallNamesAHandWrittenShikiiHookItLeaves(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hand := `"$HOME"/.local/bin/shikii hook stop`
+	writeHookFiles(t, home, hand)
+	out := capture(t, func() error { return cmdUninstall([]string{"--yes"}) })
+	if !strings.Contains(out, strconv.Quote(hand)) || !strings.Contains(out, "written by hand") {
+		t.Fatalf("uninstall names the hand-written hook it leaves:\n%s", out)
+	}
+	if !readHookCommands(t, filepath.Join(home, ".claude", "settings.json"))[hand] {
+		t.Fatal("the hand-written hook stays")
 	}
 }

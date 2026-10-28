@@ -242,7 +242,7 @@ func TestDoctorNamesAFixForCodexThatWorksForThatBlock(t *testing.T) {
 		return ""
 	}
 	before := codexLine()
-	if !strings.HasPrefix(before, "MISSING ") || strings.Contains(before, "hook install --yes") || !strings.Contains(before, "command = "+strconv.Quote(mcpCommand())) {
+	if !strings.HasPrefix(before, "MISSING ") || strings.Contains(before, "hook install --yes to point") || !strings.Contains(before, "command = "+strconv.Quote(mcpCommand())) {
 		t.Fatalf("for a block hook install leaves alone, doctor must say what to write by hand (command = %q), not hook install --yes: %s", mcpCommand(), before)
 	}
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
@@ -282,15 +282,21 @@ func TestDoctorSaysAHandWrittenShikiiHookWasNotChecked(t *testing.T) {
 		`"$HOME"/go/bin/shikii hook stop`,                    // the binary is gone
 		strings.ReplaceAll(spaced, " ", `\ `) + " hook stop", // the binary exists
 		strconv.Quote(spaced) + " hook stop",
+		"/gone/shikii hook stop 2>/dev/null", // more words after the event (0.10's last audit: it was skipped silently)
 	} {
 		writeHookFiles(t, home, command)
 		lines := registeredBinaryLines(home, mcpCommand())
 		if len(lines) != 2 {
 			t.Fatalf("%s: doctor must say one line for each hook file, said %q", command, lines)
 		}
+		bare := strings.HasPrefix(command, "~") || strings.HasPrefix(command, "$") // ~/…, $HOME/…: a shikii hook by a relative path, which install rewrites
 		for _, line := range lines {
-			if !strings.HasPrefix(line, "note ") || !strings.Contains(line, command) || !strings.Contains(line, "by hand") || !strings.Contains(line, "two") {
-				t.Fatalf("%s: doctor must say that the hook was written by hand and not checked, and that there may be two: %s", command, line)
+			said := strings.Contains(line, "by hand") && strings.Contains(line, "two")
+			if bare {
+				said = strings.Contains(line, "relative path") && strings.Contains(line, "replaces it")
+			}
+			if !strings.HasPrefix(line, "note ") || !strings.Contains(line, command) || !said {
+				t.Fatalf("%s: doctor must say it did not check the hook, and what hook install does with it: %s", command, line)
 			}
 		}
 	}
@@ -405,4 +411,30 @@ func TestDoctorSaysWhenItCannotReadTheHookSettings(t *testing.T) {
 	if lines := registeredBinaryLines(home, mcpCommand()); len(lines) != 0 {
 		t.Fatalf("empty settings files have no hooks and nothing to warn about: %q", lines)
 	}
+}
+
+// A Codex block in the form shikii writes that names a folder is not rewritten by hook install (the path exists), and doctor's reason
+// names that case too instead of saying only that it was edited by hand (0.10's audits).
+func TestDoctorGivesTheRightReasonForACodexBlockNamingAFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	folder := filepath.Join(home, "go", "bin", "shikii")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), codexWithServer(nil, folder, codexServerArgs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range registeredBinaryLines(home, mcpCommand()) {
+		if strings.Contains(line, "Codex's MCP server") {
+			if !strings.Contains(line, "names a path that exists but cannot run") {
+				t.Fatalf("doctor gives the reason that fits a folder: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("doctor says something about the Codex block")
 }

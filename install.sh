@@ -70,17 +70,12 @@ main() {
     mv -f "$STAGE/files/shikii" "$STAGE/files/shikii-readout" "$STAGE/"
   fi
   chmod 755 "$STAGE/shikii" "$STAGE/shikii-readout"
-  # move the old shikii-readout aside into the working folder (a rename in the same folder: a link stays a link) and put it back if
-  # shikii cannot be moved: the two never mix versions
-  HAD_READOUT=
-  if [ -e "$BIN/shikii-readout" ] || [ -L "$BIN/shikii-readout" ]; then
-    mv -f "$BIN/shikii-readout" "$STAGE/old-readout" || fail "cannot move the old shikii-readout in $BIN; nothing was changed"
-    HAD_READOUT=1
-  fi
-  if ! mv -f "$STAGE/shikii-readout" "$BIN/shikii-readout" || ! mv -f "$STAGE/shikii" "$BIN/shikii"; then
-    if [ -n "$HAD_READOUT" ]; then mv -f "$STAGE/old-readout" "$BIN/shikii-readout"; else rm -f "$BIN/shikii-readout"; fi
-    fail "cannot put shikii in $BIN; the shikii there was not changed"
-  fi
+  # what is there must be a file (or a link to one): a folder or anything else there is a person's, and is never moved into or removed
+  for f in shikii shikii-readout; do
+    if [ -e "$BIN/$f" ] && [ ! -f "$BIN/$f" ]; then fail "$BIN/$f is not a file; nothing was installed (move it away and run this again)"; fi
+  done
+  mv -f "$STAGE/shikii-readout" "$BIN/shikii-readout" || fail "cannot put shikii-readout in $BIN; nothing was changed"
+  mv -f "$STAGE/shikii" "$BIN/shikii" || fail "cannot put shikii in $BIN: only shikii-readout was updated; run this again"
   echo "Installed: $BIN/shikii $BIN/shikii-readout"
   case ":$PATH:" in *":$BIN:"*) ;; *) echo "Add this to your PATH: $BIN (for example, add export PATH=\"\$HOME/.local/bin:\$PATH\" to your shell's profile; hooks use the absolute path of the binary)";; esac
   "$BIN/shikii" hook install --yes
