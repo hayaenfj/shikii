@@ -174,3 +174,22 @@ func TestWholeFileWritesCountOnlyNewLinesAndCheckAnyFile(t *testing.T) {
 		t.Fatalf("a file outside the project is checked too (except it by name to allow it): %v", spec)
 	}
 }
+
+// An except pattern is written against the project root, so a file reached through a link to the project folder is matched by its
+// project-relative path (the link resolved), not by the path as given.
+func TestExceptedPathIsMatchedThroughALinkToTheProject(t *testing.T) {
+	st, scope, _, _ := toolLessonFixture(t)
+	writeGuard(t, st.Dir, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"\u6839"}, Except: []string{"docs/**"}})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": scope, "prompt": "docs \u3092\u76f4\u3057\u3066"})
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(scope, link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(scope, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := runHook(t, "tool-lesson", map[string]any{"session_id": "g", "cwd": link, "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": map[string]any{"file_path": filepath.Join(link, "docs", "notes.md"), "content": "\u6839\n"}})
+	if strings.Contains(out, "permissionDecision") {
+		t.Fatalf("docs/** is excepted, also when the file is reached through a link to the project:\n%s", out)
+	}
+}
