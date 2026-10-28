@@ -11,6 +11,10 @@
 - Install location: the binary stays in `~/.local/bin` when Go or a Go version manager is upgraded. Before, `go install` put it in Go's own folder, which a version manager such as mise keeps per Go version, so upgrading Go removed the binary the hooks and the Codex registration ran, and the hooks stopped without saying so.
 - `shikii doctor`: says which shikii binary the hooks (`~/.claude/settings.json`, `~/.codex/hooks.json`) and Codex's MCP registration (`~/.codex/config.toml`) run, and when that binary no longer exists, says so with the fix (`shikii hook install --yes` from a shikii that exists, or the one-line installer again).
 - From source: in a clone of the repository, `sh install.sh` still builds the current source with Go 1.27 or newer, now into the same `~/.local/bin`.
+- install.sh no longer leaves its working folder in `~/.local/bin` when stopped with Ctrl-C under dash or zsh, runs nothing when `curl | sh` receives only part of the script, puts the old `shikii-readout` back when `shikii` cannot be moved into place, and refuses a release archive that holds a link instead of a file.
+- `shikii doctor` reads hook commands the way the shell does: `~` and `$HOME` are expanded, paths in double quotes are checked, a folder or a file that cannot run is not reported as ok, and hook or Codex settings it cannot read are named. For a Codex registration that `hook install --yes` leaves alone (edited by hand or in an older form), it says what to write by hand instead.
+- `shikii hook install` now also replaces an old shikii hook whose path was written in double quotes, instead of leaving it next to the new one.
+- README: if the hooks stop working because the binary is gone, run the one-line installer again; people who installed with `go install` are told how to move to `~/.local/bin`; the installer's requirements now list tar, awk, and shasum or sha256sum.
 
 ## 0.9.10 — init stopped on a disk without hard links no longer leaves a part of a built-in file
 

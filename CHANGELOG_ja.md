@@ -11,6 +11,10 @@
 - 置き場: Go や Go の版の管理ツールを上げても、実行ファイルは `~/.local/bin` に残る。前は `go install` が Go の側のフォルダに置き、mise のような版の管理ツールはそれを Go の版ごとに持つので、Go を上げると hook と Codex の登録が動かす実行ファイルが消え、hook が黙って止まった。
 - `shikii doctor`: hook(`~/.claude/settings.json`・`~/.codex/hooks.json`)と Codex の MCP の登録(`~/.codex/config.toml`)がどの shikii の実行ファイルを動かすかを出し、それがもう無い時はそう言って直し方(ある shikii から `shikii hook install --yes`、または 1 行のインストーラーをもう一度)を出す。
 - ソースから: リポジトリを clone した中の `sh install.sh` は、これまでどおり今のソースを Go 1.27 以上で組み、置き場は同じ `~/.local/bin` になった。
+- install.sh は、dash や zsh で Ctrl-C で止めても `~/.local/bin` に作業用のフォルダを残さず、`curl | sh` で script が途中までしか届かない時は何も動かさず、`shikii` を置けなかった時は古い `shikii-readout` を戻し、ファイルの代わりにリンクが入った配布物を断る。
+- `shikii doctor` は hook のコマンドをシェルと同じに読む。`~` と `$HOME` を展開し、二重引用符で囲んだパスも確かめ、フォルダや動かせないファイルを ok とせず、読めない hook や Codex の設定はその名前を出す。`hook install --yes` が書き換えない Codex の登録(手を入れたものや古い形)には、手で書く内容を出す。
+- `shikii hook install` は、パスを二重引用符で書いた古い shikii の hook も、新しい hook と並べて残さずに入れ替える。
+- README: 本体が消えて hook が働かない時は 1 行のインストーラーを流し直すこと、`go install` で入れた人が `~/.local/bin` へ移る手順、インストーラーに要る tar・awk・shasum か sha256sum を書いた。
 
 ## 0.9.10 — ハードリンクの無いディスクで init が止まっても、既製のファイルを途中まで残さない
 
