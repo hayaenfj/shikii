@@ -123,7 +123,7 @@ func currentLineState(agent string, sp *spec.Spec) (model string, s lineState, o
 	})
 	model = models[0]
 	s = lineStateOf(sp, sp.Eval.MinN, model, sp.Hash(), labs, triedWithoutLine(agent, sp, model))
-	if stop, ok := readStopped(agent, sp); ok && stop.Model == model && s.Kind != lineCalibrated {
+	if stop, ok := readStopped(agent, sp); ok && s.Kind != lineCalibrated { // a stop is the wording's, whichever model has the most truths (the hook skips it for all)
 		s.Kind, s.Stop = lineStopped, stop
 	}
 	return model, s, true

@@ -128,7 +128,7 @@ When we actually tried it, there were clearly **failures that adjustment does no
 
 We made it a rule: **if the mistakes gather on one option, fix the wording before adjusting.** Use adjustment only when "the order is right but confidence is lacking."
 
-One more: if the lowest score of the right pairs falls below the highest score of the wrong pairs (failure 3 in Section 4), it does not give adjustment numbers and says "please change the question text."
+One more: if the scores do not tell the right pairs from the wrong ones at all (failure 3 in Section 4; since 0.10 measured as the AUC, whose 95% interval reaches 0.5), it does not give adjustment numbers and says "please change the question text." A few right pairs scoring below a few wrong ones is normal and does not stop it.
 
 ### The check fails in CI
 

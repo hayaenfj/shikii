@@ -209,12 +209,17 @@ func TestLineStateSaysAQuestionIsStopped(t *testing.T) {
 	if !ok || s.Kind != lineStopped || !strings.Contains(s.statusNote(sp, sp.Eval.MinN), "stopped: the probabilities do not tell the answers apart (AUC 0.35, 95% 0.19-0.51") {
 		t.Fatalf("the line state is stopped with the reason: %+v %q", s, s.statusNote(sp, sp.Eval.MinN))
 	}
+	// the stop is the wording's: measured on another model (one with fewer truths here) it is still said, since the hook skips the
+	// question for every model (before, the notice followed only the model with the most truths and said nothing)
 	other, _ := json.Marshal(stoppedLine{Model: "m2", SpecHash: sp.Hash()})
 	if err := writeStop(agent, "needs-plan", other); err != nil {
 		t.Fatal(err)
 	}
-	if _, s, _ := currentLineState(agent, sp); s.Kind == lineStopped {
-		t.Fatal("a stop measured on another model does not apply to this one")
+	if _, s, _ := currentLineState(agent, sp); s.Kind != lineStopped {
+		t.Fatalf("a stop measured on another model is said too: %+v", s)
+	}
+	if line := lineSummary(agent); !strings.Contains(line, "so it is stopped") {
+		t.Fatalf("the person is told the question is stopped: %q", line)
 	}
 }
 
@@ -434,7 +439,7 @@ func TestStatusAPISaysAHookQuestionIsStopped(t *testing.T) {
 	if err := st.AppendLabels([]store.Label{{TraceID: "y1", SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "m1", InputsHash: "y1", Truth: "yes", Weight: 1, Source: "ui", At: time.Now()}}); err != nil {
 		t.Fatal(err)
 	}
-	stop, _ := json.Marshal(stoppedLine{Model: "m1", SpecHash: sp.Hash(), AUC: 0.5, Low: 0.3, High: 0.6})
+	stop, _ := json.Marshal(stoppedLine{Model: "another-model", SpecHash: sp.Hash(), AUC: 0.5, Low: 0.3, High: 0.6}) // the wording's stop, on every model's key
 	if err := writeStop(root, "needs-plan", stop); err != nil {
 		t.Fatal(err)
 	}

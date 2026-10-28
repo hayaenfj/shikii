@@ -67,7 +67,7 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 		t.Fatalf("tells the person the answers cannot be separated (once more, since the state changed): %q", line)
 	}
 	// 0.10: the stop rule kept a stop for this wording and model (line_stop.go): status gives the reason and the person is told once
-	stop, _ := json.Marshal(stoppedLine{Model: "m1", SpecHash: sp.Hash(), AUC: 0.35, Low: 0.19, High: 0.51, Pos: 5, Neg: sp.Eval.MinN})
+	stop, _ := json.Marshal(stoppedLine{Model: "another-model", SpecHash: sp.Hash(), AUC: 0.35, Low: 0.19, High: 0.51, Pos: 5, Neg: sp.Eval.MinN})
 	if err := writeStop(agent, "changes-in-scope", stop); err != nil {
 		t.Fatal(err)
 	}

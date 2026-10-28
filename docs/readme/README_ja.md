@@ -9,7 +9,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-785%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-786%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.9.10-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -51,7 +51,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 2. **同じことを二度言わせません。** 「変更履歴は英語と日本語を揃える」「この語は使わない」「コミット本文に元の問題と検証を書く」のように機械で確かめられる訂正は、止める検査になります。引っかかるとエージェントは終われず、直してから終えます。
 3. **決まった手順を踏みます。** ファイルを変える前に、エージェントは合意したことと未決のことを整理し、自分で選んだ話題の語でwikiを探します。終える前にそのターンを振り返り、自分の仕事を採点し、学んだことを保存します。どちらかを飛ばすと、ターンを一度止めて打つべきコマンドを伝えます。この確かめは組み込みでいつも効き、`CLAUDE.md` や `AGENTS.md` の無いプロジェクトでも効きます。
 4. **仕事の跡を残します。** 書き換えながら進める監査の報告・リリースの手順・差分・画像は `.shikii/handoff/<仕事>/` に入り、サブエージェントにも報告をここへ書くよう伝えます。repoにはコミットされず、人は画面の「知識 → 作業記録」で読みます。
-5. **任せてよい範囲が広がります。** モデルは「たぶん0.9」と確率を返します。shikiiは人と結果が付けた正解から、モデルの自信と当たる割合の関係を測り、「ここより上なら自動で進めてよい」という線を引きます。線が引けるまでは自動では動きません。判断はすべて帯に分かれます。`act` は自動で進める、`ask` は人に確かめる、`discard` は動かない、`abstain` は入力か接続先が足りない、です。線が引けた時と、正解が足りても線を引けない時(答えが片方だけ、または答えを分けられない)は、ターンの終わりに一度だけ知らせます。正解はモデルと別に残るので、モデルを替えても最初からやり直しません。別の聞き方を同じ正解で採点し、良い方を残すこともできます。意味が同じかはエージェントが確かめ(英語以外の設定ならその言語に両方を訳し)、同じならその聞き方に変えて知らせます(違っていたら元に戻せます。エージェントが決めきれない時だけ人に聞きます)。
+5. **任せてよい範囲が広がります。** モデルは「たぶん0.9」と確率を返します。shikiiは人と結果が付けた正解から、モデルの自信と当たる割合の関係を測り、「ここより上なら自動で進めてよい」という線を引きます。線が引けるまでは自動では動きません。判断はすべて帯に分かれます。`act` は自動で進める、`ask` は人に確かめる、`discard` は動かない、`abstain` は入力か接続先が足りない、です。線が引けた時と、正解が足りても線を引けない時(答えが片方だけ、答えを分けられない、またはそのために問いを止めた)は、ターンの終わりに一度だけ知らせます。正解はモデルと別に残るので、モデルを替えても最初からやり直しません。別の聞き方を同じ正解で採点し、良い方を残すこともできます。意味が同じかはエージェントが確かめ(英語以外の設定ならその言語に両方を訳し)、同じならその聞き方に変えて知らせます(違っていたら元に戻せます。エージェントが決めきれない時だけ人に聞きます)。
 
 効いているかは、画面の「AI の様子」と `shikii status` で見ます。届けた教訓が役立ったか、手順を踏んだターンの数、止める検査が止めて直った数、人を待つ判定の数、引けた線が出ます。
 
@@ -107,9 +107,9 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 インストーラーは、GitHub Releasesからこの機械向け（macOSかLinux、amd64かarm64）の最新版を取ってきて、版の `SHA256SUMS` と照らしてから、`shikii` と `shikii-readout` を `~/.local/bin` に置きます。どれが最新版かをGitHubに聞くので、出したばかりの版もすぐ入り、Goは要りません。実行ファイル、hook（依頼の前・作業の後・サブエージェントを起こす時と始まる時）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは `/hooks` でhookを信頼してください。hookの中身が変わるたび(実行ファイルを動かした時やshikiiを更新した時)にもう一度信頼が要り、それまでCodexはhookを飛ばします。
 
-Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上の1行をもう一度流してください。多くは実行ファイルそのものが消えていて(Goを上げると `go install` が置いたフォルダごと消えます)、`shikii doctor` も一緒に消えています。`shikii` がまだ動く時は `shikii doctor` を流すと、hookやCodexの登録が、もう無い・動かせないshikiiの実行ファイルを指している時はそう言い、直し方を出します。
+Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上の1行をもう一度流してください。多くは実行ファイルそのものが消えていて(miseのようなGoの版の管理ツールでは、Goを上げると `go install` が置いた版ごとのフォルダごと消えます)、`shikii doctor` も一緒に消えています。`shikii` がまだ動く時は `shikii doctor` を流すと、hookやCodexの登録が、もう無い・動かせないshikiiの実行ファイルを指している時はそう言い、直し方を出します。
 
-**前に `go install` で入れた人へ。** その実行ファイルはGoのフォルダ(`$(go env GOPATH)/bin` か `GOBIN`)に残り、`shikii update` もそこで更新するだけで、`~/.local/bin` へは移しません。上の1行を一度流すと、hookは `~/.local/bin/shikii` を動かすようになります。そのあとGoのフォルダの古い `shikii` と `shikii-readout` を手で消し、もう一度 `shikii hook install --yes` を流してください。それまでは実行ファイルが2つあり、端末で打つ `shikii` と、Claude CodeのMCP(`shikii` を名前で動かす)は、PATHで先に見つかる方を動かし(`command -v shikii` でどちらかわかります)、`shikii update` はその1つだけを更新し、CodexのMCPの登録は古い実行ファイルが残る間はそちらを指したままです。
+**前に `go install` で入れた人へ。** その実行ファイルはGoのフォルダ(`$(go env GOPATH)/bin` か `GOBIN`)に残り、`shikii update` もそこで更新するだけで、`~/.local/bin` へは移しません。上の1行を一度流すと、hookは `~/.local/bin/shikii` を動かすようになります。先に `~/.local/bin` がPATHにあることを確かめてください(無ければインストーラーがそう言います)。Claude CodeとOpenCodeのMCPは `shikii` を名前で動かします。そのあとGoのフォルダの古い `shikii` と `shikii-readout` を手で消し、もう一度 `shikii hook install --yes` を流してください。それまでは実行ファイルが2つあり、端末で打つ `shikii` と、Claude CodeとOpenCodeのMCP(`shikii` を名前で動かす)は、PATHで先に見つかる方を動かし(`command -v shikii` でどちらかわかります)、`shikii update` はその1つだけを更新し、CodexのMCPの登録は古い実行ファイルが残る間はそちらを指したままです。
 
 **ソースから組む（開発する人向け）。** このリポジトリをcloneした中で `sh install.sh` を流すと、今のソースをGo 1.27以上で組んで同じ `~/.local/bin` に置き、hookも同じように入れます（`make install` は組んで実行ファイルを写すだけです）。
 

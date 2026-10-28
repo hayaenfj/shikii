@@ -1641,6 +1641,7 @@ func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label
 		disc, ok := calib.AUC(probs, truths, weights)
 		inverted = ok && disc.Low <= 0.5 // no clear signal (0.10: an overlap alone no longer fails the check)
 	default:
+		rawP, rawRight := make([]float64, len(labels)), make([]bool, len(labels))
 		for i, l := range labels {
 			dist := l.Raw
 			if c.Method == "vector" {
@@ -1648,8 +1649,11 @@ func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label
 			}
 			_, p, correct := judge(sp, dist, l.Truth)
 			probs[i], truths[i], weights[i] = p, correct, l.Weight
+			_, rawP[i], rawRight[i] = judge(sp, l.Raw, l.Truth)
 		}
-		disc, ok := calib.AUC(probs, truths, weights)
+		// measured on the raw probabilities, as calibrate does (verifyTop): vector scaling can reorder the answers, and the check must not
+		// fail a line calibrate drew, or pass one it refused, by measuring something else (0.10)
+		disc, ok := calib.AUC(rawP, rawRight, weights)
 		inverted = ok && disc.Low <= 0.5 // the top answer's probability does not tell right from wrong (0.10, as for noul)
 	}
 	for _, p := range probs {
@@ -2049,7 +2053,7 @@ func cmdStatus(args []string) error {
 				default:
 					// Do not say "a line can be drawn" from counts alone (0.8.3): separate only one kind of answer, tried but could not separate, and on the way to drawing automatically
 					tried := (parts[1] == sp.Hash() || parts[1] == sp.ContextHash()) && triedWithoutLine(*storeDir, sp, parts[0]) // the context rung is tried at the same time
-					if stop, ok := readStopped(*storeDir, sp); ok && stop.Model == parts[0] && parts[1] == sp.Hash() {
+					if stop, ok := readStopped(*storeDir, sp); ok && parts[1] == sp.Hash() {                                      // the wording's stop, on every model's line
 						note += stop.stopNote()
 						break
 					}

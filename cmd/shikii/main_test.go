@@ -2271,6 +2271,24 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// check measures a choice line's AUC on the raw probabilities, as calibrate does: a vector scaling that reorders the answers must not
+// turn a clear raw ranking into "no clear signal". Raw: right answers at 0.9, wrong ones at 0.6 (AUC 1). A bias of ln 10 on "other"
+// makes the wrong ones' top answer "other" at about 0.71, above the right ones' 0.62 (AUC 0 after scaling).
+func TestCheckMeasuresAChoiceLineOnTheRawProbabilities(t *testing.T) {
+	sp := mustLoad(t, writeSpec(t, t.TempDir(), "false"))
+	var labels []store.Label
+	for i := 0; i < 25; i++ {
+		truth, top := "question", 0.9
+		if i%5 == 0 {
+			truth, top = "change_request", 0.6 // wrong: the raw top answer is question, with a lower probability
+		}
+		labels = append(labels, store.Label{Raw: map[string]float64{"question": top, "change_request": (1 - top) / 2, "other": (1 - top) / 2}, Truth: truth, Weight: 1})
+	}
+	if _, noSignal, _ := evaluateCalibration(sp, spec.Calibration{Method: "vector", Temperature: 1, Biases: map[string]float64{"other": math.Log(10)}}, labels); noSignal {
+		t.Fatal("the raw probabilities tell right from wrong, so check does not call it no clear signal")
+	}
+}
+
 // check fails a choice line whose top answer's probability does not tell right from wrong (0.10, the same rule as yes/no questions).
 func TestCheckFailsAChoiceLineWithNoClearSignal(t *testing.T) {
 	dir := t.TempDir()
