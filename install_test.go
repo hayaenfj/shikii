@@ -57,7 +57,7 @@ func newInstallFixture(t *testing.T, version string) installFixture {
 	if err := os.WriteFile(filepath.Join(fakebin, "curl"), []byte(fakeCurl), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f.path = fakebin + ":/usr/bin:/bin:/usr/sbin:/sbin"
+	f.path = fakebin + ":" + toolsWithoutGo(t, "/usr/bin", "/bin", "/usr/sbin", "/sbin")
 	for _, dir := range filepath.SplitList(f.path) {
 		if _, err := os.Stat(filepath.Join(dir, "go")); err == nil {
 			t.Fatalf("the PATH for this test must not have Go, but %s has it", dir)
@@ -89,6 +89,32 @@ func newInstallFixture(t *testing.T, version string) installFixture {
 	writeFile(t, filepath.Join(dl, "SHA256SUMS"), hex.EncodeToString(sum[:])+"  "+asset+"\n")
 	writeFile(t, filepath.Join(f.releases, "latest"), "v"+version)
 	return f
+}
+
+// toolsWithoutGo is a folder of links to the commands in dirs (the first of each name wins, as on PATH) without go and gofmt: a
+// machine may have Go in /usr/bin (GitHub's runners do), and the installer must be shown to work without it.
+func toolsWithoutGo(t *testing.T, dirs ...string) string {
+	t.Helper()
+	tools := t.TempDir()
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if name == "go" || name == "gofmt" {
+				continue
+			}
+			if _, err := os.Lstat(filepath.Join(tools, name)); err == nil {
+				continue
+			}
+			if err := os.Symlink(filepath.Join(dir, name), filepath.Join(tools, name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return tools
 }
 
 func writeFile(t *testing.T, path, body string) {
