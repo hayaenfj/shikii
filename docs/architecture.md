@@ -35,7 +35,7 @@ Automatic connection uses the Claude Code and Codex hooks (before a request and 
 |---|---|
 | When a request arrives | Ties the previous reply to the person's next message. Hands related memories over briefly. Asks the decision model what kind of request this is and how to proceed |
 | When the turn closes | Records the request, the file changes and the last reply. Asks the decision model about scope and completion. Applies the active guards (guards/) to the changed files, added lines and commits, and if one is hit, stops and has the agent fix it. Gives any needed guidance and runs the periodic checks |
-| Just before a file edit or a command | Delivers at most 1 lesson whose title, lesson or applies_to names that file or command (PreToolUse for Edit / Write / MultiEdit / NotebookEdit / Bash, only in Claude Code. No model; context only, it never allows, denies or asks) |
+| Just before a file edit or a command | Delivers at most 1 lesson whose title, lesson or applies_to names that file or command (PreToolUse for Edit / Write / MultiEdit / NotebookEdit / Bash, only in Claude Code. No model; context only; a deny comes only from a guard the person enabled) |
 | Just before a subagent starts | Keeps a copy of the task text handed to the child (only PreToolUse for Agent / Task, only in Claude Code. It outputs nothing and does not stop the tool) |
 | When a subagent starts | Hands over lessons close to the saved task text, in the same form. Without a saved copy, only this project's rules whose scene is "always" (only in Claude Code. The parent's copies are left unchanged, except that the copy of the task given to the child that used it is removed) |
 

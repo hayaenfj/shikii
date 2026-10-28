@@ -14,11 +14,15 @@ import (
 // can be judged from one tool call; paired-files and commit-body still run at Stop, and so does forbidden-words for text written another
 // way (a command). Unknown shapes pass: it stops only when certain.
 
-// toolAddedLines returns, for a file-changing tool call on a file inside the project scope, the file relative to the project and the
-// lines it adds: the lines of the new text that are not in the text it replaces (nor, for a whole-file write, already in the file).
+// toolAddedLines returns, for Edit, Write and MultiEdit, the file (relative to the project when its real path is inside it, else as
+// given) and the lines the call adds: the lines of the new text that the file does not already hold (a new file: all of them). The
+// file on disk is the one truth before the tool runs; old_string is not read (MultiEdit applies its edits in order, and pooling their
+// old lines let a line one edit added hide behind the next edit's old_string: confirmation audit 0.11). NotebookEdit is left to Stop:
+// an .ipynb is JSON, so its raw lines never equal a cell's. Any file the tool writes is checked (a path through a link or in another
+// spelling is not "outside"); a guard's except patterns match the project-relative path or the name.
 func toolAddedLines(in *hookInput, scope string) (string, []string, bool) {
 	field, ok := toolLessonEdits[in.ToolName]
-	if !ok {
+	if !ok || in.ToolName == "NotebookEdit" {
 		return "", nil, false
 	}
 	var input map[string]json.RawMessage
@@ -26,49 +30,39 @@ func toolAddedLines(in *hookInput, scope string) (string, []string, bool) {
 		return "", nil, false
 	}
 	var file string
-	if json.Unmarshal(input[field], &file) != nil || file == "" {
+	if json.Unmarshal(input[field], &file) != nil || strings.TrimSpace(file) == "" {
 		return "", nil, false
 	}
-	text := func(key string) string {
+	if !filepath.IsAbs(file) && in.CWD != "" {
+		file = filepath.Join(in.CWD, file)
+	}
+	text := func(raw json.RawMessage) string {
 		var s string
-		json.Unmarshal(input[key], &s)
+		json.Unmarshal(raw, &s)
 		return s
 	}
-	var old, now []string
+	var now []string
 	switch in.ToolName {
 	case "Edit":
-		old, now = strings.Split(text("old_string"), "\n"), strings.Split(text("new_string"), "\n")
+		now = strings.Split(text(input["new_string"]), "\n")
 	case "Write":
-		now = strings.Split(text("content"), "\n")
-	case "NotebookEdit":
-		now = strings.Split(text("new_source"), "\n")
+		now = strings.Split(text(input["content"]), "\n")
 	case "MultiEdit":
-		var edits []struct { // an edit also carries replace_all (a boolean): only the two strings are read (audit 0.11)
-			Old string `json:"old_string"`
+		var edits []struct { // an edit also carries old_string and replace_all (a boolean): only the new text is read
 			New string `json:"new_string"`
 		}
 		if json.Unmarshal(input["edits"], &edits) != nil {
 			return "", nil, false
 		}
 		for _, e := range edits {
-			old = append(old, strings.Split(e.Old, "\n")...)
 			now = append(now, strings.Split(e.New, "\n")...)
 		}
 	}
-	// only files inside the project are checked: the Stop check looks at the project's files, and a guard's except patterns are written
-	// against the project root. A file elsewhere (the person's memory index in HOME, for instance) is not the project's (audit 0.11)
-	rel, err := filepath.Rel(scope, file)
-	if scope == "" || err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		return "", nil, false
-	}
-	if in.ToolName == "Write" || in.ToolName == "NotebookEdit" { // the whole text is replaced: lines the file already holds are not added
-		if b, rerr := os.ReadFile(file); rerr == nil && len(b) <= guardFileBytesMax && !isBinary(b) {
-			old = append(old, strings.Split(string(b), "\n")...)
-		}
-	}
 	kept := map[string]bool{}
-	for _, l := range old {
-		kept[l] = true
+	if b, err := os.ReadFile(file); err == nil && len(b) <= guardFileBytesMax && !isBinary(b) {
+		for _, l := range strings.Split(string(b), "\n") {
+			kept[l] = true
+		}
 	}
 	var added []string
 	for _, l := range now {
@@ -76,7 +70,28 @@ func toolAddedLines(in *hookInput, scope string) (string, []string, bool) {
 			added = append(added, l)
 		}
 	}
-	return filepath.ToSlash(rel), added, true
+	return projectRelative(file, scope), added, true
+}
+
+// projectRelative is the file's path relative to the project when its real path (links resolved; the file may not exist yet, so its
+// folder's) is inside the project's real path, else the path as given, with forward slashes.
+func projectRelative(file, scope string) string {
+	shown := filepath.ToSlash(file)
+	if scope == "" {
+		return shown
+	}
+	realScope, err := filepath.EvalSymlinks(scope)
+	if err != nil {
+		realScope = scope
+	}
+	dir := filepath.Dir(file)
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	if rel, err := filepath.Rel(realScope, filepath.Join(dir, filepath.Base(file))); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+		return filepath.ToSlash(rel)
+	}
+	return shown
 }
 
 // guardToolCall applies the enabled forbidden-words guards to the lines a tool call is about to add. A hit refuses the call (Deny) with

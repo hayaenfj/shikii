@@ -38,17 +38,23 @@ func TestEnabledForbiddenWordsGuardStopsTheChangeBeforeItIsWritten(t *testing.T)
 		tool  string
 		input map[string]any
 	}{
-		"Write":        {"Write", map[string]any{"file_path": readme, "content": withWord}},
-		"MultiEdit":    {"MultiEdit", map[string]any{"file_path": readme, "edits": []map[string]any{{"old_string": "a", "new_string": "b"}, {"old_string": "# shikii\n", "new_string": withWord}}}},
-		"NotebookEdit": {"NotebookEdit", map[string]any{"notebook_path": filepath.Join(scope, "notes.ipynb"), "new_source": withWord}},
+		"Write":     {"Write", map[string]any{"file_path": readme, "content": withWord}},
+		"MultiEdit": {"MultiEdit", map[string]any{"file_path": readme, "edits": []map[string]any{{"old_string": "a", "new_string": "b"}, {"old_string": "# shikii\n", "new_string": withWord}}}},
 	} {
 		if out, spec := call(c.tool, c.input); spec["permissionDecision"] != "deny" {
 			t.Fatalf("%s: the change is refused:\n%s", name, out)
 		}
 	}
-	// what was already there is not the agent's: an Edit that keeps a line with the word, adding none, passes
+	// a notebook is left to the Stop check (an .ipynb is JSON, so its lines never equal a cell's)
+	if out, spec := call("NotebookEdit", map[string]any{"notebook_path": filepath.Join(scope, "notes.ipynb"), "new_source": withWord}); spec["permissionDecision"] != nil {
+		t.Fatalf("a notebook edit is not judged here:\n%s", out)
+	}
+	// what the file already holds is not the agent's: an Edit that keeps a line with the word, adding none, passes
+	if err := os.WriteFile(readme, []byte(withWord), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if out, spec := call("Edit", map[string]any{"file_path": readme, "old_string": withWord, "new_string": withWord + "\nmore\n"}); spec["permissionDecision"] != nil {
-		t.Fatalf("a line the agent keeps is not an added line:\n%s", out)
+		t.Fatalf("a line the file already holds is not an added line:\n%s", out)
 	}
 	// an excepted path passes
 	if out, spec := call("Write", map[string]any{"file_path": filepath.Join(scope, "docs", "operations.md"), "content": withWord}); spec["permissionDecision"] != nil {
@@ -60,7 +66,7 @@ func TestEnabledForbiddenWordsGuardStopsTheChangeBeforeItIsWritten(t *testing.T)
 	}
 	// the stops are recorded for this turn, marked as before the change, so status counts the turn as stopped
 	recs := guardRecordsFor(st.Dir, "no-ne")
-	if len(recs) != 4 || recs[0].Pass || !recs[0].Tool || recs[0].Turn != loadSession(st.Dir, "g").TurnID {
+	if len(recs) != 3 || recs[0].Pass || !recs[0].Tool || recs[0].Turn != loadSession(st.Dir, "g").TurnID {
 		t.Fatalf("each refusal is recorded as a stop before the change of this turn: %+v", recs)
 	}
 	// a disabled guard stops nothing
@@ -133,9 +139,10 @@ func TestEnabledForbiddenCommandsGuardStopsTheCommandBeforeItRuns(t *testing.T) 
 	}
 }
 
-// Audit 0.11, a note outside the list: a whole-file write (Write, NotebookEdit) replaces the text, so a line the file already holds is not an added line;
-// only a line new to the file is. And a file outside the project (the person's memory index in HOME) is not the project's: not checked.
-func TestWholeFileWritesCountOnlyNewLinesAndOnlyInsideTheProject(t *testing.T) {
+// Audit 0.11, a note outside the list: a whole-file write (Write) replaces the text, so a line the file already holds is not an added
+// line; only a line new to the file is. Any file the tool writes is checked, also one outside the project (the confirmation audit
+// showed an "outside" rule misjudging links, relative paths and another spelling; the person excepts a file by name instead).
+func TestWholeFileWritesCountOnlyNewLinesAndCheckAnyFile(t *testing.T) {
 	st, scope, _, _ := toolLessonFixture(t)
 	writeGuard(t, st.Dir, guard{ID: "no-ne", Kind: guardKindForbiddenWords, Title: "x", Words: []string{"\u6839"}})
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": scope, "prompt": "README \u3092\u76f4\u3057\u3066"})
@@ -163,7 +170,7 @@ func TestWholeFileWritesCountOnlyNewLinesAndOnlyInsideTheProject(t *testing.T) {
 		t.Fatalf("a line new to the file with the word is refused: %v", spec)
 	}
 	outside := filepath.Join(t.TempDir(), "MEMORY.md")
-	if spec := call("Write", map[string]any{"file_path": outside, "content": "\u6839\n"}); spec["permissionDecision"] != nil {
-		t.Fatalf("a file outside the project is not the project's: %v", spec)
+	if spec := call("Write", map[string]any{"file_path": outside, "content": "\u6839\n"}); spec["permissionDecision"] != "deny" {
+		t.Fatalf("a file outside the project is checked too (except it by name to allow it): %v", spec)
 	}
 }
