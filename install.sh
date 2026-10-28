@@ -70,12 +70,15 @@ main() {
     mv -f "$STAGE/files/shikii" "$STAGE/files/shikii-readout" "$STAGE/"
   fi
   chmod 755 "$STAGE/shikii" "$STAGE/shikii-readout"
-  # keep the old shikii-readout (a hard link in the same folder) to put it back if shikii cannot be moved: the two never mix versions
-  HAD_READOUT=; [ ! -e "$BIN/shikii-readout" ] || HAD_READOUT=1
-  ln "$BIN/shikii-readout" "$STAGE/old-readout" 2>/dev/null || :
-  mv -f "$STAGE/shikii-readout" "$BIN/shikii-readout"
-  if ! mv -f "$STAGE/shikii" "$BIN/shikii"; then
-    if [ -f "$STAGE/old-readout" ]; then mv -f "$STAGE/old-readout" "$BIN/shikii-readout"; elif [ -z "$HAD_READOUT" ]; then rm -f "$BIN/shikii-readout"; fi
+  # move the old shikii-readout aside into the working folder (a rename in the same folder: a link stays a link) and put it back if
+  # shikii cannot be moved: the two never mix versions
+  HAD_READOUT=
+  if [ -e "$BIN/shikii-readout" ] || [ -L "$BIN/shikii-readout" ]; then
+    mv -f "$BIN/shikii-readout" "$STAGE/old-readout" || fail "cannot move the old shikii-readout in $BIN; nothing was changed"
+    HAD_READOUT=1
+  fi
+  if ! mv -f "$STAGE/shikii-readout" "$BIN/shikii-readout" || ! mv -f "$STAGE/shikii" "$BIN/shikii"; then
+    if [ -n "$HAD_READOUT" ]; then mv -f "$STAGE/old-readout" "$BIN/shikii-readout"; else rm -f "$BIN/shikii-readout"; fi
     fail "cannot put shikii in $BIN; the shikii there was not changed"
   fi
   echo "Installed: $BIN/shikii $BIN/shikii-readout"

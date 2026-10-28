@@ -253,8 +253,7 @@ func TestInstallShPutsTheOldReadoutBackWhenShikiiCannotBeMoved(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(bin, "shikii"), fakeShikii("0.9.10"))
 	writeFile(t, filepath.Join(bin, "shikii-readout"), "#!/bin/sh\n# readout 0.9.10\n")
-	mv := standIn(t, "mv", "#!/bin/sh\nfor last; do :; done\ncase \"$last\" in */.local/bin/shikii) echo \"mv: cannot move\" >&2; exit 1;; esac\nexec /bin/mv \"$@\"\n")
-	out, err := f.runWith(t, "/bin/sh", readInstallSh(t), mv)
+	out, err := f.runWith(t, "/bin/sh", readInstallSh(t), standIn(t, "mv", failShikiiMv))
 	if err == nil {
 		t.Fatalf("install.sh must fail when shikii cannot be moved into place:\n%s", out)
 	}
@@ -266,6 +265,77 @@ func TestInstallShPutsTheOldReadoutBackWhenShikiiCannotBeMoved(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(bin); len(entries) != 3 {
 		t.Fatalf("only shikii, shikii-readout and shikii-licenses may be in ~/.local/bin, there are %v\n%s", entries, out)
+	}
+}
+
+// failShikiiMv is a stand-in for mv that cannot move a file to ~/.local/bin/shikii (and moves everything else).
+const failShikiiMv = "#!/bin/sh\nfor last; do :; done\ncase \"$last\" in */.local/bin/shikii) echo \"mv: cannot move\" >&2; exit 1;; esac\nexec /bin/mv \"$@\"\n"
+
+// The old shikii-readout is put back when shikii cannot be moved, also where no hard link can be made (a file system without hard links,
+// or a readout on another file system): install.sh keeps the old one by moving it aside, not by linking it.
+func TestInstallShPutsTheOldReadoutBackWithoutAHardLink(t *testing.T) {
+	f := newInstallFixture(t, "0.10.0")
+	bin := filepath.Join(f.home, ".local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(bin, "shikii"), fakeShikii("0.9.10"))
+	writeFile(t, filepath.Join(bin, "shikii-readout"), "#!/bin/sh\n# readout 0.9.10\n")
+	dir := standIn(t, "mv", failShikiiMv)
+	writeFile(t, filepath.Join(dir, "ln"), "#!/bin/sh\necho 'ln: Invalid cross-device link' >&2\nexit 1\n")
+	if err := os.Chmod(filepath.Join(dir, "ln"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.runWith(t, "/bin/sh", readInstallSh(t), dir)
+	if err == nil {
+		t.Fatalf("install.sh must fail when shikii cannot be moved into place:\n%s", out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(bin, "shikii-readout")); string(b) != "#!/bin/sh\n# readout 0.9.10\n" {
+		t.Fatalf("the old shikii-readout must be put back (shikii stays 0.9.10), it is %q\n%s", b, out)
+	}
+}
+
+// A shikii-readout that is a link a person made stays a link when it is put back after shikii cannot be moved.
+func TestInstallShPutsBackAReadoutLinkAsALink(t *testing.T) {
+	f := newInstallFixture(t, "0.10.0")
+	bin := filepath.Join(f.home, ".local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(bin, "shikii"), fakeShikii("0.9.10"))
+	target := filepath.Join(f.home, "go", "bin", "shikii-readout")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, target, "#!/bin/sh\n# readout 0.9.10\n")
+	if err := os.Symlink(target, filepath.Join(bin, "shikii-readout")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.runWith(t, "/bin/sh", readInstallSh(t), standIn(t, "mv", failShikiiMv))
+	if err == nil {
+		t.Fatalf("install.sh must fail when shikii cannot be moved into place:\n%s", out)
+	}
+	fi, err := os.Lstat(filepath.Join(bin, "shikii-readout"))
+	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the person's shikii-readout link must be put back as a link: %v %v\n%s", fi, err, out)
+	}
+	if got, _ := os.Readlink(filepath.Join(bin, "shikii-readout")); got != target {
+		t.Fatalf("the link must point where it did (%s), it points at %s\n%s", target, got, out)
+	}
+	if b, _ := os.ReadFile(target); string(b) != "#!/bin/sh\n# readout 0.9.10\n" {
+		t.Fatalf("the file the link points at must not change, it is %q\n%s", b, out)
+	}
+}
+
+// With no shikii-readout before, a failed move of shikii leaves no new shikii-readout behind.
+func TestInstallShLeavesNoNewReadoutWhenShikiiCannotBeMoved(t *testing.T) {
+	f := newInstallFixture(t, "0.10.0")
+	out, err := f.runWith(t, "/bin/sh", readInstallSh(t), standIn(t, "mv", failShikiiMv))
+	if err == nil {
+		t.Fatalf("install.sh must fail when shikii cannot be moved into place:\n%s", out)
+	}
+	if _, err := os.Lstat(filepath.Join(f.home, ".local", "bin", "shikii-readout")); err == nil {
+		t.Fatalf("a new shikii-readout must not be left without its shikii\n%s", out)
 	}
 }
 
