@@ -1,18 +1,19 @@
 # Turn a correction into a guard
 
-A guard is a deterministic check that runs at the end of every turn (the `Stop` hook) and **stops the turn** when it fails: the agent receives the reason and must fix the work before ending. Lessons the agent could already read in the repository changed nothing in the 2026-10-23 experiment (4 of 5 tasks tied); delivered lessons it could not know were followed 6 of 6, and guards fixed 6 of 6 turns, whatever the model knows. Guards live in `.shikii/guards/<id>.yaml` of the project. There are three kinds and no other options:
+A guard is a deterministic check that runs at the end of every turn (the `Stop` hook) and **stops the turn** when it fails: the agent receives the reason and must fix the work before ending. Lessons the agent could already read in the repository changed nothing in the 2026-10-23 experiment (4 of 5 tasks tied); delivered lessons it could not know were followed 6 of 6, and guards fixed 6 of 6 turns, whatever the model knows. Guards live in `.shikii/guards/<id>.yaml` of the project. There are four kinds and no other options:
 
 | kind | checks | fields |
 |---|---|---|
 | `paired-files` | when a file matching one pattern changed in the turn, a file matching the other must have changed too | `pairs: [[CHANGELOG.md, CHANGELOG_ja.md]]` (globs allowed, `dir/**` for a subtree) |
 | `forbidden-words` | lines added in the turn must not contain the words | `words: ["root", "fingerprint"]`, optional `except: ["docs/operations.md", "wiki/**"]` (paths not checked) and `allow: ["grassroots", "uproot"]` (ordinary words that contain a forbidden word; removed before checking. Not a forbidden word itself, nor a forbidden word with only kana or punctuation added) |
 | `commit-body` | every commit made in the turn (from the HEAD at the request) must contain all words in its body | `required: ["Problem", "Change", "Verification"]` |
+| `forbidden-commands` | a command about to run (Claude Code's `PreToolUse` for Bash) must match none of the patterns; it is refused with the reason before it runs. Commands are not observed at `Stop` | `patterns: ["\\|\\s*tail\\b[^\\n]*\\bgit\\s+commit\\b"]` (regular expressions) and `example: "make test \| tail -3; git commit -m x"` (a command the check must stop; `enable` shows it stopping). No pattern may match the harmless command `true` |
 
 A `forbidden-words` guard also runs right before you change a file in Claude Code (`PreToolUse` of Edit, Write, MultiEdit, NotebookEdit): when the lines you are about to add contain the word, the change is refused with the reason. Fix the text and change the file again at once; lines you keep are not added lines, and text written by a command is caught at `Stop` instead. Unknown observations pass: without a git listing for the turn, or without a recorded HEAD, the corresponding kind does not stop anything. After a stop, the next `Stop` (with `stop_hook_active`) never blocks again; shikii only records whether the guard now passes. `shikii status` shows how many turns were stopped and how many were fixed before the turn ended.
 
 ## When to draft one
 
-When the person corrects you with a rule that can be checked mechanically ("keep both changelogs in step", "never use that word", "write the background and the verification in the commit body"), draft a guard **in addition to** the lesson and the `correction` in reflection. Do not draft guards for judgements that need reading (scope, tone, design); those stay lessons.
+When the person corrects you with a rule that can be checked mechanically ("keep both changelogs in step", "never use that word", "write the background and the verification in the commit body", "never run that"), draft a guard **in addition to** the lesson and the `correction` in reflection. Your own repeated mistake counts too (0.11): when you notice you made the same mechanical mistake twice in this project (a check piped into `tail` before `git commit`, a word you keep writing), draft a `forbidden-commands` or `forbidden-words` guard with `reason` saying it is your own mistake and when, tell the person, and let them enable it. Do not draft guards for judgements that need reading (scope, tone, design); those stay lessons.
 
 ```sh
 cat > /tmp/guard.json <<'EOF'

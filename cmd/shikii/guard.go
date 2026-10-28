@@ -32,13 +32,14 @@ import (
 )
 
 const (
-	guardKindPairedFiles    = "paired-files"
-	guardKindForbiddenWords = "forbidden-words"
-	guardKindCommitBody     = "commit-body"
-	guardKinds              = guardKindPairedFiles + " | " + guardKindForbiddenWords + " | " + guardKindCommitBody
-	guardFilesMax           = 200     // max number of files whose added lines are read (the rest are not checked)
-	guardFileBytesMax       = 1 << 20 // max size of one file
-	guardNegativePath       = "shikii-guard-negative.txt"
+	guardKindPairedFiles       = "paired-files"
+	guardKindForbiddenWords    = "forbidden-words"
+	guardKindCommitBody        = "commit-body"
+	guardKindForbiddenCommands = "forbidden-commands"
+	guardKinds                 = guardKindPairedFiles + " | " + guardKindForbiddenWords + " | " + guardKindCommitBody + " | " + guardKindForbiddenCommands
+	guardFilesMax              = 200     // max number of files whose added lines are read (the rest are not checked)
+	guardFileBytesMax          = 1 << 20 // max size of one file
+	guardNegativePath          = "shikii-guard-negative.txt"
 )
 
 var guardIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
@@ -56,6 +57,8 @@ type guard struct {
 	Allow    []string   `yaml:"allow,omitempty" json:"allow,omitempty"`       // forbidden-words: ordinary words that contain a forbidden word (e.g. 根拠 for 根). Removed before checking
 	Required []string   `yaml:"required,omitempty" json:"required,omitempty"` // commit-body
 	Red      *guardRed  `yaml:"red,omitempty" json:"red,omitempty"`           // records that enable saw the negative example stop
+	Patterns []string   `yaml:"patterns,omitempty" json:"patterns,omitempty"` // forbidden-commands: regular expressions no command about to run may match (0.11)
+	Example  string     `yaml:"example,omitempty" json:"example,omitempty"`   // forbidden-commands: a command the check must stop (its negative example)
 }
 
 type guardRed struct {
@@ -70,6 +73,9 @@ type guardInput struct {
 	Added        map[string][]string
 	Commits      []string
 	CommitsKnown bool
+	// Commands are the commands about to run (PreToolUse Bash, 0.11); the turn's commands are not observed at Stop, so CommandsKnown is false there
+	Commands      []string
+	CommandsKnown bool
 }
 
 type guardResult struct {
@@ -133,11 +139,33 @@ func (g guard) validate() error {
 				return errors.New("required cannot contain an empty word")
 			}
 		}
+	case guardKindForbiddenCommands:
+		if len(g.Patterns) == 0 {
+			return errors.New("forbidden-commands needs patterns (regular expressions no command may match)")
+		}
+		for _, pat := range g.Patterns {
+			re, err := regexp.Compile(pat)
+			if err != nil {
+				return fmt.Errorf("forbidden-commands: the pattern %q does not compile: %v", pat, err)
+			}
+			if re.MatchString(guardPositiveCommand) {
+				return fmt.Errorf("forbidden-commands: the pattern %q matches the harmless command %q, so it would stop everything", pat, guardPositiveCommand)
+			}
+		}
+		if strings.TrimSpace(g.Example) == "" {
+			return errors.New("forbidden-commands needs example (a command the check must stop)")
+		}
+		if r := evalGuard(g, guardInput{Commands: []string{g.Example}, CommandsKnown: true}); r.Pass {
+			return errors.New("forbidden-commands: no pattern matches example, so the check would not stop it")
+		}
 	default:
 		return fmt.Errorf("a guard's kind is one of %s", guardKinds)
 	}
 	return nil
 }
+
+// guardPositiveCommand is the harmless command the positive example of forbidden-commands runs: no pattern may match it.
+const guardPositiveCommand = "true"
 
 // matchPath is a glob or exact match, against the whole path or just the name. A trailing /** matches everything below.
 func matchPath(pattern, p string) bool {
@@ -283,6 +311,26 @@ func evalGuard(g guard, in guardInput) guardResult {
 		if len(bad) > 0 {
 			r.Pass, r.Reason, r.ReasonJA = false, strings.Join(bad, "; "), strings.Join(badJA, "; ")
 		}
+	case guardKindForbiddenCommands:
+		if !in.CommandsKnown {
+			return r
+		}
+		var hits, hitsJA []string
+		for _, c := range in.Commands {
+			for _, pat := range g.Patterns {
+				re, err := regexp.Compile(pat)
+				if err != nil {
+					continue // validate refuses a pattern that does not compile; a file edited by hand is not a reason to stop everything
+				}
+				if m := re.FindString(c); m != "" {
+					hits = append(hits, "\""+cut(m, 80)+"\" matches "+pat)
+					hitsJA = append(hitsJA, "\u300c"+cut(m, 80)+"\u300d\u304c "+pat+" \u306b\u5f53\u305f\u308b")
+				}
+			}
+		}
+		if len(hits) > 0 {
+			r.Pass, r.Reason, r.ReasonJA = false, "the command about to run matches a pattern not to run: "+strings.Join(hits, ", "), "\u6d41\u305d\u3046\u3068\u3057\u3066\u3044\u308b\u30b3\u30de\u30f3\u30c9\u304c\u3001\u6d41\u3055\u306a\u3044\u5f62\u306b\u5f53\u305f\u308b: "+strings.Join(hitsJA, ", ")
+		}
 	}
 	return r
 }
@@ -297,6 +345,8 @@ func guardNegative(g guard) (guardInput, string) {
 		return guardInput{Changed: []string{path}, Known: true, Added: map[string][]string{path: {"this line contains " + g.Words[0] + " here"}}}, "a turn that added a line containing \"" + g.Words[0] + "\""
 	case guardKindCommitBody:
 		return guardInput{Commits: []string{"a commit with only a subject"}, CommitsKnown: true}, "a turn that made a commit with no body"
+	case guardKindForbiddenCommands:
+		return guardInput{Commands: []string{g.Example}, CommandsKnown: true}, "about to run \"" + g.Example + "\""
 	}
 	return guardInput{}, ""
 }
@@ -326,6 +376,8 @@ func guardPositive(g guard) guardInput {
 		return guardInput{Changed: []string{path}, Known: true, Added: map[string][]string{path: {withoutWords("this line is clean", g.Words)}}}
 	case guardKindCommitBody:
 		return guardInput{Commits: []string{"subject\n\n" + strings.Join(g.Required, "\n") + "\n"}, CommitsKnown: true}
+	case guardKindForbiddenCommands:
+		return guardInput{Commands: []string{guardPositiveCommand}, CommandsKnown: true}
 	}
 	return guardInput{}
 }

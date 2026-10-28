@@ -395,3 +395,33 @@ func TestStatusIgnoresGuardRecordsAndReadsTheStoresSpecsByDefault(t *testing.T) 
 		t.Fatalf("even without spec paths it must read the built-in questions in .shikii/decisions and show the calibration state:\n%s", out)
 	}
 }
+
+// 0.11: forbidden-commands needs patterns that compile and an example command the check must stop (its negative example); the positive
+// example is the command "true", which no pattern may match. enable shows RED then GREEN like the other kinds.
+func TestForbiddenCommandsGuardValidatesAndEnables(t *testing.T) {
+	hookEnv(t, nil)
+	repo := gitRepo(t)
+	t.Chdir(repo)
+	capture(t, func() error { return cmdInit(nil) })
+	for name, g := range map[string]guard{
+		"no patterns":                {ID: "a", Kind: guardKindForbiddenCommands, Title: "x", Example: "rm -rf /"},
+		"a pattern that fails":       {ID: "a", Kind: guardKindForbiddenCommands, Title: "x", Patterns: []string{"("}, Example: "rm -rf /"},
+		"no example":                 {ID: "a", Kind: guardKindForbiddenCommands, Title: "x", Patterns: []string{`rm -rf`}},
+		"an example no pattern hits": {ID: "a", Kind: guardKindForbiddenCommands, Title: "x", Patterns: []string{`rm -rf`}, Example: "ls"},
+		"a pattern that hits true":   {ID: "a", Kind: guardKindForbiddenCommands, Title: "x", Patterns: []string{`.*`}, Example: "rm -rf /"},
+	} {
+		if err := g.validate(); err == nil {
+			t.Errorf("%s: refused", name)
+		}
+	}
+	old := stdin
+	t.Cleanup(func() { stdin = old })
+	stdin = strings.NewReader(`{"id":"no-pipe-commit","kind":"forbidden-commands","title":"do not pipe a check into tail before committing","patterns":["\\|\\s*tail\\b[^\\n]*\\bgit\\s+commit\\b"],"example":"make test | tail -3; git commit -m x"}`)
+	if out := capture(t, func() error { return cmdGuard([]string{"add"}) }); !strings.Contains(out, "draft") {
+		t.Fatalf("add writes a disabled draft:\n%s", out)
+	}
+	out := capture(t, func() error { return cmdGuard([]string{"enable", "no-pipe-commit"}) })
+	if !strings.Contains(out, "RED:") || !strings.Contains(out, "make test | tail -3; git commit -m x") || !strings.Contains(out, "GREEN:") || !strings.Contains(out, ": enabled.") {
+		t.Fatalf("enable shows the example stopping (RED) then GREEN:\n%s", out)
+	}
+}

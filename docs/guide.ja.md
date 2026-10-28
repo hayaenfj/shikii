@@ -70,7 +70,7 @@ Claude Code と Codex は、依頼の前と作業の後の hook(Claude Code は�
 
 ## 止める検査
 
-機械で確かめられる訂正は「止める検査」にする(`.shikii/guards/<id>.yaml`)。種類は `paired-files`(片方が変わったらもう片方も)、`forbidden-words`(足した行に使わない語)、`commit-body`(そのターンのコミットの本文に含む語)の 3 つ。Stop で有効な検査を変わったファイル・足した行・依頼の時の HEAD からのコミットに当て、引っかかれば `decision: block` と理由を返してエージェントに直させる。止めた後の Stop では止めず、直ったかを `records/guards.jsonl` に記録する。`forbidden-words` の検査は、Claude Code がファイルを変える直前(Edit・Write・MultiEdit・NotebookEdit の `PreToolUse`、0.11)にも動く。道具が足そうとしている行にその語があれば、その変更を理由付きで断り(`permissionDecision: deny`)、エージェントはターンの終わりではなくその場で文を直してもう一度ファイルを変える。書き換えで残す行は足した行に数えず、除外したパスは見ず、コマンドで書いた文は今までどおり Stop で捕まえる。この止めはそのターンの記録に `tool: true` で残り、検査が通る Stop が直ったことを記録する。
+機械で確かめられる訂正は「止める検査」にする(`.shikii/guards/<id>.yaml`)。種類は `paired-files`(片方が変わったらもう片方も)、`forbidden-words`(足した行に使わない語)、`commit-body`(そのターンのコミットの本文に含む語)、`forbidden-commands`(流そうとしているコマンドが当たってはいけない正規表現。Claude Code の Bash の `PreToolUse` で流す直前に断る。`example` に止めるべきコマンドを書き、`enable` がそれを止めて見せる。Stop ではコマンドを見ない、0.11)の 4 つ。Stop で有効な検査を変わったファイル・足した行・依頼の時の HEAD からのコミットに当て、引っかかれば `decision: block` と理由を返してエージェントに直させる。止めた後の Stop では止めず、直ったかを `records/guards.jsonl` に記録する。`forbidden-words` の検査は、Claude Code がファイルを変える直前(Edit・Write・MultiEdit・NotebookEdit の `PreToolUse`、0.11)にも動く。道具が足そうとしている行にその語があれば、その変更を理由付きで断り(`permissionDecision: deny`)、エージェントはターンの終わりではなくその場で文を直してもう一度ファイルを変える。書き換えで残す行は足した行に数えず、除外したパスは見ず、コマンドで書いた文は今までどおり Stop で捕まえる。この止めはそのターンの記録に `tool: true` で残り、検査が通る Stop が直ったことを記録する。
 
 ```sh
 shikii guard add < guard.json       # 草稿(無効)。JSON: id, kind, title, reason, source, pairs/words/except/allow/required

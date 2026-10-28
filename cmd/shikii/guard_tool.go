@@ -78,21 +78,32 @@ func toolAddedLines(in *hookInput, scope string) (string, []string, bool) {
 // guardToolCall applies the enabled forbidden-words guards to the lines a tool call is about to add. A hit refuses the call (Deny) with
 // the reason and records the stop for the turn (marked Tool), which the Stop check closes as fixed when the guard passes at the end.
 func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, error) {
-	file, added, ok := toolAddedLines(in, snapshot.Scope)
-	if !ok || len(added) == 0 {
-		return hookOut{}, nil
+	var input guardInput
+	kind := ""
+	if in.ToolName == "Bash" { // a command about to run: forbidden-commands (0.11)
+		var raw map[string]json.RawMessage
+		var command string
+		if json.Unmarshal(in.ToolInput, &raw) != nil || json.Unmarshal(raw["command"], &command) != nil || strings.TrimSpace(command) == "" {
+			return hookOut{}, nil
+		}
+		input, kind = guardInput{Commands: []string{command}, CommandsKnown: true}, guardKindForbiddenCommands
+	} else {
+		file, added, ok := toolAddedLines(in, snapshot.Scope)
+		if !ok || len(added) == 0 {
+			return hookOut{}, nil
+		}
+		input, kind = guardInput{Added: map[string][]string{file: added}}, guardKindForbiddenWords
 	}
 	guards, err := enabledGuards(root)
 	if err != nil || len(guards) == 0 {
 		return hookOut{}, err
 	}
-	input := guardInput{Added: map[string][]string{file: added}}
 	loc := hookLoc{Lang: hookLang()}
 	now := time.Now().UTC()
 	var recs []guardRecord
 	var failed []guardResult
 	for _, g := range guards {
-		if g.Kind != guardKindForbiddenWords {
+		if g.Kind != kind {
 			continue
 		}
 		r := evalGuard(g, input)
@@ -110,7 +121,11 @@ func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, 
 		return hookOut{}, err
 	}
 	var b strings.Builder
-	b.WriteString(bi("shikii: a check the person set stops this change. Fix the text and change the file again.", "shikii: 人が決めた止める検査がこの変更を止めました。文を直して、もう一度ファイルを変えてください。", loc) + "\n")
+	if kind == guardKindForbiddenCommands {
+		b.WriteString(bi("shikii: a check the person set stops this command. Run a corrected command instead.", "shikii: \u4eba\u304c\u6c7a\u3081\u305f\u6b62\u3081\u308b\u691c\u67fb\u304c\u3053\u306e\u30b3\u30de\u30f3\u30c9\u3092\u6b62\u3081\u307e\u3057\u305f\u3002\u76f4\u3057\u305f\u30b3\u30de\u30f3\u30c9\u3092\u6d41\u3057\u3066\u304f\u3060\u3055\u3044\u3002", loc) + "\n")
+	} else {
+		b.WriteString(bi("shikii: a check the person set stops this change. Fix the text and change the file again.", "shikii: 人が決めた止める検査がこの変更を止めました。文を直して、もう一度ファイルを変えてください。", loc) + "\n")
+	}
 	ids := make([]string, 0, len(failed))
 	for _, f := range failed {
 		b.WriteString("- " + f.ID + ": " + f.Reason + "\n")
