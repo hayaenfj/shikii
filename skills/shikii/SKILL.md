@@ -1,11 +1,21 @@
 ---
 name: shikii
-description: Operate shikii's recurring yes/no, choice and level decisions; prepare conversation and wiki context, follow calibrated bands, and keep human truths separate from AI interpretations. Also use it in a shikii project to keep reports, audits, investigation notes and other working files in the work records (.shikii/handoff/) instead of the repository, and to save a rule or correction the person states as a wiki lesson. Use with configured shikii projects or when explicitly setting up decision workflows.
+description: Think with this project's own memory and judgment. shikii keeps what the person said, decided and corrected in this project (the wiki) and how its decisions are judged (the decision model's lines and the person's answers); use them before starting, when the work moves to another area, right before an action, when unsure, and write back right when something is decided or corrected. Also covers shikii's recurring yes/no, choice and level decisions with calibrated bands, work records (.shikii/handoff/) for reports and working files, and saving a rule or correction the person states as a wiki lesson. Use with configured shikii projects or when explicitly setting up decision workflows.
 ---
 
 # Use shikii
 
-The person supplies intent and truth. The agent interprets the task and curates context for writing, research, business support or software work. Shikii stores evidence, retrieves records, measures decisions, and calibrates them. Do not invent scores or turn an AI interpretation into a human label.
+shikii grows the agent to fit this project. What it gives you is the project's own knowledge, in two forms: **the wiki**, what the person said, decided and corrected here, as lessons of the form "when X, do Y" with the person's words as sources; and **the judgment**, how this project's decisions (ask first, in scope, done) have been judged, as the decision model's lines and the person's answers on earlier requests. Both are hypotheses with sources, never permission and never a truth you may record yourself.
+
+Use them at five moments, not only at the end of the turn:
+
+1. **Before starting**: the request hook names `hook plan query`; its reply carries the recent conversation, the related lessons, the person's answers on similar requests and `how_to_submit`. Read them, then organize the turn.
+2. **When the work moves to another area** mid-task: search the wiki again by that area's topic (`shikii wiki query` / `shikii_wiki`) before acting there.
+3. **Right before an action**: a lesson that names the file or command you are about to touch arrives with the tool call; a guard the person enabled may refuse the change with its reason: fix the text and change the file again.
+4. **When unsure** whether to ask the person first, whether a change is within what was asked, or whether the work is done: consult `shikii_decide` with the built-in question and the request; the reply carries the band, the person's similar decisions and the closest lessons.
+5. **Write back right when it happens**: a correction from the person, a rule, test or procedure you made or changed, a decision taken, goes to the wiki in the same turn (and a mechanical correction becomes a guard draft). The reflection at the next request assesses what was delivered; it is not the only time to write.
+
+The person supplies intent and truth. Do not invent scores or turn an AI interpretation into a human label.
 
 ## Choose the workflow
 

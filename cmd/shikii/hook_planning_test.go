@@ -929,3 +929,19 @@ func TestPlanningGuidanceLeavesOpenUnknownWhenNothingBlocks(t *testing.T) {
 		t.Fatal("planning.md asks for open unknown when nothing blocks, and no longer asks to explain why nothing blocks")
 	}
 }
+
+// 0.11: the skill opens with how to think with this project's knowledge (the wiki and the judgment) at five moments of the work, before
+// any operation; the person: lessons must reach the agent and be usable, and the skill and the MCP guidance must be written for that.
+func TestSkillOpensWithHowToThinkWithTheProjectsKnowledge(t *testing.T) {
+	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
+	text := string(skill)
+	head := text[:strings.Index(text, "## Choose the workflow")]
+	for _, w := range []string{"Before starting", "moves to another area", "Right before an action", "When unsure", "Write back right when it happens", "how_to_submit", "shikii_decide", "guard"} {
+		if !strings.Contains(head, w) {
+			t.Errorf("the skill's opening lacks %q", w)
+		}
+	}
+	if strings.Index(text, "the wiki") > strings.Index(text, "shikii decide") {
+		t.Errorf("the skill names the project's memory before the decision commands")
+	}
+}
