@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,57 +9,26 @@ import (
 	"time"
 )
 
-func TestReviewAuditRateFollowsHumanChecks(t *testing.T) {
-	reviews, labels := map[string]Review{}, map[string]Label{}
+// ReviewQuality counts only scores a person checked after they were made: right and wrong apart from undecided ones, one per text, and never
+// a machine truth (an agreement with the decision model, 0.11) as a check.
+func TestReviewQualityCountsOnlyThePersonsChecks(t *testing.T) {
 	start := time.Now().Add(-time.Hour)
-	for n := 0; n < 20; n++ {
-		trace := fmt.Sprintf("%016x", n)
-		reviews[trace] = Review{TraceID: trace, InputsHash: trace, Truth: "yes", Sampled: true, At: start.Add(time.Duration(n) * time.Second)}
-		labels[trace] = Label{TraceID: trace, Truth: "yes", Source: "audit", At: time.Now()}
+	reviews := map[string]Review{
+		"right":   {TraceID: "right", InputsHash: "a", Truth: "yes", At: start},
+		"wrong":   {TraceID: "wrong", InputsHash: "b", Truth: "yes", At: start},
+		"unknown": {TraceID: "unknown", InputsHash: "c", Truth: "unknown", At: start},
+		"agreed":  {TraceID: "agreed", InputsHash: "d", Truth: "no", At: start},
+		"before":  {TraceID: "before", InputsHash: "e", Truth: "no", At: start},
 	}
-	if got := ReviewQuality(reviews, nil); got.Every != 5 || got.Checked != 0 {
-		t.Fatal("the amount of AI scoring does not reduce spot checks")
+	labels := map[string]Label{
+		"right":   {TraceID: "right", Truth: "yes", Source: "ui", At: time.Now()},
+		"wrong":   {TraceID: "wrong", Truth: "no", Source: "audit", At: time.Now()},
+		"unknown": {TraceID: "unknown", Truth: "yes", Source: "ui", At: time.Now()},
+		"agreed":  {TraceID: "agreed", Truth: "no", Source: SourceAgreed, At: time.Now()},
+		"before":  {TraceID: "before", Truth: "no", Source: "ui", At: start.Add(-time.Minute)},
 	}
-	if got := ReviewQuality(reviews, labels); got.Every != 20 || got.RandomChecked != 20 || got.RandomCorrect != 20 {
-		t.Fatalf("lowers the frequency once a person's random checks are stable: %+v", got)
-	}
-	reviews["unknown"] = Review{TraceID: "unknown", InputsHash: "unknown", Truth: "unknown", Sampled: true, At: start}
-	labels["unknown"] = Label{TraceID: "unknown", Truth: "yes", Source: "audit", At: time.Now()}
-	if got := ReviewQuality(reviews, labels); got.Uncertain != 1 || got.UncertainChecked != 1 || got.Checked != 20 || got.RandomChecked != 20 {
-		t.Fatalf("keeps held checks apart from scoring right/wrong: %+v", got)
-	}
-	delete(reviews, "unknown")
-	delete(labels, "unknown")
-	reviews["focused"] = Review{TraceID: "focused", InputsHash: "focused", Truth: "yes", At: start}
-	labels["focused"] = Label{TraceID: "focused", Truth: "no", Source: "ui", At: time.Now()}
-	if got := ReviewQuality(reviews, labels); got.Every != 5 || got.RandomChecked != 20 || got.RandomCorrect != 20 {
-		t.Fatalf("raises the frequency on a mismatch even in a non-random check, and keeps the random results: %+v", got)
-	}
-	delete(reviews, "focused")
-	delete(labels, "focused")
-	l := labels["0000000000000001"]
-	l.Truth = "no"
-	labels[l.TraceID] = l
-	if got := ReviewQuality(reviews, labels); got.Every != 5 || got.RandomCorrect != 19 {
-		t.Fatalf("kinds that had a mismatch get more checks: %+v", got)
-	}
-	// even many checks of deliberately chosen hard cases do not replace the random slot's results.
-	for n := 20; n < 50; n++ {
-		trace := fmt.Sprintf("%016x", n)
-		reviews[trace] = Review{TraceID: trace, InputsHash: trace, Truth: "yes", At: time.Now()}
-		labels[trace] = Label{TraceID: trace, Truth: "yes", Source: "ui", At: time.Now()}
-	}
-	if got := ReviewQuality(reviews, labels); got.Every != 5 || got.RandomChecked != 20 {
-		t.Fatalf("does not mix how checks are chosen: %+v", got)
-	}
-	for n := 0; n < 200; n++ {
-		trace := fmt.Sprintf("%016x", n)
-		if ReviewSample(trace, 5) != ReviewSample(trace, 5) {
-			t.Fatal("the spot check for the same decision does not change")
-		}
-		if ReviewSample(trace, 20) && !ReviewSample(trace, 5) {
-			t.Fatal("raising the frequency still includes the original spot checks")
-		}
+	if got := ReviewQuality(reviews, labels); got != (ReviewStats{Scored: 5, Uncertain: 1, UncertainChecked: 1, Checked: 2, Correct: 1}) {
+		t.Fatalf("%+v", got)
 	}
 }
 

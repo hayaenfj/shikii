@@ -44,9 +44,11 @@ func countPersonWork(specID string, discardUnsure bool, recs []store.Record, lab
 		case "act":
 			waits = r.IsCalibrated && store.AuditSample(r.TraceID)
 		}
-		// Of the AI's provisional scores, samples and held items (unknown) are shown to a person. Decisions that got an outcome truth first are not shown (the answer is already in)
-		if rv, ok := reviews[r.TraceID]; ok && (rv.Sampled || rv.Truth == "unknown") && !result[r.TraceID] {
-			waits = true
+		// Where the agent answered too (its needs-plan organizing, its provisional score), only a disagreement with the decision model or an
+		// undecided answer goes to a person (0.11), not after an outcome truth came in first. The spot check of a calibrated needs-plan act stays
+		if pair, ok := pairOf(specID, r, reviews); ok {
+			spot := waits && r.Band == "act" && !store.ReviewSpec(specID)
+			waits = spot || (!pair.agree() && !result[r.TraceID])
 		}
 		recent := now.Sub(r.At) <= personWorkWindow
 		w.Records++

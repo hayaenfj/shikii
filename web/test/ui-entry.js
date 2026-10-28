@@ -187,7 +187,7 @@ function checkAiPageStatus(target) {
   Object.assign(ui, { done: false, results: false });
   const item = { trace_id: 'r1', at: '2026-10-23T00:00:00Z', band: 'act', top: 'yes', p: 0.9, model: 'm', inputs: { request: 'x' }, answerable: true, waits_for_person: false, choices: [{ truth: 'yes', label: 'はい' }, { truth: 'no', label: 'いいえ' }] };
   const sp = { id: 'done-as-asked', type: 'noul', titles: { ja: '頼まれたことを終えたか' }, questions: {}, keys: [{ model: 'm', hash: 'h', n: 52, state: 'not_separable' }], min_n: 50, records: 60, labels: 52, unlabeled: 1, waiting_for_person: 0, awaiting_results: 1, person_answers: true, truth_source: 'person', queue: { items: [item] }, tune: null,
-    review_quality: { scored: 16, uncertain: 0, checked: 15, correct: 14, uncertain_checked: 0, random_checked: 1, random_correct: 1, audit_every: 5 } };
+    review_quality: { scored: 16, uncertain: 0, checked: 15, correct: 14, uncertain_checked: 0 } };
   const app = mount(SpecPanel, { target, props: { sp } }); flushSync();
   const lanes = [...target.querySelectorAll('.answer-tabs [data-lane]')].map(b => b.dataset.lane);
   const status = JSON.stringify(lanes) === JSON.stringify(['results', 'done']) && !!target.querySelector('.answer-tabs [data-lane="results"].active') && target.querySelectorAll('.item').length === 1 && !target.textContent.includes(t('empty'));
@@ -644,7 +644,7 @@ export async function run() {
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
   const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), await checkAnswerKeys(target), await checkWordingAskSends(target), checkPhoneAnswerBar(target), checkWordingPlain(target)].every(Boolean);
-  const ok = auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && await checkDisagreement(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -802,7 +802,7 @@ async function checkReview(target) {
     if (opts?.body) calls.push({ url, body: JSON.parse(opts.body) });
     return { ok: true, json: async () => opts?.body ? { truth: 'no' } : { specs: [] } };
   };
-  const item = { trace_id: 'review-1', band: 'ask', top: 'yes', p: .9, at: '2026-10-20T00:00:00Z', audit: true, review_reason: 'random', answerable: true, inputs: { request: '起動手順を日本語にして', summary: '直しました' }, choices: [{ truth: 'yes', label: '完了' }, { truth: 'no', label: '未完了' }], review: { truth: 'yes', reason: '<img src=x onerror=alert(1)> 仮採点の根拠', source_material: { reply: '英語の手順が残っています' } } };
+  const item = { trace_id: 'review-1', band: 'ask', top: 'yes', p: .9, at: '2026-10-20T00:00:00Z', audit: true, review_reason: 'uncertain', answerable: true, inputs: { request: '起動手順を日本語にして', summary: '直しました' }, choices: [{ truth: 'yes', label: '完了' }, { truth: 'no', label: '未完了' }], review: { truth: 'yes', reason: '<img src=x onerror=alert(1)> 仮採点の根拠', source_material: { reply: '英語の手順が残っています' } } };
   const sp = { id: 'done-as-asked', queue: { items: [item] }, labels: 0, unlabeled: 1 };
   const app = mount(ItemCard, { target, props: { sp, it: item } });
   flushSync();
@@ -816,6 +816,41 @@ async function checkReview(target) {
   globalThis.fetch = realFetch;
   const ok = originalReply && unprimed && evidence && sent;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (review original reply=' + originalReply + ', unprimed choices=' + unprimed + ', inert evidence=' + evidence + ', human audit sent=' + sent + ')');
+  return ok;
+}
+
+// 0.11: a decision waits for the person only when the answering AI and the agent disagreed. The card puts both answers side by side (the
+// answering AI's with its confidence, the agent's with its reason) and the person picks one with the usual answer buttons
+async function checkDisagreement(target) {
+  const lang = i18n.lang; i18n.lang = 'en';
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({ truth: 'no' }) }; };
+  const choices = [{ truth: 'yes', label: 'Finished' }, { truth: 'no', label: 'Not finished' }];
+  const item = { trace_id: 'pair-1', band: 'ask', top: 'yes', p: .8, at: '2026-10-28T00:00:00Z', audit: true, review_reason: 'disagree', waits_for_person: true, answerable: true, inputs: { request: 'translate the setup steps' }, choices,
+    pair: { model: 'yes', model_confidence: .8, agent: 'no', agent_reason: 'the person said <b>English steps</b> remain' }, review: { truth: 'no', reason: 'the person said English steps remain', source_material: { reply: 'English steps remain' } } };
+  const sp = { id: 'done-as-asked', type: 'noul', queue: { items: [item] }, labels: 0, unlabeled: 1, waiting_for_person: 1 };
+  let ok = true; const seen = {};
+  for (const question of ['', 'Was the requested work finished?']) { // the AI page and the Answer screen
+    const app = mount(ItemCard, { target, props: { sp, it: item, question } }); flushSync();
+    const model = target.querySelector('[data-pair-side="model"]')?.textContent || '';
+    const agent = target.querySelector('[data-pair-side="agent"]')?.textContent || '';
+    seen[question ? 'answer' : 'ai'] = { model: model.includes(t('pairModel')) && model.includes('Finished') && model.includes('80'), agent: agent.includes(t('pairAgent')) && agent.includes('Not finished') && agent.includes('English steps') && !target.querySelector('.ai-pair b'), notice: target.textContent.includes(t('reviewDisagree')) };
+    ok = ok && Object.values(seen[question ? 'answer' : 'ai']).every(Boolean);
+    unmount(app);
+  }
+  const app = mount(ItemCard, { target, props: { sp, it: item } }); flushSync();
+  target.querySelector('button[data-truth="no"]')?.click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const sent = calls.some(c => c.url.endsWith('v1/label') && c.body.truth === 'no' && c.body.trace_id === 'pair-1');
+  unmount(app);
+  // an agreement is never a card, and a card without a disagreement shows no pair
+  const plain = mount(ItemCard, { target, props: { sp, it: { ...item, trace_id: 'plain', review_reason: 'uncertain', pair: { ...item.pair, agent: 'unknown' } } } }); flushSync();
+  const noPair = !target.querySelector('[data-pair-side]');
+  unmount(plain);
+  globalThis.fetch = realFetch; i18n.lang = lang;
+  ok = ok && sent && noPair;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (both answers on a disagreement card=' + JSON.stringify(seen) + ', the person picks one=' + sent + ', no pair otherwise=' + noPair + ')');
   return ok;
 }
 
@@ -1192,7 +1227,8 @@ async function checkUtilityConflicts(target) {
   const cards = [
     [{ id: 'needs-plan', type: 'noul' }, { ...base, inputs: { previous: 'p', request: 'r', agreed: 'a', open: 'o', files: 'f' }, original_inputs: { previous: 'pp' }, text_status: { request: 'limited', previous: 'legacy' } }],
     [{ id: 'done-as-asked', type: 'noul' }, { ...base, inputs: { request: 'r', summary: 's' }, truth: 'yes', truth_at: base.at, redo_of: 'x' }],
-    [{ id: 'done-as-asked', type: 'noul' }, { ...base, inputs: { request: 'r' }, audit: true, review_reason: 'random', review: { truth: 'yes', reason: 'why', source_material: { reply: 'reply' } } }],
+    [{ id: 'done-as-asked', type: 'noul' }, { ...base, inputs: { request: 'r' }, audit: true, review_reason: 'uncertain', review: { truth: 'yes', reason: 'why', source_material: { reply: 'reply' } } }],
+    [{ id: 'done-as-asked', type: 'noul' }, { ...base, inputs: { request: 'r' }, audit: true, review_reason: 'disagree', pair: { model: 'no', model_confidence: .7, agent: 'yes', agent_reason: 'why' }, review: { truth: 'yes', reason: 'why', source_material: { reply: 'reply' } } }],
     [{ id: 'intent', type: 'choice' }, { ...base, top: 'a', choices: [{ truth: 'a', label: 'a' }, { truth: 'b', label: 'b' }], inputs: { message: 'm' } }],
   ];
   for (const [sp, it] of cards) { app = mount(ItemCard, { target, props: { sp, it } }); flushSync(); collectConflicts(target, table, out); unmount(app); }

@@ -860,3 +860,15 @@ var noticeURL = regexp.MustCompile(`https?://\S+`)
 
 // restateFarShort are seven new requests, each under 40 characters (so request 1 gets no outcome from them) and not acknowledgements.
 var restateFarShort = []string{"add a test too", "log the errors", "add a dry-run flag", "rename the output file", "sort the output by date", "add a header row", "write it in the README too"}
+
+// personTruths counts the truths a person (or an outcome) decided. Machine truths such as an agreement of the decision model and the agent
+// (source agreed, 0.11) are left out: they never stand for the person.
+func personTruths(labels []store.Label) int {
+	n := 0
+	for _, l := range labels {
+		if store.HumanSource(l.Source) {
+			n++
+		}
+	}
+	return n
+}

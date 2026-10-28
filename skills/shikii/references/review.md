@@ -1,6 +1,6 @@
 # Everyday scoring and the person's spot checks
 
-"Did it stay within what was asked" and "did it finish what was asked" are scored provisionally by the usual agent from the conversation and the work's outcome. The person checks items chosen at random and items the AI held back from judging.
+"Did it stay within what was asked" and "did it finish what was asked" are scored provisionally by the usual agent from the conversation and the work's outcome. Each target shows the decision model's answer first; the person is asked only when your score differs from it or you held back (`unknown`).
 
 ## Combined reflection (0.4)
 
@@ -93,14 +93,14 @@ This is separate from the `result` of "did the memory help". Following a correct
 The older `shikii review` / `shikii_review` and `shikii wiki` / `shikii_wiki` also work.
 
 1. Check the original text, the targets and the examples the person corrected with `shikii_review`'s `operation: query`, or `shikii review query`. Up to 2 conversations at a time.
-2. Read the original request, the list of actual changes, the final reply and the person's reply after it, and choose `yes` / `no` / `unknown` for each target. Do not align with the original decision model's self-evaluation.
+2. Read the original request, the list of actual changes, the final reply and the person's reply after it, and choose `yes` / `no` / `unknown` for each target. Each target carries `decision_model_answer` (the decision model's `answer` and its `confidence`): read it, but it is not a truth; score from the source material and do not agree with it only because it is there.
 3. Pass `source_id`, `trace_id`, `truth` and concrete grounds in `reason` to `submit`. On the CLI, JSON on the standard input of `shikii review submit` (`operation` may be omitted). Do not make the person type commands.
 4. Evaluate an explicit correction from the relevant point of view. If told "put it in Japanese", check the language condition. Do not count only an additional request, a greeting or the absence of a reply as success or failure. If the source material cannot decide it, `unknown`.
 
 Provisional scores stay in that project's `.shikii/records/reviews/` with the source material and grounds. Do not use them instead of `shikii label`, which registers human truths. Do not use wiki lessons as scoring truths either. Do not draw lines from the amount of scores the AI gave; permission to act and calibration follow the existing mechanism based on people and outcomes.
 
-shikii chooses what to check with the person. At first 1 in 5; once the latest 20 random checks of the same project and the same kind agree in a row, 1 in 20. When a disagreement appears, it goes back to 1 in 5. Held items are checked in a separate slot and are not mixed with the random slot's results. Do not choose targets by the AI's confidence.
+shikii chooses what to check with the person (0.11). A score that agrees with the decision model's answer is kept as a machine truth (source `agreed`) and nobody is asked; it never counts as the person's truth, so lines still need people's truths. A score that differs, and `unknown`, wait for the person, who sees both answers (the decision model's with its confidence, yours with your `reason`) and picks one. There is no random sampling and no cap. Do not choose targets by the AI's confidence.
 
-In a person's check, show the original conversation and do not highlight the AI's prediction among the options. After receiving the person's answer, do not overwrite the original AI score; send the disagreement back to the next scorer as a correction example. Do not add questions to the person to score every item.
+In a person's check, show the original conversation; for a disagreement show both AI answers side by side and highlight neither among the options. After receiving the person's answer, do not overwrite the original AI score; send the disagreement back to the next scorer as a correction example. Do not add questions to the person to score every item.
 
 If a `query` target has `original_inputs`, that is the original text saved for the page. Also check the end of long replies. A field with `text_status` indicates an old save limit, the original text's save limit, or an unreadable state, so do not conclude from cut-off text alone. Check the hook's short quotes with query before scoring.

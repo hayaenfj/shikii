@@ -32,7 +32,18 @@ type reviewTarget struct {
 	Files          string            `json:"files"`
 	OriginalInputs map[string]string `json:"original_inputs,omitempty"`
 	TextStatus     map[string]string `json:"text_status,omitempty"`
+	// ModelAnswer is the decision model's answer to the same question, shown before the agent scores (0.11): the agent decides having seen it.
+	// When the saved score agrees, it becomes an agreed machine truth; when it differs or is unknown, the person is asked
+	ModelAnswer modelAnswer `json:"decision_model_answer"`
 }
+
+type modelAnswer struct {
+	Answer     string  `json:"answer"`     // yes / no
+	Confidence float64 `json:"confidence"` // the model's probability of that answer
+	Note       string  `json:"note"`
+}
+
+const modelAnswerNote = "The decision model's answer, not a truth. Score from the conversation; if your score agrees it is kept as an agreed machine truth (never the person's), if it differs or is unknown the person is asked to choose between the two."
 
 func reviewQuestion(spec string) string {
 	if spec == "changes-in-scope" {
@@ -41,23 +52,133 @@ func reviewQuestion(spec string) string {
 	return "Was the requested work finished?"
 }
 
-// reviewQueueState separates the provisional scoring of every item from the queue a person checks.
-func reviewQueueState(rec store.Record, labels map[string]store.Label, reviews map[string]store.Review) (show, audit bool, reason string) {
+// aiPair is the decision model's answer and the agent's answer to the same yes/no question (0.11). The person is asked only when they differ:
+// the agent answered after seeing the model's answer (needs-plan: its organizing before the start; changes-in-scope / done-as-asked: its
+// provisional score in reflection).
+type aiPair struct {
+	Model           string  `json:"model"`            // yes when the model's p(yes) is 0.5 or more
+	ModelConfidence float64 `json:"model_confidence"` // the model's probability of its answer
+	Agent           string  `json:"agent"`            // yes / no / unknown
+	AgentReason     string  `json:"agent_reason,omitempty"`
+}
+
+func (p aiPair) agree() bool { return p.Agent == p.Model }
+
+// planningOpenUnknown is the open input when the agent set open unknown in its organizing (renderPlanningFact): its answer is "no, nothing
+// for the person to decide". Records from before 0.9.2 kept the Japanese text.
+const planningOpenUnknown = "unknown (cannot be confirmed from the current conversation)"
+
+const planningOpenUnknownJA = "\u4e0d\u660e\uff08\u73fe\u5728\u306e\u4f1a\u8a71\u304b\u3089\u78ba\u304b\u3081\u3089\u308c\u306a\u3044\uff09"
+
+// modelYes is the decision model's p(yes) of a noul record.
+func modelYes(rec store.Record) float64 {
+	if p, ok := rec.Calibrated["yes"]; ok {
+		return p
+	}
+	if p, ok := rec.Raw["yes"]; ok {
+		return p
+	}
+	return rec.P
+}
+
+func modelAnswerOf(rec store.Record) modelAnswer {
+	p := modelYes(rec)
+	if p >= 0.5 {
+		return modelAnswer{Answer: "yes", Confidence: p, Note: modelAnswerNote}
+	}
+	return modelAnswer{Answer: "no", Confidence: 1 - p, Note: modelAnswerNote}
+}
+
+// pairOf returns both answers of a decision when the agent gave one: the needs-plan organizing (open filled: yes; open unknown: no), or the
+// provisional score of changes-in-scope / done-as-asked. Old needs-plan records without the organizing, and unscored decisions, have none.
+func pairOf(specID string, rec store.Record, reviews map[string]store.Review) (aiPair, bool) {
+	m := modelAnswerOf(rec)
+	pair := aiPair{Model: m.Answer, ModelConfidence: m.Confidence}
+	switch {
+	case specID == "needs-plan":
+		open := strings.TrimSpace(rec.Inputs["open"])
+		if open == "" || strings.TrimSpace(rec.Inputs["agreed"]) == "" {
+			return pair, false
+		}
+		if open == planningOpenUnknown || open == planningOpenUnknownJA {
+			pair.Agent = "no"
+		} else {
+			pair.Agent, pair.AgentReason = "yes", strings.TrimPrefix(open, planningPreface)
+		}
+		return pair, true
+	case store.ReviewSpec(specID):
+		grade, ok := reviews[rec.TraceID]
+		if !ok {
+			return pair, false
+		}
+		pair.Agent, pair.AgentReason = grade.Truth, grade.Reason
+		return pair, true
+	}
+	return pair, false
+}
+
+// writeAgreed keeps an agreement of the decision model and the agent as a machine truth (source agreed; never the person's). Once per record.
+func writeAgreed(st store.Store, rec *store.Record, truth string) error {
+	labels, err := store.LabelsFor(rec, truth, 1, store.SourceAgreed)
+	if err != nil {
+		return err
+	}
+	return st.AppendLabelsOnce(labels)
+}
+
+// reviewQueueState separates the provisional scoring of every item from the queue a person checks. Where the agent gave an answer too
+// (pairOf), only a disagreement or an undecided answer waits for the person (0.11); the 1-in-20 spot check of act stays.
+func reviewQueueState(specID string, rec store.Record, labels map[string]store.Label, reviews map[string]store.Review) (show, audit bool, reason string) {
 	l, labeled := labels[rec.TraceID]
 	if labeled && store.HumanSource(l.Source) {
 		return false, false, ""
 	}
-	grade, ok := reviews[rec.TraceID]
-	if !ok {
-		if rec.ReviewPending || labeled {
+	spot := rec.Band == "act" && store.AuditSample(rec.TraceID)
+	if pair, ok := pairOf(specID, rec, reviews); ok {
+		switch {
+		case pair.Agent == "unknown":
+			return true, true, "uncertain"
+		case !pair.agree():
+			return true, true, "disagree"
+		case store.ReviewSpec(specID): // a score that agrees: settled without the person
 			return false, false, ""
+		case spot:
+			return true, true, ""
 		}
-		return true, rec.Band == "act" && store.AuditSample(rec.TraceID), ""
+		return !labeled, false, ""
 	}
-	if grade.Truth == "unknown" {
-		return true, true, "uncertain"
+	if rec.ReviewPending || labeled {
+		return false, false, ""
 	}
-	return grade.Sampled, grade.Sampled, "random"
+	return true, spot, ""
+}
+
+// queueItem is where one decision stands on the page: shown in the queue, asked as a check (a spot check, a disagreement, an undecided
+// score or an outcome check), why, and whether it waits for the person. The queue (handleQueue) and the status count (handleStatus) use
+// this one rule, so the Answer screen, which loads only questions whose status says something waits, never misses what the queue shows.
+type queueItem struct {
+	show, audit, waits bool
+	reason             string
+	pair               *aiPair
+}
+
+func queueItemOf(specID string, rec store.Record, labels map[string]store.Label, reviews map[string]store.Review, checks *outcomeChecks) queueItem {
+	var q queueItem
+	q.show, q.audit, q.reason = reviewQueueState(specID, rec, labels, reviews)
+	if !q.show && outcomeCheckShown(checks, rec, labels) {
+		q.show, q.audit, q.reason = true, true, "outcome"
+	}
+	if !q.show {
+		return q
+	}
+	pair, paired := pairOf(specID, rec, reviews)
+	if paired {
+		q.pair = &pair
+	}
+	// decisions only the AI answers (wiki contradictions etc.) never wait for people (0.8.0). Otherwise the checks wait, and an unsure decision
+	// waits when no outcome gives its truth and the agent gave no answer of its own (an agreement settles it without the person, 0.11)
+	q.waits = !machineOnlySpecs[specID] && (q.audit || (rec.Band == "ask" && !outcomeSpecs[specID] && !paired))
+	return q
 }
 
 func reviewTargets(st store.Store, source store.Feedback) []reviewTarget {
@@ -71,7 +192,7 @@ func reviewTargets(st store.Store, source store.Feedback) []reviewTarget {
 			continue
 		}
 		originals, status := st.RecordText(*rec)
-		out = append(out, reviewTarget{Spec: target.Spec, TraceID: target.TraceID, Question: reviewQuestion(target.Spec), Files: rec.Inputs["files"], OriginalInputs: originals, TextStatus: status})
+		out = append(out, reviewTarget{Spec: target.Spec, TraceID: target.TraceID, Question: reviewQuestion(target.Spec), Files: rec.Inputs["files"], OriginalInputs: originals, TextStatus: status, ModelAnswer: modelAnswerOf(*rec)})
 	}
 	return out
 }
@@ -184,7 +305,16 @@ func runReview(root, scope string, req reviewRequest) (any, error) {
 				return nil, err
 			}
 			grade, err := st.SaveReview(store.Review{TraceID: req.TraceID, Spec: target.Spec, Scope: scope, InputsHash: rec.InputsHash, Truth: req.Truth, Reason: strings.TrimSpace(req.Reason), Source: source})
-			return map[string]any{"review": grade}, err
+			if err != nil {
+				return nil, err
+			}
+			// the score agrees with the decision model: settled without the person, as a machine truth (0.11). A disagreement or unknown waits
+			if pair, _ := pairOf(target.Spec, *rec, map[string]store.Review{grade.TraceID: grade}); pair.agree() {
+				if err := writeAgreed(st, rec, grade.Truth); err != nil {
+					return nil, err
+				}
+			}
+			return map[string]any{"review": grade}, nil
 		}
 	}
 	return nil, errors.New("no scoring target is tied to a conversation in this project")
@@ -250,13 +380,4 @@ func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, result)
-}
-
-// waitsForPersonRecord reports which queued records wait for a person's answer: spot checks (audit), or the "unsure" (ask) of decisions whose truth does not come from results.
-// For decisions whose truth comes from results (prompt-kind etc.), the result of the next request answers the unsure ones. Decisions only the AI answers (wiki contradictions etc.) do not wait for people (0.8.0).
-func waitsForPersonRecord(specID string, rec store.Record, audit bool) bool {
-	if machineOnlySpecs[specID] {
-		return false
-	}
-	return audit || (rec.Band == "ask" && !outcomeSpecs[specID])
 }

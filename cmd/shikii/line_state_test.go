@@ -368,6 +368,9 @@ func TestLineStateCountsLatestPerInputAndHumanSourcesSeparately(t *testing.T) {
 	if s := lineStateOf(sp, sp.Eval.MinN, "m1", sp.Hash(), mk(sp.Eval.MinN, "context", false), false); s.Kind != lineCollecting || s.N != 0 {
 		t.Fatalf("machine truths (context) are not counted: %+v", s)
 	}
+	if s := lineStateOf(sp, sp.Eval.MinN, "m1", sp.Hash(), mk(sp.Eval.MinN, "agreed", false), false); s.Kind != lineCollecting || s.N != 0 {
+		t.Fatalf("agreed truths (the decision model and the agent agreeing, 0.11) are not counted: %+v", s)
+	}
 }
 
 // re-re-audit test gap: the text when a line is drawn for a question whose truth comes from results (changes-in-scope), and the Japanese text. With the Japanese setting, Japanese

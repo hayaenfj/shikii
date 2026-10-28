@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -24,13 +25,19 @@ func reviewFixture(t *testing.T) (store.Store, string, http.Handler) {
 
 func reviewSeed(t *testing.T, st store.Store, scope string, n int) (string, string) {
 	t.Helper()
+	return reviewSeedP(t, st, scope, n, 0)
+}
+
+// reviewSeedP is reviewSeed whose decision model answered p (the probability of yes; noul records keep it in p).
+func reviewSeedP(t *testing.T, st store.Store, scope string, n int, p float64) (string, string) {
+	t.Helper()
 	id, trace := fmt.Sprintf("%016x", n), fmt.Sprintf("%016x", n+1000)
 	inputs := map[string]string{"request": "README の起動手順を日本語にする " + id, "summary": "起動手順を直しました", "files": "README.md"}
 	sp, err := spec.Load(st.Dir + "/decisions/done-as-asked.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, _ := json.Marshal(map[string]any{"trace_id": trace, "spec_id": sp.ID, "spec_hash": sp.Hash(), "type": "noul", "model": "test-model", "inputs": inputs, "inputs_hash": store.HashInputs(inputs), "top": "yes", "band": []string{"act", "discard", "ask"}[n%3], "review_pending": true})
+	data, _ := json.Marshal(map[string]any{"trace_id": trace, "spec_id": sp.ID, "spec_hash": sp.Hash(), "type": "noul", "model": "test-model", "inputs": inputs, "inputs_hash": store.HashInputs(inputs), "top": "yes", "p": p, "raw": map[string]float64{"yes": p, "no": 1 - p}, "band": []string{"act", "discard", "ask"}[n%3], "review_pending": true})
 	var rec store.Record
 	_ = json.Unmarshal(data, &rec)
 	if err := st.AppendRecord(rec); err != nil {
@@ -75,7 +82,7 @@ func TestReviewConversationScoresWithoutCreatingTruths(t *testing.T) {
 		t.Fatal("does not keep asking for already scored items")
 	}
 	_, labels, err := st.Counts("done-as-asked")
-	if err != nil || len(labels) != 0 {
+	if err != nil || personTruths(labels) != 0 {
 		t.Fatal("provisional scores are not used as a person's truth or as calibration material")
 	}
 	sp, _ := spec.Load(st.Dir + "/decisions/done-as-asked.yaml")
@@ -84,39 +91,71 @@ func TestReviewConversationScoresWithoutCreatingTruths(t *testing.T) {
 	}
 }
 
-func TestReviewHumanAuditsIncludeScoredAndUncertainItems(t *testing.T) {
+// 0.11 (5-1, 5-2): the agent scores having seen the decision model's answer. A score that agrees with the model is kept as an agreed machine
+// truth and nobody is asked; a score that disagrees, or unknown, waits for the person with both answers. The rest is not sampled at random.
+func TestReviewAsksThePersonOnlyWhenTheAIsDisagree(t *testing.T) {
 	st, scope, h := reviewFixture(t)
-	for n := 1; n <= 30; n++ {
-		id, trace := reviewSeed(t, st, scope, n)
-		reviewCall(t, h, map[string]any{"operation": "submit", "source_id": id, "trace_id": trace, "truth": "yes", "reason": "合成テストの採点根拠"})
+	// seed 3's trace was picked by the old 1-in-5 random sampling of scores: agreeing, it is no longer shown
+	agreeID, agree := reviewSeedP(t, st, scope, 3, .8)
+	disagreeID, disagree := reviewSeedP(t, st, scope, 1, .8)
+	unknownID, unknown := reviewSeedP(t, st, scope, 2, .3)
+	q := reviewCall(t, h, map[string]any{"operation": "query"})
+	shown := 0
+	for _, task := range q["pending"].([]any) {
+		for _, target := range task.(map[string]any)["targets"].([]any) {
+			m, _ := target.(map[string]any)["decision_model_answer"].(map[string]any)
+			if m == nil || (m["answer"] != "yes" && m["answer"] != "no") || m["confidence"] == nil || !strings.Contains(fmt.Sprint(m["note"]), "not a truth") {
+				t.Fatalf("each target shows the decision model's answer and confidence, said not to be a truth: %v", target)
+			}
+			shown++
+		}
 	}
-	id, unknown := reviewSeed(t, st, scope, 99)
-	reviewCall(t, h, map[string]any{"operation": "submit", "source_id": id, "trace_id": unknown, "truth": "unknown", "reason": "追加依頼か訂正かを特定できない"})
+	if shown == 0 {
+		t.Fatal("the query returns targets to score")
+	}
+	for _, s := range []struct{ id, trace, truth string }{{agreeID, agree, "yes"}, {disagreeID, disagree, "no"}, {unknownID, unknown, "unknown"}} {
+		reviewCall(t, h, map[string]any{"operation": "submit", "source_id": s.id, "trace_id": s.trace, "truth": s.truth, "reason": "the reply says " + s.truth})
+	}
+	_, labels, _ := st.Counts("done-as-asked")
+	if len(labels) != 1 || labels[0].TraceID != agree || labels[0].Source != "agreed" || labels[0].Truth != "yes" || store.HumanSource(labels[0].Source) {
+		t.Fatalf("only the agreement is kept, as a machine truth: %+v", labels)
+	}
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequest("GET", "/v1/queue?spec=done-as-asked", nil))
-	var q struct {
+	var queue struct {
 		Items []map[string]any `json:"items"`
 	}
-	_ = json.Unmarshal(r.Body.Bytes(), &q)
-	found := false
-	bands := map[string]bool{}
-	if len(q.Items) < 2 || len(q.Items) >= 31 {
-		t.Fatalf("only some of the provisionally scored items and the pending ones go to the person: %d", len(q.Items))
+	_ = json.Unmarshal(r.Body.Bytes(), &queue)
+	got := map[string]map[string]any{}
+	for _, it := range queue.Items {
+		got[it["trace_id"].(string)] = it
 	}
-	for _, item := range q.Items {
-		bands[item["band"].(string)] = true
-		if item["review"] == nil {
-			t.Fatal("the person can also check the reason for the score")
+	if got[agree] != nil || len(got) != 2 {
+		t.Fatalf("the agreed score is not shown: %v", queue.Items)
+	}
+	d, u := got[disagree], got[unknown]
+	pair, _ := d["pair"].(map[string]any)
+	if d["waits_for_person"] != true || d["review_reason"] != "disagree" || pair["model"] != "yes" || pair["agent"] != "no" || fmt.Sprintf("%.2f", pair["model_confidence"]) != "0.80" || pair["agent_reason"] != "the reply says no" {
+		t.Fatalf("a disagreement waits with both answers: %v", d)
+	}
+	if u["waits_for_person"] != true || u["review_reason"] != "uncertain" {
+		t.Fatalf("an undecided score waits for the person: %v", u)
+	}
+	r = httptest.NewRecorder()
+	h.ServeHTTP(r, httptest.NewRequest("GET", "/v1/status", nil))
+	var status struct {
+		Specs []map[string]any `json:"specs"`
+	}
+	_ = json.Unmarshal(r.Body.Bytes(), &status)
+	for _, s := range status.Specs {
+		if s["id"] == "done-as-asked" && (s["waiting_for_person"] != float64(2) || s["labels"] != float64(0)) {
+			t.Fatalf("the status counts what the queue shows as waiting, and no truth of the person: %v", s)
 		}
-		if item["trace_id"] == unknown {
-			found = true
-		}
 	}
-	if !found {
-		t.Fatal("pending items go to the person without waiting for a spot check")
-	}
-	if !bands["act"] || !bands["discard"] {
-		t.Fatal("spot checks cover both act and discard")
+	recs, _ := st.Records("done-as-asked", 0)
+	reviews, _ := st.Reviews("done-as-asked")
+	if w := countPersonWork("done-as-asked", false, recs, labels, reviews, time.Now()); w.Waits != 2 || w.ByPerson != 0 {
+		t.Fatalf("the person's work counts the same two: %+v", w)
 	}
 }
 
@@ -241,5 +280,18 @@ func TestCorrectedScoreFromBeforeAFolderMoveStillReturns(t *testing.T) {
 	}
 	if got := view["human_corrections"].([]map[string]any); len(got) != 1 {
 		t.Fatalf("the person's correction of a score given before the move goes back to the next scorer: %v", got)
+	}
+}
+
+// Records made before 0.9.2 kept the Japanese text for an unknown open: the agent's answer is still "no", and the decision model's answer is
+// the side of p(yes) at 0.5 with that side's probability as its confidence.
+func TestPairReadsTheOldJapaneseUnknownOpen(t *testing.T) {
+	rec := store.Record{TraceID: "old", P: .3, Inputs: map[string]string{"request": "r", "agreed": "a", "open": "\u4e0d\u660e\uff08\u73fe\u5728\u306e\u4f1a\u8a71\u304b\u3089\u78ba\u304b\u3081\u3089\u308c\u306a\u3044\uff09"}}
+	pair, ok := pairOf("needs-plan", rec, nil)
+	if !ok || pair.Agent != "no" || pair.Model != "no" || fmt.Sprintf("%.2f", pair.ModelConfidence) != "0.70" || !pair.agree() {
+		t.Fatalf("%+v %v", pair, ok)
+	}
+	if _, ok := pairOf("needs-plan", store.Record{Inputs: map[string]string{"request": "r"}}, nil); ok {
+		t.Fatal("a record without the organizing has no answer of the agent")
 	}
 }

@@ -118,7 +118,13 @@
     {#if !it.legacy_planning}<div class="mt-[5px] mb-[15px] text-[12px] text-muted">{t('changeAnswer')}</div>{/if}
   {/if}
   {#if it.legacy_planning}<div class="audit legacy-planning"><strong>{t('legacyPlanning')}</strong>{#if it.record_question}<p>{it.record_question}</p>{/if}</div>{/if}
-  {#if it.review}<div class="audit mb-[15px] rounded-[9px] border border-amber bg-amberbg px-3.5 py-2.5 text-[13px]">{it.review_reason === 'uncertain' ? t('reviewUncertain') : t('reviewRandom')}</div>{:else if it.review_reason === 'outcome'}<div class="audit mb-[15px] rounded-[9px] border border-amber bg-amberbg px-3.5 py-2.5 text-[13px]">{t('reviewOutcome')}</div>{/if}
+  {#if it.review_reason === 'disagree' || it.review_reason === 'outcome' || it.review}<div class="audit mb-[15px] rounded-[9px] border border-amber bg-amberbg px-3.5 py-2.5 text-[13px]">{t(it.review_reason === 'disagree' ? 'reviewDisagree' : it.review_reason === 'outcome' ? 'reviewOutcome' : 'reviewUncertain')}</div>{/if}
+  {#if it.review_reason === 'disagree' && it.pair}<!-- 0.11: the two AIs answered differently; both answers side by side, and the person picks one with the buttons below -->
+    <div class="ai-pair mb-[15px] grid gap-2.5 sm:grid-cols-2">
+      <div class="rounded-[9px] border border-line bg-surface2 px-3.5 py-2.5 text-[13px]" data-pair-side="model"><span class="block text-[12px] text-muted">{t('pairModel')}</span><strong class="text-[15px] font-[600]">{name(choiceOf(it.pair.model))}</strong> <span class="text-[12px] text-muted tabular-nums">{t('pairConfidence')(Math.round((it.pair.model_confidence || 0) * 100))}</span></div>
+      <div class="rounded-[9px] border border-line bg-surface2 px-3.5 py-2.5 text-[13px]" data-pair-side="agent"><span class="block text-[12px] text-muted">{t('pairAgent')}</span><strong class="text-[15px] font-[600]">{name(choiceOf(it.pair.agent))}</strong>{#if it.pair.agent_reason}<p class="mt-1 mb-0 whitespace-pre-wrap wrap-anywhere">{plainText(it.pair.agent_reason)}</p>{/if}</div>
+    </div>
+  {/if}
   {#if !onAnswer && (it.rung === 'context' || it.audit || it.stale || it.model)}<div class="mb-3 flex flex-wrap items-center gap-[9px] text-[12px] text-muted">
     {#if it.rung === 'context'}<span>{t('withContext')}</span>{/if}
     {#if it.audit}<span class="audit">{t('audit')}</span>{/if}

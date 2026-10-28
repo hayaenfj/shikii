@@ -80,7 +80,7 @@ func TestReflectBatchRoundTrip(t *testing.T) {
 	}
 	grades, _ := st.Reviews("done-as-asked")
 	_, labels, err := st.Counts("done-as-asked")
-	if err != nil || len(grades) != 2 || len(labels) != 0 {
+	if err != nil || len(grades) != 2 || personTruths(labels) != 0 {
 		t.Fatal("even a batch save does not mix provisional scores into truths")
 	}
 }

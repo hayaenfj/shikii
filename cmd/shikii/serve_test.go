@@ -1280,7 +1280,8 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	}
 	// "Unsure" in decisions whose truth comes from an outcome waits for the outcome; "unsure" in decisions a person answers waits for the person
 	st.AppendRecord(store.Record{TraceID: "pk1", SpecID: "prompt-kind", Type: "choice", Model: "m", Inputs: map[string]string{"request": "x"}, InputsHash: "pk1", Raw: map[string]float64{"edit": .5, "explain": .5}, Top: "edit", Band: "ask", At: time.Now()})
-	st.AppendRecord(store.Record{TraceID: "np1", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": "o"}, InputsHash: "np1", Raw: map[string]float64{"yes": .5, "no": .5}, Top: "yes", Band: "ask", At: time.Now()})
+	// np1: the agent saw nothing open (no) while the model leans yes: a disagreement, which waits for the person (0.11)
+	st.AppendRecord(store.Record{TraceID: "np1", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "x", "agreed": "a", "open": planningOpenUnknown}, InputsHash: "np1", Raw: map[string]float64{"yes": .5, "no": .5}, Top: "yes", Band: "ask", At: time.Now()})
 	st.AppendRecord(store.Record{TraceID: "np2", SpecID: "needs-plan", Type: "noul", Model: "m", Inputs: map[string]string{"request": "y", "agreed": "a", "open": "o"}, InputsHash: "np2", Raw: map[string]float64{"yes": .9, "no": .1}, Top: "yes", Band: "act", At: time.Now()})
 	o := serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: repo}
 	h := newServer(o)

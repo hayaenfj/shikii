@@ -2,7 +2,6 @@ package store
 
 // The AI's provisional scores are saved in records/. They are never mixed into the truths and calibration in labels/.
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,8 +23,6 @@ type Review struct {
 	Reason     string    `json:"reason"`
 	Source     Feedback  `json:"source_material"`
 	Rubric     string    `json:"rubric"`
-	Sampled    bool      `json:"sampled"`
-	Every      int       `json:"audit_every"`
 	At         time.Time `json:"at"`
 }
 
@@ -35,20 +32,9 @@ type ReviewStats struct {
 	UncertainChecked int `json:"uncertain_checked"`
 	Checked          int `json:"checked"`
 	Correct          int `json:"correct"`
-	RandomChecked    int `json:"random_checked"`
-	RandomCorrect    int `json:"random_correct"`
-	Every            int `json:"audit_every"`
 }
 
 func ReviewSpec(id string) bool { return id == "changes-in-scope" || id == "done-as-asked" }
-
-func ReviewSample(trace string, every int) bool {
-	if trace == "" || every < 1 {
-		return false
-	}
-	h := sha256.Sum256([]byte("review:" + trace))
-	return (int(h[0])*256+int(h[1]))%every == 0
-}
 
 func (s Store) Reviews(specID string) (map[string]Review, error) {
 	out := map[string]Review{}
@@ -68,10 +54,10 @@ func (s Store) Reviews(specID string) (map[string]Review, error) {
 	return out, err
 }
 
-// ReviewQuality looks only at scores a person confirmed. It keeps the random slot separate,
-// and does not replace the random results with held judgments or deliberately chosen hard cases.
+// ReviewQuality looks only at scores a person confirmed. Since 0.11 a person sees a score only when it disagrees with the decision model or
+// is undecided (no random sampling), so the share that matched is the agent's share among those disagreements.
 func ReviewQuality(reviews map[string]Review, labels map[string]Label) ReviewStats {
-	stats := ReviewStats{Scored: len(reviews), Every: 5}
+	stats := ReviewStats{Scored: len(reviews)}
 	ordered := []Review{}
 	for _, r := range reviews {
 		ordered = append(ordered, r)
@@ -79,10 +65,9 @@ func ReviewQuality(reviews map[string]Review, labels map[string]Label) ReviewSta
 			stats.Uncertain++
 		}
 	}
+	// the newest check first: of several scores of the same text, the one checked last counts
 	sort.Slice(ordered, func(i, j int) bool { return labels[ordered[i].TraceID].At.After(labels[ordered[j].TraceID].At) })
 	seen := map[string]bool{}
-	recent, errors := 0, 0
-	var lastError, windowStart time.Time
 	for _, r := range ordered {
 		l, ok := labels[r.TraceID]
 		if !ok || !HumanSource(l.Source) || l.At.Before(r.At) || Partial(l.Truth) || seen[r.InputsHash] {
@@ -94,31 +79,9 @@ func ReviewQuality(reviews map[string]Review, labels map[string]Label) ReviewSta
 			continue
 		}
 		stats.Checked++
-		correct := Correct(r.Truth, l.Truth)
-		if correct {
+		if Correct(r.Truth, l.Truth) {
 			stats.Correct++
-		} else if l.At.After(lastError) {
-			lastError = l.At
 		}
-		if !r.Sampled {
-			continue
-		}
-		stats.RandomChecked++
-		if correct {
-			stats.RandomCorrect++
-		}
-		if recent < 20 {
-			recent++
-			windowStart = l.At
-			if !correct {
-				errors++
-			}
-		}
-	}
-	// 1 in 5 at first and for kinds that had a mismatch. 1 in 20 for kinds whose latest random checks
-	// matched 20 times in a row. The line that allows acting is measured separately.
-	if recent == 20 && errors == 0 && (lastError.IsZero() || lastError.Before(windowStart)) {
-		stats.Every = 20
 	}
 	return stats
 }
@@ -165,8 +128,7 @@ func (s Store) SaveReview(r Review) (Review, error) {
 	if l, ok := labels[r.TraceID]; ok && HumanSource(l.Source) {
 		return r, fmt.Errorf("this decision already has a truth (source %s) and is not replaced by an AI score; leave it out of reviews", l.Source)
 	}
-	r.Rubric, r.Every, r.At = ReviewRubric, ReviewQuality(all, labels).Every, time.Now().UTC()
-	r.Sampled = ReviewSample(r.TraceID, r.Every)
+	r.Rubric, r.At = ReviewRubric, time.Now().UTC()
 	err = s.appendJSONL(filepath.Join(dir, r.Spec+".jsonl"), r)
 	return r, err
 }

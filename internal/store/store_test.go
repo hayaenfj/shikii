@@ -335,10 +335,17 @@ func TestHumanSourceExcludesMachineTruths(t *testing.T) {
 			t.Fatalf("%q is a truth a person (or the outcome) decided", s)
 		}
 	}
-	for _, s := range []string{"context", "judge"} {
+	// agreed (0.11): the decision model and the agent gave the same answer. Two AIs agreeing is not a person's check, and calibrating on
+	// agreements only would overstate precision
+	for _, s := range []string{"context", "judge", "agreed"} {
 		if HumanSource(s) {
 			t.Fatalf("%q is a machine truth (the model's own answer, or another model's)", s)
 		}
+	}
+	// a person's truth beats an agreed one on the same input, even an older one
+	got := LatestPerInput([]Label{{InputsHash: "x", Truth: "no", Source: "ui", At: time.Unix(1, 0)}, {InputsHash: "x", Truth: "yes", Source: "agreed", At: time.Unix(2, 0)}})
+	if len(got) != 1 || got[0].Source != "ui" {
+		t.Fatalf("the person's truth wins over an agreed one: %+v", got)
 	}
 }
 

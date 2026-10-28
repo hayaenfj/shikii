@@ -101,7 +101,7 @@ func TestPlanningSubmitRecordsEvidenceWithoutHumanTruthOrAdvice(t *testing.T) {
 		t.Fatalf("evidence not recorded: %+v", recs)
 	}
 	_, labels, _ := (store.Store{Dir: root}).Counts("needs-plan")
-	if len(labels) != 0 || len(mustLoad(t, filepath.Join(root, "decisions/needs-plan.yaml")).Calibration) != 0 {
+	if personTruths(labels) != 0 || len(mustLoad(t, filepath.Join(root, "decisions/needs-plan.yaml")).Calibration) != 0 {
 		t.Fatal("AI context is not human truth or calibration")
 	}
 	r2, err := planningCall(t, "submit", payload)
@@ -872,6 +872,116 @@ func TestSkillAsksToSearchTheWikiAgainWhenTheWorkMoves(t *testing.T) {
 	for name, text := range map[string]string{"SKILL.md": string(skill), "references/planning.md": string(planning)} {
 		if !strings.Contains(text, "moves to another area") {
 			t.Errorf("%s asks to search the wiki again by the new topic when the work moves to another area", name)
+		}
+	}
+}
+
+
+// pagePeek reads the page's /v1/status entry and /v1/queue items for one question, through the handler (no listening port).
+func pagePeek(t *testing.T, root, repo, specID string) (map[string]any, []map[string]any) {
+	t.Helper()
+	h := newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: feedbackScope(repo)})
+	var status struct {
+		Specs []map[string]any `json:"specs"`
+	}
+	var queue struct {
+		Items []map[string]any `json:"items"`
+	}
+	for _, c := range []struct {
+		path string
+		into any
+	}{{"/v1/status", &status}, {"/v1/queue?spec=" + specID, &queue}} {
+		r := httptest.NewRecorder()
+		h.ServeHTTP(r, httptest.NewRequest("GET", c.path, nil))
+		if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), c.into) != nil {
+			t.Fatalf("%s: %d %s", c.path, r.Code, r.Body.String())
+		}
+	}
+	for _, s := range status.Specs {
+		if s["id"] == specID {
+			return s, queue.Items
+		}
+	}
+	t.Fatalf("no status for %s", specID)
+	return nil, nil
+}
+
+// planningWith submits the organizing for one request with the decision model answering p (the probability of yes) and the agent's open
+// either filled (the agent's answer is "yes, ask first") or unknown (its answer is "no").
+func planningWith(t *testing.T, p float64, openFilled bool) (repo, root, trace string) {
+	t.Helper()
+	model := fakeAgentModel(t, func(string) float64 { return p })
+	repo = gitRepo(t)
+	root = hookEnv(t, model, repo)
+	usePlanningSpec(t, root)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	payload := planningPayload(root)
+	if !openFilled {
+		payload["open"] = map[string]any{"unknown": true}
+	}
+	r, err := planningCall(t, "submit", payload)
+	if err != nil || r["recorded"] != true {
+		t.Fatalf("submit: %v %v", r, err)
+	}
+	return repo, root, r["trace_id"].(string)
+}
+
+// 0.11 (5-1, 5-3): when the decision model and the agent give the same needs-plan answer, the person is not asked, even in the ask band.
+// The agreement is kept as a machine truth (source agreed) that never counts as the person's truth.
+func TestPlanningAgreementIsSettledWithoutThePerson(t *testing.T) {
+	repo, root, trace := planningWith(t, .6, true) // ask band; the model says yes, and the agent left something open (yes)
+	_, labels, _ := (store.Store{Dir: root}).Counts("needs-plan")
+	if len(labels) != 1 || labels[0].Source != "agreed" || labels[0].Truth != "yes" || labels[0].TraceID != trace || store.HumanSource(labels[0].Source) {
+		t.Fatalf("an agreement is kept as an agreed machine truth: %+v", labels)
+	}
+	if asked := loadSession(root, "planning").Asked; len(asked) != 0 {
+		t.Fatalf("an agreement does not wait for the person: %+v", asked)
+	}
+	status, items := pagePeek(t, root, repo, "needs-plan")
+	if status["waiting_for_person"] != float64(0) || status["labels"] != float64(0) {
+		t.Fatalf("nothing waits and no truth of the person is counted: %v", status)
+	}
+	for _, it := range items {
+		if it["trace_id"] == trace && it["waits_for_person"] == true {
+			t.Fatalf("the agreed decision does not wait in the queue: %v", it)
+		}
+	}
+}
+
+// 0.11 (5-2): only a disagreement waits for the person, with both answers on the card. A confident "no" of the model (discard band) the agent
+// disagrees with waits too, and an ask-band "yes" the agent answers "no" to.
+func TestPlanningDisagreementWaitsForThePerson(t *testing.T) {
+	for _, c := range []struct {
+		p          float64
+		openFilled bool
+		model      string
+		agent      string
+	}{{.6, false, "yes", "no"}, {.2, true, "no", "yes"}} {
+		repo, root, trace := planningWith(t, c.p, c.openFilled)
+		_, labels, _ := (store.Store{Dir: root}).Counts("needs-plan")
+		if len(labels) != 0 {
+			t.Fatalf("p=%.1f: a disagreement writes no truth: %+v", c.p, labels)
+		}
+		if asked := loadSession(root, "planning").Asked; len(asked) != 1 || asked[0].Trace != trace {
+			t.Fatalf("p=%.1f: a disagreement waits for the person: %+v", c.p, asked)
+		}
+		status, items := pagePeek(t, root, repo, "needs-plan")
+		if status["waiting_for_person"] != float64(1) {
+			t.Fatalf("p=%.1f: the status counts the disagreement: %v", c.p, status)
+		}
+		if len(items) != 1 || items[0]["trace_id"] != trace || items[0]["waits_for_person"] != true || items[0]["review_reason"] != "disagree" {
+			t.Fatalf("p=%.1f: the queue shows the disagreement as waiting: %v", c.p, items)
+		}
+		pair, _ := items[0]["pair"].(map[string]any)
+		conf := c.p
+		if c.model == "no" {
+			conf = 1 - c.p
+		}
+		if pair["model"] != c.model || pair["agent"] != c.agent || fmt.Sprintf("%.2f", pair["model_confidence"]) != fmt.Sprintf("%.2f", conf) {
+			t.Fatalf("p=%.1f: the card carries both answers: %v", c.p, pair)
+		}
+		if c.openFilled && !strings.Contains(fmt.Sprint(pair["agent_reason"]), "keep the existing filters") {
+			t.Fatalf("p=%.1f: the agent's reason is its organizing of what is open: %v", c.p, pair)
 		}
 	}
 }

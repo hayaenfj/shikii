@@ -72,7 +72,7 @@ Use the exact source keys returned by query:
 
 Agreement needs evidence from `current_user` or `previous_user`; wiki and history alone cannot establish current agreement. For a short acceptance, also cite the proposal or prior constraint it refers to. Latest withdrawals and changed conditions override earlier agreement. Do not broaden acceptance to a different request.
 
-For `open`, describe a concrete unresolved choice that blocks the **current** task, or explain why the specified task can start without one. Do not put the question being answered, a possible later design decision, or an unspecified helper name in that category. Support a finding of no blocking choices with the actual request or delegated scope. If the evidence is insufficient, use only `{"unknown":true}` for that item; do not invent a summary or quote.
+For `open`, describe a concrete unresolved choice that blocks the **current** task, or explain why the specified task can start without one. Do not put the question being answered, a possible later design decision, or an unspecified helper name in that category. Support a finding of no blocking choices with the actual request or delegated scope. If the evidence is insufficient, use only `{"unknown":true}` for that item; do not invent a summary or quote. shikii reads `open` as your own answer to needs-plan (0.11): a filled `open` is "yes, the person has something to decide first", `{"unknown":true}` is "no". When it matches the decision model's answer, the person is not asked and the agreement is kept as a machine truth (source `agreed`, never the person's); when it differs, the person is asked and sees both answers.
 
 ## Read the result
 

@@ -430,11 +430,23 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		if err := st.SaveRecordText(recordOf(sp, d, inputs), map[string]string{"request": s.Planning.Sources["current_user"]}); err != nil {
 			return err
 		}
+		// the agent's organizing is its own answer, given before it saw the model's (0.11): the same answer is settled as an agreed machine
+		// truth without the person; a different one waits for the person. The 1-in-20 spot check of a calibrated act stays either way
+		rec := recordOf(sp, d, inputs)
+		waits := waitsForPersonFor("needs-plan", d)
+		if pair, ok := pairOf("needs-plan", rec, nil); ok {
+			waits = !pair.agree() || (d.Band == decide.Act && d.IsCalibrated && store.AuditSample(d.TraceID))
+			if pair.agree() {
+				if err := writeAgreed(st, &rec, pair.Agent); err != nil {
+					return err
+				}
+			}
+		}
 		alreadyAsked := false
 		for _, item := range s.Asked {
 			alreadyAsked = alreadyAsked || item.Trace == d.TraceID
 		}
-		if !alreadyAsked && waitsForPersonFor("needs-plan", d) {
+		if !alreadyAsked && waits {
 			s.Asked = append(s.Asked, askedItem{Spec: "needs-plan", Trace: d.TraceID})
 		}
 	}

@@ -1516,6 +1516,11 @@
     font-weight: 550;
   }
 
+  .font-\[600\] {
+    --tw-font-weight: 600;
+    font-weight: 600;
+  }
+
   .font-\[650\] {
     --tw-font-weight: 650;
     font-weight: 650;
@@ -2069,6 +2074,10 @@
   @media (min-width: 520px) {
     .sm\:hidden {
       display: none;
+    }
+
+    .sm\:grid-cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 

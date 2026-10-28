@@ -3506,7 +3506,7 @@ func TestMemoryEffectPreservesDeliveredRevisionAndIndependentPending(t *testing.
 		t.Fatal("keeps the number of quotes delivered apart from the number of observations that they helped")
 	}
 	_, labels, err := st.Counts("done-as-asked")
-	if err != nil || len(labels) != 0 {
+	if err != nil || personTruths(labels) != 0 {
 		t.Fatal("provisional memory assessments are not mixed into truths or calibration")
 	}
 }

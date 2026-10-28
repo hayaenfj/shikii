@@ -1686,7 +1686,7 @@ func unanswered(st store.Store, asked []askedItem) []string {
 		if !ok {
 			continue
 		}
-		if show, _, _ := reviewQueueState(rec, labeled[a.Spec], reviews[a.Spec]); show {
+		if show, _, _ := reviewQueueState(a.Spec, rec, labeled[a.Spec], reviews[a.Spec]); show {
 			out = append(out, a.Trace)
 		}
 	}

@@ -898,8 +898,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	type queued struct {
 		record store.Record
-		audit  bool
-		reason string
+		queueItem
 	}
 	var pending []queued
 	settled := map[string]bool{}
@@ -916,12 +915,8 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		if legacyPlanningRecord(sp, rec) || undecidedConflict(sp.ID, rec, labeled, settled) {
 			continue
 		}
-		show, audit, reason := reviewQueueState(rec, labeled, reviews)
-		if !show && outcomeCheckShown(checkOutcome, rec, labeled) {
-			show, audit, reason = true, true, "outcome"
-		}
-		if show && !superseded[rec.TraceID] {
-			pending = append(pending, queued{rec, audit, reason})
+		if q := queueItemOf(id, rec, labeled, reviews, checkOutcome); q.show && !superseded[rec.TraceID] {
+			pending = append(pending, queued{rec, q})
 		}
 	}
 	order := func(it queued) int {
@@ -948,8 +943,11 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "raw": rec.Raw, "stale": !sp.LiveHash(rec.SpecHash),
 			"answerable": answerable, "choices": choices, "rung": rec.RungOf(), "project": rec.Project,
-			"audit": item.audit, "review_reason": item.reason, "waits_for_person": waitsForPersonRecord(id, item.record, item.audit),
+			"audit": item.audit, "review_reason": item.reason, "waits_for_person": item.waits,
 		})
+		if item.pair != nil && (item.reason == "disagree" || item.reason == "uncertain") { // both answers, for the person to choose between (0.11)
+			items[len(items)-1]["pair"] = item.pair
+		}
 		if grade, ok := reviews[rec.TraceID]; ok {
 			items[len(items)-1]["review"] = grade
 		}
@@ -1061,14 +1059,11 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				undecided++
 				continue
 			}
-			if show, audit, _ := reviewQueueState(rec, labeled, reviews); show {
+			if q := queueItemOf(sp.ID, rec, labeled, reviews, checkOutcome); q.show { // the same rule as the queue
 				todo++
-				if waitsForPersonRecord(sp.ID, rec, audit) { // only spot checks and unsure decisions whose truth no outcome gives wait for a person's answer (0.8.0)
+				if q.waits {
 					waitingPerson++
 				}
-			} else if outcomeCheckShown(checkOutcome, rec, labeled) { // an outcome check waits for the person as the queue shows it (0.11)
-				todo++
-				waitingPerson++
 			}
 			if _, graded := reviews[rec.TraceID]; rec.ReviewPending && !graded {
 				if _, answered := labeled[rec.TraceID]; !answered {
