@@ -7,7 +7,7 @@ package main
 //
 // Storage is each project's .shikii/ (decisions/ wiki/ records/ labels/ sessions/). The shared side holds only templates, tools and the page entry. The model is the local :8080. The answer page is :8096.
 // Advice from decisions is given by band only once a line is drawn (hookOutcome). Past exchanges can be quoted even without a line.
-// No deny is issued and no tool is stopped. Stopping is the person's job.
+// No tool is stopped by the hooks' own judgment; the one deny is a guard the person enabled, refusing a file change or a command right before it (0.11). Stopping is the person's job.
 // Failures (no model, slow, cannot write) exit 0 silently: a hook must never stop the work. The reason goes to hook.log as one line.
 
 import (
@@ -141,7 +141,7 @@ type hookInput struct {
 
 // hookOut is what the hook returns. Empty means output nothing (no judgment). No permission decision (allow / ask / deny) is output.
 type hookOut struct {
-	Context string // text passed to the agent (additionalContext. UserPromptSubmit and SubagentStart)
+	Context string // text passed to the agent (additionalContext. UserPromptSubmit, SubagentStart, SessionStart and PreToolUse)
 	System  string // text shown to the person in the terminal (systemMessage)
 	Block   bool   // stop the Stop (a stop check was hit. 0.7.3). Claude Code passes the reason and continues
 	Deny    bool   // refuse the tool call (PreToolUse; a guard the person enabled stopped a file change before it was written, 0.11). The reason goes to the agent
