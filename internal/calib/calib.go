@@ -170,6 +170,49 @@ func Brier(probs []float64, truths []bool, weights []float64) float64 {
 	return sum / wsum
 }
 
+// Discrimination is how well the probabilities rank the truths: AUC (0.5 is chance, below 0.5 points the wrong way) and its
+// Hanley–McNeil 95% interval. It does not depend on how often each answer is true, so it reads the same for a question
+// answered "yes" nine times in ten as for an even one (0.10).
+type Discrimination struct {
+	AUC, Low, High float64
+	Pos, Neg       int
+}
+
+// AUC is the weighted share of (positive, negative) pairs where the positive has the higher probability (a tie counts half).
+// ok=false when one side has no truths.
+func AUC(probs []float64, truths []bool, weights []float64) (Discrimination, bool) {
+	var d Discrimination
+	var wins, pairs float64
+	for i, p := range probs {
+		if !truths[i] {
+			continue
+		}
+		d.Pos++
+		for j, q := range probs {
+			if truths[j] {
+				continue
+			}
+			w := weightAt(weights, i) * weightAt(weights, j)
+			pairs += w
+			switch {
+			case p > q:
+				wins += w
+			case p == q:
+				wins += w / 2
+			}
+		}
+	}
+	d.Neg = len(probs) - d.Pos
+	if d.Pos == 0 || d.Neg == 0 || pairs == 0 {
+		return d, false
+	}
+	a := wins / pairs
+	q1, q2 := a/(2-a), 2*a*a/(1+a)
+	se := math.Sqrt((a*(1-a) + float64(d.Pos-1)*(q1-a*a) + float64(d.Neg-1)*(q2-a*a)) / float64(d.Pos*d.Neg))
+	d.AUC, d.Low, d.High = a, math.Max(0, a-1.96*se), math.Min(1, a+1.96*se)
+	return d, true
+}
+
 // Bin is one bar of the reliability diagram.
 type Bin struct {
 	Lo, Hi     float64

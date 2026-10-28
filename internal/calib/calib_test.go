@@ -157,3 +157,31 @@ func TestFitDoesNotDivergeOnSaturatedSeparableData(t *testing.T) {
 		t.Fatalf("weakest positive dropped to %.3f after calibration (platt=%+v)", p, pl)
 	}
 }
+
+// AUC counts the pairs where the positive is above the negative (a tie counts half), weighted, and gives the Hanley–McNeil 95% interval.
+// The expected numbers are worked out by hand: pos {0.9, 0.8, 0.4} and neg {0.7, 0.3} win 5 of 6 pairs; SE² =
+// (A(1−A) + 2(A/(2−A) − A²) + (2A²/(1+A) − A²)) / 6 with A = 5/6 gives SE ≈ 0.2007, so the interval is about 0.440 to 1 (cut at 1).
+func TestAUCCountsPairsAndGivesTheInterval(t *testing.T) {
+	probs := []float64{0.9, 0.8, 0.4, 0.7, 0.3}
+	truths := []bool{true, true, true, false, false}
+	d, ok := AUC(probs, truths, nil)
+	if !ok || math.Abs(d.AUC-5.0/6) > 1e-9 || d.Pos != 3 || d.Neg != 2 {
+		t.Fatalf("5 of 6 pairs in order: %+v ok=%v", d, ok)
+	}
+	if math.Abs(d.Low-0.4399) > 1e-3 || d.High != 1 {
+		t.Fatalf("Hanley-McNeil interval: %+v", d)
+	}
+	// the 0.4 positive weighs 2: it wins 2 (against 0.3) and loses 2 (against 0.7); the others win 4, out of (1+1+2)·2 = 8
+	if d, _ := AUC(probs, truths, []float64{1, 1, 2, 1, 1}); math.Abs(d.AUC-0.75) > 1e-9 {
+		t.Fatalf("weighted pairs: %+v", d)
+	}
+	if d, _ := AUC([]float64{0.5, 0.5}, []bool{true, false}, nil); d.AUC != 0.5 {
+		t.Fatalf("a tie counts half: %+v", d)
+	}
+	if d, _ := AUC([]float64{0.2, 0.9}, []bool{true, false}, nil); d.AUC != 0 {
+		t.Fatalf("the positive below the negative is 0: %+v", d)
+	}
+	if _, ok := AUC([]float64{0.9, 0.8}, []bool{true, true}, nil); ok {
+		t.Fatal("one side only has no AUC")
+	}
+}

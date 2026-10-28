@@ -1629,12 +1629,13 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 		// so the page shows it as a quality refusal, not as a failure with the English fitting message (0.9.3: a person saw it after answering on the page)
 		reversed bool
 		oneSided bool // every truth is "yes": also a quality refusal (the page says only one kind of answer), not the English "need both" failure
+		mixed    bool // the probability says almost nothing about the truth: no clear signal, though the share of "yes" alone passes the precision at act
 	}{
-		{"overlap", 50, 50, false, "predictions", false, false},
-		{"insufficient", 2, 50, false, "short of", false, false},
-		{"precision", 2, 2, true, "predictions", false, false},
-		{"reversed", 50, 50, false, "predictions", true, false},
-		{"one-sided", 50, 50, false, "predictions", false, true},
+		{"no-signal", 50, 50, false, "predictions", false, false, true},
+		{"insufficient", 2, 50, false, "short of", false, false, false},
+		{"precision", 2, 2, true, "predictions", false, false, false},
+		{"reversed", 50, 50, false, "predictions", true, false, false},
+		{"one-sided", 50, 50, false, "predictions", false, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -1662,16 +1663,25 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 				if tc.oneSided {
 					truth = "yes"
 				}
+				if tc.mixed { // "yes" 9 times in 10, so act at 0.70 is right 90% of the time on the share alone, but the probability barely ranks the answers (AUC about 0.54)
+					truth, raw = "yes", 0.75
+					if i%2 == 0 {
+						raw = 0.8
+					}
+					if i == 1 || i == 3 || i == 5 || i == 10 || i == 12 {
+						truth = "no"
+					}
+				}
 				if tc.reversed {
 					raw = 0.9
 					if truth == "yes" {
 						raw = 0.1
 					}
 				}
-				if tc.n >= tc.min && !tc.choice && i == 0 {
+				if tc.n >= tc.min && !tc.choice && !tc.mixed && i == 0 {
 					raw = 0.4
 				}
-				if tc.n >= tc.min && !tc.choice && i == 1 {
+				if tc.n >= tc.min && !tc.choice && !tc.mixed && i == 1 {
 					raw = 0.6
 				}
 				if tc.choice {
@@ -1706,6 +1716,96 @@ func TestCalibrationRefusalExplainsActualReason(t *testing.T) {
 				t.Fatal("refused calibration changed spec")
 			}
 		})
+	}
+}
+
+// 0.10: check fails a line whose probabilities do not tell the answers apart even when the share of "yes" alone passes the precision
+// at act (an overlap alone no longer fails it). The rows carry raw probabilities, so no model is called.
+func TestCheckFailsALineWithNoClearSignal(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		noSignal bool
+	}{{"no-signal", true}, {"overlap", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeNoulSpec(t, dir)
+			rows := []map[string]any{}
+			for i := 0; i < 50; i++ {
+				truth, raw := "no", 0.2
+				if i%2 == 0 {
+					truth, raw = "yes", 0.8
+				}
+				if i == 1 {
+					raw = 0.9 // one "no" above the "yes" answers
+				}
+				if tc.noSignal { // the same rows as the no-signal refusal: "yes" 9 times in 10, AUC about 0.54
+					truth, raw = "yes", 0.75
+					if i%2 == 0 {
+						raw = 0.8
+					}
+					if i == 1 || i == 3 || i == 5 || i == 10 || i == 12 {
+						truth = "no"
+					}
+				}
+				rows = append(rows, map[string]any{"inputs": map[string]string{"a": fmt.Sprint(i)}, "truth": truth, "raw": raw})
+			}
+			file := filepath.Join(dir, "labels.json")
+			data, _ := json.Marshal(rows)
+			if err := os.WriteFile(file, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			src, _ := os.ReadFile(path)
+			if err := os.WriteFile(path, bytes.Replace(src, []byte("eval:\n"), []byte("eval:\n  labeled: "+file+"\n"), 1), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			sp := mustLoad(t, path)
+			sp.PutCalibration(spec.Calibration{Model: "m", SpecHash: sp.Hash(), Method: "identity", FittedOn: file, N: 50, FittedAt: "2026-10-28"})
+			if err := sp.Save(); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			out := capture(t, func() error { err = cmdCheck([]string{"--store", filepath.Join(dir, "store"), path}); return nil })
+			failed := err != nil && strings.Contains(out+err.Error(), "do not tell the answers apart")
+			if failed != tc.noSignal {
+				t.Fatalf("check must fail only the line with no clear signal: err=%v\n%s", err, out)
+			}
+		})
+	}
+}
+
+// 0.10: a real model's answers always overlap somewhere. One "no" above one "yes" in an otherwise clear ranking no longer refuses the
+// line (before, any overlapping pair did, so a question a person answered with AUC 0.84 could never get one); the precision at act still guards it.
+func TestCalibrationDrawsALineThroughAnOverlap(t *testing.T) {
+	dir := t.TempDir()
+	path := writeNoulSpec(t, dir)
+	rows := []map[string]any{}
+	for i := 0; i < 50; i++ {
+		truth, raw := "no", 0.2
+		if i%2 == 0 {
+			truth, raw = "yes", 0.8
+		}
+		switch i {
+		case 0:
+			raw = 0.4 // a "yes" below
+		case 1:
+			raw = 0.6 // a "no" above
+		}
+		rows = append(rows, map[string]any{"inputs": map[string]string{"a": fmt.Sprint(i)}, "truth": truth, "raw": raw})
+	}
+	file := filepath.Join(dir, "labels.json")
+	data, _ := json.Marshal(rows)
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var report bytes.Buffer
+	if err := runCalibrate(path, calibrateOpts{output: &report, storeDir: filepath.Join(dir, "store"), labeled: file, write: true}); err != nil {
+		t.Fatalf("one overlapping pair must not refuse the line: %v\n%s", err, report.String())
+	}
+	if !strings.Contains(report.String(), "discrimination: AUC=") {
+		t.Fatalf("the report says how well the answers are told apart:\n%s", report.String())
+	}
+	if len(mustLoad(t, path).Calibration) == 0 {
+		t.Fatalf("the line is written:\n%s", report.String())
 	}
 }
 

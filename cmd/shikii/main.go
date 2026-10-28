@@ -1046,8 +1046,12 @@ func calibrateNoul(sp *spec.Spec, labels []store.Label, bins int, reports ...io.
 		pl.Apply(sep.NegMax), sp.Thresholds.Ask, pl.Apply(sep.PosMin), sp.Thresholds.Act)
 	printThresholdReport(sp.Thresholds, calProbs, truths, weights, stdout)
 	printReliability("calibrated", calProbs, truths, weights, bins, stdout)
-	if sep.Inverted {
-		fmt.Fprintln(stdout, "WARNING: positives and negatives overlap on Δ; a monotone calibration cannot fix this. Change the question or the model.")
+	// Overlapping answers are normal for a real model; the calibration and the precision at act below handle them. What no line can fix
+	// is a ranking with no clear signal: the AUC's 95% interval reaches 0.5 (before 0.10 a single overlapping pair refused the line)
+	disc, _ := calib.AUC(rawProbs, truths, weights)
+	fmt.Fprintf(stdout, "discrimination: AUC=%.3f (95%%: %.3f-%.3f) on %d yes / %d no\n", disc.AUC, disc.Low, disc.High, disc.Pos, disc.Neg)
+	if disc.Low <= 0.5 {
+		fmt.Fprintln(stdout, "WARNING: the probabilities do not tell the answers apart (the AUC's 95% interval reaches 0.5); a calibration cannot fix this. Change the question or the model.")
 		return spec.Calibration{Method: "platt", Bias: pl.Bias, Temperature: pl.Temperature,
 			Brier: calib.Brier(calProbs, truths, weights), ECE: calib.ECE(calProbs, truths, weights, bins)}, false, nil
 	}
@@ -1503,7 +1507,7 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 			out = append(out, fmt.Sprintf("%s: precision at act on human-checked decisions is %.3f < thresholds.act %.2f on %d act decisions (machine truths made it look like %.3f)", key, hPrec, sp.Thresholds.Act, hAct, prec))
 		}
 		if inverted {
-			out = append(out, key+": positives and negatives overlap on Δ; a monotone calibration cannot separate them")
+			out = append(out, key+": the probabilities do not tell the answers apart (the AUC's 95% interval reaches 0.5)")
 		}
 	}
 	return out
@@ -1569,7 +1573,8 @@ func evaluateCalibration(sp *spec.Spec, c spec.Calibration, labels []store.Label
 			}
 			probs[i], truths[i], weights[i] = p, l.Truth == "yes", l.Weight
 		}
-		inverted = calib.CheckSeparation(samples).Inverted
+		disc, ok := calib.AUC(probs, truths, weights)
+		inverted = ok && disc.Low <= 0.5 // no clear signal (0.10: an overlap alone no longer fails the check)
 	default:
 		for i, l := range labels {
 			dist := l.Raw
