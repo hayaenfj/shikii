@@ -98,7 +98,17 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 		if seen[key] || silenced(effects[store.PairKey(key, door)]) { // unused twice and never helpful at the request door: not quoted again (0.12)
 			continue
 		}
-		quotes = append(quotes, lessonQuote(p))
+		q := lessonQuote(p)
+		// ask the decision model whether the lesson applies to this request (lesson-applies, 0.12): a trusted no skips it. Not for a
+		// subagent's delivery: a child started again gets the same record (same id, same quotes), so no new decision is made for it
+		if door != "" && parent == "" {
+			trace, skip := lessonApplies(root, scope, request, lessonAppliesRequestTarget, p)
+			if skip {
+				continue
+			}
+			q.Trace = trace
+		}
+		quotes = append(quotes, q)
 		keys = append(keys, key)
 	}
 	for _, a := range answers {

@@ -37,7 +37,7 @@ const (
 var outcomeCheckSpecs = map[string]bool{"changes-in-scope": true, "done-as-asked": true}
 
 // outcomeSpecs are the decisions that get truths from outcomes. Even when unsure (ask) they do not wait for the person's answer (the outcome answers).
-var outcomeSpecs = map[string]bool{"prompt-kind": true, "changes-in-scope": true, "done-as-asked": true, "wiki-place": true, "wiki-conflict": true}
+var outcomeSpecs = map[string]bool{"prompt-kind": true, "changes-in-scope": true, "done-as-asked": true, "wiki-place": true, "wiki-conflict": true, "lesson-applies": true}
 
 // waitsForPersonFor reports whether this decision waits for the person's answer.
 // Decisions without a line do nothing automatically, so there is nothing to spot-check. Decisions that get truths from outcomes wait for the outcome even when unsure.

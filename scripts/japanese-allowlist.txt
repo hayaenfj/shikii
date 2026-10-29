@@ -54,6 +54,7 @@
 2 integrations/claude-code.md
 4 integrations/claude-code/specs/changes-in-scope.yaml
 4 integrations/claude-code/specs/done-as-asked.yaml
+4 integrations/claude-code/specs/lesson-applies.yaml
 4 integrations/claude-code/specs/needs-plan.yaml
 7 integrations/claude-code/specs/prompt-kind.yaml
 4 integrations/claude-code/specs/wiki-conflict.yaml

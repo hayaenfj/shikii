@@ -28,7 +28,8 @@ type MemoryQuote struct {
 	Request    string      `json:"request,omitempty"`
 	Summary    string      `json:"summary,omitempty"`
 	Reply      string      `json:"reply,omitempty"`
-	Said       string      `json:"said,omitempty"` // a person's past answer (key decision:<trace>): what the person answered, in the page's words; Request is that request
+	Trace      string      `json:"trace,omitempty"` // the lesson-applies decision made for this delivery (0.12): the reflection's assessment becomes its outcome truth
+	Said       string      `json:"said,omitempty"`  // a person's past answer (key decision:<trace>): what the person answered, in the page's words; Request is that request
 }
 
 type MemoryDelivery struct {

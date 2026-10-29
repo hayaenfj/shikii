@@ -10,7 +10,7 @@ Both are kept in the same project, but **the conversation's hypotheses and the A
 
 ## 1. Initialize a project once
 
-`shikii --init` (`shikii init` does the same) prepares the project's `.shikii/`, the four ready-made questions, the wiki, the MCP settings, the conventions and the entry to the page. The completion mark `.shikii/project.json` is written last. Hooks run only where initialization succeeded, and running it again keeps the existing settings, records and truths.
+`shikii --init` (`shikii init` does the same) prepares the project's `.shikii/`, the seven ready-made questions (4 for the hooks, 2 for the wiki, 1 for delivering lessons), the wiki, the MCP settings, the conventions and the entry to the page. The completion mark `.shikii/project.json` is written last. Hooks run only where initialization succeeded, and running it again keeps the existing settings, records and truths.
 
 Inside Git, the unit is the project root at its real path; outside Git, it is the folder you ran it in. Subfolders of the same repository and paths through a symlink use the same store, and another project with the same name is never mixed in. The shared `~/.shikii/agent` holds the types, tools and the index of projects.
 
@@ -35,7 +35,7 @@ Automatic connection uses the Claude Code and Codex hooks (before a request and 
 |---|---|
 | When a request arrives | Ties the previous reply to the person's next message. Hands related memories over briefly. Asks the decision model what kind of request this is and how to proceed |
 | When the turn closes | Records the request, the file changes and the last reply. Asks the decision model about scope and completion. Applies the active guards (guards/) to the changed files, added lines and commits, and if one is hit, stops and has the agent fix it. Gives any needed guidance and runs the periodic checks |
-| Just before a file edit or a command | Delivers at most 1 lesson whose title, lesson, applies_to or a code span of its body names that file or command (PreToolUse for Edit / Write / MultiEdit / NotebookEdit / Bash, only in Claude Code. No model; context only; a deny comes only from a forbidden-commands guard the person enabled) |
+| Just before a file edit or a command | Delivers at most 1 lesson whose title, lesson, applies_to or a code span of its body names that file or command (PreToolUse for Edit / Write / MultiEdit / NotebookEdit / Bash, only in Claude Code. Words pick the candidates and the decision model is asked lesson-applies once for the one about to go out, a trusted no skipping it; context only; a deny comes only from a forbidden-commands guard the person enabled) |
 | Just before a subagent starts | Keeps a copy of the task text handed to the child (only PreToolUse for Agent / Task, only in Claude Code. It outputs nothing and does not stop the tool) |
 | When a subagent starts | Hands over lessons close to the saved task text, in the same form. Without a saved copy, only this project's rules whose scene is "always" (only in Claude Code. The parent's copies are left unchanged, except that the copy of the task given to the child that used it is removed) |
 

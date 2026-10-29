@@ -204,7 +204,11 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		result.Wiki = append(result.Wiki, receipt)
 	}
 	for _, a := range req.Memory {
-		err := (store.Store{Dir: root}).SaveMemoryAssessment(scope, store.MemoryAssessment{SourceID: a.SourceID, Key: a.Key, Result: a.Result, Decision: a.Decision, Evidence: a.Evidence, CorrectionResult: a.CorrectionResult})
+		assessment := store.MemoryAssessment{SourceID: a.SourceID, Key: a.Key, Result: a.Result, Decision: a.Decision, Evidence: a.Evidence, CorrectionResult: a.CorrectionResult}
+		err := (store.Store{Dir: root}).SaveMemoryAssessment(scope, assessment)
+		if err == nil { // the assessment is the outcome truth of the delivery's lesson-applies decision (0.12)
+			err = labelLessonApplies(store.Store{Dir: root}, scope, assessment)
+		}
 		receipt := reflectReceipt{SourceID: a.SourceID, Key: a.Key}
 		if err != nil {
 			result.Complete, receipt.Error = false, err.Error()

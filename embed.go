@@ -14,7 +14,8 @@ var SkillFS embed.FS
 //go:embed wiki/index.md wiki/types wiki/patterns wiki/models
 var WikiFS embed.FS
 
-// AgentSpecsFS is the specs for the AI's own thinking (integrations/claude-code/specs/: prompt-kind and needs-plan before thinking, changes-in-scope and done-as-asked after).
+// AgentSpecsFS is the specs for the AI's own thinking (integrations/claude-code/specs/: prompt-kind and needs-plan before thinking, changes-in-scope and done-as-asked after;
+// wiki-place and wiki-conflict when sorting the wiki; lesson-applies right before delivering a lesson, 0.12).
 // `shikii hook install` copies only the missing ones to ~/.shikii/agent/decisions/ (specs with a line, or edited by a person, are not touched).
 //
 //go:embed integrations/claude-code/specs

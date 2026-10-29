@@ -1,0 +1,39 @@
+# Lesson applies: right before the agent runs this command or edits this file in this request, does this lesson apply?
+# The hooks ask this for the lesson they are about to deliver (chosen by its words). Until a line is drawn the answer is only recorded;
+# once drawn, a confident "no" keeps that lesson from being delivered at that moment and the next candidate is looked at.
+# The truth comes from the agent's own reflection on the delivery: "helpful" is yes, "unused" or "harmful" is no, "unknown" gives none
+# (weight 1). The person does not answer.
+id: lesson-applies
+version: 1
+type: noul
+question: "An agent working on a software project is about to act (run the command or change the file in target) for the request below. A lesson from the project's own wiki is shown. Does the lesson apply to this moment, so that reading it right now would change or confirm what the agent is about to do? Answer no when the lesson is about something else, even if it names the same command or file in passing."
+state:
+  template: |
+    request: {{ request }}
+    target: {{ target }}
+    lesson title: {{ title }}
+    lesson: {{ lesson }}
+    lesson applies to: {{ applies_to }}
+  required: [request, target, title, lesson, applies_to]
+policy:
+  # The owner allowed sending request and lesson text to the decision model (2026-10-23). The text is also kept in the local records
+  send_to: [hosted, local]
+  pii: false
+thresholds:
+  act: 0.75
+  ask: 0.55
+eval:
+  min_n: 50
+display:
+  ja:
+    title: 教訓はこの瞬間に当てはまるか
+    question: この依頼で、このコマンド・ファイルの直前に、この教訓は当てはまるか？(当てはまれば届け、違えば次の候補を見る)
+    options:
+      "yes": 当てはまる(届ける)
+      "no": 別の話(届けない)
+  en:
+    title: Does the lesson apply right now
+    question: Right before this command or file in this request, does this lesson apply? (If so, deliver it; if not, look at the next candidate)
+    options:
+      "yes": It applies (deliver)
+      "no": Something else (do not deliver)

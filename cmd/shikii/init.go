@@ -67,7 +67,7 @@ func cmdInit(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "Built-in decisions: prepared %d kinds (%d hook questions and %d wiki questions; %d new, existing settings kept)\n", len(hookSpecs)+len(wikiSpecs), len(hookSpecs), len(wikiSpecs), nSpecs)
+	fmt.Fprintf(stdout, "Built-in decisions: prepared %d kinds (%d hook questions, %d wiki questions and %d delivery question; %d new, existing settings kept)\n", len(hookSpecs)+len(wikiSpecs)+len(deliverySpecs), len(hookSpecs), len(wikiSpecs), len(deliverySpecs), nSpecs)
 	// Built-in knowledge: copy the type, pattern and model pages that are missing (tune --propose reads these to make candidates. Pages a person edited are left alone)
 	n, err := seedWiki(filepath.Join(root, "wiki"))
 	if err != nil {

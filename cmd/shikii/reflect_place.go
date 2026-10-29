@@ -20,7 +20,7 @@ import (
 )
 
 // machineOnlySpecs are decisions people do not answer (the AI answers; the truth comes from the result of reflection). The page does not count them as waiting for review; it only shows the cards (0.8.0).
-var machineOnlySpecs = map[string]bool{"wiki-place": true, "wiki-conflict": true}
+var machineOnlySpecs = map[string]bool{"wiki-place": true, "wiki-conflict": true, "lesson-applies": true}
 
 // settledDrafts are drafts (lesson texts) whose save in reflection is done: drafts whose insertion-point decision (wiki-place) got a truth from the result.
 // A contradiction decision (wiki-conflict) gets no truth for pages the draft did not touch (whether they disagree is unknown), so

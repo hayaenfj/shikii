@@ -433,29 +433,44 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			ranked[j], ranked[j-1] = ranked[j-1], ranked[j]
 		}
 	}
+	// the lesson to deliver: the best-ranked page this session has not had within the hour, unless the decision model is confident it does
+	// not apply right now (lesson-applies, 0.12; asked outside the session lock). Its trace goes into the delivery for the outcome truth.
+	seen := map[string]bool{}
+	for _, m := range snapshot.Memories {
+		if age := time.Since(m.At); age >= 0 && age < time.Hour {
+			seen[m.Key] = true
+		}
+	}
+	var chosen *toolCandidate
+	var quote memoryQuote
+	for i := range ranked {
+		c := ranked[i]
+		q := lessonQuote(c.page)
+		if seen[q.Key] {
+			continue
+		}
+		trace, skip := lessonApplies(agent, snapshot.Scope, snapshot.Request, target.label, c.page)
+		if skip {
+			continue
+		}
+		q.Trace = trace
+		chosen, quote = &c, q
+		break
+	}
+	if chosen == nil {
+		return hookOut{}, nil
+	}
 	var context string
 	err = updateSession(agent, in.SessionID, func(s *hookSession) {
 		if s.TurnID != snapshot.TurnID {
 			return // a new request arrived meanwhile: this tool call belongs to it, and the next one gets its lesson
 		}
-		seen := map[string]bool{}
 		for _, m := range s.Memories {
-			if age := time.Since(m.At); age >= 0 && age < time.Hour {
-				seen[m.Key] = true
+			if age := time.Since(m.At); age >= 0 && age < time.Hour && m.Key == quote.Key {
+				return // delivered meanwhile by another call of this turn
 			}
 		}
-		for _, c := range ranked {
-			q := lessonQuote(c.page)
-			if seen[q.Key] {
-				continue
-			}
-			var derr error
-			context, derr = deliverToolLesson(agent, s, q, target, c.phrase, in.AgentID)
-			if derr != nil {
-				err = derr
-			}
-			return
-		}
+		context, err = deliverToolLesson(agent, s, quote, target, chosen.phrase, in.AgentID)
 	})
 	if err != nil || context == "" {
 		return hookOut{}, err
