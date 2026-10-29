@@ -299,8 +299,10 @@ func skipHereDocument(command string, from int, h hereDocument) int {
 }
 
 // toolLessonScore scores how a page names the target: the file mention (2 for its path, 1 for its base name) or 1 for a command
-// phrase, read in the title, the lesson and applies_to (not the body: it is long and names many things in passing). A page that names
-// the target in its title or applies_to (its condition) ranks above one that names it only in the lesson.
+// phrase, read in the title, the lesson and applies_to, and, when none of those names it, 1 for a mention inside a code span of the
+// body (`cmd/shikii/version.go`, `make test`, a fenced block; 0.12: in hayabusa-lang 104 of 152 pages named their command or file
+// only there). Plain body text is not read: it is long and names many things in passing. A page that names the target in its title or
+// applies_to (its condition) ranks above one that names it only in the lesson, and both above one that names it only in the body.
 func toolLessonScore(p notebook.Page, target toolTarget) (score int, inCondition bool) {
 	mention := func(text string) int {
 		text = strings.Join(strings.Fields(text), " ")
@@ -315,7 +317,50 @@ func toolLessonScore(p notebook.Page, target toolTarget) (score int, inCondition
 		return 0
 	}
 	condition := max(mention(p.Title), mention(p.AppliesTo))
-	return max(condition, mention(p.Lesson)), condition > 0
+	score = max(condition, mention(p.Lesson))
+	if score == 0 {
+		for _, span := range codeSpans(p.Body) {
+			if mention(span) > 0 {
+				score = 1
+				break
+			}
+		}
+	}
+	return score, condition > 0
+}
+
+// codeSpans are the texts inside the body's code spans: fenced blocks (``` ... ```) and inline spans (`...` within one line).
+// An unclosed fence or span is not a span.
+func codeSpans(body string) []string {
+	var out []string
+	for i := 0; i < len(body); {
+		open := strings.IndexByte(body[i:], '`')
+		if open < 0 {
+			break
+		}
+		at := i + open
+		if strings.HasPrefix(body[at:], "```") {
+			end := strings.Index(body[at+3:], "```")
+			if end < 0 {
+				break
+			}
+			out = append(out, body[at+3:at+3+end])
+			i = at + 3 + end + 3
+			continue
+		}
+		line := body[at+1:]
+		if nl := strings.IndexByte(line, '\n'); nl >= 0 {
+			line = line[:nl]
+		}
+		close := strings.IndexByte(line, '`')
+		if close < 0 {
+			i = at + 1 + len(line)
+			continue
+		}
+		out = append(out, line[:close])
+		i = at + 1 + close + 1
+	}
+	return out
 }
 
 // phraseMention reports whether text writes phrase as whole words (not inside a longer word or after a '/' or '.').

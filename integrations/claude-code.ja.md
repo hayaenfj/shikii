@@ -141,7 +141,8 @@ UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending 
 SessionStart ───── shikii hook session-start ────── セッションの始めと要約の直後(source compact)に、どの依頼にも効く規則(scene いつも)と、.shikii/handoff/ のいちばん新しい作業記録の最後の節を文脈に入れる。伝えることが無ければ何も出さない。両方のエージェント(0.11)
 PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前。Bash ではまず人が有効にした forbidden-commands の検査: 形に当たる
-                                                     コマンドを断る(permissionDecision deny と理由。そのターンの記録に残す。0.11)。それ以外は、題・教訓・applies_to がそのファイル
+                                                     コマンドを断る(permissionDecision deny と理由。そのターンの記録に残す。0.11)。それ以外は、題・教訓・applies_to か
+                                                     本文のコードの印(`...`・囲み。0.12)がそのファイル
                                                      (パスの末尾か、語として切れた名前)かコマンド(プログラムと最初の語。git commit など。shikii と npm は 3 語目まで。
                                                      shikii hook plan など。オプションは飛ばし、ヒアドキュメントの中の行はコマンドと見ない。0.12)を書いた教訓を
                                                      最大 1 件、文脈へ。モデルは使わず、セッションの最初の依頼の前は届けず、同じ版はセッションへ一時間に 1 回(依頼の時の配送と

@@ -51,7 +51,7 @@ The same draft fields work in `shikii reflect submit`'s `wiki` array. Use indivi
 
 The reply of `reflect query` (and of `shikii_reflect`'s query) carries `how_to_submit`, the exact shape of submit; the hook text asking for the reflection names only the command and the conversations (0.11).
 
-`applies_to` names the command or file the lesson is about (`make test`, `cmd/shikii/version.go`, `git commit`): the delivery right before a tool call matches the title, lesson and `applies_to`, never the body, so a name only in the body never reaches the agent at that moment (0.11; measured: a lesson about the English check existed and was missed three times in one day).
+`applies_to` names the command or file the lesson is about (`make test`, `cmd/shikii/version.go`, `git commit`): the delivery right before a tool call matches the title, lesson and `applies_to` first, and a name written in a code span of the body (`` `make test` ``, a fenced block) counts too, ranked after them (0.12). Plain body text never counts, so a name only in prose never reaches the agent at that moment (0.11; measured: a lesson about the English check existed and was missed three times in one day).
 
 `place` takes one or two drafts per call; pass a longer list in several calls.
 

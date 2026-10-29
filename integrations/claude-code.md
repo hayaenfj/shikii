@@ -144,7 +144,8 @@ SessionStart ───── shikii hook session-start ────── at the
 PreToolUse(Agent) ─ shikii hook agent-task ──────── puts the task text and kind passed to the child in the parent's saved state (up to 10 minutes and 8 items. When adding one of the same kind, saved items of the same kind older than 30 seconds are dropped (for a child that was refused and never started). Items without a kind are treated as general-purpose. Outputs nothing. Claude Code only)
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── right before Edit / Write / MultiEdit / NotebookEdit / Bash. For Bash first a forbidden-commands guard the person
                                                      enabled: a command matching a pattern is refused (permissionDecision deny with the reason; recorded for the turn, 0.11).
-                                                     Otherwise at most 1 lesson whose title, lesson or applies_to names the file (the end of its path, or its name as a whole
+                                                     Otherwise at most 1 lesson whose title, lesson, applies_to or a code span of its body (`...`, a fenced block; 0.12) names
+                                                     the file (the end of its path, or its name as a whole
                                                      word) or the command (program and first word, such as git commit; shikii and npm with their third word, such as
                                                      shikii hook plan; options skipped; the lines of a here-document are not commands, 0.12) goes into the context. No model; not
                                                      before the session's first request; the same revision once an hour per session (the same record as the request's
