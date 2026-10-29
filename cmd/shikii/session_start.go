@@ -72,8 +72,13 @@ func sessionBrief(root, scope string) (string, error) {
 	}
 	for i, p := range rules {
 		if i == sessionBriefRules {
-			// the rest are counted, with the way to read them, rather than dropped silently (audit B of 0.12)
-			parts = append(parts, fmt.Sprintf("- %d more rules for every request: shikii wiki query with the scene \"always\" lists them all.", len(rules)-i))
+			// the rest are named by their ids rather than dropped silently (audit B of 0.12); each is read with shikii wiki query lesson:<id>
+			// (confirmation audit 1: wiki query cannot filter by scene, so the ids are the way to read them)
+			rest := []string{}
+			for _, r := range rules[i:] {
+				rest = append(rest, "lesson:"+r.ID)
+			}
+			parts = append(parts, fmt.Sprintf("- %d more rules for every request, each read with shikii wiki query lesson:<id>: %s", len(rules)-i, strings.Join(rest, ", ")))
 			break
 		}
 		parts = append(parts, "- "+strings.TrimSpace(p.Lesson)+" (lesson:"+p.ID+":"+p.Revision+")")

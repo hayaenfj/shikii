@@ -47,6 +47,7 @@ func lessonApplies(agent, scope, request, target string, page notebook.Page) (tr
 	if err != nil || d == nil || d.Band == decide.Abstain {
 		return "", false
 	}
+	resumeOnNewModel(agent, lessonAppliesSpec, d.Model) // a stop measured on another model is lifted once this one answers (confirmation audit 1)
 	if d.Band == decide.Discard {
 		if sp, err := spec.Load(hookSpecPath(agent, lessonAppliesSpec)); err == nil && discardTrusted(sp, d) {
 			return d.TraceID, true

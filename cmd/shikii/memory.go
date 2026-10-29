@@ -91,6 +91,7 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 		effects, _ = memoryEffects(root, scope)
 	}
 	quotes, keys := []memoryQuote{}, []string{}
+	asked := 0
 	for _, p := range pages {
 		if len(quotes) == lessonSeats { // after leaving out revisions already delivered (cutting first lets delivered revisions take the seats)
 			break
@@ -101,8 +102,13 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 		}
 		q := lessonQuote(p)
 		// ask the decision model whether the lesson applies to this request (lesson-applies, 0.12): a trusted no skips it. Not for a
-		// subagent's delivery: a child started again gets the same record (same id, same quotes), so no new decision is made for it
+		// subagent's delivery: a child started again gets the same record (same id, same quotes), so no new decision is made for it.
+		// At most lessonAppliesMaxAsks candidates are asked about per request, as before a tool call (confirmation audit 1)
 		if door != "" && parent == "" {
+			if asked == lessonAppliesMaxAsks {
+				break
+			}
+			asked++
 			trace, skip := lessonApplies(root, scope, request, lessonAppliesRequestTarget, p)
 			if skip {
 				continue

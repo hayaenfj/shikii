@@ -1,9 +1,11 @@
 package main
 
 import (
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -15,19 +17,7 @@ import (
 func TestTheForbiddenCharacterAppearsNowhereInTheRepository(t *testing.T) {
 	root := strings.TrimSpace(run(t, "git", "rev-parse", "--show-toplevel"))
 	out := run(t, "git", "-C", root, "ls-files", "-co", "--exclude-standard", "-z") // tracked and new files, as they are on disk
-	forbidden := string(rune(0x5370))
-	// the character itself, and every way a source or document could spell it: the Go escapes of its code point (lower and upper case)
-	// and the HTML numeric references (hex and decimal). Audit B of 0.12 found the names of files and the targets of links unchecked and
-	// the upper-case Go escape passing.
-	spellings := []string{forbidden, "\\u" + "5370", "\\U" + "00005370", "&#x" + "5370;", "&#X" + "5370;", "&#" + "21360;"}
-	written := func(text string) bool {
-		for _, s := range spellings {
-			if strings.Contains(text, s) {
-				return true
-			}
-		}
-		return false
-	}
+	written := spellsTheForbiddenCharacter
 	var hits []string
 	for _, name := range strings.Split(strings.TrimRight(out, "\x00"), "\x00") {
 		if name == "" {
@@ -78,4 +68,72 @@ func itoa(n int) string {
 		b = append([]byte{byte('0' + n%10)}, b...)
 	}
 	return string(b)
+}
+
+// forbiddenRune is the character the person forbade in this project (U+5370). Its spellings below are built from it, never written.
+const forbiddenRune = rune(0x5370)
+
+// spellsTheForbiddenCharacter reports whether text writes the character in any spelling: the character itself, a Go escape of its code
+// point (\u with 4 hex digits, \U with 8), an HTML numeric reference (hex or decimal, leading zeros, with or without the semicolon), the
+// escaped UTF-8 bytes or the URL encoding. Spellings are decoded and compared, not listed (confirmation audit 1 of 0.12).
+func spellsTheForbiddenCharacter(text string) bool {
+	ch := string(forbiddenRune)
+	if strings.Contains(text, ch) {
+		return true
+	}
+	lower := strings.ToLower(text)
+	bytesEscaped := ""
+	for _, b := range []byte(ch) {
+		bytesEscaped += "\\x" + strconv.FormatInt(int64(b), 16)
+	}
+	if strings.Contains(lower, strings.ToLower(url.QueryEscape(ch))) || strings.Contains(lower, bytesEscaped) {
+		return true
+	}
+	hexValue := func(digits string, exact int) (int64, bool) {
+		n := 0
+		for n < len(digits) && (digits[n] >= '0' && digits[n] <= '9' || digits[n] >= 'a' && digits[n] <= 'f') {
+			n++
+		}
+		if n == 0 || exact > 0 && n < exact {
+			return 0, false
+		}
+		if exact > 0 {
+			n = exact
+		}
+		v, err := strconv.ParseInt(digits[:n], 16, 64)
+		return v, err == nil
+	}
+	for i := 0; i < len(lower); i++ {
+		var value int64
+		var ok bool
+		switch {
+		case strings.HasPrefix(lower[i:], "\\u"):
+			value, ok = hexValue(lower[i+2:], 4)
+		case strings.HasPrefix(lower[i:], "&#x"):
+			value, ok = hexValue(lower[i+3:], 0)
+		case strings.HasPrefix(lower[i:], "&#"):
+			n := 0
+			for n < len(lower[i+2:]) && lower[i+2+n] >= '0' && lower[i+2+n] <= '9' {
+				n++
+			}
+			if n > 0 {
+				v, err := strconv.ParseInt(lower[i+2:i+2+n], 10, 64)
+				value, ok = v, err == nil
+			}
+		default:
+			continue
+		}
+		if ok && value == int64(forbiddenRune) {
+			return true
+		}
+	}
+	// \U takes 8 hex digits and is case-sensitive in Go, so it is looked for in the original text
+	for i := 0; i+10 <= len(text); i++ {
+		if text[i] == '\\' && text[i+1] == 'U' {
+			if v, err := strconv.ParseInt(text[i+2:i+10], 16, 64); err == nil && v == int64(forbiddenRune) {
+				return true
+			}
+		}
+	}
+	return false
 }

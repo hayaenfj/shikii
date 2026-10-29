@@ -138,7 +138,7 @@ UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending 
                                                      直前の返答と今回の人の発言を一組で残す。同じ仕事の似た依頼の会話を引用
                                                      decide prompt-kind。新形式のneeds-planは原文付きの文脈整理をエージェントへ案内
                                                      └ sessions/<id>.json に request と作業ツリーのハッシュ、<id>.files に作業ツリーの一覧を控える
-SessionStart ───── shikii hook session-start ────── セッションの始めと要約の直後(source compact)に、どの依頼にも効く規則(scene いつも。8 件まで、1 件も切らず、残りは件数と読み方を 1 行で。0.12)と、.shikii/handoff/ のいちばん新しい markdown か文の作業記録の最後の節(全体 4,000 バイト前後に収まる分まで)を文脈に入れる。伝えることが無ければ何も出さない。両方のエージェント(0.11)
+SessionStart ───── shikii hook session-start ────── セッションの始めと要約の直後(source compact)に、どの依頼にも効く規則(scene いつも。8 件まで、1 件も切らず、残りは id で名指し。0.12)と、.shikii/handoff/ のいちばん新しい markdown か文の作業記録の最後の節(全体 4,000 バイト前後に収まる分まで)を文脈に入れる。伝えることが無ければ何も出さない。両方のエージェント(0.11)
 PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前。Bash ではまず人が有効にした forbidden-commands の検査: 形に当たる
                                                      コマンドを断る(permissionDecision deny と理由。そのターンの記録に残す。0.11)。それ以外は、題・教訓・applies_to か

@@ -494,15 +494,15 @@ func TestReflectSubmitSaysWhenLeftFails(t *testing.T) {
 	st, scope, h := reviewFixture(t)
 	id, _ := reviewSeed(t, st, scope, 1)
 	key := leftDelivery(t, st, scope, id, "")
-	// a broken provisional memory assessment makes the reflect view (and so left) fail; the wiki-only submit itself does not read it
+	// an unreadable delivery record makes the reflect view (and so left) fail; the wiki-only submit itself does not read it (a broken
+	// assessment file no longer does: it counts as not yet assessed, 0.12)
+	_ = key
 	sum := func(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
-	dir := filepath.Join(st.Dir, "records", "memory-reviews", sum(scope))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	deliveries := filepath.Join(st.Dir, "records", "memories", sum(scope)+".jsonl")
+	if err := os.Chmod(deliveries, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, sum(id+":"+key)+".json"), []byte("{broken"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	t.Cleanup(func() { _ = os.Chmod(deliveries, 0o600) })
 	out := reflectCall(t, h, map[string]any{"operation": "submit", "wiki": []map[string]any{{"sources": []string{id}}}})
 	msg, _ := out["left_error"].(string)
 	if out["complete"] != true || out["left"] != nil || !strings.Contains(msg, "could not work out what is left") || !strings.Contains(msg, "query") {

@@ -177,6 +177,8 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 	for _, p := range pages {
 		if len(b.sourceIssues(p)) == 0 {
 			valid = append(valid, p)
+		} else if p.ID == review.PageID {
+			return review, errors.New("a page whose sources cannot be checked is not marked as reviewed") // the real reason, not "changed" (confirmation audit 1)
 		}
 	}
 	var selected *MaintenanceTask

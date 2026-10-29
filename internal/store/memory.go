@@ -285,6 +285,10 @@ func (s Store) memoryAssessmentPath(scope, id, key string) string {
 	return filepath.Join(s.recordPath("memory-reviews", "", scope), hex.EncodeToString(h[:])+".json")
 }
 
+// errAssessmentBroken is an assessment file whose content cannot be read as one (the report counts it as not yet assessed); a file that
+// cannot be opened, or is a link, is a different error that is never hidden.
+var errAssessmentBroken = errors.New("cannot confirm the provisional memory evaluation")
+
 func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error) {
 	f, err := s.openFile(s.memoryAssessmentPath(scope, id, key), os.O_RDONLY)
 	if os.IsNotExist(err) {
@@ -297,7 +301,7 @@ func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error
 	data, err := io.ReadAll(io.LimitReader(f, (32<<10)+1))
 	var a MemoryAssessment
 	if err != nil || len(data) > 32<<10 || json.Unmarshal(data, &a) != nil || a.SourceID != id || a.Key != key || a.At.IsZero() || !validMemoryAssessment(a) {
-		return nil, errors.New("cannot confirm the provisional memory evaluation")
+		return nil, errAssessmentBroken
 	}
 	return &a, nil
 }
@@ -405,8 +409,11 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 		d := deliveries[i]
 		for _, q := range d.Quotes {
 			a, err := s.memoryAssessment(scope, d.ID, q.Key)
+			if errors.Is(err, errAssessmentBroken) {
+				a, err = nil, nil // an assessment whose content cannot be read counts as not yet assessed: one broken file never stops the reflection (confirmation audit 1 of 0.12)
+			}
 			if err != nil {
-				return r, err
+				return r, err // a record that cannot be opened, or is a link, is said, not hidden
 			}
 			item := MemoryObservation{SourceID: d.ID, Parent: d.Parent, Agent: d.Agent, Tool: d.Tool, Phrase: d.Phrase, Request: d.Request, At: d.At, Quote: q, Assessment: a}
 			if q.Correction != nil {

@@ -272,6 +272,22 @@ func shellSegments(command string) [][]string {
 				word.WriteByte(command[i])
 				inWord = true
 			}
+		case c == '<' && i+2 < len(command) && command[i+1] == '<' && command[i+2] == '<':
+			word.WriteString("<<<") // a here-string is an ordinary word
+			inWord = true
+			i += 2
+		case c == '<' && i+1 < len(command) && command[i+1] == '<':
+			// << is an operator token wherever it stands unquoted (cat<<EOF, 0<<EOF, "a"<<EOF), as the shell cuts it: the word before it
+			// ends and the operator starts a word of its own (confirmation audit 1 of 0.12; the here-document rule is the shell's tokenization)
+			endWord()
+			word.WriteString("<<")
+			inWord = true
+			i++
+		case c == '#' && !inWord:
+			// a comment runs to the end of the line (a # starting a word, outside quotes); its words are not commands
+			for i+1 < len(command) && command[i+1] != '\n' {
+				i++
+			}
 		case c == ' ' || c == '\t':
 			endWord()
 		case c == '\n':

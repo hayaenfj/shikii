@@ -124,6 +124,11 @@ func reflectQuery(root, scope string) (reflectView, error) {
 				o.Request = cut(o.Request, reflectHeadBytes)
 				o.Quote.Lesson, o.Quote.AppliesTo, o.Quote.Said = cut(o.Quote.Lesson, reflectHeadBytes), cut(o.Quote.AppliesTo, reflectHeadBytes), cut(o.Quote.Said, reflectHeadBytes)
 				o.Quote.Request, o.Quote.Summary, o.Quote.Reply = cut(o.Quote.Request, reflectHeadBytes), cut(o.Quote.Summary, reflectHeadBytes), cut(o.Quote.Reply, reflectHeadBytes)
+				if c := o.Quote.Correction; c != nil { // a copy: the delivery's record keeps the correction whole
+					shortened := *c
+					shortened.Quote, shortened.Action = cut(c.Quote, reflectHeadBytes), cut(c.Action, reflectHeadBytes)
+					o.Quote.Correction = &shortened
+				}
 				cutMemories = append(cutMemories, o)
 			}
 			v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: cutMemories, Head: true})
@@ -259,7 +264,11 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 			for dep := range before.Dependencies {
 				changedHere = changedHere || touched[dep]
 			}
-			if after, ok := keysAfter[m.PageID]; ok && changedHere { // not for a change another process made meanwhile: that one is read again
+			after, ok := keysAfter[m.PageID]
+			for dep := range after.Dependencies { // a page this submit created with related pointing here is a new dependency (confirmation audit 1)
+				changedHere = changedHere || touched[dep]
+			}
+			if ok && changedHere { // not for a change another process made meanwhile: that one is read again
 				m.Revision, m.Key = after.Revision, after.Key
 			}
 		}
