@@ -395,31 +395,41 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if !ok {
 		return hookOut{}, nil
 	}
-	type candidate struct {
-		page        notebook.Page
-		score       int
-		inCondition bool
-	}
-	scores := map[string]candidate{}
+	scores := map[string]toolCandidate{}
 	// only the pages that name the target get their sources checked (LiveWhere), in the wiki's page order
 	live, err := (notebook.Book{Root: agent, Scope: snapshot.Scope}).LiveWhere(func(p notebook.Page) bool {
 		if p.Kind == "history" {
 			return false
 		}
 		score, inCondition := toolLessonScore(p, target)
-		scores[p.ID] = candidate{p, score, inCondition}
+		scores[p.ID] = toolCandidate{page: p, score: score, inCondition: inCondition}
 		return score > 0
 	})
 	if err != nil {
 		return hookOut{}, err
 	}
-	var ranked []candidate
-	for _, p := range live {
-		ranked = append(ranked, scores[p.ID])
+	if len(live) == 0 {
+		return hookOut{}, nil
 	}
-	// stable: page order (by id) breaks ties
+	// what the reflection said about earlier deliveries of these pages through the same door (0.12): read only when a page names the target
+	effects, err := memoryEffects(agent, snapshot.Scope)
+	if err != nil {
+		return hookOut{}, err
+	}
+	var ranked []toolCandidate
+	for _, p := range live {
+		c := scores[p.ID]
+		c.phrase = matchedPhrase(p, target)
+		if e := effects[store.PairKey(lessonQuote(p).Key, c.phrase)]; silenced(e) {
+			continue // unused twice and never helpful through this door: silent here (another door, or a new revision, is tried again)
+		} else {
+			c.helpful = e.Helpful
+		}
+		ranked = append(ranked, c)
+	}
+	// stable: page order (by id) breaks ties; a page found helpful before comes before one with the same words
 	for i := 1; i < len(ranked); i++ {
-		for j := i; j > 0 && (ranked[j].score > ranked[j-1].score || ranked[j].score == ranked[j-1].score && ranked[j].inCondition && !ranked[j-1].inCondition); j-- {
+		for j := i; j > 0 && ranked[j].before(ranked[j-1]); j-- {
 			ranked[j], ranked[j-1] = ranked[j-1], ranked[j]
 		}
 	}
@@ -440,7 +450,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 				continue
 			}
 			var derr error
-			context, derr = deliverToolLesson(agent, s, q, target, in.AgentID)
+			context, derr = deliverToolLesson(agent, s, q, target, c.phrase, in.AgentID)
 			if derr != nil {
 				err = derr
 			}
@@ -453,9 +463,66 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	return hookOut{Context: context}, nil
 }
 
+// toolCandidate is a page that names the target, with its word score, whether its condition (title or applies_to) names it, the door
+// (phrase) it matched through, and how often the reflection found it helpful through that door.
+type toolCandidate struct {
+	page        notebook.Page
+	score       int
+	inCondition bool
+	phrase      string
+	helpful     int
+}
+
+// before orders candidates: a higher word score, then a match in the condition, then more helpful assessments through this door.
+func (c toolCandidate) before(o toolCandidate) bool {
+	if c.score != o.score {
+		return c.score > o.score
+	}
+	if c.inCondition != o.inCondition {
+		return c.inCondition
+	}
+	return c.helpful > o.helpful
+}
+
+// memorySilenceUnused is how many "unused" assessments through one door, with no "helpful", keep a lesson revision silent there (0.12).
+const memorySilenceUnused = 2
+
+// silenced reports whether the reflection's assessments through this door keep the lesson silent there.
+func silenced(e store.PairEffect) bool { return e.Unused >= memorySilenceUnused && e.Helpful == 0 }
+
+// memoryEffects reads the assessed deliveries of this project (helpful / unused per lesson revision and door).
+func memoryEffects(agent, scope string) (map[string]store.PairEffect, error) {
+	report, err := (store.Store{Dir: agent}).MemoryReport(scope)
+	if err != nil {
+		return nil, err
+	}
+	return report.PairEffects(), nil
+}
+
+// matchedPhrase is the door a page matched the target through: the file's base name for an edit, or the first command phrase the
+// page names (its title, lesson, applies_to or a code span of its body) for a command.
+func matchedPhrase(p notebook.Page, target toolTarget) string {
+	if target.file != "" {
+		return path.Base(target.file)
+	}
+	texts := []string{p.Title, p.AppliesTo, p.Lesson}
+	texts = append(texts, codeSpans(p.Body)...)
+	for _, phrase := range target.phrases {
+		for _, text := range texts {
+			if phraseMention(strings.Join(strings.Fields(text), " "), phrase) {
+				return phrase
+			}
+		}
+	}
+	if len(target.phrases) > 0 {
+		return target.phrases[0]
+	}
+	return ""
+}
+
 // deliverToolLesson records one quote delivered at a tool call (its own delivery id, under the turn as parent, so the reflection
-// assesses it with that turn's conversation) and returns the text for the agent.
-func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolTarget, agentID string) (string, error) {
+// assesses it with that turn's conversation) and returns the text for the agent. phrase is the door it came through (recorded, 0.12).
+func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolTarget, phrase, agentID string) (string, error) {
 	what := "the file you are about to change"
 	if target.file == "" {
 		what = "the command you are about to run"
@@ -471,7 +538,7 @@ func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolT
 			continue
 		}
 		sum := sha256.Sum256([]byte(s.TurnID + "/tool/" + target.label + "/" + q.Key))
-		d := store.MemoryDelivery{ID: hex.EncodeToString(sum[:])[:16], Scope: s.Scope, Request: cut(s.Request, requestMax), Quotes: clipped, Parent: s.TurnID, Agent: agentID, Tool: target.label}
+		d := store.MemoryDelivery{ID: hex.EncodeToString(sum[:])[:16], Scope: s.Scope, Request: cut(s.Request, requestMax), Quotes: clipped, Parent: s.TurnID, Agent: agentID, Tool: target.label, Phrase: phrase}
 		if err := (store.Store{Dir: agent}).SaveMemoryDelivery(d); err != nil {
 			return "", err
 		}

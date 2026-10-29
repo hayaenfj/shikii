@@ -40,6 +40,7 @@ type MemoryDelivery struct {
 	Parent  string        `json:"parent,omitempty"` // delivery to a subagent: the parent turn (the conversation source id). The review is evaluated alongside the parent's conversation (0.7.4)
 	Agent   string        `json:"agent,omitempty"`  // the subagent's id
 	Tool    string        `json:"tool,omitempty"`   // delivered right before a tool call (0.11): the tool and the file or command words it matched; Parent is the turn
+	Phrase  string        `json:"phrase,omitempty"` // the door the quotes came through (0.12): the command phrase or file name the lesson matched at a tool call, "request" when chosen by the request's words. Empty for the always rules and older records
 }
 
 // toolMax is the longest Tool a delivery keeps (a file path or a command's leading words).
@@ -80,6 +81,7 @@ type MemoryObservation struct {
 	Parent     string            `json:"parent,omitempty"`
 	Agent      string            `json:"agent,omitempty"`
 	Tool       string            `json:"tool,omitempty"`
+	Phrase     string            `json:"phrase,omitempty"`
 	Request    string            `json:"request"`
 	At         time.Time         `json:"at"`
 	Quote      MemoryQuote       `json:"quote"`
@@ -403,7 +405,7 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 			if err != nil {
 				return r, err
 			}
-			item := MemoryObservation{SourceID: d.ID, Parent: d.Parent, Agent: d.Agent, Tool: d.Tool, Request: d.Request, At: d.At, Quote: q, Assessment: a}
+			item := MemoryObservation{SourceID: d.ID, Parent: d.Parent, Agent: d.Agent, Tool: d.Tool, Phrase: d.Phrase, Request: d.Request, At: d.At, Quote: q, Assessment: a}
 			if q.Correction != nil {
 				r.Corrections.Delivered++
 				if a == nil {
@@ -458,6 +460,38 @@ func (s Store) MemoryReport(scope string) (MemoryReport, error) {
 		}
 	}
 	return r, nil
+}
+
+// PairEffect counts how the reflection assessed one quote (a lesson revision) delivered through one door (a command phrase, a file
+// name or "request"): the pair the delivery rule learns from (0.12).
+type PairEffect struct {
+	Helpful int
+	Unused  int
+}
+
+// PairKey is the key of PairEffects: the quote's key and the door it came through.
+func PairKey(quoteKey, phrase string) string { return quoteKey + "\t" + phrase }
+
+// PairEffects tallies the assessed deliveries per (quote key, door). Deliveries without a door (always rules, records from before
+// 0.12) and unassessed or "unknown" ones are left out: only "helpful" and "unused" (and "harmful", counted as unused) teach anything.
+func (r MemoryReport) PairEffects() map[string]PairEffect {
+	out := map[string]PairEffect{}
+	for _, item := range r.All {
+		if item.Phrase == "" || item.Assessment == nil {
+			continue
+		}
+		e := out[PairKey(item.Quote.Key, item.Phrase)]
+		switch item.Assessment.Result {
+		case "helpful":
+			e.Helpful++
+		case "unused", "harmful":
+			e.Unused++
+		default:
+			continue
+		}
+		out[PairKey(item.Quote.Key, item.Phrase)] = e
+	}
+	return out
 }
 
 // PersonAnswer is the person's own latest answer to one decision of a question, with the decision's request text.

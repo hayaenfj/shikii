@@ -79,13 +79,23 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 	if len(answers) > 0 {
 		lessonSeats = 1
 	}
+	// the door these quotes come through (0.12): "request" when chosen by the request's words; the always rules have none
+	door := ""
+	effects := map[string]store.PairEffect{}
+	if feedback && len(pages) > 0 {
+		door = "request"
+		var err error
+		if effects, err = memoryEffects(root, scope); err != nil {
+			return "", err
+		}
+	}
 	quotes, keys := []memoryQuote{}, []string{}
 	for _, p := range pages {
 		if len(quotes) == lessonSeats { // after leaving out revisions already delivered (cutting first lets delivered revisions take the seats)
 			break
 		}
 		key := "lesson:" + p.ID + ":" + p.Revision
-		if seen[key] {
+		if seen[key] || silenced(effects[store.PairKey(key, door)]) { // unused twice and never helpful at the request door: not quoted again (0.12)
 			continue
 		}
 		quotes = append(quotes, lessonQuote(p))
@@ -147,7 +157,7 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 			id = hex.EncodeToString(sum[:])[:16]
 		}
 		if id != "" {
-			if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent}); err != nil {
+			if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Phrase: door}); err != nil {
 				return "", err
 			}
 		}

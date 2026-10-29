@@ -149,7 +149,10 @@ PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── right befo
                                                      word) or the command (program and first word, such as git commit; shikii and npm with their third word, such as
                                                      shikii hook plan; options skipped; the lines of a here-document are not commands, 0.12) goes into the context. No model; not
                                                      before the session's first request; the same revision once an hour per session (the same record as the request's
-                                                     delivery). Recorded under its own ID with the turn as parent and assessed in the reflection. Claude Code only
+                                                     delivery). Recorded under its own ID with the turn as parent, with the door it came through (the command phrase or
+                                                     file name), and assessed in the reflection. A lesson revision the reflection found unused twice and never helpful
+                                                     through one door is not delivered through that door again (another door, or a new revision, is tried); among
+                                                     pages naming the target equally, one found helpful before comes first (0.12). Claude Code only
 SubagentStart ──── shikii hook subagent-start ───── lessons close to the saved text of the same kind go into the subagent's context. With nothing saved, only the "いつも" (always) rules (the parent's saved state is left untouched except for removing the used task, and the delivery is recorded under its own ID. Claude Code only)
                                                      (limit: the child side gets no call id, so saved items are matched by kind, time and order. If you refuse the Agent tool and
                                                       start a child of the same kind again within 30 seconds, it may choose by the refused one's text)
