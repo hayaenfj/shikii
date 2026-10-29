@@ -9,7 +9,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-843%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-845%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.11.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -60,7 +60,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 - **普段どおりエージェントを訂正する。** 会話の中で「まだ英語が残っている」と言えば十分です。エージェントが教訓にし、shikiiが正しい記事の隣に置きます。機械で確かめられる訂正なら、エージェントが止める検査の草稿（無効）も置きます。
 - **止める検査を有効にする。** `shikii guard enable <id>` を一度打ちます。shikiiは、その検査がわざと壊した例で実際に止まり、正しい例で通ることを見せてから有効にします。外すのも人の判断です。
 - **いくつかの答えを付ける。** 画面の「答える」に、モデルが迷った判断と、自動で進めた判断の20件に1件が、1枚ずつ出ます。待っている数は「答える」の横に出ます。会話を読んで、本当はどうだったかのボタンを押します。
-- **知りたい時に知識を引く。** 画面の「知識」の一番上には、人やAIが決めた「このプロジェクトで決められたルール」が全部並び、埋もれません。「いつも」のルールが先頭で、新しいルールには印が付きます。その下で場面を選ぶと、その場面に効く教訓が種類ごとに並び、題を押すと本文が出ます。全部を確かめる必要はありません。上の「あなたに見てほしいもの」に、害があった教訓や繰り返された訂正のような例外だけが出ます。
+- **知りたい時に知識を引く。** 画面の「知識」の一番上には、人やAIが決めた「このプロジェクトで決められたルール」が全部並び、埋もれません。「いつも」のルールが先頭で、新しいルールには「新」のラベルが付きます。その下で場面を選ぶと、その場面に効く教訓が種類ごとに並び、題を押すと本文が出ます。全部を確かめる必要はありません。上の「あなたに見てほしいもの」に、害があった教訓や繰り返された訂正のような例外だけが出ます。
 - **読みたい時に作業記録を読む。** 画面の「知識 → 作業記録」で、エージェントの報告を読み、画像を見られます。
 - **たまに聞き方を確かめる。** より良い聞き方が見つかったら、同じことを聞いているかを見て、採用か却下を押します。
 

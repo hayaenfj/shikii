@@ -21,7 +21,7 @@
 
 **会話も採点も線も、プロジェクトごと。** `shikii --init`で有効にした各プロジェクトの `.shikii/` に `decisions/` `wiki/` `guards/` `records/` `labels/` `sessions/` `handoff/` を置く(`handoff/` は作業記録: 監査の報告・リリースの手順・差分・画像など、書き換えながら進めるファイル)。初期化が準備し、その後の記録はhookが行う。Git の中ではリポジトリのルート、外では cwd が仕事の単位。同名の別フォルダは混ぜず、同じ repo のサブディレクトリや symlink は同じ仕事になる。`.shikii/` の共有先へのリンクは使わない。hook は `/.shikii/` を Git のローカルな `info/exclude` に足し、私的な会話を `git add -A` に巻き込まない。状態取りでも `.shikii/` を除き、shikii 自身の記録をファイル変更の結果に数えない。
 
-`~/.shikii/agent` は共通の型・道具・プロジェクトの索引と、各プロジェクトの画面の印(`pages/<id>.json`: ポートと pid)を持つ。画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こし(`serve --store <プロジェクト>/.shikii --port 0`)、ブラウザで開く。共通の入口(`serve --store ~/.shikii/agent --port 8096`)は手で立てた時だけ、`/p/<実パスのハッシュ>/` から各仕事の記録を読む。同じ URL 配下の API が採点・正解・教訓もその仕事へ保存し、成績を合算しない。hook が示す答え合わせのリンクも直接その仕事を開く。旧共通 store の会話や線は自動では引き継がない。
+`~/.shikii/agent` は共通の型・道具・プロジェクトの索引と、各プロジェクトの画面の登録(`pages/<id>.json`: ポートと pid)を持つ。画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こし(`serve --store <プロジェクト>/.shikii --port 0`)、ブラウザで開く。共通の入口(`serve --store ~/.shikii/agent --port 8096`)は手で立てた時だけ、`/p/<実パスのハッシュ>/` から各仕事の記録を読む。同じ URL 配下の API が採点・正解・教訓もその仕事へ保存し、成績を合算しない。hook が示す答え合わせのリンクも直接その仕事を開く。旧共通 store の会話や線は自動では引き継がない。
 
 ## 着手前の文脈を整理する
 
@@ -61,7 +61,7 @@ shikii hook uninstall --yes  # 足した hook(Claude Code 6 つ、Codex 3 つ)�
 which shikii                 # Claude Code がそのまま `shikii` を呼ぶので、PATH に要る
 ```
 
-**インストール後、利用するプロジェクトで一度初期化する。** `shikii --init` を実行するか、エージェントに「このプロジェクトでshikiiを使いたい」と頼む。初期化は既製の問い(hookの4問とwikiの2問)・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を保存する。印が無い・別のプロジェクトの印・壊れた印ではhookは動かず、保存先・Gitの除外・モデルの起動にも触れない。初期化失敗では有効にせず、再実行しても既存データを保持する。 鍵が無く、モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が立っていなければ `shikii serve --store <プロジェクト>/.shikii --port 0` を裏で起こす(hook は待たない。serve が空いているポートを取り、`~/.shikii/agent/pages/<id>.json` に印を書き、ブラウザで一度開く)。起こす権利は印(`starting-model` / `starting-page-<id>`)の flock で 1 つの hook だけが取り、前に起こした子が生きている間と、モデルは 10 分・画面は 30 秒の中は起こさない。出力は `~/.shikii/agent/up.log` と `serve-<id>.log`。
+**インストール後、利用するプロジェクトで一度初期化する。** `shikii --init` を実行するか、エージェントに「このプロジェクトでshikiiを使いたい」と頼む。初期化は既製の問い(hookの4問とwikiの2問)・wiki・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を保存する。このファイルが無い・別のプロジェクトの物・壊れている時はhookは動かず、保存先・Gitの除外・モデルの起動にも触れない。初期化失敗では有効にせず、再実行しても既存データを保持する。 鍵が無く、モデル(:8080)が応えなければ、依頼の直後の hook が `shikii up` を裏で起こす(初回はモデルを取ってくるので、その間の数ターンは記録が付かないだけ。llama-server が無ければ hook.log に入れ方を 1 行)。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が立っていなければ `shikii serve --store <プロジェクト>/.shikii --port 0` を裏で起こす(hook は待たない。serve が空いているポートを取り、`~/.shikii/agent/pages/<id>.json` に登録を書き、ブラウザで一度開く)。起こす権利は専用のファイル(`starting-model` / `starting-page-<id>`)の flock で 1 つの hook だけが取り、前に起こした子が生きている間と、モデルは 10 分・画面は 30 秒の中は起こさない。出力は `~/.shikii/agent/up.log` と `serve-<id>.log`。
 
 `install` がすること(2 回目は何も足さない):
 
@@ -73,7 +73,7 @@ which shikii                 # Claude Code がそのまま `shikii` を呼ぶの
 答え合わせの画面は hook が立てる。手で立てるなら:
 
 ```sh
-shikii serve --store <プロジェクト>/.shikii --port 0 --local http://127.0.0.1:8080   # 最初の依頼の hook が起こす。ポートは空いているもの、印は ~/.shikii/agent/pages/<id>.json
+shikii serve --store <プロジェクト>/.shikii --port 0 --local http://127.0.0.1:8080   # 最初の依頼の hook が起こす。ポートは空いているもの、登録は ~/.shikii/agent/pages/<id>.json
 ```
 
 ## 影の期間 → 帯で振る舞う
@@ -142,7 +142,7 @@ SessionStart ───── shikii hook session-start ────── セッ
 PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前。Bash ではまず人が有効にした forbidden-commands の検査: 形に当たる
                                                      コマンドを断る(permissionDecision deny と理由。そのターンの記録に残す。0.11)。それ以外は、題・教訓・applies_to か
-                                                     本文のコードの印(`...`・囲み。0.12)がそのファイル
+                                                     本文のコード部分(`...`・``` の囲み。0.12)がそのファイル
                                                      (パスの末尾か、語として切れた名前)かコマンド(プログラムと最初の語。git commit など。shikii と npm は 3 語目まで。
                                                      shikii hook plan など。オプションは飛ばし、ヒアドキュメントの中の行はコマンドと見ない。0.12)を書いた教訓を
                                                      最大 1 件、文脈へ。モデルは使わず、セッションの最初の依頼の前は届けず、同じ版はセッションへ一時間に 1 回(依頼の時の配送と
@@ -163,7 +163,7 @@ Stop ───────────── shikii hook stop ──────
 - Claude Code はファイルを変えないターンでは整理を出さない。人の発言が短く(40 文字未満)、相づちの一覧に無く、そのターンの整理が来ていない時は、ファイルを変えていなくても Stop が 1 回だけ止め、`continues_previous` だけを求める。渡す `hook plan submit` の最小の JSON(agreed と open は `unknown:true`)も出す。その Stop はターンを判定せずまとまりを開けたままにし、止めの後の Stop(`stop_hook_active`)が、もう止めずに、エージェントの答えたまとまり(来なければ一覧のまとまり)で判定する。その Stop が来ない時(人が Esc で止めた、セッションを閉じた)は、人の次の依頼の時に、最初の Stop が控えた返答で判定し、人の止める検査と作法は見直さない。人の止める検査が止めたターンも同じに判定する(0.9.3)
 - `hook plan submit` の `restates` で、発言が言い直している同じセッションの前の依頼を名指す(どれだけ前でもよい、このセッションの前の依頼のターンの id。query の `history:<id>:user` の `<id>` か、エージェントがセッションの前の方で見た id。0.9.3 から)。shikii はその依頼を、このセッションとプロジェクトについて自分で残した記録から引く。query が見せるのは最近のターンのままにする。発言はその依頼の人が書いたままの文と同じ決まりで比べ、似ている度合いが 0.6 以上ならその依頼の done-as-asked に「no」(重み 1)を付け、その時は 1 つ前の依頼にこの発言から何も付けない。ほかは何も付けない。ほかのセッションやプロジェクトのターン、知らないターン、もう正解のある依頼は無視し、いつもの 1 つ前との比べ方に戻る
 - 裏の作業の完了通知(Claude Code がサブエージェントや背景のコマンドの終わりを「ユーザーの発言」として流す `<task-notification>` / `[SYSTEM NOTIFICATION - NOT USER INPUT]`)は依頼ではない: 考える前の 2 問は聞かず、依頼・一覧・pending も置き換えない(実測で記録の半分近くがこれだった)。通知の後に作業が続いたら、そのターンの終わりで元の依頼に対して「範囲か・終えたか」をもう一度判定する(本人の選択: 長い裏作業の最後の状態を測る。1 つの依頼に通知の数だけ判定が残る)
-- 重なり: Stop(依頼 A)がモデル待ちの間に次の依頼 B が控えを書いても、Stop A の印(judged、previous、返答の控え)は A の控えにしか当たらない(依頼ごとの識別子も比べるため、同じ文を繰り返した依頼も区別する)。pending は自分が見た trace だけ settle、一覧は先頭行の依頼のハッシュが合う時だけ比べる。`agent_id` の付いた UserPromptSubmit(サブエージェント等)は人の依頼ではないので控えを変えない
+- 重なり: Stop(依頼 A)がモデル待ちの間に次の依頼 B が控えを書いても、Stop A が残す物(judged、previous、返答の控え)は A の控えにしか当たらない(依頼ごとの識別子も比べるため、同じ文を繰り返した依頼も区別する)。pending は自分が見た trace だけ settle、一覧は先頭行の依頼のハッシュが合う時だけ比べる。`agent_id` の付いた UserPromptSubmit(サブエージェント等)は人の依頼ではないので控えを変えない
 - hook.log の 1 行は 400 バイトで切る(モデルの誤りの文に応答本文が付いてくることがある)
 - Claude Code 側の契約(公式の hooks reference、2026-10-18): hook は stdin に `session_id` `cwd` `prompt` `stop_hook_active` `last_assistant_message` を受け、stdout の `hookSpecificOutput.additionalContext`(UserPromptSubmit)とトップレベルの `systemMessage` を返せる。Stop で `hookSpecificOutput` を返すと会話が続くので返さない
 - Codex 側の契約(learn.chatgpt.com/docs/hooks、2026-10-19): 同じ event 名と stdin の鍵(`Stop` にも `last_assistant_message` と `stop_hook_active`)に、Codex だけの `turn_id` と `model` が足される。Stop の出力は JSON か無出力(shikii は出す時は JSON、出さない時は無出力)。Codex 0.164 は Claude Code と同じ `{"decision":"block","reason":…}` を読み、理由を人の側の発言として受けて同じターンを続ける(2 回目の Stop は `stop_hook_active`。0.9.2 の監査で確かめた)。shikii は Codex と Claude Code を見分けない(両方同じ 2 つの問い)

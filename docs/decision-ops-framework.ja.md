@@ -294,7 +294,7 @@ Platt に入れる Δ がほぼ 2 値に潰れる。bias/T を当てる余地が
 
 後者では `calibrate` は定数を出さず、閾値ごとの precision / recall と信頼度図だけを出す(`verify` 相当)。
 act を許す判断は、その正答率が `thresholds.act` 以上であることを根拠にする。この時 spec に書く較正ブロックは
-`method: identity`(定数なし、検証済みの印)で、鍵は同じく `(spec_hash, model)`。
+`method: identity`(定数なし、検証済みを示す値)で、鍵は同じく `(spec_hash, model)`。
 
 ### 7.2 較正で直るものと、文言で直すもの(実測)
 
