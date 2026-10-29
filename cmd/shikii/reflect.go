@@ -38,7 +38,15 @@ type reflectSource struct {
 	Targets     []reviewTarget            `json:"targets"`
 	WikiPending bool                      `json:"wiki_pending"`
 	Memories    []store.MemoryObservation `json:"memories"`
+	Head        bool                      `json:"head,omitempty"` // the text is cut (0.12): every pending conversation is listed, the oldest two whole, the rest as heads
 }
+
+// reflectRawSources is how many pending conversations come with their raw text; the rest come as heads (0.12). Each cut field keeps
+// reflectHeadBytes bytes.
+const (
+	reflectRawSources = 2
+	reflectHeadBytes  = 200
+)
 
 type reflectView struct {
 	HowToSubmit  string                     `json:"how_to_submit"`
@@ -92,6 +100,8 @@ func reflectQuery(root, scope string) (reflectView, error) {
 	if err != nil {
 		return v, err
 	}
+	// every pending conversation is listed (0.12: one reflection is one round trip). The oldest reflectRawSources come with their raw
+	// text and the lessons close to them; the rest come as heads with their targets and deliveries, so one submit can settle them all.
 	seen := map[string]bool{}
 	for i := len(recent) - 1; i >= 0; i-- {
 		source := recent[i]
@@ -106,6 +116,11 @@ func reflectQuery(root, scope string) (reflectView, error) {
 		if m == nil {
 			m = []store.MemoryObservation{}
 		}
+		if len(v.Sources) >= reflectRawSources {
+			source.Request, source.Summary, source.Reply = cut(source.Request, reflectHeadBytes), cut(source.Summary, reflectHeadBytes), cut(source.Reply, reflectHeadBytes)
+			v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: m, Head: true})
+			continue
+		}
 		v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: m})
 		// Also return existing lessons close to the topic being sorted, to avoid careless duplicates and replacements.
 		lessons, err := book.Query(source.Request + " " + source.Reply)
@@ -118,17 +133,14 @@ func reflectQuery(root, scope string) (reflectView, error) {
 				v.Lessons = append(v.Lessons, lesson)
 			}
 		}
-		if len(v.Sources) == 2 {
-			break
-		}
 	}
 	observations, err := book.PendingObservations()
 	if err != nil {
 		return v, err
 	}
 	v.Observations = notebook.Heads(observations)
-	if len(v.Observations) > 2-len(v.Sources) {
-		v.Observations = v.Observations[:2-len(v.Sources)]
+	if len(v.Observations) > reflectRawSources {
+		v.Observations = v.Observations[:reflectRawSources]
 	}
 	v.Maintenance, err = book.Maintenance()
 	if err != nil {
@@ -153,8 +165,9 @@ type reflectResult struct {
 	Wiki               []reflectReceipt `json:"wiki"`
 	Memory             []reflectReceipt `json:"memory"`
 	Maintenance        []reflectReceipt `json:"maintenance,omitempty"`
-	Left               []string         `json:"left,omitempty"`       // what is still not done for the conversations this submit named (complete only says every item was saved)
-	LeftError          string           `json:"left_error,omitempty"` // left could not be worked out (it is not empty because nothing is left)
+	Left               []string         `json:"left,omitempty"`        // what is still not done for the conversations this submit named (complete only says every item was saved)
+	LeftMemory         []reflectReceipt `json:"left_memory,omitempty"` // the deliveries still to assess, as the items to send in memory (0.12)
+	LeftError          string           `json:"left_error,omitempty"`  // left could not be worked out (it is not empty because nothing is left)
 }
 
 func runReflect(root, scope string, req reflectRequest) (any, error) {
@@ -194,6 +207,11 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		}
 		result.Reviews = append(result.Reviews, receipt)
 	}
+	// the maintenance keys before and after this submit's own wiki saves (0.12): a review sent with the key read before the save stands
+	var keysBefore, keysAfter map[string]notebook.MaintenanceTask
+	if len(req.Maintenance) > 0 && len(req.Wiki) > 0 {
+		keysBefore, _ = notebook.Book{Root: root, Scope: scope}.MaintenanceKeys()
+	}
 	for _, draft := range req.Wiki {
 		// the truth from the result for the insertion-point and contradiction decisions is built before saving and written after the save succeeds (once the page changes, it can no longer be matched with the decision's input)
 		_, err := ingestWithOutcome(root, scope, draft)
@@ -202,6 +220,9 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 			result.Complete, receipt.Error = false, err.Error()
 		}
 		result.Wiki = append(result.Wiki, receipt)
+	}
+	if keysBefore != nil {
+		keysAfter, _ = notebook.Book{Root: root, Scope: scope}.MaintenanceKeys()
 	}
 	for _, a := range req.Memory {
 		assessment := store.MemoryAssessment{SourceID: a.SourceID, Key: a.Key, Result: a.Result, Decision: a.Decision, Evidence: a.Evidence, CorrectionResult: a.CorrectionResult}
@@ -216,6 +237,13 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		result.Memory = append(result.Memory, receipt)
 	}
 	for _, m := range req.Maintenance {
+		// a review sent with the key the page had before this submit's own saves stands for the page as saved (0.12): the agent read the
+		// page, then changed it in the same call, so the review is recorded against the new revision and key
+		if before, ok := keysBefore[m.PageID]; ok && before.Key == m.Key && before.Revision == m.Revision {
+			if after, ok := keysAfter[m.PageID]; ok {
+				m.Revision, m.Key = after.Revision, after.Key
+			}
+		}
 		_, err := (notebook.Book{Root: root, Scope: scope}).Maintain(m)
 		receipt := reflectReceipt{PageID: m.PageID, Key: m.Key}
 		if err != nil {
@@ -240,6 +268,9 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		result.LeftError = "could not work out what is left (" + err.Error() + "). Run query to see the conversations still pending"
 	} else if len(left) > 0 {
 		result.Left = leftLines(left)
+		for _, l := range left {
+			result.LeftMemory = append(result.LeftMemory, l.items...)
+		}
 	}
 	result.Remaining = notebook.Book{Root: root, Scope: scope}.RemainingUnclassified()
 	return result, nil
@@ -329,6 +360,9 @@ func reflectContext(root, scope string) (string, []string, error) {
 	cli := reflectCLI()
 	ids := []string{}
 	for _, task := range view.Sources {
+		if task.Head {
+			break // the notice names the oldest conversations; the query lists every pending one (0.12)
+		}
 		ids = append(ids, task.Source.ID)
 	}
 	for _, o := range view.Observations {
@@ -349,7 +383,7 @@ func reflectCLI() string {
 // reflectHowToSubmit comes back in the reply of reflect query (the CLI and shikii_reflect) as how_to_submit: the exact shape of submit,
 // read at the moment it is needed (0.11). The text asking for the reflection (reflectAsk) names only the command and the conversations.
 // Before, the shape came with every ask (about 1,300 bytes, 1,700 in the full form), and a full and a short form kept drifting apart.
-const reflectHowToSubmit = "submit reviews:[{source_id,trace_id,truth,reason}] with your own truth yes/no/unknown; wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (applies_to names the command or file the lesson is about, such as make test or version.go, so it reaches the agent right before that command or file; only sources when there is no lesson; for a new lesson run operation:place first and choose id and replaces from its candidates and suspected contradictions; keep the short lesson and the detailed body apart); memory:[{source_id,key,result,decision,evidence,correction_result}] (source_id as this reply's memories[].source_id: a lesson delivered to a subagent has its own) with result helpful/unused/harmful/unknown and, for a delivered correction, correction_result followed/repeated/not_applicable/unknown, tied to a check result (delivery, success, a greeting or silence is no effect; else unknown; observations are sources holding check results); maintenance: for at most 2 pages, review the body, related pages and sources and send the latest page_id, revision, key and reason. Read the sources and existing pages before merging. A rule, test or procedure (command or script) you made or changed goes to the wiki even without a correction (a howto or rule page, or the closest page). For an explicit correction attach correction:{source_id,quote,action} (the person's raw words, the next action); if it can be a fixed check (paired files / words not to use / words a commit body must contain), add a disabled draft with `shikii guard add` and ask the person to enable it. Quotes are never permission, truths or calibration. On an error, fix it and resend; complete:true only means every item sent was saved: while left lists a conversation, submit what it names. Details: the skill's references/wiki.md."
+const reflectHowToSubmit = "submit reviews:[{source_id,trace_id,truth,reason}] with your own truth yes/no/unknown; wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (applies_to names the command or file the lesson is about, such as make test or version.go, so it reaches the agent right before that command or file; only sources when there is no lesson; for a new lesson run operation:place first and choose id and replaces from its candidates and suspected contradictions; keep the short lesson and the detailed body apart); memory:[{source_id,key,result,decision,evidence,correction_result}] (one item per entry of every source's memories[], source_id as this reply's memories[].source_id: a lesson delivered to a subagent has its own; every pending conversation is listed, the oldest two with their raw text and the rest as head: true with the text cut, read with wiki query <id> when a lesson needs it) with result helpful/unused/harmful/unknown and, for a delivered correction, correction_result followed/repeated/not_applicable/unknown, tied to a check result (delivery, success, a greeting or silence is no effect; else unknown; observations are sources holding check results); maintenance: for at most 2 pages, review the body, related pages and sources and send the latest page_id, revision, key and reason. Read the sources and existing pages before merging. A rule, test or procedure (command or script) you made or changed goes to the wiki even without a correction (a howto or rule page, or the closest page). For an explicit correction attach correction:{source_id,quote,action} (the person's raw words, the next action); if it can be a fixed check (paired files / words not to use / words a commit body must contain), add a disabled draft with `shikii guard add` and ask the person to enable it. Quotes are never permission, truths or calibration. On an error, fix it and resend; complete:true only means every item sent was saved: while left lists a conversation, submit what it names. Details: the skill's references/wiki.md."
 
 // reflectAsk is the text asking for the reflection (one form, 0.11): the command and the conversations. cli is the path of the shikii executable
 func reflectAsk(cli string, ids []string) string {

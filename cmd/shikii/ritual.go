@@ -140,6 +140,7 @@ type reflectLeftItem struct {
 	id                string
 	targets, memories int
 	wiki              bool
+	items             []reflectReceipt // the deliveries still to assess (source_id and key), as the agent sends them in memory (0.12)
 }
 
 func reflectLeft(root, scope string, asked []string) ([]reflectLeftItem, error) {
@@ -166,7 +167,11 @@ func reflectLeft(root, scope string, asked []string) ([]reflectLeftItem, error) 
 		if !want[s.Source.ID] {
 			continue
 		}
-		out = append(out, reflectLeftItem{id: s.Source.ID, targets: len(s.Targets), memories: len(s.Memories), wiki: s.WikiPending})
+		item := reflectLeftItem{id: s.Source.ID, targets: len(s.Targets), memories: len(s.Memories), wiki: s.WikiPending}
+		for _, m := range s.Memories {
+			item.items = append(item.items, reflectReceipt{SourceID: m.SourceID, Key: m.Quote.Key})
+		}
+		out = append(out, item)
 	}
 	for _, o := range view.Observations {
 		if want[o.ID] {
