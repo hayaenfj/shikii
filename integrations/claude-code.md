@@ -145,7 +145,8 @@ PreToolUse(Agent) ─ shikii hook agent-task ──────── puts the t
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── right before Edit / Write / MultiEdit / NotebookEdit / Bash. For Bash first a forbidden-commands guard the person
                                                      enabled: a command matching a pattern is refused (permissionDecision deny with the reason; recorded for the turn, 0.11).
                                                      Otherwise at most 1 lesson whose title, lesson or applies_to names the file (the end of its path, or its name as a whole
-                                                     word) or the command (program and first word, such as git commit; options skipped) goes into the context. No model; not
+                                                     word) or the command (program and first word, such as git commit; shikii and npm with their third word, such as
+                                                     shikii hook plan; options skipped; the lines of a here-document are not commands, 0.12) goes into the context. No model; not
                                                      before the session's first request; the same revision once an hour per session (the same record as the request's
                                                      delivery). Recorded under its own ID with the turn as parent and assessed in the reflection. Claude Code only
 SubagentStart ──── shikii hook subagent-start ───── lessons close to the saved text of the same kind go into the subagent's context. With nothing saved, only the "いつも" (always) rules (the parent's saved state is left untouched except for removing the used task, and the delivery is recorded under its own ID. Claude Code only)

@@ -142,7 +142,8 @@ SessionStart ───── shikii hook session-start ────── セッ
 PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前。Bash ではまず人が有効にした forbidden-commands の検査: 形に当たる
                                                      コマンドを断る(permissionDecision deny と理由。そのターンの記録に残す。0.11)。それ以外は、題・教訓・applies_to がそのファイル
-                                                     (パスの末尾か、語として切れた名前)かコマンド(プログラムと最初の語。git commit など。オプションは飛ばす)を書いた教訓を
+                                                     (パスの末尾か、語として切れた名前)かコマンド(プログラムと最初の語。git commit など。shikii と npm は 3 語目まで。
+                                                     shikii hook plan など。オプションは飛ばし、ヒアドキュメントの中の行はコマンドと見ない。0.12)を書いた教訓を
                                                      最大 1 件、文脈へ。モデルは使わず、セッションの最初の依頼の前は届けず、同じ版はセッションへ一時間に 1 回(依頼の時の配送と
                                                      同じ記録)。turn を親にした別の ID で記録し、振り返りで評価する。Claude Code だけ
 SubagentStart ──── shikii hook subagent-start ───── 同じ種類の控えの文に近い教訓をサブエージェントの文脈へ。控えが無ければ「いつも」の決まりだけ(親の控えは使った子への仕事の控えを外すほかは変えず、配送は別の ID で記録。Claude Code だけ)

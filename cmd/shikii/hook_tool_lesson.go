@@ -132,7 +132,9 @@ func fileMention(text, file string) int {
 // argument, such as "git commit" (git -c k=v commit), "gh release", "make test", "go test". Options before that word are skipped,
 // with the value of a lone short option (-c k=v, -C dir). Leading variable assignments and sudo, env, time, command, exec, nohup and
 // the shell's own words (if, then, do...) are skipped. Words inside quotes are one argument, so `echo "git commit"` names only echo.
-// A program alone (ls, gofmt) gives no phrase: one word is too common to pick a lesson by.
+// A program alone (ls, gofmt) gives no phrase: one word is too common to pick a lesson by. shikii and npm nest their subcommands
+// (shikii hook plan, shikii hook install, npm run check), so for them the next word is taken too when there is one (0.12): a lesson
+// about shikii hook install is not about shikii hook plan query.
 func commandPhrases(command string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -147,6 +149,7 @@ func commandPhrases(command string) []string {
 		if !programName.MatchString(program) {
 			continue
 		}
+		phrase := ""
 		for i := 1; i < len(words); i++ {
 			w := words[i]
 			if strings.HasPrefix(w, "-") {
@@ -155,13 +158,25 @@ func commandPhrases(command string) []string {
 				}
 				continue
 			}
-			if subcommand.MatchString(w) {
-				if p := program + " " + w; !seen[p] {
-					seen[p] = true
-					out = append(out, p)
+			if !subcommand.MatchString(w) {
+				break
+			}
+			phrase = program + " " + w
+			if nestedSubcommands[program] {
+				for j := i + 1; j < len(words); j++ {
+					if next := words[j]; !strings.HasPrefix(next, "-") {
+						if subcommand.MatchString(next) {
+							phrase += " " + next
+						}
+						break
+					}
 				}
 			}
 			break
+		}
+		if phrase != "" && !seen[phrase] {
+			seen[phrase] = true
+			out = append(out, phrase)
 		}
 	}
 	return out
@@ -172,20 +187,48 @@ var (
 	programName     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
 	subcommand      = regexp.MustCompile(`^[a-z][a-z0-9-]+$`)
 	commandPrefixes = map[string]bool{"sudo": true, "env": true, "time": true, "command": true, "exec": true, "nohup": true, "!": true, "{": true, "if": true, "then": true, "else": true, "elif": true, "do": true, "while": true, "until": true}
+	// programs whose subcommands nest one level (program word word), read with their third word (fixed list, 0.12)
+	nestedSubcommands = map[string]bool{"shikii": true, "npm": true}
 )
+
+// hereDocument is a pending here-document: its terminator line, and whether leading tabs are stripped (<<-).
+type hereDocument struct {
+	delimiter string
+	tabs      bool
+}
 
 // shellSegments splits a command line into the words of its simple commands: outside quotes, ; & | ( ) ` and newlines end a
 // command, and spaces end a word. Quotes and backslashes are taken off as the shell does; what is inside quotes stays one word.
+// The lines of a here-document (<<EOF, <<-EOF, <<'EOF', << EOF ... up to the terminator line) are text handed to the command, not
+// commands, and are left out (0.12: `import json` and `git commit` inside one were read as commands). A here-document that is never
+// closed runs to the end. A here-string (<<<) is an ordinary word.
 func shellSegments(command string) [][]string {
 	var segments [][]string
 	var words []string
 	var word strings.Builder
-	inWord := false
+	var pending []hereDocument
+	inWord, awaitDelimiter, awaitTabs := false, false, false
 	endWord := func() {
-		if inWord {
-			words = append(words, word.String())
-			word.Reset()
-			inWord = false
+		if !inWord {
+			return
+		}
+		w := word.String()
+		word.Reset()
+		inWord = false
+		switch {
+		case awaitDelimiter:
+			pending = append(pending, hereDocument{delimiter: w, tabs: awaitTabs})
+			awaitDelimiter = false
+		case w == "<<" || w == "<<-":
+			awaitDelimiter, awaitTabs = true, w == "<<-"
+		case strings.HasPrefix(w, "<<") && !strings.HasPrefix(w, "<<<"):
+			d := w[2:]
+			tabs := strings.HasPrefix(d, "-")
+			if d = strings.TrimPrefix(d, "-"); d != "" {
+				pending = append(pending, hereDocument{delimiter: d, tabs: tabs})
+			}
+		default:
+			words = append(words, w)
 		}
 	}
 	endSegment := func() {
@@ -218,7 +261,14 @@ func shellSegments(command string) [][]string {
 			}
 		case c == ' ' || c == '\t':
 			endWord()
-		case strings.IndexByte(";&|()`\n", c) >= 0:
+		case c == '\n':
+			endSegment()
+			awaitDelimiter = false
+			for _, h := range pending {
+				i = skipHereDocument(command, i+1, h) - 1
+			}
+			pending = nil
+		case strings.IndexByte(";&|()`", c) >= 0:
 			endSegment()
 		default:
 			word.WriteByte(c)
@@ -227,6 +277,25 @@ func shellSegments(command string) [][]string {
 	}
 	endSegment()
 	return segments
+}
+
+// skipHereDocument returns the offset just after the terminator line of h, reading lines from offset from; the end of the command
+// when no line is the terminator.
+func skipHereDocument(command string, from int, h hereDocument) int {
+	for from < len(command) {
+		next, line := len(command), command[from:]
+		if end := strings.IndexByte(line, '\n'); end >= 0 {
+			line, next = line[:end], from+end+1
+		}
+		if h.tabs {
+			line = strings.TrimLeft(line, "\t")
+		}
+		if line == h.delimiter {
+			return next
+		}
+		from = next
+	}
+	return len(command)
 }
 
 // toolLessonScore scores how a page names the target: the file mention (2 for its path, 1 for its base name) or 1 for a command
