@@ -46,6 +46,7 @@ type reflectSource struct {
 const (
 	reflectRawSources = 2
 	reflectHeadBytes  = 200
+	reflectHeadsMax   = 40 // heads listed at most in one reply; the rest are counted in more_pending (an MCP reply has a size limit on the agent's side)
 )
 
 type reflectView struct {
@@ -56,10 +57,18 @@ type reflectView struct {
 	MemoryEffect store.MemorySummary        `json:"memory_effect"`
 	Observations []notebook.ObservationHead `json:"observations,omitempty"`
 	Maintenance  []notebook.MaintenanceTask `json:"maintenance,omitempty"`
+	MorePending  int                        `json:"more_pending,omitempty"` // pending conversations beyond the heads listed (0.12): they come in the next query once these are settled
 }
 
-// Do not make scoring and the wiki take the same raw text twice. Gather at most 2 conversations from the oldest of each queue.
+// Do not make scoring and the wiki take the same raw text twice. The oldest reflectRawSources conversations come with their raw text,
+// up to reflectHeadsMax more as heads; the rest are counted (more_pending).
 func reflectQuery(root, scope string) (reflectView, error) {
+	return reflectQueryWith(root, scope, reflectHeadsMax)
+}
+
+// reflectQueryWith is reflectQuery with the number of heads bounded by headsMax (0: every pending conversation, for working out what is
+// left of the ones a submit named).
+func reflectQueryWith(root, scope string, headsMax int) (reflectView, error) {
 	v := reflectView{HowToSubmit: reflectHowToSubmit, Sources: []reflectSource{}, Lessons: []notebook.Page{}}
 	st := store.Store{Dir: root}
 	report, err := st.MemoryReport(scope)
@@ -117,6 +126,10 @@ func reflectQuery(root, scope string) (reflectView, error) {
 			m = []store.MemoryObservation{}
 		}
 		if len(v.Sources) >= reflectRawSources {
+			if headsMax > 0 && len(v.Sources) >= reflectRawSources+headsMax {
+				v.MorePending++ // beyond the heads one reply carries: counted, listed by the next query once these are settled
+				continue
+			}
 			source.Request, source.Summary, source.Reply = cut(source.Request, reflectHeadBytes), cut(source.Summary, reflectHeadBytes), cut(source.Reply, reflectHeadBytes)
 			// the deliveries keep their keys (what submit needs) with their texts cut too, so a head stays a few hundred bytes (audit B of 0.12)
 			cutMemories := make([]store.MemoryObservation, 0, len(m))
@@ -379,8 +392,8 @@ func reflectContext(root, scope string) (string, []string, error) {
 	if len(view.Sources) > 0 {
 		oldest = view.Sources[0].Source.At
 	}
-	if len(view.Observations) > 0 && (oldest.IsZero() || view.Observations[0].ObservedAt.Before(oldest)) {
-		oldest = view.Observations[0].ObservedAt
+	if o := oldestObservation(view.Observations); !o.IsZero() && (oldest.IsZero() || o.Before(oldest)) {
+		oldest = o
 	}
 	if len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
 		return "", nil, nil
@@ -397,6 +410,18 @@ func reflectContext(root, scope string) (string, []string, error) {
 		ids = append(ids, o.ID)
 	}
 	return reflectAsk(cli, ids), ids, nil
+}
+
+// oldestObservation is the time the notice judges "waited a day" by among pending observations: the oldest observed, whatever the
+// order they were captured in (zero when there are none).
+func oldestObservation(observations []notebook.ObservationHead) time.Time {
+	oldest := time.Time{}
+	for _, o := range observations {
+		if oldest.IsZero() || o.ObservedAt.Before(oldest) {
+			oldest = o.ObservedAt
+		}
+	}
+	return oldest
 }
 
 // reflectCLI is the reflect command of this shikii executable, quoted for the shell.

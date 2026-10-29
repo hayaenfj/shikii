@@ -144,7 +144,7 @@ type reflectLeftItem struct {
 }
 
 func reflectLeft(root, scope string, asked []string) ([]reflectLeftItem, error) {
-	view, err := reflectQuery(root, scope)
+	view, err := reflectQueryWith(root, scope, 0) // every pending conversation: what is left is worked out for the ones named, beyond any cap on heads
 	if err != nil {
 		return nil, err
 	}

@@ -89,7 +89,7 @@ func (s Store) openFile(path string, flags int) (*os.File, error) {
 	defer root.Close()
 	if info, err := root.Lstat(name); err == nil {
 		if !info.Mode().IsRegular() {
-			return nil, errors.New("make the record an ordinary file, not a link")
+			return nil, errors.New("make the record an ordinary file (not a link or a folder)")
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, err

@@ -422,7 +422,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ) |
 | `GET /v1/handoff/file?path=` | `path`(.shikii/handoff/ からの相対) | 作業記録の 1 件。画像は画像、文字と HTML は text/plain、それ以外は保存。置き場の外は 400 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
-| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 採点・wiki整理・届いた記憶と訂正の観察、記事の見直しをまとめて確認・保存(query は整理待ちの会話を全部並べ(古い 2 件は原文、残りは頭だけ)、原資料と見直しの対象は 2 件ずつ見せ、submit は会話・項目・見直しの数を限らない。既存の記事に足す時、元の出典は引き継がれる)。`complete`と各`error`を確認する |
+| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 採点・wiki整理・届いた記憶と訂正の観察、記事の見直しをまとめて確認・保存(query は整理待ちの会話を全部並べ(古い 2 件は原文、続く 40 件までは頭だけ、残りは more_pending の件数)、原資料と見直しの対象は 2 件ずつ見せ、submit は会話・項目・見直しの数を限らない。既存の記事に足す時、元の出典は引き継がれる)。`complete`と各`error`を確認する |
 | `GET /v1/specs` | | 読み込んでいる spec の一覧 |
 
 ```sh

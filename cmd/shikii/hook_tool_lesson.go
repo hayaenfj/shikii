@@ -326,8 +326,9 @@ func toolLessonScore(p notebook.Page, target toolTarget) (score int, inCondition
 	return 0, false
 }
 
-// codeSpans are the texts inside the body's code spans: fenced blocks (``` ... ```) and inline spans (`...` within one line).
-// An unclosed fence or span is not a span.
+// codeSpans are the texts inside the body's code spans, as CommonMark reads them: a run of n backticks opens a span that the next run
+// of exactly n backticks closes (`...`, “ ...`...`... “, ```...```). An inline span (fewer than 3 backticks) ends with its line;
+// a fence of 3 or more that is never closed runs to the end of the body (the rest is code).
 func codeSpans(body string) []string {
 	var out []string
 	for i := 0; i < len(body); {
@@ -336,26 +337,45 @@ func codeSpans(body string) []string {
 			break
 		}
 		at := i + open
-		if strings.HasPrefix(body[at:], "```") {
-			end := strings.Index(body[at+3:], "```")
-			if end < 0 {
+		n := 0
+		for at+n < len(body) && body[at+n] == '`' {
+			n++
+		}
+		run := body[at : at+n]
+		start := at + n
+		text := body[start:]
+		if n < 3 {
+			if nl := strings.IndexByte(text, '\n'); nl >= 0 {
+				text = text[:nl]
+			}
+		}
+		end := -1
+		for from := 0; from < len(text); {
+			j := strings.Index(text[from:], run)
+			if j < 0 {
 				break
 			}
-			out = append(out, body[at+3:at+3+end])
-			i = at + 3 + end + 3
+			k := from + j
+			if k+n < len(text) && text[k+n] == '`' { // a longer run does not close this span
+				for k+n < len(text) && text[k+n] == '`' {
+					k++
+				}
+				from = k + n
+				continue
+			}
+			end = k
+			break
+		}
+		if end < 0 {
+			if n >= 3 {
+				out = append(out, text)
+				break
+			}
+			i = start + len(text)
 			continue
 		}
-		line := body[at+1:]
-		if nl := strings.IndexByte(line, '\n'); nl >= 0 {
-			line = line[:nl]
-		}
-		close := strings.IndexByte(line, '`')
-		if close < 0 {
-			i = at + 1 + len(line)
-			continue
-		}
-		out = append(out, line[:close])
-		i = at + 1 + close + 1
+		out = append(out, text[:end])
+		i = start + end + n
 	}
 	return out
 }
