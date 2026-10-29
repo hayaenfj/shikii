@@ -22,6 +22,10 @@ const lessonAppliesSpec = "lesson-applies"
 // deliverySpecs are the ready-made questions about delivering lessons (ids of the embedded specs), beside hookSpecs and wikiSpecs.
 var deliverySpecs = []string{lessonAppliesSpec}
 
+// lessonAppliesMaxAsks is how many candidates one tool call asks the model about at most (audit A of 0.12: with every candidate a
+// trusted no, six lessons naming git commit cost six calls; beyond this many, nothing is delivered rather than asking on).
+const lessonAppliesMaxAsks = 3
+
 // lessonAppliesRequestTarget is the target when the lesson is chosen by the request's words, not before a tool call.
 const lessonAppliesRequestTarget = "the request itself (before any command or file)"
 
@@ -35,6 +39,9 @@ func lessonApplies(agent, scope, request, target string, page notebook.Page) (tr
 		"title":      page.Title,
 		"lesson":     page.Lesson,
 		"applies_to": page.AppliesTo,
+	}
+	if hookSkipsStopped(agent, lessonAppliesSpec, inputs) {
+		return "", false // the question could not tell its answers apart on this model: asked on 1 request in 20 only, like the hook's questions
 	}
 	d, _, err := hookDecide(agent, lessonAppliesSpec, inputs, filepath.Base(scope))
 	if err != nil || d == nil || d.Band == decide.Abstain {

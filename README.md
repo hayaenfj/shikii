@@ -9,7 +9,7 @@ Claude Code and Codex start every session from zero. They do not remember what y
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-854%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-869%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.12.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -152,7 +152,7 @@ With the hooks installed, two moments of every turn are kept: the request before
 
 Two steps of every turn are checked: planning before work and reflection before ending. When a step is missing, the end of the turn is stopped once with the command to run. The second stop passes, but the miss is recorded, and the page shows how many turns did the routine. After a short message that is not a plain acknowledgement, a turn without the organizing is also stopped once to ask only whether the message continues the previous request. A stopped turn is judged by the stop after it, or at the next request if that never comes.
 
-The decision model answers the built-in questions about the agent's own work (what kind of request this is, whether to agree on an approach first, whether the changes stayed in scope, whether the request was completed) and, for new lessons, where they belong and whether they contradict a page. The truths for these come from what happens next: a change undone during the next request, a request repeated, a lesson merged or replaced. Only questions that results cannot answer wait for a person, and the page shows how many.
+The decision model answers the built-in questions about the agent's own work (what kind of request this is, whether to agree on an approach first, whether the changes stayed in scope, whether the request was completed) and, for new lessons, where they belong and whether they contradict a page, and, for a lesson about to be delivered, whether it applies right now (`lesson-applies`). The truths for these come from what happens next: a change undone during the next request, a request repeated, a lesson merged or replaced, a delivered lesson found helpful or unused in the reflection. Only questions that results cannot answer wait for a person, and the page shows how many.
 
 **Guards** are fixed rules, not the decision model. At the end of a turn they are applied to the changed files, the added lines and the commits of that turn; a `forbidden-commands` guard also refuses a command right before it runs (0.11). There are four kinds.
 

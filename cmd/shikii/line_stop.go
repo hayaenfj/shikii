@@ -44,7 +44,9 @@ func stoppedPath(storeDir, specID, hash string) string {
 }
 
 // stoppable reports whether the question is one the hook asks (only the hook asks a stopped question on 1 request in 20).
-func stoppable(specID string) bool { return slices.Contains(hookSpecs, specID) }
+func stoppable(specID string) bool {
+	return slices.Contains(hookSpecs, specID) || slices.Contains(deliverySpecs, specID) // lesson-applies is asked by the hooks too (0.12)
+}
 
 // hasLine reports whether the question has a line for its current wording on either rung, for any model.
 func hasLine(sp *spec.Spec) bool {

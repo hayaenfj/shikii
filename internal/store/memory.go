@@ -51,6 +51,7 @@ type MemoryAssessment struct {
 	CorrectionResult string    `json:"correction_result,omitempty"`
 	SourceID         string    `json:"source_id"`
 	Key              string    `json:"key"`
+	Phrase           string    `json:"phrase,omitempty"` // the door the delivery came through, copied from it when saved (0.12), so the effects are counted from the assessments alone, not from the window of recent deliveries
 	Result           string    `json:"result"`
 	Decision         string    `json:"decision"`
 	Evidence         string    `json:"evidence"`
@@ -321,6 +322,7 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 			if d.ID == a.SourceID && q.Key == a.Key {
 				delivered = true
 				correction = q.Correction != nil
+				a.Phrase = d.Phrase // the door, kept with the assessment (0.12)
 				if d.Parent != "" {
 					conversation = d.Parent
 				}
@@ -473,24 +475,41 @@ type PairEffect struct {
 // PairKey is the key of PairEffects: the quote's key and the door it came through.
 func PairKey(quoteKey, phrase string) string { return quoteKey + "\t" + phrase }
 
-// PairEffects tallies the assessed deliveries per (quote key, door). Deliveries without a door (always rules, records from before
-// 0.12) and unassessed or "unknown" ones are left out: only "helpful" and "unused" (and "harmful", counted as unused) teach anything.
-func (r MemoryReport) PairEffects() map[string]PairEffect {
+// PairEffects tallies the assessments of lesson deliveries per (quote key, door), read from the assessment files themselves (each
+// carries the door it was saved with), so the count does not depend on the window of recent deliveries (audit A of 0.12: 260 later
+// deliveries lifted a silence). Only lesson quotes count; assessments without a door (always rules, records from before 0.12) and
+// "unknown" ones teach nothing; "harmful" counts as unused. A file that cannot be read is skipped: a broken assessment never silences or
+// unsilences anything by itself.
+func (s Store) PairEffects(scope string) map[string]PairEffect {
 	out := map[string]PairEffect{}
-	for _, item := range r.All {
-		if item.Phrase == "" || item.Assessment == nil {
+	dir := s.recordPath("memory-reviews", "", scope)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		e := out[PairKey(item.Quote.Key, item.Phrase)]
-		switch item.Assessment.Result {
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil || len(data) > 32<<10 {
+			continue
+		}
+		var a MemoryAssessment
+		if json.Unmarshal(data, &a) != nil || a.Phrase == "" || !strings.HasPrefix(a.Key, "lesson:") {
+			continue
+		}
+		k := PairKey(a.Key, a.Phrase)
+		pe := out[k]
+		switch a.Result {
 		case "helpful":
-			e.Helpful++
+			pe.Helpful++
 		case "unused", "harmful":
-			e.Unused++
+			pe.Unused++
 		default:
 			continue
 		}
-		out[PairKey(item.Quote.Key, item.Phrase)] = e
+		out[k] = pe
 	}
 	return out
 }

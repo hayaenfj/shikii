@@ -79,15 +79,16 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 	if len(answers) > 0 {
 		lessonSeats = 1
 	}
-	// the door these quotes come through (0.12): "request" when chosen by the request's words; the always rules have none
+	// the door these quotes come through (0.12): "request" when chosen by the person's request's words, "task" by a subagent's task
+	// (a child's unused deliveries do not silence the person's door); the always rules have none
 	door := ""
 	effects := map[string]store.PairEffect{}
 	if feedback && len(pages) > 0 {
 		door = "request"
-		var err error
-		if effects, err = memoryEffects(root, scope); err != nil {
-			return "", err
+		if parent != "" {
+			door = "task"
 		}
+		effects, _ = memoryEffects(root, scope)
 	}
 	quotes, keys := []memoryQuote{}, []string{}
 	for _, p := range pages {
@@ -167,7 +168,13 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 			id = hex.EncodeToString(sum[:])[:16]
 		}
 		if id != "" {
-			if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Phrase: door}); err != nil {
+			recorded := "" // the door is recorded only when a lesson came through it: a delivery of the person's answers alone has none (audit A of 0.12)
+			for _, key := range keys {
+				if strings.HasPrefix(key, "lesson:") {
+					recorded = door
+				}
+			}
+			if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Phrase: recorded}); err != nil {
 				return "", err
 			}
 		}

@@ -741,19 +741,37 @@ func runHookEvent(event string) error {
 		// only when the person's request moved on. A notification has the same TurnID, so it adds no wiki work.
 		current := loadSession(agent, in.SessionID)
 		if current.TurnID != snapshot.TurnID {
-			// memories delivered to the same session are deduplicated together with the write-back.
-			if merr := updateSession(agent, in.SessionID, func(s *hookSession) {
-				if s.TurnID != current.TurnID || s.Scope != current.Scope {
-					return
-				}
-				context, merr := memoryContext(agent, s.Scope, cut(in.Prompt, requestMax), s)
-				if merr != nil {
-					hookLog("memory: " + merr.Error())
-				} else {
-					out.Context = joinLines(out.Context, context)
-				}
-			}); merr != nil {
+			// chosen, decided (lesson-applies, a model call of seconds) and recorded on a copy outside the session lock (audit A of 0.12: the
+			// lock was held through the model call, and a parallel hook gives it up after 2 seconds and writes without it); the lock then
+			// only adds the delivered versions, so memories delivered to the same session stay deduplicated
+			working := *current
+			working.Memories = append([]memoryDelivery(nil), current.Memories...)
+			context, merr := memoryContext(agent, working.Scope, cut(in.Prompt, requestMax), &working)
+			if merr != nil {
 				hookLog("memory: " + merr.Error())
+			} else if context != "" {
+				out.Context = joinLines(out.Context, context)
+				had := map[string]bool{}
+				for _, m := range current.Memories {
+					had[m.Key+"@"+m.At.Format(time.RFC3339Nano)] = true
+				}
+				var added []memoryDelivery
+				for _, m := range working.Memories {
+					if !had[m.Key+"@"+m.At.Format(time.RFC3339Nano)] {
+						added = append(added, m)
+					}
+				}
+				if uerr := updateSession(agent, in.SessionID, func(s *hookSession) {
+					if s.TurnID != current.TurnID || s.Scope != current.Scope {
+						return
+					}
+					s.Memories = append(s.Memories, added...)
+					if len(s.Memories) > 16 {
+						s.Memories = s.Memories[len(s.Memories)-16:]
+					}
+				}); uerr != nil {
+					hookLog("memory: " + uerr.Error())
+				}
 			}
 			context, ids, rerr := reflectContext(agent, current.Scope)
 			if rerr != nil {
@@ -813,7 +831,8 @@ func runHookEvent(event string) error {
 				err = terr
 			}
 		}
-		for _, id := range wikiSpecs { // wiki insertion points and contradictions also get lines on the same cycle once outcome truths pile up
+		// wiki insertion points and contradictions, and lesson-applies (0.12), also get lines on the same cycle once outcome truths pile up
+		for _, id := range append(append([]string{}, wikiSpecs...), deliverySpecs...) {
 			if cerr := hookMaybeCalibrate(agent, id); cerr != nil && err == nil {
 				err = cerr
 			}

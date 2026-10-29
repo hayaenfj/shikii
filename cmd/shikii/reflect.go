@@ -118,7 +118,15 @@ func reflectQuery(root, scope string) (reflectView, error) {
 		}
 		if len(v.Sources) >= reflectRawSources {
 			source.Request, source.Summary, source.Reply = cut(source.Request, reflectHeadBytes), cut(source.Summary, reflectHeadBytes), cut(source.Reply, reflectHeadBytes)
-			v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: m, Head: true})
+			// the deliveries keep their keys (what submit needs) with their texts cut too, so a head stays a few hundred bytes (audit B of 0.12)
+			cutMemories := make([]store.MemoryObservation, 0, len(m))
+			for _, o := range m {
+				o.Request = cut(o.Request, reflectHeadBytes)
+				o.Quote.Lesson, o.Quote.AppliesTo, o.Quote.Said = cut(o.Quote.Lesson, reflectHeadBytes), cut(o.Quote.AppliesTo, reflectHeadBytes), cut(o.Quote.Said, reflectHeadBytes)
+				o.Quote.Request, o.Quote.Summary, o.Quote.Reply = cut(o.Quote.Request, reflectHeadBytes), cut(o.Quote.Summary, reflectHeadBytes), cut(o.Quote.Reply, reflectHeadBytes)
+				cutMemories = append(cutMemories, o)
+			}
+			v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: cutMemories, Head: true})
 			continue
 		}
 		v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: m})
@@ -212,9 +220,13 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	if len(req.Maintenance) > 0 && len(req.Wiki) > 0 {
 		keysBefore, _ = notebook.Book{Root: root, Scope: scope}.MaintenanceKeys()
 	}
+	touched := map[string]bool{}
 	for _, draft := range req.Wiki {
 		// the truth from the result for the insertion-point and contradiction decisions is built before saving and written after the save succeeds (once the page changes, it can no longer be matched with the decision's input)
-		_, err := ingestWithOutcome(root, scope, draft)
+		res, err := ingestWithOutcome(root, scope, draft)
+		if err == nil && res.Page != nil && res.Page.ID != "" { // a sources-only draft saves no page
+			touched[res.Page.ID] = true // the pages this submit's own saves changed: a review's key is remapped only for them (audit B of 0.12)
+		}
 		receipt := reflectReceipt{Sources: draft.Sources}
 		if err != nil {
 			result.Complete, receipt.Error = false, err.Error()
@@ -227,8 +239,11 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	for _, a := range req.Memory {
 		assessment := store.MemoryAssessment{SourceID: a.SourceID, Key: a.Key, Result: a.Result, Decision: a.Decision, Evidence: a.Evidence, CorrectionResult: a.CorrectionResult}
 		err := (store.Store{Dir: root}).SaveMemoryAssessment(scope, assessment)
-		if err == nil { // the assessment is the outcome truth of the delivery's lesson-applies decision (0.12)
-			err = labelLessonApplies(store.Store{Dir: root}, scope, assessment)
+		if err == nil { // the assessment is the outcome truth of the delivery's lesson-applies decision (0.12); the truth is best effort:
+			// a failure to attach it (the decision's record gone) never fails the receipt, or the agent would resend the same assessment for ever
+			if lerr := labelLessonApplies(store.Store{Dir: root}, scope, assessment); lerr != nil {
+				hookLog("lesson-applies truth: " + lerr.Error())
+			}
 		}
 		receipt := reflectReceipt{SourceID: a.SourceID, Key: a.Key}
 		if err != nil {
@@ -240,7 +255,11 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 		// a review sent with the key the page had before this submit's own saves stands for the page as saved (0.12): the agent read the
 		// page, then changed it in the same call, so the review is recorded against the new revision and key
 		if before, ok := keysBefore[m.PageID]; ok && before.Key == m.Key && before.Revision == m.Revision {
-			if after, ok := keysAfter[m.PageID]; ok {
+			changedHere := touched[m.PageID]
+			for dep := range before.Dependencies {
+				changedHere = changedHere || touched[dep]
+			}
+			if after, ok := keysAfter[m.PageID]; ok && changedHere { // not for a change another process made meanwhile: that one is read again
 				m.Revision, m.Key = after.Revision, after.Key
 			}
 		}

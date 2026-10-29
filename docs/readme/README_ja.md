@@ -9,7 +9,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-854%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-869%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.12.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -152,7 +152,7 @@ hookを入れると、毎回のターンの2つの瞬間が残ります。エー
 
 毎回のターンでは、2つの手順を確かめます。作業の前の整理と、終える前の振り返りです。手順が欠けていると、ターンの終わりを一度止め、打つべきコマンドを伝えます。二度目は止めませんが、欠けたことは記録され、画面に手順を踏んだターンの数が出ます。相づちとは言い切れない短い発言のターンで整理が無い時も、前の依頼の続きかどうかだけを聞くために一度止めます。止めたターンは、止めた後の終わりで判定し、それが来なければ次の依頼の時に判定します。
 
-決定モデルは、エージェント自身の仕事についての既製の問い（依頼の種類、先に進め方を合わせるべきか、変更が範囲内か、依頼を終えたか）に答え、新しい教訓の差し込み先と矛盾にも答えます。これらの正解は、その後に起きたことから付きます。次の依頼の間に戻された変更、言い直された依頼、統合・置き換えされた教訓です。結果が答えられない問いだけが人を待ち、その数は画面に出ます。
+決定モデルは、エージェント自身の仕事についての既製の問い（依頼の種類、先に進め方を合わせるべきか、変更が範囲内か、依頼を終えたか）に答え、新しい教訓の差し込み先と矛盾、届けようとする教訓が今当てはまるか（`lesson-applies`）にも答えます。これらの正解は、その後に起きたことから付きます。次の依頼の間に戻された変更、言い直された依頼、統合・置き換えされた教訓、振り返りで役に立った・使われなかったと評価された教訓です。結果が答えられない問いだけが人を待ち、その数は画面に出ます。
 
 **止める検査**は決定モデルではなく、決まった規則です。ターンの終わりに、そのターンで変わったファイル・足した行・コミットに当てます。流さないコマンドの検査は、コマンドを流す直前にも断ります(0.11)。種類は4つです。
 

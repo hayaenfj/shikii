@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,21 +16,41 @@ func TestTheForbiddenCharacterAppearsNowhereInTheRepository(t *testing.T) {
 	root := strings.TrimSpace(run(t, "git", "rev-parse", "--show-toplevel"))
 	out := run(t, "git", "-C", root, "ls-files", "-co", "--exclude-standard", "-z") // tracked and new files, as they are on disk
 	forbidden := string(rune(0x5370))
-	escape := "\\u" + "5370"
+	// the character itself, and every way a source or document could spell it: the Go escapes of its code point (lower and upper case)
+	// and the HTML numeric references (hex and decimal). Audit B of 0.12 found the names of files and the targets of links unchecked and
+	// the upper-case Go escape passing.
+	spellings := []string{forbidden, "\\u" + "5370", "\\U" + "00005370", "&#x" + "5370;", "&#X" + "5370;", "&#" + "21360;"}
+	written := func(text string) bool {
+		for _, s := range spellings {
+			if strings.Contains(text, s) {
+				return true
+			}
+		}
+		return false
+	}
 	var hits []string
 	for _, name := range strings.Split(strings.TrimRight(out, "\x00"), "\x00") {
 		if name == "" {
 			continue
 		}
+		if written(name) {
+			hits = append(hits, name+" (its name)")
+		}
+		if info, err := os.Lstat(filepath.Join(root, name)); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			if target, err := os.Readlink(filepath.Join(root, name)); err == nil && written(target) {
+				hits = append(hits, name+" (the link's target)")
+			}
+			continue // what a link points at is checked under its own name when it is tracked
+		}
 		data, err := os.ReadFile(filepath.Join(root, name))
 		if err != nil {
 			continue // deleted in the working tree, or a folder (a submodule)
 		}
-		if !bytes.Contains(data, []byte(forbidden)) && !bytes.Contains(data, []byte(escape)) {
+		if !written(string(data)) {
 			continue
 		}
 		for i, line := range strings.Split(string(data), "\n") {
-			if strings.Contains(line, forbidden) || strings.Contains(line, escape) {
+			if written(line) {
 				hits = append(hits, name+":"+itoa(i+1))
 			}
 		}

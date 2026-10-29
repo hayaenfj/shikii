@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -135,5 +136,46 @@ func TestATrustedNoFromLessonAppliesSkipsTheLessonAndAFailureFallsBackToWords(t 
 	t.Cleanup(func() { hookLocalURL = previous })
 	if ctx := feedbackContext(t, toolHook(t, scope, "down", toolPrompt, "Bash", commit)); !strings.Contains(ctx, keys["commit"]) {
 		t.Fatalf("when the model fails the words decide and the tool is not held up:\n%s", ctx)
+	}
+}
+
+// 0.12 audit C: the documents say "until a line is drawn the answer is only recorded; once drawn, a trusted no skips the lesson".
+// shikii itself draws that line: the Stop hook calibrates lesson-applies on the same cycle as the hook's and the wiki's questions once
+// its outcome truths reach min_n, and the line notice names it by its title. Before the fix the Stop loop knew only hookSpecs and
+// wikiSpecs, so lesson-applies stayed in the shadow until a person ran shikii calibrate --write by hand.
+func TestTheStopHookDrawsTheLineForLessonAppliesLikeTheWikiQuestions(t *testing.T) {
+	st, scope, h, ids := toolLessonFixture(t)
+	path := lowerMinN(t, st.Dir, "lesson-applies", 2)
+	edit := map[string]any{"file_path": filepath.Join(scope, "cmd", "shikii", "version.go")}
+	for i, session := range []string{"ca", "cb"} {
+		ctx := feedbackContext(t, toolHook(t, scope, session, toolPrompt+" in session "+session, "Edit", edit)) // distinct inputs: one truth per input counts
+		if !strings.Contains(ctx, ids["version"]) {
+			t.Fatalf("precondition: delivered in %s:\n%s", session, ctx)
+		}
+		d := lastToolDelivery(t, st, scope)
+		memoryEffectComplete(t, st, scope, session)
+		memoryEffectSubmit(t, h, d.ID, ids["version"], []string{"helpful", "unused"}[i], "assessed in a test", "a test")
+	}
+	if labeled, err := st.LabeledTraces("lesson-applies"); err != nil || len(labeled) < 2 {
+		t.Fatalf("precondition: min_n outcome truths for lesson-applies: %d %v", len(labeled), err)
+	}
+	var asked []string
+	oldCal, oldGap := hookCalibrate, hookCalibrateGap
+	hookCalibrate = func(agent, path, storeDir, model string) { asked = append(asked, filepath.Base(path)) }
+	hookCalibrateGap = 0
+	t.Cleanup(func() { hookCalibrate, hookCalibrateGap = oldCal, oldGap })
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "cc", "cwd": scope, "prompt": "explain the parser"})
+	runHook(t, "stop", map[string]any{"session_id": "cc", "cwd": scope, "last_assistant_message": "Explained."})
+	if !strings.Contains(strings.Join(asked, " "), "lesson-applies.yaml") {
+		t.Fatalf("the Stop hook draws the line for lesson-applies once its outcome truths reach min_n (it tried: %v)", asked)
+	}
+	// the notice when the line is drawn names the question by its title, as for the wiki's questions
+	sp := mustLoad(t, path)
+	sp.Calibration = []spec.Calibration{{Model: "kev-4b", SpecHash: sp.Hash(), Method: "platt", N: 2}}
+	if err := sp.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if line := lineSummary(st.Dir); !strings.Contains(line, `a line was drawn for "Does the lesson apply right now"`) {
+		t.Fatalf("the line notice names lesson-applies by its title: %q", line)
 	}
 }

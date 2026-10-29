@@ -171,8 +171,16 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 	if err != nil || len(issues) > 0 {
 		return review, errors.New("cannot check the state of the page")
 	}
+	// the key is computed over the same pages the query computes it over (those whose sources check out), or a page whose related page
+	// lost its source could never be reviewed: the query's key and this key would come from different sets (audit B of 0.12)
+	valid := []Page{}
+	for _, p := range pages {
+		if len(b.sourceIssues(p)) == 0 {
+			valid = append(valid, p)
+		}
+	}
 	var selected *MaintenanceTask
-	for _, task := range maintenanceTasks(pages) {
+	for _, task := range maintenanceTasks(valid) {
 		if task.PageID == review.PageID {
 			t := task
 			selected = &t

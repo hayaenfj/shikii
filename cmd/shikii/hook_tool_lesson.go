@@ -164,12 +164,17 @@ func commandPhrases(command string) []string {
 			phrase = program + " " + w
 			if nestedSubcommands[program] {
 				for j := i + 1; j < len(words); j++ {
-					if next := words[j]; !strings.HasPrefix(next, "-") {
-						if subcommand.MatchString(next) {
-							phrase += " " + next
+					next := words[j]
+					if strings.HasPrefix(next, "-") {
+						if len(next) == 2 {
+							j++ // a lone short option's value (npm run -w web check: web is not the third word; audit A of 0.12)
 						}
-						break
+						continue
 					}
+					if subcommand.MatchString(next) {
+						phrase += " " + next
+					}
+					break
 				}
 			}
 			break
@@ -208,20 +213,22 @@ func shellSegments(command string) [][]string {
 	var word strings.Builder
 	var pending []hereDocument
 	inWord, awaitDelimiter, awaitTabs := false, false, false
+	quotedFrom := -1 // where in the current word quoting began (-1: nowhere): a quoted "<<" is an argument, not an operator (audit A of 0.12)
 	endWord := func() {
 		if !inWord {
 			return
 		}
 		w := word.String()
+		operator := strings.HasPrefix(w, "<<") && !strings.HasPrefix(w, "<<<") && (quotedFrom < 0 || quotedFrom >= 2) // the << itself unquoted
 		word.Reset()
-		inWord = false
+		inWord, quotedFrom = false, -1
 		switch {
 		case awaitDelimiter:
 			pending = append(pending, hereDocument{delimiter: w, tabs: awaitTabs})
 			awaitDelimiter = false
-		case w == "<<" || w == "<<-":
+		case operator && (w == "<<" || w == "<<-"):
 			awaitDelimiter, awaitTabs = true, w == "<<-"
-		case strings.HasPrefix(w, "<<") && !strings.HasPrefix(w, "<<<"):
+		case operator:
 			d := w[2:]
 			tabs := strings.HasPrefix(d, "-")
 			if d = strings.TrimPrefix(d, "-"); d != "" {
@@ -252,10 +259,16 @@ func shellSegments(command string) [][]string {
 				word.WriteByte(c)
 			}
 		case c == '\'' || c == '"':
+			if quotedFrom < 0 {
+				quotedFrom = word.Len()
+			}
 			quote, inWord = c, true
 		case c == '\\' && i+1 < len(command):
 			i++
 			if command[i] != '\n' {
+				if quotedFrom < 0 {
+					quotedFrom = word.Len() // an escaped character is quoted too (\<\< is an argument)
+				}
 				word.WriteByte(command[i])
 				inWord = true
 			}
@@ -299,10 +312,11 @@ func skipHereDocument(command string, from int, h hereDocument) int {
 }
 
 // toolLessonScore scores how a page names the target: the file mention (2 for its path, 1 for its base name) or 1 for a command
-// phrase, read in the title, the lesson and applies_to, and, when none of those names it, 1 for a mention inside a code span of the
-// body (`cmd/shikii/version.go`, `make test`, a fenced block; 0.12: in hayabusa-lang 104 of 152 pages named their command or file
-// only there). Plain body text is not read: it is long and names many things in passing. A page that names the target in its title or
-// applies_to (its condition) ranks above one that names it only in the lesson, and both above one that names it only in the body.
+// phrase, read in the title, the lesson and applies_to, plus one tier (3 for a path, 2 for a base name or a command phrase); when none
+// of those names it, 1 for a mention inside a code span of the body (`cmd/shikii/version.go`, `make test`, a fenced block; 0.12: in
+// hayabusa-lang 104 of 152 pages named their command or file only there). Plain body text is not read: it is long and names many
+// things in passing. A page that names the target in its title or applies_to (its condition) ranks above one that names it only in
+// the lesson, and both above one that names it only in the body (the body's tier is below every other mention; audit C of 0.12).
 func toolLessonScore(p notebook.Page, target toolTarget) (score int, inCondition bool) {
 	mention := func(text string) int {
 		text = strings.Join(strings.Fields(text), " ")
@@ -317,16 +331,15 @@ func toolLessonScore(p notebook.Page, target toolTarget) (score int, inCondition
 		return 0
 	}
 	condition := max(mention(p.Title), mention(p.AppliesTo))
-	score = max(condition, mention(p.Lesson))
-	if score == 0 {
-		for _, span := range codeSpans(p.Body) {
-			if mention(span) > 0 {
-				score = 1
-				break
-			}
+	if score = max(condition, mention(p.Lesson)); score > 0 {
+		return score + 1, condition > 0
+	}
+	for _, span := range codeSpans(p.Body) {
+		if mention(span) > 0 {
+			return 1, false
 		}
 	}
-	return score, condition > 0
+	return 0, false
 }
 
 // codeSpans are the texts inside the body's code spans: fenced blocks (``` ... ```) and inline spans (`...` within one line).
@@ -419,11 +432,16 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	var ranked []toolCandidate
 	for _, p := range live {
 		c := scores[p.ID]
-		c.phrase = matchedPhrase(p, target)
-		if e := effects[store.PairKey(lessonQuote(p).Key, c.phrase)]; silenced(e) {
-			continue // unused twice and never helpful through this door: silent here (another door, or a new revision, is tried again)
-		} else {
-			c.helpful = e.Helpful
+		// the door is the first one the page names that is not silent (unused twice and never helpful): a lesson silent at git commit
+		// still comes through gh release when one command line runs both (audit A of 0.12); silent at every door, it is left out
+		for _, door := range namedDoors(p, target) {
+			if e := effects[store.PairKey(lessonQuote(p).Key, door)]; !silenced(e) {
+				c.phrase, c.helpful = door, e.Helpful
+				break
+			}
+		}
+		if c.phrase == "" {
+			continue
 		}
 		ranked = append(ranked, c)
 	}
@@ -443,12 +461,17 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	}
 	var chosen *toolCandidate
 	var quote memoryQuote
+	asked := 0
 	for i := range ranked {
 		c := ranked[i]
 		q := lessonQuote(c.page)
 		if seen[q.Key] {
 			continue
 		}
+		if asked == lessonAppliesMaxAsks {
+			break // every candidate so far was a trusted no: stop asking rather than pay a model call per page (audit A of 0.12)
+		}
+		asked++
 		trace, skip := lessonApplies(agent, snapshot.Scope, snapshot.Request, target.label, c.page)
 		if skip {
 			continue
@@ -505,34 +528,33 @@ const memorySilenceUnused = 2
 // silenced reports whether the reflection's assessments through this door keep the lesson silent there.
 func silenced(e store.PairEffect) bool { return e.Unused >= memorySilenceUnused && e.Helpful == 0 }
 
-// memoryEffects reads the assessed deliveries of this project (helpful / unused per lesson revision and door).
+// memoryEffects reads the assessed deliveries of this project (helpful / unused per lesson revision and door) from the assessment
+// files; it never fails (a file that cannot be read is skipped), so a broken assessment never silences the delivery.
 func memoryEffects(agent, scope string) (map[string]store.PairEffect, error) {
-	report, err := (store.Store{Dir: agent}).MemoryReport(scope)
-	if err != nil {
-		return nil, err
-	}
-	return report.PairEffects(), nil
+	return (store.Store{Dir: agent}).PairEffects(scope), nil
 }
 
-// matchedPhrase is the door a page matched the target through: the file's base name for an edit, or the first command phrase the
-// page names (its title, lesson, applies_to or a code span of its body) for a command.
-func matchedPhrase(p notebook.Page, target toolTarget) string {
+// namedDoors are the doors a page matches the target through, in the command's order: the file's base name for an edit, or every
+// command phrase the page names (in its title, lesson, applies_to or a code span of its body).
+func namedDoors(p notebook.Page, target toolTarget) []string {
 	if target.file != "" {
-		return path.Base(target.file)
+		return []string{path.Base(target.file)}
 	}
 	texts := []string{p.Title, p.AppliesTo, p.Lesson}
 	texts = append(texts, codeSpans(p.Body)...)
+	var doors []string
 	for _, phrase := range target.phrases {
 		for _, text := range texts {
 			if phraseMention(strings.Join(strings.Fields(text), " "), phrase) {
-				return phrase
+				doors = append(doors, phrase)
+				break
 			}
 		}
 	}
-	if len(target.phrases) > 0 {
-		return target.phrases[0]
+	if len(doors) == 0 && len(target.phrases) > 0 {
+		doors = target.phrases[:1]
 	}
-	return ""
+	return doors
 }
 
 // deliverToolLesson records one quote delivered at a tool call (its own delivery id, under the turn as parent, so the reflection

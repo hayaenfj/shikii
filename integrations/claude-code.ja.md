@@ -65,7 +65,7 @@ which shikii                 # Claude Code がそのまま `shikii` を呼ぶの
 
 `install` がすること(2 回目は何も足さない):
 
-1. `~/.shikii/agent/` に共通の型と既製の wiki を置く。各仕事の `.shikii/` は`shikii --init`（`shikii init`も同じ）が準備し、4 つの spec を埋め込みの原本から**無いものだけ**写す。他の仕事の線は写さず、既にその仕事で育てた spec は触らない。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
+1. `~/.shikii/agent/` に共通の型と既製の wiki を置く。各仕事の `.shikii/` は`shikii --init`（`shikii init`も同じ）が準備し、7 つの spec(hook の 4・wiki の 2・配送の lesson-applies)を埋め込みの原本から**無いものだけ**写す(どの hook も同じことをするので、古い版で初期化したプロジェクトには新しい問いが次の hook で入る)。他の仕事の線は写さず、既にその仕事で育てた spec は触らない。エージェントの作法(skill)を `~/.claude/skills/shikii` に置き直す(`shikii init` と同じ物。これで業務の判定の立ち上げもエージェントが進められる)。llama-server があればモデルを裏で起こす
 2. `~/.claude/settings.json`(Claude Code)と `~/.codex/hooks.json`(Codex)の `hooks` に `UserPromptSubmit`・`Stop`・`SessionStart`(0.11。セッションの始めと要約の直後にプロジェクトの要点)の 3 つ、Claude Code にはさらに `SubagentStart`(0.7.3。サブエージェントが始まる時に教訓を同じ形で届ける)と、`PreToolUse` の `Agent|Task` だけ(0.9.1。子に渡す仕事の文を控える。何も出さずツールも止めない)と、`PreToolUse` の `Edit|Write|MultiEdit|NotebookEdit|Bash`(0.11。`hook tool-lesson`。ファイルを書き換える直前とコマンドを流す直前に、そのファイルかコマンドを書いた教訓を最大 1 件、文脈として足すだけで、拒否は有効な forbidden-commands の検査がコマンドを断る時だけ(許可と確認は出さない))の 3 つ(どれも Codex には足さない。Codex には SubagentStart が無く、PreToolUse で文脈がモデルに渡ることを確かめられなかったため。`~/.codex/hooks.json` も `SessionStart` で変わるので、Codex では `/hooks` で hook を信頼し直す)(command は **実行ファイルの絶対パス** + ` hook <event>`。エージェントの shell の PATH に `shikii` が無くても動く。実行ファイルを動かしたら `shikii hook install --yes` を流し直すと古いパスの handler が外れて新しいものが入る。timeout は UserPromptSubmit・SubagentStart・PreToolUse 15 秒、Stop 20 秒。Codex は `~/.codex/hooks.json` が変わるたび(パスや timeout が変わった時)に hook の信頼をやり直させ、`/hooks` で信頼するまで hook を飛ばす(`codex exec` は何も言わない)。matcher は PreToolUse の `Agent|Task` と `Edit|Write|MultiEdit|NotebookEdit|Bash` だけ)。古い版が足した `PreToolUse` の shikii の hook(`hook pre-tool-use`)は外す(他の hook と鍵は残す)。Codex は新しい hook を一度人に確かめさせる: Codex の中で `/hooks` を開いて trust する(しないと hook は飛ばされる)。初めて settings.json に手を入れる時(install でも uninstall でも)、shikii の hook が入っていない直前の内容を `settings.json.bak-shikii` に控える(1 回だけ。元から settings.json が無ければ作らず、install が作った settings.json は控えない)
 
 固定の規則(オプションは無い): 置き場は各仕事の `.shikii/`(decisions/ wiki/ guards/ records/ labels/ sessions/ handoff/)、モデルは推奨が TypeSafe の Jev(環境変数 `TYPESAFE_API_KEY` がある時。`SHIKII_MODEL=local` なら手元)、鍵が無ければ手元の `http://127.0.0.1:8080`(`shikii up`)、答え合わせの画面はプロジェクトごとに空いているポート(`shikii page` で分かる)。手で `serve` を起こす時の既定は 8095。既製の spec は全部 `send_to: [hosted, local]`、`pii: false` で、鍵があれば依頼・返答・wiki の教訓が TypeSafe へ送られる(2026-10-23 の決定。手元の記録にも残る)。1 回の判定は Jev で約 0.2 秒、手元のモデルで 0.1〜0.6 秒(2 つの問いは並行)、hook 1 回(起動と記録を含む)で 0.6〜1 秒。これが依頼の直後とターンの終わりに 1 回ずつ足されるだけで、ツール呼び出しに足すのは、そのファイル・コマンドを名指しした教訓 1 件か、有効な forbidden-commands の検査の断りだけ。モデルが無ければ待たずに黙る。
@@ -138,7 +138,7 @@ UserPromptSubmit ─ shikii hook user-prompt-submit ─ 前の依頼の pending 
                                                      直前の返答と今回の人の発言を一組で残す。同じ仕事の似た依頼の会話を引用
                                                      decide prompt-kind。新形式のneeds-planは原文付きの文脈整理をエージェントへ案内
                                                      └ sessions/<id>.json に request と作業ツリーのハッシュ、<id>.files に作業ツリーの一覧を控える
-SessionStart ───── shikii hook session-start ────── セッションの始めと要約の直後(source compact)に、どの依頼にも効く規則(scene いつも)と、.shikii/handoff/ のいちばん新しい作業記録の最後の節を文脈に入れる。伝えることが無ければ何も出さない。両方のエージェント(0.11)
+SessionStart ───── shikii hook session-start ────── セッションの始めと要約の直後(source compact)に、どの依頼にも効く規則(scene いつも。8 件まで、1 件も切らず、残りは件数と読み方を 1 行で。0.12)と、.shikii/handoff/ のいちばん新しい markdown か文の作業記録の最後の節(全体 4,000 バイト前後に収まる分まで)を文脈に入れる。伝えることが無ければ何も出さない。両方のエージェント(0.11)
 PreToolUse(Agent) ─ shikii hook agent-task ──────── 子に渡す仕事の文と種類を親の控えに置く(10 分・8 件まで。同じ種類の控えを足す時、30 秒より前の同じ種類の控えは捨てる(断られて始まらなかった子の分)。種類の無い控えは general-purpose として扱う。何も出さない。Claude Code だけ)
 PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── Edit・Write・MultiEdit・NotebookEdit・Bash の直前。Bash ではまず人が有効にした forbidden-commands の検査: 形に当たる
                                                      コマンドを断る(permissionDecision deny と理由。そのターンの記録に残す。0.11)。それ以外は、題・教訓・applies_to か
@@ -155,7 +155,7 @@ SubagentStart ──── shikii hook subagent-start ───── 同じ種�
                                                       30 秒の内に同じ種類の子を起こし直すと、断った方の文で選ぶことがある)
 Stop ───────────── shikii hook stop ──────────────── 残った pending に結果の正解(変わっていれば edit で片付け、変わっていなければ !edit を付けて持ち越す)
                                                      依頼の時の一覧と今の一覧を比べて「変わったファイル」→ decide changes-in-scope, done-as-asked(並行。同じ依頼で 1 回だけ)
-                                                     └ last_assistant_message を控える(次の人の発言との対応・needs-plan の文脈)。答え待ちの要約を 1 行。4 spec の正解が min_n に届いていれば線を引く
+                                                     └ last_assistant_message を控える(次の人の発言との対応・needs-plan の文脈)。答え待ちの要約を 1 行。正解が min_n に届いた問いの線を引く(hook の 4 問・wiki の 2 問・lesson-applies)
 ```
 
 - transcript は読まない(形が文書化されていない)。セッションごとの控えは `.shikii/sessions/<session_id>.json`(request、previous、pending、asked、judged。7 日で消える)と `<session_id>.files`(依頼の時の `git ls-files --stage` の一覧。4 MB まで)。Claude Code は hook を並列に走らせる(Stop と次の依頼が重なる)ので、控えは flock の中で 読む → 変える → 書く(tmp に書いて rename)。錠は短く持ち(モデルの呼び出しは錠の外)、2 秒待っても取れなければ錠なしで進む

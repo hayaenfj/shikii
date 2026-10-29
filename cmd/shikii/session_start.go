@@ -72,6 +72,8 @@ func sessionBrief(root, scope string) (string, error) {
 	}
 	for i, p := range rules {
 		if i == sessionBriefRules {
+			// the rest are counted, with the way to read them, rather than dropped silently (audit B of 0.12)
+			parts = append(parts, fmt.Sprintf("- %d more rules for every request: shikii wiki query with the scene \"always\" lists them all.", len(rules)-i))
 			break
 		}
 		parts = append(parts, "- "+strings.TrimSpace(p.Lesson)+" (lesson:"+p.ID+":"+p.Revision+")")
@@ -100,7 +102,9 @@ func newestWorkRecordSection(root string) (string, string) {
 	}
 	var texts []handoff.Entry
 	for _, e := range entries {
-		if e.Kind == "text" {
+		// a record a person writes to read later: markdown or plain text. Data files (.json, .csv, .log) are text too but not a record
+		// to resume from (audit B of 0.12: a measurement dump newer than the plan became "the work record")
+		if ext := strings.ToLower(filepath.Ext(e.Path)); e.Kind == "text" && (ext == ".md" || ext == ".txt" || ext == "") {
 			texts = append(texts, e)
 		}
 	}
