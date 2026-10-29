@@ -54,8 +54,8 @@ func TestSessionStartBringsTheAlwaysRulesAndTheNewestWorkRecord(t *testing.T) {
 			t.Fatalf("not the earlier sections, not older records, not ordinary lessons (%q):\n%s", not, ctx)
 		}
 	}
-	if len(ctx) > 1800 {
-		t.Fatalf("the brief stays short: %d bytes", len(ctx))
+	if len(ctx) > sessionBriefMax {
+		t.Fatalf("the brief stays within %d bytes when the rules fit: %d bytes", sessionBriefMax, len(ctx))
 	}
 }
 

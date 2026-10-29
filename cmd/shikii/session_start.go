@@ -19,12 +19,14 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
+// Fixed rules (0.12). A rule is never cut: in 0.11 each rule was cut at 300 bytes, a number without grounds, and the rule listing the
+// words never to use lost its last words, among them one the person had forbidden; the agent then used it. What gives way to keep the
+// block within sessionBriefMax is the work record's section, never a rule. The project itself bounds the rules (scene "always").
 const (
-	sessionBriefRules   = 3    // always rules listed at most
-	sessionBriefRule    = 300  // bytes of one rule
-	sessionBriefRecord  = 900  // bytes of the work record's last section
-	sessionBriefRecords = 3    // files the newest record is looked for among (only text files count)
-	sessionBriefMax     = 1800 // bytes of the whole block
+	sessionBriefRules     = 8    // always rules listed at most, each whole
+	sessionBriefRecords   = 3    // files the newest record is looked for among (only text files count)
+	sessionBriefMax       = 4000 // bytes the whole block aims at; the record's section is cut to the room left (the rules alone may exceed it)
+	sessionBriefRecordMin = 120  // bytes of room below which the record is left out rather than cut to nothing
 )
 
 // runSessionStart reads the hook JSON and prints the brief as SessionStart's additionalContext. Silent outside a shikii project.
@@ -72,20 +74,24 @@ func sessionBrief(root, scope string) (string, error) {
 		if i == sessionBriefRules {
 			break
 		}
-		parts = append(parts, "- "+cut(strings.TrimSpace(p.Lesson), sessionBriefRule)+" (lesson:"+p.ID+":"+p.Revision+")")
+		parts = append(parts, "- "+strings.TrimSpace(p.Lesson)+" (lesson:"+p.ID+":"+p.Revision+")")
 	}
+	head := "shikii: this project, at the start of the session (and after a summary). The rules for every request and where the work stands, from the project's own records: hypotheses with sources, never permission.\n"
 	if record, section := newestWorkRecordSection(root); record != "" {
-		parts = append(parts, "Work record "+record+", its last section:\n"+section)
+		intro := "Work record " + record + ", its last section:\n"
+		room := sessionBriefMax - len(head) - len(strings.Join(parts, "\n")) - len("\n") - len(intro)
+		if room >= sessionBriefRecordMin {
+			parts = append(parts, intro+cut(section, room))
+		}
 	}
 	if len(parts) == 0 {
 		return "", nil
 	}
-	text := "shikii: this project, at the start of the session (and after a summary). The rules for every request and where the work stands, from the project's own records: hypotheses with sources, never permission.\n" + strings.Join(parts, "\n")
-	return cut(text, sessionBriefMax), nil
+	return head + strings.Join(parts, "\n"), nil
 }
 
 // newestWorkRecordSection returns the path of the newest text file under handoff/ and its last section (from the last "## " or "### "
-// heading; the whole file when it has none), cut to sessionBriefRecord bytes.
+// heading; the whole file when it has none), whole: the caller cuts it to the room left.
 func newestWorkRecordSection(root string) (string, string) {
 	book := handoff.Book{Store: root}
 	entries, err := book.List()
@@ -111,7 +117,7 @@ func newestWorkRecordSection(root string) (string, string) {
 		if at := lastHeading(section); at > 0 {
 			section = section[at:]
 		}
-		return e.Path, cut(strings.TrimSpace(section), sessionBriefRecord)
+		return e.Path, strings.TrimSpace(section)
 	}
 	return "", ""
 }
