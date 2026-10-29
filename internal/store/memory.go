@@ -354,6 +354,10 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		return errors.New("review only after checking the reply to the request and the person's next message")
 	}
 	old, err := s.memoryAssessment(scope, a.SourceID, a.Key)
+	replace := errors.Is(err, errAssessmentBroken) // a file whose content cannot be read is replaced by this assessment (the query lists the delivery as not yet assessed; confirmation audit 2 of 0.12)
+	if replace {
+		old, err = nil, nil
+	}
 	if err != nil {
 		return err
 	}
@@ -387,6 +391,9 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	}
 	if closeErr != nil {
 		return closeErr
+	}
+	if replace {
+		_ = root.Remove(name) // the broken file gives way; the link below publishes the new one
 	}
 	return root.Link(tmp, name)
 }

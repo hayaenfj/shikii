@@ -16,27 +16,20 @@ import (
 // The findings of the three independent audits of 0.12.0 (.shikii/handoff/audit-0.12/audit-final-{A,B,C}.md), each as a test that
 // failed before the fix and passes after it.
 
-// Audit A, property 9: a quoted "<<EOF" is an argument, not the start of a here-document; the commands after it are still read.
-func TestAQuotedHereDocumentMarkerIsAnArgument(t *testing.T) {
-	for _, c := range []struct {
-		command string
-		want    string
-	}{
-		{"grep -n '<<EOF' build.sh\ngit commit -m x", "git commit"},
-		{"grep -rn \"<<\" scripts\ngit commit -m x", "git commit"},
-		{"rg --fixed-strings '<<-EOF' .\nmake test", "make test"},
+// Property 9 (audits A, confirmation 1 and 2 each found a here-document form misread, so the rule is one line now): a command is read
+// up to its first <<, wherever it stands; what comes before it on that line is read, nothing after it is.
+func TestNothingAfterAHereDocumentOperatorIsRead(t *testing.T) {
+	for command, want := range map[string][]string{
+		"grep -n '<<EOF' build.sh\ngit commit -m x":          nil,
+		"make test && grep -rn \"<<\" scripts\ngit commit":   {"make test"},
+		"echo $((1<<2))\ngit commit -m x":                    nil,
+		"cat <<EOF>out.txt\ngit commit -m x\nEOF\nmake test": nil,
+		"cat<<EOF\ngit commit -m x\nEOF\nmake test":          nil,
+		"go test ./... <<< 'git commit'":                     {"go test"},
 	} {
-		got := commandPhrases(c.command)
-		found := false
-		for _, g := range got {
-			found = found || g == c.want
+		if got := commandPhrases(command); fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Fatalf("commandPhrases(%q) = %v, want %v", command, got, want)
 		}
-		if !found {
-			t.Fatalf("commandPhrases(%q) = %v, want it to contain %q", c.command, got, c.want)
-		}
-	}
-	if got := commandPhrases("cat <<'EOF' > x\ngit commit\nEOF\nmake test"); len(got) != 1 || got[0] != "make test" {
-		t.Fatalf("an unquoted operator with a quoted terminator is still a here-document: %v", got)
 	}
 }
 

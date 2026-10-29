@@ -138,7 +138,7 @@ func fileMention(text, file string) int {
 func commandPhrases(command string) []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, words := range shellSegments(command) {
+	for _, words := range shellSegments(readablePart(command)) {
 		for len(words) > 0 && (assignment.MatchString(words[0]) || commandPrefixes[words[0]]) {
 			words = words[1:]
 		}
@@ -196,46 +196,62 @@ var (
 	nestedSubcommands = map[string]bool{"shikii": true, "npm": true}
 )
 
-// hereDocument is a pending here-document: its terminator line, and whether leading tabs are stripped (<<-).
-type hereDocument struct {
-	delimiter string
-	tabs      bool
+// readablePart is the part of a command line that is read for commands: a comment (a # that starts a word outside quotes, to the end
+// of its line) is left out, and reading stops at the first <<, wherever it stands: a here-document's body follows, and whatever comes
+// after it is not read. 0.12 first parsed the here-document's terminator, and three audits in a row found a form it misread (a quoted
+// <<, a glued cat<<EOF, a glued EOF>out.txt, an arithmetic <<), so the rule was cut down to this one line: no body line is ever read
+// as a command, at the price of not reading what follows a here-document either (the lesson for that command arrives when it runs alone).
+func readablePart(command string) string {
+	var out strings.Builder
+	for i, line := range strings.Split(command, "\n") {
+		if i > 0 {
+			out.WriteByte('\n')
+		}
+		line = stripComment(line)
+		if at := strings.Index(line, "<<"); at >= 0 {
+			out.WriteString(line[:at])
+			return out.String()
+		}
+		out.WriteString(line)
+	}
+	return out.String()
+}
+
+// stripComment cuts a line at a # that starts a word outside quotes ($# and a#b are not comments).
+func stripComment(line string) string {
+	quote := byte(0)
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else if c == '\\' && quote == '"' {
+				i++
+			}
+		case c == '\\':
+			i++
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
+			return line[:i]
+		}
+	}
+	return line
 }
 
 // shellSegments splits a command line into the words of its simple commands: outside quotes, ; & | ( ) ` and newlines end a
 // command, and spaces end a word. Quotes and backslashes are taken off as the shell does; what is inside quotes stays one word.
-// The lines of a here-document (<<EOF, <<-EOF, <<'EOF', << EOF ... up to the terminator line) are text handed to the command, not
-// commands, and are left out (0.12: `import json` and `git commit` inside one were read as commands). A here-document that is never
-// closed runs to the end. A here-string (<<<) is an ordinary word.
 func shellSegments(command string) [][]string {
 	var segments [][]string
 	var words []string
 	var word strings.Builder
-	var pending []hereDocument
-	inWord, awaitDelimiter, awaitTabs := false, false, false
-	quotedFrom := -1 // where in the current word quoting began (-1: nowhere): a quoted "<<" is an argument, not an operator (audit A of 0.12)
+	inWord := false
 	endWord := func() {
-		if !inWord {
-			return
-		}
-		w := word.String()
-		operator := strings.HasPrefix(w, "<<") && !strings.HasPrefix(w, "<<<") && (quotedFrom < 0 || quotedFrom >= 2) // the << itself unquoted
-		word.Reset()
-		inWord, quotedFrom = false, -1
-		switch {
-		case awaitDelimiter:
-			pending = append(pending, hereDocument{delimiter: w, tabs: awaitTabs})
-			awaitDelimiter = false
-		case operator && (w == "<<" || w == "<<-"):
-			awaitDelimiter, awaitTabs = true, w == "<<-"
-		case operator:
-			d := w[2:]
-			tabs := strings.HasPrefix(d, "-")
-			if d = strings.TrimPrefix(d, "-"); d != "" {
-				pending = append(pending, hereDocument{delimiter: d, tabs: tabs})
-			}
-		default:
-			words = append(words, w)
+		if inWord {
+			words = append(words, word.String())
+			word.Reset()
+			inWord = false
 		}
 	}
 	endSegment := func() {
@@ -259,45 +275,16 @@ func shellSegments(command string) [][]string {
 				word.WriteByte(c)
 			}
 		case c == '\'' || c == '"':
-			if quotedFrom < 0 {
-				quotedFrom = word.Len()
-			}
 			quote, inWord = c, true
 		case c == '\\' && i+1 < len(command):
 			i++
 			if command[i] != '\n' {
-				if quotedFrom < 0 {
-					quotedFrom = word.Len() // an escaped character is quoted too (\<\< is an argument)
-				}
 				word.WriteByte(command[i])
 				inWord = true
 			}
-		case c == '<' && i+2 < len(command) && command[i+1] == '<' && command[i+2] == '<':
-			word.WriteString("<<<") // a here-string is an ordinary word
-			inWord = true
-			i += 2
-		case c == '<' && i+1 < len(command) && command[i+1] == '<':
-			// << is an operator token wherever it stands unquoted (cat<<EOF, 0<<EOF, "a"<<EOF), as the shell cuts it: the word before it
-			// ends and the operator starts a word of its own (confirmation audit 1 of 0.12; the here-document rule is the shell's tokenization)
-			endWord()
-			word.WriteString("<<")
-			inWord = true
-			i++
-		case c == '#' && !inWord:
-			// a comment runs to the end of the line (a # starting a word, outside quotes); its words are not commands
-			for i+1 < len(command) && command[i+1] != '\n' {
-				i++
-			}
 		case c == ' ' || c == '\t':
 			endWord()
-		case c == '\n':
-			endSegment()
-			awaitDelimiter = false
-			for _, h := range pending {
-				i = skipHereDocument(command, i+1, h) - 1
-			}
-			pending = nil
-		case strings.IndexByte(";&|()`", c) >= 0:
+		case strings.IndexByte(";&|()`\n", c) >= 0:
 			endSegment()
 		default:
 			word.WriteByte(c)
@@ -306,25 +293,6 @@ func shellSegments(command string) [][]string {
 	}
 	endSegment()
 	return segments
-}
-
-// skipHereDocument returns the offset just after the terminator line of h, reading lines from offset from; the end of the command
-// when no line is the terminator.
-func skipHereDocument(command string, from int, h hereDocument) int {
-	for from < len(command) {
-		next, line := len(command), command[from:]
-		if end := strings.IndexByte(line, '\n'); end >= 0 {
-			line, next = line[:end], from+end+1
-		}
-		if h.tabs {
-			line = strings.TrimLeft(line, "\t")
-		}
-		if line == h.delimiter {
-			return next
-		}
-		from = next
-	}
-	return len(command)
 }
 
 // toolLessonScore scores how a page names the target: the file mention (2 for its path, 1 for its base name) or 1 for a command

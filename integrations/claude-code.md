@@ -147,7 +147,7 @@ PreToolUse(Edit…) ─ shikii hook tool-lesson ─────── right befo
                                                      Otherwise at most 1 lesson whose title, lesson, applies_to or a code span of its body (`...`, a fenced block; 0.12) names
                                                      the file (the end of its path, or its name as a whole
                                                      word) or the command (program and first word, such as git commit; shikii and npm with their third word, such as
-                                                     shikii hook plan; options skipped; the lines of a here-document are not commands, 0.12) goes into the context. Words pick the
+                                                     shikii hook plan; options skipped; a command line is read up to its first <<, 0.12) goes into the context. Words pick the
                                                      candidates; for the one about to go out the decision model is asked lesson-applies once (0.12): only a trusted no skips
                                                      it for the next candidate, and a model that fails or is down changes nothing. Not
                                                      before the session's first request; the same revision once an hour per session (the same record as the request's
