@@ -12,9 +12,9 @@ Claude Code and Codex start every session from zero. They do not remember what y
 [![Tests](https://img.shields.io/badge/tests-904%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.14.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.14.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.14.0 brings linked decision criteria and complete reasoning bodies into planning. The agent chooses the search topic; shikii follows the project's links to relevant criteria and includes whole bodies that fit the reading budget. Applicability conditions are no longer cut short, and supplied bodies do not need to be fetched again. No extra writing or settings are required. See the [changelog](CHANGELOG.md) for details.
+Version 0.14.1 checks saved planning and reflection before judging completion. Missing work is returned to the agent with concrete commands; partial progress can continue, while no progress or a verification error ends explicitly incomplete. A second stop can no longer silently skip these steps. See the [changelog](CHANGELOG.md) for details.
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 

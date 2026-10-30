@@ -12,9 +12,9 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 [![Tests](https://img.shields.io/badge/tests-904%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.14.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.14.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.14.0で、教訓とつながる判断基準や、その理由・例外を、着手前に一緒に読めるようにしました。エージェントが選んだ話題で検索し、関連する判断基準と、文量の枠に丸ごと収まる本文を渡します。適用条件の末尾を切らず、既に届いた本文の取り直しも減らします。人の追加記入や設定は要りません。詳しくは[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
+0.14.1で、整理や振り返りの保存を確認してから完了を判定するようにしました。未実施の処理は具体的なコマンドとしてエージェントへ戻し、残件が減れば続きを促します。進まない時や確認エラー時は未完了と表示して止め、二度目の終了で処理を飛ばせないようにしました。詳しくは[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)
 

@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.14.1 — Verify saved work before completion
 
 - Check required planning, reflection, page classification and reply language before judging completion. Stop asks the agent to run concrete recovery commands and checks saved progress. Partial progress can continue; no progress or a verification/save error ends explicitly incomplete instead of silently passing a second Stop. Missing work is not judged complete at the next request either. User-defined guards keep their existing behavior.
 
