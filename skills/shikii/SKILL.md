@@ -9,7 +9,7 @@ shikii grows the agent to fit this project. What it gives you is the project's o
 
 Use them at five moments, not only at the end of the turn:
 
-1. **Before starting**: the request hook names `hook plan query`; its reply carries the recent conversation, the related lessons, the person's answers on similar requests and `how_to_submit`. Read them, then organize the turn.
+1. **Before starting**: the request hook names `hook plan query`; its reply carries the recent conversation, the related lessons, the person's answers on similar requests and `how_to_submit`. Read them, including supplied article bodies and linked criteria, then organize the turn around the project's purpose and the conditions of its earlier choices. Reuse supplied bodies instead of fetching the same revision again.
 2. **When the work moves to another area** mid-task: search the wiki again by that area's topic (`shikii wiki query` / `shikii_wiki`) before acting there.
 3. **Right before an action**: a lesson that names the file or command you are about to touch (in its title, applies_to, lesson or a code span of its body) arrives with the tool call, once the decision model has not ruled it out (`lesson-applies`, learned from your own assessments); a `forbidden-commands` guard the person enabled may refuse a command with its reason: run a corrected one.
 4. **When unsure** whether to ask the person first, whether a change is within what was asked, or whether the work is done: consult `shikii_decide` with the built-in question and the request; the reply carries the band, the person's similar decisions and the closest lessons.

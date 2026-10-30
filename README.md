@@ -9,12 +9,12 @@ Claude Code and Codex start every session from zero. They do not remember what y
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-889%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-894%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.13.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.14.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.13.0 connects the agent's feedback on delivered lessons to routine wiki maintenance. Lessons that repeatedly go unused or get in the way of a decision return with the recorded reasons and evidence. The agent checks the sources and decides whether the content or applicability needs to change; a review can also leave the lesson unchanged. This uses normal work and reflection, with no extra writing, scoring or settings for you. See the [changelog](CHANGELOG.md) for the details.
+Version 0.14.0 brings linked decision criteria and complete reasoning bodies into planning. The agent chooses the search topic; shikii follows the project's links to relevant criteria and includes whole bodies that fit the reading budget. Applicability conditions are no longer cut short, and supplied bodies do not need to be fetched again. No extra writing or settings are required. See the [changelog](CHANGELOG.md) for details.
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 

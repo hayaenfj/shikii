@@ -140,6 +140,8 @@ A search looks at the title, the conditions, the summary and the body, and retur
 
 In `article.json`, keep the short `lesson` apart from the detailed `body`, and merge the background, the evidence, the conditions and what is still unknown into the existing article. Connect related pages with `related`, and leave a `change_reason` for edits that change the meaning. Long conversation originals that are available are kept with their own hash when quoted, so they can still be read after the original decision record is removed. When a source or an original is missing, record that limit.
 
+Planning's `hook plan query` also returns up to two live `criteria` pages directly linked through `related` from the search matches (0.14). Summaries and applicability conditions are kept whole, with kind and scene. Without `pages`, up to two complete bodies are included as `article:<id>:<revision>`, criteria first, within 8000 body bytes in total. Bodies that do not fit can still be read through explicit `pages` (up to two) or `wiki query`. The reply's `wiki_context` returns `available_count` instead of the full inventory; the decision record still preserves every revision in `knowledge_context.available`. Linked candidates, body reads and actual citations stay distinct. Links and past judgments never grant current permission.
+
 ### Kinds and scenes of articles
 
 From 0.9.0, an article with a lesson needs a `kind` and a `scene`. A save without them is refused, and the refusal lists the values you can use.

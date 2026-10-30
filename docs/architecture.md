@@ -61,6 +61,8 @@ Explicit search covers all articles, keeps command names, and ranks title and wh
 
 Implementation: `internal/notebook/notebook.go`, `internal/notebook/sources.go`, `internal/notebook/search.go`, `internal/notebook/paging.go`, `cmd/shikii/notebook.go`, `cmd/shikii/memory.go`.
 
+Planning's `hook plan query` also returns up to two live `criteria` pages directly linked through `related` from the search matches (0.14). Summaries and applicability conditions are kept whole, with kind and scene. Without `pages`, up to two complete bodies are included as `article:<id>:<revision>`, criteria first, within 8000 body bytes in total. Bodies that do not fit can still be read through explicit `pages` (up to two) or `wiki query`. The reply's `wiki_context` returns `available_count` instead of the full inventory; the decision record still preserves every revision in `knowledge_context.available`. Linked candidates, body reads and actual citations stay distinct. Links and past judgments never grant current permission.
+
 ## 4. Tie corrections to the next action and to what was checked
 
 An explicit correction carries `correction: {source_id, quote, action}`. The quote is taken word for word from the person's reply in the named source of the same project. The source and the original text are checked to match, and a correction without a concrete next action is not accepted. Interpreting it as a correction, and whether the action is right, remain hypotheses.

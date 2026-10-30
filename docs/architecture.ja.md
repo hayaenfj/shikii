@@ -61,6 +61,8 @@ Gitの中は実パスのプロジェクトルート、外は実行したフォ�
 
 実装: `internal/notebook/notebook.go`、`internal/notebook/sources.go`、`internal/notebook/search.go`、`internal/notebook/paging.go`、`cmd/shikii/notebook.go`、`cmd/shikii/memory.go`。
 
+着手前の `hook plan query` は、検索上位の教訓に加え、その記事が `related` で直接結ぶ有効な `criteria` を最大2件返す（0.14）。要約と適用条件は末尾を切らず、種類と場面も渡す。`pages` 未指定なら判断基準を先に、本文が丸ごと収まる記事を最大2件・本文合計8000バイト以内で `article:<id>:<revision>` として返す。入らない本文は既存の `pages` 指定（最大2件）や `wiki query` で読める。応答の `wiki_context` は全記事の一覧を繰り返さず `available_count` を返すが、判定記録の `knowledge_context.available` には全版を保存する。関連候補・本文取得・実際の引用を区別し、関連や過去の判断を現在の許可とは扱わない。
+
 ## 4. 訂正を次の行動と確認結果へ結ぶ
 
 明示的な訂正には `correction: {source_id, quote, action}` を添える。引用は同じプロジェクトの指定した出典の人の返答から、そのまま抜き出す。出典と原文の一致を検査し、具体的な次の行動がないものは受け付けない。訂正という解釈や行動の妥当性は仮説のまま。

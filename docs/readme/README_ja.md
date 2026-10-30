@@ -9,12 +9,12 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-889%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-894%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.13.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.14.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.13.0で、エージェントが教訓を使った結果を、wikiの手入れにつなぎました。繰り返し使われなかった教訓や判断を妨げた教訓を、理由と証拠付きで見直しに戻します。エージェントが出典を確かめ、内容や適用条件を直すか、変更不要として残すかを判断します。普段の作業と振り返りから進むため、あなたが追加で文章を書いたり、採点や設定をしたりする必要はありません。詳しくは[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
+0.14.0で、教訓とつながる判断基準や、その理由・例外を、着手前に一緒に読めるようにしました。エージェントが選んだ話題で検索し、関連する判断基準と、文量の枠に丸ごと収まる本文を渡します。適用条件の末尾を切らず、既に届いた本文の取り直しも減らします。人の追加記入や設定は要りません。詳しくは[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)
 

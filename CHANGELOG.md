@@ -2,6 +2,11 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.14.0 — Bring purpose and reasoning into planning
+
+- Planning's `hook plan query` also returns up to two live `criteria` pages directly linked through `related` from the search matches (0.14). Summaries and applicability conditions are kept whole, with kind and scene. Without `pages`, up to two complete bodies are included as `article:<id>:<revision>`, criteria first, within 8000 body bytes in total. Bodies that do not fit can still be read through explicit `pages` (up to two) or `wiki query`. The reply's `wiki_context` returns `available_count` instead of the full inventory; the decision record still preserves every revision in `knowledge_context.available`. Linked candidates, body reads and actual citations stay distinct. Links and past judgments never grant current permission.
+- The skill now asks the agent to reason from purpose, rationale and applicability, compare them with the current request, and reuse supplied bodies. It must not invent reasons or exceptions and returns to original sources when needed.
+
 ## 0.13.0 — lessons improve through everyday work
 
 - Connect lesson maintenance to saved delivery feedback. At least two unused deliveries and no helpful ones for the same revision and entry point, or any harmful delivery, bring the lesson back into normal reflection with the recorded decisions and evidence. The agent checks sources before editing applicability or content; a no-change review also settles the evidence. Unknown, pending and older-revision assessments do not count, and no extra human writing or scoring is needed.

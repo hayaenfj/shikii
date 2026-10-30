@@ -3,12 +3,25 @@ package main
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 )
+
+const planningBodyBudget = 8000
+
+// Only the response omits the full inventory. The decision record retains every available revision.
+func planningKnowledgeReply(k *store.KnowledgeContext) any {
+	if k == nil {
+		return nil
+	}
+	return map[string]any{"query": k.Query, "candidates": k.Candidates, "related": k.Related,
+		"read": k.Read, "used": k.Used, "available_count": len(k.Available), "at": k.At,
+		"lookup_milliseconds": k.LookupMilliseconds, "context_bytes": k.ContextBytes}
+}
 
 func preparePlanningKnowledge(root, scope string, req planningRequest, sources map[string]string) (string, *store.KnowledgeContext, error) {
 	if len(req.Pages) > 2 {
@@ -44,8 +57,44 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		}
 		context.Candidates = append(context.Candidates, ref)
 	}
+	// A project's own links lead from a procedure to its purpose. Do not search globally for goals
+	// or recurse through the graph: two live, directly linked criteria are enough for this context.
+	linked, links, err := planningLinkedCriteria(book, pages)
+	if err != nil {
+		return "", nil, err
+	}
+	context.Related = links
+	for _, page := range linked {
+		ref := store.KnowledgeReference{ID: page.ID, Revision: page.Revision}
+		found := false
+		for _, known := range available {
+			if known == ref {
+				found = true
+			}
+		}
+		if !found {
+			return "", nil, errors.New("the wiki revision changed during the search. Read it again")
+		}
+		addPlanningLesson(sources, page)
+	}
+	readPages := req.Pages
+	if len(readPages) == 0 {
+		choices := append(append([]notebook.Page{}, pages...), linked...)
+		sort.SliceStable(choices, func(i, j int) bool { return choices[i].Kind == "criteria" && choices[j].Kind != "criteria" })
+		remaining := planningBodyBudget
+		for _, page := range choices {
+			if page.Body == "" || len(page.Body) > remaining {
+				continue
+			}
+			readPages = append(readPages, page.ID)
+			remaining -= len(page.Body)
+			if len(readPages) == 2 {
+				break
+			}
+		}
+	}
 	seen := map[string]bool{}
-	for _, id := range req.Pages {
+	for _, id := range readPages {
 		if len(id) != 16 || seen[id] {
 			return "", nil, errors.New("give page IDs without duplicates")
 		}
@@ -65,6 +114,15 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		if !found {
 			return "", nil, errors.New("the wiki revision changed during the search. Read it again")
 		}
+		// Automatic selection used an earlier snapshot. Reject a body that changed since then,
+		// including growth past the budget, rather than returning a partial or different body.
+		if len(req.Pages) == 0 {
+			for _, selected := range append(append([]notebook.Page{}, pages...), linked...) {
+				if selected.ID == id && selected.Revision != page.Revision {
+					return "", nil, errors.New("the wiki revision changed during the search. Read it again")
+				}
+			}
+		}
 		context.Read = append(context.Read, ref)
 		ids := []string{}
 		for _, source := range page.Sources {
@@ -79,6 +137,44 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 	}
 	context.LookupMilliseconds = float64(time.Since(started).Nanoseconds()) / 1e6
 	return notice, context, nil
+}
+
+func planningLinkedCriteria(book notebook.Book, pages []notebook.Page) ([]notebook.Page, []store.KnowledgeLink, error) {
+	seen, wanted := map[string]bool{}, map[string]bool{}
+	for _, page := range pages {
+		seen[page.ID] = true
+		for _, id := range page.Related {
+			wanted[id] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, nil, nil
+	}
+	live, err := book.LiveWhere(func(p notebook.Page) bool { return wanted[p.ID] && p.Kind == "criteria" })
+	if err != nil {
+		return nil, nil, err
+	}
+	byID := map[string]notebook.Page{}
+	for _, page := range live {
+		byID[page.ID] = page
+	}
+	var linked []notebook.Page
+	var links []store.KnowledgeLink
+	for _, from := range pages {
+		for _, id := range from.Related {
+			page, ok := byID[id]
+			if !ok || seen[id] {
+				continue
+			}
+			seen[id] = true
+			linked = append(linked, page)
+			links = append(links, store.KnowledgeLink{From: from.ID, ID: id, Revision: page.Revision})
+			if len(linked) == 2 {
+				return linked, links, nil
+			}
+		}
+	}
+	return linked, links, nil
 }
 
 func planningCitations(req planningRequest, context *store.KnowledgeContext) {

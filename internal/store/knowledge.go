@@ -11,11 +11,19 @@ type KnowledgeCitation struct {
 	Quote  string `json:"quote"`
 }
 
+// KnowledgeLink records the article that led to a related criterion, separately from search matches.
+type KnowledgeLink struct {
+	From     string `json:"from"`
+	ID       string `json:"id"`
+	Revision string `json:"revision"`
+}
+
 // KnowledgeContext records retrieval and quotation, not the usefulness of a memory.
 // Available fixes the permitted article versions for later comparisons.
 type KnowledgeContext struct {
 	Query              string               `json:"query"`
 	Candidates         []KnowledgeReference `json:"candidates"`
+	Related            []KnowledgeLink      `json:"related,omitempty"`
 	Read               []KnowledgeReference `json:"read"`
 	Used               []KnowledgeCitation  `json:"used"`
 	Available          []KnowledgeReference `json:"available"`

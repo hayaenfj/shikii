@@ -85,15 +85,19 @@ func planningWikiSources(root, scope, query string, sources map[string]string) (
 		return nil, "Cannot read the wiki references. Do not fill in unknown conditions; put the current request first."
 	}
 	for _, page := range view.Lessons {
-		key := "lesson:" + page.ID + ":" + page.Revision
-		ids := []string{}
-		for _, source := range page.Sources {
-			ids = append(ids, source.ID)
-		}
-		sources[key] = fmt.Sprintf("Lesson (hypothesis): %s\nApplies when: %s\nSources: %s", cut(page.Lesson, 800), cut(page.AppliesTo, 300), strings.Join(ids, ", "))
+		addPlanningLesson(sources, page)
 	}
 	if len(view.Issues) > 0 {
 		return view.Lessons, "Wiki pages whose sources or versions could not be checked were left out of the references."
 	}
 	return view.Lessons, ""
+}
+
+// Keep the complete summary and condition: their ending may contain an exception.
+func addPlanningLesson(sources map[string]string, page notebook.Page) {
+	ids := []string{}
+	for _, source := range page.Sources {
+		ids = append(ids, source.ID)
+	}
+	sources["lesson:"+page.ID+":"+page.Revision] = fmt.Sprintf("Lesson (hypothesis): %s\nTitle: %s\nKind: %s\nScene: %s\nApplies when: %s\nSources: %s", page.Lesson, page.Title, page.Kind, page.Scene, page.AppliesTo, strings.Join(ids, ", "))
 }
