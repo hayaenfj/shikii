@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.15.0 — Edit knowledge from the page
+
+- Edit an article's title, summary, conditions, background, kind and scene on the Knowledge page. Saving keeps its sources and earlier revisions and records the submitted change as a source snapshot, separate from calibration truths.
+- Delete an article after confirmation. It leaves normal lists, searches, automatic delivery and maintenance; sources and historical revisions remain readable by explicit reference. Previously replaced articles do not return, and ordinary ingestion cannot revive a deleted article. Keep running agents on 0.15.0 or later after deletion.
+- Require the version opened by the editor for edits and deletions. A concurrent change returns 409 and leaves the input in the editor. The new project-scoped HTTP endpoint is `POST /v1/wiki/article`.
+- Add an English/Japanese explanation of shikii and memory, including the knowledge and decision feedback loops developed before 0.14.1, with links to OpenAI's published memory documentation.
+
 ## 0.14.1 — Verify saved work before completion
 
 - Check required planning, reflection, page classification and reply language before judging completion. Stop asks the agent to run concrete recovery commands and checks saved progress. Partial progress can continue; no progress or a verification/save error ends explicitly incomplete instead of silently passing a second Stop. Missing work is not judged complete at the next request either. User-defined guards keep their existing behavior.

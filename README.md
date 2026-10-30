@@ -9,12 +9,12 @@ Claude Code and Codex start every session from zero. They do not remember what y
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-909%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-912%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.14.1-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.15.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.14.1 checks saved planning and reflection before judging completion. Missing work is returned to the agent with concrete commands; partial progress can continue, while no progress or a verification error ends explicitly incomplete. A second stop can no longer silently skip these steps. See the [changelog](CHANGELOG.md) for details.
+Version 0.15.0 lets you edit and delete articles on the Knowledge page, with revision checks to prevent overwriting newer changes. Sources and history are kept. The new [memory guide](docs/memory-and-learning.md) explains how remembering, reviewing usefulness and measuring decisions fit together. See the [changelog](CHANGELOG.md) for details.
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -61,6 +61,7 @@ The AI part of the page and `shikii status` show whether it is working: whether 
 - **Enable guards.** Run `shikii guard enable <id>` once. shikii first shows the guard stopping on a deliberately broken example and passing on a correct one, then enables it. Disabling is also your call.
 - **Answer some questions.** Under Answer on the page, the decisions the model was unsure about and 1 in 20 of the ones it acted on appear one card at a time. The count waiting is shown beside Answer. Read the conversation and press the button for what was actually true.
 - **Look up knowledge when you need it.** At the top of the page's Knowledge section, every rule decided in this project, by people or by the AI, is listed so none gets buried; "always" rules come first and new ones are marked. Below it, pick a scene to see the lessons for it grouped by kind, and press a title to read it. You do not need to check everything: "For you to look at" at the top shows only the exceptions, such as a lesson that did harm or a correction that was repeated.
+- **Edit or delete knowledge.** Open an article and choose Edit or Delete. Deletion removes it from search and delivery, while its sources and history remain.
 - **Read the work records when you want.** On the page, under Knowledge → Work records, you can read the agent's reports and see its screenshots.
 - **Now and then confirm a wording.** When a better way of asking is found, you check that it asks the same thing and press adopt or reject.
 
@@ -222,6 +223,7 @@ Conversations, lessons, provisional assessments, truths, calibration, guards and
 
 ## Read more
 
+- [How shikii relates to memory](docs/memory-and-learning.md): remembering, reviewing usefulness and adjusting delegation
 - [The guide](docs/guide.md): every command, the HTTP API, connecting models, delegating business decisions
 - [Architecture](docs/architecture.md)
 - [The agent's instructions](skills/shikii/SKILL.md)

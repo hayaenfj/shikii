@@ -9,12 +9,12 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-909%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-912%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.14.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.15.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.14.1で、整理や振り返りの保存を確認してから完了を判定するようにしました。未実施の処理は具体的なコマンドとしてエージェントへ戻し、残件が減れば続きを促します。進まない時や確認エラー時は未完了と表示して止め、二度目の終了で処理を飛ばせないようにしました。詳しくは[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
+0.15.0で、知識画面から記事を編集・削除できるようにしました。新しい変更への上書きを防ぎ、出典と履歴を残します。[メモリーとの違いを説明する文書](../memory-and-learning.ja.md)も追加し、覚えること・役立ったかを確かめること・判断の任せ方を測ることのつながりをまとめました。詳しくは[変更履歴](../../CHANGELOG_ja.md)をご覧ください。
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)
 
@@ -61,6 +61,7 @@ Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。�
 - **止める検査を有効にする。** `shikii guard enable <id>` を一度打ちます。shikiiは、その検査がわざと壊した例で実際に止まり、正しい例で通ることを見せてから有効にします。外すのも人の判断です。
 - **いくつかの答えを付ける。** 画面の「答える」に、モデルが迷った判断と、自動で進めた判断の20件に1件が、1枚ずつ出ます。待っている数は「答える」の横に出ます。会話を読んで、本当はどうだったかのボタンを押します。
 - **知りたい時に知識を引く。** 画面の「知識」の一番上には、人やAIが決めた「このプロジェクトで決められたルール」が全部並び、埋もれません。「いつも」のルールが先頭で、新しいルールには「新」のラベルが付きます。その下で場面を選ぶと、その場面に効く教訓が種類ごとに並び、題を押すと本文が出ます。全部を確かめる必要はありません。上の「あなたに見てほしいもの」に、害があった教訓や繰り返された訂正のような例外だけが出ます。
+- **知識を編集・削除する。** 記事を開いて「編集」「削除」を選べます。削除すると検索や配信から外れ、出典と履歴は残ります。
 - **読みたい時に作業記録を読む。** 画面の「知識 → 作業記録」で、エージェントの報告を読み、画像を見られます。
 - **たまに聞き方を確かめる。** より良い聞き方が見つかったら、同じことを聞いているかを見て、採用か却下を押します。
 
@@ -222,6 +223,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 
 ## もっと読む
 
+- [shikiiとメモリーの違い](../memory-and-learning.ja.md): 覚えること、役立ったかを確かめること、判断を任せること
 - [ガイド](../guide.ja.md): 全コマンド、HTTP API、モデルの接続、業務の判定の作り方
 - [構造の説明](../architecture.ja.md)
 - [エージェントの作法](../../skills/shikii/SKILL.md)
