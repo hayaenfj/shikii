@@ -5,8 +5,12 @@
   // The AI's internal numbers (deliveries, helped counts, effects) are on the AI page and in the folded detailed records, not here
   import { t } from '../lib/i18n.svelte.js';
   import { plainText } from '../lib/text.js';
+  import { applyArticle } from '../lib/state.svelte.js';
+  import ArticleEditor from './ArticleEditor.svelte';
 
-  let { wiki } = $props();
+  let { wiki, onchange = applyArticle } = $props();
+  let editing = $state(null);
+  function saved(page) { editing = null; if (page.status === 'deleted') selectedId = ''; onchange(page); }
   const KINDS = ['rule', 'howto', 'criteria', 'fact', 'history'];
   const NONE = '__none__', OTHER = '__other__';
   const read = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -137,6 +141,10 @@
     <div class="{panel} sticky top-4 min-w-0 max-sm:static {selected ? '' : 'max-sm:hidden'}" bind:this={detailEl} data-lesson-detail>
       {#if selected}
         <h3 class="mt-0 mb-2 text-[18px]">{selected.title}</h3>
+        <div class="mb-3 flex gap-2">
+          <button type="button" class="weak" onclick={() => { editing = { article: { ...selected }, action: 'edit' }; }} data-article-edit>{t('articleEdit')}</button>
+          <button type="button" class="weak" onclick={() => { editing = { article: { ...selected }, action: 'delete' }; }} data-article-delete>{t('articleDelete')}</button>
+        </div>
         <p class="m-0 mb-2 flex flex-wrap gap-1.5">
           {#if selected.kind}<span class="pill">{t('kindName')(selected.kind)}</span>{/if}
           {#if selected.scene}<span class="pill">{selected.scene}</span>{:else}<span class="pill ready">{t('scenesNone')}</span>{/if}
@@ -153,3 +161,5 @@
     </div>
   </div>
 </section>
+
+{#if editing}<ArticleEditor article={editing.article} action={editing.action} oncancel={() => { editing = null; }} onsaved={saved} />{/if}

@@ -96,6 +96,7 @@ type Draft struct {
 	Kind         string            `json:"kind,omitempty"`  // kind (one of Kinds). Required for a draft with a lesson; inherited if omitted when updating
 	Scene        string            `json:"scene,omitempty"` // scene (a "when ..." phrase). Same as above
 	// baseRevision is the page revision classify started from. Inside the lock, refuse if it differs from the current revision (do not undo a concurrent edit with an old lesson; audit 0.9.0 B1)
+	change       *Change
 	baseRevision string
 }
 
@@ -341,7 +342,7 @@ func parsePage(data []byte) (Page, error) {
 	if err := yaml.Unmarshal(data[4:4+end], &p); err != nil {
 		return p, err
 	}
-	if !idPattern.MatchString(p.ID) || p.Status != "hypothesis" || p.Title == "" || p.Lesson == "" || p.AppliesTo == "" || len(p.Sources) == 0 || len(p.Body) > 16<<10 {
+	if !idPattern.MatchString(p.ID) || (p.Status != "hypothesis" && p.Status != "deleted") || p.Title == "" || p.Lesson == "" || p.AppliesTo == "" || len(p.Sources) == 0 || len(p.Body) > 16<<10 {
 		return p, errors.New("invalid wiki lesson metadata")
 	}
 	if p.Previous != "" && !idPattern.MatchString(p.Previous) {
@@ -463,7 +464,7 @@ func (b Book) LiveWhere(keep func(Page) bool) ([]Page, error) {
 	}
 	live := []Page{}
 	for _, p := range pages {
-		if !superseded[p.ID] && (keep == nil || keep(p)) && len(b.sourceIssues(p)) == 0 {
+		if p.Status != "deleted" && !superseded[p.ID] && (keep == nil || keep(p)) && len(b.sourceIssues(p)) == 0 {
 			live = append(live, p)
 		}
 	}
@@ -506,7 +507,7 @@ func (b Book) AlwaysRules() ([]Page, error) {
 	}
 	out := []Page{}
 	for _, p := range valid {
-		if !superseded[p.ID] && p.Kind == "rule" && IsAlways(p.Scene) {
+		if p.Status != "deleted" && !superseded[p.ID] && p.Kind == "rule" && IsAlways(p.Scene) {
 			out = append(out, p)
 		}
 	}
@@ -553,7 +554,7 @@ func (b Book) query(query string, recall bool) (View, error) {
 	}
 	for _, p := range valid {
 		// For automatic delivery (recall), drop history pages before ranking (dropping them after cutting the candidates lets history take the seats and rules do not arrive; audit 0.9.1 medium-3)
-		if !superseded[p.ID] && !exact {
+		if p.Status != "deleted" && !superseded[p.ID] && !exact {
 			v.Lessons = append(v.Lessons, p)
 		}
 	}
@@ -640,6 +641,10 @@ func (b Book) PendingSources() ([]store.Feedback, error) {
 }
 
 func (b Book) Ingest(d Draft) (Result, error) {
+	return b.ingest(d, false)
+}
+
+func (b Book) ingest(d Draft, locked bool) (Result, error) {
 	result := Result{Reviewed: []string{}}
 	if d.Correction != nil && (!d.Correction.Valid() || d.Lesson == "") {
 		return result, errors.New("a correction needs the source and quote of what the person said, and a lesson stating the next behavior to change")
@@ -689,11 +694,13 @@ func (b Book) Ingest(d Draft) (Result, error) {
 	if err != nil {
 		return result, err
 	}
-	unlock, err := lock(dir)
-	if err != nil {
-		return result, err
+	if !locked {
+		unlock, err := lock(dir)
+		if err != nil {
+			return result, err
+		}
+		defer unlock()
 	}
-	defer unlock()
 	sourceDir, err := b.directory(true, "sources")
 	if err != nil {
 		return result, err
@@ -792,6 +799,9 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		} else if _, ok := byID[id]; !ok {
 			return result, errors.New("the lesson to update does not exist in this project")
 		}
+		if byID[id].Status == "deleted" {
+			return result, ErrArticleConflict
+		}
 		for _, replaced := range d.Replaces {
 			if _, ok := byID[replaced]; !ok || replaced == id {
 				return result, errors.New("a replaced lesson must be another page in this project")
@@ -809,7 +819,7 @@ func (b Book) Ingest(d Draft) (Result, error) {
 				p.Scene = old.Scene
 			}
 		}
-		if !validKindScene(p.Kind, p.Scene) {
+		if !validKindScene(p.Kind, p.Scene) && !(d.change != nil && d.change.Action == "delete") {
 			return result, kindSceneError(p.Kind, p.Scene)
 		}
 		p.ChangeReason = d.ChangeReason
@@ -868,6 +878,28 @@ func (b Book) Ingest(d Draft) (Result, error) {
 		byID[id] = p
 		if cyclic(byID) {
 			return result, errors.New("replaced wiki lessons must not form a cycle")
+		}
+		if d.change != nil {
+			if d.change.Action == "delete" {
+				p.Status = "deleted"
+			}
+			observation := changeObservation(*d.change)
+			data, _ := json.Marshal(observation)
+			observation.ID = digest(data)[:16]
+			data, _ = json.Marshal(observation)
+			raw[observation.ID] = data
+			p.Sources = append(p.Sources, Source{ID: observation.ID, Hash: digest(data)})
+			sort.Slice(p.Sources, func(i, j int) bool { return p.Sources[i].ID < p.Sources[j].ID })
+			// The previous article is the version checked by Manage under this lock.
+			p.Previous = d.baseRevision
+			p.Revision = revision(p)
+			if data, err := b.pageBytes(p); err != nil || len(data) > 64<<10 {
+				return result, errors.New("wiki page exceeds the size limit")
+			}
+			observation.ID = ""
+			if _, err := b.Capture(observation); err != nil {
+				return result, err
+			}
 		}
 		result.Page = &p
 	}
@@ -979,8 +1011,8 @@ func index(pages []Page) []byte {
 		}
 	}
 	for _, p := range pages {
-		status := "hypothesis"
-		if replaced[p.ID] {
+		status := p.Status
+		if p.Status != "deleted" && replaced[p.ID] {
 			status = "updated by a later lesson"
 		}
 		title, _ := json.Marshal(p.Title)

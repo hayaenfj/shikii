@@ -82,6 +82,7 @@ export const api = {
   tuneVariant: body => post('v1/tune/variant', body),
   wikiClaim: body => post('v1/wiki/claim', body),
   notebook: body => post('v1/wiki/notebook', body),
+  article: body => post('v1/wiki/article', body),
   // Work records (0.8.1): the entry point for one item. Images are read directly by <img>, and text is fetched as text
   handoffFile: p => 'v1/handoff/file?path=' + encodeURIComponent(p),
   handoffText: async p => {

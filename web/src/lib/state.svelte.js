@@ -60,6 +60,15 @@ export function loadMark() { return loadVersion; }
 // If another load (switching screens or the 15-second reload) started while the answer was being sent, drop that too and reload with the current state
 // (the card does not come back from a list older than the answer, and the screen switched to still appears. Final audit 0.9.1 low-F1)
 export function dropPendingLoads(mark = loadVersion) { const raced = loadVersion !== mark; loadVersion++; if (raced) load(); }
+// Invalidate lists requested before the write completed, then show the saved result.
+export function applyArticle(article) {
+  dropPendingLoads();
+  if (data.state?.wiki) {
+    data.state.wiki.lessons = (data.state.wiki.lessons || []).flatMap(p => p.id !== article.id ? [p] : article.status === 'deleted' ? [] : [article]);
+    if (article.status === 'deleted') data.state.wiki.inbox = (data.state.wiki.inbox || []).filter(p => p.lesson_id !== article.id);
+  }
+  load();
+}
 // Loads status, the ways of asking of every question a person answers (one request per question, not per card: the wording box on the Answer screen and the marker
 // on "Answer" need them on every screen, and the landing screen depends on them; audit 0.9.2 middle-1), and what the current screen needs. A slow old response is not applied to a newer selection.
 export async function load() {

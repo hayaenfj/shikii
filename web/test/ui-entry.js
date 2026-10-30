@@ -612,6 +612,7 @@ async function checkReloadDuringAnswerSend(target) {
 export async function run() {
   const target = document.getElementById('app');
   const quietOK = checkAnswerNothingToDo(target);
+  const manageArticleOK = await checkManageArticle(target);
   const knowledgeFrontOK = checkKnowledgeFront(target);
   const aiStatusOK = checkAiPageStatus(target);
   const purposeOK = await checkPagePurpose(target);
@@ -644,7 +645,7 @@ export async function run() {
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
   const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), await checkAnswerKeys(target), await checkWordingAskSends(target), checkPhoneAnswerBar(target), checkWordingPlain(target)].every(Boolean);
-  const ok = auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && await checkDisagreement(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = manageArticleOK && auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && await checkDisagreement(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -1501,4 +1502,41 @@ function checkWordingPlain(target) {
   const ok = named && loose.length === 0 && secondary;
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (AI page wording: inputs have labels=' + named + ', rewording names only as secondary text=' + (loose.length === 0 && secondary) + ' ' + JSON.stringify(loose.map(e => e.textContent.slice(0, 40))) + ')');
   return ok;
+}
+
+// Editing keeps the opened revision through conflicts; deletion needs an explicit confirmation.
+async function checkManageArticle(target) {
+  localStorage.removeItem('shikii.scene');
+  const article = { id: '0000000000000001', revision: '0000000000000002', title: 'Example article', lesson: 'Summary', applies_to: 'Docs', body: 'Detail', kind: 'howto', scene: 'Docs', sources: [] };
+  const realFetch = globalThis.fetch;
+  const sent = [], changed = [];
+  let fail = true;
+  globalThis.fetch = async (url, opts) => {
+    if (url !== 'v1/wiki/article') throw new Error('unexpected request');
+    const body = JSON.parse(opts.body); sent.push(body);
+    return fail ? { ok: false, status: 409, json: async () => ({ error: 'changed' }) } : { ok: true, json: async () => ({ ...article, ...body, revision: '0000000000000003', status: body.action === 'delete' ? 'deleted' : 'hypothesis' }) };
+  };
+  const app = mount(Lessons, { target, props: { wiki: { lessons: [article] }, onchange: p => changed.push(p) } }); flushSync();
+  const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
+  const click = selector => { target.querySelector(selector)?.click(); flushSync(); };
+  try {
+    click('[data-open]'); click('[data-article-edit]');
+    const title = target.querySelector('[name="title"]');
+    if (!title) { console.log('check-ui: FAIL (article editor missing)'); return false; }
+    title.value = 'Changed title'; title.dispatchEvent(new window.Event('input', { bubbles: true })); flushSync();
+    target.querySelector('[data-article-form]').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); await settle();
+    const conflict = target.querySelector('[name="title"]')?.value === 'Changed title' && !!target.querySelector('[data-article-error]') && changed.length === 0 && sent[0]?.revision === article.revision;
+    fail = false;
+    target.querySelector('[data-article-form]').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); await settle();
+    const saved = changed[0]?.title === 'Changed title' && !target.querySelector('[data-article-form]');
+    click('[data-article-delete]');
+    const explains = !!target.querySelector('[data-article-delete-confirm]') && sent.length === 2;
+    click('[data-article-cancel]');
+    const cancelled = sent.length === 2 && !target.querySelector('[data-article-delete-confirm]');
+    click('[data-article-delete]'); click('[data-article-delete-confirm]'); await settle();
+    const deleted = changed[1]?.status === 'deleted' && sent[2]?.action === 'delete';
+    const ok = conflict && saved && explains && cancelled && deleted;
+    console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (article editing: conflict retains draft=' + conflict + ', saved=' + saved + ', confirms=' + explains + ', cancel sends nothing=' + cancelled + ', deletes=' + deleted + ')');
+    return ok;
+  } finally { unmount(app); globalThis.fetch = realFetch; }
 }

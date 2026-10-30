@@ -55,6 +55,9 @@ func maintenanceTasks(pages []Page) []MaintenanceTask {
 	}
 	out := []MaintenanceTask{}
 	for _, p := range pages {
+		if p.Status == "deleted" {
+			continue
+		}
 		task := MaintenanceTask{PageID: p.ID, Revision: p.Revision, Title: p.Title, Dependencies: deps[p.ID]}
 		data, _ := json.Marshal(struct {
 			Revision     string

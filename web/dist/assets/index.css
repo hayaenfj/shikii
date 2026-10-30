@@ -38,6 +38,7 @@
   :root, :host {
     --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, monospace;
+    --color-black: #000;
     --spacing: .25rem;
     --font-weight-normal: 400;
     --font-weight-semibold: 600;
@@ -514,6 +515,10 @@
     margin: 0;
   }
 
+  .m-auto {
+    margin: auto;
+  }
+
   .-mx-\[26px\] {
     margin-inline: -26px;
   }
@@ -774,6 +779,10 @@
     max-height: 70vh;
   }
 
+  .max-h-\[90dvh\] {
+    max-height: 90dvh;
+  }
+
   .min-h-\[48px\] {
     min-height: 48px;
   }
@@ -804,6 +813,10 @@
 
   .w-\[42px\] {
     width: 42px;
+  }
+
+  .w-\[min\(640px\,calc\(100\%-24px\)\)\] {
+    width: min(640px, 100% - 24px);
   }
 
   .w-full {
@@ -993,6 +1006,10 @@
 
   .overflow-hidden {
     overflow: hidden;
+  }
+
+  .overflow-y-auto {
+    overflow-y: auto;
   }
 
   .rounded-\[3px\] {
@@ -1654,6 +1671,16 @@
   .duration-\[160ms\] {
     --tw-duration: .16s;
     transition-duration: .16s;
+  }
+
+  .backdrop\:bg-black\/40::backdrop {
+    background-color: #0006;
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .backdrop\:bg-black\/40::backdrop {
+      background-color: color-mix(in oklab, var(--color-black) 40%, transparent);
+    }
   }
 
   .before\:block:before {
