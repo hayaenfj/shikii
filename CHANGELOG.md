@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.13.0 — lessons improve through everyday work
+
+- Connect lesson maintenance to saved delivery feedback. At least two unused deliveries and no helpful ones for the same revision and entry point, or any harmful delivery, bring the lesson back into normal reflection with the recorded decisions and evidence. The agent checks sources before editing applicability or content; a no-change review also settles the evidence. Unknown, pending and older-revision assessments do not count, and no extra human writing or scoring is needed.
+
 ## 0.12.0 — the delivery learns from the agent's own assessments, lessons reach the agent through the words of their bodies, and a reflection is one round trip
 
 - The delivery learns from the reflection's assessments, with a fixed rule and no model: each delivery records the door it came through (the command phrase or file name right before a tool call, or the request), and a lesson revision found unused twice and never helpful through one door is not delivered through that door again (another door, or a new revision of the page, is tried again). Before a tool call, among pages naming the target equally, one found helpful before comes first. The effects are counted from the assessments themselves (each keeps its door), not from the window of recent deliveries; a delivery of the person's answers alone has no door; a subagent's task is a door of its own; a lesson silent at one door still comes through another door the same command line runs. Before, 335 assessments were counted and never used.

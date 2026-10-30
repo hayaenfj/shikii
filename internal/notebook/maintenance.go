@@ -9,15 +9,20 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 type MaintenanceTask struct {
-	PageID       string            `json:"page_id"`
-	Revision     string            `json:"revision"`
-	Key          string            `json:"key"`
-	Title        string            `json:"title"`
-	Reasons      []string          `json:"reasons"`
-	Dependencies map[string]string `json:"dependencies"`
+	PageID        string                   `json:"page_id"`
+	Revision      string                   `json:"revision"`
+	Key           string                   `json:"key"`
+	Title         string                   `json:"title"`
+	Reasons       []string                 `json:"reasons"`
+	Dependencies  map[string]string        `json:"dependencies"`
+	Feedback      []store.MemoryAssessment `json:"feedback,omitempty"`
+	FeedbackTotal int                      `json:"feedback_total,omitempty"`
+	ContentKey    string                   `json:"-"`
 }
 type MaintenanceReview struct {
 	PageID   string `json:"page_id"`
@@ -27,7 +32,8 @@ type MaintenanceReview struct {
 }
 type maintenanceCheckpoint struct {
 	MaintenanceReview
-	At time.Time `json:"at"`
+	At         time.Time `json:"at"`
+	ContentKey string    `json:"content_key,omitempty"`
 }
 
 func maintenanceTasks(pages []Page) []MaintenanceTask {
@@ -89,7 +95,11 @@ func (b Book) MaintenanceKeys() (map[string]MaintenanceTask, error) {
 		}
 	}
 	out := map[string]MaintenanceTask{}
-	for _, task := range maintenanceTasks(valid) {
+	tasks, err := b.maintenanceTasks(valid)
+	if err != nil {
+		return nil, err
+	}
+	for _, task := range tasks {
 		out[task.PageID] = task
 	}
 	return out, nil
@@ -118,17 +128,30 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 		}
 	}
 	pending := []MaintenanceTask{}
-	for _, task := range maintenanceTasks(valid) {
+	tasks, err := b.maintenanceTasks(valid)
+	if err != nil {
+		return nil, err
+	}
+	for _, task := range tasks {
 		previous, seen := checkpoints[task.PageID]
+		previousContent := previous.ContentKey
+		if previousContent == "" {
+			previousContent = previous.Key
+		}
 		switch {
 		case !seen:
 			task.Reasons = []string{"unreviewed"}
-		case previous.Key != task.Key:
-			task.Reasons = []string{"page-or-related-changed"}
+		case previous.Key != task.Key && (previousContent != task.ContentKey || task.FeedbackTotal > 0):
+			if previousContent != task.ContentKey {
+				task.Reasons = []string{"page-or-related-changed"}
+			}
 		case time.Since(previous.At) >= 30*24*time.Hour:
 			task.Reasons = []string{"periodic"}
 		default:
 			continue
+		}
+		if task.FeedbackTotal > 0 {
+			task.Reasons = append([]string{"delivery-feedback"}, task.Reasons...)
 		}
 		if len(task.Dependencies) == 0 {
 			task.Reasons = append(task.Reasons, "unlinked")
@@ -142,6 +165,9 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 	}
 	sort.SliceStable(pending, func(i, j int) bool {
 		a, b := pending[i], pending[j]
+		if (a.FeedbackTotal > 0) != (b.FeedbackTotal > 0) {
+			return a.FeedbackTotal > 0
+		}
 		ca, cb := a.Reasons[0] == "page-or-related-changed", b.Reasons[0] == "page-or-related-changed"
 		if ca != cb {
 			return ca
@@ -182,14 +208,18 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 		}
 	}
 	var selected *MaintenanceTask
-	for _, task := range maintenanceTasks(valid) {
+	tasks, err := b.maintenanceTasks(valid)
+	if err != nil {
+		return review, err
+	}
+	for _, task := range tasks {
 		if task.PageID == review.PageID {
 			t := task
 			selected = &t
 		}
 	}
 	if selected == nil || selected.Key != review.Key || selected.Revision != review.Revision {
-		return review, errors.New("the page or a related revision changed; read it again before recording the review")
+		return review, errors.New("the page, a related revision or its delivery feedback changed; read it again before recording the review")
 	}
 	for _, p := range pages {
 		if p.ID == review.PageID || selected.Dependencies[p.ID] != "" {
@@ -205,7 +235,7 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 	if old, ok := checkpoints[review.PageID]; ok && old.Key == review.Key && old.Reason == review.Reason && time.Since(old.At) < 30*24*time.Hour {
 		return review, nil
 	}
-	checkpoints[review.PageID] = maintenanceCheckpoint{review, time.Now().UTC()}
+	checkpoints[review.PageID] = maintenanceCheckpoint{MaintenanceReview: review, At: time.Now().UTC(), ContentKey: selected.ContentKey}
 	data, _ := json.Marshal(checkpoints)
 	if err := writeFile(filepath.Join(dir, ".maintenance.json"), data); err != nil {
 		return review, err
