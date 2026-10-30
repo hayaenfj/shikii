@@ -6,6 +6,7 @@
 
 - Planning's `hook plan query` also returns up to two live `criteria` pages directly linked through `related` from the search matches (0.14). Summaries and applicability conditions are kept whole, with kind and scene. Without `pages`, up to two complete bodies are included as `article:<id>:<revision>`, criteria first, within 8000 body bytes in total. Bodies that do not fit can still be read through explicit `pages` (up to two) or `wiki query`. The reply's `wiki_context` returns `available_count` instead of the full inventory; the decision record still preserves every revision in `knowledge_context.available`. Linked candidates, body reads and actual citations stay distinct. Links and past judgments never grant current permission.
 - The skill now asks the agent to reason from purpose, rationale and applicability, compare them with the current request, and reuse supplied bodies. It must not invent reasons or exceptions and returns to original sources when needed.
+- Keep the query's supplied material and revisions for a matching submit in the same turn; later edits are not counted as body reads. Reject a decision if a quoted related criterion was superseded while it was being judged.
 
 ## 0.13.0 — lessons improve through everyday work
 

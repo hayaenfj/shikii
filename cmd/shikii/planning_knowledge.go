@@ -205,10 +205,25 @@ func validatePlanningKnowledge(root, scope string, context *store.KnowledgeConte
 		return nil
 	}
 	book := notebook.Book{Root: root, Scope: scope}
+	linked := map[string]bool{}
+	for _, ref := range context.Related {
+		linked[ref.ID] = true
+	}
+	live, err := book.LiveWhere(func(p notebook.Page) bool { return linked[p.ID] })
+	if err != nil {
+		return err
+	}
+	liveRefs := map[store.KnowledgeReference]bool{}
+	for _, p := range live {
+		liveRefs[store.KnowledgeReference{ID: p.ID, Revision: p.Revision}] = true
+	}
 	for _, e := range context.Used {
 		parts := strings.Split(e.Source, ":")
 		if len(parts) != 3 {
 			return errors.New("the identifier of a wiki quote is invalid")
+		}
+		if linked[parts[1]] && !liveRefs[store.KnowledgeReference{ID: parts[1], Revision: parts[2]}] {
+			return errors.New("a quoted related criterion is no longer current. Read the context again")
 		}
 		view, err := book.Query("lesson:" + parts[1])
 		if err != nil || len(view.Lessons) != 1 || view.Lessons[0].Revision != parts[2] {

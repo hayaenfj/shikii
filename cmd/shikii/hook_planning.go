@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -34,6 +35,9 @@ type planningFrame struct {
 	Earlier []planningTurn `json:"earlier,omitempty"`
 	// how this message is grouped with the previous request; continues_previous in the submit corrects it (0.9.3)
 	Grouping *requestGrouping `json:"grouping,omitempty"`
+	// The last query's sources and revision inventory, so submit cannot count a later body as read.
+	Knowledge      *store.KnowledgeContext `json:"knowledge,omitempty"`
+	KnowledgePages []string                `json:"knowledge_pages,omitempty"`
 }
 
 type planningQuote struct {
@@ -176,6 +180,9 @@ func cmdHookPlan(args []string) error {
 		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || req.Restates != "" {
 			return errors.New("query does not accept organized content")
 		}
+		if err := savePlanningQuery(sessions, name, scope, req, s.Planning.Sources, knowledge); err != nil {
+			return err
+		}
 		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": planningKnowledgeReply(knowledge), "how_to_submit": planningHowToSubmit})
 	}
 	// concurrent submits do not wait; they are asked to retry. A new request from the person and Stop are not blocked.
@@ -199,9 +206,15 @@ func cmdHookPlan(args []string) error {
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
 		return err
 	}
-	_, knowledge, err := preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
-	if err != nil {
-		return err
+	knowledge := s.Planning.Knowledge
+	if knowledge == nil || knowledge.Query != req.Query || !slices.Equal(s.Planning.KnowledgePages, req.Pages) {
+		_, knowledge, err = preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
+		if err != nil {
+			return err
+		}
+		if knowledge != nil {
+			knowledge.Read = nil // compatibility with direct submit: nothing was supplied by a matching query
+		}
 	}
 	agreed, err := renderPlanningFact(req.Agreed, s.Planning.Sources, true)
 	if err != nil {
@@ -212,6 +225,9 @@ func cmdHookPlan(args []string) error {
 		return err
 	}
 	planningCitations(req, knowledge)
+	if err := validatePlanningKnowledge(root, scope, knowledge); err != nil {
+		return err
+	}
 	canonical, _ := json.Marshal(req)
 	digest := sha256.Sum256(canonical)
 	key := hex.EncodeToString(digest[:])
