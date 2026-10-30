@@ -176,11 +176,7 @@ func TestRitualRecoveryStateWriteFailureHalts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	p := filepath.Dir(sessionPath(root, "unwritable"))
-	if err := os.Chmod(p, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(p, 0o700) })
+	blockRecoveryWrite(t, root, "unwritable")
 	requireRecoveryHalt(t, runHook(t, "stop", map[string]any{"session_id": "unwritable", "cwd": repo, "last_assistant_message": "Done."}))
 }
 
@@ -237,5 +233,135 @@ func TestRitualRecoveryOlderStopCannotReplenishProgress(t *testing.T) {
 	}
 	if r := loadSession(root, "overlap").RitualRecovery; r == nil || r.Left != 0 {
 		t.Fatalf("an older Stop must not increase the saved continuation budget: %+v", r)
+	}
+}
+
+// A directory at the atomic write's temporary path fails on every OS, including root in a container.
+func blockRecoveryWrite(t *testing.T, root, id string) string {
+	t.Helper()
+	p := fmt.Sprintf("%s.%d.tmp", sessionPath(root, id), os.Getpid())
+	if err := os.Mkdir(p, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+func TestRitualRecoveryCompletedPlanStateWriteFailure(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "delivery-save", "cwd": repo, "prompt": planningTestRequest})
+	s := loadSession(root, "delivery-save")
+	if _, err := planningCall(t, "submit", map[string]any{"session_id": "delivery-save", "turn_id": s.TurnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}}); err != nil {
+		t.Fatal(err)
+	}
+	p := blockRecoveryWrite(t, root, "delivery-save")
+	out := runHook(t, "stop", map[string]any{"session_id": "delivery-save", "cwd": repo, "last_assistant_message": "Done."})
+	requireRecoveryHalt(t, out)
+	recs, err := (store.Store{Dir: root}).Records("done-as-asked", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 0 {
+		t.Fatalf("completion judgment persisted despite recovery-state save failure: records=%d", len(recs))
+	}
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, "stop", map[string]any{"session_id": "delivery-save", "cwd": repo, "last_assistant_message": "Done."})
+	recs, err = (store.Store{Dir: root}).Records("done-as-asked", 0)
+	if err != nil || len(recs) != 1 {
+		t.Fatalf("restored storage must judge once: %d, %v", len(recs), err)
+	}
+}
+
+func TestRitualRecoveryRepeatedSuccessfulStopCountsOnce(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "delivery-repeat", "cwd": repo, "prompt": planningTestRequest})
+	s := loadSession(root, "delivery-repeat")
+	if _, err := planningCall(t, "submit", map[string]any{"session_id": "delivery-repeat", "turn_id": s.TurnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("changed\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	stop := map[string]any{"session_id": "delivery-repeat", "cwd": repo, "last_assistant_message": "Done."}
+	runHook(t, "stop", stop)
+	if !loadSession(root, "delivery-repeat").Judged {
+		t.Fatal("first Stop should finish normally")
+	}
+	runHook(t, "stop", stop)
+	stats := countRitualStats(readGuardRecords(root))
+	if stats.Plan.Asked != 1 || stats.Plan.Done != 1 {
+		t.Fatalf("same successful turn counted more than once: asked=%d done=%d", stats.Plan.Asked, stats.Plan.Done)
+	}
+}
+func pendingRecoveryPlan(t *testing.T) (string, string, map[string]any) {
+	t.Helper()
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "audit", "cwd": repo, "prompt": planningTestRequest})
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stop := map[string]any{"session_id": "audit", "cwd": repo, "last_assistant_message": "Done."}
+	if out := runHook(t, "stop", stop); recoveryOutput(t, out)["decision"] != "block" {
+		t.Fatalf("premise: %s", out)
+	}
+	stop["stop_hook_active"] = true
+	return repo, root, stop
+}
+
+func TestRitualRecoveryUnreadableSessionCannotFinish(t *testing.T) {
+	_, root, stop := pendingRecoveryPlan(t)
+	p := sessionPath(root, "audit")
+	original, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := []byte("invalid session JSON")
+	if err := os.WriteFile(p, broken, 0600); err != nil {
+		t.Fatal(err)
+	}
+	requireRecoveryHalt(t, runHook(t, "stop", stop))
+	preserved, err := os.ReadFile(p)
+	if err != nil || string(preserved) != string(broken) {
+		t.Fatal("unreadable session must not be overwritten")
+	}
+	if err := updateSession(root, "audit", func(s *hookSession) { s.Judged = true }); err == nil {
+		t.Fatal("updates must refuse unreadable sessions")
+	}
+	if err := os.WriteFile(p, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	requireRecoveryHalt(t, runHook(t, "stop", stop))
+	if loadSession(root, "audit").RitualRecovery == nil {
+		t.Fatal("saved recovery lost")
+	}
+}
+
+func TestRitualRecoveryMissingBaselineCannotFinishPendingPlan(t *testing.T) {
+	_, root, stop := pendingRecoveryPlan(t)
+	p := sessionFilesPath(root, "audit")
+	original, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.WriteFile(p, original, 0o600) })
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	out := runHook(t, "stop", stop)
+	got := recoveryOutput(t, out)
+	if got["continue"] != false || loadSession(root, "audit").Judged {
+		t.Fatalf("pending plan was accepted after baseline loss: output=%s judged=%v", out, loadSession(root, "audit").Judged)
+	}
+}
+
+func TestRitualRecoveryFailedGitSnapshotCannotFinishPendingPlan(t *testing.T) {
+	repo, root, stop := pendingRecoveryPlan(t)
+	t.Setenv("TMPDIR", filepath.Join(repo, "README.md")) // prevent the Git snapshot scratch directory, even as root
+	out := runHook(t, "stop", stop)
+	if got := recoveryOutput(t, out); got["continue"] != false || loadSession(root, "audit").Judged {
+		t.Fatalf("pending plan accepted after Git read error: output=%s judged=%v", out, loadSession(root, "audit").Judged)
 	}
 }

@@ -326,20 +326,36 @@ func lockSessionWithin(agent, id string, wait time.Duration) (unlock func(), ok 
 func updateSession(agent, id string, fn func(s *hookSession)) error {
 	unlock := lockSession(agent, id)
 	defer unlock()
-	s := loadSession(agent, id)
+	s, err := readSession(agent, id)
+	if err != nil {
+		return err
+	}
 	fn(s)
 	syncDeferral(agent, id, s)
 	return saveSession(agent, id, s)
 }
 
-func loadSession(agent, id string) *hookSession {
+// readSession distinguishes a new session from an existing record that cannot be verified.
+func readSession(agent, id string) (*hookSession, error) {
 	s := &hookSession{}
 	b, err := os.ReadFile(sessionPath(agent, id))
-	if err == nil {
-		if uerr := json.Unmarshal(b, s); uerr != nil {
-			hookLog(fmt.Sprintf("session %s: unreadable (%v); starting over", id, uerr))
-			s = &hookSession{}
-		}
+	if errors.Is(err, os.ErrNotExist) {
+		return s, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func loadSession(agent, id string) *hookSession {
+	s, err := readSession(agent, id)
+	if err != nil {
+		hookLog(fmt.Sprintf("session %s: unreadable (%v)", id, err))
+		return &hookSession{}
 	}
 	return s
 }
@@ -696,6 +712,14 @@ func runHookEvent(event string) error {
 	}
 	// model calls are outside the lock (they only read a copy of the record). Changes to the record are collected in muts and applied to the record re-read inside the lock
 	snapshot := loadSession(agent, in.SessionID)
+	if event == "stop" {
+		var serr error
+		snapshot, serr = readSession(agent, in.SessionID)
+		if serr != nil || (in.StopHookActive && snapshot.TurnID == "") {
+			fmt.Fprintln(stdout, string((hookOut{Halt: ritualHalt(true)}).json(hookEventName(event))))
+			return serr
+		}
+	}
 	var out hookOut
 	var muts []func(*hookSession)
 	var summary string
@@ -1193,7 +1217,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	last := cut(strings.TrimSpace(in.LastAssistantMessage), requestMax)
 	req := snapshot.Request // the request this Stop evaluates. If the kept request changed inside the lock (the next request came first), this Stop's marks are not applied
 	pendingNow := snapshot.Pending
-	recheck := in.StopHookActive || snapshot.RitualStopped == snapshot.TurnID && snapshot.TurnID != ""
+	recheck := snapshot.Judged || in.StopHookActive || snapshot.RitualStopped == snapshot.TurnID && snapshot.TurnID != ""
 	readyToJudge := false // grouping is settled only after all required work is saved
 	var firstErr error
 	muts := []func(*hookSession){
@@ -1261,6 +1285,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			firstErr = gerr
 		}
 	}
+	var checkpoint func(*hookSession)
 	{
 		rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck)
 		if rerr != nil {
@@ -1268,19 +1293,21 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 				firstErr = rerr
 			}
 			rout.Halt = ritualHalt(true)
-			rout.Recovery = &ritualRecovery{TurnID: snapshot.TurnID, Pending: true}
+			rout.Recovery = &ritualRecovery{TurnID: snapshot.TurnID, Pending: true, FilesKnown: known}
 		}
 		if rout.Recovery != nil {
 			recovery := rout.Recovery
-			muts = append(muts, func(s *hookSession) {
+			checkpoint = func(s *hookSession) {
 				if s.TurnID == snapshot.TurnID {
 					saved := *recovery
 					if previous := s.RitualRecovery; previous != nil && previous.TurnID == s.TurnID {
 						saved.Left = min(saved.Left, previous.Left)
+						saved.FilesKnown = saved.FilesKnown || previous.FilesKnown
 					}
 					s.RitualRecovery = &saved
 				}
-			})
+			}
+			muts = append(muts, checkpoint)
 		}
 		out.System = joinLines(out.System, rout.System)
 		if rout.Halt != "" {
@@ -1303,6 +1330,23 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	}
 	if snapshot.Judged {
 		return out, nil, firstErr // a repeated Stop must not replace the final reply or judge it twice
+	}
+	// Persist the verification checkpoint before producing any completion judgment.
+	// Model calls stay outside the lock. A later request must not inherit this Stop's checkpoint.
+	if checkpoint != nil {
+		current := false
+		if err := updateSession(agent, in.SessionID, func(s *hookSession) {
+			current = s.TurnID == snapshot.TurnID && s.Request == req
+			if current {
+				checkpoint(s)
+			}
+		}); err != nil {
+			out.Halt, out.Block, out.Reason = ritualHalt(true), false, ""
+			return out, nil, err
+		}
+		if !current {
+			return hookOut{}, nil, firstErr
+		}
 	}
 	readyToJudge = true
 	inputs := map[string]string{"request": snapshot.Request, "files": filesInput(changed, known), "summary": last}

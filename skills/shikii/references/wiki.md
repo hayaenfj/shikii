@@ -41,7 +41,7 @@ MCP tool: `shikii_wiki`, operations `query` / `ingest` / `lint`. CLI `shikii wik
 - `id`: the existing page to update. Original sources and earlier revisions remain available.
 - `replaces`: older pages superseded by this one; no supersession cycles.
 
-Pages saved before 0.9.0 have no kind or scene. Give them one with `shikii wiki classify <page id> <kind> <scene>` (MCP: `shikii_wiki` with `operation: "classify"`, `id`, `kind`, `scene`); it keeps the lesson text and makes a new revision. The request hook lists up to five such pages per turn and the Stop hook stops the turn once until those are done; `wiki query` lists them too.
+Pages saved before 0.9.0 have no kind or scene. Give them one with `shikii wiki classify <page id> <kind> <scene>` (MCP: `shikii_wiki` with `operation: "classify"`, `id`, `kind`, `scene`); it keeps the lesson text and makes a new revision. The request hook lists up to five such pages per turn and the Stop hook requests recovery until those are done; saved progress permits another request for the remaining pages, while no progress or a verification or recovery-state save error ends automatic continuation explicitly incomplete; `wiki query` lists them too.
 
 Omitting `body`, `related` or `replaces` on update preserves it. Explicit `body: ""`, `related: []` or `replaces: []` clears it. A summary update does not refresh a preserved body: check they still agree. Old pages without these fields remain readable without migration.
 

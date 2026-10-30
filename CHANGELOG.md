@@ -5,6 +5,7 @@
 ## 0.14.1 — Verify saved work before completion
 
 - Check required planning, reflection, page classification and reply language before judging completion. Stop asks the agent to run concrete recovery commands and checks saved progress. Partial progress can continue; no progress or a verification/save error ends explicitly incomplete instead of silently passing a second Stop. Missing work is not judged complete at the next request either. User-defined guards keep their existing behavior.
+- Preserve unreadable session records, stop when a pending recovery loses its change baseline, and save the verification checkpoint before creating a completion judgment. Repeated successful Stop events no longer double-count routine checks.
 
 ## 0.14.0 — Bring purpose and reasoning into planning
 

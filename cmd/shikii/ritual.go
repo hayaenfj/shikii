@@ -40,9 +40,10 @@ func isBuiltinGuard(id string) bool {
 // ritualRecovery bounds automatic recovery by saved progress, independently of host continuation flags.
 // Left is a decreasing count of the required receipts and pages, never an agent's claim of progress.
 type ritualRecovery struct {
-	TurnID  string `json:"turn_id"`
-	Left    int    `json:"left"`
-	Pending bool   `json:"pending"`
+	TurnID     string `json:"turn_id"`
+	Left       int    `json:"left"`
+	Pending    bool   `json:"pending"`
+	FilesKnown bool   `json:"files_known,omitempty"`
 }
 
 // ritualStop checks saved results before completion. The first miss requests recovery; another continuation
@@ -50,6 +51,9 @@ type ritualRecovery struct {
 func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, changed []string, known bool, recheck bool) (hookOut, error) {
 	if snapshot.RitualStopped == snapshot.TurnID && snapshot.TurnID != "" {
 		recheck = true // background notifications do not carry stop_hook_active
+	}
+	if previous := snapshot.RitualRecovery; previous != nil && previous.TurnID == snapshot.TurnID && previous.Pending && previous.FilesKnown && !known {
+		return hookOut{}, fmt.Errorf("cannot verify the saved change baseline for pending recovery")
 	}
 	now := time.Now().UTC()
 	var recs []guardRecord
@@ -133,7 +137,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 			return hookOut{}, err
 		}
 	}
-	recovery := &ritualRecovery{TurnID: snapshot.TurnID, Left: remaining, Pending: remaining > 0}
+	recovery := &ritualRecovery{TurnID: snapshot.TurnID, Left: remaining, Pending: remaining > 0, FilesKnown: known}
 	if remaining == 0 {
 		return hookOut{Recovery: recovery}, nil
 	}
