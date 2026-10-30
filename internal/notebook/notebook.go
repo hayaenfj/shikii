@@ -497,11 +497,11 @@ func (b Book) AlwaysRules() ([]Page, error) {
 	superseded := map[string]bool{}
 	valid := []Page{}
 	for _, p := range pages {
-		if len(b.sourceIssues(p)) > 0 {
-			continue
-		}
 		for _, id := range p.Replaces {
 			superseded[id] = true
+		}
+		if len(b.sourceIssues(p)) > 0 {
+			continue
 		}
 		valid = append(valid, p)
 	}
@@ -538,13 +538,13 @@ func (b Book) query(query string, recall bool) (View, error) {
 	valid := []Page{}
 	exact := !recall && strings.HasPrefix(query, "lesson:")
 	for _, p := range pages {
+		for _, id := range p.Replaces {
+			superseded[id] = true
+		}
 		bad := b.sourceIssues(p)
 		v.Issues = append(v.Issues, bad...)
 		if len(bad) > 0 {
 			continue
-		}
-		for _, id := range p.Replaces {
-			superseded[id] = true
 		}
 		valid = append(valid, p)
 		// A direct reference can also read pages from before replacement. Source checks are not skipped.
@@ -801,6 +801,13 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 		}
 		if byID[id].Status == "deleted" {
 			return result, ErrArticleConflict
+		}
+		if _, exists := byID[id]; !exists {
+			for _, old := range pages {
+				if old.Status == "deleted" && old.Title == d.Title {
+					return result, ErrArticleConflict
+				}
+			}
 		}
 		for _, replaced := range d.Replaces {
 			if _, ok := byID[replaced]; !ok || replaced == id {

@@ -4,12 +4,12 @@
 
 # shikii: エージェントを、あなたのプロジェクトに合わせて育てる
 
-Claude CodeやCodexは、毎回まっさらな状態で仕事を始めます。前に直したこと、決めた手順、確かめた結果を覚えていません。shikiiは、そのプロジェクトで言われたこと・決めたこと・確かめたことを `.shikii/` に貯め、次の仕事の前にエージェントへ渡します。育つのはモデルではなく、プロジェクトの側です。だからモデルを替えても、育った分は残ります。
+AIエージェントは、メモリーで以前の仕事を引き継げます。プロジェクトでは、その経験を必要な時に使い、役立ったかを確かめ、判断をどこまで任せるかも測っていきたい。shikiiは、この流れをつなぎます。言われたこと・決めたこと・確かめたことを `.shikii/` に貯め、関係する知識を届け、結果を次の仕事へ戻します。育つのはモデルではなくプロジェクトの側なので、モデルを替えても知識は残ります。
 
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-912%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-915%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.15.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)

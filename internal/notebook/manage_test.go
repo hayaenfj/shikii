@@ -2,6 +2,8 @@ package notebook
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -105,5 +107,128 @@ func TestDeleteArticleStopsDeliveryWithoutRestoringReplacedArticle(t *testing.T)
 	}
 	if report, err := b.Lint(); err != nil || len(report.Issues) != 0 {
 		t.Fatalf("delete breaks references: %+v %v", report, err)
+	}
+}
+
+func TestDeletedReplacementSurvivesSourceFailure(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	d := draft(seed(t, b, 1), "Previous instructions")
+	d.Scene = "always"
+	old, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.Title, d.Scene, d.Replaces = "Current instructions", "always", []string{old.Page.ID}
+	current, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := b.Manage(Change{ID: current.Page.ID, Revision: current.Page.Revision, Action: "delete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var source string
+	for _, s := range deleted.Sources {
+		found := false
+		for _, old := range current.Page.Sources {
+			if s.ID == old.ID {
+				found = true
+			}
+		}
+		if !found {
+			source = s.ID
+		}
+	}
+	if source == "" {
+		t.Fatal("missing deletion source")
+	}
+	dir, err := b.directory(false, "sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, source+".json")
+	saved, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.WriteFile(p, saved, 0o600) })
+	for name, read := range map[string]func() ([]Page, error){"query": func() ([]Page, error) { v, e := b.Query(""); return v.Lessons, e }, "recall": func() ([]Page, error) { return b.Recall("README installation instructions") }, "always": b.AlwaysRules, "live": b.Live} {
+		got, err := read()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range got {
+			if p.ID == old.Page.ID {
+				t.Errorf("%s restored the replaced article after deletion", name)
+			}
+		}
+	}
+}
+
+func TestDeletedRenamedArticleCannotBeRecreated(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	d := draft(seed(t, b, 1), "Original title")
+	first, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := b.Manage(Change{ID: first.Page.ID, Revision: first.Page.Revision, Action: "edit", Title: "Renamed title", Lesson: d.Lesson, AppliesTo: d.AppliesTo, Kind: d.Kind, Scene: d.Scene})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Manage(Change{ID: edited.ID, Revision: edited.Revision, Action: "delete"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Original title", "Renamed title"} {
+		d.Title = title
+		if _, err := b.Ingest(d); !errors.Is(err, ErrArticleConflict) {
+			t.Errorf("recreated deleted title %q: %v", title, err)
+		}
+	}
+}
+
+func TestManageRechecksRevisionAfterLock(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	d := draft(seed(t, b, 1), "Concurrent article")
+	r, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Change{ID: r.Page.ID, Revision: r.Page.Revision, Action: "delete"}
+	dir, err := b.directory(false, "pages")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lock(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := make(chan struct{}, 1)
+	lockBusy = func() {
+		select {
+		case busy <- struct{}{}:
+		default:
+		}
+	}
+	defer func() { lockBusy = nil }()
+	result := make(chan error, 1)
+	go func() { _, err := b.Manage(c); result <- err }()
+	<-busy
+	d.ID = r.Page.ID
+	d.Lesson = "New summary while deletion waits"
+	newer, err := b.ingest(d, true)
+	unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; !errors.Is(err, ErrArticleConflict) {
+		t.Fatalf("stale deletion accepted after lock: %v", err)
+	}
+	v, err := b.Query("lesson:" + r.Page.ID)
+	if err != nil || len(v.Lessons) != 1 || v.Lessons[0].Revision != newer.Page.Revision {
+		t.Fatalf("newer edit lost: %v", err)
 	}
 }

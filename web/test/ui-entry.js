@@ -612,6 +612,7 @@ async function checkReloadDuringAnswerSend(target) {
 export async function run() {
   const target = document.getElementById('app');
   const quietOK = checkAnswerNothingToDo(target);
+  const backgroundDraftOK = await checkBackgroundArticleDraft(target);
   const manageArticleOK = await checkManageArticle(target);
   const knowledgeFrontOK = checkKnowledgeFront(target);
   const aiStatusOK = checkAiPageStatus(target);
@@ -645,7 +646,7 @@ export async function run() {
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
   const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), await checkAnswerKeys(target), await checkWordingAskSends(target), checkPhoneAnswerBar(target), checkWordingPlain(target)].every(Boolean);
-  const ok = manageArticleOK && auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && await checkDisagreement(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = backgroundDraftOK && manageArticleOK && auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && await checkDisagreement(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -1539,4 +1540,27 @@ async function checkManageArticle(target) {
     console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (article editing: conflict retains draft=' + conflict + ', saved=' + saved + ', confirms=' + explains + ', cancel sends nothing=' + cancelled + ', deletes=' + deleted + ')');
     return ok;
   } finally { unmount(app); globalThis.fetch = realFetch; }
+}
+
+async function checkBackgroundArticleDraft(target) {
+  const originalFetch=globalThis.fetch, originalState=data.state, originalUI={...ui};
+  const article={id:'0000000000000001',revision:'0000000000000002',title:'Original',lesson:'Summary',applies_to:'Docs',body:'Body',kind:'howto',scene:'Docs',sources:[]};
+  let waits=0;
+  const status=()=>({specs:[{id:'done-as-asked',type:'noul',question:'Done?',titles:{},questions:{},keys:[],person_answers:true,waiting_for_person:waits}],project_name:'Audit'});
+  globalThis.fetch=async url=>({ok:true,json:async()=>url==='v1/status'?status():url==='v1/wiki'?{lessons:[article]}:url.startsWith('v1/tune')?{}:{items:[]}});
+  const settle=async()=>{await new Promise(r=>setTimeout(r,0));flushSync();};
+  localStorage.removeItem('shikii.scene');localStorage.removeItem('shikii.knowledgeTab');
+  Object.assign(ui,{page:'',tab:'',done:false,pinned:'',showHelp:false});
+  data.state={...status(),wiki:{lessons:[article]}};
+  const app=mount(App,{target}); await settle();await settle();
+  try {
+    target.querySelector('[data-open]').click();flushSync();
+    target.querySelector('[data-article-edit]').click();flushSync();
+    const title=target.querySelector('[name="title"]');
+    title.value='Unsent draft';title.dispatchEvent(new window.Event('input',{bubbles:true}));flushSync();
+    waits=1;await load();await settle();
+    const kept=target.querySelector('[name="title"]')?.value==='Unsent draft';
+    console.log((kept?'check-ui: ok':'check-ui: FAIL')+' (L0150-21 background status update preserves open article draft='+kept+')');
+    return kept;
+  } finally {unmount(app);globalThis.fetch=originalFetch;data.state=originalState;Object.assign(ui,originalUI);}
 }

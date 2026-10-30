@@ -4,12 +4,12 @@
 
 # shikii: grow your agent to fit your project
 
-Claude Code and Codex start every session from zero. They do not remember what you corrected, the steps you agreed on, or what was already checked. shikii keeps what was said, decided and checked in a project in `.shikii/`, and hands it to the agent before the next piece of work. What grows is the project, not the model, so nothing is lost when you change models.
+AI agents can carry context forward through memory. A project also needs to use that experience at the right moment, review whether it helped, and measure which decisions to delegate. shikii connects these steps: it keeps what was said, decided and checked in `.shikii/`, delivers relevant knowledge, and feeds results back into future work. What grows is the project, not the model, so its knowledge remains when you change models.
 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-912%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-915%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.15.0-00ADD8?style=flat-square)](CHANGELOG.md)

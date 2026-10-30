@@ -5,11 +5,12 @@
   // The AI's internal numbers (deliveries, helped counts, effects) are on the AI page and in the folded detailed records, not here
   import { t } from '../lib/i18n.svelte.js';
   import { plainText } from '../lib/text.js';
-  import { applyArticle } from '../lib/state.svelte.js';
+  import { applyArticle, setPage } from '../lib/state.svelte.js';
   import ArticleEditor from './ArticleEditor.svelte';
 
   let { wiki, onchange = applyArticle } = $props();
   let editing = $state(null);
+  function openEditor(action) { setPage('wiki'); editing = { article: { ...selected }, action }; }
   function saved(page) { editing = null; if (page.status === 'deleted') selectedId = ''; onchange(page); }
   const KINDS = ['rule', 'howto', 'criteria', 'fact', 'history'];
   const NONE = '__none__', OTHER = '__other__';
@@ -142,8 +143,8 @@
       {#if selected}
         <h3 class="mt-0 mb-2 text-[18px]">{selected.title}</h3>
         <div class="mb-3 flex gap-2">
-          <button type="button" class="weak" onclick={() => { editing = { article: { ...selected }, action: 'edit' }; }} data-article-edit>{t('articleEdit')}</button>
-          <button type="button" class="weak" onclick={() => { editing = { article: { ...selected }, action: 'delete' }; }} data-article-delete>{t('articleDelete')}</button>
+          <button type="button" class="weak" onclick={() => openEditor('edit')} data-article-edit>{t('articleEdit')}</button>
+          <button type="button" class="weak" onclick={() => openEditor('delete')} data-article-delete>{t('articleDelete')}</button>
         </div>
         <p class="m-0 mb-2 flex flex-wrap gap-1.5">
           {#if selected.kind}<span class="pill">{t('kindName')(selected.kind)}</span>{/if}
