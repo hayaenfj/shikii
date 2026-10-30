@@ -6,7 +6,7 @@
   let { article, action, oncancel, onsaved } = $props();
   // Keep this snapshot when a background reload supplies a newer article.
   const original = untrack(() => ({ ...article }));
-  let draft = $state({ title: original.title, lesson: original.lesson, applies_to: original.applies_to, body: original.body || '', kind: original.kind || 'rule', scene: original.scene || '' });
+  let draft = $state({ title: original.title, lesson: original.lesson, applies_to: original.applies_to, body: original.body || '', rationale: original.rationale || '', kind: original.kind || 'rule', scene: original.scene || '' });
   let busy = $state(false), error = $state(''), dialog = $state();
   const field = 'block w-full rounded-lg border border-line bg-bg px-3 py-2 text-[14px]';
   $effect(() => { if (dialog && !dialog.open) { if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', ''); } });
@@ -35,6 +35,7 @@
         <label>{t('articleSummary')}<textarea name="lesson" class={field} rows="3" required bind:value={draft.lesson}></textarea></label>
         <label>{t('appliesTo')}<textarea name="applies_to" class={field} rows="2" required bind:value={draft.applies_to}></textarea></label>
         <label>{t('bodyTitle')}<textarea name="body" class={field} rows="8" bind:value={draft.body}></textarea></label>
+        <label>{t('articleRationale')}<textarea name="rationale" class={field} rows="3" bind:value={draft.rationale}></textarea></label>
         <div class="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
           <label>{t('articleKind')}<select name="kind" class={field} bind:value={draft.kind}>{#each ['rule', 'howto', 'criteria', 'fact', 'history'] as kind}<option value={kind}>{t('kindName')(kind)}</option>{/each}</select></label>
           <label>{t('scenesTitle')}<input name="scene" class={field} maxlength="48" required bind:value={draft.scene}></label>

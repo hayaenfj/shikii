@@ -64,7 +64,8 @@ type planningRequest struct {
 	// Restates is the agent's reading of which earlier request this message restates: the turn id of any earlier request of this session
 	// (history:<id>:user in query, or an id the agent saw earlier in the session). shikii looks the request up in its own record of this
 	// session and project, and compares the message with that request's own text by the fixed rule; a wrong or unknown id falls back (0.9.3)
-	Restates string `json:"restates,omitempty"`
+	Restates   string          `json:"restates,omitempty"`
+	Reflection *reflectRequest `json:"reflection,omitempty"`
 }
 
 type planningReceipt struct {
@@ -75,7 +76,8 @@ type planningReceipt struct {
 	Reason   string `json:"reason,omitempty"`
 	// Grouping says what continues_previous did (0.9.3): recorded is about the decision only, so a minimal organizing that only
 	// groups the message answered recorded:false although its grouping was applied
-	Grouping string `json:"grouping,omitempty"`
+	Grouping   string         `json:"grouping,omitempty"`
+	Reflection *reflectResult `json:"reflection,omitempty"`
 }
 
 func needsPlanningContext(sp *spec.Spec) bool {
@@ -108,7 +110,7 @@ func newPlanningFrame(previous *hookSession, in *hookInput, scope, turnID string
 // needed (0.11). The text every request gets (planningNotice) carries only the command and this turn's ids, so the room in front of the
 // agent goes to the knowledge (the lessons and the person's decisions), not to the procedure. Before, every request carried the shape
 // (855 bytes; 1,900 in the full form every 8th request) and the lessons were one or two quotes behind it.
-const planningHowToSubmit = "Pass the same session_id, turn_id and query, plus agreed and open, to hook plan submit. " + planningShape + ". Each is {summary, evidence:[{source,quote}]} quoting the original text verbatim (source: current_user, previous_user, previous_assistant, or a lesson:<id>:<revision> or article:<id>:<revision> key in this reply when it is your grounds), or {unknown:true}; an agreement needs the person's own words; open is only a concrete choice that blocks the current task (nothing blocks, or no evidence: unknown). continues_previous: true when this message only continues or answers the previous request (an acknowledgement or go-ahead asking nothing new), false when it is a new request (even a short addition such as \"add a check too\", or a restatement); omit it when unsure. restates: the <id> in history:<id>:user of an earlier request this one restates; a wrong id only falls back. The organizing is a hypothesis, never permission or the person's truth. Details: the skill's references/planning.md."
+const planningHowToSubmit = "Pass the same session_id, turn_id and query, plus agreed and open, to hook plan submit. When query includes reflection, handle it from that reply and attach its submit object as reflection in the same submit; inspect reflection.complete and reflection.left and retry failures. " + planningShape + ". Each is {summary, evidence:[{source,quote}]} quoting the original text verbatim (source: current_user, previous_user, previous_assistant, or a lesson:<id>:<revision> or article:<id>:<revision> key in this reply when it is your grounds), or {unknown:true}; an agreement needs the person's own words; open is only a concrete choice that blocks the current task (nothing blocks, or no evidence: unknown). continues_previous: true when this message only continues or answers the previous request (an acknowledgement or go-ahead asking nothing new), false when it is a new request (even a short addition such as \"add a check too\", or a restatement); omit it when unsure. restates: the <id> in history:<id>:user of an earlier request this one restates; a wrong id only falls back. The organizing is a hypothesis, never permission or the person's truth. Details: the skill's references/planning.md."
 
 // planningNotice is the text every request gets: the one command to run and this turn's ids (one form, 0.11; the shape of submit is in
 // the reply of hook plan query).
@@ -125,8 +127,8 @@ func cmdHookPlan(args []string) error {
 	if len(args) != 1 || (args[0] != "query" && args[0] != "submit") {
 		return errors.New("usage: shikii hook plan query | submit (JSON on standard input)")
 	}
-	data, err := io.ReadAll(io.LimitReader(stdin, (16<<10)+1))
-	if err != nil || len(data) > 16<<10 {
+	data, err := io.ReadAll(io.LimitReader(stdin, reflectInputMax+1))
+	if err != nil || len(data) > reflectInputMax {
 		return errors.New("the pre-start context must be JSON of 16KB or less")
 	}
 	var req planningRequest
@@ -134,6 +136,12 @@ func cmdHookPlan(args []string) error {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
 		return fmt.Errorf("cannot read the pre-start context: %v", jsonShapeError(err))
+	}
+	if req.Reflection == nil && len(data) > 16<<10 {
+		return errors.New("the pre-start context must be JSON of 16KB or less (combined reflection: 1 MiB)")
+	}
+	if req.Reflection != nil && req.Reflection.Operation != "" && req.Reflection.Operation != "submit" {
+		return errors.New("combined reflection accepts submit only")
 	}
 	var extra any
 	if decoder.Decode(&extra) != io.EOF || req.SessionID == "" || len(req.SessionID) > 200 || len(req.TurnID) != 16 {
@@ -177,13 +185,21 @@ func cmdHookPlan(args []string) error {
 		if err != nil {
 			return err
 		}
-		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || req.Restates != "" {
+		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || req.Restates != "" || req.Reflection != nil {
 			return errors.New("query does not accept organized content")
 		}
 		if err := savePlanningQuery(sessions, name, scope, req, s.Planning.Sources, knowledge); err != nil {
 			return err
 		}
-		return json.NewEncoder(stdout).Encode(map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": planningKnowledgeReply(knowledge), "how_to_submit": planningHowToSubmit})
+		reply := map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": planningKnowledgeReply(knowledge), "how_to_submit": planningHowToSubmit}
+		reflection, err := reflectQuery(root, scope)
+		if err != nil {
+			return err
+		}
+		if len(reflection.Sources)+len(reflection.Observations) > 0 {
+			reply["reflection"] = reflection
+		}
+		return json.NewEncoder(stdout).Encode(reply)
 	}
 	// concurrent submits do not wait; they are asked to retry. A new request from the person and Stop are not blocked.
 	busy, err := sessions.OpenFile(name+".planning.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
@@ -228,11 +244,13 @@ func cmdHookPlan(args []string) error {
 	if err := validatePlanningKnowledge(root, scope, knowledge); err != nil {
 		return err
 	}
-	canonical, _ := json.Marshal(req)
+	organizing := req
+	organizing.Reflection = nil // A failed reflection can be corrected without judging the same planning decision again.
+	canonical, _ := json.Marshal(organizing)
 	digest := sha256.Sum256(canonical)
 	key := hex.EncodeToString(digest[:])
 	if s.Planning.Result != nil && s.Planning.Digest == key {
-		return json.NewEncoder(stdout).Encode(s.Planning.Result)
+		return writePlanningReply(root, scope, s.Planning.Result, req.Reflection)
 	}
 	if s.Planning.Result != nil && s.Planning.Result.Recorded {
 		return errors.New("the context for this request has already been judged")
@@ -275,6 +293,22 @@ func cmdHookPlan(args []string) error {
 	err = savePlanningResult(sessions, name, root, scope, req, sp, d, inputs, result, key, knowledge)
 	if err != nil {
 		return err
+	}
+	return writePlanningReply(root, scope, result, req.Reflection)
+}
+
+func writePlanningReply(root, scope string, planning *planningReceipt, reflection *reflectRequest) error {
+	result := *planning
+	if reflection != nil {
+		r := *reflection
+		r.Operation = "submit"
+		saved, err := runReflect(root, scope, r)
+		if err != nil {
+			result.Reflection = &reflectResult{Complete: false, LeftError: err.Error()}
+		} else {
+			v := saved.(reflectResult)
+			result.Reflection = &v
+		}
 	}
 	return json.NewEncoder(stdout).Encode(result)
 }

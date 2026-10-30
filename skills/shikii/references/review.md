@@ -104,3 +104,9 @@ shikii chooses what to check with the person (0.11). A score that agrees with th
 In a person's check, show the original conversation; for a disagreement show both AI answers side by side and highlight neither among the options. After receiving the person's answer, do not overwrite the original AI score; send the disagreement back to the next scorer as a correction example. Do not add questions to the person to score every item.
 
 If a `query` target has `original_inputs`, that is the original text saved for the page. Also check the end of long replies. A field with `text_status` indicates an old save limit, the original text's save limit, or an unreadable state, so do not conclude from cut-off text alone. Check the hook's short quotes with query before scoring.
+
+## Read and save alongside planning
+
+`hook plan query` may include this same reflection view. Reuse it and attach the normal submit object under `reflection` in `hook plan submit`; inspect the nested receipt and finish anything it lists. Standalone reflect query/submit still work. Acknowledgements without review targets or delivered memories do not load unrelated articles or judgment examples.
+
+Use `discoveries` for manually found articles only when they informed a concrete decision, with the query's lookup id and exact revision, context, decision and evidence. They improve retrieval separately from automatic-delivery assessments and do not become labels. See [wiki.md](wiki.md). Optional article `rationale` and `watch` record source-backed reasons and file premises; inspect maintenance `changed_files` before treating a changed premise as current.

@@ -23,6 +23,7 @@ type MaintenanceTask struct {
 	Dependencies  map[string]string        `json:"dependencies"`
 	Feedback      []store.MemoryAssessment `json:"feedback,omitempty"`
 	FeedbackTotal int                      `json:"feedback_total,omitempty"`
+	ChangedFiles  []PremiseChange          `json:"changed_files,omitempty"`
 	ContentKey    string                   `json:"-"`
 	FeedbackKeys  []string                 `json:"-"`
 }
@@ -168,6 +169,9 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 		}
 		if task.FeedbackTotal > 0 {
 			task.Reasons = append([]string{"delivery-feedback"}, task.Reasons...)
+		}
+		if len(task.ChangedFiles) > 0 {
+			task.Reasons = append([]string{"premise-changed"}, task.Reasons...)
 		}
 		if len(task.Dependencies) == 0 {
 			task.Reasons = append(task.Reasons, "unlinked")

@@ -185,16 +185,19 @@ type searchDocument struct {
 }
 
 func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
-	names, weights := []string{"title", "applies_to", "lesson", "body"}, []float64{4, 3, 2, 1}
+	names, weights := []string{"title", "applies_to", "lesson", "body", "rationale", "discovery"}, []float64{4, 3, 2, 1, 2, 3}
 	if recall {
-		names, weights = names[:2], weights[:2]
+		names, weights = []string{"title", "applies_to", "rationale", "discovery"}, []float64{4, 3, 2, 3}
 	}
 	terms := searchTerms(query)
 	docs, frequency := []searchDocument{}, map[string]int{}
 	for _, p := range pages {
 		d := searchDocument{page: p}
 		seen := map[string]bool{}
-		texts := []string{p.Title, p.AppliesTo, p.Lesson, p.Body}
+		texts := []string{p.Title, p.AppliesTo, p.Lesson, p.Body, p.Rationale, p.discovered}
+		if recall {
+			texts = []string{p.Title, p.AppliesTo, p.Rationale, p.discovered}
+		}
 		for _, text := range texts[:len(names)] {
 			field := searchTerms(text)
 			d.fields = append(d.fields, field)

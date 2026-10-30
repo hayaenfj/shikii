@@ -453,3 +453,15 @@ curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec"
 
 - Isotonic regression
 - Reading keys from a store (pass them in environment variables; this process never touches a keychain)
+
+## Knowledge found during work
+
+The agent can now carry a useful manual discovery into later searches. A wiki query returns a lookup receipt for the articles actually supplied. When an article changes a decision, the agent records the context, decision and evidence with its normal reflection. Merely reading an article does not count as useful. The evidence helps retrieve that exact revision through the existing delivery gate; edits, replacements and deletion do not inherit its endorsement. Lookups and discoveries are bounded to the latest 64 and 128 records per project.
+
+Articles can keep a short rationale: the conditions, choice, alternatives rejected and why, and observed result. The agent writes it from sources and leaves unsupported reasons unknown. It accompanies the lesson in planning and automatic delivery, and the Knowledge page lets you read and edit it.
+
+For facts or procedures that depend on project files, the agent can attach up to four files. Shikii records hashes and brings the article back for review when a file changes, disappears or cannot be read. The article and the next delivery show that its premise needs checking. A change does not automatically invalidate or delete a rule. The agent checks the evidence before updating it.
+
+Planning can also return pending reflection in the same response and save both together. Acknowledgements without judgment targets or delivered memories do not load unrelated judgment examples or articles. Failed saves still return explicit errors and must be retried.
+
+API additions: `wiki query` returns `lookup:{id,query,pages:[{id,revision}]}`. `reflect submit` accepts `discoveries:[{lookup_id,page_id,revision,context,decision,evidence}]` (each text up to 1000 bytes). Wiki drafts accept `rationale` (up to 1600 bytes) and `watch` (up to four relative regular files of at most 1 MiB each; hidden paths, links and outside paths are rejected). Omission preserves these fields; empty values clear them. `maintenance.changed_files` and article `recheck` expose changed premises; resending `watch` after checking establishes a new baseline. These records are agent observations, not human labels or authorization. `hook plan submit` accepts `reflection` with the ordinary reflection submit shape, within 1 MiB in total; check its nested receipt.

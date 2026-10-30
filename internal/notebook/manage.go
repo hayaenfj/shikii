@@ -13,15 +13,16 @@ var ErrArticleMissing = errors.New("the article does not exist in this project")
 // Change contains only the fields the Knowledge page can change. Evidence,
 // relationships and history are always taken from the current saved article.
 type Change struct {
-	ID        string `json:"id"`
-	Revision  string `json:"revision"`
-	Action    string `json:"action"`
-	Title     string `json:"title,omitempty"`
-	Lesson    string `json:"lesson,omitempty"`
-	AppliesTo string `json:"applies_to,omitempty"`
-	Body      string `json:"body,omitempty"`
-	Kind      string `json:"kind,omitempty"`
-	Scene     string `json:"scene,omitempty"`
+	ID        string  `json:"id"`
+	Revision  string  `json:"revision"`
+	Action    string  `json:"action"`
+	Title     string  `json:"title,omitempty"`
+	Lesson    string  `json:"lesson,omitempty"`
+	AppliesTo string  `json:"applies_to,omitempty"`
+	Body      string  `json:"body,omitempty"`
+	Rationale *string `json:"rationale,omitempty"`
+	Kind      string  `json:"kind,omitempty"`
+	Scene     string  `json:"scene,omitempty"`
 }
 
 func (b Book) Manage(c Change) (Page, error) {
@@ -73,6 +74,7 @@ func (b Book) Manage(c Change) (Page, error) {
 			return Page{}, errors.New("an edit needs a summary, kind and scene")
 		}
 		d.Title, d.Lesson, d.AppliesTo, d.Body, d.Kind, d.Scene = c.Title, c.Lesson, c.AppliesTo, &c.Body, c.Kind, c.Scene
+		d.Rationale = c.Rationale
 	}
 	d.ChangeReason = fmt.Sprintf("%s from the Knowledge page", c.Action)
 	result, err := b.ingest(d, true)

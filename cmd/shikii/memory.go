@@ -21,7 +21,7 @@ type memoryDelivery struct {
 type memoryQuote = store.MemoryQuote
 
 // memoryPrefix opens the quotes every request gets. Short on purpose: the room goes to the quotes (0.11)
-const memoryPrefix = "shikii: quotes from this project's memory, close to this request. Each is a hypothesis with sources, never permission or a person's truth: check its condition against this request first.\n"
+const memoryPrefix = "shikii: project memory quotes, hypotheses with sources, never permission or a person's truth. Check conditions for this request. recheck=true: query the article's changed premises. discovered_for: earlier manual use.\n"
 
 // memoryContext is called inside the session lock. It prefers lessons whose conditions match,
 // and does not repeat the same revision within an hour. An updated revision, or another session, gets it right away.
@@ -97,7 +97,7 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 			break
 		}
 		key := "lesson:" + p.ID + ":" + p.Revision
-		if seen[key] || silenced(effects[store.PairKey(key, door)]) { // unused twice and never helpful at the request door: not quoted again (0.12)
+		if seen[memoryCacheKey(p)] || silenced(effects[store.PairKey(key, door)]) { // unused twice and never helpful at the request door: not quoted again (0.12)
 			continue
 		}
 		q := lessonQuote(p)
@@ -116,7 +116,7 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 			q.Trace = trace
 		}
 		quotes = append(quotes, q)
-		keys = append(keys, key)
+		keys = append(keys, memoryCacheKey(p))
 	}
 	for _, a := range answers {
 		if len(quotes) == 2 {
@@ -195,6 +195,23 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 	return "", nil
 }
 
+func memoryCacheKey(p notebook.Page) string {
+	key := "lesson:" + p.ID + ":" + p.Revision
+	if len(p.Recheck) > 0 {
+		data, _ := json.Marshal(p.Recheck)
+		sum := sha256.Sum256(data)
+		key += ":" + hex.EncodeToString(sum[:8])
+	}
+	return key
+}
+
+func quoteCacheKey(q memoryQuote) string {
+	if q.CacheKey != "" {
+		return q.CacheKey
+	}
+	return q.Key
+}
+
 // lessonQuote is the short quote of a lesson page as it is delivered and recorded (key lesson:<id>:<revision>).
 // A delivery record carries at most 16 source ids per quote; a page that kept its earlier sources over many updates has more.
 // The correction's source comes first so the record still names it.
@@ -208,7 +225,7 @@ func lessonQuote(p notebook.Page) memoryQuote {
 			ids = append(ids, source.ID)
 		}
 	}
-	return memoryQuote{Key: "lesson:" + p.ID + ":" + p.Revision, ID: p.ID, Revision: p.Revision, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids, Correction: p.Correction}
+	return memoryQuote{CacheKey: memoryCacheKey(p), Key: "lesson:" + p.ID + ":" + p.Revision, ID: p.ID, Revision: p.Revision, Lesson: p.Lesson, AppliesTo: p.AppliesTo, Sources: ids, Correction: p.Correction, Rationale: p.Rationale, Recheck: len(p.Recheck) > 0, DiscoveredFor: p.DiscoveryContext()}
 }
 
 // clipQuotes returns a copy of quotes with each text cut to budget bytes (an ellipsis marks a cut).
@@ -223,6 +240,8 @@ func clipQuotes(quotes []memoryQuote, budget int) []memoryQuote {
 	for i := range clipped {
 		q := &clipped[i]
 		q.Lesson, q.AppliesTo = text(q.Lesson), text(q.AppliesTo)
+		q.Rationale = text(q.Rationale)
+		q.DiscoveredFor = text(q.DiscoveredFor)
 		q.Request, q.Summary, q.Reply = text(q.Request), text(q.Summary), text(q.Reply)
 		if q.Correction != nil {
 			c := *q.Correction

@@ -33,7 +33,7 @@
     return { list, other, none: lessons.filter(l => !(l.kind && l.scene)).length };
   });
   const inScene = l => !scene || (scene === NONE ? !(l.kind && l.scene) : scene === OTHER ? !!(l.kind && l.scene) && sceneCount.get(l.scene) === 1 : l.scene === scene && !!l.kind);
-  const matches = l => { const w = words.trim().toLowerCase(); return !w || [l.title, l.lesson, l.applies_to, l.body, l.scene].some(x => (x || '').toLowerCase().includes(w)); };
+  const matches = l => { const w = words.trim().toLowerCase(); return !w || [l.title, l.lesson, l.applies_to, l.body, l.rationale, l.scene].some(x => (x || '').toLowerCase().includes(w)); };
   let narrowed = $derived(!!scene || !!words.trim());
   // Without narrowing, the rules are in the rules box only; with narrowing, in the list only
   let byKind = $derived(KINDS.filter(k => narrowed || k !== 'rule').map(k => ({ kind: k, items: lessons.filter(l => l.kind === k && inScene(l) && matches(l)).sort((a, b) => score(b) - score(a)) })).filter(g => g.items.length));
@@ -153,6 +153,8 @@
         <p class="text-[15px] whitespace-pre-wrap">{selected.lesson}</p>
         <div class="k">{t('appliesTo')}</div><p class="mt-0">{selected.applies_to}</p>
         {#if selected.body}<div class="k">{t('bodyTitle')}</div><div class="text rounded-lg bg-bg p-2.5 text-[14px] whitespace-pre-wrap wrap-anywhere">{plainText(selected.body)}</div>{/if}
+        {#if selected.rationale}<div class="k mt-2">{t('articleRationale')}</div><p class="mt-0 whitespace-pre-wrap wrap-anywhere" data-article-rationale>{plainText(selected.rationale)}</p>{/if}
+        {#if selected.recheck?.length}<div class="mt-2 rounded-lg border border-amber p-2.5" data-article-recheck><p class="m-0">{t('articleRecheck')}</p><ul class="mb-0">{#each selected.recheck as item}<li class="wrap-anywhere">{item.path} — {t('premiseState')(item.state)}</li>{/each}</ul></div>{/if}
         {#if (selected.related || []).length}
           <div class="k mt-2">{t('relatedTitle')}</div>
           <p class="mt-0 flex flex-wrap gap-1.5">{#each selected.related as r (r)}{#if byId.get(r)}<button type="button" class="weak" onclick={() => showLesson(r)}>{byId.get(r).title}</button>{/if}{/each}</p>

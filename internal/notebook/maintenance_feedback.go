@@ -25,6 +25,19 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 	}
 	for i := range tasks {
 		task := &tasks[i]
+		for _, p := range pages {
+			if p.ID == task.PageID {
+				task.ChangedFiles = b.premiseChanges(p)
+				break
+			}
+		}
+		if len(task.ChangedFiles) > 0 {
+			data, _ := json.Marshal(struct {
+				Content string
+				Files   []PremiseChange
+			}{task.Key, task.ChangedFiles})
+			task.Key = digest(data)[:16]
+		}
 		task.ContentKey = task.Key
 		all := byQuote["lesson:"+task.PageID+":"+task.Revision]
 		counts := map[string]store.PairEffect{}

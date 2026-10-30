@@ -82,6 +82,9 @@ func sessionBrief(root, scope string) (string, error) {
 			break
 		}
 		parts = append(parts, "- "+strings.TrimSpace(p.Lesson)+" (lesson:"+p.ID+":"+p.Revision+")")
+		if len(p.Recheck) > 0 {
+			parts = append(parts, "  Recheck this article's premise files before relying on its premise; a change does not invalidate the rule.")
+		}
 	}
 	head := "shikii: this project, at the start of the session (and after a summary). The rules for every request and where the work stands, from the project's own records: hypotheses with sources, never permission.\n"
 	if record, section := newestWorkRecordSection(root); record != "" {

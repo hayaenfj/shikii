@@ -18,18 +18,22 @@ import (
 )
 
 type MemoryQuote struct {
-	Correction *Correction `json:"correction,omitempty"`
-	Key        string      `json:"key"`
-	ID         string      `json:"id"`
-	Revision   string      `json:"revision,omitempty"`
-	Lesson     string      `json:"lesson,omitempty"`
-	AppliesTo  string      `json:"applies_to,omitempty"`
-	Sources    []string    `json:"sources,omitempty"`
-	Request    string      `json:"request,omitempty"`
-	Summary    string      `json:"summary,omitempty"`
-	Reply      string      `json:"reply,omitempty"`
-	Trace      string      `json:"trace,omitempty"` // the lesson-applies decision made for this delivery (0.12): the reflection's assessment becomes its outcome truth
-	Said       string      `json:"said,omitempty"`  // a person's past answer (key decision:<trace>): what the person answered, in the page's words; Request is that request
+	CacheKey      string      `json:"-"`
+	Correction    *Correction `json:"correction,omitempty"`
+	Key           string      `json:"key"`
+	ID            string      `json:"id"`
+	Revision      string      `json:"revision,omitempty"`
+	Lesson        string      `json:"lesson,omitempty"`
+	AppliesTo     string      `json:"applies_to,omitempty"`
+	Rationale     string      `json:"rationale,omitempty"`
+	Recheck       bool        `json:"recheck,omitempty"`
+	DiscoveredFor string      `json:"discovered_for,omitempty"`
+	Sources       []string    `json:"sources,omitempty"`
+	Request       string      `json:"request,omitempty"`
+	Summary       string      `json:"summary,omitempty"`
+	Reply         string      `json:"reply,omitempty"`
+	Trace         string      `json:"trace,omitempty"` // the lesson-applies decision made for this delivery (0.12): the reflection's assessment becomes its outcome truth
+	Said          string      `json:"said,omitempty"`  // a person's past answer (key decision:<trace>): what the person answered, in the page's words; Request is that request
 }
 
 type MemoryDelivery struct {
@@ -118,6 +122,9 @@ func validMemoryDelivery(d MemoryDelivery) bool {
 		}
 		seen[q.Key] = true
 		if strings.HasPrefix(q.Key, "decision:") {
+			if q.Rationale != "" || q.Recheck || q.DiscoveredFor != "" {
+				return false
+			}
 			// a person's past answer: the past request and what the person said, nothing of a lesson or a conversation
 			if q.Key != "decision:"+q.ID || q.Request == "" || q.Said == "" || q.Correction != nil || q.Revision != "" || q.Lesson != "" || q.AppliesTo != "" || len(q.Sources) != 0 || q.Summary != "" || q.Reply != "" {
 				return false
@@ -125,6 +132,9 @@ func validMemoryDelivery(d MemoryDelivery) bool {
 			continue
 		}
 		if q.Said != "" {
+			return false
+		}
+		if q.Revision == "" && (q.Rationale != "" || q.Recheck || q.DiscoveredFor != "") {
 			return false
 		}
 		if q.Correction != nil {
@@ -240,6 +250,11 @@ func (s Store) lockFile(path string, create bool) (func(), error) {
 }
 
 func (s Store) SaveMemoryDelivery(d MemoryDelivery) error {
+	// The transient delivery cache is not part of a saved quote or its idempotency comparison.
+	d.Quotes = append([]MemoryQuote{}, d.Quotes...)
+	for i := range d.Quotes {
+		d.Quotes[i].CacheKey = ""
+	}
 	d.At = time.Now().UTC()
 	if !validMemoryDelivery(d) {
 		return errors.New("a memory delivery needs a request, quotes, sources and a version")

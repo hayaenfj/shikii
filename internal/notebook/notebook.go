@@ -45,10 +45,14 @@ type Page struct {
 	Previous     string            `json:"previous,omitempty" yaml:"previous,omitempty"`
 	Correction   *store.Correction `json:"correction,omitempty" yaml:"correction,omitempty"`
 	Body         string            `json:"body,omitempty" yaml:"body,omitempty"`
-	Related      []string          `json:"related,omitempty" yaml:"related,omitempty"`
-	ChangeReason string            `json:"change_reason,omitempty" yaml:"change_reason,omitempty"`
-	Kind         string            `json:"kind,omitempty" yaml:"kind,omitempty"`   // kind (one of Kinds; 0.9.0)
-	Scene        string            `json:"scene,omitempty" yaml:"scene,omitempty"` // scene (a "when ..." phrase in the project's own words, up to sceneMax characters; 0.9.0)
+	Rationale    string            `json:"rationale,omitempty" yaml:"rationale,omitempty"`
+	Premises     []Premise         `json:"premises,omitempty" yaml:"premises,omitempty"`
+	Recheck      []PremiseChange   `json:"recheck,omitempty" yaml:"-"`
+	discovered   string
+	Related      []string `json:"related,omitempty" yaml:"related,omitempty"`
+	ChangeReason string   `json:"change_reason,omitempty" yaml:"change_reason,omitempty"`
+	Kind         string   `json:"kind,omitempty" yaml:"kind,omitempty"`   // kind (one of Kinds; 0.9.0)
+	Scene        string   `json:"scene,omitempty" yaml:"scene,omitempty"` // scene (a "when ..." phrase in the project's own words, up to sceneMax characters; 0.9.0)
 }
 
 // Kinds are the kinds of page. Fixed to shapes every kind of work has (do not add more): a rule decided in this project, a how-to, a criterion for judging, a premise or fact, and history.
@@ -91,6 +95,8 @@ type Draft struct {
 	Replaces     []string          `json:"replaces,omitempty"`
 	Correction   *store.Correction `json:"correction,omitempty"`
 	Body         *string           `json:"body,omitempty"`
+	Rationale    *string           `json:"rationale,omitempty"`
+	Watch        *[]string         `json:"watch,omitempty"`
 	Related      []string          `json:"related,omitempty"`
 	ChangeReason string            `json:"change_reason,omitempty"`
 	Kind         string            `json:"kind,omitempty"`  // kind (one of Kinds). Required for a draft with a lesson; inherited if omitted when updating
@@ -119,6 +125,7 @@ type View struct {
 	Maintenance  []MaintenanceTask `json:"maintenance,omitempty"`
 	Search       *SearchResult     `json:"search,omitempty"`
 	NextCursor   string            `json:"next_cursor,omitempty"`
+	Lookup       *Lookup           `json:"lookup,omitempty"`
 }
 
 type Result struct {
@@ -171,6 +178,9 @@ func (b Book) directory(create bool, area string) (string, error) {
 	parts := []string{"wiki", "lessons", b.storeName()}
 	if area == "sources" {
 		parts = []string{"records", "wiki-sources", b.storeName()}
+	}
+	if area == "searches" {
+		parts = []string{"records", "wiki-searches", b.storeName()}
 	}
 	if create {
 		if err := os.MkdirAll(b.Root, 0o700); err != nil {
@@ -311,6 +321,9 @@ func (b Book) renderPage(p Page, l pageLabels) ([]byte, error) {
 	if p.Body != "" {
 		article += "\n\n" + p.Body
 	}
+	if p.Rationale != "" {
+		article += "\n\n## Rationale\n\n" + p.Rationale
+	}
 	if len(p.Related) > 0 {
 		article += "\n\n" + l.related + "\n\n"
 		for _, id := range p.Related {
@@ -348,6 +361,17 @@ func parsePage(data []byte) (Page, error) {
 	if p.Previous != "" && !idPattern.MatchString(p.Previous) {
 		return p, errors.New("invalid previous wiki revision")
 	}
+	if len(p.Rationale) > 1600 || len(p.Premises) > 4 {
+		return p, errors.New("invalid rationale or premise metadata")
+	}
+	seenPremises := map[string]bool{}
+	for _, ref := range p.Premises {
+		_, err := hex.DecodeString(ref.Hash)
+		if !premisePath(ref.Path) || seenPremises[ref.Path] || len(ref.Hash) != 64 || err != nil {
+			return p, errors.New("invalid premise reference")
+		}
+		seenPremises[ref.Path] = true
+	}
 	for _, id := range p.Related {
 		if !idPattern.MatchString(id) || id == p.ID {
 			return p, errors.New("invalid related wiki page")
@@ -357,6 +381,7 @@ func parsePage(data []byte) (Page, error) {
 }
 
 func revision(p Page) string {
+	p.Recheck = nil
 	p.Revision = ""
 	b, _ := json.Marshal(p)
 	return digest(b)[:16]
@@ -439,7 +464,14 @@ func (b Book) sourceIssues(p Page) []Issue {
 }
 
 func (b Book) Query(query string) (View, error) {
-	return b.query(query, false)
+	v, err := b.query(query, false)
+	if strings.HasPrefix(query, "lesson:") && strings.Contains(query, "@") {
+		return v, err
+	}
+	for i := range v.Lessons {
+		v.Lessons[i].Recheck = b.premiseChanges(v.Lessons[i])
+	}
+	return v, err
 }
 
 // Recall is for lessons delivered automatically. It weighs the title and applies-to condition over chance matches in the body.
@@ -465,6 +497,7 @@ func (b Book) LiveWhere(keep func(Page) bool) ([]Page, error) {
 	live := []Page{}
 	for _, p := range pages {
 		if p.Status != "deleted" && !superseded[p.ID] && (keep == nil || keep(p)) && len(b.sourceIssues(p)) == 0 {
+			p.Recheck = b.premiseChanges(p)
 			live = append(live, p)
 		}
 	}
@@ -508,6 +541,7 @@ func (b Book) AlwaysRules() ([]Page, error) {
 	out := []Page{}
 	for _, p := range valid {
 		if p.Status != "deleted" && !superseded[p.ID] && p.Kind == "rule" && IsAlways(p.Scene) {
+			p.Recheck = b.premiseChanges(p)
 			out = append(out, p)
 		}
 	}
@@ -516,6 +550,9 @@ func (b Book) AlwaysRules() ([]Page, error) {
 
 func (b Book) Recall(query string) ([]Page, error) {
 	v, err := b.query(query, true)
+	for i := range v.Lessons {
+		v.Lessons[i].Recheck = b.premiseChanges(v.Lessons[i])
+	}
 	return v.Lessons, err
 }
 
@@ -559,6 +596,14 @@ func (b Book) query(query string, recall bool) (View, error) {
 		}
 	}
 	if query != "" || recall {
+		contexts, err := b.discoveryContexts()
+		if err != nil {
+			return v, err
+		}
+		for i := range v.Lessons {
+			p := &v.Lessons[i]
+			p.discovered = contexts[p.ID+":"+p.Revision]
+		}
 		v.Lessons, v.Matches = rankPages(v.Lessons, query, recall)
 	}
 	if recall {
@@ -655,6 +700,9 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 	if d.Body != nil {
 		body = strings.TrimSpace(*d.Body)
 	}
+	if d.Rationale != nil && (len(*d.Rationale) > 1600 || !utf8.ValidString(*d.Rationale)) {
+		return result, errors.New("rationale must be UTF-8, at most 1600 bytes")
+	}
 	if len(d.Sources) < 1 {
 		return result, errors.New("wiki ingest needs sources: an array of source ids (from wiki capture or reflect query)")
 	}
@@ -678,7 +726,7 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 	if d.Lesson == "" && d.ID != "" {
 		return result, errors.New("updating a page by id sends its lesson, title and applies_to again (read them with wiki query lesson:<id>), with sources and change_reason")
 	}
-	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Related != nil || d.ChangeReason != "" || d.Kind != "" || d.Scene != "") {
+	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Rationale != nil || d.Watch != nil || d.Related != nil || d.ChangeReason != "" || d.Kind != "" || d.Scene != "") {
 		return result, errors.New("reviewing a source without a lesson accepts only source ids")
 	}
 	for _, id := range append(append(append([]string{}, d.Sources...), d.Replaces...), d.Related...) {
@@ -815,6 +863,16 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 			}
 		}
 		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related, Kind: d.Kind, Scene: d.Scene}
+		p.Rationale, p.Premises = byID[id].Rationale, byID[id].Premises
+		if d.Rationale != nil {
+			p.Rationale = strings.TrimSpace(*d.Rationale)
+		}
+		if d.Watch != nil {
+			p.Premises, err = b.snapshotPremises(*d.Watch)
+			if err != nil {
+				return result, err
+			}
+		}
 		if d.baseRevision != "" && byID[id].Revision != d.baseRevision {
 			return result, errors.New("the page changed while classifying; read it again and classify it again")
 		}

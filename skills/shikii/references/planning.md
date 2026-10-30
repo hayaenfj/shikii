@@ -85,3 +85,7 @@ For `open`, describe only a concrete unresolved choice that blocks the **current
 - Stale or closed turns are rejected. Re-query when the wiki revision changes or a newer request arrives. Repeating the same submission preserves the first prediction rather than appending duplicates.
 
 Existing project questions are retained. Do not reinterpret their old labels for a new question. Measure information questions, approved work, and genuinely blocking choices separately; an always-no predictor is not an improvement merely because most examples are no.
+
+## Combine reflection with planning
+
+When `hook plan query` includes `reflection`, use that supplied original material instead of calling reflect query again. Add the ordinary reflection submit object as `reflection` in `hook plan submit` (operation omitted or submit). Read the nested `reflection.complete`, item errors and `reflection.left`: planning may save while part of reflection fails. Retry the same organizing with corrected reflection; the original planning decision is not made twice. The combined input is bounded to 1 MiB; planning without reflection keeps its 16 KiB limit. Do not delay the active task to fill in assessments without evidence. Sources-only acknowledgements need no new lesson.

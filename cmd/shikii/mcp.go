@@ -226,6 +226,12 @@ var maintenanceSchema = map[string]any{"type": "object", "additionalProperties":
 	"page_id": map[string]any{"type": "string"}, "revision": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"},
 }, "required": []string{"page_id", "revision", "key", "reason"}}
 
+var rationaleSchema = map[string]any{"type": "string", "description": "Source-backed conditions, choice, rejected alternatives and reasons, and observed outcome; unknown where unsupported. At most 1600 bytes. Omit to preserve; empty clears."}
+var watchSchema = map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "string"}, "description": "Project-relative regular files this knowledge depends on. Hashes are captured now; changed or unreadable files trigger rechecking. No links or hidden paths; each file at most 1 MiB. Omit to preserve; empty clears."}
+var discoverySchema = map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+	"lookup_id": map[string]any{"type": "string"}, "page_id": map[string]any{"type": "string"}, "revision": map[string]any{"type": "string"}, "context": map[string]any{"type": "string"}, "decision": map[string]any{"type": "string"}, "evidence": map[string]any{"type": "string"},
+}, "required": []string{"lookup_id", "page_id", "revision", "context", "decision", "evidence"}}
+
 // kindSchema and sceneSchema are a page's kind and scene (0.9.0). The save endpoint requires them on pages with a lesson (omitting them on an edit keeps the old values).
 var kindSchema = map[string]any{"type": "string", "enum": notebook.Kinds, "description": "the lesson's kind (required; omit on an edit to keep it): rule=a rule decided in this project, howto=how to do something, criteria=a basis for judging, fact=a premise or fact, history=how things came to be"}
 var sceneSchema = map[string]any{"type": "string", "maxLength": notebook.SceneMax, "description": "the scene it applies to, short and in the work's own words (required; e.g. \"when committing\", \"when sending an invoice\"; one line, up to 48 characters). If place returns an existing scene close to it, use the same wording"}
@@ -240,6 +246,7 @@ var mcpTools = []map[string]any{
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"operation":   map[string]any{"type": "string", "enum": []string{"query", "place", "submit"}},
 			"maintenance": map[string]any{"type": "array", "items": maintenanceSchema},
+			"discoveries": map[string]any{"type": "array", "items": discoverySchema, "description": "Only manual lookups that demonstrably informed a decision. Use the returned lookup id and exact revision; context, decision and evidence each at most 1000 bytes. Not a human truth."},
 			"memory": map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 				"source_id": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"},
 				"result":   map[string]any{"type": "string", "enum": []string{"helpful", "unused", "harmful", "unknown"}},
@@ -254,7 +261,8 @@ var mcpTools = []map[string]any{
 				"sources":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"correction":    correctionSchema,
 				"change_reason": map[string]any{"type": "string"},
-				"id":            map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "lesson": map[string]any{"type": "string"}, "applies_to": map[string]any{"type": "string"},
+				"rationale":     rationaleSchema, "watch": watchSchema,
+				"id": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "lesson": map[string]any{"type": "string"}, "applies_to": map[string]any{"type": "string"},
 				"replaces": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"body":     map[string]any{"type": "string", "description": "the knowledge text, combining background, evidence, conditions and open points from the sources. Up to 16KB. Omit to keep the existing text; an empty string clears it"},
 				"related":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "ids of related pages in the same project. Omit to keep; an empty array clears"},
@@ -333,6 +341,7 @@ var mcpTools = []map[string]any{
 				"path":        map[string]any{"type": "string", "description": "path of a work record (handoff_*), relative to .shikii/handoff/ (e.g. audit-0.8.1/report-A.md). Refuses .., hidden names and absolute paths"},
 				"content":     map[string]any{"type": "string", "description": "text for handoff_write (replace) or handoff_append (add to the end). UTF-8 text, up to 1 MiB per call"},
 				"maintenance": maintenanceSchema,
+				"rationale":   rationaleSchema, "watch": watchSchema,
 				"observation": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 					"kind":  map[string]any{"type": "string", "enum": []string{"human", "agent", "code", "test", "release"}},
 					"title": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "reference": map[string]any{"type": "string"}, "version": map[string]any{"type": "string"}, "observed_at": map[string]any{"type": "string", "format": "date-time"},

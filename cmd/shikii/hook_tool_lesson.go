@@ -436,6 +436,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	var ranked []toolCandidate
 	for _, p := range live {
 		c := scores[p.ID]
+		c.page = p
 		// the door is the first one the page names that is not silent (unused twice and never helpful): a lesson silent at git commit
 		// still comes through gh release when one command line runs both (audit A of 0.12); silent at every door, it is left out
 		for _, door := range namedDoors(p, target) {
@@ -469,7 +470,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	for i := range ranked {
 		c := ranked[i]
 		q := lessonQuote(c.page)
-		if seen[q.Key] {
+		if seen[quoteCacheKey(q)] {
 			continue
 		}
 		if asked == lessonAppliesMaxAsks {
@@ -493,7 +494,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			return // a new request arrived meanwhile: this tool call belongs to it, and the next one gets its lesson
 		}
 		for _, m := range s.Memories {
-			if age := time.Since(m.At); age >= 0 && age < time.Hour && m.Key == quote.Key {
+			if age := time.Since(m.At); age >= 0 && age < time.Hour && m.Key == quoteCacheKey(quote) {
 				return // delivered meanwhile by another call of this turn
 			}
 		}
@@ -578,12 +579,12 @@ func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolT
 		if len(prefix)+len(data) > 1800 {
 			continue
 		}
-		sum := sha256.Sum256([]byte(s.TurnID + "/tool/" + target.label + "/" + q.Key))
+		sum := sha256.Sum256([]byte(s.TurnID + "/tool/" + target.label + "/" + quoteCacheKey(q)))
 		d := store.MemoryDelivery{ID: hex.EncodeToString(sum[:])[:16], Scope: s.Scope, Request: cut(s.Request, requestMax), Quotes: clipped, Parent: s.TurnID, Agent: agentID, Tool: target.label, Phrase: phrase}
 		if err := (store.Store{Dir: agent}).SaveMemoryDelivery(d); err != nil {
 			return "", err
 		}
-		s.Memories = append(s.Memories, memoryDelivery{Key: q.Key, At: time.Now().UTC()})
+		s.Memories = append(s.Memories, memoryDelivery{Key: quoteCacheKey(q), At: time.Now().UTC()})
 		if len(s.Memories) > 16 {
 			s.Memories = s.Memories[len(s.Memories)-16:]
 		}

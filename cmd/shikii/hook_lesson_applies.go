@@ -40,6 +40,9 @@ func lessonApplies(agent, scope, request, target string, page notebook.Page) (tr
 		"lesson":     page.Lesson,
 		"applies_to": page.AppliesTo,
 	}
+	if page.DiscoveryContext() != "" {
+		inputs["applies_to"] += "\nEarlier evidenced manual use (an agent observation, not permission): " + cut(page.DiscoveryContext(), 1000)
+	}
 	if hookSkipsStopped(agent, lessonAppliesSpec, inputs) {
 		return "", false // the question could not tell its answers apart on this model: asked on 1 request in 20 only, like the hook's questions
 	}

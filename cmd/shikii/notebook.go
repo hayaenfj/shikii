@@ -44,7 +44,12 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		if len(req.Sources) > 0 {
 			return b.ReadSourcesPage(req.Sources, req.Cursor)
 		}
-		return b.QueryPage(req.Query, req.Cursor)
+		view, err := b.QueryPage(req.Query, req.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		view.Lookup, err = b.RecordLookup(req.Query, view.Lessons)
+		return view, err
 	case "ingest":
 		res, err := ingestWithOutcome(root, scope, req.Draft) // attach the truth from the result to the insertion-point decision (0.8.3)
 		if err == nil {

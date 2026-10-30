@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased — Carry useful knowledge into the next decision
+
+- Learn retrieval contexts from evidenced manual discoveries, scoped to the returned article revision.
+- Keep and deliver source-backed choice rationale, including rejected alternatives; edit it from the Knowledge page.
+- Recheck knowledge when its explicitly linked project files change, disappear or become unreadable.
+- Combine pending reflection with planning, preserving save checks and retrying failed items without judging planning twice.
+
 ## 0.15.0 — Edit knowledge from the page
 
 - Edit an article's title, summary, conditions, background, kind and scene on the Knowledge page. Saving keeps its sources and earlier revisions and records the submitted change as a source snapshot, separate from calibration truths.
