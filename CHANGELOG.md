@@ -2,12 +2,15 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased — Carry useful knowledge into the next decision
+## 0.16.0 — Carry useful knowledge into the next decision
 
 - Learn retrieval contexts from evidenced manual discoveries, scoped to the returned article revision.
 - Keep and deliver source-backed choice rationale, including rejected alternatives; edit it from the Knowledge page.
 - Recheck knowledge when its explicitly linked project files change, disappear or become unreadable.
 - Combine pending reflection with planning, preserving save checks and retrying failed items without judging planning twice.
+
+- Preserve changed-premise warnings after article edits and explicit planning reads, keep combined-save retries valid after wiki edits, and bound search records by their encoded size.
+- Update every machine sharing a wiki to 0.16.0 and restart agent sessions, the page and MCP before using rationale or watched files; older processes exclude these articles and refuse wiki saves.
 
 ## 0.15.0 — Edit knowledge from the page
 
