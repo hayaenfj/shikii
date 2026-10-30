@@ -134,25 +134,27 @@ type hookInput struct {
 	LastAssistantMessage string          `json:"last_assistant_message"`
 	ToolName             string          `json:"tool_name"`  // PreToolUse: the tool about to be used (Agent / Task; the edit tools and Bash for tool-lesson)
 	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: that tool's input (for Agent: prompt and subagent_type; file_path, notebook_path or command)
-	// late is the Stop after a block run at the person's next request (judgeAskedTurn): it judges only. No Stop happened, so the stop
-	// checks and rituals are not rechecked (a tree that passes at the next request is not "fixed before the turn ended", 0.9.3 audit 6)
+	// late is a Stop run at the next request. It checks that required work is saved before judging, but emits no recovery feedback
+	// and writes no check receipts: a later human fix is not agent recovery.
 	late bool
 }
 
 // hookOut is what the hook returns. Empty means output nothing (no judgment). No permission decision (allow / ask / deny) is output.
 type hookOut struct {
-	Context string // text passed to the agent (additionalContext. UserPromptSubmit, SubagentStart, SessionStart and PreToolUse)
-	System  string // text shown to the person in the terminal (systemMessage)
-	Block   bool   // stop the Stop (a stop check was hit. 0.7.3). Claude Code passes the reason and continues
-	Deny    bool   // refuse the tool call (PreToolUse; a guard the person enabled stopped a command before it ran, 0.11). The reason goes to the agent
-	Reason  string // the reason for stopping (to the agent)
+	Context  string          // text passed to the agent (additionalContext. UserPromptSubmit, SubagentStart, SessionStart and PreToolUse)
+	System   string          // text shown to the person in the terminal (systemMessage)
+	Block    bool            // stop the Stop (a stop check was hit. 0.7.3). Claude Code passes the reason and continues
+	Deny     bool            // refuse the tool call (PreToolUse; a guard the person enabled stopped a command before it ran, 0.11). The reason goes to the agent
+	Reason   string          // the reason for stopping (to the agent)
+	Halt     string          // a failed recovery: end automatic continuation with an explicit incomplete result
+	Recovery *ritualRecovery // internal state, saved with the same turn; never emitted as hook JSON
 }
 
 func (o hookOut) empty() bool { return o == hookOut{} }
 
 // message is the "output text" kept in the record: the first present of the terminal text, the stop reason and the agent context.
 func (o hookOut) message() string {
-	for _, s := range []string{o.System, o.Reason, o.Context} {
+	for _, s := range []string{o.Halt, o.System, o.Reason, o.Context} {
 		if s != "" {
 			return s
 		}
@@ -174,7 +176,10 @@ func (o hookOut) json(event string) []byte {
 	if o.Deny && event == "PreToolUse" && o.Reason != "" {
 		out["hookSpecificOutput"] = map[string]any{"hookEventName": event, "permissionDecision": "deny", "permissionDecisionReason": o.Reason}
 	}
-	if o.Block && event == "Stop" && o.Reason != "" { // stop check: the Stop decision; Codex (0.164) reads the same {"decision":"block","reason"} and continues the turn with the reason
+	if o.Halt != "" && event == "Stop" {
+		out["continue"] = false
+		out["stopReason"] = o.Halt
+	} else if o.Block && event == "Stop" && o.Reason != "" { // stop check: the Stop decision; Codex (0.164) reads the same {"decision":"block","reason"} and continues the turn with the reason
 		out["decision"] = "block"
 		out["reason"] = o.Reason
 	}
@@ -212,7 +217,8 @@ type hookSession struct {
 	OlderNoticed     bool             `json:"older_noticed,omitempty"`      // told in this session that an older shikii registered this project again (0.9.7)
 	ReflectAsked     []string         `json:"reflect_asked,omitempty"`      // conversations asked to be reflected on before the request (the ritual check looks at it at Stop. 0.8.0)
 	ReflectAskedTurn string           `json:"reflect_asked_turn,omitempty"` // the turn ReflectAsked was asked in (do not stop on leftovers from another turn. audit R5)
-	RitualStopped    string           `json:"ritual_stopped,omitempty"`     // the turn stopped by the ritual check (do not stop again at the Stop after a notification. audit R5)
+	RitualRecovery   *ritualRecovery  `json:"ritual_recovery,omitempty"`    // saved remaining work for the current recovery
+	RitualStopped    string           `json:"ritual_stopped,omitempty"`     // the stopped turn, including continuations after a background notification
 	GroupingAsked    string           `json:"grouping_asked,omitempty"`     // the turn whose Stop asked only for continues_previous and left the judgment to the next Stop (0.9.3)
 	PageNoticed      bool             `json:"page_noticed,omitempty"`       // told the page location in this session (0.8.0)
 	HabitsNoticed    bool             `json:"habits_noticed,omitempty"`     // told in this session how to keep work records and rules (0.8.1)
@@ -655,18 +661,6 @@ func runHookEvent(event string) error {
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return fmt.Errorf("stdin is not the agent's hook JSON: %w", err)
 	}
-	if event == "stop" && in.StopHookActive {
-		// the Stop after a stop: do not stop again (avoid an infinite loop). Only run the stop checks once more and record whether it was fixed (0.7.3).
-		// A turn whose first Stop only asked for continues_previous was not judged yet: this Stop judges it (without blocking) with the grouping the organizing gave (0.9.3)
-		root, _, perr := prepareHookProject(in.CWD)
-		if perr != nil {
-			return nil
-		}
-		if s := loadSession(root, in.SessionID); s.TurnID == "" || s.GroupingAsked != s.TurnID || s.Judged {
-			guardRecheck(root, &in)
-			return nil
-		}
-	}
 	common := agent
 	moved := ""
 	if event == "user-prompt-submit" {
@@ -730,8 +724,13 @@ func runHookEvent(event string) error {
 			for _, m := range muts {
 				m(sess)
 			}
-		}); serr != nil && err == nil {
-			err = serr
+		}); serr != nil {
+			if err == nil {
+				err = serr
+			}
+			if event == "stop" {
+				out.Halt, out.Block, out.Reason = ritualHalt(true), false, ""
+			}
 		}
 	}
 	if event == "user-prompt-submit" || event == "stop" {
@@ -1194,14 +1193,12 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	last := cut(strings.TrimSpace(in.LastAssistantMessage), requestMax)
 	req := snapshot.Request // the request this Stop evaluates. If the kept request changed inside the lock (the next request came first), this Stop's marks are not applied
 	pendingNow := snapshot.Pending
-	recheck := in.StopHookActive // only the Stop after a Stop that asked for continues_previous comes here with it: judge, never block
-	// a short message outside the acknowledgement list, in a turn that was not organized: ask once for continues_previous and keep the
-	// grouping open for it (Claude Code does not organize turns that change no files, 0.9.3 real-agent check medium 3)
-	askGroup := !recheck && groupingAsk(snapshot)
+	recheck := in.StopHookActive || snapshot.RitualStopped == snapshot.TurnID && snapshot.TurnID != ""
+	readyToJudge := false // grouping is settled only after all required work is saved
 	var firstErr error
 	muts := []func(*hookSession){
 		func(s *hookSession) {
-			if s.TurnID == snapshot.TurnID && !askGroup {
+			if s.TurnID == snapshot.TurnID && readyToJudge {
 				settleGrouping(agent, s) // the Stop judges this turn with the grouping it has: a later organizing no longer moves it
 				// an organizing that landed while this Stop was asking the model (after its snapshot) regrouped the request this Stop judged:
 				// the Stop's grouping wins, as for an organizing after the Stop, so the judgment and the reply are kept (0.9.3 audit 3)
@@ -1264,39 +1261,50 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			firstErr = gerr
 		}
 	}
-	if out.Block { // even in a turn stopped by the person's check, evaluate and record the ritual check and chain its reasons (audit R5: they used to vanish without showing in the counts)
-		if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck); rerr != nil && firstErr == nil {
-			firstErr = rerr
-		} else if rout.Block {
-			out.Reason = joinLines(out.Reason, rout.Reason)
+	{
+		rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck)
+		if rerr != nil {
+			if firstErr == nil {
+				firstErr = rerr
+			}
+			rout.Halt = ritualHalt(true)
+			rout.Recovery = &ritualRecovery{TurnID: snapshot.TurnID, Pending: true}
 		}
+		if rout.Recovery != nil {
+			recovery := rout.Recovery
+			muts = append(muts, func(s *hookSession) {
+				if s.TurnID == snapshot.TurnID {
+					saved := *recovery
+					if previous := s.RitualRecovery; previous != nil && previous.TurnID == s.TurnID {
+						saved.Left = min(saved.Left, previous.Left)
+					}
+					s.RitualRecovery = &saved
+				}
+			})
+		}
+		out.System = joinLines(out.System, rout.System)
+		if rout.Halt != "" {
+			out.Halt, out.Block, out.Reason = rout.Halt, false, ""
+		} else if rout.Block {
+			out.Block, out.Reason = true, joinLines(out.Reason, rout.Reason)
+		}
+	}
+	if out.Block || out.Halt != "" {
 		turn := snapshot.TurnID
-		judged := snapshot.Judged
-		// the turn is judged by the Stop after this block, on the fixed tree and reply (or at the next request if that Stop never comes):
-		// before 0.9.3 a turn stopped by the person's check was never judged
 		muts = append(muts, func(s *hookSession) {
-			s.RitualStopped = turn
-			if !judged && s.TurnID == turn {
-				s.GroupingAsked = turn
+			if s.TurnID == turn {
+				s.RitualStopped = turn
+				if !s.Judged {
+					s.GroupingAsked = turn
+				}
 			}
 		})
 		return out, muts, firstErr
 	}
 	if snapshot.Judged {
-		return out, muts, firstErr // a stopped turn is not judged on the changes and reply before the fix (the next request looks at the fixed tree and reply)
+		return out, nil, firstErr // a repeated Stop must not replace the final reply or judge it twice
 	}
-	if askGroup {
-		// not judged yet: the request depends on the grouping. The Stop after this block judges it with the grouping the organizing gave
-		if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, false); rerr != nil && firstErr == nil {
-			firstErr = rerr
-		} else if rout.Block {
-			out.Block, out.Reason = true, rout.Reason
-			turn := snapshot.TurnID
-			muts = append(muts, func(s *hookSession) { s.RitualStopped, s.GroupingAsked = turn, turn })
-			return out, muts, firstErr
-		}
-		askGroup = false // the check could not run: judge now with the provisional grouping, as before
-	}
+	readyToJudge = true
 	inputs := map[string]string{"request": snapshot.Request, "files": filesInput(changed, known), "summary": last}
 	if inputs["summary"] == "" {
 		inputs["summary"] = "(none)"
@@ -1344,23 +1352,12 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			}
 		}
 	})
-	// ritual check (0.8.0): after recording the decisions, stop once if the asked plan or reflection is not done
-	if in.late {
-		return out, muts, firstErr
-	}
-	if rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck); rerr != nil && firstErr == nil {
-		firstErr = rerr
-	} else if rout.Block {
-		out.Block, out.Reason = true, joinLines(out.Reason, rout.Reason)
-		turn := snapshot.TurnID
-		muts = append(muts, func(s *hookSession) { s.RitualStopped = turn })
-	}
 	return out, muts, firstErr
 }
 
 // judgeAskedTurn judges, at the person's next request, a turn whose Stop asked only for continues_previous and whose Stop after the
-// block never came (the person stopped the continuation, or the agent did not continue). It is that Stop run late: it never blocks, and
-// the turn is judged with the grouping it has (the organizing's, or the list's). Notifications, slash commands and children are left alone.
+// block never came. It judges only when the required work is now saved, without counting a later human fix as agent recovery.
+// Notifications, slash commands and children are left alone.
 func judgeAskedTurn(agent string, in *hookInput, snapshot *hookSession) {
 	prompt := strings.TrimSpace(in.Prompt)
 	if snapshot.TurnID == "" || snapshot.GroupingAsked != snapshot.TurnID || snapshot.Judged || in.AgentID != "" || prompt == "" || strings.HasPrefix(prompt, "/") || isNotification(prompt) {

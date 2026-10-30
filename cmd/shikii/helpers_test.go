@@ -382,6 +382,7 @@ func restateTurns(t *testing.T, repo, root, session string) (string, string) {
 		if i > 0 { // each short request is its own (the agent organizes the turn)
 			restateSubmit(t, root, session, "")
 		}
+		saveFixtureReflection(t, root, feedbackScope(repo))
 		out := runHook(t, "stop", map[string]any{"session_id": session, "cwd": repo, "last_assistant_message": "Done."})
 		if reason, block := stopReason(t, out); block && strings.Contains(reason, "continues_previous") {
 			t.Fatalf("request %d must not be asked for continues_previous: %s", i+1, out)
@@ -701,6 +702,7 @@ func restateFarTurns(t *testing.T, repo, root, session string) (string, string) 
 		if i > 0 {
 			restateSubmit(t, root, session, "")
 		}
+		saveFixtureReflection(t, root, feedbackScope(repo))
 		runHook(t, "stop", map[string]any{"session_id": session, "cwd": repo, "last_assistant_message": "Done."})
 		if i == 0 {
 			s := loadSession(root, session)
@@ -871,4 +873,36 @@ func personTruths(labels []store.Label) int {
 		}
 	}
 	return n
+}
+
+// saveFixtureReflection completes required bookkeeping in fixtures whose subject is outcome/grouping behavior.
+// Use the public submit path; tests of missing work never call this helper.
+func saveFixtureReflection(t *testing.T, root, scope string) {
+	t.Helper()
+	h := newServer(serveOpts{storeDir: root, projectScope: scope})
+	q := reflectCall(t, h, map[string]any{"operation": "query"})
+	var reviews, wiki, memory []map[string]any
+	sources, _ := q["sources"].([]any)
+	for _, item := range sources {
+		s := item.(map[string]any)
+		id := s["source_material"].(map[string]any)["id"].(string)
+		targets, _ := s["targets"].([]any)
+		for _, v := range targets {
+			target := v.(map[string]any)
+			reviews = append(reviews, map[string]any{"source_id": id, "trace_id": target["trace_id"], "truth": "unknown", "reason": "synthetic fixture; no human assessment"})
+		}
+		wiki = append(wiki, map[string]any{"sources": []string{id}})
+		memories, _ := s["memories"].([]any)
+		for _, v := range memories {
+			m := v.(map[string]any)
+			memory = append(memory, map[string]any{"source_id": m["source_id"], "key": m["quote"].(map[string]any)["key"], "result": "unknown", "evidence": "synthetic fixture; no observed contribution"})
+		}
+	}
+	if len(reviews)+len(wiki)+len(memory) == 0 {
+		return
+	}
+	res := reflectCall(t, h, map[string]any{"operation": "submit", "reviews": reviews, "wiki": wiki, "memory": memory})
+	if res["complete"] != true {
+		t.Fatalf("fixture reflection must be saved: %v", res)
+	}
 }

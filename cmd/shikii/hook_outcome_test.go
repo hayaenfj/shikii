@@ -44,6 +44,7 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 	// A: the added file was removed before the next request → outside the scope (no, weight 1). The next message is clearly a different request → finished (yes, partial)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "a", "cwd": repo, "prompt": "add a greeting file named hello.txt to the repository"})
 	write("hello.txt", "hi")
+	saveFixtureReflection(t, agent, feedbackScope(repo))
 	runHook(t, "stop", map[string]any{"session_id": "a", "cwd": repo, "last_assistant_message": "Added hello.txt."})
 	scopeA, doneA := trace("a", "changes-in-scope"), trace("a", "done-as-asked")
 	if w := loadSession(agent, "a").Watch; len(w) != 1 || w[0].Trace != scopeA || w[0].Before["hello.txt"] != "" {
@@ -59,6 +60,7 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 	if err := os.Remove(filepath.Join(repo, "hello.txt")); err != nil {
 		t.Fatal(err)
 	}
+	saveFixtureReflection(t, agent, feedbackScope(repo))
 	runHook(t, "stop", map[string]any{"session_id": "a", "cwd": repo, "last_assistant_message": "Removed it."})
 	if l := labels("changes-in-scope")[scopeA]; l.Truth != "no" || l.Weight != 1 || l.Source != "outcome" {
 		t.Fatalf("a change undone in the next turn must give changes-in-scope no w=1: %+v", l)
@@ -72,12 +74,14 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 	// B: a restatement of the same request → not finished (no, weight 1). The changed file stayed until the request after next → inside the scope (yes, partial)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "b", "cwd": repo, "prompt": "fix the off-by-one error in the pagination helper"})
 	write("page.go", "package page\n")
+	saveFixtureReflection(t, agent, feedbackScope(repo))
 	runHook(t, "stop", map[string]any{"session_id": "b", "cwd": repo, "last_assistant_message": "Fixed."})
 	scopeB, doneB := trace("b", "changes-in-scope"), trace("b", "done-as-asked")
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "b", "cwd": repo, "prompt": "please fix the off-by-one error in the pagination helper"})
 	if l := labels("done-as-asked")[doneB]; l.Truth != "no" || l.Weight != 1 {
 		t.Fatalf("repeating the request must give done-as-asked no w=1: %+v", l)
 	}
+	saveFixtureReflection(t, agent, feedbackScope(repo))
 	runHook(t, "stop", map[string]any{"session_id": "b", "cwd": repo, "last_assistant_message": "Fixed again."})
 	if _, ok := labels("changes-in-scope")[scopeB]; ok {
 		t.Fatal("a kept change must not be settled before the second request")
@@ -90,12 +94,14 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 	// D: when the same request continues via a background notification, what the agent reverted itself does not count as "reverted by the person"
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "d", "cwd": repo, "prompt": "draft a scratch file with ideas for the parser rewrite"})
 	write("scratch.txt", "ideas")
+	saveFixtureReflection(t, agent, feedbackScope(repo))
 	runHook(t, "stop", map[string]any{"session_id": "d", "cwd": repo, "last_assistant_message": "Drafted."})
 	scopeD := trace("d", "changes-in-scope")
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "d", "cwd": repo, "prompt": "<task-notification>background job finished</task-notification>"})
 	if err := os.Remove(filepath.Join(repo, "scratch.txt")); err != nil {
 		t.Fatal(err)
 	}
+	saveFixtureReflection(t, agent, feedbackScope(repo))
 	runHook(t, "stop", map[string]any{"session_id": "d", "cwd": repo, "last_assistant_message": "Cleaned up."})
 	if l, ok := labels("changes-in-scope")[scopeD]; ok {
 		t.Fatalf("an undo within the same request is not the person's undo: %+v", l)
@@ -103,6 +109,7 @@ func TestHookScopeAndDoneGetOutcomeTruths(t *testing.T) {
 
 	// C: a short reply does not decide whether it finished
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "c", "cwd": repo, "prompt": "rename the config loader to something clearer"})
+	saveFixtureReflection(t, agent, feedbackScope(repo))
 	runHook(t, "stop", map[string]any{"session_id": "c", "cwd": repo, "last_assistant_message": "Renamed."})
 	doneC := trace("c", "done-as-asked")
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "c", "cwd": repo, "prompt": "ok"})

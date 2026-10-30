@@ -25,7 +25,7 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 		t.Fatalf("a Stop that ends after changing files without sorting out the plan is blocked: %s", out)
 	}
 	reason, _ := parsed["reason"].(string)
-	if !strings.Contains(reason, "hook plan query") || !strings.Contains(reason, `"session_id":"planning"`) || !strings.Contains(reason, "rituals are not done") {
+	if !strings.Contains(reason, "hook plan query") || !strings.Contains(reason, `"session_id":"planning"`) || !strings.Contains(reason, "required work is not saved yet") {
 		t.Fatalf("the reason says what to do (command and id): %s", reason)
 	}
 	// Claude Code mostly acts on the Stop block, not on the notices before the request (audit 0.9.2 English, medium 3), so the block also carries the rule to write procedures to the wiki
@@ -35,20 +35,16 @@ func TestStopStopsOnceWhenPlanningWasAskedButNotSubmitted(t *testing.T) {
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 1 || recs[0].Pass || recs[0].Recheck {
 		t.Fatalf("the block is recorded: %+v", recs)
 	}
-	// The Stop after a block without a fix (stop_hook_active): not blocked, but a not-fixed record stays
+	// The Stop after a block without a fix ends explicitly incomplete and keeps a not-fixed record.
 	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "まだ", "stop_hook_active": true})
-	if strings.Contains(out, "block") {
-		t.Fatalf("the Stop after a block is not blocked even if not fixed: %s", out)
-	}
+	requireRecoveryHalt(t, out)
 	if recs := guardRecordsFor(root, ritualPlan); len(recs) != 2 || recs[1].Pass || !recs[1].Recheck {
 		t.Fatalf("a not-fixed record stays: %+v", recs)
 	}
 	// Even on the Stop after a background-task notification (no stop_hook_active), the same turn is not blocked again. The ask count stays 1
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "<task-notification>裏の作業が終わりました</task-notification>"})
 	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "通知を受けた"})
-	if strings.Contains(out, "block") {
-		t.Fatalf("the Stop after a notification does not block the same turn twice: %s", out)
-	}
+	requireRecoveryHalt(t, out)
 	if st := countRitualStats(readGuardRecords(root)); st.Plan.Asked != 1 {
 		t.Fatalf("the same turn is counted only once: %+v", st.Plan)
 	}
@@ -239,7 +235,7 @@ func TestHooksCarryTheWorkRecordHabitsWithoutProjectInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = runHook(t, "stop", map[string]any{"session_id": "habits", "cwd": repo, "last_assistant_message": "Done."})
-	if !strings.Contains(out, "result of the work the person asked for") {
+	if !strings.Contains(out, "result of the original work") {
 		t.Fatalf("when blocking, it says to give the result of the original work in the reply after doing the rituals: %s", out)
 	}
 	// Subagents: even with no lesson to deliver, where to write reports is delivered

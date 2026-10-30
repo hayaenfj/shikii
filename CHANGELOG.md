@@ -2,6 +2,10 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- Check required planning, reflection, page classification and reply language before judging completion. Stop asks the agent to run concrete recovery commands and checks saved progress. Partial progress can continue; no progress or a verification/save error ends explicitly incomplete instead of silently passing a second Stop. Missing work is not judged complete at the next request either. User-defined guards keep their existing behavior.
+
 ## 0.14.0 — Bring purpose and reasoning into planning
 
 - Planning's `hook plan query` also returns up to two live `criteria` pages directly linked through `related` from the search matches (0.14). Summaries and applicability conditions are kept whole, with kind and scene. Without `pages`, up to two complete bodies are included as `article:<id>:<revision>`, criteria first, within 8000 body bytes in total. Bodies that do not fit can still be read through explicit `pages` (up to two) or `wiki query`. The reply's `wiki_context` returns `available_count` instead of the full inventory; the decision record still preserves every revision in `knowledge_context.available`. Linked candidates, body reads and actual citations stay distinct. Links and past judgments never grant current permission.

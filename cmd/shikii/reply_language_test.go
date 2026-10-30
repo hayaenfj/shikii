@@ -43,10 +43,9 @@ func TestReplyLanguageBlocksEnglishReplyOnceWhenJapanese(t *testing.T) {
 	if !strings.Contains(stop, `"decision":"block"`) || !strings.Contains(stop, "reply-language") || !strings.Contains(stop, "Japanese") {
 		t.Fatalf("an English final reply with language japanese is stopped once and told to rewrite it in Japanese: %s", stop)
 	}
-	// the Stop after the block (stop_hook_active) never blocks, even if the reply is still English; it records whether it was fixed
-	if again := runHook(t, "stop", map[string]any{"session_id": "lang", "cwd": repo, "stop_hook_active": true, "last_assistant_message": replyEnglish}); strings.Contains(again, "block") {
-		t.Fatalf("the Stop after the block must not block again: %s", again)
-	}
+	// An unchanged English reply halts explicitly incomplete and records the failure.
+	again := runHook(t, "stop", map[string]any{"session_id": "lang", "cwd": repo, "stop_hook_active": true, "last_assistant_message": replyEnglish})
+	requireRecoveryHalt(t, again)
 	// a later Stop of the same turn without stop_hook_active (after a notice) does not block either
 	if again := runHook(t, "stop", map[string]any{"session_id": "lang", "cwd": repo, "last_assistant_message": replyEnglish}); strings.Contains(again, "block") {
 		t.Fatalf("the same turn is never blocked twice: %s", again)

@@ -211,27 +211,3 @@ func guardStop(root string, in *hookInput, snapshot *hookSession, before string,
 		"shikii: the check that stops the turn ("+strings.Join(ids, ", ")+") failed, so the agent was told to fix it before finishing",
 		"shikii: 止める検査("+strings.Join(ids, ", ")+")に引っかかったので、直してから終えるよう伝えました", loc)}, nil
 }
-
-// guardRecheck records, on a Stop with stop_hook_active (the continuation after a block), whether the problem was fixed. It does not block.
-func guardRecheck(root string, in *hookInput) {
-	snapshot := loadSession(root, in.SessionID)
-	if snapshot.Request == "" {
-		return
-	}
-	_, listing, listed, _, _ := treeStateWithScope(in.CWD)
-	var changed []string
-	known := false
-	var before []byte
-	if listed {
-		var err error
-		if before, err = os.ReadFile(sessionFilesPath(root, in.SessionID)); err == nil && strings.HasPrefix(string(before), listingHeader(snapshot.Request)) {
-			changed, known = changedFiles(string(before), listing), true
-		}
-	}
-	if _, err := guardStop(root, in, snapshot, string(before), changed, known, true); err != nil {
-		hookLog("guard: " + err.Error())
-	}
-	if _, err := ritualStop(root, snapshot.Scope, in, snapshot, changed, known, true); err != nil {
-		hookLog("ritual: " + err.Error())
-	}
-}

@@ -1791,8 +1791,8 @@ func TestAuditTranslationLanguageNameInJapanese(t *testing.T) {
 	}
 }
 
-// audit 5 (0.9.3): a turn whose Stop asked for continues_previous is still judged when the Stop after the block never comes and the next request arrives
-func TestAudit5AskedTurnIsJudgedWhenTheSecondStopNeverComes(t *testing.T) {
+// An interrupted recovery with no saved grouping must remain unjudged when the next request arrives.
+func TestAskedTurnStaysUnjudgedWhenRecoveryNeverCompletes(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	continuesTurn(t, repo, root, "OKです")
 	asked := loadSession(root, "planning").TurnID
@@ -1809,8 +1809,8 @@ func TestAudit5AskedTurnIsJudgedWhenTheSecondStopNeverComes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recs) != 2 {
-		t.Fatalf("the blocked turn must be judged with done-as-asked too: %d records", len(recs))
+	if len(recs) != 1 {
+		t.Fatalf("the unfinished turn must not have a done-as-asked judgment: %d records", len(recs))
 	}
 }
 
@@ -1901,7 +1901,8 @@ func TestAudit4ShortRestatementIsNotDone(t *testing.T) {
 	done := doneTraceAfter(t, repo, root, "planning", ask)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": ask})
 	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done again."})
-	// the first Stop asks for continues_previous (a short message outside the list); without it, the Stop after the block settles
+	// Save the grouping before the next Stop settles this turn.
+	restateSubmit(t, root, "planning", "")
 	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done again.", "stop_hook_active": true})
 	if l, ok := doneLabel(t, root, done); !ok || l.Truth != "no" || l.Weight != 1 {
 		t.Fatalf("a short restatement must label the previous request as not done: %+v %v", l, ok)
@@ -1960,6 +1961,9 @@ func TestAudit6LateJudgmentDoesNotUseThePreviousTurnsReply(t *testing.T) {
 	out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": ""})
 	if _, block := stopReason(t, out); !block {
 		t.Fatalf("premise: the Stop of a short message asks for continues_previous: %s", out)
+	}
+	if _, err := planningCall(t, "submit", askedJSON(t, recoveryOutput(t, out)["reason"].(string))); err != nil {
+		t.Fatal(err)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
 	recs, err := (store.Store{Dir: root}).Records("done-as-asked", 0)
@@ -2021,7 +2025,10 @@ func TestAudit6EarlierKeepsNoReply(t *testing.T) {
 func TestAudit6JudgedAskedTurnIsNotJudgedAgainAfterANotice(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	continuesTurn(t, repo, root, "OKです")
-	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Went ahead."})
+	out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Went ahead."})
+	if _, err := planningCall(t, "submit", askedJSON(t, recoveryOutput(t, out)["reason"].(string))); err != nil {
+		t.Fatal(err)
+	}
 	runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Went ahead.", "stop_hook_active": true})
 	if s := loadSession(root, "planning"); !s.Judged {
 		t.Fatal("premise: the Stop after the block judges the turn")
@@ -2331,13 +2338,13 @@ func TestOlderAgentsSectionIsOnlyTold(t *testing.T) {
 	}
 }
 
-// without an organizing, the list decides (today's behaviour), settled at the turn's Stop at the latest
+// Without an organizing, the list decides provisionally; required grouping stays open until saved.
 func TestNoPlanKeepsListDecision(t *testing.T) {
 	t.Run("content", func(t *testing.T) {
 		repo, root, _ := planningFixture(t)
 		done := continuesTurn(t, repo, root, "main取り込んで")
 		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Merged main."})
-		// the first Stop asked for continues_previous; the Stop after the block judges with the list's decision when none came
+		// No saved grouping: the second Stop remains incomplete.
 		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Merged main.", "stop_hook_active": true})
 		if s := loadSession(root, "planning"); s.Request != "main取り込んで" {
 			t.Fatalf("no organizing: the list keeps it as its own request, got %q", s.Request)
@@ -2345,11 +2352,15 @@ func TestNoPlanKeepsListDecision(t *testing.T) {
 		if l, ok := doneLabel(t, root, done); ok {
 			t.Fatalf("a short new request is too short to show the person moved on (audit 3): %+v", l)
 		}
-		// an organizing that arrives after the Stop judged the turn no longer moves the request
-		if _, err := planningCall(t, "submit", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}, "continues_previous": true}); err == nil {
-			if s := loadSession(root, "planning"); s.Request != "main取り込んで" {
-				t.Fatalf("a late organizing must not regroup a judged turn: %q", s.Request)
-			}
+		if loadSession(root, "planning").Judged {
+			t.Fatal("required grouping is still missing")
+		}
+		// Recovery remains possible after an incomplete stop; the saved grouping governs completion.
+		if _, err := planningCall(t, "submit", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}, "continues_previous": true}); err != nil {
+			t.Fatal(err)
+		}
+		if s := loadSession(root, "planning"); s.Request != continuesFirst+" / main取り込んで" {
+			t.Fatalf("the saved grouping must apply before completion: %q", s.Request)
 		}
 	})
 	t.Run("long", func(t *testing.T) {
@@ -2862,8 +2873,9 @@ func TestStopAsksContinuesPreviousForShortUnlistedMessage(t *testing.T) {
 		if _, block := stopReason(t, out); block {
 			t.Fatalf("a second Stop is not blocked: %s", out)
 		}
-		if s := loadSession(root, "planning"); !s.Judged || s.Request != "OKです" {
-			t.Fatalf("without the organizing, the Stop after the block judges with the list's decision: judged=%v %q", s.Judged, s.Request)
+		requireRecoveryHalt(t, out)
+		if s := loadSession(root, "planning"); s.Judged || s.Request != "OKです" {
+			t.Fatalf("without the saved organizing, the turn stays unjudged: judged=%v %q", s.Judged, s.Request)
 		}
 	})
 }
@@ -2889,7 +2901,7 @@ func TestRestatesKeepsThePersonsTruth(t *testing.T) {
 }
 
 // 0.9.3 audit 5 (test hole M23): with an enabled guard that fails, a short unlisted message still makes only one block; the Stop after
-// the block is not blocked by the guard either (a second Stop is never blocked), and it judges the turn.
+// the block is not blocked by the guard either, and saved required work permits judgment.
 func TestGuardAndGroupingAskStillBlockOnlyOnce(t *testing.T) {
 	for name, reply := range map[string]string{
 		"short": "\u305d\u308c\u3067\u3044\u3053\u3046",
@@ -2909,6 +2921,9 @@ func guardAndGroupingOnce(t *testing.T, reply string) {
 	out := runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Went ahead."})
 	if _, block := stopReason(t, out); !block {
 		t.Fatalf("the first Stop blocks (guard and grouping ask): %s", out)
+	}
+	if _, err := planningCall(t, "submit", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}}); err != nil {
+		t.Fatal(err)
 	}
 	out = runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Went ahead.", "stop_hook_active": true})
 	if _, block := stopReason(t, out); block {
