@@ -129,6 +129,7 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 			ids = append(ids, source.ID)
 		}
 		sources["article:"+page.ID+":"+page.Revision] = fmt.Sprintf("wiki article (a hypothesis with sources, not the current agreement)\ntitle: %s\nsummary: %s\napplies when: %s\n\n%s\n\nsources: %s", page.Title, page.Lesson, page.AppliesTo, page.Body, strings.Join(ids, ", "))
+		sources["article:"+page.ID+":"+page.Revision] += planningPageContext(page)
 	}
 	for key, text := range sources {
 		if strings.HasPrefix(key, "lesson:") || strings.HasPrefix(key, "article:") {

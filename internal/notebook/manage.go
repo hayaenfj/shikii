@@ -81,6 +81,7 @@ func (b Book) Manage(c Change) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	result.Page.Recheck = b.premiseChanges(*result.Page)
 	return *result.Page, nil
 }
 

@@ -222,6 +222,16 @@ func cmdHookPlan(args []string) error {
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
 		return err
 	}
+	organizing := req
+	organizing.Reflection = nil
+	canonical, _ := json.Marshal(organizing)
+	digest := sha256.Sum256(canonical)
+	key := hex.EncodeToString(digest[:])
+	// A saved decision keeps its original evidence. Reflection may already have
+	// updated that evidence; retry only the reflection, without judging again.
+	if s.Planning.Result != nil && s.Planning.Digest == key {
+		return writePlanningReply(root, scope, s.Planning.Result, req.Reflection)
+	}
 	knowledge := s.Planning.Knowledge
 	if knowledge == nil || knowledge.Query != req.Query || !slices.Equal(s.Planning.KnowledgePages, req.Pages) {
 		_, knowledge, err = preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
@@ -243,14 +253,6 @@ func cmdHookPlan(args []string) error {
 	planningCitations(req, knowledge)
 	if err := validatePlanningKnowledge(root, scope, knowledge); err != nil {
 		return err
-	}
-	organizing := req
-	organizing.Reflection = nil // A failed reflection can be corrected without judging the same planning decision again.
-	canonical, _ := json.Marshal(organizing)
-	digest := sha256.Sum256(canonical)
-	key := hex.EncodeToString(digest[:])
-	if s.Planning.Result != nil && s.Planning.Digest == key {
-		return writePlanningReply(root, scope, s.Planning.Result, req.Reflection)
 	}
 	if s.Planning.Result != nil && s.Planning.Result.Recorded {
 		return errors.New("the context for this request has already been judged")

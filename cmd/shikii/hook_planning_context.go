@@ -100,10 +100,16 @@ func addPlanningLesson(sources map[string]string, page notebook.Page) {
 		ids = append(ids, source.ID)
 	}
 	sources["lesson:"+page.ID+":"+page.Revision] = fmt.Sprintf("Lesson (hypothesis): %s\nTitle: %s\nKind: %s\nScene: %s\nApplies when: %s\nSources: %s", page.Lesson, page.Title, page.Kind, page.Scene, page.AppliesTo, strings.Join(ids, ", "))
+	sources["lesson:"+page.ID+":"+page.Revision] += planningPageContext(page)
+}
+
+func planningPageContext(page notebook.Page) string {
+	text := ""
 	if page.Rationale != "" {
-		sources["lesson:"+page.ID+":"+page.Revision] += "\nRationale (source-backed interpretation, not permission): " + page.Rationale
+		text += "\nRationale (source-backed interpretation, not permission): " + page.Rationale
 	}
 	if len(page.Recheck) > 0 {
-		sources["lesson:"+page.ID+":"+page.Revision] += "\nRecheck: premise files changed or cannot be read. Query this article before relying on its premise."
+		text += "\nRecheck: premise files changed or cannot be read. Query this article before relying on its premise."
 	}
+	return text
 }

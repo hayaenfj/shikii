@@ -84,11 +84,26 @@ func readSearchJournal(dir string) (searchJournal, error) {
 }
 
 func saveSearchJournal(dir string, j searchJournal) error {
-	data, err := json.Marshal(j)
-	if err != nil {
-		return err
+	for {
+		data, err := json.Marshal(j)
+		if err != nil {
+			return err
+		}
+		if len(data) <= 1<<20 {
+			return writeFile(filepath.Join(dir, ".searches.json"), data)
+		}
+		// JSON escaping can expand otherwise valid text. Trim older records from
+		// the larger collection, keeping the latest lookup and discovery intact.
+		lookups, _ := json.Marshal(j.Lookups)
+		discoveries, _ := json.Marshal(j.Discoveries)
+		if len(j.Lookups) > 1 && (len(j.Discoveries) <= 1 || len(lookups) >= len(discoveries)) {
+			j.Lookups = j.Lookups[1:]
+		} else if len(j.Discoveries) > 1 {
+			j.Discoveries = j.Discoveries[1:]
+		} else {
+			return errors.New("the latest search records exceed the journal budget")
+		}
 	}
-	return writeFile(filepath.Join(dir, ".searches.json"), data)
 }
 
 // RecordLookup is called at the public query boundary, after pagination. Internal searches do not create receipts.
