@@ -3,13 +3,18 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestSavedMemoryEvidenceChecksFilesAndDoesNotNeedDeliveryHistory(t *testing.T) {
-	for _, mode := range []string{"rotated", "broken", "wrong name", "oversized", "file link", "directory link"} {
+	for _, mode := range []string{"rotated", "long phrase", "broken", "wrong name", "oversized", "file link", "directory link"} {
 		t.Run(mode, func(t *testing.T) {
 			s, d, a := memoryStoreFixture(t)
+			if mode == "long phrase" {
+				d.Phrase = "git " + strings.Repeat("a", 509)
+				a.Result, a.Decision = "harmful", "The lesson did not fit the operation"
+			}
 			if err := s.SaveMemoryDelivery(d); err != nil {
 				t.Fatal(err)
 			}

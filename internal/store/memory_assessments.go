@@ -51,7 +51,7 @@ func (s Store) MemoryAssessments(scope string) ([]MemoryAssessment, error) {
 			return nil, err
 		}
 		var a MemoryAssessment
-		if len(data) > 32<<10 || json.Unmarshal(data, &a) != nil || a.At.IsZero() || !validMemoryAssessment(a) || len(a.Phrase) > toolMax {
+		if len(data) > 32<<10 || json.Unmarshal(data, &a) != nil || a.At.IsZero() || !validMemoryAssessment(a) {
 			continue
 		}
 		if entry.Name() != filepath.Base(s.memoryAssessmentPath(scope, a.SourceID, a.Key)) {

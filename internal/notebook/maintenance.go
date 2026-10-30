@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ type MaintenanceTask struct {
 	Feedback      []store.MemoryAssessment `json:"feedback,omitempty"`
 	FeedbackTotal int                      `json:"feedback_total,omitempty"`
 	ContentKey    string                   `json:"-"`
+	FeedbackKeys  []string                 `json:"-"`
 }
 type MaintenanceReview struct {
 	PageID   string `json:"page_id"`
@@ -32,8 +34,9 @@ type MaintenanceReview struct {
 }
 type maintenanceCheckpoint struct {
 	MaintenanceReview
-	At         time.Time `json:"at"`
-	ContentKey string    `json:"content_key,omitempty"`
+	At           time.Time `json:"at"`
+	ContentKey   string    `json:"content_key,omitempty"`
+	FeedbackKeys []string  `json:"feedback_keys,omitempty"`
 }
 
 func maintenanceTasks(pages []Page) []MaintenanceTask {
@@ -105,6 +108,16 @@ func (b Book) MaintenanceKeys() (map[string]MaintenanceTask, error) {
 	return out, nil
 }
 
+// A helpful assessment can remove unused evidence from a review. A subset of already reviewed evidence is not new work.
+func hasNewFeedback(current, reviewed []string) bool {
+	for _, key := range current {
+		if _, found := slices.BinarySearch(reviewed, key); !found {
+			return true
+		}
+	}
+	return false
+}
+
 func (b Book) Maintenance() ([]MaintenanceTask, error) {
 	pages, _, err := b.pages()
 	if err != nil {
@@ -141,7 +154,7 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 		switch {
 		case !seen:
 			task.Reasons = []string{"unreviewed"}
-		case previous.Key != task.Key && (previousContent != task.ContentKey || task.FeedbackTotal > 0):
+		case previous.Key != task.Key && (previousContent != task.ContentKey || hasNewFeedback(task.FeedbackKeys, previous.FeedbackKeys)):
 			if previousContent != task.ContentKey {
 				task.Reasons = []string{"page-or-related-changed"}
 			}
@@ -235,7 +248,7 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 	if old, ok := checkpoints[review.PageID]; ok && old.Key == review.Key && old.Reason == review.Reason && time.Since(old.At) < 30*24*time.Hour {
 		return review, nil
 	}
-	checkpoints[review.PageID] = maintenanceCheckpoint{MaintenanceReview: review, At: time.Now().UTC(), ContentKey: selected.ContentKey}
+	checkpoints[review.PageID] = maintenanceCheckpoint{MaintenanceReview: review, At: time.Now().UTC(), ContentKey: selected.ContentKey, FeedbackKeys: selected.FeedbackKeys}
 	data, _ := json.Marshal(checkpoints)
 	if err := writeFile(filepath.Join(dir, ".maintenance.json"), data); err != nil {
 		return review, err

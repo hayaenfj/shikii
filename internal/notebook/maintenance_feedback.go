@@ -62,6 +62,11 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 			Feedback []store.MemoryAssessment
 		}{task.Key, feedback})
 		task.Key = digest(data)[:16]
+		for _, assessment := range feedback {
+			data, _ := json.Marshal(assessment)
+			task.FeedbackKeys = append(task.FeedbackKeys, digest(data)[:16])
+		}
+		sort.Strings(task.FeedbackKeys)
 		task.FeedbackTotal = len(feedback)
 		// The key covers all evidence; show up to three examples, harmful first, then newest, without cutting their evidence.
 		task.Feedback = feedback[:min(3, len(feedback))]

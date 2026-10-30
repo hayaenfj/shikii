@@ -177,3 +177,23 @@ func TestMaintenanceFeedbackSurvivesDeliveryHistoryAndStaysBounded(t *testing.T)
 		t.Fatal("bound examples while reporting all evidence", string(data))
 	}
 }
+
+func TestHelpfulFeedbackDoesNotReopenReviewedMixedEvidence(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	p := feedbackPage(t, b)
+	assessLesson(t, b, p, 10, "git diff", "harmful")
+	assessLesson(t, b, p, 11, "git diff", "unused")
+	assessLesson(t, b, p, 12, "git diff", "unused")
+	reviewFeedbackPage(t, b, p.ID)
+	if tasks := feedbackTasks(t, b); len(tasks) != 0 {
+		t.Fatal("settled review remains pending", tasks)
+	}
+	assessLesson(t, b, p, 13, "git diff", "helpful")
+	if tasks := feedbackTasks(t, b); len(tasks) != 0 {
+		t.Fatalf("helpful alone reopened %d task(s), feedback_total=%d, reasons=%v", len(tasks), tasks[0].FeedbackTotal, tasks[0].Reasons)
+	}
+	assessLesson(t, b, p, 14, "git diff", "harmful")
+	if tasks := feedbackTasks(t, b); len(tasks) != 1 {
+		t.Fatal("a new harmful assessment still reopens the lesson", tasks)
+	}
+}
