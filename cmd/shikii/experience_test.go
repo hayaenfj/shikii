@@ -57,11 +57,11 @@ func TestExperienceTransportAndSchemas(t *testing.T) {
 		if err != nil || code != 200 || !strings.Contains(string(raw), p.ID) {
 			t.Fatal(code, string(raw), err)
 		}
-		r := httptest.NewRequest("POST", "/v1/wiki", strings.NewReader(payload))
+		r := httptest.NewRequest("POST", "/v1/wiki/notebook", strings.NewReader(payload))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), p.ID) {
+		if w.Code != 200 || !strings.Contains(w.Body.String(), p.ID) || !strings.Contains(w.Body.String(), `"next_action"`) {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}

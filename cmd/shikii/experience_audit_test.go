@@ -88,7 +88,7 @@ func TestExperienceEscapedInputHasTransportParity(t *testing.T) {
 		cli, _ := json.Marshal(input)
 		input["operation"] = op
 		body, _ := json.Marshal(input)
-		r := httptest.NewRequest("POST", "/v1/wiki", strings.NewReader(string(body)))
+		r := httptest.NewRequest("POST", "/v1/wiki/notebook", strings.NewReader(string(body)))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
