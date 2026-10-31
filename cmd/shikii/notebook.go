@@ -28,6 +28,9 @@ type notebookRequest struct {
 	Query     string `json:"query,omitempty"`
 	Cursor    string `json:"cursor,omitempty"`
 	notebook.Draft
+	Patch       *notebook.Patch             `json:"patch,omitempty"`
+	CaseID      string                      `json:"case_id,omitempty"`
+	Cases       []string                    `json:"cases,omitempty"`
 	Observation *notebook.Observation       `json:"observation,omitempty"`
 	Maintenance *notebook.MaintenanceReview `json:"maintenance,omitempty"`
 	Path        string                      `json:"path,omitempty"`    // path of a work record (handoff_*), relative to .shikii/handoff/
@@ -50,6 +53,18 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		}
 		view.Lookup, err = b.RecordLookup(req.Query, view.Lessons)
 		return view, err
+	case "diagnose":
+		return diagnoseKnowledge(b, req.ID, req.CaseID)
+	case "compare":
+		if req.Patch == nil {
+			return nil, errors.New("wiki compare needs a patch object")
+		}
+		return compareKnowledge(b, *req.Patch, req.Cases)
+	case "patch":
+		if req.Patch == nil {
+			return nil, errors.New("wiki patch needs a patch object")
+		}
+		return b.Patch(*req.Patch)
 	case "ingest":
 		res, err := ingestWithOutcome(root, scope, req.Draft) // attach the truth from the result to the insertion-point decision (0.8.3)
 		if err == nil {
@@ -77,21 +92,21 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	case "handoff_list", "handoff_read", "handoff_write", "handoff_append":
 		return runHandoff(root, req)
 	}
-	return nil, errors.New("usage: wiki query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
+	return nil, errors.New("usage: wiki query / ingest / patch / diagnose / compare / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
 }
 
 // Lessons are kept in the project's .shikii/, the same as the hook. Only the calling project is handled.
 // It has no new endpoints or settings; the text comes as JSON from the agent in use.
 func cmdNotebook(args []string) error {
-	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify") {
-		return errors.New("usage: shikii wiki query [search words, source IDs..., lesson:<page ID>@<revision>] [continue:<cursor>] | ingest | capture | maintain (JSON on standard input) | classify <page ID> <kind> <scene> | lint | verify ...")
+	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify" && args[0] != "patch" && args[0] != "diagnose" && args[0] != "compare") {
+		return errors.New("usage: shikii wiki query [search words, source IDs..., lesson:<page ID>@<revision>] [continue:<cursor>] | ingest | patch | diagnose | compare | capture | maintain (JSON on standard input) | classify <page ID> <kind> <scene> | lint | verify ...")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
 		return err
 	}
 	req := notebookRequest{Operation: args[0]}
-	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" {
+	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" || req.Operation == "patch" || req.Operation == "diagnose" || req.Operation == "compare" {
 		if len(args) != 1 {
 			return fmt.Errorf("wiki %s reads one JSON object from stdin", req.Operation)
 		}
@@ -106,6 +121,13 @@ func cmdNotebook(args []string) error {
 		dec := json.NewDecoder(bytes.NewReader(data))
 		dec.DisallowUnknownFields()
 		var target any = &req.Draft
+		if req.Operation == "diagnose" || req.Operation == "compare" {
+			target = &req
+		}
+		if req.Operation == "patch" {
+			req.Patch = &notebook.Patch{}
+			target = req.Patch
+		}
 		if req.Operation == "capture" {
 			req.Observation = &notebook.Observation{}
 			target = req.Observation
@@ -116,6 +138,8 @@ func cmdNotebook(args []string) error {
 		}
 		if err := dec.Decode(target); err != nil {
 			switch req.Operation {
+			case "patch", "diagnose", "compare":
+				return fmt.Errorf("wiki %s needs valid JSON: %v", req.Operation, err)
 			case "capture":
 				return fmt.Errorf("wiki capture needs the source object itself (kind, title, content, reference, version, observed_at): %v", err)
 			case "maintain":
@@ -126,6 +150,9 @@ func cmdNotebook(args []string) error {
 		var extra any
 		if err := dec.Decode(&extra); err != io.EOF {
 			return fmt.Errorf("wiki %s accepts exactly one JSON object", req.Operation)
+		}
+		if req.Operation != args[0] {
+			return errors.New("JSON operation must match the wiki command")
 		}
 	} else if req.Operation == "classify" {
 		// give only a kind and a scene to a page from before the version bump (0.9.0). kind is rule|howto|criteria|fact|history; the scene is the rest of the arguments (spaces allowed)
@@ -195,7 +222,7 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := runNotebook(s.o.storeDir, s.o.projectScope, req)
-	if errors.Is(err, notebook.ErrStaleCursor) { // the page reads again from the start
+	if errors.Is(err, notebook.ErrStaleCursor) || errors.Is(err, notebook.ErrArticleConflict) { // the page reads again from the start
 		writeErr(w, http.StatusConflict, err)
 		return
 	}

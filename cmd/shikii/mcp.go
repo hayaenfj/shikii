@@ -226,6 +226,16 @@ var maintenanceSchema = map[string]any{"type": "object", "additionalProperties":
 	"page_id": map[string]any{"type": "string"}, "revision": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"}, "reason": map[string]any{"type": "string"},
 }, "required": []string{"page_id", "revision", "key", "reason"}}
 
+var patchSchema = map[string]any{"type": "object", "additionalProperties": false, "required": []string{"id", "revision", "sources", "change_reason", "edits"}, "properties": map[string]any{
+	"id": map[string]any{"type": "string"}, "revision": map[string]any{"type": "string"},
+	"sources":       map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string"}},
+	"change_reason": map[string]any{"type": "string"},
+	"edits": map[string]any{"type": "array", "minItems": 1, "maxItems": 16, "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"field", "before", "after"}, "properties": map[string]any{
+		"field":  map[string]any{"type": "string", "enum": []string{"title", "lesson", "applies_to", "body", "rationale", "kind", "scene"}},
+		"before": map[string]any{"type": "string"}, "after": map[string]any{"type": "string"},
+	}}},
+}, "description": "Exact text edits of a read revision; each before must occur once (empty only fills an empty field). Atomic, source-backed and conflict checked. Used by patch to save, or compare to preview without saving."}
+
 var rationaleSchema = map[string]any{"type": "string", "description": "Source-backed conditions, choice, rejected alternatives and reasons, and observed outcome; unknown where unsupported. At most 1600 bytes. Omit to preserve; empty clears."}
 var watchSchema = map[string]any{"type": "array", "maxItems": 4, "items": map[string]any{"type": "string"}, "description": "Project-relative regular files this knowledge depends on. Hashes are captured now; changed or unreadable files trigger rechecking. No links or hidden paths; each file at most 1 MiB. Omit to preserve; empty clears."}
 var discoverySchema = map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
@@ -333,13 +343,16 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "shikii_wiki",
-		"description": "Grows this project's wiki. query reads lessons, unprocessed sources and up to 2 pages to maintain (page on with next_cursor); a query naming source ids returns their original text. capture saves a source you checked (code, a test, a Release ...) with kind, version, time and reference. ingest saves a lesson: a short lesson and a body (background, reasons, open points), applies_to, source ids, related pages, a kind and a scene in the work's own words; id updates a page (send lesson, title and applies_to again), replaces retires old ones, and sources alone marks them processed. For an explicit correction add correction:{source_id,quote,action} (the person's reply verbatim, the next action). classify gives a kind and a scene to the unclassified pages (from before 0.9.0) that query lists; maintain records a review (latest page_id, revision, key, reason). lint checks sources and links and rebuilds the index. handoff_list / handoff_read / handoff_write / handoff_append handle work records in .shikii/handoff/ (files you rewrite as you go: audit reports, release steps and records, diffs), which the person reads on the page. Lessons go to ingest, evidence as checked to capture, working files to handoff. Everything is a hypothesis: a quote does not prove its meaning, and nothing here changes truths, calibration or the confirmed state. Do not ask the person to operate the page.",
+		"description": "Grows this project's wiki. query reads lessons, unprocessed sources and up to 2 pages to maintain (page on with next_cursor); a query naming source ids returns their original text. capture saves a source you checked (code, a test, a Release ...) with kind, version, time and reference. ingest saves a lesson: a short lesson and a body (background, reasons, open points), applies_to, source ids, related pages, a kind and a scene in the work's own words; id updates a page (send lesson, title and applies_to again), replaces retires old ones, and sources alone marks them processed. For an explicit correction add correction:{source_id,quote,action} (the person's reply verbatim, the next action). patch saves precise text edits against a read revision, with sources and change_reason, preserving other fields. diagnose returns recorded delivery reasons for id (optional case_id); no record means unknown. compare previews patch against up to eight recorded cases without saving; it compares retrieval candidates, not actual delivery or usefulness. classify gives a kind and a scene to the unclassified pages (from before 0.9.0) that query lists; maintain records a review (latest page_id, revision, key, reason). lint checks sources and links and rebuilds the index. handoff_list / handoff_read / handoff_write / handoff_append handle work records in .shikii/handoff/ (files you rewrite as you go: audit reports, release steps and records, diffs), which the person reads on the page. Lessons go to ingest, evidence as checked to capture, working files to handoff. Everything is a hypothesis: a quote does not prove its meaning, and nothing here changes truths, calibration or the confirmed state. Do not ask the person to operate the page.",
 		"inputSchema": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
-				"operation":   map[string]any{"type": "string", "enum": []string{"query", "ingest", "capture", "maintain", "lint", "classify", "handoff_list", "handoff_read", "handoff_write", "handoff_append"}},
+				"operation":   map[string]any{"type": "string", "enum": []string{"query", "ingest", "patch", "diagnose", "compare", "capture", "maintain", "lint", "classify", "handoff_list", "handoff_read", "handoff_write", "handoff_append"}},
 				"path":        map[string]any{"type": "string", "description": "path of a work record (handoff_*), relative to .shikii/handoff/ (e.g. audit-0.8.1/report-A.md). Refuses .., hidden names and absolute paths"},
 				"content":     map[string]any{"type": "string", "description": "text for handoff_write (replace) or handoff_append (add to the end). UTF-8 text, up to 1 MiB per call"},
+				"patch":       patchSchema,
+				"case_id":     map[string]any{"type": "string", "description": "A recorded diagnostic case id; omit to list recent cases."},
+				"cases":       map[string]any{"type": "array", "maxItems": 8, "items": map[string]any{"type": "string"}, "description": "Recorded cases for compare; omit for the latest eight. Missing or incomplete history is unavailable."},
 				"maintenance": maintenanceSchema,
 				"rationale":   rationaleSchema, "watch": watchSchema,
 				"observation": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
