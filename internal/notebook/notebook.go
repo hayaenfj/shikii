@@ -180,6 +180,9 @@ func (b Book) directory(create bool, area string) (string, error) {
 	if area == "sources" {
 		parts = []string{"records", "wiki-sources", b.storeName()}
 	}
+	if area == "deliveries" {
+		parts = []string{"records", "wiki-deliveries", b.storeName()}
+	}
 	if area == "searches" {
 		parts = []string{"records", "wiki-searches", b.storeName()}
 	}
@@ -550,11 +553,8 @@ func (b Book) AlwaysRules() ([]Page, error) {
 }
 
 func (b Book) Recall(query string) ([]Page, error) {
-	v, err := b.query(query, true)
-	for i := range v.Lessons {
-		v.Lessons[i].Recheck = b.premiseChanges(v.Lessons[i])
-	}
-	return v.Lessons, err
+	pages, _, err := b.RecallDetailed(query)
+	return pages, err
 }
 
 func (b Book) query(query string, recall bool) (View, error) {

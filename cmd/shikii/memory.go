@@ -37,11 +37,15 @@ func memoryContextFor(root, scope, request string, session *hookSession, parent,
 	if scope == "" {
 		return "", nil
 	}
-	pages, err := (notebook.Book{Root: root, Scope: scope}).Recall(request) // Recall drops history before ranking
+	pages, attempt, err := (notebook.Book{Root: root, Scope: scope}).RecallDetailed(request) // Recall drops history before ranking
 	if err != nil {
 		return "", err
 	}
-	return deliverMemory(root, scope, request, pages, true, session, parent, agent)
+	attempt.TurnID = session.TurnID
+	if parent != "" {
+		attempt.Mode = "task"
+	}
+	return deliverMemoryTracked(root, scope, request, pages, true, session, parent, agent, &attempt)
 }
 
 // alwaysContextFor delivers only the rules that apply to every request (rules whose scene is "いつも", always) (0.9.1). For subagents, whose task text is unknown:
@@ -60,6 +64,26 @@ func alwaysContextFor(root, scope, request string, session *hookSession, parent,
 // deliverMemory turns the chosen pages into short quotes, at most 2, leaving out revisions already delivered, records the delivery and returns the text.
 // feedback: when there is no page to deliver, whether to return the raw text of one conversation with a similar request (only when choosing by closeness to the request)
 func deliverMemory(root, scope, request string, pages []notebook.Page, feedback bool, session *hookSession, parent, agent string) (string, error) {
+	return deliverMemoryTracked(root, scope, request, pages, feedback, session, parent, agent, nil)
+}
+
+func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, feedback bool, session *hookSession, parent, agent string, attempt *notebook.DeliveryCase) (context string, err error) {
+	mark := func(id, reason, trace string) {
+		if attempt != nil {
+			attempt.Set(id, reason, trace)
+		}
+	}
+	if attempt != nil {
+		defer func() {
+			if err != nil {
+				attempt.Failure = "delivery_failed"
+			}
+			if saveErr := (notebook.Book{Root: root, Scope: scope}).SaveDeliveryCase(*attempt); saveErr != nil {
+				hookLog("wiki delivery diagnostics unavailable")
+			}
+		}()
+	}
+
 	seen := map[string]bool{}
 	for _, previous := range session.Memories {
 		if age := time.Since(previous.At); age >= 0 && age < time.Hour {
@@ -93,11 +117,17 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 	quotes, keys := []memoryQuote{}, []string{}
 	asked := 0
 	for _, p := range pages {
-		if len(quotes) == lessonSeats { // after leaving out revisions already delivered (cutting first lets delivered revisions take the seats)
-			break
+		if len(quotes) == lessonSeats {
+			mark(p.ID, "delivery_limit", "")
+			continue
 		}
 		key := "lesson:" + p.ID + ":" + p.Revision
-		if seen[memoryCacheKey(p)] || silenced(effects[store.PairKey(key, door)]) { // unused twice and never helpful at the request door: not quoted again (0.12)
+		if seen[memoryCacheKey(p)] {
+			mark(p.ID, "recently_delivered", "")
+			continue
+		}
+		if silenced(effects[store.PairKey(key, door)]) {
+			mark(p.ID, "feedback_silenced", "")
 			continue
 		}
 		q := lessonQuote(p)
@@ -106,15 +136,18 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 		// At most lessonAppliesMaxAsks candidates are asked about per request, as before a tool call (confirmation audit 1)
 		if door != "" && parent == "" {
 			if asked == lessonAppliesMaxAsks {
-				break
+				mark(p.ID, "model_limit", "")
+				continue
 			}
 			asked++
 			trace, skip := lessonApplies(root, scope, request, lessonAppliesRequestTarget, p)
 			if skip {
+				mark(p.ID, "model_rejected", trace)
 				continue
 			}
 			q.Trace = trace
 		}
+		mark(p.ID, "quote_budget", q.Trace)
 		quotes = append(quotes, q)
 		keys = append(keys, memoryCacheKey(p))
 	}
@@ -182,6 +215,11 @@ func deliverMemory(root, scope, request string, pages []notebook.Page, feedback 
 			}
 			if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Phrase: recorded}); err != nil {
 				return "", err
+			}
+		}
+		for _, q := range quotes {
+			if q.Revision != "" {
+				mark(q.ID, "delivered", q.Trace)
 			}
 		}
 		for _, key := range keys {

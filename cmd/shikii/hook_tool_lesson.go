@@ -404,7 +404,7 @@ func phraseMention(text, phrase string) bool {
 // ties keep the wiki's page order), leaving out revisions this session got within the hour (the same record the request's delivery
 // uses). Nothing before the session's first request: the delivery is assessed with that turn's conversation. History pages are not
 // delivered, as at the request. The output is additionalContext only.
-func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut, error) {
+func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hookOut, retErr error) {
 	if snapshot.TurnID == "" || snapshot.Scope == "" || snapshot.Request == "" {
 		return hookOut{}, nil
 	}
@@ -414,7 +414,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	}
 	scores := map[string]toolCandidate{}
 	// only the pages that name the target get their sources checked (LiveWhere), in the wiki's page order
-	live, err := (notebook.Book{Root: agent, Scope: snapshot.Scope}).LiveWhere(func(p notebook.Page) bool {
+	live, attempt, err := (notebook.Book{Root: agent, Scope: snapshot.Scope}).DeliverySnapshot(func(p notebook.Page) bool {
 		if p.Kind == "history" {
 			return false
 		}
@@ -425,6 +425,23 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if err != nil {
 		return hookOut{}, err
 	}
+	attempt.Mode, attempt.TurnID, attempt.Request = "tool", snapshot.TurnID, cut(snapshot.Request, requestMax)
+	attempt.File, attempt.Phrases = cut(target.file, toolLessonCommandMax), target.phrases
+	for i := range attempt.Entries {
+		e := &attempt.Entries[i]
+		if e.Retrieval == "eligible" {
+			e.Retrieval, e.Reason = "candidate", "delivery_limit"
+		}
+	}
+	defer func() {
+		if retErr != nil {
+			attempt.Failure = "delivery_failed"
+		}
+		if err := (notebook.Book{Root: agent, Scope: snapshot.Scope}).SaveDeliveryCase(attempt); err != nil {
+			hookLog("wiki delivery diagnostics unavailable")
+		}
+	}()
+
 	if len(live) == 0 {
 		return hookOut{}, nil
 	}
@@ -446,6 +463,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 		}
 		if c.phrase == "" {
+			attempt.Set(p.ID, "feedback_silenced", "")
 			continue
 		}
 		ranked = append(ranked, c)
@@ -471,14 +489,17 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		c := ranked[i]
 		q := lessonQuote(c.page)
 		if seen[quoteCacheKey(q)] {
+			attempt.Set(c.page.ID, "recently_delivered", "")
 			continue
 		}
 		if asked == lessonAppliesMaxAsks {
-			break // every candidate so far was a trusted no: stop asking rather than pay a model call per page (audit A of 0.12)
+			attempt.Set(c.page.ID, "model_limit", "")
+			continue
 		}
 		asked++
 		trace, skip := lessonApplies(agent, snapshot.Scope, snapshot.Request, target.label, c.page)
 		if skip {
+			attempt.Set(c.page.ID, "model_rejected", trace)
 			continue
 		}
 		q.Trace = trace
@@ -488,21 +509,29 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if chosen == nil {
 		return hookOut{}, nil
 	}
+	attempt.Set(chosen.page.ID, "session_changed", quote.Trace)
 	var context string
+	var deliveryErr error
 	err = updateSession(agent, in.SessionID, func(s *hookSession) {
 		if s.TurnID != snapshot.TurnID {
 			return // a new request arrived meanwhile: this tool call belongs to it, and the next one gets its lesson
 		}
 		for _, m := range s.Memories {
 			if age := time.Since(m.At); age >= 0 && age < time.Hour && m.Key == quoteCacheKey(quote) {
+				attempt.Set(chosen.page.ID, "recently_delivered", quote.Trace)
 				return // delivered meanwhile by another call of this turn
 			}
 		}
-		context, err = deliverToolLesson(agent, s, quote, target, chosen.phrase, in.AgentID)
+		attempt.Set(chosen.page.ID, "quote_budget", quote.Trace)
+		context, deliveryErr = deliverToolLesson(agent, s, quote, target, chosen.phrase, in.AgentID)
 	})
+	if err == nil {
+		err = deliveryErr
+	}
 	if err != nil || context == "" {
 		return hookOut{}, err
 	}
+	attempt.Set(chosen.page.ID, "delivered", quote.Trace)
 	return hookOut{Context: context}, nil
 }
 
