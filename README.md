@@ -9,12 +9,12 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-923%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-933%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.16.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.17.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.16.0 connects useful manual discoveries to future searches, carries the reasons behind choices, and flags knowledge whose premise files changed. Planning and pending reflection can be saved together. The Knowledge page also lets you edit the rationale. See the [changelog](CHANGELOG.md) and [memory guide](docs/memory-and-learning.md).
+Version 0.17.0 lets agents correct a specific passage, inspect why knowledge did not arrive, and compare a proposed edit against recorded situations before saving. Existing evidence and history are preserved. See the [changelog](CHANGELOG.md) and [memory guide](docs/memory-and-learning.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -130,7 +130,7 @@ shikii update
 
 This fetches the latest stable release, verifies its hashes and replaces shikii and readout. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again.** Earlier conversations, lessons, truths and calibration are removed; back up anything you want to keep. Updates from 0.7.0 onwards keep them. Restart the page and MCP afterwards.
 
-After updating to 0.16.0, reopen agent sessions and restart the page and MCP on every machine sharing the wiki. Older versions exclude articles with the new rationale or premise metadata and refuse wiki saves until every process is updated. Existing sources and history remain intact.
+After updating to 0.17.0, reopen agent sessions and restart the page and MCP so the new operations and delivery records are available. Article storage remains compatible with 0.16.0. If upgrading from 0.15.0 or earlier, update every machine sharing the wiki before using rationale or watched files; those older processes exclude such articles and refuse wiki saves. Existing sources and history remain intact.
 
 When updating from 0.8, also reopen your open agent sessions, and update every machine that uses the same wiki to 0.9.0 or later. shikii 0.8 cannot read articles that have a kind and scene, and refuses to save to the wiki (the articles are not damaged). In the same way, 0.9.1 and earlier read articles written by 0.9.2 (English fixed words in the article file) as changed, so update every machine that uses the same wiki to 0.9.2 or later.
 
@@ -151,7 +151,9 @@ This removes what shikii put into your agents: its hooks in `~/.claude/settings.
 
 With the hooks installed, two moments of every turn are kept: the request before the agent starts, and the reply and the changed files after it ends. The next human message closes the pair. A message that only continues the previous request ("ok", "continue", "sounds good") is attached to it instead; the agent decides this in its pre-start organizing, and a fixed list of acknowledgements is the fallback. The agent writes lessons with sources from them, and shikii delivers relevant lessons before similar work. In reflection the agent reports whether a delivered lesson helped. Saved assessments also prioritize lessons for review: repeated unused deliveries at the same entry point, or a harmful delivery, bring the lesson back with the decisions and evidence. The agent checks its sources before changing it, and a no-change review also settles that evidence. Unknown and older-revision assessments do not count as negative feedback.
 
-In 0.16.0, an agent can record when a manually retrieved article actually helped a decision, with evidence. That context helps retrieve the same revision later; reading alone never counts as usefulness. Articles can carry the reasons for a choice and rejected alternatives, plus up to four project files to recheck when their hashes change. A changed premise asks for review, without declaring the knowledge wrong. Pending reflection can be handled in the same planning query and submit, with item-level save results and retries.
+In 0.17.0, agents can change an exact passage with a revision check, inspect recorded delivery exclusions, and preview retrieval changes against frozen past contexts. A comparison writes no knowledge or judgment records, and missing history remains unknown.
+
+Since 0.16.0, an agent can record when a manually retrieved article actually helped a decision, with evidence. That context helps retrieve the same revision later; reading alone never counts as usefulness. Articles can carry the reasons for a choice and rejected alternatives, plus up to four project files to recheck when their hashes change. A changed premise asks for review, without declaring the knowledge wrong. Pending reflection can be handled in the same planning query and submit, with item-level save results and retries.
 
 <p align="center"><img src="docs/assets/shikii-conversation.svg" alt="every turn: read before work, keep a trail while working, reflect at the end; lessons arrive with the next request" width="100%"></p>
 

@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.17.0 — Correct knowledge and inspect its delivery
+
+- Add source-backed, revision-checked partial article edits through `wiki patch`, preserving untouched knowledge and rejecting ambiguous or stale changes.
+- Record why knowledge was delivered or excluded at requests and before tools, and expose those historical reasons through `wiki diagnose`.
+- Preview edits against recorded contexts with `wiki compare`, freezing article revisions and search evidence without saving articles, assessments or truths. Missing history remains unavailable.
+
 ## 0.16.0 — Carry useful knowledge into the next decision
 
 - Learn retrieval contexts from evidenced manual discoveries, scoped to the returned article revision.
