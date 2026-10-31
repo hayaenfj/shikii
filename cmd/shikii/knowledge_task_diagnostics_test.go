@@ -1,10 +1,13 @@
 package main
 
 import (
-	"github.com/hayaenfj/shikii/internal/store"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func TestKnowledgeTaskCaseKeepsParentTurn(t *testing.T) {
@@ -55,5 +58,40 @@ func TestKnowledgeAlwaysTaskIsDiagnosed(t *testing.T) {
 	t.Logf("actual_deliveries=%d diagnostic_cases=%d", len(ds), len(cases))
 	if len(cases) != 1 {
 		t.Fatal("always-rule task delivery is absent from diagnostics")
+	}
+}
+
+func TestKnowledgeAlwaysComparisonKeepsHistory(t *testing.T) {
+	b, src := loopBook(t)
+	p := loopPage(t, b, src, map[string]any{"kind": "history", "scene": "always"})
+	snapshot := &hookSession{Scope: b.Scope, TurnID: "0000000000000183", Request: "parent synthetic request"}
+	if err := saveSession(b.Root, "audit-history", snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := hookSubagentStart(b.Root, &hookInput{SessionID: "audit-history", AgentID: "child-c", AgentType: "audit"}, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	cases, err := b.DeliveryCases()
+	if err != nil || len(cases) != 1 {
+		t.Fatal(cases, err)
+	}
+	patch := notebook.Patch{ID: p.ID, Revision: p.Revision, Sources: []string{src}, ChangeReason: "synthetic history", Edits: []notebook.TextEdit{{Field: "body", Before: "", After: "Synthetic background."}}}
+	result, err := compareKnowledge(b, patch, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(result)
+	var got struct {
+		Cases []comparisonCase `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Cases) != 1 {
+		t.Fatal(string(raw))
+	}
+	t.Logf("recorded_retrieval=%s comparison_before=%s observed_reason=%s", cases[0].Entries[0].Retrieval, got.Cases[0].Before, got.Cases[0].ObservedReason)
+	if got.Cases[0].Before != cases[0].Entries[0].Retrieval {
+		t.Fatal("always comparison changes the historical baseline classification")
 	}
 }

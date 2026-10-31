@@ -185,7 +185,9 @@ func caseRanking(c notebook.DeliveryCase, pages []notebook.Page) map[string]stri
 	if c.Mode == "always" {
 		for _, p := range pages {
 			state := "no_match"
-			if p.Kind == "rule" && notebook.IsAlways(p.Scene) {
+			if p.Kind == "history" {
+				state = "history"
+			} else if p.Kind == "rule" && notebook.IsAlways(p.Scene) {
 				state = "candidate"
 			}
 			out[p.ID] = state
