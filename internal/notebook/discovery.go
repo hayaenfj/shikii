@@ -27,13 +27,26 @@ type Discovery struct {
 	Context  string `json:"context"`
 	Decision string `json:"decision"`
 	Evidence string `json:"evidence"`
+	CaseID   string `json:"case_id,omitempty"`
+}
+
+// MissedDiscovery freezes a checked diagnostic reason beside the actual use.
+// It is derived by Discover, never accepted as the caller's claim.
+type MissedDiscovery struct {
+	Discovery
+	Reason string `json:"reason"`
+}
+
+type recordedDiscovery struct {
+	Discovery
+	MissedReason string `json:"missed_reason,omitempty"`
 }
 
 func (p Page) DiscoveryContext() string { return p.discovered }
 
 type searchJournal struct {
-	Lookups     []Lookup    `json:"lookups"`
-	Discoveries []Discovery `json:"discoveries"`
+	Lookups     []Lookup            `json:"lookups"`
+	Discoveries []recordedDiscovery `json:"discoveries"`
 }
 
 func readSearchJournal(dir string) (searchJournal, error) {
@@ -73,6 +86,9 @@ func readSearchJournal(dir string) (searchJournal, error) {
 	for _, d := range j.Discoveries {
 		if !idPattern.MatchString(d.LookupID) || !idPattern.MatchString(d.PageID) || !idPattern.MatchString(d.Revision) {
 			return j, errors.New("invalid saved discovery")
+		}
+		if d.CaseID != "" && !idPattern.MatchString(d.CaseID) || d.MissedReason != "" && (d.CaseID == "" || !missedDeliveryReason(d.MissedReason)) {
+			return j, errors.New("invalid missed delivery evidence")
 		}
 		for _, s := range []string{d.Context, d.Decision, d.Evidence} {
 			if strings.TrimSpace(s) == "" || len(s) > 1000 || !utf8.ValidString(s) {
@@ -154,7 +170,7 @@ func (b Book) RecordLookup(query string, pages []Page) (*Lookup, error) {
 
 // Discover records an explicit, evidenced use of a returned revision. It never creates a human truth or an automatic evaluation.
 func (b Book) Discover(d Discovery) error {
-	if !idPattern.MatchString(d.LookupID) || !idPattern.MatchString(d.PageID) || !idPattern.MatchString(d.Revision) {
+	if !idPattern.MatchString(d.LookupID) || !idPattern.MatchString(d.PageID) || !idPattern.MatchString(d.Revision) || d.CaseID != "" && !idPattern.MatchString(d.CaseID) {
 		return errors.New("discovery needs a lookup, article and revision")
 	}
 	for _, text := range []string{d.Context, d.Decision, d.Evidence} {
@@ -198,8 +214,8 @@ func (b Book) Discover(d Discovery) error {
 	}
 	// Successful retries do not require an older lookup to remain in the rolling read window.
 	for _, old := range j.Discoveries {
-		if old.LookupID == d.LookupID && old.PageID == d.PageID {
-			if old == d {
+		if old.LookupID == d.LookupID && old.PageID == d.PageID && old.CaseID == d.CaseID {
+			if old.Discovery == d {
 				return nil
 			}
 			return errors.New("a saved discovery cannot be rewritten")
@@ -216,11 +232,67 @@ func (b Book) Discover(d Discovery) error {
 	if !found {
 		return errors.New("the article revision was not returned by this lookup; query it again")
 	}
-	j.Discoveries = append(j.Discoveries, d)
+	missedReason := ""
+	if d.CaseID != "" {
+		cases, err := b.DeliveryCases()
+		if err != nil {
+			return err
+		}
+		matched := false
+		for _, c := range cases {
+			if c.ID != d.CaseID {
+				continue
+			}
+			if !c.Complete {
+				return errors.New("a missed delivery needs complete recorded diagnostics")
+			}
+			for _, e := range c.Entries {
+				if e.ID == d.PageID && e.Revision == d.Revision {
+					matched = true
+					if missedDeliveryReason(e.Reason) {
+						missedReason = e.Reason
+					}
+				}
+			}
+		}
+		if !matched {
+			return errors.New("the diagnostic case does not contain this article revision in this project")
+		}
+	}
+	j.Discoveries = append(j.Discoveries, recordedDiscovery{Discovery: d, MissedReason: missedReason})
 	if len(j.Discoveries) > 128 {
 		j.Discoveries = j.Discoveries[len(j.Discoveries)-128:]
 	}
 	return saveSearchJournal(dir, j)
+}
+
+func missedDeliveryReason(reason string) bool {
+	switch reason {
+	case "no_match", "candidate_limit", "feedback_silenced", "model_rejected", "model_limit", "delivery_limit", "quote_budget":
+		return true
+	}
+	return false
+}
+
+func (b Book) missedDiscoveries() ([]MissedDiscovery, error) {
+	dir, err := b.directory(false, "searches")
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	j, err := readSearchJournal(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := []MissedDiscovery{}
+	for _, d := range j.Discoveries {
+		if d.MissedReason != "" {
+			out = append(out, MissedDiscovery{Discovery: d.Discovery, Reason: d.MissedReason})
+		}
+	}
+	return out, nil
 }
 
 // The extra search text comes only from an evidenced use of this exact revision. Normal ranking and the delivery gate still apply.

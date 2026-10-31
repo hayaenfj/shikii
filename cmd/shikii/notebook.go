@@ -24,9 +24,12 @@ func currentProjectScope() string {
 }
 
 type notebookRequest struct {
-	Operation string `json:"operation"`
-	Query     string `json:"query,omitempty"`
-	Cursor    string `json:"cursor,omitempty"`
+	Operation  string `json:"operation"`
+	Query      string `json:"query,omitempty"`
+	Cursor     string `json:"cursor,omitempty"`
+	Request    string `json:"request,omitempty"`
+	Proposal   string `json:"proposal,omitempty"`
+	Conditions string `json:"conditions,omitempty"`
 	notebook.Draft
 	Patch       *notebook.Patch             `json:"patch,omitempty"`
 	CaseID      string                      `json:"case_id,omitempty"`
@@ -40,6 +43,8 @@ type notebookRequest struct {
 func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	b := notebook.Book{Root: root, Scope: scope}
 	switch req.Operation {
+	case "consult", "reuse":
+		return consultExperience(b, req)
 	case "query":
 		if len(req.Query) > requestMax {
 			return nil, errors.New("wiki query exceeds the text limit")
@@ -92,21 +97,21 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	case "handoff_list", "handoff_read", "handoff_write", "handoff_append":
 		return runHandoff(root, req)
 	}
-	return nil, errors.New("usage: wiki query / ingest / patch / diagnose / compare / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
+	return nil, errors.New("usage: wiki query / consult / reuse / ingest / patch / diagnose / compare / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
 }
 
 // Lessons are kept in the project's .shikii/, the same as the hook. Only the calling project is handled.
 // It has no new endpoints or settings; the text comes as JSON from the agent in use.
 func cmdNotebook(args []string) error {
-	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify" && args[0] != "patch" && args[0] != "diagnose" && args[0] != "compare") {
-		return errors.New("usage: shikii wiki query [search words, source IDs..., lesson:<page ID>@<revision>] [continue:<cursor>] | ingest | patch | diagnose | compare | capture | maintain (JSON on standard input) | classify <page ID> <kind> <scene> | lint | verify ...")
+	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify" && args[0] != "patch" && args[0] != "diagnose" && args[0] != "compare" && args[0] != "consult" && args[0] != "reuse") {
+		return errors.New("usage: shikii wiki query [search words, source IDs..., lesson:<page ID>@<revision>] [continue:<cursor>] | consult | reuse | ingest | patch | diagnose | compare | capture | maintain (JSON on standard input) | classify <page ID> <kind> <scene> | lint | verify ...")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
 		return err
 	}
 	req := notebookRequest{Operation: args[0]}
-	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" || req.Operation == "patch" || req.Operation == "diagnose" || req.Operation == "compare" {
+	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" || req.Operation == "patch" || req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" {
 		if len(args) != 1 {
 			return fmt.Errorf("wiki %s reads one JSON object from stdin", req.Operation)
 		}
@@ -121,7 +126,7 @@ func cmdNotebook(args []string) error {
 		dec := json.NewDecoder(bytes.NewReader(data))
 		dec.DisallowUnknownFields()
 		var target any = &req.Draft
-		if req.Operation == "diagnose" || req.Operation == "compare" {
+		if req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" {
 			target = &req
 		}
 		if req.Operation == "patch" {
@@ -138,7 +143,7 @@ func cmdNotebook(args []string) error {
 		}
 		if err := dec.Decode(target); err != nil {
 			switch req.Operation {
-			case "patch", "diagnose", "compare":
+			case "patch", "diagnose", "compare", "consult", "reuse":
 				return fmt.Errorf("wiki %s needs valid JSON: %v", req.Operation, err)
 			case "capture":
 				return fmt.Errorf("wiki capture needs the source object itself (kind, title, content, reference, version, observed_at): %v", err)

@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.18.0 — Use project experience while working
+
+- Add `wiki consult` for checking approaches against project conditions, rationale and linked guidance, and `wiki reuse` for assembling procedures with cited evidence and current conditions. The host agent interprets the evidence; historical choices never imply permission or success.
+- Link evidenced manual discoveries to recorded non-delivery and reopen ordinary maintenance for missed knowledge. Validate the same live revision and complete diagnostics; reviewed evidence does not recur.
+- Expose the operations through CLI, MCP and HTTP with skill guidance, keeping current work records separate from historical validation.
+
 ## 0.17.0 — Correct knowledge and inspect its delivery
 
 - Add source-backed, revision-checked partial article edits through `wiki patch`, preserving untouched knowledge and rejecting ambiguous or stale changes.

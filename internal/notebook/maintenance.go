@@ -24,6 +24,9 @@ type MaintenanceTask struct {
 	Feedback      []store.MemoryAssessment `json:"feedback,omitempty"`
 	FeedbackTotal int                      `json:"feedback_total,omitempty"`
 	ChangedFiles  []PremiseChange          `json:"changed_files,omitempty"`
+	Missed        []MissedDiscovery        `json:"missed,omitempty"`
+	MissedTotal   int                      `json:"missed_total,omitempty"`
+	NextAction    string                   `json:"next_action,omitempty"`
 	ContentKey    string                   `json:"-"`
 	FeedbackKeys  []string                 `json:"-"`
 }
@@ -170,6 +173,9 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 		if task.FeedbackTotal > 0 {
 			task.Reasons = append([]string{"delivery-feedback"}, task.Reasons...)
 		}
+		if task.MissedTotal > 0 {
+			task.Reasons = append([]string{"missed-delivery"}, task.Reasons...)
+		}
 		if len(task.ChangedFiles) > 0 {
 			task.Reasons = append([]string{"premise-changed"}, task.Reasons...)
 		}
@@ -185,6 +191,9 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 	}
 	sort.SliceStable(pending, func(i, j int) bool {
 		a, b := pending[i], pending[j]
+		if (a.MissedTotal > 0) != (b.MissedTotal > 0) {
+			return a.MissedTotal > 0
+		}
 		if (a.FeedbackTotal > 0) != (b.FeedbackTotal > 0) {
 			return a.FeedbackTotal > 0
 		}

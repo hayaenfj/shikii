@@ -27,6 +27,8 @@ Conversations, wiki lessons, provisional assessments, human labels, and calibrat
 
 New projects receive domain-neutral built-in questions. `prompt-kind` still means local file editing for `edit`; `changes-in-scope` covers observed local files, not unobserved external actions. Use task-specific evidence and a dedicated spec for business actions the hooks cannot observe. Existing project questions and calibration are preserved on update; changed wording needs its own validation.
 
+Before settling an approach, use wiki `consult` with `request` and `proposal`; interpret the returned conditions, reasons and linked exceptions into a source-backed assessment. For a recurring task, use `reuse` with `request` and current `conditions`; assemble an ordered procedure with evidence and rechecks. A useful manual discovery that was missed can carry the matching diagnostic `case_id` into reflection. Details: [experience.md](references/experience.md).
+
 ## Before and after a request
 
 Hooks run when a user request arrives, when the turn closes, at the session's start, and right before a file edit or a command (a lesson naming it, or an enabled guard's refusal). They record the request's likely work type, the need for approach agreement, scope, and completion. They never replace the host agent's permission rules.

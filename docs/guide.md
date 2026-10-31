@@ -144,6 +144,28 @@ In `article.json`, keep the short `lesson` apart from the detailed `body`, and m
 
 Planning's `hook plan query` also returns up to two live `criteria` pages directly linked through `related` from the search matches (0.14). Summaries and applicability conditions are kept whole, with kind and scene. Without `pages`, up to two complete bodies are included as `article:<id>:<revision>`, criteria first, within 8000 body bytes in total. Bodies that do not fit can still be read through explicit `pages` (up to two) or `wiki query`. The reply's `wiki_context` returns `available_count` instead of the full inventory; the decision record still preserves every revision in `knowledge_context.available`. Linked candidates, body reads and actual citations stay distinct. Links and past judgments never grant current permission.
 
+### Use project experience while working (0.18.0)
+
+Before settling an approach, send the task and proposed approach as JSON to `shikii wiki consult`:
+
+```json
+{"request":"Route invoices for a new tenant","proposal":"Add a form before every routing decision"}
+```
+
+It returns applicable conditions, reasons, bodies, sources and linked project guidance. The host agent reads them and explains support, counterexamples, exceptions and unknowns. A search match or link is not semantic agreement. When configured, the existing relevance model contributes an applicability check. Historical choices never authorize the current action.
+
+For recurring work, send the request and current conditions to `shikii wiki reuse`:
+
+```json
+{"request":"Prepare the next release","conditions":"Linux and macOS; the installer changed since the earlier release"}
+```
+
+The host agent assembles a procedure from howtos, rationale, recorded validation and explicitly referenced work records, retaining each step's sources, changed premises and missing success evidence. Current work records are unverified supplementary context. Commands are never executed by this operation.
+
+Both operations also use MCP `shikii_wiki` and `POST /v1/wiki`. Text fields are at most 16000 UTF-8 bytes each. At most three topic candidates and six articles in total are returned through two link hops, with a shared 16000-byte body budget; long bodies provide up to three exact excerpts within 2400 bytes per article, naming full revisions for unresolved conditions. Each procedure has at most three source excerpts of 1200 bytes each and current work-record excerpts of 600 bytes. Only explicit `.shikii/handoff/` references are read through existing work-record restrictions. URLs and other paths are not fetched.
+
+When an evidenced manual discovery was missed at the time, the agent adds the matching diagnostic `case_id` to the usual reflection `discoveries`. Complete same-project diagnostics must contain the exact live revision. The frozen non-delivery reason returns as `missed-delivery` maintenance, leading to diagnosis, comparison and a source-backed patch, or a reasoned no-change review. Actual delivery and session suppression do not establish a miss; missing history is not filled with current knowledge. Reviewed evidence does not recur, while new evidence reopens review. Better retrieval candidates and usefulness in later actual work are checked separately. No extra human input or truth labels are created.
+
 ### Kinds and scenes of articles
 
 From 0.9.0, an article with a lesson needs a `kind` and a `scene`. A save without them is refused, and the refusal lists the values you can use.
@@ -397,7 +419,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii tune <spec>` | Scores candidate wordings on the stored truths (adopted only once the meaning is confirmed: the agent's `hook variants check`, the page, or `--write`) |
 | `shikii import <past.csv> --spec <spec>` | Turns a table of past cases into stored truths (JSON) |
 | `shikii judge <spec> --local <URL>` | Uses another, larger model as a judge; when it agrees with people's truths often enough, it adds weighted truths to records that have none |
-| `shikii wiki query` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | Searching, sources, saving, setting kind and scene, reviewing and checking the wiki, and re-checking claims |
+| `shikii wiki query` / `consult` / `reuse` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | Searching, checking approaches, reusing procedures, sources, saving, setting kind and scene, reviewing and checking the wiki, and re-checking claims |
 | `shikii handoff list` / `read` / `write` / `append` | Reading and writing work records |
 | `shikii guard list` / `add` / `enable` / `disable` / `try` | Guards |
 | `shikii review query` / `submit` | Provisional assessments from conversations and results (usually done together in reflection) |

@@ -84,5 +84,35 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 		// The key covers all evidence; show up to three examples, harmful first, then newest, without cutting their evidence.
 		task.Feedback = feedback[:min(3, len(feedback))]
 	}
+	missed, err := b.missedDiscoveries()
+	if err != nil {
+		return nil, err
+	}
+	for i := range tasks {
+		task := &tasks[i]
+		all := []MissedDiscovery{}
+		for _, d := range missed {
+			if d.PageID == task.PageID && d.Revision == task.Revision {
+				all = append(all, d)
+				raw, _ := json.Marshal(d)
+				task.FeedbackKeys = append(task.FeedbackKeys, digest(raw)[:16])
+			}
+		}
+		if len(all) == 0 {
+			continue
+		}
+		raw, _ := json.Marshal(struct {
+			Previous string
+			Missed   []MissedDiscovery
+		}{task.Key, all})
+		task.Key = digest(raw)[:16]
+		sort.Strings(task.FeedbackKeys)
+		task.MissedTotal = len(all)
+		// Show newest evidence first; all evidence contributes to the review key.
+		for j := len(all) - 1; j >= 0 && len(task.Missed) < 3; j-- {
+			task.Missed = append(task.Missed, all[j])
+		}
+		task.NextAction = "Read the article and missed evidence; diagnose the recorded case, capture supporting evidence, compare an applicability patch before saving it, or maintain with a reason for no change. Do not reset suppression by changing the revision. Check usefulness in subsequent actual work."
+	}
 	return tasks, nil
 }
