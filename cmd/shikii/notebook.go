@@ -116,6 +116,9 @@ func cmdNotebook(args []string) error {
 			return fmt.Errorf("wiki %s reads one JSON object from stdin", req.Operation)
 		}
 		limit := 64 << 10
+		if req.Operation == "consult" || req.Operation == "reuse" {
+			limit = 1 << 20 // three 16000-byte fields still fit when JSON escapes every byte
+		}
 		if req.Operation == "capture" {
 			limit = store.MaxLineBytes // a source has no size limit of its own (a long memory file is captured whole)
 		}

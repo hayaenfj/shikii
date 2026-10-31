@@ -214,8 +214,16 @@ func (b Book) Discover(d Discovery) error {
 	}
 	// Successful retries do not require an older lookup to remain in the rolling read window.
 	for _, old := range j.Discoveries {
-		if old.LookupID == d.LookupID && old.PageID == d.PageID && old.CaseID == d.CaseID {
-			if old.Discovery == d {
+		same := old.LookupID == d.LookupID && old.PageID == d.PageID && old.CaseID == d.CaseID
+		if d.CaseID != "" {
+			same = old.CaseID == d.CaseID && old.PageID == d.PageID && old.Revision == d.Revision
+		}
+		if same {
+			prior := old.Discovery
+			// The same actual use can be found through another query. Keep the
+			// original read receipt instead of counting that query as new evidence.
+			prior.LookupID = d.LookupID
+			if prior == d {
 				return nil
 			}
 			return errors.New("a saved discovery cannot be rewritten")

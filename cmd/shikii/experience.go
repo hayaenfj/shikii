@@ -49,15 +49,16 @@ type reuseStep struct {
 }
 
 type experienceView struct {
-	Request    string            `json:"request"`
-	Proposal   string            `json:"proposal,omitempty"`
-	Conditions string            `json:"conditions,omitempty"`
-	Checks     []experienceCheck `json:"checks"`
-	Steps      []reuseStep       `json:"steps,omitempty"`
-	Omitted    []string          `json:"omitted,omitempty"`
-	Unknown    []string          `json:"unknown,omitempty"`
-	NextAction string            `json:"next_action"`
-	Notice     string            `json:"notice"`
+	Request     string            `json:"request"`
+	Proposal    string            `json:"proposal,omitempty"`
+	Conditions  string            `json:"conditions,omitempty"`
+	Checks      []experienceCheck `json:"checks"`
+	Steps       []reuseStep       `json:"steps,omitempty"`
+	Omitted     []string          `json:"omitted,omitempty"`
+	Unknown     []string          `json:"unknown,omitempty"`
+	NextAction  string            `json:"next_action"`
+	Notice      string            `json:"notice"`
+	ModelNotice string            `json:"model_notice,omitempty"`
 }
 
 func consultExperience(b notebook.Book, req notebookRequest) (experienceView, error) {
@@ -82,8 +83,13 @@ func consultExperience(b notebook.Book, req notebookRequest) (experienceView, er
 	// Do not introduce another model or label the agent's interpretation as truth.
 	// Retain even excluded material so a related exception remains inspectable.
 	if _, err := os.Stat(hookSpecPath(b.Root, lessonAppliesSpec)); err == nil {
-		for i := 0; i < len(v.Checks) && i < lessonAppliesMaxAsks; i++ {
-			v.Checks[i].ApplicabilityTrace, v.Checks[i].ModelExcluded = lessonApplies(b.Root, b.Scope, req.Request, "Proposed approach: "+req.Proposal+"; current conditions: "+req.Conditions, context.Checks[i].Page)
+		target := "Proposed approach: " + req.Proposal + "; current conditions: " + req.Conditions
+		if len(req.Request) > requestMax || len(target) > 400 {
+			v.ModelNotice = "The full context exceeds the existing relevance model's input limits; no partial applicability judgment was requested. Interpret the full request, proposal and conditions with the supplied evidence."
+		} else {
+			for i := 0; i < len(v.Checks) && i < lessonAppliesMaxAsks; i++ {
+				v.Checks[i].ApplicabilityTrace, v.Checks[i].ModelExcluded = lessonApplies(b.Root, b.Scope, req.Request, target, context.Checks[i].Page)
+			}
 		}
 	}
 	v.NextAction = "Check the proposal against each article's conditions and rationale. Use the exact excerpts first to explain support, counterexamples and exceptions with sources. Read a full revision only if the excerpts leave a material condition or exception unresolved. Identify missing evidence. Current intent takes priority over historical choices."
