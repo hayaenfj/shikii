@@ -104,6 +104,7 @@ type Draft struct {
 	// baseRevision is the page revision classify started from. Inside the lock, refuse if it differs from the current revision (do not undo a concurrent edit with an old lesson; audit 0.9.0 B1)
 	change       *Change
 	baseRevision string
+	preview      bool
 }
 
 type Issue struct {
@@ -967,6 +968,9 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 			}
 		}
 		result.Page = &p
+	}
+	if d.preview {
+		return result, nil
 	}
 	for id, data := range raw {
 		if err := immutable(filepath.Join(sourceDir, id+".json"), data); err != nil {
