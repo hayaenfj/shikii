@@ -1,12 +1,16 @@
 package notebook
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/hayaenfj/shikii/internal/store"
 	"time"
 )
 
@@ -165,9 +169,9 @@ func (b Book) HistoricalPages(c DeliveryCase) ([]Page, error) {
 
 const deliveryJournalLimit = 4 << 20
 
-func readDeliveryJournal(dir string) ([]DeliveryCase, error) {
+func readDeliveryJournal(dir *os.Root) ([]DeliveryCase, error) {
 	out := []DeliveryCase{}
-	f, err := os.OpenFile(filepath.Join(dir, ".deliveries.json"), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := dir.OpenFile(".deliveries.json", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
 		return out, nil
 	}
@@ -200,13 +204,14 @@ func readDeliveryJournal(dir string) ([]DeliveryCase, error) {
 }
 
 func (b Book) DeliveryCases() ([]DeliveryCase, error) {
-	dir, err := b.directory(false, "deliveries")
+	dir, err := b.openDeliveryDirectory(false)
 	if os.IsNotExist(err) {
 		return []DeliveryCase{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	defer dir.Close()
 	return readDeliveryJournal(dir)
 }
 
@@ -222,7 +227,7 @@ func (b Book) SaveDeliveryCase(c DeliveryCase) error {
 	// explicitly unavailable for replay; diagnostics still explain retained pages.
 	for {
 		raw, _ := json.Marshal(c)
-		if len(raw) <= 512<<10 {
+		if len(raw)+16 <= 512<<10 {
 			break
 		}
 		if len(c.Entries) == 0 {
@@ -233,15 +238,30 @@ func (b Book) SaveDeliveryCase(c DeliveryCase) error {
 	}
 	raw, _ := json.Marshal(c)
 	c.ID = digest(raw)[:16]
-	dir, err := b.directory(true, "deliveries")
+	dir, err := b.openDeliveryDirectory(true)
 	if err != nil {
 		return err
 	}
-	unlock, err := lock(dir)
+	defer dir.Close()
+	f, err := dir.OpenFile(".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	if err != nil {
+		return err
+	}
+	unlock, err := lockOpened(f)
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	current, err := b.openDeliveryDirectory(false)
+	if err != nil {
+		return err
+	}
+	expected, firstErr := dir.Stat(".")
+	actual, secondErr := current.Stat(".")
+	current.Close()
+	if firstErr != nil || secondErr != nil || !os.SameFile(expected, actual) {
+		return errors.New("delivery directory changed while waiting")
+	}
 	cases, err := readDeliveryJournal(dir)
 	if err != nil {
 		return err
@@ -253,8 +273,36 @@ func (b Book) SaveDeliveryCase(c DeliveryCase) error {
 	for {
 		raw, _ := json.Marshal(cases)
 		if len(raw) <= deliveryJournalLimit {
-			return writeFile(filepath.Join(dir, ".deliveries.json"), raw)
+			return writeDeliveryJournal(dir, raw)
 		}
 		cases = cases[1:]
 	}
+}
+
+func (b Book) openDeliveryDirectory(create bool) (*os.Root, error) {
+	if b.Root == "" || b.Scope == "" {
+		return nil, errors.New("delivery diagnostics need a project and store")
+	}
+	return (store.Store{Dir: b.Root}).OpenRecordDirectory(filepath.Join(b.Root, "records", "wiki-deliveries", b.storeName()), create)
+}
+
+func writeDeliveryJournal(dir *os.Root, data []byte) error {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return err
+	}
+	name := ".delivery-" + hex.EncodeToString(nonce[:])
+	f, err := dir.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return err
+	}
+	defer dir.Remove(name)
+	_, err = f.Write(data)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return dir.Rename(name, ".deliveries.json")
 }

@@ -130,6 +130,8 @@ type View struct {
 }
 
 type Result struct {
+	committed bool
+	Warnings  []string `json:"warnings,omitempty"`
 	Remaining
 	Page     *Page    `json:"page"`
 	Reviewed []string `json:"reviewed"`
@@ -276,6 +278,15 @@ func lock(dir string) (func(), error) {
 	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return nil, err
+	}
+	return lockOpened(f)
+}
+
+func lockOpened(f *os.File) (func(), error) {
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return nil, errors.New("wiki lock must be a regular file")
 	}
 	until := time.Now().Add(2 * time.Second)
 	for syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
@@ -1005,6 +1016,7 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 		if err := writeFile(filepath.Join(dir, p.ID+".md"), data); err != nil {
 			return result, err
 		}
+		result.committed = true
 	}
 	pages, _, err = b.pages()
 	if err != nil {

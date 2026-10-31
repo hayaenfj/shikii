@@ -114,3 +114,10 @@ func (s Store) openFile(path string, flags int) (*os.File, error) {
 	}
 	return f, nil
 }
+
+// OpenRecordDirectory pins a generated directory beneath this store. Callers
+// must keep using this Root for all I/O, including locking and atomic renames.
+func (s Store) OpenRecordDirectory(path string, create bool) (*os.Root, error) {
+	root, _, err := s.parentRoot(filepath.Join(path, ".entry"), create)
+	return root, err
+}

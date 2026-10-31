@@ -44,6 +44,7 @@ func memoryContextFor(root, scope, request string, session *hookSession, parent,
 	attempt.TurnID = session.TurnID
 	if parent != "" {
 		attempt.Mode = "task"
+		attempt.TurnID = parent
 	}
 	return deliverMemoryTracked(root, scope, request, pages, true, session, parent, agent, &attempt)
 }
@@ -54,11 +55,21 @@ func alwaysContextFor(root, scope, request string, session *hookSession, parent,
 	if scope == "" {
 		return "", nil
 	}
-	pages, err := (notebook.Book{Root: root, Scope: scope}).AlwaysRules()
+	pages, attempt, err := (notebook.Book{Root: root, Scope: scope}).DeliverySnapshot(func(p notebook.Page) bool { return p.Kind == "rule" && notebook.IsAlways(p.Scene) })
 	if err != nil {
 		return "", err
 	}
-	return deliverMemory(root, scope, request, pages, false, session, parent, agent)
+	attempt.Mode, attempt.Request, attempt.TurnID = "always", request, session.TurnID
+	if parent != "" {
+		attempt.TurnID = parent
+	}
+	for i := range attempt.Entries {
+		e := &attempt.Entries[i]
+		if e.Retrieval == "eligible" {
+			e.Retrieval, e.Reason = "candidate", "candidate"
+		}
+	}
+	return deliverMemoryTracked(root, scope, request, pages, false, session, parent, agent, &attempt)
 }
 
 // deliverMemory turns the chosen pages into short quotes, at most 2, leaving out revisions already delivered, records the delivery and returns the text.

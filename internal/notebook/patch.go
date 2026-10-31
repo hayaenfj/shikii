@@ -82,7 +82,7 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 			}
 			*target = e.After
 		} else {
-			if strings.Count(*target, e.Before) != 1 {
+			if strings.Index(*target, e.Before) < 0 || strings.Index(*target, e.Before) != strings.LastIndex(*target, e.Before) {
 				return Result{}, fmt.Errorf("patch edit %d must match exactly once in %s", i+1, e.Field)
 			}
 			*target = strings.Replace(*target, e.Before, e.After, 1)
@@ -93,6 +93,10 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 		return Result{}, errors.New("patch cannot clear the lesson")
 	}
 	result, err := b.ingest(d, true)
+	if err != nil && result.committed {
+		result.Warnings = []string{"The article was saved at page.revision, but derived index, log or source-review records need recovery. Run wiki lint, reread the article, and submit its sources alone through wiki ingest; do not resend the stale patch."}
+		err = nil
+	}
 	if err == nil && result.Page != nil {
 		result.Page.Recheck = b.premiseChanges(*result.Page)
 	}

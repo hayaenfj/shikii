@@ -35,7 +35,7 @@ func TestDeliveryJournalBoundsEncodedBytesAndRefusesLinks(t *testing.T) {
 		t.Fatal("encoded journal exceeded its read budget", len(raw), err)
 	}
 	var single []json.RawMessage
-	if json.Unmarshal(raw, &single) != nil || len(single[0]) > (512<<10)+32 {
+	if json.Unmarshal(raw, &single) != nil || len(single[0]) > 512<<10 {
 		t.Fatal("encoded case exceeded its budget")
 	}
 	// A bounded window is retention, not a probabilistic or concurrent test.

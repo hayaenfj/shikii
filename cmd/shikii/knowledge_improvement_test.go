@@ -275,6 +275,26 @@ func TestKnowledgeOperationsThroughCLIAndMCP(t *testing.T) {
 	if err != nil || code != 400 {
 		t.Fatal("nested unknown fields accepted", code, err)
 	}
+
+	// A failure after publishing the article returns its saved revision and warning.
+	current := got["page"].(map[string]any)
+	patch.Revision = current["revision"].(string)
+	patch.Edits = []notebook.TextEdit{{Field: "body", Before: "", After: "Checked body."}}
+	indexes, err := filepath.Glob(filepath.Join(root, "wiki", "lessons", "*", "index.md"))
+	if err != nil || len(indexes) != 1 {
+		t.Fatal(indexes, err)
+	}
+	if err := os.Remove(indexes[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(indexes[0], 0700); err != nil {
+		t.Fatal(err)
+	}
+	body, _ = json.Marshal(map[string]any{"operation": "patch", "patch": patch})
+	code, response, err := callTool(h, "shikii_wiki", body)
+	if err != nil || code != 200 || !strings.Contains(string(response), `"warnings"`) || !strings.Contains(string(response), `"Checked body."`) {
+		t.Fatal("transport hid a saved article or recovery warning", code, string(response), err)
+	}
 }
 
 func TestKnowledgeToolDeliveryFailureRemainsVisible(t *testing.T) {

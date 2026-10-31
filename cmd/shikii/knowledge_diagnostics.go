@@ -182,6 +182,16 @@ func caseRanking(c notebook.DeliveryCase, pages []notebook.Page) map[string]stri
 		}
 		return out
 	}
+	if c.Mode == "always" {
+		for _, p := range pages {
+			state := "no_match"
+			if p.Kind == "rule" && notebook.IsAlways(p.Scene) {
+				state = "candidate"
+			}
+			out[p.ID] = state
+		}
+		return out
+	}
 	if c.Mode != "tool" {
 		return nil
 	}

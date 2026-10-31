@@ -11,11 +11,11 @@ JP = "'Hiragino Sans','Noto Sans JP',Inter,sans-serif"
 MIN = "'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif"
 GOLD, GOLD2, INK, MUTE, DIM, SLATE, SLATE2 = "#F5B700", "#FFD54F", "#F2F5FA", "#8FA3C8", "#5B6B8C", "#2A3147", "#4B5B82"
 T = {
- "en": dict(font=LAT, cap="閾 · PROJECT MEMORY FOR AGENTS", l1="Your agent starts from zero every session.", l2="shikii fits it to your project.",
+ "en": dict(font=LAT, cap="閾 · PROJECT MEMORY FOR AGENTS", l1="Bring project experience to the next task.", l2="shikii fits it to your project.",
    flow="remember → never twice → routine → trail → delegate", s1=40, head_l="turns →", head_r="threshold",
    v1=[("“I told you before.”", "remembered"), ("same mistake again", "stopped, fixed"), ("jumps straight in", "plans first"), ("“where's the report?”", "in handoff/"), ("“probably 0.9”", "ask → act")],
    v2=[("Remembers what you said", "wiki/"), ("Never needs telling twice", "guards/"), ("Follows the routine", "plan · reflect"), ("Leaves a trail", "handoff/"), ("Earns room to act alone", "ask → act")],),
- "ja": dict(font=JP, cap="閾 · エージェントのための、プロジェクトの記憶", l1="エージェントは、毎回まっさらから始まる。", l2="shikiiは、あなたのプロジェクトに合わせて育てる。",
+ "ja": dict(font=JP, cap="閾 · エージェントのための、プロジェクトの記憶", l1="プロジェクトの経験を、次の仕事へ。", l2="shikiiは、あなたのプロジェクトに合わせて育てる。",
    flow="覚える → 二度言わせない → 手順を踏む → 跡を残す → 任せる", s1=38, head_l="ターン →", head_r="閾",
    v1=[("前にも言ったよね", "覚えている"), ("また同じミス", "止めて直させる"), ("いきなり作業", "先に整理する"), ("報告はどこ？", "handoff/ にある"), ("たぶん、0.9", "ask → act")],
    v2=[("言われたことを覚える", "wiki/"), ("二度言わせない", "guards/"), ("決まった手順を踏む", "整理 · 振り返り"), ("仕事の跡を残す", "handoff/"), ("任せてよい範囲が広がる", "ask → act")],),
