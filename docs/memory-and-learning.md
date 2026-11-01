@@ -19,6 +19,8 @@ So “OpenAI remembers only preferences” or “only shikii stores memory local
 | Maintain memory | Controls for managing memories | Review evidence and assessments, then correct a passage while preserving the rest |
 | Investigate missing context | Refer to earlier context | Inspect recorded retrieval, suppression and capacity reasons from the actual attempt |
 | Try a correction | Use context in later work | Freeze past requests and article revisions, then compare retrieval candidates before saving |
+| Add knowledge during work | Refer to past context | Connect further searches and consultations to the same work record, retaining read revisions and quotation sources |
+| Use experience in the next procedure | Carry earlier work's context forward | Link conditions, failures, corrections and reported results to evidence, then compare them with current conditions |
 | Delegate decisions | Answers informed by context | People's answers and observable outcomes to measure where the AI can decide alone |
 | Check required work | Separate management of mandatory guidance | Enabled checks and verification that required records were saved |
 
@@ -46,6 +48,19 @@ This lets the agent investigate missing knowledge before asking the person to ex
 
 The comparison establishes **changes to retrieval candidates**. It does not rerun suppression or the decision model, or guarantee delivery or usefulness. It saves no article, assessment or human truth. Diagnostic history retains at most 32 attempts / 4 MiB; missing or incomplete history is explicitly unavailable for comparison. Whether the knowledge actually helps remains a separate observation from later work.
 
+## In 0.18–0.20, use knowledge during work and return results to the next task
+
+Memory available at the start of a task does not by itself establish how newly discovered conditions or failed attempts will inform later work. shikii connects using prior knowledge and recording the current experience through the same work record.
+
+1. **Consult the proposed approach.** Read prior reasoning, rejected alternatives and applicability conditions, then consider whether they fit the current proposal. For recurring work, assemble a procedure with sources and the current conditions. Consultation and reuse were implemented in 0.18 and shipped with 0.19.
+2. **Read the relevant original text.** In 0.19, the agent can read the request, conversation and knowledge together, then save judgments and observations with sources and article revisions retained. Human and AI messages stay distinct, and incomplete material identifies what is missing. In 0.20, even a long article can supply relevant exact passages with their revision and position; the full article can be fetched when a condition or exception remains unresolved.
+3. **Add what emerges during work.** In 0.20, further searches, consultations and procedure reuse can join the same work record. Earlier articles and quotation sources remain available while the agent records discoveries that actually informed a decision. If part of a save fails, it can retry without duplicating the saved items.
+4. **Return execution results to later work.** Link a used procedure to its execution conditions, actions, failures, corrections and reported results, with sources such as validation records. Later reuse can compare those past results with current conditions. If the procedure article has changed, it also flags that its revision differs from the one used previously.
+
+For example, a previous release may have validation showing that knowledge and sources survived an update. The next release can read those conditions and results alongside the procedure to decide what to verify now. A different OS or starting version calls for checking those differences. A past success does not establish success for the current task.
+
+These execution reports are evidence for the agent to assess. Saving a report does not create a success truth or a person's answer, and stays separate from measurements of judgment accuracy or long-term improvement.
+
 ## What has actually been checked?
 
 An agent's review is a provisional assessment, stored separately from human truths and measured improvements. Reading more memory does not by itself establish that work got better.
@@ -69,5 +84,8 @@ Neither knowledge nor an AI decision grants permission. The current request and 
 | 0.15 | Edit or delete articles on the Knowledge page, retaining history and sources. |
 | 0.16 | Feed evidenced manual discoveries into retrieval, carry rationale and changed premises, and combine planning with reflection. |
 | 0.17 | Connect precise article edits, recorded delivery reasons and comparison against past situations. |
+| 0.18 (shipped with 0.19) | Consult project knowledge about a proposal and assemble sourced procedures for current conditions. |
+| 0.19 | Combine reading requests, conversations and knowledge with saving judgments, observations and articles; retain sources and revisions and retry failed items. |
+| 0.20 | Connect focused original passages, knowledge added during work and sourced procedure results to the same task and later reuse. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
