@@ -19,9 +19,24 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
+// All source readers reject nonregular files on the descriptor they opened,
+// before reading or hashing. O_NONBLOCK prevents FIFO open from waiting.
+func openSourceFile(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return nil, errors.New("a saved source must be a regular file")
+	}
+	return f, nil
+}
+
 // readSourceRecord reads a captured source record. A source has no size limit of its own; only the store's line limit applies.
 func readSourceRecord(path string) ([]byte, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := openSourceFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +50,7 @@ func readSourceRecord(path string) ([]byte, error) {
 
 // sourceRecordDigest hashes a source record without holding it in memory (the hook checks every cited source on each request).
 func sourceRecordDigest(path string) (string, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := openSourceFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -49,7 +64,7 @@ func sourceRecordDigest(path string) (string, error) {
 }
 
 func readOriginals(path string) ([]byte, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := openSourceFile(path)
 	if err != nil {
 		return nil, err
 	}

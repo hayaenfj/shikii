@@ -4,6 +4,7 @@
 
 ## 0.20.0 — Connect knowledge and results throughout the work
 
+- Reject named pipes and other nonregular source files at the shared descriptor boundary before reading or hashing.
 - Register initial excerpts and added knowledge through the same quotation path; replacing the planning context invalidates its receipt, including in-flight decisions.
 - Check internal snapshot capacity before reserving an outcome and release reservations on definite publication refusal.
 - Replace the development-only deepmerge implementation with a local, prototype-safe compatibility package. Verify the actual plugin import and fail CI on npm advisories at low severity or above.
