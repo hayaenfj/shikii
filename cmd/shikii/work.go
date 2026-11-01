@@ -308,25 +308,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	w := &workState{Replies: map[string]workReply{}, Nonce: store.NewTraceID() + store.NewTraceID(), At: time.Now().UTC(), Standalone: standalone, Query: req.Query, Current: s.Planning.Sources["current_user"], Pages: s.Planning.KnowledgePages, Keys: map[string]string{}, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}, Reviews: map[string]workReviewRef{}, Memory: map[string]workMemoryRef{}, Maintenance: map[string]notebook.MaintenanceReview{}, Captures: map[string]workCapture{}, Saved: map[string]workItem{}, Pending: map[string]notebook.Draft{}, PendingKeys: map[string]string{}, PendingOrigins: map[string]string{}, Expected: map[string]store.KnowledgeReference{}}
-	conversation := map[string]string{}
-	for _, pair := range [][2]string{{"current", "current_user"}, {"previous", "previous_user"}, {"previous_answer", "previous_assistant"}} {
-		if text := s.Planning.Sources[pair[1]]; text != "" {
-			w.Keys[pair[0]] = pair[1]
-			conversation[pair[0]] = text
-		}
-	}
-	history := []string{}
-	for key := range s.Planning.Sources {
-		if strings.HasPrefix(key, "history:") {
-			history = append(history, key)
-		}
-	}
-	sort.Strings(history)
-	for i, key := range history {
-		alias := "history" + strconv.Itoa(i+1)
-		w.Keys[alias] = key
-		conversation[alias] = s.Planning.Sources[key]
-	}
+	conversation, conversationContext := preparedWorkConversation(s, w, req.TurnID)
 	knowledge := []any{}
 	keys := []string{}
 	for key := range s.Planning.Sources {
@@ -432,17 +414,17 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	task, taskContext, err := preparedWorkTask(s, w, req)
+	if err != nil {
+		return nil, err
+	}
+	if workContextSize(map[string]any{"conversation": conversation, "conversation_context": conversationContext}) > workSourceBudget {
+		return nil, errors.New("the conversation context exceeds the preparation budget; read the original host conversation and use the individual planning operations")
+	}
 	if err = saveWorkState(dir, name, scope, req.TurnID, w, true); err != nil {
 		return nil, err
 	}
-	task := w.Current
-	if standalone {
-		task = req.Request
-		if task == "" {
-			task = req.Query
-		}
-	}
-	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "agent_supplied_task": standalone, "conversation": conversation, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord + " Before judging, query knowledge entries whose body_included is false to read the same article revision. Read knowledge_context search/remaining-classification guidance, reflection_context.human_corrections and each source.originals/text_status. Incomplete sources have no recording references; follow source_query and use the individual operations after reading."}, nil
+	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "task_context": taskContext, "agent_supplied_task": standalone, "conversation": conversation, "conversation_context": conversationContext, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord + " Before judging, read task with task_context and each conversation reference with its conversation_context role, turn and recorded history order. Planning excerpts are not full original messages. Query knowledge entries whose body_included is false to read the same article revision. Read knowledge_context search/remaining-classification guidance, reflection_context.human_corrections and each source.originals/text_status. Incomplete sources have no recording references; follow source_query and use the individual operations after reading."}, nil
 }
 
 const workHowToRecord = "Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits; metadata and revisions are retained. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
