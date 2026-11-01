@@ -96,9 +96,12 @@ type workItem struct {
 	Error    string   `json:"error,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
 }
+type workReply struct {
+	Plan       *planningReceipt `json:"plan,omitempty"`
+	Reflection *reflectResult   `json:"reflection,omitempty"`
+}
 type workState struct {
-	Plan           *planningReceipt                      `json:"plan,omitempty"`
-	Reflection     *reflectResult                        `json:"reflection,omitempty"`
+	Replies        map[string]workReply                  `json:"replies"`
 	PendingOrigins map[string]string                     `json:"pending_origins"`
 	Nonce          string                                `json:"nonce"`
 	At             time.Time                             `json:"at"`
@@ -307,7 +310,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &workState{Nonce: store.NewTraceID() + store.NewTraceID(), At: time.Now().UTC(), Standalone: standalone, Query: req.Query, Current: s.Planning.Sources["current_user"], Pages: s.Planning.KnowledgePages, Keys: map[string]string{}, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}, Reviews: map[string]workReviewRef{}, Memory: map[string]workMemoryRef{}, Maintenance: map[string]notebook.MaintenanceReview{}, Captures: map[string]workCapture{}, Saved: map[string]workItem{}, Pending: map[string]notebook.Draft{}, PendingKeys: map[string]string{}, PendingOrigins: map[string]string{}, Expected: map[string]store.KnowledgeReference{}}
+	w := &workState{Replies: map[string]workReply{}, Nonce: store.NewTraceID() + store.NewTraceID(), At: time.Now().UTC(), Standalone: standalone, Query: req.Query, Current: s.Planning.Sources["current_user"], Pages: s.Planning.KnowledgePages, Keys: map[string]string{}, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}, Reviews: map[string]workReviewRef{}, Memory: map[string]workMemoryRef{}, Maintenance: map[string]notebook.MaintenanceReview{}, Captures: map[string]workCapture{}, Saved: map[string]workItem{}, Pending: map[string]notebook.Draft{}, PendingKeys: map[string]string{}, PendingOrigins: map[string]string{}, Expected: map[string]store.KnowledgeReference{}}
 	conversation := map[string]string{}
 	for _, pair := range [][2]string{{"current", "current_user"}, {"previous", "previous_user"}, {"previous_answer", "previous_assistant"}} {
 		if text := s.Planning.Sources[pair[1]]; text != "" {
@@ -384,7 +387,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 			memoryN++
 			r := "memory" + strconv.Itoa(memoryN)
 			w.Memory[r] = workMemoryRef{m.SourceID, m.Quote.Key}
-			memories = append(memories, map[string]any{"ref": r, "quote": m.Quote})
+			memories = append(memories, map[string]any{"ref": r, "quote": m.Quote, "request": m.Request, "parent": m.Parent, "agent": m.Agent, "tool": m.Tool, "phrase": m.Phrase, "at": m.At})
 		}
 		pending = append(pending, map[string]any{"ref": ref, "request": source.Source.Request, "answer": source.Source.Summary, "reply": source.Source.Reply, "head": source.Head, "wiki_pending": source.WikiPending, "reviews": reviews, "memory": memories})
 	}
@@ -429,7 +432,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "agent_supplied_task": standalone, "conversation": conversation, "context_notice": planningContext, "knowledge": knowledge, "pending": pending, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord}, nil
 }
 
-const workHowToRecord = "Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits; metadata and revisions are retained. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
+const workHowToRecord = "Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits; metadata and revisions are retained. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
 
 func cmdWork(args []string) error {
 	if len(args) != 1 || (args[0] != "prepare" && args[0] != "record") {

@@ -13,7 +13,7 @@ func makeWorkSchema() map[string]any {
 	array := func(item any, n int) map[string]any {
 		return map[string]any{"type": "array", "maxItems": n, "items": item}
 	}
-	fact := object(map[string]any{"unknown": map[string]any{"type": "boolean"}, "summary": text, "quotes": array(object(map[string]any{"ref": text, "text": text}), 16)})
+	fact := object(map[string]any{"unknown": map[string]any{"type": "boolean"}, "summary": text, "quotes": array(object(map[string]any{"ref": text, "text": text}), 3)})
 	note := object(map[string]any{"ref": text, "target": text, "title": text, "lesson": text, "body": text, "applies_to": text, "sources": refs, "related": refs, "kind": kindSchema, "scene": sceneSchema, "rationale": rationaleSchema, "watch": watchSchema, "change_reason": text, "correction": correctionSchema, "edits": patchSchema["properties"].(map[string]any)["edits"]})
 	return object(map[string]any{
 		"session_id": text, "turn_id": text, "query": text, "request": text, "receipt": text,

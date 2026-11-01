@@ -33,7 +33,7 @@ Pipe content to `shikii work record`:
 }
 ```
 
-This is the JSON shape, not fabricated evidence: substitute the actual observed result and exact human quotation. Agreement needs the person's own words. `open` means a concrete choice blocking this task; omit it or use unknown when none is established. `continues_previous` is true only for a continuation with no new request, false for an addition, and omitted when unsure. Unknown facts cannot contain a summary or quotations. Inspect `plan` for the existing decision result and advice; this organizing is never human truth or permission.
+This is the JSON shape, not fabricated evidence: substitute the actual observed result and exact human quotation. Agreement needs the person's own words. Keep each summary within 600 UTF-8 bytes and use one to three verbatim quotations, each at most 240 bytes. `open` means a concrete choice blocking this task; omit it or use unknown when none is established. `continues_previous` is true only for a continuation with no new request, false for an addition, and omitted when unsure. Unknown facts cannot contain a summary or quotations. Inspect `plan` for the existing decision result and advice; this organizing is never human truth or permission.
 
 Observations are checked source snapshots, never commands to execute or references to fetch. `kind` defaults to agent; accepted kinds are human, agent, code, test and release. Supply the actual title and content; reference and version are optional. Shikii supplies capture time, a descriptive reference and its **recording** version by default, not an inferred version of the tested artifact. Set version when the artifact's actual version matters. Each observation fits 64 KiB; retain longer reports in handoff and capture relevant evidence. `new1` refers to the first observation **in this call**, `new2` to the second. Responses return stable `observed1` references for later calls with the same receipt.
 
@@ -57,7 +57,7 @@ The recorded revision is checked atomically. Other sections, citations and relat
 
 Use the prepared content to record:
 
-- `reviews:[{ref,answer:"yes|no|unknown",reason}]` for provisional scores. Read the original question, inputs, model answer and human reply. Agreement with a model is an agreed machine outcome, never a person's answer.
+- `reviews:[{ref,answer:"yes|no|unknown",reason}]` for provisional scores. Read the original question, inputs, model answer and human reply. Each prepared memory also retains its actual delivery request, agent, tool, phrase and time; distinguish these from the parent conversation. Agreement with a model is an agreed machine outcome, never a person's answer.
 - `memory:[{ref,result,decision,evidence,correction_result?}]` for delivered memory. Use the existing result values (helpful, unused, harmful, unknown); a helpful result needs a concrete decision and checked effect. Preserve the first assessment. Never infer helpfulness from delivery, successful tests, silence or a save.
 - `reviewed:["source1","evidence1"]` when you read a source and it supports no lasting lesson. Save any intended knowledge first.
 - `maintenance:[{ref,reason}]` after checking the displayed task against its sources. A changed article or neighborhood invalidates the retained key.

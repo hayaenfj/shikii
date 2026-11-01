@@ -45,7 +45,7 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if w.Saved == nil || w.Captures == nil || w.Sources == nil || w.Articles == nil || w.Keys == nil || w.Pending == nil || w.Expected == nil || w.PendingKeys == nil || w.PendingOrigins == nil {
+	if w.Saved == nil || w.Captures == nil || w.Sources == nil || w.Articles == nil || w.Keys == nil || w.Pending == nil || w.Expected == nil || w.PendingKeys == nil || w.PendingOrigins == nil || w.Replies == nil {
 		return nil, errors.New("the prepared recording metadata is incomplete; prepare again")
 	}
 	if len(w.Saved) > 128 || len(w.Captures) > 32 {
@@ -106,8 +106,20 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 		result.Plan = value
 		add(item)
 	}
+	noteSources := []string{}
 	for i, n := range req.Notes {
-		item, pending, e := recordWorkNote(book, w, n, resolveSources, save)
+		sources := append([]string{}, w.Pending[n.Ref].Sources...)
+		resolveNote := func(refs []string) ([]string, error) {
+			ids, e := resolveSources(refs)
+			if e == nil {
+				sources = append(sources, ids...)
+			}
+			return ids, e
+		}
+		item, pending, e := recordWorkNote(book, w, n, resolveNote, save)
+		if e == nil && pending == nil && item.ID != "" {
+			noteSources = append(noteSources, sources...)
+		}
 		if item.Ref == "" {
 			item.Ref = "note" + strconv.Itoa(i+1)
 		}
@@ -122,6 +134,9 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 		}
 	}
 	reflection := reflectRequest{Operation: "submit"}
+	if len(noteSources) > 0 {
+		reflection.Wiki = append(reflection.Wiki, notebook.Draft{Sources: uniqueWorkStrings(noteSources)})
+	}
 	for _, r := range req.Reviews {
 		binding, ok := w.Reviews[r.Ref]
 		if !ok {
@@ -158,7 +173,7 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 	if len(reflection.Reviews)+len(reflection.Memory)+len(reflection.Wiki)+len(reflection.Maintenance) > 0 {
 		key := "reflection:" + workHash(reflection)
 		if prior, ok := w.Saved[key]; ok {
-			result.Reflection = w.Reflection
+			result.Reflection = w.Replies[key].Reflection
 			add(prior)
 		} else {
 			value, e := runReflect(root, scope, reflection)
@@ -172,7 +187,7 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 					item.Error = "some prepared reflection items remain; inspect reflection and resend corrected content"
 				} else {
 					w.Saved[key] = item
-					w.Reflection = &receipt
+					w.Replies[key] = workReply{Reflection: &receipt}
 					if e = save(); e != nil {
 						item.Error = e.Error()
 					}
@@ -198,14 +213,14 @@ func recordWorkPlan(root, scope string, token workToken, w *workState, req workR
 	}
 	key := "plan:" + workHash(p)
 	if prior, ok := w.Saved[key]; ok {
-		return prior, w.Plan, nil
+		return prior, w.Replies[key].Plan, nil
 	}
 	value, err := runPlanning(root, scope, "submit", p)
 	if err != nil {
 		return item, nil, err
 	}
 	receipt := value.(planningReceipt)
-	w.Plan = &receipt
+	w.Replies[key] = workReply{Plan: &receipt}
 	w.Saved[key] = item
 	return item, value, save()
 }
@@ -460,4 +475,16 @@ func finishWorkSources(book notebook.Book, sources []string) error {
 	}
 	_, err = book.Ingest(notebook.Draft{Sources: sources})
 	return err
+}
+
+func uniqueWorkStrings(values []string) []string {
+	result := []string{}
+	seen := map[string]bool{}
+	for _, v := range values {
+		if !seen[v] {
+			result = append(result, v)
+			seen[v] = true
+		}
+	}
+	return result
 }
