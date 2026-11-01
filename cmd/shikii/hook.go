@@ -277,15 +277,8 @@ func sessionFilesPath(agent, id string) string {
 	return strings.TrimSuffix(sessionPath(agent, id), ".json") + ".files"
 }
 
-// lockSession is the lock (flock) on the session record. Claude Code runs hooks in parallel (Stop and the next request overlap), so
-// read → change → write is done one process at a time. The lock is held briefly (model calls are outside it). If it is not acquired within hookLockWait, go on without it (the hook never stops).
-func lockSession(agent, id string) (unlock func()) {
-	unlock, ok := lockSessionWithin(agent, id, hookLockWait)
-	if !ok {
-		hookLog(fmt.Sprintf("session %s: lock busy for %s; proceeding without it", id, hookLockWait))
-	}
-	return unlock
-}
+// Session mutations share a checked flock. Model calls stay outside it, and a
+// failed acquisition must never become an unlocked write.
 
 // sessionLockBusy, when set (tests), is called each time lockSessionWithin finds the lock held and is about to wait: the moment another
 // hook's read → change → write is in progress.
@@ -297,8 +290,12 @@ func lockSessionWithin(agent, id string, wait time.Duration) (unlock func(), ok 
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return func() {}, false
 	}
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o600)
 	if err != nil {
+		return func() {}, false
+	}
+	if info, e := f.Stat(); e != nil || !info.Mode().IsRegular() {
+		f.Close()
 		return func() {}, false
 	}
 	deadline := time.Now().Add(wait)
@@ -324,7 +321,10 @@ func lockSessionWithin(agent, id string, wait time.Duration) (unlock func(), ok 
 
 // updateSession reads the record → changes it with fn → writes it, inside the lock. The only write path, so parallel hooks do not erase each other's changes.
 func updateSession(agent, id string, fn func(s *hookSession)) error {
-	unlock := lockSession(agent, id)
+	unlock, ok := lockSessionWithin(agent, id, hookLockWait)
+	if !ok {
+		return errors.New("the session lock is unavailable; the update was not saved")
+	}
 	defer unlock()
 	s, err := readSession(agent, id)
 	if err != nil {
@@ -397,6 +397,10 @@ func pruneSessions(agent string) {
 		return
 	}
 	for _, e := range entries {
+		// A shared lock must retain its inode while another process may hold or open it.
+		if strings.HasSuffix(e.Name(), ".lock") {
+			continue
+		}
 		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > hookSessionTTL {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
@@ -426,6 +430,13 @@ func usesHosted() bool {
 // hookDecide decides with the project's spec, maps the band to behaviour and records it. Without a line the band never becomes act (= the shadow period).
 // If the configured language is not English, output text is shown alongside English, and the record gets a display (language, question, answer, output text).
 func hookDecide(agent, specID string, inputs map[string]string, project string, originals ...map[string]string) (*decide.Decision, hookOut, error) {
+	return hookDecideWithCommit(agent, specID, inputs, project, nil, originals...)
+}
+
+func hookDecideWithCommit(agent, specID string, inputs map[string]string, project string, commit workCommitter, originals ...map[string]string) (*decide.Decision, hookOut, error) {
+	if commit == nil {
+		commit = func(action func() error) error { return action() }
+	}
 	sp, err := spec.Load(hookSpecPath(agent, specID))
 	if err != nil {
 		return nil, hookOut{}, err
@@ -453,13 +464,18 @@ func hookDecide(agent, specID string, inputs map[string]string, project string, 
 		if l.Lang != "" && (l.Question != "" || l.Top != "" || out.message() != "") { // no display with only the language (nothing to read)
 			rec.Display = &store.RecordDisplay{Lang: l.Lang, Question: l.Question, Top: l.Top, Message: out.message()}
 		}
-		if err := recordDecisionRec(st, sp, d, rec); err != nil {
-			return nil, hookOut{}, err
-		}
-		for _, text := range originals {
-			if err := st.SaveRecordText(rec, text); err != nil {
-				return d, out, err
+		if e := commit(func() error {
+			if e := recordDecisionRec(st, sp, d, rec); e != nil {
+				return e
 			}
+			for _, text := range originals {
+				if e := st.SaveRecordText(rec, text); e != nil {
+					return e
+				}
+			}
+			return nil
+		}); e != nil {
+			return nil, hookOut{}, e
 		}
 	}
 	return d, out, nil

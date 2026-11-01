@@ -133,6 +133,10 @@ const placeNote = "Until a line is drawn this is only a reference. Read the body
 
 // placeDrafts returns, for each draft, the same-topic candidates (highest p first) and the top suspected contradictions. The decisions are recorded and get their truth from the result of submit.
 func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, error) {
+	return placeDraftsWithCommit(root, scope, drafts, nil)
+}
+
+func placeDraftsWithCommit(root, scope string, drafts []notebook.Draft, commit workCommitter) (placeResult, error) {
 	res := placeResult{Placements: []placement{}}
 	if len(drafts) == 0 || len(drafts) > 2 {
 		return res, errors.New("place takes 1 or 2 wiki drafts")
@@ -170,7 +174,7 @@ func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, erro
 				slots <- struct{}{}
 				defer func() { <-slots }()
 				inputs := map[string]string{"title": p.Title, "lesson": p.Lesson, "applies_to": p.AppliesTo, "new_lesson": lesson, "new_applies": applies}
-				judged[j], _, errs[j] = hookDecide(root, "wiki-place", inputs, project)
+				judged[j], _, errs[j] = hookDecideWithCommit(root, "wiki-place", inputs, project, commit)
 			}(j, p)
 		}
 		wg.Wait()
@@ -197,7 +201,7 @@ func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, erro
 					existing = p.Lesson
 				}
 			}
-			d, _, err := hookDecide(root, "wiki-conflict", map[string]string{"lesson": existing, "new_lesson": lesson}, project)
+			d, _, err := hookDecideWithCommit(root, "wiki-conflict", map[string]string{"lesson": existing, "new_lesson": lesson}, project, commit)
 			if err != nil {
 				return res, err
 			}

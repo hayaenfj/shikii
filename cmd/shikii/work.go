@@ -374,6 +374,11 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 			pending = append(pending, map[string]any{"request": source.Source.Request, "head": true, "next_action": "Prepare again after the complete sources are settled; do not judge a shortened source."})
 			continue
 		}
+		material := prepareWorkSource(book, source.Source.ID)
+		if !material.Complete {
+			pending = append(pending, map[string]any{"request": source.Source.Request, "head": true, "incomplete": true, "wiki_pending": source.WikiPending, "source": material.Material, "source_query": material.Query, "next_action": material.Notice})
+			continue
+		}
 		w.Sources[ref] = source.Source.ID
 		reviews := []any{}
 		memories := []any{}
@@ -389,22 +394,18 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 			w.Memory[r] = workMemoryRef{m.SourceID, m.Quote.Key}
 			memories = append(memories, map[string]any{"ref": r, "quote": m.Quote, "request": m.Request, "parent": m.Parent, "agent": m.Agent, "tool": m.Tool, "phrase": m.Phrase, "at": m.At})
 		}
-		pending = append(pending, map[string]any{"ref": ref, "request": source.Source.Request, "answer": source.Source.Summary, "reply": source.Source.Reply, "head": source.Head, "wiki_pending": source.WikiPending, "reviews": reviews, "memory": memories})
+		pending = append(pending, map[string]any{"ref": ref, "request": source.Source.Request, "answer": source.Source.Summary, "reply": source.Source.Reply, "head": source.Head, "wiki_pending": source.WikiPending, "source": material.Material, "reviews": reviews, "memory": memories})
 	}
 	evidence := []any{}
 	for i, o := range reflection.Observations {
 		ref := "evidence" + strconv.Itoa(i+1)
-		view, e := book.ReadSources([]string{o.ID})
-		if e != nil {
-			return nil, e
-		}
-		data, _ := json.Marshal(view)
-		if len(data) > 128<<10 {
-			evidence = append(evidence, map[string]any{"head": o, "next_action": "Read this source with wiki query before using the low-level recording operations; it exceeds the prepared evidence budget."})
+		material := prepareWorkSource(book, o.ID)
+		if !material.Complete {
+			evidence = append(evidence, map[string]any{"head": o, "incomplete": true, "source": material.Material, "source_query": material.Query, "next_action": material.Notice})
 			continue
 		}
 		w.Sources[ref] = o.ID
-		evidence = append(evidence, map[string]any{"ref": ref, "source": view})
+		evidence = append(evidence, map[string]any{"ref": ref, "source": material.Material})
 	}
 	maintenance := []any{}
 	for _, m := range reflection.Maintenance {
@@ -419,6 +420,10 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		w.Maintenance[ref] = notebook.MaintenanceReview{PageID: m.PageID, Revision: m.Revision, Key: m.Key}
 		maintenance = append(maintenance, map[string]any{"ref": ref, "task": m})
 	}
+	reflectionContext, err := preparedReflectionContext(reflection)
+	if err != nil {
+		return nil, err
+	}
 	if err = saveWorkState(dir, name, scope, req.TurnID, w, true); err != nil {
 		return nil, err
 	}
@@ -429,7 +434,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 			task = req.Query
 		}
 	}
-	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "agent_supplied_task": standalone, "conversation": conversation, "context_notice": planningContext, "knowledge": knowledge, "pending": pending, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord}, nil
+	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "agent_supplied_task": standalone, "conversation": conversation, "context_notice": planningContext, "knowledge": knowledge, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord + " Before judging, read reflection_context.human_corrections and each source.originals/text_status. Incomplete sources have no recording references; follow source_query and use the individual operations after reading."}, nil
 }
 
 const workHowToRecord = "Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits; metadata and revisions are retained. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."

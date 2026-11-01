@@ -2716,7 +2716,10 @@ func TestSweepRereadsInsideLock(t *testing.T) {
 func TestSweepSkipsLockedSession(t *testing.T) {
 	_, root, done := deferredTurn(t, sweepReply)
 	ageDeferral(t, root)
-	unlock := lockSession(root, "planning")
+	unlock, ok := lockSessionWithin(root, "planning", 0)
+	if !ok {
+		t.Fatal("the sweep test needs to own the session lock")
+	}
 	sweepDeferrals(root, "")
 	unlock()
 	if l, ok := doneLabel(t, root, done); ok {

@@ -206,6 +206,16 @@ type reflectResult struct {
 }
 
 func runReflect(root, scope string, req reflectRequest) (any, error) {
+	return runReflectWithCommit(root, scope, req, nil)
+}
+
+// A prepared work receipt guards each storage operation against a turn change.
+// Ordinary reflection has no turn constraint and keeps its existing behavior.
+func runReflectWithCommit(root, scope string, req reflectRequest, commit workCommitter) (any, error) {
+	if commit == nil {
+		commit = func(action func() error) error { return action() }
+	}
+
 	if scope == "" {
 		return nil, errors.New("cannot determine the project to reflect on")
 	}
@@ -235,7 +245,7 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	result := reflectResult{Complete: true, Reviews: []reflectReceipt{}, Wiki: []reflectReceipt{}, Memory: []reflectReceipt{}}
 	for _, d := range req.Discoveries {
 		r := reflectReceipt{PageID: d.PageID, Key: d.LookupID}
-		if err := (notebook.Book{Root: root, Scope: scope}).Discover(d); err != nil {
+		if err := commit(func() error { return (notebook.Book{Root: root, Scope: scope}).Discover(d) }); err != nil {
 			result.Complete = false
 			r.Error = err.Error()
 		}
@@ -243,7 +253,7 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	}
 	for _, review := range req.Reviews {
 		review.Operation = "submit"
-		_, err := runReview(root, scope, review)
+		err := commit(func() error { _, e := runReview(root, scope, review); return e })
 		receipt := reflectReceipt{TraceID: review.TraceID}
 		if err != nil {
 			result.Complete, receipt.Error = false, err.Error()
@@ -258,7 +268,8 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	touched := map[string]bool{}
 	for _, draft := range req.Wiki {
 		// the truth from the result for the insertion-point and contradiction decisions is built before saving and written after the save succeeds (once the page changes, it can no longer be matched with the decision's input)
-		res, err := ingestWithOutcome(root, scope, draft)
+		var res notebook.Result
+		err := commit(func() error { var e error; res, e = ingestWithOutcome(root, scope, draft); return e })
 		if err == nil && res.Page != nil && res.Page.ID != "" { // a sources-only draft saves no page
 			touched[res.Page.ID] = true // the pages this submit's own saves changed: a review's key is remapped only for them (audit B of 0.12)
 		}
@@ -273,13 +284,15 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 	}
 	for _, a := range req.Memory {
 		assessment := store.MemoryAssessment{SourceID: a.SourceID, Key: a.Key, Result: a.Result, Decision: a.Decision, Evidence: a.Evidence, CorrectionResult: a.CorrectionResult}
-		err := (store.Store{Dir: root}).SaveMemoryAssessment(scope, assessment)
-		if err == nil { // the assessment is the outcome truth of the delivery's lesson-applies decision (0.12); the truth is best effort:
-			// a failure to attach it (the decision's record gone) never fails the receipt, or the agent would resend the same assessment for ever
-			if lerr := labelLessonApplies(store.Store{Dir: root}, scope, assessment); lerr != nil {
-				hookLog("lesson-applies truth: " + lerr.Error())
+		err := commit(func() error {
+			if e := (store.Store{Dir: root}).SaveMemoryAssessment(scope, assessment); e != nil {
+				return e
 			}
-		}
+			if e := labelLessonApplies(store.Store{Dir: root}, scope, assessment); e != nil {
+				hookLog("lesson-applies truth: " + e.Error())
+			}
+			return nil
+		})
 		receipt := reflectReceipt{SourceID: a.SourceID, Key: a.Key}
 		if err != nil {
 			result.Complete, receipt.Error = false, err.Error()
@@ -302,7 +315,7 @@ func runReflect(root, scope string, req reflectRequest) (any, error) {
 				m.Revision, m.Key = after.Revision, after.Key
 			}
 		}
-		_, err := (notebook.Book{Root: root, Scope: scope}).Maintain(m)
+		err := commit(func() error { _, e := (notebook.Book{Root: root, Scope: scope}).Maintain(m); return e })
 		receipt := reflectReceipt{PageID: m.PageID, Key: m.Key}
 		if err != nil {
 			result.Complete, receipt.Error = false, err.Error()

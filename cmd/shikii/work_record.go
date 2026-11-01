@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hayaenfj/shikii"
@@ -48,13 +49,45 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 	if w.Saved == nil || w.Captures == nil || w.Sources == nil || w.Articles == nil || w.Keys == nil || w.Pending == nil || w.Expected == nil || w.PendingKeys == nil || w.PendingOrigins == nil || w.Replies == nil {
 		return nil, errors.New("the prepared recording metadata is incomplete; prepare again")
 	}
-	if len(w.Saved) > 128 || len(w.Captures) > 32 {
+	if len(w.Captures) > 32 {
 		return nil, errors.New("this recording context is full; prepare again")
 	}
 	if w.Standalone && (req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil) {
 		return nil, errors.New("an agent-supplied task is not a human agreement; use the current hook context for planning")
 	}
-	save := func() error { return saveWorkState(dir, name, scope, token.Turn, w, false) }
+	var interrupted error
+	var commitMu sync.Mutex
+	save := func() error {
+		commitMu.Lock()
+		defer commitMu.Unlock()
+		if interrupted != nil {
+			return interrupted
+		}
+		e := saveWorkState(dir, name, scope, token.Turn, w, false)
+		if e != nil {
+			interrupted = e
+		}
+		return e
+	}
+	commit := workCommitter(func(action func() error) error {
+		commitMu.Lock()
+		defer commitMu.Unlock()
+		if interrupted != nil {
+			return interrupted
+		}
+		ran := false
+		e := commitWorkTurn(dir, name, scope, token, func() error {
+			ran = true
+			if action == nil {
+				return nil
+			}
+			return action()
+		})
+		if !ran && e != nil {
+			interrupted = e
+		}
+		return e
+	})
 	result := workResult{Complete: true, Saved: []workItem{}}
 	add := func(item workItem) {
 		if item.Error != "" {
@@ -64,10 +97,22 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			result.Saved = append(result.Saved, item)
 		}
 	}
+	halt := func() bool {
+		_ = commit(nil)
+		commitMu.Lock()
+		e := interrupted
+		commitMu.Unlock()
+		if e == nil {
+			return false
+		}
+		add(workItem{Ref: "remaining", Kind: "context", Error: "remaining operations stopped: " + e.Error()})
+		return true
+	}
+
 	book := notebook.Book{Root: root, Scope: scope}
 	local := map[string]string{}
 	for i, o := range req.Observations {
-		ref, id, err := captureWorkObservation(book, w, o, save)
+		ref, id, err := captureWorkObservation(book, w, o, save, commit)
 		item := workItem{Ref: ref, Kind: "observation", ID: id}
 		if err != nil {
 			item.Error = err.Error()
@@ -75,6 +120,9 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			local["new"+strconv.Itoa(i+1)] = id
 		}
 		add(item)
+		if halt() {
+			return result, nil
+		}
 	}
 	resolveSources := func(refs []string) ([]string, error) {
 		sources := []string{}
@@ -84,7 +132,7 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 				id = w.Sources[ref]
 			}
 			if id == "" && ref == "current" && !w.Standalone {
-				alias, source, err := captureWorkObservation(book, w, workObservation{Kind: "human", Title: "Current request quoted during work", Content: w.Current, Reference: "current request recorded by the hook"}, save)
+				alias, source, err := captureWorkObservation(book, w, workObservation{Kind: "human", Title: "Current request quoted during work", Content: w.Current, Reference: "current request recorded by the hook"}, save, commit)
 				if err != nil {
 					return nil, err
 				}
@@ -105,6 +153,9 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 		}
 		result.Plan = value
 		add(item)
+		if halt() {
+			return result, nil
+		}
 	}
 	noteSources := []string{}
 	for i, n := range req.Notes {
@@ -116,7 +167,7 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			}
 			return ids, e
 		}
-		item, pending, e := recordWorkNote(book, w, n, resolveNote, save)
+		item, pending, e := recordWorkNote(book, w, n, resolveNote, save, commit)
 		if e == nil && pending == nil && item.ID != "" {
 			noteSources = append(noteSources, sources...)
 		}
@@ -131,6 +182,9 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			result.Complete = false
 		} else {
 			add(item)
+		}
+		if halt() {
+			return result, nil
 		}
 	}
 	reflection := reflectRequest{Operation: "submit"}
@@ -171,12 +225,22 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 		reflection.Maintenance = append(reflection.Maintenance, review)
 	}
 	if len(reflection.Reviews)+len(reflection.Memory)+len(reflection.Wiki)+len(reflection.Maintenance) > 0 {
+		// Automatically checking a note's remainder must stay available at capacity.
+		// It is a fresh check, not a separately requested durable assessment batch.
+		persist := len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance) > 0
 		key := "reflection:" + workHash(reflection)
-		if prior, ok := w.Saved[key]; ok {
+		if prior, ok := w.Saved[key]; ok && persist {
 			result.Reflection = w.Replies[key].Reflection
 			add(prior)
 		} else {
-			value, e := runReflect(root, scope, reflection)
+			var value any
+			var e error
+			if persist {
+				e = workSavedCapacity(w, key)
+			}
+			if e == nil {
+				value, e = runReflectWithCommit(root, scope, reflection, commit)
+			}
 			item := workItem{Ref: "reflection", Kind: "reflection"}
 			if e != nil {
 				item.Error = e.Error()
@@ -185,7 +249,7 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 				receipt := value.(reflectResult)
 				if !receipt.Complete || receipt.LeftError != "" || len(receipt.Left) > 0 {
 					item.Error = "some prepared reflection items remain; inspect reflection and resend corrected content"
-				} else {
+				} else if persist {
 					w.Saved[key] = item
 					w.Replies[key] = workReply{Reflection: &receipt}
 					if e = save(); e != nil {
@@ -215,6 +279,9 @@ func recordWorkPlan(root, scope string, token workToken, w *workState, req workR
 	if prior, ok := w.Saved[key]; ok {
 		return prior, w.Replies[key].Plan, nil
 	}
+	if e := workSavedCapacity(w, key); e != nil {
+		return item, nil, e
+	}
 	value, err := runPlanning(root, scope, "submit", p)
 	if err != nil {
 		return item, nil, err
@@ -242,7 +309,7 @@ func resolveWorkFact(f *workFact, w *workState) (*planningFact, error) {
 	}
 	return p, nil
 }
-func captureWorkObservation(book notebook.Book, w *workState, o workObservation, save func() error) (string, string, error) {
+func captureWorkObservation(book notebook.Book, w *workState, o workObservation, save func() error, commit workCommitter) (string, string, error) {
 	if o.Kind == "" {
 		o.Kind = "agent"
 	}
@@ -275,12 +342,13 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 		return memo.Ref, memo.ID, nil
 	}
 	value.ObservedAt, value.Version = memo.At, memo.Version
-	captured, err := book.Capture(value)
+	var captured notebook.Observation
+	err := commit(func() error { var e error; captured, e = book.Capture(value); return e })
 	if err != nil {
 		return memo.Ref, "", err
 	}
 	if err = workAfterWrite("observation"); err != nil {
-		return memo.Ref, "", err
+		return memo.Ref, captured.ID, err
 	}
 	memo.ID = captured.ID
 	w.Captures[key] = memo
@@ -291,7 +359,7 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 	return memo.Ref, memo.ID, nil
 }
 
-func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([]string) ([]string, error), save func() error) (workItem, any, error) {
+func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([]string) ([]string, error), save func() error, commit workCommitter) (workItem, any, error) {
 	item := workItem{Ref: n.Ref, Kind: "note"}
 	d := n.Draft
 	if n.Ref == "" && n.Target != "" && n.Target != "new" && (d.Title != "" || d.Lesson != "" || d.AppliesTo != "" || d.Body != nil || d.Rationale != nil || d.Watch != nil || d.Related != nil || d.Correction != nil || d.Kind != "" || d.Scene != "") {
@@ -346,6 +414,13 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 	if prior, ok := w.Saved[key]; ok {
 		return prior, nil, nil
 	}
+	keys := []string{key}
+	if origin := w.PendingOrigins[n.Ref]; origin != "" {
+		keys = append(keys, origin)
+	}
+	if e := workSavedCapacity(w, keys...); e != nil {
+		return item, nil, e
+	}
 	d.ChangeReason = strings.TrimSpace(d.ChangeReason + " [work " + w.Nonce[:8] + " " + signature[:12] + "]")
 	// Recovery after a published article but a failed checkpoint uses the exact
 	// expected revision, never a newly read page as permission to overwrite it.
@@ -355,7 +430,7 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 			return item, nil, err
 		}
 		if len(live) == 1 && live[0].Revision == expected.Revision {
-			if err = finishWorkSources(book, d.Sources); err != nil {
+			if err = commit(func() error { return finishWorkSources(book, d.Sources) }); err != nil {
 				return workItem{Kind: "note", ID: expected.ID, Revision: expected.Revision}, nil, err
 			}
 			item.ID, item.Revision = expected.ID, expected.Revision
@@ -379,11 +454,14 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 			return item, nil, err
 		}
 		w.Expected[key] = store.KnowledgeReference{ID: preview.Page.ID, Revision: preview.Page.Revision}
+		if origin := w.PendingOrigins[n.Ref]; origin != "" {
+			w.Expected[origin] = w.Expected[key]
+		}
 		if err = save(); err != nil {
 			return item, nil, err
 		}
-		value, e := book.Patch(patch)
-		err = e
+		var value notebook.Result
+		err = commit(func() error { var e error; value, e = book.Patch(patch); return e })
 		if value.Page != nil {
 			item.ID, item.Revision, item.Warnings = value.Page.ID, value.Page.Revision, value.Warnings
 		}
@@ -391,7 +469,7 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 		pendingKey := workHash(n.Draft)
 		alreadyReviewed := n.Ref != "" && n.Target == "new"
 		if !alreadyReviewed {
-			placed, e := placeDrafts(book.Root, book.Scope, []notebook.Draft{d})
+			placed, e := placeDraftsWithCommit(book.Root, book.Scope, []notebook.Draft{d}, commit)
 			if e != nil {
 				return item, nil, e
 			}
@@ -441,11 +519,14 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 			return item, nil, err
 		}
 		w.Expected[key] = store.KnowledgeReference{ID: preview.Page.ID, Revision: preview.Page.Revision}
+		if origin := w.PendingOrigins[n.Ref]; origin != "" {
+			w.Expected[origin] = w.Expected[key]
+		}
 		if err = save(); err != nil {
 			return item, nil, err
 		}
-		value, e := ingestWithOutcome(book.Root, book.Scope, d)
-		err = e
+		var value notebook.Result
+		err = commit(func() error { var e error; value, e = ingestWithOutcome(book.Root, book.Scope, d); return e })
 		if value.Page != nil {
 			item.ID, item.Revision = value.Page.ID, value.Page.Revision
 		}
@@ -456,7 +537,7 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 	if err = workAfterWrite("note"); err != nil {
 		return item, nil, err
 	}
-	if err = finishWorkSources(book, d.Sources); err != nil {
+	if err = commit(func() error { return finishWorkSources(book, d.Sources) }); err != nil {
 		return item, nil, err
 	}
 	w.Saved[key] = item
