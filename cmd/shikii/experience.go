@@ -42,10 +42,11 @@ func compactExperienceCheck(c notebook.AssistanceCheck) experienceCheck {
 }
 
 type reuseStep struct {
-	Source      store.KnowledgeReference     `json:"source"`
-	Instruction string                       `json:"instruction"`
-	Evidence    []notebook.ProcedureEvidence `json:"evidence"`
-	Unknown     []string                     `json:"unknown,omitempty"`
+	Source      store.KnowledgeReference        `json:"source"`
+	Instruction string                          `json:"instruction"`
+	Evidence    []notebook.ProcedureEvidence    `json:"evidence"`
+	Unknown     []string                        `json:"unknown,omitempty"`
+	Outcomes    []notebook.ProcedureOutcomeView `json:"outcomes,omitempty"`
 }
 
 type experienceView struct {
@@ -76,7 +77,11 @@ func consultExperience(b notebook.Book, req notebookRequest) (experienceView, er
 			if err != nil {
 				return v, err
 			}
-			v.Steps = append(v.Steps, reuseStep{Source: store.KnowledgeReference{ID: c.Page.ID, Revision: c.Page.Revision}, Instruction: c.Page.Lesson, Evidence: evidence, Unknown: unknown})
+			outcomes, e := b.ProcedureOutcomes(c.Page, req.Request+" "+req.Conditions)
+			if e != nil {
+				return v, e
+			}
+			v.Steps = append(v.Steps, reuseStep{Source: store.KnowledgeReference{ID: c.Page.ID, Revision: c.Page.Revision}, Instruction: c.Page.Lesson, Evidence: evidence, Unknown: unknown, Outcomes: outcomes})
 		}
 	}
 	// Reuse the project's calibrated relevance question, with a fixed call cap.
@@ -98,6 +103,7 @@ func consultExperience(b notebook.Book, req notebookRequest) (experienceView, er
 	}
 	if reuse {
 		v.NextAction = "Assemble an ordered procedure for the request and current conditions from the cited howtos and evidence. Use exact excerpts first; read a full cited revision or source only when a necessary condition or outcome remains unresolved. Name the source of each step, prerequisites, rejected approaches, validation results and changed premises. Distinguish recorded results from unverified claims; current work records are not immutable test evidence. State what needs rechecking and any missing evidence. Do not execute the commands or reuse historical authorization."
+		v.NextAction += " Compare each recorded outcome's prior conditions and procedure revision with the current conditions. Use failures and corrections to propose changes backed by the linked evidence; record any resulting howto update with sources. A reported result is not a success label."
 		if len(v.Steps) == 0 {
 			v.Unknown = append(v.Unknown, "No matching howto is available; do not invent a successful procedure.")
 		}

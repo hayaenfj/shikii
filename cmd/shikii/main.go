@@ -128,7 +128,7 @@ func usageText() string {
                    As a Claude Code / Codex hook, measure how the AI itself thinks at 2 points: before thinking (will this request end up changing files, should the plan be agreed before starting) and
                    after thinking (did the changes stay within what was asked, was the request finished). The store is the project's .shikii/, the model is :8080, the page uses a free port per project (shikii page). Quotes past conversations and wiki lessons and hands the organizing to the agent. Advice from decisions starts only after a line is drawn. Never blocks tools
   shikii work prepare | record (JSON on stdin)
-                   Prepare knowledge and pending work once; record judgment, observations and notes with its receipt
+                   Prepare knowledge; add searches/consult/reuse with the same receipt; record judgments, evidence and procedure outcomes
   shikii hook plan query | submit (JSON on stdin)
                    Your usual agent organizes the request, the agreed plan and open questions before starting, with the original text, and decides. Not treated as a person's input or as a truth
   shikii uninstall [--yes]

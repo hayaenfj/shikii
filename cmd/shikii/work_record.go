@@ -23,13 +23,13 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if req.SessionID != "" || req.TurnID != "" || req.Query != "" || req.Request != "" {
+	if req.SessionID != "" || req.TurnID != "" || req.Query != "" || req.Request != "" || req.Proposal != "" || req.Conditions != "" || req.Cursor != "" {
 		return nil, errors.New("record uses its receipt; do not replace prepared task identifiers")
 	}
-	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 {
+	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 || len(req.Discoveries) > 4 || len(req.Outcomes) > 2 {
 		return nil, errors.New("the recording batch exceeds its fixed item limits")
 	}
-	if req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance) == 0 {
+	if req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
 		return nil, errors.New("record needs content that was judged or observed")
 	}
 	dir, err := openWorkSessions(root)
@@ -146,6 +146,28 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			sources = append(sources, id)
 		}
 		return sources, nil
+	}
+	for i, d := range req.Discoveries {
+		item, e := recordWorkDiscovery(book, w, token, d, save, commit)
+		item.Ref = "discovery" + strconv.Itoa(i+1)
+		if e != nil {
+			item.Error = e.Error()
+		}
+		add(item)
+		if halt() {
+			return result, nil
+		}
+	}
+	for i, o := range req.Outcomes {
+		item, e := recordWorkOutcome(book, w, o, resolveSources, save, commit)
+		item.Ref = "outcome" + strconv.Itoa(i+1)
+		if e != nil {
+			item.Error = e.Error()
+		}
+		add(item)
+		if halt() {
+			return result, nil
+		}
 	}
 	if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil {
 		item, value, e := recordWorkPlan(root, scope, token, w, req, save)
@@ -266,7 +288,7 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 
 func recordWorkPlan(root, scope string, token workToken, w *workState, req workRequest, save func() error) (workItem, any, error) {
 	item := workItem{Ref: "plan", Kind: "plan"}
-	p := planningRequest{SessionID: token.Session, TurnID: token.Turn, Query: w.Query, Pages: w.Pages, ContinuesPrevious: req.ContinuesPrevious}
+	p := planningRequest{SessionID: token.Session, TurnID: token.Turn, Query: w.Query, Pages: w.Pages, ContinuesPrevious: req.ContinuesPrevious, workNonce: token.Nonce}
 	var err error
 	p.Agreed, err = resolveWorkFact(req.Agreed, w)
 	if err != nil {
@@ -310,7 +332,8 @@ func resolveWorkFact(f *workFact, w *workState) (*planningFact, error) {
 	}
 	return p, nil
 }
-func captureWorkObservation(book notebook.Book, w *workState, o workObservation, save func() error, commit workCommitter) (string, string, error) {
+func prepareWorkObservation(w *workState, o workObservation) (notebook.Observation, string, error) {
+	var value notebook.Observation
 	if o.Kind == "" {
 		o.Kind = "agent"
 	}
@@ -321,18 +344,27 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 		o.Version = "recorded by shikii " + shikii.Version
 	}
 	if len(o.Content) > 64<<10 {
-		return "", "", errors.New("an observation must fit 64 KiB; retain a long report in handoff and cite its relevant evidence")
+		return value, "", errors.New("an observation must fit 64 KiB; retain a long report in handoff and cite its relevant evidence")
 	}
-	value := notebook.Observation{Kind: o.Kind, Title: o.Title, Content: o.Content, Reference: o.Reference, Version: o.Version, ObservedAt: time.Now().UTC()}
+	value = notebook.Observation{Kind: o.Kind, Title: o.Title, Content: o.Content, Reference: o.Reference, Version: o.Version, ObservedAt: time.Now().UTC()}
 	if err := value.Validate(); err != nil {
-		return "", "", err
+		return value, "", err
 	}
 	key := workHash(o)
+	if _, exists := w.Captures[key]; !exists && len(w.Captures) >= 32 {
+		return value, key, errors.New("this work has reached its observation limit; prepare again")
+	}
+	return value, key, nil
+}
+
+func captureWorkObservation(book notebook.Book, w *workState, o workObservation, save func() error, commit workCommitter) (string, string, error) {
+	value, key, err := prepareWorkObservation(w, o)
+	if err != nil {
+		return "", "", err
+	}
+
 	memo, ok := w.Captures[key]
 	if !ok {
-		if len(w.Captures) >= 32 {
-			return "", "", errors.New("this work has reached its observation limit; prepare again")
-		}
 		memo = workCapture{Ref: "observed" + strconv.Itoa(len(w.Captures)+1), At: value.ObservedAt, Version: value.Version}
 		w.Captures[key] = memo
 		if err := save(); err != nil {
@@ -344,7 +376,7 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 	}
 	value.ObservedAt, value.Version = memo.At, memo.Version
 	var captured notebook.Observation
-	err := commit(func() error { var e error; captured, e = book.Capture(value); return e })
+	err = commit(func() error { var e error; captured, e = book.Capture(value); return e })
 	if err != nil {
 		return memo.Ref, "", err
 	}

@@ -148,7 +148,15 @@ Planning's `hook plan query` also returns up to two live `criteria` pages direct
 
 Use `shikii work prepare` with topic words in `query` and the current hook's `session_id` and `turn_id`. Without a hook, pass `query` and an agent-supplied `request`; it cannot establish a human agreement. Read the returned conversation, knowledge, pending evidence and `how_to_record`. Then use `shikii work record` with its `receipt`, your interpretation, checked observations and source-backed notes. Shikii retains source identifiers, exact article revisions and capture metadata. Placement candidates requiring interpretation come back to the agent. Check `complete`, `errors`, `pending` and reflection's remaining work; retry corrected content with the same receipt.
 
-MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same active session on 0.19.0.
+MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same active session on 0.20.0.
+
+### Connect knowledge and results during work (0.20.0)
+
+Preparation supplies exact, focused passages with byte offsets and revisions when full bodies do not fit. Read the whole revision only for unresolved conditions or exceptions. Pass the same receipt with query, proposal or conditions to add search, consult or reuse while retaining earlier references, saves and retries; cursor continues a search. Added article fields and exact passages can be quoted through the same knowledge reference, preserving earlier quotations; unseen bodies cannot be quoted and agreement still needs human words. Consult/reuse text fields, including the retained task, are limited to 16000 bytes. For a longer task, use individual wiki operations with an explicitly scoped request.
+
+Record discoveries by article ref with context, decision and evidence. Identical work retries recover a published discovery after edits, deletion or replacement; definite refusals consume no recording capacity. Record procedure outcomes with a howto ref, conditions, action, failure, correction, result and observed source refs. Reuse returns prior conditions, failures, corrections, reported results and evidence, flags changed procedure revisions, and asks the agent to compare current conditions and save source-backed howto updates. Reports do not create success labels or human truths.
+
+See the [recording workflow](../skills/shikii/references/recording.md) for examples, fixed limits and retry/version boundaries. These operations are available from 0.20.0. Update all processes sharing the records before using them; older writers do not preserve the new context or outcome index.
 
 ### Use project experience while working (0.18.0)
 

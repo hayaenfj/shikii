@@ -124,12 +124,7 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 			}
 		}
 		context.Read = append(context.Read, ref)
-		ids := []string{}
-		for _, source := range page.Sources {
-			ids = append(ids, source.ID)
-		}
-		sources["article:"+page.ID+":"+page.Revision] = fmt.Sprintf("wiki article (a hypothesis with sources, not the current agreement)\ntitle: %s\nsummary: %s\napplies when: %s\n\n%s\n\nsources: %s", page.Title, page.Lesson, page.AppliesTo, page.Body, strings.Join(ids, ", "))
-		sources["article:"+page.ID+":"+page.Revision] += planningPageContext(page)
+		sources["article:"+page.ID+":"+page.Revision] = planningArticleSource(page)
 	}
 	for key, text := range sources {
 		if strings.HasPrefix(key, "lesson:") || strings.HasPrefix(key, "article:") {
@@ -138,6 +133,14 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 	}
 	context.LookupMilliseconds = float64(time.Since(started).Nanoseconds()) / 1e6
 	return notice, context, nil
+}
+
+func planningArticleSource(page notebook.Page) string {
+	ids := []string{}
+	for _, source := range page.Sources {
+		ids = append(ids, source.ID)
+	}
+	return fmt.Sprintf("wiki article (a hypothesis with sources, not the current agreement)\ntitle: %s\nsummary: %s\napplies when: %s\n\n%s\n\nsources: %s", page.Title, page.Lesson, page.AppliesTo, page.Body, strings.Join(ids, ", ")) + planningPageContext(page)
 }
 
 func planningLinkedCriteria(book notebook.Book, pages []notebook.Page) ([]notebook.Page, []store.KnowledgeLink, error) {
@@ -206,11 +209,15 @@ func validatePlanningKnowledge(root, scope string, context *store.KnowledgeConte
 		return nil
 	}
 	book := notebook.Book{Root: root, Scope: scope}
-	linked := map[string]bool{}
-	for _, ref := range context.Related {
-		linked[ref.ID] = true
+	wanted := map[string]bool{}
+	for _, e := range context.Used {
+		parts := strings.Split(e.Source, ":")
+		if len(parts) != 3 {
+			return errors.New("the identifier of a wiki quote is invalid")
+		}
+		wanted[parts[1]] = true
 	}
-	live, err := book.LiveWhere(func(p notebook.Page) bool { return linked[p.ID] })
+	live, err := book.LiveWhere(func(p notebook.Page) bool { return wanted[p.ID] })
 	if err != nil {
 		return err
 	}
@@ -223,8 +230,8 @@ func validatePlanningKnowledge(root, scope string, context *store.KnowledgeConte
 		if len(parts) != 3 {
 			return errors.New("the identifier of a wiki quote is invalid")
 		}
-		if linked[parts[1]] && !liveRefs[store.KnowledgeReference{ID: parts[1], Revision: parts[2]}] {
-			return errors.New("a quoted related criterion is no longer current. Read the context again")
+		if !liveRefs[store.KnowledgeReference{ID: parts[1], Revision: parts[2]}] {
+			return errors.New("a quoted wiki article is no longer current. Read the context again")
 		}
 		view, err := book.Query("lesson:" + parts[1])
 		if err != nil || len(view.Lessons) != 1 || view.Lessons[0].Revision != parts[2] {

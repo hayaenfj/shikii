@@ -29,6 +29,9 @@ func savePlanningQuery(dir *os.Root, name, scope string, req planningRequest, so
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
 		return err
 	}
+	// Replacing the planning snapshot also replaces its prepared references.
+	// Never leave a live receipt pointing at a different quotation context.
+	s.Planning.Work = nil
 	s.Planning.Sources, s.Planning.Knowledge, s.Planning.KnowledgePages = sources, knowledge, req.Pages
 	data, err := encodeHookSession(s)
 	if err != nil {

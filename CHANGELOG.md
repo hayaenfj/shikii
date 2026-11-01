@@ -2,6 +2,17 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.20.0 — Connect knowledge and results throughout the work
+
+- Register initial excerpts and added knowledge through the same quotation path; replacing the planning context invalidates its receipt, including in-flight decisions.
+- Check internal snapshot capacity before reserving an outcome and release reservations on definite publication refusal.
+- Replace the development-only deepmerge implementation with a local, prototype-safe compatibility package. Verify the actual plugin import and fail CI on npm advisories at low severity or above.
+- Recover published discoveries after article changes without retaining capacity for definite refusals. Allow mid-work article quotations while preserving exact supplied text, earlier quotes and human-agreement checks.
+- Supply focused, exact passages with revisions and byte offsets during preparation; read full bodies only for unresolved conditions or exceptions.
+- Add mid-work search, consult and reuse with the same receipt, retaining earlier saves and retry state. Record evidenced discoveries by local article reference.
+- Link procedure conditions, failures, corrections and reported results to cited evidence, and return them during reuse for comparison with current conditions. Outcomes never create success labels or human truths.
+- Update all writers sharing the records before use; older versions do not preserve the new context and outcome index.
+
 ## 0.19.0 — Keep recording behind the work
 
 - Add `work prepare` and `work record`: gather the current request, project knowledge and pending evidence, then save judgments, observations and notes with one project/turn-bound receipt.

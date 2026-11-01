@@ -53,12 +53,14 @@ type planningFact struct {
 }
 
 type planningRequest struct {
-	SessionID string        `json:"session_id"`
-	Query     string        `json:"query,omitempty"`
-	TurnID    string        `json:"turn_id"`
-	Agreed    *planningFact `json:"agreed,omitempty"`
-	Open      *planningFact `json:"open,omitempty"`
-	Pages     []string      `json:"pages,omitempty"`
+	workPrepare bool          // Stage a query until work preparation passes its budgets.
+	workNonce   string        // Internal receipt binding; never accepted from transport JSON.
+	SessionID   string        `json:"session_id"`
+	Query       string        `json:"query,omitempty"`
+	TurnID      string        `json:"turn_id"`
+	Agreed      *planningFact `json:"agreed,omitempty"`
+	Open        *planningFact `json:"open,omitempty"`
+	Pages       []string      `json:"pages,omitempty"`
 	// ContinuesPrevious is the agent's reading of whether this message only continues or answers the previous request.
 	// It only decides how messages are grouped (never a truth); omitted when unsure (the acknowledgement list decides then)
 	ContinuesPrevious *bool `json:"continues_previous,omitempty"`
@@ -67,6 +69,14 @@ type planningRequest struct {
 	// session and project, and compares the message with that request's own text by the fixed rule; a wrong or unknown id falls back (0.9.3)
 	Restates   string          `json:"restates,omitempty"`
 	Reflection *reflectRequest `json:"reflection,omitempty"`
+}
+
+// An internal preparation owns its staged sources until the whole work response
+// has passed validation. Public query still replaces the live snapshot.
+type stagedPlanningQuery struct {
+	Session  *hookSession
+	Revision string
+	Notice   string
 }
 
 type planningReceipt struct {
@@ -192,13 +202,21 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
 		return nil, err
 	}
+	if err := currentPlanningWork(s, req); err != nil {
+		return nil, err
+	}
 	if operation == "query" {
+		baseRevision := workHash(s.Planning)
 		notice, knowledge, err := preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
 		if err != nil {
 			return nil, err
 		}
 		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || req.Restates != "" || req.Reflection != nil {
 			return nil, errors.New("query does not accept organized content")
+		}
+		if req.workPrepare {
+			s.Planning.Knowledge, s.Planning.KnowledgePages = knowledge, req.Pages
+			return stagedPlanningQuery{Session: s, Revision: baseRevision, Notice: notice}, nil
 		}
 		if err := savePlanningQuery(sessions, name, scope, req, s.Planning.Sources, knowledge); err != nil {
 			return nil, err
@@ -232,6 +250,9 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 		return nil, err
 	}
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
+		return nil, err
+	}
+	if err := currentPlanningWork(s, req); err != nil {
 		return nil, err
 	}
 	organizing := req
@@ -423,6 +444,13 @@ func currentPlanningFrame(s *hookSession, turnID, scope string) error {
 	return nil
 }
 
+func currentPlanningWork(s *hookSession, req planningRequest) error {
+	if req.workNonce != "" && (s.Planning.Work == nil || s.Planning.Work.Nonce != req.workNonce) {
+		return errors.New("the work receipt is no longer current; prepare again")
+	}
+	return nil
+}
+
 func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequest, sp *spec.Spec, d *decide.Decision, inputs map[string]string, result *planningReceipt, digest string, knowledge *store.KnowledgeContext) error {
 	lock, err := dir.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
@@ -441,6 +469,9 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		return err
 	}
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
+		return err
+	}
+	if err := currentPlanningWork(s, req); err != nil {
 		return err
 	}
 	fresh, err := spec.Load(sp.Path())
