@@ -27,7 +27,7 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: cd web && npm ci && npm run check && npm run build
+      - run: cd web && npm ci && npm audit --audit-level=low && npm run check && npm run build
       - run: git add -N web/dist && git diff --exit-code -- web/dist
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...

@@ -1,0 +1,8 @@
+{
+  "name": "@shikii/config-merge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Prototype-safe configuration merger for the Svelte Vite plugin",
+  "main": "index.cjs",
+  "license": "MIT"
+}
