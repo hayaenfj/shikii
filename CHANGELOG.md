@@ -4,10 +4,13 @@
 
 ## 0.19.0 — Keep recording behind the work
 
-- Add `work prepare` and `work record`: gather project knowledge and pending evidence once, then save semantic judgments, observations and notes using a project/turn-bound receipt.
-- Retain source identifiers and read article revisions internally, supply capture metadata, resolve placement within recording and preserve successful writes across partial retries. Ambiguous placement and stale revisions remain explicit.
-- Preserve human scoring corrections and stored conversation originals independently of scoring status, with bounded context and usable retrieval paths for incomplete material. Stop remaining writes when a receipt loses its current turn; bound new saved items while keeping identical retries available at capacity.
-- Share the flow through CLI, MCP and HTTP, and guide agents toward it while keeping individual operations and existing completion checks. Reading and saving never become usefulness, authorization or human truth.
+- Add `work prepare` and `work record`: gather the current request, project knowledge and pending evidence, then save judgments, observations and notes with one project/turn-bound receipt.
+- Keep human and AI statements, recorded history order, stored request text and quotation excerpts distinct. Preserve human scoring corrections and conversation originals even after scoring has finished.
+- Retain search candidates, classification work and exact-revision article queries. Incomplete sources have explicit status and usable read paths, including separate continuation instructions for conversation originals and observations; they receive no recording reference.
+- Keep source identifiers, capture metadata and read article revisions internally. Resolve new-note placement during recording, return ambiguous candidates for the agent to read, and reject stale edits or fields that cannot be applied without discarding information.
+- Preserve successful writes and input-specific results across partial retries. Reserve recovery capacity before publication, publish the validated watched-file snapshot and article revision, and keep identical retries available at the saved-item limit.
+- Stop remaining writes when the receipt loses its current turn. Share the session lock and encoded size limit across recording, planning and hooks; a rejected oversized save preserves the previous readable record.
+- Share the flow through CLI, MCP and HTTP while keeping individual operations and existing completion checks. Reading and saving never become usefulness, authorization or human truth.
 - Restart agent sessions, the page and MCP after updating; older processes writing the same active session cannot preserve prepared recording context.
 
 ## 0.18.0 — Use project experience while working
