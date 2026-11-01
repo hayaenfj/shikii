@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -362,20 +363,44 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([]string) ([]string, error), save func() error, commit workCommitter) (workItem, any, error) {
 	item := workItem{Ref: n.Ref, Kind: "note"}
 	d := n.Draft
-	if n.Ref == "" && n.Target != "" && n.Target != "new" && (d.Title != "" || d.Lesson != "" || d.AppliesTo != "" || d.Body != nil || d.Rationale != nil || d.Watch != nil || d.Related != nil || d.Correction != nil || d.Kind != "" || d.Scene != "") {
-		return item, nil, errors.New("an existing article accepts sources, change_reason and exact edits only; use wiki operations for structural changes")
+	if n.Ref == "" && n.Target != "" && n.Target != "new" {
+		allowed := d
+		allowed.Sources = nil
+		allowed.ChangeReason = ""
+		if !reflect.DeepEqual(allowed, notebook.Draft{}) {
+			return item, nil, errors.New("an existing article accepts sources, change_reason and exact edits only; use wiki operations for structural changes")
+		}
 	}
+	if (n.Target == "" || n.Target == "new") && len(n.Edits) > 0 {
+		return item, nil, errors.New("exact edits require a prepared existing article target; a new note uses its draft content")
+	}
+
 	if n.Ref != "" {
 		prior, ok := w.Pending[n.Ref]
 		if !ok {
 			return item, nil, errors.New("unknown pending note reference")
 		}
-		if n.Draft.Title != "" || n.Draft.Lesson != "" || len(n.Draft.Sources) > 0 || n.Draft.Body != nil {
+		if n.Target == "" {
+			return item, nil, errors.New("resolving a pending note needs target new or a prepared article reference")
+		}
+		if !reflect.DeepEqual(n.Draft, notebook.Draft{}) {
 			return item, nil, errors.New("resolve a pending note with ref, target and edits only")
+		}
+		if n.Target != "new" {
+			structural := prior
+			structural.Title, structural.Lesson, structural.AppliesTo = "", "", ""
+			structural.ChangeReason, structural.Kind, structural.Scene = "", "", ""
+			structural.Sources, structural.Body, structural.Rationale = nil, nil, nil
+			if len(structural.Related) == 0 {
+				structural.Related = nil
+			}
+			if !reflect.DeepEqual(structural, notebook.Draft{}) {
+				return item, nil, errors.New("the pending note contains structural metadata that exact edits cannot apply; use wiki ingest or target new to retain it")
+			}
 		}
 		d = prior
 	} else {
-		if n.Target == "" && strings.TrimSpace(d.Lesson) == "" {
+		if (n.Target == "" || n.Target == "new") && strings.TrimSpace(d.Lesson) == "" {
 			return item, nil, errors.New("a new note needs a lesson; use reviewed for sources without lasting knowledge")
 		}
 		if d.ID != "" || len(d.Replaces) > 0 {
@@ -466,7 +491,7 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 			item.ID, item.Revision, item.Warnings = value.Page.ID, value.Page.Revision, value.Warnings
 		}
 	} else {
-		pendingKey := workHash(n.Draft)
+		pendingKey := key
 		alreadyReviewed := n.Ref != "" && n.Target == "new"
 		if !alreadyReviewed {
 			placed, e := placeDraftsWithCommit(book.Root, book.Scope, []notebook.Draft{d}, commit)

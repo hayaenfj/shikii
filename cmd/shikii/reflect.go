@@ -153,7 +153,7 @@ func reflectQueryWith(root, scope string, headsMax int) (reflectView, error) {
 		// Also return existing lessons close to the topic being sorted, to avoid careless duplicates and replacements.
 		if len(t) == 0 && len(m) == 0 {
 			continue
-		} // Acknowledgements need no unrelated judgment examples or articles.
+		} // Acknowledgements need no unrelated article search; earlier scoring corrections remain available.
 		lessons, err := book.Query(source.Request + " " + source.Reply)
 		if err != nil {
 			return v, err
@@ -174,9 +174,6 @@ func reflectQueryWith(root, scope string, headsMax int) (reflectView, error) {
 		v.Observations = v.Observations[:reflectRawSources]
 	}
 	v.Maintenance, err = book.Maintenance()
-	if len(targets) == 0 {
-		v.Corrections = nil
-	}
 	if err != nil {
 		return v, err
 	}

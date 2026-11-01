@@ -15,6 +15,7 @@ func makeWorkSchema() map[string]any {
 	}
 	fact := object(map[string]any{"unknown": map[string]any{"type": "boolean"}, "summary": text, "quotes": array(object(map[string]any{"ref": text, "text": text}), 3)})
 	note := object(map[string]any{"ref": text, "target": text, "title": text, "lesson": text, "body": text, "applies_to": text, "sources": refs, "related": refs, "kind": kindSchema, "scene": sceneSchema, "rationale": rationaleSchema, "watch": watchSchema, "change_reason": text, "correction": correctionSchema, "edits": patchSchema["properties"].(map[string]any)["edits"]})
+	note["description"] = "New notes use draft content. Existing article targets use sources, change_reason and exact edits. A pending ref accepts ref, target and edits only; target is required and target new forbids edits. Other fields are refused, not ignored."
 	return object(map[string]any{
 		"session_id": text, "turn_id": text, "query": text, "request": text, "receipt": text,
 		"agreed": fact, "open": fact, "continues_previous": map[string]any{"type": "boolean"},
