@@ -1,5 +1,7 @@
 # Prepare context before work
 
+For ordinary work from 0.19, use [recording.md](recording.md): prepare once, then record semantic content with its receipt. The operations below remain available for deeper work and existing integrations.
+
 The agent owns interpretation: identify the current task, find relevant conversation and wiki evidence, and distinguish an unresolved user decision from a delegated task detail. This applies to writing, research, business support and software. The program retrieves records, checks quotes and scope, and measures the resulting decision. Do not ask the person to fill in a context form or add another model.
 
 ## Recover the current task

@@ -1,5 +1,7 @@
 # Everyday scoring and the person's spot checks
 
+For ordinary work from 0.19, use [recording.md](recording.md): prepare once, then record semantic content with its receipt. The operations below remain available for deeper work and existing integrations.
+
 "Did it stay within what was asked" and "did it finish what was asked" are scored provisionally by the usual agent from the conversation and the work's outcome. Each target shows the decision model's answer first; the person is asked only when your score differs from it or you held back (`unknown`).
 
 ## Combined reflection (0.4)

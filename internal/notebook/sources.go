@@ -101,6 +101,17 @@ type Observation struct {
 
 func (o Observation) valid() bool { return o.problem() == "" }
 
+// Validate checks an observation without writing it.
+func (o Observation) Validate() error {
+	if o.ID != "" {
+		return errors.New("an observation id is assigned by the store")
+	}
+	if problem := o.problem(); problem != "" {
+		return errors.New(problem)
+	}
+	return nil
+}
+
 // problem says what is wrong with a source record ("" when it can be saved), naming the field.
 func (o Observation) problem() string {
 	if o.Kind != "human" && o.Kind != "agent" && o.Kind != "code" && o.Kind != "test" && o.Kind != "release" {

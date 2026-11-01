@@ -936,7 +936,7 @@ func TestSkillOpensWithHowToThinkWithTheProjectsKnowledge(t *testing.T) {
 	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
 	text := string(skill)
 	head := text[:strings.Index(text, "## Choose the workflow")]
-	for _, w := range []string{"Before starting", "moves to another area", "Right before an action", "When unsure", "Write back right when it happens", "how_to_submit", "shikii_decide", "guard"} {
+	for _, w := range []string{"Before starting", "moves to another area", "Right before an action", "When unsure", "Write back right when it happens", "how_to_record", "shikii_decide", "guard"} {
 		if !strings.Contains(head, w) {
 			t.Errorf("the skill's opening lacks %q", w)
 		}

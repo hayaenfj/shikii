@@ -87,6 +87,8 @@ func validKindScene(kind, scene string) bool {
 }
 
 type Draft struct {
+	CreateOnly bool `json:"-"` // internal: a prepared new note must not overwrite a concurrent article
+
 	ID           string            `json:"id,omitempty"`
 	Title        string            `json:"title,omitempty"`
 	Lesson       string            `json:"lesson,omitempty"`
@@ -697,6 +699,13 @@ func (b Book) PendingSources() ([]store.Feedback, error) {
 	return pending, nil
 }
 
+// PreviewCreate validates a new note and fixes its expected revision without saving it.
+func (b Book) PreviewCreate(d Draft) (Result, error) {
+	d.CreateOnly = true
+	d.preview = true
+	return b.Ingest(d)
+}
+
 func (b Book) Ingest(d Draft) (Result, error) {
 	return b.ingest(d, false)
 }
@@ -858,6 +867,9 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 			id = digest([]byte(strings.TrimSpace(d.Title)))[:16]
 		} else if _, ok := byID[id]; !ok {
 			return result, errors.New("the lesson to update does not exist in this project")
+		}
+		if d.CreateOnly && byID[id].ID != "" {
+			return result, ErrArticleConflict
 		}
 		if byID[id].Status == "deleted" {
 			return result, ErrArticleConflict

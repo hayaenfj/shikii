@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.19.0 — Keep recording behind the work
+
+- Add `work prepare` and `work record`: gather project knowledge and pending evidence once, then save semantic judgments, observations and notes using a project/turn-bound receipt.
+- Retain source identifiers and read article revisions internally, supply capture metadata, resolve placement within recording and preserve successful writes across partial retries. Ambiguous placement and stale revisions remain explicit.
+- Share the flow through CLI, MCP and HTTP, and guide agents toward it while keeping individual operations and existing completion checks. Reading and saving never become usefulness, authorization or human truth.
+- Restart agent sessions, the page and MCP after updating; older processes writing the same active session cannot preserve prepared recording context.
+
 ## 0.18.0 — Use project experience while working
 
 - Add `wiki consult` for checking approaches against project conditions, rationale and linked guidance, and `wiki reuse` for assembling procedures with cited evidence and current conditions. The host agent interprets the evidence; historical choices never imply permission or success.

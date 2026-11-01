@@ -18,6 +18,13 @@ shikii は、エージェントをあなたのプロジェクトに合わせて�
 - [serve の HTTP API](#serve-の-http-api)
 - [構成](#構成)
 
+## 知識を準備し、考えた内容を記録する（0.19.0）
+
+`shikii work prepare`へ検索語`query`と現在のhookの`session_id`・`turn_id`を渡します。返された会話・知識・未処理の証拠・`how_to_record`を読み、`work record`へレシート`receipt`と判断・観察・出典付きの記事を渡します。出典のID・記事の版・原資料の時刻はshikiiが保持します。差し込み先が曖昧なら候補の本文を読んで判断します。`complete`・`errors`・`pending`と振り返りの残件を確認し、失敗分は同じレシートで再送します。
+
+hookが無い時は`query`とエージェント自身が書いた`request`を使えますが、人の合意としては扱えません。MCPは`shikii_wiki`のprepare/recordと`work`オブジェクト、HTTPは同じ本文を`POST /v1/wiki/notebook`へ渡します。従来の個別操作も使えます。更新後はセッション・画面・MCPを再起動し、同じ進行中のセッションを書くプロセスを0.19.0へ揃えてください。
+
+
 ## インストール・アップデート
 
 インストールは[日本語 README](readme/README_ja.md#始め方)の curl の 1 行。ソースから入れる場合は clone した shikii のフォルダで `sh install.sh`。curl の 1 行は最新の版を取ってくるので Go は要らない。ソースから入れる時は Go 1.27 以上と Git が要る。

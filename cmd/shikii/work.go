@@ -1,0 +1,461 @@
+package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
+)
+
+type workQuote struct {
+	Ref  string `json:"ref"`
+	Text string `json:"text"`
+}
+type workFact struct {
+	Unknown bool        `json:"unknown,omitempty"`
+	Summary string      `json:"summary,omitempty"`
+	Quotes  []workQuote `json:"quotes,omitempty"`
+}
+type workObservation struct {
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Reference string `json:"reference,omitempty"`
+	Version   string `json:"version,omitempty"`
+}
+type workNote struct {
+	notebook.Draft
+	Ref    string              `json:"ref,omitempty"`
+	Target string              `json:"target,omitempty"`
+	Edits  []notebook.TextEdit `json:"edits,omitempty"`
+}
+type workReview struct {
+	Ref    string `json:"ref"`
+	Answer string `json:"answer"`
+	Reason string `json:"reason"`
+}
+type workMemory struct {
+	Ref              string `json:"ref"`
+	Result           string `json:"result"`
+	Decision         string `json:"decision"`
+	Evidence         string `json:"evidence"`
+	CorrectionResult string `json:"correction_result,omitempty"`
+}
+type workMaintenance struct {
+	Ref    string `json:"ref"`
+	Reason string `json:"reason"`
+}
+type workRequest struct {
+	SessionID         string            `json:"session_id,omitempty"`
+	TurnID            string            `json:"turn_id,omitempty"`
+	Query             string            `json:"query,omitempty"`
+	Request           string            `json:"request,omitempty"`
+	Receipt           string            `json:"receipt,omitempty"`
+	Agreed            *workFact         `json:"agreed,omitempty"`
+	Open              *workFact         `json:"open,omitempty"`
+	ContinuesPrevious *bool             `json:"continues_previous,omitempty"`
+	Observations      []workObservation `json:"observations,omitempty"`
+	Notes             []workNote        `json:"notes,omitempty"`
+	Reviews           []workReview      `json:"reviews,omitempty"`
+	Memory            []workMemory      `json:"memory,omitempty"`
+	Reviewed          []string          `json:"reviewed,omitempty"`
+	Maintenance       []workMaintenance `json:"maintenance,omitempty"`
+}
+type workReviewRef struct {
+	Source string `json:"source"`
+	Trace  string `json:"trace"`
+}
+type workMemoryRef struct {
+	Source string `json:"source"`
+	Key    string `json:"key"`
+}
+type workCapture struct {
+	Ref     string    `json:"ref"`
+	ID      string    `json:"id,omitempty"`
+	At      time.Time `json:"at"`
+	Version string    `json:"version"`
+}
+type workItem struct {
+	Ref      string   `json:"ref"`
+	Kind     string   `json:"kind"`
+	ID       string   `json:"id,omitempty"`
+	Revision string   `json:"revision,omitempty"`
+	Error    string   `json:"error,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+type workState struct {
+	Plan           *planningReceipt                      `json:"plan,omitempty"`
+	Reflection     *reflectResult                        `json:"reflection,omitempty"`
+	PendingOrigins map[string]string                     `json:"pending_origins"`
+	Nonce          string                                `json:"nonce"`
+	At             time.Time                             `json:"at"`
+	Standalone     bool                                  `json:"standalone,omitempty"`
+	Query          string                                `json:"query"`
+	Current        string                                `json:"current,omitempty"`
+	Pages          []string                              `json:"pages,omitempty"`
+	Keys           map[string]string                     `json:"keys"`
+	Sources        map[string]string                     `json:"sources"`
+	Articles       map[string]store.KnowledgeReference   `json:"articles"`
+	Reviews        map[string]workReviewRef              `json:"reviews"`
+	Memory         map[string]workMemoryRef              `json:"memory"`
+	Maintenance    map[string]notebook.MaintenanceReview `json:"maintenance"`
+	Captures       map[string]workCapture                `json:"captures"`
+	Saved          map[string]workItem                   `json:"saved"`
+	Pending        map[string]notebook.Draft             `json:"pending"`
+	PendingKeys    map[string]string                     `json:"pending_keys"`
+	Expected       map[string]store.KnowledgeReference   `json:"expected"`
+}
+type workToken struct {
+	Session string `json:"s"`
+	Turn    string `json:"t"`
+	Nonce   string `json:"n"`
+}
+type workResult struct {
+	Complete   bool       `json:"complete"`
+	Saved      []workItem `json:"saved"`
+	Errors     []workItem `json:"errors,omitempty"`
+	Pending    []any      `json:"pending"`
+	Plan       any        `json:"plan,omitempty"`
+	Reflection any        `json:"reflection,omitempty"`
+}
+
+func workHash(v any) string {
+	data, _ := json.Marshal(v)
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+func workEncode(t workToken) string {
+	b, _ := json.Marshal(t)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+func workDecode(token string) (workToken, error) {
+	var t workToken
+	if len(token) > 1000 {
+		return t, errors.New("invalid work receipt")
+	}
+	data, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || json.Unmarshal(data, &t) != nil || t.Session == "" || len(t.Session) > 200 || len(t.Turn) != 16 || len(t.Nonce) != 32 {
+		return t, errors.New("invalid work receipt")
+	}
+	if workEncode(t) != token {
+		return t, errors.New("the work receipt changed")
+	}
+	return t, nil
+}
+
+func openWorkSessions(root string) (*os.Root, error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	if err = r.Mkdir("sessions", 0700); err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+	return planningSessionRoot(root)
+}
+func workLock(dir *os.Root, name string) (func(), error) {
+	f, err := dir.OpenFile(name+".work.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return nil, errors.New("invalid work lock")
+	}
+	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, errors.New("this work is being saved; retry the same request")
+	}
+	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
+}
+func writeWorkSession(dir *os.Root, name string, s *hookSession) error {
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	if len(data) > 1<<20 {
+		return errors.New("the work context exceeds the session record limit; prepare a smaller context")
+	}
+	temp := ".work-" + store.NewTraceID() + ".tmp"
+	f, err := dir.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return err
+	}
+	defer dir.Remove(temp)
+	_, err = f.Write(data)
+	if err == nil {
+		err = store.SyncTemp(f)
+	}
+	if e := f.Close(); err == nil {
+		err = e
+	}
+	if err != nil {
+		return err
+	}
+	return dir.Rename(temp, name)
+}
+func saveWorkState(dir *os.Root, name, scope, turn string, w *workState, install bool) error {
+	f, err := dir.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("invalid session lock")
+	}
+	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return errors.New("the session changed while saving; retry")
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	s, err := readPlanningSession(dir, name)
+	if err != nil {
+		return err
+	}
+	if err = currentPlanningFrame(s, turn, scope); err != nil {
+		return err
+	}
+	if !install && (s.Planning.Work == nil || s.Planning.Work.Nonce != w.Nonce) {
+		return errors.New("the work receipt is no longer current; prepare again")
+	}
+	s.Planning.Work = w
+	return writeWorkSession(dir, name, s)
+}
+func loadWorkState(dir *os.Root, scope string, t workToken) (*workState, string, error) {
+	name := filepath.Base(sessionPath("", t.Session))
+	s, err := readPlanningSession(dir, name)
+	if err != nil {
+		return nil, name, err
+	}
+	if err = currentPlanningFrame(s, t.Turn, scope); err != nil {
+		return nil, name, err
+	}
+	w := s.Planning.Work
+	if w == nil || w.Nonce != t.Nonce || time.Since(w.At) > hookSessionTTL || time.Since(w.At) < -time.Minute {
+		return nil, name, errors.New("the work receipt is expired or no longer current")
+	}
+	return w, name, nil
+}
+func runWork(root, scope, operation string, req workRequest) (any, error) {
+	encoded, _ := json.Marshal(req)
+	if len(encoded) > 1<<20 || scope == "" {
+		return nil, errors.New("work input must fit 1 MiB in this project")
+	}
+	switch operation {
+	case "prepare":
+		return prepareWork(root, scope, req)
+	case "record":
+		return recordWork(root, scope, req)
+	}
+	return nil, errors.New("work operation must be prepare or record")
+}
+
+func prepareWork(root, scope string, req workRequest) (any, error) {
+	if req.Receipt != "" || req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance) > 0 {
+		return nil, errors.New("prepare reads context; send content with record")
+	}
+	if strings.TrimSpace(req.Query) == "" || len(req.Query) > requestMax || len(req.Request) > 16000 || len(req.SessionID) > 200 {
+		return nil, errors.New("prepare needs topic words (at most 1500 bytes) and bounded task text")
+	}
+	dir, err := openWorkSessions(root)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	standalone := req.SessionID == "" && req.TurnID == ""
+	if !standalone && (req.SessionID == "" || len(req.TurnID) != 16) {
+		return nil, errors.New("pass both session_id and turn_id from this request's hook")
+	}
+	if standalone {
+		req.SessionID = "work-" + store.NewTraceID()
+		req.TurnID = store.NewTraceID()
+	}
+	name := filepath.Base(sessionPath(root, req.SessionID))
+	unlock, err := workLock(dir, name)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	var planningContext any
+	if standalone {
+		s := &hookSession{Scope: scope, TurnID: req.TurnID, At: time.Now(), Planning: &planningFrame{TurnID: req.TurnID, At: time.Now(), Sources: map[string]string{}}}
+		if err = writeWorkSession(dir, name, s); err != nil {
+			return nil, err
+		}
+	} else {
+		value, e := runPlanning(root, scope, "query", planningRequest{SessionID: req.SessionID, TurnID: req.TurnID, Query: req.Query})
+		if e != nil {
+			return nil, e
+		}
+		planningContext = value.(map[string]any)["context_notice"]
+	}
+	s, err := readPlanningSession(dir, name)
+	if err != nil {
+		return nil, err
+	}
+	w := &workState{Nonce: store.NewTraceID() + store.NewTraceID(), At: time.Now().UTC(), Standalone: standalone, Query: req.Query, Current: s.Planning.Sources["current_user"], Pages: s.Planning.KnowledgePages, Keys: map[string]string{}, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}, Reviews: map[string]workReviewRef{}, Memory: map[string]workMemoryRef{}, Maintenance: map[string]notebook.MaintenanceReview{}, Captures: map[string]workCapture{}, Saved: map[string]workItem{}, Pending: map[string]notebook.Draft{}, PendingKeys: map[string]string{}, PendingOrigins: map[string]string{}, Expected: map[string]store.KnowledgeReference{}}
+	conversation := map[string]string{}
+	for _, pair := range [][2]string{{"current", "current_user"}, {"previous", "previous_user"}, {"previous_answer", "previous_assistant"}} {
+		if text := s.Planning.Sources[pair[1]]; text != "" {
+			w.Keys[pair[0]] = pair[1]
+			conversation[pair[0]] = text
+		}
+	}
+	history := []string{}
+	for key := range s.Planning.Sources {
+		if strings.HasPrefix(key, "history:") {
+			history = append(history, key)
+		}
+	}
+	sort.Strings(history)
+	for i, key := range history {
+		alias := "history" + strconv.Itoa(i+1)
+		w.Keys[alias] = key
+		conversation[alias] = s.Planning.Sources[key]
+	}
+	knowledge := []any{}
+	keys := []string{}
+	for key := range s.Planning.Sources {
+		if strings.HasPrefix(key, "article:") || strings.HasPrefix(key, "lesson:") {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	seen := map[string]bool{}
+	for _, key := range keys {
+		parts := strings.Split(key, ":")
+		if len(parts) != 3 || seen[parts[1]] {
+			continue
+		}
+		seen[parts[1]] = true
+		ref := "knowledge" + strconv.Itoa(len(knowledge)+1)
+		w.Keys[ref] = key
+		w.Articles[ref] = store.KnowledgeReference{ID: parts[1], Revision: parts[2]}
+		knowledge = append(knowledge, map[string]any{"ref": ref, "text": s.Planning.Sources[key]})
+	}
+	book := notebook.Book{Root: root, Scope: scope}
+	if standalone {
+		view, err := book.QueryPage(req.Query, "")
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range view.Lessons {
+			ref := "knowledge" + strconv.Itoa(len(knowledge)+1)
+			w.Articles[ref] = store.KnowledgeReference{ID: p.ID, Revision: p.Revision}
+			knowledge = append(knowledge, map[string]any{"ref": ref, "article": p})
+		}
+	}
+	reflection, err := reflectQuery(root, scope)
+	if err != nil {
+		return nil, err
+	}
+	pending := []any{}
+	reviewN, memoryN := 0, 0
+	for i, source := range reflection.Sources {
+		ref := "source" + strconv.Itoa(i+1)
+		if source.Head {
+			pending = append(pending, map[string]any{"request": source.Source.Request, "head": true, "next_action": "Prepare again after the complete sources are settled; do not judge a shortened source."})
+			continue
+		}
+		w.Sources[ref] = source.Source.ID
+		reviews := []any{}
+		memories := []any{}
+		for _, target := range source.Targets {
+			reviewN++
+			r := "review" + strconv.Itoa(reviewN)
+			w.Reviews[r] = workReviewRef{source.Source.ID, target.TraceID}
+			reviews = append(reviews, map[string]any{"ref": r, "question": target.Question, "files": target.Files, "decision_model_answer": target.ModelAnswer, "original_inputs": target.OriginalInputs, "text_status": target.TextStatus})
+		}
+		for _, m := range source.Memories {
+			memoryN++
+			r := "memory" + strconv.Itoa(memoryN)
+			w.Memory[r] = workMemoryRef{m.SourceID, m.Quote.Key}
+			memories = append(memories, map[string]any{"ref": r, "quote": m.Quote})
+		}
+		pending = append(pending, map[string]any{"ref": ref, "request": source.Source.Request, "answer": source.Source.Summary, "reply": source.Source.Reply, "head": source.Head, "wiki_pending": source.WikiPending, "reviews": reviews, "memory": memories})
+	}
+	evidence := []any{}
+	for i, o := range reflection.Observations {
+		ref := "evidence" + strconv.Itoa(i+1)
+		view, e := book.ReadSources([]string{o.ID})
+		if e != nil {
+			return nil, e
+		}
+		data, _ := json.Marshal(view)
+		if len(data) > 128<<10 {
+			evidence = append(evidence, map[string]any{"head": o, "next_action": "Read this source with wiki query before using the low-level recording operations; it exceeds the prepared evidence budget."})
+			continue
+		}
+		w.Sources[ref] = o.ID
+		evidence = append(evidence, map[string]any{"ref": ref, "source": view})
+	}
+	maintenance := []any{}
+	for _, m := range reflection.Maintenance {
+		relevant := false
+		for _, article := range w.Articles {
+			relevant = relevant || article.ID == m.PageID
+		}
+		if !relevant {
+			continue
+		}
+		ref := "maintenance" + strconv.Itoa(len(maintenance)+1)
+		w.Maintenance[ref] = notebook.MaintenanceReview{PageID: m.PageID, Revision: m.Revision, Key: m.Key}
+		maintenance = append(maintenance, map[string]any{"ref": ref, "task": m})
+	}
+	if err = saveWorkState(dir, name, scope, req.TurnID, w, true); err != nil {
+		return nil, err
+	}
+	task := w.Current
+	if standalone {
+		task = req.Request
+		if task == "" {
+			task = req.Query
+		}
+	}
+	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "agent_supplied_task": standalone, "conversation": conversation, "context_notice": planningContext, "knowledge": knowledge, "pending": pending, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord}, nil
+}
+
+const workHowToRecord = "Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits; metadata and revisions are retained. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
+
+func cmdWork(args []string) error {
+	if len(args) != 1 || (args[0] != "prepare" && args[0] != "record") {
+		return errors.New("usage: shikii work prepare | record (JSON on stdin)")
+	}
+	data, err := io.ReadAll(io.LimitReader(stdin, (8<<20)+1))
+	if err != nil || len(data) > 8<<20 {
+		return errors.New("work JSON transport exceeds 8 MiB")
+	}
+	var req workRequest
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if err = d.Decode(&req); err != nil {
+		return err
+	}
+	var extra any
+	if d.Decode(&extra) != io.EOF {
+		return errors.New("work takes exactly one JSON object")
+	}
+	root, scope, err := currentProjectStore()
+	if err != nil {
+		return err
+	}
+	result, err := runWork(root, scope, args[0], req)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(stdout).Encode(result)
+}

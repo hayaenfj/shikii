@@ -24,12 +24,13 @@ func currentProjectScope() string {
 }
 
 type notebookRequest struct {
-	Operation  string `json:"operation"`
-	Query      string `json:"query,omitempty"`
-	Cursor     string `json:"cursor,omitempty"`
-	Request    string `json:"request,omitempty"`
-	Proposal   string `json:"proposal,omitempty"`
-	Conditions string `json:"conditions,omitempty"`
+	Operation  string       `json:"operation"`
+	Query      string       `json:"query,omitempty"`
+	Cursor     string       `json:"cursor,omitempty"`
+	Request    string       `json:"request,omitempty"`
+	Proposal   string       `json:"proposal,omitempty"`
+	Conditions string       `json:"conditions,omitempty"`
+	Work       *workRequest `json:"work,omitempty"`
 	notebook.Draft
 	Patch       *notebook.Patch             `json:"patch,omitempty"`
 	CaseID      string                      `json:"case_id,omitempty"`
@@ -43,6 +44,11 @@ type notebookRequest struct {
 func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	b := notebook.Book{Root: root, Scope: scope}
 	switch req.Operation {
+	case "prepare", "record":
+		if req.Work == nil {
+			return nil, errors.New("prepare/record needs a work object")
+		}
+		return runWork(root, scope, req.Operation, *req.Work)
 	case "consult", "reuse":
 		return consultExperience(b, req)
 	case "query":

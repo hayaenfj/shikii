@@ -38,6 +38,7 @@ type planningFrame struct {
 	// The last query's sources and revision inventory, so submit cannot count a later body as read.
 	Knowledge      *store.KnowledgeContext `json:"knowledge,omitempty"`
 	KnowledgePages []string                `json:"knowledge_pages,omitempty"`
+	Work           *workState              `json:"work,omitempty"`
 }
 
 type planningQuote struct {
@@ -120,7 +121,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: organize this turn before starting; do not ask the person. Pipe the JSON below to %s hook plan query with topic words in query (how this project's rules and decisions are worded, not the request text); the reply carries this turn, the recent conversation, the related lessons and how_to_submit, the shape for hook plan submit. A rule, test or procedure you make or change goes to the wiki before you finish.\n", command) + string(ids)
+	return fmt.Sprintf("shikii: organize this turn before starting; do not ask the person. Pipe the JSON below to %s work prepare with topic words in query; read the conversation, wiki and how_to_record, then work record with its receipt and your judgment. A rule, test or procedure you make or change goes to the wiki before you finish. Legacy hook plan query returns how_to_submit for hook plan submit.\n", command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
@@ -160,67 +161,78 @@ func cmdHookPlan(args []string) error {
 	if err != nil {
 		return err
 	}
-	active, err := projectActive(root, scope)
+	result, err := runPlanning(root, scope, args[0], req)
 	if err != nil {
 		return err
 	}
+	return json.NewEncoder(stdout).Encode(result)
+}
+
+func runPlanning(root, scope, operation string, req planningRequest) (any, error) {
+	if operation != "query" && operation != "submit" {
+		return nil, errors.New("planning operation must be query or submit")
+	}
+	active, err := projectActive(root, scope)
+	if err != nil {
+		return nil, err
+	}
 	if !active {
-		return errProjectInactive
+		return nil, errProjectInactive
 	}
 	sessions, err := planningSessionRoot(root)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer sessions.Close()
 	name := filepath.Base(sessionPath(root, req.SessionID))
 	s, err := readPlanningSession(sessions, name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
-		return err
+		return nil, err
 	}
-	if args[0] == "query" {
+	if operation == "query" {
 		notice, knowledge, err := preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || req.Restates != "" || req.Reflection != nil {
-			return errors.New("query does not accept organized content")
+			return nil, errors.New("query does not accept organized content")
 		}
 		if err := savePlanningQuery(sessions, name, scope, req, s.Planning.Sources, knowledge); err != nil {
-			return err
+			return nil, err
 		}
 		reply := map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": planningKnowledgeReply(knowledge), "how_to_submit": planningHowToSubmit}
 		reflection, err := reflectQuery(root, scope)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if len(reflection.Sources)+len(reflection.Observations) > 0 {
 			reply["reflection"] = reflection
 		}
-		return json.NewEncoder(stdout).Encode(reply)
+		return reply, nil
 	}
 	// concurrent submits do not wait; they are asked to retry. A new request from the person and Stop are not blocked.
 	busy, err := sessions.OpenFile(name+".planning.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer busy.Close()
 	if info, err := busy.Stat(); err != nil || !info.Mode().IsRegular() {
-		return errors.New("cannot check the context lock")
+		return nil, errors.New("cannot check the context lock")
 	}
 	if err := syscall.Flock(int(busy.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.New("the context for the same request is being saved; retry")
+		return nil, errors.New("the context for the same request is being saved; retry")
 	}
 	defer syscall.Flock(int(busy.Fd()), syscall.LOCK_UN)
 	// check whether another submit or a new request finished before the lock was taken.
 	s, err = readPlanningSession(sessions, name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := currentPlanningFrame(s, req.TurnID, scope); err != nil {
-		return err
+		return nil, err
 	}
 	organizing := req
 	organizing.Reflection = nil
@@ -230,13 +242,13 @@ func cmdHookPlan(args []string) error {
 	// A saved decision keeps its original evidence. Reflection may already have
 	// updated that evidence; retry only the reflection, without judging again.
 	if s.Planning.Result != nil && s.Planning.Digest == key {
-		return writePlanningReply(root, scope, s.Planning.Result, req.Reflection)
+		return planningReply(root, scope, s.Planning.Result, req.Reflection)
 	}
 	knowledge := s.Planning.Knowledge
 	if knowledge == nil || knowledge.Query != req.Query || !slices.Equal(s.Planning.KnowledgePages, req.Pages) {
 		_, knowledge, err = preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if knowledge != nil {
 			knowledge.Read = nil // compatibility with direct submit: nothing was supplied by a matching query
@@ -244,27 +256,27 @@ func cmdHookPlan(args []string) error {
 	}
 	agreed, err := renderPlanningFact(req.Agreed, s.Planning.Sources, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	open, err := renderPlanningFact(req.Open, s.Planning.Sources, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	planningCitations(req, knowledge)
 	if err := validatePlanningKnowledge(root, scope, knowledge); err != nil {
-		return err
+		return nil, err
 	}
 	if s.Planning.Result != nil && s.Planning.Result.Recorded {
-		return errors.New("the context for this request has already been judged")
+		return nil, errors.New("the context for this request has already been judged")
 	}
 	result := &planningReceipt{Shadow: true}
 	var d *decide.Decision
 	sp, err := spec.Load(hookSpecPath(root, "needs-plan"))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !needsPlanningContext(sp) {
-		return errors.New("the current question does not use agreed and open inputs")
+		return nil, errors.New("the current question does not use agreed and open inputs")
 	}
 	inputs := map[string]string{"request": cut(s.Planning.Sources["current_user"], requestMax), "agreed": agreed, "open": open}
 	if req.Agreed.Unknown && req.Open.Unknown {
@@ -279,7 +291,7 @@ func cmdHookPlan(args []string) error {
 			d = nil
 			result.Reason = "the decision model could not be reached, so the organizing was saved and the decision skipped. It does not count as the person's answer."
 		} else if d.Band == decide.Abstain {
-			return errors.New("the decision inputs are incomplete")
+			return nil, errors.New("the decision inputs are incomplete")
 		}
 	}
 	if d != nil {
@@ -294,12 +306,12 @@ func cmdHookPlan(args []string) error {
 	// if the request moved on while waiting for the model, the old context is discarded without a record or advice.
 	err = savePlanningResult(sessions, name, root, scope, req, sp, d, inputs, result, key, knowledge)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return writePlanningReply(root, scope, result, req.Reflection)
+	return planningReply(root, scope, result, req.Reflection)
 }
 
-func writePlanningReply(root, scope string, planning *planningReceipt, reflection *reflectRequest) error {
+func planningReply(root, scope string, planning *planningReceipt, reflection *reflectRequest) (any, error) {
 	result := *planning
 	if reflection != nil {
 		r := *reflection
@@ -312,7 +324,7 @@ func writePlanningReply(root, scope string, planning *planningReceipt, reflectio
 			result.Reflection = &v
 		}
 	}
-	return json.NewEncoder(stdout).Encode(result)
+	return result, nil
 }
 
 // planningPreface comes before the agent's organizing in the needs-plan input. web/src/components/ItemCard.svelte removes the same text

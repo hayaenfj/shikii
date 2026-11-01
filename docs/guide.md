@@ -144,6 +144,12 @@ In `article.json`, keep the short `lesson` apart from the detailed `body`, and m
 
 Planning's `hook plan query` also returns up to two live `criteria` pages directly linked through `related` from the search matches (0.14). Summaries and applicability conditions are kept whole, with kind and scene. Without `pages`, up to two complete bodies are included as `article:<id>:<revision>`, criteria first, within 8000 body bytes in total. Bodies that do not fit can still be read through explicit `pages` (up to two) or `wiki query`. The reply's `wiki_context` returns `available_count` instead of the full inventory; the decision record still preserves every revision in `knowledge_context.available`. Linked candidates, body reads and actual citations stay distinct. Links and past judgments never grant current permission.
 
+### Prepare knowledge and record content (0.19.0)
+
+Use `shikii work prepare` with topic words in `query` and the current hook's `session_id` and `turn_id`. Without a hook, pass `query` and an agent-supplied `request`; it cannot establish a human agreement. Read the returned conversation, knowledge, pending evidence and `how_to_record`. Then use `shikii work record` with its `receipt`, your interpretation, checked observations and source-backed notes. Shikii retains source identifiers, exact article revisions and capture metadata. Placement candidates requiring interpretation come back to the agent. Check `complete`, `errors`, `pending` and reflection's remaining work; retry corrected content with the same receipt.
+
+MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same active session on 0.19.0.
+
 ### Use project experience while working (0.18.0)
 
 Before settling an approach, send the task and proposed approach as JSON to `shikii wiki consult`:
