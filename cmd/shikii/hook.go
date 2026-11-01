@@ -319,7 +319,7 @@ func lockSessionWithin(agent, id string, wait time.Duration) (unlock func(), ok 
 	}, true
 }
 
-// updateSession reads the record → changes it with fn → writes it, inside the lock. The only write path, so parallel hooks do not erase each other's changes.
+// updateSession serializes each hook update with planning and prepared recording.
 func updateSession(agent, id string, fn func(s *hookSession)) error {
 	unlock, ok := lockSessionWithin(agent, id, hookLockWait)
 	if !ok {
@@ -363,7 +363,10 @@ func loadSession(agent, id string) *hookSession {
 // saveSession writes to tmp and renames (another process never reads a half-written file. Same style as editHooks).
 func saveSession(agent, id string, s *hookSession) error {
 	s.At = time.Now()
-	b, _ := json.MarshalIndent(s, "", "  ")
+	b, err := encodeHookSession(s)
+	if err != nil {
+		return err
+	}
 	return writeAtomic(sessionPath(agent, id), b)
 }
 

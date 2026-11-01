@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"syscall"
@@ -31,12 +30,9 @@ func savePlanningQuery(dir *os.Root, name, scope string, req planningRequest, so
 		return err
 	}
 	s.Planning.Sources, s.Planning.Knowledge, s.Planning.KnowledgePages = sources, knowledge, req.Pages
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := encodeHookSession(s)
 	if err != nil {
 		return err
-	}
-	if len(data) > 1<<20 {
-		return errors.New("the prepared context exceeds the session record limit")
 	}
 	nameTemp := ".planning-" + store.NewTraceID() + ".tmp"
 	f, err := dir.OpenFile(nameTemp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)

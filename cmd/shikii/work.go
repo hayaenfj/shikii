@@ -186,12 +186,9 @@ func workLock(dir *os.Root, name string) (func(), error) {
 	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
 }
 func writeWorkSession(dir *os.Root, name string, s *hookSession) error {
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := encodeHookSession(s)
 	if err != nil {
 		return err
-	}
-	if len(data) > 1<<20 {
-		return errors.New("the work context exceeds the session record limit; prepare a smaller context")
 	}
 	temp := ".work-" + store.NewTraceID() + ".tmp"
 	f, err := dir.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0600)
@@ -348,7 +345,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		ref := "knowledge" + strconv.Itoa(len(knowledge)+1)
 		w.Keys[ref] = key
 		w.Articles[ref] = store.KnowledgeReference{ID: parts[1], Revision: parts[2]}
-		knowledge = append(knowledge, map[string]any{"ref": ref, "text": s.Planning.Sources[key]})
+		knowledge = append(knowledge, map[string]any{"ref": ref, "id": parts[1], "revision": parts[2], "text": s.Planning.Sources[key], "body_included": strings.HasPrefix(key, "article:"), "query": map[string]any{"operation": "query", "query": "lesson:" + parts[1] + "@" + parts[2]}})
 	}
 	book := notebook.Book{Root: root, Scope: scope}
 	var knowledgeContext map[string]any
@@ -445,7 +442,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 			task = req.Query
 		}
 	}
-	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "agent_supplied_task": standalone, "conversation": conversation, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord + " Before judging, read knowledge_context search/remaining-classification guidance, reflection_context.human_corrections and each source.originals/text_status. Incomplete sources have no recording references; follow source_query and use the individual operations after reading."}, nil
+	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "agent_supplied_task": standalone, "conversation": conversation, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord + " Before judging, query knowledge entries whose body_included is false to read the same article revision. Read knowledge_context search/remaining-classification guidance, reflection_context.human_corrections and each source.originals/text_status. Incomplete sources have no recording references; follow source_query and use the individual operations after reading."}, nil
 }
 
 const workHowToRecord = "Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits; metadata and revisions are retained. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."

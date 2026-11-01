@@ -400,11 +400,11 @@ func readPlanningSession(dir *os.Root, name string) (*hookSession, error) {
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > hookSessionRecordLimit {
 		return nil, errors.New("cannot check the session record")
 	}
 	var s hookSession
-	decoder := json.NewDecoder(io.LimitReader(f, (1<<20)+1))
+	decoder := json.NewDecoder(io.LimitReader(f, hookSessionRecordLimit+1))
 	if err := decoder.Decode(&s); err != nil {
 		return nil, err
 	}
@@ -531,7 +531,10 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 	}
 	s.Planning.Digest, s.Planning.Result = digest, result
 	s.At = time.Now()
-	b, _ := json.MarshalIndent(s, "", "  ")
+	b, err := encodeHookSession(s)
+	if err != nil {
+		return err
+	}
 	temp := ".planning-" + store.NewTraceID() + ".tmp"
 	f, err := dir.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
