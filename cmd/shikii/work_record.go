@@ -551,7 +551,11 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 			return item, nil, err
 		}
 		var value notebook.Result
-		err = commit(func() error { var e error; value, e = ingestWithOutcome(book.Root, book.Scope, d); return e })
+		err = commit(func() error {
+			var e error
+			value, e = ingestWithPreparedOutcome(book.Root, book.Scope, d, preview.Page)
+			return e
+		})
 		if value.Page != nil {
 			item.ID, item.Revision = value.Page.ID, value.Page.Revision
 		}

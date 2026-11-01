@@ -29,10 +29,11 @@ type ReviewTarget struct {
 }
 
 const (
-	feedbackTextMax = 1500
-	feedbackReadMax = 4 << 20 // do not read the whole history every turn
-	feedbackRecent  = 256
-	feedbackRecall  = 2
+	FeedbackTextLimit = 1500
+	feedbackTextMax   = FeedbackTextLimit
+	feedbackReadMax   = 4 << 20 // do not read the whole history every turn
+	feedbackRecent    = 256
+	feedbackRecall    = 2
 )
 
 func (s Store) feedbackPath(scope string) string {

@@ -104,9 +104,10 @@ type Draft struct {
 	Kind         string            `json:"kind,omitempty"`  // kind (one of Kinds). Required for a draft with a lesson; inherited if omitted when updating
 	Scene        string            `json:"scene,omitempty"` // scene (a "when ..." phrase). Same as above
 	// baseRevision is the page revision classify started from. Inside the lock, refuse if it differs from the current revision (do not undo a concurrent edit with an old lesson; audit 0.9.0 B1)
-	change       *Change
-	baseRevision string
-	preview      bool
+	change         *Change
+	baseRevision   string
+	preview        bool
+	preparedCreate *Page
 }
 
 type Issue struct {
@@ -706,6 +707,16 @@ func (b Book) PreviewCreate(d Draft) (Result, error) {
 	return b.Ingest(d)
 }
 
+// IngestPreparedCreate publishes the exact validated revision, including its watched premises.
+func (b Book) IngestPreparedCreate(d Draft, prepared Page) (Result, error) {
+	if !idPattern.MatchString(prepared.ID) || !idPattern.MatchString(prepared.Revision) {
+		return Result{}, errors.New("a prepared new article needs its validated id and revision")
+	}
+	d.CreateOnly = true
+	d.preparedCreate = &prepared
+	return b.Ingest(d)
+}
+
 func (b Book) Ingest(d Draft) (Result, error) {
 	return b.ingest(d, false)
 }
@@ -891,7 +902,9 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 		if d.Rationale != nil {
 			p.Rationale = strings.TrimSpace(*d.Rationale)
 		}
-		if d.Watch != nil {
+		if d.preparedCreate != nil {
+			p.Premises = append([]Premise(nil), d.preparedCreate.Premises...)
+		} else if d.Watch != nil {
 			p.Premises, err = b.snapshotPremises(*d.Watch)
 			if err != nil {
 				return result, err
@@ -961,6 +974,9 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 			p.Previous = old.Revision
 		}
 		p.Revision = revision(p)
+		if d.preparedCreate != nil && (p.ID != d.preparedCreate.ID || p.Revision != d.preparedCreate.Revision) {
+			return result, errors.New("the prepared article changed before publication; prepare its exact revision again")
+		}
 		if data, err := b.pageBytes(p); err != nil || len(data) > 64<<10 {
 			return result, errors.New("wiki page exceeds the size limit")
 		}

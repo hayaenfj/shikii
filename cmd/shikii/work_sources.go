@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"github.com/hayaenfj/shikii/internal/store"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -29,6 +32,10 @@ func prepareWorkSource(book notebook.Book, id string) preparedWorkSource {
 		return result
 	}
 	result.Material = material
+	missing := workUnretainedConversationFields(material)
+	if len(missing) > 0 {
+		material["text_status"] = missing
+	}
 	data, _ := json.Marshal(material)
 	if len(data) > workSourceBudget {
 		page, e := book.ReadSourcesPage([]string{id}, "")
@@ -36,11 +43,14 @@ func prepareWorkSource(book notebook.Book, id string) preparedWorkSource {
 			result.Material = map[string]any{"source_id": id, "error": e.Error()}
 		} else {
 			result.Material = page
+			if len(missing) > 0 {
+				result.Material["text_status"] = missing
+			}
 			if cursor, ok := page["next_cursor"].(string); ok && cursor != "" {
 				result.Query["cursor"] = cursor
 			}
 		}
-		result.Notice = "This source exceeds the 128 KiB encoded preparation budget. The supplied source is partial. Continue source_query with shikii_wiki, or wiki query with the source id and continue:<cursor>; join original_part JSON in order. After reading all parts, use individual reflect/wiki operations. Do not judge the shortened material."
+		result.Notice = "This source exceeds the 128 KiB encoded preparation budget. The supplied source is partial. Continue source_query with shikii_wiki, or wiki query with the source id and continue:<cursor>. For conversation originals, join original_part.json pieces in order and parse the combined JSON. For observations, order by observation_part.from and join observations[].content, including the last part. After reading all parts, use individual reflect/wiki operations. Do not judge the shortened material. If text_status names an unretained original, paging cannot restore that missing tail; read a verified host conversation or preserve unknown."
 		return result
 	}
 	for _, originals := range material["originals"].(map[string][]notebook.Original) {
@@ -50,6 +60,11 @@ func prepareWorkSource(book notebook.Book, id string) preparedWorkSource {
 				return result
 			}
 		}
+	}
+	if len(missing) > 0 {
+		result.Material["text_status"] = missing
+		result.Notice = "This conversation has bounded excerpts without retained originals. Source_query inspects the stored excerpt; it cannot recover a missing tail. Read the original host conversation or a verified archive before judging; if it is unavailable, keep the missing conditions unknown and use individual reflect/wiki operations."
+		return result
 	}
 	result.Complete = true
 	return result
@@ -138,4 +153,33 @@ func preparedKnowledgeContext(view notebook.View, query string) (map[string]any,
 		return nil, errors.New("the supporting knowledge query context exceeds the preparation budget; use shikii wiki query with the same topic words and continue its pages before using the individual recording operations")
 	}
 	return context, nil
+}
+
+// A missing scoring record is not evidence that a bounded conversation was complete.
+func workUnretainedConversationFields(material map[string]any) map[string]map[string]string {
+	missing := map[string]map[string]string{}
+	conversations, _ := material["source_material"].([]store.Feedback)
+	originals, _ := material["originals"].(map[string][]notebook.Original)
+	for _, source := range conversations {
+		fields := map[string]string{}
+		for field, excerpt := range map[string]string{"request": source.Request, "summary": source.Summary, "reply": source.Reply} {
+			if len(excerpt) < store.FeedbackTextLimit-utf8.UTFMax+1 {
+				continue
+			}
+			verified := false
+			for _, original := range originals[source.ID] {
+				text, ok := original.Inputs[field]
+				if ok && original.Status[field] == "" && strings.HasPrefix(text, excerpt) {
+					verified = true
+				}
+			}
+			if !verified {
+				fields[field] = "bounded_excerpt_without_retained_original"
+			}
+		}
+		if len(fields) > 0 {
+			missing[source.ID] = fields
+		}
+	}
+	return missing
 }

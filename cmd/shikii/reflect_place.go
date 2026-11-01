@@ -461,8 +461,19 @@ func bigrams(s string) map[string]bool {
 // ingestWithOutcome saves the page and, if the save succeeds, attaches truths from the result to the insertion-point and contradiction decisions asked about that draft.
 // Both the reflection save (reflect submit) and wiki ingest (CLI, MCP, HTTP) go through here.
 func ingestWithOutcome(root, scope string, d notebook.Draft) (notebook.Result, error) {
+	return ingestWithPreparedOutcome(root, scope, d, nil)
+}
+
+func ingestWithPreparedOutcome(root, scope string, d notebook.Draft, prepared *notebook.Page) (notebook.Result, error) {
 	outcome, oerr := placementOutcome(root, scope, d)
-	res, err := (notebook.Book{Root: root, Scope: scope}).Ingest(d)
+	book := notebook.Book{Root: root, Scope: scope}
+	var res notebook.Result
+	var err error
+	if prepared != nil {
+		res, err = book.IngestPreparedCreate(d, *prepared)
+	} else {
+		res, err = book.Ingest(d)
+	}
 	if err != nil {
 		return res, err
 	}
