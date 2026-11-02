@@ -32,6 +32,7 @@ func focusWorkKnowledge(book notebook.Book, entries []any, context string, quote
 			p = v.Lessons[0]
 		}
 		e["rationale"] = p.Rationale
+		e["learning_context"] = book.LearningContext(p, 2000)
 		current, err := book.Query("lesson:" + id)
 		if err != nil {
 			return err

@@ -16,6 +16,9 @@ type Patch struct {
 	ChangeReason string              `json:"change_reason"`
 	Edits        []TextEdit          `json:"edits"`
 	Passages     *[]KnowledgePassage `json:"passages,omitempty"`
+	Learning     *Learning           `json:"learning,omitempty"`
+	Related      *[]string           `json:"related,omitempty"`
+	Requires     []ArticleReference  `json:"requires,omitempty"`
 }
 
 type TextEdit struct {
@@ -31,7 +34,7 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 	if !idPattern.MatchString(c.ID) || !idPattern.MatchString(c.Revision) {
 		return Result{}, errors.New("patch needs an article id and revision")
 	}
-	if strings.TrimSpace(c.ChangeReason) == "" || len(c.Sources) == 0 || len(c.Edits) == 0 && c.Passages == nil || len(c.Edits) > 16 {
+	if strings.TrimSpace(c.ChangeReason) == "" || len(c.Sources) == 0 || len(c.Edits) == 0 && c.Passages == nil && c.Learning == nil && c.Related == nil || len(c.Edits) > 16 {
 		return Result{}, errors.New("patch needs sources, a change_reason and 1 to 16 edits or interpreted passages")
 	}
 	dir, err := b.directory(false, "pages")
@@ -59,6 +62,25 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 			if id == c.ID {
 				return Result{}, ErrArticleConflict
 			}
+		}
+	}
+	if len(c.Requires) > 8 {
+		return Result{}, errors.New("a patch accepts at most eight required article revisions")
+	}
+	for _, required := range c.Requires {
+		found := false
+		for _, p := range pages {
+			if p.ID == required.ID && p.Revision == required.Revision && p.Status != "deleted" && len(b.sourceIssues(p)) == 0 {
+				found = true
+			}
+			for _, id := range p.Replaces {
+				if id == required.ID {
+					return Result{}, ErrArticleConflict
+				}
+			}
+		}
+		if !idPattern.MatchString(required.ID) || !idPattern.MatchString(required.Revision) || !found {
+			return Result{}, ErrArticleConflict
 		}
 	}
 	if old.ID == "" {
@@ -91,6 +113,10 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 	}
 	d := Draft{ID: old.ID, Title: next.Title, Lesson: next.Lesson, AppliesTo: next.AppliesTo, Body: &next.Body, Rationale: &next.Rationale, Kind: next.Kind, Scene: next.Scene, Sources: c.Sources, ChangeReason: c.ChangeReason, baseRevision: old.Revision, preview: preview}
 	d.Passages = c.Passages
+	d.Learning = c.Learning
+	if c.Related != nil {
+		d.Related = *c.Related
+	}
 	if strings.TrimSpace(next.Lesson) == "" {
 		return Result{}, errors.New("patch cannot clear the lesson")
 	}

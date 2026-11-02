@@ -28,6 +28,7 @@ type AssistanceCheck struct {
 	BodyExcerpts []TextExcerpt          `json:"body_excerpts,omitempty"`
 	Orientation  KnowledgeOrientation   `json:"orientation"`
 	Outcomes     []ProcedureOutcomeView `json:"outcomes,omitempty"`
+	Learning     *LearningContext       `json:"learning_context,omitempty"`
 }
 
 func ValidAssistanceText(text string, required bool) bool {
@@ -81,7 +82,7 @@ func (b Book) Assistance(request, proposal, conditions string, reuse bool) (Assi
 	}
 	bodyBudget := 16000
 	add := func(p Page, relation, from string) {
-		check := AssistanceCheck{Page: p, Relation: relation, From: from}
+		check := AssistanceCheck{Page: p, Relation: relation, From: from, Learning: b.LearningContext(p, 2000)}
 		check.Orientation = Orient(p, request+" "+proposal+" "+conditions, min(bodyBudget, 2400))
 		if len(p.Body) > min(bodyBudget, 2400) {
 			check.Page.Body, check.BodyOmitted = "", true

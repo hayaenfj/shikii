@@ -1,4 +1,5 @@
 <script>
+  import Learning from './Learning.svelte';
   // The front of Knowledge (0.9.0; one screen for looking things up from 0.9.2): a search box, then scenes → titles per kind → the text beside them.
   // The rules box shows only the "いつも" (always) rules, and "see all rules" opens the rest. When a scene or words narrow the list, the rules box steps aside and the rules
   // are in the list instead, so a rule is never listed twice. Scenes with one page are grouped under "other". What a person should look at (the inbox) appears only when there is something.
@@ -166,6 +167,7 @@
             {/each}
           </section>
         {/if}
+        <Learning learning={selected.learning} />
         {#if selected.body}<div class="k">{t('bodyTitle')}</div><div class="text rounded-lg bg-bg p-2.5 text-[14px] whitespace-pre-wrap wrap-anywhere">{plainText(selected.body)}</div>{/if}
         {#if selected.rationale}<div class="k mt-2">{t('articleRationale')}</div><p class="mt-0 whitespace-pre-wrap wrap-anywhere" data-article-rationale>{plainText(selected.rationale)}</p>{/if}
         {#if selected.recheck?.length}<div class="mt-2 rounded-lg border border-amber p-2.5" data-article-recheck><p class="m-0">{t('articleRecheck')}</p><ul class="mb-0">{#each selected.recheck as item}<li class="wrap-anywhere">{item.path} — {t('premiseState')(item.state)}</li>{/each}</ul></div>{/if}

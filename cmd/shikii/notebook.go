@@ -32,13 +32,14 @@ type notebookRequest struct {
 	Conditions string       `json:"conditions,omitempty"`
 	Work       *workRequest `json:"work,omitempty"`
 	notebook.Draft
-	Patch       *notebook.Patch             `json:"patch,omitempty"`
-	CaseID      string                      `json:"case_id,omitempty"`
-	Cases       []string                    `json:"cases,omitempty"`
-	Observation *notebook.Observation       `json:"observation,omitempty"`
-	Maintenance *notebook.MaintenanceReview `json:"maintenance,omitempty"`
-	Path        string                      `json:"path,omitempty"`    // path of a work record (handoff_*), relative to .shikii/handoff/
-	Content     string                      `json:"content,omitempty"` // body to write to a work record (handoff_write / handoff_append)
+	Organization *notebook.Organization      `json:"organization,omitempty"`
+	Patch        *notebook.Patch             `json:"patch,omitempty"`
+	CaseID       string                      `json:"case_id,omitempty"`
+	Cases        []string                    `json:"cases,omitempty"`
+	Observation  *notebook.Observation       `json:"observation,omitempty"`
+	Maintenance  *notebook.MaintenanceReview `json:"maintenance,omitempty"`
+	Path         string                      `json:"path,omitempty"`    // path of a work record (handoff_*), relative to .shikii/handoff/
+	Content      string                      `json:"content,omitempty"` // body to write to a work record (handoff_write / handoff_append)
 }
 
 func runNotebook(root, scope string, req notebookRequest) (any, error) {
@@ -49,6 +50,11 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 			return nil, errors.New("prepare/record needs a work object")
 		}
 		return runWork(root, scope, req.Operation, *req.Work)
+	case "organize":
+		if req.Organization == nil {
+			return nil, errors.New("wiki organize needs an organization object")
+		}
+		return b.Organize(*req.Organization)
 	case "consult", "reuse":
 		return consultExperience(b, req)
 	case "query":
@@ -103,27 +109,27 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	case "handoff_list", "handoff_read", "handoff_write", "handoff_append":
 		return runHandoff(root, req)
 	}
-	return nil, errors.New("usage: wiki query / consult / reuse / ingest / patch / diagnose / compare / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
+	return nil, errors.New("usage: wiki query / consult / reuse / organize / ingest / patch / diagnose / compare / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append")
 }
 
 // Lessons are kept in the project's .shikii/, the same as the hook. Only the calling project is handled.
 // It has no new endpoints or settings; the text comes as JSON from the agent in use.
 func cmdNotebook(args []string) error {
-	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify" && args[0] != "patch" && args[0] != "diagnose" && args[0] != "compare" && args[0] != "consult" && args[0] != "reuse") {
-		return errors.New("usage: shikii wiki query [search words, source IDs..., lesson:<page ID>@<revision>] [continue:<cursor>] | consult | reuse | ingest | patch | diagnose | compare | capture | maintain (JSON on standard input) | classify <page ID> <kind> <scene> | lint | verify ...")
+	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify" && args[0] != "patch" && args[0] != "diagnose" && args[0] != "compare" && args[0] != "consult" && args[0] != "reuse" && args[0] != "organize") {
+		return errors.New("usage: shikii wiki query [search words, source IDs..., lesson:<page ID>@<revision>] [continue:<cursor>] | consult | reuse | organize | ingest | patch | diagnose | compare | capture | maintain (JSON on standard input) | classify <page ID> <kind> <scene> | lint | verify ...")
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
 		return err
 	}
 	req := notebookRequest{Operation: args[0]}
-	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" || req.Operation == "patch" || req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" {
+	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" || req.Operation == "patch" || req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" || req.Operation == "organize" {
 		if len(args) != 1 {
 			return fmt.Errorf("wiki %s reads one JSON object from stdin", req.Operation)
 		}
 		limit := 64 << 10
-		if req.Operation == "consult" || req.Operation == "reuse" {
-			limit = 1 << 20 // three 16000-byte fields still fit when JSON escapes every byte
+		if req.Operation == "consult" || req.Operation == "reuse" || req.Operation == "organize" || req.Operation == "ingest" || req.Operation == "patch" {
+			limit = 1 << 20 // organization creates and guarded patches must also fit after JSON escaping
 		}
 		if req.Operation == "capture" {
 			limit = store.MaxLineBytes // a source has no size limit of its own (a long memory file is captured whole)
@@ -135,7 +141,7 @@ func cmdNotebook(args []string) error {
 		dec := json.NewDecoder(bytes.NewReader(data))
 		dec.DisallowUnknownFields()
 		var target any = &req.Draft
-		if req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" {
+		if req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" || req.Operation == "organize" {
 			target = &req
 		}
 		if req.Operation == "patch" {
@@ -152,7 +158,7 @@ func cmdNotebook(args []string) error {
 		}
 		if err := dec.Decode(target); err != nil {
 			switch req.Operation {
-			case "patch", "diagnose", "compare", "consult", "reuse":
+			case "patch", "diagnose", "compare", "consult", "reuse", "organize":
 				return fmt.Errorf("wiki %s needs valid JSON: %v", req.Operation, err)
 			case "capture":
 				return fmt.Errorf("wiki capture needs the source object itself (kind, title, content, reference, version, observed_at): %v", err)

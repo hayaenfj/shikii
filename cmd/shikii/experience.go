@@ -16,6 +16,7 @@ type experienceCheck struct {
 	ApplicabilityTrace string                          `json:"applicability_trace,omitempty"`
 	ModelExcluded      bool                            `json:"model_excluded,omitempty"`
 	Outcomes           []notebook.ProcedureOutcomeView `json:"outcomes,omitempty"`
+	Learning           *notebook.LearningContext       `json:"learning_context,omitempty"`
 }
 
 // Keep the useful knowledge up front. A revision reference lets the agent read
@@ -42,6 +43,7 @@ func compactExperienceCheck(c notebook.AssistanceCheck) experienceCheck {
 	}
 	v.Page.Orientation = c.Orientation
 	v.Outcomes = c.Outcomes
+	v.Learning = c.Learning
 	return v
 }
 
@@ -51,6 +53,7 @@ type reuseStep struct {
 	Evidence    []notebook.ProcedureEvidence    `json:"evidence"`
 	Unknown     []string                        `json:"unknown,omitempty"`
 	Outcomes    []notebook.ProcedureOutcomeView `json:"outcomes,omitempty"`
+	Practice    *notebook.KnowledgePractice     `json:"practice,omitempty"`
 }
 
 type experienceView struct {
@@ -86,6 +89,9 @@ func consultExperience(b notebook.Book, req notebookRequest) (experienceView, er
 				return v, e
 			}
 			v.Steps = append(v.Steps, reuseStep{Source: store.KnowledgeReference{ID: c.Page.ID, Revision: c.Page.Revision}, Instruction: c.Page.Lesson, Evidence: evidence, Unknown: unknown, Outcomes: outcomes})
+			if c.Learning != nil && !c.Learning.Omitted && c.Learning.Learning != nil {
+				v.Steps[len(v.Steps)-1].Practice = c.Learning.Learning.Practice
+			}
 		}
 	}
 	// Reuse the project's calibrated relevance question, with a fixed call cap.

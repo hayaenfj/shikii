@@ -73,6 +73,12 @@ Checks have a defined scope too. A program can check whether both language versi
 
 Neither knowledge nor an AI decision grants permission. The current request and the host agent's permission rules take priority.
 
+## In development: connect, check and grow project practices
+
+An insight can connect exact passages and conditions from distinct articles and keep a small check with its reported results. Useful methods become sourced, conditional project practices that a later agent can receive, use and revise. Original evidence and revisions remain available, and results never become human truths.
+
+When knowledge grows too long, preview a split or merge and save destinations before editing their sources. The aim goes beyond shared reading to later use, verification and improvement. See the [guide](guide.md) for operations and limits.
+
 ## The work before 0.14.1 matters too
 
 | Version | What it added |

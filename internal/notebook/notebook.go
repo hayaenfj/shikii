@@ -49,6 +49,7 @@ type Page struct {
 	Premises     []Premise          `json:"premises,omitempty" yaml:"premises,omitempty"`
 	Recheck      []PremiseChange    `json:"recheck,omitempty" yaml:"-"`
 	Passages     []KnowledgePassage `json:"passages,omitempty" yaml:"passages,omitempty"`
+	Learning     *Learning          `json:"learning,omitempty" yaml:"learning,omitempty"`
 	discovered   string
 	Related      []string `json:"related,omitempty" yaml:"related,omitempty"`
 	ChangeReason string   `json:"change_reason,omitempty" yaml:"change_reason,omitempty"`
@@ -88,7 +89,7 @@ func validKindScene(kind, scene string) bool {
 }
 
 type Draft struct {
-	CreateOnly bool `json:"-"` // internal: a prepared new note must not overwrite a concurrent article
+	CreateOnly bool `json:"create_only,omitempty"` // a prepared new note must not overwrite a concurrent article
 
 	ID           string              `json:"id,omitempty"`
 	Title        string              `json:"title,omitempty"`
@@ -101,6 +102,7 @@ type Draft struct {
 	Rationale    *string             `json:"rationale,omitempty"`
 	Watch        *[]string           `json:"watch,omitempty"`
 	Passages     *[]KnowledgePassage `json:"passages,omitempty"`
+	Learning     *Learning           `json:"learning,omitempty"`
 	Related      []string            `json:"related,omitempty"`
 	ChangeReason string              `json:"change_reason,omitempty"`
 	Kind         string              `json:"kind,omitempty"`  // kind (one of Kinds). Required for a draft with a lesson; inherited if omitted when updating
@@ -383,6 +385,9 @@ func parsePage(data []byte) (Page, error) {
 	}
 	if len(p.Rationale) > 1600 || len(p.Premises) > 4 {
 		return p, errors.New("invalid rationale or premise metadata")
+	}
+	if err := validateLearning(p); err != nil {
+		return p, err
 	}
 	if err := validatePassages(p.Body, p.Passages); err != nil {
 		return p, err
@@ -763,7 +768,7 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 	if d.Lesson == "" && d.ID != "" {
 		return result, errors.New("updating a page by id sends its lesson, title and applies_to again (read them with wiki query lesson:<id>), with sources and change_reason")
 	}
-	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Rationale != nil || d.Watch != nil || d.Passages != nil || d.Related != nil || d.ChangeReason != "" || d.Kind != "" || d.Scene != "") {
+	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Rationale != nil || d.Watch != nil || d.Passages != nil || d.Learning != nil || d.Related != nil || d.ChangeReason != "" || d.Kind != "" || d.Scene != "") {
 		return result, errors.New("reviewing a source without a lesson accepts only source ids")
 	}
 	for _, id := range append(append(append([]string{}, d.Sources...), d.Replaces...), d.Related...) {
@@ -904,6 +909,13 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 		}
 		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related, Kind: d.Kind, Scene: d.Scene}
 		p.Rationale, p.Premises = byID[id].Rationale, byID[id].Premises
+		p.Learning = byID[id].Learning
+		if d.Learning != nil {
+			p.Learning = d.Learning
+			if learningEmpty(p.Learning) {
+				p.Learning = nil
+			}
+		}
 		if d.Rationale != nil {
 			p.Rationale = strings.TrimSpace(*d.Rationale)
 		}
@@ -968,6 +980,9 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 		}
 		if d.Passages != nil {
 			p.Passages = append([]KnowledgePassage(nil), (*d.Passages)...)
+		}
+		if err := b.validateLearningEvidence(&p, byID[id], byID); err != nil {
+			return result, err
 		}
 		if err := validatePassages(p.Body, p.Passages); err != nil {
 			return result, err

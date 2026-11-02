@@ -1,4 +1,5 @@
 <script>
+  import Learning from './Learning.svelte';
   import { t } from '../lib/i18n.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
@@ -161,6 +162,7 @@
     <div class={card}>
       <div class={meta}><span class="pill">{t('notebookHypothesis')}</span></div>
       <div class="text mb-3.5 wrap-anywhere"><b>{page.title}</b><p>{page.lesson}</p><div class="k">{t('notebookWhen')}: {page.applies_to}</div></div>
+      <Learning learning={page.learning} />
       {#if page.body}
         <details class="text wiki-article mb-3.5 wrap-anywhere [&_h4]:mb-2 [&_p]:wrap-anywhere [&_p]:whitespace-pre-wrap" open={!!selected}>
           <summary>{t('notebookBody')}</summary>

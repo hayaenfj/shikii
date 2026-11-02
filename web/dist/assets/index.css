@@ -547,6 +547,10 @@
     margin-block: var(--spacing);
   }
 
+  .my-2 {
+    margin-block: calc(var(--spacing) * 2);
+  }
+
   .my-2\.5 {
     margin-block: calc(var(--spacing) * 2.5);
   }
@@ -1101,6 +1105,11 @@
     border-bottom-width: 1px;
   }
 
+  .border-l-2 {
+    border-left-style: var(--tw-border-style);
+    border-left-width: 2px;
+  }
+
   .border-l-\[3px\] {
     border-left-style: var(--tw-border-style);
     border-left-width: 3px;
@@ -1430,6 +1439,10 @@
 
   .pb-\[15px\] {
     padding-bottom: 15px;
+  }
+
+  .pl-3 {
+    padding-left: calc(var(--spacing) * 3);
   }
 
   .pl-5 {

@@ -440,9 +440,10 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 		allowed := d
 		allowed.Sources = nil
 		allowed.Passages = nil
+		allowed.Learning = nil
 		allowed.ChangeReason = ""
 		if !reflect.DeepEqual(allowed, notebook.Draft{}) {
-			return item, nil, errors.New("an existing article accepts sources, change_reason, exact edits and interpreted passages; use wiki operations for structural changes")
+			return item, nil, errors.New("an existing article accepts sources, change_reason, exact edits, interpreted passages and learning; use wiki operations for structural changes")
 		}
 	}
 	if (n.Target == "" || n.Target == "new") && len(n.Edits) > 0 {
@@ -485,6 +486,32 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 			return item, nil, err
 		}
 		d.Sources = sources
+		if d.Learning != nil {
+			for i := range d.Learning.Connections {
+				c := &d.Learning.Connections[i]
+				if ref, ok := w.Articles[c.ID]; ok {
+					c.ID, c.Revision = ref.ID, ref.Revision
+				}
+			}
+			if q := d.Learning.Probe; q != nil {
+				for i := range q.Results {
+					ids, err := resolve(q.Results[i].Sources)
+					if err != nil {
+						return item, nil, err
+					}
+					q.Results[i].Sources = ids
+				}
+			}
+			if q := d.Learning.Practice; q != nil {
+				for i := range q.Steps {
+					ids, err := resolve(q.Steps[i].Sources)
+					if err != nil {
+						return item, nil, err
+					}
+					q.Steps[i].Sources = ids
+				}
+			}
+		}
 		related := []string{}
 		for _, ref := range d.Related {
 			p, ok := w.Articles[ref]
@@ -547,7 +574,7 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 		if !ok {
 			return item, nil, errors.New("unknown prepared article target")
 		}
-		patch := notebook.Patch{ID: target.ID, Revision: target.Revision, Sources: d.Sources, ChangeReason: d.ChangeReason, Edits: n.Edits, Passages: d.Passages}
+		patch := notebook.Patch{ID: target.ID, Revision: target.Revision, Sources: d.Sources, ChangeReason: d.ChangeReason, Edits: n.Edits, Passages: d.Passages, Learning: d.Learning}
 		preview, err = book.PreviewPatch(patch)
 		if err != nil {
 			return item, nil, err

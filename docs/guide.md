@@ -190,6 +190,15 @@ Both operations also use MCP `shikii_wiki` and `POST /v1/wiki/notebook`. Text fi
 
 When an evidenced manual discovery was missed at the time, the agent adds the matching diagnostic `case_id` to the usual reflection `discoveries`. Complete same-project diagnostics must contain the exact live revision. The frozen non-delivery reason returns as `missed-delivery` maintenance, leading to diagnosis, comparison and a source-backed patch, or a reasoned no-change review. Actual delivery and session suppression do not establish a miss; missing history is not filled with current knowledge. Reviewed evidence does not recur, while new evidence reopens review. Better retrieval candidates and usefulness in later actual work are checked separately. No extra human input or truth labels are created.
 
+
+### Grow connected experience into checks and practices (in development)
+
+An article's `learning` retains a synthesis of distinct experiences, a small check with reported results, or a reusable project practice. `connections` pin other article revisions with exact quotations, conditions, reasons and supporting/counterexample roles, inheriting original source citations. `probe` keeps the question, method, reconsideration condition and sourced results; `practice` keeps a howto's ordered conditions, actions, things to avoid and checks. These remain agent-authored reports, never human truths or success labels.
+
+Save and revise them through CLI/MCP/HTTP `ingest`/`patch` or `work record` notes. Read `learning_context` from prepare/consult/reuse and recheck conditions when connected revisions or premises changed. Inline learning has a separate 2000-byte budget per article; larger content has `omitted` and an exact revision query. When it fits, reuse also returns the practice at that article revision. The knowledge page displays questions, reported results and steps. Update all writers of a shared wiki before using these fields.
+
+`shikii wiki organize` takes `organization:{reason,sources,targets,moves}` and previews a split or merge against pinned source revisions and exact passages. It saves nothing. Publish the returned destination drafts first, retaining source citations and interpreted quotations; compare the saved revisions before applying source patches with `requires`. A changed source or destination is refused. On a partial failure, inspect the saved results and replan. Original history and navigable references to the destinations remain. These are ordered individual saves, not a single transaction. The fixed limits are four sources, four new targets, eight moves and 1 MiB of CLI JSON for organize, ingest and patch. See the [agent procedure](../skills/shikii/references/learning.md) for examples and detailed limits.
+
 ### Kinds and scenes of articles
 
 From 0.9.0, an article with a lesson needs a `kind` and a `scene`. A save without them is refused, and the refusal lists the values you can use.
