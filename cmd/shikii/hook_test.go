@@ -1572,9 +1572,9 @@ func TestInitAndUpdateAddNoSection(t *testing.T) {
 		t.Fatal("init does not create AGENTS.md")
 	}
 	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	// 0.9.1 and earlier read pages written by 0.9.2 (English fixed words) as changed and refuse every save (as 0.8 did with 0.9.0's kind and scene)
-	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.9.2 or later") {
-		t.Fatalf("the update says to reopen open sessions and move every machine using the same wiki to 0.9.2 or later: %s", out)
+	// Shared writers must understand this version's learning metadata before it is saved.
+	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.22.0 or later") || !strings.Contains(out, "before saving learning") {
+		t.Fatalf("the update must name the supported version and restart requirement before saving learning: %s", out)
 	}
 	if b, _ := os.ReadFile(filepath.Join(plain, "AGENTS.md")); string(b) != human {
 		t.Fatalf("the update leaves AGENTS.md alone: %q", b)

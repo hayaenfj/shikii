@@ -31,6 +31,19 @@ func setWorkLearning(book notebook.Book, entry map[string]any, p notebook.Page, 
 	}
 }
 
+// A pinned current revision keeps live premise warnings. Historical revisions
+// must not inherit warnings belonging to a different current article.
+func currentWorkPremise(book notebook.Book, p notebook.Page) (notebook.Page, error) {
+	current, err := book.Query("lesson:" + p.ID)
+	if err != nil {
+		return p, err
+	}
+	if len(current.Lessons) == 1 && current.Lessons[0].Revision == p.Revision {
+		p.Recheck = current.Lessons[0].Recheck
+	}
+	return p, nil
+}
+
 func focusWorkKnowledge(book notebook.Book, entries []any, query, context string, quoted map[string]string) error {
 	budget := 16000
 	for _, raw := range entries {
@@ -50,14 +63,11 @@ func focusWorkKnowledge(book notebook.Book, entries []any, query, context string
 		}
 		e["rationale"] = p.Rationale
 		setWorkLearning(book, e, p, query)
-		current, err := book.Query("lesson:" + id)
+		p, err := currentWorkPremise(book, p)
 		if err != nil {
 			return err
 		}
-		if len(current.Lessons) == 1 && current.Lessons[0].Revision == revision {
-			e["recheck"] = current.Lessons[0].Recheck
-			p.Recheck = current.Lessons[0].Recheck
-		}
+		e["recheck"] = p.Recheck
 		orientation := notebook.Orient(p, context, min(budget, 2400))
 		e["orientation"] = orientation
 		for _, x := range orientation.Excerpts() {
@@ -142,13 +152,17 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	read := []store.KnowledgeReference{}
 	reply := map[string]any{"receipt": req.Receipt, "knowledge": entries, "how_to_record": workHowToRecord, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone}
 	add := func(p notebook.Page) error {
+		p, e := currentWorkPremise(book, p)
+		if e != nil {
+			return e
+		}
 		ref, e := workArticleRef(w, p)
 		if e != nil {
 			return e
 		}
 		quoted[ref] = planningArticleSource(p)
 		read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
-		entry := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "orientation": notebook.Orient(p, task+" "+query, 2400), "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}}
+		entry := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "recheck": p.Recheck, "orientation": notebook.Orient(p, task+" "+query, 2400), "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}}
 		setWorkLearning(book, entry, p, req.Query)
 		entries = append(entries, entry)
 		return nil

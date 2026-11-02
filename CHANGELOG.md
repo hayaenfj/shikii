@@ -9,6 +9,7 @@
 - Deliver learning and rechecks through preparation, mid-work search, consultation and reuse. Omitted content has an exact-revision read path; explicit revision reads can supply the complete learning context. Read connections, probes and practices on the Knowledge page.
 - Preview source-preserving splits and merges with `wiki organize` without saving. Create destinations first, then check source and destination revisions before editing sources. Preserve history and links to destinations. These are ordered individual saves, not one transaction.
 - Align CLI, MCP, HTTP and the skill; CLI ingest, patch and organize accept 1 MiB of JSON. Update with `shikii update`. Before saving learning, update every shared wiki writer and restart sessions, the page and MCP. Older binaries cannot read articles carrying learning, but do not remove their saved sources or history.
+- Retain live premise warnings when explicitly reading the current revision through a work receipt, without applying them to historical revisions. Name the supported release and restart requirement in the update output.
 
 ## 0.21.0 — Use current knowledge and counterexamples to improve procedures
 
