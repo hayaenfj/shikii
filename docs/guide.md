@@ -158,7 +158,7 @@ Planning's `hook plan query` also returns up to two live `criteria` pages direct
 
 Use `shikii work prepare` with topic words in `query` and the current hook's `session_id` and `turn_id`. Without a hook, pass `query` and an agent-supplied `request`; it cannot establish a human agreement. Read the returned conversation, knowledge, pending evidence and `how_to_record`. Then use `shikii work record` with its `receipt`, your interpretation, checked observations and source-backed notes. Shikii retains source identifiers, exact article revisions and capture metadata. Placement candidates requiring interpretation come back to the agent. Check `complete`, `errors`, `pending` and reflection's remaining work; retry corrected content with the same receipt.
 
-MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same active session on 0.20.0.
+MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.21.0.
 
 ### Connect knowledge and results during work (0.20.0)
 

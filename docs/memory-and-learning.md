@@ -61,7 +61,7 @@ For example, a previous release may have validation showing that knowledge and s
 
 These execution reports are evidence for the agent to assess. Saving a report does not create a success truth or a person's answer, and stays separate from measurements of judgment accuracy or long-term improvement.
 
-## The development build connects current guidance and counterexamples to procedure improvements
+## In 0.21, connect current guidance and counterexamples to procedure improvements
 
 The agent reads original evidence and assigns roles to exact quotations, separating current conditions from earlier context. Unclassified text and changed premises stay explicit. Consultation searches interpreted counterexamples and failure reports independently, preserving the conditions and sources to compare with the current proposal. Recording a corrected failure returns current text and a proposed correction for procedure review immediately, rather than waiting for later reuse. The agent checks the evidence before updating knowledge; no extra person scoring is needed. Interpretations and reviews remain hypotheses: dates alone never establish validity, and recorded results never become automatic success truths.
 
@@ -91,5 +91,6 @@ Neither knowledge nor an AI decision grants permission. The current request and 
 | 0.18 (shipped with 0.19) | Consult project knowledge about a proposal and assemble sourced procedures for current conditions. |
 | 0.19 | Combine reading requests, conversations and knowledge with saving judgments, observations and articles; retain sources and revisions and retry failed items. |
 | 0.20 | Connect focused original passages, knowledge added during work and sourced procedure results to the same task and later reuse. |
+| 0.21 | Separate current knowledge from earlier context, independently retrieve counterexample candidates, and review procedures from recorded failures and corrections. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.

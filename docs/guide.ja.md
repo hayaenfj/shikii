@@ -22,7 +22,7 @@ shikii は、エージェントをあなたのプロジェクトに合わせて�
 
 `shikii work prepare`へ検索語`query`と現在のhookの`session_id`・`turn_id`を渡します。返された会話・知識・未処理の証拠・`how_to_record`を読み、`work record`へレシート`receipt`と判断・観察・出典付きの記事を渡します。出典のID・記事の版・原資料の時刻はshikiiが保持します。差し込み先が曖昧なら候補の本文を読んで判断します。`complete`・`errors`・`pending`と振り返りの残件を確認し、失敗分は同じレシートで再送します。
 
-hookが無い時は`query`とエージェント自身が書いた`request`を使えますが、人の合意としては扱えません。MCPは`shikii_wiki`のprepare/recordと`work`オブジェクト、HTTPは同じ本文を`POST /v1/wiki/notebook`へ渡します。従来の個別操作も使えます。更新後はセッション・画面・MCPを再起動し、同じ進行中のセッションを書くプロセスを0.20.0へ揃えてください。
+hookが無い時は`query`とエージェント自身が書いた`request`を使えますが、人の合意としては扱えません。MCPは`shikii_wiki`のprepare/recordと`work`オブジェクト、HTTPは同じ本文を`POST /v1/wiki/notebook`へ渡します。従来の個別操作も使えます。更新後はセッション・画面・MCPを再起動し、同じwikiや進行中のセッションを書くプロセスを0.21.0へ揃えてください。
 
 
 ## 現在の知識・反例・手順の見直し

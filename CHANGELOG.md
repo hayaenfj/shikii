@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased — Use current knowledge and counterexamples to improve procedures
+## 0.21.0 — Use current knowledge and counterexamples to improve procedures
 
 - Keep host-interpreted current, historical, recheck and counterexample passages tied to exact unique body quotes, conditions, reasons and article revisions. Preparation and consultation expose unclassified text and changed premises.
 - Search interpreted counterexamples and evidenced failures independently of ordinary topic candidates, ranking individual failures so newer unrelated executions do not hide older relevant evidence.

@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-1031%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.20.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.21.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.20.0 connects knowledge and results throughout the work. Agents receive exact passages, add searches and checks with the same receipt, and return evidenced procedure results for the next task. Shikii preserves references and retries; interpretation remains with the agent. See the [changelog](CHANGELOG.md) and [memory guide](docs/memory-and-learning.md).
+Version 0.21.0 separates current knowledge from earlier context, searches for experiences that challenge an approach, and turns recorded failures and corrections into procedure reviews. The agent interprets sources and conditions; shikii preserves article revisions, evidence and review state. See the [changelog](CHANGELOG.md) and [memory guide](docs/memory-and-learning.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -130,7 +130,7 @@ shikii update
 
 This fetches the latest stable release, verifies its hashes and replaces shikii and readout. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again.** Earlier conversations, lessons, truths and calibration are removed; back up anything you want to keep. Updates from 0.7.0 onwards keep them. Restart the page and MCP afterwards.
 
-After updating to 0.20.0, reopen agent sessions and restart the page and MCP to use prepared recording. Keep processes sharing active session records on 0.20.0: older writers cannot preserve added quotation context and procedure outcomes. Existing individual commands, consult, reuse and diagnostic-linked discoveries remain available; discovery writers must be at least 0.18.0. Article storage remains compatible with 0.16.0. If upgrading from 0.15.0 or earlier, update every machine sharing the wiki before using rationale or watched files; those older processes exclude such articles and refuse wiki saves. Existing sources and history remain intact.
+After updating to 0.21.0, reopen agent sessions and restart the page and MCP. Update every process writing the same wiki or active session before using interpreted passages and procedure reviews. Older binaries cannot validate articles with the new passage metadata and refuse saves; they do not erase existing sources or history. Existing individual commands, prepared recording, consult, reuse and diagnostic-linked discoveries remain available.
 
 When updating from 0.8, also reopen your open agent sessions, and update every machine that uses the same wiki to 0.9.0 or later. shikii 0.8 cannot read articles that have a kind and scene, and refuses to save to the wiki (the articles are not damaged). In the same way, 0.9.1 and earlier read articles written by 0.9.2 (English fixed words in the article file) as changed, so update every machine that uses the same wiki to 0.9.2 or later.
 
@@ -157,7 +157,7 @@ In 0.20.0, preparation supplies focused, exact passages; the same receipt can ad
 
 Since 0.18.0, consult gathers conditions, rationale and linked exceptions for an approach; reuse supplies howtos and recent validation for the current conditions. Evidenced manual discoveries can link a recorded non-delivery to ordinary maintenance. Exact excerpts reduce repeated reading, while the host agent retains responsibility for interpreting the evidence. Existing precise edits, diagnosis and read-only historical comparisons remain available.
 
-The development build also separates interpreted current guidance from earlier context, searches for counterexample candidates independently, and returns corrected failures as procedure reviews. The agent checks sources and conditions before updating knowledge; no extra person scoring is needed. See the [guide](docs/guide.md#current-knowledge-counterexamples-and-procedure-reviews) for the workflow and shared-writer update requirement.
+In 0.21.0, preparation separates interpreted current guidance from earlier context, searches for counterexample candidates independently, and returns corrected failures as procedure reviews. The agent checks sources and conditions before updating knowledge; no extra person scoring is needed. See the [guide](docs/guide.md#current-knowledge-counterexamples-and-procedure-reviews) for the workflow and shared-writer update requirement.
 
 Since 0.16.0, an agent can record when a manually retrieved article actually helped a decision, with evidence. That context helps retrieve the same revision later; reading alone never counts as usefulness. Articles can carry the reasons for a choice and rejected alternatives, plus up to four project files to recheck when their hashes change. A changed premise asks for review, without declaring the knowledge wrong. Pending reflection can be handled in the same planning query and submit, with item-level save results and retries.
 
