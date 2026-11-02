@@ -66,6 +66,11 @@ type LearningContext struct {
 	Notice   string    `json:"notice"`
 }
 
+func uniqueLearningQuote(body, quote string) bool {
+	start := strings.Index(body, quote)
+	return quote != "" && start >= 0 && start == strings.LastIndex(body, quote)
+}
+
 func learningText(text string, limit int) bool {
 	return strings.TrimSpace(text) != "" && utf8.ValidString(text) && len(text) <= limit
 }
@@ -167,7 +172,7 @@ func (b Book) validateLearningEvidence(p *Page, old Page, pages map[string]Page)
 		if err != nil {
 			return err
 		}
-		if strings.Count(past.Body, c.Quote) != 1 {
+		if !uniqueLearningQuote(past.Body, c.Quote) {
 			return errors.New("the connected quote must occur exactly once in the cited article body")
 		}
 		for _, s := range past.Sources {

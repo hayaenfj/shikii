@@ -14,7 +14,24 @@ import (
 
 // Excerpts are exact passages of a pinned revision, not generated conclusions.
 // Keep full-body recovery and explicit incompleteness beside the passages.
-func focusWorkKnowledge(book notebook.Book, entries []any, context string, quoted map[string]string) error {
+func workLearningBudget(query string) int {
+	if strings.HasPrefix(query, "lesson:") && strings.Contains(query, "@") {
+		return 12 << 10
+	}
+	return 2000
+}
+
+// A single bounded context carries learning on both initial and extended reads.
+// Do not leave a second unbounded copy inside the supplied article.
+func setWorkLearning(book notebook.Book, entry map[string]any, p notebook.Page, query string) {
+	entry["learning_context"] = book.LearningContext(p, workLearningBudget(query))
+	if article, ok := entry["article"].(notebook.Page); ok {
+		article.Learning = nil
+		entry["article"] = article
+	}
+}
+
+func focusWorkKnowledge(book notebook.Book, entries []any, query, context string, quoted map[string]string) error {
 	budget := 16000
 	for _, raw := range entries {
 		e := raw.(map[string]any)
@@ -32,7 +49,7 @@ func focusWorkKnowledge(book notebook.Book, entries []any, context string, quote
 			p = v.Lessons[0]
 		}
 		e["rationale"] = p.Rationale
-		e["learning_context"] = book.LearningContext(p, 2000)
+		setWorkLearning(book, e, p, query)
 		current, err := book.Query("lesson:" + id)
 		if err != nil {
 			return err
@@ -131,7 +148,9 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		}
 		quoted[ref] = planningArticleSource(p)
 		read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
-		entries = append(entries, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "orientation": notebook.Orient(p, task+" "+query, 2400), "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
+		entry := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "orientation": notebook.Orient(p, task+" "+query, 2400), "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}}
+		setWorkLearning(book, entry, p, req.Query)
+		entries = append(entries, entry)
 		return nil
 	}
 	if req.Proposal != "" || req.Conditions != "" {

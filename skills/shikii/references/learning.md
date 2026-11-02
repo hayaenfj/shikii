@@ -26,7 +26,10 @@ they can share a source. Connections are agent interpretations, not established
 facts. `learning_context.recheck` identifies connected articles whose revision,
 availability or watched premises changed. Investigate their conditions before
 using them. Inline contexts allow 2000 bytes of learning per article; when
-`omitted:true`, follow `query` to the full exact revision.
+`omitted:true`, follow `query` to the full exact revision. An explicit pinned
+`lesson:<id>@<revision>` query added to the same work receipt returns the full
+learning context within its 12 KiB storage limit, once rather than duplicated
+inside the article.
 
 For a useful unresolved hypothesis, add `learning.probe`:
 
@@ -70,7 +73,9 @@ that it succeeded.
 
 Direct `wiki ingest` and `wiki patch` accept `learning`; MCP and HTTP use the
 same field. A patch requires the read article revision, sources and a reason.
-Omission preserves learning; `{}` clears it. `work record` notes accept it too:
+Omission preserves learning; `{}` clears it. A supplied nonempty object replaces
+the complete learning value: read it first and retain any connections, probe or
+practice that you are not changing. `work record` notes accept it too:
 on an existing target send `target`, `sources`, `change_reason`, and `learning`
 with any necessary exact body edits. In work notes a connection's `id` may be
 the prepared `knowledgeN` ref (its revision is supplied internally); nested

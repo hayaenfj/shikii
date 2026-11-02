@@ -3,6 +3,7 @@ package notebook
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -98,7 +99,7 @@ func (b Book) Organize(o Organization) (OrganizationPlan, error) {
 	for _, m := range o.Moves {
 		p, ok := sources[m.From]
 		i, targetOK := titles[m.To]
-		if !ok || !targetOK || !learningText(m.Quote, 16<<10) || strings.Count(p.Body, m.Quote) != 1 || strings.Count(*targets[i].Body, m.Quote) != 1 {
+		if !ok || !targetOK || !learningText(m.Quote, 16<<10) || !uniqueLearningQuote(p.Body, m.Quote) || !uniqueLearningQuote(*targets[i].Body, m.Quote) {
 			return out, errors.New("a move must quote one unique exact body passage in its pinned source and named destination")
 		}
 		start := strings.Index(p.Body, m.Quote)
@@ -150,7 +151,7 @@ func (b Book) Organize(o Organization) (OrganizationPlan, error) {
 			return out, err
 		}
 		for _, move := range o.Moves {
-			if titles[move.To] == i && strings.Count(preview.Page.Body, move.Quote) != 1 {
+			if titles[move.To] == i && !uniqueLearningQuote(preview.Page.Body, move.Quote) {
 				return out, errors.New("the normalized destination must retain each exact moved quotation; add surrounding context when whitespace is significant")
 			}
 		}
@@ -162,14 +163,17 @@ func (b Book) Organize(o Organization) (OrganizationPlan, error) {
 		if len(spans[p.ID]) == 0 {
 			return out, errors.New("every source must contribute at least one move")
 		}
-		body, related := p.Body, append([]string(nil), p.Related...)
+		related := append([]string(nil), p.Related...)
 		requires := []ArticleReference{}
-		for _, m := range o.Moves {
-			if m.From != p.ID {
-				continue
-			}
-			target := out.Creates[titles[m.To]].Page
-			body = strings.Replace(body, m.Quote, "See related article: lesson:"+target.ID, 1)
+		ranges := append([]span(nil), spans[p.ID]...)
+		sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
+		var assembled strings.Builder
+		position := 0
+		for _, moved := range ranges {
+			target := out.Creates[moved.target].Page
+			assembled.WriteString(p.Body[position:moved.start])
+			assembled.WriteString("See related article: lesson:" + target.ID)
+			position = moved.end
 			related = append(related, target.ID)
 			ref := ArticleReference{ID: target.ID, Revision: target.Revision}
 			seen := false
@@ -180,9 +184,15 @@ func (b Book) Organize(o Organization) (OrganizationPlan, error) {
 				requires = append(requires, ref)
 			}
 		}
+		assembled.WriteString(p.Body[position:])
+		body := assembled.String()
 		kept := []KnowledgePassage{}
 		for _, role := range p.Passages {
-			if strings.Contains(body, role.Quote) {
+			at, moved := strings.Index(p.Body, role.Quote), false
+			for _, r := range ranges {
+				moved = moved || at >= r.start && at+len(role.Quote) <= r.end
+			}
+			if !moved {
 				kept = append(kept, role)
 			}
 		}

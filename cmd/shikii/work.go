@@ -465,7 +465,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		w.Task = task
 	}
 	quoted := map[string]string{}
-	if err = focusWorkKnowledge(book, knowledge, req.Query+" "+task, quoted); err != nil {
+	if err = focusWorkKnowledge(book, knowledge, req.Query, req.Query+" "+task, quoted); err != nil {
 		return nil, err
 	}
 	if workContextSize(map[string]any{"conversation": conversation, "conversation_context": conversationContext}) > workSourceBudget {
