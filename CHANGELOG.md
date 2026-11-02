@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.22.0 — Connect experience and grow checks and project practices
+
+- Connect experiences from distinct articles with pinned revisions, exact quotes, conditions, reasons and support or counterexample roles. Inherit their sources and recheck changed citations or premises.
+- Keep a question, a small checking method, reconsideration conditions and source-backed observations in the wiki. Reuse howto practices with conditions, actions, things to avoid and checks. Observations never become human truths or success labels.
+- Deliver learning and rechecks through preparation, mid-work search, consultation and reuse. Omitted content has an exact-revision read path; explicit revision reads can supply the complete learning context. Read connections, probes and practices on the Knowledge page.
+- Preview source-preserving splits and merges with `wiki organize` without saving. Create destinations first, then check source and destination revisions before editing sources. Preserve history and links to destinations. These are ordered individual saves, not one transaction.
+- Align CLI, MCP, HTTP and the skill; CLI ingest, patch and organize accept 1 MiB of JSON. Update with `shikii update`. Before saving learning, update every shared wiki writer and restart sessions, the page and MCP. Older binaries cannot read articles carrying learning, but do not remove their saved sources or history.
+
 ## 0.21.0 — Use current knowledge and counterexamples to improve procedures
 
 - Keep host-interpreted current, historical, recheck and counterexample passages tied to exact unique body quotes, conditions, reasons and article revisions. Preparation and consultation expose unclassified text and changed premises.
