@@ -149,12 +149,18 @@ type workToken struct {
 	Nonce   string `json:"n"`
 }
 type workResult struct {
-	Complete   bool       `json:"complete"`
-	Saved      []workItem `json:"saved"`
-	Errors     []workItem `json:"errors,omitempty"`
-	Pending    []any      `json:"pending"`
-	Plan       any        `json:"plan,omitempty"`
-	Reflection any        `json:"reflection,omitempty"`
+	Complete         bool                  `json:"complete"`
+	Saved            []workItem            `json:"saved"`
+	Errors           []workItem            `json:"errors,omitempty"`
+	Pending          []any                 `json:"pending"`
+	Plan             any                   `json:"plan,omitempty"`
+	Reflection       any                   `json:"reflection,omitempty"`
+	ProcedureReviews []workProcedureReview `json:"procedure_reviews,omitempty"`
+}
+
+type workProcedureReview struct {
+	notebook.MaintenanceTask
+	Ref string `json:"ref"`
 }
 
 func workHash(v any) string {
@@ -386,7 +392,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		for _, p := range view.Lessons {
 			ref := "knowledge" + strconv.Itoa(len(knowledge)+1)
 			w.Articles[ref] = store.KnowledgeReference{ID: p.ID, Revision: p.Revision}
-			knowledge = append(knowledge, map[string]any{"ref": ref, "article": p})
+			knowledge = append(knowledge, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "body_included": true})
 		}
 	}
 	reflection, err := reflectQuery(root, scope)
@@ -477,7 +483,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	return map[string]any{"receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "task_context": taskContext, "agent_supplied_task": standalone, "conversation": conversation, "conversation_context": conversationContext, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord + " Before judging, read task with task_context and each conversation reference with its conversation_context role, turn and recorded history order. Planning excerpts are not full original messages. Use exact body_excerpts first when body_included is false; query the same article revision only when a material condition or exception remains unresolved. Read knowledge_context search/remaining-classification guidance, reflection_context.human_corrections and each source.originals/text_status. Incomplete sources have no recording references; follow source_query and use the individual operations after reading."}, nil
 }
 
-const workHowToRecord = "Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits; metadata and revisions are retained. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Add knowledge mid-work with prepare:{receipt,query} (optional cursor), or pass proposal for consult or conditions for reuse. Keep the returned article refs and the same receipt. Record evidenced discoveries:[{ref,context,decision,evidence,case_id?}]. Record procedure executions with outcomes:[{ref,conditions,action,failure?,correction?,result,sources:[observation refs]}]; this reports an outcome, never success or a truth. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
+const workHowToRecord = "Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits and/or passages:[{role,quote,conditions,reason}]; metadata and revisions are retained. Read orientation before mixed chronology; unclassified text and changed premises remain unresolved. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Add knowledge mid-work with prepare:{receipt,query} (optional cursor), or pass proposal for consult or conditions for reuse. Keep the returned article refs and the same receipt. Record evidenced discoveries:[{ref,context,decision,evidence,case_id?}]. Record procedure executions with outcomes:[{ref,conditions,action,failure?,correction?,result,sources:[observation refs]}]; this reports an outcome, never success or a truth. Handle procedure_reviews by checking current text, correction and evidence, then save a supported note. Notes return updated procedure_reviews; check the change and complete review with maintenance:[{ref,reason}] using that latest ref. An edit alone does not complete review; old refs are refused. With no edit, save the checked reason with the original ref. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
 
 func cmdWork(args []string) error {
 	if len(args) != 1 || (args[0] != "prepare" && args[0] != "record") {

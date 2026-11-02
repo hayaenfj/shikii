@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-1017%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1031%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.20.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -156,6 +156,8 @@ In 0.20.0, `work prepare` brings together current knowledge and pending evidence
 In 0.20.0, preparation supplies focused, exact passages; the same receipt can add search, consult and reuse during the work. Record procedure conditions, failures, corrections and results with cited evidence for comparison in the next task. No extra human input or automatic success labels are added. See the [recording workflow](skills/shikii/references/recording.md).
 
 Since 0.18.0, consult gathers conditions, rationale and linked exceptions for an approach; reuse supplies howtos and recent validation for the current conditions. Evidenced manual discoveries can link a recorded non-delivery to ordinary maintenance. Exact excerpts reduce repeated reading, while the host agent retains responsibility for interpreting the evidence. Existing precise edits, diagnosis and read-only historical comparisons remain available.
+
+The development build also separates interpreted current guidance from earlier context, searches for counterexample candidates independently, and returns corrected failures as procedure reviews. The agent checks sources and conditions before updating knowledge; no extra person scoring is needed. See the [guide](docs/guide.md#current-knowledge-counterexamples-and-procedure-reviews) for the workflow and shared-writer update requirement.
 
 Since 0.16.0, an agent can record when a manually retrieved article actually helped a decision, with evidence. That context helps retrieve the same revision later; reading alone never counts as usefulness. Articles can carry the reasons for a choice and rejected alternatives, plus up to four project files to recheck when their hashes change. A changed premise asks for review, without declaring the knowledge wrong. Pending reflection can be handled in the same planning query and submit, with item-level save results and retries.
 

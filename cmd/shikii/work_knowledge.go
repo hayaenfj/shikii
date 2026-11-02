@@ -18,19 +18,19 @@ func focusWorkKnowledge(book notebook.Book, entries []any, context string, quote
 	budget := 16000
 	for _, raw := range entries {
 		e := raw.(map[string]any)
-		if e["body_included"] == true || e["article"] != nil {
-			continue
-		}
 		id, _ := e["id"].(string)
 		revision, _ := e["revision"].(string)
-		v, err := book.Query("lesson:" + id + "@" + revision)
-		if err != nil {
-			return err
+		p, supplied := e["article"].(notebook.Page)
+		if !supplied {
+			v, err := book.Query("lesson:" + id + "@" + revision)
+			if err != nil {
+				return err
+			}
+			if len(v.Lessons) != 1 {
+				return errors.New("a prepared article revision is unavailable; read its exact query")
+			}
+			p = v.Lessons[0]
 		}
-		if len(v.Lessons) != 1 {
-			return errors.New("a prepared article revision is unavailable; read its exact query")
-		}
-		p := v.Lessons[0]
 		e["rationale"] = p.Rationale
 		current, err := book.Query("lesson:" + id)
 		if err != nil {
@@ -38,11 +38,17 @@ func focusWorkKnowledge(book notebook.Book, entries []any, context string, quote
 		}
 		if len(current.Lessons) == 1 && current.Lessons[0].Revision == revision {
 			e["recheck"] = current.Lessons[0].Recheck
+			p.Recheck = current.Lessons[0].Recheck
 		}
-		e["body_excerpts"] = notebook.FocusExcerpts(p.Body, context, min(budget, 2400))
-		for _, x := range e["body_excerpts"].([]notebook.TextExcerpt) {
+		orientation := notebook.Orient(p, context, min(budget, 2400))
+		e["orientation"] = orientation
+		for _, x := range orientation.Excerpts() {
 			budget -= len(x.Text)
 		}
+		if e["body_included"] == true || e["article"] != nil {
+			continue
+		}
+		e["body_excerpts"] = orientation.Excerpts()
 		quoted[e["ref"].(string)] = workArticleSource(p, true, e["body_excerpts"].([]notebook.TextExcerpt))
 		e["reading_notice"] = "Exact passages of this revision, not a complete body. Check conditions, reasons and exceptions; read query only when a material condition remains unresolved. Excerpts do not establish support or permission."
 	}
@@ -124,7 +130,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		}
 		quoted[ref] = planningArticleSource(p)
 		read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
-		entries = append(entries, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
+		entries = append(entries, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "orientation": notebook.Orient(p, task+" "+query, 2400), "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
 		return nil
 	}
 	if req.Proposal != "" || req.Conditions != "" {

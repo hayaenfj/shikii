@@ -21,11 +21,13 @@ type AssistanceContext struct {
 }
 
 type AssistanceCheck struct {
-	Page         Page          `json:"page"`
-	Relation     string        `json:"relation"`
-	From         string        `json:"from,omitempty"`
-	BodyOmitted  bool          `json:"body_omitted,omitempty"`
-	BodyExcerpts []TextExcerpt `json:"body_excerpts,omitempty"`
+	Page         Page                   `json:"page"`
+	Relation     string                 `json:"relation"`
+	From         string                 `json:"from,omitempty"`
+	BodyOmitted  bool                   `json:"body_omitted,omitempty"`
+	BodyExcerpts []TextExcerpt          `json:"body_excerpts,omitempty"`
+	Orientation  KnowledgeOrientation   `json:"orientation"`
+	Outcomes     []ProcedureOutcomeView `json:"outcomes,omitempty"`
 }
 
 func ValidAssistanceText(text string, required bool) bool {
@@ -80,9 +82,10 @@ func (b Book) Assistance(request, proposal, conditions string, reuse bool) (Assi
 	bodyBudget := 16000
 	add := func(p Page, relation, from string) {
 		check := AssistanceCheck{Page: p, Relation: relation, From: from}
+		check.Orientation = Orient(p, request+" "+proposal+" "+conditions, min(bodyBudget, 2400))
 		if len(p.Body) > min(bodyBudget, 2400) {
 			check.Page.Body, check.BodyOmitted = "", true
-			check.BodyExcerpts = FocusExcerpts(p.Body, request+" "+proposal+" "+conditions, min(bodyBudget, 2400))
+			check.BodyExcerpts = check.Orientation.Excerpts()
 			for _, excerpt := range check.BodyExcerpts {
 				bodyBudget -= len(excerpt.Text)
 			}
@@ -94,6 +97,29 @@ func (b Book) Assistance(request, proposal, conditions string, reuse bool) (Assi
 	}
 	for _, p := range seeds {
 		add(p, "topic", "")
+	}
+	if !reuse {
+		counterexamples, err := b.counterexamples(pages, request, proposal)
+		if err != nil {
+			return out, err
+		}
+		for _, c := range counterexamples {
+			// Preserve the separate role even when the page was a topic seed.
+			found := false
+			for i := range out.Checks {
+				if out.Checks[i].Page.ID == c.Page.ID {
+					out.Checks[i].Relation = c.Relation
+					out.Checks[i].Outcomes = c.Outcomes
+					found = true
+					break
+				}
+			}
+			if !found {
+				add(c.Page, c.Relation, "")
+				out.Checks[len(out.Checks)-1].Outcomes = c.Outcomes
+				seen[c.Page.ID] = true
+			}
+		}
 	}
 	// A bounded two-hop walk uses the project's own relationships, not a global
 	// inference that a page is an exception or contradicts the current proposal.

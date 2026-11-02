@@ -1508,7 +1508,7 @@ function checkWordingPlain(target) {
 // Editing keeps the opened revision through conflicts; deletion needs an explicit confirmation.
 async function checkManageArticle(target) {
   localStorage.removeItem('shikii.scene');
-  const article = { id: '0000000000000001', revision: '0000000000000002', title: 'Example article', lesson: 'Summary', applies_to: 'Docs', body: 'Detail', rationale: 'Choose local files; reject another form.', recheck: [{ path: 'behavior.txt', state: 'changed' }], kind: 'howto', scene: 'Docs', sources: [] };
+  const article = { id: '0000000000000001', revision: '0000000000000002', title: 'Example article', lesson: 'Summary', applies_to: 'Docs', body: 'Detail', rationale: 'Choose local files; reject another form.', recheck: [{ path: 'behavior.txt', state: 'changed' }], kind: 'howto', scene: 'Docs', sources: [], passages: [{ role: 'current', quote: 'Detail', conditions: 'Current workflow', reason: 'Checked source.' }] };
   const realFetch = globalThis.fetch;
   const sent = [], changed = [];
   let fail = true;
@@ -1527,18 +1527,24 @@ async function checkManageArticle(target) {
     const title = target.querySelector('[name="title"]');
     if (!title) { console.log('check-ui: FAIL (article editor missing)'); return false; }
     title.value = 'Changed title'; title.dispatchEvent(new window.Event('input', { bubbles: true })); flushSync();
+    const interpreted = target.querySelector('[data-passage-role="current"]')?.textContent.includes('Detail');
+    const quote = target.querySelector('[data-passage-row] textarea');
+    const bodyField = target.querySelector('[name="body"]');
+    if (quote) { quote.value = 'Updated detail'; quote.dispatchEvent(new window.Event('input', { bubbles: true })); }
+    bodyField.value = 'Updated detail'; bodyField.dispatchEvent(new window.Event('input', { bubbles: true })); flushSync();
+    const isolated = article.passages[0].quote === 'Detail';
     target.querySelector('[data-article-form]').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); await settle();
     const conflict = target.querySelector('[name="title"]')?.value === 'Changed title' && !!target.querySelector('[data-article-error]') && changed.length === 0 && sent[0]?.revision === article.revision;
     fail = false;
     target.querySelector('[data-article-form]').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); await settle();
-    const saved = changed[0]?.title === 'Changed title' && changed[0]?.rationale === article.rationale && !target.querySelector('[data-article-form]');
+    const saved = changed[0]?.title === 'Changed title' && changed[0]?.rationale === article.rationale && changed[0]?.body === 'Updated detail' && changed[0]?.passages?.[0]?.quote === 'Updated detail' && sent[0]?.passages?.[0]?.conditions === 'Current workflow' && !target.querySelector('[data-article-form]');
     click('[data-article-delete]');
     const explains = !!target.querySelector('[data-article-delete-confirm]') && sent.length === 2;
     click('[data-article-cancel]');
     const cancelled = sent.length === 2 && !target.querySelector('[data-article-delete-confirm]');
     click('[data-article-delete]'); click('[data-article-delete-confirm]'); await settle();
     const deleted = changed[1]?.status === 'deleted' && sent[2]?.action === 'delete';
-    const ok = reasoning && conflict && saved && explains && cancelled && deleted;
+    const ok = interpreted && isolated && reasoning && conflict && saved && explains && cancelled && deleted;
     console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (article editing: conflict retains draft=' + conflict + ', saved=' + saved + ', confirms=' + explains + ', cancel sends nothing=' + cancelled + ', deletes=' + deleted + ')');
     return ok;
   } finally { unmount(app); globalThis.fetch = realFetch; }

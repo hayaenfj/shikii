@@ -26,9 +26,12 @@ type MaintenanceTask struct {
 	ChangedFiles  []PremiseChange          `json:"changed_files,omitempty"`
 	Missed        []MissedDiscovery        `json:"missed,omitempty"`
 	MissedTotal   int                      `json:"missed_total,omitempty"`
+	Outcomes      []OutcomeReview          `json:"outcomes,omitempty"`
+	OutcomeTotal  int                      `json:"outcome_total,omitempty"`
 	NextAction    string                   `json:"next_action,omitempty"`
 	ContentKey    string                   `json:"-"`
 	FeedbackKeys  []string                 `json:"-"`
+	outcomeRefs   []ProcedureOutcome
 }
 type MaintenanceReview struct {
 	PageID   string `json:"page_id"`
@@ -126,6 +129,19 @@ func hasNewFeedback(current, reviewed []string) bool {
 }
 
 func (b Book) Maintenance() ([]MaintenanceTask, error) {
+	return b.maintenance(nil)
+}
+
+// OutcomeMaintenance returns pending reviews only for the procedures just used.
+// It shares checkpoints with ordinary maintenance, so retries do not reopen it.
+func (b Book) OutcomeMaintenance(ids []string) ([]MaintenanceTask, error) {
+	if len(ids) == 0 {
+		return []MaintenanceTask{}, nil
+	}
+	return b.maintenance(ids)
+}
+
+func (b Book) maintenance(ids []string) ([]MaintenanceTask, error) {
 	pages, _, err := b.pages()
 	if err != nil {
 		return nil, err
@@ -153,6 +169,9 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 		return nil, err
 	}
 	for _, task := range tasks {
+		if ids != nil && (!slices.Contains(ids, task.PageID) || task.OutcomeTotal == 0) {
+			continue
+		}
 		previous, seen := checkpoints[task.PageID]
 		previousContent := previous.ContentKey
 		if previousContent == "" {
@@ -173,6 +192,9 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 		if task.FeedbackTotal > 0 {
 			task.Reasons = append([]string{"delivery-feedback"}, task.Reasons...)
 		}
+		if task.OutcomeTotal > 0 {
+			task.Reasons = append([]string{"outcome-feedback"}, task.Reasons...)
+		}
 		if task.MissedTotal > 0 {
 			task.Reasons = append([]string{"missed-delivery"}, task.Reasons...)
 		}
@@ -191,6 +213,9 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 	}
 	sort.SliceStable(pending, func(i, j int) bool {
 		a, b := pending[i], pending[j]
+		if (a.OutcomeTotal > 0) != (b.OutcomeTotal > 0) {
+			return a.OutcomeTotal > 0
+		}
 		if (a.MissedTotal > 0) != (b.MissedTotal > 0) {
 			return a.MissedTotal > 0
 		}
@@ -205,6 +230,16 @@ func (b Book) Maintenance() ([]MaintenanceTask, error) {
 	})
 	if len(pending) > 2 {
 		pending = pending[:2]
+	}
+	for i := range pending {
+		for _, p := range valid {
+			if p.ID == pending[i].PageID {
+				if err := b.expandOutcomeReview(&pending[i], p); err != nil {
+					return nil, err
+				}
+				break
+			}
+		}
 	}
 	return pending, nil
 }
@@ -248,12 +283,17 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 		}
 	}
 	if selected == nil || selected.Key != review.Key || selected.Revision != review.Revision {
-		return review, errors.New("the page, a related revision or its delivery feedback changed; read it again before recording the review")
+		return review, errors.New("the page, related knowledge, delivery feedback or execution evidence changed; read it again before recording the review")
 	}
 	for _, p := range pages {
 		if p.ID == review.PageID || selected.Dependencies[p.ID] != "" {
 			if len(b.sourceIssues(p)) > 0 {
 				return review, errors.New("a page whose sources cannot be checked is not marked as reviewed")
+			}
+			if p.ID == review.PageID {
+				if err := b.expandOutcomeReview(selected, p); err != nil {
+					return review, err
+				}
 			}
 		}
 	}

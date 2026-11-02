@@ -152,6 +152,20 @@
         </p>
         <p class="text-[15px] whitespace-pre-wrap">{selected.lesson}</p>
         <div class="k">{t('appliesTo')}</div><p class="mt-0">{selected.applies_to}</p>
+        {#if selected.passages?.length}
+          <section class="mb-3 grid gap-2" data-article-passages aria-label={t('articlePassages')}>
+            {#each ['current', 'recheck', 'counterexample', 'history'] as role}
+              {#each selected.passages.filter(p => p.role === role) as passage}
+                <div class="rounded-lg border border-line p-2.5" data-passage-role={role}>
+                  <div class="k">{t('passageRole')(role)}</div>
+                  <p class="my-1 whitespace-pre-wrap wrap-anywhere">{passage.quote}</p>
+                  <p class="k my-1 whitespace-pre-wrap wrap-anywhere">{passage.conditions}</p>
+                  <p class="k my-0 whitespace-pre-wrap wrap-anywhere">{passage.reason}</p>
+                </div>
+              {/each}
+            {/each}
+          </section>
+        {/if}
         {#if selected.body}<div class="k">{t('bodyTitle')}</div><div class="text rounded-lg bg-bg p-2.5 text-[14px] whitespace-pre-wrap wrap-anywhere">{plainText(selected.body)}</div>{/if}
         {#if selected.rationale}<div class="k mt-2">{t('articleRationale')}</div><p class="mt-0 whitespace-pre-wrap wrap-anywhere" data-article-rationale>{plainText(selected.rationale)}</p>{/if}
         {#if selected.recheck?.length}<div class="mt-2 rounded-lg border border-amber p-2.5" data-article-recheck><p class="m-0">{t('articleRecheck')}</p><ul class="mb-0">{#each selected.recheck as item}<li class="wrap-anywhere">{item.path} — {t('premiseState')(item.state)}</li>{/each}</ul></div>{/if}

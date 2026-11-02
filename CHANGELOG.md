@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased — Use current knowledge and counterexamples to improve procedures
+
+- Keep host-interpreted current, historical, recheck and counterexample passages tied to exact unique body quotes, conditions, reasons and article revisions. Preparation and consultation expose unclassified text and changed premises.
+- Search interpreted counterexamples and evidenced failures independently of ordinary topic candidates, ranking individual failures so newer unrelated executions do not hide older relevant evidence.
+- Return corrected failures immediately as procedure reviews and ordinary maintenance, retaining current text candidates, suggested corrections and sources. Reviewed evidence is deduplicated and new results reopen review without creating success or human truth labels.
+- Support source-backed passage changes through CLI, MCP, HTTP and the Knowledge editor. Update all shared wiki writers before using this metadata; older binaries refuse the new articles without removing their history.
+
 ## 0.20.0 — Connect knowledge and results throughout the work
 
 - Reject named pipes and other nonregular source files at the shared descriptor boundary before reading or hashing.

@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-1017%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1031%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.20.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -154,6 +154,8 @@ hookを入れると、毎回のターンの2つの瞬間が残ります。エー
 0.20.0では、`work prepare`が現在の知識と未処理の証拠をまとめ、`work record`が1つのレシートで判断・観察・記事を保存します。出典や記事の版は内側で保持し、部分成功の再送でも保存済みの証拠を重ねません。差し込み先が曖昧な時は、候補の内容をエージェントへ返して判断を残します。意味の解釈と保存結果の確認は引き続き必要です。
 
 0.20.0では、着手時に判断に関わる原文を先に届け、同じレシートで途中の検索・照合・再利用を追加できます。手順の実行条件・失敗・修正・結果を出典へ結び付け、次の作業で現在条件と比較します。人の追加入力や成功の自動ラベルは増やしません。操作と更新時の注意は[記録の手順](../../skills/shikii/references/recording.md)を参照してください。
+
+開発版では、出典を読んで分類した現在の内容と経緯を分けて届け、反例の候補を別に探し、失敗と修正の結果を手順の見直しへ返します。エージェントが出典と条件を確かめて知識を更新し、人の追加採点は増やしません。操作と、同じwikiを書くプロセスの更新については[詳しい使い方](../guide.ja.md#現在の知識反例手順の見直し)を参照してください。
 
 0.18.0以降は、作業案の照合に条件・判断理由・関連記事の例外を渡し、手順の再利用に現在の条件と新しい検証を揃えます。役立った手動検索は当時の未配信記録に結び付け、通常の手入れへ戻せます。原文の抜粋を使い、意味の解釈は利用中のエージェントが行います。部分編集・診断・過去場面の比較も引き続き使えます。
 

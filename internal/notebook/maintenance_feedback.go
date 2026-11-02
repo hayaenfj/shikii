@@ -10,6 +10,26 @@ import (
 // Feedback asks the agent to inspect applicability and sources; it never edits a lesson or supplies a human truth.
 func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 	tasks := maintenanceTasks(pages)
+	// Supersession depends on every stored article, including replacements
+	// whose evidence is currently unavailable. Losing evidence must not revive
+	// the earlier procedure. Share this rule across queries, keys and saves.
+	all, _, err := b.pages()
+	if err != nil {
+		return nil, err
+	}
+	retired := map[string]bool{}
+	for _, p := range all {
+		for _, id := range p.Replaces {
+			retired[id] = true
+		}
+	}
+	active := tasks[:0]
+	for _, task := range tasks {
+		if !retired[task.PageID] {
+			active = append(active, task)
+		}
+	}
+	tasks = active
 	if len(tasks) == 0 {
 		return tasks, nil
 	}
@@ -113,6 +133,9 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 			task.Missed = append(task.Missed, all[j])
 		}
 		task.NextAction = "Read the article and missed evidence; diagnose the recorded case, capture supporting evidence, compare an applicability patch before saving it, or maintain with a reason for no change. Do not reset suppression by changing the revision. Check usefulness in subsequent actual work."
+	}
+	if err := b.addOutcomeReviews(tasks, pages); err != nil {
+		return nil, err
 	}
 	return tasks, nil
 }

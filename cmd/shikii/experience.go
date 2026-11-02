@@ -8,28 +8,30 @@ import (
 )
 
 type experienceCheck struct {
-	Page               experiencePage         `json:"page"`
-	Relation           string                 `json:"relation"`
-	From               string                 `json:"from,omitempty"`
-	BodyOmitted        bool                   `json:"body_omitted,omitempty"`
-	BodyExcerpts       []notebook.TextExcerpt `json:"body_excerpts,omitempty"`
-	ApplicabilityTrace string                 `json:"applicability_trace,omitempty"`
-	ModelExcluded      bool                   `json:"model_excluded,omitempty"`
+	Page               experiencePage                  `json:"page"`
+	Relation           string                          `json:"relation"`
+	From               string                          `json:"from,omitempty"`
+	BodyOmitted        bool                            `json:"body_omitted,omitempty"`
+	BodyExcerpts       []notebook.TextExcerpt          `json:"body_excerpts,omitempty"`
+	ApplicabilityTrace string                          `json:"applicability_trace,omitempty"`
+	ModelExcluded      bool                            `json:"model_excluded,omitempty"`
+	Outcomes           []notebook.ProcedureOutcomeView `json:"outcomes,omitempty"`
 }
 
 // Keep the useful knowledge up front. A revision reference lets the agent read
 // full provenance without repeating source hashes and revision history here.
 type experiencePage struct {
-	ID        string                   `json:"id"`
-	Revision  string                   `json:"revision"`
-	Title     string                   `json:"title"`
-	Lesson    string                   `json:"lesson"`
-	AppliesTo string                   `json:"applies_to"`
-	Kind      string                   `json:"kind"`
-	Rationale string                   `json:"rationale,omitempty"`
-	Body      string                   `json:"body,omitempty"`
-	Sources   []string                 `json:"sources"`
-	Recheck   []notebook.PremiseChange `json:"recheck,omitempty"`
+	ID          string                        `json:"id"`
+	Revision    string                        `json:"revision"`
+	Title       string                        `json:"title"`
+	Lesson      string                        `json:"lesson"`
+	AppliesTo   string                        `json:"applies_to"`
+	Kind        string                        `json:"kind"`
+	Rationale   string                        `json:"rationale,omitempty"`
+	Body        string                        `json:"body,omitempty"`
+	Sources     []string                      `json:"sources"`
+	Recheck     []notebook.PremiseChange      `json:"recheck,omitempty"`
+	Orientation notebook.KnowledgeOrientation `json:"orientation"`
 }
 
 func compactExperienceCheck(c notebook.AssistanceCheck) experienceCheck {
@@ -38,6 +40,8 @@ func compactExperienceCheck(c notebook.AssistanceCheck) experienceCheck {
 	for _, source := range p.Sources {
 		v.Page.Sources = append(v.Page.Sources, source.ID)
 	}
+	v.Page.Orientation = c.Orientation
+	v.Outcomes = c.Outcomes
 	return v
 }
 

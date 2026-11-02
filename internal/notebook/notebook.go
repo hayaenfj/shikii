@@ -34,20 +34,21 @@ type Source struct {
 }
 
 type Page struct {
-	ID           string            `json:"id" yaml:"id"`
-	Title        string            `json:"title" yaml:"title"`
-	Lesson       string            `json:"lesson" yaml:"lesson"`
-	AppliesTo    string            `json:"applies_to" yaml:"applies_to"`
-	Status       string            `json:"status" yaml:"status"`
-	Sources      []Source          `json:"sources" yaml:"sources"`
-	Replaces     []string          `json:"replaces,omitempty" yaml:"replaces,omitempty"`
-	Revision     string            `json:"revision" yaml:"revision"`
-	Previous     string            `json:"previous,omitempty" yaml:"previous,omitempty"`
-	Correction   *store.Correction `json:"correction,omitempty" yaml:"correction,omitempty"`
-	Body         string            `json:"body,omitempty" yaml:"body,omitempty"`
-	Rationale    string            `json:"rationale,omitempty" yaml:"rationale,omitempty"`
-	Premises     []Premise         `json:"premises,omitempty" yaml:"premises,omitempty"`
-	Recheck      []PremiseChange   `json:"recheck,omitempty" yaml:"-"`
+	ID           string             `json:"id" yaml:"id"`
+	Title        string             `json:"title" yaml:"title"`
+	Lesson       string             `json:"lesson" yaml:"lesson"`
+	AppliesTo    string             `json:"applies_to" yaml:"applies_to"`
+	Status       string             `json:"status" yaml:"status"`
+	Sources      []Source           `json:"sources" yaml:"sources"`
+	Replaces     []string           `json:"replaces,omitempty" yaml:"replaces,omitempty"`
+	Revision     string             `json:"revision" yaml:"revision"`
+	Previous     string             `json:"previous,omitempty" yaml:"previous,omitempty"`
+	Correction   *store.Correction  `json:"correction,omitempty" yaml:"correction,omitempty"`
+	Body         string             `json:"body,omitempty" yaml:"body,omitempty"`
+	Rationale    string             `json:"rationale,omitempty" yaml:"rationale,omitempty"`
+	Premises     []Premise          `json:"premises,omitempty" yaml:"premises,omitempty"`
+	Recheck      []PremiseChange    `json:"recheck,omitempty" yaml:"-"`
+	Passages     []KnowledgePassage `json:"passages,omitempty" yaml:"passages,omitempty"`
 	discovered   string
 	Related      []string `json:"related,omitempty" yaml:"related,omitempty"`
 	ChangeReason string   `json:"change_reason,omitempty" yaml:"change_reason,omitempty"`
@@ -89,20 +90,21 @@ func validKindScene(kind, scene string) bool {
 type Draft struct {
 	CreateOnly bool `json:"-"` // internal: a prepared new note must not overwrite a concurrent article
 
-	ID           string            `json:"id,omitempty"`
-	Title        string            `json:"title,omitempty"`
-	Lesson       string            `json:"lesson,omitempty"`
-	AppliesTo    string            `json:"applies_to,omitempty"`
-	Sources      []string          `json:"sources"`
-	Replaces     []string          `json:"replaces,omitempty"`
-	Correction   *store.Correction `json:"correction,omitempty"`
-	Body         *string           `json:"body,omitempty"`
-	Rationale    *string           `json:"rationale,omitempty"`
-	Watch        *[]string         `json:"watch,omitempty"`
-	Related      []string          `json:"related,omitempty"`
-	ChangeReason string            `json:"change_reason,omitempty"`
-	Kind         string            `json:"kind,omitempty"`  // kind (one of Kinds). Required for a draft with a lesson; inherited if omitted when updating
-	Scene        string            `json:"scene,omitempty"` // scene (a "when ..." phrase). Same as above
+	ID           string              `json:"id,omitempty"`
+	Title        string              `json:"title,omitempty"`
+	Lesson       string              `json:"lesson,omitempty"`
+	AppliesTo    string              `json:"applies_to,omitempty"`
+	Sources      []string            `json:"sources"`
+	Replaces     []string            `json:"replaces,omitempty"`
+	Correction   *store.Correction   `json:"correction,omitempty"`
+	Body         *string             `json:"body,omitempty"`
+	Rationale    *string             `json:"rationale,omitempty"`
+	Watch        *[]string           `json:"watch,omitempty"`
+	Passages     *[]KnowledgePassage `json:"passages,omitempty"`
+	Related      []string            `json:"related,omitempty"`
+	ChangeReason string              `json:"change_reason,omitempty"`
+	Kind         string              `json:"kind,omitempty"`  // kind (one of Kinds). Required for a draft with a lesson; inherited if omitted when updating
+	Scene        string              `json:"scene,omitempty"` // scene (a "when ..." phrase). Same as above
 	// baseRevision is the page revision classify started from. Inside the lock, refuse if it differs from the current revision (do not undo a concurrent edit with an old lesson; audit 0.9.0 B1)
 	change         *Change
 	baseRevision   string
@@ -381,6 +383,9 @@ func parsePage(data []byte) (Page, error) {
 	}
 	if len(p.Rationale) > 1600 || len(p.Premises) > 4 {
 		return p, errors.New("invalid rationale or premise metadata")
+	}
+	if err := validatePassages(p.Body, p.Passages); err != nil {
+		return p, err
 	}
 	seenPremises := map[string]bool{}
 	for _, ref := range p.Premises {
@@ -758,7 +763,7 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 	if d.Lesson == "" && d.ID != "" {
 		return result, errors.New("updating a page by id sends its lesson, title and applies_to again (read them with wiki query lesson:<id>), with sources and change_reason")
 	}
-	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Rationale != nil || d.Watch != nil || d.Related != nil || d.ChangeReason != "" || d.Kind != "" || d.Scene != "") {
+	if d.Lesson == "" && (d.Title != "" || d.AppliesTo != "" || d.ID != "" || len(d.Replaces) > 0 || d.Body != nil || d.Rationale != nil || d.Watch != nil || d.Passages != nil || d.Related != nil || d.ChangeReason != "" || d.Kind != "" || d.Scene != "") {
 		return result, errors.New("reviewing a source without a lesson accepts only source ids")
 	}
 	for _, id := range append(append(append([]string{}, d.Sources...), d.Replaces...), d.Related...) {
@@ -952,6 +957,7 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 			if d.Body == nil {
 				p.Body = old.Body
 			}
+			p.Passages = append([]KnowledgePassage(nil), old.Passages...)
 			if d.Related == nil {
 				p.Related = old.Related
 			}
@@ -959,6 +965,12 @@ func (b Book) ingest(d Draft, locked bool) (Result, error) {
 			if p.Correction == nil {
 				p.Correction = old.Correction
 			}
+		}
+		if d.Passages != nil {
+			p.Passages = append([]KnowledgePassage(nil), (*d.Passages)...)
+		}
+		if err := validatePassages(p.Body, p.Passages); err != nil {
+			return result, err
 		}
 		sort.Slice(p.Sources, func(i, j int) bool { return p.Sources[i].ID < p.Sources[j].ID })
 		p.Replaces = unique(p.Replaces)

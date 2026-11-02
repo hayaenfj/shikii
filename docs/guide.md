@@ -18,6 +18,16 @@ This guide covers everything the short [README](../README.md) leaves out: every 
 - [The serve HTTP API](#the-serve-http-api)
 - [Code layout](#code-layout)
 
+## Current knowledge, counterexamples and procedure reviews
+
+After reading the sources, the agent can attach `passages` to exact body quotations to distinguish current guidance, earlier context, material needing rechecking and counterexample candidates. Each quotation retains its conditions and reason at the same article revision. `work prepare` and `consult` return this interpretation as `orientation`, with unclassified text and changed premises still explicit. A later date alone never overrides earlier conditions. The Knowledge page can display and edit quotations and conditions together.
+
+`consult` searches interpreted counterexamples and sourced failure outcomes independently of ordinary topic candidates. It ranks failures individually against the current approach, so newer unrelated failures cannot bury an earlier matching counterexample. These are candidates with original conditions and evidence; the agent decides what they mean for the proposal.
+
+Recording an execution with both failure and correction returns `procedure_reviews` immediately and through ordinary maintenance: current text candidates, a proposed correction and linked evidence. The agent compares current conditions and saves a supported article update through notes. The response returns the current review; after checking the saved change, the agent records `maintenance:[{ref,reason}]` with that latest ref. An edit alone does not complete review and the old ref is refused. Without an edit, the agent records the checked reason with the original ref. Reviewed unchanged evidence does not recur; a new result reopens review. No additional person scoring or automatic success labels are created.
+
+An article accepts up to eight unique, nonoverlapping body quotations: each at most 600 UTF-8 bytes, with conditions and reason each at most 400. Omission preserves them and an empty array clears them. Body edits that invalidate a quotation must update it in the same revision-checked change. See the [recording workflow](../skills/shikii/references/recording.md). Before using this metadata, update and restart every process writing the same wiki. Earlier binaries cannot validate interpreted passages and refuse saves, while retaining sources and history.
+
 ## Install and update
 
 To install, use the one-line curl command in the [README](../README.md#get-started); it downloads the latest release and does not need Go. To install from source, run `sh install.sh` in the folder where you cloned shikii; that needs Go 1.27 or newer and Git.

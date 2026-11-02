@@ -207,6 +207,10 @@ func mustOutcomeJSON(v any) []byte { data, _ := json.Marshal(v); return data }
 // ProcedureOutcomes keeps past conditions separate from the new request and
 // supplies evidence, never an automatic claim that the procedure succeeded.
 func (b Book) ProcedureOutcomes(page Page, context string) ([]ProcedureOutcomeView, error) {
+	return b.procedureOutcomes(page, context, false)
+}
+
+func (b Book) procedureOutcomes(page Page, context string, failuresOnly bool) ([]ProcedureOutcomeView, error) {
 	dir, err := b.directory(false, "searches")
 	if os.IsNotExist(err) {
 		return []ProcedureOutcomeView{}, nil
@@ -221,40 +225,49 @@ func (b Book) ProcedureOutcomes(page Page, context string) ([]ProcedureOutcomeVi
 	out := []ProcedureOutcomeView{}
 	for i := len(j.Outcomes) - 1; i >= 0 && len(out) < 2; i-- {
 		o := j.Outcomes[i]
-		if o.PageID != page.ID {
+		if o.PageID != page.ID || failuresOnly && strings.TrimSpace(o.Failure) == "" {
 			continue
 		}
-		snapshot, e := b.checkedOutcomeSource(o.Snapshot)
+		v, e := b.outcomeView(o, page, context)
 		if e != nil {
 			return nil, e
-		}
-		if snapshot.Content != string(mustOutcomeJSON(o.OutcomeDetails)) {
-			return nil, errors.New("outcome index does not match its source")
-		}
-		v := ProcedureOutcomeView{SourceID: o.Snapshot.ID, Revision: o.Revision, RevisionChanged: o.Revision != page.Revision, Conditions: o.Conditions, Action: o.Action, Failure: o.Failure, Correction: o.Correction, Result: o.Result, Evidence: []ProcedureEvidence{}}
-		validated := false
-		for _, s := range o.Evidence {
-			evidence, e := b.checkedOutcomeSource(s)
-			if e != nil {
-				return nil, e
-			}
-			entry := ProcedureEvidence{SourceID: s.ID, Kind: evidence.Kind, Reference: evidence.Reference, Version: evidence.Version, ObservedAt: evidence.ObservedAt.Format("2006-01-02T15:04:05.999999999Z07:00")}
-			if len(evidence.Content) > 1200 {
-				entry.Cut = true
-				entry.ContentExcerpts = FocusExcerpts(evidence.Content, context, 1200)
-			} else {
-				entry.Content = evidence.Content
-			}
-			if entry.Kind == "" {
-				entry.Kind = "conversation"
-			}
-			validated = validated || entry.Kind == "test" || entry.Kind == "release"
-			v.Evidence = append(v.Evidence, entry)
-		}
-		if !validated {
-			v.Unknown = append(v.Unknown, "No test or release snapshot is linked; the reported result does not establish success.")
 		}
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+func (b Book) outcomeView(o ProcedureOutcome, page Page, context string) (ProcedureOutcomeView, error) {
+	v := ProcedureOutcomeView{}
+	if err := o.validate(); err != nil {
+		return v, err
+	}
+	snapshot, err := b.checkedOutcomeSource(o.Snapshot)
+	if err != nil {
+		return v, err
+	}
+	if snapshot.Kind != "agent" || snapshot.Content != string(mustOutcomeJSON(o.OutcomeDetails)) {
+		return v, errors.New("outcome index does not match its source")
+	}
+	v = ProcedureOutcomeView{SourceID: o.Snapshot.ID, Revision: o.Revision, RevisionChanged: o.Revision != page.Revision, Conditions: o.Conditions, Action: o.Action, Failure: o.Failure, Correction: o.Correction, Result: o.Result, Evidence: []ProcedureEvidence{}}
+	validated := false
+	for _, s := range o.Evidence {
+		evidence, e := b.checkedOutcomeSource(s)
+		if e != nil {
+			return v, e
+		}
+		entry := ProcedureEvidence{SourceID: s.ID, Kind: evidence.Kind, Reference: evidence.Reference, Version: evidence.Version, ObservedAt: evidence.ObservedAt.Format("2006-01-02T15:04:05.999999999Z07:00")}
+		if len(evidence.Content) > 1200 {
+			entry.Cut = true
+			entry.ContentExcerpts = FocusExcerpts(evidence.Content, context, 1200)
+		} else {
+			entry.Content = evidence.Content
+		}
+		validated = validated || entry.Kind == "test" || entry.Kind == "release"
+		v.Evidence = append(v.Evidence, entry)
+	}
+	if !validated {
+		v.Unknown = append(v.Unknown, "No test or release snapshot is linked; the reported result does not establish success.")
+	}
+	return v, nil
 }
