@@ -154,6 +154,76 @@ func TestAssignmentPartialRecordingCanBeCorrectedWithoutChangingTheEvent(t *test
 	}
 }
 
+func TestAssignmentPartialEventKeepsItsOriginalReceipt(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(fmt.Sprintf("legacy-%t", legacy), func(t *testing.T) {
+			b, s := loopBook(t)
+			page := loopPage(t, b, s, map[string]any{"title": "Quartz receipt ownership", "kind": "howto", "body": "Original condition."})
+			a := assignmentInput("job", "case", "worker", "work")
+			first, err := workCall(t, b, "prepare", map[string]any{"query": "lesson:" + page.ID, "assignment": a})
+			if err != nil {
+				t.Fatal(err)
+			}
+			edit := map[string]any{"field": "body", "before": "Absent text.", "after": "Corrected condition."}
+			event := map[string]any{"id": "result", "state": "completed", "summary": "A bounded condition was checked."}
+			request := map[string]any{"assignment": a, "receipt": first["receipt"], "event": event, "notes": []any{map[string]any{"target": "knowledge1", "sources": []string{"new1"}, "change_reason": "Correct the observed condition.", "edits": []any{edit}}}}
+			partial, err := workCall(t, b, "record", request)
+			if err != nil || partial["complete"] != false {
+				t.Fatal("expected an incomplete note", err)
+			}
+			if legacy {
+				dir, err := assignmentDir(b.Root, b.Scope)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r, err := readAssignment(dir, assignmentName("job"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				data, _ := json.Marshal(r)
+				var old map[string]any
+				if err := json.Unmarshal(data, &old); err != nil {
+					t.Fatal(err)
+				}
+				delete(old["events"].(map[string]any)["result"].(map[string]any), "receipt_hash")
+				data, _ = json.Marshal(old)
+				if err := json.Unmarshal(data, &r); err != nil {
+					t.Fatal(err)
+				}
+				if err := saveAssignment(dir, r); err != nil {
+					t.Fatal(err)
+				}
+				dir.Close()
+			}
+			second, err := workCall(t, b, "prepare", map[string]any{"query": "lesson:" + page.ID, "assignment": a})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := workCall(t, b, "record", map[string]any{"assignment": a, "receipt": second["receipt"], "event": event}); err == nil {
+				t.Fatal("another receipt completed the first receipt's pending event")
+			}
+			if legacy {
+				if r, err := workCall(t, b, "record", request); err != nil || r["complete"] != false {
+					t.Fatal("the earlier unchanged input must recover its receipt", err)
+				}
+			}
+			edit["before"] = "Original condition."
+			r, err := workCall(t, b, "record", request)
+			if err != nil || r["complete"] != true {
+				t.Fatal("the original receipt must permit correction", err)
+			}
+			again, err := workCall(t, b, "record", request)
+			if err != nil || workHash(r) != workHash(again) {
+				t.Fatal("an unchanged completed retry must return its saved result", err)
+			}
+			live, err := b.Query("lesson:" + page.ID)
+			if err != nil || live.Lessons[0].Body != "Corrected condition." || len(live.Lessons[0].Sources) != 2 {
+				t.Fatal("the correction must keep its original evidence", err)
+			}
+		})
+	}
+}
+
 func TestAssignmentRejectedInputDoesNotConsumeTheEvent(t *testing.T) {
 	b, _ := loopBook(t)
 	a := assignmentInput("job", "case", "worker", "work")
@@ -192,6 +262,9 @@ func TestAssignmentPendingCaptureBlocksAnInterleavedReceipt(t *testing.T) {
 		t.Fatal(r, err)
 	}
 	workAfterWrite = old
+	if _, err = workCall(t, b, "record", map[string]any{"assignment": a, "receipt": v2["receipt"], "event": req["event"]}); err == nil {
+		t.Fatal("an interrupted event cannot move to another receipt")
+	}
 	if _, err = workCall(t, b, "record", map[string]any{"assignment": a, "receipt": v2["receipt"], "event": map[string]any{"id": "finish", "state": "completed", "summary": "A later result."}}); err == nil {
 		t.Fatal("an interrupted observation was bypassed by another receipt")
 	}

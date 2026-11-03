@@ -49,12 +49,13 @@ type assignmentBinding struct {
 	Knowledge map[string]notebook.CollectiveBaseline `json:"knowledge"`
 }
 type assignmentSavedEvent struct {
-	Hash      string          `json:"hash"`
-	InputHash string          `json:"input_hash"`
-	Event     assignmentEvent `json:"event"`
-	At        time.Time       `json:"at"`
-	Source    string          `json:"source,omitempty"`
-	Result    json.RawMessage `json:"result,omitempty"`
+	Hash        string          `json:"hash"`
+	InputHash   string          `json:"input_hash"`
+	ReceiptHash string          `json:"receipt_hash,omitempty"`
+	Event       assignmentEvent `json:"event"`
+	At          time.Time       `json:"at"`
+	Source      string          `json:"source,omitempty"`
+	Result      json.RawMessage `json:"result,omitempty"`
 }
 type assignmentRecord struct {
 	Context  assignmentContext                      `json:"context"`
@@ -490,6 +491,26 @@ func recordAssignment(root, scope string, dir *os.Root, a assignmentContext, req
 				unlock()
 				return nil, errors.New("a recorded event cannot change")
 			}
+			if saved.ReceiptHash != "" && saved.ReceiptHash != workHash(req.Receipt) {
+				unlock()
+				return nil, errors.New("an event must retain its original receipt")
+			}
+			if saved.ReceiptHash == "" {
+				// Earlier records can establish ownership only from the unchanged
+				// original input, whose hash already includes the receipt.
+				if saved.InputHash != workHash(req) {
+					unlock()
+					return nil, errors.New("an earlier event needs its unchanged original recording once before corrections")
+				}
+				if len(saved.Result) == 0 {
+					saved.ReceiptHash = workHash(req.Receipt)
+					r.Events[e.ID] = saved
+					if err = saveAssignment(dir, r); err != nil {
+						unlock()
+						return nil, err
+					}
+				}
+			}
 			if len(saved.Result) > 0 {
 				if saved.InputHash != workHash(req) {
 					unlock()
@@ -512,7 +533,7 @@ func recordAssignment(root, scope string, dir *os.Root, a assignmentContext, req
 				unlock()
 				return nil, errors.New("assignment event capacity or lifecycle conflict")
 			}
-			saved = assignmentSavedEvent{Hash: workHash(e), InputHash: workHash(req), Event: e, At: time.Now().UTC()}
+			saved = assignmentSavedEvent{Hash: workHash(e), InputHash: workHash(req), ReceiptHash: workHash(req.Receipt), Event: e, At: time.Now().UTC()}
 			r.Events[e.ID] = saved
 			r.Order = append(r.Order, e.ID)
 			if err = saveAssignment(dir, r); err != nil {
