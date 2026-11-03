@@ -10,7 +10,10 @@ import (
 func TestAssignmentScopeFiltersAllAutomaticOriginals(t *testing.T) {
 	for _, scope := range []string{"other", "private", ""} {
 		t.Run("scope="+scope, func(t *testing.T) {
-			b, _ := loopBook(t)
+			b, source := loopBook(t)
+			if err := finishWorkSources(b, []string{source}); err != nil {
+				t.Fatal(err)
+			}
 			a := assignmentInput("prior", "group", "researcher", "research")
 			a["evidence_scope"] = "private"
 			v, err := workCall(t, b, "prepare", map[string]any{"assignment": a, "query": "quartz"})
@@ -18,9 +21,25 @@ func TestAssignmentScopeFiltersAllAutomaticOriginals(t *testing.T) {
 				t.Fatal(err)
 			}
 			marker := "SYNTHETIC_PRIVATE_REPORT"
-			r, err := workCall(t, b, "record", map[string]any{"assignment": a, "receipt": v["receipt"], "event": map[string]any{"id": "result", "state": "completed", "summary": marker}})
+			extra := "SYNTHETIC_ADDITIONAL_REPORT"
+			r, err := workCall(t, b, "record", map[string]any{"assignment": a, "receipt": v["receipt"], "event": map[string]any{"id": "result", "state": "completed", "summary": marker}, "observations": []any{map[string]any{"title": "Additional original", "content": extra, "reference": "synthetic-input.txt"}}})
 			if err != nil || r["complete"] != true {
 				t.Fatal(r, err)
+			}
+			extraID := ""
+			for _, raw := range r["saved"].([]any) {
+				item := raw.(map[string]any)
+				if item["kind"] == "observation" {
+					extraID, _ = item["id"].(string)
+				}
+			}
+			full, err := b.ReadSourcesPage([]string{extraID}, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			original, _ := json.Marshal(full)
+			if extraID == "" || !strings.Contains(string(original), extra) {
+				t.Fatal("scope selection must preserve explicit original source reads")
 			}
 			a["id"], a["evidence_scope"] = "next", scope
 			next, err := workCall(t, b, "prepare", map[string]any{"assignment": a, "query": "quartz"})
@@ -30,6 +49,9 @@ func TestAssignmentScopeFiltersAllAutomaticOriginals(t *testing.T) {
 			raw, _ := json.Marshal(next)
 			if strings.Contains(string(raw), marker) != (scope != "other") {
 				t.Fatal("original report delivery must respect the evidence scope in every automatic field")
+			}
+			if strings.Contains(string(raw), extra) != (scope == "") {
+				t.Fatal("scoped preparation must use the bounded report, with explicit reads for raw originals")
 			}
 		})
 	}

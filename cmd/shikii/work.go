@@ -409,10 +409,11 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if req.Assignment != nil {
-		if err = filterAssignmentObservations(root, scope, *req.Assignment, &reflection); err != nil {
-			return nil, err
-		}
+	if req.Assignment != nil && req.Assignment.EvidenceScope != "" {
+		// Scoped hosts receive bounded peer reports through teamwork. Raw
+		// reflection observations have no execution scope, so require an
+		// explicit source read instead of automatically mixing their originals.
+		reflection.Observations = nil
 	}
 	pending := []any{}
 	reviewN, memoryN := 0, 0

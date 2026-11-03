@@ -657,37 +657,3 @@ func assignmentObservationSource(root, scope, receipt string, observation workOb
 	}
 	return w.Captures[key].ID, nil
 }
-
-// This is context selection for a shared project, not access control. Raw
-// observations must follow the same scope rule as teamwork summaries.
-func filterAssignmentObservations(root, scope string, a assignmentContext, view *reflectView) error {
-	if a.EvidenceScope == "" {
-		return nil
-	}
-	dir, err := assignmentDir(root, scope)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	records, err := assignmentRecords(dir)
-	if err != nil {
-		return err
-	}
-	hidden := map[string]bool{}
-	for _, record := range records {
-		if record.Context.Shareable || record.Context.EvidenceScope == a.EvidenceScope {
-			continue
-		}
-		for id := range record.Events {
-			hidden["assignment:"+record.Context.ID+"/"+id] = true
-		}
-	}
-	kept := make([]notebook.ObservationHead, 0, len(view.Observations))
-	for _, observation := range view.Observations {
-		if !hidden[observation.Reference] {
-			kept = append(kept, observation)
-		}
-	}
-	view.Observations = kept
-	return nil
-}
