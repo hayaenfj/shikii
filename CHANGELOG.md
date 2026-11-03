@@ -2,6 +2,15 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.24.0 — Carry knowledge across agents and stages of work
+
+- Add optional host assignments to `work prepare` and `work record`. Connect immutable executions, shared groups, roles, stages, conditions and implementation revisions; supply peer changes, investigation coverage and unresolved questions with their sources.
+- Return checked procedure corrections and probe observations through ordinary revision-checked notes. Bound the added context, retain exact read paths, and keep evidence scopes as automatic context selection within a shared project, never access control or permission.
+- Bind each assignment event to its original receipt from reservation through completion. Reject another receipt while preserving same-receipt corrections and identical retries. For an unfinished event written by an earlier binary, resend its unchanged original recording once before correcting it.
+- Use English for embedded AI instructions while preserving original requests and evidence, localized human-facing messages, existing decision questions and calibration.
+- Existing callers without an assignment keep their ordinary workflows. No chiten dependency, new service, model or configuration option is required.
+- Update every writer sharing a wiki, active session or assignment records to 0.24.0, reopen agent sessions and restart the page and MCP. Updates from 0.23.0 preserve project data; older writers do not preserve this version's context or receipt binding.
+
 ## 0.23.0 — Build collective knowledge across agents
 
 - Deliver changes to articles actually supplied to the work, retaining before/after revisions, changed premises and sources. Confirm inspection separately from usefulness, and carry confirmed baselines into relevant later requests in the same session.

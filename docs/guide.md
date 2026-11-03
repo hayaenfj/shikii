@@ -158,15 +158,17 @@ Planning's `hook plan query` also returns up to two live `criteria` pages direct
 
 Use `shikii work prepare` with topic words in `query` and the current hook's `session_id` and `turn_id`. Without a hook, pass `query` and an agent-supplied `request`; it cannot establish a human agreement. Read the returned conversation, knowledge, pending evidence and `how_to_record`. Then use `shikii work record` with its `receipt`, your interpretation, checked observations and source-backed notes. Shikii retains source identifiers, exact article revisions and capture metadata. Placement candidates requiring interpretation come back to the agent. Check `complete`, `errors`, `pending` and reflection's remaining work; retry corrected content with the same receipt.
 
-MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.23.0.
+MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.24.0.
 
-### Connect external assignments
+### Connect external assignments (0.24.0)
 
 A host that creates short-lived agents can add an optional `assignment` to `work prepare` and `work record`. It identifies the execution, shared group, role, stage, purpose, question, conditions and implementation revision. Preparation adds `teamwork`: changes since peers actually inspected knowledge, prior and active investigations, unresolved questions with checking methods, and failure evidence for procedure review. Reports keep their conditions, sources and provisional, integrated or reverted code state. The host still controls scheduling, cancellation and integration.
 
 The recording reference documents the [assignment contract and limits](../skills/shikii/references/recording.md#external-assignments). Record observed work with `event`, and use ordinary revision-checked notes to return a supported procedure correction or probe result. Reports never establish human truth, permission or verified success. `evidence_scope` limits automatic delivery of original reports; `shareable` allows a host-approved summary across those scopes within the same project. All participants with access to that project's store can still query its evidence; these fields do not provide access control.
 
 This extension is optional. Without `assignment`, existing CLI, MCP and hook workflows follow their existing path and create no assignment records. It adds no chiten dependency, service, model or configuration option to shikii. New embedded agent instructions use English; original requests and evidence keep their language, and report prose follows the request.
+
+Keep an event on its original receipt, including after partial failure. For an unfinished event from an older binary, resend its unchanged original recording once before correcting failed notes. Update every assignment writer to 0.24.0 before resuming work; the recording reference explains the retry and migration boundary.
 
 ### Connect knowledge and results during work (0.20.0)
 
@@ -565,6 +567,6 @@ or structured metadata remains explicit. Inspect and save through ordinary patch
 a newer revision refuses it. The Knowledge editor offers comparison after a
 stale save and preserves the unsent input. See the [agent procedure](../skills/shikii/references/learning.md#work-together-on-the-same-knowledge).
 Updating from 0.22.0 preserves project data. Update every shared writer to
-0.23.0 and restart agent sessions, the page and MCP before using the new work
+0.24.0 and restart agent sessions, the page and MCP before using the new work
 context; older writers do not preserve it. Keep a copy of `.shikii/` if you may
 need to restore the earlier binary and data together.
