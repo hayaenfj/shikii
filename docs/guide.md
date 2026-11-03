@@ -160,7 +160,7 @@ Use `shikii work prepare` with topic words in `query` and the current hook's `se
 
 MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.24.0.
 
-### Connect external assignments (0.24.0)
+### Connect external assignments
 
 A host that creates short-lived agents can add an optional `assignment` to `work prepare` and `work record`. It identifies the execution, shared group, role, stage, purpose, question, conditions and implementation revision. Preparation adds `teamwork`: changes since peers actually inspected knowledge, prior and active investigations, unresolved questions with checking methods, and failure evidence for procedure review. Reports keep their conditions, sources and provisional, integrated or reverted code state. The host still controls scheduling, cancellation and integration.
 
