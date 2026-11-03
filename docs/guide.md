@@ -454,7 +454,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii tune <spec>` | Scores candidate wordings on the stored truths (adopted only once the meaning is confirmed: the agent's `hook variants check`, the page, or `--write`) |
 | `shikii import <past.csv> --spec <spec>` | Turns a table of past cases into stored truths (JSON) |
 | `shikii judge <spec> --local <URL>` | Uses another, larger model as a judge; when it agrees with people's truths often enough, it adds weighted truths to records that have none |
-| `shikii wiki query` / `consult` / `reuse` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | Searching, checking approaches, reusing procedures, sources, saving, setting kind and scene, reviewing and checking the wiki, and re-checking claims |
+| `shikii wiki query` / `consult` / `reuse` / `organize` / `reconcile` / `patch` / `diagnose` / `compare` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | Searching, checking approaches, reusing procedures, sources, saving, setting kind and scene, reviewing and checking the wiki, and re-checking claims |
 | `shikii handoff list` / `read` / `write` / `append` | Reading and writing work records |
 | `shikii guard list` / `add` / `enable` / `disable` / `try` | Guards |
 | `shikii review query` / `submit` | Provisional assessments from conversations and results (usually done together in reflection) |
@@ -482,7 +482,7 @@ The body is JSON. Without `-H 'Content-Type: application/json'` the request is r
 | `POST /v1/tune/review` | `{"spec","run","keep":true}` | A person keeps (true) or undoes (false; the adopted file is renamed to `.reverted`, not deleted) a wording the agent adopted after checking its meaning |
 | `POST /v1/tune/sync` | `{"spec","propose"}` | Runs the wording improvement in place and returns the result (used by the MCP tool `shikii_tune`; adopts nothing) |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | The list of the wiki's claims · change a claim's status (promote / delete; only a person changes it) |
-| `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | The project's wiki: search, store, review and lint sources and articles. Lessons are hypotheses. handoff_* read and write the work records (the same operations as MCP; the page itself only reads) |
+| `POST /v1/wiki/notebook` | `operation: prepare / record / query / consult / reuse / organize / reconcile / ingest / patch / diagnose / compare / capture / classify / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | The project's wiki: search, store, review and lint sources and articles. Lessons are hypotheses. handoff_* read and write the work records (the same operations as MCP; the page itself only reads) |
 | `POST /v1/wiki/article` | `action: edit / delete`, `id`, `revision`; edit: `title`, `lesson`, `applies_to`, `body`, `kind`, `scene` | Edit or delete a current article in this project. Stale revisions return 409. Deletion stops search and delivery; sources and revisions remain. |
 | `GET /v1/handoff/file?path=` | `path` (relative to .shikii/handoff/) | One work record. Images as images, text and HTML as text/plain, anything else as a download. Outside the folder is 400 |
 | `POST /v1/review` | `operation: query / submit` | Provisional assessments from conversations and results. Fetches the originals, the targets and examples of corrections, and saves with evidence. People check samples and held cases |
@@ -536,3 +536,25 @@ Before saving, the agent can try the proposed edit against up to eight recorded 
 The CLI operations read JSON from stdin. `wiki patch` accepts `{id,revision,sources,change_reason,edits:[{field,before,after}]}`; `wiki diagnose` accepts `{id,case_id}` (both optional); `wiki compare` accepts `{patch,cases}` (cases optional, at most eight distinct recorded ids). MCP uses the same operations: patch is nested under `patch`, and the others keep their fields. Changes are exact text replacements, at most 16 per patch. See the [agent procedure](../skills/shikii/references/wiki.md#precise-edits-delivery-diagnosis-and-comparison) for limits and results. Diagnostic history is local, bounded to 32 attempts / 4 MiB; incomplete or missing history is explicitly unavailable for comparison. These features are available in 0.17.0.
 
 A partial edit has one article publication point. Validation or revision conflicts leave it unchanged. If a later index, log or source-review update fails, the reply includes the saved article and recovery warnings; reread that revision and follow the warnings instead of retrying the old patch. Discovery evidence belongs to an exact revision, so the comparison does not transfer its endorsement to a new draft.
+
+### Share changes and compare concurrent work (development)
+
+Work preparation now adds `collective`: changes to articles already supplied to
+this work, explicit contrasts of conditions and evidence, and a related wiki
+probe that can be checked during authorized work. Changes keep both revisions;
+confirm inspection with `reviewed:["changeN"]`, and record actual usefulness
+separately. Initial `knowledgeN` inspection can carry a baseline to the next
+request in the same session, limited to that request's selected articles.
+Shared sources are explicit; different source IDs do not prove independence.
+Probe results return to the same question with their conditions and sources.
+
+The added context shares 4 KiB, with at most two changes, one contrast and one
+investigation. Omitted content retains exact queries; existing learning is
+referenced rather than repeated. CLI, MCP and HTTP use the same operations.
+`wiki reconcile` takes `{"patch":{...}}`, compares base/current/proposed without
+saving, and returns a guarded patch only for a ready proposal. Conflicting text
+or structured metadata remains explicit. Inspect and save through ordinary patch;
+a newer revision refuses it. The Knowledge editor offers comparison after a
+stale save and preserves the unsent input. See the [agent procedure](../skills/shikii/references/learning.md#work-together-on-the-same-knowledge).
+These changes are in development; update all shared writers and restart their
+sessions, page and MCP before using the new work context.

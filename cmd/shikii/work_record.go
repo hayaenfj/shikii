@@ -230,8 +230,30 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 		}
 		reflection.Memory = append(reflection.Memory, memoryAssessmentRequest{SourceID: binding.Source, Key: binding.Key, Result: m.Result, Decision: m.Decision, Evidence: m.Evidence, CorrectionResult: m.CorrectionResult})
 	}
-	if len(req.Reviewed) > 0 {
-		sources, e := resolveSources(req.Reviewed)
+	sourceReviews := []string{}
+	for _, ref := range req.Reviewed {
+		if strings.HasPrefix(ref, "change") || strings.HasPrefix(ref, "knowledge") {
+			item := workItem{Ref: ref, Kind: "collective_review"}
+			key := "collective-review:" + ref
+			if _, ok := w.Saved[key]; !ok {
+				if e := workSavedCapacity(w, key); e != nil {
+					item.Error = e.Error()
+				} else if e := reviewCollective(book, w, ref); e != nil {
+					item.Error = e.Error()
+				} else {
+					w.Saved[key] = item
+					if e := save(); e != nil {
+						item.Error = e.Error()
+					}
+				}
+			}
+			add(item)
+		} else {
+			sourceReviews = append(sourceReviews, ref)
+		}
+	}
+	if len(sourceReviews) > 0 {
+		sources, e := resolveSources(sourceReviews)
 		if e != nil {
 			add(workItem{Ref: "reviewed", Kind: "sources", Error: e.Error()})
 		} else {

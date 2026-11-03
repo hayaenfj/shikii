@@ -176,6 +176,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		if e != nil {
 			return nil, e
 		}
+		view.Collective = nil
 		reply["experience"] = view
 		// Reuse the exact payload supplied by consult, including omitted-body
 		// state; do not add a second copy of each passage to the response.
@@ -194,7 +195,11 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 				read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
 			}
 
-			entries = append(entries, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "experience_check": i, "body_included": !c.BodyOmitted, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
+			learningPath := ""
+			if c.Learning != nil && !c.Learning.Omitted && c.Learning.Learning != nil {
+				learningPath = "experience.checks[" + strconv.Itoa(i) + "].learning_context.learning"
+			}
+			entries = append(entries, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "experience_check": i, "recheck": c.Page.Recheck, "learning_evidence": learningPath, "collective_excluded": c.ModelExcluded, "body_included": !c.BodyOmitted, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
 		}
 	} else {
 		view, e := book.QueryPage(query, req.Cursor)
@@ -214,6 +219,11 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		next := map[string]any{"operation": "prepare", "work": map[string]any{"receipt": req.Receipt, "query": query, "cursor": view.NextCursor}}
 		reply["knowledge_query"] = next
 	}
+	collective, e := preparedCollective(book, w, nil, entries)
+	if e != nil {
+		return nil, e
+	}
+	reply["collective"] = collective
 	reply["knowledge"] = entries
 	if workContextSize(reply) > workSourceBudget*3 {
 		return nil, errors.New("the added knowledge exceeds the response budget; use a narrower query or the individual wiki operations")

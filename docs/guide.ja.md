@@ -238,7 +238,7 @@ CLI・MCP・HTTPの`ingest`/`patch`と`work record`のnotesで保存・改訂し
 
 「AI の様子」は、普段は見なくてよい物の置き場。問いごとの学習の進みが 1 行ずつ並び、押すとその問いの欄(進み具合、最後の自動較正、まだ答えていない分・結果で確定する分・答えた分の列、答えの直し、聞き方の候補)が出る。届けた教訓と効いたか、作業の前と後の手順、止める検査と最後の結果、使っている判定モデルと人を待つ判定の割合もここにある。
 
-知識画面で記事を開き、**編集**で題・要点・適用条件・背景・種類・場面を変えられます。**削除**は確認後、通常の一覧・検索・自動配信から記事を外します。出典・関連する参照・過去の版は残り、データの完全消去ではありません。`shikii wiki query lesson:<id>`や`lesson:<id>@<revision>`で記録を明示的に読むことはできます。削除済みの記事は、同じ題の新規草稿を含め、通常の取り込みでは復活しません。記事を削除した後は、動いているエージェントも0.15.0以降に揃えてください。編集画面を開いている間に記事が更新されると、保存時に競合を知らせ、入力を残します。必要な文をコピーして最新の記事を開き直してください。変更時は既存の出典に加え、送信した編集内容も原資料として保存します。判断を測るための正解にはしません。
+知識画面で記事を開き、**編集**で題・要点・適用条件・背景・種類・場面を変えられます。**削除**は確認後、通常の一覧・検索・自動配信から記事を外します。出典・関連する参照・過去の版は残り、データの完全消去ではありません。`shikii wiki query lesson:<id>`や`lesson:<id>@<revision>`で記録を明示的に読むことはできます。削除済みの記事は、同じ題の新規草稿を含め、通常の取り込みでは復活しません。記事を削除した後は、動いているエージェントも0.15.0以降に揃えてください。編集画面を開いている間に記事が更新されると、保存時に競合を知らせ、入力を残します。仲間の変更と比較して案を確認し保存するか、必要な文をコピーして最新の記事を開き直してください。変更時は既存の出典に加え、送信した編集内容も原資料として保存します。判断を測るための正解にはしません。
 
 「知識」は「教訓」と「作業記録」の 2 つのタブ。教訓のタブの一番上には「このプロジェクトで決められたルール」の欄があり、人や AI が決めたルールが、場面の絞り込みと関係なく全部並ぶ(埋もれないように)。「いつも」のルールが先頭、次に新しい順で、最近 7 日に増えた・変わったルールには「新」のラベルが付く。その下で、左で場面を選び、真ん中に種類ごとの題、題を押すと右に本文・当てはまる時・背景・関連・出典が出る。場面を選ばない時は種類ごとに役立った回数の多い順に 4 本ずつ出し、残りは「ほか N 本を見る」で開く。種類と場面の無い記事は「未分類」にまとまり、エージェントが依頼のたびに減らす。上の「あなたに見てほしいもの」には、機械が決められない例外だけが出る: 害があった教訓、繰り返された訂正、有効にする前の止める検査。人が記事を 1 本ずつ確かめる作りではない。検索・見直し・振り返りの数、前からの記事の木、以前の主張は、畳んだ「記事の詳しい記録」の中にある。
 
@@ -455,7 +455,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `shikii tune <spec>` | 聞き方の候補を正解の貯金で採点する(採用は意味が同じと確かめてから: エージェントの `hook variants check`、画面、`--write`) |
 | `shikii import <past.csv> --spec <spec>` | 手元の過去の表を正解の貯金(JSON)にする |
 | `shikii judge <spec> --local <URL>` | 別の大きいモデルを審判にし、人の正解と十分に一致すれば正解の無い記録に重み付きの正解を付ける |
-| `shikii wiki query` / `consult` / `reuse` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | wiki の検索・作業案の照合・手順の再利用・原資料・登録・種類と場面を付ける・見直し・点検・主張の再検証 |
+| `shikii wiki query` / `consult` / `reuse` / `organize` / `reconcile` / `patch` / `diagnose` / `compare` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | wiki の検索・作業案の照合・手順の再利用・原資料・登録・種類と場面を付ける・見直し・点検・主張の再検証 |
 | `shikii handoff list` / `read` / `write` / `append` | 作業記録の読み書き |
 | `shikii guard list` / `add` / `enable` / `disable` / `try` | 止める検査 |
 | `shikii review query` / `submit` | 会話と結果からの仮採点(振り返りでまとめて使うことが多い) |
@@ -483,7 +483,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `POST /v1/tune/review` | `{"spec","run","keep":true}` | エージェントが意味を確かめて自動で採用した聞き方を、人が「このままでよい」(true)か「元に戻す」(false。採用した版は `.reverted` に名を変えて残す) |
 | `POST /v1/tune/sync` | `{"spec","propose"}` | その場で聞き方の改善を回して結果を返す(MCP の `shikii_tune` が使う。採用はしない) |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
-| `POST /v1/wiki/notebook` | `operation: query / ingest / capture / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ) |
+| `POST /v1/wiki/notebook` | `operation: prepare / record / query / consult / reuse / organize / reconcile / ingest / patch / diagnose / compare / capture / classify / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ) |
 | `POST /v1/wiki/article` | `action: edit / delete`、`id`、`revision`。editは`title`、`lesson`、`applies_to`、`body`、`kind`、`scene` | このプロジェクトの記事を編集・削除する。古い版は409。削除後は検索・配信から外し、出典と履歴を残す。 |
 | `GET /v1/handoff/file?path=` | `path`(.shikii/handoff/ からの相対) | 作業記録の 1 件。画像は画像、文字と HTML は text/plain、それ以外は保存。置き場の外は 400 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
@@ -537,3 +537,11 @@ APIの追加: `wiki query`は`lookup:{id,query,pages:[{id,revision}]}`を返し�
 CLIは標準入力のJSONで操作します。`wiki patch`は`{id,revision,sources,change_reason,edits:[{field,before,after}]}`、`wiki diagnose`は`{id,case_id}`（両方省略可）、`wiki compare`は`{patch,cases}`（cases省略可、重複なしの記録IDを最大8件）です。MCPでは同名のoperationを使い、patchは`patch`欄に入れます。他の操作は同じ欄を使います。部分編集は完全一致の文章置換で、1回最大16箇所です。詳しくは[エージェントの手順](../skills/shikii/references/wiki.md#precise-edits-delivery-diagnosis-and-comparison)を参照してください。診断記録はプロジェクト内に最大32件・4MiBを保持し、不完全な記録や読めない過去は比較できないと明示します。これらは0.17.0で利用できます。
 
 部分編集は、記事ファイルの一度の置換で確定します。入力検査や版の競合では記事を変えません。確定後に索引・ログ・出典の処理済み登録が失敗した場合は、保存済みの記事と復旧の警告を返します。古い部分編集を再送せず、その版を読み直して警告の手順に従ってください。手動検索で役立ったという評価は記事の版に結び付くため、比較する修正案には引き継ぎません。
+
+### 変更を受け渡し、並行した仕事を比べる（開発中）
+
+作業準備の`collective`に、すでに供給した記事の変更、条件と出典を保った見立ての対照、今回確かめられそうなwikiの問いを返します。変更前後の版を読み、確認だけを`reviewed:["changeN"]`で記録します。判断への実利用は別に記録します。初回の`knowledgeN`を確認すると、同じセッションの次の依頼で選ばれた記事に限って比較基準を引き継げます。同じ出典を共有していることを示し、異なる出典IDだけで独立の裏付けとはしません。検証結果は条件と出典を添えて同じ問いへ戻します。
+
+追加情報全体で4KiB、変更2件・対照1組・検証機会1件までです。省略した内容には版付きの取得先を残し、既存の学びは重ねず参照します。CLI・MCP・HTTPで同じ操作を使えます。`wiki reconcile`へ`{"patch":{...}}`を渡すと、元/現在/提案を保存せず比較し、保存できる案だけに現在版を条件とするpatchを返します。同じ箇所や構造化した情報の競合は明示して残します。案を確認して通常のpatchで保存し、さらに版が変わっていれば拒否します。知識画面でも古い版への保存に失敗した後、入力を残して仲間の変更と比較できます。詳細は[エージェントの手順](../skills/shikii/references/learning.md#work-together-on-the-same-knowledge)にあります。
+
+これは開発中の変更です。新しい作業contextを使う前に、同じ記録を書く全プロセスを対応版へ揃え、セッション・画面・MCPを再起動してください。

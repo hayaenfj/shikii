@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-1046%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1069%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.22.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -246,3 +246,5 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 ## ライセンス
 
 [Apache-2.0 OR MIT](../../LICENSE)。[Apache 2.0](../../LICENSE-APACHE)か[MIT](../../LICENSE-MIT)を選べます。第三者の依存・同梱コード・モデル・外部サービスのライセンスは別です。配布物には3つのライセンスファイルと第三者の表示を含めてください。
+
+開発中の変更では、仲間の改訂の受け渡し、条件付きの見立ての対照、検証機会、同じ記事の元/現在/提案の比較を追加しています。[使い方](../guide.ja.md#変更を受け渡し並行した仕事を比べる開発中)を参照してください。

@@ -23,7 +23,7 @@ func makeWorkSchema() map[string]any {
 		"notes":        array(note, 2),
 		"reviews":      array(object(map[string]any{"ref": text, "answer": map[string]any{"type": "string", "enum": []string{"yes", "no", "unknown"}}, "reason": text}), 128),
 		"memory":       array(object(map[string]any{"ref": text, "result": text, "decision": text, "evidence": text, "correction_result": text}), 256),
-		"reviewed":     refs, "maintenance": array(object(map[string]any{"ref": text, "reason": text}), 8),
+		"reviewed":     map[string]any{"type": "array", "maxItems": 64, "items": text, "description": "Inspected source/evidence refs without a lasting lesson; knowledgeN confirms inspected initial evidence, changeN acknowledges only the delivered change. Neither means usefulness or truth."}, "maintenance": array(object(map[string]any{"ref": text, "reason": text}), 8),
 		"discoveries": array(object(map[string]any{"ref": text, "context": text, "decision": text, "evidence": text, "case_id": text}), 4),
 		"outcomes":    array(object(map[string]any{"ref": text, "conditions": text, "action": text, "failure": text, "correction": text, "result": text, "sources": refs}), 2),
 	})

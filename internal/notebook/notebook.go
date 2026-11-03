@@ -223,11 +223,18 @@ func (b Book) directory(create bool, area string) (string, error) {
 }
 
 func readFile(path string) ([]byte, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("a wiki page must be a regular file")
+	}
 	b, err := io.ReadAll(io.LimitReader(f, (64<<10)+1))
 	if err == nil && len(b) > 64<<10 {
 		err = errors.New("wiki page exceeds the size limit")

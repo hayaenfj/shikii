@@ -128,3 +128,53 @@ The fixed limits are four source articles, four new targets and eight moves.
 Targets receive at least one move and sources contribute at least one. Targets
 are new articles; replacement, correction and watched-file changes remain
 separate operations. The CLI accepts at most 1 MiB of organization, ingest or patch JSON.
+
+## Work together on the same knowledge
+
+`prepare` (including receipt extensions), `consult` and `reuse` add a shared
+`collective` context: at most two changes to supplied articles, one contrast and
+one investigation, within 4 KiB of JSON. At most 32 candidate article identities
+are checked; omitted counts and exact recovery queries stay explicit. When
+`evidence` names existing learning in the reply, read that path rather than
+fetching the same content again. Otherwise read the intact quotes and conditions,
+or follow `query` when `omitted` is true.
+
+Changes retain before/after revisions, changed fields, sources and a reason when
+one was recorded. Inspect both revisions and the intermediate history when its
+conditions matter. Keep an unacknowledged `changeN` until inspected, then record
+`reviewed:["changeN"]` with the same receipt. `knowledgeN` confirms an inspected
+initial article for the next request in that session. Preparing alone does not
+acknowledge anything. A later peer edit still needs its own inspection. Actual
+use belongs separately in `discoveries`; neither confirmation creates helpfulness
+or a human truth. Confirmed references are scoped to the project/session and the
+next request's selected articles; missing or expired baselines are first exposure.
+
+Contrasts preserve explicit supporting/counterexample connections or differing
+reported executions of one howto. Read both conditions, quotes and original
+sources. `same_text`/`different_text` compares condition text, not meaning.
+`shared_sources` identifies shared evidence; `not_established` never means
+independent corroboration. Interpret common conditions, differences, unknowns and
+what observation would distinguish the hypotheses. No majority vote selects a
+winner, and differing result words alone establish no contradiction.
+
+Investigations point to the same article's `learning.probe`. Its key includes the
+article, question, method and reconsideration condition; adding a result keeps
+that key. The same probe revision is delivered once per work. Compare prior
+results and current conditions, perform only an authorized small check, capture
+actual evidence, and add its result to the same probe through a revision-checked
+note or patch. Retain all existing connections, practice and prior results. A
+changed question or method is a different investigation.
+
+For concurrent edits, use CLI `shikii wiki reconcile` with JSON
+`{"patch":{...}}` on stdin, or MCP/HTTP `operation:"reconcile",patch:{...}`.
+Use the original read revision, normal sources, change_reason and exact edits.
+The read-only response compares base/current/proposed: `ready` contains a patch
+against the checked current revision; `conflict` retains both alternatives;
+`unavailable` cannot verify the article; `unchanged` needs no write. Only
+nonoverlapping text edits are combined. Competing structured learning, related
+links or content roles require interpretation, preserving other writers' results.
+Inspect the proposal and apply its `patch` through ordinary wiki patch, retaining
+`revision` and `requires`. A newer revision refuses the save: compare again.
+The preview fits 128 KiB and its CLI JSON input fits 1 MiB. The Knowledge editor
+offers the same unsaved comparison after a stale save, then an explicit guarded
+save. Update all writers and restart sessions/page/MCP before using new contexts.

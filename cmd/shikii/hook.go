@@ -37,6 +37,7 @@ import (
 	shikii "github.com/hayaenfj/shikii"
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/handoff"
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 	"github.com/hayaenfj/shikii/internal/systemone"
@@ -195,6 +196,8 @@ func (o hookOut) json(event string) []byte {
 // hookSession is the per-project record (.shikii/sessions/<id>.json). The transcript is not read (its shape is undocumented).
 // The working tree listing at request time is the neighbouring <id>.files (too large for the JSON).
 type hookSession struct {
+	KnowledgeSeen []notebook.CollectiveBaseline `json:"knowledge_seen,omitempty"`
+
 	Request          string           `json:"request,omitempty"`            // the person's last request (kept at UserPromptSubmit)
 	RequestText      string           `json:"request_text,omitempty"`       // original text for the page. Kept apart from the decision input
 	RawPrompt        string           `json:"last_user_prompt,omitempty"`   // the person's last message kept without joining. Used as the source of quotes

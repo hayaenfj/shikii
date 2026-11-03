@@ -31,7 +31,17 @@ func (s *server) handleArticle(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("article request must contain exactly one JSON object"))
 		return
 	}
-	p, err := (notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}).Manage(change)
+	book := notebook.Book{Root: s.o.storeDir, Scope: s.o.projectScope}
+	if change.Action == "reconcile" {
+		plan, err := book.ReconcileChange(change)
+		if err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, 200, plan)
+		return
+	}
+	p, err := book.Manage(change)
 	if err != nil {
 		code := 400
 		if errors.Is(err, notebook.ErrArticleConflict) {

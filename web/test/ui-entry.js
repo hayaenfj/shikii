@@ -614,6 +614,8 @@ export async function run() {
   const quietOK = checkAnswerNothingToDo(target);
   const backgroundDraftOK = await checkBackgroundArticleDraft(target);
   const manageArticleOK = await checkManageArticle(target);
+  const compareArticleOK = await checkCompareArticle(target);
+  const comparisonReasonOK = await checkComparisonReason(target);
   const knowledgeFrontOK = checkKnowledgeFront(target);
   const aiStatusOK = checkAiPageStatus(target);
   const purposeOK = await checkPagePurpose(target);
@@ -646,7 +648,7 @@ export async function run() {
   const onceOK = await checkAnswerCardOnce(target);
   const wordingBoxOK = await checkAnswerWordingBox(target);
   const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), await checkAnswerKeys(target), await checkWordingAskSends(target), checkPhoneAnswerBar(target), checkWordingPlain(target)].every(Boolean);
-  const ok = backgroundDraftOK && manageArticleOK && auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && await checkDisagreement(target) && checkFullText(target) && await checkProjectEntrances(target);
+  const ok = comparisonReasonOK && compareArticleOK && backgroundDraftOK && manageArticleOK && auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && await checkDisagreement(target) && checkFullText(target) && await checkProjectEntrances(target);
   if (!ok || !articleOK) process.exit(1);
 }
 
@@ -1571,4 +1573,58 @@ async function checkBackgroundArticleDraft(target) {
     console.log((kept?'check-ui: ok':'check-ui: FAIL')+' (L0150-21 background status update preserves open article draft='+kept+')');
     return kept;
   } finally {unmount(app);globalThis.fetch=originalFetch;data.state=originalState;Object.assign(ui,originalUI);}
+}
+
+async function checkCompareArticle(target) {
+  localStorage.removeItem('shikii.scene');
+  const article = { id:'0000000000000001', revision:'0000000000000002', title:'Shared article', lesson:'Summary', applies_to:'Docs', body:'Base paragraph', kind:'howto', scene:'Docs', sources:[] };
+  const realFetch=globalThis.fetch, sent=[], changed=[];
+  const merged={...article, revision:'0000000000000003',body:'Peer paragraph\n\nMy paragraph <script>throw 1</script>'};
+  globalThis.fetch=async(url,opts)=>{
+    const body=JSON.parse(opts.body);sent.push(body);
+    if(body.action==='reconcile') return {ok:true,json:async()=>({status:'ready',current:{id:article.id,revision:merged.revision},result:merged})};
+    if(body.revision===article.revision) return {ok:false,status:409,json:async()=>({error:'changed'})};
+    return {ok:true,json:async()=>({...merged,...body,revision:'0000000000000004'})};
+  };
+  const app=mount(Lessons,{target,props:{wiki:{lessons:[article]},onchange:p=>changed.push(p)}});flushSync();
+  const settle=async()=>{await new Promise(r=>setTimeout(r,0));flushSync();};
+  const click=selector=>{target.querySelector(selector)?.click();flushSync();};
+  try {
+    click('[data-open]');click('[data-article-edit]');
+    const input=target.querySelector('[name="body"]');input.value='My paragraph';input.dispatchEvent(new window.Event('input',{bubbles:true}));flushSync();
+    target.querySelector('[data-article-form]').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));await settle();
+    click('[data-article-compare]');await settle();
+    const preview=sent.length===2 && changed.length===0 && sent[1].revision===article.revision && target.querySelector('[data-article-comparison]')?.textContent.includes('Peer paragraph') && !target.querySelector('[data-article-comparison] script') && target.querySelector('[data-article-save]')?.disabled;
+    click('[data-article-merge-save]');await settle();
+    const saved=changed.length===1 && sent[2]?.revision===merged.revision && changed[0].body===merged.body;
+    const ok=preview&&saved;
+    console.log((ok?'check-ui: ok':'check-ui: FAIL')+' (peer comparison: preview saves nothing and escapes HTML='+preview+', guarded combined save='+saved+')');
+    return ok;
+  } finally {unmount(app);globalThis.fetch=realFetch;}
+}
+
+async function checkComparisonReason(target) {
+ const realFetch=globalThis.fetch, lang=i18n.lang;
+ const reason='Synthetic quotation must be updated with its body. <script>throw 1</script>';
+ let passed=true;
+ try {
+  for(const code of ['ja','en']) {
+   i18n.lang=code;localStorage.removeItem('shikii.scene');
+   const article={id:'0000000000000001',revision:'0000000000000002',title:'Shared article',lesson:'Summary',applies_to:'Docs',body:'Original body',kind:'howto',scene:'Docs',sources:[]};
+   globalThis.fetch=async(url,opts)=>{const b=JSON.parse(opts.body);return b.action==='reconcile'?{ok:true,json:async()=>({status:'conflict',conflicts:[],reason})}:{ok:false,status:409,json:async()=>({error:'changed'})};};
+   const app=mount(Lessons,{target,props:{wiki:{lessons:[article]},onchange:()=>{passed=false}}});flushSync();
+   const settle=async()=>{await new Promise(r=>setTimeout(r,0));flushSync();};
+   const click=selector=>{target.querySelector(selector)?.click();flushSync();};
+   try {
+    click('[data-open]');click('[data-article-edit]');
+    target.querySelector('[data-article-form]').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));await settle();
+    click('[data-article-compare]');await settle();
+    const panel=target.querySelector('[data-article-comparison]');
+    const ok=panel?.textContent.includes(reason) && !panel.querySelector('script') && !target.querySelector('[data-article-merge-save]') && target.querySelector('[name="body"]')?.value===article.body;
+    passed=passed&&ok;
+   } finally {unmount(app);}
+  }
+  console.log((passed?'check-ui: ok':'check-ui: FAIL')+' (comparison validation: reasons retained, escaped, no save, input retained in both languages='+passed+')');
+  return passed;
+ } finally {globalThis.fetch=realFetch;i18n.lang=lang;}
 }

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"os"
+	"strconv"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -57,16 +59,17 @@ type reuseStep struct {
 }
 
 type experienceView struct {
-	Request     string            `json:"request"`
-	Proposal    string            `json:"proposal,omitempty"`
-	Conditions  string            `json:"conditions,omitempty"`
-	Checks      []experienceCheck `json:"checks"`
-	Steps       []reuseStep       `json:"steps,omitempty"`
-	Omitted     []string          `json:"omitted,omitempty"`
-	Unknown     []string          `json:"unknown,omitempty"`
-	NextAction  string            `json:"next_action"`
-	Notice      string            `json:"notice"`
-	ModelNotice string            `json:"model_notice,omitempty"`
+	Collective  *notebook.CollectiveContext `json:"collective,omitempty"`
+	Request     string                      `json:"request"`
+	Proposal    string                      `json:"proposal,omitempty"`
+	Conditions  string                      `json:"conditions,omitempty"`
+	Checks      []experienceCheck           `json:"checks"`
+	Steps       []reuseStep                 `json:"steps,omitempty"`
+	Omitted     []string                    `json:"omitted,omitempty"`
+	Unknown     []string                    `json:"unknown,omitempty"`
+	NextAction  string                      `json:"next_action"`
+	Notice      string                      `json:"notice"`
+	ModelNotice string                      `json:"model_notice,omitempty"`
 }
 
 func consultExperience(b notebook.Book, req notebookRequest) (experienceView, error) {
@@ -118,5 +121,25 @@ func consultExperience(b notebook.Book, req notebookRequest) (experienceView, er
 			v.Unknown = append(v.Unknown, "No matching howto is available; do not invent a successful procedure.")
 		}
 	}
+	refs := []notebook.ArticleReference{}
+	paths := map[string]string{}
+	for i, c := range v.Checks {
+		if c.ModelExcluded {
+			continue
+		}
+		if c.Learning != nil && !c.Learning.Omitted && c.Learning.Learning != nil {
+			paths[c.Page.ID+"@"+c.Page.Revision] = "checks[" + strconv.Itoa(i) + "].learning_context.learning"
+		}
+		refs = append(refs, notebook.ArticleReference{ID: c.Page.ID, Revision: c.Page.Revision})
+	}
+	collective, err := b.Collective(nil, refs)
+	if err != nil {
+		return v, err
+	}
+	collective.ReuseLearning(paths)
+	if workContextSize(collective) > 4096 {
+		return v, errors.New("collective context exceeds 4 KiB after binding references; use a narrower query")
+	}
+	v.Collective = &collective
 	return v, nil
 }

@@ -152,7 +152,8 @@ func usageText() string {
                    Judge: ask another (larger) model the same spec. If its agreement with human truths reaches act, add weighted truths (source judge) to records without one. If the judge is unsure too, it goes to a person
   shikii wiki verify [pattern.md...] [--local URL] [--labeled file] [--store DIR]
                    Re-test the claims in <store>/wiki/patterns (front matter: claim / applies_to / evidence / retest) with the current model and append the evidence. Only a person changes their status
-  shikii wiki query [search text or source ID] | consult / reuse / ingest / patch / diagnose / compare (JSON on stdin) | lint
+  shikii wiki query [search text or source ID] | consult / reuse / organize / reconcile / ingest / patch / diagnose / compare / capture / maintain (JSON on stdin) | classify / lint
+                   reconcile previews {patch:{...}} against base/current/proposed without saving; apply only its ready patch. compare checks retrieval against recorded cases.
                    Turn everyday conversations into sourced lessons in the project's .shikii/. The AI writes the summaries; shikii manages the original text, index, versions and checks. Lessons are hypotheses and never count as truths or calibration
   shikii handoff   list | read <path> | write <path> | append <path> (body on stdin)
                    Work records (.shikii/handoff/): working files you rewrite as you go (audit reports, release steps, diffs, images). Lessons go in the wiki; evidence as of when it was checked goes in the wiki's sources

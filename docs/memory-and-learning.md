@@ -100,3 +100,9 @@ When knowledge grows too long, preview a split or merge and save destinations be
 | 0.21 | Separate current knowledge from earlier context, independently retrieve counterexample candidates, and review procedures from recorded failures and corrections. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
+
+The development version also lets agents receive changes to knowledge already
+supplied to their work, compare explicit supporting and counterexample evidence,
+and bring a saved probe into another relevant task. Inspection, actual use and
+observed results remain separate. Concurrent article edits have an unsaved
+three-way comparison and a revision-checked save. See the [workflow](guide.md#share-changes-and-compare-concurrent-work-development).
