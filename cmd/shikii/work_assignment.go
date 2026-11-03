@@ -295,7 +295,6 @@ func prepareAssignment(root, scope string, dir *os.Root, a assignmentContext, re
 		return nil, errors.New("assignment checkpoint capacity reached")
 	}
 	base := req
-	base.Assignment = nil
 	base.Event = nil
 	if req.Receipt == "" {
 		base.Request = a.Purpose + "\n" + a.Role + " / " + a.Stage + "\n" + a.Question + "\n" + a.Conditions
@@ -438,6 +437,9 @@ func recordAssignment(root, scope string, dir *os.Root, a assignmentContext, req
 			return nil, errors.New("invalid bounded assignment event")
 		}
 		content, _ := json.Marshal(map[string]any{"assignment": a, "event": req.Event})
+		if len(content) > 64<<10 {
+			return nil, errors.New("the encoded event observation must fit 64 KiB; narrow the report before recording")
+		}
 		version := a.Commit
 		if req.Event.Commit != "" {
 			version = req.Event.Commit
@@ -533,6 +535,10 @@ func recordAssignment(root, scope string, dir *os.Root, a assignmentContext, req
 				unlock()
 				return nil, errors.New("assignment event capacity or lifecycle conflict")
 			}
+			if _, err = assignmentObservationSource(root, scope, req.Receipt, base.Observations[0]); err != nil {
+				unlock()
+				return nil, err
+			}
 			saved = assignmentSavedEvent{Hash: workHash(e), InputHash: workHash(req), ReceiptHash: workHash(req.Receipt), Event: e, At: time.Now().UTC()}
 			r.Events[e.ID] = saved
 			r.Order = append(r.Order, e.ID)
@@ -555,6 +561,13 @@ func recordAssignment(root, scope string, dir *os.Root, a assignmentContext, req
 	if err = json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}
+	var eventSource string
+	if req.Event != nil {
+		eventSource, err = assignmentObservationSource(root, scope, req.Receipt, base.Observations[0])
+		if err != nil {
+			return nil, fmt.Errorf("work saved, event source needs the same retry: %w", err)
+		}
+	}
 	unlock, err = workLock(dir, "assignments")
 	if err != nil {
 		return nil, err
@@ -571,12 +584,7 @@ func recordAssignment(root, scope string, dir *os.Root, a assignmentContext, req
 	}
 	if req.Event != nil {
 		saved = r.Events[req.Event.ID]
-		for _, item := range result.Saved {
-			if item.Kind == "observation" {
-				saved.Source = item.ID
-				break
-			}
-		}
+		saved.Source = eventSource
 		if result.Complete {
 			saved.InputHash = workHash(req)
 			saved.Result = data
@@ -619,4 +627,67 @@ func assignmentSupplied(root, scope, receipt string) (map[string]notebook.Collec
 		return nil, errors.New("the prepared exposure is unavailable")
 	}
 	return w.Collective.Exposures, nil
+}
+
+// Capture keys identify the event observation even if a different observation
+// succeeded first. Read under the session lock, as ordinary record does.
+func assignmentObservationSource(root, scope, receipt string, observation workObservation) (string, error) {
+	token, err := workDecode(receipt)
+	if err != nil {
+		return "", err
+	}
+	dir, err := openWorkSessions(root)
+	if err != nil {
+		return "", err
+	}
+	defer dir.Close()
+	name := filepath.Base(sessionPath(root, token.Session))
+	unlock, err := workLock(dir, name)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	w, _, err := loadWorkState(dir, scope, token)
+	if err != nil {
+		return "", err
+	}
+	_, key, err := prepareWorkObservation(w, observation)
+	if err != nil {
+		return "", err
+	}
+	return w.Captures[key].ID, nil
+}
+
+// This is context selection for a shared project, not access control. Raw
+// observations must follow the same scope rule as teamwork summaries.
+func filterAssignmentObservations(root, scope string, a assignmentContext, view *reflectView) error {
+	if a.EvidenceScope == "" {
+		return nil
+	}
+	dir, err := assignmentDir(root, scope)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	records, err := assignmentRecords(dir)
+	if err != nil {
+		return err
+	}
+	hidden := map[string]bool{}
+	for _, record := range records {
+		if record.Context.Shareable || record.Context.EvidenceScope == a.EvidenceScope {
+			continue
+		}
+		for id := range record.Events {
+			hidden["assignment:"+record.Context.ID+"/"+id] = true
+		}
+	}
+	kept := make([]notebook.ObservationHead, 0, len(view.Observations))
+	for _, observation := range view.Observations {
+		if !hidden[observation.Reference] {
+			kept = append(kept, observation)
+		}
+	}
+	view.Observations = kept
+	return nil
 }

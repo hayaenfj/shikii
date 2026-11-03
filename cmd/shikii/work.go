@@ -409,6 +409,11 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if req.Assignment != nil {
+		if err = filterAssignmentObservations(root, scope, *req.Assignment, &reflection); err != nil {
+			return nil, err
+		}
+	}
 	pending := []any{}
 	reviewN, memoryN := 0, 0
 	for i, source := range reflection.Sources {
