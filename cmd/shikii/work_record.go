@@ -18,19 +18,26 @@ import (
 // workAfterWrite is a deterministic failure point for persistence tests.
 var workAfterWrite = func(kind string) error { return nil }
 
+func validateWorkRecording(req workRequest) error {
+	if req.SessionID != "" || req.TurnID != "" || req.Query != "" || req.Request != "" || req.Proposal != "" || req.Conditions != "" || req.Cursor != "" {
+		return errors.New("record uses its receipt; do not replace prepared task identifiers")
+	}
+	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 || len(req.Discoveries) > 4 || len(req.Outcomes) > 2 {
+		return errors.New("the recording batch exceeds its fixed item limits")
+	}
+	if req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
+		return errors.New("record needs content that was judged or observed")
+	}
+	return nil
+}
+
 func recordWork(root, scope string, req workRequest) (any, error) {
 	token, err := workDecode(req.Receipt)
 	if err != nil {
 		return nil, err
 	}
-	if req.SessionID != "" || req.TurnID != "" || req.Query != "" || req.Request != "" || req.Proposal != "" || req.Conditions != "" || req.Cursor != "" {
-		return nil, errors.New("record uses its receipt; do not replace prepared task identifiers")
-	}
-	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 || len(req.Discoveries) > 4 || len(req.Outcomes) > 2 {
-		return nil, errors.New("the recording batch exceeds its fixed item limits")
-	}
-	if req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
-		return nil, errors.New("record needs content that was judged or observed")
+	if err = validateWorkRecording(req); err != nil {
+		return nil, err
 	}
 	dir, err := openWorkSessions(root)
 	if err != nil {

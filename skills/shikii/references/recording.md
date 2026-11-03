@@ -138,6 +138,32 @@ Inspect `complete`, `saved`, `errors`, `pending`, `plan` and `reflection`. Parti
 
 Fixed limits: canonical work input 1 MiB; observation content 64 KiB of UTF-8; CLI JSON transport 8 MiB (allows escaped text); at most 4 observations, 2 notes, 128 scores, 256 memory assessments, 64 reviewed sources and 8 maintenance reviews, 4 discoveries and 2 procedure outcomes per batch. A receipt retains at most 32 observations and 128 saved or reserved recording keys within the existing 1 MiB session limit. New notes freeze the validated watched-premise hashes and exact preview revision for publication; later file changes remain visible as recheck. Published-note recovery reserves its keys before publication, so later batches cannot consume them. New entries are checked before their storage effects; identical saved retries remain available at the limit. Split work or prepare again when asked. The MCP/HTTP transport retains its existing JSON limits.
 
+## External assignments
+
+A host may add `assignment` to preparation and recording. Omit it for ordinary work; existing hooks and CLI/MCP callers need no host integration. These records use the existing project's `.shikii/records/assignments/` and require a binary containing this extension. They do not change older wiki article formats or decision calibration. Keep the same binary version across assignment writers.
+
+```json
+{"assignment":{"id":"case-a:run-1:research","group":"case-a","role":"researcher","stage":"research","purpose":"Check invoice ownership","question":"Which input sizes were checked?","conditions":"synthetic local inputs","evidence_scope":"plan-a"},"query":"invoice ownership"}
+```
+
+`id` identifies one immutable host execution; use a new ID when its conditions, role or implementation revision change. `group` connects related executions across sessions. Required identity, group, role and stage each fit 200 UTF-8 bytes without control characters. Purpose fits 8000 bytes; question 1500; conditions 2000; branch and optional evidence_scope 200. Optional commit is a full lowercase 40- or 64-character Git hash; code_state is provisional, integrated or reverted. Neither a host's role nor its event grants permission.
+
+Preparation adds `teamwork`: changes from inspected article revisions, recent related coverage, unresolved questions and procedure-review evidence. Topic matches are retrieval candidates. Read conditions and sources; do not infer that a prior task succeeded or that different reports are independent. Inspect `omitted` and the returned assignment/source references when context was limited. `evidence_scope` withholds other scopes' original report text from automatic context; `shareable:true` permits a summary to cross scopes. This is context selection within a shared project, not access control over its store. The host should only share summaries appropriate for that project.
+
+Keep the receipt and the identical assignment when extending preparation with a query, proposal, conditions or cursor. Record inspected knowledge refs and supported notes through the normal contract. An event becomes the first observation in its batch (`new1`); at most three additional observations fit alongside it.
+
+```json
+{"assignment":{"id":"case-a:run-1:research","group":"case-a","role":"researcher","stage":"research","purpose":"Check invoice ownership","question":"Which input sizes were checked?","conditions":"synthetic local inputs","evidence_scope":"plan-a"},"receipt":"<returned receipt>","reviewed":["knowledge1"],"event":{"id":"result","state":"completed","summary":"The small synthetic input preserved ownership; the large input is untested.","unknowns":["Does the large input preserve ownership?"],"method":"Compare two bounded inputs with the same owner."}}
+```
+
+An event's ID and content are immutable. Its state is observed, completed, failed, cancelled, integrated or reverted. An active/stale execution accepts observations and a completed/failed/cancelled result. Completed may become integrated, reverted or cancelled; failed may become cancelled; integrated may become reverted. After 24 hours without a checkpoint an active execution is shown as stale, which does not cancel or restart it. Commit and code_state may accompany an event to identify the actual observed revision. Summary fits 24000 bytes, method 2000, reference 1000; unknowns and contradictions each have at most 16 nonempty strings of 1000 bytes.
+
+Use ordinary notes with exact supplied targets, sources and edits for procedure corrections; use `learning.probe` and `learning.practice` to retain a distinguishing question, observed results and reusable steps. An event is the host's report, never a verified success or human label. Do not manufacture a useful assessment from inspection.
+
+Check complete/errors/pending. With complete:false, keep the same event while correcting failed notes or resolving their placement; partial saves remain available through the same receipt. Once complete:true is cached, a retry must have identical recording content. Record additional notes separately without that completed event. An interrupted event whose source is not checkpointed must be retried before another event can advance that execution. Assignment recording is serialized per execution. Ordinary source, revision and receipt checks still apply.
+
+Fixed assignment limits: 512 executions per project store, 8 preparation receipts per execution, 64 events and 256 KiB per execution record. These are explicit capacity errors, with no automatic deletion. Reuse a receipt for additional searches. Additional teamwork context fits 24 KiB: up to 8 coverage entries, 8 questions and 4 procedure-review candidates, with older entries omitted when needed. Existing collective and work input limits still apply. Hook session/turn identifiers and human agreement fields cannot be mixed with an assignment. No extra service, model, command-line option or chiten dependency is required.
+
 ## MCP and HTTP
 
 MCP uses `shikii_wiki` with `operation:"prepare"` or `"record"`, and the payload above inside `work`. Pass the absolute working folder as `project` on every MCP call. HTTP uses the same operation and work object at **POST `/v1/wiki/notebook`**, with `Content-Type: application/json`, under the server's existing authentication and project boundary.

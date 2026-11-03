@@ -22,6 +22,7 @@ So “OpenAI remembers only preferences” or “only shikii stores memory local
 | Add knowledge during work | Refer to past context | Connect further searches and consultations to the same work record, retaining read revisions and quotation sources |
 | Use experience in the next procedure | Carry earlier work's context forward | Link conditions, failures, corrections and reported results to evidence, then compare them with current conditions |
 | Learn together across agents | Carry earlier context into later work | Deliver peer changes, compare sourced conditions, revisit questions and preview concurrent edits |
+| Carry work across roles and stages | Carry context into later work | An optional host supplies assignment conditions, inspected revisions, investigation coverage and implementation state |
 | Delegate decisions | Answers informed by context | People's answers and observable outcomes to measure where the AI can decide alone |
 | Check required work | Separate management of mandatory guidance | Enabled checks and verification that required records were saved |
 
@@ -92,6 +93,12 @@ A shared memory store gives agents access to earlier context. shikii also connec
 For example, an agent writing a CSV tool notices a delimiter condition and records a question. Another agent checks it on separate synthetic inputs, records the cases that matched and the assumptions still unresolved, and preserves the first agent's observations. A later task can read both the changed article and those limits. The knowledge grows through different work, rather than treating repeated wording as corroboration.
 
 This is a workflow for collective knowledge, not a claim of measured long-term improvement. Inspection, use, reported observations and human answers remain distinct. No model weights change, and a saved question grants no permission to run an experiment. See the [workflow and limits](guide.md#share-changes-and-compare-concurrent-work-0230).
+
+### Carry knowledge through an assignment's stages
+
+An optional host integration gives research, planning, implementation and audit their own assignment context. A later agent can compare earlier coverage, unknowns and inspected revisions with current conditions. Implementation reports retain their code revision and integration state. Disagreements can return as a small distinguishing question and method, while checked failures can support a correction to the same procedure.
+
+For example, a researcher records that small input passed and large input remains unchecked. The implementation agent sees that limit, reports its observed revision, and an auditor can add a contrary result and a bounded comparison method. A subsequent assignment receives those conditions and changes rather than starting from an isolated summary. Shikii retains the evidence; the host chooses what to run and integrate. Existing users need no external host or assignment input. See the [integration contract](guide.md#connect-external-assignments).
 
 ## The work before 0.14.1 matters too
 

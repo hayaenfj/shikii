@@ -160,6 +160,14 @@ Use `shikii work prepare` with topic words in `query` and the current hook's `se
 
 MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.23.0.
 
+### Connect external assignments
+
+A host that creates short-lived agents can add an optional `assignment` to `work prepare` and `work record`. It identifies the execution, shared group, role, stage, purpose, question, conditions and implementation revision. Preparation adds `teamwork`: changes since peers actually inspected knowledge, prior and active investigations, unresolved questions with checking methods, and failure evidence for procedure review. Reports keep their conditions, sources and provisional, integrated or reverted code state. The host still controls scheduling, cancellation and integration.
+
+The recording reference documents the [assignment contract and limits](../skills/shikii/references/recording.md#external-assignments). Record observed work with `event`, and use ordinary revision-checked notes to return a supported procedure correction or probe result. Reports never establish human truth, permission or verified success. `evidence_scope` limits automatic delivery of original reports; `shareable` allows a host-approved summary across those scopes within the same project. All participants with access to that project's store can still query its evidence; these fields do not provide access control.
+
+This extension is optional. Without `assignment`, existing CLI, MCP and hook workflows follow their existing path and create no assignment records. It adds no chiten dependency, service, model or configuration option to shikii. New embedded agent instructions use English; original requests and evidence keep their language, and report prose follows the request.
+
 ### Connect knowledge and results during work (0.20.0)
 
 Preparation supplies exact, focused passages with byte offsets and revisions when full bodies do not fit. Read the whole revision only for unresolved conditions or exceptions. Pass the same receipt with query, proposal or conditions to add search, consult or reuse while retaining earlier references, saves and retries; cursor continues a search. Added article fields and exact passages can be quoted through the same knowledge reference, preserving earlier quotations; unseen bodies cannot be quoted and agreement still needs human words. Consult/reuse text fields, including the retained task, are limited to 16000 bytes. For a longer task, use individual wiki operations with an explicitly scoped request.

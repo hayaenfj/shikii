@@ -75,25 +75,27 @@ type workOutcome struct {
 	Sources    []string `json:"sources"`
 }
 type workRequest struct {
-	SessionID         string            `json:"session_id,omitempty"`
-	TurnID            string            `json:"turn_id,omitempty"`
-	Query             string            `json:"query,omitempty"`
-	Request           string            `json:"request,omitempty"`
-	Proposal          string            `json:"proposal,omitempty"`
-	Conditions        string            `json:"conditions,omitempty"`
-	Cursor            string            `json:"cursor,omitempty"`
-	Receipt           string            `json:"receipt,omitempty"`
-	Agreed            *workFact         `json:"agreed,omitempty"`
-	Open              *workFact         `json:"open,omitempty"`
-	ContinuesPrevious *bool             `json:"continues_previous,omitempty"`
-	Observations      []workObservation `json:"observations,omitempty"`
-	Notes             []workNote        `json:"notes,omitempty"`
-	Reviews           []workReview      `json:"reviews,omitempty"`
-	Memory            []workMemory      `json:"memory,omitempty"`
-	Reviewed          []string          `json:"reviewed,omitempty"`
-	Maintenance       []workMaintenance `json:"maintenance,omitempty"`
-	Discoveries       []workDiscovery   `json:"discoveries,omitempty"`
-	Outcomes          []workOutcome     `json:"outcomes,omitempty"`
+	Assignment        *assignmentContext `json:"assignment,omitempty"`
+	Event             *assignmentEvent   `json:"event,omitempty"`
+	SessionID         string             `json:"session_id,omitempty"`
+	TurnID            string             `json:"turn_id,omitempty"`
+	Query             string             `json:"query,omitempty"`
+	Request           string             `json:"request,omitempty"`
+	Proposal          string             `json:"proposal,omitempty"`
+	Conditions        string             `json:"conditions,omitempty"`
+	Cursor            string             `json:"cursor,omitempty"`
+	Receipt           string             `json:"receipt,omitempty"`
+	Agreed            *workFact          `json:"agreed,omitempty"`
+	Open              *workFact          `json:"open,omitempty"`
+	ContinuesPrevious *bool              `json:"continues_previous,omitempty"`
+	Observations      []workObservation  `json:"observations,omitempty"`
+	Notes             []workNote         `json:"notes,omitempty"`
+	Reviews           []workReview       `json:"reviews,omitempty"`
+	Memory            []workMemory       `json:"memory,omitempty"`
+	Reviewed          []string           `json:"reviewed,omitempty"`
+	Maintenance       []workMaintenance  `json:"maintenance,omitempty"`
+	Discoveries       []workDiscovery    `json:"discoveries,omitempty"`
+	Outcomes          []workOutcome      `json:"outcomes,omitempty"`
 }
 type workReviewRef struct {
 	Source string `json:"source"`
@@ -293,6 +295,12 @@ func runWork(root, scope, operation string, req workRequest) (any, error) {
 	encoded, _ := json.Marshal(req)
 	if len(encoded) > 1<<20 || scope == "" {
 		return nil, errors.New("work input must fit 1 MiB in this project")
+	}
+	if req.Assignment != nil {
+		return runAssignmentWork(root, scope, operation, req)
+	}
+	if req.Event != nil {
+		return nil, errors.New("an event needs its prepared assignment")
 	}
 	switch operation {
 	case "prepare":
