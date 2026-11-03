@@ -142,20 +142,21 @@ type hookInput struct {
 
 // hookOut is what the hook returns. Empty means output nothing (no judgment). No permission decision (allow / ask / deny) is output.
 type hookOut struct {
-	Context  string          // text passed to the agent (additionalContext. UserPromptSubmit, SubagentStart, SessionStart and PreToolUse)
-	System   string          // text shown to the person in the terminal (systemMessage)
-	Block    bool            // stop the Stop (a stop check was hit. 0.7.3). Claude Code passes the reason and continues
-	Deny     bool            // refuse the tool call (PreToolUse; a guard the person enabled stopped a command before it ran, 0.11). The reason goes to the agent
-	Reason   string          // the reason for stopping (to the agent)
-	Halt     string          // a failed recovery: end automatic continuation with an explicit incomplete result
-	Recovery *ritualRecovery // internal state, saved with the same turn; never emitted as hook JSON
+	RecordMessage string          // localized explanation for the decision record only; never emitted as hook JSON
+	Context       string          // text passed to the agent (additionalContext. UserPromptSubmit, SubagentStart, SessionStart and PreToolUse)
+	System        string          // text shown to the person in the terminal (systemMessage)
+	Block         bool            // stop the Stop (a stop check was hit. 0.7.3). Claude Code passes the reason and continues
+	Deny          bool            // refuse the tool call (PreToolUse; a guard the person enabled stopped a command before it ran, 0.11). The reason goes to the agent
+	Reason        string          // the reason for stopping (to the agent)
+	Halt          string          // a failed recovery: end automatic continuation with an explicit incomplete result
+	Recovery      *ritualRecovery // internal state, saved with the same turn; never emitted as hook JSON
 }
 
 func (o hookOut) empty() bool { return o == hookOut{} }
 
-// message is the "output text" kept in the record: the first present of the terminal text, the stop reason and the agent context.
+// message is the text kept for the page: terminal text, a stop reason, a localized record explanation, or the agent context.
 func (o hookOut) message() string {
-	for _, s := range []string{o.Halt, o.System, o.Reason, o.Context} {
+	for _, s := range []string{o.Halt, o.System, o.Reason, o.RecordMessage, o.Context} {
 		if s != "" {
 			return s
 		}
@@ -434,7 +435,7 @@ func usesHosted() bool {
 }
 
 // hookDecide decides with the project's spec, maps the band to behaviour and records it. Without a line the band never becomes act (= the shadow period).
-// If the configured language is not English, output text is shown alongside English, and the record gets a display (language, question, answer, output text).
+// Human notices and record explanations may include the configured language; agent instructions remain English.
 func hookDecide(agent, specID string, inputs map[string]string, project string, originals ...map[string]string) (*decide.Decision, hookOut, error) {
 	return hookDecideWithCommit(agent, specID, inputs, project, nil, originals...)
 }
@@ -463,6 +464,7 @@ func hookDecideWithCommit(agent, specID string, inputs map[string]string, projec
 	page := pageRef(feedbackScope(filepath.Dir(agent))) // absolute: MCP started with --store .shikii would look up and start a second page under "."
 	out.Context = strings.ReplaceAll(out.Context, hookPageURL+"/", page)
 	out.System = strings.ReplaceAll(out.System, hookPageURL+"/", page)
+	out.RecordMessage = strings.ReplaceAll(out.RecordMessage, hookPageURL+"/", page)
 	if d.Band != decide.Abstain {
 		rec := recordOf(sp, d, inputs)
 		rec.ReviewPending = store.ReviewSpec(specID)
@@ -653,8 +655,8 @@ func hookOutcome(specID string, d *decide.Decision, l hookLoc) hookOut {
 	case "needs-plan":
 		switch d.Band {
 		case decide.Act:
-			return hookOut{Context: bi(
-				fmt.Sprintf("shikii: this request looks like one to agree on an approach with the user before changing anything (needs-plan p=%.2f%s). Consider EnterPlanMode or a one-line confirmation first", d.P, receipt),
+			text := fmt.Sprintf("shikii: this request looks like one to agree on an approach with the user before changing anything (needs-plan p=%.2f%s). Consider EnterPlanMode or a one-line confirmation first", d.P, receipt)
+			return hookOut{Context: text, RecordMessage: bi(text,
 				fmt.Sprintf("shikii: この依頼は、何かを変える前に進め方を人と合わせるべきものに見える(needs-plan p=%.2f%s)。EnterPlanMode か一言の確認を先に", d.P, receiptJA), l)}
 		case decide.Ask:
 			return unsure()

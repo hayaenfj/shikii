@@ -185,8 +185,9 @@ func guardStop(root string, in *hookInput, snapshot *hookSession, before string,
 	toolStopped := toolStoppedGuards(root, in.SessionID, snapshot.TurnID) // stopped a command before it ran this turn (0.11): passing now is the fix
 	for _, g := range guards {
 		r := evalGuard(g, input)
-		r.Reason = bi(r.Reason, r.ReasonJA, loc) // the record's reason is what the page shows as the last stop: in the person's language too
-		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: r.Pass, Reason: r.Reason, Recheck: recheck || toolStopped[r.ID]})
+		// The page retains localized evidence; the agent receives English scaffolding.
+		reason := bi(r.Reason, r.ReasonJA, loc)
+		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: r.Pass, Reason: reason, Recheck: recheck || toolStopped[r.ID]})
 		if !r.Pass {
 			failed = append(failed, r)
 		}

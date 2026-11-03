@@ -2,6 +2,8 @@
 
 Use this as the ordinary workflow from 0.19. `work prepare` gathers the current conversation, related project knowledge and pending reflection. It retains the session, turn, source identifiers and exact article revisions. You interpret the evidence; `work record` handles storage details and calls the existing planning, reflection and wiki operations. No new settings, model or human form is needed.
 
+Built-in instructions use English independently of the person's display language. Keep requests, wiki quotations, reported reasons and other source text in their original language. Configured-language question/answer labels are display evidence, not translated instructions. Write replies and work-record prose in the person's requested language.
+
 ## Prepare once
 
 With the current request's hook identifiers, pipe this to `shikii work prepare`:

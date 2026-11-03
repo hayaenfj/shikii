@@ -42,9 +42,8 @@ func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, 
 		if r.Pass {
 			continue
 		}
-		r.Reason = bi(r.Reason, r.ReasonJA, loc)
 		failed = append(failed, r)
-		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: false, Reason: r.Reason, Tool: true})
+		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: false, Reason: bi(r.Reason, r.ReasonJA, loc), Tool: true})
 	}
 	if len(failed) == 0 {
 		return hookOut{}, nil
@@ -53,7 +52,7 @@ func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, 
 		return hookOut{}, err
 	}
 	var b strings.Builder
-	b.WriteString(bi("shikii: a check the person set stops this command. Run a corrected command instead.", "shikii: \u4eba\u304c\u6c7a\u3081\u305f\u6b62\u3081\u308b\u691c\u67fb\u304c\u3053\u306e\u30b3\u30de\u30f3\u30c9\u3092\u6b62\u3081\u307e\u3057\u305f\u3002\u76f4\u3057\u305f\u30b3\u30de\u30f3\u30c9\u3092\u6d41\u3057\u3066\u304f\u3060\u3055\u3044\u3002", loc) + "\n")
+	b.WriteString("shikii: a check the person set stops this command. Run a corrected command instead.\n")
 	ids := make([]string, 0, len(failed))
 	for _, f := range failed {
 		b.WriteString("- " + f.ID + ": " + f.Reason + "\n")

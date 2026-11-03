@@ -307,7 +307,7 @@ var answerSpecs = []string{"needs-plan", "changes-in-scope", "done-as-asked"}
 // personAnswerQuotes returns, at most 2 and closest first, the person's own answers (page, spot check, hand label) to the hook
 // questions, for past requests similar to request, leaving out those already delivered (seen). Similar means the same bar as a past
 // conversation (TextMatch >= 0.5: at least half of this request's words, and 2 or more, appear in the past request). Each quote carries
-// the past request and what the person said, in the page's words: English first, the configured language alongside (0.11), together with
+// the past request and what the person said, with English scaffolding and the page's display labels as evidence, together with
 // the two answers the person judged between: the agent's own answer with its reason (its organizing before starting, or its provisional
 // score; only when the decision was paired under 0.11's rule) and the decision model's answer. A bare "yes" or "no" told the agent
 // nothing it could act on; with the reasons it learns how its own reasoning is judged in this project.
@@ -389,31 +389,24 @@ func personAnswerSaid(sp *spec.Spec, truth, lang string, pair *aiPair, model mod
 		return truth
 	}
 	text := "In a similar request (above), you answered \"" + name("en", truth) + "\" to \"" + questionTitle(sp, "en") + "\""
-	ja := ""
-	if strings.TrimSpace(sp.Display["ja"].Options[truth]) != "" {
-		ja = "\u4f3c\u305f\u4f9d\u983c(\u4e0a)\u3067\u3001\u3042\u306a\u305f\u306f\u300c" + questionTitle(sp, "ja") + "\u300d\u306b\u300e" + name("ja", truth) + "\u300f\u3068\u7b54\u3048\u305f"
-	}
 	if pair != nil && pair.Agent != "" {
 		reason := cut(strings.TrimSpace(pair.AgentReason), 160)
 		text += "; the agent had answered \"" + name("en", pair.Agent) + "\""
 		if reason != "" {
 			text += " because: " + reason
 		}
-		if ja != "" {
-			ja += "\u3002\u30a8\u30fc\u30b8\u30a7\u30f3\u30c8\u306f\u300e" + name("ja", pair.Agent) + "\u300f"
-			if reason != "" {
-				ja += "(\u7406\u7531: " + reason + ")"
-			}
-		}
 	}
 	if model.Answer != "" {
 		text += "; the decision model said \"" + name("en", model.Answer) + "\""
-		if ja != "" {
-			ja += "\u3001\u5224\u5b9a\u30e2\u30c7\u30eb\u306f\u300e" + name("ja", model.Answer) + "\u300f"
-		}
 	}
-	if ja != "" {
-		text = bi(text, ja, hookLoc{Lang: lang})
+	if lang == "ja" && strings.TrimSpace(sp.Display[lang].Options[truth]) != "" {
+		text += "\nPage display (" + lang + "): question \"" + questionTitle(sp, lang) + "\"; person's answer \"" + name(lang, truth) + "\""
+		if pair != nil && pair.Agent != "" {
+			text += "; agent answer \"" + name(lang, pair.Agent) + "\""
+		}
+		if model.Answer != "" {
+			text += "; decision model answer \"" + name(lang, model.Answer) + "\""
+		}
 	}
 	return cut(text, 600)
 }

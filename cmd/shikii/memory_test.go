@@ -244,7 +244,7 @@ const (
 )
 
 // 0.11 end condition 6-1: a person's own answer to a hook question reaches the next similar request's hook text, in the page's words
-// (English first, the configured language alongside), without any line drawn. The same session does not get it again within the hour.
+// (English scaffolding, with the configured display labels as evidence), without any line drawn. The same session does not get it again within the hour.
 func TestPersonAnswerReachesSimilarRequest(t *testing.T) {
 	st, scope, _ := reviewFixture(t)
 	setHookLanguage(t, "Japanese")
@@ -394,7 +394,7 @@ func TestPersonAnswerCarriesTheAgentsReasonAndTheModelsAnswer(t *testing.T) {
 	noJA := strings.TrimSpace(sp.Display["ja"].Options["no"])
 	// the agent had answered yes (open filled) because of its reason; the decision model (p .3) said no; the person said yes
 	// the quotes are delivered as JSON, so a quotation mark inside a text is escaped
-	for _, want := range []string{"decision:" + trace, "It should have asked", "the agent had answered", `It should have asked\" because: ` + reason, `the decision model said \"` + no + `\"`, jaShouldHaveAsked, "\u7406\u7531: " + reason, noJA} {
+	for _, want := range []string{"decision:" + trace, "It should have asked", "the agent had answered", `It should have asked\" because: ` + reason, `the decision model said \"` + no + `\"`, jaShouldHaveAsked, "Page display (ja): question", noJA} {
 		if !strings.Contains(ctx, want) {
 			t.Fatalf("the person's answer carries the agent's answer with its reason and the model's answer (missing %q):\n%s", want, ctx)
 		}
