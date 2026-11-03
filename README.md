@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-1069%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.22.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.23.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.22.0 connects experiences across articles, keeps small checks and their observations, and turns verified methods into reusable project practices. Knowledge can be split or merged while retaining its sources and history. The agent interprets the evidence; shikii preserves quotes, conditions and revisions. See the [changelog](CHANGELOG.md) and [memory guide](docs/memory-and-learning.md).
+Version 0.23.0 helps agents build collective knowledge for a project: receive changes from peers, compare evidence under its conditions, carry a question into relevant work, and reconcile concurrent article edits before saving. Sources, revisions and observations stay connected; the agent interprets what they mean. See the [changelog](CHANGELOG.md) and [memory guide](docs/memory-and-learning.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -130,7 +130,7 @@ shikii update
 
 This fetches the latest stable release, verifies its hashes and replaces shikii and readout. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again.** Earlier conversations, lessons, truths and calibration are removed; back up anything you want to keep. Updates from 0.7.0 onwards keep them. Restart the page and MCP afterwards.
 
-After updating to 0.22.0, reopen agent sessions and restart the page and MCP. Update every process writing the same wiki or active session before saving learning. Earlier binaries cannot read articles carrying learning; they do not erase existing sources or history. Updates from 0.21.0 keep project data and refresh installed hooks and skills. Back up `.shikii/` before updating if you need to restore the earlier binary and data together.
+After updating to 0.23.0, reopen agent sessions and restart the page and MCP. Update every process writing the same wiki or active session before using the new work context; older writers do not preserve it. Updates from 0.22.0 keep project data and refresh installed hooks and skills. The article learning format introduced in 0.22 remains readable by 0.23; binaries older than 0.22 cannot read articles carrying learning. Back up `.shikii/` before updating if you need to restore the earlier binary and data together.
 
 When updating from 0.8, also reopen your open agent sessions, and update every machine that uses the same wiki to 0.9.0 or later. shikii 0.8 cannot read articles that have a kind and scene, and refuses to save to the wiki (the articles are not damaged). In the same way, 0.9.1 and earlier read articles written by 0.9.2 (English fixed words in the article file) as changed, so update every machine that uses the same wiki to 0.9.2 or later.
 
@@ -247,4 +247,4 @@ Conversations, lessons, provisional assessments, truths, calibration, guards and
 
 [Apache-2.0 OR MIT](LICENSE). Choose [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT). Third-party dependencies, bundled code, models and external services keep their own licenses. Distributions must include the three license files and the third-party notices.
 
-The development tree adds peer-change delivery, condition-based contrasts, investigation opportunities and unsaved three-way article comparison. See the [development workflow](docs/guide.md#share-changes-and-compare-concurrent-work-development).
+In 0.23.0, agents share changes, compare evidence with its conditions, revisit saved questions and reconcile concurrent article edits before saving. See the [collective knowledge workflow](docs/guide.md#share-changes-and-compare-concurrent-work-0230).

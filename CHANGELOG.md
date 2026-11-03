@@ -2,6 +2,15 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.23.0 — Build collective knowledge across agents
+
+- Deliver changes to articles actually supplied to the work, retaining before/after revisions, changed premises and sources. Confirm inspection separately from usefulness, and carry confirmed baselines into relevant later requests in the same session.
+- Contrast explicit supporting and counterexample evidence or differing practice reports with their conditions and sources. Show shared sources without treating different source IDs as independent corroboration or majority agreement as truth.
+- Offer a saved probe during relevant work and return observations to the same question without losing earlier results. A question never authorizes commands or expands the task.
+- Add `wiki reconcile` across CLI, MCP and HTTP: compare base/current/proposed without saving, combine nonoverlapping edits and return a revision-guarded patch only when ready. The Knowledge editor preserves unsent input and offers comparison after a stale save.
+- Bound the added collective context to 4 KiB, with exact read paths for omissions. Preserve unseen premise warnings on confirmation, reuse learning without duplication, and reject nonregular article history files before reading.
+- Update with `shikii update`. Updates from 0.22.0 preserve project data and refresh installed hooks and skills. Before using the new work context, update every writer sharing the wiki or active session to 0.23.0, reopen agent sessions, and restart the page and MCP. Older writers do not preserve the new context.
+
 ## 0.22.0 — Connect experience and grow checks and project practices
 
 - Connect experiences from distinct articles with pinned revisions, exact quotes, conditions, reasons and support or counterexample roles. Inherit their sources and recheck changed citations or premises.

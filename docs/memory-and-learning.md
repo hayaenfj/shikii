@@ -10,7 +10,7 @@ Suppose you say, “When updating the guide, update both the English and Japanes
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)
 
-So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on October 31, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
+So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 3, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
 
 | What you need | What memory provides | What shikii combines |
 | --- | --- | --- |
@@ -21,6 +21,7 @@ So “OpenAI remembers only preferences” or “only shikii stores memory local
 | Try a correction | Use context in later work | Freeze past requests and article revisions, then compare retrieval candidates before saving |
 | Add knowledge during work | Refer to past context | Connect further searches and consultations to the same work record, retaining read revisions and quotation sources |
 | Use experience in the next procedure | Carry earlier work's context forward | Link conditions, failures, corrections and reported results to evidence, then compare them with current conditions |
+| Learn together across agents | Carry earlier context into later work | Deliver peer changes, compare sourced conditions, revisit questions and preview concurrent edits |
 | Delegate decisions | Answers informed by context | People's answers and observable outcomes to measure where the AI can decide alone |
 | Check required work | Separate management of mandatory guidance | Enabled checks and verification that required records were saved |
 
@@ -79,6 +80,19 @@ An insight can connect exact passages and conditions from distinct articles and 
 
 When knowledge grows too long, preview a split or merge and save destinations before editing their sources. The aim goes beyond shared reading to later use, verification and improvement. See the [guide](guide.md) for operations and limits.
 
+## In 0.23: build collective knowledge through actual work
+
+A shared memory store gives agents access to earlier context. shikii also connects how one agent's discovery reaches another, gets checked under new conditions, and returns to the same project knowledge.
+
+1. **Receive a peer's changes.** Compare the article revision actually supplied to the work with its current revision, including changed premises and sources. Confirming inspection records what was read; usefulness needs separate evidence.
+2. **Compare the evidence.** Read explicit support, counterexamples and differing procedure reports with their exact conditions and sources. Shared sources remain visible. Different source IDs do not establish independent corroboration, and a majority does not establish truth.
+3. **Carry the question forward.** A saved probe can appear in another relevant task. The agent chooses a small check within the authorized work and adds the observed result to the same question, retaining earlier observations and their conditions.
+4. **Improve knowledge together.** Compare the original article, the current article and the proposed edit without saving. Nonoverlapping changes can produce a combined proposal. Conflicts remain explicit; saving still checks the current revision so a later edit cannot be silently overwritten.
+
+For example, an agent writing a CSV tool notices a delimiter condition and records a question. Another agent checks it on separate synthetic inputs, records the cases that matched and the assumptions still unresolved, and preserves the first agent's observations. A later task can read both the changed article and those limits. The knowledge grows through different work, rather than treating repeated wording as corroboration.
+
+This is a workflow for collective knowledge, not a claim of measured long-term improvement. Inspection, use, reported observations and human answers remain distinct. No model weights change, and a saved question grants no permission to run an experiment. See the [workflow and limits](guide.md#share-changes-and-compare-concurrent-work-0230).
+
 ## The work before 0.14.1 matters too
 
 | Version | What it added |
@@ -98,11 +112,7 @@ When knowledge grows too long, preview a split or merge and save destinations be
 | 0.19 | Combine reading requests, conversations and knowledge with saving judgments, observations and articles; retain sources and revisions and retry failed items. |
 | 0.20 | Connect focused original passages, knowledge added during work and sourced procedure results to the same task and later reuse. |
 | 0.21 | Separate current knowledge from earlier context, independently retrieve counterexample candidates, and review procedures from recorded failures and corrections. |
+| 0.22 | Connect experiences, keep probes and observations, reuse project practices and preview knowledge splits or merges. |
+| 0.23 | Share peer changes, contrast evidence under its conditions, revisit saved probes and reconcile concurrent article edits before saving. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
-
-The development version also lets agents receive changes to knowledge already
-supplied to their work, compare explicit supporting and counterexample evidence,
-and bring a saved probe into another relevant task. Inspection, actual use and
-observed results remain separate. Concurrent article edits have an unsaved
-three-way comparison and a revision-checked save. See the [workflow](guide.md#share-changes-and-compare-concurrent-work-development).

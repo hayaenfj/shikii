@@ -2317,7 +2317,7 @@ func hookInstall(args []string, install bool) error {
 			}
 		}
 		// Update all shared writers before they encounter this version's metadata.
-		fmt.Fprintf(stdout, "Note: reopen any open agent sessions and restart the page and MCP. Move every machine that uses the same wiki to %s or later before saving learning. Earlier binaries cannot read articles carrying learning; existing sources and history are kept.\n", shikii.Version)
+		fmt.Fprintf(stdout, "Note: reopen any open agent sessions and restart the page and MCP. Move every machine that uses the same wiki or active session to %s or later before saving learning or using the new work context. Older writers do not preserve the new work context. Binaries older than 0.22 cannot read articles carrying learning; existing sources and history are kept.\n", shikii.Version)
 		// on the first run that crosses 0.7.0, remove and reinitialize each project's .shikii/ (this is where the new binary is called at the end of update).
 		exe, err := os.Executable()
 		if err != nil {

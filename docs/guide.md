@@ -158,7 +158,7 @@ Planning's `hook plan query` also returns up to two live `criteria` pages direct
 
 Use `shikii work prepare` with topic words in `query` and the current hook's `session_id` and `turn_id`. Without a hook, pass `query` and an agent-supplied `request`; it cannot establish a human agreement. Read the returned conversation, knowledge, pending evidence and `how_to_record`. Then use `shikii work record` with its `receipt`, your interpretation, checked observations and source-backed notes. Shikii retains source identifiers, exact article revisions and capture metadata. Placement candidates requiring interpretation come back to the agent. Check `complete`, `errors`, `pending` and reflection's remaining work; retry corrected content with the same receipt.
 
-MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.22.0.
+MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.23.0.
 
 ### Connect knowledge and results during work (0.20.0)
 
@@ -537,7 +537,7 @@ The CLI operations read JSON from stdin. `wiki patch` accepts `{id,revision,sour
 
 A partial edit has one article publication point. Validation or revision conflicts leave it unchanged. If a later index, log or source-review update fails, the reply includes the saved article and recovery warnings; reread that revision and follow the warnings instead of retrying the old patch. Discovery evidence belongs to an exact revision, so the comparison does not transfer its endorsement to a new draft.
 
-### Share changes and compare concurrent work (development)
+### Share changes and compare concurrent work (0.23.0)
 
 Work preparation now adds `collective`: changes to articles already supplied to
 this work, explicit contrasts of conditions and evidence, and a related wiki
@@ -556,5 +556,7 @@ saving, and returns a guarded patch only for a ready proposal. Conflicting text
 or structured metadata remains explicit. Inspect and save through ordinary patch;
 a newer revision refuses it. The Knowledge editor offers comparison after a
 stale save and preserves the unsent input. See the [agent procedure](../skills/shikii/references/learning.md#work-together-on-the-same-knowledge).
-These changes are in development; update all shared writers and restart their
-sessions, page and MCP before using the new work context.
+Updating from 0.22.0 preserves project data. Update every shared writer to
+0.23.0 and restart agent sessions, the page and MCP before using the new work
+context; older writers do not preserve it. Keep a copy of `.shikii/` if you may
+need to restore the earlier binary and data together.
