@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.25.1 — Clearer collective knowledge and execution guidance
+
+- Describe wiki knowledge as source-backed human requests and decisions alongside agents' observations, checks and procedure reports. Keep human intent separate from agent interpretations and reported results.
+- Align skill guidance with condition-based outcome selection: at most two candidates per howto, relevant earlier failures, original sources and revision warnings. Retrieval rank and source kinds alone do not prove applicability or success.
+- Clarify that outcome recording uses the conditions and observations of a procedure actually executed in this work. Reading or planning alone does not create an execution result.
+- Specify one search, consult or reuse mode per MCP preparation call. Explain `agreed` and `open` as hook planning facts, the standalone `unknown` form and omission without hook context.
+- Update with `shikii update`, then reopen agent sessions and restart the page and MCP to load the revised guidance. Existing storage formats, runtime operations and optional chiten integration remain unchanged.
+
 ## 0.25.0 — chiten integration and experience for current conditions
 
 - Connect optional chiten assignment reports to the existing `work record` operations for knowledge that informed a decision and procedure execution results. Use a separately installed feedback-capable chiten build. Distinguish inspected articles, actual use and execution; validate supplied refs and require a howto for outcomes.
