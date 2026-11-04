@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -222,13 +223,50 @@ func (b Book) procedureOutcomes(page Page, context string, failuresOnly bool) ([
 	if err != nil {
 		return nil, err
 	}
-	out := []ProcedureOutcomeView{}
-	for i := len(j.Outcomes) - 1; i >= 0 && len(out) < 2; i-- {
+	// Retrieve candidates by current conditions before recency. These lexical
+	// matches never establish applicability, success or independent evidence.
+	type candidate struct {
+		outcome            ProcedureOutcome
+		conditions, report int
+	}
+	terms := searchTerms(context)
+	matching := func(text string) int {
+		score := 0
+		for term := range searchTerms(text) {
+			if terms[term] && isContentTerm(term) {
+				score++
+			}
+		}
+		return score
+	}
+	candidates := []candidate{}
+	for i := len(j.Outcomes) - 1; i >= 0; i-- {
 		o := j.Outcomes[i]
 		if o.PageID != page.ID || failuresOnly && strings.TrimSpace(o.Failure) == "" {
 			continue
 		}
-		v, e := b.outcomeView(o, page, context)
+		candidates = append(candidates, candidate{o, matching(o.Conditions), matching(o.Action + " " + o.Failure + " " + o.Correction)})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].conditions != candidates[j].conditions {
+			return candidates[i].conditions > candidates[j].conditions
+		}
+		return candidates[i].report > candidates[j].report
+	})
+	selected := candidates[:min(2, len(candidates))]
+	if len(selected) == 2 && selected[0].conditions > 0 && strings.TrimSpace(selected[0].outcome.Failure) == "" && strings.TrimSpace(selected[1].outcome.Failure) == "" {
+		// A later reported result cannot erase a failure under equally matching
+		// conditions. Keep one such failure without growing the response budget.
+		for _, c := range candidates[2:] {
+			if c.conditions == selected[0].conditions && strings.TrimSpace(c.outcome.Failure) != "" {
+				selected[1] = c
+				break
+			}
+		}
+	}
+	out := []ProcedureOutcomeView{}
+	for _, c := range selected {
+		v, e := b.outcomeView(c.outcome, page, context)
 		if e != nil {
 			return nil, e
 		}

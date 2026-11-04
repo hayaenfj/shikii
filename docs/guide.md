@@ -176,6 +176,8 @@ Preparation supplies exact, focused passages with byte offsets and revisions whe
 
 Record discoveries by article ref with context, decision and evidence. Identical work retries recover a published discovery after edits, deletion or replacement; definite refusals consume no recording capacity. Record procedure outcomes with a howto ref, conditions, action, failure, correction, result and observed source refs. Reuse returns prior conditions, failures, corrections, reported results and evidence, flags changed procedure revisions, and asks the agent to compare current conditions and save source-backed howto updates. Reports do not create success labels or human truths.
 
+Reuse keeps its two-outcome limit while prioritizing shared content terms in current conditions, then the task and reported actions/failures, with recent records breaking ties. A failure under equally matching conditions can stay alongside a later result. Empty context keeps recent-first order. These are candidates: compare original conditions, sources and changed procedure revisions before using them.
+
 See the [recording workflow](../skills/shikii/references/recording.md) for examples, fixed limits and retry/version boundaries. These operations are available from 0.20.0. Update all processes sharing the records before using them; older writers do not preserve the new context or outcome index.
 
 ### Use project experience while working (0.18.0)
