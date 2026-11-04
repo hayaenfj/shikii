@@ -2,7 +2,17 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.24.0 — Carry knowledge across agents and stages of work
+## 0.25.0 — chiten integration and experience for current conditions
+
+- Connect optional chiten assignment reports to the existing `work record` operations for knowledge that informed a decision and procedure execution results. Use a separately installed feedback-capable chiten build. Distinguish inspected articles, actual use and execution; validate supplied refs and require a howto for outcomes.
+- Capture actual use and each outcome as separate agent evidence. Note corrections, report reordering and identical retries do not duplicate an execution. Retain conditions, action, failure, correction and result with article revisions and sources.
+- Select at most two procedure outcomes by current condition terms and task or action terms instead of taking only the latest two. Retain an earlier relevant failure, use recency to break ties and keep the usual recency order without relevant context. Candidates require agent interpretation and never create success, human truth or permission.
+- Projects without chiten also benefit from improved outcome selection. Keep the existing optional integration and storage formats, with no new setting, service or model.
+- Updates from 0.24.0 preserve data. Update the binary to 0.25.0 for the new selection, then reopen agent sessions and restart the page and MCP. Upgrades from 0.23.0 or earlier also follow the shared-writer requirements listed under 0.24.0 below.
+
+## 0.24.0 — Shared assignment API and reliable recording
+
+This release adds the shared API for external hosts. The chiten reporting workflow for actual knowledge use and procedure results, and condition-based outcome selection, are described under 0.25.0. The 0.24.0 release distributes shikii only; it does not include chiten.
 
 - Add optional host assignments to `work prepare` and `work record`. Connect immutable executions, shared groups, roles, stages, conditions and implementation revisions; supply peer changes, investigation coverage and unresolved questions with their sources.
 - Return checked procedure corrections and probe observations through ordinary revision-checked notes. Bound the added context, retain exact read paths, and keep evidence scopes as automatic context selection within a shared project, never access control or permission.
