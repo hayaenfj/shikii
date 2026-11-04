@@ -14,6 +14,7 @@ func makeWorkSchema() map[string]any {
 		return map[string]any{"type": "array", "maxItems": n, "items": item}
 	}
 	fact := object(map[string]any{"unknown": map[string]any{"type": "boolean"}, "summary": text, "quotes": array(object(map[string]any{"ref": text, "text": text}), 3)})
+	fact["description"] = "Hook planning: agreed states what the person agreed; open states a concrete choice blocking this task. Use {summary,quotes:[{ref,text}]} with exact prepared quotations, or {unknown:true} alone with no summary or quotes. Unverified execution results belong in observations or notes. Omit agreed/open for an agent-supplied task without hook context."
 	note := object(map[string]any{"ref": text, "target": text, "title": text, "lesson": text, "body": text, "applies_to": text, "sources": refs, "related": refs, "kind": kindSchema, "scene": sceneSchema, "rationale": rationaleSchema, "watch": watchSchema, "passages": passagesSchema, "learning": learningSchema, "change_reason": text, "correction": correctionSchema, "edits": patchSchema["properties"].(map[string]any)["edits"]})
 	note["description"] = "New notes use draft content. Existing article targets use sources, change_reason, exact edits, passages and/or learning. A pending ref accepts ref, target and edits only; target is required and target new forbids edits. Other fields are refused, not ignored."
 	return object(map[string]any{

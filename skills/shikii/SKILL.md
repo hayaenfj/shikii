@@ -1,11 +1,11 @@
 ---
 name: shikii
-description: Think with this project's own memory and judgment. shikii keeps what the person said, decided and corrected in this project (the wiki) and how its decisions are judged (the decision model's lines and the person's answers); use them before starting, when the work moves to another area, right before an action, when unsure, and write back right when something is decided or corrected. Also covers shikii's recurring yes/no, choice and level decisions with calibrated bands, work records (.shikii/handoff/) for reports and working files, and saving a rule or correction the person states as a wiki lesson. Use with configured shikii projects or when explicitly setting up decision workflows.
+description: Think with this project's own memory and judgment. shikii keeps the person's requests, decisions and corrections alongside agents' observations, checks and procedure results in the project wiki, and how decisions are judged in the decision model's lines and the person's answers. Use them before starting, when the work moves to another area, right before an action, when unsure, and write back supported learning during work. Also covers recurring yes/no, choice and level decisions with calibrated bands and work records (.shikii/handoff/) for reports and working files. Use with configured shikii projects or when explicitly setting up decision workflows.
 ---
 
 # Use shikii
 
-shikii grows the agent to fit this project. What it gives you is the project's own knowledge, in two forms: **the wiki**, what the person said, decided and corrected here, as lessons of the form "when X, do Y" with the person's words as sources; and **the judgment**, how this project's decisions (ask first, in scope, done) have been judged, as the decision model's lines and the person's answers on earlier requests. Both are hypotheses with sources, never permission and never a truth you may record yourself.
+shikii grows the agent to fit this project. What it gives you is the project's own knowledge, in two forms: **the wiki**, source-backed lessons from the person's requests, decisions and corrections and from agents' observations, checks and procedure results; and **the judgment**, how this project's decisions (ask first, in scope, done) have been judged, as the decision model's lines and the person's answers on earlier requests. Keep the person's intent and decisions distinct from agent interpretations and reported results. Retrieved knowledge and judgments are hypotheses with sources, never permission or a human truth you may invent.
 
 Use them at five moments, not only at the end of the turn:
 
