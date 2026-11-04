@@ -8,7 +8,7 @@
 - Align skill guidance with condition-based outcome selection: at most two candidates per howto, relevant earlier failures, original sources and revision warnings. Retrieval rank and source kinds alone do not prove applicability or success.
 - Clarify that outcome recording uses the conditions and observations of a procedure actually executed in this work. Reading or planning alone does not create an execution result.
 - Specify one search, consult or reuse mode per MCP preparation call. Explain `agreed` and `open` as hook planning facts, the standalone `unknown` form and omission without hook context.
-- Update with `shikii update`, then reopen agent sessions and restart the page and MCP to load the revised guidance. Existing storage formats, runtime operations and optional chiten integration remain unchanged.
+- Update with `shikii update`. If you use MCP or skills without hooks, rerun `shikii --init` in an existing initialized project to refresh the installed skills without enabling hooks. Then reopen agent sessions and restart the page and MCP. Existing storage formats, runtime operations and optional chiten integration remain unchanged.
 
 ## 0.25.0 — chiten integration and experience for current conditions
 
