@@ -4,13 +4,15 @@
 
 **Remembering earlier work is common ground. shikii connects that memory to using it at work, reviewing whether it helped, correcting it when needed, and adjusting which decisions to delegate based on people's answers.** Its aim is to reduce repeated explanations and corrections as the project develops its own ways of working.
 
+From 0.23 onward, this includes receiving peers' knowledge changes, carrying conditions through research, implementation and audit, selecting experience relevant to the current work, and returning actual use and results to later procedures. The record preserves checked conditions, what remains unknown and how the knowledge informed a decision.
+
 Suppose you say, “When updating the guide, update both the English and Japanese versions.” Remembering that instruction alone does not tell you whether both were updated next time. shikii keeps it as an article with sources and delivers it during relevant work. The agent reviews whether it helped. A check enabled by a person can verify the parts that can be checked mechanically.
 
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)
 
-So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 3, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
+So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 4, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
 
 | What you need | What memory provides | What shikii combines |
 | --- | --- | --- |
@@ -20,9 +22,10 @@ So “OpenAI remembers only preferences” or “only shikii stores memory local
 | Investigate missing context | Refer to earlier context | Inspect recorded retrieval, suppression and capacity reasons from the actual attempt |
 | Try a correction | Use context in later work | Freeze past requests and article revisions, then compare retrieval candidates before saving |
 | Add knowledge during work | Refer to past context | Connect further searches and consultations to the same work record, retaining read revisions and quotation sources |
-| Use experience in the next procedure | Carry earlier work's context forward | Link conditions, failures, corrections and reported results to evidence, then compare them with current conditions |
+| Use experience in the next procedure | Carry earlier work's context forward | Select at most two outcome candidates per procedure using terms from the current request and conditions; inspect earlier failures, sources and revision differences |
 | Learn together across agents | Carry earlier context into later work | Deliver peer changes, compare sourced conditions, revisit questions and preview concurrent edits |
 | Carry work across roles and stages | Carry context into later work | An optional host supplies assignment conditions, inspected revisions, investigation coverage and implementation state |
+| Return use and results to knowledge | Carry current context into later work | Distinguish inspection, actual decision use and execution, then return sourced reports through a compatible chiten build, CLI or MCP |
 | Delegate decisions | Answers informed by context | People's answers and observable outcomes to measure where the AI can decide alone |
 | Check required work | Separate management of mandatory guidance | Enabled checks and verification that required records were saved |
 
@@ -94,11 +97,31 @@ For example, an agent writing a CSV tool notices a delimiter condition and recor
 
 This is a workflow for collective knowledge, not a claim of measured long-term improvement. Inspection, use, reported observations and human answers remain distinct. No model weights change, and a saved question grants no permission to run an experiment. See the [workflow and limits](guide.md#share-changes-and-compare-concurrent-work-0230).
 
-### Carry knowledge through an assignment's stages
+## In 0.24, carry knowledge through an assignment's stages
 
 An optional host integration gives research, planning, implementation and audit their own assignment context. A later agent can compare earlier coverage, unknowns and inspected revisions with current conditions. Implementation reports retain their code revision and integration state. Disagreements can return as a small distinguishing question and method, while checked failures can support a correction to the same procedure.
 
 For example, a researcher records that small input passed and large input remains unchecked. The implementation agent sees that limit, reports its observed revision, and an auditor can add a contrary result and a bounded comparison method. A subsequent assignment receives those conditions and changes rather than starting from an isolated summary. Shikii retains the evidence; the host chooses what to run and integrate. Existing users need no external host or assignment input. See the [integration contract](guide.md#connect-external-assignments).
+
+This version adds the shared API for external hosts. Carrying assignment conditions and implementation state is distinct from the chiten reports of actual use and execution described under 0.25 below. Assignment context selects relevant evidence within the same project; it is not an access-control boundary.
+
+## In 0.25, select experience for current conditions and return use and results
+
+Remembering a procedure does not establish the same outcome under a different OS, input format or implementation revision. Instead of taking only the latest reports, 0.25 selects candidates by comparing terms from the current request and conditions with earlier execution conditions, then with actions, failures and corrections. It returns at most two per procedure, uses recency to break ties and can retain an earlier failure with the same positive condition-term score as the top candidate.
+
+Retrieval rank does not establish that the actual conditions agree. The agent reads the original conditions, sources and unknowns, and rechecks a changed article revision. Attaching a report or validation source does not establish success for the current task either.
+
+A compatible chiten integration can return assignment reports to shikii while distinguishing an inspected article, knowledge that changed a decision and a procedure actually executed. Actual use records its contribution and evidence; execution reports keep the current conditions, action, failure, correction, result and sources. Saving a report does not automatically establish usefulness, success or a human truth.
+
+For example, suppose a later worker applies a CSV procedure checked on Linux to quoted input on macOS. If the candidates include a Linux result and an earlier failure to handle quoting, the worker reads their conditions to decide what needs checking now. Only after actually trying the procedure does the worker report this input, environment and observed result. Planning alone produces no execution outcome. The next worker can read that report and its sources with the procedure, then check another condition.
+
+chiten is a separately distributed, optional integration. Projects without it can record knowledge use and procedure outcomes through CLI, MCP or HTTP and use the same condition-based reuse. The comparison with shared memory concerns the workflow of selecting conditional experience and returning use and observations to their sources, alongside recalling earlier context. It does not claim measured long-term reductions in work.
+
+## In 0.25.1, align skill and MCP guidance with these distinctions
+
+0.25.1 is a patch that aligns the skill and MCP instructions with the existing behavior. It distinguishes human requests and decisions from agents' observations and checks as wiki sources. It explains that an earlier report must not be copied as the current execution, and reading or planning alone produces no execution outcome. MCP preparation uses one search, consult or reuse mode per call; field descriptions separate agreement and open choices from unverified execution results. Storage formats and runtime operations remain unchanged.
+
+Update the binary and installed skills to load the revised guidance. Without hooks, rerun `shikii --init` in an existing initialized project after updating the binary; this refreshes skills while preserving project data and leaving hooks disabled. Then reopen agent sessions and restart the page and MCP. See the [update instructions](guide.md).
 
 ## The work before 0.14.1 matters too
 
@@ -121,5 +144,8 @@ For example, a researcher records that small input passed and large input remain
 | 0.21 | Separate current knowledge from earlier context, independently retrieve counterexample candidates, and review procedures from recorded failures and corrections. |
 | 0.22 | Connect experiences, keep probes and observations, reuse project practices and preview knowledge splits or merges. |
 | 0.23 | Share peer changes, contrast evidence under its conditions, revisit saved probes and reconcile concurrent article edits before saving. |
+| 0.24 | Carry conditions, coverage, read revisions and implementation state across stages through an optional assignment API, retaining the link between reports and their work. |
+| 0.25 | Select outcomes relevant to current conditions and return actual use and execution reports through compatible chiten reports, CLI or MCP. |
+| 0.25.1 | Clarify sources, inspection versus use and execution, candidate interpretation, MCP fields and updates without hooks; preserve storage formats. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
