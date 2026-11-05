@@ -584,7 +584,12 @@ func memoryEffectFixture(t *testing.T) (store.Store, string, http.Handler, noteb
 
 func memoryEffectPrompt(t *testing.T, scope, session string) string {
 	t.Helper()
-	return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": scope, "prompt": "README の導入手順を更新してください"}))
+	context := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": scope, "prompt": "README の導入手順を更新してください"}))
+	if at := strings.Index(context, memoryPrefix); at >= 0 {
+		lines := strings.SplitN(context[at:], "\n", 3)
+		return strings.Join(lines[:2], "\n")
+	}
+	return ""
 }
 
 func memoryEffectComplete(t *testing.T, st store.Store, scope, session string) string {

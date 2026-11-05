@@ -108,8 +108,33 @@ func recordSpawn(agent, logName string, args ...string) int {
 	return 0
 }
 
-// runHook runs an event with the given JSON on stdin and returns stdout. The hook never returns an error, whatever happens.
+// Existing hook tests isolate their original guard/decision by supplying a
+// completed reasoning prerequisite. Reasoning tests use runUnreviewedHook and
+// exercise the real prepare/record flow, including missing evidence and recovery.
 func runHook(t *testing.T, event string, in map[string]any) string {
+	if event == "stop" {
+		cwd, _ := in["cwd"].(string)
+		session, _ := in["session_id"].(string)
+		if root, _, err := projectStoreAt(cwd); err == nil {
+			supplyReasoningFixture(root, session)
+		}
+	}
+	return runUnreviewedHook(t, event, in)
+}
+
+func supplyReasoningFixture(root, session string) {
+	if s, err := readSession(root, session); err == nil && s.Reasoning != nil {
+		r := s.Reasoning
+		entry := &reasoningEntry{workReasoning: workReasoning{Phase: "finish", Focus: "Synthetic prerequisite for another hook contract", Assessment: "retain", Reason: "This fixture isolates the original hook behavior.", Evidence: []string{"current"}, NextAction: "Check the hook under test.", Result: "The fixture supplies only the reasoning prerequisite."}, Generation: r.Generation}
+		r.Start, r.Latest, r.Finish = entry, entry, entry
+		// Storage-failure tests intentionally make this unavailable; the real
+		// hook must observe that failure rather than the fixture ending the test.
+		_ = saveSession(root, session, s)
+	}
+}
+
+// runUnreviewedHook preserves every production prerequisite.
+func runUnreviewedHook(t *testing.T, event string, in map[string]any) string {
 	b, _ := json.Marshal(in)
 	old := stdin
 	stdin = strings.NewReader(string(b))
@@ -244,8 +269,8 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "fix the typo in a.go"}); out != "" {
-		t.Fatalf("shadow mode must print nothing, got %q", out)
+	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "fix the typo in a.go"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "reasoning start") {
+		t.Fatalf("shadow decisions stay silent while required work guidance is delivered, got %q", out)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a // fixed\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -293,8 +318,8 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 
 	// no model: do not stop (no output); the reason goes to hook.log
 	hookLocalURL = "http://127.0.0.1:1"
-	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s2", "cwd": repo, "prompt": "and now the other file"}); out != "" {
-		t.Fatalf("a missing model must not produce output, got %q", out)
+	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s2", "cwd": repo, "prompt": "and now the other file"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "reasoning start") {
+		t.Fatalf("a missing model still delivers the mandatory work guidance, got %q", out)
 	}
 	logb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
 	if !strings.Contains(string(logb), "127.0.0.1:1") {
@@ -390,8 +415,8 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	traceOf := map[string]string{} // session → prompt-kind trace
 	run := func(session string, change bool) {
 		out := runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "fix the typo in README " + session})
-		if out != "" {
-			t.Fatalf("shadow: %q", out)
+		if strings.Contains(out, "systemMessage") || !strings.Contains(out, "reasoning start") {
+			t.Fatalf("shadow decisions must not suppress the reasoning guidance: %q", out)
 		}
 		sess := loadSession(agent, session)
 		if sess.Request != "fix the typo in README "+session || len(sess.Pending) != 1 || sess.Pending[0].Tree == "" || !fileExists(sessionFilesPath(agent, session)) {
@@ -1158,6 +1183,7 @@ func TestHookStopDoesNotTouchTheNextRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Stop A starts: reads the record outside the lock and asks the model (does not write yet)
+	supplyReasoningFixture(agent, "r")
 	snapshot := loadSession(agent, "r")
 	in := hookInput{SessionID: "r", CWD: repo, LastAssistantMessage: "Fixed the typo."}
 	_, muts, err := hookStop(agent, &in, snapshot)
@@ -1573,7 +1599,7 @@ func TestInitAndUpdateAddNoSection(t *testing.T) {
 	}
 	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	// Shared writers must understand this version's learning metadata before it is saved.
-	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.25.1 or later") || !strings.Contains(out, "before saving learning") || !strings.Contains(out, "new work context") {
+	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.26.0 or later") || !strings.Contains(out, "before saving learning") || !strings.Contains(out, "new work context") {
 		t.Fatalf("the update must name the supported version and restart requirement before saving learning: %s", out)
 	}
 	if b, _ := os.ReadFile(filepath.Join(plain, "AGENTS.md")); string(b) != human {
@@ -2106,6 +2132,7 @@ func TestAudit3SubmitDuringStopKeepsTheJudgment(t *testing.T) {
 	// a message of 40 characters or more: the Stop judges at once (a shorter one outside the list is first asked for continues_previous)
 	continuesTurn(t, repo, root, "main を取り込んで、衝突があれば直し、テストが全部通ることを確かめてから知らせてください。")
 	in := &hookInput{SessionID: "planning", CWD: repo, LastAssistantMessage: "Merged main."}
+	supplyReasoningFixture(root, "planning")
 	snapshot := loadSession(root, "planning")
 	_, muts, err := hookStop(root, in, snapshot) // the Stop has read its snapshot and asked the model (outside the lock)
 	if err != nil {

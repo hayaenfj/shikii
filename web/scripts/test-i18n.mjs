@@ -113,3 +113,27 @@ test('the note promises other wordings only where they are tried, and tells one 
   assert.match(ja1, /64/); assert.match(ja1, /\u7247\u65b9\u3060\u3051/); assert.doesNotMatch(ja1, /\u898b\u5206\u3051\u3089\u308c\u307e\u305b\u3093|\u5225\u306e\u805e\u304d\u65b9/);
   assert.match(en1, /64/); assert.match(en1, /only one kind of answer/); assert.doesNotMatch(en1, /tell the answers apart|other wordings/);
 });
+
+test('\u63a8\u8ad6\u306e\u898b\u76f4\u3057\u306e\u56de\u6570\u3092\u65e5\u82f1\u3067\u8868\u793a\u3057\u3001\u4ee5\u524d\u306e\u96c6\u8a08\u306b\u3082\u5bfe\u5fdc\u3059\u308b', () => {
+  const zero = { asked: 0, done: 0, fixed: 0 };
+  const previous = { plan: zero, reflect: zero, kinds: zero, language: zero };
+  const reasoning = { asked: 11, done: 7, fixed: 3 };
+  for (const code of ['ja', 'en']) {
+    const format = locales[code].summaryRituals;
+    const before = format(previous);
+    const current = format({ ...previous, reasoning });
+    assert.equal(format({ ...previous, reasoning: zero }), before, code);
+    assert.notEqual(current, before, code);
+    assert.match(current, /7 \/ 11/, code);
+    for (const [key, value] of [['asked', 12], ['done', 8], ['fixed', 4]]) {
+      assert.notEqual(format({ ...previous, reasoning: { ...reasoning, [key]: value } }), current, code + ':' + key);
+    }
+  }
+});
+
+test('\u63a8\u8ad6\u306e\u898b\u76f4\u3057\u306e\u984c\u3092\u65e5\u672c\u8a9e\u3067\u8868\u793a\u3057\u3001\u672a\u77e5\u306eguard\u306e\u984c\u306f\u4fdd\u6301\u3059\u308b', () => {
+  const title = locales.ja.guardTitle('reasoning-before-end', 'English fallback title');
+  assert.match(title, /\u898b\u76f4\u3057/);
+  assert.doesNotMatch(title, /English fallback title/);
+  assert.equal(locales.ja.guardTitle('custom-guard', '\u65e2\u5b58\u306e\u984c'), '\u65e2\u5b58\u306e\u984c');
+});

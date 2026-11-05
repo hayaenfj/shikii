@@ -25,7 +25,7 @@ func validateWorkRecording(req workRequest) error {
 	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 || len(req.Discoveries) > 4 || len(req.Outcomes) > 2 {
 		return errors.New("the recording batch exceeds its fixed item limits")
 	}
-	if req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
+	if req.Reasoning == nil && req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
 		return errors.New("record needs content that was judged or observed")
 	}
 	return nil
@@ -62,6 +62,11 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 	}
 	if w.Standalone && (req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil) {
 		return nil, errors.New("an agent-supplied task is not a human agreement; use the current hook context for planning")
+	}
+	if req.Reasoning != nil {
+		if err := validateReasoning(*req.Reasoning); err != nil {
+			return nil, err
+		}
 	}
 	var interrupted error
 	var commitMu sync.Mutex
@@ -118,6 +123,14 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 	}
 
 	book := notebook.Book{Root: root, Scope: scope}
+	noteRefs := make([]string, len(req.Notes))
+	for i, note := range req.Notes {
+		ref, normalized, e := reserveRequiredNote(book, w, note, save, commit)
+		if e != nil {
+			return nil, e
+		}
+		noteRefs[i], req.Notes[i] = ref, normalized
+	}
 	local := map[string]string{}
 	for i, o := range req.Observations {
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)
@@ -139,13 +152,12 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			if id == "" {
 				id = w.Sources[ref]
 			}
-			if id == "" && ref == "current" && !w.Standalone {
-				alias, source, err := captureWorkObservation(book, w, workObservation{Kind: "human", Title: "Current request quoted during work", Content: w.Current, Reference: "current request recorded by the hook"}, save, commit)
+			if ref == "current" && !w.Standalone {
+				var err error
+				id, err = resolveCurrentWorkSource(book, w, save, commit)
 				if err != nil {
 					return nil, err
 				}
-				w.Sources[alias] = source
-				id = source
 			}
 			if id == "" {
 				return nil, fmt.Errorf("unknown source reference %q; use a prepared source or new observation", ref)
@@ -189,15 +201,38 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 	}
 	noteSources := []string{}
 	for i, n := range req.Notes {
+		w.ActiveNote = noteRefs[i]
 		sources := append([]string{}, w.Pending[n.Ref].Sources...)
 		resolveNote := func(refs []string) ([]string, error) {
 			ids, e := resolveSources(refs)
 			if e == nil {
 				sources = append(sources, ids...)
+				if w.Reasoning != nil {
+					if entry := w.Reasoning.RequiredNotes[noteRefs[i]]; entry != nil {
+						if entry.Sources == nil {
+							entry.Sources = map[string]string{}
+						}
+						for j, ref := range refs {
+							entry.Sources[ref] = ids[j]
+						}
+					}
+				}
 			}
 			return ids, e
 		}
 		item, pending, e := recordWorkNote(book, w, n, resolveNote, save, commit)
+		w.ActiveNote = ""
+		if e == nil && pending == nil && item.ID != "" && w.Reasoning != nil {
+			entry := w.Reasoning.RequiredNotes[noteRefs[i]]
+			if entry != nil {
+				if err := commit(func() error { _, err := book.Ingest(notebook.Draft{Sources: []string{entry.Source}}); return err }); err != nil {
+					e = err
+				} else {
+					finishRequiredPublication(w, entry)
+					delete(w.Reasoning.RequiredNotes, noteRefs[i])
+				}
+			}
+		}
 		if e == nil && pending == nil && item.ID != "" {
 			noteSources = append(noteSources, sources...)
 		}
@@ -206,6 +241,9 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 		}
 		if e != nil {
 			item.Error = e.Error()
+			if noteRefs[i] != "" {
+				item.Ref = noteRefs[i]
+			}
 		}
 		if pending != nil {
 			result.Pending = append(result.Pending, pending)
@@ -312,6 +350,24 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			add(item)
 		}
 	}
+	if w.Reasoning != nil && len(req.Notes) > 0 {
+		w.Reasoning.WikiPending = len(w.Reasoning.RequiredNotes) > 0 || reasoningPublicationsPending(w)
+		if e := save(); e != nil {
+			add(workItem{Ref: "reasoning", Kind: "reasoning", Error: e.Error()})
+		}
+	}
+	if req.Reasoning != nil {
+		if result.Complete {
+			item, e := recordWorkReasoning(book, w, *req.Reasoning, resolveSources, save, commit)
+			if e != nil {
+				item.Error = e.Error()
+			}
+			add(item)
+		} else {
+			add(workItem{Ref: "reasoning", Kind: "reasoning", Error: "save the failed or pending work items before recording this judgment"})
+		}
+	}
+	result.Reasoning = currentReasoningView(book, w.Reasoning)
 	if len(req.Outcomes)+len(req.Notes) > 0 {
 		ids := []string{}
 		for _, o := range req.Outcomes {
@@ -435,7 +491,14 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 
 	memo, ok := w.Captures[key]
 	if !ok {
-		memo = workCapture{Ref: "observed" + strconv.Itoa(len(w.Captures)+1), At: value.ObservedAt, Version: value.Version}
+		normalized := workObservation{Kind: value.Kind, Title: value.Title, Content: value.Content, Reference: value.Reference, Version: value.Version}
+		index := 1
+		for _, previous := range w.Captures {
+			if n, err := strconv.Atoi(strings.TrimPrefix(previous.Ref, "observed")); err == nil && n >= index {
+				index = n + 1
+			}
+		}
+		memo = workCapture{Original: &normalized, Ref: "observed" + strconv.Itoa(index), At: value.ObservedAt, Version: value.Version}
 		w.Captures[key] = memo
 		if err := save(); err != nil {
 			return memo.Ref, "", err
@@ -454,6 +517,7 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 		return memo.Ref, captured.ID, err
 	}
 	memo.ID = captured.ID
+	memo.Original, memo.Archive = nil, ""
 	w.Captures[key] = memo
 	w.Sources[memo.Ref] = memo.ID
 	if err = save(); err != nil {
@@ -576,10 +640,37 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 	if e := workSavedCapacity(w, keys...); e != nil {
 		return item, nil, e
 	}
+	publicationIntent := requiredPublicationIntent(w, n, d)
 	d.ChangeReason = strings.TrimSpace(d.ChangeReason + " [work " + w.Nonce[:8] + " " + signature[:12] + "]")
 	// Recovery after a published article but a failed checkpoint uses the exact
 	// expected revision, never a newly read page as permission to overwrite it.
-	if expected, ok := w.Expected[key]; ok {
+	expected, hasExpected := w.Expected[key]
+	if required := activeRequiredNote(w); required != nil && required.Expected != nil {
+		publication := required.Expected
+		live, err := book.LiveWhere(func(p notebook.Page) bool { return p.ID == publication.ID })
+		if err != nil {
+			return item, nil, err
+		}
+		if len(live) == 1 && live[0].Revision == publication.Revision && publication.Intent == publicationIntent {
+			expected = store.KnowledgeReference{ID: publication.ID, Revision: publication.Revision}
+			hasExpected = true
+		} else {
+			unwritten := false
+			if len(live) == 0 && publication.Intent == publicationIntent {
+				unwritten, err = requiredPublicationUnwritten(book, publication)
+				if err != nil {
+					return item, nil, err
+				}
+			}
+			// A never-written preview can retry its same create. Published,
+			// changed or missing history still requires the current original target.
+			if !unwritten && w.Articles[n.Target].ID != publication.ID {
+				return item, nil, fmt.Errorf("the original publication changed, is unavailable or differs from this repair; read article %s and repair that current target", publication.ID)
+			}
+			hasExpected = false
+		}
+	}
+	if hasExpected {
 		live, err := book.LiveWhere(func(p notebook.Page) bool { return p.ID == expected.ID })
 		if err != nil {
 			return item, nil, err
@@ -612,7 +703,11 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 		if origin := w.PendingOrigins[n.Ref]; origin != "" {
 			w.Expected[origin] = w.Expected[key]
 		}
+		bindRequiredPublication(w, w.Expected[key], publicationIntent, key, w.PendingOrigins[n.Ref])
 		if err = save(); err != nil {
+			return item, nil, err
+		}
+		if err = workAfterWrite("note-preview"); err != nil {
 			return item, nil, err
 		}
 		var value notebook.Result
@@ -639,6 +734,9 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 					w.PendingKeys[pendingKey] = ref
 					w.Pending[ref] = d
 					w.PendingOrigins[ref] = key
+				}
+				if w.Reasoning != nil && w.ActiveNote != "" {
+					w.Reasoning.RequiredNotes[w.ActiveNote].Pending = ref
 				}
 				candidates := []any{}
 				for i, c := range placed.Placements[0].Candidates {
@@ -677,7 +775,11 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 		if origin := w.PendingOrigins[n.Ref]; origin != "" {
 			w.Expected[origin] = w.Expected[key]
 		}
+		bindRequiredPublication(w, w.Expected[key], publicationIntent, key, w.PendingOrigins[n.Ref])
 		if err = save(); err != nil {
+			return item, nil, err
+		}
+		if err = workAfterWrite("note-preview"); err != nil {
 			return item, nil, err
 		}
 		var value notebook.Result

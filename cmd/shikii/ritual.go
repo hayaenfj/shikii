@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -17,15 +18,17 @@ import (
 // Records go into records/guards.jsonl, the same as the checks that stop the turn, with guard = plan-before-work / reflect-before-end, and appear in status and on the page.
 
 const (
-	ritualPlan    = "plan-before-work"
-	ritualReflect = "reflect-before-end"
-	ritualKinds   = "wiki-kinds"     // give a kind and a scene to pages from before the version bump (0.9.0)
-	ritualLang    = "reply-language" // write the final reply in the person's language (0.11)
+	ritualReasoning = "reasoning-before-end"
+	ritualPlan      = "plan-before-work"
+	ritualReflect   = "reflect-before-end"
+	ritualKinds     = "wiki-kinds"     // give a kind and a scene to pages from before the version bump (0.9.0)
+	ritualLang      = "reply-language" // write the final reply in the person's language (0.11)
 )
 
 // builtinGuards are the built-in ritual checks (for the list, totals and the page; ritualStop does the evaluation).
 func builtinGuards() []guard {
 	return []guard{
+		{ID: ritualReasoning, Kind: "ritual", Title: "Save an evidence-linked starting judgment and ending review", Reason: "record reasoning start and finish with current evidence; resolve pending wiki changes before completing", Enabled: true},
 		{ID: ritualPlan, Kind: "ritual", Title: "Sort out the plan before work (hook plan query \u2192 submit)", Reason: "if files were changed in a request the hook asked about, submit the sorted plan before finishing", Enabled: true},
 		{ID: ritualReflect, Kind: "ritual", Title: "Save the reflection before finishing (reflect query \u2192 submit)", Reason: "if the hook listed conversations, submit the provisional scores, wiki and assessments of delivered lessons before finishing", Enabled: true},
 		{ID: ritualKinds, Kind: "ritual", Title: "Give a kind and a scene to pages without them (shikii wiki classify)", Reason: "if the hook listed pages from before the version bump, give them a kind and a scene before finishing", Enabled: true},
@@ -34,7 +37,7 @@ func builtinGuards() []guard {
 }
 
 func isBuiltinGuard(id string) bool {
-	return id == ritualPlan || id == ritualReflect || id == ritualKinds || id == ritualLang
+	return id == ritualReasoning || id == ritualPlan || id == ritualReflect || id == ritualKinds || id == ritualLang
 }
 
 // ritualRecovery bounds automatic recovery by saved progress, independently of host continuation flags.
@@ -63,7 +66,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	// outside the acknowledgement list so its grouping is still open (0.9.3: then only continues_previous is asked for)
 	// a turn the person's guard stopped is also GroupingAsked (so the Stop after the block judges it): only a short message's grouping was asked for
 	grouping := groupingAsk(snapshot) || (snapshot.TurnID != "" && snapshot.GroupingAsked == snapshot.TurnID && groupingShort(groupingOf(snapshot)))
-	if p := snapshot.Planning; p != nil && p.TurnID == snapshot.TurnID && ((known && len(changed) > 0) || grouping) {
+	if p := snapshot.Planning; p != nil && p.TurnID == snapshot.TurnID && !p.ReasoningOnly && ((known && len(changed) > 0) || grouping) {
 		pass := p.Result != nil
 		reason := ""
 		if !pass {
@@ -79,6 +82,25 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualPlan, Pass: pass, Reason: reason, Recheck: recheck})
+	}
+	if r := snapshot.Reasoning; r != nil && r.Required && r.TurnID == snapshot.TurnID {
+		left := reasoningLeft(r)
+		if left == 0 {
+			current, err := reasoningEvidenceCurrent(notebook.Book{Root: root, Scope: scope}, r)
+			if err != nil {
+				return hookOut{}, err
+			}
+			if !current {
+				left++
+			}
+		}
+		reason := ""
+		if left > 0 {
+			remaining += left
+			reason = fmt.Sprintf("The built-in check %s needs a saved starting judgment and a current ending review. Pass %s to %s work prepare with topic words, read reasoning and the evidence, then use work record with its receipt and reasoning. %s", ritualReasoning, planJSON(in.SessionID, snapshot.TurnID), hookExe(), reasoningView(r).Next)
+			failed = append(failed, reason)
+		}
+		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReasoning, Pass: left == 0, Reason: reason, Recheck: recheck})
 	}
 	// Reflection: conversations listed before the request are still waiting for reflection (provisional scores, wiki or assessments of delivered lessons not done)
 	if len(snapshot.ReflectAsked) > 0 && snapshot.ReflectAskedTurn == snapshot.TurnID {

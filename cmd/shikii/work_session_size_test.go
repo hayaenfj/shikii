@@ -93,10 +93,12 @@ func TestRound2PublicPlanSessionBoundary(t *testing.T) {
 	}
 	previous := readSize()
 	overhead := 0
-	for i := 0; i < 11; i++ {
+	count := 0
+	for i := 0; i < 64; i++ {
 		body := strings.Repeat("<", 16000)
-		if i == 10 {
-			needed := (1 << 20) - 32 - previous - overhead
+		needed := (1 << 20) - 32 - previous - overhead
+		last := i > 1 && needed <= 96000
+		if last {
 			if needed < 0 || needed > 96000 {
 				t.Fatal("invalid final body budget", needed)
 			}
@@ -107,13 +109,15 @@ func TestRound2PublicPlanSessionBoundary(t *testing.T) {
 			t.Fatal(i, value, e)
 		}
 		current := readSize()
-		if i == 9 {
-			overhead = current - previous - 96000
-		}
+		overhead = current - previous - len(body)*6
 		previous = current
+		count++
+		if last {
+			break
+		}
 	}
 	before := readSize()
-	if before != (1<<20)-32 {
+	if before < (1<<20)-64 || before >= 1<<20 {
 		t.Fatal("unexpected public boundary size", before)
 	}
 	result, err := workCall(t, b, "record", map[string]any{"receipt": prep["receipt"], "agreed": map[string]any{"unknown": true}, "open": map[string]any{"unknown": true}})
@@ -124,7 +128,7 @@ func TestRound2PublicPlanSessionBoundary(t *testing.T) {
 	}
 	defer dir.Close()
 	_, reread := readPlanningSession(dir, filepath.Base(sessionPath(root, "planning")))
-	t.Logf("public_pending=11 before_bytes=%d after_bytes=%d input_error=%t complete=%v reread_rejected=%t", before, after, err != nil, result["complete"], reread != nil)
+	t.Logf("public_pending=%d before_bytes=%d after_bytes=%d input_error=%t complete=%v reread_rejected=%t", count, before, after, err != nil, result["complete"], reread != nil)
 	if after > 1<<20 || reread != nil {
 		t.Fatal("\u516c\u958b\u5165\u529b\u306e\u307f\u3067\u8aad\u3081\u306a\u3044\u30bb\u30c3\u30b7\u30e7\u30f3\u3092\u4fdd\u5b58\u3057\u305f")
 	}
@@ -134,6 +138,16 @@ func TestRound2PublicPlanSessionBoundary(t *testing.T) {
 	recovered, recoverErr := workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "query": "CSV filters"})
 	if recoverErr != nil || recovered["receipt"] == prep["receipt"] {
 		t.Fatal("the intact session must support a fresh preparation after capacity failure", recovered, recoverErr)
+	}
+	state := loopObject(t, recovered["reasoning"])
+	archive, _ := state["pending_source"].(string)
+	if state["wiki_pending"] != true || archive == "" {
+		t.Fatal("capacity recovery must preserve the obligation and original drafts", recovered)
+	}
+	sources, sourceErr := b.ReadSources([]string{archive})
+	raw, _ := json.Marshal(sources)
+	if sourceErr != nil || !strings.Contains(string(raw), fmt.Sprintf("CSV boundary %02d", count-1)) {
+		t.Fatal("the archived pending draft is unavailable", sourceErr)
 	}
 
 }

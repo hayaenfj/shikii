@@ -24,12 +24,13 @@ import (
 
 // The regular agent organizes the context. The hook only keeps the original text and does not guess agreements or open questions.
 type planningFrame struct {
-	TurnID  string            `json:"turn_id"`
-	Sources map[string]string `json:"source_material"`
-	At      time.Time         `json:"at"`
-	Digest  string            `json:"digest,omitempty"`
-	Result  *planningReceipt  `json:"result,omitempty"`
-	Recent  []planningTurn    `json:"recent,omitempty"`
+	ReasoningOnly bool              `json:"reasoning_only,omitempty"`
+	TurnID        string            `json:"turn_id"`
+	Sources       map[string]string `json:"source_material"`
+	At            time.Time         `json:"at"`
+	Digest        string            `json:"digest,omitempty"`
+	Result        *planningReceipt  `json:"result,omitempty"`
+	Recent        []planningTurn    `json:"recent,omitempty"`
 	// Earlier are this session's requests in this project that left Recent (id, the person's text, done-as-asked trace), kept for the
 	// session's lifetime within hookSessionTTL. Never shown to the agent: only restates in hook plan submit looks a request up here (0.9.3)
 	Earlier []planningTurn `json:"earlier,omitempty"`
@@ -131,7 +132,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: organize this turn before starting; do not ask the person. Pipe the JSON below to %s work prepare with topic words in query; read the conversation, wiki and how_to_record, then work record with its receipt and your judgment. A rule, test or procedure you make or change goes to the wiki before you finish. Legacy hook plan query returns how_to_submit for hook plan submit.\n", command) + string(ids)
+	return fmt.Sprintf("shikii: organize this turn before starting; do not ask the person. Pipe the JSON below to %s work prepare with topic words in query; read the conversation, wiki and how_to_record, then work record with its receipt and your judgment, including reasoning start; update it when evidence changes the next action and save reasoning finish before ending. A rule, test or procedure you make or change goes to the wiki before you finish. Legacy hook plan query returns how_to_submit for hook plan submit.\n", command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {
@@ -206,6 +207,9 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 		return nil, err
 	}
 	if operation == "query" {
+		if s.Reasoning != nil && s.Reasoning.WikiPending && !req.workPrepare {
+			return nil, errors.New("use work prepare to retain pending wiki evidence when replacing preparation, or resolve it with the current receipt")
+		}
 		baseRevision := workHash(s.Planning)
 		notice, knowledge, err := preparePlanningKnowledge(root, scope, req, s.Planning.Sources)
 		if err != nil {
@@ -296,11 +300,13 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 	if err != nil {
 		return nil, err
 	}
-	if !needsPlanningContext(sp) {
+	if !needsPlanningContext(sp) && !s.Planning.ReasoningOnly {
 		return nil, errors.New("the current question does not use agreed and open inputs")
 	}
 	inputs := map[string]string{"request": cut(s.Planning.Sources["current_user"], requestMax), "agreed": agreed, "open": open}
-	if req.Agreed.Unknown && req.Open.Unknown {
+	if s.Planning.ReasoningOnly {
+		result.Reason = "The work context was saved without changing the existing planning question or making a planning judgment."
+	} else if req.Agreed.Unknown && req.Open.Unknown {
 		result.Reason = "agreed and open are both unknown, so the decision was skipped. It does not count as the person's answer."
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), hookDecideTimeout)
@@ -433,6 +439,7 @@ func readPlanningSession(dir *os.Root, name string) (*hookSession, error) {
 	if decoder.Decode(&extra) != io.EOF {
 		return nil, errors.New("the session must be saved as one JSON object")
 	}
+	restoreWorkReasoning(&s)
 	return &s, nil
 }
 

@@ -94,7 +94,7 @@ func TestReflectHookWaitsAndOffersOnlyIDs(t *testing.T) {
 	for n := 1; n <= 2; n++ {
 		reviewSeed(t, st, scope, n)
 		ctx := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": fmt.Sprint(n), "cwd": repo, "prompt": request}))
-		if n == 1 && (strings.Contains(ctx, "submit") || strings.Contains(ctx, "ingest")) {
+		if n == 1 && (strings.Contains(ctx, "reflect query") || strings.Contains(ctx, "shikii_reflect")) {
 			t.Fatal("scoring and sorting work is not cut in after every single conversation")
 		}
 		if n == 2 && (!strings.Contains(ctx, "shikii_reflect") || !strings.Contains(ctx, "reflect query") || strings.Contains(ctx, "まだ英語が残っています")) {

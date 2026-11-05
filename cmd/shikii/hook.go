@@ -199,33 +199,34 @@ func (o hookOut) json(event string) []byte {
 type hookSession struct {
 	KnowledgeSeen []notebook.CollectiveBaseline `json:"knowledge_seen,omitempty"`
 
-	Request          string           `json:"request,omitempty"`            // the person's last request (kept at UserPromptSubmit)
-	RequestText      string           `json:"request_text,omitempty"`       // original text for the page. Kept apart from the decision input
-	RawPrompt        string           `json:"last_user_prompt,omitempty"`   // the person's last message kept without joining. Used as the source of quotes
-	TurnID           string           `json:"turn_id,omitempty"`            // a repeated request with the same text is still a different turn
-	Scope            string           `json:"scope,omitempty"`              // the repo's real path. Conversations, scoring and lines are limited to the same work
-	Completed        *completedTurn   `json:"completed,omitempty"`          // record of the reply to this request. Paired with the person's next message
-	Memories         []memoryDelivery `json:"memories,omitempty"`           // versions of memories delivered to this session (latest 16)
-	Previous         string           `json:"previous,omitempty"`           // the assistant's previous message (kept at Stop)
-	Planning         *planningFrame   `json:"planning,omitempty"`           // context for the current request that the agent organizes with the original text
-	Pending          []pendingItem    `json:"pending,omitempty"`            // prompt-kind decisions waiting for their outcome truth
-	Watch            []scopeWatch     `json:"watch,omitempty"`              // changes-in-scope decisions waiting for their outcome truth (are the changed files reverted)
-	Asked            []askedItem      `json:"asked,omitempty"`              // decisions in this session that ended up waiting for the person's answer (ask and spot checks)
-	Reviews          []askedItem      `json:"reviews,omitempty"`            // decisions waiting for provisional scoring from the conversation and the later spot check
-	Reported         []string         `json:"reported_traces,omitempty"`    // traces reported at Stop as waiting for an answer (only mention when there is a new one)
-	Judged           bool             `json:"judged,omitempty"`             // the end-of-turn self-review (changes-in-scope / done-as-asked) for the current request is done (reset on the next request)
-	Head             string           `json:"head,omitempty"`               // HEAD at request time (so the stop check can see this turn's commits. 0.7.3)
-	HeadAt           time.Time        `json:"head_at,omitempty"`            // request time. Commits before it (existing commits of a checked-out branch) are not looked at
-	MemoryNoticed    bool             `json:"memory_noticed,omitempty"`     // told once in this session that there is memory not yet in the wiki (0.8.0)
-	StoreNoticed     bool             `json:"store_noticed,omitempty"`      // told in this session that a wiki store is left under the old path's name (0.9.2)
-	OlderNoticed     bool             `json:"older_noticed,omitempty"`      // told in this session that an older shikii registered this project again (0.9.7)
-	ReflectAsked     []string         `json:"reflect_asked,omitempty"`      // conversations asked to be reflected on before the request (the ritual check looks at it at Stop. 0.8.0)
-	ReflectAskedTurn string           `json:"reflect_asked_turn,omitempty"` // the turn ReflectAsked was asked in (do not stop on leftovers from another turn. audit R5)
-	RitualRecovery   *ritualRecovery  `json:"ritual_recovery,omitempty"`    // saved remaining work for the current recovery
-	RitualStopped    string           `json:"ritual_stopped,omitempty"`     // the stopped turn, including continuations after a background notification
-	GroupingAsked    string           `json:"grouping_asked,omitempty"`     // the turn whose Stop asked only for continues_previous and left the judgment to the next Stop (0.9.3)
-	PageNoticed      bool             `json:"page_noticed,omitempty"`       // told the page location in this session (0.8.0)
-	HabitsNoticed    bool             `json:"habits_noticed,omitempty"`     // told in this session how to keep work records and rules (0.8.1)
+	Request          string             `json:"request,omitempty"`          // the person's last request (kept at UserPromptSubmit)
+	RequestText      string             `json:"request_text,omitempty"`     // original text for the page. Kept apart from the decision input
+	RawPrompt        string             `json:"last_user_prompt,omitempty"` // the person's last message kept without joining. Used as the source of quotes
+	TurnID           string             `json:"turn_id,omitempty"`          // a repeated request with the same text is still a different turn
+	Scope            string             `json:"scope,omitempty"`            // the repo's real path. Conversations, scoring and lines are limited to the same work
+	Completed        *completedTurn     `json:"completed,omitempty"`        // record of the reply to this request. Paired with the person's next message
+	Memories         []memoryDelivery   `json:"memories,omitempty"`         // versions of memories delivered to this session (latest 16)
+	Previous         string             `json:"previous,omitempty"`         // the assistant's previous message (kept at Stop)
+	Reasoning        *reasoningProgress `json:"reasoning,omitempty"`
+	Planning         *planningFrame     `json:"planning,omitempty"`           // context for the current request that the agent organizes with the original text
+	Pending          []pendingItem      `json:"pending,omitempty"`            // prompt-kind decisions waiting for their outcome truth
+	Watch            []scopeWatch       `json:"watch,omitempty"`              // changes-in-scope decisions waiting for their outcome truth (are the changed files reverted)
+	Asked            []askedItem        `json:"asked,omitempty"`              // decisions in this session that ended up waiting for the person's answer (ask and spot checks)
+	Reviews          []askedItem        `json:"reviews,omitempty"`            // decisions waiting for provisional scoring from the conversation and the later spot check
+	Reported         []string           `json:"reported_traces,omitempty"`    // traces reported at Stop as waiting for an answer (only mention when there is a new one)
+	Judged           bool               `json:"judged,omitempty"`             // the end-of-turn self-review (changes-in-scope / done-as-asked) for the current request is done (reset on the next request)
+	Head             string             `json:"head,omitempty"`               // HEAD at request time (so the stop check can see this turn's commits. 0.7.3)
+	HeadAt           time.Time          `json:"head_at,omitempty"`            // request time. Commits before it (existing commits of a checked-out branch) are not looked at
+	MemoryNoticed    bool               `json:"memory_noticed,omitempty"`     // told once in this session that there is memory not yet in the wiki (0.8.0)
+	StoreNoticed     bool               `json:"store_noticed,omitempty"`      // told in this session that a wiki store is left under the old path's name (0.9.2)
+	OlderNoticed     bool               `json:"older_noticed,omitempty"`      // told in this session that an older shikii registered this project again (0.9.7)
+	ReflectAsked     []string           `json:"reflect_asked,omitempty"`      // conversations asked to be reflected on before the request (the ritual check looks at it at Stop. 0.8.0)
+	ReflectAskedTurn string             `json:"reflect_asked_turn,omitempty"` // the turn ReflectAsked was asked in (do not stop on leftovers from another turn. audit R5)
+	RitualRecovery   *ritualRecovery    `json:"ritual_recovery,omitempty"`    // saved remaining work for the current recovery
+	RitualStopped    string             `json:"ritual_stopped,omitempty"`     // the stopped turn, including continuations after a background notification
+	GroupingAsked    string             `json:"grouping_asked,omitempty"`     // the turn whose Stop asked only for continues_previous and left the judgment to the next Stop (0.9.3)
+	PageNoticed      bool               `json:"page_noticed,omitempty"`       // told the page location in this session (0.8.0)
+	HabitsNoticed    bool               `json:"habits_noticed,omitempty"`     // told in this session how to keep work records and rules (0.8.1)
 	// requests since the full organizing and reflection notices (0 = none yet in this session); the short form is used in between (0.9.7)
 	ClassifyAsked     []string       `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
 	ClassifyAskedTurn string         `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
@@ -339,6 +340,27 @@ func updateSession(agent, id string, fn func(s *hookSession)) error {
 	return saveSession(agent, id, s)
 }
 
+func saveHookMutations(agent, id, event string, snapshot *hookSession, out *hookOut, muts []func(*hookSession)) error {
+	apply := func(sess *hookSession) {
+		for _, m := range muts {
+			m(sess)
+		}
+	}
+	if event != "stop" || out.Block || out.Halt != "" || snapshot.Request == "" {
+		return updateSession(agent, id, apply)
+	}
+	// Keep verification and the final session write inside the same commit boundary.
+	return commitStopReasoning(agent, id, snapshot, func() error {
+		sess, err := readSession(agent, id)
+		if err != nil {
+			return err
+		}
+		apply(sess)
+		syncDeferral(agent, id, sess)
+		return saveSession(agent, id, sess)
+	})
+}
+
 // readSession distinguishes a new session from an existing record that cannot be verified.
 func readSession(agent, id string) (*hookSession, error) {
 	s := &hookSession{}
@@ -352,6 +374,7 @@ func readSession(agent, id string) (*hookSession, error) {
 	if err := json.Unmarshal(b, s); err != nil {
 		return nil, err
 	}
+	restoreWorkReasoning(s)
 	return s, nil
 }
 
@@ -503,6 +526,10 @@ func discardTrusted(sp *spec.Spec, d *decide.Decision) bool {
 // hookDecideAll asks several specs with the same input in parallel (waiting for each in turn inside one hook gets close to the timeout).
 // Returned in specIDs order. A spec not asked (skipped) is nil.
 func hookDecideAll(agent string, specIDs []string, inputs map[string]string, project string, skip func(id string) bool, originals ...map[string]string) ([]*decide.Decision, []hookOut, error) {
+	return hookDecideAllWithCommit(agent, specIDs, inputs, project, skip, nil, originals...)
+}
+
+func hookDecideAllWithCommit(agent string, specIDs []string, inputs map[string]string, project string, skip func(id string) bool, commit workCommitter, originals ...map[string]string) ([]*decide.Decision, []hookOut, error) {
 	ds := make([]*decide.Decision, len(specIDs))
 	outs := make([]hookOut, len(specIDs))
 	errs := make([]error, len(specIDs))
@@ -514,7 +541,7 @@ func hookDecideAll(agent string, specIDs []string, inputs map[string]string, pro
 		wg.Add(1)
 		go func(i int, id string) {
 			defer wg.Done()
-			ds[i], outs[i], errs[i] = hookDecide(agent, id, inputs, project, originals...)
+			ds[i], outs[i], errs[i] = hookDecideWithCommit(agent, id, inputs, project, commit, originals...)
 			if ds[i] != nil {
 				resumeOnNewModel(agent, id, ds[i].Model)
 			}
@@ -768,11 +795,7 @@ func runHookEvent(event string) error {
 		out.Context = joinLines(moved, out.Context)
 	}
 	if len(muts) > 0 {
-		if serr := updateSession(agent, in.SessionID, func(sess *hookSession) {
-			for _, m := range muts {
-				m(sess)
-			}
-		}); serr != nil {
+		if serr := saveHookMutations(agent, in.SessionID, event, snapshot, &out, muts); serr != nil {
 			if err == nil {
 				err = serr
 			}
@@ -1108,9 +1131,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	head := gitHead(in.CWD)                                             // the starting point the stop check uses to see this turn's commits
 	request, requestText := groupedRequest(snapshot, req, in.Prompt, scope, joined)
 	turnID := store.NewTraceID()
-	var planning *planningFrame
-	if sp, err := spec.Load(hookSpecPath(agent, "needs-plan")); err == nil && needsPlanningContext(sp) {
-		planning = newPlanningFrame(snapshot, in, scope, turnID)
+	planning := newPlanningFrame(snapshot, in, scope, turnID)
+	if sp, err := spec.Load(hookSpecPath(agent, "needs-plan")); err != nil || !needsPlanningContext(sp) {
+		planning.ReasoningOnly = true
 	}
 	var firstErr error
 	pendingNow := snapshot.Pending // the previous request's pending (a copy). Only these traces are settled inside the lock (pending added by an overlapping Stop or the next request is left alone)
@@ -1121,7 +1144,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 			settleGrouping(agent, s) // the previous turn's grouping, if its organizing and Stop never came
 			previous := linkedCompletion(s, snapshot, scope)
-			if planning != nil && snapshot.Request != "" {
+			if planning != nil && !planning.ReasoningOnly && snapshot.Request != "" {
 				// the agent is asked to organize this turn: settling the previous outcome waits for its continues_previous (or this turn's Stop)
 				g := &requestGrouping{Joined: joined, Reply: req}
 				g.Alone, g.AloneText = groupedRequest(snapshot, req, in.Prompt, scope, false)
@@ -1139,6 +1162,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			s.RequestText = requestText
 			s.RawPrompt = cut(strings.TrimSpace(in.Prompt), 4000)
 			s.Planning = planning
+			s.Reasoning = &reasoningProgress{TurnID: turnID, Required: true}
 		},
 		// the previous request's outcome truth is decided on the tree at the time the next request arrives (the request boundary = the next request; waiting for Stop mixes two requests)
 		func(s *hookSession) {
@@ -1161,16 +1185,19 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 		},
 	}
-	ds, outs, err := hookDecideAll(agent, hookSpecs[:2], inputs, project, func(id string) bool { return id == "needs-plan" && planning != nil }, map[string]string{"request": strings.TrimSpace(in.Prompt)})
+	ds, outs, err := hookDecideAll(agent, hookSpecs[:2], inputs, project, func(id string) bool { return id == "needs-plan" && planning != nil && !planning.ReasoningOnly }, map[string]string{"request": strings.TrimSpace(in.Prompt)})
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
 	if planning != nil && planningNotNeeded(ds[0]) {
-		planning = nil // a calibrated prompt-kind is confident it "does not change files": do not ask for the pre-start organizing (the first mut writes nil to the record)
+		planning.ReasoningOnly = true // Keep evidence-linked work available for non-editing requests without adding a planning decision.
 	}
 	var out hookOut
 	if planning != nil {
 		out.Context = planningNotice(in.SessionID, turnID) // one form every time; the shape of submit comes back in the reply of hook plan query (0.11)
+		if planning.ReasoningOnly {
+			out.Context = fmt.Sprintf("shikii: use work prepare with topic words and %s, then work record with its receipt and reasoning start. Update the judgment when evidence changes the next action; save reasoning finish with the checked result before ending. No planning judgment is required for this turn.\n", planJSON(in.SessionID, turnID))
+		}
 	}
 	for i, d := range ds {
 		if d == nil || d.Band == decide.Abstain {
@@ -1322,7 +1349,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		if rout.Recovery != nil {
 			recovery := rout.Recovery
 			checkpoint = func(s *hookSession) {
-				if s.TurnID == snapshot.TurnID {
+				if s.TurnID == snapshot.TurnID && workHash(s.Reasoning) == workHash(snapshot.Reasoning) {
 					saved := *recovery
 					if previous := s.RitualRecovery; previous != nil && previous.TurnID == s.TurnID {
 						saved.Left = min(saved.Left, previous.Left)
@@ -1381,11 +1408,16 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	if snapshot.RequestText != "" {
 		originals["request"] = snapshot.RequestText
 	}
-	ds, outs, err := hookDecideAll(agent, hookSpecs[2:], inputs, project, func(id string) bool {
+	completionCommit := workCommitter(func(action func() error) error { return commitStopReasoning(agent, in.SessionID, snapshot, action) })
+	ds, outs, err := hookDecideAllWithCommit(agent, hookSpecs[2:], inputs, project, func(id string) bool {
 		return id == "changes-in-scope" && (!known || len(changed) == 0) // if nothing changed (or it is unknown), "within scope" cannot be asked
-	}, originals)
+	}, completionCommit, originals)
 	if err != nil && firstErr == nil {
 		firstErr = err
+	}
+	if err := completionCommit(nil); err != nil {
+		readyToJudge = false
+		return hookOut{Block: true, Reason: "shikii: completion evidence changed or could not be checked. Read the current work context, resolve pending notes and save reasoning finish before ending. " + err.Error()}, muts, err
 	}
 	targets := []store.ReviewTarget{}
 	for i, d := range ds {
@@ -1410,7 +1442,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		out.System = joinLines(out.System, outs[i].System)
 	}
 	muts = append(muts, func(s *hookSession) {
-		if s.Request == req && s.TurnID == snapshot.TurnID {
+		if s.Request == req && s.TurnID == snapshot.TurnID && workHash(s.Reasoning) == workHash(snapshot.Reasoning) {
 			s.Judged = true
 			if s.GroupingAsked == s.TurnID {
 				s.GroupingAsked = "" // judged: from here the turn is like any other (a notice whose Stop never comes is not judged late, 0.9.3 audit 6)
@@ -1437,15 +1469,11 @@ func judgeAskedTurn(agent string, in *hookInput, snapshot *hookSession) {
 		reply = c.Summary
 	}
 	stop := hookInput{SessionID: in.SessionID, CWD: in.CWD, StopHookActive: true, LastAssistantMessage: reply, late: true}
-	_, muts, err := hookStop(agent, &stop, snapshot)
+	out, muts, err := hookStop(agent, &stop, snapshot)
 	if err != nil {
 		hookLog("grouping: " + err.Error())
 	}
-	if err := updateSession(agent, in.SessionID, func(s *hookSession) {
-		for _, m := range muts {
-			m(s)
-		}
-	}); err != nil {
+	if err := saveHookMutations(agent, in.SessionID, "stop", snapshot, &out, muts); err != nil {
 		hookLog("grouping: " + err.Error())
 	}
 }
