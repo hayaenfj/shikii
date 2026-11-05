@@ -730,13 +730,17 @@ func recordWorkNote(book notebook.Book, w *workState, n workNote, resolve func([
 			if ambiguous {
 				ref := w.PendingKeys[pendingKey]
 				if ref == "" {
-					ref = "note" + strconv.Itoa(len(w.Pending)+1)
+					ref, e = nextWorkPendingReference(w)
+					if e != nil {
+						return item, nil, e
+					}
 					w.PendingKeys[pendingKey] = ref
 					w.Pending[ref] = d
 					w.PendingOrigins[ref] = key
 				}
 				if w.Reasoning != nil && w.ActiveNote != "" {
 					w.Reasoning.RequiredNotes[w.ActiveNote].Pending = ref
+					w.Reasoning.RequiredNotes[w.ActiveNote].PendingWork = w.Nonce
 				}
 				candidates := []any{}
 				for i, c := range placed.Placements[0].Candidates {
