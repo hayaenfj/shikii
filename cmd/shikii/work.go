@@ -127,6 +127,7 @@ type workReply struct {
 	Reflection *reflectResult   `json:"reflection,omitempty"`
 }
 type workState struct {
+	NextPending    uint64                                `json:"next_pending,omitempty"`
 	ActiveNote     string                                `json:"-"`
 	Reasoning      *reasoningProgress                    `json:"reasoning,omitempty"`
 	Collective     *workCollective                       `json:"collective,omitempty"`

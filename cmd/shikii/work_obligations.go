@@ -6,11 +6,49 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 )
+
+func nextWorkPendingReference(w *workState) (string, error) {
+	if w.NextPending == 0 {
+		retain := func(ref string) {
+			if n, err := strconv.ParseUint(strings.TrimPrefix(ref, "note"), 10, 64); err == nil && n > w.NextPending {
+				w.NextPending = n
+			}
+		}
+		for ref := range w.Pending {
+			retain(ref)
+		}
+		for _, ref := range w.PendingKeys {
+			retain(ref)
+		}
+		for _, item := range w.Saved {
+			retain(item.Ref)
+		}
+		if w.Reasoning != nil {
+			for _, note := range w.Reasoning.RequiredNotes {
+				if note.PendingWork == w.Nonce {
+					retain(note.Pending)
+				}
+			}
+		}
+	}
+	for {
+		if w.NextPending == ^uint64(0) {
+			return "", errors.New("pending note references are exhausted; prepare again")
+		}
+		w.NextPending++
+		ref := "note" + strconv.FormatUint(w.NextPending, 10)
+		if _, exists := w.Pending[ref]; !exists {
+			return ref, nil
+		}
+	}
+}
 
 // A failed publication belongs to its original intent, not to the next batch.
 // The draft and its prepared bindings live in an immutable source so replacing
@@ -29,6 +67,7 @@ type workRequiredNote struct {
 	Signature    string               `json:"signature"`
 	Source       string               `json:"source,omitempty"`
 	Pending      string               `json:"pending,omitempty"`
+	PendingWork  string               `json:"pending_work,omitempty"`
 	Sources      map[string]string    `json:"sources,omitempty"`
 	Inline       *workNoteIntent      `json:"inline,omitempty"`
 	At           time.Time            `json:"at"`
@@ -63,7 +102,7 @@ func reserveRequiredNote(book notebook.Book, w *workState, n workNote, save func
 	}
 	ref := ""
 	for key, entry := range r.RequiredNotes {
-		if n.Ref == key || n.Ref != "" && n.Ref == entry.Pending || n.Ref == "" && entry.Signature == requiredNoteSignature(w, n) {
+		if n.Ref == key || n.Ref != "" && n.Ref == entry.Pending && entry.PendingWork == w.Nonce || n.Ref == "" && entry.Signature == requiredNoteSignature(w, n) {
 			ref = key
 			break
 		}
@@ -84,7 +123,7 @@ func reserveRequiredNote(book notebook.Book, w *workState, n workNote, save func
 		for key, article := range w.Articles {
 			intent.Articles[key] = article
 		}
-		r.RequiredNotes[ref] = &workRequiredNote{TargetID: w.Articles[n.Target].ID, Signature: signature, Pending: n.Ref, Inline: intent, At: time.Now().UTC()}
+		r.RequiredNotes[ref] = &workRequiredNote{TargetID: w.Articles[n.Target].ID, Signature: signature, Pending: n.Ref, PendingWork: w.Nonce, Inline: intent, At: time.Now().UTC()}
 		r.WikiPending = true
 		if err := save(); err != nil {
 			return ref, n, err

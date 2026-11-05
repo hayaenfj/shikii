@@ -150,9 +150,11 @@ func reasoningLeft(r *reasoningProgress) int {
 	if r.Finish == nil || r.Finish.Generation != r.Generation {
 		n++
 	}
-	if r.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0 {
-		n++
+	pending := len(r.RequiredNotes) + len(r.PendingCaptures)
+	if pending == 0 && r.WikiPending {
+		pending = 1
 	}
+	n += pending
 	return n
 }
 

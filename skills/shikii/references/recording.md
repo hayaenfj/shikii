@@ -80,6 +80,9 @@ full corrected note and a current target. A ref-only retry with target and edits
 restores the original draft and known source bindings. An existing-article repair
 must still address the original article. Placement refs continue to accept only
 ref, target and edits. Correcting one note never resolves another failed note.
+Placement refs belong to one preparation and are not reused for a different
+note within it. Across preparations, use the stable required-note ref returned
+in `reasoning.pending_notes`.
 If the note was published before its checkpoint failed, retrying the same intent
 confirms that exact published revision and finishes its source/checkpoint work
 without creating another article. A changed or retired publication needs a
