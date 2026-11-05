@@ -2,6 +2,15 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.26.0 — Required evidence-linked work reviews
+
+- Keep a required review for each request before preparation. Use `work record` with reasoning `start`, `update` when a premise or next action changes, and `finish` with the checked result. Retained approaches and unresolved conditions are valid; no discovery or new article is required every time.
+- Bind review evidence to the current request, supplied article revisions and captured sources. Retain starting judgments, the latest judgment and the ending result as agent evidence, separate from human intent, success labels and permission.
+- Keep failed and pending wiki changes through renewed preparation, including archived drafts and source bindings at capacity. Resolve the required changes before finishing; unrelated saves do not replace them.
+- Reopen ending review when new evidence is saved. Verify current evidence before completion and reject a stale ending record or a late completion result after the work changes. Recovery follows saved progress and ends explicitly incomplete when it cannot proceed.
+- Show review state through CLI, MCP and HTTP and review counts in the English and Japanese status page. The hooks check saved records, not private deliberation, the quality of thought or reconsideration before every tool call. No additional model or configuration is required.
+- Update every writer sharing project records to 0.26.0, reopen agent sessions and restart the page and MCP before new work. Without hooks, refresh skills with `shikii --init` in an existing initialized project. Updates from 0.25.1 keep existing data and article/outcome formats; older writers do not preserve the new review progress.
+
 ## 0.25.1 — Clearer collective knowledge and execution guidance
 
 - Describe wiki knowledge as source-backed human requests and decisions alongside agents' observations, checks and procedure reports. Keep human intent separate from agent interpretations and reported results.

@@ -136,7 +136,7 @@ func TestStopIsBlockedByPairedFilesAndCommitBody(t *testing.T) {
 	recs := readGuardRecords(root)
 	fixed := 0
 	for _, r := range recs {
-		if r.Recheck && r.Pass {
+		if r.Recheck && r.Pass && !isBuiltinGuard(r.Guard) {
 			fixed++
 		}
 	}

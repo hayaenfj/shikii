@@ -18,6 +18,93 @@ Without a hook, use `{"query":"CSV export filters","request":"Check the CSV expo
 
 A new preparation **without a receipt**, or an individual `hook plan query`, for the same hook turn replaces the quotation context and invalidates the previous receipt. An in-flight planning result bound to that receipt is refused after replacement. Keep using one receipt during the work. It expires with the hook session (7 days), and cannot be transferred to another project, turn or closed request. A receipt is a local reference, never authorization or a secret that grants access to another project.
 
+## Required review while doing the work
+
+Every request hook keeps a turn-specific reasoning obligation, even before
+preparation. `prepare.reasoning` and `record.reasoning` show `required`, `started`,
+`complete`, `wiki_pending`, the latest brief judgment, and the next operation.
+Record only a concise decision summary and checkable grounds, not private
+step-by-step deliberation. Combine it with the usual planning or observations:
+
+```json
+{"receipt":"<receipt>","reasoning":{
+  "phase":"start",
+  "focus":"Could the export lose an existing ownership condition?",
+  "assessment":"retain",
+  "reason":"Compare the current request and the procedure's actual conditions.",
+  "evidence":["current","knowledge1"],
+  "next_action":"Check the synthetic export under the existing owner condition."
+}}
+```
+
+`phase` is `start`, `update`, or `finish`; assessment is `revise`, `retain`, or
+`unresolved`. Focus, reason, next_action and a finishing result each fit 1200
+UTF-8 bytes. Use one to four evidence refs: `current`, supplied articles, or
+captured observations (`new1` can name an observation in the same batch). The
+recorder verifies their source availability and current article revisions and
+pins their actual identities. Conditions and semantic relevance remain the
+agent's responsibility. Unknown, incomplete and stale references are refused.
+
+Save start before the work. Use update when evidence changes the premise or
+next action. After checking the result, record finish with `result`, the same
+other fields and the relevant evidence. Finish needs a saved start. New saved
+observations, uses, outcomes or notes reopen the ending review; replaying an old
+finish does not certify later evidence. Each ending review keeps an immutable
+agent source containing the start, latest judgment and result so the next
+request can inspect it. It creates no success label, human answer or permission.
+The current request keeps one source identity throughout its turn. Replay keys
+retain their first generation in project records across preparations and receipt
+capacity; evidence aliases and ordering do not turn an old finish into a new one.
+
+A batch's top-level `complete` means its submitted operations were saved;
+`reasoning.complete` concerns this review. Neither establishes that the original
+task is done. Retaining the approach and recording an unresolved condition are
+valid. Small conversational tasks need only short judgments about the actual
+request; do not invent an experiment, discovery, article or procedure outcome.
+Reusable findings and new project procedures still go to the wiki as usual.
+
+Resolve failed or pending wiki notes and captures before finishing. Saved retry metadata alone
+is not pending work. Replacing preparation preserves the start, latest review
+and pending obligation. When drafts or publication bindings exist, it first
+archives their original content and reference bindings as an immutable source;
+`reasoning.pending_source` names it for `wiki query`. Read that source and restore
+still-needed edits using their original sources and current article revisions.
+Use the ordinary wiki operations for structural recovery and record the checked
+note with the current receipt. A fresh preparation alone never resolves the
+obligation. `reasoning.pending_notes` maps each outstanding required-note ref to
+its immutable original intent and prepared bindings. An error returns that ref.
+`pending_note_targets` supplies original article IDs to read with prepare before
+repairing their current revisions, including when the archive is unavailable.
+Retry the same content with corrected sources, or send the required ref with the
+full corrected note and a current target. A ref-only retry with target and edits
+restores the original draft and known source bindings. An existing-article repair
+must still address the original article. Placement refs continue to accept only
+ref, target and edits. Correcting one note never resolves another failed note.
+If the note was published before its checkpoint failed, retrying the same intent
+confirms that exact published revision and finishes its source/checkpoint work
+without creating another article. A changed or retired publication needs a
+current target for the original article. When publication never occurred, only
+the same intent may retry after the original base and missing history are checked.
+At most 128 notes may remain outstanding; resolve them before adding more.
+`reasoning.pending_captures` retains each incomplete capture's original content,
+reference, recording version and time across preparations. Retry that observation
+to confirm the same source, including when the source was written but its
+checkpoint failed. A new finish cannot skip an unconfirmed capture.
+If reserving required work exceeds the session limit, the recorder archives its
+original context, retires that receipt and retains the obligations on the same
+turn. Prepare again before retrying. If archiving also fails, the compact turn
+state retains the original payload until the source store recovers.
+This also permits recovery at the session-size limit without losing
+the old drafts. A different turn cannot reuse another turn's judgments. `Stop` checks the required saves and ending article revisions before
+judging completion and uses the existing progress-bounded recovery. The common
+article lock covers each ending-revision check and completion publication,
+including the final session write; it is released during model inference.
+The common hooks verify saved records, not the internal thought process or every tool's
+execution order. No new model, setting or person scoring is needed. A standalone
+agent-supplied preparation can record the same review but cannot satisfy another
+hook turn. Update the binary and skills and reopen agent sessions together before
+using this contract; older writers do not preserve this progress.
+
 ## Add knowledge during the same work
 
 ### Read the current knowledge before its chronology

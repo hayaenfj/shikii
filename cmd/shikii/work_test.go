@@ -74,6 +74,9 @@ func TestWorkReceiptRejectsTamperingAndAnotherProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if v["planning_required"] != false {
+		t.Fatal("an agent-supplied task must not ask for human planning agreement", v)
+	}
 	receipt := v["receipt"].(string)
 	other, _ := loopBook(t)
 	if _, err = workCall(t, other, "record", map[string]any{"receipt": receipt, "reviewed": []string{"source1"}}); err == nil {

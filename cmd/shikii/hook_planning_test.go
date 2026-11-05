@@ -396,8 +396,8 @@ func TestPlanningIsSkippedOnlyForConfidentNonEditRequests(t *testing.T) {
 	if err := sp.Save(); err != nil {
 		t.Fatal(err)
 	}
-	if out := ask("explain"); strings.Contains(out, "hook plan query") || loadSession(agent, "explain").Planning != nil {
-		t.Fatalf("a confident explain must skip the planning context: %s %+v", out, loadSession(agent, "explain").Planning)
+	if out := ask("explain"); strings.Contains(out, "hook plan query") || loadSession(agent, "explain").Planning == nil || !loadSession(agent, "explain").Planning.ReasoningOnly {
+		t.Fatalf("a confident explain keeps reasoning without adding a planning judgment: %s %+v", out, loadSession(agent, "explain").Planning)
 	}
 	top = "decide"
 	if out := ask("decide"); !strings.Contains(out, "hook plan query") {

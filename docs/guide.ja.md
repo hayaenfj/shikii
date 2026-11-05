@@ -103,9 +103,10 @@ shikii guard try                    # 今の作業ツリーに当てて見せる
 
 ## 作業の前と後の手順
 
-毎回のターンで、2 つの手順を組み込みの規則で確かめる。いつも有効で、外せない(`shikii guard list` に `built in (always enabled)` として出る)。`CLAUDE.md` や `AGENTS.md` の無いプロジェクトでも効く。
+毎回のターンで、整理・推論の見直し・振り返りを組み込みの規則で確かめる。いつも有効で、外せない(`shikii guard list` に `built in (always enabled)` として出る)。`CLAUDE.md` や `AGENTS.md` の無いプロジェクトでも効く。
 
 - **作業の前の整理(plan-before-work)**: 依頼の hook が整理を頼んだターンで、ファイルを変える前に `shikii hook plan query` で今回と直近の会話を読み、エージェントが選んだ話題の語で wiki を探し、合意したことと未決のことを `shikii hook plan submit` で保存する。hook の文はそのコマンドとターンの id だけを名指し、submit の正確な形は `hook plan query` の返事の `how_to_submit` に、振り返りの形は `reflect query` の返事に入って来る。エージェントの前の枠は、手順ではなく教訓と本人の決定に使う(0.11)。検索語の無い query には「wiki はまだ探していない」と返る。判定モデルが止まっていても整理は保存される。
+- **推論の見直し(reasoning-before-end)**: 依頼のhookが必須の状態を保存し、`work prepare`が今回の条件と過去の経験を返す。エージェントは短い判断を`reasoning`の`start`で保存し、作業中に前提や次の行動が変わったら`update`、確認後に結果を付けて`finish`を保存する。根拠は依頼・供給した記事・観察の参照へ結び付く。新しい証拠を保存した後は、古い終了記録の再送では通らない。wiki訂正の失敗や未配置が残れば、再準備で消さずに解消する。未保存の項目ごとに元の参照を保ち、別の保存成功で消さない。容量不足では必要な作業を残して古いレシートを外し、再準備で復旧する。終了時の判断はagent原資料にも残し、次の仕事で読めるようにする。方針の維持や証拠不足も認め、新しい発見や記事は毎回要求しない。Stopは保存結果と終了時の出典版を確認する。全ツールの実行前の再検討や、判断の質を保証するものではない。追加のモデル・設定・人の採点は不要。[入力と上限](../skills/shikii/references/recording.md#required-review-while-doing-the-work)を参照する。
 - **終える前の振り返り(reflect-before-end)**: 依頼の hook が振り返る会話を挙げたターンで、終える前に `shikii reflect query` で原文・届いた記憶・教訓・人の訂正を読み、採点(reviews)・wiki・届いた教訓の評価(memory)を `shikii reflect submit` で保存する。
 
 ```sh

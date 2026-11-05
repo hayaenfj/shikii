@@ -6,13 +6,15 @@
 
 From 0.23 onward, this includes receiving peers' knowledge changes, carrying conditions through research, implementation and audit, selecting experience relevant to the current work, and returning actual use and results to later procedures. The record preserves checked conditions, what remains unknown and how the knowledge informed a decision.
 
+From 0.26, brief judgments and checked results stay linked to the current evidence, and the ending hook verifies their required saves.
+
 Suppose you say, “When updating the guide, update both the English and Japanese versions.” Remembering that instruction alone does not tell you whether both were updated next time. shikii keeps it as an article with sources and delivers it during relevant work. The agent reviews whether it helped. A check enabled by a person can verify the parts that can be checked mechanically.
 
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)
 
-So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 4, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
+So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 5, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
 
 | What you need | What memory provides | What shikii combines |
 | --- | --- | --- |
@@ -27,6 +29,7 @@ So “OpenAI remembers only preferences” or “only shikii stores memory local
 | Carry work across roles and stages | Carry context into later work | An optional host supplies assignment conditions, inspected revisions, investigation coverage and implementation state |
 | Return use and results to knowledge | Carry current context into later work | Distinguish inspection, actual decision use and execution, then return sourced reports through a compatible chiten build, CLI or MCP |
 | Delegate decisions | Answers informed by context | People's answers and observable outcomes to measure where the AI can decide alone |
+| Review judgments during work | Context from earlier work | Link a starting judgment and checked ending result to current evidence; resolve failed saves before completion |
 | Check required work | Separate management of mandatory guidance | Enabled checks and verification that required records were saved |
 
 OpenAI also recommends keeping mandatory team guidance in `AGENTS.md` or checked-in documentation rather than relying on memory alone. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories)
@@ -123,6 +126,16 @@ chiten is a separately distributed, optional integration. Projects without it ca
 
 Update the binary and installed skills to load the revised guidance. Without hooks, rerun `shikii --init` in an existing initialized project after updating the binary; this refreshes skills while preserving project data and leaving hooks disabled. Then reopen agent sessions and restart the page and MCP. See the [update instructions](guide.md).
 
+## In 0.26, review judgments during work and verify their saved results
+
+Alongside carrying knowledge into the next task, 0.26 requires a brief starting judgment and a checked ending review for the current task. The request hook keeps the turn obligation, and the agent links its judgments to the request, article revisions and captured observations. It updates the judgment when the premise or next action changes.
+
+For example, an earlier CSV procedure may require preserving ownership. The agent checks that condition at the start. If quoted input reveals a different problem, it revises what to check next. At the end it saves what was verified and which conditions remain unknown, with sources available to later work. Retaining the approach is valid; a new discovery or article is not required each time.
+
+The ending hook verifies the required saves. Another successful save or a fresh preparation cannot resolve a failed correction or capture. Replaying an old finish cannot certify later evidence, and changed articles require a fresh revision check.
+
+This adds review and save verification tied to the current conditions. It does not request a transcript of private deliberation or establish judgment quality or long-term improvement. Whether a later task avoids a missed condition remains a separate observation. Model weights stay unchanged, with no additional model or person scoring. See the [inputs and recovery workflow](../skills/shikii/references/recording.md#required-review-while-doing-the-work).
+
 ## The work before 0.14.1 matters too
 
 | Version | What it added |
@@ -147,5 +160,6 @@ Update the binary and installed skills to load the revised guidance. Without hoo
 | 0.24 | Carry conditions, coverage, read revisions and implementation state across stages through an optional assignment API, retaining the link between reports and their work. |
 | 0.25 | Select outcomes relevant to current conditions and return actual use and execution reports through compatible chiten reports, CLI or MCP. |
 | 0.25.1 | Clarify sources, inspection versus use and execution, candidate interpretation, MCP fields and updates without hooks; preserve storage formats. |
+| 0.26 | Require evidence-linked starting judgments and ending reviews, preserving unresolved saves across retries and preparations. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.

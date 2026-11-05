@@ -150,7 +150,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	entries := []any{}
 	quoted := map[string]string{}
 	read := []store.KnowledgeReference{}
-	reply := map[string]any{"receipt": req.Receipt, "knowledge": entries, "how_to_record": workHowToRecord, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone}
+	reply := map[string]any{"reasoning": currentReasoningView(book, w.Reasoning), "receipt": req.Receipt, "knowledge": entries, "how_to_record": workHowToRecord, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone}
 	add := func(p notebook.Page) error {
 		p, e := currentWorkPremise(book, p)
 		if e != nil {
