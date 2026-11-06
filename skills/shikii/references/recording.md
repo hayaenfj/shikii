@@ -12,7 +12,7 @@ With the current request's hook identifiers, pipe this to `shikii work prepare`:
 {"session_id":"<current hook session>","turn_id":"<current hook turn>","query":"CSV export filters"}
 ```
 
-Choose topic words in the project's vocabulary, not the whole request. Read `task_context` with `task`: stored request text includes joined human messages, while `conversation` contains bounded planning excerpts for exact quotations. `conversation_context` retains each reference's user/assistant role, source turn and known history order. Read history by its recorded order, never by reference names or random turn IDs; unknown order stays explicit. Stored request text can be truncated or unavailable in older sessions; read the original human message in the host conversation when the status says so. Task and conversation context each fit 128 KiB after JSON encoding or preparation fails explicitly; a failed preparation does not install a new receipt. Task text is context rather than an extra quote reference, permission or human truth. Read `task`, `conversation`, `knowledge`, `pending`, `reflection_context`, `observations`, `maintenance` and `how_to_record`. The supporting `reflection_context` retains earlier human scoring corrections, related knowledge and memory statistics, including when scoring is settled but wiki work remains; read the corrections before interpreting or scoring. They remain historical evidence, never current permission or a new truth. Hook knowledge entries retain the article ID, revision and an exact-revision `query`. When `body_included` is false, use the exact `body_excerpts` first: up to three unclassified passages plus prioritized interpreted quotations, sharing 2400 bytes per article, within a 16000-byte excerpt budget. They preserve byte offsets, the cited revision and rationale; they are incomplete evidence, not a generated conclusion. Follow the exact query only when a material condition or exception remains unresolved. Automatic full-body budgets remain unchanged. The response's `receipt` retains the storage context. Knowledge and quotations use local references such as `current`, `previous` and `knowledge1`; reflection uses `source1`, `review1`, `memory1` and `evidence1`.
+Choose topic words in the project's vocabulary, not the whole request. Read `task_context` with `task`: stored request text includes joined human messages, while `conversation` contains bounded planning excerpts for exact quotations. `conversation_context` retains each reference's user/assistant role, source turn and known history order. Read history by its recorded order, never by reference names or random turn IDs; unknown order stays explicit. Stored request text can be truncated or unavailable in older sessions; read the original human message in the host conversation when the status says so. Task and conversation context each fit 128 KiB after JSON encoding or preparation fails explicitly; a failed preparation does not install a new receipt. Task text is context rather than an extra quote reference, permission or human truth. Read `task`, `conversation`, `knowledge`, `pending`, `reflection_context`, `observations`, `maintenance` and `how_to_record`. The supporting `reflection_context` retains earlier human scoring corrections, related knowledge and memory statistics, including when scoring is settled but wiki work remains; read the corrections before interpreting or scoring. They remain historical evidence, never current permission or a new truth. Hook knowledge entries retain the article ID, revision and an exact-revision `query`. When `body_included` is false, use the exact `body_excerpts` first: up to three unclassified passages plus prioritized interpreted quotations, within the effective `attention` excerpt budgets described below. They preserve byte offsets, the cited revision and rationale; they are incomplete evidence, not a generated conclusion. Follow the exact query only when a material condition or exception remains unresolved. Automatic full-body budgets remain unchanged. The response's `receipt` retains the storage context. Knowledge and quotations use local references such as `current`, `previous` and `knowledge1`; reflection uses `source1`, `review1`, `memory1` and `evidence1`.
 
 Without a hook, use `{"query":"CSV export filters","request":"Check the CSV export"}`. Read `knowledge_context` as well as `knowledge`: it retains the ordinary query's search total and candidates, matches, issues, lookup receipt and remaining classification instructions. Bodies already supplied in `knowledge` are not repeated. Each candidate carries an exact-revision `query`; use it for bodies that were not supplied. When `next_cursor` is present, `knowledge_query` reads the next ordinary search page. A complete candidate list does not mean every body was read; finish any classification the query names. The query keeps its existing page budget, and the supporting metadata fits 128 KiB or preparation fails explicitly with the individual query workflow. This is explicitly an agent-supplied task. It can save observations, notes and prior reflection, but cannot create a human agreement or satisfy a hook planning ritual for another request. With a hook, the saved request takes priority over any agent-supplied request text.
 
@@ -107,6 +107,101 @@ execution order. No new model, setting or person scoring is needed. A standalone
 agent-supplied preparation can record the same review but cannot satisfy another
 hook turn. Update the binary and skills and reopen agent sessions together before
 using this contract; older writers do not preserve this progress.
+
+## Expectations, execution and the next check (development)
+
+Use a trial when an observable result can change the current decision. Keep the
+ordinary short review for small conversational tasks. A trial records a plan and
+an agent-reported execution; it never runs the method or grants permission.
+After reasoning start, send a plan through `work record`:
+
+```json
+{"receipt":"<receipt>","trial":{"plan":{
+  "case":"owner-fixture-v1","question":"Does the export preserve the owner condition?",
+  "expected":"Only the requested owner's rows remain.",
+  "method":"Run the same synthetic two-owner fixture.",
+  "conditions":"UTF-8 CSV, two owners, fixed fixture v1",
+  "decision":"Repair the filter before reuse if another owner's row remains.",
+  "effort":"small","evidence":["knowledge1"]
+}}}
+```
+
+Every text field fits 1200 UTF-8 bytes; effort is small, medium or large and
+one to four evidence refs are required. The response returns an immutable
+`trial:...` ref in `saved` and `reasoning.trials`. Plan refs belong to the current
+turn, survive renewed preparation, and keep the exact article/source identities.
+`reasoning.next_trial` suggests the smallest reported effort among unresolved
+checks with current evidence; ties use stable ref order. Its stated decision
+explains what could change. It is not an optimal information-gain estimate.
+Use `reasoning.next_trial` on an update to select another current unresolved ref.
+Changed or unavailable plan evidence appears in `stale_trials`; read and replan.
+
+Actually perform the authorized check before reporting its result. For example:
+
+```json
+{"receipt":"<receipt>","observations":[{
+  "kind":"test","title":"Owner fixture result","content":"<actual checked output>"
+}],"trial":{"ref":"<trial ref>","result":{
+  "assessment":"challenges","observed":"<what actually differed>",
+  "evidence":["new1"],"measurements":{"missed_conditions":1}
+}}}
+```
+
+Assessment is supports, challenges or inconclusive. Observed text fits 1200
+bytes; evidence has one to four refs. At most four nonnegative finite values up
+to 1e15 can be reported, using short lowercase metric names that include units
+when needed (for example `elapsed_ms`). Use the actual observation, not an
+example or an earlier execution. Each trial accepts one immutable result. A
+new condition, evidence basis or work turn needs a new trial.
+
+A challenged result reopens the ending review. Cite its trial ref in reasoning
+update or finish and state the supported decision; retaining a decision or an
+unresolved result is valid. No new article is required without a reusable
+finding. Pending plan/result captures retain their original payload; recover with
+`{"receipt":"<receipt>","trial":{"ref":"<trial ref>"}}` after preparing again if
+necessary. An unrelated result cannot repair them. Identical result retries do
+not create observations or advance the evidence generation. Eight trials fit a
+turn. Results remain immutable project sources after the turn ends.
+
+For a matched comparison, perform both executions and record their results with
+the same case, question, conditions, method, expected outcome and nonempty metric
+names/units. Record changed knowledge or implementation as their evidence rather
+than changing those fixed case fields. Then send:
+
+```json
+{"receipt":"<receipt>","comparison":{
+  "before":"<first trial ref>","after":"<second trial ref>",
+  "reason":"Compare the same fixture using the two recorded procedures."
+}}
+```
+
+The response's `comparison` returns before/after/delta for each metric and an
+immutable source. Before/after can also be captured-source refs or returned
+execution source IDs from this project, allowing later work to compare an earlier
+execution. The original saved plan and execution evidence are checked; unrelated
+cases, absent evidence and the same execution are refused. Eight comparisons fit
+a turn. Recover an interrupted comparison with only its `ref`. Cite the returned
+comparison ref as reasoning evidence. This differs from `wiki compare`, which
+only compares retrieval candidates. Paired reported values establish neither
+causality nor improvement; check conditions, units, model/tool versions and
+execution order. They never create human truths or automatically promote rules.
+
+`reasoning.depth` accepts brief, focused (default) or deep. To choose it on the
+first preparation, include only `reasoning:{"depth":"brief"}` alongside the usual
+query and hook identifiers. Prepare records a reading intent, not a judgment;
+start is still required after reading. The same depth-only shape works with a
+receipt to adjust the next read. Other reasoning fields belong to record. Brief
+supporting reflection articles are exact revision references instead of repeated
+whole bodies; human corrections and pending original material are retained.
+Prepare returns
+`attention` with the effective depth, its reasons and exact-excerpt budgets:
+600/2400, 1200/8000 or 2400/16000 bytes per article/total respectively. A broad
+brief search supplies exact passages instead of whole bodies. Explicit pinned
+`lesson:<id>@<revision>` reads retain full recovery. Unresolved judgments,
+unconfirmed saves, unreviewed discrepancies or changed premises require deep
+checking. Planning, original-source recovery and mandatory reflection are never
+omitted by this policy. Use the matching binary and skills for every writer of
+these new turn fields; old writers do not preserve them.
 
 ## Add knowledge during the same work
 

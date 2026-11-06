@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased — Expectations and execution during work
+
+- Record a bounded trial plan and its actual reported observation with immutable evidence; return challenged expectations to the next judgment and retain original captures through preparation and retries.
+- Suggest a small unresolved check with current evidence and allow an explicit `reasoning.next_trial` selection. Compare two recorded executions of the same fixed case using paired measurements, without generating success or human labels.
+- Adjust exact-excerpt budgets with `reasoning.depth`; preserve mandatory reviews and full pinned-source recovery, and deepen unresolved or changed-premise checks.
+
 ## 0.26.0 — Required evidence-linked work reviews
 
 - Keep a required review for each request before preparation. Use `work record` with reasoning `start`, `update` when a premise or next action changes, and `finish` with the checked result. Retained approaches and unresolved conditions are valid; no discovery or new article is required every time.

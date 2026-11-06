@@ -25,7 +25,7 @@ func validateWorkRecording(req workRequest) error {
 	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 || len(req.Discoveries) > 4 || len(req.Outcomes) > 2 {
 		return errors.New("the recording batch exceeds its fixed item limits")
 	}
-	if req.Reasoning == nil && req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
+	if req.Trial == nil && req.Comparison == nil && req.Reasoning == nil && req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
 		return errors.New("record needs content that was judged or observed")
 	}
 	return nil
@@ -165,6 +165,27 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			sources = append(sources, id)
 		}
 		return sources, nil
+	}
+	if req.Trial != nil {
+		item, e := recordWorkTrial(book, w, *req.Trial, resolveSources, save, commit)
+		if e != nil {
+			item.Error = e.Error()
+		}
+		add(item)
+		if halt() {
+			return result, nil
+		}
+	}
+	if req.Comparison != nil {
+		item, view, e := recordWorkComparison(book, w, *req.Comparison, resolveSources, save, commit)
+		if e != nil {
+			item.Error = e.Error()
+		}
+		result.Comparison = view
+		add(item)
+		if halt() {
+			return result, nil
+		}
 	}
 	for i, d := range req.Discoveries {
 		item, e := recordWorkDiscovery(book, w, token, d, save, commit)

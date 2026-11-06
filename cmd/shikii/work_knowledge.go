@@ -44,8 +44,15 @@ func currentWorkPremise(book notebook.Book, p notebook.Page) (notebook.Page, err
 	return p, nil
 }
 
-func focusWorkKnowledge(book notebook.Book, entries []any, query, context string, quoted map[string]string) error {
+func focusWorkKnowledge(book notebook.Book, entries []any, query, context string, quoted map[string]string, policy ...*workAttention) error {
 	budget := 16000
+	perArticle := 2400
+	var attention *workAttention
+	if len(policy) > 0 {
+		attention = policy[0]
+		budget, perArticle = attention.TotalBytes, attention.ExcerptBytes
+	}
+	spent := 0
 	for _, raw := range entries {
 		e := raw.(map[string]any)
 		id, _ := e["id"].(string)
@@ -62,16 +69,37 @@ func focusWorkKnowledge(book notebook.Book, entries []any, query, context string
 			p = v.Lessons[0]
 		}
 		e["rationale"] = p.Rationale
-		setWorkLearning(book, e, p, query)
+		// Extended reads already moved learning out of the article. Do not
+		// replace that supplied context with nil on the attention pass.
+		if _, supplied := e["learning_context"]; !supplied || p.Learning != nil {
+			setWorkLearning(book, e, p, query)
+		}
 		p, err := currentWorkPremise(book, p)
 		if err != nil {
 			return err
 		}
 		e["recheck"] = p.Recheck
-		orientation := notebook.Orient(p, context, min(budget, 2400))
+		if attention != nil && len(p.Recheck) > 0 {
+			attention.changedPremise()
+			budget, perArticle = attention.TotalBytes-spent, attention.ExcerptBytes
+		}
+		if learning, ok := e["learning_context"].(*notebook.LearningContext); attention != nil && ok && learning != nil && len(learning.Recheck) > 0 {
+			attention.changedPremise()
+			budget, perArticle = attention.TotalBytes-spent, attention.ExcerptBytes
+		}
+		orientation := notebook.Orient(p, context, max(0, min(budget, perArticle)))
 		e["orientation"] = orientation
 		for _, x := range orientation.Excerpts() {
 			budget -= len(x.Text)
+			spent += len(x.Text)
+		}
+		if attention != nil && attention.Depth == "brief" && !attention.FullRead {
+			// A brief broad search supplies exact passages instead of a second
+			// complete body. The exact revision query is retained beside them.
+			delete(e, "article")
+			e["body_included"] = false
+			e["attention_limited"] = true
+			e["text"] = workArticleSource(p, true, orientation.Excerpts())
 		}
 		if e["body_included"] == true || e["article"] != nil {
 			continue
@@ -100,6 +128,10 @@ func workArticleRef(w *workState, p notebook.Page) (string, error) {
 // A receipt-bearing preparation adds knowledge without replacing its nonce or
 // its earlier saves. Models and retrieval stay outside the session commit lock.
 func extendWork(root, scope string, req workRequest) (any, error) {
+	depth, err := preparationDepth(req.Reasoning)
+	if err != nil {
+		return nil, err
+	}
 	if req.SessionID != "" || req.TurnID != "" || req.Request != "" || len(req.Query) > requestMax || len(req.Cursor) > 16000 ||
 		!notebook.ValidAssistanceText(req.Proposal, false) || !notebook.ValidAssistanceText(req.Conditions, false) ||
 		req.Proposal != "" && req.Conditions != "" || (req.Query != "" || req.Cursor != "") && (req.Proposal != "" || req.Conditions != "") {
@@ -133,6 +165,9 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	}
 	if w.Articles == nil {
 		return nil, errors.New("the prepared article references are missing; prepare again")
+	}
+	if depth != "" && w.Reasoning != nil {
+		w.Reasoning.AttentionDepth = depth
 	}
 	s, err := readPlanningSession(dir, name)
 	if err != nil {
@@ -219,6 +254,18 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		next := map[string]any{"operation": "prepare", "work": map[string]any{"receipt": req.Receipt, "query": query, "cursor": view.NextCursor}}
 		reply["knowledge_query"] = next
 	}
+	attention := attentionFor(w, query, book)
+	if req.Proposal == "" && req.Conditions == "" {
+		if err := focusWorkKnowledge(book, entries, query, task+" "+query, quoted, &attention); err != nil {
+			return nil, err
+		}
+	} else {
+		attention.Depth = "deep"
+		attention.Reasons = append(attention.Reasons, "An explicit proposal or reuse request needs its supplied conditions and exceptions.")
+		attention.setBudget()
+	}
+	reply["attention"] = attention
+	read = suppliedWorkReads(entries)
 	collective, e := preparedCollective(book, w, nil, entries)
 	if e != nil {
 		return nil, e
@@ -234,6 +281,55 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	return reply, nil
+}
+
+func suppliedWorkReads(entries []any) []store.KnowledgeReference {
+	read := []store.KnowledgeReference{}
+	for _, raw := range entries {
+		entry := raw.(map[string]any)
+		if entry["body_included"] == true {
+			read = append(read, store.KnowledgeReference{ID: entry["id"].(string), Revision: entry["revision"].(string)})
+		}
+	}
+	return read
+}
+
+// The staged planning query may have selected full bodies before the host's
+// reading intent was applied. Only the final supplied text becomes quoteable.
+func initialWorkReading(s *hookSession, w *workState, entries []any, quoted map[string]string) []store.KnowledgeReference {
+	if s.Planning.Sources == nil {
+		s.Planning.Sources = map[string]string{}
+	}
+	for _, raw := range entries {
+		entry := raw.(map[string]any)
+		if entry["attention_limited"] != true {
+			continue
+		}
+		ref := entry["ref"].(string)
+		id, revision := entry["id"].(string), entry["revision"].(string)
+		if s.Planning.Knowledge != nil {
+			kept := []store.KnowledgeReference{}
+			for _, read := range s.Planning.Knowledge.Read {
+				if read.ID != id || read.Revision != revision {
+					kept = append(kept, read)
+				}
+			}
+			s.Planning.Knowledge.Read = kept
+		}
+		prefix := "lesson:"
+		if entry["body_included"] == true {
+			prefix = "article:"
+		}
+		key := prefix + entry["id"].(string) + ":" + entry["revision"].(string)
+		if old := w.Keys[ref]; old != "" && old != key {
+			delete(s.Planning.Sources, old)
+		}
+		w.Keys[ref] = key
+		if text, ok := quoted[ref]; ok {
+			s.Planning.Sources[key] = text
+		}
+	}
+	return nil
 }
 
 // Only material actually supplied becomes quoteable. Full reads and exact

@@ -17,6 +17,8 @@ Use them at five moments, not only at the end of the turn:
 
 The person supplies intent and truth. Do not invent scores or turn an AI interpretation into a human label.
 
+When a check can change a decision, use the optional trial plan/result flow in [recording.md](references/recording.md). Compare the expected observation with the actual result, return discrepancies to the next judgment, and select a current unresolved `next_trial`. Use matched execution comparisons to inspect effects, and `reasoning.depth` to focus reading without skipping required reviews. These are agent reports, never automatic success or experiment permission.
+
 ## Choose the workflow
 
 For a recurring decision with a configured spec, call `shikii decide` or the `shikii_decide` MCP tool before deciding it yourself. In the middle of the work, when you are unsure whether to ask the person first, whether a change is within what was asked, or whether the work is done, consult `shikii_decide` with the built-in question (`needs-plan`, `changes-in-scope` with `files`, `done-as-asked` with `summary`) and the request as inputs: the reply carries the band and, with it, `similar_decisions` (the person's answers on similar requests, with your earlier answer and the model's) and `lessons` (the closest wiki lessons). Read those as this project's judgment and act on the band; the person's later answer on the page becomes the truth. Use ordinary reasoning for a one-off design, diagnosis, or writing task. If a repeated decision needs a new spec, use `shikii new`; have the person check its question and answer meanings once.

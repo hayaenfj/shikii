@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +13,8 @@ import (
 // Reasoning records a brief, evidence-linked judgment, not private deliberation.
 // Its presence establishes neither usefulness nor success nor a human truth.
 type workReasoning struct {
+	Depth      string   `json:"depth,omitempty"`
+	NextTrial  string   `json:"next_trial,omitempty"`
 	Phase      string   `json:"phase"`
 	Focus      string   `json:"focus"`
 	Assessment string   `json:"assessment"`
@@ -32,21 +33,31 @@ type reasoningEntry struct {
 }
 
 type reasoningProgress struct {
-	SessionID       string                       `json:"session_id,omitempty"`
-	CurrentSource   string                       `json:"current_source,omitempty"`
-	RequiredNotes   map[string]*workRequiredNote `json:"required_notes,omitempty"`
-	PendingCaptures map[string]workCapture       `json:"pending_captures,omitempty"`
-	TurnID          string                       `json:"turn_id"`
-	Required        bool                         `json:"required"`
-	Generation      uint64                       `json:"generation"`
-	WikiPending     bool                         `json:"wiki_pending,omitempty"`
-	PendingSource   string                       `json:"pending_source,omitempty"`
-	Start           *reasoningEntry              `json:"start,omitempty"`
-	Latest          *reasoningEntry              `json:"latest,omitempty"`
-	Finish          *reasoningEntry              `json:"finish,omitempty"`
+	Trials          map[string]*workTrialState     `json:"trials,omitempty"`
+	Comparisons     map[string]*workComparisonView `json:"comparisons,omitempty"`
+	AttentionDepth  string                         `json:"attention_depth,omitempty"`
+	SelectedTrial   string                         `json:"selected_trial,omitempty"`
+	SessionID       string                         `json:"session_id,omitempty"`
+	CurrentSource   string                         `json:"current_source,omitempty"`
+	RequiredNotes   map[string]*workRequiredNote   `json:"required_notes,omitempty"`
+	PendingCaptures map[string]workCapture         `json:"pending_captures,omitempty"`
+	TrialCaptures   map[string]workCapture         `json:"trial_captures,omitempty"`
+	TurnID          string                         `json:"turn_id"`
+	Required        bool                           `json:"required"`
+	Generation      uint64                         `json:"generation"`
+	WikiPending     bool                           `json:"wiki_pending,omitempty"`
+	PendingSource   string                         `json:"pending_source,omitempty"`
+	Start           *reasoningEntry                `json:"start,omitempty"`
+	Latest          *reasoningEntry                `json:"latest,omitempty"`
+	Finish          *reasoningEntry                `json:"finish,omitempty"`
 }
 
 type reasoningStatus struct {
+	StaleTrials        []string               `json:"stale_trials,omitempty"`
+	Comparisons        []*workComparisonView  `json:"comparisons,omitempty"`
+	Trials             []*workTrialState      `json:"trials,omitempty"`
+	NextTrial          *workTrialChoice       `json:"next_trial,omitempty"`
+	UnreviewedTrials   []string               `json:"unreviewed_trials,omitempty"`
 	PendingNoteTargets map[string]string      `json:"pending_note_targets,omitempty"`
 	PendingCaptures    map[string]workCapture `json:"pending_captures,omitempty"`
 	PendingNotes       map[string]string      `json:"pending_notes,omitempty"`
@@ -84,6 +95,14 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 	v.PendingSource = r.PendingSource
 	v.PendingCaptures = r.PendingCaptures
 	v.Complete = r.Start != nil && r.Finish != nil && r.Finish.Generation == r.Generation && !v.WikiPending
+	v.Trials, v.NextTrial, v.UnreviewedTrials = workTrialView(r)
+	for _, c := range r.Comparisons {
+		v.Comparisons = append(v.Comparisons, c)
+	}
+	slices.SortFunc(v.Comparisons, func(a, b *workComparisonView) int { return strings.Compare(a.Ref, b.Ref) })
+	if trialPendingCount(r) > 0 {
+		v.Complete = false
+	}
 	if v.WikiPending {
 		v.Next = "Resolve each pending_notes reference with its corrected note (or retry the same content with corrected sources); read its immutable original source when needed. Read pending_note_targets article IDs with prepare before repairing their current revision. Retry pending_captures with their original content to confirm the same source and time. Then record reasoning finish. Unrelated successful work does not resolve these obligations."
 		if r.PendingSource != "" {
@@ -94,11 +113,22 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 	} else if v.Complete {
 		v.Next = "The review is saved. New observations, actual uses, outcomes or wiki edits require an updated finish; recording alone is not proof of improvement."
 	}
+	if trialPendingCount(r) > 0 {
+		v.Next = "Recover pending trial/comparison captures with the same reference. Cite challenged trial results in reasoning update or finish; a report is not proof of success."
+	}
 	return v
 }
 
 func currentReasoningView(book notebook.Book, r *reasoningProgress) reasoningStatus {
 	v := reasoningView(r)
+	v.NextTrial = currentTrialChoice(book, r)
+	if r != nil {
+		for _, trial := range v.Trials {
+			if !trialBasisCurrent(book, trial.Plan.Evidence) {
+				v.StaleTrials = append(v.StaleTrials, trial.Ref)
+			}
+		}
+	}
 	if v.Complete {
 		current, err := reasoningEvidenceCurrent(book, r)
 		if err != nil || !current {
@@ -155,6 +185,7 @@ func reasoningLeft(r *reasoningProgress) int {
 		pending = 1
 	}
 	n += pending
+	n += trialPendingCount(r)
 	return n
 }
 
@@ -264,6 +295,12 @@ func cloneReasoning(r *reasoningProgress) *reasoningProgress {
 }
 
 func validateReasoning(r workReasoning) error {
+	if r.Depth != "" && !slices.Contains([]string{"brief", "focused", "deep"}, r.Depth) {
+		return errors.New("reasoning depth must be brief, focused or deep")
+	}
+	if !assignmentText(r.NextTrial, 100, false) {
+		return errors.New("reasoning next_trial must fit 100 bytes")
+	}
 	if !slices.Contains([]string{"start", "update", "finish"}, r.Phase) || !slices.Contains([]string{"revise", "retain", "unresolved"}, r.Assessment) {
 		return errors.New("reasoning needs phase start/update/finish and assessment revise/retain/unresolved")
 	}
@@ -298,38 +335,25 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 	if input.Phase == "finish" && (r.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0 || reasoningPublicationsPending(w)) {
 		return item, errors.New("resolve pending wiki notes, captures and uncertain publications before reasoning finish")
 	}
+	if input.NextTrial != "" {
+		t := r.Trials[input.NextTrial]
+		if t == nil || t.Source == "" || t.Result != nil || !trialBasisCurrent(book, t.Plan.Evidence) {
+			return item, errors.New("next_trial needs a current unresolved trial reference")
+		}
+	}
 	// Resolve to durable identities. A local reference from another preparation
 	// cannot silently name the same evidence or endorse a newer article revision.
 	bound := input
-	bound.Evidence = nil
-	for _, ref := range input.Evidence {
-		if article, ok := w.Articles[ref]; ok {
-			live, err := book.LiveWhere(func(p notebook.Page) bool { return p.ID == article.ID })
-			if err != nil {
-				return item, err
-			}
-			if len(live) != 1 || live[0].Revision != article.Revision {
-				return item, errors.New("reasoning needs the same live article revision; read it again")
-			}
-			bound.Evidence = append(bound.Evidence, "article:"+article.ID+"@"+article.Revision)
-			continue
-		}
-		if ref != "current" && w.Sources[ref] == "" && !strings.HasPrefix(ref, "new") {
-			return item, fmt.Errorf("unknown reasoning evidence %q; use current, a prepared article or a captured source", ref)
-		}
-		ids, err := resolve([]string{ref})
-		if err != nil {
+	var err error
+	bound.Evidence, err = bindWorkEvidence(book, w, input.Evidence, resolve)
+	if err != nil {
+		return item, err
+	}
+	if input.Phase == "finish" {
+		if err := checkTrialReview(r, bound.Evidence); err != nil {
 			return item, err
 		}
-		for _, id := range ids {
-			if !prepareWorkSource(book, id).Complete {
-				return item, errors.New("reasoning evidence is unavailable or incomplete")
-			}
-			bound.Evidence = append(bound.Evidence, "source:"+id)
-		}
 	}
-	slices.Sort(bound.Evidence)
-	bound.Evidence = slices.Compact(bound.Evidence)
 	key := "reasoning:" + workHash(bound)
 	if err := preserveReasoningHistory(book, w, false, commit); err != nil {
 		return item, err
@@ -373,6 +397,7 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 	entry = &stored.Entry
 	item.ID = entry.Source
 	r.Latest = entry
+	applyReasoningEffects(r, bound)
 	switch input.Phase {
 	case "start":
 		r.Start = entry
@@ -383,4 +408,16 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 	}
 	w.Saved[key] = item
 	return item, save()
+}
+
+func applyReasoningEffects(r *reasoningProgress, entry workReasoning) {
+	if entry.Depth != "" {
+		r.AttentionDepth = entry.Depth
+	}
+	if entry.NextTrial != "" {
+		r.SelectedTrial = entry.NextTrial
+	}
+	if entry.Phase != "start" {
+		markTrialReviews(r, entry.Evidence)
+	}
 }

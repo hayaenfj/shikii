@@ -73,7 +73,7 @@ func prepareWorkSource(book notebook.Book, id string) preparedWorkSource {
 // Keep supporting evidence from reflect as a whole; only fields already mapped
 // into the prepared source/observation/maintenance interface are omitted here.
 // This preserves future reflection context instead of silently projecting it out.
-func preparedReflectionContext(view reflectView) (map[string]any, error) {
+func preparedReflectionContext(view reflectView, brief ...bool) (map[string]any, error) {
 	view.Sources, view.Observations, view.Maintenance = nil, nil, nil
 	view.HowToSubmit = ""
 	data, err := json.Marshal(view)
@@ -87,6 +87,20 @@ func preparedReflectionContext(view reflectView) (map[string]any, error) {
 
 	for _, key := range []string{"how_to_submit", "sources", "observations", "maintenance", "more_pending"} {
 		delete(context, key)
+	}
+	if len(brief) > 0 && brief[0] {
+		lessons, _ := context["lessons"].([]any)
+		references := []any{}
+		for _, raw := range lessons {
+			page := raw.(map[string]any)
+			id, _ := page["id"].(string)
+			revision, _ := page["revision"].(string)
+			references = append(references, map[string]any{"id": id, "revision": revision, "title": page["title"], "lesson": page["lesson"], "applies_to": page["applies_to"], "incomplete": true, "query": map[string]any{"operation": "query", "query": "lesson:" + id + "@" + revision}})
+		}
+		if len(references) > 0 {
+			context["lessons"], context["incomplete"], context["more_lessons"] = references, true, 0
+			context["next_action"] = "Brief supporting knowledge retains exact revision queries instead of whole bodies. Read a referenced article when its conditions or exceptions matter. Human corrections and required source material are retained."
+		}
 	}
 	if workContextSize(context) <= workSourceBudget {
 		return context, nil

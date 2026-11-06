@@ -75,28 +75,30 @@ type workOutcome struct {
 	Sources    []string `json:"sources"`
 }
 type workRequest struct {
-	Reasoning         *workReasoning     `json:"reasoning,omitempty"`
-	Assignment        *assignmentContext `json:"assignment,omitempty"`
-	Event             *assignmentEvent   `json:"event,omitempty"`
-	SessionID         string             `json:"session_id,omitempty"`
-	TurnID            string             `json:"turn_id,omitempty"`
-	Query             string             `json:"query,omitempty"`
-	Request           string             `json:"request,omitempty"`
-	Proposal          string             `json:"proposal,omitempty"`
-	Conditions        string             `json:"conditions,omitempty"`
-	Cursor            string             `json:"cursor,omitempty"`
-	Receipt           string             `json:"receipt,omitempty"`
-	Agreed            *workFact          `json:"agreed,omitempty"`
-	Open              *workFact          `json:"open,omitempty"`
-	ContinuesPrevious *bool              `json:"continues_previous,omitempty"`
-	Observations      []workObservation  `json:"observations,omitempty"`
-	Notes             []workNote         `json:"notes,omitempty"`
-	Reviews           []workReview       `json:"reviews,omitempty"`
-	Memory            []workMemory       `json:"memory,omitempty"`
-	Reviewed          []string           `json:"reviewed,omitempty"`
-	Maintenance       []workMaintenance  `json:"maintenance,omitempty"`
-	Discoveries       []workDiscovery    `json:"discoveries,omitempty"`
-	Outcomes          []workOutcome      `json:"outcomes,omitempty"`
+	Trial             *workTrialRequest      `json:"trial,omitempty"`
+	Comparison        *workComparisonRequest `json:"comparison,omitempty"`
+	Reasoning         *workReasoning         `json:"reasoning,omitempty"`
+	Assignment        *assignmentContext     `json:"assignment,omitempty"`
+	Event             *assignmentEvent       `json:"event,omitempty"`
+	SessionID         string                 `json:"session_id,omitempty"`
+	TurnID            string                 `json:"turn_id,omitempty"`
+	Query             string                 `json:"query,omitempty"`
+	Request           string                 `json:"request,omitempty"`
+	Proposal          string                 `json:"proposal,omitempty"`
+	Conditions        string                 `json:"conditions,omitempty"`
+	Cursor            string                 `json:"cursor,omitempty"`
+	Receipt           string                 `json:"receipt,omitempty"`
+	Agreed            *workFact              `json:"agreed,omitempty"`
+	Open              *workFact              `json:"open,omitempty"`
+	ContinuesPrevious *bool                  `json:"continues_previous,omitempty"`
+	Observations      []workObservation      `json:"observations,omitempty"`
+	Notes             []workNote             `json:"notes,omitempty"`
+	Reviews           []workReview           `json:"reviews,omitempty"`
+	Memory            []workMemory           `json:"memory,omitempty"`
+	Reviewed          []string               `json:"reviewed,omitempty"`
+	Maintenance       []workMaintenance      `json:"maintenance,omitempty"`
+	Discoveries       []workDiscovery        `json:"discoveries,omitempty"`
+	Outcomes          []workOutcome          `json:"outcomes,omitempty"`
 }
 type workReviewRef struct {
 	Source string `json:"source"`
@@ -158,6 +160,7 @@ type workToken struct {
 	Nonce   string `json:"n"`
 }
 type workResult struct {
+	Comparison       *workComparisonView   `json:"comparison,omitempty"`
 	Reasoning        reasoningStatus       `json:"reasoning"`
 	Complete         bool                  `json:"complete"`
 	Saved            []workItem            `json:"saved"`
@@ -295,7 +298,7 @@ func saveWorkContext(dir *os.Root, name, scope, turn string, w *workState, insta
 	retainCollectiveSeen(s, w)
 	s.Planning.Work = w
 	if err := writeWorkSession(dir, name, s); err != nil {
-		if errors.Is(err, errHookSessionCapacity) && w.Reasoning != nil && (len(w.Reasoning.RequiredNotes) > 0 || len(w.Reasoning.PendingCaptures) > 0) {
+		if errors.Is(err, errHookSessionCapacity) && w.Reasoning != nil && (len(w.Reasoning.RequiredNotes) > 0 || len(w.Reasoning.PendingCaptures) > 0 || trialPendingCount(w.Reasoning) > 0) {
 			book := notebook.Book{Root: filepath.Dir(dir.Name()), Scope: scope}
 			if recoveryErr := archiveWorkCapacity(book, s); recoveryErr != nil {
 				// Keep original note/capture payloads in the compact turn state
@@ -351,7 +354,11 @@ func runWork(root, scope, operation string, req workRequest) (any, error) {
 }
 
 func prepareWork(root, scope string, req workRequest) (any, error) {
-	if req.Reasoning != nil || req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) > 0 {
+	depth, err := preparationDepth(req.Reasoning)
+	if err != nil {
+		return nil, err
+	}
+	if req.Trial != nil || req.Comparison != nil || req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) > 0 {
 		return nil, errors.New("prepare reads context; send content with record")
 	}
 	if req.Receipt != "" {
@@ -420,6 +427,9 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	if w.Reasoning == nil {
 		w.Reasoning = &reasoningProgress{TurnID: req.TurnID, Required: !standalone}
 	}
+	if depth != "" {
+		w.Reasoning.AttentionDepth = depth
+	}
 	restoreReasoningCaptures(w)
 	if err := bindReasoningOwner(w.Reasoning, req.SessionID); err != nil {
 		return nil, err
@@ -465,7 +475,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		for _, p := range view.Lessons {
 			ref := "knowledge" + strconv.Itoa(len(knowledge)+1)
 			w.Articles[ref] = store.KnowledgeReference{ID: p.ID, Revision: p.Revision}
-			knowledge = append(knowledge, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "body_included": true})
+			knowledge = append(knowledge, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
 		}
 	}
 	reflection, err := reflectQuery(root, scope)
@@ -532,10 +542,6 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		w.Maintenance[ref] = notebook.MaintenanceReview{PageID: m.PageID, Revision: m.Revision, Key: m.Key}
 		maintenance = append(maintenance, map[string]any{"ref": ref, "task": m})
 	}
-	reflectionContext, err := preparedReflectionContext(reflection)
-	if err != nil {
-		return nil, err
-	}
 	task, taskContext, err := preparedWorkTask(s, w, req)
 	if err != nil {
 		return nil, err
@@ -544,7 +550,13 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		w.Task = task
 	}
 	quoted := map[string]string{}
-	if err = focusWorkKnowledge(book, knowledge, req.Query, req.Query+" "+task, quoted); err != nil {
+	attention := attentionFor(w, req.Query, book)
+	if err = focusWorkKnowledge(book, knowledge, req.Query, req.Query+" "+task, quoted, &attention); err != nil {
+		return nil, err
+	}
+	read := initialWorkReading(s, w, knowledge, quoted)
+	reflectionContext, err := preparedReflectionContext(reflection, attention.Depth == "brief")
+	if err != nil {
 		return nil, err
 	}
 	if workContextSize(map[string]any{"conversation": conversation, "conversation_context": conversationContext}) > workSourceBudget {
@@ -559,14 +571,14 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 			return errors.New("the planning context changed while preparing; prepare again")
 		}
 		current.Planning.Sources, current.Planning.Knowledge, current.Planning.KnowledgePages = s.Planning.Sources, s.Planning.Knowledge, s.Planning.KnowledgePages
-		return retainWorkKnowledge(current, w, quoted, nil)
+		return retainWorkKnowledge(current, w, quoted, read)
 	}); err != nil {
 		return nil, err
 	}
-	return map[string]any{"reasoning": currentReasoningView(book, w.Reasoning), "planning_required": !standalone && !s.Planning.ReasoningOnly, "collective": collective, "receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "task_context": taskContext, "agent_supplied_task": standalone, "conversation": conversation, "conversation_context": conversationContext, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord + " Before judging, read task with task_context and each conversation reference with its conversation_context role, turn and recorded history order. Planning excerpts are not full original messages. Use exact body_excerpts first when body_included is false; query the same article revision only when a material condition or exception remains unresolved. Read knowledge_context search/remaining-classification guidance, reflection_context.human_corrections and each source.originals/text_status. Incomplete sources have no recording references; follow source_query and use the individual operations after reading."}, nil
+	return map[string]any{"attention": attention, "reasoning": currentReasoningView(book, w.Reasoning), "planning_required": !standalone && !s.Planning.ReasoningOnly, "collective": collective, "receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "task_context": taskContext, "agent_supplied_task": standalone, "conversation": conversation, "conversation_context": conversationContext, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": workHowToRecord + " Before judging, read task with task_context and each conversation reference with its conversation_context role, turn and recorded history order. Planning excerpts are not full original messages. Use exact body_excerpts first when body_included is false; query the same article revision only when a material condition or exception remains unresolved. Read knowledge_context search/remaining-classification guidance, reflection_context.human_corrections and each source.originals/text_status. Incomplete sources have no recording references; follow source_query and use the individual operations after reading."}, nil
 }
 
-const workHowToRecord = "reasoning:{phase:start|update|finish,focus,assessment:revise|retain|unresolved,reason,evidence:[current|knowledgeN|observedN|newN],next_action,result?}: save a concise evidence-linked judgment at start, update it when work changes the premise, and finish with the checked result. Do not report private deliberation. Retaining an approach and evidence gaps are valid; do not invent discoveries or experiments. New saved work evidence reopens finish. Resolve failed/pending notes first. This is not permission, success or a human truth. Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson; knowledgeN confirms inspected initial evidence, changeN acknowledges only the inspected change, never usefulness. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits and/or passages:[{role,quote,conditions,reason}]; metadata and revisions are retained. Read orientation before mixed chronology; unclassified text and changed premises remain unresolved. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Add knowledge mid-work with prepare:{receipt,query} (optional cursor), or pass proposal for consult or conditions for reuse. Keep the returned article refs and the same receipt. Record evidenced discoveries:[{ref,context,decision,evidence,case_id?}]. Record procedure executions with outcomes:[{ref,conditions,action,failure?,correction?,result,sources:[observation refs]}]; this reports an outcome, never success or a truth. Handle procedure_reviews by checking current text, correction and evidence, then save a supported note. Notes return updated procedure_reviews; check the change and complete review with maintenance:[{ref,reason}] using that latest ref. An edit alone does not complete review; old refs are refused. With no edit, save the checked reason with the original ref. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
+const workHowToRecord = "Prepare may use reasoning:{depth:brief|focused|deep} alone as a reading intent, never a saved start. Optional trial:{plan:{case,question,expected,method,conditions,decision,effort:small|medium|large,evidence}} then trial:{ref,result:{assessment:supports|challenges|inconclusive,observed,evidence,measurements?}} records an actual check. Cite challenged results by trial ref in the next judgment. comparison:{before,after,reason} compares matched saved executions; ref-only retries recover pending captures. reasoning.depth:brief|focused|deep and next_trial refine reading and the next check. No trial is required without a decision-changing uncertainty. reasoning:{phase:start|update|finish,focus,assessment:revise|retain|unresolved,reason,evidence:[current|knowledgeN|observedN|newN],next_action,result?}: save a concise evidence-linked judgment at start, update it when work changes the premise, and finish with the checked result. Do not report private deliberation. Retaining an approach and evidence gaps are valid; do not invent discoveries or experiments. New saved work evidence reopens finish. Resolve failed/pending notes first. This is not permission, success or a human truth. Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson; knowledgeN confirms inspected initial evidence, changeN acknowledges only the inspected change, never usefulness. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits and/or passages:[{role,quote,conditions,reason}]; metadata and revisions are retained. Read orientation before mixed chronology; unclassified text and changed premises remain unresolved. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Add knowledge mid-work with prepare:{receipt,query} (optional cursor), or pass proposal for consult or conditions for reuse. Keep the returned article refs and the same receipt. Record evidenced discoveries:[{ref,context,decision,evidence,case_id?}]. Record procedure executions with outcomes:[{ref,conditions,action,failure?,correction?,result,sources:[observation refs]}]; this reports an outcome, never success or a truth. Handle procedure_reviews by checking current text, correction and evidence, then save a supported note. Notes return updated procedure_reviews; check the change and complete review with maintenance:[{ref,reason}] using that latest ref. An edit alone does not complete review; old refs are refused. With no edit, save the checked reason with the original ref. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
 
 func cmdWork(args []string) error {
 	if len(args) != 1 || (args[0] != "prepare" && args[0] != "record") {

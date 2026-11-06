@@ -215,6 +215,7 @@ func restoreReasoningHistory(w *workState, record *reasoningHistoryRecord, save 
 	if r.Latest == nil || r.Latest.At.Before(entry.At) {
 		copy := entry
 		r.Latest = &copy
+		applyReasoningEffects(r, entry.workReasoning)
 		switch entry.Phase {
 		case "finish":
 			r.Finish = &copy

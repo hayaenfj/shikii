@@ -82,7 +82,7 @@ Whether a delivered lesson changed what the agent did is observed in reflection 
 
 ## Guards
 
-Corrections a machine can check become guards (`.shikii/guards/<id>.yaml`). There are four kinds: `paired-files` (when one file changes, its partner must change too), `forbidden-words` (words that must not appear in added lines), `commit-body` (words that must appear in the body of the commits made in the turn) and `forbidden-commands` (regular expressions no command about to run may match; refused right before the command runs at Claude Code's `PreToolUse` for Bash, with an `example` command that `enable` shows stopping; commands are not observed at `Stop`, 0.11). At `Stop`, the enabled guards are applied to the changed files, the added lines and the commits since the HEAD recorded at the request. When one fails, it returns `decision: block` with the reason and the agent fixes the work. The `Stop` after a stop is never blocked again; whether the work was fixed is recorded in `records/guards.jsonl`. A `forbidden-commands` guard runs right before Claude Code runs a command (`PreToolUse` of Bash, 0.11): a command that matches one of its patterns is refused (`permissionDecision: deny`) with the reason, and the agent runs a corrected command at once instead of hearing about it at the end of the turn. Such a stop is recorded for the turn (`tool: true`), and the `Stop` that finds the guard passing records the fix. File changes are not judged before they happen: `forbidden-words` runs at `Stop` only (a check of the lines an edit adds was tried in 0.11 and removed after three audits found ways to miss a line or refuse an excepted file).
+Corrections a machine can check become guards (`.shikii/guards/<id>.yaml`). There are four kinds: `paired-files` (when one file changes, its partner must change too), `forbidden-words` (words that must not appear in added lines), `commit-body` (words that must appear in the body of the commits made in the turn) and `forbidden-commands` (regular expressions no command about to run may match; refused right before the command runs at Claude Code's `PreToolUse` for Bash, with an `example` command that `enable` shows stopping; commands are not observed at `Stop`, 0.11). At `Stop`, the enabled guards are applied to the changed files, the added lines and the commits since the HEAD recorded at the request. When one fails, it returns `decision: block` with the reason and the agent fixes the work. The `Stop` after a stop is never blocked again; whether the work was fixed is recorded in `records/guards.jsonl`. A `forbidden-commands` guard runs right before Claude Code runs a command (`PreToolUse` of Bash, 0.11): a command that matches one of its patterns is refused (`permissionDecision: deny`) with the reason, and the agent runs a corrected command at once instead of hearing about it at the end of the turn. Such a stop is recorded for the turn (`tool: true`), and the `Stop` that finds the guard passing records the fix. File changes are not judged before they happen: ordinary edits are checked at `Stop` (a check of the lines an edit adds was tried in 0.11 and removed after three audits found ways to miss a line or refuse an excepted file).
 
 ```sh
 shikii guard add < guard.json       # a draft (disabled). JSON: id, kind, title, reason, source, pairs/words/except/allow/required
@@ -215,6 +215,27 @@ Save and revise them through CLI/MCP/HTTP `ingest`/`patch` or `work record` note
 `shikii wiki organize` takes `organization:{reason,sources,targets,moves}` and previews a split or merge against pinned source revisions and exact passages. It saves nothing. Publish the returned destination drafts first, retaining source citations and interpreted quotations; compare the saved revisions before applying source patches with `requires`. A changed source or destination is refused. On a partial failure, inspect the saved results and replan. Original history and navigable references to the destinations remain. These are ordered individual saves, not a single transaction. The fixed limits are four sources, four new targets, eight moves and 1 MiB of CLI JSON for organize, ingest and patch. See the [agent procedure](../skills/shikii/references/learning.md) for examples and detailed limits.
 
 Before saving learning in 0.22.0, run `shikii update` on every machine writing the same wiki and restart agent sessions, the page and MCP. Older binaries cannot read articles carrying learning. Updating from 0.21.0 preserves existing project data. Hooks using the updated binary also refresh the installed skills; without hooks, rerun `shikii --init` as described above. Running processes are not restarted. Keep a copy of `.shikii/` before updating if you may need to restore the earlier binary and data together.
+
+### Development: connect an expectation to the next decision
+
+A consequential uncertainty can be recorded as a `work record` trial: a fixed
+case, question, expected observation, method, conditions, the decision that would
+change, reported effort and evidence. After the actual check, link its observed
+result and sources to the same trial. Challenged expectations must return to a
+reasoning update or ending review. Original plans and results survive renewed
+preparation and interrupted captures without being replaced by another result.
+
+The response suggests a small unresolved check with current evidence. The agent
+can select another valid `reasoning.next_trial`. A `comparison` reads two saved
+executions of the same case and returns their paired measurements, separate from
+`wiki compare`'s retrieval comparison. The host performs the authorized checks;
+recording a plan does not execute them or prove that a reported effect is true.
+
+Use `reasoning.depth` (brief/focused/deep) to concentrate reading on the current
+decision. Brief broad searches supply exact excerpts, pinned revisions remain
+fully readable, and unresolved judgments or changed premises deepen the review.
+Required saves and reflection remain visible. See the [trial inputs and
+recovery contract](../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-development).
 
 ### Kinds and scenes of articles
 

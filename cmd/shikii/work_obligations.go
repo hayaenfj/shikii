@@ -268,6 +268,9 @@ func syncReasoningCaptures(w *workState) {
 }
 
 func restoreReasoningCaptures(w *workState) {
+	for key, capture := range w.Reasoning.TrialCaptures {
+		w.Captures[key] = capture
+	}
 	for key, capture := range w.Reasoning.PendingCaptures {
 		w.Captures[key] = capture
 	}

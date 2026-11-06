@@ -18,6 +18,21 @@ func workSavedCapacity(w *workState, keys ...string) error {
 	for key := range w.Expected {
 		occupied[key] = true
 	}
+	if r := w.Reasoning; r != nil {
+		for ref, trial := range r.Trials {
+			if trial.Source == "" {
+				occupied["trial:"+ref] = true
+			}
+			if trial.Result != nil && trial.ResultSource == "" {
+				occupied["trial_result:"+ref] = true
+			}
+		}
+		for ref, comparison := range r.Comparisons {
+			if comparison.Source == "" {
+				occupied["comparison:"+ref] = true
+			}
+		}
+	}
 	added := map[string]bool{}
 	for _, key := range keys {
 		if !occupied[key] {
