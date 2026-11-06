@@ -4,6 +4,13 @@ Use this as the ordinary workflow from 0.19. `work prepare` gathers the current 
 
 Built-in instructions use English independently of the person's display language. Keep requests, wiki quotations, reported reasons and other source text in their original language. Configured-language question/answer labels are display evidence, not translated instructions. Write replies and work-record prose in the person's requested language.
 
+## Keep records brief
+
+- Use short bullets in agent-authored judgment, note and report text; one point per bullet. Reuse context and cite evidence once.
+- Explain a failure with the relevant expectation, observation, cause, correction/next check and evidence. Label an unverified cause as a hypothesis or unknown; omit inapplicable items.
+- Preserve deciding conditions, exceptions, uncertainty and source/revision refs. Keep exact quotations and original source material unchanged.
+- Keep the existing JSON fields, types and byte limits. Bullets belong inside text values, not new fields or arrays. Small replies need only the required short review; trials and comparisons remain optional.
+
 ## Prepare once
 
 With the current request's hook identifiers, pipe this to `shikii work prepare`:

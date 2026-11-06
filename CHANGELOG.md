@@ -4,6 +4,7 @@
 
 ## Unreleased — Expectations and execution during work
 
+- Shorten the skill entrypoint and use concise bullets for judgments, notes and failure explanations while preserving conditions, evidence and exact source quotations.
 - Record a bounded trial plan and its actual reported observation with immutable evidence; return challenged expectations to the next judgment and retain original captures through preparation and retries.
 - Suggest a small unresolved check with current evidence and allow an explicit `reasoning.next_trial` selection. Compare two recorded executions of the same fixed case using paired measurements, without generating success or human labels.
 - Adjust exact-excerpt budgets with `reasoning.depth`; preserve mandatory reviews and full pinned-source recovery, and deepen unresolved or changed-premise checks.
