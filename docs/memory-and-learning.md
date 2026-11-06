@@ -6,7 +6,7 @@
 
 From 0.23 onward, this includes receiving peers' knowledge changes, carrying conditions through research, implementation and audit, selecting experience relevant to the current work, and returning actual use and results to later procedures. The record preserves checked conditions, what remains unknown and how the knowledge informed a decision.
 
-From 0.26, brief judgments and checked results stay linked to the current evidence, and the ending hook verifies their required saves.
+From 0.26, brief judgments and checked results stay linked to the current evidence, and the ending hook verifies their required saves. From 0.27, expected observations and actual checks can inform the next judgment, with matched comparisons and adjustable source reading.
 
 Suppose you say, “When updating the guide, update both the English and Japanese versions.” Remembering that instruction alone does not tell you whether both were updated next time. shikii keeps it as an article with sources and delivers it during relevant work. The agent reviews whether it helped. A check enabled by a person can verify the parts that can be checked mechanically.
 
@@ -136,6 +136,16 @@ The ending hook verifies the required saves. Another successful save or a fresh 
 
 This adds review and save verification tied to the current conditions. It does not request a transcript of private deliberation or establish judgment quality or long-term improvement. Whether a later task avoids a missed condition remains a separate observation. Model weights stay unchanged, with no additional model or person scoring. See the [inputs and recovery workflow](../skills/shikii/references/recording.md#required-review-while-doing-the-work).
 
+## In 0.27, test expectations and choose the next check
+
+- Record the expected observation, conditions, method and decision before an authorized check. Link the actual reported result to the same immutable trial, then cite challenged results in an updated judgment.
+- Select a small unresolved check with current evidence. Compare two saved executions of the same case, question, conditions, method and expected outcome using paired measurements.
+- Adjust source-reading depth while keeping required reviews and exact-revision recovery. Unresolved judgments, pending saves and changed premises deepen the read.
+- Check enabled guards before supported publication calls observed by Claude Code's Bash hook. Codex retains turn-end checks; OpenCode uses MCP and skills without automatic hooks.
+- Keep judgments and failure explanations in concise bullets, preserving conditions and sources. Reports and paired values remain agent evidence, with no automatic human truth or model-weight change.
+
+The aim is for an observation to change what the agent checks next, alongside carrying context forward. A saved plan does not run an experiment; matched values need interpretation. See the [workflow and limits](../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-0270).
+
 ## The work before 0.14.1 matters too
 
 | Version | What it added |
@@ -161,5 +171,6 @@ This adds review and save verification tied to the current conditions. It does n
 | 0.25 | Select outcomes relevant to current conditions and return actual use and execution reports through compatible chiten reports, CLI or MCP. |
 | 0.25.1 | Clarify sources, inspection versus use and execution, candidate interpretation, MCP fields and updates without hooks; preserve storage formats. |
 | 0.26 | Require evidence-linked starting judgments and ending reviews, preserving unresolved saves across retries and preparations. |
+| 0.27 | Link expectations and observations to the next check, compare matched executions, adjust reading depth and check supported publication calls. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.

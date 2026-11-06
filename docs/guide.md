@@ -159,7 +159,7 @@ Planning's `hook plan query` also returns up to two live `criteria` pages direct
 
 Use `shikii work prepare` with topic words in `query` and the current hook's `session_id` and `turn_id`. Without a hook, pass `query` and an agent-supplied `request`; it cannot establish a human agreement. Read the returned conversation, knowledge, pending evidence and `how_to_record`. Then use `shikii work record` with its `receipt`, your interpretation, checked observations and source-backed notes. Shikii retains source identifiers, exact article revisions and capture metadata. Placement candidates requiring interpretation come back to the agent. Check `complete`, `errors`, `pending` and reflection's remaining work; retry corrected content with the same receipt.
 
-MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.24.0 or later. Condition-based outcome selection requires 0.25.0 or later.
+MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.27.0 or later. Condition-based outcome selection requires 0.25.0 or later.
 
 ### Connect external assignments
 
@@ -216,7 +216,7 @@ Save and revise them through CLI/MCP/HTTP `ingest`/`patch` or `work record` note
 
 Before saving learning in 0.22.0, run `shikii update` on every machine writing the same wiki and restart agent sessions, the page and MCP. Older binaries cannot read articles carrying learning. Updating from 0.21.0 preserves existing project data. Hooks using the updated binary also refresh the installed skills; without hooks, rerun `shikii --init` as described above. Running processes are not restarted. Keep a copy of `.shikii/` before updating if you may need to restore the earlier binary and data together.
 
-### Development: connect an expectation to the next decision
+### Connect an expectation to the next decision (0.27.0)
 
 A consequential uncertainty can be recorded as a `work record` trial: a fixed
 case, question, expected observation, method, conditions, the decision that would
@@ -235,7 +235,7 @@ Use `reasoning.depth` (brief/focused/deep) to concentrate reading on the current
 decision. Brief broad searches supply exact excerpts, pinned revisions remain
 fully readable, and unresolved judgments or changed premises deepen the review.
 Required saves and reflection remain visible. See the [trial inputs and
-recovery contract](../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-development).
+recovery contract](../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-0270).
 
 Enabled file/body guards are also checked before supported `git push` and mutating
 `gh release` calls observed by Claude Code's Bash `PreToolUse` hook, including

@@ -115,7 +115,7 @@ agent-supplied preparation can record the same review but cannot satisfy another
 hook turn. Update the binary and skills and reopen agent sessions together before
 using this contract; older writers do not preserve this progress.
 
-## Expectations, execution and the next check (development)
+## Expectations, execution and the next check (0.27.0)
 
 Use a trial when an observable result can change the current decision. Keep the
 ordinary short review for small conversational tasks. A trial records a plan and

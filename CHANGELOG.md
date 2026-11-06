@@ -2,13 +2,15 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased — Expectations and execution during work
+## 0.27.0 — Expectations and execution during work
 
 - Shorten the skill entrypoint and use concise bullets for judgments, notes and failure explanations while preserving conditions, evidence and exact source quotations.
 - Record a bounded trial plan and its actual reported observation with immutable evidence; return challenged expectations to the next judgment and retain original captures through preparation and retries.
 - Suggest a small unresolved check with current evidence and allow an explicit `reasoning.next_trial` selection. Compare two recorded executions of the same fixed case using paired measurements, without generating success or human labels.
 - Adjust exact-excerpt budgets with `reasoning.depth`; preserve mandatory reviews and full pinned-source recovery, and deepen unresolved or changed-premise checks.
 - Apply enabled file/body guards before supported publication calls observed by Claude Code's Bash hook as well as at Stop. Require publication in a separate tool call, exclude dry-run/help, and retain the bounded parser with no new option or model.
+
+- Update all writers of the same project records to 0.27.0, reopen agent sessions and restart the page and MCP. Updates from 0.26.0 preserve project data; earlier writers do not preserve the new trial, comparison and reading progress. Without hooks, refresh installed skills with `shikii --init` in the existing project.
 
 ## 0.26.0 — Required evidence-linked work reviews
 
