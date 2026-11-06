@@ -8,7 +8,7 @@ import (
 
 // A guard the person enabled stops a command right before it runs (PreToolUse Bash, 0.11): a command matching a forbidden-commands
 // pattern is refused with the reason, so the agent runs a corrected command in the same breath instead of hearing about it at the end
-// of the turn. File changes are not judged here: forbidden-words, paired-files and commit-body run at Stop. A pre-tool check of the
+// of the turn. File edits are not judged before they happen. File/body guards run at Stop and before observed publication calls. A pre-tool check of the
 // lines a file edit adds was built and removed in 0.11: three audits in a row found a way to miss a line or to refuse an excepted file
 // (the order of a MultiEdit's edits, paths through links or in another spelling, folders that do not exist yet, CRLF), and the rule for
 // a property broken again is to simplify or remove, not to patch (wiki 325c0267cfe4ce6d).
@@ -46,7 +46,7 @@ func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, 
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: false, Reason: bi(r.Reason, r.ReasonJA, loc), Tool: true})
 	}
 	if len(failed) == 0 {
-		return hookOut{}, nil
+		return guardPublication(root, in, snapshot, command, guards)
 	}
 	if err := appendGuardRecords(root, recs); err != nil {
 		return hookOut{}, err

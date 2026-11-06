@@ -225,6 +225,8 @@ CLI・MCP・HTTPの`ingest`/`patch`と`work record`のnotesで保存・改訂し
 
 `reasoning.depth`のbrief/focused/deepで、今回の判断に読む量を合わせます。briefの広い検索は正確な抜粋を返し、版を固定した明示読取では全文を回復できます。判断が未解決、出典の前提が変更、保存や食い違いの確認が未完了なら深く照合します。必須の保存と振り返りは省きません。[試行の入力と復旧](../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-development)を参照してください。
 
+有効なファイル・本文のguardは、Claude CodeのBashの`PreToolUse`で観測できた`git push`と変更を伴う`gh release`の直前にも照合します。通常のRTK経由も含め、実物の不足を直してから再送します。公開は他の処理を終えた後の別のツール呼び出しにし、変更後の実物を確認できない複合コマンドは拒否します。dry-run/helpと単独の読取専用コマンドはこの追加の対象外です。Codexでは現在、このコマンド用hookを登録せず終了時の確認を使います。OpenCodeは自動hookが無く、MCPとskillを使います。範囲を絞った解析のため、内部を読めないshell展開・heredocの後ろ・別の公開経路を完全に覆うものではありません。
+
 ### 記事の種類と場面
 
 0.9.0 から、教訓を持つ記事には `kind`(種類)と `scene`(場面)が要る。無い保存は断られ、断りの文に使える値が出る。

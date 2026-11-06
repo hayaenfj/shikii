@@ -7,6 +7,7 @@
 - Record a bounded trial plan and its actual reported observation with immutable evidence; return challenged expectations to the next judgment and retain original captures through preparation and retries.
 - Suggest a small unresolved check with current evidence and allow an explicit `reasoning.next_trial` selection. Compare two recorded executions of the same fixed case using paired measurements, without generating success or human labels.
 - Adjust exact-excerpt budgets with `reasoning.depth`; preserve mandatory reviews and full pinned-source recovery, and deepen unresolved or changed-premise checks.
+- Apply enabled file/body guards before supported publication calls observed by Claude Code's Bash hook as well as at Stop. Require publication in a separate tool call, exclude dry-run/help, and retain the bounded parser with no new option or model.
 
 ## 0.26.0 — Required evidence-linked work reviews
 

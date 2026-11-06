@@ -237,6 +237,15 @@ fully readable, and unresolved judgments or changed premises deepen the review.
 Required saves and reflection remain visible. See the [trial inputs and
 recovery contract](../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-development).
 
+Enabled file/body guards are also checked before supported `git push` and mutating
+`gh release` calls observed by Claude Code's Bash `PreToolUse` hook, including
+ordinary RTK wrappers. Fix actual files or commit bodies before retrying. Run
+publication in a separate tool call after other commands; compound publication
+is refused so the checks inspect the final state. Dry-run/help and standalone
+read-only commands are excluded. Codex retains turn-end checks without this command
+hook. OpenCode uses MCP and skills without automatic hooks. The bounded parser
+does not cover opaque shell expansion, heredoc tails or other publication routes.
+
 ### Kinds and scenes of articles
 
 From 0.9.0, an article with a lesson needs a `kind` and a `scene`. A save without them is refused, and the refusal lists the values you can use.
