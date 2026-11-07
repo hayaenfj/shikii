@@ -106,13 +106,9 @@ func (b Book) ReadingEvidence(d ReadingDetails) ([]string, error) {
 // reports preserve their full envelope as evidence, but only their actual quality
 // result supports an independent case. Generic JSON is canonicalized too.
 func readingQualityIdentity(content string, d ReadingDetails) (string, error) {
-	value, ok := readingJSON(content)
-	if !ok {
-		trimmed := strings.TrimSpace(content)
-		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-			return "", errors.New("malformed structured quality evidence cannot teach a preference")
-		}
-		return readingValueIdentity(strings.Join(strings.Fields(content), " "))
+	value, err := readingTextResult(content)
+	if err != nil {
+		return "", err
 	}
 	if object, ok := value.(map[string]any); ok {
 		observed, present := object["observed"]
@@ -131,10 +127,9 @@ func readingQualityIdentity(content string, d ReadingDetails) (string, error) {
 			if !ValidAssistanceText(text, true) {
 				return "", errors.New("reading quality needs an observed result")
 			}
-			if decoded, ok := readingJSON(text); ok {
-				observed = decoded
-			} else {
-				observed = strings.Join(strings.Fields(text), " ")
+			observed, err = readingTextResult(text)
+			if err != nil {
+				return "", err
 			}
 		}
 		return readingValueIdentity(observed)
@@ -143,6 +138,18 @@ func readingQualityIdentity(content string, d ReadingDetails) (string, error) {
 		return "", errors.New("structured quality evidence needs an explicit observed result")
 	}
 	return readingValueIdentity(value)
+}
+
+// Every textual result uses the same parser, whether direct or in observed.
+func readingTextResult(content string) (any, error) {
+	if value, ok := readingJSON(content); ok {
+		return value, nil
+	}
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		return nil, errors.New("malformed structured quality evidence cannot teach a preference")
+	}
+	return strings.Join(strings.Fields(content), " "), nil
 }
 
 func readingJSON(content string) (any, bool) {

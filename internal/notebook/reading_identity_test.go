@@ -22,7 +22,7 @@ func TestReadingQualityUsesAnExplicitResultBoundary(t *testing.T) {
 			t.Error("ancillary fields or report format multiplied the same explicit result")
 		}
 	}
-	for _, s := range []string{`{"quality":{"checks":1},"provenance":{"task":"a"}}`, `{"arbitrary":1}`, `[{"observed":"result"}]`, `{"observed":"result"} trailing-provenance`, `[{"observed":"result"}`} {
+	for _, s := range []string{`{"quality":{"checks":1},"provenance":{"task":"a"}}`, `{"arbitrary":1}`, `[{"observed":"result"}]`, `{"observed":"result"} trailing-provenance`, `[{"observed":"result"}`, `{"observed":"{\"quality\":true"}`, `{"type":"reading-quality/v1","check":"Keep the condition.","sufficient":true,"observed":"{\"quality\":true"}`} {
 		if _, e := readingQualityIdentity(s, d); e == nil {
 			t.Error("ambiguous structured evidence must not teach a preference")
 		}
