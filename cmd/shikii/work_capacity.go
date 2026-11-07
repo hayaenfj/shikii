@@ -19,6 +19,11 @@ func workSavedCapacity(w *workState, keys ...string) error {
 		occupied[key] = true
 	}
 	if r := w.Reasoning; r != nil {
+		for ref, reading := range r.Readings {
+			if !reading.Indexed {
+				occupied[ref] = true
+			}
+		}
 		for ref, trial := range r.Trials {
 			if trial.Source == "" {
 				occupied["trial:"+ref] = true

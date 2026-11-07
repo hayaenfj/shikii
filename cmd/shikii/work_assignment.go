@@ -72,12 +72,12 @@ func assignmentText(s string, max int, required bool) bool {
 	return utf8.ValidString(s) && len(s) <= max && (!required || strings.TrimSpace(s) != "")
 }
 func validAssignment(a assignmentContext) bool {
-	for _, s := range []string{a.ID, a.Group, a.Role, a.Stage} {
+	for _, s := range []string{a.ID, a.Group, a.Role} {
 		if !assignmentText(s, 200, true) || strings.IndexFunc(s, unicode.IsControl) >= 0 {
 			return false
 		}
 	}
-	return assignmentText(a.EvidenceScope, 200, false) && assignmentText(a.Purpose, 8000, true) && assignmentText(a.Question, 1500, false) && assignmentText(a.Conditions, 2000, false) && assignmentText(a.Branch, 200, false) && validAssignmentCode(a.Commit, a.CodeState)
+	return assignmentText(a.Stage, notebook.HostStageLimit, true) && strings.IndexFunc(a.Stage, unicode.IsControl) < 0 && assignmentText(a.EvidenceScope, 200, false) && assignmentText(a.Purpose, 8000, true) && assignmentText(a.Question, 1500, false) && assignmentText(a.Conditions, 2000, false) && assignmentText(a.Branch, 200, false) && validAssignmentCode(a.Commit, a.CodeState)
 }
 func validAssignmentCode(commit, state string) bool {
 	if commit != "" && (len(commit) != 40 && len(commit) != 64 || strings.IndexFunc(commit, func(r rune) bool { return !strings.ContainsRune("0123456789abcdef", r) }) >= 0) {

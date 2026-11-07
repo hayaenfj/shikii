@@ -47,9 +47,11 @@ type recordedDiscovery struct {
 func (p Page) DiscoveryContext() string { return p.discovered }
 
 type searchJournal struct {
-	Lookups     []Lookup            `json:"lookups"`
-	Discoveries []recordedDiscovery `json:"discoveries"`
-	Outcomes    []ProcedureOutcome  `json:"outcomes,omitempty"`
+	ReadingSaturated bool                `json:"reading_saturated,omitempty"`
+	Lookups          []Lookup            `json:"lookups"`
+	Discoveries      []recordedDiscovery `json:"discoveries"`
+	Outcomes         []ProcedureOutcome  `json:"outcomes,omitempty"`
+	Readings         []ReadingSample     `json:"readings,omitempty"`
 }
 
 func readSearchJournal(dir string) (searchJournal, error) {
@@ -70,7 +72,7 @@ func readSearchJournal(dir string) (searchJournal, error) {
 	if err != nil || len(data) > 1<<20 {
 		return j, errors.New("cannot read the bounded search journal")
 	}
-	if json.Unmarshal(data, &j) != nil || len(j.Lookups) > 64 || len(j.Discoveries) > 128 || len(j.Outcomes) > 128 {
+	if json.Unmarshal(data, &j) != nil || len(j.Lookups) > 64 || len(j.Discoveries) > 128 || len(j.Outcomes) > 128 || len(j.Readings) > 128 {
 		return j, errors.New("cannot read the wiki search records")
 	}
 	for _, l := range j.Lookups {
@@ -104,6 +106,11 @@ func readSearchJournal(dir string) (searchJournal, error) {
 			return j, err
 		}
 	}
+	for _, r := range j.Readings {
+		if err := r.Validate(); err != nil || !idPattern.MatchString(r.Snapshot.ID) || !validOutcomeHash(r.Snapshot.Hash) {
+			return j, errors.New("invalid saved reading execution")
+		}
+	}
 	return j, nil
 }
 
@@ -121,7 +128,10 @@ func saveSearchJournal(dir string, j searchJournal) error {
 		lookups, _ := json.Marshal(j.Lookups)
 		discoveries, _ := json.Marshal(j.Discoveries)
 		outcomes, _ := json.Marshal(j.Outcomes)
-		if len(j.Outcomes) > 1 && (len(j.Lookups) <= 1 || len(outcomes) >= len(lookups)) && (len(j.Discoveries) <= 1 || len(outcomes) >= len(discoveries)) {
+		readings, _ := json.Marshal(j.Readings)
+		if len(j.Readings) > 1 && (len(j.Outcomes) <= 1 || len(readings) >= len(outcomes)) && (len(j.Lookups) <= 1 || len(readings) >= len(lookups)) && (len(j.Discoveries) <= 1 || len(readings) >= len(discoveries)) {
+			trimReadingHistory(&j)
+		} else if len(j.Outcomes) > 1 && (len(j.Lookups) <= 1 || len(outcomes) >= len(lookups)) && (len(j.Discoveries) <= 1 || len(outcomes) >= len(discoveries)) {
 			j.Outcomes = j.Outcomes[1:]
 		} else if len(j.Lookups) > 1 && (len(j.Discoveries) <= 1 || len(lookups) >= len(discoveries)) {
 			j.Lookups = j.Lookups[1:]

@@ -183,6 +183,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		query = w.Query
 	}
 	entries := []any{}
+	var sourceMaterial map[string]any
 	quoted := map[string]string{}
 	read := []store.KnowledgeReference{}
 	reply := map[string]any{"reasoning": currentReasoningView(book, w.Reasoning), "receipt": req.Receipt, "knowledge": entries, "how_to_record": workHowToRecord, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone}
@@ -236,6 +237,13 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 			}
 			entries = append(entries, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "experience_check": i, "recheck": c.Page.Recheck, "learning_evidence": learningPath, "collective_excluded": c.ModelExcluded, "body_included": !c.BodyOmitted, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
 		}
+	} else if len(query) == 16 && strings.Trim(query, "0123456789abcdef") == "" {
+		sourceMaterial, err = book.ReadSourcesPage([]string{query}, req.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		reply["source"] = sourceMaterial
+		reply["source_query"] = map[string]any{"operation": "prepare", "work": map[string]any{"receipt": req.Receipt, "query": query, "cursor": sourceMaterial["next_cursor"]}}
 	} else {
 		view, e := book.QueryPage(query, req.Cursor)
 		if e != nil {
@@ -254,7 +262,14 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		next := map[string]any{"operation": "prepare", "work": map[string]any{"receipt": req.Receipt, "query": query, "cursor": view.NextCursor}}
 		reply["knowledge_query"] = next
 	}
-	attention := attentionFor(w, query, book)
+	stage := ""
+	if w.Reasoning.Reading != nil {
+		stage = w.Reasoning.Reading.Stage
+	}
+	attention, err := prepareReadingAttention(book, w, entries, query, stage)
+	if err != nil {
+		return nil, err
+	}
 	if req.Proposal == "" && req.Conditions == "" {
 		if err := focusWorkKnowledge(book, entries, query, task+" "+query, quoted, &attention); err != nil {
 			return nil, err
@@ -265,6 +280,23 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		attention.setBudget()
 	}
 	reply["attention"] = attention
+	if sourceMaterial != nil {
+		if w.Reasoning.Reading == nil {
+			w.Reasoning.Reading = &workReadingTrace{Stage: stage, Mixed: true}
+		}
+		r := w.Reasoning.Reading
+		r.Bytes += workContextSize(sourceMaterial)
+		r.Reads++
+		r.Recoveries++
+		if r.Reads > 128 || r.Bytes > 16<<20 {
+			r.Mixed = true
+		}
+	} else if req.Proposal == "" && req.Conditions == "" {
+		trackWorkReading(w, entries, attention, query, task, stage)
+	} else if w.Reasoning.Reading != nil {
+		w.Reasoning.Reading.Mixed = true
+	}
+	reply["reading"] = w.Reasoning.Reading
 	read = suppliedWorkReads(entries)
 	collective, e := preparedCollective(book, w, nil, entries)
 	if e != nil {

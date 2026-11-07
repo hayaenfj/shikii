@@ -372,7 +372,7 @@ func TestWorkAddedKnowledgeQuotes(t *testing.T) {
 		}
 		padding := ""
 		s.Planning.Work.Pending["padding"] = notebook.Draft{Body: &padding}
-		raw, _ := json.MarshalIndent(s, "", "  ")
+		raw, _ := encodeHookSession(s)
 		padding = strings.Repeat("x", (1<<20)-32-len(raw))
 		if err = writeWorkSession(dir, name, s); err != nil {
 			t.Fatal(err)

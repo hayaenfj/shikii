@@ -20,6 +20,7 @@ func makeWorkSchema() map[string]any {
 	trialPlan := object(map[string]any{"case": text, "question": text, "expected": text, "method": text, "conditions": text, "decision": text, "effort": map[string]any{"type": "string", "enum": []string{"small", "medium", "large"}}, "evidence": array(text, 4)})
 	trialResult := object(map[string]any{"assessment": map[string]any{"type": "string", "enum": []string{"supports", "challenges", "inconclusive"}}, "observed": text, "evidence": array(text, 4), "measurements": map[string]any{"type": "object", "maxProperties": 4, "propertyNames": map[string]any{"pattern": "^[a-z][a-z0-9_]{0,47}$"}, "additionalProperties": map[string]any{"type": "number", "minimum": 0, "maximum": 1e15}}})
 	return object(map[string]any{
+		"reading":    object(map[string]any{"ref": text, "check": text, "sufficient": map[string]any{"type": "boolean"}, "evidence": array(text, 4)}),
 		"trial":      object(map[string]any{"ref": text, "plan": trialPlan, "result": trialResult}),
 		"comparison": object(map[string]any{"ref": text, "before": text, "after": text, "reason": text}),
 		"reasoning":  object(map[string]any{"phase": map[string]any{"type": "string", "enum": []string{"start", "update", "finish"}}, "focus": text, "assessment": map[string]any{"type": "string", "enum": []string{"revise", "retain", "unresolved"}}, "reason": text, "evidence": array(text, 4), "next_action": text, "result": text, "depth": map[string]any{"type": "string", "enum": []string{"brief", "focused", "deep"}}, "next_trial": text}),

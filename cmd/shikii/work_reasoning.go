@@ -33,6 +33,8 @@ type reasoningEntry struct {
 }
 
 type reasoningProgress struct {
+	Readings        map[string]*workReadingState   `json:"readings,omitempty"`
+	Reading         *workReadingTrace              `json:"reading,omitempty"`
 	Trials          map[string]*workTrialState     `json:"trials,omitempty"`
 	Comparisons     map[string]*workComparisonView `json:"comparisons,omitempty"`
 	AttentionDepth  string                         `json:"attention_depth,omitempty"`
@@ -53,6 +55,7 @@ type reasoningProgress struct {
 }
 
 type reasoningStatus struct {
+	Readings           []*workReadingState    `json:"reading_executions,omitempty"`
 	StaleTrials        []string               `json:"stale_trials,omitempty"`
 	Comparisons        []*workComparisonView  `json:"comparisons,omitempty"`
 	Trials             []*workTrialState      `json:"trials,omitempty"`
@@ -76,6 +79,10 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 		return v
 	}
 	v.Required, v.Started, v.WikiPending, v.Latest = r.Required, r.Start != nil, r.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0, r.Latest
+	for _, reading := range r.Readings {
+		v.Readings = append(v.Readings, reading)
+	}
+	slices.SortFunc(v.Readings, func(a, b *workReadingState) int { return strings.Compare(a.Ref, b.Ref) })
 	for ref, note := range r.RequiredNotes {
 		if v.PendingNotes == nil {
 			v.PendingNotes = map[string]string{}

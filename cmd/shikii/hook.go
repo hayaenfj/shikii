@@ -1157,12 +1157,16 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			} else if derr := settleDone(agent, previous, req); derr != nil {
 				hookLog("outcome: " + derr.Error())
 			}
+			nextReasoning := nextTurnReasoning(nil, turnID)
+			if s.Scope == scope {
+				nextReasoning = nextTurnReasoning(s.Reasoning, turnID)
+			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
 			s.Head, s.HeadAt = head, time.Now()
 			s.RequestText = requestText
 			s.RawPrompt = cut(strings.TrimSpace(in.Prompt), 4000)
 			s.Planning = planning
-			s.Reasoning = &reasoningProgress{TurnID: turnID, Required: true}
+			s.Reasoning = nextReasoning
 		},
 		// the previous request's outcome truth is decided on the tree at the time the next request arrives (the request boundary = the next request; waiting for Stop mixes two requests)
 		func(s *hookSession) {

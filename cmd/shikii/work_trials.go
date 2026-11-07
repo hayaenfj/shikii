@@ -378,6 +378,11 @@ func trialPendingCount(r *reasoningProgress) int {
 		return 0
 	}
 	n := 0
+	for _, reading := range r.Readings {
+		if reading.Source == "" || !reading.Indexed {
+			n++
+		}
+	}
 	for _, t := range r.Trials {
 		if t.Source == "" {
 			n++
@@ -397,6 +402,11 @@ func trialPendingCount(r *reasoningProgress) int {
 }
 
 func checkTrialReview(r *reasoningProgress, evidence []string) error {
+	for _, reading := range r.Readings {
+		if reading.Source == "" || !reading.Indexed {
+			return errors.New("recover the pending reading execution with its original reference before finishing")
+		}
+	}
 	for _, t := range r.Trials {
 		if t.Source == "" || t.Result != nil && t.ResultSource == "" {
 			return errors.New("recover the original pending trial capture before finishing")
