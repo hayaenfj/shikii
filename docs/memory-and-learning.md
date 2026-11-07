@@ -8,13 +8,15 @@ From 0.23 onward, this includes receiving peers' knowledge changes, carrying con
 
 From 0.26, brief judgments and checked results stay linked to the current evidence, and the ending hook verifies their required saves. From 0.27, expected observations and actual checks can inform the next judgment, with matched comparisons and adjustable source reading.
 
+From 0.28, measured knowledge delivery and checks for missing conditions can inform how deeply the next task reads. Comparisons include later source recovery, and a reading choice checked on separate tasks can become the default when the conditions match.
+
 Suppose you say, “When updating the guide, update both the English and Japanese versions.” Remembering that instruction alone does not tell you whether both were updated next time. shikii keeps it as an article with sources and delivers it during relevant work. The agent reviews whether it helped. A check enabled by a person can verify the parts that can be checked mechanically.
 
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)
 
-So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 5, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
+So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 7, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
 
 | What you need | What memory provides | What shikii combines |
 | --- | --- | --- |
@@ -30,6 +32,8 @@ So “OpenAI remembers only preferences” or “only shikii stores memory local
 | Return use and results to knowledge | Carry current context into later work | Distinguish inspection, actual decision use and execution, then return sourced reports through a compatible chiten build, CLI or MCP |
 | Delegate decisions | Answers informed by context | People's answers and observable outcomes to measure where the AI can decide alone |
 | Review judgments during work | Context from earlier work | Link a starting judgment and checked ending result to current evidence; resolve failed saves before completion |
+| Choose how deeply the next task reads | Refer to relevant earlier context | Compare measured delivery and checked results; matching comparisons on two distinct tasks can change the next default |
+| Return rereads and omissions to later work | Carry current context forward | Include source recovery in the measurement, suspend a choice after an omission and select a verified alternative |
 | Check required work | Separate management of mandatory guidance | Enabled checks and verification that required records were saved |
 
 OpenAI also recommends keeping mandatory team guidance in `AGENTS.md` or checked-in documentation rather than relying on memory alone. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories)
@@ -146,6 +150,21 @@ This adds review and save verification tied to the current conditions. It does n
 
 The aim is for an observation to change what the agent checks next, alongside carrying context forward. A saved plan does not run an experiment; matched values need interpretation. See the [workflow and limits](../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-0270).
 
+## In 0.28, learn how much knowledge to read
+
+Alongside carrying earlier knowledge forward, shikii uses measured delivery and source-backed checks to choose **how much of that knowledge the current work needs**. It feeds experience from separate tasks into the reading depths introduced in 0.27.
+
+1. **Measure actual delivery.** Record the UTF-8 JSON bytes of supplied knowledge, read counts and full-source recoveries. Include later source reads instead of comparing only the first excerpts.
+2. **Compare the same task.** Compare the standard `focused` read with another depth, keeping article revisions, topic, host stage and quality check matched. Report whether the required conditions were recovered, with evidence. A deeper read that recovers conditions missed by focused can also become a candidate.
+3. **Check another task.** One favorable comparison creates a candidate. Matching comparisons on two distinct tasks, with separate work and non-overlapping reported results, can change the next default under the same conditions. Renaming source IDs, changing provenance, reordering JSON keys or respelling the same JSON number does not add support.
+4. **Return omissions.** A reported missing condition suspends that reading choice. A later success alone does not erase it; use a verified alternative or a deeper check. A changed article revision, topic or stage does not inherit the old preference.
+
+For example, consider a long procedure for preserving data during an update. If a short excerpt omits a recovery condition and the agent then reads the full source, that recovery counts too. A smaller first delivery alone does not establish an improvement. When separate tasks support a reading choice that recovers the required conditions with less delivery than focused, the next worker can use it under matching conditions. A new omission suspends the choice and calls for rechecking.
+
+Explicit depth, deeper reading for unresolved conditions or changed premises, mandatory reviews and exact-revision source recovery take priority. Quality feedback is optional. chiten 0.9.3 or later can return it with ordinary consultation reports; projects without chiten can use the same CLI, MCP or HTTP workflow.
+
+What adapts is the project's knowledge-delivery method. Model weights and decision permissions stay unchanged. The measurements cover knowledge delivery and reading, not a general reduction in model tokens, calls or response time, or an improvement in answer quality. Two tasks are a fixed adoption condition, not proof of statistical independence. See [the inputs and limits](../skills/shikii/references/recording.md#learn-a-reading-preference-from-checked-tasks).
+
 ## The work before 0.14.1 matters too
 
 | Version | What it added |
@@ -172,9 +191,6 @@ The aim is for an observation to change what the agent checks next, alongside ca
 | 0.25.1 | Clarify sources, inspection versus use and execution, candidate interpretation, MCP fields and updates without hooks; preserve storage formats. |
 | 0.26 | Require evidence-linked starting judgments and ending reviews, preserving unresolved saves across retries and preparations. |
 | 0.27 | Link expectations and observations to the next check, compare matched executions, adjust reading depth and check supported publication calls. |
+| 0.28 | Compare reading depths using measured delivery and quality reports; return support from two distinct tasks or an omission to the next matching default. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
-
-## Learning a reading preference
-
-Measured delivery and a source-backed quality report can form a reading-depth candidate. Matched comparisons on two different tasks can change the next default for the same article revisions, topic and host stage. Reported omissions suspend the candidate; verified alternatives can replace it. Full-source recovery and mandatory reviews remain available. This implements a narrow loop that improves how much knowledge is read, with optional chiten feedback. See [the recording contract](../skills/shikii/references/recording.md#learn-a-reading-preference-from-checked-tasks).
