@@ -2,6 +2,11 @@
 
 [English](CHANGELOG.md) · **日本語**
 
+## 0.28.1 — 知識配送の重複を減らす
+
+- wikiと振り返りのMCP成功応答で、繰り返す長文を原文のままMarkdownの節へまとめ、JSON Pointerで元の場所を保持します。`structuredContent`には数値も正確に保った完全なJSONを返します。
+- Markdownで十分小さくならない応答は空白を詰めたJSONにします。エラー、他のツールのJSON本文、HTTP/CLI・保存形式は維持します。表示の約束と検証範囲は[MCPの知識配送](docs/mcp-knowledge.ja.md)を参照してください。
+
 ## 0.28.0 — 確かめた仕事から読む深さを選ぶ
 
 - 実際に渡した知識の量と全文回復を計測し、同じ課題のfocusedと出典付きの品質報告を比較します。

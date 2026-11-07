@@ -9,10 +9,12 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-1184%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1185%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.28.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.28.1-00ADD8?style=flat-square)](CHANGELOG.md)
+
+Version 0.28.1 reduces repeated text in MCP knowledge results while retaining complete machine-readable JSON. [Display contract](docs/mcp-knowledge.md). Restart MCP after updating.
 
 Version 0.28.0 learns reading depth from measured knowledge delivery and checked quality reports. Matched results from two different tasks can change the next default; omissions suspend it. Required reviews and full-source recovery remain available. See the [changelog](CHANGELOG.md) and [workflow](skills/shikii/references/recording.md#learn-a-reading-preference-from-checked-tasks).
 

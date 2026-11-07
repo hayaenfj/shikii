@@ -9,10 +9,12 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-1184%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1185%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.28.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.28.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+
+0.28.1では、機械向けの完全なJSONを保ち、MCPの知識本文の重複を減らします。[表示の約束](../mcp-knowledge.ja.md)を参照し、更新後はMCPを再起動してください。
 
 0.28.0では、実際に渡した知識の量と品質報告から読む深さを選びます。同じ条件で比較した別の2課題の結果を次の既定へ反映し、不足があれば採用を止めます。必須の見直しと原資料の回復を保ちます。[変更履歴](../../CHANGELOG_ja.md)と[手順](../../skills/shikii/references/recording.md#learn-a-reading-preference-from-checked-tasks)をご覧ください。
 

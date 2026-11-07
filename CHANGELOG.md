@@ -2,6 +2,11 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.28.1 — Compact MCP knowledge delivery
+
+- Present repeated long strings in successful wiki and reflection MCP results as shared, verbatim Markdown text sections with JSON Pointer locations. Retain the complete JSON result in `structuredContent`, including exact numeric values.
+- Use compact JSON when the Markdown view does not save enough space; preserve errors, other tools' JSON text, HTTP/CLI output and stored records. See [MCP knowledge delivery](docs/mcp-knowledge.md) for the display contract and validation limits.
+
 ## 0.28.0 — Learn reading depth from checked tasks
 
 - Measure actual knowledge delivery and pinned recovery cost; compare source-backed quality reports against focused on matched tasks.
