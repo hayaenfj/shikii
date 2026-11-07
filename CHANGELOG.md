@@ -2,12 +2,11 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased — Learn reading depth from checked tasks
+## 0.28.0 — Learn reading depth from checked tasks
 
 - Measure actual knowledge delivery and pinned recovery cost; compare source-backed quality reports against focused on matched tasks.
 - Adopt a depth only after two distinct checked tasks; retain counterexamples, suspend omissions, and select a verified alternative. Preserve explicit depth, mandatory review and source recovery.
 - Return the candidate, evidence and next check through the shared work API. Matching chiten adapters can return optional reading-quality feedback.
-
 - Keep quality results separate from structured provenance and compare JSON numbers exactly; align host-stage limits and the consultation output schema. Recover bounded source pages on the host in one delivery.
 
 ## 0.27.0 — Expectations and execution during work

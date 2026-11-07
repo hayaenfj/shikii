@@ -175,6 +175,6 @@ The aim is for an observation to change what the agent checks next, alongside ca
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
 
-## Reading preferences in development
+## Learning a reading preference
 
-Measured delivery and a source-backed quality report can form a reading-depth candidate. Matched comparisons on two different tasks can change the next default for the same article revisions, topic and host stage. Reported omissions suspend the candidate; verified alternatives can replace it. Full-source recovery and mandatory reviews remain available. This implements a narrow loop that improves how much knowledge is read, with optional chiten feedback. See [the recording contract](../skills/shikii/references/recording.md#learn-a-reading-preference-from-checked-tasks-development).
+Measured delivery and a source-backed quality report can form a reading-depth candidate. Matched comparisons on two different tasks can change the next default for the same article revisions, topic and host stage. Reported omissions suspend the candidate; verified alternatives can replace it. Full-source recovery and mandatory reviews remain available. This implements a narrow loop that improves how much knowledge is read, with optional chiten feedback. See [the recording contract](../skills/shikii/references/recording.md#learn-a-reading-preference-from-checked-tasks).
