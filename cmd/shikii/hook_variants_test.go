@@ -188,13 +188,18 @@ func TestAuditEnglishUnsureNoticeCarriesTheDifference(t *testing.T) {
 	if _, err := submitWordingCheck(t, map[string]any{"spec": res.SpecID, "run": res.Run, "verdict": "unsure", "difference": diff}); err != nil {
 		t.Fatal(err)
 	}
-	s := wordingSummary(agent)
-	if !strings.Contains(s, "undecided") && !strings.Contains(s, "could not decide") {
-		t.Fatalf("no unsure notice: %q", s)
+	if s := wordingSummary(agent); s != "" {
+		t.Fatal("an internal wording uncertainty is not a human question", s)
 	}
-	if !strings.Contains(s, diff) {
-		t.Fatalf("the English notice does not tell the person what the difference is: %q", s)
+	latest, err := latestTuneResult(filepath.Join(agent, "wiki"), res.SpecID)
+	if err != nil {
+		t.Fatal(err)
 	}
+	check, ok := agentCheck(latest)
+	if !ok || check.Difference != diff {
+		t.Fatal("retain the agent's actual uncertainty", check)
+	}
+
 }
 
 // English notice for a project copy from 0.9.1 (display.ja only): name it like the page does (the title in any language), not "this question"
@@ -292,11 +297,8 @@ func TestWordingCheckUnsureWaitsForPersonAndDifferentRejects(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(agent, "decisions", fmt.Sprintf("changes-in-scope-v%d.yaml", res.Version+1))); err == nil {
 		t.Fatal("do not write a new version when it cannot decide")
 	}
-	summary := wordingSummary(agent)
-	for _, want := range []string{"決めきれません", "聞く順だけが違う", "頼まれていないファイルを変えたか"} {
-		if !strings.Contains(summary, want) {
-			t.Fatalf("ask the person with the translation and the difference (missing %q): %q", want, summary)
-		}
+	if summary := wordingSummary(agent); summary != "" {
+		t.Fatal("keep uncertain internal wordings unadopted without asking the person", summary)
 	}
 	// Another run: different → do not adopt, and do not ask the person either
 	agent2, _, res2 := wordingCheckFixture(t)
@@ -469,6 +471,12 @@ func TestWordingNoticesUsePlainWordsAndTitle(t *testing.T) {
 	for state, make := range notices {
 		t.Run(state, func(t *testing.T) {
 			summary, res := make(t)
+			if state == "unsure" {
+				if summary != "" {
+					t.Fatal("do not turn internal wording uncertainty into a quiz", summary)
+				}
+				return
+			}
 			en, ja, ok := strings.Cut(summary, "\n")
 			if !ok || ja == "" {
 				t.Fatalf("a Japanese notice is shown: %q", summary)

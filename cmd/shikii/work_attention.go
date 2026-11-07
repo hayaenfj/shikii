@@ -22,6 +22,7 @@ func preparationDepth(input *workReasoning) (string, error) {
 // Reading depth changes the amount supplied, never the obligation to review or
 // recover sources. An explicit pinned revision always remains fully readable.
 type workAttention struct {
+	Loop         *workLoopAdvice         `json:"loop,omitempty"`
 	Learning     *notebook.ReadingPolicy `json:"learning,omitempty"`
 	Depth        string                  `json:"depth"`
 	ExcerptBytes int                     `json:"excerpt_bytes_per_article"`

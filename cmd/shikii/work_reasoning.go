@@ -33,6 +33,8 @@ type reasoningEntry struct {
 }
 
 type reasoningProgress struct {
+	Result          *workCompletionRef             `json:"result,omitempty"`
+	PreparedAt      time.Time                      `json:"prepared_at,omitempty"`
 	Readings        map[string]*workReadingState   `json:"readings,omitempty"`
 	Reading         *workReadingTrace              `json:"reading,omitempty"`
 	Trials          map[string]*workTrialState     `json:"trials,omitempty"`
@@ -74,11 +76,11 @@ type reasoningStatus struct {
 }
 
 func reasoningView(r *reasoningProgress) reasoningStatus {
-	v := reasoningStatus{Next: "Record reasoning start with a relevant premise, evidence and next_action; after work record finish with the checked result. Use update when evidence changes your judgment. Retain and unresolved judgments are valid; no new discovery or article is required."}
+	v := reasoningStatus{Next: "Prepare this task once to register its start, then record the ending result and only necessary notes/reflection. Explicit evidence-linked judgments are optional; no new discovery or article is required."}
 	if r == nil {
 		return v
 	}
-	v.Required, v.Started, v.WikiPending, v.Latest = r.Required, r.Start != nil, r.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0, r.Latest
+	v.Required, v.Started, v.WikiPending, v.Latest = r.Required, r.Start != nil || !r.PreparedAt.IsZero(), r.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0, r.Latest
 	for _, reading := range r.Readings {
 		v.Readings = append(v.Readings, reading)
 	}
@@ -101,7 +103,7 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 	}
 	v.PendingSource = r.PendingSource
 	v.PendingCaptures = r.PendingCaptures
-	v.Complete = r.Start != nil && r.Finish != nil && r.Finish.Generation == r.Generation && !v.WikiPending
+	v.Complete = v.Started && r.Finish != nil && r.Finish.Generation == r.Generation && !v.WikiPending
 	v.Trials, v.NextTrial, v.UnreviewedTrials = workTrialView(r)
 	for _, c := range r.Comparisons {
 		v.Comparisons = append(v.Comparisons, c)
@@ -116,7 +118,7 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 			v.Next += " Read the archived original notes and reference bindings with wiki query " + r.PendingSource + "; restore still-needed edits using original sources and current article revisions. Preparing again does not resolve them."
 		}
 	} else if v.Started && !v.Complete {
-		v.Next = "Review the current evidence and record reasoning finish with result; use update first if the next action changes."
+		v.Next = "Record the checked result once with this receipt; add an explicit judgment only when useful."
 	} else if v.Complete {
 		v.Next = "The review is saved. New observations, actual uses, outcomes or wiki edits require an updated finish; recording alone is not proof of improvement."
 	}
@@ -181,7 +183,7 @@ func reasoningLeft(r *reasoningProgress) int {
 		return 0
 	}
 	n := 0
-	if r.Start == nil {
+	if r.Start == nil && r.PreparedAt.IsZero() {
 		n++
 	}
 	if r.Finish == nil || r.Finish.Generation != r.Generation {
@@ -212,6 +214,9 @@ func reasoningPublicationsPending(w *workState) bool {
 
 func reasoningEvidenceCurrent(book notebook.Book, r *reasoningProgress) (bool, error) {
 	if r.Finish == nil {
+		return false, nil
+	}
+	if r.Result != nil && slices.Contains(r.Finish.Evidence, "source:"+r.Result.Source) && len(r.Result.Evidence) > 0 && !trialBasisCurrent(book, r.Result.Evidence) {
 		return false, nil
 	}
 	for _, ref := range r.Finish.Evidence {
@@ -336,7 +341,7 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 	if r == nil {
 		return item, errors.New("the reasoning context is missing; prepare again")
 	}
-	if input.Phase != "start" && r.Start == nil {
+	if input.Phase != "start" && r.Start == nil && r.PreparedAt.IsZero() {
 		return item, errors.New("save reasoning start before update or finish")
 	}
 	if input.Phase == "finish" && (r.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0 || reasoningPublicationsPending(w)) {
@@ -385,10 +390,11 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 		// Keep one immutable agent report across the next request's replacement
 		// of session progress. Exclude mutable generations from retry identity.
 		snapshot := struct {
-			Start    workReasoning `json:"start"`
-			Previous workReasoning `json:"previous"`
-			Finish   workReasoning `json:"finish"`
-		}{r.Start.workReasoning, r.Latest.workReasoning, bound}
+			PreparedAt time.Time       `json:"prepared_at,omitempty"`
+			Start      *reasoningEntry `json:"start,omitempty"`
+			Previous   *reasoningEntry `json:"previous,omitempty"`
+			Finish     workReasoning   `json:"finish"`
+		}{r.PreparedAt, r.Start, r.Latest, bound}
 		content, _ := json.Marshal(snapshot)
 		_, source, err := captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Evidence-linked work judgment and ending review", Content: string(content), Reference: "work reasoning for turn " + r.TurnID}, save, commit)
 		if err != nil {
@@ -408,6 +414,7 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 	switch input.Phase {
 	case "start":
 		r.Start = entry
+		r.Finish = nil
 	case "update":
 		r.Finish = nil
 	case "finish":

@@ -257,7 +257,7 @@ var kindSchema = map[string]any{"type": "string", "enum": notebook.Kinds, "descr
 var sceneSchema = map[string]any{"type": "string", "maxLength": notebook.SceneMax, "description": "the scene it applies to, short and in the work's own words (required; e.g. \"when committing\", \"when sending an invoice\"; one line, up to 48 characters). If place returns an existing scene close to it, use the same wording"}
 
 // mcpInstructions is the MCP server's guidance. Agents without a hook (Codex, OpenCode) get only this and the tool descriptions.
-const mcpInstructions = "This project's memory is its wiki: source-backed hypotheses, never permission. Begin with shikii_wiki prepare and work:{query,session_id,turn_id} from the hook, or {query,request} without one. Read task, conversation, knowledge and evidence; use exact passages before full bodies. record uses work:{receipt,...} and how_to_record. Add knowledge with prepare:{receipt,query}, proposal for consult or conditions for reuse; record discoveries and procedure outcomes with the same receipt. Interpret evidence and edits yourself. A rule, test or procedure you make or change goes to a wiki howto or rule this turn; set kind and scene; classify unclassified pages. Check complete/errors/pending and fix remaining work. Deeper query/patch/reflect operations remain. Truths come from the person or a checked outcome: never call shikii_label with your own judgment. shikii_specs and shikii_decide use this project's lines (act / ask / discard). Pass the absolute working folder as project on every call."
+const mcpInstructions = "This project's memory is its wiki: source-backed hypotheses, never permission. Begin with shikii_wiki prepare and work:{query,session_id,turn_id} from the hook, or {query,request}. Preparation registers the start. Read task, conversation, knowledge and evidence; recover missing originals. End with record work:{receipt,result:{changed,checked?,evidence?,remaining?},...}; combine necessary notes/reflection and reference evidence once. No new knowledge needs no wiki draft. Add knowledge with prepare:{receipt,query}, proposal or conditions. max_bytes bounds prepare output. Interpret evidence and edits yourself. A rule, test or procedure you make or change goes to a wiki howto or rule; set kind/scene and classify old pages. Check complete/storage/errors/pending; retry failed refs only. Never invent use or success; never call shikii_label with your own judgment. shikii_specs and shikii_decide use checked lines. Pass the absolute working folder as project on every call."
 
 var mcpTools = []map[string]any{
 	{
@@ -272,7 +272,7 @@ var mcpTools = []map[string]any{
 				"result":   map[string]any{"type": "string", "enum": []string{"helpful", "unused", "harmful", "unknown"}},
 				"decision": map[string]any{"type": "string"}, "evidence": map[string]any{"type": "string"},
 				"correction_result": map[string]any{"type": "string", "enum": []string{"followed", "repeated", "not_applicable", "unknown"}},
-			}, "required": []string{"source_id", "key", "result", "decision", "evidence"}}},
+			}, "required": []string{"source_id", "key", "result"}}},
 			"reviews": map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 				"source_id": map[string]any{"type": "string"}, "trace_id": map[string]any{"type": "string"},
 				"truth": map[string]any{"type": "string", "enum": []string{"yes", "no", "unknown"}}, "reason": map[string]any{"type": "string"},

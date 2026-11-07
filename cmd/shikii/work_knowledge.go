@@ -186,7 +186,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	var sourceMaterial map[string]any
 	quoted := map[string]string{}
 	read := []store.KnowledgeReference{}
-	reply := map[string]any{"reasoning": currentReasoningView(book, w.Reasoning), "receipt": req.Receipt, "knowledge": entries, "how_to_record": workHowToRecord, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone}
+	reply := map[string]any{"reasoning": currentReasoningView(book, w.Reasoning), "receipt": req.Receipt, "knowledge": entries, "how_to_record": compactWorkHowTo, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone}
 	add := func(p notebook.Page) error {
 		p, e := currentWorkPremise(book, p)
 		if e != nil {
@@ -203,7 +203,9 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		entries = append(entries, entry)
 		return nil
 	}
-	if req.Proposal != "" || req.Conditions != "" {
+	if query == "memory-upgrade" && req.Proposal == "" && req.Conditions == "" {
+		// The upgrade uses the existing maintenance recorder.
+	} else if req.Proposal != "" || req.Conditions != "" {
 		op := "consult"
 		if req.Conditions != "" {
 			op = "reuse"
@@ -238,7 +240,11 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 			entries = append(entries, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "experience_check": i, "recheck": c.Page.Recheck, "learning_evidence": learningPath, "collective_excluded": c.ModelExcluded, "body_included": !c.BodyOmitted, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
 		}
 	} else if len(query) == 16 && strings.Trim(query, "0123456789abcdef") == "" {
-		sourceMaterial, err = book.ReadSourcesPage([]string{query}, req.Cursor)
+		budget, e := workOutputBudget(req.MaxBytes)
+		if e != nil {
+			return nil, e
+		}
+		sourceMaterial, err = book.ReadSourcesPage([]string{query}, req.Cursor, max(4096, budget-4096))
 		if err != nil {
 			return nil, err
 		}
@@ -279,6 +285,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		attention.Reasons = append(attention.Reasons, "An explicit proposal or reuse request needs its supplied conditions and exceptions.")
 		attention.setBudget()
 	}
+	attention.Loop = prepareWorkLoop(book, w, req, entries, quoted)
 	reply["attention"] = attention
 	if sourceMaterial != nil {
 		if w.Reasoning.Reading == nil {
@@ -298,12 +305,25 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	}
 	reply["reading"] = w.Reasoning.Reading
 	read = suppliedWorkReads(entries)
+	if query == "memory-upgrade" && req.Assignment == nil {
+		upgrade, upgradeRead, e := prepareMemoryUpgrade(book, w, quoted, true)
+		if e != nil {
+			return nil, e
+		}
+		reply["memory_upgrade"] = upgrade
+		read = append(read, upgradeRead...)
+	}
+
 	collective, e := preparedCollective(book, w, nil, entries)
 	if e != nil {
 		return nil, e
 	}
 	reply["collective"] = collective
 	reply["knowledge"] = entries
+	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes)
+	if err != nil {
+		return nil, err
+	}
 	if workContextSize(reply) > workSourceBudget*3 {
 		return nil, errors.New("the added knowledge exceeds the response budget; use a narrower query or the individual wiki operations")
 	}

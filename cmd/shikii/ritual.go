@@ -67,7 +67,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	// a turn the person's guard stopped is also GroupingAsked (so the Stop after the block judges it): only a short message's grouping was asked for
 	grouping := groupingAsk(snapshot) || (snapshot.TurnID != "" && snapshot.GroupingAsked == snapshot.TurnID && groupingShort(groupingOf(snapshot)))
 	if p := snapshot.Planning; p != nil && p.TurnID == snapshot.TurnID && !p.ReasoningOnly && ((known && len(changed) > 0) || grouping) {
-		pass := p.Result != nil
+		pass := p.Result != nil || snapshot.Reasoning != nil && !snapshot.Reasoning.PreparedAt.IsZero()
 		reason := ""
 		if !pass {
 			remaining++
@@ -97,7 +97,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		reason := ""
 		if left > 0 {
 			remaining += left
-			reason = fmt.Sprintf("The built-in check %s needs a saved starting judgment and a current ending review. Pass %s to %s work prepare with topic words, read reasoning and the evidence, then use work record with its receipt and reasoning. %s", ritualReasoning, planJSON(in.SessionID, snapshot.TurnID), hookExe(), reasoningView(r).Next)
+			reason = fmt.Sprintf("The built-in check %s needs a prepared start and a saved ending result. Pass %s to %s work prepare with topic words, read reasoning and the evidence, then use work record with its receipt and result. %s", ritualReasoning, planJSON(in.SessionID, snapshot.TurnID), hookExe(), reasoningView(r).Next)
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReasoning, Pass: left == 0, Reason: reason, Recheck: recheck})

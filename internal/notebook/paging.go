@@ -151,12 +151,12 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 
 // originalPart returns the part of one conversation's originals that fits from byte from: original_part carries a piece of the JSON
 // of that conversation's originals list (json) and says which piece it is. Joined in order, the pieces are that JSON whole.
-func originalPart(out map[string]any, state continuation, fs []store.Feedback, osources []Observation, texts map[string][]Original, i, total int, id string, raw []byte, from int) map[string]any {
+func originalPart(out map[string]any, state continuation, fs []store.Feedback, osources []Observation, texts map[string][]Original, i, total int, id string, raw []byte, from, budget int) map[string]any {
 	out["source_material"], out["observations"], out["originals"] = fs, osources, texts
 	end := len(raw)
 	for {
 		out["original_part"] = map[string]any{"id": id, "from": from, "to": end, "bytes": len(raw), "json": string(raw[from:end])}
-		if encodedSize(out) <= replyBudget-2048 || end-from <= 1 {
+		if encodedSize(out) <= budget-2048 || end-from <= 1 {
 			break
 		}
 		end = from + (end-from)/2
@@ -175,7 +175,15 @@ func originalPart(out map[string]any, state continuation, fs []store.Feedback, o
 	return out
 }
 
-func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, error) {
+func (b Book) ReadSourcesPage(ids []string, cursor string, limits ...int) (map[string]any, error) {
+	budget := replyBudget
+	if len(limits) > 1 || len(limits) == 1 && limits[0] < 4096 {
+		return nil, errors.New("source response budget must be at least 4096 bytes")
+	}
+	if len(limits) == 1 {
+		budget = min(budget, limits[0])
+	}
+
 	all, err := b.ReadSources(ids)
 	if err != nil {
 		return nil, err
@@ -209,7 +217,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 			if !hasText || from >= len(raw) || !utf8.RuneStart(raw[from]) {
 				return nil, ErrStaleCursor
 			}
-			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, from), nil
+			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, from, budget), nil
 		}
 		if f, ok := feedback[id]; ok {
 			fs = append(fs, f)
@@ -230,7 +238,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 			texts[id] = text
 		}
 		out["source_material"], out["observations"], out["originals"] = fs, osources, texts
-		if encodedSize(out) <= replyBudget {
+		if encodedSize(out) <= budget {
 			continue
 		}
 		if i > start {
@@ -241,7 +249,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 		if isObservation && i == start { // one long source over the budget: return part of its body and continue inside it
 			body := osources[no].Content
 			end := len(body)
-			for encodedSize(out) > replyBudget-2048 && end > 1 {
+			for encodedSize(out) > budget-2048 && end > 1 {
 				end /= 2
 				for end > 0 && !utf8.RuneStart(body[end]) {
 					end--
@@ -261,7 +269,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string) (map[string]any, erro
 		if hasText && !isObservation && i == start { // a conversation whose originals (up to 2 MB) do not fit: the conversation now, its originals in parts
 			delete(texts, id)
 			raw, _ := json.Marshal(text)
-			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, 0), nil
+			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, 0, budget), nil
 		}
 	}
 	out["source_material"], out["observations"], out["originals"] = fs, osources, texts

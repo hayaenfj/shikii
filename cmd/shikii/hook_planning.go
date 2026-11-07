@@ -132,7 +132,7 @@ func planningNotice(sessionID, turnID string) string {
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: organize this turn before starting; do not ask the person. Pipe the JSON below to %s work prepare with topic words in query; read the conversation, wiki and how_to_record, then work record with its receipt and your judgment, including reasoning start; update it when evidence changes the next action and save reasoning finish before ending. A rule, test or procedure you make or change goes to the wiki before you finish. Legacy hook plan query returns how_to_submit for hook plan submit.\n", command) + string(ids)
+	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Pass the identifiers below to %s work prepare with topic words in query. It registers the start. End with work record using the receipt and result:{changed,checked?,evidence?,remaining?}; combine necessary notes/reflection. Check saved/pending and retry only failed refs. A rule, test or procedure you make or change goes to the wiki. Legacy hook plan query returns how_to_submit for hook plan submit.\n", command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {

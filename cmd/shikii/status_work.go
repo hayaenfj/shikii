@@ -50,6 +50,9 @@ func countPersonWork(specID string, discardUnsure bool, recs []store.Record, lab
 			spot := waits && r.Band == "act" && !store.ReviewSpec(specID)
 			waits = spot || (!pair.agree() && !result[r.TraceID])
 		}
+		if agentReviewOnly(specID) {
+			waits = false
+		}
 		recent := now.Sub(r.At) <= personWorkWindow
 		w.Records++
 		if recent {

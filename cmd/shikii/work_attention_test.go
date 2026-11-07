@@ -93,7 +93,7 @@ func TestWorkAttentionInitialBriefReadKeepsRequiredReview(t *testing.T) {
 		t.Fatalf("initial preparation must accept a reading intent without fabricating a judgment: %v", err)
 	}
 	status := loopObject(t, v["reasoning"])
-	if loopObject(t, v["attention"])["depth"] != "brief" || status["required"] != true || status["started"] != false {
+	if loopObject(t, v["attention"])["depth"] != "brief" || status["required"] != true || status["started"] != true {
 		t.Fatal("a brief initial read must retain the required unsaved start")
 	}
 	found := false

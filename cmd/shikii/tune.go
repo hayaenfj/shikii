@@ -689,7 +689,8 @@ func truthBank(sp *spec.Spec, st store.Store, labeledPath string) (rows []bankRo
 	if err != nil {
 		return nil, 0, err
 	}
-	for _, l := range store.LatestPerInput(all) {
+	eligible := store.WithoutUntrustedOutcome(all, store.OutcomeAgreement(all), sp.Thresholds.Act)
+	for _, l := range store.LatestPerInput(eligible) {
 		t, ok := texts[l.InputsHash]
 		if !ok {
 			continue

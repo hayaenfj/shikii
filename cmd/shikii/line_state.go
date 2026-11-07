@@ -131,9 +131,14 @@ func currentLineState(agent string, sp *spec.Spec) (model string, s lineState, o
 }
 
 // lineSummary is the change in line state told to the person (Stop's systemMessage). Once per spec, only when the state, wording or model changes.
-func lineSummary(agent string) string {
+func lineSummary(agent string) string         { return lineSummaryFor(agent, false) }
+func internalLineSummary(agent string) string { return lineSummaryFor(agent, true) }
+func lineSummaryFor(agent string, internal bool) string {
 	var lines []string
 	for _, id := range append(append(append([]string{}, hookSpecs...), wikiSpecs...), deliverySpecs...) { // the questions whose lines the hook draws
+		if agentReviewOnly(id) != internal {
+			continue
+		}
 		sp, err := spec.Load(hookSpecPath(agent, id))
 		if err != nil {
 			continue

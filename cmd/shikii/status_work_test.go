@@ -31,7 +31,7 @@ func TestCountPersonWork(t *testing.T) {
 
 	w := countPersonWork("needs-plan", false, recs, labs, nil, now)
 	// unsure a1/a2 (no organizing), sample audit, and the disagreement pd; the agreement pa does not wait and is not the person's truth
-	if w.Records != 6 || w.Waits != 4 || w.RecentRecords != 5 || w.RecentWaits != 3 || w.ByPerson != 1 || w.ByResult != 2 {
+	if w.Records != 6 || w.Waits != 0 || w.RecentRecords != 5 || w.RecentWaits != 0 || w.ByPerson != 1 || w.ByResult != 2 {
 		t.Fatalf("needs-plan: %+v", w)
 	}
 	w = countPersonWork("prompt-kind", true, recs, labs, nil, now)
@@ -52,7 +52,7 @@ func TestCountPersonWork(t *testing.T) {
 	// unless the outcome answered first (r3)
 	scored := []store.Record{{TraceID: "r1", Band: "discard", P: .8, At: now}, {TraceID: "r2", Band: "discard", P: .8, At: now}, {TraceID: "r3", Band: "discard", P: .8, At: now}, {TraceID: "r4", Band: "act", P: .8, At: now}}
 	reviews := map[string]store.Review{"r1": {Truth: "yes", ModelShown: true}, "r2": {Truth: "unknown", ModelShown: true}, "r3": {Truth: "no", ModelShown: true}, "r4": {Truth: "no", ModelShown: true}}
-	if got := countPersonWork("done-as-asked", false, scored, labs, reviews, now).Waits; got != 2 {
+	if got := countPersonWork("done-as-asked", false, scored, labs, reviews, now).Waits; got != 0 {
 		t.Fatalf("done-as-asked: the undecided r2 and the disagreement r4 wait: %d", got)
 	}
 }

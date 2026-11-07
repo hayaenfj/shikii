@@ -148,8 +148,8 @@ func TestReasoningNoteCapacityRecovery(t *testing.T) {
 	saveReasoning(t, b, p["receipt"], reasoningInput("start", "current"), nil)
 	saveReasoning(t, b, p["receipt"], reasoningInput("finish", "current"), nil)
 	interimReadableBoundary(t, root, b)
-	_, e := workCall(t, b, "record", map[string]any{"receipt": p["receipt"], "notes": []any{map[string]any{"title": "Required synthetic capacity note", "lesson": "Keep the owner condition.", "body": strings.Repeat("a", 4096), "applies_to": "owner export", "kind": "howto", "scene": "synthetic review", "sources": []string{"current"}}}})
-	if e == nil {
+	got, e := workCall(t, b, "record", map[string]any{"receipt": p["receipt"], "notes": []any{map[string]any{"title": "Required synthetic capacity note", "lesson": "Keep the owner condition.", "body": strings.Repeat("a", 4096), "applies_to": "owner export", "kind": "howto", "scene": "synthetic review", "sources": []string{"current"}}}})
+	if e == nil && got["complete"] == true {
 		t.Fatal("reservation did not reach capacity")
 	}
 	state := loadSession(root, "reasoning")

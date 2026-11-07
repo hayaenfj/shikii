@@ -9,7 +9,7 @@ Work with the project's own knowledge: **the wiki** holds source-backed experien
 
 Use it at five moments:
 
-- **Before starting:** use the hook's `work prepare`; read the task, conversation, knowledge, pending evidence and `how_to_record`. Keep its receipt for `work record`. Save an evidence-linked reasoning start, update changed premises or next actions, and finish with the checked result. Retain or unresolved are valid; do not invent a discovery. Read exact passages first and recover the full revision for unresolved conditions. See [recording.md](references/recording.md).
+- **Before starting:** use the hook's `work prepare`; read the task, conversation, knowledge, pending evidence and `how_to_record`. Keep its receipt for `work record`. Preparation registers the start. End with one record containing result:{changed,checked?,evidence?,remaining?} and any necessary notes/reflection; do not send a separate starting judgment. Detailed reasoning updates and trials remain available when useful. Do not invent a discovery. Read exact passages first and recover the full revision for unresolved conditions. See [recording.md](references/recording.md).
 - **When work moves to another area:** search the wiki again by that topic before acting.
 - **Right before an action:** read the delivered lesson naming the command or file. The `lesson-applies` decision uses prior assessments; a person-enabled command guard may refuse the action. Run a corrected command.
 - **When unsure:** ask `shikii_decide` about approach agreement, scope or completion; read its band, similar human decisions and lessons.
@@ -33,6 +33,7 @@ Use it at five moments:
 
 ## Read, maintain and recover
 
+- During a memory-policy upgrade, follow `memory_upgrade` and its `memory-upgrade` query at a break in work. Review originals and current conditions in bounded batches; preserve preferences, sources and history. Save necessary edits, then use the latest maintenance ref. Resume durable progress until complete or explicitly blocked; reading alone is not review.
 - Read each article's `orientation` before mixed chronology: current, history, recheck and counterexamples. Unclassified, omitted or changed premises remain unresolved. Compare a counterexample's conditions before treating it as a contradiction. Save supported `notes[].passages` with exact unique quotes; revise quotes with body edits.
 - After a corrected failure, inspect `procedure_reviews`. Notes return fresh review refs: check the saved change, then record `maintenance` with the latest ref and reason. Without an edit, use the original ref. An edit alone does not settle review; stale refs are refused.
 - Complete requested reflection before ending: read originals and human corrections, use prepared review/memory/maintenance refs, fix errors until `complete:true`, and do what `left` lists. Delivery, silence or task success alone does not show memory helped. See [review.md](references/review.md).

@@ -331,8 +331,8 @@ func TestPlanningKeepsOldRecordsOutOfTheNewAnswerQueue(t *testing.T) {
 		Items []map[string]any `json:"items"`
 	}
 	getJSON(t, s.URL+"/v1/queue?spec=needs-plan", &queue)
-	if len(queue.Items) != 1 {
-		t.Fatalf("old pending records mixed into the new question: %v", queue.Items)
+	if len(queue.Items) != 0 {
+		t.Fatalf("internal records mixed into the human queue: %v", queue.Items)
 	}
 	getJSON(t, s.URL+"/v1/answered?spec=needs-plan", &answered)
 	if len(answered.Items) != 1 || answered.Items[0]["legacy_planning"] != true || answered.Items[0]["record_question"] != "以前の質問" {
@@ -348,7 +348,7 @@ func TestPlanningKeepsOldRecordsOutOfTheNewAnswerQueue(t *testing.T) {
 			current = item
 		}
 	}
-	if current["unlabeled"] != float64(1) || current["legacy_planning_records"] != float64(2) {
+	if current["unlabeled"] != float64(0) || current["legacy_planning_records"] != float64(2) {
 		t.Fatalf("status mixed old and new records: %v", status)
 	}
 	if records, _ := st.Records("needs-plan", 0); len(records) != 3 {
@@ -678,7 +678,7 @@ func TestStopDoesNotAskContinuesPreviousOtherwise(t *testing.T) {
 func TestPlanningNoticeIsOneFormEveryRequest(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	exe := regexp.MustCompile(`'[^']*'`)
-	noticeOf := regexp.MustCompile(`shikii: organize this turn[^\n]*\n\{"session_id":"[^"]*","turn_id":"[0-9a-f]{16}"\}`) // the hook's text also carries quotes from memory and other asks
+	noticeOf := regexp.MustCompile(`shikii: prepare this task[^\n]*\n\{"session_id":"[^"]*","turn_id":"[0-9a-f]{16}"\}`) // the hook's text also carries quotes from memory and other asks
 	turn := func(prompt string) string {
 		t.Helper()
 		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
@@ -692,7 +692,7 @@ func TestPlanningNoticeIsOneFormEveryRequest(t *testing.T) {
 	third := turn("Then sort the agreed CSV columns by date and keep the existing filters.") // the second request's organizing was not submitted
 	for name, notice := range map[string]string{"first": first, "second": second, "third": third} {
 		short := exe.ReplaceAllString(noticeOf.FindString(notice), "'shikii'")
-		if !strings.Contains(short, "hook plan query") || !strings.Contains(short, "hook plan submit") || !strings.Contains(short, "how_to_submit") || len(short) > 560 {
+		if !strings.Contains(short, "hook plan query") || !strings.Contains(short, "hook plan submit") || !strings.Contains(short, "how_to_submit") || len(short) > 650 {
 			t.Fatalf("the %s request gets the one short form naming the commands (%d bytes): %q", name, len(short), short)
 		}
 	}
@@ -900,13 +900,19 @@ func TestPlanningDisagreementWaitsForThePerson(t *testing.T) {
 			t.Fatalf("p=%.1f: a disagreement waits for the person: %+v", c.p, asked)
 		}
 		status, items := pagePeek(t, root, repo, "needs-plan")
-		if status["waiting_for_person"] != float64(1) {
-			t.Fatalf("p=%.1f: the status counts the disagreement: %v", c.p, status)
+		if status["waiting_for_person"] != float64(0) || len(items) != 0 {
+			t.Fatal("disagreements stay internal", status, items)
 		}
-		if len(items) != 1 || items[0]["trace_id"] != trace || items[0]["waits_for_person"] != true || items[0]["review_reason"] != "disagree" {
-			t.Fatalf("p=%.1f: the queue shows the disagreement as waiting: %v", c.p, items)
+		rec, err := (store.Store{Dir: root}).FindRecord("needs-plan", trace)
+		if err != nil {
+			t.Fatal(err)
 		}
-		pair, _ := items[0]["pair"].(map[string]any)
+		pairValue, ok := pairOf("needs-plan", *rec, nil)
+		if !ok {
+			t.Fatal("retain both internal answers")
+		}
+		pair := map[string]any{"model": pairValue.Model, "agent": pairValue.Agent, "model_confidence": pairValue.ModelConfidence, "agent_reason": pairValue.AgentReason}
+
 		conf := c.p
 		if c.model == "no" {
 			conf = 1 - c.p

@@ -4,6 +4,73 @@ Use this as the ordinary workflow from 0.19. `work prepare` gathers the current 
 
 Built-in instructions use English independently of the person's display language. Keep requests, wiki quotations, reported reasons and other source text in their original language. Configured-language question/answer labels are display evidence, not translated instructions. Write replies and work-record prose in the person's requested language.
 
+## Ordinary work takes two calls
+
+1. Call prepare once with the host's hook identifiers and topic words. Without
+   hooks, supply an agent task with query/request. Preparation saves a timestamped
+   start, not an invented AI judgment or human agreement.
+2. At the end, record once with its receipt and the following content. Combine
+   any needed notes, provisional reviews, memory and maintenance in that call.
+
+```json
+{"receipt":"<receipt>","result":{
+  "changed":"Checked the existing export; no new lasting knowledge.",
+  "checked":"The synthetic two-tenant export retained the owner filter.",
+  "evidence":["new1"],"remaining":""
+},"observations":[{"kind":"test","title":"Export check",
+  "content":"Only the requested tenant's synthetic row was exported."}]}
+```
+
+`changed` is required (12000 UTF-8 bytes); checked (12000), evidence (up to four
+prepared refs) and remaining (4000) are optional. Unknown/unobserved checks stay
+absent or explicitly unknown. Write an execution report once: `new1` and later
+`observedN` reference captured evidence; `result` references the immutable agent
+report and can supply sources for notes/outcomes. A reusable wiki lesson may
+summarize its implication without repeating the complete result. No new knowledge
+means no wiki draft. Important corrections, failures and new procedures still
+need source-backed notes; short messages do not make them optional.
+
+The host supplies project/session/turn and retains the receipt; never invent
+missing metadata or collect shell history, environment values or secret-bearing
+logs to fill it. Capture only checked, redacted evidence. Human quotations stay
+human sources; result is an agent report, never a human truth or proof of success.
+Continued work can send only its new result and notes under the same receipt.
+
+Inspect storage.status: saved means the original result and requested work were
+saved; saved-pending means the original exists but some organization/review remains;
+unconfirmed means persistence was not confirmed. complete concerns the submitted
+recording, not success of the underlying task. Retry failed/pending refs only,
+without restating a saved result. Required-note recovery retains its original
+payload and evidence across preparation. Missing sources and stale revisions need
+explicit recovery; neither is an evaluated success. The existing Stop checks keep
+unresolved saves visible. Legacy explicit reasoning start/update/finish remains
+supported; the prepared start lets an ordinary ending report close the review.
+
+### Bounded reading and memory upgrades
+
+prepare accepts optional max_bytes, 8192–393216 UTF-8 JSON bytes, for the complete
+response (default 65536). output reports omitted fields and recovery directions.
+Use exact article/source queries only when necessary. Omitted text is not supplied
+or read; unavailable conditions, counterexamples and premise warnings remain
+unresolved. Quoted excerpts keep sentence/line boundaries and byte offsets; a unit
+that cannot fit is omitted instead of returning a heading fragment. Same-receipt
+full bodies are reused for repeated broad reads; explicit pinned recovery, changed
+premises and mandatory checks retain priority. Repeated searches or challenged
+trials without progress suggest changing the method, never skipping required work.
+
+A shipped memory-policy epoch starts a source-preserving review of existing active
+wiki pages, with English progress "Upgrading memory…". Routine patch releases do
+not restart a completed epoch. At a break in work, prepare with the same receipt
+and query memory-upgrade for at most two full pinned articles. Compare original
+sources with current behavior, retain still-valid knowledge, correct obsolete
+conditions, classify superseded procedures as history, and consolidate duplicates
+through ordinary source-preserving edits/replaces. Preserve explicit preferences
+and historical human decisions. Review the latest returned maintenance ref after
+an edit; reading alone never advances progress. Continue batches, renewing the
+context at its article limit; durable progress survives restarts. Unavailable
+sources stay blocked and must not be deleted to claim completion. Hosts running
+assigned child agents do not automatically schedule this project-wide migration.
+
 ## Keep records brief
 
 - Use short bullets in agent-authored judgment, note and report text; one point per bullet. Reuse context and cite evidence once.
@@ -27,9 +94,10 @@ A new preparation **without a receipt**, or an individual `hook plan query`, for
 
 ## Required review while doing the work
 
-Every request hook keeps a turn-specific reasoning obligation, even before
-preparation. `prepare.reasoning` and `record.reasoning` show `required`, `started`,
-`complete`, `wiki_pending`, the latest brief judgment, and the next operation.
+Every request hook keeps a turn-specific recording obligation. Preparation saves
+its start automatically. The compact result above normally supplies the ending
+review. Optional explicit reasoning records describe a consequential judgment;
+no separate start call is required for an ordinary answer.
 Record only a concise decision summary and checkable grounds, not private
 step-by-step deliberation. Combine it with the usual planning or observations:
 
@@ -52,9 +120,9 @@ recorder verifies their source availability and current article revisions and
 pins their actual identities. Conditions and semantic relevance remain the
 agent's responsibility. Unknown, incomplete and stale references are refused.
 
-Save start before the work. Use update when evidence changes the premise or
+If using explicit judgments, start before the work. Use update when evidence changes the premise or
 next action. After checking the result, record finish with `result`, the same
-other fields and the relevant evidence. Finish needs a saved start. New saved
+other fields and the relevant evidence. Finish accepts the prepared start or an explicit saved starting judgment. New saved
 observations, uses, outcomes or notes reopen the ending review; replaying an old
 finish does not certify later evidence. Each ending review keeps an immutable
 agent source containing the start, latest judgment and result so the next

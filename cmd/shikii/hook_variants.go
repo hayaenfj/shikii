@@ -66,6 +66,9 @@ func stuckWording(agent, specID string) (n int, ok bool) {
 	if c := sp.CalibrationFor(model); c != nil && c.SpecHash == sp.Hash() {
 		return 0, false // a line was drawn
 	}
+	if !contrastingTuneTruths(store.Store{Dir: agent}, sp) {
+		return 0, false
+	}
 	return n, true
 }
 
@@ -165,8 +168,8 @@ func cmdHookVariants(args []string) error {
 	if err := sp.Save(); err != nil {
 		return err
 	}
-	startTune(root, sp)
-	return json.NewEncoder(stdout).Encode(map[string]any{"saved": names, "tune": "started", "adoption": "a winning variant is adopted after its meaning is checked before the next request"})
+	tuneStatus := startTune(root, sp)
+	return json.NewEncoder(stdout).Encode(map[string]any{"saved": names, "tune": tuneStatus, "adoption": "a winning variant is adopted after its meaning is checked before the next request"})
 }
 
 // decodeStrict reads exactly one JSON value and refuses unknown keys. When it cannot read it, it says which key should have which shape.
@@ -203,15 +206,21 @@ func jsonShapeError(err error) error {
 }
 
 // startTune starts scoring the wording variants in the background and writes the auto-tune record (tuned-<spec>) with the current number of truths (so it is not run again on the same number).
-func startTune(agent string, sp *spec.Spec) {
+func startTune(agent string, sp *spec.Spec) string {
 	st := store.Store{Dir: agent}
 	n, err := humanTruthsFor(st, sp)
 	if err != nil {
 		hookLog("tune: " + err.Error())
-		return
+		return "deferred: cannot read eligible truths"
 	}
-	writeTuneGuard(agent, sp, n)
+	if !contrastingTuneTruths(st, sp) {
+		return "deferred: eligible truths need both answers"
+	}
+	if err := writeTuneGuard(agent, sp, n); err != nil {
+		return "deferred: cannot save tune progress"
+	}
 	hookTune(agent, sp.Path(), st.Dir)
+	return "started"
 }
 
 func writeTuneGuard(agent string, sp *spec.Spec, n int) error {
@@ -229,7 +238,7 @@ func wordingSummary(agent string) string {
 			continue
 		}
 		check, ok := agentCheck(res)
-		if !ok || personChecked(res) || res.Reverted {
+		if !ok || personChecked(res) || res.Reverted || agentReviewOnly(id) && check.Verdict == "unsure" {
 			continue
 		}
 		var state, en, ja string
@@ -510,3 +519,21 @@ func hookSpecPath(agent, id string) string {
 }
 
 var wordingAdopt = adoptWording
+
+func contrastingTuneTruths(st store.Store, sp *spec.Spec) bool {
+	if sp.Type != spec.Noul {
+		return true
+	}
+	_, all, err := st.Counts(sp.ID)
+	if err != nil {
+		return false
+	}
+	eligible := store.WithoutUntrustedOutcome(all, store.OutcomeAgreement(all), sp.Thresholds.Act)
+	truths := map[string]bool{}
+	for _, l := range store.LatestPerInput(eligible) {
+		if store.HumanSource(l.Source) && truthKnown(sp, l.Truth) {
+			truths[l.Truth] = true
+		}
+	}
+	return len(truths) > 1
+}

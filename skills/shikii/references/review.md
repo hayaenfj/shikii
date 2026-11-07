@@ -1,5 +1,10 @@
 # Everyday scoring and the person's spot checks
 
+Ordinary work receives these pending originals in work prepare and combines the
+needed assessments with its single ending work record. Do not call reflect query
+again when prepare supplied complete originals. The individual workflow below is
+for deeper recovery and older integrations.
+
 For ordinary work from 0.19, use [recording.md](recording.md): prepare once, then record semantic content with its receipt. The operations below remain available for deeper work and existing integrations.
 
 "Did it stay within what was asked" and "did it finish what was asked" are scored provisionally by the usual agent from the conversation and the work's outcome. Each target shows the decision model's answer first; the person is asked only when your score differs from it or you held back (`unknown`).
@@ -101,7 +106,7 @@ The older `shikii review` / `shikii_review` and `shikii wiki` / `shikii_wiki` al
 
 Provisional scores stay in that project's `.shikii/records/reviews/` with the source material and grounds. Do not use them instead of `shikii label`, which registers human truths. Do not use wiki lessons as scoring truths either. Do not draw lines from the amount of scores the AI gave; permission to act and calibration follow the existing mechanism based on people and outcomes.
 
-shikii chooses what to check with the person (0.11). A score that agrees with the decision model's answer is kept as a machine truth (source `agreed`) and nobody is asked; it never counts as the person's truth, so lines still need people's truths. A score that differs, and `unknown`, wait for the person, who sees both answers (the decision model's with its confidence, yours with your `reason`) and picks one. There is no random sampling and no cap. Do not choose targets by the AI's confidence.
+Internal needs-plan, changes-in-scope and done-as-asked grades never become required human answers, including disagreement, unknown and old outcome checks. Model/agent agreement remains a machine truth (source agreed), never a person's answer. Disagreements stay internal and need concrete evidence or correction; ask a person only a specific task choice they can decide. Preserve historical human answers. Delivery or a successful task alone does not establish usefulness. For unknown/unused memory, a ref and result suffice; detailed helpful/harmful or correction-recurrence reports still need actual decisions and evidence.
 
 In a person's check, show the original conversation; for a disagreement show both AI answers side by side and highlight neither among the options. After receiving the person's answer, do not overwrite the original AI score; send the disagreement back to the next scorer as a correction example. Do not add questions to the person to score every item.
 

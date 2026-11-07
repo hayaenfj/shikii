@@ -130,16 +130,21 @@ func TestReviewAsksThePersonOnlyWhenTheAIsDisagree(t *testing.T) {
 	for _, it := range queue.Items {
 		got[it["trace_id"].(string)] = it
 	}
-	if got[agree] != nil || len(got) != 2 {
-		t.Fatalf("the agreed score is not shown: %v", queue.Items)
+	if len(got) != 0 {
+		t.Fatal("internal scores never wait for a person", queue.Items)
 	}
-	d, u := got[disagree], got[unknown]
-	pair, _ := d["pair"].(map[string]any)
-	if d["waits_for_person"] != true || d["review_reason"] != "disagree" || pair["model"] != "yes" || pair["agent"] != "no" || fmt.Sprintf("%.2f", pair["model_confidence"]) != "0.80" || pair["agent_reason"] != "the reply says no" {
-		t.Fatalf("a disagreement waits with both answers: %v", d)
+	records, _ := st.Records("done-as-asked", 0)
+	grades, _ := st.Reviews("done-as-asked")
+	for _, r := range records {
+		if r.TraceID == disagree {
+			pair, ok := pairOf("done-as-asked", r, grades)
+			if !ok || pair.Model != "yes" || pair.Agent != "no" || pair.AgentReason != "the reply says no" {
+				t.Fatal("retain original internal disagreement", pair)
+			}
+		}
 	}
-	if u["waits_for_person"] != true || u["review_reason"] != "uncertain" {
-		t.Fatalf("an undecided score waits for the person: %v", u)
+	if grades[unknown].Truth != "unknown" {
+		t.Fatal("missing evidence must stay unknown", grades)
 	}
 	r = httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequest("GET", "/v1/status", nil))
@@ -148,13 +153,13 @@ func TestReviewAsksThePersonOnlyWhenTheAIsDisagree(t *testing.T) {
 	}
 	_ = json.Unmarshal(r.Body.Bytes(), &status)
 	for _, s := range status.Specs {
-		if s["id"] == "done-as-asked" && (s["waiting_for_person"] != float64(2) || s["labels"] != float64(0)) {
+		if s["id"] == "done-as-asked" && (s["waiting_for_person"] != float64(0) || s["labels"] != float64(0)) {
 			t.Fatalf("the status counts what the queue shows as waiting, and no truth of the person: %v", s)
 		}
 	}
 	recs, _ := st.Records("done-as-asked", 0)
 	reviews, _ := st.Reviews("done-as-asked")
-	if w := countPersonWork("done-as-asked", false, recs, labels, reviews, time.Now()); w.Waits != 2 || w.ByPerson != 0 {
+	if w := countPersonWork("done-as-asked", false, recs, labels, reviews, time.Now()); w.Waits != 0 || w.ByPerson != 0 {
 		t.Fatalf("the person's work counts the same two: %+v", w)
 	}
 }

@@ -40,11 +40,11 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 	if out := status(); strings.Contains(out, "ready to calibrate") || !strings.Contains(out, fmt.Sprintf("only one answer so far (no=%d)", sp.Eval.MinN)) {
 		t.Fatalf("with only one answer, it says no line can be drawn even though the count is enough:\n%s", out)
 	}
-	first := lineSummary(agent)
+	first := testLineSummaries(agent)
 	if !strings.Contains(first, `"Were the changed files all needed?"`) || !strings.Contains(first, "only one answer") {
 		t.Fatalf("tells the person there is only one answer: %q", first)
 	}
-	if again := lineSummary(agent); again != "" {
+	if again := testLineSummaries(agent); again != "" {
 		t.Fatalf("the same state is not told twice: %q", again)
 	}
 
@@ -63,7 +63,7 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 	if out := status(); !strings.Contains(out, "tried: the answers could not be separated") {
 		t.Fatalf("when tried and no line was drawn, it says the answers cannot be separated:\n%s", out)
 	}
-	if line := lineSummary(agent); !strings.Contains(line, "could not be separated") {
+	if line := testLineSummaries(agent); !strings.Contains(line, "could not be separated") {
 		t.Fatalf("tells the person the answers cannot be separated (once more, since the state changed): %q", line)
 	}
 	// 0.10: the stop rule kept a stop for this wording and model (line_stop.go): status gives the reason and the person is told once
@@ -74,7 +74,7 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 	if out := status(); !strings.Contains(out, "stopped: the probabilities do not tell the answers apart (AUC 0.35") {
 		t.Fatalf("a stopped question says so with the reason:\n%s", out)
 	}
-	if line := lineSummary(agent); !strings.Contains(line, "so it is stopped") {
+	if line := testLineSummaries(agent); !strings.Contains(line, "so it is stopped") {
 		t.Fatalf("tells the person the question is stopped: %q", line)
 	}
 	clearStopped(agent, "changes-in-scope", sp.Hash())
@@ -86,11 +86,11 @@ func TestLineStatesAreToldApartAndAnnouncedOnce(t *testing.T) {
 	if out := status(); !strings.Contains(out, "calibrated: platt") {
 		t.Fatalf("the line was drawn: \n%s", out)
 	}
-	drawn := lineSummary(agent)
-	if !strings.Contains(drawn, "a line was drawn") || !strings.Contains(drawn, "goes ahead") {
+	drawn := testLineSummaries(agent)
+	if !strings.Contains(drawn, "a line was drawn") || !strings.Contains(drawn, "nothing is asked of you") {
 		t.Fatalf("tells the person a line was drawn and that the AI goes ahead when confident from now on: %q", drawn)
 	}
-	if again := lineSummary(agent); again != "" {
+	if again := testLineSummaries(agent); again != "" {
 		t.Fatalf("a drawn line is not told twice: %q", again)
 	}
 }
@@ -222,7 +222,7 @@ func TestLineNoticesUseTitlesAndPlainWords(t *testing.T) {
 	for _, id := range ids[:3] {
 		add(id, "m1", "no", load(id).Eval.MinN)
 	}
-	check("one answer", lineSummary(root), 6)
+	check("one answer", testLineSummaries(root), 6)
 	for _, id := range ids[:3] {
 		sp := load(id)
 		sp.Calibration = []spec.Calibration{{Model: "m1", SpecHash: sp.Hash(), Method: "platt", N: sp.Eval.MinN}}
@@ -230,7 +230,7 @@ func TestLineNoticesUseTitlesAndPlainWords(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	check("drawn", lineSummary(root), 6)
+	check("drawn", testLineSummaries(root), 6)
 	cs := load("wiki-conflict")
 	add("wiki-conflict", "m3", "yes", cs.Eval.MinN)
 	add("wiki-conflict", "m3", "no", cs.Eval.MinN)
@@ -238,7 +238,7 @@ func TestLineNoticesUseTitlesAndPlainWords(t *testing.T) {
 	os.WriteFile(guard, []byte(fmt.Sprintf("2026-10-24T00:00:00+09:00 m3 %d %s\n", 2*cs.Eval.MinN, cs.Hash())), 0o600)
 	old := time.Now().Add(-2 * hookCalibrateGap)
 	os.Chtimes(guard, old, old)
-	check("not separable", lineSummary(root), 2)
+	check("not separable", testLineSummaries(root), 2)
 }
 
 // audit 0.8.3 M4, a test gap: the notice changes with the question (wiki questions are never asked of people), it is told again when the model changes,
@@ -273,22 +273,22 @@ func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
 	if strings.Contains(out, "keeps asking") || !strings.Contains(out, "nothing is asked of you") {
 		t.Fatalf("does not say \"keeps asking\" for a question never asked of people: %s", out)
 	}
-	if again := lineSummary(root); strings.Contains(again, "Where a wiki lesson goes") {
+	if again := testLineSummaries(root); strings.Contains(again, "Where a wiki lesson goes") {
 		t.Fatalf("the same state is not told twice: %q", again)
 	}
 	// When the model in use changes to m2 (more truths than m1), tell again
 	add("wiki-place", "m2", "no", place.Eval.MinN+5)
-	if line := lineSummary(root); !strings.Contains(line, "Where a wiki lesson goes") {
+	if line := testLineSummaries(root); !strings.Contains(line, "Where a wiki lesson goes") {
 		t.Fatalf("when the model changes, tell again: %q", line)
 	}
 	// A hook question whose truth comes from results (changes-in-scope) does not ask people even with one answer (re-audit: only needs-plan asks people)
 	add("changes-in-scope", "m1", "yes", mustLoad(t, filepath.Join(root, "decisions", "changes-in-scope.yaml")).Eval.MinN)
-	if line := lineSummary(root); !strings.Contains(line, "Were the changed files all needed?") || !strings.Contains(line, "waits for results") || strings.Contains(line, "keeps asking") {
+	if line := testLineSummaries(root); !strings.Contains(line, "Were the changed files all needed?") || !strings.Contains(line, "nothing is asked of you") || strings.Contains(line, "keeps asking") {
 		t.Fatalf("a question whose truth comes from results says it waits for results and does not say it keeps asking: %q", line)
 	}
 	// A question asked of people (needs-plan) says it keeps asking
 	add("needs-plan", "m1", "no", mustLoad(t, filepath.Join(root, "decisions", "needs-plan.yaml")).Eval.MinN)
-	if line := lineSummary(root); !strings.Contains(line, "Should it have asked you first?") || !strings.Contains(line, "keeps asking") {
+	if line := testLineSummaries(root); !strings.Contains(line, "Should it have asked you first?") || !strings.Contains(line, "nothing is asked of you") {
 		t.Fatalf("a question people answer says it keeps asking: %q", line)
 	}
 	// The text when a line is drawn also changes with the question: wiki questions do not ask people and are never replaced silently
@@ -297,7 +297,7 @@ func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
 	if err := sp.Save(); err != nil {
 		t.Fatal(err)
 	}
-	if line := lineSummary(root); !strings.Contains(line, `a line was drawn for "Where a wiki lesson goes"`) || !strings.Contains(line, "never replaced silently") || strings.Contains(line, "the rest still ask") {
+	if line := testLineSummaries(root); !strings.Contains(line, `a line was drawn for "Where a wiki lesson goes"`) || !strings.Contains(line, "never replaced silently") || strings.Contains(line, "the rest still ask") {
 		t.Fatalf("when a line is drawn for a wiki question, it says people are not asked: %q", line)
 	}
 	// When the answers cannot be separated: hook questions ask for other wordings; wiki questions are only tried again as truths grow
@@ -310,7 +310,7 @@ func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
 		old := time.Now().Add(-2 * hookCalibrateGap)
 		os.Chtimes(guard, old, old)
 	}
-	line := lineSummary(root)
+	line := testLineSummaries(root)
 	var scope, conflict string
 	for _, l := range strings.Split(line, "\n") {
 		if strings.Contains(l, "Were the changed files all needed?") {
@@ -420,26 +420,26 @@ func TestLineNoticeOutcomeCalibratedAndJapanese(t *testing.T) {
 		sp := mustLoad(t, filepath.Join(root, "decisions", id+".yaml"))
 		add(id, "yes", sp.Eval.MinN)
 	}
-	one := lineSummary(root)
-	if l := pick(one, "changes-in-scope"); !strings.Contains(l, "答えが片方だけ") || !strings.Contains(l, "結果から付くのを待ちます") || strings.Contains(l, "今までどおり聞きます") {
+	one := testLineSummaries(root)
+	if l := pick(one, "changes-in-scope"); !strings.Contains(l, "答えが片方だけ") || !strings.Contains(l, "人に聞くことはありません") || strings.Contains(l, "今までどおり聞きます") {
 		t.Fatalf("a results question says it waits for results in Japanese too: %q", l)
 	}
-	if l := pick(one, "needs-plan"); !strings.Contains(l, "今までどおり聞きます") {
+	if l := pick(one, "needs-plan"); !strings.Contains(l, "人に聞くことはありません") {
 		t.Fatalf("a question people answer says it keeps asking in Japanese too: %q", l)
 	}
 	for _, id := range []string{"changes-in-scope", "wiki-place", "needs-plan"} {
 		calibrate(id)
 	}
-	drawn := lineSummary(root)
+	drawn := testLineSummaries(root)
 	scope := pick(drawn, "changes-in-scope")
-	if !strings.Contains(scope, `a line was drawn for "Were the changed files all needed?"`) || !strings.Contains(scope, "wait for results to supply the truth") || strings.Contains(scope, "the rest still ask") ||
-		!strings.Contains(scope, "境目が決まりました") || !strings.Contains(scope, "迷っても人に聞かず、結果から正解が付くのを待ちます") || strings.Contains(scope, "今までどおり聞きます") {
+	if !strings.Contains(scope, `a line was drawn for "Were the changed files all needed?"`) || !strings.Contains(scope, "nothing is asked of you") || strings.Contains(scope, "the rest still ask") ||
+		!strings.Contains(scope, "境目が決まりました") || !strings.Contains(scope, "人に聞くことはなく") || strings.Contains(scope, "今までどおり聞きます") {
 		t.Fatalf("when a line is drawn for a results question, it says the rest wait for results too instead of asking people (English and Japanese): %q", scope)
 	}
 	if l := pick(drawn, "wiki-place"); !strings.Contains(l, "人に聞くことはなく") || strings.Contains(l, "確かめのため画面に出ます") {
 		t.Fatalf("a wiki question does not ask people and does not mention spot checks: %q", l)
 	}
-	if l := pick(drawn, "needs-plan"); !strings.Contains(l, "それ以外は今までどおり聞きます") || !strings.Contains(l, "確かめのため画面に出ます") {
+	if l := pick(drawn, "needs-plan"); !strings.Contains(l, "人に聞くことはなく") || strings.Contains(l, "確かめのため画面に出ます") {
 		t.Fatalf("a question people answer says the rest are asked and spot checks appear: %q", l)
 	}
 }
@@ -453,4 +453,8 @@ func TestAuditProbeJaCounts(t *testing.T) {
 	if got := jaCounts(&spec.Spec{}, map[string]int{"no": 10, "yes": 1}); got != "いいえ 10 件・はい 1 件" {
 		t.Fatalf("yes/no in plain Japanese: %q", got)
 	}
+}
+
+func testLineSummaries(root string) string {
+	return joinLines(lineSummary(root), internalLineSummary(root))
 }

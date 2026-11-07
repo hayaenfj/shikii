@@ -57,8 +57,8 @@ func TestReasoningHookRequiresWorkEvenWithoutPrepare(t *testing.T) {
 func TestReasoningRecordsStartUpdateFinishAndReopensOnEvidence(t *testing.T) {
 	_, _, b, v := reasoningFixture(t)
 	receipt := v["receipt"]
-	if got, err := workCall(t, b, "record", map[string]any{"receipt": receipt, "reasoning": reasoningInput("finish", "current")}); err == nil && got["complete"] == true {
-		t.Fatal("finishing without a saved starting judgment must be refused")
+	if got, err := workCall(t, b, "record", map[string]any{"receipt": receipt, "reasoning": reasoningInput("finish", "current")}); err != nil || got["complete"] != true {
+		t.Fatal("the prepared start must support an ending judgment", got, err)
 	}
 	saveReasoning(t, b, receipt, reasoningInput("start", "current"), nil)
 	saved := saveReasoning(t, b, receipt, reasoningInput("finish", "new1"), map[string]any{"observations": []any{map[string]any{"kind": "test", "title": "CSV owner check", "content": "The synthetic CSV retained the owner condition."}}})

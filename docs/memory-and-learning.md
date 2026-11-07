@@ -194,3 +194,13 @@ What adapts is the project's knowledge-delivery method. Model weights and decisi
 | 0.28 | Compare reading depths using measured delivery and quality reports; return support from two distinct tasks or an omission to the next matching default. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
+
+### Memory-policy upgrades
+
+A memory-policy release schedules a review of existing project knowledge by the
+installed agent. Upgrading memory… shows durable progress; batches preserve
+original sources, explicit preferences and human history while correcting obsolete
+procedures and consolidating duplicates. Reading is not a completed review. Missing
+sources stay unresolved, and a completed policy epoch is not restarted by routine
+patch updates. Ordinary work separately needs only prepare and one ending report;
+recording itself does not establish learning or improvement.

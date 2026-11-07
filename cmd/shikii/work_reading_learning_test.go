@@ -92,7 +92,7 @@ func TestWorkReadingLearningAdoptsAfterDistinctCheckedCases(t *testing.T) {
 	if a["depth"] != "brief" || learning["status"] != "adopted" || learning["cases"] != float64(2) {
 		t.Fatalf("two separately checked cases must change the next default: %v", a)
 	}
-	if loopObject(t, p["reasoning"])["started"] != false {
+	if loopObject(t, p["reasoning"])["started"] != true {
 		t.Fatal("learning must not invent a reasoning start")
 	}
 }

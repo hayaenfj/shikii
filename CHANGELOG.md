@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- Register the task start in prepare and save one ending result with shared evidence refs; retain originals before organization and recover failed refs without restating saved reports.
+- Bound prepare responses, return meaningful exact excerpts, reuse same-receipt bodies, and accept concise unknown/unused memory assessments.
+- Keep internal agent grades off the human answer queue. Preserve rejected outcome provenance through replay and defer one-sided automatic tuning.
+- Review existing knowledge after a memory-policy upgrade with English progress and durable, source-preserving maintenance checkpoints.
+
 ## 0.28.0 — Learn reading depth from checked tasks
 
 - Measure actual knowledge delivery and pinned recovery cost; compare source-backed quality reports against focused on matched tasks.

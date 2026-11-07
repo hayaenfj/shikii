@@ -98,9 +98,9 @@ The agent places the draft and a person enables it (the steps are in [the skill'
 
 In every turn, planning, reasoning review and reflection are checked by built-in rules. They are always on and cannot be turned off (`shikii guard list` shows them as `built in (always enabled)`). They work in projects without `CLAUDE.md` or `AGENTS.md` too.
 
-- **Planning before work (plan-before-work)**: in a turn where the request hook asked for planning, before changing files the agent reads this and the recent conversations with `shikii hook plan query`, searches the wiki with topic words it picks, and saves what was agreed and what is still open with `shikii hook plan submit`. The hook's text names only that command and the turn's ids; the exact shape of submit comes back in the reply of `hook plan query` as `how_to_submit`, and the reflection's shape in the reply of `reflect query`, so the room in front of the agent goes to the lessons and the person's decisions, not to the procedure (0.11). A query without search words answers that the wiki has not been searched yet. The plan is saved even when the decision model is down.
-- **Reasoning review (reasoning-before-end)**: the request hook saves a mandatory turn state; `work prepare` supplies current conditions and earlier experience. The agent records a brief evidence-linked judgment with reasoning phase `start`, uses `update` when the premise or next action changes, and records `finish` with the checked result. New saved evidence reopens the ending review; replaying an old finish cannot certify it. Failed or pending wiki edits must be resolved rather than erased by preparing again. Each failed note or capture retains its own original bindings; another successful save does not resolve it. Capacity recovery retires the receipt while retaining the required work for a new preparation. An ending agent source retains the start, latest judgment and result for later work. Retained approaches and evidence gaps are valid; no new discovery or article is required each time. Stop verifies saved results and ending article revisions. This does not guarantee the quality of thought or reconsideration before every tool call. No additional model, setting or person scoring is needed. See [input and limits](../skills/shikii/references/recording.md#required-review-while-doing-the-work).
-- **Reflection before ending (reflect-before-end)**: in a turn where the request hook named conversations to reflect on, before ending the agent reads the originals, the delivered memory, the lessons and people's corrections with `shikii reflect query`, and saves the assessments (reviews), the wiki work (wiki) and how the delivered lessons did (memory) with `shikii reflect submit`.
+- **Planning before work (plan-before-work)**: prepare once with the host hook identifiers and topic words. It retains the task and registers its start without an extra submission. Concrete choices still require actual user input; preparation is not agreement. Explicit hook plan query/submit remains available for deeper planning.
+- **Reasoning review (reasoning-before-end)**: the request hook saves a mandatory turn state; `work prepare` supplies current conditions and earlier experience. Preparation registers the start and an ending result closes the ordinary review. Explicit start/update/finish judgments remain available for consequential changes. New saved evidence reopens the ending review; replaying an old finish cannot certify it. Failed or pending wiki edits must be resolved rather than erased by preparing again. Each failed note or capture retains its own original bindings; another successful save does not resolve it. Capacity recovery retires the receipt while retaining the required work for a new preparation. An ending agent source retains the start, latest judgment and result for later work. Retained approaches and evidence gaps are valid; no new discovery or article is required each time. Stop verifies saved results and ending article revisions. This does not guarantee the quality of thought or reconsideration before every tool call. No additional model, setting or person scoring is needed. See [input and limits](../skills/shikii/references/recording.md#required-review-while-doing-the-work).
+- **Reflection before ending (reflect-before-end)**: prepare includes pending originals and delivered memory. Read them and combine needed reviews, notes and memory assessments with the ending work record. Use separate reflect query/submit only for deeper recovery, rather than repeating supplied material.
 
 ```sh
 shikii reflect query
@@ -605,3 +605,20 @@ Updating from 0.22.0 preserves project data. Update every shared writer to
 0.24.0 or later and restart agent sessions, the page and MCP before using the new work
 context; older writers do not preserve it. Keep a copy of `.shikii/` if you may
 need to restore the earlier binary and data together.
+
+### Less recording work
+
+Ordinary tasks use two recording calls: prepare saves the start, then record takes
+result:{changed,checked?,evidence?,remaining?} with any needed notes/reflection.
+Reference checked evidence once. No new knowledge means no wiki draft. An original
+report is saved before placement; saved-pending identifies remaining organization
+and failed refs can be retried without resending it. Internal scope/completion
+grades do not ask people to score agents. A concrete task choice may still need
+the person's answer.
+
+Optional max_bytes bounds a prepare response; omitted bodies retain exact recovery
+queries. Sentence-boundary excerpts and same-receipt body reuse reduce rereading.
+Memory unknown/unused assessments need no invented explanation. A shipped memory
+policy upgrade shows Upgrading memory… and lets the installed agent review existing
+knowledge in resumable batches, preserving sources, preferences and history.
+See [the recording contract](../skills/shikii/references/recording.md#ordinary-work-takes-two-calls).

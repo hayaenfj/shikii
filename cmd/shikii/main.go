@@ -715,18 +715,20 @@ func calibrateRung(sp *spec.Spec, o calibrateOpts) (spec.Calibration, bool, erro
 	}
 	fileN, storedN := len(labels), len(stored)
 	labels = append(labels, stored...)
+	// Reject stale or untrusted replays before selecting the latest label, so
+	// they cannot hide the person's valid earlier correction for this input.
+	if _, all, err := st.Counts(sp.ID); err == nil {
+		report := store.OutcomeAgreement(all)
+		if report.Total().Checked > 0 {
+			fmt.Fprintln(stdout, strings.TrimSpace(outcomeCheckLine(report, sp.Thresholds.Act)))
+		}
+		labels = store.WithoutUntrustedOutcome(labels, report, sp.Thresholds.Act)
+	}
 	// The latest truth per input (counted the same way as check / drift). A correction replaces; duplicates of one input count once
 	if before := len(labels); before > 0 {
 		labels = store.LatestPerInput(labels)
 		if len(labels) < before {
 			fmt.Fprintf(stdout, "deduplicated: %d labels on %d distinct inputs (latest truth per input wins)\n", before, len(labels))
-		}
-	}
-	// the outcome's truths are not used when people checked them and they are clearly less right than act asks (0.11)
-	if _, all, err := st.Counts(sp.ID); err == nil {
-		if report := store.OutcomeAgreement(all); report.Total().Checked > 0 {
-			fmt.Fprintln(stdout, strings.TrimSpace(outcomeCheckLine(report, sp.Thresholds.Act)))
-			labels = store.WithoutUntrustedOutcome(labels, report, sp.Thresholds.Act)
 		}
 	}
 	fmt.Fprintf(stdout, "spec=%s hash=%s model=%s n=%d (file=%d store=%d replay=%d)\n", sp.ID, sp.Hash(), model, len(labels), fileN, storedN, len(replayed))
@@ -899,7 +901,8 @@ func replayTruths(sp *spec.Spec, st store.Store, ef endpointFlags, model string,
 	}
 	bank := map[string]truth{}
 	var human []store.Label
-	for _, l := range all {
+	eligible := store.WithoutUntrustedOutcome(all, store.OutcomeAgreement(all), sp.Thresholds.Act)
+	for _, l := range eligible {
 		if store.HumanSource(l.Source) { // do not re-ask machine truths (upper-rung answers): re-asking at another rung gives the same model's answer and it would pass as a human truth (audit round 3 item 1)
 			human = append(human, l)
 		}

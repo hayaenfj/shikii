@@ -1308,12 +1308,12 @@ func TestStatusDoesNotCountMachineOnlySpecsAsWaitingForAPerson(t *testing.T) {
 	if pk := got["prompt-kind"]; pk["waiting_for_person"] != float64(0) || pk["awaiting_results"] != float64(1) {
 		t.Fatalf("unsure decisions whose truth comes from an outcome wait for the outcome: %v", pk)
 	}
-	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["person_answers"] != true || np["awaiting_results"] != float64(0) || np["settled_by_ai"] != float64(1) {
+	if np := got["needs-plan"]; np["waiting_for_person"] != float64(0) || np["person_answers"] != false || np["awaiting_results"] != float64(0) || np["settled_by_ai"] != float64(0) {
 		t.Fatalf("unsure decisions a person answers wait for the person; act outside spot checks is not waiting for an outcome but decided by the AI: %v", np)
 	}
 	nq := httptest.NewRecorder()
 	h.ServeHTTP(nq, httptest.NewRequest(http.MethodGet, "/v1/queue?spec=needs-plan", nil))
-	if !strings.Contains(nq.Body.String(), `"np1"`) || !strings.Contains(nq.Body.String(), `"np2"`) {
+	if strings.Contains(nq.Body.String(), `"np1"`) || strings.Contains(nq.Body.String(), `"np2"`) {
 		t.Fatalf("the queue of questions a person gives truths to also shows act (the person can correct it; told apart by waits_for_person): %s", nq.Body.String()[:300])
 	}
 	q := httptest.NewRecorder()
@@ -1509,7 +1509,7 @@ func outcomeFixture(t *testing.T, n int) (root string, sampled []store.Record) {
 
 // 0.11: 1 in 10 decisions an outcome answered goes to the person while that outcome's agreement is unsettled, marked as an outcome
 // check; the others stay out; once the person's answers settle it (here: clearly below act), none is asked any more.
-func TestQueueAsksThePersonToCheckSomeOutcomeTruths(t *testing.T) {
+func TestQueueKeepsInternalOutcomeChecksOffTheAnswerPage(t *testing.T) {
 	root, sampled := outcomeFixture(t, 60)
 	if len(sampled) < 4 {
 		t.Fatalf("the fixed sample picks some of 60: %d", len(sampled))
@@ -1526,14 +1526,8 @@ func TestQueueAsksThePersonToCheckSomeOutcomeTruths(t *testing.T) {
 		}
 		return body.Items
 	}
-	items := queue()
-	if len(items) != len(sampled) {
-		t.Fatalf("only the sampled outcome truths are shown: %d of %d", len(items), len(sampled))
-	}
-	for _, it := range items {
-		if it["review_reason"] != "outcome" || it["audit"] != true || it["waits_for_person"] != true {
-			t.Fatalf("an outcome check waits for the person and says why: %v", it)
-		}
+	if items := queue(); len(items) != 0 {
+		t.Fatal("internal outcome checks do not require a human grade", items)
 	}
 	st := store.Store{Dir: root}
 	for _, r := range sampled[:3] { // the person says the outcome was wrong 3 times: 0 of 3 agree, the interval's upper end 0.56 < act 0.75
@@ -1607,7 +1601,7 @@ func TestStatusCountsOutcomeChecksAsWaitingForThePerson(t *testing.T) {
 	}
 	for _, s := range body.Specs {
 		if s["id"] == "changes-in-scope" {
-			if s["waiting_for_person"] != float64(len(sampled)) {
+			if s["waiting_for_person"] != float64(0) {
 				t.Fatalf("the outcome checks wait for the person on the Answer screen: %v, want %d", s["waiting_for_person"], len(sampled))
 			}
 			return
@@ -1618,7 +1612,7 @@ func TestStatusCountsOutcomeChecksAsWaitingForThePerson(t *testing.T) {
 
 // The outcome's rare answer is shown whole: with 60 "yes" (1 in 10 shown) and 5 "no", all 5 "no" wait for the person, and the "yes"
 // side's agreement does not stop them (0.11: 12 of 12 "yes" settled changes-in-scope while its "no" were never checked).
-func TestQueueShowsEveryOutcomeOfTheRareAnswer(t *testing.T) {
+func TestQueueKeepsRareInternalOutcomesOffTheAnswerPage(t *testing.T) {
 	root, sampled := outcomeFixture(t, 60)
 	sp := mustLoad(t, filepath.Join(root, "decisions", "changes-in-scope.yaml"))
 	st := store.Store{Dir: root}
@@ -1659,9 +1653,8 @@ func TestQueueShowsEveryOutcomeOfTheRareAnswer(t *testing.T) {
 	for _, it := range body.Items {
 		shown[it["trace_id"].(string)] = true
 	}
-	for _, id := range rare {
-		if !shown[id] {
-			t.Fatalf("every outcome \"no\" waits for the person: %s missing from %v", id, shown)
-		}
+	if len(shown) != 0 {
+		t.Fatal("even rare internal grades stay with agents", shown, rare)
 	}
+
 }

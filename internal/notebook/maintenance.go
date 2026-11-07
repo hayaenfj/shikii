@@ -302,7 +302,7 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 		return review, err
 	}
 	if old, ok := checkpoints[review.PageID]; ok && old.Key == review.Key && old.Reason == review.Reason && time.Since(old.At) < 30*24*time.Hour {
-		return review, nil
+		return review, recordMemoryUpgradeReview(dir, review)
 	}
 	checkpoints[review.PageID] = maintenanceCheckpoint{MaintenanceReview: review, At: time.Now().UTC(), ContentKey: selected.ContentKey, FeedbackKeys: selected.FeedbackKeys}
 	data, _ := json.Marshal(checkpoints)
@@ -312,5 +312,5 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 	if err := logEvent(dir, "maintain "+review.PageID+"@"+review.Key); err != nil {
 		return review, err
 	}
-	return review, nil
+	return review, recordMemoryUpgradeReview(dir, review)
 }

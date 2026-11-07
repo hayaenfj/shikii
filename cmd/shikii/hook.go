@@ -197,6 +197,7 @@ func (o hookOut) json(event string) []byte {
 // hookSession is the per-project record (.shikii/sessions/<id>.json). The transcript is not read (its shape is undocumented).
 // The working tree listing at request time is the neighbouring <id>.files (too large for the JSON).
 type hookSession struct {
+	MemoryUpgrade string                        `json:"memory_upgrade,omitempty"`
 	KnowledgeSeen []notebook.CollectiveBaseline `json:"knowledge_seen,omitempty"`
 
 	Request          string             `json:"request,omitempty"`          // the person's last request (kept at UserPromptSubmit)
@@ -643,71 +644,13 @@ func answerURL(specID, trace string) string {
 // The question right after the request (needs-plan) becomes context for the agent; the end-of-turn questions (changes-in-scope / done-as-asked) become text for the person in the terminal
 // (returning context at Stop keeps the conversation going. Whether to go on is the person's call).
 func hookOutcome(specID string, d *decide.Decision, l hookLoc) hookOut {
-	if d == nil || !d.IsCalibrated || d.Band == decide.Abstain {
+	if d == nil || !d.IsCalibrated || d.Band == decide.Abstain || !agentReviewOnly(specID) {
 		return hookOut{}
 	}
-	url := answerURL(specID, d.TraceID)
-	// the texts in System are read by the person in the terminal: the question by its title on the page and the page's plain words (web/scripts/test-glossary.mjs),
-	// the probability as the AI's confidence, never the spec id or p= (audit 0.9.3). Context is for the agent and keeps the id and p
-	name, enName := l.Name, l.EnName
-	if name == "" {
-		name = questionTitle(nil, "ja")
+	if d.Band == decide.Ask || d.Band == decide.Discard && specID != "needs-plan" || specID == "needs-plan" && d.Band == decide.Act {
+		return hookOut{Context: fmt.Sprintf("shikii: internal review %s is %s (p=%.2f). Inspect the concrete task and evidence; correct any actual omission yourself. Ask the person only a specific task choice that requires their input. Do not request a score for this review.", specID, d.Band, d.P)}
 	}
-	if enName == "" {
-		enName = questionTitle(nil, "en")
-	}
-	enTop := l.EnTop
-	if enTop == "" {
-		enTop = d.Top
-	}
-	unsure := func() hookOut {
-		return hookOut{System: bi(
-			fmt.Sprintf("shikii: the AI is unsure about %q (leaning to %q). Answer later: %s", enName, enTop, url),
-			fmt.Sprintf("shikii: 問い「%s」で AI が迷っています(「%s」寄り)。あとで答える: %s", name, l.topName(d.Top), url), l)}
-	}
-	receipt, receiptJA := "", ""
-	personReceipt, personReceiptJA := "", ""
-	if r := d.Receipt; r != nil {
-		receipt = fmt.Sprintf("; line on %d truths, human-checked precision %.2f", r.N, r.HumanPrecision)
-		receiptJA = fmt.Sprintf("。線は正解 %d 件、人が確かめた精度 %.2f", r.N, r.HumanPrecision)
-		personReceipt = fmt.Sprintf("; the point where the AI may decide alone was set from %d truths", r.N)
-		personReceiptJA = fmt.Sprintf("。AI がひとりで決めてよい境目は正解 %d 件から決めました", r.N)
-		if r.HumanCheckedAct > 0 {
-			personReceipt += fmt.Sprintf(", and %d%% of the %d checked were right", pct(r.HumanPrecision), r.HumanCheckedAct)
-			personReceiptJA += fmt.Sprintf("(確かめた %d 件のうち %d%% が合っていた)", r.HumanCheckedAct, pct(r.HumanPrecision))
-		}
-	}
-	sure := pct(1 - d.P) // a Discard of a yes / no question is confident of the "no" side; P is p(yes)
-	switch specID {
-	case "needs-plan":
-		switch d.Band {
-		case decide.Act:
-			text := fmt.Sprintf("shikii: this request looks like one to agree on an approach with the user before changing anything (needs-plan p=%.2f%s). Consider EnterPlanMode or a one-line confirmation first", d.P, receipt)
-			return hookOut{Context: text, RecordMessage: bi(text,
-				fmt.Sprintf("shikii: この依頼は、何かを変える前に進め方を人と合わせるべきものに見える(needs-plan p=%.2f%s)。EnterPlanMode か一言の確認を先に", d.P, receiptJA), l)}
-		case decide.Ask:
-			return unsure()
-		}
-	case "changes-in-scope":
-		switch d.Band {
-		case decide.Discard: // confident "outside the scope"
-			return hookOut{System: bi(
-				fmt.Sprintf("shikii: the changes this time look outside what you asked for (%q: the AI is %d%% sure%s). Check the changed files before going on", enName, sure, personReceipt),
-				fmt.Sprintf("shikii: 今回変えたものは頼まれた範囲の外に見えます(問い「%s」、AI の自信 %d%%%s)。続ける前に変わったファイルを確かめてください", name, sure, personReceiptJA), l)}
-		case decide.Ask:
-			return hookOut{} // to provisional scoring from the conversation. The person checks spot checks and holds
-		}
-	case "done-as-asked":
-		switch d.Band {
-		case decide.Discard: // confident "not finished"
-			return hookOut{System: bi(
-				fmt.Sprintf("shikii: what you asked looks unfinished this time (%q: the AI is %d%% sure%s). Something may be left to ask for again", enName, sure, personReceipt),
-				fmt.Sprintf("shikii: 今回は頼んだことを終えていないように見えます(問い「%s」、AI の自信 %d%%%s)。言い直すことが残っているかもしれません", name, sure, personReceiptJA), l)}
-		case decide.Ask:
-			return hookOut{}
-		}
-	}
-	return hookOut{} // prompt-kind, and the confident "no problem" side: record only
+	return hookOut{}
 }
 
 // ---------------------------------------------------------------- per event
@@ -872,6 +815,23 @@ func runHookEvent(event string) error {
 			}); uerr != nil {
 				hookLog("classify: " + uerr.Error())
 			}
+			if in.AgentID == "" {
+				upgrade, key, uerr := memoryUpgradeHook(agent, current.Scope, current)
+				if uerr != nil {
+					hookLog("memory upgrade: " + uerr.Error())
+				} else {
+					out.Context = joinLines(out.Context, upgrade.Context)
+					out.System = joinLines(out.System, upgrade.System)
+					if e := updateSession(agent, in.SessionID, func(s *hookSession) {
+						if s.TurnID == current.TurnID {
+							s.MemoryUpgrade = key
+						}
+					}); e != nil {
+						hookLog("memory upgrade: " + e.Error())
+					}
+				}
+			}
+			out.Context = joinLines(out.Context, internalLineSummary(agent))
 			out.Context = joinLines(out.Context, variantsContext(agent))
 			out.Context = joinLines(out.Context, wordingCheckContext(agent))
 		}
@@ -1200,7 +1160,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if planning != nil {
 		out.Context = planningNotice(in.SessionID, turnID) // one form every time; the shape of submit comes back in the reply of hook plan query (0.11)
 		if planning.ReasoningOnly {
-			out.Context = fmt.Sprintf("shikii: use work prepare with topic words and %s, then work record with its receipt and reasoning start. Update the judgment when evidence changes the next action; save reasoning finish with the checked result before ending. No planning judgment is required for this turn.\n", planJSON(in.SessionID, turnID))
+			out.Context = fmt.Sprintf("shikii: use work prepare with topic words and %s, Preparation registers the start. End with work record using its receipt and result; combine necessary notes/reflection. No separate starting judgment or planning grade is required.\n", planJSON(in.SessionID, turnID))
 		}
 	}
 	for i, d := range ds {
@@ -1631,6 +1591,11 @@ func humanTruthsFor(st store.Store, sp *spec.Spec) (int, error) {
 		all = append(all, labels...)
 	}
 	n := 0
+	_, originals, err := st.Counts(sp.ID)
+	if err != nil {
+		return 0, err
+	}
+	all = store.WithoutUntrustedOutcome(all, store.OutcomeAgreement(originals), sp.Thresholds.Act)
 	for _, l := range store.LatestPerInput(all) {
 		if store.HumanSource(l.Source) {
 			n++
@@ -1654,6 +1619,9 @@ func hookMaybeTune(agent, specID string) error {
 		return err
 	}
 	if n < sp.Eval.MinN {
+		return nil
+	}
+	if !contrastingTuneTruths(st, sp) {
 		return nil
 	}
 	guard := filepath.Join(agent, "tuned-"+specID)

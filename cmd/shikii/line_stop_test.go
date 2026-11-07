@@ -218,7 +218,7 @@ func TestLineStateSaysAQuestionIsStopped(t *testing.T) {
 	if _, s, _ := currentLineState(agent, sp); s.Kind != lineStopped {
 		t.Fatalf("a stop measured on another model is said too: %+v", s)
 	}
-	if line := lineSummary(agent); !strings.Contains(line, "so it is stopped") {
+	if line := internalLineSummary(agent); !strings.Contains(line, "so it is stopped") {
 		t.Fatalf("the person is told the question is stopped: %q", line)
 	}
 }
@@ -297,7 +297,7 @@ func TestDiscardNoticeNeedsTheShareOfNoToReachAct(t *testing.T) {
 	for _, tc := range []struct {
 		share  float64
 		notice bool
-	}{{0.5, false}, {0.95, true}} {
+	}{{0.5, false}, {0.95, false}} {
 		sp := mustLoad(t, path)
 		sp.Calibration = []spec.Calibration{{Model: "kev-4b", SpecHash: sp.Hash(), Method: "identity", N: 100, PrecisionAtDiscard: tc.share, FittedAt: "2026-10-28"}}
 		if err := sp.Save(); err != nil {

@@ -50,6 +50,10 @@ type OutcomeSide struct {
 // and wrong on the rare one.
 type OutcomeReport struct {
 	Sides map[string]OutcomeSide
+	// Probabilities may be replayed under another wording/model. Their truth
+	// still belongs to the original input; replay must not restore rejected
+	// outcome labels or supersede a person's correction.
+	origins map[string]Label
 }
 
 // OutcomeAgreement compares, for each decision that has an outcome's truth and a later answer of the person, the two (a partial truth
@@ -66,7 +70,17 @@ func OutcomeAgreement(labels []Label) OutcomeReport {
 			person[l.TraceID] = l
 		}
 	}
-	r := OutcomeReport{Sides: map[string]OutcomeSide{}}
+	r := OutcomeReport{Sides: map[string]OutcomeSide{}, origins: map[string]Label{}}
+	for _, l := range labels {
+		if l.InputsHash == "" || l.Source == "replay" || !HumanSource(l.Source) {
+			continue
+		}
+		old, exists := r.origins[l.InputsHash]
+		person, oldPerson := l.Source != "outcome", old.Source != "outcome"
+		if !exists || person && !oldPerson || person == oldPerson && !l.At.Before(old.At) {
+			r.origins[l.InputsHash] = l
+		}
+	}
 	for trace, o := range outcome {
 		side := r.Sides[o.Truth]
 		side.Truths++
@@ -153,6 +167,13 @@ func WithoutUntrustedOutcome(labels []Label, r OutcomeReport, act float64) []Lab
 	for _, l := range labels {
 		if l.Source == "outcome" && r.Untrusted(l.Truth, act) {
 			continue
+		}
+		if l.Source == "replay" {
+			if original, ok := r.origins[l.InputsHash]; ok {
+				if l.Truth != original.Truth || original.Source == "outcome" && r.Untrusted(original.Truth, act) {
+					continue
+				}
+			}
 		}
 		out = append(out, l)
 	}

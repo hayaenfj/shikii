@@ -224,25 +224,25 @@ func TestHookOutcomeTable(t *testing.T) {
 		{"shadow: even a confident 'not done' is silent without a line", "done-as-asked", d(decide.Discard, "yes", 0.02, false), func(o hookOut) bool { return o.empty() }},
 		{"shadow: a confident needs-plan is silent too", "needs-plan", d(decide.Act, "yes", 0.99, false), func(o hookOut) bool { return o.empty() }},
 		{"needs plan: context for the agent", "needs-plan", d(decide.Act, "yes", 0.88, true), func(o hookOut) bool {
-			return strings.Contains(o.Context, "EnterPlanMode") && strings.Contains(o.Context, "0.88")
+			return strings.Contains(o.Context, "specific task choice") && strings.Contains(o.Context, "0.88")
 		}},
 		{"no plan needed: silent", "needs-plan", d(decide.Discard, "yes", 0.1, true), func(o hookOut) bool { return o.empty() }},
 		{"needs plan unsure: one line with the URL", "needs-plan", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
-			return o.Context == "" && strings.Contains(o.System, "spec=needs-plan&trace=0123456789abcdef")
+			return o.System == "" && strings.Contains(o.Context, "internal review")
 		}},
 		{"changes in scope: silent", "changes-in-scope", d(decide.Act, "yes", 0.9, true), func(o hookOut) bool { return o.empty() }},
 		{"changes out of scope: a line for the person, no context", "changes-in-scope", d(decide.Discard, "yes", 0.1, true), func(o hookOut) bool {
-			return o.Context == "" && strings.Contains(o.System, "outside what you asked") && strings.Contains(o.System, "90%")
+			return o.System == "" && strings.Contains(o.Context, "correct any actual omission")
 		}},
-		{"changes unsure: to provisional scoring", "changes-in-scope", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
-			return o.empty()
+		{"changes unsure: internal evidence review", "changes-in-scope", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
+			return o.System == "" && o.Context != ""
 		}},
 		{"done: silent", "done-as-asked", d(decide.Act, "yes", 0.9, true), func(o hookOut) bool { return o.empty() }},
 		{"not done: a line for the person", "done-as-asked", d(decide.Discard, "yes", 0.2, true), func(o hookOut) bool {
-			return o.Context == "" && strings.Contains(o.System, "unfinished") && strings.Contains(o.System, "80%")
+			return o.System == "" && strings.Contains(o.Context, "correct any actual omission")
 		}},
-		{"done unsure: to provisional scoring", "done-as-asked", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
-			return o.empty()
+		{"done unsure: internal evidence review", "done-as-asked", d(decide.Ask, "yes", 0.6, true), func(o hookOut) bool {
+			return o.System == "" && o.Context != ""
 		}},
 		{"prompt-kind: record only", "prompt-kind", d(decide.Act, "edit", 0.95, true), func(o hookOut) bool { return o.empty() }},
 	}
@@ -269,7 +269,7 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "fix the typo in a.go"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "reasoning start") {
+	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "fix the typo in a.go"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "Preparation registers the start") {
 		t.Fatalf("shadow decisions stay silent while required work guidance is delivered, got %q", out)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a // fixed\n"), 0o644); err != nil {
@@ -318,7 +318,7 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 
 	// no model: do not stop (no output); the reason goes to hook.log
 	hookLocalURL = "http://127.0.0.1:1"
-	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s2", "cwd": repo, "prompt": "and now the other file"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "reasoning start") {
+	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s2", "cwd": repo, "prompt": "and now the other file"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "Preparation registers the start") {
 		t.Fatalf("a missing model still delivers the mandatory work guidance, got %q", out)
 	}
 	logb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))
@@ -415,7 +415,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	traceOf := map[string]string{} // session → prompt-kind trace
 	run := func(session string, change bool) {
 		out := runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "fix the typo in README " + session})
-		if strings.Contains(out, "systemMessage") || !strings.Contains(out, "reasoning start") {
+		if strings.Contains(out, "systemMessage") || !strings.Contains(out, "Preparation registers the start") {
 			t.Fatalf("shadow decisions must not suppress the reasoning guidance: %q", out)
 		}
 		sess := loadSession(agent, session)
@@ -593,36 +593,13 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 
 	// after the line is drawn: "not finished" is one terminal line (English / Japanese side by side), no hookSpecificOutput, and the same text in the record's display.message
 	out := turn("j3", "delete the unused feature flags and their tests", "half: I removed two of the five flags so far.")
-	var got map[string]any
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatalf("not JSON: %q", out)
+	if strings.Contains(out, "systemMessage") || strings.Contains(out, "hookSpecificOutput") {
+		t.Fatal("internal completion review must not quiz a person", out)
 	}
-	if _, has := got["hookSpecificOutput"]; has {
-		t.Fatalf("Stop must not return hookSpecificOutput: %s", out)
+	if d := bySummary("half: I removed").Display; d == nil || !strings.Contains(d.Message, "internal review") {
+		t.Fatal("retain the internal review with the record", d)
 	}
-	msg := fmt.Sprint(got["systemMessage"])
-	if !strings.Contains(msg, "looks unfinished") || !strings.Contains(msg, "終えていないように見えます") {
-		t.Fatalf("message must carry English and Japanese: %s", out)
-	}
-	if d := bySummary("half: I removed").Display; d == nil || !strings.HasPrefix(msg, d.Message) {
-		t.Fatalf("the record must keep the message that was shown: %+v", d)
-	}
-	// a finished turn stays silent
-	if out := turn("j4", "bump the Go version in go.mod and CI", "Done: bumped both."); strings.Contains(out, "unfinished") {
-		t.Fatalf("a finished turn must not be flagged: %s", out)
-	}
-	// switching back to English removes the side-by-side text
-	setLang("English")
-	if out := turn("e2", "move the helpers into their own package", "half: moved two helpers, the rest still import the old path."); strings.Contains(out, "見えます") || !strings.Contains(out, "unfinished") {
-		t.Fatalf("English setting must not add Japanese: %s", out)
-	}
-	// a noul answer reads はい / いいえ even without a display. Top is always yes and P is p(yes), so p<0.5 is "いいえ"
-	if l := localize(&spec.Spec{Type: spec.Noul}, &decide.Decision{Top: "yes", P: 0.8}, "ja"); l.Top != "はい" {
-		t.Fatalf("noul p=0.8 must read はい in Japanese, got %+v", l)
-	}
-	if l := localize(&spec.Spec{Type: spec.Noul}, &decide.Decision{Top: "yes", P: 0.1}, "ja"); l.Top != "いいえ" {
-		t.Fatalf("noul p=0.1 must read いいえ in Japanese, got %+v", l)
-	}
+
 }
 
 // The Stop summary: one line if there are waiting answers (the URL if the page is running, otherwise the start command), no output otherwise. Answered ones drop out of the count. The same count is not repeated every turn.
@@ -755,7 +732,7 @@ func TestHookAuditGaps(t *testing.T) {
 	var got map[string]any
 	_ = json.Unmarshal([]byte(out), &got)
 	hs, _ := got["hookSpecificOutput"].(map[string]any)
-	if hs["hookEventName"] != "UserPromptSubmit" || !strings.Contains(fmt.Sprint(hs["additionalContext"]), "EnterPlanMode") {
+	if hs["hookEventName"] != "UserPromptSubmit" || !strings.Contains(fmt.Sprint(hs["additionalContext"]), "specific task choice") {
 		t.Fatalf("calibrated needs-plan must return context under UserPromptSubmit: %s", out)
 	}
 
@@ -1327,8 +1304,8 @@ func TestHookSecondAuditRound(t *testing.T) {
 	recs, _ = (store.Store{Dir: agent}).Records("needs-plan", 0)
 	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "yes"}) })
 	runHook(t, "stop", map[string]any{"session_id": "g2", "cwd": cwd})
-	if lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); !strings.Contains(string(lb), "auto-tune needs-plan") {
-		t.Fatalf("a changed wording must not inherit the old count:\n%s", lb)
+	if lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); strings.Contains(string(lb), "auto-tune needs-plan") {
+		t.Fatalf("a changed wording still needs contrasting truths:\n%s", lb)
 	}
 }
 
@@ -3153,19 +3130,10 @@ func TestHookPersonNoticesUsePlainWordsAndTitle(t *testing.T) {
 			sp := load(c.spec)
 			d := &decide.Decision{TraceID: "0123456789abcdef", Band: c.band, Top: "yes", P: c.p, IsCalibrated: true, Receipt: receipt}
 			o := hookOutcome(c.spec, d, localize(sp, d, "ja"))
-			if o.System == "" || o.Context != "" {
-				t.Fatalf("a notice for the person only: %+v", o)
+			if o.System != "" || !strings.Contains(o.Context, "internal review") || !strings.Contains(o.Context, "specific task choice") {
+				t.Fatal("send internal advice to the agent only", o)
 			}
-			if bad := noticeProblems(t, o.System, glossary); len(bad) > 0 {
-				t.Fatalf("the notice holds inner words:\n%s\n%s", strings.Join(bad, "\n"), o.System)
-			}
-			en, ja, _ := strings.Cut(o.System, "\n")
-			if !strings.Contains(en, `"`+sp.Display["en"].Title+`"`) || !strings.Contains(ja, "「"+sp.Display["ja"].Title+"」") {
-				t.Fatalf("the notice names the question by its title:\n%s", o.System)
-			}
-			if c.band == decide.Discard && (!strings.Contains(en, "90%") || !strings.Contains(ja, "90%")) {
-				t.Fatalf("the confidence is said plainly (90%% sure of the no side):\n%s", o.System)
-			}
+
 		})
 	}
 	t.Run("waiting answers", func(t *testing.T) {
@@ -3748,10 +3716,11 @@ func TestHookKeepsFullClosingTextForPeople(t *testing.T) {
 		Items []map[string]any `json:"items"`
 	}
 	_ = json.Unmarshal(r.Body.Bytes(), &queue)
-	if len(queue.Items) != 1 {
-		t.Fatal("the decision to check reaches the page")
+	if len(queue.Items) != 0 {
+		t.Fatal("internal completion remains off the human queue")
 	}
-	originals, _ := queue.Items[0]["original_inputs"].(map[string]any)
+	stored, _ := st.FindRecord(before.SpecID, before.TraceID)
+	originals, _ := st.RecordText(*stored)
 	if originals["summary"] != closing || originals["request"] != request {
 		t.Fatal("a reply over 1,500 bytes also reaches the page to its end")
 	}

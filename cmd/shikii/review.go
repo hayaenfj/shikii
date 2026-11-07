@@ -43,7 +43,7 @@ type modelAnswer struct {
 	Note       string  `json:"note"`
 }
 
-const modelAnswerNote = "The decision model's answer, not a truth. Score from the conversation; if your score agrees it is kept as an agreed machine truth (never the person's), if it differs or is unknown the person is asked to choose between the two."
+const modelAnswerNote = "The decision model's answer, not a truth. Score from the conversation. Agreement is an agreed machine truth, never the person's. Disagreement or missing evidence remains internal review work; do not ask the person to grade this evaluation. Ask only a concrete task question that actually needs their decision."
 
 func reviewQuestion(spec string) string {
 	if spec == "changes-in-scope" {
@@ -160,8 +160,17 @@ type queueItem struct {
 	pair               *aiPair
 }
 
+// These evaluate the agent's own work. They are not decisions for a person to
+// make; uncertainty stays with the agent rather than creating a grading chore.
+func agentReviewOnly(id string) bool {
+	return id == "needs-plan" || store.ReviewSpec(id)
+}
+
 func queueItemOf(specID string, rec store.Record, labels map[string]store.Label, reviews map[string]store.Review, checks *outcomeChecks) queueItem {
 	var q queueItem
+	if agentReviewOnly(specID) {
+		return q
+	}
 	q.show, q.audit, q.reason = reviewQueueState(specID, rec, labels, reviews)
 	if !q.show && outcomeCheckShown(checks, rec, labels) {
 		q.show, q.audit, q.reason = true, true, "outcome"

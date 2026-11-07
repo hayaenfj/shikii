@@ -1,0 +1,163 @@
+package main
+
+import (
+	"errors"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
+)
+
+const compactWorkHowTo = "Preparation registered this task's start. At the end, record once with this receipt and result:{changed,checked?,evidence?,remaining?}. Save checked evidence once; result and observations supply source refs for notes/outcomes. Add only new knowledge or corrections; no wiki draft is required otherwise. Combine supplied reviews, memory and reviewed refs in that call. unknown/unused memory needs no long narrative. Check complete, storage, errors, pending and next_action; retry only failed refs. Read omitted originals before assessing them. Use explicit reasoning updates or trials only when useful. See the installed skill's recording.md for the full contract."
+
+func workOutputBudget(n int) (int, error) {
+	if n == 0 {
+		return 64 << 10, nil
+	}
+	if n < 8192 || n > workSourceBudget*3 {
+		return 0, errors.New("max_bytes must be between 8192 and 393216 UTF-8 JSON bytes")
+	}
+	return n, nil
+}
+
+// Bound the complete JSON response, rather than each nested component alone.
+// Omitted bodies keep exact recovery queries. Never register unseen text as a
+// delivered quote or teach a reading preference from a shortened response.
+func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any, quoted map[string]string, requested int) ([]store.KnowledgeReference, error) {
+	before := suppliedPreparationBytes(reply)
+	budget, err := workOutputBudget(requested)
+	if err != nil {
+		return nil, err
+	}
+	entries, _ := reply["knowledge"].([]any)
+	if workContextSize(reply) <= budget {
+		return suppliedPreparationReads(reply), nil
+	}
+	omitted := []string{}
+	reply["how_to_record"] = compactWorkHowTo
+	for _, raw := range entries {
+		e := raw.(map[string]any)
+		if e["reused"] == true {
+			continue
+		}
+		p, ok := e["article"].(notebook.Page)
+		if !ok {
+			v, err := book.Query("lesson:" + e["id"].(string) + "@" + e["revision"].(string))
+			if err != nil || len(v.Lessons) != 1 {
+				return nil, errors.New("recover the pinned article before shortening its response")
+			}
+			p = v.Lessons[0]
+		}
+		orientation := notebook.Orient(p, w.Query, 300)
+		ref := e["ref"].(string)
+		if w.Loop != nil {
+			delete(w.Loop.Bodies, p.ID+"@"+p.Revision)
+		}
+		short := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "title": p.Title, "summary": p.Lesson, "applies_to": p.AppliesTo, "rationale": p.Rationale, "orientation": orientation, "body_included": false, "attention_limited": true, "query": e["query"], "reading_notice": "Incomplete original text. Check conditions, history, counterexamples and changed premises through this exact revision query before relying on missing material."}
+		for key := range e {
+			delete(e, key)
+		}
+		for key, value := range short {
+			e[key] = value
+		}
+		quoted[ref] = workArticleSource(p, true, orientation.Excerpts())
+	}
+	// Original conversations, evidence and reflection remain recoverable by
+	// their source IDs. Do not return shortened text with a scoring reference.
+	for _, field := range []string{"pending", "observations"} {
+		list, _ := reply[field].([]any)
+		for i, raw := range list {
+			e, ok := raw.(map[string]any)
+			if !ok || workContextSize(e) < 1500 {
+				continue
+			}
+			ref, _ := e["ref"].(string)
+			id := w.Sources[ref]
+			if id == "" {
+				continue
+			}
+			list[i] = map[string]any{"incomplete": true, "source_query": map[string]any{"operation": "prepare", "work": map[string]any{"receipt": reply["receipt"], "query": id}}, "next_action": "Read the original source before assessing it; no full-text assessment ref is supplied here."}
+		}
+	}
+	for _, field := range []string{"reflection_context", "collective", "knowledge_context", "context_notice", "memory_upgrade", "conversation", "conversation_context"} {
+		if workContextSize(reply) <= budget {
+			break
+		}
+		if reply[field] != nil {
+			delete(reply, field)
+			omitted = append(omitted, field)
+		}
+	}
+	if workContextSize(reply) > budget {
+		for _, raw := range entries {
+			e := raw.(map[string]any)
+			ref := e["ref"].(string)
+			delete(quoted, ref)
+			for key := range e {
+				if key != "ref" && key != "id" && key != "revision" && key != "query" {
+					delete(e, key)
+				}
+			}
+			e["body_included"], e["attention_limited"] = false, true
+			e["reading_notice"] = "Original text omitted; read the exact revision query, including its conditions and exceptions."
+		}
+	}
+	if workContextSize(reply) > budget-1000 {
+		for _, field := range []string{"reasoning", "reading", "attention", "task", "task_context", "pending", "observations"} {
+			if workContextSize(reply) <= budget-1000 {
+				break
+			}
+			delete(reply, field)
+			omitted = append(omitted, field)
+		}
+	}
+	reply["output"] = map[string]any{"limited": true, "max_bytes": budget, "omitted": omitted, "next_action": "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."}
+	if workContextSize(reply) > budget {
+		return nil, errors.New("the reference inventory exceeds max_bytes; prepare with a larger response budget")
+	}
+	if w.Reasoning.Reading != nil {
+		w.Reasoning.Reading.Mixed = true
+		after := suppliedPreparationBytes(reply)
+		w.Reasoning.Reading.Bytes = max(0, w.Reasoning.Reading.Bytes-max(0, before-after))
+	}
+	for ref := range quoted {
+		visible := false
+		for _, raw := range entries {
+			visible = visible || raw.(map[string]any)["ref"] == ref
+		}
+		if upgrade, ok := reply["memory_upgrade"].(map[string]any); ok {
+			if pages, ok := upgrade["pages"].([]any); ok {
+				for _, raw := range pages {
+					visible = visible || raw.(map[string]any)["ref"] == ref
+				}
+			}
+		}
+		if !visible {
+			delete(quoted, ref)
+		}
+	}
+	return suppliedPreparationReads(reply), nil
+}
+
+func suppliedPreparationReads(reply map[string]any) []store.KnowledgeReference {
+	entries, _ := reply["knowledge"].([]any)
+	read := suppliedWorkReads(entries)
+	if upgrade, ok := reply["memory_upgrade"].(map[string]any); ok {
+		if pages, ok := upgrade["pages"].([]any); ok {
+			for _, raw := range pages {
+				e := raw.(map[string]any)
+				if p, ok := e["article"].(notebook.Page); ok && e["body_included"] == true {
+					read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
+				}
+			}
+		}
+	}
+	return read
+}
+
+func suppliedPreparationBytes(reply map[string]any) int {
+	n := workContextSize(reply["knowledge"])
+	if u, ok := reply["memory_upgrade"].(map[string]any); ok && u["pages"] != nil {
+		n += workContextSize(u)
+	}
+	return n
+}

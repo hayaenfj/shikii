@@ -27,15 +27,15 @@ func TestAgentPlanningAdviceUsesEnglishWithJapaneseDisplay(t *testing.T) {
 	if advice.Context == "" || hasJapaneseInstruction(advice.Context) {
 		t.Fatal("agent advice must be English regardless of the display preference", advice.Context)
 	}
-	if !hasJapaneseInstruction(advice.message()) {
-		t.Fatal("the page's record must retain the localized explanation", advice.message())
+	if hasJapaneseInstruction(advice.message()) {
+		t.Fatal("internal agent advice remains English", advice.message())
 	}
 	if hasJapaneseInstruction(string(advice.json("UserPromptSubmit"))) {
 		t.Fatal("a page-only translation leaked into the agent's hook JSON")
 	}
 	d.Band = decide.Ask
-	if notice := hookOutcome("needs-plan", d, loc); !hasJapaneseInstruction(notice.System) {
-		t.Fatal("the person's notice must retain its configured language", notice.System)
+	if notice := hookOutcome("needs-plan", d, loc); notice.System != "" {
+		t.Fatal("an internal grade has no human notice", notice.System)
 	}
 }
 

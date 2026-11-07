@@ -358,7 +358,7 @@ func TestStatusCountsSpotChecksRitualsAndModel(t *testing.T) {
 	for _, sp := range body.Specs {
 		got[sp["id"].(string)] = sp
 	}
-	if np := got["needs-plan"]; np["waiting_for_person"] != float64(1) || np["settled_by_ai"] != float64(0) {
+	if np := got["needs-plan"]; np["waiting_for_person"] != float64(0) || np["settled_by_ai"] != float64(0) {
 		t.Fatalf("an act that hit a spot check waits for a person: %v", np)
 	}
 	if wc := got["wiki-conflict"]; wc["waiting_for_person"] != float64(0) || wc["awaiting_results"] != float64(1) {

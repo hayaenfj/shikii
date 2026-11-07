@@ -2363,6 +2363,21 @@ func TestUntrustedOutcomeTruthsAreNotUsed(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A later re-evaluation fetches probabilities, not a new truth. It must
+	// neither restore the rejected heuristic nor displace real corrections.
+	records, err := st.Records("changes-in-scope", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rec := range records {
+		ls, err := store.LabelsFor(&rec, "yes", 1, "replay")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AppendLabels(ls); err != nil {
+			t.Fatal(err)
+		}
+	}
 	path := filepath.Join(root, "decisions", "changes-in-scope.yaml")
 	var report bytes.Buffer
 	_ = runCalibrate(path, calibrateOpts{output: &report, storeDir: root, labeled: "none", ef: endpointFlags{model: "m"}})

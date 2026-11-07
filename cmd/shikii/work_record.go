@@ -25,13 +25,13 @@ func validateWorkRecording(req workRequest) error {
 	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 || len(req.Discoveries) > 4 || len(req.Outcomes) > 2 {
 		return errors.New("the recording batch exceeds its fixed item limits")
 	}
-	if req.Reading == nil && req.Trial == nil && req.Comparison == nil && req.Reasoning == nil && req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
+	if req.Result == nil && req.Reading == nil && req.Trial == nil && req.Comparison == nil && req.Reasoning == nil && req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
 		return errors.New("record needs content that was judged or observed")
 	}
-	return nil
+	return validateWorkCompletion(req.Result)
 }
 
-func recordWork(root, scope string, req workRequest) (any, error) {
+func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	token, err := workDecode(req.Receipt)
 	if err != nil {
 		return nil, err
@@ -102,6 +102,15 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 		return e
 	})
 	result := workResult{Complete: true, Saved: []workItem{}}
+	if req.Result != nil {
+		result.Storage = map[string]any{"status": "unconfirmed"}
+	}
+	defer func() {
+		workStorageState(w, &result)
+		if retErr == nil {
+			reply = result
+		}
+	}()
 	add := func(item workItem) {
 		if item.Error != "" {
 			result.Complete = false
@@ -123,14 +132,6 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 	}
 
 	book := notebook.Book{Root: root, Scope: scope}
-	noteRefs := make([]string, len(req.Notes))
-	for i, note := range req.Notes {
-		ref, normalized, e := reserveRequiredNote(book, w, note, save, commit)
-		if e != nil {
-			return nil, e
-		}
-		noteRefs[i], req.Notes[i] = ref, normalized
-	}
 	local := map[string]string{}
 	for i, o := range req.Observations {
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)
@@ -165,6 +166,25 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 			sources = append(sources, id)
 		}
 		return sources, nil
+	}
+	if req.Result != nil {
+		item, e := captureWorkCompletion(book, w, *req.Result, resolveSources, save, commit)
+		if e != nil {
+			item.Error = e.Error()
+		}
+		add(item)
+		if halt() {
+			return result, nil
+		}
+	}
+	noteRefs := make([]string, len(req.Notes))
+	for i, note := range req.Notes {
+		ref, normalized, e := reserveRequiredNote(book, w, note, save, commit)
+		if e != nil {
+			add(workItem{Ref: ref, Kind: "note", Error: e.Error()})
+			return result, nil
+		}
+		noteRefs[i], req.Notes[i] = ref, normalized
 	}
 	if req.Reading != nil {
 		item, e := recordWorkReading(book, w, *req.Reading, resolveSources, save, commit)
@@ -397,6 +417,13 @@ func recordWork(root, scope string, req workRequest) (any, error) {
 		} else {
 			add(workItem{Ref: "reasoning", Kind: "reasoning", Error: "save the failed or pending work items before recording this judgment"})
 		}
+	}
+	if req.Reasoning == nil && w.Result != nil && result.Complete {
+		item, e := finishWorkCompletion(book, w, resolveSources, save, commit)
+		if e != nil {
+			item.Error = e.Error()
+		}
+		add(item)
 	}
 	result.Reasoning = currentReasoningView(book, w.Reasoning)
 	if len(req.Outcomes)+len(req.Notes) > 0 {
