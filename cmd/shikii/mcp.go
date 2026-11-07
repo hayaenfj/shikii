@@ -483,7 +483,7 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 		if err != nil {
 			return fail(-32602, err.Error())
 		}
-		return reply(toolResult(code, body))
+		return reply(toolResult(code, body, p.Name))
 	default:
 		return fail(-32601, "method not found: "+req.Method)
 	}
@@ -563,12 +563,19 @@ func toolError(err error) map[string]any {
 }
 
 // toolResult is an MCP tool result. Errors (4xx/5xx) are returned with isError, not as JSON-RPC errors (so the agent can read them and fix things).
-func toolResult(code int, body []byte) map[string]any {
+func toolResult(code int, body []byte, tool ...string) map[string]any {
 	text := strings.TrimSpace(string(body))
 	res := map[string]any{"content": []map[string]any{{"type": "text", "text": text}}, "isError": code >= 400}
 	var structured map[string]any
-	if json.Unmarshal(body, &structured) == nil && code < 400 {
+	d := json.NewDecoder(bytes.NewReader(body))
+	d.UseNumber()
+	var extra any
+	if d.Decode(&structured) == nil && structured != nil && d.Decode(&extra) == io.EOF && code < 400 {
 		res["structuredContent"] = structured
+		if len(tool) == 1 && (tool[0] == "shikii_wiki" || tool[0] == "shikii_reflect") {
+			text = knowledgeMarkdown(body, structured)
+			res["content"] = []map[string]any{{"type": "text", "text": text}}
+		}
 	}
 	return res
 }
