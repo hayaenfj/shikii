@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.29.1 — Reduce repeated reading and routine maintenance
 
 - Reuse identical same-receipt excerpts without treating omitted text as a full read; preserve changed conditions, explicit depth and pinned recovery.
 - Limit routine memory upgrades to one two-article batch per task and resume saved progress on the next task. Keep the full upgrade available on explicit request and share its policy once per response.

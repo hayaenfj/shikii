@@ -1,4 +1,4 @@
 package shikii
 
 // Version is the shikii version returned by the CLI and MCP.
-const Version = "0.29.0"
+const Version = "0.29.1"
