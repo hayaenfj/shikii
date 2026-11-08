@@ -12,9 +12,9 @@ From 0.28, measured knowledge delivery and checks for missing conditions can inf
 
 Suppose you say, “When updating the guide, update both the English and Japanese versions.” Remembering that instruction alone does not tell you whether both were updated next time. shikii keeps it as an article with sources and delivers it during relevant work. The agent reviews whether it helped. A check enabled by a person can verify the parts that can be checked mechanically.
 
-## Development: improve investigation procedures
+## 0.29: improve investigation procedures
 
-The unreleased development branch closes a bounded procedure-improvement loop:
+Version 0.29 closes a bounded procedure-improvement loop:
 observed repeated investigations generate a concise-guidance candidate; separate
 tasks supply actual quality checks and measured guidance cost; supported candidates
 are adopted, and a regression restores the previous procedure. After a failed

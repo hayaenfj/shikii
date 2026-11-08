@@ -9,14 +9,14 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-1216%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1231%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.28.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.29.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.28.1では、機械向けの完全なJSONを保ち、MCPの知識本文の重複を減らします。[表示の約束](../mcp-knowledge.ja.md)を参照し、更新後はMCPを再起動してください。
+0.29.0では、調査手順の候補生成・別課題での検証・採用・悪化時の復帰を、通常の作業記録へつなぎます。prepareで開始を記録し、終了報告で変更・証拠・残件を一度送ります。応答量に上限を設け、整理待ちは保存済みの原資料から回復します。エージェント内部の技術的な評価を、人の回答待ちから外します。[変更履歴](../../CHANGELOG_ja.md)と[記録の手順](../../skills/shikii/references/recording.md)をご覧ください。
 
-0.28.0では、実際に渡した知識の量と品質報告から読む深さを選びます。同じ条件で比較した別の2課題の結果を次の既定へ反映し、不足があれば採用を止めます。必須の見直しと原資料の回復を保ちます。[変更履歴](../../CHANGELOG_ja.md)と[手順](../../skills/shikii/references/recording.md#learn-a-reading-preference-from-checked-tasks)をご覧ください。
+同じプロジェクトへ書く本体を全て更新し、hookなしの場合は既存のプロジェクトで `shikii --init` を実行して作法も更新してください。その後、エージェントのセッション・ページ・MCPを起動し直します。既存の記録を保持し、原資料を残したメモリ更新作業をエージェントへ届けます。進捗は英語で表示します。詳しくは[記憶と学習](../memory-and-learning.ja.md)を参照してください。
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)
 

@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.29.0 — Improve procedures with less recording
 
 - Generate bounded investigation-procedure candidates from measured stalls; validate on other checked tasks, adopt cheaper guidance and restore the exact parent on regressions or unavailable support. Failed recipes require a different candidate and more validation.
 - Reuse one ending result and its evidence for optional quality feedback. Resume interrupted indexing and ordinary completion during prepare, retain immutable evidence bindings, and avoid repeating recording instructions and consumed execution checks.
@@ -11,6 +11,9 @@
 - Bound prepare responses, return meaningful exact excerpts, reuse same-receipt bodies, and accept concise unknown/unused memory assessments.
 - Keep internal agent grades off the human answer queue. Preserve rejected outcome provenance through replay and defer one-sided automatic tuning.
 - Review existing knowledge after a memory-policy upgrade with English progress and durable, source-preserving maintenance checkpoints.
+- Preserve feedback and pending wiki work across partial failures and new requests. Keep unknown-quality origin evidence out of held-out validation, and exclude executions that move to another search scope.
+- Apply response limits after recovery and HTTP encoding; make source cursors advance by complete UTF-8 characters. Concrete correction outcomes still require actual evidence.
+- Update every writer sharing project records, reopen agent sessions and restart the page and MCP. Without hooks, run `shikii --init` in the existing project to refresh skills. Earlier writers do not preserve the new recording and procedure progress; existing originals are retained.
 
 ## 0.28.1 — Compact MCP knowledge delivery
 
