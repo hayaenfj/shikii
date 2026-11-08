@@ -28,7 +28,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, resolv
 	item := workItem{Kind: "result-recovery", Ref: c.Ref}
 	pending := w.Reasoning.PendingResults[c.Ref]
 	if pending == nil && w.Result != nil && w.Result.Source == c.Ref && w.Result.Ready {
-		if w.Reasoning.Finish != nil && w.Reasoning.Finish.Generation != w.Reasoning.Generation {
+		if w.Reasoning.Finish != nil && w.Reasoning.Finish.Generation != w.Reasoning.Generation && w.Result.PreviousFinish != w.Reasoning.Finish.Key {
 			return item, errors.New("work changed after the saved finish; record the changed result")
 		}
 		material, e := book.ReadSources([]string{c.Ref})
@@ -126,8 +126,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, resolv
 		for _, ref := range evidence {
 			if strings.HasPrefix(ref, "source:") {
 				ids = append(ids, strings.TrimPrefix(ref, "source:"))
-			} else if original.Sufficient != nil {
-				return item, errors.New("procedure quality needs captured check evidence")
+
 			}
 		}
 		proof := []notebook.Source{}

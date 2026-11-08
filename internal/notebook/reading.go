@@ -167,6 +167,35 @@ func readingJSON(content string) (any, bool) {
 // Canonicalize values without converting exact JSON numbers to floating point.
 // Numbers retain a coefficient and exponent; even huge powers are never expanded.
 func readingValueIdentity(value any) (string, error) {
+	var present func(any) bool
+	present = func(v any) bool {
+		switch x := v.(type) {
+		case nil:
+			return false
+		case string:
+			return ValidAssistanceText(x, true)
+		case []any:
+			for _, item := range x {
+				if present(item) {
+					return true
+				}
+			}
+			return false
+		case map[string]any:
+			for _, item := range x {
+				if present(item) {
+					return true
+				}
+			}
+			return false
+		default:
+			return true
+		}
+	}
+	if !present(value) {
+		return "", errors.New("quality evidence needs an actual observed result")
+	}
+
 	var normalize func(any) (any, error)
 	normalize = func(v any) (any, error) {
 		switch x := v.(type) {

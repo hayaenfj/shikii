@@ -24,13 +24,15 @@ type ProcedureConfig struct {
 	Compact     int    `json:"compact"`
 }
 type ProcedureStatus struct {
-	Baseline   ProcedureConfig `json:"-"`
-	Source     string          `json:"source,omitempty"`
-	Status     string          `json:"status"`
-	Policy     string          `json:"policy"`
-	Cases      int             `json:"cases"`
-	Required   int             `json:"required"`
-	SavedBytes int             `json:"saved_bytes,omitempty"`
+	Ineligible    bool            `json:"ineligible,omitempty"`
+	QualityNotice string          `json:"quality_notice,omitempty"`
+	Baseline      ProcedureConfig `json:"-"`
+	Source        string          `json:"source,omitempty"`
+	Status        string          `json:"status"`
+	Policy        string          `json:"policy"`
+	Cases         int             `json:"cases"`
+	Required      int             `json:"required"`
+	SavedBytes    int             `json:"saved_bytes,omitempty"`
 }
 type ProcedureTrace struct {
 	Baseline      ProcedureConfig `json:"baseline"`
@@ -46,6 +48,7 @@ type ProcedureTrace struct {
 	Safe          bool            `json:"safe"`
 }
 type ProcedureSample struct {
+	Ineligible bool           `json:"ineligible,omitempty"`
 	Trace      ProcedureTrace `json:"trace"`
 	Sufficient *bool          `json:"sufficient,omitempty"`
 	Evidence   []Source       `json:"evidence,omitempty"`
@@ -336,7 +339,7 @@ func (b Book) procedureExecutionCurrent(ref Source) bool {
 		return false
 	}
 	var s ProcedureSample
-	if json.Unmarshal([]byte(o.Content), &s) != nil {
+	if json.Unmarshal([]byte(o.Content), &s) != nil || s.Ineligible {
 		return false
 	}
 	_, e = b.procedureEvidence(s)
@@ -367,7 +370,9 @@ func (b Book) captureProcedureExecution(s ProcedureSample) (Source, error) {
 	return refs[0], nil
 }
 
-func (b Book) procedureEvidence(s ProcedureSample) ([]string, error) {
+var errProcedureQuality = errors.New("procedure quality evidence is ineligible")
+
+func (b Book) procedureSources(s ProcedureSample) ([]Observation, error) {
 	if !idPattern.MatchString(s.Snapshot.ID) || !validOutcomeHash(s.Snapshot.Hash) {
 		return nil, errors.New("invalid original procedure result source")
 	}
@@ -384,7 +389,7 @@ func (b Book) procedureEvidence(s ProcedureSample) ([]string, error) {
 	if json.Unmarshal([]byte(o.Content), &report) != nil || (report.Sufficient == nil) != (s.Sufficient == nil) || report.Sufficient != nil && *report.Sufficient != *s.Sufficient {
 		return nil, errors.New("procedure quality must match its original report")
 	}
-	ids := []string{}
+	observations := []Observation{}
 	for _, ref := range s.Evidence {
 		if !idPattern.MatchString(ref.ID) || !validOutcomeHash(ref.Hash) {
 			return nil, errors.New("invalid procedure check source")
@@ -393,8 +398,20 @@ func (b Book) procedureEvidence(s ProcedureSample) ([]string, error) {
 		if e != nil {
 			return nil, e
 		}
+		observations = append(observations, o)
+	}
+	return observations, nil
+}
+
+func (b Book) procedureEvidence(s ProcedureSample) ([]string, error) {
+	observations, e := b.procedureSources(s)
+	if e != nil {
+		return nil, e
+	}
+	ids := []string{}
+	for _, o := range observations {
 		if o.Kind == "human" && s.Sufficient != nil {
-			return nil, errors.New("human intent alone cannot certify a procedure execution")
+			return nil, errProcedureQuality
 		}
 		d := ReadingDetails{}
 		if s.Sufficient != nil {
@@ -410,12 +427,12 @@ func (b Book) procedureEvidence(s ProcedureSample) ([]string, error) {
 		}
 		id, e := readingQualityIdentity(o.Content, d)
 		if e != nil {
-			return nil, e
+			return nil, errProcedureQuality
 		}
 		ids = append(ids, id)
 	}
 	if s.Sufficient != nil && len(ids) == 0 {
-		return nil, errors.New("explicit procedure quality needs captured check evidence")
+		return nil, errProcedureQuality
 	}
 	return ids, nil
 }
@@ -442,10 +459,13 @@ func (b Book) RecordProcedure(s ProcedureSample) (view *ProcedureStatus, retErr 
 	if !idPattern.MatchString(s.Trace.Work) || !idPattern.MatchString(s.Trace.Case) || s.Trace.BaselineBytes < 0 || s.Trace.BaselineBytes > 16<<20 || s.Trace.ActualBytes < 0 || s.Trace.ActualBytes > 16<<20 || len(s.Evidence) > 4 {
 		return nil, errors.New("invalid bounded procedure execution")
 	}
+	// Eligibility is computed from checked originals, never accepted from callers.
+	s.Ineligible = false
 	ids, e := b.procedureEvidence(s)
-	if e != nil {
+	if e != nil && !errors.Is(e, errProcedureQuality) {
 		return nil, e
 	}
+	s.Ineligible = e != nil
 	if !b.procedureCurrent(s.Trace.Basis) {
 		v := ProcedureStatus{Status: "stale", Policy: DefaultProcedure().ID}
 		return &v, nil
@@ -457,8 +477,21 @@ func (b Book) RecordProcedure(s ProcedureSample) (view *ProcedureStatus, retErr 
 	defer func() {
 		if retErr == nil && view != nil {
 			view.Source = execution.ID
+			if s.Ineligible {
+				view.Ineligible = true
+				view.QualityNotice = "The original report is saved; its evidence cannot establish procedure quality. Report an actual check in a later result when available."
+			}
 		}
 	}()
+	costRegression := s.Trace.Config.Compact > 0 && s.Trace.Stalls > 0 && s.Trace.BaselineBytes > 0 && s.Trace.ActualBytes > s.Trace.BaselineBytes
+	failed := !s.Trace.Safe || costRegression || !s.Ineligible && s.Sufficient != nil && !*s.Sufficient
+	if s.Ineligible && !failed {
+		status := "ungraded"
+		if s.Sufficient != nil {
+			status = "ineligible"
+		}
+		return &ProcedureStatus{Status: status, Policy: s.Trace.Config.ID}, nil
+	}
 	if s.Trace.Mixed {
 		return &ProcedureStatus{Status: "mixed", Policy: DefaultProcedure().ID}, nil
 	}
@@ -509,8 +542,6 @@ func (b Book) RecordProcedure(s ProcedureSample) (view *ProcedureStatus, retErr 
 	} else {
 		l.Seen[s.Snapshot.ID] = signature
 	}
-	costRegression := s.Trace.Config.Compact > 0 && s.Trace.Stalls > 0 && s.Trace.BaselineBytes > 0 && s.Trace.ActualBytes > s.Trace.BaselineBytes
-	failed := s.Sufficient != nil && !*s.Sufficient || !s.Trace.Safe || costRegression
 	transitioned := false
 	if !l.Limited && failed {
 		if p := l.Candidate; p != nil && s.Trace.Config.ID == p.Config.ID {
@@ -523,7 +554,7 @@ func (b Book) RecordProcedure(s ProcedureSample) (view *ProcedureStatus, retErr 
 			l.Candidate = nil
 			l.Failures++
 		}
-	} else if !l.Limited && s.Sufficient != nil && *s.Sufficient {
+	} else if !l.Limited && !s.Ineligible && s.Sufficient != nil && *s.Sufficient {
 		if p := l.Candidate; p != nil && p.Config.ID == s.Trace.Config.ID && p.Exposures[s.Trace.Work] == s.Trace.Case && p.Origin != s.Trace.Case && s.Trace.BaselineBytes > s.Trace.ActualBytes && !containsProcedureEvidence(*p, ids) {
 			seen := false
 			for _, x := range p.Support {
@@ -544,7 +575,7 @@ func (b Book) RecordProcedure(s ProcedureSample) (view *ProcedureStatus, retErr 
 	}
 	// Generate a new bounded recipe from actual stalls. After failure a different
 	// recipe needs more held-out checks; the failed recipe is never resurrected.
-	if !transitioned && !l.Limited && !failed && l.Candidate == nil && s.Trace.Stalls >= 2 && s.Trace.Config.ID == l.Active.ID && l.Active.Compact < 2 && len(l.History) < 4 {
+	if !transitioned && !l.Limited && !failed && !s.Ineligible && l.Candidate == nil && s.Trace.Stalls >= 2 && s.Trace.Config.ID == l.Active.ID && l.Active.Compact < 2 && len(l.History) < 4 {
 		level := l.Active.Compact + 1
 		for _, old := range l.History {
 			level = max(level, old.Config.Compact+1)

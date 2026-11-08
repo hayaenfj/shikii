@@ -57,3 +57,16 @@ func TestReadingQualityJSONNumbersKeepExactValues(t *testing.T) {
 		t.Fatal("integer precision was lost")
 	}
 }
+
+func TestReadingQualityRequiresAnActualObservedValue(t *testing.T) {
+	for _, content := range []string{"null", `""`, `"   "`, " \n ", `{"observed":"null"}`, `{"observed":"\"\""}`, `{"observed":[]}`, `{"observed":{}}`, `{"observed":{"checks":[null,""]}}`} {
+		if _, e := readingQualityIdentity(content, ReadingDetails{}); e == nil {
+			t.Errorf("an empty result cannot support quality: %s", content)
+		}
+	}
+	for _, content := range []string{"false", "0", `{"observed":{"checks":[0,false]}}`, "A checked condition is present."} {
+		if _, e := readingQualityIdentity(content, ReadingDetails{}); e != nil {
+			t.Fatal("a concrete observed value remains eligible", content, e)
+		}
+	}
+}

@@ -246,9 +246,16 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		}
 		sourceBudget := max(4096, budget-4096)
 		if req.responseSize != nil {
-			sourceBudget = max(4096, budget/3-4096)
+			measure := func(page any) int {
+				part := page.(map[string]any)
+				minimal := map[string]any{"receipt": req.Receipt, "knowledge": entries, "how_to_record": continuedWorkHowTo, "source": part, "source_query": map[string]any{"operation": "prepare", "work": map[string]any{"receipt": req.Receipt, "query": query, "cursor": part["next_cursor"]}}}
+				// Leave space for bounded status and omission/recovery metadata.
+				return req.responseSize(minimal) + 1536
+			}
+			sourceMaterial, err = book.ReadSourcesPageMeasured([]string{query}, req.Cursor, budget, measure)
+		} else {
+			sourceMaterial, err = book.ReadSourcesPage([]string{query}, req.Cursor, sourceBudget)
 		}
-		sourceMaterial, err = book.ReadSourcesPage([]string{query}, req.Cursor, sourceBudget)
 		if err != nil {
 			return nil, err
 		}

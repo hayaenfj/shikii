@@ -37,6 +37,10 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		return workItem{Kind: "result", Ref: "result"}, err
 	}
 	signature := workHash(c)
+	previousFinish := ""
+	if w.Reasoning.Finish != nil {
+		previousFinish = w.Reasoning.Finish.Key
+	}
 	if w.Result != nil && w.Result.Signature != signature {
 		w.Result = nil
 		w.Reasoning.Result = nil
@@ -61,11 +65,13 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 			}
 			if slices.Equal(bound, w.Result.Evidence) {
 				id = w.Result.Source
+				previousFinish = w.Result.PreviousFinish
 			} else {
 				evidenceVersion = "result evidence " + workHash(bound)
 			}
 		} else {
 			id = w.Result.Source
+			previousFinish = w.Result.PreviousFinish
 		}
 	}
 	if id == "" {
@@ -76,7 +82,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		return item, err
 	}
 	w.Sources["result"] = id
-	w.Result = &workCompletionRef{Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
+	w.Result = &workCompletionRef{PreviousFinish: previousFinish, Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
 	w.Reasoning.Result = w.Result
 	if w.Reasoning.PendingResults == nil {
 		w.Reasoning.PendingResults = map[string]*workResultRecovery{}

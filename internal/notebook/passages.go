@@ -127,37 +127,18 @@ func Orient(p Page, context string, budget int) KnowledgeOrientation {
 		}
 		from = end
 	}
-	// Mask interpreted bytes without changing offsets, so an earlier history
-	// passage cannot return a second time as an unclassified current candidate.
-	masked := []byte(p.Body)
-	for i := range masked {
-		if covered[i] {
-			masked[i] = ' '
+	// Select whole original units before filtering classified spans. Cutting a
+	// unit around a saved phrase would return a severed sentence or join text
+	// that was never adjacent. Keep that unit for exact full-text recovery.
+	for _, x := range FocusExcerpts(p.Body, context, max(0, budget)) {
+		overlaps := false
+		for i := x.Start; i < x.End; i++ {
+			overlaps = overlaps || covered[i]
 		}
-	}
-	for _, x := range FocusExcerpts(string(masked), context, max(0, budget)) {
-		// Trim masking at the edges and recover only untouched source bytes.
-		for x.Start < x.End && covered[x.Start] {
-			x.Start++
-		}
-		for x.End > x.Start && covered[x.End-1] {
-			x.End--
-		}
-		if x.Start == x.End {
+		if overlaps {
 			continue
 		}
-		// A chunk can straddle a classified span; keep only its first untouched
-		// run, preserving exact original bytes instead of emitting masked text.
-		for i := x.Start; i < x.End; i++ {
-			if covered[i] {
-				x.End = i
-				break
-			}
-		}
-		x.Text = p.Body[x.Start:x.End]
-		if strings.TrimSpace(x.Text) != "" {
-			v.Unclassified = append(v.Unclassified, x)
-		}
+		v.Unclassified = append(v.Unclassified, x)
 	}
 	v.NeedsInterpretation = v.NeedsInterpretation || len(v.Current) == 0 || v.Omitted
 	return v

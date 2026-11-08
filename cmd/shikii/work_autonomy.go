@@ -175,9 +175,6 @@ func recordProcedureFeedback(book notebook.Book, w *workState, c *workCompletion
 		ids := []string{}
 		for _, ref := range w.Result.Evidence {
 			if !strings.HasPrefix(ref, "source:") {
-				if original.Sufficient != nil {
-					return nil, errors.New("procedure quality needs captured check evidence, not an article")
-				}
 				continue
 			}
 			ids = append(ids, strings.TrimPrefix(ref, "source:"))
@@ -241,6 +238,12 @@ func recoverProcedureFeedback(book notebook.Book, w *workState, save func() erro
 			pending = pending || p.Pending != nil && p.Indexed != p.Pending.Snapshot.ID
 			if _, e := resumeProcedureFeedback(book, p, save, commit); e != nil {
 				return e
+			}
+			if p.View != nil && p.View.Ineligible && p.Pending != nil && p.Pending.Sufficient != nil && w.Result != nil && w.Result.Source == p.Pending.Snapshot.ID && !w.Result.Unresolved {
+				w.Result.Unresolved = true
+				if e := save(); e != nil {
+					return e
+				}
 			}
 		}
 	}

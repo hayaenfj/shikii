@@ -83,11 +83,12 @@ type workCompletion struct {
 	Remaining  string   `json:"remaining,omitempty"`
 }
 type workCompletionRef struct {
-	Unresolved bool     `json:"unresolved,omitempty"`
-	Signature  string   `json:"signature"`
-	Ready      bool     `json:"ready"`
-	Source     string   `json:"source"`
-	Evidence   []string `json:"evidence,omitempty"`
+	PreviousFinish string   `json:"previous_finish,omitempty"`
+	Unresolved     bool     `json:"unresolved,omitempty"`
+	Signature      string   `json:"signature"`
+	Ready          bool     `json:"ready"`
+	Source         string   `json:"source"`
+	Evidence       []string `json:"evidence,omitempty"`
 }
 type workRequest struct {
 	responseSize      func(any) int          // Host transport sizing; never supplied by the caller.
@@ -322,7 +323,7 @@ func saveWorkContext(dir *os.Root, name, scope, turn string, w *workState, insta
 	retainCollectiveSeen(s, w)
 	s.Planning.Work = w
 	if err := writeWorkSession(dir, name, s); err != nil {
-		if errors.Is(err, errHookSessionCapacity) && w.Reasoning != nil && (len(w.Reasoning.RequiredNotes) > 0 || len(w.Reasoning.PendingCaptures) > 0 || trialPendingCount(w.Reasoning) > 0) {
+		if errors.Is(err, errHookSessionCapacity) && w.Reasoning != nil && (len(w.Reasoning.RequiredNotes) > 0 || len(w.Reasoning.PendingCaptures) > 0 || trialPendingCount(w.Reasoning) > 0 || pendingResultCount(w.Reasoning) > 0 || pendingWorkProcedure(w)) {
 			book := notebook.Book{Root: filepath.Dir(dir.Name()), Scope: scope}
 			if recoveryErr := archiveWorkCapacity(book, s); recoveryErr != nil {
 				// Keep original note/capture payloads in the compact turn state

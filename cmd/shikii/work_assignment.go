@@ -306,6 +306,20 @@ func prepareAssignment(root, scope string, dir *os.Root, a assignmentContext, re
 		}
 		base.Query = assignmentClip(base.Query, 1500)
 	}
+	// Reserve the mandatory assignment identity in the same transport budget
+	// before any knowledge is registered as delivered. Optional peer context
+	// is reduced afterward without changing those delivered article bodies.
+	minimumTeam := map[string]any{"assignment": a, "omitted": 999999999, "notice": assignmentNotice}
+	size := workPreparationSizer([]func(any) int{req.responseSize})
+	base.responseSize = func(value any) int {
+		original := value.(map[string]any)
+		copy := make(map[string]any, len(original)+1)
+		for key, v := range original {
+			copy[key] = v
+		}
+		copy["teamwork"] = minimumTeam
+		return size(copy)
+	}
 	value, err := prepareWork(root, scope, base)
 	if err != nil {
 		return nil, err
@@ -416,6 +430,36 @@ func prepareAssignment(root, scope string, dir *os.Root, a assignmentContext, re
 			team["coverage"] = coverage
 		default:
 			return nil, errors.New("assignment context exceeds 24 KiB; narrow the context")
+		}
+		omitted++
+		team["omitted"] = omitted
+	}
+	v["teamwork"] = team
+	budget, err := workOutputBudget(req.MaxBytes)
+	if err != nil {
+		return nil, err
+	}
+	for size(v)+1 > budget {
+		switch {
+		case len(reviews) > 0:
+			reviews = reviews[:len(reviews)-1]
+			team["procedure_reviews"] = reviews
+		case len(questions) > 0:
+			questions = questions[:len(questions)-1]
+			team["questions"] = questions
+		case len(coverage) > 0:
+			coverage = coverage[:len(coverage)-1]
+			team["coverage"] = coverage
+		case team["changes"] != nil:
+			delete(team, "changes")
+		default:
+			// Empty optional fields also occupy bytes in a small response.
+			delete(team, "coverage")
+			delete(team, "questions")
+			delete(team, "procedure_reviews")
+			if size(v)+1 > budget {
+				return nil, errors.New("assignment identity exceeds max_bytes; prepare with a larger response budget")
+			}
 		}
 		omitted++
 		team["omitted"] = omitted

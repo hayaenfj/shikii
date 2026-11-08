@@ -57,6 +57,12 @@ When an actual check is available, optionally add `sufficient:true` or `false` t
 result and reuse its existing captured evidence. Omission remains unknown; do not
 infer quality from task completion or delivery. A result and reading report in the
 same batch can share the checked quality/evidence. Conflicting grades are refused.
+An empty or unsupported quality result is saved as `ungraded` or `ineligible`,
+with a short notice, and contributes no support. An unsupported explicit grade
+leaves the ending assessment unresolved. It does not create a permanent storage
+retry: report a real later check when one is available. Missing or changed source
+material remains a recoverable error. Actual safety or cost regressions still
+restore the previous procedure.
 The host keeps task IDs, revisions, selected procedure and paired guidance-byte
 cost; no separate trial plan, comparison, long reflection or human grade is needed.
 

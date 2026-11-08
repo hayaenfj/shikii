@@ -2,6 +2,7 @@ package notebook
 
 import (
 	"encoding/json"
+	"os"
 	"sort"
 
 	"github.com/hayaenfj/shikii/internal/store"
@@ -23,9 +24,19 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 			retired[id] = true
 		}
 	}
+	// A frozen upgrade inventory must remain reviewable after source-preserving
+	// supersession. These reviews never reactivate retired knowledge in queries.
+	dir, err := b.directory(false, "pages")
+	if err != nil {
+		return nil, err
+	}
+	upgrade, err := readMemoryUpgrade(dir)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
 	active := tasks[:0]
 	for _, task := range tasks {
-		if !retired[task.PageID] {
+		if !retired[task.PageID] || !upgrade.Complete && upgrade.Targets[task.PageID] != "" {
 			active = append(active, task)
 		}
 	}

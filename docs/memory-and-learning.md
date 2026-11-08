@@ -22,7 +22,9 @@ recipe, a different recipe requires more validation. This changes project proced
 selection, without retraining a model or permitting arbitrary code changes.
 
 The agent can return an optional `result.sufficient` and reuse the evidence already
-sent with its one ending report. Unknown quality stays unknown. Candidates cannot
+sent with its one ending report. Unknown quality stays unknown. Empty or unsupported quality results cannot support validation; the original report is
+saved and its unverified grade stays unresolved without repeated storage retries.
+Candidates cannot
 edit the required checks, original evidence, evaluation rules or permissions.
 Repeated proof under another name cannot establish another validation task. The
 source-backed execution and evidence bindings remain available after session expiry.
