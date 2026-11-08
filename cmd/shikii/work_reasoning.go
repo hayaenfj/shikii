@@ -140,7 +140,7 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 	if trialPendingCount(r) > 0 {
 		v.Next = "Recover pending trial/comparison captures with the same reference. Cite challenged trial results in reasoning update or finish; a report is not proof of success."
 	}
-	if r.Result != nil && !v.Complete && r.Finish == nil {
+	if r.Result != nil && !v.Complete {
 		v.ResultSource = r.Result.Source
 		if r.Result.Ready {
 			v.Next = "Record result:{ref:<result_source>} to finish the saved report without repeating its body or pinned evidence."
@@ -445,6 +445,11 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 			Previous   *reasoningEntry    `json:"previous,omitempty"`
 			Finish     workReasoning      `json:"finish"`
 		}{r.Result, w.Sources["procedure"], r.PreparedAt, r.Start, r.Latest, bound}
+		if snapshot.Result != nil {
+			copy := *snapshot.Result
+			copy.ReviewGeneration = 0
+			snapshot.Result = &copy
+		}
 		content, _ := json.Marshal(snapshot)
 		_, source, err := captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Evidence-linked work judgment and ending review", Content: string(content), Reference: "work reasoning for turn " + r.TurnID}, save, commit)
 		if err != nil {

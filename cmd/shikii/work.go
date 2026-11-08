@@ -149,32 +149,33 @@ type workReply struct {
 	Reflection *reflectResult   `json:"reflection,omitempty"`
 }
 type workState struct {
-	Loop           *workLoopState                        `json:"loop,omitempty"`
-	Result         *workCompletionRef                    `json:"result,omitempty"`
-	NextPending    uint64                                `json:"next_pending,omitempty"`
-	ActiveNote     string                                `json:"-"`
-	Reasoning      *reasoningProgress                    `json:"reasoning,omitempty"`
-	Collective     *workCollective                       `json:"collective,omitempty"`
-	Replies        map[string]workReply                  `json:"replies"`
-	PendingOrigins map[string]string                     `json:"pending_origins"`
-	Nonce          string                                `json:"nonce"`
-	At             time.Time                             `json:"at"`
-	Standalone     bool                                  `json:"standalone,omitempty"`
-	Query          string                                `json:"query"`
-	Task           string                                `json:"task,omitempty"`
-	Current        string                                `json:"current,omitempty"`
-	Pages          []string                              `json:"pages,omitempty"`
-	Keys           map[string]string                     `json:"keys"`
-	Sources        map[string]string                     `json:"sources"`
-	Articles       map[string]store.KnowledgeReference   `json:"articles"`
-	Reviews        map[string]workReviewRef              `json:"reviews"`
-	Memory         map[string]workMemoryRef              `json:"memory"`
-	Maintenance    map[string]notebook.MaintenanceReview `json:"maintenance"`
-	Captures       map[string]workCapture                `json:"captures"`
-	Saved          map[string]workItem                   `json:"saved"`
-	Pending        map[string]notebook.Draft             `json:"pending"`
-	PendingKeys    map[string]string                     `json:"pending_keys"`
-	Expected       map[string]store.KnowledgeReference   `json:"expected"`
+	reviewingResult bool                                  // Trusted ending persistence; never decoded from input.
+	Loop            *workLoopState                        `json:"loop,omitempty"`
+	Result          *workCompletionRef                    `json:"result,omitempty"`
+	NextPending     uint64                                `json:"next_pending,omitempty"`
+	ActiveNote      string                                `json:"-"`
+	Reasoning       *reasoningProgress                    `json:"reasoning,omitempty"`
+	Collective      *workCollective                       `json:"collective,omitempty"`
+	Replies         map[string]workReply                  `json:"replies"`
+	PendingOrigins  map[string]string                     `json:"pending_origins"`
+	Nonce           string                                `json:"nonce"`
+	At              time.Time                             `json:"at"`
+	Standalone      bool                                  `json:"standalone,omitempty"`
+	Query           string                                `json:"query"`
+	Task            string                                `json:"task,omitempty"`
+	Current         string                                `json:"current,omitempty"`
+	Pages           []string                              `json:"pages,omitempty"`
+	Keys            map[string]string                     `json:"keys"`
+	Sources         map[string]string                     `json:"sources"`
+	Articles        map[string]store.KnowledgeReference   `json:"articles"`
+	Reviews         map[string]workReviewRef              `json:"reviews"`
+	Memory          map[string]workMemoryRef              `json:"memory"`
+	Maintenance     map[string]notebook.MaintenanceReview `json:"maintenance"`
+	Captures        map[string]workCapture                `json:"captures"`
+	Saved           map[string]workItem                   `json:"saved"`
+	Pending         map[string]notebook.Draft             `json:"pending"`
+	PendingKeys     map[string]string                     `json:"pending_keys"`
+	Expected        map[string]store.KnowledgeReference   `json:"expected"`
 }
 type workToken struct {
 	Session string `json:"s"`
@@ -317,6 +318,9 @@ func saveWorkContext(dir *os.Root, name, scope, turn string, w *workState, insta
 			if s.RitualRecovery != nil && !s.RitualRecovery.Pending {
 				s.RitualRecovery = nil
 			}
+		}
+		if w.reviewingResult && w.Result != nil && w.Result.Ready {
+			w.Result.ReviewGeneration = w.Reasoning.Generation
 		}
 		s.Reasoning = w.Reasoning
 	}

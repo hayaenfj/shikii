@@ -76,7 +76,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		return item, err
 	}
 	w.Sources["result"] = id
-	w.Result = &workCompletionRef{Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
+	w.Result = &workCompletionRef{ReviewGeneration: w.Reasoning.Generation, Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
 	w.Reasoning.Result = w.Result
 	if w.Reasoning.PendingResults == nil {
 		w.Reasoning.PendingResults = map[string]*workResultRecovery{}
@@ -126,6 +126,24 @@ func finishWorkCompletion(book notebook.Book, w *workState, resolve func([]strin
 	}
 	if len(w.Result.Evidence) > 0 && !trialBasisCurrent(book, w.Result.Evidence) {
 		return workItem{Kind: "reasoning", Ref: "reasoning"}, errors.New("the result evidence changed; read the current sources and report the changed result")
+	}
+	// Internal ending captures do not introduce new work evidence. Persist
+	// their generation with the reviewed scope in the same atomic session save.
+	previousReview := w.reviewingResult
+	w.reviewingResult = true
+	defer func() { w.reviewingResult = previousReview }()
+	keys := []string{}
+	for key, capture := range w.Captures {
+		if capture.ID == "" && capture.Original != nil {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		original := *w.Captures[key].Original
+		if _, _, e := captureWorkObservation(book, w, original, save, commit); e != nil {
+			return workItem{Kind: "reasoning", Ref: "reasoning"}, e
+		}
 	}
 	refs := []string{"result"}
 	if w.Sources["procedure"] != "" {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -113,13 +114,20 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		return e
 	})
 	book := notebook.Book{Root: root, Scope: scope}
+	if e := validateWorkQualityAgreement(book, w, req); e != nil {
+		return nil, e
+	}
 	reportSource := ""
+	bindingScope := ""
+	if req.Result != nil && req.Result.Ref != "" && w.Result != nil && !w.Result.Ready && w.Result.Source == req.Result.Ref && workResultReviewCurrent(w) {
+		bindingScope = w.Result.Source
+	}
 	// Ref-only repairs may advance bookkeeping for an already reviewed batch.
 	// New observations, reports, trials or changed decisions cannot do so.
 	recoveryReview := workResultReviewCurrent(w) && onlyWorkRecovery(req)
 	reviewStamped := false
 	stampReview := func() error {
-		if reviewStamped || w.Result == nil || !w.Result.Ready || reportSource != w.Result.Source && !recoveryReview {
+		if reviewStamped || w.Result == nil || reportSource != w.Result.Source && (!recoveryReview || !w.Result.Ready) {
 			return nil
 		}
 		if e := save(); e != nil {
@@ -220,7 +228,6 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		return sources, nil
 	}
 	if req.Result != nil {
-		repairingBinding := req.Result.Ref != "" && w.Result != nil && !w.Result.Ready && w.Result.Source == req.Result.Ref
 		var item workItem
 		var e error
 		if req.Result.Ref != "" {
@@ -230,9 +237,30 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		}
 		if e != nil {
 			item.Error = e.Error()
-		} else if w.Result != nil && w.Result.Ready && (req.Result.Ref == "" || repairingBinding) {
-			// A ready ref alone never expands the original report's scope.
+		}
+		if w.Result != nil && req.Result.Ref == "" && item.ID == w.Result.Source && w.Result.Signature == workHash(*req.Result) {
+			// The submitted report covers its accepted batch even while its
+			// original evidence binding is still unresolved.
 			reportSource = w.Result.Source
+		} else if e == nil && w.Result != nil && w.Result.Ready && bindingScope == w.Result.Source {
+			// A binding repair covers only its requested missing proof, never
+			// earlier unrelated evidence or other new work in this request.
+			repair := req
+			repair.Observations = nil
+			repair.Reading = nil
+			covered := onlyWorkRecovery(repair)
+			for _, id := range local {
+				used := slices.Contains(w.Result.Evidence, "source:"+id)
+				if req.Reading != nil && req.Reading.Ref == "" {
+					for _, ref := range req.Reading.Evidence {
+						used = used || local[ref] == id || w.Sources[ref] == id
+					}
+				}
+				covered = covered && used
+			}
+			if covered {
+				reportSource = w.Result.Source
+			}
 		}
 		add(item)
 		if halt() {

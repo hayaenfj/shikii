@@ -40,7 +40,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, resolv
 		if len(originals) != 1 || originals[0].Kind != "agent" || originals[0].Title != "Work result and remaining conditions" || json.Unmarshal([]byte(originals[0].Content), &original) != nil || workHash(original) != w.Result.Signature {
 			return item, errors.New("the original saved result changed or is unavailable")
 		}
-		if !trialBasisCurrent(book, w.Result.Evidence) {
+		if len(w.Result.Evidence) > 0 && !trialBasisCurrent(book, w.Result.Evidence) {
 			return item, errors.New("the saved result evidence changed; record its corrected result")
 		}
 		if len(c.Evidence) > 0 {
