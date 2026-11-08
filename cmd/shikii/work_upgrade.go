@@ -8,7 +8,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-const memoryUpgradeNext = "Review each supplied page against its original sources and current behavior. Save necessary corrections through ordinary notes/patches; then record maintenance using the latest returned ref. Retain valid knowledge with a checked reason. Never turn internal agent grades into required human questions. Fetch the next batch with prepare:{receipt,query:memory-upgrade}; continue until complete, or report the actual blocked sources. At the receipt's article limit, prepare a new context; durable progress is retained. Reading alone does not complete review."
+const memoryUpgradeNext = "Review one batch per task (at most two articles), against original sources and current behavior. Save necessary corrections, then maintenance with the latest returned ref and a checked reason. Preserve sources, preferences and history; reading alone is not review. Resume remaining articles on the next task from durable progress. An explicit request to finish the upgrade may continue with prepare:{receipt,query:memory-upgrade}. Report actual blocked sources; never replace missing evidence with deletion or human grading."
 
 func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]string, includeComplete bool) (map[string]any, []store.KnowledgeReference, error) {
 	if projectInitVersion(book.Root) == 0 {
@@ -44,6 +44,9 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 		read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
 		mref := "upgrade-" + task.PageID
 		w.Maintenance[mref] = notebook.MaintenanceReview{PageID: p.ID, Revision: p.Revision, Key: task.Key}
+		// Keep the shared semantic policy once in this response. The task still
+		// carries its pinned revision and current review reference.
+		task.NextAction = "Follow memory_upgrade.policy for this article; save maintenance with its latest maintenance_ref after any edits."
 		pages = append(pages, map[string]any{"ref": ref, "article": p, "orientation": notebook.Orient(p, notebook.MemoryUpgradePolicy, 1200), "task": task, "maintenance_ref": mref, "body_included": true})
 	}
 	value := map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pages": pages, "unavailable_sources": u.Blocked, "policy": u.Policy}
@@ -70,7 +73,7 @@ func memoryUpgradeHook(root, scope string, s *hookSession) (hookOut, string, err
 	key := fmt.Sprintf("%s:%s:%d/%d", u.Epoch, u.Status, u.Reviewed, u.Total)
 	out := hookOut{}
 	if u.Status != "complete" && s.MemoryUpgrade != key {
-		out.Context = "shikii: Upgrading memory… At a break in work, prepare the current receipt with query memory-upgrade. Follow its bounded review tasks and retain original sources, preferences and history."
+		out.Context = "shikii: Upgrading memory… At a break in work, prepare the current receipt with query memory-upgrade. Review one batch (at most two articles) this task, then resume next task. Retain original sources, preferences and history."
 	}
 	if s.MemoryUpgrade != key {
 		out.System = fmt.Sprintf("shikii: %s (%d/%d)", u.Message, u.Reviewed, u.Total)

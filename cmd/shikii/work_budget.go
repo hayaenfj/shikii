@@ -67,6 +67,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		ref := e["ref"].(string)
 		if w.Loop != nil {
 			delete(w.Loop.Bodies, p.ID+"@"+p.Revision)
+			delete(w.Loop.Excerpts, p.ID+"@"+p.Revision)
 		}
 		short := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "title": p.Title, "summary": p.Lesson, "applies_to": p.AppliesTo, "rationale": p.Rationale, "orientation": orientation, "body_included": false, "attention_limited": true, "query": e["query"], "reading_notice": "Incomplete original text. Check conditions, history, counterexamples and changed premises through this exact revision query before relying on missing material."}
 		for key := range e {

@@ -2,6 +2,11 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- Reuse identical same-receipt excerpts without treating omitted text as a full read; preserve changed conditions, explicit depth and pinned recovery.
+- Limit routine memory upgrades to one two-article batch per task and resume saved progress on the next task. Keep the full upgrade available on explicit request and share its policy once per response.
+
 ## 0.29.0 — Improve procedures with less recording
 
 - Generate bounded investigation-procedure candidates from measured stalls; validate on other checked tasks, adopt cheaper guidance and restore the exact parent on regressions or unavailable support. Failed recipes require a different candidate and more validation.

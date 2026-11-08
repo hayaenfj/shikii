@@ -581,7 +581,10 @@ result:{changed,checked?,evidence?,remaining?}と必要な記事更新・振り�
 せず、人にしか決められない具体的な選択を尋ねます。
 
 prepareのmax_bytesで応答量を制限できます。省略時は同じ版の取得先を残し、
-文の区切りを保つ引用と同じreceiptの本文再利用で再読を減らします。記憶の未使用・
+文の区切りを保つ引用と同じreceiptの本文・同一抜粋の再利用で再読を減らします。
+抜粋の再利用だけで全文を取得した扱いにはしません。記憶の未使用・
 不明に説明文を作る必要はありません。記憶の方針が変わる更新ではUpgrading memory…
 と進捗を出し、導入先のエージェントが出典・好み・履歴を保って少しずつ確認し、
-中断から再開します。[記録の契約](../skills/shikii/references/recording.md#ordinary-work-takes-two-calls)を参照してください。
+中断から再開します。通常は1依頼につき最大2記事の1組だけ確認し、続きは次の依頼で
+再開します。記憶の更新を完了する明示依頼では残りの組も続けられます。
+[記録の契約](../skills/shikii/references/recording.md#ordinary-work-takes-two-calls)を参照してください。

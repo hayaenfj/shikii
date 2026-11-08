@@ -34,7 +34,7 @@ Use it at five moments:
 
 ## Read, maintain and recover
 
-- During a memory-policy upgrade, follow `memory_upgrade` and its `memory-upgrade` query at a break in work. Review originals and current conditions in bounded batches; preserve preferences, sources and history. Save necessary edits, then use the latest maintenance ref. Resume durable progress until complete or explicitly blocked; reading alone is not review.
+- During a memory-policy upgrade, follow `memory_upgrade` at a break in work: review one batch of at most two articles per task, then resume durable progress on the next task. Preserve preferences, sources and history. Save necessary edits, then use the latest maintenance ref. An explicit upgrade request may continue batches until complete or blocked; reading alone is not review.
 - Read each article's `orientation` before mixed chronology: current, history, recheck and counterexamples. Unclassified, omitted or changed premises remain unresolved. Compare a counterexample's conditions before treating it as a contradiction. Save supported `notes[].passages` with exact unique quotes; revise quotes with body edits.
 - After a corrected failure, inspect `procedure_reviews`. Notes return fresh review refs: check the saved change, then record `maintenance` with the latest ref and reason. Without an edit, use the original ref. An edit alone does not settle review; stale refs are refused.
 - Complete requested reflection before ending: read originals and human corrections, use prepared review/memory/maintenance refs, fix errors until `complete:true`, and do what `left` lists. Delivery, silence or task success alone does not show memory helped. See [review.md](references/review.md).

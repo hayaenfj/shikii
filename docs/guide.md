@@ -617,8 +617,11 @@ grades do not ask people to score agents. A concrete task choice may still need
 the person's answer.
 
 Optional max_bytes bounds a prepare response; omitted bodies retain exact recovery
-queries. Sentence-boundary excerpts and same-receipt body reuse reduce rereading.
+queries. Sentence-boundary excerpts and same-receipt body or identical-excerpt reuse
+reduce rereading; reused excerpts never establish a full-body read.
 Memory unknown/unused assessments need no invented explanation. A shipped memory
 policy upgrade shows Upgrading memory… and lets the installed agent review existing
-knowledge in resumable batches, preserving sources, preferences and history.
+knowledge in resumable batches, preserving sources, preferences and history. Ordinary
+tasks review at most one two-article batch, then resume on the next task. An explicit
+request to finish the upgrade can continue the remaining batches.
 See [the recording contract](../skills/shikii/references/recording.md#ordinary-work-takes-two-calls).

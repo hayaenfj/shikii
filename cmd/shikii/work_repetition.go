@@ -13,6 +13,7 @@ import (
 // permission, or independent experiments. The existing article limit bounds it.
 type workLoopState struct {
 	Bodies   map[string]string `json:"bodies"`
+	Excerpts map[string]string `json:"excerpts,omitempty"`
 	Query    string            `json:"query"`
 	Basis    string            `json:"basis"`
 	Progress string            `json:"progress"`
@@ -20,12 +21,13 @@ type workLoopState struct {
 }
 
 type workLoopAdvice struct {
-	Action          string   `json:"action"`
-	SameResultReads int      `json:"same_result_reads"`
-	ReusedRefs      []string `json:"reused_refs,omitempty"`
-	ReusedBodyBytes int      `json:"reused_body_bytes"`
-	RepeatedTrials  []string `json:"repeated_trials,omitempty"`
-	Next            string   `json:"next"`
+	Action             string   `json:"action"`
+	SameResultReads    int      `json:"same_result_reads"`
+	ReusedRefs         []string `json:"reused_refs,omitempty"`
+	ReusedBodyBytes    int      `json:"reused_body_bytes"`
+	ReusedExcerptBytes int      `json:"reused_excerpt_bytes,omitempty"`
+	RepeatedTrials     []string `json:"repeated_trials,omitempty"`
+	Next               string   `json:"next"`
 }
 
 func repeatedWorkTrials(book notebook.Book, r *reasoningProgress) []string {
@@ -68,6 +70,9 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 	if l.Bodies == nil {
 		l.Bodies = map[string]string{}
 	}
+	if l.Excerpts == nil {
+		l.Excerpts = map[string]string{}
+	}
 	a := &workLoopAdvice{Action: "continue", Next: "Use new evidence to choose the next action. Required reviews and explicit source recovery still apply."}
 	a.RepeatedTrials = repeatedWorkTrials(book, w.Reasoning)
 	// Explicit recovery and consult/reuse preserve their complete requested
@@ -85,9 +90,19 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 		signature := workHash([]any{key, e["learning_context"], e["recheck"]})
 		identities = append(identities, signature)
 		full := e["body_included"] == true
+		// Partial delivery is reusable only when its complete payload matches,
+		// including selected passages, offsets, conditions and live warnings.
+		// It must never become evidence of a full-body read.
+		excerpts, _ := e["body_excerpts"].([]notebook.TextExcerpt)
+		excerptSignature := ""
+		if !full && len(excerpts) > 0 {
+			excerptSignature = workHash(e)
+		}
 		canReuse := full && req.Receipt != "" && broad && req.Reasoning == nil &&
 			l.Bodies[key] == signature && !loopPremiseChanged(e)
-		if canReuse {
+		canReuseExcerpts := excerptSignature != "" && req.Receipt != "" && broad && req.Reasoning == nil &&
+			l.Excerpts[key] == excerptSignature && !loopPremiseChanged(e)
+		if canReuse || canReuseExcerpts {
 			before := workContextSize(e)
 			reused := maps.Clone(e)
 			delete(reused, "article")
@@ -95,6 +110,10 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 			delete(reused, "body_excerpts")
 			reused["body_included"], reused["reused"] = false, true
 			reused["reading_notice"] = "Reuse the full body supplied earlier under this receipt. Its exact revision query remains available. Delivery does not establish use or quality."
+			if canReuseExcerpts {
+				reused["reused_content"] = "excerpts"
+				reused["reading_notice"] = "Reuse only the exact excerpts supplied earlier under this receipt. Missing body text remains unread; use the exact revision query for recovery. Delivery does not establish use or quality."
+			}
 			ref, _ := e["ref"].(string)
 			delta := before - workContextSize(reused)
 			// Leave enough room for the complete advice envelope as well as
@@ -104,11 +123,18 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 				maps.Copy(e, reused)
 				delete(quoted, ref)
 				a.ReusedRefs = append(a.ReusedRefs, ref)
-				a.ReusedBodyBytes += delta
+				if canReuseExcerpts {
+					a.ReusedExcerptBytes += delta
+				} else {
+					a.ReusedBodyBytes += delta
+				}
 			}
 		}
 		if full && (len(l.Bodies) < 64 || l.Bodies[key] != "") {
 			l.Bodies[key] = signature
+		}
+		if excerptSignature != "" && (len(l.Excerpts) < 64 || l.Excerpts[key] != "") {
+			l.Excerpts[key] = excerptSignature
 		}
 	}
 	if broad {
@@ -134,7 +160,7 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 	}
 	if len(a.ReusedRefs) > 0 {
 		a.Action = "reuse_previous"
-		a.Next = "Reuse the earlier full-body references under this receipt instead of repeating the same search. Inspect current conditions; explicit recovery remains available."
+		a.Next = "Reuse the earlier evidence references under this receipt instead of repeating the same search. Inspect current conditions; explicit recovery remains available."
 		if w.Reasoning != nil && w.Reasoning.Reading != nil {
 			// A changed delivery procedure must not teach a reading-depth
 			// preference by silently changing its comparison conditions.

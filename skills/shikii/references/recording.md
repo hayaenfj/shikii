@@ -108,7 +108,8 @@ Use exact article/source queries only when necessary. Omitted text is not suppli
 or read; unavailable conditions, counterexamples and premise warnings remain
 unresolved. Quoted excerpts keep sentence/line boundaries and byte offsets; a unit
 that cannot fit is omitted instead of returning a heading fragment. Same-receipt
-full bodies are reused for repeated broad reads; explicit pinned recovery, changed
+full bodies and identical excerpts are reused for repeated broad reads; excerpt
+reuse never establishes a full-body read. Explicit pinned recovery, changed
 premises and mandatory checks retain priority. Repeated searches or challenged
 trials without progress suggest changing the method, never skipping required work.
 
@@ -120,8 +121,9 @@ sources with current behavior, retain still-valid knowledge, correct obsolete
 conditions, classify superseded procedures as history, and consolidate duplicates
 through ordinary source-preserving edits/replaces. Preserve explicit preferences
 and historical human decisions. Review the latest returned maintenance ref after
-an edit; reading alone never advances progress. Continue batches, renewing the
-context at its article limit; durable progress survives restarts. Unavailable
+an edit; reading alone never advances progress. Review one batch per ordinary task,
+then resume on the next task; durable progress survives restarts. An explicit request
+to finish the upgrade may continue batches, renewing context at its article limit. Unavailable
 sources stay blocked and must not be deleted to claim completion. Hosts running
 assigned child agents do not automatically schedule this project-wide migration.
 
