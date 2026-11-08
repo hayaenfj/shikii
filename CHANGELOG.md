@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.29.2 — Share reading notices and reuse unchanged related reviews
 
 - Share repeated host reading notices verbatim within each prepare response when the complete transport becomes smaller; preserve article text, quotations, incomplete status and recovery queries.
 - Reuse actual related-page reviews when all stored content and evidence are identical and only version lineage differs. Keep edited-page, new-evidence, premise and periodic checks, strict submission keys, and conservative behavior for older checkpoints.

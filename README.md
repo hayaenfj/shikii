@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-1286%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.29.1-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.29.2-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.29.1 reuses identical excerpts within the same task and spreads routine memory upgrades across tasks, at most two articles at a time. Exact source recovery, changed conditions and review requirements remain available. Procedure learning and the ordinary two-call recording workflow continue unchanged. See the [changelog](CHANGELOG.md) and [recording workflow](skills/shikii/references/recording.md).
+Version 0.29.2 shares repeated reading notices verbatim within each response and reuses related-page reviews when all stored content is identical and only version lineage differs. Exact source recovery, changed conditions, new evidence and required reviews remain available. Procedure learning and the ordinary two-call recording workflow continue unchanged. See the [changelog](CHANGELOG.md) and [recording workflow](skills/shikii/references/recording.md).
 
 Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 
@@ -157,7 +157,7 @@ Procedure reuse returns at most two candidate outcomes, prioritizing current con
 
 With the hooks installed, two moments of every turn are kept: the request before the agent starts, and the reply and the changed files after it ends. The next human message closes the pair. A message that only continues the previous request ("ok", "continue", "sounds good") is attached to it instead; the agent decides this in its pre-start organizing, and a fixed list of acknowledgements is the fallback. The agent writes lessons with sources from them, and shikii delivers relevant lessons before similar work. In reflection the agent reports whether a delivered lesson helped. Saved assessments also prioritize lessons for review: repeated unused deliveries at the same entry point, or a harmful delivery, bring the lesson back with the decisions and evidence. The agent checks its sources before changing it, and a no-change review also settles that evidence. Unknown and older-revision assessments do not count as negative feedback.
 
-In 0.29.1, repeated searches under one receipt reuse identical supplied excerpts while preserving conditions and exact-revision recovery. Routine memory upgrades review one batch of at most two articles per task and resume saved progress on the next task; an explicit upgrade request may continue all batches.
+In 0.29.2, repeated reading notices share their original text within the same response when it becomes smaller. Related-page version lineage alone does not reopen a review when every stored content and evidence field is identical; edited articles, changed premises and new evidence still require review. Same-receipt excerpt reuse, exact-revision recovery and routine two-article memory-upgrade batches remain available.
 
 In 0.20.0, `work prepare` brings together current knowledge and pending evidence. `work record` saves the agent's judgment, observations and notes using one receipt, retaining exact source and article references internally. Partial successes can be retried without duplicating saved evidence. Ambiguous placement returns content for the agent to reconcile; interpretation and save checks remain explicit. See the [recording workflow](skills/shikii/references/recording.md).
 
