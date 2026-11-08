@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -10,6 +11,12 @@ import (
 
 func validateWorkCompletion(c *workCompletion) error {
 	if c == nil {
+		return nil
+	}
+	if c.Ref != "" {
+		if !sourceIDText(c.Ref) || len(c.Evidence) > 4 || c.Changed != "" || c.Checked != "" || c.Remaining != "" || c.Sufficient != nil {
+			return errors.New("result recovery needs only ref and actual evidence refs")
+		}
 		return nil
 	}
 	if !assignmentText(c.Changed, 12000, true) || !assignmentText(c.Checked, 12000, false) || !assignmentText(c.Remaining, 4000, false) || len(c.Evidence) > 4 {
@@ -37,7 +44,33 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 			return workItem{Kind: "result", Ref: "result"}, err
 		}
 	}
-	_, id, err := captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Work result and remaining conditions", Content: string(data)}, save, commit)
+	id, evidenceVersion := "", ""
+	if w.Result != nil && w.Result.Signature == signature {
+		material, e := book.ReadSources([]string{w.Result.Source})
+		if e != nil {
+			return workItem{Kind: "result", Ref: "result"}, e
+		}
+		originals := material["observations"].([]notebook.Observation)
+		if len(originals) != 1 || originals[0].Title != "Work result and remaining conditions" || originals[0].Content != string(data) {
+			return workItem{Kind: "result", Ref: "result"}, errors.New("the saved result changed or is unavailable")
+		}
+		if w.Result.Ready {
+			bound, e := bindWorkEvidence(book, w, c.Evidence, resolve)
+			if e != nil {
+				return workItem{Kind: "result", Ref: "result", ID: w.Result.Source}, e
+			}
+			if slices.Equal(bound, w.Result.Evidence) {
+				id = w.Result.Source
+			} else {
+				evidenceVersion = "result evidence " + workHash(bound)
+			}
+		} else {
+			id = w.Result.Source
+		}
+	}
+	if id == "" {
+		_, id, err = captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Work result and remaining conditions", Content: string(data), Reference: evidenceVersion}, save, commit)
+	}
 	item := workItem{Kind: "result", Ref: "result", ID: id}
 	if err != nil {
 		return item, err
@@ -45,6 +78,20 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 	w.Sources["result"] = id
 	w.Result = &workCompletionRef{Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
 	w.Reasoning.Result = w.Result
+	if w.Reasoning.PendingResults == nil {
+		w.Reasoning.PendingResults = map[string]*workResultRecovery{}
+	}
+	if w.Reasoning.PendingResults[id] == nil {
+		pending := &workResultRecovery{Result: w.Result, Turn: w.Reasoning.TurnID}
+		if p := w.Reasoning.Procedure; p != nil {
+			copy := *p
+			copy.Pending = nil
+			copy.Indexed = ""
+			copy.CloseReport = false
+			pending.Procedure = &copy
+		}
+		w.Reasoning.PendingResults[id] = pending
+	}
 	if err = save(); err != nil {
 		return item, err
 	}
@@ -54,6 +101,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 	}
 	w.Result.Evidence = evidence
 	w.Result.Ready = true
+	delete(w.Reasoning.PendingResults, id)
 	return item, save()
 }
 

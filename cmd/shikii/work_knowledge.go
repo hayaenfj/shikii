@@ -244,7 +244,11 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		if e != nil {
 			return nil, e
 		}
-		sourceMaterial, err = book.ReadSourcesPage([]string{query}, req.Cursor, max(4096, budget-4096))
+		sourceBudget := max(4096, budget-4096)
+		if req.responseSize != nil {
+			sourceBudget = max(4096, budget/3-4096)
+		}
+		sourceMaterial, err = book.ReadSourcesPage([]string{query}, req.Cursor, sourceBudget)
 		if err != nil {
 			return nil, err
 		}
@@ -321,7 +325,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	}
 	reply["collective"] = collective
 	reply["knowledge"] = entries
-	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes)
+	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +338,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	recoverPreparedProcedure(root, scope, dir, name, w, token, reply)
-	if err = limitRecoveredPreparation(reply, req.MaxBytes); err != nil {
+	if err = limitRecoveredPreparation(reply, req.MaxBytes, req.responseSize); err != nil {
 		return nil, err
 	}
 	return reply, nil

@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // HostStageLimit keeps host assignment and reading persistence bounds identical.
@@ -175,7 +177,7 @@ func readingValueIdentity(value any) (string, error) {
 			}
 			return []any{"number", n}, nil
 		case string:
-			return []any{"text", strings.Join(strings.Fields(x), " ")}, nil
+			return []any{"text", strings.Join(strings.Fields(norm.NFC.String(x)), " ")}, nil
 		case []any:
 			out := make([]any, len(x))
 			for i, item := range x {
@@ -192,6 +194,10 @@ func readingValueIdentity(value any) (string, error) {
 				v, err := normalize(item)
 				if err != nil {
 					return nil, err
+				}
+				key = norm.NFC.String(key)
+				if _, exists := out[key]; exists {
+					return nil, errors.New("quality evidence has ambiguous Unicode-equivalent keys")
 				}
 				out[key] = v
 			}

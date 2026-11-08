@@ -73,6 +73,9 @@ func prepareProcedureAdvice(book notebook.Book, w *workState, req workRequest, e
 	if req.Proposal != "" || req.Conditions != "" || !explicit && (readingTopic(req.Query) != p.Trace.Basis.Topic || workHash(readingArticles(entries)) != workHash(p.Trace.Basis.Articles)) {
 		p.Mixed = true
 	}
+	if len(context) > 0 && workHash(context[0])[:16] != p.Trace.Case || len(context) > 1 && context[1] != p.Trace.Basis.Stage {
+		p.Mixed = true
+	}
 	p.Advertise = false
 	if p.Mixed || explicit || req.Cursor != "" {
 		return
@@ -105,6 +108,8 @@ func prepareProcedureAdvice(book notebook.Book, w *workState, req workRequest, e
 	}
 	if p.Trace.BaselineBytes > 16<<20 || p.Trace.ActualBytes > 16<<20 {
 		p.Trace.Safe = false
+		p.Trace.BaselineBytes = min(p.Trace.BaselineBytes, 16<<20)
+		p.Trace.ActualBytes = min(p.Trace.ActualBytes, 16<<20)
 	}
 }
 
@@ -139,15 +144,18 @@ func procedureAttention(w *workState) map[string]any {
 }
 
 func recordProcedureFeedback(book notebook.Book, w *workState, c *workCompletion, closeReport bool, save func() error, commit workCommitter) (*notebook.ProcedureStatus, error) {
-	if w.Reasoning == nil || w.Reasoning.Procedure == nil || w.Result == nil || !w.Result.Ready {
+	if w.Reasoning == nil {
 		return nil, nil
+	}
+	if w.Reasoning.Procedure == nil || w.Result == nil || !w.Result.Ready {
+		return nil, recoverProcedureFeedback(book, w, save, commit)
 	}
 	p := w.Reasoning.Procedure
 	if p.View != nil && p.View.Status == "limited" {
-		return p.View, nil
+		return p.View, recoverProcedureFeedback(book, w, save, commit)
 	}
 	if p.Trace.Stalls == 0 && p.Trace.Config.ID == notebook.DefaultProcedure().ID && p.View == nil && !p.Mixed {
-		return nil, nil
+		return nil, recoverProcedureFeedback(book, w, save, commit)
 	}
 	if p.Pending == nil || p.Pending.Snapshot.ID != w.Result.Source {
 		snapshot, e := book.OutcomeSources([]string{w.Result.Source})
@@ -252,17 +260,19 @@ func recoverProcedureFeedback(book notebook.Book, w *workState, save func() erro
 	return save()
 }
 
-func pendingWorkProcedure(w *workState) bool {
-	if w.Reasoning == nil {
-		return false
+func pendingProcedureCount(r *reasoningProgress) int {
+	if r == nil {
+		return 0
 	}
-	for _, p := range append(w.Reasoning.PendingProcedures, w.Reasoning.Procedure) {
+	n := 0
+	for _, p := range append(r.PendingProcedures, r.Procedure) {
 		if p != nil && p.Pending != nil && p.Indexed != p.Pending.Snapshot.ID {
-			return true
+			n++
 		}
 	}
-	return false
+	return n
 }
+func pendingWorkProcedure(w *workState) bool { return pendingProcedureCount(w.Reasoning) > 0 }
 
 func recoverPreparedProcedure(root, scope string, dir *os.Root, name string, w *workState, token workToken, reply map[string]any) {
 	save := func() error { return saveWorkState(dir, name, scope, token.Turn, w, false) }
@@ -271,7 +281,7 @@ func recoverPreparedProcedure(root, scope string, dir *os.Root, name string, w *
 	e := recoverProcedureFeedback(book, w, save, commit)
 	if e == nil && w.Reasoning != nil && w.Reasoning.Procedure != nil {
 		p := w.Reasoning.Procedure
-		if p.CloseReport && p.Pending != nil && p.Indexed == p.Pending.Snapshot.ID && w.Result != nil && w.Result.Source == p.Indexed && !w.Reasoning.WikiPending && !reasoningPublicationsPending(w) && len(w.Reasoning.PendingCaptures) == 0 && trialPendingCount(w.Reasoning) == 0 {
+		if p.CloseReport && p.Pending != nil && p.Indexed == p.Pending.Snapshot.ID && w.Result != nil && w.Result.Source == p.Indexed && !w.Reasoning.WikiPending && !reasoningPublicationsPending(w) && len(w.Reasoning.PendingCaptures) == 0 && trialPendingCount(w.Reasoning) == 0 && pendingResultCount(w.Reasoning) == 0 {
 			if p.View != nil && p.View.Source != "" {
 				w.Sources["procedure"] = p.View.Source
 			}

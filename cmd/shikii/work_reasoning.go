@@ -33,6 +33,7 @@ type reasoningEntry struct {
 }
 
 type reasoningProgress struct {
+	PendingResults    map[string]*workResultRecovery `json:"pending_results,omitempty"`
 	Procedure         *workProcedureProgress         `json:"procedure,omitempty"`
 	PendingProcedures []*workProcedureProgress       `json:"pending_procedures,omitempty"`
 	Result            *workCompletionRef             `json:"result,omitempty"`
@@ -59,6 +60,9 @@ type reasoningProgress struct {
 }
 
 type reasoningStatus struct {
+	ResultSource       string                 `json:"result_source,omitempty"`
+	PendingResults     map[string]string      `json:"pending_results,omitempty"`
+	PendingProcedures  int                    `json:"pending_procedures,omitempty"`
 	Readings           []*workReadingState    `json:"reading_executions,omitempty"`
 	StaleTrials        []string               `json:"stale_trials,omitempty"`
 	Comparisons        []*workComparisonView  `json:"comparisons,omitempty"`
@@ -103,6 +107,15 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 			v.PendingNoteTargets[ref] = target
 		}
 	}
+	for id, pending := range r.PendingResults {
+		if !pending.Complete {
+			if v.PendingResults == nil {
+				v.PendingResults = map[string]string{}
+			}
+			v.PendingResults[id] = pending.Turn
+		}
+	}
+	v.PendingProcedures = pendingProcedureCount(r)
 	v.PendingSource = r.PendingSource
 	v.PendingCaptures = r.PendingCaptures
 	v.Complete = v.Started && r.Finish != nil && r.Finish.Generation == r.Generation && !v.WikiPending
@@ -111,7 +124,7 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 		v.Comparisons = append(v.Comparisons, c)
 	}
 	slices.SortFunc(v.Comparisons, func(a, b *workComparisonView) int { return strings.Compare(a.Ref, b.Ref) })
-	if trialPendingCount(r) > 0 {
+	if trialPendingCount(r) > 0 || len(v.PendingResults) > 0 || v.PendingProcedures > 0 {
 		v.Complete = false
 	}
 	if v.WikiPending {
@@ -126,6 +139,18 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 	}
 	if trialPendingCount(r) > 0 {
 		v.Next = "Recover pending trial/comparison captures with the same reference. Cite challenged trial results in reasoning update or finish; a report is not proof of success."
+	}
+	if r.Result != nil && !v.Complete && r.Finish == nil {
+		v.ResultSource = r.Result.Source
+		if r.Result.Ready {
+			v.Next = "Record result:{ref:<result_source>} to finish the saved report without repeating its body or pinned evidence."
+		}
+	}
+	if len(v.PendingResults) > 0 {
+		v.Next = "Repair each pending_results source with result:{ref:<source>,evidence:[actual refs]}; the original body and quality stay unchanged. Recovery does not finish a different task."
+	}
+	if v.PendingProcedures > 0 {
+		v.Next = "Prepare with this receipt to recover saved procedure feedback; completion waits for indexing."
 	}
 	return v
 }
@@ -196,7 +221,12 @@ func reasoningLeft(r *reasoningProgress) int {
 		pending = 1
 	}
 	n += pending
-	n += trialPendingCount(r)
+	n += trialPendingCount(r) + pendingProcedureCount(r)
+	for _, pending := range r.PendingResults {
+		if !pending.Complete {
+			n++
+		}
+	}
 	return n
 }
 
@@ -345,6 +375,16 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 	}
 	if input.Phase != "start" && r.Start == nil && r.PreparedAt.IsZero() {
 		return item, errors.New("save reasoning start before update or finish")
+	}
+	if input.Phase == "finish" {
+		for _, pending := range r.PendingResults {
+			if !pending.Complete {
+				return item, errors.New("repair pending result evidence before reasoning finish")
+			}
+		}
+		if pendingProcedureCount(r) > 0 {
+			return item, errors.New("recover pending procedure feedback before reasoning finish")
+		}
 	}
 	if input.Phase == "finish" && w.Result != nil && !w.Result.Ready {
 		return item, errors.New("repair the saved result's evidence before reasoning finish")

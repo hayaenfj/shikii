@@ -209,6 +209,8 @@ func nextTurnReasoning(previous *reasoningProgress, turn string) *reasoningProgr
 	}
 	// Keep publication obligations and their immutable original bindings, but
 	// do not carry the old task's completion or current human source.
+	r.PendingResults = previous.PendingResults
+	trimResultRecoveryHistory(r)
 	r.RequiredNotes = previous.RequiredNotes
 	r.PendingCaptures = previous.PendingCaptures
 	r.PendingSource = previous.PendingSource

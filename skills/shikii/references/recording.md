@@ -493,3 +493,34 @@ Compare an explicit `reasoning:{depth:"focused"}` preparation with another depth
 An omission suspends that depth under the same scope, including after a later successful report. A verified alternative can replace it. Explicit depth, unresolved work, pending saves, changed premises and exact full-source recovery retain priority. A new article revision, topic or stage does not inherit the preference. Host stage names retain the same 200 UTF-8 byte bound used by assignment preparation. The search journal keeps at most 128 reading executions within its existing 1 MiB bound; losing old supporting evidence can return the selection to the default. Counterexamples are retained before successful reports; if distinct counterexamples exceed the fixed retention budget, automatic preferences are disabled conservatively. No background experiments, model calls or calibration labels are created.
 
 Recover an interrupted execution using only `reading:{ref:"<returned reading ref>"}` with the same active work receipt; it retains the original cost, evidence, source and time. The execution remains pending until its index is confirmed. Quality feedback is optional and does not replace the required reasoning review. Accepted pending executions survive a subsequent human turn in the same project: prepare the current turn, then recover the original `reading:{ref}` with its new receipt. The original details, source binding and capture time remain attached to the original execution; the old receipt stays invalid. Snapshot capture and index publication share one saved-response slot. A matching chiten adapter supplies the reading choice/cost, measures raw-source recovery through the same receipt, and returns the checked quality report with its ordinary observed result. If an additional delivery fails, including an aggregate output limit or a later missing source, that bundle loses reading-quality eligibility. Recovery remains available; later successful reads keep the exclusion. Prepare fresh work for a new measured comparison. This conservatively excludes attempted host reads that were not completely delivered to the child. For a raw source, chiten follows cursors on the host, returns all pages together and measures every page under the same receipt. Recovery has fixed limits of 32 pages per source and 384 KiB for the combined encoded delivery (matching the existing work-response budget), with no extra model turn or new setting. A nonprogressing cursor, an exhausted bound or an incomplete delivery fails explicitly and excludes that bundle from reading comparisons.
+
+### Repair evidence after a new request
+
+Unresolved report bindings remain under `reasoning.pending_results`, keyed by
+original source ID and first turn. Repair with
+`result:{ref:"<original source ID>",evidence:["new1"]}` and the actual missing
+check in the same batch. The original narrative and quality are retained; the
+recovery diagnostic pins the supplied evidence. A confirmed retry needs only
+`result:{ref:"<original source ID>"}`. A changed or missing proof is refused.
+Repair of an earlier task does not finish the current request. Saved procedure
+feedback must also finish indexing before completion. Recent successful repair
+receipts are bounded to 64; unresolved originals are never evicted to make room.
+
+`max_bytes` bounds the final successful JSON response, including CLI/HTTP newlines
+and MCP's text, complete `structuredContent` and JSON-RPC envelope. Transport
+sizing happens before quote/read registration. If even the reference inventory
+cannot fit, preparation fails explicitly. Advice omitted from the response cannot
+supply a procedure validation or claimed savings. Hitting the procedure cost bound
+selects the safe fallback, without inventing quality or retrying an invalid sample.
+Unicode canonical equivalents share a comparison identity; their originals remain
+unchanged. Retiring an upgrade target does not substitute for source checks and
+its actual semantic maintenance.
+Deleted upgrade targets with valid retained sources are reported separately as
+`withdrawn`, not semantically reviewed. Missing originals remain blocked after
+deletion. Frozen completion retains this distinction after restart.
+Session cleanup retains accepted unresolved reports, publication/review work and
+procedure feedback beyond receipt expiry. Prepare a fresh receipt to recover it;
+expired receipts stay invalid. Cleanup shares the writer lock and retains records
+it cannot verify. Resolved inactive sessions still expire. A ready saved report
+can also finish by its source ref after a new preparation; changed work needs a
+new report rather than replaying an old finish.

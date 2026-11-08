@@ -24,8 +24,9 @@ func workOutputBudget(n int) (int, error) {
 // Bound the complete JSON response, rather than each nested component alone.
 // Omitted bodies keep exact recovery queries. Never register unseen text as a
 // delivered quote or teach a reading preference from a shortened response.
-func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any, quoted map[string]string, requested int) ([]store.KnowledgeReference, error) {
+func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any, quoted map[string]string, requested int, sizing ...func(any) int) ([]store.KnowledgeReference, error) {
 	// Reserve the newline added by CLI and HTTP JSON encoders.
+	size := workPreparationSizer(sizing)
 	before := suppliedPreparationBytes(reply)
 	budget, err := workOutputBudget(requested)
 	if err != nil {
@@ -34,11 +35,15 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	responseBudget := budget
 	budget--
 	// Reserve bounded recovery metadata before committing any quote/read state.
-	if pendingWorkProcedure(w) {
-		budget -= 512
+	if pendingWorkProcedure(w) || w.Reasoning != nil && w.Reasoning.Procedure != nil && w.Reasoning.Procedure.CloseReport {
+		reserve := 512
+		if len(sizing) > 0 && sizing[0] != nil {
+			reserve = 2048
+		}
+		budget -= reserve
 	}
 	entries, _ := reply["knowledge"].([]any)
-	if workContextSize(reply) <= budget {
+	if size(reply) <= budget {
 		return suppliedPreparationReads(reply), nil
 	}
 	omitted := []string{}
@@ -90,7 +95,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	for _, field := range []string{"reflection_context", "collective", "knowledge_context", "context_notice", "memory_upgrade", "conversation", "conversation_context"} {
-		if workContextSize(reply) <= budget {
+		if size(reply) <= budget {
 			break
 		}
 		if reply[field] != nil {
@@ -98,7 +103,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 			omitted = append(omitted, field)
 		}
 	}
-	if workContextSize(reply) > budget {
+	if size(reply) > budget {
 		for _, raw := range entries {
 			e := raw.(map[string]any)
 			ref := e["ref"].(string)
@@ -112,9 +117,9 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 			e["reading_notice"] = "Original text omitted; read the exact revision query, including its conditions and exceptions."
 		}
 	}
-	if workContextSize(reply) > budget-1000 {
+	if size(reply) > budget-1000 {
 		for _, field := range []string{"reasoning", "reading", "attention", "task", "task_context", "pending", "observations"} {
-			if workContextSize(reply) <= budget-1000 {
+			if size(reply) <= budget-1000 {
 				break
 			}
 			delete(reply, field)
@@ -122,8 +127,11 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	reply["output"] = map[string]any{"limited": true, "max_bytes": responseBudget, "omitted": omitted, "next_action": "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."}
-	if workContextSize(reply) > budget {
+	if size(reply) > budget {
 		return nil, errors.New("the reference inventory exceeds max_bytes; prepare with a larger response budget")
+	}
+	if _, delivered := reply["attention"]; !delivered && w.Reasoning.Procedure != nil {
+		w.Reasoning.Procedure.Mixed = true
 	}
 	if w.Reasoning.Reading != nil {
 		w.Reasoning.Reading.Mixed = true
@@ -175,19 +183,27 @@ func suppliedPreparationBytes(reply map[string]any) int {
 
 // Recovery may update status after the atomic context save. It cannot change
 // delivered knowledge: only its newly produced judgment details can be reduced.
-func limitRecoveredPreparation(reply map[string]any, requested int) error {
+func limitRecoveredPreparation(reply map[string]any, requested int, sizing ...func(any) int) error {
+	size := workPreparationSizer(sizing)
 	budget, err := workOutputBudget(requested)
 	if err != nil {
 		return err
 	}
-	if workContextSize(reply)+1 <= budget {
+	if size(reply)+1 <= budget {
 		return nil
 	}
 	if r, ok := reply["reasoning"].(reasoningStatus); ok {
 		reply["reasoning"] = map[string]any{"required": r.Required, "started": r.Started, "complete": r.Complete, "wiki_pending": r.WikiPending, "details_omitted": true, "next_action": "Prepare with a larger max_bytes to read saved judgment and trial details."}
 	}
-	if workContextSize(reply)+1 > budget {
+	if size(reply)+1 > budget {
 		return errors.New("recovery metadata exceeds max_bytes; prepare with a larger response budget")
 	}
 	return nil
+}
+
+func workPreparationSizer(sizing []func(any) int) func(any) int {
+	if len(sizing) > 0 && sizing[0] != nil {
+		return sizing[0]
+	}
+	return workContextSize
 }

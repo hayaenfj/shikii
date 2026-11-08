@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -456,6 +457,11 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 	case "tools/list":
 		return reply(map[string]any{"tools": mcpTools})
 	case "tools/call":
+		// Tool calls need a response ID. An unacknowledged notification cannot
+		// create work state, claim knowledge delivery or perform a write.
+		if isNotification {
+			return nil
+		}
 		var p struct {
 			Name      string          `json:"name"`
 			Arguments json.RawMessage `json:"arguments"`
@@ -479,7 +485,10 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 		if herr != nil {
 			return reply(toolError(herr))
 		}
-		code, body, err := callTool(target, p.Name, args)
+		code, body, err := callTool(target, p.Name, args, func(value any) int {
+			data, _ := json.Marshal(value)
+			return workContextSize(reply(toolResult(http.StatusOK, data, p.Name)))
+		})
 		if err != nil {
 			return fail(-32602, err.Error())
 		}
@@ -489,8 +498,10 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 	}
 }
 
+type workResponseSizeKey struct{}
+
 // callTool maps a tool name to an HTTP handler. It returns the HTTP status and the JSON body.
-func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, error) {
+func callTool(h http.Handler, name string, args json.RawMessage, sizing ...func(any) int) (int, []byte, error) {
 	if len(args) == 0 {
 		args = []byte("{}")
 	}
@@ -542,6 +553,9 @@ func callTool(h http.Handler, name string, args json.RawMessage) (int, []byte, e
 	}
 	req := httptest.NewRequest(method, path, body)
 	req.Header.Set("Content-Type", "application/json")
+	if len(sizing) > 0 && sizing[0] != nil {
+		req = req.WithContext(context.WithValue(req.Context(), workResponseSizeKey{}, sizing[0]))
+	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec.Code, rec.Body.Bytes(), nil

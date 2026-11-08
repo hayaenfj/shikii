@@ -420,21 +420,104 @@ func cut(s string, n int) string {
 	return s[:n]
 }
 
-// pruneSessions removes old session records (.json and .files) (7 days).
+// Expired receipts stay invalid, but accepted unresolved work must remain
+// recoverable from a fresh preparation. Cleanup shares every writer's lock.
 func pruneSessions(agent string) {
-	dir := filepath.Join(agent, "sessions")
-	entries, err := os.ReadDir(dir)
+	directory := filepath.Join(agent, "sessions")
+	root, err := os.OpenRoot(directory)
 	if err != nil {
 		return
 	}
-	for _, e := range entries {
-		// A shared lock must retain its inode while another process may hold or open it.
-		if strings.HasSuffix(e.Name(), ".lock") {
-			continue
+	defer root.Close()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasSuffix(name, ".json") {
+			pruneSessionRecord(root, name)
+		} else if strings.HasSuffix(name, ".files") {
+			pruneSessionRecord(root, strings.TrimSuffix(name, ".files")+".json")
 		}
-		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > hookSessionTTL {
-			_ = os.Remove(filepath.Join(dir, e.Name()))
+	}
+}
+
+func pruneSessionRecord(root *os.Root, name string) {
+	lock, err := root.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	if err != nil {
+		return
+	}
+	defer lock.Close()
+	info, err := lock.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return
+	}
+	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		return
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err == nil {
+		info, statErr := f.Stat()
+		_ = f.Close()
+		if statErr != nil || !info.Mode().IsRegular() || time.Since(info.ModTime()) <= hookSessionTTL {
+			return
 		}
+		session, readErr := readPlanningSession(root, name)
+		if readErr != nil {
+			return
+		} // Unverifiable work is never silently discarded.
+		r := session.Reasoning
+		if r != nil {
+			for _, v := range r.Readings {
+				if v == nil {
+					return
+				}
+			}
+			for _, v := range r.Trials {
+				if v == nil {
+					return
+				}
+			}
+			for _, v := range r.Comparisons {
+				if v == nil {
+					return
+				}
+			}
+			for _, v := range r.PendingResults {
+				if v == nil {
+					return
+				}
+			}
+			for _, v := range r.PendingProcedures {
+				if v == nil {
+					return
+				}
+			}
+		}
+		if r != nil && (r.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0 || trialPendingCount(r) > 0 || pendingResultCount(r) > 0 || pendingProcedureCount(r) > 0 || r.Result != nil && (!r.Result.Ready || r.Finish == nil || r.Finish.Generation != r.Generation) || r.Procedure != nil && r.Procedure.CloseReport) {
+			return
+		}
+		if session.Planning != nil && session.Planning.Work != nil && reasoningPublicationsPending(session.Planning.Work) {
+			return
+		}
+		if root.Remove(name) != nil {
+			return
+		}
+	} else if !os.IsNotExist(err) {
+		return
+	}
+	// The tree listing is a cache. Remove only an old orphan, under the same lock.
+	cache := strings.TrimSuffix(name, ".json") + ".files"
+	f, err = root.OpenFile(cache, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return
+	}
+	info, err = f.Stat()
+	_ = f.Close()
+	if err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > hookSessionTTL {
+		_ = root.Remove(cache)
 	}
 }
 

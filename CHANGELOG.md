@@ -11,7 +11,7 @@
 - Bound prepare responses, return meaningful exact excerpts, reuse same-receipt bodies, and accept concise unknown/unused memory assessments.
 - Keep internal agent grades off the human answer queue. Preserve rejected outcome provenance through replay and defer one-sided automatic tuning.
 - Review existing knowledge after a memory-policy upgrade with English progress and durable, source-preserving maintenance checkpoints.
-- Preserve feedback and pending wiki work across partial failures and new requests. Keep unknown-quality origin evidence out of held-out validation, and exclude executions that move to another search scope.
+- Preserve result bindings, feedback and pending wiki work across partial failures, new requests and receipt expiry. Repair evidence by source ref without repeating a saved report. Keep unknown-quality origin evidence out of held-out validation, and exclude executions that move to another search scope.
 - Apply response limits after recovery and HTTP encoding; make source cursors advance by complete UTF-8 characters. Concrete correction outcomes still require actual evidence.
 - Update every writer sharing project records, reopen agent sessions and restart the page and MCP. Without hooks, run `shikii --init` in the existing project to refresh skills. Earlier writers do not preserve the new recording and procedure progress; existing originals are retained.
 

@@ -26,7 +26,7 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 		for _, task := range u.Tasks {
 			heads = append(heads, map[string]any{"id": task.PageID, "revision": task.Revision})
 		}
-		return map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "pending_pages": heads, "unavailable_sources": u.Blocked, "next_action": "At a break in the task, prepare this receipt with query memory-upgrade to review existing knowledge in bounded batches. " + memoryUpgradeNext}, nil, nil
+		return map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pending_pages": heads, "unavailable_sources": u.Blocked, "next_action": "At a break in the task, prepare this receipt with query memory-upgrade to review existing knowledge in bounded batches. " + memoryUpgradeNext}, nil, nil
 	}
 	pages := []any{}
 	read := []store.KnowledgeReference{}
@@ -46,7 +46,7 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 		w.Maintenance[mref] = notebook.MaintenanceReview{PageID: p.ID, Revision: p.Revision, Key: task.Key}
 		pages = append(pages, map[string]any{"ref": ref, "article": p, "orientation": notebook.Orient(p, notebook.MemoryUpgradePolicy, 1200), "task": task, "maintenance_ref": mref, "body_included": true})
 	}
-	value := map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "pages": pages, "unavailable_sources": u.Blocked, "policy": u.Policy}
+	value := map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pages": pages, "unavailable_sources": u.Blocked, "policy": u.Policy}
 	if u.Status != "complete" {
 		value["next_action"] = memoryUpgradeNext
 	}

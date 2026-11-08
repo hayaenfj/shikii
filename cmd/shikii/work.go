@@ -75,6 +75,7 @@ type workOutcome struct {
 	Sources    []string `json:"sources"`
 }
 type workCompletion struct {
+	Ref        string   `json:"ref,omitempty"`
 	Sufficient *bool    `json:"sufficient,omitempty"`
 	Changed    string   `json:"changed"`
 	Checked    string   `json:"checked,omitempty"`
@@ -89,6 +90,7 @@ type workCompletionRef struct {
 	Evidence   []string `json:"evidence,omitempty"`
 }
 type workRequest struct {
+	responseSize      func(any) int          // Host transport sizing; never supplied by the caller.
 	MaxBytes          int                    `json:"max_bytes,omitempty"`
 	Result            *workCompletion        `json:"result,omitempty"`
 	Reading           *workReadingFeedback   `json:"reading,omitempty"`
@@ -618,7 +620,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	reply := map[string]any{"memory_upgrade": memoryUpgrade, "reading": w.Reasoning.Reading, "attention": attention, "reasoning": currentReasoningView(book, w.Reasoning), "planning_required": !standalone && !s.Planning.ReasoningOnly, "collective": collective, "receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "task_context": taskContext, "agent_supplied_task": standalone, "conversation": conversation, "conversation_context": conversationContext, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": compactWorkHowTo}
-	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes)
+	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {
 		return nil, err
 	}
@@ -633,7 +635,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	recoverPreparedProcedure(root, scope, dir, name, w, workToken{req.SessionID, req.TurnID, w.Nonce}, reply)
-	if err = limitRecoveredPreparation(reply, req.MaxBytes); err != nil {
+	if err = limitRecoveredPreparation(reply, req.MaxBytes, req.responseSize); err != nil {
 		return nil, err
 	}
 	return reply, nil

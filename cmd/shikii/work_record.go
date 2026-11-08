@@ -32,7 +32,7 @@ func validateWorkRecording(req workRequest) error {
 }
 
 func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
-	if req.Result != nil && req.Reading != nil && req.Reading.Ref == "" {
+	if req.Result != nil && req.Result.Ref == "" && req.Reading != nil && req.Reading.Ref == "" {
 		if req.Result.Sufficient != nil && req.Reading.Sufficient != nil && *req.Result.Sufficient != *req.Reading.Sufficient {
 			return nil, errors.New("result and reading quality disagree; retain the actual checked result")
 		}
@@ -117,7 +117,24 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		result.Storage = map[string]any{"status": "unconfirmed"}
 	}
 	defer func() {
-		workStorageState(w, &result)
+		if req.Result != nil && req.Result.Ref != "" {
+			pending := w.Reasoning.PendingResults[req.Result.Ref]
+			if pending != nil {
+				status := "saved-pending"
+				if pending.Complete && result.Complete {
+					status = "saved"
+				}
+				result.Storage = map[string]any{"status": status, "result_source": req.Result.Ref, "binding_source": pending.Source}
+				if status != "saved" {
+					result.NextAction = "Retry result with only the pending ref and actual evidence refs; do not repeat its original body."
+				}
+			}
+			if pending == nil && w.Result != nil && w.Result.Ready && w.Result.Source == req.Result.Ref {
+				workStorageState(w, &result)
+			}
+		} else {
+			workStorageState(w, &result)
+		}
 		if retErr == nil {
 			reply = result
 		}
@@ -179,7 +196,13 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		return sources, nil
 	}
 	if req.Result != nil {
-		item, e := captureWorkCompletion(book, w, *req.Result, resolveSources, save, commit)
+		var item workItem
+		var e error
+		if req.Result.Ref != "" {
+			item, e = repairWorkResult(book, w, *req.Result, resolveSources, save, commit)
+		} else {
+			item, e = captureWorkCompletion(book, w, *req.Result, resolveSources, save, commit)
+		}
 		if e != nil {
 			item.Error = e.Error()
 		}

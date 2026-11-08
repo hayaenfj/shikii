@@ -246,6 +246,9 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("wiki accepts exactly one JSON object"))
 		return
 	}
+	if req.Work != nil {
+		req.Work.responseSize, _ = r.Context().Value(workResponseSizeKey{}).(func(any) int)
+	}
 	result, err := runNotebook(s.o.storeDir, s.o.projectScope, req)
 	if errors.Is(err, notebook.ErrStaleCursor) || errors.Is(err, notebook.ErrArticleConflict) { // the page reads again from the start
 		writeErr(w, http.StatusConflict, err)
