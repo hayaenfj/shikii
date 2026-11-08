@@ -346,6 +346,9 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 	if input.Phase != "start" && r.Start == nil && r.PreparedAt.IsZero() {
 		return item, errors.New("save reasoning start before update or finish")
 	}
+	if input.Phase == "finish" && w.Result != nil && !w.Result.Ready {
+		return item, errors.New("repair the saved result's evidence before reasoning finish")
+	}
 	if input.Phase == "finish" && (r.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0 || reasoningPublicationsPending(w)) {
 		return item, errors.New("resolve pending wiki notes, captures and uncertain publications before reasoning finish")
 	}

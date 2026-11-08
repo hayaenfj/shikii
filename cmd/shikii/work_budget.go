@@ -25,10 +25,17 @@ func workOutputBudget(n int) (int, error) {
 // Omitted bodies keep exact recovery queries. Never register unseen text as a
 // delivered quote or teach a reading preference from a shortened response.
 func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any, quoted map[string]string, requested int) ([]store.KnowledgeReference, error) {
+	// Reserve the newline added by CLI and HTTP JSON encoders.
 	before := suppliedPreparationBytes(reply)
 	budget, err := workOutputBudget(requested)
 	if err != nil {
 		return nil, err
+	}
+	responseBudget := budget
+	budget--
+	// Reserve bounded recovery metadata before committing any quote/read state.
+	if pendingWorkProcedure(w) {
+		budget -= 512
 	}
 	entries, _ := reply["knowledge"].([]any)
 	if workContextSize(reply) <= budget {
@@ -114,7 +121,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 			omitted = append(omitted, field)
 		}
 	}
-	reply["output"] = map[string]any{"limited": true, "max_bytes": budget, "omitted": omitted, "next_action": "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."}
+	reply["output"] = map[string]any{"limited": true, "max_bytes": responseBudget, "omitted": omitted, "next_action": "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."}
 	if workContextSize(reply) > budget {
 		return nil, errors.New("the reference inventory exceeds max_bytes; prepare with a larger response budget")
 	}
@@ -164,4 +171,23 @@ func suppliedPreparationBytes(reply map[string]any) int {
 		n += workContextSize(u)
 	}
 	return n
+}
+
+// Recovery may update status after the atomic context save. It cannot change
+// delivered knowledge: only its newly produced judgment details can be reduced.
+func limitRecoveredPreparation(reply map[string]any, requested int) error {
+	budget, err := workOutputBudget(requested)
+	if err != nil {
+		return err
+	}
+	if workContextSize(reply)+1 <= budget {
+		return nil
+	}
+	if r, ok := reply["reasoning"].(reasoningStatus); ok {
+		reply["reasoning"] = map[string]any{"required": r.Required, "started": r.Started, "complete": r.Complete, "wiki_pending": r.WikiPending, "details_omitted": true, "next_action": "Prepare with a larger max_bytes to read saved judgment and trial details."}
+	}
+	if workContextSize(reply)+1 > budget {
+		return errors.New("recovery metadata exceeds max_bytes; prepare with a larger response budget")
+	}
+	return nil
 }

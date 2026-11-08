@@ -593,7 +593,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	if err = focusWorkKnowledge(book, knowledge, req.Query, req.Query+" "+task, quoted, &attention); err != nil {
 		return nil, err
 	}
-	read := initialWorkReading(s, w, knowledge, quoted)
+	var read []store.KnowledgeReference
 	attention.Loop = prepareWorkLoop(book, w, req, knowledge, quoted, task, stage)
 	attention.Procedure = procedureAttention(w)
 	trackWorkReading(w, knowledge, attention, req.Query, task, stage)
@@ -633,6 +633,9 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	recoverPreparedProcedure(root, scope, dir, name, w, workToken{req.SessionID, req.TurnID, w.Nonce}, reply)
+	if err = limitRecoveredPreparation(reply, req.MaxBytes); err != nil {
+		return nil, err
+	}
 	return reply, nil
 }
 

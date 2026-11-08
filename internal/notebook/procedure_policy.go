@@ -42,6 +42,7 @@ type ProcedureTrace struct {
 	BaselineBytes int             `json:"baseline_bytes"`
 	ActualBytes   int             `json:"actual_bytes"`
 	Stalls        int             `json:"stalls"`
+	Mixed         bool            `json:"mixed,omitempty"`
 	Safe          bool            `json:"safe"`
 }
 type ProcedureSample struct {
@@ -392,7 +393,7 @@ func (b Book) procedureEvidence(s ProcedureSample) ([]string, error) {
 		if e != nil {
 			return nil, e
 		}
-		if o.Kind == "human" {
+		if o.Kind == "human" && s.Sufficient != nil {
 			return nil, errors.New("human intent alone cannot certify a procedure execution")
 		}
 		d := ReadingDetails{}
@@ -402,6 +403,9 @@ func (b Book) procedureEvidence(s ProcedureSample) ([]string, error) {
 		if v, ok := readingJSON(o.Content); ok {
 			if object, ok := v.(map[string]any); ok {
 				d.Check, _ = object["check"].(string)
+				if s.Sufficient == nil {
+					d.Sufficient, _ = object["sufficient"].(bool)
+				}
 			}
 		}
 		id, e := readingQualityIdentity(o.Content, d)
@@ -455,6 +459,9 @@ func (b Book) RecordProcedure(s ProcedureSample) (view *ProcedureStatus, retErr 
 			view.Source = execution.ID
 		}
 	}()
+	if s.Trace.Mixed {
+		return &ProcedureStatus{Status: "mixed", Policy: DefaultProcedure().ID}, nil
+	}
 	dir, e := b.directory(true, "searches")
 	if e != nil {
 		return nil, e

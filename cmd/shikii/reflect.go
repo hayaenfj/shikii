@@ -280,14 +280,15 @@ func runReflectWithCommit(root, scope string, req reflectRequest, commit workCom
 		keysAfter, _ = notebook.Book{Root: root, Scope: scope}.MaintenanceKeys()
 	}
 	for _, a := range req.Memory {
-		if a.Evidence == "" && (a.Result == "unknown" || a.Result == "unused") {
+		neutral := a.CorrectionResult == "" || a.CorrectionResult == "unknown"
+		if neutral && a.Evidence == "" && (a.Result == "unknown" || a.Result == "unused") {
 			if a.Result == "unknown" {
 				a.Evidence = "No effect assessment was supplied; usefulness remains unknown."
 			} else {
 				a.Evidence = "The agent reports that this memory was not used for this task."
 			}
 		}
-		if a.Decision == "" && a.Result == "unused" {
+		if neutral && a.Decision == "" && a.Result == "unused" {
 			a.Decision = "No task decision used this memory."
 		}
 		assessment := store.MemoryAssessment{SourceID: a.SourceID, Key: a.Key, Result: a.Result, Decision: a.Decision, Evidence: a.Evidence, CorrectionResult: a.CorrectionResult}

@@ -114,6 +114,13 @@ func reserveRequiredNote(book notebook.Book, w *workState, n workNote, save func
 		if len(r.RequiredNotes) >= 128 {
 			return "", n, errors.New("resolve the existing required notes before adding another")
 		}
+		if slices.Contains(n.Sources, "current") && !w.Standalone {
+			id, err := resolveCurrentWorkSource(book, w, save, commit)
+			if err != nil {
+				return "", n, err
+			}
+			w.Sources["current"] = id
+		}
 		signature := requiredNoteSignature(w, n)
 		ref = "required" + signature
 		intent := &workNoteIntent{Note: n, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}}

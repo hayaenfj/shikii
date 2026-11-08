@@ -334,6 +334,9 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	recoverPreparedProcedure(root, scope, dir, name, w, token, reply)
+	if err = limitRecoveredPreparation(reply, req.MaxBytes); err != nil {
+		return nil, err
+	}
 	return reply, nil
 }
 
@@ -379,8 +382,13 @@ func initialWorkReading(s *hookSession, w *workState, entries []any, quoted map[
 			delete(s.Planning.Sources, old)
 		}
 		w.Keys[ref] = key
+		if entry["body_included"] != true {
+			delete(s.Planning.Sources, "article:"+id+":"+revision)
+		}
 		if text, ok := quoted[ref]; ok {
 			s.Planning.Sources[key] = text
+		} else {
+			delete(s.Planning.Sources, key)
 		}
 	}
 	return nil

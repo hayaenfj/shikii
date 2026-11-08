@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -11,6 +13,7 @@ import (
 type workProcedureProgress struct {
 	CloseReport bool                      `json:"close_report,omitempty"`
 	Notice      string                    `json:"notice,omitempty"`
+	Mixed       bool                      `json:"mixed,omitempty"`
 	Advertise   bool                      `json:"-"`
 	Trace       notebook.ProcedureTrace   `json:"trace"`
 	View        *notebook.ProcedureStatus `json:"view,omitempty"`
@@ -57,6 +60,23 @@ func prepareProcedureAdvice(book notebook.Book, w *workState, req workRequest, e
 		}
 	}
 	p := r.Procedure
+	// Recovery within the pinned basis is available, but does not contribute
+	// stalls or display savings to a broad-search procedure comparison.
+	explicit := strings.HasPrefix(req.Query, "lesson:") || sourceIDText(req.Query)
+	if explicit {
+		for _, article := range readingArticles(entries) {
+			if !slices.Contains(p.Trace.Basis.Articles, article) {
+				p.Mixed = true
+			}
+		}
+	}
+	if req.Proposal != "" || req.Conditions != "" || !explicit && (readingTopic(req.Query) != p.Trace.Basis.Topic || workHash(readingArticles(entries)) != workHash(p.Trace.Basis.Articles)) {
+		p.Mixed = true
+	}
+	p.Advertise = false
+	if p.Mixed || explicit || req.Cursor != "" {
+		return
+	}
 	base := *a
 	applyProcedureAdvice(&base, p.Trace.Baseline)
 	applyProcedureAdvice(a, p.Trace.Config)
@@ -126,38 +146,61 @@ func recordProcedureFeedback(book notebook.Book, w *workState, c *workCompletion
 	if p.View != nil && p.View.Status == "limited" {
 		return p.View, nil
 	}
-	if p.Trace.Stalls == 0 && p.Trace.Config.ID == notebook.DefaultProcedure().ID && p.View == nil {
+	if p.Trace.Stalls == 0 && p.Trace.Config.ID == notebook.DefaultProcedure().ID && p.View == nil && !p.Mixed {
 		return nil, nil
 	}
 	if p.Pending == nil || p.Pending.Snapshot.ID != w.Result.Source {
-		if c == nil {
-			return p.View, nil
-		}
 		snapshot, e := book.OutcomeSources([]string{w.Result.Source})
 		if e != nil {
 			return nil, e
 		}
-		evidence := []notebook.Source{}
-		if c.Sufficient != nil {
-			ids := []string{}
-			for _, ref := range w.Result.Evidence {
-				if !strings.HasPrefix(ref, "source:") {
+		// A ref-only retry derives quality from its saved report, never from the
+		// retry body. Unknown quality still retains origin evidence identities.
+		material, e := book.ReadSources([]string{w.Result.Source})
+		if e != nil {
+			return nil, e
+		}
+		var original workCompletion
+		if e = json.Unmarshal([]byte(material["observations"].([]notebook.Observation)[0].Content), &original); e != nil {
+			return nil, e
+		}
+		ids := []string{}
+		for _, ref := range w.Result.Evidence {
+			if !strings.HasPrefix(ref, "source:") {
+				if original.Sufficient != nil {
 					return nil, errors.New("procedure quality needs captured check evidence, not an article")
 				}
-				ids = append(ids, strings.TrimPrefix(ref, "source:"))
+				continue
 			}
+			ids = append(ids, strings.TrimPrefix(ref, "source:"))
+		}
+		evidence := []notebook.Source{}
+		if len(ids) > 0 {
 			evidence, e = book.OutcomeSources(ids)
 			if e != nil {
 				return nil, e
 			}
 		}
-		p.Pending = &notebook.ProcedureSample{Trace: p.Trace, Sufficient: c.Sufficient, Evidence: evidence, Snapshot: snapshot[0]}
+		trace := p.Trace
+		trace.Mixed = p.Mixed
+
+		if p.Pending != nil && p.Indexed != p.Pending.Snapshot.ID {
+			if len(w.Reasoning.PendingProcedures) >= 8 {
+				return nil, errors.New("recover pending procedure feedback before adding another report")
+			}
+			prior := *p
+			prior.CloseReport = false
+			w.Reasoning.PendingProcedures = append(w.Reasoning.PendingProcedures, &prior)
+		}
+
+		p.Pending = &notebook.ProcedureSample{Trace: trace, Sufficient: original.Sufficient, Evidence: evidence, Snapshot: snapshot[0]}
 		p.CloseReport = closeReport
 		if e = save(); e != nil {
 			return nil, e
 		}
 	}
-	view, e := resumeProcedureFeedback(book, p, save, commit)
+	e := recoverProcedureFeedback(book, w, save, commit)
+	view := p.View
 	if e == nil && view != nil && view.Source != "" {
 		w.Sources["procedure"] = view.Source
 		e = save()
@@ -209,6 +252,18 @@ func recoverProcedureFeedback(book notebook.Book, w *workState, save func() erro
 	return save()
 }
 
+func pendingWorkProcedure(w *workState) bool {
+	if w.Reasoning == nil {
+		return false
+	}
+	for _, p := range append(w.Reasoning.PendingProcedures, w.Reasoning.Procedure) {
+		if p != nil && p.Pending != nil && p.Indexed != p.Pending.Snapshot.ID {
+			return true
+		}
+	}
+	return false
+}
+
 func recoverPreparedProcedure(root, scope string, dir *os.Root, name string, w *workState, token workToken, reply map[string]any) {
 	save := func() error { return saveWorkState(dir, name, scope, token.Turn, w, false) }
 	commit := workCommitter(func(action func() error) error { return commitWorkTurn(dir, name, scope, token, action) })
@@ -216,7 +271,7 @@ func recoverPreparedProcedure(root, scope string, dir *os.Root, name string, w *
 	e := recoverProcedureFeedback(book, w, save, commit)
 	if e == nil && w.Reasoning != nil && w.Reasoning.Procedure != nil {
 		p := w.Reasoning.Procedure
-		if p.CloseReport && p.Pending != nil && p.Indexed == p.Pending.Snapshot.ID && w.Result != nil && w.Result.Source == p.Indexed && !w.Reasoning.WikiPending && !reasoningPublicationsPending(w) && len(w.Reasoning.PendingCaptures) == 0 {
+		if p.CloseReport && p.Pending != nil && p.Indexed == p.Pending.Snapshot.ID && w.Result != nil && w.Result.Source == p.Indexed && !w.Reasoning.WikiPending && !reasoningPublicationsPending(w) && len(w.Reasoning.PendingCaptures) == 0 && trialPendingCount(w.Reasoning) == 0 {
 			if p.View != nil && p.View.Source != "" {
 				w.Sources["procedure"] = p.View.Source
 			}
@@ -236,12 +291,18 @@ func recoverPreparedProcedure(root, scope string, dir *os.Root, name string, w *
 				e = save()
 			}
 			if e == nil {
-				reply["reasoning"] = currentReasoningView(book, w.Reasoning)
+				if _, included := reply["reasoning"]; included {
+					reply["reasoning"] = currentReasoningView(book, w.Reasoning)
+				}
 				reply["procedure_recovery"] = map[string]any{"status": "saved", "result_source": w.Result.Source}
 			}
 		}
 	}
 	if e != nil {
-		reply["procedure_recovery"] = map[string]any{"status": "pending", "next_action": "The original report is saved. A later prepare retries procedure indexing automatically.", "error": e.Error()}
+		message := e.Error()
+		for workContextSize(message) > 240 {
+			message = cut(message, len(message)/2)
+		}
+		reply["procedure_recovery"] = map[string]any{"status": "pending", "next_action": "The original report is saved. A later prepare retries procedure indexing automatically.", "error": message}
 	}
 }

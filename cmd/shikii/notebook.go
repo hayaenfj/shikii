@@ -255,5 +255,11 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
+	if req.Work != nil && req.Operation == "prepare" {
+		// Match the compact representation used by the work response budget.
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(result)
+		return
+	}
 	writeJSON(w, 200, result)
 }

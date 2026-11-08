@@ -151,28 +151,35 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 
 // originalPart returns the part of one conversation's originals that fits from byte from: original_part carries a piece of the JSON
 // of that conversation's originals list (json) and says which piece it is. Joined in order, the pieces are that JSON whole.
-func originalPart(out map[string]any, state continuation, fs []store.Feedback, osources []Observation, texts map[string][]Original, i, total int, id string, raw []byte, from, budget int) map[string]any {
+func originalPart(out map[string]any, state continuation, fs []store.Feedback, osources []Observation, texts map[string][]Original, i, total int, id string, raw []byte, from, budget int) (map[string]any, error) {
 	out["source_material"], out["observations"], out["originals"] = fs, osources, texts
 	end := len(raw)
 	for {
 		out["original_part"] = map[string]any{"id": id, "from": from, "to": end, "bytes": len(raw), "json": string(raw[from:end])}
-		if encodedSize(out) <= budget-2048 || end-from <= 1 {
-			break
+		delete(out, "next_cursor")
+		if end < len(raw) {
+			c := state
+			c.Offset, c.Byte = i, end
+			data, _ := json.Marshal(c)
+			out["next_cursor"] = base64.RawURLEncoding.EncodeToString(data)
+		} else if next := state.next(i+1, total); next != "" {
+			out["next_cursor"] = next
+		}
+		if encodedSize(out) <= budget {
+			return out, nil
+		}
+		_, width := utf8.DecodeRune(raw[from:])
+		if end-from <= width {
+			return nil, errors.New("source metadata exceeds the response budget; use a larger max_bytes")
 		}
 		end = from + (end-from)/2
-		for end > from+1 && !utf8.RuneStart(raw[end]) { // do not cut a character in half
+		for end > from && !utf8.RuneStart(raw[end]) {
 			end--
 		}
+		if end == from {
+			end = from + width
+		}
 	}
-	if end < len(raw) {
-		c := state
-		c.Offset, c.Byte = i, end
-		data, _ := json.Marshal(c)
-		out["next_cursor"] = base64.RawURLEncoding.EncodeToString(data)
-	} else if next := state.next(i+1, total); next != "" {
-		out["next_cursor"] = next
-	}
-	return out
 }
 
 func (b Book) ReadSourcesPage(ids []string, cursor string, limits ...int) (map[string]any, error) {
@@ -217,7 +224,7 @@ func (b Book) ReadSourcesPage(ids []string, cursor string, limits ...int) (map[s
 			if !hasText || from >= len(raw) || !utf8.RuneStart(raw[from]) {
 				return nil, ErrStaleCursor
 			}
-			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, from, budget), nil
+			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, from, budget)
 		}
 		if f, ok := feedback[id]; ok {
 			fs = append(fs, f)
@@ -249,27 +256,38 @@ func (b Book) ReadSourcesPage(ids []string, cursor string, limits ...int) (map[s
 		if isObservation && i == start { // one long source over the budget: return part of its body and continue inside it
 			body := osources[no].Content
 			end := len(body)
-			for encodedSize(out) > budget-2048 && end > 1 {
+			for {
+				osources[no].Content = body[:end]
+				out["observation_part"] = map[string]any{"id": id, "from": from, "to": from + end, "bytes": from + len(body)}
+				delete(out, "next_cursor")
+				if end < len(body) {
+					c := state
+					c.Offset, c.Byte = i, from+end
+					data, _ := json.Marshal(c)
+					out["next_cursor"] = base64.RawURLEncoding.EncodeToString(data)
+				} else if next := state.next(i+1, len(ids)); next != "" {
+					out["next_cursor"] = next
+				}
+				if encodedSize(out) <= budget {
+					return out, nil
+				}
+				_, width := utf8.DecodeRuneInString(body)
+				if end <= width {
+					return nil, errors.New("source metadata exceeds the response budget; use a larger max_bytes")
+				}
 				end /= 2
 				for end > 0 && !utf8.RuneStart(body[end]) {
 					end--
 				}
-				osources[no].Content = body[:end]
-			}
-			if end < len(body) {
-				out["observation_part"] = map[string]any{"id": id, "from": from, "to": from + end, "bytes": from + len(body)}
-				out["source_material"], out["observations"], out["originals"] = fs, osources, texts
-				c := state
-				c.Offset, c.Byte = i, from+end
-				data, _ := json.Marshal(c)
-				out["next_cursor"] = base64.RawURLEncoding.EncodeToString(data)
-				return out, nil
+				if end == 0 {
+					end = width
+				}
 			}
 		}
 		if hasText && !isObservation && i == start { // a conversation whose originals (up to 2 MB) do not fit: the conversation now, its originals in parts
 			delete(texts, id)
 			raw, _ := json.Marshal(text)
-			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, 0, budget), nil
+			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, 0, budget)
 		}
 	}
 	out["source_material"], out["observations"], out["originals"] = fs, osources, texts

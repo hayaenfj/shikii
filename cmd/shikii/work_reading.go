@@ -207,6 +207,12 @@ func nextTurnReasoning(previous *reasoningProgress, turn string) *reasoningProgr
 	if previous == nil {
 		return r
 	}
+	// Keep publication obligations and their immutable original bindings, but
+	// do not carry the old task's completion or current human source.
+	r.RequiredNotes = previous.RequiredNotes
+	r.PendingCaptures = previous.PendingCaptures
+	r.PendingSource = previous.PendingSource
+	r.WikiPending = previous.WikiPending || len(r.RequiredNotes) > 0 || len(r.PendingCaptures) > 0
 	for _, p := range append(previous.PendingProcedures, previous.Procedure) {
 		if p != nil && p.Pending != nil && p.Indexed != p.Pending.Snapshot.ID {
 			r.PendingProcedures = append(r.PendingProcedures, p)

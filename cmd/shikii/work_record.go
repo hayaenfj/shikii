@@ -143,10 +143,6 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	}
 
 	book := notebook.Book{Root: root, Scope: scope}
-	if e := recoverProcedureFeedback(book, w, save, commit); e != nil {
-		add(workItem{Kind: "procedure", Ref: "procedure", Error: e.Error()})
-		return result, nil
-	}
 	local := map[string]string{}
 	for i, o := range req.Observations {
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)
@@ -191,6 +187,17 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		if halt() {
 			return result, nil
 		}
+	}
+	// Queue feedback from the immutable result before unrelated indexing can fail.
+	// Recovery of an earlier report must never prevent capture of this input.
+	if w.Result != nil && w.Result.Ready {
+		view, e := recordProcedureFeedback(book, w, req.Result, req.Reasoning == nil, save, commit)
+		result.Procedure = view
+		if e != nil {
+			add(workItem{Kind: "procedure", Ref: "procedure", Error: e.Error()})
+		}
+	} else if e := recoverProcedureFeedback(book, w, save, commit); e != nil {
+		add(workItem{Kind: "procedure", Ref: "procedure", Error: e.Error()})
 	}
 	noteRefs := make([]string, len(req.Notes))
 	for i, note := range req.Notes {
@@ -420,13 +427,6 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		w.Reasoning.WikiPending = len(w.Reasoning.RequiredNotes) > 0 || reasoningPublicationsPending(w)
 		if e := save(); e != nil {
 			add(workItem{Ref: "reasoning", Kind: "reasoning", Error: e.Error()})
-		}
-	}
-	if w.Result != nil && result.Complete {
-		view, e := recordProcedureFeedback(book, w, req.Result, req.Reasoning == nil, save, commit)
-		result.Procedure = view
-		if e != nil {
-			add(workItem{Kind: "procedure", Ref: "procedure", Error: e.Error()})
 		}
 	}
 	if req.Reasoning != nil {
