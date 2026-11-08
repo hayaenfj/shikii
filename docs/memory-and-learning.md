@@ -10,34 +10,32 @@ From 0.26, brief judgments and checked results stay linked to the current eviden
 
 From 0.28, measured knowledge delivery and checks for missing conditions can inform how deeply the next task reads. Comparisons include later source recovery, and a reading choice checked on separate tasks can become the default when the conditions match.
 
+From 0.29, actual results can also change the investigation procedure. Repetition generates a candidate, separate tasks validate it, and regressions restore the previous procedure. Ordinary preparation and ending reports share the evidence, keeping recording to two calls without rewriting the same check.
+
 Suppose you say, “When updating the guide, update both the English and Japanese versions.” Remembering that instruction alone does not tell you whether both were updated next time. shikii keeps it as an article with sources and delivers it during relevant work. The agent reviews whether it helped. A check enabled by a person can verify the parts that can be checked mechanically.
 
 ## 0.29: improve investigation procedures
 
-Version 0.29 closes a bounded procedure-improvement loop:
-observed repeated investigations generate a concise-guidance candidate; separate
-tasks supply actual quality checks and measured guidance cost; supported candidates
-are adopted, and a regression restores the previous procedure. After a failed
-recipe, a different recipe requires more validation. This changes project procedure
-selection, without retraining a model or permitting arbitrary code changes.
+Alongside choosing how to use remembered knowledge, 0.29 adds **a loop that selects investigation procedures from actual checks to reduce repeated work**.
 
-The agent can return an optional `result.sufficient` and reuse the evidence already
-sent with its one ending report. Unknown quality stays unknown. Empty or unsupported quality results cannot support validation; the original report is
-saved and its unverified grade stays unresolved without repeated storage retries.
-Candidates cannot
-edit the required checks, original evidence, evaluation rules or permissions.
-When result and reading supply checks for the same execution, their evidence is
-checked together before counting positive support.
-Repeated proof under another name cannot establish another validation task. The
-source-backed execution and evidence bindings remain available after session expiry.
-The procedure journal has fixed exploration and storage bounds. See the
-[recording contract](../skills/shikii/references/recording.md#automatic-improvement-of-loop-procedures).
+1. **Generate a candidate.** When repeated investigation makes no progress, create a candidate that adjusts when to suggest a different method and how briefly to present that guidance.
+2. **Check separate tasks.** Exclude the task that generated the candidate. Collect the agent's actual checks and evidence, together with measured guidance bytes.
+3. **Adopt supported procedures.** Initially, two different tasks must report the required quality with less guidance. The candidate can then become the next procedure under matching conditions.
+4. **Restore on regression.** A missed condition, greater guidance cost or unavailable supporting evidence rejects the candidate or restores its previous procedure. Retire a failed recipe; a different candidate needs more checks.
+
+For example, suppose a CSV investigation keeps searching the same specification without changing its result. shikii can propose suggesting a different check sooner. When separate CSV tasks report that the required conditions were checked with less guidance, the candidate can be adopted. A later reported omission restores the earlier procedure. Recalling a past suggestion becomes connected to validation on other tasks and withdrawal when it fails.
+
+Ordinary recording uses one initial `prepare` and one ending `record`. Send what changed, the evidence checked and what remains once. If quality was actually checked, optionally add `result.sufficient` and reuse that evidence. A conversation with no new lasting knowledge needs no long reflection or wiki article. Additional source reads and important corrections during work can be recorded when needed.
+
+Unknown quality stays unknown. Empty or unsupported quality results contribute no support; the original report is saved and its unverified grade stays unresolved without repeated storage retries. Result and reading checks for the same execution must agree on the check, quality and evidence before contributing support. Renaming the same proof does not create another validation task. Original executions and evidence bindings remain available after session expiry.
+
+Candidates change only the fixed guidance procedures. Required checks, original-source recovery, evaluation rules and permissions stay outside their control, with bounded exploration and storage. This changes project procedure selection without retraining a model or permitting arbitrary code changes. Fewer guidance bytes do not establish general improvements in elapsed time, model tokens or answer quality. See the [recording contract](../skills/shikii/references/recording.md#automatic-improvement-of-loop-procedures).
 
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)
 
-So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 7, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
+So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 8, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
 
 | What you need | What memory provides | What shikii combines |
 | --- | --- | --- |
@@ -55,6 +53,9 @@ So “OpenAI remembers only preferences” or “only shikii stores memory local
 | Review judgments during work | Context from earlier work | Link a starting judgment and checked ending result to current evidence; resolve failed saves before completion |
 | Choose how deeply the next task reads | Refer to relevant earlier context | Compare measured delivery and checked results; matching comparisons on two distinct tasks can change the next default |
 | Return rereads and omissions to later work | Carry current context forward | Include source recovery in the measurement, suspend a choice after an omission and select a verified alternative |
+| Improve investigation procedures | Carry earlier suggestions and results as context | Generate guidance candidates from stalls, validate and adopt using separate tasks' quality and guidance bytes, and restore the previous procedure on regression |
+| Reduce recording work | Carry current context into later work | Share results and evidence in two ordinary start/end calls; require no article or long reflection for conversations with no new lasting knowledge |
+| Upgrade existing knowledge | Manage stored memories | Let the agent review sources after a policy change, preserve preferences and history, and resume gradual maintenance from saved progress |
 | Check required work | Separate management of mandatory guidance | Enabled checks and verification that required records were saved |
 
 OpenAI also recommends keeping mandatory team guidance in `AGENTS.md` or checked-in documentation rather than relying on memory alone. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories)
@@ -213,6 +214,7 @@ What adapts is the project's knowledge-delivery method. Model weights and decisi
 | 0.26 | Require evidence-linked starting judgments and ending reviews, preserving unresolved saves across retries and preparations. |
 | 0.27 | Link expectations and observations to the next check, compare matched executions, adjust reading depth and check supported publication calls. |
 | 0.28 | Compare reading depths using measured delivery and quality reports; return support from two distinct tasks or an omission to the next matching default. |
+| 0.29 | Combine two-call recording with procedure generation, validation on separate tasks, adoption, restoration on regression and source-preserving review of existing knowledge. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
 
