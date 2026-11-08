@@ -1576,7 +1576,7 @@ func TestInitAndUpdateAddNoSection(t *testing.T) {
 	}
 	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	// Shared writers must understand this version's learning metadata before it is saved.
-	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.29.0 or later") || !strings.Contains(out, "before saving learning") || !strings.Contains(out, "new work context") {
+	if !strings.Contains(out, "reopen") || !strings.Contains(out, "0.29.1 or later") || !strings.Contains(out, "before saving learning") || !strings.Contains(out, "new work context") {
 		t.Fatalf("the update must name the supported version and restart requirement before saving learning: %s", out)
 	}
 	if b, _ := os.ReadFile(filepath.Join(plain, "AGENTS.md")); string(b) != human {
