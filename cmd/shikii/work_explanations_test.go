@@ -65,6 +65,27 @@ func TestWorkSharedExplanations(t *testing.T) {
 			}
 		})
 	}
+	t.Run("sharing includes reading metadata cost", func(t *testing.T) {
+		for _, length := range []int{128, 140, 144, 148, 160} {
+			entries := []any{}
+			for range 2 {
+				entries = append(entries, map[string]any{"reading_notice": strings.Repeat("x", length), "body_included": false})
+			}
+			reading := &workReadingTrace{Bytes: workContextSize(entries)}
+			w := &workState{Reasoning: &reasoningProgress{Reading: reading}}
+			reply := map[string]any{"knowledge": entries, "reading": reading}
+			before := workContextSize(reply)
+			if _, err := limitWorkPreparation(notebook.Book{}, w, reply, map[string]string{}, 65536); err != nil {
+				t.Fatal(err)
+			}
+			if after := workContextSize(reply); after > before {
+				t.Fatalf("sharing must include its reading metadata cost: notice=%d, %d -> %d", length, before, after)
+			}
+			if reply["reading_notices"] == nil && reading.Mixed {
+				t.Fatal("a rejected sharing candidate must not change the reading classification")
+			}
+		}
+	})
 	t.Run("transport cost and reading accounting", func(t *testing.T) {
 		entries := []any{}
 		for range 4 {

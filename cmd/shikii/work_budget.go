@@ -27,11 +27,34 @@ func workOutputBudget(n int) (int, error) {
 func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any, quoted map[string]string, requested int, sizing ...func(any) int) ([]store.KnowledgeReference, error) {
 	// Reserve the newline added by CLI and HTTP JSON encoders.
 	rawSize := workPreparationSizer(sizing)
-	size := func(v any) int {
-		shareWorkExplanations(reply, rawSize)
+	before := suppliedPreparationBytes(reply)
+	var reading *workReadingTrace
+	if w.Reasoning != nil {
+		reading = w.Reasoning.Reading
+	}
+	readingBytes, readingMixed := 0, false
+	if reading != nil {
+		readingBytes, readingMixed = reading.Bytes, reading.Mixed
+	}
+	limited := false
+	// Sharing and shortening change the reading metadata too. Include those
+	// changes in both the sharing decision and every pre-save budget check.
+	actualSize := func(v any) int {
+		if reading != nil {
+			reading.Mixed = readingMixed || limited || reply["reading_notices"] != nil
+			reading.Bytes = max(0, readingBytes-max(0, before-suppliedPreparationBytes(reply)))
+		}
+		if limited && w.Reasoning != nil && w.Reasoning.Procedure != nil {
+			if _, delivered := reply["attention"]; !delivered {
+				w.Reasoning.Procedure.Mixed = true
+			}
+		}
 		return rawSize(v)
 	}
-	before := suppliedPreparationBytes(reply)
+	size := func(v any) int {
+		shareWorkExplanations(reply, actualSize)
+		return actualSize(v)
+	}
 	budget, err := workOutputBudget(requested)
 	if err != nil {
 		return nil, err
@@ -48,13 +71,9 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	}
 	entries, _ := reply["knowledge"].([]any)
 	if size(reply) <= budget {
-		if reply["reading_notices"] != nil && w.Reasoning != nil && w.Reasoning.Reading != nil {
-			// Shared host guidance changes delivery cost, not reading quality.
-			w.Reasoning.Reading.Mixed = true
-			w.Reasoning.Reading.Bytes = max(0, w.Reasoning.Reading.Bytes-max(0, before-suppliedPreparationBytes(reply)))
-		}
 		return suppliedPreparationReads(reply), nil
 	}
+	limited = true
 	omitted := []string{}
 	if reply["how_to_record"] != continuedWorkHowTo {
 		reply["how_to_record"] = compactWorkHowTo
@@ -139,14 +158,6 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	reply["output"] = map[string]any{"limited": true, "max_bytes": responseBudget, "omitted": omitted, "next_action": "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."}
 	if size(reply) > budget {
 		return nil, errors.New("the reference inventory exceeds max_bytes; prepare with a larger response budget")
-	}
-	if _, delivered := reply["attention"]; !delivered && w.Reasoning.Procedure != nil {
-		w.Reasoning.Procedure.Mixed = true
-	}
-	if w.Reasoning.Reading != nil {
-		w.Reasoning.Reading.Mixed = true
-		after := suppliedPreparationBytes(reply)
-		w.Reasoning.Reading.Bytes = max(0, w.Reasoning.Reading.Bytes-max(0, before-after))
 	}
 	for ref := range quoted {
 		visible := false
