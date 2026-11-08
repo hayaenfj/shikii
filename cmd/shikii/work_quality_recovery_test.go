@@ -325,3 +325,50 @@ func TestWorkUnavailableReadingCheckPreservesNegativeAndExcludesSupport(t *testi
 		})
 	}
 }
+
+func TestWorkCheckedReadingDoesNotLeaveGeneratedReflection(t *testing.T) {
+	for _, shared := range []bool{true, false} {
+		t.Run(fmt.Sprint(shared), func(t *testing.T) {
+			b, _ := readingLearningBook(t)
+			baseline, e := b.PendingObservations()
+			if e != nil {
+				t.Fatal(e)
+			}
+			old := map[string]bool{}
+			for _, o := range baseline {
+				old[o.ID] = true
+			}
+			p := readingLearningPrepare(t, b, "Keep one checked result and its reading feedback.", "focused")
+			observations := []any{trialObservation("The exact synthetic owner condition passed.")}
+			readingRef := "new1"
+			if !shared {
+				observations = append(observations, trialObservation("The separate reading check retained the owner condition."))
+				readingRef = "new2"
+			}
+			observations = append(observations, map[string]any{"kind": "human", "title": "Synthetic retained preference", "content": "Keep this original human preference available for a separate review."})
+			r, e := workCall(t, b, "record", map[string]any{"receipt": p["receipt"], "observations": observations, "result": map[string]any{"changed": "Checked the exact owner condition.", "sufficient": true, "evidence": []string{"new1"}}, "reading": map[string]any{"check": "Retain the exact owner condition.", "sufficient": true, "evidence": []string{readingRef}}})
+			if e != nil || r["complete"] != true {
+				t.Fatal("the ordinary ending is one recording", r, e)
+			}
+			pending, e := b.PendingObservations()
+			if e != nil {
+				t.Fatal(e)
+			}
+			if len(pending) != len(baseline)+1 {
+				t.Fatal("checked diagnostics must not add reflection work", pending)
+			}
+			for _, o := range pending {
+				if !old[o.ID] && (o.Kind != "human" || o.Title != "Synthetic retained preference") {
+					t.Fatal("only original human intent and unrelated sources remain", o)
+				}
+			}
+			w := qualityRecoveryState(t, b, p)
+			for _, reading := range w.Reasoning.Readings {
+				material, e := b.ReadSources([]string{reading.Source})
+				if e != nil || len(material["observations"].([]notebook.Observation)) != 1 {
+					t.Fatal("processing must retain the original diagnostic", e)
+				}
+			}
+		})
+	}
+}

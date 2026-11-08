@@ -190,6 +190,9 @@ func recordWorkReading(book notebook.Book, w *workState, input workReadingFeedba
 	if err = workAfterWrite("reading"); err != nil {
 		return item, err
 	}
+	if err = commit(func() error { return book.RetainExecutionSources(refs, state.Details.Evidence) }); err != nil {
+		return item, err
+	}
 	state.Indexed = true
 	w.Saved[state.Ref] = item
 	delete(w.Expected, state.Ref)

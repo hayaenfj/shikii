@@ -364,7 +364,7 @@ func (b Book) captureProcedureExecution(s ProcedureSample) (Source, error) {
 		return Source{}, e
 	}
 	// This automatic diagnostic does not create another manual reflection.
-	if _, e = b.Ingest(Draft{Sources: []string{execution.ID, s.Snapshot.ID}}); e != nil {
+	if e = b.RetainExecutionSources([]Source{refs[0], s.Snapshot}, s.Evidence); e != nil {
 		return Source{}, e
 	}
 	return refs[0], nil
