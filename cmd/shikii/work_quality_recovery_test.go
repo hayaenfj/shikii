@@ -372,3 +372,61 @@ func TestWorkCheckedReadingDoesNotLeaveGeneratedReflection(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkAuxiliaryReadingCheckPrecedesProcedureSupport(t *testing.T) {
+	for _, mismatch := range []bool{false, true} {
+		t.Run(fmt.Sprintf("typed_check_mismatch_%v", mismatch), func(t *testing.T) {
+			b, _ := readingLearningBook(t)
+			yes := true
+			autonomyRun(t, b, "Synthetic auxiliary check generator.", "The generation condition was checked.", nil)
+			autonomyRun(t, b, "Synthetic first auxiliary check support.", "The first independent condition was checked.", &yes)
+			p, e := workCall(t, b, "prepare", map[string]any{"request": "Synthetic held-out auxiliary check task.", "query": "Reading source recovery", "reasoning": map[string]any{"depth": "focused"}})
+			if e != nil {
+				t.Fatal("setup", e)
+			}
+			for i := 0; i < 3; i++ {
+				if _, e = workCall(t, b, "prepare", map[string]any{"receipt": p["receipt"], "query": "Reading source recovery", "reasoning": map[string]any{"depth": "focused"}}); e != nil {
+					t.Fatal("setup", e)
+				}
+			}
+			if qualityRecoveryState(t, b, p).Reasoning.Reading.Mixed || qualityRecoverySupports(t, b) != 1 {
+				t.Fatal("setup: one measured reading and one support required")
+			}
+			check := "Retain the exact owner condition."
+			if mismatch {
+				check = "Count the unrelated synthetic rows."
+			}
+			auxiliary := fmt.Sprintf(`{"type":"reading-quality/v1","check":%q,"sufficient":true,"observed":"The auxiliary reported condition passed."}`, check)
+			r, e := workCall(t, b, "record", map[string]any{"receipt": p["receipt"], "observations": []any{trialObservation(`{"type":"reading-quality/v1","check":"Retain the exact owner condition.","sufficient":true,"observed":"The requested owner check passed."}`), trialObservation(auxiliary)}, "result": map[string]any{"changed": "Retained the synthetic held-out result.", "sufficient": true, "evidence": []string{"new1"}}, "reading": map[string]any{"check": "Retain the exact owner condition.", "sufficient": true, "evidence": []string{"new2"}}})
+			if e != nil {
+				t.Fatal("record acceptance", e)
+			}
+			count := qualityRecoverySupports(t, b)
+			readingRejected := false
+			if raw, ok := r["errors"].([]any); ok {
+				for _, item := range raw {
+					readingRejected = readingRejected || loopObject(t, item)["kind"] == "reading"
+				}
+			}
+			if mismatch && !readingRejected {
+				t.Fatal("setup: mismatched typed check was not rejected")
+			}
+			next, e := workCall(t, b, "prepare", map[string]any{"receipt": p["receipt"], "query": "Reading source recovery", "reasoning": map[string]any{"depth": "focused"}})
+			if e != nil {
+				t.Fatal("prepare after check", e)
+			}
+			w := qualityRecoveryState(t, b, p)
+			finish := "none"
+			if w.Reasoning.Finish != nil {
+				finish = w.Reasoning.Finish.Assessment
+			}
+			t.Logf("typed_check_mismatch=%v declared_grades=true/true record_complete=%v reading_rejected=%v support_before=1 support_after=%d procedure=%v errors=%v after_prepare_support=%d recovery=%v finish=%s", mismatch, r["complete"], readingRejected, count, r["procedure"], r["errors"], qualityRecoverySupports(t, b), next["procedure_recovery"], finish)
+			if mismatch && count > 1 {
+				t.Fatal("RSI-R6-B01: positive support committed before the auxiliary typed check was validated")
+			}
+			if !mismatch && (count != 2 || r["complete"] != true || loopObject(t, r["procedure"])["status"] != "adopted") {
+				t.Fatal("control: matching checks did not adopt")
+			}
+		})
+	}
+}

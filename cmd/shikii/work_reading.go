@@ -104,6 +104,30 @@ func trackWorkReading(w *workState, entries []any, a workAttention, query, task,
 	}
 }
 
+// Build and validate the exact declared reading before any procedure support.
+func prepareWorkReadingDetails(book notebook.Book, w *workState, input workReadingFeedback, resolve func([]string) ([]string, error)) (notebook.ReadingDetails, error) {
+	if input.Sufficient == nil || !assignmentText(input.Check, 1000, true) || len(input.Evidence) < 1 || len(input.Evidence) > 4 {
+		return notebook.ReadingDetails{}, errors.New("reading needs check, explicit sufficient and one to four captured evidence references")
+	}
+	if w.Reasoning.Reading == nil || w.Reasoning.Reading.Mixed {
+		return notebook.ReadingDetails{}, errors.New("reading feedback needs one measured topic and initial depth; mixed or absent reads cannot teach a default")
+	}
+	r := w.Reasoning.Reading
+	ids, err := resolve(input.Evidence)
+	if err != nil {
+		return notebook.ReadingDetails{}, err
+	}
+	evidence, err := book.OutcomeSources(ids)
+	if err != nil {
+		return notebook.ReadingDetails{}, err
+	}
+	d := notebook.ReadingDetails{Topic: r.Topic, Stage: r.Stage, Case: r.Case, Work: workHash([]string{w.Reasoning.SessionID, w.Reasoning.TurnID})[:16], Check: input.Check, Depth: r.Depth, Bytes: r.Bytes, Reads: r.Reads, Recoveries: r.Recoveries, Sufficient: *input.Sufficient, Articles: r.Articles, Evidence: evidence}
+	if _, err := book.ReadingEvidence(d); err != nil {
+		return notebook.ReadingDetails{}, err
+	}
+	return d, nil
+}
+
 func recordWorkReading(book notebook.Book, w *workState, input workReadingFeedback, resolve func([]string) ([]string, error), save func() error, commit workCommitter) (workItem, error) {
 	item := workItem{Ref: "reading", Kind: "reading"}
 	if w.Reasoning == nil {
@@ -124,23 +148,8 @@ func recordWorkReading(book notebook.Book, w *workState, input workReadingFeedba
 			return item, errors.New("unknown reading execution reference for this turn")
 		}
 	} else {
-		if input.Sufficient == nil || !assignmentText(input.Check, 1000, true) || len(input.Evidence) < 1 || len(input.Evidence) > 4 {
-			return item, errors.New("reading needs check, explicit sufficient and one to four captured evidence references")
-		}
-		if progress.Reading == nil || progress.Reading.Mixed {
-			return item, errors.New("reading feedback needs one measured topic and initial depth; mixed or absent reads cannot teach a default")
-		}
-		r := progress.Reading
-		ids, err := resolve(input.Evidence)
+		d, err := prepareWorkReadingDetails(book, w, input, resolve)
 		if err != nil {
-			return item, err
-		}
-		evidence, err := book.OutcomeSources(ids)
-		if err != nil {
-			return item, err
-		}
-		d := notebook.ReadingDetails{Topic: r.Topic, Stage: r.Stage, Case: r.Case, Work: workHash([]string{progress.SessionID, progress.TurnID})[:16], Check: input.Check, Depth: r.Depth, Bytes: r.Bytes, Reads: r.Reads, Recoveries: r.Recoveries, Sufficient: *input.Sufficient, Articles: r.Articles, Evidence: evidence}
-		if _, err := book.ReadingEvidence(d); err != nil {
 			return item, err
 		}
 		ref := "reading:" + workHash(d)

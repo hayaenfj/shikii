@@ -70,17 +70,14 @@ func workReadingQualityEvidence(book notebook.Book, w *workState, reading *workR
 		if saved.Details.Work != workHash([]string{w.Reasoning.SessionID, w.Reasoning.TurnID})[:16] || w.Reasoning.Reading == nil || saved.Details.Case != w.Reasoning.Reading.Case {
 			return workQualityEvidence{}
 		}
-		return workQualityEvidence{Sources: saved.Details.Evidence}
+		if reading.Check != "" || reading.Sufficient != nil || len(reading.Evidence) != 0 {
+			return workQualityEvidence{Err: errors.New("reading recovery takes only its original reference")}
+		}
+		_, e := book.ReadingEvidence(saved.Details)
+		return workQualityEvidence{Sources: saved.Details.Evidence, Err: e}
 	}
-	if len(reading.Evidence) < 1 || len(reading.Evidence) > 4 {
-		return workQualityEvidence{Err: errors.New("reading quality needs one to four check evidence refs")}
-	}
-	ids, e := resolve(reading.Evidence)
-	if e != nil {
-		return workQualityEvidence{Err: e}
-	}
-	sources, e := book.OutcomeSources(ids)
-	return workQualityEvidence{Sources: sources, Err: e}
+	details, e := prepareWorkReadingDetails(book, w, *reading, resolve)
+	return workQualityEvidence{Sources: details.Evidence, Err: e}
 }
 
 func mergeWorkQualityEvidence(primary []notebook.Source, additional workQualityEvidence, grade *bool) ([]notebook.Source, error) {
