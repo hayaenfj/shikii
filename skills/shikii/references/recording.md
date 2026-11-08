@@ -124,10 +124,15 @@ broad reads, `metadata_from:{delivery,fields}` reuses only the named fields from
 the same article ref in that earlier response. It may omit unchanged summaries,
 applicability text, rationale and current/history interpretations after the body
 or exact excerpts were already supplied. Unclassified text, recheck material,
-counterexamples, incomplete status and changed premises remain visible. Match
+counterexamples, incomplete status and changed premises remain visible during this
+reference substitution. All preparation responses still obey `max_bytes`: budget
+reduction may replace article text or orientation with an incomplete marker and
+the exact revision query. Treat those omitted conditions as unread and unresolved.
+Match
 the same receipt, ref, article revision and delivery before reusing a field;
 use the exact revision query if that earlier response is unavailable. An explicit
-recovery returns the complete metadata. References do not establish a full read,
+recovery bypasses reuse, but complete text and metadata need a sufficient response
+budget or the individual exact-revision query. References do not establish a full read,
 usefulness, agreement or permission, and mixed delivery cannot teach reading depth.
 The actual transport must shrink; state is retained only after final sizing.
 `task` and `task_context` are never dropped to meet `max_bytes`: a budget too

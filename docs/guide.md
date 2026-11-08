@@ -25,8 +25,11 @@ if the current request cannot fit, it fails before replacing the receipt. When
 reusing a previously supplied body or excerpts under the same receipt,
 `metadata_from` can reference unchanged summaries and conditions at an earlier
 `delivery` number. Unclassified text, rechecks, counterexamples and incomplete
-status remain visible; changed conditions are supplied normally. Recover the
-exact article revision if the earlier response is unavailable. No extra model
+status remain visible during reference substitution; changed conditions are
+supplied normally. The overall response budget can still replace article text
+or orientation with an incomplete marker and exact revision query. Treat omitted
+conditions as unread and unresolved; use a sufficient budget or the individual
+exact-revision query for complete recovery. No extra model
 or setting is required. See the [reference contract and limits](../skills/shikii/references/recording.md#bounded-reading-and-memory-upgrades).
 
 After reading the sources, the agent can attach `passages` to exact body quotations to distinguish current guidance, earlier context, material needing rechecking and counterexample candidates. Each quotation retains its conditions and reason at the same article revision. `work prepare` and `consult` return this interpretation as `orientation`, with unclassified text and changed premises still explicit. A later date alone never overrides earlier conditions. The Knowledge page can display and edit quotations and conditions together.
