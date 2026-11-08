@@ -717,7 +717,7 @@ func TestCIScansSecretsAndVulnerabilities(t *testing.T) {
 	want := []string{
 		"uses actions/checkout@v4 0",
 		"uses actions/setup-go@v5 go.mod",
-		`curl -fsSL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+		`curl -fsSL -H 'Accept: application/octet-stream' -o /tmp/gitleaks.tar.gz https://api.github.com/repos/gitleaks/gitleaks/releases/assets/378332058
 echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
 tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
 /tmp/gitleaks git --redact --no-banner .`,
