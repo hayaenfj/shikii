@@ -46,6 +46,50 @@ explicit recovery; neither is an evaluated success. The existing Stop checks kee
 unresolved saves visible. Legacy explicit reasoning start/update/finish remains
 supported; the prepared start lets an ordinary ending report close the review.
 
+### Automatic improvement of loop procedures
+
+Stalled work can generate a bounded procedure candidate without another agent
+report, model or setting. Candidates can change only the timing of a method-change
+suggestion and its concise guidance. Source recovery, required checks, permissions
+and evaluation rules stay outside the candidate's control.
+
+When an actual check is available, optionally add `sufficient:true` or `false` to
+result and reuse its existing captured evidence. Omission remains unknown; do not
+infer quality from task completion or delivery. A result and reading report in the
+same batch can share the checked quality/evidence. Conflicting grades are refused.
+The host keeps task IDs, revisions, selected procedure and paired guidance-byte
+cost; no separate trial plan, comparison, long reflection or human grade is needed.
+
+A candidate's generating task is excluded from validation. At most six task
+reservations can try it, and two different tasks with distinct checked results and
+lower guidance cost are required before adoption. Source renaming, transport
+metadata and equivalent JSON numbers do not multiply support. A quality failure,
+higher guidance cost, or lost supporting evidence rejects the candidate or restores
+its exact previous procedure, including descendants that depended on it. A failed
+recipe is retired; the next different recipe uses more held-out checks and a more
+conservative method-change timing. The current recipe space has two levels.
+
+`attention.procedure` appears briefly when its advice is used; unchanged notices
+and the full recording contract are not repeated on receipt extensions. `procedure`
+in the ending result gives status, policy, support count and an immutable execution
+source. Inspect that source only when needed. The original report, pinned evidence
+bindings and procedure reference remain in the immutable ending review after the
+session expires. Reported quality is evidence, not independently established truth
+or general LLM quality. Guidance bytes are not token or elapsed-time savings.
+
+Original reports are saved before procedure indexing. If indexing is interrupted,
+prepare with the same receipt to retry and finish an ordinary saved report
+without restating it. Unindexed feedback also survives the next human request and
+is resumed during preparation. Required wiki repairs and explicit custom judgments
+keep their ordinary checks. Used test/code evidence is retained without another
+manual reflection; human statements and general observations keep semantic review.
+
+The journal stops new optimization at its fixed scope/report/storage bounds and
+uses the default procedure while preserving earlier evidence. No original source,
+human preference or history is deleted. Use matching updated binaries and skills
+for all session writers, then reopen sessions and restart MCP; older writers do
+not preserve this new session progress.
+
 ### Bounded reading and memory upgrades
 
 prepare accepts optional max_bytes, 8192–393216 UTF-8 JSON bytes, for the complete

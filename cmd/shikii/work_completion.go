@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -13,6 +14,9 @@ func validateWorkCompletion(c *workCompletion) error {
 	}
 	if !assignmentText(c.Changed, 12000, true) || !assignmentText(c.Checked, 12000, false) || !assignmentText(c.Remaining, 4000, false) || len(c.Evidence) > 4 {
 		return errors.New("result needs changed (1-12000 bytes), optional checked (12000), remaining (4000), and up to four evidence refs")
+	}
+	if c.Sufficient != nil && len(c.Evidence) == 0 {
+		return errors.New("result.sufficient needs captured check evidence; omit it when quality is unknown")
 	}
 	return nil
 }
@@ -39,7 +43,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		return item, err
 	}
 	w.Sources["result"] = id
-	w.Result = &workCompletionRef{Source: id, Signature: signature, Unresolved: c.Remaining != ""}
+	w.Result = &workCompletionRef{Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
 	w.Reasoning.Result = w.Result
 	if err = save(); err != nil {
 		return item, err
@@ -61,6 +65,9 @@ func finishWorkCompletion(book notebook.Book, w *workState, resolve func([]strin
 		return workItem{Kind: "reasoning", Ref: "reasoning"}, errors.New("the result evidence changed; read the current sources and report the changed result")
 	}
 	refs := []string{"result"}
+	if w.Sources["procedure"] != "" {
+		refs = append(refs, "procedure")
+	}
 	// The source retains the narrative once. The ending review links it without
 	// restating that narrative in focus, reason, next_action and result.
 	r := workReasoning{Phase: "finish", Focus: "Review the saved work result", Assessment: "retain", Reason: "The agent report and its remaining conditions are retained in the result source; saving does not establish success.", Evidence: refs, NextAction: "Use the saved result and unresolved conditions for the next task.", Result: "The work report is saved; see its source for changes, checks and remaining conditions."}
@@ -75,6 +82,27 @@ func finishWorkCompletion(book notebook.Book, w *workState, resolve func([]strin
 	if item.ID != "" {
 		ids = append(ids, item.ID)
 	}
+	// The ending report already interpreted these execution checks. Retain their
+	// originals and refs without requesting another manual reflection. Human
+	// statements and general agent observations still use the normal review path.
+	checks := []string{}
+	for _, ref := range w.Result.Evidence {
+		if !strings.HasPrefix(ref, "source:") {
+			continue
+		}
+		checks = append(checks, strings.TrimPrefix(ref, "source:"))
+	}
+	if len(checks) > 0 {
+		v, e := book.ReadSources(checks)
+		if e != nil {
+			return item, e
+		}
+		for _, o := range v["observations"].([]notebook.Observation) {
+			if o.Kind == "test" || o.Kind == "code" {
+				ids = append(ids, o.ID)
+			}
+		}
+	}
 	err = commit(func() error { _, e := book.Ingest(notebook.Draft{Sources: ids}); return e })
 	return item, err
 }
@@ -87,6 +115,12 @@ func workStorageState(w *workState, r *workResult) {
 	if !r.Complete || r.Reasoning.WikiPending {
 		status = "saved-pending"
 		r.NextAction = "Retry only the failed or pending refs with this receipt; keep saved evidence refs. Read reasoning.pending_notes for the retained original draft."
+		for _, item := range r.Errors {
+			if item.Kind == "procedure" {
+				r.NextAction = "The report is saved. Prepare with this receipt to retry procedure feedback and finish automatically; do not resend the result."
+				break
+			}
+		}
 	}
 	r.Storage = map[string]any{"status": status, "result_source": w.Result.Source}
 }

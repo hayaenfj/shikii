@@ -12,6 +12,23 @@ From 0.28, measured knowledge delivery and checks for missing conditions can inf
 
 Suppose you say, “When updating the guide, update both the English and Japanese versions.” Remembering that instruction alone does not tell you whether both were updated next time. shikii keeps it as an article with sources and delivers it during relevant work. The agent reviews whether it helped. A check enabled by a person can verify the parts that can be checked mechanically.
 
+## Development: improve investigation procedures
+
+The unreleased development branch closes a bounded procedure-improvement loop:
+observed repeated investigations generate a concise-guidance candidate; separate
+tasks supply actual quality checks and measured guidance cost; supported candidates
+are adopted, and a regression restores the previous procedure. After a failed
+recipe, a different recipe requires more validation. This changes project procedure
+selection, without retraining a model or permitting arbitrary code changes.
+
+The agent can return an optional `result.sufficient` and reuse the evidence already
+sent with its one ending report. Unknown quality stays unknown. Candidates cannot
+edit the required checks, original evidence, evaluation rules or permissions.
+Repeated proof under another name cannot establish another validation task. The
+source-backed execution and evidence bindings remain available after session expiry.
+The procedure journal has fixed exploration and storage bounds. See the
+[recording contract](../skills/shikii/references/recording.md#automatic-improvement-of-loop-procedures).
+
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)

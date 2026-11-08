@@ -7,7 +7,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-const compactWorkHowTo = "Preparation registered this task's start. At the end, record once with this receipt and result:{changed,checked?,evidence?,remaining?}. Save checked evidence once; result and observations supply source refs for notes/outcomes. Add only new knowledge or corrections; no wiki draft is required otherwise. Combine supplied reviews, memory and reviewed refs in that call. unknown/unused memory needs no long narrative. Check complete, storage, errors, pending and next_action; retry only failed refs. Read omitted originals before assessing them. Use explicit reasoning updates or trials only when useful. See the installed skill's recording.md for the full contract."
+const compactWorkHowTo = "Preparation registered this task's start. At the end, record once with this receipt and result:{changed,checked?,evidence?,remaining?}. Save checked evidence once; result and observations supply source refs for notes/outcomes. Optional result.sufficient shares an actual quality check and the same evidence with automatic procedure validation; omission stays unknown. Add only new knowledge or corrections; no wiki draft is required otherwise. Combine supplied reviews, memory and reviewed refs in that call. unknown/unused memory needs no long narrative. Check complete, storage, errors, pending and next_action; retry only failed refs. Read omitted originals before assessing them. Use explicit reasoning updates or trials only when useful. See the installed skill's recording.md for the full contract."
+
+const continuedWorkHowTo = "Use this receipt and its initial recording contract. Report once; keep evidence refs. A pending procedure index recovers automatically on prepare."
 
 func workOutputBudget(n int) (int, error) {
 	if n == 0 {
@@ -33,7 +35,9 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		return suppliedPreparationReads(reply), nil
 	}
 	omitted := []string{}
-	reply["how_to_record"] = compactWorkHowTo
+	if reply["how_to_record"] != continuedWorkHowTo {
+		reply["how_to_record"] = compactWorkHowTo
+	}
 	for _, raw := range entries {
 		e := raw.(map[string]any)
 		if e["reused"] == true {

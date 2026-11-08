@@ -33,27 +33,29 @@ type reasoningEntry struct {
 }
 
 type reasoningProgress struct {
-	Result          *workCompletionRef             `json:"result,omitempty"`
-	PreparedAt      time.Time                      `json:"prepared_at,omitempty"`
-	Readings        map[string]*workReadingState   `json:"readings,omitempty"`
-	Reading         *workReadingTrace              `json:"reading,omitempty"`
-	Trials          map[string]*workTrialState     `json:"trials,omitempty"`
-	Comparisons     map[string]*workComparisonView `json:"comparisons,omitempty"`
-	AttentionDepth  string                         `json:"attention_depth,omitempty"`
-	SelectedTrial   string                         `json:"selected_trial,omitempty"`
-	SessionID       string                         `json:"session_id,omitempty"`
-	CurrentSource   string                         `json:"current_source,omitempty"`
-	RequiredNotes   map[string]*workRequiredNote   `json:"required_notes,omitempty"`
-	PendingCaptures map[string]workCapture         `json:"pending_captures,omitempty"`
-	TrialCaptures   map[string]workCapture         `json:"trial_captures,omitempty"`
-	TurnID          string                         `json:"turn_id"`
-	Required        bool                           `json:"required"`
-	Generation      uint64                         `json:"generation"`
-	WikiPending     bool                           `json:"wiki_pending,omitempty"`
-	PendingSource   string                         `json:"pending_source,omitempty"`
-	Start           *reasoningEntry                `json:"start,omitempty"`
-	Latest          *reasoningEntry                `json:"latest,omitempty"`
-	Finish          *reasoningEntry                `json:"finish,omitempty"`
+	Procedure         *workProcedureProgress         `json:"procedure,omitempty"`
+	PendingProcedures []*workProcedureProgress       `json:"pending_procedures,omitempty"`
+	Result            *workCompletionRef             `json:"result,omitempty"`
+	PreparedAt        time.Time                      `json:"prepared_at,omitempty"`
+	Readings          map[string]*workReadingState   `json:"readings,omitempty"`
+	Reading           *workReadingTrace              `json:"reading,omitempty"`
+	Trials            map[string]*workTrialState     `json:"trials,omitempty"`
+	Comparisons       map[string]*workComparisonView `json:"comparisons,omitempty"`
+	AttentionDepth    string                         `json:"attention_depth,omitempty"`
+	SelectedTrial     string                         `json:"selected_trial,omitempty"`
+	SessionID         string                         `json:"session_id,omitempty"`
+	CurrentSource     string                         `json:"current_source,omitempty"`
+	RequiredNotes     map[string]*workRequiredNote   `json:"required_notes,omitempty"`
+	PendingCaptures   map[string]workCapture         `json:"pending_captures,omitempty"`
+	TrialCaptures     map[string]workCapture         `json:"trial_captures,omitempty"`
+	TurnID            string                         `json:"turn_id"`
+	Required          bool                           `json:"required"`
+	Generation        uint64                         `json:"generation"`
+	WikiPending       bool                           `json:"wiki_pending,omitempty"`
+	PendingSource     string                         `json:"pending_source,omitempty"`
+	Start             *reasoningEntry                `json:"start,omitempty"`
+	Latest            *reasoningEntry                `json:"latest,omitempty"`
+	Finish            *reasoningEntry                `json:"finish,omitempty"`
 }
 
 type reasoningStatus struct {
@@ -390,11 +392,13 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 		// Keep one immutable agent report across the next request's replacement
 		// of session progress. Exclude mutable generations from retry identity.
 		snapshot := struct {
-			PreparedAt time.Time       `json:"prepared_at,omitempty"`
-			Start      *reasoningEntry `json:"start,omitempty"`
-			Previous   *reasoningEntry `json:"previous,omitempty"`
-			Finish     workReasoning   `json:"finish"`
-		}{r.PreparedAt, r.Start, r.Latest, bound}
+			Result     *workCompletionRef `json:"result,omitempty"`
+			Procedure  string             `json:"procedure,omitempty"`
+			PreparedAt time.Time          `json:"prepared_at,omitempty"`
+			Start      *reasoningEntry    `json:"start,omitempty"`
+			Previous   *reasoningEntry    `json:"previous,omitempty"`
+			Finish     workReasoning      `json:"finish"`
+		}{r.Result, w.Sources["procedure"], r.PreparedAt, r.Start, r.Latest, bound}
 		content, _ := json.Marshal(snapshot)
 		_, source, err := captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Evidence-linked work judgment and ending review", Content: string(content), Reference: "work reasoning for turn " + r.TurnID}, save, commit)
 		if err != nil {

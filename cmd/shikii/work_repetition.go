@@ -60,7 +60,7 @@ func repeatedWorkTrials(book notebook.Book, r *reasoningProgress) []string {
 	return refs
 }
 
-func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries []any, quoted map[string]string) *workLoopAdvice {
+func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries []any, quoted map[string]string, context ...string) *workLoopAdvice {
 	if w.Loop == nil {
 		w.Loop = &workLoopState{Bodies: map[string]string{}}
 	}
@@ -145,6 +145,7 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 		a.Action = "change_approach"
 		a.Next = "The reported search or trial result repeated without new deciding information. Reuse the cited evidence and change the query, method or distinguishing check before another retry. Record the changed method and actual outcome through existing reasoning/trial/comparison; this is advice, never an execution block or a success label."
 	}
+	prepareProcedureAdvice(book, w, req, entries, a, context...)
 	if a.Action == "continue" && a.SameResultReads == 0 {
 		return nil
 	}

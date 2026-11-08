@@ -186,7 +186,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	var sourceMaterial map[string]any
 	quoted := map[string]string{}
 	read := []store.KnowledgeReference{}
-	reply := map[string]any{"reasoning": currentReasoningView(book, w.Reasoning), "receipt": req.Receipt, "knowledge": entries, "how_to_record": compactWorkHowTo, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone}
+	reply := map[string]any{"reasoning": currentReasoningView(book, w.Reasoning), "receipt": req.Receipt, "knowledge": entries, "how_to_record": continuedWorkHowTo, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone}
 	add := func(p notebook.Page) error {
 		p, e := currentWorkPremise(book, p)
 		if e != nil {
@@ -285,7 +285,8 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		attention.Reasons = append(attention.Reasons, "An explicit proposal or reuse request needs its supplied conditions and exceptions.")
 		attention.setBudget()
 	}
-	attention.Loop = prepareWorkLoop(book, w, req, entries, quoted)
+	attention.Loop = prepareWorkLoop(book, w, req, entries, quoted, task, stage)
+	attention.Procedure = procedureAttention(w)
 	reply["attention"] = attention
 	if sourceMaterial != nil {
 		if w.Reasoning.Reading == nil {
@@ -332,6 +333,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	}); err != nil {
 		return nil, err
 	}
+	recoverPreparedProcedure(root, scope, dir, name, w, token, reply)
 	return reply, nil
 }
 

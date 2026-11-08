@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- Generate bounded investigation-procedure candidates from measured stalls; validate on other checked tasks, adopt cheaper guidance and restore the exact parent on regressions or unavailable support. Failed recipes require a different candidate and more validation.
+- Reuse one ending result and its evidence for optional quality feedback. Resume interrupted indexing and ordinary completion during prepare, retain immutable evidence bindings, and avoid repeating recording instructions and consumed execution checks.
+
 - Register the task start in prepare and save one ending result with shared evidence refs; retain originals before organization and recover failed refs without restating saved reports.
 - Bound prepare responses, return meaningful exact excerpts, reuse same-receipt bodies, and accept concise unknown/unused memory assessments.
 - Keep internal agent grades off the human answer queue. Preserve rejected outcome provenance through replay and defer one-sided automatic tuning.

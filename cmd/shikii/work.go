@@ -75,10 +75,11 @@ type workOutcome struct {
 	Sources    []string `json:"sources"`
 }
 type workCompletion struct {
-	Changed   string   `json:"changed"`
-	Checked   string   `json:"checked,omitempty"`
-	Evidence  []string `json:"evidence,omitempty"`
-	Remaining string   `json:"remaining,omitempty"`
+	Sufficient *bool    `json:"sufficient,omitempty"`
+	Changed    string   `json:"changed"`
+	Checked    string   `json:"checked,omitempty"`
+	Evidence   []string `json:"evidence,omitempty"`
+	Remaining  string   `json:"remaining,omitempty"`
 }
 type workCompletionRef struct {
 	Unresolved bool     `json:"unresolved,omitempty"`
@@ -178,17 +179,18 @@ type workToken struct {
 	Nonce   string `json:"n"`
 }
 type workResult struct {
-	Storage          map[string]any        `json:"storage,omitempty"`
-	NextAction       string                `json:"next_action,omitempty"`
-	Comparison       *workComparisonView   `json:"comparison,omitempty"`
-	Reasoning        reasoningStatus       `json:"reasoning"`
-	Complete         bool                  `json:"complete"`
-	Saved            []workItem            `json:"saved"`
-	Errors           []workItem            `json:"errors,omitempty"`
-	Pending          []any                 `json:"pending"`
-	Plan             any                   `json:"plan,omitempty"`
-	Reflection       any                   `json:"reflection,omitempty"`
-	ProcedureReviews []workProcedureReview `json:"procedure_reviews,omitempty"`
+	Procedure        *notebook.ProcedureStatus `json:"procedure,omitempty"`
+	Storage          map[string]any            `json:"storage,omitempty"`
+	NextAction       string                    `json:"next_action,omitempty"`
+	Comparison       *workComparisonView       `json:"comparison,omitempty"`
+	Reasoning        reasoningStatus           `json:"reasoning"`
+	Complete         bool                      `json:"complete"`
+	Saved            []workItem                `json:"saved"`
+	Errors           []workItem                `json:"errors,omitempty"`
+	Pending          []any                     `json:"pending"`
+	Plan             any                       `json:"plan,omitempty"`
+	Reflection       any                       `json:"reflection,omitempty"`
+	ProcedureReviews []workProcedureReview     `json:"procedure_reviews,omitempty"`
 }
 
 type workProcedureReview struct {
@@ -592,7 +594,8 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	read := initialWorkReading(s, w, knowledge, quoted)
-	attention.Loop = prepareWorkLoop(book, w, req, knowledge, quoted)
+	attention.Loop = prepareWorkLoop(book, w, req, knowledge, quoted, task, stage)
+	attention.Procedure = procedureAttention(w)
 	trackWorkReading(w, knowledge, attention, req.Query, task, stage)
 	var memoryUpgrade map[string]any
 	if req.Assignment == nil {
@@ -629,6 +632,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	}); err != nil {
 		return nil, err
 	}
+	recoverPreparedProcedure(root, scope, dir, name, w, workToken{req.SessionID, req.TurnID, w.Nonce}, reply)
 	return reply, nil
 }
 

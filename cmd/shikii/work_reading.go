@@ -207,6 +207,11 @@ func nextTurnReasoning(previous *reasoningProgress, turn string) *reasoningProgr
 	if previous == nil {
 		return r
 	}
+	for _, p := range append(previous.PendingProcedures, previous.Procedure) {
+		if p != nil && p.Pending != nil && p.Indexed != p.Pending.Snapshot.ID {
+			r.PendingProcedures = append(r.PendingProcedures, p)
+		}
+	}
 	for ref, state := range previous.Readings {
 		if state.Indexed {
 			continue

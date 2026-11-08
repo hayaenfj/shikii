@@ -32,6 +32,17 @@ func validateWorkRecording(req workRequest) error {
 }
 
 func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
+	if req.Result != nil && req.Reading != nil && req.Reading.Ref == "" {
+		if req.Result.Sufficient != nil && req.Reading.Sufficient != nil && *req.Result.Sufficient != *req.Reading.Sufficient {
+			return nil, errors.New("result and reading quality disagree; retain the actual checked result")
+		}
+		if req.Result.Sufficient == nil {
+			req.Result.Sufficient = req.Reading.Sufficient
+			if len(req.Result.Evidence) == 0 {
+				req.Result.Evidence = req.Reading.Evidence
+			}
+		}
+	}
 	token, err := workDecode(req.Receipt)
 	if err != nil {
 		return nil, err
@@ -132,6 +143,10 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	}
 
 	book := notebook.Book{Root: root, Scope: scope}
+	if e := recoverProcedureFeedback(book, w, save, commit); e != nil {
+		add(workItem{Kind: "procedure", Ref: "procedure", Error: e.Error()})
+		return result, nil
+	}
 	local := map[string]string{}
 	for i, o := range req.Observations {
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)
@@ -407,6 +422,13 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 			add(workItem{Ref: "reasoning", Kind: "reasoning", Error: e.Error()})
 		}
 	}
+	if w.Result != nil && result.Complete {
+		view, e := recordProcedureFeedback(book, w, req.Result, req.Reasoning == nil, save, commit)
+		result.Procedure = view
+		if e != nil {
+			add(workItem{Kind: "procedure", Ref: "procedure", Error: e.Error()})
+		}
+	}
 	if req.Reasoning != nil {
 		if result.Complete {
 			item, e := recordWorkReasoning(book, w, *req.Reasoning, resolveSources, save, commit)
@@ -422,6 +444,11 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		item, e := finishWorkCompletion(book, w, resolveSources, save, commit)
 		if e != nil {
 			item.Error = e.Error()
+		} else if w.Reasoning.Procedure != nil && w.Reasoning.Procedure.CloseReport {
+			w.Reasoning.Procedure.CloseReport = false
+			if e = save(); e != nil {
+				item.Error = e.Error()
+			}
 		}
 		add(item)
 	}
