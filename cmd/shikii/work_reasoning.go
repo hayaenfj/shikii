@@ -146,6 +146,9 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 			v.Next = "Record result:{ref:<result_source>} to finish the saved report without repeating its body or pinned evidence."
 		}
 	}
+	if r.Result != nil && r.Result.Ready && r.Result.ReviewGeneration != r.Generation && !v.Complete {
+		v.Next = "Work changed after the saved report. Record the changed result or an explicit ending review; the old result ref cannot cover new work."
+	}
 	if len(v.PendingResults) > 0 {
 		v.Next = "Repair each pending_results source with result:{ref:<source>,evidence:[actual refs]}; the original body and quality stay unchanged. Recovery does not finish a different task."
 	}

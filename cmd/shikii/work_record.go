@@ -112,11 +112,36 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		}
 		return e
 	})
+	book := notebook.Book{Root: root, Scope: scope}
+	reportSource := ""
+	// Ref-only repairs may advance bookkeeping for an already reviewed batch.
+	// New observations, reports, trials or changed decisions cannot do so.
+	recoveryReview := workResultReviewCurrent(w) && onlyWorkRecovery(req)
+	reviewStamped := false
+	stampReview := func() error {
+		if reviewStamped || w.Result == nil || !w.Result.Ready || reportSource != w.Result.Source && !recoveryReview {
+			return nil
+		}
+		if e := save(); e != nil {
+			return e
+		}
+		w.Result.ReviewGeneration = w.Reasoning.Generation
+		if e := save(); e != nil {
+			return e
+		}
+		reviewStamped = true
+		return nil
+	}
 	result := workResult{Complete: true, Saved: []workItem{}}
 	if req.Result != nil {
 		result.Storage = map[string]any{"status": "unconfirmed"}
 	}
 	defer func() {
+		if e := stampReview(); e != nil {
+			result.Complete = false
+			result.Errors = append(result.Errors, workItem{Kind: "context", Ref: "result-review", Error: e.Error()})
+		}
+		result.Reasoning = currentReasoningView(book, w.Reasoning)
 		if req.Result != nil && req.Result.Ref != "" {
 			pending := w.Reasoning.PendingResults[req.Result.Ref]
 			if pending != nil {
@@ -159,7 +184,6 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		return true
 	}
 
-	book := notebook.Book{Root: root, Scope: scope}
 	local := map[string]string{}
 	for i, o := range req.Observations {
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)
@@ -196,6 +220,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		return sources, nil
 	}
 	if req.Result != nil {
+		repairingBinding := req.Result.Ref != "" && w.Result != nil && !w.Result.Ready && w.Result.Source == req.Result.Ref
 		var item workItem
 		var e error
 		if req.Result.Ref != "" {
@@ -205,6 +230,9 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		}
 		if e != nil {
 			item.Error = e.Error()
+		} else if w.Result != nil && w.Result.Ready && (req.Result.Ref == "" || repairingBinding) {
+			// A ready ref alone never expands the original report's scope.
+			reportSource = w.Result.Source
 		}
 		add(item)
 		if halt() {
@@ -463,7 +491,10 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 			add(workItem{Ref: "reasoning", Kind: "reasoning", Error: "save the failed or pending work items before recording this judgment"})
 		}
 	}
-	if req.Reasoning == nil && w.Result != nil && result.Complete {
+	if e := stampReview(); e != nil {
+		add(workItem{Kind: "context", Ref: "result-review", Error: e.Error()})
+	}
+	if req.Reasoning == nil && w.Result != nil && result.Complete && (req.Result == nil || req.Result.Ref == "" || req.Result.Ref == w.Result.Source) {
 		item, e := finishWorkCompletion(book, w, resolveSources, save, commit)
 		if e != nil {
 			item.Error = e.Error()
@@ -941,4 +972,21 @@ func uniqueWorkStrings(values []string) []string {
 		}
 	}
 	return result
+}
+
+// Failed-ref repairs do not introduce a new work report. This recognizes only
+// the existing API's recovery forms, never new evidence or a fresh decision.
+func onlyWorkRecovery(req workRequest) bool {
+	if len(req.Observations)+len(req.Outcomes)+len(req.Discoveries) > 0 || req.Reasoning != nil || req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil {
+		return false
+	}
+	if req.Result != nil && req.Result.Ref == "" || req.Reading != nil && req.Reading.Ref == "" || req.Trial != nil && (req.Trial.Ref == "" || req.Trial.Result != nil) || req.Comparison != nil && req.Comparison.Ref == "" {
+		return false
+	}
+	for _, note := range req.Notes {
+		if note.Ref == "" {
+			return false
+		}
+	}
+	return true
 }

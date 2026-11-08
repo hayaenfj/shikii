@@ -28,7 +28,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, resolv
 	item := workItem{Kind: "result-recovery", Ref: c.Ref}
 	pending := w.Reasoning.PendingResults[c.Ref]
 	if pending == nil && w.Result != nil && w.Result.Source == c.Ref && w.Result.Ready {
-		if w.Reasoning.Finish != nil && w.Reasoning.Finish.Generation != w.Reasoning.Generation && w.Result.PreviousFinish != w.Reasoning.Finish.Key {
+		if !workResultReviewCurrent(w) {
 			return item, errors.New("work changed after the saved finish; record the changed result")
 		}
 		material, e := book.ReadSources([]string{c.Ref})

@@ -83,12 +83,12 @@ type workCompletion struct {
 	Remaining  string   `json:"remaining,omitempty"`
 }
 type workCompletionRef struct {
-	PreviousFinish string   `json:"previous_finish,omitempty"`
-	Unresolved     bool     `json:"unresolved,omitempty"`
-	Signature      string   `json:"signature"`
-	Ready          bool     `json:"ready"`
-	Source         string   `json:"source"`
-	Evidence       []string `json:"evidence,omitempty"`
+	ReviewGeneration uint64   `json:"review_generation,omitempty"`
+	Unresolved       bool     `json:"unresolved,omitempty"`
+	Signature        string   `json:"signature"`
+	Ready            bool     `json:"ready"`
+	Source           string   `json:"source"`
+	Evidence         []string `json:"evidence,omitempty"`
 }
 type workRequest struct {
 	responseSize      func(any) int          // Host transport sizing; never supplied by the caller.

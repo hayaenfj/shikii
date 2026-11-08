@@ -37,10 +37,6 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		return workItem{Kind: "result", Ref: "result"}, err
 	}
 	signature := workHash(c)
-	previousFinish := ""
-	if w.Reasoning.Finish != nil {
-		previousFinish = w.Reasoning.Finish.Key
-	}
 	if w.Result != nil && w.Result.Signature != signature {
 		w.Result = nil
 		w.Reasoning.Result = nil
@@ -65,13 +61,11 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 			}
 			if slices.Equal(bound, w.Result.Evidence) {
 				id = w.Result.Source
-				previousFinish = w.Result.PreviousFinish
 			} else {
 				evidenceVersion = "result evidence " + workHash(bound)
 			}
 		} else {
 			id = w.Result.Source
-			previousFinish = w.Result.PreviousFinish
 		}
 	}
 	if id == "" {
@@ -82,7 +76,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		return item, err
 	}
 	w.Sources["result"] = id
-	w.Result = &workCompletionRef{PreviousFinish: previousFinish, Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
+	w.Result = &workCompletionRef{Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
 	w.Reasoning.Result = w.Result
 	if w.Reasoning.PendingResults == nil {
 		w.Reasoning.PendingResults = map[string]*workResultRecovery{}
@@ -107,11 +101,26 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 	}
 	w.Result.Evidence = evidence
 	w.Result.Ready = true
+	w.Result.ReviewGeneration = w.Reasoning.Generation
 	delete(w.Reasoning.PendingResults, id)
 	return item, save()
 }
 
+// The report covers its submitted batch. Recovery may finish that same review,
+// but later work evidence requires another reported result or explicit review.
+func workResultReviewCurrent(w *workState) bool {
+	if w == nil || w.Result == nil || w.Reasoning == nil {
+		return false
+	}
+	r := w.Reasoning
+	return w.Result.ReviewGeneration > 0 && w.Result.ReviewGeneration == r.Generation || r.Finish != nil && r.Finish.Generation == r.Generation
+}
+
 func finishWorkCompletion(book notebook.Book, w *workState, resolve func([]string) ([]string, error), save func() error, commit workCommitter) (workItem, error) {
+	if !workResultReviewCurrent(w) {
+		return workItem{Kind: "reasoning", Ref: "reasoning"}, errors.New("work changed after this report; record its changed result or an explicit ending review")
+	}
+
 	if !w.Result.Ready {
 		return workItem{Kind: "reasoning", Ref: "reasoning"}, errors.New("retry the saved result with valid evidence refs before finishing")
 	}
@@ -169,6 +178,9 @@ func workStorageState(w *workState, r *workResult) {
 	if !r.Complete || r.Reasoning.WikiPending {
 		status = "saved-pending"
 		r.NextAction = "Retry only the failed or pending refs with this receipt; keep saved evidence refs. Read reasoning.pending_notes for the retained original draft."
+		if w.Result.Ready && !workResultReviewCurrent(w) {
+			r.NextAction = "The original report is saved. Work changed afterward; record the changed result or an explicit ending review. A ref-only retry cannot cover new work."
+		}
 		for _, item := range r.Errors {
 			if item.Kind == "procedure" {
 				r.NextAction = "The report is saved. Prepare with this receipt to retry procedure feedback and finish automatically; do not resend the result."

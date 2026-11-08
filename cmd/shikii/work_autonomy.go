@@ -284,7 +284,7 @@ func recoverPreparedProcedure(root, scope string, dir *os.Root, name string, w *
 	e := recoverProcedureFeedback(book, w, save, commit)
 	if e == nil && w.Reasoning != nil && w.Reasoning.Procedure != nil {
 		p := w.Reasoning.Procedure
-		if p.CloseReport && p.Pending != nil && p.Indexed == p.Pending.Snapshot.ID && w.Result != nil && w.Result.Source == p.Indexed && !w.Reasoning.WikiPending && !reasoningPublicationsPending(w) && len(w.Reasoning.PendingCaptures) == 0 && trialPendingCount(w.Reasoning) == 0 && pendingResultCount(w.Reasoning) == 0 {
+		if p.CloseReport && p.Pending != nil && p.Indexed == p.Pending.Snapshot.ID && w.Result != nil && w.Result.Source == p.Indexed && workResultReviewCurrent(w) && !w.Reasoning.WikiPending && !reasoningPublicationsPending(w) && len(w.Reasoning.PendingCaptures) == 0 && trialPendingCount(w.Reasoning) == 0 && pendingResultCount(w.Reasoning) == 0 {
 			if p.View != nil && p.View.Source != "" {
 				w.Sources["procedure"] = p.View.Source
 			}
