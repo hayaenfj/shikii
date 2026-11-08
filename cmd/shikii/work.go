@@ -151,6 +151,7 @@ type workReply struct {
 type workState struct {
 	reviewingResult bool                                  // Trusted ending persistence; never decoded from input.
 	Loop            *workLoopState                        `json:"loop,omitempty"`
+	Delivery        *workDeliveryState                    `json:"delivery,omitempty"`
 	Result          *workCompletionRef                    `json:"result,omitempty"`
 	NextPending     uint64                                `json:"next_pending,omitempty"`
 	ActiveNote      string                                `json:"-"`
@@ -630,6 +631,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	initialWorkReading(s, w, knowledge, quoted)
+	rememberWorkMetadata(w, reply)
 	if err = saveWorkContext(dir, name, scope, req.TurnID, w, true, func(current *hookSession) error {
 		if workHash(current.Planning) != contextRevision {
 			return errors.New("the planning context changed while preparing; prepare again")

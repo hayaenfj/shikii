@@ -9,12 +9,12 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-1288%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1293%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.29.2-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.29.3-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.29.2 shares repeated reading notices verbatim within each response and reuses related-page reviews when all stored content is identical and only version lineage differs. Exact source recovery, changed conditions, new evidence and required reviews remain available. Procedure learning and the ordinary two-call recording workflow continue unchanged. See the [changelog](CHANGELOG.md) and [recording workflow](skills/shikii/references/recording.md).
+Version 0.29.3 keeps the current request visible while reusing unchanged article descriptions from earlier deliveries in the same task. Unresolved conditions, counterexamples, changed premises and exact source recovery remain available. A response budget too small for the request fails before saving. See the [changelog](CHANGELOG.md) and [recording workflow](skills/shikii/references/recording.md).
 
 Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 

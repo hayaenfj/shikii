@@ -244,18 +244,27 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		if e != nil {
 			return nil, e
 		}
-		sourceBudget := max(4096, budget-4096)
-		if req.responseSize != nil {
-			measure := func(page any) int {
-				part := page.(map[string]any)
-				minimal := map[string]any{"receipt": req.Receipt, "knowledge": entries, "how_to_record": continuedWorkHowTo, "source": part, "source_query": map[string]any{"operation": "prepare", "work": map[string]any{"receipt": req.Receipt, "query": query, "cursor": part["next_cursor"]}}}
-				// Leave space for bounded status and omission/recovery metadata.
-				return req.responseSize(minimal) + 1536
-			}
-			sourceMaterial, err = book.ReadSourcesPageMeasured([]string{query}, req.Cursor, budget, measure)
-		} else {
-			sourceMaterial, err = book.ReadSourcesPage([]string{query}, req.Cursor, sourceBudget)
+		size := workPreparationSizer([]func(any) int{req.responseSize})
+		delivery := uint64(1)
+		if w.Delivery != nil {
+			delivery += w.Delivery.Sequence
 		}
+		measure := func(page any) int {
+			part := page.(map[string]any)
+			minimal := map[string]any{"receipt": req.Receipt, "knowledge": entries, "how_to_record": continuedWorkHowTo, "task": task, "task_context": taskContext, "agent_supplied_task": w.Standalone, "delivery": delivery, "source": part, "source_query": map[string]any{"operation": "prepare", "work": map[string]any{"receipt": req.Receipt, "query": query, "cursor": part["next_cursor"]}}}
+			// Measure the mandatory request plus the actual omission envelope,
+			// rather than paying a fixed reserve on every source part.
+			minimal["output"] = workPreparationOutput(budget, []string{"collective", "reasoning", "reading", "attention"})
+			reserve := 1 // CLI/HTTP encoder newline.
+			if pendingWorkProcedure(w) || w.Reasoning != nil && w.Reasoning.Procedure != nil && w.Reasoning.Procedure.CloseReport {
+				reserve += 512
+				if req.responseSize != nil {
+					reserve += 1536
+				}
+			}
+			return size(minimal) + reserve
+		}
+		sourceMaterial, err = book.ReadSourcesPageMeasured([]string{query}, req.Cursor, budget, measure)
 		if err != nil {
 			return nil, err
 		}
@@ -339,6 +348,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	if workContextSize(reply) > workSourceBudget*3 {
 		return nil, errors.New("the added knowledge exceeds the response budget; use a narrower query or the individual wiki operations")
 	}
+	rememberWorkMetadata(w, reply)
 	if err = saveWorkContext(dir, name, scope, token.Turn, w, false, func(s *hookSession) error {
 		return retainWorkKnowledge(s, w, quoted, read)
 	}); err != nil {

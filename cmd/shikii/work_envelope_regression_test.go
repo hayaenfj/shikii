@@ -50,6 +50,9 @@ func TestWorkFinalEnvelopeMCPSourcePages(t *testing.T) {
 						t.Fatalf("successful MCP exceeds budget: %d>%d", n, budget)
 					}
 					c := r["structuredContent"].(map[string]any)
+					if c["task"] != "\u5408\u6210\u306e\u539f\u8cc7\u6599\u3092\u56de\u53ce\u3059\u308b\u3002" || c["task_context"] == nil {
+						t.Fatal("every source part must retain the current request and its provenance")
+					}
 					source := c["source"].(map[string]any)
 					part := source["observations"].([]any)[0].(map[string]any)["content"].(string)
 					if part == "" {

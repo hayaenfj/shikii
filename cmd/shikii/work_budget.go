@@ -41,7 +41,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	// changes in both the sharing decision and every pre-save budget check.
 	actualSize := func(v any) int {
 		if reading != nil {
-			reading.Mixed = readingMixed || limited || reply["reading_notices"] != nil
+			reading.Mixed = readingMixed || limited || reply["reading_notices"] != nil || reusedWorkMetadata(reply)
 			reading.Bytes = max(0, readingBytes-max(0, before-suppliedPreparationBytes(reply)))
 		}
 		if limited && w.Reasoning != nil && w.Reasoning.Procedure != nil {
@@ -70,6 +70,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		budget -= reserve
 	}
 	entries, _ := reply["knowledge"].([]any)
+	reuseWorkMetadata(w, reply, actualSize)
 	if size(reply) <= budget {
 		return suppliedPreparationReads(reply), nil
 	}
@@ -147,17 +148,20 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	if size(reply) > budget-1000 {
-		for _, field := range []string{"reasoning", "reading", "attention", "task", "task_context", "pending", "observations"} {
+		for _, field := range []string{"reasoning", "reading", "attention", "pending", "observations"} {
 			if size(reply) <= budget-1000 {
 				break
+			}
+			if _, exists := reply[field]; !exists {
+				continue
 			}
 			delete(reply, field)
 			omitted = append(omitted, field)
 		}
 	}
-	reply["output"] = map[string]any{"limited": true, "max_bytes": responseBudget, "omitted": omitted, "next_action": "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."}
+	reply["output"] = workPreparationOutput(responseBudget, omitted)
 	if size(reply) > budget {
-		return nil, errors.New("the reference inventory exceeds max_bytes; prepare with a larger response budget")
+		return nil, errors.New("the task and reference inventory exceed max_bytes; prepare with a larger response budget")
 	}
 	for ref := range quoted {
 		visible := false
@@ -176,6 +180,10 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	return suppliedPreparationReads(reply), nil
+}
+
+func workPreparationOutput(budget int, omitted []string) map[string]any {
+	return map[string]any{"limited": true, "max_bytes": budget, "omitted": omitted, "next_action": "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."}
 }
 
 func suppliedPreparationReads(reply map[string]any) []store.KnowledgeReference {

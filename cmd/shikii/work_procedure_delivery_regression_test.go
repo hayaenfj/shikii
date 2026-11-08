@@ -44,7 +44,7 @@ func TestWorkRegressionProcedureUndeliveredAdvice(t *testing.T) {
 	for _, long := range []bool{false, true} {
 		name := "\u77ed\u3044\u4f9d\u983c_\u5bfe\u7167"
 		if long {
-			name = "\u9577\u3044\u4f9d\u983c_\u7701\u7565"
+			name = "\u9577\u3044\u4f9d\u983c_\u62d2\u5426"
 		}
 		t.Run(name, func(t *testing.T) {
 			b, _ := readingLearningBook(t)
@@ -55,6 +55,15 @@ func TestWorkRegressionProcedureUndeliveredAdvice(t *testing.T) {
 					s += strings.Repeat("\u8aac\u660e\u7528\u306e\u5408\u6210\u6761\u4ef6\u3002", 550)
 				}
 				return s
+			}
+			if long {
+				// The request can no longer be omitted to make room for advice.
+				// Reject this former omission case before any quality report.
+				p, e := workCall(t, b, "prepare", map[string]any{"request": task(0), "query": "Reading source recovery", "max_bytes": 8192})
+				if e == nil || !strings.Contains(e.Error(), "max_bytes") || p != nil {
+					t.Fatal("oversized task must fail before validation or adoption", e)
+				}
+				return
 			}
 			gen, gdel := auditDeliveryRun(t, b, task(0), "\u5408\u6210\u306e\u751f\u6210\u5143\u6761\u4ef6\u3092\u78ba\u8a8d\u3057\u305f\u3002", nil, 8192)
 			t.Logf("\u751f\u6210 status=%v \u52a9\u8a00\u914d\u4fe1=%v", loopObject(t, gen["procedure"])["status"], gdel)

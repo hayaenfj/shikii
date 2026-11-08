@@ -31,6 +31,14 @@ Unknown quality stays unknown. Empty or unsupported quality results contribute n
 
 Candidates change only the fixed guidance procedures. Required checks, original-source recovery, evaluation rules and permissions stay outside their control, with bounded exploration and storage. This changes project procedure selection without retraining a model or permitting arbitrary code changes. Fewer guidance bytes do not establish general improvements in elapsed time, model tokens or answer quality. See the [recording contract](../skills/shikii/references/recording.md#automatic-improvement-of-loop-procedures).
 
+## In 0.29.3, preserve the current intent while reducing repeated delivery
+
+This version adds delivery cost control to the flow of saving knowledge and using it in later work. For a request such as “keep the owner condition, do not publish, and leave the unresolved choice open,” preparation retains the request text and its provenance while reducing other response content. If they cannot fit the response budget, it fails before saving rather than silently omitting the request.
+
+Within the same task, unchanged article summaries, applicability conditions and current/history interpretations can refer to an earlier delivery. Unclassified material, rechecks, counterexamples and incomplete status remain visible. Changed conditions or source revisions and explicit full reads receive the required content. An exact article-revision query also recovers it when the earlier response is unavailable.
+
+The addition controls the cost of delivering stored knowledge under the current conditions. It does not infer or summarize the person's purpose or agreement; the original request and condition references remain available. Reuse applies only when the complete transport becomes smaller, with no extra model or setting. Reduced delivery bytes are checked separately from actual judgment quality or total task time. See the [input and reference contract](../skills/shikii/references/recording.md#bounded-reading-and-memory-upgrades).
+
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)

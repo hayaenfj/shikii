@@ -20,6 +20,15 @@ This guide covers everything the short [README](../README.md) leaves out: every 
 
 ## Current knowledge, counterexamples and procedure reviews
 
+Preparation preserves `task` and `task_context` even under a response budget;
+if the current request cannot fit, it fails before replacing the receipt. When
+reusing a previously supplied body or excerpts under the same receipt,
+`metadata_from` can reference unchanged summaries and conditions at an earlier
+`delivery` number. Unclassified text, rechecks, counterexamples and incomplete
+status remain visible; changed conditions are supplied normally. Recover the
+exact article revision if the earlier response is unavailable. No extra model
+or setting is required. See the [reference contract and limits](../skills/shikii/references/recording.md#bounded-reading-and-memory-upgrades).
+
 After reading the sources, the agent can attach `passages` to exact body quotations to distinguish current guidance, earlier context, material needing rechecking and counterexample candidates. Each quotation retains its conditions and reason at the same article revision. `work prepare` and `consult` return this interpretation as `orientation`, with unclassified text and changed premises still explicit. A later date alone never overrides earlier conditions. The Knowledge page can display and edit quotations and conditions together.
 
 `consult` searches interpreted counterexamples and sourced failure outcomes independently of ordinary topic candidates. It ranks failures individually against the current approach, so newer unrelated failures cannot bury an earlier matching counterexample. These are candidates with original conditions and evidence; the agent decides what they mean for the proposal.

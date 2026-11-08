@@ -2,6 +2,11 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.29.3 — Preserve the request and reuse unchanged article descriptions
+
+- Keep the current task and its provenance in budgeted preparation; fail explicitly before saving when they cannot fit.
+- Reference unchanged article metadata from an earlier delivery under the same receipt while retaining unresolved material, counterexamples, changed conditions and exact recovery. Apply only when the complete transport shrinks, and retain only final delivered state.
+
 ## 0.29.2 — Share reading notices and reuse unchanged related reviews
 
 - Share repeated host reading notices verbatim within each prepare response when the complete transport becomes smaller; preserve article text, quotations, incomplete status and recovery queries.

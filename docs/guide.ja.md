@@ -20,6 +20,8 @@ shikii は、エージェントをあなたのプロジェクトに合わせて�
 
 ## 知識を準備し、考えた内容を記録する（0.19.0）
 
+依頼本文`task`と話者・不足状態を示す`task_context`は応答上限でも保持し、収まらない時は保存前にエラーを返します。同じレシート内で配送済みの本文や抜粋を再利用する時は、変更のない要約・適用条件などを`metadata_from`で以前の配送番号`delivery`へ結び付けます。未分類・再確認・反例・不足状態は毎回返し、条件が変われば通常どおり配送します。以前の応答を参照できない場合は同じ版の問い合わせで回復できます。追加のモデルや設定は不要です。[参照の対応と上限](../skills/shikii/references/recording.md#bounded-reading-and-memory-upgrades)を確認してください。
+
 `shikii work prepare`へ検索語`query`と現在のhookの`session_id`・`turn_id`を渡します。返された会話・知識・未処理の証拠・`how_to_record`を読み、`work record`へレシート`receipt`と判断・観察・出典付きの記事を渡します。出典のID・記事の版・原資料の時刻はshikiiが保持します。差し込み先が曖昧なら候補の本文を読んで判断します。`complete`・`errors`・`pending`と振り返りの残件を確認し、失敗分は同じレシートで再送します。
 
 hookが無い時は`query`とエージェント自身が書いた`request`を使えますが、人の合意としては扱えません。MCPは`shikii_wiki`のprepare/recordと`work`オブジェクト、HTTPは同じ本文を`POST /v1/wiki/notebook`へ渡します。従来の個別操作も使えます。更新後はセッション・画面・MCPを再起動し、同じwikiや進行中のセッションを書くプロセスを0.27.0以上へ揃えてください。条件に合う手順結果の選択には0.25.0以上を使います。
