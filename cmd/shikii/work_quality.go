@@ -50,3 +50,70 @@ func validateWorkQualityAgreement(book notebook.Book, w *workState, req workRequ
 	}
 	return nil
 }
+
+// Each optional quality report contributes its actual immutable check sources.
+// A cached reading from another task is a backlog, not this report's evidence.
+type workQualityEvidence struct {
+	Sources []notebook.Source
+	Err     error
+}
+
+func workReadingQualityEvidence(book notebook.Book, w *workState, reading *workReadingFeedback, resolve func([]string) ([]string, error)) workQualityEvidence {
+	if reading == nil {
+		return workQualityEvidence{}
+	}
+	if reading.Ref != "" {
+		saved := w.Reasoning.Readings[reading.Ref]
+		if saved == nil {
+			return workQualityEvidence{Err: errors.New("unknown reading execution reference")}
+		}
+		if saved.Details.Work != workHash([]string{w.Reasoning.SessionID, w.Reasoning.TurnID})[:16] || w.Reasoning.Reading == nil || saved.Details.Case != w.Reasoning.Reading.Case {
+			return workQualityEvidence{}
+		}
+		return workQualityEvidence{Sources: saved.Details.Evidence}
+	}
+	if len(reading.Evidence) < 1 || len(reading.Evidence) > 4 {
+		return workQualityEvidence{Err: errors.New("reading quality needs one to four check evidence refs")}
+	}
+	ids, e := resolve(reading.Evidence)
+	if e != nil {
+		return workQualityEvidence{Err: e}
+	}
+	sources, e := book.OutcomeSources(ids)
+	return workQualityEvidence{Sources: sources, Err: e}
+}
+
+func mergeWorkQualityEvidence(primary []notebook.Source, additional workQualityEvidence, grade *bool) ([]notebook.Source, error) {
+	// A checked negative must still restore the procedure if auxiliary work fails.
+	if grade != nil && !*grade {
+		return primary, nil
+	}
+	if additional.Err != nil {
+		return nil, additional.Err
+	}
+	out := append([]notebook.Source(nil), primary...)
+	for _, source := range additional.Sources {
+		found := false
+		for _, saved := range out {
+			found = found || source == saved
+		}
+		if !found {
+			out = append(out, source)
+		}
+	}
+	return out, nil
+}
+
+func excludeWorkQuality(w *workState, p *workProcedureProgress, source string, grade *bool) {
+	status := "ungraded"
+	if grade != nil {
+		status = "ineligible"
+	}
+	p.Pending = nil
+	p.Indexed = source
+	p.View = &notebook.ProcedureStatus{Status: status, Policy: p.Trace.Config.ID, Ineligible: true, QualityNotice: "The report is saved; its accompanying reading check is unavailable. It cannot validate a procedure. Report a new actual check when available."}
+	if w.Result != nil && w.Result.Source == source && grade != nil {
+		w.Result.Unresolved = true
+	}
+	delete(w.Sources, "procedure")
+}

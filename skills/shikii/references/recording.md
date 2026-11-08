@@ -57,6 +57,10 @@ When an actual check is available, optionally add `sufficient:true` or `false` t
 result and reuse its existing captured evidence. Omission remains unknown; do not
 infer quality from task completion or delivery. A result and reading report in the
 same batch can share the checked quality/evidence. Conflicting grades are refused.
+The same execution's result and reading evidence are checked together before
+positive procedure support, including ref recovery. Another task's backlog stays
+separate. An unavailable auxiliary check cannot add positive support or hide an
+actual checked negative.
 An empty or unsupported quality result is saved as `ungraded` or `ineligible`,
 with a short notice, and contributes no support. An unsupported explicit grade
 leaves the ending assessment unresolved. It does not create a permanent storage

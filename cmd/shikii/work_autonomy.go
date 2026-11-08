@@ -143,7 +143,7 @@ func procedureAttention(w *workState) map[string]any {
 	return nil
 }
 
-func recordProcedureFeedback(book notebook.Book, w *workState, c *workCompletion, closeReport bool, save func() error, commit workCommitter) (*notebook.ProcedureStatus, error) {
+func recordProcedureFeedback(book notebook.Book, w *workState, c *workCompletion, additional workQualityEvidence, closeReport bool, save func() error, commit workCommitter) (*notebook.ProcedureStatus, error) {
 	if w.Reasoning == nil {
 		return nil, nil
 	}
@@ -151,11 +151,21 @@ func recordProcedureFeedback(book notebook.Book, w *workState, c *workCompletion
 		return nil, recoverProcedureFeedback(book, w, save, commit)
 	}
 	p := w.Reasoning.Procedure
+	if p.Pending == nil && p.Indexed == w.Result.Source {
+		return p.View, recoverProcedureFeedback(book, w, save, commit)
+	}
 	if p.View != nil && p.View.Status == "limited" {
 		return p.View, recoverProcedureFeedback(book, w, save, commit)
 	}
 	if p.Trace.Stalls == 0 && p.Trace.Config.ID == notebook.DefaultProcedure().ID && p.View == nil && !p.Mixed {
-		return nil, recoverProcedureFeedback(book, w, save, commit)
+		if e := recoverProcedureFeedback(book, w, save, commit); e != nil {
+			return nil, e
+		}
+		if p.Pending == nil {
+			p.Indexed = w.Result.Source
+			return nil, save()
+		}
+		return p.View, nil
 	}
 	if p.Pending == nil || p.Pending.Snapshot.ID != w.Result.Source {
 		snapshot, e := book.OutcomeSources([]string{w.Result.Source})
@@ -198,6 +208,11 @@ func recordProcedureFeedback(book notebook.Book, w *workState, c *workCompletion
 			w.Reasoning.PendingProcedures = append(w.Reasoning.PendingProcedures, &prior)
 		}
 
+		evidence, e = mergeWorkQualityEvidence(evidence, additional, original.Sufficient)
+		if e != nil {
+			excludeWorkQuality(w, p, w.Result.Source, original.Sufficient)
+			return p.View, save()
+		}
 		p.Pending = &notebook.ProcedureSample{Trace: trace, Sufficient: original.Sufficient, Evidence: evidence, Snapshot: snapshot[0]}
 		p.CloseReport = closeReport
 		if e = save(); e != nil {

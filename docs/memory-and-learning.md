@@ -26,6 +26,8 @@ sent with its one ending report. Unknown quality stays unknown. Empty or unsuppo
 saved and its unverified grade stays unresolved without repeated storage retries.
 Candidates cannot
 edit the required checks, original evidence, evaluation rules or permissions.
+When result and reading supply checks for the same execution, their evidence is
+checked together before counting positive support.
 Repeated proof under another name cannot establish another validation task. The
 source-backed execution and evidence bindings remain available after session expiry.
 The procedure journal has fixed exploration and storage bounds. See the

@@ -24,7 +24,7 @@ type workResultRecovery struct {
 	Complete    bool                   `json:"complete,omitempty"`
 }
 
-func repairWorkResult(book notebook.Book, w *workState, c workCompletion, resolve func([]string) ([]string, error), save func() error, commit workCommitter) (workItem, error) {
+func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additional workQualityEvidence, resolve func([]string) ([]string, error), save func() error, commit workCommitter) (workItem, error) {
 	item := workItem{Kind: "result-recovery", Ref: c.Ref}
 	pending := w.Reasoning.PendingResults[c.Ref]
 	if pending == nil && w.Result != nil && w.Result.Source == c.Ref && w.Result.Ready {
@@ -143,10 +143,19 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, resolv
 		if len(w.Reasoning.PendingProcedures) >= 8 {
 			return item, errors.New("prepare this receipt to recover earlier procedure feedback first")
 		}
-		trace := p.Trace
-		trace.Mixed = p.Mixed
-		p.Pending = &notebook.ProcedureSample{Trace: trace, Sufficient: original.Sufficient, Evidence: proof, Snapshot: snapshot[0]}
-		w.Reasoning.PendingProcedures = append(w.Reasoning.PendingProcedures, p)
+		auxiliary := workQualityEvidence{}
+		if pending.Turn == w.Reasoning.TurnID {
+			auxiliary = additional
+		}
+		proof, e = mergeWorkQualityEvidence(proof, auxiliary, original.Sufficient)
+		if e != nil {
+			excludeWorkQuality(w, p, c.Ref, original.Sufficient)
+		} else {
+			trace := p.Trace
+			trace.Mixed = p.Mixed
+			p.Pending = &notebook.ProcedureSample{Trace: trace, Sufficient: original.Sufficient, Evidence: proof, Snapshot: snapshot[0]}
+			w.Reasoning.PendingProcedures = append(w.Reasoning.PendingProcedures, p)
+		}
 		pending.Queued = true
 		if e = save(); e != nil {
 			return item, e
@@ -180,8 +189,18 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, resolv
 	pending.CompletedAt = time.Now().UTC()
 	trimResultRecoveryHistory(w.Reasoning)
 	if w.Result != nil && w.Result.Source == c.Ref && pending.Turn == w.Reasoning.TurnID {
+		if p := pending.Procedure; p != nil && p.View != nil && p.View.Ineligible && original.Sufficient != nil {
+			pending.Result.Unresolved = true
+		}
 		w.Result = pending.Result
 		w.Reasoning.Result = w.Result
+		if current := w.Reasoning.Procedure; current != nil {
+			current.Indexed = c.Ref
+			current.CloseReport = false
+			if p := pending.Procedure; p != nil {
+				current.Pending, current.View = p.Pending, p.View
+			}
+		}
 	}
 	return item, save()
 }

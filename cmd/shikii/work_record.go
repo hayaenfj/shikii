@@ -227,11 +227,12 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		}
 		return sources, nil
 	}
+	qualityEvidence := workReadingQualityEvidence(book, w, req.Reading, resolveSources)
 	if req.Result != nil {
 		var item workItem
 		var e error
 		if req.Result.Ref != "" {
-			item, e = repairWorkResult(book, w, *req.Result, resolveSources, save, commit)
+			item, e = repairWorkResult(book, w, *req.Result, qualityEvidence, resolveSources, save, commit)
 		} else {
 			item, e = captureWorkCompletion(book, w, *req.Result, resolveSources, save, commit)
 		}
@@ -270,7 +271,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	// Queue feedback from the immutable result before unrelated indexing can fail.
 	// Recovery of an earlier report must never prevent capture of this input.
 	if w.Result != nil && w.Result.Ready {
-		view, e := recordProcedureFeedback(book, w, req.Result, req.Reasoning == nil, save, commit)
+		view, e := recordProcedureFeedback(book, w, req.Result, qualityEvidence, req.Reasoning == nil, save, commit)
 		result.Procedure = view
 		if e != nil {
 			add(workItem{Kind: "procedure", Ref: "procedure", Error: e.Error()})

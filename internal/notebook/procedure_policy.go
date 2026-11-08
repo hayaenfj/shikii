@@ -456,7 +456,7 @@ func containsProcedureEvidence(p procedureProposal, ids []string) bool {
 // The generator, held-out validation, promotion and rollback all run from one
 // ordinary ending report. Checked quality remains an agent/host report, not truth.
 func (b Book) RecordProcedure(s ProcedureSample) (view *ProcedureStatus, retErr error) {
-	if !idPattern.MatchString(s.Trace.Work) || !idPattern.MatchString(s.Trace.Case) || s.Trace.BaselineBytes < 0 || s.Trace.BaselineBytes > 16<<20 || s.Trace.ActualBytes < 0 || s.Trace.ActualBytes > 16<<20 || len(s.Evidence) > 4 {
+	if !idPattern.MatchString(s.Trace.Work) || !idPattern.MatchString(s.Trace.Case) || s.Trace.BaselineBytes < 0 || s.Trace.BaselineBytes > 16<<20 || s.Trace.ActualBytes < 0 || s.Trace.ActualBytes > 16<<20 || len(s.Evidence) > 8 {
 		return nil, errors.New("invalid bounded procedure execution")
 	}
 	// Eligibility is computed from checked originals, never accepted from callers.
