@@ -157,6 +157,10 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 	}
 	sort.Strings(ids)
 	u.Total = len(ids)
+	checkpoints, err := readCheckpoints(dir)
+	if err != nil {
+		return u, err
+	}
 	withdrawn := map[string]string{}
 	for _, id := range ids {
 		p, live := inventory[id]
@@ -175,9 +179,12 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 			u.Withdrawn++
 			continue
 		}
-		if task, ok := byID[id]; ok && c.Reviews[id] == task.Key {
-			u.Reviewed++
-			continue
+		if task, ok := byID[id]; ok {
+			previous, seen := checkpoints[id]
+			if c.Reviews[id] == task.Key || seen && c.Reviews[id] == previous.Key && sameMaintenanceContent(previous, task) && !hasNewFeedback(task.FeedbackKeys, previous.FeedbackKeys) {
+				u.Reviewed++
+				continue
+			}
 		}
 		if task, ok := byID[id]; ok && len(u.Tasks) < 2 {
 			task.Reasons = append([]string{"memory-upgrade"}, task.Reasons...)

@@ -26,7 +26,11 @@ func workOutputBudget(n int) (int, error) {
 // delivered quote or teach a reading preference from a shortened response.
 func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any, quoted map[string]string, requested int, sizing ...func(any) int) ([]store.KnowledgeReference, error) {
 	// Reserve the newline added by CLI and HTTP JSON encoders.
-	size := workPreparationSizer(sizing)
+	rawSize := workPreparationSizer(sizing)
+	size := func(v any) int {
+		shareWorkExplanations(reply, rawSize)
+		return rawSize(v)
+	}
 	before := suppliedPreparationBytes(reply)
 	budget, err := workOutputBudget(requested)
 	if err != nil {
@@ -44,6 +48,11 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	}
 	entries, _ := reply["knowledge"].([]any)
 	if size(reply) <= budget {
+		if reply["reading_notices"] != nil && w.Reasoning != nil && w.Reasoning.Reading != nil {
+			// Shared host guidance changes delivery cost, not reading quality.
+			w.Reasoning.Reading.Mixed = true
+			w.Reasoning.Reading.Bytes = max(0, w.Reasoning.Reading.Bytes-max(0, before-suppliedPreparationBytes(reply)))
+		}
 		return suppliedPreparationReads(reply), nil
 	}
 	omitted := []string{}
@@ -176,6 +185,9 @@ func suppliedPreparationReads(reply map[string]any) []store.KnowledgeReference {
 
 func suppliedPreparationBytes(reply map[string]any) int {
 	n := workContextSize(reply["knowledge"])
+	if notices := reply["reading_notices"]; notices != nil {
+		n += len(`,"reading_notices":`) + workContextSize(notices)
+	}
 	if u, ok := reply["memory_upgrade"].(map[string]any); ok && u["pages"] != nil {
 		n += workContextSize(u)
 	}

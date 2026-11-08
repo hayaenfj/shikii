@@ -30,6 +30,7 @@ type MaintenanceTask struct {
 	OutcomeTotal  int                      `json:"outcome_total,omitempty"`
 	NextAction    string                   `json:"next_action,omitempty"`
 	ContentKey    string                   `json:"-"`
+	BasisKey      string                   `json:"-"`
 	FeedbackKeys  []string                 `json:"-"`
 	outcomeRefs   []ProcedureOutcome
 }
@@ -43,14 +44,21 @@ type maintenanceCheckpoint struct {
 	MaintenanceReview
 	At           time.Time `json:"at"`
 	ContentKey   string    `json:"content_key,omitempty"`
+	BasisKey     string    `json:"basis_key,omitempty"`
 	FeedbackKeys []string  `json:"feedback_keys,omitempty"`
 }
 
 func maintenanceTasks(pages []Page) []MaintenanceTask {
 	known, deps := map[string]Page{}, map[string]map[string]string{}
+	contents := map[string]string{}
 	for _, p := range pages {
 		known[p.ID] = p
 		deps[p.ID] = map[string]string{}
+		// Version lineage alone is not new evidence about a related page.
+		// Keep every stored content field, including sources and edit reasons.
+		p.Revision, p.Previous, p.Recheck = "", "", nil
+		raw, _ := json.Marshal(p)
+		contents[p.ID] = digest(raw)
 	}
 	for _, p := range pages {
 		for _, id := range append(append([]string{}, p.Related...), p.Replaces...) {
@@ -71,6 +79,15 @@ func maintenanceTasks(pages []Page) []MaintenanceTask {
 			Dependencies map[string]string
 		}{p.Revision, task.Dependencies})
 		task.Key = digest(data)[:16]
+		content := map[string]string{}
+		for id := range task.Dependencies {
+			content[id] = contents[id]
+		}
+		data, _ = json.Marshal(struct {
+			Revision     string
+			Dependencies map[string]string
+		}{p.Revision, content})
+		task.BasisKey = digest(data)[:16]
 		out = append(out, task)
 	}
 	return out
@@ -128,6 +145,19 @@ func hasNewFeedback(current, reviewed []string) bool {
 	return false
 }
 
+func sameMaintenanceContent(previous maintenanceCheckpoint, task MaintenanceTask) bool {
+	if previous.BasisKey != "" && task.BasisKey != "" {
+		return previous.Revision == task.Revision && previous.BasisKey == task.BasisKey
+	}
+	// Older checkpoints lack the content comparison evidence. Preserve their
+	// existing exact-version behavior until a real review records that evidence.
+	key := previous.ContentKey
+	if key == "" {
+		key = previous.Key
+	}
+	return key == task.ContentKey
+}
+
 func (b Book) Maintenance() ([]MaintenanceTask, error) {
 	return b.maintenance(nil)
 }
@@ -173,15 +203,12 @@ func (b Book) maintenance(ids []string) ([]MaintenanceTask, error) {
 			continue
 		}
 		previous, seen := checkpoints[task.PageID]
-		previousContent := previous.ContentKey
-		if previousContent == "" {
-			previousContent = previous.Key
-		}
+		sameContent := sameMaintenanceContent(previous, task)
 		switch {
 		case !seen:
 			task.Reasons = []string{"unreviewed"}
-		case previous.Key != task.Key && (previousContent != task.ContentKey || hasNewFeedback(task.FeedbackKeys, previous.FeedbackKeys)):
-			if previousContent != task.ContentKey {
+		case previous.Key != task.Key && (!sameContent || hasNewFeedback(task.FeedbackKeys, previous.FeedbackKeys)):
+			if !sameContent {
 				task.Reasons = []string{"page-or-related-changed"}
 			}
 		case time.Since(previous.At) >= 30*24*time.Hour:
@@ -304,7 +331,7 @@ func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {
 	if old, ok := checkpoints[review.PageID]; ok && old.Key == review.Key && old.Reason == review.Reason && time.Since(old.At) < 30*24*time.Hour {
 		return review, recordMemoryUpgradeReview(dir, review)
 	}
-	checkpoints[review.PageID] = maintenanceCheckpoint{MaintenanceReview: review, At: time.Now().UTC(), ContentKey: selected.ContentKey, FeedbackKeys: selected.FeedbackKeys}
+	checkpoints[review.PageID] = maintenanceCheckpoint{MaintenanceReview: review, At: time.Now().UTC(), ContentKey: selected.ContentKey, BasisKey: selected.BasisKey, FeedbackKeys: selected.FeedbackKeys}
 	data, _ := json.Marshal(checkpoints)
 	if err := writeFile(filepath.Join(dir, ".maintenance.json"), data); err != nil {
 		return review, err

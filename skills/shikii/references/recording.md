@@ -113,6 +113,12 @@ reuse never establishes a full-body read. Explicit pinned recovery, changed
 premises and mandatory checks retain priority. Repeated searches or challenged
 trials without progress suggest changing the method, never skipping required work.
 
+Repeated host reading notices may appear once, verbatim, in reading_notices.
+An entry's reading_notice then points to /reading_notices/noticeN in the same
+response. Read that shared notice with each entry's incomplete status and exact
+query. Article text, quotations and source fields keep their original values.
+Sharing is used only when the complete transport response becomes smaller.
+
 A shipped memory-policy epoch starts a source-preserving review of existing active
 wiki pages, with English progress "Upgrading memory…". Routine patch releases do
 not restart a completed epoch. At a break in work, prepare with the same receipt
@@ -126,6 +132,13 @@ then resume on the next task; durable progress survives restarts. An explicit re
 to finish the upgrade may continue batches, renewing context at its article limit. Unavailable
 sources stay blocked and must not be deleted to claim completion. Hosts running
 assigned child agents do not automatically schedule this project-wide migration.
+
+Related-page version lineage alone does not reopen a reviewed article when all
+stored content, conditions, sources and edit reasons are exactly unchanged. The
+edited article itself still needs review. New evidence, changed premises and the
+30-day review remain active; older checkpoints without comparison evidence keep
+the previous exact-version behavior. Review submissions still require the latest
+revision and key, including current related revisions.
 
 ## Keep records brief
 

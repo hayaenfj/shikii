@@ -619,9 +619,19 @@ the person's answer.
 Optional max_bytes bounds a prepare response; omitted bodies retain exact recovery
 queries. Sentence-boundary excerpts and same-receipt body or identical-excerpt reuse
 reduce rereading; reused excerpts never establish a full-body read.
+Identical host reading notices can be shared verbatim in `reading_notices` within
+the same response; each `reading_notice` points there. Article text, quotations,
+incomplete status and exact recovery queries are retained. Sharing is used only
+when the complete transport response becomes smaller.
 Memory unknown/unused assessments need no invented explanation. A shipped memory
 policy upgrade shows Upgrading memory… and lets the installed agent review existing
 knowledge in resumable batches, preserving sources, preferences and history. Ordinary
 tasks review at most one two-article batch, then resume on the next task. An explicit
 request to finish the upgrade can continue the remaining batches.
+Related-page version lineage alone does not reopen a reviewed article when the
+related page's entire stored content, conditions, sources and edit reasons are exactly unchanged.
+The edited article itself still needs review. New evidence, changed premises and
+30-day checks remain active. Older checkpoints keep their previous behavior until
+a real review supplies comparison evidence. Submissions still require current
+revision and key values, including the current related revisions.
 See [the recording contract](../skills/shikii/references/recording.md#ordinary-work-takes-two-calls).

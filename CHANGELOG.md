@@ -2,6 +2,11 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## Unreleased
+
+- Share repeated host reading notices verbatim within each prepare response when the complete transport becomes smaller; preserve article text, quotations, incomplete status and recovery queries.
+- Reuse actual related-page reviews when all stored content and evidence are identical and only version lineage differs. Keep edited-page, new-evidence, premise and periodic checks, strict submission keys, and conservative behavior for older checkpoints.
+
 ## 0.29.1 — Reduce repeated reading and routine maintenance
 
 - Reuse identical same-receipt excerpts without treating omitted text as a full read; preserve changed conditions, explicit depth and pinned recovery.

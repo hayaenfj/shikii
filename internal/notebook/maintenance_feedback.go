@@ -68,6 +68,11 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 				Files   []PremiseChange
 			}{task.Key, task.ChangedFiles})
 			task.Key = digest(data)[:16]
+			data, _ = json.Marshal(struct {
+				Content string
+				Files   []PremiseChange
+			}{task.BasisKey, task.ChangedFiles})
+			task.BasisKey = digest(data)[:16]
 		}
 		task.ContentKey = task.Key
 		all := byQuote["lesson:"+task.PageID+":"+task.Revision]
