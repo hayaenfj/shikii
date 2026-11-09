@@ -402,6 +402,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("/v1/answered", s.handleAnswered)
 	mux.HandleFunc("/v1/redo", s.handleRedo)
 	mux.HandleFunc("/v1/status", s.handleStatus)
+	mux.HandleFunc("/v1/page-health", s.handlePageHealth)
 	mux.HandleFunc("/v1/tune", s.handleTuneGet)
 	mux.HandleFunc("/v1/tune/run", s.handleTuneRun)
 	mux.HandleFunc("/v1/tune/sync", s.handleTuneSync)
@@ -652,16 +653,13 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	recs, err := s.st.Records(id, 0)
+	view, err := s.st.ReadDecisionLog(r.Context(), id)
 	if err != nil {
 		writeErr(w, 500, err)
 		return
 	}
-	labeled, err := s.st.LabeledTraces(id)
-	if err != nil {
-		writeErr(w, 500, err)
-		return
-	}
+	view.NewestFirst()
+	recs, labeled := view.Records, view.Labeled
 	superseded := map[string]bool{} // do not show a redone original record as answered either (the answer was copied to the new record; prevents inflated counts and a path where a correction to the original never reaches the new record)
 	for _, rec := range recs {
 		if rec.RedoOf != "" {
@@ -898,16 +896,13 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	recs, err := s.st.Records(id, 0)
+	view, err := s.st.ReadDecisionLog(r.Context(), id)
 	if err != nil {
 		writeErr(w, 500, err)
 		return
 	}
-	labeled, err := s.st.LabeledTraces(id)
-	if err != nil {
-		writeErr(w, 500, err)
-		return
-	}
+	view.NewestFirst()
+	recs, labeled := view.Records, view.Labeled
 	rank := map[string]int{"ask": 0, "audit": 1, "act": 2, "discard": 3} // unsure → spot checks (1 in 20 of act) → the rest
 	reviews, err := s.st.Reviews(id)
 	if err != nil {
@@ -929,12 +924,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	if sp.ID == "wiki-conflict" {
 		settled = settledDrafts(s.st)
 	}
-	_, all, err := s.st.Counts(id)
-	if err != nil {
-		writeErr(w, 500, err)
-		return
-	}
-	checkOutcome := outcomeChecksOf(sp, all)
+	checkOutcome := outcomeChecksOf(sp, view.Labels)
 	for _, rec := range recs {
 		if legacyPlanningRecord(sp, rec) || undecidedConflict(sp.ID, rec, labeled, settled) {
 			continue
@@ -1007,11 +997,12 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				questions[lang] = d.Question
 			}
 		}
-		nRec, labs, err := s.st.Counts(sp.ID)
+		view, err := s.st.ReadDecisionLog(r.Context(), sp.ID)
 		if err != nil {
 			writeErr(w, 500, err)
 			return
 		}
+		nRec, labs := view.RawRecords, view.Labels
 		checkOutcome := outcomeChecksOf(sp, labs)
 		byKey := map[string]bool{}
 		for _, l := range labs {
@@ -1058,17 +1049,13 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			}
 			return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal first
 		})
-		labeled, _ := s.st.LabeledTraces(sp.ID)
+		labeled := view.Labeled
 		reviews, rerr := s.st.Reviews(sp.ID)
 		if rerr != nil {
 			writeErr(w, 500, rerr)
 			return
 		}
-		records, rerr := s.st.Records(sp.ID, 0)
-		if rerr != nil {
-			writeErr(w, 500, rerr)
-			return
-		}
+		records := view.Records
 		todo, reviewPending, legacyPlanning, waitingPerson, undecided := 0, 0, 0, 0, 0
 		settled := map[string]bool{}
 		if sp.ID == "wiki-conflict" {
@@ -1102,7 +1089,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				answered[l.InputsHash] = true
 			}
 		}
-		funnel, _ := s.st.Funnel(sp.ID, decide.DiscardUnsure(sp))
+		funnel := view.Funnel(decide.DiscardUnsure(sp))
 		person.add(countPersonWork(sp.ID, decide.DiscardUnsure(sp), records, labs, reviews, time.Now()))
 		s.mu.Lock()
 		last := s.lastCal[sp.ID]

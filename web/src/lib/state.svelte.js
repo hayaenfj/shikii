@@ -55,11 +55,25 @@ export function answerSpecs(st, selection = ui) {
 }
 
 let loadVersion = 0;
+let pendingLoad = null;
+let queuedRefresh = false;
 // dropPendingLoads drops the responses of pending reloads (so that after answering, the card does not come back from the old list from before the answer)
 export function loadMark() { return loadVersion; }
 // If another load (switching screens or the 15-second reload) started while the answer was being sent, drop that too and reload with the current state
 // (the card does not come back from a list older than the answer, and the screen switched to still appears. Final audit 0.9.1 low-F1)
-export function dropPendingLoads(mark = loadVersion) { const raced = loadVersion !== mark; loadVersion++; if (raced) load(); }
+export function dropPendingLoads(mark = loadVersion) {
+  const raced = loadVersion !== mark;
+  loadVersion++;
+  queuedRefresh = false;
+  pendingLoad?.controller.abort();
+  if (raced) load();
+}
+// A timer never starts a second copy of an in-flight load. At most one refresh
+// follows it. Explicit loads (selection changes and completed writes) stay fresh.
+export function refresh() {
+  if (pendingLoad) { queuedRefresh = true; return pendingLoad.promise; }
+  return load();
+}
 // Invalidate lists requested before the write completed, then show the saved result.
 export function applyArticle(article) {
   dropPendingLoads();
@@ -71,29 +85,46 @@ export function applyArticle(article) {
 }
 // Loads status, the ways of asking of every question a person answers (one request per question, not per card: the wording box on the Answer screen and the marker
 // on "Answer" need them on every screen, and the landing screen depends on them; audit 0.9.2 middle-1), and what the current screen needs. A slow old response is not applied to a newer selection.
-export async function load() {
+export function load() {
+  pendingLoad?.controller.abort();
+  queuedRefresh = false;
   const version = ++loadVersion;
   const selection = { page: ui.page, tab: ui.tab, done: ui.done, pinned: ui.pinned };
+  const job = { version, controller: new AbortController(), promise: null };
+  pendingLoad = job;
+  job.promise = loadSelection(selection, version, job.controller.signal).finally(() => {
+    if (pendingLoad !== job) return;
+    pendingLoad = null;
+    if (queuedRefresh) {
+      queuedRefresh = false;
+      if (typeof document === 'undefined' || !document.hidden) load();
+    }
+  });
+  return job.promise;
+}
+
+async function loadSelection(selection, version, signal) {
   try {
-    const st = await api.status();
-    if (version !== loadVersion) return;
+    const st = await api.status(signal);
+    if (version !== loadVersion || signal.aborted) return;
     if (!Array.isArray(st.projects)) {
-      const tunes = Promise.all(personSpecs(st).map(async sp => { sp.tune = await api.tune(sp.id).catch(() => null); }));
+      const tunes = Promise.all(personSpecs(st).map(async sp => { sp.tune = await api.tune(sp.id, signal).catch(() => null); }));
       let page = selectedPage(st, selection);
       // nothing chosen and no card waiting: whether a wording box waits decides between Answer and Knowledge
       if (page === 'wiki' && !pages.includes(selection.page)) { await tunes; page = selectedPage(st, selection); }
+      signal.throwIfAborted();
       if (page === 'wiki') {
-        st.wiki = await api.wiki();
+        st.wiki = await api.wiki(signal);
       } else if (page === 'answer') {
         // the cards: only the questions with something waiting (and the one named in the URL)
-        await Promise.all(answerSpecs(st, selection).map(async sp => { sp.queue = await api.queue(sp.id); }));
+        await Promise.all(answerSpecs(st, selection).map(async sp => { sp.queue = await api.queue(sp.id, signal); }));
       } else if (page === 'ai') {
         const tab = selectedTab(st, selection);
         const sp = st.specs.find(s => s.id === tab);
         // When looking at answered, the unanswered list is not loaded. A question only the AI answers is not in tunes, so its way of asking is loaded here
         const [rows, tune] = await Promise.all([
-          selection.done ? api.answered(tab) : api.queue(tab),
-          !selection.done && sp.person_answers === false ? api.tune(tab).catch(() => null) : undefined,
+          selection.done ? api.answered(tab, signal) : api.queue(tab, signal),
+          !selection.done && sp.person_answers === false ? api.tune(tab, signal).catch(() => null) : undefined,
         ]);
         if (selection.done) sp.answered = rows.items;
         else sp.queue = rows;
@@ -101,9 +132,9 @@ export async function load() {
       }
       await tunes;
     }
-    if (version === loadVersion) { data.state = st; data.loadError = ''; }
+    if (version === loadVersion && !signal.aborted) { data.state = st; data.loadError = ''; }
   } catch (e) {
-    if (version === loadVersion) data.loadError = e.status === 409 ? t('wikiStale') : e.message; // 409: still changing after reading again from the start
+    if (version === loadVersion && !signal.aborted) data.loadError = e.status === 409 ? t('wikiStale') : e.message; // 409: still changing after reading again from the start
   }
 }
 // Whether there is something for a person to do about candidate ways of asking (0.9.2). Only when the agent confirmed the meaning is the same and adopted it automatically (keep it or revert),

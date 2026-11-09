@@ -407,21 +407,23 @@ func registerProject(scope string) error {
 		name = entry.StoreID + ".json"
 	}
 	data, _ := json.Marshal(entry)
-	tmp, err := os.CreateTemp(dir, ".project-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	_, err = tmp.Write(data)
-	closeErr := tmp.Close()
-	if err != nil {
-		return err
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if err := os.Rename(tmp.Name(), filepath.Join(dir, name)); err != nil {
-		return err
+	if !unchangedProjectEntry(filepath.Join(dir, name), data) {
+		tmp, err := os.CreateTemp(dir, ".project-*")
+		if err != nil {
+			return err
+		}
+		defer os.Remove(tmp.Name())
+		_, err = tmp.Write(data)
+		closeErr := tmp.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if err := os.Rename(tmp.Name(), filepath.Join(dir, name)); err != nil {
+			return err
+		}
 	}
 	if legacy := filepath.Join(dir, entry.ID+".json"); converting && legacy != filepath.Join(dir, name) {
 		if p, ok := readEntry(legacy); ok && p.StoreID == "" && p.Path == scope {
@@ -429,6 +431,30 @@ func registerProject(scope string) error {
 		}
 	}
 	return nil
+}
+
+// Only a regular, unchanged entry can avoid the atomic replacement. Links and
+// files exchanged while being opened continue through the normal repair path.
+func unchangedProjectEntry(path string, wanted []byte) bool {
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Size() != int64(len(wanted)) {
+		return false
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || !os.SameFile(before, info) || info.Size() != int64(len(wanted)) {
+		return false
+	}
+	actual, err := io.ReadAll(io.LimitReader(f, int64(len(wanted))+1))
+	if err != nil || !bytes.Equal(actual, wanted) {
+		return false
+	}
+	current, err := os.Lstat(path)
+	return err == nil && current.Mode().IsRegular() && os.SameFile(info, current) && current.Size() == info.Size() && current.ModTime().Equal(info.ModTime())
 }
 
 // upgradeIndex converts, once when shikii is updated (hook install --yes), the entries released versions wrote, named by the path (0.9.6
@@ -588,17 +614,7 @@ func registeredProjects(common string) []projectEntry {
 	files, _ := filepath.Glob(filepath.Join(common, "projects", "*.json"))
 	for _, path := range files {
 		p, ok := readEntry(path)
-		if !ok || feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID || seen[p.Path] {
-			continue
-		}
-		// the store id's entry, or the entry a released version wrote by the path for a store not converted yet (upgradeIndex)
-		if byID := p.StoreID != "" && filepath.Base(path) == p.StoreID+".json"; !byID && (p.StoreID != "" || filepath.Base(path) != p.ID+".json" || storeID(filepath.Join(p.Path, ".shikii"), false) != "") {
-			continue
-		}
-		if checkProjectStore(filepath.Join(p.Path, ".shikii"), false) != nil {
-			continue
-		}
-		if active, err := projectActive(filepath.Join(p.Path, ".shikii"), p.Path); err != nil || !active {
+		if !ok || seen[p.Path] || !registeredEntryActive(path, p) {
 			continue
 		}
 		p.Name, p.URL = filepath.Base(p.Path), "/p/"+p.ID+"/"
@@ -613,6 +629,46 @@ func registeredProjects(common string) []projectEntry {
 		return projects[i].Name < projects[j].Name
 	})
 	return projects
+}
+
+// A named request verifies only its candidate entry. This is deliberately not
+// a cache: replacing the store, deleting registration, or moving the project
+// must be observed before a retained handler is reused.
+func registeredProjectAt(common, scope string) bool {
+	if scope == "" {
+		return false
+	}
+	root := filepath.Join(scope, ".shikii")
+	id := storeID(root, false)
+	if id == "" {
+		id = projectID(scope)
+	}
+	path := filepath.Join(common, "projects", id+".json")
+	p, ok := readEntry(path)
+	return ok && p.Path == scope && registeredEntryActive(path, p)
+}
+
+func registeredEntryActive(path string, p projectEntry) bool {
+	if feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID {
+		return false
+	}
+	root := filepath.Join(p.Path, ".shikii")
+	id := storeID(root, false)
+	if p.StoreID != "" {
+		if filepath.Base(path) != p.StoreID+".json" || id != p.StoreID {
+			return false
+		}
+		if p.StoreDir != "" && p.StoreDir != storeDir(root) {
+			return false
+		}
+	} else if filepath.Base(path) != p.ID+".json" || id != "" {
+		return false
+	}
+	if checkProjectStore(root, false) != nil {
+		return false
+	}
+	active, err := projectActive(root, p.Path)
+	return err == nil && active
 }
 
 // projectPageURL is the URL of this project's page (if running). If not running, "" (the hook starts it on the next request).

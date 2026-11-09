@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -57,12 +58,56 @@ func pageUp(r pageRecord) bool {
 		return false
 	}
 	c := &http.Client{Timeout: hookProbeTimeout}
-	resp, err := c.Get(r.url() + "/v1/status")
+	resp, err := c.Get(r.url() + "/v1/page-health")
+	if err != nil {
+		return false
+	}
+	var health struct {
+		Service string `json:"service"`
+		PID     int    `json:"pid"`
+		Scope   string `json:"scope"`
+	}
+	var decodeErr error
+	identified := resp.Header.Get("X-Shikii-Page") == "1"
+	if resp.StatusCode == http.StatusOK {
+		var raw []byte
+		raw, decodeErr = io.ReadAll(io.LimitReader(resp.Body, 4097))
+		if len(raw) > 4096 {
+			decodeErr = errors.New("page health response is too large")
+		}
+		if decodeErr == nil {
+			decodeErr = json.Unmarshal(raw, &health)
+		}
+	}
+	resp.Body.Close()
+	if identified || health.Service == "shikii-page" {
+		return resp.StatusCode == http.StatusOK && decodeErr == nil && health.Service == "shikii-page" && health.PID == r.PID && health.Scope == r.Scope
+	}
+	// Older pages have no health route. Preserve their status probe, including
+	// older generic handlers, without making current pages aggregate their logs.
+	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusOK {
+		return false
+	}
+	resp, err = c.Get(r.url() + "/v1/status")
 	if err != nil {
 		return false
 	}
 	resp.Body.Close()
 	return resp.StatusCode == 200
+}
+
+func (s *server) handlePageHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	abs, err := filepath.Abs(s.o.storeDir)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	w.Header().Set("X-Shikii-Page", "1")
+	writeJSON(w, 200, map[string]any{"service": "shikii-page", "pid": os.Getpid(), "scope": pageScope(abs)})
 }
 
 // livePage returns the URL of this project's page if it is up (http://127.0.0.1:<the free port>), or "" if not.

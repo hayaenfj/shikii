@@ -78,12 +78,20 @@ type server struct {
 	// Without a checkpoint exactly at the end of the prefix, cache_prompt does not help and everything is redone
 	// (measured 2026-10-17: cache_n=0, 4 seconds per question). So the prefix alone (up to just before the state) is run first
 	// with n_predict=0. After that only the state needs prefill (cache_n=137/154, 0.5 to 1.1 seconds per question).
-	warmPrefix string // the prefix warmed up last
-	warmTokens int    // token count of that prefix (if cache_n falls short of it, warm up again next time)
+	warmPrefix string                   // the prefix warmed up last
+	warmTokens int                      // token count of that prefix (if cache_n falls short of it, warm up again next time)
+	warmups    map[string]*prefixWarmup // only in-flight work; completed prefixes are not retained here
 
 	// passThrough is true when the upstream is a trained decision model (one that answers /v1/systemone itself, such as Kev or OpenJev).
 	// Then requests pass through as is with no readout. shikii can always talk to readout's endpoint and never switches endpoints by model kind.
 	passThrough bool
+}
+
+type prefixWarmup struct {
+	done    chan struct{}
+	cancel  context.CancelFunc
+	waiters int
+	err     error
 }
 
 // detectUpstream probes once whether the upstream is a decision model (whether /v1/systemone answers). Upstream llama.cpp returns 501 for an ordinary GGUF.
@@ -670,6 +678,9 @@ type completion struct {
 // warmPrefixFor sends the prompt's prefix (up to just before the state) to the upstream with n_predict=0 when it differs from last time,
 // so that a checkpoint is made. In the state-first layout the prefix contains the state, so it does nothing.
 func (s *server) warmPrefixFor(ctx context.Context, prompt, layout string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	marker := stateMarker
 	switch layout {
 	case "state-first":
@@ -683,20 +694,63 @@ func (s *server) warmPrefixFor(ctx context.Context, prompt, layout string) error
 	}
 	prefix := prompt[:idx]
 	s.mu.Lock()
-	same := prefix == s.warmPrefix
-	s.mu.Unlock()
-	if same {
+	if prefix == s.warmPrefix {
+		s.mu.Unlock()
 		return nil
 	}
-	var out completion
-	if _, err := s.post(ctx, "/completion", map[string]any{"prompt": prefix, "n_predict": 0, "cache_prompt": true}, &out); err != nil {
-		return err
+	flight := s.warmups[prefix]
+	if flight == nil {
+		limit := s.cfg.Timeout
+		if limit <= 0 {
+			limit = 120 * time.Second
+		}
+		shared, cancel := context.WithTimeout(context.Background(), limit)
+		flight = &prefixWarmup{done: make(chan struct{}), cancel: cancel}
+		if s.warmups == nil {
+			s.warmups = map[string]*prefixWarmup{}
+		}
+		s.warmups[prefix] = flight
+		go s.runPrefixWarmup(shared, prefix, flight)
 	}
-	s.mu.Lock()
-	s.warmPrefix = prefix
-	s.warmTokens = out.Timings.PromptN + out.Timings.CacheN
+	flight.waiters++
 	s.mu.Unlock()
-	return nil
+	defer func() {
+		s.mu.Lock()
+		flight.waiters--
+		if flight.waiters == 0 && s.warmups[prefix] == flight {
+			delete(s.warmups, prefix)
+			flight.cancel()
+		}
+		s.mu.Unlock()
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-flight.done:
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return flight.err
+	}
+}
+
+// A waiter's cancellation affects only that waiter. The upstream request ends
+// when all waiters leave or its fixed timeout expires. Failures are never cached.
+func (s *server) runPrefixWarmup(ctx context.Context, prefix string, flight *prefixWarmup) {
+	defer flight.cancel()
+	var out completion
+	_, err := s.post(ctx, "/completion", map[string]any{"prompt": prefix, "n_predict": 0, "cache_prompt": true}, &out)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.warmups[prefix] == flight {
+		if err == nil {
+			s.warmPrefix = prefix
+			s.warmTokens = out.Timings.PromptN + out.Timings.CacheN
+		}
+		delete(s.warmups, prefix)
+	}
+	flight.err = err
+	close(flight.done)
 }
 
 // noteCache looks at the response's cache_n and, if prefix reuse broke, marks it to warm up again next time.

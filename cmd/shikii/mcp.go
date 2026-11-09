@@ -139,14 +139,23 @@ func mcpProjectStore(project string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	registered := map[string]bool{}
-	for _, p := range registeredProjects(agent) {
-		registered[p.Path] = true
-	}
 	// the project folder, found as the hook finds it (the git top folder), or the nearest registered folder above it (outside git)
 	scope := projectScopeAt(project)
-	if !registered[scope] {
+	if !registeredProjectAt(agent, scope) {
 		scope = ""
+		for dir := feedbackScope(project); dir != "" && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+			if registeredProjectAt(agent, dir) {
+				scope = dir
+				break
+			}
+		}
+	}
+	if scope == "" {
+		// Retain the full legacy resolution for unusual registered spellings.
+		registered := map[string]bool{}
+		for _, p := range registeredProjects(agent) {
+			registered[p.Path] = true
+		}
 		for dir := feedbackScope(project); dir != "" && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
 			if registered[dir] {
 				scope = dir

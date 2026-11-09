@@ -1,8 +1,11 @@
 // A thin wrapper around shikii serve's HTTP entry points (v1/...). Paths are relative (so it works under a reverse proxy's prefix, the same convention as index.html's base './'). Errors are thrown as an Error built from the body's error (or the status code if there is none)
 async function j(url, opts) {
+	const signal = opts?.signal;
+	signal?.throwIfAborted();
   const r = await fetch(url, opts);
   let b;
-  try { b = await r.json(); } catch (e) { throw new Error(r.ok ? e.message : String(r.status)); } // a non-JSON response such as a reverse proxy's HTML is reported by its status code
+  try { b = await r.json(); } catch (e) { signal?.throwIfAborted(); throw new Error(r.ok ? e.message : String(r.status)); } // a non-JSON response such as a reverse proxy's HTML is reported by its status code
+	signal?.throwIfAborted();
   if (!r.ok) throw Object.assign(new Error(b.error || r.status), { status: r.status });
   return b;
 }
@@ -17,18 +20,19 @@ const fromTheStart = async read => {
 const post = (url, body) => j(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 export const api = {
-  status: () => j('v1/status'),
-  queue: id => j('v1/queue?spec=' + encodeURIComponent(id) + '&limit=200'),
-  answered: id => j('v1/answered?spec=' + encodeURIComponent(id) + '&limit=200'),
-  tune: id => j('v1/tune?spec=' + encodeURIComponent(id)),
-  wiki: () => fromTheStart(async () => {
-    const result = await j('v1/wiki');
+  status: signal => j('v1/status', { signal }),
+  queue: (id, signal) => j('v1/queue?spec=' + encodeURIComponent(id) + '&limit=200', { signal }),
+  answered: (id, signal) => j('v1/answered?spec=' + encodeURIComponent(id) + '&limit=200', { signal }),
+  tune: (id, signal) => j('v1/tune?spec=' + encodeURIComponent(id), { signal }),
+  wiki: signal => fromTheStart(async () => {
+    const result = await j('v1/wiki', { signal });
     let cursor = result.next_cursor;
     const seen = new Set();
     while (cursor) {
+      signal?.throwIfAborted();
       if (seen.has(cursor)) throw new Error('the next page of knowledge does not move forward');
       seen.add(cursor);
-      const page = await j('v1/wiki?cursor=' + encodeURIComponent(cursor));
+      const page = await j('v1/wiki?cursor=' + encodeURIComponent(cursor), { signal });
       result.lessons = [...(result.lessons || []), ...(page.lessons || [])];
       result.notebook_issues = [...(result.notebook_issues || []), ...(page.notebook_issues || [])];
       cursor = page.next_cursor;
