@@ -302,6 +302,21 @@ func (b Book) originals(f store.Feedback) []Original {
 			out = append(out, Original{rec.TraceID, inputs, status})
 		}
 	}
+	if b.snapshot != nil {
+		// The archived long-text file may not exist yet. Validate the complete
+		// recovered text and status from the original decision records instead.
+		key, hash := "fallback-originals:"+fingerprint(f), fingerprint(out)
+		if old, ok := b.snapshot.checks[key]; ok {
+			if old.hash != hash {
+				b.snapshot.failed = true
+			}
+		} else {
+			b.snapshot.checks[key] = readCheck{hash, nil, func() (string, error) {
+				fresh := Book{Root: b.Root, Scope: b.Scope, name: b.name}
+				return fingerprint(fresh.originals(f)), nil
+			}}
+		}
+	}
 	return out
 }
 

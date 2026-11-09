@@ -1282,7 +1282,7 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 	if len(ids) == 0 {
 		return nil, errors.New("wiki source lookup needs source ids")
 	}
-	recent, err := (store.Store{Dir: b.Root}).RecentFeedback(b.Scope)
+	recent, err := b.RecentFeedback()
 	if err != nil {
 		return nil, err
 	}
