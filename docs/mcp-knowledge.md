@@ -6,7 +6,7 @@ The Markdown text view is available from 0.28.1. Restart MCP after updating.
 
 Successful `shikii_wiki` and `shikii_reflect` calls can return a Markdown text view alongside the complete JSON result in `structuredContent`. Programmatic clients should read `structuredContent`; `content[].text` may be Markdown or compact JSON.
 
-Read the complete shared workflow in the `shikii_wiki` tool description before using any shikii tool. Initialization instructions retain the entry point and immediate safeguards. Clients that append server instructions to every tool can reuse this one complete workflow instead of receiving its full text on each tool.
+From 0.30.1, read the complete shared workflow in the `shikii_wiki` tool description before using any shikii tool. Initialization instructions retain the entry point and immediate safeguards. Clients that append server instructions to every tool can reuse this one complete workflow instead of receiving its full text on each tool.
 
 When forwarding a tool result to a model, provide one complete view and retain `isError` and relevant metadata. Prefer `structuredContent` for programmatic processing. If it is absent, retain the original `content` without assuming its text is JSON. Preserve any additional images or resource references that the structured result does not contain. The server continues to provide both representations for compatible clients.
 

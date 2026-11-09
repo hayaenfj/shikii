@@ -49,6 +49,14 @@ Within one operation, shikii can also share decoded source records, conversation
 
 Tied articles also keep a stable order for the same search. Term weights and delivery conditions remain the same.
 
+## In 0.30.1, share explanations while retaining complete recovery
+
+The common MCP workflow remains complete in the `shikii_wiki` description. Initialization points agents there before using tools and retains immediate safeguards. This avoids repeating the full workflow on every tool in clients that attach server guidance to each description.
+
+Within the same task, a fixed `collective.notice` can refer to its earlier delivery when all selected articles are already reusable, its text is unchanged and the complete transport becomes smaller. Updates, contrasts, investigations, missing material and recovery references remain. If the earlier response is unavailable, repeat preparation with the same receipt/query and `reasoning:{depth:focused}` for full guidance; explicit source recovery and new receipts also keep the full notice.
+
+Programmatic clients can read `structuredContent` while retaining error state and additional content; models should receive one complete view of a result. The server keeps both representations. These changes reduce repeated presentation without summarizing the request or evidence. Value preservation and delivery size remain separate from actual model judgment quality. See [MCP knowledge delivery](mcp-knowledge.md).
+
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)
