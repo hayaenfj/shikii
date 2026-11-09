@@ -7,10 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/hayaenfj/shikii/internal/store"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/store"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )

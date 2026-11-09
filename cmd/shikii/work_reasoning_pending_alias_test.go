@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 type frozenP struct {

@@ -3,10 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 
 	"github.com/hayaenfj/shikii/internal/store"
 )

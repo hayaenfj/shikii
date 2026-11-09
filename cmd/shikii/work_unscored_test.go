@@ -2,10 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/hayaenfj/shikii/internal/notebook"
-	"github.com/hayaenfj/shikii/internal/store"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func round4DeliveryConversation(t *testing.T, request string) (notebook.Book, map[string]any, store.Feedback) {

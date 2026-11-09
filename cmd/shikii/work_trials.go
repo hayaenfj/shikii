@@ -164,7 +164,7 @@ func trialBasisCurrent(book notebook.Book, evidence []string) bool {
 			if err != nil || len(live) != 1 || live[0].Revision != revision {
 				return false
 			}
-		} else if !strings.HasPrefix(ref, "source:") || !prepareWorkSource(book, strings.TrimPrefix(ref, "source:")).Complete {
+		} else if !completeWorkSourceReference(book, ref) {
 			return false
 		}
 	}

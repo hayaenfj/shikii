@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func TestWorkPrepareCorrectionWithoutPendingScores(t *testing.T) {

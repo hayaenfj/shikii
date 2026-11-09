@@ -3,8 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func TestWorkResultReferenceDoesNotCoverLaterEvidence(t *testing.T) {

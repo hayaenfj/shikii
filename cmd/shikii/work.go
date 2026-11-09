@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -263,21 +262,10 @@ func writeWorkSession(dir *os.Root, name string, s *hookSession) error {
 
 func writeWorkSessionBytes(dir *os.Root, name string, data []byte) error {
 	temp := ".work-" + store.NewTraceID() + ".tmp"
-	f, err := dir.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0600)
-	if err != nil {
+	if err := writeWorkTemp(dir, temp, data); err != nil {
 		return err
 	}
 	defer dir.Remove(temp)
-	_, err = f.Write(data)
-	if err == nil {
-		err = store.SyncTemp(f)
-	}
-	if e := f.Close(); err == nil {
-		err = e
-	}
-	if err != nil {
-		return err
-	}
 	return dir.Rename(temp, name)
 }
 func saveWorkState(dir *os.Root, name, scope, turn string, w *workState, install bool, checkpoints ...*workSessionCheckpoint) error {
@@ -483,26 +471,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	conversation, conversationContext := preparedWorkConversation(s, w, req.TurnID)
-	knowledge := []any{}
-	keys := []string{}
-	for key := range s.Planning.Sources {
-		if strings.HasPrefix(key, "article:") || strings.HasPrefix(key, "lesson:") {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-	seen := map[string]bool{}
-	for _, key := range keys {
-		parts := strings.Split(key, ":")
-		if len(parts) != 3 || seen[parts[1]] {
-			continue
-		}
-		seen[parts[1]] = true
-		ref := "knowledge" + strconv.Itoa(len(knowledge)+1)
-		w.Keys[ref] = key
-		w.Articles[ref] = store.KnowledgeReference{ID: parts[1], Revision: parts[2]}
-		knowledge = append(knowledge, map[string]any{"ref": ref, "id": parts[1], "revision": parts[2], "text": s.Planning.Sources[key], "body_included": strings.HasPrefix(key, "article:"), "query": map[string]any{"operation": "query", "query": "lesson:" + parts[1] + "@" + parts[2]}})
-	}
+	knowledge := initialPlanningKnowledge(s, w)
 	book, err := (notebook.Book{Root: root, Scope: scope}).PrepareReadSnapshot()
 	if err != nil {
 		return nil, err
@@ -542,60 +511,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		// explicit source read instead of automatically mixing their originals.
 		reflection.Observations = nil
 	}
-	pending := []any{}
-	reviewN, memoryN := 0, 0
-	for i, source := range reflection.Sources {
-		ref := "source" + strconv.Itoa(i+1)
-		if source.Head {
-			pending = append(pending, map[string]any{"request": source.Source.Request, "head": true, "next_action": "Prepare again after the complete sources are settled; do not judge a shortened source."})
-			continue
-		}
-		material := prepareWorkSource(book, source.Source.ID)
-		if !material.Complete {
-			pending = append(pending, map[string]any{"request": source.Source.Request, "head": true, "incomplete": true, "wiki_pending": source.WikiPending, "source": material.Material, "source_query": material.Query, "next_action": material.Notice})
-			continue
-		}
-		w.Sources[ref] = source.Source.ID
-		reviews := []any{}
-		memories := []any{}
-		for _, target := range source.Targets {
-			reviewN++
-			r := "review" + strconv.Itoa(reviewN)
-			w.Reviews[r] = workReviewRef{source.Source.ID, target.TraceID}
-			reviews = append(reviews, map[string]any{"ref": r, "question": target.Question, "files": target.Files, "decision_model_answer": target.ModelAnswer, "original_inputs": target.OriginalInputs, "text_status": target.TextStatus})
-		}
-		for _, m := range source.Memories {
-			memoryN++
-			r := "memory" + strconv.Itoa(memoryN)
-			w.Memory[r] = workMemoryRef{m.SourceID, m.Quote.Key}
-			memories = append(memories, map[string]any{"ref": r, "quote": m.Quote, "request": m.Request, "parent": m.Parent, "agent": m.Agent, "tool": m.Tool, "phrase": m.Phrase, "at": m.At})
-		}
-		pending = append(pending, map[string]any{"ref": ref, "request": source.Source.Request, "answer": source.Source.Summary, "reply": source.Source.Reply, "head": source.Head, "wiki_pending": source.WikiPending, "source": material.Material, "reviews": reviews, "memory": memories})
-	}
-	evidence := []any{}
-	for i, o := range reflection.Observations {
-		ref := "evidence" + strconv.Itoa(i+1)
-		material := prepareWorkSource(book, o.ID)
-		if !material.Complete {
-			evidence = append(evidence, map[string]any{"head": o, "incomplete": true, "source": material.Material, "source_query": material.Query, "next_action": material.Notice})
-			continue
-		}
-		w.Sources[ref] = o.ID
-		evidence = append(evidence, map[string]any{"ref": ref, "source": material.Material})
-	}
-	maintenance := []any{}
-	for _, m := range reflection.Maintenance {
-		relevant := false
-		for _, article := range w.Articles {
-			relevant = relevant || article.ID == m.PageID
-		}
-		if !relevant {
-			continue
-		}
-		ref := "maintenance" + strconv.Itoa(len(maintenance)+1)
-		w.Maintenance[ref] = notebook.MaintenanceReview{PageID: m.PageID, Revision: m.Revision, Key: m.Key}
-		maintenance = append(maintenance, map[string]any{"ref": ref, "task": m})
-	}
+	pending, evidence, maintenance := prepareWorkReflection(book, w, reflection)
 	task, taskContext, err := preparedWorkTask(s, w, req)
 	if err != nil {
 		return nil, err

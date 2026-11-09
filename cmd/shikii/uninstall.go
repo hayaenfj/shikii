@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -66,12 +65,7 @@ func cmdUninstall(args []string) error {
 		return err
 	}
 	home := filepath.Dir(filepath.Dir(agent))
-	tilde := func(p string) string {
-		if strings.HasPrefix(p, home+string(filepath.Separator)) {
-			return "~" + strings.TrimPrefix(p, home)
-		}
-		return p
-	}
+	tilde := homePathDisplay(agent)
 	projects := registeredProjects(agent)
 	var steps []uninstallStep
 	var left []string   // what is left alone and why (not an error: it is not shikii's, or the person chose it)
@@ -344,14 +338,7 @@ func removeJSONEntry(path, key, name string, write bool) (bool, error) {
 		return true, nil
 	}
 	delete(section, name)
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(cfg); err != nil {
-		return false, err
-	}
-	return true, writePersonFile(path, buf.Bytes(), 0o600)
+	return true, writePersonJSON(path, cfg)
 }
 
 // removeCodexServer removes [mcp_servers.shikii] from Codex's config.toml (withoutCodexServer). A config.toml kept elsewhere through a link

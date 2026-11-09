@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 

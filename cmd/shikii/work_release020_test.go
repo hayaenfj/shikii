@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/notebook"
-	"github.com/hayaenfj/shikii/internal/store"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func TestWorkOutcomeCaptureCapacity(t *testing.T) {

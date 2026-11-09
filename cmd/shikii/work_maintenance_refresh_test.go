@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func TestWorkMaintenanceRefreshRequiresCurrentFullRead(t *testing.T) {

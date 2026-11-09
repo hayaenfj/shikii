@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func TestAudit019ObservationContinuationContract(t *testing.T) {

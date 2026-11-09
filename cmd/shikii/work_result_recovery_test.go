@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func TestWorkResultEvidenceRecoveryKeepsOriginalTurn(t *testing.T) {

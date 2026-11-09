@@ -3,13 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/notebook"
-	"github.com/hayaenfj/shikii/internal/store"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func TestReasoningCapacityRetainsPayloadWhenArchiveFails(t *testing.T) {

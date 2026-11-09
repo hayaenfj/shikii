@@ -1,27 +1,18 @@
 package main
 
 import (
-	"errors"
 	"os"
-	"syscall"
 
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // Save only into the same ongoing frame under the hook's session lock. Query does not judge or regroup it.
 func savePlanningQuery(dir *os.Root, name, scope string, req planningRequest, sources map[string]string, knowledge *store.KnowledgeContext) error {
-	lock, err := dir.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	unlock, err := lockPlanningSession(dir, name)
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
-	if info, err := lock.Stat(); err != nil || !info.Mode().IsRegular() {
-		return errors.New("cannot check the session lock")
-	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.New("the request record is being updated; retry")
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer unlock()
 	s, err := readPlanningSession(dir, name)
 	if err != nil {
 		return err

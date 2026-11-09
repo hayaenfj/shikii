@@ -7,10 +7,8 @@ package main
 // PostCompact cannot give the agent context (its output is shown to the person only), so SessionStart is the one event used.
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -31,20 +29,9 @@ const (
 
 // runSessionStart reads the hook JSON and prints the brief as SessionStart's additionalContext. Silent outside a shikii project.
 func runSessionStart() error {
-	agent, err := agentHome()
+	_, in, err := readHookInput()
 	if err != nil {
 		return err
-	}
-	if !fileExists(filepath.Join(agent, "decisions")) {
-		return fmt.Errorf("%s: not installed (shikii hook install --yes)", agent)
-	}
-	raw, err := io.ReadAll(io.LimitReader(stdin, 4<<20))
-	if err != nil {
-		return err
-	}
-	var in hookInput
-	if err := json.Unmarshal(raw, &in); err != nil {
-		return fmt.Errorf("stdin is not the agent's hook JSON: %w", err)
 	}
 	root, scope, err := prepareHookProject(in.CWD)
 	if errors.Is(err, errProjectInactive) {

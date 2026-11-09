@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/hayaenfj/shikii/internal/notebook"
-	"github.com/hayaenfj/shikii/internal/store"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func TestAuditWorkNoteReportsRemainingPreparedReview(t *testing.T) {

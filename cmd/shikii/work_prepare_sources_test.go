@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/notebook"
-	"github.com/hayaenfj/shikii/internal/spec"
-	"github.com/hayaenfj/shikii/internal/store"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/spec"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func TestWorkPrepareRetainsHumanCorrections(t *testing.T) {

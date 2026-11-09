@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/hayaenfj/shikii/internal/store"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func TestWorkFeedbackFallbackRejectsChangedSource(t *testing.T) {

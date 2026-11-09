@@ -2,8 +2,9 @@ package main
 
 import (
 	"errors"
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"strings"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func preparationDepth(input *workReasoning) (string, error) {

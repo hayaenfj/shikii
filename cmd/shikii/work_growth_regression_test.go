@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/store"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/store"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )

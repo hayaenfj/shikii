@@ -2,10 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func TestWorkCompactTwoCallsKeepEvidenceOnce(t *testing.T) {

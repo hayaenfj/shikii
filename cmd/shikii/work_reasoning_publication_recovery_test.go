@@ -2,9 +2,10 @@ package main
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
-	"testing"
 )
 
 func interruptedPublication(t *testing.T, patch bool) (string, notebook.Book, map[string]any, string, notebook.Page) {

@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"github.com/hayaenfj/shikii/internal/store"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/hayaenfj/shikii/internal/store"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )

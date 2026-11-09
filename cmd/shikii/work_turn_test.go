@@ -1,14 +1,15 @@
 package main
 
 import (
-	"github.com/hayaenfj/shikii/internal/notebook"
-	"github.com/hayaenfj/shikii/internal/store"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func TestIndependent019OldReceiptContinuesAfterTurnChange(t *testing.T) {

@@ -139,21 +139,10 @@ func saveReasoningHistory(book notebook.Book, r *reasoningProgress, entry reason
 			return nil
 		}
 		temp := ".reasoning-" + store.NewTraceID() + ".tmp"
-		f, err := dir.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0600)
-		if err != nil {
+		if err := writeWorkTemp(dir, temp, data); err != nil {
 			return err
 		}
 		defer dir.Remove(temp)
-		_, err = f.Write(data)
-		if err == nil {
-			err = store.SyncTemp(f)
-		}
-		if closed := f.Close(); err == nil {
-			err = closed
-		}
-		if err != nil {
-			return err
-		}
 		// Link publishes without replacing a first record saved by another writer.
 		if err = dir.Link(temp, name); err != nil && !os.IsExist(err) {
 			return err
