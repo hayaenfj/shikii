@@ -45,6 +45,10 @@ While shikii is running, it can reuse article parsing within a fixed memory budg
 
 This temporary cache disappears when the process ends. The project's durable knowledge remains in its source-backed wiki, with the same review and recovery requirements.
 
+Within one operation, shikii can also share decoded source records, conversation-history aggregates and measurements of an exactly identical response. It skips work that cannot contribute an excerpt and avoids holding unrelated vocabulary during ordinary search. These changes preserve the original request, search rankings, complete-source recovery and commit-time change detection. Reusing work inside an operation does not summarize or replace the project's durable knowledge.
+
+Tied articles also keep a stable order for the same search. Term weights and delivery conditions remain the same.
+
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)

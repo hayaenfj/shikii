@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+- Share decoded source records, reflection history and exact response measurements within one operation; avoid copying discarded brief bodies and skip excerpt parsing when its budget is zero. Preserve source recovery, final transport budgets and ordinary search rankings while retaining only query terms for ordinary ranking.
+- Accumulate search scores in a fixed term order so rounding alone cannot reverse tied articles; preserve term weights, recall gates and complete candidate delivery.
+- Stream commit-time validation through bounded shared scratch space, and retain complete-byte checks, reader limits and errors. Avoid rewriting identical session checkpoints within the same recording while retaining current-state checks, liveness timestamps and synchronization.
+- Keep assignment preparation outside the shared registry lock, with per-assignment serialization and final capacity and identity checks.
+- Use a lightweight, identity-checked page probe, read decision logs once per status request, and resolve a named MCP project without scanning unrelated registrations. Preserve ownership checks, legacy recovery, malformed-line counts and label precedence; avoid replacing unchanged regular registration files.
+- Coalesce periodic page refreshes before starting another fetch, cancel obsolete source pagination and keep explicit updates fresh. Share only an in-flight warm-up for the same model prefix; keep each request's completion and cancellation separate.
 - Use descriptor size only to reserve article read buffers; preserve complete reads, fixed limits and reader errors when the file size changes.
 - Tokenize retrieval text without allocating a rune buffer for each word; preserve token sets, ranking rules and delivery conditions.
 - Reuse byte-validated article parsing in a bounded process cache, copy mutable metadata without duplicating article text, and share file reads within one preparation. Recheck complete file bytes, source hashes, article inventories and watched premises at the context commit boundary; reject changes without advancing the receipt.
