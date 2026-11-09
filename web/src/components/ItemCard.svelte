@@ -7,7 +7,7 @@
   // Phones (below 520px; audit 0.9.2 ui low-1): the answer bar still sticks to the bottom, but holds only the buttons, skip and the folded guess. The question moves to the top of the card
   // (shown there once, the bar's copy is hidden), the number marks are hidden and the two answers share a row, so the stuck bar stays small (about a sixth of the screen)
   import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
-  import { skipped, load, dropPendingLoads, loadMark } from '../lib/state.svelte.js';
+  import { skipped, load, dropPendingLoads, loadMark, ui, setPage } from '../lib/state.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
   import { plainText } from '../lib/text.js';
@@ -54,17 +54,19 @@
 
   async function answer(truth) {
     busy = true;
+    const targetSpec = sp, targetItem = it;
+    if (onAnswer && !ui.page) setPage('answer');
     try {
       const mark = loadMark();
-      const res = await api.label({ trace_id: it.trace_id, spec: sp.id, truth, source: it.audit ? 'audit' : 'ui' });
+      const res = await api.label({ trace_id: targetItem.trace_id, spec: targetSpec.id, truth, source: targetItem.audit ? 'audit' : 'ui' });
       dropPendingLoads(mark); // reload responses issued before answering would bring the answered card back, so drop them (audit 0.9.1 low-5)
-      if (!it.truth) {
-        sp.queue.items = sp.queue.items.filter(x => x.trace_id !== it.trace_id); sp.unlabeled = Math.max(0, (sp.unlabeled || 1) - 1); sp.labels++;
-        if (it.waits_for_person !== false) sp.waiting_for_person = Math.max(0, (sp.waiting_for_person || 1) - 1); // also decrease "remaining" and the marker at the top (audit 0.9.1 low-to-medium-4)
+      if (!targetItem.truth) {
+        targetSpec.queue.items = targetSpec.queue.items.filter(x => x.trace_id !== targetItem.trace_id); targetSpec.unlabeled = Math.max(0, (targetSpec.unlabeled || 1) - 1); targetSpec.labels++;
+        if (targetItem.waits_for_person !== false) targetSpec.waiting_for_person = Math.max(0, (targetSpec.waiting_for_person || 1) - 1); // also decrease "remaining" and the marker at the top (audit 0.9.1 low-to-medium-4)
       }
       if (res.calibrated) { toast(t('calibratedToast') + '\n' + (res.calibration || '').split('\n').slice(-2).join('\n'), 8000); }
       else { toast(t('done')(res.truth)); }
-      if (it.truth || it.review || res.calibrated) await load();
+      if (targetItem.truth || targetItem.review || res.calibrated) await load();
     } catch (e) { toast(t('error')(e.message)); }
     finally { busy = false; }
   }
