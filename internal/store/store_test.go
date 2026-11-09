@@ -381,9 +381,11 @@ func TestFirstRecordSurvivesACreateThatSaysNotThere(t *testing.T) {
 	t.Cleanup(func() { openInRoot = old })
 	var opens []int
 	openInRoot = func(r *os.Root, name string, flag int, perm os.FileMode) (*os.File, error) {
-		opens = append(opens, flag)
-		if len(opens) == 1 {
-			return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.ENOENT}
+		if name == "spec-0.jsonl" {
+			opens = append(opens, flag)
+			if len(opens) == 1 {
+				return nil, &os.PathError{Op: "openat", Path: name, Err: syscall.ENOENT}
+			}
 		}
 		return old(r, name, flag, perm)
 	}

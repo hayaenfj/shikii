@@ -17,31 +17,32 @@ func (s Store) AppendLabels(ls []Label) error {
 	if len(ls) == 0 {
 		return nil
 	}
-	var buf []byte
-	for _, l := range ls {
-		if l.TraceID == "" || l.SpecID == "" || l.SpecHash == "" || l.Model == "" {
-			return errors.New("label needs trace_id, spec_id, spec_hash and model")
-		}
-		if l.SpecID != ls[0].SpecID {
-			return errors.New("labels in one append must belong to one spec")
-		}
-		b, err := json.Marshal(l)
-		if err != nil {
-			return err
-		}
-		if len(b) > MaxLineBytes {
-			return fmt.Errorf("record too large: %d bytes > %d (inputs must stay under the line limit)", len(b), MaxLineBytes)
-		}
-		buf = append(append(buf, b...), '\n')
-	}
-	path := s.labelsPath(ls[0].SpecID)
-	f, err := s.openFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY)
+	buf, err := marshalLabels(ls)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.Write(buf)
-	return err
+	return s.appendJSONLBytes(s.labelsPath(ls[0].SpecID), buf)
+}
+
+func marshalLabels(ls []Label) ([]byte, error) {
+	var buf []byte
+	for _, l := range ls {
+		if l.TraceID == "" || l.SpecID == "" || l.SpecHash == "" || l.Model == "" {
+			return nil, errors.New("label needs trace_id, spec_id, spec_hash and model")
+		}
+		if l.SpecID != ls[0].SpecID {
+			return nil, errors.New("labels in one append must belong to one spec")
+		}
+		b, err := json.Marshal(l)
+		if err != nil {
+			return nil, err
+		}
+		if len(b) > MaxLineBytes {
+			return nil, fmt.Errorf("record too large: %d bytes > %d (inputs must stay under the line limit)", len(b), MaxLineBytes)
+		}
+		buf = append(append(buf, b...), '\n')
+	}
+	return buf, nil
 }
 
 // Labels returns only labels matching (spec_hash, model). Labels for old wording or other models are not used for calibration.

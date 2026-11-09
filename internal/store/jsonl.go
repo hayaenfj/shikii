@@ -17,13 +17,7 @@ func (s Store) appendJSONL(path string, v any) error {
 	if len(b) > MaxLineBytes {
 		return fmt.Errorf("record too large: %d bytes > %d (inputs must stay under the line limit)", len(b), MaxLineBytes)
 	}
-	f, err := s.openFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = f.Write(append(b, '\n'))
-	return err
+	return s.appendJSONLBytes(path, append(b, '\n'))
 }
 
 func (s Store) scanJSONL(path string, fn func(line []byte) error) error {
@@ -81,5 +75,12 @@ func (s Store) AppendLabelsOnce(ls []Label) error {
 			fresh = append(fresh, l)
 		}
 	}
-	return s.AppendLabels(fresh)
+	if len(fresh) == 0 {
+		return nil
+	}
+	buf, err := marshalLabels(fresh)
+	if err != nil {
+		return err
+	}
+	return s.appendJSONLBytesLocked(s.labelsPath(ls[0].SpecID), buf)
 }
