@@ -138,6 +138,17 @@ The actual transport must shrink; state is retained only after final sizing.
 `task` and `task_context` are never dropped to meet `max_bytes`: a budget too
 small for the current request fails explicitly before replacing its receipt.
 
+When every selected article is already reusable under the same receipt, an
+unchanged host-authored `collective.notice` may also name an earlier `delivery`
+in `notice_from`. Its short notice names that field and its recovery path. Only
+the fixed explanation is shared; updates, contrasts, investigations, omissions
+and recovery references retain their values. If the earlier response is no
+longer available, repeat the preparation with the same receipt/query and
+`reasoning:{depth:focused}` to recover the full notice. Exact-revision queries,
+explicit reading depths, changed notice text and a new receipt retain full
+guidance. Sharing is used only when the complete transport becomes smaller;
+failed or omitted deliveries never establish a reusable notice.
+
 A shipped memory-policy epoch starts a source-preserving review of existing active
 wiki pages, with English progress "Upgrading memory…". Routine patch releases do
 not restart a completed epoch. At a break in work, prepare with the same receipt
@@ -519,6 +530,29 @@ Check complete/errors/pending. An event stays bound to its original receipt, inc
 Fixed assignment limits: 512 executions per project store, 8 preparation receipts per execution, 64 events and 256 KiB per execution record. These are explicit capacity errors, with no automatic deletion. Reuse a receipt for additional searches. Additional teamwork context fits 24 KiB: up to 8 coverage entries, 8 questions and 4 procedure-review candidates, with older entries omitted when needed. Existing collective and work input limits still apply. Hook session/turn identifiers and human agreement fields cannot be mixed with an assignment. No extra service, model, command-line option or chiten dependency is required.
 
 ## MCP and HTTP
+
+### Reading MCP results once
+
+Read the shared workflow in `shikii_wiki`'s tool description before using any
+shikii tool. The initialization instructions retain this entry point, the trust
+boundary, the prohibition on labeling your own judgment and the project path.
+The complete workflow is supplied once rather than repeated in every tool's
+description by clients that append server instructions to each tool.
+
+For programmatic handling, prefer `structuredContent` when present, retaining
+`isError` and any other relevant result metadata. Otherwise retain the original
+`content`; it can contain Markdown, text, images or resource references and must
+not be assumed to be JSON. When passing the result on to a model, choose one
+complete view instead of displaying both representations of the same data.
+Preserve all conditions, exceptions, quotes, sources, revisions, recovery fields
+and relevant non-text content. A structured-only view is suitable only when it
+contains all required content; preserve any additional content otherwise.
+
+The server still returns both its complete structured result and its text view.
+Changing a client's choice of view requires checking its actual model delivery
+and judgment accuracy; value equality alone does not establish equal reading
+quality. Keep recovery and error paths in the comparison, and measure complete
+delivery rather than inferring token or latency savings from UTF-8 bytes.
 
 MCP uses `shikii_wiki` with `operation:"prepare"` or `"record"`, and the payload above inside `work`. Pass the absolute working folder as `project` on every MCP call. HTTP uses the same operation and work object at **POST `/v1/wiki/notebook`**, with `Content-Type: application/json`, under the server's existing authentication and project boundary.
 

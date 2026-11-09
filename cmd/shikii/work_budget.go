@@ -44,7 +44,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	// changes in both the sharing decision and every pre-save budget check.
 	actualSize := func(v any) int {
 		if reading != nil {
-			reading.Mixed = readingMixed || limited || reply["reading_notices"] != nil || reusedWorkMetadata(reply)
+			reading.Mixed = readingMixed || limited || reply["reading_notices"] != nil || reusedWorkMetadata(reply) || reusedWorkNotice(reply)
 			reading.Bytes = max(0, readingBytes-max(0, before-suppliedPreparationBytes(reply)))
 		}
 		if limited && w.Reasoning != nil && w.Reasoning.Procedure != nil {

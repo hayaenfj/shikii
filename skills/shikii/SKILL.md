@@ -45,6 +45,7 @@ Use it at five moments:
 
 ## Project operations
 
+- Read MCP's shared workflow in the `shikii_wiki` description before using its tools. When code processes a result, use `structuredContent` when present and keep `isError`; otherwise retain the original `content`. Give the model one complete view, preserving conditions, source/revision refs and non-text content. Do not display both copies or assume text is JSON. See [recording.md](references/recording.md#reading-mcp-results-once).
 - On every MCP call, pass the **absolute path of the working folder** as `project`; Codex shares a server. Use CLI when a newly configured MCP is not available until the next session.
 - When asked to enable shikii, run `shikii --init` in that project. Preserve data/settings; do not initialize unrelated folders, write `project.json` yourself or transfer calibration. Existing project questions remain; changed wording needs validation. Built-ins cover local file work, not unobserved business actions.
 - Keep private conversations/settings and all project learning in its `.shikii/`. When asked for the answer page, run `shikii page` (or read status's `page`) and return its URL/port.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"maps"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -9,8 +10,24 @@ import (
 // Delivery references belong to one receipt. They record only the final payload
 // that passed the transport budget, never use, quality, agreement or permission.
 type workDeliveryState struct {
-	Sequence uint64                     `json:"sequence"`
-	Metadata map[string]workMetadataRef `json:"metadata,omitempty"`
+	Sequence         uint64                     `json:"sequence"`
+	Metadata         map[string]workMetadataRef `json:"metadata,omitempty"`
+	CollectiveNotice *workNoticeRef             `json:"collective_notice,omitempty"`
+}
+
+type workNoticeRef struct {
+	Text     string `json:"text"`
+	Delivery uint64 `json:"delivery"`
+}
+
+type workCollectiveDelivery struct {
+	notebook.CollectiveContext
+	NoticeFrom uint64 `json:"notice_from"`
+}
+
+func reusedWorkNotice(reply map[string]any) bool {
+	_, ok := reply["collective"].(workCollectiveDelivery)
+	return ok
 }
 
 type workMetadataRef struct {
@@ -78,6 +95,35 @@ func reuseWorkMetadata(w *workState, reply map[string]any, size func(any) int) {
 			size(reply)
 		}
 	}
+	reuseWorkCollectiveNotice(w, reply, size)
+}
+
+func reuseWorkCollectiveNotice(w *workState, reply map[string]any, size func(any) int) {
+	old := w.Delivery.CollectiveNotice
+	context, ok := reply["collective"].(notebook.CollectiveContext)
+	if !ok || old == nil || old.Delivery == 0 || old.Delivery >= w.Delivery.Sequence || context.Notice != old.Text {
+		return
+	}
+	entries, _ := reply["knowledge"].([]any)
+	if len(entries) == 0 {
+		return
+	}
+	// Reuse only when the existing article path already proved this is a broad
+	// repeated read. Explicit source/edition/depth recovery always stays full.
+	for _, raw := range entries {
+		e, ok := raw.(map[string]any)
+		if !ok || e["reused"] != true || loopPremiseChanged(e) {
+			return
+		}
+	}
+	before := size(reply)
+	view := context
+	view.Notice = fmt.Sprintf("Reuse collective.notice from delivery %d of this receipt. If unavailable, repeat prepare with reasoning:{depth:focused} for the full notice.", old.Delivery)
+	reply["collective"] = workCollectiveDelivery{CollectiveContext: view, NoticeFrom: old.Delivery}
+	if size(reply) >= before {
+		reply["collective"] = context
+		size(reply)
+	}
 }
 
 // Call only after final sizing, immediately before the atomic context save.
@@ -102,5 +148,8 @@ func rememberWorkMetadata(w *workState, reply map[string]any) {
 				d.Metadata[ref] = workMetadataRef{Signature: signature, Delivery: d.Sequence}
 			}
 		}
+	}
+	if context, ok := reply["collective"].(notebook.CollectiveContext); ok && len(context.Notice) <= 4096 && context.Notice != "" {
+		d.CollectiveNotice = &workNoticeRef{Text: context.Notice, Delivery: d.Sequence}
 	}
 }

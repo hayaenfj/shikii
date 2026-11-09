@@ -2,9 +2,15 @@
 
 # MCP knowledge delivery
 
-Available in 0.28.1. Restart MCP after updating.
+The Markdown text view is available from 0.28.1. Restart MCP after updating.
 
 Successful `shikii_wiki` and `shikii_reflect` calls can return a Markdown text view alongside the complete JSON result in `structuredContent`. Programmatic clients should read `structuredContent`; `content[].text` may be Markdown or compact JSON.
+
+Read the complete shared workflow in the `shikii_wiki` tool description before using any shikii tool. Initialization instructions retain the entry point and immediate safeguards. Clients that append server instructions to every tool can reuse this one complete workflow instead of receiving its full text on each tool.
+
+When forwarding a tool result to a model, provide one complete view and retain `isError` and relevant metadata. Prefer `structuredContent` for programmatic processing. If it is absent, retain the original `content` without assuming its text is JSON. Preserve any additional images or resource references that the structured result does not contain. The server continues to provide both representations for compatible clients.
+
+Repeated broad preparations under the same receipt may reuse an unchanged `collective.notice` from the earlier delivery named by `notice_from`. Only the fixed explanation is shared; updates, contrasts, investigations, missing-material warnings and recovery references remain. If the earlier response is unavailable, repeat preparation with the same receipt/query and `reasoning:{depth:focused}` for full guidance. Explicit depths, exact-revision recovery, changed notices and new receipts keep the full notice. Reuse requires an actual reduction in complete transport size.
 
 The text view keeps the original values. It does not summarize lessons, shorten quotations, remove conditions or change source and revision references. Long strings that occur more than once share a verbatim text section. A compact JSON metadata block retains other values. Each text section lists its original field locations as JSON Pointers and its UTF-8 byte length. Null array positions listed by a text section are placeholders for that section's string. Original field meanings, uncertainty and trust boundaries still apply.
 
