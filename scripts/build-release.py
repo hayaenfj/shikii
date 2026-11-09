@@ -6,7 +6,8 @@
 The version is Version in version.go, and the build source is the HEAD commit. Puts tar.gz files for 4 platforms and
 SHA256SUMS in <output folder>/assets/, and keeps the result of go version -m in <output folder>/<name>-<binary>-build.txt.
 """
-import gzip, hashlib, json, os, re, shutil, subprocess, sys, tarfile, tempfile
+import gzip, hashlib, json, os, posixpath, re, shutil, subprocess, sys, tarfile, tempfile
+from urllib.parse import urlsplit
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -62,11 +63,17 @@ If shikii update already works:
 To place the files by hand, put the bundled shikii and shikii-readout into the same folder on your PATH.
 Check the archive hash with SHA256SUMS, and do not overwrite a binary in use directly: prepare it under another name, then replace it with mv (overwriting the same file makes every later start fail with Killed: 9 on macOS).
 Keep the 4 license files in shikii-licenses/ next to the binaries.
-Then run:
+If hooks are already enabled, refresh them and the bundled skills:
   shikii hook install --yes
 
-Initialize once, only in the projects that use it:
+Without hooks, refresh the skills in each existing initialized project:
   shikii --init
+This keeps the data and does not enable hooks.
+
+Initialize new projects only when they will use shikii:
+  shikii --init
+
+Update every writer sharing the same wiki or active session to {version} or later before saving learning.
 
 After updating, start a new agent session and restart the running page and MCP.
 This updates this version's skill and hook.
@@ -76,6 +83,27 @@ shikii itself is licensed under Apache-2.0 OR MIT. For third-party terms, see TH
 BUNDLED = [("LICENSE", "LICENSE"), ("LICENSE-APACHE", "LICENSE-APACHE"), ("LICENSE-MIT", "LICENSE-MIT"),
            ("THIRD-PARTY-NOTICES", "THIRD-PARTY-NOTICES"), ("CHANGELOG.md", "CHANGELOG.md"),
            ("CHANGELOG_ja.md", "CHANGELOG_ja.md"), ("README.md", "README.md"), ("docs/readme/README_ja.md", "README_ja.md")]
+def bundled_document(source_path):
+    text = (repo / source_path).read_text(encoding="utf-8")
+    local_names = dict(BUNDLED)
+    def target(url, image=False):
+        parts = urlsplit(url)
+        if parts.scheme or parts.netloc or not parts.path:
+            return url
+        path = posixpath.normpath(posixpath.join(posixpath.dirname(source_path), parts.path))
+        suffix = ("?" + parts.query if parts.query else "") + ("#" + parts.fragment if parts.fragment else "")
+        if path in local_names:
+            return local_names[path] + suffix
+        if image:
+            return f"https://raw.githubusercontent.com/hayaenfj/shikii/v{version}/{path}" + suffix
+        kind = "tree" if (repo / path).is_dir() else "blob"
+        return f"https://github.com/hayaenfj/shikii/{kind}/v{version}/{path}" + suffix
+    text = re.sub(r"(!?\[[^\]\n]*\]\()([^\s)]+)(\))",
+                  lambda m: m[1] + target(m[2], m[1].startswith("!")) + m[3], text)
+    text = re.sub(r'(\bsrc=")([^"]+)(")', lambda m: m[1] + target(m[2], True) + m[3], text)
+    return text
+
+
 host_os, host_arch = subprocess.check_output(["go", "env", "GOHOSTOS", "GOHOSTARCH"], text=True).split()
 TARGETS = [("darwin", "arm64"), ("darwin", "amd64"), ("linux", "arm64"), ("linux", "amd64")]
 
@@ -98,7 +126,10 @@ def build(target):
             raise RuntimeError(f"{name}/{binary}: not built with {toolchain.group(1)} (go.mod's toolchain)\n{info.splitlines()[0]}")
         (out / (name + "-" + binary + "-build.txt")).write_text(info)
     for source, dest in BUNDLED:
-        shutil.copy2(repo / source, stage / dest)
+        if source in ("README.md", "docs/readme/README_ja.md"):
+            (stage / dest).write_text(bundled_document(source), encoding="utf-8")
+        else:
+            shutil.copy2(repo / source, stage / dest)
     (stage / "INSTALL.txt").write_text(install)
     archive = assets / (name + ".tar.gz")
     def normalize(info):

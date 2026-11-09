@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-1351%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1353%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.30.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -184,6 +184,7 @@ The decision model answers the built-in questions about the agent's own work (wh
 | `paired-files` | one file changed and its partner did not | `CHANGELOG.md` and `CHANGELOG_ja.md` |
 | `forbidden-words` | an added line contains a word you decided not to use | words with an agreed replacement; excepted paths are not checked |
 | `commit-body` | a commit made in the turn lacks a required word in its body | “original problem”, “after the change”, “verification” |
+| `forbidden-commands` | a command matches a rule before it runs | `git push` until publication is allowed |
 
 The agent drafts a guard from a correction (`shikii guard add`, disabled) and a person enables it (`shikii guard enable <id>`). Before enabling, shikii shows the guard stopping on a deliberately broken example and passing on a correct one. A turn that trips a guard cannot end until the work is fixed; the continuation after a stop is never stopped again, only recorded as fixed or not.
 

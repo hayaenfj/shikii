@@ -4,6 +4,8 @@
 
 ## 0.30.0 — Reduce repeated work while preserving intent and recovery
 
+- Revalidate recovered conversation sources and unarchived long text before saving a delivery; refuse changed inputs without advancing the receipt.
+- Keep manual updates without hooks available in bundled instructions, and make bundled README links work for local files and version-pinned online references. Complete the four-kind guard table in both READMEs.
 - Share decoded source records, reflection history and exact response measurements within one operation; avoid copying discarded brief bodies and skip excerpt parsing when its budget is zero. Preserve source recovery, final transport budgets and ordinary search rankings while retaining only query terms for ordinary ranking.
 - Accumulate search scores in a fixed term order so rounding alone cannot reverse tied articles; preserve term weights, recall gates and complete candidate delivery.
 - Stream commit-time validation through bounded shared scratch space, and retain complete-byte checks, reader limits and errors. Avoid rewriting identical session checkpoints within the same recording while retaining current-state checks, liveness timestamps and synchronization.
