@@ -11,12 +11,12 @@ import (
 
 func TestWorkFeedbackFallbackRejectsChangedSource(t *testing.T) {
 	b, _ := loopBook(t)
-	first, err := workCall(t, b, "prepare", map[string]any{"request": "合成データの出典検査", "query": "unmatched"})
+	first, err := workCall(t, b, "prepare", map[string]any{"request": "Check synthetic source data", "query": "unmatched"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	st := store.Store{Dir: b.Root}
-	f := store.Feedback{ID: "00000000000000a1", Request: "合成依頼", Summary: "合成結果", Reply: "変更前の条件"}
+	f := store.Feedback{ID: "00000000000000a1", Request: "Synthetic request", Summary: "Synthetic result", Reply: "Initial condition"}
 	if err = st.AppendFeedback(b.Scope, f); err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestWorkFeedbackFallbackRejectsChangedSource(t *testing.T) {
 	reply, err := prepareWork(b.Root, b.Scope, workRequest{Receipt: first["receipt"].(string), Query: f.ID, responseSize: func(v any) int {
 		if !changed {
 			changed = true
-			f.Reply = "変更後の条件"
+			f.Reply = "Changed condition"
 			if e := st.AppendFeedback(b.Scope, f); e != nil {
 				t.Fatal(e)
 			}
@@ -42,18 +42,18 @@ func TestWorkFeedbackFallbackRejectsChangedSource(t *testing.T) {
 
 func TestWorkOriginalFallbackRejectsChangedText(t *testing.T) {
 	b, _ := loopBook(t)
-	first, err := workCall(t, b, "prepare", map[string]any{"request": "合成データの出典検査", "query": "unmatched"})
+	first, err := workCall(t, b, "prepare", map[string]any{"request": "Check synthetic source data", "query": "unmatched"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	st := store.Store{Dir: b.Root}
 	trace := "00000000000000b1"
-	f := store.Feedback{ID: "00000000000000b2", Request: "合成依頼", Summary: "合成結果", Reply: "合成の返事", Targets: []store.ReviewTarget{{Spec: "done-as-asked", TraceID: trace}}}
+	f := store.Feedback{ID: "00000000000000b2", Request: "Synthetic request", Summary: "Synthetic result", Reply: "Synthetic reply", Targets: []store.ReviewTarget{{Spec: "done-as-asked", TraceID: trace}}}
 	rec := store.Record{TraceID: trace, SpecID: "done-as-asked", InputsHash: "synthetic", Inputs: map[string]string{"request": f.Request, "summary": f.Summary}}
 	if err = st.AppendRecord(rec); err != nil {
 		t.Fatal(err)
 	}
-	if err = st.SaveRecordText(rec, map[string]string{"summary": f.Summary + " 条件は未確定"}); err != nil {
+	if err = st.SaveRecordText(rec, map[string]string{"summary": f.Summary + " Condition unresolved"}); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.AppendFeedback(b.Scope, f); err != nil {
@@ -63,7 +63,7 @@ func TestWorkOriginalFallbackRejectsChangedText(t *testing.T) {
 	reply, err := prepareWork(b.Root, b.Scope, workRequest{Receipt: first["receipt"].(string), Query: f.ID, responseSize: func(v any) int {
 		if !changed {
 			changed = true
-			raw, e := json.Marshal(map[string]any{"inputs_hash": rec.InputsHash, "inputs": map[string]string{"summary": f.Summary + " 条件は確定済"}})
+			raw, e := json.Marshal(map[string]any{"inputs_hash": rec.InputsHash, "inputs": map[string]string{"summary": f.Summary + " Condition resolved"}})
 			if e != nil {
 				t.Fatal(e)
 			}
