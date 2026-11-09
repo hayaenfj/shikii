@@ -114,6 +114,7 @@ func readCheckpoints(dir string) (map[string]maintenanceCheckpoint, error) {
 // MaintenanceKeys returns the current maintenance task (revision and key) of every live page whose sources check out, by page id,
 // whether or not a review is pending (0.12: a submit compares the keys before and after its own saves).
 func (b Book) MaintenanceKeys() (map[string]MaintenanceTask, error) {
+	b = b.scopedRead()
 	pages, _, err := b.pages()
 	if err != nil {
 		return nil, err
@@ -172,6 +173,7 @@ func (b Book) OutcomeMaintenance(ids []string) ([]MaintenanceTask, error) {
 }
 
 func (b Book) maintenance(ids []string) ([]MaintenanceTask, error) {
+	b = b.scopedRead()
 	pages, _, err := b.pages()
 	if err != nil {
 		return nil, err

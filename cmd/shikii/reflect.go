@@ -70,6 +70,11 @@ func reflectQuery(root, scope string) (reflectView, error) {
 // reflectQueryWith is reflectQuery with the number of heads bounded by headsMax (0: every pending conversation, for working out what is
 // left of the ones a submit named).
 func reflectQueryWith(root, scope string, headsMax int) (reflectView, error) {
+	return reflectQueryBook((notebook.Book{Root: root, Scope: scope}).ReadView(), headsMax)
+}
+
+func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
+	root, scope := book.Root, book.Scope
 	v := reflectView{HowToSubmit: reflectHowToSubmit, Sources: []reflectSource{}, Lessons: []notebook.Page{}}
 	st := store.Store{Dir: root}
 	report, err := st.MemoryReport(scope)
@@ -97,7 +102,6 @@ func reflectQueryWith(root, scope string, headsMax int) (reflectView, error) {
 	for _, task := range reviews["pending"].([]reviewTask) {
 		targets[task.Source.ID] = task.Targets
 	}
-	book := notebook.Book{Root: root, Scope: scope}
 	pending, err := book.PendingSources()
 	if err != nil {
 		return v, err

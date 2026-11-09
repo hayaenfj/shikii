@@ -91,6 +91,7 @@ func saveMemoryUpgrade(dir string, c memoryUpgradeCheckpoint) error {
 // Reviews are revision-checked by Maintain. Ordinary later writes do not start
 // another upgrade; regular maintenance still watches their current conditions.
 func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
+	b = b.scopedRead()
 	u := MemoryUpgrade{Epoch: MemoryUpgradeEpoch, Status: "upgrading", Message: "Upgrading memory…", Policy: MemoryUpgradePolicy}
 	dir, err := b.directory(true, "pages")
 	if err != nil {

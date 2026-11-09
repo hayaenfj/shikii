@@ -25,7 +25,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Book struct{ Root, Scope string }
+type Book struct {
+	Root, Scope string
+	name        string
+	read        *readView
+	snapshot    *readSnapshot
+}
 
 type Source struct {
 	ID       string `json:"id" yaml:"id"`
@@ -182,18 +187,26 @@ func digest(data []byte) string {
 
 // directory uses only fixed subdirectories. It does not follow symlinks in the generated area.
 func (b Book) directory(create bool, area string) (string, error) {
+	// Lookup and delivery journals can be written by the preparation itself.
+	// Only the article and source layout belongs to its knowledge snapshot.
+	if !create && b.snapshot != nil && (area == "pages" || area == "sources") {
+		return b.sharedCheck("area:"+area, func() (string, error) {
+			return (Book{Root: b.Root, Scope: b.Scope, name: b.name}).directory(false, area)
+		})
+	}
 	if b.Scope == "" || b.Root == "" {
 		return "", errors.New("wiki needs a project and a store")
 	}
-	parts := []string{"wiki", "lessons", b.storeName()}
+	name := b.storeName()
+	parts := []string{"wiki", "lessons", name}
 	if area == "sources" {
-		parts = []string{"records", "wiki-sources", b.storeName()}
+		parts = []string{"records", "wiki-sources", name}
 	}
 	if area == "deliveries" {
-		parts = []string{"records", "wiki-deliveries", b.storeName()}
+		parts = []string{"records", "wiki-deliveries", name}
 	}
 	if area == "searches" {
-		parts = []string{"records", "wiki-searches", b.storeName()}
+		parts = []string{"records", "wiki-searches", name}
 	}
 	if create {
 		if err := os.MkdirAll(b.Root, 0o700); err != nil {
@@ -331,6 +344,7 @@ var legacyLabels = pageLabels{"人の訂正の引用: ", "次に変える行動�
 func (b Book) pageBytes(p Page) ([]byte, error) { return b.renderPage(p, englishLabels) }
 
 func (b Book) renderPage(p Page, l pageLabels) ([]byte, error) {
+	b = b.scopedRead()
 	front, err := yaml.Marshal(p)
 	if err != nil {
 		return nil, err
@@ -364,6 +378,7 @@ func (b Book) renderPage(p Page, l pageLabels) ([]byte, error) {
 
 // matchesPage says whether data is exactly what shikii writes for p (with the current labels, or with the labels of before 0.9.2).
 func (b Book) matchesPage(data []byte, p Page) bool {
+	b = b.scopedRead()
 	for _, l := range []pageLabels{englishLabels, legacyLabels} {
 		if expected, err := b.renderPage(p, l); err == nil && bytes.Equal(data, expected) {
 			return true
@@ -423,6 +438,10 @@ func revision(p Page) string {
 }
 
 func (b Book) pages() ([]Page, []Issue, error) {
+	b = b.scopedRead()
+	if pages, issues, ok := b.snapshotPages(); ok {
+		return pages, issues, nil
+	}
 	pages, issues := []Page{}, []Issue{}
 	dir, err := b.directory(false, "pages")
 	if os.IsNotExist(err) {
@@ -441,32 +460,31 @@ func (b Book) pages() ([]Page, []Issue, error) {
 	if err != nil && err != io.EOF {
 		return nil, nil, err
 	}
+	b.snapshotDirectory(dir, entries)
 	for _, e := range entries {
 		id := strings.TrimSuffix(e.Name(), ".md")
 		if !idPattern.MatchString(id) || filepath.Ext(e.Name()) != ".md" {
 			continue
 		}
-		data, err := readFile(filepath.Join(dir, e.Name()))
+		data, err := b.sharedRead(filepath.Join(dir, e.Name()), readFile)
 		if err != nil {
 			issues = append(issues, Issue{Kind: "unreadable-page", Page: id})
 			continue
 		}
-		p, err := parsePage(data)
-		if err != nil || p.ID != id || p.Revision != revision(p) {
-			issues = append(issues, Issue{Kind: "changed-page", Page: id})
-			continue
-		}
-		if !b.matchesPage(data, p) {
+		p, err := b.readPage(filepath.Join(dir, e.Name()), data)
+		if err != nil || p.ID != id {
 			issues = append(issues, Issue{Kind: "changed-page", Page: id})
 			continue
 		}
 		pages = append(pages, p)
 	}
 	sort.Slice(pages, func(i, j int) bool { return pages[i].ID < pages[j].ID })
+	b.rememberSnapshotPages(pages, issues)
 	return pages, issues, nil
 }
 
 func (b Book) sourceIssues(p Page) []Issue {
+	b = b.scopedRead()
 	issues := []Issue{}
 	dir, dirErr := b.directory(false, "sources")
 	for _, s := range p.Sources {
@@ -477,7 +495,7 @@ func (b Book) sourceIssues(p Page) []Issue {
 		var hash string
 		err := dirErr
 		if err == nil {
-			hash, err = sourceRecordDigest(filepath.Join(dir, s.ID+".json"))
+			hash, err = b.sharedDigest(filepath.Join(dir, s.ID+".json"))
 		}
 		if err != nil {
 			issues = append(issues, Issue{Kind: "missing-source", Page: p.ID, Source: s.ID})
@@ -488,7 +506,7 @@ func (b Book) sourceIssues(p Page) []Issue {
 			var text []byte
 			err := dirErr
 			if err == nil {
-				text, err = readOriginals(filepath.Join(dir, s.ID+".text.json"))
+				text, err = b.sharedRead(filepath.Join(dir, s.ID+".text.json"), readOriginals)
 			}
 			if err != nil || digest(text) != s.TextHash {
 				issues = append(issues, Issue{Kind: "changed-source-text", Page: p.ID, Source: s.ID})
@@ -499,6 +517,7 @@ func (b Book) sourceIssues(p Page) []Issue {
 }
 
 func (b Book) Query(query string) (View, error) {
+	b = b.scopedRead()
 	v, err := b.query(query, false)
 	if strings.HasPrefix(query, "lesson:") && strings.Contains(query, "@") {
 		return v, err
@@ -519,6 +538,7 @@ func (b Book) Live() ([]Page, error) {
 // LiveWhere is Live limited to the pages keep accepts (nil keeps all). keep runs before the sources are checked, so a narrow keep
 // reads and hashes only the sources of the pages it accepts (the delivery right before a tool call runs on every edit, 0.11).
 func (b Book) LiveWhere(keep func(Page) bool) ([]Page, error) {
+	b = b.scopedRead()
 	pages, _, err := b.pages()
 	if err != nil {
 		return nil, err
@@ -1279,6 +1299,7 @@ func (b Book) Lint() (Report, error) {
 
 // ReadSources returns the original text for checking quotes. Identifiers point only to observations of the same work.
 func (b Book) ReadSources(ids []string) (map[string]any, error) {
+	b = b.scopedRead()
 	if len(ids) == 0 {
 		return nil, errors.New("wiki source lookup needs source ids")
 	}
@@ -1318,7 +1339,7 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 		var data []byte
 		var readErr error
 		if dir != "" {
-			data, readErr = readSourceRecord(filepath.Join(dir, id+".json"))
+			data, readErr = b.sharedRead(filepath.Join(dir, id+".json"), readSourceRecord)
 		}
 		if dir == "" || os.IsNotExist(readErr) {
 			f, ok := known[id]
@@ -1343,7 +1364,7 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 			var text []byte
 			textErr := os.ErrNotExist
 			if dir != "" {
-				text, textErr = readOriginals(filepath.Join(dir, id+".text.json"))
+				text, textErr = b.sharedRead(filepath.Join(dir, id+".text.json"), readOriginals)
 			}
 			if hash := expectedText[id]; hash != "" && (textErr != nil || digest(text) != hash) {
 				return nil, errors.New("the hash of the long source text does not match")

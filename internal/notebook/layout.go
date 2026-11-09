@@ -14,7 +14,21 @@ import (
 // source ids captured before 0.9.7 hold.
 const legacyPathsFile = ".legacy-paths.json"
 
-func (b Book) storeName() string { return store.StoreName(b.Root, b.Scope) }
+func (b Book) storeName() string {
+	if b.name != "" {
+		return b.name
+	}
+	return store.StoreName(b.Root, b.Scope)
+}
+
+// Bind one operation to one namespace, rather than reopen its name per source
+// link. The caller's Book stays unbound, including a reused ReadView.
+func (b Book) scopedRead() Book {
+	if b.name == "" {
+		b.name = store.StoreName(b.Root, b.Scope)
+	}
+	return b
+}
 
 // RememberPath records a path the project had before 0.9.7 (or before a move), so its uncited source ids still check.
 func RememberPath(root, scope string) error {
@@ -50,7 +64,10 @@ func (b Book) sourceIDMatches(dir, id string, canonical []byte) bool {
 	if digest(canonical)[:16] == id {
 		return true
 	}
-	for _, scope := range append([]string{b.Scope}, legacyPaths(dir)...) {
+	data, _ := b.sharedRead(filepath.Join(dir, legacyPathsFile), os.ReadFile)
+	var paths []string
+	_ = json.Unmarshal(data, &paths)
+	for _, scope := range append([]string{b.Scope}, paths...) {
 		if digest(append([]byte(scope+"\n"), canonical...))[:16] == id {
 			return true
 		}

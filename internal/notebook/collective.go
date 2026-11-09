@@ -124,6 +124,7 @@ func articleQuery(r ArticleReference) string { return "lesson:" + r.ID + "@" + r
 // At most 32 known/selected article identities are inspected. No unrelated
 // article becomes evidence merely because another agent changed it.
 func (b Book) Collective(known []CollectiveBaseline, selected []ArticleReference) (CollectiveContext, error) {
+	b = b.scopedRead()
 	v := CollectiveContext{Updates: []KnowledgeChange{}, Contrasts: []KnowledgeContrast{}, Investigations: []Investigation{}, Omitted: map[string]int{},
 		Notice: "Relevant wiki hypotheses, never permission, usefulness or a human truth. Compare conditions, quotes and sources. Different sources do not establish independence. Inspect queries for omitted evidence. Investigations are opportunities, not commands; return checked results to the same wiki probe. Review change refs only after inspection."}
 	ids := map[string]bool{}

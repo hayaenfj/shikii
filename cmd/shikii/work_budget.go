@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"maps"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -116,6 +117,12 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 			if !ok || workContextSize(e) < 1500 {
 				continue
 			}
+			// An initial partial source has no writable alias. Fit its first
+			// part inside this complete response instead of relying on unused
+			// space left by the notebook's independent paging algorithm.
+			if fitPreparedSource(book, reply, e, budget, size) {
+				continue
+			}
 			ref, _ := e["ref"].(string)
 			id := w.Sources[ref]
 			if id == "" {
@@ -180,6 +187,38 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	return suppliedPreparationReads(reply), nil
+}
+
+func fitPreparedSource(book notebook.Book, reply, entry map[string]any, budget int, size func(any) int) bool {
+	if entry["incomplete"] != true {
+		return false
+	}
+	query, ok := entry["source_query"].(map[string]any)
+	if !ok {
+		return false
+	}
+	ids, ok := query["sources"].([]string)
+	if !ok || len(ids) != 1 {
+		return false
+	}
+	original, oldQuery := entry["source"], entry["source_query"]
+	measure := func(value any) int {
+		part := value.(map[string]any)
+		next := maps.Clone(query)
+		delete(next, "cursor")
+		if cursor, ok := part["next_cursor"].(string); ok && cursor != "" {
+			next["cursor"] = cursor
+		}
+		entry["source"], entry["source_query"] = part, next
+		// Leave room for the omission envelope added after source fitting.
+		return size(reply) + 1024
+	}
+	_, err := book.ReadSourcesPageMeasured(ids, "", budget, measure)
+	if err != nil || size(reply)+1024 > budget {
+		entry["source"], entry["source_query"] = original, oldQuery
+		return false
+	}
+	return true
 }
 
 func workPreparationOutput(budget int, omitted []string) map[string]any {

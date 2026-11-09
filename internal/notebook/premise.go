@@ -99,7 +99,7 @@ func (b Book) snapshotPremises(paths []string) ([]Premise, error) {
 func (b Book) premiseChanges(p Page) []PremiseChange {
 	var out []PremiseChange
 	for _, ref := range p.Premises {
-		hash, state := b.premiseHash(ref.Path)
+		hash, state := b.sharedPremise(ref.Path)
 		if state == "ok" && hash == ref.Hash {
 			continue
 		}

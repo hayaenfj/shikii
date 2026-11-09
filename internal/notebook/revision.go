@@ -35,6 +35,7 @@ func (b Book) References() ([]store.KnowledgeReference, error) {
 }
 
 func (b Book) readRevision(query string) (Page, error) {
+	b = b.scopedRead()
 	parts := strings.Split(strings.TrimPrefix(query, "lesson:"), "@")
 	if len(parts) != 2 || !idPattern.MatchString(parts[0]) || !idPattern.MatchString(parts[1]) {
 		return Page{}, errors.New("invalid page ID or revision reference")
@@ -43,20 +44,19 @@ func (b Book) readRevision(query string) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
-	history, err := ordinaryDirectory(filepath.Join(dir, "revisions"))
+	history, err := b.sharedCheck("history:"+dir, func() (string, error) {
+		return ordinaryDirectory(filepath.Join(dir, "revisions"))
+	})
 	if err != nil {
 		return Page{}, err
 	}
-	data, err := readFile(filepath.Join(history, parts[0]+"-"+parts[1]+".md"))
+	data, err := b.sharedRead(filepath.Join(history, parts[0]+"-"+parts[1]+".md"), readFile)
 	if err != nil {
 		return Page{}, err
 	}
-	p, err := parsePage(data)
-	if err != nil || p.ID != parts[0] || p.Revision != parts[1] || revision(p) != p.Revision || len(b.sourceIssues(p)) > 0 {
+	p, err := b.readPage(filepath.Join(history, parts[0]+"-"+parts[1]+".md"), data)
+	if err != nil || p.ID != parts[0] || p.Revision != parts[1] || len(b.sourceIssues(p)) > 0 {
 		return Page{}, errors.New("cannot check the page's past revision or its sources")
-	}
-	if !b.matchesPage(data, p) {
-		return Page{}, errors.New("the page's past revision has been modified")
 	}
 	return p, nil
 }

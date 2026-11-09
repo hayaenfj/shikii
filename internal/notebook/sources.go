@@ -225,7 +225,7 @@ func capturedIDs(dir string) ([]string, error) {
 // readObservation reads a captured source record and checks it against its id. The id holds the path it was captured under, so a record captured
 // before the folder was renamed no longer matches; when a page already cites it (cited is the hash in that citation), the citation's hash checks it instead.
 func (b Book) readObservation(dir, id, cited string) (Observation, error) {
-	data, err := readSourceRecord(filepath.Join(dir, id+".json"))
+	data, err := b.sharedRead(filepath.Join(dir, id+".json"), readSourceRecord)
 	if err != nil {
 		return Observation{}, err
 	}

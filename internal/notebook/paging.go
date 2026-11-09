@@ -149,12 +149,57 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 	return out, nil
 }
 
+// Find a fitting UTF-8 prefix before refining its capacity. A host can switch
+// presentation, so a small prefix need not fit whenever a larger one does.
+// Keep the existing halving path as the lower bound and measure the final page.
+func fitSourcePart(text string, fits func(int) bool) error {
+	_, width := utf8.DecodeRuneInString(text)
+	end, high := len(text), len(text)
+	for !fits(end) {
+		if end <= width {
+			return errors.New("source metadata exceeds the response budget; use a larger max_bytes")
+		}
+		high = end
+		end /= 2
+		for end > 0 && !utf8.RuneStart(text[end]) {
+			end--
+		}
+		if end == 0 {
+			end = width
+		}
+	}
+	if end == len(text) {
+		return nil
+	}
+	low := end
+	high--
+	for low < high {
+		end := low + (high-low+1)/2
+		for end > low && !utf8.RuneStart(text[end]) {
+			end--
+		}
+		if end == low {
+			break
+		}
+		if fits(end) {
+			low = end
+		} else {
+			high = end - 1
+		}
+	}
+	// A failed probe changes the response too; restore the last fitting prefix.
+	if !fits(low) {
+		return errors.New("source metadata exceeds the response budget; use a larger max_bytes")
+	}
+	return nil
+}
+
 // originalPart returns the part of one conversation's originals that fits from byte from: original_part carries a piece of the JSON
 // of that conversation's originals list (json) and says which piece it is. Joined in order, the pieces are that JSON whole.
 func originalPart(out map[string]any, state continuation, fs []store.Feedback, osources []Observation, texts map[string][]Original, i, total int, id string, raw []byte, from, budget int, size func(any) int) (map[string]any, error) {
 	out["source_material"], out["observations"], out["originals"] = fs, osources, texts
-	end := len(raw)
-	for {
+	err := fitSourcePart(string(raw[from:]), func(n int) bool {
+		end := from + n
 		out["original_part"] = map[string]any{"id": id, "from": from, "to": end, "bytes": len(raw), "json": string(raw[from:end])}
 		delete(out, "next_cursor")
 		if end < len(raw) {
@@ -165,21 +210,12 @@ func originalPart(out map[string]any, state continuation, fs []store.Feedback, o
 		} else if next := state.next(i+1, total); next != "" {
 			out["next_cursor"] = next
 		}
-		if size(out) <= budget {
-			return out, nil
-		}
-		_, width := utf8.DecodeRune(raw[from:])
-		if end-from <= width {
-			return nil, errors.New("source metadata exceeds the response budget; use a larger max_bytes")
-		}
-		end = from + (end-from)/2
-		for end > from && !utf8.RuneStart(raw[end]) {
-			end--
-		}
-		if end == from {
-			end = from + width
-		}
+		return size(out) <= budget
+	})
+	if err != nil {
+		return nil, err
 	}
+	return out, nil
 }
 
 func (b Book) ReadSourcesPage(ids []string, cursor string, limits ...int) (map[string]any, error) {
@@ -265,8 +301,7 @@ func (b Book) ReadSourcesPageMeasured(ids []string, cursor string, budget int, s
 		}
 		if isObservation && i == start { // one long source over the budget: return part of its body and continue inside it
 			body := osources[no].Content
-			end := len(body)
-			for {
+			err := fitSourcePart(body, func(end int) bool {
 				osources[no].Content = body[:end]
 				out["observation_part"] = map[string]any{"id": id, "from": from, "to": from + end, "bytes": from + len(body)}
 				delete(out, "next_cursor")
@@ -278,21 +313,12 @@ func (b Book) ReadSourcesPageMeasured(ids []string, cursor string, budget int, s
 				} else if next := state.next(i+1, len(ids)); next != "" {
 					out["next_cursor"] = next
 				}
-				if size(out) <= budget {
-					return out, nil
-				}
-				_, width := utf8.DecodeRuneInString(body)
-				if end <= width {
-					return nil, errors.New("source metadata exceeds the response budget; use a larger max_bytes")
-				}
-				end /= 2
-				for end > 0 && !utf8.RuneStart(body[end]) {
-					end--
-				}
-				if end == 0 {
-					end = width
-				}
+				return size(out) <= budget
+			})
+			if err != nil {
+				return nil, err
 			}
+			return out, nil
 		}
 		if hasText && !isObservation && i == start { // a conversation whose originals (up to 2 MB) do not fit: the conversation now, its originals in parts
 			delete(texts, id)

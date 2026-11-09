@@ -34,12 +34,12 @@ func setWorkLearning(book notebook.Book, entry map[string]any, p notebook.Page, 
 // A pinned current revision keeps live premise warnings. Historical revisions
 // must not inherit warnings belonging to a different current article.
 func currentWorkPremise(book notebook.Book, p notebook.Page) (notebook.Page, error) {
-	current, err := book.Query("lesson:" + p.ID)
+	current, available, err := book.CurrentPage(p.ID)
 	if err != nil {
 		return p, err
 	}
-	if len(current.Lessons) == 1 && current.Lessons[0].Revision == p.Revision {
-		p.Recheck = current.Lessons[0].Recheck
+	if available && current.Revision == p.Revision {
+		p.Recheck = current.Recheck
 	}
 	return p, nil
 }
@@ -177,7 +177,10 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	book := notebook.Book{Root: root, Scope: scope}
+	book, err := (notebook.Book{Root: root, Scope: scope}).PrepareReadSnapshot()
+	if err != nil {
+		return nil, err
+	}
 	query := req.Query
 	if query == "" {
 		query = w.Query
@@ -200,6 +203,11 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
 		entry := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "recheck": p.Recheck, "orientation": notebook.Orient(p, task+" "+query, 2400), "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}}
 		setWorkLearning(book, entry, p, req.Query)
+		if strings.HasPrefix(req.Query, "lesson:") && strings.Contains(req.Query, "@") {
+			if err := prepareMaintenanceRefresh(book, w, entry); err != nil {
+				return err
+			}
+		}
 		entries = append(entries, entry)
 		return nil
 	}
@@ -348,8 +356,12 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	if workContextSize(reply) > workSourceBudget*3 {
 		return nil, errors.New("the added knowledge exceeds the response budget; use a narrower query or the individual wiki operations")
 	}
+	retainMaintenanceRefresh(w, entries)
 	rememberWorkMetadata(w, reply)
 	if err = saveWorkContext(dir, name, scope, token.Turn, w, false, func(s *hookSession) error {
+		if err := book.ValidateRead(); err != nil {
+			return err
+		}
 		return retainWorkKnowledge(s, w, quoted, read)
 	}); err != nil {
 		return nil, err

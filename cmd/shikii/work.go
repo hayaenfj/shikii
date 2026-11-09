@@ -495,15 +495,21 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		w.Articles[ref] = store.KnowledgeReference{ID: parts[1], Revision: parts[2]}
 		knowledge = append(knowledge, map[string]any{"ref": ref, "id": parts[1], "revision": parts[2], "text": s.Planning.Sources[key], "body_included": strings.HasPrefix(key, "article:"), "query": map[string]any{"operation": "query", "query": "lesson:" + parts[1] + "@" + parts[2]}})
 	}
-	book := notebook.Book{Root: root, Scope: scope}
+	book, err := (notebook.Book{Root: root, Scope: scope}).PrepareReadSnapshot()
+	if err != nil {
+		return nil, err
+	}
 	var knowledgeContext map[string]any
 	var knowledgeQuery map[string]any
 	if standalone {
-		value, e := runNotebook(root, scope, notebookRequest{Operation: "query", Query: req.Query})
+		view, e := book.QueryPage(req.Query, "")
 		if e != nil {
 			return nil, e
 		}
-		view := value.(notebook.View)
+		view.Lookup, e = book.RecordLookup(req.Query, view.Lessons)
+		if e != nil {
+			return nil, e
+		}
 		knowledgeContext, e = preparedKnowledgeContext(view, req.Query)
 		if e != nil {
 			return nil, e
@@ -518,7 +524,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 			knowledge = append(knowledge, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
 		}
 	}
-	reflection, err := reflectQuery(root, scope)
+	reflection, err := reflectQueryBook(book, reflectHeadsMax)
 	if err != nil {
 		return nil, err
 	}
@@ -633,6 +639,9 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	initialWorkReading(s, w, knowledge, quoted)
 	rememberWorkMetadata(w, reply)
 	if err = saveWorkContext(dir, name, scope, req.TurnID, w, true, func(current *hookSession) error {
+		if err := book.ValidateRead(); err != nil {
+			return err
+		}
 		if workHash(current.Planning) != contextRevision {
 			return errors.New("the planning context changed while preparing; prepare again")
 		}
