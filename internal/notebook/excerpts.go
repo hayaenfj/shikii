@@ -17,6 +17,9 @@ type TextExcerpt struct {
 // FocusExcerpts chooses up to three exact passages within a fixed byte budget.
 // Matching selects what to read, not the truth or semantic role of a passage.
 func FocusExcerpts(text, context string, budget int) []TextExcerpt {
+	if budget <= 0 {
+		return []TextExcerpt{}
+	}
 	type passage struct {
 		TextExcerpt
 		score int

@@ -77,7 +77,12 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 	root, scope := book.Root, book.Scope
 	v := reflectView{HowToSubmit: reflectHowToSubmit, Sources: []reflectSource{}, Lessons: []notebook.Page{}}
 	st := store.Store{Dir: root}
-	report, err := st.MemoryReport(scope)
+	var recent []store.Feedback
+	report, err := st.MemoryReportWithFeedback(scope, func() ([]store.Feedback, error) {
+		var err error
+		recent, err = book.RecentFeedback()
+		return recent, err
+	})
 	if err != nil {
 		return v, err
 	}
@@ -93,7 +98,7 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 		}
 	}
 	// With the first 2 items of each queue, every target of the first 2 conversations combined is present.
-	reviews, err := reviewQuery(st, scope)
+	reviews, err := reviewQueryFeedback(st, scope, recent)
 	if err != nil {
 		return v, err
 	}
@@ -102,17 +107,13 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 	for _, task := range reviews["pending"].([]reviewTask) {
 		targets[task.Source.ID] = task.Targets
 	}
-	pending, err := book.PendingSources()
+	pending, err := book.PendingSourcesFromFeedback(recent)
 	if err != nil {
 		return v, err
 	}
 	wiki := map[string]bool{}
 	for _, source := range pending {
 		wiki[source.ID] = true
-	}
-	recent, err := st.RecentFeedback(scope)
-	if err != nil {
-		return v, err
 	}
 	// every pending conversation is listed (0.12: one reflection is one round trip). The oldest reflectRawSources come with their raw
 	// text and the lessons close to them; the rest come as heads with their targets and deliveries, so one submit can settle them all.

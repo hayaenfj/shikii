@@ -225,19 +225,22 @@ func capturedIDs(dir string) ([]string, error) {
 // readObservation reads a captured source record and checks it against its id. The id holds the path it was captured under, so a record captured
 // before the folder was renamed no longer matches; when a page already cites it (cited is the hash in that citation), the citation's hash checks it instead.
 func (b Book) readObservation(dir, id, cited string) (Observation, error) {
-	data, err := b.sharedRead(filepath.Join(dir, id+".json"), readSourceRecord)
+	path := filepath.Join(dir, id+".json")
+	data, err := b.sharedSourceRecord(path)
 	if err != nil {
 		return Observation{}, err
 	}
-	var o Observation
-	if json.Unmarshal(data, &o) != nil || o.ID != id || !o.valid() {
+	decoded := b.decodedSource(path, id, data)
+	decoded.decodeObservation(id)
+	return b.checkedObservation(dir, id, cited, data, decoded)
+}
+
+func (b Book) checkedObservation(dir, id, cited string, data []byte, decoded decodedSource) (Observation, error) {
+	o := decoded.observation
+	if !decoded.observationDecoded || o.ID != id || !o.valid() {
 		return Observation{}, errors.New("the saved source record is invalid")
 	}
-	want := o.ID
-	o.ID = ""
-	canonical, _ := json.Marshal(o)
-	o.ID = want
-	if !b.sourceIDMatches(dir, id, canonical) && (cited == "" || digest(data) != cited) {
+	if !b.sourceIDMatches(dir, id, decoded.canonicalObservation) && (cited == "" || digest(data) != cited) {
 		return Observation{}, errors.New("the hash of the saved source record does not match")
 	}
 	return o, nil

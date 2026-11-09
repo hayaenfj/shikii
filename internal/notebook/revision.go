@@ -50,7 +50,7 @@ func (b Book) readRevision(query string) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
-	data, err := b.sharedRead(filepath.Join(history, parts[0]+"-"+parts[1]+".md"), readFile)
+	data, err := b.sharedArticle(filepath.Join(history, parts[0]+"-"+parts[1]+".md"))
 	if err != nil {
 		return Page{}, err
 	}

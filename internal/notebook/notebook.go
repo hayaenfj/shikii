@@ -462,7 +462,7 @@ func (b Book) pages() ([]Page, []Issue, error) {
 		if !idPattern.MatchString(id) || filepath.Ext(e.Name()) != ".md" {
 			continue
 		}
-		data, err := b.sharedRead(filepath.Join(dir, e.Name()), readFile)
+		data, err := b.sharedArticle(filepath.Join(dir, e.Name()))
 		if err != nil {
 			issues = append(issues, Issue{Kind: "unreadable-page", Page: id})
 			continue
@@ -502,7 +502,7 @@ func (b Book) sourceIssues(p Page) []Issue {
 			var text []byte
 			err := dirErr
 			if err == nil {
-				text, err = b.sharedRead(filepath.Join(dir, s.ID+".text.json"), readOriginals)
+				text, err = b.sharedOriginals(filepath.Join(dir, s.ID+".text.json"))
 			}
 			if err != nil || digest(text) != s.TextHash {
 				issues = append(issues, Issue{Kind: "changed-source-text", Page: p.ID, Source: s.ID})
@@ -709,28 +709,11 @@ func (b Book) query(query string, recall bool) (View, error) {
 
 // PendingSources returns source records from oldest. Store limits how much history is read.
 func (b Book) PendingSources() ([]store.Feedback, error) {
-	recent, err := (store.Store{Dir: b.Root}).RecentFeedback(b.Scope)
+	recent, err := b.RecentFeedback()
 	if err != nil {
 		return nil, err
 	}
-	dir, err := b.directory(false, "sources")
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	pending := []store.Feedback{}
-	for i := len(recent) - 1; i >= 0; i-- {
-		f := recent[i]
-		if !idPattern.MatchString(f.ID) {
-			continue
-		}
-		if dir != "" {
-			if _, err := os.Lstat(filepath.Join(dir, f.ID+".reviewed")); err == nil {
-				continue
-			}
-		}
-		pending = append(pending, f)
-	}
-	return pending, nil
+	return b.PendingSourcesFromFeedback(recent)
 }
 
 // PreviewCreate validates a new note and fixes its expected revision without saving it.
@@ -1335,7 +1318,7 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 		var data []byte
 		var readErr error
 		if dir != "" {
-			data, readErr = b.sharedRead(filepath.Join(dir, id+".json"), readSourceRecord)
+			data, readErr = b.sharedSourceRecord(filepath.Join(dir, id+".json"))
 		}
 		if dir == "" || os.IsNotExist(readErr) {
 			f, ok := known[id]
@@ -1350,17 +1333,17 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 		if hash := expected[id]; hash != "" && hash != digest(data) {
 			return nil, errors.New("a cited wiki source has changed")
 		}
-		var f store.Feedback
-		if !validSource(data, id) {
+		decoded := b.decodedSource(filepath.Join(dir, id+".json"), id, data)
+		if !decoded.valid {
 			return nil, errors.New("invalid archived wiki source")
 		}
-		_ = json.Unmarshal(data, &f)
+		f := decoded.feedback
 		if f.Request != "" {
 			out = append(out, f)
 			var text []byte
 			textErr := os.ErrNotExist
 			if dir != "" {
-				text, textErr = b.sharedRead(filepath.Join(dir, id+".text.json"), readOriginals)
+				text, textErr = b.sharedOriginals(filepath.Join(dir, id+".text.json"))
 			}
 			if hash := expectedText[id]; hash != "" && (textErr != nil || digest(text) != hash) {
 				return nil, errors.New("the hash of the long source text does not match")
@@ -1379,7 +1362,7 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 				return nil, textErr
 			}
 		} else {
-			o, err := b.readObservation(dir, id, expected[id])
+			o, err := b.checkedObservation(dir, id, expected[id], data, decoded)
 			if err != nil {
 				return nil, err
 			}

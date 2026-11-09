@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"hash"
 	"io"
 	"os"
 	"sort"
@@ -56,6 +57,10 @@ func (s Store) AppendFeedback(scope string, f Feedback) error {
 // recentFeedback reads only the tail of the same work. If the start is mid-line, that line is dropped,
 // and broken lines are skipped. Partly written lines are not taken either. For duplicate IDs only the newest is kept.
 func (s Store) recentFeedback(scope string) ([]Feedback, error) {
+	return s.readRecentFeedback(scope, nil)
+}
+
+func (s Store) readRecentFeedback(scope string, capture hash.Hash) ([]Feedback, error) {
 	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -72,13 +77,22 @@ func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 	if _, err := f.Seek(start, io.SeekStart); err != nil {
 		return nil, err
 	}
-	r := bufio.NewReader(io.LimitReader(f, feedbackReadMax))
+	var input io.Reader = io.LimitReader(f, feedbackReadMax)
+	if capture != nil {
+		capture.Write([]byte("present\n"))
+		if start > 0 {
+			capture.Write([]byte("skip-first\n"))
+		}
+		input = io.TeeReader(input, capture)
+	}
+	r := bufio.NewReader(input)
 	if start > 0 {
 		if _, err := r.ReadString('\n'); err != nil {
 			return nil, nil
 		}
 	}
-	var recent []Feedback
+	recent := make([]Feedback, feedbackRecent)
+	count := 0
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
@@ -92,16 +106,13 @@ func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 			len(v.Request) > feedbackTextMax || len(v.Summary) > feedbackTextMax || len(v.Reply) > feedbackTextMax || len(v.Targets) > 2 {
 			continue
 		}
-		recent = append(recent, v)
-		if len(recent) > feedbackRecent {
-			copy(recent, recent[1:])
-			recent = recent[:feedbackRecent]
-		}
+		recent[count%feedbackRecent] = v
+		count++
 	}
 	seen := map[string]bool{}
-	out := make([]Feedback, 0, len(recent))
-	for i := len(recent) - 1; i >= 0; i-- {
-		v := recent[i]
+	out := make([]Feedback, 0, min(count, feedbackRecent))
+	for i := count - 1; i >= max(0, count-feedbackRecent); i-- {
+		v := recent[i%feedbackRecent]
 		if !seen[v.ID] {
 			seen[v.ID] = true
 			out = append(out, v)

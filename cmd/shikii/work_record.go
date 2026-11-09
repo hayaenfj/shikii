@@ -82,13 +82,14 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	}
 	var interrupted error
 	var commitMu sync.Mutex
+	checkpoint := &workSessionCheckpoint{}
 	save := func() error {
 		commitMu.Lock()
 		defer commitMu.Unlock()
 		if interrupted != nil {
 			return interrupted
 		}
-		e := saveWorkState(dir, name, scope, token.Turn, w, false)
+		e := saveWorkState(dir, name, scope, token.Turn, w, false, checkpoint)
 		if e != nil {
 			interrupted = e
 		}

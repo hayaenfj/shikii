@@ -30,12 +30,24 @@ type SearchCandidate struct {
 }
 
 func searchTerms(text string) map[string]bool {
+	return searchTermsFor(text, nil)
+}
+
+// Ordinary ranking only consumes request terms. Keep token boundaries and
+// normalization identical while avoiding maps of unrelated document vocabulary.
+// Recall still needs the complete vocabulary for its page-side denominator.
+func searchTermsFor(text string, wanted map[string]bool) map[string]bool {
 	out := map[string]bool{}
+	keep := func(term string) {
+		if wanted == nil || wanted[term] {
+			out[term] = true
+		}
+	}
 	text = strings.ToLower(text)
 	wordStart, wordRunes, previousJA := 0, 0, -1
 	flushWord := func(end int) {
 		if wordRunes >= 2 {
-			out[text[wordStart:end]] = true
+			keep(text[wordStart:end])
 		}
 		wordRunes = 0
 	}
@@ -44,7 +56,7 @@ func searchTerms(text string) map[string]bool {
 		case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana) || r == 'ー': // the long-vowel mark (ー) has Script Common, so keep it inside katakana words (audit R4)
 			flushWord(offset)
 			if previousJA >= 0 {
-				out[text[previousJA:offset+utf8.RuneLen(r)]] = true
+				keep(text[previousJA : offset+utf8.RuneLen(r)])
 			}
 			previousJA = offset
 		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_':
@@ -192,6 +204,13 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 		names, weights = []string{"title", "applies_to", "rationale", "discovery"}, []float64{4, 3, 2, 3}
 	}
 	terms := searchTerms(query)
+	// Accumulate every page in the same order: rounding must not break ties
+	// between equal contributions when map iteration chooses another order.
+	orderedTerms := make([]string, 0, len(terms))
+	for term := range terms {
+		orderedTerms = append(orderedTerms, term)
+	}
+	sort.Strings(orderedTerms)
 	docs, frequency := []searchDocument{}, map[string]int{}
 	for _, p := range pages {
 		d := searchDocument{page: p}
@@ -201,7 +220,12 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 			texts = []string{p.Title, p.AppliesTo, p.Rationale, p.discovered}
 		}
 		for _, text := range texts[:len(names)] {
-			field := searchTerms(text)
+			var field map[string]bool
+			if recall {
+				field = searchTerms(text)
+			} else {
+				field = searchTermsFor(text, terms)
+			}
 			d.fields = append(d.fields, field)
 			for term := range field {
 				seen[term] = true
@@ -234,7 +258,7 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 	for _, d := range docs {
 		m := Match{ID: d.page.ID, Revision: d.page.Revision, Fields: []string{}, Terms: []string{}}
 		matched, score, fields := map[string]bool{}, 0.0, map[string]bool{}
-		for term := range terms {
+		for _, term := range orderedTerms {
 			best := 0.0
 			for i, f := range d.fields {
 				if f[term] {

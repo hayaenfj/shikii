@@ -258,6 +258,10 @@ func writeWorkSession(dir *os.Root, name string, s *hookSession) error {
 	if err != nil {
 		return err
 	}
+	return writeWorkSessionBytes(dir, name, data)
+}
+
+func writeWorkSessionBytes(dir *os.Root, name string, data []byte) error {
 	temp := ".work-" + store.NewTraceID() + ".tmp"
 	f, err := dir.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0600)
 	if err != nil {
@@ -276,11 +280,11 @@ func writeWorkSession(dir *os.Root, name string, s *hookSession) error {
 	}
 	return dir.Rename(temp, name)
 }
-func saveWorkState(dir *os.Root, name, scope, turn string, w *workState, install bool) error {
-	return saveWorkContext(dir, name, scope, turn, w, install, nil)
+func saveWorkState(dir *os.Root, name, scope, turn string, w *workState, install bool, checkpoints ...*workSessionCheckpoint) error {
+	return saveWorkContext(dir, name, scope, turn, w, install, nil, checkpoints...)
 }
 
-func saveWorkContext(dir *os.Root, name, scope, turn string, w *workState, install bool, update func(*hookSession) error) error {
+func saveWorkContext(dir *os.Root, name, scope, turn string, w *workState, install bool, update func(*hookSession) error, checkpoints ...*workSessionCheckpoint) error {
 	f, err := dir.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return err
@@ -327,7 +331,11 @@ func saveWorkContext(dir *os.Root, name, scope, turn string, w *workState, insta
 	}
 	retainCollectiveSeen(s, w)
 	s.Planning.Work = w
-	if err := writeWorkSession(dir, name, s); err != nil {
+	var checkpoint *workSessionCheckpoint
+	if len(checkpoints) > 0 {
+		checkpoint = checkpoints[0]
+	}
+	if err := writeWorkCheckpoint(dir, name, s, checkpoint); err != nil {
 		if errors.Is(err, errHookSessionCapacity) && w.Reasoning != nil && (len(w.Reasoning.RequiredNotes) > 0 || len(w.Reasoning.PendingCaptures) > 0 || trialPendingCount(w.Reasoning) > 0 || pendingResultCount(w.Reasoning) > 0 || pendingWorkProcedure(w)) {
 			book := notebook.Book{Root: filepath.Dir(dir.Name()), Scope: scope}
 			if recoveryErr := archiveWorkCapacity(book, s); recoveryErr != nil {

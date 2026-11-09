@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"maps"
 
@@ -274,7 +276,31 @@ func limitRecoveredPreparation(reply map[string]any, requested int, sizing ...fu
 
 func workPreparationSizer(sizing []func(any) int) func(any) int {
 	if len(sizing) > 0 && sizing[0] != nil {
-		return sizing[0]
+		// A generation is the complete encoded value, including mutable nested
+		// maps, reading accounting and rejected metadata candidates. Comparing
+		// bytes avoids mutation hooks and never trusts size/mtime or a hash.
+		// Keep this cache local to one reduction pass; post-save recovery gets a
+		// fresh host measurement through its separate preparation sizer.
+		var previous []byte
+		var generation uint64
+		measuredGeneration, measured := uint64(0), 0
+		return func(value any) int {
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				previous = nil
+				generation++
+				return sizing[0](value)
+			}
+			if generation == 0 || !bytes.Equal(previous, encoded) {
+				generation++
+				previous = encoded
+			}
+			if measuredGeneration != generation {
+				measured = sizing[0](value)
+				measuredGeneration = generation
+			}
+			return measured
+		}
 	}
 	return workContextSize
 }

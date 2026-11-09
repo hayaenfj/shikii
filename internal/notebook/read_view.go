@@ -35,7 +35,7 @@ func (b Book) CurrentPage(id string) (Page, bool, error) {
 		return Page{}, false, err
 	}
 	path := filepath.Join(dir, id+".md")
-	raw, err := b.sharedRead(path, readFile)
+	raw, err := b.sharedArticle(path)
 	if err != nil {
 		return Page{}, false, nil
 	}

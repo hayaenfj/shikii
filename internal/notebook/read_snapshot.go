@@ -29,14 +29,17 @@ func sameReadResult(a string, ae error, b string, be error) bool {
 }
 
 type readSnapshot struct {
-	root   string
-	checks map[string]readCheck
-	raw    map[string][]byte
-	bytes  int
-	pages  []Page
-	issues []Issue
-	failed bool
-	named  bool
+	root          string
+	checks        map[string]readCheck
+	raw           map[string][]byte
+	bytes         int
+	pages         []Page
+	issues        []Issue
+	failed        bool
+	named         bool
+	validation    []byte
+	feedback      *store.FeedbackRead
+	sourceDecodes *sourceDecodeView
 }
 
 // Only validated parsing is shared across preparations in this process. File
@@ -114,6 +117,10 @@ func (b Book) sharedCheck(key string, check func() (string, error)) (string, err
 }
 
 func (b Book) sharedRead(path string, read func(string) ([]byte, error)) ([]byte, error) {
+	return b.sharedReadValidated(path, read, nil)
+}
+
+func (b Book) sharedReadValidated(path string, read func(string) ([]byte, error), verify func(string, []byte) (string, error)) ([]byte, error) {
 	if b.snapshot == nil {
 		return read(path)
 	}
@@ -127,6 +134,9 @@ func (b Book) sharedRead(path string, read func(string) ([]byte, error)) ([]byte
 		return nil, errReadChanged
 	}
 	b.snapshot.checks[path] = readCheck{hash, err, func() (string, error) {
+		if verify != nil {
+			return verify(path, b.validationScratch())
+		}
 		data, err := read(path)
 		return digest(data), err
 	}}

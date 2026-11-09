@@ -76,6 +76,13 @@ func prepareWorkSource(book notebook.Book, id string) preparedWorkSource {
 func preparedReflectionContext(view reflectView, brief ...bool) (map[string]any, error) {
 	view.Sources, view.Observations, view.Maintenance = nil, nil, nil
 	view.HowToSubmit = ""
+	// Brief delivery replaces lessons with references anyway. Do that before
+	// encoding their bodies, while retaining every other (including future)
+	// reflectView field through the existing generic conversion.
+	briefLessons := view.Lessons
+	if len(brief) > 0 && brief[0] && len(briefLessons) > 0 {
+		view.Lessons = nil
+	}
 	data, err := json.Marshal(view)
 	if err != nil {
 		return nil, err
@@ -89,15 +96,21 @@ func preparedReflectionContext(view reflectView, brief ...bool) (map[string]any,
 		delete(context, key)
 	}
 	if len(brief) > 0 && brief[0] {
-		lessons, _ := context["lessons"].([]any)
 		references := []any{}
-		for _, raw := range lessons {
-			page := raw.(map[string]any)
-			id, _ := page["id"].(string)
-			revision, _ := page["revision"].(string)
-			references = append(references, map[string]any{"id": id, "revision": revision, "title": page["title"], "lesson": page["lesson"], "applies_to": page["applies_to"], "incomplete": true, "query": map[string]any{"operation": "query", "query": "lesson:" + id + "@" + revision}})
+		for _, page := range briefLessons {
+			id, revision := page.ID, page.Revision
+			references = append(references, map[string]any{"id": id, "revision": revision, "title": page.Title, "lesson": page.Lesson, "applies_to": page.AppliesTo, "incomplete": true, "query": map[string]any{"operation": "query", "query": "lesson:" + id + "@" + revision}})
 		}
 		if len(references) > 0 {
+			// Preserve JSON's string normalization too (including malformed
+			// UTF-8 in synthetic callers), without copying discarded bodies.
+			data, err := json.Marshal(references)
+			if err != nil {
+				return nil, err
+			}
+			if err = json.Unmarshal(data, &references); err != nil {
+				return nil, err
+			}
 			context["lessons"], context["incomplete"], context["more_lessons"] = references, true, 0
 			context["next_action"] = "Brief supporting knowledge retains exact revision queries instead of whole bodies. Read a referenced article when its conditions or exceptions matter. Human corrections and required source material are retained."
 		}

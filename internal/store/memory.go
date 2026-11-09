@@ -414,12 +414,17 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 }
 
 func (s Store) MemoryReport(scope string) (MemoryReport, error) {
+	return s.MemoryReportWithFeedback(scope, func() ([]Feedback, error) { return s.RecentFeedback(scope) })
+}
+
+// MemoryReportWithFeedback reads deliveries before the supplied history, keeping error precedence.
+func (s Store) MemoryReportWithFeedback(scope string, read func() ([]Feedback, error)) (MemoryReport, error) {
 	r := MemoryReport{MemorySummary: MemorySummary{Window: feedbackRecent}, Recent: []MemoryObservation{}}
 	deliveries, err := s.MemoryDeliveries(scope)
 	if err != nil {
 		return r, err
 	}
-	feedback, err := s.RecentFeedback(scope)
+	feedback, err := read()
 	if err != nil {
 		return r, err
 	}

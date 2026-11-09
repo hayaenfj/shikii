@@ -209,6 +209,11 @@ func reviewQuery(st store.Store, scope string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	return reviewQueryFeedback(st, scope, recent)
+}
+
+func reviewQueryFeedback(st store.Store, scope string, recent []store.Feedback) (map[string]any, error) {
+	var err error
 	pending := []reviewTask{}
 	examples := []map[string]any{}
 	qualities := map[string]store.ReviewStats{}

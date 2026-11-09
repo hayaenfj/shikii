@@ -261,15 +261,31 @@ func runAssignmentWork(root, scope, operation string, req workRequest) (any, err
 	return nil, errors.New("assignment operation must be prepare or record")
 }
 
-func prepareAssignment(root, scope string, dir *os.Root, a assignmentContext, req workRequest) (any, error) {
+// Deterministic preparation boundary for concurrency and recovery tests.
+var assignmentPrepareWork = prepareWork
+
+func prepareAssignment(root, scope string, dir *os.Root, a assignmentContext, req workRequest) (reply any, retErr error) {
 	if req.Event != nil {
 		return nil, errors.New("prepare an assignment checkpoint without an event")
 	}
+	// Match record's lock order: serialize one host, then inspect the inventory.
+	release, err := workLock(dir, assignmentName(a.ID))
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	unlock, err := workLock(dir, "assignments")
 	if err != nil {
 		return nil, err
 	}
-	defer unlock()
+	inventoryHeld := true
+	releaseInventory := func() {
+		if inventoryHeld {
+			unlock()
+			inventoryHeld = false
+		}
+	}
+	defer releaseInventory()
 	records, err := assignmentRecords(dir)
 	if err != nil {
 		return nil, err
@@ -320,12 +336,52 @@ func prepareAssignment(root, scope string, dir *os.Root, a assignmentContext, re
 		copy["teamwork"] = minimumTeam
 		return size(copy)
 	}
-	value, err := prepareWork(root, scope, base)
+	// Only a new preparation can be retired without losing previously delivered
+	// context. Extensions retain their existing publication boundary.
+	if req.Receipt == "" {
+		releaseInventory()
+	}
+	value, err := assignmentPrepareWork(root, scope, base)
 	if err != nil {
 		return nil, err
 	}
 	v := value.(map[string]any)
 	receipt := v["receipt"].(string)
+	published := false
+	defer func() {
+		if retErr != nil && req.Receipt == "" && !published {
+			if err := retireAssignmentPreparation(root, scope, receipt); err != nil {
+				retErr = fmt.Errorf("%w; failed preparation recovery: %v", retErr, err)
+			}
+		}
+	}()
+	if req.Receipt == "" {
+		unlock, err = workLock(dir, "assignments")
+		if err != nil {
+			return nil, err
+		}
+		inventoryHeld = true
+		records, err = assignmentRecords(dir)
+		if err != nil {
+			return nil, err
+		}
+		current, err := readAssignment(dir, assignmentName(a.ID))
+		if os.IsNotExist(err) {
+			if len(records) >= 512 {
+				return nil, errors.New("assignment capacity reached")
+			}
+		} else if err != nil {
+			return nil, err
+		} else {
+			if workHash(current.Context) != workHash(a) {
+				return nil, errors.New("assignment identity already has different conditions; use a new execution id")
+			}
+			if len(current.Bindings) >= 8 {
+				return nil, errors.New("assignment checkpoint capacity reached")
+			}
+			r = current
+		}
+	}
 	b := notebook.Book{Root: root, Scope: scope}
 	binding := assignmentBinding{Knowledge: map[string]notebook.CollectiveBaseline{}}
 	exposures, err := assignmentSupplied(root, scope, receipt)
@@ -468,6 +524,7 @@ func prepareAssignment(root, scope string, dir *os.Root, a assignmentContext, re
 	if err = saveAssignment(dir, r); err != nil {
 		return nil, err
 	}
+	published = true
 	v["teamwork"] = team
 	return v, nil
 }
