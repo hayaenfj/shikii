@@ -4,6 +4,7 @@
 
 ## 0.30.0 — Reduce repeated work while preserving intent and recovery
 
+- Include continuation metadata when fitting multiple source records into the final response budget; preserve every source byte across pages.
 - Revalidate recovered conversation sources and unarchived long text before saving a delivery; refuse changed inputs without advancing the receipt.
 - Keep manual updates without hooks available in bundled instructions, and make bundled README links work for local files and version-pinned online references. Complete the four-kind guard table in both READMEs.
 - Share decoded source records, reflection history and exact response measurements within one operation; avoid copying discarded brief bodies and skip excerpt parsing when its budget is zero. Preserve source recovery, final transport budgets and ordinary search rankings while retaining only query terms for ordinary ranking.

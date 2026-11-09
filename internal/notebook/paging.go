@@ -291,6 +291,12 @@ func (b Book) ReadSourcesPageMeasured(ids []string, cursor string, budget int, s
 			texts[id] = text
 		}
 		out["source_material"], out["observations"], out["originals"] = fs, osources, texts
+		// Measure the continuation with the candidate, including when a whole
+		// source fits but the next source needs another page.
+		delete(out, "next_cursor")
+		if next := state.next(i+1, len(ids)); next != "" {
+			out["next_cursor"] = next
+		}
 		if size(out) <= budget {
 			continue
 		}
@@ -327,8 +333,12 @@ func (b Book) ReadSourcesPageMeasured(ids []string, cursor string, budget int, s
 		}
 	}
 	out["source_material"], out["observations"], out["originals"] = fs, osources, texts
+	delete(out, "next_cursor")
 	if next := state.next(i, len(ids)); next != "" {
 		out["next_cursor"] = next
+	}
+	if size(out) > budget {
+		return nil, errors.New("source metadata exceeds the response budget; use a larger max_bytes")
 	}
 	return out, nil
 }

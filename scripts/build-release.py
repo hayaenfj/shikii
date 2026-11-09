@@ -98,8 +98,8 @@ def bundled_document(source_path):
             return f"https://raw.githubusercontent.com/hayaenfj/shikii/v{version}/{path}" + suffix
         kind = "tree" if (repo / path).is_dir() else "blob"
         return f"https://github.com/hayaenfj/shikii/{kind}/v{version}/{path}" + suffix
-    text = re.sub(r"(!?\[[^\]\n]*\]\()([^\s)]+)(\))",
-                  lambda m: m[1] + target(m[2], m[1].startswith("!")) + m[3], text)
+    text = re.sub(r"(\]\()([^\s)]+)(\))",
+                  lambda m: m[1] + target(m[2]) + m[3], text)
     text = re.sub(r'(\bsrc=")([^"]+)(")', lambda m: m[1] + target(m[2], True) + m[3], text)
     return text
 
