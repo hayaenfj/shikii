@@ -182,23 +182,26 @@ type Discrimination struct {
 // ok=false when one side has no truths.
 func AUC(probs []float64, truths []bool, weights []float64) (Discrimination, bool) {
 	var d Discrimination
-	var wins, pairs float64
-	for i, p := range probs {
-		if !truths[i] {
-			continue
-		}
-		d.Pos++
-		for j, q := range probs {
-			if truths[j] {
+	wins, pairs, pos, ranked := integerRankAUC(probs, truths, weights)
+	d.Pos = pos
+	if !ranked {
+		for i, p := range probs {
+			if !truths[i] {
 				continue
 			}
-			w := weightAt(weights, i) * weightAt(weights, j)
-			pairs += w
-			switch {
-			case p > q:
-				wins += w
-			case p == q:
-				wins += w / 2
+			d.Pos++
+			for j, q := range probs {
+				if truths[j] {
+					continue
+				}
+				w := weightAt(weights, i) * weightAt(weights, j)
+				pairs += w
+				switch {
+				case p > q:
+					wins += w
+				case p == q:
+					wins += w / 2
+				}
 			}
 		}
 	}
@@ -211,6 +214,55 @@ func AUC(probs []float64, truths []bool, weights []float64) (Discrimination, boo
 	se := math.Sqrt((a*(1-a) + float64(d.Pos-1)*(q1-a*a) + float64(d.Neg-1)*(q2-a*a)) / float64(d.Pos*d.Neg))
 	d.AUC, d.Low, d.High = a, math.Max(0, a-1.96*se), math.Min(1, a+1.96*se)
 	return d, true
+}
+
+// Integer weights with bounded totals have exactly representable pair counts
+// and half-ties. Ranking gives the identical float64 numerator/denominator in
+// O(n log n). Fractional, extreme and NaN inputs keep the original accumulation
+// order so that this optimization cannot change rounding or decision bands.
+func integerRankAUC(probs []float64, truths []bool, weights []float64) (float64, float64, int, bool) {
+	// Small inputs are cheaper without sorting or allocating a rank table.
+	if len(probs) < 256 {
+		return 0, 0, 0, false
+	}
+	type negative struct {
+		prob   float64
+		weight uint64
+	}
+	neg := []negative{}
+	var posWeight, negWeight uint64
+	pos := 0
+	for i, prob := range probs {
+		w := weightAt(weights, i)
+		if math.IsNaN(prob) || w > 1<<25 || w != math.Trunc(w) {
+			return 0, 0, 0, false
+		}
+		if truths[i] {
+			pos++
+			posWeight += uint64(w)
+		} else {
+			negWeight += uint64(w)
+			neg = append(neg, negative{prob, uint64(w)})
+		}
+		if posWeight > 1<<25 || negWeight > 1<<25 {
+			return 0, 0, 0, false
+		}
+	}
+	sort.Slice(neg, func(i, j int) bool { return neg[i].prob < neg[j].prob })
+	prefix := make([]uint64, len(neg)+1)
+	for i, n := range neg {
+		prefix[i+1] = prefix[i] + n.weight
+	}
+	var twiceWins uint64
+	for i, prob := range probs {
+		if !truths[i] {
+			continue
+		}
+		lo := sort.Search(len(neg), func(j int) bool { return neg[j].prob >= prob })
+		hi := sort.Search(len(neg), func(j int) bool { return neg[j].prob > prob })
+		twiceWins += uint64(weightAt(weights, i)) * (2*prefix[lo] + prefix[hi] - prefix[lo])
+	}
+	return float64(twiceWins) / 2, float64(posWeight * negWeight), pos, true
 }
 
 // Bin is one bar of the reliability diagram.
