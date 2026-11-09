@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Use descriptor size only to reserve article read buffers; preserve complete reads, fixed limits and reader errors when the file size changes.
 - Reuse byte-validated article parsing in a bounded process cache, copy mutable metadata without duplicating article text, and share file reads within one preparation. Recheck complete file bytes, source hashes, article inventories and watched premises at the context commit boundary; reject changes without advancing the receipt.
 - Fit long source parts in their actual host envelope, including the initial preparation response; retain exact UTF-8 text, offsets, continuation checks and request context.
 - Refresh an existing maintenance reference only after a full, explicit read of the current article survives the response budget. Keep historical, omitted and unassigned articles outside this recovery.

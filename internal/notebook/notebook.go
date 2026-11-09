@@ -248,11 +248,7 @@ func readFile(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, errors.New("a wiki page must be a regular file")
 	}
-	b, err := io.ReadAll(io.LimitReader(f, (64<<10)+1))
-	if err == nil && len(b) > 64<<10 {
-		err = errors.New("wiki page exceeds the size limit")
-	}
-	return b, err
+	return readPageBytes(f, info.Size())
 }
 
 func writeFile(path string, data []byte) error {
