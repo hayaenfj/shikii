@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-1363%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.30.1-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.30.2-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.30.1 shares the complete MCP workflow once and reuses unchanged fixed explanations within the same task. Conditions, exceptions, source references and full recovery remain available; clients can read one complete result view without duplicating it. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.30.2 keeps the first successful retry readable after an interrupted record write and fixes answer-card counts and completion display. Internal CLI, knowledge and calibration code is split by responsibility. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 
@@ -156,6 +156,8 @@ Using the optional assignment API introduced in 0.24, version 0.25 connects chit
 Procedure reuse returns at most two candidate outcomes, prioritizing current condition terms and task or action terms, and retaining an earlier relevant failure. Ties prefer newer results; without relevant context, selection keeps the usual recency order. The agent still interprets each candidate: it is never automatic success, human truth or permission. These selection improvements and ordinary recording also work without chiten. See the [collective knowledge workflow](docs/guide.md#share-changes-and-compare-concurrent-work-0230).
 
 With the hooks installed, two moments of every turn are kept: the request before the agent starts, and the reply and the changed files after it ends. The next human message closes the pair. A message that only continues the previous request ("ok", "continue", "sounds good") is attached to it instead; the agent decides this in its pre-start organizing, and a fixed list of acknowledgements is the fallback. The agent writes lessons with sources from them, and shikii delivers relevant lessons before similar work. In reflection the agent reports whether a delivered lesson helped. Saved assessments also prioritize lessons for review: repeated unused deliveries at the same entry point, or a harmful delivery, bring the lesson back with the decisions and evidence. The agent checks its sources before changing it, and a no-change review also settles that evidence. Unknown and older-revision assessments do not count as negative feedback.
+
+In 0.30.2, record and answer saves share one append lock and keep incomplete old lines separate from new records. Answering updates the original question, keeps the Answer screen open and shows completion after the final card. These fixes preserve stored data and the existing knowledge-delivery workflow.
 
 In 0.30.1, the complete shared MCP workflow is supplied once, and unchanged fixed explanations can reference an earlier delivery in the same task. Conditions, source revisions, missing material and full recovery remain available. Clients can read one complete result view while retaining error state and any additional content. See [MCP knowledge delivery](docs/mcp-knowledge.md).
 

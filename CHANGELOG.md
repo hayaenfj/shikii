@@ -2,6 +2,15 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.30.2 — Recover interrupted appends and complete answer cards
+
+- Share record and label append handling under the same lock, retaining the lock across deduplication for outcome labels.
+- Separate an unfinished old tail from the next complete line, roll back failed batches when possible, and return both write and rollback errors. Keep the first successful retry readable, including after a rollback is refused.
+- Keep the original question and card through asynchronous answering so counts never update the next question and the final card completes without a missing-prop error.
+- Keep the Answer screen selected when answering an automatically opened card, including after the final answer.
+- Split CLI, hook, work recording, knowledge, calibration, storage and page checks by responsibility while retaining existing interfaces and recovery order.
+- Add interrupted-write, shared-lock and final-card regression checks; rebuild the embedded page and update the test count.
+
 ## 0.30.1 — Share complete guidance without shortening evidence
 
 - Supply the complete common MCP workflow once in the `shikii_wiki` description; retain its entry point, trust boundary, labeling safeguard and project-path requirement in initialization instructions.
