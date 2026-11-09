@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Match explains retrieval, not confidence in the lesson's meaning.
@@ -30,33 +31,34 @@ type SearchCandidate struct {
 
 func searchTerms(text string) map[string]bool {
 	out := map[string]bool{}
-	var word, ja []rune
-	flush := func() {
-		if len(word) >= 2 {
-			out[string(word)] = true
+	text = strings.ToLower(text)
+	wordStart, wordRunes, previousJA := 0, 0, -1
+	flushWord := func(end int) {
+		if wordRunes >= 2 {
+			out[text[wordStart:end]] = true
 		}
-		for i := 1; i < len(ja); i++ {
-			out[string(ja[i-1:i+1])] = true
-		}
-		word, ja = nil, nil
+		wordRunes = 0
 	}
-	for _, r := range strings.ToLower(text) {
+	for offset, r := range text {
 		switch {
 		case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana) || r == 'ー': // the long-vowel mark (ー) has Script Common, so keep it inside katakana words (audit R4)
-			if len(word) > 0 {
-				flush()
+			flushWord(offset)
+			if previousJA >= 0 {
+				out[text[previousJA:offset+utf8.RuneLen(r)]] = true
 			}
-			ja = append(ja, r)
+			previousJA = offset
 		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_':
-			if len(ja) > 0 {
-				flush()
+			previousJA = -1
+			if wordRunes == 0 {
+				wordStart = offset
 			}
-			word = append(word, r)
+			wordRunes++
 		default:
-			flush()
+			flushWord(offset)
+			previousJA = -1
 		}
 	}
-	flush()
+	flushWord(len(text))
 	for _, term := range []string{"the", "and", "for", "with", "this", "that", "please"} {
 		delete(out, term)
 	}
