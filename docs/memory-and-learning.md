@@ -39,7 +39,7 @@ Within the same task, unchanged article summaries, applicability conditions and 
 
 The addition controls the cost of delivering stored knowledge under the current conditions. It does not infer or summarize the person's purpose or agreement; the original request and condition references remain available. Reuse applies only when the complete transport becomes smaller, with no extra model or setting. Reduced delivery bytes are checked separately from actual judgment quality or total task time. See the [input and reference contract](../skills/shikii/references/recording.md#bounded-reading-and-memory-upgrades).
 
-## Unreleased: reduce the work of reading stored knowledge
+## In 0.30.0, reduce the work of reading stored knowledge
 
 While shikii is running, it can reuse article parsing within a fixed memory budget. It still reads the current file bytes before reuse, checks sources and watched premises, and revalidates the preparation before saving. Article text stays shared while each caller receives its own mutable metadata, reducing copying without shortening the request, evidence or unresolved conditions.
 

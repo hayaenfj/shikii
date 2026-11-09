@@ -2,7 +2,7 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased
+## 0.30.0 — Reduce repeated work while preserving intent and recovery
 
 - Share decoded source records, reflection history and exact response measurements within one operation; avoid copying discarded brief bodies and skip excerpt parsing when its budget is zero. Preserve source recovery, final transport budgets and ordinary search rankings while retaining only query terms for ordinary ranking.
 - Accumulate search scores in a fixed term order so rounding alone cannot reverse tied articles; preserve term weights, recall gates and complete candidate delivery.

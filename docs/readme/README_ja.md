@@ -12,9 +12,9 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 [![Tests](https://img.shields.io/badge/tests-1351%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.29.3-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.30.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.29.3では、今回の依頼を保持しながら、同じ作業で配送済みの記事の説明を再利用します。未解決の条件・反例・変わった前提・同じ版の全文回復を残し、依頼が応答上限へ収まらない時は保存前にエラーを返します。[変更履歴](../../CHANGELOG_ja.md)と[記録の手順](../../skills/shikii/references/recording.md)をご覧ください。
+0.30.0では、今回の依頼・正確な出典・回復の確認を保ちながら、ファイル読取・解析・複製・画面更新の重複を減らします。再利用する量を制限し、変更可能な状態を分け、保存前に入力の変化を検出します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 同じプロジェクトへ書く本体を全て更新し、hookなしの場合は既存のプロジェクトで `shikii --init` を実行して作法も更新してください。その後、エージェントのセッション・ページ・MCPを起動し直します。既存の記録を保持し、原資料を残したメモリ更新作業をエージェントへ届けます。進捗は英語で表示します。詳しくは[記憶と学習](../memory-and-learning.ja.md)を参照してください。
 
