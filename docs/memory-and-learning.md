@@ -39,6 +39,12 @@ Within the same task, unchanged article summaries, applicability conditions and 
 
 The addition controls the cost of delivering stored knowledge under the current conditions. It does not infer or summarize the person's purpose or agreement; the original request and condition references remain available. Reuse applies only when the complete transport becomes smaller, with no extra model or setting. Reduced delivery bytes are checked separately from actual judgment quality or total task time. See the [input and reference contract](../skills/shikii/references/recording.md#bounded-reading-and-memory-upgrades).
 
+## Unreleased: reduce the work of reading stored knowledge
+
+While shikii is running, it can reuse article parsing within a fixed memory budget. It still reads the current file bytes before reuse, checks sources and watched premises, and revalidates the preparation before saving. Article text stays shared while each caller receives its own mutable metadata, reducing copying without shortening the request, evidence or unresolved conditions.
+
+This temporary cache disappears when the process ends. The project's durable knowledge remains in its source-backed wiki, with the same review and recovery requirements.
+
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)

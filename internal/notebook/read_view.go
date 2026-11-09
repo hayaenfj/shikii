@@ -2,10 +2,10 @@ package notebook
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 )
 
@@ -49,7 +49,8 @@ func (b Book) CurrentPage(id string) (Page, bool, error) {
 
 type readPage struct {
 	raw  []byte
-	page []byte
+	page Page
+	cost int
 }
 
 type readView struct {
@@ -64,13 +65,7 @@ func (b Book) readPage(path string, raw []byte) (Page, error) {
 		old, ok := b.read.pages[path]
 		b.read.mu.Unlock()
 		if ok && bytes.Equal(raw, old.raw) {
-			// A fresh decode prevents mutations of a returned page's nested data
-			// from changing the validated value used by another read.
-			var p Page
-			if err := json.Unmarshal(old.page, &p); err != nil {
-				return Page{}, err
-			}
-			return p, nil
+			return copyReadPage(old.page), nil
 		}
 	}
 	p, err := parsePage(raw)
@@ -78,16 +73,17 @@ func (b Book) readPage(path string, raw []byte) (Page, error) {
 		return Page{}, errors.New("the generated wiki article has changed")
 	}
 	if b.read != nil {
-		data, err := json.Marshal(p)
-		if err != nil {
-			return Page{}, err
-		}
+		cost := len(raw) + readValueSize(reflect.ValueOf(p))
 		b.read.mu.Lock()
 		old := b.read.pages[path]
-		cost := len(raw) + len(data)
-		if b.read.bytes-len(old.raw)-len(old.page)+cost <= 8<<20 {
-			b.read.pages[path] = readPage{raw: raw, page: data}
-			b.read.bytes += cost - len(old.raw) - len(old.page)
+		if cost <= readViewLimit {
+			if b.read.bytes-old.cost+cost > readViewLimit {
+				b.read.pages = map[string]readPage{}
+				b.read.bytes = 0
+				old.cost = 0
+			}
+			b.read.pages[path] = readPage{raw: raw, page: copyReadPage(p), cost: cost}
+			b.read.bytes += cost - old.cost
 		}
 		b.read.mu.Unlock()
 	}

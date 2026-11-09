@@ -1,11 +1,12 @@
 package notebook
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -32,47 +33,72 @@ type readSnapshot struct {
 	checks map[string]readCheck
 	raw    map[string][]byte
 	bytes  int
-	pages  []byte
+	pages  []Page
+	issues []Issue
 	failed bool
+	named  bool
 }
+
+// Only validated parsing is shared across preparations in this process. File
+// bytes, source validity and premises are still freshly checked per preparation.
+var preparedReadPages = &readView{pages: map[string]readPage{}}
 
 // PrepareReadSnapshot establishes the fixed article layout before freezing
 // reads. MemoryUpgrade may initialize its checkpoint during preparation; its
 // own empty-directory creation must not look like concurrent article changes.
 func (b Book) PrepareReadSnapshot() (Book, error) {
+	b = b.ReadSnapshot()
 	if _, err := b.directory(true, "pages"); err != nil {
 		return b, err
 	}
-	return b.ReadSnapshot(), nil
+	b.read = preparedReadPages
+	return b, nil
 }
 
 // ReadSnapshot is for one sequential preparation only. It shares file reads,
 // then ValidateRead must succeed inside the context's commit boundary. Writers
 // and independent operations use an ordinary Book, never this snapshot.
 func (b Book) ReadSnapshot() Book {
-	b = b.ReadView().scopedRead()
+	b = b.ReadView()
+	namePath := filepath.Join(b.Root, "records", "store-name")
+	name, hash, err := readSnapshotName(namePath)
+	if err != nil || name == "" {
+		b.name = store.StoreName(b.Root, b.Scope)
+		name, hash, err = readSnapshotName(namePath)
+	} else {
+		b.name = name
+	}
 	root, _ := filepath.EvalSymlinks(b.Root)
 	b.snapshot = &readSnapshot{root: root, checks: map[string]readCheck{}, raw: map[string][]byte{}}
-	namePath := filepath.Join(b.Root, "records", "store-name")
-	_, err := b.sharedCheck("namespace:"+namePath, func() (string, error) {
-		f, err := openSourceFile(namePath)
-		if os.IsNotExist(err) {
-			return "missing", nil
-		}
-		if err != nil {
-			return "", err
-		}
-		defer f.Close()
-		raw, err := io.ReadAll(io.LimitReader(f, 129))
-		if err != nil || len(raw) > 128 {
+	b.snapshot.checks["namespace:"+namePath] = readCheck{hash, err, func() (string, error) {
+		name, hash, err := readSnapshotName(namePath)
+		if name != "" && name != b.name {
 			return "", errReadChanged
 		}
-		return digest(raw), nil
-	})
+		return hash, err
+	}}
 	if err != nil {
 		b.snapshot.failed = true
 	}
+	b.snapshot.named = err == nil && hash != "missing"
 	return b
+}
+
+func readSnapshotName(path string) (string, string, error) {
+	f, err := openSourceFile(path)
+	if os.IsNotExist(err) {
+		return "", "missing", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, 129))
+	name := strings.TrimSpace(string(raw))
+	if err != nil || len(raw) > 128 || len(name) != 64 || strings.Trim(name, "0123456789abcdef") != "" {
+		return "", "", errReadChanged
+	}
+	return name, digest(raw), nil
 }
 
 func (b Book) sharedCheck(key string, check func() (string, error)) (string, error) {
@@ -163,27 +189,17 @@ func (b Book) snapshotPages() ([]Page, []Issue, bool) {
 	if b.snapshot == nil || b.snapshot.pages == nil {
 		return nil, nil, false
 	}
-	var value struct {
-		Pages  []Page
-		Issues []Issue
-	}
-	if json.Unmarshal(b.snapshot.pages, &value) != nil {
-		b.snapshot.failed = true
-		return nil, nil, false
-	}
-	return value.Pages, value.Issues, true
+	return copyReadPages(b.snapshot.pages), slices.Clone(b.snapshot.issues), true
 }
 
 func (b Book) rememberSnapshotPages(pages []Page, issues []Issue) {
 	if b.snapshot == nil {
 		return
 	}
-	data, _ := json.Marshal(struct {
-		Pages  []Page
-		Issues []Issue
-	}{pages, issues})
-	if len(data) <= 8<<20 {
-		b.snapshot.pages = data
+	cost := readValueSize(reflect.ValueOf(pages)) + readValueSize(reflect.ValueOf(issues))
+	if cost <= readViewLimit {
+		b.snapshot.pages = copyReadPages(pages)
+		b.snapshot.issues = slices.Clone(issues)
 	}
 }
 
@@ -194,7 +210,12 @@ func (b Book) ValidateRead() error {
 		return nil
 	}
 	root, err := filepath.EvalSymlinks(b.Root)
-	if err != nil || root != b.snapshot.root || store.StoreName(b.Root, b.Scope) != b.name || b.snapshot.failed {
+	if err != nil || root != b.snapshot.root || b.snapshot.failed {
+		return errReadChanged
+	}
+	// A regular name file is already checked in full below. Only the legacy
+	// missing-file fallback needs StoreName to resolve its project metadata.
+	if !b.snapshot.named && store.StoreName(b.Root, b.Scope) != b.name {
 		return errReadChanged
 	}
 	keys := make([]string, 0, len(b.snapshot.checks))
