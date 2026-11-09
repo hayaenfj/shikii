@@ -7,6 +7,7 @@
 - Supply the complete common MCP workflow once in the `shikii_wiki` description; retain its entry point, trust boundary, labeling safeguard and project-path requirement in initialization instructions.
 - Reference an unchanged `collective.notice` from an earlier successful delivery only when every selected article is reusable under the same receipt and the complete transport shrinks. Preserve updates, contrasts, investigations, omissions and recovery; explicit reading depths, pinned recovery, changed notices and new receipts retain full guidance.
 - Document reading one complete MCP result view while preserving error state, additional content, exact conditions and source/revision references. Both structured and text server responses remain available.
+- Align the MCP connection examples with preparation, recording and complete recovery. Resolve links in every bundled Markdown document to a bundled file or a version-pinned online target, including both changelogs.
 - Update all writers sharing an active session to 0.30.1, refresh skills with `shikii --init` when hooks are disabled, and restart agent sessions, the page and MCP. Existing project data is retained.
 
 ## 0.30.0 — Reduce repeated work while preserving intent and recovery

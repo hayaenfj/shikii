@@ -126,7 +126,7 @@ def build(target):
             raise RuntimeError(f"{name}/{binary}: not built with {toolchain.group(1)} (go.mod's toolchain)\n{info.splitlines()[0]}")
         (out / (name + "-" + binary + "-build.txt")).write_text(info)
     for source, dest in BUNDLED:
-        if source in ("README.md", "docs/readme/README_ja.md"):
+        if source.endswith(".md"):
             (stage / dest).write_text(bundled_document(source), encoding="utf-8")
         else:
             shutil.copy2(repo / source, stage / dest)

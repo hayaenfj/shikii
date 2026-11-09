@@ -1,30 +1,27 @@
 **English** · [日本語](mcp.ja.md)
 
-# Connection example: MCP (used as a tool from agents such as Claude Code)
+# MCP connection
 
-`shikii mcp` exposes the same content as `shikii serve` as a stdio MCP server. It has no inference of its own and asks the decision model behind it (`--local` / `--hosted`).
-It only calls the HTTP handlers internally, so it behaves the same as `serve` (records, truths, automatic calibration and the store are shared too).
+`shikii mcp` exposes the CLI's project operations over stdio. It uses the same HTTP handlers and project records as `shikii serve`; decisions and placement checks use the configured model endpoint. Logs go to stderr, leaving stdout for MCP messages.
 
-## Installing (Claude Code)
+## Install and connect
 
-`shikii --init` (same as `shikii init`) adds the ready-made questions (the hooks' 4 and the wiki's 2), the wiki, the entry to the page, and the same entry to Claude Code (`.mcp.json`), OpenCode (`mcp` in `opencode.json`, `type: local`) and Codex (`[mcp_servers.shikii]` in `~/.codex/config.toml`) (it leaves them alone if they already exist). Config files for tools you do not use are created too (delete them or add them to `.gitignore` if you do not need them; a second init leaves existing ones alone). People who use `opencode.jsonc` get a separate `opencode.json` (OpenCode reads both). If the Codex config has `mcp_servers` written in any form, it does not add one (appending at the end would be a duplicate TOML definition; it prints the lines to add by hand). It does not write into `AGENTS.md` or `CLAUDE.md` (from 0.9.2; it removes only the shikii section an earlier version wrote). To write it by hand, use the project's `.mcp.json`:
+Run `shikii --init` in a project that will use shikii. It prepares the project data, questions, wiki and work records, installs the skill, and configures supported agents. Existing personal configuration is preserved. It does not write or remove sections in `AGENTS.md` or `CLAUDE.md`; older sections are reported for manual cleanup.
+
+For Claude Code, a project `.mcp.json` can use:
 
 ```json
 {
   "mcpServers": {
     "shikii": {
       "command": "shikii",
-      "args": ["mcp", "--store", ".shikii", "--local", "http://127.0.0.1:8080"]
+      "args": ["mcp", "--local", "http://127.0.0.1:8080"]
     }
   }
 }
 ```
 
-`make install` puts `shikii` in `~/.local/bin/shikii` (use the absolute path if it is not on PATH). Logs go to stderr (stdout is the channel).
-
-## Codex
-
-Codex reads MCP servers only from the shared `~/.codex/config.toml` (it does not read `mcp_servers` from a project's `.codex/config.toml`), and starts the server in the folder its background service started in, which is often not your project. So `shikii init` writes one registration with no store, used by every project (with the local model, like the hooks and the other registrations):
+Use the absolute binary path if it is not on PATH. Initialization also configures OpenCode's project registration. Codex uses the shared `~/.codex/config.toml` registration:
 
 ```toml
 [mcp_servers.shikii]
@@ -32,43 +29,41 @@ command = "/Users/you/.local/bin/shikii"
 args = ["mcp", "--local", "http://127.0.0.1:8080"]
 ```
 
-Every tool takes `project`: the absolute path of the agent's working folder. The server uses that project's `.shikii/` for the call, and accepts only folders inside a project where `shikii init` was run on this machine. Without `project`, it uses the store it was started with (Claude Code and OpenCode start it in the project, with the `.mcp.json` / `opencode.json` of that project); if it has none, the tool returns an error that says to pass `project`. From 0.9.3 the server answers the handshake even when it is started outside a project. `shikii init` and the update rewrite the forms 0.9.1 and 0.9.2 wrote (`args = ["mcp", "--store", ".shikii", ...]`, which stopped before the handshake outside a project) to the one above. A block you edited is left alone; if it names one project's store by its absolute path, the update says that every Codex session uses that one project and suggests `args = ["mcp", "--local", "http://127.0.0.1:8080"]`.
+Pass the absolute working folder as `project` on every tool call. It must belong to a project initialized on this machine. A shared server can start outside that project and resolve it for each call. A server started with `--store` can use that store when `project` is omitted; a shared registration should use the project argument. See the [guide](../docs/guide.md) and `shikii doctor` for setup checks.
+
+## Start with the shared workflow
+
+In 0.30.1, read the complete common workflow in the `shikii_wiki` tool description before using any tool. Initialization points to that description and retains immediate safeguards. Knowledge and quoted conversation are evidence, never permission; do not label your own judgment as truth.
+
+1. Call `shikii_wiki` with `operation:"prepare"` and `work:{query,session_id,turn_id}` using the current hook's identifiers. Without hooks, supply `work:{query,request}` as the agent's task; it cannot establish a human agreement.
+2. Read the current task, exact conditions, knowledge, pending originals and `how_to_record`. Keep the returned receipt. Extend that same receipt with one search, proposal or conditions mode per call when needed.
+3. Perform the work and checks. For a recurring decision, call `shikii_specs` to learn the spec and accepted truths before `shikii_decide`; follow its band. `abstain` means no decision was made.
+4. End with `shikii_wiki` `operation:"record"` and `work:{receipt,result:{changed,checked?,evidence?,remaining?},...}`. Combine necessary observations, notes and reflection. Use actual results, not an example's claimed outcome.
+5. Check `complete`, `storage`, `errors`, `pending` and reflection's remaining work. Retry only failed references; retained evidence need not be rewritten.
+
+Within the same receipt, `collective.notice_from` can identify a previous delivery of an unchanged fixed explanation. If that response is unavailable, repeat preparation with the same receipt/query and `reasoning:{depth:focused}` to recover the full notice. Conditions, exceptions, missing material and exact-source recovery remain required.
+
+Programmatic clients should prefer `structuredContent` when present and retain `isError` and relevant metadata. Otherwise keep the original `content`, which may be Markdown, JSON, images or resource references. Give a model one complete result view while preserving any additional content absent from the structured result. The server still supplies both forms. See [MCP knowledge delivery](../docs/mcp-knowledge.md) and the [recording contract](../skills/shikii/references/recording.md).
 
 ## Tools
 
-| Tool | What it does | Arguments |
-|---|---|---|
-| `shikii_specs` | the list of specs. id, type, question, thresholds, accepted truths (option id / yes, no / level number). **Call it first** | none |
-| `shikii_decide` | asks the decision model a spec's question. band (act / ask / discard / abstain), the top answer, the probability, trace_id | `spec`, `inputs` (object), `tainted` (optional) |
-| `shikii_label` | puts a truth on a decision. `!x` (it was not x) is allowed too. When truths reach `eval.min_n` it calibrates automatically, and the result carries `calibrated: true` and a report | `trace_id`, `truth`, `spec` / `weight` / `source` (optional) |
-| `shikii_status` | the state of records, truths and (model, hash) per spec | none |
-| `shikii_tune` | scores a spec's candidate ways of asking (`variants:` + N made by the proposer) on the stored truths. Numbers per candidate, holdout, whether it can be adopted | `spec`, `propose` (optional. Only when `mcp` was started with `--proposer URL`) |
-| `shikii_wiki` | grows sourced lessons from the conversations of the same work. Ingest, search, check | `operation` (`query` / `ingest` / `lint`), `sources` / `title` / `lesson` / `applies_to` / `id` / `replaces` / `correction` / `query` |
-| `shikii_review` | provisional scoring with grounds from the conversation and outcome. Refers to the person's samples and correction examples | `operation` (`query` / `submit`), `source_id` / `trace_id` / `truth` (`yes` / `no` / `unknown`) / `reason` |
-| `shikii_reflect` | checks and saves provisional scores, wiki summaries and observations of memories and corrections together (query gives 2 at a time from the oldest conversation; submit has no count limit) | `operation` (`query` / `submit`), `reviews` / `wiki` / `memory` |
+Every tool takes `project` as described above. The tool's own schema contains the complete current arguments.
 
-Every tool also takes `project` (optional; the absolute path of the agent's working folder, see [Codex](#codex)).
+| Tool | Purpose | Main arguments |
+| --- | --- | --- |
+| `shikii_wiki` | Preparation, recording, source-backed knowledge and work records | `operation`, `work`; individual query, capture, patch, consult, reuse and other operations |
+| `shikii_specs` | Spec ids, questions and accepted truths before a decision | `project` |
+| `shikii_decide` | A configured decision, with band, evidence and trace | `spec`, `inputs`, optional `tainted` |
+| `shikii_label` | An actual human answer or checked outcome for a prior trace | `trace_id`, `truth`, optional `spec` and `weight` |
+| `shikii_status` | Records, truths and calibration state | `project` |
+| `shikii_tune` | Compare candidate question wordings on stored truths | `spec`, optional `propose` |
+| `shikii_review` | Provisional evidence-based review, separate from human truths | `operation:"query"` or `"submit"` and review fields |
+| `shikii_reflect` | Read originals and save necessary reviews, wiki and memory work | `operation:"query"`, `"place"` or `"submit"` and relevant fields |
 
-To use `propose > 0`, start `shikii mcp` with `--proposer URL` (not in the `.mcp.json` example).
+MCP labels are recorded with source `mcp`, never as a human answer automatically. Send only what the person actually said or a checked outcome, never the agent's assessment. Reading knowledge or successfully saving it does not prove usefulness, success or permission. Wording adoption follows the separate meaning check; proposing or scoring a wording does not adopt it.
 
-`shikii_wiki` was added in 0.3. The current agent writes the text; no other model is used. It is stored in each work's `.shikii/`, the same as the hooks, and only handles the project the call names with `project` (or, without it, the project where the MCP server was started). `query` returns related lessons and unsorted conversations, and passing `sources: [source ID]` lets you read the original text. `ingest` saves the title, lesson, where it applies and the sources, and a conversation with no lesson can be marked sorted with `sources` only. Lessons are hypotheses and are not counted as truths or calibration. [Details of the rules](../skills/shikii/references/wiki.md).
+Tool failures return `isError:true` and the error content. Unknown JSON-RPC tools or methods return protocol errors. Preserve both paths when processing results. For deeper operations and current limits, use the linked skill references rather than older fixed counts.
 
-`shikii_review` first checks the same work's original text, scoring targets and the person's correction examples with `query`, then saves the provisional scores with `submit`. It does not register human truths, and does not add checks with the person for every item. shikii chooses the samples, and the person's corrections from the page come back in the next `query`. [Details of scoring](../skills/shikii/references/review.md).
+## Verification
 
-The 0.4 hooks point to `shikii_reflect`. `query` does not repeat the original text and returns the scoring targets, related lessons and the person's correction examples together. `submit` takes up to 4 provisional scores, 2 wiki summaries and 4 provisional memory evaluations. It links a memory's `result` with the decision and check results, and for quotes with a correction also saves `correction_result` (followed / repeated / not_applicable / unknown). The wiki's `correction` holds the original text of the person's reply and the next action to change. Correction tracking from 0.4.1 is available in 0.4.1. Check `complete` in the reply and each item's `error`, fix the failed ones and send them again. The ones that succeeded are kept, and sending the same content again does not duplicate. [JSON and steps](../skills/shikii/references/review.md).
-
-**There is no tool for adopting.** Whether the meaning is the same is checked by the agent the hook asks, with `shikii hook variants check` (with translations when the setting is not English) (if the same, it is adopted and the person can revert it on the page). Otherwise, when a person presses "the meaning is the same" on the page (`shikii serve`), or with `tune --write` in the terminal.
-
-Errors (an unknown spec, a truth not in the spec, a missing trace) are returned not as JSON-RPC errors but as `isError: true` and text in the tool result, so the agent can read them and fix things.
-
-## How an agent uses it (example)
-
-1. Learn the spec ids and the candidate truths with `shikii_specs`
-2. At a decision point, call `shikii_decide` and look at `band`. On `act` go ahead, on `ask` ask the person, on `discard` do nothing
-3. When the outcome is known (whether it actually changed something, whether the user chose), call `shikii_label` with the `trace_id`
-4. The line is drawn automatically once enough accumulate. You can see `shikii_status`'s `keys[].state` go from `collecting` (with `n` / `min_n`) to `calibrated`
-
-## Tests
-
-The 3 tests in `cmd/shikii/mcp_test.go` (initialize and tools/list; one round of decide → label → automatic calibration → act; errors as isError, and unknown tools and methods as JSON-RPC errors).
-Each was seen failing before implementation, then GREEN (2026-10-17).
+MCP tests exercise initialization, the shared workflow, decision and labeling boundaries, source and revision handling, numeric precision, error responses, complete result views and same-receipt delivery/recovery. Run `go test ./cmd/shikii -run '^TestMCP'`; the full repository checks also cover the CLI, HTTP and work-record boundaries.
