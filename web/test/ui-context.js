@@ -303,6 +303,30 @@ export function checkMemoryEffect(target) {
   return ok;
 }
 
+// The person's past answers the AI's reflection rejected are listed in the knowledge section (they left the list of answered
+// decisions): the answer in the page's words, the request, how often it went unused. The stop of the whole kind is said in one
+// line. Nothing is shown when there is nothing to list. Text from requests is never rendered as HTML.
+export function checkRejectedAnswers(target) {
+  const item = { trace_id: 'aaaaaaaaaaaaaaaa', spec: 'needs-plan', request: 'README の手順を直して <img src=x onerror=alert(1)>', truth: 'yes', question: { en: 'Should it have asked you first?', ja: '始める前に確認してほしかったか' }, answer: { en: 'It should have asked', ja: '確認してほしかった' }, unused: 2, at: '2026-11-10T00:00:00Z' };
+  let app = mount(Notebook, { target, props: { wiki: { rejected_answers: { stopped: false, unused: 2, helpful: 0, items: [item] } } } });
+  flushSync();
+  let section = target.querySelector('.rejected-answers');
+  const listed = !!section?.querySelector('[data-rejected="aaaaaaaaaaaaaaaa"]') && (section.textContent.includes(item.answer.ja) || section.textContent.includes(item.answer.en)) && (section.textContent.includes(item.question.ja) || section.textContent.includes(item.question.en)) && section.textContent.includes('README の手順を直して') && section.textContent.includes('2') && !section.querySelector('[data-rejected-stopped]');
+  const inert = section?.textContent.includes('<img src=x onerror=alert(1)>') && !section?.querySelector('img');
+  unmount(app);
+  app = mount(Notebook, { target, props: { wiki: { rejected_answers: { stopped: true, unused: 12, helpful: 0, items: [] } } } });
+  flushSync();
+  section = target.querySelector('.rejected-answers');
+  const stopped = !!section?.querySelector('[data-rejected-stopped]') && section.querySelector('[data-rejected-stopped]').textContent.includes('12') && !section.querySelector('[data-rejected]');
+  unmount(app);
+  app = mount(Notebook, { target, props: { wiki: { rejected_answers: { stopped: false, unused: 1, helpful: 0, items: [] } } } });
+  flushSync();
+  const quiet = !target.querySelector('.rejected-answers');
+  unmount(app);
+  const ok = listed && inert && stopped && quiet;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rejected answer listed=' + listed + ', inert request=' + inert + ', stop of past answers said=' + stopped + ', nothing shown when nothing is rejected=' + quiet + ')');
+  return ok;
+}
 
 export function checkFullText(target) {
   const prefix = '確認した文章。'.repeat(100);

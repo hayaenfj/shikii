@@ -26,10 +26,16 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 	}
 	recs, labeled := view.Records, view.Labeled
 	superseded := supersededRecords(recs)
+	// an answer the agent's reflection rejected (quoted twice, never useful) leaves this list; the knowledge section lists it, and its
+	// truth stays in the labels
+	rejected := func(string) bool { return false }
+	if containsString(answerSpecs, id) {
+		rejected = readAnswerRejection(s.o.storeDir, s.o.projectScope).rejected
+	}
 	var answered []store.Record
 	for _, rec := range recs {
 		l, ok := labeled[rec.TraceID]
-		if ok && store.HumanSource(l.Source) && !superseded[rec.TraceID] {
+		if ok && store.HumanSource(l.Source) && !superseded[rec.TraceID] && !rejected(rec.TraceID) {
 			answered = append(answered, rec)
 		}
 	}

@@ -97,6 +97,11 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 	} else {
 		result["memory_effect_error"] = true
 	}
+	if s.o.projectScope != "" { // the person's past answers the agent's reflection rejected, and whether quoting them is stopped
+		if rejected, err := rejectedAnswers(s.o.storeDir, s.o.projectScope); err == nil {
+			result["rejected_answers"] = rejected
+		}
+	}
 	if r.URL.Query().Get("cursor") == "" { // the knowledge page (0.9.0): each page's last update and how often it helped, and an inbox of only the exceptions a person should look at
 		result["lesson_meta"], result["inbox"] = knowledgeMeta(s.o.storeDir, s.o.projectScope, report.All)
 	}

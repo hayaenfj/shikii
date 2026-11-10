@@ -18,10 +18,39 @@ func PairKey(quoteKey, phrase string) string { return quoteKey + "\t" + phrase }
 // unsilences anything by itself.
 func (s Store) PairEffects(scope string) map[string]PairEffect {
 	out := map[string]PairEffect{}
+	s.eachAssessment(scope, func(a MemoryAssessment) {
+		if a.Phrase == "" || !strings.HasPrefix(a.Key, "lesson:") {
+			return
+		}
+		k := PairKey(a.Key, a.Phrase)
+		pe := out[k]
+		if pe.add(a.Result) {
+			out[k] = pe
+		}
+	})
+	return out
+}
+
+// add counts one assessment: helpful, or unused (harmful counts as unused). Unknown and anything else is not counted.
+func (e *PairEffect) add(result string) bool {
+	switch result {
+	case "helpful":
+		e.Helpful++
+	case "unused", "harmful":
+		e.Unused++
+	default:
+		return false
+	}
+	return true
+}
+
+// eachAssessment calls fn for every assessment of this project that can be read. It never fails: a file that cannot be read or
+// is too large is skipped, so a broken assessment never changes what is delivered.
+func (s Store) eachAssessment(scope string, fn func(MemoryAssessment)) {
 	dir := s.recordPath("memory-reviews", "", scope)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return out
+		return
 	}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
@@ -32,21 +61,40 @@ func (s Store) PairEffects(scope string) map[string]PairEffect {
 			continue
 		}
 		var a MemoryAssessment
-		if json.Unmarshal(data, &a) != nil || a.Phrase == "" || !strings.HasPrefix(a.Key, "lesson:") {
+		if json.Unmarshal(data, &a) != nil {
 			continue
 		}
-		k := PairKey(a.Key, a.Phrase)
-		pe := out[k]
-		switch a.Result {
-		case "helpful":
-			pe.Helpful++
-		case "unused", "harmful":
-			pe.Unused++
-		default:
-			continue
-		}
-		out[k] = pe
+		fn(a)
 	}
+}
+
+// AnswerEffects are what the reflection said about the person's past answers quoted before requests (quote keys
+// decision:<trace id>): per answered decision, the time of its last counted assessment, and all of them together. Counted from the
+// assessments alone, like PairEffects.
+type AnswerEffects struct {
+	ByTrace map[string]PairEffect
+	LastAt  map[string]time.Time
+	Total   PairEffect
+}
+
+// AnswerEffects reads the assessments of quoted past answers of this project.
+func (s Store) AnswerEffects(scope string) AnswerEffects {
+	out := AnswerEffects{ByTrace: map[string]PairEffect{}, LastAt: map[string]time.Time{}}
+	s.eachAssessment(scope, func(a MemoryAssessment) {
+		trace, ok := strings.CutPrefix(a.Key, "decision:")
+		if !ok || trace == "" {
+			return
+		}
+		pe := out.ByTrace[trace]
+		if !pe.add(a.Result) {
+			return
+		}
+		out.ByTrace[trace] = pe
+		out.Total.add(a.Result)
+		if a.At.After(out.LastAt[trace]) {
+			out.LastAt[trace] = a.At
+		}
+	})
 	return out
 }
 

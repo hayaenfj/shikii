@@ -1,6 +1,6 @@
 <script>
   import Learning from './Learning.svelte';
-  import { t } from '../lib/i18n.svelte.js';
+  import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
 
@@ -11,6 +11,9 @@
   let navigation = 0;
   let lessons = $derived(selected ? [selected] : wiki.lessons || []);
   let effect = $derived(wiki.memory_effect);
+  // The person's past answers the AI's reflection rejected (shown twice before similar requests, never useful), and whether showing
+  // past answers is stopped in this project. They left the list of answered decisions; this is where a person still sees them.
+  let rejected = $derived(wiki.rejected_answers);
 
   // What the AI is accumulating (0.8.0): articles are grouped into clusters connected by related links and shown as a hierarchy. A cluster's name is the title of the most-linked article in it.
   // Articles with no connections are "standalone articles". Each cluster can be collapsed, and pressing an article goes to its text and sources (the existing view)
@@ -132,6 +135,20 @@
           </details>
         {/each}
       {/if}
+    </div>
+  {/if}
+  {#if rejected && (rejected.stopped || (rejected.items || []).length)}
+    <div class="rejected-answers {box}">
+      <h3 class={h3}>{t('rejectedAnswersTitle')}</h3>
+      <p class="k">{t('rejectedAnswersHow')}</p>
+      {#if rejected.stopped}<p class="k" data-rejected-stopped>{t('rejectedAnswersStopped')(rejected.unused, rejected.helpful)}</p>{/if}
+      {#each rejected.items || [] as item (item.trace_id)}
+        <details class="text mb-3.5 wrap-anywhere" data-rejected={item.trace_id}>
+          <summary>{loc(item.answer, item.truth || item.trace_id)} · {item.request || item.trace_id}</summary>
+          {#if item.question}<p>{loc(item.question, item.spec)}</p>{/if}
+          <div class="k">{t('rejectedAnswersUnused')(item.unused)} · {fmtDateTime(item.at)}</div>
+        </details>
+      {/each}
     </div>
   {/if}
   {#if wiki.pending_sources_count}<p class="k">{t('notebookPending')(wiki.pending_sources_count)}</p>{/if}

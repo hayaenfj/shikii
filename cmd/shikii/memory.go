@@ -102,11 +102,14 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 		}
 	}
 	// the person's own past answers on similar requests (0.11): only for a person's request, chosen by closeness to it
+	// Not when the reflection's assessments stopped them in this project, and never an answer they rejected (memory_answers.go)
 	answers := []memoryQuote{}
 	if feedback && parent == "" {
-		var err error
-		if answers, err = personAnswerQuotes(root, request, seen); err != nil {
-			return "", err
+		if rejection := readAnswerRejection(root, scope); !rejection.kindStopped() {
+			var err error
+			if answers, err = personAnswerQuotes(root, request, seen, rejection.rejected); err != nil {
+				return "", err
+			}
 		}
 	}
 	// seats: 2 in all. A fitting answer keeps one of them; lessons take the rest, and a seat they leave free goes to a second answer
@@ -310,7 +313,7 @@ var answerSpecs = []string{"needs-plan", "changes-in-scope", "done-as-asked"}
 // the two answers the person judged between: the agent's own answer with its reason (its organizing before starting, or its provisional
 // score; only when the decision was paired under 0.11's rule) and the decision model's answer. A bare "yes" or "no" told the agent
 // nothing it could act on; with the reasons it learns how its own reasoning is judged in this project.
-func personAnswerQuotes(root, request string, seen map[string]bool) ([]memoryQuote, error) {
+func personAnswerQuotes(root, request string, seen map[string]bool, rejected func(trace string) bool) ([]memoryQuote, error) {
 	st := store.Store{Dir: root}
 	answers, err := st.PersonAnswers(answerSpecs)
 	if err != nil {
@@ -322,7 +325,7 @@ func personAnswerQuotes(root, request string, seen map[string]bool) ([]memoryQuo
 	}
 	matches := []match{}
 	for _, a := range answers {
-		if seen["decision:"+a.TraceID] {
+		if seen["decision:"+a.TraceID] || rejected != nil && rejected(a.TraceID) {
 			continue
 		}
 		if score := store.TextMatch(request, a.Request); score >= 0.5 {
@@ -414,7 +417,8 @@ func personAnswerSaid(sp *spec.Spec, truth, lang string, pair *aiPair, model mod
 // similar requests (with the agent's and the model's answers, as the request hook quotes them) and the closest lessons, at most 2 each.
 // Nothing is recorded as a delivery: the agent asked, and the reflection assesses what the hook delivered.
 func decideKnowledge(root, scope, request string) (similar, lessons []memoryQuote, err error) {
-	if similar, err = personAnswerQuotes(root, request, nil); err != nil {
+	// an answer the reflection rejected does not come back here either; the agent asked, so a stop of the automatic quotes does not apply
+	if similar, err = personAnswerQuotes(root, request, nil, readAnswerRejection(root, scope).rejected); err != nil {
 		return nil, nil, err
 	}
 	pages, err := (notebook.Book{Root: root, Scope: scope}).Recall(request)
