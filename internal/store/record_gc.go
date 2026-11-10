@@ -2,7 +2,9 @@ package store
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,11 +62,22 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 	var keep [][]byte
 	var removed []Record // removed records: their original text goes with them
 	kept := map[string]bool{}
+	unknownKept := false // a kept line that names no trace: it may belong to any decision, so no original text is removed
 	err = s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
 		if json.Unmarshal(line, &r) != nil || r.TraceID == "" {
 			res.KeptUnparsed++
 			keep = append(keep, append([]byte(nil), line...))
+			// the line stays, so the text of its decision stays: its trace is read on its own (a line edited by hand may not
+			// decode as a record and still name its trace)
+			var named struct {
+				TraceID string `json:"trace_id"`
+			}
+			if json.Unmarshal(line, &named) == nil && named.TraceID != "" {
+				kept[named.TraceID] = true
+			} else {
+				unknownKept = true
+			}
 			return nil
 		}
 		switch {
@@ -122,7 +135,9 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 	if err := parent.Rename(tmpName, name); err != nil {
 		return discard(err)
 	}
-	s.removeRecordTexts(specID, removed, kept)
+	if !unknownKept {
+		s.removeRecordTexts(specID, removed, kept)
+	}
 	return res, nil
 }
 
@@ -165,6 +180,8 @@ func (s Store) removeRecordTexts(specID string, removed []Record, kept map[strin
 	}
 }
 
+var errUnknownTrace = errors.New("a decision line names no trace")
+
 // tracesInOtherSpecs reports which of the traces have a decision line in the records of a question other than specID.
 func (s Store) tracesInOtherSpecs(specID string, traces map[string]bool) (map[string]bool, error) {
 	found := map[string]bool{}
@@ -182,7 +199,13 @@ func (s Store) tracesInOtherSpecs(specID string, traces map[string]bool) (map[st
 			var r struct {
 				TraceID string `json:"trace_id"`
 			}
-			if json.Unmarshal(line, &r) == nil && traces[r.TraceID] {
+			if json.Unmarshal(line, &r) != nil || r.TraceID == "" {
+				if len(bytes.TrimSpace(line)) == 0 {
+					return nil
+				}
+				return errUnknownTrace // a line that names no trace may belong to any decision: nothing is removed
+			}
+			if traces[r.TraceID] {
 				found[r.TraceID] = true
 			}
 			return nil

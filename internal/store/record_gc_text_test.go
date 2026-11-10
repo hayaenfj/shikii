@@ -1,8 +1,10 @@
 package store
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -211,5 +213,65 @@ func TestGCKeepsEveryTextWhenAnotherQuestionCannotBeRead(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(st.Dir, "records", "text", "aaaaaaaaaaaaaaaa.json")); err != nil {
 		t.Errorf("another question could not be read, yet the text was removed: %v", err)
+	}
+}
+
+// A kept line of the same question names the trace but does not decode as a record (its time was edited by hand). GC keeps the
+// line, so the text of its decision stays too. A kept line that names no trace at all (not JSON) may belong to any decision:
+// then no text is removed in that run.
+func TestGCKeepsTheTextOfAKeptLineThatDoesNotDecode(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	now := time.Now()
+	old := textRecord("prompt-kind", "aaaaaaaaaaaaaaaa", now.Add(-48*time.Hour))
+	if err := st.AppendRecord(old); err != nil {
+		t.Fatal(err)
+	}
+	kept := textRecord("prompt-kind", "aaaaaaaaaaaaaaaa", now)
+	long := kept.Inputs["request"] + " and the long original a person typed"
+	if err := st.SaveRecordText(kept, map[string]string{"request": long}); err != nil {
+		t.Fatal(err)
+	}
+	line, _ := json.Marshal(kept)
+	edited := strings.Replace(string(line), `"at":"`, `"at":"about `, 1) // still JSON, still names its trace
+	f, err := os.OpenFile(filepath.Join(st.Dir, "records", "prompt-kind.jsonl"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(edited + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	res, err := st.GC("prompt-kind", now.Add(-24*time.Hour), true)
+	if err != nil || res.Removed != 1 || res.KeptUnparsed != 1 {
+		t.Fatalf("the old line is removed and the edited line is kept as unparsable: %+v %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(st.Dir, "records", "text", "aaaaaaaaaaaaaaaa.json")); err != nil {
+		t.Errorf("gc kept a line of trace aaaaaaaaaaaaaaaa in the records but removed that trace's original text: %v", err)
+	}
+}
+
+func TestGCRemovesNoTextWhileAKeptLineNamesNoTrace(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	now := time.Now()
+	old := textRecord("prompt-kind", "aaaaaaaaaaaaaaaa", now.Add(-48*time.Hour))
+	if err := st.AppendRecord(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveRecordText(old, map[string]string{"request": old.Inputs["request"] + " and the long original"}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(filepath.Join(st.Dir, "records", "prompt-kind.jsonl"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("half a line that is not JSON\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if res, err := st.GC("prompt-kind", now.Add(-24*time.Hour), true); err != nil || res.Removed != 1 || res.KeptUnparsed != 1 {
+		t.Fatalf("the old line is removed and the broken line is kept: %+v %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(st.Dir, "records", "text", "aaaaaaaaaaaaaaaa.json")); err != nil {
+		t.Errorf("a kept line names no trace, so no text may be removed: %v", err)
 	}
 }
