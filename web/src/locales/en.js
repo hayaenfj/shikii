@@ -54,7 +54,7 @@ export default {
   correctionCount: (key, n) => ({ delivered: 'Corrections delivered', followed: 'Followed', repeated: 'Same issue again', not_applicable: 'Did not apply', unknown: 'Unknown', pending: 'Not looked at yet' }[key] || key) + ': ' + n,
   correctionQuote: 'Your words, quoted', correctionAction: 'Action to change (a guess)',
   rejectedAnswersTitle: 'Past answers the AI judged not useful',
-  rejectedAnswersHow: 'Each of these is an answer you gave that was shown to the AI before a similar request twice and never changed what it did. The AI does not show it again, and it is no longer in the list of answered decisions. The answer itself is kept.',
+  rejectedAnswersHow: 'An answer you gave is listed here when it was shown to the AI before similar requests at least twice and never changed what the AI did. It is not shown to the AI again, and it leaves the "Answered" list. The answer itself is kept.',
   rejectedAnswersStopped: (unused, helpful) => 'Showing your past answers before requests is stopped in this project: ' + unused + ' were looked at and ' + helpful + ' helped.',
   rejectedAnswersUnused: n => 'Not used ' + n + ' times',
   memoryEffectHow: n => 'Up to the last ' + n + ' deliveries, a first look from decisions and observed results. Ones not looked at yet stay visible.',

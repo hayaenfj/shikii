@@ -42,7 +42,8 @@ type MultiSample struct {
 // The even share asks for ε/K on every option, also on one the model left at the floor (1e-6) in every sample: for an option
 // that was never the truth only a large positive bias can give that, and the bias then turns a few percent on a later input
 // into the top answer. So such an option's bias is capped after the fit (below); the smoothing itself stays even, because it
-// also holds the temperature back from sharpening, and the lines of data where every option was the truth stay as they were.
+// also holds the temperature back from sharpening, and the lines of data where every option was the truth stay as they were
+// (except where the earlier loss let the temperature collapse: labels the model got all right now get a finite, usable line).
 // The set of all choices is the union of the keys of the samples' Raw.
 func FitVector(samples []MultiSample) (Vector, error) {
 	if len(samples) == 0 {

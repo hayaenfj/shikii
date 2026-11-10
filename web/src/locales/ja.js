@@ -52,7 +52,7 @@ export default {
   correctionCount: (key, n) => ({ delivered: '届いた訂正', followed: '訂正に沿った', repeated: '同じ指摘がまた出た', not_applicable: '今回は当てはまらない', unknown: '不明', pending: 'まだ見ていない' }[key] || key) + ' ' + n + ' 件',
   correctionQuote: 'あなたの言葉の引用', correctionAction: '次に変える行動(仮)',
   rejectedAnswersTitle: 'AI が無効と判断した過去の答え',
-  rejectedAnswersHow: '似た依頼の前にあなたの過去の答えを AI に 2 回見せても、AI の動きが一度も変わらなかった物です。AI は二度とこの答えを見せません。「答えたもの」の一覧からも外れます。答えそのものは残ります。',
+  rejectedAnswersHow: '似た依頼の前に AI へ 2 回以上見せても、AI の動きが一度も変わらなかったあなたの過去の答えを、ここに並べます。その答えは AI に二度と見せず、「回答済み」の一覧からも外します。答えそのものは残ります。',
   rejectedAnswersStopped: (unused, helpful) => 'このプロジェクトでは、依頼の前にあなたの過去の答えを見せるのを止めています(見た ' + unused + ' 件のうち、役立った ' + helpful + ' 件)。',
   rejectedAnswersUnused: n => '使わなかった ' + n + ' 回',
   memoryEffectHow: n => '記憶を届けた直近 ' + n + ' 依頼までについて、使った判断と確かめた結果から仮に見立てます。まだ見ていない分も出します。',

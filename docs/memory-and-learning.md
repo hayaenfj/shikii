@@ -121,7 +121,7 @@ OpenAI also recommends keeping mandatory team guidance in `AGENTS.md` or checked
 1. **Keep it.** Goals, selected approaches, corrections and verified results live in the project's `.shikii/`. Articles retain their sources and the conditions where they apply, so their reasoning can be checked later.
 2. **Deliver it.** Relevant knowledge reaches the agent before work and related operations. Linked decision criteria can be read too. Claude Code, Codex and OpenCode connected to the same project can share it.
 3. **Review it.** The agent records how a delivered memory affected its actions. Delivery alone, or a successful task, is not counted as evidence that memory helped.
-4. **Maintain it.** Unused or harmful articles prompt a review against their sources. Repeatedly unused articles are withheld from automatic delivery under the same conditions. People can also edit or delete articles on the Knowledge page.
+4. **Maintain it.** Unused or harmful articles prompt a review against their sources. Repeatedly unused articles are withheld from automatic delivery under the same conditions; an edit that leaves the title, lesson and applies_to alone keeps that count (0.30.7). A person's own past answer quoted before similar requests is treated the same way: assessed unused twice and never helpful, it is no longer quoted, and the Knowledge page lists it as judged not useful while the answer itself stays a truth. People can also edit or delete articles on the Knowledge page.
 5. **Adjust delegation.** For recurring decisions, shikii compares AI predictions with people's answers or observable outcomes. With enough records and adequate quality, it sets the ranges where the AI may decide alone and where it should ask a person.
 
 These two loops—**using and maintaining knowledge, and measuring decisions to adjust delegation**—are central to shikii. What grows is the project's knowledge and decision criteria. It does not retrain the underlying AI's weights.
@@ -280,6 +280,7 @@ What adapts is the project's knowledge-delivery method. Model weights and decisi
 | 0.30.3 | Consolidate shared storage and display code; keep a worktree's wiki and shared records in the original project. |
 | 0.30.4 | Reduce per-request label work, source-page measurement and retained history candidates while preserving evidence and recovery. |
 | 0.30.5 | Preserve concurrent decision and answer saves during history cleanup with shared append locks. |
+| 0.30.7 | Reject a person's past answer the reflection never found useful, keep a lesson's unused count across edits that leave its condition alone, and deliver a lesson once per request before tool calls. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
 
