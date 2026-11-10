@@ -3,8 +3,22 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
+
+// gitPath is a path as git prints it without -z, read back as it is spelled on disk: git wraps a name with non-ASCII bytes,
+// quotes, backslashes or control characters (and, in `status --porcelain`, spaces) in double quotes with C escapes ("\346\211\213").
+// A name that is not quoted, or whose quoting cannot be read, is returned unchanged.
+func gitPath(p string) string {
+	if len(p) < 2 || p[0] != '"' || p[len(p)-1] != '"' {
+		return p
+	}
+	if u, err := strconv.Unquote(p); err == nil {
+		return u
+	}
+	return p
+}
 
 // changedFiles compares two listings (`git ls-files --stage`: "mode sha stage\tpath") and returns, sorted by name, the paths of files whose content or mode changed, or that were added or removed.
 func changedFiles(before, after string) []string {

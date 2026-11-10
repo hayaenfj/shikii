@@ -71,7 +71,7 @@ func newScopeWatch(trace, before string, changed []string) scopeWatch {
 // reverted reports whether any kept file returned to its pre-turn state (for a file that did not exist: whether it was removed).
 func (w scopeWatch) reverted(now map[string]string) bool {
 	for p, before := range w.Before {
-		if now[p] == before {
+		if now[gitPath(p)] == before { // a watch kept by an older version has the name as git quoted it
 			return true
 		}
 	}
@@ -373,7 +373,7 @@ func parseListing(listing string) map[string]string {
 		if len(meta) < 2 {
 			continue
 		}
-		m[line[tab+1:]] = meta[0] + " " + meta[1] // mode and blob id (a chmod-only change also counts as "changed")
+		m[gitPath(line[tab+1:])] = meta[0] + " " + meta[1] // mode and blob id (a chmod-only change also counts as "changed")
 	}
 	return m
 }

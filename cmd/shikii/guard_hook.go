@@ -152,7 +152,7 @@ func guardWorkingTreeInput(dir string) guardInput {
 		if len(line) < 4 {
 			continue
 		}
-		p := strings.TrimSpace(line[3:])
+		p := gitPath(strings.TrimSpace(line[3:]))
 		if p == "" || strings.HasPrefix(p, ".shikii/") {
 			continue
 		}
