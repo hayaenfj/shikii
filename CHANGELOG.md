@@ -8,7 +8,7 @@
 - Consolidate background command startup, immutable source publication, tune-run locking and decision-list reads. Keep operation-specific arguments, errors and lock lifetimes.
 - Share wording adoption actions across both page screens, strict JSON decoding, schema construction, label precedence, YAML candidate reads and deterministic probability calculations. Preserve existing API and storage formats.
 - Keep the original project's wiki and shared work records when working in a dedicated worktree. Do not initialize a separate wiki there; report the worktree, branch, checked commit and evidence location.
-- Add boundary regression checks, verify both wording screens through successful and rejected writes, rebuild the embedded page and align the Go test count at 1368.
+- Add boundary regression checks, verify both wording screens through successful and rejected writes, rebuild the embedded page and align the Go test count at 1369.
 
 ## 0.30.2 — Recover interrupted appends and complete answer cards
 
