@@ -3,6 +3,7 @@ package spec
 import (
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 // Validate checks that the spec is consistent.
@@ -11,11 +12,12 @@ func (s *Spec) Validate() error {
 		return fmt.Errorf("id is required")
 	}
 	// The id names the spec's files in the store (records/<id>.jsonl, labels/<id>.jsonl): it must be one file name of its own.
-	// A separator would put them in another folder, and records/guards.jsonl belongs to the stop checks.
-	if strings.ContainsAny(s.ID, "/\\") || strings.IndexFunc(s.ID, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+	// A separator would put them in another folder, and records/guards.jsonl belongs to the stop checks (in any case: a file
+	// system that ignores case opens the same file for Guards).
+	if strings.ContainsAny(s.ID, "/\\") || strings.IndexFunc(s.ID, unicode.IsControl) >= 0 {
 		return fmt.Errorf("id %q: no slashes, backslashes or control characters (it becomes a file name)", s.ID)
 	}
-	if s.ID == "guards" {
+	if strings.EqualFold(s.ID, "guards") {
 		return fmt.Errorf("id %q is reserved (records/guards.jsonl holds the records of the stop checks)", s.ID)
 	}
 	if strings.TrimSpace(s.Question) == "" {

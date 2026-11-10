@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"syscall"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -18,6 +19,13 @@ func (s *Spec) Save() error {
 	if s.path == "" {
 		return fmt.Errorf("spec has no path")
 	}
+	// One save at a time per folder, from reading the file to replacing it: a save that read the file before another save
+	// replaced it would write the older lines back.
+	unlock, err := lockSaves(s.path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	src, err := os.ReadFile(s.path)
 	if err != nil {
 		return err
@@ -40,12 +48,11 @@ func (s *Spec) Save() error {
 	// Other processes add candidates too (the page's /v1/tune/variant, background tune --propose, calibrate --write). So as not to drop candidates added between reading and writing,
 	// merge the candidates in the file with ours by name (ours wins on the same name). If untouched, do not re-encode (people's comments stay)
 	merged := mergeVariants(onDiskVariants(root), s.Variants, s.hadVariants)
-	if variantsChanged(root, merged) {
+	changed := variantsChanged(root, merged)
+	if changed {
 		if err := setMappingKey(root, "variants", merged, len(merged) == 0, "Candidate wordings. `shikii tune` scores them (--propose adds them). Not part of the key."); err != nil {
 			return err
 		}
-		s.Variants = merged
-		s.hadVariants = len(merged) > 0
 	}
 
 	var buf bytes.Buffer
@@ -57,7 +64,8 @@ func (s *Spec) Save() error {
 	if err := enc.Close(); err != nil {
 		return err
 	}
-	// The spec is the person's file: replace the file the path leads to (a link stays a link) and keep the mode the person set on it.
+	// The spec is the person's file: replace the file the path leads to (a symbolic link stays a link) and keep the mode the person
+	// set on it. A second hard-linked name is not followed: the file is replaced by a rename, so that a crash never leaves half a spec.
 	target, mode := s.path, os.FileMode(0o644)
 	if real, err := filepath.EvalSymlinks(s.path); err == nil {
 		target = real
@@ -88,7 +96,46 @@ func (s *Spec) Save() error {
 	}
 	s.Calibration = calibration
 	s.loadedCalibration = copyCalibration(calibration)
+	if changed { // only once the file is replaced: a save that failed leaves this copy as it was
+		s.Variants = merged
+		s.hadVariants = len(merged) > 0
+	}
 	return nil
+}
+
+// savesBusy, when set (tests), is called each time a save finds another save of the same folder in progress and is about to wait.
+var savesBusy func()
+
+// lockSaves takes the lock of the folder the spec's file is in (the folder the path leads to, so two names of one file share it)
+// and returns the unlock. It waits for another save, which takes milliseconds. A file system without locks saves unlocked, as before.
+func lockSaves(path string) (func(), error) {
+	target := path
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		target = real
+	}
+	dir, err := os.Open(filepath.Dir(target))
+	if err != nil {
+		return func() {}, nil // the read that follows reports what is wrong with the path
+	}
+	until := time.Now().Add(10 * time.Second)
+	for {
+		err := syscall.Flock(int(dir.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return func() { _ = syscall.Flock(int(dir.Fd()), syscall.LOCK_UN); _ = dir.Close() }, nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EINTR) {
+			dir.Close()
+			return func() {}, nil
+		}
+		if time.Now().After(until) {
+			dir.Close()
+			return nil, fmt.Errorf("%s: another save of this folder is in progress; retry later", path)
+		}
+		if savesBusy != nil {
+			savesBusy()
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // onDiskCalibration returns the calibration lines in the file (nil if there are none or they cannot be read).
@@ -194,6 +241,8 @@ func decodeOnDiskVariants(root *yaml.Node) ([]Variant, bool, error) {
 // mergeVariants merges the file's candidates (onDisk) with ours (mine) by name: file order first, then the ones only we have. mine wins on the same name.
 // If mine is empty and this copy had candidates (hadVariants), the result is empty (a write that clears all candidates).
 // A copy that never had any (calibrate --write loaded before a candidate was proposed) leaves the file's candidates as they are.
+// Candidates are only added or cleared together: a copy that leaves out one name does not remove it (tune saves the candidates it
+// scored over a fresh copy of the file, and the ones another process added meanwhile must stay).
 func mergeVariants(onDisk, mine []Variant, hadVariants bool) []Variant {
 	if len(mine) == 0 && !hadVariants {
 		return onDisk

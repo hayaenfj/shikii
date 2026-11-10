@@ -22,7 +22,8 @@ func choiceWithID(id string, options ...Option) *Spec {
 // separator puts them in another folder (or tries to leave the store), and "guards" is the file the stop checks
 // write their own records to. Such a spec must not load.
 func TestValidateRefusesAnIDThatIsNotOneFileNameOfItsOwn(t *testing.T) {
-	for _, id := range []string{"a/b", "../labels/x", "../../outside", "/abs", `a\b`, "a\nb", "a\x00b", "guards"} {
+	for _, id := range []string{"a/b", "../labels/x", "../../outside", "/abs", `a\b`, "a\nb", "a\x00b", "guards",
+		"Guards", "GUARDS", "a\u0085b", "a\u009fb"} { // the reserved name in another case (a file system that ignores case opens the same file), C1 controls
 		if err := choiceWithID(id).Validate(); err == nil || !strings.Contains(err.Error(), "id") {
 			t.Errorf("id %q must be refused, got %v", id, err)
 		}
