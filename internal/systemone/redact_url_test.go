@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -30,17 +32,18 @@ func TestWaitReadyErrorHidesTheCredentialsOfAURLThatDoesNotParse(t *testing.T) {
 
 func TestRedactURL(t *testing.T) {
 	for raw, want := range map[string]string{
-		"http://user:s3cr3t@host:8080/v1":          "http://xxxxx@host:8080/v1",
-		"https://s3cr3t@api.example.test/v1":       "https://xxxxx@api.example.test/v1", // a token alone before the @
-		"http://user:s3cr3t/token@127.0.0.1:8080":  "http://xxxxx@127.0.0.1:8080",       // a raw slash in the token: the parser reads another host
-		"http://user:123/s3cr3t@127.0.0.1:8080/v1": "http://xxxxx@127.0.0.1:8080/v1",
-		"http://user:s3cr3t?token@127.0.0.1:8080":  "http://xxxxx@127.0.0.1:8080",
-		"http://user:s3cr3t@127.0.0.1:80a6":        "http://xxxxx@127.0.0.1:80a6",
-		"http://user:s3cr3t@[::1":                  "http://xxxxx@[::1",
-		"user:s3cr3t@127.0.0.1:8086":               "xxxxx@127.0.0.1:8086",
-		"http://host:8080/v1":                      "http://host:8080/v1",
-		"localhost:8086":                           "localhost:8086",
-		"":                                         "",
+		"http://user:s3cr3t@host:8080/v1":                        "http://xxxxx@host:8080/v1",
+		"https://s3cr3t@api.example.test/v1":                     "https://xxxxx@api.example.test/v1", // a token alone before the @
+		"http://user:s3cr3t/token@127.0.0.1:8080":                "http://xxxxx@127.0.0.1:8080",       // a raw slash in the token: the parser reads another host
+		"http://user:123/s3cr3t@127.0.0.1:8080/v1":               "http://xxxxx@127.0.0.1:8080/v1",
+		"http://user:s3cr3t?token@127.0.0.1:8080":                "http://xxxxx@127.0.0.1:8080",
+		"http://user:s3cr3t@127.0.0.1:80a6":                      "http://xxxxx@127.0.0.1:80a6",
+		"http://user:s3cr3t@[::1":                                "http://xxxxx@[::1",
+		"user:s3cr3t@127.0.0.1:8086":                             "xxxxx@127.0.0.1:8086",
+		"user:s3cr3t@127.0.0.1:8086/cb?next=http://other.test/x": "xxxxx@127.0.0.1:8086/cb?next=http://other.test/x", // no scheme, and "://" later
+		"http://host:8080/v1":                                    "http://host:8080/v1",
+		"localhost:8086":                                         "localhost:8086",
+		"":                                                       "",
 	} {
 		if got := RedactURL(raw); got != want {
 			t.Errorf("RedactURL(%q) = %q, want %q", raw, got, want)
@@ -125,6 +128,7 @@ func TestAskErrorKeepsItsWordsWholeForShortOrEmptyCredentials(t *testing.T) {
 	host := strings.TrimPrefix(closed.URL, "http://")
 	closed.Close()
 	for _, raw := range []string{"http://:@" + host, "http://a@" + host, "http://t:@" + host, "http://@" + host, "http://" + host} {
+		unchanged := raw == "http://@"+host || raw == "http://"+host // nothing stands before an @: the client's own words stay
 		_, err := New(raw, "", "m").Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
 		if err == nil {
 			t.Errorf("%q: answered", raw)
@@ -134,8 +138,74 @@ func TestAskErrorKeepsItsWordsWholeForShortOrEmptyCredentials(t *testing.T) {
 		if !strings.Contains(text, "dial tcp "+host+": connect: connection refused") {
 			t.Errorf("%q: the cause is no longer readable: %v", raw, err)
 		}
-		if n := strings.Count(text, "xxxxx"); n > 1 {
-			t.Errorf("%q: the message is broken up by %d replacements: %v", raw, n, err)
+		if n := strings.Count(text, "xxxxx"); n > 1 || unchanged && n != 0 {
+			t.Errorf("%q: the message is broken up or rewritten (%d replacements): %v", raw, n, err)
 		}
+	}
+}
+
+// refusingClient never leaves the machine: its dial fails at once and names the host the transport asked for, the way the real
+// dialer does ("dial tcp: lookup <host>: no such host").
+func refusingClient() *http.Client {
+	return &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, _, _ := net.SplitHostPort(addr)
+			return nil, &net.OpError{Op: "dial", Net: network, Err: fmt.Errorf("lookup %s: no such host", host)}
+		},
+	}}
+}
+
+func refusedAsk(t *testing.T, raw string) error {
+	t.Helper()
+	c := New(raw, "", "m")
+	c.HTTP = refusingClient()
+	_, err := c.Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
+	if err == nil {
+		t.Fatalf("%q: answered", raw)
+	}
+	return err
+}
+
+// Credentials with a raw "/" or "?" end early for the URL package: what stands before it is taken for the host (and is looked
+// up, in lower case or in punycode), and the rest, with the @, for the path. The error of a decision call hides them all the
+// same: it is written from the whole URL as it was given, and a cause that names another host than the URL's is left out.
+func TestAskErrorHidesCredentialsThatEndEarlyForTheClient(t *testing.T) {
+	for _, raw := range []string{
+		"http://sk-abc/def-s3cr3t-token@127.0.0.1:8080",
+		"http://user:123/s3cr3t-token@127.0.0.1:8080",
+		"http://sk-abc/def-s3cr3t-token@127.0.0.1:8080/v1/systemone",
+		"http://tökén-s3cr3t?x@127.0.0.1:8080",
+		"http://TOKEN-S3CR3T?x@127.0.0.1:8080",
+		"user:s3cr3t-token@127.0.0.1:8086/cb?next=http://other.test/x",
+	} {
+		err := refusedAsk(t, raw)
+		low := strings.ToLower(err.Error())
+		for _, piece := range []string{"s3cr3t", "sk-abc", "user:", "xn--"} {
+			if strings.Contains(low, piece) {
+				t.Errorf("%q: the error of a decision call carries %q: %v", raw, piece, err)
+			}
+		}
+		if !strings.Contains(err.Error(), "xxxxx@127.0.0.1:808") {
+			t.Errorf("%q: the error names the URL without its credentials: %v", raw, err)
+		}
+	}
+}
+
+// The cause is still quoted when it names the URL's own host, also when a user name is a word of that host; the original error
+// stays reachable. A cause that names a piece of the credentials is left out.
+func TestAskErrorKeepsACauseThatNamesTheURLsOwnHost(t *testing.T) {
+	err := refusedAsk(t, "http://api:s3cr3t-token@api.example.test")
+	if !strings.Contains(err.Error(), "lookup api.example.test: no such host") || strings.Contains(err.Error(), "s3cr3t") {
+		t.Errorf("the cause about the URL's own host is kept: %v", err)
+	}
+	var op *net.OpError
+	if !errors.As(err, &op) {
+		t.Errorf("errors.As no longer reaches the cause: %v", err)
+	}
+	raw := "http://user:s3cr3t-token@h.example.test"
+	named := ScrubError(&url.Error{Op: "Post", URL: raw, Err: errors.New("proxy said: bad token S3CR3T-TOKEN")}, raw)
+	if strings.Contains(strings.ToLower(named.Error()), "s3cr3t") || !strings.Contains(named.Error(), "http://xxxxx@h.example.test") {
+		t.Errorf("a cause that names a piece of the credentials is left out: %v", named)
 	}
 }

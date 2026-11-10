@@ -9,9 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -176,8 +178,10 @@ func RedactURL(raw string) string {
 }
 
 // credentials finds what RedactURL hides: raw[start:at] is the part between the scheme and the last @ (at is -1 without an @).
+// A "://" ends the scheme only when a scheme stands before it (letters, digits, + - .): in a URL written without its scheme a
+// later "://" (in a query, say) is not the start of the credentials.
 func credentials(raw string) (start, at int) {
-	if i := strings.Index(raw, "://"); i >= 0 {
+	if i := strings.Index(raw, "://"); i > 0 && isScheme(raw[:i]) {
 		start = i + len("://")
 	}
 	at = strings.LastIndex(raw[start:], "@")
@@ -185,6 +189,16 @@ func credentials(raw string) (start, at int) {
 		return start, -1
 	}
 	return start, start + at
+}
+
+func isScheme(s string) bool {
+	for i, r := range s {
+		letter := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		if !letter && (i == 0 || !((r >= '0' && r <= '9') || r == '+' || r == '-' || r == '.')) {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // scrubbed is an error whose text was written anew without the credentials of a URL; it still unwraps to the original (a
@@ -220,12 +234,44 @@ func ScrubError(err error, raw string) error {
 		case uerr.Err == nil:
 		case strings.Contains(uerr.Err.Error(), "unsupported protocol scheme"): // it quotes what stands before the first colon
 			msg = uerr.Op + " " + shown + ": unsupported protocol scheme (write the URL with http:// or https://)"
-		case !namesCredentials(uerr.Err.Error(), raw[start:at]):
+		case quotableCause(uerr.Err, raw, start, at):
 			msg = uerr.Op + " " + shown + ": " + uerr.Err.Error()
 		}
 	}
 	return scrubbed{msg: msg, err: err}
 }
+
+// quotableCause reports whether the cause of a failed request may be quoted next to the URL without its credentials. Not when
+// it names a piece of the credentials (the URL's own host is taken out first: a user name may be part of it), and not when the
+// client looked up another name than the URL's host: credentials with a raw "/", "?" or "#" end early for the client, and what it
+// then takes for the host is a piece of them, in whatever spelling the name lookup gives it.
+func quotableCause(cause error, raw string, start, at int) bool {
+	host := raw[at+1:]
+	if i := strings.IndexAny(host, "/?#"); i >= 0 {
+		host = host[:i]
+	}
+	name := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		name = h
+	}
+	var lookup *net.DNSError
+	if errors.As(cause, &lookup) && !strings.EqualFold(strings.TrimSuffix(lookup.Name, "."), name) {
+		return false
+	}
+	text := cause.Error()
+	for _, looked := range lookedUp.FindAllStringSubmatch(text, -1) { // the same, read from the words of a dial error
+		if !strings.EqualFold(strings.TrimSuffix(looked[1], "."), name) {
+			return false
+		}
+	}
+	if name != "" {
+		text = strings.ReplaceAll(text, name, "")
+	}
+	return !namesCredentials(text, raw[start:at])
+}
+
+// lookedUp finds the name a dial error says it looked up ("lookup <name>: no such host", "lookup <name> on <server>").
+var lookedUp = regexp.MustCompile(`lookup ([^\s:]+)`)
 
 // namesCredentials reports whether text contains the credentials or one of their parts (three characters or more), as given or
 // percent-decoded. It only decides whether a cause is quoted; nothing is rewritten.
@@ -237,7 +283,7 @@ func namesCredentials(text, secret string) bool {
 			forms = append(forms, decoded)
 		}
 		for _, form := range forms {
-			if len(form) >= 3 && strings.Contains(text, form) {
+			if len(form) >= 3 && strings.Contains(strings.ToLower(text), strings.ToLower(form)) { // a host is written in lower case
 				return true
 			}
 		}
@@ -288,7 +334,7 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return nil, ScrubError(err, c.BaseURL) // the parser's error repeats the URL
+		return nil, ScrubError(err, c.BaseURL+path) // the parser's error repeats the URL; the whole URL as it was given: the credentials may stand after the first slash
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.APIKey != "" {
@@ -296,7 +342,7 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, ScrubError(err, c.BaseURL) // and so does the client's
+		return nil, ScrubError(err, c.BaseURL+path) // and so does the client's
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
