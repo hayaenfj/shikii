@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -110,6 +111,11 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 			out = append(out, key+": no labels to verify against (store or eval.labeled)")
 			continue
 		}
+		// A line drawn before 0.30.7 could lift an option that was never the truth (calibrate now caps it): no label ever checked what
+		// the line does to that option, so its precision at act says nothing about it
+		if option, bias, mean, lifted := liftedWithoutTruth(c, labels); lifted {
+			out = append(out, fmt.Sprintf("%s: option %q is the truth in none of the %d labels, but its bias %.3f is above the mean bias %.3f of the options that are; a few percent on it can become an act decision. Re-run calibrate --write for this model (calibrate no longer lifts such an option)", key, option, len(labels), bias, mean))
+		}
 		prec, inverted, _ := evaluateCalibration(sp, c, labels)
 		if prec < sp.Thresholds.Act {
 			out = append(out, fmt.Sprintf("%s: precision at act is %.3f < thresholds.act %.2f on %d labels", key, prec, sp.Thresholds.Act, len(labels)))
@@ -132,6 +138,40 @@ func checkSpec(sp *spec.Spec, st store.Store) []string {
 		}
 	}
 	return out
+}
+
+// liftedWithoutTruth reports the option of a vector line with the highest bias among those that no label has as its truth, when that
+// bias is above the mean bias of the options that are a truth. The truths are counted like calibrate counts them (the latest truth
+// per input; "!option" says what the answer is not and names no truth). A line whose options all have truths, or that has none with
+// a truth, is never reported.
+func liftedWithoutTruth(c spec.Calibration, labels []store.Label) (option string, bias, mean float64, lifted bool) {
+	if c.Method != "vector" || len(c.Biases) == 0 {
+		return "", 0, 0, false
+	}
+	seen := map[string]bool{}
+	for _, l := range store.LatestPerInput(labels) {
+		if _, ok := c.Biases[l.Truth]; ok {
+			seen[l.Truth] = true
+		}
+	}
+	if len(seen) == 0 || len(seen) == len(c.Biases) {
+		return "", 0, 0, false
+	}
+	for k := range seen {
+		mean += c.Biases[k]
+	}
+	mean /= float64(len(seen))
+	options := make([]string, 0, len(c.Biases))
+	for k := range c.Biases {
+		options = append(options, k)
+	}
+	sort.Strings(options)
+	for _, k := range options {
+		if !seen[k] && c.Biases[k] > mean+1e-6 && (!lifted || c.Biases[k] > bias) {
+			option, bias, lifted = k, c.Biases[k], true
+		}
+	}
+	return option, bias, mean, lifted
 }
 
 // collectLabels combines store labels with eval.labeled rows that have raw (noul). The model is not called.
