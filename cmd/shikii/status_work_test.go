@@ -96,4 +96,9 @@ func TestPersonWorkCountsADecisionAskedAgainOnce(t *testing.T) {
 	if w.Records != 2 || w.Waits != 2 || w.RecentRecords != 2 || w.RecentWaits != 2 {
 		t.Fatalf("the original of a decision asked again is not counted: %+v", w)
 	}
+	// asking again copies the person's answer to the new record: it is one truth decided by the person, not two
+	labs := []store.Label{{TraceID: "first", Source: "ui"}, {TraceID: "again", Source: "ui"}, {TraceID: "other", Source: "outcome"}}
+	if w := countPersonWork("same-issue", false, recs, labs, nil, now); w.ByPerson != 1 || w.ByResult != 1 || w.Records != 2 {
+		t.Fatalf("the answer copied to the decision asked again counts once: %+v", w)
+	}
 }

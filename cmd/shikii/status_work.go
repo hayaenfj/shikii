@@ -22,8 +22,12 @@ const personWorkWindow = 7 * 24 * time.Hour
 
 func countPersonWork(specID string, discardUnsure bool, recs []store.Record, labs []store.Label, reviews map[string]store.Review, now time.Time) personWork {
 	var w personWork
+	superseded := supersededRecords(recs) // a decision asked again: the new decision is counted in its place, with the answer copied to it
 	person, result := map[string]bool{}, map[string]bool{}
 	for _, l := range labs {
+		if superseded[l.TraceID] {
+			continue
+		}
 		switch {
 		case l.Source == "outcome":
 			result[l.TraceID] = true
@@ -34,7 +38,6 @@ func countPersonWork(specID string, discardUnsure bool, recs []store.Record, lab
 		}
 	}
 	w.ByPerson, w.ByResult = len(person), len(result)
-	superseded := supersededRecords(recs) // a decision asked again: the new decision is counted in its place
 	for _, r := range recs {
 		if superseded[r.TraceID] {
 			continue
