@@ -484,7 +484,7 @@ bin/shikii gc --store .shikii --apply         # actually remove them
 bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # choose the spec and the age (d / w / h; 0 means any age)
 ```
 
-Only "records older than `--older-than` that have no label at all" are removed. Labelled records, labels and lines that cannot be read as JSON are kept whatever their age. The original text kept for a removed record (`records/text/`) is removed with the last record of its decision (0.30.7); in a run where a records file holds a line that names no decision (a line that is not JSON), no original text is removed.
+Only "records older than `--older-than` that have no label at all" are removed. Labelled records, labels and lines that cannot be read as JSON are kept whatever their age. The original text kept for a removed record (`records/text/`) is removed with the last record of its decision (0.30.7); in a run where a records file holds a line that names no decision (a line that is not JSON, or has no `trace_id`), no original text is removed, and the text of a record removed in that run stays until it is removed by hand.
 Files are written in the same directory and then replaced by rename, so the original file is not broken if this stops halfway.
 
 `make status` / `make drift` / `make check` / `make gc` / `make install` / `make server` are also available (`Makefile`).

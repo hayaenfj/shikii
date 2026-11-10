@@ -2,13 +2,16 @@ package systemone
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -115,8 +118,8 @@ func TestAskErrorHidesCredentialsInEverySpelling(t *testing.T) {
 				t.Errorf("the error of a decision call carries %q of the credentials: %v", piece, err)
 			}
 		}
-		if !strings.Contains(err.Error(), "xxxxx@"+host) || !strings.Contains(err.Error(), "connection refused") {
-			t.Errorf("the error still names the host and the cause: %v", err)
+		if !strings.Contains(err.Error(), "xxxxx@"+host) || !strings.Contains(err.Error(), "the connection was refused") {
+			t.Errorf("the error still names the host and the kind of failure: %v", err)
 		}
 	}
 }
@@ -135,7 +138,7 @@ func TestAskErrorKeepsItsWordsWholeForShortOrEmptyCredentials(t *testing.T) {
 			continue
 		}
 		text := err.Error()
-		if !strings.Contains(text, "dial tcp "+host+": connect: connection refused") {
+		if unchanged && !strings.Contains(text, "dial tcp "+host+": connect: connection refused") || !unchanged && !strings.Contains(text, "the connection was refused") {
 			t.Errorf("%q: the cause is no longer readable: %v", raw, err)
 		}
 		if n := strings.Count(text, "xxxxx"); n > 1 || unchanged && n != 0 {
@@ -192,20 +195,80 @@ func TestAskErrorHidesCredentialsThatEndEarlyForTheClient(t *testing.T) {
 	}
 }
 
-// The cause is still quoted when it names the URL's own host, also when a user name is a word of that host; the original error
-// stays reachable. A cause that names a piece of the credentials is left out.
-func TestAskErrorKeepsACauseThatNamesTheURLsOwnHost(t *testing.T) {
+// For a URL with credentials nothing of the cause's own text is quoted: the kind of failure is named in fixed words, whatever
+// the cause says (a looked-up name in punycode, a certificate error naming the host the client read out of the credentials, a
+// proxy repeating the token). The original error stays reachable.
+func TestScrubErrorNamesTheKindOfFailureInFixedWords(t *testing.T) {
+	raw := "https://t\u00f6k\u00e9n-s3cr3t?x@127.0.0.1:8080"
+	for want, cause := range map[string]error{
+		"the request timed out":                       context.DeadlineExceeded,
+		"the request was canceled":                    context.Canceled,
+		"the host name could not be looked up":        &net.DNSError{Err: "no such host", Name: "xn--tkn-s3cr3t-c7a8m", IsNotFound: true},
+		"the connection was refused":                  &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED},
+		"the connection could not be opened":          &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("lookup xn--tkn-s3cr3t-c7a8m: no such host")},
+		"the TLS certificate could not be verified":   fmt.Errorf("tls: failed to verify certificate: %w", x509.HostnameError{Certificate: &x509.Certificate{DNSNames: []string{"example.com"}}, Host: "xn--tkn-s3cr3t-c7a8m"}),
+		"the URL needs an http:// or https:// scheme": errors.New(`unsupported protocol scheme "tok-s3cr3t"`),
+		"it could not be completed":                   errors.New("proxy said: bad token t\u00f6k\u00e9n-s3cr3t"),
+	} {
+		err := ScrubError(&url.Error{Op: "Post", URL: raw + "/v1/systemone", Err: cause}, raw)
+		text := err.Error()
+		if !strings.Contains(text, "Post https://xxxxx@127.0.0.1:8080: "+want) {
+			t.Errorf("want %q, got %v", want, err)
+		}
+		if low := strings.ToLower(text); strings.Contains(low, "s3cr3t") || strings.Contains(low, "xn--") {
+			t.Errorf("the error carries a piece of the credentials: %v", err)
+		}
+		if !errors.Is(err, cause) {
+			t.Errorf("the cause is no longer reachable: %v", err)
+		}
+	}
+	// the user name is a word of the host: still nothing of the cause is quoted, and the host is named once, in the URL
 	err := refusedAsk(t, "http://api:s3cr3t-token@api.example.test")
-	if !strings.Contains(err.Error(), "lookup api.example.test: no such host") || strings.Contains(err.Error(), "s3cr3t") {
-		t.Errorf("the cause about the URL's own host is kept: %v", err)
-	}
 	var op *net.OpError
-	if !errors.As(err, &op) {
-		t.Errorf("errors.As no longer reaches the cause: %v", err)
+	if !errors.As(err, &op) || !strings.Contains(err.Error(), "Post http://xxxxx@api.example.test") || !strings.Contains(err.Error(), "the connection could not be opened") {
+		t.Errorf("the kind of failure and the host are named, and the cause is reachable: %v", err)
 	}
-	raw := "http://user:s3cr3t-token@h.example.test"
-	named := ScrubError(&url.Error{Op: "Post", URL: raw, Err: errors.New("proxy said: bad token S3CR3T-TOKEN")}, raw)
-	if strings.Contains(strings.ToLower(named.Error()), "s3cr3t") || !strings.Contains(named.Error(), "http://xxxxx@h.example.test") {
-		t.Errorf("a cause that names a piece of the credentials is left out: %v", named)
+}
+
+// answering is a client whose every request gets the status and body, with the host the transport asked for put in the body, as a
+// proxy's error page does.
+type answering struct {
+	status int
+}
+
+func (a answering) RoundTrip(req *http.Request) (*http.Response, error) {
+	body := "bad gateway: cannot reach " + req.URL.Host
+	return &http.Response{StatusCode: a.status, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}, Request: req}, nil
+}
+
+// An HTTP status error names the URL as it was given, without its credentials. When the credentials made the client talk to
+// another host (a raw "/" in them), the response is left out: it may name that host, a piece of the credentials. A URL whose
+// credentials the client reads as credentials keeps the response, which says what the server refused.
+func TestAskStatusErrorHidesTheCredentialsOfTheModelURL(t *testing.T) {
+	ask := func(raw string) string {
+		c := New(raw, "", "m")
+		c.HTTP = &http.Client{Transport: answering{status: 502}}
+		_, err := c.Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
+		if err == nil {
+			t.Fatalf("%q: answered", raw)
+		}
+		return err.Error()
+	}
+	for _, raw := range []string{"http://sk-abc/def-s3cr3t-token@127.0.0.1:8080", "http://user:8443/s3cr3t-token@127.0.0.1:8080"} {
+		text := ask(raw)
+		for _, piece := range []string{"sk-abc", "user", "8443", "s3cr3t"} {
+			if strings.Contains(text, piece) {
+				t.Errorf("%q: the status error carries %q of the credentials: %s", raw, piece, text)
+			}
+		}
+		if !strings.Contains(text, "systemone http://xxxxx@127.0.0.1:8080: HTTP 502") {
+			t.Errorf("%q: the status error names the URL without its credentials: %s", raw, text)
+		}
+	}
+	if text := ask("http://user:s3cr3t-token@127.0.0.1:8080"); !strings.Contains(text, "systemone http://xxxxx@127.0.0.1:8080: HTTP 502: bad gateway: cannot reach 127.0.0.1:8080") || strings.Contains(text, "s3cr3t") {
+		t.Errorf("credentials the client reads as credentials: the response is kept and the URL is shown without them: %s", text)
+	}
+	if text := ask("http://127.0.0.1:8080"); !strings.Contains(text, "systemone http://127.0.0.1:8080: HTTP 502: bad gateway: cannot reach 127.0.0.1:8080") {
+		t.Errorf("a URL without credentials keeps its status error: %s", text)
 	}
 }

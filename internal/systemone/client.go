@@ -5,6 +5,8 @@ package systemone
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,8 +15,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -212,10 +214,11 @@ func (e scrubbed) Error() string { return e.msg }
 func (e scrubbed) Unwrap() error { return e.err }
 
 // ScrubError returns the error of a request to the URL raw without the URL's credentials in its text. The URL parser and the HTTP
-// client repeat the URL, or a piece of it (the "port" after a colon, the "scheme" before one), in their own words and their own
-// encoding, and no rewriting of such a text hides every spelling. So for a URL with credentials the text is written anew: the
-// operation, the URL without its credentials, and the cause as the network reports it. The parser's words are left out, and so is
-// a cause that names a piece of the credentials. A URL without credentials keeps its error as it is.
+// client repeat the URL, or a piece of it, in their own words and their own encoding (a "port" after a colon, a host name in
+// lower case or punycode when the credentials hold a "/" or "?", a certificate error naming that host), and neither rewriting
+// such a text nor checking it for the credentials catches every spelling. So for a URL with credentials nothing of the
+// original text is used: the new text names the operation, the URL without its credentials, and the kind of failure in fixed
+// words. A URL without credentials keeps its error as it is. The original error stays reachable (errors.Is, errors.As).
 func ScrubError(err error, raw string) error {
 	if err == nil {
 		return nil
@@ -225,70 +228,60 @@ func ScrubError(err error, raw string) error {
 		return err
 	}
 	shown := RedactURL(raw)
-	msg := "the request to " + shown + " failed"
+	msg := "the request to " + shown + " failed: " + failureKind(err)
 	var uerr *url.Error
 	if errors.As(err, &uerr) {
-		switch {
-		case uerr.Op == "parse":
+		if uerr.Op == "parse" {
 			msg = "the URL " + shown + " does not parse as a URL"
-		case uerr.Err == nil:
-		case strings.Contains(uerr.Err.Error(), "unsupported protocol scheme"): // it quotes what stands before the first colon
-			msg = uerr.Op + " " + shown + ": unsupported protocol scheme (write the URL with http:// or https://)"
-		case quotableCause(uerr.Err, raw, start, at):
-			msg = uerr.Op + " " + shown + ": " + uerr.Err.Error()
+		} else {
+			msg = uerr.Op + " " + shown + ": " + failureKind(err)
 		}
 	}
-	return scrubbed{msg: msg, err: err}
+	return scrubbed{msg: msg + " (the details are left out because the URL carries credentials)", err: err}
 }
 
-// quotableCause reports whether the cause of a failed request may be quoted next to the URL without its credentials. Not when
-// it names a piece of the credentials (the URL's own host is taken out first: a user name may be part of it), and not when the
-// client looked up another name than the URL's host: credentials with a raw "/", "?" or "#" end early for the client, and what it
-// then takes for the host is a piece of them, in whatever spelling the name lookup gives it.
-func quotableCause(cause error, raw string, start, at int) bool {
+// misread reports whether the URL package reads another host out of raw than the one after its credentials: a raw "/", "?" or
+// "#" in the credentials ends the host early, so a request goes to a name that is a piece of them.
+func misread(raw string) bool {
+	start, at := credentials(raw)
+	if at <= start {
+		return false
+	}
 	host := raw[at+1:]
 	if i := strings.IndexAny(host, "/?#"); i >= 0 {
 		host = host[:i]
 	}
-	name := host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		name = h
-	}
-	var lookup *net.DNSError
-	if errors.As(cause, &lookup) && !strings.EqualFold(strings.TrimSuffix(lookup.Name, "."), name) {
-		return false
-	}
-	text := cause.Error()
-	for _, looked := range lookedUp.FindAllStringSubmatch(text, -1) { // the same, read from the words of a dial error
-		if !strings.EqualFold(strings.TrimSuffix(looked[1], "."), name) {
-			return false
-		}
-	}
-	if name != "" {
-		text = strings.ReplaceAll(text, name, "")
-	}
-	return !namesCredentials(text, raw[start:at])
+	u, err := url.Parse(raw)
+	return err != nil || !strings.EqualFold(u.Host, host)
 }
 
-// lookedUp finds the name a dial error says it looked up ("lookup <name>: no such host", "lookup <name> on <server>").
-var lookedUp = regexp.MustCompile(`lookup ([^\s:]+)`)
-
-// namesCredentials reports whether text contains the credentials or one of their parts (three characters or more), as given or
-// percent-decoded. It only decides whether a cause is quoted; nothing is rewritten.
-func namesCredentials(text, secret string) bool {
-	pieces := append([]string{secret}, strings.FieldsFunc(secret, func(r rune) bool { return strings.ContainsRune(":/?#@", r) })...)
-	for _, piece := range pieces {
-		forms := []string{piece}
-		if decoded, err := url.PathUnescape(piece); err == nil && decoded != piece {
-			forms = append(forms, decoded)
-		}
-		for _, form := range forms {
-			if len(form) >= 3 && strings.Contains(strings.ToLower(text), strings.ToLower(form)) { // a host is written in lower case
-				return true
-			}
-		}
+// failureKind says what kind of failure a request error is, in fixed words that quote nothing of the error's own text.
+func failureKind(err error) string {
+	var timeout net.Error
+	var lookup *net.DNSError
+	var dial *net.OpError
+	var hostname x509.HostnameError
+	var authority x509.UnknownAuthorityError
+	var invalid x509.CertificateInvalidError
+	var verification *tls.CertificateVerificationError
+	var uerr *url.Error
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "the request was canceled"
+	case errors.Is(err, context.DeadlineExceeded) || errors.As(err, &timeout) && timeout.Timeout():
+		return "the request timed out"
+	case errors.As(err, &lookup):
+		return "the host name could not be looked up"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "the connection was refused"
+	case errors.As(err, &hostname) || errors.As(err, &authority) || errors.As(err, &invalid) || errors.As(err, &verification):
+		return "the TLS certificate could not be verified"
+	case errors.As(err, &dial) && dial.Op == "dial":
+		return "the connection could not be opened"
+	case errors.As(err, &uerr) && uerr.Err != nil && strings.Contains(uerr.Err.Error(), "unsupported protocol scheme"):
+		return "the URL needs an http:// or https:// scheme"
 	}
-	return false
+	return "it could not be completed"
 }
 
 func New(baseURL, apiKey, model string) *Client {
@@ -350,7 +343,19 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("systemone %s: HTTP %d: %s", RedactURL(c.BaseURL), resp.StatusCode, strings.TrimSpace(string(raw)))
+		// the whole URL as given: its credentials may stand after the first slash. When they made the client talk to another
+		// host than the URL's (a raw "/" or "?" in them), the answer may name that host, a piece of the credentials: it is left out
+		said := strings.TrimSpace(string(raw))
+		if misread(c.BaseURL + path) {
+			said = "(the response is left out: the credentials in the URL hold a /, ? or # and were read as the host)"
+		}
+		shown := RedactURL(c.BaseURL)
+		if _, at := credentials(c.BaseURL); at < 0 { // the base carries none: they may stand after the first slash of what was given
+			if _, at := credentials(c.BaseURL + path); at >= 0 {
+				shown = RedactURL(c.BaseURL + path)
+			}
+		}
+		return nil, fmt.Errorf("systemone %s: HTTP %d: %s", shown, resp.StatusCode, said)
 	}
 	var out Response
 	if err := json.Unmarshal(raw, &out); err != nil {
