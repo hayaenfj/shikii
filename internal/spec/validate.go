@@ -10,6 +10,14 @@ func (s *Spec) Validate() error {
 	if s.ID == "" {
 		return fmt.Errorf("id is required")
 	}
+	// The id names the spec's files in the store (records/<id>.jsonl, labels/<id>.jsonl): it must be one file name of its own.
+	// A separator would put them in another folder, and records/guards.jsonl belongs to the stop checks.
+	if strings.ContainsAny(s.ID, "/\\") || strings.IndexFunc(s.ID, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return fmt.Errorf("id %q: no slashes, backslashes or control characters (it becomes a file name)", s.ID)
+	}
+	if s.ID == "guards" {
+		return fmt.Errorf("id %q is reserved (records/guards.jsonl holds the records of the stop checks)", s.ID)
+	}
 	if strings.TrimSpace(s.Question) == "" {
 		return fmt.Errorf("question is required")
 	}
@@ -19,10 +27,15 @@ func (s *Spec) Validate() error {
 		if len(s.Options) < 2 {
 			return fmt.Errorf("choice needs at least 2 options")
 		}
+		ids := map[string]bool{}
 		for _, o := range s.Options {
 			if o.ID == "" || strings.TrimSpace(o.Description) == "" {
 				return fmt.Errorf("choice option %q needs id and description", o.ID)
 			}
+			if ids[o.ID] { // the answer is keyed by id: two options with one id are one option
+				return fmt.Errorf("choice option %q appears twice: each option needs its own id", o.ID)
+			}
+			ids[o.ID] = true
 		}
 	case Score:
 		if len(s.Levels) < 2 || len(s.Levels) > 10 {
