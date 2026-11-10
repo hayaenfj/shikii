@@ -35,6 +35,7 @@ func (h *newestRecordHeap) Pop() any {
 
 func (s Store) newestRecords(specID string, limit int) ([]Record, error) {
 	// Do not allocate from an untrusted requested limit before reading any rows.
+	var initial []Record
 	var h newestRecordHeap
 	order := 0
 	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
@@ -42,19 +43,36 @@ func (s Store) newestRecords(specID string, limit int) ([]Record, error) {
 		if json.Unmarshal(line, &r) != nil {
 			return nil
 		}
-		v := orderedRecord{r, order}
-		order++
-		if len(h) < limit {
-			heap.Push(&h, v)
-		} else if r.At.After(h[0].value.At) {
-			h[0] = v
+		if h == nil {
+			if len(initial) < limit {
+				initial = append(initial, r)
+				order++
+				return nil
+			}
+			// Only histories exceeding the limit need a heap. Keep the ordinary
+			// slice for contained histories and avoid interface boxing per row.
+			h = make(newestRecordHeap, len(initial))
+			for i, value := range initial {
+				h[i] = orderedRecord{value, i}
+			}
+			heap.Init(&h)
+			initial = nil
+		}
+		if r.At.After(h[0].value.At) {
+			h[0] = orderedRecord{r, order}
 			heap.Fix(&h, 0)
 		}
+		order++
 		return nil
 	})
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
+	if h == nil {
+		sort.SliceStable(initial, func(i, j int) bool { return initial[i].At.After(initial[j].At) })
+		return initial, nil
+	}
+
 	sort.Slice(h, func(i, j int) bool {
 		if h[i].value.At.Equal(h[j].value.At) {
 			return h[i].order < h[j].order
