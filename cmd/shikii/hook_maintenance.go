@@ -155,34 +155,18 @@ func hookMaybeTune(agent, specID string) error {
 
 // spawnTune starts `shikii tune <spec> --store … --local …` in a detached process (the hook does not wait; no --write). Output is appended to hook.log.
 func spawnTune(agent, path, storeDir string) {
-	exe, err := os.Executable()
-	if err != nil {
-		hookLog("auto-tune: cannot find shikii: " + err.Error())
-		return
-	}
-	logf, err := os.OpenFile(filepath.Join(agent, "hook.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return
-	}
-	defer logf.Close()
-	fmt.Fprintf(logf, "%s auto-tune %s: started in the background (adoption is a person's call: the page, or tune --write)\n", time.Now().Format(time.RFC3339), strings.TrimSuffix(filepath.Base(path), ".yaml"))
-	cmd := exec.Command(exe, "tune", path, "--store", storeDir, "--local", hookLocalURL)
-	cmd.Stdout = logf
-	cmd.Stderr = logf
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(logf, "%s auto-tune: %v\n", time.Now().Format(time.RFC3339), err)
-		return
-	}
-	_ = cmd.Process.Release()
+	spawnMaintenance(agent, "auto-tune", fmt.Sprintf("%s: started in the background (adoption is a person's call: the page, or tune --write)", strings.TrimSuffix(filepath.Base(path), ".yaml")), "tune", path, "--store", storeDir, "--local", hookLocalURL)
 }
 
-// spawnCalibrate starts `shikii calibrate <spec> --store … --local … --model … --write` in a detached process (the hook does not wait).
-// Output is appended to hook.log. A long replay does not hit the hook's timeout, and if killed midway the spec is not broken (tmp + rename).
+// spawnCalibrate keeps the model and --write arguments specific to calibration.
 func spawnCalibrate(agent, path, storeDir, model string) {
+	spawnMaintenance(agent, "auto-calibrate", fmt.Sprintf("%s (%s): started in the background", filepath.Base(path), model), "calibrate", path, "--store", storeDir, "--local", hookLocalURL, "--model", model, "--write")
+}
+
+func spawnMaintenance(agent, operation, started string, args ...string) {
 	exe, err := os.Executable()
 	if err != nil {
-		hookLog("auto-calibrate: cannot find shikii: " + err.Error())
+		hookLog(operation + ": cannot find shikii: " + err.Error())
 		return
 	}
 	logf, err := os.OpenFile(filepath.Join(agent, "hook.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
@@ -190,14 +174,20 @@ func spawnCalibrate(agent, path, storeDir, model string) {
 		return
 	}
 	defer logf.Close()
-	fmt.Fprintf(logf, "%s auto-calibrate %s (%s): started in the background\n", time.Now().Format(time.RFC3339), filepath.Base(path), model)
-	cmd := exec.Command(exe, "calibrate", path, "--store", storeDir, "--local", hookLocalURL, "--model", model, "--write")
-	cmd.Stdout = logf
-	cmd.Stderr = logf
+	fmt.Fprintf(logf, "%s %s %s\n", time.Now().Format(time.RFC3339), operation, started)
+	cmd := exec.Command(exe, args...)
+	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := startMaintenance(cmd); err != nil {
+		fmt.Fprintf(logf, "%s %s: %v\n", time.Now().Format(time.RFC3339), operation, err)
+	}
+}
+
+// Tests inspect the command without starting the test executable in the background.
+var startMaintenance = func(cmd *exec.Cmd) error {
 	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(logf, "%s auto-calibrate: %v\n", time.Now().Format(time.RFC3339), err)
-		return
+		return err
 	}
 	_ = cmd.Process.Release()
+	return nil
 }
