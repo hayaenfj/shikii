@@ -94,7 +94,10 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			if keys[i]["model"] != keys[j]["model"] {
 				return keys[i]["model"].(string) < keys[j]["model"].(string)
 			}
-			return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal first
+			if keys[i]["rung"] != keys[j]["rung"] {
+				return keys[i]["rung"].(string) > keys[j]["rung"].(string) // minimal first
+			}
+			return keys[i]["hash"].(string) < keys[j]["hash"].(string) // one order on every request: the keys come out of a map
 		})
 		labeled := view.Labeled
 		reviews, rerr := s.st.Reviews(sp.ID)
