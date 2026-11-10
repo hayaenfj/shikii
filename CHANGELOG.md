@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.30.6 — Validate cleanup ages and continue decision lists
+
+- Reject negative fractional ages, including floating-point underflow, non-finite values and out-of-range day/week durations before `gc --apply` can remove history.
+- Continue unanswered and answered decision lists beyond 200 records. Each HTTP page stays bounded; cursors bind the ordered snapshot, project, spec and endpoint. A changed list restarts the read instead of mixing pages.
+- Preserve list priority, original text, cancellation and failure handling. Add regression coverage for 201 and 1001 records and align the Go test count at 1380.
+
 ## 0.30.5 — Preserve concurrent saves during history cleanup
 
 - Hold the record and answer append locks from the cleanup snapshot through the final file replacement. Concurrent saves can no longer disappear behind `gc --apply`.
