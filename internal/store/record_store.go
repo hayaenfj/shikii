@@ -82,10 +82,10 @@ func LabelFor(rec *Record, truth string, weight float64, source string) (Label, 
 	default:
 		return Label{}, fmt.Errorf("record has unknown type %q", rec.Type)
 	}
-	if weight <= 0 {
+	if weight == 0 { // not given
 		weight = 1
 	}
-	if weight > 1 {
+	if !(weight > 0 && weight <= 1) { // also refuses NaN and negative values (before, a negative weight became a firm 1)
 		return Label{}, fmt.Errorf("weight must be in (0, 1], got %g (1 = a firm truth; less = a weak one)", weight)
 	}
 	if source == "" {
