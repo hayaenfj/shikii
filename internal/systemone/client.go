@@ -129,12 +129,24 @@ const DefaultPath = "/v1/systemone"
 // New creates a client. If baseURL contains a path (e.g. https://openrouter.ai/api/alpha/decisions),
 // it is used as is; otherwise /v1/systemone is added.
 // RedactURL hides credentials embedded in a URL (user:token@host). Used for logs and error messages.
+// A URL that does not parse, or parses without a host (written without its scheme), may still carry them: there everything
+// before the last @ of what stands where the host would be is hidden.
 func RedactURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		return u.Redacted()
 	}
-	return u.Redacted()
+	start := 0
+	if i := strings.Index(raw, "://"); i >= 0 {
+		start = i + len("://")
+	}
+	end := len(raw)
+	if i := strings.IndexAny(raw[start:], "/?#"); i >= 0 {
+		end = start + i
+	}
+	if at := strings.LastIndex(raw[start:end], "@"); at >= 0 {
+		return raw[:start] + "xxxxx" + raw[start+at:]
+	}
+	return raw
 }
 
 func New(baseURL, apiKey, model string) *Client {
