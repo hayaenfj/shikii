@@ -115,12 +115,7 @@ func LatestPerInput(labels []Label) []Label {
 			latest[l.InputsHash] = l
 			continue
 		}
-		// a person's truth always beats a machine truth (context / judge). Within the same kind, the newer one wins (audit round 4, item 2)
-		switch {
-		case HumanSource(l.Source) && !HumanSource(cur.Source):
-			latest[l.InputsHash] = l
-		case !HumanSource(l.Source) && HumanSource(cur.Source):
-		case l.At.After(cur.At):
+		if preferLabel(l, cur) {
 			latest[l.InputsHash] = l
 		}
 	}
@@ -158,7 +153,7 @@ func (s Store) LabeledTraces(specID string) (map[string]Label, error) {
 		if json.Unmarshal(line, &l) != nil || l.TraceID == "" {
 			return nil
 		}
-		if cur, ok := out[l.TraceID]; !ok || (HumanSource(l.Source) && !HumanSource(cur.Source)) || (HumanSource(l.Source) == HumanSource(cur.Source) && l.At.After(cur.At)) {
+		if cur, ok := out[l.TraceID]; !ok || preferLabel(l, cur) {
 			out[l.TraceID] = l
 		}
 		return nil
@@ -194,4 +189,13 @@ type GCResult struct {
 	KeptLabeled  int // kept regardless of age because they have a label
 	KeptRecent   int // kept because they are newer than cutoff
 	KeptUnparsed int // lines that do not parse as JSON. Unreadable lines are never thrown away
+}
+
+// Human answers outrank machine answers; equal times keep the first saved answer.
+func preferLabel(next, current Label) bool {
+	nh, ch := HumanSource(next.Source), HumanSource(current.Source)
+	if nh != ch {
+		return nh
+	}
+	return next.At.After(current.At)
 }

@@ -53,7 +53,7 @@ func (s Store) ReadDecisionLog(ctx context.Context, specID string) (DecisionLog,
 		if l.TraceID == "" {
 			return
 		}
-		if cur, ok := v.Labeled[l.TraceID]; !ok || (HumanSource(l.Source) && !HumanSource(cur.Source)) || (HumanSource(l.Source) == HumanSource(cur.Source) && l.At.After(cur.At)) {
+		if cur, ok := v.Labeled[l.TraceID]; !ok || preferLabel(l, cur) {
 			v.Labeled[l.TraceID] = l
 		}
 	}); err != nil {
