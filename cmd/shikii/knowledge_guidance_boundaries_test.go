@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 func guidancePassages(quote string) []any {
@@ -63,7 +65,28 @@ func TestGuidanceCounterexampleRejectsChangedEvidence(t *testing.T) {
 	if _, err := improvementCall(t, b, map[string]any{"operation": "consult", "request": "Check Quartz exports", "proposal": "Use the raw parser for Quartz exports."}); err == nil {
 		t.Fatal("a counterexample must refuse changed supporting evidence")
 	}
-	if _, err := b.Maintenance(); err == nil {
+	// The maintenance list goes on without the changed evidence: the report is named as unreadable with the source to
+	// recover, nothing of it is shown as if it had been checked, and its procedure cannot be marked as reviewed.
+	tasks, err := b.Maintenance()
+	if err != nil {
+		t.Fatal("changed supporting evidence must not take the whole maintenance list down", err)
+	}
+	listed, _ := json.Marshal(tasks)
+	var review *notebook.MaintenanceTask
+	for i := range tasks {
+		if tasks[i].PageID == p.ID {
+			review = &tasks[i]
+		}
+	}
+	if review == nil || len(review.Outcomes) != 1 || !strings.Contains(string(listed), "cannot be read") || !strings.Contains(string(listed), id+" (changed)") {
+		t.Fatal("the procedure review must name the report whose evidence changed, and that source", string(listed))
+	}
+	for _, unchecked := range []string{"A changed but structurally valid observation.", "The structured parser preserved all quoted fields.", "The raw parser loses quoted fields.", "Use the structured parser"} {
+		if strings.Contains(string(listed), unchecked) {
+			t.Fatal("a procedure review must not present changed supporting evidence, or the report it belongs to", unchecked, string(listed))
+		}
+	}
+	if _, err := b.Maintain(notebook.MaintenanceReview{PageID: review.PageID, Revision: review.Revision, Key: review.Key, Reason: "Checked the evidence."}); err == nil {
 		t.Fatal("a procedure review must refuse changed supporting evidence")
 	}
 }

@@ -257,20 +257,37 @@ func (b Book) maintenance(ids []string) ([]MaintenanceTask, error) {
 		}
 		return checkpoints[a.PageID].At.Before(checkpoints[b.PageID].At)
 	})
-	if len(pending) > 2 {
-		pending = pending[:2]
-	}
+	// The list carries two tasks. One saved source that can no longer be read must not hide every other task: a task
+	// whose report cannot be checked stays listed, with that report named as unreadable. Such a task cannot be reviewed
+	// until its sources are recovered, so while other work waits it takes at most one of the two places.
+	listed, held := []MaintenanceTask{}, []MaintenanceTask{}
 	for i := range pending {
+		if len(listed) == 2 {
+			break
+		}
+		readable := true
 		for _, p := range valid {
 			if p.ID == pending[i].PageID {
-				if err := b.expandOutcomeReview(&pending[i], p); err != nil {
-					return nil, err
-				}
+				readable = b.expandOutcomeReview(&pending[i], p) == nil
 				break
 			}
 		}
+		if !readable && slices.ContainsFunc(listed, unreadableTask) {
+			held = append(held, pending[i])
+			continue
+		}
+		listed = append(listed, pending[i])
 	}
-	return pending, nil
+	for _, task := range held {
+		if len(listed) < 2 {
+			listed = append(listed, task)
+		}
+	}
+	return listed, nil
+}
+
+func unreadableTask(task MaintenanceTask) bool {
+	return slices.ContainsFunc(task.Outcomes, func(o OutcomeReview) bool { return o.Outcome.unreadable })
 }
 
 func (b Book) Maintain(review MaintenanceReview) (MaintenanceReview, error) {

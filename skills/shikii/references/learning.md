@@ -152,6 +152,8 @@ next request's selected articles; missing or expired baselines are first exposur
 Contrasts preserve explicit supporting/counterexample connections or differing
 reported executions of one howto. Read both conditions, quotes and original
 sources. `same_text`/`different_text` compares condition text, not meaning.
+`not_compared` means one of the two reports cannot be read (its `unknown` names
+the sources to recover): nothing of it is shown and no difference is established.
 `shared_sources` identifies shared evidence; `not_established` never means
 independent corroboration. Interpret common conditions, differences, unknowns and
 what observation would distinguish the hypotheses. No majority vote selects a

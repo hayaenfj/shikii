@@ -242,14 +242,22 @@ func (b Book) Collective(known []CollectiveBaseline, selected []ArticleReference
 			continue
 		}
 		if p.Kind == "howto" && len(v.Contrasts) == 0 {
-			reports, e := b.ProcedureOutcomes(p, "")
+			// A report that can no longer be checked is listed as unreadable: one lost source must not fail the
+			// preparation of every work that finds this procedure.
+			reports, e := b.selectOutcomes(p, "", false, true)
 			if e != nil {
 				return v, e
 			}
-			if len(reports) == 2 && (reports[0].Result != reports[1].Result || reports[0].Failure != reports[1].Failure) {
+			unreadable := len(reports) == 2 && (reports[0].unreadable || reports[1].unreadable)
+			if len(reports) == 2 && (unreadable || reports[0].Result != reports[1].Result || reports[0].Failure != reports[1].Failure) {
 				c := KnowledgeContrast{Article: r, Reports: reports, ReportQueries: []string{reports[0].SourceID, reports[1].SourceID}, Independence: "not_established", Judgment: "uninterpreted", Conditions: "different_text", Query: articleQuery(r), Unknown: []string{"Different reported results are not proof of contradiction or success. Interpret shared conditions, remaining differences and the cited evidence."}}
 				if reports[0].Conditions == reports[1].Conditions {
 					c.Conditions = "same_text"
+				}
+				if unreadable {
+					// Nothing of an unchecked report is compared: no difference and no agreement is claimed.
+					c.Conditions = "not_compared"
+					c.Unknown = []string{"A report of this procedure cannot be read, so the two reports cannot be compared and no difference is established. Recover the saved sources that report names before relying on it."}
 				}
 				for _, report := range reports {
 					ss := []string{}

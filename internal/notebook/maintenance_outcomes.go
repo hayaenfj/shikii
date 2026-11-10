@@ -64,13 +64,21 @@ func (b Book) addOutcomeReviews(tasks []MaintenanceTask, pages []Page) error {
 
 // Expand only the selected review tasks: unrelated procedures must not force
 // source reads or consume an unbounded evidence budget on each record call.
+// A report whose saved report or evidence can no longer be checked is listed as
+// unreadable, without the content that could not be checked, and the first such
+// problem is returned: listing the tasks goes on, recording the review does not.
 func (b Book) expandOutcomeReview(task *MaintenanceTask, p Page) error {
+	var unreadable error
 	for _, o := range task.outcomeRefs {
 		view, err := b.outcomeView(o, p, o.Action+" "+o.Failure+" "+o.Correction)
 		if err != nil {
-			return err
+			if unreadable == nil {
+				unreadable = err
+			}
+			task.Outcomes = append(task.Outcomes, OutcomeReview{Outcome: b.unreadableOutcome(o, p), CurrentPassages: []TextExcerpt{}})
+			continue
 		}
 		task.Outcomes = append(task.Outcomes, OutcomeReview{Outcome: view, CurrentPassages: FocusExcerpts(p.Body, o.Action+" "+o.Failure, 1200), ProposedCorrection: o.Correction})
 	}
-	return nil
+	return unreadable
 }

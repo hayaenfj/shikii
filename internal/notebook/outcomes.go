@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,6 +40,7 @@ type ProcedureOutcomeView struct {
 	Result          string              `json:"result"`
 	Evidence        []ProcedureEvidence `json:"evidence"`
 	Unknown         []string            `json:"unknown,omitempty"`
+	unreadable      bool                // the report could not be checked: only its sources are named (see unreadableOutcome)
 }
 
 func (d OutcomeDetails) ValidateContent() error {
@@ -86,6 +88,8 @@ func validOutcomeHash(s string) bool {
 	return len(s) == 64 && err == nil
 }
 
+var errOutcomeSourceChanged = errors.New("outcome evidence changed; inspect its original source")
+
 func (b Book) checkedOutcomeSource(s Source) (Observation, error) {
 	dir, err := b.directory(false, "sources")
 	if err != nil {
@@ -96,7 +100,7 @@ func (b Book) checkedOutcomeSource(s Source) (Observation, error) {
 		return Observation{}, err
 	}
 	if !validSource(data, s.ID) || digest(data) != s.Hash {
-		return Observation{}, errors.New("outcome evidence changed; inspect its original source")
+		return Observation{}, errOutcomeSourceChanged
 	}
 	var o Observation
 	if err = json.Unmarshal(data, &o); err != nil {
@@ -212,6 +216,12 @@ func (b Book) ProcedureOutcomes(page Page, context string) ([]ProcedureOutcomeVi
 }
 
 func (b Book) procedureOutcomes(page Page, context string, failuresOnly bool) ([]ProcedureOutcomeView, error) {
+	return b.selectOutcomes(page, context, failuresOnly, false)
+}
+
+// selectOutcomes selects up to two reports. Asked for the reports themselves, it refuses when one of them can no
+// longer be checked. A listing that must go on for other articles (listing) gets that report as unreadable instead.
+func (b Book) selectOutcomes(page Page, context string, failuresOnly, listing bool) ([]ProcedureOutcomeView, error) {
 	dir, err := b.directory(false, "searches")
 	if os.IsNotExist(err) {
 		return []ProcedureOutcomeView{}, nil
@@ -268,11 +278,40 @@ func (b Book) procedureOutcomes(page Page, context string, failuresOnly bool) ([
 	for _, c := range selected {
 		v, e := b.outcomeView(c.outcome, page, context)
 		if e != nil {
-			return nil, e
+			if !listing {
+				return nil, e
+			}
+			v = b.unreadableOutcome(c.outcome, page)
 		}
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+// unreadableOutcome is what a listing shows for a report whose saved report or evidence can no longer be checked
+// (a source file was lost or changed outside shikii). It names the report and the sources to recover, and shows
+// nothing of the report: neither the indexed details nor the evidence could be checked. It never stands in for
+// the report where the report is relied on (recording a review, a consult, a reuse): those keep refusing.
+func (b Book) unreadableOutcome(o ProcedureOutcome, page Page) ProcedureOutcomeView {
+	problems := []string{}
+	for _, s := range append([]Source{o.Snapshot}, o.Evidence...) {
+		_, err := b.checkedOutcomeSource(s)
+		switch {
+		case err == nil:
+		case errors.Is(err, fs.ErrNotExist):
+			problems = append(problems, s.ID+" (missing)")
+		case errors.Is(err, errOutcomeSourceChanged):
+			problems = append(problems, s.ID+" (changed)")
+		default: // the reason may carry the folder of the store, so it is not repeated
+			problems = append(problems, s.ID+" (unreadable)")
+		}
+	}
+	text := "This report cannot be read: its index entry does not match its saved report " + o.Snapshot.ID + ". Recover that source or the wiki search records before using or reviewing this report."
+	if len(problems) > 0 {
+		text = "This report cannot be read: these saved sources cannot be checked: " + strings.Join(problems, ", ") + ". Recover them before using or reviewing this report."
+	}
+	return ProcedureOutcomeView{SourceID: o.Snapshot.ID, Revision: o.Revision, RevisionChanged: o.Revision != page.Revision, Evidence: []ProcedureEvidence{}, unreadable: true,
+		Unknown: []string{text + " Its content is not shown because it could not be checked."}}
 }
 
 func (b Book) outcomeView(o ProcedureOutcome, page Page, context string) (ProcedureOutcomeView, error) {
