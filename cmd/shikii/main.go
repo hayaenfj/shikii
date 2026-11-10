@@ -143,11 +143,11 @@ func usageText() string {
   shikii handoff   list | read <path> | write <path> | append <path> (body on stdin)
                    Work records (.shikii/handoff/): working files you rewrite as you go (audit reports, release steps, diffs, images). Lessons go in the wiki; evidence as of when it was checked goes in the wiki's sources
   shikii guard     list | add (JSON on stdin) | enable <id> | disable <id> | try
-                   Turn a person's correction into a "blocking check" (paired-files / forbidden-words / commit-body). enable turns it on after confirming that it blocks a negative example
+                   Turn a person's correction into a "blocking check" (paired-files / forbidden-words / commit-body / forbidden-commands). enable turns it on after confirming that it blocks a negative example
   shikii version                                  Print the version
   shikii review query | submit (JSON on stdin)       The AI gives provisional scores with reasons from conversations and outcomes. A person checks the samples and held items, and corrections feed the next scoring. Provisional scores are stored apart from truths and calibration
   shikii reflect query | submit (JSON on stdin)      Combine scoring and wiki organizing into one confirmation and one bulk save (query returns 2 at a time from the oldest conversations, submit takes any number). Pass reviews and wiki, then check complete and each item's error
-  shikii check     <spec.yaml>... [--store DIR]      CI: fail lines whose wording changed, hand-written lines, and lines with too little precision
+  shikii check     <spec.yaml>... [--store DIR]      CI: fail lines whose wording changed, hand-written lines, lines with too little precision and lines that lift an option no truth confirmed
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]
                    Measure whether the answer changes with the order of the options. Texts come from the same saved truths as calibrate (store, or --labeled)

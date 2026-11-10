@@ -11,7 +11,7 @@ import (
 // complete while the turn can never finish, and the next_action it gives (result:{ref}) only repeats the same reply.
 func TestWorkSameResultAfterLaterEvidenceFinishesTheCurrentGeneration(t *testing.T) {
 	repo, root, _ := planningFixture(t)
-	session := "round2-same-result"
+	session := "same-result"
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Check the synthetic export and report the result."})
 	p, err := workCall(t, b, "prepare", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "query": "synthetic export"})
