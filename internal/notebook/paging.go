@@ -31,7 +31,21 @@ type continuation struct {
 	Byte     int    `json:"byte,omitempty"` // inside one long source: where its body continues
 }
 
-func encodedSize(value any) int    { data, _ := json.Marshal(value); return len(data) }
+type encodedByteCount int
+
+func (n *encodedByteCount) Write(data []byte) (int, error) {
+	*n += encodedByteCount(len(data))
+	return len(data), nil
+}
+
+// Count the encoder's output without allocating a returned copy of the JSON.
+func encodedSize(value any) int {
+	var n encodedByteCount
+	if json.NewEncoder(&n).Encode(value) != nil {
+		return 0
+	}
+	return int(n) - 1 // Encoder adds one newline; Marshal does not.
+}
 func fingerprint(value any) string { data, _ := json.Marshal(value); return digest(data) }
 
 func (b Book) continuation(kind string, request, snapshot any) continuation {
@@ -152,26 +166,65 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 // Find a fitting UTF-8 prefix before refining its capacity. A host can switch
 // presentation, so a small prefix need not fit whenever a larger one does.
 // Keep the existing halving path as the lower bound and measure the final page.
-func fitSourcePart(text string, fits func(int) bool) error {
+func fitSourcePart(text string, fits func(int) bool, hints ...int) error {
 	_, width := utf8.DecodeRuneInString(text)
-	end, high := len(text), len(text)
-	for !fits(end) {
-		if end <= width {
-			return errors.New("source metadata exceeds the response budget; use a larger max_bytes")
-		}
-		high = end
-		end /= 2
+	full := len(text)
+	problem := func() error { return errors.New("source metadata exceeds the response budget; use a larger max_bytes") }
+	// A complete tail may select a different host presentation and fit on its own.
+	if fits(full) {
+		return nil
+	}
+	if full <= width {
+		return problem()
+	}
+	boundary := func(end int) int {
 		for end > 0 && !utf8.RuneStart(text[end]) {
 			end--
 		}
-		if end == 0 {
-			end = width
+		return max(end, width)
+	}
+	low, high := 0, full
+	if len(hints) > 0 && hints[0] > 0 && hints[0] < full {
+		end := boundary(hints[0])
+		if fits(end) {
+			low = end
+			for {
+				high = min(full, 2*low)
+				if high == full {
+					break
+				}
+				high = boundary(high)
+				if !fits(high) {
+					break
+				}
+				low = high
+			}
+		} else {
+			high = end
+			for end > width {
+				end = boundary(end / 2)
+				if fits(end) {
+					low = end
+					break
+				}
+				high = end
+			}
 		}
 	}
-	if end == len(text) {
-		return nil
+	// A small hint can miss the host's presentation window. Recover the original
+	// halving path rather than treating the failed hint as unusable metadata.
+	if low == 0 {
+		high = full
+		end := boundary(full / 2)
+		for !fits(end) {
+			if end <= width {
+				return problem()
+			}
+			high = end
+			end = boundary(end / 2)
+		}
+		low = end
 	}
-	low := end
 	high--
 	for low < high {
 		end := low + (high-low+1)/2
@@ -187,9 +240,8 @@ func fitSourcePart(text string, fits func(int) bool) error {
 			high = end - 1
 		}
 	}
-	// A failed probe changes the response too; restore the last fitting prefix.
 	if !fits(low) {
-		return errors.New("source metadata exceeds the response budget; use a larger max_bytes")
+		return problem()
 	}
 	return nil
 }
@@ -211,7 +263,7 @@ func originalPart(out map[string]any, state continuation, fs []store.Feedback, o
 			out["next_cursor"] = next
 		}
 		return size(out) <= budget
-	})
+	}, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +372,7 @@ func (b Book) ReadSourcesPageMeasured(ids []string, cursor string, budget int, s
 					out["next_cursor"] = next
 				}
 				return size(out) <= budget
-			})
+			}, budget)
 			if err != nil {
 				return nil, err
 			}
