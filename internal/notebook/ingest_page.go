@@ -3,6 +3,7 @@ package notebook
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -39,8 +40,24 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 		id := d.ID
 		if id == "" {
 			id = digest([]byte(strings.TrimSpace(d.Title)))[:16]
+			// The id comes from the first title. After a rename it belongs to an
+			// article with another title; a new lesson must not overwrite that one.
+			if old, ok := byID[id]; ok && old.Status != "deleted" && old.Title != d.Title {
+				return nil, fmt.Errorf("%w: the title %q was the first title of article %s, now titled %q; update that article by its id, or give the new lesson another title", ErrArticleConflict, d.Title, id, old.Title)
+			}
 		} else if _, ok := byID[id]; !ok {
 			return nil, errors.New("the lesson to update does not exist in this project")
+		}
+		// A replaced article is never live again. Patch and Manage refuse it; a
+		// lesson saved into it would be reported as saved and never be delivered.
+		if _, ok := byID[id]; ok {
+			for _, other := range pages {
+				for _, replaced := range other.Replaces {
+					if replaced == id {
+						return nil, fmt.Errorf("%w: article %s was replaced by %s; update that article, or give the new lesson another title", ErrArticleConflict, id, other.ID)
+					}
+				}
+			}
 		}
 		if d.CreateOnly && byID[id].ID != "" {
 			return nil, ErrArticleConflict
