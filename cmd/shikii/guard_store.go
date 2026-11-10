@@ -123,5 +123,17 @@ func readGuardRecords(root string) []guardRecord {
 	return out
 }
 
+// shikiiStoppedSession reports whether shikii itself stopped a turn of this session (a failed check or ritual in records/guards.jsonl).
+// stop_hook_active only says that some Stop hook continued the turn; without a kept turn, only such a record shows that the
+// continuation was shikii's own and that the session record it needs is gone.
+func shikiiStoppedSession(root, session string) bool {
+	for _, r := range readGuardRecords(root) {
+		if r.Session == session && !r.Pass {
+			return true
+		}
+	}
+	return false
+}
+
 // guardStats is for status: the number enabled, the number of turns stopped, and the number of turns fixed by the Stop after the block.
 type guardStats struct{ Enabled, Stopped, Fixed int }
