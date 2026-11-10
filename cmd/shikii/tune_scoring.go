@@ -51,16 +51,17 @@ func truthBank(sp *spec.Spec, st store.Store, labeledPath string) (rows []bankRo
 			return nil, 0, fmt.Errorf("%s: %w", labeledPath, err)
 		}
 		for i, r := range file {
+			// a file row outside (0, 1] is refused, not counted as a firm truth; also a row the bank does not use
+			weight, err := fileRowWeight(i, r.Weight)
+			if err != nil {
+				return nil, 0, err
+			}
 			if len(r.Inputs) == 0 {
 				continue // a row with only raw cannot be asked again
 			}
 			truth, err := parseTruth(sp.Type, r.Truth)
 			if err != nil {
 				return nil, 0, fmt.Errorf("row %d: %w", i, err)
-			}
-			weight, err := fileRowWeight(i, r.Weight) // a file row outside (0, 1] is refused, not counted as a firm truth
-			if err != nil {
-				return nil, 0, err
 			}
 			put(store.HashInputs(r.Inputs), bankRow{inputs: r.Inputs, truth: truth, weight: weight, human: true}, time.Time{})
 		}

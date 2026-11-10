@@ -78,3 +78,37 @@ func TestCheckAndTheTruthBankRefuseAFileRowWeightOutsideZeroToOne(t *testing.T) 
 		}
 	}
 }
+
+// The three readers refuse the same file: a row one of them does not use (check skips rows without their own probabilities, the
+// truth bank rows without inputs) is still read for its weight.
+func TestEveryReaderRefusesTheWeightOfARowItDoesNotUse(t *testing.T) {
+	dir := t.TempDir()
+	sp, err := spec.Load(writeSpec(t, dir, "false"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := store.Store{Dir: filepath.Join(dir, "store")}
+	write := func(rows string) string {
+		path := filepath.Join(dir, "rows.json")
+		if err := os.WriteFile(path, []byte(rows), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	sp.Eval.Labeled = write(`[{"inputs":{"message":"fix the typo"},"truth":"change_request","weight":5}]`)
+	if labels, err := collectLabels(sp, st, "m", sp.Eval.Labeled); err == nil || !strings.Contains(err.Error(), "row 0: weight must be in (0, 1]") {
+		t.Errorf("check: a row without raw and with weight 5 must be refused, got %v %+v", err, labels)
+	}
+	noInputs := write(`[{"truth":"change_request","raw":{"change_request":0.8,"question":0.1,"other":0.1},"weight":-0.5}]`)
+	if bank, _, err := truthBank(sp, st, noInputs); err == nil || !strings.Contains(err.Error(), "row 0: weight must be in (0, 1]") {
+		t.Errorf("truth bank: a row without inputs and with weight -0.5 must be refused, got %v (%d rows)", err, len(bank))
+	}
+	// with a weight inside the range, such rows are skipped as before
+	sp.Eval.Labeled = write(`[{"inputs":{"message":"fix the typo"},"truth":"change_request","weight":0.5}]`)
+	if labels, err := collectLabels(sp, st, "m", sp.Eval.Labeled); err != nil || len(labels) != 0 {
+		t.Errorf("check skips a row without raw: %v %+v", err, labels)
+	}
+	if bank, _, err := truthBank(sp, st, write(`[{"truth":"change_request","raw":{"change_request":0.8,"question":0.1,"other":0.1}}]`)); err != nil || len(bank) != 0 {
+		t.Errorf("the truth bank skips a row without inputs: %v (%d rows)", err, len(bank))
+	}
+}

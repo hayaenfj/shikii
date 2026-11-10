@@ -197,6 +197,11 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 		return nil, fmt.Errorf("%s: %w", sp.Eval.Labeled, err)
 	}
 	for i, r := range rows {
+		// outside (0, 1]: refused, as calibrate refuses the same file, also for a row check itself does not use
+		w, err := fileRowWeight(i, r.Weight)
+		if err != nil {
+			return nil, err
+		}
 		given, err := rawFromRow(sp, r.Raw)
 		if err != nil {
 			return nil, err
@@ -205,10 +210,6 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 			continue // rows that need the model are not used in check
 		}
 		truth, err := parseTruth(sp.Type, r.Truth)
-		if err != nil {
-			return nil, err
-		}
-		w, err := fileRowWeight(i, r.Weight) // outside (0, 1]: refused, as calibrate refuses the same row
 		if err != nil {
 			return nil, err
 		}

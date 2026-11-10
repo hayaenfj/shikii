@@ -160,3 +160,56 @@ func TestGCKeepsATextAnotherQuestionsDecisionSharesWithTheSameInputs(t *testing.
 		t.Errorf("the text is removed with the last decision that used it: %v", err)
 	}
 }
+
+// Two questions under one trace with different inputs; the text belongs to needs-plan's decision. `shikii gc` goes through the
+// questions in the order of their ids. The text stays while the other question's decision is left and goes with the last one,
+// so no text is left behind without a decision.
+func TestGCRemovesTheTextWithTheLastDecisionOfItsTrace(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	now := time.Now()
+	owner := textRecord("needs-plan", "aaaaaaaaaaaaaaaa", now.Add(-48*time.Hour))
+	other := textRecord("prompt-kind", "aaaaaaaaaaaaaaaa", now.Add(-48*time.Hour))
+	for _, r := range []Record{owner, other} {
+		if err := st.AppendRecord(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.SaveRecordText(owner, map[string]string{"request": owner.Inputs["request"] + " and the long original a person typed"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"needs-plan", "prompt-kind"} { // the order of cmdGC (sorted ids)
+		if res, err := st.GC(id, now.Add(-24*time.Hour), true); err != nil || res.Removed != 1 {
+			t.Fatalf("gc %s: %+v %v", id, res, err)
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(st.Dir, "records", "text", "aaaaaaaaaaaaaaaa.json")); err == nil {
+		t.Errorf("both decisions of the trace are removed, but the original text stays on disk for good: %s", data)
+	}
+}
+
+// When another question's records cannot be read (here its file is a link, which the store does not follow), nothing is
+// removed: that question may hold a decision under the same trace.
+func TestGCKeepsEveryTextWhenAnotherQuestionCannotBeRead(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	now := time.Now()
+	gone := textRecord("prompt-kind", "aaaaaaaaaaaaaaaa", now.Add(-48*time.Hour))
+	if err := st.AppendRecord(gone); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveRecordText(gone, map[string]string{"request": gone.Inputs["request"] + " and the long original"}); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "elsewhere.jsonl")
+	if err := os.WriteFile(target, []byte(`{"trace_id":"aaaaaaaaaaaaaaaa","spec_id":"needs-plan"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(st.Dir, "records", "needs-plan.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := st.GC("prompt-kind", now.Add(-24*time.Hour), true); err != nil || res.Removed != 1 {
+		t.Fatalf("gc: %+v %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(st.Dir, "records", "text", "aaaaaaaaaaaaaaaa.json")); err != nil {
+		t.Errorf("another question could not be read, yet the text was removed: %v", err)
+	}
+}

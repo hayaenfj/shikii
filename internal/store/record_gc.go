@@ -127,9 +127,10 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 }
 
 // removeRecordTexts deletes the original text (records/text/<trace_id>.json) of records GC just removed from the question
-// specID. The folder is shared by every question, so a text stays when a kept line of this question still uses its trace, when
-// it was saved for other inputs, or when another question has a decision under the same trace (whatever its inputs). The
-// records are already gone, so a text that cannot be read or removed is left, not reported.
+// specID. The folder is shared by every question and a text is named by its trace alone, so a text stays while any decision
+// under its trace is left: a kept line of this question, or a line of another question (whatever its inputs). It goes with the
+// last of them, whichever question is collected last. The records are already gone, so a text that cannot be removed is left,
+// not reported.
 func (s Store) removeRecordTexts(specID string, removed []Record, kept map[string]bool) {
 	if len(removed) == 0 {
 		return
@@ -139,27 +140,13 @@ func (s Store) removeRecordTexts(specID string, removed []Record, kept map[strin
 		return // no original text was ever kept
 	}
 	defer dir.Close()
-	// the texts that would go: the removed record's own (the same inputs), not used by a kept line
 	candidates := map[string]bool{}
 	for _, rec := range removed {
 		trace := rec.TraceID
-		if kept[trace] || rec.InputsHash == "" || !textTrace.MatchString(trace) {
+		if kept[trace] || !textTrace.MatchString(trace) {
 			continue
 		}
-		info, err := dir.Lstat(trace + ".json")
-		if err != nil || !info.Mode().IsRegular() || info.Size() > recordTextFileMax {
-			continue
-		}
-		f, err := dir.Open(trace + ".json")
-		if err != nil {
-			continue
-		}
-		var text struct {
-			InputsHash string `json:"inputs_hash"`
-		}
-		err = json.NewDecoder(f).Decode(&text)
-		f.Close()
-		if err == nil && text.InputsHash == rec.InputsHash {
+		if info, err := dir.Lstat(trace + ".json"); err == nil && info.Mode().IsRegular() {
 			candidates[trace] = true
 		}
 	}
@@ -177,9 +164,6 @@ func (s Store) removeRecordTexts(specID string, removed []Record, kept map[strin
 		}
 	}
 }
-
-// recordTextFileMax bounds what GC reads of one original text: four originals of RecordTextLimit bytes and their JSON escaping.
-const recordTextFileMax = 8 * (4*RecordTextLimit + 1<<16)
 
 // tracesInOtherSpecs reports which of the traces have a decision line in the records of a question other than specID.
 func (s Store) tracesInOtherSpecs(specID string, traces map[string]bool) (map[string]bool, error) {
