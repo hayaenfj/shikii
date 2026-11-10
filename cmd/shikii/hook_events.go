@@ -222,6 +222,26 @@ func runHookEvent(event string) error {
 	return err
 }
 
+// isSlashCommand reports whether the message is a slash command (/model, /plugin:skill args), which is not a request. Only the
+// first word decides: a command name has letters, digits, '_', ':' and '-'. A first word with a second slash, a dot or any other
+// character is a file path the person pasted or dragged in ("/Users/me/notes.txt add this to the README"), and that is a request.
+func isSlashCommand(prompt string) bool {
+	p := strings.TrimSpace(prompt)
+	if !strings.HasPrefix(p, "/") {
+		return false
+	}
+	word := p
+	if i := strings.IndexFunc(p, unicode.IsSpace); i >= 0 {
+		word = p[:i]
+	}
+	for _, r := range word[1:] {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == ':' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 func joinLines(a, b string) string {
 	switch {
 	case a == "":

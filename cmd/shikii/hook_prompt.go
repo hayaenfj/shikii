@@ -13,7 +13,7 @@ import (
 
 func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	req := cut(strings.TrimSpace(in.Prompt), requestMax)
-	if req == "" || strings.HasPrefix(req, "/") || in.AgentID != "" {
+	if req == "" || isSlashCommand(req) || in.AgentID != "" {
 		return hookOut{}, nil, nil
 	}
 	if isNotification(req) {

@@ -213,7 +213,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 // Notifications, slash commands and children are left alone.
 func judgeAskedTurn(agent string, in *hookInput, snapshot *hookSession) {
 	prompt := strings.TrimSpace(in.Prompt)
-	if snapshot.TurnID == "" || snapshot.GroupingAsked != snapshot.TurnID || snapshot.Judged || in.AgentID != "" || prompt == "" || strings.HasPrefix(prompt, "/") || isNotification(prompt) {
+	if snapshot.TurnID == "" || snapshot.GroupingAsked != snapshot.TurnID || snapshot.Judged || in.AgentID != "" || prompt == "" || isSlashCommand(prompt) || isNotification(prompt) {
 		return
 	}
 	// the reply is this turn's, kept by its first Stop: Previous still holds the previous turn's reply when that Stop came without one
