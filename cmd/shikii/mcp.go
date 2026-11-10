@@ -94,7 +94,7 @@ func (r *mcpRouter) noProject() error {
 	if r.startErr != nil {
 		msg += " (" + r.startErr.Error() + ")"
 	}
-	return errors.New(msg + ": pass project, the absolute path of your working folder (a folder where shikii init was run on this machine)")
+	return errors.New(msg + ": pass project, the absolute path of a registered project; for a worktree pass the original project")
 }
 
 // handler returns the server for a call. Without project it is the start store; with project it is that registered project's own server (kept per project).
@@ -129,7 +129,7 @@ func (r *mcpRouter) handler(project string, named bool) (http.Handler, error) {
 // under ~/.shikii/agent/projects), whose store passes the same checks as the hook's. Anything else is refused, never created.
 func mcpProjectStore(project string) (string, string, error) {
 	if !filepath.IsAbs(project) {
-		return "", "", fmt.Errorf("project must be the absolute path of your working folder, got %q", project)
+		return "", "", fmt.Errorf("project must be the absolute path of a registered project, got %q", project)
 	}
 	if info, err := os.Stat(project); err != nil || !info.IsDir() {
 		return "", "", fmt.Errorf("project %q is not a folder on this machine", project)
@@ -163,7 +163,7 @@ func mcpProjectStore(project string) (string, string, error) {
 		}
 	}
 	if scope == "" {
-		return "", "", fmt.Errorf("project %q is not in a shikii project registered on this machine: run shikii init in that project's folder, and pass the absolute path of your working folder", project)
+		return "", "", fmt.Errorf("project %q is not in a shikii project registered on this machine: for a worktree pass the original project without initializing another wiki; for a new project run shikii init in that project's folder", project)
 	}
 	root := filepath.Join(scope, ".shikii")
 	if err := validateStoreDirectories(root); err != nil {
@@ -190,7 +190,7 @@ func takeProject(args json.RawMessage) (project string, named bool, rest json.Ra
 			return "", false, nil, errors.New("pass project only once")
 		}
 		if json.Unmarshal(v, &project) != nil {
-			return "", false, nil, errors.New("project must be a string: the absolute path of your working folder")
+			return "", false, nil, errors.New("project must be a string: the absolute path of a registered project")
 		}
 		named = true
 		delete(m, k)
