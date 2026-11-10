@@ -132,12 +132,11 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 			mark(p.ID, "delivery_limit", "")
 			continue
 		}
-		key := "lesson:" + p.ID + ":" + p.Revision
 		if seen[memoryCacheKey(p)] {
 			mark(p.ID, "recently_delivered", "")
 			continue
 		}
-		if silenced(effects[store.PairKey(key, door)]) {
+		if door != "" && silenced(doorEffect(root, scope, effects, p, door)) {
 			mark(p.ID, "feedback_silenced", "")
 			continue
 		}

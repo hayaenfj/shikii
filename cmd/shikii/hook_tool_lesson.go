@@ -457,7 +457,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hoo
 		// the door is the first one the page names that is not silent (unused twice and never helpful): a lesson silent at git commit
 		// still comes through gh release when one command line runs both (audit A of 0.12); silent at every door, it is left out
 		for _, door := range namedDoors(p, target) {
-			if e := effects[store.PairKey(lessonQuote(p).Key, door)]; !silenced(e) {
+			if e := doorEffect(agent, snapshot.Scope, effects, p, door); !silenced(e) {
 				c.phrase, c.helpful = door, e.Helpful
 				break
 			}
@@ -554,6 +554,37 @@ func (c toolCandidate) before(o toolCandidate) bool {
 		return c.inCondition
 	}
 	return c.helpful > o.helpful
+}
+
+// doorEffect is what the reflection said about a page through one door, counted over every revision of the page whose title,
+// lesson and applies_to are the ones it has now. Those are the texts a delivery is chosen by, so an edit that leaves them alone (a
+// section added to the body, a new source) does not start the count again: a lesson found unused twice stays silent until its
+// condition is repaired or it helps. A revision that cannot be read is not counted.
+func doorEffect(root, scope string, effects map[string]store.PairEffect, p notebook.Page, door string) store.PairEffect {
+	total := effects[store.PairKey(lessonQuote(p).Key, door)]
+	prefix, suffix := "lesson:"+p.ID+":", "\t"+door
+	var book notebook.Book
+	for key, effect := range effects {
+		if !strings.HasPrefix(key, prefix) || !strings.HasSuffix(key, suffix) {
+			continue
+		}
+		revision := strings.TrimSuffix(strings.TrimPrefix(key, prefix), suffix)
+		if revision == p.Revision || strings.ContainsAny(revision, ":\t") {
+			continue
+		}
+		if book.Root == "" {
+			book = wikiBook(root, scope)
+		}
+		view, err := book.Query("lesson:" + p.ID + "@" + revision)
+		if err != nil || len(view.Lessons) != 1 {
+			continue
+		}
+		if old := view.Lessons[0]; old.Title == p.Title && old.Lesson == p.Lesson && old.AppliesTo == p.AppliesTo {
+			total.Helpful += effect.Helpful
+			total.Unused += effect.Unused
+		}
+	}
+	return total
 }
 
 // memorySilenceUnused is how many "unused" assessments through one door, with no "helpful", keep a lesson revision silent there (0.12).
