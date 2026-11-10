@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,5 +98,9 @@ func scaledDuration(num string, unit time.Duration) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
-	return time.Duration(n * float64(unit)), nil
+	scaled := n * float64(unit)
+	if math.Signbit(n) || math.IsNaN(scaled) || math.IsInf(scaled, 0) || scaled >= math.Exp2(63) {
+		return 0, errors.New("duration must be finite, nonnegative and within range")
+	}
+	return time.Duration(scaled), nil
 }
