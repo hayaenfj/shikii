@@ -19,6 +19,12 @@ A lesson can cite a work record: capture an observation whose `reference` is the
 - Group files by task in a first-level folder (`audit-<version>/`, `release-<version>/`, `investigation-<topic>/`). The page groups by that folder.
 - The person reads them on the answer page under Knowledge → Work records (read only; text stays text, images are shown, HTML is never rendered).
 
+## Worktrees
+
+Keep one wiki and one shared work-record location in the original project. A dedicated worktree is a code checkout, not another shikii project: do not run `shikii --init` there or create a separate wiki. Use the original project's absolute path for MCP `project`, and run CLI `work prepare/record`, wiki and handoff commands from that project. Run builds and tests in the dedicated worktree; save reports, diffs, logs and screenshots under the original project's `.shikii/handoff/<task>/`.
+
+Name both locations explicitly in assignments and reports. Include the dedicated worktree's absolute path, branch, checked commit and shared evidence path. If changes are still uncommitted, say so instead of presenting the base commit as the checked changes. Before committing or integrating, identify any pre-existing changes and preserve them.
+
 ## Subagents and auditors
 
 Tell a subagent where to write: give it an exact path under `.shikii/handoff/<task>/` for its report. Keep the repository copy it works on elsewhere (a `git archive` copy in a scratch folder), and forbid `git checkout`, `git restore`, `git stash` and edits in the real repository. After it reports, read the file, fix what it found, and capture the parts that support a lesson.
