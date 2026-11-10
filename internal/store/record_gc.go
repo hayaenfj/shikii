@@ -7,10 +7,42 @@ import (
 	"time"
 )
 
+// beforeGCReplace lets tests check writer exclusion at the replacement boundary.
+var beforeGCReplace = func() {}
+
 // GC removes the spec's records that "have at older than before and no label at all".
 // Labels are calibration material, so records with labels are kept forever. The label files are not touched.
 // With apply false it only counts and does not rewrite. With apply it writes into the same directory, then replaces by rename (a crash midway does not break the original file).
 func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error) {
+	if !apply {
+		return s.gcSnapshot(specID, before, false)
+	}
+	// A missing history remains a no-op, including in an empty store.
+	parent, name, err := s.parentRoot(s.recordsPath(specID), false)
+	if err == nil {
+		_, err = parent.Lstat(name)
+		parent.Close()
+	}
+	if os.IsNotExist(err) {
+		return GCResult{}, nil
+	}
+	if err != nil {
+		return GCResult{}, err
+	}
+	var res GCResult
+	// Serialize the label snapshot and replacement with both writers. All GC
+	// calls acquire labels before records; appenders hold only their own lock.
+	err = s.withJSONLAppendLock(s.labelsPath(specID), func() error {
+		return s.withJSONLAppendLock(s.recordsPath(specID), func() error {
+			var err error
+			res, err = s.gcSnapshot(specID, before, true)
+			return err
+		})
+	})
+	return res, err
+}
+
+func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult, error) {
 	var res GCResult
 	labeled := map[string]bool{}
 	err := s.scanJSONL(s.labelsPath(specID), func(line []byte) error {
@@ -80,6 +112,7 @@ func (s Store) GC(specID string, before time.Time, apply bool) (GCResult, error)
 	if err := tmp.Close(); err != nil {
 		return discard(err)
 	}
+	beforeGCReplace()
 	if err := parent.Rename(tmpName, name); err != nil {
 		return discard(err)
 	}

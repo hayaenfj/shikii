@@ -9,12 +9,12 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-1377%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1378%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.30.4-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.30.5-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.30.4では、状態表示の重複集計、原資料のページ分割、件数を絞った履歴の保持量を減らします。原文・回復時の検査・記録の順序は保持します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.30.5では、履歴整理（`gc --apply`）と判断・回答の保存が重なった時に、記録が失われる不具合を修正します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 同じプロジェクトへ書く本体を全て更新し、hookなしの場合は既存のプロジェクトで `shikii --init` を実行して作法も更新してください。その後、エージェントのセッション・ページ・MCPを起動し直します。既存の記録を保持し、原資料を残したメモリ更新作業をエージェントへ届けます。進捗は英語で表示します。詳しくは[記憶と学習](../memory-and-learning.ja.md)を参照してください。
 
@@ -156,6 +156,8 @@ shikiiがエージェントに入れた物を外します。`~/.claude/settings.
 手順の再利用では、今の条件と依頼・行動の内容に合う実行結果を最大2件返し、関連する以前の失敗も残します。同点は新しい順とし、関連する文脈が無ければ従来どおり新しい結果を使います。返す内容は比較の候補であり、成功・人の正解・実行の許可にはしません。chitenを使わなくても、この選び方と通常の記録を利用できます。[集合知の使い方](../guide.ja.md#変更を受け渡し並行した仕事を比べる0230)を参照してください。
 
 hookを入れると、毎回のターンの2つの瞬間が残ります。エージェントが始める前の依頼と、終えた後の返答と変わったファイルです。次の人の発言が一組を閉じます。前の依頼の続きだけの発言(「ok」「続けて」「それでいこう」など)は、前の依頼にまとめます。続きかどうかはエージェントが着手前の整理で決め、決まった相づちの一覧は予備です。エージェントはそこから出典付きの教訓を書き、shikiiは似た仕事の前に関係する教訓を届けます。エージェントは振り返りで、届いた教訓が役立ったかを報告します。保存した評価から、同じ入り口で繰り返し使われなかった教訓や判断を妨げた教訓を、判断と証拠付きで優先して見直しに回します。エージェントが出典を確認してから編集し、変更不要という判断も保存できます。不明な評価や古い版の評価を、悪い評価として扱いません。
+
+0.30.5では、履歴整理の読取からファイル置換まで、記録と回答の追記と同じ錠を保持します。同時保存による消失を防ぎ、削除しない確認実行の動きは保持します。
 
 0.30.4では、状態表示の1回の要求でラベル集計を共用し、原資料のページ分割で不要な符号化用バッファーを減らします。履歴は指定した最新件数だけを保持し、小さい履歴は直接並べます。証拠・原資料の全文回復・既存の判断は保持します。モデルの重みは変えず、回答品質全般の改善を測ったものでもありません。
 

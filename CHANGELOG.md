@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.30.5 — Preserve concurrent saves during history cleanup
+
+- Hold the record and answer append locks from the cleanup snapshot through the final file replacement. Concurrent saves can no longer disappear behind `gc --apply`.
+- Preserve dry-run counts, missing-history behavior, labeled records, recent records and unparsed lines.
+- Add a deterministic regression check at the label snapshot and file replacement boundaries; align the Go test count at 1378.
+
 ## 0.30.4 — Reduce repeated status, source-page and history work
 
 - Share label counts within each status request while preserving human-label precedence, latest-input selection, thresholds and rejected outcome provenance.

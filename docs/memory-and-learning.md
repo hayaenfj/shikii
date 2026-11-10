@@ -279,6 +279,7 @@ What adapts is the project's knowledge-delivery method. Model weights and decisi
 | 0.30.2 | Recover interrupted appends and keep answers with their original question and card. |
 | 0.30.3 | Consolidate shared storage and display code; keep a worktree's wiki and shared records in the original project. |
 | 0.30.4 | Reduce per-request label work, source-page measurement and retained history candidates while preserving evidence and recovery. |
+| 0.30.5 | Preserve concurrent decision and answer saves during history cleanup with shared append locks. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
 
