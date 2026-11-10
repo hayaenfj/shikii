@@ -65,7 +65,7 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 		return "", "", false, project, scope
 	}
 	if !filepath.IsAbs(objects) {
-		objects = filepath.Join(cwd, objects)
+		objects = filepath.Join(top, objects) // git answered at the repo's root (dir), not at cwd: a subdirectory would name a folder that does not exist
 	}
 	scratch, err := os.MkdirTemp("", "shikii-git-*")
 	if err != nil {
