@@ -16,7 +16,7 @@ func TestStopAfterShikiisOwnBlockStillHaltsWhenTheRecordIsGone(t *testing.T) {
 	requireRecoveryHalt(t, runHook(t, "stop", stop))
 }
 
-// Stop_hook_active only says that some Stop hook (not necessarily shikii's) continued the turn. In a session where shikii
+// The stop_hook_active flag only says that some Stop hook (not necessarily shikii's) continued the turn. In a session where shikii
 // kept no turn (its only message was a slash command, or it started before the project was initialized), there is nothing of
 // shikii's to verify, so the Stop must stay silent instead of ending the turn with "required work could not be verified".
 func TestStopAfterAnotherHooksBlockStaysSilentWithoutATurn(t *testing.T) {

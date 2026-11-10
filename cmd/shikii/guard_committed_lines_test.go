@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// H6: added lines are the lines that were not in the file when the request arrived. A turn that adds a forbidden word and
+// Added lines are the lines that were not in the file when the request arrived. A turn that adds a forbidden word and
 // commits it (the usual way to work: one commit per feature) must still be stopped: the content to compare with is the
 // blob kept in the request's listing, not the HEAD the turn itself just moved.
 func TestForbiddenWordCommittedInTheTurnStillStops(t *testing.T) {
@@ -40,7 +40,7 @@ func TestForbiddenWordCommittedInTheTurnStillStops(t *testing.T) {
 	}
 }
 
-// H6 (the other direction): a line that was already in the file when the request arrived is not an added line, also when
+// The other direction: a line that was already in the file when the request arrived is not an added line, also when
 // the turn commits: old text with the word, a clean line added and committed in the turn, must not stop the turn.
 func TestLinesFromBeforeTheRequestAreNotAddedLinesAfterACommit(t *testing.T) {
 	repo := gitRepo(t)
@@ -64,7 +64,7 @@ func TestLinesFromBeforeTheRequestAreNotAddedLinesAfterACommit(t *testing.T) {
 	}
 }
 
-// H6 (a file that was already modified, uncommitted, when the request arrived): its blob lived only in the snapshot's
+// A file that was already modified, uncommitted, when the request arrived: its blob lived only in the snapshot's
 // temporary store, so the comparison falls back to a commit. That commit must be the HEAD kept at the request, not the
 // HEAD the turn's own commit moved to.
 func TestForbiddenWordCommittedInTheTurnStillStopsForAFileDirtyAtTheRequest(t *testing.T) {

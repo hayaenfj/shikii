@@ -10,7 +10,7 @@ import (
 // h1Kanji is a two-character non-ASCII file stem (built from code points so the source stays ASCII).
 var h1Kanji = string([]rune{0x624b, 0x9806})
 
-// H1: a file whose name has non-ASCII characters (git quotes it in `ls-files --stage` unless -z is used) must still be
+// A file whose name has non-ASCII characters (git quotes it in `ls-files --stage` unless -z is used) must still be
 // read by the forbidden-words guard at Stop.
 func TestStopGuardReadsFilesWithNonASCIINames(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
@@ -42,7 +42,7 @@ func TestStopGuardReadsFilesWithNonASCIINames(t *testing.T) {
 	}
 }
 
-// H1 (paired-files): the pair is written with the real file names, so the changed-file list must carry the real names too.
+// Paired-files: the pair is written with the real file names, so the changed-file list must carry the real names too.
 func TestStopPairedFilesMatchNonASCIINames(t *testing.T) {
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
@@ -72,7 +72,7 @@ func TestStopPairedFilesMatchNonASCIINames(t *testing.T) {
 	}
 }
 
-// H1 (a watch saved before the fix): its keys are the names as git quoted them. A new file that is still there must not
+// A watch saved before the fix: its keys are the names as git quoted them. A new file that is still there must not
 // read as "removed again" (reverted) once the listing carries the real names.
 func TestScopeWatchSavedWithQuotedNamesIsNotReverted(t *testing.T) {
 	repo := gitRepo(t)
@@ -94,7 +94,7 @@ func TestScopeWatchSavedWithQuotedNamesIsNotReverted(t *testing.T) {
 	}
 }
 
-// H1 (guard try): `git status --porcelain` quotes names with spaces or non-ASCII characters too.
+// Guard try: `git status --porcelain` quotes names with spaces or non-ASCII characters too.
 func TestGuardWorkingTreeInputReadsQuotedNames(t *testing.T) {
 	repo := gitRepo(t)
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# r\n"), 0o644); err != nil {

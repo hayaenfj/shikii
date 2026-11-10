@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// H5: the working tree snapshot writes new blobs into a temporary object store and reads the repo's own objects as alternates.
+// The working tree snapshot writes new blobs into a temporary object store and reads the repo's own objects as alternates.
 // From a subdirectory of the repo (the agent ran cd, or the session started there) the alternates path must still be the
 // repo's objects folder; a path that does not exist makes git write every file of the repo into the temporary store on
 // every hook, which is what pushes large repos past the 3 second limit (then nothing is compared and no guard runs).
