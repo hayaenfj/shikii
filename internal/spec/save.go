@@ -57,8 +57,16 @@ func (s *Spec) Save() error {
 	if err := enc.Close(); err != nil {
 		return err
 	}
+	// The spec is the person's file: replace the file the path leads to (a link stays a link) and keep the mode the person set on it.
+	target, mode := s.path, os.FileMode(0o644)
+	if real, err := filepath.EvalSymlinks(s.path); err == nil {
+		target = real
+	}
+	if info, err := os.Stat(target); err == nil {
+		mode = info.Mode().Perm()
+	}
 	// Write in the same folder, then rename (a crash midway does not break the original spec; serve rereads it every time)
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".tmp-*")
+	tmp, err := os.CreateTemp(filepath.Dir(target), filepath.Base(target)+".tmp-*")
 	if err != nil {
 		return err
 	}
@@ -71,11 +79,11 @@ func (s *Spec) Save() error {
 		os.Remove(tmp.Name())
 		return err
 	}
-	if err := chmodSaved(tmp.Name(), 0o644); err != nil && !errors.Is(err, syscall.EPERM) { // Linux's exFAT and FAT refuse modes (0.9.10)
+	if err := chmodSaved(tmp.Name(), mode); err != nil && !errors.Is(err, syscall.EPERM) { // Linux's exFAT and FAT refuse modes (0.9.10)
 		os.Remove(tmp.Name())
 		return err
 	}
-	if err := os.Rename(tmp.Name(), s.path); err != nil {
+	if err := os.Rename(tmp.Name(), target); err != nil {
 		return err
 	}
 	s.Calibration = calibration
