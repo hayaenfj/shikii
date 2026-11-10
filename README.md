@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-1377%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.30.3-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.30.4-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.30.3 consolidates shared storage, HTTP and page actions while preserving existing interfaces and recovery behavior. Worktree guidance keeps the wiki and shared work records in the original project. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.30.4 reduces repeated status calculations, source-page sizing and memory retained when reading a limited history. Source text, recovery checks and record order remain unchanged. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 
@@ -156,6 +156,8 @@ Using the optional assignment API introduced in 0.24, version 0.25 connects chit
 Procedure reuse returns at most two candidate outcomes, prioritizing current condition terms and task or action terms, and retaining an earlier relevant failure. Ties prefer newer results; without relevant context, selection keeps the usual recency order. The agent still interprets each candidate: it is never automatic success, human truth or permission. These selection improvements and ordinary recording also work without chiten. See the [collective knowledge workflow](docs/guide.md#share-changes-and-compare-concurrent-work-0230).
 
 With the hooks installed, two moments of every turn are kept: the request before the agent starts, and the reply and the changed files after it ends. The next human message closes the pair. A message that only continues the previous request ("ok", "continue", "sounds good") is attached to it instead; the agent decides this in its pre-start organizing, and a fixed list of acknowledgements is the fallback. The agent writes lessons with sources from them, and shikii delivers relevant lessons before similar work. In reflection the agent reports whether a delivered lesson helped. Saved assessments also prioritize lessons for review: repeated unused deliveries at the same entry point, or a harmful delivery, bring the lesson back with the decisions and evidence. The agent checks its sources before changing it, and a no-change review also settles that evidence. Unknown and older-revision assessments do not count as negative feedback.
+
+In 0.30.4, each status request shares label calculations, source pagination avoids redundant encoding buffers, and limited history reads retain only the requested latest records. Small histories keep a direct sort. These local processing improvements preserve evidence, complete source recovery and existing decisions; they do not change model weights or establish a general answer-quality improvement.
 
 In 0.30.3, shared code keeps append locks, history reads, counts and wording actions consistent across entry points. A dedicated worktree changes code while the original project retains its wiki and work records. Existing data formats and the knowledge-delivery workflow are preserved.
 

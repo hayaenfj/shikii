@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.30.4 — Reduce repeated status, source-page and history work
+
+- Share label counts within each status request while preserving human-label precedence, latest-input selection, thresholds and rejected outcome provenance.
+- Measure encoded response size without retaining a second encoded buffer and start source-page fitting near its budget. Preserve exact UTF-8 source recovery, continuation validation and final host response limits.
+- Retain only the requested newest records for limited history reads, preserving equal-time row order and invalid-row handling. Use a direct sort when all records fit; continue scanning and decoding the complete history.
+- Add eight regression checks and align the Go test count at 1377. Expand both memory comparison documents with omitted delivery, recovery and interrupted-write explanations as well as this release's processing changes.
+- Preserve existing APIs, storage formats and learning evidence requirements. These changes reduce local repeated work; they do not change model weights or demonstrate a general improvement in answer quality.
+
 ## 0.30.3 — Consolidate shared behavior and keep worktree records together
 
 - Share JSONL append locks, bounded history positioning and decision counts while preserving deduplication, partial-line handling, byte hashes and record selection.

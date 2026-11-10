@@ -23,6 +23,8 @@ Alongside choosing how to use remembered knowledge, 0.29 adds **a loop that sele
 3. **Adopt supported procedures.** Initially, two different tasks must report the required quality with less guidance. The candidate can then become the next procedure under matching conditions.
 4. **Restore on regression.** A missed condition, greater guidance cost or unavailable supporting evidence rejects the candidate or restores its previous procedure. Retire a failed recipe; a different candidate needs more checks.
 
+In 0.30.4, status, source pagination and limited history reads reduce repeated processing while preserving original evidence and decision conditions. The sections below also explain rereading reductions and interrupted-write recovery added in intervening releases.
+
 For example, suppose a CSV investigation keeps searching the same specification without changing its result. shikii can propose suggesting a different check sooner. When separate CSV tasks report that the required conditions were checked with less guidance, the candidate can be adopted. A later reported omission restores the earlier procedure. Recalling a past suggestion becomes connected to validation on other tasks and withdrawal when it fails.
 
 Ordinary recording uses one initial `prepare` and one ending `record`. Send what changed, the evidence checked and what remains once. If quality was actually checked, optionally add `result.sufficient` and reuse that evidence. A conversation with no new lasting knowledge needs no long reflection or wiki article. Additional source reads and important corrections during work can be recorded when needed.
@@ -30,6 +32,14 @@ Ordinary recording uses one initial `prepare` and one ending `record`. Send what
 Unknown quality stays unknown. Empty or unsupported quality results contribute no support; the original report is saved and its unverified grade stays unresolved without repeated storage retries. Result and reading checks for the same execution must agree on the check, quality and evidence before contributing support. Renaming the same proof does not create another validation task. Original executions and evidence bindings remain available after session expiry.
 
 Candidates change only the fixed guidance procedures. Required checks, original-source recovery, evaluation rules and permissions stay outside their control, with bounded exploration and storage. This changes project procedure selection without retraining a model or permitting arbitrary code changes. Fewer guidance bytes do not establish general improvements in elapsed time, model tokens or answer quality. See the [recording contract](../skills/shikii/references/recording.md#automatic-improvement-of-loop-procedures).
+
+## In 0.28.1–0.29.2, reduce rereading while retaining what was read
+
+In 0.28.1, repeated long MCP strings share their original text and retain their original locations. Complete JSON remains available, so a shorter display does not remove source material. In 0.29.1, identical excerpts can be reused within the same task. Omitted text is not treated as read; changed conditions and explicit full recovery still take priority.
+
+In 0.29.2, repeated notices share text within a response, and only quotations and excerpts actually returned in the final response count as delivered. A related article's earlier review can be reused when every content and evidence field is identical and only version lineage differs. Edited articles themselves, new evidence and changed premises still require review.
+
+After a memory-policy change, routine maintenance covers one batch of at most two articles per task. Saved progress survives interruption, while an explicit request to complete maintenance can continue the remaining batches. Preferences, original sources and past judgments remain; unavailable sources are not marked as reviewed.
 
 ## In 0.29.3, preserve the current intent while reducing repeated delivery
 
@@ -57,15 +67,29 @@ Within the same task, a fixed `collective.notice` can refer to its earlier deliv
 
 Programmatic clients can read `structuredContent` while retaining error state and additional content; models should receive one complete view of a result. The server keeps both representations. These changes reduce repeated presentation without summarizing the request or evidence. Value preservation and delivery size remain separate from actual model judgment quality. See [MCP knowledge delivery](mcp-knowledge.md).
 
+## In 0.30.2, keep interrupted records usable by later work
+
+Reusing memory requires a complete new line to remain readable after an earlier write fails. In 0.30.2, an unfinished tail is separated from the next line, and a failed append batch is rolled back when possible. A failed rollback is reported, and the first subsequent successful append remains readable. Outcome-label deduplication and append share the same lock.
+
+When answering the final question on the page, the result stays with its original question and card instead of changing another question's counts. These changes preserve recovery and answer identity; failed saves and agent reports are not recreated as human truths.
+
 ## In 0.30.3, keep worktree experience in the same project
 
 A dedicated worktree is a code checkout. The wiki and shared work records stay in the original project, so an agent does not start a separate knowledge history for each checkout. Reports name the worktree, branch, checked commit and shared evidence location. This clarifies where existing project memory is kept; it does not change model weights or the evidence requirements for learning.
+
+## In 0.30.4, make status and reading lighter while retaining evidence
+
+When one status response shows counts for multiple decisions, label calculations are shared within that request. Human-label precedence, latest results per input, threshold-specific counts and rejected outcome provenance remain intact. Old counts are not carried into another request.
+
+When a long source is read in parts, size measurement avoids an unnecessary encoded copy and fitting starts near the response budget. The final host response is still checked against its limit. Exact UTF-8 text, offsets and continuation checks remain; changed sources or request conditions still cause recovery to be refused.
+
+A history read limited to the latest records keeps only that many candidates. It still scans and decodes every line, preserving equal-time row order and invalid-row handling. Small histories that fit the limit are sorted directly. This reduces repeated status, delivery and history processing while retaining project memory and evidence. Model weights, learning adoption criteria and decision authority do not change.
 
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)
 
-So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 8, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
+So “OpenAI remembers only preferences” or “only shikii stores memory locally” would be inaccurate distinctions. This comparison concerns the published description of memory features checked on November 10, 2026, rather than the full instruction, tool and permission systems in OpenAI products.
 
 | What you need | What memory provides | What shikii combines |
 | --- | --- | --- |
@@ -86,6 +110,8 @@ So “OpenAI remembers only preferences” or “only shikii stores memory local
 | Improve investigation procedures | Carry earlier suggestions and results as context | Generate guidance candidates from stalls, validate and adopt using separate tasks' quality and guidance bytes, and restore the previous procedure on regression |
 | Reduce recording work | Carry current context into later work | Share results and evidence in two ordinary start/end calls; require no article or long reflection for conversations with no new lasting knowledge |
 | Upgrade existing knowledge | Manage stored memories | Let the agent review sources after a policy change, preserve preferences and history, and resume gradual maintenance from saved progress |
+| Retain experience across work locations | Carry earlier work context forward | Keep worktree knowledge and shared records in the original project, reporting the code revision and evidence location |
+| Reduce reading work | Refer to stored context | Retain source text and change detection while reducing per-request calculations, page-size measurement and retained history candidates |
 | Check required work | Separate management of mandatory guidance | Enabled checks and verification that required records were saved |
 
 OpenAI also recommends keeping mandatory team guidance in `AGENTS.md` or checked-in documentation rather than relying on memory alone. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories)
@@ -244,7 +270,15 @@ What adapts is the project's knowledge-delivery method. Model weights and decisi
 | 0.26 | Require evidence-linked starting judgments and ending reviews, preserving unresolved saves across retries and preparations. |
 | 0.27 | Link expectations and observations to the next check, compare matched executions, adjust reading depth and check supported publication calls. |
 | 0.28 | Compare reading depths using measured delivery and quality reports; return support from two distinct tasks or an omission to the next matching default. |
+| 0.28.1 | Share original text in the MCP display while preserving complete JSON and original locations. |
 | 0.29 | Combine two-call recording with procedure generation, validation on separate tasks, adoption, restoration on regression and source-preserving review of existing knowledge. |
+| 0.29.1–0.29.2 | Reuse identical excerpts, notices and unchanged related reviews; limit routine maintenance to two articles per task. |
+| 0.29.3 | Retain the current request and provenance while referencing unchanged article descriptions from the same task. |
+| 0.30.0 | Reduce repeated parsing, source reading and status work while retaining full-byte and commit-time validation. |
+| 0.30.1 | Keep complete common MCP guidance in one place and document unchanged-explanation reuse and complete result reading. |
+| 0.30.2 | Recover interrupted appends and keep answers with their original question and card. |
+| 0.30.3 | Consolidate shared storage and display code; keep a worktree's wiki and shared records in the original project. |
+| 0.30.4 | Reduce per-request label work, source-page measurement and retained history candidates while preserving evidence and recovery. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
 
