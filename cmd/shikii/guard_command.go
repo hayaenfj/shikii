@@ -64,6 +64,8 @@ func guardList(root string) error {
 		if r, ok := last[g.ID]; ok {
 			if r.Pass {
 				line += fmt.Sprintf("  (last: passed %s)", r.At.Format("01-02 15:04"))
+			} else if r.Unverified { // neither passed nor stopped: the check could not be made
+				line += fmt.Sprintf("  (last: not checked %s: %s)", r.At.Format("01-02 15:04"), cut(strings.ReplaceAll(r.Reason, "\n", " / "), 80))
 			} else {
 				line += fmt.Sprintf("  (last: stopped %s: %s)", r.At.Format("01-02 15:04"), cut(strings.ReplaceAll(r.Reason, "\n", " / "), 80)) // a Japanese reason is on its own line (bi): keep the list one line per check
 			}

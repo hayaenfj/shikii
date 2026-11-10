@@ -151,7 +151,9 @@ func guardPublication(root string, in *hookInput, snapshot *hookSession, command
 			continue
 		}
 		r := evalGuard(g, input)
-		records = append(records, guardRecord{At: now, Session: in.SessionID, Turn: base.Turn, Guard: r.ID, Pass: r.Pass, Reason: bi(r.Reason, r.ReasonJA, loc), Tool: !r.Pass})
+		rec := r.record(in.SessionID, base.Turn, bi(r.Reason, r.ReasonJA, loc))
+		rec.At, rec.Tool = now, !r.Pass
+		records = append(records, rec)
 		if !r.Pass {
 			failed = append(failed, r)
 		}

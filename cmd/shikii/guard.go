@@ -61,6 +61,9 @@ type guardInput struct {
 	Added        map[string][]string
 	Commits      []string
 	CommitsKnown bool
+	// CommitsUnreadable: the HEAD kept at the start is no longer an ancestor of the current HEAD (amended, rebased, another branch), so the
+	// turn's commits cannot be told from older ones. commit-body then neither passes nor stops: the check could not be verified
+	CommitsUnreadable bool
 	// Commands are the commands about to run (PreToolUse Bash, 0.11); the turn's commands are not observed at Stop, so CommandsKnown is false there
 	Commands      []string
 	CommandsKnown bool
@@ -68,8 +71,10 @@ type guardInput struct {
 
 type guardResult struct {
 	ID     string `json:"guard"`
-	Pass   bool   `json:"pass"`
+	Pass   bool   `json:"pass"` // false stops. A check that could not be verified does not stop, so it is true here with Unverified set
 	Reason string `json:"reason,omitempty"`
+	// Unverified: the check could not be made (Reason says why). It stops nothing and is recorded as not verified, never as passed
+	Unverified bool `json:"unverified,omitempty"`
 	// ReasonJA is the same reason in Japanese. The hook shows it next to the English one (bi) when the person's language is Japanese
 	ReasonJA string `json:"-"`
 }
@@ -86,6 +91,14 @@ type guardRecord struct {
 	Recheck bool      `json:"recheck,omitempty"`
 	// Tool marks a stop right before a file change (PreToolUse, 0.11), not at the end of the turn
 	Tool bool `json:"tool,omitempty"`
+	// Unverified marks a check that could not be made (commit-body when the HEAD kept at the request is no longer an ancestor of the
+	// current HEAD): pass is false, but it is neither a stop nor a fix, and nothing was stopped. Records without it read as before
+	Unverified bool `json:"unverified,omitempty"`
+}
+
+// record is the line kept for one result. A check that could not be verified is kept as not passed and marked unverified.
+func (r guardResult) record(session, turn, reason string) guardRecord {
+	return guardRecord{Session: session, Turn: turn, Guard: r.ID, Pass: r.Pass && !r.Unverified, Reason: reason, Unverified: r.Unverified}
 }
 
 // ---------------------------------------------------------------- storage

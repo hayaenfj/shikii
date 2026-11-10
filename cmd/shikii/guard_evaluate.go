@@ -137,6 +137,7 @@ func validateAllowedWord(a string, words []string) error {
 }
 
 // evalGuard runs one check against what was observed in the turn. Unknown observations (the file list or commits could not be read) pass: it stops only when certain.
+// commit-body with a rewritten start (CommitsUnreadable) also stops nothing, but comes back Unverified with the reason, so it is not recorded as passed.
 func evalGuard(g guard, in guardInput) guardResult {
 	r := guardResult{ID: g.ID, Pass: true}
 	switch g.Kind {
@@ -198,6 +199,11 @@ func evalGuard(g guard, in guardInput) guardResult {
 		}
 	case guardKindCommitBody:
 		if !in.CommitsKnown {
+			if in.CommitsUnreadable { // not a pass: the record says the check could not be verified (it still stops nothing)
+				r.Unverified = true
+				r.Reason = "this turn's commits could not be read, so their bodies were not checked: the HEAD kept at the request is no longer an ancestor of the current HEAD (a commit was amended or rebased, or another branch was checked out)"
+				r.ReasonJA = "\u3053\u306e\u30bf\u30fc\u30f3\u306e\u30b3\u30df\u30c3\u30c8\u3092\u8aad\u3081\u305a\u3001\u672c\u6587\u3092\u78ba\u304b\u3081\u3089\u308c\u306a\u304b\u3063\u305f: \u4f9d\u983c\u306e\u6642\u306e HEAD \u304c\u4eca\u306e HEAD \u306e\u7956\u5148\u3067\u306a\u3044(\u30b3\u30df\u30c3\u30c8\u306e amend\u30fbrebase \u304b\u3001\u5225\u306e\u30d6\u30e9\u30f3\u30c1\u3078\u306e\u5207\u308a\u66ff\u3048)"
+			}
 			return r
 		}
 		var bad, badJA []string

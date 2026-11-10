@@ -75,7 +75,7 @@ func turnStoppedGuards(root, session, turn string) (stop, tool map[string]bool) 
 		switch {
 		case r.Tool:
 			tool[r.Guard] = true
-		case !r.Pass && !r.Recheck:
+		case !r.Pass && !r.Recheck && !r.Unverified: // a check that could not be verified stopped nothing
 			stop[r.Guard] = true
 		}
 	}

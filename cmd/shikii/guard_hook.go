@@ -17,7 +17,8 @@ import (
 // lines found only in the current content when comparing, line by line, the content at the request with the current content. The content at the request is the listing's blob if it is in the repo,
 // otherwise the HEAD content (the blob of a file that was uncommitted at the request disappears together with the temporary store the listing was taken in, so for those it is the diff from HEAD), and otherwise empty.
 // This turn's commits are the log from the HEAD saved at the request (session.Head) to the current HEAD (not checked when HEAD cannot be followed).
-// When something cannot be read, it counts as "unknown" and the check passes (it stops only when certain).
+// When something cannot be read, it counts as "unknown" and the check passes (it stops only when certain). One unknown is recorded as such:
+// when the HEAD saved at the request is no longer an ancestor of the current HEAD, commit-body stops nothing and its record is "unverified", not a pass.
 
 func gitRun(ctx context.Context, dir string, args ...string) (string, bool) {
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -113,6 +114,7 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 		// If the request's HEAD is not an ancestor of the current HEAD (switched to another line of history), head..HEAD is someone else's or older commits, so do not check them.
 		// Even when it is an ancestor, do not check commits made before the request (existing commits brought in by switching branches)
 		if _, ancestor := gitRun(ctx, top, "merge-base", "--is-ancestor", head, "HEAD"); !ancestor {
+			in.CommitsUnreadable = true // commit-body records that it could not verify the turn's commits, instead of a pass
 			return in
 		}
 		if out, ok := gitRun(ctx, top, "log", "--no-merges", "--format=%ct%x1f%B%x1e", head+"..HEAD"); ok { // ignore the automatic text of merges
@@ -200,7 +202,9 @@ func guardStop(root string, in *hookInput, base guardBaseline, before string, ch
 		// The page retains localized evidence; the agent receives English scaffolding.
 		reason := bi(r.Reason, r.ReasonJA, loc)
 		stops := !r.Pass && !halted && !stopped[r.ID]
-		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: base.Turn, Guard: r.ID, Pass: r.Pass, Reason: reason, Recheck: !stops && (!r.Pass || stopped[r.ID] || toolStopped[r.ID])})
+		rec := r.record(in.SessionID, base.Turn, reason)
+		rec.At, rec.Recheck = now, !stops && (!r.Pass || stopped[r.ID] || toolStopped[r.ID])
+		recs = append(recs, rec)
 		if stops {
 			failed = append(failed, r)
 		}

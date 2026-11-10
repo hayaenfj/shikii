@@ -18,6 +18,9 @@ func countGuardStats(guards []guard, recs []guardRecord) guardStats {
 		if isBuiltinGuard(r.Guard) {
 			continue // ritual checks are counted separately in countRitualStats (0.8.0)
 		}
+		if r.Unverified {
+			continue // the check could not be made: neither a stop nor a fix
+		}
 		key := r.Session + "/" + r.Turn
 		if !r.Recheck && !r.Pass {
 			stopped[key] = true
@@ -120,15 +123,24 @@ func guardSummaryJSON(root string) map[string]any {
 		return map[string]any{"total": 0, "enabled": 0, "stopped": 0, "fixed": 0, "items": items, "error": err.Error()}
 	}
 	recs := readGuardRecords(root)
-	last := map[string]guardRecord{}
+	// last is the last result that was verified (the page words it as passed or stopped); a newer check that could not be verified is named apart
+	last, unverified := map[string]guardRecord{}, map[string]guardRecord{}
 	for _, r := range recs {
+		if r.Unverified {
+			unverified[r.Guard] = r
+			continue
+		}
 		last[r.Guard] = r
+		delete(unverified, r.Guard)
 	}
 	guards = append(builtinGuards(), guards...) // list the ritual checks (built in) too (0.8.0)
 	for _, g := range guards {
 		item := map[string]any{"id": g.ID, "kind": g.Kind, "title": g.Title, "enabled": g.Enabled, "reason": g.Reason, "builtin": isBuiltinGuard(g.ID)}
 		if r, ok := last[g.ID]; ok {
 			item["last"] = map[string]any{"pass": r.Pass, "at": r.At, "reason": r.Reason, "recheck": r.Recheck}
+		}
+		if r, ok := unverified[g.ID]; ok {
+			item["unverified"] = map[string]any{"at": r.At, "reason": r.Reason}
 		}
 		items = append(items, item)
 	}

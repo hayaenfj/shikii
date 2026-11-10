@@ -133,7 +133,7 @@ func readGuardRecords(root string) []guardRecord {
 // continuation was shikii's own and that the session record it needs is gone.
 func shikiiStoppedSession(root, session string) bool {
 	for _, r := range readGuardRecords(root) {
-		if r.Session == session && !r.Pass {
+		if r.Session == session && !r.Pass && !r.Unverified { // a check that could not be verified stopped nothing
 			return true
 		}
 	}
