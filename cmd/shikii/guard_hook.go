@@ -88,15 +88,21 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 		if err != nil || len(now) > guardFileBytesMax || isBinary(now) {
 			continue
 		}
+		// the content at the request: the listing's blob ("mode sha": only the sha names it); when that blob is gone (the file was
+		// uncommitted at the request), the commit that was HEAD at the request, never the HEAD this turn's own commits moved to
+		// (the current HEAD only when the request's HEAD is not known). A file that was not in the listing is new: every line is added.
 		var old []byte
-		if sha := oldSHA[p]; sha != "" {
-			if s, ok := gitRun(ctx, top, "cat-file", "-p", sha); ok {
+		if meta := strings.Fields(oldSHA[p]); len(meta) == 2 {
+			if s, ok := gitRun(ctx, top, "cat-file", "blob", meta[1]); ok {
 				old = []byte(s)
-			}
-		}
-		if old == nil {
-			if s, ok := gitRun(ctx, top, "show", "HEAD:"+p); ok {
-				old = []byte(s)
+			} else {
+				ref := head
+				if ref == "" {
+					ref = "HEAD"
+				}
+				if s, ok := gitRun(ctx, top, "show", ref+":"+p); ok {
+					old = []byte(s)
+				}
 			}
 		}
 		if lines := addedLines(old, now); len(lines) > 0 {
