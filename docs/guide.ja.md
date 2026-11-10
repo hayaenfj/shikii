@@ -519,6 +519,8 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 採点・wiki整理・届いた記憶と訂正の観察、記事の見直しをまとめて確認・保存(query は整理待ちの会話を全部並べ(古い 2 件は原文、続く 40 件までは頭だけ、残りは more_pending の件数)、原資料と見直しの対象は 2 件ずつ見せ、submit は会話・項目・見直しの数を限らない。既存の記事に足す時、元の出典は引き継がれる)。`complete`と各`error`を確認する |
 | `GET /v1/specs` | | 読み込んでいる spec の一覧 |
 
+判断の未回答・回答済み一覧は、続きがあれば `next_cursor` を返します。同じ取得先・問いに `cursor=<next_cursor>` と `limit`（最大1000件）を渡して読み進めます。不正な位置は400、履歴や回答が変わった場合は409を返すため、最初から読み直してください。画面は続きも自動取得し、既存の「さらに表示」で順に表示します。
+
 ```sh
 curl -s localhost:8095/v1/decide -H 'Content-Type: application/json' -d '{"spec":"same-issue","inputs":{"report1":"…","report2":"…"}}'
 curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec":"same-issue","trace_id":"<decide の返事の trace_id>","truth":"yes"}'

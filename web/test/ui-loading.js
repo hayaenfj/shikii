@@ -210,3 +210,39 @@ export async function checkLazyNavigation(target) {
   console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (3 requests at first=' + initial + ', fetched on question switch=' + switched + ', answered and unanswered counts=' + answered + ', waiting while switching=' + waiting + ', opens unloaded knowledge=' + knowledge + ')');
   return ok;
 }
+
+// Both sides of the old page boundary remain reachable through the actual buttons.
+export async function checkDecisionContinuation(target) {
+  const realFetch = globalThis.fetch, saved = { ...ui }, state = data.state;
+  const lang = i18n.lang; i18n.lang = 'en';
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  let ok = true;
+  try {
+    for (const total of [201, 1001]) {
+      const sp = { id: 'synthetic', type: 'noul', titles: {}, questions: {}, keys: [], min_n: 50, records: total, labels: 0, unlabeled: total, waiting_for_person: total, person_answers: true };
+      let requests = 0;
+      globalThis.fetch = async url => ({ ok: true, json: async () => {
+        if (url === 'v1/status') return { specs: [{ ...sp }] };
+        if (!url.startsWith('v1/queue')) return {};
+        requests++;
+        const params = new URL(url, 'http://localhost').searchParams;
+        const offset = Number(params.get('cursor') || 0), end = Math.min(total, offset + Number(params.get('limit')));
+        return { items: Array.from({ length: end-offset }, (_, i) => ({ trace_id: 'synthetic-'+(offset+i), at: '2026-11-10T00:00:00Z', band: 'ask', top: 'yes', p: .6, model: 'synthetic', inputs: { request: 'synthetic '+(offset+i) }, waits_for_person: true, answerable: true, choices: [{ truth: 'yes', label: 'yes' }, { truth: 'no', label: 'no' }] })), ...(end < total ? { next_cursor: String(end) } : {}) };
+      } });
+      data.state = null; Object.assign(ui, { page: 'ai', tab: 'synthetic', done: false, results: false, listSize: 30, showHelp: false });
+      const app = mount(App, { target });
+      try {
+        await settle(); await settle();
+        for (let i = 0; i < Math.ceil(total/30); i++) {
+          [...target.querySelectorAll('.decision-panel button')].find(b => b.textContent.includes('show more'))?.click();
+          await settle();
+        }
+        const count = target.querySelectorAll('.item').length;
+        const reached = count === total && requests === Math.ceil(total/200);
+        console.log((reached ? 'check-ui: ok' : 'check-ui: FAIL') + ' (decision continuation: rows=' + count + '/' + total + ', requests=' + requests + ')');
+        ok = ok && reached;
+      } finally { await unmount(app); }
+    }
+  } finally { globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved); i18n.lang = lang; }
+  return ok;
+}

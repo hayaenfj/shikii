@@ -26,12 +26,20 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 	}
 	recs, labeled := view.Records, view.Labeled
 	superseded := supersededRecords(recs)
-	items := []map[string]any{}
+	var answered []store.Record
 	for _, rec := range recs {
 		l, ok := labeled[rec.TraceID]
-		if !ok || !store.HumanSource(l.Source) || superseded[rec.TraceID] {
-			continue
+		if ok && store.HumanSource(l.Source) && !superseded[rec.TraceID] {
+			answered = append(answered, rec)
 		}
+	}
+	start, end, next, ok := decisionPage(w, r, len(answered), limit, []any{s.o.storeDir, id, sp.Hash(), sp.ContextHash(), answered, labeled})
+	if !ok {
+		return
+	}
+	items := []map[string]any{}
+	for _, rec := range answered[start:end] {
+		l := labeled[rec.TraceID]
 		items = append(items, map[string]any{
 			"trace_id": rec.TraceID, "at": rec.At, "band": rec.Band, "top": rec.Top, "p": rec.P, "model": rec.Model,
 			"inputs": rec.Inputs, "inputs_hash": rec.InputsHash, "stale": !sp.LiveHash(rec.SpecHash), "rung": rec.RungOf(), "redo_of": rec.RedoOf,
@@ -46,11 +54,8 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 			items[len(items)-1]["choices"] = []map[string]any{{"truth": "yes", "label": "yes", "labels": map[string]string{"ja": "はい"}}, {"truth": "no", "label": "no", "labels": map[string]string{"ja": "いいえ"}}}
 		}
 		items[len(items)-1]["original_inputs"], items[len(items)-1]["text_status"] = s.st.RecordText(rec)
-		if len(items) >= limit {
-			break
-		}
 	}
-	writeJSON(w, 200, map[string]any{"spec": id, "items": items})
+	writeJSON(w, 200, map[string]any{"spec": id, "items": items, "next_cursor": next})
 }
 
 // handleRedo decides a past decision's text again with the current wording (spec) and line. It keeps a new record (redo_of = the original trace), and the original record leaves the queue.
@@ -278,9 +283,16 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		return rank[it.record.Band]
 	}
 	sort.SliceStable(pending, func(i, j int) bool { return order(pending[i]) < order(pending[j]) })
-	if len(pending) > limit {
-		pending = pending[:limit]
+	// Hash ordered eligibility and display state before reading originals.
+	ordered := make([]any, 0, len(pending))
+	for _, item := range pending {
+		ordered = append(ordered, []any{item.record, item.show, item.audit, item.waits, item.reason, item.pair})
 	}
+	start, end, next, ok := decisionPage(w, r, len(pending), limit, []any{s.o.storeDir, id, sp.Hash(), sp.ContextHash(), ordered, reviews})
+	if !ok {
+		return
+	}
+	pending = pending[start:end]
 	// Reading original text and building display data are limited to the records actually returned.
 	items := make([]map[string]any, 0, len(pending))
 	for _, item := range pending {
@@ -305,7 +317,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		}
 		items[len(items)-1]["original_inputs"], items[len(items)-1]["text_status"] = s.st.RecordText(rec)
 	}
-	writeJSON(w, 200, map[string]any{"spec": id, "items": items})
+	writeJSON(w, 200, map[string]any{"spec": id, "items": items, "next_cursor": next})
 }
 
 func (s *server) decisionList(w http.ResponseWriter, r *http.Request, id string) (*spec.Spec, store.DecisionLog, int, bool) {

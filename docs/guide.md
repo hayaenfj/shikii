@@ -548,6 +548,8 @@ The body is JSON. Without `-H 'Content-Type: application/json'` the request is r
 | `POST /v1/reflect` | `operation: query / submit`, `reviews` / `wiki` / `memory` / `maintenance` | Fetch and save together: assessments, wiki work, observations of delivered memory and corrections, and article reviews (query lists every pending conversation, the oldest two with their raw text, up to 40 more as heads and the rest counted in more_pending, and shows the oldest sources and review targets two at a time; submit takes any number of conversations, items and reviews and records a review of a page the same submit updates; what is left comes back as items; when extending an existing page, its sources are kept). Check `complete` and each `error` |
 | `GET /v1/specs` | | The list of loaded specs |
 
+Both decision lists return `next_cursor` when more records remain. Repeat the same endpoint and spec with `cursor=<next_cursor>` (and the desired `limit`, at most 1000). An invalid cursor returns 400; if the history or answers changed, the cursor returns 409 and the complete list must be read again from the start. The page reads these continuations automatically and shows records with the existing show-more controls.
+
 ```sh
 curl -s localhost:8095/v1/decide -H 'Content-Type: application/json' -d '{"spec":"same-issue","inputs":{"report1":"…","report2":"…"}}'
 curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec":"same-issue","trace_id":"<trace_id from the decide response>","truth":"yes"}'

@@ -134,7 +134,7 @@ async function loadSelection(selection, version, signal) {
     }
     if (version === loadVersion && !signal.aborted) { data.state = st; data.loadError = ''; }
   } catch (e) {
-    if (version === loadVersion && !signal.aborted) data.loadError = e.status === 409 ? t('wikiStale') : e.message; // 409: still changing after reading again from the start
+    if (version === loadVersion && !signal.aborted) data.loadError = e.status === 409 ? t(e.decisionList ? 'decisionsStale' : 'wikiStale') : e.message; // 409: still changing after reading again from the start
   }
 }
 // Whether there is something for a person to do about candidate ways of asking (0.9.2). Only when the agent confirmed the meaning is the same and adopted it automatically (keep it or revert),

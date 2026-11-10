@@ -116,3 +116,41 @@ test('reads the knowledge list and the sources again from the start when the ser
     globalThis.fetch = original;
   }
 });
+
+test('decision lists read 201 and 1001 rows, restart changed lists and preserve failures and cancellation', async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const name of ['queue', 'answered']) for (const total of [201, 1001]) {
+      let calls = 0;
+      globalThis.fetch = async url => {
+        calls++;
+        const params = new URL(url, 'http://localhost').searchParams;
+        const offset = Number(params.get('cursor') || 0);
+        const end = Math.min(total, offset + 200);
+        return { ok: true, json: async () => ({ items: Array.from({length:end-offset}, (_,i)=>({trace_id:String(offset+i)})), ...(end<total?{next_cursor:String(end)}:{}) }) };
+      };
+      const result = await api[name]('synthetic');
+      assert.equal(result.items.length, total);
+      assert.equal(new Set(result.items.map(x=>x.trace_id)).size, total);
+      assert.equal(calls, Math.ceil(total/200));
+      assert.equal(result.next_cursor, undefined);
+    }
+    for (const name of ['queue', 'answered']) {
+      let n=0;
+      globalThis.fetch=async()=>({ok:++n!==2,status:409,json:async()=>n===1?{items:[{trace_id:'old'}],next_cursor:'old'}:n===2?{error:'changed'}:{items:[{trace_id:'new'}]}});
+      assert.deepEqual((await api[name]('synthetic')).items,[{trace_id:'new'}]);
+      n=0;
+      globalThis.fetch=async()=>({ok:++n===1,status:500,json:async()=>n===1?{items:[{}],next_cursor:'next'}:{error:'unavailable'}});
+      await assert.rejects(api[name]('synthetic'),/unavailable/);
+      n=0;
+      globalThis.fetch=async()=>{if(++n>10)throw new Error('unbounded');return {ok:true,json:async()=>({items:[],next_cursor:'same'})}};
+      await assert.rejects(api[name]('synthetic'),/does not move forward/);
+      const controller=new AbortController();n=0;
+      globalThis.fetch=async()=>({ok:true,json:async()=>{n++;controller.abort();return {items:[],next_cursor:'next'}}});
+      await assert.rejects(api[name]('synthetic',controller.signal),e=>e.name==='AbortError');
+      assert.equal(n,1);
+      const custom = new AbortController(); custom.abort('synthetic cancellation');
+      await assert.rejects(api[name]('synthetic', custom.signal), e => e === 'synthetic cancellation');
+    }
+  } finally { globalThis.fetch=original; }
+});

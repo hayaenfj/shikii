@@ -1,13 +1,14 @@
 import { checkLang, checkAiPageStatus, checkPagePurpose, checkSummary, checkMachineOnlySpec, checkLanesForPersonSpec, checkKeysOnlyOnDecisions, checkPlanningContext, checkCalibrationReport, checkCorrection, checkMemoryEffect, checkFullText, checkReview, checkDisagreement, checkProjectEntrances, checkTurnContext, checkBinaryPrediction, checkNavigation, checkLanding } from './ui-context.js';
 import { checkPinned, checkAnswerMerge, checkWordingAgent, checkAnswerCardOnce, checkAnswerWordingBox, checkAnswerNothingToDo, checkWording, checkAnswerAdvances, checkAnswerFocus, checkAuditWordingWithoutWaiting, checkWordingLanding, checkAnswerKeys, checkWordingAskSends, checkWordingPlain } from './ui-answer.js';
 import { checkNotebookTree, checkRulesPanel, checkKnowledgeFront, checkNotebookArticle, checkNotebook, checkClaimEvidence, checkHandoff, checkLessons, checkManageArticle, checkBackgroundArticleDraft, checkCompareArticle, checkComparisonReason } from './ui-knowledge.js';
-import { checkAnswerNotRevertedByOldLoad, checkSwitchDuringAnswerKeepsLoad, checkAnswerCountOnlyForNewWaits, checkReloadDuringAnswerSend, checkFocusedLoading, checkLoadOrdering, checkLazyNavigation } from './ui-loading.js';
+import { checkAnswerNotRevertedByOldLoad, checkSwitchDuringAnswerKeepsLoad, checkAnswerCountOnlyForNewWaits, checkReloadDuringAnswerSend, checkFocusedLoading, checkLoadOrdering, checkLazyNavigation, checkDecisionContinuation } from './ui-loading.js';
 import { checkUtilityConflicts, checkPhoneAnswerBar } from './ui-css.js';
 import { checkAnswerTargetLifetime } from './ui-answer-recovery.js';
 
 
 export async function run() {
   const target = document.getElementById('app');
+  const continuationOK = await checkDecisionContinuation(target);
   const quietOK = checkAnswerNothingToDo(target);
   const answerTargetOK = await checkAnswerTargetLifetime(target);
   const backgroundDraftOK = await checkBackgroundArticleDraft(target);
@@ -47,5 +48,5 @@ export async function run() {
   const wordingBoxOK = await checkAnswerWordingBox(target);
   const auditOK = [await checkAuditWordingWithoutWaiting(target), await checkWordingLanding(target), await checkAnswerKeys(target), await checkWordingAskSends(target), checkPhoneAnswerBar(target), checkWordingPlain(target)].every(Boolean);
   const ok = comparisonReasonOK && compareArticleOK && backgroundDraftOK && manageArticleOK && auditOK && aiStatusOK && purposeOK && knowledgeFrontOK && onceOK && wordingBoxOK && quietOK && reloadOK && rulesOK && switchOK && countOK && advanceOK && revertOK && lessonsOK && handoffOK && conflictsOK && summaryOK && keysOK && machineOnlyOK && treeOK && lanesOK && planningOK && calibrationOK && loadingOK && orderingOK && lazyNavOK && evidenceOK && contextOK && binaryOK && navigationOK && focusOK && landingOK && checkLang(target) && checkPinned(target) && checkAnswerMerge(target) && await checkWording(target) && await checkWordingAgent(target) && await checkNotebook(target) && checkMemoryEffect(target) && checkCorrection(target) && await checkReview(target) && await checkDisagreement(target) && checkFullText(target) && await checkProjectEntrances(target);
-  if (!ok || !articleOK || !answerTargetOK) process.exit(1);
+  if (!continuationOK || !ok || !articleOK || !answerTargetOK) process.exit(1);
 }

@@ -17,12 +17,31 @@ const fromTheStart = async read => {
   }
 };
 
+// Read each bounded decision page under one snapshot. A changed list restarts
+// the whole read; failed or cancelled reads never publish a partial list.
+const decisions = (endpoint, id, signal) => fromTheStart(async () => {
+  const url = endpoint + '?spec=' + encodeURIComponent(id) + '&limit=200';
+  const result = await j(url, { signal });
+  let cursor = result.next_cursor;
+  const seen = new Set();
+  while (cursor) {
+    signal?.throwIfAborted();
+    if (seen.has(cursor)) throw new Error('the next decision page does not move forward');
+    seen.add(cursor);
+    const page = await j(url + '&cursor=' + encodeURIComponent(cursor), { signal });
+    (result.items ??= []).push(...(page.items || []));
+    cursor = page.next_cursor;
+  }
+  delete result.next_cursor;
+  return result;
+}).catch(error => { if (error && typeof error === 'object') error.decisionList = true; throw error; });
+
 const post = (url, body) => j(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 export const api = {
   status: signal => j('v1/status', { signal }),
-  queue: (id, signal) => j('v1/queue?spec=' + encodeURIComponent(id) + '&limit=200', { signal }),
-  answered: (id, signal) => j('v1/answered?spec=' + encodeURIComponent(id) + '&limit=200', { signal }),
+  queue: (id, signal) => decisions('v1/queue', id, signal),
+  answered: (id, signal) => decisions('v1/answered', id, signal),
   tune: (id, signal) => j('v1/tune?spec=' + encodeURIComponent(id), { signal }),
   wiki: signal => fromTheStart(async () => {
     const result = await j('v1/wiki', { signal });
