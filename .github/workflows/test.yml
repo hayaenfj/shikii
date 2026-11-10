@@ -38,8 +38,6 @@ jobs:
       # Contract check: the spec's calibration block matches the current wording, and precision at act is high enough.
       # The backing labels are in testdata/store/labels/ (copied from when the calibration was written; the inputs are only hashes)
       - run: bin/shikii check --store testdata/store decisions/*.yaml
-      # Whether the Docker image builds (whether the docker compose up entry point is broken)
-      - run: docker build -t shikii:ci .
       # Whether the loop goes all the way around with the fake model
       - run: scripts/demo.sh > /tmp/demo.log && tail -5 /tmp/demo.log
       # README: the language switcher line matches docs/readme/, the first line of each language version, relative links exist

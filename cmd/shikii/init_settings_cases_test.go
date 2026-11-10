@@ -221,6 +221,9 @@ func TestCIWorkflowIsReadOnlyAndCached(t *testing.T) {
 		t.Fatal(err)
 	}
 	ci := string(b)
+	if strings.Contains(ci, "docker build") || strings.Contains(ci, "docker/build-push-action") {
+		t.Error("Docker image publication is retired; CI must not require an image build")
+	}
 	// Audit 0.8.2-1 item 7: no write permissions mixed in, and concurrency has a group per ref
 	if strings.Contains(ci, ": write") || strings.Contains(ci, "write-all") {
 		t.Error("test.yml has a write permission")
