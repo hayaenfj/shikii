@@ -77,29 +77,13 @@ func readOriginals(path string) ([]byte, error) {
 }
 
 func immutableLarge(path string, data []byte) error {
-	// Even when the same original is sent again, do not replace it with a partial file or different content.
-	f, err := os.CreateTemp(filepath.Dir(path), ".source-text-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Link(f.Name(), path); err != nil {
-		if !os.IsExist(err) {
-			return err
-		}
-		old, e := readOriginals(path)
-		if e != nil || !bytes.Equal(old, data) {
+	return publishImmutable(path, data, ".source-text-*", func() error {
+		old, err := readOriginals(path)
+		if err != nil || !bytes.Equal(old, data) {
 			return errors.New("a saved original cannot be changed")
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // Observation is an agent-supplied source snapshot, never a truth or permission.

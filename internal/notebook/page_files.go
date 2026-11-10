@@ -99,8 +99,18 @@ func writeFile(path string, data []byte) error {
 }
 
 func immutable(path string, data []byte) error {
-	// Publish a complete temporary file by linking it. An existing source record is not replaced.
-	f, err := os.CreateTemp(filepath.Dir(path), ".source-*")
+	return publishImmutable(path, data, ".source-*", func() error {
+		old, err := readSourceRecord(path)
+		if err != nil || !bytes.Equal(old, data) {
+			return errors.New("an immutable wiki source or revision has changed")
+		}
+		return nil
+	})
+}
+
+// Publish only a complete file. Existing content is checked by its own reader.
+func publishImmutable(path string, data []byte, pattern string, existing func() error) error {
+	f, err := os.CreateTemp(filepath.Dir(path), pattern)
 	if err != nil {
 		return err
 	}
@@ -116,10 +126,7 @@ func immutable(path string, data []byte) error {
 		if !os.IsExist(err) {
 			return err
 		}
-		old, rerr := readSourceRecord(path) // a source record can be larger than a page
-		if rerr != nil || !bytes.Equal(old, data) {
-			return errors.New("an immutable wiki source or revision has changed")
-		}
+		return existing()
 	}
 	return nil
 }
