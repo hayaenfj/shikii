@@ -68,6 +68,19 @@ type labeled struct {
 	Raw json.RawMessage `json:"raw,omitempty"`
 }
 
+// fileRowWeight is the weight of row i of a labeled file, by the rule of every other way a truth comes in (store.LabelFor): 0 or
+// absent is a firm 1, a value in (0, 1] is kept, and anything else is an error naming the row. Every reader of such a file uses it
+// (calibrate, check, and the truth bank of tune, bias and the wiki questions).
+func fileRowWeight(i int, weight float64) (float64, error) {
+	if weight == 0 {
+		return 1, nil
+	}
+	if !(weight > 0 && weight <= 1) {
+		return 0, fmt.Errorf("row %d: weight must be in (0, 1], got %g (1 = a firm truth; less = a weak one)", i, weight)
+	}
+	return weight, nil
+}
+
 // rawFromRow turns a row's raw into a distribution, or nil if absent. A key not among the spec's options is an error (never silently dropped).
 func rawFromRow(sp *spec.Spec, raw json.RawMessage) (map[string]float64, error) {
 	if len(raw) == 0 || string(raw) == "null" {

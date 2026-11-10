@@ -58,7 +58,11 @@ func truthBank(sp *spec.Spec, st store.Store, labeledPath string) (rows []bankRo
 			if err != nil {
 				return nil, 0, fmt.Errorf("row %d: %w", i, err)
 			}
-			put(store.HashInputs(r.Inputs), bankRow{inputs: r.Inputs, truth: truth, weight: r.Weight, human: true}, time.Time{})
+			weight, err := fileRowWeight(i, r.Weight) // a file row outside (0, 1] is refused, not counted as a firm truth
+			if err != nil {
+				return nil, 0, err
+			}
+			put(store.HashInputs(r.Inputs), bankRow{inputs: r.Inputs, truth: truth, weight: weight, human: true}, time.Time{})
 		}
 	}
 	_, all, err := st.Counts(sp.ID)

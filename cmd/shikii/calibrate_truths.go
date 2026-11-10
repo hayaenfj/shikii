@@ -67,14 +67,10 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 		if err != nil {
 			return nil, "", fmt.Errorf("row %d: %w", i, err)
 		}
-		// the same rule as every other way a truth comes in (store.LabelFor): 0 is "not given", anything else outside (0, 1] is
 		// refused before the model is asked (a negative weight used to become a firm 1, and 5 went into the fit as it was)
-		weight := r.Weight
-		if weight == 0 {
-			weight = 1
-		}
-		if !(weight > 0 && weight <= 1) {
-			return nil, "", fmt.Errorf("row %d: weight must be in (0, 1], got %g (1 = a firm truth; less = a weak one)", i, r.Weight)
+		weight, err := fileRowWeight(i, r.Weight)
+		if err != nil {
+			return nil, "", err
 		}
 		l := store.Label{SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Truth: truth, Weight: weight, Source: "file", At: time.Now()}
 		given, err := rawFromRow(sp, r.Raw)

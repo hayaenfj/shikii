@@ -196,7 +196,7 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 	if err := json.Unmarshal(b, &rows); err != nil {
 		return nil, fmt.Errorf("%s: %w", sp.Eval.Labeled, err)
 	}
-	for _, r := range rows {
+	for i, r := range rows {
 		given, err := rawFromRow(sp, r.Raw)
 		if err != nil {
 			return nil, err
@@ -208,9 +208,9 @@ func collectLabels(sp *spec.Spec, st store.Store, model, fittedOn string) ([]sto
 		if err != nil {
 			return nil, err
 		}
-		w := r.Weight
-		if w <= 0 {
-			w = 1
+		w, err := fileRowWeight(i, r.Weight) // outside (0, 1]: refused, as calibrate refuses the same row
+		if err != nil {
+			return nil, err
 		}
 		labels = append(labels, store.Label{SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Model: model,
 			Raw: given, Truth: truth, Weight: w, Source: "file"})
