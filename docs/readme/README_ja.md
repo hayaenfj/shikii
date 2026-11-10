@@ -12,9 +12,9 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 [![Tests](https://img.shields.io/badge/tests-1476%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.30.6-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.30.7-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.30.6では、不正な削除期間による履歴削除を防ぎ、判断の一覧で200件を超える続きも表示できるようにします。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.30.7では、止めるべき変更を通していたguard、保存した記事が読めなくなるwikiの保存、正解に出ていない選択肢で自動に進みうる補正を直します。hookを速くし、一度も役立たなかった過去の答えの引用も止めます。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 同じプロジェクトへ書く本体を全て更新し、hookなしの場合は既存のプロジェクトで `shikii --init` を実行して作法も更新してください。その後、エージェントのセッション・ページ・MCPを起動し直します。既存の記録を保持し、原資料を残したメモリ更新作業をエージェントへ届けます。進捗は英語で表示します。詳しくは[記憶と学習](../memory-and-learning.ja.md)を参照してください。
 
@@ -120,7 +120,7 @@ export PATH="$HOME/.local/bin:$PATH"
 shikii hook install --yes
 ```
 
-シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。版を指定する時は、両方のコマンドの `@latest` を `@v0.30.6` のようなタグへ置き換えます。
+シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。版を指定する時は、両方のコマンドの `@latest` を `@v0.30.7` のようなタグへ置き換えます。
 
 Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上のインストーラーのコマンドをもう一度流してください。多くは実行ファイルそのものが消えていて(miseのようなGoの版の管理ツールでは、Goを上げると `go install` が置いた版ごとのフォルダごと消えます)、`shikii doctor` も一緒に消えています。`shikii` がまだ動く時は `shikii doctor` を流すと、hookやCodexの登録が、もう無い・動かせないshikiiの実行ファイルを指している時はそう言い、直し方を出します。
 
