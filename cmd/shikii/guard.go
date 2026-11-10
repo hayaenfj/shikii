@@ -5,7 +5,7 @@ package main
 // Delivering lessons alone did not change how an agent that can read the repo and CLAUDE.md behaves (the 2026-10-23 experiment, 5 tasks x 2 conditions: 4 ties).
 // On the other hand, a rule a person has stated once ("keep the English and Japanese changelogs in step", "do not use the words 根 or 指紋", "write the background and verification in the commit body")
 // can be made a deterministic check, which works reliably regardless of how smart the model is. At the end of a turn (Stop) the enabled guards run; if one fails, Stop is blocked and
-// the reason is returned (Claude Code's decision: block. On a Stop with stop_hook_active it does not block; it only records whether the problem was fixed).
+// the reason is returned (Claude Code's decision: block. Each guard stops a turn at most once: on a Stop after its own stop it does not block; it only records whether the problem was fixed).
 //
 // Guards live in each project's .shikii/guards/<id>.yaml (fixed location). There are 4 kinds and no new options (forbidden-commands, 0.11: a command about to run must match none of the patterns; refused right before it runs):
 //   paired-files    when one file changes, the other must change too (e.g. CHANGELOG.md and CHANGELOG_ja.md)
@@ -74,7 +74,8 @@ type guardResult struct {
 	ReasonJA string `json:"-"`
 }
 
-// guardRecord is one line of records/guards.jsonl: which check stopped (or passed) in which turn. recheck is the Stop after a block (recording whether it was fixed).
+// guardRecord is one line of records/guards.jsonl: which check stopped (or passed) in which turn. recheck is a Stop after this check's own
+// stop in the turn (recording whether it was fixed), or a failure at a Stop where the check stopped nothing; a failure that is not a recheck is a stop.
 type guardRecord struct {
 	At      time.Time `json:"at"`
 	Session string    `json:"session_id"`

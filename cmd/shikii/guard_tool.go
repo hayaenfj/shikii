@@ -64,13 +64,20 @@ func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, 
 		"shikii: \u6b62\u3081\u308b\u691c\u67fb("+strings.Join(ids, ", ")+")\u304c\u6d41\u3059\u524d\u306e\u30b3\u30de\u30f3\u30c9\u3092\u6b62\u3081\u305f\u306e\u3067\u3001\u76f4\u3057\u305f\u30b3\u30de\u30f3\u30c9\u3092\u6d41\u3059\u3088\u3046\u4f1d\u3048\u307e\u3057\u305f", loc)}, nil
 }
 
-// toolStoppedGuards returns the guards that stopped a command before it ran in this turn (records marked Tool).
-func toolStoppedGuards(root, session, turn string) map[string]bool {
-	out := map[string]bool{}
+// turnStoppedGuards returns the guards that already stopped this turn: stop are the ones that stopped an earlier Stop (a failure
+// that is not a recheck), tool the ones that stopped a command or a publication before it ran (records marked Tool).
+func turnStoppedGuards(root, session, turn string) (stop, tool map[string]bool) {
+	stop, tool = map[string]bool{}, map[string]bool{}
 	for _, r := range readGuardRecords(root) {
-		if r.Tool && r.Session == session && r.Turn == turn {
-			out[r.Guard] = true
+		if r.Session != session || r.Turn != turn {
+			continue
+		}
+		switch {
+		case r.Tool:
+			tool[r.Guard] = true
+		case !r.Pass && !r.Recheck:
+			stop[r.Guard] = true
 		}
 	}
-	return out
+	return stop, tool
 }

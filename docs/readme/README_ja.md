@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-1509%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1512%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.30.7-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -206,7 +206,7 @@ hookを入れると、毎回のターンの2つの瞬間が残ります。エー
 | `commit-body` | そのターンのコミットの本文に決めた語が無い | 「元の問題」「変更後」「検証」 |
 | `forbidden-commands` | 実行前のコマンドが規則に合う | 公開を許可するまで `git push` を断る |
 
-エージェントは訂正から草稿を置き（`shikii guard add`、無効）、人が `shikii guard enable <id>` で有効にします。有効にする時、shikiiはその検査がわざと壊した例で止まることと、正しい例で通ることを先に見せます。引っかかったターンはエージェントが終われず、直してから終えます。止めた後の続きでは二度と止めず、直ったかだけを記録します。
+エージェントは訂正から草稿を置き（`shikii guard add`、無効）、人が `shikii guard enable <id>` で有効にします。有効にする時、shikiiはその検査がわざと壊した例で止まることと、正しい例で通ることを先に見せます。引っかかったターンはエージェントが終われず、直してから終えます。同じ検査が同じターンを止めるのは1回だけで、その検査が止めた後の続きでは止めず、直ったかだけを記録します。
 
 | 仕事 | 普段の担当 | 人の分 |
 |---|---|---|

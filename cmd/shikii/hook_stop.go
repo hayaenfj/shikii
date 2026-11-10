@@ -82,16 +82,10 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			changed, known = changedFiles(string(before), listing), true
 		}
 	}
-	// stop checks (0.7.3): apply enabled guards to the changed files, added lines and this turn's commits. If one is hit, stop the Stop and return the reason
 	var out hookOut
-	if !in.late {
-		var gerr error
-		if out, gerr = guardStop(agent, in, snapshot, string(before), changed, known, recheck); gerr != nil && firstErr == nil {
-			firstErr = gerr
-		}
-	}
 	var checkpoint func(*hookSession)
 	{
+		// the routine check comes first: its recovery count decides alone whether the turn ends incomplete, and a guard stops nothing at such a Stop
 		rout, rerr := ritualStop(agent, snapshot.Scope, in, snapshot, changed, known, recheck)
 		if rerr != nil {
 			if firstErr == nil {
@@ -99,6 +93,14 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 			}
 			rout.Halt = ritualHalt(true)
 			rout.Recovery = &ritualRecovery{TurnID: snapshot.TurnID, Pending: true, FilesKnown: known}
+		}
+		// stop checks (0.7.3): apply enabled guards to the changed files, added lines and this turn's commits. If one is hit, stop the Stop and return the reason.
+		// A guard that has not stopped this turn yet stops it once, also after the routine check or another guard stopped an earlier Stop
+		if !in.late {
+			var gerr error
+			if out, gerr = guardStop(agent, in, snapshot, string(before), changed, known, rout.Halt != ""); gerr != nil && firstErr == nil {
+				firstErr = gerr
+			}
 		}
 		if rout.Recovery != nil {
 			recovery := rout.Recovery
