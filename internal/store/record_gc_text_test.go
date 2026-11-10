@@ -275,3 +275,27 @@ func TestGCRemovesNoTextWhileAKeptLineNamesNoTrace(t *testing.T) {
 		t.Errorf("a kept line names no trace, so no text may be removed: %v", err)
 	}
 }
+
+// The same holds for a line without a trace in another question's records: it may belong to any decision, so this run
+// removes no text. (The text of a decision removed in such a run stays until someone removes it by hand: nothing names it
+// again. `shikii gc` says nothing about it yet.)
+func TestGCRemovesNoTextWhileAnotherQuestionHoldsALineWithoutATrace(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	now := time.Now()
+	old := textRecord("prompt-kind", "aaaaaaaaaaaaaaaa", now.Add(-48*time.Hour))
+	if err := st.AppendRecord(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveRecordText(old, map[string]string{"request": old.Inputs["request"] + " and the long original"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(st.Dir, "records", "needs-plan.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := st.GC("prompt-kind", now.Add(-24*time.Hour), true); err != nil || res.Removed != 1 {
+		t.Fatalf("gc: %+v %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(st.Dir, "records", "text", "aaaaaaaaaaaaaaaa.json")); err != nil {
+		t.Errorf("another question holds a line that names no trace, so no text may be removed: %v", err)
+	}
+}

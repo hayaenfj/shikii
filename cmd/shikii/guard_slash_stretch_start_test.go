@@ -198,25 +198,60 @@ func TestSlashCommandTurnAfterAnInterruptedRequestBeforeTheFirstCommit(t *testin
 	}
 }
 
-// After an interrupted request the person switches to a branch that does not contain the request's HEAD. The slash command's own
-// commit without a body is still read (from the slash command's HEAD) and stopped, not recorded as "not verified".
-func TestSlashCommandTurnAfterAnInterruptedRequestAndABranchSwitch(t *testing.T) {
-	repo, root, readme := twoGuardRepo(t, true)
-	gitIn(t, repo, "branch", "other")
-	if err := os.WriteFile(filepath.Join(repo, "SECOND.md"), []byte("second\n"), 0o644); err != nil {
-		t.Fatal(err)
+// After an interrupted request the history moved to a branch that does not contain the request's HEAD, so the commits since the
+// request cannot be followed. Who moved it cannot be told (the person, or the request's own turn before it was interrupted), so
+// commit-body stops nothing and records that it could not verify the commits. It is never recorded as passed: the request's
+// own turn may have committed without a body on the other branch.
+func TestSlashCommandTurnAfterAnInterruptedRequestRecordsUnreadCommitsAsNotVerified(t *testing.T) {
+	for name, byTheTurn := range map[string]bool{"the person switched branches after the interruption": false, "the request's own turn switched and committed without a body": true} {
+		t.Run(name, func(t *testing.T) {
+			repo, root, _ := twoGuardRepo(t, true)
+			gitIn(t, repo, "branch", "other")
+			if err := os.WriteFile(filepath.Join(repo, "SECOND.md"), []byte("second\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			gitCommitAll(t, repo, commitWithBody)
+			runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": repo, "prompt": interruptedRequest})
+			organizeTurn(t, "g", loadSession(root, "g").TurnID)
+			if byTheTurn {
+				gitIn(t, repo, "checkout", "-q", "other") // the agent, inside the request's turn
+				if err := os.WriteFile(filepath.Join(repo, "FIRST.md"), []byte("first\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				gitCommitAll(t, repo, "docs: subject only, made in the request's turn")
+			} else {
+				gitIn(t, repo, "checkout", "-q", "other") // the person, after interrupting the turn
+			}
+			runHook(t, "user-prompt-submit", map[string]any{"session_id": "g", "cwd": repo, "prompt": "/commit"})
+			if err := os.WriteFile(filepath.Join(repo, "NOTES.md"), []byte("notes\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			gitCommitAll(t, repo, commitWithBody)
+			out := runHook(t, "stop", map[string]any{"session_id": "g", "cwd": repo, "last_assistant_message": "committed"})
+			recs := guardRecordsFor(root, "commit-body")
+			if len(recs) == 0 {
+				t.Fatalf("commit-body was not applied: %q", out)
+			}
+			if last := recs[len(recs)-1]; last.Pass || !last.Unverified {
+				t.Errorf("commits that could not be read are recorded as not verified, never as passed: %+v (output %q)", last, out)
+			}
+		})
 	}
-	gitCommitAll(t, repo, commitWithBody)
-	interruptedTurn(t, repo, root, readme, "c", "# project\n\na clean line\n", "")
-	gitIn(t, repo, "checkout", "-q", "-f", "other")
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "c", "cwd": repo, "prompt": "/commit"})
+}
+
+// The control: the interrupted request's turn committed without a body on its own branch. The slash command's turn after it
+// (one commit with a body) is checked from the request's HEAD, so the request's commit is read and stopped.
+func TestSlashCommandTurnReadsTheCommitsOfTheInterruptedRequest(t *testing.T) {
+	repo, root, readme := twoGuardRepo(t, true)
+	interruptedTurn(t, repo, root, readme, "h", "# project\n\na clean line\n", "docs: subject only, made in the request's turn")
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "h", "cwd": repo, "prompt": "/commit"})
 	if err := os.WriteFile(filepath.Join(repo, "NOTES.md"), []byte("notes\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gitCommitAll(t, repo, "docs: subject only")
-	out := runHook(t, "stop", map[string]any{"session_id": "c", "cwd": repo, "last_assistant_message": "committed"})
-	if !strings.Contains(out, "- commit-body:") {
-		t.Errorf("the slash command's own commit without a body is not stopped after an interrupted request and a branch switch: %q %+v", out, guardRecordsFor(root, "commit-body"))
+	gitCommitAll(t, repo, commitWithBody)
+	out := runHook(t, "stop", map[string]any{"session_id": "h", "cwd": repo, "last_assistant_message": "committed"})
+	if !strings.Contains(out, "- commit-body:") || !strings.Contains(out, "made in the request's turn") {
+		t.Fatalf("the commit without a body the interrupted request's turn made is stopped: %q; records %+v", out, guardRecordsFor(root, "commit-body"))
 	}
 }
 

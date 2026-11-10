@@ -455,7 +455,7 @@ bin/shikii gc --store .shikii --apply         # 実際に消す
 bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # spec と年齢を指定(d / w / h。0 なら年齢を問わない)
 ```
 
-消すのは「`--older-than` より古く、ラベルが 1 つも付いていない記録」だけ。ラベル付きの記録・ラベル・JSON として読めない行は年齢に関係なく残す。消した記録の原文(`records/text/`)も一緒に消す(0.30.7)。
+消すのは「`--older-than` より古く、ラベルが 1 つも付いていない記録」だけ。ラベル付きの記録・ラベル・JSON として読めない行は年齢に関係なく残す。消した記録の原文(`records/text/`)は、その判断の最後の記録と一緒に消す(0.30.7)。どの判断の行か分からない行(JSON でない行)が記録のファイルにある回は、原文を 1 つも消さない。
 書き換えは同じディレクトリに書いてから rename で置き換えるので、途中で止まっても元のファイルは壊れない。
 
 `make status` / `make drift` / `make check` / `make gc` / `make install` / `make server` も用意した(`Makefile`)。
