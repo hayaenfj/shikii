@@ -192,7 +192,7 @@ type reflectLeftItem struct {
 }
 
 func reflectLeft(root, scope string, asked []string) ([]reflectLeftItem, error) {
-	view, err := reflectQueryWith(root, scope, 0) // every pending conversation: what is left is worked out for the ones named, beyond any cap on heads
+	view, rest, err := reflectPending(root, scope, 0) // every pending conversation: what is left is worked out for the ones named, beyond any cap on heads
 	if err != nil {
 		return nil, err
 	}
@@ -224,6 +224,11 @@ func reflectLeft(root, scope string, asked []string) ([]reflectLeftItem, error) 
 	for _, o := range view.Observations {
 		if want[o.ID] {
 			out = append(out, reflectLeftItem{id: o.ID, wiki: true})
+		}
+	}
+	if len(out) > 0 {
+		if err := rest(); err != nil { // stopping the turn on the reflection: the query the agent is sent to must not fail
+			return nil, err
 		}
 	}
 	return out, nil

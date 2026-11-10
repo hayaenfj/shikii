@@ -76,7 +76,28 @@ func reflectQueryWith(root, scope string, headsMax int) (reflectView, error) {
 }
 
 func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
+	v, _, err := reflectQueryParts(book, headsMax, false)
+	return v, err
+}
+
+// reflectPending is the reflection query for the hooks, which read only the pending conversations and observations (who to ask
+// about before the request, what is left at Stop). It does not search the lessons near the oldest conversations or work out the
+// maintenance tasks; rest runs exactly those steps and returns their error. A hook calls rest before it asks for the reflection or
+// stops the turn on it, so those answers still fail when the full query would. When nothing is asked and nothing is left, the hook
+// skips them: a wiki whose maintenance cannot be read no longer turns a finished reflection into an error.
+func reflectPending(root, scope string, headsMax int) (v reflectView, rest func() error, err error) {
+	book := wikiBook(root, scope)
+	if eventPages == nil {
+		book = book.ReadView()
+	}
+	return reflectQueryParts(book, headsMax, true)
+}
+
+// reflectQueryParts is the reflection query. With pendingOnly, the lessons near the conversations that come with their raw text and
+// the maintenance tasks are left out of the view, and rest computes them for their error (rest is nil otherwise).
+func reflectQueryParts(book notebook.Book, headsMax int, pendingOnly bool) (reflectView, func() error, error) {
 	root, scope := book.Root, book.Scope
+	var lessonQueries []string // the searches pendingOnly leaves to rest, in the order the full query runs them
 	v := reflectView{HowToSubmit: reflectHowToSubmit, Sources: []reflectSource{}, Lessons: []notebook.Page{}}
 	st := store.Store{Dir: root}
 	var recent []store.Feedback
@@ -86,7 +107,7 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 		return recent, err
 	})
 	if err != nil {
-		return v, err
+		return v, nil, err
 	}
 	v.MemoryEffect = report.MemorySummary
 	memories := map[string][]store.MemoryObservation{}
@@ -102,7 +123,7 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 	// With the first 2 items of each queue, every target of the first 2 conversations combined is present.
 	reviews, err := reviewQueryFeedback(st, scope, recent)
 	if err != nil {
-		return v, err
+		return v, nil, err
 	}
 	v.Corrections = reviews["human_corrections"]
 	targets := map[string][]reviewTarget{}
@@ -111,7 +132,7 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 	}
 	pending, err := book.PendingSourcesFromFeedback(recent)
 	if err != nil {
-		return v, err
+		return v, nil, err
 	}
 	wiki := map[string]bool{}
 	for _, source := range pending {
@@ -161,9 +182,13 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 		if len(t) == 0 && len(m) == 0 {
 			continue
 		} // Acknowledgements need no unrelated article search; earlier scoring corrections remain available.
+		if pendingOnly {
+			lessonQueries = append(lessonQueries, source.Request+" "+source.Reply)
+			continue
+		}
 		lessons, err := book.Query(source.Request + " " + source.Reply)
 		if err != nil {
-			return v, err
+			return v, nil, err
 		}
 		for _, lesson := range lessons.Lessons {
 			if !seen[lesson.ID] {
@@ -174,17 +199,28 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 	}
 	observations, err := book.PendingObservations()
 	if err != nil {
-		return v, err
+		return v, nil, err
 	}
 	v.Observations = notebook.Heads(observations)
 	if len(v.Observations) > reflectRawSources {
 		v.Observations = v.Observations[:reflectRawSources]
 	}
+	if pendingOnly {
+		return v, func() error {
+			for _, query := range lessonQueries {
+				if _, err := book.Query(query); err != nil {
+					return err
+				}
+			}
+			_, err := book.Maintenance()
+			return err
+		}, nil
+	}
 	v.Maintenance, err = book.Maintenance()
 	if err != nil {
-		return v, err
+		return v, nil, err
 	}
-	return v, nil
+	return v, nil, nil
 }
 
 type reflectReceipt struct {
@@ -427,7 +463,7 @@ func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
 }
 
 func reflectContext(root, scope string) (string, []string, error) {
-	view, err := reflectQuery(root, scope)
+	view, rest, err := reflectPending(root, scope, reflectHeadsMax)
 	if err != nil || len(view.Sources)+len(view.Observations) == 0 {
 		return "", nil, err
 	}
@@ -440,6 +476,9 @@ func reflectContext(root, scope string) (string, []string, error) {
 	}
 	if len(view.Sources)+len(view.Observations) < 2 && (oldest.IsZero() || time.Since(oldest) < 24*time.Hour) {
 		return "", nil, nil
+	}
+	if err := rest(); err != nil { // asking: the query the agent is sent to must not fail (a turn where asking failed asks nothing)
+		return "", nil, err
 	}
 	cli := reflectCLI()
 	ids := []string{}
