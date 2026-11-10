@@ -34,7 +34,11 @@ func countPersonWork(specID string, discardUnsure bool, recs []store.Record, lab
 		}
 	}
 	w.ByPerson, w.ByResult = len(person), len(result)
+	superseded := supersededRecords(recs) // a decision asked again: the new decision is counted in its place
 	for _, r := range recs {
+		if superseded[r.TraceID] {
+			continue
+		}
 		waits := false
 		switch r.Band {
 		case "ask":

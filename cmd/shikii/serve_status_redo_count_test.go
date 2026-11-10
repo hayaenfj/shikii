@@ -16,9 +16,16 @@ func TestStatusDoesNotCountARedoneOriginalAsWaiting(t *testing.T) {
 		if code := getJSON(t, url+"/v1/queue?spec=intent", &q); code != 200 {
 			t.Fatalf("queue: %d", code)
 		}
-		var stat struct{ Specs []map[string]any }
+		var stat struct {
+			Specs   []map[string]any
+			Summary struct{ Person map[string]float64 }
+		}
 		if code := getJSON(t, url+"/v1/status", &stat); code != 200 {
 			t.Fatalf("status: %d", code)
+		}
+		// the summary's line about the person's work counts by the same rule (it said "2 of 2 wait for you" for one decision)
+		if p := stat.Summary.Person; p["records"] > 1 || p["waits"] > 1 {
+			t.Errorf("the summary counts one decision once: %v", p)
 		}
 		return len(q.Items), stat.Specs[0]["unlabeled"].(float64), stat.Specs[0]["waiting_for_person"].(float64)
 	}

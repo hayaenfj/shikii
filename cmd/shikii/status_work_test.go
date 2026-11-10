@@ -82,3 +82,18 @@ func TestCountPersonWorkLeavesOutMCPTruths(t *testing.T) {
 		t.Fatalf("truths decided by the person: %d, want 1 (the mcp truth is the agent's): %+v", w.ByPerson, w)
 	}
 }
+
+// A decision asked again is one decision: the person's work counts the new record in place of the original, on the page's status
+// and in the `shikii status` command alike (both call countPersonWork).
+func TestPersonWorkCountsADecisionAskedAgainOnce(t *testing.T) {
+	now := time.Now()
+	recs := []store.Record{
+		{TraceID: "first", Band: "ask", At: now},
+		{TraceID: "again", Band: "ask", RedoOf: "first", At: now},
+		{TraceID: "other", Band: "ask", At: now},
+	}
+	w := countPersonWork("same-issue", false, recs, nil, nil, now)
+	if w.Records != 2 || w.Waits != 2 || w.RecentRecords != 2 || w.RecentWaits != 2 {
+		t.Fatalf("the original of a decision asked again is not counted: %+v", w)
+	}
+}
