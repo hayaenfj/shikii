@@ -22,7 +22,8 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	var page map[string]any // where this page is (0.8.0): so an agent can answer the URL and port over MCP too
 	if common, err := agentHome(); err == nil {
 		if abs, err := filepath.Abs(s.o.storeDir); err == nil {
-			if rec, ok := readPageRecord(common, filepath.Dir(abs)); ok && rec.PID == os.Getpid() { // only our own mark (do not answer with the mark of another serve started by hand)
+			// the key serve wrote the record under (pageScope: links resolved, the hook's spelling), not the spelling --store was given in
+			if rec, ok := readPageRecord(common, pageScope(abs)); ok && rec.PID == os.Getpid() { // only our own mark (do not answer with the mark of another serve started by hand)
 				page = map[string]any{"url": rec.url() + "/", "port": rec.Port, "pid": rec.PID}
 			}
 		}
