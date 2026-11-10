@@ -110,9 +110,21 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 インストーラーは、GitHub Releasesからこの機械向け（macOSかLinux、amd64かarm64）の最新版を取ってきて、版の `SHA256SUMS` と照らしてから、`shikii` と `shikii-readout` を `~/.local/bin` に置きます。どれが最新版かをGitHubに聞くので、出したばかりの版もすぐ入り、Goは要りません。実行ファイル、hook（依頼の前・作業の後・サブエージェントを起こす時と始まる時）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは `/hooks` でhookを信頼してください。hookの中身が変わるたび(実行ファイルを動かした時やshikiiを更新した時)にもう一度信頼が要り、それまでCodexはhookを飛ばします。
 
-Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上の1行をもう一度流してください。多くは実行ファイルそのものが消えていて(miseのようなGoの版の管理ツールでは、Goを上げると `go install` が置いた版ごとのフォルダごと消えます)、`shikii doctor` も一緒に消えています。`shikii` がまだ動く時は `shikii doctor` を流すと、hookやCodexの登録が、もう無い・動かせないshikiiの実行ファイルを指している時はそう言い、直し方を出します。
+**Go 1.27以上がある場合。** 両方の実行ファイルを、Goの版を上げても残るフォルダへ直接入れられます。
 
-**前に `go install` で入れた人へ。** その実行ファイルはGoのフォルダ(`$(go env GOPATH)/bin` か `GOBIN`)に残り、`shikii update` もそこで更新するだけで、`~/.local/bin` へは移しません。上の1行を一度流すと、hookは `~/.local/bin/shikii` を動かすようになります。先に `~/.local/bin` がPATHにあることを確かめてください(無ければインストーラーがそう言います)。Claude CodeとOpenCodeのMCPは `shikii` を名前で動かします。そのあとGoのフォルダの古い `shikii` と `shikii-readout` を手で消し、もう一度 `shikii hook install --yes` を流してください。それまでは実行ファイルが2つあり、端末で打つ `shikii` と、Claude CodeとOpenCodeのMCP(`shikii` を名前で動かす)は、PATHで先に見つかる方を動かし(`command -v shikii` でどちらかわかります)、`shikii update` はその1つだけを更新し、CodexのMCPの登録は古い実行ファイルが残る間はそちらを指したままです。
+```sh
+mkdir -p "$HOME/.local/bin"
+GOBIN="$HOME/.local/bin" go install github.com/hayaenfj/shikii/cmd/shikii@latest
+GOBIN="$HOME/.local/bin" go install github.com/hayaenfj/shikii/cmd/shikii-readout@latest
+export PATH="$HOME/.local/bin:$PATH"
+shikii hook install --yes
+```
+
+シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。版を指定する時は、両方のコマンドの `@latest` を `@v0.30.5` のようなタグへ置き換えます。
+
+Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上のインストーラーのコマンドをもう一度流してください。多くは実行ファイルそのものが消えていて(miseのようなGoの版の管理ツールでは、Goを上げると `go install` が置いた版ごとのフォルダごと消えます)、`shikii doctor` も一緒に消えています。`shikii` がまだ動く時は `shikii doctor` を流すと、hookやCodexの登録が、もう無い・動かせないshikiiの実行ファイルを指している時はそう言い、直し方を出します。
+
+**前に `go install` でGoの既定フォルダへ入れた人へ。** その実行ファイルはGoのフォルダ(`$(go env GOPATH)/bin` か `GOBIN`)に残り、`shikii update` もそこで更新するだけで、`~/.local/bin` へは移しません。上のインストーラーのコマンドを一度流すと、hookは `~/.local/bin/shikii` を動かすようになります。先に `~/.local/bin` がPATHにあることを確かめてください(無ければインストーラーがそう言います)。Claude CodeとOpenCodeのMCPは `shikii` を名前で動かします。そのあとGoのフォルダの古い `shikii` と `shikii-readout` を手で消し、もう一度 `shikii hook install --yes` を流してください。それまでは実行ファイルが2つあり、端末で打つ `shikii` と、Claude CodeとOpenCodeのMCP(`shikii` を名前で動かす)は、PATHで先に見つかる方を動かし(`command -v shikii` でどちらかわかります)、`shikii update` はその1つだけを更新し、CodexのMCPの登録は古い実行ファイルが残る間はそちらを指したままです。
 
 **ソースから組む（開発する人向け）。** このリポジトリをcloneした中で `sh install.sh` を流すと、今のソースをGo 1.27以上で組んで同じ `~/.local/bin` に置き、hookも同じように入れます（`make install` は組んで実行ファイルを写すだけです）。
 

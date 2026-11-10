@@ -110,9 +110,21 @@ curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | s
 
 The installer downloads the latest release for your machine (macOS or Linux, amd64 or arm64) from GitHub Releases, checks it against the release's `SHA256SUMS`, and puts `shikii` and `shikii-readout` in `~/.local/bin`. It asks GitHub which release is the latest, so it gets a release as soon as it is published, and it does not need Go. It adds the binaries, the hooks (before a turn, after it, and when a subagent is launched and starts) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, trust the hooks with `/hooks`, and again whenever they change (after moving the binary or updating shikii); until then Codex skips them.
 
-If the hooks stop working after you upgrade Go or move the binary, run the one line above again: the binary itself is often what is gone (with a Go version manager such as mise, a Go upgrade removes the per-version folder `go install` put it in), and `shikii doctor` with it. When `shikii` still runs, `shikii doctor` says when the hooks or the Codex registration point to a shikii binary that no longer exists or cannot run, and how to fix it.
+**With Go 1.27 or newer.** Install both binaries directly into a stable directory:
 
-**If you installed with `go install` before.** That binary stays in Go's folder (`$(go env GOPATH)/bin`, or `GOBIN`), and `shikii update` updates it there; it does not move it to `~/.local/bin`. Run the one line above once: the hooks then run `~/.local/bin/shikii`. Check that `~/.local/bin` is on PATH first (the installer says when it is not): Claude Code's and OpenCode's MCP servers run `shikii` by name. Then remove the old `shikii` and `shikii-readout` from Go's folder by hand, and run `shikii hook install --yes` once more. Until you do, two binaries are installed: `shikii` typed in a terminal, and the MCP servers of Claude Code and OpenCode (which run `shikii` by name), run whichever comes first on PATH (`command -v shikii` shows which), `shikii update` updates only that one, and Codex's MCP registration keeps the old binary while it exists.
+```sh
+mkdir -p "$HOME/.local/bin"
+GOBIN="$HOME/.local/bin" go install github.com/hayaenfj/shikii/cmd/shikii@latest
+GOBIN="$HOME/.local/bin" go install github.com/hayaenfj/shikii/cmd/shikii-readout@latest
+export PATH="$HOME/.local/bin:$PATH"
+shikii hook install --yes
+```
+
+Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.30.5`.
+
+If the hooks stop working after you upgrade Go or move the binary, run the installer command above again: the binary itself is often what is gone (with a Go version manager such as mise, a Go upgrade removes the per-version folder `go install` put it in), and `shikii doctor` with it. When `shikii` still runs, `shikii doctor` says when the hooks or the Codex registration point to a shikii binary that no longer exists or cannot run, and how to fix it.
+
+**If an earlier `go install` used Go's default folder.** That binary stays in Go's folder (`$(go env GOPATH)/bin`, or `GOBIN`), and `shikii update` updates it there; it does not move it to `~/.local/bin`. Run the installer command above once: the hooks then run `~/.local/bin/shikii`. Check that `~/.local/bin` is on PATH first (the installer says when it is not): Claude Code's and OpenCode's MCP servers run `shikii` by name. Then remove the old `shikii` and `shikii-readout` from Go's folder by hand, and run `shikii hook install --yes` once more. Until you do, two binaries are installed: `shikii` typed in a terminal, and the MCP servers of Claude Code and OpenCode (which run `shikii` by name), run whichever comes first on PATH (`command -v shikii` shows which), `shikii update` updates only that one, and Codex's MCP registration keeps the old binary while it exists.
 
 **Building from source (for developers).** In a clone of this repository, `sh install.sh` builds the current source with Go 1.27 or newer and puts the binaries in the same `~/.local/bin`, then installs the hooks the same way (`make install` builds and copies the binaries only).
 
