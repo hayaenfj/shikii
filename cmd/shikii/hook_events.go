@@ -127,10 +127,7 @@ func runHookEvent(event string) error {
 					if s.TurnID != current.TurnID || s.Scope != current.Scope {
 						return
 					}
-					s.Memories = append(s.Memories, added...)
-					if len(s.Memories) > 16 {
-						s.Memories = s.Memories[len(s.Memories)-16:]
-					}
+					s.Memories = keepMemories(append(s.Memories, added...), s.HeadAt)
 				}); uerr != nil {
 					hookLog("memory: " + uerr.Error())
 				}

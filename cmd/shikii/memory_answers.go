@@ -10,21 +10,108 @@ import (
 )
 
 // answerKindRejectUnused is how many "unused" assessments of quoted past answers, with not one "helpful", stop quoting past answers
-// in a project. Measured in this repository's own project (2026-11-10): 81 assessed, none helpful, and each quote took one of the two
-// seats from a lesson.
+// in a project. A quoted answer takes one of the two seats of a delivery from a lesson, so quotes that never help cost lessons
+// their deliveries.
 const answerKindRejectUnused = 10
 
 // answerRejection is what the agent's reflection said about quoting the person's past answers in a project. An answer the reflection
 // found unused twice and never helpful is rejected: it is never quoted again, it leaves the page's list of answered decisions, and
 // the page lists it as judged not useful by the AI. The answer itself stays a truth for its decision: lines are still drawn from it.
-type answerRejection struct{ effects store.AnswerEffects }
+//
+// One answer can sit under several decisions: a decision asked again (/v1/redo) copies the person's answer to a new record. The
+// assessments of all of them count as one, so a rejected answer does not come back under the new record, and the original of an
+// answer rejected under its copy is not quoted in its place.
+type answerRejection struct {
+	effects store.AnswerEffects
+	same    map[string][]string // decision trace -> the decisions that carry the same answer (itself included), newest first
+}
 
 func readAnswerRejection(root, scope string) answerRejection {
 	return answerRejection{effects: (store.Store{Dir: root}).AnswerEffects(scope)}
 }
 
+// withAnswers tells the rejection which decisions carry the same answer: the same question, the same answer, and inputs that
+// share a hash.
+func (r answerRejection) withAnswers(answers []store.PersonAnswer) answerRejection {
+	group := map[string]int{} // question, answer and inputs hash -> group
+	of := map[string]int{}    // trace -> group
+	members := [][]store.PersonAnswer{}
+	for _, a := range answers {
+		at := -1
+		keys := []string{}
+		for _, h := range a.Hashes {
+			key := a.SpecID + "\x00" + a.Truth + "\x00" + h
+			keys = append(keys, key)
+			if g, ok := group[key]; ok && at < 0 {
+				at = g
+			}
+		}
+		if at < 0 {
+			at = len(members)
+			members = append(members, nil)
+		}
+		for _, key := range keys {
+			if g, ok := group[key]; ok && g != at { // this answer joins two groups: move the other one over
+				for _, m := range members[g] {
+					of[m.TraceID] = at
+				}
+				members[at], members[g] = append(members[at], members[g]...), nil
+				for k, v := range group {
+					if v == g {
+						group[k] = at
+					}
+				}
+			}
+			group[key] = at
+		}
+		of[a.TraceID] = at
+		members[at] = append(members[at], a)
+	}
+	r.same = map[string][]string{}
+	for _, m := range members {
+		for i, j := 0, len(m)-1; i < j; i, j = i+1, j-1 { // written later first, then by the time of the answer
+			m[i], m[j] = m[j], m[i]
+		}
+		sort.SliceStable(m, func(i, j int) bool { return m[i].At.After(m[j].At) })
+		traces := make([]string, len(m))
+		for i, a := range m {
+			traces[i] = a.TraceID
+		}
+		for _, trace := range traces {
+			r.same[trace] = traces
+		}
+	}
+	return r
+}
+
+// carriers are the decisions that carry the same answer as trace, newest first (trace alone when nothing else is known).
+func (r answerRejection) carriers(trace string) []string {
+	if same := r.same[trace]; len(same) > 0 {
+		return same
+	}
+	return []string{trace}
+}
+
+// effect is what the reflection said about the answer to the decision trace, under every decision that carries it, with the
+// time of the last assessment.
+func (r answerRejection) effect(trace string) (store.PairEffect, time.Time) {
+	var sum store.PairEffect
+	var last time.Time
+	for _, t := range r.carriers(trace) {
+		e := r.effects.ByTrace[t]
+		sum.Helpful, sum.Unused = sum.Helpful+e.Helpful, sum.Unused+e.Unused
+		if at := r.effects.LastAt[t]; at.After(last) {
+			last = at
+		}
+	}
+	return sum, last
+}
+
 // rejected reports whether the answer to the decision trace is rejected (the rule a lesson is silenced by at a door).
-func (r answerRejection) rejected(trace string) bool { return silenced(r.effects.ByTrace[trace]) }
+func (r answerRejection) rejected(trace string) bool {
+	e, _ := r.effect(trace)
+	return silenced(e)
+}
 
 // kindStopped reports whether quoting past answers is stopped in this project: enough of them were assessed and none ever helped.
 func (r answerRejection) kindStopped() bool {
@@ -51,7 +138,8 @@ type rejectedAnswersView struct {
 	Items   []rejectedAnswer `json:"items"`
 }
 
-// rejectedAnswers builds the page's list, newest assessment first. An answer whose decision is gone is still listed by its id.
+// rejectedAnswers builds the page's list, newest assessment first: one line per answer, under its newest decision. An answer
+// whose decision is gone is still listed by its id.
 func rejectedAnswers(root, scope string) (rejectedAnswersView, error) {
 	r := readAnswerRejection(root, scope)
 	view := rejectedAnswersView{Stopped: r.kindStopped(), Unused: r.effects.Total.Unused, Helpful: r.effects.Total.Helpful, Items: []rejectedAnswer{}}
@@ -59,16 +147,21 @@ func rejectedAnswers(root, scope string) (rejectedAnswersView, error) {
 	if err != nil {
 		return view, err
 	}
+	r = r.withAnswers(answers)
 	byTrace := map[string]store.PersonAnswer{}
 	for _, a := range answers {
 		byTrace[a.TraceID] = a
 	}
 	specs := map[string]*spec.Spec{}
-	for trace, effect := range r.effects.ByTrace {
-		if !silenced(effect) {
+	listed := map[string]bool{}
+	for assessed := range r.effects.ByTrace {
+		trace := r.carriers(assessed)[0]
+		effect, last := r.effect(trace)
+		if listed[trace] || !silenced(effect) {
 			continue
 		}
-		item := rejectedAnswer{TraceID: trace, Unused: effect.Unused, At: r.effects.LastAt[trace]}
+		listed[trace] = true
+		item := rejectedAnswer{TraceID: trace, Unused: effect.Unused, At: last}
 		if a, ok := byTrace[trace]; ok {
 			item.Spec, item.Request, item.Truth = a.SpecID, cut(a.Request, requestMax), a.Truth
 			sp, loaded := specs[a.SpecID]

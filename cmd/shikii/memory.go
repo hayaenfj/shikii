@@ -107,7 +107,7 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 	if feedback && parent == "" {
 		if rejection := readAnswerRejection(root, scope); !rejection.kindStopped() {
 			var err error
-			if answers, err = personAnswerQuotes(root, request, seen, rejection.rejected); err != nil {
+			if answers, err = personAnswerQuotes(root, request, seen, &rejection); err != nil {
 				return "", err
 			}
 		}
@@ -197,20 +197,32 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 	if len(quotes) == 0 {
 		return "", nil
 	}
-	// What does not fit even at the smallest cut is left out from the end, so the quotes that fit still arrive (a person's answer is
-	// not cut: two long ones could not be delivered together, and the hook stayed silent). A quote left out is not recorded as delivered.
-	for ; len(quotes) > 0; quotes, keys = quotes[:len(quotes)-1], keys[:len(keys)-1] {
-		if text, ok, err := deliverQuotes(root, scope, request, quotes, keys, door, session, parent, agent, mark); err != nil || ok {
-			return text, err
+	// A quote that does not fit with those before it, even at the smallest cut, is left out, so the quotes that fit still arrive
+	// in their order (a person's answer is not cut: two long ones could not be delivered together, and the hook stayed silent; one
+	// too long alone kept the next one out). A quote left out is not recorded as delivered.
+	fitting, fittingKeys := []memoryQuote{}, []string{}
+	for i := range quotes {
+		withQuote := append(append([]memoryQuote{}, fitting...), quotes[i])
+		withKey := append(append([]string{}, fittingKeys...), keys[i])
+		_, _, _, ok, err := fitQuotes(withQuote, withKey)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			fitting, fittingKeys = withQuote, withKey
 		}
 	}
-	return "", nil
+	if len(fitting) == 0 {
+		return "", nil
+	}
+	text, _, err := deliverQuotes(root, scope, request, fitting, fittingKeys, door, session, parent, agent, mark)
+	return text, err
 }
 
-// deliverQuotes records and returns the quotes as one delivery, cut as far as needed to fit 1800 bytes with the prefix. ok is false
-// when they do not fit even at the smallest cut (nothing is recorded then).
-func deliverQuotes(root, scope, request string, quotes []memoryQuote, keys []string, door string, session *hookSession, parent, agent string, mark func(id, reason, trace string)) (string, bool, error) {
-	prefix := memoryPrefix
+// fitQuotes cuts the quotes as far as needed to fit 1800 bytes with the prefix. ok is false when they do not fit even at the
+// smallest cut.
+func fitQuotes(quotes []memoryQuote, keys []string) (prefix string, clipped []memoryQuote, data []byte, ok bool, err error) {
+	prefix = memoryPrefix
 	for _, key := range keys {
 		if strings.HasPrefix(key, "decision:") {
 			prefix += "A decision: quote is the person's own answer (\"you\" is the person) about a similar earlier request: weigh it, it is not this request's answer.\n"
@@ -218,45 +230,51 @@ func deliverQuotes(root, scope, request string, quotes []memoryQuote, keys []str
 		}
 	}
 	for budget := 400; budget >= 25; budget /= 2 {
-		clipped := clipQuotes(quotes, budget)
-		data, err := json.Marshal(clipped)
-		if err != nil {
+		clipped = clipQuotes(quotes, budget)
+		if data, err = json.Marshal(clipped); err != nil {
+			return "", nil, nil, false, err
+		}
+		if len(prefix)+len(data) <= 1800 {
+			return prefix, clipped, data, true, nil
+		}
+	}
+	return "", nil, nil, false, nil
+}
+
+// deliverQuotes records and returns the quotes as one delivery, cut as far as needed to fit 1800 bytes with the prefix. ok is false
+// when they do not fit even at the smallest cut (nothing is recorded then).
+func deliverQuotes(root, scope, request string, quotes []memoryQuote, keys []string, door string, session *hookSession, parent, agent string, mark func(id, reason, trace string)) (string, bool, error) {
+	prefix, clipped, data, ok, err := fitQuotes(quotes, keys)
+	if err != nil || !ok {
+		return "", false, err
+	}
+	// save, per revision, the short quotes actually returned, not the search candidates.
+	id := session.TurnID
+	if parent != "" {
+		sum := sha256.Sum256([]byte(parent + "/" + agent + "/" + strings.Join(keys, ",")))
+		id = hex.EncodeToString(sum[:])[:16]
+	}
+	if id != "" {
+		recorded := "" // the door is recorded only when a lesson came through it: a delivery of the person's answers alone has none (audit A of 0.12)
+		for _, key := range keys {
+			if strings.HasPrefix(key, "lesson:") {
+				recorded = door
+			}
+		}
+		if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Phrase: recorded}); err != nil {
 			return "", false, err
 		}
-		if len(prefix)+len(data) > 1800 {
-			continue
-		}
-		// save, per revision, the short quotes actually returned, not the search candidates.
-		id := session.TurnID
-		if parent != "" {
-			sum := sha256.Sum256([]byte(parent + "/" + agent + "/" + strings.Join(keys, ",")))
-			id = hex.EncodeToString(sum[:])[:16]
-		}
-		if id != "" {
-			recorded := "" // the door is recorded only when a lesson came through it: a delivery of the person's answers alone has none (audit A of 0.12)
-			for _, key := range keys {
-				if strings.HasPrefix(key, "lesson:") {
-					recorded = door
-				}
-			}
-			if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Phrase: recorded}); err != nil {
-				return "", false, err
-			}
-		}
-		for _, q := range quotes {
-			if q.Revision != "" {
-				mark(q.ID, "delivered", q.Trace)
-			}
-		}
-		for _, key := range keys {
-			session.Memories = append(session.Memories, memoryDelivery{Key: key, At: time.Now().UTC()})
-		}
-		if len(session.Memories) > 16 {
-			session.Memories = session.Memories[len(session.Memories)-16:]
-		}
-		return prefix + strings.TrimSpace(string(data)), true, nil
 	}
-	return "", false, nil
+	for _, q := range quotes {
+		if q.Revision != "" {
+			mark(q.ID, "delivered", q.Trace)
+		}
+	}
+	for _, key := range keys {
+		session.Memories = append(session.Memories, memoryDelivery{Key: key, At: time.Now().UTC()})
+	}
+	session.Memories = keepMemories(session.Memories, session.HeadAt)
+	return prefix + strings.TrimSpace(string(data)), true, nil
 }
 
 func memoryCacheKey(p notebook.Page) string {
@@ -326,19 +344,30 @@ var answerSpecs = []string{"needs-plan", "changes-in-scope", "done-as-asked"}
 // the two answers the person judged between: the agent's own answer with its reason (its organizing before starting, or its provisional
 // score; only when the decision was paired under 0.11's rule) and the decision model's answer. A bare "yes" or "no" told the agent
 // nothing it could act on; with the reasons it learns how its own reasoning is judged in this project.
-func personAnswerQuotes(root, request string, seen map[string]bool, rejected func(trace string) bool) ([]memoryQuote, error) {
+func personAnswerQuotes(root, request string, seen map[string]bool, rejection *answerRejection) ([]memoryQuote, error) {
 	st := store.Store{Dir: root}
 	answers, err := st.PersonAnswers(answerSpecs)
 	if err != nil {
 		return nil, err
 	}
+	// one answer is quoted once, under its newest decision: a decision asked again carries the same answer (memory_answers.go)
+	same := answerRejection{}
+	if rejection != nil {
+		same = *rejection
+	}
+	same = same.withAnswers(answers)
 	type match struct {
 		answer store.PersonAnswer
 		score  float64
 	}
 	matches := []match{}
 	for _, a := range answers {
-		if seen["decision:"+a.TraceID] || rejected != nil && rejected(a.TraceID) {
+		carriers := same.carriers(a.TraceID)
+		skip := carriers[0] != a.TraceID || rejection != nil && same.rejected(a.TraceID)
+		for _, trace := range carriers {
+			skip = skip || seen["decision:"+trace]
+		}
+		if skip {
 			continue
 		}
 		if score := store.TextMatch(request, a.Request); score >= 0.5 {
@@ -431,7 +460,8 @@ func personAnswerSaid(sp *spec.Spec, truth, lang string, pair *aiPair, model mod
 // Nothing is recorded as a delivery: the agent asked, and the reflection assesses what the hook delivered.
 func decideKnowledge(root, scope, request string) (similar, lessons []memoryQuote, err error) {
 	// an answer the reflection rejected does not come back here either; the agent asked, so a stop of the automatic quotes does not apply
-	if similar, err = personAnswerQuotes(root, request, nil, readAnswerRejection(root, scope).rejected); err != nil {
+	rejection := readAnswerRejection(root, scope)
+	if similar, err = personAnswerQuotes(root, request, nil, &rejection); err != nil {
 		return nil, nil, err
 	}
 	pages, err := (notebook.Book{Root: root, Scope: scope}).Recall(request)

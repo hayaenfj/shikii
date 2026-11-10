@@ -85,3 +85,55 @@ func TestRequestHookDeliversTheAnswerThatFitsWhenTwoDoNot(t *testing.T) {
 		t.Fatalf("the next request in the session gets the answer that was left out, and not the delivered one again:\n%s", second)
 	}
 }
+
+// The newer answer does not fit alone (its reason is markup: every < takes six bytes in the JSON the hook delivers). The older
+// one, which fits, must still arrive: quotes used to be left out from the end only, so nothing was delivered at any request.
+func TestRequestHookDeliversTheAnswerThatFitsWhenTheOneBeforeItDoesNot(t *testing.T) {
+	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
+	setHookLanguage(t, "Japanese")
+	st, scope := store.Store{Dir: agent}, feedbackScope(repo)
+	sp, err := spec.Load(hookSpecPath(st.Dir, "needs-plan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const request = "update the invoice routing procedure for the billing export"
+	seed := func(i int, reason string) string {
+		trace := store.NewTraceID()
+		inputs := map[string]string{"request": request + fmt.Sprintf(" part %d", i), "open": planningPreface + reason, "agreed": "the billing export keeps its columns"}
+		at := time.Now().UTC().Add(time.Duration(i) * time.Second)
+		rec := store.Record{TraceID: trace, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "test-model", Inputs: inputs, InputsHash: store.HashInputs(inputs), Top: "no", P: .4, Band: "ask", AgentPaired: true, At: at}
+		if err := st.AppendRecord(rec); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AppendLabel(store.Label{TraceID: trace, SpecID: sp.ID, SpecHash: sp.Hash(), Type: "noul", Model: "test-model", InputsHash: rec.InputsHash, Inputs: inputs, Truth: "no", Weight: 1, Source: "ui", At: at}); err != nil {
+			t.Fatal(err)
+		}
+		return trace
+	}
+	fits := seed(0, "the owner is not decided")
+	tooLong := seed(1, strings.Repeat("<", 200))
+	quotes, err := personAnswerQuotes(st.Dir, request, nil, nil)
+	if err != nil || len(quotes) != 2 || quotes[0].ID != tooLong || quotes[1].ID != fits {
+		t.Fatalf("both answers match the request, the newer (long) one first: %v %v", quotes, err)
+	}
+	if _, _, _, ok, err := fitQuotes(quotes[:1], []string{quotes[0].Key}); ok || err != nil {
+		t.Fatalf("this fixture needs a first answer that does not fit alone: ok=%v err=%v", ok, err)
+	}
+	session := &hookSession{TurnID: "aaaaaaaaaaaaaa01"}
+	ctx, err := deliverMemory(st.Dir, scope, request, nil, true, session, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ctx, "decision:"+fits) || strings.Contains(ctx, "decision:"+tooLong) || len(ctx) > 1800 {
+		t.Fatalf("the answer that fits is delivered and the one that does not is left out (delivered %d bytes): %q", len(ctx), cut(ctx, 300))
+	}
+	// only what arrived is recorded as delivered
+	if len(session.Memories) != 1 || session.Memories[0].Key != "decision:"+fits {
+		t.Errorf("the session records the delivered answer alone: %+v", session.Memories)
+	}
+	deliveries, err := st.MemoryDeliveries(scope)
+	if err != nil || len(deliveries) != 1 || len(deliveries[0].Quotes) != 1 || deliveries[0].Quotes[0].Key != "decision:"+fits {
+		t.Errorf("the delivery record holds the delivered answer alone: %+v %v", deliveries, err)
+	}
+}

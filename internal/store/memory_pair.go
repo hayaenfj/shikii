@@ -98,9 +98,12 @@ func (s Store) AnswerEffects(scope string) AnswerEffects {
 	return out
 }
 
-// PersonAnswer is the person's own latest answer to one decision of a question, with the decision's request text.
+// PersonAnswer is the person's own latest answer to one decision of a question, with the decision's request text. Hashes are the
+// hashes of the inputs the answer was given about (one per step of a decision that added context): two decisions of one question
+// that share one were asked about the same inputs (a decision asked again copies the person's answer to a new record).
 type PersonAnswer struct {
 	TraceID, SpecID, Request, Truth string
+	Hashes                          []string
 	At                              time.Time
 }
 
@@ -151,7 +154,7 @@ func (s Store) PersonAnswers(specIDs []string) ([]PersonAnswer, error) {
 					break
 				}
 			}
-			out = append(out, PersonAnswer{TraceID: trace, SpecID: l.SpecID, Request: strings.TrimSpace(request), Truth: l.Truth, At: l.At})
+			out = append(out, PersonAnswer{TraceID: trace, SpecID: l.SpecID, Request: strings.TrimSpace(request), Truth: l.Truth, Hashes: hashes[trace], At: l.At})
 		}
 	}
 	return out, nil

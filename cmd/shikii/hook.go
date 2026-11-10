@@ -185,7 +185,7 @@ type hookSession struct {
 	TurnID           string             `json:"turn_id,omitempty"`          // a repeated request with the same text is still a different turn
 	Scope            string             `json:"scope,omitempty"`            // the repo's real path. Conversations, scoring and lines are limited to the same work
 	Completed        *completedTurn     `json:"completed,omitempty"`        // record of the reply to this request. Paired with the person's next message
-	Memories         []memoryDelivery   `json:"memories,omitempty"`         // versions of memories delivered to this session (latest 16)
+	Memories         []memoryDelivery   `json:"memories,omitempty"`         // versions of memories delivered to this session (the latest 16, and all of the running request)
 	Previous         string             `json:"previous,omitempty"`         // the assistant's previous message (kept at Stop)
 	Reasoning        *reasoningProgress `json:"reasoning,omitempty"`
 	Planning         *planningFrame     `json:"planning,omitempty"`           // context for the current request that the agent organizes with the original text

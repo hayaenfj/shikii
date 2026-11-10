@@ -30,7 +30,12 @@ func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 	// truth stays in the labels
 	rejected := func(string) bool { return false }
 	if containsString(answerSpecs, id) {
-		rejected = readAnswerRejection(s.o.storeDir, s.o.projectScope).rejected
+		answers, err := s.st.PersonAnswers(answerSpecs)
+		if err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		rejected = readAnswerRejection(s.o.storeDir, s.o.projectScope).withAnswers(answers).rejected // counted with the decisions asked again
 	}
 	var answered []store.Record
 	for _, rec := range recs {

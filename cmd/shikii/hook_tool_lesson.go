@@ -563,6 +563,24 @@ func (c toolCandidate) before(o toolCandidate) bool {
 	return c.helpful > o.helpful
 }
 
+// keepMemories trims the session's record of deliveries to the latest 16 and every delivery since the running request began
+// (since): the rule that a request gets a lesson once at a tool call reads this record, so the request's own deliveries are not
+// trimmed away by the other lessons it got. A request's deliveries are bounded: each lesson once at a tool call, two quotes at
+// the request.
+func keepMemories(memories []memoryDelivery, since time.Time) []memoryDelivery {
+	const latest = 16
+	if len(memories) <= latest {
+		return memories
+	}
+	out := make([]memoryDelivery, 0, latest)
+	for i, m := range memories {
+		if i >= len(memories)-latest || !since.IsZero() && !m.At.Before(since) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // lessonsDeliveredSince are the ids of the lessons delivered to the session at or after since (the time of the request), read from
 // the session's record of deliveries (keys lesson:<id>:<revision>...). A zero since (a session record from before requests kept
 // their time) names none: the hour rule alone applies.
@@ -671,10 +689,7 @@ func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolT
 		if err := (store.Store{Dir: agent}).SaveMemoryDelivery(d); err != nil {
 			return "", err
 		}
-		s.Memories = append(s.Memories, memoryDelivery{Key: quoteCacheKey(q), At: time.Now().UTC()})
-		if len(s.Memories) > 16 {
-			s.Memories = s.Memories[len(s.Memories)-16:]
-		}
+		s.Memories = keepMemories(append(s.Memories, memoryDelivery{Key: quoteCacheKey(q), At: time.Now().UTC()}), s.HeadAt)
 		return prefix + string(data), nil
 	}
 	return "", nil
