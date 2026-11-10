@@ -64,10 +64,12 @@ func runHookEvent(event string) error {
 	var out hookOut
 	var muts []func(*hookSession)
 	var summary string
+	var stopRecords []guardRecord // what this Stop writes to records/guards.jsonl, held until the session record is committed
 	switch event {
 	case "user-prompt-submit":
 		out, muts, err = hookUserPrompt(agent, &in, snapshot)
 	case "stop":
+		in.stopRecords = &stopRecords
 		out, muts, err = hookStop(agent, &in, snapshot)
 		muts = append(muts, func(s *hookSession) { summary = stopSummary(agent, s) }) // the waiting-answers summary is counted on the record after this turn's decisions are added
 	case "subagent-start":
@@ -85,7 +87,7 @@ func runHookEvent(event string) error {
 		out.Context = joinLines(moved, out.Context)
 	}
 	if len(muts) > 0 {
-		if serr := saveHookMutations(agent, in.SessionID, event, snapshot, &out, muts); serr != nil {
+		if serr := saveHookMutations(agent, in.SessionID, event, snapshot, &out, muts, stopRecords); serr != nil {
 			if err == nil {
 				err = serr
 			}

@@ -112,7 +112,7 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 	if rerr != nil || len(lb) > listingMax {
 		return hash, "", false, project, scope
 	}
-	return hash, strings.TrimSpace(string(lb)), true, project, scope
+	return hash, strings.TrimRight(string(lb), "\n"), true, project, scope // only the line ends: a name may end with a space
 }
 
 // addTrackedIgnored adds to the temporary index (env) the files the repo's index tracks although an ignore rule names them.

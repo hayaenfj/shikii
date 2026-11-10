@@ -86,6 +86,16 @@ func enabledGuards(root string) ([]guard, error) {
 	return out, nil
 }
 
+// keepStopRecords keeps the records of a Stop: written at once, or, while the Stop holds them back (hookInput.stopRecords), with
+// the commit of the session record, once it is known that the next request did not overtake this Stop.
+func keepStopRecords(root string, in *hookInput, recs []guardRecord) error {
+	if in.stopRecords != nil {
+		*in.stopRecords = append(*in.stopRecords, recs...)
+		return nil
+	}
+	return appendGuardRecords(root, recs)
+}
+
 func appendGuardRecords(root string, recs []guardRecord) error {
 	if len(recs) == 0 {
 		return nil

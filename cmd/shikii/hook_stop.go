@@ -183,7 +183,13 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		if errors.Is(err, errStopOvertaken) {
 			return hookOut{}, nil, err // the next request came while the model was asked: its own Stop judges it, this one says nothing
 		}
-		return hookOut{Block: true, Reason: "shikii: completion evidence changed or could not be checked. Read the current work context, resolve pending notes and save reasoning finish before ending. " + err.Error()}, muts, err
+		reason := "shikii: completion evidence changed or could not be checked. Read the current work context, resolve pending notes and save reasoning finish before ending. " + err.Error()
+		if !in.late { // shikii's own stop: kept like the routine check's, so that a later Stop that finds the session record gone ends the continuation
+			if kerr := keepStopRecords(agent, in, []guardRecord{{At: time.Now().UTC(), Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReasoning, Pass: false, Reason: reason, Recheck: recheck}}); kerr != nil {
+				hookLog("stop: " + kerr.Error())
+			}
+		}
+		return hookOut{Block: true, Reason: reason}, muts, err
 	}
 	targets := []store.ReviewTarget{}
 	for i, d := range ds {
@@ -244,7 +250,7 @@ func judgeAskedTurn(agent string, in *hookInput, snapshot *hookSession) {
 	if err != nil {
 		hookLog("grouping: " + err.Error())
 	}
-	if err := saveHookMutations(agent, in.SessionID, "stop", snapshot, &out, muts); err != nil {
+	if err := saveHookMutations(agent, in.SessionID, "stop", snapshot, &out, muts, nil); err != nil {
 		hookLog("grouping: " + err.Error())
 	}
 }

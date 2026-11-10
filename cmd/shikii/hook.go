@@ -114,6 +114,9 @@ type hookInput struct {
 	LastAssistantMessage string          `json:"last_assistant_message"`
 	ToolName             string          `json:"tool_name"`  // PreToolUse: the tool about to be used (Agent / Task; the edit tools and Bash for tool-lesson)
 	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: that tool's input (for Agent: prompt and subagent_type; file_path, notebook_path or command)
+	// stopRecords, when set, collects what a Stop would write to records/guards.jsonl (the routine check, the person's guards) until
+	// the session record is committed: a Stop the next request overtook writes none of it (keepStopRecords).
+	stopRecords *[]guardRecord
 	// late is a Stop run at the next request. It checks that required work is saved before judging, but emits no recovery feedback
 	// and writes no check receipts: a later human fix is not agent recovery.
 	late bool

@@ -85,15 +85,52 @@ func updateSession(agent, id string, fn func(s *hookSession)) error {
 	return saveSession(agent, id, s)
 }
 
-func saveHookMutations(agent, id, event string, snapshot *hookSession, out *hookOut, muts []func(*hookSession)) error {
+// saveHookMutations applies the hook's changes to the session record under its lock. For a Stop it is also where the Stop's
+// records (the routine check's and the guards' lines for records/guards.jsonl) are written: under the same lock, after checking
+// that the next request did not replace the turn, so an overtaken Stop keeps nothing.
+func saveHookMutations(agent, id, event string, snapshot *hookSession, out *hookOut, muts []func(*hookSession), records []guardRecord) error {
 	apply := func(sess *hookSession) {
 		for _, m := range muts {
 			m(sess)
 		}
 	}
-	// the Stop of a stretch a slash command opened judges nothing of the request, so there is no completion to verify
-	if event != "stop" || out.Block || out.Halt != "" || snapshot.Request == "" || snapshot.GuardTurn != nil {
+	if event != "stop" {
 		return updateSession(agent, id, apply)
+	}
+	// keep writes the Stop's records. When they cannot be written the turn ends incomplete: the record says so, so that the next
+	// request does not judge the turn as completed, and the changes of this Stop are not applied.
+	keep := func(sess *hookSession) error {
+		err := appendGuardRecords(agent, records)
+		if err != nil && snapshot.TurnID != "" && sess.TurnID == snapshot.TurnID {
+			pending := &ritualRecovery{TurnID: snapshot.TurnID, Pending: true}
+			if previous := sess.RitualRecovery; previous != nil && previous.TurnID == sess.TurnID {
+				pending.FilesKnown = previous.FilesKnown
+			}
+			sess.RitualRecovery = pending
+		}
+		return err
+	}
+	// the Stop of a stretch a slash command opened judges nothing of the request, so there is no completion to verify
+	if out.Block || out.Halt != "" || snapshot.Request == "" || snapshot.GuardTurn != nil {
+		// A Stop that stops the turn (or ends it incomplete) says so about its own turn. When the next request replaced that turn
+		// while this Stop ran, nothing is saved and the caller says nothing: the block would be read as a judgment of the new request.
+		overtaken := false
+		var kept error
+		err := updateSession(agent, id, func(sess *hookSession) {
+			if overtaken = stopOvertaken(snapshot, sess); overtaken {
+				return
+			}
+			if kept = keep(sess); kept == nil {
+				apply(sess)
+			}
+		})
+		if err == nil && overtaken {
+			return errStopOvertaken
+		}
+		if err == nil {
+			err = kept
+		}
+		return err
 	}
 	// Keep verification and the final session write inside the same commit boundary.
 	return commitStopReasoning(agent, id, snapshot, func() error {
@@ -101,10 +138,29 @@ func saveHookMutations(agent, id, event string, snapshot *hookSession, out *hook
 		if err != nil {
 			return err
 		}
-		apply(sess)
+		kept := keep(sess)
+		if kept == nil {
+			apply(sess)
+		}
 		syncDeferral(agent, id, sess)
-		return saveSession(agent, id, sess)
+		if err := saveSession(agent, id, sess); err != nil {
+			return err
+		}
+		return kept
 	})
+}
+
+// stopOvertaken reports whether the record now keeps another turn than the one this Stop ran for: the person's next request (only
+// the request hook gives a record a new turn id), or, for the stretch a slash command opened, the request or notice that closed it or
+// a newer stretch. A record that is gone is not this case.
+func stopOvertaken(snapshot, current *hookSession) bool {
+	if g := snapshot.GuardTurn; g != nil {
+		if current.GuardTurn != nil {
+			return current.GuardTurn.ID != g.ID
+		}
+		return current.TurnID != ""
+	}
+	return snapshot.TurnID != "" && current.TurnID != "" && current.TurnID != snapshot.TurnID
 }
 
 // readSession distinguishes a new session from an existing record that cannot be verified.

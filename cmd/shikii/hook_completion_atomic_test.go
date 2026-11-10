@@ -162,7 +162,7 @@ func TestCompletionFinalSaveRejectsChangedPremise(t *testing.T) {
 			if err != nil {
 				t.Fatal("\u7af6\u5408\u306e\u6e96\u5099\u306b\u5931\u6557", err)
 			}
-			err = saveHookMutations(root, completionSession, "stop", snapshot, &out, muts)
+			err = saveHookMutations(root, completionSession, "stop", snapshot, &out, muts, nil)
 			saved := loadSession(root, completionSession)
 			t.Logf("\u6700\u7d42\u4fdd\u5b58\u304c\u62d2\u5426=%t Judged=%t", err != nil || out.Block || out.Halt != "", saved.Judged)
 			if err == nil && !out.Block && out.Halt == "" || saved.Judged {

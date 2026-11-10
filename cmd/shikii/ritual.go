@@ -154,7 +154,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		}
 	}
 	if len(recs) > 0 && !in.late {
-		if err := appendGuardRecords(root, recs); err != nil {
+		if err := keepStopRecords(root, in, recs); err != nil {
 			return hookOut{}, err
 		}
 	}

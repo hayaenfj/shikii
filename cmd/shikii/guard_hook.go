@@ -209,7 +209,7 @@ func guardStop(root string, in *hookInput, base guardBaseline, before string, ch
 			failed = append(failed, r)
 		}
 	}
-	if err := appendGuardRecords(root, recs); err != nil {
+	if err := keepStopRecords(root, in, recs); err != nil {
 		return hookOut{}, err
 	}
 	if len(failed) == 0 {
