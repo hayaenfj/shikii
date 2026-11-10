@@ -11,6 +11,19 @@ func (b *workRecordBatch) recordNotes(noteRefs []string) ([]string, bool) {
 	resolveSources, save, commit, add, halt, result := b.resolve, b.save, b.commit, b.add, b.halt, b.result
 	noteSources := []string{}
 	for i, n := range req.Notes {
+		// Notes that differ only in their sources share one obligation (the signature leaves sources out). When an earlier note of
+		// this batch was published and retired it, this note reserves its own again, so a draft left waiting stays an obligation.
+		if w.Reasoning != nil && noteRefs[i] != "" && w.Reasoning.RequiredNotes[noteRefs[i]] == nil {
+			ref, normalized, e := reserveRequiredNote(book, w, n, save, commit)
+			if e != nil {
+				add(workItem{Ref: ref, Kind: "note", Error: e.Error()})
+				if halt() {
+					return noteSources, true
+				}
+				continue
+			}
+			noteRefs[i], n = ref, normalized
+		}
 		w.ActiveNote = noteRefs[i]
 		sources := append([]string{}, w.Pending[n.Ref].Sources...)
 		resolveNote := func(refs []string) ([]string, error) {

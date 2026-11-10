@@ -30,9 +30,11 @@ func placeNewWorkNote(book notebook.Book, w *workState, n workNote, d notebook.D
 				w.Pending[ref] = d
 				w.PendingOrigins[ref] = key
 			}
-			if w.Reasoning != nil && w.ActiveNote != "" {
-				w.Reasoning.RequiredNotes[w.ActiveNote].Pending = ref
-				w.Reasoning.RequiredNotes[w.ActiveNote].PendingWork = w.Nonce
+			// The active obligation can be absent (recordNotes reserves it again when an earlier note of the batch retired a
+			// shared one). Placement must never dereference a retired obligation; Pending and PendingOrigins still hold the draft.
+			if required := activeRequiredNote(w); required != nil {
+				required.Pending = ref
+				required.PendingWork = w.Nonce
 			}
 			candidates := []any{}
 			for i, c := range placed.Placements[0].Candidates {
