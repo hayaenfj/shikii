@@ -476,19 +476,22 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hoo
 	}
 	// the lesson to deliver: the best-ranked page this session has not had within the hour, unless the decision model is confident it does
 	// not apply right now (lesson-applies, 0.12; asked outside the session lock). Its trace goes into the delivery for the outcome truth.
+	// and no lesson this request already got at a tool call, however long the request runs and whatever its revision is now (a
+	// request of several hours got the same lesson again every hour)
 	seen := map[string]bool{}
 	for _, m := range snapshot.Memories {
 		if age := time.Since(m.At); age >= 0 && age < time.Hour {
 			seen[m.Key] = true
 		}
 	}
+	inRequest := lessonsDeliveredSince(snapshot.Memories, snapshot.HeadAt)
 	var chosen *toolCandidate
 	var quote memoryQuote
 	asked := 0
 	for i := range ranked {
 		c := ranked[i]
 		q := lessonQuote(c.page)
-		if seen[quoteCacheKey(q)] {
+		if seen[quoteCacheKey(q)] || inRequest[c.page.ID] {
 			attempt.Set(c.page.ID, "recently_delivered", "")
 			continue
 		}
@@ -522,6 +525,10 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hoo
 				return // delivered meanwhile by another call of this turn
 			}
 		}
+		if lessonsDeliveredSince(s.Memories, s.HeadAt)[chosen.page.ID] {
+			attempt.Set(chosen.page.ID, "recently_delivered", quote.Trace)
+			return
+		}
 		attempt.Set(chosen.page.ID, "quote_budget", quote.Trace)
 		context, deliveryErr = deliverToolLesson(agent, s, quote, target, chosen.phrase, in.AgentID)
 	})
@@ -554,6 +561,26 @@ func (c toolCandidate) before(o toolCandidate) bool {
 		return c.inCondition
 	}
 	return c.helpful > o.helpful
+}
+
+// lessonsDeliveredSince are the ids of the lessons delivered to the session at or after since (the time of the request), read from
+// the session's record of deliveries (keys lesson:<id>:<revision>...). A zero since (a session record from before requests kept
+// their time) names none: the hour rule alone applies.
+func lessonsDeliveredSince(memories []memoryDelivery, since time.Time) map[string]bool {
+	out := map[string]bool{}
+	if since.IsZero() {
+		return out
+	}
+	for _, m := range memories {
+		if m.At.Before(since) {
+			continue
+		}
+		if rest, ok := strings.CutPrefix(m.Key, "lesson:"); ok {
+			id, _, _ := strings.Cut(rest, ":")
+			out[id] = true
+		}
+	}
+	return out
 }
 
 // doorEffect is what the reflection said about a page through one door, counted over every revision of the page whose title,
