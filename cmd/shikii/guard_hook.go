@@ -81,7 +81,7 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 // guardTurnInputKept is guardTurnInput with the table of the lines of the files that were not committed at the request
 // (guard_lines.go; nil when none was kept): such a file is compared with that table instead of the request's HEAD.
 func guardTurnInputKept(cwd, before string, kept *keptLines, changed []string, known bool, head string, since time.Time) guardInput {
-	in := guardInput{Changed: changed, Known: known, Added: map[string][]string{}}
+	in := guardInput{Changed: changed, Known: known, Added: map[string][]string{}, Compared: map[string]bool{}}
 	if cwd == "" {
 		return in
 	}
@@ -101,6 +101,7 @@ func guardTurnInputKept(cwd, before string, kept *keptLines, changed []string, k
 		if err != nil || len(now) > guardFileBytesMax || isBinary(now) {
 			continue
 		}
+		in.Compared[p] = true
 		// the content at the request: the listing's blob ("mode sha": only the sha names it); when that blob is gone (the file was
 		// uncommitted at the request), the table of its lines kept at the request for that same blob, and without one the commit
 		// that was HEAD at the request, never the HEAD this turn's own commits moved to (the current HEAD only when the request's
@@ -215,8 +216,16 @@ func guardStop(root string, in *hookInput, base guardBaseline, before string, ch
 	loc := hookLoc{Lang: hookLang()}
 	// stopped: at an earlier Stop of this turn. toolStopped: a command or a publication before it ran this turn (0.11): passing now is the fix
 	stopped, toolStopped := turnStoppedGuards(root, in.SessionID, base.Turn)
+	var failingWords []guard // the forbidden-words guards that fail now (stopping or not): their lines are kept as stopped
+	wordGuards := false
 	for _, g := range guards {
 		r := evalGuard(g, input)
+		if g.Kind == guardKindForbiddenWords {
+			wordGuards = true
+			if !r.Pass {
+				failingWords = append(failingWords, g)
+			}
+		}
 		// The page retains localized evidence; the agent receives English scaffolding.
 		reason := bi(r.Reason, r.ReasonJA, loc)
 		stops := !r.Pass && !halted && !stopped[r.ID]
@@ -226,6 +235,10 @@ func guardStop(root string, in *hookInput, base guardBaseline, before string, ch
 		if stops {
 			failed = append(failed, r)
 		}
+	}
+	if wordGuards {
+		// the lines a forbidden-words guard stopped stay added lines at the next starts until removed or committed (guard_lines.go)
+		keepStoppedLines(root, in.SessionID, base.Scope, failingWords, input)
 	}
 	if err := keepStopRecords(root, in, recs); err != nil {
 		return hookOut{}, err

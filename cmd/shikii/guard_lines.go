@@ -28,8 +28,12 @@ import (
 // own header (which request or stretch it belongs to), is written 0600, replaced by the next request and pruned with the
 // listings. Only forbidden-words reads added lines, so the table is kept only while such a guard is enabled.
 //
-// A line the turn before was stopped for and did not fix is not a line "from before the request": the table leaves it out
-// (stoppedBefore), so the next turn's Stop stops it again.
+// A line a forbidden-words guard stopped is not a line "from before the request" either. The Stop that stops it (or records
+// the failure again) keeps those very lines, per file, as keyed hashes with a key of their own (sessions/<id>.stopped, no
+// content, 0600, pruned with the listings); the next request's table leaves out the lines of the current files that match
+// them and carries the ones still there to a new .stopped. So a stopped line stays an added line, turn after turn, until it is
+// removed or committed (its file then equals HEAD and is not kept), while every other uncommitted line (the person's drafts,
+// in the same file or in another one) is kept as before.
 
 // keptLinesMax is the upper limit (bytes) of one table. Files past it are not kept, as files past guardFilesMax are not:
 // they are compared with the request's HEAD as before.
@@ -133,79 +137,169 @@ func lineGuards(root string) []guard {
 // guardNeedsLines reports whether an enabled guard reads added lines.
 func guardNeedsLines(root string) bool { return len(lineGuards(root)) > 0 }
 
-// stoppedLines are the lines a table leaves out: in the files an earlier turn changed, the lines a forbidden-words guard finds
-// (its except and allow applied as it applies them) when that guard's last record in that turn failed, with no pass after it:
-// the turn was stopped for them and did not fix them. They stay added lines, so the next turn's Stop stops them again, as
-// before there were tables.
-type stoppedLines []stoppedTurn
+// stoppedMarker starts a .stopped file: the hex of the repository (scope) it was kept in, then the hex of its key.
+const stoppedMarker = "#stopped1 "
 
-type stoppedTurn struct {
-	paths  map[string]bool
-	guards []guard
+func sessionStoppedPath(agent, id string) string {
+	return strings.TrimSuffix(sessionPath(agent, id), ".json") + ".stopped"
 }
 
-func (s stoppedLines) leaves(p string, line string) bool {
-	for _, t := range s {
-		if !t.paths[p] {
-			continue
-		}
-		for _, g := range t.guards {
-			if !guardExcepts(g, p) && len(forbiddenWordsIn(g, line)) > 0 {
-				return true
-			}
-		}
-	}
-	return false
+// stoppedTable is the lines a forbidden-words guard stopped and that were not removed or committed since: per file (the bytes
+// of the path), how many times each keyed hash of such a line was stopped. It belongs to one repository (scope).
+type stoppedTable struct {
+	scope string
+	key   []byte
+	files map[string]map[string]int
 }
 
-// stoppedBefore finds them for the turns s (the session record before this start) holds: the kept request's turn and the
-// stretch a slash command opened, when they were in this repository (scope). The files an earlier turn changed are those that
-// differ between its listing and listing (now). A turn without records, or whose listing is gone or belongs to another start,
-// leaves nothing out (as before).
-func stoppedBefore(root, session string, s *hookSession, scope, listing string, guards []guard) stoppedLines {
-	if s == nil || session == "" || len(guards) == 0 {
+// readStoppedTable reads the .stopped at p; nil when there is none or it cannot be read (nothing is then left out).
+func readStoppedTable(p string) *stoppedTable {
+	info, err := os.Lstat(p)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > keptLinesMax+1024 {
 		return nil
 	}
-	type turn struct{ id, files, header string }
-	var turns []turn
-	if s.TurnID != "" && s.Scope == scope {
-		turns = append(turns, turn{s.TurnID, sessionFilesPath(root, session), listingHeader(s.Request)})
-	}
-	if g := s.GuardTurn; g != nil && g.Scope == scope {
-		turns = append(turns, turn{g.ID, sessionGuardFilesPath(root, session), listingHeader(g.ID)})
-	}
-	if len(turns) == 0 {
+	b, err := os.ReadFile(p)
+	if err != nil || !bytes.HasPrefix(b, []byte(stoppedMarker)) {
 		return nil
 	}
-	recs := readGuardRecords(root)
-	var out stoppedLines
-	for _, t := range turns {
-		failed := map[string]bool{} // the last record of each guard in the turn, in the order they were kept
-		for _, r := range recs {
-			if r.Session == session && r.Turn == t.id && !r.Unverified {
-				failed[r.Guard] = !r.Pass
-			}
+	head, body, found := bytes.Cut(b[len(stoppedMarker):], []byte("\n"))
+	if !found {
+		return nil
+	}
+	scopeHex, keyHex, found := strings.Cut(string(head), " ")
+	scope, err := hex.DecodeString(scopeHex)
+	if !found || err != nil || len(scope) == 0 {
+		return nil
+	}
+	key, err := hex.DecodeString(keyHex)
+	if err != nil || len(key) == 0 {
+		return nil
+	}
+	var files map[string]map[string]int
+	if json.Unmarshal(body, &files) != nil {
+		return nil
+	}
+	t := &stoppedTable{scope: string(scope), key: key, files: make(map[string]map[string]int, len(files))}
+	for name, lines := range files {
+		if p, err := hex.DecodeString(name); err == nil && len(p) > 0 && len(lines) > 0 {
+			t.files[string(p)] = lines
 		}
-		var stopped []guard
-		for _, g := range guards {
-			if failed[g.ID] {
-				stopped = append(stopped, g)
-			}
-		}
-		if len(stopped) == 0 {
-			continue
-		}
-		b, err := os.ReadFile(t.files)
-		if err != nil || !bytes.HasPrefix(b, []byte(t.header)) {
-			continue
-		}
-		paths := map[string]bool{}
-		for _, p := range changedFiles(string(b), listing) {
-			paths[p] = true
-		}
-		out = append(out, stoppedTurn{paths: paths, guards: stopped})
+	}
+	return t
+}
+
+// newStoppedTable starts an empty table for scope, with the key of the table it follows when there is one (its hashes are
+// carried as they are) or a new random key.
+func newStoppedTable(scope string, from *stoppedTable) *stoppedTable {
+	t := &stoppedTable{scope: scope, files: map[string]map[string]int{}}
+	if from != nil {
+		t.key = from.key
+		return t
+	}
+	t.key = make([]byte, 32)
+	if _, err := rand.Read(t.key); err != nil {
+		return nil
+	}
+	return t
+}
+
+func (t *stoppedTable) add(p, hash string, n int) {
+	if n <= 0 {
+		return
+	}
+	if t.files[p] == nil {
+		t.files[p] = map[string]int{}
+	}
+	t.files[p][hash] += n
+}
+
+// bytes is the file to keep, or nil when no line is left (the .stopped is then removed). Files past keptLinesMax are not kept.
+func (t *stoppedTable) bytes() []byte {
+	if t == nil || len(t.files) == 0 {
+		return nil
+	}
+	files := make(map[string]map[string]int, len(t.files))
+	for p, lines := range t.files {
+		files[hex.EncodeToString([]byte(p))] = lines
+	}
+	body, err := json.Marshal(files)
+	if err != nil {
+		return nil
+	}
+	out := append([]byte(stoppedMarker+hex.EncodeToString([]byte(t.scope))+" "+hex.EncodeToString(t.key)+"\n"), body...)
+	if len(out) > keptLinesMax {
+		return nil
 	}
 	return out
+}
+
+// stoppedNext is what a start (a request, a slash command) does with the .stopped: replace it with b (remove it when b is
+// nil), or, when set is false, leave it as it is (it belongs to another repository, or no table was built).
+type stoppedNext struct {
+	set bool
+	b   []byte
+}
+
+// keepStopped applies n to the .stopped at p.
+func keepStopped(p string, n stoppedNext) error {
+	if !n.set {
+		return nil
+	}
+	return keepLines(p, n.b)
+}
+
+// keepStoppedLines keeps, at a Stop, the added lines the failing forbidden-words guards stopped (their except and allow
+// applied as they apply them). The lines kept earlier in this repository stay for the files whose added lines this Stop did
+// not compare (the turn did not change them, or they could not be read); for the files it compared, only the lines it stopped
+// now remain, so a fixed line goes, and with no line left the .stopped is removed. A .stopped of another repository is left
+// alone unless this Stop stopped a line.
+func keepStoppedLines(root, session, scope string, failing []guard, in guardInput) {
+	if session == "" || scope == "" {
+		return
+	}
+	hits := map[string]map[string]int{}
+	for p, lines := range in.Added {
+		for _, l := range lines {
+			for _, g := range failing {
+				if !guardExcepts(g, p) && len(forbiddenWordsIn(g, l)) > 0 {
+					if hits[p] == nil {
+						hits[p] = map[string]int{}
+					}
+					hits[p][l]++
+					break
+				}
+			}
+		}
+	}
+	p := sessionStoppedPath(root, session)
+	old := readStoppedTable(p)
+	if old != nil && old.scope != scope {
+		if len(hits) == 0 {
+			return
+		}
+		old = nil
+	}
+	t := newStoppedTable(scope, old)
+	if t == nil {
+		return
+	}
+	if old != nil {
+		for f, lines := range old.files {
+			if !in.Compared[f] {
+				t.files[f] = lines
+			}
+		}
+	}
+	h := newLineHasher(t.key)
+	for f, lines := range hits {
+		for l, n := range lines {
+			d := h.hash([]byte(l))
+			t.add(f, hex.EncodeToString(d[:]), n)
+		}
+	}
+	if err := keepLines(p, t.bytes()); err != nil {
+		hookLog("guard: the lines a check stopped were not kept: " + err.Error())
+	}
 }
 
 // readGuardFile reads one listed file: a regular file inside top of at most guardFileBytesMax, without following a link in
@@ -283,29 +377,31 @@ func (t *keptTable) bytes() []byte {
 // is still the blob the listing names (a file changed since, or rewritten by a clean filter, is compared with HEAD as before).
 // It stops at guardFilesMax files, at keptLinesMax bytes and at the hook's git time limit; the rest are not kept.
 func uncommittedLines(root, cwd, header, listing string) []byte {
-	return uncommittedLinesAfter(root, cwd, header, listing, "", nil, "")
+	table, _ := uncommittedLinesAfter(root, cwd, header, listing, "", "")
+	return table
 }
 
-// uncommittedLinesAfter is uncommittedLines at a new start of a session (a request, a slash command): s is the session record
-// before that start, and the lines its turns were stopped for and did not fix are left out (stoppedBefore).
-func uncommittedLinesAfter(root, cwd, header, listing, session string, s *hookSession, scope string) []byte {
+// uncommittedLinesAfter is uncommittedLines at a new start of a session (a request, a slash command) in the repository scope:
+// the lines the session's .stopped holds for this repository are left out of the table (they stay added lines), and those
+// still in the files are carried to the .stopped the start keeps (stoppedNext).
+func uncommittedLinesAfter(root, cwd, header, listing, session, scope string) ([]byte, stoppedNext) {
 	if cwd == "" {
-		return nil
+		return nil, stoppedNext{}
 	}
 	guards := lineGuards(root)
 	if len(guards) == 0 {
-		return nil
+		return nil, stoppedNext{}
 	}
 	deadline := time.Now().Add(hookGitTimeout)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	out, ok := gitRun(ctx, cwd, "rev-parse", "--show-toplevel")
 	if !ok {
-		return nil
+		return nil, stoppedNext{}
 	}
 	top, err := os.OpenRoot(strings.TrimSpace(out))
 	if err != nil {
-		return nil
+		return nil, stoppedNext{}
 	}
 	defer top.Close()
 	head := map[string]string{}
@@ -319,9 +415,20 @@ func uncommittedLinesAfter(root, cwd, header, listing, session string, s *hookSe
 	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
-		return nil
+		return nil, stoppedNext{}
 	}
-	stopped := stoppedBefore(root, session, s, scope, listing, guards)
+	var stopped, carried *stoppedTable // the .stopped of this repository, and what of it is still in the files
+	var stoppedHasher *lineHasher
+	handled := map[string]bool{}
+	if session != "" && scope != "" {
+		if stopped = readStoppedTable(sessionStoppedPath(root, session)); stopped != nil && stopped.scope != scope {
+			stopped = nil // another repository's: left as it is
+		}
+		if stopped != nil {
+			carried = newStoppedTable(scope, stopped)
+			stoppedHasher = newLineHasher(stopped.key)
+		}
+	}
 	hasher := newLineHasher(key)
 	table := newKeptTable(header, key, keptLinesMax)
 	files := 0
@@ -348,10 +455,22 @@ func uncommittedLinesAfter(root, cwd, header, listing, session string, s *hookSe
 				counts[string(l)]++
 			}
 		})
+		var stoppedHere map[string]int
+		if stopped != nil {
+			stoppedHere = stopped.files[p]
+			handled[p] = true
+		}
 		lines := make(map[string]int, len(counts))
 		for l, n := range counts {
-			if stopped.leaves(p, l) {
-				continue
+			if len(stoppedHere) > 0 { // a stopped line still here is left out and carried, as many times as it was stopped
+				sd := stoppedHasher.hash([]byte(l))
+				h := hex.EncodeToString(sd[:])
+				if left := min(n, stoppedHere[h]); left > 0 {
+					carried.add(p, h, left)
+					if n -= left; n == 0 {
+						continue
+					}
+				}
 			}
 			d := hasher.hash([]byte(l))
 			lines[hex.EncodeToString(d[:])] += n
@@ -361,7 +480,32 @@ func uncommittedLinesAfter(root, cwd, header, listing, session string, s *hookSe
 		}
 		files++
 	}
-	return table.bytes()
+	if stopped == nil {
+		return table.bytes(), stoppedNext{}
+	}
+	if carried == nil {
+		return table.bytes(), stoppedNext{} // no key could be made: the .stopped stays as it is
+	}
+	// The stopped files this start did not read keep their lines while they still differ from HEAD (past a limit, changed
+	// since the listing, unreadable: they are compared with HEAD, where the lines are added lines anyway). A file that is gone
+	// from the listing or equals HEAD again (removed, committed) drops them.
+	var listed map[string]string
+	for p, lines := range stopped.files {
+		if handled[p] {
+			continue
+		}
+		if listed == nil {
+			listed = parseListing(listing)
+		}
+		meta := strings.Fields(listed[p])
+		if len(meta) != 2 || (meta[0] != "100644" && meta[0] != "100755") || head[p] == meta[1] {
+			continue
+		}
+		for h, n := range lines {
+			carried.add(p, h, n)
+		}
+	}
+	return table.bytes(), stoppedNext{set: true, b: carried.bytes()}
 }
 
 // keepLines writes the table to p, or removes an earlier one when there is none (it must not be read for this listing).

@@ -56,9 +56,12 @@ type guardRed struct {
 
 // guardInput is what was observed in the turn: changed files, added lines, and this turn's commits. When something is unknown, Known/CommitsKnown is false (that check passes).
 type guardInput struct {
-	Changed      []string
-	Known        bool
-	Added        map[string][]string
+	Changed []string
+	Known   bool
+	Added   map[string][]string
+	// Compared are the changed files whose added lines were worked out (Added holds those that have any). Only the Stop's
+	// comparison sets it
+	Compared     map[string]bool
 	Commits      []string
 	CommitsKnown bool
 	// CommitsUnreadable: the HEAD kept at the start is no longer an ancestor of the current HEAD (amended, rebased, another branch), so the

@@ -212,7 +212,7 @@ func cut(s string, n int) string {
 }
 
 // sessionCaches are the files kept next to a session record and pruned with it (the longer suffix first).
-var sessionCaches = []string{".guard.files", ".files", ".guard.lines", ".lines"}
+var sessionCaches = []string{".guard.files", ".files", ".guard.lines", ".lines", ".stopped"}
 
 // Expired receipts stay invalid, but accepted unresolved work must remain
 // recoverable from a fresh preparation. Cleanup shares every writer's lock.
@@ -307,7 +307,8 @@ func pruneSessionRecord(root *os.Root, name string) {
 	} else if !os.IsNotExist(err) {
 		return
 	}
-	// The tree listings (the request's, and the one a slash command's turn kept) and their tables of uncommitted lines are caches.
+	// The tree listings (the request's, and the one a slash command's turn kept), their tables of uncommitted lines and the lines
+	// a guard stopped are caches.
 	// Remove only an old orphan, under the same lock.
 	for _, suffix := range sessionCaches {
 		cache := strings.TrimSuffix(name, ".json") + suffix
