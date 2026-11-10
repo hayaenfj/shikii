@@ -5,7 +5,7 @@ import (
 )
 
 // mcpProjectSchema is the project argument every tool takes.
-var mcpProjectSchema = map[string]any{"type": "string", "description": "the absolute path of your working folder, inside a project where shikii init ran on this machine; this call uses its .shikii/. Required when the server is shared (Codex)"}
+var mcpProjectSchema = map[string]any{"type": "string", "description": "the absolute path inside a registered project on this machine; this call uses its .shikii/. For a worktree, pass the original project to keep its wiki and shared handoff; never initialize a separate wiki. Required when the server is shared (Codex)"}
 
 // mcpTools is the list of tools. inputSchema is JSON Schema.
 var correctionSchema = schemaObject(map[string]any{"source_id": map[string]any{"type": "string"}, "quote": map[string]any{"type": "string"}, "action": map[string]any{"type": "string"}}, []string{"source_id", "quote", "action"}...)

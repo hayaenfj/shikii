@@ -603,8 +603,8 @@ func TestMCPToolsListProject(t *testing.T) {
 			t.Fatalf("%s: inputSchema must have project with a description: %v", tl["name"], props["project"])
 		}
 	}
-	if !strings.Contains(mcpInstructions, "project") || !strings.Contains(mcpInstructions, "working folder") {
-		t.Fatal("mcpInstructions must tell agents to pass their working folder as project")
+	if !strings.Contains(mcpInstructions, "project") || !strings.Contains(mcpInstructions, "original project") {
+		t.Fatal("mcpInstructions must tell agents to pass the original project for a worktree")
 	}
 }
 
