@@ -84,10 +84,14 @@ type AnswerEffects struct {
 type AnswerAssessment struct {
 	Result string
 	At     time.Time
+	// Delivered is when the assessed quote was delivered (the assessment's time when the delivery is no longer in the kept
+	// history). An undo counts what was delivered after it: a quote delivered before an undo and assessed after it is a use from
+	// before the undo.
+	Delivered time.Time
 }
 
-// CountsAfter reports whether an assessment at at counts after an undo at undo: everything counts when nothing was undone, and
-// after an undo only what was assessed later.
+// CountsAfter reports whether a quote delivered at at counts after an undo at undo: everything counts when nothing was undone,
+// and after an undo only what was delivered later.
 func CountsAfter(at, undo time.Time) bool { return undo.IsZero() || at.After(undo) }
 
 // AnswerEffects reads the assessments of quoted past answers of this project, and the person's undos.
@@ -102,6 +106,14 @@ func (s Store) AnswerEffects(scope string) AnswerEffects {
 			out.Restored[r.TraceID] = r.At
 		}
 	}
+	delivered := map[string]time.Time{} // delivery id -> when it was delivered; read only when something was undone
+	if len(out.Restored) > 0 || !out.StopRestored.IsZero() {
+		if ds, err := s.MemoryDeliveries(scope); err == nil {
+			for _, d := range ds {
+				delivered[d.ID] = d.At
+			}
+		}
+	}
 	s.eachAssessment(scope, func(a MemoryAssessment) {
 		trace, ok := strings.CutPrefix(a.Key, "decision:")
 		if !ok || trace == "" {
@@ -111,8 +123,12 @@ func (s Store) AnswerEffects(scope string) AnswerEffects {
 		if !one.add(a.Result) {
 			return
 		}
-		out.ByTrace[trace] = append(out.ByTrace[trace], AnswerAssessment{Result: a.Result, At: a.At})
-		if CountsAfter(a.At, out.StopRestored) {
+		when := a.At
+		if at, ok := delivered[a.SourceID]; ok && !at.IsZero() {
+			when = at
+		}
+		out.ByTrace[trace] = append(out.ByTrace[trace], AnswerAssessment{Result: a.Result, At: a.At, Delivered: when})
+		if CountsAfter(when, out.StopRestored) {
 			out.Total.add(a.Result)
 		}
 	})

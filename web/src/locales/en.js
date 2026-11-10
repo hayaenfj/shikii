@@ -56,7 +56,7 @@ export default {
   rejectedAnswersTitle: 'Past answers the AI judged not useful',
   rejectedAnswersHow: 'An answer you gave is listed here when it was shown to the AI before similar requests at least twice and never changed what the AI did. It is not shown to the AI again, and it leaves the "Answered" list. The answer itself is kept. If you disagree, press Undo: the AI is shown it again, and only what happens after that counts when the AI judges it again.',
   rejectedAnswersRestore: 'Undo',
-  rejectedAnswersRestored: 'Undone: this answer is shown to the AI again',
+  rejectedAnswersRestored: 'Undone: this answer is shown to the AI again (once quoting past answers is not stopped)',
   rejectedAnswersStopRestored: 'Undone: past answers are shown to the AI again',
   rejectedAnswersStopped: (unused, helpful) => 'Showing your past answers before requests is stopped in this project: ' + unused + ' were looked at and ' + helpful + ' helped.',
   rejectedAnswersUnused: n => 'Not used ' + n + ' times',

@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // restoreAnswers sends what the page's undo sends: the person undoes the AI's rejection of one answer or its stop of quoting.
@@ -237,5 +239,66 @@ func TestUndoInOneProjectDoesNotRestoreAnother(t *testing.T) {
 	}
 	if listed := listedTraces(rejectedAnswersOnPage(t, h2)); !reflect.DeepEqual(listed, []string{trace2}) {
 		t.Fatalf("the other project still lists its rejected answer: %v", listed)
+	}
+}
+
+// deliverQuoteOf keeps a delivery that quotes the answer (with its turn's feedback), not assessed yet.
+func deliverQuoteOf(t *testing.T, st store.Store, scope, trace string, n int) store.MemoryDelivery {
+	t.Helper()
+	d := store.MemoryDelivery{ID: fmt.Sprintf("%016x", 0x7000+n), Scope: scope, Request: similarSetupRequest,
+		Quotes: []store.MemoryQuote{{Key: "decision:" + trace, ID: trace, Request: pastSetupRequest, Said: "In a similar request (above), you answered \"yes\""}}}
+	if err := st.SaveMemoryDelivery(d); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendFeedback(scope, store.Feedback{ID: d.ID, Request: d.Request, Summary: "x", Reply: "thanks"}); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// A quote delivered before the undo and assessed after it is a use from before the undo: it does not count towards the next
+// rejection. (Counting by the time of the assessment, one quote after the undo was enough to reject the answer again.)
+func TestAQuoteDeliveredBeforeTheUndoDoesNotCountAfterIt(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	trace := seedPersonAnswer(t, st, "needs-plan", pastSetupRequest, "yes", "ui", false)
+	d1 := deliverQuoteOf(t, st, scope, trace, 1)
+	d2 := deliverQuoteOf(t, st, scope, trace, 2)
+	d3 := deliverQuoteOf(t, st, scope, trace, 3) // delivered before the rejection, its turn not assessed yet
+	assess(t, st, scope, d1, "decision:"+trace, "unused")
+	assess(t, st, scope, d2, "decision:"+trace, "unused")
+	if ctx := quotedBefore(t, st, scope, "ffffffffffffaa01"); strings.Contains(ctx, "decision:"+trace) {
+		t.Fatal("the answer is rejected")
+	}
+	mustRestore(t, h, fmt.Sprintf(`{"trace_id":%q}`, trace))
+	assess(t, st, scope, d3, "decision:"+trace, "unused") // the reflection of a turn from before the undo
+	d4 := deliverQuoteOf(t, st, scope, trace, 4)          // the first quote after the undo
+	assess(t, st, scope, d4, "decision:"+trace, "unused")
+	if ctx := quotedBefore(t, st, scope, "ffffffffffffaa02"); !strings.Contains(ctx, "decision:"+trace) {
+		t.Fatalf("one unused quote after the undo is not a rejection: the quote delivered before the undo counted")
+	}
+	d5 := deliverQuoteOf(t, st, scope, trace, 5)
+	assess(t, st, scope, d5, "decision:"+trace, "unused")
+	if ctx := quotedBefore(t, st, scope, "ffffffffffffaa03"); strings.Contains(ctx, "decision:"+trace) {
+		t.Fatalf("two unused quotes delivered after the undo reject the answer again")
+	}
+}
+
+// A line of the undo records longer than a scanner's buffer does not hide the undos after it.
+func TestALongLineInTheUndoRecordsHidesNoUndo(t *testing.T) {
+	st, scope, h := reviewFixture(t)
+	trace := seedPersonAnswer(t, st, "needs-plan", pastSetupRequest, "yes", "ui", false)
+	assessAnswer(t, st, scope, trace, "unused", 1)
+	assessAnswer(t, st, scope, trace, "unused", 2)
+	dir := filepath.Join(st.Dir, "records", "answer-restores")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	junk := `{"note":"` + strings.Repeat("x", 70<<10) + `"}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, store.StoreName(st.Dir, scope)+".jsonl"), []byte(junk), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustRestore(t, h, fmt.Sprintf(`{"trace_id":%q}`, trace))
+	if ctx := quotedBefore(t, st, scope, "ffffffffffffbb01"); !strings.Contains(ctx, "decision:"+trace) {
+		t.Fatalf("the undo after a long line is read: the answer is quoted again")
 	}
 }

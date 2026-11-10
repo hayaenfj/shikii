@@ -1,10 +1,8 @@
 package store
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
-	"os"
 	"time"
 )
 
@@ -42,19 +40,13 @@ func (s Store) AppendAnswerRestore(scope string, r AnswerRestore) error {
 // answerRestores reads the undos of the project. A line that cannot be read, or names neither an answer nor the stop, undoes
 // nothing; a missing or unreadable file means nothing was undone.
 func (s Store) answerRestores(scope string) []AnswerRestore {
-	f, err := s.openFile(s.answerRestoresPath(scope), os.O_RDONLY)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
 	out := []AnswerRestore{}
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 4<<10), 64<<10)
-	for sc.Scan() {
+	_ = s.scanJSONL(s.answerRestoresPath(scope), func(line []byte) error { // as every other reader: a long line is skipped, not the rest
 		var r AnswerRestore
-		if json.Unmarshal(sc.Bytes(), &r) == nil && r.valid() {
+		if json.Unmarshal(line, &r) == nil && r.valid() {
 			out = append(out, r)
 		}
-	}
+		return nil
+	})
 	return out
 }

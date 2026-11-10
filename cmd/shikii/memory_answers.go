@@ -119,7 +119,7 @@ func (r answerRejection) effect(trace string) (store.PairEffect, time.Time) {
 	undo := r.restoredAt(trace)
 	for _, t := range r.carriers(trace) {
 		for _, a := range r.effects.ByTrace[t] {
-			if !store.CountsAfter(a.At, undo) {
+			if !store.CountsAfter(a.Delivered, undo) { // delivered after the undo; one delivered before it is a use from before
 				continue
 			}
 			if a.Result == "helpful" {

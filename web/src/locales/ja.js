@@ -54,7 +54,7 @@ export default {
   rejectedAnswersTitle: 'AI が無効と判断した過去の答え',
   rejectedAnswersHow: '似た依頼の前に AI へ 2 回以上見せても、AI の動きが一度も変わらなかったあなたの過去の答えを、ここに並べます。その答えは AI に二度と見せず、「回答済み」の一覧からも外します。答えそのものは残ります。納得できない時は「元に戻す」を押すと、AI にまた見せます。その後の動きだけで、AI が改めて判断します。',
   rejectedAnswersRestore: '元に戻す',
-  rejectedAnswersRestored: '元に戻しました。この答えを AI にまた見せます',
+  rejectedAnswersRestored: '元に戻しました。過去の答えを見せるのを止めていなければ、この答えを AI にまた見せます',
   rejectedAnswersStopRestored: '元に戻しました。過去の答えを AI にまた見せます',
   rejectedAnswersStopped: (unused, helpful) => 'このプロジェクトでは、依頼の前にあなたの過去の答えを見せるのを止めています(見た ' + unused + ' 件のうち、役立った ' + helpful + ' 件)。',
   rejectedAnswersUnused: n => '使わなかった ' + n + ' 回',
