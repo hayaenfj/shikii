@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-1593%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.30.7-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.30.8-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.30.7 fixes guards that passed changes they should have stopped, wiki saves that left a page unreadable and a calibration that could act on an option no truth had confirmed. A model answer without usable probabilities is no longer recorded as a decision. It also makes the hooks faster and stops quoting past answers that never helped. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.30.8 stops counting the lines you had not committed before a request as lines the agent added, lets you undo from the page what the AI decided about quoting your past answers, and has `shikii gc` sweep original texts left without a decision. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 
@@ -120,7 +120,7 @@ export PATH="$HOME/.local/bin:$PATH"
 shikii hook install --yes
 ```
 
-Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.30.7`.
+Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.30.8`.
 
 If the hooks stop working after you upgrade Go or move the binary, run the installer command above again: the binary itself is often what is gone (with a Go version manager such as mise, a Go upgrade removes the per-version folder `go install` put it in), and `shikii doctor` with it. When `shikii` still runs, `shikii doctor` says when the hooks or the Codex registration point to a shikii binary that no longer exists or cannot run, and how to fix it.
 

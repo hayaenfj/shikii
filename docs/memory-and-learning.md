@@ -281,6 +281,7 @@ What adapts is the project's knowledge-delivery method. Model weights and decisi
 | 0.30.4 | Reduce per-request label work, source-page measurement and retained history candidates while preserving evidence and recovery. |
 | 0.30.5 | Preserve concurrent decision and answer saves during history cleanup with shared append locks. |
 | 0.30.7 | Reject a person's past answer the reflection never found useful, keep a lesson's unused count across edits that leave its condition alone, and deliver a lesson once per request before tool calls. |
+| 0.30.8 | Let the person undo from the page what the AI decided about quoting their past answers, and keep a person's uncommitted lines out of the lines a guard reads as the agent's. |
 
 See the [changelog](../CHANGELOG.md) for version details and the [guide](guide.md) for operations.
 
