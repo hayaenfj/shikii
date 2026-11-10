@@ -90,14 +90,24 @@ func validOutcomeHash(s string) bool {
 
 var errOutcomeSourceChanged = errors.New("outcome evidence changed; inspect its original source")
 
+// sourceReadError names the saved source that could not be read, without the folder of the store: the refusal of a review, a
+// consult or a reuse goes to the agent and the person as it is. The cause stays reachable (a missing file is still fs.ErrNotExist).
+func sourceReadError(id string, err error) error {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		err = pathErr.Err
+	}
+	return fmt.Errorf("saved source %s cannot be read: %w", id, err)
+}
+
 func (b Book) checkedOutcomeSource(s Source) (Observation, error) {
 	dir, err := b.directory(false, "sources")
 	if err != nil {
-		return Observation{}, err
+		return Observation{}, sourceReadError(s.ID, err)
 	}
 	data, err := readSourceRecord(filepath.Join(dir, s.ID+".json"))
 	if err != nil {
-		return Observation{}, err
+		return Observation{}, sourceReadError(s.ID, err)
 	}
 	if !validSource(data, s.ID) || digest(data) != s.Hash {
 		return Observation{}, errOutcomeSourceChanged

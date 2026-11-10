@@ -2,6 +2,8 @@ package notebook
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -408,5 +410,81 @@ func TestCollectiveNamesAnUnreadableReportInsteadOfFailing(t *testing.T) {
 	recovered, err := f.b.Collective(nil, ref)
 	if got := mustJSON(recovered); err != nil || string(got) != string(beforeJSON) {
 		t.Fatalf("after recovering the source the contrast must be what it was (%v):\n%s\n%s", err, beforeJSON, got)
+	}
+}
+
+// A source that cannot be opened as a file (a folder stands where the file was) is named "(unreadable)". Neither the list nor
+// the refusal of the review carries the folder of the store, and the article still cannot be marked as reviewed.
+func TestMaintenanceNamesASourceThatCannotBeOpenedWithoutTheFolderOfTheStore(t *testing.T) {
+	for _, damage := range []string{"a folder in its place", "missing"} {
+		t.Run(damage, func(t *testing.T) {
+			f, procedure, _, evidence, _ := quartzFixture(t)
+			state := "missing"
+			if damage == "missing" {
+				f.lose(evidence)
+			} else {
+				state = "unreadable"
+				path := f.sourcePath(evidence)
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Mkdir(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tasks, err := f.b.Maintenance()
+			if err != nil {
+				t.Fatalf("the list fails: %v", err)
+			}
+			listed := string(mustJSON(tasks))
+			if !strings.Contains(listed, evidence+" ("+state+")") {
+				t.Errorf("the source is not named as %s: %s", state, listed)
+			}
+			for _, secret := range []string{f.b.Root, "wiki-sources", fixtureConditions, fixtureFailure, fixtureCorrection, fixtureResult} {
+				if strings.Contains(listed, secret) {
+					t.Errorf("the list shows %q: %s", secret, listed)
+				}
+			}
+			task := maintenanceTask(tasks, procedure.ID)
+			if task == nil {
+				t.Fatal("the procedure is not listed")
+			}
+			_, err = f.b.Maintain(MaintenanceReview{PageID: task.PageID, Revision: task.Revision, Key: task.Key, Reason: "Read the report."})
+			if err == nil {
+				t.Fatal("an article whose report cannot be checked was marked as reviewed")
+			}
+			if strings.Contains(err.Error(), f.b.Root) || !strings.Contains(err.Error(), evidence) {
+				t.Errorf("the refusal names the source and not the folder of the store: %v", err)
+			}
+			if damage == "missing" && !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("the cause of the refusal stays reachable: %v", err)
+			}
+		})
+	}
+}
+
+// The collective view has one place for a contrast. A procedure whose report cannot be read does not take it from a contrast
+// that can be read: the note about the unreadable report is shown only when there is no other contrast.
+func TestCollectivePrefersAReadableContrastToAnUnreadableReport(t *testing.T) {
+	f := newOutcomeFixture(t)
+	broken := f.page("howto", "Quartz export workflow", "Check Quartz exports.", "Quartz exports", "Run the raw parser for Quartz exports.")
+	f.report(broken, fixtureConditions, fixtureFailure, fixtureCorrection, fixtureResult)
+	lostEvidence, _ := f.report(broken, "Quartz exports on macOS", "", "", "The raw parser kept every field.")
+	whole := f.page("howto", "Basalt import workflow", "Check Basalt imports.", "Basalt imports", "Run the strict reader for Basalt imports.")
+	f.report(whole, "Basalt imports on Linux", "The strict reader dropped a column.", "Use the tolerant reader.", "The tolerant reader kept the column.")
+	f.report(whole, "Basalt imports on macOS", "", "", "The strict reader kept every column.")
+	refs := []ArticleReference{{ID: broken.ID, Revision: broken.Revision}, {ID: whole.ID, Revision: whole.Revision}}
+	f.tamper(lostEvidence)
+	view, err := f.b.Collective(nil, refs)
+	if err != nil || len(view.Contrasts) != 1 {
+		t.Fatalf("one contrast is shown: %s %v", mustJSON(view), err)
+	}
+	if c := view.Contrasts[0]; c.Article.ID != whole.ID || c.Conditions == "not_compared" {
+		t.Fatalf("the contrast that can be read takes the place, whatever the order of the articles: %s", mustJSON(c))
+	}
+	// alone, the procedure with the unreadable report still says that the report must be recovered
+	alone, err := f.b.Collective(nil, refs[:1])
+	if err != nil || len(alone.Contrasts) != 1 || alone.Contrasts[0].Conditions != "not_compared" {
+		t.Fatalf("without another contrast the unreadable report is named: %s %v", mustJSON(alone), err)
 	}
 }

@@ -228,6 +228,7 @@ func (b Book) Collective(known []CollectiveBaseline, selected []ArticleReference
 		v.Updates = append(v.Updates, u)
 	}
 	seen := map[string]bool{}
+	var unreadableContrast *KnowledgeContrast // a procedure whose report cannot be read: shown only when no other contrast is
 	for _, r := range selected {
 		if seen[r.ID] {
 			continue
@@ -273,7 +274,15 @@ func (b Book) Collective(known []CollectiveBaseline, selected []ArticleReference
 						}
 					}
 				}
-				v.Contrasts = append(v.Contrasts, c)
+				if unreadable {
+					// it says only that a report must be recovered: a contrast that can be read, of this or another article, takes
+					// the one place first, and this one is shown when there is none
+					if unreadableContrast == nil {
+						unreadableContrast = &c
+					}
+				} else {
+					v.Contrasts = append(v.Contrasts, c)
+				}
 			}
 		}
 		if p.Learning == nil {
@@ -331,6 +340,9 @@ func (b Book) Collective(known []CollectiveBaseline, selected []ArticleReference
 				v.Investigations = append(v.Investigations, Investigation{Article: r, Key: key, Question: q.Question, Method: q.Method, ReconsiderWhen: q.ReconsiderWhen, Results: q.Results, ResultCount: len(q.Results), Query: articleQuery(r)})
 			}
 		}
+	}
+	if unreadableContrast != nil && len(v.Contrasts) == 0 {
+		v.Contrasts = append(v.Contrasts, *unreadableContrast)
 	}
 	// Keep exact quotes whole. When they cannot fit, return the exact revision
 	// query rather than shortening a condition into a different assertion.
