@@ -521,10 +521,15 @@ func hookSpecPath(agent, id string) string {
 var wordingAdopt = adoptWording
 
 func contrastingTuneTruths(st store.Store, sp *spec.Spec) bool {
+	return contrastingTuneTruthsWith(newSpecTruths(st, sp.ID), sp)
+}
+
+// contrastingTuneTruthsWith is contrastingTuneTruths reading through truths.
+func contrastingTuneTruthsWith(read *specTruths, sp *spec.Spec) bool {
 	if sp.Type != spec.Noul {
 		return true
 	}
-	_, all, err := st.Counts(sp.ID)
+	all, err := read.allLabels()
 	if err != nil {
 		return false
 	}

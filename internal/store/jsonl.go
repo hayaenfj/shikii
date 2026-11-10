@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 func (s Store) appendJSONL(path string, v any) error {
@@ -19,7 +20,15 @@ func (s Store) appendJSONL(path string, v any) error {
 	return s.appendJSONLBytes(path, append(b, '\n'))
 }
 
+// jsonlScans counts the scans of a records or labels file in this process, whether or not the file exists.
+var jsonlScans atomic.Uint64
+
+// JSONLScans returns how many times this process scanned a records or labels file (tests hold checks that run back to back to one
+// scan per file).
+func JSONLScans() uint64 { return jsonlScans.Load() }
+
 func (s Store) scanJSONL(path string, fn func(line []byte) error) error {
+	jsonlScans.Add(1)
 	f, err := s.openFile(path, os.O_RDONLY)
 	if err != nil {
 		return err

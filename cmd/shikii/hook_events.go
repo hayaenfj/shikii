@@ -201,10 +201,11 @@ func runHookEvent(event string) error {
 	if event == "stop" {
 		// drawing lines and trying wordings run outside the lock as separate processes (slow-cycle work, like the lint of Karpathy's wiki)
 		for _, id := range hookSpecs {
-			if cerr := hookMaybeCalibrate(agent, id); cerr != nil && err == nil {
+			cerr, terr := stopSpecChecks(agent, id)
+			if cerr != nil && err == nil {
 				err = cerr
 			}
-			if terr := hookMaybeTune(agent, id); terr != nil && err == nil {
+			if terr != nil && err == nil {
 				err = terr
 			}
 		}

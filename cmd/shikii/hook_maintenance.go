@@ -16,13 +16,19 @@ import (
 // hookMaybeCalibrate follows the same rule as serve's auto-calibration: for a model with no line for the current wording (hash) yet, draw the line once the person's truths (one per input) reach eval.min_n.
 // Models with a line are left alone (redrawing happens when drift reports a decline). The work is hookCalibrate (by default a detached process). The same spec runs at most once per hookCalibrateGap.
 func hookMaybeCalibrate(agent, specID string) error {
+	return hookMaybeCalibrateWith(agent, specID, newSpecTruths(store.Store{Dir: agent}, specID))
+}
+
+// hookMaybeCalibrateWith is hookMaybeCalibrate reading the spec's records and labels through truths, so the checks that run back to
+// back at Stop decode them once. Once a calibration is started the reads are forgotten: it may write new records and labels.
+func hookMaybeCalibrateWith(agent, specID string, truths *specTruths) error {
 	path := hookSpecPath(agent, specID)
 	sp, err := spec.Load(path)
 	if err != nil {
 		return nil // no spec (the person removed it): do nothing
 	}
-	st := store.Store{Dir: agent}
-	recs, err := st.Records(specID, 0)
+	st := truths.st
+	recs, err := truths.records()
 	if err != nil {
 		return err
 	}
@@ -36,11 +42,11 @@ func hookMaybeCalibrate(agent, specID string) error {
 		if c := sp.CalibrationFor(model); c != nil && c.SpecHash == sp.Hash() {
 			continue
 		}
-		labels, err := st.Labels(specID, sp.Hash(), model)
+		labels, err := truths.labelsFor(sp.Hash(), model)
 		if err != nil {
 			continue
 		}
-		if _, all, err := st.Counts(specID); err == nil { // counted like calibrate: an untrusted outcome's truths are not counted (0.11)
+		if all, err := truths.allLabels(); err == nil { // counted like calibrate: an untrusted outcome's truths are not counted (0.11)
 			labels = store.WithoutUntrustedOutcome(labels, store.OutcomeAgreement(all), sp.Thresholds.Act)
 		}
 		var human []store.Label
@@ -61,8 +67,18 @@ func hookMaybeCalibrate(agent, specID string) error {
 		}
 		_ = os.WriteFile(guard, []byte(fmt.Sprintf("%s %s %d %s\n", time.Now().Format(time.RFC3339), model, len(human), sp.Hash())), 0o600)
 		hookCalibrate(agent, path, st.Dir, model)
+		truths.forget()
 	}
 	return nil
+}
+
+// stopSpecChecks runs, for one of the hook's own specs at Stop, the check that may draw its line and then the check that may score
+// its wordings. Both read the spec's records and labels through the same specTruths, so each file is decoded once.
+func stopSpecChecks(agent, specID string) (calibrate, tune error) {
+	truths := newSpecTruths(store.Store{Dir: agent}, specID)
+	calibrate = hookMaybeCalibrateWith(agent, specID, truths)
+	tune = hookMaybeTuneWith(agent, specID, truths)
+	return calibrate, tune
 }
 
 // lastCalibrateAttempt returns, from the record of the last auto-calibration (time, model, number of truths, wording hash), the number of truths tried with the same wording and model.
@@ -82,7 +98,12 @@ func lastCalibrateAttempt(guard, hash, model string) (int, bool) {
 
 // humanTruths is the number of the person's truths on the current wording (hash) (one per input, counted across models). Counted like calibrate / tune.
 func humanTruthsFor(st store.Store, sp *spec.Spec) (int, error) {
-	recs, err := st.Records(sp.ID, 0)
+	return humanTruthsWith(newSpecTruths(st, sp.ID), sp)
+}
+
+// humanTruthsWith is humanTruthsFor reading through truths.
+func humanTruthsWith(truths *specTruths, sp *spec.Spec) (int, error) {
+	recs, err := truths.records()
 	if err != nil {
 		return 0, err
 	}
@@ -94,14 +115,14 @@ func humanTruthsFor(st store.Store, sp *spec.Spec) (int, error) {
 	}
 	var all []store.Label
 	for model := range models {
-		labels, err := st.Labels(sp.ID, sp.Hash(), model)
+		labels, err := truths.labelsFor(sp.Hash(), model)
 		if err != nil {
 			return 0, err
 		}
 		all = append(all, labels...)
 	}
 	n := 0
-	_, originals, err := st.Counts(sp.ID)
+	originals, err := truths.allLabels()
 	if err != nil {
 		return 0, err
 	}
@@ -118,20 +139,25 @@ func humanTruthsFor(st store.Store, sp *spec.Spec) (int, error) {
 // the person's truths are at least eval.min_n, and they grew by hookTuneEvery since the last auto-tune, it starts `shikii tune` (without --write) detached.
 // Without variants there is nothing to try. A variant that scored higher gets its meaning checked by the agent before the next request (wordingCheckContext). The last count is kept in tuned-<spec>.
 func hookMaybeTune(agent, specID string) error {
+	return hookMaybeTuneWith(agent, specID, newSpecTruths(store.Store{Dir: agent}, specID))
+}
+
+// hookMaybeTuneWith is hookMaybeTune reading the spec's records and labels through truths (see hookMaybeCalibrateWith).
+func hookMaybeTuneWith(agent, specID string, truths *specTruths) error {
 	path := hookSpecPath(agent, specID)
 	sp, err := spec.Load(path)
 	if err != nil || len(sp.Variants) == 0 {
 		return nil
 	}
-	st := store.Store{Dir: agent}
-	n, err := humanTruthsFor(st, sp)
+	st := truths.st
+	n, err := humanTruthsWith(truths, sp)
 	if err != nil {
 		return err
 	}
 	if n < sp.Eval.MinN {
 		return nil
 	}
-	if !contrastingTuneTruths(st, sp) {
+	if !contrastingTuneTruthsWith(truths, sp) {
 		return nil
 	}
 	guard := filepath.Join(agent, "tuned-"+specID)
@@ -150,6 +176,7 @@ func hookMaybeTune(agent, specID string) error {
 		return err
 	}
 	hookTune(agent, path, st.Dir)
+	truths.forget()
 	return nil
 }
 
