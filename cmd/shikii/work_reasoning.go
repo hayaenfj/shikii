@@ -423,6 +423,17 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 		return item, err
 	}
 	if previous != nil {
+		// The internal ending review of a report runs only after that report was accepted for the current generation
+		// (finishWorkCompletion). Its text never changes, so the same key is already in the history when the report is recorded again
+		// after later evidence. Follow the report's generation; an agent's own replayed finish stays a historical retry.
+		if w.reviewingResult && !previous.Unverified && input.Phase == "finish" && (r.Finish == nil || r.Finish.Generation != r.Generation) {
+			entry := previous.Entry
+			entry.Generation, entry.At = r.Generation, time.Now().UTC()
+			r.Latest, r.Finish = &entry, &entry
+			applyReasoningEffects(r, entry.workReasoning)
+			item.ID = entry.Source
+			return item, save()
+		}
 		return restoreReasoningHistory(w, previous, save)
 	}
 	if prior, ok := w.Saved[key]; ok {
