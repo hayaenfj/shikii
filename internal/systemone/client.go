@@ -102,6 +102,41 @@ type Answer struct {
 	Confidence    float64            `json:"confidence,omitempty"`
 	Probabilities map[string]float64 `json:"probabilities,omitempty"`
 	Legend        map[string]string  `json:"legend,omitempty"`
+	// HasNoul reports whether the response carried a noul value (the field was there and was not null). An answer
+	// without a value is not an answer of zero: Noul is 0 in both cases, and only this tells them apart.
+	HasNoul bool `json:"-"`
+}
+
+// UnmarshalJSON reads an answer and records whether it carried a noul value.
+func (a *Answer) UnmarshalJSON(data []byte) error {
+	type fields Answer // the same fields without the methods, so the standard decoding is used
+	var in struct {
+		fields
+		Noul *float64 `json:"noul"` // shadows fields.Noul: nil when the field is missing or null
+	}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	*a = Answer(in.fields)
+	a.Noul, a.HasNoul = 0, in.Noul != nil
+	if a.HasNoul {
+		a.Noul = *in.Noul
+	}
+	return nil
+}
+
+// MarshalJSON writes an answer. A yes/no answer is written with its value even when the value is zero (the
+// sending side: test mocks). Left out, a zero would arrive as an answer without a value.
+func (a Answer) MarshalJSON() ([]byte, error) {
+	type fields Answer
+	out := struct {
+		fields
+		Noul *float64 `json:"noul,omitempty"`
+	}{fields: fields(a)}
+	if a.Type == "noul" || a.HasNoul || a.Noul != 0 {
+		out.Noul = &a.Noul
+	}
+	return json.Marshal(out)
 }
 
 // Response is the response. Model is the model that actually answered (e.g. "jev-1.13.0").

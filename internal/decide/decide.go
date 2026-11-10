@@ -121,7 +121,7 @@ func AskOrdered(ctx context.Context, sp *spec.Spec, state string, order []int, c
 		return nil, "", fmt.Errorf("response has no answer for %q", questionKey)
 	}
 	raw := rawDistribution(sp, ans)
-	if err := usableDistribution(sp, raw); err != nil {
+	if err := usableDistribution(sp, ans, raw); err != nil {
 		return nil, "", err
 	}
 	return raw, resp.Model, nil
@@ -144,7 +144,8 @@ func PickEndpoint(sp *spec.Spec, sess Session, eps []Endpoint) *Endpoint {
 	return nil
 }
 
-// Decide makes one decision. It returns an error only when the model call fails.
+// Decide makes one decision. It returns an error only when the model call fails or its answer cannot be used
+// (no value for a yes/no question, no usable probabilities for a choice or score).
 // When it decides not to decide, it returns Abstain and a reason instead of an error.
 func Decide(ctx context.Context, sp *spec.Spec, inputs map[string]string, sess Session, eps []Endpoint) (*Decision, error) {
 	d := &Decision{
@@ -221,7 +222,7 @@ func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *
 	}
 
 	raw := rawDistribution(sp, ans)
-	if err := usableDistribution(sp, raw); err != nil {
+	if err := usableDistribution(sp, ans, raw); err != nil {
 		return err // before d is touched: on the context rung the minimal answer stays as it is
 	}
 	d.Raw = raw
@@ -303,6 +304,9 @@ func decideBySteps(ctx context.Context, sp *spec.Spec, d *Decision, state string
 		if !ok {
 			return fmt.Errorf("response has no answer for %q", stepKey(i))
 		}
+		if err := usableNoul(stepKey(i), ans); err != nil {
+			return err // before d is touched, as in askOnce
+		}
 		pYes[i] = ans.Noul
 	}
 	d.Model = resp.Model
@@ -342,12 +346,13 @@ func rawDistribution(sp *spec.Spec, ans systemone.Answer) map[string]float64 {
 	}
 }
 
-// usableDistribution says why a choice or score answer cannot be decided on: a value that is not a probability, or no option above
-// zero (no probabilities at all, or an answer of another type). Such an answer has no top option, and its record could never be
+// usableDistribution says why an answer cannot be decided on. For choice and score: a value that is not a probability, a
+// probability for an option the question does not have, or no option above zero (no probabilities at all, or an answer of another type). Such an answer has no top option, and its record could never be
 // given a truth. The values need not sum to one: a readout that reports only its top labels leaves the rest at a floor.
-func usableDistribution(sp *spec.Spec, raw map[string]float64) error {
+// For yes/no, see usableNoul.
+func usableDistribution(sp *spec.Spec, ans systemone.Answer, raw map[string]float64) error {
 	if sp.Type == spec.Noul {
-		return nil
+		return usableNoul(questionKey, ans)
 	}
 	positive := false
 	for _, k := range sortedKeys(raw) {
@@ -355,10 +360,26 @@ func usableDistribution(sp *spec.Spec, raw map[string]float64) error {
 		if !(p >= 0 && p <= 1+1e-9) { // also refuses NaN
 			return fmt.Errorf("response probabilities are not usable: %q is %v, not a probability", k, p)
 		}
+		if p > 0 && !sp.HasTruthKey(k) { // it would be the top answer of a decision no truth could ever be given to
+			return fmt.Errorf("response probabilities are not usable: %q is not an option of this question", k)
+		}
 		positive = positive || p > 0
 	}
 	if !positive {
 		return fmt.Errorf("response probabilities are not usable: no option has a probability above 0 (%d options answered)", len(raw))
+	}
+	return nil
+}
+
+// usableNoul says why a yes/no answer cannot be decided on: it carries no value (no noul field, a null, or an answer of another
+// type), or its value is not a probability. An answer without a value is not an answer of zero: read as zero it would be recorded as
+// a confident "no". A value of exactly zero is an answer. key is the question the answer belongs to (a step of a broken-down choice).
+func usableNoul(key string, ans systemone.Answer) error {
+	if !ans.HasNoul {
+		return fmt.Errorf("response probabilities are not usable: the answer for %q has no noul value (answer type %q)", key, ans.Type)
+	}
+	if p := ans.Noul; !(p >= 0 && p <= 1) { // also refuses NaN; one value, so no rounding of a sum to allow for
+		return fmt.Errorf("response probabilities are not usable: the noul value for %q is %v, not a probability", key, p)
 	}
 	return nil
 }

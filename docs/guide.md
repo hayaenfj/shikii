@@ -343,7 +343,7 @@ The model name that is the calibration key is the `model` in the response, not t
 
 ### Endpoints
 
-Business `decide`, MCP and `serve` use `POST /v1/systemone` in the System One format. This is not the same thing as an OpenAI-compatible chat API. If the URL you give the CLI has a path, that path is used; if it has none, `/v1/systemone` is added. The response must contain `answers` with probabilities for each question. `shikii-readout` is a converter that uses llama.cpp's `/apply-template`, `/tokenize` and `/completion`; it is not a converter for any chat API.
+Business `decide`, MCP and `serve` use `POST /v1/systemone` in the System One format. This is not the same thing as an OpenAI-compatible chat API. If the URL you give the CLI has a path, that path is used; if it has none, `/v1/systemone` is added. The response must contain `answers` with probabilities for each question. An answer without usable probabilities is an error, like a failed model call, and is not recorded as a decision: a yes/no answer with no `noul` value (the field is missing or null) or a value outside 0–1, and a choice or score answer with a value outside 0–1, a probability for an option the question does not have, or no option above 0. A choice broken down into yes/no steps follows the yes/no rule for each step. A `noul` of exactly 0 is an answer ("no") and is decided as usual. `shikii-readout` is a converter that uses llama.cpp's `/apply-template`, `/tokenize` and `/completion`; it is not a converter for any chat API.
 
 | Endpoint | Conditions | Example URL |
 |---|---|---|

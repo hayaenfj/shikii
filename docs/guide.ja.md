@@ -314,7 +314,7 @@ shikii up                         # llama-server を :8086 に、shikii-readout 
 
 ### 接続先
 
-業務の `decide`・MCP・`serve` は、System One形式の `POST /v1/systemone` を使う。OpenAI互換のチャットAPIと同じ意味ではない。CLIで指定するURLにパスがあればそれを使い、パスが無ければ `/v1/systemone` を付ける。応答には問いごとの `answers` と確率が必要。`shikii-readout` はllama.cppの `/apply-template`・`/tokenize`・`/completion` を使う変換役で、任意のチャットAPIに対応する変換役ではない。
+業務の `decide`・MCP・`serve` は、System One形式の `POST /v1/systemone` を使う。OpenAI互換のチャットAPIと同じ意味ではない。CLIで指定するURLにパスがあればそれを使い、パスが無ければ `/v1/systemone` を付ける。応答には問いごとの `answers` と確率が必要。使える確率の無い返事は、モデルの呼び出しの失敗と同じ誤りにし、判定として記録しない(はい/いいえの問いで `noul` の値が無い・null・0〜1の外の時と、選ぶ問い・段階の問いで0〜1の外の値がある時、問いに無い選択肢に確率がある時、0より大きい選択肢が1つも無い時。はい/いいえの段に分けた選ぶ問いは、段ごとにはい/いいえの決まりに従う)。`noul` がちょうど0の返事は「いいえ」の答えで、今までどおり判定する。`shikii-readout` はllama.cppの `/apply-template`・`/tokenize`・`/completion` を使う変換役で、任意のチャットAPIに対応する変換役ではない。
 
 | 接続先 | 条件 | URLの例 |
 |---|---|---|
