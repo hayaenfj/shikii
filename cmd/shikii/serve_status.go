@@ -19,7 +19,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	var page map[string]any // where this page is (0.8.0): so an agent can answer the URL and port over MCP too
+	var page map[string]any // where this page is (0.8.0): answered only by the page's own process. Over MCP it stays empty; an agent runs `shikii page` (0.30.7)
 	if common, err := agentHome(); err == nil {
 		if abs, err := filepath.Abs(s.o.storeDir); err == nil {
 			// the key serve wrote the record under (pageScope: links resolved, the hook's spelling), not the spelling --store was given in
