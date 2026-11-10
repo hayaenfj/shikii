@@ -207,25 +207,13 @@ func evalGuard(g guard, in guardInput) guardResult {
 		}
 		sort.Strings(paths)
 		for _, p := range paths {
-			skip := false
-			for _, e := range g.Except {
-				if matchPath(e, p) {
-					skip = true
-					break
-				}
-			}
-			if skip {
+			if guardExcepts(g, p) {
 				continue
 			}
 			for _, line := range in.Added[p] {
-				for _, a := range g.Allow { // remove the allowed words (such as 根拠) first
-					line = strings.ReplaceAll(line, a, "")
-				}
-				for _, w := range g.Words {
-					if strings.Contains(line, w) {
-						hits = append(hits, p+": \""+w+"\"")
-						hitsJA = append(hitsJA, p+": 「"+w+"」")
-					}
+				for _, w := range forbiddenWordsIn(g, line) {
+					hits = append(hits, p+": \""+w+"\"")
+					hitsJA = append(hitsJA, p+": 「"+w+"」")
 				}
 			}
 		}
@@ -289,6 +277,31 @@ func evalGuard(g guard, in guardInput) guardResult {
 		}
 	}
 	return r
+}
+
+// guardExcepts reports whether forbidden-words does not check p (it matches one of except).
+func guardExcepts(g guard, p string) bool {
+	for _, e := range g.Except {
+		if matchPath(e, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// forbiddenWordsIn returns the forbidden words of g in line, in the order of words, after the allowed words (such as 根拠)
+// are removed from it.
+func forbiddenWordsIn(g guard, line string) []string {
+	for _, a := range g.Allow {
+		line = strings.ReplaceAll(line, a, "")
+	}
+	var hits []string
+	for _, w := range g.Words {
+		if strings.Contains(line, w) {
+			hits = append(hits, w)
+		}
+	}
+	return hits
 }
 
 // guardNegative returns the negative example the check must stop (used for enable's RED) and its description. guardPositive is the positive example that must pass.

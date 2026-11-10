@@ -47,3 +47,32 @@ func TestGCCommandSweepsTextsLeftWithoutADecision(t *testing.T) {
 		t.Errorf("the text is gone: %v", err)
 	}
 }
+
+// `shikii gc` for one question collects that question's records only: the original texts are store-wide, so it leaves them, also
+// with --apply, and says nothing about them.
+func TestGCForAQuestionLeavesTheOriginalTexts(t *testing.T) {
+	dir := t.TempDir()
+	st := store.Store{Dir: dir}
+	old := time.Now().Add(-48 * time.Hour)
+	inputs := map[string]string{"request": "short opening"}
+	rec := store.Record{TraceID: "bbbbbbbbbbbbbbbb", SpecID: "prompt-kind", SpecHash: "h", Type: "noul", Model: "m", Inputs: inputs, InputsHash: store.HashInputs(inputs), Raw: map[string]float64{"yes": .6, "no": .4}, P: .6, Band: "ask", At: old}
+	if err := st.SaveRecordText(rec, map[string]string{"request": "short opening and the long original"}); err != nil {
+		t.Fatal(err)
+	}
+	text := filepath.Join(dir, "records", "text", "bbbbbbbbbbbbbbbb.json")
+	if err := os.Chtimes(text, old, old); err != nil {
+		t.Fatal(err)
+	}
+	specPath := writeSpec(t, t.TempDir(), "false")
+	out := capture(t, func() error { return cmdGC([]string{"--store", dir, "--older-than", "1d", "--apply", specPath}) })
+	if strings.Contains(out, "original texts") {
+		t.Fatalf("gc for one question reports the original texts:\n%s", out)
+	}
+	if _, err := os.Stat(text); err != nil {
+		t.Fatalf("gc for one question removed an original text: %v", err)
+	}
+	out = capture(t, func() error { return cmdGC([]string{"--store", dir, "--older-than", "1d"}) })
+	if !strings.Contains(out, "original texts: would remove 1 left without a decision") {
+		t.Fatalf("premise: gc over every question would remove it:\n%s", out)
+	}
+}

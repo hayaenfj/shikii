@@ -76,7 +76,8 @@ func openGuardTurn(agent string, in *hookInput, snapshot *hookSession) []func(*h
 	turn := &guardTurn{ID: store.NewTraceID(), Scope: scope, Head: gitHead(in.CWD), HeadAt: time.Now()}
 	var lines []byte
 	if listed {
-		lines = uncommittedLines(agent, in.CWD, listingHeader(turn.ID), listing)
+		// the lines the request's turn (or an earlier stretch) was stopped for and did not fix are left out: they stay added lines
+		lines = uncommittedLinesAfter(agent, in.CWD, listingHeader(turn.ID), listing, in.SessionID, snapshot, scope)
 	}
 	return []func(*hookSession){func(s *hookSession) {
 		s.GuardTurn = turn

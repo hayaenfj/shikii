@@ -47,7 +47,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	request, requestText := groupedRequest(snapshot, req, in.Prompt, scope, joined)
 	var lines []byte // keyed hashes of the lines of the files not committed now, for the guards (guard_lines.go)
 	if listed {
-		lines = uncommittedLines(agent, in.CWD, listingHeader(request), listing)
+		// the lines the previous turn was stopped for and did not fix are left out: they stay added lines
+		lines = uncommittedLinesAfter(agent, in.CWD, listingHeader(request), listing, in.SessionID, snapshot, scope)
 	}
 	turnID := store.NewTraceID()
 	planning := newPlanningFrame(snapshot, in, scope, turnID)

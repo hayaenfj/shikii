@@ -10,10 +10,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"hash"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -25,10 +27,18 @@ import (
 // to the listing (sessions/<id>.lines, sessions/<id>.guard.lines for a slash command's stretch), starts with the listing's
 // own header (which request or stretch it belongs to), is written 0600, replaced by the next request and pruned with the
 // listings. Only forbidden-words reads added lines, so the table is kept only while such a guard is enabled.
+//
+// A line the turn before was stopped for and did not fix is not a line "from before the request": the table leaves it out
+// (stoppedBefore), so the next turn's Stop stops it again.
 
 // keptLinesMax is the upper limit (bytes) of one table. Files past it are not kept, as files past guardFilesMax are not:
 // they are compared with the request's HEAD as before.
 const keptLinesMax = 16 << 20
+
+// keptKeyMarker starts the line after the header that holds the table's key. In the file, the paths are written as the hex of
+// their bytes (a path need not be UTF-8, and encoding/json would replace such bytes). A table written before that, with the
+// paths themselves after "#key ", is not read: its files are compared with HEAD, as without a table.
+const keptKeyMarker = "#key2 "
 
 func sessionLinesPath(agent, id string) string {
 	return strings.TrimSuffix(sessionPath(agent, id), ".json") + ".lines"
@@ -45,16 +55,52 @@ type keptFile struct {
 	Lines map[string]int `json:"lines"`
 }
 
+// keptLines is a table read back: its key and its files by path (the bytes of the path, as gitPath gives them).
 type keptLines struct {
 	key   []byte
 	files map[string]keptFile
 }
 
-func lineHash(key []byte, line string) string {
-	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte(line))
-	return hex.EncodeToString(mac.Sum(nil)[:16])
+// lineHasher keys the hashes of one table's lines. One HMAC is made and reset for each line: making it again for every line
+// costs more than the hash itself.
+type lineHasher struct {
+	mac hash.Hash
+	sum []byte
 }
+
+func newLineHasher(key []byte) *lineHasher {
+	return &lineHasher{mac: hmac.New(sha256.New, key), sum: make([]byte, 0, sha256.Size)}
+}
+
+func (h *lineHasher) hash(line []byte) [16]byte {
+	h.mac.Reset()
+	h.mac.Write(line)
+	h.sum = h.mac.Sum(h.sum[:0])
+	var d [16]byte
+	copy(d[:], h.sum)
+	return d
+}
+
+// lineHash is the keyed hash of one line as the table writes it.
+func lineHash(key []byte, line string) string {
+	d := newLineHasher(key).hash([]byte(line))
+	return hex.EncodeToString(d[:])
+}
+
+// eachLine calls fn with every line of b, split at "\n" as strings.Split splits it, without copying them.
+func eachLine(b []byte, fn func([]byte)) {
+	for {
+		i := bytes.IndexByte(b, '\n')
+		if i < 0 {
+			fn(b)
+			return
+		}
+		fn(b[:i])
+		b = b[i+1:]
+	}
+}
+
+func blankLine(l []byte) bool { return len(bytes.TrimSpace(l)) == 0 }
 
 // gitBlobID is the id Git gives content stored as a blob, in the repository's hash (sha1: 40 digits, sha256: 64).
 func gitBlobID(content []byte, digits int) string {
@@ -72,15 +118,164 @@ func gitBlobID(content []byte, digits int) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// guardNeedsLines reports whether an enabled guard reads added lines.
-func guardNeedsLines(root string) bool {
+// lineGuards are the enabled guards that read added lines (forbidden-words).
+func lineGuards(root string) []guard {
 	guards, _ := enabledGuards(root)
+	var out []guard
 	for _, g := range guards {
 		if g.Kind == guardKindForbiddenWords {
-			return true
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// guardNeedsLines reports whether an enabled guard reads added lines.
+func guardNeedsLines(root string) bool { return len(lineGuards(root)) > 0 }
+
+// stoppedLines are the lines a table leaves out: in the files an earlier turn changed, the lines a forbidden-words guard finds
+// (its except and allow applied as it applies them) when that guard's last record in that turn failed, with no pass after it:
+// the turn was stopped for them and did not fix them. They stay added lines, so the next turn's Stop stops them again, as
+// before there were tables.
+type stoppedLines []stoppedTurn
+
+type stoppedTurn struct {
+	paths  map[string]bool
+	guards []guard
+}
+
+func (s stoppedLines) leaves(p string, line string) bool {
+	for _, t := range s {
+		if !t.paths[p] {
+			continue
+		}
+		for _, g := range t.guards {
+			if !guardExcepts(g, p) && len(forbiddenWordsIn(g, line)) > 0 {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// stoppedBefore finds them for the turns s (the session record before this start) holds: the kept request's turn and the
+// stretch a slash command opened, when they were in this repository (scope). The files an earlier turn changed are those that
+// differ between its listing and listing (now). A turn without records, or whose listing is gone or belongs to another start,
+// leaves nothing out (as before).
+func stoppedBefore(root, session string, s *hookSession, scope, listing string, guards []guard) stoppedLines {
+	if s == nil || session == "" || len(guards) == 0 {
+		return nil
+	}
+	type turn struct{ id, files, header string }
+	var turns []turn
+	if s.TurnID != "" && s.Scope == scope {
+		turns = append(turns, turn{s.TurnID, sessionFilesPath(root, session), listingHeader(s.Request)})
+	}
+	if g := s.GuardTurn; g != nil && g.Scope == scope {
+		turns = append(turns, turn{g.ID, sessionGuardFilesPath(root, session), listingHeader(g.ID)})
+	}
+	if len(turns) == 0 {
+		return nil
+	}
+	recs := readGuardRecords(root)
+	var out stoppedLines
+	for _, t := range turns {
+		failed := map[string]bool{} // the last record of each guard in the turn, in the order they were kept
+		for _, r := range recs {
+			if r.Session == session && r.Turn == t.id && !r.Unverified {
+				failed[r.Guard] = !r.Pass
+			}
+		}
+		var stopped []guard
+		for _, g := range guards {
+			if failed[g.ID] {
+				stopped = append(stopped, g)
+			}
+		}
+		if len(stopped) == 0 {
+			continue
+		}
+		b, err := os.ReadFile(t.files)
+		if err != nil || !bytes.HasPrefix(b, []byte(t.header)) {
+			continue
+		}
+		paths := map[string]bool{}
+		for _, p := range changedFiles(string(b), listing) {
+			paths[p] = true
+		}
+		out = append(out, stoppedTurn{paths: paths, guards: stopped})
+	}
+	return out
+}
+
+// readGuardFile reads one listed file: a regular file inside top of at most guardFileBytesMax, without following a link in
+// its place. A larger file is not read. os.Root follows a link inside it even with O_NOFOLLOW, so the file opened must be the
+// one Lstat found there.
+func readGuardFile(top *os.Root, p string) ([]byte, bool) {
+	name := filepath.FromSlash(p)
+	there, err := top.Lstat(name)
+	if err != nil || !there.Mode().IsRegular() || there.Size() > guardFileBytesMax {
+		return nil, false
+	}
+	f, err := top.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || !os.SameFile(there, info) || info.Size() > guardFileBytesMax {
+		return nil, false
+	}
+	b, err := io.ReadAll(io.LimitReader(f, guardFileBytesMax+1))
+	if err != nil || len(b) > guardFileBytesMax {
+		return nil, false
+	}
+	return b, true
+}
+
+// keptTable writes a table as it is built, so its size is the bytes written: the header, the key line, then
+// {"<hex of the path>":{"blob":...,"lines":{...}},...}. A file that does not fit in max is not kept, nor any after it.
+type keptTable struct {
+	buf bytes.Buffer
+	max int
+	n   int
+}
+
+func newKeptTable(header string, key []byte, max int) *keptTable {
+	t := &keptTable{max: max}
+	t.buf.WriteString(header + keptKeyMarker + hex.EncodeToString(key) + "\n{")
+	return t
+}
+
+// add keeps one file, or reports that it does not fit.
+func (t *keptTable) add(p string, f keptFile) bool {
+	item, err := json.Marshal(f)
+	if err != nil {
+		return true // nothing is kept for it; the next file may still be
+	}
+	name := `"` + hex.EncodeToString([]byte(p)) + `":`
+	size := len(name) + len(item)
+	if t.n > 0 {
+		size++ // the comma before it
+	}
+	if t.buf.Len()+size+1 > t.max { // and the closing brace
+		return false
+	}
+	if t.n > 0 {
+		t.buf.WriteByte(',')
+	}
+	t.buf.WriteString(name)
+	t.buf.Write(item)
+	t.n++
+	return true
+}
+
+// bytes is the table, or nil when it keeps no file.
+func (t *keptTable) bytes() []byte {
+	if t.n == 0 {
+		return nil
+	}
+	return append(t.buf.Bytes(), '}')
 }
 
 // uncommittedLines builds the table for the listing just taken at cwd (header is the listing's first line), or nil when no
@@ -88,19 +283,33 @@ func guardNeedsLines(root string) bool {
 // is still the blob the listing names (a file changed since, or rewritten by a clean filter, is compared with HEAD as before).
 // It stops at guardFilesMax files, at keptLinesMax bytes and at the hook's git time limit; the rest are not kept.
 func uncommittedLines(root, cwd, header, listing string) []byte {
-	if cwd == "" || !guardNeedsLines(root) {
+	return uncommittedLinesAfter(root, cwd, header, listing, "", nil, "")
+}
+
+// uncommittedLinesAfter is uncommittedLines at a new start of a session (a request, a slash command): s is the session record
+// before that start, and the lines its turns were stopped for and did not fix are left out (stoppedBefore).
+func uncommittedLinesAfter(root, cwd, header, listing, session string, s *hookSession, scope string) []byte {
+	if cwd == "" {
+		return nil
+	}
+	guards := lineGuards(root)
+	if len(guards) == 0 {
 		return nil
 	}
 	deadline := time.Now().Add(hookGitTimeout)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
-	top, ok := gitRun(ctx, cwd, "rev-parse", "--show-toplevel")
+	out, ok := gitRun(ctx, cwd, "rev-parse", "--show-toplevel")
 	if !ok {
 		return nil
 	}
-	top = strings.TrimSpace(top)
+	top, err := os.OpenRoot(strings.TrimSpace(out))
+	if err != nil {
+		return nil
+	}
+	defer top.Close()
 	head := map[string]string{}
-	if out, ok := gitRun(ctx, top, "ls-tree", "-r", "-z", "--full-tree", "HEAD"); ok { // no HEAD yet: every file differs
+	if out, ok := gitRun(ctx, top.Name(), "ls-tree", "-r", "-z", "--full-tree", "HEAD"); ok { // no HEAD yet: every file differs
 		for _, rec := range strings.Split(out, "\x00") {
 			meta, p, found := strings.Cut(rec, "\t")
 			if f := strings.Fields(meta); found && len(f) == 3 {
@@ -112,10 +321,12 @@ func uncommittedLines(root, cwd, header, listing string) []byte {
 	if _, err := rand.Read(key); err != nil {
 		return nil
 	}
-	files := map[string]keptFile{}
-	size := 0
+	stopped := stoppedBefore(root, session, s, scope, listing, guards)
+	hasher := newLineHasher(key)
+	table := newKeptTable(header, key, keptLinesMax)
+	files := 0
 	for _, line := range strings.Split(listing, "\n") {
-		if len(files) >= guardFilesMax || time.Now().After(deadline) {
+		if files >= guardFilesMax || time.Now().After(deadline) {
 			break
 		}
 		tab := strings.IndexByte(line, '\t')
@@ -127,30 +338,30 @@ func uncommittedLines(root, cwd, header, listing string) []byte {
 		if len(meta) < 2 || (meta[0] != "100644" && meta[0] != "100755") || strings.HasPrefix(p, ".shikii/") || head[p] == meta[1] {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(top, filepath.FromSlash(p)))
-		if err != nil || len(b) > guardFileBytesMax || isBinary(b) || gitBlobID(b, len(meta[1])) != meta[1] {
+		b, ok := readGuardFile(top, p)
+		if !ok || isBinary(b) || gitBlobID(b, len(meta[1])) != meta[1] {
 			continue
 		}
-		counts := map[string]int{}
-		for _, l := range strings.Split(string(b), "\n") {
-			if strings.TrimSpace(l) != "" {
-				counts[lineHash(key, l)]++
+		counts := map[string]int{} // each distinct line is hashed once
+		eachLine(b, func(l []byte) {
+			if !blankLine(l) {
+				counts[string(l)]++
 			}
+		})
+		lines := make(map[string]int, len(counts))
+		for l, n := range counts {
+			if stopped.leaves(p, l) {
+				continue
+			}
+			d := hasher.hash([]byte(l))
+			lines[hex.EncodeToString(d[:])] += n
 		}
-		size += len(p) + len(meta[1]) + len(counts)*42
-		if size > keptLinesMax {
+		if !table.add(p, keptFile{Blob: meta[1], Lines: lines}) {
 			break
 		}
-		files[p] = keptFile{Blob: meta[1], Lines: counts}
+		files++
 	}
-	if len(files) == 0 {
-		return nil
-	}
-	body, err := json.Marshal(files)
-	if err != nil {
-		return nil
-	}
-	return append([]byte(header+"#key "+hex.EncodeToString(key)+"\n"), body...)
+	return table.bytes()
 }
 
 // keepLines writes the table to p, or removes an earlier one when there is none (it must not be read for this listing).
@@ -183,16 +394,22 @@ func readKeptLines(p, header string) *keptLines {
 		return nil
 	}
 	keyLine, body, found := bytes.Cut(b[len(header):], []byte("\n"))
-	if !found || !bytes.HasPrefix(keyLine, []byte("#key ")) {
+	if !found || !bytes.HasPrefix(keyLine, []byte(keptKeyMarker)) {
 		return nil
 	}
-	key, err := hex.DecodeString(string(keyLine[len("#key "):]))
+	key, err := hex.DecodeString(string(keyLine[len(keptKeyMarker):]))
 	if err != nil || len(key) == 0 {
 		return nil
 	}
-	k := &keptLines{key: key}
-	if json.Unmarshal(body, &k.files) != nil {
+	var files map[string]keptFile
+	if json.Unmarshal(body, &files) != nil {
 		return nil
+	}
+	k := &keptLines{key: key, files: make(map[string]keptFile, len(files))}
+	for name, f := range files {
+		if p, err := hex.DecodeString(name); err == nil && len(p) > 0 {
+			k.files[string(p)] = f
+		}
 	}
 	return k
 }
@@ -206,13 +423,37 @@ func (k *keptLines) file(p, blob string) (keptFile, bool) {
 	return f, ok && f.Blob == blob
 }
 
-// addedAgainst returns the lines of now that the kept file does not have (a line kept n times is matched n times).
+// addedAgainst returns the lines of now that the kept file does not have (a line kept n times is matched n times). Only the
+// lines that are not blank are hashed, each distinct line once.
 func (k *keptLines) addedAgainst(f keptFile, now []byte) []string {
-	count := make(map[string]int, len(f.Lines))
+	count := make(map[[16]byte]int, len(f.Lines))
 	for h, n := range f.Lines {
-		count[h] = n
+		var d [16]byte
+		if len(h) == 2*len(d) {
+			if _, err := hex.Decode(d[:], []byte(h)); err == nil {
+				count[d] += n
+			}
+		}
 	}
-	return linesNotIn(now, func(l string) string { return lineHash(k.key, l) }, count)
+	hasher := newLineHasher(k.key)
+	seen := map[string][16]byte{}
+	var out []string
+	eachLine(now, func(l []byte) {
+		if blankLine(l) {
+			return
+		}
+		d, ok := seen[string(l)]
+		if !ok {
+			d = hasher.hash(l)
+			seen[string(l)] = d
+		}
+		if count[d] > 0 {
+			count[d]--
+			return
+		}
+		out = append(out, string(l))
+	})
+	return out
 }
 
 // moveKeptHeader rewrites the header of a kept file from one request to another (a regrouped request); nothing is done
