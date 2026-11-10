@@ -67,7 +67,16 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 		if err != nil {
 			return nil, "", fmt.Errorf("row %d: %w", i, err)
 		}
-		l := store.Label{SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Truth: truth, Weight: r.Weight, Source: "file", At: time.Now()}
+		// the same rule as every other way a truth comes in (store.LabelFor): 0 is "not given", anything else outside (0, 1] is
+		// refused before the model is asked (a negative weight used to become a firm 1, and 5 went into the fit as it was)
+		weight := r.Weight
+		if weight == 0 {
+			weight = 1
+		}
+		if !(weight > 0 && weight <= 1) {
+			return nil, "", fmt.Errorf("row %d: weight must be in (0, 1], got %g (1 = a firm truth; less = a weak one)", i, r.Weight)
+		}
+		l := store.Label{SpecID: sp.ID, SpecHash: sp.Hash(), Type: string(sp.Type), Truth: truth, Weight: weight, Source: "file", At: time.Now()}
 		given, err := rawFromRow(sp, r.Raw)
 		if err != nil {
 			return nil, "", fmt.Errorf("row %d: %w", i, err)
@@ -101,9 +110,6 @@ func labelsFromFile(sp *spec.Spec, path string, ef endpointFlags, st store.Store
 			} else if model != d.Model {
 				return nil, "", fmt.Errorf("row %d: model changed mid-run (%s → %s)", i, model, d.Model)
 			}
-		}
-		if l.Weight <= 0 {
-			l.Weight = 1
 		}
 		if first, ok := firstSeen[l.InputsHash]; ok && l.InputsHash != "" {
 			l.At = first
