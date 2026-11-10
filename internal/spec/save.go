@@ -92,6 +92,7 @@ func (s *Spec) Save() error {
 		return err
 	}
 	if err := os.Rename(tmp.Name(), target); err != nil {
+		os.Remove(tmp.Name()) // nothing of a failed save stays in the person's folder
 		return err
 	}
 	s.Calibration = calibration
