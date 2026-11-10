@@ -197,6 +197,19 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 	if len(quotes) == 0 {
 		return "", nil
 	}
+	// What does not fit even at the smallest cut is left out from the end, so the quotes that fit still arrive (a person's answer is
+	// not cut: two long ones could not be delivered together, and the hook stayed silent). A quote left out is not recorded as delivered.
+	for ; len(quotes) > 0; quotes, keys = quotes[:len(quotes)-1], keys[:len(keys)-1] {
+		if text, ok, err := deliverQuotes(root, scope, request, quotes, keys, door, session, parent, agent, mark); err != nil || ok {
+			return text, err
+		}
+	}
+	return "", nil
+}
+
+// deliverQuotes records and returns the quotes as one delivery, cut as far as needed to fit 1800 bytes with the prefix. ok is false
+// when they do not fit even at the smallest cut (nothing is recorded then).
+func deliverQuotes(root, scope, request string, quotes []memoryQuote, keys []string, door string, session *hookSession, parent, agent string, mark func(id, reason, trace string)) (string, bool, error) {
 	prefix := memoryPrefix
 	for _, key := range keys {
 		if strings.HasPrefix(key, "decision:") {
@@ -208,7 +221,7 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 		clipped := clipQuotes(quotes, budget)
 		data, err := json.Marshal(clipped)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 		if len(prefix)+len(data) > 1800 {
 			continue
@@ -227,7 +240,7 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 				}
 			}
 			if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Phrase: recorded}); err != nil {
-				return "", err
+				return "", false, err
 			}
 		}
 		for _, q := range quotes {
@@ -241,9 +254,9 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 		if len(session.Memories) > 16 {
 			session.Memories = session.Memories[len(session.Memories)-16:]
 		}
-		return prefix + strings.TrimSpace(string(data)), nil
+		return prefix + strings.TrimSpace(string(data)), true, nil
 	}
-	return "", nil
+	return "", false, nil
 }
 
 func memoryCacheKey(p notebook.Page) string {
