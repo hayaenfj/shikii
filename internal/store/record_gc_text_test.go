@@ -128,3 +128,35 @@ func TestGCKeepsTheTextOfAnotherQuestionsDecisionWithTheSameTrace(t *testing.T) 
 		t.Errorf("the removed decision's own text is removed with it: %v", err)
 	}
 }
+
+// The same trace and the same inputs under two questions share one text file. Removing the first question's old decision
+// leaves the text: the other question's decision still reads it.
+func TestGCKeepsATextAnotherQuestionsDecisionSharesWithTheSameInputs(t *testing.T) {
+	st := Store{Dir: t.TempDir()}
+	now := time.Now()
+	gone := textRecord("prompt-kind", "aaaaaaaaaaaaaaaa", now.Add(-48*time.Hour))
+	kept := gone
+	kept.SpecID, kept.At = "needs-plan", now
+	for _, r := range []Record{gone, kept} {
+		if err := st.AppendRecord(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	long := kept.Inputs["request"] + " and the long original a person typed"
+	if err := st.SaveRecordText(kept, map[string]string{"request": long}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := st.GC("prompt-kind", now.Add(-24*time.Hour), true); err != nil || res.Removed != 1 {
+		t.Fatalf("gc: %+v %v", res, err)
+	}
+	if got, _ := st.RecordText(kept); got["request"] != long {
+		t.Fatalf("gc of prompt-kind removed the text the kept needs-plan decision shares (same trace, same inputs): %v", got)
+	}
+	// once the other question's decision is removed too, the text goes with it
+	if res, err := st.GC("needs-plan", now.Add(time.Hour), true); err != nil || res.Removed != 1 {
+		t.Fatalf("gc of the other question: %+v %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(st.Dir, "records", "text", "aaaaaaaaaaaaaaaa.json")); !os.IsNotExist(err) {
+		t.Errorf("the text is removed with the last decision that used it: %v", err)
+	}
+}
