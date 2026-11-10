@@ -21,7 +21,7 @@ func TestReadValidationPreservesReaderContracts(t *testing.T) {
 		read   func(string) ([]byte, error)
 		verify func(string, []byte) (string, error)
 	}{
-		{"article", 64 << 10, readFile, articleReadDigest}, {"source", store.MaxLineBytes, readSourceRecord, sourceReadDigest}, {"original", 2 << 20, readOriginals, originalReadDigest},
+		{"article", 64 << 10, readFile, articleReadDigest}, {"source", store.MaxLineBytes, readSourceRecord, sourceReadDigest}, {"original", originalsLimit, readOriginals, originalReadDigest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

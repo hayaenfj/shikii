@@ -14,7 +14,7 @@ import (
 )
 
 // Split by the size of the JSON rather than the count. An observation whose body does not fit in one reply is returned in parts (observation_part);
-// a conversation source is returned whole, and its long text (originals, up to 2 MB) that does not fit comes in parts of its JSON (original_part).
+// a conversation source is returned whole, and its long text (originals, up to originalsLimit) that does not fit comes in parts of its JSON (original_part).
 const replyBudget = 60 << 10
 
 // ErrStaleCursor: the cursor was made for other search terms, another project, or before what it splits changed. Read again from the start
@@ -378,7 +378,7 @@ func (b Book) ReadSourcesPageMeasured(ids []string, cursor string, budget int, s
 			}
 			return out, nil
 		}
-		if hasText && !isObservation && i == start { // a conversation whose originals (up to 2 MB) do not fit: the conversation now, its originals in parts
+		if hasText && !isObservation && i == start { // a conversation whose originals (up to originalsLimit) do not fit: the conversation now, its originals in parts
 			delete(texts, id)
 			raw, _ := json.Marshal(text)
 			return originalPart(out, state, fs, osources, texts, i, len(ids), id, raw, 0, budget, size)

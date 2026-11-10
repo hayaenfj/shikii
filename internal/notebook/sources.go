@@ -63,15 +63,22 @@ func sourceRecordDigest(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), err
 }
 
+// originalsLimit bounds the archived long text of one conversation. The archive is written without a size check, so the
+// limit must hold the most the store keeps for a conversation: two decisions, four fields each, store.RecordTextLimit
+// bytes a field, and JSON writes a byte as at most six (about 3 MiB). A smaller limit saved archives nobody could read.
+const originalsLimit = 4 << 20
+
+const originalsTooLong = "the long source text must be 4 MiB or less"
+
 func readOriginals(path string) ([]byte, error) {
 	f, err := openSourceFile(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, (2<<20)+1))
-	if len(data) > 2<<20 {
-		return nil, errors.New("the long source text must be 2MB or less")
+	data, err := io.ReadAll(io.LimitReader(f, originalsLimit+1))
+	if len(data) > originalsLimit {
+		return nil, errors.New(originalsTooLong)
 	}
 	return data, err
 }

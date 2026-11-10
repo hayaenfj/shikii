@@ -56,7 +56,7 @@ func originalReadDigest(path string, scratch []byte) (string, error) {
 		return digest(nil), err
 	}
 	defer f.Close()
-	return boundedReadDigest(f, scratch, 2<<20, "the long source text must be 2MB or less", true)
+	return boundedReadDigest(f, scratch, originalsLimit, originalsTooLong, true)
 }
 
 func (b Book) sharedArticle(path string) ([]byte, error) {
