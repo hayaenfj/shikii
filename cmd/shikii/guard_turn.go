@@ -75,10 +75,8 @@ func openGuardTurn(agent string, in *hookInput, snapshot *hookSession) []func(*h
 	_, listing, listed, _, scope := treeStateWithScope(in.CWD)
 	turn := &guardTurn{ID: store.NewTraceID(), Scope: scope, Head: gitHead(in.CWD), HeadAt: time.Now()}
 	var lines []byte
-	var stopped stoppedNext
 	if listed {
-		// the lines a guard stopped and that are still there are left out (they stay added lines) and carried to the next .stopped
-		lines, stopped = uncommittedLinesAfter(agent, in.CWD, listingHeader(turn.ID), listing, in.SessionID, scope)
+		lines = uncommittedLines(agent, in.CWD, listingHeader(turn.ID), listing)
 	}
 	return []func(*hookSession){func(s *hookSession) {
 		s.GuardTurn = turn
@@ -95,9 +93,6 @@ func openGuardTurn(agent string, in *hookInput, snapshot *hookSession) []func(*h
 		}
 		if err := keepLines(lp, lines); err != nil {
 			hookLog("guard: the lines of the uncommitted files for the slash command's turn were not kept: " + err.Error())
-		}
-		if err := keepStopped(sessionStoppedPath(agent, in.SessionID), stopped); err != nil {
-			hookLog("guard: the lines a check stopped were not carried: " + err.Error())
 		}
 	}}
 }

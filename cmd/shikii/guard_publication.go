@@ -141,7 +141,7 @@ func guardPublication(root string, in *hookInput, snapshot *hookSession, command
 	if known {
 		changed = changedFiles(string(before), listing)
 	}
-	input := guardTurnInputKept(in.CWD, string(before), readKeptLines(base.Lines, base.Header), changed, known, base.Head, base.HeadAt)
+	input := guardTurnInputStopped(root, in.CWD, string(before), readKeptLines(base.Lines, base.Header), changed, known, base.Head, base.HeadAt)
 	failed := []guardResult{}
 	records := []guardRecord{}
 	now := time.Now().UTC()

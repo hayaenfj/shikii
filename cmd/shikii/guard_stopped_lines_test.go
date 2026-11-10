@@ -9,11 +9,16 @@ import (
 	"time"
 )
 
-// The lines a forbidden-words guard stopped at a Stop are kept as keyed hashes (sessions/<id>.stopped), so the tables of the
-// next requests leave out exactly those lines: they stay added lines until they are removed or committed, and every other
-// uncommitted line (the person's drafts, in the same file or another one) is kept as a line from before the request.
-// The first four tests reproduce what the audit of 0.30.8 found with the earlier rule (all the guard's lines of the files the
-// stopped turn changed were left out).
+// The lines a forbidden-words guard stopped at a Stop are kept as keyed hashes, once per repository (records/stopped-lines/,
+// guard_stopped.go), and every comparison counts exactly those lines as added: they stay added lines until they are removed
+// or committed, and every other uncommitted line (the person's drafts, in the same file or another one) is a line from
+// before the request. The first four tests reproduce what the audit of 0.30.8 found with an earlier rule (all the guard's
+// lines of the files the stopped turn changed were left out).
+
+// stoppedRecordOf is the record of the stopped lines of repo.
+func stoppedRecordOf(root, repo string) string {
+	return stoppedLinesPath(root, feedbackScope(repo))
+}
 
 // A1: the person's draft from before request 1 sits in the file where turn 1 wrote the forbidden line it was stopped for. The
 // next turn fixes its own line; the draft is not an added line.
@@ -122,7 +127,7 @@ func stoppedOnce(t *testing.T, repo, root, readme, session string) {
 		t.Fatalf("premise: the turn's own forbidden line is refused: %+v", r)
 	}
 	wordStop(t, repo, root, session, true)
-	if _, err := os.Stat(sessionStoppedPath(root, session)); err != nil {
+	if _, err := os.Stat(stoppedRecordOf(root, repo)); err != nil {
 		t.Fatalf("premise: the stopped line is kept: %v", err)
 	}
 }
@@ -142,7 +147,7 @@ func TestStoppedLineIsCarriedAcrossAnIdleTurn(t *testing.T) {
 	if r := wordStop(t, repo, root, "c", false); !r.Pass {
 		t.Fatalf("premise: the idle turn passes: %+v", r)
 	}
-	if _, err := os.Stat(sessionStoppedPath(root, "c")); err != nil {
+	if _, err := os.Stat(stoppedRecordOf(root, repo)); err != nil {
 		t.Fatalf("the idle turn dropped the stopped line: %v", err)
 	}
 	nextRequest(t, repo, root, "c")
@@ -152,7 +157,7 @@ func TestStoppedLineIsCarriedAcrossAnIdleTurn(t *testing.T) {
 	}
 }
 
-// A stopped line fixed at a later Stop of the same turn is forgotten: the .stopped goes.
+// A stopped line fixed at a later Stop of the same turn is forgotten: the record goes.
 func TestStoppedLineFixedInTheSameTurnRemovesTheStoppedFile(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
 	organizedRequest(t, repo, root, "f")
@@ -160,15 +165,15 @@ func TestStoppedLineFixedInTheSameTurnRemovesTheStoppedFile(t *testing.T) {
 	if r := wordStop(t, repo, root, "f", false); !stoppedForTheLine(r) {
 		t.Fatalf("premise: %+v", r)
 	}
-	if _, err := os.Stat(sessionStoppedPath(root, "f")); err != nil {
+	if _, err := os.Stat(stoppedRecordOf(root, repo)); err != nil {
 		t.Fatalf("the stopped line is not kept: %v", err)
 	}
 	writeFile(t, readme, "# project\nthe turn wrote a clean line\n")
 	if r := wordStop(t, repo, root, "f", true); !r.Pass {
 		t.Fatalf("premise: the fixed turn passes: %+v", r)
 	}
-	if _, err := os.Stat(sessionStoppedPath(root, "f")); !os.IsNotExist(err) {
-		t.Fatalf("the .stopped is left after the same turn fixed the line: %v", err)
+	if _, err := os.Stat(stoppedRecordOf(root, repo)); !os.IsNotExist(err) {
+		t.Fatalf("the record is left after the same turn fixed the line: %v", err)
 	}
 }
 
@@ -189,18 +194,18 @@ func TestRemovedStoppedLineIsForgotten(t *testing.T) {
 	}
 }
 
-// Once the stopped line is committed, the next request forgets it and a turn changing README is not stopped for it.
+// Once the stopped line is committed, a turn changing README is not stopped for it, and its Stop forgets it.
 func TestCommittedStoppedLineIsForgotten(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
 	stoppedOnce(t, repo, root, readme, "m")
 	gitCommitAll(t, repo, "docs: the person commits it")
 	nextRequest(t, repo, root, "m")
-	if _, err := os.Stat(sessionStoppedPath(root, "m")); !os.IsNotExist(err) {
-		t.Fatalf("the committed line is still kept as stopped: %v", err)
-	}
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\na clean line\n")
 	if r := wordStop(t, repo, root, "m", false); !r.Pass {
 		t.Fatalf("the committed line stopped the next turn: %+v", r)
+	}
+	if _, err := os.Stat(stoppedRecordOf(root, repo)); !os.IsNotExist(err) {
+		t.Fatalf("the committed line is still kept as stopped: %v", err)
 	}
 }
 
@@ -222,35 +227,35 @@ func TestStoppedLineCountsOnlyTheStoppedCopies(t *testing.T) {
 	}
 }
 
-// The .stopped keeps keyed hashes only, readable by the person alone.
+// The record keeps keyed hashes only, readable by the person alone.
 func TestStoppedFileHoldsNoContent(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
 	stoppedOnce(t, repo, root, readme, "k")
-	p := sessionStoppedPath(root, "k")
+	p := stoppedRecordOf(root, repo)
 	b := mustRead(t, p)
 	for _, word := range []string{"FORBIDDENWORD", "the turn wrote", "README", "# project"} {
 		if strings.Contains(string(b), word) {
-			t.Fatalf("the .stopped holds the content %q: %q", word, b)
+			t.Fatalf("the record holds the content %q: %q", word, b)
 		}
 	}
 	if info, err := os.Stat(p); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("the .stopped is readable by the person only: %v %v", info.Mode(), err)
+		t.Fatalf("the record is readable by the person only: %v %v", info.Mode(), err)
 	}
-	st := readStoppedTable(p)
-	if st == nil || len(st.files["README.md"]) != 1 || st.files["README.md"][lineHash(st.key, turnForbiddenLine)] != 1 {
-		t.Fatalf("the .stopped does not hold the keyed hash of the stopped line once: %+v", st)
+	st := readStoppedTable(p, feedbackScope(repo))
+	if st == nil || len(st.files["README.md"]) != 1 || st.files["README.md"][newLineHasher(st.key).hash([]byte(turnForbiddenLine))] != 1 {
+		t.Fatalf("the record does not hold the keyed hash of the stopped line once: %+v", st)
 	}
 	if strings.Contains(string(b), lineHash(nil, turnForbiddenLine)) {
-		t.Fatalf("the .stopped holds a hash made without its key: %q", b)
+		t.Fatalf("the record holds a hash made without its key: %q", b)
 	}
 }
 
-// A .stopped kept in another repository (a worktree sharing the store) is not used: the same line, the person's draft here,
-// stays in the table, and the other repository's .stopped is left as it is.
+// A record that names another repository (a hash of the path that met another one, a file copied in) is not used: the same
+// line, the person's draft here, is a line from before the request, and that record is left as it is.
 func TestStoppedFileOfAnotherRepositoryIsNotUsed(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
 	stoppedOnce(t, repo, root, readme, "o")
-	p := sessionStoppedPath(root, "o")
+	p := stoppedRecordOf(root, repo)
 	head, body, _ := strings.Cut(string(mustRead(t, p)), "\n")
 	_, key, _ := strings.Cut(strings.TrimPrefix(head, stoppedMarker), " ")
 	other := stoppedMarker + hex.EncodeToString([]byte("/elsewhere/another-repository")) + " " + key + "\n" + body
@@ -260,14 +265,15 @@ func TestStoppedFileOfAnotherRepositoryIsNotUsed(t *testing.T) {
 	nextRequest(t, repo, root, "o")
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\na clean line\n")
 	if r := wordStop(t, repo, root, "o", false); !r.Pass {
-		t.Fatalf("another repository's .stopped left the line out of this repository's table: %+v", r)
+		t.Fatalf("another repository's record counted the line as added here: %+v", r)
 	}
 	if got := string(mustRead(t, p)); got != other {
-		t.Fatalf("another repository's .stopped was changed: %q", got)
+		t.Fatalf("another repository's record was changed: %q", got)
 	}
 }
 
-// The .stopped is pruned like the listings: an old orphan goes, a session still in use keeps it.
+// The per-session .stopped of the earlier 0.30.8 builds is no longer read, and is pruned like the listings: an old orphan
+// goes, a session still in use keeps it.
 func TestStoppedFileIsPrunedWithTheListings(t *testing.T) {
 	root := t.TempDir()
 	old := time.Now().Add(-hookSessionTTL - time.Hour)
@@ -275,8 +281,8 @@ func TestStoppedFileIsPrunedWithTheListings(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"live", "orphan"} {
-		p := sessionStoppedPath(root, id)
-		if err := writeAtomic(p, []byte(stoppedMarker)); err != nil {
+		p := keptLinesPath(root, id, ".stopped")
+		if err := writeAtomic(p, []byte("#stopped1 ")); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Chtimes(p, old, old); err != nil {
@@ -284,10 +290,10 @@ func TestStoppedFileIsPrunedWithTheListings(t *testing.T) {
 		}
 	}
 	pruneSessions(root)
-	if _, err := os.Stat(sessionStoppedPath(root, "orphan")); !os.IsNotExist(err) {
+	if _, err := os.Stat(keptLinesPath(root, "orphan", ".stopped")); !os.IsNotExist(err) {
 		t.Errorf("an old orphan .stopped is left behind: %v", err)
 	}
-	if _, err := os.Stat(sessionStoppedPath(root, "live")); err != nil {
+	if _, err := os.Stat(keptLinesPath(root, "live", ".stopped")); err != nil {
 		t.Errorf("the .stopped of a session still in use was removed: %v", err)
 	}
 }

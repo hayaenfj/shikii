@@ -59,9 +59,9 @@ type guardInput struct {
 	Changed []string
 	Known   bool
 	Added   map[string][]string
-	// Compared are the changed files whose added lines were worked out (Added holds those that have any). Only the Stop's
-	// comparison sets it
-	Compared     map[string]bool
+	// repo is the top folder of the repository whose files were compared (the comparison at a Stop or before a publication
+	// sets it): the record of its stopped lines is kept for it (guard_stopped.go)
+	repo         string
 	Commits      []string
 	CommitsKnown bool
 	// CommitsUnreadable: the HEAD kept at the start is no longer an ancestor of the current HEAD (amended, rebased, another branch), so the

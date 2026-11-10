@@ -36,37 +36,7 @@ var sessionLockBusy func()
 
 // lockSessionWithin takes the session lock, waiting at most wait (0: one try). ok is false when it was not taken (unlock is then a no-op).
 func lockSessionWithin(agent, id string, wait time.Duration) (unlock func(), ok bool) {
-	p := sessionPath(agent, id) + ".lock"
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return func() {}, false
-	}
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o600)
-	if err != nil {
-		return func() {}, false
-	}
-	if info, e := f.Stat(); e != nil || !info.Mode().IsRegular() {
-		f.Close()
-		return func() {}, false
-	}
-	deadline := time.Now().Add(wait)
-	for {
-		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			break
-		}
-		if !time.Now().Before(deadline) {
-			f.Close()
-			return func() {}, false
-		}
-		if sessionLockBusy != nil {
-			sessionLockBusy()
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	return func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-		f.Close()
-	}, true
+	return lockPathWithin(sessionPath(agent, id)+".lock", wait, sessionLockBusy)
 }
 
 // updateSession serializes each hook update with planning and prepared recording.
@@ -211,12 +181,15 @@ func cut(s string, n int) string {
 	return s[:n]
 }
 
-// sessionCaches are the files kept next to a session record and pruned with it (the longer suffix first).
+// sessionCaches are the files kept next to a session record and pruned with it (the longer suffix first). .stopped is the
+// per-session record of stopped lines 0.30.8 kept before it moved to records/stopped-lines/: it is no longer read or written,
+// and an old one is pruned like the others.
 var sessionCaches = []string{".guard.files", ".files", ".guard.lines", ".lines", ".stopped"}
 
 // Expired receipts stay invalid, but accepted unresolved work must remain
 // recoverable from a fresh preparation. Cleanup shares every writer's lock.
 func pruneSessions(agent string) {
+	pruneStoppedLines(agent)
 	directory := filepath.Join(agent, "sessions")
 	root, err := os.OpenRoot(directory)
 	if err != nil {

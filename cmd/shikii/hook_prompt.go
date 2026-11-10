@@ -46,10 +46,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	head := gitHead(in.CWD)                                             // the starting point the stop check uses to see this turn's commits
 	request, requestText := groupedRequest(snapshot, req, in.Prompt, scope, joined)
 	var lines []byte // keyed hashes of the lines of the files not committed now, for the guards (guard_lines.go)
-	var stopped stoppedNext
 	if listed {
-		// the lines a guard stopped and that are still there are left out (they stay added lines) and carried to the next .stopped
-		lines, stopped = uncommittedLinesAfter(agent, in.CWD, listingHeader(request), listing, in.SessionID, scope)
+		lines = uncommittedLines(agent, in.CWD, listingHeader(request), listing)
 	}
 	turnID := store.NewTraceID()
 	planning := newPlanningFrame(snapshot, in, scope, turnID)
@@ -113,9 +111,6 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			}
 			if err := keepLines(lp, lines); err != nil { // without the table those files are compared with HEAD, as before
 				hookLog("guard: the lines of the uncommitted files were not kept: " + err.Error())
-			}
-			if err := keepStopped(sessionStoppedPath(agent, in.SessionID), stopped); err != nil {
-				hookLog("guard: the lines a check stopped were not carried: " + err.Error())
 			}
 		},
 	}

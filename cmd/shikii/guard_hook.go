@@ -17,6 +17,8 @@ import (
 // lines found only in the current content when comparing, line by line, the content at the request with the current content. The content at the request is the listing's blob if it is in the repo,
 // otherwise (the blob of a file that was uncommitted at the request disappears together with the temporary store the listing was taken in) the table of that file's keyed line
 // hashes kept at the request (guard_lines.go), and without one the HEAD content at the request (the diff from HEAD), and otherwise empty.
+// Whichever of these is read, the lines a forbidden-words guard stopped and that were not removed or committed are added lines
+// (the record of the repository, guard_stopped.go).
 // This turn's commits are the log from the HEAD saved at the request (session.Head) to the current HEAD (not checked when HEAD cannot be followed).
 // When something cannot be read, it counts as "unknown" and the check passes (it stops only when certain). One unknown is recorded as such:
 // when the HEAD saved at the request is no longer an ancestor of the current HEAD, commit-body stops nothing and its record is "unverified", not a pass.
@@ -49,9 +51,20 @@ func gitHead(cwd string) string {
 
 // addedLines returns lines that are in new but not in old (multiset difference).
 func addedLines(old, new []byte) []string {
+	return addedLinesStopped(old, new, nil)
+}
+
+// addedLinesStopped is addedLines where the copies of lines a guard stopped (stopped, by line) are not counted in old: a line
+// in old n times and stopped m times is matched n-m times (guard_stopped.go).
+func addedLinesStopped(old, new []byte, stopped map[string]int) []string {
 	count := map[string]int{}
 	for _, l := range strings.Split(string(old), "\n") {
 		count[l]++
+	}
+	for l, s := range stopped {
+		if count[l] > 0 {
+			count[l] = max(0, count[l]-s)
+		}
 	}
 	return linesNotIn(new, func(l string) string { return l }, count)
 }
@@ -81,7 +94,14 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 // guardTurnInputKept is guardTurnInput with the table of the lines of the files that were not committed at the request
 // (guard_lines.go; nil when none was kept): such a file is compared with that table instead of the request's HEAD.
 func guardTurnInputKept(cwd, before string, kept *keptLines, changed []string, known bool, head string, since time.Time) guardInput {
-	in := guardInput{Changed: changed, Known: known, Added: map[string][]string{}, Compared: map[string]bool{}}
+	return guardTurnInputStopped("", cwd, before, kept, changed, known, head, since)
+}
+
+// guardTurnInputStopped is guardTurnInputKept that also applies the record of the lines forbidden-words guards stopped in the
+// repository (guard_stopped.go, kept under root; "" reads none): whichever way the content at the start of a file is read,
+// the copies of its current lines that the record holds are added lines, also when they were there at the start.
+func guardTurnInputStopped(root, cwd, before string, kept *keptLines, changed []string, known bool, head string, since time.Time) guardInput {
+	in := guardInput{Changed: changed, Known: known, Added: map[string][]string{}}
 	if cwd == "" {
 		return in
 	}
@@ -92,6 +112,25 @@ func guardTurnInputKept(cwd, before string, kept *keptLines, changed []string, k
 		return in
 	}
 	top = strings.TrimSpace(top)
+	in.repo = top
+	var stopped *stoppedTable
+	if root != "" {
+		if scope := feedbackScope(top); scope != "" {
+			stopped = readStoppedTable(stoppedLinesPath(root, scope), scope)
+		}
+	}
+	// the content of a file in the commit that was HEAD at the start, read once (the copies of a stopped line committed before
+	// the turn are no longer stopped lines; nil when the start's HEAD is not known)
+	headOf := func(p string) func() []byte {
+		var b []byte
+		read := false
+		return func() []byte {
+			if !read {
+				b, read = headContent(ctx, top, head, p), true
+			}
+			return b
+		}
+	}
 	oldSHA := parseListing(before)
 	for i, p := range changed {
 		if i >= guardFilesMax {
@@ -101,7 +140,8 @@ func guardTurnInputKept(cwd, before string, kept *keptLines, changed []string, k
 		if err != nil || len(now) > guardFileBytesMax || isBinary(now) {
 			continue
 		}
-		in.Compared[p] = true
+		startHead := headOf(p)
+		_, stoppedHere := stopped.stoppedIn(p, now, startHead)
 		// the content at the request: the listing's blob ("mode sha": only the sha names it); when that blob is gone (the file was
 		// uncommitted at the request), the table of its lines kept at the request for that same blob, and without one the commit
 		// that was HEAD at the request, never the HEAD this turn's own commits moved to (the current HEAD only when the request's
@@ -111,21 +151,17 @@ func guardTurnInputKept(cwd, before string, kept *keptLines, changed []string, k
 			if s, ok := gitRun(ctx, top, "cat-file", "blob", meta[1]); ok {
 				old = []byte(s)
 			} else if f, ok := kept.file(p, meta[1]); ok {
-				if lines := kept.addedAgainst(f, now); len(lines) > 0 {
+				if lines := kept.addedAgainst(f, now, stoppedHere); len(lines) > 0 {
 					in.Added[p] = lines
 				}
 				continue
-			} else {
-				ref := head
-				if ref == "" {
-					ref = "HEAD"
-				}
-				if s, ok := gitRun(ctx, top, "show", ref+":"+p); ok {
-					old = []byte(s)
-				}
+			} else if head != "" {
+				old = startHead()
+			} else if s, ok := gitRun(ctx, top, "show", "HEAD:"+p); ok {
+				old = []byte(s)
 			}
 		}
-		if lines := addedLines(old, now); len(lines) > 0 {
+		if lines := addedLinesStopped(old, now, stoppedHere); len(lines) > 0 {
 			in.Added[p] = lines
 		}
 	}
@@ -209,7 +245,7 @@ func guardStop(root string, in *hookInput, base guardBaseline, before string, ch
 	if err != nil || len(guards) == 0 {
 		return hookOut{}, err
 	}
-	input := guardTurnInputKept(in.CWD, before, readKeptLines(base.Lines, base.Header), changed, known, base.Head, base.HeadAt)
+	input := guardTurnInputStopped(root, in.CWD, before, readKeptLines(base.Lines, base.Header), changed, known, base.Head, base.HeadAt)
 	var recs []guardRecord
 	var failed []guardResult
 	now := time.Now().UTC()
@@ -237,8 +273,9 @@ func guardStop(root string, in *hookInput, base guardBaseline, before string, ch
 		}
 	}
 	if wordGuards {
-		// the lines a forbidden-words guard stopped stay added lines at the next starts until removed or committed (guard_lines.go)
-		keepStoppedLines(root, in.SessionID, base.Scope, failingWords, input)
+		// the lines a forbidden-words guard stopped stay added lines, in every session of the repository, until removed or
+		// committed (guard_stopped.go)
+		keepStoppedLines(root, failingWords, input, base.Head)
 	}
 	if err := keepStopRecords(root, in, recs); err != nil {
 		return hookOut{}, err
