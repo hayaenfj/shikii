@@ -69,30 +69,51 @@ func (s Store) eachAssessment(scope string, fn func(MemoryAssessment)) {
 }
 
 // AnswerEffects are what the reflection said about the person's past answers quoted before requests (quote keys
-// decision:<trace id>): per answered decision, the time of its last counted assessment, and all of them together. Counted from the
-// assessments alone, like PairEffects.
+// decision:<trace id>), counted from the assessments alone, like PairEffects, together with the person's undos of what the AI
+// decided from them (records/answer-restores). ByTrace keeps every counted assessment per answered decision, so a caller that knows
+// which decisions carry the same answer can count from that answer's undo on (Restored). Total counts the assessments after the last
+// undo of the stop of quoting past answers (StopRestored): the stop is judged from those alone.
 type AnswerEffects struct {
-	ByTrace map[string]PairEffect
-	LastAt  map[string]time.Time
-	Total   PairEffect
+	ByTrace      map[string][]AnswerAssessment
+	Restored     map[string]time.Time // decision trace -> when the person last undid the rejection of its answer
+	StopRestored time.Time            // when the person last undid the stop of quoting past answers in this project
+	Total        PairEffect
 }
 
-// AnswerEffects reads the assessments of quoted past answers of this project.
+// AnswerAssessment is one counted assessment of a quoted past answer: helpful, unused or harmful (counted as unused).
+type AnswerAssessment struct {
+	Result string
+	At     time.Time
+}
+
+// CountsAfter reports whether an assessment at at counts after an undo at undo: everything counts when nothing was undone, and
+// after an undo only what was assessed later.
+func CountsAfter(at, undo time.Time) bool { return undo.IsZero() || at.After(undo) }
+
+// AnswerEffects reads the assessments of quoted past answers of this project, and the person's undos.
 func (s Store) AnswerEffects(scope string) AnswerEffects {
-	out := AnswerEffects{ByTrace: map[string]PairEffect{}, LastAt: map[string]time.Time{}}
+	out := AnswerEffects{ByTrace: map[string][]AnswerAssessment{}, Restored: map[string]time.Time{}}
+	for _, r := range s.answerRestores(scope) {
+		if r.Stop {
+			if r.At.After(out.StopRestored) {
+				out.StopRestored = r.At
+			}
+		} else if r.At.After(out.Restored[r.TraceID]) {
+			out.Restored[r.TraceID] = r.At
+		}
+	}
 	s.eachAssessment(scope, func(a MemoryAssessment) {
 		trace, ok := strings.CutPrefix(a.Key, "decision:")
 		if !ok || trace == "" {
 			return
 		}
-		pe := out.ByTrace[trace]
-		if !pe.add(a.Result) {
+		var one PairEffect
+		if !one.add(a.Result) {
 			return
 		}
-		out.ByTrace[trace] = pe
-		out.Total.add(a.Result)
-		if a.At.After(out.LastAt[trace]) {
-			out.LastAt[trace] = a.At
+		out.ByTrace[trace] = append(out.ByTrace[trace], AnswerAssessment{Result: a.Result, At: a.At})
+		if CountsAfter(a.At, out.StopRestored) {
+			out.Total.add(a.Result)
 		}
 	})
 	return out

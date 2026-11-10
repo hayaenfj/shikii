@@ -22,6 +22,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("/v1/queue", s.handleQueue)
 	mux.HandleFunc("/v1/answered", s.handleAnswered)
 	mux.HandleFunc("/v1/redo", s.handleRedo)
+	mux.HandleFunc("/v1/answers/restore", s.handleAnswersRestore)
 	mux.HandleFunc("/v1/status", s.handleStatus)
 	mux.HandleFunc("/v1/page-health", s.handlePageHealth)
 	mux.HandleFunc("/v1/tune", s.handleTuneGet)

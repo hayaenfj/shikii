@@ -3,6 +3,7 @@
   import { t, loc, fmtDateTime } from '../lib/i18n.svelte.js';
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
+  import { dropPendingLoads, load } from '../lib/state.svelte.js';
 
   let { wiki } = $props();
   let material = $state({});
@@ -14,6 +15,24 @@
   // The person's past answers the AI's reflection rejected (shown twice before similar requests, never useful), and whether showing
   // past answers is stopped in this project. They left the list of answered decisions; this is where a person still sees them.
   let rejected = $derived(wiki.rejected_answers);
+  // The AI decides and the person can undo it (v1/answers/restore). What was undone leaves this list at once; the list read next
+  // from the server replaces it, so an answer the AI rejects again later is listed again.
+  let undone = $state.raw({ list: null, traces: [], stop: false });
+  let shown = $derived(undone.list === rejected ? undone : { traces: [], stop: false });
+  let rejectedItems = $derived((rejected?.items || []).filter(item => !shown.traces.includes(item.trace_id)));
+  let rejectedStopped = $derived(!!rejected?.stopped && !shown.stop);
+  async function restore(body, key, message) {
+    busy = key;
+    try {
+      await api.restoreAnswers(body);
+      const base = undone.list === rejected ? undone : { list: rejected, traces: [], stop: false };
+      undone = body.stop ? { ...base, stop: true } : { ...base, traces: [...base.traces, body.trace_id] };
+      toast(t(message), 6000);
+      dropPendingLoads();
+      load();
+    } catch (e) { toast(t('error')(e.message)); }
+    busy = '';
+  }
 
   // What the AI is accumulating (0.8.0): articles are grouped into clusters connected by related links and shown as a hierarchy. A cluster's name is the title of the most-linked article in it.
   // Articles with no connections are "standalone articles". Each cluster can be collapsed, and pressing an article goes to its text and sources (the existing view)
@@ -137,16 +156,21 @@
       {/if}
     </div>
   {/if}
-  {#if rejected && (rejected.stopped || (rejected.items || []).length)}
+  {#if rejected && (rejectedStopped || rejectedItems.length)}
     <div class="rejected-answers {box}">
       <h3 class={h3}>{t('rejectedAnswersTitle')}</h3>
       <p class="k">{t('rejectedAnswersHow')}</p>
-      {#if rejected.stopped}<p class="k" data-rejected-stopped>{t('rejectedAnswersStopped')(rejected.unused, rejected.helpful)}</p>{/if}
-      {#each rejected.items || [] as item (item.trace_id)}
+      {#if rejectedStopped}
+        <p class="k" data-rejected-stopped>{t('rejectedAnswersStopped')(rejected.unused, rejected.helpful)}
+          <button type="button" class="weak" data-rejected-stopped-restore disabled={!!busy} onclick={() => restore({ stop: true }, 'restore-stop', 'rejectedAnswersStopRestored')}>{t('rejectedAnswersRestore')}</button>
+        </p>
+      {/if}
+      {#each rejectedItems as item (item.trace_id)}
         <details class="text mb-3.5 wrap-anywhere" data-rejected={item.trace_id}>
           <summary>{loc(item.answer, item.truth || item.trace_id)} · {item.request || item.trace_id}</summary>
           {#if item.question}<p>{loc(item.question, item.spec)}</p>{/if}
           <div class="k">{t('rejectedAnswersUnused')(item.unused)} · {fmtDateTime(item.at)}</div>
+          <button type="button" class="weak" data-rejected-restore={item.trace_id} disabled={!!busy} onclick={() => restore({ trace_id: item.trace_id }, item.trace_id, 'rejectedAnswersRestored')}>{t('rejectedAnswersRestore')}</button>
         </details>
       {/each}
     </div>

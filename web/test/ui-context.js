@@ -306,25 +306,50 @@ export function checkMemoryEffect(target) {
 // The person's past answers the AI's reflection rejected are listed in the knowledge section (they left the list of answered
 // decisions): the answer in the page's words, the request, how often it went unused. The stop of the whole kind is said in one
 // line. Nothing is shown when there is nothing to list. Text from requests is never rendered as HTML.
-export function checkRejectedAnswers(target) {
+// The person can undo both: an answer's undo sends its trace to v1/answers/restore and the answer leaves the list; the stop's undo
+// sends stop and the line goes away. A refused undo keeps what was there.
+export async function checkRejectedAnswers(target) {
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  let refuse = false;
+  globalThis.fetch = async (url, opts) => {
+    if (opts?.body) calls.push({ url, body: JSON.parse(opts.body) });
+    if (refuse && opts?.body) return { ok: false, status: 409, json: async () => ({ error: 'this answer is not rejected' }) };
+    return { ok: true, json: async () => opts?.body ? { restored: true } : { specs: [] } };
+  };
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0));
   const item = { trace_id: 'aaaaaaaaaaaaaaaa', spec: 'needs-plan', request: 'Fix the README steps <img src=x onerror=alert(1)>', truth: 'yes', question: { en: 'Should it have asked you first?', ja: 'the same question in Japanese' }, answer: { en: 'It should have asked', ja: 'the same answer in Japanese' }, unused: 2, at: '2026-11-10T00:00:00Z' };
-  let app = mount(Notebook, { target, props: { wiki: { rejected_answers: { stopped: false, unused: 2, helpful: 0, items: [item] } } } });
+  const kept = { ...item, trace_id: 'bbbbbbbbbbbbbbbb', request: 'Keep the badges' };
+  let app = mount(Notebook, { target, props: { wiki: { rejected_answers: { stopped: false, unused: 2, helpful: 0, items: [item, kept] } } } });
   flushSync();
   let section = target.querySelector('.rejected-answers');
   const listed = !!section?.querySelector('[data-rejected="aaaaaaaaaaaaaaaa"]') && (section.textContent.includes(item.answer.ja) || section.textContent.includes(item.answer.en)) && (section.textContent.includes(item.question.ja) || section.textContent.includes(item.question.en)) && section.textContent.includes('Fix the README steps') && section.textContent.includes('2') && !section.querySelector('[data-rejected-stopped]');
   const inert = section?.textContent.includes('<img src=x onerror=alert(1)>') && !section?.querySelector('img');
+  refuse = true;
+  section?.querySelector('[data-rejected-restore="aaaaaaaaaaaaaaaa"]')?.click();
+  await settle(); flushSync();
+  const refusedKept = calls.length === 1 && !!target.querySelector('[data-rejected="aaaaaaaaaaaaaaaa"]');
+  refuse = false; calls.length = 0;
+  target.querySelector('[data-rejected-restore="aaaaaaaaaaaaaaaa"]')?.click();
+  await settle(); flushSync();
+  const restored = calls.some(call => call.url.endsWith('v1/answers/restore') && call.body.trace_id === item.trace_id && !('stop' in call.body)) && !target.querySelector('[data-rejected="aaaaaaaaaaaaaaaa"]') && !!target.querySelector('[data-rejected="bbbbbbbbbbbbbbbb"]');
   unmount(app);
+  calls.length = 0;
   app = mount(Notebook, { target, props: { wiki: { rejected_answers: { stopped: true, unused: 12, helpful: 0, items: [] } } } });
   flushSync();
   section = target.querySelector('.rejected-answers');
   const stopped = !!section?.querySelector('[data-rejected-stopped]') && section.querySelector('[data-rejected-stopped]').textContent.includes('12') && !section.querySelector('[data-rejected]');
+  section?.querySelector('[data-rejected-stopped-restore]')?.click();
+  await settle(); flushSync();
+  const stopUndone = calls.some(call => call.url.endsWith('v1/answers/restore') && call.body.stop === true && !('trace_id' in call.body)) && !target.querySelector('[data-rejected-stopped]');
   unmount(app);
   app = mount(Notebook, { target, props: { wiki: { rejected_answers: { stopped: false, unused: 1, helpful: 0, items: [] } } } });
   flushSync();
   const quiet = !target.querySelector('.rejected-answers');
   unmount(app);
-  const ok = listed && inert && stopped && quiet;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rejected answer listed=' + listed + ', inert request=' + inert + ', stop of past answers said=' + stopped + ', nothing shown when nothing is rejected=' + quiet + ')');
+  globalThis.fetch = realFetch;
+  const ok = listed && inert && refusedKept && restored && stopped && stopUndone && quiet;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (rejected answer listed=' + listed + ', inert request=' + inert + ', refused undo keeps the answer=' + refusedKept + ', undo sends the answer and it leaves=' + restored + ', stop of past answers said=' + stopped + ', undo of the stop sent and the line leaves=' + stopUndone + ', nothing shown when nothing is rejected=' + quiet + ')');
   return ok;
 }
 

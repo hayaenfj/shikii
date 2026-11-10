@@ -99,6 +99,8 @@ export const api = {
   }),
   label: body => post('v1/label', body),
   redo: body => post('v1/redo', body),
+  // The person undoes the AI's rejection of one past answer ({ trace_id }) or its stop of showing past answers ({ stop: true })
+  restoreAnswers: body => post('v1/answers/restore', body),
   tuneRun: body => post('v1/tune/run', body),
   tuneAdopt: body => post('v1/tune/adopt', body),
   tuneReview: body => post('v1/tune/review', body),

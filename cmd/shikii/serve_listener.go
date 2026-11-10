@@ -75,6 +75,9 @@ type server struct {
 	mu      sync.Mutex
 	tuning  map[string]bool   // spec id → tune is running in the background
 	tuneErr map[string]string // spec id → the last tune failure
+	// restoreMu serializes the person's undos of the AI's judgments on past answers: an undo is checked against what is in place
+	// and written under it, so a second click on the same undo is refused instead of written twice
+	restoreMu sync.Mutex
 }
 
 // resolve fills in the store defaults: specs in <store>/decisions, the wiki in <store>/wiki (the basic layout; there are no other flags).

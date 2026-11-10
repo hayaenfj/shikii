@@ -18,6 +18,10 @@ const answerKindRejectUnused = 10
 // found unused twice and never helpful is rejected: it is never quoted again, it leaves the page's list of answered decisions, and
 // the page lists it as judged not useful by the AI. The answer itself stays a truth for its decision: lines are still drawn from it.
 //
+// The AI decides; the person can undo it from the page (/v1/answers/restore). An undone answer counts only the assessments after
+// the undo, under every decision that carries it, so it is quoted again and is rejected again only by two later unused ones. An
+// undone stop likewise counts only the assessments after it; the rejections of single answers stay.
+//
 // One answer can sit under several decisions: a decision asked again (/v1/redo) copies the person's answer to a new record. The
 // assessments of all of them count as one, so a rejected answer does not come back under the new record, and the original of an
 // answer rejected under its copy is not quoted in its place.
@@ -95,16 +99,37 @@ func (r answerRejection) carriers(trace string) []string {
 	return []string{trace}
 }
 
-// effect is what the reflection said about the answer to the decision trace, under every decision that carries it, with the
-// time of the last assessment.
+// restoredAt is when the person last undid the rejection of the answer to the decision trace, under any decision that carries it
+// (zero when never).
+func (r answerRejection) restoredAt(trace string) time.Time {
+	var undo time.Time
+	for _, t := range r.carriers(trace) {
+		if at := r.effects.Restored[t]; at.After(undo) {
+			undo = at
+		}
+	}
+	return undo
+}
+
+// effect is what the reflection said about the answer to the decision trace, under every decision that carries it, after the
+// person's last undo of its rejection, with the time of the last of those assessments.
 func (r answerRejection) effect(trace string) (store.PairEffect, time.Time) {
 	var sum store.PairEffect
 	var last time.Time
+	undo := r.restoredAt(trace)
 	for _, t := range r.carriers(trace) {
-		e := r.effects.ByTrace[t]
-		sum.Helpful, sum.Unused = sum.Helpful+e.Helpful, sum.Unused+e.Unused
-		if at := r.effects.LastAt[t]; at.After(last) {
-			last = at
+		for _, a := range r.effects.ByTrace[t] {
+			if !store.CountsAfter(a.At, undo) {
+				continue
+			}
+			if a.Result == "helpful" {
+				sum.Helpful++
+			} else { // unused, and harmful counted as unused (AnswerEffects keeps only these)
+				sum.Unused++
+			}
+			if a.At.After(last) {
+				last = a.At
+			}
 		}
 	}
 	return sum, last
@@ -116,7 +141,8 @@ func (r answerRejection) rejected(trace string) bool {
 	return silenced(e)
 }
 
-// kindStopped reports whether quoting past answers is stopped in this project: enough of them were assessed and none ever helped.
+// kindStopped reports whether quoting past answers is stopped in this project: enough of them were assessed and none ever helped
+// (counted after the person's last undo of the stop).
 func (r answerRejection) kindStopped() bool {
 	return r.effects.Total.Helpful == 0 && r.effects.Total.Unused >= answerKindRejectUnused
 }
@@ -136,8 +162,8 @@ type rejectedAnswer struct {
 // rejectedAnswersView is the page's list of what the AI judged not useful among the person's past answers.
 type rejectedAnswersView struct {
 	Stopped bool             `json:"stopped"` // quoting past answers is stopped in this project
-	Unused  int              `json:"unused"`  // assessments of quoted answers: not used
-	Helpful int              `json:"helpful"` // assessments of quoted answers: helped a decision
+	Unused  int              `json:"unused"`  // assessments of quoted answers since the last undo of the stop: not used
+	Helpful int              `json:"helpful"` // assessments of quoted answers since the last undo of the stop: helped a decision
 	Items   []rejectedAnswer `json:"items"`
 }
 
