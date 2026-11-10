@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -592,13 +591,11 @@ func cmdWork(args []string) error {
 		return errors.New("work JSON transport exceeds 8 MiB")
 	}
 	var req workRequest
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.DisallowUnknownFields()
-	if err = d.Decode(&req); err != nil {
+	err, extra := decodeStrictObject(data, &req)
+	if err != nil {
 		return err
 	}
-	var extra any
-	if d.Decode(&extra) != io.EOF {
+	if extra {
 		return errors.New("work takes exactly one JSON object")
 	}
 	root, scope, err := currentProjectStore()

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -370,13 +369,11 @@ func decodeReflect(input io.Reader) (reflectRequest, error) {
 	if err != nil || len(data) > reflectInputMax {
 		return req, errors.New("reflection input is JSON of at most 1 MiB. Split the drafts and send the rest in the next submit")
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
-		return req, fmt.Errorf("check the reflection JSON: %v", err) // say what could not be read (so the agent can fix it and resend; 0.8.0)
+	err, extra := decodeStrictObject(data, &req)
+	if err != nil {
+		return req, fmt.Errorf("check the reflection JSON: %v", err)
 	}
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
+	if extra {
 		return req, errors.New("pass reflection JSON one object at a time")
 	}
 	return req, nil

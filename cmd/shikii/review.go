@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -338,13 +337,11 @@ func decodeReview(input io.Reader) (reviewRequest, error) {
 	if err != nil || len(data) > 64<<10 {
 		return req, errors.New("scoring input is JSON of at most 64 KB")
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
+	err, extra := decodeStrictObject(data, &req)
+	if err != nil {
 		return req, errors.New("check the scoring JSON")
 	}
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
+	if extra {
 		return req, errors.New("pass scoring JSON one object at a time")
 	}
 	return req, nil
