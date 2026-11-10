@@ -53,3 +53,28 @@ func TestStatusCountsFromOneReadLikeTheStore(t *testing.T) {
 		t.Fatalf("status scans the spec's records file once and its labels file once, got %d scans", scans)
 	}
 }
+
+// The lines per model and wording come in the same order on every run: sorted by model, then wording. The fixture's labels name
+// the keys in descending order, and no rotation of a descending list is ascending, so an unsorted walk over the map cannot pass.
+func TestStatusListsKeysInTheSameOrderEveryRun(t *testing.T) {
+	repo := gitRepo(t)
+	agent := hookEnv(t, nil, repo)
+	st := store.Store{Dir: agent}
+	for i, model := range []string{"model-d", "model-c", "model-b", "model-a"} {
+		if err := st.AppendLabel(store.Label{TraceID: fmt.Sprintf("trace-%d", i), SpecID: "ordered", SpecHash: "wording", Model: model, Truth: "yes", Weight: 1, Source: "ui"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := capture(t, func() error { return cmdStatus([]string{"--store", agent}) })
+	last := -1
+	for _, model := range []string{"model-a", "model-b", "model-c", "model-d"} {
+		at := strings.Index(out, "  "+model+" @ wording")
+		if at < 0 {
+			t.Fatalf("status lists the key of %s:\n%s", model, out)
+		}
+		if at < last {
+			t.Fatalf("status lists the keys sorted, %s came before its predecessor:\n%s", model, out)
+		}
+		last = at
+	}
+}

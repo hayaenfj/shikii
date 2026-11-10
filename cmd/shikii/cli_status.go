@@ -114,7 +114,13 @@ func cmdStatus(args []string) error {
 			// A different number from the receipt's "human-checked act decisions": this is the number of decisions a person answered in the sampling. The receipt counts all human truths that this line would put in act
 			fmt.Fprintf(stdout, "  audit: 1 in 20 act decisions is shown to a person; audit answers so far: %d\n", len(audited))
 		}
-		for key, n := range byKey {
+		keys := make([]string, 0, len(byKey))
+		for key := range byKey {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys) // the same order on every run (a map's order changes from run to run)
+		for _, key := range keys {
+			n := byKey[key]
 			note := ""
 			if sp != nil {
 				parts := strings.SplitN(key, " @ ", 2)
