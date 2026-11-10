@@ -120,7 +120,11 @@ func AskOrdered(ctx context.Context, sp *spec.Spec, state string, order []int, c
 	if !ok {
 		return nil, "", fmt.Errorf("response has no answer for %q", questionKey)
 	}
-	return rawDistribution(sp, ans), resp.Model, nil
+	raw := rawDistribution(sp, ans)
+	if err := usableDistribution(sp, raw); err != nil {
+		return nil, "", err
+	}
+	return raw, resp.Model, nil
 }
 
 // PickEndpoint picks the first endpoint text may be sent to, in policy.send_to order.
@@ -216,7 +220,11 @@ func askOnce(ctx context.Context, sp *spec.Spec, d *Decision, state string, ep *
 		d.Model = ep.Client.Model
 	}
 
-	d.Raw = rawDistribution(sp, ans)
+	raw := rawDistribution(sp, ans)
+	if err := usableDistribution(sp, raw); err != nil {
+		return err // before d is touched: on the context rung the minimal answer stays as it is
+	}
+	d.Raw = raw
 	d.Calibrated, d.IsCalibrated = applyCalibration(sp, d.Model, d.Raw)
 
 	switch sp.Type {
@@ -332,6 +340,27 @@ func rawDistribution(sp *spec.Spec, ans systemone.Answer) map[string]float64 {
 		}
 		return out
 	}
+}
+
+// usableDistribution says why a choice or score answer cannot be decided on: a value that is not a probability, or no option above
+// zero (no probabilities at all, or an answer of another type). Such an answer has no top option, and its record could never be
+// given a truth. The values need not sum to one: a readout that reports only its top labels leaves the rest at a floor.
+func usableDistribution(sp *spec.Spec, raw map[string]float64) error {
+	if sp.Type == spec.Noul {
+		return nil
+	}
+	positive := false
+	for _, k := range sortedKeys(raw) {
+		p := raw[k]
+		if !(p >= 0 && p <= 1+1e-9) { // also refuses NaN
+			return fmt.Errorf("response probabilities are not usable: %q is %v, not a probability", k, p)
+		}
+		positive = positive || p > 0
+	}
+	if !positive {
+		return fmt.Errorf("response probabilities are not usable: no option has a probability above 0 (%d options answered)", len(raw))
+	}
+	return nil
 }
 
 // applyCalibration applies the calibration matching (hash, model), if any.
