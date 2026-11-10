@@ -37,7 +37,7 @@ func memoryContextFor(root, scope, request string, session *hookSession, parent,
 	if scope == "" {
 		return "", nil
 	}
-	pages, attempt, err := (notebook.Book{Root: root, Scope: scope}).RecallDetailed(request) // Recall drops history before ranking
+	pages, attempt, err := wikiBook(root, scope).RecallDetailed(request) // Recall drops history before ranking
 	if err != nil {
 		return "", err
 	}
@@ -55,7 +55,7 @@ func alwaysContextFor(root, scope, request string, session *hookSession, parent,
 	if scope == "" {
 		return "", nil
 	}
-	pages, attempt, err := (notebook.Book{Root: root, Scope: scope}).DeliverySnapshot(func(p notebook.Page) bool { return p.Kind == "rule" && notebook.IsAlways(p.Scene) })
+	pages, attempt, err := wikiBook(root, scope).DeliverySnapshot(func(p notebook.Page) bool { return p.Kind == "rule" && notebook.IsAlways(p.Scene) })
 	if err != nil {
 		return "", err
 	}
@@ -170,7 +170,7 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 	}
 	// Only for topics with no lesson yet, return the raw text of one conversation with a similar request. Do not overlap with sorted lessons.
 	if len(pages) == 0 && feedback && len(quotes) < 2 {
-		pending, err := (notebook.Book{Root: root, Scope: scope}).PendingSources()
+		pending, err := wikiBook(root, scope).PendingSources()
 		if err != nil {
 			return "", err
 		}

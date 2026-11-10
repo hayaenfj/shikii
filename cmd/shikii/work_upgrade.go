@@ -63,7 +63,7 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 }
 
 func memoryUpgradeHook(root, scope string, s *hookSession) (hookOut, string, error) {
-	u, err := (notebook.Book{Root: root, Scope: scope}).MemoryUpgrade()
+	u, err := wikiBook(root, scope).MemoryUpgrade()
 	if err != nil {
 		return hookOut{}, "", err
 	}

@@ -8,7 +8,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -86,7 +85,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	if r := snapshot.Reasoning; r != nil && r.Required && r.TurnID == snapshot.TurnID {
 		left := reasoningLeft(r)
 		if left == 0 {
-			current, err := reasoningEvidenceCurrent(notebook.Book{Root: root, Scope: scope}, r)
+			current, err := reasoningEvidenceCurrent(wikiBook(root, scope), r)
 			if err != nil {
 				return hookOut{}, err
 			}

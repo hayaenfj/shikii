@@ -17,6 +17,7 @@ func runHookEvent(event string) error {
 	if err != nil {
 		return err
 	}
+	defer beginEventReads()() // the wiki reads of this event share validated parsing (hook_reads.go)
 	common := agent
 	moved := ""
 	if event == "user-prompt-submit" {

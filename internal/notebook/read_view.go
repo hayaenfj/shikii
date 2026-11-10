@@ -7,7 +7,15 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 )
+
+// pageParses counts the full parse-and-verify passes over an article in this process. Reading the bytes is not counted: a view
+// shares only the pass, and every read still opens the file and compares all its bytes.
+var pageParses atomic.Uint64
+
+// PageParses returns how many times this process parsed and verified an article (tests hold a request to one pass per article).
+func PageParses() uint64 { return pageParses.Load() }
 
 // ReadView shares validated parsing within one request. Every access still
 // opens and reads the regular file, compares all bytes, and rechecks sources and
@@ -68,6 +76,7 @@ func (b Book) readPage(path string, raw []byte) (Page, error) {
 			return copyReadPage(old.page), nil
 		}
 	}
+	pageParses.Add(1)
 	p, err := parsePage(raw)
 	if err != nil || p.Revision != revision(p) || !b.matchesPage(raw, p) {
 		return Page{}, errors.New("the generated wiki article has changed")

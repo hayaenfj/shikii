@@ -8,8 +8,6 @@ package main
 import (
 	"fmt"
 	"strings"
-
-	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 // classifyBatch is the number of pages asked for in one request.
@@ -20,7 +18,7 @@ func classifyContext(agent, scope string) (string, []string, error) {
 	if scope == "" {
 		return "", nil, nil
 	}
-	book := notebook.Book{Root: agent, Scope: scope}
+	book := wikiBook(agent, scope)
 	un, err := book.Unclassified()
 	if err != nil || len(un) == 0 {
 		return "", nil, err
@@ -60,7 +58,7 @@ func classifyContext(agent, scope string) (string, []string, error) {
 
 // classifyLeft returns the ids of the asked pages that still have no kind or scene.
 func classifyLeft(root, scope string, asked []string) ([]string, error) {
-	un, err := (notebook.Book{Root: root, Scope: scope}).Unclassified()
+	un, err := wikiBook(root, scope).Unclassified()
 	if err != nil {
 		return nil, err
 	}

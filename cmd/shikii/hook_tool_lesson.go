@@ -414,7 +414,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hoo
 	}
 	scores := map[string]toolCandidate{}
 	// only the pages that name the target get their sources checked (LiveWhere), in the wiki's page order
-	live, attempt, err := (notebook.Book{Root: agent, Scope: snapshot.Scope}).DeliverySnapshot(func(p notebook.Page) bool {
+	live, attempt, err := wikiBook(agent, snapshot.Scope).DeliverySnapshot(func(p notebook.Page) bool {
 		if p.Kind == "history" {
 			return false
 		}

@@ -69,6 +69,9 @@ func reflectQuery(root, scope string) (reflectView, error) {
 // reflectQueryWith is reflectQuery with the number of heads bounded by headsMax (0: every pending conversation, for working out what is
 // left of the ones a submit named).
 func reflectQueryWith(root, scope string, headsMax int) (reflectView, error) {
+	if eventPages != nil {
+		return reflectQueryBook(wikiBook(root, scope), headsMax)
+	}
 	return reflectQueryBook((notebook.Book{Root: root, Scope: scope}).ReadView(), headsMax)
 }
 
