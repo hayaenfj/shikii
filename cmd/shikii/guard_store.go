@@ -67,13 +67,18 @@ func saveGuard(root string, g guard) error {
 	return writeAtomic(guardPath(root, g.ID), buf.Bytes())
 }
 
+// enabledGuards are the checks the hooks run. A file that does not load (edited by hand and left invalid) is skipped with one line in
+// hook.log, so it never switches off the other checks; guard list, guard try and status still report it (loadGuards).
 func enabledGuards(root string) ([]guard, error) {
-	all, err := loadGuards(root)
-	if err != nil {
-		return nil, err
-	}
+	files, _ := filepath.Glob(filepath.Join(guardsDir(root), "*.yaml"))
+	sort.Strings(files)
 	var out []guard
-	for _, g := range all {
+	for _, f := range files {
+		g, err := loadGuard(f)
+		if err != nil {
+			hookLog(fmt.Sprintf("guard: %s does not load and was skipped (the other checks still run): %v", f, err))
+			continue
+		}
 		if g.Enabled {
 			out = append(out, g)
 		}

@@ -142,6 +142,9 @@ func guardSetEnabled(root, id string, enable bool) error {
 
 // guardTry runs the enabled checks against the current working tree (its diff from HEAD) and shows the result (it does not stop anything). It does not look at commits.
 func guardTry(root string) error {
+	if _, err := loadGuards(root); err != nil {
+		return err // the person is at the terminal: name the file that does not load instead of skipping it
+	}
 	guards, err := enabledGuards(root)
 	if err != nil {
 		return err
