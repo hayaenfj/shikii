@@ -61,7 +61,7 @@ func (s Store) recentFeedback(scope string) ([]Feedback, error) {
 }
 
 func (s Store) readRecentFeedback(scope string, capture hash.Hash) ([]Feedback, error) {
-	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
+	f, start, err := s.openRecentHistory(s.feedbackPath(scope))
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -69,14 +69,7 @@ func (s Store) readRecentFeedback(scope string, capture hash.Hash) ([]Feedback, 
 		return nil, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	start := max(int64(0), info.Size()-feedbackReadMax)
-	if _, err := f.Seek(start, io.SeekStart); err != nil {
-		return nil, err
-	}
+
 	var input io.Reader = io.LimitReader(f, feedbackReadMax)
 	if capture != nil {
 		capture.Write([]byte("present\n"))

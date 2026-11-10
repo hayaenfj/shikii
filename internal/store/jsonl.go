@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 )
 
 func (s Store) appendJSONL(path string, v any) error {
@@ -46,41 +45,35 @@ func (s Store) AppendLabelsOnce(ls []Label) error {
 	if len(ls) == 0 {
 		return nil
 	}
-	lock, err := s.openFile(s.labelsPath(ls[0].SpecID)+".lock", os.O_CREATE|os.O_RDWR)
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return err
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	key := func(l Label) string {
-		return l.TraceID + "\x00" + l.SpecHash + "\x00" + l.Model + "\x00" + l.Truth + "\x00" + l.Source
-	}
-	have := map[string]bool{}
-	if err := s.scanJSONL(s.labelsPath(ls[0].SpecID), func(line []byte) error {
-		var l Label
-		if json.Unmarshal(line, &l) == nil {
-			have[key(l)] = true
+	path := s.labelsPath(ls[0].SpecID)
+	return s.withJSONLAppendLock(path, func() error {
+		key := func(l Label) string {
+			return l.TraceID + "\x00" + l.SpecHash + "\x00" + l.Model + "\x00" + l.Truth + "\x00" + l.Source
 		}
-		return nil
-	}); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	var fresh []Label
-	for _, l := range ls {
-		if !have[key(l)] {
-			have[key(l)] = true
-			fresh = append(fresh, l)
+		have := map[string]bool{}
+		if err := s.scanJSONL(path, func(line []byte) error {
+			var l Label
+			if json.Unmarshal(line, &l) == nil {
+				have[key(l)] = true
+			}
+			return nil
+		}); err != nil && !os.IsNotExist(err) {
+			return err
 		}
-	}
-	if len(fresh) == 0 {
-		return nil
-	}
-	buf, err := marshalLabels(fresh)
-	if err != nil {
-		return err
-	}
-	return s.appendJSONLBytesLocked(s.labelsPath(ls[0].SpecID), buf)
+		var fresh []Label
+		for _, l := range ls {
+			if !have[key(l)] {
+				have[key(l)] = true
+				fresh = append(fresh, l)
+			}
+		}
+		if len(fresh) == 0 {
+			return nil
+		}
+		buf, err := marshalLabels(fresh)
+		if err != nil {
+			return err
+		}
+		return s.appendJSONLBytesLocked(path, buf)
+	})
 }

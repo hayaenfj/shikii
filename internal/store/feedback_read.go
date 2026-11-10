@@ -38,7 +38,7 @@ func (r FeedbackRead) Items() []Feedback {
 }
 func (r FeedbackRead) CurrentHash(scratch []byte) (string, error) {
 	h := sha256.New()
-	f, err := r.store.openFile(r.store.feedbackPath(r.scope), os.O_RDONLY)
+	f, start, err := r.store.openRecentHistory(r.store.feedbackPath(r.scope))
 	if os.IsNotExist(err) {
 		return hex.EncodeToString(h.Sum(nil)), nil
 	}
@@ -46,14 +46,7 @@ func (r FeedbackRead) CurrentHash(scratch []byte) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return "", err
-	}
-	start := max(int64(0), info.Size()-feedbackReadMax)
-	if _, err = f.Seek(start, io.SeekStart); err != nil {
-		return "", err
-	}
+
 	h.Write([]byte("present\n"))
 	if start > 0 {
 		h.Write([]byte("skip-first\n"))

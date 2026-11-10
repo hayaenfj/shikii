@@ -8,6 +8,13 @@ import (
 )
 
 func (s Store) appendJSONLBytes(path string, b []byte) error {
+	return s.withJSONLAppendLock(path, func() error {
+		return s.appendJSONLBytesLocked(path, b)
+	})
+}
+
+// Keep the same blocking lock through the caller's read, deduplication and append.
+func (s Store) withJSONLAppendLock(path string, appendLocked func() error) error {
 	lock, err := s.openFile(path+".lock", os.O_CREATE|os.O_RDWR)
 	if err != nil {
 		return err
@@ -17,7 +24,7 @@ func (s Store) appendJSONLBytes(path string, b []byte) error {
 		return err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	return s.appendJSONLBytesLocked(path, b)
+	return appendLocked()
 }
 
 // The caller holds path + ".lock", including through deduplication when needed.

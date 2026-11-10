@@ -24,21 +24,26 @@ func (s Store) Funnel(specID string, discardUnsure bool) (Funnel, error) {
 		if json.Unmarshal(line, &r) != nil {
 			return nil
 		}
-		f.Records++
-		switch {
-		case r.Band == "ask" || (discardUnsure && r.Band == "discard"):
-			f.Human++
-		case r.RungOf() == "context":
-			f.Context++
-		default:
-			f.Minimal++
-		}
+		f.addRecord(r, discardUnsure)
 		return nil
 	})
 	if err != nil && !os.IsNotExist(err) {
 		return f, err
 	}
 	return f, nil
+}
+
+// addRecord keeps streaming and request-local views on the same counting rule.
+func (f *Funnel) addRecord(r Record, discardUnsure bool) {
+	f.Records++
+	switch {
+	case r.Band == "ask" || (discardUnsure && r.Band == "discard"):
+		f.Human++
+	case r.RungOf() == "context":
+		f.Context++
+	default:
+		f.Minimal++
+	}
 }
 
 // AuditSample decides "show this decision to a person as a spot check". Decisions that acted automatically are not seen by people, so act precision cannot be measured with people's truths.

@@ -71,15 +71,7 @@ func (v *DecisionLog) NewestFirst() {
 func (v DecisionLog) Funnel(discardUnsure bool) Funnel {
 	var f Funnel
 	for _, r := range v.Records {
-		f.Records++
-		switch {
-		case r.Band == "ask" || (discardUnsure && r.Band == "discard"):
-			f.Human++
-		case r.RungOf() == "context":
-			f.Context++
-		default:
-			f.Minimal++
-		}
+		f.addRecord(r, discardUnsure)
 	}
 	return f
 }

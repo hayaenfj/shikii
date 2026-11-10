@@ -86,7 +86,7 @@ func validMemoryDelivery(d MemoryDelivery) bool {
 // Only the last 4MB and the latest 256 turns. Writes before a newline and broken lines are not taken.
 func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 	out := []MemoryDelivery{}
-	f, err := s.openFile(s.memoryPath(scope), os.O_RDONLY)
+	f, start, err := s.openRecentHistory(s.memoryPath(scope))
 	if os.IsNotExist(err) {
 		return out, nil
 	}
@@ -94,14 +94,7 @@ func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 		return nil, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	start := max(int64(0), info.Size()-feedbackReadMax)
-	if _, err := f.Seek(start, io.SeekStart); err != nil {
-		return nil, err
-	}
+
 	r := bufio.NewReader(io.LimitReader(f, feedbackReadMax))
 	if start > 0 {
 		if _, err := r.ReadString('\n'); err != nil {
