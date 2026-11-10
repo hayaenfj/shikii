@@ -28,6 +28,7 @@
         {#each g.items as it (it.id)}
           <li><span class="font-semibold">{t('guardTitle')(it.id, it.title)}</span> <span class="rounded-[5px] border px-1.5 py-px text-[12px] {it.enabled ? 'border-accent text-accent' : 'border-line'}">{t(it.builtin ? 'summaryGuardBuiltin' : it.enabled ? 'summaryGuardOn' : 'summaryGuardOff')}</span> <code class="text-muted">{it.id}</code>
             {#if it.last}<div class="text-muted">{it.last.pass ? t('summaryGuardLastPass')(when(it.last.at)) : t('summaryGuardLastStop')(when(it.last.at), it.last.reason)}</div>{/if}
+            {#if it.unverified}<div class="text-muted" data-guard-unverified>{t('summaryGuardUnverified')(when(it.unverified.at), it.unverified.reason)}</div>{/if}
           </li>
         {/each}
       </ul>
