@@ -160,6 +160,17 @@ type Client struct {
 	APIKey  string // if empty, no Authorization header is sent (local)
 	Model   string // e.g. jev-latest, typesafe/jev-1.13 (OpenRouter)
 	HTTP    *http.Client
+	// given is the URL as it was given to New, before it was split into BaseURL and Path. Errors name the URL from it: its
+	// credentials may stand after the first slash, where the split takes them for the path.
+	given string
+}
+
+// url is the URL errors are written about: the one given to New, or, for a client built by hand, BaseURL and the path.
+func (c *Client) url(path string) string {
+	if c.given != "" {
+		return c.given
+	}
+	return c.BaseURL + path
 }
 
 // DefaultPath is the standard endpoint of the System One format, used by TypeSafe, llama.cpp and many compatible servers.
@@ -173,7 +184,7 @@ const DefaultPath = "/v1/systemone"
 // (An @ in a path is rare in a model URL; there the host is hidden too, which loses a detail and leaks nothing.)
 func RedactURL(raw string) string {
 	start, at := credentials(raw)
-	if at < 0 {
+	if at <= start { // no @, or nothing before it
 		return raw
 	}
 	return raw[:start] + "xxxxx" + raw[at:]
@@ -240,19 +251,25 @@ func ScrubError(err error, raw string) error {
 	return scrubbed{msg: msg + " (the details are left out because the URL carries credentials)", err: err}
 }
 
-// misread reports whether the URL package reads another host out of raw than the one after its credentials: a raw "/", "?" or
-// "#" in the credentials ends the host early, so a request goes to a name that is a piece of them.
-func misread(raw string) bool {
+// Misread reports whether raw has an @ after its first "/", "?" or "#". The URL package then reads the host from before that
+// character, although the part up to the last @ may have been meant as credentials (a token with a raw slash in it). Such a URL
+// is shown without anything before its last @, and what the host it reaches answers is not repeated.
+func Misread(raw string) bool {
 	start, at := credentials(raw)
-	if at <= start {
+	if at < 0 {
 		return false
 	}
-	host := raw[at+1:]
-	if i := strings.IndexAny(host, "/?#"); i >= 0 {
-		host = host[:i]
+	end := strings.IndexAny(raw[start:], "/?#")
+	return end >= 0 && start+end < at
+}
+
+// credentialsOf is what RedactURL hides of raw ("" when it hides nothing).
+func credentialsOf(raw string) string {
+	start, at := credentials(raw)
+	if at <= start {
+		return ""
 	}
-	u, err := url.Parse(raw)
-	return err != nil || !strings.EqualFold(u.Host, host)
+	return raw[start:at]
 }
 
 // failureKind says what kind of failure a request error is, in fixed words that quote nothing of the error's own text.
@@ -292,6 +309,7 @@ func New(baseURL, apiKey, model string) *Client {
 		APIKey:  apiKey,
 		Model:   model,
 		HTTP:    &http.Client{Timeout: 30 * time.Second},
+		given:   baseURL,
 	}
 }
 
@@ -327,7 +345,7 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return nil, ScrubError(err, c.BaseURL+path) // the parser's error repeats the URL; the whole URL as it was given: the credentials may stand after the first slash
+		return nil, ScrubError(err, c.url(path)) // the parser's error repeats the URL; the whole URL as it was given: the credentials may stand after the first slash
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.APIKey != "" {
@@ -335,7 +353,7 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, ScrubError(err, c.BaseURL+path) // and so does the client's
+		return nil, ScrubError(err, c.url(path)) // and so does the client's
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -343,17 +361,16 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		// the whole URL as given: its credentials may stand after the first slash. When they made the client talk to another
-		// host than the URL's (a raw "/" or "?" in them), the answer may name that host, a piece of the credentials: it is left out
+		// The URL is named as it was given, without its credentials. When it has an @ after its first "/", "?" or "#", the client
+		// read the host from before that character, and what stands there may be a piece of credentials: the answer of that
+		// host may name it, so the answer is left out.
 		said := strings.TrimSpace(string(raw))
-		if misread(c.BaseURL + path) {
-			said = "(the response is left out: the credentials in the URL hold a /, ? or # and were read as the host)"
+		if Misread(c.url(path)) {
+			said = "(the response is left out: the URL has an @ after its first /, ? or #, so the host that answered may be a part of credentials)"
 		}
-		shown := RedactURL(c.BaseURL)
-		if _, at := credentials(c.BaseURL); at < 0 { // the base carries none: they may stand after the first slash of what was given
-			if _, at := credentials(c.BaseURL + path); at >= 0 {
-				shown = RedactURL(c.BaseURL + path)
-			}
+		shown := RedactURL(c.url(path))
+		if c.given == "" || !Misread(c.given) && credentialsOf(c.given) == "" {
+			shown = RedactURL(c.BaseURL) // nothing to hide and nothing unclear: the base alone, as before
 		}
 		return nil, fmt.Errorf("systemone %s: HTTP %d: %s", shown, resp.StatusCode, said)
 	}

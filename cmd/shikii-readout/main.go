@@ -133,6 +133,11 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, body []byte) {
 		writeErr(w, 502, err.Error())
 		return
 	}
+	if resp.StatusCode/100 != 2 && systemone.Misread(s.cfg.Upstream) {
+		// the host that answered may be a part of credentials, and its answer may name it: only the status is passed on
+		writeErr(w, resp.StatusCode, "upstream answered with an error (the response is left out: the upstream URL has an @ after its first /, ? or #)")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(raw)

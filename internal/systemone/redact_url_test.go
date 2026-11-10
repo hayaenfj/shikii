@@ -46,6 +46,7 @@ func TestRedactURL(t *testing.T) {
 		"user:s3cr3t@127.0.0.1:8086/cb?next=http://other.test/x": "xxxxx@127.0.0.1:8086/cb?next=http://other.test/x", // no scheme, and "://" later
 		"http://host:8080/v1":                                    "http://host:8080/v1",
 		"localhost:8086":                                         "localhost:8086",
+		"http://@127.0.0.1:8080":                                 "http://@127.0.0.1:8080", // nothing stands before the @: nothing to hide
 		"":                                                       "",
 	} {
 		if got := RedactURL(raw); got != want {
@@ -254,21 +255,41 @@ func TestAskStatusErrorHidesTheCredentialsOfTheModelURL(t *testing.T) {
 		}
 		return err.Error()
 	}
-	for _, raw := range []string{"http://sk-abc/def-s3cr3t-token@127.0.0.1:8080", "http://user:8443/s3cr3t-token@127.0.0.1:8080"} {
+	for _, raw := range []string{
+		"http://sk-abc/def-s3cr3t-token@127.0.0.1:8080",
+		"http://user:8443/s3cr3t-token@127.0.0.1:8080",
+		"http://user:p@s3cr3t-part/rest@127.0.0.1:8080", // an @ and then a slash in the credentials: the split keeps an @ in the base
+		"http://tok@en-s3cr3t/more@127.0.0.1:8080/v1/systemone",
+	} {
 		text := ask(raw)
-		for _, piece := range []string{"sk-abc", "user", "8443", "s3cr3t"} {
+		for _, piece := range []string{"sk-abc", "user", "8443", "s3cr3t", "tok@"} {
 			if strings.Contains(text, piece) {
 				t.Errorf("%q: the status error carries %q of the credentials: %s", raw, piece, text)
 			}
 		}
-		if !strings.Contains(text, "systemone http://xxxxx@127.0.0.1:8080: HTTP 502") {
+		if !strings.HasPrefix(text, "systemone http://xxxxx@127.0.0.1:8080") || !strings.Contains(text, ": HTTP 502: (the response is left out") {
 			t.Errorf("%q: the status error names the URL without its credentials: %s", raw, text)
 		}
 	}
 	if text := ask("http://user:s3cr3t-token@127.0.0.1:8080"); !strings.Contains(text, "systemone http://xxxxx@127.0.0.1:8080: HTTP 502: bad gateway: cannot reach 127.0.0.1:8080") || strings.Contains(text, "s3cr3t") {
 		t.Errorf("credentials the client reads as credentials: the response is kept and the URL is shown without them: %s", text)
 	}
-	if text := ask("http://127.0.0.1:8080"); !strings.Contains(text, "systemone http://127.0.0.1:8080: HTTP 502: bad gateway: cannot reach 127.0.0.1:8080") {
-		t.Errorf("a URL without credentials keeps its status error: %s", text)
+	if text := ask("http://user:pw-s3cr3t@[fe80::1%25en0]:8080"); !strings.Contains(text, "HTTP 502: bad gateway: cannot reach") || strings.Contains(text, "s3cr3t") {
+		t.Errorf("credentials before an address with a zone: the response is kept: %s", text)
+	}
+	for _, raw := range []string{"http://127.0.0.1:8080", "http://@127.0.0.1:8080"} {
+		want := "systemone " + raw + ": HTTP 502: bad gateway: cannot reach 127.0.0.1:8080"
+		if text := ask(raw); text != want {
+			t.Errorf("a URL without credentials keeps its status error:\n got  %s\n want %s", text, want)
+		}
+	}
+}
+
+// The error of building the request is written from the whole URL too: here the URL does not parse (a broken escape) and its
+// credentials stand after the first slash.
+func TestAskErrorHidesCredentialsOfAURLThatDoesNotParseAfterItsFirstSlash(t *testing.T) {
+	_, err := New("http://user/se%25zz-s3cr3t@127.0.0.1:8080", "", "m").Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
+	if err == nil || strings.Contains(err.Error(), "s3cr3t") || strings.Contains(err.Error(), "user") || !strings.Contains(err.Error(), "http://xxxxx@127.0.0.1:8080") {
+		t.Errorf("the error names the URL without what stands before its last @: %v", err)
 	}
 }

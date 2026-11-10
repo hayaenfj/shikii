@@ -33,7 +33,11 @@ func (s *server) post(ctx context.Context, path string, body any, out any) (int,
 		return resp.StatusCode, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return resp.StatusCode, fmt.Errorf("%s: %d %s", path, resp.StatusCode, strings.TrimSpace(string(raw)))
+		said := strings.TrimSpace(string(raw))
+		if systemone.Misread(s.cfg.Upstream) { // the host that answered may be a part of credentials: its answer may name it
+			said = "(the response is left out: the upstream URL has an @ after its first /, ? or #)"
+		}
+		return resp.StatusCode, fmt.Errorf("%s: %d %s", path, resp.StatusCode, said)
 	}
 	if out != nil {
 		if err := json.Unmarshal(raw, out); err != nil {
