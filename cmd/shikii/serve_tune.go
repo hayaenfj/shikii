@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/hayaenfj/shikii/internal/spec"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/hayaenfj/shikii/internal/spec"
 )
 
 // Runs tune from the page and MCP, reads the results, and adopts only when a person has confirmed "the meaning is the same".
@@ -274,26 +275,11 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// read and write under one lock (so concurrent adopts of the same run get 409); the run's own lock is shared with the agent's adoption (hook variants check)
-	defer s.lockCalibration()()
-	res, err := loadTuneResult(s.o.wikiDir, req.Run)
-	if err != nil {
-		writeErr(w, 404, fmt.Errorf("unknown run %q", req.Run))
-		return
-	}
-	unlock, err := lockTuneRun(s.o.wikiDir, res.Run)
-	if err != nil {
-		writeErr(w, 409, err)
+	res, unlock, ok := s.lockedTuneResult(w, req.Run, req.Spec)
+	if !ok {
 		return
 	}
 	defer unlock()
-	if res, err = loadTuneResult(s.o.wikiDir, req.Run); err != nil {
-		writeErr(w, 404, fmt.Errorf("unknown run %q", req.Run))
-		return
-	}
-	if req.Spec != "" && res.SpecID != req.Spec {
-		writeErr(w, 400, fmt.Errorf("run %s belongs to spec %s", req.Run, res.SpecID))
-		return
-	}
 	if res.Adopted {
 		writeErr(w, 409, fmt.Errorf("already adopted as %s", res.AdoptedPath))
 		return
@@ -350,26 +336,11 @@ func (s *server) handleTuneReview(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("run and keep (true: keep the new wording, false: undo it) are required"))
 		return
 	}
-	defer s.lockCalibration()()
-	res, err := loadTuneResult(s.o.wikiDir, req.Run)
-	if err != nil {
-		writeErr(w, 404, fmt.Errorf("unknown run %q", req.Run))
-		return
-	}
-	unlock, err := lockTuneRun(s.o.wikiDir, res.Run)
-	if err != nil {
-		writeErr(w, 409, err)
+	res, unlock, ok := s.lockedTuneResult(w, req.Run, req.Spec)
+	if !ok {
 		return
 	}
 	defer unlock()
-	if res, err = loadTuneResult(s.o.wikiDir, req.Run); err != nil {
-		writeErr(w, 404, fmt.Errorf("unknown run %q", req.Run))
-		return
-	}
-	if req.Spec != "" && res.SpecID != req.Spec {
-		writeErr(w, 400, fmt.Errorf("run %s belongs to spec %s", req.Run, res.SpecID))
-		return
-	}
 	if !res.AutoAdopted || !res.Adopted || res.Reverted {
 		writeErr(w, 409, errors.New("this run is not a wording the agent adopted that is still in use"))
 		return
@@ -387,4 +358,34 @@ func (s *server) handleTuneReview(w http.ResponseWriter, r *http.Request) {
 	recordMeaningCheck(res, false, "undone by a person after the agent adopted it", "page")
 	appendRunNote(res.RunPage, fmt.Sprintf("**Undone** by a person: %s was renamed to %s.reverted; the previous wording is used again.", res.AdoptedPath, filepath.Base(res.AdoptedPath)))
 	writeJSON(w, 200, map[string]any{"reverted": true, "run": res.Run})
+}
+
+func (s *server) lockedTuneResult(w http.ResponseWriter, run, specID string) (*tuneResult, func(), bool) {
+	calibrationUnlock := s.lockCalibration()
+	fail := func(status int, err error) (*tuneResult, func(), bool) {
+		writeErr(w, status, err)
+		calibrationUnlock()
+		return nil, nil, false
+	}
+	res, err := loadTuneResult(s.o.wikiDir, run)
+	if err != nil {
+		return fail(404, fmt.Errorf("unknown run %q", run))
+	}
+	runUnlock, err := lockTuneRun(s.o.wikiDir, res.Run)
+	if err != nil {
+		return fail(409, err)
+	}
+	unlock := func() { runUnlock(); calibrationUnlock() }
+	res, err = loadTuneResult(s.o.wikiDir, run)
+	if err != nil {
+		writeErr(w, 404, fmt.Errorf("unknown run %q", run))
+		unlock()
+		return nil, nil, false
+	}
+	if specID != "" && res.SpecID != specID {
+		writeErr(w, 400, fmt.Errorf("run %s belongs to spec %s", run, res.SpecID))
+		unlock()
+		return nil, nil, false
+	}
+	return res, unlock, true
 }
