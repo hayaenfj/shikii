@@ -57,7 +57,7 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 		return res, err
 	}
 	var keep [][]byte
-	var removed []string // traces of removed records: their original text goes with them
+	var removed []Record // removed records: their original text goes with them
 	kept := map[string]bool{}
 	err = s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
@@ -73,7 +73,7 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 			res.KeptRecent++
 		default:
 			res.Removed++
-			removed = append(removed, r.TraceID)
+			removed = append(removed, Record{TraceID: r.TraceID, InputsHash: r.InputsHash})
 			return nil
 		}
 		kept[r.TraceID] = true
@@ -126,8 +126,10 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 }
 
 // removeRecordTexts deletes the original text (records/text/<trace_id>.json) of records GC just removed. A trace a kept
-// line still uses keeps its text. The records are already gone, so a text that cannot be removed is left, not reported.
-func (s Store) removeRecordTexts(removed []string, kept map[string]bool) {
+// line still uses keeps its text, and so does a text saved for other inputs (the folder is shared by every question: a
+// decision of another question under the same trace keeps its own). The records are already gone, so a text that cannot be
+// read or removed is left, not reported.
+func (s Store) removeRecordTexts(removed []Record, kept map[string]bool) {
 	if len(removed) == 0 {
 		return
 	}
@@ -136,11 +138,25 @@ func (s Store) removeRecordTexts(removed []string, kept map[string]bool) {
 		return // no original text was ever kept
 	}
 	defer dir.Close()
-	for _, trace := range removed {
+	for _, rec := range removed {
+		trace := rec.TraceID
 		if kept[trace] || !textTrace.MatchString(trace) {
 			continue
 		}
-		if info, err := dir.Lstat(trace + ".json"); err == nil && info.Mode().IsRegular() {
+		info, err := dir.Lstat(trace + ".json")
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		f, err := dir.Open(trace + ".json")
+		if err != nil {
+			continue
+		}
+		var text struct {
+			InputsHash string `json:"inputs_hash"`
+		}
+		err = json.NewDecoder(f).Decode(&text)
+		f.Close()
+		if err == nil && text.InputsHash == rec.InputsHash {
 			_ = dir.Remove(trace + ".json")
 		}
 	}
