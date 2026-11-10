@@ -98,3 +98,13 @@ func TestUpstreamStatusErrorsLeaveOutTheResponseOfAMisreadUpstream(t *testing.T)
 		t.Errorf("a forwarded error of an upstream read as written is passed on as it is: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// Only an error answer of a misread upstream is left out: what it answers with a 2xx status is the decision and is passed on.
+func TestForwardPassesOnASuccessfulAnswerOfAMisreadUpstream(t *testing.T) {
+	s := &server{cfg: config{Upstream: "http://sk-abc/def-token@127.0.0.1:8080", Model: "m", Timeout: 5 * time.Second}, http: &http.Client{Transport: echoing{status: 200}}}
+	rec := httptest.NewRecorder()
+	s.forward(rec, httptest.NewRequest(http.MethodPost, "/v1/systemone", bytes.NewReader([]byte(`{}`))), []byte(`{}`))
+	if rec.Code != 200 || !strings.HasPrefix(rec.Body.String(), "bad gateway: cannot reach") {
+		t.Errorf("a 2xx answer is passed on as it is: %d %q", rec.Code, rec.Body.String())
+	}
+}

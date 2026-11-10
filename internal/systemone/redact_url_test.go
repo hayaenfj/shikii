@@ -260,9 +260,12 @@ func TestAskStatusErrorHidesTheCredentialsOfTheModelURL(t *testing.T) {
 		"http://user:8443/s3cr3t-token@127.0.0.1:8080",
 		"http://user:p@s3cr3t-part/rest@127.0.0.1:8080", // an @ and then a slash in the credentials: the split keeps an @ in the base
 		"http://tok@en-s3cr3t/more@127.0.0.1:8080/v1/systemone",
+		"http://tok?en-s3cr3t@127.0.0.1:8080",       // a question mark ends the host for the client as a slash does
+		"http://tok#en-s3cr3t@127.0.0.1:8080",       // and so does a number sign
+		"http://sk-abc/x?def-s3cr3t@127.0.0.1:8080", // the @ stands in what the split takes for the query
 	} {
 		text := ask(raw)
-		for _, piece := range []string{"sk-abc", "user", "8443", "s3cr3t", "tok@"} {
+		for _, piece := range []string{"sk-abc", "user", "8443", "s3cr3t", "tok@", "tok for", "reach tok"} {
 			if strings.Contains(text, piece) {
 				t.Errorf("%q: the status error carries %q of the credentials: %s", raw, piece, text)
 			}
@@ -291,5 +294,36 @@ func TestAskErrorHidesCredentialsOfAURLThatDoesNotParseAfterItsFirstSlash(t *tes
 	_, err := New("http://user/se%25zz-s3cr3t@127.0.0.1:8080", "", "m").Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
 	if err == nil || strings.Contains(err.Error(), "s3cr3t") || strings.Contains(err.Error(), "user") || !strings.Contains(err.Error(), "http://xxxxx@127.0.0.1:8080") {
 		t.Errorf("the error names the URL without what stands before its last @: %v", err)
+	}
+}
+
+// A URL without credentials is shown by its base alone in a status error, with or without a path, as before.
+func TestAskStatusErrorOfAURLWithAPathAndNoCredentialsNamesItsBase(t *testing.T) {
+	c := New("https://openrouter.test/api/alpha/decisions", "", "m")
+	c.HTTP = &http.Client{Transport: answering{status: 502}}
+	_, err := c.Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
+	if want := "systemone https://openrouter.test: HTTP 502: bad gateway: cannot reach openrouter.test"; err == nil || err.Error() != want {
+		t.Errorf("status error:\n got  %v\n want %s", err, want)
+	}
+}
+
+// Misread is decided by the characters of the URL: an @ after the first "/", "?" or "#".
+func TestMisread(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"http://sk-abc/def@127.0.0.1:8080":       true,
+		"http://tok?en@127.0.0.1:8080":           true,
+		"http://tok#en@127.0.0.1:8080":           true,
+		"sk-abc/def@127.0.0.1:8080":              true, // without a scheme
+		"http://user:pw@127.0.0.1:8080/api/@org": true, // an @ in the path: it cannot be told from credentials with a slash
+		"http://user:pw@127.0.0.1:8080/v1":       false,
+		"http://user:pw@[fe80::1%25en0]:8080":    false,
+		"http://user:pw@127.0.0.1:8080/a%40b":    false,
+		"http://127.0.0.1:8080/v1/systemone":     false,
+		"http://@127.0.0.1:8080":                 false,
+		"":                                       false,
+	} {
+		if got := Misread(raw); got != want {
+			t.Errorf("Misread(%q) = %v, want %v", raw, got, want)
+		}
 	}
 }
