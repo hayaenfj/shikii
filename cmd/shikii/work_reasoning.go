@@ -134,6 +134,11 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 		}
 	} else if v.Started && !v.Complete {
 		v.Next = "Record the checked result once with this receipt; add an explicit judgment only when useful."
+		if r.Finish != nil && r.Finish.Generation != r.Generation {
+			// The ending review was saved before later work. The same finish sent again is accepted as a retry of the old one and
+			// changes nothing, so its reply looked like a success; say that it does not count and what does.
+			v.Next = "Work changed after the saved ending review, so that review no longer covers this work. A finish repeated word for word is a retry of the old one and is not applied. Review the later evidence, then record the checked result or a reasoning finish that reflects it."
+		}
 	} else if v.Complete {
 		v.Next = "The review is saved. New observations, actual uses, outcomes or wiki edits require an updated finish; recording alone is not proof of improvement."
 	}
