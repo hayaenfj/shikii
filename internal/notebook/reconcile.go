@@ -49,7 +49,14 @@ func (b Book) Reconcile(intent Patch) (Reconciliation, error) {
 		return out, nil
 	}
 	view, err := b.Query("lesson:" + intent.ID)
-	if err != nil || len(view.Lessons) != 1 || view.Lessons[0].Status == "deleted" || len(view.Issues) != 0 {
+	// The exact query also lists source problems of the articles it scanned before
+	// this one, in id order. Only a problem of this article, or an unreadable page
+	// (which blocks every save), makes it unavailable.
+	blocked := false
+	for _, issue := range view.Issues {
+		blocked = blocked || issue.Page == intent.ID || issue.Kind == "unreadable-page" || issue.Kind == "changed-page"
+	}
+	if err != nil || len(view.Lessons) != 1 || view.Lessons[0].Status == "deleted" || blocked {
 		out.Reason = "The current article is unavailable, replaced, deleted or has invalid sources."
 		return out, nil
 	}
