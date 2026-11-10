@@ -53,6 +53,11 @@ func readMemoryHead(path string) (string, error) {
 // unimportedMemoryFiles is the files in the memory folder not yet moved to the wiki (.md files except the index MEMORY.md).
 // "Moved" = the body has the marker with a page id. In a folder that was partly moved, only the rest is counted.
 func unimportedMemoryFiles(dir string) []string {
+	return unimportedMemoryFilesMatching(dir, nil)
+}
+
+// The caller supplies project filtering only for a shared memory directory.
+func unimportedMemoryFilesMatching(dir string, matches func(string) bool) []string {
 	if dir == "" {
 		return nil
 	}
@@ -67,7 +72,7 @@ func unimportedMemoryFiles(dir string) []string {
 			continue
 		}
 		head, err := readMemoryHead(filepath.Join(dir, name))
-		if err != nil || memoryImportMark.MatchString(head) {
+		if err != nil || memoryImportMark.MatchString(head) || matches != nil && !matches(head) {
 			continue
 		}
 		out = append(out, name)
@@ -149,23 +154,9 @@ func unimportedCodexMemoryFiles(dir string, names []string) []string {
 	if dir == "" || len(names) == 0 {
 		return nil
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".md") || name == "MEMORY.md" {
-			continue
-		}
-		head, err := readMemoryHead(filepath.Join(dir, name))
-		if err != nil || memoryImportMark.MatchString(head) || !namesProject(head, names) {
-			continue
-		}
-		out = append(out, name)
-	}
-	return out
+	return unimportedMemoryFilesMatching(dir, func(head string) bool {
+		return namesProject(head, names)
+	})
 }
 
 // listFiles is the file names listed in a notice (the first 5 and a count of the rest).
