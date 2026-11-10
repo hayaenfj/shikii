@@ -127,6 +127,9 @@ func LatestPerInput(labels []Label) []Label {
 
 // Records returns the spec's records newest first, limit of them (all if limit <= 0). For showing the queue.
 func (s Store) Records(specID string, limit int) ([]Record, error) {
+	if limit > 0 {
+		return s.newestRecords(specID, limit)
+	}
 	var all []Record
 	err := s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
@@ -139,9 +142,6 @@ func (s Store) Records(specID string, limit int) ([]Record, error) {
 		return nil, err
 	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].At.After(all[j].At) })
-	if limit > 0 && len(all) > limit {
-		all = all[:limit]
-	}
 	return all, nil
 }
 
