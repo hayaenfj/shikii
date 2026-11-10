@@ -14,7 +14,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.30.7-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.30.7では、止めるべき変更を通していたguard、保存した記事が読めなくなるwikiの保存、正解に出ていない選択肢で自動に進みうる補正を直します。hookを速くし、一度も役立たなかった過去の答えの引用も止めます。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.30.7では、止めるべき変更を通していたguard、保存した記事が読めなくなるwikiの保存、正解に出ていない選択肢で自動に進みうる補正を直します。使える確率の無いモデルの返事は、判定として記録しません。hookを速くし、一度も役立たなかった過去の答えの引用も止めます。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 同じプロジェクトへ書く本体を全て更新し、hookなしの場合は既存のプロジェクトで `shikii --init` を実行して作法も更新してください。その後、エージェントのセッション・ページ・MCPを起動し直します。既存の記録を保持し、原資料を残したメモリ更新作業をエージェントへ届けます。進捗は英語で表示します。詳しくは[記憶と学習](../memory-and-learning.ja.md)を参照してください。
 

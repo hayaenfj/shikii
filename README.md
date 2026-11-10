@@ -14,7 +14,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.30.7-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.30.7 fixes guards that passed changes they should have stopped, wiki saves that left a page unreadable and a calibration that could act on an option no truth had confirmed. It also makes the hooks faster and stops quoting past answers that never helped. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.30.7 fixes guards that passed changes they should have stopped, wiki saves that left a page unreadable and a calibration that could act on an option no truth had confirmed. A model answer without usable probabilities is no longer recorded as a decision. It also makes the hooks faster and stops quoting past answers that never helped. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 
