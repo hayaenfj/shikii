@@ -83,6 +83,9 @@ func validMemoryDelivery(d MemoryDelivery) bool {
 	return true
 }
 
+// memoryLineMax is the longest line (with its newline) a delivery may take: the reader skips longer ones and the writer refuses them.
+const memoryLineMax = 32 << 10
+
 // Only the last 4MB and the latest 256 turns. Writes before a newline and broken lines are not taken.
 func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 	out := []MemoryDelivery{}
@@ -111,7 +114,7 @@ func (s Store) MemoryDeliveries(scope string) ([]MemoryDelivery, error) {
 		}
 		var d MemoryDelivery
 		// the file belongs to one project by its name; a line may name the path before the folder was moved (0.9.5), so it is not compared
-		if len(line) > 32<<10 || json.Unmarshal([]byte(line), &d) != nil || !validMemoryDelivery(d) {
+		if len(line) > memoryLineMax || json.Unmarshal([]byte(line), &d) != nil || !validMemoryDelivery(d) {
 			continue
 		}
 		out = append(out, d)
@@ -169,6 +172,13 @@ func (s Store) SaveMemoryDelivery(d MemoryDelivery) error {
 	d.At = time.Now().UTC()
 	if !validMemoryDelivery(d) {
 		return errors.New("a memory delivery needs a request, quotes, sources and a version")
+	}
+	// The reader skips a longer line without a word. The phrase, the agent and the parent have no limit of their own, so refuse
+	// here what could be written but never read (and would be appended again on every resend).
+	if line, err := json.Marshal(d); err != nil {
+		return err
+	} else if len(line)+1 > memoryLineMax {
+		return errors.New("a memory delivery is too long to be read back (its phrase, agent or parent)")
 	}
 	unlock, err := s.memoryLock(d.Scope)
 	if err != nil {
