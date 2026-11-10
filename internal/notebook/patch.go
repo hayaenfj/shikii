@@ -111,6 +111,11 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 			*target = strings.Replace(*target, e.Before, e.After, 1)
 		}
 	}
+	// An empty kind or scene is inherited from the saved page by the save below,
+	// so an edit that empties one would be reported as saved and not applied.
+	if old.Kind != "" && strings.TrimSpace(next.Kind) == "" || old.Scene != "" && strings.TrimSpace(next.Scene) == "" {
+		return Result{}, errors.New("patch cannot clear kind or scene; replace it with another value")
+	}
 	d := Draft{ID: old.ID, Title: next.Title, Lesson: next.Lesson, AppliesTo: next.AppliesTo, Body: &next.Body, Rationale: &next.Rationale, Kind: next.Kind, Scene: next.Scene, Sources: c.Sources, ChangeReason: c.ChangeReason, baseRevision: old.Revision, preview: preview}
 	d.Passages = c.Passages
 	d.Learning = c.Learning
