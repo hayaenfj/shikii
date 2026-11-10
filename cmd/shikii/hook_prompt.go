@@ -13,8 +13,13 @@ import (
 
 func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	req := cut(strings.TrimSpace(in.Prompt), requestMax)
-	if req == "" || isSlashCommand(req) || in.AgentID != "" {
+	if req == "" || in.AgentID != "" {
 		return hookOut{}, nil, nil
+	}
+	if isSlashCommand(req) {
+		// not a request: nothing is asked or delivered, and the kept request stays as it is. Only the person's guards get a boundary here,
+		// so that this turn's changes and commits are checked at its Stop (guard_turn.go)
+		return hookOut{}, openGuardTurn(agent, in, snapshot), nil
 	}
 	if isNotification(req) {
 		// a completion notice of background work is not a request: the 2 questions are not asked and the request, listing and pending are not replaced (the outcome truth is decided at the person's next request).
@@ -25,6 +30,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		return hookOut{}, []func(*hookSession){func(s *hookSession) {
 			if s.Request == snapshot.Request {
 				s.Judged = false
+				closeGuardTurn(agent, in.SessionID, s) // work that goes on after the notice is the request's again, as before a slash command came in between
 			}
 		}}, nil
 	}
@@ -71,6 +77,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 				nextReasoning = nextTurnReasoning(s.Reasoning, turnID)
 			}
 			s.Request, s.Judged, s.TurnID, s.Scope, s.Completed = request, false, turnID, scope, nil
+			closeGuardTurn(agent, in.SessionID, s) // a stretch a slash command opened ends with the person's next request
 			s.Head, s.HeadAt = head, time.Now()
 			s.RequestText = requestText
 			s.RawPrompt = cut(strings.TrimSpace(in.Prompt), 4000)

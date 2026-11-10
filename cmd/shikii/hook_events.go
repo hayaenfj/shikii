@@ -56,7 +56,7 @@ func runHookEvent(event string) error {
 	if event == "stop" {
 		var serr error
 		snapshot, serr = readSession(agent, in.SessionID)
-		if serr != nil || (in.StopHookActive && snapshot.TurnID == "" && shikiiStoppedSession(agent, in.SessionID)) {
+		if serr != nil || (in.StopHookActive && snapshot.TurnID == "" && snapshot.GuardTurn == nil && shikiiStoppedSession(agent, in.SessionID)) {
 			fmt.Fprintln(stdout, string((hookOut{Halt: ritualHalt(true)}).json(hookEventName(event))))
 			return serr
 		}

@@ -18,6 +18,13 @@ import (
 // Only once per request (Judged). Not asked if there is no kept request. If nothing changed, changes-in-scope is not asked.
 // It also keeps the assistant's last message and attaches outcome truths to the remaining pending. The waiting-answers summary is added by the caller inside the lock (stopSummary).
 func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
+	if snapshot.GuardTurn != nil {
+		// a slash command opened this stretch: it is not a request, so only the person's guards look at it. Nothing of the kept request
+		// is settled, checked by the routine or judged at this Stop, and its record stays as it is
+		pruneSessions(agent)
+		out, err := guardTurnStop(agent, in, snapshot)
+		return out, nil, err
+	}
 	tree, listing, listed, project, scope := treeStateWithScope(in.CWD)
 	last := cut(strings.TrimSpace(in.LastAssistantMessage), requestMax)
 	req := snapshot.Request // the request this Stop evaluates. If the kept request changed inside the lock (the next request came first), this Stop's marks are not applied
@@ -98,7 +105,7 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		// A guard that has not stopped this turn yet stops it once, also after the routine check or another guard stopped an earlier Stop
 		if !in.late {
 			var gerr error
-			if out, gerr = guardStop(agent, in, snapshot, string(before), changed, known, rout.Halt != ""); gerr != nil && firstErr == nil {
+			if out, gerr = guardStop(agent, in, guardBaselineOf(agent, in.SessionID, snapshot), string(before), changed, known, rout.Halt != ""); gerr != nil && firstErr == nil {
 				firstErr = gerr
 			}
 		}
@@ -228,6 +235,11 @@ func judgeAskedTurn(agent string, in *hookInput, snapshot *hookSession) {
 		reply = c.Summary
 	}
 	stop := hookInput{SessionID: in.SessionID, CWD: in.CWD, StopHookActive: true, LastAssistantMessage: reply, late: true}
+	if snapshot.GuardTurn != nil { // a slash command's stretch came in between: this judges the request's own turn, not the stretch
+		request := *snapshot
+		request.GuardTurn = nil
+		snapshot = &request
+	}
 	out, muts, err := hookStop(agent, &stop, snapshot)
 	if err != nil {
 		hookLog("grouping: " + err.Error())

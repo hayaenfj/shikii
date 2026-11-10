@@ -43,7 +43,7 @@ func guardToolCall(root string, in *hookInput, snapshot *hookSession) (hookOut, 
 			continue
 		}
 		failed = append(failed, r)
-		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: false, Reason: bi(r.Reason, r.ReasonJA, loc), Tool: true})
+		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: guardBaselineOf(root, in.SessionID, snapshot).Turn, Guard: r.ID, Pass: false, Reason: bi(r.Reason, r.ReasonJA, loc), Tool: true})
 	}
 	if len(failed) == 0 {
 		return guardPublication(root, in, snapshot, command, guards)

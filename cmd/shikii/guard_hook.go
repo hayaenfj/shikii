@@ -178,28 +178,29 @@ func guardWorkingTreeInput(dir string) guardInput {
 }
 
 // guardStop runs the enabled checks at Stop and, if one fails, returns output that blocks (decision: block). Results are kept in records/guards.jsonl.
+// base is the start the turn is compared with: the request's, or the stretch a slash command opened (guard_turn.go).
 // A guard stops a turn at most once. A failing guard stops the Stop unless that same guard already stopped an earlier Stop of this turn,
 // whatever stopped the Stops in between (the built-in routine check, another guard): the stops of one turn are capped by the number of
 // guards, so there is no endless loop. After its own stop a guard only records whether the work was fixed (recheck).
 // halted says the routine check ends the turn incomplete at this Stop: nothing is stopped then, and a failure is kept as a recheck.
-func guardStop(root string, in *hookInput, snapshot *hookSession, before string, changed []string, known bool, halted bool) (hookOut, error) {
+func guardStop(root string, in *hookInput, base guardBaseline, before string, changed []string, known bool, halted bool) (hookOut, error) {
 	guards, err := enabledGuards(root)
 	if err != nil || len(guards) == 0 {
 		return hookOut{}, err
 	}
-	input := guardTurnInput(in.CWD, before, changed, known, snapshot.Head, snapshot.HeadAt)
+	input := guardTurnInput(in.CWD, before, changed, known, base.Head, base.HeadAt)
 	var recs []guardRecord
 	var failed []guardResult
 	now := time.Now().UTC()
 	loc := hookLoc{Lang: hookLang()}
 	// stopped: at an earlier Stop of this turn. toolStopped: a command or a publication before it ran this turn (0.11): passing now is the fix
-	stopped, toolStopped := turnStoppedGuards(root, in.SessionID, snapshot.TurnID)
+	stopped, toolStopped := turnStoppedGuards(root, in.SessionID, base.Turn)
 	for _, g := range guards {
 		r := evalGuard(g, input)
 		// The page retains localized evidence; the agent receives English scaffolding.
 		reason := bi(r.Reason, r.ReasonJA, loc)
 		stops := !r.Pass && !halted && !stopped[r.ID]
-		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: r.Pass, Reason: reason, Recheck: !stops && (!r.Pass || stopped[r.ID] || toolStopped[r.ID])})
+		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: base.Turn, Guard: r.ID, Pass: r.Pass, Reason: reason, Recheck: !stops && (!r.Pass || stopped[r.ID] || toolStopped[r.ID])})
 		if stops {
 			failed = append(failed, r)
 		}

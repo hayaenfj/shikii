@@ -114,7 +114,11 @@ func isPublicationCommand(command string) bool {
 }
 
 func guardPublication(root string, in *hookInput, snapshot *hookSession, command string, guards []guard) (hookOut, error) {
-	if snapshot == nil || snapshot.TurnID == "" || !isPublicationCommand(command) {
+	if snapshot == nil || !isPublicationCommand(command) {
+		return hookOut{}, nil
+	}
+	base := guardBaselineOf(root, in.SessionID, snapshot) // the request's start, or the start of the stretch a slash command opened
+	if base.Turn == "" {
 		return hookOut{}, nil
 	}
 	applicable := false
@@ -128,16 +132,16 @@ func guardPublication(root string, in *hookInput, snapshot *hookSession, command
 		return hookOut{Deny: true, Reason: "shikii: run publication as a separate tool call after other commands, so enabled checks inspect the actual files and commit bodies being published."}, nil
 	}
 	_, listing, listed, _, scope := treeStateWithScope(in.CWD)
-	if scope != snapshot.Scope {
+	if scope != base.Scope {
 		return hookOut{}, nil
 	}
-	before, err := os.ReadFile(sessionFilesPath(root, in.SessionID))
-	known := err == nil && listed && strings.HasPrefix(string(before), listingHeader(snapshot.Request))
+	before, err := os.ReadFile(base.Files)
+	known := err == nil && listed && strings.HasPrefix(string(before), base.Header)
 	var changed []string
 	if known {
 		changed = changedFiles(string(before), listing)
 	}
-	input := guardTurnInput(in.CWD, string(before), changed, known, snapshot.Head, snapshot.HeadAt)
+	input := guardTurnInput(in.CWD, string(before), changed, known, base.Head, base.HeadAt)
 	failed := []guardResult{}
 	records := []guardRecord{}
 	now := time.Now().UTC()
@@ -147,7 +151,7 @@ func guardPublication(root string, in *hookInput, snapshot *hookSession, command
 			continue
 		}
 		r := evalGuard(g, input)
-		records = append(records, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: r.ID, Pass: r.Pass, Reason: bi(r.Reason, r.ReasonJA, loc), Tool: !r.Pass})
+		records = append(records, guardRecord{At: now, Session: in.SessionID, Turn: base.Turn, Guard: r.ID, Pass: r.Pass, Reason: bi(r.Reason, r.ReasonJA, loc), Tool: !r.Pass})
 		if !r.Pass {
 			failed = append(failed, r)
 		}

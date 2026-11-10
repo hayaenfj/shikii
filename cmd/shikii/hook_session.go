@@ -91,7 +91,8 @@ func saveHookMutations(agent, id, event string, snapshot *hookSession, out *hook
 			m(sess)
 		}
 	}
-	if event != "stop" || out.Block || out.Halt != "" || snapshot.Request == "" {
+	// the Stop of a stretch a slash command opened judges nothing of the request, so there is no completion to verify
+	if event != "stop" || out.Block || out.Halt != "" || snapshot.Request == "" || snapshot.GuardTurn != nil {
 		return updateSession(agent, id, apply)
 	}
 	// Keep verification and the final session write inside the same commit boundary.
@@ -181,6 +182,8 @@ func pruneSessions(agent string) {
 		name := entry.Name()
 		if strings.HasSuffix(name, ".json") {
 			pruneSessionRecord(root, name)
+		} else if strings.HasSuffix(name, ".guard.files") {
+			pruneSessionRecord(root, strings.TrimSuffix(name, ".guard.files")+".json")
 		} else if strings.HasSuffix(name, ".files") {
 			pruneSessionRecord(root, strings.TrimSuffix(name, ".files")+".json")
 		}
@@ -252,15 +255,17 @@ func pruneSessionRecord(root *os.Root, name string) {
 	} else if !os.IsNotExist(err) {
 		return
 	}
-	// The tree listing is a cache. Remove only an old orphan, under the same lock.
-	cache := strings.TrimSuffix(name, ".json") + ".files"
-	f, err = root.OpenFile(cache, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return
-	}
-	info, err = f.Stat()
-	_ = f.Close()
-	if err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > hookSessionTTL {
-		_ = root.Remove(cache)
+	// The tree listings (the request's, and the one a slash command's turn kept) are caches. Remove only an old orphan, under the same lock.
+	for _, suffix := range []string{".files", ".guard.files"} {
+		cache := strings.TrimSuffix(name, ".json") + suffix
+		f, err = root.OpenFile(cache, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+		if err != nil {
+			continue
+		}
+		info, err = f.Stat()
+		_ = f.Close()
+		if err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > hookSessionTTL {
+			_ = root.Remove(cache)
+		}
 	}
 }

@@ -211,7 +211,10 @@ type hookSession struct {
 	ClassifyAsked     []string       `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
 	ClassifyAskedTurn string         `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
 	SubagentTasks     []subagentTask `json:"subagent_tasks,omitempty"`      // task text passed to the Agent tool (SubagentStart picks lessons with that text. 0.9.1)
-	At                time.Time      `json:"at"`
+	// GuardTurn is the stretch a slash command opened, until the next request: not a request (nothing is asked, delivered or judged),
+	// only the person's guards compare the present with the working tree and HEAD kept when it began. The request's own record above is left as it is
+	GuardTurn *guardTurn `json:"guard_turn,omitempty"`
+	At        time.Time  `json:"at"`
 }
 
 // subagentTask is a task the parent passed to a child agent with the Agent tool (kept at PreToolUse; at SubagentStart the oldest one of the same type is used).
