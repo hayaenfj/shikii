@@ -7,6 +7,8 @@
   import { api } from '../lib/api.js';
   import { toast } from '../lib/toast.svelte.js';
 
+  import { reviewWording, judgeWording } from '../lib/wording-actions.js';
+
   let { sp } = $props();
   let tu = $derived(sp.tune);
   let latest = $derived(tu && tu.latest);
@@ -46,21 +48,12 @@
   }
 
   async function decide(keep) {
-    try {
-      await api.tuneReview({ spec: sp.id, run: latest.run, keep });
-      toast(keep ? t('keptToast') : t('undoneToast'), 6000);
-      load();
-    } catch (e) { toast(t('error')(e.message)); }
+    await reviewWording(() => ({ spec: sp.id, run: latest.run }), keep);
+  }
+  async function judge(same) {
+    await judgeWording(() => ({ spec: sp.id, run: latest.run }), same);
   }
 
-  async function judge(same) {
-    try {
-      const note = same ? '' : (prompt(t('notePrompt')) || '');
-      const res = await api.tuneAdopt({ spec: sp.id, run: latest.run, meaning_same: same, note });
-      toast(same ? t('adoptedToast')(res.path.split('/').pop()) : t('rejected'), 6000);
-      load();
-    } catch (e) { toast(t('error')(e.message)); }
-  }
 </script>
 
 {#snippet options(opts, base)}
@@ -128,7 +121,7 @@
           <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top" data-wording-keep onclick={() => decide(true)}>{t('keepWording')}</button><button type="button" class="weak" data-wording-undo onclick={() => decide(false)}>{t('undoWording')}</button></div>
         {:else}
           <div class="k">{t('checkHint')}</div>
-          <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top" data-wording-same onclick={() => judge(true)}>{t('sameMeaning')}</button><button type="button" class="weak" onclick={() => judge(false)}>{t('changedMeaning')}</button></div>
+          <div class="btns flex flex-wrap items-center gap-2.5"><button type="button" class="top" data-wording-same onclick={() => judge(true)}>{t('sameMeaning')}</button><button type="button" class="weak" data-wording-different onclick={() => judge(false)}>{t('changedMeaning')}</button></div>
         {/if}
       {:else if check?.verdict === 'different'}
         <div class="k" data-wording-agent>{t('wordingAgentDifferent')(check.difference || '')}</div>

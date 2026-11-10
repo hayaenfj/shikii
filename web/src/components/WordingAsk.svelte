@@ -4,9 +4,8 @@
   // It shows the translations and the AI's view of the difference; the English original is in a fold. The numbers, candidate list,
   // the form for writing a wording and "measure" stay on the AI page (Wording.svelte). Only shown when wordingNeedsPerson (state.svelte.js) says so
   import { t, loc } from '../lib/i18n.svelte.js';
-  import { load } from '../lib/state.svelte.js';
-  import { api } from '../lib/api.js';
-  import { toast } from '../lib/toast.svelte.js';
+
+  import { reviewWording, judgeWording } from '../lib/wording-actions.js';
 
   let { sp } = $props();
   let latest = $derived(sp.tune.latest);
@@ -16,18 +15,12 @@
 
   async function decide(keep) {
     busy = true;
-    try { await api.tuneReview({ spec: sp.id, run: latest.run, keep }); toast(keep ? t('keptToast') : t('undoneToast'), 6000); load(); }
-    catch (e) { toast(t('error')(e.message)); }
+    await reviewWording(() => ({ spec: sp.id, run: latest.run }), keep);
     busy = false;
   }
   async function judge(same) {
     busy = true;
-    try {
-      const note = same ? '' : (prompt(t('notePrompt')) || '');
-      const res = await api.tuneAdopt({ spec: sp.id, run: latest.run, meaning_same: same, note });
-      toast(same ? t('adoptedToast')(res.path.split('/').pop()) : t('rejected'), 6000);
-      load();
-    } catch (e) { toast(t('error')(e.message)); }
+    await judgeWording(() => ({ spec: sp.id, run: latest.run }), same);
     busy = false;
   }
   const side = 'rounded-[10px] border border-line bg-surface2 px-3.5 py-3';

@@ -346,12 +346,12 @@ export async function checkWordingAskSends(target) {
   const calls = [];
   globalThis.fetch = async (url, opts) => { if (opts?.body) calls.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => url.endsWith('adopt') ? { path: '/p/decisions/x-v2.yaml' } : url === 'v1/status' ? { specs: [] } : {} }; };
   globalThis.prompt = () => 'the note';
-  const base = { run: 'r42', winner: 'w', adoptable: true, winner_wording: { question: 'new?' }, current_wording: { question: 'old?' } };
+  const base = { candidates: [], model: 'synthetic', truths: 20, at: '2026-11-10T00:00:00Z', run: 'r42', winner: 'w', adoptable: true, winner_wording: { question: 'new?' }, current_wording: { question: 'old?' } };
   const agent = verdict => ({ by: 'agent', verdict, current_translation: 'now-ja', candidate_translation: 'new-ja', difference: 'diff-ja' });
   const adopted = { ...base, adopted: true, auto_adopted: true, adopted_path: 'decisions/x-v2.yaml', meaning_checks: [agent('same')] };
   const unsure = { ...base, adopted: false, meaning_checks: [agent('unsure')] };
-  const sp = latest => ({ id: 'changes-in-scope', titles: {}, tune: { latest } });
-  const press = async (latest, sel) => { const app = mount(WordingAsk, { target, props: { sp: sp(latest) } }); flushSync(); target.querySelector(sel)?.click(); await new Promise(r => setTimeout(r, 0)); unmount(app); return calls.pop(); };
+  const sp = latest => ({ id: 'changes-in-scope', titles: {}, tune: { variants: [], latest } });
+  const press = async (latest, sel, component = WordingAsk) => { const app = mount(component, { target, props: { sp: sp(latest) } }); flushSync(); target.querySelector(sel)?.click(); await new Promise(r => setTimeout(r, 0)); unmount(app); return calls.pop(); };
   const keep = await press(adopted, '[data-wording-keep]');
   const undo = await press(adopted, '[data-wording-undo]');
   const same = await press(unsure, '[data-wording-same]');
@@ -359,13 +359,31 @@ export async function checkWordingAskSends(target) {
   const is = (c, url, body) => !!c && c.url === url && JSON.stringify(c.body) === JSON.stringify(body);
   const sent = is(keep, 'v1/tune/review', { spec: 'changes-in-scope', run: 'r42', keep: true }) && is(undo, 'v1/tune/review', { spec: 'changes-in-scope', run: 'r42', keep: false })
     && is(same, 'v1/tune/adopt', { spec: 'changes-in-scope', run: 'r42', meaning_same: true, note: '' }) && is(diff, 'v1/tune/adopt', { spec: 'changes-in-scope', run: 'r42', meaning_same: false, note: 'the note' });
+  const aiKeep = await press(adopted, '[data-wording-keep]', Wording);
+  const aiUndo = await press(adopted, '[data-wording-undo]', Wording);
+  const aiSame = await press(unsure, '[data-wording-same]', Wording);
+  const aiDiff = await press(unsure, '[data-wording-different]', Wording);
+  const aiSent = is(aiKeep, 'v1/tune/review', { spec: 'changes-in-scope', run: 'r42', keep: true }) && is(aiUndo, 'v1/tune/review', { spec: 'changes-in-scope', run: 'r42', keep: false })
+    && is(aiSame, 'v1/tune/adopt', { spec: 'changes-in-scope', run: 'r42', meaning_same: true, note: '' }) && is(aiDiff, 'v1/tune/adopt', { spec: 'changes-in-scope', run: 'r42', meaning_same: false, note: 'the note' });
+  const successFetch = globalThis.fetch;
+  let failuresRecover = true;
+  for (const component of [WordingAsk, Wording]) {
+    for (const [latest, selector] of [[adopted, '[data-wording-keep]'], [unsure, '[data-wording-same]']]) {
+      globalThis.fetch = async (url, opts) => opts?.body ? { ok: false, status: 409, json: async () => ({ error: 'synthetic refusal' }) } : successFetch(url, opts);
+      const app = mount(component, { target, props: { sp: sp(latest) } }); flushSync();
+      target.querySelector(selector)?.click(); await new Promise(r => setTimeout(r, 0)); flushSync();
+      failuresRecover &&= !!target.querySelector(selector) && !target.querySelector(selector).disabled && toastState.msg.includes('synthetic refusal');
+      unmount(app);
+    }
+  }
+  globalThis.fetch = successFetch;
   // the names in the box and in the fold "see the English original" are the same pair
   const names = latest => { const app = mount(WordingAsk, { target, props: { sp: sp(latest) } }); flushSync(); const box = [...target.querySelectorAll('[data-answer-wording] .k')].map(e => e.textContent); const fold = [...target.querySelectorAll('[data-answer-wording] details p')].map(p => p.textContent.split(':')[0]); unmount(app); return { box, fold }; };
   const a = names(adopted), u = names(unsure);
   const consistent = JSON.stringify(a.box) === JSON.stringify([t('wordingBefore'), t('wordingAfter')]) && JSON.stringify(a.fold) === JSON.stringify(a.box) && JSON.stringify(u.fold) === JSON.stringify(u.box);
   globalThis.fetch = realFetch; globalThis.prompt = realPrompt; i18n.lang = lang;
-  const ok = sent && consistent;
-  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (wording box sends: keep / undo / same / different with the latest run=' + sent + ', the same names in the box and the fold=' + consistent + ' ' + JSON.stringify({ a, u }) + ')');
+  const ok = sent && aiSent && failuresRecover && consistent;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (wording operations on both screens=' + (sent && aiSent) + ', rejected writes recover=' + failuresRecover + ', wording box sends: keep / undo / same / different with the latest run=' + sent + ', the same names in the box and the fold=' + consistent + ' ' + JSON.stringify({ a, u }) + ')');
   return ok;
 }
 
