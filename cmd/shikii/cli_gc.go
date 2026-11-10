@@ -59,7 +59,26 @@ func cmdGC(args []string) error {
 			id, verb, res.Removed, *olderThan, res.KeptLabeled, res.KeptRecent, res.KeptUnparsed)
 		total += res.Removed
 	}
-	if !*apply && total > 0 {
+	// the original texts left without a decision (a run that met a line naming no decision kept them): store-wide, so only when
+	// every question is collected
+	texts := 0
+	if len(paths) == 0 {
+		n, blocked, err := st.SweepRecordTexts(cutoff, *apply)
+		switch {
+		case err != nil:
+			return fmt.Errorf("gc original texts: %w", err)
+		case blocked:
+			fmt.Fprintln(stdout, "original texts: none removed: a records file holds a line that names no decision (it may belong to any of them). Fix or remove that line and run gc again")
+		case n > 0:
+			verb := "would remove"
+			if *apply {
+				verb = "removed"
+			}
+			fmt.Fprintf(stdout, "original texts: %s %d left without a decision\n", verb, n)
+			texts = n
+		}
+	}
+	if !*apply && total+texts > 0 {
 		fmt.Fprintln(stdout, "dry run: nothing was changed. Re-run with --apply to remove them.")
 	}
 	return nil
