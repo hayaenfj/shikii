@@ -36,14 +36,15 @@ type guardBaseline struct {
 	Head   string    // HEAD at the start ("" when it is not known)
 	HeadAt time.Time // the start. Commits before it are not looked at
 	Files  string    // the kept listing
-	Header string    // the first line a listing of this start carries
+	Lines  string    // the kept table of the lines of the files not committed at this start (guard_lines.go)
+	Header string    // the first line a listing (and its table) of this start carries
 }
 
 func guardBaselineOf(root, session string, s *hookSession) guardBaseline {
 	if g := s.GuardTurn; g != nil {
 		if s.TurnID != "" && s.Scope == g.Scope {
 			if _, err := os.Stat(sessionFilesPath(root, session)); err == nil {
-				base := guardBaseline{Turn: g.ID, Scope: s.Scope, Head: s.Head, HeadAt: s.HeadAt, Files: sessionFilesPath(root, session), Header: listingHeader(s.Request)}
+				base := guardBaseline{Turn: g.ID, Scope: s.Scope, Head: s.Head, HeadAt: s.HeadAt, Files: sessionFilesPath(root, session), Lines: sessionLinesPath(root, session), Header: listingHeader(s.Request)}
 				if base.Head == "" { // the request came before the repository's first commit: commits are read from the slash command's HEAD
 					base.Head, base.HeadAt = g.Head, g.HeadAt
 				}
@@ -52,12 +53,12 @@ func guardBaselineOf(root, session string, s *hookSession) guardBaseline {
 		}
 		return stretchStart(root, session, g)
 	}
-	return guardBaseline{Turn: s.TurnID, Scope: s.Scope, Head: s.Head, HeadAt: s.HeadAt, Files: sessionFilesPath(root, session), Header: listingHeader(s.Request)}
+	return guardBaseline{Turn: s.TurnID, Scope: s.Scope, Head: s.Head, HeadAt: s.HeadAt, Files: sessionFilesPath(root, session), Lines: sessionLinesPath(root, session), Header: listingHeader(s.Request)}
 }
 
 // stretchStart is the start of the stretch itself: the listing and HEAD kept at its slash command.
 func stretchStart(root, session string, g *guardTurn) guardBaseline {
-	return guardBaseline{Turn: g.ID, Scope: g.Scope, Head: g.Head, HeadAt: g.HeadAt, Files: sessionGuardFilesPath(root, session), Header: listingHeader(g.ID)}
+	return guardBaseline{Turn: g.ID, Scope: g.Scope, Head: g.Head, HeadAt: g.HeadAt, Files: sessionGuardFilesPath(root, session), Lines: sessionGuardLinesPath(root, session), Header: listingHeader(g.ID)}
 }
 
 // openGuardTurn is all the request hook does for a slash command: it keeps the working tree listing and HEAD of this moment as
@@ -73,16 +74,25 @@ func openGuardTurn(agent string, in *hookInput, snapshot *hookSession) []func(*h
 	}
 	_, listing, listed, _, scope := treeStateWithScope(in.CWD)
 	turn := &guardTurn{ID: store.NewTraceID(), Scope: scope, Head: gitHead(in.CWD), HeadAt: time.Now()}
+	var lines []byte
+	if listed {
+		lines = uncommittedLines(agent, in.CWD, listingHeader(turn.ID), listing)
+	}
 	return []func(*hookSession){func(s *hookSession) {
 		s.GuardTurn = turn
 		p := sessionGuardFilesPath(agent, in.SessionID)
+		lp := sessionGuardLinesPath(agent, in.SessionID)
 		if !listed {
 			_ = os.Remove(p) // outside git (or too slow, or too large): the changed files stay unknown, and unknown passes
+			_ = os.Remove(lp)
 			return
 		}
 		if err := writeAtomic(p, []byte(listingHeader(turn.ID)+listing)); err != nil {
 			hookLog("guard: the listing for the slash command's turn was not kept: " + err.Error())
 			_ = os.Remove(p)
+		}
+		if err := keepLines(lp, lines); err != nil {
+			hookLog("guard: the lines of the uncommitted files for the slash command's turn were not kept: " + err.Error())
 		}
 	}}
 }
@@ -94,6 +104,7 @@ func closeGuardTurn(agent, session string, s *hookSession) {
 	}
 	s.GuardTurn = nil
 	_ = os.Remove(sessionGuardFilesPath(agent, session))
+	_ = os.Remove(sessionGuardLinesPath(agent, session))
 }
 
 // guardTurnStop is the Stop of a stretch a slash command opened. Only the person's guards run; each guard stops the stretch at

@@ -54,6 +54,9 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 							hookLog("grouping: " + err.Error())
 						}
 					}
+					if err := moveKeptHeader(sessionLinesPath(agent, in.SessionID), moved, req); err != nil {
+						hookLog("grouping: " + err.Error())
+					}
 				}
 			}
 			if last != "" && s.Request == req && s.TurnID == snapshot.TurnID {

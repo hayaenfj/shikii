@@ -588,10 +588,17 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 	return nil
 }
 
-// moveListingHeader rewrites the header of this session's working tree listing to the regrouped request, so the Stop still
-// compares with it (the header is the hash of the request it belongs to). Nothing is done without a listing or when it belongs to another request.
+// moveListingHeader rewrites the header of this session's working tree listing, and of the table of its uncommitted lines
+// (guard_lines.go), to the regrouped request, so the Stop still compares with them (the header is the hash of the request
+// they belong to). Nothing is done without them or when they belong to another request.
 func moveListingHeader(dir *os.Root, name, from, to string) error {
-	files := strings.TrimSuffix(name, ".json") + ".files"
+	if err := moveHeaderIn(dir, strings.TrimSuffix(name, ".json")+".files", listingMax, from, to); err != nil {
+		return err
+	}
+	return moveHeaderIn(dir, strings.TrimSuffix(name, ".json")+".lines", keptLinesMax, from, to)
+}
+
+func moveHeaderIn(dir *os.Root, files string, max int, from, to string) error {
 	f, err := dir.OpenFile(files, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
 		return nil
@@ -600,7 +607,7 @@ func moveListingHeader(dir *os.Root, name, from, to string) error {
 		return err
 	}
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > listingMax+1024 {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(max)+1024 {
 		f.Close()
 		return errors.New("cannot check the working tree listing")
 	}

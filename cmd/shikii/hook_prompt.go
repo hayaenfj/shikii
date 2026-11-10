@@ -45,6 +45,10 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	pageURL, pageStarted := ensureProjectPage(scope)                    // when the agent starts working (first request), start one page for this project (serve opens it in the browser; the hook does not wait. 0.8.0)
 	head := gitHead(in.CWD)                                             // the starting point the stop check uses to see this turn's commits
 	request, requestText := groupedRequest(snapshot, req, in.Prompt, scope, joined)
+	var lines []byte // keyed hashes of the lines of the files not committed now, for the guards (guard_lines.go)
+	if listed {
+		lines = uncommittedLines(agent, in.CWD, listingHeader(request), listing)
+	}
 	turnID := store.NewTraceID()
 	planning := newPlanningFrame(snapshot, in, scope, turnID)
 	if sp, err := spec.Load(hookSpecPath(agent, "needs-plan")); err != nil || !needsPlanningContext(sp) {
@@ -95,13 +99,18 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		},
 		func(s *hookSession) {
 			p := sessionFilesPath(agent, in.SessionID)
+			lp := sessionLinesPath(agent, in.SessionID)
 			if !listed {
 				_ = os.Remove(p) // outside git (or too slow, or too large): do not keep the previous request's listing and compare against it
+				_ = os.Remove(lp)
 				return
 			}
 			// a header saying "which request's listing this is": Stop only compares with the listing of the request it saw (not with one rewritten by the next request)
 			if err := writeAtomic(p, []byte(listingHeader(request)+listing)); err != nil && firstErr == nil {
 				firstErr = err
+			}
+			if err := keepLines(lp, lines); err != nil { // without the table those files are compared with HEAD, as before
+				hookLog("guard: the lines of the uncommitted files were not kept: " + err.Error())
 			}
 		},
 	}

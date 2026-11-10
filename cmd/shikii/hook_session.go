@@ -211,6 +211,9 @@ func cut(s string, n int) string {
 	return s[:n]
 }
 
+// sessionCaches are the files kept next to a session record and pruned with it (the longer suffix first).
+var sessionCaches = []string{".guard.files", ".files", ".guard.lines", ".lines"}
+
 // Expired receipts stay invalid, but accepted unresolved work must remain
 // recoverable from a fresh preparation. Cleanup shares every writer's lock.
 func pruneSessions(agent string) {
@@ -228,10 +231,13 @@ func pruneSessions(agent string) {
 		name := entry.Name()
 		if strings.HasSuffix(name, ".json") {
 			pruneSessionRecord(root, name)
-		} else if strings.HasSuffix(name, ".guard.files") {
-			pruneSessionRecord(root, strings.TrimSuffix(name, ".guard.files")+".json")
-		} else if strings.HasSuffix(name, ".files") {
-			pruneSessionRecord(root, strings.TrimSuffix(name, ".files")+".json")
+		} else {
+			for _, suffix := range sessionCaches {
+				if strings.HasSuffix(name, suffix) {
+					pruneSessionRecord(root, strings.TrimSuffix(name, suffix)+".json")
+					break
+				}
+			}
 		}
 	}
 }
@@ -301,8 +307,9 @@ func pruneSessionRecord(root *os.Root, name string) {
 	} else if !os.IsNotExist(err) {
 		return
 	}
-	// The tree listings (the request's, and the one a slash command's turn kept) are caches. Remove only an old orphan, under the same lock.
-	for _, suffix := range []string{".files", ".guard.files"} {
+	// The tree listings (the request's, and the one a slash command's turn kept) and their tables of uncommitted lines are caches.
+	// Remove only an old orphan, under the same lock.
+	for _, suffix := range sessionCaches {
 		cache := strings.TrimSuffix(name, ".json") + suffix
 		f, err = root.OpenFile(cache, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 		if err != nil {

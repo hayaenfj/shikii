@@ -15,7 +15,8 @@ import (
 // Checks that stop the turn, and what was observed in the turn (0.7.3).
 // Changed files are the difference between the listing taken at the request (sessions/<id>.files) and the current listing (same as hookStop). Added lines are
 // lines found only in the current content when comparing, line by line, the content at the request with the current content. The content at the request is the listing's blob if it is in the repo,
-// otherwise the HEAD content (the blob of a file that was uncommitted at the request disappears together with the temporary store the listing was taken in, so for those it is the diff from HEAD), and otherwise empty.
+// otherwise (the blob of a file that was uncommitted at the request disappears together with the temporary store the listing was taken in) the table of that file's keyed line
+// hashes kept at the request (guard_lines.go), and without one the HEAD content at the request (the diff from HEAD), and otherwise empty.
 // This turn's commits are the log from the HEAD saved at the request (session.Head) to the current HEAD (not checked when HEAD cannot be followed).
 // When something cannot be read, it counts as "unknown" and the check passes (it stops only when certain). One unknown is recorded as such:
 // when the HEAD saved at the request is no longer an ancestor of the current HEAD, commit-body stops nothing and its record is "unverified", not a pass.
@@ -52,10 +53,15 @@ func addedLines(old, new []byte) []string {
 	for _, l := range strings.Split(string(old), "\n") {
 		count[l]++
 	}
+	return linesNotIn(new, func(l string) string { return l }, count)
+}
+
+// linesNotIn returns the non-blank lines of new whose key is not left in count, taking one from count for each line matched.
+func linesNotIn(new []byte, key func(string) string, count map[string]int) []string {
 	var out []string
 	for _, l := range strings.Split(string(new), "\n") {
-		if count[l] > 0 {
-			count[l]--
+		if k := key(l); count[k] > 0 {
+			count[k]--
 			continue
 		}
 		if strings.TrimSpace(l) != "" {
@@ -69,6 +75,12 @@ func isBinary(b []byte) bool { return bytes.IndexByte(b, 0) >= 0 }
 
 // guardTurnInput builds what was observed in the turn. before is the listing at the request (its first line is the request marker); changed is the changed files that hookStop found.
 func guardTurnInput(cwd, before string, changed []string, known bool, head string, since time.Time) guardInput {
+	return guardTurnInputKept(cwd, before, nil, changed, known, head, since)
+}
+
+// guardTurnInputKept is guardTurnInput with the table of the lines of the files that were not committed at the request
+// (guard_lines.go; nil when none was kept): such a file is compared with that table instead of the request's HEAD.
+func guardTurnInputKept(cwd, before string, kept *keptLines, changed []string, known bool, head string, since time.Time) guardInput {
 	in := guardInput{Changed: changed, Known: known, Added: map[string][]string{}}
 	if cwd == "" {
 		return in
@@ -90,12 +102,18 @@ func guardTurnInput(cwd, before string, changed []string, known bool, head strin
 			continue
 		}
 		// the content at the request: the listing's blob ("mode sha": only the sha names it); when that blob is gone (the file was
-		// uncommitted at the request), the commit that was HEAD at the request, never the HEAD this turn's own commits moved to
-		// (the current HEAD only when the request's HEAD is not known). A file that was not in the listing is new: every line is added.
+		// uncommitted at the request), the table of its lines kept at the request for that same blob, and without one the commit
+		// that was HEAD at the request, never the HEAD this turn's own commits moved to (the current HEAD only when the request's
+		// HEAD is not known). A file that was not in the listing is new: every line is added.
 		var old []byte
 		if meta := strings.Fields(oldSHA[p]); len(meta) == 2 {
 			if s, ok := gitRun(ctx, top, "cat-file", "blob", meta[1]); ok {
 				old = []byte(s)
+			} else if f, ok := kept.file(p, meta[1]); ok {
+				if lines := kept.addedAgainst(f, now); len(lines) > 0 {
+					in.Added[p] = lines
+				}
+				continue
 			} else {
 				ref := head
 				if ref == "" {
@@ -190,7 +208,7 @@ func guardStop(root string, in *hookInput, base guardBaseline, before string, ch
 	if err != nil || len(guards) == 0 {
 		return hookOut{}, err
 	}
-	input := guardTurnInput(in.CWD, before, changed, known, base.Head, base.HeadAt)
+	input := guardTurnInputKept(in.CWD, before, readKeptLines(base.Lines, base.Header), changed, known, base.Head, base.HeadAt)
 	var recs []guardRecord
 	var failed []guardResult
 	now := time.Now().UTC()
