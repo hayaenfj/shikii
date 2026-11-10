@@ -96,3 +96,21 @@ func TestAnswerEffectsCountOnlyAssessmentsAfterTheStopWasUndone(t *testing.T) {
 		t.Fatalf("after the undo of the stop only the later assessment counts: %+v", total)
 	}
 }
+
+// The stop is judged by when the quotes were delivered: a quote delivered before the stop was undone and assessed after it is
+// a use from before the undo and does not count towards the next stop.
+func TestStopUndoCountsByDeliveryTime(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	scope := "/tmp/project"
+	d := MemoryDelivery{ID: "00000000000000d1", Scope: scope, Request: "set up the project",
+		Quotes: []MemoryQuote{{Key: "decision:0000000000000001", ID: "0000000000000001", Request: "set up", Said: "you answered yes"}}}
+	if err := s.SaveMemoryDelivery(d); err != nil {
+		t.Fatal(err)
+	}
+	undo := time.Now().UTC().Add(time.Minute) // the stop is undone after the quote was delivered
+	writeAnswerRestoreLines(t, s, scope, `{"scope":"/tmp/project","stop":true,"at":"`+undo.Format(time.RFC3339Nano)+`"}`)
+	writeAnswerAssessment(t, s, scope, "00000000000000d1", "0000000000000001", "unused", undo.Add(time.Hour)) // assessed later
+	if total := s.AnswerEffects(scope).Total; total.Unused != 0 {
+		t.Fatalf("a quote delivered before the undo counted towards the stop by its assessment time: %+v", total)
+	}
+}
