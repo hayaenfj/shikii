@@ -56,6 +56,8 @@ func TestAskErrorHidesTheCredentialsOfTheModelURL(t *testing.T) {
 		"user:s3cr3t-token@127.0.0.1:8086",
 		"http://user:s3cr3t-token/more@127.0.0.1:80a6",
 		"http://s3cr3t-token@[::1",
+		"http://tok:token-s3cr3t/x@127.0.0.1:80", // the user name is the start of the token
+		"http://user:pa\"ss-s3cr3t@127.0.0.1:1",  // a quote in the token: the parser quotes the URL with an escape
 	} {
 		_, err := New(raw, "", "m").Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
 		if err == nil {
@@ -73,28 +75,32 @@ func TestAskErrorHidesTheCredentialsOfTheModelURL(t *testing.T) {
 	}
 }
 
-// A scrubbed error still unwraps to its cause.
+// A scrubbed error still unwraps to its cause, also when it is not an error of the URL package.
 func TestScrubErrorKeepsTheCause(t *testing.T) {
 	err := ScrubError(fmt.Errorf("get http://u:secret-token@h/x: %w", context.DeadlineExceeded), "http://u:secret-token@h")
-	if !errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "secret-token") {
+	if !errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "secret-token") || !strings.Contains(err.Error(), "http://xxxxx@h") {
 		t.Errorf("scrubbed error: %v", err)
 	}
 	if plain := errors.New("nothing to hide"); ScrubError(plain, "http://h:1") != plain {
-		t.Errorf("an error without credentials is returned as it is")
+		t.Errorf("an error for a URL without credentials is returned as it is")
 	}
 }
 
-// The HTTP client repeats the URL in its own percent-encoding (%2f as %2F, %65 as e, %3D as =), so the credentials are hidden in
-// every spelling: here a token alone before the @, percent-encoded, and a server that refuses the connection.
-func TestAskErrorHidesPercentEncodedCredentials(t *testing.T) {
+// The HTTP client repeats the URL in its own percent-encoding (%2f as %2F, %65 as e, %3D as =) and decodes the user name, so no
+// spelling of the credentials may be looked for and replaced: the text is written anew, without the client's copy of the URL.
+// Nothing listens at the address, so every call fails on this machine.
+func TestAskErrorHidesCredentialsInEverySpelling(t *testing.T) {
 	closed := httptest.NewServer(http.NotFoundHandler())
 	host := strings.TrimPrefix(closed.URL, "http://")
-	closed.Close() // nothing listens there any more: the call fails on this machine
+	closed.Close()
 	for raw, pieces := range map[string][]string{
-		"http://sk-AbC%2FdEf%2B123%3D@" + host: {"sk-AbC", "dEf", "123"},
+		"http://sk-AbC%2FdEf%2B123%3D@" + host: {"sk-AbC", "dEf", "123="},
 		"http://sk-abc%2fdef@" + host:          {"sk-abc", "def@"},
 		"http://tok%65n-s3cr3t@" + host:        {"token-s3cr3t", "tok%65n", "s3cr3t"},
 		"http://user:p%40ss-w0rd@" + host:      {"user:", "ss-w0rd"},
+		"http://key%40s3cr3t-token:x@" + host:  {"s3cr3t", "key"}, // a token as the user name, with an encoded @
+		"http://to%22ken-s3cr3t:x@" + host:     {"s3cr3t", "to\\\"ken", "to%22"},
+		"http://tok:token-s3cr3t%2Fx@" + host:  {"s3cr3t", "token"},
 	} {
 		_, err := New(raw, "", "m").Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
 		if err == nil {
@@ -106,27 +112,30 @@ func TestAskErrorHidesPercentEncodedCredentials(t *testing.T) {
 				t.Errorf("the error of a decision call carries %q of the credentials: %v", piece, err)
 			}
 		}
-		if !strings.Contains(err.Error(), host) {
-			t.Errorf("the error still names the host that refused: %v", err)
+		if !strings.Contains(err.Error(), "xxxxx@"+host) || !strings.Contains(err.Error(), "connection refused") {
+			t.Errorf("the error still names the host and the cause: %v", err)
 		}
 	}
 }
 
-// A URL without credentials, or with nothing before its @, leaves the message as it is.
-func TestScrubLeavesAMessageWithoutCredentialsAlone(t *testing.T) {
-	const msg = `Post "http://127.0.0.1:1/v1/systemone": dial tcp 127.0.0.1:1: connect: connection refused`
-	for _, raw := range []string{"http://127.0.0.1:1", "http://@127.0.0.1:1", ""} {
-		if got := Scrub(msg, raw); got != msg {
-			t.Errorf("Scrub(%q) changed a message that carries no credentials: %q", raw, got)
+// Credentials of one or two characters, or an empty pair, leave the words of the message whole (replacing them in the text
+// broke every word that held the same characters), and a URL without credentials keeps its error as it is.
+func TestAskErrorKeepsItsWordsWholeForShortOrEmptyCredentials(t *testing.T) {
+	closed := httptest.NewServer(http.NotFoundHandler())
+	host := strings.TrimPrefix(closed.URL, "http://")
+	closed.Close()
+	for _, raw := range []string{"http://:@" + host, "http://a@" + host, "http://t:@" + host, "http://@" + host, "http://" + host} {
+		_, err := New(raw, "", "m").Ask(context.Background(), "state", map[string]Question{"q": {Type: "noul", Instructions: "?"}})
+		if err == nil {
+			t.Errorf("%q: answered", raw)
+			continue
 		}
-	}
-}
-
-// Whatever stands between "://" and an @ in a message about a URL with credentials is hidden, also in a spelling that cannot be
-// derived from the URL as it was given (a client or a proxy that writes the credentials its own way).
-func TestScrubHidesTheCredentialsOfAnyURLInTheMessage(t *testing.T) {
-	got := Scrub(`Get "http://An0ther-Spelling@127.0.0.1:9/x": refused`, "http://tok-en@127.0.0.1:9")
-	if strings.Contains(got, "An0ther-Spelling") || !strings.Contains(got, `"http://xxxxx@127.0.0.1:9/x": refused`) {
-		t.Errorf("Scrub left the credentials of the URL in the message: %q", got)
+		text := err.Error()
+		if !strings.Contains(text, "dial tcp "+host+": connect: connection refused") {
+			t.Errorf("%q: the cause is no longer readable: %v", raw, err)
+		}
+		if n := strings.Count(text, "xxxxx"); n > 1 {
+			t.Errorf("%q: the message is broken up by %d replacements: %v", raw, n, err)
+		}
 	}
 }

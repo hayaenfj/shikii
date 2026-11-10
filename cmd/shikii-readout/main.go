@@ -118,13 +118,13 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, body []byte) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.Upstream+"/v1/systemone", bytes.NewReader(body))
 	if err != nil {
-		writeErr(w, 502, systemone.Scrub(err.Error(), s.cfg.Upstream))
+		writeErr(w, 502, systemone.ScrubError(err, s.cfg.Upstream).Error())
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.http.Do(req)
 	if err != nil {
-		writeErr(w, 502, systemone.Scrub(err.Error(), s.cfg.Upstream))
+		writeErr(w, 502, systemone.ScrubError(err, s.cfg.Upstream).Error())
 		return
 	}
 	defer resp.Body.Close()

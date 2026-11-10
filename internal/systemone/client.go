@@ -12,8 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 )
@@ -189,59 +187,8 @@ func credentials(raw string) (start, at int) {
 	return start, start + at
 }
 
-// Scrub hides, in a message about the URL raw, the URL's credentials: an error of the URL parser or of the HTTP client repeats
-// the URL, or a piece of it (the "port" after a colon, the "scheme" before one), in its own words, and the client writes the
-// credentials back in its own percent-encoding (%2f as %2F, %65 as e, %3D as =). So three things are hidden: whatever stands
-// between "://" and an @ in the message, the credentials in every spelling the URL package may give them, and their parts.
-func Scrub(msg, raw string) string {
-	start, at := credentials(raw)
-	if at < 0 || at == start { // no credentials (or an empty one before the @): nothing to hide
-		return msg
-	}
-	msg = urlCredentials.ReplaceAllString(msg, "${1}xxxxx@")
-	secret := raw[start:at]
-	hide := func(piece string) {
-		for _, form := range spellings(piece) {
-			msg = strings.ReplaceAll(msg, form, "xxxxx")
-		}
-	}
-	hide(secret)
-	for _, part := range strings.FieldsFunc(secret, func(r rune) bool { return strings.ContainsRune(":/?#@", r) }) {
-		if len(part) >= 3 { // a shorter piece is not a secret worth a mangled message
-			hide(part)
-		}
-	}
-	return msg
-}
-
-// urlCredentials matches the credentials of a URL as the URL package prints them: after "://", before the @, with no slash,
-// space or quote in between.
-var urlCredentials = regexp.MustCompile(`(://)[^/\s"'@]+@`)
-
-// spellings are the ways one piece of the credentials can be written: as given, decoded, and encoded again by each of the
-// URL package's encodings. The longest come first, so a longer spelling is not broken by a shorter one inside it.
-func spellings(piece string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	add := func(form string) {
-		if form != "" && !seen[form] {
-			seen[form] = true
-			out = append(out, form)
-		}
-	}
-	add(piece)
-	decoded := piece
-	if d, err := url.PathUnescape(piece); err == nil {
-		decoded = d
-	}
-	for _, form := range []string{decoded, url.PathEscape(decoded), url.QueryEscape(decoded), url.User(decoded).String(), url.PathEscape(piece), url.QueryEscape(piece)} {
-		add(form)
-	}
-	sort.SliceStable(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
-	return out
-}
-
-// scrubbed is an error whose text went through Scrub; it still unwraps to the original (a deadline, a refused connection).
+// scrubbed is an error whose text was written anew without the credentials of a URL; it still unwraps to the original (a
+// deadline, a refused connection), so errors.Is and errors.As keep working.
 type scrubbed struct {
 	msg string
 	err error
@@ -250,15 +197,52 @@ type scrubbed struct {
 func (e scrubbed) Error() string { return e.msg }
 func (e scrubbed) Unwrap() error { return e.err }
 
-// ScrubError returns err with the credentials of the URL raw hidden in its text (nil stays nil).
+// ScrubError returns the error of a request to the URL raw without the URL's credentials in its text. The URL parser and the HTTP
+// client repeat the URL, or a piece of it (the "port" after a colon, the "scheme" before one), in their own words and their own
+// encoding, and no rewriting of such a text hides every spelling. So for a URL with credentials the text is written anew: the
+// operation, the URL without its credentials, and the cause as the network reports it. The parser's words are left out, and so is
+// a cause that names a piece of the credentials. A URL without credentials keeps its error as it is.
 func ScrubError(err error, raw string) error {
 	if err == nil {
 		return nil
 	}
-	if msg := Scrub(err.Error(), raw); msg != err.Error() {
-		return scrubbed{msg: msg, err: err}
+	start, at := credentials(raw)
+	if at <= start { // no @, or nothing before it
+		return err
 	}
-	return err
+	shown := RedactURL(raw)
+	msg := "the request to " + shown + " failed"
+	var uerr *url.Error
+	if errors.As(err, &uerr) {
+		switch {
+		case uerr.Op == "parse":
+			msg = "the URL " + shown + " does not parse as a URL"
+		case uerr.Err == nil:
+		case strings.Contains(uerr.Err.Error(), "unsupported protocol scheme"): // it quotes what stands before the first colon
+			msg = uerr.Op + " " + shown + ": unsupported protocol scheme (write the URL with http:// or https://)"
+		case !namesCredentials(uerr.Err.Error(), raw[start:at]):
+			msg = uerr.Op + " " + shown + ": " + uerr.Err.Error()
+		}
+	}
+	return scrubbed{msg: msg, err: err}
+}
+
+// namesCredentials reports whether text contains the credentials or one of their parts (three characters or more), as given or
+// percent-decoded. It only decides whether a cause is quoted; nothing is rewritten.
+func namesCredentials(text, secret string) bool {
+	pieces := append([]string{secret}, strings.FieldsFunc(secret, func(r rune) bool { return strings.ContainsRune(":/?#@", r) })...)
+	for _, piece := range pieces {
+		forms := []string{piece}
+		if decoded, err := url.PathUnescape(piece); err == nil && decoded != piece {
+			forms = append(forms, decoded)
+		}
+		for _, form := range forms {
+			if len(form) >= 3 && strings.Contains(text, form) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func New(baseURL, apiKey, model string) *Client {
@@ -362,11 +346,13 @@ func WaitReady(ctx context.Context, baseURL string, every time.Duration, logf fu
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			// A URL that cannot become a request never answers: say so instead of waiting (or calling Do with no request).
-			cause := err
-			if inner := errors.Unwrap(err); inner != nil {
-				cause = inner // the outer error repeats the whole URL, credentials included
+			cause := ScrubError(err, baseURL) // a URL with credentials: the parser's words are left out
+			if cause == err {
+				if inner := errors.Unwrap(err); inner != nil {
+					cause = inner // without credentials the parser's own words are kept (the outer error only repeats the URL)
+				}
 			}
-			return fmt.Errorf("the model URL %s cannot be requested: %w (write it with its scheme, e.g. http://127.0.0.1:8080)", RedactURL(baseURL), ScrubError(cause, baseURL))
+			return fmt.Errorf("the model URL %s cannot be requested: %w (write it with its scheme, e.g. http://127.0.0.1:8080)", RedactURL(baseURL), cause)
 		}
 		resp, err := client.Do(req)
 		if err == nil {
