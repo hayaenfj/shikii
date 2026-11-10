@@ -71,6 +71,9 @@ func parseAge(s string) (time.Duration, error) {
 	if s == "" {
 		return 0, errors.New("--older-than needs a value such as 30d, 12h or 0")
 	}
+	if strings.HasPrefix(s, "-") {
+		return 0, fmt.Errorf("--older-than %q: must not be negative", s)
+	}
 	if s == "0" {
 		return 0, nil
 	}

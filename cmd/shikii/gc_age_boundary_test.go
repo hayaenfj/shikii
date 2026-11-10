@@ -8,7 +8,7 @@ import (
 )
 
 func TestGCAgeRejectsNegativeFractionsBeforeDeleting(t *testing.T) {
-	for _, age := range []string{"-1e-30d", "-1e-30w", "-1e-400d", "-1e-400w", "NaNd", "+Infd", "106752d", "15251w"} {
+	for _, age := range []string{"-0.1ns", "-0.0000000001s", "-1e-30d", "-1e-30w", "-1e-400d", "-1e-400w", "NaNd", "+Infd", "106752d", "15251w"} {
 		t.Run(age, func(t *testing.T) {
 			dir := t.TempDir()
 			st := store.Store{Dir: dir}
