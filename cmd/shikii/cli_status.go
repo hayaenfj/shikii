@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"sort"
@@ -53,10 +54,14 @@ func cmdStatus(args []string) error {
 	}
 	var total personWork
 	for _, id := range ids {
-		recs, labs, err := st.Counts(id)
+		// one read of the spec's records and labels serves every count below (the page's status does the same): Counts, Records twice
+		// and Funnel each scanned and decoded the same files again
+		view, err := st.ReadDecisionLog(context.Background(), id)
 		if err != nil {
 			return err
 		}
+		view.NewestFirst() // the order Records gives
+		recs, labs, all := view.RawRecords, view.Labels, view.Records
 		fmt.Fprintf(stdout, "%s: records=%d labels=%d\n", id, recs, len(labs))
 		byKey := map[string]int{}
 		bySource := map[string]int{}
@@ -79,23 +84,21 @@ func cmdStatus(args []string) error {
 			}
 		}
 		// Counts per work (the mark on hook records. One store collects decisions from several projects, so show how many where. There is one line overall)
-		if all, err := st.Records(id, 0); err == nil {
-			byProject := map[string]int{}
-			for _, r := range all {
-				if r.Project != "" {
-					byProject[r.Project]++
-				}
-			}
-			if len(byProject) > 0 {
-				fmt.Fprintf(stdout, "  by project: %s\n", fmtCounts(byProject))
+		byProject := map[string]int{}
+		for _, r := range all {
+			if r.Project != "" {
+				byProject[r.Project]++
 			}
 		}
+		if len(byProject) > 0 {
+			fmt.Fprintf(stdout, "  by project: %s\n", fmtCounts(byProject))
+		}
 		sp := specs[id]
-		if f, err := st.Funnel(id, sp != nil && decide.DiscardUnsure(sp)); err == nil && f.Records > 0 {
+		if f := view.Funnel(sp != nil && decide.DiscardUnsure(sp)); f.Records > 0 {
 			// Counts per rung. Progress is human judgments per 1000 decisions (those that stayed ask and went to a person)
 			fmt.Fprintf(stdout, "  rungs: settled by the minimal question %d, by added context %d, left to a person %d (%.0f per 1000 decisions)\n", f.Minimal, f.Context, f.Human, f.HumanPerThousand())
 		}
-		if all, err := st.Records(id, 0); err == nil && len(all) > 0 {
+		if len(all) > 0 {
 			reviews, _ := st.Reviews(id)
 			w := countPersonWork(id, sp != nil && decide.DiscardUnsure(sp), all, labs, reviews, time.Now())
 			w.print(stdout, "  ")
