@@ -108,6 +108,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if sp.ID == "wiki-conflict" {
 			settled = settledDrafts(s.st)
 		}
+		superseded := supersededRecords(records) // a decision asked again left the queue: the new decision is counted in its place
 		for _, rec := range records {
 			if legacyPlanningRecord(sp, rec) {
 				legacyPlanning++
@@ -117,7 +118,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				undecided++
 				continue
 			}
-			if q := queueItemOf(sp.ID, rec, labeled, reviews, checkOutcome); q.show { // the same rule as the queue
+			if q := queueItemOf(sp.ID, rec, labeled, reviews, checkOutcome); q.show && !superseded[rec.TraceID] { // the same rule as the queue
 				todo++
 				if q.waits {
 					waitingPerson++
