@@ -39,9 +39,10 @@ type MultiSample struct {
 
 // FitVector fits T and b by weighted maximum likelihood. b is projected onto Σb=0 to make it unique.
 // The correct answer is smoothed to 1−ε (ε = 1/(N+K)) so that biases of choices without labels do not fly to −∞.
-// The ε goes to the options in the sample's own raw shares, not evenly: an even share asks for ε/K on an option
-// the model left at the floor (1e-6), which only a large positive bias can give, and that bias then turns a few
-// percent on a later input into the top answer.
+// The even share asks for ε/K on every option, also on one the model left at the floor (1e-6) in every sample: for an option
+// that was never the truth only a large positive bias can give that, and the bias then turns a few percent on a later input
+// into the top answer. So such an option's bias is capped after the fit (below); the smoothing itself stays even, because it
+// also holds the temperature back from sharpening, and the lines of data where every option was the truth stay as they were.
 // The set of all choices is the union of the keys of the samples' Raw.
 func FitVector(samples []MultiSample) (Vector, error) {
 	if len(samples) == 0 {
@@ -74,18 +75,6 @@ func FitVector(samples []MultiSample) (Vector, error) {
 		idx[k] = i
 	}
 	eps := 1 / (totalW + float64(K))
-	shares := make([][]float64, len(samples)) // each sample's raw distribution over all options (clamped, sums to 1)
-	for n, s := range samples {
-		shares[n] = make([]float64, K)
-		var sum float64
-		for i, k := range keys {
-			shares[n][i] = math.Max(s.Raw[k], 1e-6)
-			sum += shares[n][i]
-		}
-		for i := range shares[n] {
-			shares[n][i] /= sum
-		}
-	}
 
 	// parameters: alpha = log(1/T), b[K]
 	alpha := 0.0
@@ -95,7 +84,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 	nll := func(alpha float64, b []float64) float64 {
 		a := math.Exp(alpha)
 		var total float64
-		for n, s := range samples {
+		for _, s := range samples {
 			w := weightOf(s.Weight)
 			z := make([]float64, K)
 			for i, k := range keys {
@@ -104,7 +93,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 			logQ := logSoftmax(z)
 			t := idx[s.Truth]
 			for i := range keys {
-				y := eps * shares[n][i]
+				y := eps / float64(K)
 				if i == t {
 					y += 1 - eps
 				}
@@ -121,7 +110,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 		a := math.Exp(alpha)
 		var ga float64
 		gb := make([]float64, K)
-		for n, s := range samples {
+		for _, s := range samples {
 			w := weightOf(s.Weight)
 			z := make([]float64, K)
 			lp := make([]float64, K)
@@ -132,7 +121,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 			q := softmax(z)
 			t := idx[s.Truth]
 			for i := range keys {
-				y := eps * shares[n][i]
+				y := eps / float64(K)
 				if i == t {
 					y += 1 - eps
 				}
