@@ -125,6 +125,9 @@ type Spec struct {
 	path string
 	// hadVariants: the file had candidates when this copy was loaded (or last saved). Only such a copy clears them by saving none.
 	hadVariants bool
+	// loadedCalibration: the calibration lines in the file when this copy was loaded (or last saved). Save compares against it to tell
+	// the lines this copy changed from the lines another process wrote in the meantime.
+	loadedCalibration []Calibration
 }
 
 // Layouts are the arrangement names shikii knows. They match shikii-readout's orderings.

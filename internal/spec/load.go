@@ -19,6 +19,7 @@ func Load(path string) (*Spec, error) {
 	}
 	s.path = path
 	s.hadVariants = len(s.Variants) > 0
+	s.loadedCalibration = copyCalibration(s.Calibration)
 	if err := s.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
