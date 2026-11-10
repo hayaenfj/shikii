@@ -97,19 +97,9 @@ func saveHookMutations(agent, id, event string, snapshot *hookSession, out *hook
 	if event != "stop" {
 		return updateSession(agent, id, apply)
 	}
-	// keep writes the Stop's records. When they cannot be written the turn ends incomplete: the record says so, so that the next
-	// request does not judge the turn as completed, and the changes of this Stop are not applied.
-	keep := func(sess *hookSession) error {
-		err := appendGuardRecords(agent, records)
-		if err != nil && snapshot.TurnID != "" && sess.TurnID == snapshot.TurnID {
-			pending := &ritualRecovery{TurnID: snapshot.TurnID, Pending: true}
-			if previous := sess.RitualRecovery; previous != nil && previous.TurnID == sess.TurnID {
-				pending.FilesKnown = previous.FilesKnown
-			}
-			sess.RitualRecovery = pending
-		}
-		return err
-	}
+	// keep writes the Stop's records. A file that cannot be written was refused before the Stop judged anything (keepStopRecords); a
+	// write that fails only now leaves the changes of this Stop unapplied, and the caller ends the turn incomplete.
+	keep := func(*hookSession) error { return appendGuardRecords(agent, records) }
 	// the Stop of a stretch a slash command opened judges nothing of the request, so there is no completion to verify
 	if out.Block || out.Halt != "" || snapshot.Request == "" || snapshot.GuardTurn != nil {
 		// A Stop that stops the turn (or ends it incomplete) says so about its own turn. When the next request replaced that turn

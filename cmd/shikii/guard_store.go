@@ -88,12 +88,33 @@ func enabledGuards(root string) ([]guard, error) {
 
 // keepStopRecords keeps the records of a Stop: written at once, or, while the Stop holds them back (hookInput.stopRecords), with
 // the commit of the session record, once it is known that the next request did not overtake this Stop.
+//
+// Held back, they are still refused here when the records file cannot be written at all: the Stop then ends the turn incomplete
+// before it judges anything, as it did when the records were written at once.
 func keepStopRecords(root string, in *hookInput, recs []guardRecord) error {
 	if in.stopRecords != nil {
+		if len(recs) == 0 {
+			return nil
+		}
+		if err := guardRecordsWritable(root); err != nil {
+			return err
+		}
 		*in.stopRecords = append(*in.stopRecords, recs...)
 		return nil
 	}
 	return appendGuardRecords(root, recs)
+}
+
+// guardRecordsWritable opens records/guards.jsonl for appending and writes nothing.
+func guardRecordsWritable(root string) error {
+	if err := os.MkdirAll(filepath.Dir(guardRecordsPath(root)), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(guardRecordsPath(root), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 func appendGuardRecords(root string, recs []guardRecord) error {
@@ -143,7 +164,7 @@ func readGuardRecords(root string) []guardRecord {
 // continuation was shikii's own and that the session record it needs is gone.
 func shikiiStoppedSession(root, session string) bool {
 	for _, r := range readGuardRecords(root) {
-		if r.Session == session && !r.Pass && !r.Unverified { // a check that could not be verified stopped nothing
+		if r.Session == session && !r.Pass && !r.Unverified && !r.Tool { // an unverified check stopped nothing; a refused command (Tool) stopped no Stop
 			return true
 		}
 	}

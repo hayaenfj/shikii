@@ -40,6 +40,9 @@ func (r answerRejection) withAnswers(answers []store.PersonAnswer) answerRejecti
 		at := -1
 		keys := []string{}
 		for _, h := range a.Hashes {
+			if h == "" { // a label from before inputs were hashed: nothing says it is about the same inputs as another one
+				continue
+			}
 			key := a.SpecID + "\x00" + a.Truth + "\x00" + h
 			keys = append(keys, key)
 			if g, ok := group[key]; ok && at < 0 {

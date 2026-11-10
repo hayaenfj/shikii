@@ -24,8 +24,11 @@ func sessionGuardFilesPath(agent, id string) string {
 	return strings.TrimSuffix(sessionPath(agent, id), ".json") + ".guard.files"
 }
 
-// guardBaseline is what the person's guards compare the present with: the kept request's listing, HEAD and turn, or, while a
-// stretch a slash command opened is current, that stretch's.
+// guardBaseline is what the person's guards compare the present with: the kept request's listing, HEAD and turn. While a stretch
+// a slash command opened is current, the turn is the stretch's own (its guards may stop it once each, and its records are its
+// own), but the start stays the request's: what the request's turn added and has not fixed is still added when a /commit or a
+// /push publishes it. Only a session without a kept request (the slash command came first, or in another repository) is compared
+// with the listing and HEAD of the slash command itself.
 type guardBaseline struct {
 	Turn   string    // the turn_id written to records/guards.jsonl
 	Scope  string    // the repository the listing was taken in
@@ -37,9 +40,19 @@ type guardBaseline struct {
 
 func guardBaselineOf(root, session string, s *hookSession) guardBaseline {
 	if g := s.GuardTurn; g != nil {
-		return guardBaseline{Turn: g.ID, Scope: g.Scope, Head: g.Head, HeadAt: g.HeadAt, Files: sessionGuardFilesPath(root, session), Header: listingHeader(g.ID)}
+		if s.TurnID != "" && s.Scope == g.Scope {
+			if _, err := os.Stat(sessionFilesPath(root, session)); err == nil {
+				return guardBaseline{Turn: g.ID, Scope: s.Scope, Head: s.Head, HeadAt: s.HeadAt, Files: sessionFilesPath(root, session), Header: listingHeader(s.Request)}
+			}
+		}
+		return stretchStart(root, session, g)
 	}
 	return guardBaseline{Turn: s.TurnID, Scope: s.Scope, Head: s.Head, HeadAt: s.HeadAt, Files: sessionFilesPath(root, session), Header: listingHeader(s.Request)}
+}
+
+// stretchStart is the start of the stretch itself: the listing and HEAD kept at its slash command.
+func stretchStart(root, session string, g *guardTurn) guardBaseline {
+	return guardBaseline{Turn: g.ID, Scope: g.Scope, Head: g.Head, HeadAt: g.HeadAt, Files: sessionGuardFilesPath(root, session), Header: listingHeader(g.ID)}
 }
 
 // openGuardTurn is all the request hook does for a slash command: it keeps the working tree listing and HEAD of this moment as
@@ -78,12 +91,22 @@ func closeGuardTurn(agent, session string, s *hookSession) {
 	_ = os.Remove(sessionGuardFilesPath(agent, session))
 }
 
-// guardTurnStop is the Stop of a stretch a slash command opened. Only the person's guards run, against what changed and what was
-// committed since the slash command; each guard stops the stretch at most once, as in a request's turn. The kept request is not
-// settled, checked by the routine or judged here, and the session record is not changed.
+// guardTurnStop is the Stop of a stretch a slash command opened. Only the person's guards run; each guard stops the stretch at
+// most once, as in a request's turn. A stretch that changed no file and made no commit since its slash command (/model and the
+// like) is compared with its own start, so nothing of an earlier turn stops it. Once it changed or committed something, the
+// guards look at everything since the start guardBaselineOf names (the request's, when there is one): the stretch may be
+// committing what the request's turn left unfixed. The kept request is not settled, checked by the routine or judged here, and
+// the session record is not changed.
 func guardTurnStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, error) {
 	base := guardBaselineOf(agent, in.SessionID, snapshot)
 	_, listing, listed, _, _ := treeStateWithScope(in.CWD)
+	if g := snapshot.GuardTurn; listed && g != nil {
+		own := stretchStart(agent, in.SessionID, g)
+		if b, err := os.ReadFile(own.Files); err == nil && strings.HasPrefix(string(b), own.Header) &&
+			len(changedFiles(string(b), listing)) == 0 && gitHead(in.CWD) == g.Head {
+			base = own // nothing happened in this stretch
+		}
+	}
 	var changed []string
 	var before []byte
 	known := false
