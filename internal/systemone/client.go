@@ -227,6 +227,11 @@ func BindHostFor(markers []string, kubeEnv string) string {
 // When a model is started first, as in Docker, this lets shikii wait by itself instead of relying on a healthcheck with an external command (curl / wget).
 // It retries every `every`, and when ctx ends it returns an error saying what it was waiting for. Progress goes to logf (once every 10 tries).
 func WaitReady(ctx context.Context, baseURL string, every time.Duration, logf func(string, ...any)) error {
+	// Only an http or https URL with a host can answer. "localhost:8080" parses as the scheme "localhost": a request can be built
+	// from it but never sent, so it would be polled until the deadline.
+	if u, err := url.Parse(baseURL); err == nil && (u.Host == "" || (u.Scheme != "http" && u.Scheme != "https")) {
+		return fmt.Errorf("the model URL %s cannot be requested: it is not an http or https URL with a host (write it with its scheme, e.g. http://127.0.0.1:8080)", RedactURL(baseURL))
+	}
 	url := strings.TrimRight(baseURL, "/") + "/health"
 	client := &http.Client{Timeout: 3 * time.Second}
 	for i := 0; ; i++ {
