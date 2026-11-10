@@ -23,6 +23,9 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 		// is settled, checked by the routine or judged at this Stop, and its record stays as it is
 		pruneSessions(agent)
 		out, err := guardTurnStop(agent, in, snapshot)
+		if err != nil { // the guards could not be applied or their records not kept: end incomplete instead of passing in silence
+			out = hookOut{Halt: ritualHalt(true)}
+		}
 		return out, nil, err
 	}
 	tree, listing, listed, project, scope := treeStateWithScope(in.CWD)

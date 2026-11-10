@@ -105,16 +105,27 @@ func keepStopRecords(root string, in *hookInput, recs []guardRecord) error {
 	return appendGuardRecords(root, recs)
 }
 
-// guardRecordsWritable opens records/guards.jsonl for appending and writes nothing.
+// guardRecordsWritable checks that records/guards.jsonl can be appended to, and leaves nothing behind: the file is opened when
+// it exists, and where it does not exist yet a probe file is created next to its place and removed (a Stop the next request
+// overtakes keeps nothing, not even an empty records file).
 func guardRecordsWritable(root string) error {
-	if err := os.MkdirAll(filepath.Dir(guardRecordsPath(root)), 0o700); err != nil {
+	path := guardRecordsPath(root)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err == nil {
+		return f.Close()
+	}
+	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	f, err := os.OpenFile(guardRecordsPath(root), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	probe, err := os.CreateTemp(filepath.Dir(path), ".guards-probe-*")
 	if err != nil {
 		return err
 	}
-	return f.Close()
+	probe.Close()
+	return os.Remove(probe.Name())
 }
 
 func appendGuardRecords(root string, recs []guardRecord) error {

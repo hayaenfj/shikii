@@ -65,6 +65,7 @@ func runHookEvent(event string) error {
 	var muts []func(*hookSession)
 	var summary string
 	var stopRecords []guardRecord // what this Stop writes to records/guards.jsonl, held until the session record is committed
+	overtaken := false            // the next request replaced this Stop's turn: the Stop says nothing
 	switch event {
 	case "user-prompt-submit":
 		out, muts, err = hookUserPrompt(agent, &in, snapshot)
@@ -92,6 +93,7 @@ func runHookEvent(event string) error {
 				err = serr
 			}
 			if event == "stop" && errors.Is(serr, errStopOvertaken) {
+				overtaken = true
 				out = hookOut{} // the record is the next request's by now: this Stop has nothing to verify and must not end that request's work
 			} else if event == "stop" {
 				out.Halt, out.Block, out.Reason = ritualHalt(true), false, ""
@@ -184,7 +186,7 @@ func runHookEvent(event string) error {
 			out.Context = joinLines(out.Context, wordingCheckContext(agent))
 		}
 	}
-	if event == "stop" {
+	if event == "stop" && !overtaken { // the one-time notices wait for a Stop that still has its turn
 		if line := wordingSummary(agent); line != "" {
 			ensurePage(agent)
 			summary = joinLines(summary, line)

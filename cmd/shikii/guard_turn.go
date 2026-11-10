@@ -26,9 +26,10 @@ func sessionGuardFilesPath(agent, id string) string {
 
 // guardBaseline is what the person's guards compare the present with: the kept request's listing, HEAD and turn. While a stretch
 // a slash command opened is current, the turn is the stretch's own (its guards may stop it once each, and its records are its
-// own), but the start stays the request's: what the request's turn added and has not fixed is still added when a /commit or a
-// /push publishes it. Only a session without a kept request (the slash command came first, or in another repository) is compared
-// with the listing and HEAD of the slash command itself.
+// own). guardBaselineOf gives the start a command about to run is checked against (a refused command, a publication): the
+// request's, as before slash commands had a stretch, so a /push is still refused while the request's work fails a guard. Only
+// a session without a kept request (the slash command came first, or in another repository) is compared with the listing and
+// HEAD of the slash command itself. The start of the stretch's own Stop is chosen in guardTurnStop.
 type guardBaseline struct {
 	Turn   string    // the turn_id written to records/guards.jsonl
 	Scope  string    // the repository the listing was taken in
@@ -42,7 +43,11 @@ func guardBaselineOf(root, session string, s *hookSession) guardBaseline {
 	if g := s.GuardTurn; g != nil {
 		if s.TurnID != "" && s.Scope == g.Scope {
 			if _, err := os.Stat(sessionFilesPath(root, session)); err == nil {
-				return guardBaseline{Turn: g.ID, Scope: s.Scope, Head: s.Head, HeadAt: s.HeadAt, Files: sessionFilesPath(root, session), Header: listingHeader(s.Request)}
+				base := guardBaseline{Turn: g.ID, Scope: s.Scope, Head: s.Head, HeadAt: s.HeadAt, Files: sessionFilesPath(root, session), Header: listingHeader(s.Request)}
+				if base.Head == "" { // the request came before the repository's first commit: commits are read from the slash command's HEAD
+					base.Head, base.HeadAt = g.Head, g.HeadAt
+				}
+				return base
 			}
 		}
 		return stretchStart(root, session, g)
@@ -92,19 +97,23 @@ func closeGuardTurn(agent, session string, s *hookSession) {
 }
 
 // guardTurnStop is the Stop of a stretch a slash command opened. Only the person's guards run; each guard stops the stretch at
-// most once, as in a request's turn. A stretch that changed no file and made no commit since its slash command (/model and the
-// like) is compared with its own start, so nothing of an earlier turn stops it. Once it changed or committed something, the
-// guards look at everything since the start guardBaselineOf names (the request's, when there is one): the stretch may be
-// committing what the request's turn left unfixed. The kept request is not settled, checked by the routine or judged here, and
-// the session record is not changed.
+// most once, as in a request's turn. The stretch is compared with its own start (the listing and HEAD at its slash command):
+// what the person did between the request and the slash command (a pull, a checkout, an edit) is not the stretch's. One case
+// keeps the request's start: the request's turn never reached its end (it was not judged: the person interrupted it, or a
+// Stop was stopped and never came back) and the stretch changed or committed something. That stretch is finishing the
+// request's work, so a line the request's turn added is still an added line when /commit commits it. The kept request is not
+// settled, checked by the routine or judged here, and the session record is not changed.
 func guardTurnStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, error) {
 	base := guardBaselineOf(agent, in.SessionID, snapshot)
 	_, listing, listed, _, _ := treeStateWithScope(in.CWD)
-	if g := snapshot.GuardTurn; listed && g != nil {
+	if g := snapshot.GuardTurn; g != nil {
 		own := stretchStart(agent, in.SessionID, g)
-		if b, err := os.ReadFile(own.Files); err == nil && strings.HasPrefix(string(b), own.Header) &&
-			len(changedFiles(string(b), listing)) == 0 && gitHead(in.CWD) == g.Head {
-			base = own // nothing happened in this stretch
+		idle := false
+		if b, err := os.ReadFile(own.Files); listed && err == nil && strings.HasPrefix(string(b), own.Header) {
+			idle = len(changedFiles(string(b), listing)) == 0 && gitHead(in.CWD) == g.Head
+		}
+		if snapshot.Judged || idle {
+			base = own
 		}
 	}
 	var changed []string
