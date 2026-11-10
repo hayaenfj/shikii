@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -56,6 +57,8 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 		return res, err
 	}
 	var keep [][]byte
+	var removed []string // traces of removed records: their original text goes with them
+	kept := map[string]bool{}
 	err = s.scanJSONL(s.recordsPath(specID), func(line []byte) error {
 		var r Record
 		if json.Unmarshal(line, &r) != nil || r.TraceID == "" {
@@ -70,8 +73,10 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 			res.KeptRecent++
 		default:
 			res.Removed++
+			removed = append(removed, r.TraceID)
 			return nil
 		}
+		kept[r.TraceID] = true
 		keep = append(keep, append([]byte(nil), line...))
 		return nil
 	})
@@ -116,5 +121,27 @@ func (s Store) gcSnapshot(specID string, before time.Time, apply bool) (GCResult
 	if err := parent.Rename(tmpName, name); err != nil {
 		return discard(err)
 	}
+	s.removeRecordTexts(removed, kept)
 	return res, nil
+}
+
+// removeRecordTexts deletes the original text (records/text/<trace_id>.json) of records GC just removed. A trace a kept
+// line still uses keeps its text. The records are already gone, so a text that cannot be removed is left, not reported.
+func (s Store) removeRecordTexts(removed []string, kept map[string]bool) {
+	if len(removed) == 0 {
+		return
+	}
+	dir, _, err := s.parentRoot(filepath.Join(s.Dir, "records", "text", "entry"), false)
+	if err != nil {
+		return // no original text was ever kept
+	}
+	defer dir.Close()
+	for _, trace := range removed {
+		if kept[trace] || !textTrace.MatchString(trace) {
+			continue
+		}
+		if info, err := dir.Lstat(trace + ".json"); err == nil && info.Mode().IsRegular() {
+			_ = dir.Remove(trace + ".json")
+		}
+	}
 }
