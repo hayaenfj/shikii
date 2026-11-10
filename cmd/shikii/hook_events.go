@@ -89,7 +89,9 @@ func runHookEvent(event string) error {
 			if err == nil {
 				err = serr
 			}
-			if event == "stop" {
+			if event == "stop" && errors.Is(serr, errStopOvertaken) {
+				out = hookOut{} // the record is the next request's by now: this Stop has nothing to verify and must not end that request's work
+			} else if event == "stop" {
 				out.Halt, out.Block, out.Reason = ritualHalt(true), false, ""
 			}
 		}

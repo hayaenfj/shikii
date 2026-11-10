@@ -290,6 +290,11 @@ func verifyStopReasoning(root string, current, snapshot *hookSession) error {
 	return nil
 }
 
+// errStopOvertaken says the record now keeps a later request's turn: only the request hook gives a record a new turn id, so the
+// person's next request reached its hook while this Stop was running. Nothing of this Stop's turn is left to verify or to save;
+// a record that is gone or unreadable is not this case and stays a failed verification.
+var errStopOvertaken = errors.New("stop: the next request replaced this turn before its Stop finished; this Stop judged nothing")
+
 func commitStopReasoning(root, session string, snapshot *hookSession, action func() error) error {
 	unlock, ok := lockSessionWithin(root, session, hookLockWait)
 	if !ok {
@@ -299,6 +304,9 @@ func commitStopReasoning(root, session string, snapshot *hookSession, action fun
 	current, err := readSession(root, session)
 	if err != nil {
 		return err
+	}
+	if snapshot.TurnID != "" && current.TurnID != "" && current.TurnID != snapshot.TurnID {
+		return errStopOvertaken
 	}
 	if current.Scope != snapshot.Scope || current.TurnID != snapshot.TurnID {
 		return errors.New("the work evidence changed during completion; review it and save reasoning finish again")

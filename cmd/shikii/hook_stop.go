@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -170,6 +171,9 @@ func hookStop(agent string, in *hookInput, snapshot *hookSession) (hookOut, []fu
 	}
 	if err := completionCommit(nil); err != nil {
 		readyToJudge = false
+		if errors.Is(err, errStopOvertaken) {
+			return hookOut{}, nil, err // the next request came while the model was asked: its own Stop judges it, this one says nothing
+		}
 		return hookOut{Block: true, Reason: "shikii: completion evidence changed or could not be checked. Read the current work context, resolve pending notes and save reasoning finish before ending. " + err.Error()}, muts, err
 	}
 	targets := []store.ReviewTarget{}
