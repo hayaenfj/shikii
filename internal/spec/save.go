@@ -36,12 +36,13 @@ func (s *Spec) Save() error {
 	}
 	// Other processes add candidates too (the page's /v1/tune/variant, background tune --propose, calibrate --write). So as not to drop candidates added between reading and writing,
 	// merge the candidates in the file with ours by name (ours wins on the same name). If untouched, do not re-encode (people's comments stay)
-	merged := mergeVariants(onDiskVariants(root), s.Variants)
+	merged := mergeVariants(onDiskVariants(root), s.Variants, s.hadVariants)
 	if variantsChanged(root, merged) {
 		if err := setMappingKey(root, "variants", merged, len(merged) == 0, "Candidate wordings. `shikii tune` scores them (--propose adds them). Not part of the key."); err != nil {
 			return err
 		}
 		s.Variants = merged
+		s.hadVariants = len(merged) > 0
 	}
 
 	var buf bytes.Buffer
@@ -100,8 +101,12 @@ func decodeOnDiskVariants(root *yaml.Node) ([]Variant, bool, error) {
 }
 
 // mergeVariants merges the file's candidates (onDisk) with ours (mine) by name: file order first, then the ones only we have. mine wins on the same name.
-// If mine is empty, the result is empty (a write that clears all candidates).
-func mergeVariants(onDisk, mine []Variant) []Variant {
+// If mine is empty and this copy had candidates (hadVariants), the result is empty (a write that clears all candidates).
+// A copy that never had any (calibrate --write loaded before a candidate was proposed) leaves the file's candidates as they are.
+func mergeVariants(onDisk, mine []Variant, hadVariants bool) []Variant {
+	if len(mine) == 0 && !hadVariants {
+		return onDisk
+	}
 	if len(onDisk) == 0 || len(mine) == 0 { // if we emptied it, keep it empty (a write that clears candidates). If the file has none, keep ours
 		return mine
 	}

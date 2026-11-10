@@ -123,6 +123,8 @@ type Spec struct {
 	Layout string `yaml:"layout,omitempty"`
 
 	path string
+	// hadVariants: the file had candidates when this copy was loaded (or last saved). Only such a copy clears them by saving none.
+	hadVariants bool
 }
 
 // Layouts are the arrangement names shikii knows. They match shikii-readout's orderings.

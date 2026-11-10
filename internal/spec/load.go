@@ -18,6 +18,7 @@ func Load(path string) (*Spec, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	s.path = path
+	s.hadVariants = len(s.Variants) > 0
 	if err := s.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
