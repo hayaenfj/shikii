@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"strings"
 	"time"
@@ -96,6 +97,17 @@ func closeGuardTurn(agent, session string, s *hookSession) {
 	_ = os.Remove(sessionGuardFilesPath(agent, session))
 }
 
+// headIsAncestor reports whether the commit is an ancestor of the current HEAD (false when it cannot be told).
+func headIsAncestor(cwd, commit string) bool {
+	if commit == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
+	defer cancel()
+	_, ok := gitRun(ctx, cwd, "merge-base", "--is-ancestor", commit, "HEAD")
+	return ok
+}
+
 // guardTurnStop is the Stop of a stretch a slash command opened. Only the person's guards run; each guard stops the stretch at
 // most once, as in a request's turn. The stretch is compared with its own start (the listing and HEAD at its slash command):
 // what the person did between the request and the slash command (a pull, a checkout, an edit) is not the stretch's. One case
@@ -114,6 +126,10 @@ func guardTurnStop(agent string, in *hookInput, snapshot *hookSession) (hookOut,
 		}
 		if snapshot.Judged || idle {
 			base = own
+		} else if base.Head != g.Head && g.Head != "" && !headIsAncestor(in.CWD, base.Head) && headIsAncestor(in.CWD, g.Head) {
+			// the person moved to another line of history after the interrupted request (a checkout): the request's HEAD cannot be
+			// followed any more, the slash command's can, so the stretch's own commits are still read
+			base.Head, base.HeadAt = g.Head, g.HeadAt
 		}
 	}
 	var changed []string
