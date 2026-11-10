@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -229,7 +230,15 @@ func WaitReady(ctx context.Context, baseURL string, every time.Duration, logf fu
 	url := strings.TrimRight(baseURL, "/") + "/health"
 	client := &http.Client{Timeout: 3 * time.Second}
 	for i := 0; ; i++ {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			// A URL that cannot become a request never answers: say so instead of waiting (or calling Do with no request).
+			cause := err
+			if inner := errors.Unwrap(err); inner != nil {
+				cause = inner // the outer error repeats the whole URL, credentials included
+			}
+			return fmt.Errorf("the model URL %s cannot be requested: %w (write it with its scheme, e.g. http://127.0.0.1:8080)", RedactURL(baseURL), cause)
+		}
 		resp, err := client.Do(req)
 		if err == nil {
 			resp.Body.Close()
