@@ -57,6 +57,10 @@ Within the same task, a fixed `collective.notice` can refer to its earlier deliv
 
 Programmatic clients can read `structuredContent` while retaining error state and additional content; models should receive one complete view of a result. The server keeps both representations. These changes reduce repeated presentation without summarizing the request or evidence. Value preservation and delivery size remain separate from actual model judgment quality. See [MCP knowledge delivery](mcp-knowledge.md).
 
+## In 0.30.3, keep worktree experience in the same project
+
+A dedicated worktree is a code checkout. The wiki and shared work records stay in the original project, so an agent does not start a separate knowledge history for each checkout. Reports name the worktree, branch, checked commit and shared evidence location. This clarifies where existing project memory is kept; it does not change model weights or the evidence requirements for learning.
+
 ## Where it overlaps with OpenAI memory
 
 OpenAI describes memories as carrying context from earlier chats into future work, including preferences, recurring workflows and project conventions. ChatGPT memory and local Codex memory have separate stores and controls. Local Codex memory also includes summaries and supporting evidence from prior chats. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories), [personalization documentation](https://learn.chatgpt.com/docs/personalize)
