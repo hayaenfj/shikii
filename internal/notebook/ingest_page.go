@@ -7,6 +7,23 @@ import (
 	"strings"
 )
 
+// storablePage refuses a page whose file would not read back as the same
+// revision. The YAML encoder loses a leading line break of a multi-line text and
+// writes a wrong indentation hint for one inside a list, so such a page would be
+// saved, reported as a success and then counted as a changed page that blocks
+// every later save.
+func (b Book) storablePage(p Page) error {
+	data, err := b.pageBytes(p)
+	if err != nil || len(data) > 64<<10 {
+		return errors.New("wiki page exceeds the size limit")
+	}
+	back, err := parsePage(data)
+	if err != nil || back.ID != p.ID || revision(back) != p.Revision || !b.matchesPage(data, back) {
+		return errors.New("wiki text cannot be stored exactly: a multi-line change_reason, correction, passage or learning text must not start with a space or a line break; remove the leading whitespace (for a quote, start it at the first visible character) and send it again")
+	}
+	return nil
+}
+
 func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, refs []Source, raw map[string][]byte) (*Page, error) {
 	var err error
 	byID := map[string]Page{}
@@ -140,8 +157,8 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 		if d.preparedCreate != nil && (p.ID != d.preparedCreate.ID || p.Revision != d.preparedCreate.Revision) {
 			return nil, errors.New("the prepared article changed before publication; prepare its exact revision again")
 		}
-		if data, err := b.pageBytes(p); err != nil || len(data) > 64<<10 {
-			return nil, errors.New("wiki page exceeds the size limit")
+		if err := b.storablePage(p); err != nil {
+			return nil, err
 		}
 		byID[id] = p
 		if cyclic(byID) {
@@ -161,8 +178,8 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 			// The previous article is the version checked by Manage under this lock.
 			p.Previous = d.baseRevision
 			p.Revision = revision(p)
-			if data, err := b.pageBytes(p); err != nil || len(data) > 64<<10 {
-				return nil, errors.New("wiki page exceeds the size limit")
+			if err := b.storablePage(p); err != nil {
+				return nil, err
 			}
 			observation.ID = ""
 			if _, err := b.Capture(observation); err != nil {
