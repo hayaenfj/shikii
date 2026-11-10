@@ -46,7 +46,11 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		nRec, labs := view.RawRecords, view.Labels
-		checkOutcome := outcomeChecksOf(sp, labs)
+		counts := newStatusLineCounts(labs)
+		var checkOutcome *outcomeChecks
+		if outcomeCheckSpecs[sp.ID] {
+			checkOutcome = &outcomeChecks{report: counts.agreement, act: sp.Thresholds.Act}
+		}
 		byKey := map[string]bool{}
 		for _, l := range labs {
 			byKey[l.Model+"\x00"+l.SpecHash] = true
@@ -62,7 +66,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 				rs, rung = sp.ContextSpec(), "context"
 			}
 			// n is the count calibration uses (0.9.3): the latest truth per input, from people and results only (machine truths and re-labels do not raise it)
-			n := lineStateOf(rs, sp.Eval.MinN, model, hash, labs, false).N
+			n := counts.state(rs, sp.Eval.MinN, model, hash, false).N
 			switch {
 			case !sp.LiveHash(hash):
 				state = "stale"
@@ -75,7 +79,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 					state = "stopped" // the stop rule asks it on 1 request in 20 only (0.10)
 					break
 				}
-				switch lineStateOf(rs, sp.Eval.MinN, model, hash, labs, tried).Kind {
+				switch counts.state(rs, sp.Eval.MinN, model, hash, tried).Kind {
 				case lineReady:
 					state = "ready"
 				case lineOneAnswer:

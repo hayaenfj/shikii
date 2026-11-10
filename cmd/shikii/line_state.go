@@ -52,6 +52,10 @@ func lineStateOf(rs *spec.Spec, minN int, model, hash string, labs []store.Label
 			s.Truths[l.Truth]++
 		}
 	}
+	return lineStateWithCounts(rs, minN, model, tried, s)
+}
+
+func lineStateWithCounts(rs *spec.Spec, minN int, model string, tried bool, s lineState) lineState {
 	switch {
 	case rs.CalibrationFor(model) != nil:
 		s.Kind = lineCalibrated
