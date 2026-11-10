@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/store"
+
+	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
 func cmdDoctor(args []string) error {
@@ -49,29 +51,31 @@ func cmdDoctor(args []string) error {
 	}
 	if *local != "" {
 		pr := probe(*local)
+		shownLocal := systemone.RedactURL(*local) // never the credentials in the URL
 		switch {
 		case !pr.up && usesHosted():
-			fmt.Fprintf(stdout, "ok   local model at %s: not running (not needed while Jev is used)\n", *local)
+			fmt.Fprintf(stdout, "ok   local model at %s: not running (not needed while Jev is used)\n", shownLocal)
 		case !pr.up:
-			fmt.Fprintf(stdout, "MISSING local model at %s: unreachable → shikii up   (starts %s behind shikii-readout; or shikii up --gguf <file> for any GGUF)\n", *local, defaultModel)
+			fmt.Fprintf(stdout, "MISSING local model at %s: unreachable → shikii up   (starts %s behind shikii-readout; or shikii up --gguf <file> for any GGUF)\n", shownLocal, defaultModel)
 		case pr.decisionModel:
-			fmt.Fprintf(stdout, "ok   local model at %s: %s (decision model)\n", *local, pr.model)
+			fmt.Fprintf(stdout, "ok   local model at %s: %s (decision model)\n", shownLocal, pr.model)
 		default:
-			fmt.Fprintf(stdout, "WARN local model at %s: %s is a plain chat model → put shikii-readout in front (shikii up does this)\n", *local, pr.model)
+			fmt.Fprintf(stdout, "WARN local model at %s: %s is a plain chat model → put shikii-readout in front (shikii up does this)\n", shownLocal, pr.model)
 		}
 	}
 	// 3. hosted
 	if *hosted != "" {
 		key := hostedKey()
+		shownHosted := systemone.RedactURL(*hosted)
 		c := &http.Client{Timeout: 4 * time.Second}
 		_, herr := c.Get(strings.TrimRight(*hosted, "/") + "/")
 		switch {
 		case herr != nil:
-			fmt.Fprintf(stdout, "WARN hosted %s: unreachable (%v)\n", *hosted, herr)
+			fmt.Fprintf(stdout, "WARN hosted %s: unreachable (%v)\n", shownHosted, systemone.ScrubError(herr, *hosted))
 		case key == "":
-			fmt.Fprintf(stdout, "WARN hosted %s: reachable, but no key in DECISIONS_API_KEY / TYPESAFE_API_KEY (hosted will not be used)\n", *hosted)
+			fmt.Fprintf(stdout, "WARN hosted %s: reachable, but no key in DECISIONS_API_KEY / TYPESAFE_API_KEY (hosted will not be used)\n", shownHosted)
 		default:
-			fmt.Fprintf(stdout, "ok   hosted %s: reachable, key present\n", *hosted)
+			fmt.Fprintf(stdout, "ok   hosted %s: reachable, key present\n", shownHosted)
 		}
 	}
 	// 4. spec and store

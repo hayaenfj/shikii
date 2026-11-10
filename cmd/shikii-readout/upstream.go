@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/hayaenfj/shikii/internal/systemone"
 )
 
 func (s *server) post(ctx context.Context, path string, body any, out any) (int, error) {
@@ -18,12 +20,12 @@ func (s *server) post(ctx context.Context, path string, body any, out any) (int,
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.Upstream+path, bytes.NewReader(buf))
 	if err != nil {
-		return 0, err
+		return 0, systemone.ScrubError(err, s.cfg.Upstream) // these errors repeat the URL: never its credentials
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.http.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, systemone.ScrubError(err, s.cfg.Upstream)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
@@ -44,11 +46,11 @@ func (s *server) post(ctx context.Context, path string, body any, out any) (int,
 func (s *server) upstreamModel(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.Upstream+"/v1/models", nil)
 	if err != nil {
-		return "", err
+		return "", systemone.ScrubError(err, s.cfg.Upstream)
 	}
 	resp, err := s.http.Do(req)
 	if err != nil {
-		return "", err
+		return "", systemone.ScrubError(err, s.cfg.Upstream)
 	}
 	defer resp.Body.Close()
 	var v struct {

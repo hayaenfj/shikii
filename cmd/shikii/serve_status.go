@@ -163,7 +163,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"funnel": map[string]any{"minimal": funnel.Minimal, "context": funnel.Context, "human": funnel.Human, "human_per_thousand": funnel.HumanPerThousand()}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
-	modelName, endpoint := "local", s.o.ef.local // the AI's state (0.8.0): which model is deciding
+	modelName, endpoint := "local", systemone.RedactURL(s.o.ef.local) // the AI's state (0.8.0): which model is deciding
 	if usesHosted() {
 		modelName, endpoint = "TypeSafe Jev", systemone.RedactURL(s.o.ef.hosted)
 	}

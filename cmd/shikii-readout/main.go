@@ -118,13 +118,13 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, body []byte) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.Upstream+"/v1/systemone", bytes.NewReader(body))
 	if err != nil {
-		writeErr(w, 502, err.Error())
+		writeErr(w, 502, systemone.Scrub(err.Error(), s.cfg.Upstream))
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.http.Do(req)
 	if err != nil {
-		writeErr(w, 502, err.Error())
+		writeErr(w, 502, systemone.Scrub(err.Error(), s.cfg.Upstream))
 		return
 	}
 	defer resp.Body.Close()
@@ -188,7 +188,7 @@ func main() {
 	mux.HandleFunc("/v1/models", s.handleModels)
 	mux.HandleFunc("/v1/systemone", s.handleSystemOne)
 	addr := fmt.Sprintf("%s:%d", systemone.BindHost(), *port)
-	log.Printf("shikii-readout: model=%s upstream=%s listening on http://%s (POST /v1/systemone)", s.cfg.Model, s.cfg.Upstream, addr)
+	log.Printf("shikii-readout: model=%s upstream=%s listening on http://%s (POST /v1/systemone)", s.cfg.Model, systemone.RedactURL(s.cfg.Upstream), addr)
 	log.Fatal(newReadoutServer(addr, mux).ListenAndServe())
 }
 

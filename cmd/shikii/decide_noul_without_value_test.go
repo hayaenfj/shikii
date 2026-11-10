@@ -73,3 +73,26 @@ func TestDecideCommandRecordsAYesNoAnswerOfZero(t *testing.T) {
 		t.Fatalf("a value keeps deciding as before:\n%s", out)
 	}
 }
+
+// The error of `shikii decide` for a model URL that cannot be requested names the URL without the credentials in it, and
+// nothing is recorded.
+func TestDecideCommandErrorHidesTheCredentialsOfTheModelURL(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, ".shikii")
+	noul := writeNoulSpec(t, dir)
+	for _, raw := range []string{"http://user:s3cr3t-token@127.0.0.1:80a6", "user:s3cr3t-token@127.0.0.1:8086"} {
+		out, err := captureErr(func() error {
+			return cmdDecide([]string{noul, "--local", raw, "--store", storeDir, "-i", "a=x"})
+		})
+		if err == nil {
+			t.Errorf("%s: decided", raw)
+			continue
+		}
+		if strings.Contains(err.Error()+out, "s3cr3t") {
+			t.Errorf("decide --local %s: the error carries the credentials: %v %s", raw, err, out)
+		}
+	}
+	if recs, _ := (store.Store{Dir: storeDir}).Records("same", 0); len(recs) != 0 {
+		t.Errorf("nothing may be recorded: %+v", recs)
+	}
+}

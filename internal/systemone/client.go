@@ -163,25 +163,72 @@ const DefaultPath = "/v1/systemone"
 
 // New creates a client. If baseURL contains a path (e.g. https://openrouter.ai/api/alpha/decisions),
 // it is used as is; otherwise /v1/systemone is added.
-// RedactURL hides credentials embedded in a URL (user:token@host). Used for logs and error messages.
-// A URL that does not parse, or parses without a host (written without its scheme), may still carry them: there everything
-// before the last @ of what stands where the host would be is hidden.
+// RedactURL hides credentials embedded in a URL (user:token@host, or a token alone before the @). Used for logs and
+// error messages. Everything between the scheme and the last @ is hidden, whether or not the URL parses: a token with a
+// raw "/" or "?" in it, a URL without its scheme and a URL with a broken port all parse differently from what was meant.
+// (An @ in a path is rare in a model URL; there the host is hidden too, which loses a detail and leaks nothing.)
 func RedactURL(raw string) string {
-	if u, err := url.Parse(raw); err == nil && u.Host != "" {
-		return u.Redacted()
+	start, at := credentials(raw)
+	if at < 0 {
+		return raw
 	}
-	start := 0
+	return raw[:start] + "xxxxx" + raw[at:]
+}
+
+// credentials finds what RedactURL hides: raw[start:at] is the part between the scheme and the last @ (at is -1 without an @).
+func credentials(raw string) (start, at int) {
 	if i := strings.Index(raw, "://"); i >= 0 {
 		start = i + len("://")
 	}
-	end := len(raw)
-	if i := strings.IndexAny(raw[start:], "/?#"); i >= 0 {
-		end = start + i
+	at = strings.LastIndex(raw[start:], "@")
+	if at < 0 {
+		return start, -1
 	}
-	if at := strings.LastIndex(raw[start:end], "@"); at >= 0 {
-		return raw[:start] + "xxxxx" + raw[start+at:]
+	return start, start + at
+}
+
+// Scrub hides, in a message about the URL raw, the URL's credentials and their parts: an error of the URL parser or of the HTTP
+// client repeats the URL, or a piece of it (the "port" after a colon, the "scheme" before one), in its own words.
+func Scrub(msg, raw string) string {
+	start, at := credentials(raw)
+	if at < 0 {
+		return msg
 	}
-	return raw
+	secret := raw[start:at]
+	msg = strings.ReplaceAll(msg, raw, RedactURL(raw))
+	msg = strings.ReplaceAll(msg, secret, "xxxxx")
+	if escaped := url.PathEscape(secret); escaped != secret {
+		msg = strings.ReplaceAll(msg, escaped, "xxxxx")
+	}
+	for _, part := range strings.FieldsFunc(secret, func(r rune) bool { return strings.ContainsRune(":/?#@", r) }) {
+		if len(part) >= 3 { // a shorter piece is not a secret worth a mangled message
+			msg = strings.ReplaceAll(msg, part, "xxxxx")
+			if escaped := url.QueryEscape(part); escaped != part {
+				msg = strings.ReplaceAll(msg, escaped, "xxxxx")
+			}
+		}
+	}
+	return msg
+}
+
+// scrubbed is an error whose text went through Scrub; it still unwraps to the original (a deadline, a refused connection).
+type scrubbed struct {
+	msg string
+	err error
+}
+
+func (e scrubbed) Error() string { return e.msg }
+func (e scrubbed) Unwrap() error { return e.err }
+
+// ScrubError returns err with the credentials of the URL raw hidden in its text (nil stays nil).
+func ScrubError(err error, raw string) error {
+	if err == nil {
+		return nil
+	}
+	if msg := Scrub(err.Error(), raw); msg != err.Error() {
+		return scrubbed{msg: msg, err: err}
+	}
+	return err
 }
 
 func New(baseURL, apiKey, model string) *Client {
@@ -227,7 +274,7 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, ScrubError(err, c.BaseURL) // the parser's error repeats the URL
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.APIKey != "" {
@@ -235,7 +282,7 @@ func (c *Client) AskLayout(ctx context.Context, state string, qs map[string]Ques
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, ScrubError(err, c.BaseURL) // and so does the client's
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -289,7 +336,7 @@ func WaitReady(ctx context.Context, baseURL string, every time.Duration, logf fu
 			if inner := errors.Unwrap(err); inner != nil {
 				cause = inner // the outer error repeats the whole URL, credentials included
 			}
-			return fmt.Errorf("the model URL %s cannot be requested: %w (write it with its scheme, e.g. http://127.0.0.1:8080)", RedactURL(baseURL), cause)
+			return fmt.Errorf("the model URL %s cannot be requested: %w (write it with its scheme, e.g. http://127.0.0.1:8080)", RedactURL(baseURL), ScrubError(cause, baseURL))
 		}
 		resp, err := client.Do(req)
 		if err == nil {
