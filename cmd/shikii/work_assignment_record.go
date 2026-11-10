@@ -315,8 +315,16 @@ func recordAssignment(root, scope string, dir *os.Root, a assignmentContext, req
 	if err != nil {
 		return nil, err
 	}
+	// Only an inspection the recording saved counts: a batch that stopped before it, or a review that failed, leaves the article
+	// uninspected (the next execution must not get changes measured from a revision nobody confirmed).
+	inspected := map[string]bool{}
+	for _, item := range result.Saved {
+		if item.Kind == "collective_review" {
+			inspected[item.Ref] = true
+		}
+	}
 	for _, ref := range req.Reviewed {
-		if k, ok := binding.Knowledge[ref]; ok {
+		if k, ok := binding.Knowledge[ref]; ok && inspected[ref] {
 			r.Used[k.ID] = k
 		}
 	}
