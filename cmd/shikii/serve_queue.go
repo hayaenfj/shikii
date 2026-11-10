@@ -13,40 +13,19 @@ import (
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/decide"
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // handleAnswered lists decisions a person answered (newest first). It is the material for correcting an answer (another /v1/label on the same trace: the new answer wins) and for asking the AI again (/v1/redo).
 func (s *server) handleAnswered(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("spec")
-	limit := 50
-	if v := r.URL.Query().Get("limit"); v != "" {
-		fmt.Sscanf(v, "%d", &limit)
-	}
-	if limit < 1 || limit > 1000 {
-		limit = 50
-	}
-	sp, err := s.spec(id)
-	if errors.Is(err, errNotFound) {
-		writeUnknownSpec(w, id)
-		return
-	} else if err != nil {
-		writeErr(w, 500, err)
+	sp, view, limit, ok := s.decisionList(w, r, id)
+	if !ok {
 		return
 	}
-	view, err := s.st.ReadDecisionLog(r.Context(), id)
-	if err != nil {
-		writeErr(w, 500, err)
-		return
-	}
-	view.NewestFirst()
 	recs, labeled := view.Records, view.Labeled
-	superseded := map[string]bool{} // do not show a redone original record as answered either (the answer was copied to the new record; prevents inflated counts and a path where a correction to the original never reaches the new record)
-	for _, rec := range recs {
-		if rec.RedoOf != "" {
-			superseded[rec.RedoOf] = true
-		}
-	}
+	superseded := supersededRecords(recs)
 	items := []map[string]any{}
 	for _, rec := range recs {
 		l, ok := labeled[rec.TraceID]
@@ -262,27 +241,10 @@ func lastLine(s string) string {
 // handleQueue lists records without a truth. ask band first, newest first within it.
 func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("spec")
-	limit := 50
-	if v := r.URL.Query().Get("limit"); v != "" {
-		fmt.Sscanf(v, "%d", &limit)
-	}
-	if limit < 1 || limit > 1000 {
-		limit = 50
-	}
-	sp, err := s.spec(id)
-	if errors.Is(err, errNotFound) {
-		writeUnknownSpec(w, id)
-		return
-	} else if err != nil {
-		writeErr(w, 500, err)
+	sp, view, limit, ok := s.decisionList(w, r, id)
+	if !ok {
 		return
 	}
-	view, err := s.st.ReadDecisionLog(r.Context(), id)
-	if err != nil {
-		writeErr(w, 500, err)
-		return
-	}
-	view.NewestFirst()
 	recs, labeled := view.Records, view.Labeled
 	rank := map[string]int{"ask": 0, "audit": 1, "act": 2, "discard": 3} // unsure → spot checks (1 in 20 of act) → the rest
 	reviews, err := s.st.Reviews(id)
@@ -290,12 +252,7 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	superseded := map[string]bool{} // do not show a redone original record in the queue (the new decision appears instead)
-	for _, rec := range recs {
-		if rec.RedoOf != "" {
-			superseded[rec.RedoOf] = true
-		}
-	}
+	superseded := supersededRecords(recs)
 	type queued struct {
 		record store.Record
 		queueItem
@@ -349,4 +306,40 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		items[len(items)-1]["original_inputs"], items[len(items)-1]["text_status"] = s.st.RecordText(rec)
 	}
 	writeJSON(w, 200, map[string]any{"spec": id, "items": items})
+}
+
+func (s *server) decisionList(w http.ResponseWriter, r *http.Request, id string) (*spec.Spec, store.DecisionLog, int, bool) {
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		fmt.Sscanf(v, "%d", &limit)
+	}
+	if limit < 1 || limit > 1000 {
+		limit = 50
+	}
+	sp, err := s.spec(id)
+	if errors.Is(err, errNotFound) {
+		writeUnknownSpec(w, id)
+		return nil, store.DecisionLog{}, 0, false
+	}
+	if err != nil {
+		writeErr(w, 500, err)
+		return nil, store.DecisionLog{}, 0, false
+	}
+	view, err := s.st.ReadDecisionLog(r.Context(), id)
+	if err != nil {
+		writeErr(w, 500, err)
+		return nil, store.DecisionLog{}, 0, false
+	}
+	view.NewestFirst()
+	return sp, view, limit, true
+}
+
+func supersededRecords(records []store.Record) map[string]bool {
+	out := map[string]bool{}
+	for _, rec := range records {
+		if rec.RedoOf != "" {
+			out[rec.RedoOf] = true
+		}
+	}
+	return out
 }
