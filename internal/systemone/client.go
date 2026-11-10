@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -187,28 +189,56 @@ func credentials(raw string) (start, at int) {
 	return start, start + at
 }
 
-// Scrub hides, in a message about the URL raw, the URL's credentials and their parts: an error of the URL parser or of the HTTP
-// client repeats the URL, or a piece of it (the "port" after a colon, the "scheme" before one), in its own words.
+// Scrub hides, in a message about the URL raw, the URL's credentials: an error of the URL parser or of the HTTP client repeats
+// the URL, or a piece of it (the "port" after a colon, the "scheme" before one), in its own words, and the client writes the
+// credentials back in its own percent-encoding (%2f as %2F, %65 as e, %3D as =). So three things are hidden: whatever stands
+// between "://" and an @ in the message, the credentials in every spelling the URL package may give them, and their parts.
 func Scrub(msg, raw string) string {
 	start, at := credentials(raw)
-	if at < 0 {
+	if at < 0 || at == start { // no credentials (or an empty one before the @): nothing to hide
 		return msg
 	}
+	msg = urlCredentials.ReplaceAllString(msg, "${1}xxxxx@")
 	secret := raw[start:at]
-	msg = strings.ReplaceAll(msg, raw, RedactURL(raw))
-	msg = strings.ReplaceAll(msg, secret, "xxxxx")
-	if escaped := url.PathEscape(secret); escaped != secret {
-		msg = strings.ReplaceAll(msg, escaped, "xxxxx")
+	hide := func(piece string) {
+		for _, form := range spellings(piece) {
+			msg = strings.ReplaceAll(msg, form, "xxxxx")
+		}
 	}
+	hide(secret)
 	for _, part := range strings.FieldsFunc(secret, func(r rune) bool { return strings.ContainsRune(":/?#@", r) }) {
 		if len(part) >= 3 { // a shorter piece is not a secret worth a mangled message
-			msg = strings.ReplaceAll(msg, part, "xxxxx")
-			if escaped := url.QueryEscape(part); escaped != part {
-				msg = strings.ReplaceAll(msg, escaped, "xxxxx")
-			}
+			hide(part)
 		}
 	}
 	return msg
+}
+
+// urlCredentials matches the credentials of a URL as the URL package prints them: after "://", before the @, with no slash,
+// space or quote in between.
+var urlCredentials = regexp.MustCompile(`(://)[^/\s"'@]+@`)
+
+// spellings are the ways one piece of the credentials can be written: as given, decoded, and encoded again by each of the
+// URL package's encodings. The longest come first, so a longer spelling is not broken by a shorter one inside it.
+func spellings(piece string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	add := func(form string) {
+		if form != "" && !seen[form] {
+			seen[form] = true
+			out = append(out, form)
+		}
+	}
+	add(piece)
+	decoded := piece
+	if d, err := url.PathUnescape(piece); err == nil {
+		decoded = d
+	}
+	for _, form := range []string{decoded, url.PathEscape(decoded), url.QueryEscape(decoded), url.User(decoded).String(), url.PathEscape(piece), url.QueryEscape(piece)} {
+		add(form)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
+	return out
 }
 
 // scrubbed is an error whose text went through Scrub; it still unwraps to the original (a deadline, a refused connection).
