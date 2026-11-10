@@ -83,6 +83,11 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 	if _, ok := run(env, "add", "-A", "--", "."); !ok {
 		return "", "", false, project, scope
 	}
+	// add -A started from an empty index, so it skipped the files Git tracks although an ignore rule names them (added with -f, or
+	// the rule came after the commit). Their changes are the repo's changes too: name them from the repo's own index and add them.
+	if !addTrackedIgnored(ctx, top, env) {
+		return "", "", false, project, scope
+	}
 	// remove internal records only from the temporary index. git add errors on a negated pattern for an ignored path, so they are removed in a separate step.
 	if _, ok := run(env, "rm", "--cached", "-r", "-f", "--ignore-unmatch", "--", ".shikii"); !ok {
 		return "", "", false, project, scope
@@ -108,6 +113,39 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 		return hash, "", false, project, scope
 	}
 	return hash, strings.TrimSpace(string(lb)), true, project, scope
+}
+
+// addTrackedIgnored adds to the temporary index (env) the files the repo's index tracks although an ignore rule names them.
+// Only files that are there are added (a removed one stays out, like any removed file); the internal records are left out here
+// as they are removed right after. ok is false when git fails (the listing is then unknown, as for the other steps).
+func addTrackedIgnored(ctx context.Context, top string, env []string) bool {
+	ls := exec.CommandContext(ctx, "git", "ls-files", "-z", "--cached", "--ignored", "--exclude-standard")
+	ls.Dir = top
+	ls.Stderr = io.Discard
+	out, err := ls.Output()
+	if err != nil {
+		return false
+	}
+	var paths bytes.Buffer
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p == "" || p == ".shikii" || strings.HasPrefix(p, ".shikii/") {
+			continue
+		}
+		if info, err := os.Lstat(filepath.Join(top, filepath.FromSlash(p))); err != nil || info.IsDir() {
+			continue
+		}
+		paths.WriteString(p)
+		paths.WriteByte(0)
+	}
+	if paths.Len() == 0 {
+		return true
+	}
+	add := exec.CommandContext(ctx, "git", "update-index", "--add", "-z", "--stdin")
+	add.Dir = top
+	add.Env = append(os.Environ(), env...)
+	add.Stdin = &paths
+	add.Stdout, add.Stderr = io.Discard, io.Discard
+	return add.Run() == nil
 }
 
 func hookLog(msg string) {

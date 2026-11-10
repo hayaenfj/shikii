@@ -257,6 +257,8 @@ type askedItem struct {
 // the `git ls-files --stage` listing of that index (listing. At Stop it is compared with the one at request time to get the "changed files". Empty in an empty repo. listed says whether it was obtained),
 // plus the real-path scope and project (the work marker put on records: the folder name of the repo's root; outside git, the cwd's folder name).
 // HEAD and index state are not included, so commit / stash / checkout alone do not change it; it changes only when file contents change.
+// The one exception is a tracked file that .gitignore names: `git add -A` skips it, so it is taken from the repo's own index (a file is
+// in the listing while it is tracked and present), or its changes would be invisible to the guards and the outcome truths.
 // New blobs are written to temporary objects (GIT_OBJECT_DIRECTORY) and removed, so untracked file contents do not stay in the repo's .git/objects (the repo's objects are only read, as alternates).
 // If the whole thing exceeds hookGitTimeout, "" (e.g. a huge node_modules with no .gitignore. No truth is attached, but the hook does not stop). Outside git, "".
 
