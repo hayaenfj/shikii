@@ -573,12 +573,13 @@ func TestWikiLivesAtTheProjectRootNotNextToTheSpec(t *testing.T) {
 }
 
 // Deduplicating the bank uses the same "latest truth per input" as calibrate. A later correction beats the file row.
-// Old truths (choices not in the current spec) and rows with weight > 1 are counted and dropped.
+// Old truths (choices not in the current spec) are counted and dropped. A file row keeps its weight (a weight outside (0, 1] is
+// refused with its row number: TestCheckAndTheTruthBankRefuseAFileRowWeightOutsideZeroToOne).
 func TestTruthBankUsesLatestTruthAndSkipsUnknownAnswers(t *testing.T) {
 	dir := t.TempDir()
 	sp := mustLoad(t, writeSpec(t, dir, "false"))
 	labeledPath := filepath.Join(dir, "rows.json")
-	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"old"},"truth":"removed_option"},{"inputs":{"message":"heavy"},"truth":"question","weight":5}]`
+	rows := `[{"inputs":{"message":"fix a"},"truth":"change_request"},{"inputs":{"message":"old"},"truth":"removed_option"},{"inputs":{"message":"weak"},"truth":"question","weight":0.5}]`
 	if err := os.WriteFile(labeledPath, []byte(rows), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -594,14 +595,14 @@ func TestTruthBankUsesLatestTruthAndSkipsUnknownAnswers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(bank) != 2 || skipped != 1 {
-		t.Fatalf("want 2 rows (fix a, heavy) and 1 skipped (removed_option), got %d rows, %d skipped: %+v", len(bank), skipped, bank)
+		t.Fatalf("want 2 rows (fix a, weak) and 1 skipped (removed_option), got %d rows, %d skipped: %+v", len(bank), skipped, bank)
 	}
 	for _, r := range bank {
 		if r.inputs["message"] == "fix a" && r.truth != "question" {
 			t.Fatalf("the later correction must win: %+v", r)
 		}
-		if r.weight > 1 {
-			t.Fatalf("file weights are capped at 1 like the store: %+v", r)
+		if r.inputs["message"] == "weak" && r.weight != 0.5 {
+			t.Fatalf("a file row keeps its weight: %+v", r)
 		}
 	}
 }
