@@ -10,9 +10,12 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// validKindScene reports whether kind is one of Kinds and scene is one line, has no control characters and is at most SceneMax characters.
-// kindSceneError is errKindScene, or a reply naming the length when only the scene is too long.
+// validKindScene reports whether kind is one of Kinds and scene is UTF-8, one line, has no control characters and is at most SceneMax characters.
+// kindSceneError is errKindScene, or a reply naming the encoding or the length when only the scene is wrong that way.
 func kindSceneError(kind, scene string) error {
+	if slices.Contains(Kinds, kind) && !utf8.ValidString(scene) {
+		return fmt.Errorf("the scene must be UTF-8 text (it holds bytes that are not; a command-line argument cut in the middle of a character does this)")
+	}
 	if n := utf8.RuneCountInString(scene); slices.Contains(Kinds, kind) && n > SceneMax {
 		return fmt.Errorf("the scene is too long (%d characters; keep it to %d, a short \"when ...\" phrase)", n, SceneMax)
 	}
@@ -20,7 +23,8 @@ func kindSceneError(kind, scene string) error {
 }
 
 func validKindScene(kind, scene string) bool {
-	if !slices.Contains(Kinds, kind) || scene == "" || utf8.RuneCountInString(scene) > SceneMax {
+	// A scene that is not UTF-8 (raw bytes from the command line) would be written into the page as a binary value.
+	if !slices.Contains(Kinds, kind) || scene == "" || !utf8.ValidString(scene) || utf8.RuneCountInString(scene) > SceneMax {
 		return false
 	}
 	for _, r := range scene {
