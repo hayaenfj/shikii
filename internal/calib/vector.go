@@ -39,12 +39,16 @@ type MultiSample struct {
 
 // FitVector fits T and b by weighted maximum likelihood. b is projected onto Σb=0 to make it unique.
 // The correct answer is smoothed to 1−ε (ε = 1/(N+K)) so that biases of choices without labels do not fly to −∞.
+// The ε goes to the options in the sample's own raw shares, not evenly: an even share asks for ε/K on an option
+// the model left at the floor (1e-6), which only a large positive bias can give, and that bias then turns a few
+// percent on a later input into the top answer.
 // The set of all choices is the union of the keys of the samples' Raw.
 func FitVector(samples []MultiSample) (Vector, error) {
 	if len(samples) == 0 {
 		return Vector{}, errors.New("no samples")
 	}
 	keySet := map[string]bool{}
+	seen := map[string]bool{} // options that were the truth at least once
 	var totalW float64
 	for _, s := range samples {
 		for k := range s.Raw {
@@ -53,6 +57,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 		if _, ok := s.Raw[s.Truth]; !ok {
 			return Vector{}, errors.New("truth " + s.Truth + " is not among the options")
 		}
+		seen[s.Truth] = true
 		totalW += weightOf(s.Weight)
 	}
 	keys := make([]string, 0, len(keySet))
@@ -69,6 +74,18 @@ func FitVector(samples []MultiSample) (Vector, error) {
 		idx[k] = i
 	}
 	eps := 1 / (totalW + float64(K))
+	shares := make([][]float64, len(samples)) // each sample's raw distribution over all options (clamped, sums to 1)
+	for n, s := range samples {
+		shares[n] = make([]float64, K)
+		var sum float64
+		for i, k := range keys {
+			shares[n][i] = math.Max(s.Raw[k], 1e-6)
+			sum += shares[n][i]
+		}
+		for i := range shares[n] {
+			shares[n][i] /= sum
+		}
+	}
 
 	// parameters: alpha = log(1/T), b[K]
 	alpha := 0.0
@@ -78,20 +95,20 @@ func FitVector(samples []MultiSample) (Vector, error) {
 	nll := func(alpha float64, b []float64) float64 {
 		a := math.Exp(alpha)
 		var total float64
-		for _, s := range samples {
+		for n, s := range samples {
 			w := weightOf(s.Weight)
 			z := make([]float64, K)
 			for i, k := range keys {
 				z[i] = a*logClamp(s.Raw[k]) + b[i]
 			}
-			q := softmax(z)
+			logQ := logSoftmax(z)
 			t := idx[s.Truth]
 			for i := range keys {
-				y := eps / float64(K)
+				y := eps * shares[n][i]
 				if i == t {
 					y += 1 - eps
 				}
-				total -= w * y * math.Log(math.Max(q[i], 1e-12))
+				total -= w * y * logQ[i]
 			}
 		}
 		for _, bi := range b {
@@ -104,7 +121,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 		a := math.Exp(alpha)
 		var ga float64
 		gb := make([]float64, K)
-		for _, s := range samples {
+		for n, s := range samples {
 			w := weightOf(s.Weight)
 			z := make([]float64, K)
 			lp := make([]float64, K)
@@ -115,7 +132,7 @@ func FitVector(samples []MultiSample) (Vector, error) {
 			q := softmax(z)
 			t := idx[s.Truth]
 			for i := range keys {
-				y := eps / float64(K)
+				y := eps * shares[n][i]
 				if i == t {
 					y += 1 - eps
 				}
@@ -164,6 +181,25 @@ func FitVector(samples []MultiSample) (Vector, error) {
 			break
 		}
 	}
+	// An option that was never the truth has no evidence for a lift: the smoothing only keeps its bias from flying
+	// to minus infinity. Cap it at the mean bias of the options that were the truth.
+	var seenMean float64
+	seenN := 0
+	for i, k := range keys {
+		if seen[k] {
+			seenMean += b[i]
+			seenN++
+		}
+	}
+	if seenN > 0 && seenN < K {
+		seenMean /= float64(seenN)
+		for i, k := range keys {
+			if !seen[k] && b[i] > seenMean {
+				b[i] = seenMean
+			}
+		}
+		project(b)
+	}
 	T := math.Exp(-alpha)
 	if T <= 0 || math.IsNaN(T) || math.IsInf(T, 0) {
 		return Vector{}, errors.New("fitted temperature is not finite")
@@ -189,6 +225,25 @@ func project(b []float64) {
 }
 
 func softmax(z []float64) []float64 { return probability.Softmax(z, 1) }
+
+// logSoftmax is log(softmax(z)) without going through the probabilities: a probability that underflows to 0 still has
+// a finite log, so the loss keeps growing with the slope instead of going flat.
+func logSoftmax(z []float64) []float64 {
+	m := math.Inf(-1)
+	for _, v := range z {
+		m = math.Max(m, v)
+	}
+	var sum float64
+	for _, v := range z {
+		sum += math.Exp(v - m)
+	}
+	lse := m + math.Log(sum)
+	out := make([]float64, len(z))
+	for i, v := range z {
+		out[i] = v - lse
+	}
+	return out
+}
 
 func logClamp(p float64) float64 {
 	return math.Log(math.Max(p, 1e-6))
