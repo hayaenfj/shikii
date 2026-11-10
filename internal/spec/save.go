@@ -81,16 +81,22 @@ var chmodSaved = os.Chmod
 // variantsChanged reports whether the variants in the file differ from the current value.
 // onDiskVariants returns the variants in the file (nil if unreadable).
 func onDiskVariants(root *yaml.Node) []Variant {
+	variants, _, err := decodeOnDiskVariants(root)
+	if err != nil {
+		return nil
+	}
+	return variants
+}
+
+func decodeOnDiskVariants(root *yaml.Node) ([]Variant, bool, error) {
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		if root.Content[i].Value == "variants" {
-			var onDisk []Variant
-			if err := root.Content[i+1].Decode(&onDisk); err != nil {
-				return nil
-			}
-			return onDisk
+			var variants []Variant
+			err := root.Content[i+1].Decode(&variants)
+			return variants, true, err
 		}
 	}
-	return nil
+	return nil, false, nil
 }
 
 // mergeVariants merges the file's candidates (onDisk) with ours (mine) by name: file order first, then the ones only we have. mine wins on the same name.
@@ -122,16 +128,14 @@ func mergeVariants(onDisk, mine []Variant) []Variant {
 }
 
 func variantsChanged(root *yaml.Node, now []Variant) bool {
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == "variants" {
-			var onDisk []Variant
-			if err := root.Content[i+1].Decode(&onDisk); err != nil {
-				return true
-			}
-			return !reflect.DeepEqual(onDisk, now)
-		}
+	onDisk, present, err := decodeOnDiskVariants(root)
+	if err != nil {
+		return true
 	}
-	return len(now) > 0
+	if !present {
+		return len(now) > 0
+	}
+	return !reflect.DeepEqual(onDisk, now)
 }
 
 func setMappingKey(root *yaml.Node, key string, value any, empty bool, headComment string) error {
