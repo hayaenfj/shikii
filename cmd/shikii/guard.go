@@ -41,7 +41,7 @@ type guard struct {
 	Enabled  bool       `yaml:"enabled" json:"enabled"`
 	Pairs    [][]string `yaml:"pairs,omitempty" json:"pairs,omitempty"`       // paired-files
 	Words    []string   `yaml:"words,omitempty" json:"words,omitempty"`       // forbidden-words
-	Except   []string   `yaml:"except,omitempty" json:"except,omitempty"`     // forbidden-words: paths not checked (glob; a trailing /** means everything below)
+	Except   []string   `yaml:"except,omitempty" json:"except,omitempty"`     // forbidden-words: paths not checked (glob; a ** segment is any number of folders, a trailing /** everything below)
 	Allow    []string   `yaml:"allow,omitempty" json:"allow,omitempty"`       // forbidden-words: ordinary words that contain a forbidden word (e.g. 根拠 for 根). Removed before checking
 	Required []string   `yaml:"required,omitempty" json:"required,omitempty"` // commit-body
 	Red      *guardRed  `yaml:"red,omitempty" json:"red,omitempty"`           // records that enable saw the negative example stop

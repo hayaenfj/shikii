@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -78,19 +79,57 @@ func (g guard) validate() error {
 // guardPositiveCommand is the harmless command the positive example of forbidden-commands runs: no pattern may match it.
 const guardPositiveCommand = "true"
 
-// matchPath is a glob or exact match, against the whole path or just the name. A trailing /** matches everything below.
+// matchPath is a glob or exact match, against the whole path or just the name. A trailing /** matches everything below. A "**"
+// segment anywhere else stands for any number of folders, none included: docs/**/*.md matches docs/b.md and docs/a/c/b.md, and
+// **/*.md matches README.md too. "*" stays inside one path segment.
 func matchPath(pattern, p string) bool {
 	if pattern == p {
 		return true
 	}
-	if strings.HasSuffix(pattern, "/**") {
-		return strings.HasPrefix(p, strings.TrimSuffix(pattern, "**"))
+	if strings.HasSuffix(pattern, "/**") && strings.HasPrefix(p, strings.TrimSuffix(pattern, "**")) {
+		return true
+	}
+	if segments := strings.Split(pattern, "/"); slices.Contains(segments, "**") {
+		return matchSegments(segments, strings.Split(p, "/"))
 	}
 	if ok, _ := filepath.Match(pattern, p); ok {
 		return true
 	}
 	ok, _ := filepath.Match(pattern, filepath.Base(p))
 	return ok
+}
+
+// matchSegments matches a path against a pattern, both split at "/". A "**" segment takes any number of path segments (none
+// included), except at the end, where it takes at least one (dir/** is what is below dir, not dir itself). Every other pattern
+// segment is a glob for exactly one path segment. It walks both once and steps back only to the last "**", so a pattern with
+// many "**" stays cheap.
+func matchSegments(pattern, path []string) bool {
+	if n := len(pattern); pattern[n-1] == "**" {
+		pattern = append(pattern[:n-1:n-1], "**", "*")
+	}
+	pi, si, star, mark := 0, 0, -1, 0
+	for si < len(path) {
+		if pi < len(pattern) && pattern[pi] == "**" {
+			star, mark = pi, si // try it with no segment first
+			pi++
+			continue
+		}
+		if pi < len(pattern) {
+			if ok, _ := filepath.Match(pattern[pi], path[si]); ok {
+				pi, si = pi+1, si+1
+				continue
+			}
+		}
+		if star < 0 {
+			return false
+		}
+		mark++ // let the last "**" take one more segment
+		pi, si = star+1, mark
+	}
+	for pi < len(pattern) && pattern[pi] == "**" {
+		pi++
+	}
+	return pi == len(pattern)
 }
 
 func anyMatch(pattern string, paths []string) bool {
