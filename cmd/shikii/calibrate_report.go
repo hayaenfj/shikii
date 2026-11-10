@@ -5,6 +5,8 @@ import (
 	"io"
 	"sort"
 
+	"github.com/hayaenfj/shikii/internal/probability"
+
 	"github.com/hayaenfj/shikii/internal/calib"
 	"github.com/hayaenfj/shikii/internal/spec"
 )
@@ -63,17 +65,4 @@ func printReliability(name string, probs []float64, truths []bool, weights []flo
 	}
 }
 
-func argmax(m map[string]float64) (string, float64) {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	best, bp := "", -1.0
-	for _, k := range keys {
-		if m[k] > bp {
-			best, bp = k, m[k]
-		}
-	}
-	return best, bp
-}
+func argmax(m map[string]float64) (string, float64) { return probability.Argmax(m) }

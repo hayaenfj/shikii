@@ -4,6 +4,8 @@ import (
 	"errors"
 	"math"
 	"sort"
+
+	"github.com/hayaenfj/shikii/internal/probability"
 )
 
 // Vector is multi-class calibration (vector scaling): softmax((log p_k + b_k) / T).
@@ -186,22 +188,7 @@ func project(b []float64) {
 	}
 }
 
-func softmax(z []float64) []float64 {
-	m := math.Inf(-1)
-	for _, v := range z {
-		m = math.Max(m, v)
-	}
-	out := make([]float64, len(z))
-	var sum float64
-	for i, v := range z {
-		out[i] = math.Exp(v - m)
-		sum += out[i]
-	}
-	for i := range out {
-		out[i] /= sum
-	}
-	return out
-}
+func softmax(z []float64) []float64 { return probability.Softmax(z, 1) }
 
 func logClamp(p float64) float64 {
 	return math.Log(math.Max(p, 1e-6))

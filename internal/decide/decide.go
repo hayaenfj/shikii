@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hayaenfj/shikii/internal/probability"
+
 	"github.com/hayaenfj/shikii/internal/calib"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -359,20 +361,7 @@ func applyCalibration(sp *spec.Spec, model string, raw map[string]float64) (map[
 	return out, true
 }
 
-func argmax(m map[string]float64) (string, float64) {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys) // deterministic on ties
-	best, bp := "", -1.0
-	for _, k := range keys {
-		if m[k] > bp {
-			best, bp = k, m[k]
-		}
-	}
-	return best, bp
-}
+func argmax(m map[string]float64) (string, float64) { return probability.Argmax(m) }
 
 // MassAtOrAbove is the sum of probabilities with level ≥ k in a score distribution. Keys are level numbers ("0".."n-1").
 func MassAtOrAbove(m map[string]float64, k int) float64 {

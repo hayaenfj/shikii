@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/hayaenfj/shikii/internal/probability"
 )
 
 type question struct {
@@ -192,22 +194,7 @@ func jitter(parts ...string) float64 {
 	return float64(binary.LittleEndian.Uint32(h[:4]))/math.MaxUint32 - 0.5
 }
 
-func softmax(z []float64, temp float64) []float64 {
-	m := math.Inf(-1)
-	for _, v := range z {
-		m = math.Max(m, v)
-	}
-	out := make([]float64, len(z))
-	var sum float64
-	for i, v := range z {
-		out[i] = math.Exp((v - m) / temp)
-		sum += out[i]
-	}
-	for i := range out {
-		out[i] /= sum
-	}
-	return out
-}
+func softmax(z []float64, temp float64) []float64 { return probability.Softmax(z, temp) }
 
 func maxOf(xs []float64) float64 {
 	m := 0.0
