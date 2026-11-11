@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -13,6 +14,14 @@ import (
 const compactWorkHowTo = "Preparation registered this task's start. At the end, record once with this receipt and result:{changed,checked?,evidence?,remaining?}. Save checked evidence once; result and observations supply source refs for notes/outcomes. Optional result.sufficient shares an actual quality check and the same evidence with automatic procedure validation; omission stays unknown. Add only new knowledge or corrections; no wiki draft is required otherwise. Combine supplied reviews, memory and reviewed refs in that call. unknown/unused memory needs no long narrative. Check complete, storage, errors, pending and next_action; retry only failed refs. Read omitted originals before assessing them. Use explicit reasoning updates or trials only when useful. See the installed skill's recording.md for the full contract."
 
 const continuedWorkHowTo = "Use this receipt and its initial recording contract. Report once; keep evidence refs. A pending procedure index recovers automatically on prepare."
+
+// cliPrepareBytes bounds a prepare reply on the CLI when the request names no max_bytes. An agent reads the CLI's reply through its
+// shell tool, which shows a bounded part of a command's output and cuts the middle of a longer one: Claude Code shows 30,000
+// characters, Codex 10,000 tokens (about 40,000 bytes). The general default below is twice what the MCP server sends (its bound
+// counts the text and the structured copy of one reply), and with it 14 to 28% of the prepare replies an agent read directly were
+// cut by the tool (measured on 2026-11-11). What does not fit 28 KiB is left out by limitWorkPreparation, which names it in output
+// and keeps the way back to it; max_bytes asks for another size.
+const cliPrepareBytes = 28 << 10
 
 func workOutputBudget(n int) (int, error) {
 	if n == 0 {
@@ -169,8 +178,11 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	reply["output"] = workPreparationOutput(responseBudget, omitted)
+	if hinted := workPreparationHint(reply["output"].(map[string]any)); size(reply) > budget {
+		hinted["next_action"] = workPreparationNext // the hint is the first thing a tight bound leaves out
+	}
 	if size(reply) > budget {
-		return nil, errors.New("the task and reference inventory exceed max_bytes; prepare with a larger response budget")
+		return nil, fmt.Errorf("the task and reference inventory exceed max_bytes (%d); prepare again with a larger max_bytes (up to %d)", responseBudget, workSourceBudget*3)
 	}
 	for ref := range quoted {
 		visible := false
@@ -223,8 +235,17 @@ func fitPreparedSource(book notebook.Book, reply, entry map[string]any, budget i
 	return true
 }
 
+const workPreparationNext = "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."
+
 func workPreparationOutput(budget int, omitted []string) map[string]any {
-	return map[string]any{"limited": true, "max_bytes": budget, "omitted": omitted, "next_action": "Read exact article/source queries only as needed. Use the original host conversation for omitted task/history. reflect query recovers supporting reflection; memory-upgrade returns the current maintenance batch. No omitted body or evaluation is complete."}
+	return map[string]any{"limited": true, "max_bytes": budget, "omitted": omitted, "next_action": workPreparationNext}
+}
+
+// workPreparationHint adds, to the output of a shortened reply, how to get more in one call: the search that finds the candidates
+// left out, and the bound itself. The caller takes it back when the reply would not fit with it.
+func workPreparationHint(output map[string]any) map[string]any {
+	output["next_action"] = workPreparationNext + " knowledge_query repeats the search for omitted candidates; a larger max_bytes returns more in one reply."
+	return output
 }
 
 func suppliedPreparationReads(reply map[string]any) []store.KnowledgeReference {
@@ -269,7 +290,7 @@ func limitRecoveredPreparation(reply map[string]any, requested int, sizing ...fu
 		reply["reasoning"] = map[string]any{"required": r.Required, "started": r.Started, "complete": r.Complete, "wiki_pending": r.WikiPending, "details_omitted": true, "next_action": "Prepare with a larger max_bytes to read saved judgment and trial details."}
 	}
 	if size(reply)+1 > budget {
-		return errors.New("recovery metadata exceeds max_bytes; prepare with a larger response budget")
+		return fmt.Errorf("recovery metadata exceeds max_bytes (%d); prepare again with a larger max_bytes (up to %d)", budget, workSourceBudget*3)
 	}
 	return nil
 }

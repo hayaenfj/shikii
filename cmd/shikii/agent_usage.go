@@ -37,7 +37,7 @@ var agentUsages = map[string]agentUsage{
 		},
 		Notes: []string{
 			"The reply of prepare carries receipt and how_to_record: what record also takes (observations, notes, reviews, memory, reasoning).",
-			"max_bytes (8192 to 393216) in prepare bounds its reply.",
+			"max_bytes (8192 to 393216) in prepare bounds its reply; without it the CLI keeps the reply within 28672 bytes, which an agent's shell shows whole, and output names what was left out.",
 		},
 	},
 	"hook plan": {

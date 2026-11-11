@@ -397,8 +397,15 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	if req.Proposal != "" || req.Conditions != "" || req.Cursor != "" {
 		return nil, errors.New("prepare once, then pass its receipt to add a search, proposal or current conditions")
 	}
-	if strings.TrimSpace(req.Query) == "" || len(req.Query) > requestMax || len(req.Request) > 16000 || len(req.SessionID) > 200 {
-		return nil, errors.New("prepare needs topic words (at most 1500 bytes) and bounded task text")
+	switch { // the refusal names which bound was passed: before, one sentence stood for all four
+	case strings.TrimSpace(req.Query) == "":
+		return nil, errors.New("prepare needs topic words in query (at most 1500 bytes) and bounded task text")
+	case len(req.Query) > requestMax:
+		return nil, fmt.Errorf("prepare needs topic words in query of at most %d bytes (got %d) and bounded task text", requestMax, len(req.Query))
+	case len(req.Request) > 16000:
+		return nil, fmt.Errorf("prepare needs topic words and bounded task text: request takes at most 16000 bytes (got %d); state the task in a few sentences", len(req.Request))
+	case len(req.SessionID) > 200:
+		return nil, errors.New("prepare needs topic words and bounded task text: session_id takes at most 200 bytes")
 	}
 	dir, err := openWorkSessions(root)
 	if err != nil {
@@ -605,6 +612,9 @@ func cmdWork(args []string) error {
 	}
 	if extra {
 		return errors.New("work takes exactly one JSON object")
+	}
+	if args[0] == "prepare" && req.MaxBytes == 0 {
+		req.MaxBytes = cliPrepareBytes
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
