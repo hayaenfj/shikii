@@ -143,6 +143,10 @@ func cmdInit(args []string) error {
 			fmt.Fprintf(stdout, "%s: %s\n", filepath.Join("~", ".codex", "config.toml"), codexServerNote(codex))
 		}
 	}
+	// Codex runs the tools of the server shikii wrote without asking the person each time (codex_tools_allowed.go)
+	if err := allowCodexTools(codex); err != nil {
+		return err
+	}
 
 	// skill: put it back (old files are deleted too), where Claude Code reads it and where Codex and other agents read skills (~/.agents/skills, 0.9.2:
 	// without the AGENTS.md section, Codex without hooks found the habits only there)
@@ -535,6 +539,11 @@ func codexServerFixed(b []byte, args []string, command string) ([]byte, bool) {
 		return nil, false // args a person changed, or an older version's form (codexServerOlder; only told, 0.9.7)
 	}
 	end := i + len(head) + len(line) + 1 + len(argsLine) + 1
+	want := map[string]any{"command": command, "args": stringsAsTOML(args)}
+	if strings.HasPrefix(text[end:], codexToolsAllowedLine+"\n") { // the line shikii adds after its three (codex_tools_allowed.go)
+		end += len(codexToolsAllowedLine) + 1
+		want["default_tools_approval_mode"] = "approve"
+	}
 	if next := text[end:]; next != "" && !strings.HasPrefix(next, "\n") && !strings.HasPrefix(next, "[") {
 		return nil, false // a line a person added to the block
 	}
@@ -548,8 +557,8 @@ func codexServerFixed(b []byte, args []string, command string) ([]byte, bool) {
 	if command == cmd {
 		return nil, false
 	}
-	fixed := text[:i] + head + quotedList([]string{command}) + "\nargs = [" + quotedList(args) + "]\n" + text[end:]
-	if !codexEditKeepsTheRest(b, []byte(fixed), map[string]any{"command": command, "args": stringsAsTOML(args)}) {
+	fixed := text[:i] + head + quotedList([]string{command}) + text[i+len(head)+len(line):]
+	if !codexEditKeepsTheRest(b, []byte(fixed), want) {
 		return nil, false // the text edit would change something else Codex reads: leave it
 	}
 	return []byte(fixed), true

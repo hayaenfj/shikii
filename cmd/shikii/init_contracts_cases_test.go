@@ -80,7 +80,7 @@ func TestInitPreparesTheProjectAndTheAgentInOneGo(t *testing.T) {
 		t.Fatalf("Codex config must keep its lines and gain the shikii server:\n%s", cb)
 	}
 	// Codex's registration is shared by every project, so it names no store (each tool call passes project; 0.9.3)
-	if !strings.HasSuffix(string(cb), "\n"+codexServerArgsLine+"\n") || strings.Contains(string(cb), "--store") {
+	if !strings.HasSuffix(string(cb), "\n"+codexServerArgsLine+"\n"+codexToolsAllowedLine+"\n") || strings.Contains(string(cb), "--store") {
 		t.Fatalf("Codex's shared registration must be %s with no store:\n%s", codexServerArgsLine, cb)
 	}
 	if args, _ := servers["shikii"].(map[string]any)["args"].([]any); len(args) != len(codexMCPArgs) || args[1] != "--store" {

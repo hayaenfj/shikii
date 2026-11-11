@@ -212,6 +212,12 @@ func hookInstall(args []string, install bool) error {
 		}
 		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool, except that a guard the person enabled refuses a command right before it runs. Claude Code and Codex.\n")
 		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page is one per project: the first request's hook starts it on a free port, records it in ~/.shikii/agent/pages/, and opens it in the browser\n", hookLocalURL)
+		// shown before it is added: Codex will no longer ask before each call of shikii's MCP tools (codex_tools_allowed.go)
+		if b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml")); err == nil {
+			if _, ok := codexToolsAllowed(b, codexServerArgs); ok {
+				fmt.Fprintf(stdout, "   %s: Codex will run shikii's MCP tools without asking each time (adds %s to the shikii server shikii wrote; write \"prompt\" in its place to be asked)\n", tilde(filepath.Join(home, ".codex", "config.toml")), codexToolsAllowedLine)
+			}
+		}
 	} else {
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command is `… shikii hook <event>` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)))
@@ -293,6 +299,10 @@ func hookInstall(args []string, install bool) error {
 			fmt.Fprintf(stdout, "%s: %s\n", tilde(codex), codexOlderNote())
 		} else if codexServerPinsAProject(codex) {
 			fmt.Fprintf(stdout, "%s: %s\n", tilde(codex), codexPinnedNote)
+		}
+		// an earlier version's registration gets the approval line too, while the block is still shikii's own (codex_tools_allowed.go)
+		if err := allowCodexTools(codex); err != nil {
+			fmt.Fprintf(stdout, "%s: %v\n", tilde(codex), err)
 		}
 		// a section an older version added to a registered project's AGENTS.md is only told: shikii does not change the person's file (0.9.7)
 		for _, p := range registeredProjects(agent) {

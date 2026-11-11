@@ -253,7 +253,9 @@ func codexServerNote(path string) string {
 		return "did not add shikii: appending it would change how the other settings read, so the file was left as it is. Add:\n" + block
 	case "has":
 		if m, err := readCodexConfig(b); err == nil {
-			if v, _ := codexShikiiServer(m); reflect.DeepEqual(v, codexServerWant(mcpCommand(), codexServerArgs)) {
+			allowed := codexServerWant(mcpCommand(), codexServerArgs)
+			allowed["default_tools_approval_mode"] = "approve" // the block with the line shikii adds (codex_tools_allowed.go)
+			if v, _ := codexShikiiServer(m); reflect.DeepEqual(v, codexServerWant(mcpCommand(), codexServerArgs)) || reflect.DeepEqual(v, allowed) {
 				return "shikii is already registered (Codex)"
 			}
 		}
