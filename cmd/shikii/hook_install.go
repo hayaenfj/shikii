@@ -214,7 +214,8 @@ func hookInstall(args []string, install bool) error {
 		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page is one per project: the first request's hook starts it on a free port, records it in ~/.shikii/agent/pages/, and opens it in the browser\n", hookLocalURL)
 		// shown before it is added: Codex will no longer ask before each call of shikii's MCP tools (codex_tools_allowed.go)
 		if b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml")); err == nil {
-			if _, ok := codexToolsAllowed(b, codexServerArgs); ok {
+			info, _ := os.Stat(filepath.Join(home, ".codex", "config.toml"))
+			if _, ok := codexToolsAllowed(b, codexServerArgs); ok && info != nil && info.Mode().Perm()&0o200 != 0 && !fileExists(codexToolsAllowedMark()) {
 				fmt.Fprintf(stdout, "   %s: Codex will run shikii's MCP tools without asking each time (adds %s to the shikii server shikii wrote; write \"prompt\" in its place to be asked)\n", tilde(filepath.Join(home, ".codex", "config.toml")), codexToolsAllowedLine)
 			}
 		}

@@ -24,6 +24,9 @@ func TestCodexRunsShikiisToolsWithoutAsking(t *testing.T) {
 		"already allowed":                   {text: own + codexToolsAllowedLine + "\n"},
 		"the person chose to be asked":      {text: own + "default_tools_approval_mode = \"prompt\"\n"},
 		"a line the person added":           {text: own + "startup_timeout_sec = 20\n"},
+		"a comment the person added":        {text: own + "# ask me before each call\n"},
+		"the line the person commented out": {text: own + "# " + codexToolsAllowedLine + "\n"},
+		"a command the person wrote":        {text: "[mcp_servers.shikii]\ncommand = \"node\"\n" + codexServerArgsLine + "\n"},
 		"a sub-table the person added":      {text: own + "\n[mcp_servers.shikii.env]\nSHIKII_MODEL = \"local\"\n"},
 		"args the person changed":           {text: "[mcp_servers.shikii]\ncommand = \"/opt/shikii\"\nargs = [\"mcp\", \"--store\", \"/p/.shikii\"]\n"},
 		"no shikii server":                  {text: "model = \"x\"\n"},
@@ -79,8 +82,7 @@ func TestCodexRunsShikiisToolsWithoutAsking(t *testing.T) {
 // shikii init and hook install both add the line: a new registration gets it at init, and the registration an earlier version
 // wrote gets it at the next hook install.
 func TestInitAndHookInstallLetCodexRunShikiisTools(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := freshMachine(t)
 	path := filepath.Join(home, ".codex", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -95,9 +97,12 @@ func TestInitAndHookInstallLetCodexRunShikiisTools(t *testing.T) {
 	if !strings.Contains(string(b), codexServerArgsLine+"\n"+codexToolsAllowedLine+"\n") || !strings.Contains(out, "without Codex asking") {
 		t.Fatalf("init registers shikii in Codex with the approval line and says so:\n%s\n%s", b, out)
 	}
-	// the registration as an earlier version left it
+	// the registration as an earlier version left it: three lines, and no note that shikii added the line
 	earlier := strings.Replace(string(b), codexToolsAllowedLine+"\n", "", 1)
 	if err := os.WriteFile(path, []byte(earlier), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(codexToolsAllowedMark()); err != nil {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return hookInstall([]string{"--yes"}, true) })
@@ -106,6 +111,9 @@ func TestInitAndHookInstallLetCodexRunShikiisTools(t *testing.T) {
 	}
 	// a second project on a machine that has the hooks: init itself adds the line (no hook install runs there)
 	if err := os.WriteFile(path, []byte(earlier), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(codexToolsAllowedMark()); err != nil {
 		t.Fatal(err)
 	}
 	second := filepath.Join(t.TempDir(), "second")

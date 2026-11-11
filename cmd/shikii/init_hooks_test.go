@@ -16,8 +16,7 @@ import (
 // only; the README says that running init again there leaves the hooks disabled): init leaves them out and says which command
 // installs them. The page and the recording are promised only when a hook is there.
 func TestInitInstallsTheHooksForTheFirstProjectOnAMachine(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := freshMachine(t)
 	first := gitRepo(t)
 	t.Chdir(first)
 	shikiiHooks := func() []string { return agentsWithShikiiHook(home) }
@@ -104,4 +103,55 @@ func TestInitFinishesWhenTheHooksCannotBeInstalled(t *testing.T) {
 	if strings.Contains(out, "Next: make requests in this project as usual") {
 		t.Errorf("init without the hooks does not promise the recording:\n%s", out)
 	}
+}
+
+// A machine that had a project and no hooks is not a new machine (audit of 0.31.0, B-A1). The only project's folder renamed, or
+// its .shikii removed to start over, made the registration look gone, and init took the project for the first one on the machine
+// and installed the hooks its person had removed. A registration counts even when its folder is not where it was.
+func TestInitOfAMachineThatHadAProjectDoesNotInstallTheHooks(t *testing.T) {
+	for name, change := range map[string]func(t *testing.T, repo string) string{
+		"the only project's folder was renamed": func(t *testing.T, repo string) string {
+			moved := repo + "-moved"
+			if err := os.Rename(repo, moved); err != nil {
+				t.Fatal(err)
+			}
+			return moved
+		},
+		"the only project's .shikii was removed": func(t *testing.T, repo string) string {
+			if err := os.RemoveAll(filepath.Join(repo, ".shikii")); err != nil {
+				t.Fatal(err)
+			}
+			return repo
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := freshMachine(t)
+			repo := gitRepo(t)
+			t.Chdir(repo)
+			capture(t, func() error { return cmdInit(nil) })
+			capture(t, func() error { return cmdHook([]string{"uninstall", "--yes"}) })
+			if got := agentsWithShikiiHook(home); len(got) != 0 {
+				t.Fatalf("the person removed the hooks: %v", got)
+			}
+			t.Chdir(change(t, repo))
+			out := capture(t, func() error { return cmdInit(nil) })
+			if got := agentsWithShikiiHook(home); len(got) != 0 || strings.Contains(out, "this is the first project") || !strings.Contains(out, "Hooks: not installed") {
+				t.Errorf("init leaves the hooks off and says so: hooks %v\n%s", got, out)
+			}
+		})
+	}
+}
+
+// freshMachine is a temporary HOME with nothing of shikii in it. The model port is closed and nothing is started in the background or
+// opened, so a test that runs init there does not look at this machine's model server (audit of 0.31.0, B-U9).
+func freshMachine(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	oldLocal, oldPage, oldSpawn, oldOpen := hookLocalURL, hookPageURL, hookSpawn, openBrowser
+	hookLocalURL, hookPageURL = "http://127.0.0.1:1", "http://127.0.0.1:1"
+	hookSpawn = recordSpawn
+	openBrowser = func(string) {}
+	t.Cleanup(func() { hookLocalURL, hookPageURL, hookSpawn, openBrowser = oldLocal, oldPage, oldSpawn, oldOpen })
+	return home
 }

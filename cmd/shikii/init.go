@@ -40,9 +40,12 @@ func cmdInit(args []string) error {
 		return errors.New("the home folder is not initialized (~/.shikii is the shared store). Run this in a project folder")
 	}
 	// before anything registers this project: is it the first one on this machine? (the hooks are installed for a first project only)
+	// A registration counts even when its folder was renamed or its .shikii removed since: the machine had a project, and its
+	// person chose to have no hooks (audit of 0.31.0: the only project moved, or emptied to start over, got the hooks again).
 	firstProject := false
 	if agent, err := agentHome(); err == nil {
-		firstProject = len(registeredProjects(agent)) == 0
+		registrations, _ := filepath.Glob(filepath.Join(agent, "projects", "*.json"))
+		firstProject = len(registrations) == 0
 	}
 	if notice := relinkMovedProject(scope, true); strings.HasPrefix(notice, "shikii:") { // a moved folder (0.9.7)
 		fmt.Fprintln(stdout, "Reconnected this project at its new path (its wiki and records are kept)")
@@ -130,6 +133,9 @@ func cmdInit(args []string) error {
 		return err
 	case did:
 		fmt.Fprintf(stdout, "%s: added shikii (Codex)\n", filepath.Join("~", ".codex", "config.toml"))
+		if mark := codexToolsAllowedMark(); mark != "" {
+			_ = os.Remove(mark) // a registration shikii writes anew gets the approval line again
+		}
 	default:
 		if fixed, err := fixCodexServer(codex, codexServerArgs); err != nil {
 			return err
@@ -177,10 +183,14 @@ func completeProjectInit(root, scope string, version int, home string, firstProj
 	if !hooks && firstProject {
 		fmt.Fprintf(stdout, "Hooks: none installed and this is the first project on this machine, so shikii installs them now, as %s hook install --yes does (%s hook uninstall --yes removes them, and init does not add them again):\n", exe, exe)
 		if err := hookInstall([]string{"--yes"}, true); err != nil {
-			fmt.Fprintf(stdout, "Hooks: could not be installed (%v), so requests in this project are not recorded and the page does not start. Fix that, then run %s hook install --yes.\n", err, exe)
-			fmt.Fprintln(stdout, "Next: after the hooks are installed, make requests in this project as usual. New MCP settings take effect from the next session.")
-			fmt.Fprintln(stdout, "To add a business decision, run shikii new <id>. To start the model by hand, run shikii up.")
-			return nil
+			if got := agentsWithShikiiHook(home); len(got) > 0 { // the install stopped half-way: say who has the hooks, and go on with them
+				fmt.Fprintf(stdout, "Hooks: installed for %s, and the rest failed (%v): requests through the other agents are not recorded. Fix that, then run %s hook install --yes.\n", strings.Join(got, ", "), err, exe)
+			} else {
+				fmt.Fprintf(stdout, "Hooks: could not be installed (%v), so requests in this project are not recorded and the page does not start. Fix that, then run %s hook install --yes.\n", err, exe)
+				fmt.Fprintln(stdout, "Next: after the hooks are installed, make requests in this project as usual. New MCP settings take effect from the next session.")
+				fmt.Fprintln(stdout, "To add a business decision, run shikii new <id>. To start the model by hand, run shikii up.")
+				return nil
+			}
 		}
 		hooks = len(agentsWithShikiiHook(home)) > 0
 	}

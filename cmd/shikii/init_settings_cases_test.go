@@ -346,7 +346,7 @@ func TestOlderCodexFormIsOnlyTold(t *testing.T) {
 	gone := "[mcp_servers.shikii]\ncommand = \"/nowhere/shikii\"\n" + codexServerArgsLine + "\n"
 	os.WriteFile(path, []byte(gone), 0o644)
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if b, _ := os.ReadFile(path); string(b) != "[mcp_servers.shikii]\ncommand = "+quotedList([]string{exe})+"\n"+codexServerArgsLine+"\n"+codexToolsAllowedLine+"\n" {
+	if b, _ := os.ReadFile(path); string(b) != "[mcp_servers.shikii]\ncommand = "+quotedList([]string{exe})+"\n"+codexServerArgsLine+"\n" {
 		t.Fatalf("control: the current form on a binary that is gone is pointed at this one: %s", b)
 	}
 }

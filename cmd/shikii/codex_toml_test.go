@@ -175,8 +175,9 @@ func TestUpdateFixesCodexServerCommand(t *testing.T) {
 		b, _ := os.ReadFile(path)
 		want := c.before
 		if c.fixed {
-			// the block is shikii's own, so it also gets the line that lets Codex run its tools without asking (codex_tools_allowed.go)
-			want = "[mcp_servers.shikii]\ncommand = " + quotedList([]string{exe}) + "\n" + codexServerArgsLine + "\n" + codexToolsAllowedLine + "\n"
+			// three lines again: shikii added the approval line to this machine's registration once (the setup's init), so a block
+			// without it is one the person took the line out of, and it is not added again (codex_tools_allowed.go)
+			want = "[mcp_servers.shikii]\ncommand = " + quotedList([]string{exe}) + "\n" + codexServerArgsLine + "\n"
 		}
 		if string(b) != want {
 			t.Fatalf("%s: the file must become\n%s\ngot\n%s\n%s", name, want, b, out)
