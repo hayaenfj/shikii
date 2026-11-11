@@ -189,9 +189,12 @@ func jsonShapeError(err error) error {
 	var typeErr *json.UnmarshalTypeError
 	var syntaxErr *json.SyntaxError
 	var unknown *unknownFieldError
+	var wrongType *fieldTypeError
 	switch {
 	case errors.As(err, &unknown):
 		return unknown // already says where the key was and which fields that object takes
+	case errors.As(err, &wrongType):
+		return wrongType // already names the field and both shapes
 	case errors.As(err, &typeErr):
 		want := map[string]string{"struct": "an object {…}", "slice": "an array […]", "string": "a string", "bool": "true / false", "int": "an integer", "map": "an object {…}"}[typeErr.Type.Kind().String()]
 		if want == "" {

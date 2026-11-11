@@ -9,7 +9,7 @@ Work with the project's own knowledge: **the wiki** holds source-backed experien
 
 Use it at five moments:
 
-- **Before starting:** use the hook's `work prepare`; read the task, conversation, knowledge, pending evidence and `how_to_record`. Keep its receipt for `work record`. Preparation registers the start. End with one record containing result:{changed,checked?,evidence?,remaining?} and any necessary notes/reflection; do not send a separate starting judgment. Detailed reasoning updates and trials remain available when useful. Do not invent a discovery. Read exact passages first and recover the full revision for unresolved conditions. See [recording.md](references/recording.md).
+- **Before starting:** use the hook's `work prepare`; read the task, conversation, knowledge, pending evidence and `how_to_record`. Keep its receipt for `work record`. Preparation registers the start. End with one record containing result:{changed,checked?,evidence?:[refs],remaining?} and any necessary notes/reflection; do not send a separate starting judgment. Detailed reasoning updates and trials remain available when useful. Do not invent a discovery. Read exact passages first and recover the full revision for unresolved conditions. See [recording.md](references/recording.md).
 - **When work moves to another area:** search the wiki again by that topic before acting.
 - **Right before an action:** read the delivered lesson naming the command or file. The `lesson-applies` decision uses prior assessments; a person-enabled command guard may refuse the action. Run a corrected command.
 - **When unsure:** ask `shikii_decide` about approach agreement, scope or completion; read its band, similar human decisions and lessons.

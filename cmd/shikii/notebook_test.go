@@ -257,9 +257,9 @@ func TestIngestErrorSaysWhatIsWrong(t *testing.T) {
 	t.Setenv("HOME", filepath.Join(dir, "home"))
 	capture(t, func() error { return cmdInit(nil) })
 	for input, want := range map[string]string{
-		`{"sources":["x"],"title":"t","lesson":"l","applies_to":["a"]}`:            "cannot unmarshal array",  // applies_to must be a string
-		`{"sources":["x"],"title":"t","lesson":{"kind":"howto"},"applies_to":"a"}`: "cannot unmarshal object", // lesson must be a string
-		`{"title":"t","lesson":"l","applies_to":"a"}`:                              "sources",                 // MCP said "needs source ids"; Claude tried source_ids
+		`{"sources":["x"],"title":"t","lesson":"l","applies_to":["a"]}`:            "applies_to as a string (got array)", // applies_to must be a string: the field and both shapes, in the words of the JSON
+		`{"sources":["x"],"title":"t","lesson":{"kind":"howto"},"applies_to":"a"}`: "lesson as a string (got object)",    // lesson must be a string
+		`{"title":"t","lesson":"l","applies_to":"a"}`:                              "sources",                            // MCP said "needs source ids"; Claude tried source_ids
 	} {
 		var err error
 		withStdin(t, input, func() { err = cmdNotebook([]string{"ingest"}) })

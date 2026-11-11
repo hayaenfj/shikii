@@ -585,7 +585,7 @@ CLIは標準入力のJSONで操作します。`wiki patch`は`{id,revision,sourc
 ### 記録の負担を減らす
 
 通常は記録用の2呼び出しで進めます。prepareが開始を保存し、終了時のrecordへ
-result:{changed,checked?,evidence?,remaining?}と必要な記事更新・振り返りをまとめます。
+result:{changed,checked?,evidence?:[refs],remaining?}と必要な記事更新・振り返りをまとめます。
 確認結果は一度だけ保存して参照し、新しい知識が無ければwiki本文を作りません。
 配置より先に元の報告を保存し、saved-pendingは整理待ちを示します。保存済みの報告を
 再送せず、失敗した参照だけ回復できます。範囲や完了など内部評価を人の採点待ちに

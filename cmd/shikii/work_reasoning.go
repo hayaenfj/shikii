@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -393,10 +395,17 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 		return item, errors.New("save reasoning start before update or finish")
 	}
 	if input.Phase == "finish" {
-		for _, pending := range r.PendingResults {
+		var waiting []string
+		for id, pending := range r.PendingResults {
 			if !pending.Complete {
-				return item, errors.New("repair pending result evidence before reasoning finish")
+				waiting = append(waiting, id)
 			}
+		}
+		if len(waiting) > 0 {
+			// the report is saved and waits only for its evidence: name the short form (an agent that sent the whole result again
+			// only learned that something was pending)
+			sort.Strings(waiting)
+			return item, fmt.Errorf("repair pending result evidence before reasoning finish: the result is saved, so send result:{ref:%q,evidence:[refs]} with this receipt (refs are current, newN or knowledgeN) and do not repeat its text", waiting[0])
 		}
 		if pendingProcedureCount(r) > 0 {
 			return item, errors.New("recover pending procedure feedback before reasoning finish")

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -12,8 +13,18 @@ import (
 var workAfterWrite = func(kind string) error { return nil }
 
 func validateWorkRecording(req workRequest) error {
-	if req.SessionID != "" || req.TurnID != "" || req.Query != "" || req.Request != "" || req.Proposal != "" || req.Conditions != "" || req.Cursor != "" {
-		return errors.New("record uses its receipt; do not replace prepared task identifiers")
+	var beside []string
+	for _, field := range []struct{ name, value string }{{"session_id", req.SessionID}, {"turn_id", req.TurnID}, {"query", req.Query}, {"request", req.Request}, {"proposal", req.Proposal}, {"conditions", req.Conditions}, {"cursor", req.Cursor}} {
+		if field.value != "" {
+			beside = append(beside, field.name)
+		}
+	}
+	if len(beside) > 0 {
+		text := "record uses its receipt; do not replace prepared task identifiers (leave out " + strings.Join(beside, ", ")
+		if req.SessionID != "" || req.TurnID != "" { // the receipt's own ids were taken out by the caller: these are another request's
+			text += "; session_id and turn_id are not those of the receipt: for another request, prepare with its own ids"
+		}
+		return errors.New(text + ")")
 	}
 	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 || len(req.Discoveries) > 4 || len(req.Outcomes) > 2 {
 		return errors.New("the recording batch exceeds its fixed item limits")
@@ -39,6 +50,11 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	token, err := workDecode(req.Receipt)
 	if err != nil {
 		return nil, err
+	}
+	if (req.SessionID == "" || req.SessionID == token.Session) && (req.TurnID == "" || req.TurnID == token.Turn) {
+		// the ids of the receipt's own request add nothing and change nothing: an agent that repeats them from the hook notice or
+		// the Stop block ("use the same request IDs") is not refused for it
+		req.SessionID, req.TurnID = "", ""
 	}
 	if err = validateWorkRecording(req); err != nil {
 		return nil, err

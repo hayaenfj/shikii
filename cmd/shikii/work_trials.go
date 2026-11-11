@@ -136,7 +136,7 @@ func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve f
 			}
 		}
 		if ref != "current" && w.Sources[ref] == "" && !strings.HasPrefix(ref, "new") {
-			return nil, fmt.Errorf("unknown reasoning evidence %q; use current, a prepared article, trial or captured source", ref)
+			return nil, fmt.Errorf("unknown reasoning evidence %q; use current, a prepared article, trial or captured source: evidence takes references, not text (what you checked goes in checked or reason; to cite it, add it to observations and name it new1)", ref)
 		}
 		ids, err := resolve([]string{ref})
 		if err != nil {

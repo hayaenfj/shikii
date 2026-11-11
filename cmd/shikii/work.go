@@ -355,8 +355,11 @@ func loadWorkState(dir *os.Root, scope string, t workToken) (*workState, string,
 		return nil, name, err
 	}
 	w := s.Planning.Work
-	if w == nil || w.Nonce != t.Nonce || time.Since(w.At) > hookSessionTTL || time.Since(w.At) < -time.Minute {
-		return nil, name, errors.New("the work receipt is expired or no longer current")
+	switch { // the refusal says which: an agent holding a replaced receipt needs the latest one, not another guess
+	case w == nil || w.Nonce != t.Nonce:
+		return nil, name, errors.New("the work receipt is expired or no longer current: a later work prepare or hook plan query for this request replaced it; use the receipt of the latest work prepare, or prepare again")
+	case time.Since(w.At) > hookSessionTTL || time.Since(w.At) < -time.Minute:
+		return nil, name, errors.New("the work receipt is expired or no longer current: it is older than the session limit; prepare again")
 	}
 	return w, name, nil
 }

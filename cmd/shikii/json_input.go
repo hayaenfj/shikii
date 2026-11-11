@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -19,10 +20,51 @@ func decodeStrictObject(data []byte, target any) (err error, extra bool) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(target); err != nil {
+		var wrongType *json.UnmarshalTypeError
+		if errors.As(err, &wrongType) {
+			return &fieldTypeError{Field: wrongType.Field, Want: jsonShapeName(wrongType.Type), Got: wrongType.Value}, false
+		}
 		return explainUnknownField(err, data, target), false
 	}
 	var trailing any
 	return nil, dec.Decode(&trailing) != io.EOF
+}
+
+// fieldTypeError is a value of the wrong JSON type, in the words of the JSON: encoding/json says "cannot unmarshal string into Go
+// struct field workRequest.result.evidence of type []string", which names the program's types to an agent that sent JSON.
+type fieldTypeError struct {
+	Field string // the path of the value, e.g. result.evidence; "" is the whole input
+	Want  string // what goes there
+	Got   string // what was sent: string, number, object, array, bool
+}
+
+func (e *fieldTypeError) Error() string {
+	if e.Field == "" {
+		return fmt.Sprintf("pass the JSON as %s (got %s)", e.Want, e.Got)
+	}
+	return fmt.Sprintf("pass the JSON %s as %s (got %s)", e.Field, e.Want, e.Got)
+}
+
+// jsonShapeName says what JSON a Go type is read from.
+func jsonShapeName(t reflect.Type) string {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Struct, reflect.Map:
+		return "an object {\u2026}"
+	case reflect.Slice, reflect.Array:
+		return "an array [\u2026]"
+	case reflect.String:
+		return "a string"
+	case reflect.Bool:
+		return "true / false"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return "an integer"
+	case reflect.Float32, reflect.Float64:
+		return "a number"
+	}
+	return t.String()
 }
 
 // unknownFieldError is a refused key with what the agent needs to fix it. encoding/json names only the key; the place and the

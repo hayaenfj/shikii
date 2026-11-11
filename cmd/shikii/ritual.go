@@ -61,6 +61,24 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	var recs []guardRecord
 	var failed []string
 	remaining := 0
+	// The review first: when its line is in the block, it already asks for work prepare and work record, which sort out the plan
+	// too, so the plan's line must not ask for hook plan query and submit as well (they replace the receipt of work prepare: a real
+	// agent ran both flows and had its record refused, 2026-11-12).
+	var reasoning *reasoningProgress
+	reasoningLeftNow := 0
+	if r := snapshot.Reasoning; r != nil && r.Required && r.TurnID == snapshot.TurnID {
+		reasoning = r
+		reasoningLeftNow = reasoningLeft(r)
+		if reasoningLeftNow == 0 {
+			current, err := reasoningEvidenceCurrent(wikiBook(root, scope), r)
+			if err != nil {
+				return hookOut{}, err
+			}
+			if !current {
+				reasoningLeftNow++
+			}
+		}
+	}
 	// Plan: asked for (controls: Planning belongs to this turn) but no submit, and files were changed, or the message is short and
 	// outside the acknowledgement list so its grouping is still open (0.9.3: then only continues_previous is asked for)
 	// a turn the person's guard stopped is also GroupingAsked (so the Stop after the block judges it): only a short message's grouping was asked for
@@ -72,6 +90,9 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 			remaining++
 			if known && len(changed) > 0 {
 				reason = planningBlockReason(in.SessionID, snapshot.TurnID, len(changed))
+				if reasoningLeftNow > 0 {
+					reason = planningWithWorkReason(len(changed))
+				}
 				if grouping {
 					reason += " Include continues_previous (true or false) for this short message."
 				}
@@ -82,21 +103,12 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualPlan, Pass: pass, Reason: reason, Recheck: recheck})
 	}
-	if r := snapshot.Reasoning; r != nil && r.Required && r.TurnID == snapshot.TurnID {
-		left := reasoningLeft(r)
-		if left == 0 {
-			current, err := reasoningEvidenceCurrent(wikiBook(root, scope), r)
-			if err != nil {
-				return hookOut{}, err
-			}
-			if !current {
-				left++
-			}
-		}
+	if r := reasoning; r != nil {
+		left := reasoningLeftNow
 		reason := ""
 		if left > 0 {
 			remaining += left
-			reason = fmt.Sprintf("The built-in check %s needs a prepared start and a saved ending result. Pass %s to %s work prepare with topic words, read reasoning and the evidence, then use work record with its receipt and result. %s", ritualReasoning, planJSON(in.SessionID, snapshot.TurnID), hookExe(), reasoningView(r).Next)
+			reason = reasoningBlockReason(in.SessionID, snapshot.TurnID, r)
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReasoning, Pass: left == 0, Reason: reason, Recheck: recheck})
@@ -299,6 +311,30 @@ func groupingShort(g *requestGrouping) bool {
 func groupingBlockReason(sessionID, turnID string) string {
 	b, _ := json.Marshal(map[string]any{"session_id": sessionID, "turn_id": turnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}, "continues_previous": false})
 	return fmt.Sprintf("The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: pass %s on standard input to %s hook plan submit (continues_previous true when it only continues or answers the previous request and asks for nothing new), then finish", b, hookExe())
+}
+
+// workResultShape is the short shape of the ending result, as the notice and how_to_record write it.
+const workResultShape = "result:{changed,checked?,evidence?:[refs],remaining?}"
+
+// planningWithWorkReason is the plan's line of the Stop block when the review's line is in the same block: that line asks for
+// work prepare and work record, which sort out the plan as well.
+func planningWithWorkReason(changed int) string {
+	files := fmt.Sprintf("%d files were", changed)
+	if changed == 1 {
+		files = "1 file was"
+	}
+	return fmt.Sprintf("The plan has not been sorted out, yet %s changed and you are about to finish: the work prepare below sorts it out (add agreed and open to work record when the person agreed on something or a choice is open); do not also run hook plan query or hook plan submit, which replace its receipt.", files)
+}
+
+// reasoningBlockReason is the review's line of the Stop block: what is still missing and the one call that supplies it. After a
+// prepared start it asks only for the ending, with the receipt the agent holds (asking for work prepare again made agents prepare
+// twice).
+func reasoningBlockReason(sessionID, turnID string, r *reasoningProgress) string {
+	next := reasoningView(r).Next
+	if r.Start != nil || !r.PreparedAt.IsZero() {
+		return fmt.Sprintf("The built-in check %s has its prepared start and needs the saved ending result. Send the receipt of your work prepare and %s on standard input to %s work record (prepare again, with %s and topic words in query, only when you no longer hold the receipt). %s", ritualReasoning, workResultShape, hookExe(), planJSON(sessionID, turnID), next)
+	}
+	return fmt.Sprintf("The built-in check %s needs a prepared start and a saved ending result. Send %s with topic words in query on standard input to %s work prepare, read reasoning and the evidence, then send its receipt and %s the same way to work record. %s", ritualReasoning, planJSON(sessionID, turnID), hookExe(), workResultShape, next)
 }
 
 // planningBlockReason is the line of the Stop block when the plan was not sorted out but files were changed.

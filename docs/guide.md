@@ -630,7 +630,7 @@ need to restore the earlier binary and data together.
 ### Less recording work
 
 Ordinary tasks use two recording calls: prepare saves the start, then record takes
-result:{changed,checked?,evidence?,remaining?} with any needed notes/reflection.
+result:{changed,checked?,evidence?:[refs],remaining?} with any needed notes/reflection.
 Reference checked evidence once. No new knowledge means no wiki draft. An original
 report is saved before placement; saved-pending identifies remaining organization
 and failed refs can be retried without resending it. Internal scope/completion
