@@ -237,7 +237,7 @@ func TestRitualRecoveryOlderStopCannotReplenishProgress(t *testing.T) {
 	}
 }
 
-// A directory at the atomic write's temporary path fails on every OS, including root in a container.
+// blockRecoveryWrite makes the write of the session record id fail (through the seam writeSessionRecord) until restore is called.
 func blockRecoveryWrite(t *testing.T, root, id string) (restore func()) {
 	t.Helper()
 	blocked := sessionPath(root, id)

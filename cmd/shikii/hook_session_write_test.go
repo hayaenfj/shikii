@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// A write that fails (here at the rename: a folder with content in the place of the file) leaves no temporary file next to it:
+// A write that fails (here at the rename: a folder with content in the place of the file) leaves nothing new next to it:
 // a temporary file left there would stay after the file it was for is pruned.
 func TestFailedAtomicWriteLeavesNoTemporaryFile(t *testing.T) {
 	dir := t.TempDir()
@@ -23,10 +23,13 @@ func TestFailedAtomicWriteLeavesNoTemporaryFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".tmp") {
-			t.Fatalf("a failed write left its temporary file: %s", e.Name())
+	// only what was there before is left (an allow list: whatever name a temporary file takes, it is not there)
+	if len(entries) != 1 || entries[0].Name() != "record" {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
 		}
+		t.Fatalf("a failed write left something next to the record: %v", names)
 	}
 }
 
@@ -39,7 +42,8 @@ func TestAtomicWriteDoesNotFollowALinkAtTheTemporaryName(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, "record")
-	for _, name := range []string{fmt.Sprintf("%s.%d.tmp", p, os.Getpid()), p + ".tmp", p + ".new"} { // names a fixed temporary file could take
+	for _, name := range []string{fmt.Sprintf("%s.%d.tmp", p, os.Getpid()), p + ".tmp", p + ".new",
+		filepath.Join(dir, ".write.tmp"), filepath.Join(dir, ".write-.tmp"), filepath.Join(dir, ".write-0.tmp")} { // names a fixed temporary file could take
 		if err := os.Symlink(outside, name); err != nil {
 			t.Fatal(err)
 		}
