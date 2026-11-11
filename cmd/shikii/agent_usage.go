@@ -39,7 +39,7 @@ var agentUsages = map[string]agentUsage{
 			"The reply of prepare carries receipt and how_to_record: what record also takes (observations, notes, reviews, memory, reasoning).",
 			"result.evidence takes references (newN for observation N of the same call, knowledgeN, the id of a source this receipt saved, and current when the ids came from a hook notice), not text: what you checked goes in checked.",
 			"A message from the person during the work starts a new request: prepare with the ids of its notice, and carried in the reply names the pages and sources of the interrupted work that stay valid with the new receipt.",
-			fmt.Sprintf("max_bytes (%d to %d) in prepare bounds its reply; without it the CLI keeps the reply within %d bytes, which an agent's shell shows whole, and output names what was left out.", workMinBudget, workSourceBudget*3, cliPrepareBytes),
+			fmt.Sprintf("max_bytes (%d to %d) in prepare bounds its reply; without it the CLI keeps the reply within %d bytes, which an agent's shell shows whole, and output names what was left out. A request longer than that is not cut: the reply grows to hold it.", workMinBudget, workSourceBudget*3, cliPrepareBytes),
 		},
 	},
 	"hook plan": {

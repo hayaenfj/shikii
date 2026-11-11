@@ -666,12 +666,20 @@ func cmdWork(args []string) error {
 		return err
 	}
 	result, err := runWork(root, scope, args[0], req)
-	if err != nil && cliDefault && strings.Contains(err.Error(), "exceed max_bytes") {
+	if cliDefault {
 		// The person's request itself does not fit the CLI's own default (a request of 27 KB): the call the notice asks for was
-		// refused and the agent held no receipt (audit of 0.31.0). A task is never cut, so the default widens to the bound of
-		// the other entries; the receipt still comes first in the reply.
-		req.MaxBytes, _ = workOutputBudget(0)
-		result, err = runWork(root, scope, args[0], req)
+		// refused and the agent held no receipt (audit of 0.31.0). A task is never cut, so the default widens: to the bound of
+		// the other entries, and for a request that does not fit that either (60 KB and more; the hook keeps 64 KiB of it) to the
+		// largest bound a caller can name. The receipt still comes first in the reply. A refused preparation saves nothing, and
+		// the source it may write before the refusal has the same content and so the same id in the next attempt.
+		other, _ := workOutputBudget(0)
+		for _, wider := range []int{other, workSourceBudget * 3} {
+			if err == nil || !strings.Contains(err.Error(), "exceed max_bytes") {
+				break
+			}
+			req.MaxBytes = wider
+			result, err = runWork(root, scope, args[0], req)
+		}
 	}
 	if err != nil {
 		return err

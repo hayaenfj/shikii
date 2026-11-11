@@ -135,8 +135,18 @@ func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 			return reply
 		}
 	}
-	// nothing more to take off: the reply is over the bound and says so, rather than cutting the first conversation
-	reply, _ := try(current, 4, 0, heads, append(notes, "the reply is still over max_bytes: the first conversation and its deliveries are not cut")...)
+	// The first conversation alone is over the bound (a request with a pasted log of 30 KB): as the last step it comes as a head
+	// too, and output says so. Left whole it put the reply over the bound, which the agent's tool cuts blindly (audit of 0.31.0).
+	if len(current.Sources) == 1 && !current.Sources[0].Head {
+		current.Sources = []reflectSource{reflectHead(current.Sources[0])}
+		notes = append(notes, "the raw text of the first conversation (it alone is over max_bytes: read it with wiki query <its id>)")
+		if reply, fits := try(current, 4, 0, heads, notes...); fits {
+			return reply
+		}
+	}
+	// nothing more to take off: the reply is over the bound and says so, rather than cutting the targets and the keys of the
+	// deliveries of the first conversation, which submit needs
+	reply, _ := try(current, 4, 0, heads, append(append([]string{}, notes...), "the reply is still over max_bytes: the targets and the deliveries of the first conversation are not cut")...)
 	if reply == nil {
 		return view
 	}

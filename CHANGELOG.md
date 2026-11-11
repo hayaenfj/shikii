@@ -20,7 +20,7 @@
 
 - **Replies fit what the agent's tool can show**
 
-  On the command line the reply of `work prepare` is kept within 28 KiB, and the reply of `reflect query` is bounded too. When a reply does not fit, what matters for the next step stays (the top candidates of a search, the titles of the lessons, the pages waiting for review), with the way to read the rest. A request longer than that bound still comes whole.
+  On the command line the reply of `work prepare` is kept within 28 KiB, and the reply of `reflect query` is bounded too. When a reply does not fit, what matters for the next step stays (the top candidates of a search, the titles of the lessons, the pages waiting for review), with the way to read the rest. A request longer than that bound is not cut: the reply grows to hold it.
 
 - **A message you send mid-work no longer costs the agent what it had read**
 

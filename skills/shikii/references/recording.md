@@ -104,7 +104,7 @@ not preserve this new session progress.
 ### Bounded reading and memory upgrades
 
 prepare accepts optional max_bytes, 8192–393216 UTF-8 JSON bytes, for the complete
-response (default 65536; 28672 bytes on the CLI, a size an agent's shell shows whole).
+response (default 65536; 28672 bytes on the CLI, a size an agent's shell shows whole; a longer request is not cut, and the reply grows to hold it).
 output reports omitted fields and recovery directions.
 Use exact article/source queries only when necessary. Omitted text is not supplied
 or read; unavailable conditions, counterexamples and premise warnings remain

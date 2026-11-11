@@ -137,8 +137,9 @@ func TestTheReflectionQueryFitsWhatAnAgentsToolShows(t *testing.T) {
 // Every step of the bound, on a synthetic reply whose parts are each long: as the bound shrinks, the parts go in the order of
 // their use to the agent (lesson bodies, maintenance details, earlier corrections, the lessons at the end of the list, the raw text
 // of the second conversation), nothing taken off comes back while a less useful part is still there, and what submit needs is in
-// every reply: both conversations, their targets, the keys of their deliveries and how_to_submit. The first conversation is never
-// cut. When nothing more can go, the reply says that it is over the bound.
+// every reply: both conversations, their targets, the keys of their deliveries and how_to_submit. The first conversation is cut
+// to a head only as the last step, when it alone is over the bound, and output says so. When nothing more can go, the reply says
+// that it is over the bound.
 func TestTheReflectionBoundTakesTheLeastUsefulPartsFirst(t *testing.T) {
 	long := func(n int) string { return strings.Repeat("x", n) }
 	view := reflectView{HowToSubmit: "submit reviews, wiki and memory", Corrections: []any{map[string]any{"ai_reason": long(1500)}},
@@ -157,7 +158,7 @@ func TestTheReflectionBoundTakesTheLeastUsefulPartsFirst(t *testing.T) {
 	if got, ok := limitReflectQuery(view, whole, workContextSize).(reflectView); !ok || len(got.Lessons) != 6 {
 		t.Fatalf("a reply that fits is returned as it is")
 	}
-	steps := []string{"lessons[].body", "maintenance[] details", "human_corrections", "lessons after the first", "the raw text of the last 1 of the 2 conversations", "the last 1 conversations (counted in more_pending", "still over max_bytes"}
+	steps := []string{"lessons[].body", "maintenance[] details", "human_corrections", "lessons after the first", "the raw text of the last 1 of the 2 conversations", "the last 1 conversations (counted in more_pending", "the raw text of the first conversation", "still over max_bytes"}
 	reached := 0 // how far down the steps the replies have gone
 	for bound := whole - 1; bound > 800; bound -= 150 {
 		raw, _ := json.Marshal(limitReflectQuery(view, bound, workContextSize))
@@ -186,10 +187,12 @@ func TestTheReflectionBoundTakesTheLeastUsefulPartsFirst(t *testing.T) {
 		}
 		sources := reply["sources"].([]any)
 		first := sources[0].(map[string]any)
-		if first["head"] == true || !strings.HasPrefix(first["source_material"].(map[string]any)["request"].(string), "first "+long(700)) ||
+		firstCut := strings.Contains(omitted, steps[6]) // only after the second conversation waits
+		if (first["head"] == true) != firstCut || firstCut && !strings.Contains(omitted, steps[5]) ||
+			!firstCut && !strings.HasPrefix(first["source_material"].(map[string]any)["request"].(string), "first "+long(700)) ||
 			first["targets"].([]any)[0].(map[string]any)["trace_id"] != "1111111111111111" ||
 			first["memories"].([]any)[0].(map[string]any)["quote"].(map[string]any)["key"] != "lesson:1:1" || reply["how_to_submit"] != view.HowToSubmit {
-			t.Fatalf("at %d bytes what submit needs is not all there, or the first conversation is cut: %.400s", bound, raw)
+			t.Fatalf("at %d bytes what submit needs is not all there, or the first conversation is cut before the last step: %.400s", bound, raw)
 		}
 		// the second conversation is listed with its target and its delivery, or it waits and is counted
 		waits := strings.Contains(omitted, steps[5])

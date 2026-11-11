@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -214,5 +216,63 @@ func TestAuditDGap_ASecondPreparationGoesOnNumbering(t *testing.T) {
 	two := observe(second, "Dates")
 	if one != "observed1" || two == one {
 		t.Errorf("the second preparation of the same request names its first observation %s, the name the first preparation gave to another source (%s)", two, one)
+	}
+}
+
+// A-4 [INVARIANT 4, 14]: a request of the person longer than the widened default. The call the notice asks for (no max_bytes) is
+// refused and the agent holds no receipt; the changelog says such a request "still comes whole".
+func TestAuditD_A4_VeryLongRequest(t *testing.T) {
+	for _, size := range []int{58 << 10, 62 << 10, 66 << 10, 100 << 10} { // 58 KiB is the control (passes)
+		t.Run(fmt.Sprintf("%d bytes", size), func(t *testing.T) {
+			repo, _, _ := planningFixture(t)
+			t.Chdir(repo)
+			prompt := "Use the agreed CSV columns and keep the existing filters. The log follows.\n" + strings.Repeat("2026-11-12 12:00:00 export row written with filters kept\n", size/56)
+			notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
+			prepared, out, err := auditDCLI(t, strings.TrimSuffix(auditDIDs.FindString(notice), "}")+`,"query":"CSV export filters"}`, "work", "prepare")
+			task, _ := prepared["task"].(string)
+			t.Logf("a request of %d bytes: err=%v, reply %d bytes, receipt=%v, task %d bytes", len(prompt), err, len(out), prepared["receipt"] != nil, len(task))
+			if err != nil {
+				t.Errorf("the call the notice asks for is refused, and the agent holds no receipt: %v", err)
+			}
+		})
+	}
+}
+
+// A-5 [INVARIANT 14]: docs/guide.md:180 and guide.ja.md:31, the help of shikii work and recording.md:107 say that without max_bytes
+// the CLI keeps a prepare reply within 28672 bytes, "a size an agent's shell shows whole". With a long request it does not (the fix
+// of A-5 of the first round widens the default), and none of them says so.
+func TestAuditD_A5_DefaultReplyOverTheDocumentedBound(t *testing.T) {
+	repository, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, _, _ := planningFixture(t)
+	t.Chdir(repo)
+	prompt := "Use the agreed CSV columns and keep the existing filters. The log follows.\n" + strings.Repeat("2026-11-12 12:00:00 export row written with filters kept\n", (40<<10)/56)
+	notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
+	_, out, err := auditDCLI(t, strings.TrimSuffix(auditDIDs.FindString(notice), "}")+`,"query":"CSV export filters"}`, "work", "prepare")
+	if err != nil {
+		t.Fatal(err)
+	}
+	help := agentUsages["work"].text()
+	note := help[strings.Index(help, "max_bytes ("):]
+	t.Logf("the help says: %.200s", note)
+	if len(out) <= cliPrepareBytes {
+		t.Fatalf("precondition: the reply of a request of %d bytes is over the CLI's own bound: %d bytes", len(prompt), len(out))
+	}
+	if !strings.Contains(note, "A request longer than that is not cut: the reply grows to hold it.") {
+		t.Errorf("a request of %d bytes, no max_bytes: the reply is %d bytes, and the help says only that the CLI keeps it within %d: %s", len(prompt), len(out), cliPrepareBytes, note)
+	}
+	for _, doc := range []string{"docs/guide.md", "docs/guide.ja.md", "skills/shikii/references/recording.md"} {
+		text, err := os.ReadFile(filepath.Join(repository, doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(text), "\n") {
+			// the guides also name the bound of reflect query, on lines of their own
+			if strings.Contains(line, "28672") && (strings.HasSuffix(doc, "recording.md") || strings.Contains(strings.ToLower(line), "prepare")) && !strings.Contains(line, "is not cut") && !strings.Contains(line, "\u5207\u3089\u305a") {
+				t.Errorf("%s names the CLI's bound without the request that is longer than it: %.160s", doc, line)
+			}
+		}
 	}
 }

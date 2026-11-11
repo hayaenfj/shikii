@@ -227,7 +227,22 @@ func reflectHead(s reflectSource) reflectSource {
 		}
 		cutMemories = append(cutMemories, o)
 	}
-	return reflectSource{Source: source, Targets: s.Targets, WikiPending: s.WikiPending, Memories: cutMemories, Head: true}
+	// The targets keep what submit needs (spec, trace_id, the question); the texts they carry are cut like the conversation's own:
+	// a target holds the whole request in original_inputs, so a head of a conversation with a pasted log was as large as the
+	// conversation itself and made every conversation after it wait (audit of 0.31.0).
+	cutTargets := make([]reviewTarget, 0, len(s.Targets))
+	for _, target := range s.Targets {
+		target.Files = cut(target.Files, reflectHeadBytes)
+		if len(target.OriginalInputs) > 0 {
+			inputs := make(map[string]string, len(target.OriginalInputs))
+			for key, text := range target.OriginalInputs {
+				inputs[key] = cut(text, reflectHeadBytes)
+			}
+			target.OriginalInputs = inputs
+		}
+		cutTargets = append(cutTargets, target)
+	}
+	return reflectSource{Source: source, Targets: cutTargets, WikiPending: s.WikiPending, Memories: cutMemories, Head: true}
 }
 
 type reflectReceipt struct {
