@@ -119,6 +119,8 @@ func heldSource(w *workState, id string) bool {
 }
 
 func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve func([]string) ([]string, error)) ([]string, error) {
+	w.citingEvidence = true
+	defer func() { w.citingEvidence = false }()
 	bound := []string{}
 	for _, ref := range refs {
 		if !assignmentText(ref, 200, true) {

@@ -37,7 +37,7 @@ func handoverOf(w *workState) *workHandover {
 		return n
 	}
 	for ref, id := range w.Sources {
-		if observedNumber(ref) > 0 && id != "" {
+		if observedNumber(ref) > 0 && id != "" && !w.Reports[id] { // what the agent observed, not what the work reported about itself
 			h.Sources[ref] = id
 		}
 	}
@@ -55,10 +55,10 @@ func handoverOf(w *workState) *workHandover {
 	return h
 }
 
-// interruptedHandover is what the request a new message replaces hands over: nothing when the agent finished it (its Stop came)
-// or it belongs to another project. A request that was itself interrupted before it prepared passes on what it was handed.
+// interruptedHandover is what the request a new message replaces hands over: nothing when the agent finished it (a Stop let the
+// turn end; a Stop a check stopped does not, the agent works on) or it belongs to another project. A request that was itself interrupted before it prepared passes on what it was handed.
 func interruptedHandover(s *hookSession, scope string) *workHandover {
-	if s.Scope != scope || s.Planning == nil || s.TurnID == "" || s.Completed != nil && s.Completed.TurnID == s.TurnID {
+	if s.Scope != scope || s.Planning == nil || s.TurnID == "" || s.EndedTurn == s.TurnID {
 		return nil
 	}
 	if s.Planning.Work != nil {
@@ -90,7 +90,7 @@ func takeOver(w *workState, h *workHandover) map[string]any {
 		return nil
 	}
 	return map[string]any{"articles": articles, "sources": sources,
-		"next_action": "The person's message came while the earlier request was still being worked on. These references of that work are valid with this receipt: cite or edit the pages without reading them again, and cite the saved sources. Its result, plan and reviews were not taken over: record with this receipt."}
+		"next_action": "The person's message came while the earlier request was still being worked on. These references of that work are valid with this receipt: cite the pages and the saved sources without reading them again, and edit the pages that work did not edit. A page that work edited is read again before another edit (prepare with this receipt and query lesson:<id>). Its result, plan and reviews were not taken over: record with this receipt."}
 }
 
 // preparedArticleRef names a page revision in a preparation: the reference the work already has for it (taken over from an

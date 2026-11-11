@@ -29,18 +29,42 @@ func validateWorkCompletion(c *workCompletion) error {
 	return nil
 }
 
-// selfEvidence refuses evidence that names the result itself. The report is saved as a source of its own (under the next observedN
-// name, and as result), so a result with nothing observed could cite itself and be complete.
+// selfEvidence refuses evidence that names the result itself, or another report this work wrote about itself (an earlier result,
+// an ending review). Such a report is saved as a source of its own (under the next observedN name, and as result), so a result with
+// nothing observed could cite it and be complete; two reports could cite each other (audit of 0.31.0).
 func selfEvidence(w *workState, result string, refs []string) error {
-	if result == "" {
-		return nil
-	}
 	for _, ref := range refs {
-		if ref == result || w.Sources[ref] == result {
-			return fmt.Errorf("evidence %q is this result itself: cite what you checked (an observation of this call as new1, a saved observation, a page you read or current), or leave evidence out", ref)
+		id := w.Sources[ref]
+		if id == "" {
+			id = ref
 		}
+		what := ""
+		switch {
+		case result != "" && id == result:
+			what = "this result itself"
+		case w.Reports[id]:
+			what = "a report this work wrote about itself (an earlier result or an ending review), not something it observed"
+		default:
+			continue
+		}
+		cite := "an observation of this call as new1, a saved observation, a page you read"
+		if !w.Standalone {
+			cite += " or current"
+		}
+		return fmt.Errorf("evidence %q is %s: cite what you checked (%s), or leave evidence out", ref, what, cite)
 	}
 	return nil
+}
+
+// markReport notes a source this work wrote about itself.
+func markReport(w *workState, id string) {
+	if id == "" {
+		return
+	}
+	if w.Reports == nil {
+		w.Reports = map[string]bool{}
+	}
+	w.Reports[id] = true
 }
 
 // Save the original agent report before interpretation or placement. Local
@@ -94,6 +118,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		return item, err
 	}
 	w.Sources["result"] = id
+	markReport(w, id)
 	w.Result = &workCompletionRef{ReviewGeneration: w.Reasoning.Generation, Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
 	w.Reasoning.Result = w.Result
 	if w.Reasoning.PendingResults == nil {

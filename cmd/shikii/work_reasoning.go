@@ -488,6 +488,7 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 		if err != nil {
 			return item, err
 		}
+		markReport(w, source)
 		item.ID = source
 	}
 	entry := &reasoningEntry{workReasoning: bound, Key: key, Source: item.ID, Generation: r.Generation, At: time.Now().UTC()}

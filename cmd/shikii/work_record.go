@@ -171,6 +171,15 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 			}
 			if id == "" {
 				usable := sortedRefs(w.Sources)
+				if w.citingEvidence { // the work's own reports are sources, and not evidence (selfEvidence refuses them)
+					kept := usable[:0]
+					for _, name := range usable {
+						if !w.Reports[w.Sources[name]] {
+							kept = append(kept, name)
+						}
+					}
+					usable = kept
+				}
 				if !w.Standalone {
 					usable = append(usable, "current")
 				}

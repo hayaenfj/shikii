@@ -334,6 +334,20 @@ func TestAResultIsNotItsOwnEvidence(t *testing.T) {
 			}
 		}
 	}
+	// a receipt without hook ids has no current request: the reply does not offer it, and the refusal names nothing the result
+	// cannot cite (before, it named observed1 and result, the result's own reports, whose refusal named current again: B-I1)
+	if how, _ := prepared["how_to_record"].(string); strings.Contains(how, "(current,") || !strings.Contains(how, "(newN for observation N") {
+		t.Errorf("a receipt without hook ids is not told to cite current: %s", how)
+	}
+	got := refused(record(map[string]any{"result": map[string]any{"changed": "Renamed the button, citing the request.", "evidence": []any{"current"}}}))
+	if !strings.Contains(got, `unknown source reference "current"`) || !strings.Contains(got, "new1") || strings.Contains(got, "observed") || strings.Contains(got, "result") {
+		t.Errorf("the refusal of current names what this result can cite: %q", got)
+	}
+	// an earlier report of this work is not evidence either, under its observedN name (audit of 0.31.0, A-1)
+	got = refused(record(map[string]any{"result": map[string]any{"changed": "Renamed the button, citing my first report.", "evidence": []any{"observed1"}}}))
+	if !strings.Contains(got, `evidence "observed1" is a report this work wrote about itself`) || strings.Contains(got, "or current") {
+		t.Errorf("an earlier report of the same work is refused as evidence: %q", got)
+	}
 	saved := record(map[string]any{"observations": []any{map[string]any{"kind": "test", "title": "Button", "content": "The button reads Export."}}, "result": map[string]any{"changed": "Renamed the button, checked.", "checked": "Read the page.", "evidence": []any{"new1"}}})
 	if got := refused(saved); got != "" {
 		t.Fatalf("a result that cites an observation of its call is saved: %s", got)

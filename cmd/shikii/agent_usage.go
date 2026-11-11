@@ -37,7 +37,7 @@ var agentUsages = map[string]agentUsage{
 		},
 		Notes: []string{
 			"The reply of prepare carries receipt and how_to_record: what record also takes (observations, notes, reviews, memory, reasoning).",
-			"result.evidence takes references (current, newN for observation N of the same call, knowledgeN, or the id of a source this receipt saved), not text: what you checked goes in checked.",
+			"result.evidence takes references (newN for observation N of the same call, knowledgeN, the id of a source this receipt saved, and current when the ids came from a hook notice), not text: what you checked goes in checked.",
 			"A message from the person during the work starts a new request: prepare with the ids of its notice, and carried in the reply names the pages and sources of the interrupted work that stay valid with the new receipt.",
 			"max_bytes (8192 to 393216) in prepare bounds its reply; without it the CLI keeps the reply within 28672 bytes, which an agent's shell shows whole, and output names what was left out.",
 		},

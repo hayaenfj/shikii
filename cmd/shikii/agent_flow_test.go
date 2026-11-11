@@ -312,6 +312,11 @@ func TestAMessageDuringWorkHandsItsReferencesToTheNextPreparation(t *testing.T) 
 	if carried == nil || fmt.Sprint(carried["articles"]) != "["+ref+"]" || fmt.Sprint(carried["sources"]) != "[observed1]" || !strings.Contains(fmt.Sprint(carried["next_action"]), "without reading") {
 		t.Fatalf("the preparation of the new request names what it took over: %v", second["carried"])
 	}
+	// carried says what holds: a page the interrupted work edited is read again before another edit, as within one receipt (audit
+	// of 0.31.0, B-A5: it said "cite or edit the pages without reading them again", and such an edit is refused)
+	if next := fmt.Sprint(carried["next_action"]); !strings.Contains(next, "A page that work edited is read again before another edit") || strings.Contains(next, "cite or edit the pages") {
+		t.Errorf("carried says which pages can be edited without reading them again: %s", next)
+	}
 	// the new receipt cites the page the interrupted work read and edited, and a new page names the source that work saved
 	saved, refusal = record(second, `"observations":[{"kind":"test","title":"Totals again","content":"The totals still match."}],"notes":[{"target":"new","title":"CSV totals","lesson":"Check the totals of the CSV export.","applies_to":"CSV export totals","kind":"rule","scene":"when exporting CSV","body":"Checked the totals.","sources":["observed1"]}],"result":{"changed":"Checked the totals.","checked":"Read the export.","evidence":["`+ref+`","new1"]}`)
 	if saved == nil || errorsOf(saved) != "" {

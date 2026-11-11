@@ -72,6 +72,14 @@ func runHookEvent(event string) error {
 	case "stop":
 		in.stopRecords = &stopRecords
 		out, muts, err = hookStop(agent, &in, snapshot)
+		if err == nil && !out.Block { // this Stop lets the turn end, with or without a last message (work_handover.go)
+			ended := snapshot.TurnID
+			muts = append(muts, func(s *hookSession) {
+				if s.TurnID == ended {
+					s.EndedTurn = ended
+				}
+			})
+		}
 		muts = append(muts, func(s *hookSession) { summary = stopSummary(agent, s) }) // the waiting-answers summary is counted on the record after this turn's decisions are added
 	case "subagent-start":
 		out, muts, err = hookSubagentStart(agent, &in, snapshot) // the parent's record only drops the used task for the child

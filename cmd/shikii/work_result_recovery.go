@@ -109,6 +109,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 		if e != nil {
 			return item, e
 		}
+		markReport(w, pending.Source)
 	}
 	item.ID = pending.Source
 	diagnostic, e := book.ReadSources([]string{pending.Source})
