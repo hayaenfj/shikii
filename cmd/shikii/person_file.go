@@ -88,7 +88,11 @@ func writePersonFileTo(path string, content []byte, newMode os.FileMode) error {
 	return werr
 }
 
-// personFileWritable reports whether the person can write the file: access(2) looks at the mode, the owner, ACLs and immutable flags.
+// accessPersonFile is access(2); tests replace it together with openPersonFile to act like a disk mounted read-only.
+var accessPersonFile = syscall.Access
+
+// personFileWritable reports whether the person can write the file: access(2) looks at the mode, the owner, ACLs, immutable flags
+// and a disk mounted read-only. It asks without opening the file, so what is only shown (a preview) can ask it too.
 func personFileWritable(path string) bool {
-	return syscall.Access(path, 0x2) == nil // W_OK
+	return accessPersonFile(path, 0x2) == nil // W_OK
 }

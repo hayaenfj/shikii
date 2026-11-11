@@ -16,36 +16,54 @@ import (
 // the person's is theirs, and shikii leaves it alone.
 const codexToolsAllowedLine = `default_tools_approval_mode = "approve"`
 
-// codexToolsAllowed is config.toml's text b with codexToolsAllowedLine added to the shikii block; ok is false when the file is left
-// as it is. Only the block shikii wrote itself gets the line: exactly its three lines with shikii as the command, with nothing a
-// person added (their own approval choice and a comment included) and not the line already. The edit is read back: Codex must read the same server plus the approval,
-// and every other setting unchanged.
-func codexToolsAllowed(b []byte, args []string) ([]byte, bool) {
-	text := string(b)
+// codexCommandIsShikii reports whether the command of a registration is a shikii binary. Three forms pass and nothing else: the bare
+// name, the path shikii writes into a registration (mcpCommand), and an absolute path to a file named exactly shikii (another
+// install). Every other command is one the person wrote, a wrapper named after shikii included (shikii-wrapper.sh, shikii.sh,
+// shikii_with_key, shikiiX: 0.31.0 audit C, A-7). codexServerFixed leaves an existing command of the person's alone in the same way.
+func codexCommandIsShikii(command string) bool {
+	return command == "shikii" || command == mcpCommand() || (filepath.IsAbs(command) && filepath.Base(command) == "shikii")
+}
+
+// codexShikiiBlock reads the head of the one [mcp_servers.shikii] block in config.toml's text as shikii writes it: the command line
+// and the args line. end is where the args line ends. ok is false when there is no such block, more than one, or these two lines are
+// not in shikii's form.
+func codexShikiiBlock(text string, args []string) (command string, end int, ok bool) {
 	if strings.Count(text, "[mcp_servers.shikii]") != 1 {
-		return nil, false
+		return "", 0, false
 	}
 	head := "[mcp_servers.shikii]\ncommand = "
 	i := strings.Index(text, head)
 	if i < 0 {
-		return nil, false
+		return "", 0, false
 	}
 	line, after, ok := strings.Cut(text[i+len(head):], "\n")
 	if !ok {
-		return nil, false
+		return "", 0, false
 	}
 	command, err := strconv.Unquote(line)
 	if err != nil {
-		return nil, false
+		return "", 0, false
 	}
 	argsLine, _, ok := strings.Cut(after, "\n")
 	if !ok || argsLine != "args = ["+quotedList(args)+"]" {
-		return nil, false // args a person changed, or an older version's form
+		return "", 0, false // args a person changed, or an older version's form
 	}
-	if command != "shikii" && command != mcpCommand() && !(filepath.IsAbs(command) && strings.HasPrefix(filepath.Base(command), "shikii")) {
-		return nil, false // a command the person wrote (another program, a wrapper): not the name or a path of a shikii binary
+	return command, i + len(head) + len(line) + 1 + len(argsLine) + 1, true
+}
+
+// codexToolsAllowed is config.toml's text b with codexToolsAllowedLine added to the shikii block; ok is false when the file is left
+// as it is. Only the block shikii wrote itself gets the line: exactly its three lines with a shikii binary as the command
+// (codexCommandIsShikii), with nothing a person added (their own approval choice and a comment included) and not the line already.
+// The edit is read back: Codex must read the same server plus the approval, and every other setting unchanged.
+func codexToolsAllowed(b []byte, args []string) ([]byte, bool) {
+	text := string(b)
+	command, end, ok := codexShikiiBlock(text, args)
+	if !ok {
+		return nil, false
 	}
-	end := i + len(head) + len(line) + 1 + len(argsLine) + 1
+	if !codexCommandIsShikii(command) {
+		return nil, false // a command the person wrote (another program, a wrapper)
+	}
 	if next := text[end:]; next != "" && !strings.HasPrefix(next, "\n") && !strings.HasPrefix(next, "[") {
 		return nil, false // a line the person added to the block: a comment is theirs too, and reading the file back does not show it
 	}
@@ -58,6 +76,19 @@ func codexToolsAllowed(b []byte, args []string) ([]byte, bool) {
 		return nil, false
 	}
 	return []byte(allowed), true
+}
+
+// codexToolsAlreadyAllowed reports whether b holds shikii's own block with the approval line, as codexToolsAllowed writes it. The
+// line right after shikii's args line is taken out, and what is left must be a block codexToolsAllowed adds the line to, giving b
+// back: so a block with a command or a line of the person's, or in an older form, does not count, by the same checks.
+func codexToolsAlreadyAllowed(b []byte, args []string) bool {
+	text := string(b)
+	_, end, ok := codexShikiiBlock(text, args)
+	if !ok || !strings.HasPrefix(text[end:], codexToolsAllowedLine+"\n") {
+		return false
+	}
+	allowed, ok := codexToolsAllowed([]byte(text[:end]+text[end+len(codexToolsAllowedLine)+1:]), args)
+	return ok && string(allowed) == text
 }
 
 // codexToolsAllowedMark is where shikii notes that it added the line once. A person who then deletes the line has chosen to be
@@ -83,19 +114,22 @@ func allowCodexTools(path string) error {
 		return nil // no file, or unreadable: nothing to add to
 	}
 	allowed, ok := codexToolsAllowed(b, codexServerArgs)
+	mark := codexToolsAllowedMark()
 	if !ok {
+		// The line is in shikii's own block and the note is not: ~/.shikii was emptied and shikii set up again while ~/.codex stayed,
+		// or the person wrote the line themselves. Note it now. Without the note, the block the person later takes the line out of
+		// looks like an earlier version's, and the line would come back once (0.31.0 audit C, U-3).
+		if mark != "" && !fileExists(mark) && codexToolsAlreadyAllowed(b, codexServerArgs) {
+			return noteCodexToolsAllowed(mark)
+		}
 		return nil
 	}
-	mark := codexToolsAllowedMark()
 	if mark != "" && fileExists(mark) {
 		return nil // shikii added the line before, and the person took it out
 	}
 	// the note first: without it a later deletion by the person could not be told from an earlier version's block
 	if mark != "" {
-		if err := os.MkdirAll(filepath.Dir(mark), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(mark, []byte(codexToolsAllowedLine+"\n"), 0o644); err != nil {
+		if err := noteCodexToolsAllowed(mark); err != nil {
 			return err
 		}
 	}
@@ -111,4 +145,12 @@ func allowCodexTools(path string) error {
 	}
 	fmt.Fprintf(stdout, "%s: shikii's MCP tools now run without Codex asking each time (added %s to the shikii server; to be asked, write \"prompt\" in place of \"approve\" or delete the line: shikii does not add it again) (Codex; reopen Codex)\n", shown, codexToolsAllowedLine)
 	return nil
+}
+
+// noteCodexToolsAllowed writes the note that the shikii block has had the approval line.
+func noteCodexToolsAllowed(mark string) error {
+	if err := os.MkdirAll(filepath.Dir(mark), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(mark, []byte(codexToolsAllowedLine+"\n"), 0o644)
 }

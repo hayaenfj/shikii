@@ -212,11 +212,18 @@ func hookInstall(args []string, install bool) error {
 		}
 		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool, except that a guard the person enabled refuses a command right before it runs. Claude Code and Codex.\n")
 		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page is one per project: the first request's hook starts it on a free port, records it in ~/.shikii/agent/pages/, and opens it in the browser\n", hookLocalURL)
-		// shown before it is added: Codex will no longer ask before each call of shikii's MCP tools (codex_tools_allowed.go)
-		if b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml")); err == nil {
-			info, _ := os.Stat(filepath.Join(home, ".codex", "config.toml"))
-			if _, ok := codexToolsAllowed(b, codexServerArgs); ok && info != nil && info.Mode().Perm()&0o200 != 0 && !fileExists(codexToolsAllowedMark()) {
-				fmt.Fprintf(stdout, "   %s: Codex will run shikii's MCP tools without asking each time (adds %s to the shikii server shikii wrote; write \"prompt\" in its place to be asked)\n", tilde(filepath.Join(home, ".codex", "config.toml")), codexToolsAllowedLine)
+		// shown before it is added: Codex will no longer ask before each call of shikii's MCP tools (codex_tools_allowed.go). The
+		// preview decides as the install below does: on the registration as fixCodexServer leaves it (a command that is gone is
+		// pointed at this binary first), on whether the file can be written (personFileWritable, as the write finds it: the mode
+		// bits alone say nothing of a disk mounted read-only, an ACL or an immutable flag; 0.31.0 audit D, U-3), and on the note
+		if config := filepath.Join(home, ".codex", "config.toml"); personFileWritable(config) && !fileExists(codexToolsAllowedMark()) {
+			if b, err := os.ReadFile(config); err == nil {
+				if fixed, ok := codexServerFixed(b, codexServerArgs, mcpCommand()); ok {
+					b = fixed
+				}
+				if _, ok := codexToolsAllowed(b, codexServerArgs); ok {
+					fmt.Fprintf(stdout, "   %s: Codex will run shikii's MCP tools without asking each time (adds %s to the shikii server shikii wrote; write \"prompt\" in its place to be asked)\n", tilde(config), codexToolsAllowedLine)
+				}
 			}
 		}
 	} else {
