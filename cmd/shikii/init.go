@@ -39,6 +39,11 @@ func cmdInit(args []string) error {
 	if isSharedPlaceScope(scope) {
 		return errors.New("the home folder is not initialized (~/.shikii is the shared store). Run this in a project folder")
 	}
+	// before anything registers this project: is it the first one on this machine? (the hooks are installed for a first project only)
+	firstProject := false
+	if agent, err := agentHome(); err == nil {
+		firstProject = len(registeredProjects(agent)) == 0
+	}
 	if notice := relinkMovedProject(scope, true); strings.HasPrefix(notice, "shikii:") { // a moved folder (0.9.7)
 		fmt.Fprintln(stdout, "Reconnected this project at its new path (its wiki and records are kept)")
 	} else if notice != "" { // a copy, or a .shikii from elsewhere, the person makes a project of its own
@@ -113,7 +118,7 @@ func cmdInit(args []string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintln(stdout, "No HOME, so the shared Codex settings and the skill are skipped; only the project side is prepared")
-		return completeProjectInit(root, scope, version, "")
+		return completeProjectInit(root, scope, version, "", false)
 	}
 	codex := filepath.Join(home, ".codex", "config.toml")
 	// Codex reads only this shared registration and starts the server in the folder its daemon started in, so it names no store:
@@ -147,25 +152,40 @@ func cmdInit(args []string) error {
 		}
 		fmt.Fprintf(stdout, "skill: updated %s\n", filepath.Join("~", rel))
 	}
-	return completeProjectInit(root, scope, version, home)
+	return completeProjectInit(root, scope, version, home, firstProject)
 }
 
-// completeProjectInit marks the project as initialized and says what happens next. The page and the recording are the hook's work,
-// so they are promised only when an agent has a shikii hook: init does not install the hooks (hook install shows first what it
-// changes in the person's settings and takes --yes), and without them it said "Ready ... make requests as usual" on a machine
-// where nothing would be recorded. home is "" where there is no HOME to look in.
-func completeProjectInit(root, scope string, version int, home string) error {
+// completeProjectInit marks the project as initialized, installs the hooks for the first project on a machine and says what
+// happens next. The page and the recording are the hook's work, so they are promised only when an agent has a shikii hook.
+//
+// A machine with no shikii hook and no project yet belongs to someone new: init installs the hooks as hook install --yes does, so
+// one command is enough (before, init said "Ready ... make requests as usual" there and nothing was ever recorded). A machine that
+// already has projects and no hooks belongs to someone who uses shikii without them (MCP and the skill only; running init again
+// there is how they refresh the skill, and it leaves the hooks disabled): init leaves them out and says which command installs
+// them. home is "" where there is no HOME to look in.
+func completeProjectInit(root, scope string, version int, home string, firstProject bool) error {
 	if err := finishProjectInit(root, scope, version); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "Ready: %s\n", scope)
-	if home != "" && len(agentsWithShikiiHook(home)) == 0 {
+	exe := shellQuote(mcpCommand())
+	hooks := home == "" || len(agentsWithShikiiHook(home)) > 0
+	if !hooks && firstProject {
+		fmt.Fprintf(stdout, "Hooks: none installed and this is the first project on this machine, so shikii installs them now, as %s hook install --yes does (%s hook uninstall --yes removes them, and init does not add them again):\n", exe, exe)
+		if err := hookInstall([]string{"--yes"}, true); err != nil {
+			fmt.Fprintf(stdout, "Hooks: could not be installed (%v), so requests in this project are not recorded and the page does not start. Fix that, then run %s hook install --yes.\n", err, exe)
+			fmt.Fprintln(stdout, "Next: after the hooks are installed, make requests in this project as usual. New MCP settings take effect from the next session.")
+			fmt.Fprintln(stdout, "To add a business decision, run shikii new <id>. To start the model by hand, run shikii up.")
+			return nil
+		}
+		hooks = len(agentsWithShikiiHook(home)) > 0
+	}
+	if !hooks {
 		var files []string
 		for _, target := range hookTargets {
 			files = append(files, "~/"+filepath.ToSlash(target.rel))
 		}
-		exe := shellQuote(mcpCommand())
-		fmt.Fprintf(stdout, "Hooks: not installed (no shikii hook in %s), so requests in this project are not recorded and the page does not start. See what the hooks add with %s hook install, then install them with %s hook install --yes (once on this machine). An agent without hooks (OpenCode) uses the MCP server and the skill set up above.\n", strings.Join(files, " or "), exe, exe)
+		fmt.Fprintf(stdout, "Hooks: not installed (no shikii hook in %s), so requests in this project are not recorded and the page does not start. This machine already has shikii projects, so init leaves the hooks as they are: see what they add with %s hook install, then install them with %s hook install --yes. An agent without hooks (OpenCode) uses the MCP server and the skill set up above.\n", strings.Join(files, " or "), exe, exe)
 		fmt.Fprintln(stdout, "Next: after the hooks are installed, make requests in this project as usual. New MCP settings take effect from the next session.")
 	} else {
 		fmt.Fprintln(stdout, "Page: the hook starts it on the agent's first request (on a free port) and opens it in the browser. Get the URL with shikii page")
