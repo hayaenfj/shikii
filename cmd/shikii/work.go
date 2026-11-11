@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -584,12 +585,18 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 const workHowToRecord = "Optional reading:{check,sufficient,evidence:[captured refs]} reports checked reading quality against automatically measured knowledge bytes and full recoveries. Inspect attention.learning for a candidate or adopted depth; compare with focused on another task using the same check. An omission retracts that default. Recover an interrupted reading with reading:{ref} only. Never invent quality reports. Prepare may use reasoning:{depth:brief|focused|deep} alone as a reading intent, never a saved start. Optional trial:{plan:{case,question,expected,method,conditions,decision,effort:small|medium|large,evidence}} then trial:{ref,result:{assessment:supports|challenges|inconclusive,observed,evidence,measurements?}} records an actual check. Cite challenged results by trial ref in the next judgment. comparison:{before,after,reason} compares matched saved executions; ref-only retries recover pending captures. reasoning.depth:brief|focused|deep and next_trial refine reading and the next check. No trial is required without a decision-changing uncertainty. reasoning:{phase:start|update|finish,focus,assessment:revise|retain|unresolved,reason,evidence:[current|knowledgeN|observedN|newN],next_action,result?}: save a concise evidence-linked judgment at start, update it when work changes the premise, and finish with the checked result. Do not report private deliberation. Retaining an approach and evidence gaps are valid; do not invent discoveries or experiments. New saved work evidence reopens finish. Resolve failed/pending notes first. This is not permission, success or a human truth. Use record with this receipt and the content you judged. agreed/open: {summary,quotes:[{ref,text}]} or {unknown:true}; open defaults to unknown; continues_previous: true only for a continuation with no new request, false for an addition, omit when unsure. Keep summaries within 600 bytes, with 1-3 verbatim quotes of at most 240 bytes each. Quote current/previous human words for agreement. reviews:[{ref,answer:yes|no|unknown,reason}], memory:[{ref,result,decision,evidence,correction_result?}], reviewed:[source/evidence refs] when no lasting lesson; knowledgeN confirms inspected initial evidence, changeN acknowledges only the inspected change, never usefulness. observations:[{kind,title,content,reference?,version?}] become immutable sources with time and recording version supplied; new1 names the first observation in this call. notes:[{title,lesson,body,applies_to,kind,scene,sources:[refs],target?,edits?}]. For a read article use target knowledgeN and exact edits and/or passages:[{role,quote,conditions,reason}]; metadata and revisions are retained. Read orientation before mixed chronology; unclassified text and changed premises remain unresolved. For a new note placement runs internally; if uncertain, read the returned candidates and resubmit that note with target new or a returned article ref and edits. Add knowledge mid-work with prepare:{receipt,query} (optional cursor), or pass proposal for consult or conditions for reuse. Keep the returned article refs and the same receipt. Record evidenced discoveries:[{ref,context,decision,evidence,case_id?}]. Record procedure executions with outcomes:[{ref,conditions,action,failure?,correction?,result,sources:[observation refs]}]; this reports an outcome, never success or a truth. Handle procedure_reviews by checking current text, correction and evidence, then save a supported note. Notes return updated procedure_reviews; check the change and complete review with maintenance:[{ref,reason}] using that latest ref. An edit alone does not complete review; old refs are refused. With no edit, save the checked reason with the original ref. Check complete, errors and pending; resend corrected content with the same receipt. Read/saved is never helpfulness, permission or human truth."
 
 func cmdWork(args []string) error {
-	if len(args) != 1 || (args[0] != "prepare" && args[0] != "record") {
-		return errors.New("usage: shikii work prepare | record (JSON on stdin)")
+	if helpAsked(args, 2) {
+		return printAgentUsage("work")
+	}
+	if problem, ok := operationProblem("work", []string{"prepare", "record"}, args); !ok {
+		return usageRefusal("work", problem)
 	}
 	data, err := io.ReadAll(io.LimitReader(stdin, (8<<20)+1))
 	if err != nil || len(data) > 8<<20 {
 		return errors.New("work JSON transport exceeds 8 MiB")
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return emptyInputRefusal("work", "work "+args[0])
 	}
 	var req workRequest
 	err, extra := decodeStrictObject(data, &req)

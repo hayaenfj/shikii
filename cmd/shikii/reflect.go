@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -419,13 +420,24 @@ func decodeReflect(input io.Reader) (reflectRequest, error) {
 }
 
 func cmdReflect(args []string) error {
-	if len(args) != 1 || (args[0] != "query" && args[0] != "place" && args[0] != "submit") {
-		return errors.New("usage: shikii reflect query | place | submit (place and submit take JSON on standard input)")
+	if helpAsked(args, 2) {
+		return printAgentUsage("reflect")
+	}
+	if problem, ok := operationProblem("reflect", []string{"query", "place", "submit"}, args); !ok {
+		return usageRefusal("reflect", problem)
 	}
 	req := reflectRequest{Operation: args[0]}
 	if args[0] != "query" {
-		var err error
-		req, err = decodeReflect(stdin)
+		// read once here, so an empty standard input is told apart from JSON that cannot be read; decodeReflect keeps its own limit
+		data, err := io.ReadAll(io.LimitReader(stdin, reflectInputMax+1))
+		if err == nil && len(bytes.TrimSpace(data)) == 0 {
+			return emptyInputRefusal("reflect", "reflect "+args[0])
+		}
+		var input io.Reader = bytes.NewReader(data)
+		if err != nil {
+			input = io.MultiReader(input, stdin) // the read failed: let decodeReflect meet the same failure and report it
+		}
+		req, err = decodeReflect(input)
 		if err != nil {
 			return err
 		}

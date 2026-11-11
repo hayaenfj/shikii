@@ -107,11 +107,8 @@ func writeClaimPage(path string, pg claimPage, body string) error {
 }
 
 func cmdWiki(args []string) error {
-	if len(args) > 0 && args[0] != "verify" {
-		return cmdNotebook(args)
-	}
 	if len(args) == 0 || args[0] != "verify" {
-		return errors.New("usage: shikii wiki verify [pattern.md ...] [--local URL] [--hosted URL] [--labeled file] [--store DIR]\n  runs claims that have a retest procedure (front matter of wiki/patterns/*.md) with the current model and appends evidence. People change the status")
+		return cmdNotebook(args) // the lessons; with no operation, the forms of every operation
 	}
 	fs := flag.NewFlagSet("wiki verify", flag.ContinueOnError)
 	var ef endpointFlags

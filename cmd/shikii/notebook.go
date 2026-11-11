@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -119,8 +120,19 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 // Lessons are kept in the project's .shikii/, the same as the hook. Only the calling project is handled.
 // It has no new endpoints or settings; the text comes as JSON from the agent in use.
 func cmdNotebook(args []string) error {
-	if len(args) == 0 || (args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify" && args[0] != "patch" && args[0] != "diagnose" && args[0] != "compare" && args[0] != "consult" && args[0] != "reuse" && args[0] != "organize" && args[0] != "reconcile") {
-		return errors.New("usage: shikii wiki query [search words, source IDs..., lesson:<page ID>@<revision>] [continue:<cursor>] | consult | reuse | organize | reconcile | ingest | patch | diagnose | compare | capture | maintain (JSON on standard input) | classify <page ID> <kind> <scene> | lint | verify ...")
+	// help: the word or a flag where the operation is expected, or a flag as an operation's only argument (search words and a
+	// scene may hold the word help)
+	if (len(args) > 0 && (helpFlag(args[0]) || args[0] == "help")) || (len(args) == 2 && helpFlag(args[1])) {
+		return printAgentUsage("wiki")
+	}
+	if len(args) == 0 {
+		return usageRefusal("wiki", "")
+	}
+	if args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify" && args[0] != "patch" && args[0] != "diagnose" && args[0] != "compare" && args[0] != "consult" && args[0] != "reuse" && args[0] != "organize" && args[0] != "reconcile" {
+		if strings.HasPrefix(args[0], "-") {
+			return usageRefusal("wiki", "wiki takes its operation first, and no flags")
+		}
+		return usageRefusal("wiki", fmt.Sprintf("wiki has no operation %q", args[0]))
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -129,7 +141,7 @@ func cmdNotebook(args []string) error {
 	req := notebookRequest{Operation: args[0]}
 	if req.Operation == "ingest" || req.Operation == "capture" || req.Operation == "maintain" || req.Operation == "patch" || req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" || req.Operation == "organize" || req.Operation == "reconcile" {
 		if len(args) != 1 {
-			return fmt.Errorf("wiki %s reads one JSON object from stdin", req.Operation)
+			return usageRefusal("wiki", "wiki "+req.Operation+" reads one JSON object from standard input, not from arguments", "wiki "+req.Operation)
 		}
 		limit := 64 << 10
 		if req.Operation == "consult" || req.Operation == "reuse" || req.Operation == "organize" || req.Operation == "reconcile" || req.Operation == "ingest" || req.Operation == "patch" {
@@ -141,6 +153,9 @@ func cmdNotebook(args []string) error {
 		data, err := io.ReadAll(io.LimitReader(stdin, int64(limit)+1))
 		if err != nil || len(data) > limit {
 			return fmt.Errorf("wiki %s input exceeds %d KiB or could not be read", req.Operation, limit>>10)
+		}
+		if len(bytes.TrimSpace(data)) == 0 {
+			return emptyInputRefusal("wiki", "wiki "+req.Operation)
 		}
 		var target any = &req.Draft
 		if req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" || req.Operation == "organize" || req.Operation == "reconcile" {

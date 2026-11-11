@@ -34,7 +34,10 @@ func runHandoff(root string, req notebookRequest) (any, error) {
 
 // cmdHandoff is shikii handoff list | read <path> | write <path> | append <path> (write and append take the body on standard input).
 func cmdHandoff(args []string) error {
-	usage := errors.New("usage: shikii handoff list | read <path> | write <path> | append <path> (write and append take the body on standard input; the path is relative to .shikii/handoff/)")
+	if helpAsked(args, 1) {
+		return printAgentUsage("handoff")
+	}
+	usage := usageRefusal("handoff", "")
 	if len(args) == 0 {
 		return usage
 	}

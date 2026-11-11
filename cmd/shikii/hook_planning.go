@@ -137,12 +137,18 @@ func planningNotice(sessionID, turnID string) string {
 }
 
 func cmdHookPlan(args []string) error {
-	if len(args) != 1 || (args[0] != "query" && args[0] != "submit") {
-		return errors.New("usage: shikii hook plan query | submit (JSON on standard input)")
+	if helpAsked(args, 2) {
+		return printAgentUsage("hook plan")
+	}
+	if problem, ok := operationProblem("hook plan", []string{"query", "submit"}, args); !ok {
+		return usageRefusal("hook plan", problem)
 	}
 	data, err := io.ReadAll(io.LimitReader(stdin, reflectInputMax+1))
 	if err != nil || len(data) > reflectInputMax {
 		return errors.New("the pre-start context must be JSON of 16KB or less")
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return emptyInputRefusal("hook plan", "hook plan "+args[0])
 	}
 	var req planningRequest
 	decodeErr, extra := decodeStrictObject(data, &req)
