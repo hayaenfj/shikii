@@ -13,11 +13,17 @@ import (
 // guidance 1,248, all of them procedure, while the lessons themselves were one or two quotes of about 270 characters each.
 func TestEveryRequestTextIsShortAndTheReplyCarriesTheShape(t *testing.T) {
 	exe := regexp.MustCompile(`'[^']*'`) // the binary's path is named by the notices: taken out before measuring
-	notice := exe.ReplaceAllString(planningNotice("s", "0123456789abcdef"), "'shikii'")
+	// measured with ids as long as the real ones (a 36-byte session id): with a 1-byte id the text passed at 536 bytes while the
+	// notice a session got was 571 (audit of 0.31.0)
+	const session = "0f4c1e2a-7b3d-4c5e-8f90-123456789abc"
+	notice := exe.ReplaceAllString(planningNotice(session, "0123456789abcdef"), "'shikii'")
 	if len(notice) > 560 {
 		t.Errorf("the organizing notice is %d bytes, over 560: %q", len(notice), notice)
 	}
-	for _, w := range []string{"hook plan query", "hook plan submit", "how_to_submit", "topic words in query", "rule, test or procedure", `{"session_id":"s","turn_id":"0123456789abcdef"}`} {
+	if other := exe.ReplaceAllString(reasoningNotice(session, "0123456789abcdef"), "'shikii'"); len(other) > 560 {
+		t.Errorf("the notice without a planning judgment is %d bytes, over 560: %q", len(other), other)
+	}
+	for _, w := range []string{"work prepare", "work record", "Do not run the legacy hook plan query: it replaces the receipt.", "topic words in query", "rule, test or procedure", `{"session_id":"` + session + `","turn_id":"0123456789abcdef"}`} {
 		if !strings.Contains(notice, w) {
 			t.Errorf("the organizing notice lacks %q: %q", w, notice)
 		}

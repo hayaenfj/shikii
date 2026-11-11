@@ -30,7 +30,7 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "fix the typo in a.go"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "Preparation registers the start") {
+	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "fix the typo in a.go"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "it registers the start") {
 		t.Fatalf("shadow decisions stay silent while required work guidance is delivered, got %q", out)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a // fixed\n"), 0o644); err != nil {
@@ -79,7 +79,7 @@ func TestHookShadowRecordsAndStaysSilent(t *testing.T) {
 
 	// no model: do not stop (no output); the reason goes to hook.log
 	hookLocalURL = "http://127.0.0.1:1"
-	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s2", "cwd": repo, "prompt": "and now the other file"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "Preparation registers the start") {
+	if out := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s2", "cwd": repo, "prompt": "and now the other file"}); strings.Contains(out, "systemMessage") || !strings.Contains(out, "it registers the start") {
 		t.Fatalf("a missing model still delivers the mandatory work guidance, got %q", out)
 	}
 	logb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log"))

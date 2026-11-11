@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -129,7 +128,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if planning != nil {
 		out.Context = planningNotice(in.SessionID, turnID) // one form every time; the shape of submit comes back in the reply of hook plan query (0.11)
 		if planning.ReasoningOnly {
-			out.Context = fmt.Sprintf("shikii: use work prepare with topic words and %s, Preparation registers the start. End with work record using its receipt and result; combine necessary notes/reflection. No separate starting judgment or planning grade is required.\n", planJSON(in.SessionID, turnID))
+			out.Context = reasoningNotice(in.SessionID, turnID)
 		}
 	}
 	for i, d := range ds {

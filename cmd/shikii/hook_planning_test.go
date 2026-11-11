@@ -456,7 +456,8 @@ func TestNoticesKeepTheirInstructions(t *testing.T) {
 		name, text string
 		want       []string
 	}{
-		{"planning notice", planningNotice("s", "0123456789abcdef"), []string{"hook plan query", "hook plan submit", "how_to_submit", "topic words in query", "do not ask the person"}},
+		{"planning notice", planningNotice("s", "0123456789abcdef"), []string{"work prepare", "work record", "shikii_wiki", "Do not run the legacy hook plan query", "topic words in query", "do not ask the person"}},
+		{"notice without a planning judgment", reasoningNotice("s", "0123456789abcdef"), []string{"work prepare", "work record", "shikii_wiki", "standard input", "topic words in query", "it registers the start"}},
 		{"planning how_to_submit", planningHowToSubmit, []string{"lesson:<id>:<revision>", "the <id> in history:<id>:user", "the skill's references/planning.md",
 			"continues_previous", "false when it is a new request", "omit it when unsure", "person's own words"}},
 		{"planning notice (no query)", planningNoQueryNotice, []string{"lesson:<id>:<revision>"}},
@@ -692,7 +693,7 @@ func TestPlanningNoticeIsOneFormEveryRequest(t *testing.T) {
 	third := turn("Then sort the agreed CSV columns by date and keep the existing filters.") // the second request's organizing was not submitted
 	for name, notice := range map[string]string{"first": first, "second": second, "third": third} {
 		short := exe.ReplaceAllString(noticeOf.FindString(notice), "'shikii'")
-		if !strings.Contains(short, "hook plan query") || !strings.Contains(short, "hook plan submit") || !strings.Contains(short, "how_to_submit") || len(short) > 650 {
+		if !strings.Contains(short, "work prepare") || !strings.Contains(short, "work record") || !strings.Contains(short, "hook plan query") || len(short) > 650 {
 			t.Fatalf("the %s request gets the one short form naming the commands (%d bytes): %q", name, len(short), short)
 		}
 	}
@@ -709,7 +710,7 @@ func TestPlanningNoticeFormOverRandomSessions(t *testing.T) {
 	for i := 0; i < 40; i++ {
 		prompt := fmt.Sprintf("Request %d: use the agreed CSV columns and keep the existing filters.", i)
 		notice := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
-		if !strings.Contains(notice, "hook plan query") || !strings.Contains(notice, "hook plan submit") || !strings.Contains(notice, loadSession(root, "planning").TurnID) {
+		if !strings.Contains(notice, "work prepare") || !strings.Contains(notice, "work record") || !strings.Contains(notice, loadSession(root, "planning").TurnID) {
 			t.Fatalf("request %d: the one form names the commands and this turn's id: %q", i, notice)
 		}
 		if r.Intn(4) != 0 {

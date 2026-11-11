@@ -6,7 +6,7 @@ The agent owns interpretation: identify the current task, find relevant conversa
 
 ## Recover the current task
 
-When the hook supplies `session_id` and `turn_id`, pass them as JSON on stdin to `shikii hook plan query`. Use the exact executable path supplied by the hook when available.
+When the hook supplies `session_id` and `turn_id`, pass them as JSON on stdin to `shikii work prepare`, as its notice says (`shikii hook plan query` is the older entry for the same context, and it replaces the receipt of work prepare). Use the exact executable path supplied by the hook when available.
 
 Read `source_material` with the active conversation. Identify:
 
@@ -44,7 +44,7 @@ For a comparison with and without memory, freeze the task inputs and this availa
 
 ## Submit grounded interpretations
 
-Submit is not optional: when the hook asked for planning and files changed, Stop requests `hook plan submit` before judging completion. `agreed` and `open` may be `unknown:true` when the conversation gives no evidence. A short message (under 40 characters) that is not a bare acknowledgement also requires submission even without file changes: the minimal `{"session_id":…,"turn_id":…,"agreed":{"unknown":true},"open":{"unknown":true},"continues_previous":false}` (or `true`) is enough. Execute the command using the current hook’s IDs and check that it saved; do not merely describe it. A later Stop checks persisted results and uses the saved grouping. Partial progress on other required work permits another continuation; no progress ends explicitly incomplete without a completion judgment.
+Organizing is not optional: when the hook asked for planning and files changed, Stop asks for it before judging completion. With work prepare and work record, the record carries `agreed`, `open` and `continues_previous`; `hook plan submit` is the older entry for the same content. `agreed` and `open` may be `unknown:true` when the conversation gives no evidence. A short message (under 40 characters) that is not a bare acknowledgement also requires submission even without file changes: the minimal `{"session_id":…,"turn_id":…,"agreed":{"unknown":true},"open":{"unknown":true},"continues_previous":false}` (or `true`) is enough. Execute the command using the current hook’s IDs and check that it saved; do not merely describe it. A later Stop checks persisted results and uses the saved grouping. Partial progress on other required work permits another continuation; no progress ends explicitly incomplete without a completion judgment.
 
 The reply of `hook plan query` carries `how_to_submit`, the exact shape of submit (the hook text itself names only the command and this turn's ids, 0.11). Pass the same IDs, the wiki query used for any cited lesson, and `agreed` / `open` to `shikii hook plan submit`:
 

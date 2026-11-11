@@ -171,7 +171,8 @@ func TestMemoryDeliversRelevantLessonOncePerRevision(t *testing.T) {
 		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "memory", "cwd": repo, "prompt": text}))
 	}
 	ctx := prompt(request)
-	if !strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, id) || strings.Contains(ctx, "まだ英語が残っています") || strings.Contains(ctx, "ingest") || len(ctx) > 1800 {
+	// the notice names this binary by its path, which is as long as the test's build folder: measured with the name alone
+	if measured := strings.Replace(ctx, noticeCommand(), "'shikii'", 1); !strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, id) || strings.Contains(ctx, "まだ英語が残っています") || strings.Contains(ctx, "ingest") || len(measured) > 1800 {
 		t.Fatalf("delivers only the needed lesson and source, briefly: %s", ctx)
 	}
 	if ctx := prompt(request); strings.Contains(ctx, draft.Lesson) {

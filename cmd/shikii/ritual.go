@@ -98,6 +98,9 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 				}
 			} else {
 				reason = groupingBlockReason(in.SessionID, snapshot.TurnID)
+				if reasoningLeftNow > 0 { // the work record below is asked for anyway: it carries continues_previous, and one flow is asked for
+					reason = groupingWithWorkReason()
+				}
 			}
 			failed = append(failed, reason)
 		}
@@ -313,6 +316,12 @@ func groupingBlockReason(sessionID, turnID string) string {
 	return fmt.Sprintf("The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: pass %s on standard input to %s hook plan submit (continues_previous true when it only continues or answers the previous request and asks for nothing new), then finish", b, hookExe())
 }
 
+// groupingWithWorkReason is that line when the same block also asks for work prepare and work record: the record carries
+// continues_previous, so the block asks for one flow (before, it asked for hook plan submit beside them: audit of 0.31.0).
+func groupingWithWorkReason() string {
+	return `The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: add "agreed":{"unknown":true},"open":{"unknown":true} and "continues_previous":true or false to the work record below (true when it only continues or answers the previous request and asks for nothing new).`
+}
+
 // workResultShape is the short shape of the ending result, as the notice and how_to_record write it.
 const workResultShape = "result:{changed,checked?,evidence?:[refs],remaining?}"
 
@@ -323,7 +332,7 @@ func planningWithWorkReason(changed int) string {
 	if changed == 1 {
 		files = "1 file was"
 	}
-	return fmt.Sprintf("The plan has not been sorted out, yet %s changed and you are about to finish: the work prepare below sorts it out (add agreed and open to work record when the person agreed on something or a choice is open); do not also run hook plan query or hook plan submit, which replace its receipt.", files)
+	return fmt.Sprintf("The plan has not been sorted out, yet %s changed and you are about to finish: the work prepare below sorts it out (add agreed and open to work record when the person agreed on something or a choice is open); do not also run hook plan query, which replaces its receipt.", files)
 }
 
 // reasoningBlockReason is the review's line of the Stop block: what is still missing and the one call that supplies it. After a

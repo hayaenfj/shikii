@@ -152,7 +152,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	traceOf := map[string]string{} // session → prompt-kind trace
 	run := func(session string, change bool) {
 		out := runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "fix the typo in README " + session})
-		if strings.Contains(out, "systemMessage") || !strings.Contains(out, "Preparation registers the start") {
+		if strings.Contains(out, "systemMessage") || !strings.Contains(out, "it registers the start") {
 			t.Fatalf("shadow decisions must not suppress the reasoning guidance: %q", out)
 		}
 		sess := loadSession(agent, session)

@@ -35,7 +35,7 @@ func TestTheNoticeAndTheStopBlockAskForOneFlow(t *testing.T) {
 		return reply, err
 	}
 	notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
-	for _, w := range []string{"Do not run the legacy hook plan query or hook plan submit (how_to_submit)", "they replace the receipt", "result:{changed,checked?,evidence?:[refs],remaining?}"} {
+	for _, w := range []string{"Do not run the legacy hook plan query: it replaces the receipt.", "result:{changed,checked?,evidence?:[refs],remaining?}"} {
 		if !strings.Contains(notice, w) {
 			t.Errorf("the notice lacks %q: %s", w, notice)
 		}
@@ -54,7 +54,7 @@ func TestTheNoticeAndTheStopBlockAskForOneFlow(t *testing.T) {
 	if !blocked {
 		t.Fatalf("finishing without the plan and the review is blocked: %s", reason)
 	}
-	for _, w := range []string{"The plan has not been sorted out, yet 1 file was changed", "the work prepare below sorts it out", "do not also run hook plan query or hook plan submit", "{" + ids + "}",
+	for _, w := range []string{"The plan has not been sorted out, yet 1 file was changed", "the work prepare below sorts it out", "do not also run hook plan query, which replaces its receipt", "{" + ids + "}",
 		"with topic words in query on standard input to ", " work prepare", "result:{changed,checked?,evidence?:[refs],remaining?}", "the same way to work record"} {
 		if !strings.Contains(reason, w) {
 			t.Errorf("the block lacks %q:\n%s", w, reason)
@@ -365,5 +365,46 @@ func TestAMessageDuringWorkHandsItsReferencesToTheNextPreparation(t *testing.T) 
 	}
 	if saved, refusal = record(third, `"result":{"changed":"Renamed.","evidence":["`+ref+`"]}`); saved != nil && errorsOf(saved) == "" {
 		t.Errorf("a reference of a finished request is not valid in the next one: %v", saved)
+	}
+}
+
+// A short message that is not a bare acknowledgement makes the Stop ask whether it continues the previous request. When the same
+// block also asked for work prepare and work record, it asked for hook plan submit beside them: two flows, and the notice says not
+// to run the older one (audit of 0.31.0, B-A2). The block now asks for one flow, the work record carries continues_previous, and a
+// record as the block describes lets the turn end.
+func TestAShortMessageIsSettledByTheWorkRecord(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
+	ids := func(notice string) string {
+		for _, line := range strings.Split(notice, "\n") {
+			if strings.HasPrefix(line, `{"session_id":`) {
+				return line
+			}
+		}
+		t.Fatalf("the notice carries the ids: %s", notice)
+		return ""
+	}
+	first := ids(feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})))
+	prepared, _ := mcpToolCall(t, h, "shikii_wiki", `{"operation":"prepare","work":`+strings.TrimSuffix(first, "}")+`,"query":"CSV export filters"}}`)
+	receipt, _ := json.Marshal(prepared["structuredContent"].(map[string]any)["receipt"])
+	mcpToolCall(t, h, "shikii_wiki", `{"operation":"record","work":{"receipt":`+string(receipt)+`,"result":{"changed":"Nothing.","checked":"Read the export."}}}`)
+	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})); blocked {
+		t.Fatalf("the first request ends: %s", reason)
+	}
+
+	second := ids(feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Use tabs there."})))
+	reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."}))
+	if !blocked || strings.Contains(reason, "hook plan submit") || !strings.Contains(reason, `"continues_previous":true or false to the work record below`) || !strings.Contains(reason, "work prepare") {
+		t.Fatalf("the block asks for the work record alone, with continues_previous in it:\n%s", reason)
+	}
+	prepared, _ = mcpToolCall(t, h, "shikii_wiki", `{"operation":"prepare","work":`+strings.TrimSuffix(second, "}")+`,"query":"tabs"}}`)
+	receipt, _ = json.Marshal(prepared["structuredContent"].(map[string]any)["receipt"])
+	saved, _ := mcpToolCall(t, h, "shikii_wiki", `{"operation":"record","work":{"receipt":`+string(receipt)+`,"agreed":{"unknown":true},"open":{"unknown":true},"continues_previous":true,"result":{"changed":"Nothing.","checked":"Read the export."}}}`)
+	if saved["structuredContent"].(map[string]any)["complete"] != true {
+		t.Fatalf("the record the block describes is saved: %v", saved["structuredContent"])
+	}
+	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done.", "stop_hook_active": true})); blocked {
+		t.Errorf("the turn ends after that record: %s", reason)
 	}
 }
