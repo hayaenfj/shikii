@@ -114,7 +114,7 @@ If a `query` target has `original_inputs`, that is the original text saved for t
 
 ## Read and save alongside planning
 
-`hook plan query` may include this same reflection view. Reuse it and attach the normal submit object under `reflection` in `hook plan submit`; inspect the nested receipt and finish anything it lists. Standalone reflect query/submit still work. Acknowledgements without review targets or delivered memories do not load unrelated articles or judgment examples.
+With the older entry, `hook plan query` may include this same reflection view: reuse it and attach the normal submit object under `reflection` in `hook plan submit`; inspect the nested receipt and finish anything it lists. With `work prepare`, the pending reflection comes in its reply and is recorded with `work record` ([recording.md](recording.md#reflect-without-rebuilding-identifiers)). Standalone reflect query/submit still work. Acknowledgements without review targets or delivered memories do not load unrelated articles or judgment examples.
 
 Use `discoveries` for manually found articles only when they informed a concrete decision, with the query's lookup id and exact revision, context, decision and evidence. They improve retrieval separately from automatic-delivery assessments and do not become labels. See [wiki.md](wiki.md). Optional article `rationale` and `watch` record source-backed reasons and file premises; inspect maintenance `changed_files` before treating a changed premise as current.
 

@@ -362,6 +362,27 @@ func reflectListingProblem(text, next string) string {
 	return ""
 }
 
+// helpEntry is the entry of shikii --help for one command: the line that starts with it and the indented lines under it.
+func helpEntry(t *testing.T, start string) string {
+	t.Helper()
+	lines := strings.Split(usageText(), "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "  "+start) {
+			continue
+		}
+		entry := line
+		for _, under := range lines[i+1:] {
+			if !strings.HasPrefix(under, "     ") {
+				break
+			}
+			entry += "\n" + under
+		}
+		return entry
+	}
+	t.Fatalf("shikii --help has no entry that starts with %q", start)
+	return ""
+}
+
 // lineWith is the one line of a file that holds the given text.
 func lineWith(t *testing.T, path, needle string) string {
 	t.Helper()
@@ -396,6 +417,13 @@ func TestTextsAboutReflectQuerySayWhereTheRestGoes(t *testing.T) {
 	}
 	// review.md: what sources holds, up to where the same step goes on to the bound of the reply (which names more_pending too)
 	review, _, _ := strings.Cut(lineWith(t, "../../skills/shikii/references/review.md", "1. Call `shikii_reflect` with `operation: query`"), "The reply is kept within")
+	// the tables of the guides (the command and the HTTP endpoint) name the three operations, as the help of shikii reflect does
+	for _, path := range []string{"../../docs/guide.md", "../../docs/guide.ja.md"} {
+		lineWith(t, path, "| `shikii reflect query` / `place` / `submit` |")
+		if row := lineWith(t, path, "| `POST /v1/reflect` |"); !strings.Contains(row, "`operation: query / place / submit`") {
+			t.Errorf("%s: the row of POST /v1/reflect names the three operations: %.120s", path, row)
+		}
+	}
 	for _, c := range []struct{ name, text, next string }{
 		{"the help of shikii reflect", help, next},
 		{"the description of the MCP tool shikii_reflect", tool, next},
@@ -467,6 +495,34 @@ func TestThePlanCheckNamesTheFlowAnAgentRuns(t *testing.T) {
 		guides[path+", the row of shikii hook plan"] = lineWith(t, path, "| `shikii hook plan query` / `submit` |")
 		lineWith(t, path, "| `shikii work prepare` / `record` |") // the table of commands has the row of the flow itself
 	}
+	// where the older command itself is described to a person or an agent: shikii --help and shikii hook plan --help
+	guides["shikii --help, the entry of hook plan"] = helpEntry(t, "shikii hook plan ")
+	guides["shikii hook plan --help"] = agentUsages["hook plan"].text()
+	// every line of the guides, the READMEs and the skill that names hook plan query or submit says that it is the older entry or
+	// that it replaces the receipt. In planning.md the lines under "The older entry" are about it by their place.
+	documents := []string{"../../README.md", "../../docs/readme/README_ja.md", "../../docs/guide.md", "../../docs/guide.ja.md", "../../skills/shikii/SKILL.md"}
+	references, err := filepath.Glob("../../skills/shikii/references/*.md")
+	if err != nil || len(references) == 0 {
+		t.Fatalf("cannot list the references of the skill: %v", err)
+	}
+	named := 0
+	for _, path := range append(documents, references...) {
+		text := string(mustRead(t, path))
+		if strings.HasSuffix(path, "/planning.md") {
+			text, _, _ = strings.Cut(text, "\n## "+planningOlderEntry+"\n")
+		}
+		for number, line := range strings.Split(text, "\n") {
+			if hookPlanCommand.MatchString(line) {
+				named++
+			}
+			if problem := olderEntryProblem(line); problem != "" {
+				t.Errorf("%s:%d %s: %.200s", path, number+1, problem, line)
+			}
+		}
+	}
+	if named < 8 {
+		t.Errorf("the sweep found %d lines that name hook plan query or submit: it no longer reads the documents it is for", named)
+	}
 	repo := gitRepo(t)
 	hookEnv(t, nil, repo)
 	t.Chdir(repo)
@@ -496,4 +552,35 @@ func TestThePlanCheckNamesTheFlowAnAgentRuns(t *testing.T) {
 			t.Errorf("a text that names the older flow as the one to run is not reported: %s", old)
 		}
 	}
+	for _, old := range []string{
+		"Planning's `hook plan query` also returns up to two live `criteria` pages directly linked through `related` from the search matches (0.14).",
+		"`hook plan query` before work can pick the bodies you need with `pages`.",
+		"`hook plan query` may include this same reflection view. Reuse it and attach the normal submit object under `reflection` in `hook plan submit`; inspect the nested receipt and finish anything it lists.",
+		"Your usual agent organizes the request before starting: shikii hook plan query | submit (JSON on stdin)",
+	} {
+		if olderEntryProblem(old) == "" {
+			t.Errorf("a line that names hook plan query without saying that it is the older entry is not reported: %s", old)
+		}
+	}
+	// a line that only has the words in another sense is not one of them
+	for _, other := range []string{"`shikii` and `npm` take their third word too, so `shikii hook plan` is not `shikii hook install`", "it cannot satisfy a hook planning ritual for another request", "`shikii work --help` (also `reflect`, `hook plan`, `wiki` and `handoff`) prints forms"} {
+		if problem := olderEntryProblem(other); problem != "" {
+			t.Errorf("a line that does not name the command is reported (%s): %s", problem, other)
+		}
+	}
+}
+
+// hookPlanCommand is the older command as a text names it: hook plan query, hook plan submit, hook plan query/submit.
+var hookPlanCommand = regexp.MustCompile(`hook plan (query|submit)`)
+
+// olderEntryProblem says whether a line names the older command without saying what it is: the older entry (in either language of
+// the documents), or the call that replaces the receipt.
+func olderEntryProblem(line string) string {
+	if !hookPlanCommand.MatchString(line) {
+		return ""
+	}
+	if strings.Contains(line, "older") || strings.Contains(line, string([]rune{0x53e4, 0x3044})) || strings.Contains(line, "replaces") && strings.Contains(line, "receipt") {
+		return ""
+	}
+	return "names hook plan query or submit without saying that it is the older entry, or that it replaces the receipt"
 }

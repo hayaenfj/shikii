@@ -237,11 +237,55 @@ func TestTheReaderAnswersInItsOwnWords(t *testing.T) {
 			}
 		}
 	}
+	// what is no object at all, each with its cause: nothing, and null (encoding/json reads null into any value without a word, and
+	// the entry went on with an empty request). A byte order mark before them is not part of the JSON and changes nothing.
+	mark := string([]byte{0xef, 0xbb, 0xbf})
+	for _, c := range []struct{ input, ends string }{
+		{"", "(got nothing)"},
+		{" \n", "(got nothing)"},
+		{mark, "(got nothing)"},
+		{"null", "(got null)"},
+		{" null\n", "(got null)"},
+		{mark + "null", "(got null)"},
+	} {
+		var req workRequest
+		err, _ := decodeStrictObject([]byte(c.input), &req)
+		if err == nil || !own(err) || !strings.HasPrefix(err.Error(), "pass the JSON as an object") || !strings.HasSuffix(err.Error(), c.ends) {
+			t.Errorf("%q: the reader answers %T %q, want one of its own answers: pass the JSON as an object ... %s", c.input, err, err, c.ends)
+		}
+	}
 	// the negative example: what encoding/json returns is none of the reader's answers
-	for _, raw := range []error{io.ErrUnexpectedEOF, &json.SyntaxError{}, &json.UnmarshalTypeError{}, errors.New(`json: unknown field "x"`)} {
+	for _, raw := range []error{io.EOF, io.ErrUnexpectedEOF, &json.SyntaxError{}, &json.UnmarshalTypeError{}, errors.New(`json: unknown field "x"`)} {
 		if own(raw) {
 			t.Errorf("%T counts as one of the reader's own answers", raw)
 		}
+	}
+	// the reader of the entries that pass over keys they do not know (decide, label, tune) says the same sentences
+	for _, input := range []string{`{"receipt":"r",}`, `{"receipt":"r","notes":[{"title":"abc`, `{"receipt":"r","notes":[{"sources":"new1"}]}`, `[1,2]`, "", "null", mark, mark + "null", mark + `{"receipt":"r",}`} {
+		var strictly, loosely workRequest
+		strict, _ := decodeStrictObject([]byte(input), &strictly)
+		loose := decodeObject(strings.NewReader(input), &loosely)
+		if strict == nil || loose == nil || loose.Error() != strict.Error() {
+			t.Errorf("%q: the two readers answer %q and %q", input, strict, loose)
+		}
+	}
+	var passedOver struct {
+		Spec string `json:"spec"`
+	}
+	if err := decodeObject(strings.NewReader(`{"spec":"needs-plan","not_a_field":1}`), &passedOver); err != nil || passedOver.Spec != "needs-plan" {
+		t.Errorf("decodeObject passes over a key it does not know: %v %+v", err, passedOver)
+	}
+	// and takes a byte order mark before the JSON, as decodeStrictObject does
+	passedOver.Spec = ""
+	if err := decodeObject(strings.NewReader(mark+`{"spec":"needs-plan"}`), &passedOver); err != nil || passedOver.Spec != "needs-plan" {
+		t.Errorf("decodeObject reads the JSON behind a byte order mark: %v %+v", err, passedOver)
+	}
+	var marked workRequest
+	if err, _ := decodeStrictObject([]byte(mark+`{"receipt":"r"}`), &marked); err != nil || marked.Receipt != "r" {
+		t.Errorf("decodeStrictObject reads the JSON behind a byte order mark: %v", err)
+	}
+	if err, _ := decodeStrictObject([]byte(`{"spec":"needs-plan","not_a_field":1}`), &passedOver); err == nil {
+		t.Errorf("decodeStrictObject refuses a key it does not know")
 	}
 	// the path of a value along a type: an index under an array, a key under an object and where the type says nothing
 	type inner struct {

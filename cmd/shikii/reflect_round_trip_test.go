@@ -8,8 +8,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// 0.12 item 3: one reflection is one round trip. The query lists every pending conversation (the raw text of the oldest two, the rest
-// as heads with their deliveries to assess), how_to_submit says where the deliveries to assess are, a maintenance review survives the
+// 0.12 item 3: one reflection is one round trip. The query lists the pending conversations (the raw text of the oldest two, the next
+// as heads with their deliveries to assess; the ones that do not fit one reply are counted in more_pending and listed by the next
+// query), how_to_submit says where the deliveries to assess are, a maintenance review survives the
 // agent's own save of that page in the same submit, and what is left names the items, not only a count. Measured before: a reflection
 // of 1 conversation and 17 deliveries took 10 round trips; 33 of 156 reflections were done only after a stop.
 

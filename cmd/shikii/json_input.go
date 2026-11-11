@@ -27,15 +27,43 @@ func decodeStrictObject(data []byte, target any) (err error, extra bool) {
 	if err := dec.Decode(target); err != nil {
 		return jsonReadError(err, data, target), false
 	}
+	if err := notAnObject(data, target); err != nil {
+		return err, false
+	}
 	var trailing any
 	return nil, dec.Decode(&trailing) != io.EOF
+}
+
+// decodeObject reads the JSON object of an entry that passes over keys it does not know: the decision API (decide, label, tune),
+// which the MCP tools shikii_decide, shikii_label and shikii_tune reach. What it cannot read is worded by the same reader as
+// decodeStrictObject. Before, these entries read their bodies on their own and answered in encoding/json's words ("bad json: json:
+// cannot unmarshal string into Go struct field .inputs of type map[string]string").
+func decodeObject(body io.Reader, target any) error {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err // the transport's own failure (a body over its limit): the entry answers it
+	}
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")) // a byte order mark before the JSON is not part of it, as in decodeStrictObject
+	if err := json.NewDecoder(bytes.NewReader(data)).Decode(target); err != nil {
+		return jsonReadError(err, data, target)
+	}
+	return notAnObject(data, target)
+}
+
+// notAnObject refuses null where an object goes. encoding/json reads null into any value without a word, so the entry went on
+// with an empty request and answered about a field that was missing.
+func notAnObject(data []byte, target any) error {
+	if bytes.HasPrefix(bytes.TrimLeftFunc(data, unicode.IsSpace), []byte("null")) {
+		return &fieldTypeError{Want: jsonShapeName(reflect.TypeOf(target)), Got: "null"}
+	}
+	return nil
 }
 
 // jsonReadError puts a failure to read an agent's JSON in the words of the JSON. Before, each entry worded it or did not: work
 // said where the JSON was malformed, while reflect, wiki and the HTTP bodies passed on encoding/json's "invalid character '}'
 // looking for beginning of object key string", and an input that was cut off came back as "unexpected EOF" everywhere (audit of
-// 0.31.0). What comes back is one of the reader's own answers: a *malformedJSONError, a *fieldTypeError or an
-// *unknownFieldError; anything else keeps its cause behind "cannot read the JSON".
+// 0.31.0). What comes back is one of the reader's own answers: a *malformedJSONError, a *fieldTypeError (also for no JSON at all
+// and for null) or an *unknownFieldError; anything else keeps its cause behind "cannot read the JSON".
 func jsonReadError(err error, data []byte, target any) error {
 	var wrongType *json.UnmarshalTypeError
 	var syntax *json.SyntaxError
@@ -47,6 +75,9 @@ func jsonReadError(err error, data []byte, target any) error {
 	case errors.Is(err, io.ErrUnexpectedEOF):
 		// the input stops inside its value (a here-document or a pipe that was cut): the place is where the text ends
 		return &malformedJSONError{Offset: int64(len(bytes.TrimRightFunc(data, unicode.IsSpace))), Ends: true}
+	case errors.Is(err, io.EOF):
+		// no JSON at all (an empty body; the CLI answers an empty standard input before the reader is asked)
+		return &fieldTypeError{Want: jsonShapeName(reflect.TypeOf(target)), Got: "nothing"}
 	}
 	explained := explainUnknownField(err, data, target)
 	var unknown *unknownFieldError

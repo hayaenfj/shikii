@@ -24,7 +24,7 @@ func TestAuditAStrictReaderEdges(t *testing.T) {
 		// not an object
 		{"top-level array", `[{"query":"x"}]`, true, false, []string{"pass the JSON as an object", "(got array)"}},
 		{"top-level string", `"query"`, true, false, []string{"pass the JSON as an object", "(got string)"}},
-		{"null", `null`, false, false, nil},
+		{"null", `null`, true, false, []string{"pass the JSON as an object", "(got null)"}}, // it was read as an empty request, and the entry answered about a missing field
 		{"two objects", `{"query":"x"}{"query":"y"}`, false, true, nil},
 		// an unknown key: the place and the fields there
 		{"unknown key twice, known place first", `{"query":"x","result":{"query":"y"}}`, true, false, []string{`unknown field "query" in result; the fields there: `, "changed", "evidence"}},

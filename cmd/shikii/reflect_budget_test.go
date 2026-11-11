@@ -93,7 +93,7 @@ func TestTheReflectionQueryFitsWhatAnAgentsToolShows(t *testing.T) {
 			t.Errorf("%s: output names the bound, what was left out and the way back: %v", name, output)
 		}
 		if reply["how_to_submit"] != whole["how_to_submit"] || fmt.Sprint(keys(reply)) != fmt.Sprint(keys(whole)) || len(keys(reply)) < 2 {
-			t.Errorf("%s: what the agent needs to submit stays (every conversation, target and delivered lesson, and how_to_submit): %v", name, keys(reply))
+			t.Errorf("%s: what the agent needs to submit stays (each conversation of this small store, with its targets and delivered lessons, and how_to_submit): %v", name, keys(reply))
 		}
 		lessons, _ := reply["lessons"].([]any)
 		if len(lessons) == 0 {

@@ -23,7 +23,7 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		Tainted bool              `json:"tainted"`
 		Record  *bool             `json:"record"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read (shikii_decide reaches this entry)
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			writeErr(w, 413, fmt.Errorf("body larger than %d bytes", maxBody))

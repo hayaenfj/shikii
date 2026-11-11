@@ -49,7 +49,7 @@ var agentUsages = map[string]agentUsage{
 		},
 		Notes: []string{
 			"submit takes the same ids and query plus agreed and open, as how_to_submit in the reply of query describes.",
-			"work prepare and work record do the same in one call each, with the knowledge and the record of the result.",
+			"This is the older entry: work prepare and work record do the same in one call each, with the knowledge and the record of the result. Do not run hook plan query for a request prepared with work prepare: it replaces the receipt.",
 		},
 	},
 	"reflect": {

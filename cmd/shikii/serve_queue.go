@@ -152,7 +152,7 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 		Weight  float64 `json:"weight"`
 		Source  string  `json:"source"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read (shikii_label reaches this entry)
 		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 		return
 	}

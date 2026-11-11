@@ -182,7 +182,7 @@ func (s *server) decodeTuneReq(w http.ResponseWriter, r *http.Request) (specRef,
 		Spec    string `json:"spec"`
 		Propose int    `json:"propose"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read (shikii_tune reaches this entry)
 		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 		return specRef{}, 0, false
 	}

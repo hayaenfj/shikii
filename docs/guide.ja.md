@@ -170,7 +170,7 @@ shikii wiki lint
 
 `article.json`の短い`lesson`と詳しい`body`を分け、背景・根拠・適用条件・未確定点を既存記事へ統合する。`related`で関連をつなぎ、意味の編集には`change_reason`を残す。利用できる長い会話原文は引用時に別のハッシュとともに保持し、元の判定記録を消した後も参照できる。原資料や原文が欠けている時は、その限界を残す。
 
-着手前の `hook plan query` は、検索上位の教訓に加え、その記事が `related` で直接結ぶ有効な `criteria` を最大2件返す（0.14）。要約と適用条件は末尾を切らず、種類と場面も渡す。`pages` 未指定なら判断基準を先に、本文が丸ごと収まる記事を最大2件・本文合計8000バイト以内で `article:<id>:<revision>` として返す。入らない本文は既存の `pages` 指定（最大2件）や `wiki query` で読める。応答の `wiki_context` は全記事の一覧を繰り返さず `available_count` を返すが、判定記録の `knowledge_context.available` には全版を保存する。関連候補・本文取得・実際の引用を区別し、関連や過去の判断を現在の許可とは扱わない。
+着手前の整理の古い入口 `hook plan query` は、検索上位の教訓に加え、その記事が `related` で直接結ぶ有効な `criteria` を最大2件返す（0.14）。要約と適用条件は末尾を切らず、種類と場面も渡す。`pages` 未指定なら判断基準を先に、本文が丸ごと収まる記事を最大2件・本文合計8000バイト以内で `article:<id>:<revision>` として返す。入らない本文は既存の `pages` 指定（最大2件）や `wiki query` で読める。応答の `wiki_context` は全記事の一覧を繰り返さず `available_count` を返すが、判定記録の `knowledge_context.available` には全版を保存する。関連候補・本文取得・実際の引用を区別し、関連や過去の判断を現在の許可とは扱わない。
 
 ### 外部の担当割り当てとつなぐ
 
@@ -257,7 +257,7 @@ CLI・MCP・HTTPの`ingest`/`patch`と`work record`のnotesで保存・改訂し
 
 `wiki query`の一覧や`reflect query`には最大2記事の`maintenance`対象がある。本文・原資料・関連ページを確認し、必要な編集を保存した後、最新の`page_id`・`revision`・`key`と確認理由`reason`を`maintenance.json`へ渡す。振り返りの`maintenance`配列へまとめてもよい。記事や関連する版が変われば古い見直し結果は拒否し、未変更でも30日後に再確認する。本文やリンクがないことは確認のきっかけであり、不要な文章や関係を追加する指示ではない。 同じ版・同じ入り口で「使われなかった」が2件以上あり「役に立った」が0件、または「判断を妨げた」評価がある記事も、理由と判断の証拠付きで優先して戻す。例は3件まで、総件数も添える。エージェントは普段の振り返りで出典と照らし、必要な時だけ適用条件や本文を直す。未使用だけで記事が誤りとは決めず、変更不要の見直しも記録できる。同じ証拠を毎回出さず、新しい該当評価が加われば再確認する。不明・未評価・古い版の評価は悪い評価として扱わず、人の追加記入や採点は不要。
 
-着手前の`hook plan query`は`pages`で必要な本文を選べる。判断には候補・読んだ記事・引用した版・当時の利用可能な版と取得量が残る。過去の比較は記録された版だけで行い、後から更新されたwikiや解決結果を混ぜない。保存・検索・引用の件数と、判断に役立ったという観察は分ける。詳しい契約は[wikiの作法](../skills/shikii/references/wiki.md)を参照する。
+古い入口の`hook plan query`は、着手前に`pages`で必要な本文を選べる。判断には候補・読んだ記事・引用した版・当時の利用可能な版と取得量が残る。過去の比較は記録された版だけで行い、後から更新されたwikiや解決結果を混ぜない。保存・検索・引用の件数と、判断に役立ったという観察は分ける。詳しい契約は[wikiの作法](../skills/shikii/references/wiki.md)を参照する。
 
 明示的な検索は全記事を対象にし、`search.total`(有効な一致記事数)と `search.candidates` を返す。応答が大きければ JSON のデータ量で分割し、同じ検索語や出典 ID と、CLI の `continue:CURSOR` または MCP・HTTP の `cursor` で続きを読む。プロジェクト・条件・結果が変わったカーソルは拒否する。1 件だけ大きい会話の原資料は単独で返し、その長い原文(`originals`)が返事 1 回に入らない時は、`original_part`(`id`・`from`・`to`・`bytes`・`json`)で分けて返す。`json` を順につなげると、その会話の原文の一覧の JSON に戻る。返事 1 回に入らない控えた原資料の本文は、`observation_part`(`id`・`from`・`to`・`bytes`)を付けて分けて返し、つなげると本文に戻る。語の一致による検索なので話題が違えば検索語を見直す。
 
@@ -497,7 +497,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `shikii handoff list` / `read` / `write` / `append` | 作業記録の読み書き |
 | `shikii guard list` / `add` / `enable` / `disable` / `try` | 止める検査 |
 | `shikii review query` / `submit` | 会話と結果からの仮採点(振り返りでまとめて使うことが多い) |
-| `shikii reflect query` / `submit` | 終える前の振り返り |
+| `shikii reflect query` / `place` / `submit` | 終える前の振り返り(`place` は教訓の下書きの差し込み先を見せる) |
 | `shikii check <spec>...` | CI 向け: 文言が変わった線・手書きの線・精度不足の線・正解に出ていない選択肢を持ち上げている線を落とす |
 | `shikii drift <spec> --model M` | 直近の正解で線の劣化を見る |
 | `shikii bias <spec>` | 選択肢の並びで答えが変わるかを測る |
@@ -526,7 +526,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `POST /v1/wiki/article` | `action: edit / delete`、`id`、`revision`。editは`title`、`lesson`、`applies_to`、`body`、`kind`、`scene` | このプロジェクトの記事を編集・削除する。古い版は409。削除後は検索・配信から外し、出典と履歴を残す。 |
 | `GET /v1/handoff/file?path=` | `path`(.shikii/handoff/ からの相対) | 作業記録の 1 件。画像は画像、文字と HTML は text/plain、それ以外は保存。置き場の外は 400 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
-| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 採点・wiki整理・届いた記憶と訂正の観察、記事の見直しをまとめて確認・保存(query は整理待ちの会話を古い順に並べる(古い 2 件は原文、続く 40 件までは頭だけ。載らなかった会話は more_pending に件数を入れ、次の query で並べる)。原資料と見直しの対象は 2 件ずつ見せ、submit は会話・項目・見直しの数を限らない。既存の記事に足す時、元の出典は引き継がれる)。`complete`と各`error`を確認する |
+| `POST /v1/reflect` | `operation: query / place / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 採点・wiki整理・届いた記憶と訂正の観察、記事の見直しをまとめて確認・保存(query は整理待ちの会話を古い順に並べる(古い 2 件は原文、続く 40 件までは頭だけ。載らなかった会話は more_pending に件数を入れ、次の query で並べる)。原資料と見直しの対象は 2 件ずつ見せ、submit は会話・項目・見直しの数を限らない。既存の記事に足す時、元の出典は引き継がれる)。`complete`と各`error`を確認する |
 | `GET /v1/specs` | | 読み込んでいる spec の一覧 |
 
 判断の未回答・回答済み一覧は、続きがあれば `next_cursor` を返します。同じ取得先・問いに `cursor=<next_cursor>` と `limit`（最大1000件）を渡して読み進めます。不正な位置は400、履歴や回答が変わった場合は409を返すため、最初から読み直してください。画面は続きも自動取得し、既存の「さらに表示」で順に表示します。
@@ -565,7 +565,7 @@ curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec"
 
 着手前の整理と保留の振り返りを、一度の取得・提出にまとめられます。判定対象も届いた記憶もない相づちには、無関係な判定例や記事を付けません。保存失敗は明示し、再送して完了を確認します。
 
-APIの追加: `wiki query`は`lookup:{id,query,pages:[{id,revision}]}`を返します。`reflect submit`は`discoveries:[{lookup_id,page_id,revision,context,decision,evidence}]`を受け取ります（各説明は1000バイトまで）。記事の草稿に`rationale`（1600バイトまで）と`watch`（相対パス、通常ファイル最大4件・各1 MiBまで）を指定できます。隠しパス、リンク、プロジェクト外のパスは拒否します。省略時は既存値を保持し、空の値で消します。`maintenance.changed_files`と記事の`recheck`に前提の変化が入り、確認後に`watch`を再提出すると基準を更新します。これらはエージェントの観察であり、人の正解や許可ではありません。`hook plan submit`には通常の振り返り提出と同じ形の`reflection`を含められます（全体で1 MiBまで）。入れ子の保存結果も確認します。
+APIの追加: `wiki query`は`lookup:{id,query,pages:[{id,revision}]}`を返します。`reflect submit`は`discoveries:[{lookup_id,page_id,revision,context,decision,evidence}]`を受け取ります（各説明は1000バイトまで）。記事の草稿に`rationale`（1600バイトまで）と`watch`（相対パス、通常ファイル最大4件・各1 MiBまで）を指定できます。隠しパス、リンク、プロジェクト外のパスは拒否します。省略時は既存値を保持し、空の値で消します。`maintenance.changed_files`と記事の`recheck`に前提の変化が入り、確認後に`watch`を再提出すると基準を更新します。これらはエージェントの観察であり、人の正解や許可ではありません。古い入口の`hook plan submit`には通常の振り返り提出と同じ形の`reflection`を含められます（全体で1 MiBまで）。入れ子の保存結果も確認します。
 
 ## 知識の一部を直し、必要な場面で見つかるか確かめる
 
