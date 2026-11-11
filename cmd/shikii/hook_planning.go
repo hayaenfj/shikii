@@ -129,14 +129,16 @@ const planningHowToSubmit = "Pass the same session_id, turn_id and query, plus a
 // the reply of hook plan query). It says how the JSON reaches the command (standard input): without that, sessions began by asking
 // the command for help (shikii work prepare --help was the most frequent refused call in this machine's agent sessions, 2026-11-11).
 // It names the older flow only to keep it out: a real agent read "Legacy hook plan query returns how_to_submit" as one more step,
-// ran both, and hook plan query replaced the receipt of work prepare (2026-11-12).
+// ran both, and hook plan query replaced the receipt of work prepare (2026-11-12). It names the MCP form beside the command: an
+// agent whose shell could not run the command never called shikii_wiki, although it was connected, while only the command was named.
+// How to combine notes and reflection and what to check in the reply is in how_to_record of the prepare reply, not here.
 func planningNotice(sessionID, turnID string) string {
 	ids, _ := json.Marshal(map[string]string{"session_id": sessionID, "turn_id": turnID})
 	command := "shikii"
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Send the JSON below, with topic words in query added, on standard input to %s work prepare. End with work record the same way, using the receipt and result:{changed,checked?,evidence?:[refs],remaining?}; combine necessary notes/reflection. Check saved/pending and retry only failed refs. A rule, test or procedure you make or change goes to the wiki. Do not run the legacy hook plan query or hook plan submit (how_to_submit): they replace the receipt.\n", command) + string(ids)
+	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Send the JSON below, with topic words in query added, on standard input to %s work prepare (or as work to the MCP tool shikii_wiki, operation prepare). End with work record the same way, using the receipt and result:{changed,checked?,evidence?:[refs],remaining?}. A rule, test or procedure you make or change goes to the wiki. Do not run the legacy hook plan query or hook plan submit (how_to_submit): they replace the receipt.\n", command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {

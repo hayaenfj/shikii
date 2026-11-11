@@ -162,3 +162,48 @@ func TestTheShapeOfResultSaysEvidenceIsReferences(t *testing.T) {
 		}
 	}
 }
+
+// Found by sending the same request to a real agent that could reach shikii only through its MCP tools (the shell asked for an
+// approval nobody could give, 2026-11-12): the notice and the Stop block named only the command line, so the agent tried the
+// command, was refused, never called shikii_wiki although it was connected, and the turn ended with nothing recorded. Both now
+// name the MCP form beside the command, and that form runs as they say: the notice's JSON as work to shikii_wiki prepare, the
+// receipt and the result as work to shikii_wiki record.
+func TestTheNoticeAndTheStopBlockNameTheMCPForm(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
+	notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
+	if !strings.Contains(notice, "work prepare (or as work to the MCP tool shikii_wiki, operation prepare)") {
+		t.Errorf("the notice names the MCP form of prepare: %s", notice)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."}))
+	if !blocked || !strings.Contains(reason, "work prepare (or as work to the MCP tool shikii_wiki, operation prepare)") || !strings.Contains(reason, "the same way to work record (MCP: operation record)") {
+		t.Errorf("the block for a turn that prepared nothing names the MCP form of both calls:\n%s", reason)
+	}
+	var ids string
+	for _, line := range strings.Split(notice, "\n") {
+		if strings.HasPrefix(line, `{"session_id":`) {
+			ids = line
+		}
+	}
+	work := strings.TrimSuffix(ids, "}") + `,"query":"CSV export filters"}`
+	prepared, _ := mcpToolCall(t, h, "shikii_wiki", `{"operation":"prepare","work":`+work+`}`)
+	receipt, _ := json.Marshal(prepared["structuredContent"].(map[string]any)["receipt"])
+	if string(receipt) == "null" {
+		t.Fatalf("the notice's JSON with query added, as work, prepares the task through MCP: %v", prepared)
+	}
+	reason, blocked = stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done.", "stop_hook_active": true}))
+	if !blocked || !strings.Contains(reason, "work record (or as work to the MCP tool shikii_wiki, operation record)") {
+		t.Errorf("the block for a prepared turn names the MCP form of record:\n%s", reason)
+	}
+	saved, _ := mcpToolCall(t, h, "shikii_wiki", `{"operation":"record","work":{"receipt":`+string(receipt)+`,"result":{"changed":"README.md","checked":"Read it."}}}`)
+	if saved["structuredContent"].(map[string]any)["complete"] != true {
+		t.Fatalf("the receipt and the result, as work, record the task through MCP: %v", saved["structuredContent"])
+	}
+	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done.", "stop_hook_active": true})); blocked {
+		t.Errorf("finishing after the record through MCP passes: %s", reason)
+	}
+}

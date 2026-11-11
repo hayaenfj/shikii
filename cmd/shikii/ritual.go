@@ -332,9 +332,9 @@ func planningWithWorkReason(changed int) string {
 func reasoningBlockReason(sessionID, turnID string, r *reasoningProgress) string {
 	next := reasoningView(r).Next
 	if r.Start != nil || !r.PreparedAt.IsZero() {
-		return fmt.Sprintf("The built-in check %s has its prepared start and needs the saved ending result. Send the receipt of your work prepare and %s on standard input to %s work record (prepare again, with %s and topic words in query, only when you no longer hold the receipt). %s", ritualReasoning, workResultShape, hookExe(), planJSON(sessionID, turnID), next)
+		return fmt.Sprintf("The built-in check %s has its prepared start and needs the saved ending result. Send the receipt of your work prepare and %s on standard input to %s work record (or as work to the MCP tool shikii_wiki, operation record) (prepare again, with %s and topic words in query, only when you no longer hold the receipt). %s", ritualReasoning, workResultShape, hookExe(), planJSON(sessionID, turnID), next)
 	}
-	return fmt.Sprintf("The built-in check %s needs a prepared start and a saved ending result. Send %s with topic words in query on standard input to %s work prepare, read reasoning and the evidence, then send its receipt and %s the same way to work record. %s", ritualReasoning, planJSON(sessionID, turnID), hookExe(), workResultShape, next)
+	return fmt.Sprintf("The built-in check %s needs a prepared start and a saved ending result. Send %s with topic words in query on standard input to %s work prepare (or as work to the MCP tool shikii_wiki, operation prepare), read reasoning and the evidence, then send its receipt and %s the same way to work record (MCP: operation record). %s", ritualReasoning, planJSON(sessionID, turnID), hookExe(), workResultShape, next)
 }
 
 // planningBlockReason is the line of the Stop block when the plan was not sorted out but files were changed.
