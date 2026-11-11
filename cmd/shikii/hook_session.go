@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 func sessionPath(agent, id string) string {
@@ -231,7 +233,7 @@ func pruneSessions(agent string) {
 }
 
 func pruneSessionRecord(root *os.Root, name string) {
-	lock, err := root.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	lock, err := rootfile.OpenNoFollow(root, name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return
 	}
@@ -244,7 +246,7 @@ func pruneSessionRecord(root *os.Root, name string) {
 		return
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(root, name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err == nil {
 		info, statErr := f.Stat()
 		_ = f.Close()
@@ -299,7 +301,7 @@ func pruneSessionRecord(root *os.Root, name string) {
 	// Remove only an old orphan, under the same lock.
 	for _, suffix := range sessionCaches {
 		cache := strings.TrimSuffix(name, ".json") + suffix
-		f, err = root.OpenFile(cache, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+		f, err = rootfile.OpenNoFollow(root, cache, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 		if err != nil {
 			continue
 		}

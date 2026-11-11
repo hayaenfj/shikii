@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 // The shared side holds only the entries to projects. Conversations, scores and lines live in each .shikii/.
@@ -90,7 +92,7 @@ func projectActive(root, scope string) (bool, error) {
 	if !markerInfo.Mode().IsRegular() {
 		return false, errors.New("the initialization mark must be a regular file")
 	}
-	f, err := dir.OpenFile("project.json", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(dir, "project.json", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
 		return false, nil
 	}

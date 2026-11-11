@@ -7,6 +7,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 // parentRoot opens from the storage location down to the last parent using only ordinary folders.
@@ -78,8 +80,9 @@ func (s Store) parentRoot(path string, create bool) (*os.Root, string, error) {
 	return root, parts[len(parts)-1], nil
 }
 
-// openInRoot opens a record file; a test swaps it to return ENOENT once on a create, as darwin did when two goroutines created the same file.
-var openInRoot = (*os.Root).OpenFile
+// openInRoot opens a record file without following a link in its name; a test swaps it to return ENOENT once on a create, as darwin
+// did when two goroutines created the same file.
+var openInRoot = rootfile.OpenNoFollow
 
 func (s Store) openFile(path string, flags int) (*os.File, error) {
 	root, name, err := s.parentRoot(path, flags&os.O_CREATE != 0)

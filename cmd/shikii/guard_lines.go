@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 // The lines of the files that were not committed at the request (an uncommitted change to a tracked file, a file Git does
@@ -135,15 +137,15 @@ func lineGuards(root string) []guard {
 func guardNeedsLines(root string) bool { return len(lineGuards(root)) > 0 }
 
 // readGuardFile reads one listed file: a regular file inside top of at most guardFileBytesMax, without following a link in
-// its place. A larger file is not read. os.Root follows a link inside it even with O_NOFOLLOW, so the file opened must be the
-// one Lstat found there.
+// its place. A larger file is not read. os.Root follows a link inside it even with O_NOFOLLOW, so it is opened with
+// rootfile.OpenNoFollow, and the file opened must be the one Lstat found there.
 func readGuardFile(top *os.Root, p string) ([]byte, bool) {
 	name := filepath.FromSlash(p)
 	there, err := top.Lstat(name)
 	if err != nil || !there.Mode().IsRegular() || there.Size() > guardFileBytesMax {
 		return nil, false
 	}
-	f, err := top.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(top, name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, false
 	}

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hayaenfj/shikii/internal/rootfile"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -45,7 +46,7 @@ func assignmentName(id string) string { return workHash(id)[:32] + ".json" }
 
 func readAssignment(dir *os.Root, name string) (assignmentRecord, error) {
 	var r assignmentRecord
-	f, err := dir.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(dir, name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return r, err
 	}

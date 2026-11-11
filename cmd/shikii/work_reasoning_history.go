@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/rootfile"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -56,7 +57,7 @@ func readReasoningHistoryFile(dir *os.Root, name string, identity reasoningHisto
 	if !before.Mode().IsRegular() {
 		return nil, errors.New("the reasoning history must be an ordinary file")
 	}
-	f, err := dir.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(dir, name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}

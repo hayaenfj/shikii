@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 func updateLock(root *os.Root) (*os.File, error) {
@@ -19,7 +21,7 @@ func updateLock(root *os.Root) (*os.File, error) {
 	if info, err := root.Lstat(name); err == nil && !info.Mode().IsRegular() {
 		return nil, errors.New("the update lock cannot be a link")
 	}
-	f, err := root.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := rootfile.OpenNoFollow(root, name, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, errors.New("cannot write to the install location. Put shikii in a place you have write permission for")
 	}

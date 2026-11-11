@@ -4,10 +4,12 @@ import (
 	"errors"
 	"os"
 	"syscall"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 func lockPlanningSession(dir *os.Root, name string) (func(), error) {
-	lock, err := dir.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	lock, err := rootfile.OpenNoFollow(dir, name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return nil, err
 	}

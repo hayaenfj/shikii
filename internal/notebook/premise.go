@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"unicode"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 type Premise struct {
@@ -56,7 +58,7 @@ func (b Book) premiseHash(path string) (string, string) {
 			return "", "unreadable"
 		}
 	}
-	f, err := root.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(root, path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return "", "unreadable"
 	}

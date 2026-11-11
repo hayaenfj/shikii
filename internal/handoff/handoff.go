@@ -25,6 +25,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 // Dir is the name of the work-record place under .shikii/.
@@ -199,7 +201,7 @@ func (b Book) Open(p string) (*os.File, Entry, error) {
 	if beforeOpen != nil {
 		beforeOpen()
 	}
-	f, err := r.OpenFile(clean, os.O_RDONLY|noFollow, 0)
+	f, err := rootfile.OpenNoFollow(r, clean, os.O_RDONLY|noFollow, 0)
 	if err != nil {
 		return nil, Entry{}, fmt.Errorf("work record not found: %s", clean)
 	}
@@ -274,7 +276,7 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 		return Entry{}, fmt.Errorf("work record %s is not a regular file (links, hard links and folders are not written)", clean)
 	}
 	if appendMode {
-		f, err := r.OpenFile(clean, os.O_CREATE|os.O_WRONLY|os.O_APPEND|noFollow, 0o600)
+		f, err := rootfile.OpenNoFollow(r, clean, os.O_CREATE|os.O_WRONLY|os.O_APPEND|noFollow, 0o600)
 		if err != nil {
 			return Entry{}, err
 		}

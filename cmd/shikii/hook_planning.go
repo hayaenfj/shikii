@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/decide"
+	"github.com/hayaenfj/shikii/internal/rootfile"
 	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -236,7 +237,7 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 		return reply, nil
 	}
 	// concurrent submits do not wait; they are asked to retry. A new request from the person and Stop are not blocked.
-	busy, err := sessions.OpenFile(name+".planning.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	busy, err := rootfile.OpenNoFollow(sessions, name+".planning.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +419,7 @@ func planningSessionRoot(root string) (*os.Root, error) {
 }
 
 func readPlanningSession(dir *os.Root, name string) (*hookSession, error) {
-	f, err := dir.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(dir, name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, errors.New("there is no record of that session (check the session_id)")
@@ -599,7 +600,7 @@ func moveListingHeader(dir *os.Root, name, from, to string) error {
 }
 
 func moveHeaderIn(dir *os.Root, files string, max int, from, to string) error {
-	f, err := dir.OpenFile(files, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(dir, files, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
 		return nil
 	}

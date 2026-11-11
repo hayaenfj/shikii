@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/rootfile"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -236,7 +237,7 @@ func openWorkSessions(root string) (*os.Root, error) {
 	return planningSessionRoot(root)
 }
 func workLock(dir *os.Root, name string) (func(), error) {
-	f, err := dir.OpenFile(name+".work.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	f, err := rootfile.OpenNoFollow(dir, name+".work.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +273,7 @@ func saveWorkState(dir *os.Root, name, scope, turn string, w *workState, install
 }
 
 func saveWorkContext(dir *os.Root, name, scope, turn string, w *workState, install bool, update func(*hookSession) error, checkpoints ...*workSessionCheckpoint) error {
-	f, err := dir.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	f, err := rootfile.OpenNoFollow(dir, name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return err
 	}

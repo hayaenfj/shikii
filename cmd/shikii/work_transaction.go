@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"syscall"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 type workCommitter func(func() error) error
@@ -11,7 +13,7 @@ type workCommitter func(func() error) error
 // Only a short storage operation runs inside this boundary. Planning and
 // placement model calls stay outside; their publication checks run separately.
 func commitWorkTurn(dir *os.Root, name, scope string, token workToken, action func() error) error {
-	f, err := dir.OpenFile(name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	f, err := rootfile.OpenNoFollow(dir, name+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return err
 	}

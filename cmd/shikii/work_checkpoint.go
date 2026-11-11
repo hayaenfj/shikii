@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hayaenfj/shikii/internal/rootfile"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -51,7 +52,7 @@ func writeWorkCheckpoint(dir *os.Root, name string, s *hookSession, checkpoint *
 }
 
 func reuseWorkCheckpoint(dir *os.Root, name string, data []byte) error {
-	f, err := dir.OpenFile(name, os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	f, err := rootfile.OpenNoFollow(dir, name, os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return err
 	}

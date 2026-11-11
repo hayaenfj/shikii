@@ -9,9 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
-
-	"github.com/hayaenfj/shikii/internal/store"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // DeliveryEntry keeps retrieval and the eventual delivery outcome separate.
@@ -171,7 +172,7 @@ const deliveryJournalLimit = 4 << 20
 
 func readDeliveryJournal(dir *os.Root) ([]DeliveryCase, error) {
 	out := []DeliveryCase{}
-	f, err := dir.OpenFile(".deliveries.json", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := rootfile.OpenNoFollow(dir, ".deliveries.json", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
 		return out, nil
 	}
@@ -243,7 +244,7 @@ func (b Book) SaveDeliveryCase(c DeliveryCase) error {
 		return err
 	}
 	defer dir.Close()
-	f, err := dir.OpenFile(".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	f, err := rootfile.OpenNoFollow(dir, ".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 // MemoryAssessments reads saved evidence independently of the bounded delivery log.
@@ -36,7 +38,7 @@ func (s Store) MemoryAssessments(scope string) ([]MemoryAssessment, error) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		f, err := root.OpenFile(entry.Name(), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+		f, err := rootfile.OpenNoFollow(root, entry.Name(), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 		if err != nil {
 			return nil, err
 		}
