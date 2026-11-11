@@ -154,6 +154,13 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 				continue
 			}
 		}
+		if field == "memory_upgrade" {
+			// the pages of the batch go without their bodies before the batch goes whole
+			if taken, fits := trimMemoryUpgrade(reply, quoted, budget-1000, size); fits {
+				omitted = append(omitted, taken...)
+				continue
+			}
+		}
 		if reply[field] != nil {
 			delete(reply, field)
 			omitted = append(omitted, field)
@@ -358,6 +365,42 @@ func workPreparationOutput(budget int, omitted []string) map[string]any {
 func workPreparationHint(output map[string]any) map[string]any {
 	output["next_action"] = workPreparationNext + " knowledge_query continues the search after the candidates shown, or repeats it when none is; a larger max_bytes returns more in one reply."
 	return output
+}
+
+// trimMemoryUpgrade keeps the upgrade batch when its pages do not fit: first without the orientation of each page (passages of
+// the body that comes with it), then without the bodies. A page without its body keeps its reference, its maintenance reference,
+// its task, the head of the article and the exact query that reads it, and is not counted as read or quotable. Before, the batch
+// went whole, also in answer to the query memory-upgrade, and the agent had to guess a larger max_bytes (2026-11-12). It returns
+// what it took and whether the reply fits now.
+func trimMemoryUpgrade(reply map[string]any, quoted map[string]string, budget int, size func(any) int) ([]string, bool) {
+	upgrade, _ := reply["memory_upgrade"].(map[string]any)
+	pages, _ := upgrade["pages"].([]any)
+	if len(pages) == 0 {
+		return nil, false
+	}
+	for _, raw := range pages {
+		delete(raw.(map[string]any), "orientation")
+	}
+	taken := []string{"memory_upgrade.pages[].orientation"}
+	if size(reply) <= budget {
+		return taken, true
+	}
+	for _, raw := range pages {
+		e := raw.(map[string]any)
+		p, ok := e["article"].(notebook.Page)
+		if !ok {
+			return nil, false
+		}
+		e["article"] = map[string]any{"id": p.ID, "revision": p.Revision, "title": p.Title, "kind": p.Kind, "lesson": p.Lesson}
+		e["body_included"] = false
+		e["query"] = map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}
+		e["next_action"] = "Read the page with its query before reviewing it; its ref and maintenance_ref stay valid with this receipt."
+		if ref, _ := e["ref"].(string); ref != "" {
+			delete(quoted, ref)
+		}
+	}
+	taken = append(taken, "memory_upgrade.pages[].article (each query reads its page whole)")
+	return taken, size(reply) <= budget
 }
 
 func suppliedPreparationReads(reply map[string]any) []store.KnowledgeReference {
