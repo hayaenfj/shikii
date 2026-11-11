@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 // A new standalone preparation is not delivered until its assignment binding
@@ -43,7 +45,7 @@ func retireAssignmentPreparation(root, scope, receipt string) error {
 		return err
 	}
 	// Persist removal without depending on the failed checkpoint's sync hook.
-	f, err := dir.Open(".")
+	f, err := rootfile.OpenNoFollow(dir, ".", os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}

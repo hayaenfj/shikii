@@ -99,7 +99,9 @@ func installUpdate(ctx context.Context, root *os.Root, exe, version string, file
 				return fmt.Errorf("update target %s is not a regular file", target)
 			}
 			p.info = info
-			old, err := root.Open(target)
+			// OpenNoFollow refuses a link at the name; the backup must also be of the very file checked above (OpenNoFollow would
+			// accept the file a writer renamed onto the name in between), as the targets are compared with p.info before the swap
+			old, err := rootfile.OpenNoFollow(root, target, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 			if err != nil {
 				return errors.New("cannot move the existing executable aside")
 			}

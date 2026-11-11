@@ -25,7 +25,7 @@ func (s Store) MemoryAssessments(scope string) ([]MemoryAssessment, error) {
 		return nil, err
 	}
 	defer root.Close()
-	folder, err := root.Open(".")
+	folder, err := rootfile.OpenNoFollow(root, ".", os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}

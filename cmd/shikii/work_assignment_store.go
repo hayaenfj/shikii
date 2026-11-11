@@ -93,7 +93,7 @@ func saveAssignment(dir *os.Root, r assignmentRecord) error {
 }
 
 func assignmentRecords(dir *os.Root) ([]assignmentRecord, error) {
-	f, err := dir.Open(".")
+	f, err := rootfile.OpenNoFollow(dir, ".", os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}

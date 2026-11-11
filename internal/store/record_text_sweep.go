@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
 // textSweepMinAge keeps the texts of decisions being written: a decision's original text may be saved just before its line.
@@ -30,7 +32,7 @@ func (s Store) SweepRecordTexts(before time.Time, apply bool) (removed int, bloc
 		return 0, false, err
 	}
 	defer dir.Close()
-	f, err := dir.Open(".")
+	f, err := rootfile.OpenNoFollow(dir, ".", os.O_RDONLY, 0)
 	if err != nil {
 		return 0, false, err
 	}
