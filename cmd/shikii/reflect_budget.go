@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 )
 
@@ -77,7 +78,7 @@ func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 		}
 		omitted = append(headsOmitted(omitted, view, heads), note...)
 		reply["output"] = map[string]any{"limited": true, "max_bytes": budget, "omitted": omitted,
-			"next_action": "Submit what is here: every conversation, target and delivered lesson is listed. Read a lesson left without its body with its query, and a conversation that came as a head with wiki query <its id>; query again after the submit for what is left."}
+			"next_action": "Submit what is here: each conversation listed has its targets and delivered lessons. Read a lesson left without its body with its query, and a conversation that came as a head with wiki query <its id>; query again after the submit for what is left (more_pending counts the conversations that wait)."}
 		return reply, size(reply) <= budget
 	}
 	for level := 1; level <= 3; level++ {
@@ -122,8 +123,20 @@ func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 		current.Sources = sources
 		heads++
 	}
-	// nothing more to take off: the reply is over the bound and says so, rather than leaving out what submit needs
-	reply, _ := try(current, 4, 0, heads, "the reply is still over max_bytes: the conversations and their deliveries are not cut")
+	// Even the heads do not fit (about 30 pending conversations filled the bound, and the reply went over it: audit of 0.31.0).
+	// The newest conversations wait, counted in more_pending like the ones beyond the listing's own limit: they come once these are
+	// settled. The first conversation always stays.
+	notes := []string{}
+	for dropped := 1; len(current.Sources) > 1; dropped++ {
+		current.Sources = append([]reflectSource{}, current.Sources[:len(current.Sources)-1]...)
+		current.MorePending++
+		notes = []string{fmt.Sprintf("the last %d conversations (counted in more_pending: query again after the submit)", dropped)}
+		if reply, fits := try(current, 4, 0, heads, notes...); fits {
+			return reply
+		}
+	}
+	// nothing more to take off: the reply is over the bound and says so, rather than cutting the first conversation
+	reply, _ := try(current, 4, 0, heads, append(notes, "the reply is still over max_bytes: the first conversation and its deliveries are not cut")...)
 	if reply == nil {
 		return view
 	}

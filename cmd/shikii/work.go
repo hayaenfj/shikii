@@ -633,7 +633,8 @@ func cmdWork(args []string) error {
 	if extra {
 		return errors.New("work takes exactly one JSON object")
 	}
-	if args[0] == "prepare" && req.MaxBytes == 0 {
+	cliDefault := args[0] == "prepare" && req.MaxBytes == 0
+	if cliDefault {
 		req.MaxBytes = cliPrepareBytes
 	}
 	root, scope, err := currentProjectStore()
@@ -641,6 +642,13 @@ func cmdWork(args []string) error {
 		return err
 	}
 	result, err := runWork(root, scope, args[0], req)
+	if err != nil && cliDefault && strings.Contains(err.Error(), "exceed max_bytes") {
+		// The person's request itself does not fit the CLI's own default (a request of 27 KB): the call the notice asks for was
+		// refused and the agent held no receipt (audit of 0.31.0). A task is never cut, so the default widens to the bound of
+		// the other entries; the receipt still comes first in the reply.
+		req.MaxBytes, _ = workOutputBudget(0)
+		result, err = runWork(root, scope, args[0], req)
+	}
 	if err != nil {
 		return err
 	}

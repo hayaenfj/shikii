@@ -157,7 +157,7 @@ func TestTheReflectionBoundTakesTheLeastUsefulPartsFirst(t *testing.T) {
 	if got, ok := limitReflectQuery(view, whole, workContextSize).(reflectView); !ok || len(got.Lessons) != 6 {
 		t.Fatalf("a reply that fits is returned as it is")
 	}
-	steps := []string{"lessons[].body", "maintenance[] details", "human_corrections", "lessons after the first", "the raw text of the last 1 of the 2 conversations", "still over max_bytes"}
+	steps := []string{"lessons[].body", "maintenance[] details", "human_corrections", "lessons after the first", "the raw text of the last 1 of the 2 conversations", "the last 1 conversations (counted in more_pending", "still over max_bytes"}
 	reached := 0 // how far down the steps the replies have gone
 	for bound := whole - 1; bound > 800; bound -= 150 {
 		raw, _ := json.Marshal(limitReflectQuery(view, bound, workContextSize))
@@ -185,15 +185,26 @@ func TestTheReflectionBoundTakesTheLeastUsefulPartsFirst(t *testing.T) {
 			t.Fatalf("at %d bytes the reply is %d bytes and says: %s", bound, len(raw), omitted)
 		}
 		sources := reply["sources"].([]any)
-		first, second := sources[0].(map[string]any), sources[1].(map[string]any)
-		if len(sources) != 2 || first["head"] == true || !strings.HasPrefix(first["source_material"].(map[string]any)["request"].(string), "first "+long(700)) ||
-			first["targets"].([]any)[0].(map[string]any)["trace_id"] != "1111111111111111" || second["targets"].([]any)[0].(map[string]any)["trace_id"] != "2222222222222222" ||
-			first["memories"].([]any)[0].(map[string]any)["quote"].(map[string]any)["key"] != "lesson:1:1" || second["memories"].([]any)[0].(map[string]any)["quote"].(map[string]any)["key"] != "lesson:2:2" ||
-			second["memories"].([]any)[0].(map[string]any)["source_id"] != "cccccccccccccccc" || reply["how_to_submit"] != view.HowToSubmit {
+		first := sources[0].(map[string]any)
+		if first["head"] == true || !strings.HasPrefix(first["source_material"].(map[string]any)["request"].(string), "first "+long(700)) ||
+			first["targets"].([]any)[0].(map[string]any)["trace_id"] != "1111111111111111" ||
+			first["memories"].([]any)[0].(map[string]any)["quote"].(map[string]any)["key"] != "lesson:1:1" || reply["how_to_submit"] != view.HowToSubmit {
 			t.Fatalf("at %d bytes what submit needs is not all there, or the first conversation is cut: %.400s", bound, raw)
 		}
-		if head := second["head"] == true; head != strings.Contains(omitted, steps[4]) {
-			t.Fatalf("at %d bytes the second conversation is a head exactly when output says so: %v %s", bound, head, omitted)
+		// the second conversation is listed with its target and its delivery, or it waits and is counted
+		waits := strings.Contains(omitted, steps[5])
+		if waits != (len(sources) == 1) || waits != (reply["more_pending"] == float64(1)) {
+			t.Fatalf("at %d bytes the second conversation is listed or counted in more_pending: %d listed, more_pending %v, %s", bound, len(sources), reply["more_pending"], omitted)
+		}
+		if !waits {
+			second := sources[1].(map[string]any)
+			if second["targets"].([]any)[0].(map[string]any)["trace_id"] != "2222222222222222" || second["memories"].([]any)[0].(map[string]any)["quote"].(map[string]any)["key"] != "lesson:2:2" ||
+				second["memories"].([]any)[0].(map[string]any)["source_id"] != "cccccccccccccccc" {
+				t.Fatalf("at %d bytes the second conversation lacks what submit needs: %.400s", bound, raw)
+			}
+			if head := second["head"] == true; head != strings.Contains(omitted, steps[4]) {
+				t.Fatalf("at %d bytes the second conversation is a head exactly when output says so: %v %s", bound, head, omitted)
+			}
 		}
 	}
 	if reached != len(steps)-1 {

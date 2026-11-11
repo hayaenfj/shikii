@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -169,9 +170,16 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	if size(reply) > budget {
 		// A lesson first keeps its title beside its references (a bare id tells an agent nothing about whether to read it), and
 		// loses the title too only when that still does not fit.
+		// One lesson at a time, the last of the ranking first: before, every lesson lost its text at once, and a reply could
+		// use half of its bound with all of them down to their titles (audit of 0.31.0). output names what went.
+	lighten:
 		for _, keep := range []string{"title", ""} {
-			for _, raw := range entries {
-				e := raw.(map[string]any)
+			name := "knowledge[] text and summaries, the last entries first (each query reads its lesson whole)"
+			if keep == "" {
+				name = "knowledge[] titles, the last entries first"
+			}
+			for i := len(entries) - 1; i >= 0; i-- {
+				e := entries[i].(map[string]any)
 				ref := e["ref"].(string)
 				delete(quoted, ref)
 				for key := range e {
@@ -181,9 +189,12 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 				}
 				e["body_included"], e["attention_limited"] = false, true
 				e["reading_notice"] = "Original text omitted; read the exact revision query, including its conditions and exceptions."
-			}
-			if size(reply) <= budget {
-				break
+				if !slices.Contains(omitted, name) {
+					omitted = append(omitted, name)
+				}
+				if size(reply) <= budget {
+					break lighten
+				}
 			}
 		}
 	}
@@ -300,13 +311,20 @@ func trimKnowledgeCandidates(w *workState, reply map[string]any, budget int, siz
 			least = i + 1
 		}
 	}
+	nextCursor, hadNext := context["next_cursor"]
 	show := func(keep int) bool {
 		search["candidates"] = candidates[:keep]
 		holder["cursor"] = w.candidateCursor(keep)
+		context["next_cursor"] = holder["cursor"] // the context says to read on when next_cursor is present: the same cursor
 		return size(reply) <= budget
 	}
 	if least >= len(candidates) || !show(least) {
 		restore()
+		if hadNext {
+			context["next_cursor"] = nextCursor
+		} else {
+			delete(context, "next_cursor")
+		}
 		return nil, false
 	}
 	low, high := least, len(candidates)-1 // the most candidates that fit: low fits
@@ -363,7 +381,7 @@ func workPreparationOutput(budget int, omitted []string) map[string]any {
 // workPreparationHint adds, to the output of a shortened reply, how to get more in one call: the search that finds the candidates
 // left out, and the bound itself. The caller takes it back when the reply would not fit with it.
 func workPreparationHint(output map[string]any) map[string]any {
-	output["next_action"] = workPreparationNext + " knowledge_query continues the search after the candidates shown, or repeats it when none is; a larger max_bytes returns more in one reply."
+	output["next_action"] = workPreparationNext + " knowledge_query, when the reply has one, continues the search after the candidates shown, or repeats it when none is; a larger max_bytes returns more in one reply."
 	return output
 }
 
@@ -400,6 +418,17 @@ func trimMemoryUpgrade(reply map[string]any, quoted map[string]string, budget in
 		}
 	}
 	taken = append(taken, "memory_upgrade.pages[].article (each query reads its page whole)")
+	if size(reply) <= budget {
+		return taken, true
+	}
+	// the smallest form: without the lesson too (a lesson can be 2,000 bytes, and two of them left no room at the smallest bound,
+	// so the batch went whole again: audit of 0.31.0). The references, the title, the task and the query stay.
+	for _, raw := range pages {
+		if head, ok := raw.(map[string]any)["article"].(map[string]any); ok {
+			delete(head, "lesson")
+		}
+	}
+	taken = append(taken, "memory_upgrade.pages[].article.lesson")
 	return taken, size(reply) <= budget
 }
 

@@ -65,7 +65,8 @@ func TestCLIPrepareReplyFitsWhatAnAgentsShellShows(t *testing.T) {
 	if len(large) <= 28<<10 || largeReply["knowledge_context"] == nil {
 		t.Errorf("max_bytes 65536 returns the candidates too (%d bytes)", len(large))
 	}
-	// a task too long for the bound is refused with the bound and how to ask for more, so one more call is enough
+	// a task too long for a bound the caller named is refused with the bound and how to ask for more, so one more call is enough
+	// (a task is never cut)
 	var refusal error
 	withStdin(t, `{"query":"CSV export filters","max_bytes":8192,"request":"`+strings.Repeat("Check the CSV export. ", 600)+`"}`, func() {
 		_, refusal = captureErr(func() error { return cmdWork([]string{"prepare"}) })
@@ -228,13 +229,21 @@ func TestABoundedReplyKeepsTheTopSearchCandidates(t *testing.T) {
 	if len(lessons) < 2 || len(out) > 8192 {
 		t.Fatalf("the smallest bound still names the lessons: %d lessons, %d bytes", len(lessons), len(out))
 	}
-	for _, raw := range lessons {
+	reduced := 0
+	for i, raw := range lessons {
 		entry := raw.(map[string]any)
 		if entry["summary"] != nil || entry["orientation"] != nil || entry["article"] != nil {
-			t.Fatalf("precondition: at the smallest bound a long lesson is down to its references: %.300v", entry)
+			if reduced > 0 {
+				t.Errorf("the lessons lose their text from the end of the ranking: entry %d is whole after a reduced one", i)
+			}
+			continue
 		}
+		reduced++
 		if title, _ := entry["title"].(string); !strings.HasPrefix(title, "Ledger totals") || entry["query"] == nil {
 			t.Errorf("a lesson down to its references keeps its title and its exact query: %v", entry)
 		}
+	}
+	if reduced == 0 || !strings.Contains(fmt.Sprint(small["output"]), "knowledge[] text and summaries, the last entries first") {
+		t.Fatalf("precondition: at the smallest bound some long lesson is down to its references, and output says so: %d reduced, %v", reduced, small["output"])
 	}
 }
