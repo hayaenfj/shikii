@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,7 +16,9 @@ import (
 // Found while fixing the second round of the audit of 0.31.0: the entries the MCP tools shikii_decide, shikii_label and shikii_tune
 // reach read their JSON on their own, and answered a value of the wrong type in encoding/json's words ("bad json: json: cannot
 // unmarshal string into Go struct field .inputs of type map[string]string"). They keep passing over keys they do not know, and
-// say what they cannot read in the reader's words, like the entries of shikii_wiki, shikii_review and shikii_reflect.
+// say what they cannot read in the reader's words, like the entries of shikii_wiki, shikii_review and shikii_reflect. The
+// entries the page calls (redo, the tune actions, restoring answers, wiki claims) answered "bad json" the same way and read
+// through the same reader now: no entry reads a JSON body on its own, but for the ones ownBodyReaders lists with their reason.
 
 // toolWrongTypes is every MCP tool with arguments that hold one value of the wrong type, and the reader's sentence for it. A tool
 // that sends no body has no arguments here.
@@ -51,7 +56,81 @@ func toolsWithoutARow(tools []map[string]any) (uncovered, idle []string) {
 // encodingJSONWords are words only encoding/json says ("bad json: " is these entries' own opening, so "json: " alone is not one).
 var encodingJSONWords = []string{"json: cannot", "json: unknown", "json: invalid", "Go struct field", "Go value", "cannot unmarshal", "invalid character", "unexpected EOF", ": EOF"}
 
+// ownBodyReaders are the functions that may read a JSON body with a decoder of their own, each with its reason. Every other
+// function reads through decodeObject or decodeStrictObject, so what it cannot read is worded by the one reader.
+var ownBodyReaders = map[string]string{
+	"handleArticle": "the page's edit of an article: read strictly, with one fixed answer",
+	"probe":         "the reply of the model's server, not a request to shikii",
+}
+
+// bodyReaders lists the functions of the given Go sources that hand a Body to json.NewDecoder themselves.
+func bodyReaders(t *testing.T, sources map[string]string) []string {
+	t.Helper()
+	found := map[string]bool{}
+	fset := token.NewFileSet()
+	for name, source := range sources {
+		file, err := parser.ParseFile(fset, name, source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok || len(call.Args) != 1 {
+					return true
+				}
+				decoder, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || decoder.Sel.Name != "NewDecoder" {
+					return true
+				}
+				if pkg, ok := decoder.X.(*ast.Ident); !ok || pkg.Name != "json" {
+					return true
+				}
+				if body, ok := call.Args[0].(*ast.SelectorExpr); ok && body.Sel.Name == "Body" {
+					found[fn.Name.Name] = true
+				}
+				return true
+			})
+		}
+	}
+	var names []string
+	for name := range found {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func TestEveryToolAnswersWhatItCannotReadInTheReadersWords(t *testing.T) {
+	sources := map[string]string{} // read before the fixture moves the working directory
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("cannot list the sources of the package: %v", err)
+	}
+	for _, name := range files {
+		if !strings.HasSuffix(name, "_test.go") {
+			sources[name] = string(mustRead(t, name))
+		}
+	}
+	// no entry reads a JSON body on its own, but for the ones listed with their reason
+	readers := bodyReaders(t, sources)
+	for _, name := range readers {
+		if ownBodyReaders[name] == "" {
+			t.Errorf("%s reads a JSON body with a decoder of its own: read it through decodeObject or decodeStrictObject, so the one reader words what it cannot read", name)
+		}
+	}
+	if len(readers) != len(ownBodyReaders) {
+		t.Errorf("the functions that read a body on their own are %v, and ownBodyReaders lists %d: a listed one no longer does", readers, len(ownBodyReaders))
+	}
+	// the negative example: a handler nobody listed is found
+	added := bodyReaders(t, map[string]string{"new_handler.go": "package main\nfunc (s *server) handleNew(w http.ResponseWriter, r *http.Request) {\n\tvar req struct{}\n\t_ = json.NewDecoder(r.Body).Decode(&req)\n}\n"})
+	if len(added) != 1 || added[0] != "handleNew" || ownBodyReaders["handleNew"] != "" {
+		t.Errorf("a new handler that reads its body on its own is not reported: %v", added)
+	}
 	repo, root, _ := planningFixture(t)
 	t.Chdir(repo)
 	h := newServer(serveOpts{storeDir: root, specsDir: filepath.Join(root, "decisions"), projectScope: feedbackScope(repo)})
@@ -81,8 +160,8 @@ func TestEveryToolAnswersWhatItCannotReadInTheReadersWords(t *testing.T) {
 		t.Errorf("a new tool without a row is not reported: %v", uncovered)
 	}
 	// a body that is no JSON object, at the entries of the decision tools (an MCP client always sends an object; a caller of the
-	// HTTP endpoint may not)
-	for _, path := range []string{"/v1/decide", "/v1/label", "/v1/tune/sync"} {
+	// HTTP endpoint may not) and at the entries the page calls, which answered "bad json" in encoding/json's words as well
+	for _, path := range []string{"/v1/decide", "/v1/label", "/v1/tune/sync", "/v1/tune/run", "/v1/tune/variant", "/v1/tune/adopt", "/v1/tune/review", "/v1/redo", "/v1/answers/restore", "/v1/wiki/claim"} {
 		for body, want := range map[string]string{
 			`{"spec":"needs-plan",}`: "the JSON is malformed (at byte 22)",
 			`{"spec":"needs-plan"`:   "the JSON is malformed (at byte 20: the input ends there, before the JSON is closed; send the whole object)",

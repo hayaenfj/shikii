@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/hayaenfj/shikii/internal/handoff"
@@ -174,7 +173,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 		AppliesTo map[string]string `json:"applies_to"`
 		Status    string            `json:"status"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
 		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 		return
 	}

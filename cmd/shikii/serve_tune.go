@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -104,7 +103,7 @@ func (s *server) handleTuneVariant(w http.ResponseWriter, r *http.Request) {
 		Question string            `json:"question"`
 		Options  map[string]string `json:"options"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
 		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 		return
 	}
@@ -262,7 +261,7 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		MeaningSame *bool  `json:"meaning_same"`
 		Note        string `json:"note"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
 		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 		return
 	}
@@ -328,7 +327,7 @@ func (s *server) handleTuneReview(w http.ResponseWriter, r *http.Request) {
 		Run  string `json:"run"`
 		Keep *bool  `json:"keep"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
 		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 		return
 	}

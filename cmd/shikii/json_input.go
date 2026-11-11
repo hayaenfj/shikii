@@ -35,9 +35,10 @@ func decodeStrictObject(data []byte, target any) (err error, extra bool) {
 }
 
 // decodeObject reads the JSON object of an entry that passes over keys it does not know: the decision API (decide, label, tune),
-// which the MCP tools shikii_decide, shikii_label and shikii_tune reach. What it cannot read is worded by the same reader as
-// decodeStrictObject. Before, these entries read their bodies on their own and answered in encoding/json's words ("bad json: json:
-// cannot unmarshal string into Go struct field .inputs of type map[string]string").
+// which the MCP tools shikii_decide, shikii_label and shikii_tune reach, and the entries the page calls (redo, the tune actions,
+// restoring answers, wiki claims). What it cannot read is worded by the same reader as decodeStrictObject. Before, these entries
+// read their bodies on their own and answered in encoding/json's words ("bad json: json: cannot unmarshal string into Go struct
+// field .inputs of type map[string]string").
 func decodeObject(body io.Reader, target any) error {
 	data, err := io.ReadAll(body)
 	if err != nil {
