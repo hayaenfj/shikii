@@ -167,8 +167,8 @@ func writeAtomic(p string, b []byte) error {
 		return err
 	}
 	// a new file of a random name (created exclusively, so a link there is never followed), removed when anything fails, so
-	// no temporary file is left next to p
-	f, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*.tmp")
+	// no temporary file is left next to p. Its name does not grow with p's, so every name the file system takes is written.
+	f, err := os.CreateTemp(filepath.Dir(p), ".write-*.tmp")
 	if err != nil {
 		return err
 	}

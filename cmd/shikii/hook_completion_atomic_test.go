@@ -223,3 +223,28 @@ func TestCompletionModelWaitAllowsWikiMutation(t *testing.T) {
 		t.Fatal("\u30e2\u30c7\u30eb\u5f85\u6a5f\u4e2d\u306b\u5909\u308f\u3063\u305f\u8a18\u4e8b\u3067\u5b8c\u4e86\u3092\u4fdd\u5b58\u3057\u305f")
 	}
 }
+
+// A Stop that ends the turn (it does not stop it) and cannot save the session record reports the failure, so the caller ends
+// the turn incomplete instead of treating it as saved.
+func TestStopThatEndsTheTurnReportsAFailedSessionWrite(t *testing.T) {
+	_, root, _, _ := completionArticleFixture(t)
+	snapshot := loadSession(root, completionSession)
+	if snapshot.Request == "" {
+		t.Fatal("premise: the session keeps the request")
+	}
+	blocked := sessionPath(root, completionSession)
+	writeSessionRecord = func(p string, b []byte) error {
+		if p == blocked {
+			return errors.New("no space left on device")
+		}
+		return writeAtomic(p, b)
+	}
+	t.Cleanup(func() { writeSessionRecord = writeAtomic })
+	if err := saveHookMutations(root, completionSession, "stop", snapshot, &hookOut{}, nil, nil); err == nil {
+		t.Fatal("a Stop whose session write failed reported it as saved")
+	}
+	writeSessionRecord = writeAtomic
+	if err := saveHookMutations(root, completionSession, "stop", snapshot, &hookOut{}, nil, nil); err != nil {
+		t.Fatalf("premise: the same Stop saves once the write works: %v", err)
+	}
+}

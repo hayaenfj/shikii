@@ -30,7 +30,7 @@ func TestFailedAtomicWriteLeavesNoTemporaryFile(t *testing.T) {
 	}
 }
 
-// A link at the name a temporary file could take is not followed: the file it points to outside is not written, and what is
+// A link at a name a temporary file could take is not followed: the file it points to outside is not written, and what is
 // written is a regular file in the place of p.
 func TestAtomicWriteDoesNotFollowALinkAtTheTemporaryName(t *testing.T) {
 	dir := t.TempDir()
@@ -39,8 +39,10 @@ func TestAtomicWriteDoesNotFollowALinkAtTheTemporaryName(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, "record")
-	if err := os.Symlink(outside, fmt.Sprintf("%s.%d.tmp", p, os.Getpid())); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{fmt.Sprintf("%s.%d.tmp", p, os.Getpid()), p + ".tmp", p + ".new"} { // names a fixed temporary file could take
+		if err := os.Symlink(outside, name); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := writeAtomic(p, []byte("data\n")); err != nil {
 		t.Fatal(err)
@@ -51,5 +53,17 @@ func TestAtomicWriteDoesNotFollowALinkAtTheTemporaryName(t *testing.T) {
 	info, err := os.Lstat(p)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 		t.Fatalf("what was written is not a regular file of mode 0600: %v %v", info, err)
+	}
+}
+
+// The temporary file's name does not grow with the name written: a name that fits the file system is written, however long.
+func TestAtomicWriteTakesANameAsLongAsTheFileSystemAllows(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, strings.Repeat("a", 250)+".json")
+	if err := writeAtomic(p, []byte("data\n")); err != nil {
+		t.Fatalf("a name of %d bytes was not written: %v", len(filepath.Base(p)), err)
+	}
+	if b, err := os.ReadFile(p); err != nil || string(b) != "data\n" {
+		t.Fatalf("what was written: %q %v", b, err)
 	}
 }
