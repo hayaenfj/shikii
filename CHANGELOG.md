@@ -2,28 +2,55 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.30.8 — Your uncommitted lines are not the agent's; undo what the AI decided about your past answers; gc sweeps orphaned texts
+## 0.30.8 — Your unfinished lines no longer stop the agent; undo the AI's decisions from the page
 
-- **Guards.** Lines you wrote and had not committed before a request (a draft in a tracked file, a file Git does not track yet) no longer count as lines the turn added when the turn changes that file, so `forbidden-words` does not stop the turn on them. While such a guard is enabled, the request keeps, for the files that differ from HEAD, only keyed hashes (HMAC-SHA256, a key made for each request) of their lines and how many times each occurs, never the lines; they sit next to the request's listing in `.shikii/sessions/` and go with it. The Stop, a slash command's turn and the check before a publication compare with them. Files past the limits (200 files, 1 MB each, binary files, 3 seconds) are compared with the request's HEAD as before. The very lines a guard stopped are kept apart as keyed hashes, once per repository (`.shikii/records/stopped-lines/`), so until they are removed or committed they count as added lines whenever a turn changes their file, in any session and also after `git add`, while your other uncommitted lines do not. Once a stopped line is committed, it no longer counts from the next turn on (a commit the turn itself makes does not clear it within that turn). The record knows a line only by the hash of its text, so when the stopped line is removed (also by a later commit or a revert) and the same text is written again before a Stop has compared that file since the commit or the removal, the line written again cannot be told from the stopped one and is stopped, as in 0.30.7. A Stop reads the record once and writes it at most once, without sorting it; the record holds up to 4 MB, and past that only newly stopped lines that do not fit are dropped. A Stop looks again only at the files its turn changed, and a stopped line you set aside with `git stash` still stops after `git stash pop` unless a Stop compared its file meanwhile. A record goes 7 days after its repository was last seen.
-- **Undo on the page.** In the knowledge section, each past answer the AI judged not useful, and the line saying that quoting past answers is stopped, has an undo button (`POST /v1/answers/restore`). The assessments up to then stop counting: an undone answer is quoted again (unless quoting past answers is stopped) and is back in the "Answered" list, and is rejected again only after two more quotes delivered after the undo go unused; an undone stop resumes quoting until ten more go unused. The answer's truth is never touched. Only what is in place can be undone, and a refused undo writes nothing.
-- **`shikii gc`.** Run over every question (no spec given), it also sweeps the original texts (`records/text/`) left without a decision in any question, older than the age given and than an hour. A records file line that names no decision keeps them all, and the result says so.
-- **Writing records.** The files shikii keeps for a session and for the guards (the session records and their tables, the record of stopped lines, the guards' settings) are written through a temporary file of a random name, created new (a link at that name is never followed) and removed when the write fails, so a failed write leaves no temporary file behind.
-- **Links inside shikii's folders.** When shikii opens a file in its own folders (session records and their locks, the project's initialization file, work records, delivery diagnostics, the store's records, work notes in `handoff`, the guard's files, the update lock), it does not open the file if its name is a symbolic link, also one that points to another file in the same folder. Some of these places used to open the other file through such a link; the others already refused it. A link swapped in just as the file is opened is refused too, and creating a file does not make the file such a link points to.
-- **Go.** Built with Go 1.27.4, which fixes a crash of the HTTP/1 server in the standard library (GO-2026-6859).
-- Regression coverage for each change; the Go test count is 1702.
+### Highlights
 
-## 0.30.7 — Guards, hooks, wiki saves and calibration fixed; unusable model answers refused; unused past answers rejected
+- **Uncommitted work you wrote before a request is no longer treated as the agent's change**
 
-- **Guards.** A guard that has not stopped the turn yet now stops it once even after the routine check or another guard stopped an earlier `Stop`; each guard still stops a turn at most once. A turn started by a slash command (`/commit`) gets a boundary for the guards alone: its `Stop` checks what it changed and committed, and also the work of a request the person interrupted before it. When the commit that was HEAD at the request was amended or rebased, `commit-body` records the check as not verified instead of passed; `guard list` and the page say so. A `**` in the middle of a guard's glob matches any number of folders (`docs/**/*.md`). `forbidden-words` now reads the lines a turn committed, files whose names have non-ASCII characters or spaces, and tracked files that `.gitignore` names. One guard file that does not load no longer switches off the others.
-- **Hooks.** A request whose first word is a path with more than one segment or a dot (`/Users/me/notes.md ...`) is no longer dropped as a slash command. A `Stop` in a session without a shikii turn no longer ends another hook's continuation. A `Stop` overtaken by the next request says nothing and keeps nothing, also when it would have stopped the turn. Hooks run from a subdirectory read the repository's objects instead of rewriting every file.
-- **Wiki.** A page that would not read back as saved is refused before it is written; it used to be reported as saved and then blocked every later save. `wiki ingest` refuses a replaced article and the former title of a renamed article. `wiki reconcile` ignores source problems of other articles. A patch that empties `kind` or `scene` is refused, a `scene` must be UTF-8, and larger archived originals read back. When a saved source of an execution report is missing or was changed, the maintenance list, `reflect query` and `work prepare` keep working: the report is listed as unreadable with the sources to recover, and its article cannot be marked as reviewed until they are back.
-- **Calibration and specs.** Vector calibration no longer lifts an option that was never the truth, and its temperature no longer collapses on labels the model got all right; other lines for data where every option was the truth are unchanged. `shikii check` fails a saved line that lifts an option no truth confirmed; redraw it with `calibrate --write`. Saves of the specs in one folder run one at a time, so overlapping saves keep each other's lines and candidate wordings; a save keeps the file's mode and a symbolic link. A spec id that is not one file name (a separator or a control character), the id `guards` in any case, and duplicate option ids are refused. A template is filled in one pass, so braces inside an input stay as written.
-- **Model answers.** An answer without usable probabilities is an error, like a failed model call, and is not recorded as a decision: a choice or score answer with no option above 0, a value outside 0–1 or a probability for an option the question does not have, and a yes/no answer (or a yes/no step of a broken-down choice) with no value or a value outside 0–1. A yes/no value of exactly 0 is still an answer. A model URL that is not http or https fails at once instead of waiting; errors, logs, `status`, `doctor` and `shikii-readout` hide the credentials in a model URL, also of a URL that does not parse. For a URL with credentials an error names the kind of failure (refused, timed out, ...) instead of quoting the cause.
-- **Store.** `gc --apply` removes the original text of the records it removes, and only theirs. A label weight outside (0, 1] is refused, also in a row of a labeled file (calibrate, check, tune and bias). A memory delivery too long to be read back is refused.
-- **Work records and the page.** Two notes that differ only in their sources no longer crash the recording (the MCP server went down with it). Recording the same report again after later evidence finishes the review, and a repeated finish says that it was not applied. `status` (the page, MCP and the command) no longer counts the original of a decision that was asked again, lists its lines in the same order every time, and names its own page when the store is reached through a link. A failed inspection of an assignment is not counted as inspected. The skill names `shikii page` as the way to find the page: `status` answers `page` only inside the page's own process, so it is empty over MCP.
-- **Delivery learns to reject.** One of your past answers that the agent's reflection found unused (or harmful) at least twice and never helpful is rejected: it is not quoted again, it leaves the page's "Answered" list, and the knowledge section lists it under "Past answers the AI judged not useful". The answer stays a truth for its decision, and a decision asked again counts as the same answer. Quoting past answers before requests stops in a project once their quotes were assessed unused ten times and never helpful; that stop stays, since without a quote there is no new assessment. A lesson delivered at a tool call is not delivered again while the same request runs, and a lesson silent at a door stays silent when an edit leaves its title, lesson and applies_to alone. When the quotes do not fit the delivery, the ones that fit are delivered.
-- **Speed.** One hook event parses each wiki article once. The checks at `Stop` and `shikii status` read each question's records and labels once. The hooks run the rest of the reflection query only when they ask for the reflection or stop the turn on it, so a problem in that rest no longer fails a hook that has nothing to ask.
-- Regression coverage for each fix; the Go test count is 1572.
+  Content you wrote before asking and had not committed yet (a draft, or a file you have not added to Git) is no longer counted as written by the agent, even when the agent edits the same file. Until now, a forbidden word in such a draft could keep the agent from finishing its work.
+
+  A line the agent wrote and was stopped for keeps being stopped in later work until it is deleted or committed. If you delete a stopped line and then write the same text again, shikii cannot tell who wrote it, so it is stopped.
+
+- **You can undo the AI's decisions from the page**
+
+  shikii shows the agent your answers to similar earlier requests for reference. Since 0.30.7, answers judged not useful are no longer shown. You can now undo that decision with "Undo" in the knowledge section of the page. Your answer itself is not changed.
+
+- **`shikii gc` also deletes request texts no longer used**
+
+  It deletes the original texts that no decision uses any more, when they are older than the period you give. If some record cannot be matched to a decision, nothing is deleted, to be safe.
+
+### Other fixes
+
+- When a file inside `.shikii/` is a symbolic link, shikii no longer opens what it points to.
+- A failed write of a record no longer leaves a temporary file behind.
+- Built with Go 1.27.4, which includes the fix for a vulnerability in the standard library (GO-2026-6859).
+
+## 0.30.7 — Fixes for checks that missed changes and for wiki saves; past answers that did not help are no longer shown
+
+### Highlights
+
+- **Past answers that did not help are no longer shown to the agent**
+
+  An answer that the agent's review marked "not used" two or more times, and that never helped, is no longer shown for reference in later requests. It also leaves the "Answered" list on the page and appears under "Past answers the AI judged not useful" in the knowledge section. The answer itself stays as a correct answer.
+
+  If, across the project, past answers go unused ten times and never help, shikii stops showing past answers altogether (from 0.30.8 you can undo this on the page).
+
+### Fixes
+
+- **Checks that stop the agent**
+  - Fixed: once one check stopped the agent, the remaining checks could fail to run.
+  - Work started by a slash command such as `/commit` is now checked too.
+  - Fixed: the forbidden-word check missed lines committed during the work and files whose names contain Japanese or spaces.
+  - Patterns that reach any depth, such as `docs/**/*.md`, now work.
+  - Other checks keep working when one check file cannot be read.
+- **Receiving requests**: Fixed: a request starting with a file path, such as `/Users/me/notes.md please look`, was mistaken for a slash command and ignored.
+- **Wiki**: Fixed: a save could leave an article that could not be read back, after which every save failed.
+- **Deciding whether to proceed automatically**: Fixed: an option that had never been a correct answer could be rated too high. `shikii check` finds such a saved setting, and `calibrate --write` rebuilds it.
+- **Model responses**: A response without a probability, or with a value out of range, is no longer recorded as a decision. A password in the model's URL is no longer shown in errors or logs.
+- **Deletion**: `gc --apply` now deletes a decision's original text together with the decision.
+- **Work records**: Fixed: recording two notes with the same content stopped the MCP server.
+- **Speed**: Hook processing and `shikii status` are faster.
 
 ## 0.30.6 — Validate cleanup ages and continue decision lists
 
