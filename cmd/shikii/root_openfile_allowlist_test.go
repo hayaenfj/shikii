@@ -305,8 +305,9 @@ func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs [
 	return hits, allowed
 }
 
-// walksFromTheRoot reports whether call is io/fs.WalkDir(fsys, ".", fn): a walk from the root itself, which opens folders only, and
-// never one behind a link (WalkDir does not go into a link; a walk from a named folder could start at one).
+// walksFromTheRoot reports whether call is io/fs.WalkDir(fsys, ".", fn): a walk from the root itself, which opens folders only and
+// lists names, never a file's content. WalkDir does not go into a folder that was a link when it read the listing; a folder swapped for
+// a link between the listing and its turn is listed (names and sizes only), and a walk from a named folder could start at a link.
 func walksFromTheRoot(info *types.Info, call *ast.CallExpr) bool {
 	var id *ast.Ident
 	switch f := ast.Unparen(call.Fun).(type) {

@@ -17,21 +17,19 @@ func TestProjectFileReadersDoNotFollowALink(t *testing.T) {
 	if err := os.MkdirAll(store, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	other := strings.Replace(project, "Test", "TEST", 1) // the same folder by another spelling on a case-insensitive disk
-	if !sameFolder(other, project) {
-		t.Skip("the disk tells the spellings apart")
+	link := func(scope string) {
+		t.Helper()
+		_ = os.Remove(filepath.Join(store, "project.json"))
+		if err := os.WriteFile(filepath.Join(store, "other.json"), []byte(`{"version":1,"scope":"`+scope+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("other.json", filepath.Join(store, "project.json")); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.WriteFile(filepath.Join(store, "other.json"), []byte(`{"version":1,"scope":"`+other+`"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink("other.json", filepath.Join(store, "project.json")); err != nil {
-		t.Fatal(err)
-	}
+	link(project)
 	if v := projectInitVersion(store); v != 0 {
 		t.Errorf("projectInitVersion read the file behind a link: version %d", v)
-	}
-	if got := canonicalScope(project); got != project {
-		t.Errorf("canonicalScope read the file behind a link: %q", got)
 	}
 	if err := os.Remove(filepath.Join(store, "project.json")); err != nil {
 		t.Fatal(err)
@@ -41,6 +39,16 @@ func TestProjectFileReadersDoNotFollowALink(t *testing.T) {
 	}
 	if v := projectInitVersion(store); v != 2 {
 		t.Errorf("a regular project.json was not read: version %d", v)
+	}
+	// canonicalScope answers only for the same folder by another spelling, which needs a disk that does not tell case apart
+	other := strings.Replace(project, "Test", "TEST", 1)
+	if !sameFolder(other, project) {
+		t.Log("the disk tells the spellings apart: canonicalScope is not checked here")
+		return
+	}
+	link(other)
+	if got := canonicalScope(project); got != project {
+		t.Errorf("canonicalScope read the file behind a link: %q", got)
 	}
 }
 
