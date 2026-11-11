@@ -113,7 +113,7 @@ func cmdInit(args []string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintln(stdout, "No HOME, so the shared Codex settings and the skill are skipped; only the project side is prepared")
-		return completeProjectInit(root, scope, version)
+		return completeProjectInit(root, scope, version, "")
 	}
 	codex := filepath.Join(home, ".codex", "config.toml")
 	// Codex reads only this shared registration and starts the server in the folder its daemon started in, so it names no store:
@@ -147,17 +147,67 @@ func cmdInit(args []string) error {
 		}
 		fmt.Fprintf(stdout, "skill: updated %s\n", filepath.Join("~", rel))
 	}
-	return completeProjectInit(root, scope, version)
+	return completeProjectInit(root, scope, version, home)
 }
 
-func completeProjectInit(root, scope string, version int) error {
+// completeProjectInit marks the project as initialized and says what happens next. The page and the recording are the hook's work,
+// so they are promised only when an agent has a shikii hook: init does not install the hooks (hook install shows first what it
+// changes in the person's settings and takes --yes), and without them it said "Ready ... make requests as usual" on a machine
+// where nothing would be recorded. home is "" where there is no HOME to look in.
+func completeProjectInit(root, scope string, version int, home string) error {
 	if err := finishProjectInit(root, scope, version); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "Ready: %s\nPage: the hook starts it on the agent's first request (on a free port) and opens it in the browser. Get the URL with shikii page\n", scope)
-	fmt.Fprintln(stdout, "Next: make requests in this project as usual. New MCP settings take effect from the next session.")
+	fmt.Fprintf(stdout, "Ready: %s\n", scope)
+	if home != "" && len(agentsWithShikiiHook(home)) == 0 {
+		var files []string
+		for _, target := range hookTargets {
+			files = append(files, "~/"+filepath.ToSlash(target.rel))
+		}
+		exe := shellQuote(mcpCommand())
+		fmt.Fprintf(stdout, "Hooks: not installed (no shikii hook in %s), so requests in this project are not recorded and the page does not start. See what the hooks add with %s hook install, then install them with %s hook install --yes (once on this machine). An agent without hooks (OpenCode) uses the MCP server and the skill set up above.\n", strings.Join(files, " or "), exe, exe)
+		fmt.Fprintln(stdout, "Next: after the hooks are installed, make requests in this project as usual. New MCP settings take effect from the next session.")
+	} else {
+		fmt.Fprintln(stdout, "Page: the hook starts it on the agent's first request (on a free port) and opens it in the browser. Get the URL with shikii page")
+		fmt.Fprintln(stdout, "Next: make requests in this project as usual. New MCP settings take effect from the next session.")
+	}
 	fmt.Fprintln(stdout, "To add a business decision, run shikii new <id>. To start the model by hand, run shikii up.")
 	return nil
+}
+
+// agentsWithShikiiHook lists the agents (hookTargets) whose settings hold a shikii hook: one in the form shikii writes, or one a
+// person wrote for a shikii event (the request reaches shikii either way). A settings file that is missing or cannot be read
+// holds none.
+func agentsWithShikiiHook(home string) []string {
+	var with []string
+	for _, target := range hookTargets {
+		body, err := os.ReadFile(filepath.Join(home, target.rel))
+		if err != nil {
+			continue
+		}
+		var config map[string]any
+		if json.Unmarshal(body, &config) != nil {
+			continue
+		}
+		found := false
+		hooks, _ := config["hooks"].(map[string]any)
+		for _, groups := range hooks {
+			groups, _ := groups.([]any)
+			for _, group := range groups {
+				group, _ := group.(map[string]any)
+				handlers, _ := group["hooks"].([]any)
+				for _, handler := range handlers {
+					handler, _ := handler.(map[string]any)
+					command, _ := handler["command"].(string)
+					found = found || isShikiiHook(command) || handWrittenShikiiHook(command)
+				}
+			}
+		}
+		if found {
+			with = append(with, target.who)
+		}
+	}
+	return with
 }
 
 // seedWiki copies the embedded built-in knowledge (shikii.WikiFS) into dst (the project's wiki/). Existing files are left alone. Returns how many were copied.

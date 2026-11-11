@@ -98,7 +98,7 @@ func usage() { fmt.Fprint(os.Stderr, usageText()) }
 
 func usageText() string {
 	return `usage (flags may come before or after the positional arguments):
-  shikii init      (same as shikii --init) Turn on automatic recording for this project and set up the 4 kinds of decisions, the wiki, the work records folder, MCP, the working rules and the entry to the page. Safe to run again
+  shikii init      (same as shikii --init) Turn on automatic recording for this project (by the hooks: it says so when none is installed) and set up the 4 kinds of decisions, the wiki, the work records folder, MCP, the working rules and the entry to the page. Safe to run again
   shikii new       <id> [--type choice|noul|score] [--question ...] [--option id=desc ...] [--input name ...] [--pii true|false] [--send-to local|hosted] [--from spec.yaml]
                    Answer a few questions to create .shikii/decisions/<id>.yaml
   shikii up        [--hf repo:quant | --gguf file --alias name] [--port 8080]

@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-1712%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1713%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.30.8-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -134,7 +134,7 @@ In a project you want to enable, ask your agent:
 
 > Use shikii in this project.
 
-The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. The answer page is one per project: the first request's hook starts it on a free port and opens it in the browser (`shikii page` tells you the URL). Initialization prepares the built-in questions, the wiki, the place for guards, the folder for work records, the MCP setup (it adds `.mcp.json` and `opencode.json` to the project and does not write into `AGENTS.md` or `CLAUDE.md`; only `.shikii/` is excluded from Git; for Codex, which reads MCP servers only from the shared `~/.codex/config.toml`, it writes one shared registration without a project, and each tool call names the agent's working folder as `project`) and the agent's instructions. `shikii doctor` checks the setup.
+The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. The answer page is one per project: the first request's hook starts it on a free port and opens it in the browser (`shikii page` tells you the URL). When no shikii hook is installed on the machine, `shikii --init` says so and names the command that installs them, instead of promising the page. Initialization prepares the built-in questions, the wiki, the place for guards, the folder for work records, the MCP setup (it adds `.mcp.json` and `opencode.json` to the project and does not write into `AGENTS.md` or `CLAUDE.md`; only `.shikii/` is excluded from Git; for Codex, which reads MCP servers only from the shared `~/.codex/config.toml`, it writes one shared registration without a project, and each tool call names the agent's working folder as `project`) and the agent's instructions. `shikii doctor` checks the setup.
 
 ### Updates
 
