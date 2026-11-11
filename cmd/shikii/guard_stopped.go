@@ -195,6 +195,13 @@ func readStoppedTable(p, scope string) *stoppedTable {
 	// most of the time of reading a large record)
 	sizes := map[string]int{}
 	lines := 0
+	// every line shikii writes ends in a newline: a last line without one was cut off (or edited by hand) and is not read, so a
+	// record written back is never larger than the one read
+	if i := bytes.LastIndexByte(body, '\n'); i >= 0 {
+		body = body[:i+1]
+	} else {
+		body = nil
+	}
 	for rest := body; len(rest) > 0; {
 		line := rest
 		if i := bytes.IndexByte(rest, '\n'); i >= 0 {
@@ -676,9 +683,21 @@ func keepStoppedLines(root string, failing []guard, in guardInput, head string) 
 	if !changed {
 		return
 	}
-	if err := keepLines(p, t.bytes(stoppedLinesMax)); err != nil {
+	if err := keepStoppedRecord(p, t.bytes(stoppedLinesMax)); err != nil {
 		hookLog("guard: the lines a check stopped were not kept: " + err.Error())
 	}
+}
+
+// keepStoppedRecord writes the record to p, or removes it when it holds no line. A write that fails leaves the record as it
+// was (unlike the kept tables, which are removed then): the lines it held were stopped and must still stop.
+func keepStoppedRecord(p string, b []byte) error {
+	if b == nil {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return writeAtomic(p, b)
 }
 
 // stoppedRecordScope reads the repository a record at p belongs to from its first line ("" for anything else).
