@@ -418,8 +418,8 @@ tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(mod), "\ntoolchain go1.27.3\n") {
-		t.Error("go.mod's toolchain is not go1.27.3 (GO-2026-6809 was fixed in go1.27.3)")
+	if !strings.Contains(string(mod), "\ntoolchain go1.27.4\n") {
+		t.Error("go.mod's toolchain is not go1.27.4 (GO-2026-6809 was fixed in go1.27.3, GO-2026-6859 in go1.27.4)")
 	}
 }
 
