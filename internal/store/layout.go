@@ -76,10 +76,7 @@ func readSmallFile(path string, limit int64) string {
 
 // initializedAt is the path in the store's project.json, when it holds one.
 func initializedAt(dir string) string {
-	b, err := os.ReadFile(filepath.Join(dir, "project.json"))
-	if err != nil {
-		return ""
-	}
+	b := []byte(readSmallFile(filepath.Join(dir, "project.json"), 1<<20)) // not through a link, like the store's name
 	var a struct {
 		Scope string `json:"scope"`
 	}

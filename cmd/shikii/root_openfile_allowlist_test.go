@@ -26,8 +26,11 @@ import (
 // O_CREATE and O_EXCL (create-exclusive refuses any link at the name, a dangling one too; O_EXCL without O_CREATE follows it).
 const rootOpenerFile, rootOpenerFunc = "internal/rootfile/rootfile.go", "OpenNoFollow"
 
-// rootFileMethods are the methods of os.Root that open, create, read or write a file by its name.
-var rootFileMethods = map[string]bool{"OpenFile": true, "Open": true, "Create": true, "ReadFile": true, "WriteFile": true}
+// rootFileMethods are the methods of os.Root that open, create, read or write a file by its name. FS is one too: the fs.FS it returns
+// opens a file following a link in its last name. A use of FS is allowed only as the first argument of io/fs.WalkDir or io/fs.ReadDir
+// written in place (a listing of folders, which opens no file); a root kept in an interface or a type parameter is out of this check's
+// reach (it sees the use of a method of os.Root, not a call through another type), so do not hand an *os.Root to one.
+var rootFileMethods = map[string]bool{"OpenFile": true, "Open": true, "Create": true, "ReadFile": true, "WriteFile": true, "FS": true}
 
 // listedPackage is the part of `go list -json` the check reads.
 type listedPackage struct {
@@ -151,6 +154,10 @@ func TestTheRootOpenAllowlistFindsWhatItMustFind(t *testing.T) {
 		{"a root returned by a call", "cmd/shikii/x.go", "package main\nimport \"os\"\nfunc g() *os.Root { return nil }\nfunc f() { g().WriteFile(\"a\", nil, 0o600) }\n", 1, 0},
 		{"create-exclusive in a named constant", "cmd/shikii/x.go", "package main\nimport \"os\"\nconst fl = os.O_CREATE | os.O_EXCL | os.O_WRONLY\nfunc f(r *os.Root) { r.OpenFile(\"a\", fl, 0o600) }\n", 0, 0},
 		{"a type of its own named Root", "cmd/shikii/x.go", "package main\ntype Root struct{}\nfunc (Root) Open(string) {}\nfunc f(r Root) { r.Open(\"a\") }\n", 0, 0},
+		{"Root.FS read with fs.ReadFile", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { fs.ReadFile(r.FS(), \"a\") }\n", 1, 0},
+		{"Root.FS opened", "cmd/shikii/x.go", "package main\nimport \"os\"\nfunc f(r *os.Root) { r.FS().Open(\"a\") }\n", 1, 0},
+		{"Root.FS kept in a value", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { fsys := r.FS(); fs.WalkDir(fsys, \".\", nil) }\n", 1, 0},
+		{"Root.FS walked as a listing", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { fs.WalkDir(r.FS(), \".\", nil); fs.ReadDir(r.FS(), \"d\") }\n", 0, 0},
 		{"the os package's other openers", "cmd/shikii/x.go", "package main\nimport \"os\"\nfunc f() { os.Open(\"a\"); os.Create(\"a\"); os.ReadFile(\"a\"); os.WriteFile(\"a\", nil, 0o600) }\n", 0, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -260,7 +267,15 @@ func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs [
 			fn, ok := decl.(*ast.FuncDecl)
 			inOpener := ok && fn.Recv == nil && fn.Name.Name == rootOpenerFunc && srcs[i].name == rootOpenerFile
 			exclusive := map[*ast.Ident]bool{}
+			listing := map[*ast.Ident]bool{} // r.FS() written in place as the folder of fs.WalkDir or fs.ReadDir
 			ast.Inspect(decl, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok && len(call.Args) >= 2 && listsFolders(info, call) {
+					if inner, ok := ast.Unparen(call.Args[0]).(*ast.CallExpr); ok && len(inner.Args) == 0 {
+						if sel, ok := ast.Unparen(inner.Fun).(*ast.SelectorExpr); ok && sel.Sel.Name == "FS" {
+							listing[sel.Sel] = true
+						}
+					}
+				}
 				if call, ok := n.(*ast.CallExpr); ok && len(call.Args) == 3 {
 					if sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok && sel.Sel.Name == "OpenFile" {
 						if s := info.Selections[sel]; s != nil && s.Kind() == types.MethodVal && createExclusive(info.Types[call.Args[1]]) {
@@ -276,6 +291,7 @@ func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs [
 				case inOpener:
 					allowed++
 				case exclusive[id]:
+				case listing[id]:
 				default:
 					hits = append(hits, fset.Position(id.Pos()).String())
 				}
@@ -284,6 +300,21 @@ func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs [
 		}
 	}
 	return hits, allowed
+}
+
+// listsFolders reports whether call calls io/fs.WalkDir or io/fs.ReadDir.
+func listsFolders(info *types.Info, call *ast.CallExpr) bool {
+	var id *ast.Ident
+	switch f := ast.Unparen(call.Fun).(type) {
+	case *ast.SelectorExpr:
+		id = f.Sel
+	case *ast.Ident:
+		id = f
+	default:
+		return false
+	}
+	fn, ok := info.Uses[id].(*types.Func)
+	return ok && fn.Pkg() != nil && fn.Pkg().Path() == "io/fs" && fn.Signature().Recv() == nil && (fn.Name() == "WalkDir" || fn.Name() == "ReadDir")
 }
 
 // opensAFileInARoot reports whether obj is a method of os.Root in rootFileMethods or the function os.OpenInRoot.
