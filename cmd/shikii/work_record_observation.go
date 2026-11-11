@@ -50,13 +50,19 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 				index = n + 1
 			}
 		}
-		memo = workCapture{Original: &normalized, Ref: "observed" + strconv.Itoa(index), At: value.ObservedAt, Version: value.Version}
+		memo = workCapture{Original: &normalized, Ref: "observed" + strconv.Itoa(index), At: value.ObservedAt, Version: value.Version, Report: o.report}
 		w.Captures[key] = memo
 		if err := save(); err != nil {
 			return memo.Ref, "", err
 		}
+	} else if o.report && !memo.Report {
+		memo.Report = true
+		w.Captures[key] = memo
 	}
 	if memo.ID != "" {
+		if memo.Report {
+			markReport(w, memo.ID)
+		}
 		return memo.Ref, memo.ID, nil
 	}
 	value.ObservedAt, value.Version = memo.At, memo.Version
@@ -72,6 +78,9 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 	memo.Original, memo.Archive = nil, ""
 	w.Captures[key] = memo
 	w.Sources[memo.Ref] = memo.ID
+	if memo.Report {
+		markReport(w, memo.ID)
+	}
 	if err = save(); err != nil {
 		return memo.Ref, memo.ID, err
 	}

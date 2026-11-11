@@ -105,11 +105,10 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 			Turn     string   `json:"turn"`
 			Evidence []string `json:"evidence"`
 		}{c.Ref, pending.Turn, evidence})
-		e = captureWorkTrialSource(book, w, workObservation{Kind: "agent", Title: "Recovered work result evidence", Content: string(data)}, &pending.Source, "result-recovery:"+c.Ref, item, save, commit)
+		e = captureWorkTrialSource(book, w, workObservation{Kind: "agent", Title: "Recovered work result evidence", Content: string(data), report: true}, &pending.Source, "result-recovery:"+c.Ref, item, save, commit)
 		if e != nil {
 			return item, e
 		}
-		markReport(w, pending.Source)
 	}
 	item.ID = pending.Source
 	diagnostic, e := book.ReadSources([]string{pending.Source})

@@ -405,7 +405,7 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 			// the report is saved and waits only for its evidence: name the short form (an agent that sent the whole result again
 			// only learned that something was pending)
 			sort.Strings(waiting)
-			return item, fmt.Errorf("repair pending result evidence before reasoning finish: the result is saved, so send result:{ref:%q,evidence:[refs]} with this receipt (refs are current, newN or knowledgeN) and do not repeat its text", waiting[0])
+			return item, fmt.Errorf("repair pending result evidence before reasoning finish: the result is saved, so send result:{ref:%q,evidence:[refs]} with this receipt (refs are %snewN or knowledgeN) and do not repeat its text", waiting[0], currentRef(w))
 		}
 		if pendingProcedureCount(r) > 0 {
 			return item, errors.New("recover pending procedure feedback before reasoning finish")
@@ -484,11 +484,10 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 			snapshot.Result = &copy
 		}
 		content, _ := json.Marshal(snapshot)
-		_, source, err := captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Evidence-linked work judgment and ending review", Content: string(content), Reference: "work reasoning for turn " + r.TurnID}, save, commit)
+		_, source, err := captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Evidence-linked work judgment and ending review", Content: string(content), Reference: "work reasoning for turn " + r.TurnID, report: true}, save, commit)
 		if err != nil {
 			return item, err
 		}
-		markReport(w, source)
 		item.ID = source
 	}
 	entry := &reasoningEntry{workReasoning: bound, Key: key, Source: item.ID, Generation: r.Generation, At: time.Now().UTC()}

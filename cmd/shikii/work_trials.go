@@ -132,14 +132,14 @@ func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve f
 				return nil, err
 			}
 			if len(live) != 1 {
-				return nil, fmt.Errorf("evidence %s names lesson:%s, which is no longer a live page: cite another reference (current, an observation)", ref, article.ID)
+				return nil, fmt.Errorf("evidence %s names lesson:%s, which is no longer a live page: cite another reference (%san observation)", ref, article.ID, currentRef(w))
 			}
 			revision := article.Revision
 			if live[0].Revision != revision {
 				// The page is newer than what the receipt read. When the receipt's own note wrote that revision, the agent knows it
 				// (what it read plus its own edits: a patch applies only to the revision it names), so the evidence follows.
 				if !receiptWrote(w, article.ID, live[0].Revision) {
-					return nil, fmt.Errorf("evidence %s names lesson:%s at the revision this receipt read, and the page has a newer revision: read it again (prepare with this receipt and query lesson:%s) and cite the reference of that reply, or cite another reference (current, an observation)", ref, article.ID, article.ID)
+					return nil, fmt.Errorf("evidence %s names lesson:%s at the revision this receipt read, and the page has a newer revision: read it again (prepare with this receipt and query lesson:%s) and cite the reference of that reply, or cite another reference (%san observation)", ref, article.ID, article.ID, currentRef(w))
 				}
 				revision = live[0].Revision
 			}
@@ -167,7 +167,7 @@ func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve f
 			}
 		}
 		if ref != "current" && w.Sources[ref] == "" && !strings.HasPrefix(ref, "new") && !heldSource(w, ref) {
-			return nil, fmt.Errorf("unknown reasoning evidence %q; use current, a prepared article, trial or captured source: evidence takes references, not text (what you checked goes in checked or reason; to cite it, add it to observations and name it new1)", ref)
+			return nil, fmt.Errorf("unknown reasoning evidence %q; use %sa prepared article, trial or captured source: evidence takes references, not text (what you checked goes in checked or reason; to cite it, add it to observations and name it new1)", ref, currentRef(w))
 		}
 		ids, err := resolve([]string{ref})
 		if err != nil {

@@ -35,6 +35,9 @@ type workObservation struct {
 	Content   string `json:"content"`
 	Reference string `json:"reference,omitempty"`
 	Version   string `json:"version,omitempty"`
+	// report is set by the work itself (never read from a request) on a source it writes about itself: a result, an ending
+	// review, the binding of a result's evidence. See workCapture.Report.
+	report bool
 }
 type workNote struct {
 	notebook.Draft
@@ -135,6 +138,10 @@ type workCapture struct {
 	ID       string           `json:"id,omitempty"`
 	At       time.Time        `json:"at"`
 	Version  string           `json:"version"`
+	// Report: the work wrote this source about itself. The capture carries it so that the source is noted in workState.Reports
+	// in the very save that gives it a name, also when a capture that failed once is finished later by another call (audit of
+	// 0.31.0: the note used to be added by each caller after the capture, and a later finish saved the report as an observation).
+	Report bool `json:"report,omitempty"`
 }
 type workItem struct {
 	Ref      string   `json:"ref"`
@@ -467,11 +474,21 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		}
 	}
 	w := &workState{Replies: map[string]workReply{}, Nonce: store.NewTraceID() + store.NewTraceID(), At: time.Now().UTC(), Standalone: standalone, Query: req.Query, Current: s.Planning.Sources["current_user"], Pages: s.Planning.KnowledgePages, Keys: map[string]string{}, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}, Reviews: map[string]workReviewRef{}, Memory: map[string]workMemoryRef{}, Maintenance: map[string]notebook.MaintenanceReview{}, Captures: map[string]workCapture{}, Saved: map[string]workItem{}, Pending: map[string]notebook.Draft{}, PendingKeys: map[string]string{}, PendingOrigins: map[string]string{}, Expected: map[string]store.KnowledgeReference{}}
-	carried := takeOver(w, s.Planning.Handover)       // the references of the request this one interrupted
-	if previous := s.Planning.Work; previous != nil { // this request prepared again: the earlier preparation's observedN are not given out again
-		if h := handoverOf(previous); h != nil && h.Observed > w.ObservedBase {
-			w.ObservedBase = h.Observed
+	handover, again := s.Planning.Handover, false // the references of the request this one interrupted
+	if previous := s.Planning.Work; previous != nil {
+		// This request prepared again (the agent no longer held the receipt). The new receipt keeps what the earlier one read,
+		// observed and wrote, as after an interruption, and the names of its observations are not given out again. What the work
+		// reported about itself stays noted: a report of the earlier preparation is no evidence under the new receipt either.
+		if h := handoverOf(previous); h != nil {
+			handover, again = h, true
 		}
+		for id := range previous.Reports {
+			markReport(w, id)
+		}
+	}
+	carried := takeOver(w, handover)
+	if carried != nil && again {
+		carried["next_action"] = "This request was prepared before. The references of that preparation are valid with this receipt: cite the pages and the saved sources without reading them again, and edit the pages it did not edit. A page it edited is read again before another edit (prepare with this receipt and query lesson:<id>). Record with this receipt."
 	}
 	w.Reasoning = cloneReasoning(s.Reasoning)
 	if w.Reasoning == nil {
@@ -486,6 +503,13 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	w.Result = w.Reasoning.Result
 	if w.Result != nil && w.Result.Source != "" {
 		w.Sources["result"] = w.Result.Source
+		markReport(w, w.Result.Source)
+	}
+	for id, pending := range w.Reasoning.PendingResults { // reports that wait for their evidence, and the sources that bind it
+		markReport(w, id)
+		if pending != nil {
+			markReport(w, pending.Source)
+		}
 	}
 	restoreReasoningCaptures(w)
 	if err := bindReasoningOwner(w.Reasoning, req.SessionID); err != nil {
@@ -582,7 +606,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		reply["carried"] = carried
 	}
 	if standalone { // no hook recorded a request, so there is no current to cite
-		reply["how_to_record"] = strings.Replace(compactWorkHowTo, "(current, newN", "(newN", 1)
+		reply["how_to_record"] = compactHowToRecord(w)
 	}
 	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {

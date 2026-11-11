@@ -94,7 +94,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	limited = true
 	omitted := []string{}
 	if reply["how_to_record"] != continuedWorkHowTo {
-		reply["how_to_record"] = compactWorkHowTo
+		reply["how_to_record"] = compactHowToRecord(w)
 	}
 	for _, raw := range entries {
 		e := raw.(map[string]any)

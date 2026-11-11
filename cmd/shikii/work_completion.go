@@ -56,6 +56,21 @@ func selfEvidence(w *workState, result string, refs []string) error {
 	return nil
 }
 
+// currentRef is "current, " in a sentence that lists what evidence can cite, and nothing for a receipt without hook ids: it has no
+// current request. Every such sentence takes it from here; a refusal or a recording contract that offered current to such a
+// receipt sent the agent into a second refusal (audits of 0.31.0, two rounds: each round found the sentences the last one missed).
+func currentRef(w *workState) string {
+	if w == nil || w.Standalone {
+		return ""
+	}
+	return "current, "
+}
+
+// compactHowToRecord is the short recording contract of a reply of prepare, for this receipt.
+func compactHowToRecord(w *workState) string {
+	return strings.Replace(compactWorkHowTo, "(current, newN", "("+currentRef(w)+"newN", 1)
+}
+
 // markReport notes a source this work wrote about itself.
 func markReport(w *workState, id string) {
 	if id == "" {
@@ -111,14 +126,14 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		}
 	}
 	if id == "" {
-		_, id, err = captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Work result and remaining conditions", Content: string(data), Reference: evidenceVersion}, save, commit)
+		_, id, err = captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Work result and remaining conditions", Content: string(data), Reference: evidenceVersion, report: true}, save, commit)
 	}
 	item := workItem{Kind: "result", Ref: "result", ID: id}
 	if err != nil {
 		return item, err
 	}
 	w.Sources["result"] = id
-	markReport(w, id)
+	markReport(w, id) // also for a saved result that is used again: no capture runs for it
 	w.Result = &workCompletionRef{ReviewGeneration: w.Reasoning.Generation, Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
 	w.Reasoning.Result = w.Result
 	if w.Reasoning.PendingResults == nil {
