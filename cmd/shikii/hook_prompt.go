@@ -29,6 +29,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		return hookOut{}, []func(*hookSession){func(s *hookSession) {
 			if s.Request == snapshot.Request {
 				s.Judged = false
+				s.EndedTurn = ""                       // the agent works on in the same turn: a message that comes now interrupts it (work_handover.go)
 				closeGuardTurn(agent, in.SessionID, s) // work that goes on after the notice is the request's again, as before a slash command came in between
 			}
 		}}, nil

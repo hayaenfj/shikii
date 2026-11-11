@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,6 +68,35 @@ func interruptedHandover(s *hookSession, scope string) *workHandover {
 		return handoverOf(s.Planning.Work)
 	}
 	return s.Planning.Handover
+}
+
+// endTurnElsewhere records the end of the turn for a Stop that ran while the agent's shell stood outside every project. Such a
+// Stop checks nothing and says nothing, so the turn does end; without the record the next request in the project would take
+// over the references of a request that was finished. Only the session's own record in a registered, active project is touched.
+func endTurnElsewhere(sessionID string) {
+	common, err := agentHome()
+	if err != nil || sessionID == "" {
+		return
+	}
+	for _, p := range registeredProjects(common) {
+		root := filepath.Join(p.Path, ".shikii")
+		if active, err := projectActive(root, p.Path); err != nil || !active {
+			continue
+		}
+		if _, err := os.Stat(sessionPath(root, sessionID)); err != nil {
+			continue
+		}
+		if s := loadSession(root, sessionID); s.TurnID == "" || s.EndedTurn == s.TurnID {
+			continue
+		}
+		if err := updateSession(root, sessionID, func(s *hookSession) {
+			if s.TurnID != "" {
+				s.EndedTurn = s.TurnID
+			}
+		}); err != nil {
+			hookLog(fmt.Sprintf("session %s: the end of the turn was not recorded (%v)", sessionID, err))
+		}
+	}
 }
 
 // takeOver gives a new work the references of the interrupted one and returns what the reply of prepare says about it (carried);
