@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -83,11 +82,9 @@ func guardAdd(root string, in io.Reader) error {
 	if bytes.Contains(data, []byte(ritualPlan)) || bytes.Contains(data, []byte(ritualReflect)) {
 		return errors.New("plan-before-work / reflect-before-end are ids of built-in ritual checks and cannot be used in a draft")
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
 	var g guard
-	if err := dec.Decode(&g); err != nil {
-		return errors.New("guard add reads one JSON object (id, kind, title, reason, source, pairs/words/except/allow/required)")
+	if err, _ := decodeStrictObject(data, &g); err != nil {
+		return fmt.Errorf("guard add reads one JSON object (id, kind, title, reason, source, pairs/words/except/allow/required): %v", jsonShapeError(err))
 	}
 	g.Enabled, g.Red = false, nil // drafts are disabled. enable turns them on (after seeing the negative example stop)
 	if err := g.validate(); err != nil {

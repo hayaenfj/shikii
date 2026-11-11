@@ -15,7 +15,7 @@ func TestStrictJSONEntryErrorsRemainDistinct(t *testing.T) {
 			t.Fatal("partial requests or strict rejection changed", text, re, ve)
 		}
 		if strings.Contains(text, "unknown") {
-			if !strings.Contains(re.Error(), `unknown field "unknown"`) || ve.Error() != "check the scoring JSON" {
+			if !strings.Contains(re.Error(), `unknown field "unknown"`) || !strings.HasPrefix(ve.Error(), `check the scoring JSON: unknown field "unknown" at the top level; the fields there: `) {
 				t.Fatal(re, ve)
 			}
 		} else if re.Error() != "pass reflection JSON one object at a time" || ve.Error() != "pass scoring JSON one object at a time" {

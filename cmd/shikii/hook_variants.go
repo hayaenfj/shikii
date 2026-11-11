@@ -174,13 +174,11 @@ func cmdHookVariants(args []string) error {
 
 // decodeStrict reads exactly one JSON value and refuses unknown keys. When it cannot read it, it says which key should have which shape.
 func decodeStrict(data []byte, v any) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(v); err != nil {
+	err, extra := decodeStrictObject(data, v)
+	if err != nil {
 		return jsonShapeError(err)
 	}
-	var extra any
-	if decoder.Decode(&extra) != io.EOF {
+	if extra {
 		return errors.New("pass only one JSON value")
 	}
 	return nil
@@ -190,7 +188,10 @@ func decodeStrict(data []byte, v any) error {
 func jsonShapeError(err error) error {
 	var typeErr *json.UnmarshalTypeError
 	var syntaxErr *json.SyntaxError
+	var unknown *unknownFieldError
 	switch {
+	case errors.As(err, &unknown):
+		return unknown // already says where the key was and which fields that object takes
 	case errors.As(err, &typeErr):
 		want := map[string]string{"struct": "an object {…}", "slice": "an array […]", "string": "a string", "bool": "true / false", "int": "an integer", "map": "an object {…}"}[typeErr.Type.Kind().String()]
 		if want == "" {

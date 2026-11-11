@@ -145,10 +145,9 @@ func cmdHookPlan(args []string) error {
 		return errors.New("the pre-start context must be JSON of 16KB or less")
 	}
 	var req planningRequest
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		return fmt.Errorf("cannot read the pre-start context: %v", jsonShapeError(err))
+	decodeErr, extra := decodeStrictObject(data, &req)
+	if decodeErr != nil {
+		return fmt.Errorf("cannot read the pre-start context: %v", jsonShapeError(decodeErr))
 	}
 	if req.Reflection == nil && len(data) > 16<<10 {
 		return errors.New("the pre-start context must be JSON of 16KB or less (combined reflection: 1 MiB)")
@@ -156,8 +155,7 @@ func cmdHookPlan(args []string) error {
 	if req.Reflection != nil && req.Reflection.Operation != "" && req.Reflection.Operation != "submit" {
 		return errors.New("combined reflection accepts submit only")
 	}
-	var extra any
-	if decoder.Decode(&extra) != io.EOF || req.SessionID == "" || len(req.SessionID) > 200 || len(req.TurnID) != 16 {
+	if extra || req.SessionID == "" || len(req.SessionID) > 200 || len(req.TurnID) != 16 {
 		return errors.New("pass one JSON object with the current session_id and turn_id")
 	}
 	if len(req.Query) > requestMax {

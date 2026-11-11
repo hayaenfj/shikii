@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -339,7 +340,7 @@ func decodeReview(input io.Reader) (reviewRequest, error) {
 	}
 	err, extra := decodeStrictObject(data, &req)
 	if err != nil {
-		return req, errors.New("check the scoring JSON")
+		return req, fmt.Errorf("check the scoring JSON: %v", jsonShapeError(err))
 	}
 	if extra {
 		return req, errors.New("pass scoring JSON one object at a time")

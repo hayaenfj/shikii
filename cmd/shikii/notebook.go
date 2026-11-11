@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -143,8 +142,6 @@ func cmdNotebook(args []string) error {
 		if err != nil || len(data) > limit {
 			return fmt.Errorf("wiki %s input exceeds %d KiB or could not be read", req.Operation, limit>>10)
 		}
-		dec := json.NewDecoder(bytes.NewReader(data))
-		dec.DisallowUnknownFields()
 		var target any = &req.Draft
 		if req.Operation == "diagnose" || req.Operation == "compare" || req.Operation == "consult" || req.Operation == "reuse" || req.Operation == "organize" || req.Operation == "reconcile" {
 			target = &req
@@ -161,7 +158,8 @@ func cmdNotebook(args []string) error {
 			req.Maintenance = &notebook.MaintenanceReview{}
 			target = req.Maintenance
 		}
-		if err := dec.Decode(target); err != nil {
+		err, extra := decodeStrictObject(data, target)
+		if err != nil {
 			switch req.Operation {
 			case "patch", "diagnose", "compare", "consult", "reuse", "organize", "reconcile":
 				return fmt.Errorf("wiki %s needs valid JSON: %v", req.Operation, err)
@@ -172,8 +170,7 @@ func cmdNotebook(args []string) error {
 			}
 			return fmt.Errorf("wiki ingest needs valid JSON with sources and, for a lesson, title, lesson and applies_to (all strings except sources): %v", err)
 		}
-		var extra any
-		if err := dec.Decode(&extra); err != io.EOF {
+		if extra {
 			return fmt.Errorf("wiki %s accepts exactly one JSON object", req.Operation)
 		}
 		if req.Operation != args[0] {
@@ -230,9 +227,12 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, body, 8<<20) // 1 MiB of work record body can grow several times when encoded as JSON. The body size is checked after decoding by handoff's Write (audit 0.8.1-1)
 	var req notebookRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
+	data, err := io.ReadAll(r.Body)
+	var extra bool
+	if err == nil {
+		err, extra = decodeStrictObject(data, &req)
+	}
+	if err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			writeErr(w, 413, errors.New("the wiki request is over 8 MiB (a work record takes up to 1 MiB at a time; split it and use handoff_append)"))
@@ -241,8 +241,7 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, fmt.Errorf("invalid wiki request: %v", err))
 		return
 	}
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
+	if extra {
 		writeErr(w, 400, errors.New("wiki accepts exactly one JSON object"))
 		return
 	}
