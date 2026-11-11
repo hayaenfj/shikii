@@ -126,14 +126,15 @@ func newPlanningFrame(previous *hookSession, in *hookInput, scope, turnID string
 const planningHowToSubmit = "Pass the same session_id, turn_id and query, plus agreed and open, to hook plan submit. When query includes reflection, handle it from that reply and attach its submit object as reflection in the same submit; inspect reflection.complete and reflection.left and retry failures. " + planningShape + ". Each is {summary, evidence:[{source,quote}]} quoting the original text verbatim (source: current_user, previous_user, previous_assistant, or a lesson:<id>:<revision> or article:<id>:<revision> key in this reply when it is your grounds), or {unknown:true}; an agreement needs the person's own words; open is only a concrete choice that blocks the current task (nothing blocks, or no evidence: unknown). continues_previous: true when this message only continues or answers the previous request (an acknowledgement or go-ahead asking nothing new), false when it is a new request (even a short addition such as \"add a check too\", or a restatement); omit it when unsure. restates: the <id> in history:<id>:user of an earlier request this one restates; a wrong id only falls back. The organizing is a hypothesis, never permission or the person's truth. Details: the skill's references/planning.md."
 
 // planningNotice is the text every request gets: the one command to run and this turn's ids (one form, 0.11; the shape of submit is in
-// the reply of hook plan query).
+// the reply of hook plan query). It says how the JSON reaches the command (standard input): without that, sessions began by asking
+// the command for help (shikii work prepare --help was the most frequent refused call in this machine's agent sessions, 2026-11-11).
 func planningNotice(sessionID, turnID string) string {
 	ids, _ := json.Marshal(map[string]string{"session_id": sessionID, "turn_id": turnID})
 	command := "shikii"
 	if exe, err := os.Executable(); err == nil {
 		command = "'" + strings.ReplaceAll(exe, "'", "'\"'\"'") + "'"
 	}
-	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Pass the identifiers below to %s work prepare with topic words in query. It registers the start. End with work record using the receipt and result:{changed,checked?,evidence?,remaining?}; combine necessary notes/reflection. Check saved/pending and retry only failed refs. A rule, test or procedure you make or change goes to the wiki. Legacy hook plan query returns how_to_submit for hook plan submit.\n", command) + string(ids)
+	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Send the JSON below, with topic words in query added, on standard input to %s work prepare. It registers the start. End with work record the same way, using the receipt and result:{changed,checked?,evidence?,remaining?}; combine necessary notes/reflection. Check saved/pending and retry only failed refs. A rule, test or procedure you make or change goes to the wiki. Legacy hook plan query returns how_to_submit for hook plan submit.\n", command) + string(ids)
 }
 
 func cmdHookPlan(args []string) error {

@@ -213,3 +213,37 @@ func TestACallThatCannotBeReadIsAnsweredWithTheForms(t *testing.T) {
 		t.Errorf("shikii wiki query --help prints the forms: %v %q", err, out)
 	}
 }
+
+// The notice every request gets named the command and this turn's ids, but not how they reach it ("Pass the identifiers below to
+// shikii work prepare with topic words in query"), which is why sessions began by asking the command for help. It now says that the
+// JSON goes on standard input, and the JSON line it gives, with query added, is accepted by the command as it is.
+func TestPlanningNoticeSaysHowItsJSONReachesTheCommand(t *testing.T) {
+	repo, _, _ := planningFixture(t)
+	t.Chdir(repo)
+	notice := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
+	for _, w := range []string{"on standard input to ", " work prepare", "with topic words in query added", "End with work record the same way"} {
+		if !strings.Contains(notice, w) {
+			t.Errorf("the notice lacks %q: %s", w, notice)
+		}
+	}
+	var ids map[string]any
+	for _, line := range strings.Split(notice, "\n") {
+		if strings.HasPrefix(line, `{"session_id":`) {
+			if err := json.Unmarshal([]byte(line), &ids); err != nil {
+				t.Fatalf("the ids line is one JSON object: %v %s", err, line)
+			}
+		}
+	}
+	if ids == nil {
+		t.Fatalf("the notice gives this turn's ids as a JSON line: %s", notice)
+	}
+	ids["query"] = "CSV export filters"
+	input, _ := json.Marshal(ids)
+	var out string
+	var err error
+	withStdin(t, string(input), func() { out, err = captureErr(func() error { return cmdWork([]string{"prepare"}) }) })
+	var reply map[string]any
+	if err != nil || json.Unmarshal([]byte(out), &reply) != nil || reply["receipt"] == nil {
+		t.Fatalf("the notice's JSON with query added prepares the task: %v %s", err, out)
+	}
+}
