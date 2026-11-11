@@ -9,7 +9,7 @@
 - **`shikii gc`.** Run over every question (no spec given), it also sweeps the original texts (`records/text/`) left without a decision in any question, older than the age given and than an hour. A records file line that names no decision keeps them all, and the result says so.
 - **Writing records.** The files shikii keeps for a session and for the guards (the session records and their tables, the record of stopped lines, the guards' settings) are written through a temporary file of a random name, created new (a link at that name is never followed) and removed when the write fails, so a failed write leaves no temporary file behind.
 - **Links inside shikii's folders.** When shikii opens a file in its own folders (session records and their locks, the project's initialization file, work records, delivery diagnostics, the update lock), it refuses the file if its name is a symbolic link, also one that points to another file in the same folder; it used to open the other file through the link. A link swapped in just as the file is opened is refused too.
-- Regression coverage for each change; the Go test count is 1677.
+- Regression coverage for each change; the Go test count is 1689.
 
 ## 0.30.7 — Guards, hooks, wiki saves and calibration fixed; unusable model answers refused; unused past answers rejected
 
