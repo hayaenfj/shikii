@@ -93,10 +93,37 @@ func TestWorkRefusalsNameTheCauseAndTheNextCall(t *testing.T) {
 			}
 		}
 	}
-	// with prepared references, the refusal lists them
-	w := &workState{Memory: map[string]workMemoryRef{"memory2": {}, "memory10": {}, "memory1": {}}}
-	if got := unknownPreparedRef("memory", "knowledge1", sortedRefs(w.Memory), "pending[].memory[]"); !strings.Contains(got, "the refs of pending[].memory[] in the reply of prepare: memory1, memory2, memory10") {
-		t.Errorf("the prepared refs are listed in their order: %q", got)
+	// With prepared references, the refusal lists them in their order under the field of the reply that holds them. The field is
+	// the one the refusing call names (recordReflection), so the same record goes through it once the receipt's work holds
+	// references. (Before, this test handed unknownPreparedRef the field's name itself, and passed while the call named
+	// pending[].memories[], a field the reply does not have: audit of 0.31.0, B-U4 and D U-2.)
+	held := loadSession(root, "planning")
+	if held.Planning == nil || held.Planning.Work == nil {
+		t.Fatal("precondition: the session holds the work of the receipt")
+	}
+	held.Planning.Work.Memory = map[string]workMemoryRef{"memory2": {}, "memory10": {}, "memory1": {}}
+	held.Planning.Work.Reviews = map[string]workReviewRef{"review2": {}, "review10": {}, "review1": {}}
+	if err := saveSession(root, "planning", held); err != nil {
+		t.Fatal(err)
+	}
+	saved, err = workCall(t, b, "record", map[string]any{"receipt": second["receipt"],
+		"memory":  []any{map[string]any{"ref": "knowledge1", "result": "helpful", "decision": "d", "evidence": "e"}},
+		"reviews": []any{map[string]any{"ref": "lesson:0123456789abcdef", "answer": "yes", "reason": "r"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items = map[string]string{}
+	for _, raw := range saved["errors"].([]any) {
+		item := raw.(map[string]any)
+		items[item["kind"].(string)] = item["error"].(string)
+	}
+	for kind, want := range map[string]string{
+		"memory": `unknown prepared memory reference "knowledge1"; use the refs of pending[].memory[] in the reply of prepare: memory1, memory2, memory10`,
+		"review": `unknown prepared review reference "lesson:0123456789abcdef"; use the refs of pending[].reviews[] in the reply of prepare: review1, review2, review10`,
+	} {
+		if items[kind] != want {
+			t.Errorf("the %s refusal lists the prepared refs in their order under the reply's field:\n got %q\nwant %q", kind, items[kind], want)
+		}
 	}
 
 	// a source reference that is this call's own observation, which was not saved

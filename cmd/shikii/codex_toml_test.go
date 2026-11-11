@@ -21,7 +21,7 @@ func TestAudit2CodexRegistrationKeepsTheLocalModel(t *testing.T) {
 		t.Fatalf("did=%v err=%v", did, err)
 	}
 	b, _ := os.ReadFile(fresh)
-	if !strings.Contains(string(b), `"--local", "`+hookLocalURL+`"`) || strings.Contains(string(b), "--store") {
+	if !strings.Contains(string(b), `"--local", "`+shippedModelURL+`"`) || strings.Contains(string(b), "--store") { // the address the package ships, not the closed one the tests run with
 		t.Fatalf("Codex's registration must keep the local model and name no store:\n%s", b)
 	}
 	// older forms (the 0.9.2 one, args = ["mcp"] of 0.9.3 builds) are only told since 0.9.7: TestOlderCodexFormIsOnlyTold

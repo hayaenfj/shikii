@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -164,6 +165,13 @@ func boolPtrMain(b bool) *bool { return &b }
 
 // Tests that close the holes found in the audit of 2026-10-17. Each was confirmed to fail before being fixed.
 
+// shippedModelURL is the model's address as the package ships it, read before TestMain closes it: the port of the real model server
+// on the machine that runs the tests.
+var shippedModelURL = hookLocalURL
+
+// closedModelURL is the model's address every test starts with: a port nothing listens on.
+const closedModelURL = "http://127.0.0.1:1"
+
 // TestMain removes the developer's keys (TYPESAFE_API_KEY / DECISIONS_API_KEY) and SHIKII_MODEL before the tests.
 // Otherwise tests that assume the local fake model send requests to the real api.typesafe.ai,
 // and the store's records, calibrations and bands change and the tests fail (2026-10-23: 6 failed right after the key was put in an environment variable).
@@ -171,6 +179,14 @@ func boolPtrMain(b bool) *bool { return &b }
 func TestMain(m *testing.M) {
 	for _, k := range []string{"TYPESAFE_API_KEY", "DECISIONS_API_KEY", "SHIKII_MODEL"} {
 		os.Unsetenv(k)
+	}
+	// No test asks this machine's model server or looks on its PATH. Closing the port used to be each test's own work (hookEnv,
+	// freshMachine), and a test that only set a temporary HOME and ran init or hook install asked http://127.0.0.1:8080/health and
+	// found this machine's llama-server (0.31.0 audit C A-8, audit D A-6 and U-10: 17 tests did). Now every test starts closed: one
+	// that needs a model sets its own address (hookEnv with a model, fakeAgentModel), one that needs llama-server found replaces lookPath.
+	hookLocalURL = closedModelURL
+	lookPath = func(file string) (string, error) {
+		return "", fmt.Errorf("%s: the tests do not look on this machine's PATH", file)
 	}
 	// No test starts real background processes (up, serve) or a browser (a test that skipped the harness forgot a stub, and a real one was left running. 0.9.1)
 	hookSpawn = recordSpawn

@@ -162,12 +162,50 @@ func TestAuditACarriedPageOperations(t *testing.T) {
 	if second["carried"] == nil {
 		t.Fatal("precondition: the page is taken over")
 	}
+	if got := auditJSON(second["carried"].(map[string]any)["articles"]); got != `["`+ref+`"]` {
+		t.Errorf("the page is taken over under the reference the interrupted work read it by (%s): %s", ref, got)
+	}
+	// what the reply saved under a kind, and the refusal it gave for a kind
+	savedAs := func(reply map[string]any, kind string) bool {
+		items, _ := reply["saved"].([]any)
+		for _, raw := range items {
+			if item, _ := raw.(map[string]any); item["kind"] == kind {
+				return true
+			}
+		}
+		return false
+	}
+	refusal := func(reply map[string]any, kind string) string {
+		items, _ := reply["errors"].([]any)
+		for _, raw := range items {
+			if item, _ := raw.(map[string]any); item["kind"] == kind {
+				text, _ := item["error"].(string)
+				return text
+			}
+		}
+		return ""
+	}
+	// edit: carried says "edit the pages that work did not edit", and the edit is saved under the reference taken over
 	saved, err := f.record(second, map[string]any{
 		"observations": []any{map[string]any{"kind": "test", "title": "Totals", "content": "The totals match."}},
 		"notes":        []any{map[string]any{"target": ref, "sources": []any{"new1"}, "change_reason": "Add the totals.", "edits": []any{map[string]any{"field": "body", "before": "The export keeps the filters.", "after": "The export keeps the filters and the totals."}}}}})
 	t.Logf("edit of the carried page: err=%v %.700s", err, auditJSON(saved))
+	if err != nil || saved["errors"] != nil || !savedAs(saved, "note") {
+		t.Errorf("a page the interrupted work read and did not edit is edited with the new receipt: err=%v errors=%s", err, auditJSON(saved["errors"]))
+	}
+	if live, lerr := f.b.LiveWhere(func(p notebook.Page) bool { return p.ID == page.Page.ID }); lerr != nil || len(live) != 1 || !strings.Contains(live[0].Body, "and the totals.") {
+		t.Errorf("the edit reached the page: %v %v", lerr, live)
+	}
+	// confirm: what the interrupted work had seen of the page was not taken over, so the page is read again first; the refusal says so
 	saved, err = f.record(second, map[string]any{"reviewed": []any{ref}})
 	t.Logf("reviewed carried page: err=%v %.500s", err, auditJSON(saved))
+	if got := refusal(saved, "collective_review"); err != nil || saved["complete"] == true || savedAs(saved, "collective_review") || !strings.Contains(got, "read this article again") {
+		t.Errorf("confirming a page that was taken over is refused with what to do first: err=%v %s", err, auditJSON(saved))
+	}
+	// quote: the passages the interrupted work prepared for quoting were not taken over; the refusal names the reference
 	saved, err = f.record(second, map[string]any{"agreed": map[string]any{"summary": "Keep the filters.", "quotes": []any{map[string]any{"ref": ref, "text": "Keep the filters when exporting CSV."}}}})
 	t.Logf("quote of the carried page: err=%v %.500s", err, auditJSON(saved))
+	if got := refusal(saved, "plan"); err != nil || saved["complete"] == true || savedAs(saved, "plan") || !strings.Contains(got, "quotation reference") || !strings.Contains(got, `"`+ref+`"`) {
+		t.Errorf("quoting a page that was taken over is refused, and the refusal names the reference: err=%v %s", err, auditJSON(saved))
+	}
 }
