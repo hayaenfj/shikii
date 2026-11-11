@@ -27,8 +27,8 @@ import (
 const rootOpenerFile, rootOpenerFunc = "internal/rootfile/rootfile.go", "OpenNoFollow"
 
 // rootFileMethods are the methods of os.Root that open, create, read or write a file by its name. FS is one too: the fs.FS it returns
-// opens a file following a link in its last name. A use of FS is allowed only as the first argument of io/fs.WalkDir or io/fs.ReadDir
-// written in place (a listing of folders, which opens no file); a root kept in an interface or a type parameter is out of this check's
+// opens a file following a link in its last name. A use of FS is allowed only as the first argument of io/fs.WalkDir from "." written
+// in place (a walk from the root, which opens folders only and does not go into a link); a root kept in an interface or a type parameter is out of this check's
 // reach (it sees the use of a method of os.Root, not a call through another type), so do not hand an *os.Root to one.
 var rootFileMethods = map[string]bool{"OpenFile": true, "Open": true, "Create": true, "ReadFile": true, "WriteFile": true, "FS": true}
 
@@ -157,7 +157,10 @@ func TestTheRootOpenAllowlistFindsWhatItMustFind(t *testing.T) {
 		{"Root.FS read with fs.ReadFile", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { fs.ReadFile(r.FS(), \"a\") }\n", 1, 0},
 		{"Root.FS opened", "cmd/shikii/x.go", "package main\nimport \"os\"\nfunc f(r *os.Root) { r.FS().Open(\"a\") }\n", 1, 0},
 		{"Root.FS kept in a value", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { fsys := r.FS(); fs.WalkDir(fsys, \".\", nil) }\n", 1, 0},
-		{"Root.FS walked as a listing", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { fs.WalkDir(r.FS(), \".\", nil); fs.ReadDir(r.FS(), \"d\") }\n", 0, 0},
+		{"Root.FS walked from the root", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { fs.WalkDir(r.FS(), \".\", nil) }\n", 0, 0},
+		{"Root.FS walked from a folder that may be a link", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root, d string) { fs.WalkDir(r.FS(), d, nil) }\n", 1, 0},
+		{"Root.FS listed with fs.ReadDir", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { fs.ReadDir(r.FS(), \".\") }\n", 1, 0},
+		{"Root.FS walked by a function of its own named WalkDir", "cmd/shikii/x.go", "package main\nimport (\"io/fs\"; \"os\")\nfunc WalkDir(fsys fs.FS, root string, fn fs.WalkDirFunc) error { _, err := fs.ReadFile(fsys, root); return err }\nfunc f(r *os.Root) { WalkDir(r.FS(), \".\", nil) }\n", 1, 0},
 		{"the os package's other openers", "cmd/shikii/x.go", "package main\nimport \"os\"\nfunc f() { os.Open(\"a\"); os.Create(\"a\"); os.ReadFile(\"a\"); os.WriteFile(\"a\", nil, 0o600) }\n", 0, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -203,9 +206,9 @@ func TestTheRootOpenAllowlistSeesARootOpenInTheRealPackage(t *testing.T) {
 
 // A file not built on this machine is read without types, so it must not name a root opener at all.
 func TestAFileNotBuiltHereMustNotNameARootOpener(t *testing.T) {
-	src := namedSource{"internal/handoff/x_other.go", "package handoff\nimport \"os\"\nfunc f(r *os.Root) { r.Open(\"a\") }\nfunc g() { os.OpenInRoot(\"/d\", \"a\") }\n"}
-	if found := rootOpenerNamesInAFileNotBuilt(t, src); len(found) != 2 {
-		t.Fatalf("found %v, want the two openers", found)
+	src := namedSource{"internal/handoff/x_other.go", "package handoff\nimport (\"io/fs\"; \"os\")\nfunc f(r *os.Root) { r.Open(\"a\") }\nfunc g() { os.OpenInRoot(\"/d\", \"a\") }\nfunc h(r *os.Root) { fs.ReadFile(r.FS(), \"a\") }\n"}
+	if found := rootOpenerNamesInAFileNotBuilt(t, src); len(found) != 4 { // r.Open, os.OpenInRoot, and fs.ReadFile and r.FS by name
+		t.Fatalf("found %v, want the four names of openers", found)
 	}
 	src.src = "package handoff\nimport \"io/fs\"\nconst noFollow = 0\nfunc linkCount(fs.FileInfo) uint64 { return 1 }\n"
 	if found := rootOpenerNamesInAFileNotBuilt(t, src); len(found) != 0 {
@@ -267,9 +270,9 @@ func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs [
 			fn, ok := decl.(*ast.FuncDecl)
 			inOpener := ok && fn.Recv == nil && fn.Name.Name == rootOpenerFunc && srcs[i].name == rootOpenerFile
 			exclusive := map[*ast.Ident]bool{}
-			listing := map[*ast.Ident]bool{} // r.FS() written in place as the folder of fs.WalkDir or fs.ReadDir
+			listing := map[*ast.Ident]bool{} // r.FS() written in place as the folder of fs.WalkDir from "."
 			ast.Inspect(decl, func(n ast.Node) bool {
-				if call, ok := n.(*ast.CallExpr); ok && len(call.Args) >= 2 && listsFolders(info, call) {
+				if call, ok := n.(*ast.CallExpr); ok && len(call.Args) == 3 && walksFromTheRoot(info, call) {
 					if inner, ok := ast.Unparen(call.Args[0]).(*ast.CallExpr); ok && len(inner.Args) == 0 {
 						if sel, ok := ast.Unparen(inner.Fun).(*ast.SelectorExpr); ok && sel.Sel.Name == "FS" {
 							listing[sel.Sel] = true
@@ -302,8 +305,9 @@ func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs [
 	return hits, allowed
 }
 
-// listsFolders reports whether call calls io/fs.WalkDir or io/fs.ReadDir.
-func listsFolders(info *types.Info, call *ast.CallExpr) bool {
+// walksFromTheRoot reports whether call is io/fs.WalkDir(fsys, ".", fn): a walk from the root itself, which opens folders only, and
+// never one behind a link (WalkDir does not go into a link; a walk from a named folder could start at one).
+func walksFromTheRoot(info *types.Info, call *ast.CallExpr) bool {
 	var id *ast.Ident
 	switch f := ast.Unparen(call.Fun).(type) {
 	case *ast.SelectorExpr:
@@ -314,7 +318,11 @@ func listsFolders(info *types.Info, call *ast.CallExpr) bool {
 		return false
 	}
 	fn, ok := info.Uses[id].(*types.Func)
-	return ok && fn.Pkg() != nil && fn.Pkg().Path() == "io/fs" && fn.Signature().Recv() == nil && (fn.Name() == "WalkDir" || fn.Name() == "ReadDir")
+	if !ok || fn.Pkg() == nil || fn.Pkg().Path() != "io/fs" || fn.Signature().Recv() != nil || fn.Name() != "WalkDir" {
+		return false
+	}
+	root := info.Types[call.Args[1]]
+	return root.Value != nil && root.Value.Kind() == constant.String && constant.StringVal(root.Value) == "."
 }
 
 // opensAFileInARoot reports whether obj is a method of os.Root in rootFileMethods or the function os.OpenInRoot.

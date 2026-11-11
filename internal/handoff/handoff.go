@@ -334,7 +334,12 @@ func isTempName(name string) bool {
 // They have hidden names, so they appear neither in the list nor on the page, and gc does not touch them; they are cleaned up the next time that folder is written.
 // Temp files being written (new ones) and links are not touched.
 func removeStaleTemps(r *os.Root, dir string) {
-	entries, err := fs.ReadDir(r.FS(), dir)
+	folder, err := rootfile.OpenNoFollow(r, dir, os.O_RDONLY, 0) // a folder that is a link is not listed
+	if err != nil {
+		return
+	}
+	entries, err := folder.ReadDir(-1)
+	folder.Close()
 	if err != nil {
 		return
 	}

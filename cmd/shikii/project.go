@@ -36,15 +36,30 @@ const projectInitVersionNow = 2
 
 // projectInitVersion is the project.json version (0 if missing).
 func projectInitVersion(root string) int {
-	b, err := os.ReadFile(filepath.Join(root, "project.json"))
-	if err != nil {
-		return 0
-	}
-	var a projectActivation
-	if json.Unmarshal(b, &a) != nil {
+	a, ok := readProjectFile(filepath.Join(root, "project.json"))
+	if !ok {
 		return 0
 	}
 	return a.Version
+}
+
+// readProjectFile reads a store's project.json without following a link in its name and without waiting on a FIFO (a .shikii brought
+// in from elsewhere can hold anything): a link, a FIFO, a folder or a file past 4096 bytes is not one.
+func readProjectFile(path string) (projectActivation, bool) {
+	var a projectActivation
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return a, false
+	}
+	defer f.Close()
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
+		return a, false
+	}
+	b, err := io.ReadAll(io.LimitReader(f, 4097))
+	if err != nil || len(b) > 4096 || json.Unmarshal(b, &a) != nil {
+		return projectActivation{}, false
+	}
+	return a, true
 }
 
 // wipePending reports whether shikii's store (records/ etc.) remains with an old mark (version 1 or lower), i.e. the wipe crossing 0.7.0 has not happened yet.

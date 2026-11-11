@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -31,12 +29,8 @@ func projectScopeAt(cwd string) string {
 // canonicalScope is the spelling of the project's path that its project.json records, when scope reaches that same folder by another
 // spelling (another case on a case-insensitive disk): every key made from the path (the page, its lock, the index) is then one (re-audit 1-3).
 func canonicalScope(scope string) string {
-	b, err := os.ReadFile(filepath.Join(scope, ".shikii", "project.json"))
-	if err != nil {
-		return scope
-	}
-	var a projectActivation
-	if json.Unmarshal(b, &a) != nil || a.Scope == "" || a.Scope == scope || !filepath.IsAbs(a.Scope) {
+	a, ok := readProjectFile(filepath.Join(scope, ".shikii", "project.json"))
+	if !ok || a.Scope == "" || a.Scope == scope || !filepath.IsAbs(a.Scope) {
 		return scope
 	}
 	if sameFolder(a.Scope, scope) {
