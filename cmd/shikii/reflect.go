@@ -160,22 +160,7 @@ func reflectQueryParts(book notebook.Book, headsMax int, pendingOnly bool) (refl
 				v.MorePending++ // beyond the heads one reply carries: counted, listed by the next query once these are settled
 				continue
 			}
-			source.Request, source.Summary, source.Reply = cut(source.Request, reflectHeadBytes), cut(source.Summary, reflectHeadBytes), cut(source.Reply, reflectHeadBytes)
-			// the deliveries keep their keys (what submit needs) with their texts cut too, so a head stays a few hundred bytes (audit B of 0.12)
-			cutMemories := make([]store.MemoryObservation, 0, len(m))
-			for _, o := range m {
-				o.Request = cut(o.Request, reflectHeadBytes)
-				o.Quote.Lesson, o.Quote.AppliesTo, o.Quote.Said = cut(o.Quote.Lesson, reflectHeadBytes), cut(o.Quote.AppliesTo, reflectHeadBytes), cut(o.Quote.Said, reflectHeadBytes)
-				o.Quote.Request, o.Quote.Summary, o.Quote.Reply = cut(o.Quote.Request, reflectHeadBytes), cut(o.Quote.Summary, reflectHeadBytes), cut(o.Quote.Reply, reflectHeadBytes)
-				o.Quote.Rationale, o.Quote.DiscoveredFor = cut(o.Quote.Rationale, reflectHeadBytes), cut(o.Quote.DiscoveredFor, reflectHeadBytes)
-				if c := o.Quote.Correction; c != nil { // a copy: the delivery's record keeps the correction whole
-					shortened := *c
-					shortened.Quote, shortened.Action = cut(c.Quote, reflectHeadBytes), cut(c.Action, reflectHeadBytes)
-					o.Quote.Correction = &shortened
-				}
-				cutMemories = append(cutMemories, o)
-			}
-			v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: cutMemories, Head: true})
+			v.Sources = append(v.Sources, reflectHead(reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: m}))
 			continue
 		}
 		v.Sources = append(v.Sources, reflectSource{Source: source, Targets: t, WikiPending: wiki[source.ID], Memories: m})
@@ -222,6 +207,27 @@ func reflectQueryParts(book notebook.Book, headsMax int, pendingOnly bool) (refl
 		return v, nil, err
 	}
 	return v, nil, nil
+}
+
+// reflectHead is a pending conversation as a head: its texts cut to reflectHeadBytes, with its targets and the keys of its
+// deliveries (what submit needs) kept, so a head stays a few hundred bytes (audit B of 0.12).
+func reflectHead(s reflectSource) reflectSource {
+	source := s.Source
+	source.Request, source.Summary, source.Reply = cut(source.Request, reflectHeadBytes), cut(source.Summary, reflectHeadBytes), cut(source.Reply, reflectHeadBytes)
+	cutMemories := make([]store.MemoryObservation, 0, len(s.Memories))
+	for _, o := range s.Memories {
+		o.Request = cut(o.Request, reflectHeadBytes)
+		o.Quote.Lesson, o.Quote.AppliesTo, o.Quote.Said = cut(o.Quote.Lesson, reflectHeadBytes), cut(o.Quote.AppliesTo, reflectHeadBytes), cut(o.Quote.Said, reflectHeadBytes)
+		o.Quote.Request, o.Quote.Summary, o.Quote.Reply = cut(o.Quote.Request, reflectHeadBytes), cut(o.Quote.Summary, reflectHeadBytes), cut(o.Quote.Reply, reflectHeadBytes)
+		o.Quote.Rationale, o.Quote.DiscoveredFor = cut(o.Quote.Rationale, reflectHeadBytes), cut(o.Quote.DiscoveredFor, reflectHeadBytes)
+		if c := o.Quote.Correction; c != nil { // a copy: the delivery's record keeps the correction whole
+			shortened := *c
+			shortened.Quote, shortened.Action = cut(c.Quote, reflectHeadBytes), cut(c.Action, reflectHeadBytes)
+			o.Quote.Correction = &shortened
+		}
+		cutMemories = append(cutMemories, o)
+	}
+	return reflectSource{Source: source, Targets: s.Targets, WikiPending: s.WikiPending, Memories: cutMemories, Head: true}
 }
 
 type reflectReceipt struct {
@@ -454,6 +460,9 @@ func cmdReflect(args []string) error {
 	if err != nil {
 		return err
 	}
+	if view, ok := result.(reflectView); ok { // query: within what the agent's shell shows whole, like work prepare
+		result = limitReflectQuery(view, cliPrepareBytes, func(v any) int { return workContextSize(v) + 1 })
+	}
 	return writeReply(stdout, result)
 }
 
@@ -470,6 +479,13 @@ func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, 400, err)
 		return
+	}
+	// through MCP the whole tool result is measured, as for work prepare; a plain HTTP caller gets the reply whole
+	if view, ok := result.(reflectView); ok {
+		if size, _ := r.Context().Value(workResponseSizeKey{}).(func(any) int); size != nil {
+			budget, _ := workOutputBudget(0)
+			result = limitReflectQuery(view, budget, size)
+		}
 	}
 	writeReplyJSON(w, 200, result)
 }
