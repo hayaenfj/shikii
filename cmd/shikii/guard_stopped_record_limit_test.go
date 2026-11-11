@@ -145,8 +145,8 @@ func TestStopThatWritesARecordNearItsLimitStaysNearTheComparisonWithHead(t *test
 	}
 	t.Logf("record %d bytes, a Stop that writes it: with the record %v, compared with HEAD %v (ratio %.2f)",
 		len(b), withRecord, withHead, float64(withRecord)/float64(withHead))
-	if withRecord > 3*withHead {
-		t.Fatalf("the Stop that writes a record near its limit takes %v, more than 3 times the comparison with HEAD (%v)", withRecord, withHead)
+	if !withinRecordBudget(withRecord, withHead) {
+		t.Fatalf("the Stop that writes a record near its limit takes %v, more than %v (the comparison with HEAD takes %v)", withRecord, recordBudget(withHead), withHead)
 	}
 }
 
@@ -296,4 +296,19 @@ func TestStoppedCountPastItsWidthLeansToStopping(t *testing.T) {
 			}
 		}
 	}
+}
+
+// recordStopExtra is what a record near its limit may add to a Stop when that is more than 3 times the comparison with HEAD: where
+// git is fast (Linux, a few milliseconds for a small repository), reading and writing 4 MB once takes several times as long as the
+// comparison itself, yet only some milliseconds.
+const recordStopExtra = 50 * time.Millisecond
+
+// recordBudget is how long a Stop with a record may take: 3 times the comparison with HEAD, or that comparison and recordStopExtra,
+// whichever is longer.
+func recordBudget(withHead time.Duration) time.Duration {
+	return max(3*withHead, withHead+recordStopExtra)
+}
+
+func withinRecordBudget(withRecord, withHead time.Duration) bool {
+	return withRecord <= recordBudget(withHead)
 }

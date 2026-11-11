@@ -69,8 +69,8 @@ func TestStopWithARecordNearItsLimitReadsItOnceAndStaysNearTheComparisonWithHead
 		}
 	}
 	t.Logf("record %d bytes: with the record %v, compared with HEAD %v (ratio %.2f)", len(b), withRecord, withHead, float64(withRecord)/float64(withHead))
-	if withRecord > 3*withHead {
-		t.Fatalf("the Stop with a record near its limit takes %v, more than 3 times the comparison with HEAD (%v)", withRecord, withHead)
+	if !withinRecordBudget(withRecord, withHead) {
+		t.Fatalf("the Stop with a record near its limit takes %v, more than %v (the comparison with HEAD takes %v)", withRecord, recordBudget(withHead), withHead)
 	}
 	if got := mustRead(t, p); string(got) != string(b) {
 		t.Fatal("the Stop changed the entries of files it did not compare")
