@@ -24,7 +24,7 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 	for _, m := range req.Memory {
 		binding, ok := w.Memory[m.Ref]
 		if !ok {
-			add(workItem{Ref: m.Ref, Kind: "memory", Error: unknownPreparedRef("memory", m.Ref, sortedRefs(w.Memory), "pending[].memories[]")})
+			add(workItem{Ref: m.Ref, Kind: "memory", Error: unknownPreparedRef("memory", m.Ref, sortedRefs(w.Memory), "pending[].memory[]")})
 			continue
 		}
 		reflection.Memory = append(reflection.Memory, memoryAssessmentRequest{SourceID: binding.Source, Key: binding.Key, Result: m.Result, Decision: m.Decision, Evidence: m.Evidence, CorrectionResult: m.CorrectionResult})

@@ -95,7 +95,7 @@ func TestWorkRefusalsNameTheCauseAndTheNextCall(t *testing.T) {
 	}
 	// with prepared references, the refusal lists them
 	w := &workState{Memory: map[string]workMemoryRef{"memory2": {}, "memory10": {}, "memory1": {}}}
-	if got := unknownPreparedRef("memory", "knowledge1", sortedRefs(w.Memory), "pending[].memories[]"); !strings.Contains(got, "the refs of pending[].memories[] in the reply of prepare: memory1, memory2, memory10") {
+	if got := unknownPreparedRef("memory", "knowledge1", sortedRefs(w.Memory), "pending[].memory[]"); !strings.Contains(got, "the refs of pending[].memory[] in the reply of prepare: memory1, memory2, memory10") {
 		t.Errorf("the prepared refs are listed in their order: %q", got)
 	}
 

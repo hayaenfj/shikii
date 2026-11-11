@@ -13,7 +13,7 @@ import (
 // command, so a form the command would refuse cannot stay here.
 //
 // A form is one line `shikii <arguments>`, followed by its standard input when it reads one. <name> marks a value the agent fills
-// in. Notes never start with the word shikii, so that only forms do.
+// in. Notes never start with the word shikii, so that only forms do. A form with standard input starts at the first column.
 type agentForm struct {
 	When  string // when the agent uses this form
 	Call  string // the arguments after shikii
@@ -39,7 +39,7 @@ var agentUsages = map[string]agentUsage{
 			"The reply of prepare carries receipt and how_to_record: what record also takes (observations, notes, reviews, memory, reasoning).",
 			"result.evidence takes references (newN for observation N of the same call, knowledgeN, the id of a source this receipt saved, and current when the ids came from a hook notice), not text: what you checked goes in checked.",
 			"A message from the person during the work starts a new request: prepare with the ids of its notice, and carried in the reply names the pages and sources of the interrupted work that stay valid with the new receipt.",
-			"max_bytes (8192 to 393216) in prepare bounds its reply; without it the CLI keeps the reply within 28672 bytes, which an agent's shell shows whole, and output names what was left out.",
+			fmt.Sprintf("max_bytes (%d to %d) in prepare bounds its reply; without it the CLI keeps the reply within %d bytes, which an agent's shell shows whole, and output names what was left out.", workMinBudget, workSourceBudget*3, cliPrepareBytes),
 		},
 	},
 	"hook plan": {
@@ -98,7 +98,9 @@ func (f agentForm) text() string {
 	if strings.HasPrefix(f.Input, "{") {
 		tag = "JSON"
 	}
-	return "  " + f.When + ":\n    shikii " + f.Call + " <<'" + tag + "'\n    " + f.Input + "\n    " + tag + "\n"
+	// At the start of the line, not indented like the rest: a shell ends a here-document only at a line that is exactly the tag,
+	// so the three lines pasted with their indentation sent the tag line, and what followed, to the command (audit of 0.31.0).
+	return "  " + f.When + ":\nshikii " + f.Call + " <<'" + tag + "'\n" + f.Input + "\n" + tag + "\n"
 }
 
 func (u agentUsage) text() string {

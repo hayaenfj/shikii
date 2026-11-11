@@ -265,3 +265,114 @@ func TestTheSkillAndTheGuideDescribeTheFormsTheBoundAndTheOrder(t *testing.T) {
 		}
 	}
 }
+
+// What the audit of 0.31.0 found in the entries an agent calls (B-A4, B-I2, B-U4, B-U6, A-4): a form pasted with the indentation
+// help printed it with did not end its here-document; handoff answered a call it could not read with the forms alone; handoff
+// write replaced a record with nothing when its standard input was empty; a wrongly typed value was named notes.0.sources while
+// an unknown key was named notes[0]; and work answered malformed JSON in encoding/json's words.
+func TestTheEntriesSayWhatIsWrongAndHelpPastesAsShown(t *testing.T) {
+	repo, _, _ := planningFixture(t)
+	t.Chdir(repo)
+	// a form with standard input starts at the first column, with its text and its closing tag
+	for name, usage := range agentUsages {
+		lines := strings.Split(usage.text(), "\n")
+		for i, line := range lines {
+			at := strings.Index(line, " <<'")
+			if at < 0 {
+				continue
+			}
+			tag := strings.TrimSuffix(line[at+len(" <<'"):], "'")
+			if !strings.HasPrefix(line, "shikii ") {
+				t.Errorf("%s: a form with a here-document starts at the first column: %q", name, line)
+			}
+			closed := false
+			for _, next := range lines[i+1:] {
+				if next == tag {
+					closed = true
+					break
+				}
+				if strings.TrimSpace(next) == tag || strings.HasPrefix(next, " ") {
+					t.Errorf("%s: the text and the closing tag of %q are not indented: %q", name, line, next)
+					break
+				}
+			}
+			if !closed {
+				t.Errorf("%s: the here-document of %q is closed by a line that is exactly %s", name, line, tag)
+			}
+		}
+	}
+	// handoff says what is wrong, then the forms
+	for call, problem := range map[string]string{
+		"delete x":       `handoff has no operation "delete"`,
+		"read":           "handoff read needs the path of a work record",
+		"write a b":      "handoff write takes one path (the text goes on standard input, not as an argument)",
+		"write --path a": "handoff write takes no flags",
+		"list x":         "handoff list takes no arguments",
+	} {
+		err := cmdHandoff(strings.Fields(call))
+		if err == nil || !strings.HasPrefix(err.Error(), problem+"\nusage: shikii handoff ") {
+			t.Errorf("shikii handoff %s says what is wrong and then the forms: %v", call, err)
+		}
+	}
+	// an empty standard input does not replace a record
+	withStdin(t, "The report.\n", func() {
+		if _, err := captureErr(func() error { return cmdHandoff([]string{"write", "audit/report.md"}) }); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, operation := range []string{"write", "append"} {
+		for _, input := range []string{"", " \n"} {
+			withStdin(t, input, func() {
+				_, err := captureErr(func() error { return cmdHandoff([]string{operation, "audit/report.md"}) })
+				if err == nil || !strings.Contains(err.Error(), "standard input was empty") || !strings.Contains(err.Error(), "nothing was written") {
+					t.Errorf("handoff %s with an empty standard input is refused: %v", operation, err)
+				}
+			})
+		}
+	}
+	var kept string
+	withStdin(t, "", func() {
+		kept, _ = captureErr(func() error { return cmdHandoff([]string{"read", "audit/report.md"}) })
+	})
+	if kept != "The report.\n" {
+		t.Errorf("the record is as it was written: %q", kept)
+	}
+	// the word help asks for help only where an operation is expected, never where a path or search words are
+	for _, c := range []struct {
+		args  []string
+		words int
+		help  bool
+	}{{[]string{"help"}, 1, true}, {[]string{"read", "help"}, 1, false}, {[]string{"read", "--help"}, 1, true}, {[]string{"query", "help", "me"}, 1, false}, {[]string{"plan", "help"}, 2, true}} {
+		if got := helpAsked(c.args, c.words); got != c.help {
+			t.Errorf("helpAsked(%v, %d) = %v", c.args, c.words, got)
+		}
+	}
+	// a refusal of one operation shows that operation's forms, not every form
+	if text := usageRefusal("work", "standard input was empty", "work record").Error(); !strings.Contains(text, "shikii work record <<'JSON'") || strings.Contains(text, "shikii work prepare <<'JSON'") {
+		t.Errorf("the refusal of work record shows the forms of work record alone:\n%s", text)
+	}
+	// the bounds the help names are the bounds the code uses
+	note := fmt.Sprintf("max_bytes (%d to %d)", workMinBudget, workSourceBudget*3)
+	if _, low := workOutputBudget(workMinBudget - 1); low == nil || !strings.Contains(agentUsages["work"].text(), note) || !strings.Contains(agentUsages["work"].text(), fmt.Sprintf("within %d bytes", cliPrepareBytes)) {
+		t.Errorf("the help names the bounds the command uses (%s, %d): %v", note, cliPrepareBytes, low)
+	}
+	if _, err := workOutputBudget(workMinBudget); err != nil {
+		t.Errorf("the smallest max_bytes the help names is accepted: %v", err)
+	}
+	if _, err := workOutputBudget(workSourceBudget*3 + 1); err == nil {
+		t.Errorf("one byte over the largest max_bytes the help names is refused")
+	}
+	// one way to name a place, and the JSON's own words for a malformed input
+	for input, want := range map[string]string{
+		`{"receipt":"r","notes":[{"sources":"new1"}]}`: "pass the JSON notes[0].sources as an array",
+		`{"receipt":"r","notes":[{"nope":1}]}`:         `unknown field "nope" in notes[0]`,
+		`{"receipt":"r",}`:                             "malformed",
+	} {
+		withStdin(t, input, func() {
+			_, err := captureErr(func() error { return cmdWork([]string{"record"}) })
+			if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "invalid character") || strings.Contains(err.Error(), "notes.0") {
+				t.Errorf("shikii work record with %s answers %q: %v", input, want, err)
+			}
+		})
+	}
+}

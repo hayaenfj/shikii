@@ -25,12 +25,15 @@ const continuedWorkHowTo = "Use this receipt and its initial recording contract.
 // and keeps the way back to it; max_bytes asks for another size.
 const cliPrepareBytes = 28 << 10
 
+// workMinBudget is the smallest max_bytes a prepare takes; the largest is workSourceBudget*3. The help names both from here.
+const workMinBudget = 8192
+
 func workOutputBudget(n int) (int, error) {
 	if n == 0 {
 		return 64 << 10, nil
 	}
-	if n < 8192 || n > workSourceBudget*3 {
-		return 0, errors.New("max_bytes must be between 8192 and 393216 UTF-8 JSON bytes")
+	if n < workMinBudget || n > workSourceBudget*3 {
+		return 0, fmt.Errorf("max_bytes must be between %d and %d UTF-8 JSON bytes", workMinBudget, workSourceBudget*3)
 	}
 	return n, nil
 }

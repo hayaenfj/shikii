@@ -22,7 +22,7 @@ func decodeStrictObject(data []byte, target any) (err error, extra bool) {
 	if err := dec.Decode(target); err != nil {
 		var wrongType *json.UnmarshalTypeError
 		if errors.As(err, &wrongType) {
-			return &fieldTypeError{Field: wrongType.Field, Want: jsonShapeName(wrongType.Type), Got: wrongType.Value}, false
+			return &fieldTypeError{Field: indexedJSONPath(wrongType.Field), Want: jsonShapeName(wrongType.Type), Got: wrongType.Value}, false
 		}
 		return explainUnknownField(err, data, target), false
 	}
@@ -43,6 +43,24 @@ func (e *fieldTypeError) Error() string {
 		return fmt.Sprintf("pass the JSON as %s (got %s)", e.Want, e.Got)
 	}
 	return fmt.Sprintf("pass the JSON %s as %s (got %s)", e.Field, e.Want, e.Got)
+}
+
+// indexedJSONPath writes encoding/json's path of a value (notes.0.sources) the way the refusal of an unknown key writes a place
+// (notes[0].sources): one way for both, so an agent reads them alike.
+func indexedJSONPath(path string) string {
+	parts := strings.Split(path, ".")
+	out := ""
+	for i, part := range parts {
+		if _, err := strconv.Atoi(part); err == nil && i > 0 {
+			out += "[" + part + "]"
+			continue
+		}
+		if out != "" {
+			out += "."
+		}
+		out += part
+	}
+	return out
 }
 
 // jsonShapeName says what JSON a Go type is read from.

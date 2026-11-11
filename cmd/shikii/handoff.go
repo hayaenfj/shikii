@@ -37,7 +37,7 @@ func cmdHandoff(args []string) error {
 	if helpAsked(args, 1) {
 		return printAgentUsage("handoff")
 	}
-	usage := usageRefusal("handoff", "")
+	usage := usageRefusal("handoff", handoffProblem(args))
 	if len(args) == 0 {
 		return usage
 	}
@@ -89,6 +89,10 @@ func cmdHandoff(args []string) error {
 		if len(data) > 1<<20 {
 			return errors.New("standard input is over 1 MiB. Split it into pieces of 1 MiB and append them")
 		}
+		if strings.TrimSpace(string(data)) == "" {
+			// an agent's shell gives an empty standard input when nothing is piped: write replaced the record with 0 bytes
+			return usageRefusal("handoff", "standard input was empty: shikii handoff "+args[0]+" reads the text from it, and nothing was written", "handoff "+args[0]+" <work>/report.md")
+		}
 		req.Path, req.Content = args[1], string(data)
 		res, err := runHandoff(root, req)
 		if err != nil {
@@ -99,6 +103,28 @@ func cmdHandoff(args []string) error {
 		return nil
 	}
 	return usage
+}
+
+// handoffProblem says what is wrong with the arguments of shikii handoff ("" when only the operation is missing).
+func handoffProblem(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	takes := map[string]int{"list": 0, "read": 1, "write": 1, "append": 1}
+	paths, known := takes[args[0]]
+	switch {
+	case !known:
+		return fmt.Sprintf("handoff has no operation %q", args[0])
+	case len(args) > 1 && strings.HasPrefix(args[1], "-"):
+		return "handoff " + args[0] + " takes no flags"
+	case len(args)-1 < paths:
+		return "handoff " + args[0] + " needs the path of a work record"
+	case len(args)-1 > paths && paths == 0:
+		return "handoff list takes no arguments"
+	case len(args)-1 > paths:
+		return "handoff " + args[0] + " takes one path (the text goes on standard input, not as an argument)"
+	}
+	return ""
 }
 
 // handleHandoffFile is the endpoint the page uses to read one work record (GET ?path=). Images are served as images and text as text/plain (never rendered as HTML).

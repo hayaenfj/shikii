@@ -628,7 +628,7 @@ func cmdWork(args []string) error {
 	var req workRequest
 	err, extra := decodeStrictObject(data, &req)
 	if err != nil {
-		return err
+		return jsonShapeError(err) // where the JSON is malformed, not encoding/json's words
 	}
 	if extra {
 		return errors.New("work takes exactly one JSON object")
