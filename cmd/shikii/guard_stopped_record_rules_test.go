@@ -18,17 +18,17 @@ import (
 // pops the stash, the next turn changing README is stopped for the line again.
 func TestStashedStoppedLineStopsAfterPopAcrossATurnOnAnotherFile(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
-	stoppedOnce(t, repo, root, readme, "e1")
+	stoppedOnce(t, repo, root, readme, "stash-pop-other-turn")
 	gitIn(t, repo, "stash")
-	nextRequest(t, repo, root, "e1")
+	nextRequest(t, repo, root, "stash-pop-other-turn")
 	writeFile(t, filepath.Join(repo, "notes.md"), "a clean note\n")
-	if r := wordStop(t, repo, root, "e1", false); !r.Pass {
+	if r := wordStop(t, repo, root, "stash-pop-other-turn", false); !r.Pass {
 		t.Fatalf("premise: the turn on another file passes: %+v", r)
 	}
 	gitIn(t, repo, "stash", "pop")
-	nextRequest(t, repo, root, "e1")
+	nextRequest(t, repo, root, "stash-pop-other-turn")
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\na clean line\n")
-	if r := wordStop(t, repo, root, "e1", false); !stoppedForTheLine(r) {
+	if r := wordStop(t, repo, root, "stash-pop-other-turn", false); !stoppedForTheLine(r) {
 		t.Fatalf("the stopped line, stashed and popped, passes at the next turn: %+v", r)
 	}
 }
@@ -36,26 +36,28 @@ func TestStashedStoppedLineStopsAfterPopAcrossATurnOnAnotherFile(t *testing.T) {
 // Control: without a turn in between, the stashed and popped line stops the next turn.
 func TestStashedStoppedLineStopsAfterPop(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
-	stoppedOnce(t, repo, root, readme, "e1c")
+	stoppedOnce(t, repo, root, readme, "stash-pop")
 	gitIn(t, repo, "stash")
 	gitIn(t, repo, "stash", "pop")
-	nextRequest(t, repo, root, "e1c")
+	nextRequest(t, repo, root, "stash-pop")
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\na clean line\n")
-	if r := wordStop(t, repo, root, "e1c", false); !stoppedForTheLine(r) {
+	if r := wordStop(t, repo, root, "stash-pop", false); !stoppedForTheLine(r) {
 		t.Fatalf("the stashed and popped line passes: %+v", r)
 	}
 }
 
-// The person commits the stopped line and, with no Stop in between, writes the same text once more as a draft of their own.
-// The next turn changing README is not stopped for the person's copy: the commit made after the line was stopped cleared it.
+// The person commits the stopped line and, with no Stop in between, writes one more copy of the same text beside it. The
+// commit at the next turn's start still holds the stopped copy, so that copy is no longer stopped, and the extra copy was there
+// at the request: the next turn changing README is not stopped for it. (The same text written again after the stopped line
+// was removed, from the file or by a later commit, is another case: it cannot be told from the stopped line and stops.)
 func TestPersonsCopyAfterTheStoppedLineWasCommittedIsNotAdded(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
-	stoppedOnce(t, repo, root, readme, "e4")
+	stoppedOnce(t, repo, root, readme, "commit-then-copy")
 	gitCommitAll(t, repo, "docs: the person commits the turn's line")
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\n"+turnForbiddenLine+"\n") // the person's own copy, between the turns
-	nextRequest(t, repo, root, "e4")
+	nextRequest(t, repo, root, "commit-then-copy")
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\n"+turnForbiddenLine+"\na clean line\n")
-	if r := wordStop(t, repo, root, "e4", false); !r.Pass {
+	if r := wordStop(t, repo, root, "commit-then-copy", false); !r.Pass {
 		t.Fatalf("the person's copy, written after the stopped line was committed, stopped the next turn: %+v", r)
 	}
 }
@@ -63,17 +65,17 @@ func TestPersonsCopyAfterTheStoppedLineWasCommittedIsNotAdded(t *testing.T) {
 // Control: with a turn on another file in between, the person's copy passes too.
 func TestPersonsCopyAfterTheStoppedLineWasCommittedAndATurnIsNotAdded(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
-	stoppedOnce(t, repo, root, readme, "e4c")
+	stoppedOnce(t, repo, root, readme, "commit-other-turn")
 	gitCommitAll(t, repo, "docs: the person commits the turn's line")
-	nextRequest(t, repo, root, "e4c")
+	nextRequest(t, repo, root, "commit-other-turn")
 	writeFile(t, filepath.Join(repo, "notes.md"), "a clean note\n")
-	if r := wordStop(t, repo, root, "e4c", false); !r.Pass {
+	if r := wordStop(t, repo, root, "commit-other-turn", false); !r.Pass {
 		t.Fatalf("premise: %+v", r)
 	}
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\n"+turnForbiddenLine+"\n")
-	nextRequest(t, repo, root, "e4c")
+	nextRequest(t, repo, root, "commit-other-turn")
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\n"+turnForbiddenLine+"\na clean line\n")
-	if r := wordStop(t, repo, root, "e4c", false); !r.Pass {
+	if r := wordStop(t, repo, root, "commit-other-turn", false); !r.Pass {
 		t.Fatalf("the person's copy stopped the turn: %+v", r)
 	}
 }
@@ -291,5 +293,77 @@ func TestStoppedRecordInAnOlderFormIsNotUsed(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(mustRead(t, p)), stoppedMarker) || !stoppedRecordHas(t, root, repo, "README.md", turnForbiddenLine) {
 		t.Fatalf("the record in an older form was not written over: %q", mustRead(t, p))
+	}
+}
+
+// The same text written again after the stopped line was committed and then removed by a later commit (or a revert), with no
+// Stop comparing README in between. The record knows a line only by the hash of its text, so the copy written again cannot be
+// told from the stopped line: it is stopped, as in 0.30.7. Only the copy written again is stopped this way; the commit alone,
+// while the commit at the turn's start holds the copy, clears it (TestCommittedStoppedLineIsForgotten).
+func TestSameTextWrittenAgainAfterTheStoppedLineWasCommittedAndRemovedStops(t *testing.T) {
+	repo, root, readme := uncommittedLinesRepo(t)
+	stoppedOnce(t, repo, root, readme, "commit-remove-rewrite")
+	gitCommitAll(t, repo, "docs: the person commits the stopped line")
+	writeFile(t, readme, "# project\n")
+	gitCommitAll(t, repo, "docs: the person removes it again")
+	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\n") // the same text written again, after the commits
+	nextRequest(t, repo, root, "commit-remove-rewrite")
+	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\na clean line\n")
+	if r := wordStop(t, repo, root, "commit-remove-rewrite", false); !stoppedForTheLine(r) {
+		t.Fatalf("the same text written again after the stopped line was committed and removed passes: %+v", r)
+	}
+}
+
+// The same text written again after the person removed the stopped line while no Stop compared README (a turn on another
+// file ended in between). It cannot be told from the stopped line by the hash of its text: it is stopped, as in 0.30.7. Once a
+// Stop compares README with the line removed, the text written again is the person's
+// (TestSameTextWrittenBackAfterTheStoppedLineWasRemovedIsThePersons).
+func TestSameTextWrittenAgainAfterARemovalNoStopComparedStops(t *testing.T) {
+	repo, root, readme := uncommittedLinesRepo(t)
+	stoppedOnce(t, repo, root, readme, "remove-unseen-rewrite")
+	writeFile(t, readme, "# project\n") // the person removes it
+	nextRequest(t, repo, root, "remove-unseen-rewrite")
+	writeFile(t, filepath.Join(repo, "notes.md"), "a clean note\n")
+	if r := wordStop(t, repo, root, "remove-unseen-rewrite", false); !r.Pass {
+		t.Fatalf("premise: %+v", r)
+	}
+	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\n") // the same text written again, later
+	nextRequest(t, repo, root, "remove-unseen-rewrite")
+	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\na clean line\n")
+	if r := wordStop(t, repo, root, "remove-unseen-rewrite", false); !stoppedForTheLine(r) {
+		t.Fatalf("the same text written again after a removal no Stop compared passes: %+v", r)
+	}
+}
+
+// The person had committed a copy of the line; the turn wrote one more and was stopped (at a HEAD holding one copy). The
+// person moves HEAD back (git reset --soft HEAD~1), a turn changing README ends (its Stop writes the record again, at a start
+// HEAD holding no copy), and the person commits one copy again (their own). The turn's copy is still stopped at the next turn:
+// the entry is counted from the HEAD it was stopped at, never from an older one.
+func TestStoppedCopyStaysAfterHeadMovedBackAndThePersonsCopyIsCommittedAgain(t *testing.T) {
+	repo, root, readme := uncommittedLinesRepo(t)
+	one := "# project\n" + turnForbiddenLine + "\n"
+	writeFile(t, readme, one)
+	gitCommitAll(t, repo, "docs: the person's own line")
+	organizedRequest(t, repo, root, "reset-soft")
+	writeFile(t, readme, one+turnForbiddenLine+"\n")
+	if r := wordStop(t, repo, root, "reset-soft", false); !stoppedForTheLine(r) {
+		t.Fatalf("premise: %+v", r)
+	}
+	wordStop(t, repo, root, "reset-soft", true)
+	gitIn(t, repo, "reset", "--soft", "HEAD~1")
+	nextRequest(t, repo, root, "reset-soft")
+	writeFile(t, readme, one+turnForbiddenLine+"\na clean line\n")
+	if r := wordStop(t, repo, root, "reset-soft", false); !stoppedForTheLine(r) {
+		t.Fatalf("premise: after HEAD moved back the turn's copy still stops: %+v", r)
+	}
+	wordStop(t, repo, root, "reset-soft", true)
+	// the person commits one copy (their own) and keeps the rest uncommitted
+	writeFile(t, readme, one)
+	gitCommitAll(t, repo, "docs: the person's own line again")
+	writeFile(t, readme, one+turnForbiddenLine+"\na clean line\n")
+	nextRequest(t, repo, root, "reset-soft")
+	writeFile(t, readme, one+turnForbiddenLine+"\na clean line\nanother clean line\n")
+	if r := wordStop(t, repo, root, "reset-soft", false); !stoppedForTheLine(r) {
+		t.Fatalf("the turn's stopped copy passes once the person committed their own copy again: %+v", r)
 	}
 }

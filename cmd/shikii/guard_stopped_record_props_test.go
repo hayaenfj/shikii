@@ -243,7 +243,8 @@ func TestStoppedRecordPastItsSizeDropsOnlyWhatDoesNotFit(t *testing.T) {
 	h := newLineHasher(st.key)
 	one := stoppedEntry{n: 1}
 	st.add("old.md", h.hash([]byte("old line")), one)
-	old := map[string]map[[16]byte]bool{"old.md": {h.hash([]byte("old line")): true}}
+	// the files this write looked at: old.md with its entry, and the two files that had none before
+	old := map[string]map[[16]byte]stoppedEntry{"old.md": {h.hash([]byte("old line")): one}, "README.md": {}, "data/big.txt": {}}
 	st.add("README.md", h.hash([]byte(turnForbiddenLine)), one)
 	for i := 0; i < 1000; i++ {
 		st.add("data/big.txt", h.hash([]byte(fmt.Sprint("FORBIDDENWORD ", i))), one)

@@ -116,7 +116,8 @@ func guardTurnInputStopped(root, cwd, before string, kept *keptLines, changed []
 	var stopped *stoppedTable
 	if root != "" {
 		if scope := feedbackScope(top); scope != "" {
-			stopped = readStoppedTable(stoppedLinesPath(root, scope), scope)
+			stopped, in.stoppedInfo = readStoppedRecord(stoppedLinesPath(root, scope), scope)
+			in.stopped = stopped
 		}
 	}
 	// the content of a file in the commit that was HEAD at the start, read once (the copies of a stopped line committed after it

@@ -29,15 +29,19 @@ import (
 // was stopped at) are no longer stopped, and no more copies are stopped than the file holds beyond the comparing turn's start
 // HEAD. So a stopped line goes once it is removed from the file or committed before the comparing turn started; a commit the
 // turn itself makes does not clear it for that turn. The person's lines are the lines there at the start that are not stopped
-// (a line there n times at the start and stopped m times is the person's n-m times).
+// (a line there n times at the start and stopped m times is the person's n-m times). The record knows a line only by the hash
+// of its text, so the same text written again after the stopped line was removed (from the file, or by a later commit or a
+// revert) before a Stop compared the file since, cannot be told from the stopped line: it is stopped, as in 0.30.7.
 //
 // Only Stops write the record (a request's, a slash command's stretch's): under the record's lock they read it, add the lines
 // the failing forbidden-words guards stopped and, for the files the Stop compared alone (the files its turn changed, and those
 // with lines stopped now), drop the copies that were removed or committed, and the file's entries when the file is gone. The
-// entries of the other files are kept as they are, unread, so a Stop costs in proportion to the files its turn changed, and a
-// stopped line out of sight for a while (stashed) is kept until a Stop compares its file. When the lock cannot be taken the
-// Stop writes nothing and goes on. Past keptLinesMax the entries already kept stay and the new ones that do not fit are
-// dropped, the files with the fewest new entries first in, so one huge file does not push out the small ones.
+// entries of the other files are kept as they are, and a stopped line out of sight for a while (stashed) is kept until a Stop
+// compares its file. A Stop reads the record once: its write uses the table its comparison read while the record is still
+// that same file, unchanged (guardInput.stopped). When the lock cannot be taken the Stop writes nothing and goes on. Past
+// keptLinesMax the entries already kept stay (one that grew keeps its earlier line when the new one does not fit) and the new
+// ones that do not fit are dropped, the files with the fewest new entries first in, so one huge file does not push out the
+// small ones.
 //
 // A record stays while its repository is there: a Stop that reads it, and the sessions' pruning that finds the repository,
 // set its time to now; the pruning removes a record only when its repository has not been seen for hookSessionTTL.
@@ -45,7 +49,9 @@ import (
 const stoppedMarker = "#stopped3 "
 
 // stoppedLinesSeam, when set (tests), is called at the steps of a Stop's write: "before-lock" after the comparison and before
-// the lock is taken, "locked" right after the record was read under the lock.
+// the lock is taken, "locked" right after the record was read under the lock; "read" each time a record is read back
+// (readStoppedTable); and at the pruning's "prune-before-lock", after it looked at a record's time and before it takes the
+// record's lock.
 var stoppedLinesSeam func(step string)
 
 // stoppedLinesPath is the record of the lines forbidden-words guards stopped in the repository scope.
@@ -99,42 +105,120 @@ func stoppedHeader(b []byte) (scope string, key, body []byte, ok bool) {
 // readStoppedTable reads the record at p when it belongs to scope; nil when there is none, it is not a regular file, it is
 // larger than any record written, it is in an older form, or it is another repository's.
 func readStoppedTable(p, scope string) *stoppedTable {
+	t, _ := readStoppedRecord(p, scope)
+	return t
+}
+
+// readStoppedRecord is readStoppedTable with the information of the file it read (nil when it read no record).
+func readStoppedRecord(p, scope string) (*stoppedTable, os.FileInfo) {
 	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > keptLinesMax {
-		return nil
+		return nil, nil
 	}
 	b, err := io.ReadAll(io.LimitReader(f, keptLinesMax+1))
-	if err != nil || len(b) > keptLinesMax {
-		return nil
+	if err != nil || len(b) > keptLinesMax || int64(len(b)) != info.Size() {
+		return nil, nil
 	}
 	s, key, body, ok := stoppedHeader(b)
 	if !ok || s != scope || scope == "" {
-		return nil
+		return nil, nil
+	}
+	if stoppedLinesSeam != nil {
+		stoppedLinesSeam("read")
 	}
 	t := &stoppedTable{scope: scope, key: key, files: map[string]map[[16]byte]stoppedEntry{}}
-	for _, line := range strings.Split(string(body), "\n") {
-		f := strings.Fields(line)
-		if len(f) != 4 {
-			continue
+	// how many lines each file has, first, so the map of each file is made once at its size (growing them line by line took
+	// most of the time of reading a large record)
+	sizes := map[string]int{}
+	for rest := body; len(rest) > 0; {
+		line := rest
+		if i := bytes.IndexByte(rest, '\n'); i >= 0 {
+			line, rest = rest[:i], rest[i+1:]
+		} else {
+			rest = nil
 		}
-		name, err := hex.DecodeString(f[0])
-		var d [16]byte
-		n, nerr := strconv.Atoi(f[2])
-		h, herr := strconv.Atoi(f[3])
-		if err != nil || len(name) == 0 || len(f[1]) != 2*len(d) || nerr != nil || n <= 0 || herr != nil || h < 0 {
-			continue
+		if i := bytes.IndexByte(line, ' '); i > 0 {
+			sizes[string(line[:i])]++
 		}
-		if _, err := hex.Decode(d[:], []byte(f[1])); err != nil {
-			continue
-		}
-		t.add(string(name), d, stoppedEntry{n, h})
 	}
-	return t
+	names := map[string]string{} // the hex of a path, read once per file
+	for len(body) > 0 {
+		line := body
+		if i := bytes.IndexByte(body, '\n'); i >= 0 {
+			line, body = body[:i], body[i+1:]
+		} else {
+			body = nil
+		}
+		f, ok := stoppedFields(line)
+		if !ok {
+			continue
+		}
+		name, known := names[string(f[0])]
+		if !known {
+			b, err := hex.DecodeString(string(f[0]))
+			if err != nil || len(b) == 0 {
+				continue
+			}
+			name = string(b)
+			names[string(f[0])] = name
+			if t.files[name] == nil {
+				t.files[name] = make(map[[16]byte]stoppedEntry, sizes[string(f[0])])
+			}
+		}
+		var d [16]byte
+		n, nok := stoppedCount(f[2])
+		h, hok := stoppedCount(f[3])
+		if len(f[1]) != 2*len(d) || !nok || n <= 0 || !hok {
+			continue
+		}
+		if _, err := hex.Decode(d[:], f[1]); err != nil {
+			continue
+		}
+		t.add(name, d, stoppedEntry{n, h})
+	}
+	return t, info
+}
+
+// stoppedFields splits a line of a record at its runs of spaces and tabs; ok only for exactly 4 fields.
+func stoppedFields(line []byte) (f [4][]byte, ok bool) {
+	n := 0
+	for i := 0; i < len(line); {
+		if c := line[i]; c == ' ' || c == '\t' || c == '\r' {
+			i++
+			continue
+		}
+		j := i
+		for j < len(line) && line[j] != ' ' && line[j] != '\t' && line[j] != '\r' {
+			j++
+		}
+		if n == len(f) {
+			return f, false
+		}
+		f[n] = line[i:j]
+		n++
+		i = j
+	}
+	return f, n == len(f)
+}
+
+// stoppedCount reads a count of a record: decimal digits only, at most 18 of them (so it never overflows).
+func stoppedCount(b []byte) (int, bool) {
+	if len(b) == 0 || len(b) > 18 {
+		return 0, false
+	}
+	n := 0
+	for _, c := range b {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, true
 }
 
 func newStoppedTable(scope string) *stoppedTable {
@@ -255,23 +339,42 @@ func (t *stoppedTable) update(f string, now []byte, stopped map[string]int, head
 	return changed
 }
 
-// bytes is the record to write, or nil when it holds no line. The entries in old (kept before this write) come first; then the
-// new ones, the files with the fewest new entries first. An entry that does not fit in max bytes is dropped, and the next ones
-// are still tried.
-func (t *stoppedTable) bytes(old map[string]map[[16]byte]bool, max int) []byte {
+// bytes is the record to write, or nil when it holds no line. old holds, for the files this write looked at, the entries they
+// had before it (as they were read; an empty map for a file that had none); the entries of a file not in old were kept before
+// and stay as they are. Past max bytes, only new entries are dropped: every kept entry is written first, and the new ones fill
+// what is left, the files with the fewest new entries first (an entry that does not fit is dropped, and the next ones are
+// still tried). A kept entry this Stop changed can grow (9 copies -> 10); when the kept entries alone do not fit, each one that
+// grew keeps the line it had, so they take no more than the record they were read from (which fitted), and none of them is
+// dropped for another. Only when even that does not fit (max smaller than the record that was read) are the kept entries that
+// do not fit dropped, in their order, like new ones.
+func (t *stoppedTable) bytes(old map[string]map[[16]byte]stoppedEntry, max int) []byte {
 	type entry struct {
 		path string
 		d    [16]byte
 		e    stoppedEntry
 	}
+	lineOf := func(e entry) string {
+		return hex.EncodeToString([]byte(e.path)) + " " + hex.EncodeToString(e.d[:]) + " " + strconv.Itoa(e.e.n) + " " + strconv.Itoa(e.e.head) + "\n"
+	}
+	header := stoppedMarker + hex.EncodeToString([]byte(t.scope)) + " " + hex.EncodeToString(t.key) + "\n"
 	var kept []entry
 	fresh := map[string][]entry{}
+	keptSize := len(header)
 	for p, lines := range t.files {
+		was, looked := old[p]
 		for d, e := range lines {
-			if old[p][d] {
+			if _, ok := was[d]; ok || !looked {
 				kept = append(kept, entry{p, d, e})
+				keptSize += len(lineOf(entry{p, d, e}))
 			} else {
 				fresh[p] = append(fresh[p], entry{p, d, e})
+			}
+		}
+	}
+	if keptSize > max {
+		for i, e := range kept {
+			if before, ok := old[e.path][e.d]; ok && len(lineOf(entry{e.path, e.d, before})) < len(lineOf(e)) {
+				kept[i].e = before
 			}
 		}
 	}
@@ -297,10 +400,10 @@ func (t *stoppedTable) bytes(old map[string]map[[16]byte]bool, max int) []byte {
 		kept = append(kept, fresh[p]...)
 	}
 	var out bytes.Buffer
-	out.WriteString(stoppedMarker + hex.EncodeToString([]byte(t.scope)) + " " + hex.EncodeToString(t.key) + "\n")
+	out.WriteString(header)
 	written := 0
 	for _, e := range kept {
-		line := hex.EncodeToString([]byte(e.path)) + " " + hex.EncodeToString(e.d[:]) + " " + strconv.Itoa(e.e.n) + " " + strconv.Itoa(e.e.head) + "\n"
+		line := lineOf(e)
 		if out.Len()+len(line) > max {
 			continue
 		}
@@ -399,7 +502,20 @@ func keepStoppedLines(root string, failing []guard, in guardInput, head string) 
 		return
 	}
 	defer unlock()
-	t := readStoppedTable(p, scope)
+	// the record as this Stop's comparison read it, while it is the same file, unchanged: every write of the record puts a new
+	// file in its place (writeAtomic renames one; keepLines removes it), and a Stop or the pruning that reads it sets its
+	// time, so another Stop's write or reading since the comparison makes it another file or another time, and it is read again
+	// here, under the lock. So a Stop reads the record once.
+	var t *stoppedTable
+	if in.stopped != nil && in.stoppedInfo != nil && in.stopped.scope == scope {
+		if info, err := os.Lstat(p); err == nil && os.SameFile(info, in.stoppedInfo) && info.Size() == in.stoppedInfo.Size() &&
+			info.ModTime().Equal(in.stoppedInfo.ModTime()) {
+			t = in.stopped
+		}
+	}
+	if t == nil {
+		t = readStoppedTable(p, scope)
+	}
 	if stoppedLinesSeam != nil {
 		stoppedLinesSeam("locked")
 	}
@@ -414,13 +530,6 @@ func keepStoppedLines(root string, failing []guard, in guardInput, head string) 
 		now := time.Now()
 		_ = os.Chtimes(p, now, now) // its repository is in use: the record is not pruned for hookSessionTTL from now
 	}
-	old := map[string]map[[16]byte]bool{}
-	for f, lines := range t.files {
-		old[f] = map[[16]byte]bool{}
-		for d := range lines {
-			old[f][d] = true
-		}
-	}
 	compared := map[string]bool{}
 	for i, f := range in.Changed {
 		if i >= guardFilesMax {
@@ -430,6 +539,14 @@ func keepStoppedLines(root string, failing []guard, in guardInput, head string) 
 	}
 	for f := range hits {
 		compared[f] = true
+	}
+	// the entries the files this Stop looks at had before (the other files' entries stay as they are, and are all kept ones)
+	old := map[string]map[[16]byte]stoppedEntry{}
+	for f := range compared {
+		old[f] = make(map[[16]byte]stoppedEntry, len(t.files[f]))
+		for d, e := range t.files[f] {
+			old[f][d] = e
+		}
 	}
 	top, err := os.OpenRoot(in.repo)
 	if err != nil {
@@ -513,6 +630,9 @@ func pruneStoppedLines(root string) {
 		}
 		if info, err := e.Info(); err != nil || time.Since(info.ModTime()) <= hookSessionTTL {
 			continue
+		}
+		if stoppedLinesSeam != nil {
+			stoppedLinesSeam("prune-before-lock")
 		}
 		unlock, ok := lockPathWithin(p+".lock", 0, nil)
 		if !ok {
