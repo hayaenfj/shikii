@@ -44,7 +44,7 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 	memo, ok := w.Captures[key]
 	if !ok {
 		normalized := workObservation{Kind: value.Kind, Title: value.Title, Content: value.Content, Reference: value.Reference, Version: value.Version}
-		index := 1
+		index := w.ObservedBase + 1
 		for _, previous := range w.Captures {
 			if n, err := strconv.Atoi(strings.TrimPrefix(previous.Ref, "observed")); err == nil && n >= index {
 				index = n + 1

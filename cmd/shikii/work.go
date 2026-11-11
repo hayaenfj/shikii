@@ -178,6 +178,7 @@ type workState struct {
 	Pending         map[string]notebook.Draft             `json:"pending"`
 	PendingKeys     map[string]string                     `json:"pending_keys"`
 	Expected        map[string]store.KnowledgeReference   `json:"expected"`
+	ObservedBase    int                                   `json:"observed_base,omitempty"` // observedN taken over from an interrupted request: new ones follow
 }
 type workToken struct {
 	Session string `json:"s"`
@@ -464,6 +465,7 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		}
 	}
 	w := &workState{Replies: map[string]workReply{}, Nonce: store.NewTraceID() + store.NewTraceID(), At: time.Now().UTC(), Standalone: standalone, Query: req.Query, Current: s.Planning.Sources["current_user"], Pages: s.Planning.KnowledgePages, Keys: map[string]string{}, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}, Reviews: map[string]workReviewRef{}, Memory: map[string]workMemoryRef{}, Maintenance: map[string]notebook.MaintenanceReview{}, Captures: map[string]workCapture{}, Saved: map[string]workItem{}, Pending: map[string]notebook.Draft{}, PendingKeys: map[string]string{}, PendingOrigins: map[string]string{}, Expected: map[string]store.KnowledgeReference{}}
+	carried := takeOver(w, s.Planning.Handover) // the references of the request this one interrupted
 	w.Reasoning = cloneReasoning(s.Reasoning)
 	if w.Reasoning == nil {
 		w.Reasoning = &reasoningProgress{TurnID: req.TurnID, Required: !standalone}
@@ -569,6 +571,9 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		return nil, err
 	}
 	reply := map[string]any{"memory_upgrade": memoryUpgrade, "reading": w.Reasoning.Reading, "attention": attention, "reasoning": currentReasoningView(book, w.Reasoning), "planning_required": !standalone && !s.Planning.ReasoningOnly, "collective": collective, "receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "task_context": taskContext, "agent_supplied_task": standalone, "conversation": conversation, "conversation_context": conversationContext, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": compactWorkHowTo}
+	if carried != nil {
+		reply["carried"] = carried
+	}
 	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {
 		return nil, err

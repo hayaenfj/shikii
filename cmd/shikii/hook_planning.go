@@ -41,6 +41,8 @@ type planningFrame struct {
 	Knowledge      *store.KnowledgeContext `json:"knowledge,omitempty"`
 	KnowledgePages []string                `json:"knowledge_pages,omitempty"`
 	Work           *workState              `json:"work,omitempty"`
+	// what the work of the request this one interrupted hands to this request's preparation (work_handover.go)
+	Handover *workHandover `json:"handover,omitempty"`
 }
 
 type planningQuote struct {
@@ -462,7 +464,11 @@ func currentPlanningFrame(s *hookSession, turnID, scope string) error {
 	case s.Scope != scope:
 		return errors.New(refusal + "this session's request was made in another project folder; run the command in that project")
 	case s.TurnID != turnID || s.Planning == nil || s.Planning.TurnID != turnID:
-		return errors.New(refusal + "a newer request has started in this session, so these ids or this receipt belong to an earlier one; prepare again with the ids of the latest hook notice")
+		text := refusal + "a newer request has started in this session, so these ids or this receipt belong to an earlier one; prepare again with the ids of the latest hook notice"
+		if s.Planning != nil && s.Planning.Handover != nil {
+			text += " (that preparation takes over the pages this work read and the sources it saved, under the same references)"
+		}
+		return errors.New(text)
 	case s.Judged && s.Planning.Result != nil:
 		return errors.New(refusal + "this request was closed at the end of its turn with its organizing saved; continue from the next request's hook notice")
 	case time.Since(s.Planning.At) > hookSessionTTL:

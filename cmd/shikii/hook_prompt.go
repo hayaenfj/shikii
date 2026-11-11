@@ -61,7 +61,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			if ferr := observeFeedback(agent, s, snapshot, scope, req); ferr != nil {
 				hookLog("feedback: " + ferr.Error())
 			}
-			settleGrouping(agent, s) // the previous turn's grouping, if its organizing and Stop never came
+			handover := interruptedHandover(s, scope) // read before the request below replaces this one
+			settleGrouping(agent, s)                  // the previous turn's grouping, if its organizing and Stop never came
 			previous := linkedCompletion(s, snapshot, scope)
 			if planning != nil && !planning.ReasoningOnly && snapshot.Request != "" {
 				// the agent is asked to organize this turn: settling the previous outcome waits for its continues_previous (or this turn's Stop)
@@ -85,6 +86,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			s.Head, s.HeadAt = head, time.Now()
 			s.RequestText = requestText
 			s.RawPrompt = cut(strings.TrimSpace(in.Prompt), 4000)
+			if planning != nil {
+				planning.Handover = handover
+			}
 			s.Planning = planning
 			s.Reasoning = nextReasoning
 		},
