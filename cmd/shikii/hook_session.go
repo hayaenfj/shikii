@@ -156,8 +156,11 @@ func saveSession(agent, id string, s *hookSession) error {
 	if err != nil {
 		return err
 	}
-	return writeAtomic(sessionPath(agent, id), b)
+	return writeSessionRecord(sessionPath(agent, id), b)
 }
+
+// writeSessionRecord writes a session record (a seam: tests make it fail).
+var writeSessionRecord = writeAtomic
 
 func writeAtomic(p string, b []byte) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

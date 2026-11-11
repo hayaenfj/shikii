@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -237,13 +238,18 @@ func TestRitualRecoveryOlderStopCannotReplenishProgress(t *testing.T) {
 }
 
 // A directory at the atomic write's temporary path fails on every OS, including root in a container.
-func blockRecoveryWrite(t *testing.T, root, id string) string {
+func blockRecoveryWrite(t *testing.T, root, id string) (restore func()) {
 	t.Helper()
-	p := fmt.Sprintf("%s.%d.tmp", sessionPath(root, id), os.Getpid())
-	if err := os.Mkdir(p, 0700); err != nil {
-		t.Fatal(err)
+	blocked := sessionPath(root, id)
+	writeSessionRecord = func(p string, b []byte) error {
+		if p == blocked {
+			return errors.New("no space left on device")
+		}
+		return writeAtomic(p, b)
 	}
-	return p
+	restore = func() { writeSessionRecord = writeAtomic }
+	t.Cleanup(restore)
+	return restore
 }
 func TestRitualRecoveryCompletedPlanStateWriteFailure(t *testing.T) {
 	repo, root, _ := planningFixture(t)
@@ -253,7 +259,7 @@ func TestRitualRecoveryCompletedPlanStateWriteFailure(t *testing.T) {
 	if _, err := planningCall(t, "submit", map[string]any{"session_id": "delivery-save", "turn_id": s.TurnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}}); err != nil {
 		t.Fatal(err)
 	}
-	p := blockRecoveryWrite(t, root, "delivery-save")
+	restore := blockRecoveryWrite(t, root, "delivery-save")
 	out := runHook(t, "stop", map[string]any{"session_id": "delivery-save", "cwd": repo, "last_assistant_message": "Done."})
 	requireRecoveryHalt(t, out)
 	recs, err := (store.Store{Dir: root}).Records("done-as-asked", 0)
@@ -263,9 +269,7 @@ func TestRitualRecoveryCompletedPlanStateWriteFailure(t *testing.T) {
 	if len(recs) != 0 {
 		t.Fatalf("completion judgment persisted despite recovery-state save failure: records=%d", len(recs))
 	}
-	if err := os.Remove(p); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	runHook(t, "stop", map[string]any{"session_id": "delivery-save", "cwd": repo, "last_assistant_message": "Done."})
 	recs, err = (store.Store{Dir: root}).Records("done-as-asked", 0)
 	if err != nil || len(recs) != 1 {
