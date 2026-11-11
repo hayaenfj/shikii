@@ -10,10 +10,10 @@ import (
 
 // The lines a forbidden-words guard stopped are kept once per repository (records/stopped-lines/), not per session, and every
 // way the Stop works out the added lines of a file applies them: the content at the request read from the repository (a staged
-// file, a stash), the kept table of the uncommitted lines, and the request's HEAD. These three tests reproduce what the third
-// audit of 0.30.8 found with the record kept per session and applied only when the next request's table was built.
+// file, a stash), the kept table of the uncommitted lines, and the request's HEAD. A record kept per session and applied only
+// when the next request's table was built would let each of these three through.
 
-// Audit 3-1: the stopped line is staged (git add), by the turn or by the person between the turns. The next request's listing
+// The stopped line is staged (git add), by the turn or by the person between the turns. The next request's listing
 // names a blob the repository has, so the Stop compares with that blob; the stopped line still counts as added.
 func TestStagedStoppedLineStopsTheNextTurn(t *testing.T) {
 	for name, stageInTurn := range map[string]bool{"the turn stages it": true, "the person stages it between the turns": false} {
@@ -40,7 +40,7 @@ func TestStagedStoppedLineStopsTheNextTurn(t *testing.T) {
 	}
 }
 
-// Audit 3-2: session x is stopped for its line and leaves it; another session y in the same repository (after /clear, say)
+// Session x is stopped for its line and leaves it; another session y in the same repository (after /clear, say)
 // changes the same file. The line is still a stopped line there.
 func TestStoppedLineStopsATurnOfAnotherSession(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
@@ -52,7 +52,7 @@ func TestStoppedLineStopsATurnOfAnotherSession(t *testing.T) {
 	}
 }
 
-// Audit 3-3: one Stop stops so many lines that they do not all fit in the record (16 MB). Only what does not fit is dropped:
+// One Stop stops so many lines that they do not all fit in the record (16 MB). Only what does not fit is dropped:
 // the small file's stopped line still stops the next turn.
 func TestManyStoppedLinesKeepTheSmallFilesLine(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)

@@ -119,8 +119,8 @@ func guardTurnInputStopped(root, cwd, before string, kept *keptLines, changed []
 			stopped = readStoppedTable(stoppedLinesPath(root, scope), scope)
 		}
 	}
-	// the content of a file in the commit that was HEAD at the start, read once (the copies of a stopped line committed before
-	// the turn are no longer stopped lines; nil when the start's HEAD is not known)
+	// the content of a file in the commit that was HEAD at the start, read once (the copies of a stopped line committed after it
+	// was stopped and before the turn are no longer stopped lines; nil when the start's HEAD is not known)
 	headOf := func(p string) func() []byte {
 		var b []byte
 		read := false
@@ -141,7 +141,7 @@ func guardTurnInputStopped(root, cwd, before string, kept *keptLines, changed []
 			continue
 		}
 		startHead := headOf(p)
-		_, stoppedHere := stopped.stoppedIn(p, now, startHead)
+		stoppedHere := stopped.stoppedIn(p, now, startHead)
 		// the content at the request: the listing's blob ("mode sha": only the sha names it); when that blob is gone (the file was
 		// uncommitted at the request), the table of its lines kept at the request for that same blob, and without one the commit
 		// that was HEAD at the request, never the HEAD this turn's own commits moved to (the current HEAD only when the request's
@@ -274,7 +274,7 @@ func guardStop(root string, in *hookInput, base guardBaseline, before string, ch
 	}
 	if wordGuards {
 		// the lines a forbidden-words guard stopped stay added lines, in every session of the repository, until removed or
-		// committed (guard_stopped.go)
+		// committed; this Stop looks again only at the files its turn changed (guard_stopped.go)
 		keepStoppedLines(root, failingWords, input, base.Head)
 	}
 	if err := keepStopRecords(root, in, recs); err != nil {

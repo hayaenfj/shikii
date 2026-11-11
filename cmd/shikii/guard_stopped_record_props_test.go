@@ -16,7 +16,7 @@ import (
 func stoppedRecordHas(t *testing.T, root, repo, file, line string) bool {
 	t.Helper()
 	st := readStoppedTable(stoppedRecordOf(root, repo), feedbackScope(repo))
-	return st != nil && st.files[file][newLineHasher(st.key).hash([]byte(line))] > 0
+	return st != nil && st.files[file][newLineHasher(st.key).hash([]byte(line))].n > 0
 }
 
 func blocked(out string) bool { return strings.Contains(out, `"decision":"block"`) }
@@ -241,11 +241,12 @@ func TestStagedDraftNextToAStoppedLineIsNotAdded(t *testing.T) {
 func TestStoppedRecordPastItsSizeDropsOnlyWhatDoesNotFit(t *testing.T) {
 	st := newStoppedTable("/a/repository")
 	h := newLineHasher(st.key)
-	st.add("old.md", h.hash([]byte("old line")), 1)
+	one := stoppedEntry{n: 1}
+	st.add("old.md", h.hash([]byte("old line")), one)
 	old := map[string]map[[16]byte]bool{"old.md": {h.hash([]byte("old line")): true}}
-	st.add("README.md", h.hash([]byte(turnForbiddenLine)), 1)
+	st.add("README.md", h.hash([]byte(turnForbiddenLine)), one)
 	for i := 0; i < 1000; i++ {
-		st.add("data/big.txt", h.hash([]byte(fmt.Sprint("FORBIDDENWORD ", i))), 1)
+		st.add("data/big.txt", h.hash([]byte(fmt.Sprint("FORBIDDENWORD ", i))), one)
 	}
 	b := st.bytes(old, 4096)
 	if b == nil || len(b) > 4096 {
@@ -256,7 +257,7 @@ func TestStoppedRecordPastItsSizeDropsOnlyWhatDoesNotFit(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := readStoppedTable(p, "/a/repository")
-	if got == nil || got.files["old.md"][h.hash([]byte("old line"))] != 1 || got.files["README.md"][h.hash([]byte(turnForbiddenLine))] != 1 {
+	if got == nil || got.files["old.md"][h.hash([]byte("old line"))] != one || got.files["README.md"][h.hash([]byte(turnForbiddenLine))] != one {
 		t.Fatalf("the old entry or the small file's new entry was dropped: %+v", got)
 	}
 	if n := len(got.files["data/big.txt"]); n == 0 || n >= 1000 {
@@ -273,7 +274,7 @@ func TestRecordOfARepositoryThatIsGoneIsPruned(t *testing.T) {
 	old := time.Now().Add(-hookSessionTTL - time.Hour)
 	for _, scope := range []string{there, gone} {
 		st := newStoppedTable(scope)
-		st.add("README.md", newLineHasher(st.key).hash([]byte(turnForbiddenLine)), 1)
+		st.add("README.md", newLineHasher(st.key).hash([]byte(turnForbiddenLine)), stoppedEntry{n: 1})
 		p := stoppedLinesPath(root, scope)
 		if err := writeAtomic(p, st.bytes(nil, keptLinesMax)); err != nil {
 			t.Fatal(err)

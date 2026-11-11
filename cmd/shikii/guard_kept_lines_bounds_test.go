@@ -106,6 +106,61 @@ func TestStopWithKeptTablesStaysNearTheComparisonWithHead(t *testing.T) {
 	}
 }
 
+// The record of stopped lines holds one line in each of many files (a turn was stopped across them and nobody fixed them yet).
+// A later Stop whose turn changed one other file (its comparison and its write of the record) stays close to the comparison
+// with the request's HEAD of the same file, in the same run, and leaves the entries of the files it did not compare as they are.
+func TestStopWithAManyFileRecordStaysNearTheComparisonWithHead(t *testing.T) {
+	const files = 200
+	repo, root, readme := uncommittedLinesRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < files; i++ {
+		writeFile(t, filepath.Join(repo, fmt.Sprintf("data/f%03d.txt", i)), "x\n")
+	}
+	gitCommitAll(t, repo, "data")
+	g := guard{ID: "no-word", Kind: guardKindForbiddenWords, Words: []string{"FORBIDDENWORD"}}
+	added := map[string][]string{}
+	for i := 0; i < files; i++ {
+		p := fmt.Sprintf("data/f%03d.txt", i)
+		writeFile(t, filepath.Join(repo, p), "x\n"+turnForbiddenLine+"\n")
+		added[p] = []string{turnForbiddenLine}
+	}
+	top := feedbackScope(repo)
+	head := gitHead(repo)
+	keepStoppedLines(root, []guard{g}, guardInput{repo: top, Added: added}, head)
+	record := stoppedRecordOf(root, repo)
+	if st := readStoppedTable(record, top); st == nil || len(st.files) != files {
+		t.Fatalf("premise: the record holds %d files", files)
+	}
+	kept := mustRead(t, record)
+	_, listing, listed, _, _ := treeStateWithScope(repo)
+	if !listed {
+		t.Fatal("premise: listed")
+	}
+	before := listingHeader("req") + listing
+	writeFile(t, readme, "# project\na clean line\n")
+	_, now, _, _, _ := treeStateWithScope(repo)
+	changed := changedFiles(before, now)
+	if len(changed) != 1 {
+		t.Fatalf("premise: one changed file, got %v", changed)
+	}
+	start := time.Now()
+	in := guardTurnInputStopped(root, repo, before, nil, changed, true, head, time.Time{})
+	keepStoppedLines(root, nil, in, head)
+	withRecord := time.Since(start)
+	start = time.Now()
+	guardTurnInputKept(repo, before, nil, changed, true, head, time.Time{})
+	withHead := time.Since(start)
+	t.Logf("Stop over %d changed file, record of %d files: with the record %v, compared with HEAD %v (ratio %.2f)", len(changed), files, withRecord, withHead, float64(withRecord)/float64(withHead))
+	if withRecord > 3*withHead {
+		t.Fatalf("the Stop with the record takes %v, more than 3 times the comparison with HEAD (%v)", withRecord, withHead)
+	}
+	if got := mustRead(t, record); string(got) != string(kept) {
+		t.Fatal("the Stop changed the entries of files it did not compare")
+	}
+}
+
 // A path that is not valid UTF-8 (allowed on Linux file systems; Git lists it quoted and gitPath reads back the bytes on disk)
 // is found again under its own bytes once the table is written and read back.
 func TestKeptTableFindsAPathThatIsNotUTF8(t *testing.T) {

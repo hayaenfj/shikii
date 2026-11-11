@@ -8,8 +8,8 @@ import (
 )
 
 // A line the previous turn added that a forbidden-words guard stopped, and that was never fixed, is not a line "from before the
-// request" at the next request: the Stop keeps that very line as a keyed hash (sessions/<id>.stopped) and the next request's
-// table leaves it out, so the next turn's Stop stops it again. The person's own uncommitted lines, lines in files the stopped
+// request" at the next request: the Stop keeps that very line as a keyed hash in the repository's record of stopped lines
+// (records/stopped-lines/, guard_stopped.go), and the next turn's comparison counts it as added, so its Stop stops it again. The person's own uncommitted lines, lines in files the stopped
 // turn did not change, and a stop that was fixed afterwards keep the table as before (guard_stopped_lines_test.go has the rest).
 
 const turnForbiddenLine = "the turn wrote FORBIDDENWORD"
