@@ -120,7 +120,7 @@ func TestAuditANoHandoverAfterABlockedStop(t *testing.T) {
 	reason, blocked := stopReason(t, out)
 	t.Logf("stop: blocked=%v %.300s", blocked, reason)
 	if !blocked {
-		t.Skip("the Stop was not stopped in this fixture")
+		t.Fatalf("precondition: the Stop is stopped (nothing is recorded yet): %s", reason)
 	}
 	// the agent is still working (the block told it to record); the person sends a message
 	second := f.prepare(f.ask("Also check the totals of the CSV export."), "CSV export totals")

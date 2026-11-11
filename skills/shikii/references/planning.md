@@ -26,7 +26,7 @@ If an earlier decision or project constraint matters, choose concrete topic word
 {"receipt":"<receipt>","query":"CSV export columns and filters"}
 ```
 
-The receipt stays the same, and the lessons found join `knowledge` under new `knowledgeN` references ([recording.md](recording.md#extend-the-receipt)). Do not send `session_id` and `turn_id` a second time to search: a preparation without the receipt starts the request over and replaces the receipt, and the earlier receipt is refused from then on. Refine the topic if the results do not apply; do not treat delivery as relevance or usefulness.
+The receipt stays the same, and the lessons found join `knowledge` under new `knowledgeN` references ([recording.md](recording.md#extend-the-receipt)). Do not send `session_id` and `turn_id` a second time to search: a preparation without the receipt replaces the receipt, and the earlier receipt is refused from then on (the new one keeps the pages and the saved sources of the earlier preparation, and `carried` names them). Refine the topic if the results do not apply; do not treat delivery as relevance or usefulness.
 
 Choose short topic terms and plausible alternative wording rather than copying the whole request into keyword search. For example, a receipt question can concern a refund policy, while a personal-name correction can concern publication rules. If the returned topic is wrong, refine the query before citing it. For comparing more candidates and reusing retrieved evidence, follow [wiki.md](wiki.md#search-and-reuse-evidence).
 

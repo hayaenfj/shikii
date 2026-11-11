@@ -550,7 +550,7 @@ func TestServeLocalReachesHookDecisions(t *testing.T) {
 	t.Cleanup(func() { hookLocalURL = oldLocal })
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	hookLocalURL = "http://127.0.0.1:8080"
+	hookLocalURL = "http://127.0.0.1:47390"
 	if err := cmdServe([]string{"--store", t.TempDir(), "--local", "http://127.0.0.1:47392"}); err == nil {
 		t.Fatal("a store without specs is refused before a page starts")
 	}

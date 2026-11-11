@@ -311,7 +311,7 @@ func TestMCPLocalReachesHookDecisions(t *testing.T) {
 	t.Cleanup(func() { hookLocalURL, hookHostedURL = oldLocal, oldHosted })
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	hookLocalURL, hookHostedURL = "http://127.0.0.1:8080", "https://api.typesafe.ai"
+	hookLocalURL, hookHostedURL = "http://127.0.0.1:47390", "https://example.invalid/before"
 	if _, err := runMCPProcess(t, []string{"--local", "http://127.0.0.1:47391", "--hosted", "https://example.invalid/decisions"}, mcpInit(1)); err != nil {
 		t.Fatal(err)
 	}

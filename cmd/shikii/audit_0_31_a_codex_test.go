@@ -12,26 +12,31 @@ func TestAuditACodexToolsAllowedForms(t *testing.T) {
 	own := "[mcp_servers.shikii]\ncommand = \"/opt/shikii\"\n" + codexServerArgsLine + "\n"
 	cases := []struct {
 		name, text string
-		leave      bool // the file must be left as it is
+		leave      bool   // the file must be left as it is
+		keep       string // otherwise the line is added, and this text of the person's stays as it is
 	}{
-		{"a command the person wrote (a wrapper script)", "[mcp_servers.shikii]\ncommand = \"/Users/me/bin/my-wrapper.sh\"\n" + codexServerArgsLine + "\n", true},
-		{"a command the person wrote (another program)", "[mcp_servers.shikii]\ncommand = \"node\"\n" + codexServerArgsLine + "\n", true},
-		{"CRLF line ends", strings.ReplaceAll(own, "\n", "\r\n"), true},
-		{"no newline at the end", strings.TrimSuffix(own, "\n"), true},
-		{"a comment the person added in the block", own + "# keep asking me\n", true},
-		{"a comment the person added after the args", "[mcp_servers.shikii]\ncommand = \"/opt/shikii\"\n" + codexServerArgsLine + " # mine\n", true},
-		{"a key after a blank line (still the shikii table)", own + "\nenabled = false\n", true},
-		{"a per-tool table elsewhere", own + "\n[features]\nx = 1\n\n[mcp_servers.shikii.tools.shikii_label]\napproval_mode = \"prompt\"\n", true},
-		{"the block inside a multi-line string", "notes = \"\"\"\n" + own + "\"\"\"\n", true},
-		{"a second block in a comment", "# [mcp_servers.shikii]\n" + own, true},
-		{"a byte order mark", "\xef\xbb\xbf" + own, false},
-		{"the person's default for all servers", "[mcp_servers]\ndefault_tools_approval_mode = \"prompt\"\n\n" + own, false},
+		{"a command the person wrote (a wrapper script)", "[mcp_servers.shikii]\ncommand = \"/Users/me/bin/my-wrapper.sh\"\n" + codexServerArgsLine + "\n", true, ""},
+		{"a command the person wrote (another program)", "[mcp_servers.shikii]\ncommand = \"node\"\n" + codexServerArgsLine + "\n", true, ""},
+		{"CRLF line ends", strings.ReplaceAll(own, "\n", "\r\n"), true, ""},
+		{"no newline at the end", strings.TrimSuffix(own, "\n"), true, ""},
+		{"a comment the person added in the block", own + "# keep asking me\n", true, ""},
+		{"a comment the person added after the args", "[mcp_servers.shikii]\ncommand = \"/opt/shikii\"\n" + codexServerArgsLine + " # mine\n", true, ""},
+		{"a key after a blank line (still the shikii table)", own + "\nenabled = false\n", true, ""},
+		{"a per-tool table elsewhere", own + "\n[features]\nx = 1\n\n[mcp_servers.shikii.tools.shikii_label]\napproval_mode = \"prompt\"\n", true, ""},
+		{"the block inside a multi-line string", "notes = \"\"\"\n" + own + "\"\"\"\n", true, ""},
+		{"a second block in a comment", "# [mcp_servers.shikii]\n" + own, true, ""},
+		{"a byte order mark", "\xef\xbb\xbf" + own, false, "\xef\xbb\xbf[mcp_servers.shikii]"},
+		{"an approval choice of the person's outside the shikii block", "[mcp_servers]\ndefault_tools_approval_mode = \"prompt\"\n\n" + own, false, "[mcp_servers]\ndefault_tools_approval_mode = \"prompt\"\n\n[mcp_servers.shikii]"},
 	}
 	for _, c := range cases {
 		got, changed := codexToolsAllowed([]byte(c.text), codexServerArgs)
 		t.Logf("%-55s changed=%v", c.name, changed)
 		if c.leave && changed {
 			t.Errorf("%s: the registration is not the three lines shikii wrote, and it got the approval line:\n%s", c.name, got)
+		}
+		// the two forms that are shikii's own block: the line is added to it, and what the person wrote around it is not touched
+		if !c.leave && (!changed || !strings.Contains(string(got), c.keep) || strings.Count(string(got), codexToolsAllowedLine) != 1) {
+			t.Errorf("%s: shikii's own block gets the approval line once and the rest stays (changed=%v):\n%s", c.name, changed, got)
 		}
 	}
 }
