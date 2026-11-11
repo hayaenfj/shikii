@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -22,7 +23,7 @@ func stopWritingTheRecord(t *testing.T, repo, root, readme string, body string) 
 	keepStoppedLines(root, []guard{{ID: "no-word", Kind: guardKindForbiddenWords, Words: []string{"FORBIDDENWORD"}}}, in, head)
 }
 
-// A write of the record that fails (a full disk; here a folder in the place of its temporary file) leaves the record as it was:
+// A write of the record that fails (a full disk) leaves the record as it was:
 // the lines stopped before still stop.
 func TestFailedWriteOfTheStoppedRecordKeepsTheEntriesKeptBefore(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
@@ -35,13 +36,16 @@ func TestFailedWriteOfTheStoppedRecordKeepsTheEntriesKeptBefore(t *testing.T) {
 	if err := writeAtomic(p, st.bytes(stoppedLinesMax)); err != nil {
 		t.Fatal(err)
 	}
-	tmp := fmt.Sprintf("%s.%d.tmp", p, os.Getpid())
-	if err := os.Mkdir(tmp, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	failed := false
+	writeStoppedRecord = func(string, []byte) error { failed = true; return errors.New("no space left on device") }
+	t.Cleanup(func() { writeStoppedRecord = writeAtomic })
 	stopWritingTheRecord(t, repo, root, readme, "# project\n"+turnForbiddenLine+"\n")
-	if err := os.Remove(tmp); err != nil {
-		t.Fatal(err)
+	writeStoppedRecord = writeAtomic
+	if !failed {
+		t.Fatal("premise: the Stop writes the record")
+	}
+	if got := readStoppedTable(p, top); got != nil && len(got.files["README.md"]) > 0 {
+		t.Fatal("premise: the write of the newly stopped line fails")
 	}
 	got := readStoppedTable(p, top)
 	if got == nil || got.files["a.md"][h.hash([]byte(kept))].n != 1 {

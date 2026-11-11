@@ -163,11 +163,24 @@ func writeAtomic(p string, b []byte) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
-	tmp := fmt.Sprintf("%s.%d.tmp", p, os.Getpid())
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	// a new file of a random name (created exclusively, so a link there is never followed), removed when anything fails, so
+	// no temporary file is left next to p
+	f, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, p)
+	tmp := f.Name()
+	_, err = f.Write(b)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, p)
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+	}
+	return err
 }
 
 // cut cuts s to at most n bytes (without splitting a multibyte character).

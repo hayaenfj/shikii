@@ -697,8 +697,11 @@ func keepStoppedRecord(p string, b []byte) error {
 		}
 		return nil
 	}
-	return writeAtomic(p, b)
+	return writeStoppedRecord(p, b)
 }
+
+// writeStoppedRecord writes a record (a seam: tests make it fail).
+var writeStoppedRecord = writeAtomic
 
 // stoppedRecordScope reads the repository a record at p belongs to from its first line ("" for anything else).
 func stoppedRecordScope(p string) string {
