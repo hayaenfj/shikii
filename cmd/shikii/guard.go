@@ -15,7 +15,6 @@ package main
 // Drafts (add) are written with enabled: false; enabling is done by a person (or by an agent a person told to).
 
 import (
-	"os"
 	"regexp"
 	"time"
 )
@@ -63,10 +62,9 @@ type guardInput struct {
 	// repo is the top folder of the repository whose files were compared (the comparison at a Stop or before a publication
 	// sets it): the record of its stopped lines is kept for it (guard_stopped.go)
 	repo string
-	// stopped is that record as the comparison read it, and stoppedInfo the record's file then (nil when none was read): the
-	// Stop's write uses it again under the record's lock while the record is the same file, unchanged (keepStoppedLines)
+	// stopped is that record as the comparison read it (nil when none was read): the Stop's write uses it again under the
+	// record's lock while the record holds the generation read (keepStoppedLines)
 	stopped      *stoppedTable
-	stoppedInfo  os.FileInfo
 	Commits      []string
 	CommitsKnown bool
 	// CommitsUnreadable: the HEAD kept at the start is no longer an ancestor of the current HEAD (amended, rebased, another branch), so the

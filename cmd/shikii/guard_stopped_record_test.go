@@ -52,7 +52,7 @@ func TestStoppedLineStopsATurnOfAnotherSession(t *testing.T) {
 	}
 }
 
-// One Stop stops so many lines that they do not all fit in the record (16 MB). Only what does not fit is dropped:
+// One Stop stops so many lines that they do not all fit in the record (stoppedLinesMax, 4 MB). Only what does not fit is dropped:
 // the small file's stopped line still stops the next turn.
 func TestManyStoppedLinesKeepTheSmallFilesLine(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)

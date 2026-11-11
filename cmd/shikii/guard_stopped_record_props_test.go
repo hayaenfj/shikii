@@ -243,13 +243,12 @@ func TestStoppedRecordPastItsSizeDropsOnlyWhatDoesNotFit(t *testing.T) {
 	h := newLineHasher(st.key)
 	one := stoppedEntry{n: 1}
 	st.add("old.md", h.hash([]byte("old line")), one)
-	// the files this write looked at: old.md with its entry, and the two files that had none before
-	old := map[string]map[[16]byte]stoppedEntry{"old.md": {h.hash([]byte("old line")): one}, "README.md": {}, "data/big.txt": {}}
+	st, _ = stoppedReadBack(t, st, stoppedLinesMax) // old.md's entry was kept before; the two other files had none
 	st.add("README.md", h.hash([]byte(turnForbiddenLine)), one)
 	for i := 0; i < 1000; i++ {
 		st.add("data/big.txt", h.hash([]byte(fmt.Sprint("FORBIDDENWORD ", i))), one)
 	}
-	b := st.bytes(old, 4096)
+	b := st.bytes(4096)
 	if b == nil || len(b) > 4096 {
 		t.Fatalf("the record past its size is %d bytes", len(b))
 	}
@@ -277,7 +276,7 @@ func TestRecordOfARepositoryThatIsGoneIsPruned(t *testing.T) {
 		st := newStoppedTable(scope)
 		st.add("README.md", newLineHasher(st.key).hash([]byte(turnForbiddenLine)), stoppedEntry{n: 1})
 		p := stoppedLinesPath(root, scope)
-		if err := writeAtomic(p, st.bytes(nil, keptLinesMax)); err != nil {
+		if err := writeAtomic(p, st.bytes(stoppedLinesMax)); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Chtimes(p, old, old); err != nil {

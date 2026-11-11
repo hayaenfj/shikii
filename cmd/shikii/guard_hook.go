@@ -116,7 +116,7 @@ func guardTurnInputStopped(root, cwd, before string, kept *keptLines, changed []
 	var stopped *stoppedTable
 	if root != "" {
 		if scope := feedbackScope(top); scope != "" {
-			stopped, in.stoppedInfo = readStoppedRecord(stoppedLinesPath(root, scope), scope)
+			stopped = readStoppedTable(stoppedLinesPath(root, scope), scope)
 			in.stopped = stopped
 		}
 	}

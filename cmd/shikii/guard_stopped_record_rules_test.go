@@ -238,7 +238,7 @@ func TestPruneCountsFromWhenTheRepositoryWasLastSeen(t *testing.T) {
 	st := newStoppedTable(repo)
 	st.add("README.md", newLineHasher(st.key).hash([]byte(turnForbiddenLine)), stoppedEntry{n: 1})
 	p := stoppedLinesPath(root, repo)
-	if err := writeAtomic(p, st.bytes(nil, keptLinesMax)); err != nil {
+	if err := writeAtomic(p, st.bytes(stoppedLinesMax)); err != nil {
 		t.Fatal(err)
 	}
 	old := time.Now().Add(-hookSessionTTL - time.Hour)
@@ -265,15 +265,24 @@ func TestPruneCountsFromWhenTheRepositoryWasLastSeen(t *testing.T) {
 	}
 }
 
-// A record in the form of the earlier builds (no count in HEAD) is not used: the person's line stays theirs, and a Stop that
-// stops a line writes the record in the current form over it.
+// A record in a form of the earlier builds (no count in HEAD; counts in decimal and no generation) is not used: the person's
+// line stays theirs, and a Stop that stops a line writes the record in the current form over it.
 func TestStoppedRecordInAnOlderFormIsNotUsed(t *testing.T) {
+	for name, form := range map[string]struct{ marker, counts string }{
+		"no count in HEAD":                 {"#stopped2 ", " 1"},
+		"counts in decimal, no generation": {"#stopped3 ", " 1 0"},
+	} {
+		t.Run(name, func(t *testing.T) { stoppedRecordInAnOlderFormIsNotUsed(t, form.marker, form.counts) })
+	}
+}
+
+func stoppedRecordInAnOlderFormIsNotUsed(t *testing.T, marker, counts string) {
 	repo, root, readme := uncommittedLinesRepo(t)
 	p := stoppedRecordOf(root, repo)
 	key := make([]byte, 32)
 	d := newLineHasher(key).hash([]byte(turnForbiddenLine))
-	older := "#stopped2 " + hex.EncodeToString([]byte(feedbackScope(repo))) + " " + hex.EncodeToString(key) + "\n" +
-		hex.EncodeToString([]byte("README.md")) + " " + hex.EncodeToString(d[:]) + " 1\n"
+	older := marker + hex.EncodeToString([]byte(feedbackScope(repo))) + " " + hex.EncodeToString(key) + "\n" +
+		hex.EncodeToString([]byte("README.md")) + " " + hex.EncodeToString(d[:]) + counts + "\n"
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatal(err)
 	}

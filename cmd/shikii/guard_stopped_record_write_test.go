@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,7 +8,7 @@ import (
 )
 
 // How a Stop reads and writes the record of stopped lines (guard_stopped.go): it reads the record once, uses that reading under
-// the lock only while the record is the same file, unchanged, and past the limit it keeps the entries already kept; the
+// the lock only while the record holds the generation read, and past the limit it keeps the entries already kept; the
 // pruning looks at a record's time again under its lock.
 
 // countStoppedReads counts the records read back (readStoppedTable) until the returned function is called.
@@ -30,17 +29,7 @@ func countStoppedReads(t *testing.T) (reads *int, done func()) {
 func TestStopWithARecordNearItsLimitReadsItOnceAndStaysNearTheComparisonWithHead(t *testing.T) {
 	repo, root, readme := uncommittedLinesRepo(t)
 	top := feedbackScope(repo)
-	st := newStoppedTable(top)
-	h := newLineHasher(st.key)
-	for i, size := 0, 0; size < keptLinesMax-200000; i++ {
-		p := fmt.Sprintf("data/f%03d.txt", i%200)
-		st.add(p, h.hash([]byte(fmt.Sprint("FORBIDDENWORD ", i))), stoppedEntry{n: 1})
-		size += 2*len(p) + len(" ") + 32 + len(" 1 0\n")
-	}
-	b := st.bytes(nil, keptLinesMax)
-	if len(b) < keptLinesMax-300000 || len(b) > keptLinesMax {
-		t.Fatalf("premise: the record is near its limit: %d bytes", len(b))
-	}
+	b := stoppedRecordNearItsLimit(t, top)
 	p := stoppedLinesPath(root, top)
 	if err := writeAtomic(p, b); err != nil {
 		t.Fatal(err)
@@ -149,41 +138,31 @@ func TestStopReadsTheRecordAgainWhenAnotherStopWroteItAfterTheComparison(t *test
 	}
 }
 
-// A record at its upper limit; an entry already kept grows by one digit (9 copies -> 10). The entries already kept stay:
-// another file's kept entry is not dropped for it, and the grown entry keeps the line it had while the new form does not fit.
+// A record at its upper limit; the counts of an entry already kept grow by digits (9 copies -> 10, 9 in HEAD -> 4096). The
+// entry is written with its new counts in a line as long as the one it had, so the record stays within its limit and another
+// file's kept entry is not dropped for it.
 func TestKeptEntryGrowingADigitAtTheLimitDropsNoOtherKeptEntry(t *testing.T) {
 	st := newStoppedTable("/a/repository")
 	h := newLineHasher(st.key)
 	a, z := h.hash([]byte("a line")), h.hash([]byte("z line"))
-	st.add("a.md", a, stoppedEntry{n: 9})
+	st.add("a.md", a, stoppedEntry{n: 9, head: 9})
 	st.add("z.md", z, stoppedEntry{n: 1})
-	// the Stop looked at a.md only; z.md's entry was kept before
-	old := map[string]map[[16]byte]stoppedEntry{"a.md": {a: {n: 9}}}
-	limit := len(st.bytes(old, keptLinesMax)) // the record fills its limit exactly
-	st.files["a.md"][a] = stoppedEntry{n: 10} // a later Stop stops one more copy of a kept line
+	st, limit := stoppedReadBack(t, st, stoppedLinesMax)  // the record read fills its limit exactly
+	st.files["a.md"][a] = stoppedEntry{n: 10, head: 4096} // a later Stop stops one more copy of a kept line
+	b := st.bytes(limit)
+	if len(b) != limit {
+		t.Fatalf("the record is %d bytes, not the %d of the record read", len(b), limit)
+	}
 	p := filepath.Join(t.TempDir(), "r.stopped")
-	for _, c := range []struct {
-		name  string
-		limit int
-		wantA int
-	}{
-		{"one byte short", limit, 9},
-		{"room for the grown entry", limit + 1, 10},
-	} {
-		b := st.bytes(old, c.limit)
-		if len(b) > c.limit {
-			t.Fatalf("%s: the record is %d bytes, past %d", c.name, len(b), c.limit)
-		}
-		if err := writeAtomic(p, b); err != nil {
-			t.Fatal(err)
-		}
-		got := readStoppedTable(p, "/a/repository")
-		if got == nil || got.files["z.md"][z].n != 1 {
-			t.Fatalf("%s: another file's kept entry was dropped when a kept entry grew by one byte: %q", c.name, b)
-		}
-		if n := got.files["a.md"][a].n; n != c.wantA {
-			t.Fatalf("%s: the grown kept entry holds %d copies, want %d: %q", c.name, n, c.wantA, b)
-		}
+	if err := writeAtomic(p, b); err != nil {
+		t.Fatal(err)
+	}
+	got := readStoppedTable(p, "/a/repository")
+	if got == nil || got.files["z.md"][z].n != 1 {
+		t.Fatalf("another file's kept entry was dropped when a kept entry grew: %q", b)
+	}
+	if e := got.files["a.md"][a]; e != (stoppedEntry{n: 10, head: 4096}) {
+		t.Fatalf("the grown kept entry is %+v, want {10 4096}: %q", e, b)
 	}
 }
 
@@ -194,10 +173,9 @@ func TestNewEntryPastTheLimitIsDroppedBeforeAnyKeptEntry(t *testing.T) {
 	h := newLineHasher(st.key)
 	kept, fresh := h.hash([]byte("z line")), h.hash([]byte("a line"))
 	st.add("z.md", kept, stoppedEntry{n: 1})
-	old := map[string]map[[16]byte]stoppedEntry{"z.md": {kept: {n: 1}}, "a.md": {}} // a.md had no entry before
-	limit := len(st.bytes(old, keptLinesMax))
-	st.add("a.md", fresh, stoppedEntry{n: 1})
-	b := st.bytes(old, limit)
+	st, limit := stoppedReadBack(t, st, stoppedLinesMax)
+	st.add("a.md", fresh, stoppedEntry{n: 1}) // a.md had no entry before
+	b := st.bytes(limit)
 	p := filepath.Join(t.TempDir(), "r.stopped")
 	if err := writeAtomic(p, b); err != nil {
 		t.Fatal(err)

@@ -2,15 +2,16 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -37,16 +38,35 @@ import (
 // the failing forbidden-words guards stopped and, for the files the Stop compared alone (the files its turn changed, and those
 // with lines stopped now), drop the copies that were removed or committed, and the file's entries when the file is gone. The
 // entries of the other files are kept as they are, and a stopped line out of sight for a while (stashed) is kept until a Stop
-// compares its file. A Stop reads the record once: its write uses the table its comparison read while the record is still
-// that same file, unchanged (guardInput.stopped). When the lock cannot be taken the Stop writes nothing and goes on. Past
-// keptLinesMax the entries already kept stay (one that grew keeps its earlier line when the new one does not fit) and the new
-// ones that do not fit are dropped, the files with the fewest new entries first in, so one huge file does not push out the
-// small ones.
+// compares its file. A Stop reads the record once: under the lock it reads the first line of the record alone, and uses the
+// table its comparison read when the generation there (a random value, new at every write) is the one it read. When the lock
+// cannot be taken the Stop writes nothing and goes on.
+//
+// Each count of an entry is written with stoppedCountDigits hex digits, so the line of an entry kept before has the same
+// length however its counts change. A write is not sorted: the entries kept before are written in the order they were read
+// (with their counts brought up to this Stop; those with no copy left are not written), then the new ones, the files with the
+// fewest new entries first, so one huge file does not push out the small ones. Past stoppedLinesMax only new entries are
+// dropped: the entries kept before take no more than the record they were read from, and are all written.
 //
 // A record stays while its repository is there: a Stop that reads it, and the sessions' pruning that finds the repository,
 // set its time to now; the pruning removes a record only when its repository has not been seen for hookSessionTTL.
 
-const stoppedMarker = "#stopped3 "
+const stoppedMarker = "#stopped4 "
+
+// stoppedLinesMax is the upper limit (bytes) of a record. A larger file is not read.
+const stoppedLinesMax = 4 << 20
+
+// stoppedCountDigits is the width, in hex digits, of each count of an entry. A count past stoppedCountMax is written as
+// stoppedCountMax, and stoppedCountMax is read back as stoppedCountUnbounded: the true count was that or more, and reading it
+// as larger only counts more copies as stopped (more copies were stopped; more copies were in HEAD at the stop, so fewer of
+// them count as committed since). So a count past the width leans to stopping, never to letting a stopped line through. (A
+// file is read up to guardFileBytesMax bytes, far below that count of lines.)
+const (
+	stoppedCountDigits    = 8
+	stoppedCountMax       = 1<<(4*stoppedCountDigits) - 1
+	stoppedCountUnbounded = math.MaxInt / 4
+	stoppedGenBytes       = 16
+)
 
 // stoppedLinesSeam, when set (tests), is called at the steps of a Stop's write: "before-lock" after the comparison and before
 // the lock is taken, "locked" right after the record was read under the lock; "read" each time a record is read back
@@ -72,69 +92,109 @@ func (e stoppedEntry) left(now, head int) int {
 	return min(max(0, e.n-max(0, head-e.head)), max(0, now-head))
 }
 
-// stoppedTable is a record read back: its repository, key and, per file (the bytes of the path, as gitPath gives them), the
-// entry of each keyed hash.
+// stoppedRef names an entry: its file (the bytes of the path, as gitPath gives them) and the keyed hash of its line.
+type stoppedRef struct {
+	path string
+	d    [16]byte
+}
+
+// stoppedTable is a record read back: its repository, key, generation and, per file, the entry of each keyed hash. read holds
+// the entries read, in the order of the record, and fresh the entries added since (add, update), in the order they were added.
 type stoppedTable struct {
 	scope string
 	key   []byte
+	gen   string
 	files map[string]map[[16]byte]stoppedEntry
+	read  []stoppedRef
+	fresh []stoppedRef
+	size  int // the bytes of the record read
 }
 
-// stoppedHeader reads the first line of a record: the repository it belongs to and its key, and the entries after it. ok is
-// false for anything else (an older form of the record included).
-func stoppedHeader(b []byte) (scope string, key, body []byte, ok bool) {
+// stoppedHeader reads the first line of a record: the repository it belongs to, its key and its generation, and the entries
+// after it. ok is false for anything else (an older form of the record included).
+func stoppedHeader(b []byte) (scope string, key []byte, gen string, body []byte, ok bool) {
 	if !bytes.HasPrefix(b, []byte(stoppedMarker)) {
-		return "", nil, nil, false
+		return "", nil, "", nil, false
 	}
 	head, body, found := bytes.Cut(b[len(stoppedMarker):], []byte("\n"))
 	if !found {
-		return "", nil, nil, false
+		return "", nil, "", nil, false
 	}
-	scopeHex, keyHex, found := strings.Cut(string(head), " ")
-	s, err := hex.DecodeString(scopeHex)
-	if !found || err != nil || len(s) == 0 {
-		return "", nil, nil, false
+	f := strings.Split(string(head), " ")
+	if len(f) != 3 || len(f[2]) != 2*stoppedGenBytes {
+		return "", nil, "", nil, false
 	}
-	key, err = hex.DecodeString(keyHex)
+	s, err := hex.DecodeString(f[0])
+	if err != nil || len(s) == 0 {
+		return "", nil, "", nil, false
+	}
+	key, err = hex.DecodeString(f[1])
 	if err != nil || len(key) == 0 {
-		return "", nil, nil, false
+		return "", nil, "", nil, false
 	}
-	return string(s), key, body, true
+	if _, err := hex.DecodeString(f[2]); err != nil {
+		return "", nil, "", nil, false
+	}
+	return string(s), key, f[2], body, true
+}
+
+// readStoppedHeader reads the first line of the record at p alone: its repository and generation ("" for anything else).
+func readStoppedHeader(p string) (scope, gen string) {
+	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", ""
+	}
+	defer f.Close()
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		return "", ""
+	}
+	var b []byte
+	buf := make([]byte, 4096)
+	for len(b) < 64<<10 { // the marker, the path and the key in hex, and the generation
+		n, err := f.Read(buf)
+		b = append(b, buf[:n]...)
+		if i := bytes.IndexByte(b, '\n'); i >= 0 {
+			scope, _, gen, _, ok := stoppedHeader(b[:i+1])
+			if !ok {
+				return "", ""
+			}
+			return scope, gen
+		}
+		if err != nil {
+			return "", ""
+		}
+	}
+	return "", ""
 }
 
 // readStoppedTable reads the record at p when it belongs to scope; nil when there is none, it is not a regular file, it is
-// larger than any record written, it is in an older form, or it is another repository's.
+// larger than stoppedLinesMax, it is in an older form, or it is another repository's.
 func readStoppedTable(p, scope string) *stoppedTable {
-	t, _ := readStoppedRecord(p, scope)
-	return t
-}
-
-// readStoppedRecord is readStoppedTable with the information of the file it read (nil when it read no record).
-func readStoppedRecord(p, scope string) (*stoppedTable, os.FileInfo) {
 	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return nil, nil
+		return nil
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > keptLinesMax {
-		return nil, nil
+	if err != nil || !info.Mode().IsRegular() || info.Size() > stoppedLinesMax {
+		return nil
 	}
-	b, err := io.ReadAll(io.LimitReader(f, keptLinesMax+1))
-	if err != nil || len(b) > keptLinesMax || int64(len(b)) != info.Size() {
-		return nil, nil
+	b, err := io.ReadAll(io.LimitReader(f, stoppedLinesMax+1))
+	if err != nil || len(b) > stoppedLinesMax || int64(len(b)) != info.Size() {
+		return nil
 	}
-	s, key, body, ok := stoppedHeader(b)
+	s, key, gen, body, ok := stoppedHeader(b)
 	if !ok || s != scope || scope == "" {
-		return nil, nil
+		return nil
 	}
 	if stoppedLinesSeam != nil {
 		stoppedLinesSeam("read")
 	}
-	t := &stoppedTable{scope: scope, key: key, files: map[string]map[[16]byte]stoppedEntry{}}
+	t := &stoppedTable{scope: scope, key: key, gen: gen, files: map[string]map[[16]byte]stoppedEntry{}, size: len(b)}
 	// how many lines each file has, first, so the map of each file is made once at its size (growing them line by line took
 	// most of the time of reading a large record)
 	sizes := map[string]int{}
+	lines := 0
 	for rest := body; len(rest) > 0; {
 		line := rest
 		if i := bytes.IndexByte(rest, '\n'); i >= 0 {
@@ -144,8 +204,10 @@ func readStoppedRecord(p, scope string) (*stoppedTable, os.FileInfo) {
 		}
 		if i := bytes.IndexByte(line, ' '); i > 0 {
 			sizes[string(line[:i])]++
+			lines++
 		}
 	}
+	t.read = make([]stoppedRef, 0, lines)
 	names := map[string]string{} // the hex of a path, read once per file
 	for len(body) > 0 {
 		line := body
@@ -179,9 +241,15 @@ func readStoppedRecord(p, scope string) (*stoppedTable, os.FileInfo) {
 		if _, err := hex.Decode(d[:], f[1]); err != nil {
 			continue
 		}
-		t.add(name, d, stoppedEntry{n, h})
+		entries := t.files[name]
+		if old, ok := entries[d]; ok { // the same entry twice: the copies add up, and it is written once, where it was first
+			entries[d] = stoppedEntry{min(old.n+n, stoppedCountUnbounded), max(old.head, h)}
+			continue
+		}
+		entries[d] = stoppedEntry{n, h}
+		t.read = append(t.read, stoppedRef{name, d})
 	}
-	return t, info
+	return t
 }
 
 // stoppedFields splits a line of a record at its runs of spaces and tabs; ok only for exactly 4 fields.
@@ -206,19 +274,42 @@ func stoppedFields(line []byte) (f [4][]byte, ok bool) {
 	return f, n == len(f)
 }
 
-// stoppedCount reads a count of a record: decimal digits only, at most 18 of them (so it never overflows).
+// stoppedCount reads a count of a record: exactly stoppedCountDigits hex digits. stoppedCountMax is read as
+// stoppedCountUnbounded (see stoppedCountDigits).
 func stoppedCount(b []byte) (int, bool) {
-	if len(b) == 0 || len(b) > 18 {
+	if len(b) != stoppedCountDigits {
 		return 0, false
 	}
 	n := 0
 	for _, c := range b {
-		if c < '0' || c > '9' {
+		switch {
+		case c >= '0' && c <= '9':
+			n = n<<4 | int(c-'0')
+		case c >= 'a' && c <= 'f':
+			n = n<<4 | int(c-'a'+10)
+		case c >= 'A' && c <= 'F':
+			n = n<<4 | int(c-'A'+10)
+		default:
 			return 0, false
 		}
-		n = n*10 + int(c-'0')
+	}
+	if n == stoppedCountMax {
+		return stoppedCountUnbounded, true
 	}
 	return n, true
+}
+
+// appendStoppedCount appends n as stoppedCountDigits hex digits: stoppedCountMax for a count past it.
+func appendStoppedCount(b []byte, n int) []byte {
+	const digits = "0123456789abcdef"
+	v := uint64(max(0, n))
+	if v > stoppedCountMax {
+		v = stoppedCountMax
+	}
+	for i := stoppedCountDigits - 1; i >= 0; i-- {
+		b = append(b, digits[(v>>(4*i))&0xf])
+	}
+	return b
 }
 
 func newStoppedTable(scope string) *stoppedTable {
@@ -229,13 +320,17 @@ func newStoppedTable(scope string) *stoppedTable {
 	return &stoppedTable{scope: scope, key: key, files: map[string]map[[16]byte]stoppedEntry{}}
 }
 
-// add adds e to the entry of d in the file p (the copies add up; the larger count in HEAD is kept).
+// add adds e to the entry of d in the file p (the copies add up; the larger count in HEAD is kept). An entry the table did not
+// hold is a new one.
 func (t *stoppedTable) add(p string, d [16]byte, e stoppedEntry) {
 	if t.files[p] == nil {
 		t.files[p] = map[[16]byte]stoppedEntry{}
 	}
-	old := t.files[p][d]
-	t.files[p][d] = stoppedEntry{old.n + e.n, max(old.head, e.head)}
+	old, ok := t.files[p][d]
+	if !ok {
+		t.fresh = append(t.fresh, stoppedRef{p, d})
+	}
+	t.files[p][d] = stoppedEntry{min(old.n+e.n, stoppedCountUnbounded), max(old.head, e.head)}
 }
 
 // countLines counts the copies in content of the non-blank lines whose keyed hash want takes; text, when not nil, gets the
@@ -292,7 +387,7 @@ func (t *stoppedTable) stoppedIn(p string, now []byte, head func() []byte) map[s
 // update brings the entries of the file f, whose current content is now, up to this Stop: the lines stopped now (by line, with
 // their copies; the copies the record already held are among them) are added, the copies removed or committed are dropped, and
 // what is kept is counted from the commit that was HEAD at the start of this turn (head, read only when a line of now is
-// concerned). It reports whether the entries changed.
+// concerned). The entries it adds are new ones (stoppedTable.fresh). It reports whether the entries changed.
 func (t *stoppedTable) update(f string, now []byte, stopped map[string]int, head func() []byte) bool {
 	entries := t.files[f]
 	h := newLineHasher(t.key)
@@ -327,7 +422,10 @@ func (t *stoppedTable) update(f string, now []byte, stopped map[string]int, head
 	}
 	changed := len(next) != len(entries)
 	for d, e := range next {
-		if old, ok := entries[d]; !ok || old != e {
+		if old, ok := entries[d]; !ok {
+			t.fresh = append(t.fresh, stoppedRef{f, d})
+			changed = true
+		} else if old != e {
 			changed = true
 		}
 	}
@@ -339,81 +437,94 @@ func (t *stoppedTable) update(f string, now []byte, stopped map[string]int, head
 	return changed
 }
 
-// bytes is the record to write, or nil when it holds no line. old holds, for the files this write looked at, the entries they
-// had before it (as they were read; an empty map for a file that had none); the entries of a file not in old were kept before
-// and stay as they are. Past max bytes, only new entries are dropped: every kept entry is written first, and the new ones fill
-// what is left, the files with the fewest new entries first (an entry that does not fit is dropped, and the next ones are
-// still tried). A kept entry this Stop changed can grow (9 copies -> 10); when the kept entries alone do not fit, each one that
-// grew keeps the line it had, so they take no more than the record they were read from (which fitted), and none of them is
-// dropped for another. Only when even that does not fit (max smaller than the record that was read) are the kept entries that
-// do not fit dropped, in their order, like new ones.
-func (t *stoppedTable) bytes(old map[string]map[[16]byte]stoppedEntry, max int) []byte {
-	type entry struct {
-		path string
-		d    [16]byte
-		e    stoppedEntry
-	}
-	lineOf := func(e entry) string {
-		return hex.EncodeToString([]byte(e.path)) + " " + hex.EncodeToString(e.d[:]) + " " + strconv.Itoa(e.e.n) + " " + strconv.Itoa(e.e.head) + "\n"
-	}
-	header := stoppedMarker + hex.EncodeToString([]byte(t.scope)) + " " + hex.EncodeToString(t.key) + "\n"
-	var kept []entry
-	fresh := map[string][]entry{}
-	keptSize := len(header)
-	for p, lines := range t.files {
-		was, looked := old[p]
-		for d, e := range lines {
-			if _, ok := was[d]; ok || !looked {
-				kept = append(kept, entry{p, d, e})
-				keptSize += len(lineOf(entry{p, d, e}))
-			} else {
-				fresh[p] = append(fresh[p], entry{p, d, e})
-			}
-		}
-	}
-	if keptSize > max {
-		for i, e := range kept {
-			if before, ok := old[e.path][e.d]; ok && len(lineOf(entry{e.path, e.d, before})) < len(lineOf(e)) {
-				kept[i].e = before
-			}
-		}
-	}
-	less := func(a, b entry) bool {
-		if a.path != b.path {
-			return a.path < b.path
-		}
-		return bytes.Compare(a.d[:], b.d[:]) < 0
-	}
-	sort.Slice(kept, func(i, j int) bool { return less(kept[i], kept[j]) })
-	paths := make([]string, 0, len(fresh))
-	for p, es := range fresh {
-		sort.Slice(es, func(i, j int) bool { return less(es[i], es[j]) })
-		paths = append(paths, p)
-	}
-	sort.Slice(paths, func(i, j int) bool {
-		if a, b := len(fresh[paths[i]]), len(fresh[paths[j]]); a != b {
-			return a < b
-		}
-		return paths[i] < paths[j]
-	})
-	for _, p := range paths {
-		kept = append(kept, fresh[p]...)
-	}
-	var out bytes.Buffer
-	out.WriteString(header)
-	written := 0
-	for _, e := range kept {
-		line := lineOf(e)
-		if out.Len()+len(line) > max {
-			continue
-		}
-		out.WriteString(line)
-		written++
-	}
-	if written == 0 {
+// bytes is the record to write, with a new generation, or nil when it holds no line. The entries read come first, in the order
+// they were read, with the counts they hold now (an entry with no copy left is not written): each one's line has the length it
+// had in the record read, so together they take no more than that record (which was within its limit), and none of them is
+// dropped. The new entries follow, the files with the fewest new entries first and, in a file, by hash, while the record stays
+// within max bytes (an entry that does not fit is dropped, and the next ones are still tried). Only the new entries are sorted,
+// and each line is made once.
+func (t *stoppedTable) bytes(max int) []byte {
+	gen := make([]byte, stoppedGenBytes)
+	if _, err := rand.Read(gen); err != nil {
 		return nil
 	}
-	return out.Bytes()
+	t.gen = hex.EncodeToString(gen)
+	lineSize := func(pathHex []byte) int { return len(pathHex) + 2*16 + 2*stoppedCountDigits + 4 }
+	out := make([]byte, 0, min(max, t.size+96*len(t.fresh)+256))
+	out = append(out, stoppedMarker...)
+	out = hex.AppendEncode(out, []byte(t.scope))
+	out = append(out, ' ')
+	out = hex.AppendEncode(out, t.key)
+	out = append(out, ' ')
+	out = append(out, t.gen...)
+	out = append(out, '\n')
+	line := func(out, pathHex []byte, d [16]byte, e stoppedEntry) []byte {
+		out = append(out, pathHex...)
+		out = append(out, ' ')
+		out = hex.AppendEncode(out, d[:])
+		out = append(out, ' ')
+		out = appendStoppedCount(out, e.n)
+		out = append(out, ' ')
+		out = appendStoppedCount(out, e.head)
+		return append(out, '\n')
+	}
+	// the new entries still held, by file. An entry read, dropped and added again is written once, where it was read: the
+	// entries of the files with new ones are noted as they are written.
+	fresh := map[string][][16]byte{}
+	for _, r := range t.fresh {
+		if _, ok := t.files[r.path][r.d]; ok {
+			fresh[r.path] = append(fresh[r.path], r.d)
+		}
+	}
+	written := map[stoppedRef]bool{}
+	count := 0
+	var pathHex []byte
+	last, noted := "", false
+	for i, r := range t.read {
+		e, ok := t.files[r.path][r.d]
+		if !ok {
+			continue
+		}
+		if i == 0 || r.path != last {
+			last, pathHex = r.path, hex.AppendEncode(pathHex[:0], []byte(r.path))
+			_, noted = fresh[r.path]
+		}
+		if noted {
+			if written[r] {
+				continue
+			}
+			written[r] = true
+		}
+		out = line(out, pathHex, r.d, e)
+		count++
+	}
+	paths := make([]string, 0, len(fresh))
+	for p, ds := range fresh {
+		slices.SortFunc(ds, func(a, b [16]byte) int { return bytes.Compare(a[:], b[:]) })
+		paths = append(paths, p)
+	}
+	slices.SortFunc(paths, func(a, b string) int {
+		if c := cmp.Compare(len(fresh[a]), len(fresh[b])); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	})
+	for _, p := range paths {
+		pathHex = hex.AppendEncode(pathHex[:0], []byte(p))
+		for _, d := range fresh[p] {
+			r := stoppedRef{p, d}
+			if written[r] || len(out)+lineSize(pathHex) > max {
+				continue
+			}
+			written[r] = true
+			out = line(out, pathHex, d, t.files[p][d])
+			count++
+		}
+	}
+	if count == 0 {
+		return nil
+	}
+	return out
 }
 
 // lockPathWithin takes the lock file p, waiting at most wait (0: one try). ok is false when it was not taken (unlock is then a
@@ -502,14 +613,12 @@ func keepStoppedLines(root string, failing []guard, in guardInput, head string) 
 		return
 	}
 	defer unlock()
-	// the record as this Stop's comparison read it, while it is the same file, unchanged: every write of the record puts a new
-	// file in its place (writeAtomic renames one; keepLines removes it), and a Stop or the pruning that reads it sets its
-	// time, so another Stop's write or reading since the comparison makes it another file or another time, and it is read again
-	// here, under the lock. So a Stop reads the record once.
+	// the record as this Stop's comparison read it, while it is the same record: every write of the record gives it a new
+	// generation (or removes it), so another Stop's write since the comparison is read again here, under the lock. Only the
+	// first line is read to tell; a Stop reads the whole record once.
 	var t *stoppedTable
-	if in.stopped != nil && in.stoppedInfo != nil && in.stopped.scope == scope {
-		if info, err := os.Lstat(p); err == nil && os.SameFile(info, in.stoppedInfo) && info.Size() == in.stoppedInfo.Size() &&
-			info.ModTime().Equal(in.stoppedInfo.ModTime()) {
+	if in.stopped != nil && in.stopped.scope == scope && in.stopped.gen != "" {
+		if s, gen := readStoppedHeader(p); s == scope && gen == in.stopped.gen {
 			t = in.stopped
 		}
 	}
@@ -540,14 +649,6 @@ func keepStoppedLines(root string, failing []guard, in guardInput, head string) 
 	for f := range hits {
 		compared[f] = true
 	}
-	// the entries the files this Stop looks at had before (the other files' entries stay as they are, and are all kept ones)
-	old := map[string]map[[16]byte]stoppedEntry{}
-	for f := range compared {
-		old[f] = make(map[[16]byte]stoppedEntry, len(t.files[f]))
-		for d, e := range t.files[f] {
-			old[f][d] = e
-		}
-	}
 	top, err := os.OpenRoot(in.repo)
 	if err != nil {
 		return
@@ -575,29 +676,14 @@ func keepStoppedLines(root string, failing []guard, in guardInput, head string) 
 	if !changed {
 		return
 	}
-	if err := keepLines(p, t.bytes(old, keptLinesMax)); err != nil {
+	if err := keepLines(p, t.bytes(stoppedLinesMax)); err != nil {
 		hookLog("guard: the lines a check stopped were not kept: " + err.Error())
 	}
 }
 
 // stoppedRecordScope reads the repository a record at p belongs to from its first line ("" for anything else).
 func stoppedRecordScope(p string) string {
-	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, 64<<10)) // the first line: the marker, the path in hex and the key
-	if err != nil {
-		return ""
-	}
-	if i := bytes.IndexByte(b, '\n'); i >= 0 {
-		b = b[:i+1]
-	}
-	scope, _, _, ok := stoppedHeader(b)
-	if !ok {
-		return ""
-	}
+	scope, _ := readStoppedHeader(p)
 	return scope
 }
 
