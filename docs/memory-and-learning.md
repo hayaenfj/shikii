@@ -240,8 +240,6 @@ Alongside choosing how to use remembered knowledge, 0.29 adds **a loop that sele
 3. **Adopt supported procedures.** Initially, two different tasks must report the required quality with less guidance. The candidate can then become the next procedure under matching conditions.
 4. **Restore on regression.** A missed condition, greater guidance cost or unavailable supporting evidence rejects the candidate or restores its previous procedure. Retire a failed recipe; a different candidate needs more checks.
 
-In 0.30.4, status, source pagination and limited history reads reduce repeated processing while preserving original evidence and decision conditions. The sections below also explain rereading reductions and interrupted-write recovery added in intervening releases.
-
 For example, suppose a CSV investigation keeps searching the same specification without changing its result. shikii can propose suggesting a different check sooner. When separate CSV tasks report that the required conditions were checked with less guidance, the candidate can be adopted. A later reported omission restores the earlier procedure. Recalling a past suggestion becomes connected to validation on other tasks and withdrawal when it fails.
 
 Ordinary recording uses one initial `prepare` and one ending `record`. Send what changed, the evidence checked and what remains once. If quality was actually checked, optionally add `result.sufficient` and reuse that evidence. A conversation with no new lasting knowledge needs no long reflection or wiki article. Additional source reads and important corrections during work can be recorded when needed.

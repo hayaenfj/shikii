@@ -134,7 +134,7 @@ Goを上げた後や実行ファイルを動かした後にhookが働かなく�
 
 > このプロジェクトでshikiiを使って
 
-エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。この機械で最初のプロジェクトなら、hook が 1 つも入っていない時は `shikii --init` が hook も入れます（`shikii hook install --yes` と同じ）。すでにプロジェクトがあって hook が無い機械では、hook は入れずに、入れるコマンドを表示します。既製の問い・wiki・止める検査の置き場・作業記録の置き場・MCPの設定（プロジェクトに `.mcp.json`・`opencode.json` が足されます。`AGENTS.md` と `CLAUDE.md` には書きません。Gitの除外に入るのは `.shikii/` だけです。MCPを共通の `~/.codex/config.toml` からしか読まないCodexには、プロジェクトを書かない共通の登録を1つ書き、道具を呼ぶたびにエージェントの作業フォルダを `project` で渡します。この登録には `default_tools_approval_mode = "approve"` を書くので、Codexはshikiiの道具を、呼ぶたびに確認せずに実行します。確認してほしい時は、そこを `"prompt"` と書きます）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
+エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。この機械で最初のプロジェクトなら、hook が 1 つも入っていない時は `shikii --init` が hook も入れます（`shikii hook install --yes` と同じ。TypeSafeの鍵が無く `llama-server` が入っている機械では、手元のモデルを裏で起動します）。すでにプロジェクトがあって hook が無い機械では、hook は入れずに、入れるコマンドを表示します。既製の問い・wiki・止める検査の置き場・作業記録の置き場・MCPの設定（プロジェクトに `.mcp.json`・`opencode.json` が足されます。`AGENTS.md` と `CLAUDE.md` には書きません。Gitの除外に入るのは `.shikii/` だけです。MCPを共通の `~/.codex/config.toml` からしか読まないCodexには、プロジェクトを書かない共通の登録を1つ書き、道具を呼ぶたびにエージェントの作業フォルダを `project` で渡します。この登録には `default_tools_approval_mode = "approve"` を書くので、Codexはshikiiの道具を、呼ぶたびに確認せずに実行します。確認してほしい時は、そこを `"prompt"` と書くか、行を消します。shikiiが足し直すことはありません）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
 
 ### 更新
 

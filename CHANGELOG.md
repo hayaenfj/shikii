@@ -12,7 +12,7 @@
 
 - **Codex runs shikii's tools without asking before each call**
 
-  Codex asks you before every call of an MCP tool, and `codex exec` refuses the call. `shikii hook install --yes` (or `shikii --init`) now adds one line to the Codex registration shikii wrote, so its tools run like its commands. To be asked again, write `"prompt"` in place of `"approve"` on that line. A registration you edited yourself is left as it is.
+  Codex asks you before every call of an MCP tool, and `codex exec` refuses the call. `shikii hook install --yes` (or `shikii --init`) now adds one line to the Codex registration shikii wrote, so its tools run like its commands. To be asked again, write `"prompt"` in place of `"approve"` on that line, or delete the line: shikii does not add it a second time. A registration you edited yourself is left as it is.
 
 - **`shikii --init` installs the hooks for your first project**
 
@@ -20,7 +20,7 @@
 
 - **Replies fit what the agent's tool can show**
 
-  On the command line the reply of `work prepare` is kept within 28 KiB, and the reply of `reflect query` is bounded too. When a reply does not fit, the top search candidates, the titles of the lessons and the pages waiting for review stay, with the way to read the rest.
+  On the command line the reply of `work prepare` is kept within 28 KiB, and the reply of `reflect query` is bounded too. When a reply does not fit, what matters for the next step stays (the top candidates of a search, the titles of the lessons, the pages waiting for review), with the way to read the rest. A request longer than that bound still comes whole.
 
 - **A message you send mid-work no longer costs the agent what it had read**
 

@@ -64,7 +64,7 @@ If hooks that use this binary are already installed, the new binary updates the 
 
 ## Enable it per project
 
-After installing, run `shikii --init` (`shikii init` is the same) once in each project where you want to use shikii. You can also ask your agent: "Use shikii in this project." This prepares the built-in questions (the 4 hook questions, the 2 wiki questions and the delivery question `lesson-applies`), the wiki, the places for guards and work records, the MCP setup, the agent's instructions and the way to the page, and writes `.shikii/project.json` last. Hooks run only where this marker exists; in a project that was not initialized they create no storage and no Git exclusion. Subfolders use the same project root, and initializing again keeps the existing settings, conversations and truths. `shikii doctor` checks the setup.
+After installing, run `shikii --init` (`shikii init` is the same) once in each project where you want to use shikii. For the first project on a machine with no shikii hooks, init also installs the hooks, as `shikii hook install --yes` does (without a TypeSafe key, and with `llama-server` installed, that starts the local model in the background; its first run downloads the model). On a machine that already has projects and no hooks, init leaves them off and shows the command. You can also ask your agent: "Use shikii in this project." This prepares the built-in questions (the 4 hook questions, the 2 wiki questions and the delivery question `lesson-applies`), the wiki, the places for guards and work records, the MCP setup, the agent's instructions and the way to the page, and writes `.shikii/project.json` last. Hooks run only where this marker exists; in a project that was not initialized they create no storage and no Git exclusion. Subfolders use the same project root, and initializing again keeps the existing settings, conversations and truths. `shikii doctor` checks the setup.
 
 What is inside `.shikii/`:
 
@@ -177,7 +177,7 @@ Use `shikii work prepare` with topic words in `query` and the current hook's `se
 
 When the person sends a message while the agent is still working, the hook starts a new request and the earlier receipt stops working. The agent prepares once with the new ids, and `carried` in the reply names the pages and saved sources of the interrupted work that stay valid with the new receipt (a page that work edited is read again before another edit). A finished request hands nothing over.
 
-On the CLI the JSON goes on standard input, and `shikii work --help` (also `reflect`, `hook plan`, `wiki` and `handoff`) prints forms that run as written. Without `max_bytes` the CLI keeps a prepare reply within 28672 bytes, a size an agent's shell shows whole, and `output` names what was left out and how to get it. Every reply an agent reads starts with `receipt` (or `complete` and `errors`), then the task, `how_to_record` and the lessons, and continues from small to large. A refused call says what was wrong and what to send next: an unknown field comes back with the object that held it and the fields that object takes.
+On the CLI the JSON goes on standard input, and `shikii work --help` (also `reflect`, `hook plan`, `wiki` and `handoff`) prints forms that run as written. Without `max_bytes` the CLI keeps a prepare reply within 28672 bytes, a size an agent's shell shows whole, and `output` names what was left out and how to get it. Every reply an agent reads starts with `receipt` (or `complete` and `errors`), then `output` when the reply was shortened, the task, `how_to_record` and the lessons, and continues from small to large. A refused call says what was wrong and what to send next: an unknown field comes back with the object that held it and the fields that object takes.
 
 MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.27.0 or later. Condition-based outcome selection requires 0.25.0 or later.
 
@@ -501,7 +501,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 
 | Command | What it does |
 |---|---|
-| `shikii init` (`shikii --init`) | Enables this project (built-in questions, wiki, places for guards and work records, MCP, the agent's instructions, the page). Safe to run twice |
+| `shikii init` (`shikii --init`) | Enables this project (built-in questions, wiki, places for guards and work records, MCP, the agent's instructions, the page; for the first project on a machine with no hooks, the hooks too). Safe to run twice |
 | `shikii new <id>` | Creates `.shikii/decisions/<id>.yaml` by asking a few questions (`--from` copies a sample) |
 | `shikii up` | Starts the local model (llama-server, plus `shikii-readout` for an ordinary GGUF). Starts nothing when a key is set |
 | `shikii serve` | The HTTP API and the answer page |

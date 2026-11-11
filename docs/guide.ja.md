@@ -28,7 +28,7 @@ shikii は、エージェントをあなたのプロジェクトに合わせて�
 
 エージェントの作業中に人が発言すると、hookは新しい依頼を始め、前のreceiptは使えなくなります。新しいidで1回prepareすると、返事の`carried`に、中断された作業が読んだ記事と保存した原資料の参照が載り、新しいreceiptでそのまま使えます(中断された作業が編集した記事をさらに編集する時は、読み直します)。終わった依頼からは引き継ぎません。
 
-CLIではJSONを標準入力で渡します。`shikii work --help`(`reflect`・`hook plan`・`wiki`・`handoff`も同じ)は、そのまま実行できる形を表示します。`max_bytes`を渡さない時、CLIはprepareの返事を28672バイト以内に収めます(エージェントのシェルの道具が全部を表示できる大きさ)。省いた欄の名前と取得の方法は`output`に入ります。エージェントが読む返事は、`receipt`(または`complete`と`errors`)から始まり、依頼・`how_to_record`・知識が続き、残りは小さいものから並びます。受け取れない呼び出しには、何が違ったかと次に渡す内容を返します。知らない欄は、その欄があった場所と、そこで受け取れる欄の一覧を返します。
+CLIではJSONを標準入力で渡します。`shikii work --help`(`reflect`・`hook plan`・`wiki`・`handoff`も同じ)は、そのまま実行できる形を表示します。`max_bytes`を渡さない時、CLIはprepareの返事を28672バイト以内に収めます(エージェントのシェルの道具が全部を表示できる大きさ)。省いた欄の名前と取得の方法は`output`に入ります。エージェントが読む返事は、`receipt`(または`complete`と`errors`)から始まり、返事を縮めた時は`output`、続いて依頼・`how_to_record`・知識が並び、残りは小さいものから並びます。受け取れない呼び出しには、何が違ったかと次に渡す内容を返します。知らない欄は、その欄があった場所と、そこで受け取れる欄の一覧を返します。
 
 hookが無い時は`query`とエージェント自身が書いた`request`を使えますが、人の合意としては扱えません。MCPは`shikii_wiki`のprepare/recordと`work`オブジェクト、HTTPは同じ本文を`POST /v1/wiki/notebook`へ渡します。従来の個別操作も使えます。更新後はセッション・画面・MCPを再起動し、同じwikiや進行中のセッションを書くプロセスを0.27.0以上へ揃えてください。条件に合う手順結果の選択には0.25.0以上を使います。
 
@@ -67,7 +67,7 @@ GitHub Releases の最新安定版から、利用中の OS・CPU 向けの本体
 
 ## プロジェクトごとの有効化
 
-インストール後、利用するプロジェクトで `shikii --init`(`shikii init` も同じ)を一度実行する。エージェントに「このプロジェクトで shikii を使いたい」と頼んでもよい。既製の問い(hook の 4 問・wiki の 2 問・配送の 1 問 lesson-applies)・wiki・止める検査と作業記録の置き場・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を書く。hook はこのファイルがある場所だけで動き、未初期化の場所には保存先も Git の除外も作らない。サブフォルダからも同じプロジェクトルートを使い、再初期化しても既存の設定・会話・正解を保持する。`shikii doctor` で状態を確かめる。
+インストール後、利用するプロジェクトで `shikii --init`(`shikii init` も同じ)を一度実行する。shikii の hook が入っていない機械で最初のプロジェクトを初期化すると、hook も入れる(`shikii hook install --yes` と同じ。TypeSafe の鍵が無く `llama-server` が入っている機械では、手元のモデルを裏で起動する。初回はモデルを取得する)。すでにプロジェクトがあって hook が無い機械では入れずに、入れるコマンドを表示する。エージェントに「このプロジェクトで shikii を使いたい」と頼んでもよい。既製の問い(hook の 4 問・wiki の 2 問・配送の 1 問 lesson-applies)・wiki・止める検査と作業記録の置き場・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を書く。hook はこのファイルがある場所だけで動き、未初期化の場所には保存先も Git の除外も作らない。サブフォルダからも同じプロジェクトルートを使い、再初期化しても既存の設定・会話・正解を保持する。`shikii doctor` で状態を確かめる。
 
 `.shikii/` の中身:
 
@@ -472,7 +472,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 
 | コマンド | すること |
 |---|---|
-| `shikii init`(`shikii --init`) | このプロジェクトを有効にする(既製の問い・wiki・止める検査と作業記録の置き場・MCP・作法・画面への入口)。2 回目も安全 |
+| `shikii init`(`shikii --init`) | このプロジェクトを有効にする(既製の問い・wiki・止める検査と作業記録の置き場・MCP・作法・画面への入口。hook が無い機械の最初のプロジェクトでは hook も)。2 回目も安全 |
 | `shikii new <id>` | 質問に答えるだけで `.shikii/decisions/<id>.yaml` を作る(`--from` で見本を写す) |
 | `shikii up` | 手元のモデルを起こす(llama-server と、普通の GGUF なら `shikii-readout`)。鍵がある時は起こさない |
 | `shikii serve` | HTTP の口と答え合わせの画面 |

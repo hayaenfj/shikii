@@ -76,7 +76,7 @@ var agentUsages = map[string]agentUsage{
 		Notes: []string{
 			"kind of a source: human, agent, code, test or release. kind of a lesson: rule, howto, criteria, fact or history.",
 			"patch, maintain, consult, reuse, organize, reconcile, diagnose and compare also read one JSON object from standard input: patch takes the patch object, maintain {page_id, revision, key, reason}, the others the arguments of shikii_wiki of the MCP server.",
-			"classify <page id> <kind> <scene>, lint and verify [pattern.md ...] take arguments only.",
+			"classify <page id> <kind> <scene> and verify [pattern.md ...] read no standard input; lint takes no arguments.",
 		},
 	},
 	"handoff": {
