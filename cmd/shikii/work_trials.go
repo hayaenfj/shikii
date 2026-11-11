@@ -98,6 +98,26 @@ func validateTrialResult(r workTrialResult) error {
 	return nil
 }
 
+// receiptWrote reports whether a note of this receipt wrote that revision of the page.
+func receiptWrote(w *workState, id, revision string) bool {
+	for _, item := range w.Saved {
+		if item.Kind == "note" && item.Error == "" && item.ID == id && item.Revision == revision {
+			return true
+		}
+	}
+	return false
+}
+
+// heldSource reports whether id is a source this receipt holds under one of its references (prepared, or saved by its record).
+func heldSource(w *workState, id string) bool {
+	for _, held := range w.Sources {
+		if held == id {
+			return true
+		}
+	}
+	return false
+}
+
 func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve func([]string) ([]string, error)) ([]string, error) {
 	bound := []string{}
 	for _, ref := range refs {
@@ -109,10 +129,19 @@ func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve f
 			if err != nil {
 				return nil, err
 			}
-			if len(live) != 1 || live[0].Revision != article.Revision {
-				return nil, errors.New("reasoning needs the same live article revision; read it again")
+			if len(live) != 1 {
+				return nil, fmt.Errorf("evidence %s names lesson:%s, which is no longer a live page: cite another reference (current, an observation)", ref, article.ID)
 			}
-			bound = append(bound, "article:"+article.ID+"@"+article.Revision)
+			revision := article.Revision
+			if live[0].Revision != revision {
+				// The page is newer than what the receipt read. When the receipt's own note wrote that revision, the agent knows it
+				// (what it read plus its own edits: a patch applies only to the revision it names), so the evidence follows.
+				if !receiptWrote(w, article.ID, live[0].Revision) {
+					return nil, fmt.Errorf("evidence %s names lesson:%s at the revision this receipt read, and the page has a newer revision: read it again (prepare with this receipt and query lesson:%s) and cite the reference of that reply, or cite another reference (current, an observation)", ref, article.ID, article.ID)
+				}
+				revision = live[0].Revision
+			}
+			bound = append(bound, "article:"+article.ID+"@"+revision)
 			continue
 		}
 		if w.Reasoning != nil {
@@ -135,7 +164,7 @@ func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve f
 				continue
 			}
 		}
-		if ref != "current" && w.Sources[ref] == "" && !strings.HasPrefix(ref, "new") {
+		if ref != "current" && w.Sources[ref] == "" && !strings.HasPrefix(ref, "new") && !heldSource(w, ref) {
 			return nil, fmt.Errorf("unknown reasoning evidence %q; use current, a prepared article, trial or captured source: evidence takes references, not text (what you checked goes in checked or reason; to cite it, add it to observations and name it new1)", ref)
 		}
 		ids, err := resolve([]string{ref})

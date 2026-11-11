@@ -188,3 +188,108 @@ func TestRelatedInANoteTakesTheArticlesTheReceiptRead(t *testing.T) {
 		}
 	}
 }
+
+// Found while recording this very work (2026-11-12): a receipt could not cite what it had itself written. A note that named, as
+// its source, the id of an observation the same receipt had saved was refused ("unknown source reference"), and a result that
+// named, as evidence, an article the same receipt had edited was refused with "read it again" and nothing else (the edit made
+// the article newer than the revision the receipt read). The receipt knows both: the id of a source it holds is accepted like its
+// ref, and evidence follows an article to the revision the receipt's own note wrote. An id the receipt does not hold, and an
+// article someone else changed, are still refused, with what to cite instead.
+func TestAReceiptCitesWhatItSavedAndTheArticleItEdited(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	source, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "The export keeps the filters."
+	page, err := b.Ingest(notebook.Draft{Sources: []string{source.ID}, Title: "CSV export keeps filters", Lesson: "Keep the filters when exporting CSV.", AppliesTo: "CSV export", Kind: "rule", Scene: "when exporting CSV", Body: &body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := workCall(t, b, "prepare", map[string]any{"query": "CSV export filters", "request": "Check the CSV export"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := ""
+	for _, raw := range prepared["knowledge"].([]any) {
+		if entry := raw.(map[string]any); entry["id"] == page.Page.ID {
+			ref, _ = entry["ref"].(string)
+		}
+	}
+	if ref == "" {
+		t.Fatalf("the page is among the prepared knowledge: %v", prepared["knowledge"])
+	}
+	record := func(fields map[string]any) map[string]any {
+		t.Helper()
+		fields["receipt"] = prepared["receipt"]
+		saved, err := workCall(t, b, "record", fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return saved
+	}
+	refused := func(saved map[string]any, kind string) string {
+		errs, _ := saved["errors"].([]any)
+		for _, raw := range errs {
+			if item := raw.(map[string]any); strings.HasPrefix(item["kind"].(string), kind) {
+				return item["error"].(string)
+			}
+		}
+		return ""
+	}
+	newNote := func(title string, source string) map[string]any {
+		return map[string]any{"notes": []any{map[string]any{"target": "new", "title": "CSV totals " + title, "lesson": "Check the totals of " + title + ".", "applies_to": "CSV export totals", "kind": "rule", "scene": "when exporting CSV", "body": "Checked " + title + ".", "sources": []any{source}}}}
+	}
+
+	// the receipt saves an observation and edits the article it read
+	saved := record(map[string]any{
+		"observations": []any{map[string]any{"kind": "test", "title": "Totals", "content": "The totals match."}},
+		"notes":        []any{map[string]any{"target": ref, "sources": []any{"new1"}, "change_reason": "Add the totals.", "edits": []any{map[string]any{"field": "body", "before": "The export keeps the filters.", "after": "The export keeps the filters and the totals."}}}}})
+	if got := refused(saved, "note"); got != "" {
+		t.Fatalf("the edit of the article is saved: %s", got)
+	}
+	observed := ""
+	for _, raw := range saved["saved"].([]any) {
+		if item := raw.(map[string]any); item["kind"] == "observation" {
+			observed, _ = item["id"].(string)
+		}
+	}
+	if observed == "" {
+		t.Fatalf("the observation is saved with its id: %v", saved["saved"])
+	}
+
+	// a later note cites that observation by the id the reply gave
+	if got := refused(record(newNote("by the id of its own observation", observed)), "note"); got != "" {
+		t.Errorf("the id of a source this receipt saved is accepted as a source: %s", got)
+	}
+	got := refused(record(newNote("by an id the receipt does not hold", "0123456789abcdef")), "note")
+	for _, w := range []string{`unknown source reference "0123456789abcdef"`, "usable here: "} {
+		if !strings.Contains(got, w) {
+			t.Errorf("the refusal of a source the receipt does not hold lacks %q: %q", w, got)
+		}
+	}
+
+	// the result cites the article the receipt itself edited
+	saved = record(map[string]any{"result": map[string]any{"changed": "The article says the totals.", "checked": "Read the export.", "evidence": []any{ref, observed}}})
+	if got := refused(saved, "result"); got != "" {
+		t.Errorf("evidence follows the article to the revision this receipt's own note wrote, and takes the id of a source the receipt holds: %s", got)
+	}
+
+	// someone else changes the article: the receipt has not read that revision
+	live, err := b.LiveWhere(func(p notebook.Page) bool { return p.ID == page.Page.ID })
+	if err != nil || len(live) != 1 {
+		t.Fatal(err, len(live))
+	}
+	if _, err := b.Patch(notebook.Patch{ID: page.Page.ID, Revision: live[0].Revision, Sources: []string{source.ID}, ChangeReason: "Another writer.", Edits: []notebook.TextEdit{{Field: "body", Before: "and the totals.", After: "and the totals of every page."}}}); err != nil {
+		t.Fatal(err)
+	}
+	saved = record(map[string]any{"result": map[string]any{"changed": "The article says the totals of every page.", "checked": "Read the export again.", "evidence": []any{ref}}})
+	got = refused(saved, "result")
+	for _, w := range []string{"evidence " + ref, "lesson:" + page.Page.ID, "has a newer revision", "prepare with this receipt and query lesson:" + page.Page.ID, "or cite another reference"} {
+		if !strings.Contains(got, w) {
+			t.Errorf("the refusal of an article someone else changed lacks %q: %q", w, got)
+		}
+	}
+}

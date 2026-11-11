@@ -166,6 +166,9 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 					return nil, err
 				}
 			}
+			if id == "" && heldSource(w, ref) {
+				id = ref // the id of a source this receipt holds, as the replies print it
+			}
 			if id == "" {
 				usable := sortedRefs(w.Sources)
 				if !w.Standalone {
