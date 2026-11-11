@@ -210,4 +210,31 @@ func TestABoundedReplyKeepsTheTopSearchCandidates(t *testing.T) {
 	if output, _ := tiny["output"].(map[string]any); tiny["knowledge_context"] != nil || !strings.Contains(fmt.Sprint(output["omitted"]), "knowledge_context") || strings.Contains(fmt.Sprint(output["omitted"]), "knowledge_context.") {
 		t.Errorf("the smallest bound leaves the candidates out whole and says only that: %v", tiny["output"])
 	}
+	// lessons too long for a small bound are down to their references, and each still carries its title
+	for i := 0; i < 6; i++ {
+		long := fmt.Sprintf("Ledger totals %d: ", i) + strings.Repeat("compare the ledger totals with the bank statement before closing the month. ", 20)
+		body := "Checked."
+		if _, err := b.Ingest(notebook.Draft{Sources: []string{source.ID}, Title: fmt.Sprintf("Ledger totals %d", i), Lesson: long, AppliesTo: long[:400], Kind: "rule", Scene: "when closing the month", Body: &body}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out string
+	withStdin(t, `{"query":"ledger totals bank statement","request":"Close the month","max_bytes":8192}`, func() { out = capture(t, func() error { return cmdWork([]string{"prepare"}) }) })
+	var small map[string]any
+	if err := json.Unmarshal([]byte(out), &small); err != nil {
+		t.Fatal(err)
+	}
+	lessons, _ := small["knowledge"].([]any)
+	if len(lessons) < 2 || len(out) > 8192 {
+		t.Fatalf("the smallest bound still names the lessons: %d lessons, %d bytes", len(lessons), len(out))
+	}
+	for _, raw := range lessons {
+		entry := raw.(map[string]any)
+		if entry["summary"] != nil || entry["orientation"] != nil || entry["article"] != nil {
+			t.Fatalf("precondition: at the smallest bound a long lesson is down to its references: %.300v", entry)
+		}
+		if title, _ := entry["title"].(string); !strings.HasPrefix(title, "Ledger totals") || entry["query"] == nil {
+			t.Errorf("a lesson down to its references keeps its title and its exact query: %v", entry)
+		}
+	}
 }
