@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strconv"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -146,23 +147,37 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		if size(reply) <= budget {
 			break
 		}
+		if field == "knowledge_context" {
+			// the search candidates go in steps, the top of the ranking last; the whole list only when even that does not fit
+			if taken, fits := trimKnowledgeCandidates(w, reply, budget-1000, size); fits {
+				omitted = append(omitted, taken...)
+				continue
+			}
+		}
 		if reply[field] != nil {
 			delete(reply, field)
 			omitted = append(omitted, field)
 		}
 	}
 	if size(reply) > budget {
-		for _, raw := range entries {
-			e := raw.(map[string]any)
-			ref := e["ref"].(string)
-			delete(quoted, ref)
-			for key := range e {
-				if key != "ref" && key != "id" && key != "revision" && key != "query" {
-					delete(e, key)
+		// A lesson first keeps its title beside its references (a bare id tells an agent nothing about whether to read it), and
+		// loses the title too only when that still does not fit.
+		for _, keep := range []string{"title", ""} {
+			for _, raw := range entries {
+				e := raw.(map[string]any)
+				ref := e["ref"].(string)
+				delete(quoted, ref)
+				for key := range e {
+					if key != "ref" && key != "id" && key != "revision" && key != "query" && key != keep {
+						delete(e, key)
+					}
 				}
+				e["body_included"], e["attention_limited"] = false, true
+				e["reading_notice"] = "Original text omitted; read the exact revision query, including its conditions and exceptions."
 			}
-			e["body_included"], e["attention_limited"] = false, true
-			e["reading_notice"] = "Original text omitted; read the exact revision query, including its conditions and exceptions."
+			if size(reply) <= budget {
+				break
+			}
 		}
 	}
 	if size(reply) > budget-1000 {
@@ -201,6 +216,103 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	return suppliedPreparationReads(reply), nil
+}
+
+// trimKnowledgeCandidates makes the search candidates of a reply fit, the least useful part first: the heads of other pending
+// conversations (pending carries them), each candidate's applies_to (its title, id and exact query stay), then the candidates at
+// the end of the ranking, with a cursor in knowledge_query that continues right after the last one shown. It returns what it took
+// off, as output names it, and whether the reply now fits. When it does not, the reply is as it was and the caller leaves the list
+// out whole. Candidates whose lessons are in knowledge are never cut (the next page would send those lessons again).
+func trimKnowledgeCandidates(w *workState, reply map[string]any, budget int, size func(any) int) (taken []string, fits bool) {
+	context, _ := reply["knowledge_context"].(map[string]any)
+	search, _ := context["search"].(map[string]any)
+	candidates, _ := search["candidates"].([]any)
+	if len(candidates) == 0 {
+		return nil, false
+	}
+	pending, hadPending := context["pending_sources"]
+	applies := make([]any, len(candidates))
+	for i, raw := range candidates {
+		applies[i] = raw.(map[string]any)["applies_to"]
+	}
+	query, _ := reply["knowledge_query"].(map[string]any)
+	holder := query // the object that holds the cursor: knowledge_query itself, or its work for a search added to a receipt
+	if work, ok := query["work"].(map[string]any); ok {
+		holder = work
+	}
+	cursor, hadCursor := holder["cursor"]
+	restore := func() {
+		if hadPending {
+			context["pending_sources"] = pending
+		}
+		for i, raw := range candidates {
+			if applies[i] != nil {
+				raw.(map[string]any)["applies_to"] = applies[i]
+			}
+		}
+		search["candidates"] = candidates
+		if holder != nil {
+			if hadCursor {
+				holder["cursor"] = cursor
+			} else {
+				delete(holder, "cursor")
+			}
+		}
+	}
+	if hadPending {
+		delete(context, "pending_sources")
+		taken = append(taken, "knowledge_context.pending_sources")
+		if size(reply) <= budget {
+			return taken, true
+		}
+	}
+	for _, raw := range candidates {
+		delete(raw.(map[string]any), "applies_to")
+	}
+	taken = append(taken, "knowledge_context.search.candidates[].applies_to")
+	if size(reply) <= budget {
+		return taken, true
+	}
+	if w == nil || w.candidateCursor == nil || holder == nil {
+		restore()
+		return nil, false
+	}
+	delivered := map[string]bool{}
+	if entries, ok := reply["knowledge"].([]any); ok {
+		for _, raw := range entries {
+			if e, ok := raw.(map[string]any); ok {
+				if id, ok := e["id"].(string); ok {
+					delivered[id] = true
+				}
+			}
+		}
+	}
+	least := 1
+	for i, raw := range candidates {
+		if id, _ := raw.(map[string]any)["id"].(string); delivered[id] {
+			least = i + 1
+		}
+	}
+	show := func(keep int) bool {
+		search["candidates"] = candidates[:keep]
+		holder["cursor"] = w.candidateCursor(keep)
+		return size(reply) <= budget
+	}
+	if least >= len(candidates) || !show(least) {
+		restore()
+		return nil, false
+	}
+	low, high := least, len(candidates)-1 // the most candidates that fit: low fits
+	for low < high {
+		middle := (low + high + 1) / 2
+		if show(middle) {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	show(low)
+	return append(taken, "knowledge_context.search.candidates after the first "+strconv.Itoa(low)+" (knowledge_query continues)"), true
 }
 
 func fitPreparedSource(book notebook.Book, reply, entry map[string]any, budget int, size func(any) int) bool {
@@ -244,7 +356,7 @@ func workPreparationOutput(budget int, omitted []string) map[string]any {
 // workPreparationHint adds, to the output of a shortened reply, how to get more in one call: the search that finds the candidates
 // left out, and the bound itself. The caller takes it back when the reply would not fit with it.
 func workPreparationHint(output map[string]any) map[string]any {
-	output["next_action"] = workPreparationNext + " knowledge_query repeats the search for omitted candidates; a larger max_bytes returns more in one reply."
+	output["next_action"] = workPreparationNext + " knowledge_query continues the search after the candidates shown, or repeats it when none is; a larger max_bytes returns more in one reply."
 	return output
 }
 

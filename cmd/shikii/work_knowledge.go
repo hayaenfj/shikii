@@ -279,10 +279,11 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		reply["source"] = sourceMaterial
 		reply["source_query"] = map[string]any{"operation": "prepare", "work": map[string]any{"receipt": req.Receipt, "query": query, "cursor": sourceMaterial["next_cursor"]}}
 	} else {
-		view, e := book.QueryPage(query, req.Cursor)
+		view, after, e := book.QueryPageCursors(query, req.Cursor)
 		if e != nil {
 			return nil, e
 		}
+		w.candidateCursor = after
 		for _, p := range view.Lessons {
 			if e = add(p); e != nil {
 				return nil, e

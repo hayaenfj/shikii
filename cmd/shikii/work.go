@@ -150,6 +150,7 @@ type workReply struct {
 }
 type workState struct {
 	reviewingResult bool                                  // Trusted ending persistence; never decoded from input.
+	candidateCursor func(kept int) string                 // This reply's search page: the cursor that continues after its first kept candidates; never saved.
 	Loop            *workLoopState                        `json:"loop,omitempty"`
 	Delivery        *workDeliveryState                    `json:"delivery,omitempty"`
 	Result          *workCompletionRef                    `json:"result,omitempty"`
@@ -490,10 +491,11 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	var knowledgeContext map[string]any
 	var knowledgeQuery map[string]any
 	if standalone {
-		view, e := book.QueryPage(req.Query, "")
+		view, after, e := book.QueryPageCursors(req.Query, "")
 		if e != nil {
 			return nil, e
 		}
+		w.candidateCursor = after
 		view.Lookup, e = book.RecordLookup(req.Query, view.Lessons)
 		if e != nil {
 			return nil, e

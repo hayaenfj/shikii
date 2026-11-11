@@ -98,9 +98,24 @@ func (c continuation) next(offset, total int) string {
 }
 
 func (b Book) QueryPage(query, cursor string) (View, error) {
+	view, _, err := b.QueryPageCursors(query, cursor)
+	return view, err
+}
+
+// QueryPageCursors is QueryPage with after, which gives the cursor that continues right after the first kept candidates (or
+// lessons) of this page: for a caller that shows fewer of them than the page holds. after(n) for the whole page is its NextCursor.
+func (b Book) QueryPageCursors(query, cursor string) (View, func(kept int) string, error) {
+	view, after, err := b.queryPage(query, cursor)
+	if err != nil {
+		return view, nil, err
+	}
+	return view, after, nil
+}
+
+func (b Book) queryPage(query, cursor string) (View, func(kept int) string, error) {
 	all, err := b.Query(query)
 	if err != nil {
-		return all, err
+		return all, nil, err
 	}
 	// the snapshot covers only what is split into parts: conversations waiting for reflection grow by one each agent turn and must not
 	// invalidate the cursor of a page reading on (the first reply carries them alone)
@@ -114,7 +129,7 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 	}
 	start, err := state.start(cursor, total)
 	if err != nil {
-		return View{}, err
+		return View{}, nil, err
 	}
 	out := all
 	out.Lessons = []Page{}
@@ -160,7 +175,7 @@ func (b Book) QueryPage(query, cursor string) (View, error) {
 		}
 	}
 	out.NextCursor = state.next(i, total)
-	return out, nil
+	return out, func(kept int) string { return state.next(start+max(kept, 0), total) }, nil
 }
 
 // Find a fitting UTF-8 prefix before refining its capacity. A host can switch
