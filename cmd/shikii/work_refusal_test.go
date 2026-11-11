@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -291,5 +292,59 @@ func TestAReceiptCitesWhatItSavedAndTheArticleItEdited(t *testing.T) {
 		if !strings.Contains(got, w) {
 			t.Errorf("the refusal of an article someone else changed lacks %q: %q", w, got)
 		}
+	}
+}
+
+// A result is saved as a source of its own, and that source takes the next observedN name. A result that named that reference as
+// its evidence was accepted: with nothing observed, evidence:["observed1"] cited the report itself and the reply said complete
+// (found 2026-11-12 by the negative example of another test). A result is not its own evidence: the reference is refused with
+// what to cite instead, under any of its names (observedN, result, its id). An observation the work really saved stays citable.
+func TestAResultIsNotItsOwnEvidence(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	prepared, err := workCall(t, b, "prepare", map[string]any{"query": "CSV export filters", "request": "Check the CSV export"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := func(fields map[string]any) map[string]any {
+		t.Helper()
+		fields["receipt"] = prepared["receipt"]
+		saved, err := workCall(t, b, "record", fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return saved
+	}
+	refused := func(saved map[string]any) string {
+		errs, _ := saved["errors"].([]any)
+		for _, raw := range errs {
+			if item := raw.(map[string]any); strings.HasPrefix(item["kind"].(string), "result") {
+				return item["error"].(string)
+			}
+		}
+		return ""
+	}
+	for i, ref := range []string{"observed1", "result"} { // each result is a new report: the first is observed1, the second observed2
+		saved := record(map[string]any{"result": map[string]any{"changed": fmt.Sprintf("Renamed the button, report %d.", i), "evidence": []any{ref}}})
+		got := refused(saved)
+		for _, w := range []string{fmt.Sprintf("evidence %q is this result itself", ref), "new1", "or leave evidence out"} {
+			if !strings.Contains(got, w) || saved["complete"] == true {
+				t.Errorf("a result that cites itself as %s is refused with %q: complete=%v %q", ref, w, saved["complete"], got)
+			}
+		}
+	}
+	saved := record(map[string]any{"observations": []any{map[string]any{"kind": "test", "title": "Button", "content": "The button reads Export."}}, "result": map[string]any{"changed": "Renamed the button, checked.", "checked": "Read the page.", "evidence": []any{"new1"}}})
+	if got := refused(saved); got != "" {
+		t.Fatalf("a result that cites an observation of its call is saved: %s", got)
+	}
+	observed := ""
+	for _, raw := range saved["saved"].([]any) {
+		if item := raw.(map[string]any); item["kind"] == "observation" {
+			observed, _ = item["ref"].(string)
+		}
+	}
+	if saved = record(map[string]any{"result": map[string]any{"changed": "Renamed the button, checked again.", "evidence": []any{observed}}}); observed == "" || refused(saved) != "" {
+		t.Errorf("a later result cites the observation the work saved (%s): %s", observed, refused(saved))
 	}
 }

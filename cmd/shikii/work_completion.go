@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -24,6 +25,20 @@ func validateWorkCompletion(c *workCompletion) error {
 	}
 	if c.Sufficient != nil && len(c.Evidence) == 0 {
 		return errors.New("result.sufficient needs captured check evidence; omit it when quality is unknown")
+	}
+	return nil
+}
+
+// selfEvidence refuses evidence that names the result itself. The report is saved as a source of its own (under the next observedN
+// name, and as result), so a result with nothing observed could cite itself and be complete.
+func selfEvidence(w *workState, result string, refs []string) error {
+	if result == "" {
+		return nil
+	}
+	for _, ref := range refs {
+		if ref == result || w.Sources[ref] == result {
+			return fmt.Errorf("evidence %q is this result itself: cite what you checked (an observation of this call as new1, a saved observation, a page you read or current), or leave evidence out", ref)
+		}
 	}
 	return nil
 }
@@ -55,6 +70,9 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 			return workItem{Kind: "result", Ref: "result"}, errors.New("the saved result changed or is unavailable")
 		}
 		if w.Result.Ready {
+			if e := selfEvidence(w, w.Result.Source, c.Evidence); e != nil {
+				return workItem{Kind: "result", Ref: "result", ID: w.Result.Source}, e
+			}
 			bound, e := bindWorkEvidence(book, w, c.Evidence, resolve)
 			if e != nil {
 				return workItem{Kind: "result", Ref: "result", ID: w.Result.Source}, e
@@ -93,6 +111,9 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		w.Reasoning.PendingResults[id] = pending
 	}
 	if err = save(); err != nil {
+		return item, err
+	}
+	if err = selfEvidence(w, id, c.Evidence); err != nil {
 		return item, err
 	}
 	evidence, err := bindWorkEvidence(book, w, c.Evidence, resolve)

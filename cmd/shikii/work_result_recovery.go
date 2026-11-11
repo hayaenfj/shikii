@@ -44,6 +44,9 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 			return item, errors.New("the saved result evidence changed; record its corrected result")
 		}
 		if len(c.Evidence) > 0 {
+			if e := selfEvidence(w, c.Ref, c.Evidence); e != nil {
+				return item, e
+			}
 			bound, e := bindWorkEvidence(book, w, c.Evidence, resolve)
 			if e != nil {
 				return item, e
@@ -60,6 +63,9 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 	evidence := pending.Evidence
 	var e error
 	if len(c.Evidence) > 0 {
+		if e = selfEvidence(w, c.Ref, c.Evidence); e != nil {
+			return item, e
+		}
 		evidence, e = bindWorkEvidence(book, w, c.Evidence, resolve)
 		if e != nil {
 			return item, e
