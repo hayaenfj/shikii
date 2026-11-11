@@ -454,7 +454,7 @@ func cmdReflect(args []string) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(stdout).Encode(result)
+	return writeReply(stdout, result)
 }
 
 func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
@@ -471,7 +471,7 @@ func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	writeJSON(w, 200, result)
+	writeReplyJSON(w, 200, result)
 }
 
 func reflectContext(root, scope string) (string, []string, error) {

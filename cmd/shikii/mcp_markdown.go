@@ -47,7 +47,7 @@ func knowledgeMarkdown(raw []byte, original map[string]any) string {
 	if len(v.texts) == 0 {
 		return baseline
 	}
-	encoded, err := json.Marshal(metadata)
+	encoded, err := orderedReply(metadata) // the same reading order as the compact text
 	if err != nil {
 		return baseline
 	}

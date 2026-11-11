@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -225,7 +224,7 @@ func cmdNotebook(args []string) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(stdout).Encode(result)
+	return writeReply(stdout, result)
 }
 
 func notebookMaintenance(agent, scope string) error {
@@ -275,8 +274,8 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 	if req.Work != nil && req.Operation == "prepare" {
 		// Match the compact representation used by the work response budget.
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = json.NewEncoder(w).Encode(result)
+		_ = writeReply(w, result)
 		return
 	}
-	writeJSON(w, 200, result)
+	writeReplyJSON(w, 200, result)
 }

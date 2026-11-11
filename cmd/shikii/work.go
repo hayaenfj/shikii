@@ -614,5 +614,5 @@ func cmdWork(args []string) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(stdout).Encode(result)
+	return writeReply(stdout, result)
 }
