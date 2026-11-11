@@ -451,8 +451,18 @@ func readPlanningSession(dir *os.Root, name string) (*hookSession, error) {
 
 func currentPlanningFrame(s *hookSession, turnID, scope string) error {
 	// after Judged (the end-of-turn decision is done) it is not accepted, but right after the ritual check stopped (no organizing submit yet) it is (0.8.0)
-	if s.Scope != scope || s.TurnID != turnID || (s.Judged && s.Planning != nil && s.Planning.Result != nil) || s.Planning == nil || s.Planning.TurnID != turnID || time.Since(s.Planning.At) > hookSessionTTL {
-		return errors.New("only the context of the ongoing request in the same project can be handled")
+	// The refusal names which of its reasons applies and the next call (before, an agent holding the receipt of an earlier request
+	// only learned that something about the request was not current).
+	const refusal = "only the context of the ongoing request in the same project can be handled: "
+	switch {
+	case s.Scope != scope:
+		return errors.New(refusal + "this session's request was made in another project folder; run the command in that project")
+	case s.TurnID != turnID || s.Planning == nil || s.Planning.TurnID != turnID:
+		return errors.New(refusal + "a newer request has started in this session, so these ids or this receipt belong to an earlier one; prepare again with the ids of the latest hook notice")
+	case s.Judged && s.Planning.Result != nil:
+		return errors.New(refusal + "this request was closed at the end of its turn with its organizing saved; continue from the next request's hook notice")
+	case time.Since(s.Planning.At) > hookSessionTTL:
+		return errors.New(refusal + "this request is older than the session limit; prepare again from a new request")
 	}
 	return nil
 }

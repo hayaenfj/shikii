@@ -388,8 +388,8 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if req.Result != nil || req.Reading != nil || req.Trial != nil || req.Comparison != nil || req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil || len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) > 0 {
-		return nil, errors.New("prepare reads context; send content with record")
+	if sent := workContentFields(req); len(sent) > 0 {
+		return nil, fmt.Errorf("prepare reads context; send content with record (prepare was sent %s)", strings.Join(sent, ", "))
 	}
 	if req.Receipt != "" {
 		return extendWork(root, scope, req)

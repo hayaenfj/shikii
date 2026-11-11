@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
 	"strconv"
 
@@ -152,7 +151,11 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 				}
 			}
 			if id == "" {
-				return nil, fmt.Errorf("unknown source reference %q; use a prepared source or new observation", ref)
+				usable := sortedRefs(w.Sources)
+				if !w.Standalone {
+					usable = append(usable, "current")
+				}
+				return nil, errors.New(unknownSourceRef(ref, len(req.Observations), usable))
 			}
 			sources = append(sources, id)
 		}

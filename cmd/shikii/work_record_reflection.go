@@ -16,7 +16,7 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 	for _, r := range req.Reviews {
 		binding, ok := w.Reviews[r.Ref]
 		if !ok {
-			add(workItem{Ref: r.Ref, Kind: "review", Error: "unknown prepared review reference"})
+			add(workItem{Ref: r.Ref, Kind: "review", Error: unknownPreparedRef("review", r.Ref, sortedRefs(w.Reviews), "pending[].reviews[]")})
 			continue
 		}
 		reflection.Reviews = append(reflection.Reviews, reviewRequest{SourceID: binding.Source, TraceID: binding.Trace, Truth: r.Answer, Reason: r.Reason})
@@ -24,7 +24,7 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 	for _, m := range req.Memory {
 		binding, ok := w.Memory[m.Ref]
 		if !ok {
-			add(workItem{Ref: m.Ref, Kind: "memory", Error: "unknown prepared memory reference"})
+			add(workItem{Ref: m.Ref, Kind: "memory", Error: unknownPreparedRef("memory", m.Ref, sortedRefs(w.Memory), "pending[].memories[]")})
 			continue
 		}
 		reflection.Memory = append(reflection.Memory, memoryAssessmentRequest{SourceID: binding.Source, Key: binding.Key, Result: m.Result, Decision: m.Decision, Evidence: m.Evidence, CorrectionResult: m.CorrectionResult})
