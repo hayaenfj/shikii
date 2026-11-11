@@ -110,6 +110,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.30.5 | History cleanup and saving at the same time no longer damage records. |
 | 0.30.7 | Past answers of yours that never helped are no longer shown to the agent. |
 | 0.30.8 | That decision can be undone on the page. Lines you were writing before a request are no longer treated as the agent's. |
+| 0.31.0 | An agent's calls to its memory fail less often. A message you send mid-work no longer costs the agent what it had read. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -314,3 +315,13 @@ The AI's review makes this call, and it is not always right. So 0.30.8 lets a pe
 An answer the AI judged not useful in 0.30.7, and the decision to stop showing past answers, can be undone with "Undo" in the knowledge section of the page. After an undo, the earlier assessments no longer count, and the decision is made again only from the times the answer is shown after the undo. Your answer itself is not touched. The AI decides, and a person can take the decision back.
 
 The same version also lets the checks that stop the agent tell the agent's lines from your unfinished ones. Lines you wrote before a request and had not committed are not treated as the agent's. A line the agent wrote and a check stopped is remembered until it is deleted or committed, and it is stopped again in later work. This is not about memory as such, but it carries "who wrote this line" correctly from one piece of work to the next.
+
+### In 0.31.0, fewer failed calls to the memory
+
+The versions so far grew what is remembered and what is delivered. 0.31.0 looked at how an agent's calls to that memory fail, and reduced the failures. Counting this machine's conversation records showed agents asking for help and getting one line of usage, long replies cut in the middle by the agent's tool, and refusals that did not say what to send next. A memory that has grown is not used when calling it keeps failing.
+
+So help now prints forms that run as written, a refusal says its cause and what to send next, and a reply is kept within what the agent's tool can show. When it does not fit, what the next step needs stays: the top search candidates and the titles of the lessons.
+
+The other change is for a message you send while the agent is working. Until now that started a new request, and the agent read the same pages again. In 0.31.0 the next preparation takes over the pages it had read and the sources it had saved. Only references go over: the result is reported as the new request's own.
+
+Before and after were compared by sending the same small request to real agents. Each was measured a few times, so this does not say every request improves by the same amount.

@@ -2,6 +2,37 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.31.0 — Easier for an agent to call: fewer failed calls, replies that fit, and no approval prompt in Codex
+
+### Highlights
+
+- **An agent's calls to shikii fail less often**
+
+  `shikii work --help` (and `reflect`, `hook plan`, `wiki`, `handoff`) now prints forms that run as written, and a call shikii cannot accept is answered with the cause and what to send instead. In our measurements with the same small request, Claude Code went from 7–8 calls with 4–5 failures to 2 calls with none, and Codex from 5 calls with 3 failures to 2 with none.
+
+- **Codex runs shikii's tools without asking before each call**
+
+  Codex asks you before every call of an MCP tool, and `codex exec` refuses the call. `shikii hook install --yes` (or `shikii --init`) now adds one line to the Codex registration shikii wrote, so its tools run like its commands. To be asked again, write `"prompt"` in place of `"approve"` on that line. A registration you edited yourself is left as it is.
+
+- **`shikii --init` installs the hooks for your first project**
+
+  On a machine with no shikii hooks, initializing the first project also installs them. On a machine that already has projects and no hooks, init leaves them off and shows the command that installs them.
+
+- **Replies fit what the agent's tool can show**
+
+  On the command line the reply of `work prepare` is kept within 28 KiB, and the reply of `reflect query` is bounded too. When a reply does not fit, the top search candidates, the titles of the lessons and the pages waiting for review stay, with the way to read the rest.
+
+- **A message you send mid-work no longer costs the agent what it had read**
+
+  When you send another message while the agent is still working, the next preparation takes over the pages the agent had read and the sources it had saved, so it does not read them again.
+
+### Other fixes
+
+- A result with nothing checked could cite itself as its evidence and be recorded as complete. It is now refused.
+- `shikii --init` said "Ready" on a machine with no hooks. It now says the hooks are not installed.
+- Within one piece of work, the agent can cite a source it saved earlier and a page it edited.
+- The notice before each request and the one at the end of a turn asked for two different procedures. They now ask for one, and also name the MCP tool.
+
 ## 0.30.8 — Your unfinished lines no longer stop the agent; undo the AI's decisions from the page
 
 ### Highlights
