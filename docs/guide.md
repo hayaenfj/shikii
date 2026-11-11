@@ -175,6 +175,8 @@ In 0.30.1, read the complete shared workflow in the `shikii_wiki` description be
 
 Use `shikii work prepare` with topic words in `query` and the current hook's `session_id` and `turn_id`. Without a hook, pass `query` and an agent-supplied `request`; it cannot establish a human agreement. Read the returned conversation, knowledge, pending evidence and `how_to_record`. Then use `shikii work record` with its `receipt`, your interpretation, checked observations and source-backed notes. Shikii retains source identifiers, exact article revisions and capture metadata. Placement candidates requiring interpretation come back to the agent. Check `complete`, `errors`, `pending` and reflection's remaining work; retry corrected content with the same receipt.
 
+On the CLI the JSON goes on standard input, and `shikii work --help` (also `reflect`, `hook plan`, `wiki` and `handoff`) prints forms that run as written. Without `max_bytes` the CLI keeps a prepare reply within 28672 bytes, a size an agent's shell shows whole, and `output` names what was left out and how to get it. Every reply an agent reads starts with `receipt` (or `complete` and `errors`), then the task, `how_to_record` and the lessons, and continues from small to large. A refused call says what was wrong and what to send next: an unknown field comes back with the object that held it and the fields that object takes.
+
 MCP uses `shikii_wiki` prepare/record with a `work` object; HTTP uses the same body at `POST /v1/wiki/notebook`. The [recording reference](../skills/shikii/references/recording.md) covers content shapes, limits, stale contexts and partial retries. Individual planning, reflection and wiki commands remain available. Restart agent sessions, the page and MCP after updating, and keep processes writing the same wiki or active session on 0.27.0 or later. Condition-based outcome selection requires 0.25.0 or later.
 
 ### Connect external assignments
@@ -635,7 +637,7 @@ and failed refs can be retried without resending it. Internal scope/completion
 grades do not ask people to score agents. A concrete task choice may still need
 the person's answer.
 
-Optional max_bytes bounds a prepare response; omitted bodies retain exact recovery
+Optional max_bytes bounds a prepare response (28672 bytes by default on the CLI); omitted bodies retain exact recovery
 queries. Sentence-boundary excerpts and same-receipt body or identical-excerpt reuse
 reduce rereading; reused excerpts never establish a full-body read.
 Identical host reading notices can be shared verbatim in `reading_notices` within

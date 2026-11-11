@@ -103,7 +103,8 @@ not preserve this new session progress.
 ### Bounded reading and memory upgrades
 
 prepare accepts optional max_bytes, 8192–393216 UTF-8 JSON bytes, for the complete
-response (default 65536). output reports omitted fields and recovery directions.
+response (default 65536; 28672 bytes on the CLI, a size an agent's shell shows whole).
+output reports omitted fields and recovery directions.
 Use exact article/source queries only when necessary. Omitted text is not supplied
 or read; unavailable conditions, counterexamples and premise warnings remain
 unresolved. Quoted excerpts keep sentence/line boundaries and byte offsets; a unit
@@ -184,6 +185,8 @@ With the current request's hook identifiers, pipe this to `shikii work prepare`:
 ```json
 {"session_id":"<current hook session>","turn_id":"<current hook turn>","query":"CSV export filters"}
 ```
+
+`shikii work --help` prints these forms, runnable as written. A reply starts with `receipt`, then `output` when something was left out, the task, `how_to_record`, the lessons and what is pending; the rest follows from small to large, so the head of a long reply is enough to act. A refused call names its cause and the next call; an unknown field comes back with the object that held it and the fields that object takes.
 
 Choose topic words in the project's vocabulary, not the whole request. Read `task_context` with `task`: stored request text includes joined human messages, while `conversation` contains bounded planning excerpts for exact quotations. `conversation_context` retains each reference's user/assistant role, source turn and known history order. Read history by its recorded order, never by reference names or random turn IDs; unknown order stays explicit. Stored request text can be truncated or unavailable in older sessions; read the original human message in the host conversation when the status says so. Task and conversation context each fit 128 KiB after JSON encoding or preparation fails explicitly; a failed preparation does not install a new receipt. Task text is context rather than an extra quote reference, permission or human truth. Read `task`, `conversation`, `knowledge`, `pending`, `reflection_context`, `observations`, `maintenance` and `how_to_record`. The supporting `reflection_context` retains earlier human scoring corrections, related knowledge and memory statistics, including when scoring is settled but wiki work remains; read the corrections before interpreting or scoring. They remain historical evidence, never current permission or a new truth. Hook knowledge entries retain the article ID, revision and an exact-revision `query`. When `body_included` is false, use the exact `body_excerpts` first: up to three unclassified passages plus prioritized interpreted quotations, within the effective `attention` excerpt budgets described below. They preserve byte offsets, the cited revision and rationale; they are incomplete evidence, not a generated conclusion. Follow the exact query only when a material condition or exception remains unresolved. Automatic full-body budgets remain unchanged. The response's `receipt` retains the storage context. Knowledge and quotations use local references such as `current`, `previous` and `knowledge1`; reflection uses `source1`, `review1`, `memory1` and `evidence1`.
 

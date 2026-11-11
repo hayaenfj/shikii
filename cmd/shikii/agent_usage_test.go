@@ -247,3 +247,21 @@ func TestPlanningNoticeSaysHowItsJSONReachesTheCommand(t *testing.T) {
 		t.Fatalf("the notice's JSON with query added prepares the task: %v %s", err, out)
 	}
 }
+
+// The skill and the guide say what the commands now do: where the forms are, the CLI's bound, the order of a reply, and that a
+// refusal names the place of an unknown field. (The bound is the constant itself, so the text cannot keep an old number.)
+func TestTheSkillAndTheGuideDescribeTheFormsTheBoundAndTheOrder(t *testing.T) {
+	bound := fmt.Sprint(cliPrepareBytes)
+	for path, want := range map[string][]string{
+		"../../skills/shikii/references/recording.md": {"`shikii work --help` prints these forms", bound + " bytes on the CLI", "starts with `receipt`", "the object that held it and the fields that object takes"},
+		"../../docs/guide.md":                         {"`shikii work --help`", "on standard input", bound + " bytes", "starts with `receipt`", "the object that held it and the fields that object takes"},
+		"../../docs/guide.ja.md":                      {"`shikii work --help`", bound, "`receipt`"},
+	} {
+		text := string(mustRead(t, path))
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s lacks %q", path, w)
+			}
+		}
+	}
+}
