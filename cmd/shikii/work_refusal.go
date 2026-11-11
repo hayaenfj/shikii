@@ -82,6 +82,18 @@ func unknownPreparedRef(kind, ref string, prepared []string, where string) strin
 	return text + ": this receipt prepared no " + kind + ", so leave " + kind + "s out"
 }
 
+// unknownRelatedArticle refuses a related entry that is not an article the receipt read, with the refs it could use and how to
+// read another page into the receipt.
+func unknownRelatedArticle(ref string, read []string) string {
+	text := fmt.Sprintf("unknown related article %q", ref)
+	if len(read) > 0 {
+		text += "; related takes the articles this receipt read: " + listRefs(read)
+	} else {
+		text += "; related takes the articles this receipt read, and it read none"
+	}
+	return text + fmt.Sprintf(" (to relate another page, read it first: prepare with this receipt and query lesson:%s; or leave it out)", ref)
+}
+
 // unknownSourceRef refuses a source reference of a note, result or judgment. newN names observation N of the same call: when that
 // observation was refused, the note citing it is refused with it, and the fix is the observation's own error.
 func unknownSourceRef(ref string, observations int, usable []string) string {

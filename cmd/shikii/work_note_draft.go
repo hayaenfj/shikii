@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 
@@ -91,7 +90,15 @@ func prepareWorkNoteDraft(w *workState, n workNote, resolve func([]string) ([]st
 		for _, ref := range d.Related {
 			p, ok := w.Articles[ref]
 			if !ok {
-				return d, fmt.Errorf("unknown related article %q", ref)
+				// the id of an article this receipt read names the same article as its ref (an agent sees both in knowledge)
+				for _, read := range w.Articles {
+					if read.ID == ref {
+						p, ok = read, true
+					}
+				}
+			}
+			if !ok {
+				return d, errors.New(unknownRelatedArticle(ref, sortedRefs(w.Articles)))
 			}
 			related = append(related, p.ID)
 		}

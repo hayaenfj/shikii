@@ -124,3 +124,67 @@ func TestWorkRefusalsNameTheCauseAndTheNextCall(t *testing.T) {
 		t.Errorf("an unknown source reference lists the usable ones: %q", got)
 	}
 }
+
+// related in a note names articles the receipt has read. An agent that wrote page ids there (the ids it sees in knowledge) was
+// answered "unknown related article" and nothing else (2026-11-12, while recording this very work). The id of an article the
+// receipt read is accepted like its ref, and any other value is answered with the refs it could use and how to read another page.
+func TestRelatedInANoteTakesTheArticlesTheReceiptRead(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	source, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "The export keeps the filters."
+	page, err := b.Ingest(notebook.Draft{Sources: []string{source.ID}, Title: "CSV export keeps filters", Lesson: "Keep the filters when exporting CSV.", AppliesTo: "CSV export", Kind: "rule", Scene: "when exporting CSV", Body: &body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := workCall(t, b, "prepare", map[string]any{"query": "CSV export filters", "request": "Check the CSV export"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := ""
+	for _, raw := range prepared["knowledge"].([]any) {
+		if entry := raw.(map[string]any); entry["id"] == page.Page.ID {
+			ref, _ = entry["ref"].(string)
+		}
+	}
+	if ref == "" {
+		t.Fatalf("the page is among the prepared knowledge: %v", prepared["knowledge"])
+	}
+	note := func(title string, related ...string) map[string]any {
+		return map[string]any{"receipt": prepared["receipt"],
+			"observations": []any{map[string]any{"kind": "test", "title": "Totals " + title, "content": "The totals of " + title + " match."}},
+			"notes":        []any{map[string]any{"target": "new", "title": "CSV totals " + title, "lesson": "Check the totals of " + title + ".", "applies_to": "CSV export totals", "kind": "rule", "scene": "when exporting CSV", "body": "Checked " + title + ".", "sources": []any{"new1"}, "related": related}}}
+	}
+	refused := func(saved map[string]any) string {
+		text := ""
+		for _, raw := range saved["errors"].([]any) {
+			if item := raw.(map[string]any); item["kind"] == "note" {
+				text, _ = item["error"].(string)
+			}
+		}
+		return text
+	}
+	saved, err := workCall(t, b, "record", note("with an unread page", "0123456789abcdef"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := refused(saved)
+	for _, w := range []string{`unknown related article "0123456789abcdef"`, "related takes the articles this receipt read: " + ref, "prepare with this receipt and query lesson:0123456789abcdef", "or leave it out"} {
+		if !strings.Contains(got, w) {
+			t.Errorf("the refusal of an unread page in related lacks %q: %q", w, got)
+		}
+	}
+	for _, related := range []string{ref, page.Page.ID} {
+		saved, err = workCall(t, b, "record", note("related by "+related, related))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if errs, _ := saved["errors"].([]any); len(errs) > 0 && strings.Contains(refused(saved), "related") {
+			t.Errorf("related %q, an article the receipt read, is accepted: %v", related, errs)
+		}
+	}
+}
