@@ -115,7 +115,7 @@ shikii guard try                    # 今の作業ツリーに当てて見せる
 
 毎回のターンで、整理・推論の見直し・振り返りを組み込みの規則で確かめる。いつも有効で、外せない(`shikii guard list` に `built in (always enabled)` として出る)。`CLAUDE.md` や `AGENTS.md` の無いプロジェクトでも効く。
 
-- **作業の前の整理(plan-before-work)**: ホストのhook識別子と話題の語でprepareを一度呼び、今回の依頼と開始を保存します。別の開始提出は不要です。具体的な未決の選択には人の回答が必要で、準備を合意にはしません。詳しい整理には既存のhook plan query/submitも使えます。
+- **作業の前の整理(plan-before-work)**: ホストのhook識別子と話題の語でprepare(`work prepare`)を一度呼び、今回の依頼と開始を保存します。別の開始提出は不要で、合意したことと未決の選択は終わりの`work record`に入れます。具体的な未決の選択には人の回答が必要で、準備を合意にはしません。古い`hook plan query`/`submit`は、以前からの連携のために残しています。`work prepare`と一緒には実行しません(`hook plan query`を実行すると、`work prepare`のレシート(`receipt`)が使えなくなります)。
 - **推論の見直し(reasoning-before-end)**: 依頼のhookが必須の状態を保存し、`work prepare`が今回の条件と過去の経験を返す。prepareが開始を保存し、通常は終了時のresultで見直しを閉じます。重要な判断の変更には、明示的なstart/update/finishも使えます。根拠は依頼・供給した記事・観察の参照へ結び付く。新しい証拠を保存した後は、古い終了記録の再送では通らない。wiki訂正の失敗や未配置が残れば、再準備で消さずに解消する。未保存の項目ごとに元の参照を保ち、別の保存成功で消さない。容量不足では必要な作業を残して古いレシートを外し、再準備で復旧する。終了時の判断はagent原資料にも残し、次の仕事で読めるようにする。方針の維持や証拠不足も認め、新しい発見や記事は毎回要求しない。Stopは保存結果と終了時の出典版を確認する。全ツールの実行前の再検討や、判断の質を保証するものではない。追加のモデル・設定・人の採点は不要。[入力と上限](../skills/shikii/references/recording.md#required-review-while-doing-the-work)を参照する。
 - **終える前の振り返り(reflect-before-end)**: prepareに含まれる未処理の原文と配送済みの記憶を読み、必要な採点・記事更新・評価を終了時のwork recordへまとめます。別のreflect query/submitは詳しい回復に使い、提示済みの資料を繰り返し取得しません。
 
@@ -143,7 +143,7 @@ shikii handoff write audit-0.9/report.md < report.md   # 置き換える(1 回 1
 shikii handoff append audit-0.9/log.md < more.md       # 足す
 ```
 
-MCP では `shikii_wiki` の `handoff_list`・`handoff_read`・`handoff_write`・`handoff_append`。パスは `.shikii/handoff/` からの相対(`.shikii/handoff/` 付きでもよい)。`..`・絶対パス・隠し名・制御文字・ファイルやフォルダへのリンク・ハードリンクは断り、置き場の外には出ない。置き換えは毎回別の名の一時ファイルを経て rename する(書き換えの途中で落ちて残った一時ファイルは、次にそのフォルダへ書く時に 1 日より古いものを片付ける)。
+MCP では `shikii_wiki` の `handoff_list`・`handoff_read`・`handoff_write`・`handoff_append`。パスは `.shikii/handoff/` からの相対(`.shikii/handoff/` 付きでもよい)。`..`・絶対パス・隠し名・制御文字・ファイルやフォルダへのリンク・ハードリンクは断り、置き場の外には出ない。読める文字が 1 つも無い文(空、空白と改行だけ、BOM だけ)は、`write` も `append` も、コマンドでも MCP でも断り、記録は元のまま残る。置き換えは毎回別の名の一時ファイルを経て rename する(書き換えの途中で落ちて残った一時ファイルは、次にそのフォルダへ書く時に 1 日より古いものを片付ける)。
 
 次の仕事に効く教訓は wiki に、確かめた時点の証拠の要点は原資料(`shikii wiki capture`。`reference` に作業記録のパスを書ける)に、変わり続けるファイルは作業記録に、と分ける。
 
@@ -481,7 +481,8 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `shikii update` | 最新の安定版へ本体と readout を更新する |
 | `shikii hook install` / `uninstall` | Claude Code と Codex の hook を入れる・外す(`--yes` 無しは表示だけ) |
 | `shikii uninstall` | shikii がエージェントに入れた物(hook・MCP の項目・エージェントの作法)を外し、画面を止める。データ(`.shikii/`・`~/.shikii/agent`)と実行ファイルは残し、実行ファイルを消す `rm` のコマンドを出す(`--yes` 無しは表示だけ) |
-| `shikii hook plan query` / `submit` | 作業の前の整理(エージェントが使う) |
+| `shikii work prepare` / `record` | 作業の準備(このプロジェクトの知識を集める)と結果の記録。作業の前の整理と終わりの見直しも、この 2 つで済ませる(エージェントが使う) |
+| `shikii hook plan query` / `submit` | 作業の前の整理の古い入口。以前からの連携のために残している(エージェントは `work prepare` と `work record` を使う) |
 | `shikii hook variants submit` | 聞き方の候補を渡す(エージェントが使う) |
 | `shikii hook variants check` | 上回った候補の意味が同じかと(英語以外の設定なら)両方の訳を渡す(エージェントが使う。同じなら採用、人は元に戻せる) |
 | `shikii decide <spec>` | 判定して帯を返す |
@@ -525,7 +526,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `POST /v1/wiki/article` | `action: edit / delete`、`id`、`revision`。editは`title`、`lesson`、`applies_to`、`body`、`kind`、`scene` | このプロジェクトの記事を編集・削除する。古い版は409。削除後は検索・配信から外し、出典と履歴を残す。 |
 | `GET /v1/handoff/file?path=` | `path`(.shikii/handoff/ からの相対) | 作業記録の 1 件。画像は画像、文字と HTML は text/plain、それ以外は保存。置き場の外は 400 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
-| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 採点・wiki整理・届いた記憶と訂正の観察、記事の見直しをまとめて確認・保存(query は整理待ちの会話を全部並べ(古い 2 件は原文、続く 40 件までは頭だけ、残りは more_pending の件数)、原資料と見直しの対象は 2 件ずつ見せ、submit は会話・項目・見直しの数を限らない。既存の記事に足す時、元の出典は引き継がれる)。`complete`と各`error`を確認する |
+| `POST /v1/reflect` | `operation: query / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 採点・wiki整理・届いた記憶と訂正の観察、記事の見直しをまとめて確認・保存(query は整理待ちの会話を古い順に並べる(古い 2 件は原文、続く 40 件までは頭だけ。載らなかった会話は more_pending に件数を入れ、次の query で並べる)。原資料と見直しの対象は 2 件ずつ見せ、submit は会話・項目・見直しの数を限らない。既存の記事に足す時、元の出典は引き継がれる)。`complete`と各`error`を確認する |
 | `GET /v1/specs` | | 読み込んでいる spec の一覧 |
 
 判断の未回答・回答済み一覧は、続きがあれば `next_cursor` を返します。同じ取得先・問いに `cursor=<next_cursor>` と `limit`（最大1000件）を渡して読み進めます。不正な位置は400、履歴や回答が変わった場合は409を返すため、最初から読み直してください。画面は続きも自動取得し、既存の「さらに表示」で順に表示します。

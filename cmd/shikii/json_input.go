@@ -10,24 +10,66 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // decodeStrictObject is the one reader of a JSON object an agent sends (the CLI's standard input and the HTTP bodies behind the MCP
 // tools). Unknown keys are refused, and the refusal is an *unknownFieldError: it says which object held the key, which fields that
 // object takes and where a field of that name does belong, so the agent's next call can be right. Decoding and trailing data are
-// returned separately so each entry keeps its own errors.
+// returned separately so each entry keeps its own errors. The error is worded here (jsonReadError) and nowhere else: an entry
+// puts its own words in front of it and never rewords it, so every entry answers the same input with the same sentence.
 func decodeStrictObject(data []byte, target any) (err error, extra bool) {
+	// A byte order mark before the JSON (a file an editor saved, sent through a pipe) is not part of it: it was answered with
+	// "malformed (at byte 3)", which names no cause an agent can see.
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(target); err != nil {
-		var wrongType *json.UnmarshalTypeError
-		if errors.As(err, &wrongType) {
-			return &fieldTypeError{Field: indexedJSONPath(wrongType.Field), Want: jsonShapeName(wrongType.Type), Got: wrongType.Value}, false
-		}
-		return explainUnknownField(err, data, target), false
+		return jsonReadError(err, data, target), false
 	}
 	var trailing any
 	return nil, dec.Decode(&trailing) != io.EOF
+}
+
+// jsonReadError puts a failure to read an agent's JSON in the words of the JSON. Before, each entry worded it or did not: work
+// said where the JSON was malformed, while reflect, wiki and the HTTP bodies passed on encoding/json's "invalid character '}'
+// looking for beginning of object key string", and an input that was cut off came back as "unexpected EOF" everywhere (audit of
+// 0.31.0). What comes back is one of the reader's own answers: a *malformedJSONError, a *fieldTypeError or an
+// *unknownFieldError; anything else keeps its cause behind "cannot read the JSON".
+func jsonReadError(err error, data []byte, target any) error {
+	var wrongType *json.UnmarshalTypeError
+	var syntax *json.SyntaxError
+	switch {
+	case errors.As(err, &wrongType):
+		return &fieldTypeError{Field: indexedJSONPath(wrongType.Field, reflect.TypeOf(target)), Want: jsonShapeName(wrongType.Type), Got: wrongType.Value}
+	case errors.As(err, &syntax):
+		return &malformedJSONError{Offset: syntax.Offset}
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		// the input stops inside its value (a here-document or a pipe that was cut): the place is where the text ends
+		return &malformedJSONError{Offset: int64(len(bytes.TrimRightFunc(data, unicode.IsSpace))), Ends: true}
+	}
+	explained := explainUnknownField(err, data, target)
+	var unknown *unknownFieldError
+	switch {
+	case errors.As(explained, &unknown):
+		return unknown
+	case strings.HasPrefix(err.Error(), "json: unknown field "): // a key the walk could not place (a type that reads its own JSON)
+		return fmt.Errorf("the JSON has an unknown key: %s", strings.TrimPrefix(err.Error(), "json: unknown field "))
+	}
+	return fmt.Errorf("cannot read the JSON: %v", err)
+}
+
+// malformedJSONError is JSON that does not parse, with the place where the reading stopped.
+type malformedJSONError struct {
+	Offset int64 // how many bytes were read when the reading stopped
+	Ends   bool  // the input ended there, before its value was closed
+}
+
+func (e *malformedJSONError) Error() string {
+	if e.Ends {
+		return fmt.Sprintf("the JSON is malformed (at byte %d: the input ends there, before the JSON is closed; send the whole object)", e.Offset)
+	}
+	return fmt.Sprintf("the JSON is malformed (at byte %d)", e.Offset)
 }
 
 // fieldTypeError is a value of the wrong JSON type, in the words of the JSON: encoding/json says "cannot unmarshal string into Go
@@ -46,19 +88,39 @@ func (e *fieldTypeError) Error() string {
 }
 
 // indexedJSONPath writes encoding/json's path of a value (notes.0.sources) the way the refusal of an unknown key writes a place
-// (notes[0].sources): one way for both, so an agent reads them alike.
-func indexedJSONPath(path string) string {
-	parts := strings.Split(path, ".")
+// (notes[0].sources): one way for both, so an agent reads them alike. The path is walked along the target's type, and a number is
+// written as an index only where that type has an array. Everywhere else it is a key and stays one: a key 1 of an object read
+// into a map was written measurements[1], as if the agent had sent an array (audit of 0.31.0).
+func indexedJSONPath(path string, t reflect.Type) string {
+	if path == "" {
+		return ""
+	}
 	out := ""
-	for i, part := range parts {
-		if _, err := strconv.Atoi(part); err == nil && i > 0 {
-			out += "[" + part + "]"
-			continue
+	for _, part := range strings.Split(path, ".") {
+		for t != nil && t.Kind() == reflect.Pointer {
+			t = t.Elem()
 		}
-		if out != "" {
-			out += "."
+		if t != nil && (t.Kind() == reflect.Slice || t.Kind() == reflect.Array) {
+			if _, err := strconv.Atoi(part); err == nil {
+				out += "[" + part + "]"
+				t = t.Elem()
+				continue
+			}
 		}
-		out += part
+		out = joinJSONPath(out, part)
+		switch {
+		case t == nil:
+		case t.Kind() == reflect.Map:
+			t = t.Elem()
+		case jsonObjectType(t) != nil:
+			if f, known := jsonFieldNamed(jsonFieldsOf(jsonObjectType(t)), part); known {
+				t = f.typ
+			} else {
+				t = nil
+			}
+		default:
+			t = nil // the type no longer says what is here: what follows is written as keys
+		}
 	}
 	return out
 }

@@ -55,7 +55,7 @@ var agentUsages = map[string]agentUsage{
 	"reflect": {
 		Line: "reflect query | place | submit (place and submit take one JSON object on standard input; run it in the project's folder)",
 		Forms: []agentForm{
-			{"every pending conversation with its sources, and how_to_submit (the shape of submit)", "reflect query", ""},
+			{"the pending conversations, oldest first, with their sources, and how_to_submit (the shape of submit); more_pending counts the ones that did not fit, and the next query lists them", "reflect query", ""},
 			{"where a draft lesson could go and what it may contradict, before saving a new lesson", "reflect place", `{"wiki":[{"sources":["<source id>"],"title":"<title>","lesson":"<one or two sentences>","applies_to":"<when it applies>","kind":"rule","scene":"<when ...>"}]}`},
 		},
 		Notes: []string{

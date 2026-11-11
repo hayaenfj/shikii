@@ -157,7 +157,9 @@ func TestMCPHandoffLimitIsTheDecodedContent(t *testing.T) {
 		r := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "shikii_wiki", "arguments": map[string]any{"operation": "handoff_write", "path": "big.md", "content": content}}}))
 		return r["isError"] == true, r["content"].([]any)[0].(map[string]any)["text"].(string)
 	}
-	if bad, text := call(strings.Repeat("\n", 600000)); bad {
+	// one letter and 599999 line breaks: 600000 bytes decoded, over 1 MiB as JSON (line breaks alone are a text with nothing to
+	// read, which handoff_write refuses since the audit of 0.31.0)
+	if bad, text := call("x" + strings.Repeat("\n", 599999)); bad {
 		t.Fatalf("600000 bytes of text must be accepted: %s", text)
 	}
 	if bad, text := call(strings.Repeat("a", (1<<20)+1)); !bad || !strings.Contains(text, "1 MiB") && !strings.Contains(text, "1048576") {

@@ -15,7 +15,7 @@ A lesson can cite a work record: capture an observation whose `reference` is the
 ## Using it
 
 - CLI: `shikii handoff list`, `shikii handoff read <path>`, `shikii handoff write <path>` and `shikii handoff append <path>` (body on stdin). Paths are relative to `.shikii/handoff/` (a leading `.shikii/handoff/` is accepted, so the path in a source's `reference` works as is); `..`, absolute paths, hidden names, control characters and links (to files or folders, inside or outside, and hard links) are refused.
-- MCP: `shikii_wiki` with `operation` `handoff_list`, `handoff_read` (`path`), `handoff_write` or `handoff_append` (`path`, `content`). Text only, UTF-8, at most 1 MiB per call; reading returns text up to 4 MiB. For images and other binaries, write the file directly into the folder.
+- MCP: `shikii_wiki` with `operation` `handoff_list`, `handoff_read` (`path`), `handoff_write` or `handoff_append` (`path`, `content`). Text only, UTF-8, at most 1 MiB per call; reading returns text up to 4 MiB. A text with nothing to read (`content` left out or empty, an empty standard input, only spaces and line breaks, or only a byte order mark) is refused, and the record stays as it was. For images and other binaries, write the file directly into the folder.
 - Group files by task in a first-level folder (`audit-<version>/`, `release-<version>/`, `investigation-<topic>/`). The page groups by that folder.
 - The person reads them on the answer page under Knowledge → Work records (read only; text stays text, images are shown, HTML is never rendered).
 

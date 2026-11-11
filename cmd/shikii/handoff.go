@@ -27,9 +27,24 @@ func runHandoff(root string, req notebookRequest) (any, error) {
 	case "handoff_read":
 		return b.Read(req.Path)
 	case "handoff_write", "handoff_append":
-		return b.Write(req.Path, req.Content, req.Operation == "handoff_append")
+		entry, err := b.Write(req.Path, req.Content, req.Operation == "handoff_append")
+		if errors.Is(err, handoff.ErrNoText) {
+			// the MCP tool and the HTTP endpoint take the text in content: left out or blank, handoff_write replaced the record
+			// with 0 bytes (audit of 0.31.0). The CLI answers its own empty standard input before it gets here.
+			return nil, errors.New(emptyHandoffText("content", req.Operation+" takes the text of the work record in it"))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return entry, nil
 	}
 	return nil, errors.New("usage: handoff_list / handoff_read / handoff_write / handoff_append")
+}
+
+// emptyHandoffText is the refusal of a write or an append whose text holds nothing to read (handoff.HasText), one sentence for
+// every entry with the entry's own name for where the text goes: standard input on the CLI, content through the MCP tool.
+func emptyHandoffText(where, reads string) string {
+	return where + " was empty: " + reads + ", and nothing was written"
 }
 
 // cmdHandoff is shikii handoff list | read <path> | write <path> | append <path> (write and append take the body on standard input).
@@ -89,9 +104,10 @@ func cmdHandoff(args []string) error {
 		if len(data) > 1<<20 {
 			return errors.New("standard input is over 1 MiB. Split it into pieces of 1 MiB and append them")
 		}
-		if strings.TrimSpace(string(data)) == "" {
-			// an agent's shell gives an empty standard input when nothing is piped: write replaced the record with 0 bytes
-			return usageRefusal("handoff", "standard input was empty: shikii handoff "+args[0]+" reads the text from it, and nothing was written", "handoff "+args[0]+" <work>/report.md")
+		if !handoff.HasText(string(data)) {
+			// an agent's shell gives an empty standard input when nothing is piped: write replaced the record with 0 bytes. An
+			// input of a byte order mark alone is as empty (it replaced the record with the mark)
+			return usageRefusal("handoff", emptyHandoffText("standard input", "shikii handoff "+args[0]+" reads the text from it"), "handoff "+args[0]+" <work>/report.md")
 		}
 		req.Path, req.Content = args[1], string(data)
 		res, err := runHandoff(root, req)
@@ -105,24 +121,33 @@ func cmdHandoff(args []string) error {
 	return usage
 }
 
+// handoffOperations is what each operation of shikii handoff takes: how many paths, and whether it reads a text from standard
+// input. Only an operation listed with text is told where its text goes.
+var handoffOperations = map[string]struct {
+	paths int
+	text  bool
+}{"list": {0, false}, "read": {1, false}, "write": {1, true}, "append": {1, true}}
+
 // handoffProblem says what is wrong with the arguments of shikii handoff ("" when only the operation is missing).
 func handoffProblem(args []string) string {
 	if len(args) == 0 {
 		return ""
 	}
-	takes := map[string]int{"list": 0, "read": 1, "write": 1, "append": 1}
-	paths, known := takes[args[0]]
+	takes, known := handoffOperations[args[0]]
 	switch {
 	case !known:
 		return fmt.Sprintf("handoff has no operation %q", args[0])
 	case len(args) > 1 && strings.HasPrefix(args[1], "-"):
 		return "handoff " + args[0] + " takes no flags"
-	case len(args)-1 < paths:
+	case len(args)-1 < takes.paths:
 		return "handoff " + args[0] + " needs the path of a work record"
-	case len(args)-1 > paths && paths == 0:
+	case len(args)-1 > takes.paths && takes.paths == 0:
 		return "handoff list takes no arguments"
-	case len(args)-1 > paths:
+	case len(args)-1 > takes.paths && takes.text:
 		return "handoff " + args[0] + " takes one path (the text goes on standard input, not as an argument)"
+	case len(args)-1 > takes.paths:
+		// read prints a record and reads nothing: it was told that "the text goes on standard input" (audit of 0.31.0)
+		return "handoff " + args[0] + " takes one path (one work record at a time)"
 	}
 	return ""
 }

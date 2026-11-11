@@ -243,7 +243,25 @@ func (b Book) Read(p string) (File, error) {
 // beforeReplace runs after a rewrite has filled its temp file and right before renaming it into place; a test makes another write happen there.
 var beforeReplace = func() {}
 
+// ErrNoText is the refusal of a write whose text holds nothing to read. Each entry says it in its own words (the CLI reads the text
+// from standard input, the MCP tool takes it in content); this is what any other caller gets.
+var ErrNoText = errors.New("the text of the work record was empty, and nothing was written")
+
+// HasText reports whether a text holds something to read: at least one character that shows. Everything else holds nothing: an
+// empty text, spaces and line breaks, and marks that do not show (a byte order mark, a zero-width space, control characters). The
+// rule names what counts as text, so a blank of a kind nobody listed is still a blank.
+func HasText(content string) bool {
+	for _, r := range content {
+		if unicode.IsGraphic(r) && !unicode.IsSpace(r) {
+			return true
+		}
+	}
+	return false
+}
+
 // Write writes one item (appends to the end in appendMode). Parent folders are created. Rewrites replace the file from a temp file.
+// A text with nothing to read is refused (ErrNoText): it replaced a record with a blank, through the MCP tool with its content left
+// out and through the CLI with a standard input that held only a byte order mark (audit of 0.31.0).
 func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 	clean, err := Clean(p)
 	if err != nil {
@@ -254,6 +272,9 @@ func (b Book) Write(p, content string, appendMode bool) (Entry, error) {
 	}
 	if !utf8.ValidString(content) {
 		return Entry{}, errors.New("only UTF-8 text can be written to a work record. Put images and other files under .shikii/handoff/ as files")
+	}
+	if !HasText(content) {
+		return Entry{}, ErrNoText
 	}
 	if err := b.Ensure(); err != nil {
 		return Entry{}, errors.New("cannot create the work-record place (.shikii/handoff)")

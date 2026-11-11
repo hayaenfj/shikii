@@ -340,7 +340,7 @@ func decodeReview(input io.Reader) (reviewRequest, error) {
 	}
 	err, extra := decodeStrictObject(data, &req)
 	if err != nil {
-		return req, fmt.Errorf("check the scoring JSON: %v", jsonShapeError(err))
+		return req, fmt.Errorf("check the scoring JSON: %v", err)
 	}
 	if extra {
 		return req, errors.New("pass scoring JSON one object at a time")

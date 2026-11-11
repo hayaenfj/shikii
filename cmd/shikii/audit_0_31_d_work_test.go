@@ -276,3 +276,15 @@ func TestAuditD_A5_DefaultReplyOverTheDocumentedBound(t *testing.T) {
 		}
 	}
 }
+
+// A byte order mark before the JSON is not part of it (found beside audit D's finding A-3: it was answered "malformed (at byte 3)").
+// One inside the JSON is still malformed.
+func TestTheReaderTakesAByteOrderMarkBeforeTheJSON(t *testing.T) {
+	var req workRequest
+	if err, extra := decodeStrictObject([]byte("\xef\xbb\xbf{\"query\":\"CSV export\"}"), &req); err != nil || extra || req.Query != "CSV export" {
+		t.Errorf("JSON after a byte order mark is read: err=%v extra=%v query=%q", err, extra, req.Query)
+	}
+	if err, _ := decodeStrictObject([]byte("{\xef\xbb\xbf\"query\":\"CSV export\"}"), &req); err == nil || !strings.Contains(err.Error(), "the JSON is malformed (at byte") {
+		t.Errorf("a byte order mark inside the JSON is malformed: %v", err)
+	}
+}

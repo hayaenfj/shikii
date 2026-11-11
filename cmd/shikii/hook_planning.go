@@ -135,15 +135,19 @@ const planningHowToSubmit = "Pass the same session_id, turn_id and query, plus a
 // agent whose shell could not run the command never called shikii_wiki, although it was connected, while only the command was named.
 // How to combine notes and reflection and what to check in the reply is in how_to_record of the prepare reply, not here.
 func planningNotice(sessionID, turnID string) string {
-	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Send the JSON below, with topic words in query added, on standard input to %s work prepare (or as work to the MCP tool shikii_wiki, operation prepare). End with work record the same way, using the receipt and result:{changed,checked?,evidence?:[refs],remaining?}. A rule, test or procedure you make or change goes to the wiki. Do not run the legacy hook plan query: it replaces the receipt.\n", noticeCommand()) + planJSON(sessionID, turnID)
+	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Send the JSON below, with topic words in query added, on standard input to %s work prepare (%s). End with work record the same way, using the receipt and result:{changed,checked?,evidence?:[refs],remaining?}. A rule, test or procedure you make or change goes to the wiki. Do not run the legacy hook plan query: it replaces the receipt.\n", noticeCommand(), noticeMCPForm) + planJSON(sessionID, turnID)
 }
 
 // reasoningNotice is the notice of a request that needs no planning judgment. It is shorter (the request's own context comes with
 // it), and says the same three things about the call: the JSON goes on standard input, to this binary, or to the MCP tool (before,
-// it named none of them: audit of 0.31.0).
+// it named none of them: audit of 0.31.0). The MCP form is worded as in planningNotice, noticeMCPForm: "(MCP: shikii_wiki,
+// operation prepare)" did not say that the ids go inside work, and an agent that put them beside operation was refused once.
 func reasoningNotice(sessionID, turnID string) string {
-	return fmt.Sprintf("shikii: put the JSON below, plus topic words in query, on standard input of %s work prepare (MCP: shikii_wiki, operation prepare); it registers the start. End with work record the same way: its receipt and result.\n", noticeCommand()) + planJSON(sessionID, turnID)
+	return fmt.Sprintf("shikii: put the JSON below, plus topic words in query, on standard input of %s work prepare (%s); it registers the start. End with work record the same way: its receipt and result.\n", noticeCommand(), noticeMCPForm) + planJSON(sessionID, turnID)
 }
+
+// noticeMCPForm is how both notices name the MCP call beside the command: the JSON is the value of work, not the arguments.
+const noticeMCPForm = "or as work to the MCP tool shikii_wiki, operation prepare"
 
 // noticeCommand is this binary as a notice names it: its own path, quoted for a shell.
 func noticeCommand() string {
@@ -171,7 +175,7 @@ func cmdHookPlan(args []string) error {
 	var req planningRequest
 	decodeErr, extra := decodeStrictObject(data, &req)
 	if decodeErr != nil {
-		return fmt.Errorf("cannot read the pre-start context: %v", jsonShapeError(decodeErr))
+		return fmt.Errorf("cannot read the pre-start context: %v", decodeErr)
 	}
 	if req.Reflection == nil && len(data) > 16<<10 {
 		return errors.New("the pre-start context must be JSON of 16KB or less (combined reflection: 1 MiB)")

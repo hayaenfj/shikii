@@ -562,7 +562,7 @@ delivery rather than inferring token or latency savings from UTF-8 bytes.
 
 MCP uses `shikii_wiki` with `operation:"prepare"` or `"record"`, and the payload above inside `work`. Pass the absolute working folder as `project` on every MCP call. HTTP uses the same operation and work object at **POST `/v1/wiki/notebook`**, with `Content-Type: application/json`, under the server's existing authentication and project boundary.
 
-Individual `hook plan query/submit`, `reflect query/place/submit`, `wiki capture/ingest/patch` and diagnostics remain available for deeper operations and older integrations. Do not mix processes of different versions while using a prepared receipt: older session writers cannot preserve the new work context. Reopen agent sessions and restart the page/MCP after updating.
+Individual `reflect query/place/submit`, `wiki capture/ingest/patch` and diagnostics remain available for deeper operations, and `hook plan query/submit` for older integrations (not beside `work prepare` for the same request: `hook plan query` replaces its receipt). Do not mix processes of different versions while using a prepared receipt: older session writers cannot preserve the new work context. Reopen agent sessions and restart the page/MCP after updating.
 
 ## Learn a reading preference from checked tasks
 

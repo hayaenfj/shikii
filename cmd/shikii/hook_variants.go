@@ -172,41 +172,17 @@ func cmdHookVariants(args []string) error {
 	return json.NewEncoder(stdout).Encode(map[string]any{"saved": names, "tune": tuneStatus, "adoption": "a winning variant is adopted after its meaning is checked before the next request"})
 }
 
-// decodeStrict reads exactly one JSON value and refuses unknown keys. When it cannot read it, it says which key should have which shape.
+// decodeStrict reads exactly one JSON value and refuses unknown keys. When it cannot read it, the reader says which key should
+// have which shape, or where the JSON is malformed (decodeStrictObject words it for every entry).
 func decodeStrict(data []byte, v any) error {
 	err, extra := decodeStrictObject(data, v)
 	if err != nil {
-		return jsonShapeError(err)
+		return err
 	}
 	if extra {
 		return errors.New("pass only one JSON value")
 	}
 	return nil
-}
-
-// jsonShapeError turns a JSON read failure into text that says how to fix it.
-func jsonShapeError(err error) error {
-	var typeErr *json.UnmarshalTypeError
-	var syntaxErr *json.SyntaxError
-	var unknown *unknownFieldError
-	var wrongType *fieldTypeError
-	switch {
-	case errors.As(err, &unknown):
-		return unknown // already says where the key was and which fields that object takes
-	case errors.As(err, &wrongType):
-		return wrongType // already names the field and both shapes
-	case errors.As(err, &typeErr):
-		want := map[string]string{"struct": "an object {…}", "slice": "an array […]", "string": "a string", "bool": "true / false", "int": "an integer", "map": "an object {…}"}[typeErr.Type.Kind().String()]
-		if want == "" {
-			want = typeErr.Type.String()
-		}
-		return fmt.Errorf("pass the JSON %s as %s (got %s)", typeErr.Field, want, typeErr.Value)
-	case errors.As(err, &syntaxErr):
-		return fmt.Errorf("the JSON is malformed (at byte %d)", syntaxErr.Offset)
-	case strings.HasPrefix(err.Error(), "json: unknown field "):
-		return fmt.Errorf("the JSON has an unknown key: %s", strings.TrimPrefix(err.Error(), "json: unknown field "))
-	}
-	return fmt.Errorf("cannot read the JSON: %v", err)
 }
 
 // startTune starts scoring the wording variants in the background and writes the auto-tune record (tuned-<spec>) with the current number of truths (so it is not run again on the same number).

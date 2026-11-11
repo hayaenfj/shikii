@@ -32,6 +32,8 @@
 - `shikii --init` said "Ready" on a machine with no hooks. It now says the hooks are not installed.
 - Within one piece of work, the agent can cite a source it saved earlier and a page it edited.
 - The notice before each request and the one at the end of a turn asked for two different procedures. They now ask for one, and also name the MCP tool.
+- A work record (`shikii handoff`) could be replaced by an empty text, for example when the text was left out through the MCP tool. An empty text is now refused, and nothing is written.
+- Malformed JSON was answered differently by each command. Every command now says where the JSON is malformed.
 
 ## 0.30.8 — Your unfinished lines no longer stop the agent; undo the AI's decisions from the page
 

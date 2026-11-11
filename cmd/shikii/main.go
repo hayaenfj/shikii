@@ -115,7 +115,7 @@ func usageText() string {
   shikii work prepare | record (JSON on stdin)
                    Prepare knowledge; add searches/consult/reuse with the same receipt; record judgments, evidence and procedure outcomes
   shikii hook plan query | submit (JSON on stdin)
-                   Your usual agent organizes the request, the agreed plan and open questions before starting, with the original text, and decides. Not treated as a person's input or as a truth
+                   The older entry for organizing the request, the agreed plan and open questions before starting (work prepare and work record do it in one call each). Not treated as a person's input or as a truth
   shikii uninstall [--yes]
                    Remove what shikii put into the agents: its hooks (~/.claude/settings.json, ~/.codex/hooks.json), [mcp_servers.shikii] in ~/.codex/config.toml,
                    the shikii entry in each registered project's .mcp.json and opencode.json, the skill (~/.claude/skills/shikii, ~/.agents/skills/shikii), and stop its pages.
@@ -146,7 +146,7 @@ func usageText() string {
                    Turn a person's correction into a "blocking check" (paired-files / forbidden-words / commit-body / forbidden-commands). enable turns it on after confirming that it blocks a negative example
   shikii version                                  Print the version
   shikii review query | submit (JSON on stdin)       The AI gives provisional scores with reasons from conversations and outcomes. A person checks the samples and held items, and corrections feed the next scoring. Provisional scores are stored apart from truths and calibration
-  shikii reflect query | submit (JSON on stdin)      Combine scoring and wiki organizing into one confirmation and one bulk save (query returns 2 at a time from the oldest conversations, submit takes any number). Pass reviews and wiki, then check complete and each item's error
+  shikii reflect query | submit (JSON on stdin)      Combine scoring and wiki organizing into one confirmation and one bulk save (query lists the pending conversations oldest first, the oldest 2 with their text, and counts the ones that do not fit; submit takes any number). Pass reviews and wiki, then check complete and each item's error
   shikii check     <spec.yaml>... [--store DIR]      CI: fail lines whose wording changed, hand-written lines, lines with too little precision and lines that lift an option no truth confirmed
   shikii drift     <spec.yaml> --model M [--window N] [--store DIR]
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]

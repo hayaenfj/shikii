@@ -28,7 +28,7 @@ const (
 func builtinGuards() []guard {
 	return []guard{
 		{ID: ritualReasoning, Kind: "ritual", Title: "Save an evidence-linked starting judgment and ending review", Reason: "record reasoning start and finish with current evidence; resolve pending wiki changes before completing", Enabled: true},
-		{ID: ritualPlan, Kind: "ritual", Title: "Sort out the plan before work (hook plan query \u2192 submit)", Reason: "if files were changed in a request the hook asked about, submit the sorted plan before finishing", Enabled: true},
+		{ID: ritualPlan, Kind: "ritual", Title: "Sort out the plan before work (work prepare \u2192 work record)", Reason: "if files were changed in a request the hook asked about, sort out the plan with work prepare and work record before finishing", Enabled: true},
 		{ID: ritualReflect, Kind: "ritual", Title: "Save the reflection before finishing (reflect query \u2192 submit)", Reason: "if the hook listed conversations, submit the provisional scores, wiki and assessments of delivered lessons before finishing", Enabled: true},
 		{ID: ritualKinds, Kind: "ritual", Title: "Give a kind and a scene to pages without them (shikii wiki classify)", Reason: "if the hook listed pages from before the version bump, give them a kind and a scene before finishing", Enabled: true},
 		{ID: ritualLang, Kind: "ritual", Title: "Write the final reply in the person's language", Reason: "if Claude Code's language is one written in its own script (Japanese, Chinese, Korean, Russian, Ukrainian) and the final reply is written mostly in Latin letters, write it again in that language before finishing", Enabled: true},
@@ -94,7 +94,13 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 					reason = planningWithWorkReason(len(changed))
 				}
 				if grouping {
-					reason += " Include continues_previous (true or false) for this short message."
+					// the sentence names the call that takes it: after "the work prepare below sorts it out" an agent sent it
+					// with prepare and was refused ("prepare reads context; send content with record": audit of 0.31.0)
+					where := "the submit"
+					if reasoningLeftNow > 0 {
+						where = "work record"
+					}
+					reason += " Include continues_previous (true or false) in " + where + " for this short message."
 				}
 			} else {
 				reason = groupingBlockReason(in.SessionID, snapshot.TurnID)

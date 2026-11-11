@@ -84,7 +84,7 @@ func guardAdd(root string, in io.Reader) error {
 	}
 	var g guard
 	if err, _ := decodeStrictObject(data, &g); err != nil {
-		return fmt.Errorf("guard add reads one JSON object (id, kind, title, reason, source, pairs/words/except/allow/required): %v", jsonShapeError(err))
+		return fmt.Errorf("guard add reads one JSON object (id, kind, title, reason, source, pairs/words/except/allow/required): %v", err)
 	}
 	g.Enabled, g.Red = false, nil // drafts are disabled. enable turns them on (after seeing the negative example stop)
 	if err := g.validate(); err != nil {

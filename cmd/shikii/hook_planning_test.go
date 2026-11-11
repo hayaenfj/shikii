@@ -456,8 +456,8 @@ func TestNoticesKeepTheirInstructions(t *testing.T) {
 		name, text string
 		want       []string
 	}{
-		{"planning notice", planningNotice("s", "0123456789abcdef"), []string{"work prepare", "work record", "shikii_wiki", "Do not run the legacy hook plan query", "topic words in query", "do not ask the person"}},
-		{"notice without a planning judgment", reasoningNotice("s", "0123456789abcdef"), []string{"work prepare", "work record", "shikii_wiki", "standard input", "topic words in query", "it registers the start"}},
+		{"planning notice", planningNotice("s", "0123456789abcdef"), []string{"work prepare", "work record", "as work to the MCP tool shikii_wiki, operation prepare", "Do not run the legacy hook plan query", "topic words in query", "do not ask the person"}},
+		{"notice without a planning judgment", reasoningNotice("s", "0123456789abcdef"), []string{"work prepare", "work record", "as work to the MCP tool shikii_wiki, operation prepare", "standard input", "topic words in query", "it registers the start"}},
 		{"planning how_to_submit", planningHowToSubmit, []string{"lesson:<id>:<revision>", "the <id> in history:<id>:user", "the skill's references/planning.md",
 			"continues_previous", "false when it is a new request", "omit it when unsure", "person's own words"}},
 		{"planning notice (no query)", planningNoQueryNotice, []string{"lesson:<id>:<revision>"}},

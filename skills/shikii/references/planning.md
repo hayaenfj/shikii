@@ -1,14 +1,14 @@
 # Prepare context before work
 
-For ordinary work from 0.19, use [recording.md](recording.md): prepare once, then record semantic content with its receipt. The operations below remain available for deeper work and existing integrations.
+For ordinary work from 0.19, use [recording.md](recording.md): prepare once with `work prepare`, then record semantic content with its receipt. This page says how to read the task, whichever entry returned it, and how to search again with that receipt. From [The older entry](#the-older-entry-hook-plan-query) on it describes `hook plan query` and `hook plan submit`, which remain available for existing integrations. Use one entry per request: `hook plan query` replaces the receipt of `work prepare`.
 
 The agent owns interpretation: identify the current task, find relevant conversation and wiki evidence, and distinguish an unresolved user decision from a delegated task detail. This applies to writing, research, business support and software. The program retrieves records, checks quotes and scope, and measures the resulting decision. Do not ask the person to fill in a context form or add another model.
 
 ## Recover the current task
 
-When the hook supplies `session_id` and `turn_id`, pass them as JSON on stdin to `shikii work prepare`, as its notice says (`shikii hook plan query` is the older entry for the same context, and it replaces the receipt of work prepare). Use the exact executable path supplied by the hook when available.
+When the hook supplies `session_id` and `turn_id`, pass them as JSON on stdin to `shikii work prepare`, as its notice says, and keep the `receipt` of its reply for the whole request. Use the exact executable path supplied by the hook when available. The reply holds the request as `task`, the exchange as `conversation` and the lessons as `knowledge`; [recording.md](recording.md#prepare-once) describes each field.
 
-Read `source_material` with the active conversation. Identify:
+Read `task` and `conversation` with the active conversation. Identify:
 
 - What the person wants **now**: an answer, investigation, comparison, change, or operation.
 - Which approach and constraints have already been selected, and which request that selection belongs to.
@@ -16,23 +16,33 @@ Read `source_material` with the active conversation. Identify:
 
 An information question needs an answer; it does not inherently need a separate clarification. Explaining options or brainstorming can begin before a later implementation is selected. An accepted proposal does not need the same agreement again. Missing background and agent-owned implementation details are not automatically blocking user choices.
 
-A short reply can refer to earlier work. The query includes up to four recent turns from this session, with each historical field bounded to 1200 bytes. Read their sequence rather than joining their text into a new user statement. A historical answer remains historical even when a new reply arrives before the agent finishes.
+A short reply can refer to earlier work. The reply includes up to four recent turns from this session, with each historical field bounded to 1200 bytes. Read their sequence rather than joining their text into a new user statement. A historical answer remains historical even when a new reply arrives before the agent finishes.
 
 ## Retrieve relevant wiki evidence
 
-If an earlier decision or project constraint matters, choose concrete topic words from that task and query again, for example:
+If an earlier decision or project constraint matters, choose concrete topic words from that task and search again with the receipt you hold. Pass this to `shikii work prepare`:
 
 ```json
-{"session_id":"the supplied ID","turn_id":"0123456789abcdef","query":"CSV export columns and filters"}
+{"receipt":"<receipt>","query":"CSV export columns and filters"}
 ```
 
-The optional `query` searches this project's wiki, including lesson bodies, and returns up to two applicable lessons with their revision and source IDs. Refine the topic if the results do not apply; do not treat delivery as relevance or usefulness. This lookup is independent of the hook's one-hour suppression of repeated memory quotations.
+The receipt stays the same, and the lessons found join `knowledge` under new `knowledgeN` references ([recording.md](recording.md#extend-the-receipt)). Do not send `session_id` and `turn_id` a second time to search: a preparation without the receipt starts the request over and replaces the receipt, and the earlier receipt is refused from then on. Refine the topic if the results do not apply; do not treat delivery as relevance or usefulness.
 
 Choose short topic terms and plausible alternative wording rather than copying the whole request into keyword search. For example, a receipt question can concern a refund policy, while a personal-name correction can concern publication rules. If the returned topic is wrong, refine the query before citing it. For comparing more candidates and reusing retrieved evidence, follow [wiki.md](wiki.md#search-and-reuse-evidence).
 
 Use the knowledge to reason: identify what the project is trying to achieve, why a past choice was made, and which conditions or exceptions matter now. Separate the person's explicit rules from an agent's working hypotheses. If the current evidence differs, explain the difference and inspect the sources; do not turn a past choice into a universal rule or treat a link as permission. When writing back, preserve supported reasons and exceptions and connect the procedure to its criterion through `related`. Do not invent a rationale just to fill these fields.
 
-When the work moves to another area mid-task (another part of the code, a release, a document), search the wiki again with that area's topic words (`shikii wiki query <topic>`) before acting there: the lessons delivered before work were chosen by the first request's words.
+When the work moves to another area mid-task (another part of the code, a release, a document), search the wiki again with that area's topic words (the same receipt with another `query`, or `shikii wiki query <topic>`) before acting there: the lessons delivered before work were chosen by the first request's words.
+
+## The older entry: hook plan query
+
+`shikii hook plan query` takes the ids of the hook notice and returns the same context in another shape: the texts are in `source_material` (the keys are listed under [Submit grounded interpretations](#submit-grounded-interpretations)), with `how_to_submit`. Its reply has no receipt, and it replaces the receipt of a `work prepare` for the same request, so use it only for a request that `work prepare` does not prepare. To search again there, pass the ids with other topic words to `shikii hook plan query`:
+
+```json
+{"session_id":"the supplied ID","turn_id":"0123456789abcdef","query":"CSV export columns and filters"}
+```
+
+The optional `query` searches this project's wiki, including lesson bodies, and returns up to two applicable lessons with their revision and source IDs. This lookup is independent of the hook's one-hour suppression of repeated memory quotations.
 
 Read each lesson's applicability and kind. Planning returns complete summaries and conditions, and follows the selected pages' direct `related` links to at most two live `criteria` pages. `wiki_context.related` identifies the originating page; a link is a reason to inspect a criterion, not proof that it applies. When `pages` is omitted, up to two complete bodies are supplied as `article:<id>:<revision>`, criteria first, within 8000 body bytes in total. Read these bodies now instead of fetching the same revision again. A body that does not fit is omitted whole; use `shikii wiki query lesson:<page_id>` for missing bodies and related pages. If its meaning or origin is unclear, use `shikii wiki query <source_id>` to inspect the original exchange. Prefer current instructions over historical agreements; a wiki lesson is a hypothesis, never current approval. If no usable evidence exists, keep the missing context unknown.
 

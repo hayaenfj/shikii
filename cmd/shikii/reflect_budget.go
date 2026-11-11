@@ -8,14 +8,17 @@ import (
 
 // limitReflectQuery makes the reply of reflect query fit what an agent's tool shows. It had no bound: with long lessons close to
 // the oldest conversations it reached 86 KB in this project, the agent's MCP client refused it whole and its shell cut it in the
-// middle. What the agent needs to submit always stays: every conversation with its targets and the keys of its delivered lessons,
-// and how_to_submit. The rest goes in steps, the least useful first, until the reply fits:
+// middle. What the agent needs to submit always stays: each conversation listed with its targets and the keys of its delivered
+// lessons, and how_to_submit. The rest goes in steps, the least useful first, until the reply fits:
 //
 //  1. the bodies and details of the close lessons (title, lesson, applies_to, kind, scene and the exact query stay)
 //  2. the details of the maintenance tasks (page, revision, key, title and what to do stay)
 //  3. the examples of earlier corrections
 //  4. the close lessons at the end of the list
 //  5. the raw text of the conversations after the first, which become heads like the ones after them
+//  6. the newest conversations, when even the heads do not fit: they are not listed but counted in more_pending, and the next
+//     query lists them (the first conversation always stays)
+//  7. the raw text of the first conversation, when it alone is over the bound: it becomes a head too
 //
 // output names each step taken and how to read what was left out. A reply that fits is returned as it is. size measures the whole
 // reply the way the transport sends it (the MCP tool result, or the CLI's line).
