@@ -6,6 +6,9 @@ import (
 	"strconv"
 )
 
+// bareNote is what output says when the delivered lessons keep their keys only (reflectBare).
+const bareNote = "the texts of the delivered lessons (each keeps its source_id and key: wiki query lesson:<id> reads one)"
+
 // limitReflectQuery makes the reply of reflect query fit what an agent's tool shows. It had no bound: with long lessons close to
 // the oldest conversations it reached 86 KB in this project, the agent's MCP client refused it whole and its shell cut it in the
 // middle. What the agent needs to submit always stays: each conversation listed with its targets and the keys of its delivered
@@ -24,9 +27,6 @@ import (
 //
 // output names each step taken and how to read what was left out. A reply that fits is returned as it is. size measures the whole
 // reply the way the transport sends it (the MCP tool result, or the CLI's line).
-// bareNote is what output says when the delivered lessons keep their keys only (reflectBare).
-const bareNote = "the texts of the delivered lessons (each keeps its source_id and key: wiki query lesson:<id> reads one)"
-
 func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 	if size(view) <= budget {
 		return view

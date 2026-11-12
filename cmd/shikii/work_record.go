@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -142,9 +141,9 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 
 	local := map[string]string{}
 	for i, o := range req.Observations {
-		if citable, shikiis := workSourceTitles[strings.TrimSpace(o.Title)]; shikiis && !citable {
+		if err := reportTitleRefusal(o.Title); err != nil {
 			// a title shikii gives its own reports: an observation under it would be taken for one, and never cited
-			add(workItem{Ref: "new" + strconv.Itoa(i+1), Kind: "observation", Error: fmt.Sprintf("the title %q is the one shikii gives its own reports and records; give the observation a title of its own (what you checked)", o.Title)})
+			add(workItem{Ref: "new" + strconv.Itoa(i+1), Kind: "observation", Error: err.Error()})
 			continue
 		}
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)

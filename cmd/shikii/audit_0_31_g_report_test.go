@@ -10,22 +10,17 @@ import (
 )
 
 // An observation the agent itself sends, with kind agent (the default when kind is left out) and a title that is one of the
-// titles shikii gives its reports. It is what the agent checked, yet it can no longer be evidence, and the refusal calls it a
-// report a work wrote about itself.
+// titles shikii gives its reports, is refused before it is saved, with the reason and what to send: saved, it could never be
+// evidence (the refusal of the result called it a report). The same observation under a title of its own is evidence.
 func TestAuditGAnObservationTitledLikeAReport(t *testing.T) {
 	for _, title := range []string{workResultTitle, workReviewTitle, workRecoveryTitle, workProcedureName} {
 		t.Run(title, func(t *testing.T) {
 			f := newAuditFlow(t)
 			first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
 			saved, err := f.record(first, map[string]any{"observations": []any{map[string]any{"title": title, "content": "Ran make test: 412 passed, 0 failed."}}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			_ = saved
-			done, err := f.record(first, map[string]any{"result": map[string]any{"changed": "Edited the export.", "checked": "Ran make test.", "evidence": []any{"observed1"}}})
-			t.Logf("title %q: err=%v complete=%v errors=%.300s", title, err, done["complete"], auditJSON(done["errors"]))
-			if err != nil || strings.Contains(auditJSON(done["errors"]), "wrote about itself") {
-				t.Errorf("the agent's own check result, sent with the title %q, is refused as evidence: %v %.300s", title, err, auditJSON(done["errors"]))
+			t.Logf("title %q: err=%v complete=%v errors=%.300s", title, err, saved["complete"], auditJSON(saved["errors"]))
+			if raw := auditJSON(saved["errors"]); err != nil || saved["complete"] == true || !strings.Contains(raw, "is the one shikii gives its own reports") || !strings.Contains(raw, "a title of its own") {
+				t.Errorf("the agent's observation titled %q is not refused with the reason and what to send: %v %.300s", title, err, raw)
 			}
 			// control: the same observation with another title is evidence
 			g := newAuditFlow(t)
@@ -34,7 +29,9 @@ func TestAuditGAnObservationTitledLikeAReport(t *testing.T) {
 				t.Fatal(err)
 			}
 			c, err := g.record(p, map[string]any{"result": map[string]any{"changed": "Edited the export.", "checked": "Ran make test.", "evidence": []any{"observed1"}}})
-			t.Logf("control, title \"make test\": err=%v complete=%v errors=%.200s", err, c["complete"], auditJSON(c["errors"]))
+			if err != nil || c["complete"] != true {
+				t.Errorf("control: the observation titled \"make test\" is no evidence: %v %.200s", err, auditJSON(c["errors"]))
+			}
 		})
 	}
 }

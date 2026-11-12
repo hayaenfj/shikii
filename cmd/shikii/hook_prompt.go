@@ -23,7 +23,9 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if isNotification(req) {
 		// a completion notice of background work is not a request: the 2 questions are not asked and the request, listing and pending are not replaced (the outcome truth is decided at the person's next request).
 		// if work continues after the notice, judge the original request once more at the end of that turn (reset Judged)
-		if snapshot.Request == "" {
+		// only the request the session worked on last goes on: a notice that comes while the shell stands in the project of an
+		// older request is turnElsewhere's to hand on
+		if snapshot.Request == "" || !noticeGoesOnHere(in.SessionID, agent) {
 			return hookOut{}, nil, nil
 		}
 		return hookOut{}, []func(*hookSession){func(s *hookSession) {

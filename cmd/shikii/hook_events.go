@@ -103,10 +103,10 @@ func runHookEvent(event string) error {
 			out, err = hookToolLesson(agent, &in, snapshot)
 		}
 	}
-	turnElsewhere(event, &in, agent, out.Block) // the same session's requests in other projects end, or go on, with this event
 	if moved != "" {
 		out.Context = joinLines(moved, out.Context)
 	}
+	blocked := out.Block // whether the agent's turn goes on after this event
 	if len(muts) > 0 {
 		if serr := saveHookMutations(agent, in.SessionID, event, snapshot, &out, muts, stopRecords); serr != nil {
 			if err == nil {
@@ -117,9 +117,11 @@ func runHookEvent(event string) error {
 				out = hookOut{} // the record is the next request's by now: this Stop has nothing to verify and must not end that request's work
 			} else if event == "stop" {
 				out.Halt, out.Block, out.Reason = ritualHalt(true), false, ""
+				blocked = false // the turn ends incomplete (continue:false), as with a record that cannot be read (audit of 0.31.0)
 			}
 		}
 	}
+	turnElsewhere(event, &in, agent, blocked) // the same session's requests in other projects end, or go on, with this event
 	if event == "user-prompt-submit" || event == "stop" {
 		sweepDeferrals(agent, in.SessionID) // other sessions' outcomes left waiting by a session that was closed mid-turn (outside this session's lock)
 	}

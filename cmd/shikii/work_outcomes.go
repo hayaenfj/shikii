@@ -83,6 +83,13 @@ func recordWorkOutcome(book notebook.Book, w *workState, o workOutcome, resolve 
 	if len(o.Sources) == 0 || len(o.Sources) > 4 {
 		return item, errors.New("an outcome needs one to four captured-observation references")
 	}
+	// an outcome is evidence a later result can cite: what it cites must be observed, as for a trial. An outcome citing the
+	// work's own result made a result with nothing observed sufficient (audit of 0.31.0)
+	w.citingEvidence = true
+	defer func() { w.citingEvidence = false }()
+	if err := selfEvidence(book, w, "", o.Sources); err != nil {
+		return item, err
+	}
 	ids, err := resolve(o.Sources)
 	if err != nil {
 		return item, err

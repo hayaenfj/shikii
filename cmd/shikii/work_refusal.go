@@ -101,7 +101,7 @@ func unknownSourceRef(ref string, observations int, usable []string) string {
 	if number, ok := strings.CutPrefix(ref, "new"); ok {
 		if n, err := strconv.Atoi(number); err == nil && n >= 1 {
 			if n <= observations {
-				return text + fmt.Sprintf(": observation %d of this call was not saved (see its error); correct it and resend it with the note", n)
+				return text + fmt.Sprintf(": observation %d of this call was not saved (see its error); correct it and resend it with what cites it", n)
 			}
 			return text + fmt.Sprintf(": this call has %d observations, and newN names observation N of the same call", observations)
 		}

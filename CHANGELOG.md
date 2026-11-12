@@ -33,7 +33,8 @@
 - Within one piece of work, the agent can cite a source it saved earlier and a page it edited.
 - The notice before each request and the one at the end of a turn asked for two different procedures. They now ask for one, and also name the MCP tool.
 - A work record (`shikii handoff`) could be replaced by an empty text, for example when the text was left out through the MCP tool. An empty text is now refused, and nothing is written.
-- Malformed JSON was answered differently by each command. Every command now says where the JSON is malformed.
+- Malformed JSON was answered differently by each command. Every command now says where the JSON is malformed, and a request over the size limit is answered as too large, with the limit.
+- When the agent used a subagent, the end of the subagent's work was taken as the end of your request, and your request was judged on the subagent's last reply. A subagent's end no longer counts as the end of your request.
 
 ## 0.30.8 — Your unfinished lines no longer stop the agent; undo the AI's decisions from the page
 

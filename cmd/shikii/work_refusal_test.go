@@ -138,7 +138,7 @@ func TestWorkRefusalsNameTheCauseAndTheNextCall(t *testing.T) {
 		text, _ := raw.(map[string]any)["error"].(string)
 		if strings.Contains(text, `unknown source reference "new1"`) {
 			found = true
-			for _, w := range []string{"observation 1 of this call was not saved", "resend it with the note"} {
+			for _, w := range []string{"observation 1 of this call was not saved", "resend it with what cites it"} {
 				if !strings.Contains(text, w) {
 					t.Errorf("the refusal of a note citing an unsaved observation lacks %q: %q", w, text)
 				}

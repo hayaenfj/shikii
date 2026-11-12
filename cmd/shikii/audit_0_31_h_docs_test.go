@@ -47,6 +47,16 @@ func TestAuditHRecordingSaysTheTaskFailsOver128KiB(t *testing.T) {
 	if strings.Contains(line, claim) && len(encoded) > 128<<10 && prepared["receipt"] != nil {
 		t.Errorf("INVARIANT 14: recording.md says %q, and a preparation whose task and task_context are %d bytes as JSON succeeds with a receipt", claim, len(encoded))
 	}
+	// and the line says what happens instead: the bound of the task, and how a cut task says so (another wrong sentence in place of
+	// the old one passed the check above: audit J of 0.31.0)
+	for _, want := range []string{"The task takes up to the largest reply less 16 KiB after JSON encoding", "comes cut, and `task_context.text_status` says `stored_request_truncated`"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("INVARIANT 14: recording.md does not say %q", want)
+		}
+	}
+	if context, _ := prepared["task_context"].(map[string]any); context["text_status"] != "stored_request_truncated" && len(task) < len(prompt) {
+		t.Errorf("a task cut to %d of %d bytes does not say so: %v", len(task), len(prompt), context["text_status"])
+	}
 }
 
 // H-2 [INVARIANT 4, INVARIANT 14]: INVARIANT 4 says the documents that say a long request is not cut also say that the hook keeps
@@ -120,11 +130,10 @@ func TestAuditHStandaloneAgreedRefusalSaysWhatToSend(t *testing.T) {
 	} {
 		_, _, err := auditDCLI(t, `{"receipt":`+receipt+`,`+extra+result+`}`, "work", "record")
 		t.Logf("%s -> %v", name, err)
-		if err == nil {
-			continue
-		}
-		if !strings.Contains(err.Error(), "leave") && !strings.Contains(err.Error(), "without") && !strings.Contains(err.Error(), "omit") {
-			t.Errorf("%s: the refusal %q names no call to send instead (the same record without agreed, open and continues_previous)", name, err)
+		// refused, and the refusal names what to leave out and to send the rest ("without" alone matched "a receipt without hook
+		// ids" in a refusal that said nothing of what to send: audit J of 0.31.0)
+		if err == nil || !strings.Contains(err.Error(), "leave agreed, open and continues_previous out") || !strings.Contains(err.Error(), "send the rest again") {
+			t.Errorf("%s: the record is not refused with what to send instead (the same record without agreed, open and continues_previous): %v", name, err)
 		}
 	}
 	// negative: the same record without them is taken
@@ -139,7 +148,7 @@ func TestTheDocumentsNameTheStepOfBareDeliveries(t *testing.T) {
 	for path, words := range map[string]string{
 		"../../skills/shikii/references/review.md": "the delivered memories keep their keys only",
 		"../../docs/guide.md":                      "the delivered memories keep their keys only",
-		"../../docs/guide.ja.md":                   "\u5c4a\u3044\u305f\u8a18\u61b6\u3092\u9375\u3060\u3051",
+		"../../docs/guide.ja.md":                   "\u5c4a\u3044\u305f\u8a18\u61b6\u3092\u3001\u305d\u308c\u305e\u308c\u3092\u898b\u5206\u3051\u308b\u8b58\u5225\u5b50\u3060\u3051",
 	} {
 		if !strings.Contains(string(mustRead(t, path)), words) {
 			t.Errorf("%s does not name the step that keeps the delivered memories as keys only (%q)", path, words)

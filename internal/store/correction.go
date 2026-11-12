@@ -9,8 +9,8 @@ import (
 // That the quote exists and that its interpretation is right are separate things. It is never a permission to act.
 type Correction struct {
 	SourceID string `json:"source_id" yaml:"source_id"`
-	Quote    string `json:"quote" yaml:"quote"`
-	Action   string `json:"action" yaml:"action"`
+	Quote    string `json:"quote,omitempty" yaml:"quote"`   // left out only in the bare form of a delivery (reflectBare): a
+	Action   string `json:"action,omitempty" yaml:"action"` // valid correction has both, and an empty string read as empty words
 }
 
 func (c Correction) Valid() bool {

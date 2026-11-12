@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -63,27 +62,35 @@ func TestAuditGNoticeInBReopensAFinishedRequestInA(t *testing.T) {
 	}
 }
 
-// What every Stop and every completion notice costs now: turnElsewhere reads the registry and each registered project.
+// What every Stop and every completion notice does now: turnElsewhere reads the registry and each registered project, and writes
+// only the records that hold the session's turn. With 40 projects that hold none, 20 calls make no record in any of them. The time is
+// logged and not judged: a bound in milliseconds fails on a slow machine and says nothing of what was written (audit J of 0.31.0).
 func TestAuditGTurnElsewhereWithManyProjects(t *testing.T) {
 	f := auditCFinishedFirstRequest(t)
 	for i := 0; i < 40; i++ {
 		initTestProject(t, gitRepo(t))
 	}
 	common, _ := agentHome()
-	start := time.Now()
-	n := len(registeredProjects(common))
-	list := time.Since(start)
+	projects := registeredProjects(common)
 	in := &hookInput{SessionID: "planning"}
-	start = time.Now()
+	start := time.Now()
 	for i := 0; i < 20; i++ {
 		turnElsewhere("stop", in, f.root, false)
+		turnElsewhere("user-prompt-submit", &hookInput{SessionID: "planning", Prompt: "<task-notification>\n<status>completed</status>\n</task-notification>"}, f.root, false)
 	}
-	each := time.Since(start) / 20
-	t.Logf("%d registered projects: registeredProjects %v, one turnElsewhere %v", n, list, each)
-	if each > 200*time.Millisecond {
-		t.Errorf("turnElsewhere takes %v with %d projects", each, n)
+	t.Logf("%d registered projects: one turnElsewhere %v", len(projects), time.Since(start)/40)
+	if len(projects) < 41 {
+		t.Fatalf("precondition: 41 projects are registered: %d", len(projects))
 	}
-	_ = fmt.Sprint()
+	for _, p := range projects {
+		root := filepath.Join(p.Path, ".shikii")
+		if root == f.root {
+			continue
+		}
+		if _, err := os.Stat(sessionPath(root, "planning")); !os.IsNotExist(err) {
+			t.Errorf("turnElsewhere made a record of the session in %s, which held none: %v", p.Path, err)
+		}
+	}
 }
 
 // A Stop that a check stops in B writes nothing elsewhere; a Stop that passes in B ends A's turn; the project the event runs in

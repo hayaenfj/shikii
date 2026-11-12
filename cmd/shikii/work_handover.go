@@ -87,32 +87,13 @@ func turnElsewhere(event string, in *hookInput, here string, blocked bool) {
 	default:
 		return
 	}
-	common, err := agentHome()
-	if err != nil {
-		return
-	}
-	type record struct {
-		root, path string
-		s          *hookSession
-	}
-	// a record that is not there reads as one without a turn: nothing is written, so no record is made
-	records := []record{}
-	for _, p := range registeredProjects(common) {
-		root := filepath.Join(p.Path, ".shikii")
-		if s := loadSession(root, in.SessionID); s.TurnID != "" {
-			records = append(records, record{root, p.Path, s})
-		}
-	}
+	records, readable := sessionTurns(in.SessionID)
 	if !ends {
 		// the background work belongs to the request the session worked on last: only that one goes on. A notice that came in B
-		// reopened a request of A that had ended before B's started (audit of 0.31.0).
-		latest := -1
-		for i, r := range records {
-			if latest < 0 || r.s.At.After(records[latest].s.At) {
-				latest = i
-			}
-		}
-		if latest < 0 {
+		// reopened a request of A that had ended before B's started (audit of 0.31.0). With a record of the session that cannot be
+		// read, which request came last is not known: none is reopened.
+		latest := latestTurn(records, here)
+		if !readable || latest < 0 {
 			return
 		}
 		records = records[latest : latest+1]
@@ -133,6 +114,57 @@ func turnElsewhere(event string, in *hookInput, here string, blocked bool) {
 			hookLog(fmt.Sprintf("session %s: the turn's state was not recorded in %s (%v)", in.SessionID, r.path, err))
 		}
 	}
+}
+
+// sessionTurn is the record of one project that holds a turn of the session.
+type sessionTurn struct {
+	root, path string
+	s          *hookSession
+}
+
+// sessionTurns reads the records of the session that hold a turn, in every registered project (the hook registers the project it
+// runs in before it handles the event). A record that is not there reads as one without a turn. readable is false when a record that
+// is there cannot be read.
+func sessionTurns(sessionID string) (turns []sessionTurn, readable bool) {
+	common, err := agentHome()
+	if err != nil {
+		return nil, true
+	}
+	readable = true
+	for _, p := range registeredProjects(common) {
+		root := filepath.Join(p.Path, ".shikii")
+		s, err := readSession(root, sessionID)
+		if err != nil {
+			hookLog(fmt.Sprintf("session %s: unreadable in %s (%v)", sessionID, p.Path, err))
+			readable = false
+			continue
+		}
+		if s.TurnID != "" {
+			turns = append(turns, sessionTurn{root, p.Path, s})
+		}
+	}
+	return turns, readable
+}
+
+// latestTurn is the index of the turn whose request came last (-1 for none): the time the person's message came (HeadAt). The time of
+// the record (At) moves with every write, so a Stop or a delivery in an older request's project made it the newer (audit of 0.31.0).
+// The same time goes to here.
+func latestTurn(turns []sessionTurn, here string) int {
+	latest := -1
+	for i, t := range turns {
+		if latest < 0 || t.s.HeadAt.After(turns[latest].s.HeadAt) || (t.s.HeadAt.Equal(turns[latest].s.HeadAt) && t.root == here) {
+			latest = i
+		}
+	}
+	return latest
+}
+
+// noticeGoesOnHere reports whether a completion notice that came in here belongs to here's own request: the one the session worked
+// on last. A notice that came in A after the request in B reopened A's request, ended before B's (audit of 0.31.0).
+func noticeGoesOnHere(sessionID, here string) bool {
+	turns, readable := sessionTurns(sessionID)
+	latest := latestTurn(turns, here)
+	return readable && latest >= 0 && turns[latest].root == here
 }
 
 // takeOver gives a new work the references of the interrupted one and returns what the reply of prepare says about it (carried);

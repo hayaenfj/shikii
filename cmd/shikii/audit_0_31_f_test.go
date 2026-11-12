@@ -64,12 +64,10 @@ func auditFLessons(t *testing.T, b notebook.Book, n int, bodyRepeat int) []noteb
 	return pages
 }
 
-// Tests of audit F of 0.31.0 (third round; the audit stopped before its report, these are its findings as tests). Each failed on
-// the candidate 4b231ef.
-
-// RED (INVARIANT 5, guide.md "reflect query keeps its reply within what an agent's tool shows"): the first pending conversation
-// was a turn that started many subagents. Each delivery to a subagent is assessed under the parent conversation, a head keeps the
-// keys and the cut texts of every delivery, and nothing more is taken off: the reply is over the CLI's bound and says so.
+// INVARIANT 5, guide.md "reflect query keeps its reply within what an agent's tool shows": the first pending conversation was a
+// turn that started many subagents, and each delivery to a subagent is assessed under the parent conversation. On 4b231ef a head
+// kept the cut texts of every delivery and the reply was over the CLI's bound; the deliveries now keep their keys only, and the
+// reply fits.
 func TestAuditFReflectQueryWithManySubagentDeliveries(t *testing.T) {
 	st, scope, _, draft, _ := memoryEffectFixture(t)
 	always := draft

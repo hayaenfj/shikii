@@ -88,26 +88,68 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 	}
 	found := map[string]bool{}
 	fset := token.NewFileSet()
+	files := map[string]*ast.File{}
+	fields := map[string]bool{} // the fields of type *http.Request: c.r.Body is the body of a request too
 	for name, source := range sources {
 		file, err := parser.ParseFile(fset, name, source, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
+		files[name] = file
+		ast.Inspect(file, func(n ast.Node) bool {
+			if st, ok := n.(*ast.StructType); ok {
+				for _, field := range st.Fields.List {
+					if isRequest(field.Type) {
+						for _, n := range field.Names {
+							fields[n.Name] = true
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	for _, file := range files {
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Body == nil {
 				continue
 			}
+			// the requests of the function: its parameters, the parameters of the function literals inside it (a handler
+			// written as http.HandlerFunc(func(w, r) {...})), and the variables a request is put in
 			requests := map[string]bool{}
-			for _, field := range fn.Type.Params.List {
-				if isRequest(field.Type) {
-					for _, n := range field.Names {
-						requests[n.Name] = true
+			params := func(list *ast.FieldList) {
+				for _, field := range list.List {
+					if isRequest(field.Type) {
+						for _, n := range field.Names {
+							requests[n.Name] = true
+						}
 					}
 				}
 			}
-			if len(requests) == 0 {
-				continue
+			params(fn.Type.Params)
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if lit, ok := n.(*ast.FuncLit); ok {
+					params(lit.Type.Params)
+				}
+				return true
+			})
+			for grown := true; grown; {
+				grown = false
+				ast.Inspect(fn.Body, func(n ast.Node) bool {
+					assign, ok := n.(*ast.AssignStmt)
+					if !ok || len(assign.Lhs) != len(assign.Rhs) {
+						return true
+					}
+					for i, rhs := range assign.Rhs {
+						id, ok := rhs.(*ast.Ident)
+						to, isIdent := assign.Lhs[i].(*ast.Ident)
+						if ok && isIdent && requests[id.Name] && !requests[to.Name] {
+							requests[to.Name], grown = true, true
+						}
+					}
+					return true
+				})
 			}
 			// every node with its parent, to see how a use of the body is used
 			parents := map[ast.Node]ast.Node{}
@@ -128,8 +170,13 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 				if !ok || sel.Sel.Name != "Body" {
 					return false
 				}
-				id, ok := sel.X.(*ast.Ident)
-				return ok && requests[id.Name]
+				switch x := sel.X.(type) {
+				case *ast.Ident:
+					return requests[x.Name]
+				case *ast.SelectorExpr:
+					return fields[x.Sel.Name]
+				}
+				return false
 			}
 			for node, parent := range parents {
 				sel, ok := node.(*ast.SelectorExpr)

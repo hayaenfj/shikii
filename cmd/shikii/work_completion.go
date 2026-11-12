@@ -48,9 +48,9 @@ func selfEvidence(book notebook.Book, w *workState, result string, refs []string
 		case result != "" && id == result:
 			what = "this result itself"
 		case w.Reports[id]:
-			what = "a report this work wrote about itself (an earlier result or an ending review), not something it observed"
+			what = "a report this work wrote about itself (" + workReportKind(book, id) + "), not something it observed"
 		case workReportSource(book, id):
-			what = "a report or a record shikii wrote about a work itself (a result, an ending review, the record of a procedure, an archive of the work's state), not something that was observed"
+			what = "a report or a record shikii wrote about a work itself (" + workReportKind(book, id) + "), not something that was observed"
 		default:
 			continue
 		}
@@ -95,23 +95,69 @@ var workSourceTitles = map[string]bool{
 // workReport reports whether a source with this kind and title is one shikii wrote about the work itself (a report or an archive
 // of the work's state), which evidence never cites.
 func workReport(kind, title string) bool {
-	citable, known := workSourceTitles[title]
+	citable, known := workSourceTitles[workTitle(title)]
 	return kind == "agent" && known && !citable
+}
+
+// workTitle is the form a title takes in workSourceTitles: the spaces around it are not part of it. Every comparison with the
+// table goes through here (the refusal trimmed the title and the reading of a saved source did not: audit of 0.31.0).
+func workTitle(title string) string {
+	return strings.TrimSpace(title)
+}
+
+// reportTitleRefusal refuses an observation the agent saves under a title shikii gives its own reports and archives: it would be
+// taken for one and never cited. Every entrance that saves the agent's observation asks it first (work record, wiki capture through
+// the command line, MCP and HTTP: wiki capture took the title without a word, audit of 0.31.0). A record of what the agent did
+// (a trial, a reading, an outcome) keeps its title.
+func reportTitleRefusal(title string) error {
+	if citable, shikiis := workSourceTitles[workTitle(title)]; shikiis && !citable {
+		return fmt.Errorf("the title %q is the one shikii gives its own reports and records; give the observation a title of its own (what you checked)", title)
+	}
+	return nil
 }
 
 // workReportSource reads a saved source and reports whether it is one a work wrote about itself. A reference that is no saved
 // observation (current, a page, a conversation) is none.
 func workReportSource(book notebook.Book, id string) bool {
+	kind, title := workSourceTitle(book, id)
+	return workReport(kind, title)
+}
+
+// workSourceTitle is the kind and the title of a saved source, and nothing for a reference that is no saved observation.
+func workSourceTitle(book notebook.Book, id string) (kind, title string) {
 	material, err := book.ReadSources([]string{id})
 	if err != nil {
-		return false
+		return "", ""
 	}
 	originals, _ := material["observations"].([]notebook.Observation)
-	return len(originals) == 1 && workReport(originals[0].Kind, originals[0].Title)
+	if len(originals) != 1 {
+		return "", ""
+	}
+	return originals[0].Kind, originals[0].Title
+}
+
+// workReportKind says which of a work's own sources a refusal names, by its title: an archive of the work's state was called
+// "an earlier result or an ending review" (audit J of 0.31.0).
+func workReportKind(book notebook.Book, id string) string {
+	_, title := workSourceTitle(book, id)
+	switch workTitle(title) {
+	case workResultTitle:
+		return "an earlier result"
+	case workReviewTitle:
+		return "an ending review"
+	case workRecoveryTitle:
+		return "the source that binds a result to its evidence"
+	case workProcedureName:
+		return "the record of a procedure a result closed"
+	case "":
+		return "a result, an ending review or the record of a procedure"
+	}
+	return fmt.Sprintf("%q, an archive of the work's state", workTitle(title))
 }
 
 // currentRef is "current, " in a sentence that lists what evidence can cite, and nothing for a receipt without hook ids: it has no
-// current request. Every such sentence takes it from here; a refusal or a recording contract that offered current to such a
+// current request. The sentences that list current in their text take it from here; the refusals that add it to a list (selfEvidence,
+// the list of usable references) ask w.Standalone the same way. A refusal or a recording contract that offered current to such a
 // receipt sent the agent into a second refusal (audits of 0.31.0, two rounds: each round found the sentences the last one missed).
 func currentRef(w *workState) string {
 	if w == nil || w.Standalone {

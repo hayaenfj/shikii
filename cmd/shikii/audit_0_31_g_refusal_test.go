@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -33,7 +34,7 @@ func TestAuditGAgreedOnAStandaloneReceipt(t *testing.T) {
 	}
 }
 
-// The body limit of the entries that read with decodeObject: decide answers 413 and says the limit; the others answer 400 "bad json".
+// The body limit of the entries that read with decodeObject: every one answers 413 and names the limit in bytes, never 400 "bad json".
 func TestAuditGBodyOverTheLimitAtEveryPassingOverEntry(t *testing.T) {
 	_, _, h, _, _ := memoryEffectFixture(t)
 	body := "{" + strings.Repeat(" ", maxBody+10) + "}"
@@ -43,7 +44,7 @@ func TestAuditGBodyOverTheLimitAtEveryPassingOverEntry(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		h.ServeHTTP(r, req)
 		got := strings.Join(strings.Fields(r.Body.String()), " ")
-		if r.Code != 413 || strings.Contains(got, "bad json") {
+		if r.Code != 413 || strings.Contains(got, "bad json") || !strings.Contains(got, "body larger than "+strconv.Itoa(maxBody)+" bytes") {
 			t.Errorf("%-20s a body over %d bytes -> %d %s", path, maxBody, r.Code, got)
 		}
 	}
