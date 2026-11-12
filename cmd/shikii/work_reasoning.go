@@ -207,7 +207,7 @@ func archiveReasoningPending(book notebook.Book, s *hookSession) error {
 	if err != nil {
 		return err
 	}
-	observation, err := book.CaptureWork(notebook.WorkPending, string(data), "pending wiki work for turn "+r.TurnID, "work-reasoning", s.Planning.At.UTC())
+	observation, err := book.CaptureWork(notebook.WorkPending(), string(data), "pending wiki work for turn "+r.TurnID, "work-reasoning", s.Planning.At.UTC())
 	if err != nil {
 		return err
 	}
@@ -484,7 +484,7 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 			snapshot.Result = &copy
 		}
 		content, _ := json.Marshal(snapshot)
-		_, source, err := captureWorkObservation(book, w, workArchive(notebook.WorkReview, string(content), "work reasoning for turn "+r.TurnID), save, commit)
+		_, source, err := captureWorkObservation(book, w, workArchive(notebook.WorkReview(), string(content), "work reasoning for turn "+r.TurnID), save, commit)
 		if err != nil {
 			return item, err
 		}

@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -94,8 +96,32 @@ func TestAnInterruptedResultIsFinishedAsAReport(t *testing.T) {
 		if capture.ID == "" {
 			t.Errorf("a capture is left unsaved: %s %+v", key, capture)
 		}
-		if capture.Source == notebook.WorkResult && !w.Reports[capture.ID] {
+		if capture.Source == notebook.WorkResult() && !w.Reports[capture.ID] {
 			t.Errorf("the interrupted result %s is not noted as a report", capture.ID)
 		}
+	}
+}
+
+// A result whose evidence is an observation of the same call that was refused (newN) is kept as written and waits for its evidence
+// (the result is saved before its evidence is bound), and the refusal names how the saved result is repaired: sent as it says (the
+// observation corrected, the result repaired by its ref), the work closes (audit O of 0.31.0: the refusal offered a whole result,
+// which met the waiting one).
+func TestARefusedEvidenceSaysHowToRepairTheSavedResult(t *testing.T) {
+	f := newAuditFlow(t)
+	first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
+	refused, err := f.record(first, map[string]any{"observations": []any{map[string]any{"kind": "agent", "title": notebook.WorkResult().Title(), "content": "The totals match."}},
+		"result": map[string]any{"changed": "Checked the totals.", "evidence": []any{"new1"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := auditJSON(refused["errors"])
+	m := regexp.MustCompile(`send result:\{ref:\\?"([0-9a-f]{16})`).FindStringSubmatch(raw)
+	if refused["complete"] == true || !strings.Contains(raw, "observation 1 of this call was not saved") || m == nil {
+		t.Fatalf("the refusal does not name the saved result to repair: %.500s", raw)
+	}
+	again, err := f.record(first, map[string]any{"observations": []any{map[string]any{"kind": "test", "title": "Totals", "content": "The totals match."}},
+		"result": map[string]any{"ref": m[1], "evidence": []any{"new1"}}})
+	if err != nil || again["complete"] != true {
+		t.Errorf("the record sent as the refusal says does not close the work: %v %.400s", err, auditJSON(again["errors"]))
 	}
 }

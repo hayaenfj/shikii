@@ -188,7 +188,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 			return workItem{Kind: "result", Ref: "result"}, e
 		}
 		originals := material["observations"].([]notebook.Observation)
-		if len(originals) != 1 || !isWorkSource(originals[0], notebook.WorkResult) || originals[0].Content != string(data) {
+		if len(originals) != 1 || !isWorkSource(originals[0], notebook.WorkResult()) || originals[0].Content != string(data) {
 			return workItem{Kind: "result", Ref: "result"}, errors.New("the saved result changed or is unavailable")
 		}
 		if w.Result.Ready {
@@ -215,7 +215,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		if err = selfEvidence(book, w, forResult, "", c.Evidence); err != nil {
 			return workItem{Kind: "result", Ref: "result"}, err
 		}
-		_, id, err = captureWorkObservation(book, w, workArchive(notebook.WorkResult, string(data), evidenceVersion), save, commit)
+		_, id, err = captureWorkObservation(book, w, workArchive(notebook.WorkResult(), string(data), evidenceVersion), save, commit)
 	}
 	item := workItem{Kind: "result", Ref: "result", ID: id}
 	if err != nil {
@@ -246,7 +246,9 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 	}
 	evidence, err := bindWorkEvidence(book, w, c.Evidence, resolve)
 	if err != nil {
-		return item, err
+		// the result is kept as the agent wrote it, and waits for its evidence: the refusal says how it is repaired, so the record
+		// sent as it says is the next call (a refusal that offered a whole result again met the waiting result: audit O of 0.31.0)
+		return item, fmt.Errorf("%w; the result is saved and waits for its evidence: send result:{ref:%q,evidence:[refs]} with this receipt (with the observations it cites) and do not repeat its text", err, id)
 	}
 	w.Result.Evidence = evidence
 	w.Result.Ready = true
@@ -289,8 +291,34 @@ func finishWorkCompletion(book notebook.Book, w *workState, resolve func([]strin
 	}
 	slices.Sort(keys)
 	for _, key := range keys {
-		original := *w.Captures[key].Original
-		original.source = w.Captures[key].Source // a source shikii writes is finished as its kind
+		memo := w.Captures[key]
+		original := *memo.Original
+		if memo.Source.IsZero() {
+			// a capture memo written before the memo kept the kind (an older version): a source shikii writes is known by its title,
+			// and is finished in place as that kind (it was refused as an observation under the title, and the work never closed:
+			// audit O of 0.31.0). An observation of the agent under such a title in an older version is no evidence either way.
+			if k, ok := notebook.WorkSourceOf(notebook.Observation{Kind: original.Kind, Title: original.Title}); ok {
+				var captured notebook.Observation
+				if e := commit(func() error {
+					var err error
+					captured, err = book.CaptureWork(k, original.Content, original.Reference, memo.Version, memo.At)
+					return err
+				}); e != nil {
+					return workItem{Kind: "reasoning", Ref: "reasoning"}, e
+				}
+				memo.ID, memo.Original, memo.Archive, memo.Source = captured.ID, nil, "", k
+				w.Captures[key] = memo
+				w.Sources[memo.Ref] = captured.ID
+				if !k.Citable() {
+					markReport(w, captured.ID)
+				}
+				if e := save(); e != nil {
+					return workItem{Kind: "reasoning", Ref: "reasoning"}, e
+				}
+				continue
+			}
+		}
+		original.source = memo.Source // a source shikii writes is finished as its kind
 		if _, _, e := captureWorkObservation(book, w, original, save, commit); e != nil {
 			return workItem{Kind: "reasoning", Ref: "reasoning"}, e
 		}

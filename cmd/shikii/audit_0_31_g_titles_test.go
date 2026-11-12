@@ -75,7 +75,7 @@ func workObservationProblems(t *testing.T, files map[string]string) []string {
 				case *ast.AssignStmt:
 					for _, lhs := range v.Lhs {
 						if sel, ok := lhs.(*ast.SelectorExpr); ok {
-							if selection := info.Selections[sel]; selection != nil && isObservation(selection.Recv()) {
+							if selection := info.Selections[sel]; selection != nil && isObservation(typedFieldOwner(selection)) {
 								places[where] = true
 								if workObservationBuilders[where] == "" {
 									problems = append(problems, where+" sets the "+sel.Sel.Name+" of a workObservation")
@@ -86,7 +86,8 @@ func workObservationProblems(t *testing.T, files map[string]string) []string {
 				}
 				// CaptureObserved however it is reached: called, taken as a method value, through another name
 				if sel, ok := n.(*ast.SelectorExpr); ok {
-					if selection := info.Selections[sel]; selection != nil && selection.Obj().Name() == "CaptureObserved" && selection.Obj().Pkg() != nil && selection.Obj().Pkg().Name() == "notebook" {
+					// the notebook's method, or a method of the same name of an interface (a Book held in it)
+					if selection := info.Selections[sel]; selection != nil && selection.Obj().Name() == "CaptureObserved" {
 						places[where] = true
 						if observationSavers[where] == "" {
 							problems = append(problems, where+" saves an observation (CaptureObserved)")
@@ -147,7 +148,7 @@ func TestOnlyWorkArchiveBuildsASourceShikiiWrites(t *testing.T) {
 		}
 	}
 	// control: a source built by workArchive is no problem
-	if problems := workObservationProblems(t, map[string]string{"new.go": "package main\nfunc newArchive() { _ = workArchive(notebook.WorkPending, \"c\", \"r\") }\nfunc workArchive(k notebook.WorkSource, content, reference string) workObservation { return workObservation{} }\n"}); len(problems) != 0 {
+	if problems := workObservationProblems(t, map[string]string{"new.go": "package main\nfunc newArchive() { _ = workArchive(notebook.WorkPending(), \"c\", \"r\") }\nfunc workArchive(k notebook.WorkSource, content, reference string) workObservation { return workObservation{} }\n"}); len(problems) != 0 {
 		t.Errorf("control: %v", problems)
 	}
 }
@@ -171,7 +172,7 @@ func TestAnObservationCannotTakeTheTitleOfAReport(t *testing.T) {
 		}
 	}
 	// an observation of another kind keeps the title, and one of the agent's own title is saved
-	for _, o := range []map[string]any{{"kind": "test", "title": notebook.WorkProcedure.Title(), "content": "make test passed."}, {"kind": "agent", "title": "make test", "content": "make test passed."}} {
+	for _, o := range []map[string]any{{"kind": "test", "title": notebook.WorkProcedure().Title(), "content": "make test passed."}, {"kind": "agent", "title": "make test", "content": "make test passed."}} {
 		saved, err := f.record(first, map[string]any{"observations": []any{o}})
 		if err != nil || strings.Contains(auditJSON(saved["errors"]), "is the one shikii gives") {
 			t.Errorf("an observation %v is refused: %v %s", o, err, auditJSON(saved["errors"]))

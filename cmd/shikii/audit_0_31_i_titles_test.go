@@ -27,7 +27,7 @@ func TestWikiCaptureRefusesTheTitleOfAReport(t *testing.T) {
 			}
 		}
 	}
-	for _, o := range [][2]string{{"agent", "Release procedure run"}, {"test", notebook.WorkProcedure.Title()}, {"human", notebook.WorkResult.Title()}} {
+	for _, o := range [][2]string{{"agent", "Release procedure run"}, {"test", notebook.WorkProcedure().Title()}, {"human", notebook.WorkResult().Title()}} {
 		if _, err := capture(o[0], o[1]); err != nil {
 			t.Errorf("wiki capture of an observation of kind %s titled %q is refused: %v", o[0], o[1], err)
 		}
@@ -39,10 +39,10 @@ func TestWikiCaptureRefusesTheTitleOfAReport(t *testing.T) {
 // observation of the agent; only the reports and archives are kept out of evidence.
 func TestATitleIsComparedWithoutItsSpaces(t *testing.T) {
 	for title, report := range map[string]bool{
-		notebook.WorkProcedure.Title():               true,
-		"  " + notebook.WorkProcedure.Title() + "\n": true,
-		" " + notebook.WorkResult.Title():            true,
-		notebook.WorkTrialExecution.Title() + " ":    false,
+		notebook.WorkProcedure().Title():               true,
+		"  " + notebook.WorkProcedure().Title() + "\n": true,
+		" " + notebook.WorkResult().Title():            true,
+		notebook.WorkTrialExecution().Title() + " ":    false,
 	} {
 		if got := testWorkReport("agent", title); got != report {
 			t.Errorf("a source titled %q is a report: %v, want %v", title, got, report)
@@ -56,7 +56,7 @@ func TestATitleIsComparedWithoutItsSpaces(t *testing.T) {
 			t.Errorf("a title of the agent's own (%q) is taken for shikii's", title)
 		}
 	}
-	if testWorkReport("test", notebook.WorkProcedure.Title()) {
+	if testWorkReport("test", notebook.WorkProcedure().Title()) {
 		t.Errorf("a source of another kind under the title is taken for a report")
 	}
 }

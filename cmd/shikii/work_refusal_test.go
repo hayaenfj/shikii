@@ -367,6 +367,7 @@ func TestAResultIsNotItsOwnEvidence(t *testing.T) {
 		t.Errorf("a receipt without hook ids is not told to cite current: %s", how)
 	}
 	got := refused(record(map[string]any{"result": map[string]any{"changed": "Renamed the button, citing the request.", "evidence": []any{"current"}}}))
+	got, _, _ = strings.Cut(got, "; the result is saved and waits") // what follows says how the saved result is repaired, not what to cite
 	if !strings.Contains(got, `unknown source reference "current"`) || !strings.Contains(got, "new1") || strings.Contains(got, "observed") || strings.Contains(got, "result") {
 		t.Errorf("the refusal of current names what this result can cite: %q", got)
 	}

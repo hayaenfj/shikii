@@ -71,7 +71,7 @@ var ownBodyReaders = map[string]string{
 func bodyReaders(t *testing.T, sources map[string]string) []string {
 	t.Helper()
 	readers := map[string]bool{"decodeObject": true, "decodeReflect": true, "decodeReview": true}
-	found := map[string]bool{}
+	found := map[ast.Node]string{} // keyed by the declaration (its body), so two functions of one name are two
 	for _, tf := range typedSources(t, sources, typedIsThePackage(sources)) {
 		if tf.prelude {
 			continue
@@ -121,6 +121,16 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 			}
 			return false
 		}
+		// the bounding that is allowed: net/http's MaxBytesReader, by the object it denotes (a method of the same name is none)
+		isMaxBytesReader := func(call *ast.CallExpr) bool {
+			f, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return false
+			}
+			obj := info.Uses[f.Sel]
+			fn, ok := obj.(*types.Func)
+			return ok && fn.Name() == "MaxBytesReader" && fn.Pkg() != nil && fn.Pkg().Path() == "net/http" && fn.Type().(*types.Signature).Recv() == nil
+		}
 		typedDecls(tf.file, func(name string, root ast.Node) {
 			ast.Inspect(root, func(n ast.Node) bool {
 				if v, ok := n.(*ast.SelectorExpr); ok {
@@ -129,7 +139,7 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 						obj = sel.Obj()
 					}
 					if obj != nil && readsTheBody(obj) {
-						found[name] = true
+						found[root] = name
 					}
 				}
 				return true
@@ -150,29 +160,27 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 							allowed = true
 						}
 					}
-					if f, ok := p.Fun.(*ast.SelectorExpr); ok && f.Sel.Name == "MaxBytesReader" {
+					if isMaxBytesReader(p) {
 						if assign, ok := parents[p].(*ast.AssignStmt); ok && len(assign.Lhs) == 1 && isBody(assign.Lhs[0]) {
 							allowed = true // r.Body = http.MaxBytesReader(w, r.Body, n)
 						}
 					}
 				case *ast.AssignStmt:
 					if len(p.Lhs) == 1 && p.Lhs[0] == sel && len(p.Rhs) == 1 {
-						if call, ok := p.Rhs[0].(*ast.CallExpr); ok {
-							if f, ok := call.Fun.(*ast.SelectorExpr); ok && f.Sel.Name == "MaxBytesReader" {
-								allowed = true // the left side of the same bounding
-							}
+						if call, ok := p.Rhs[0].(*ast.CallExpr); ok && isMaxBytesReader(call) {
+							allowed = true // the left side of the same bounding
 						}
 					}
 				}
 				if !allowed {
-					found[name] = true
+					found[root] = name
 				}
 			}
 		})
 	}
 	var names []string
-	for name := range found {
-		names = append(names, name)
+	for _, name := range found {
+		names = append(names, name) // a name twice: two functions of that name read a body (a method of another type)
 	}
 	sort.Strings(names)
 	return names
@@ -191,7 +199,12 @@ func TestEveryToolAnswersWhatItCannotReadInTheReadersWords(t *testing.T) {
 	}
 	// no entry reads a JSON body on its own, but for the ones listed with their reason
 	readers := bodyReaders(t, sources)
+	seen := map[string]bool{}
 	for _, name := range readers {
+		if seen[name] {
+			t.Errorf("two functions named %s read a JSON body: the allowlist names one of them (a method of another type is a new reader)", name)
+		}
+		seen[name] = true
 		if ownBodyReaders[name] == "" {
 			t.Errorf("%s reads a JSON body with a decoder of its own: read it through decodeObject or decodeStrictObject, so the one reader words what it cannot read", name)
 		}

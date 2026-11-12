@@ -17,7 +17,7 @@ func (b Book) RetainExecutionSources(diagnostics, evidence []Source) error {
 		if e != nil {
 			return e
 		}
-		if kind, ok := WorkSourceOf(o); !ok || (kind != WorkProcedure && kind != WorkResult && kind != WorkReading) {
+		if kind, ok := WorkSourceOf(o); !ok || (kind != WorkProcedure() && kind != WorkResult() && kind != WorkReading()) {
 			return errors.New("only checked machine execution diagnostics are settled automatically")
 		}
 		ids = append(ids, o.ID)

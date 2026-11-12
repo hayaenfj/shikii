@@ -42,7 +42,7 @@ func TestAuditMTheObservationReaderMissesForms(t *testing.T) {
 	}
 	for name, src := range map[string]string{
 		"a method value": "package main\n\nimport \"github.com/hayaenfj/shikii/internal/notebook\"\n\nfunc newArchive(book notebook.Book) {\n\tsave := book.CaptureObserved\n\t_, _ = save(notebook.Observation{})\n}\n",
-		"a conversion":   "package main\n\nimport \"github.com/hayaenfj/shikii/internal/notebook\"\n\nfunc newArchive() workObservation {\n\treturn workObservation(struct {\n\t\tKind      string `json:\"kind\"`\n\t\tTitle     string `json:\"title\"`\n\t\tContent   string `json:\"content\"`\n\t\tReference string `json:\"reference,omitempty\"`\n\t\tVersion   string `json:\"version,omitempty\"`\n\t\tsource    notebook.WorkSource\n\t}{Kind: \"agent\", Title: \"A new archive\", source: notebook.WorkTrialExecution})\n}\n",
+		"a conversion":   "package main\n\nimport \"github.com/hayaenfj/shikii/internal/notebook\"\n\nfunc newArchive() workObservation {\n\treturn workObservation(struct {\n\t\tKind      string `json:\"kind\"`\n\t\tTitle     string `json:\"title\"`\n\t\tContent   string `json:\"content\"`\n\t\tReference string `json:\"reference,omitempty\"`\n\t\tVersion   string `json:\"version,omitempty\"`\n\t\tsource    notebook.WorkSource\n\t}{Kind: \"agent\", Title: \"A new archive\", source: notebook.WorkTrialExecution()})\n}\n",
 	} {
 		problems := workObservationProblems(t, auditMPackageWith(t, "zz_new.go", src))
 		if !slices.ContainsFunc(problems, func(p string) bool { return strings.HasPrefix(p, "zz_new.go:") }) {
@@ -75,7 +75,7 @@ func TestAuditMTheBodyReaderMissesForms(t *testing.T) {
 // that has no such field, its error is let pass (a snippet is not strict), and the reader is blind to it. The same line in a file of
 // the real package is found.
 func TestAuditMThePreludeIsNotTheType(t *testing.T) {
-	src := "package main\n\nimport \"github.com/hayaenfj/shikii/internal/notebook\"\n\nfunc newArchive(o workObservation) workObservation {\n\to.source = notebook.WorkResult\n\treturn o\n}\n"
+	src := "package main\n\nimport \"github.com/hayaenfj/shikii/internal/notebook\"\n\nfunc newArchive(o workObservation) workObservation {\n\to.source = notebook.WorkResult()\n\treturn o\n}\n"
 	inPackage := workObservationProblems(t, auditMPackageWith(t, "zz_new.go", src))
 	asSnippet := workObservationProblems(t, map[string]string{"new.go": src})
 	t.Logf("in the package: %v; as a snippet: %v", inPackage, asSnippet)
@@ -107,7 +107,11 @@ func TestAuditMNoTitleIsWrittenOutOfItsKind(t *testing.T) {
 			}
 			sources[filepath.Base(path)] = string(data)
 		}
-		found = append(found, workTitleConstants(t, sources, titles, true)...)
+		skip := ""
+		if dir == "../../internal/notebook" {
+			skip = "work_sources.go" // the notebook's table of the titles: the one place that writes them (read, not reported)
+		}
+		found = append(found, workTitleConstants(t, sources, titles, true, skip)...)
 	}
 	for _, f := range found {
 		t.Errorf("a title of a work source written out of its kind: %s", f)
@@ -118,7 +122,7 @@ func TestAuditMNoTitleIsWrittenOutOfItsKind(t *testing.T) {
 		"a constant":        "package main\nconst done = \"Work result and remaining conditions\"\nfunc f(title string) bool { return title == done }\n",
 		"a sum of literals": "package main\nfunc f(title string) bool { return title == \"Work result\"+\" and remaining conditions\" }\n",
 	} {
-		if got := workTitleConstants(t, map[string]string{"f.go": src}, titles, false); len(got) == 0 {
+		if got := workTitleConstants(t, map[string]string{"f.go": src}, titles, false, ""); len(got) == 0 {
 			t.Errorf("negative (%s): a title of a work source written out of its kind is not found", name)
 		}
 	}
@@ -126,11 +130,11 @@ func TestAuditMNoTitleIsWrittenOutOfItsKind(t *testing.T) {
 
 // workTitleConstants reads the sources by their types and returns where a string constant (a literal, a named constant, a sum of
 // them) has the value of a title of a work source, outside work_sources.go, which owns the titles.
-func workTitleConstants(t *testing.T, sources map[string]string, titles map[string]bool, strict bool) []string {
+func workTitleConstants(t *testing.T, sources map[string]string, titles map[string]bool, strict bool, skip string) []string {
 	t.Helper()
 	var found []string
 	for _, tf := range typedSources(t, sources, strict) {
-		if tf.prelude || tf.name == "work_sources.go" {
+		if tf.prelude || tf.name == skip {
 			continue
 		}
 		info := tf.info

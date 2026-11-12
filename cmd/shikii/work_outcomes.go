@@ -110,7 +110,7 @@ func recordWorkOutcome(book notebook.Book, w *workState, o workOutcome, resolve 
 		return item, err
 	}
 	content, _ := json.Marshal(details)
-	observation := workArchive(notebook.WorkOutcome, string(content), "")
+	observation := workArchive(notebook.WorkOutcome(), string(content), "")
 	if _, _, err = prepareWorkObservation(w, observation); err != nil {
 		return item, err
 	}

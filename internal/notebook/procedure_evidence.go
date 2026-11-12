@@ -67,7 +67,7 @@ func (b Book) procedureExecutionCurrent(ref Source) bool {
 		return false
 	}
 	o, e := b.checkedOutcomeSource(ref)
-	if kind, ok := WorkSourceOf(o); e != nil || !ok || kind != WorkProcedure {
+	if kind, ok := WorkSourceOf(o); e != nil || !ok || kind != WorkProcedure() {
 		return false
 	}
 	var s ProcedureSample
@@ -87,7 +87,7 @@ func (b Book) captureProcedureExecution(s ProcedureSample) (Source, error) {
 	if e != nil {
 		return Source{}, e
 	}
-	execution, e := b.CaptureWork(WorkProcedure, string(data), "procedure:"+s.Snapshot.ID, o.Version, o.ObservedAt)
+	execution, e := b.CaptureWork(WorkProcedure(), string(data), "procedure:"+s.Snapshot.ID, o.Version, o.ObservedAt)
 	if e != nil {
 		return Source{}, e
 	}
@@ -112,7 +112,7 @@ func (b Book) procedureSources(s ProcedureSample) ([]Observation, error) {
 	if e != nil {
 		return nil, e
 	}
-	if kind, ok := WorkSourceOf(o); !ok || kind != WorkResult || o.Kind != "agent" {
+	if kind, ok := WorkSourceOf(o); !ok || kind != WorkResult() || o.Kind != "agent" {
 		return nil, errors.New("procedure feedback needs the saved original work result")
 	}
 	var report struct {

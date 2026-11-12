@@ -19,7 +19,7 @@ func TestAWorkSourceIsNoNumber(t *testing.T) {
 		"a conversion":  "var _ = notebook.WorkSource(5)",
 		"its field":     "var _ = notebook.WorkSource{k: 5}",
 		"a positional":  "var _ = notebook.WorkSource{5}",
-		"an arithmetic": "var _ = notebook.WorkResult + 1",
+		"an arithmetic": "var _ = notebook.WorkResult() + 1",
 	} {
 		src := "package main\n\nimport \"github.com/hayaenfj/shikii/internal/notebook\"\n\n" + body + "\n"
 		f, err := parser.ParseFile(typedFset, "kind.go", src, 0)
@@ -34,7 +34,7 @@ func TestAWorkSourceIsNoNumber(t *testing.T) {
 		}
 	}
 	// control: a kind of the table and the zero value
-	src := "package main\n\nimport \"github.com/hayaenfj/shikii/internal/notebook\"\n\nvar _, _ = notebook.WorkResult, notebook.WorkSource{}\n"
+	src := "package main\n\nimport \"github.com/hayaenfj/shikii/internal/notebook\"\n\nvar _, _ = notebook.WorkResult(), notebook.WorkSource{}\n"
 	f, _ := parser.ParseFile(typedFset, "kind.go", src, 0)
 	typedMu.Lock()
 	_, err := (&types.Config{Importer: typedImporter}).Check("main", typedFset, []*ast.File{f}, nil)
@@ -59,7 +59,7 @@ func TestATrialIsReadOnlyFromAWorkSource(t *testing.T) {
 	if id == "" {
 		t.Fatalf("precondition: the trial plan is saved as a source: %.400s", auditJSON(plan))
 	}
-	if _, err := readWorkTrialSource(b, id, notebook.WorkTrialPlan, "trial-plan/v1"); err != nil {
+	if _, err := readWorkTrialSource(b, id, notebook.WorkTrialPlan(), "trial-plan/v1"); err != nil {
 		t.Fatalf("control: the trial plan shikii wrote is read: %v", err)
 	}
 	material, err := b.ReadSources([]string{id})
@@ -71,7 +71,7 @@ func TestATrialIsReadOnlyFromAWorkSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("precondition: an observation of kind test keeps the title: %v", err)
 	}
-	if _, err := readWorkTrialSource(b, forged.ID, notebook.WorkTrialPlan, "trial-plan/v1"); err == nil {
+	if _, err := readWorkTrialSource(b, forged.ID, notebook.WorkTrialPlan(), "trial-plan/v1"); err == nil {
 		t.Errorf("an observation of kind test with the title and content of a trial plan is read as a trial plan")
 	}
 }

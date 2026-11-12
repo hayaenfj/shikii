@@ -47,7 +47,7 @@ func TestAuditJTheUsableListLeavesThePendingReportOut(t *testing.T) {
 	for _, raw := range auditGSlice(standalone["observations"]) {
 		o, _ := raw.(map[string]any)
 		text := auditJSON(o["source"])
-		if strings.Contains(text, notebook.WorkResult.Title()) || strings.Contains(text, notebook.WorkReview.Title()) {
+		if strings.Contains(text, notebook.WorkResult().Title()) || strings.Contains(text, notebook.WorkReview().Title()) {
 			ref, _ := o["ref"].(string)
 			reports = append(reports, ref)
 		}

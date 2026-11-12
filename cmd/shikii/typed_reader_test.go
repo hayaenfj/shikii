@@ -402,3 +402,27 @@ func TestTheTypedReaderRefusesToReadNothing(t *testing.T) {
 		t.Errorf("reading no source is not refused: %q", rec.fatal)
 	}
 }
+
+// typedFieldOwner is the type that declares the field a selection reaches: through embedded fields, the struct the last field is in
+// (w.source of a struct that embeds a workObservation is a field of the workObservation).
+func typedFieldOwner(sel *types.Selection) types.Type {
+	typ := sel.Recv()
+	if sel.Kind() != types.FieldVal {
+		return typ
+	}
+	path := sel.Index()
+	for _, i := range path[:len(path)-1] {
+		n := typedNamed(typ)
+		var st *types.Struct
+		if n != nil {
+			st, _ = n.Underlying().(*types.Struct)
+		} else {
+			st, _ = types.Unalias(typ).Underlying().(*types.Struct)
+		}
+		if st == nil {
+			return typ
+		}
+		typ = st.Field(i).Type()
+	}
+	return typ
+}

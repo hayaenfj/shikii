@@ -148,7 +148,7 @@ func reserveRequiredNote(book notebook.Book, w *workState, n workNote, save func
 		var source notebook.Observation
 		if err = commit(func() error {
 			var e error
-			source, e = book.CaptureWork(notebook.WorkNoteIntent, string(data), "required wiki note for turn "+r.TurnID, "work-note-intent", entry.At)
+			source, e = book.CaptureWork(notebook.WorkNoteIntent(), string(data), "required wiki note for turn "+r.TurnID, "work-note-intent", entry.At)
 			return e
 		}); err != nil {
 			return ref, n, err
@@ -302,7 +302,7 @@ func archiveWorkCapacity(book notebook.Book, s *hookSession) error {
 	if err != nil {
 		return err
 	}
-	observation, err := book.CaptureWork(notebook.WorkCapacity, string(data), "work capacity recovery for turn "+s.TurnID, "work-capacity", w.At)
+	observation, err := book.CaptureWork(notebook.WorkCapacity(), string(data), "work capacity recovery for turn "+s.TurnID, "work-capacity", w.At)
 	if err != nil {
 		return err
 	}

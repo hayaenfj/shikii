@@ -13,7 +13,7 @@ import (
 // titles shikii gives its reports, is refused before it is saved, with the reason and what to send: saved, it could never be
 // evidence (the refusal of the result called it a report). The same observation under a title of its own is evidence.
 func TestAuditGAnObservationTitledLikeAReport(t *testing.T) {
-	for _, title := range []string{notebook.WorkResult.Title(), notebook.WorkReview.Title(), notebook.WorkRecovery.Title(), notebook.WorkProcedure.Title()} {
+	for _, title := range []string{notebook.WorkResult().Title(), notebook.WorkReview().Title(), notebook.WorkRecovery().Title(), notebook.WorkProcedure().Title()} {
 		t.Run(title, func(t *testing.T) {
 			f := newAuditFlow(t)
 			first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
@@ -40,7 +40,7 @@ func TestAuditGAnObservationTitledLikeAReport(t *testing.T) {
 // pending, when a required note is kept, and at the session's capacity boundary. They wait to be sorted like any source, so the
 // next preparation lists them as evidenceN. A result that observed nothing cites one and is complete.
 func TestAuditGAnArchiveOfTheWorkIsEvidence(t *testing.T) {
-	for _, kind := range []notebook.WorkSource{notebook.WorkPending, notebook.WorkCapacity, notebook.WorkNoteIntent} {
+	for _, kind := range []notebook.WorkSource{notebook.WorkPending(), notebook.WorkCapacity(), notebook.WorkNoteIntent()} {
 		title := kind.Title()
 		t.Run(title, func(t *testing.T) {
 			f := newAuditFlow(t)

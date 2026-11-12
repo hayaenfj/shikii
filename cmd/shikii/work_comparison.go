@@ -104,14 +104,14 @@ func historicalTrialEvidence(book notebook.Book, evidence []string) bool {
 }
 
 func readWorkTrialExecution(book notebook.Book, id string) (workTrialReport, error) {
-	r, err := readWorkTrialSource(book, id, notebook.WorkTrialExecution, "trial-result/v1")
+	r, err := readWorkTrialSource(book, id, notebook.WorkTrialExecution(), "trial-result/v1")
 	if err != nil {
 		return r, err
 	}
 	if r.Result == nil || validateTrialResult(*r.Result) != nil || !historicalTrialEvidence(book, r.Plan.Evidence) || !historicalTrialEvidence(book, r.Result.Evidence) {
 		return r, errors.New("the execution result lost its observed evidence")
 	}
-	p, err := readWorkTrialSource(book, r.PlanSource, notebook.WorkTrialPlan, "trial-plan/v1")
+	p, err := readWorkTrialSource(book, r.PlanSource, notebook.WorkTrialPlan(), "trial-plan/v1")
 	if err != nil {
 		return r, err
 	}
@@ -197,7 +197,7 @@ func recordWorkComparison(book notebook.Book, w *workState, request workComparis
 		}
 		w.Expected[key] = store.KnowledgeReference{}
 		data, _ := json.Marshal(view)
-		if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialComparison, string(data), view.Ref), &view.Source, key, item, save, commit); err != nil {
+		if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialComparison(), string(data), view.Ref), &view.Source, key, item, save, commit); err != nil {
 			return item, view, err
 		}
 	}

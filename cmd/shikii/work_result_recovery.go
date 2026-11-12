@@ -37,7 +37,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 		}
 		originals := material["observations"].([]notebook.Observation)
 		var original workCompletion
-		if len(originals) != 1 || !isWorkSource(originals[0], notebook.WorkResult) || json.Unmarshal([]byte(originals[0].Content), &original) != nil || workHash(original) != w.Result.Signature {
+		if len(originals) != 1 || !isWorkSource(originals[0], notebook.WorkResult()) || json.Unmarshal([]byte(originals[0].Content), &original) != nil || workHash(original) != w.Result.Signature {
 			return item, errors.New("the original saved result changed or is unavailable")
 		}
 		if len(w.Result.Evidence) > 0 && !trialBasisCurrent(book, w.Result.Evidence) {
@@ -88,7 +88,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 		return item, e
 	}
 	originals := material["observations"].([]notebook.Observation)
-	if len(originals) != 1 || !isWorkSource(originals[0], notebook.WorkResult) {
+	if len(originals) != 1 || !isWorkSource(originals[0], notebook.WorkResult()) {
 		return item, errors.New("the original pending result is unavailable")
 	}
 	var original workCompletion
@@ -105,7 +105,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 			Turn     string   `json:"turn"`
 			Evidence []string `json:"evidence"`
 		}{c.Ref, pending.Turn, evidence})
-		e = captureWorkTrialSource(book, w, workArchive(notebook.WorkRecovery, string(data), ""), &pending.Source, "result-recovery:"+c.Ref, item, save, commit)
+		e = captureWorkTrialSource(book, w, workArchive(notebook.WorkRecovery(), string(data), ""), &pending.Source, "result-recovery:"+c.Ref, item, save, commit)
 		if e != nil {
 			return item, e
 		}
@@ -121,7 +121,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 		Turn     string   `json:"turn"`
 		Evidence []string `json:"evidence"`
 	}{c.Ref, pending.Turn, pending.Evidence})
-	if len(observed) != 1 || !isWorkSource(observed[0], notebook.WorkRecovery) || observed[0].Content != string(want) {
+	if len(observed) != 1 || !isWorkSource(observed[0], notebook.WorkRecovery()) || observed[0].Content != string(want) {
 		return item, errors.New("the recovered result binding is unavailable or changed")
 	}
 	if pending.Complete {

@@ -116,22 +116,22 @@ func TestAuditKANoteLaundersTheResult(t *testing.T) {
 // markReport through prepareWorkReflection, workReportSource). A test result the agent observed under the title "Procedure
 // execution" (kind test) would be citable, and it is refused at work record and at wiki capture.
 func TestAuditKATestObservationRefusedForATitleItCanHave(t *testing.T) {
-	if testWorkReport("test", notebook.WorkProcedure.Title()) || testWorkReport("human", notebook.WorkResult.Title()) {
+	if testWorkReport("test", notebook.WorkProcedure().Title()) || testWorkReport("human", notebook.WorkResult().Title()) {
 		t.Fatalf("precondition: a source of kind test or human is no report")
 	}
 	f := newAuditFlow(t)
 	first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
-	saved, err := f.record(first, map[string]any{"observations": []any{map[string]any{"kind": "test", "title": notebook.WorkProcedure.Title(), "content": "make test: 412 passed after the export change."}},
+	saved, err := f.record(first, map[string]any{"observations": []any{map[string]any{"kind": "test", "title": notebook.WorkProcedure().Title(), "content": "make test: 412 passed after the export change."}},
 		"result": map[string]any{"changed": "Edited the export.", "checked": "Ran make test.", "evidence": []any{"new1"}}})
 	raw := auditJSON(saved["errors"])
-	t.Logf("work record, kind test, title %q: err=%v complete=%v errors=%.300s", notebook.WorkProcedure.Title(), err, saved["complete"], raw)
+	t.Logf("work record, kind test, title %q: err=%v complete=%v errors=%.300s", notebook.WorkProcedure().Title(), err, saved["complete"], raw)
 	if strings.Contains(raw, "is the one shikii gives its own reports") {
-		t.Errorf("a test observation titled %q (kind test: never taken for a report, citable) is refused at work record", notebook.WorkProcedure.Title())
+		t.Errorf("a test observation titled %q (kind test: never taken for a report, citable) is refused at work record", notebook.WorkProcedure().Title())
 	}
-	_, cerr := improvementCall(t, f.b, map[string]any{"operation": "capture", "observation": map[string]any{"kind": "test", "title": notebook.WorkProcedure.Title(), "content": "make test: 412 passed.", "reference": "make test", "version": "audit-k", "observed_at": "2026-11-12T00:00:00Z"}})
+	_, cerr := improvementCall(t, f.b, map[string]any{"operation": "capture", "observation": map[string]any{"kind": "test", "title": notebook.WorkProcedure().Title(), "content": "make test: 412 passed.", "reference": "make test", "version": "audit-k", "observed_at": "2026-11-12T00:00:00Z"}})
 	t.Logf("wiki capture, kind test: %v", cerr)
 	if cerr != nil && strings.Contains(cerr.Error(), "is the one shikii gives its own reports") {
-		t.Errorf("a test observation titled %q is refused at wiki capture", notebook.WorkProcedure.Title())
+		t.Errorf("a test observation titled %q is refused at wiki capture", notebook.WorkProcedure().Title())
 	}
 }
 

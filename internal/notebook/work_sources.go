@@ -20,20 +20,19 @@ import (
 // work source), never a number turned into one (audit N of 0.31.0: WorkSource(5) compiled and saved a source of that kind).
 type WorkSource struct{ k uint8 }
 
-var (
-	WorkResult          = WorkSource{1}  // the result of a work and its remaining conditions
-	WorkReview          = WorkSource{2}  // the ending review of a work's judgment
-	WorkRecovery        = WorkSource{3}  // the source that binds a recovered result to its evidence
-	WorkProcedure       = WorkSource{4}  // the record of a procedure a result closed
-	WorkNoteIntent      = WorkSource{5}  // archive: a required wiki note and the bindings it was prepared with
-	WorkCapacity        = WorkSource{6}  // archive: the required work at the session capacity boundary
-	WorkPending         = WorkSource{7}  // archive: pending wiki work before a preparation replaces it
-	WorkTrialPlan       = WorkSource{8}  // record: the plan of a trial
-	WorkTrialExecution  = WorkSource{9}  // record: the execution of a trial
-	WorkTrialComparison = WorkSource{10} // record: a comparison of trials
-	WorkReading         = WorkSource{11} // record: a measured reading
-	WorkOutcome         = WorkSource{12} // record: a procedure outcome with the evidence it cites
-)
+// The kinds are functions, not variables: a value of the table cannot be rebound outside the notebook (audit O of 0.31.0).
+func WorkResult() WorkSource          { return WorkSource{1} }  // the result of a work and its remaining conditions
+func WorkReview() WorkSource          { return WorkSource{2} }  // the ending review of a work's judgment
+func WorkRecovery() WorkSource        { return WorkSource{3} }  // the source that binds a recovered result to its evidence
+func WorkProcedure() WorkSource       { return WorkSource{4} }  // the record of a procedure a result closed
+func WorkNoteIntent() WorkSource      { return WorkSource{5} }  // archive: a required wiki note and the bindings it was prepared with
+func WorkCapacity() WorkSource        { return WorkSource{6} }  // archive: the required work at the session capacity boundary
+func WorkPending() WorkSource         { return WorkSource{7} }  // archive: pending wiki work before a preparation replaces it
+func WorkTrialPlan() WorkSource       { return WorkSource{8} }  // record: the plan of a trial
+func WorkTrialExecution() WorkSource  { return WorkSource{9} }  // record: the execution of a trial
+func WorkTrialComparison() WorkSource { return WorkSource{10} } // record: a comparison of trials
+func WorkReading() WorkSource         { return WorkSource{11} } // record: a measured reading
+func WorkOutcome() WorkSource         { return WorkSource{12} } // record: a procedure outcome with the evidence it cites
 
 const workSourceEnd = 13
 
@@ -54,6 +53,10 @@ func (k WorkSource) MarshalJSON() ([]byte, error) { return []byte(strconv.Itoa(i
 
 // UnmarshalJSON reads the number back; a number of no kind is refused.
 func (k *WorkSource) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		*k = WorkSource{} // no work source, as the number 0 reads
+		return nil
+	}
 	n, err := strconv.Atoi(string(b))
 	if err != nil || n < 0 || n >= workSourceEnd {
 		return fmt.Errorf("unknown work source %s", b)
@@ -89,21 +92,21 @@ func (k WorkSource) Title() string {
 // Citable reports whether evidence may cite the source: a record of what the agent did is cited like the observation it records;
 // a report or an archive a work wrote about itself is no observation.
 func (k WorkSource) Citable() bool {
-	return k.k >= WorkTrialPlan.k && k.k < workSourceEnd
+	return k.k >= WorkTrialPlan().k && k.k < workSourceEnd
 }
 
 // Describe says what the source is, in a refusal that names it.
 func (k WorkSource) Describe() string {
 	switch k {
-	case WorkResult:
+	case WorkResult():
 		return "an earlier result"
-	case WorkReview:
+	case WorkReview():
 		return "an ending review"
-	case WorkRecovery:
+	case WorkRecovery():
 		return "the source that binds a result to its evidence"
-	case WorkProcedure:
+	case WorkProcedure():
 		return "the record of a procedure a result closed"
-	case WorkNoteIntent, WorkCapacity, WorkPending:
+	case WorkNoteIntent(), WorkCapacity(), WorkPending():
 		return fmt.Sprintf("%q, an archive of the work's state", k.Title())
 	}
 	return "a record of what the agent did"

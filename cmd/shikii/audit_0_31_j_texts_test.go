@@ -17,7 +17,7 @@ import (
 func TestAuditJObservationTitleRefusalFollowed(t *testing.T) {
 	f := newAuditFlow(t)
 	first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
-	refused, err := f.record(first, map[string]any{"observations": []any{map[string]any{"title": notebook.WorkResult.Title(), "content": "Ran make test: 412 passed."}},
+	refused, err := f.record(first, map[string]any{"observations": []any{map[string]any{"title": notebook.WorkResult().Title(), "content": "Ran make test: 412 passed."}},
 		"result": map[string]any{"changed": "Edited the export.", "checked": "Ran make test.", "evidence": []any{"new1"}}})
 	raw := auditJSON(refused["errors"])
 	t.Logf("refused: err=%v complete=%v errors=%.500s", err, refused["complete"], raw)
@@ -39,7 +39,7 @@ func TestAuditJObservationTitleRefusalFollowed(t *testing.T) {
 func TestAuditJArchiveRefusalNamesWhatItIs(t *testing.T) {
 	f := newAuditFlow(t)
 	content, _ := json.Marshal(map[string]any{"work": map[string]any{"result": map[string]any{"changed": "Edited the export.", "sufficient": true}}})
-	archive, err := f.b.CaptureWork(notebook.WorkPending, string(content), "work preparation replacement for turn 0123456789abcdef", "work-preparation", time.Now().UTC())
+	archive, err := f.b.CaptureWork(notebook.WorkPending(), string(content), "work preparation replacement for turn 0123456789abcdef", "work-preparation", time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,12 +125,12 @@ func TestAuditJSelfEvidenceRefusalOnAStandaloneReceipt(t *testing.T) {
 }
 
 // The source that binds a result to its evidence ("Recovered work result evidence") is no evidence (INVARIANT 10). No shipped
-// test holds it: with notebook.WorkRecovery.Title() marked citable in workSourceTitles, every shipped test passes (TestAnObservationCannot...
+// test holds it: with notebook.WorkRecovery().Title() marked citable in workSourceTitles, every shipped test passes (TestAnObservationCannot...
 // takes its answer from the same table). Written the way TestAuditGAnArchiveOfTheWorkIsEvidence writes an archive.
 func TestAuditJTheRecoverySourceIsNoEvidence(t *testing.T) {
 	f := newAuditFlow(t)
 	content, _ := json.Marshal(map[string]any{"result": map[string]any{"changed": "Edited the export."}, "evidence": []string{"0123456789abcdef"}})
-	recovery, err := f.b.CaptureWork(notebook.WorkRecovery, string(content), "result-recovery:0123456789abcdef", "work-recovery", time.Now().UTC())
+	recovery, err := f.b.CaptureWork(notebook.WorkRecovery(), string(content), "result-recovery:0123456789abcdef", "work-recovery", time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,8 +146,8 @@ func TestAuditJTheRecoverySourceIsNoEvidence(t *testing.T) {
 		t.Fatalf("precondition: the recovery source is listed among the observations: %.300s", auditJSON(prepared["observations"]))
 	}
 	done, err := f.record(prepared, map[string]any{"result": map[string]any{"changed": "Edited the export.", "checked": "Nothing new.", "evidence": []any{ref}}})
-	t.Logf("%s as %s: err=%v complete=%v errors=%.300s", notebook.WorkRecovery.Title(), ref, err, done["complete"], auditJSON(done["errors"]))
+	t.Logf("%s as %s: err=%v complete=%v errors=%.300s", notebook.WorkRecovery().Title(), ref, err, done["complete"], auditJSON(done["errors"]))
 	if err == nil && done["complete"] == true {
-		t.Errorf("INVARIANT 10: a result that observed nothing is complete with %s (%q) as its only evidence", ref, notebook.WorkRecovery.Title())
+		t.Errorf("INVARIANT 10: a result that observed nothing is complete with %s (%q) as its only evidence", ref, notebook.WorkRecovery().Title())
 	}
 }

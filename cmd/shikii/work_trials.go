@@ -118,6 +118,21 @@ func heldSource(w *workState, id string) bool {
 	return false
 }
 
+// unknownEvidenceRef refuses a reference evidence cannot name: no prepared article, trial, comparison, captured source, current or
+// newN of the call.
+func unknownEvidenceRef(w *workState, ref string) error {
+	if _, ok := w.Articles[ref]; ok {
+		return nil
+	}
+	if w.Reasoning != nil && (w.Reasoning.Comparisons[ref] != nil || w.Reasoning.Trials[ref] != nil) {
+		return nil
+	}
+	if ref != "current" && w.Sources[ref] == "" && !strings.HasPrefix(ref, "new") && !heldSource(w, ref) {
+		return fmt.Errorf("unknown reasoning evidence %q; use %sa prepared article, trial or captured source: evidence takes references, not text (what you checked goes in checked or reason; to cite it, add it to observations and name it new1)", ref, currentRef(w))
+	}
+	return nil
+}
+
 func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve func([]string) ([]string, error)) ([]string, error) {
 	w.citingEvidence = true
 	defer func() { w.citingEvidence = false }()
@@ -166,8 +181,8 @@ func bindWorkEvidence(book notebook.Book, w *workState, refs []string, resolve f
 				continue
 			}
 		}
-		if ref != "current" && w.Sources[ref] == "" && !strings.HasPrefix(ref, "new") && !heldSource(w, ref) {
-			return nil, fmt.Errorf("unknown reasoning evidence %q; use %sa prepared article, trial or captured source: evidence takes references, not text (what you checked goes in checked or reason; to cite it, add it to observations and name it new1)", ref, currentRef(w))
+		if err := unknownEvidenceRef(w, ref); err != nil {
+			return nil, err
 		}
 		ids, err := resolve([]string{ref})
 		if err != nil {
@@ -264,7 +279,7 @@ func recordWorkTrial(book notebook.Book, w *workState, request workTrialRequest,
 		w.Expected[key] = store.KnowledgeReference{}
 		report := workTrialReport{Type: "trial-plan/v1", Store: store.StoreName(book.Root, book.Scope), Session: r.SessionID, Turn: r.TurnID, Ref: state.Ref, Plan: state.Plan}
 		data, _ := json.Marshal(report)
-		if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialPlan, string(data), state.Ref), &state.Source, key, item, save, commit); err != nil {
+		if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialPlan(), string(data), state.Ref), &state.Source, key, item, save, commit); err != nil {
 			return item, err
 		}
 	}
@@ -306,7 +321,7 @@ func recordWorkTrial(book notebook.Book, w *workState, request workTrialRequest,
 			w.Expected[key] = store.KnowledgeReference{}
 			report := workTrialReport{Type: "trial-result/v1", Store: store.StoreName(book.Root, book.Scope), Session: r.SessionID, Turn: r.TurnID, Ref: state.Ref, Plan: state.Plan, PlanSource: state.Source, Result: state.Result}
 			data, _ := json.Marshal(report)
-			if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialExecution, string(data), state.Ref), &state.ResultSource, key, item, save, commit); err != nil {
+			if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialExecution(), string(data), state.Ref), &state.ResultSource, key, item, save, commit); err != nil {
 				return item, err
 			}
 		}

@@ -46,7 +46,7 @@ func TestAuditMAnObservationTakesTheMemoOfTheResult(t *testing.T) {
 	report := auditKResultID(t, v["receipt"], func(f map[string]any) (map[string]any, error) { return workCall(t, b, "record", f) })
 	saved := auditMSourceContent(t, b, report)
 	second, err := record(map[string]any{
-		"observations": []any{map[string]any{"kind": "agent", "title": notebook.WorkResult.Title(), "content": saved.Content}},
+		"observations": []any{map[string]any{"kind": "agent", "title": notebook.WorkResult().Title(), "content": saved.Content}},
 		"result":       map[string]any{"changed": "Validated the Quartz exports; checked.", "sufficient": true, "evidence": []string{"new1"}},
 	})
 	t.Logf("report %s; second record: err=%v complete=%v saved=%.500s errors=%.500s", report, err, second["complete"], auditJSON(second["saved"]), auditJSON(second["errors"]))
@@ -55,7 +55,7 @@ func TestAuditMAnObservationTakesTheMemoOfTheResult(t *testing.T) {
 	}
 	for _, item := range asList(second["saved"]) {
 		if m, _ := item.(map[string]any); m["kind"] == "observation" && m["id"] == report {
-			t.Errorf("INVARIANT 10: an observation the agent sent under the title %q was not refused: it came back as the id of the work's own report %s", notebook.WorkResult.Title(), report)
+			t.Errorf("INVARIANT 10: an observation the agent sent under the title %q was not refused: it came back as the id of the work's own report %s", notebook.WorkResult().Title(), report)
 		}
 	}
 	if second["complete"] == true {

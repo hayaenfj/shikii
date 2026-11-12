@@ -104,7 +104,13 @@ func readSessionLatest(sessionID string) (latest sessionLatest, known bool, err 
 	if err != nil {
 		return latest, false, err
 	}
-	b, err := os.ReadFile(sessionLatestPath(common, sessionID))
+	path := sessionLatestPath(common, sessionID)
+	// a folder that is a link is no folder of shikii's, read or written: a state read there was never written again, and a Stop
+	// that let the turn end left the request open (audit O of 0.31.0)
+	if info, err := os.Lstat(filepath.Dir(path)); err == nil && !info.IsDir() {
+		return sessionLatest{}, false, fmt.Errorf("%s is not a folder of shikii's", filepath.Dir(path))
+	}
+	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return latest, false, nil
 	}

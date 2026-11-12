@@ -11,18 +11,18 @@ import (
 // about itself are no evidence; the records of what the agent did are.
 func TestEachWorkSourceSaysWhatItIs(t *testing.T) {
 	want := map[WorkSource][2]string{
-		WorkResult:          {"an earlier result", "no"},
-		WorkReview:          {"an ending review", "no"},
-		WorkRecovery:        {"the source that binds a result to its evidence", "no"},
-		WorkProcedure:       {"the record of a procedure a result closed", "no"},
-		WorkNoteIntent:      {"an archive of the work's state", "no"},
-		WorkCapacity:        {"an archive of the work's state", "no"},
-		WorkPending:         {"an archive of the work's state", "no"},
-		WorkTrialPlan:       {"a record of what the agent did", "yes"},
-		WorkTrialExecution:  {"a record of what the agent did", "yes"},
-		WorkTrialComparison: {"a record of what the agent did", "yes"},
-		WorkReading:         {"a record of what the agent did", "yes"},
-		WorkOutcome:         {"a record of what the agent did", "yes"},
+		WorkResult():          {"an earlier result", "no"},
+		WorkReview():          {"an ending review", "no"},
+		WorkRecovery():        {"the source that binds a result to its evidence", "no"},
+		WorkProcedure():       {"the record of a procedure a result closed", "no"},
+		WorkNoteIntent():      {"an archive of the work's state", "no"},
+		WorkCapacity():        {"an archive of the work's state", "no"},
+		WorkPending():         {"an archive of the work's state", "no"},
+		WorkTrialPlan():       {"a record of what the agent did", "yes"},
+		WorkTrialExecution():  {"a record of what the agent did", "yes"},
+		WorkTrialComparison(): {"a record of what the agent did", "yes"},
+		WorkReading():         {"a record of what the agent did", "yes"},
+		WorkOutcome():         {"a record of what the agent did", "yes"},
 	}
 	if len(WorkSources()) != len(want) {
 		t.Fatalf("%d kinds, %d described here", len(WorkSources()), len(want))
@@ -53,7 +53,7 @@ func TestAReadingIsReadOnlyFromAWorkSource(t *testing.T) {
 	d := ReadingDetails{Topic: "kind", Case: "0000000000000001", Work: "0000000000000002", Check: "Keep the condition.", Depth: "brief", Bytes: 100, Reads: 1, Sufficient: true, Articles: []ArticleReference{{ID: "0000000000000003", Revision: "0000000000000004"}}, Evidence: evidence}
 	data, _ := json.Marshal(d)
 	read := func(kind string) error {
-		o, err := b.capture(Observation{Kind: kind, Title: WorkReading.Title(), Content: string(data), Reference: "synthetic execution " + kind, Version: "fixture", ObservedAt: time.Now().UTC()})
+		o, err := b.capture(Observation{Kind: kind, Title: WorkReading().Title(), Content: string(data), Reference: "synthetic execution " + kind, Version: "fixture", ObservedAt: time.Now().UTC()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +76,7 @@ func TestAReadingIsReadOnlyFromAWorkSource(t *testing.T) {
 // title of a result is refused.
 func TestOnlyAWorkSourceIsSettledAsAnExecutionDiagnostic(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/diagnostic-kind"}
-	o, err := b.capture(Observation{Kind: "test", Title: WorkResult.Title(), Content: `{"changed":"Edited."}`, Reference: "synthetic", Version: "fixture", ObservedAt: time.Now().UTC()})
+	o, err := b.capture(Observation{Kind: "test", Title: WorkResult().Title(), Content: `{"changed":"Edited."}`, Reference: "synthetic", Version: "fixture", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
