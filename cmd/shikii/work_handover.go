@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -70,31 +69,44 @@ func interruptedHandover(s *hookSession, scope string) *workHandover {
 	return s.Planning.Handover
 }
 
-// endTurnElsewhere records the end of the turn for a Stop that ran while the agent's shell stood outside every project. Such a
-// Stop checks nothing and says nothing, so the turn does end; without the record the next request in the project would take
-// over the references of a request that was finished. Only the session's own record in a registered, active project is touched.
-func endTurnElsewhere(sessionID string) {
+// turnElsewhere records what an event says about the agent's turn in the other projects that hold a record of this session. The
+// hook runs where the agent's shell stands: outside every project, or in another project than the one whose request the agent
+// works on (it changed folder). A Stop that stopped nothing ends the turn there too: without the record, the next request in that
+// project would take over the references of a request that was finished. A completion notice means the agent works on: the end is
+// taken back, as hookUserPrompt does in the project itself. here is the project the event itself is handled in ("" outside every
+// project). Only a record that exists and has a turn is touched; a Stop with the id of a subagent says nothing of the request.
+func turnElsewhere(event string, in *hookInput, here string, blocked bool) {
+	var ends bool
+	switch {
+	case in.AgentID != "" || in.SessionID == "":
+		return
+	case event == "stop" && !blocked:
+		ends = true
+	case event == "user-prompt-submit" && isNotification(in.Prompt):
+		ends = false
+	default:
+		return
+	}
 	common, err := agentHome()
-	if err != nil || sessionID == "" {
+	if err != nil {
 		return
 	}
 	for _, p := range registeredProjects(common) {
 		root := filepath.Join(p.Path, ".shikii")
-		if active, err := projectActive(root, p.Path); err != nil || !active {
+		// a record that is not there reads as one without a turn: nothing is written, so no record is made
+		if s := loadSession(root, in.SessionID); root == here || s.TurnID == "" || ends == (s.EndedTurn == s.TurnID) {
 			continue
 		}
-		if _, err := os.Stat(sessionPath(root, sessionID)); err != nil {
-			continue
-		}
-		if s := loadSession(root, sessionID); s.TurnID == "" || s.EndedTurn == s.TurnID {
-			continue
-		}
-		if err := updateSession(root, sessionID, func(s *hookSession) {
-			if s.TurnID != "" {
+		if err := updateSession(root, in.SessionID, func(s *hookSession) {
+			switch {
+			case s.TurnID == "":
+			case ends:
 				s.EndedTurn = s.TurnID
+			case s.EndedTurn == s.TurnID:
+				s.EndedTurn = ""
 			}
 		}); err != nil {
-			hookLog(fmt.Sprintf("session %s: the end of the turn was not recorded (%v)", sessionID, err))
+			hookLog(fmt.Sprintf("session %s: the turn's state was not recorded in %s (%v)", in.SessionID, p.Path, err))
 		}
 	}
 }

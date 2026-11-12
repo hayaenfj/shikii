@@ -35,9 +35,7 @@ func runHookEvent(event string) error {
 				fmt.Fprintln(stdout, string(b))
 			}
 		}
-		if event == "stop" {
-			endTurnElsewhere(in.SessionID) // nothing is checked outside a project, yet this Stop lets the agent's turn end
-		}
+		turnElsewhere(event, &in, "", false) // nothing is checked outside a project, yet the agent's turn ends, or goes on, here too
 		return nil
 	}
 	if err != nil {
@@ -77,7 +75,8 @@ func runHookEvent(event string) error {
 		out, muts, err = hookStop(agent, &in, snapshot)
 		// This Stop lets the turn end, with or without a last message (work_handover.go). So does one whose judgment failed (the
 		// model of the closing questions was not reachable): the hook records the error and exits 0, the agent's turn is over.
-		if !out.Block {
+		// A Stop that carries the id of a subagent is not the end of the person's request.
+		if !out.Block && in.AgentID == "" {
 			ended := snapshot.TurnID
 			muts = append(muts, func(s *hookSession) {
 				if s.TurnID == ended {
@@ -97,6 +96,7 @@ func runHookEvent(event string) error {
 			out, err = hookToolLesson(agent, &in, snapshot)
 		}
 	}
+	turnElsewhere(event, &in, agent, out.Block) // the same session's requests in other projects end, or go on, with this event
 	if moved != "" {
 		out.Context = joinLines(moved, out.Context)
 	}
