@@ -4,6 +4,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -87,20 +88,42 @@ func TestUnknownFieldRefusalNamesThePlaceAndTheFieldsThere(t *testing.T) {
 // only in the shared reader and in the two readers that are not an agent's input (the page's own article form and project.json).
 // An allowlist, with a negative example: the same call written anywhere else is found.
 func TestOnlyTheSharedReaderRefusesUnknownFields(t *testing.T) {
-	allowed := map[string]bool{"json_input.go": true, "serve_article.go": true, "project.go": true}
-	if got := strictReaders(t, "."); !sameNames(got, allowed) {
-		t.Errorf("DisallowUnknownFields is written in %v; only %v may (read an agent's JSON with decodeStrictObject)", got, names(allowed))
+	got := strictReaders(t, ".")
+	if len(got) == 0 {
+		t.Fatal("precondition: the shared reader is found")
 	}
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "elsewhere.go"), []byte("package main\nfunc f() { d := json.NewDecoder(nil); d.DisallowUnknownFields() }\n"), 0o600); err != nil {
-		t.Fatal(err)
+	for _, where := range got {
+		if strictReaderAllowed[where] == "" {
+			t.Errorf("%s refuses unknown fields (DisallowUnknownFields); read an agent's JSON with decodeStrictObject", where)
+		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "elsewhere_test.go"), []byte("package main\nfunc g() { d.DisallowUnknownFields() }\n"), 0o600); err != nil {
-		t.Fatal(err)
+	for where := range strictReaderAllowed {
+		if !slices.Contains(got, where) {
+			t.Errorf("strictReaderAllowed names %s, which refuses no unknown field now", where)
+		}
 	}
-	if got := strictReaders(t, dir); len(got) != 1 || got[0] != "elsewhere.go" {
-		t.Errorf("the check must find the call in a file outside the list (and skip tests): %v", got)
+	// negative: the call in a new function, also in a file of the list, and through a method value, is found
+	for name, src := range map[string]string{
+		"another file":   "package main\nimport \"encoding/json\"\nfunc f() { d := json.NewDecoder(nil); d.DisallowUnknownFields() }\n",
+		"a method value": "package main\nimport \"encoding/json\"\nfunc f() { strict := json.NewDecoder(nil).DisallowUnknownFields; strict() }\n",
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "json_input.go"), []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := strictReaders(t, dir); len(got) != 1 || got[0] != "json_input.go:f" {
+			t.Errorf("negative (%s): the call in a new function is not found: %v", name, got)
+		}
 	}
+}
+
+// strictReaderAllowed are the functions that refuse unknown keys: the shared reader of an agent's JSON, and the two readers that are
+// not an agent's input (the page's own article form and project.json). Allowed by function, not by file: a new reader in a file of
+// the list is found too (audit N of 0.31.0).
+var strictReaderAllowed = map[string]string{
+	"json_input.go:decodeStrictObject": "the shared reader of an agent's JSON",
+	"serve_article.go:handleArticle":   "the page's own article form (not an agent's input)",
+	"project.go:projectActive":         "project.json, written by shikii",
 }
 
 func strictReaders(t *testing.T, dir string) []string {
@@ -116,17 +139,16 @@ func strictReaders(t *testing.T, dir string) []string {
 		}
 	}
 	// the method DisallowUnknownFields of encoding/json's Decoder, however it is reached (read by its type)
-	uses := typedUses(t, sources, dir == ".", func(obj types.Object) bool {
+	uses := typedUses(t, sources, typedIsThePackage(sources), func(obj types.Object) bool {
 		fn, ok := obj.(*types.Func)
 		return ok && fn.Name() == "DisallowUnknownFields" && fn.Pkg() != nil && fn.Pkg().Path() == "encoding/json"
 	})
 	seen := map[string]bool{}
 	var found []string
 	for _, use := range uses {
-		file := strings.SplitN(use, ":", 2)[0]
-		if !seen[file] {
-			seen[file] = true
-			found = append(found, file)
+		if !seen[use] {
+			seen[use] = true
+			found = append(found, use)
 		}
 	}
 	sort.Strings(found)

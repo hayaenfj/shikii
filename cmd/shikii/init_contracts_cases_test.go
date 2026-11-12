@@ -587,65 +587,75 @@ func TestOnlyHookSpecPathBuildsSpecFilePaths(t *testing.T) {
 	}
 }
 
-// specPathBuilders reads the sources by their types and returns where an expression joins the folder of the questions
-// ("decisions", a constant however it is spelled) with a name that ends in ".yaml", outside hookSpecPath: a call of path/filepath's or
-// path's Join (also through another name), or a string built with + . Building it elsewhere misses the adopted version of a question.
+// specPathBuilders reads the sources by their types and returns where an expression holds the folder of the questions (the constant
+// "decisions", or a constant with "decisions/" in it) and, in the same expression as a whole, a name that ends in ".yaml" (any
+// constant with ".yaml" in it): a path of path/filepath's Join with the name inside or after it, a string built with +, a format of
+// fmt.Sprintf. Only hookSpecPath builds one; building it elsewhere misses the adopted version of a question. The folder alone is no
+// question file (seeding and listing it).
 func specPathBuilders(t *testing.T, sources map[string]string) []string {
 	t.Helper()
 	var problems []string
-	for _, tf := range typedSources(t, sources, len(sources) > 5) {
+	for _, tf := range typedSources(t, sources, typedIsThePackage(sources)) {
 		if tf.prelude {
 			continue
 		}
 		info := tf.info
-		constant := func(e ast.Expr) (string, bool) {
+		text := func(e ast.Expr) (string, bool) {
 			if tv, ok := info.Types[e]; ok && tv.Value != nil && tv.Value.Kind() == gconstant.String {
 				return gconstant.StringVal(tv.Value), true
 			}
 			return "", false
 		}
-		// endsYAML: the expression's last constant part ends in .yaml (id+".yaml", a constant, a name like "x-v*.yaml")
-		var endsYAML func(e ast.Expr) bool
-		endsYAML = func(e ast.Expr) bool {
-			if c, ok := constant(e); ok {
-				return strings.HasSuffix(c, ".yaml")
-			}
-			if b, ok := ast.Unparen(e).(*ast.BinaryExpr); ok && b.Op == token.ADD {
-				return endsYAML(b.Y)
-			}
-			return false
-		}
 		typedDecls(tf.file, func(name string, root ast.Node) {
 			if name == "hookSpecPath" && tf.name == "hook_variants.go" {
 				return
 			}
-			values := typedFuncValues(info, root)
+			parents := typedParents(root)
+			seen := map[ast.Node]bool{}
 			ast.Inspect(root, func(n ast.Node) bool {
-				switch v := n.(type) {
-				case *ast.CallExpr:
-					fn, _ := typeutilCallee(info, values, v).(*types.Func)
-					if fn == nil || fn.Name() != "Join" || fn.Pkg() == nil || (fn.Pkg().Path() != "path/filepath" && fn.Pkg().Path() != "path") {
-						return true
+				e, ok := n.(ast.Expr)
+				if !ok {
+					return true
+				}
+				c, ok := text(e)
+				if !ok || (c != "decisions" && !strings.Contains(c, "decisions/")) {
+					return true
+				}
+				// the expression as a whole: up through the expressions that hold this one
+				outer := ast.Node(e)
+				for {
+					p, ok := parents[outer].(ast.Expr)
+					if !ok {
+						break
 					}
-					for i, arg := range v.Args {
-						if c, ok := constant(arg); ok && c == "decisions" {
-							for _, later := range v.Args[i+1:] {
-								if endsYAML(later) {
-									problems = append(problems, tf.name+":"+name)
-									return true
-								}
-							}
+					outer = p
+				}
+				if seen[outer] {
+					return true
+				}
+				yaml := false
+				if strings.Contains(c, ".yaml") {
+					// one string with both: a path only as the format of fmt's Sprintf (a text that names the path, like a help or
+					// a refusal, is no path)
+					if call, ok := parents[e].(*ast.CallExpr); ok && len(call.Args) > 0 && call.Args[0] == e {
+						if fn, ok := typeutilCallee(info, nil, call).(*types.Func); ok && fn.Pkg() != nil && fn.Pkg().Path() == "fmt" && fn.Name() == "Sprintf" {
+							yaml = true
 						}
 					}
-				case *ast.BinaryExpr:
-					if c, ok := constant(v); ok {
-						_ = c // a constant as a whole is not a path built here
-						return true
-					}
-					if v.Op == token.ADD && endsYAML(v) && strings.Contains(typedConstantText(info, v), "decisions/") {
-						problems = append(problems, tf.name+":"+name)
-						return false
-					}
+				} else if _, constantAsAWhole := text(outer.(ast.Expr)); !constantAsAWhole {
+					// the folder and a name joined: another constant with .yaml in the same expression
+					ast.Inspect(outer, func(m ast.Node) bool {
+						if x, ok := m.(ast.Expr); ok && x != e {
+							if v, ok := text(x); ok && strings.Contains(v, ".yaml") {
+								yaml = true
+							}
+						}
+						return !yaml
+					})
+				}
+				if yaml {
+					seen[outer] = true
+					problems = append(problems, tf.name+":"+name)
 				}
 				return true
 			})
@@ -659,7 +669,7 @@ func typeutilCallee(info *types.Info, values map[types.Object]types.Object, call
 	switch fun := ast.Unparen(call.Fun).(type) {
 	case *ast.Ident:
 		obj := info.Uses[fun]
-		if fn, ok := values[obj]; ok {
+		if fn, ok := values[obj]; ok && values != nil {
 			return fn
 		}
 		return obj

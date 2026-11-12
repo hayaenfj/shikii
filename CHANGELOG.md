@@ -28,7 +28,8 @@
 
 ### Other fixes
 
-- A result with nothing checked could cite itself as its evidence and be recorded as complete. It is now refused, as is citing another report the work wrote about itself, or a wiki page written only from such reports. An observation can no longer take a title shikii gives its own records.
+- A result with nothing checked could cite itself, or another report the work wrote about itself, as its evidence and be recorded as complete. Such evidence, and a wiki page written only from such reports, is now refused.
+- An observation the agent sends could take a title shikii gives its own records and be taken for one of them. It is now refused.
 - `shikii --init` said "Ready" on a machine with no hooks. It now says the hooks are not installed.
 - Within one piece of work, the agent can cite a source it saved earlier and a page it edited.
 - The notice before each request and the one at the end of a turn asked for two different procedures. They now ask for one, and also name the MCP tool.

@@ -72,7 +72,7 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 	t.Helper()
 	readers := map[string]bool{"decodeObject": true, "decodeReflect": true, "decodeReview": true}
 	found := map[string]bool{}
-	for _, tf := range typedSources(t, sources, len(sources) > 5) {
+	for _, tf := range typedSources(t, sources, typedIsThePackage(sources)) {
 		if tf.prelude {
 			continue
 		}
@@ -100,7 +100,40 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 			n := typedNamed(typ)
 			return n != nil && n.Obj().Name() == "Request" && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == "net/http"
 		}
+		// the functions and methods that read the body of a request without its Body field
+		readsTheBody := func(obj types.Object) bool {
+			fn, ok := obj.(*types.Func)
+			if !ok || fn.Pkg() == nil {
+				return false
+			}
+			switch fn.Pkg().Path() {
+			case "net/http/httputil":
+				return fn.Name() == "DumpRequest" || fn.Name() == "DumpRequestOut"
+			case "net/http":
+				recv := fn.Type().(*types.Signature).Recv()
+				if recv == nil || typedNamed(recv.Type()) == nil || typedNamed(recv.Type()).Obj().Name() != "Request" {
+					return false
+				}
+				switch fn.Name() {
+				case "ParseForm", "ParseMultipartForm", "FormValue", "PostFormValue", "FormFile", "MultipartReader", "Write", "WriteProxy":
+					return true
+				}
+			}
+			return false
+		}
 		typedDecls(tf.file, func(name string, root ast.Node) {
+			ast.Inspect(root, func(n ast.Node) bool {
+				if v, ok := n.(*ast.SelectorExpr); ok {
+					obj := info.Uses[v.Sel]
+					if sel := info.Selections[v]; sel != nil {
+						obj = sel.Obj()
+					}
+					if obj != nil && readsTheBody(obj) {
+						found[name] = true
+					}
+				}
+				return true
+			})
 			parents := typedParents(root)
 			for node, parent := range parents {
 				sel, ok := node.(*ast.SelectorExpr)
@@ -110,8 +143,12 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 				allowed := false
 				switch p := parent.(type) {
 				case *ast.CallExpr:
+					// handed to the one reader: the package's function of that name, by the object it denotes (a local function of the
+					// same name is no reader)
 					if id, ok := p.Fun.(*ast.Ident); ok && readers[id.Name] && len(p.Args) > 0 && p.Args[0] == sel {
-						allowed = true // handed to the one reader
+						if fn, ok := info.Uses[id].(*types.Func); ok && fn.Pkg() != nil && fn.Parent() == fn.Pkg().Scope() {
+							allowed = true
+						}
 					}
 					if f, ok := p.Fun.(*ast.SelectorExpr); ok && f.Sel.Name == "MaxBytesReader" {
 						if assign, ok := parents[p].(*ast.AssignStmt); ok && len(assign.Lhs) == 1 && isBody(assign.Lhs[0]) {

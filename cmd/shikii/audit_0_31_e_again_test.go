@@ -188,7 +188,7 @@ func TestAuditEUnfinishedReportCitedAsEvidenceN(t *testing.T) {
 		}
 	}
 	if ref == "" {
-		t.Skip("the unfinished report is not listed as evidenceN")
+		t.Fatal("the unfinished report is not listed as evidenceN")
 	}
 	c, err := f.record(second, map[string]any{"result": map[string]any{"changed": "Renamed the export button, checked.", "checked": "It works.", "sufficient": true, "evidence": []any{ref}}})
 	t.Logf("C cites %s: err=%v complete=%v errors=%.200s storage=%s", ref, err, c["complete"], auditJSON(c["errors"]), auditJSON(c["storage"]))

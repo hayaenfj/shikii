@@ -18,6 +18,13 @@ func runHookEvent(event string) error {
 		return err
 	}
 	defer beginEventReads()() // the wiki reads of this event share validated parsing (hook_reads.go)
+	stopTurn := ""            // the request a Stop ends: the session's turn when the Stop came (a request that comes since is left open)
+	if event == "stop" {
+		stopTurn = sessionTurnAt(in.SessionID)
+	}
+	// the state of the session's turn changes with every event, also when the hook leaves on the way (a project it cannot prepare,
+	// a folder that is gone): audit M of 0.31.0 found such a request and Stop leaving the state as it was
+	defer sessionTurnOnExit(event, &in, stopTurn)
 	common := agent
 	moved := ""
 	if event == "user-prompt-submit" {
@@ -29,6 +36,7 @@ func runHookEvent(event string) error {
 		if event == "user-prompt-submit" {
 			if prompt := strings.TrimSpace(in.Prompt); prompt != "" && in.AgentID == "" && !isNotification(prompt) && !isSlashCommand(prompt) {
 				noteSessionRequest(in.SessionID, "", "") // a request outside every project: no request of a project goes on (work_handover.go)
+				in.stateNoted = true
 			}
 			notice := copiedNotice(in.CWD)
 			if notice != "" && !noticeOnce(in.SessionID, projectScopeAt(in.CWD)) {
@@ -38,7 +46,8 @@ func runHookEvent(event string) error {
 				fmt.Fprintln(stdout, string(b))
 			}
 		}
-		sessionTurnEvent(event, &in, sessionTurnAt(in.SessionID), false) // nothing is checked outside a project, yet the agent's turn ends, or goes on, here too
+		sessionTurnEvent(event, &in, stopTurn, false) // nothing is checked outside a project, yet the agent's turn ends, or goes on, here too
+		in.stateNoted = true
 		return nil
 	}
 	if err != nil {
@@ -57,10 +66,6 @@ func runHookEvent(event string) error {
 	}
 	// model calls are outside the lock (they only read a copy of the record). Changes to the record are collected in muts and applied to the record re-read inside the lock
 	snapshot := loadSession(agent, in.SessionID)
-	stopTurn := "" // the request a Stop ends: the session's turn when the Stop came (a request that comes since is left open)
-	if event == "stop" {
-		stopTurn = sessionTurnAt(in.SessionID)
-	}
 	if event == "stop" {
 		if in.AgentID != "" {
 			// a Stop with the id of a subagent is not the end of the person's request: nothing is judged or recorded, as a request
@@ -72,6 +77,7 @@ func runHookEvent(event string) error {
 		if serr != nil || (in.StopHookActive && snapshot.TurnID == "" && snapshot.GuardTurn == nil && shikiiStoppedSession(agent, in.SessionID)) {
 			// the turn ends here (continue:false), incomplete: the same session's requests in other projects end with it
 			sessionTurnEvent(event, &in, stopTurn, false)
+			in.stateNoted = true
 			fmt.Fprintln(stdout, string((hookOut{Halt: ritualHalt(true)}).json(hookEventName(event))))
 			return serr
 		}
@@ -121,6 +127,7 @@ func runHookEvent(event string) error {
 		}
 	}
 	sessionTurnEvent(event, &in, stopTurn, blocked) // the session's turn ends, or goes on, with this event
+	in.stateNoted = true
 	if event == "user-prompt-submit" || event == "stop" {
 		sweepDeferrals(agent, in.SessionID) // other sessions' outcomes left waiting by a session that was closed mid-turn (outside this session's lock)
 	}

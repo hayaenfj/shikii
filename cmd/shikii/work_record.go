@@ -144,7 +144,8 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)
 		item := workItem{Ref: ref, Kind: "observation", ID: id}
 		if err != nil {
-			item.Error = err.Error()
+			// a refused observation is named by its place in the call, as the refusal of what cites it names it (newN)
+			item.Ref, item.Error = "new"+strconv.Itoa(i+1), err.Error()
 		} else {
 			local["new"+strconv.Itoa(i+1)] = id
 		}

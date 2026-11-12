@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 // INVARIANT 9: a Stop that stops nothing ends the turn, and the same session's records in other registered projects get the end
@@ -24,9 +23,9 @@ func TestAuditGStopInAProjectWhoseRecordIsUnreadable(t *testing.T) {
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "Done."})
 	_, blocked := stopReason(t, out)
 	s := loadSession(f.root, "planning")
-	t.Logf("the Stop in B (its record unreadable): blocked=%v out=%.160s; A: ended==turn %v", blocked, out, s.endedTurnForTest() == s.TurnID)
+	t.Logf("the Stop in B (its record unreadable): blocked=%v out=%.160s; A: ended==turn %v", blocked, out, !s.goesOnForTest())
 	if blocked {
-		t.Skip("precondition: the Stop does not block")
+		t.Fatal("precondition: the Stop does not block")
 	}
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if second["carried"] != nil {
@@ -41,7 +40,7 @@ func TestAuditGNoticeInBReopensAFinishedRequestInA(t *testing.T) {
 	f := auditCFinishedFirstRequest(t)
 	runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "last_assistant_message": "Done."})
 	a := loadSession(f.root, "planning")
-	if a.endedTurnForTest() != a.TurnID {
+	if a.goesOnForTest() {
 		t.Fatalf("precondition: A's request ended")
 	}
 	other := gitRepo(t)
@@ -50,46 +49,15 @@ func TestAuditGNoticeInBReopensAFinishedRequestInA(t *testing.T) {
 	supplyReasoningFixture(otherRoot, "planning")
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "The check runs in the background."})
 	if _, blocked := stopReason(t, out); blocked {
-		t.Skip("precondition: the Stop in B passes")
+		t.Fatal("precondition: the Stop in B passes")
 	}
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": other, "prompt": "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"})
 	a = loadSession(f.root, "planning")
-	t.Logf("after the notice in B: A ended==turn %v (A's request had ended before B's started)", a.endedTurnForTest() == a.TurnID)
+	t.Logf("after the notice in B: A ended==turn %v (A's request had ended before B's started)", !a.goesOnForTest())
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	t.Logf("carried in A: %.200s", auditJSON(second["carried"]))
 	if second["carried"] != nil {
 		t.Errorf("a notice of B's background work reopened A's finished request; the next request in A takes over its references: %.160s", auditJSON(second["carried"]))
-	}
-}
-
-// What every Stop and every completion notice does now: it changes the one state of the session's turn, and writes no project's
-// record (before it, the hook wrote the end to every project that held a record of the session). With 40 projects that hold none, 20 calls make no record in any of them. The time is
-// logged and not judged: a bound in milliseconds fails on a slow machine and says nothing of what was written (audit J of 0.31.0).
-func TestAuditGTurnElsewhereWithManyProjects(t *testing.T) {
-	f := auditCFinishedFirstRequest(t)
-	for i := 0; i < 40; i++ {
-		initTestProject(t, gitRepo(t))
-	}
-	common, _ := agentHome()
-	projects := registeredProjects(common)
-	in := &hookInput{SessionID: "planning"}
-	start := time.Now()
-	for i := 0; i < 20; i++ {
-		sessionTurnEvent("stop", in, sessionTurnAt("planning"), false)
-		sessionTurnEvent("user-prompt-submit", &hookInput{SessionID: "planning", Prompt: "<task-notification>\n<status>completed</status>\n</task-notification>"}, "", false)
-	}
-	t.Logf("%d registered projects: one event %v", len(projects), time.Since(start)/40)
-	if len(projects) < 41 {
-		t.Fatalf("precondition: 41 projects are registered: %d", len(projects))
-	}
-	for _, p := range projects {
-		root := filepath.Join(p.Path, ".shikii")
-		if root == f.root {
-			continue
-		}
-		if _, err := os.Stat(sessionPath(root, "planning")); !os.IsNotExist(err) {
-			t.Errorf("an event of the session made a record of it in %s, which held none: %v", p.Path, err)
-		}
 	}
 }
 
@@ -121,7 +89,7 @@ func TestAuditGTurnElsewhereWritesOnlyWhereItShould(t *testing.T) {
 	if string(before) != string(after) || string(beforeB) != string(afterB) {
 		t.Errorf("an event of the session's turn wrote a project's record")
 	}
-	if b := loadSession(otherRoot, "planning"); b.endedTurnForTest() != b.TurnID {
+	if b := loadSession(otherRoot, "planning"); b.goesOnForTest() {
 		t.Errorf("control: the Stop ends the session's last request (B's)")
 	}
 	_ = otherRoot

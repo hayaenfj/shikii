@@ -76,7 +76,7 @@ func TestAuditEStopOutsideWithBrokenState(t *testing.T) {
 	if recordAfter, _ := os.ReadFile(sessionPath(f.root, "planning")); string(recordAfter) != string(recordBefore) {
 		t.Errorf("the lock was held, yet the record changed")
 	}
-	if s.endedTurnForTest() != s.TurnID {
+	if s.goesOnForTest() {
 		t.Errorf("the Stop outside every project did not end the session's turn")
 	}
 	// 3) another session's Stop does not touch this session; a subagent-looking id neither
@@ -112,7 +112,7 @@ func TestAuditEStopOutsideWithBrokenState(t *testing.T) {
 	// 5) now it is written, once; a second Stop leaves the record's bytes alone
 	runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "last_assistant_message": "Done."})
 	s = loadSession(f.root, "planning")
-	if s.endedTurnForTest() == "" || s.endedTurnForTest() != s.TurnID {
+	if s.endedTurnForTest() == "" || s.goesOnForTest() {
 		t.Errorf("control: the Stop outside ends the turn: ended=%q turn=%q", s.endedTurnForTest(), s.TurnID)
 	}
 	before, _ = os.ReadFile(sessionPath(f.root, "planning"))
@@ -164,8 +164,8 @@ func TestAuditEStopWithAnAgentIDInTheProject(t *testing.T) {
 	}
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "agent_id": "sub-1", "agent_type": "Explore", "cwd": f.repo, "last_assistant_message": "Subagent done."})
 	s := loadSession(f.root, "planning")
-	t.Logf("a Stop with agent_id in the project: out=%q ended=%v judged=%v previous=%q", out, s.endedTurnForTest() == s.TurnID, s.Judged, s.Previous)
-	if s.endedTurnForTest() == s.TurnID {
+	t.Logf("a Stop with agent_id in the project: out=%q ended=%v judged=%v previous=%q", out, !s.goesOnForTest(), s.Judged, s.Previous)
+	if !s.goesOnForTest() {
 		t.Errorf("a Stop that carries a subagent's id ended the parent's turn and was judged as the parent's Stop (judged=%v, the kept reply is %q)", s.Judged, s.Previous)
 	}
 }
@@ -186,7 +186,7 @@ func TestAuditENoticeOutsideTheProjectAfterAStopOutside(t *testing.T) {
 	}
 	s := loadSession(f.root, "planning")
 	second := f.prepare(f.ask("Also check the totals of the CSV export."), "CSV export totals")
-	t.Logf("ended==turn before the message: %v; carried: %.80s", s.endedTurnForTest() == s.TurnID, auditJSON(second["carried"]))
+	t.Logf("ended==turn before the message: %v; carried: %.80s", !s.goesOnForTest(), auditJSON(second["carried"]))
 	if second["carried"] == nil {
 		t.Errorf("the agent worked on after a completion notice that came while its shell stood outside the project, the person sent a message, and the next preparation took nothing over")
 	}
@@ -207,9 +207,9 @@ func TestAuditEAnUnfinishedTurnLeftInAnotherProject(t *testing.T) {
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "Done."})
 	_, blocked := stopReason(t, out)
 	a, b := loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	t.Logf("the Stop in B: blocked=%v; A: ended==turn %v; B: ended==turn %v", blocked, a.endedTurnForTest() == a.TurnID, b.endedTurnForTest() == b.TurnID)
+	t.Logf("the Stop in B: blocked=%v; A: ended==turn %v; B: ended==turn %v", blocked, !a.goesOnForTest(), !b.goesOnForTest())
 	if blocked {
-		t.Skip("the Stop in the other project is blocked in this fixture")
+		t.Fatal("the Stop in the other project is blocked in this fixture")
 	}
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if second["carried"] != nil {

@@ -38,7 +38,7 @@ func TestAuditGTheArchiveOfTheSameWorkAsEvidence(t *testing.T) {
 	}
 	t.Logf("prepared again: the archive is %q; reasoning=%.300s", ref, auditJSON(again["reasoning"]))
 	if ref == "" {
-		t.Skipf("precondition: an archive of the work is listed: %.400s", auditJSON(again["observations"]))
+		t.Fatalf("precondition: an archive of the work is listed: %.400s", auditJSON(again["observations"]))
 	}
 	for _, title := range []string{"Pending wiki work before replacing preparation", "Required wiki note and original prepared bindings"} {
 		if strings.Contains(archive, title) {
@@ -136,7 +136,7 @@ func TestAuditGTheArchiveOfTheEarlierRequestAsEvidence(t *testing.T) {
 		}
 	}
 	if ref == "" {
-		t.Skipf("precondition: the archive is listed: %.300s", auditJSON(next["observations"]))
+		t.Fatalf("precondition: the archive is listed: %.300s", auditJSON(next["observations"]))
 	}
 	done, err := f.record(next, map[string]any{"result": map[string]any{"changed": "Renamed the export button.", "checked": "Nothing new.", "sufficient": true, "evidence": []any{ref}}})
 	t.Logf("result citing %s: err=%v complete=%v errors=%.300s", ref, err, done["complete"], auditJSON(done["errors"]))

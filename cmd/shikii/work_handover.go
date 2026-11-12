@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -90,6 +91,9 @@ type sessionLatest struct {
 	Ended bool   `json:"ended,omitempty"`
 }
 
+// sessionLatestName is the name of a state the hook writes (sessionPath makes it).
+var sessionLatestName = regexp.MustCompile(`^[A-Za-z0-9_-]+\.json$`)
+
 func sessionLatestPath(common, sessionID string) string {
 	return filepath.Join(common, "latest", filepath.Base(sessionPath("", sessionID)))
 }
@@ -107,7 +111,10 @@ func readSessionLatest(sessionID string) (latest sessionLatest, known bool, err 
 	if err == nil {
 		err = json.Unmarshal(b, &latest)
 	}
-	return latest, err == nil, err
+	if err != nil {
+		return sessionLatest{}, false, err // nothing of a state that cannot be read is used (audit M of 0.31.0)
+	}
+	return latest, true, nil
 }
 
 // updateSessionLatest changes the state of the session's turn under one lock (change returns false to leave it as it is), and
@@ -120,6 +127,12 @@ func updateSessionLatest(sessionID string, change func(latest *sessionLatest, kn
 	path := sessionLatestPath(common, sessionID)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		hookLog(fmt.Sprintf("session %s: the state of the turn was not written (%v)", sessionID, err))
+		return
+	}
+	// a folder that is a link is no folder of shikii's: nothing is written or removed there (audit M of 0.31.0: the removal of old
+	// states removed the person's files where the link pointed)
+	if info, err := os.Lstat(filepath.Dir(path)); err != nil || !info.IsDir() {
+		hookLog(fmt.Sprintf("session %s: the state of the turn was not written (%s is not a folder of shikii's)", sessionID, filepath.Dir(path)))
 		return
 	}
 	lock, err := os.OpenFile(filepath.Join(filepath.Dir(path), ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
@@ -147,6 +160,10 @@ func updateSessionLatest(sessionID string, change func(latest *sessionLatest, kn
 	}
 	old, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.json"))
 	for _, p := range old {
+		// only a name the hook writes (sessionPath's), a file of its own
+		if !sessionLatestName.MatchString(filepath.Base(p)) {
+			continue
+		}
 		if info, err := os.Lstat(p); err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > hookSessionTTL {
 			_ = os.Remove(p)
 		}
@@ -187,6 +204,21 @@ func sessionTurnEvent(event string, in *hookInput, turn string, blocked bool) {
 			return true
 		})
 	}
+}
+
+// sessionTurnOnExit changes the state of the session's turn by an event the hook left before it changed it (a project it could not
+// prepare, a folder that is gone): a request is noted as one outside every project (no request of a project is handed over or
+// reopened), a Stop ends the turn (it stopped nothing), a notice reopens the last request.
+func sessionTurnOnExit(event string, in *hookInput, stopTurn string) {
+	if in.stateNoted || in.AgentID != "" || in.SessionID == "" {
+		return
+	}
+	prompt := strings.TrimSpace(in.Prompt)
+	if event == "user-prompt-submit" && prompt != "" && !isNotification(prompt) && !isSlashCommand(prompt) {
+		noteSessionRequest(in.SessionID, "", "")
+		return
+	}
+	sessionTurnEvent(event, in, stopTurn, false)
 }
 
 // sessionTurnAt is the turn the state names now ("" for a session without one): what a Stop that comes now ends.

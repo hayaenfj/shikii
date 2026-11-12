@@ -108,7 +108,7 @@ func TestAuditCMessageDuringWorkAfterANotification(t *testing.T) {
 	// the background work ends: Claude Code sends its notice as a user message, and the agent works on
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": f.repo, "prompt": "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"})
 	s := loadSession(f.root, "planning")
-	t.Logf("after the notice: same turn=%v ended_turn==turn: %v judged=%v", s.TurnID == turn, s.endedTurnForTest() == s.TurnID, s.Judged)
+	t.Logf("after the notice: same turn=%v ended_turn==turn: %v judged=%v", s.TurnID == turn, !s.goesOnForTest(), s.Judged)
 	if s.TurnID != turn {
 		t.Fatalf("precondition: a notice keeps the turn")
 	}

@@ -59,10 +59,12 @@ func selfEvidence(book notebook.Book, w *workState, use evidenceUse, result stri
 				id = ref
 			}
 			switch {
-			case result != "" && id == result:
-				what = "this result itself"
+			case result != "" && id == result, use == forResult && ref == "result":
+				what = "this result itself" // "result" in the record of a result names the result being recorded
 			case use == forOutcome && w.Result != nil && id == w.Result.Source && len(w.Result.Evidence) > 0:
 				// the result with the evidence it cites
+			case use == forOutcome && w.Result != nil && id == w.Result.Source:
+				what = "this work's result, which cites no evidence of its own (record the result with the evidence it rests on first)"
 			case w.Reports[id]:
 				what = "a report this work wrote about itself (" + workReportKind(book, id) + "), not something it observed"
 			case workReportSource(book, id):
@@ -112,11 +114,11 @@ func workReportSource(book notebook.Book, id string) bool {
 func workSourceOf(book notebook.Book, id string) (notebook.WorkSource, bool) {
 	material, err := book.ReadSources([]string{id})
 	if err != nil {
-		return 0, false
+		return notebook.WorkSource{}, false
 	}
 	originals, _ := material["observations"].([]notebook.Observation)
 	if len(originals) != 1 {
-		return 0, false
+		return notebook.WorkSource{}, false
 	}
 	return notebook.WorkSourceOf(originals[0])
 }
@@ -207,6 +209,12 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		}
 	}
 	if id == "" {
+		// evidence that is no observation is refused before the result is saved: a refused result left waiting, and the record
+		// sent again as the refusal said did not close the work (audit M of 0.31.0). The result itself is checked again below,
+		// once it has an id.
+		if err = selfEvidence(book, w, forResult, "", c.Evidence); err != nil {
+			return workItem{Kind: "result", Ref: "result"}, err
+		}
 		_, id, err = captureWorkObservation(book, w, workArchive(notebook.WorkResult, string(data), evidenceVersion), save, commit)
 	}
 	item := workItem{Kind: "result", Ref: "result", ID: id}
@@ -282,6 +290,7 @@ func finishWorkCompletion(book notebook.Book, w *workState, resolve func([]strin
 	slices.Sort(keys)
 	for _, key := range keys {
 		original := *w.Captures[key].Original
+		original.source = w.Captures[key].Source // a source shikii writes is finished as its kind
 		if _, _, e := captureWorkObservation(book, w, original, save, commit); e != nil {
 			return workItem{Kind: "reasoning", Ref: "reasoning"}, e
 		}

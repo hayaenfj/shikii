@@ -150,7 +150,7 @@ func TestAuditGSubmitFromBareDeliveries(t *testing.T) {
 	listed, _ := reply["sources"].([]any)
 	t.Logf("CLI bound: %d bytes, %d listed, more_pending=%v, omitted=%v", len(raw)+1, len(listed), reply["more_pending"], output["omitted"])
 	if !strings.Contains(fmt.Sprint(output["omitted"]), "texts of the delivered lessons") {
-		t.Skip("precondition: the deliveries come bare at the CLI's bound")
+		t.Fatal("precondition: the deliveries come bare at the CLI's bound")
 	}
 	memory := []map[string]string{}
 	reviews := []map[string]string{}

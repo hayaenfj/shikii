@@ -112,7 +112,7 @@ func (b Book) procedureSources(s ProcedureSample) ([]Observation, error) {
 	if e != nil {
 		return nil, e
 	}
-	if o.Kind != "agent" || o.Title != "Work result and remaining conditions" {
+	if kind, ok := WorkSourceOf(o); !ok || kind != WorkResult || o.Kind != "agent" {
 		return nil, errors.New("procedure feedback needs the saved original work result")
 	}
 	var report struct {

@@ -58,7 +58,7 @@ func TestAuditGAnArchiveOfTheWorkIsEvidence(t *testing.T) {
 				}
 			}
 			if ref == "" {
-				t.Skipf("precondition: the archive is listed among the observations: %.300s", auditJSON(prepared["observations"]))
+				t.Fatalf("precondition: the archive is listed among the observations: %.300s", auditJSON(prepared["observations"]))
 			}
 			done, err := f.record(prepared, map[string]any{"result": map[string]any{"changed": "Edited the export.", "checked": "Nothing new.", "sufficient": true, "evidence": []any{ref}}})
 			t.Logf("%s as %s: err=%v complete=%v", title, ref, err, done["complete"])

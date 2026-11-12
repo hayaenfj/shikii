@@ -148,7 +148,7 @@ type workCapture struct {
 	// Source: the kind of a source shikii writes about the work (0 for an observation). The capture carries it so that a capture
 	// that failed once is finished later as the same kind, and a report is noted in workState.Reports in the very save that gives
 	// it a name (audit of 0.31.0: a later finish saved a report as an observation).
-	Source notebook.WorkSource `json:"source,omitempty"`
+	Source notebook.WorkSource `json:"source,omitzero"`
 }
 type workItem struct {
 	Ref      string   `json:"ref"`

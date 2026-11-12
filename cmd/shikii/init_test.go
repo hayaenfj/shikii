@@ -71,7 +71,7 @@ func packageSources(t *testing.T) map[string]string {
 func calibMuUsers(t *testing.T, srcs map[string]string) []string {
 	t.Helper()
 	// the field calibMu of the server, however it is reached (read by its type)
-	uses := typedUses(t, srcs, len(srcs) > 5, func(obj types.Object) bool {
+	uses := typedUses(t, srcs, typedIsThePackage(srcs), func(obj types.Object) bool {
 		v, ok := obj.(*types.Var)
 		return ok && v.IsField() && v.Name() == "calibMu" && v.Pkg() != nil && v.Pkg().Name() == "main"
 	})

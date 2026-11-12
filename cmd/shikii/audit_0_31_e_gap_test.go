@@ -2,6 +2,8 @@ package main
 
 import (
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 // audit E, tests for lines of the fix that no shipped test of the sets I ran guards (each is GREEN on the candidate and RED with
@@ -28,7 +30,7 @@ func TestAuditEGapAPendingReportOfTheInterruptedRequestIsNotEvidence(t *testing.
 	}
 	t.Logf("the interrupting request holds report A as %v; reports noted: %v", names, w.Reports)
 	if len(names) == 0 {
-		t.Skip("report A is not among the sources of the next request")
+		t.Fatal("report A is not among the sources of the next request")
 	}
 	for _, ref := range append(names, idA) {
 		c, err := f.record(second, map[string]any{"result": map[string]any{"changed": "Checked the totals (" + ref + ").", "sufficient": true, "evidence": []any{ref}}})
@@ -86,7 +88,7 @@ func TestAuditEOlderRecordEndingReviewAfterThePreparationAgain(t *testing.T) {
 	if err := updateSession(f.root, "planning", func(s *hookSession) {
 		s.Planning.Work.Reports = nil
 		for key, capture := range s.Planning.Work.Captures {
-			capture.Source = 0 // a capture memo written before it kept the kind
+			capture.Source = notebook.WorkSource{} // a capture memo written before it kept the kind
 			s.Planning.Work.Captures[key] = capture
 		}
 	}); err != nil {

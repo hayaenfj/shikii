@@ -26,8 +26,8 @@ func TestAuditIAnOutcomeLaundersTheResult(t *testing.T) {
 	outcome, err := workCall(t, b, "record", map[string]any{"receipt": v["receipt"], "outcomes": []any{map[string]any{"ref": ref, "conditions": "Linux", "action": "Run the Quartz export check.", "result": "The check passed.", "sources": []string{"result"}}}})
 	raw := auditJSON(outcome)
 	t.Logf("an outcome whose only source is the work's own result: err=%v complete=%v errors=%.300s", err, outcome["complete"], auditJSON(outcome["errors"]))
-	if strings.Contains(raw, "wrote about") {
-		return // refused as a report: the finding does not hold
+	if strings.Contains(auditJSON(outcome["errors"]), `"kind":"outcome"`) {
+		return // the outcome is refused (the result it cites is a report with no evidence of its own): the finding does not hold
 	}
 	id := ""
 	items, _ := outcome["saved"].([]any)

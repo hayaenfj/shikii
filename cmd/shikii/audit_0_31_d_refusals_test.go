@@ -100,7 +100,7 @@ var jsonEntries = []jsonEntry{
 func readerCallers(t *testing.T, sources map[string]string) map[string]bool {
 	t.Helper()
 	// the reader of an agent's JSON (decodeStrictObject, and its wrapper decodeStrict), however it is reached (read by its type)
-	uses := typedUses(t, sources, len(sources) > 5, func(obj types.Object) bool {
+	uses := typedUses(t, sources, typedIsThePackage(sources), func(obj types.Object) bool {
 		fn, ok := obj.(*types.Func)
 		return ok && (fn.Name() == "decodeStrictObject" || fn.Name() == "decodeStrict") && fn.Pkg() != nil && fn.Pkg().Name() == "main"
 	})

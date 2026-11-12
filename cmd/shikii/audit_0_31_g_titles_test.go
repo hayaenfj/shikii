@@ -14,11 +14,7 @@ import (
 
 // workSources is every kind of source shikii writes about a work.
 func workSources() []notebook.WorkSource {
-	var all []notebook.WorkSource
-	for k := notebook.WorkResult; k.Title() != ""; k++ {
-		all = append(all, k)
-	}
-	return all
+	return notebook.WorkSources()
 }
 
 // The places of cmd/shikii that may build a workObservation with its fields, or set its title: the constructor of shikii's own
@@ -30,6 +26,7 @@ var workObservationBuilders = map[string]string{
 	"work.go:workArchive":                                "the constructor of a source shikii writes, from its kind",
 	"work_record_observation.go:checkWorkSource":         "the defaults of an observation (kind, reference, version) and a work source's title",
 	"work_record_observation.go:captureWorkObservation":  "the copy a capture keeps until it is saved",
+	"work_completion.go:finishWorkCompletion":            "a capture that failed once, finished as the kind its memo kept",
 	"work_reasoning_current.go:resolveCurrentWorkSource": "the person's current request, quoted (kind human)",
 	"work_assignment_record.go:recordAssignment":         "the host's observation of an assignment event, recorded through recordWork as an observation",
 }
@@ -47,7 +44,7 @@ func workObservationProblems(t *testing.T, files map[string]string) []string {
 	t.Helper()
 	var problems []string
 	places := map[string]bool{}
-	for _, tf := range typedSources(t, files, len(files) > 5) {
+	for _, tf := range typedSources(t, files, typedIsThePackage(files)) {
 		if tf.prelude {
 			continue
 		}
@@ -60,6 +57,14 @@ func workObservationProblems(t *testing.T, files map[string]string) []string {
 			where := tf.name + ":" + name
 			ast.Inspect(root, func(n ast.Node) bool {
 				switch v := n.(type) {
+				case *ast.CallExpr:
+					// a conversion to a workObservation builds one as much as a composite literal does
+					if tv, ok := info.Types[v.Fun]; ok && tv.IsType() && isObservation(tv.Type) {
+						places[where] = true
+						if workObservationBuilders[where] == "" {
+							problems = append(problems, where+" builds a workObservation by a conversion; a source shikii writes is built by workArchive")
+						}
+					}
 				case *ast.CompositeLit:
 					if isObservation(info.Types[v].Type) && len(v.Elts) > 0 {
 						places[where] = true
@@ -78,12 +83,10 @@ func workObservationProblems(t *testing.T, files map[string]string) []string {
 							}
 						}
 					}
-				case *ast.CallExpr:
-					fun, ok := v.Fun.(*ast.SelectorExpr)
-					if !ok {
-						return true
-					}
-					if selection := info.Selections[fun]; selection != nil && selection.Obj().Name() == "CaptureObserved" {
+				}
+				// CaptureObserved however it is reached: called, taken as a method value, through another name
+				if sel, ok := n.(*ast.SelectorExpr); ok {
+					if selection := info.Selections[sel]; selection != nil && selection.Obj().Name() == "CaptureObserved" && selection.Obj().Pkg() != nil && selection.Obj().Pkg().Name() == "notebook" {
 						places[where] = true
 						if observationSavers[where] == "" {
 							problems = append(problems, where+" saves an observation (CaptureObserved)")
@@ -94,7 +97,7 @@ func workObservationProblems(t *testing.T, files map[string]string) []string {
 			})
 		})
 	}
-	if len(files) > 5 {
+	if typedIsThePackage(files) {
 		for where := range workObservationBuilders {
 			if !places[where] {
 				problems = append(problems, "workObservationBuilders names "+where+", which builds no workObservation now")
@@ -191,7 +194,7 @@ func TestAnOlderRecordHandsNoReportOver(t *testing.T) {
 	if err := updateSession(f.root, "planning", func(s *hookSession) {
 		s.Planning.Work.Reports = nil
 		for key, capture := range s.Planning.Work.Captures {
-			capture.Source = 0 // a capture memo written before it kept the kind
+			capture.Source = notebook.WorkSource{} // a capture memo written before it kept the kind
 			s.Planning.Work.Captures[key] = capture
 		}
 	}); err != nil {
@@ -253,10 +256,11 @@ func TestAStopOfASubagentLeavesTheRequestAsItIs(t *testing.T) {
 	f := newAuditFlow(t)
 	f.prepare(f.ask(planningTestRequest), "CSV export filters")
 	before := loadSession(f.root, "planning")
+	wentOn := before.goesOnForTest() // read before the Stop: the helper reads the state as it is when called
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": f.repo, "agent_id": "child-1", "last_assistant_message": "Subagent done."})
 	after := loadSession(f.root, "planning")
-	if out != "" || after.Judged != before.Judged || after.Previous != before.Previous || after.endedTurnForTest() != before.endedTurnForTest() {
-		t.Errorf("a Stop of a subagent changed the request: out=%q judged %v -> %v, previous %q -> %q, ended %q -> %q", out, before.Judged, after.Judged, before.Previous, after.Previous, before.endedTurnForTest(), after.endedTurnForTest())
+	if out != "" || after.Judged != before.Judged || after.Previous != before.Previous || after.goesOnForTest() != wentOn || !wentOn {
+		t.Errorf("a Stop of a subagent changed the request: out=%q judged %v -> %v, previous %q -> %q, goes on %v -> %v", out, before.Judged, after.Judged, before.Previous, after.Previous, wentOn, after.goesOnForTest())
 	}
 }
 

@@ -23,7 +23,7 @@ func auditKEndedInA(t *testing.T) (*auditFlow, string) {
 		t.Fatalf("precondition: the Stop of request 1 passes in A: %s", reason)
 	}
 	a := loadSession(f.root, "planning")
-	if a.endedTurnForTest() != a.TurnID || a.TurnID == "" {
+	if a.goesOnForTest() || a.TurnID == "" {
 		t.Fatalf("precondition: request 1 ended in A")
 	}
 	return f, a.TurnID
@@ -35,8 +35,8 @@ func auditKNoticeInA(t *testing.T, f *auditFlow, first, why string) {
 	t.Helper()
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": f.repo, "prompt": auditINotice})
 	a := loadSession(f.root, "planning")
-	t.Logf("%s: after the notice in A: A turn=%s (request 1 is %s) ended=%v judged=%v", why, a.TurnID, first, a.endedTurnForTest() == a.TurnID, a.Judged)
-	if a.TurnID == first && a.endedTurnForTest() != a.TurnID {
+	t.Logf("%s: after the notice in A: A turn=%s (request 1 is %s) ended=%v judged=%v", why, a.TurnID, first, !a.goesOnForTest(), a.Judged)
+	if a.TurnID == first && a.goesOnForTest() {
 		t.Errorf("INVARIANT 9 (%s): the notice reopened request 1 in A, which ended before request 2 came", why)
 	}
 	next := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
@@ -62,13 +62,13 @@ func TestAuditKNoticeAfterARequestOutsideEveryProject(t *testing.T) {
 func TestAuditKNoticeAfterTheLatestProjectWasRemoved(t *testing.T) {
 	f, other, otherRoot := auditIRequestInB(t)
 	first := ""
-	if a := loadSession(f.root, "planning"); a.endedTurnForTest() == a.TurnID {
+	if a := loadSession(f.root, "planning"); !a.goesOnForTest() {
 		first = a.TurnID
 	}
 	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "The check runs in the background."})); blocked {
 		t.Fatalf("precondition: the Stop of request 2 passes in B: %s", reason)
 	}
-	if b := loadSession(otherRoot, "planning"); b.endedTurnForTest() != b.TurnID || first == "" {
+	if b := loadSession(otherRoot, "planning"); b.goesOnForTest() || first == "" {
 		t.Fatalf("precondition: both requests ended")
 	}
 	if err := os.RemoveAll(other); err != nil {
@@ -82,7 +82,7 @@ func TestAuditKNoticeAfterTheLatestProjectWasRemoved(t *testing.T) {
 func TestAuditKNoticeWhenTheIndexEntryOfTheLatestProjectIsUnreadable(t *testing.T) {
 	f, other, otherRoot := auditIRequestInB(t)
 	first := ""
-	if a := loadSession(f.root, "planning"); a.endedTurnForTest() == a.TurnID {
+	if a := loadSession(f.root, "planning"); !a.goesOnForTest() {
 		first = a.TurnID
 	}
 	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "The check runs in the background."})); blocked {
@@ -116,7 +116,7 @@ func TestAuditKNoticeWhenTheIndexEntryOfTheLatestProjectIsUnreadable(t *testing.
 func TestAuditKNoticeInAWithTheLatestRecordUnreadable(t *testing.T) {
 	f, other, otherRoot := auditIRequestInB(t)
 	first := ""
-	if a := loadSession(f.root, "planning"); a.endedTurnForTest() == a.TurnID {
+	if a := loadSession(f.root, "planning"); !a.goesOnForTest() {
 		first = a.TurnID
 	}
 	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "The check runs in the background."})); blocked || first == "" {

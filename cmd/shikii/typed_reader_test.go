@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"go/ast"
@@ -49,10 +52,9 @@ const typedSnippetImports = "import (\n\t\"bytes\"\n\t\"encoding/json\"\n\t\"io\
 
 // typedPrelude declares what a snippet of cmd/shikii may use: each is added when the snippet does not declare it.
 var typedPrelude = map[string]string{
-	"workObservation":        "type workObservation struct {\n\tKind, Title, Content, Reference, Version string\n\treport bool\n}",
+	"workObservation":        "type workObservation struct {\n\tKind      string `json:\"kind\"`\n\tTitle     string `json:\"title\"`\n\tContent   string `json:\"content\"`\n\tReference string `json:\"reference,omitempty\"`\n\tVersion   string `json:\"version,omitempty\"`\n\tsource    notebook.WorkSource\n}",
 	"captureWorkObservation": "func captureWorkObservation(book notebook.Book, w any, o workObservation, save func() error, commit any) (string, string, error) {\n\treturn \"\", \"\", nil\n}",
 	"captureWorkTrialSource": "func captureWorkTrialSource(book notebook.Book, w any, o workObservation, binding *string, key string, item any, save func() error, commit any) error {\n\treturn nil\n}",
-	"server":                 "type server struct{}",
 	"decodeObject":           "func decodeObject(r io.Reader, v any) error {\n\treturn nil\n}",
 	"decodeReflect":          "func decodeReflect(r io.Reader) (any, error) {\n\treturn nil, nil\n}",
 	"decodeReview":           "func decodeReview(r io.Reader) (any, error) {\n\treturn nil, nil\n}",
@@ -65,8 +67,13 @@ var typedPackageClause = regexp.MustCompile(`(?m)^package (\w+)`)
 // typedSources type-checks the sources, one package per package clause. The code of the repository (strict) must check without an
 // error, or a reader would be blind where the checker gave up. A snippet of a test (not strict) gets the imports and the
 // declarations of typedPrelude it does not have, and its errors are let pass: what can be typed is typed.
-func typedSources(t *testing.T, sources map[string]string, strict bool) []typedFile {
+func typedSources(t testing.TB, sources map[string]string, strict bool) []typedFile {
 	t.Helper()
+	if len(sources) == 0 {
+		// a reader that read nothing passes whatever the code does (audit N of 0.31.0: a test run from a folder without the
+		// package's files passed)
+		t.Fatal("no Go source to read: run the test in the folder of the package")
+	}
 	typedMu.Lock()
 	defer typedMu.Unlock()
 	groups := map[string][]string{}
@@ -284,4 +291,114 @@ func typedFuncValues(info *types.Info, root ast.Node) map[types.Object]types.Obj
 		return true
 	})
 	return values
+}
+
+// The declarations a snippet is given are the package's own: a prelude that drifted from the package let a snippet that sets a field
+// of the package's type pass unseen (audit M of 0.31.0: the prelude's workObservation had a field the type no longer has). Each
+// declaration of typedPrelude that the package also declares has the same type there.
+func TestThePreludeOfTheSnippetsIsThePackages(t *testing.T) {
+	files := map[string]string{}
+	paths, _ := filepath.Glob("*.go")
+	for _, p := range paths {
+		if !strings.HasSuffix(p, "_test.go") {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files[p] = string(data)
+		}
+	}
+	pkg := typedSources(t, files, true)
+	prelude := typedSources(t, map[string]string{"snippet.go": "package main\n"}, false)
+	scopeOf := func(tfs []typedFile) *types.Scope {
+		for _, tf := range tfs {
+			for _, decl := range tf.file.Decls {
+				if gd, ok := decl.(*ast.GenDecl); ok {
+					for _, spec := range gd.Specs {
+						if ts, ok := spec.(*ast.TypeSpec); ok {
+							if obj := tf.info.Defs[ts.Name]; obj != nil {
+								return obj.Parent()
+							}
+						}
+					}
+				}
+			}
+		}
+		return nil
+	}
+	pkgScope, preludeScope := scopeOf(pkg), scopeOf(prelude)
+	if pkgScope == nil || preludeScope == nil {
+		t.Fatal("precondition: both scopes are read")
+	}
+	qualifier := func(p *types.Package) string { return p.Name() } // the two checks name the same packages alike
+	compared := 0
+	for name := range typedPrelude {
+		real, given := pkgScope.Lookup(name), preludeScope.Lookup(name)
+		if real == nil || given == nil {
+			continue
+		}
+		compared++
+		switch g := given.Type().Underlying().(type) {
+		case *types.Signature:
+			// a function: the same parameters, each the package's type or any (a placeholder for a type the prelude does not have)
+			r, ok := real.Type().Underlying().(*types.Signature)
+			if !ok || r.Params().Len() != g.Params().Len() {
+				t.Errorf("typedPrelude declares %s as %s, and the package as %s", name, types.TypeString(g, qualifier), types.TypeString(real.Type(), qualifier))
+				continue
+			}
+			for i := 0; i < g.Params().Len(); i++ {
+				gp, rp := types.TypeString(g.Params().At(i).Type(), qualifier), types.TypeString(r.Params().At(i).Type(), qualifier)
+				if gp != "any" && gp != rp {
+					t.Errorf("typedPrelude gives %s the parameter %d of type %s, and the package %s", name, i, gp, rp)
+				}
+			}
+		default:
+			// a type: the very same fields
+			if a, b := types.TypeString(real.Type().Underlying(), qualifier), types.TypeString(g, qualifier); a != b {
+				t.Errorf("typedPrelude declares %s as %s, and the package as %s", name, b, a)
+			}
+		}
+	}
+	if compared < 5 {
+		t.Fatalf("precondition: the prelude's declarations are found in the package (%d compared)", compared)
+	}
+}
+
+// typedIsThePackage reports whether the sources are the package's own files (read strictly: a type error fails the test, or a reader
+// would be blind where the checker gave up), not a snippet of a test (whose missing declarations the prelude gives). The package is
+// known by its main.go, not by how many files there are.
+func typedIsThePackage(sources map[string]string) bool {
+	_, ok := sources["main.go"]
+	return ok
+}
+
+// fatalRecorder is a testing.TB that records a Fatal and ends the goroutine, so a test can see that a reader refuses.
+type fatalRecorder struct {
+	testing.TB
+	fatal string
+}
+
+func (f *fatalRecorder) Helper() {}
+func (f *fatalRecorder) Fatal(args ...any) {
+	f.fatal = fmt.Sprint(args...)
+	runtime.Goexit()
+}
+func (f *fatalRecorder) Fatalf(format string, args ...any) {
+	f.fatal = fmt.Sprintf(format, args...)
+	runtime.Goexit()
+}
+
+// A reader of the code that reads nothing (a test run from a folder without the package's files) fails instead of passing whatever
+// the code does (audit N of 0.31.0: two of the typed checks passed from an empty folder).
+func TestTheTypedReaderRefusesToReadNothing(t *testing.T) {
+	rec := &fatalRecorder{TB: t}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		typedSources(rec, map[string]string{}, true)
+	}()
+	<-done
+	if !strings.Contains(rec.fatal, "no Go source to read") {
+		t.Errorf("reading no source is not refused: %q", rec.fatal)
+	}
 }

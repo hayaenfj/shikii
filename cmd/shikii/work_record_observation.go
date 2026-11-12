@@ -20,7 +20,7 @@ func prepareWorkObservation(w *workState, o workObservation) (notebook.Observati
 // once is finished).
 func checkWorkSource(w *workState, o workObservation) (notebook.Observation, string, notebook.WorkSource, error) {
 	var value notebook.Observation
-	if o.source != 0 {
+	if !o.source.IsZero() {
 		o.Kind, o.Title = "agent", o.source.Title()
 	}
 	if o.Kind == "" {
@@ -33,20 +33,25 @@ func checkWorkSource(w *workState, o workObservation) (notebook.Observation, str
 		o.Version = "recorded by shikii " + shikii.Version
 	}
 	if len(o.Content) > 64<<10 {
-		return value, "", 0, errors.New("an observation must fit 64 KiB; retain a long report in handoff and cite its relevant evidence")
+		return value, "", notebook.WorkSource{}, errors.New("an observation must fit 64 KiB; retain a long report in handoff and cite its relevant evidence")
 	}
 	value = notebook.Observation{Kind: o.Kind, Title: o.Title, Content: o.Content, Reference: o.Reference, Version: o.Version, ObservedAt: time.Now().UTC()}
+	// the key holds the kind: an observation of the agent with the very fields of a report the work wrote takes no capture of the
+	// report (audit M of 0.31.0: it was handed the report's id, and a result cited it). An observation is always checked as one.
 	key := workHash(o)
 	source := o.source
-	if memo, ok := w.Captures[key]; ok && source == 0 {
-		source = memo.Source // the capture of this very source, started before
+	if !source.IsZero() {
+		key = workHash(struct {
+			Observation workObservation
+			Source      notebook.WorkSource
+		}{o, source})
 	}
 	check := value.ValidateObserved
-	if source != 0 {
+	if !source.IsZero() {
 		check = value.Validate
 	}
 	if err := check(); err != nil {
-		return value, "", 0, err
+		return value, "", notebook.WorkSource{}, err
 	}
 	if _, exists := w.Captures[key]; !exists && len(w.Captures) >= 32 {
 		return value, key, source, errors.New("this work has reached its observation limit; prepare again")
@@ -82,7 +87,7 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 	var captured notebook.Observation
 	err = commit(func() error {
 		var e error
-		if memo.Source != 0 {
+		if !memo.Source.IsZero() {
 			captured, e = book.CaptureWork(memo.Source, value.Content, value.Reference, value.Version, value.ObservedAt)
 		} else {
 			captured, e = book.CaptureObserved(value)
@@ -99,7 +104,7 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 	memo.Original, memo.Archive = nil, ""
 	w.Captures[key] = memo
 	w.Sources[memo.Ref] = memo.ID
-	if memo.Source != 0 && !memo.Source.Citable() {
+	if !memo.Source.IsZero() && !memo.Source.Citable() {
 		markReport(w, memo.ID)
 	}
 	if err = save(); err != nil {

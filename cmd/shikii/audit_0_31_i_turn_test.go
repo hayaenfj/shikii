@@ -20,7 +20,7 @@ func auditIRequestInB(t *testing.T) (*auditFlow, string, string) {
 	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": f.repo, "last_assistant_message": "Done."})); blocked {
 		t.Fatalf("precondition: the Stop of request 1 passes in A: %s", reason)
 	}
-	if a := loadSession(f.root, "planning"); a.endedTurnForTest() != a.TurnID {
+	if a := loadSession(f.root, "planning"); a.goesOnForTest() {
 		t.Fatalf("precondition: request 1 ended in A")
 	}
 	other := gitRepo(t)
@@ -40,12 +40,12 @@ func TestAuditINoticeInAReopensItsOwnRequestThatEndedBeforeB(t *testing.T) {
 		t.Fatalf("precondition: the Stop of request 2 passes in B: %s", reason)
 	}
 	a, b := loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	if a.endedTurnForTest() != a.TurnID || b.endedTurnForTest() != b.TurnID || !b.At.After(a.At) {
+	if a.goesOnForTest() || b.goesOnForTest() || !b.At.After(a.At) {
 		t.Fatalf("precondition: both requests ended, B's record is the newer (A %v, B %v)", a.At, b.At)
 	}
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": f.repo, "prompt": auditINotice})
 	a, b = loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	t.Logf("after the notice in A: A ended==turn %v (request 1, ended before request 2), B ended==turn %v (request 2, the latest)", a.endedTurnForTest() == a.TurnID, b.endedTurnForTest() == b.TurnID)
+	t.Logf("after the notice in A: A ended==turn %v (request 1, ended before request 2), B ended==turn %v (request 2, the latest)", !a.goesOnForTest(), !b.goesOnForTest())
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if carried := second["carried"]; carried != nil {
 		t.Errorf("INVARIANT 9: a notice that came in A reopened A's request 1, which ended before request 2 in B; the next request in A takes over its references: %.300s", auditJSON(carried))
@@ -66,13 +66,13 @@ func TestAuditIAStopInAMakesItsRecordTheLatest(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, b := loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	t.Logf("after the Stop in A: A ended==turn %v at %v; B (request 2) ended==turn %v at %v", a.endedTurnForTest() == a.TurnID, a.At.Format("15:04:05.000000"), b.endedTurnForTest() == b.TurnID, b.At.Format("15:04:05.000000"))
-	if b.endedTurnForTest() != b.TurnID || !a.At.After(b.At) || !b.HeadAt.After(a.HeadAt) {
+	t.Logf("after the Stop in A: A ended==turn %v at %v; B (request 2) ended==turn %v at %v", !a.goesOnForTest(), a.At.Format("15:04:05.000000"), !b.goesOnForTest(), b.At.Format("15:04:05.000000"))
+	if b.goesOnForTest() || !a.At.After(b.At) || !b.HeadAt.After(a.HeadAt) {
 		t.Fatalf("precondition: the Stop in A ended B's request 2, A's record is the newer and B's request the later")
 	}
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": other, "prompt": auditINotice})
 	a, b = loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	t.Logf("after the notice in B: A ended==turn %v (request 1), B ended==turn %v (request 2)", a.endedTurnForTest() == a.TurnID, b.endedTurnForTest() == b.TurnID)
+	t.Logf("after the notice in B: A ended==turn %v (request 1), B ended==turn %v (request 2)", !a.goesOnForTest(), !b.goesOnForTest())
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if carried := second["carried"]; carried != nil {
 		t.Errorf("INVARIANT 9: a notice of request 2 (in B) reopened A's request 1, because a Stop in A had written A's record last; the next request in A takes over its references: %.300s", auditJSON(carried))
@@ -104,7 +104,7 @@ func TestAuditIStopInBThatCannotSaveItsRecord(t *testing.T) {
 	writeSessionRecord = working
 	_, blocked := stopReason(t, out)
 	a := loadSession(f.root, "planning")
-	t.Logf("the Stop in B: blocked=%v out=%.200s; A ended==turn %v", blocked, out, a.endedTurnForTest() == a.TurnID)
+	t.Logf("the Stop in B: blocked=%v out=%.200s; A ended==turn %v", blocked, out, !a.goesOnForTest())
 	if blocked || !strings.Contains(out, `"continue":false`) {
 		t.Fatalf("precondition: the Stop ends the turn incomplete: %s", out)
 	}
@@ -126,7 +126,7 @@ func TestAuditINoticeWhenTheLatestRecordIsUnreadable(t *testing.T) {
 	}
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "prompt": auditINotice})
 	a := loadSession(f.root, "planning")
-	t.Logf("after the notice outside, B's record unreadable: A ended==turn %v (request 1)", a.endedTurnForTest() == a.TurnID)
+	t.Logf("after the notice outside, B's record unreadable: A ended==turn %v (request 1)", !a.goesOnForTest())
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if carried := second["carried"]; carried != nil {
 		t.Errorf("INVARIANT 9: with the record of the latest request unreadable, a notice reopened A's request 1, ended before it; the next request in A takes over its references: %.200s", auditJSON(carried))
