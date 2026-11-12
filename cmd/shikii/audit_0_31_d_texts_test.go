@@ -474,12 +474,16 @@ func TestTextsAboutReflectQuerySayWhereTheRestGoes(t *testing.T) {
 
 // planFlowProblem says what a text that names the flow of the check plan-before-work gets wrong: the flow is work prepare, then
 // work record, and a text that names hook plan beside it says that it is the older entry or what it does to the receipt.
+// olderWord is the word "older" on its own: "folder" holds it too, and the help of hook plan says "run it in the project's folder"
+// (audit H of 0.31.0: a help without the older-entry note passed).
+var olderWord = regexp.MustCompile(`\bolder\b`)
+
 func planFlowProblem(text string) string {
 	older := string([]rune{0x53e4, 0x3044}) // "older" as docs/guide.ja.md writes it
 	switch {
 	case !strings.Contains(text, "work prepare") || !strings.Contains(text, "work record"):
 		return "does not name work prepare and work record"
-	case strings.Contains(text, "hook plan") && !strings.Contains(text, "older") && !strings.Contains(text, older) && !strings.Contains(text, "receipt"):
+	case strings.Contains(text, "hook plan") && !olderWord.MatchString(text) && !strings.Contains(text, older) && !strings.Contains(text, "receipt"):
 		return "names hook plan without saying that it is the older entry, or that it replaces the receipt"
 	}
 	return ""
@@ -579,7 +583,7 @@ func olderEntryProblem(line string) string {
 	if !hookPlanCommand.MatchString(line) {
 		return ""
 	}
-	if strings.Contains(line, "older") || strings.Contains(line, string([]rune{0x53e4, 0x3044})) || strings.Contains(line, "replaces") && strings.Contains(line, "receipt") {
+	if olderWord.MatchString(line) || strings.Contains(line, string([]rune{0x53e4, 0x3044})) || strings.Contains(line, "replaces") && strings.Contains(line, "receipt") {
 		return ""
 	}
 	return "names hook plan query or submit without saying that it is the older entry, or that it replaces the receipt"

@@ -254,10 +254,10 @@ func reflectBare(s reflectSource) reflectSource {
 	bare := make([]store.MemoryObservation, 0, len(s.Memories))
 	for _, o := range s.Memories {
 		q := store.MemoryQuote{Key: o.Quote.Key, ID: o.Quote.ID, Revision: o.Quote.Revision}
-		if c := o.Quote.Correction; c != nil { // a correction is answered with correction_result: the delivery says it is one
-			shortened := *c
-			shortened.Quote, shortened.Action = cut(c.Quote, reflectHeadBytes), cut(c.Action, reflectHeadBytes)
-			q.Correction = &shortened
+		if c := o.Quote.Correction; c != nil { // a correction is answered with correction_result: the delivery says it is one, and
+			// keeps only that (its words are read with wiki query lesson:<id>; with them, 61 deliveries of a corrected lesson were
+			// over the CLI's bound: audit of 0.31.0)
+			q.Correction = &store.Correction{SourceID: c.SourceID}
 		}
 		bare = append(bare, store.MemoryObservation{SourceID: o.SourceID, Parent: o.Parent, Agent: o.Agent, At: o.At, Quote: q})
 	}

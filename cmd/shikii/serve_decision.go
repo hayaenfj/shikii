@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -24,12 +23,7 @@ func (s *server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		Record  *bool             `json:"record"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read (shikii_decide reaches this entry)
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			writeErr(w, 413, fmt.Errorf("body larger than %d bytes", maxBody))
-			return
-		}
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return
 	}
 	sp, err := s.spec(req.Spec)

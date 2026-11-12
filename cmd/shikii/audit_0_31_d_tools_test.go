@@ -59,13 +59,33 @@ var encodingJSONWords = []string{"json: cannot", "json: unknown", "json: invalid
 // ownBodyReaders are the functions that may read a JSON body with a decoder of their own, each with its reason. Every other
 // function reads through decodeObject or decodeStrictObject, so what it cannot read is worded by the one reader.
 var ownBodyReaders = map[string]string{
-	"handleArticle": "the page's edit of an article: read strictly, with one fixed answer",
-	"probe":         "the reply of the model's server, not a request to shikii",
+	"handleArticle":  "the page's edit of an article: read strictly, with one fixed answer",
+	"handleNotebook": "reads the bytes under its own bound (a work record grows when encoded) and hands them to decodeStrictObject",
 }
 
 // bodyReaders lists the functions of the given Go sources that hand a Body to json.NewDecoder themselves.
+// bodyReaders returns the functions that touch the body of a request (a parameter of type *http.Request) in any way but the two
+// the one reader allows: passing it to decodeObject, decodeReflect or decodeReview, and bounding it in place with
+// r.Body = http.MaxBytesReader(w, r.Body, n). An allowlist of forms: a handler that reads its body with io.ReadAll, through a
+// LimitReader or from a variable is found as much as one with json.NewDecoder (audit H of 0.31.0: only that form was found).
 func bodyReaders(t *testing.T, sources map[string]string) []string {
 	t.Helper()
+	readers := map[string]bool{"decodeObject": true, "decodeReflect": true, "decodeReview": true}
+	isRequest := func(e ast.Expr) bool {
+		star, ok := e.(*ast.StarExpr)
+		if !ok {
+			return false
+		}
+		sel, ok := star.X.(*ast.SelectorExpr)
+		pkg, isIdent := func() (*ast.Ident, bool) {
+			if !ok {
+				return nil, false
+			}
+			id, ok := sel.X.(*ast.Ident)
+			return id, ok
+		}()
+		return ok && isIdent && pkg.Name == "http" && sel.Sel.Name == "Request"
+	}
 	found := map[string]bool{}
 	fset := token.NewFileSet()
 	for name, source := range sources {
@@ -78,23 +98,68 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 			if !ok || fn.Body == nil {
 				continue
 			}
+			requests := map[string]bool{}
+			for _, field := range fn.Type.Params.List {
+				if isRequest(field.Type) {
+					for _, n := range field.Names {
+						requests[n.Name] = true
+					}
+				}
+			}
+			if len(requests) == 0 {
+				continue
+			}
+			// every node with its parent, to see how a use of the body is used
+			parents := map[ast.Node]ast.Node{}
+			stack := []ast.Node{}
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok || len(call.Args) != 1 {
+				if n == nil {
+					stack = stack[:len(stack)-1]
 					return true
 				}
-				decoder, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || decoder.Sel.Name != "NewDecoder" {
-					return true
+				if len(stack) > 0 {
+					parents[n] = stack[len(stack)-1]
 				}
-				if pkg, ok := decoder.X.(*ast.Ident); !ok || pkg.Name != "json" {
-					return true
-				}
-				if body, ok := call.Args[0].(*ast.SelectorExpr); ok && body.Sel.Name == "Body" {
-					found[fn.Name.Name] = true
-				}
+				stack = append(stack, n)
 				return true
 			})
+			isBody := func(e ast.Expr) bool {
+				sel, ok := e.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "Body" {
+					return false
+				}
+				id, ok := sel.X.(*ast.Ident)
+				return ok && requests[id.Name]
+			}
+			for node, parent := range parents {
+				sel, ok := node.(*ast.SelectorExpr)
+				if !ok || !isBody(sel) {
+					continue
+				}
+				allowed := false
+				switch p := parent.(type) {
+				case *ast.CallExpr:
+					if id, ok := p.Fun.(*ast.Ident); ok && readers[id.Name] && len(p.Args) > 0 && p.Args[0] == sel {
+						allowed = true // handed to the one reader
+					}
+					if f, ok := p.Fun.(*ast.SelectorExpr); ok && f.Sel.Name == "MaxBytesReader" {
+						if assign, ok := parents[p].(*ast.AssignStmt); ok && len(assign.Lhs) == 1 && isBody(assign.Lhs[0]) {
+							allowed = true // r.Body = http.MaxBytesReader(w, r.Body, n)
+						}
+					}
+				case *ast.AssignStmt:
+					if len(p.Lhs) == 1 && p.Lhs[0] == sel && len(p.Rhs) == 1 {
+						if call, ok := p.Rhs[0].(*ast.CallExpr); ok {
+							if f, ok := call.Fun.(*ast.SelectorExpr); ok && f.Sel.Name == "MaxBytesReader" {
+								allowed = true // the left side of the same bounding
+							}
+						}
+					}
+				}
+				if !allowed {
+					found[fn.Name.Name] = true
+				}
+			}
 		}
 	}
 	var names []string

@@ -11,7 +11,7 @@ import (
 // Tests beside the findings of audit E of 0.31.0 (third round): what the fixes also promise.
 
 // A report of the earlier request that waits among the pending observations is handed to the next preparation as evidenceN. It is
-// noted there, so a refusal that lists what evidence can cite does not name it.
+// noted there as a report (kept out of what is listed and handed over), and citing it is refused with the reason.
 func TestAuditEAReportAmongThePendingObservationsIsNotListedAsUsable(t *testing.T) {
 	f := newAuditFlow(t)
 	first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
@@ -32,10 +32,10 @@ func TestAuditEAReportAmongThePendingObservationsIsNotListedAsUsable(t *testing.
 	if report == "" {
 		t.Fatalf("a report of the earlier request is among the pending observations, and the preparation does not note it: sources=%v reports=%v", w.Sources, w.Reports)
 	}
-	// new9 names an observation this call does not send: the refusal lists the references evidence can cite
-	refused, err := f.record(second, map[string]any{"result": map[string]any{"changed": "Checked the totals.", "evidence": []any{"new9"}}})
-	if raw := auditJSON(refused["errors"]); err != nil || !strings.Contains(raw, "unknown source reference") || strings.Contains(raw, report) {
-		t.Errorf("the refusal of an unknown reference lists %s, a report, among what evidence can cite: %v %s", report, err, raw)
+	// and the work's own refusal of citing it says why
+	refused, err := f.record(second, map[string]any{"result": map[string]any{"changed": "Checked the totals.", "evidence": []any{report}}})
+	if raw := auditJSON(refused["errors"]); err != nil || refused["complete"] == true || !strings.Contains(raw, "wrote about") {
+		t.Errorf("a result citing %s, a report among the pending observations, is not refused as one: %v %s", report, err, raw)
 	}
 }
 

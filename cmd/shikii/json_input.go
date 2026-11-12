@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"reflect"
 	"sort"
 	"strconv"
@@ -55,6 +56,17 @@ func decodeObject(body io.Reader, target any) error {
 		return jsonReadError(err, data, target)
 	}
 	return notAnObject(data, target)
+}
+
+// writeBodyErr answers a body decodeObject could not read: 413 with the bound when it was over it, otherwise 400 in the reader's
+// words. Each entry wrote its own answer, and only decide said that the body was too large (audit of 0.31.0).
+func writeBodyErr(w http.ResponseWriter, err error) {
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		writeErr(w, 413, fmt.Errorf("body larger than %d bytes", tooBig.Limit))
+		return
+	}
+	writeErr(w, 400, fmt.Errorf("bad json: %w", err))
 }
 
 // notAnObject refuses null where an object goes. encoding/json reads null into any value without a word, so the entry went on

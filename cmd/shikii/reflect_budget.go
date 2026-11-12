@@ -24,6 +24,9 @@ import (
 //
 // output names each step taken and how to read what was left out. A reply that fits is returned as it is. size measures the whole
 // reply the way the transport sends it (the MCP tool result, or the CLI's line).
+// bareNote is what output says when the delivered lessons keep their keys only (reflectBare).
+const bareNote = "the texts of the delivered lessons (each keeps its source_id and key: wiki query lesson:<id> reads one)"
+
 func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 	if size(view) <= budget {
 		return view
@@ -112,10 +115,15 @@ func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 				whole++
 			}
 		}
-		alone.Sources, alone.MorePending = current.Sources[:1], current.MorePending+others
+		// measured with its deliveries already bare: a first conversation over the bound only for the texts of the lessons it was
+		// delivered keeps its raw text, the step for those texts comes first (audit of 0.31.0)
+		alone.Sources, alone.MorePending = []reflectSource{reflectBare(current.Sources[0])}, current.MorePending+others
 		last := []string{}
+		if len(current.Sources[0].Memories) > 0 {
+			last = append(last, bareNote)
+		}
 		if others > 0 {
-			last = []string{fmt.Sprintf("the last %d conversations (counted in more_pending: query again after the submit)", others)}
+			last = append(last, fmt.Sprintf("the last %d conversations (counted in more_pending: query again after the submit)", others))
 		}
 		if _, fits := try(alone, 4, 0, whole, last...); !fits {
 			sources := append([]reflectSource{}, current.Sources...)
@@ -166,7 +174,7 @@ func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 				sources[i] = reflectBare(s)
 			}
 			current.Sources = sources
-			base = append(append([]string{}, first...), "the texts of the delivered lessons (each keeps its source_id and key: wiki query lesson:<id> reads one)")
+			base = append(append([]string{}, first...), bareNote)
 			if reply, fits := try(current, 4, 0, heads, base...); fits {
 				return reply
 			}

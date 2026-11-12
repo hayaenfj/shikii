@@ -24,7 +24,7 @@ func (s *server) handleAnswersRestore(w http.ResponseWriter, r *http.Request) {
 		Stop    bool   `json:"stop"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return
 	}
 	req.TraceID = strings.TrimSpace(req.TraceID)

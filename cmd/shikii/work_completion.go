@@ -50,7 +50,7 @@ func selfEvidence(book notebook.Book, w *workState, result string, refs []string
 		case w.Reports[id]:
 			what = "a report this work wrote about itself (an earlier result or an ending review), not something it observed"
 		case workReportSource(book, id):
-			what = "a report a work wrote about itself (a result, an ending review or the record of its procedure), not something that was observed"
+			what = "a report or a record shikii wrote about a work itself (a result, an ending review, the record of a procedure, an archive of the work's state), not something that was observed"
 		default:
 			continue
 		}
@@ -72,9 +72,31 @@ const (
 	workProcedureName = "Procedure execution"
 )
 
-// workReport reports whether a source with this kind and title is one a work wrote about itself.
+// workSourceTitles is every title shikii gives a source it writes itself with kind agent, and whether evidence may cite it. The
+// reports and the archives shikii keeps of the work's own state are no evidence; the records of what the agent did (a trial, a
+// measured reading, a procedure it executed) are cited like the observations they record. A list of the reports alone missed the
+// archives, and each new archive would have been missed again (audits of 0.31.0, four rounds): a test now reads every source
+// shikii writes in the code and fails on a title that is not here (TestEveryTitleShikiiWritesIsClassified).
+var workSourceTitles = map[string]bool{
+	workResultTitle:   false,
+	workReviewTitle:   false,
+	workRecoveryTitle: false,
+	workProcedureName: false,
+	"Required wiki note and original prepared bindings":           false,
+	"Required work and bindings at the session capacity boundary": false,
+	"Pending wiki work before replacing preparation":              false,
+	"Work trial plan":                         true,
+	"Work trial execution":                    true,
+	"Work trial comparison":                   true,
+	"Measured reading execution":              true,
+	"Procedure execution with cited evidence": true,
+}
+
+// workReport reports whether a source with this kind and title is one shikii wrote about the work itself (a report or an archive
+// of the work's state), which evidence never cites.
 func workReport(kind, title string) bool {
-	return kind == "agent" && (title == workResultTitle || title == workReviewTitle || title == workRecoveryTitle || title == workProcedureName)
+	citable, known := workSourceTitles[title]
+	return kind == "agent" && known && !citable
 }
 
 // workReportSource reads a saved source and reports whether it is one a work wrote about itself. A reference that is no saved

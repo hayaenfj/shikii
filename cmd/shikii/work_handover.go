@@ -91,13 +91,37 @@ func turnElsewhere(event string, in *hookInput, here string, blocked bool) {
 	if err != nil {
 		return
 	}
+	type record struct {
+		root, path string
+		s          *hookSession
+	}
+	// a record that is not there reads as one without a turn: nothing is written, so no record is made
+	records := []record{}
 	for _, p := range registeredProjects(common) {
 		root := filepath.Join(p.Path, ".shikii")
-		// a record that is not there reads as one without a turn: nothing is written, so no record is made
-		if s := loadSession(root, in.SessionID); root == here || s.TurnID == "" || ends == (s.EndedTurn == s.TurnID) {
+		if s := loadSession(root, in.SessionID); s.TurnID != "" {
+			records = append(records, record{root, p.Path, s})
+		}
+	}
+	if !ends {
+		// the background work belongs to the request the session worked on last: only that one goes on. A notice that came in B
+		// reopened a request of A that had ended before B's started (audit of 0.31.0).
+		latest := -1
+		for i, r := range records {
+			if latest < 0 || r.s.At.After(records[latest].s.At) {
+				latest = i
+			}
+		}
+		if latest < 0 {
+			return
+		}
+		records = records[latest : latest+1]
+	}
+	for _, r := range records {
+		if r.root == here || ends == (r.s.EndedTurn == r.s.TurnID) {
 			continue
 		}
-		if err := updateSession(root, in.SessionID, func(s *hookSession) {
+		if err := updateSession(r.root, in.SessionID, func(s *hookSession) {
 			switch {
 			case s.TurnID == "":
 			case ends:
@@ -106,7 +130,7 @@ func turnElsewhere(event string, in *hookInput, here string, blocked bool) {
 				s.EndedTurn = ""
 			}
 		}); err != nil {
-			hookLog(fmt.Sprintf("session %s: the turn's state was not recorded in %s (%v)", in.SessionID, p.Path, err))
+			hookLog(fmt.Sprintf("session %s: the turn's state was not recorded in %s (%v)", in.SessionID, r.path, err))
 		}
 	}
 }

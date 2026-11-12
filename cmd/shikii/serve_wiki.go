@@ -174,7 +174,7 @@ func (s *server) handleWikiClaim(w http.ResponseWriter, r *http.Request) {
 		Status    string            `json:"status"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return
 	}
 	path, ok := insidePatterns(s.o.wikiDir, req.Path)

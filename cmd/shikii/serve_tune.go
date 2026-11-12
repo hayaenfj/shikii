@@ -104,7 +104,7 @@ func (s *server) handleTuneVariant(w http.ResponseWriter, r *http.Request) {
 		Options  map[string]string `json:"options"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return
 	}
 	ref, err := s.specRef(req.Spec)
@@ -182,7 +182,7 @@ func (s *server) decodeTuneReq(w http.ResponseWriter, r *http.Request) (specRef,
 		Propose int    `json:"propose"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read (shikii_tune reaches this entry)
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return specRef{}, 0, false
 	}
 	ref, err := s.specRef(req.Spec)
@@ -262,7 +262,7 @@ func (s *server) handleTuneAdopt(w http.ResponseWriter, r *http.Request) {
 		Note        string `json:"note"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return
 	}
 	if req.MeaningSame == nil {
@@ -328,7 +328,7 @@ func (s *server) handleTuneReview(w http.ResponseWriter, r *http.Request) {
 		Keep *bool  `json:"keep"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return
 	}
 	if req.Keep == nil || req.Run == "" {

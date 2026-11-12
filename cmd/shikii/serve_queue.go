@@ -79,7 +79,7 @@ func (s *server) handleRedo(w http.ResponseWriter, r *http.Request) {
 		TraceID string `json:"trace_id"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return
 	}
 	sp, err := s.spec(req.Spec)
@@ -152,7 +152,7 @@ func (s *server) handleLabel(w http.ResponseWriter, r *http.Request) {
 		Source  string  `json:"source"`
 	}
 	if err := decodeObject(r.Body, &req); err != nil { // the reader's words for what it cannot read (shikii_label reaches this entry)
-		writeErr(w, 400, fmt.Errorf("bad json: %w", err))
+		writeBodyErr(w, err)
 		return
 	}
 	if req.TraceID == "" || req.Truth == "" {

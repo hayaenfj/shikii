@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -81,7 +82,8 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		return nil, errors.New("this recording context is full; prepare again")
 	}
 	if w.Standalone && (req.Agreed != nil || req.Open != nil || req.ContinuesPrevious != nil) {
-		return nil, errors.New("an agent-supplied task is not a human agreement; use the current hook context for planning")
+		// what to send instead: the record without them (a hook-less agent was told to use a hook context it does not have)
+		return nil, errors.New("an agent-supplied task is not a human agreement: leave agreed, open and continues_previous out of the record of a receipt without hook ids, and send the rest again")
 	}
 	if req.Reasoning != nil {
 		if err := validateReasoning(*req.Reasoning); err != nil {
@@ -140,6 +142,11 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 
 	local := map[string]string{}
 	for i, o := range req.Observations {
+		if citable, shikiis := workSourceTitles[strings.TrimSpace(o.Title)]; shikiis && !citable {
+			// a title shikii gives its own reports: an observation under it would be taken for one, and never cited
+			add(workItem{Ref: "new" + strconv.Itoa(i+1), Kind: "observation", Error: fmt.Sprintf("the title %q is the one shikii gives its own reports and records; give the observation a title of its own (what you checked)", o.Title)})
+			continue
+		}
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)
 		item := workItem{Ref: ref, Kind: "observation", ID: id}
 		if err != nil {

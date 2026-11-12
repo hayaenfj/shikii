@@ -55,9 +55,16 @@ func runHookEvent(event string) error {
 	// model calls are outside the lock (they only read a copy of the record). Changes to the record are collected in muts and applied to the record re-read inside the lock
 	snapshot := loadSession(agent, in.SessionID)
 	if event == "stop" {
+		if in.AgentID != "" {
+			// a Stop with the id of a subagent is not the end of the person's request: nothing is judged or recorded, as a request
+			// with that id is not taken (hookUserPrompt). It judged the parent's request on the child's last reply (audit of 0.31.0)
+			return nil
+		}
 		var serr error
 		snapshot, serr = readSession(agent, in.SessionID)
 		if serr != nil || (in.StopHookActive && snapshot.TurnID == "" && snapshot.GuardTurn == nil && shikiiStoppedSession(agent, in.SessionID)) {
+			// the turn ends here (continue:false), incomplete: the same session's requests in other projects end with it
+			turnElsewhere(event, &in, agent, false)
 			fmt.Fprintln(stdout, string((hookOut{Halt: ritualHalt(true)}).json(hookEventName(event))))
 			return serr
 		}

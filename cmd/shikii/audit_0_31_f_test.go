@@ -15,13 +15,6 @@ import (
 // Tests of audit F of 0.31.0 (third round; the audit stopped before its report, these are its findings as tests). Each failed on
 // the candidate 4b231ef.
 
-// RED (INVARIANT 5, guide.md "reflect query keeps its reply within what an agent's tool shows"): the first pending conversation
-// was a turn that started many subagents. Each delivery to a subagent is assessed under the parent conversation, a head keeps the
-// keys and the cut texts of every delivery, and nothing more is taken off: the reply is over the CLI's bound and says so.
-
-// Audit F (0.31.0, third round). Probes: they follow the texts an agent reads, as written, and print what comes back. The report
-// quotes their output. Findings have their own tests with assertions in zz_audit_f_red_test.go.
-
 const auditFSession = "0f4c1e2a-7b3d-4c5e-8f90-123456789abc" // 36 bytes, as a real session id
 
 func auditFStop(t *testing.T, repo, session string, active bool) (string, bool) {
@@ -115,6 +108,9 @@ func TestAuditFReflectQueryWithManySubagentDeliveries(t *testing.T) {
 	sources, _ := reply["sources"].([]any)
 	output, _ := reply["output"].(map[string]any)
 	t.Logf("with an older conversation pending: shikii reflect query is %d bytes of %d, %d listed, more_pending=%v, omitted=%v", len(out), cliPrepareBytes, len(sources), reply["more_pending"], output["omitted"])
+	if len(out) > cliPrepareBytes || len(sources) == 0 {
+		t.Errorf("with an older conversation pending, the CLI's reflect query is %d bytes of %d with %d listed", len(out), cliPrepareBytes, len(sources))
+	}
 	// (2) once the conversations before it are settled, it is the first: the shape the shipped test of the long request uses
 	first := view
 	first.Sources = append([]reflectSource{}, view.Sources[heavy:]...)
@@ -180,10 +176,6 @@ func TestAuditFAgreedRefusalsNameTheShapeAndTheReferences(t *testing.T) {
 	prepared, _, err := auditDCLI(t, strings.TrimSuffix(ids, "}")+`,"query":"CSV export"}`, "work", "prepare")
 	if err != nil {
 		t.Fatal(err)
-	}
-	how, _ := prepared["how_to_record"].(string)
-	if strings.Contains(how, "agreed") {
-		t.Fatalf("how_to_record now names agreed: this finding no longer holds: %s", how)
 	}
 	receipt := auditJSON(prepared["receipt"])
 	saved, _, err := auditDCLI(t, `{"receipt":`+receipt+`,"agreed":{"summary":"Keep the filters."}}`, "work", "record")
